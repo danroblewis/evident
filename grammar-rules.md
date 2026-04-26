@@ -273,6 +273,58 @@ replaced by inline existentials in the body.
 
 ---
 
+## Rule 8b: Merge `claim` and `evident` when there is one definition
+
+When a claim has exactly one body, the `claim` declaration and `evident` block
+are redundant. Merge them — the body follows the declaration, indented:
+
+```evident
+-- Redundant (two blocks for one definition):
+claim acyclic : Prop
+
+evident acyclic
+    ∀ n ∈ nodes : ¬ in_cycle n
+
+-- Merged (one block):
+claim acyclic : Prop
+    ∀ n ∈ nodes : ¬ in_cycle n
+```
+
+Name parameters directly in the claim head using `∈`. Group parameters of the
+same type with commas. The result kind follows `:`:
+
+```evident
+-- Old (anonymous type arrows, names repeated in evident line):
+claim shortest_path_between : Nat → Nat → List Nat → semidet
+
+evident shortest_path_between a b path
+    ...
+
+-- New (named parameters, one block):
+claim shortest_path_between a, b ∈ Nat, path ∈ List Nat : semidet
+    ...
+```
+
+Type parameters stay in `[...]` before the value parameters:
+
+```evident
+claim sorted[T ∈ Ordered] list ∈ List T : Prop
+    ∀ (a, b) ∈ each_consecutive list : a ≤ b
+```
+
+For `det` claims that return a value, the result type precedes `det`:
+
+```evident
+claim path_length path ∈ List Nat : Nat det
+    _len = length path
+    _len - 1
+```
+
+Use separate `claim` + `evident` blocks only when genuinely needed:
+multiple alternative definitions (structurally distinct cases).
+
+---
+
 ## Rule 9: Prefer universal statements over case analysis
 
 Multiple `evident` blocks for the same claim express disjunction — "holds when A *or* when B." Before writing separate cases, ask: can a single universal statement cover all of them?
