@@ -25,10 +25,7 @@ assert edge 4 5
 claim adjacent : Nat → Nat → semidet
 
 evident adjacent a b
-    edge a b
-
-evident adjacent a b    -- undirected: symmetric
-    edge b a
+    edge a b ∨ edge b a
 
 
 -- ─────────────────────────────────────────
