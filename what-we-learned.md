@@ -703,6 +703,90 @@ form; the runtime grounds it before handing to the solver.
 
 ---
 
+## Types can carry constraints — refinement types, not dependent types from scratch
+
+A `type` declaration is already a set-builder expression. Adding constraints to it
+just adds more membership conditions — narrowing the set further. This is the
+**refinement type** pattern, and it re-invents dependent types from the constraint
+direction (which we already knew was coming).
+
+```evident
+-- Simple structural type (no constraints)
+type Assignment = {
+    talk ∈ Talk
+    room ∈ Room
+    slot ∈ Slot
+}
+
+-- Refined type: same structure + local invariants
+type ValidAssignment = {
+    talk ∈ Talk
+    room ∈ Room
+    slot ∈ Slot
+    talk.duration ≤ slot.end - slot.start
+    room.capacity ≥ talk.expected_audience
+    talk.requires_av ⇒ room.has_av
+}
+```
+
+`ValidAssignment` is a subset of `Assignment` — the set of all assignments that
+also satisfy those constraints. The solver cannot produce a `ValidAssignment` that
+violates them. This IS the constraint builder: `∃ a ∈ ValidAssignment : a.talk = t`
+says "build me a valid assignment for this talk; fill in a room and slot that work."
+
+### When to put constraints in a type vs. a claim
+
+**In the type** — simple local invariants that are properties of the type's own
+fields, have no external dependencies, and are always true for any valid instance:
+
+```evident
+type PositiveNat = { n ∈ Nat | n > 0 }
+type DateRange = { start ∈ Date, end ∈ Date | start ≤ end }
+```
+
+**In a claim** — complex logic, cross-field relationships involving external data,
+conditions that vary by context, or anything that requires solver work beyond simple
+arithmetic:
+
+```evident
+-- This belongs in a claim, not a type:
+claim assignment_fits_schedule
+    a ∈ Assignment
+    schedule ∈ Set Assignment
+    ∀ b ∈ schedule : a.room = b.room ⇒ a.slot ≠ b.slot
+```
+
+The practical line: constraints that are purely local to the type's own fields are
+reasonable in the type. Constraints that involve other types' values, external
+collections, or complex logic belong in a claim.
+
+### Why the separation remains valuable
+
+Mathematically there is no difference — a type with constraints is just a claim over
+a record's fields. But practically:
+
+- Structural type definitions are **lightweight to read**. Adding relational
+  constraints mixes two reading modes: "what is the shape?" and "what are the rules?"
+- Having both `Assignment` (any assignment) and `ValidAssignment` (constrained) is
+  useful — you sometimes need the shape without the rules.
+- The solver treats structural membership (fast, cheap) and relational constraints
+  (potentially expensive) differently. Blending them inside types obscures this.
+
+### This re-invents dependent types
+
+Yes, completely. A `ValidAssignment` type whose constraints depend on the values of
+`talk`, `room`, and `slot` is a dependent record type. In Lean it is:
+`Σ (t : Talk) (r : Room) (s : Slot), t.duration ≤ s.end - s.start`. In Liquid
+Haskell: `{v : Assignment | v.talk.duration ≤ v.slot.end - v.slot.start}`.
+
+The difference from the type-theory direction: those systems check constraints
+statically at compile time. Evident checks them at solve time — more flexible
+(constrain by runtime values, leave fields partially unspecified) but less
+guaranteed (solver may time out). Static guarantees traded for expressiveness
+and the constraint-builder behavior.
+
+---
+
 ## Dependent types and constraint modeling are the same thing from different directions
 
 Dependent types are what you get when you make types expressive enough to say
