@@ -1,158 +1,155 @@
 # Example 13: Building the Sorted Trait From Primitives
 
-Starting from scratch: what is a List, what primitives exist, and how do
-we build a reusable sorted constraint from those primitives alone?
+Goal: define `in_order` as a reusable constraint trait that can be applied
+to any parent claim with a sequence variable. No function application. No
+injective relations. Only sets, pairs, and arithmetic.
 
 ---
 
-## What is a List?
+## What is a List? Building it as a constraint system.
 
-A `List T` is a **function from positions to values**:
+A list is not a primitive function. It is a **set of (position, value) pairs**
+with the constraint that every valid position has exactly one value.
 
 ```evident
--- A list of n elements of type T is a function from {0..n-1} to T.
--- Positions are the natural numbers 0, 1, ..., n-1.
--- The position IS the order.
+type Array T = {
+    n       ∈ Nat
+    entries ∈ Set (Nat, T)
 
-type List T = {
-    length ∈ Nat
-    at     ∈ {0..length-1} → T     -- 'at' maps each position to a value
+    -- every valid position appears exactly once
+    ∀ i ∈ {0..n-1} : exactly 1 { (j, v) ∈ entries | j = i }
+
+    -- no out-of-range positions
+    ∀ (i, _) ∈ entries : i ∈ {0..n-1}
 }
 ```
 
-`xs.at[i]` is the element at position i. We write `xs[i]` as shorthand.
-
-A `Set T` has no `at` and no `length` — it has no positions, no indexing,
-no natural order. You cannot sort a set because there is nothing to arrange.
-Sets are equal when they contain the same elements regardless of any order.
+`arr.entries` is the data. `arr.n` is the length.
+There is no `arr[i]` — that would be function application.
+Instead, "the value at position i" is: the unique `v` such that `(i, v) ∈ arr.entries`.
 
 ---
 
-## Primitives
+## Primitives assumed
 
-These are the building blocks. We treat them as given.
+Only these are taken as given:
 
 ```evident
--- Integer range: the set of natural numbers from a to b inclusive
--- {0..n-1} is the set of valid positions in a list of length n
-{a..b} : Set Nat
-
--- Indexed access: xs[i] is the element of xs at position i
--- (shorthand for xs.at[i])
-xs[i] : T    -- where xs : List T, i ∈ {0..length xs - 1}
-
--- Length: how many positions exist
-length xs : Nat
-
--- Ordering: T ∈ Ordered means ≤ is defined over T
--- satisfying: reflexive, transitive, antisymmetric, total
-T ∈ Ordered → (≤) : T → T → Bool
+{a..b}          -- the set of integers from a to b inclusive
+Nat             -- natural numbers with arithmetic (+, -, <, =, ...)
+T ∈ Ordered     -- T has a total ordering ≤
 ```
+
+Everything else is built from sets, membership, and the constraints above.
 
 ---
 
-## Consecutive pairs — the key derived concept
+## The in_order trait — no indexing needed
 
-Two elements are *consecutive* in a list when their positions differ by 1.
-The set of all consecutive pairs is:
-
-```evident
-claim consecutive_pairs[T]
-    xs    ∈ List T
-    pairs ∈ Set (T, T)
-    pairs = { (xs[i], xs[i+1]) | i ∈ {0..length xs - 2} }
-```
-
-For `xs = [3, 1, 4, 1]`:
-- positions: `{0, 1, 2, 3}`
-- valid i values: `{0, 1, 2}` (= `{0..length xs - 2}`)
-- pairs: `{(3,1), (1,4), (4,1)}`
-
-For `xs = []`: `{0..length xs - 2}` = `{0..-2}` = `{}` → pairs = `{}`
-For `xs = [5]`: `{0..-1}` = `{}` → pairs = `{}`
-
-The empty cases are handled by arithmetic on the range — no special cases needed.
-
----
-
-## The sorted trait
+Consecutive positions differ by 1. We express "consecutive values are in order"
+as a constraint over pairs of entries whose positions differ by exactly 1:
 
 ```evident
 claim in_order[T ∈ Ordered]
-    xs ∈ List T
-    ∀ i ∈ {0..length xs - 2} : xs[i] ≤ xs[i+1]
+    arr ∈ Array T
+    ∀ (i, v1) ∈ arr.entries, (j, v2) ∈ arr.entries :
+        j = i + 1 ⇒ v1 ≤ v2
 ```
 
-Or equivalently, using `consecutive_pairs`:
+No `arr[i]`. No function application. Just: for any two entries where one
+position immediately follows the other, the values must be non-decreasing.
 
-```evident
-claim in_order[T ∈ Ordered]
-    xs ∈ List T
-    ∀ (a, b) ∈ consecutive_pairs xs : a ≤ b
-```
-
-Both say the same thing. The first is more primitive (directly over indices).
-The second names the concept. `consecutive_pairs` earns its name by making
-the intent legible — `∀ (a, b) ∈ consecutive_pairs xs` reads as "for every
-adjacent pair in xs."
+Empty arrays (`n = 0`): `entries = {}`, no pairs to compare, holds vacuously.
+Single-element arrays (`n = 1`): no two entries with `j = i + 1`, holds vacuously.
 
 ---
 
-## An ordered list type
+## Applying the trait to a parent claim
+
+`in_order` is now a standalone claim — a trait. Apply it to any parent claim
+that has an `Array`-valued variable:
 
 ```evident
-type OrderedList[T ∈ Ordered] = {
-    xs ∈ List T
-    in_order xs
-}
+claim valid_event_log
+    events ∈ Array Event
+
+    in_order_by events .timestamp    -- events must be in chronological order
+    all_events_recorded events       -- all expected events are present
+    no_duplicate_events events       -- no event appears twice
 ```
 
-Any value of type `OrderedList T` is guaranteed to satisfy `in_order`.
-The type carries the constraint.
+`events` stays typed as `Array Event`. The `in_order_by` claim is attached
+to it — not embedded in its type.
 
 ---
 
-## Attaching the trait to other types
+## in_order_by — generalised over a field
 
-`in_order` is reusable — add it to any type that has a list-valued field:
-
-```evident
--- A schedule where assignments are in chronological order
-type ChronologicalSchedule = {
-    assignments ∈ List Assignment
-    in_order_by assignments .slot.start    -- order by start time
-}
-
--- A leaderboard where scores are in descending order
-type Leaderboard = {
-    entries ∈ List { player ∈ String, score ∈ Nat }
-    in_order_by entries .score descending
-}
-```
-
-`in_order_by xs .field` is `in_order` applied to a field projection:
+`in_order` checks the values directly. `in_order_by` checks a field of the values:
 
 ```evident
 claim in_order_by[T, K ∈ Ordered]
-    xs    ∈ List T
-    field ∈ T → K
-    ∀ i ∈ {0..length xs - 2} : field xs[i] ≤ field xs[i+1]
+    arr   ∈ Array T
+    field ∈ String          -- the name of the field to order by
+    ∀ (i, v1) ∈ arr.entries, (j, v2) ∈ arr.entries :
+        j = i + 1 ⇒ v1.field ≤ v2.field
 ```
 
 ---
 
-## Summary: the full dependency chain
+## The OrderedArray type — optional, for when the type should carry the guarantee
+
+If you want the constraint enforced at the type level (can't construct an
+unordered instance), embed it in a type:
+
+```evident
+type OrderedArray[T ∈ Ordered] = {
+    n       ∈ Nat
+    entries ∈ Set (Nat, T)
+
+    -- Array constraints:
+    ∀ i ∈ {0..n-1} : exactly 1 { (j, v) ∈ entries | j = i }
+    ∀ (i, _) ∈ entries : i ∈ {0..n-1}
+
+    -- Sorted constraint (the in_order trait, inlined):
+    ∀ (i, v1) ∈ entries, (j, v2) ∈ entries :
+        j = i + 1 ⇒ v1 ≤ v2
+}
+```
+
+Or using pass-through to lift `in_order` into the type:
+
+```evident
+type OrderedArray[T ∈ Ordered] = {
+    ..Array T
+    ..in_order
+}
+```
+
+`..Array T` lifts all of `Array T`'s variables and constraints into this type.
+`..in_order` lifts the sortedness constraint and applies it to `entries` and `n`
+already in scope.
+
+---
+
+## Summary: the dependency chain, no functions used
 
 ```
-T ∈ Ordered          -- element type has ≤
-{a..b}               -- range as a set of positions
-xs[i]                -- indexed access
-length xs            -- size of the position set
+Nat, {a..b}, T ∈ Ordered, Set (Nat, T)
         ↓
-consecutive_pairs xs -- { (xs[i], xs[i+1]) | i ∈ {0..length xs - 2} }
+Array T
+    entries ∈ Set (Nat, T)
+    every position has exactly one value
         ↓
-in_order xs          -- ∀ (a,b) ∈ consecutive_pairs xs : a ≤ b
+in_order arr
+    ∀ (i,v1),(j,v2) ∈ entries : j = i+1 ⇒ v1 ≤ v2
         ↓
-OrderedList T        -- type that carries in_order as a constraint
-in_order_by xs .f    -- generalisation over a field projection
+in_order_by arr .field
+    same, over v1.field and v2.field
+        ↓
+Applied to any parent claim:
+    my_claim
+        xs ∈ Array T
+        in_order xs        -- the trait, attached
+        other_constraint
 ```
