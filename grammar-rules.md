@@ -63,35 +63,23 @@ All body conditions are simultaneous — there is no ordering.
 
 ---
 
-## Rule 3: `det` claims use `= claim args` binding form
+## Rule 3: `det` claims use `= claim args` binding form ⚠ UNDER RECONSIDERATION
 
-A `det` claim has exactly one result for any given inputs — it is a function.
-Use `=` to bind its result, not a positional output argument:
+> **This rule is in question.** The `=` sign implies function evaluation and
+> directional assignment, but claim invocation in a body is constraint joining —
+> variable identification across two constraint systems. `=` gives the wrong
+> mental model. The correct notation is unresolved. See `what-we-learned.md`
+> section "Claim composition is variable identification."
 
-```evident
--- Declaration
-claim sum : Nat → Nat → Nat → det
+~~A `det` claim has exactly one result for any given inputs — it is a function.
+Use `=` to bind its result, not a positional output argument:~~
 
--- In a body: bind the result
-_total = sum a b
+The existing examples use `= claim args` notation but this is likely wrong in principle.
+It is kept in the examples for now as a placeholder until the correct syntax is settled.
 
--- In a body: constrain the result
-sum a b = 10
-
--- In a query
-? c = sum 3 4
-```
-
-`semidet`, `Prop`, and `nondet` claims are constraints — they hold or they don't.
-They appear without `=`:
-
-```evident
-sorted ys        -- semidet: no result to bind
-prime n          -- semidet
-permutation xs ys  -- Prop
-```
-
-Determinism annotation determines which form is valid at call sites.
+The distinction that is still valid: `det` (exactly one satisfying value) vs `semidet`
+(zero or one) vs `nondet` (zero or more) is a real and useful property of claims.
+What is wrong is using `=` to express the interaction — not the distinction itself.
 
 ---
 

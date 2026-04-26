@@ -172,22 +172,105 @@ sounds like a verb (find, get, compute, check, validate, remove), rename it.
 
 ---
 
-## No nested `det` calls — flatten with `_` names
+## ⚠ Under reconsideration: `det` claims and `= claim args`
 
-`det` results cannot be nested in call position. Bind each intermediate result:
+The rule that `det` claims use `= claim args` binding form is now in question.
+See "Claim composition is variable identification" below. The `=` sign implies
+function evaluation and directionality that doesn't match what Evident actually does.
 
-```evident
--- Wrong (nested, functional style):
-c = sum (product a b) 1
+---
 
--- Right (flat, each step named):
-_ab = product a b
-c   = sum _ab 1
-```
+## Claim composition is variable identification, not function application
 
-This keeps body statements as simultaneous constraints rather than a sequential
-evaluation order. `_ab` and `c` are both found by the solver at once; the naming
-is for human readability, not for sequencing.
+**This is the most important unresolved design question in Evident.**
+
+When you invoke a claim in a body, you are not calling a function. You are
+**composing two constraint systems** by **identifying variables** across them.
+
+The current scope has some set of variables with constraints between them.
+The sub-claim has its own set of variables with constraints between them.
+Invoking the sub-claim in a body means: merge the two systems by making
+certain variables shared. The sub-claim's constraints now apply to the
+merged system through those shared variables.
+
+This is **relational join**, not function application:
+- In a join of R(a, b) and S(b, c), the variable `b` is shared — it is
+  the same variable in both relations. No direction. No output. No input.
+- In Evident, invoking `path_length path _len` in a body means "identify
+  my `path` with `path_length`'s path variable, and my `_len` with its
+  length variable." Both constraint systems are now jointly constrained.
+
+### Why `=` is wrong
+
+`_len = length path` implies:
+- `length path` is evaluated (direction: right to left)
+- The result is assigned to `_len` (one-way)
+
+But there is no evaluation. There is no result. There is no direction.
+The variables `_len` and `path` are identified with the variables inside
+`length`'s constraint system. The solver finds any satisfying assignment.
+
+### Why `∈` in set comprehension is also wrong (for composition)
+
+`_len ∈ { n | path_length path n }` implies:
+- The set `{ n | path_length path n }` is computed
+- `_len` is checked for membership in that set
+
+This is still functional/directional. You are not computing a set and
+then checking membership. You are posting the constraint `path_length path _len`
+and letting the solver find a satisfying assignment.
+
+`∈` remains correct for genuine set membership in data: `a ∈ g.nodes`
+is truly a membership check in a collection. But for claim composition it
+describes the semantics (what is true) rather than the mechanism (constraint joining).
+
+### The lambda calculus parallel
+
+This resembles lambda calculus substitution: `(λx. body)[x := my_var]`
+replaces `x` with `my_var` throughout `body`. But lambda substitution is:
+- **Directional**: arguments go in, results come out
+- **Ordered**: evaluation follows the expression structure
+- **Consuming**: the variable is eliminated
+
+Evident's variable identification is none of these. There is no direction,
+no order, and both variables remain — they simply become one.
+
+### All variables are equal
+
+A claim has no distinction between "parameters" (exposed) and "internal"
+variables (hidden). All variables in a claim are part of its constraint system.
+"Parameterizing" a claim means choosing which of its variables to identify
+with variables in the outer scope. The unchosen variables remain free — the
+solver finds values for them.
+
+There is no hiding. There is no encapsulation at the variable level.
+A claim's named variables are its full interface, and that interface is
+everything.
+
+### What the honest notation might be
+
+The Prolog-style positional application is actually **correct** for expressing
+constraint joining — not because Prolog is right about execution order, but
+because `path_length path _len` with no `=` sign says:
+
+> "Join this constraint system with `path_length`'s constraint system,
+> identifying `path` with `path_length`'s path variable and `_len` with
+> its length variable."
+
+The problem with Prolog was never the notation for constraint application.
+It was the execution model and clause ordering. The notation itself captures
+variable identification without implying directionality.
+
+### Open question
+
+We do not yet have a settled syntax for claim composition in a body.
+The options on the table:
+1. **Positional**: `path_length path _len` — honest, but looks like function call
+2. **Named identification**: something like `with path_length: path = my_path, n = _len` — explicit but verbose
+3. **Set comprehension**: `_len ∈ { n | path_length path n }` — describes semantics correctly but implies computation
+
+The right answer is unresolved. It may require a new syntactic form that
+doesn't exist in any prior language.
 
 ---
 
