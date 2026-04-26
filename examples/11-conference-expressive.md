@@ -37,10 +37,11 @@ claim valid_conference
 
 | Sugar | Expands to |
 |---|---|
-| `S.field` | `{ a.field \| a ∈ S }` |
+| `S.field` | `{ a.field \| a ∈ S }` — project a field across a set |
 | `S grouped_by .field` | partition S into subsets sharing a field value |
-| `∀ a ∈ S where .field = v` | `∀ a ∈ { x ∈ S \| x.field = v }` |
-| `∀ a ≠ b ∈ S` | `∀ a, b ∈ S : a ≠ b ⇒ ...` |
+| `∀ a ≠ b ∈ S` | `∀ a, b ∈ S : a ≠ b ⇒ ...` — distinct pairs |
+| `∀ S : claim` | `∀ a ∈ S : claim a` — apply a one-argument claim to every element |
+| Filtered args | always `{ a ∈ S \| condition }` inside a call — `S where ...` is only safe at line level |
 
 ```evident
 claim valid_conference
@@ -57,10 +58,10 @@ claim valid_conference
             at_most 1 track_assignments
 
     ∀ slot ∈ slots :
-        at_most max_parallel schedule where .slot = slot
+        at_most max_parallel { a ∈ schedule | a.slot = slot }
 
     ∀ { talk = t1, room = r1 } ≠ { talk = t2, room = r2 } ∈ schedule :
         t1.expected_audience > t2.expected_audience ⇒ r1.capacity ≥ r2.capacity
 
-    ∀ a ∈ schedule : assignment_valid a
+    ∀ schedule : assignment_valid
 ```
