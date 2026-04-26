@@ -50,14 +50,14 @@ claim in_cycle n ∈ Nat : Prop
     reachable _next n
 
 claim acyclic : Prop
-    ∀ n ∈ nodes : ¬ in_cycle n
+    ∀ n ∈ node : ¬ in_cycle n
 
 
 claim strongly_connected : Prop
-    ∀ a ∈ nodes, ∀ b ∈ nodes : reachable a b
+    ∀ a ∈ node, ∀ b ∈ node : reachable a b
 
 claim weakly_connected : Prop
-    ∀ a ∈ nodes, ∀ b ∈ nodes : reachable a b ∨ reachable b a
+    ∀ a ∈ node, ∀ b ∈ node : reachable a b ∨ reachable b a
 
 
 claim tree : Prop
@@ -80,5 +80,5 @@ claim tree : Prop
 ? weakly_connected
 ? tree
 
-? ∃ a, b ∈ nodes : reachable a b, ¬ reachable b a
+? ∃ a, b ∈ node : reachable a b, ¬ reachable b a
 ```
