@@ -50,6 +50,39 @@ evident sorted [a, b | rest] when a ≤ b
     sorted [b | rest]
 ```
 
+## det claims — binding the result
+
+A `det` claim has exactly one result. Use `=` to bind it:
+
+```evident
+-- ASCII
+claim sum : Nat -> Nat -> Nat -> det
+
+_total = sum a b        -- bind result to _total
+c      = sum 3 4        -- bind result to c
+sum a b = 10            -- constrain: the sum must equal 10
+```
+```evident
+-- Unicode
+claim sum : Nat → Nat → Nat → det
+
+_total = sum a b
+c      = sum 3 4
+sum a b = 10
+```
+
+`semidet` and `Prop` claims are constraints — they appear without `=`:
+
+```evident
+sorted ys               -- holds or doesn't; no result to bind
+prime n
+permutation xs ys
+```
+
+Determinism annotation determines which form is valid:
+- `det` → use `= claim args` or `claim args = value`
+- `semidet` / `Prop` / `nondet` → use `claim args` as a constraint
+
 ## Types
 
 ```evident
@@ -129,6 +162,35 @@ evident claim_name arg1 arg2
 evident claim_name arg1 arg2 when condition
     ...
 ```
+
+## Body-internal names
+
+Any name appearing in a body but not in the head is **implicitly existential** —
+the solver finds a value for it. No `∃` declaration needed.
+
+Use the `_` prefix convention for names that are implementation scaffolding
+with no domain meaning:
+
+```evident
+-- ASCII
+evident product (succ a) b c
+    _partial = product a b   -- _partial: body-internal, solver finds it
+    c        = sum _partial b
+```
+```evident
+-- Unicode (same)
+evident product (succ a) b c
+    _partial = product a b
+    c        = sum _partial b
+```
+
+Names without `_` that appear only in the body are also implicitly existential —
+`_` is a convention, not a syntax rule. Use it for intermediate values that have
+no meaningful name in the domain.
+
+**Head names** (parameters) are bound from outside.
+**Body-only names** are found by the solver.
+All body conditions are simultaneous — there is no ordering.
 
 ## Multiple clauses (alternatives)
 
@@ -249,24 +311,36 @@ admin_user u ⇒ can_access u any_resource
 ## Quantifiers
 
 ```evident
--- ASCII form
+-- ASCII
 
-some x in S : P x      -- there exists an x in S satisfying P
-all x in S : P x       -- for all x in S, P holds
-one x in S : P x       -- there exists exactly one x in S satisfying P
-none x in S : P x      -- no x in S satisfies P
-x in S                 -- x is a member of S
-x not in S             -- x is not a member of S
+-- Universal: always explicit
+all x in S : P x
+all a, b in S : P a b         -- multiple variables, same set
+
+-- Existential in a query: explicit
+? some x in S : P x
+? some a, b in S : P a b
+
+-- Existential in a body: implicit (just use the name)
+evident my_claim a
+    b in S                    -- implicitly: there exists b in S
+    P a b                     -- b is available here
 ```
 ```evident
--- Unicode form (equivalent)
+-- Unicode
 
-∃ x ∈ S : P x          -- there exists an x in S satisfying P
-∀ x ∈ S : P x          -- for all x in S, P holds
-∃! x ∈ S : P x         -- there exists exactly one x in S satisfying P
-¬∃ x ∈ S : P x         -- no x in S satisfies P
-x ∈ S                  -- x is a member of S
-x ∉ S                  -- x is not a member of S
+-- Universal: always explicit
+∀ x ∈ S : P x
+∀ a, b ∈ S : P a b
+
+-- Existential in a query: explicit
+? ∃ x ∈ S : P x
+? ∃ a, b ∈ S : P a b
+
+-- Existential in a body: implicit
+evident my_claim a
+    b ∈ S
+    P a b
 ```
 
 ## Boolean connectives

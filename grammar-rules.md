@@ -38,16 +38,72 @@ The test: can you read the claim name as a noun phrase describing a fact about t
 
 ---
 
-## Rule 2: Use inline existential syntax instead of lookup claims
+## Rule 2: Body-only names are implicitly existential — use `_` for scaffolding
 
-Whenever you find yourself writing a `find_X` or `get_X` claim, you probably want
-an inline existential instead. The `?name` syntax binds a value from a collection
-without requiring a named claim.
+Any name that appears in a body but not in the head is implicitly existentially
+quantified — the solver finds a value for it. No `∃` declaration and no `?` prefix
+required in body blocks.
+
+Use the `_` prefix convention for names that are implementation scaffolding with
+no meaningful domain name:
+
+```evident
+-- _partial is body-internal: solver finds it, no domain significance
+evident product (succ a) b c
+    _partial = product a b
+    c        = sum _partial b
+```
+
+Names without `_` that appear only in the body are also implicitly existential —
+the underscore is a readability convention, not a syntax rule.
+
+**Head names** (parameters after `evident`) are bound from the outside.
+**Body-only names** are found by the solver.
+All body conditions are simultaneous — there is no ordering.
+
+---
+
+## Rule 3: `det` claims use `= claim args` binding form
+
+A `det` claim has exactly one result for any given inputs — it is a function.
+Use `=` to bind its result, not a positional output argument:
+
+```evident
+-- Declaration
+claim sum : Nat → Nat → Nat → det
+
+-- In a body: bind the result
+_total = sum a b
+
+-- In a body: constrain the result
+sum a b = 10
+
+-- In a query
+? c = sum 3 4
+```
+
+`semidet`, `Prop`, and `nondet` claims are constraints — they hold or they don't.
+They appear without `=`:
+
+```evident
+sorted ys        -- semidet: no result to bind
+prime n          -- semidet
+permutation xs ys  -- Prop
+```
+
+Determinism annotation determines which form is valid at call sites.
+
+---
+
+## Rule 4: Use inline membership instead of lookup claims
+
+Whenever you find yourself writing a `find_X` or `get_X` claim, replace it with
+an inline membership constraint. Claims should encode domain logic, not navigation.
 
 **Before (procedural):**
 
 ```evident
-evident assignment_valid workers tasks a
+evident assignment_fits workers tasks a
     find_worker a.worker_id workers ?worker
     find_task   a.task_id   tasks   ?task
     a.start >= worker.available_from
@@ -57,49 +113,19 @@ evident assignment_valid workers tasks a
 **After (relational):**
 
 ```evident
-evident assignment_valid workers tasks a
-    ?worker in workers, ?worker.id = a.worker_id
-    ?task   in tasks,   ?task.id   = a.task_id
-    a.start >= ?worker.available_from
-    a.start + ?task.duration <= ?worker.available_until
+evident assignment_fits workers tasks a
+    _w ∈ workers, _w.id = a.worker_id
+    _t ∈ tasks,   _t.id = a.task_id
+    a.start ≥ _w.available_from
+    a.start + _t.duration ≤ _w.available_until
 ```
 
-The `?worker in workers, ?worker.id = a.worker_id` is a single existential constraint:
-"there exists an element of `workers` matching this condition — bind it to `?worker`."
-The solver figures out how to find it. You never said "find" anything.
-
-The `?` prefix on a name inside a body means: "this value must exist and satisfy the
-following constraints — I am naming it so I can reference it in subsequent constraints."
+`_w ∈ workers, _w.id = a.worker_id` is a membership constraint: there exists an
+element of `workers` with matching id. The solver finds it. No claim needed.
 
 ---
 
-## Rule 3: The `?` output variable marks existential binding, not function output
-
-`?name` in a body line is not a return value. It is an existentially-bound variable —
-the claim holds if *there exists* a value for `?name` satisfying the constraints.
-
-```evident
--- This:
-?worker in workers, ?worker.id = a.worker_id
-
--- Means:
--- ∃ worker ∈ workers such that worker.id = a.worker_id
--- and we will call that worker "?worker" in subsequent lines
-```
-
-Compare to a query, where `?` in the head means "find this":
-
-```evident
-? valid_schedule tasks workers ?schedule
--- ∃ schedule such that valid_schedule tasks workers schedule
--- return it to the user
-```
-
-The `?` means the same thing in both contexts: "this value must exist."
-
----
-
-## Rule 4: Multi-argument claim names describe the relationship between all arguments
+## Rule 5: Multi-argument claim names describe the relationship between all arguments
 
 A claim with N arguments describes a relationship involving all N of them.
 The name should reflect the whole relationship, not just the "main" argument.
@@ -124,7 +150,7 @@ claim feasible : Assignment -> Worker -> Task -> Prop
 
 ---
 
-## Rule 5: Arguments are ordered by dependency, not by procedural role
+## Rule 6: Arguments are ordered by dependency, not by procedural role
 
 In functional programming, argument order often reflects the flow of data:
 input first, output last. In Evident, argument order should reflect
@@ -151,7 +177,7 @@ claim in_window : Nat -> Nat -> Nat -> Prop
 
 ---
 
-## Rule 6: Body lines are constraints, not instructions
+## Rule 7: Body lines are constraints, not instructions
 
 Each line in a body block states something that must be true.
 It should read as a constraint on the world, not a step in a procedure.
@@ -183,7 +209,7 @@ assign_all tasks schedule
 
 ---
 
-## Rule 7: No claim should be needed solely for data retrieval
+## Rule 8: No claim should be needed solely for data retrieval
 
 If the only reason a claim exists is to look something up by id or key,
 replace it with an inline existential. Claims should encode domain logic,
