@@ -25,46 +25,48 @@ assert edge 4 5
 claim adjacent : Nat → Nat → semidet
 
 evident adjacent a b
-    edge a b ∨ edge b a
+    edge a b ∨ edge b a     -- either direction; genuine OR, not case analysis
 
 
 -- ─────────────────────────────────────────
--- Reachability — transitive closure
+-- Reachability — reflexive transitive closure
+--
+-- No base case. No recursion. Two closure properties:
+-- every node reaches itself; reachability extends along edges.
+-- The solver derives the full transitive closure from these.
 -- ─────────────────────────────────────────
 
 claim reachable : Nat → Nat → semidet
 
-evident reachable a a
-
-evident reachable a c
-    adjacent a _b
-    reachable _b c
+node n         ⇒ reachable n n
+reachable a b, adjacent b c ⇒ reachable a c
 
 
 -- ─────────────────────────────────────────
--- Paths — explicit node sequences
+-- Paths — a path is a non-empty list of nodes
+-- where every consecutive pair is adjacent.
+--
+-- No base case needed: if path = [a], there are no consecutive
+-- pairs, so the ∀ holds vacuously.
 -- ─────────────────────────────────────────
 
 claim path_between : Nat → Nat → List Nat → semidet
 
-evident path_between a a [a]
-
-evident path_between a c [a | rest]
-    adjacent a _b
-    path_between _b c rest
+evident path_between a c path
+    first_of path = a
+    last_of  path = c
+    ∀ (p, q) ∈ each_consecutive path : adjacent p q
 
 
 -- ─────────────────────────────────────────
--- Path length
+-- Path length — edges traversed = nodes - 1
 -- ─────────────────────────────────────────
 
 claim path_length : List Nat → Nat → det
 
-evident path_length [_] 0
-
-evident path_length [_ | rest] n
-    _n0 = path_length rest
-    n   = _n0 + 1
+evident path_length path n
+    _len = length path
+    n    = _len - 1
 
 
 -- ─────────────────────────────────────────
@@ -149,5 +151,5 @@ evident tree
 ? tree                  -- No  (not a tree — node 4 has two parents)
 
 ? ∃ a, b ∈ nodes : reachable a b, ¬ reachable b a
--- asymmetric pairs: (1,2), (1,3), (1,4), (1,5), (2,4), (2,5), (3,4), (3,5), (4,5)
+-- (1,2), (1,3), (1,4), (1,5), (2,4), (2,5), (3,4), (3,5), (4,5)
 ```

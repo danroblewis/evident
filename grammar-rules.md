@@ -273,6 +273,44 @@ replaced by inline existentials in the body.
 
 ---
 
+## Rule 9: Prefer universal statements over case analysis
+
+Multiple `evident` blocks for the same claim express disjunction — "holds when A *or* when B." Before writing separate cases, ask: can a single universal statement cover all of them?
+
+**Base cases are usually vacuously true.** A universal `∀` over an empty collection holds automatically — the solver handles it without being told. You do not need to write a base case for the empty list, the zero value, or the trivial instance.
+
+```evident
+-- Wrong: explicit base cases
+evident sorted []
+evident sorted [_]
+evident sorted [a, b | rest] when a ≤ b
+    sorted [b | rest]
+
+-- Right: one universal statement; empty and singleton cases are vacuous
+evident sorted list
+    ∀ (a, b) ∈ each_consecutive list : a ≤ b
+```
+
+**Use forward implications for closure properties.** Reflexivity, transitivity, symmetry, and other closure properties are naturally expressed as `⇒` rules, not as base cases plus recursion.
+
+```evident
+-- Wrong: base case + recursive case
+evident reachable a a
+evident reachable a c
+    adjacent a _b
+    reachable _b c
+
+-- Right: two closure properties; the solver derives the transitive closure
+node n ⇒ reachable n n
+reachable a b, adjacent b c ⇒ reachable a c
+```
+
+**When are multiple evident blocks justified?** When the argument genuinely has structurally distinct variants — different constructors of an algebraic type — and no uniform statement covers all of them. Primitive list operations (`first_of`, `last_of`, `each_consecutive`) have multiple clauses because lists have distinct structural forms. Higher-level claims built on those primitives should not.
+
+The test: if your second `evident` block is a "base case" that would be vacuously true under a universal formulation, delete it and write the universal instead.
+
+---
+
 ## Summary
 
 | Avoid | Prefer |
