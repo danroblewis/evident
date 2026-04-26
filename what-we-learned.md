@@ -622,6 +622,57 @@ come from sub-claims. More concise; less transparent.
 
 ---
 
+## Set pipeline syntax — filter, project, apply
+
+Three operations cover most set manipulation. They compose like jq or Ruby's
+enumerable chain.
+
+### `S.field` — projection (already established)
+
+`schedule.room` = `{ a.room | a ∈ schedule }` — extract one field from every element.
+Chains: `schedule.talk.speaker` = all speakers across all assigned talks.
+
+### `S[condition]` — filter
+
+`S[condition]` = `{ a ∈ S | condition }` where `.` refers to the current element.
+
+```evident
+schedule[.slot = slot_1]             -- assignments in slot 1
+schedule[.requires_av]               -- assignments needing AV
+schedule[.slot = slot_1][.requires_av]  -- chain two filters
+schedule.talk[.speaker.track = "ml"] -- project then filter
+```
+
+Replaces the verbose set comprehension in argument position:
+```evident
+-- before
+at_most max_parallel { a ∈ schedule | a.slot = slot }
+
+-- after
+at_most max_parallel schedule[.slot = slot]
+```
+
+`[` is unambiguous as the start of a filter — no conflict with other keywords,
+safe to use inside claim arguments.
+
+### `∀ S : claim` — for-each (already established)
+
+Apply a one-argument claim to every element. Composes with filter:
+```evident
+∀ schedule[.requires_av] : room_has_av   -- only check AV talks
+∀ schedule : assignment_valid            -- check all assignments
+```
+
+### Correspondence with Ruby / jq
+
+| Ruby | jq | Evident |
+|---|---|---|
+| `.map { \|e\| e.field }` | `.field` | `S.field` |
+| `.select { \|e\| condition }` | `select(condition)` | `S[condition]` |
+| `.each { \|e\| claim(e) }` | — | `∀ S : claim` |
+
+---
+
 ## ∀ is a constraint template, not a loop
 
 `∀ a, b ∈ S : P(a, b)` is not a loop that runs and checks. It is a
