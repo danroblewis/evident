@@ -1,82 +1,16 @@
 # Example 1: Sorting — Constraint Accumulation
 
-This example shows the core Evident workflow: each step adds a membership condition to the
-set named `sort`, intersecting it with a smaller set of pairs. We stop when the set contains
-exactly the elements we want — in this case, exactly one pair for each input list.
+Each step adds a membership condition to a set, intersecting it with a smaller collection.
+We stop when the set contains exactly what we want.
 
-We are not writing a sorting algorithm. We are writing a specification of what it means for
-a list to be sorted, and the solver finds a sorted version.
-
----
-
-## Step 0: Naming the set — no membership conditions yet
-
-```evident
-claim sort[T ∈ Ordered] : List T → List T → Prop
-```
-
-This declares that `sort` names a set of pairs `(xs, ys)` where both are `List T`. With no
-`evident` blocks, membership is completely unconstrained — the set is the entire
-`List T × List T`. Any pair is a member.
-
-```evident
-? sort [3, 1, 2] ?result
-```
-
-```
--- Solver may return:
-result = []                -- valid (it's a List Nat)
-result = [0, 0, 0]        -- valid (also a List Nat)
-result = [3, 1, 2]        -- valid (also a List Nat)
-result = [999]             -- valid (also a List Nat)
-
--- The claim 'sort xs ys' is trivially evident for any xs and ys
--- because we said nothing about the relationship between them.
--- This is not useful.
-```
+We are not writing a sorting algorithm. We are writing a specification of what it means
+for a list to be sorted, and the solver finds a member of that set.
 
 ---
 
-## Step 1: First intersection — pairs of equal length
+## The sets we need
 
-```evident
-claim sort[T ∈ Ordered] : List T → List T → Prop
-
-evident sort xs ys
-    length ys = length xs
-```
-
-The body condition `length ys = length xs` restricts `sort` to the subset of
-`List T × List T` where the two lists have equal length. `sort` is now
-`List T × List T ∩ { (xs, ys) | length xs = length ys }`.
-
-```evident
-? sort [3, 1, 2] ?result
-```
-
-```
--- Solver may return:
-result = [0, 0, 0]        -- valid (length 3, correct type)
-result = [3, 1, 2]        -- valid (length 3, correct type)
-result = [9, 9, 9]        -- valid (length 3, correct type)
-
--- Better: the result is at least the right size.
--- But we haven't said anything about which elements appear, or their order.
-```
-
----
-
-## Step 2: Second intersection — pairs where the second list is sorted
-
-```evident
-claim sort[T ∈ Ordered] : List T → List T → Prop
-
-evident sort xs ys
-    length ys = length xs
-    sorted ys
-```
-
-We need `sorted` to exist. Let's define it:
+### `sorted` — the set of non-decreasing lists
 
 ```evident
 claim sorted[T ∈ Ordered] : List T → Prop
@@ -87,163 +21,235 @@ evident sorted [a, b | rest] when a ≤ b
     sorted [b | rest]
 ```
 
-Adding `sorted ys` further restricts the set. `sort` is now the intersection of the
-equal-length pairs with the pairs where `ys` is non-decreasing.
+`sorted` names a set. `sorted [1, 2, 3]` is a membership claim: `[1, 2, 3] ∈ sorted`.
+
+### `occurrences` — how many times an element appears in a list
 
 ```evident
-? sort [3, 1, 2] ?result
+claim occurrences[T ∈ Eq] : T → List T → Nat → det
+
+evident occurrences x [] 0
+
+evident occurrences x [x | rest] n
+    ∃ n0 : occurrences x rest n0
+    n = n0 + 1
+
+evident occurrences x [y | rest] n when x ≠ y
+    occurrences x rest n
 ```
 
-```
--- Solver may return:
-result = [0, 0, 0]        -- valid (length 3, sorted)
-result = [1, 1, 1]        -- valid (length 3, sorted)
-result = [1, 2, 3]        -- valid (length 3, sorted)  ← coincidentally correct!
-result = [1, 2, 4]        -- valid (length 3, sorted)  ← wrong elements
+`occurrences x list n` is established when x appears exactly n times in list. The `∃ n0`
+introduces the intermediate count as a witness — no bare unbound names.
 
--- We're getting closer. The result is sorted and the right size.
--- But it can contain entirely different elements.
-```
+Note: `member x list` would be `x ∈ list`. That is already first-class syntax.
+No claim needed.
 
----
-
-## Step 3: Third intersection — pairs sharing the same elements
-
-```evident
-claim sort[T ∈ Ordered] : List T → List T → Prop
-
-evident sort xs ys
-    length ys = length xs
-    sorted ys
-    permutation xs ys
-```
-
-Adding `permutation xs ys` intersects with the set of pairs where `ys` contains the same
-elements as `xs`. The three conditions together uniquely identify the sorted permutation.
-
-We need `permutation`. Let's define it:
+### `permutation` — same elements, same counts
 
 ```evident
 claim permutation[T ∈ Eq] : List T → List T → Prop
 
-evident permutation [] []
-evident permutation [x | xs] ys
-    member x ys
-    permutation xs (remove_one x ys)
+evident permutation xs ys
+    length xs = length ys
+    ∀ x ∈ xs : occurrences x xs = occurrences x ys
 ```
 
-And supporting claims:
+`permutation xs ys` is established when `ys` contains all the same elements as `xs`
+with the same multiplicity. This is a declarative characterisation — two constraints,
+not a recursive procedure. No `remove_one`, no structural recursion over the list.
+
+If `length xs = length ys` and every element of `xs` appears the same number of times
+in `ys`, the lengths guarantee no extra elements sneak in.
+
+---
+
+## `SortedOf` — the set this whole example is about
 
 ```evident
-claim member[T ∈ Eq] : T → List T → semidet
-claim remove_one[T ∈ Eq] : T → List T → List T → det
-
-evident member x [x | _]
-evident member x [_ | rest]
-    member x rest
-
-evident remove_one x [x | rest] rest
-evident remove_one x [y | rest] [y | result] when x ≠ y
-    remove_one x rest result
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | sorted ys, permutation xs ys }
 ```
 
-Now the query:
+`SortedOf xs` is the set of all sorted permutations of `xs`. For any finite list with
+a total ordering, this set contains exactly one element.
+
+The constraint accumulation builds up this type definition step by step.
+
+---
+
+## Step 0: Naming the set — no membership conditions yet
 
 ```evident
-? sort [3, 1, 2] ?result
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T }
+```
+
+With no conditions, `SortedOf xs` is just `List T` — every list of the right type is a member.
+
+```evident
+? ∃ result ∈ SortedOf[Nat] [3, 1, 2]
+```
+
+```
+-- Solver may return:
+result = []           -- valid (List Nat)
+result = [0, 0, 0]   -- valid (List Nat)
+result = [999]        -- valid (List Nat)
+
+-- Any List Nat qualifies. Useless.
+```
+
+---
+
+## Step 1: First intersection — members of equal length
+
+```evident
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | length ys = length xs }
+```
+
+```evident
+? ∃ result ∈ SortedOf[Nat] [3, 1, 2]
+```
+
+```
+-- Solver may return:
+result = [0, 0, 0]   -- valid (length 3)
+result = [9, 9, 9]   -- valid (length 3)
+result = [3, 1, 2]   -- valid (length 3)
+
+-- Right size. Wrong elements, wrong order.
+```
+
+---
+
+## Step 2: Second intersection — members that are sorted
+
+```evident
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | length ys = length xs, sorted ys }
+```
+
+```evident
+? ∃ result ∈ SortedOf[Nat] [3, 1, 2]
+```
+
+```
+-- Solver may return:
+result = [0, 0, 0]   -- valid (length 3, sorted)
+result = [1, 1, 1]   -- valid (length 3, sorted)
+result = [1, 2, 4]   -- valid (length 3, sorted)  ← wrong elements
+
+-- Sorted and right size. But still wrong elements.
+```
+
+---
+
+## Step 3: Third intersection — members that are permutations of the input
+
+```evident
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | sorted ys, permutation xs ys }
+```
+
+The length condition is subsumed by `permutation` (which already requires equal length),
+so we drop it.
+
+```evident
+? ∃ result ∈ SortedOf[Nat] [3, 1, 2]
 ```
 
 ```
 -- Solver returns:
-result = [1, 2, 3]        ✓ unique solution
+result = [1, 2, 3]   ✓ unique solution
 
--- The three constraints together uniquely determine the answer:
--- • same length as input ✓
--- • non-decreasing order ✓
--- • same elements (permutation) ✓
--- There is exactly one list satisfying all three. The solver finds it.
+-- sorted ✓  same elements ✓  same length ✓
+-- Exactly one list satisfies all conditions. The solver finds it.
 ```
 
 ---
 
 ## The key insight
 
-We never wrote a sorting algorithm. `sort` names the intersection of three sets:
+`SortedOf xs` is the intersection of two sets:
 
-- `{ (xs, ys) | length xs = length ys }`
-- `{ (xs, ys) | ys is sorted }`
-- `{ (xs, ys) | ys is a permutation of xs }`
+- `{ ys | sorted ys }` — non-decreasing lists
+- `{ ys | permutation xs ys }` — lists containing the same elements as xs
 
-Any pair satisfying all three conditions is the unique sorted permutation of the input.
-The solver's job is to find an element in that intersection — a witness that belongs to
-all three sets simultaneously.
-
-The solver can use any strategy: constraint propagation, search, backtracking. For small lists
-it might just try permutations. For large lists it would need more structure. We could provide
-search hints or additional redundant constraints to guide it.
+Any member of both is the unique sorted permutation of xs. The solver's job is to find
+a witness — an element belonging to both sets simultaneously.
 
 ---
 
-## Step 4: Making it parametric and reusable
+## Extraction: how to use the result
 
-The definitions above already use type parameters. Let's see them composed:
-
-```evident
--- A claim that the maximum element of a list is some value
-claim list_max[T ∈ Ordered] : List T → T → semidet
-
-evident list_max [x] x
-evident list_max [x | rest] m
-    list_max rest m_rest
-    m = max x m_rest
-
-claim max[T ∈ Ordered] : T → T → T → det
-
-evident max a b a when a ≥ b
-evident max a b b when b > a
-```
-
-Now we can compose: a sorted list's last element is its maximum.
+The `∃` is the extraction mechanism. The witness is a name available in subsequent lines:
 
 ```evident
-claim last[T] : List T → T → semidet
-
-evident last [x] x
-evident last [_ | rest] x
-    last rest x
-
--- Composition: the last element of a sorted list is the maximum
-sorted_list_last_is_max : sorted xs, last xs m ⇒ list_max xs m
+evident process_data xs
+    ∃ sorted_xs ∈ SortedOf xs
+    first_element sorted_xs ?min    -- sorted_xs is now a bound name
+    last_element  sorted_xs ?max
+    range = max - min
 ```
 
-This reads: if `sorted xs` is established and `last xs m` is established,
-then `list_max xs m` is also established. This is a forward implication —
-a derived fact, not a definition.
+No separate "sort function call." No `?result` as an output variable. You declare that
+a sorted version of `xs` must exist, name it, and use the name below. If no such member
+exists (e.g. the solver can't find one), the enclosing claim is not established.
 
 ---
 
-## Step 5: Dependent types — constraining the output's type
-
-We can make the output type dependent on the input:
+## Composability: `SortedOf` used in other claims
 
 ```evident
--- A sorted list of the same length as the input
-type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | sorted ys, permutation xs ys }
+-- The minimum of a list is the first element of its sorted form
+claim minimum_of[T ∈ Ordered] : List T → T → semidet
 
-claim sort[T ∈ Ordered] : (xs ∈ List T) → SortedOf[T] xs → Prop
+evident minimum_of xs m
+    ∃ sorted_xs ∈ SortedOf xs
+    first_element sorted_xs m
+
+-- The maximum of a list is the last element of its sorted form
+claim maximum_of[T ∈ Ordered] : List T → T → semidet
+
+evident maximum_of xs m
+    ∃ sorted_xs ∈ SortedOf xs
+    last_element sorted_xs m
 ```
 
-Now `sort xs ys` is not just claiming a relationship — `ys`'s type is the type
-"a sorted permutation of xs". The type carries the specification. Note that
-`SortedOf[T] xs` is the same set that step 3 defines via three `evident` conditions;
-here it is simply given an explicit name as a type, written directly in set-builder
-notation.
+Supporting claims:
 
 ```evident
-? sort [3, 1, 2] ?result
--- result : SortedOf[Nat] [3, 1, 2]
--- result = [1, 2, 3]   ✓
+claim first_element[T] : List T → T → semidet
+claim last_element[T]  : List T → T → semidet
+
+evident first_element [x | _] x
+
+evident last_element [x] x
+evident last_element [_ | rest] x
+    last_element rest x
 ```
 
-The type of `result` proves it is correct. An expression of type `SortedOf[Nat] [3, 1, 2]`
-cannot be anything other than `[1, 2, 3]`. The type is the proof.
+The forward implication connecting `sorted` to `minimum_of` and `maximum_of` is derivable
+from the definitions — a sorted list's first element is necessarily the minimum, its last
+the maximum:
+
+```evident
+∃ s ∈ SortedOf xs, first_element s m ⇒ minimum_of xs m
+∃ s ∈ SortedOf xs, last_element  s m ⇒ maximum_of xs m
+```
+
+---
+
+## Parametric reuse
+
+`SortedOf` works for any type with a total ordering:
+
+```evident
+? ∃ result ∈ SortedOf[String] ["banana", "apple", "cherry"]
+-- result = ["apple", "banana", "cherry"]  ✓
+
+? ∃ result ∈ SortedOf[Nat] []
+-- result = []  ✓  (empty list is its own sorted permutation)
+
+? ∃ result ∈ SortedOf[Nat] [5]
+-- result = [5]  ✓
+```
+
+The type parameter `[T ∈ Ordered]` constrains `T` to be a member of the `Ordered` set —
+the set of types with a total ordering. Any such type gets `SortedOf` for free.
