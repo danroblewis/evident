@@ -44,23 +44,59 @@ Everything else is built from sets, membership, and the constraints above.
 
 ---
 
-## The in_order trait — no indexing needed
+## consecutive_pairs — building the set first
 
-Consecutive positions differ by 1. We express "consecutive values are in order"
-as a constraint over pairs of entries whose positions differ by exactly 1:
+The pattern `∀ (i,v1) ∈ entries, (j,v2) ∈ entries : j = i+1 ⇒ ...` would
+appear constantly. Extract it: build the set of consecutive value pairs once,
+then assert things about that set.
+
+```evident
+claim consecutive_pairs[T]
+    arr   ∈ Indexable T
+    pairs ∈ Set (T, T)
+    pairs = { (v1, v2) | (i, v1) ∈ arr.entries, (i+1, v2) ∈ arr.entries }
+```
+
+Two generators. The `i+1` in the second generator does the adjacency work —
+no explicit `j = i + 1` condition needed. `pairs` is the set of all
+consecutive value pairs in the array.
+
+Empty arrays: `entries = {}`, no pairs generated, `pairs = {}`.
+Single-element arrays: no two entries with adjacent positions, `pairs = {}`.
+Both hold vacuously — no special cases needed.
+
+---
+
+## The in_order trait — build the set, then assert
 
 ```evident
 claim in_order[T ∈ Ordered]
-    arr ∈ Array T
-    ∀ (i, v1) ∈ arr.entries, (j, v2) ∈ arr.entries :
-        j = i + 1 ⇒ v1 ≤ v2
+    arr ∈ Indexable T
+    ∀ (a, b) ∈ consecutive_pairs arr : a ≤ b
 ```
 
-No `arr[i]`. No function application. Just: for any two entries where one
-position immediately follows the other, the values must be non-decreasing.
+No `arr[i]`. No function application. No `j = i + 1`.
+Build `consecutive_pairs arr`, assert `a ≤ b` over it.
 
-Empty arrays (`n = 0`): `entries = {}`, no pairs to compare, holds vacuously.
-Single-element arrays (`n = 1`): no two entries with `j = i + 1`, holds vacuously.
+Once `consecutive_pairs` exists, many sequential constraints follow the same shape:
+
+```evident
+claim strictly_in_order[T ∈ Ordered]
+    arr ∈ Indexable T
+    ∀ (a, b) ∈ consecutive_pairs arr : a < b
+
+claim no_equal_adjacent[T ∈ Eq]
+    arr ∈ Indexable T
+    ∀ (a, b) ∈ consecutive_pairs arr : a ≠ b
+
+claim bounded_step
+    arr      ∈ Indexable Nat
+    max_step ∈ Nat
+    ∀ (a, b) ∈ consecutive_pairs arr : b - a ≤ max_step
+```
+
+All of them: build the set, assert the condition. The `j = i + 1` pattern
+is written once inside `consecutive_pairs` and never again.
 
 ---
 
@@ -137,19 +173,25 @@ already in scope.
 ```
 Nat, {a..b}, T ∈ Ordered, Set (Nat, T)
         ↓
-Array T
+Indexable T (interface)
+    n       ∈ Nat
     entries ∈ Set (Nat, T)
-    every position has exactly one value
         ↓
-in_order arr
-    ∀ (i,v1),(j,v2) ∈ entries : j = i+1 ⇒ v1 ≤ v2
+Array T (implementation of Indexable T)
+    adds: ∀ i ∈ {0..n-1} : exactly 1 value at position i
+    adds: no out-of-range positions
         ↓
-in_order_by arr .field
-    same, over v1.field and v2.field
+consecutive_pairs arr
+    { (v1, v2) | (i,v1) ∈ entries, (i+1,v2) ∈ entries }
+        ↓
+in_order arr              -- ∀ (a,b) ∈ consecutive_pairs arr : a ≤ b
+strictly_in_order arr     -- ∀ (a,b) ∈ consecutive_pairs arr : a < b
+no_equal_adjacent arr     -- ∀ (a,b) ∈ consecutive_pairs arr : a ≠ b
+bounded_step arr k        -- ∀ (a,b) ∈ consecutive_pairs arr : b-a ≤ k
         ↓
 Applied to any parent claim:
     my_claim
-        xs ∈ Array T
-        in_order xs        -- the trait, attached
+        xs ∈ Indexable T
+        in_order xs           -- the trait, attached
         other_constraint
 ```
