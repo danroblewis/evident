@@ -376,6 +376,47 @@ computed value from the solver. This replaces the function-call return value.
 
 ---
 
+## Dependent types and constraint modeling are the same thing from different directions
+
+Dependent types are what you get when you make types expressive enough to say
+something about the *value* of a variable, not just its kind. A regular type
+system can say "`a` is a `Nat`." A dependent type system can say "`a` is a
+`Nat` less than `n`" — the type of `a` depends on the value of `n`.
+
+`a ∈ g.nodes` in Evident is already a dependent constraint: the constraint on
+`a` depends on the *value* of `g`. You can't know what `g.nodes` is without
+knowing what `g` is. In dependent type theory this would be written as
+`a : Nodes(g)` where `Nodes` is a type family — a function from a Graph value
+to a Type. Same mathematical content, different notation.
+
+**A type is just a constraint on a variable. A dependent type is a constraint
+that depends on the value of another variable.** Which is exactly what all of
+Evident's constraints already are.
+
+The practical difference is where checking happens:
+- **Dependent types**: verified statically by the compiler before the program runs
+- **Constraint modeling**: solved dynamically by the solver at solve-time
+
+Both express rich relationships between values. Dependent type theory got there
+by making types progressively more expressive until they could encode arbitrary
+constraints. Evident gets there by treating constraints as the primitive and
+not requiring static verification.
+
+The Curry-Howard correspondence (covered in `implication-vs-functions.md`)
+connects them formally: a proof that `a ∈ g.nodes` holds IS a program of type
+`a ∈ g.nodes`. Propositions are types, proofs are programs, evidence terms are
+proof terms. Evident's evidence model and dependent type theory are describing
+the same structure.
+
+**Evident is constraint modeling that happens to occupy the same space as
+dependent type theory, approached from the opposite direction.** Type theorists
+started with types and kept making them more expressive until types could express
+arbitrary constraints. Evident starts with constraints and never needed types to
+be more than membership conditions. The meeting point is the same: values that
+know about other values, relationships that hold across specific instances.
+
+---
+
 ## ASCII and Unicode are aliases
 
 Every operator has both forms; the editor auto-replaces ASCII to Unicode:
