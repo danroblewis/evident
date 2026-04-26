@@ -78,6 +78,15 @@ assert project_roles      = { ml_engineer, backend_engineer, data_scientist }
 assert project_candidates = { alice, bob, carol, dan }
 assert project_budget     = 250000
 
+assert assignments ∈ Set Assignment  -- unbound: solver fills this in
+
 
 valid_team project_roles project_candidates project_budget assignments
+
+-- solver produces:
+-- assignments = {
+--     { person = alice, role = ml_engineer }
+--     { person = bob,   role = backend_engineer }
+--     { person = carol, role = data_scientist }
+-- }
 ```
