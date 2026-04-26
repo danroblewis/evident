@@ -52,6 +52,7 @@ claim all_talks_scheduled
     schedule ∈ Set Assignment
     ∀ talk ∈ talks : exactly 1 { a ∈ schedule | a.talk = talk }
 
+
 -- No room is used by two talks in the same slot.
 -- Reuses all_different from the primitives library.
 claim rooms_conflict_free

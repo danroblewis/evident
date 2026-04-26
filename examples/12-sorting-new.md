@@ -121,22 +121,13 @@ via dot notation on a type instance gives you a constraint sub-system?
 type SortedList[T ∈ Ordered] = {
     xs ∈ List T
     ys ∈ List T
+    min ∈ first_of ys
+    max ∈ last_of ys
+
     sorted ys
     permutation xs ys
 
-    claim minimum
-        min ∈ T
-        first_of ys = min
-
-    claim maximum
-        max ∈ T
-        last_of ys = max
-
-    claim range
-        lo ∈ T
-        hi ∈ T
-        minimum lo
-        maximum hi
+    ∀ (a,b) ∈ consecutive_pairs : a <= b
 }
 
 assert s ∈ SortedList[Nat]
