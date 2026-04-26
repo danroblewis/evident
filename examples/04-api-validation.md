@@ -6,6 +6,8 @@ This is the "HTTP validation" example from before, but redesigned to show:
 - Evidence terms as audit trails
 - Forward implication for derived facts
 
+`valid_request` names a set of `Request` values — specifically, the subset of all possible HTTP requests that are acceptable. Each step adds membership conditions that intersect this set with a smaller subset.
+
 ---
 
 ## Types
@@ -35,7 +37,7 @@ type Request = {
 
 ---
 
-## Step 0: One big undifferentiated claim
+## Step 0: Naming the set — `valid_request` with no members
 
 ```evident
 claim valid_request : Request → Prop
@@ -59,9 +61,11 @@ assert req {
 -- Either way, useless.
 ```
 
+The claim declaration creates the name but defines no membership conditions. The set is empty (or trivially everything, if we add `evident valid_request _`). Either way, useless.
+
 ---
 
-## Step 1: Break into named sub-claims
+## Step 1: First intersection — requests with acceptable methods
 
 ```evident
 evident valid_request req
@@ -70,8 +74,7 @@ evident valid_request req
     valid_content req
 ```
 
-Now we have three named sub-claims. Each can be checked independently,
-each can have its own error evidence if it fails.
+Breaking into named sub-claims (`valid_method`, `valid_auth`, `valid_content`) means `valid_request` is defined as the **intersection** of three sets: the set of method-valid requests, the set of auth-valid requests, and the set of content-valid requests. Each named sub-claim is itself a set. `valid_request` is their intersection.
 
 ```evident
 claim valid_method  : Request → semidet
@@ -89,7 +92,7 @@ evident valid_method req when req.method ∈ [GET, POST, PUT, DELETE]
 
 ---
 
-## Step 2: Auth validation — decomposed with types
+## Step 2: Defining `valid_auth` — the set of requests with valid tokens
 
 ```evident
 evident valid_auth req
@@ -135,9 +138,11 @@ ParsedToken {
 }
 ```
 
+The body conditions define which requests are in this set: those where a parseable, non-expired, signature-valid token exists in the authorization header. Note that `∃ token : parse_token req.headers.authorization token` is an existential — the request is in `valid_auth` if there exists a valid token derivable from its auth header.
+
 ---
 
-## Step 3: Content validation — and we discover a problem
+## Step 3: Defining `valid_content` — the set of requests with correct body format
 
 ```evident
 evident valid_content req when req.method ∈ [POST, PUT, PATCH]
@@ -148,6 +153,8 @@ evident valid_content req when req.method ∈ [POST, PUT, PATCH]
 evident valid_content req when req.method ∈ [GET, DELETE]
     -- GET and DELETE have no body; content type is irrelevant
 ```
+
+Two membership conditions (one for POST/PUT/PATCH, one for GET/DELETE) partition the `valid_content` set across HTTP methods.
 
 Now we query:
 
@@ -162,7 +169,7 @@ Now we query:
 -- The constraint fails.
 ```
 
-We discovered a bug in our test request. The solver told us exactly why.
+We discovered a bug in our test request. The solver told us exactly why: the request is not in the `valid_content` set because its `content_type` fails the membership condition.
 
 Fix the request:
 
@@ -194,7 +201,7 @@ ValidRequest {
 
 ---
 
-## Step 4: Authorization — what the user can do
+## Step 4: Authorization — the set of requests the user is permitted to make
 
 So far we've validated the request's form. Now: is this user *allowed* to do this?
 
@@ -212,6 +219,8 @@ evident required_scope req "orders:write" when req.method = POST,   req.path sta
 evident required_scope req "orders:write" when req.method = PUT,    req.path starts_with "/api/orders"
 evident required_scope req "orders:write" when req.method = DELETE, req.path starts_with "/api/orders"
 ```
+
+`authorized_for token req` names the set of `(token, request)` pairs where the token has the required scope for the request. It is a subset of `Token × Request`.
 
 Add to the top-level claim:
 
@@ -244,7 +253,7 @@ and `valid_auth`'s evidence includes that). We project the field and pass it to 
 
 ---
 
-## Step 5: Forward implication — derived capabilities
+## Step 5: Forward implication — derived capability sets
 
 Once a request is valid, we can derive what the handler is allowed to do:
 
@@ -257,6 +266,8 @@ valid_request req, req.method = POST, req.path starts_with "/api/orders"
 valid_request req, req.method = GET, req.path starts_with "/api/orders"
     ⇒ can_read_orders req
 ```
+
+`can_create_order` names a set of requests. The forward implication rule says: if a request is in `valid_request` AND in `{ r | r.method = POST }` AND in `{ r | r.path starts_with "/api/orders" }`, then it is also in `can_create_order`. The capability set is derived by set intersection and forward rule application.
 
 These are forward implications: once `valid_request` and the method are established,
 the capability claim fires automatically. The handler never validates — it just checks
@@ -273,7 +284,7 @@ whether `can_create_order req` is evident.
 
 ## Composability: reusing validation sub-claims
 
-Every sub-claim is independently testable and reusable:
+Each sub-claim is a named set that can be independently queried. Testing a sub-claim like `parse_token` or `authorized_for` in isolation is asking whether a particular value is in that set, without invoking the larger `valid_request` intersection. Every sub-claim is independently testable and reusable:
 
 ```evident
 -- Unit-test the token parsing in isolation
@@ -294,6 +305,8 @@ assert my_token { ..., scopes = ["orders:read", "profile"] }
 ---
 
 ## The evidence tree as an audit log
+
+The evidence tree is a **membership certificate**: a structured proof that the request is in each of the constraint sets — `valid_method`, `valid_auth`, `valid_content`, `authorized_for` — and therefore in their intersection `valid_request`.
 
 The full evidence tree for a valid request is a complete audit log:
 

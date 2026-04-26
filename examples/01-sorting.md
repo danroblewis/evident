@@ -1,21 +1,23 @@
 # Example 1: Sorting — Constraint Accumulation
 
-This example shows the core Evident workflow: start with an underconstrained model, observe
-what the solver produces (wrong), add constraints, observe improvement, repeat until correct.
+This example shows the core Evident workflow: each step adds a membership condition to the
+set named `sort`, intersecting it with a smaller set of pairs. We stop when the set contains
+exactly the elements we want — in this case, exactly one pair for each input list.
 
 We are not writing a sorting algorithm. We are writing a specification of what it means for
 a list to be sorted, and the solver finds a sorted version.
 
 ---
 
-## Step 0: The claim with no body
+## Step 0: Naming the set — no membership conditions yet
 
 ```evident
 claim sort[T ∈ Ordered] : List T → List T → Prop
 ```
 
-We've declared that `sort` relates two lists. We haven't said anything about what that
-relationship means. The solver has complete freedom.
+This declares that `sort` names a set of pairs `(xs, ys)` where both are `List T`. With no
+`evident` blocks, membership is completely unconstrained — the set is the entire
+`List T × List T`. Any pair is a member.
 
 ```evident
 ? sort [3, 1, 2] ?result
@@ -35,7 +37,7 @@ result = [999]             -- valid (also a List Nat)
 
 ---
 
-## Step 1: The output must have the same length
+## Step 1: First intersection — pairs of equal length
 
 ```evident
 claim sort[T ∈ Ordered] : List T → List T → Prop
@@ -44,7 +46,9 @@ evident sort xs ys
     length ys = length xs
 ```
 
-Now we've said `ys` must have the same number of elements as `xs`.
+The body condition `length ys = length xs` restricts `sort` to the subset of
+`List T × List T` where the two lists have equal length. `sort` is now
+`List T × List T ∩ { (xs, ys) | length xs = length ys }`.
 
 ```evident
 ? sort [3, 1, 2] ?result
@@ -62,7 +66,7 @@ result = [9, 9, 9]        -- valid (length 3, correct type)
 
 ---
 
-## Step 2: The output must be in sorted order
+## Step 2: Second intersection — pairs where the second list is sorted
 
 ```evident
 claim sort[T ∈ Ordered] : List T → List T → Prop
@@ -83,7 +87,8 @@ evident sorted [a, b | rest] when a ≤ b
     sorted [b | rest]
 ```
 
-Now the solver knows `ys` must be non-decreasing.
+Adding `sorted ys` further restricts the set. `sort` is now the intersection of the
+equal-length pairs with the pairs where `ys` is non-decreasing.
 
 ```evident
 ? sort [3, 1, 2] ?result
@@ -102,7 +107,7 @@ result = [1, 2, 4]        -- valid (length 3, sorted)  ← wrong elements
 
 ---
 
-## Step 3: The output must contain the same elements
+## Step 3: Third intersection — pairs sharing the same elements
 
 ```evident
 claim sort[T ∈ Ordered] : List T → List T → Prop
@@ -112,6 +117,9 @@ evident sort xs ys
     sorted ys
     permutation xs ys
 ```
+
+Adding `permutation xs ys` intersects with the set of pairs where `ys` contains the same
+elements as `xs`. The three conditions together uniquely identify the sorted permutation.
 
 We need `permutation`. Let's define it:
 
@@ -160,9 +168,15 @@ result = [1, 2, 3]        ✓ unique solution
 
 ## The key insight
 
-We never wrote a sorting algorithm. The constraints define sorting:
-a sorted version of a list is the unique permutation of that list that is in non-decreasing order.
-The solver's job is to find the assignment that satisfies all constraints simultaneously.
+We never wrote a sorting algorithm. `sort` names the intersection of three sets:
+
+- `{ (xs, ys) | length xs = length ys }`
+- `{ (xs, ys) | ys is sorted }`
+- `{ (xs, ys) | ys is a permutation of xs }`
+
+Any pair satisfying all three conditions is the unique sorted permutation of the input.
+The solver's job is to find an element in that intersection — a witness that belongs to
+all three sets simultaneously.
 
 The solver can use any strategy: constraint propagation, search, backtracking. For small lists
 it might just try permutations. For large lists it would need more structure. We could provide
@@ -220,7 +234,10 @@ claim sort[T ∈ Ordered] : (xs ∈ List T) → SortedOf[T] xs → Prop
 ```
 
 Now `sort xs ys` is not just claiming a relationship — `ys`'s type is the type
-"a sorted permutation of xs". The type carries the specification.
+"a sorted permutation of xs". The type carries the specification. Note that
+`SortedOf[T] xs` is the same set that step 3 defines via three `evident` conditions;
+here it is simply given an explicit name as a type, written directly in set-builder
+notation.
 
 ```evident
 ? sort [3, 1, 2] ?result

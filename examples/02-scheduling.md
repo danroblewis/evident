@@ -1,7 +1,9 @@
 # Example 2: Scheduling — Composable Types and Constraint Accumulation
 
-Scheduling is a naturally relational problem. There is no "scheduling algorithm" in this program —
-just a description of what a valid schedule looks like, built from composable pieces.
+Scheduling is a naturally relational problem. There is no "scheduling algorithm" in this program.
+`valid_schedule` names a set of `(tasks, workers, schedule)` triples. Each step adds a membership
+condition, intersecting the set with a smaller collection of triples, until only the genuinely
+valid schedules remain.
 
 ---
 
@@ -33,11 +35,15 @@ type Schedule = List Assignment
 
 ---
 
-## Step 0: A claim with no constraints
+## Step 0: Naming the set — no membership conditions
 
 ```evident
 claim valid_schedule : List Task → List Worker → Schedule → Prop
 ```
+
+`claim valid_schedule : List Task → List Worker → Schedule → Prop` names a set of triples. With
+no `evident` block, the set is the entire `List Task × List Worker × Schedule` — any triple is a
+member, including nonsense ones.
 
 ```evident
 assert tasks [
@@ -64,7 +70,7 @@ schedule = [{ task_id=1, worker_id=99, start=9999 }]  -- valid (no constraints)
 
 ---
 
-## Step 1: Every task must be assigned
+## Step 1: First intersection — triples where every task appears in the schedule
 
 ```evident
 evident valid_schedule tasks workers schedule
@@ -86,6 +92,10 @@ evident task_is_assigned id schedule
     a.task_id = id
 ```
 
+The condition `∀ t ∈ tasks : ∃ a ∈ schedule : a.task_id = t.id` restricts `valid_schedule` to
+the subset where every task has at least one assignment. The set has shrunk, but it still contains
+triples with nonsense workers and impossible times.
+
 ```evident
 ? valid_schedule tasks workers ?schedule
 ```
@@ -102,7 +112,7 @@ schedule = [
 
 ---
 
-## Step 2: Workers must exist and be available
+## Step 2: Second intersection — triples using only real, available workers
 
 ```evident
 evident valid_schedule tasks workers schedule
@@ -127,6 +137,13 @@ evident assignment_valid workers tasks a
     a.start + t.duration ≤ w.available_until
 ```
 
+`assignment_valid workers tasks a` names the set of `(workers, tasks, assignment)` triples where
+the assignment is feasible. Each line in its body is a membership condition: `∃ w ∈ workers :
+w.id = a.worker_id` requires a real worker to exist in the set; `∃ t ∈ tasks : t.id = a.task_id`
+requires a real task; the arithmetic lines require the assignment's time window to fall within the
+worker's availability window. Intersecting `valid_schedule` with this condition excludes all
+triples containing phantom workers or impossible times.
+
 ```evident
 ? valid_schedule tasks workers ?schedule
 ```
@@ -143,7 +160,7 @@ schedule = [
 
 ---
 
-## Step 3: No worker does two tasks simultaneously
+## Step 3: Third intersection — triples with no worker doing two things at once
 
 ```evident
 evident valid_schedule tasks workers schedule
@@ -174,6 +191,10 @@ evident non_overlapping a b tasks
 
 Note the `|` for disjunction: either a finishes before b starts, or b finishes before a starts.
 
+Intersecting with this condition removes all triples where the same worker has overlapping
+assignments. The set is now smaller: every remaining triple has real workers, real tasks, and a
+conflict-free schedule.
+
 ```evident
 ? valid_schedule tasks workers ?schedule
 ```
@@ -192,7 +213,7 @@ schedule = [
 
 ---
 
-## Step 4: All tasks must finish before their deadline
+## Step 4: Fourth intersection — triples where every task finishes on time
 
 ```evident
 evident valid_schedule tasks workers schedule
@@ -212,6 +233,9 @@ evident all_deadlines_met [task | rest] schedule
     all_deadlines_met rest schedule
 ```
 
+This is the final intersection. The set now contains only triples that are genuinely valid
+schedules. The solver finds an element of this set.
+
 ```evident
 ? valid_schedule tasks workers ?schedule
 ```
@@ -229,11 +253,22 @@ schedule = [
 -- ✓ All deadlines met
 ```
 
+The returned schedule is an element of the intersection of all four constraint sets. The evidence
+tree for the result is the proof that it belongs to each one: a certificate that every task is
+covered, that every assignment references a real and available worker, that no worker is
+double-booked, and that every task finishes within its deadline.
+
 ---
 
 ## Composability: reusing sub-claims
 
-The sub-claims we wrote are fully reusable:
+Each named sub-claim — `assignment_valid`, `no_overlapping_assignments`, `all_deadlines_met` —
+is itself a named set. Composability means one set's membership condition can reference another
+set by name. When `valid_schedule` says `all_assignments_valid workers tasks schedule`, it is
+stating that a member of `valid_schedule` must also be a member of the `all_assignments_valid`
+set. The names are handles on sets, not calls to procedures.
+
+Because every sub-claim is an independent named set, each one can be queried directly:
 
 ```evident
 -- Check if a proposed assignment is valid in isolation
