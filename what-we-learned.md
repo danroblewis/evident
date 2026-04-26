@@ -172,6 +172,86 @@ sounds like a verb (find, get, compute, check, validate, remove), rename it.
 
 ---
 
+## Nested claims as constraint modules
+
+When several claims share the same variables, they can be grouped into a
+**nested claim block**. The outer claim declares the shared variables; inner
+claims inherit them. No new keywords — just claim nesting.
+
+```evident
+claim Conference
+    schedule     ∈ Set Assignment
+    talks        ∈ Set Talk
+    rooms        ∈ Set Room
+    slots        ∈ Set Slot
+    max_parallel ∈ Nat
+
+    claim rooms_conflict_free
+        -- 'schedule' is in scope from the outer claim
+        ∀ slot ∈ { a.slot | a ∈ schedule } :
+            all_different { a.room | a ∈ schedule, a.slot = slot }
+
+    claim valid
+        rooms_conflict_free    -- inner claims reference each other directly
+        speakers_conflict_free
+        parallel_load_within
+        ...
+```
+
+### What this is and isn't
+
+It is **not** a class. A class bundles stored data with methods that operate on it.
+A nested claim block bundles **shared constraint variables** with **claims that
+constrain them**. The variables are not stored — they are part of a joint constraint
+system. The claims are not functions — they are constraints the solver must satisfy.
+
+### Accessing sub-claims
+
+Sub-claims are accessed via dot notation from outside the block:
+
+```evident
+Conference.valid             -- the bundled validity constraint
+Conference.rooms_conflict_free  -- a specific sub-constraint
+```
+
+### Composing the block
+
+When variables in the outer scope share names with the block's variables,
+they flow automatically (names-match rule):
+
+```evident
+claim manage_event
+    schedule ∈ Set Assignment   -- matches Conference.schedule by name
+    talks    ∈ Set Talk
+    ...
+    Conference.valid   -- all variables flow automatically
+```
+
+Or lift the whole block with pass-through:
+
+```evident
+    Conference ..   -- all of Conference's variables become part of this claim
+```
+
+### The `this`/`self` equivalent
+
+In OOP, methods access shared state via `self.field`. In Evident, inner claims
+access shared variables by name — `schedule` not `self.schedule`. The variable
+is already in scope from the outer claim. There is no `self` because there is no
+object — just a shared constraint namespace.
+
+### Asserting the constraint
+
+To use the block, assert the sub-claim you want satisfied. The solver populates
+any unbound variables to make it hold:
+
+```evident
+assert schedule ∈ Set Assignment   -- unbound: solver fills this in
+Conference.valid                   -- the solver must make this hold
+```
+
+---
+
 ## `Prop` is dropped
 
 `Prop` was borrowed from type theory to distinguish "a logical proposition" from
