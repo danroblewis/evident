@@ -1,11 +1,17 @@
 # Example 11: Conference Scheduling — Expressive Syntax
 
-Same problem as examples 09–10, but exploring syntax that makes common
-constraint patterns more concise. Three new ideas:
+Exploring syntactic sugar for patterns that appear constantly in constraint programs.
 
-- `S grouped_by .field` — partition a set into groups sharing a field value
-- `S.field` on a set — project one field across all members: `{ a.field | a ∈ S }`
-- Destructuring in `∀` — bind record fields directly in the quantifier
+New shorthands introduced here:
+
+| Sugar | Expands to |
+|---|---|
+| `S.field` | `{ a.field \| a ∈ S }` — project a field across a set |
+| `S grouped_by .field` | partition S into subsets sharing a field value |
+| `∀ a ∈ S where .field = v` | `∀ a ∈ { x ∈ S \| x.field = v }` — filter in the binding |
+| `A ⊆ S.field` | `∀ x ∈ A : ∃ a ∈ S : a.field = x` — coverage as subset |
+| `∀ a ≠ b ∈ S` | `∀ a, b ∈ S : a ≠ b ⇒ ...` — distinct pairs |
+| `unique a ∈ S : condition` | `exactly 1 { a ∈ S \| condition }` |
 
 ```evident
 type Speaker    = { name ∈ String, track ∈ String }
@@ -28,13 +34,14 @@ claim valid_conference
     slots        ∈ Set Slot
     max_parallel ∈ Nat
 
-    -- every talk scheduled exactly once
-    ∀ talk ∈ talks : exactly 1 { a ∈ schedule | a.talk = talk }
+    -- every talk appears exactly once  (coverage as subset + unique)
+    talks ⊆ schedule.talk
+    ∀ talk ∈ talks : unique a ∈ schedule : a.talk = talk
 
     -- every assignment is individually valid
     ∀ a ∈ schedule : assignment_valid a
 
-    -- within each slot: load, room conflicts, speaker conflicts, track spread
+    -- within each slot: load limit, no room conflicts, no speaker conflicts, track spread
     ∀ by_slot ∈ schedule grouped_by .slot :
         at_most max_parallel by_slot
         all_different by_slot.room
@@ -42,9 +49,8 @@ claim valid_conference
         ∀ by_track ∈ by_slot grouped_by .talk.speaker.track :
             at_most 1 by_track
 
-    -- bigger expected audiences go in bigger rooms
-    ∀ { talk = t1, room = r1 } ∈ schedule,
-      { talk = t2, room = r2 } ∈ schedule :
+    -- bigger expected audiences in bigger rooms  (distinct pairs)
+    ∀ { talk = t1, room = r1 } ≠ { talk = t2, room = r2 } ∈ schedule :
         t1.expected_audience > t2.expected_audience ⇒ r1.capacity ≥ r2.capacity
 
 
