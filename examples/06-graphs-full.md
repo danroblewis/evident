@@ -7,17 +7,17 @@ type Graph = {
 }
 
 
-claim adjacent g ∈ Graph, a, b ∈ Nat : Prop
+claim adjacent g ∈ Graph, a, b ∈ Nat
     (a, b) ∈ g.edges ∨ (b, a) ∈ g.edges
 
 
-claim reachable g ∈ Graph, a, b ∈ Nat : Prop
+claim reachable g ∈ Graph, a, b ∈ Nat
 
 a ∈ g.nodes                       ⇒ reachable g a a
 reachable g a b, adjacent g b c   ⇒ reachable g a c
 
 
-claim path_between g ∈ Graph, a, c ∈ Nat, path ∈ List Nat : Prop
+claim path_between g ∈ Graph, a, c ∈ Nat, path ∈ List Nat
     first_of path = a
     last_of  path = c
     ∀ (p, q) ∈ each_consecutive path : adjacent g p q
@@ -28,7 +28,7 @@ claim path_length path ∈ List Nat : Nat det
     _len - 1
 
 
-claim shortest_path_between g ∈ Graph, a, b ∈ Nat, path ∈ List Nat : Prop
+claim shortest_path_between g ∈ Graph, a, b ∈ Nat, path ∈ List Nat
     path_between g a b path
     _len = path_length path
     ∀ alt ∈ { p | path_between g a b p } : path_length alt ≥ _len
@@ -38,22 +38,22 @@ claim distance g ∈ Graph, a, b ∈ Nat : Nat det
     path_length _path
 
 
-claim in_cycle g ∈ Graph, n ∈ Nat : Prop
+claim in_cycle g ∈ Graph, n ∈ Nat
     adjacent g n _next
     reachable g _next n
 
-claim acyclic g ∈ Graph : Prop
+claim acyclic g ∈ Graph
     ∀ n ∈ g.nodes : ¬ in_cycle g n
 
 
-claim strongly_connected g ∈ Graph : Prop
+claim strongly_connected g ∈ Graph
     ∀ a ∈ g.nodes, ∀ b ∈ g.nodes : reachable g a b
 
-claim weakly_connected g ∈ Graph : Prop
+claim weakly_connected g ∈ Graph
     ∀ a ∈ g.nodes, ∀ b ∈ g.nodes : reachable g a b ∨ reachable g b a
 
 
-claim tree g ∈ Graph : Prop
+claim tree g ∈ Graph
     weakly_connected g
     acyclic g
 

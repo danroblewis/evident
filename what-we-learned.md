@@ -172,6 +172,27 @@ sounds like a verb (find, get, compute, check, validate, remove), rename it.
 
 ---
 
+## `Prop` is dropped
+
+`Prop` was borrowed from type theory to distinguish "a logical proposition" from
+"a data value." In Evident it is not needed — a claim either has a derivation or it
+doesn't, and that is just what claims do. Writing `: Prop` at the end of a claim
+signature was a leftover from the functional interpretation where claims had "return
+types." Since we dropped return type annotations, `Prop` goes with them.
+
+`Bool` still exists as a data type (`true`/`false`). The distinction is:
+- `Bool` — a concrete value stored in a variable
+- A claim — a constraint system that is established or not
+
+These are different but `Prop` as a named type adds nothing useful on top of the
+claim concept itself.
+
+> **Note:** Several older examples (01-sorting, 02-scheduling, 03-type-checker,
+> 04-api-validation, 06-graphs) still use `→ Prop` in the old arrow-type signature
+> style. These need a cleanup pass to the flat constraint list syntax.
+
+---
+
 ## The claim body is a flat list of constraints
 
 Everything in a claim is a constraint. Type membership declarations and relational

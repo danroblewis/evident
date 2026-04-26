@@ -4,6 +4,9 @@ The most common constraint programming primitives, implemented in Evident itself
 These would ship as a standard library. A few built-ins are assumed:
 `|S|` (cardinality of a set), `Σ S` (sum of a numeric set), and arithmetic operators.
 
+Filtering is done at the call site using set comprehensions — no higher-order
+predicate parameters needed.
+
 ---
 
 ```evident
@@ -18,48 +21,46 @@ claim all_different[T ∈ Eq]
 
 -- ── Counting ─────────────────────────────────────────────────────────────────
 
--- How many elements of a collection satisfy a predicate.
+-- Cardinality of a (possibly filtered) set.
+-- Callers pass a set comprehension: count { x ∈ items | x > 5 } n
 claim count[T]
-    items ∈ Collection T
-    pred  ∈ T → Prop
+    items ∈ Set T
     n     ∈ Nat
-    n = |{ x ∈ items | pred x }|
+    n = |items|
 
--- Shorthand cardinality constraints built on count.
+-- Usage: pass a filtered set at the call site.
+-- at_most 3 { x ∈ items | x > 5 }
 claim at_most[T]
     n     ∈ Nat
-    items ∈ Collection T
-    pred  ∈ T → Prop
-    |{ x ∈ items | pred x }| ≤ n
+    items ∈ Set T
+    |items| ≤ n
 
 claim at_least[T]
     n     ∈ Nat
-    items ∈ Collection T
-    pred  ∈ T → Prop
-    |{ x ∈ items | pred x }| ≥ n
+    items ∈ Set T
+    |items| ≥ n
 
 claim exactly[T]
     n     ∈ Nat
-    items ∈ Collection T
-    pred  ∈ T → Prop
-    |{ x ∈ items | pred x }| = n
+    items ∈ Set T
+    |items| = n
 
 
 -- ── Aggregation ──────────────────────────────────────────────────────────────
 
 claim sum_of
-    items ∈ Collection Nat
+    items ∈ Set Nat
     total ∈ Nat
-    total = Σ { x | x ∈ items }
+    total = Σ items
 
 claim max_of[T ∈ Ordered]
-    items ∈ Collection T
+    items ∈ Set T
     m     ∈ T
     m ∈ items
     ∀ x ∈ items : x ≤ m
 
 claim min_of[T ∈ Ordered]
-    items ∈ Collection T
+    items ∈ Set T
     m     ∈ T
     m ∈ items
     ∀ x ∈ items : m ≤ x
@@ -92,19 +93,12 @@ claim decreasing[T ∈ Ordered]
 
 -- ── Set structure ─────────────────────────────────────────────────────────────
 
--- Every item appears in exactly one group; groups cover all items; no extras.
+-- Every item appears in exactly one group; groups cover all items.
 claim partition[T]
     items  ∈ Set T
     groups ∈ Set (Set T)
-    ∀ x ∈ items : exactly 1 groups (g → x ∈ g)
+    ∀ x ∈ items : exactly 1 { g ∈ groups | x ∈ g }
     ∀ g ∈ groups : g ⊆ items
-
--- One set is a subset of another.
--- (⊆ is primitive, but defined here for documentation)
-claim subset_of[T]
-    a ∈ Set T
-    b ∈ Set T
-    ∀ x ∈ a : x ∈ b
 
 
 -- ── Usage examples ────────────────────────────────────────────────────────────
@@ -121,17 +115,16 @@ claim valid_sudoku_row
     ∀ x ∈ cells : within_range x 1 9
     all_different cells
 
--- A budget constraint using sum_of:
+-- Budget constraint: sum of salaries within budget.
 claim team_within_budget
     assignments ∈ Set Assignment
     budget      ∈ Nat
     sum_of { a.person.salary | a ∈ assignments } total
     total ≤ budget
 
--- Find the highest-paid person on a team:
-claim highest_salary
+-- How many assignments involve senior engineers?
+claim senior_count
     assignments ∈ Set Assignment
-    person      ∈ Person
-    person ∈ { a.person | a ∈ assignments }
-    max_of { a.person.salary | a ∈ assignments } person.salary
+    n           ∈ Nat
+    count { a ∈ assignments | a.person.level = "senior" } n
 ```
