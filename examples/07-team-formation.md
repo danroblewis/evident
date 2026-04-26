@@ -50,9 +50,10 @@ claim valid_team
     candidates  ∈ Set Person
     budget      ∈ Nat
     assignments ∈ Set Assignment
-    ∀ a ∈ assignments : a.person ∈ candidates
-    ∀ a ∈ assignments : a.role ∈ roles
-    ∀ a ∈ assignments : qualifies a.person a.role
+    ∀ a ∈ assignments :
+        a.person ∈ candidates
+        a.role   ∈ roles
+        qualifies a.person a.role
     roles_covered roles assignments
     within_budget assignments budget
     no_double_assignment assignments
