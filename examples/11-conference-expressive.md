@@ -68,3 +68,67 @@ claim valid_conference
 
     ∀ schedule : assignment_valid
 ```
+
+---
+
+## Named subsets — binding a set to a name for multiple assertions
+
+When you need to make several assertions about the same derived set,
+name it with an inline binding or a sub-claim. The naming problem:
+`rooms_for_slot` sounds like a procedure, not a constraint. Options shown below —
+pick whichever reads best.
+
+```evident
+-- Option A: inline binding with _name
+-- No sub-claim needed. _rooms is a body-internal variable.
+claim valid_conference
+    schedule     ∈ Set Assignment
+    talks        ∈ Set Talk
+    rooms        ∈ Set Room
+    slots        ∈ Set Slot
+    max_parallel ∈ Nat
+
+    ∀ slot ∈ slots :
+        _rooms   = schedule[.slot = slot].room
+        _speakers = schedule[.slot = slot].talk.speaker
+        _tracks  = schedule[.slot = slot].talk.speaker.track
+        all_different _rooms
+        all_different _speakers
+        ∀ track ∈ _tracks :
+            at_most 1 schedule[.slot = slot, .talk.speaker.track = track]
+        at_most max_parallel schedule[.slot = slot]
+
+    ∀ { talk = t1, room = r1 } ≠ { talk = t2, room = r2 } ∈ schedule :
+        t1.expected_audience > t2.expected_audience ⇒ r1.capacity ≥ r2.capacity
+
+    ∀ schedule : assignment_valid
+
+
+-- Option B: sub-claim with a relational name
+-- The concept "slot assignments" is named; three assertions apply to it.
+claim slot_assignments_of
+    schedule         ∈ Set Assignment
+    slot             ∈ Slot
+    slot_assignments ∈ Set Assignment
+    slot_assignments = schedule[.slot = slot]
+
+claim valid_conference
+    schedule     ∈ Set Assignment
+    talks        ∈ Set Talk
+    rooms        ∈ Set Room
+    slots        ∈ Set Slot
+    max_parallel ∈ Nat
+
+    ∀ slot ∈ slots :
+        slot_assignments_of slot _assignments
+        all_different _assignments.room
+        all_different _assignments.talk.speaker
+        at_most max_parallel _assignments
+        ∀ track ∈ _assignments.talk.speaker.track :
+            at_most 1 _assignments[.talk.speaker.track = track]
+
+    ∀ { talk = t1, room = r1 } ≠ { talk = t2, room = r2 } ∈ schedule :
+        t1.expected_audience > t2.expected_audience ⇒ r1.capacity ≥ r2.capacity
+
+    ∀ schedule : assignment_valid
+```
