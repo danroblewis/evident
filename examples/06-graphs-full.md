@@ -13,6 +13,9 @@ assert edge 2 4
 assert edge 3 4
 assert edge 4 5
 
+claim nodes : Set Nat det
+    { n | node n }
+
 
 claim adjacent a, b ∈ Nat : Prop
     edge a b ∨ edge b a
@@ -50,14 +53,14 @@ claim in_cycle n ∈ Nat : Prop
     reachable _next n
 
 claim acyclic : Prop
-    ∀ n ∈ node : ¬ in_cycle n
+    ∀ n ∈ nodes : ¬ in_cycle n
 
 
 claim strongly_connected : Prop
-    ∀ a ∈ node, ∀ b ∈ node : reachable a b
+    ∀ a ∈ nodes, ∀ b ∈ nodes : reachable a b
 
 claim weakly_connected : Prop
-    ∀ a ∈ node, ∀ b ∈ node : reachable a b ∨ reachable b a
+    ∀ a ∈ nodes, ∀ b ∈ nodes : reachable a b ∨ reachable b a
 
 
 claim tree : Prop
@@ -80,5 +83,5 @@ claim tree : Prop
 ? weakly_connected
 ? tree
 
-? ∃ a, b ∈ node : reachable a b, ¬ reachable b a
+? ∃ a, b ∈ nodes : reachable a b, ¬ reachable b a
 ```
