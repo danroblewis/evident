@@ -431,6 +431,55 @@ The `↦` symbol (mapsto) is the standard mathematical notation for "maps to."
 Unmapped variables in the sub-claim that have matching names in the outer scope
 are still automatically identified. Only differing names need `↦`.
 
+### `with` block — batch renaming
+
+When several sub-claims need the same variable renamed, a `with` block
+applies the mapping to all of them at once:
+
+```evident
+-- Without with: repeat the mapping three times
+rooms_conflict_free    schedule ↦ team_a_schedule
+speakers_conflict_free schedule ↦ team_a_schedule
+big_talks_in_big_rooms schedule ↦ team_a_schedule
+
+-- With block: hoist the renaming
+with team_a_schedule ↦ schedule:
+    rooms_conflict_free
+    speakers_conflict_free
+    big_talks_in_big_rooms
+```
+
+`with outer ↦ inner:` means "for all sub-claims in this block, use `outer`
+from the current scope wherever the sub-claim expects `inner`."
+
+### Variables flow in both directions
+
+Names-match identification is not directional. If the outer scope has `schedule`
+and a sub-claim has a variable named `schedule`, they are the same variable —
+whether you think of this as the outer value "passing down" or the sub-claim
+"passing up." The result is the same: no explicit argument needed.
+
+This means that when all variable names match, sub-claims can be written
+with no arguments at all:
+
+```evident
+claim valid_conference
+    talks        ∈ Set Talk
+    rooms        ∈ Set Room
+    slots        ∈ Set Slot
+    max_parallel ∈ Nat
+    schedule     ∈ Set Assignment
+
+    all_talks_scheduled      -- talks, schedule match
+    rooms_conflict_free      -- schedule matches
+    speakers_conflict_free   -- schedule matches
+    parallel_load_within     -- schedule, slots, max_parallel match
+    track_spread             -- schedule matches
+    big_talks_in_big_rooms   -- schedule matches
+```
+
+Only write explicit arguments (`x ↦ y` or positional) when names differ.
+
 ### Pass-through with `..`
 
 By default, variables in a sub-claim that have no match in the outer scope are

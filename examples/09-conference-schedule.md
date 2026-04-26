@@ -100,13 +100,13 @@ claim valid_conference
     max_parallel ∈ Nat
     schedule     ∈ Set Assignment
 
-    all_talks_scheduled talks schedule
+    all_talks_scheduled           -- talks, schedule: names match outer scope
     ∀ a ∈ schedule : assignment_valid a
-    rooms_conflict_free schedule
-    speakers_conflict_free schedule
-    parallel_load_within schedule slots max_parallel
-    track_spread schedule
-    big_talks_in_big_rooms schedule
+    rooms_conflict_free           -- schedule: names match
+    speakers_conflict_free        -- schedule: names match
+    parallel_load_within          -- schedule, slots, max_parallel: names match
+    track_spread                  -- schedule: names match
+    big_talks_in_big_rooms        -- schedule: names match
 
 
 -- ── Data ─────────────────────────────────────────────────────────────────────
