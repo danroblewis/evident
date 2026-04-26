@@ -397,6 +397,102 @@ computed value from the solver. This replaces the function-call return value.
 
 ---
 
+## Claim composition: named mapping and pass-through
+
+When invoking a sub-claim in a body, variables must be mapped between the outer
+scope and the sub-claim's variable names. Three mechanisms:
+
+### Names-match shorthand (default)
+
+If an outer variable has the same name as the sub-claim's variable, they are
+automatically identified — no explicit mapping needed:
+
+```evident
+within_budget    -- 'assignments' and 'budget' match by name in outer scope
+```
+
+### Named mapping with `↦`
+
+When names differ, map them explicitly. Single-line for a quick rename:
+
+```evident
+within_budget assignments ↦ team_members
+```
+
+Multi-line block when there are many remappings:
+
+```evident
+within_budget
+    assignments ↦ team_members
+    budget      ↦ project_limit
+```
+
+The `↦` symbol (mapsto) is the standard mathematical notation for "maps to."
+Unmapped variables in the sub-claim that have matching names in the outer scope
+are still automatically identified. Only differing names need `↦`.
+
+### Pass-through with `..`
+
+By default, variables in a sub-claim that have no match in the outer scope are
+an error — the outer claim must already declare them. But with `..` (spread),
+unmatched variables **lift up** and become variables of the outer claim:
+
+```evident
+within_budget ..    -- budget and assignments lift into parent if not already declared
+```
+
+You can combine: lift most variables but rename some:
+
+```evident
+within_budget ..
+    budget ↦ project_limit    -- rename budget; assignments lifts as-is
+```
+
+**The tradeoff:** pass-through makes composition concise but the parent claim's
+full variable set is no longer visible from its declaration alone — you must trace
+through sub-claims. Pass-through is therefore **opt-in** (explicit `..`), not the
+default. The default requires all variables to already exist in scope.
+
+### Example: valid_team with and without pass-through
+
+**Without pass-through** — all variables declared explicitly:
+```evident
+claim valid_team
+    roles       ∈ Set Role
+    candidates  ∈ Set Person
+    budget      ∈ Nat               -- must be declared because within_budget needs it
+    assignments ∈ Set Assignment    -- must be declared because sub-claims need it
+    ∀ a ∈ assignments :
+        a.person ∈ candidates
+        a.role   ∈ roles
+        qualifies a.person a.role
+    roles_covered roles assignments
+    within_budget
+    no_double_assignment
+```
+
+**With pass-through** — sub-claim variables lift up:
+```evident
+claim valid_team
+    roles      ∈ Set Role
+    candidates ∈ Set Person
+    -- assignments and budget are not declared here;
+    -- they lift from the sub-claims below
+    ∀ a ∈ assignments :
+        a.person ∈ candidates
+        a.role   ∈ roles
+        qualifies a.person a.role
+    roles_covered roles assignments
+    within_budget ..
+    no_double_assignment ..
+```
+
+`valid_team`'s full interface is now `roles`, `candidates`, `assignments`, `budget`
+— but only `roles` and `candidates` are visible in the declaration. The others
+come from sub-claims. More concise; less transparent.
+
+---
+
 ## ∀ is a constraint template, not a loop
 
 `∀ a, b ∈ S : P(a, b)` is not a loop that runs and checks. It is a

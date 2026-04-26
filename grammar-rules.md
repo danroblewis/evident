@@ -330,7 +330,40 @@ multiple alternative definitions (structurally distinct cases).
 
 ---
 
-## Rule 9: Prefer universal statements over case analysis
+## Rule 9: Claim composition — named mapping and pass-through
+
+When a sub-claim is invoked in a body, its variables are identified with variables
+in the outer scope. Three mechanisms, in order of increasing explicitness:
+
+**Names-match (default):** variables with the same name are automatically identified.
+
+```evident
+within_budget    -- outer 'assignments' and 'budget' match sub-claim variables by name
+```
+
+**Named mapping with `↦`:** rename variables that differ. Multi-line for many remappings:
+
+```evident
+within_budget
+    assignments ↦ team_members
+    budget      ↦ project_limit
+```
+
+**Pass-through with `..`:** unmatched sub-claim variables lift up into the parent's
+variable set. Opt-in only — not the default:
+
+```evident
+within_budget ..              -- unmatched vars lift up
+within_budget ..
+    budget ↦ project_limit    -- lift, but rename budget
+```
+
+Without `..`, all sub-claim variables must already exist in the outer scope.
+This keeps the parent claim's interface visible from its declaration.
+
+---
+
+## Rule 10: Prefer universal statements over case analysis
 
 Multiple `evident` blocks for the same claim express disjunction — "holds when A *or* when B." Before writing separate cases, ask: can a single universal statement cover all of them?
 
