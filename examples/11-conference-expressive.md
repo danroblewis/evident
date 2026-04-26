@@ -50,11 +50,11 @@ claim valid_conference
     slots        ∈ Set Slot
     max_parallel ∈ Nat
 
-    ∀ by_slot ∈ schedule grouped_by .slot :
-        all_different by_slot.room
-        all_different by_slot.talk.speaker
-        ∀ by_track ∈ by_slot grouped_by .talk.speaker.track :
-            at_most 1 by_track
+    ∀ slot_assignments ∈ schedule grouped_by .slot :
+        all_different slot_assignments.room
+        all_different slot_assignments.talk.speaker
+        ∀ track_assignments ∈ slot_assignments grouped_by .talk.speaker.track :
+            at_most 1 track_assignments
 
     ∀ slot ∈ slots :
         at_most max_parallel schedule where .slot = slot
