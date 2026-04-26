@@ -172,6 +172,66 @@ sounds like a verb (find, get, compute, check, validate, remove), rename it.
 
 ---
 
+## The claim body is a flat list of constraints
+
+Everything in a claim is a constraint. Type membership declarations and relational
+constraints are the same kind of thing — all conditions that must hold simultaneously.
+There is no structural distinction between "the parameter list" and "the body."
+
+```evident
+claim distance_between
+    g ∈ Graph           -- type constraint: g must be a Graph
+    a ∈ g.nodes         -- membership: a must be a node in g
+    b ∈ g.nodes         -- membership: b must be a node in g
+    d ∈ Nat             -- type constraint: d must be a natural number
+    path_between g a b _path    -- relational constraint
+    path_length _path d         -- relational constraint
+```
+
+The `claim` keyword introduces a name. Everything indented below is a constraint.
+Named variables (no `_` prefix) are accessible from outside — they are the claim's
+interface. Variables with `_` prefix are internal scaffolding.
+
+The `: Type` annotation at the end of a claim signature is **dropped**. There is no
+"return type" because there is no return. All variables are declared as constraints.
+
+---
+
+## Existential vs. universal — single instance vs. universal property
+
+A claim body is implicitly **existential** — the solver finds values for any unbound
+variables such that all constraints hold simultaneously. Fixing some variables from
+outside is fine; the solver handles the rest.
+
+A claim describes a relationship among **specific values**:
+
+```evident
+claim distance_between g ∈ Graph, a ∈ g.nodes, b ∈ g.nodes, d ∈ Nat
+    path_between g a b _path
+    path_length _path d
+```
+
+`distance_between my_graph 1 5 d` — "is there a d such that 5 is reachable from 1
+at distance d?" The solver finds d. This is the single-instance use.
+
+A **universal property** — something true for all values — requires a separate claim
+using explicit `∀`:
+
+```evident
+claim all_pairs_have_distance g ∈ Graph
+    ∀ a ∈ g.nodes, ∀ b ∈ g.nodes : ∃ d ∈ Nat : distance_between g a b d
+```
+
+These are genuinely different things. A claim definition describes a relationship;
+universal statements about all values require explicit `∀`. You cannot collapse them
+into one claim.
+
+The naming consequence: `a ∈ g.nodes` in a body means "a is some node in g"
+(existential — the solver picks one or the caller fixes one). It does NOT mean
+"for all nodes a." If you want the universal, write `∀ a ∈ g.nodes`.
+
+---
+
 ## ⚠ Under reconsideration: `det` claims and `= claim args`
 
 The rule that `det` claims use `= claim args` binding form is now in question.

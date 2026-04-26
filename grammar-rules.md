@@ -261,51 +261,68 @@ replaced by inline existentials in the body.
 
 ---
 
+## Rule 8a: A claim is a named list of constraints
+
+The `claim` keyword introduces a name. Everything indented below is a constraint —
+type membership constraints and relational constraints are the same kind of thing.
+There is no structural distinction between "the parameter list" and "the body."
+
+```evident
+claim distance_between
+    g ∈ Graph           -- constraint: g must be in the Graph set
+    a ∈ g.nodes         -- constraint: a must be a node in g
+    b ∈ g.nodes         -- constraint: b must be a node in g
+    d ∈ Nat             -- constraint: d must be a natural number
+    path_between g a b _path
+    path_length _path d
+```
+
+Named variables (no `_` prefix) are the claim's interface — accessible from outside.
+Variables with `_` prefix are internal scaffolding.
+
+There is **no `: Type` annotation** at the end of claim signatures. There is no
+return type because there is no return. All variables are declared as constraints.
+
+---
+
 ## Rule 8b: Merge `claim` and `evident` when there is one definition
 
 When a claim has exactly one body, the `claim` declaration and `evident` block
-are redundant. Merge them — the body follows the declaration, indented:
+are redundant. Merge them — the body follows the claim name, indented.
+All constraints (type membership and relational) are listed together:
 
 ```evident
--- Redundant (two blocks for one definition):
+-- Old (two blocks):
 claim acyclic : Prop
-
 evident acyclic
     ∀ n ∈ nodes : ¬ in_cycle n
 
--- Merged (one block):
-claim acyclic : Prop
+-- New (one flat constraint list):
+claim acyclic
     ∀ n ∈ nodes : ¬ in_cycle n
 ```
 
-Name parameters directly in the claim head using `∈`. Group parameters of the
-same type with commas. The result kind follows `:`:
+With variables:
 
 ```evident
--- Old (anonymous type arrows, names repeated in evident line):
+-- Old:
 claim shortest_path_between : Nat → Nat → List Nat → semidet
-
 evident shortest_path_between a b path
     ...
 
--- New (named parameters, one block):
-claim shortest_path_between a, b ∈ Nat, path ∈ List Nat : semidet
+-- New:
+claim shortest_path_between
+    a, b ∈ Nat
+    path ∈ List Nat
     ...
 ```
 
-Type parameters stay in `[...]` before the value parameters:
+Type parameters stay in `[...]`:
 
 ```evident
-claim sorted[T ∈ Ordered] list ∈ List T : Prop
+claim sorted[T ∈ Ordered]
+    list ∈ List T
     ∀ (a, b) ∈ each_consecutive list : a ≤ b
-```
-
-For `det` claims that return a value, the result type precedes `det`:
-
-```evident
-claim path_length path ∈ List Nat : Nat det
-    _len = length path
-    _len - 1
 ```
 
 Use separate `claim` + `evident` blocks only when genuinely needed:
