@@ -23,7 +23,7 @@ type Expr =
 type Type =
     | Nat
     | Bool
-    | Arrow Type Type             -- function type T1 -> T2
+    | Arrow Type Type             -- function type T1 → T2
 ```
 
 ---
@@ -31,7 +31,7 @@ type Type =
 ## Step 0: Declare the typing claim
 
 ```evident
-claim has_type : Expr -> Type -> Prop
+claim has_type : Expr → Type → Prop
 ```
 
 No rules yet. The solver knows nothing.
@@ -130,7 +130,7 @@ assert var_type "f" (Arrow Nat Nat)
 
 ```evident
 -- The claim: in the current context, a variable reference has the declared type
-claim var_type : String -> Type -> semidet  -- declared via assert
+claim var_type : String → Type → semidet  -- declared via assert
 
 evident has_type (Var name) t
     var_type name t
@@ -267,10 +267,10 @@ type Type =
     | ForAll String Type              -- ∀ a. T
 
 -- Type instantiation: substitute a type variable
-claim subst : String -> Type -> Type -> Type -> det
+claim subst : String → Type → Type → Type → det
 
 evident subst var replacement (TypeVar name) replacement when name = var
-evident subst var replacement (TypeVar name) (TypeVar name) when name != var
+evident subst var replacement (TypeVar name) (TypeVar name) when name ≠ var
 evident subst var replacement (Arrow t1 t2) (Arrow t1' t2')
     subst var replacement t1 t1'
     subst var replacement t2 t2'

@@ -9,23 +9,23 @@ just a description of what a valid schedule looks like, built from composable pi
 
 ```evident
 type Task = {
-    id       : Nat
-    name     : String
-    duration : Nat      -- minutes
-    deadline : Nat      -- minutes from start of day
+    id       ∈ Nat
+    name     ∈ String
+    duration ∈ Nat      -- minutes
+    deadline ∈ Nat      -- minutes from start of day
 }
 
 type Worker = {
-    id           : Nat
-    name         : String
-    available_from : Nat   -- minutes from start of day
-    available_until : Nat
+    id              ∈ Nat
+    name            ∈ String
+    available_from  ∈ Nat   -- minutes from start of day
+    available_until ∈ Nat
 }
 
 type Assignment = {
-    task_id   : Nat
-    worker_id : Nat
-    start     : Nat    -- when the task begins
+    task_id   ∈ Nat
+    worker_id ∈ Nat
+    start     ∈ Nat    -- when the task begins
 }
 
 type Schedule = List Assignment
@@ -36,7 +36,7 @@ type Schedule = List Assignment
 ## Step 0: A claim with no constraints
 
 ```evident
-claim valid_schedule : List Task -> List Worker -> Schedule -> Prop
+claim valid_schedule : List Task → List Worker → Schedule → Prop
 ```
 
 ```evident
@@ -72,14 +72,14 @@ evident valid_schedule tasks workers schedule
 ```
 
 ```evident
-claim all_tasks_assigned : List Task -> Schedule -> Prop
+claim all_tasks_assigned : List Task → Schedule → Prop
 
 evident all_tasks_assigned [] _schedule
 evident all_tasks_assigned [task | rest] schedule
     task_is_assigned task.id schedule
     all_tasks_assigned rest schedule
 
-claim task_is_assigned : Nat -> Schedule -> semidet
+claim task_is_assigned : Nat → Schedule → semidet
 
 evident task_is_assigned id schedule
     member a schedule
@@ -111,33 +111,20 @@ evident valid_schedule tasks workers schedule
 ```
 
 ```evident
-claim all_assignments_valid : List Worker -> List Task -> Schedule -> Prop
+claim all_assignments_valid : List Worker → List Task → Schedule → Prop
 
 evident all_assignments_valid workers tasks []
 evident all_assignments_valid workers tasks [a | rest]
     assignment_valid workers tasks a
     all_assignments_valid workers tasks rest
 
-claim assignment_valid : List Worker -> List Task -> Assignment -> Prop
+claim assignment_valid : List Worker → List Task → Assignment → Prop
 
 evident assignment_valid workers tasks a
-    find_worker a.worker_id workers ?worker
-    find_task   a.task_id   tasks   ?task
-    a.start >= worker.available_from
-    a.start + task.duration <= worker.available_until
-```
-
-Supporting claims:
-
-```evident
-claim find_worker : Nat -> List Worker -> Worker -> semidet
-claim find_task   : Nat -> List Task   -> Task   -> semidet
-
-evident find_worker id [w | _] w when w.id = id
-evident find_worker id [_ | rest] result
-    find_worker id rest result
-
--- find_task is symmetric
+    ∃ w ∈ workers : w.id = a.worker_id
+    ∃ t ∈ tasks   : t.id = a.task_id
+    a.start ≥ w.available_from
+    a.start + t.duration ≤ w.available_until
 ```
 
 ```evident
@@ -166,23 +153,23 @@ evident valid_schedule tasks workers schedule
 ```
 
 ```evident
-claim no_overlapping_assignments : Schedule -> Prop
+claim no_overlapping_assignments : Schedule → Prop
 
 evident no_overlapping_assignments schedule
-    all pairs a b in schedule where a != b:
-        same_worker a b => non_overlapping a b tasks
+    ∀ a ∈ schedule : ∀ b ∈ schedule :
+        a ≠ b ⇒ same_worker a b ⇒ non_overlapping a b tasks
 
-claim same_worker : Assignment -> Assignment -> semidet
+claim same_worker : Assignment → Assignment → semidet
 
 evident same_worker a b when a.worker_id = b.worker_id
 
-claim non_overlapping : Assignment -> Assignment -> List Task -> Prop
+claim non_overlapping : Assignment → Assignment → List Task → Prop
 
 evident non_overlapping a b tasks
-    find_task a.task_id tasks ?ta
-    find_task b.task_id tasks ?tb
-    a.start + ta.duration <= b.start
-        | b.start + tb.duration <= a.start
+    ∃ ta ∈ tasks : ta.id = a.task_id
+    ∃ tb ∈ tasks : tb.id = b.task_id
+    a.start + ta.duration ≤ b.start
+        | b.start + tb.duration ≤ a.start
 ```
 
 Note the `|` for disjunction: either a finishes before b starts, or b finishes before a starts.
@@ -216,19 +203,13 @@ evident valid_schedule tasks workers schedule
 ```
 
 ```evident
-claim all_deadlines_met : List Task -> Schedule -> Prop
+claim all_deadlines_met : List Task → Schedule → Prop
 
 evident all_deadlines_met [] _
 evident all_deadlines_met [task | rest] schedule
-    find_assignment task.id schedule ?a
-    a.start + task.duration <= task.deadline
+    ∃ a ∈ schedule : a.task_id = task.id
+    a.start + task.duration ≤ task.deadline
     all_deadlines_met rest schedule
-
-claim find_assignment : Nat -> Schedule -> Assignment -> semidet
-
-evident find_assignment id [a | _] a when a.task_id = id
-evident find_assignment id [_ | rest] result
-    find_assignment id rest result
 ```
 
 ```evident
@@ -280,22 +261,22 @@ The scheduling model above is specific to workers. We can generalize:
 ```evident
 -- A Resource has an id and an available time window
 type Resource = {
-    id    : Nat
-    from  : Nat
-    until : Nat
+    id    ∈ Nat
+    from  ∈ Nat
+    until ∈ Nat
 }
 
 -- A Job has a duration and deadline
 type Job = {
-    id       : Nat
-    duration : Nat
-    deadline : Nat
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
 }
 
 -- A generic slot: job J assigned to resource R starting at time T
-type Slot = { job_id : Nat, resource_id : Nat, start : Nat }
+type Slot = { job_id ∈ Nat, resource_id ∈ Nat, start ∈ Nat }
 
-claim valid_allocation : List Job -> List Resource -> List Slot -> Prop
+claim valid_allocation : List Job → List Resource → List Slot → Prop
 
 evident valid_allocation jobs resources slots
     all_jobs_allocated jobs slots
@@ -321,7 +302,7 @@ Once the model is fully constrained, we can add an objective:
 ```
 
 ```evident
-claim makespan : Schedule -> List Task -> Nat -> det
+claim makespan : Schedule → List Task → Nat → det
 
 evident makespan schedule tasks m
     all finish_times of assignments in schedule

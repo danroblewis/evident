@@ -16,20 +16,20 @@ type HttpMethod = GET | POST | PUT | DELETE | PATCH
 type AuthScheme = Bearer | Basic | ApiKey
 
 type Token = {
-    raw       : String
-    scheme    : AuthScheme
-    subject   : String
-    issued_at : Nat           -- unix timestamp
-    expires_at : Nat
-    scopes    : List String
+    raw       ∈ String
+    scheme    ∈ AuthScheme
+    subject   ∈ String
+    issued_at ∈ Nat           -- unix timestamp
+    expires_at ∈ Nat
+    scopes    ∈ List String
 }
 
 type Request = {
-    method  : HttpMethod
-    path    : String
-    headers : { authorization : String, content_type : String }
-    body    : Maybe String
-    time    : Nat             -- when the request arrived
+    method  ∈ HttpMethod
+    path    ∈ String
+    headers ∈ { authorization ∈ String, content_type ∈ String }
+    body    ∈ Maybe String
+    time    ∈ Nat             -- when the request arrived
 }
 ```
 
@@ -38,7 +38,7 @@ type Request = {
 ## Step 0: One big undifferentiated claim
 
 ```evident
-claim valid_request : Request -> Prop
+claim valid_request : Request → Prop
 ```
 
 ```evident
@@ -74,11 +74,11 @@ Now we have three named sub-claims. Each can be checked independently,
 each can have its own error evidence if it fails.
 
 ```evident
-claim valid_method  : Request -> semidet
-claim valid_auth    : Request -> semidet
-claim valid_content : Request -> semidet
+claim valid_method  : Request → semidet
+claim valid_auth    : Request → semidet
+claim valid_content : Request → semidet
 
-evident valid_method req when req.method in [GET, POST, PUT, DELETE]
+evident valid_method req when req.method ∈ [GET, POST, PUT, DELETE]
 ```
 
 ```evident
@@ -93,11 +93,11 @@ evident valid_method req when req.method in [GET, POST, PUT, DELETE]
 
 ```evident
 evident valid_auth req
-    parse_token req.headers.authorization ?token
+    ∃ token : parse_token req.headers.authorization token
     token_not_expired token req.time
     token_signature_valid token
 
-claim parse_token : String -> Token -> semidet
+claim parse_token : String → Token → semidet
 
 evident parse_token raw_header token
     split_bearer raw_header ?raw_jwt
@@ -111,12 +111,12 @@ evident parse_token raw_header token
         scopes    = claims.scopes
     }
 
-claim token_not_expired : Token -> Nat -> semidet
+claim token_not_expired : Token → Nat → semidet
 
 evident token_not_expired token current_time
     token.expires_at > current_time
 
-claim token_signature_valid : Token -> semidet
+claim token_signature_valid : Token → semidet
 -- (dispatched to cryptographic verifier — self-evident leaf)
 ```
 
@@ -140,12 +140,12 @@ ParsedToken {
 ## Step 3: Content validation — and we discover a problem
 
 ```evident
-evident valid_content req when req.method in [POST, PUT, PATCH]
+evident valid_content req when req.method ∈ [POST, PUT, PATCH]
     req.headers.content_type = "application/json"
     req.body is_some
     valid_json (unwrap req.body)
 
-evident valid_content req when req.method in [GET, DELETE]
+evident valid_content req when req.method ∈ [GET, DELETE]
     -- GET and DELETE have no body; content type is irrelevant
 ```
 
@@ -199,13 +199,13 @@ ValidRequest {
 So far we've validated the request's form. Now: is this user *allowed* to do this?
 
 ```evident
-claim authorized_for : Token -> Request -> semidet
+claim authorized_for : Token → Request → semidet
 
 evident authorized_for token req
     required_scope req ?scope
-    scope in token.scopes
+    scope ∈ token.scopes
 
-claim required_scope : Request -> String -> det
+claim required_scope : Request → String → det
 
 evident required_scope req "orders:read"  when req.method = GET,    req.path starts_with "/api/orders"
 evident required_scope req "orders:write" when req.method = POST,   req.path starts_with "/api/orders"
@@ -251,11 +251,11 @@ Once a request is valid, we can derive what the handler is allowed to do:
 ```evident
 -- A valid POST to /api/orders means we can create an order
 valid_request req, req.method = POST, req.path starts_with "/api/orders"
-    => can_create_order req
+    ⇒ can_create_order req
 
 -- A valid GET means we can read
 valid_request req, req.method = GET, req.path starts_with "/api/orders"
-    => can_read_orders req
+    ⇒ can_read_orders req
 ```
 
 These are forward implications: once `valid_request` and the method are established,
@@ -283,8 +283,8 @@ assert test_header "Bearer eyJhbGci..."
 
 -- Check if a specific token has a specific scope
 assert my_token { ..., scopes = ["orders:read", "profile"] }
-? "orders:write" in my_token.scopes   -- Not evident
-? "orders:read"  in my_token.scopes   -- Evident ✓
+? "orders:write" ∈ my_token.scopes   -- Not evident
+? "orders:read"  ∈ my_token.scopes   -- Evident ✓
 
 -- Check if a request would be authorized if we changed its method
 ? authorized_for my_token { req with method = GET }   -- Yes

@@ -11,7 +11,7 @@ a list to be sorted, and the solver finds a sorted version.
 ## Step 0: The claim with no body
 
 ```evident
-claim sort[T : Ordered] : List T -> List T -> Prop
+claim sort[T ∈ Ordered] : List T → List T → Prop
 ```
 
 We've declared that `sort` relates two lists. We haven't said anything about what that
@@ -38,7 +38,7 @@ result = [999]             -- valid (also a List Nat)
 ## Step 1: The output must have the same length
 
 ```evident
-claim sort[T : Ordered] : List T -> List T -> Prop
+claim sort[T ∈ Ordered] : List T → List T → Prop
 
 evident sort xs ys
     length ys = length xs
@@ -65,7 +65,7 @@ result = [9, 9, 9]        -- valid (length 3, correct type)
 ## Step 2: The output must be in sorted order
 
 ```evident
-claim sort[T : Ordered] : List T -> List T -> Prop
+claim sort[T ∈ Ordered] : List T → List T → Prop
 
 evident sort xs ys
     length ys = length xs
@@ -75,11 +75,11 @@ evident sort xs ys
 We need `sorted` to exist. Let's define it:
 
 ```evident
-claim sorted[T : Ordered] : List T -> Prop
+claim sorted[T ∈ Ordered] : List T → Prop
 
 evident sorted []
 evident sorted [_]
-evident sorted [a, b | rest] when a <= b
+evident sorted [a, b | rest] when a ≤ b
     sorted [b | rest]
 ```
 
@@ -105,7 +105,7 @@ result = [1, 2, 4]        -- valid (length 3, sorted)  ← wrong elements
 ## Step 3: The output must contain the same elements
 
 ```evident
-claim sort[T : Ordered] : List T -> List T -> Prop
+claim sort[T ∈ Ordered] : List T → List T → Prop
 
 evident sort xs ys
     length ys = length xs
@@ -116,7 +116,7 @@ evident sort xs ys
 We need `permutation`. Let's define it:
 
 ```evident
-claim permutation[T : Eq] : List T -> List T -> Prop
+claim permutation[T ∈ Eq] : List T → List T → Prop
 
 evident permutation [] []
 evident permutation [x | xs] ys
@@ -127,15 +127,15 @@ evident permutation [x | xs] ys
 And supporting claims:
 
 ```evident
-claim member[T : Eq] : T -> List T -> semidet
-claim remove_one[T : Eq] : T -> List T -> List T -> det
+claim member[T ∈ Eq] : T → List T → semidet
+claim remove_one[T ∈ Eq] : T → List T → List T → det
 
 evident member x [x | _]
 evident member x [_ | rest]
     member x rest
 
 evident remove_one x [x | rest] rest
-evident remove_one x [y | rest] [y | result] when x != y
+evident remove_one x [y | rest] [y | result] when x ≠ y
     remove_one x rest result
 ```
 
@@ -176,30 +176,30 @@ The definitions above already use type parameters. Let's see them composed:
 
 ```evident
 -- A claim that the maximum element of a list is some value
-claim list_max[T : Ordered] : List T -> T -> semidet
+claim list_max[T ∈ Ordered] : List T → T → semidet
 
 evident list_max [x] x
 evident list_max [x | rest] m
     list_max rest m_rest
     m = max x m_rest
 
-claim max[T : Ordered] : T -> T -> T -> det
+claim max[T ∈ Ordered] : T → T → T → det
 
-evident max a b a when a >= b
+evident max a b a when a ≥ b
 evident max a b b when b > a
 ```
 
 Now we can compose: a sorted list's last element is its maximum.
 
 ```evident
-claim last[T] : List T -> T -> semidet
+claim last[T] : List T → T → semidet
 
 evident last [x] x
 evident last [_ | rest] x
     last rest x
 
 -- Composition: the last element of a sorted list is the maximum
-sorted_list_last_is_max : sorted xs, last xs m => list_max xs m
+sorted_list_last_is_max : sorted xs, last xs m ⇒ list_max xs m
 ```
 
 This reads: if `sorted xs` is established and `last xs m` is established,
@@ -214,9 +214,9 @@ We can make the output type dependent on the input:
 
 ```evident
 -- A sorted list of the same length as the input
-type SortedOf[T : Ordered] xs = { ys : List T | sorted ys, permutation xs ys }
+type SortedOf[T ∈ Ordered] xs = { ys ∈ List T | sorted ys, permutation xs ys }
 
-claim sort[T : Ordered] : (xs : List T) -> SortedOf[T] xs -> Prop
+claim sort[T ∈ Ordered] : (xs ∈ List T) → SortedOf[T] xs → Prop
 ```
 
 Now `sort xs ys` is not just claiming a relationship — `ys`'s type is the type
