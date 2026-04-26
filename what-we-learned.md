@@ -376,6 +376,36 @@ computed value from the solver. This replaces the function-call return value.
 
 ---
 
+## ∀ is a constraint template, not a loop
+
+`∀ a, b ∈ S : P(a, b)` is not a loop that runs and checks. It is a
+**constraint template** that gets **grounded** — expanded into one concrete
+constraint instance per element (or pair, or triple) of the set. All instances
+live in the model simultaneously. The solver sees the full flat collection and
+reasons over them at once.
+
+For `∀ a, b ∈ assignments : a ≠ b ⇒ a.person ≠ b.person` on assignments [x, y, z],
+the solver actually receives:
+
+```
+x ≠ y ⇒ x.person ≠ y.person
+x ≠ z ⇒ x.person ≠ z.person
+y ≠ x ⇒ y.person ≠ x.person
+y ≠ z ⇒ y.person ≠ z.person
+z ≠ x ⇒ z.person ≠ x.person
+z ≠ y ⇒ z.person ≠ y.person
+```
+
+The `∀` notation is compression of that expansion. The cross-product reading
+is the right mental model: `∀ a, b ∈ S` means `S × S` — all ordered pairs.
+`∀ a ∈ S, b ∈ T` means `S × T` — all pairs across two sets.
+
+Grounding is what constraint solvers do when they instantiate quantified
+constraints before solving. In Evident, the programmer writes the compressed
+form; the runtime grounds it before handing to the solver.
+
+---
+
 ## Dependent types and constraint modeling are the same thing from different directions
 
 Dependent types are what you get when you make types expressive enough to say
