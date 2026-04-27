@@ -174,19 +174,20 @@ Names-match handles the common case. Remapping with `↦` is needed when:
 - A sub-claim uses different variable names
 - You want to apply a claim to a field of the main variable rather than the variable itself
 
+The syntax is `sub_claim variable: local_value` — the sub-claim's slot name
+on the left, the local value going into it on the right. Same convention as
+`org_id: 42` — the slot gets filled by what follows the colon.
+
 **Example 1: checking the resource owner, not the current user**
 
-The `active_editor` claim constrains a `user`. But here we want to check
-that the *resource's owner* is an active editor — a different entity plays the `user` role:
+The `active_editor` claim expects a `user`. But here we want to check
+that the *resource's owner* is an active editor:
 
 ```evident
 claim owner_is_active_editor
     resource ∈ Resource
-    active_editor user ↦ resource.owner    -- resource.owner plays the role of 'user'
+    active_editor user: resource.owner    -- resource.owner fills the 'user' slot
 ```
-
-`resource.owner` is a `User`, so it satisfies `user ∈ User`. The `↦` says:
-"where `active_editor` expects `user`, use `resource.owner` from our scope."
 
 **Example 2: integrating a third-party auth claim with different naming**
 
@@ -207,12 +208,11 @@ claim secure_action
     auth_token   ∈ String
     current_time ∈ Nat
     user ∈ active_account
-         · (jwt_authenticated principal ↦ user, token ↦ auth_token)
+         · (jwt_authenticated principal: user, token: auth_token)
          · email_verified
 ```
 
-The `↦` maps variable names between systems. `current_time` flows by
-names-match (same name in both scopes).
+`current_time` flows by names-match. Only the mismatched names need `:` mapping.
 
 **Example 3: applying the same constraint to two different entities**
 
@@ -222,8 +222,8 @@ Checking that both sender and receiver are active accounts:
 claim transfer_eligible
     sender   ∈ User
     receiver ∈ User
-    active_account user ↦ sender    -- check sender
-    active_account user ↦ receiver  -- check receiver (same claim, different variable)
+    active_account user: sender      -- sender fills the 'user' slot
+    active_account user: receiver    -- receiver fills the 'user' slot
     sender ≠ receiver
 ```
 
