@@ -139,37 +139,62 @@ def random_seed_sample(
     """
     Sample by adding random hint constraints. Fast and diverse.
 
-    For each attempt:
-      1. Pick random values for free variables within estimated ranges.
-      2. Add those as additional 'given' hints (soft — the solver may pick
-         nearby values if the exact hint is infeasible).
-      3. Evaluate; if sat, record.
+    Builds the Z3 constraint system ONCE, then uses push/pop to test random
+    hint assignments. This avoids the ~100ms load_source overhead per attempt.
+    Safe here because this always runs inside an isolated subprocess.
     """
+    import z3
     from runtime.src.runtime import EvidentRuntime
-    from runtime.src.ast_types import MembershipConstraint, Identifier
+    from runtime.src.evaluate import EvidentSolver, _translate_body_constraint
+    from runtime.src.instantiate import instantiate_schema
+    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem
+    from runtime.src.env import Environment
 
-    # First, get rough ranges from a quick analysis
-    rt_probe = EvidentRuntime()
-    rt_probe.load_source(source)
-    schema = rt_probe.schemas.get(schema_name)
+    rt = EvidentRuntime()
+    rt.load_source(source)
+    schema = rt.schemas.get(schema_name)
     if schema is None:
         return []
 
-    # Collect free variable names and their types from the schema body
-    free_vars: dict[str, str] = {}  # name -> type_name
+    # Collect free variable names and their types
+    free_vars: dict[str, str] = {}
     for item in schema.body:
-        if (
-            isinstance(item, MembershipConstraint)
-            and item.op == "∈"
-            and isinstance(item.left, Identifier)
-        ):
+        if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                and isinstance(item.left, Identifier)):
             vname = item.left.name
             type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
             if vname not in given:
                 free_vars[vname] = type_name
 
-    # Use compute_ranges to find tight hint windows. When called from z3_worker
-    # we're already in an isolated subprocess, so Z3 is safe to call here.
+    # Build the Z3 solver and environment ONCE
+    solver_obj = EvidentSolver()
+    solver_obj.registry = rt.solver.registry
+    for sname, sobj in rt.schemas.items():
+        solver_obj.schemas[sname] = sobj
+
+    init_env = Environment()
+    for vname, val in given.items():
+        z3_val = solver_obj._python_to_z3_untyped(val)
+        init_env = init_env.bind(vname, z3_val)
+
+    env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry)
+
+    base_solver = z3.Solver()
+    for tc in type_constraints:
+        base_solver.add(tc)
+    for item in schema.body:
+        if isinstance(item, (EvidentBlock, PassthroughItem)):
+            continue
+        try:
+            base_solver.add(_translate_body_constraint(item, env, solver_obj.registry))
+        except (NotImplementedError, KeyError):
+            pass
+
+    # Short-circuit if base constraints are already unsatisfiable
+    if base_solver.check() != z3.sat:
+        return []
+
+    # Compute hint ranges once (binary search, also cheap since we're in a subprocess)
     computed_ranges: dict = {}
     try:
         from ranges import compute_ranges
@@ -181,44 +206,36 @@ def random_seed_sample(
         rng = computed_ranges.get(vname, {})
         lo = rng.get("min")
         if lo is not None:
-            # Sample within a window starting at the minimum
-            hi = lo + max(n * 4, 50)
-            return (lo, hi)
-        if type_name == "Nat":
-            return (0, 100)
-        if type_name == "Int":
-            return (-100, 100)
-        return (0, 100)
+            return (lo, lo + max(n * 4, 50))
+        return (0, 100) if type_name == "Nat" else (-100, 100)
 
     samples: list[Sample] = []
     seen: set = set()
-    attempts = n * 20  # generous attempts to reliably find n unique valid values
+    attempts = n * 20
 
     for _ in range(attempts):
         if len(samples) >= n:
             break
 
-        # Build random hints within the valid range
-        hints: dict[str, Any] = {}
+        # Push a scope, add one random assignment per free integer variable,
+        # check feasibility, then pop — reusing all base constraints.
+        base_solver.push()
         for vname, type_name in free_vars.items():
             if type_name in ("Nat", "Int"):
-                lo, hi = _hint_range(vname, type_name)
-                hints[vname] = random.randint(lo, hi)
+                z3_var = env.lookup(vname)
+                if z3_var is not None:
+                    lo, hi = _hint_range(vname, type_name)
+                    base_solver.add(z3_var == random.randint(lo, hi))
 
-        # Merge hints with given (given takes priority)
-        combined_given = {**hints, **given}
+        if base_solver.check() == z3.sat:
+            model = base_solver.model()
+            bindings = solver_obj._extract_model(env, model)
+            key = tuple(sorted(bindings.items()))
+            if key not in seen:
+                seen.add(key)
+                samples.append(Sample(bindings=bindings, satisfied=True))
 
-        rt = EvidentRuntime()
-        rt.load_source(source)
-        try:
-            result = rt.query(schema_name, given=combined_given)
-            if result.satisfied:
-                key = tuple(sorted(result.bindings.items()))
-                if key not in seen:
-                    seen.add(key)
-                    samples.append(Sample(bindings=result.bindings, satisfied=True))
-        except Exception:
-            pass
+        base_solver.pop()
 
     return samples
 
