@@ -196,23 +196,15 @@ toward "define what last and root ARE in terms of the edge structure."
 
 ## Full linked_list — three ways to express the terminal constraints
 
-The middle constraints are the same in all three. Only `root has no predecessors`
-and `last has no successors` vary.
+`..tree` brings in nodes, edges, root and all the tree constraints.
+Only `last` and its two constraints vary between versions.
 
 **Version A — universals over edges**
 
 ```evident
 claim linked_list
-    nodes ⊆ T
-    edges ⊆ T × T
-    root  ∈ nodes
-    last  ∈ nodes
-
-    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
-    ∀ x ∈ nodes : ¬ reachable edges x x
-    ∀ (x, y) ∈ edges : y ≠ root
-    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
-    ∀ x ∈ nodes : reachable edges root x
+    ..tree
+    last ∈ nodes
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
     ∀ (x, y) ∈ edges : x ≠ last
 ```
@@ -221,16 +213,8 @@ claim linked_list
 
 ```evident
 claim linked_list
-    nodes ⊆ T
-    edges ⊆ T × T
-    root  ∈ nodes
-    last  ∈ nodes
-
-    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
-    ∀ x ∈ nodes : ¬ reachable edges x x
-    edges[.1 = root] = {}
-    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
-    ∀ x ∈ nodes : reachable edges root x
+    ..tree
+    last ∈ nodes
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
     edges[.0 = last] = {}
 ```
@@ -239,16 +223,8 @@ claim linked_list
 
 ```evident
 claim linked_list
-    nodes ⊆ T
-    edges ⊆ T × T
-    root  ∈ nodes
-    last  ∈ nodes
-
-    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
-    ∀ x ∈ nodes : ¬ reachable edges x x
-    root ∉ edges.1
-    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
-    ∀ x ∈ nodes : reachable edges root x
+    ..tree
+    last ∈ nodes
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
     last ∉ edges.0
 ```
