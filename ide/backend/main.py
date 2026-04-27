@@ -11,7 +11,9 @@ Endpoints:
 
 import sys
 import json
+import hashlib
 import subprocess
+from collections import OrderedDict
 from pathlib import Path
 
 # Ensure the project root is on sys.path so `runtime` and `parser` are importable.
@@ -32,6 +34,32 @@ from pydantic import BaseModel
 from typing import Any
 
 _worker_script = str(Path(__file__).parent / "z3_worker.py")
+
+# ---------------------------------------------------------------------------
+# Request cache — keyed by sha256(json(payload)), LRU eviction at 128 entries
+# ---------------------------------------------------------------------------
+
+_CACHE_MAX = 128
+_cache: OrderedDict = OrderedDict()
+
+
+def _cache_key(command: str, payload: dict) -> str:
+    raw = json.dumps({"cmd": command, **payload}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str):
+    if key in _cache:
+        _cache.move_to_end(key)
+        return _cache[key]
+    return None
+
+
+def _cache_put(key: str, value: dict):
+    _cache[key] = value
+    _cache.move_to_end(key)
+    while len(_cache) > _CACHE_MAX:
+        _cache.popitem(last=False)
 
 
 def _call_worker(command: str, payload: dict, timeout: int = 60) -> dict:
@@ -160,23 +188,31 @@ def evaluate_schema(req: EvaluateRequest):
 @app.post("/ranges")
 def get_ranges(req: RangesRequest):
     """Compute valid ranges for each variable in an isolated subprocess."""
-    result = _call_worker("ranges", {"source": req.source, "schema": req.schema, "given": req.given})
+    payload = {"source": req.source, "schema": req.schema, "given": req.given}
+    key = _cache_key("ranges", payload)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    result = _call_worker("ranges", payload)
     if "error" in result and "ranges" not in result:
         return {"ranges": {}, "error": result["error"]}
+    _cache_put(key, result)
     return result
 
 
 @app.post("/sample")
 def sample_schema(req: SampleRequest):
     """Sample valid assignments in an isolated subprocess."""
-    result = _call_worker(
-        "sample",
-        {"source": req.source, "schema": req.schema, "given": req.given,
-         "n": req.n, "strategy": req.strategy},
-        timeout=120,
-    )
+    payload = {"source": req.source, "schema": req.schema, "given": req.given,
+               "n": req.n, "strategy": req.strategy}
+    key = _cache_key("sample", payload)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    result = _call_worker("sample", payload, timeout=120)
     if "error" in result and "samples" not in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    _cache_put(key, result)
     return result
 
 
