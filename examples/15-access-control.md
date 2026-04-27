@@ -126,32 +126,35 @@ claim in_acme_org = within_org org_id: 42
 
 ## Policies using constraint chaining
 
+`user`, `resource`, `org_id`, `current_time` are all in the outer scope.
+They flow into sub-claims by names-match — no explicit passing needed.
+
 ```evident
 -- Can view any content in their org
 claim can_view
     user     ∈ User
     resource ∈ Resource
-    user ∈ active_account · email_verified · resource_in_org resource
+    user ∈ active_account · email_verified · resource_in_org
 
 -- Can edit content they have access to
 claim can_edit
     user     ∈ User
     resource ∈ Resource
-    user ∈ active_account · email_verified · editor · resource_in_org resource
+    user ∈ active_account · email_verified · editor · resource_in_org
 
 -- Can publish (editors who have been recently active)
 claim can_publish
     user         ∈ User
     resource     ∈ Resource
     current_time ∈ Nat
-    user ∈ active_account · email_verified · editor · resource_in_org resource
+    user ∈ active_account · email_verified · editor · resource_in_org
          · recently_active days: 30
 
 -- Admin operations require more conditions
 claim can_admin
     user   ∈ User
     org_id ∈ Nat
-    user ∈ active_account · email_verified · admin · within_org org_id
+    user ∈ active_account · email_verified · admin · within_org
 
 -- Session-gated actions (user AND session must be valid)
 claim authenticated_action
@@ -161,6 +164,67 @@ claim authenticated_action
     user    ∈ active_account · email_verified
     session ∈ session_valid
     session.user = user
+```
+
+---
+
+## Variable remapping — when names don't match
+
+Names-match handles the common case. Remapping with `↦` is needed when:
+- A sub-claim uses different variable names
+- You want to apply a claim to a field of the main variable rather than the variable itself
+
+**Example 1: checking the resource owner, not the current user**
+
+The `active_editor` claim constrains a `user`. But here we want to check
+that the *resource's owner* is an active editor — a different entity plays the `user` role:
+
+```evident
+claim owner_is_active_editor
+    resource ∈ Resource
+    active_editor user ↦ resource.owner    -- resource.owner plays the role of 'user'
+```
+
+`resource.owner` is a `User`, so it satisfies `user ∈ User`. The `↦` says:
+"where `active_editor` expects `user`, use `resource.owner` from our scope."
+
+**Example 2: integrating a third-party auth claim with different naming**
+
+An external authentication library uses `principal` where our system uses `user`,
+and `token` where we use `auth_token`:
+
+```evident
+-- Third-party claim (different variable names)
+claim jwt_authenticated
+    principal ∈ User
+    token     ∈ String
+    jwt_signature_valid principal token
+    jwt_not_expired token current_time
+
+-- Our system uses 'user' and 'auth_token'
+claim secure_action
+    user         ∈ User
+    auth_token   ∈ String
+    current_time ∈ Nat
+    user ∈ active_account
+         · (jwt_authenticated principal ↦ user, token ↦ auth_token)
+         · email_verified
+```
+
+The `↦` maps variable names between systems. `current_time` flows by
+names-match (same name in both scopes).
+
+**Example 3: applying the same constraint to two different entities**
+
+Checking that both sender and receiver are active accounts:
+
+```evident
+claim transfer_eligible
+    sender   ∈ User
+    receiver ∈ User
+    active_account user ↦ sender    -- check sender
+    active_account user ↦ receiver  -- check receiver (same claim, different variable)
+    sender ≠ receiver
 ```
 
 ---
