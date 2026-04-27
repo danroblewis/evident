@@ -208,17 +208,12 @@ def get_ranges(req: RangesRequest):
 
 @app.post("/sample")
 def sample_schema(req: SampleRequest):
-    """Sample valid assignments in an isolated subprocess."""
+    """Sample valid assignments in an isolated subprocess. Never cached — results are random."""
     payload = {"source": req.source, "schema": req.schema, "given": req.given,
                "n": req.n, "strategy": req.strategy}
-    key = _cache_key("sample", payload)
-    cached = _cache_get(key)
-    if cached is not None:
-        return cached
     result = _call_worker("sample", payload, timeout=120)
     if "error" in result and "samples" not in result:
         raise HTTPException(status_code=400, detail=result["error"])
-    _cache_put(key, result)
     return result
 
 

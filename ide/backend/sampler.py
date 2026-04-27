@@ -92,8 +92,26 @@ def blocking_clause_sample(
             except (NotImplementedError, KeyError):
                 pass
 
-        # Add a random hint for enum variables so diverse variants are sampled.
-        # Without this, Z3 always picks the first declared constructor.
+        # Add blocking clauses for all previous solutions
+        for prev in previous_solutions:
+            prev_clauses = []
+            for vname, py_val in prev.items():
+                if vname in given:
+                    continue
+                z3_var = env.lookup(vname)
+                if z3_var is None:
+                    continue
+                try:
+                    z3_val = solver_obj._python_to_z3_untyped(py_val)
+                    prev_clauses.append(z3_var == z3_val)
+                except Exception:
+                    pass
+            if prev_clauses:
+                s.add(z3.Not(z3.And(*prev_clauses)))
+
+        # Try with a random enum hint first (push/pop so UNSAT from a bad hint
+        # doesn't kill the loop — it just falls back to unconstrained solving).
+        enum_hints = []
         for item in schema.body:
             if (isinstance(item, MembershipConstraint) and item.op == "∈"
                     and isinstance(item.left, Identifier)):
@@ -106,33 +124,22 @@ def blocking_clause_sample(
                     if ctors:
                         z3_var = env.lookup(vname)
                         if z3_var is not None:
-                            s.add(z3_var == random.choice(ctors))
+                            enum_hints.append(z3_var == random.choice(ctors))
 
-        # Add blocking clauses for all previous solutions
-        for prev in previous_solutions:
-            # Block: NOT (all free vars == their previous values simultaneously)
-            prev_clauses = []
-            for vname, py_val in prev.items():
-                if vname in given:
-                    continue  # given vars are fixed; don't block on them
-                z3_var = env.lookup(vname)
-                if z3_var is None:
-                    continue
-                try:
-                    z3_val = solver_obj._python_to_z3_untyped(py_val)
-                    prev_clauses.append(z3_var == z3_val)
-                except Exception:
-                    pass
-            if prev_clauses:
-                # Exclude this exact assignment
-                s.add(z3.Not(z3.And(*prev_clauses)))
+        model = None
+        if enum_hints:
+            s.push()
+            for h in enum_hints:
+                s.add(h)
+            if s.check() == z3.sat:
+                model = s.model()
+            s.pop()
 
-        result = s.check()
-        if result != z3.sat:
-            # No more solutions
-            break
+        if model is None:
+            if s.check() != z3.sat:
+                break  # no more solutions at all
+            model = s.model()
 
-        model = s.model()
         bindings = solver_obj._extract_model(env, model)
         previous_solutions.append(bindings)
         samples.append(Sample(bindings=bindings, satisfied=True))
