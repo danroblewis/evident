@@ -92,6 +92,22 @@ def blocking_clause_sample(
             except (NotImplementedError, KeyError):
                 pass
 
+        # Add a random hint for enum variables so diverse variants are sampled.
+        # Without this, Z3 always picks the first declared constructor.
+        for item in schema.body:
+            if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                    and isinstance(item.left, Identifier)):
+                vname = item.left.name
+                if vname in given:
+                    continue
+                type_name = item.right.name if isinstance(item.right, Identifier) else None
+                if type_name:
+                    ctors = solver_obj.registry.get_constructors_for(type_name)
+                    if ctors:
+                        z3_var = env.lookup(vname)
+                        if z3_var is not None:
+                            s.add(z3_var == random.choice(ctors))
+
         # Add blocking clauses for all previous solutions
         for prev in previous_solutions:
             # Block: NOT (all free vars == their previous values simultaneously)
@@ -221,11 +237,17 @@ def random_seed_sample(
         # check feasibility, then pop — reusing all base constraints.
         base_solver.push()
         for vname, type_name in free_vars.items():
+            z3_var = env.lookup(vname)
+            if z3_var is None:
+                continue
             if type_name in ("Nat", "Int"):
-                z3_var = env.lookup(vname)
-                if z3_var is not None:
-                    lo, hi = _hint_range(vname, type_name)
-                    base_solver.add(z3_var == random.randint(lo, hi))
+                lo, hi = _hint_range(vname, type_name)
+                base_solver.add(z3_var == random.randint(lo, hi))
+            else:
+                # Enum or other algebraic type — pick a random constructor
+                ctors = solver_obj.registry.get_constructors_for(type_name)
+                if ctors:
+                    base_solver.add(z3_var == random.choice(ctors))
 
         if base_solver.check() == z3.sat:
             model = base_solver.model()

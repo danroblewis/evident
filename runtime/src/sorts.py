@@ -163,6 +163,11 @@ class SortRegistry:
         """Return the Z3 constructor value for an enum variant, or None."""
         return self._constructors.get(name)
 
+    def get_constructors_for(self, type_name: str) -> list:
+        """Return all constructor values declared for a given enum type name."""
+        return [v for v in self._constructors.values()
+                if v.sort().name() == type_name]
+
     def set_sort(self, element_sort: z3.SortRef) -> z3.ArraySortRef:
         """
         Return the Z3 sort for ``Set T``.
