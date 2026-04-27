@@ -252,6 +252,23 @@ Conference.valid                   -- the solver must make this hold
 
 ---
 
+## `schema` is the unified keyword; `type` and `claim` are aliases
+
+`schema` is the primary keyword for a named constraint system — a set defined
+by membership conditions. `type` and `claim` are aliases that compile identically;
+they exist as stylistic hints:
+
+- `schema Task` — explicit, unambiguous
+- `type Task` — convention: "this defines the structure of a single record value"
+- `claim sorted` — convention: "this defines a relation across multiple values"
+
+The choice came from researching 40 alternative names for "named constraint system."
+`schema` has the strongest prior art: Z notation (the formal specification language)
+uses `schema` for almost exactly this concept — a named collection of declarations
+and constraints that defines a set of valid states.
+
+---
+
 ## `Prop` is dropped
 
 `Prop` was borrowed from type theory to distinguish "a logical proposition" from

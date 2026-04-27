@@ -5,7 +5,7 @@
 Reserved words. Cannot be used as identifiers.
 
 ```
-claim    type     assert   evident
+schema   claim    type     assert   evident
 ∀        ∃        ∃!       ¬∃
 ∈        ∉        ⊆        ⊇
 ∩        ∪        ×        \

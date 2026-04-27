@@ -2,17 +2,31 @@
 
 ## Core concept
 
-Every `claim` in Evident names a **set**. Every constraint in a claim body is a
-**membership condition** that narrows that set. The solver finds elements of the
-resulting intersection.
+The central construct in Evident is the **schema** — a named constraint system
+that defines a set by specifying membership conditions. The solver finds elements
+of the resulting solution space.
 
-```
-claim sorted list ∈ List T, T ∈ Ordered
+```evident
+schema sorted
+    T    ∈ Ordered
+    list ∈ List T
     ∀ (a, b) ∈ each_consecutive list : a ≤ b
 ```
 
 `sorted` names the set of non-decreasing lists. `list` is a variable. The body
-condition defines membership. The solver finds lists satisfying it.
+conditions define membership. The solver finds lists satisfying them.
+
+### `type` and `claim` are aliases for `schema`
+
+They carry no additional semantics — they are stylistic hints about intended use:
+
+| Keyword | Conventional use |
+|---|---|
+| `schema` | explicit, unambiguous |
+| `type` | hint: "this defines the structure of a single record value" |
+| `claim` | hint: "this defines a relation across multiple values" |
+
+All three compile identically. The choice is documentation for the reader.
 
 ## What Evident is
 
