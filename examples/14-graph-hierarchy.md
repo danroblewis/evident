@@ -14,27 +14,14 @@ No `Nat` required. No index arithmetic. Positions emerge from structure.
 ## Foundation: reachability
 
 ```evident
--- reachable: there is a directed path from a to b
--- Defined by two forward implication rules (transitive closure)
+-- reachable: there is a directed path from a to b via at least one edge.
+-- Self-referential body — the solver uses tabling to avoid infinite loops.
 
 claim reachable
     edges ∈ Set (T, T)
     a     ∈ T
     b     ∈ T
-
-(a, c) ∈ edges                       ⇒ reachable edges a c
-(a, c) ∈ edges, reachable edges c b  ⇒ reachable edges a b
-
-
--- strictly_reachable: reachable via at least one edge (no self-trivial case)
-
-claim strictly_reachable
-    edges ∈ Set (T, T)
-    a     ∈ T
-    b     ∈ T
-
-(a, b) ∈ edges                                    ⇒ strictly_reachable edges a b
-(a, c) ∈ edges, strictly_reachable edges c b      ⇒ strictly_reachable edges a b
+    (a, b) ∈ edges ∨ ∃ c ∈ T : (a, c) ∈ edges, reachable edges c b
 ```
 
 ---
@@ -58,8 +45,8 @@ claim graph
 claim dag
     nodes ∈ Set T
     edges ∈ Set (T, T)
-    graph                                            -- is a graph
-    ∀ x ∈ nodes : ¬ strictly_reachable edges x x    -- no cycles
+    graph                                       -- is a graph
+    ∀ x ∈ nodes : ¬ reachable edges x x        -- no cycles (no self-loops, no paths back)
 ```
 
 ---
