@@ -33,6 +33,9 @@ class EvidentEditor {
         // Debounce handle for parse requests
         this._parseTimer = null;
 
+        // Guard against re-entrant substitutions
+        this._applyingSubstitution = false;
+
         // Callbacks — set by the caller after construction
         this.onSchemaListChange = null;   // (schemas: string[]) => void
         this.onParseResult      = null;   // (result: ParseResult) => void
@@ -75,6 +78,9 @@ class EvidentEditor {
                         padding:              { top: 8, bottom: 8 },
                     },
                 );
+
+                // Symbol substitution — fires before the parse debounce
+                this._setupSubstitutions();
 
                 // Live parse on content change (debounced)
                 this.editor.onDidChangeModelContent(() => {
@@ -169,6 +175,69 @@ class EvidentEditor {
                 statusEl.parentElement?.classList.add('status-idle');
             }
         }
+    }
+
+    // ── Symbol substitutions ─────────────────────────────────────────────
+
+    /**
+     * Real-time keyword → symbol replacement (LaTeX-style).
+     *
+     * Operator pairs (<=, >=, !=, =>) are replaced immediately on the second
+     * character.  Word keywords ( in , not in , subset , superset , mapsto )
+     * are replaced when the user types the trailing space that completes them.
+     *
+     * Longer patterns are checked first so "not in" wins over "in".
+     * A re-entrancy guard prevents the programmatic edit from triggering
+     * another substitution pass.
+     */
+    _setupSubstitutions() {
+        // [match string, replacement string]
+        // Order: longest first to avoid partial matches.
+        const SUBS = [
+            [' not in ',   ' ∉ '  ],
+            [' superset ', ' ⊇ '  ],
+            [' subset ',   ' ⊆ '  ],
+            [' in ',       ' ∈ '  ],
+            ['mapsto ',    '↦ '   ],
+            ['!=',         '≠'    ],
+            ['<=',         '≤'    ],
+            ['>=',         '≥'    ],
+            ['=>',         '⇒'    ],
+        ];
+
+        this.editor.onDidChangeModelContent((e) => {
+            if (this._applyingSubstitution) return;
+
+            // Only react to single typed characters (ignore paste, undo, etc.)
+            if (e.changes.length !== 1) return;
+            const change = e.changes[0];
+            if (change.text.length !== 1) return;
+
+            const pos   = this.editor.getPosition();
+            const model = this.editor.getModel();
+            const line  = model.getLineContent(pos.lineNumber);
+            // Text on this line up to (not including) the cursor
+            const before = line.slice(0, pos.column - 1);
+
+            for (const [match, symbol] of SUBS) {
+                if (!before.endsWith(match)) continue;
+
+                const startCol = pos.column - match.length;   // 1-indexed
+                const endCol   = pos.column;
+
+                this._applyingSubstitution = true;
+                this.editor.executeEdits('symbol-sub', [{
+                    range: new monaco.Range(pos.lineNumber, startCol,
+                                           pos.lineNumber, endCol),
+                    text: symbol,
+                }]);
+                // Place cursor right after the inserted symbol
+                const newCol = startCol + symbol.length;
+                this.editor.setPosition({ lineNumber: pos.lineNumber, column: newCol });
+                this._applyingSubstitution = false;
+                break;
+            }
+        });
     }
 
     // ── Error decorations ────────────────────────────────────────────────
