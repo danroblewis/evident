@@ -154,7 +154,9 @@ class EvidentEditor {
                     statusEl.parentElement?.classList.remove('status-error');
                     statusEl.parentElement?.classList.add('status-ok');
                 } else {
-                    statusEl.textContent = `✗ ${errors.length} error${errors.length !== 1 ? 's' : ''}`;
+                    const first = errors[0].message || '';
+                    const summary = first.length > 80 ? first.slice(0, 80) + '…' : first;
+                    statusEl.textContent = `✗ ${errors.length} error${errors.length !== 1 ? 's' : ''}: ${summary}`;
                     statusEl.parentElement?.classList.remove('status-ok');
                     statusEl.parentElement?.classList.add('status-error');
                 }

@@ -139,10 +139,15 @@ class SortRegistry:
         for ctor in constructors:
             if ctor in self._constructors:
                 existing_sort = self._constructors[ctor].sort().name()
+                # Show a user-friendly description for anonymous inline enum names
+                new_desc = (
+                    f"the inline enum ({' | '.join(constructors)})"
+                    if name.startswith("_Enum_") else f"type '{name}'"
+                )
                 raise ValueError(
-                    f"Variant {ctor!r} is already registered for type {existing_sort!r}. "
-                    f"Cannot reuse it for {name!r}. "
-                    f"Rename the variant (e.g. '{name}{ctor}') to make it unique."
+                    f"Variant '{ctor}' is already registered for type '{existing_sort}'. "
+                    f"Cannot reuse it in {new_desc}. "
+                    f"Use '{existing_sort}' directly, or rename the variant."
                 )
 
         dt = z3.Datatype(name, self._ctx) if self._ctx else z3.Datatype(name)
