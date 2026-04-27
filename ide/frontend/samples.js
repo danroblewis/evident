@@ -114,14 +114,10 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
             exportBtn.onclick = () => exportCSV(vars, currentSamples, schemaName);
         }
 
-        // Filter to numeric variables for scatter axes
-        const numericVars = vars.filter(v => typeof samples[0][v] === 'number' && samples[0][v] !== null);
+        // Pass all vars so scatter can offer enum axes too
         if (typeof renderScatterControls === 'function') {
-            // Always call renderScatterControls so stale selects from a
-            // previous schema are cleared when there are < 2 numeric vars.
-            renderScatterControls(numericVars);
+            renderScatterControls(vars, samples);
         }
-        // Immediately render scatter with the new samples
         if (typeof drawScatter === 'function') {
             drawScatter(samples);
         }

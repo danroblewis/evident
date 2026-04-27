@@ -184,8 +184,8 @@ class TestCodeChange:
 # ── Sampling ─────────────────────────────────────────────────────────────────
 
 class TestSampling:
-    def test_default_n_is_5(self, page):
-        assert page.eval_on_selector("#sample-n", "el => el.value") == "5"
+    def test_default_n_is_200(self, page):
+        assert page.eval_on_selector("#sample-n", "el => el.value") == "200"
 
     def test_default_strategy_is_random(self, page):
         assert page.eval_on_selector("#sample-strategy", "el => el.value") == "random"
@@ -196,7 +196,8 @@ class TestSampling:
         )
         assert collapsed
 
-    def test_sample_button_returns_5_rows(self, page):
+    def test_sample_button_returns_rows(self, page):
+        page.select_option("#sample-n", "5")
         page.click("#btn-sample")
         page.wait_for_timeout(6000)
         rows = len(page.query_selector_all(".sample-row"))

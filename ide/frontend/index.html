@@ -41,10 +41,14 @@
             <select id="sample-n" title="Number of samples"
                     style="background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);
                            border-radius:4px;padding:2px 6px;font-size:11px;outline:none;">
-                <option value="5" selected>5</option>
+                <option value="5">5</option>
                 <option value="10">10</option>
                 <option value="25">25</option>
                 <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="300">300</option>
+                <option value="500">500</option>
             </select>
         </label>
 
@@ -93,26 +97,6 @@
                 </div>
             </div>
 
-            <!-- ── Sample vectors section ────────────────────────── -->
-            <div id="samples-section" class="viz-section">
-                <div class="viz-section-header" data-section="samples">
-                    <h3>
-                        <span class="section-icon">⚂</span>
-                        Sample Vectors
-                        <span id="sample-count"></span>
-                    </h3>
-                    <div class="section-actions">
-                        <button class="section-btn" id="export-csv-btn" title="Export as CSV">CSV</button>
-                        <span class="chevron">▶</span>
-                    </div>
-                </div>
-                <div class="viz-section-body" id="samples-body">
-                    <div id="samples-table-container">
-                        <p class="samples-empty">Click <strong>Sample</strong> to generate valid assignments.</p>
-                    </div>
-                </div>
-            </div>
-
             <!-- ── Variable ranges section ───────────────────────── -->
             <div id="ranges-section" class="viz-section">
                 <div class="viz-section-header open" data-section="ranges">
@@ -131,7 +115,7 @@
             <!-- ── 2D Scatter section ────────────────────────────── -->
             <div id="scatter-section" class="viz-section">
                 <div class="viz-section-header open" data-section="scatter">
-                    <h3><span class="section-icon">◎</span>2D Scatter</h3>
+                    <h3><span class="section-icon">◎</span>2D Plot</h3>
                     <div class="section-actions">
                         <span class="chevron">▶</span>
                     </div>
@@ -141,6 +125,26 @@
                         <span class="samples-empty">Run <strong>Sample</strong> first to populate axes.</span>
                     </div>
                     <div id="scatter-plot"></div>
+                </div>
+            </div>
+
+            <!-- ── Sample vectors section (collapsed by default) ─── -->
+            <div id="samples-section" class="viz-section">
+                <div class="viz-section-header" data-section="samples">
+                    <h3>
+                        <span class="section-icon">⚂</span>
+                        Sample Vectors
+                        <span id="sample-count"></span>
+                    </h3>
+                    <div class="section-actions">
+                        <button class="section-btn" id="export-csv-btn" title="Export as CSV">CSV</button>
+                        <span class="chevron">▶</span>
+                    </div>
+                </div>
+                <div class="viz-section-body collapsed" id="samples-body">
+                    <div id="samples-table-container">
+                        <p class="samples-empty">Click <strong>Sample</strong> to generate valid assignments.</p>
+                    </div>
                 </div>
             </div>
 
