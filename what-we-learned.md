@@ -622,6 +622,87 @@ come from sub-claims. More concise; less transparent.
 
 ---
 
+## Constraint chaining as set intersection — left to right
+
+The `∈` operator is itself a constraint: "element must be a member of set."
+Constraint sets can be named and chained with `∩`, giving a left-to-right
+compositional notation where each term narrows the solution space.
+
+```evident
+x ∈ lessthan 50 ∩ positive ∩ greater 5
+```
+
+Reads left to right: x flows through each named constraint set, each one
+narrowing what x can be. The final solution space is the intersection.
+
+### Named predicate sets
+
+A named predicate set is a set defined by a constraint with one unbound variable:
+
+```evident
+-- lessthan 50 is the set { n ∈ Nat | n < 50 }
+-- positive is the set { n ∈ Nat | n > 0 }
+-- greater 5 is the set { n ∈ Nat | n > 5 }
+
+-- written with multiline intersection:
+x ∈ (
+    lessthan 50
+    & positive
+    & greater 5
+)
+```
+
+`&` or `∩` between sets is AND — x must be in all of them simultaneously.
+
+### The category theory connection
+
+Each predicate set is a **subobject** — a subset of its element type.
+Intersection `∩` is the categorical product of subobjects.
+`x ∈ A ∩ B ∩ C` is applying the composite subobject morphism to x.
+
+A constraint chain `A ∩ B ∩ C` is an endomorphism on the solution space:
+it maps a set of possible values to a subset. Each named set is one such
+morphism. Composition is `∩`. Application is `∈`.
+
+### The pipeline variable mapping problem
+
+This works cleanly when all sets constrain the same single variable (x flows
+through implicitly). When a constraint has multiple variables — like a relation
+between two things — you need to say which variable is the "thread."
+
+This is the Unix pipe problem:
+
+```
+cat | grep stdin: left_stdout | sed stdin: left_stdout | wc stdin: left_stdout
+```
+
+Each tool has an implicit "main variable" (stdin/stdout). The pipe maps them.
+In Evident, names-match handles the common case (variables with the same name
+flow automatically). Explicit `↦` mapping handles the rest:
+
+```evident
+x ∈ lessthan 50 ∩ positive ∩ greater 5    -- single variable, flows implicitly
+
+-- multi-variable: need to say which variable threads
+result | sorted_and_deduplicated | take n: 10 | within_budget budget: 1000
+```
+
+The `|` pipe passes the "current thing" to the next stage; `name: value` maps
+specific variables that differ from what names-match would pick.
+
+### Open question: what is the "main variable" convention?
+
+In Unix pipes it is stdin/stdout — always one stream.
+In Evident, it is the variable written on the left of `∈`.
+When a constraint has exactly one free variable, it is unambiguous.
+When it has multiple, either names-match or explicit `↦` is required.
+
+This framing — constraint chains as categorical composition of subobject
+morphisms, with `∈` as application and `∩` as composition — may be the
+right foundation for a readable constraint composition syntax.
+
+---
+
 ## Set pipeline syntax — filter, project, apply
 
 Three operations cover most set manipulation. They compose like jq or Ruby's
