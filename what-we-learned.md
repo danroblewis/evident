@@ -622,6 +622,38 @@ come from sub-claims. More concise; less transparent.
 
 ---
 
+## Composition operator candidates for constraint chaining
+
+When chaining constraint systems as intersections (`A ∩ B ∩ C`), `∩` is
+visually heavy and hard to read between terms. We want a separator that:
+- Takes horizontal space (separates left and right terms clearly)
+- Has low visual weight (doesn't dominate the line)
+- Has no strong directional implication (constraint intersection is symmetric)
+- Flows naturally in sequences: `A op B op C`
+
+**Current candidates:**
+
+`·` (middle dot, U+00B7) — `A · B · C`
+- Category theory composition operator
+- Extremely minimal, almost invisible
+- Used for morphism composition — exactly what constraint chaining is
+- No existing baggage in programming languages
+
+`⋯` (midline ellipsis, U+22EF) — `A ⋯ B ⋯ C`
+- Horizontal spread, sits at mid-height
+- Feels like "and furthermore..." — captures the accumulating nature
+- Wider than middle dot, more clearly a separator
+
+`—` (em dash, U+2014) — `A — B — C`
+- Pure neutral separator, no semantic baggage
+- Maximum horizontal spread, very low visual weight
+- Readers recognize it as a separator, not an operator
+
+All three are under consideration. Category theory composition notations
+being researched as additional candidates (see `research/composition-notations.md`).
+
+---
+
 ## Constraint chaining as set intersection — left to right
 
 The `∈` operator is itself a constraint: "element must be a member of set."
