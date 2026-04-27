@@ -1,8 +1,10 @@
-// 2D scatter plot using D3.js
-// Renders automatically whenever sample data is available.
-// Picks the first two numeric variables with distinct names.
+// 2D scatter plot / strip plot using D3.js
+// - 2+ numeric vars: scatter plot
+// - 1 numeric var: strip/dot plot (jittered), colored by enum var if present
 
 (function () {
+
+const PALETTE = ['#89b4fa','#a6e3a1','#fab387','#f38ba8','#cba6f7','#94e2d5','#f9e2af','#74c7ec'];
 
 function pickAxes(samples) {
     if (!samples || samples.length === 0) return [null, null];
@@ -11,18 +13,29 @@ function pickAxes(samples) {
         return typeof v === 'number' && v !== null;
     });
     if (vars.length < 2) return [vars[0] || null, null];
-    // Default: first two distinct numeric variables
     return [vars[0], vars[1]];
+}
+
+function pickColorVar(samples) {
+    if (!samples || samples.length === 0) return null;
+    // First string-valued variable — likely an enum
+    return Object.keys(samples[0]).find(k => typeof samples[0][k] === 'string') || null;
 }
 
 function renderScatterControls(variables) {
     const numericVars = variables;
     const container = document.getElementById('scatter-controls');
-    if (numericVars.length < 2) {
-        const msg = numericVars.length === 0
-            ? 'No numeric variables to plot.'
-            : `Only one numeric variable (${numericVars[0]}) — need at least two for a scatter plot.`;
-        container.innerHTML = `<span class="samples-empty">${msg}</span>`;
+    if (numericVars.length === 0) {
+        container.innerHTML = `<span class="samples-empty">No numeric variables to plot.</span>`;
+        return;
+    }
+    if (numericVars.length === 1) {
+        // Strip plot mode — only an X selector
+        container.innerHTML = `
+            <label>X <select id="scatter-x"><option>${numericVars[0]}</option></select></label>
+            <span style="color:var(--fg-muted);font-size:11px;margin-left:8px;">strip plot</span>
+        `;
+        document.getElementById('scatter-x').addEventListener('change', drawFromCache);
         return;
     }
     container.innerHTML = `
@@ -42,7 +55,7 @@ function renderScatterControls(variables) {
     syncSelects();
 }
 
-// Cache last samples so redraws (on axis change) don't refetch
+// Cache last samples so redraws on axis change don't refetch
 let _cachedSamples = [];
 
 function drawScatter(samples) {
@@ -55,42 +68,157 @@ function drawFromCache() {
     const container = document.getElementById('scatter-plot');
     if (!container) return;
 
-    // Pick axes
     const xSel = document.getElementById('scatter-x');
     const ySel = document.getElementById('scatter-y');
     let xVar = xSel ? xSel.value : null;
     let yVar = ySel ? ySel.value : null;
 
-    // Validate: selected vars must actually exist as numeric fields in current samples
     const numericKeys = samples.length > 0
         ? Object.keys(samples[0]).filter(k => typeof samples[0][k] === 'number' && samples[0][k] !== null)
         : [];
+
+    // Validate selects against current sample keys
     if (!numericKeys.includes(xVar)) xVar = null;
     if (!numericKeys.includes(yVar)) yVar = null;
 
-    // Fallback: auto-pick from data
-    if (!xVar || !yVar || xVar === yVar) {
+    if (!xVar) {
         const [ax, ay] = pickAxes(samples);
         xVar = ax; yVar = ay;
         if (xSel && ax) xSel.value = ax;
         if (ySel && ay) ySel.value = ay;
     }
 
-    if (!xVar || !yVar || samples.length === 0) {
-        container.innerHTML = '<p style="color:#6c7086;padding:8px;">Need at least two numeric variables to plot.</p>';
+    if (!xVar || samples.length === 0) {
+        container.innerHTML = '<p style="color:#6c7086;padding:8px;">Waiting for samples…</p>';
         return;
     }
 
+    if (!yVar) {
+        drawStripPlot(samples, xVar, container);
+    } else {
+        drawScatterPlot(samples, xVar, yVar, container);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Strip plot: one numeric variable, dots jittered on Y, colored by enum
+// ---------------------------------------------------------------------------
+
+function drawStripPlot(samples, xVar, container) {
+    const colorVar = pickColorVar(samples);
     const pts = samples
-        .filter(s => s[xVar] != null && s[yVar] != null)
-        .map(s => ({ x: +s[xVar], y: +s[yVar], label: Object.entries(s).map(([k,v])=>`${k}:${v}`).join(' ') }));
+        .filter(s => s[xVar] != null)
+        .map(s => ({ x: +s[xVar], color: colorVar ? s[colorVar] : null,
+                     label: Object.entries(s).map(([k,v]) => `${k}: ${v}`).join('\n') }));
 
     if (pts.length === 0) {
-        container.innerHTML = `<p style="color:#6c7086;padding:8px;">No numeric data for ${xVar} / ${yVar}</p>`;
+        container.innerHTML = `<p style="color:#6c7086;padding:8px;">No data for ${xVar}</p>`;
         return;
     }
 
-    // Clear & draw with D3
+    container.innerHTML = '';
+
+    const W = container.clientWidth || 320;
+    const H = 200;
+    const M = { top: 20, right: 20, bottom: 40, left: 20 };
+    const iW = W - M.left - M.right;
+    const iH = H - M.top - M.bottom;
+    const midY = iH / 2;
+
+    // Color scale for enum values
+    const categories = colorVar ? [...new Set(pts.map(d => d.color))] : [];
+    const colorOf = d => {
+        if (!d.color) return '#89b4fa';
+        const i = categories.indexOf(d.color);
+        return PALETTE[i % PALETTE.length];
+    };
+
+    const xExt = d3.extent(pts, d => d.x);
+    const pad = v => v === 0 ? 1 : Math.abs(v) * 0.15;
+    const xScale = d3.scaleLinear()
+        .domain([xExt[0] - pad(xExt[0]), xExt[1] + pad(xExt[1])])
+        .range([0, iW]);
+
+    const svg = d3.select(container).append('svg')
+        .attr('width', W).attr('height', H)
+        .style('background', '#181825');
+
+    const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+    // Grid lines
+    g.append('g')
+        .selectAll('line')
+        .data(xScale.ticks(5)).enter().append('line')
+        .attr('x1', d => xScale(d)).attr('x2', d => xScale(d))
+        .attr('y1', 0).attr('y2', iH)
+        .attr('stroke', '#313244').attr('stroke-width', 1);
+
+    // Axis
+    g.append('g').attr('transform', `translate(0,${iH})`)
+        .call(d3.axisBottom(xScale).ticks(5))
+        .attr('color', '#6c7086');
+
+    // Centre line
+    g.append('line')
+        .attr('x1', 0).attr('x2', iW)
+        .attr('y1', midY).attr('y2', midY)
+        .attr('stroke', '#45475a').attr('stroke-width', 1);
+
+    // X axis label
+    g.append('text').attr('x', iW / 2).attr('y', iH + 35)
+        .attr('text-anchor', 'middle').attr('fill', '#cdd6f4').attr('font-size', 12)
+        .text(xVar);
+
+    // Tooltip
+    const tooltip = d3.select(container).append('div')
+        .style('position', 'absolute').style('background', '#313244')
+        .style('color', '#cdd6f4').style('padding', '6px 10px')
+        .style('border-radius', '4px').style('font-size', '12px')
+        .style('pointer-events', 'none').style('display', 'none')
+        .style('white-space', 'pre');
+
+    // Jitter seed is deterministic per point so rerenders are stable
+    const jitter = (i) => (((i * 2654435761) % 1000) / 1000 - 0.5) * (iH * 0.5);
+
+    g.selectAll('circle').data(pts).enter().append('circle')
+        .attr('cx', d => xScale(d.x))
+        .attr('cy', (d, i) => midY + jitter(i))
+        .attr('r', 6)
+        .attr('fill', d => colorOf(d))
+        .attr('opacity', 0.8)
+        .attr('stroke', '#1e1e2e').attr('stroke-width', 1)
+        .on('mouseover', (event, d) => tooltip.style('display', 'block').text(d.label))
+        .on('mousemove', event => tooltip.style('left', (event.offsetX+12)+'px').style('top', (event.offsetY-10)+'px'))
+        .on('mouseout', () => tooltip.style('display', 'none'));
+
+    // Legend for enum colors
+    if (categories.length > 0) {
+        const lx = iW - 4;
+        categories.forEach((cat, i) => {
+            g.append('circle').attr('cx', lx - 80).attr('cy', 6 + i * 16)
+                .attr('r', 5).attr('fill', PALETTE[i % PALETTE.length]);
+            g.append('text').attr('x', lx - 70).attr('y', 10 + i * 16)
+                .attr('fill', '#cdd6f4').attr('font-size', 11).text(cat);
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scatter plot: two numeric variables
+// ---------------------------------------------------------------------------
+
+function drawScatterPlot(samples, xVar, yVar, container) {
+    const colorVar = pickColorVar(samples);
+    const pts = samples
+        .filter(s => s[xVar] != null && s[yVar] != null)
+        .map(s => ({ x: +s[xVar], y: +s[yVar], color: colorVar ? s[colorVar] : null,
+                     label: Object.entries(s).map(([k,v]) => `${k}: ${v}`).join('\n') }));
+
+    if (pts.length === 0) {
+        container.innerHTML = `<p style="color:#6c7086;padding:8px;">No data for ${xVar} / ${yVar}</p>`;
+        return;
+    }
+
     container.innerHTML = '';
 
     const W = container.clientWidth || 320;
@@ -99,11 +227,11 @@ function drawFromCache() {
     const iW = W - M.left - M.right;
     const iH = H - M.top - M.bottom;
 
-    const svg = d3.select(container).append('svg')
-        .attr('width', W).attr('height', H)
-        .style('background', '#181825');
-
-    const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+    const categories = colorVar ? [...new Set(pts.map(d => d.color))] : [];
+    const colorOf = d => {
+        if (!d.color) return '#89b4fa';
+        return PALETTE[categories.indexOf(d.color) % PALETTE.length];
+    };
 
     const xExt = d3.extent(pts, d => d.x);
     const yExt = d3.extent(pts, d => d.y);
@@ -111,55 +239,60 @@ function drawFromCache() {
     const xScale = d3.scaleLinear().domain([xExt[0]-pad(xExt[0]), xExt[1]+pad(xExt[1])]).range([0, iW]);
     const yScale = d3.scaleLinear().domain([yExt[0]-pad(yExt[0]), yExt[1]+pad(yExt[1])]).range([iH, 0]);
 
-    // Grid
-    g.append('g').attr('class', 'grid')
-        .selectAll('line.vert')
+    const svg = d3.select(container).append('svg')
+        .attr('width', W).attr('height', H)
+        .style('background', '#181825');
+
+    const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+    g.append('g').selectAll('line.vert')
         .data(xScale.ticks(5)).enter().append('line')
         .attr('x1', d => xScale(d)).attr('x2', d => xScale(d))
         .attr('y1', 0).attr('y2', iH)
         .attr('stroke', '#313244').attr('stroke-width', 1);
 
-    g.append('g').attr('class', 'grid')
-        .selectAll('line.horiz')
+    g.append('g').selectAll('line.horiz')
         .data(yScale.ticks(5)).enter().append('line')
         .attr('x1', 0).attr('x2', iW)
         .attr('y1', d => yScale(d)).attr('y2', d => yScale(d))
         .attr('stroke', '#313244').attr('stroke-width', 1);
 
-    // Axes
     g.append('g').attr('transform', `translate(0,${iH})`)
-        .call(d3.axisBottom(xScale).ticks(5))
-        .attr('color', '#6c7086');
-
+        .call(d3.axisBottom(xScale).ticks(5)).attr('color', '#6c7086');
     g.append('g')
-        .call(d3.axisLeft(yScale).ticks(5))
-        .attr('color', '#6c7086');
+        .call(d3.axisLeft(yScale).ticks(5)).attr('color', '#6c7086');
 
-    // Axis labels
     g.append('text').attr('x', iW/2).attr('y', iH+35)
         .attr('text-anchor','middle').attr('fill','#cdd6f4').attr('font-size',12).text(xVar);
     g.append('text').attr('transform','rotate(-90)')
         .attr('x', -iH/2).attr('y', -36)
         .attr('text-anchor','middle').attr('fill','#cdd6f4').attr('font-size',12).text(yVar);
 
-    // Points
     const tooltip = d3.select(container).append('div')
         .style('position','absolute').style('background','#313244')
         .style('color','#cdd6f4').style('padding','6px 10px')
         .style('border-radius','4px').style('font-size','12px')
-        .style('pointer-events','none').style('display','none');
+        .style('pointer-events','none').style('display','none')
+        .style('white-space', 'pre');
 
     g.selectAll('circle').data(pts).enter().append('circle')
         .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
-        .attr('r', 6).attr('fill', '#89b4fa').attr('opacity', 0.75)
-        .attr('stroke', '#cba6f7').attr('stroke-width', 1)
-        .on('mouseover', (event, d) => {
-            tooltip.style('display','block').html(d.label.replace(/ /g,'<br>'));
-        })
-        .on('mousemove', event => {
-            tooltip.style('left', (event.offsetX+12)+'px').style('top', (event.offsetY-10)+'px');
-        })
+        .attr('r', 6).attr('fill', d => colorOf(d)).attr('opacity', 0.8)
+        .attr('stroke', '#1e1e2e').attr('stroke-width', 1)
+        .on('mouseover', (event, d) => tooltip.style('display','block').text(d.label))
+        .on('mousemove', event => tooltip.style('left', (event.offsetX+12)+'px').style('top', (event.offsetY-10)+'px'))
         .on('mouseout', () => tooltip.style('display','none'));
+
+    // Legend
+    if (categories.length > 0) {
+        const lx = iW - 4;
+        categories.forEach((cat, i) => {
+            g.append('circle').attr('cx', lx - 80).attr('cy', 6 + i * 16)
+                .attr('r', 5).attr('fill', PALETTE[i % PALETTE.length]);
+            g.append('text').attr('x', lx - 70).attr('y', 10 + i * 16)
+                .attr('fill', '#cdd6f4').attr('font-size', 11).text(cat);
+        });
+    }
 }
 
 window.renderScatterControls = renderScatterControls;
