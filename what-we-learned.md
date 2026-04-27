@@ -649,8 +649,28 @@ visually heavy and hard to read between terms. We want a separator that:
 - Maximum horizontal spread, very low visual weight
 - Readers recognize it as a separator, not an operator
 
-All three are under consideration. Category theory composition notations
-being researched as additional candidates (see `research/composition-notations.md`).
+**From category theory research** (`research/composition-notations.md`):
+
+`⋈` (bowtie, U+22C8) — `A ⋈ B ⋈ C`
+- Symmetric — no directionality implied
+- Genuine horizontal spread (two sides meeting in the middle)
+- Already means **natural join of relational structures** — semantically exact
+  for constraint composition (join on shared variable names)
+- No existing programming language baggage
+
+`;` (semicolon) — `A ; B ; C`
+- Left-to-right diagrammatic composition order (Schröder 1895)
+- Used in Coq, CSP, relational algebra
+- Implies direction (A before B), which may be misleading for symmetric intersection
+
+`⊗` (tensor, linear logic) — `A ⊗ B ⊗ C`
+- "Both hold simultaneously, from their own variable scopes"
+- Strong type-theoretic meaning for AND-composition
+- Visually heavy
+
+**Current ranking:** `⋈` > `·` > `⋯` > `—`
+`⋈` is semantically the most accurate (natural join = constraint intersection).
+`·` is the most minimal. `⋯` and `—` are neutral separators with no semantic claim.
 
 ---
 
