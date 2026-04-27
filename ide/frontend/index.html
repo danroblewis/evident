@@ -172,17 +172,62 @@
         paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
     });
 
+    // ── Auto-evaluate ────────────────────────────────────────────────────
+    let _evalTimer = null;
+
+    async function runEvaluate() {
+        const schema = document.getElementById('schema-select').value;
+        if (!schema || schema === 'Loading…') return;
+        const given  = getGivenBindings();
+        const source = evEditor?.getSource() || '';
+        if (!source.trim()) return;
+        try {
+            const resp = await fetch('/evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, schema, given }),
+            });
+            const data = await resp.json();
+            renderEvalResult(data);
+        } catch (e) { /* silent on page load */ }
+    }
+
+    function scheduleAutoEvaluate() {
+        clearTimeout(_evalTimer);
+        _evalTimer = setTimeout(runEvaluate, 800);
+    }
+
     // ── Boot the editor ─────────────────────────────────────────────────
     const evEditor = new EvidentEditor('editor-container');
 
+    // First successful parse → select first schema, evaluate, start sample timer
+    let _firstParse = true;
     evEditor.onSchemaListChange = (schemas) => {
         updateSchemaList(schemas);
-        // scheduleAutoSample is defined below; safe to call after first parse
-        if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
+        if (_firstParse && schemas.length > 0) {
+            _firstParse = false;
+            // Small delay so Monaco finishes layout before we fire requests
+            setTimeout(() => {
+                runEvaluate();
+                if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
+            }, 200);
+        } else {
+            scheduleAutoEvaluate();
+            if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
+        }
     };
+
+    // Editor content change → re-evaluate after 800ms
+    evEditor.onParseResult = () => scheduleAutoEvaluate();
 
     evEditor.init().then(() => {
         window.evEditor = evEditor;
+    });
+
+    // Schema selector change → evaluate immediately
+    document.getElementById('schema-select').addEventListener('change', () => {
+        runEvaluate();
+        if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
     });
 
     // ── Section collapse/expand ─────────────────────────────────────────

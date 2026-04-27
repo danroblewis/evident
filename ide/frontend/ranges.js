@@ -26,29 +26,42 @@ async function renderRanges(source, schemaName, given) {
                     <div class="range-fixed">= ${info.fixed}</div>
                     <div class="range-type">${info.type || ''}</div>
                 `;
-            } else if (info.min !== null && info.max !== null &&
-                       info.min !== undefined && info.max !== undefined) {
-                // Bounded numeric range — show a proportional fill bar
-                const span = info.max - info.min;
-                // The bar always fills the full container but shows the label span.
-                // A non-zero span fills 100%; a degenerate single-point range is shown
-                // at 100% width with equal min/max labels.
-                const fillPct = span > 0 ? 100 : 50;
+            } else if (info.min !== null && info.min !== undefined) {
+                // Know minimum; max may be unbounded
+                const hasMax = info.max !== null && info.max !== undefined;
+                const loLabel = info.min;
+                const hiLabel = hasMax ? info.max : '∞';
 
-                row.innerHTML = `
-                    <div class="range-name">${name}</div>
-                    <div class="range-bar-container">
-                        <span class="range-lo">${info.min}</span>
-                        <div class="range-bar">
-                            <div class="range-fill" style="width: ${fillPct}%"></div>
+                if (hasMax) {
+                    const span = info.max - info.min;
+                    const fillPct = span > 0 ? 100 : 50;
+                    row.innerHTML = `
+                        <div class="range-name">${name}</div>
+                        <div class="range-track-container">
+                            <span class="range-lo">${loLabel}</span>
+                            <div class="range-track">
+                                <div class="range-fill" style="width: ${fillPct}%"></div>
+                            </div>
+                            <span class="range-hi">${hiLabel}</span>
                         </div>
-                        <span class="range-hi">${info.max}</span>
-                    </div>
-                    <div class="range-type">${info.type || ''}</div>
-                `;
+                        <div class="range-type">${info.type || ''}</div>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <div class="range-name">${name}</div>
+                        <div class="range-track-container">
+                            <span class="range-lo">${loLabel}</span>
+                            <div class="range-track">
+                                <div class="range-fill" style="width: 100%"></div>
+                            </div>
+                            <span class="range-hi">${hiLabel}</span>
+                        </div>
+                        <div class="range-type">${info.type || ''}</div>
+                    `;
+                }
 
-                // Add an interactive slider for integer types
-                if (info.type === 'Nat' || info.type === 'Int') {
+                // Add an interactive slider for integer types (when both bounds known)
+                if ((info.type === 'Nat' || info.type === 'Int') && hasMax) {
                     const sliderWrap = document.createElement('div');
                     sliderWrap.className = 'range-slider-wrap';
 
@@ -68,11 +81,9 @@ async function renderRanges(source, schemaName, given) {
                     slider.addEventListener('input', () => {
                         valueLabel.textContent = slider.value;
                         slider.title = `${name}: ${slider.value}`;
-                        // Sync to the binding input for this variable, if present
                         const input = document.querySelector(`.binding-input[data-varname="${name}"]`);
                         if (input) {
                             input.value = slider.value;
-                            // Fire a change event so the rest of the UI can react
                             input.dispatchEvent(new Event('change', { bubbles: true }));
                         }
                     });

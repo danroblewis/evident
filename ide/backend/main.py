@@ -10,6 +10,8 @@ Endpoints:
 """
 
 import sys
+import json
+import subprocess
 from pathlib import Path
 
 # Ensure the project root is on sys.path so `runtime` and `parser` are importable.
@@ -28,6 +30,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Any
+
+_worker_script = str(Path(__file__).parent / "z3_worker.py")
+
+
+def _call_worker(command: str, payload: dict, timeout: int = 60) -> dict:
+    """Run a Z3 computation in an isolated subprocess. Returns parsed JSON result."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, _worker_script, command],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if proc.stdout.strip():
+            return json.loads(proc.stdout)
+        return {"error": proc.stderr.strip() or "worker produced no output"}
+    except subprocess.TimeoutExpired:
+        return {"error": "computation timed out"}
+    except Exception as e:
+        return {"error": str(e)}
 
 app = FastAPI(title="Evident IDE")
 app.add_middleware(
@@ -136,31 +159,25 @@ def evaluate_schema(req: EvaluateRequest):
 
 @app.post("/ranges")
 def get_ranges(req: RangesRequest):
-    """Compute valid ranges for each variable using Z3 Optimize."""
-    try:
-        from ranges import compute_ranges
-
-        ranges = compute_ranges(req.source, req.schema, req.given)
-        return {"ranges": ranges}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    """Compute valid ranges for each variable in an isolated subprocess."""
+    result = _call_worker("ranges", {"source": req.source, "schema": req.schema, "given": req.given})
+    if "error" in result and "ranges" not in result:
+        return {"ranges": {}, "error": result["error"]}
+    return result
 
 
 @app.post("/sample")
 def sample_schema(req: SampleRequest):
-    """Sample valid assignments using the specified strategy."""
-    try:
-        from sampler import blocking_clause_sample, random_seed_sample
-
-        if req.strategy == "blocking":
-            samples = blocking_clause_sample(req.source, req.schema, req.given, req.n)
-        else:
-            samples = random_seed_sample(req.source, req.schema, req.given, req.n)
-
-        satisfied = [s.bindings for s in samples if s.satisfied]
-        return {"samples": satisfied, "count": len(satisfied)}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    """Sample valid assignments in an isolated subprocess."""
+    result = _call_worker(
+        "sample",
+        {"source": req.source, "schema": req.schema, "given": req.given,
+         "n": req.n, "strategy": req.strategy},
+        timeout=120,
+    )
+    if "error" in result and "samples" not in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @app.post("/transfer")

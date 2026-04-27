@@ -168,25 +168,31 @@ def random_seed_sample(
             if vname not in given:
                 free_vars[vname] = type_name
 
-    # Use actual computed ranges so hints stay within the valid region
-    from ide.backend.ranges import compute_ranges
+    # Use compute_ranges to find tight hint windows. When called from z3_worker
+    # we're already in an isolated subprocess, so Z3 is safe to call here.
+    computed_ranges: dict = {}
     try:
-        computed = compute_ranges(source, schema_name, given)
+        from ranges import compute_ranges
+        computed_ranges = compute_ranges(source, schema_name, given)
     except Exception:
-        computed = {}
+        pass
 
     def _hint_range(vname: str, type_name: str) -> tuple[int, int]:
-        info = computed.get(vname, {})
-        lo = info.get("min")
-        hi = info.get("max")
-        if lo is None:
-            lo = 0 if type_name == "Nat" else -50
-        if hi is None:
-            hi = lo + 100
-        return int(lo), int(hi)
+        rng = computed_ranges.get(vname, {})
+        lo = rng.get("min")
+        if lo is not None:
+            # Sample within a window starting at the minimum
+            hi = lo + max(n * 4, 50)
+            return (lo, hi)
+        if type_name == "Nat":
+            return (0, 100)
+        if type_name == "Int":
+            return (-100, 100)
+        return (0, 100)
 
     samples: list[Sample] = []
-    attempts = n * attempts_multiplier
+    seen: set = set()
+    attempts = n * 20  # generous attempts to reliably find n unique valid values
 
     for _ in range(attempts):
         if len(samples) >= n:
@@ -207,9 +213,10 @@ def random_seed_sample(
         try:
             result = rt.query(schema_name, given=combined_given)
             if result.satisfied:
-                samples.append(Sample(bindings=result.bindings, satisfied=True))
-            else:
-                samples.append(Sample(bindings={}, satisfied=False))
+                key = tuple(sorted(result.bindings.items()))
+                if key not in seen:
+                    seen.add(key)
+                    samples.append(Sample(bindings=result.bindings, satisfied=True))
         except Exception:
             pass
 
