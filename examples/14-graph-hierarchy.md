@@ -18,7 +18,7 @@ No `Nat` required. No index arithmetic. Positions emerge from structure.
 -- Self-referential body — the solver uses tabling to avoid infinite loops.
 
 claim reachable
-    edges ∈ Set (T, T)
+    edges ⊆ T × T
     a     ∈ T
     b     ∈ T
     (a, b) ∈ edges ∨ ∃ c ∈ T : (a, c) ∈ edges, reachable edges c b
@@ -32,8 +32,8 @@ A set of nodes and edges, where every edge connects two nodes.
 
 ```evident
 claim graph
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
+    nodes ⊆ T
+    edges ⊆ T × T
     ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
 ```
 

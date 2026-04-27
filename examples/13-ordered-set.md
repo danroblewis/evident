@@ -13,7 +13,7 @@ Use sites stay clean. Readability flows left to right.
 Nat                 -- natural numbers with arithmetic
 {a..b}              -- the set of integers from a to b inclusive
 T ∈ Ordered         -- T has a total ≤ ordering
-Set (A, B)          -- sets of pairs
+A × B          -- sets of pairs
 ```
 
 ---
@@ -23,8 +23,8 @@ Set (A, B)          -- sets of pairs
 ```evident
 type Indexable T = {
     n                 ∈ Nat
-    entries           ∈ Set (Nat, T)
-    consecutive_pairs ∈ Set (T, T)
+    entries           ⊆ Nat × T
+    consecutive_pairs ⊆ T × T
 
     -- every valid index maps to exactly one value
     ∀ i ∈ {0..n-1} : exactly 1 { (j, v) ∈ entries | j = i }
@@ -104,12 +104,12 @@ uses `consecutive_pairs` directly since it is already in scope.
 ## Dependency chain
 
 ```
-Nat, {a..b}, T ∈ Ordered, Set (Nat, T)
+Nat, {a..b}, T ∈ Ordered, Nat × T
         ↓
 Indexable T
     n                 ∈ Nat
-    entries           ∈ Set (Nat, T)
-    consecutive_pairs ∈ Set (T, T)       ← tight binding
+    entries           ⊆ Nat × T
+    consecutive_pairs ⊆ T × T       ← tight binding
         ↓
 arr.consecutive_pairs                    ← field access, left to right
         ↓
