@@ -191,3 +191,36 @@ root ∉ edges.1
 `edges.1` is the set of all second elements (destination nodes).
 The last two forms move from "assert a constraint over all edges"
 toward "define what last and root ARE in terms of the edge structure."
+
+---
+
+## Full linked_list — all constraints unfolded
+
+```evident
+claim linked_list
+    nodes ⊆ T
+    edges ⊆ T × T
+    root  ∈ nodes
+    last  ∈ nodes
+
+    -- edges connect nodes (from graph)
+    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
+
+    -- no cycles (from dag)
+    ∀ x ∈ nodes : ¬ reachable edges x x
+
+    -- root has no predecessors (from tree)
+    root ∉ edges.1
+
+    -- every non-root has exactly one parent (from tree)
+    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
+
+    -- all nodes reachable from root (from tree)
+    ∀ x ∈ nodes : reachable edges root x
+
+    -- at most one child per node
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+
+    -- last has no successors
+    last ∉ edges.0
+```
