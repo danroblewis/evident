@@ -156,3 +156,38 @@ claim sorted_list
 Two lines. `linked_list` gives the sequential structure.
 `in_order` asserts the ordering. Both flow via names-match.
 `edges` is simultaneously the graph structure and the consecutive pairs.
+
+---
+
+## Alternative ways to express terminal node constraints
+
+The `last has no successors` constraint has three equivalent forms:
+
+```evident
+-- Universal over edges (current form)
+∀ (x, y) ∈ edges : x ≠ last
+
+-- Empty filtered set: the edges starting from last are empty
+edges[.0 = last] = {}
+
+-- Projection membership: last is not among the edge sources
+last ∉ edges.0
+```
+
+Same for `root has no predecessors`:
+
+```evident
+-- Universal over edges (current form)
+∀ (x, y) ∈ edges : y ≠ root
+
+-- Empty filtered set
+edges[.1 = root] = {}
+
+-- Projection membership
+root ∉ edges.1
+```
+
+`edges.0` is the set of all first elements (source nodes).
+`edges.1` is the set of all second elements (destination nodes).
+The last two forms move from "assert a constraint over all edges"
+toward "define what last and root ARE in terms of the edge structure."
