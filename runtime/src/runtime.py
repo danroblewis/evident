@@ -18,6 +18,7 @@ from .sorts import SortRegistry
 from .ast_types import (
     Program,
     SchemaDecl,
+    EnumDecl,
     AssertStmt,
     ForwardRule,
     ConstraintStmt,
@@ -92,7 +93,9 @@ class EvidentRuntime:
     def load_program(self, program: Program) -> None:
         """Load all statements from a parsed Program AST."""
         for stmt in program.statements:
-            if isinstance(stmt, SchemaDecl):
+            if isinstance(stmt, EnumDecl):
+                self.solver.registry.declare_algebraic(stmt.name, stmt.variants)
+            elif isinstance(stmt, SchemaDecl):
                 self.load_schema(stmt)
             elif isinstance(stmt, AssertStmt):
                 self._handle_assert(stmt)
@@ -143,7 +146,9 @@ class EvidentRuntime:
         if schema is None:
             raise KeyError(f"Unknown schema: {schema_name!r}")
 
-        result, evidence = evaluate_with_evidence(schema, given, self.schemas)
+        result, evidence = evaluate_with_evidence(
+            schema, given, self.schemas, registry=self.solver.registry
+        )
 
         qr = QueryResult(
             satisfied=result.satisfied,

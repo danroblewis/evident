@@ -209,6 +209,10 @@ class EvidentSolver:
         if isinstance(value, float):
             return z3.RealVal(value)
         if isinstance(value, str):
+            # Check enum constructors before falling back to string literal
+            ctor = self.registry.get_constructor(value)
+            if ctor is not None:
+                return ctor
             return z3.StringVal(value)
         raise ValueError(
             f"Cannot convert {value!r} to a Z3 expression. "
@@ -224,6 +228,9 @@ class EvidentSolver:
         if isinstance(value, float):
             return z3.RealVal(value)
         if isinstance(value, str):
+            ctor = self.registry.get_constructor(value)
+            if ctor is not None:
+                return ctor
             return z3.StringVal(value)
         raise ValueError(
             f"Cannot convert {value!r} to Z3 sort {sort}."
@@ -246,8 +253,12 @@ class EvidentSolver:
                 return expr.as_string()
             except Exception:
                 pass
-        # Uninterpreted sort value (e.g. Task!val!0) — return None, not a
-        # meaningful Python value. Callers should filter out None bindings.
+        # Algebraic datatype value (enum variant) — return the constructor name
+        if z3.is_app(expr) and expr.num_args() == 0:
+            sort = expr.sort()
+            if z3.is_sort(sort) and sort.kind() == z3.Z3_DATATYPE_SORT:
+                return expr.decl().name()
+        # Uninterpreted sort value (e.g. Task!val!0) — not meaningful
         expr_str = str(expr)
         if "!val!" in expr_str:
             return None

@@ -6,11 +6,15 @@
 start: (_NEWLINE | statement)*
 
 ?statement: schema_decl
+          | enum_decl
           | assert_stmt
           | forward_rule
           | query_stmt
           | evident_top
           | constraint_stmt
+
+// Enum type declaration: type Color = Red | Green | Blue
+enum_decl: "type" NAME "=" NAME ("|" NAME)+ _NEWLINE
 
 // ── Schema declarations ──────────────────────────────────────────────────────
 

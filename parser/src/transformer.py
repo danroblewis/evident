@@ -23,6 +23,14 @@ class EvidentTransformer(LarkTransformer):
 
     # ── Schema declarations ──────────────────────────────────────────────────
 
+    # ── Enum declarations ─────────────────────────────────────────────────────
+
+    def enum_decl(self, items):
+        # items = [NAME, NAME, NAME, ...] — type name followed by variant names
+        name = _str(items[0])
+        variants = [_str(t) for t in items[1:]]
+        return EnumDecl(name=name, variants=variants)
+
     def schema_block(self, items):
         # items = [schema_kw_str, NAME, body_list]
         keyword = items[0]

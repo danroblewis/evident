@@ -148,6 +148,7 @@ def evaluate_with_evidence(
     schema: "SchemaDecl",
     given: dict[str, Any] | None = None,
     sub_schemas: dict[str, "SchemaDecl"] | None = None,
+    registry=None,
 ) -> tuple["EvaluationResult", Evidence | None]:
     """
     Evaluate a schema and build an evidence tree if satisfied.
@@ -172,6 +173,8 @@ def evaluate_with_evidence(
     from .evaluate import EvidentSolver, EvaluationResult
 
     solver = EvidentSolver()
+    if registry is not None:
+        solver.registry = registry
     if sub_schemas:
         for name, s in sub_schemas.items():
             solver.register_schema(s)

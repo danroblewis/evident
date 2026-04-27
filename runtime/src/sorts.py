@@ -35,6 +35,8 @@ class SortRegistry:
         # Cache for tuple sorts keyed by a tuple of sort ids so we can look
         # them up without re-creating them.
         self._tuple_cache: dict[tuple[int, ...], z3.SortRef] = {}
+        # Enum variant name → Z3 constructor value (e.g. "Red" → Color.Red)
+        self._constructors: dict[str, z3.ExprRef] = {}
 
     # ------------------------------------------------------------------
     # Primitive sort helpers
@@ -137,7 +139,14 @@ class SortRegistry:
             dt.declare(ctor)
         sort = dt.create()
         self._registry[name] = sort
+        # Register each variant so translate_expr can resolve it by name
+        for ctor in constructors:
+            self._constructors[ctor] = getattr(sort, ctor)
         return sort
+
+    def get_constructor(self, name: str):
+        """Return the Z3 constructor value for an enum variant, or None."""
+        return self._constructors.get(name)
 
     def set_sort(self, element_sort: z3.SortRef) -> z3.ArraySortRef:
         """

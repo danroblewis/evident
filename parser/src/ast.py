@@ -9,8 +9,13 @@ class Program:
     statements: list[Statement]
 
 Statement = Union[
-    "SchemaDecl", "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt"
+    "SchemaDecl", "EnumDecl", "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt"
 ]
+
+@dataclass
+class EnumDecl:
+    name: str
+    variants: list[str]
 
 @dataclass
 class SchemaDecl:

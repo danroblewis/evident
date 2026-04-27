@@ -75,12 +75,16 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
     # ── Identifier ────────────────────────────────────────────────────────────
     if isinstance(expr, Identifier):
         value = env.lookup(expr.name)
-        if value is None:
-            raise KeyError(
-                f"Unbound variable {expr.name!r} in environment. "
-                f"Bound names: {list(env.bindings.keys())}"
-            )
-        return value
+        if value is not None:
+            return value
+        # Fall back to enum constructor lookup (e.g. Red, Green, Blue)
+        ctor = registry.get_constructor(expr.name)
+        if ctor is not None:
+            return ctor
+        raise KeyError(
+            f"Unbound variable {expr.name!r} in environment. "
+            f"Bound names: {list(env.bindings.keys())}"
+        )
 
     # ── Numeric literals ──────────────────────────────────────────────────────
     if isinstance(expr, (NatLiteral, IntLiteral)):
