@@ -229,12 +229,18 @@ def random_seed_sample(
         rng = computed_ranges.get(vname, {})
         lo = rng.get("min")
         if lo is not None:
-            return (lo, lo + max(n * 4, 50))
-        return (0, 100) if type_name == "Nat" else (-100, 100)
+            # Use a tight fixed window (50 units) rather than scaling with n.
+            # Wide windows cause correlated variables to have very low joint
+            # hit rates (e.g. y > x and y < 2*x: [lo, lo+200] → 2.6% hit rate
+            # vs [lo, lo+50] → 25%+).
+            return (lo, lo + 50)
+        return (0, 50) if type_name == "Nat" else (-50, 50)
 
     samples: list[Sample] = []
     seen: set = set()
-    attempts = n * 20
+    # More attempts compensate for schemas where even the tight window
+    # has a low hit rate. Cap at 5000 so n=500 doesn't take forever.
+    attempts = min(n * 50, 5000)
 
     for _ in range(attempts):
         if len(samples) >= n:
