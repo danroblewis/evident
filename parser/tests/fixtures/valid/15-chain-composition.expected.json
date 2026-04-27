@@ -4,7 +4,7 @@
     {
       "type": "SchemaDecl",
       "keyword": "schema",
-      "name": "Task",
+      "name": "can_edit",
       "params": [],
       "body": [
         {
@@ -12,11 +12,11 @@
           "op": "∈",
           "left": {
             "type": "Identifier",
-            "name": "id"
+            "name": "user"
           },
           "right": {
             "type": "Identifier",
-            "name": "Nat"
+            "name": "User"
           }
         },
         {
@@ -24,11 +24,11 @@
           "op": "∈",
           "left": {
             "type": "Identifier",
-            "name": "duration"
+            "name": "resource"
           },
           "right": {
             "type": "Identifier",
-            "name": "Nat"
+            "name": "Resource"
           }
         },
         {
@@ -36,12 +36,9 @@
           "op": "∈",
           "left": {
             "type": "Identifier",
-            "name": "deadline"
+            "name": "user"
           },
-          "right": {
-            "type": "Identifier",
-            "name": "Nat"
-          }
+          "right": "Tree('chain_bin', [Tree('chain_bin', [Tree('chain_bin', [Identifier(name='active_account'), Identifier(name='email_verified')]), Identifier(name='editor')]), Identifier(name='resource_in_org')])"
         }
       ]
     }

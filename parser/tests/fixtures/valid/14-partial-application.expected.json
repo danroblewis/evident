@@ -1,0 +1,53 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "editor",
+      "params": [],
+      "body": [
+        {
+          "type": "ApplicationConstraint",
+          "name": "has_role",
+          "args": [],
+          "mappings": [
+            {
+              "type": "InlineMapping",
+              "slot": "role",
+              "value": {
+                "type": "StringLiteral",
+                "value": "editor"
+              }
+            }
+          ],
+          "block_mappings": []
+        }
+      ]
+    },
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "in_acme",
+      "params": [],
+      "body": [
+        {
+          "type": "ApplicationConstraint",
+          "name": "within_org",
+          "args": [],
+          "mappings": [
+            {
+              "type": "InlineMapping",
+              "slot": "org_id",
+              "value": {
+                "type": "NatLiteral",
+                "value": 42
+              }
+            }
+          ],
+          "block_mappings": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "occurrences",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "x"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "T"
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "list"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "List"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "T"
+            }
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "n"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "Nat"
+          }
+        }
+      ]
+    },
+    {
+      "type": "EvidentBlock",
+      "patterns": [
+        {
+          "type": "PatternIdentifier",
+          "name": "occurrences"
+        },
+        {
+          "type": "PatternIdentifier",
+          "name": "x"
+        },
+        {
+          "type": "PatternEmptyList"
+        },
+        {
+          "type": "PatternLiteral",
+          "value": {
+            "type": "NatLiteral",
+            "value": 0
+          }
+        }
+      ],
+      "guard": null,
+      "body": []
+    },
+    {
+      "type": "EvidentBlock",
+      "patterns": [
+        {
+          "type": "PatternIdentifier",
+          "name": "occurrences"
+        },
+        {
+          "type": "PatternIdentifier",
+          "name": "x"
+        },
+        {
+          "type": "PatternCons",
+          "head": {
+            "type": "PatternIdentifier",
+            "name": "x"
+          },
+          "tail": {
+            "type": "PatternIdentifier",
+            "name": "rest"
+          }
+        },
+        {
+          "type": "PatternIdentifier",
+          "name": "n"
+        }
+      ],
+      "guard": null,
+      "body": [
+        {
+          "type": "ArithmeticConstraint",
+          "op": "=",
+          "left": {
+            "type": "Identifier",
+            "name": "_n0"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "BinaryExpr",
+              "op": "×",
+              "left": {
+                "type": "Identifier",
+                "name": "occurrences"
+              },
+              "right": {
+                "type": "Identifier",
+                "name": "x"
+              }
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "rest"
+            }
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": "=",
+          "left": {
+            "type": "Identifier",
+            "name": "n"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "+",
+            "left": {
+              "type": "Identifier",
+              "name": "_n0"
+            },
+            "right": {
+              "type": "NatLiteral",
+              "value": 1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

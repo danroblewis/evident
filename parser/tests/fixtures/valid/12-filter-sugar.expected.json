@@ -1,0 +1,115 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "slot_check",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "schedule"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "Set"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "Assignment"
+            }
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "max_parallel"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "Nat"
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "slots"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "Set"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "Slot"
+            }
+          }
+        },
+        {
+          "type": "UniversalConstraint",
+          "bindings": [
+            {
+              "type": "Binding",
+              "names": [
+                "slot"
+              ],
+              "set": {
+                "type": "Identifier",
+                "name": "slots"
+              }
+            }
+          ],
+          "body": {
+            "type": "ApplicationConstraint",
+            "name": "at_most",
+            "args": [
+              {
+                "type": "Identifier",
+                "name": "max_parallel"
+              },
+              {
+                "type": "FilterExpr",
+                "set": {
+                  "type": "Identifier",
+                  "name": "schedule"
+                },
+                "condition": {
+                  "type": "ArithmeticConstraint",
+                  "op": "=",
+                  "left": {
+                    "type": "FieldAccess",
+                    "obj": {
+                      "type": "Identifier",
+                      "name": "."
+                    },
+                    "field": "slot"
+                  },
+                  "right": {
+                    "type": "Identifier",
+                    "name": "slot"
+                  }
+                }
+              }
+            ],
+            "mappings": [],
+            "block_mappings": []
+          }
+        }
+      ]
+    }
+  ]
+}

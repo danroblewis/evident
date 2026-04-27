@@ -7,18 +7,31 @@
         {
           "type": "ApplicationConstraint",
           "name": "node",
+          "args": [
+            {
+              "type": "Identifier",
+              "name": "n"
+            }
+          ],
           "mappings": [],
-          "args": [{ "type": "Identifier", "name": "n" }]
+          "block_mappings": []
         }
       ],
       "conclusion": {
         "type": "ApplicationConstraint",
         "name": "reachable",
-        "mappings": [],
         "args": [
-          { "type": "Identifier", "name": "n" },
-          { "type": "Identifier", "name": "n" }
-        ]
+          {
+            "type": "Identifier",
+            "name": "n"
+          },
+          {
+            "type": "Identifier",
+            "name": "n"
+          }
+        ],
+        "mappings": [],
+        "block_mappings": []
       }
     },
     {
@@ -27,30 +40,51 @@
         {
           "type": "ApplicationConstraint",
           "name": "reachable",
-          "mappings": [],
           "args": [
-            { "type": "Identifier", "name": "a" },
-            { "type": "Identifier", "name": "b" }
-          ]
+            {
+              "type": "Identifier",
+              "name": "a"
+            },
+            {
+              "type": "Identifier",
+              "name": "b"
+            }
+          ],
+          "mappings": [],
+          "block_mappings": []
         },
         {
           "type": "ApplicationConstraint",
           "name": "adjacent",
-          "mappings": [],
           "args": [
-            { "type": "Identifier", "name": "b" },
-            { "type": "Identifier", "name": "c" }
-          ]
+            {
+              "type": "Identifier",
+              "name": "b"
+            },
+            {
+              "type": "Identifier",
+              "name": "c"
+            }
+          ],
+          "mappings": [],
+          "block_mappings": []
         }
       ],
       "conclusion": {
         "type": "ApplicationConstraint",
         "name": "reachable",
-        "mappings": [],
         "args": [
-          { "type": "Identifier", "name": "a" },
-          { "type": "Identifier", "name": "c" }
-        ]
+          {
+            "type": "Identifier",
+            "name": "a"
+          },
+          {
+            "type": "Identifier",
+            "name": "c"
+          }
+        ],
+        "mappings": [],
+        "block_mappings": []
       }
     }
   ]

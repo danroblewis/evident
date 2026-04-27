@@ -1,0 +1,252 @@
+// Evident Language Grammar for Lark (earley/basic)
+// Unicode has been normalized to __TOKEN__ form by normalizer.py
+
+%declare _INDENT _DEDENT
+
+start: (_NEWLINE | statement)*
+
+?statement: schema_decl
+          | assert_stmt
+          | forward_rule
+          | query_stmt
+          | evident_top
+          | constraint_stmt
+
+// ── Schema declarations ──────────────────────────────────────────────────────
+
+// Schema keyword captured via separate rules to distinguish "schema" vs "type" vs "claim"
+schema_decl: schema_kw NAME "=" NAME inline_mapping+ _NEWLINE   -> schema_alias_inline
+           | schema_kw NAME "=" NAME _NEWLINE                    -> schema_alias_simple
+           | schema_kw NAME _NEWLINE _INDENT body _DEDENT        -> schema_block
+
+// Using separate rules for each keyword so they're recognized as string literals (higher prio than NAME)
+schema_kw: "schema"  -> kw_schema
+         | "type"    -> kw_type
+         | "claim"   -> kw_claim
+
+// ── Schema body ──────────────────────────────────────────────────────────────
+
+body: body_line+
+
+?body_line: constraint _NEWLINE
+          | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _NEWLINE _DEDENT  -> body_forall_indented
+          | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _DEDENT  -> body_forall_indented_nodedent
+          | passthrough _NEWLINE
+          | schema_decl
+          | evident_block
+
+passthrough: ".." NAME
+
+// evident block at top level (outside a schema body)
+evident_top: "evident" pattern_arg+ _NEWLINE (_INDENT body _DEDENT)?
+
+// evident block inside a schema body
+evident_block: "evident" pattern_arg+ _NEWLINE _INDENT body _DEDENT
+
+pattern_arg: "[" "]"                                 -> pat_empty_list
+           | "[" pattern_arg ("|" pattern_arg)+ "]"  -> pat_cons
+           | "{" field_pattern ("," field_pattern)* "}"  -> pat_record
+           | NAME                                    -> pat_identifier
+           | literal                                 -> pat_literal
+           | "(" pattern_arg ("," pattern_arg)* ")"  -> pat_tuple
+
+field_pattern: NAME "=" NAME  -> field_pat_binding
+             | NAME           -> field_pat_shorthand
+
+// ── Constraints ──────────────────────────────────────────────────────────────
+
+?constraint: forall_constraint
+           | exists_constraint
+           | logic_constraint
+
+forall_constraint: ("__FORALL__"|"all") binding_list ":" constraint
+
+exists_constraint: ("__EXISTS__"|"some") binding_list ":" constraint   -> exists_some
+                 | ("__EXISTS__"|"some") binding_list app_arg+         -> exists_some_args
+                 | ("__EXISTS__"|"some") binding_list                  -> exists_some_bare
+                 | ("__UNIQUE__"|"one") binding_list ":" constraint    -> exists_unique
+                 | ("__NONE__"|"none") binding_list ":" constraint     -> exists_none
+                 | ("__NONE__"|"none") binding_list                    -> exists_none_bare
+
+// Logic constraint hierarchy (or > and > implies > not > base)
+// Note: right-hand sides allow full constraint (including quantifiers)
+?logic_constraint: logic_constraint ("__OR__"|"or") logic_rhs   -> logic_or
+                 | logic_and_constraint
+
+?logic_and_constraint: logic_and_constraint ("__AND__"|"and"|",") logic_rhs  -> logic_and
+                     | logic_implies_constraint
+
+?logic_implies_constraint: logic_implies_constraint ("__IMPLIES__"|"=>") logic_rhs  -> logic_implies
+                         | logic_not_constraint
+
+?logic_not_constraint: ("__NOT__"|"not") logic_rhs  -> logic_not
+                     | base_constraint
+
+// Right-hand side of logic operators: can be quantified
+?logic_rhs: forall_constraint
+          | exists_constraint
+          | logic_and_constraint
+
+?base_constraint: membership_constraint
+                | arith_constraint
+                | app_constraint
+                | "(" constraint ")"  -> paren_constraint
+
+// Membership at constraint level
+membership_constraint: expr ("__IN__"|"in") expr       -> mem_in
+                     | expr ("__NOT_IN__"|"not_in") expr  -> mem_not_in
+                     | expr ("__SUBSET__"|"subset") expr  -> mem_subset
+                     | expr ("__SUPERSET__"|"superset") expr  -> mem_superset
+
+// Arithmetic/comparison
+arith_constraint: expr "=" expr   -> arith_eq
+                | expr "!=" expr  -> arith_neq
+                | expr "<" expr   -> arith_lt
+                | expr ">" expr   -> arith_gt
+                | expr "<=" expr  -> arith_lte
+                | expr ">=" expr  -> arith_gte
+
+// Application constraint - name followed by args or mappings
+app_constraint: NAME inline_mapping+                     -> app_inline_mappings
+              | NAME "(" block_mapping ("," block_mapping)* ")"  -> app_block_mappings
+              | NAME "(" block_mapping+ ")"              -> app_block_mappings_nl
+              | NAME app_arg*                            -> app_args
+
+app_arg: "(" expr "," expr ("," expr)* ")"  -> app_arg_tuple
+       | "[" list_elems? "]"                -> app_arg_list
+       | NAME "[" filter_cond "]"           -> app_arg_filter
+       | "." NAME                           -> app_arg_dot_field
+       | NAME                               -> app_arg_name
+       | literal                            -> app_arg_literal
+       | set_or_range_expr                  -> app_arg_set
+
+inline_mapping: NAME ":" expr
+
+block_mapping: NAME "mapsto" expr
+
+// ── Bindings ─────────────────────────────────────────────────────────────────
+
+binding_list: binding ("," binding)*
+
+binding: "(" name_list ")" ("__IN__"|"in") expr  -> binding_tuple
+       | name_list ("__IN__"|"in") expr           -> binding_names
+
+name_list: NAME ("," NAME)*
+
+// ── Forward rules ─────────────────────────────────────────────────────────────
+
+forward_rule: premise_list ("__IMPLIES__"|"=>") app_constraint _NEWLINE
+
+premise_list: premise ("," premise)*
+premise: NAME app_arg*
+
+// ── Assert statements ─────────────────────────────────────────────────────────
+
+assert_stmt: "assert" NAME "=" expr _NEWLINE            -> assert_eq
+           | "assert" NAME ("__IN__"|"in") expr _NEWLINE -> assert_in
+           | "assert" NAME app_arg* _NEWLINE             -> assert_ground
+
+// ── Query statements ──────────────────────────────────────────────────────────
+
+query_stmt: "?" constraint _NEWLINE
+
+// ── Bare constraint statement ─────────────────────────────────────────────────
+
+constraint_stmt: constraint _NEWLINE
+
+// ── Expressions ──────────────────────────────────────────────────────────────
+
+?expr: chain_expr
+
+?chain_expr: chain_expr ("__CHAIN__"|"__JOIN__") additive_expr  -> chain_bin
+           | additive_expr
+
+?additive_expr: additive_expr "+" mult_expr     -> add_expr
+              | additive_expr "-" mult_expr     -> sub_expr
+              | additive_expr "__UNION__" mult_expr  -> union_expr
+              | mult_expr
+
+?mult_expr: mult_expr "*" juxt_expr         -> mul_expr
+          | mult_expr "/" juxt_expr         -> div_expr
+          | mult_expr "__INTERSECT__" juxt_expr  -> intersect_expr
+          | mult_expr "\\" juxt_expr        -> diff_expr
+          | mult_expr "__CROSS__" juxt_expr  -> cross_expr
+          | juxt_expr
+
+// Juxtaposition: adjacent names/atoms = type application (Set Assignment → Set × Assignment)
+?juxt_expr: juxt_expr juxt_name    -> juxt_app
+          | juxt_expr juxt_dot     -> juxt_dot_app
+          | postfix_expr
+
+// juxt_name is a NAME not starting a statement
+?juxt_name: NAME
+
+// juxt_dot is a .field reference (for grouped_by .slot etc)
+juxt_dot: "." NAME
+
+?postfix_expr: postfix_expr "." NAME    -> field_access
+             | postfix_expr "." INT     -> tuple_index
+             | postfix_expr "[" filter_cond "]"  -> filter_expr
+             | primary
+
+filter_cond: "." NAME "=" expr   -> filter_dot_field
+           | expr                -> filter_expr_cond
+
+?primary: literal
+        | set_or_range_expr
+        | tuple_paren_expr
+        | "(" expr ")"           -> paren_expr
+        | NAME                   -> identifier_expr
+
+// ── Set and range expressions ─────────────────────────────────────────────────
+
+set_or_range_expr: "{" "}"                         -> empty_set
+                 | "{" expr ".." expr "}"           -> range_expr
+                 | "{" compr_body "}"               -> set_comprehension
+                 | "{" shorthand_compr "}"          -> shorthand_comprehension
+                 | "{" expr ("," expr)* "}"         -> set_literal
+
+compr_body: expr "|" generator_list
+
+// Shorthand comprehension: { name ∈ set | condition }
+shorthand_compr: NAME ("__IN__"|"in") expr "|" constraint
+
+generator_list: generator ("," generator)*
+generator: "(" expr "," expr ("," expr)* ")" ("__IN__"|"in") expr  -> gen_tuple_binding
+         | name_list ("__IN__"|"in") expr           -> gen_binding
+         | expr                                     -> gen_expr
+
+// ── Tuple expressions ────────────────────────────────────────────────────────
+
+tuple_paren_expr: "(" expr "," expr ("," expr)* ")"
+
+list_elems: list_elem (("," | "|") list_elem)*
+list_elem: expr
+
+// ── Literals ──────────────────────────────────────────────────────────────────
+
+literal: REAL      -> real_lit
+       | INT       -> int_lit
+       | STRING    -> string_lit
+       | "true"    -> bool_true
+       | "false"   -> bool_false
+
+// ── Terminals ────────────────────────────────────────────────────────────────
+
+NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+REAL: /[0-9]+\.[0-9]+/
+INT: /[0-9]+/
+STRING: /\"[^\"]*\"/
+
+LPAR: "("
+RPAR: ")"
+LBRACE: "{"
+RBRACE: "}"
+LSQB: "["
+RSQB: "]"
+
+%ignore /[ \t\f]+/
+%ignore /\/\/[^\n]*/
+%ignore /\#[^\n]*/
+
+_NEWLINE: ( /\r?\n[\t ]*/ )+

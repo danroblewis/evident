@@ -1,0 +1,62 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "consecutive_pairs",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "arr"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "Indexable"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "T"
+            }
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "⊆",
+          "left": {
+            "type": "Identifier",
+            "name": "pairs"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "T"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "T"
+            }
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": "=",
+          "left": {
+            "type": "Identifier",
+            "name": "pairs"
+          },
+          "right": "Tree(Token('RULE', 'compr_body'), [TupleLiteral(elements=[Identifier(name='v1'), Identifier(name='v2')]), [ComprehensionGenerator(binding=None, constraint=MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='i'), Identifier(name='v1')]), right=BinaryExpr(op='×', left=Identifier(name='arr'), right=FieldAccess(obj=Identifier(name='.'), field='entries')))), ComprehensionGenerator(binding=None, constraint=MembershipConstraint(op='∈', left=TupleLiteral(elements=[BinaryExpr(op='+', left=Identifier(name='i'), right=NatLiteral(value=1)), Identifier(name='v2')]), right=BinaryExpr(op='×', left=Identifier(name='arr'), right=FieldAccess(obj=Identifier(name='.'), field='entries'))))]])"
+        }
+      ]
+    }
+  ]
+}

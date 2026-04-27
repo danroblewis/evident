@@ -1,0 +1,44 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "AssertStmt",
+      "name": "x",
+      "value": {
+        "type": "NatLiteral",
+        "value": 5
+      },
+      "member_of": null,
+      "args": []
+    },
+    {
+      "type": "AssertStmt",
+      "name": "name",
+      "value": {
+        "type": "StringLiteral",
+        "value": "Alice"
+      },
+      "member_of": null,
+      "args": []
+    },
+    {
+      "type": "AssertStmt",
+      "name": "tasks",
+      "value": {
+        "type": "SetLiteral",
+        "elements": [
+          {
+            "type": "Identifier",
+            "name": "task_a"
+          },
+          {
+            "type": "Identifier",
+            "name": "task_b"
+          }
+        ]
+      },
+      "member_of": null,
+      "args": []
+    }
+  ]
+}

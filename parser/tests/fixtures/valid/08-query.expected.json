@@ -1,0 +1,28 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "QueryStmt",
+      "constraint": {
+        "type": "ApplicationConstraint",
+        "name": "sorted",
+        "args": [
+          {
+            "type": "SetLiteral",
+            "elements": [
+              "Tree(Token('RULE', 'list_elem'), [NatLiteral(value=3)])",
+              "Tree(Token('RULE', 'list_elem'), [NatLiteral(value=1)])",
+              "Tree(Token('RULE', 'list_elem'), [NatLiteral(value=2)])"
+            ]
+          }
+        ],
+        "mappings": [],
+        "block_mappings": []
+      }
+    },
+    {
+      "type": "QueryStmt",
+      "constraint": "Tree('exists_some_args', [[Binding(names=['result'], set=FilterExpr(set=Identifier(name='SortedOf'), condition=Identifier(name='Nat')), guard=None, distinct=False)], SetLiteral(elements=[Tree(Token('RULE', 'list_elem'), [NatLiteral(value=3)]), Tree(Token('RULE', 'list_elem'), [NatLiteral(value=1)]), Tree(Token('RULE', 'list_elem'), [NatLiteral(value=2)])])])"
+    }
+  ]
+}

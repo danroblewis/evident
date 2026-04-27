@@ -1,0 +1,81 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "transfer_eligible",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "sender"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "User"
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "receiver"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "User"
+          }
+        },
+        {
+          "type": "ApplicationConstraint",
+          "name": "active_account",
+          "args": [],
+          "mappings": [],
+          "block_mappings": [
+            {
+              "type": "BlockMapping",
+              "slot": "user",
+              "value": {
+                "type": "Identifier",
+                "name": "sender"
+              }
+            }
+          ]
+        },
+        {
+          "type": "ApplicationConstraint",
+          "name": "active_account",
+          "args": [],
+          "mappings": [],
+          "block_mappings": [
+            {
+              "type": "BlockMapping",
+              "slot": "user",
+              "value": {
+                "type": "Identifier",
+                "name": "receiver"
+              }
+            }
+          ]
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": "≠",
+          "left": {
+            "type": "Identifier",
+            "name": "sender"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "receiver"
+          }
+        }
+      ]
+    }
+  ]
+}

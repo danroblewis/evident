@@ -4,7 +4,7 @@
     {
       "type": "SchemaDecl",
       "keyword": "schema",
-      "name": "Task",
+      "name": "ValidTask",
       "params": [],
       "body": [
         {
@@ -41,6 +41,18 @@
           "right": {
             "type": "Identifier",
             "name": "Nat"
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": "<",
+          "left": {
+            "type": "Identifier",
+            "name": "duration"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "deadline"
           }
         }
       ]

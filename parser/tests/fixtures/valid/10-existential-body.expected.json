@@ -1,0 +1,58 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "reachable",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "⊆",
+          "left": {
+            "type": "Identifier",
+            "name": "edges"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "T"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "T"
+            }
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "a"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "T"
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "b"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "T"
+          }
+        },
+        "Tree('logic_or', [MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='a'), Identifier(name='b')]), right=Identifier(name='edges')), ExistentialConstraint(quantifier='∃', bindings=[Binding(names=['c'], set=Identifier(name='T'), guard=None, distinct=False)], body=Tree('logic_and', [MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='a'), Identifier(name='c')]), right=Identifier(name='edges')), ApplicationConstraint(name='reachable', args=[Identifier(name='edges'), Identifier(name='c'), Identifier(name='b')], mappings=[], block_mappings=[])]))])"
+      ]
+    }
+  ]
+}

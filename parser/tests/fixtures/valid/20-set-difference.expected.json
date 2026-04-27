@@ -1,0 +1,115 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "linked_list",
+      "params": [],
+      "body": [
+        {
+          "type": "PassthroughItem",
+          "name": "tree",
+          "mappings": []
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "last"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "\\",
+            "left": {
+              "type": "Identifier",
+              "name": "nodes"
+            },
+            "right": {
+              "type": "TupleIndex",
+              "obj": {
+                "type": "Identifier",
+                "name": "edges"
+              },
+              "index": 0
+            }
+          }
+        },
+        {
+          "type": "UniversalConstraint",
+          "bindings": [
+            {
+              "type": "Binding",
+              "names": [
+                "x"
+              ],
+              "set": {
+                "type": "Identifier",
+                "name": "nodes"
+              }
+            }
+          ],
+          "body": {
+            "type": "ApplicationConstraint",
+            "name": "at_most",
+            "args": [
+              {
+                "type": "NatLiteral",
+                "value": 1
+              },
+              {
+                "type": "SetComprehension",
+                "output": {
+                  "type": "Identifier",
+                  "name": "y"
+                },
+                "generators": [
+                  {
+                    "type": "ComprehensionGenerator",
+                    "binding": {
+                      "type": "Binding",
+                      "names": [
+                        "y"
+                      ],
+                      "set": {
+                        "type": "Identifier",
+                        "name": "nodes"
+                      }
+                    }
+                  },
+                  {
+                    "type": "ComprehensionGenerator",
+                    "constraint": {
+                      "type": "MembershipConstraint",
+                      "op": "∈",
+                      "left": {
+                        "type": "TupleLiteral",
+                        "elements": [
+                          {
+                            "type": "Identifier",
+                            "name": "x"
+                          },
+                          {
+                            "type": "Identifier",
+                            "name": "y"
+                          }
+                        ]
+                      },
+                      "right": {
+                        "type": "Identifier",
+                        "name": "edges"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "mappings": [],
+            "block_mappings": []
+          }
+        }
+      ]
+    }
+  ]
+}

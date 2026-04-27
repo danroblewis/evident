@@ -1,0 +1,33 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "AssertStmt",
+      "name": "result",
+      "value": null,
+      "member_of": {
+        "type": "Identifier",
+        "name": "Nat"
+      },
+      "args": []
+    },
+    {
+      "type": "AssertStmt",
+      "name": "schedule",
+      "value": null,
+      "member_of": {
+        "type": "BinaryExpr",
+        "op": "×",
+        "left": {
+          "type": "Identifier",
+          "name": "Set"
+        },
+        "right": {
+          "type": "Identifier",
+          "name": "Assignment"
+        }
+      },
+      "args": []
+    }
+  ]
+}

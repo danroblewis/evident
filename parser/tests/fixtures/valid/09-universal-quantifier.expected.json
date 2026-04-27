@@ -10,27 +10,48 @@
         {
           "type": "MembershipConstraint",
           "op": "∈",
-          "left": { "type": "Identifier", "name": "schedule" },
+          "left": {
+            "type": "Identifier",
+            "name": "schedule"
+          },
           "right": {
             "type": "BinaryExpr",
             "op": "×",
-            "left": { "type": "Identifier", "name": "Set" },
-            "right": { "type": "Identifier", "name": "Assignment" }
+            "left": {
+              "type": "Identifier",
+              "name": "Set"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "Assignment"
+            }
           }
         },
         {
           "type": "UniversalConstraint",
           "bindings": [
             {
-              "names": ["a"],
-              "set": { "type": "Identifier", "name": "schedule" }
+              "type": "Binding",
+              "names": [
+                "a"
+              ],
+              "set": {
+                "type": "Identifier",
+                "name": "schedule"
+              }
             }
           ],
           "body": {
             "type": "ApplicationConstraint",
             "name": "assignment_valid",
+            "args": [
+              {
+                "type": "Identifier",
+                "name": "a"
+              }
+            ],
             "mappings": [],
-            "args": [{ "type": "Identifier", "name": "a" }]
+            "block_mappings": []
           }
         }
       ]

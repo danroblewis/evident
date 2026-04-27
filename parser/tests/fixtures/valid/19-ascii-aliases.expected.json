@@ -1,0 +1,81 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "sorted_ascii",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "T"
+          },
+          "right": {
+            "type": "Identifier",
+            "name": "Ordered"
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "list"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "List"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "T"
+            }
+          }
+        },
+        {
+          "type": "UniversalConstraint",
+          "bindings": [
+            {
+              "type": "Binding",
+              "names": [
+                "a",
+                "b"
+              ],
+              "set": {
+                "type": "BinaryExpr",
+                "op": "×",
+                "left": {
+                  "type": "Identifier",
+                  "name": "each_consecutive"
+                },
+                "right": {
+                  "type": "Identifier",
+                  "name": "list"
+                }
+              }
+            }
+          ],
+          "body": {
+            "type": "ArithmeticConstraint",
+            "op": "≤",
+            "left": {
+              "type": "Identifier",
+              "name": "a"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "b"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

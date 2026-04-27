@@ -1,0 +1,131 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "Conference",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "schedule"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "Set"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "Assignment"
+            }
+          }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": {
+            "type": "Identifier",
+            "name": "slots"
+          },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": {
+              "type": "Identifier",
+              "name": "Set"
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "Slot"
+            }
+          }
+        },
+        {
+          "type": "SchemaDecl",
+          "keyword": "schema",
+          "name": "rooms_conflict_free",
+          "params": [],
+          "body": [
+            {
+              "type": "UniversalConstraint",
+              "bindings": [
+                {
+                  "type": "Binding",
+                  "names": [
+                    "slot_assignments"
+                  ],
+                  "set": {
+                    "type": "BinaryExpr",
+                    "op": "×",
+                    "left": {
+                      "type": "BinaryExpr",
+                      "op": "×",
+                      "left": {
+                        "type": "Identifier",
+                        "name": "schedule"
+                      },
+                      "right": {
+                        "type": "Identifier",
+                        "name": "grouped_by"
+                      }
+                    },
+                    "right": {
+                      "type": "FieldAccess",
+                      "obj": {
+                        "type": "Identifier",
+                        "name": "."
+                      },
+                      "field": "slot"
+                    }
+                  }
+                }
+              ],
+              "body": {
+                "type": "ApplicationConstraint",
+                "name": "all_different",
+                "args": [
+                  {
+                    "type": "Identifier",
+                    "name": "slot_assignments"
+                  },
+                  {
+                    "type": "FieldAccess",
+                    "obj": {
+                      "type": "Identifier",
+                      "name": "."
+                    },
+                    "field": "room"
+                  }
+                ],
+                "mappings": [],
+                "block_mappings": []
+              }
+            }
+          ]
+        },
+        {
+          "type": "SchemaDecl",
+          "keyword": "schema",
+          "name": "valid",
+          "params": [],
+          "body": [
+            {
+              "type": "ApplicationConstraint",
+              "name": "rooms_conflict_free",
+              "args": [],
+              "mappings": [],
+              "block_mappings": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

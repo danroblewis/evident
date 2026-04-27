@@ -3,8 +3,8 @@
   "statements": [
     {
       "type": "SchemaDecl",
-      "keyword": "schema",
-      "name": "Task",
+      "keyword": "type",
+      "name": "Point",
       "params": [],
       "body": [
         {
@@ -12,11 +12,11 @@
           "op": "∈",
           "left": {
             "type": "Identifier",
-            "name": "id"
+            "name": "x"
           },
           "right": {
             "type": "Identifier",
-            "name": "Nat"
+            "name": "Real"
           }
         },
         {
@@ -24,23 +24,11 @@
           "op": "∈",
           "left": {
             "type": "Identifier",
-            "name": "duration"
+            "name": "y"
           },
           "right": {
             "type": "Identifier",
-            "name": "Nat"
-          }
-        },
-        {
-          "type": "MembershipConstraint",
-          "op": "∈",
-          "left": {
-            "type": "Identifier",
-            "name": "deadline"
-          },
-          "right": {
-            "type": "Identifier",
-            "name": "Nat"
+            "name": "Real"
           }
         }
       ]
