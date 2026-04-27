@@ -134,12 +134,22 @@ class SortRegistry:
             existing = self._registry[name]
             return existing  # type: ignore[return-value]
 
+        # Check for variant name conflicts before creating the Z3 datatype.
+        # Variant names are global: Red always means exactly one thing.
+        for ctor in constructors:
+            if ctor in self._constructors:
+                existing_sort = self._constructors[ctor].sort().name()
+                raise ValueError(
+                    f"Variant {ctor!r} is already registered for type {existing_sort!r}. "
+                    f"Cannot reuse it for {name!r}. "
+                    f"Rename the variant (e.g. '{name}{ctor}') to make it unique."
+                )
+
         dt = z3.Datatype(name, self._ctx) if self._ctx else z3.Datatype(name)
         for ctor in constructors:
             dt.declare(ctor)
         sort = dt.create()
         self._registry[name] = sort
-        # Register each variant so translate_expr can resolve it by name
         for ctor in constructors:
             self._constructors[ctor] = getattr(sort, ctor)
         return sort

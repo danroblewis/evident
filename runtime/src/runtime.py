@@ -70,6 +70,14 @@ class EvidentRuntime:
 
     def load_schema(self, schema: SchemaDecl) -> None:
         """Register a schema definition."""
+        from .ast_types import MembershipConstraint, InlineEnumExpr
+        # Pre-register inline enum types so conflicts are caught at load time.
+        for item in schema.body:
+            if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                    and isinstance(item.right, InlineEnumExpr)):
+                variants = item.right.variants
+                enum_name = "_Enum_" + "_".join(sorted(variants))
+                self.solver.registry.declare_algebraic(enum_name, variants)
         self.schemas[schema.name] = schema
         self.solver.register_schema(schema)
 
