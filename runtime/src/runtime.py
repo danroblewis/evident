@@ -76,6 +76,19 @@ class EvidentRuntime:
     # Program loading
     # ------------------------------------------------------------------
 
+    def load_source(self, source: str) -> None:
+        """Parse Evident source text and load it into the runtime."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from parser.src.parser import parse
+        self.load_program(parse(source))
+
+    def load_file(self, path) -> None:
+        """Load an Evident source file."""
+        from pathlib import Path
+        self.load_source(Path(path).read_text())
+
     def load_program(self, program: Program) -> None:
         """Load all statements from a parsed Program AST."""
         for stmt in program.statements:

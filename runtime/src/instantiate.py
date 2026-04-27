@@ -12,7 +12,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint
 
 # sorts.py is being written in parallel (Phase 1).  Import it if available;
 # fall back to a minimal stub so this module remains usable and testable
@@ -109,6 +109,32 @@ def instantiate_schema(
     """
     env = Environment(bindings=dict(given.bindings), parent=given.parent)
     constraints: list[z3.BoolRef] = []
+
+    # The parser emits all variable declarations as MembershipConstraint nodes
+    # in the body (e.g. `n ∈ Nat`). Scan for those first so body translation
+    # can look up variables by name.
+    for item in schema.body:
+        if (
+            isinstance(item, MembershipConstraint)
+            and item.op == "∈"
+            and isinstance(item.left, Identifier)
+        ):
+            name = item.left.name
+            if env.lookup(name) is not None:
+                continue  # already declared (from params or a prior body scan)
+            type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
+            try:
+                sort = registry.get(type_name)
+            except KeyError:
+                sort = registry.declare_uninterpreted(type_name)
+            existing = given.lookup(name)
+            if existing is not None:
+                env = env.bind(name, existing)
+                var = existing
+            else:
+                var = make_const(name, sort, prefix=prefix)
+                env = env.bind(name, var)
+            constraints.extend(type_constraint(var, type_name))
 
     for param in schema.params:
         type_name = _resolve_type_name(param)
