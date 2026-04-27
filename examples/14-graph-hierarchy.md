@@ -194,7 +194,12 @@ toward "define what last and root ARE in terms of the edge structure."
 
 ---
 
-## Full linked_list — all constraints unfolded
+## Full linked_list — three ways to express the terminal constraints
+
+The middle constraints are the same in all three. Only `root has no predecessors`
+and `last has no successors` vary.
+
+**Version A — universals over edges**
 
 ```evident
 claim linked_list
@@ -203,24 +208,47 @@ claim linked_list
     root  ∈ nodes
     last  ∈ nodes
 
-    -- edges connect nodes (from graph)
     ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
-
-    -- no cycles (from dag)
     ∀ x ∈ nodes : ¬ reachable edges x x
-
-    -- root has no predecessors (from tree)
-    root ∉ edges.1
-
-    -- every non-root has exactly one parent (from tree)
+    ∀ (x, y) ∈ edges : y ≠ root
     ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
-
-    -- all nodes reachable from root (from tree)
     ∀ x ∈ nodes : reachable edges root x
-
-    -- at most one child per node
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+    ∀ (x, y) ∈ edges : x ≠ last
+```
 
-    -- last has no successors
+**Version B — filtered sets equal to empty**
+
+```evident
+claim linked_list
+    nodes ⊆ T
+    edges ⊆ T × T
+    root  ∈ nodes
+    last  ∈ nodes
+
+    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
+    ∀ x ∈ nodes : ¬ reachable edges x x
+    edges[.1 = root] = {}
+    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
+    ∀ x ∈ nodes : reachable edges root x
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+    edges[.0 = last] = {}
+```
+
+**Version C — projection membership**
+
+```evident
+claim linked_list
+    nodes ⊆ T
+    edges ⊆ T × T
+    root  ∈ nodes
+    last  ∈ nodes
+
+    ∀ (x, y) ∈ edges : x ∈ nodes, y ∈ nodes
+    ∀ x ∈ nodes : ¬ reachable edges x x
+    root ∉ edges.1
+    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges }
+    ∀ x ∈ nodes : reachable edges root x
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
     last ∉ edges.0
 ```
