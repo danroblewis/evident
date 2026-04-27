@@ -142,6 +142,18 @@ class EvidentSolver:
         if given is None:
             given = {}
 
+        # ── Step 0: pre-register inline enum types so given values resolve ───────
+        # Inline enums (x ∈ Red | Green | Blue) are normally registered during
+        # instantiate_schema, but given values are converted before that. Scan
+        # once so constructors are available when converting given strings.
+        from .ast_types import MembershipConstraint, Identifier, InlineEnumExpr
+        for item in schema.body:
+            if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                    and isinstance(item.right, InlineEnumExpr)):
+                variants = item.right.variants
+                enum_name = "_Enum_" + "_".join(sorted(variants))
+                self.registry.declare_algebraic(enum_name, variants)
+
         # ── Step 1: build the initial environment from 'given' values ─────────
         init_env = Environment(bindings=dict(self.env.bindings))
         for name, py_val in given.items():

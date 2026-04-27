@@ -18,6 +18,7 @@ from parser.src.ast import (  # noqa: E402
     Program,
     SchemaDecl,
     EnumDecl,
+    InlineEnumExpr,
     Param,
     BodyItem,
     Constraint,
@@ -68,7 +69,7 @@ from parser.src.ast import (  # noqa: E402
 )
 
 __all__ = [
-    "Program", "SchemaDecl", "EnumDecl", "Param", "BodyItem", "Constraint",
+    "Program", "SchemaDecl", "EnumDecl", "InlineEnumExpr", "Param", "BodyItem", "Constraint",
     "MembershipConstraint", "ArithmeticConstraint", "UniversalConstraint",
     "ExistentialConstraint", "CardinalityConstraint", "ApplicationConstraint",
     "InlineMapping", "BlockMapping", "LogicConstraint", "BindingConstraint",

@@ -18,6 +18,11 @@ class EnumDecl:
     variants: list[str]
 
 @dataclass
+class InlineEnumExpr:
+    """Anonymous enum set written inline: x ∈ Red | Green | Blue."""
+    variants: list[str]
+
+@dataclass
 class SchemaDecl:
     keyword: Literal["schema", "type", "claim"]
     name: str
@@ -154,7 +159,7 @@ Expr = Union[
     "SetComprehension", "SetLiteral", "EmptySet", "RangeLiteral",
     "TupleLiteral", "BinaryExpr", "UnaryExpr", "CardinalityExpr",
     "ChainExpr", "NatLiteral", "IntLiteral", "RealLiteral",
-    "StringLiteral", "BoolLiteral",
+    "StringLiteral", "BoolLiteral", "InlineEnumExpr",
 ]
 
 @dataclass

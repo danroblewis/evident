@@ -224,6 +224,12 @@ class EvidentTransformer(LarkTransformer):
         return items[0]
 
     # Membership constraints (keyword is filtered; items = [left_expr, right_expr])
+    def mem_inline_enum(self, items):
+        # items = [left_expr, NAME, NAME, ...]
+        left = items[0]
+        variants = [_str(t) for t in items[1:]]
+        return MembershipConstraint(op='∈', left=left, right=InlineEnumExpr(variants=variants))
+
     def mem_in(self, items):
         return MembershipConstraint(op='∈', left=items[0], right=items[1])
 

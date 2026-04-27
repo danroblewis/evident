@@ -281,3 +281,96 @@ schema Both
 """)
     r = rt.query("Both")
     assert not r.satisfied
+
+
+# ---------------------------------------------------------------------------
+# Inline enum syntax: x ∈ Red | Green | Blue
+# ---------------------------------------------------------------------------
+
+def test_inline_enum_parses():
+    from parser.src.parser import parse
+    from parser.src.ast import MembershipConstraint, InlineEnumExpr, SchemaDecl
+    prog = parse("claim Thing\n    x ∈ Blue | Red | Green\n")
+    schema = prog.statements[0]
+    mc = schema.body[0]
+    assert isinstance(mc, MembershipConstraint)
+    assert isinstance(mc.right, InlineEnumExpr)
+    assert set(mc.right.variants) == {"Blue", "Red", "Green"}
+
+
+def test_inline_enum_sat():
+    rt = _rt("""
+claim my_thing
+    x ∈ Blue | Red | Green
+""")
+    r = rt.query("my_thing")
+    assert r.satisfied
+    assert r.bindings["x"] in ("Blue", "Red", "Green")
+
+
+def test_inline_enum_neq():
+    rt = _rt("""
+claim my_thing
+    x ∈ Blue | Red | Green
+    x ≠ Blue
+""")
+    r = rt.query("my_thing")
+    assert r.satisfied
+    assert r.bindings["x"] in ("Red", "Green")
+
+
+def test_inline_enum_given_valid():
+    rt = _rt("""
+claim my_thing
+    x ∈ Blue | Red | Green
+    x ≠ Blue
+""")
+    r = rt.query("my_thing", given={"x": "Red"})
+    assert r.satisfied
+    assert r.bindings["x"] == "Red"
+
+
+def test_inline_enum_given_excluded():
+    rt = _rt("""
+claim my_thing
+    x ∈ Blue | Red | Green
+    x ≠ Blue
+""")
+    r = rt.query("my_thing", given={"x": "Blue"})
+    assert not r.satisfied
+
+
+def test_inline_enum_all_excluded_unsat():
+    rt = _rt("""
+claim my_thing
+    x ∈ A | B | C
+    x ≠ A
+    x ≠ B
+    x ≠ C
+""")
+    r = rt.query("my_thing")
+    assert not r.satisfied
+
+
+def test_inline_enum_mixed_with_nat():
+    rt = _rt("""
+schema Item
+    priority ∈ Low | Medium | High
+    score    ∈ Nat
+    score > 10
+    priority ≠ Low
+""")
+    r = rt.query("Item")
+    assert r.satisfied
+    assert r.bindings["priority"] in ("Medium", "High")
+    assert r.bindings["score"] > 10
+
+
+def test_inline_enum_two_variants():
+    rt = _rt("""
+schema Coin
+    face ∈ Heads | Tails
+""")
+    r = rt.query("Coin")
+    assert r.satisfied
+    assert r.bindings["face"] in ("Heads", "Tails")

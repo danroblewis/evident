@@ -97,10 +97,12 @@ exists_constraint: ("__EXISTS__"|"some") binding_list ":" constraint   -> exists
                 | "(" constraint ")"  -> paren_constraint
 
 // Membership at constraint level
-membership_constraint: expr ("__IN__"|"in") expr       -> mem_in
-                     | expr ("__NOT_IN__"|"not_in") expr  -> mem_not_in
-                     | expr ("__SUBSET__"|"subset") expr  -> mem_subset
-                     | expr ("__SUPERSET__"|"superset") expr  -> mem_superset
+// Inline enum: x ∈ Red | Green | Blue  (requires ≥1 pipe — unambiguous from mem_in)
+membership_constraint: expr ("__IN__"|"in") NAME ("|" NAME)+  -> mem_inline_enum
+                     | expr ("__IN__"|"in") expr               -> mem_in
+                     | expr ("__NOT_IN__"|"not_in") expr       -> mem_not_in
+                     | expr ("__SUBSET__"|"subset") expr       -> mem_subset
+                     | expr ("__SUPERSET__"|"superset") expr   -> mem_superset
 
 // Arithmetic/comparison
 arith_constraint: expr "=" expr   -> arith_eq

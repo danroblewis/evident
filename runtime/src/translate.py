@@ -17,6 +17,7 @@ from .ast_types import (
     MembershipConstraint,
     LogicConstraint,
     BindingConstraint,
+    InlineEnumExpr,
     # Expressions
     Identifier,
     FieldAccess,
@@ -218,6 +219,17 @@ def translate_constraint(
         rhs_name = right.name if isinstance(right, Identifier) else None
 
         if op == "∈":
+            # Inline enum: x ∈ Red | Green | Blue
+            # The variable's sort was already set in instantiate_schema, so the
+            # enum sort constrains x automatically. Emit a disjunction for
+            # completeness (and to handle cases used as a sub-constraint).
+            if isinstance(right, InlineEnumExpr):
+                x = translate_expr(left, env, registry)
+                ctors = [registry.get_constructor(v) for v in right.variants]
+                ctors = [c for c in ctors if c is not None]
+                if ctors:
+                    return z3.Or(*[x == c for c in ctors])
+                return z3.BoolVal(True)
             if rhs_name == "Nat":
                 # x ∈ Nat ≡ x ≥ 0  (Int with non-negativity constraint)
                 x = translate_expr(left, env, registry)

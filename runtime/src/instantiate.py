@@ -12,7 +12,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr
 
 # sorts.py is being written in parallel (Phase 1).  Import it if available;
 # fall back to a minimal stub so this module remains usable and testable
@@ -111,8 +111,8 @@ def instantiate_schema(
     constraints: list[z3.BoolRef] = []
 
     # The parser emits all variable declarations as MembershipConstraint nodes
-    # in the body (e.g. `n ∈ Nat`). Scan for those first so body translation
-    # can look up variables by name.
+    # in the body (e.g. `n ∈ Nat`, `c ∈ Red | Green | Blue`). Scan for those
+    # first so body translation can look up variables by name.
     for item in schema.body:
         if (
             isinstance(item, MembershipConstraint)
@@ -122,11 +122,20 @@ def instantiate_schema(
             name = item.left.name
             if env.lookup(name) is not None:
                 continue  # already declared (from params or a prior body scan)
-            type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
-            try:
-                sort = registry.get(type_name)
-            except KeyError:
-                sort = registry.declare_uninterpreted(type_name)
+
+            if isinstance(item.right, InlineEnumExpr):
+                # x ∈ Red | Green | Blue — auto-declare an anonymous enum sort
+                variants = item.right.variants
+                enum_name = "_Enum_" + "_".join(sorted(variants))
+                sort = registry.declare_algebraic(enum_name, variants)
+                type_name = enum_name
+            else:
+                type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
+                try:
+                    sort = registry.get(type_name)
+                except KeyError:
+                    sort = registry.declare_uninterpreted(type_name)
+
             existing = given.lookup(name)
             if existing is not None:
                 env = env.bind(name, existing)
