@@ -116,7 +116,9 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
 
         // Filter to numeric variables for scatter axes
         const numericVars = vars.filter(v => typeof samples[0][v] === 'number' && samples[0][v] !== null);
-        if (typeof renderScatterControls === 'function' && numericVars.length >= 2) {
+        if (typeof renderScatterControls === 'function') {
+            // Always call renderScatterControls so stale selects from a
+            // previous schema are cleared when there are < 2 numeric vars.
             renderScatterControls(numericVars);
         }
         // Immediately render scatter with the new samples

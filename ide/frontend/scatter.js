@@ -16,13 +16,19 @@ function pickAxes(samples) {
 }
 
 function renderScatterControls(variables) {
-    const numericVars = variables; // caller may filter; we accept all
+    const numericVars = variables;
     const container = document.getElementById('scatter-controls');
+    if (numericVars.length < 2) {
+        const msg = numericVars.length === 0
+            ? 'No numeric variables to plot.'
+            : `Only one numeric variable (${numericVars[0]}) — need at least two for a scatter plot.`;
+        container.innerHTML = `<span class="samples-empty">${msg}</span>`;
+        return;
+    }
     container.innerHTML = `
         <label>X <select id="scatter-x">${numericVars.map(v => `<option>${v}</option>`).join('')}</select></label>
         <label>Y <select id="scatter-y">${numericVars.map((v, i) => `<option ${i === 1 ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     `;
-    // Ensure X and Y differ
     const sx = document.getElementById('scatter-x');
     const sy = document.getElementById('scatter-y');
     function syncSelects() {
@@ -55,6 +61,13 @@ function drawFromCache() {
     let xVar = xSel ? xSel.value : null;
     let yVar = ySel ? ySel.value : null;
 
+    // Validate: selected vars must actually exist as numeric fields in current samples
+    const numericKeys = samples.length > 0
+        ? Object.keys(samples[0]).filter(k => typeof samples[0][k] === 'number' && samples[0][k] !== null)
+        : [];
+    if (!numericKeys.includes(xVar)) xVar = null;
+    if (!numericKeys.includes(yVar)) yVar = null;
+
     // Fallback: auto-pick from data
     if (!xVar || !yVar || xVar === yVar) {
         const [ax, ay] = pickAxes(samples);
@@ -64,7 +77,7 @@ function drawFromCache() {
     }
 
     if (!xVar || !yVar || samples.length === 0) {
-        container.innerHTML = '<p style="color:#6c7086;padding:8px;">Waiting for samples…</p>';
+        container.innerHTML = '<p style="color:#6c7086;padding:8px;">Need at least two numeric variables to plot.</p>';
         return;
     }
 
