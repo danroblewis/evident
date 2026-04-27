@@ -1,0 +1,57 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "ForwardRule",
+      "premises": [
+        {
+          "type": "ApplicationConstraint",
+          "name": "node",
+          "mappings": [],
+          "args": [{ "type": "Identifier", "name": "n" }]
+        }
+      ],
+      "conclusion": {
+        "type": "ApplicationConstraint",
+        "name": "reachable",
+        "mappings": [],
+        "args": [
+          { "type": "Identifier", "name": "n" },
+          { "type": "Identifier", "name": "n" }
+        ]
+      }
+    },
+    {
+      "type": "ForwardRule",
+      "premises": [
+        {
+          "type": "ApplicationConstraint",
+          "name": "reachable",
+          "mappings": [],
+          "args": [
+            { "type": "Identifier", "name": "a" },
+            { "type": "Identifier", "name": "b" }
+          ]
+        },
+        {
+          "type": "ApplicationConstraint",
+          "name": "adjacent",
+          "mappings": [],
+          "args": [
+            { "type": "Identifier", "name": "b" },
+            { "type": "Identifier", "name": "c" }
+          ]
+        }
+      ],
+      "conclusion": {
+        "type": "ApplicationConstraint",
+        "name": "reachable",
+        "mappings": [],
+        "args": [
+          { "type": "Identifier", "name": "a" },
+          { "type": "Identifier", "name": "c" }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "Task",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": { "type": "Identifier", "name": "id" },
+          "right": { "type": "Identifier", "name": "Nat" }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": { "type": "Identifier", "name": "duration" },
+          "right": { "type": "Identifier", "name": "Nat" }
+        },
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": { "type": "Identifier", "name": "deadline" },
+          "right": { "type": "Identifier", "name": "Nat" }
+        }
+      ]
+    }
+  ]
+}

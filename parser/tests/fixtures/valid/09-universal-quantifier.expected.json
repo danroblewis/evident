@@ -1,0 +1,39 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "valid_schedule",
+      "params": [],
+      "body": [
+        {
+          "type": "MembershipConstraint",
+          "op": "∈",
+          "left": { "type": "Identifier", "name": "schedule" },
+          "right": {
+            "type": "BinaryExpr",
+            "op": "×",
+            "left": { "type": "Identifier", "name": "Set" },
+            "right": { "type": "Identifier", "name": "Assignment" }
+          }
+        },
+        {
+          "type": "UniversalConstraint",
+          "bindings": [
+            {
+              "names": ["a"],
+              "set": { "type": "Identifier", "name": "schedule" }
+            }
+          ],
+          "body": {
+            "type": "ApplicationConstraint",
+            "name": "assignment_valid",
+            "mappings": [],
+            "args": [{ "type": "Identifier", "name": "a" }]
+          }
+        }
+      ]
+    }
+  ]
+}
