@@ -43,10 +43,8 @@ claim graph
 
 ```evident
 claim dag
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    graph                                       -- is a graph
-    ∀ x ∈ nodes : ¬ reachable edges x x        -- no cycles (no self-loops, no paths back)
+    ..graph
+    ∀ x ∈ nodes : ¬ reachable edges x x
 ```
 
 ---
@@ -55,15 +53,11 @@ claim dag
 
 ```evident
 claim tree
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    root  ∈ T
-    dag                                                           -- is a DAG
-
+    ..dag
     root ∈ nodes
-    ∀ y ∈ nodes : (y, root) ∉ edges                             -- root has no predecessors
-    ∀ x ∈ nodes \ {root} : exactly 1 { (y, x) | (y, x) ∈ edges } -- every other node has one parent
-    ∀ x ∈ nodes : reachable edges root x                         -- all nodes reachable from root
+    ∀ y ∈ nodes : (y, root) ∉ edges                              -- root has no predecessors
+    ∀ x ∈ nodes \ {root} : exactly 1 { (y, x) | (y, x) ∈ edges } -- one parent per non-root
+    ∀ x ∈ nodes : reachable edges root x                          -- all reachable from root
 ```
 
 ---
@@ -72,15 +66,10 @@ claim tree
 
 ```evident
 claim linked_list
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    root  ∈ T
-    last  ∈ T
-    tree                                                         -- is a tree
-
-    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }     -- at most one child
+    ..tree
     last ∈ nodes
-    ∀ y ∈ nodes : (last, y) ∉ edges                             -- last has no successors
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }      -- at most one child
+    ∀ y ∈ nodes : (last, y) ∉ edges                               -- last has no successors
 ```
 
 Now the structure is linear: `root → n1 → n2 → ... → last`.
@@ -93,18 +82,13 @@ Now the structure is linear: `root → n1 → n2 → ... → last`.
 ```evident
 -- consecutive pairs ARE the edges (no derivation needed)
 claim in_order
-    T     ∈ Ordered
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    linked_list                                  -- nodes match, edges match
-    ∀ (a, b) ∈ edges : a ≤ b                   -- edges = consecutive pairs
+    T ∈ Ordered
+    ..linked_list
+    ∀ (a, b) ∈ edges : a ≤ b
 
--- length = number of nodes
 claim length_of
-    nodes  ∈ Set T
-    edges  ∈ Set (T, T)
-    linked_list
-    n      ∈ Nat
+    ..linked_list
+    n ∈ Nat
     n = |nodes|
 
 -- first and last are the root and last of the linked list
@@ -120,13 +104,10 @@ No `Nat` primitive required — Nat emerges from counting.
 
 ```evident
 claim position_of
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    root  ∈ T
-    linked_list
-    x     ∈ nodes
-    i     ∈ Nat
-    i = |{ y ∈ nodes | strictly_reachable edges root y, ¬ strictly_reachable edges y x }|
+    ..linked_list
+    x ∈ nodes
+    i ∈ Nat
+    i = |{ y ∈ nodes | reachable edges root y, ¬ reachable edges y x }|
 ```
 
 `position_of` asks: how many nodes are strictly before x? That count is x's index.
@@ -167,13 +148,8 @@ they are derived from graph structure when needed.
 
 ```evident
 claim sorted_list
-    T     ∈ Ordered
-    nodes ∈ Set T
-    edges ∈ Set (T, T)
-    root  ∈ T
-    last  ∈ T
-
-    linked_list
+    T ∈ Ordered
+    ..linked_list
     in_order
 ```
 
