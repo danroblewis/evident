@@ -142,13 +142,13 @@ function drawFromCache() {
     }
 
     if (catVar && numVarY) {
-        drawStripPlot(samples, catVar, numVarY, colorVar || null, container);
+        drawStripPlot(samples, catVar, numVarY, colorVar || null, sizeVar || null, container);
     } else if (numVarX && numVarY) {
         drawScatterPlot(samples, numVarX, numVarY, colorVar || null, sizeVar || null, container);
     } else if (catVar) {
         drawCountBars(samples, catVar, colorVar || null, container);
     } else {
-        drawStripPlot(samples, null, numVarX, colorVar || null, container);
+        drawStripPlot(samples, null, numVarX, colorVar || null, sizeVar || null, container);
     }
 }
 
@@ -206,7 +206,7 @@ const jitter = i => (((i * 2654435761) % 1000) / 1000 - 0.5);
 // Strip plot: enum columns on X, numeric values on Y
 // ---------------------------------------------------------------------------
 
-function drawStripPlot(samples, catVar, numVar, colorVar, container) {
+function drawStripPlot(samples, catVar, numVar, colorVar, sizeVar, container) {
     const W = container.clientWidth || 320;
     const H = 260;
     const M = { top: 20, right: 80, bottom: 40, left: 48 };
@@ -224,6 +224,7 @@ function drawStripPlot(samples, catVar, numVar, colorVar, container) {
         ci: i,
         label: Object.entries(s).map(([k,v]) => `${k}: ${v}`).join('\n'),
         colorVal: colorVar ? s[colorVar] : null,
+        sizeVal:  sizeVar  ? +s[sizeVar]  : null,
     }));
 
     const xScale = d3.scaleBand().domain(categories).range([0, iW]).padding(0.3);
@@ -233,6 +234,10 @@ function drawStripPlot(samples, catVar, numVar, colorVar, container) {
         .domain([yExt[0] - pad(yExt[0]), yExt[1] + pad(yExt[1])]).range([iH, 0]);
 
     const colorOf = _colorScale(samples, colorVar);
+    const sizeVals = sizeVar ? pts.map(d => d.sizeVal).filter(v => v != null && !isNaN(v)) : [];
+    const rScale = sizeVals.length > 1 && d3.min(sizeVals) !== d3.max(sizeVals)
+        ? d3.scaleSqrt().domain(d3.extent(sizeVals)).range([3, 14])
+        : () => 5;
 
     // Grid
     g.selectAll('.hgrid').data(yScale.ticks(5)).enter().append('line')
@@ -255,7 +260,7 @@ function drawStripPlot(samples, catVar, numVar, colorVar, container) {
     g.selectAll('circle').data(pts).enter().append('circle')
         .attr('cx', d => xScale(d.cat) + bw/2 + jitter(d.ci) * bw * 0.5)
         .attr('cy', d => yScale(d.y))
-        .attr('r', 5)
+        .attr('r',  d => rScale(d.sizeVal))
         .attr('fill', d => colorOf(d.colorVal))
         .attr('opacity', 0.85)
         .attr('stroke','#1e1e2e').attr('stroke-width',1)
@@ -326,9 +331,9 @@ function drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, container) {
     const xScale = d3.scaleLinear().domain([xExt[0]-pad(xExt[0]),xExt[1]+pad(xExt[1])]).range([0,iW]);
     const yScale = d3.scaleLinear().domain([yExt[0]-pad(yExt[0]),yExt[1]+pad(yExt[1])]).range([iH,0]);
 
-    const sizeExt = sizeVar ? d3.extent(pts, d => d.sizeVal) : null;
-    const rScale = sizeExt
-        ? d3.scaleSqrt().domain(sizeExt).range([4, 16])
+    const sizeVals = sizeVar ? pts.map(d => d.sizeVal).filter(v => v != null && !isNaN(v)) : [];
+    const rScale = sizeVals.length > 1 && d3.min(sizeVals) !== d3.max(sizeVals)
+        ? d3.scaleSqrt().domain(d3.extent(sizeVals)).range([4, 16])
         : () => 6;
 
     const colorOf = _colorScale(samples, colorVar);
