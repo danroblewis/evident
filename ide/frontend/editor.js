@@ -1,0 +1,293 @@
+/**
+ * Evident IDE — Monaco editor setup, live parse, and glyph decorations.
+ */
+
+'use strict';
+
+const DEFAULT_SOURCE = `schema Task
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
+    duration < deadline
+
+schema ValidSchedule
+    task   ∈ Task
+    slot   ∈ Nat
+    budget ∈ Nat
+    slot > 0
+    slot + task.duration ≤ budget
+`;
+
+class EvidentEditor {
+    /**
+     * @param {string} containerId  ID of the DOM element to mount Monaco in
+     */
+    constructor(containerId) {
+        this.containerId = containerId;
+        this.editor = null;
+
+        // Monaco decoration IDs (returned by deltaDecorations)
+        this._errorDecorations = [];
+        this._glyphDecorations = [];
+
+        // Debounce handle for parse requests
+        this._parseTimer = null;
+
+        // Callbacks — set by the caller after construction
+        this.onSchemaListChange = null;   // (schemas: string[]) => void
+        this.onParseResult      = null;   // (result: ParseResult) => void
+    }
+
+    // ── Initialisation ──────────────────────────────────────────────────
+
+    /**
+     * Initialise Monaco and return a promise that resolves when the editor
+     * is ready.
+     */
+    async init() {
+        return new Promise((resolve) => {
+            require(['vs/editor/editor.main'], () => {
+                // Register language + theme (defined in evident-lang.js)
+                registerEvidentLanguage(monaco);
+
+                this.editor = monaco.editor.create(
+                    document.getElementById(this.containerId),
+                    {
+                        language:             EVIDENT_LANGUAGE_ID,
+                        theme:                'evident-dark',
+                        value:                DEFAULT_SOURCE,
+                        fontSize:             14,
+                        fontFamily:           '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+                        fontLigatures:        true,
+                        minimap:              { enabled: false },
+                        lineNumbers:          'on',
+                        glyphMargin:          true,   // needed for glyph decorations
+                        folding:              true,
+                        wordWrap:             'off',
+                        scrollBeyondLastLine: false,
+                        automaticLayout:      true,
+                        tabSize:              4,
+                        insertSpaces:         true,
+                        renderWhitespace:     'selection',
+                        cursorBlinking:       'smooth',
+                        smoothScrolling:      true,
+                        contextmenu:          true,
+                        padding:              { top: 8, bottom: 8 },
+                    },
+                );
+
+                // Live parse on content change (debounced)
+                this.editor.onDidChangeModelContent(() => {
+                    clearTimeout(this._parseTimer);
+                    this._parseTimer = setTimeout(() => this._parseSource(), 500);
+                });
+
+                // Update status bar cursor position
+                this.editor.onDidChangeCursorPosition((e) => {
+                    const pos = e.position;
+                    const cursorEl = document.getElementById('cursor-position');
+                    if (cursorEl) {
+                        cursorEl.textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+                    }
+                });
+
+                // Initial parse
+                this._parseSource();
+                resolve(this);
+            });
+        });
+    }
+
+    // ── Source access ───────────────────────────────────────────────────
+
+    getSource() {
+        return this.editor ? this.editor.getValue() : '';
+    }
+
+    setSource(source) {
+        if (this.editor) {
+            this.editor.setValue(source);
+        }
+    }
+
+    // ── Parse ────────────────────────────────────────────────────────────
+
+    /**
+     * POST the current source to /parse and update decorations + UI.
+     */
+    async _parseSource() {
+        const source = this.getSource();
+        const statusEl = document.getElementById('status-text') ||
+                         document.getElementById('status-bar');
+        try {
+            const resp = await fetch('/parse', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ source }),
+            });
+
+            if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+            }
+
+            const data = await resp.json();
+            const errors  = data.errors  || [];
+            const schemas = data.schemas || [];
+
+            // Update gutter decorations for errors
+            this._applyErrorDecorations(errors);
+
+            // Notify schema list listener
+            if (this.onSchemaListChange) {
+                this.onSchemaListChange(schemas);
+            }
+
+            // Notify raw result listener
+            if (this.onParseResult) {
+                this.onParseResult(data);
+            }
+
+            // Update status bar
+            if (statusEl) {
+                if (errors.length === 0) {
+                    statusEl.textContent = `✓ ${schemas.length} schema${schemas.length !== 1 ? 's' : ''}`;
+                    statusEl.parentElement?.classList.remove('status-error');
+                    statusEl.parentElement?.classList.add('status-ok');
+                } else {
+                    statusEl.textContent = `✗ ${errors.length} error${errors.length !== 1 ? 's' : ''}`;
+                    statusEl.parentElement?.classList.remove('status-ok');
+                    statusEl.parentElement?.classList.add('status-error');
+                }
+            }
+        } catch (e) {
+            // Backend unreachable (e.g. during dev with no server)
+            if (statusEl) {
+                statusEl.textContent = 'No connection to backend';
+                statusEl.parentElement?.classList.remove('status-ok', 'status-error');
+                statusEl.parentElement?.classList.add('status-idle');
+            }
+        }
+    }
+
+    // ── Error decorations ────────────────────────────────────────────────
+
+    /**
+     * Show red squiggles and glyph circles for parse errors.
+     *
+     * @param {Array<{line: number, col?: number, message: string}>} errors
+     */
+    _applyErrorDecorations(errors) {
+        const newDecorations = errors.map((err) => {
+            const line = err.line || 1;
+            const col  = err.col  || 1;
+            return {
+                range: new monaco.Range(line, col, line, 1000),
+                options: {
+                    isWholeLine:           false,
+                    className:             'error-line',
+                    glyphMarginClassName:  'glyph-error',
+                    glyphMarginHoverMessage: {
+                        value:     `**Parse error**: ${err.message}`,
+                        isTrusted: true,
+                    },
+                    hoverMessage: {
+                        value:     `**Parse error**: ${err.message}`,
+                        isTrusted: true,
+                    },
+                    overviewRuler: {
+                        color:    'rgba(243, 139, 168, 0.8)',   // --red
+                        position: monaco.editor.OverviewRulerLane.Right,
+                    },
+                },
+            };
+        });
+
+        this._errorDecorations = this.editor.deltaDecorations(
+            this._errorDecorations,
+            newDecorations,
+        );
+    }
+
+    // ── Constraint glyph decorations ─────────────────────────────────────
+
+    /**
+     * Apply per-constraint glyph decorations after evaluation.
+     *
+     * @param {Array<{line: number, status: 'sat'|'unsat'|'tight'|'unknown', message?: string}>} statuses
+     */
+    setConstraintGlyphs(statuses) {
+        const newDecorations = statuses.map((cs) => ({
+            range: new monaco.Range(cs.line, 1, cs.line, 1),
+            options: {
+                glyphMarginClassName:  `glyph-${cs.status}`,
+                glyphMarginHoverMessage: {
+                    value:     cs.message ? `**${cs.status}**: ${cs.message}` : `**${cs.status}**`,
+                    isTrusted: true,
+                },
+            },
+        }));
+
+        this._glyphDecorations = this.editor.deltaDecorations(
+            this._glyphDecorations,
+            newDecorations,
+        );
+    }
+
+    /**
+     * Clear all glyph decorations (e.g. after the schema changes).
+     */
+    clearGlyphs() {
+        this._glyphDecorations = this.editor.deltaDecorations(
+            this._glyphDecorations,
+            [],
+        );
+    }
+
+    // ── Diagnostics (Monaco markers) ────────────────────────────────────
+
+    /**
+     * Set Monaco model markers (yellow/red underlines in editor and Problems
+     * panel).  Complementary to glyph decorations.
+     *
+     * @param {Array<{line: number, col?: number, endLine?: number, endCol?: number,
+     *                message: string, severity?: 'error'|'warning'|'info'}>} diagnostics
+     */
+    setMarkers(diagnostics) {
+        const model = this.editor.getModel();
+        if (!model) return;
+
+        const markers = diagnostics.map((d) => ({
+            startLineNumber: d.line    || 1,
+            startColumn:     d.col     || 1,
+            endLineNumber:   d.endLine || d.line || 1,
+            endColumn:       d.endCol  || 1000,
+            message:         d.message,
+            severity: {
+                error:   monaco.MarkerSeverity.Error,
+                warning: monaco.MarkerSeverity.Warning,
+                info:    monaco.MarkerSeverity.Info,
+            }[d.severity || 'error'] ?? monaco.MarkerSeverity.Error,
+        }));
+
+        monaco.editor.setModelMarkers(model, 'evident', markers);
+    }
+
+    clearMarkers() {
+        const model = this.editor.getModel();
+        if (model) {
+            monaco.editor.setModelMarkers(model, 'evident', []);
+        }
+    }
+
+    // ── Utility ──────────────────────────────────────────────────────────
+
+    /** Focus the editor */
+    focus() {
+        this.editor?.focus();
+    }
+
+    /** Force a re-layout (useful after the panel is resized) */
+    layout() {
+        this.editor?.layout();
+    }
+}
