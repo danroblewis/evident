@@ -55,8 +55,8 @@ claim dag
 claim tree
     ..dag
     root ∈ nodes
-    ∀ y ∈ nodes : (y, root) ∉ edges                              -- root has no predecessors
-    ∀ x ∈ nodes \ {root} : exactly 1 { (y, x) | (y, x) ∈ edges } -- one parent per non-root
+    ∀ (x, y) ∈ edges : y ≠ root                                  -- root has no predecessors
+    ∀ x ∈ nodes : x ≠ root ⇒ exactly 1 { (y, x) | (y, x) ∈ edges } -- one parent per non-root
     ∀ x ∈ nodes : reachable edges root x                          -- all reachable from root
 ```
 
@@ -69,7 +69,7 @@ claim linked_list
     ..tree
     last ∈ nodes
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }      -- at most one child
-    ∀ y ∈ nodes : (last, y) ∉ edges                               -- last has no successors
+    ∀ (x, y) ∈ edges : x ≠ last                                   -- last has no successors
 ```
 
 Now the structure is linear: `root → n1 → n2 → ... → last`.
