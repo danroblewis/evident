@@ -246,8 +246,12 @@ class EvidentSolver:
                 return expr.as_string()
             except Exception:
                 pass
-        # Fallback: return string representation
-        return str(expr)
+        # Uninterpreted sort value (e.g. Task!val!0) — return None, not a
+        # meaningful Python value. Callers should filter out None bindings.
+        expr_str = str(expr)
+        if "!val!" in expr_str:
+            return None
+        return expr_str
 
     # ------------------------------------------------------------------
     # Model extraction

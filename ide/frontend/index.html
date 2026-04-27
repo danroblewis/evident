@@ -6,11 +6,11 @@
     <title>Evident IDE</title>
     <link rel="stylesheet" href="style.css">
 
+    <!-- D3 must load before Monaco's AMD loader or it won't register as a global -->
+    <script src="d3.min.js"></script>
+
     <!-- Monaco Editor loader -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
-
-    <!-- Plotly for charts -->
-    <script src="plotly.min.js" defer></script>
 </head>
 <body>
 
@@ -41,10 +41,10 @@
             <select id="sample-n" title="Number of samples"
                     style="background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);
                            border-radius:4px;padding:2px 6px;font-size:11px;outline:none;">
-                <option value="10" selected>10</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
                 <option value="25">25</option>
                 <option value="50">50</option>
-                <option value="100">100</option>
             </select>
         </label>
 
@@ -53,8 +53,8 @@
             <select id="sample-strategy" title="Sampling strategy"
                     style="background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);
                            border-radius:4px;padding:2px 6px;font-size:11px;outline:none;">
-                <option value="blocking" selected>blocking</option>
-                <option value="random">random</option>
+                <option value="random" selected>random</option>
+                <option value="blocking">blocking</option>
                 <option value="grid">grid</option>
             </select>
         </label>
@@ -95,7 +95,7 @@
 
             <!-- ── Sample vectors section ────────────────────────── -->
             <div id="samples-section" class="viz-section">
-                <div class="viz-section-header open" data-section="samples">
+                <div class="viz-section-header" data-section="samples">
                     <h3>
                         <span class="section-icon">⚂</span>
                         Sample Vectors
@@ -177,10 +177,11 @@
 
     evEditor.onSchemaListChange = (schemas) => {
         updateSchemaList(schemas);
+        // scheduleAutoSample is defined below; safe to call after first parse
+        if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
     };
 
     evEditor.init().then(() => {
-        // Make editor globally accessible so other modules can call getSource()
         window.evEditor = evEditor;
     });
 
@@ -241,17 +242,34 @@
         }
     });
 
-    // ── Sample button ───────────────────────────────────────────────────
-    document.getElementById('btn-sample').addEventListener('click', async () => {
+    // ── Auto-sampling: restart 5s timer on any editor/schema/binding change ──
+    let _sampleTimer = null;
+
+    async function runSample() {
         const schema   = document.getElementById('schema-select').value;
         const given    = getGivenBindings();
         const source   = evEditor.getSource();
-        const n        = parseInt(document.getElementById('sample-n').value, 10) || 10;
-        const strategy = document.getElementById('sample-strategy').value || 'blocking';
+        const n        = parseInt(document.getElementById('sample-n').value, 10) || 5;
+        const strategy = document.getElementById('sample-strategy').value || 'random';
+        if (!schema || schema === 'Loading…') return;
+        const samples = await renderSamples(source, schema, given, n, strategy);
+        // Scatter renders automatically from renderSamples via drawScatter
+    }
 
-        if (!schema) return;
+    function scheduleAutoSample() {
+        clearTimeout(_sampleTimer);
+        _sampleTimer = setTimeout(runSample, 5000);
+    }
 
-        await renderSamples(source, schema, given, n, strategy);
+    // Hook into schema selector and bindings changes
+    document.getElementById('schema-select').addEventListener('change', scheduleAutoSample);
+    document.addEventListener('binding-changed', scheduleAutoSample);
+
+    // Sample button runs immediately and resets timer
+    document.getElementById('btn-sample').addEventListener('click', () => {
+        clearTimeout(_sampleTimer);
+        runSample();
+        scheduleAutoSample();
     });
 
     // ── Ranges button ───────────────────────────────────────────────────
@@ -259,12 +277,8 @@
         const schema = document.getElementById('schema-select').value;
         const given  = getGivenBindings();
         const source = evEditor.getSource();
-
         if (!schema) return;
-
         await renderRanges(source, schema, given);
-
-        // Also populate the binding panel with variable info from /ranges
         await loadSchemaVariables(source, schema);
     });
 

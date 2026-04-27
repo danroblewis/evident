@@ -1,6 +1,6 @@
 // Sample vectors table
 
-async function renderSamples(source, schemaName, given, n = 10, strategy = 'blocking') {
+async function renderSamples(source, schemaName, given, n = 5, strategy = 'random') {
     const container = document.getElementById('samples-table-container');
     container.innerHTML = '<div class="loading">Sampling...</div>';
 
@@ -114,13 +114,21 @@ async function renderSamples(source, schemaName, given, n = 10, strategy = 'bloc
             exportBtn.onclick = () => exportCSV(vars, currentSamples, schemaName);
         }
 
-        // After rendering samples, update scatter controls with variable names
-        if (typeof renderScatterControls === 'function') {
-            renderScatterControls(vars);
+        // Filter to numeric variables for scatter axes
+        const numericVars = vars.filter(v => typeof samples[0][v] === 'number' && samples[0][v] !== null);
+        if (typeof renderScatterControls === 'function' && numericVars.length >= 2) {
+            renderScatterControls(numericVars);
         }
+        // Immediately render scatter with the new samples
+        if (typeof drawScatter === 'function') {
+            drawScatter(samples);
+        }
+
+        return samples;
 
     } catch (e) {
         container.innerHTML = `<div class="error">Sampling failed: ${e.message}</div>`;
+        return [];
     }
 }
 
