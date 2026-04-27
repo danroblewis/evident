@@ -2,3 +2,4 @@
 parser/tests/__pycache__/
 parser/src/__pycache__/
 __pycache__/
+plotly.min.js

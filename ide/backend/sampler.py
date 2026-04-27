@@ -168,11 +168,22 @@ def random_seed_sample(
             if vname not in given:
                 free_vars[vname] = type_name
 
-    # Default ranges for random hints
-    _default_ranges: dict[str, tuple[int, int]] = {
-        "Nat": (0, 100),
-        "Int": (-50, 50),
-    }
+    # Use actual computed ranges so hints stay within the valid region
+    from ide.backend.ranges import compute_ranges
+    try:
+        computed = compute_ranges(source, schema_name, given)
+    except Exception:
+        computed = {}
+
+    def _hint_range(vname: str, type_name: str) -> tuple[int, int]:
+        info = computed.get(vname, {})
+        lo = info.get("min")
+        hi = info.get("max")
+        if lo is None:
+            lo = 0 if type_name == "Nat" else -50
+        if hi is None:
+            hi = lo + 100
+        return int(lo), int(hi)
 
     samples: list[Sample] = []
     attempts = n * attempts_multiplier
@@ -181,11 +192,11 @@ def random_seed_sample(
         if len(samples) >= n:
             break
 
-        # Build random hints for numeric free variables
+        # Build random hints within the valid range
         hints: dict[str, Any] = {}
         for vname, type_name in free_vars.items():
-            if type_name in _default_ranges:
-                lo, hi = _default_ranges[type_name]
+            if type_name in ("Nat", "Int"):
+                lo, hi = _hint_range(vname, type_name)
                 hints[vname] = random.randint(lo, hi)
 
         # Merge hints with given (given takes priority)
