@@ -37,10 +37,12 @@ _worker_script = str(Path(__file__).parent / "z3_worker.py")
 
 # ---------------------------------------------------------------------------
 # Request cache — keyed by sha256(json(payload)), LRU eviction at 128 entries
+# Toggle with POST /cache/enable or POST /cache/disable
 # ---------------------------------------------------------------------------
 
 _CACHE_MAX = 128
 _cache: OrderedDict = OrderedDict()
+_cache_enabled: bool = True
 
 
 def _cache_key(command: str, payload: dict) -> str:
@@ -49,6 +51,8 @@ def _cache_key(command: str, payload: dict) -> str:
 
 
 def _cache_get(key: str):
+    if not _cache_enabled:
+        return None
     if key in _cache:
         _cache.move_to_end(key)
         return _cache[key]
@@ -56,6 +60,8 @@ def _cache_get(key: str):
 
 
 def _cache_put(key: str, value: dict):
+    if not _cache_enabled:
+        return
     _cache[key] = value
     _cache.move_to_end(key)
     while len(_cache) > _CACHE_MAX:
@@ -242,6 +248,31 @@ def transfer_function(req: TransferRequest):
         return {"points": points}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Cache control
+# ---------------------------------------------------------------------------
+
+
+@app.post("/cache/enable")
+def cache_enable():
+    global _cache_enabled
+    _cache_enabled = True
+    return {"cache": "enabled", "entries": len(_cache)}
+
+
+@app.post("/cache/disable")
+def cache_disable():
+    global _cache_enabled
+    _cache_enabled = False
+    _cache.clear()
+    return {"cache": "disabled"}
+
+
+@app.get("/cache/status")
+def cache_status():
+    return {"cache": "enabled" if _cache_enabled else "disabled", "entries": len(_cache)}
 
 
 # ---------------------------------------------------------------------------
