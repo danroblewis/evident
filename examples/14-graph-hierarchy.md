@@ -228,3 +228,30 @@ claim linked_list
     ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
     last ∉ edges.0
 ```
+
+**Version D — set difference (one line for last)**
+
+```evident
+claim linked_list
+    ..tree
+    last ∈ nodes \ edges.0
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+```
+
+**Version E — filter sugar (one line for last)**
+
+```evident
+claim linked_list
+    ..tree
+    last ∈ nodes[. ∉ edges.0]
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+```
+
+**Version F — tight binding (last defined, not just constrained)**
+
+```evident
+claim linked_list
+    ..tree
+    last = unique { x ∈ nodes | x ∉ edges.0 }
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }
+```
