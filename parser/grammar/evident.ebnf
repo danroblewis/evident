@@ -1,0 +1,256 @@
+(* Evident Language Grammar — EBNF *)
+(* Unicode and ASCII aliases are handled at the lexer level.           *)
+(* All Unicode operators normalize to their ASCII counterparts before  *)
+(* reaching the parser. INDENT / DEDENT tokens handle layout.         *)
+
+(* ── Top level ──────────────────────────────────────────────────── *)
+
+program         = statement* EOF ;
+
+statement       = schema_decl
+                | assert_stmt
+                | forward_rule
+                | query_stmt
+                | constraint_stmt
+                ;
+
+(* ── Schema declarations ─────────────────────────────────────────── *)
+(* 'schema', 'type', and 'claim' are all synonyms.                    *)
+
+schema_decl     = schema_kw identifier param_list? NEWLINE
+                  INDENT body DEDENT
+                | schema_kw identifier param_list? '=' schema_expr NEWLINE
+                ;
+
+schema_kw       = 'schema' | 'type' | 'claim' ;
+
+param_list      = param (',' param)* ;
+param           = identifier_list 'in' expr  (* 'in' normalises from ∈ *)
+                ;
+
+identifier_list = identifier (',' identifier)* ;
+
+schema_expr     = '{' NEWLINE INDENT body DEDENT '}'  (* record/inline schema *)
+                | identifier                           (* reference another schema *)
+                ;
+
+(* ── Schema body ─────────────────────────────────────────────────── *)
+(* Every line in a body is a constraint. All hold simultaneously.     *)
+
+body            = body_line+ ;
+
+body_line       = constraint NEWLINE
+                | passthrough NEWLINE
+                | evident_block
+                ;
+
+passthrough     = '..' identifier param_application? ;
+
+evident_block   = 'evident' pattern_args ('when' expr)? NEWLINE
+                  INDENT body DEDENT
+                ;
+
+pattern_args    = pattern+ ;
+
+pattern         = literal
+                | identifier
+                | '[' ']'
+                | '[' pattern ('|' pattern)+ ']'   (* cons pattern *)
+                | '[' ']'
+                | '{' field_pattern (',' field_pattern)* '}'
+                ;
+
+field_pattern   = identifier '=' identifier
+                | identifier                         (* shorthand: name matches field *)
+                ;
+
+(* ── Constraints ─────────────────────────────────────────────────── *)
+
+constraint      = quantified_constraint
+                | membership_constraint
+                | arithmetic_constraint
+                | set_constraint
+                | application_constraint
+                | logic_constraint
+                | forward_implication_body
+                | binding_constraint
+                ;
+
+(* Quantifiers *)
+quantified_constraint
+                = 'all' binding_list ':' constraint      (* ∀ *)
+                | 'some' binding_list ':' constraint     (* ∃ *)
+                | 'one' binding_list ':' constraint      (* ∃! *)
+                | 'none' binding_list ':' constraint     (* ¬∃ *)
+                | 'all' expr ':' identifier              (* ∀ S : claim *)
+                ;
+
+binding_list    = binding (',' binding)* ;
+
+binding         = identifier_list 'in' expr              (* a, b ∈ S *)
+                | identifier_list 'in' expr 'where' expr (* a ∈ S where P *)
+                | identifier_list '!=' identifier 'in' expr  (* a ≠ b ∈ S *)
+                | '{' field_pattern_list '}' '!='
+                  '{' field_pattern_list '}' 'in' expr   (* {t=t1,r=r1} ≠ {t=t2,r=r2} ∈ S *)
+                ;
+
+(* Membership *)
+membership_constraint
+                = expr 'in' expr                         (* x ∈ S *)
+                | expr 'not_in' expr                     (* x ∉ S *)
+                | expr 'subset' expr                     (* S ⊆ T *)
+                | expr 'superset' expr                   (* S ⊇ T *)
+                ;
+
+(* Arithmetic / comparison *)
+arithmetic_constraint
+                = expr '=' expr
+                | expr '!=' expr
+                | expr '<' expr
+                | expr '>' expr
+                | expr '<=' expr
+                | expr '>=' expr
+                ;
+
+(* Set-level *)
+set_constraint  = expr '=' '{' '}'                       (* S = {} *)
+                ;
+
+(* Claim application: name match, args flow by names-match + mapping *)
+application_constraint
+                = identifier param_application?
+                ;
+
+param_application
+                = '(' mapping_list ')'                   (* block mapping *)
+                | mapping_inline+                         (* inline: slot: value *)
+                ;
+
+mapping_list    = mapping_item NEWLINE (mapping_item NEWLINE)* ;
+mapping_item    = identifier 'mapsto' expr ;             (* ↦ *)
+
+mapping_inline  = identifier ':' expr ;
+
+(* Logic *)
+logic_constraint
+                = 'not' constraint                       (* ¬ *)
+                | constraint 'and' constraint            (* ∧ — usually implicit *)
+                | constraint 'or' constraint             (* ∨ *)
+                | constraint '=>' constraint             (* ⇒ in body: conditional *)
+                ;
+
+(* Tight binding *)
+binding_constraint
+                = identifier '=' expr                    (* x = expr *)
+                ;
+
+(* ── Forward implications (top-level) ───────────────────────────── *)
+
+forward_rule    = impl_lhs '=>' application_constraint NEWLINE ;
+
+forward_implication_body
+                = expr '=>' application_constraint ;
+
+impl_lhs        = application_constraint (',' application_constraint)* ;
+
+(* ── Assertions and queries ──────────────────────────────────────── *)
+
+assert_stmt     = 'assert' identifier '=' expr NEWLINE
+                | 'assert' identifier 'in' expr NEWLINE  (* unbound: ∈ Type *)
+                | 'assert' identifier expr* NEWLINE       (* ground fact *)
+                ;
+
+query_stmt      = '?' constraint NEWLINE ;
+
+constraint_stmt = constraint NEWLINE ;                   (* bare constraint at top level *)
+
+(* ── Expressions ─────────────────────────────────────────────────── *)
+
+expr            = chain_expr ;
+
+chain_expr      = membership_expr (compose_op membership_expr)* ;
+
+compose_op      = '·' | 'bowtie' ;                      (* · or ⋈ — TBD *)
+
+membership_expr = membership_expr 'in' additive_expr
+                | membership_expr 'not_in' additive_expr
+                | membership_expr 'subset' additive_expr
+                | additive_expr
+                ;
+
+additive_expr   = additive_expr ('+' | '-') mult_expr
+                | mult_expr
+                ;
+
+mult_expr       = mult_expr ('*' | '/') unary_expr
+                | unary_expr
+                ;
+
+unary_expr      = 'not' unary_expr
+                | '|' postfix_expr '|'                   (* cardinality *)
+                | postfix_expr
+                ;
+
+postfix_expr    = postfix_expr '.' identifier            (* field access *)
+                | postfix_expr '[' condition ']'         (* filter *)
+                | postfix_expr '.' integer               (* tuple index .0 .1 *)
+                | primary
+                ;
+
+condition       = expr ;                                 (* filter condition; . = current element *)
+
+primary         = literal
+                | identifier
+                | set_expr
+                | range_expr
+                | tuple_expr
+                | '(' expr ')'
+                ;
+
+(* ── Set expressions ─────────────────────────────────────────────── *)
+
+set_expr        = '{' '}'                                (* empty set *)
+                | '{' expr (',' expr)* '}'               (* set literal *)
+                | '{' expr '|' generator_list '}'        (* comprehension *)
+                | '{' identifier_list '|' expr '}'       (* shorthand comprehension *)
+                ;
+
+generator_list  = generator (',' generator)* ;
+
+generator       = binding                                (* x ∈ S *)
+                | expr                                   (* bare constraint *)
+                ;
+
+range_expr      = '{' expr '..' expr '}' ;              (* {a..b} *)
+
+tuple_expr      = '(' expr ',' expr (',' expr)* ')' ;   (* (a, b) or (a, b, c) *)
+
+(* ── Partial application ─────────────────────────────────────────── *)
+
+partial_app     = 'schema_kw'? identifier '=' identifier mapping_inline* NEWLINE ;
+
+(* ── Literals ────────────────────────────────────────────────────── *)
+
+literal         = NAT_LIT | INT_LIT | REAL_LIT | STRING_LIT | BOOL_LIT ;
+
+NAT_LIT         = [0-9]+ ;
+INT_LIT         = '-' [0-9]+ ;
+REAL_LIT        = [0-9]+ '.' [0-9]+ ;
+STRING_LIT      = '"' [^"]* '"' ;
+BOOL_LIT        = 'true' | 'false' ;
+
+(* ── Identifiers ─────────────────────────────────────────────────── *)
+
+identifier      = LOWER_IDENT | UPPER_IDENT ;
+LOWER_IDENT     = [a-z_] [a-zA-Z0-9_]* ;
+UPPER_IDENT     = [A-Z] [a-zA-Z0-9_]* ;
+
+(* ── Tokens (after Unicode normalization) ────────────────────────── *)
+(* The lexer normalizes Unicode to these ASCII tokens before parsing. *)
+
+(* Operators: 'in', 'not_in', 'subset', 'superset', 'all', 'some',   *)
+(* 'one', 'none', 'and', 'or', 'not', '=>', 'mapsto', '·'/'bowtie'   *)
+(* Layout: NEWLINE, INDENT, DEDENT, EOF                               *)
+(* Punctuation: '.', ',', ':', '|', '(', ')', '{', '}', '[', ']'     *)
+(* Arithmetic: '+', '-', '*', '/', '=', '!=', '<', '>', '<=', '>='   *)
+(* Cardinality: '|...|' — tokenized as unary circumfix operator       *)

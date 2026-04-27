@@ -1,0 +1,10 @@
+schema transfer_eligible
+    sender   ∈ User
+    receiver ∈ User
+    active_account(
+        user mapsto sender
+    )
+    active_account(
+        user mapsto receiver
+    )
+    sender ≠ receiver

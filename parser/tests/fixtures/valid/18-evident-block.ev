@@ -1,0 +1,10 @@
+schema occurrences
+    x    ∈ T
+    list ∈ List T
+    n    ∈ Nat
+
+evident occurrences x [] 0
+
+evident occurrences x [x | rest] n
+    _n0 = occurrences x rest
+    n   = _n0 + 1

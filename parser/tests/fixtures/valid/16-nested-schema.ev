@@ -1,0 +1,10 @@
+schema Conference
+    schedule ∈ Set Assignment
+    slots    ∈ Set Slot
+
+    schema rooms_conflict_free
+        ∀ slot_assignments ∈ schedule grouped_by .slot :
+            all_different slot_assignments.room
+
+    schema valid
+        rooms_conflict_free

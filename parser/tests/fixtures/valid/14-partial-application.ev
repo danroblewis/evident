@@ -1,0 +1,2 @@
+schema editor = has_role role: "editor"
+schema in_acme = within_org org_id: 42

@@ -1,0 +1,5 @@
+schema ValidTask
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
+    duration < deadline

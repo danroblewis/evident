@@ -1,0 +1,6 @@
+schema slot_check
+    schedule     ∈ Set Assignment
+    max_parallel ∈ Nat
+    slots        ∈ Set Slot
+    ∀ slot ∈ slots :
+        at_most max_parallel schedule[.slot = slot]

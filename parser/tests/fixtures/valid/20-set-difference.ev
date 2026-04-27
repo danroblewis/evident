@@ -1,0 +1,4 @@
+schema linked_list
+    ..tree
+    last ∈ nodes \ edges.0
+    ∀ x ∈ nodes : at_most 1 { y ∈ nodes | (x, y) ∈ edges }

@@ -1,0 +1,2 @@
+node n ⇒ reachable n n
+reachable a b, adjacent b c ⇒ reachable a c

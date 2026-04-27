@@ -1,0 +1,3 @@
+schema valid_schedule
+    schedule ∈ Set Assignment
+    ∀ a ∈ schedule : assignment_valid a

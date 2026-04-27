@@ -1,0 +1,2 @@
+schema bad
+    ∀ x : sorted x

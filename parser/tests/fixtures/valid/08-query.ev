@@ -1,0 +1,2 @@
+? sorted [3, 1, 2]
+? ∃ result ∈ SortedOf[Nat] [3, 1, 2]

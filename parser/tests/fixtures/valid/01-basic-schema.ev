@@ -1,0 +1,4 @@
+schema Task
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat

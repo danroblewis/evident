@@ -1,0 +1,4 @@
+schema consecutive_pairs
+    arr   ∈ Indexable T
+    pairs ⊆ T × T
+    pairs = { (v1, v2) | (i, v1) ∈ arr.entries, (i+1, v2) ∈ arr.entries }
