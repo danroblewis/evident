@@ -1,5 +1,33 @@
 // Sample vectors table
 
+// Accumulated sample set — grows across runs, cleared when source/schema changes.
+let _allSamples = [];
+const _seenKeys  = new Set();
+
+function clearAccumulatedSamples() {
+    _allSamples = [];
+    _seenKeys.clear();
+    const countEl = document.getElementById('sample-count');
+    if (countEl) countEl.textContent = '';
+    const container = document.getElementById('samples-table-container');
+    if (container) container.innerHTML =
+        '<p class="samples-empty">Click <strong>Sample</strong> to generate valid assignments.</p>';
+    if (typeof drawScatter === 'function') drawScatter([]);
+}
+
+function _mergeSamples(incoming) {
+    const added = [];
+    for (const s of incoming) {
+        const key = JSON.stringify(Object.entries(s).sort());
+        if (!_seenKeys.has(key)) {
+            _seenKeys.add(key);
+            _allSamples.push(s);
+            added.push(s);
+        }
+    }
+    return added;
+}
+
 async function renderSamples(source, schemaName, given, n = 5, strategy = 'random') {
     const container = document.getElementById('samples-table-container');
     container.innerHTML = '<div class="loading">Sampling...</div>';
@@ -11,9 +39,15 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
             body: JSON.stringify({ source, schema: schemaName, given, n, strategy }),
         });
         const data = await resp.json();
-        const samples = data.samples || [];
+        const incoming = data.samples || [];
 
-        document.getElementById('sample-count').textContent = `(${samples.length})`;
+        // Merge new samples into the accumulated set
+        const newlyAdded = _mergeSamples(incoming);
+        const samples = incoming;   // table shows latest batch
+
+        const total = _allSamples.length;
+        document.getElementById('sample-count').textContent =
+            newlyAdded.length < total ? `(${total} total)` : `(${total})`;
 
         if (samples.length === 0) {
             container.innerHTML = '<div class="empty">No valid assignments found</div>';
@@ -114,12 +148,13 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
             exportBtn.onclick = () => exportCSV(vars, currentSamples, schemaName);
         }
 
-        // Pass all vars so scatter can offer enum axes too
+        // Pass all vars so scatter can offer enum axes too.
+        // Draw scatter from the full accumulated set so the plot grows over time.
         if (typeof renderScatterControls === 'function') {
-            renderScatterControls(vars, samples);
+            renderScatterControls(vars, _allSamples);
         }
         if (typeof drawScatter === 'function') {
-            drawScatter(samples);
+            drawScatter(_allSamples);
         }
 
         return samples;

@@ -91,10 +91,22 @@ exists_constraint: ("__EXISTS__"|"some") binding_list ":" constraint   -> exists
           | exists_constraint
           | logic_and_constraint
 
-?base_constraint: membership_constraint
+?base_constraint: chained_comparison
+                | membership_constraint
                 | arith_constraint
                 | app_constraint
                 | "(" constraint ")"  -> paren_constraint
+
+// Chained comparisons: 0 < x < 100, a <= b <= c, etc.
+// Requires 2+ operators (3+ terms) to distinguish from plain arith_constraint.
+chained_comparison: expr comp_op expr (comp_op expr)+ -> arith_chain
+
+comp_op: "<"  -> cmp_lt
+       | ">"  -> cmp_gt
+       | "<=" -> cmp_lte
+       | ">=" -> cmp_gte
+       | "="  -> cmp_eq
+       | "!=" -> cmp_neq
 
 // Membership at constraint level
 // Inline enum: x ∈ Red | Green | Blue  (requires ≥1 pipe — unambiguous from mem_in)

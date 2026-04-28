@@ -210,14 +210,14 @@
         updateSchemaList(schemas);
         if (_firstParse && schemas.length > 0) {
             _firstParse = false;
-            // Small delay so Monaco finishes layout before we fire requests
             setTimeout(() => {
                 runEvaluate();
                 if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
             }, 200);
         } else {
             scheduleAutoEvaluate();
-            if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
+            // Source changed — clear accumulated samples and restart
+            if (typeof resetSamples === 'function') resetSamples();
         }
     };
 
@@ -291,18 +291,27 @@
         }
     });
 
-    // ── Auto-sampling: restart 5s timer on any editor/schema/binding change ──
-    let _sampleTimer = null;
+    // ── Continuous sampling — accumulates unique samples in the scatter plot ──
+    let _sampleTimer  = null;
+    let _isSampling   = false;   // prevent overlapping requests
 
     async function runSample() {
         const schema   = document.getElementById('schema-select').value;
         const given    = getGivenBindings();
         const source   = evEditor.getSource();
-        const n        = parseInt(document.getElementById('sample-n').value, 10) || 5;
+        const n        = parseInt(document.getElementById('sample-n').value, 10) || 200;
         const strategy = document.getElementById('sample-strategy').value || 'random';
-        if (!schema || schema === 'Loading…') return;
-        const samples = await renderSamples(source, schema, given, n, strategy);
-        // Scatter renders automatically from renderSamples via drawScatter
+        if (!schema || schema === 'Loading…' || _isSampling) return;
+
+        _isSampling = true;
+        try {
+            await renderSamples(source, schema, given, n, strategy);
+        } finally {
+            _isSampling = false;
+        }
+
+        // Reschedule: keep accumulating until the source changes
+        _sampleTimer = setTimeout(runSample, 3000);
     }
 
     function scheduleAutoSample() {
@@ -310,15 +319,20 @@
         _sampleTimer = setTimeout(runSample, 5000);
     }
 
-    // Hook into schema selector and bindings changes
-    document.getElementById('schema-select').addEventListener('change', scheduleAutoSample);
+    // Clear accumulated samples and restart when source or schema changes
+    function resetSamples() {
+        clearTimeout(_sampleTimer);
+        if (typeof clearAccumulatedSamples === 'function') clearAccumulatedSamples();
+        scheduleAutoSample();
+    }
+
+    document.getElementById('schema-select').addEventListener('change', resetSamples);
     document.addEventListener('binding-changed', scheduleAutoSample);
 
-    // Sample button runs immediately and resets timer
+    // Sample button: trigger immediately (still accumulates)
     document.getElementById('btn-sample').addEventListener('click', () => {
         clearTimeout(_sampleTimer);
         runSample();
-        scheduleAutoSample();
     });
 
     // ── Ranges button ───────────────────────────────────────────────────

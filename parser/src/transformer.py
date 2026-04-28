@@ -224,6 +224,28 @@ class EvidentTransformer(LarkTransformer):
         return items[0]
 
     # Membership constraints (keyword is filtered; items = [left_expr, right_expr])
+    # ── Chained comparisons ──────────────────────────────────────────────────
+
+    def cmp_lt(self, items):  return '<'
+    def cmp_gt(self, items):  return '>'
+    def cmp_lte(self, items): return '≤'
+    def cmp_gte(self, items): return '≥'
+    def cmp_eq(self, items):  return '='
+    def cmp_neq(self, items): return '≠'
+
+    def arith_chain(self, items):
+        # items alternates: expr, op, expr, op, expr, ...
+        exprs = items[0::2]
+        ops   = items[1::2]
+        constraints = [
+            ArithmeticConstraint(op=ops[i], left=exprs[i], right=exprs[i + 1])
+            for i in range(len(ops))
+        ]
+        result = constraints[0]
+        for c in constraints[1:]:
+            result = LogicConstraint(op='∧', left=result, right=c)
+        return result
+
     def mem_inline_enum(self, items):
         # items = [left_expr, NAME, NAME, ...]
         left = items[0]
