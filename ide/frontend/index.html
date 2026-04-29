@@ -23,9 +23,6 @@
             <option disabled selected>Loading…</option>
         </select>
 
-        <button id="btn-evaluate" title="Evaluate: check satisfiability and solve for a binding">
-            ▶ Evaluate
-        </button>
         <button id="btn-sample" title="Sample: generate N valid assignments">
             ⚂ Sample
         </button>
@@ -80,24 +77,6 @@
         <!-- Right: visualizer (40%, scrollable) -->
         <div id="visualizer-panel">
 
-            <!-- ── Variable bindings section ────────────────────── -->
-            <div id="bindings-section" class="viz-section">
-                <div class="viz-section-header open" data-section="bindings">
-                    <h3><span class="section-icon">⚙</span>Variable Bindings</h3>
-                    <div class="section-actions">
-                        <button class="section-btn" id="btn-clear-bindings" title="Clear all pinned values">Clear</button>
-                        <span class="chevron">▶</span>
-                    </div>
-                </div>
-                <div class="viz-section-body" id="bindings-body">
-                    <div id="bindings-inputs">
-                        <p style="color:var(--fg-muted);font-size:12px;font-style:italic">
-                            Select a schema and click <strong>Evaluate</strong> to solve for bindings.
-                        </p>
-                    </div>
-                    <div id="eval-result" style="margin-top:8px;"></div>
-                </div>
-            </div>
 
 
             <!-- ── 2D Scatter section ────────────────────────────── -->
@@ -164,24 +143,23 @@
         paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
     });
 
-    // ── Auto-evaluate ────────────────────────────────────────────────────
+    // ── Auto-evaluate — keeps status bar showing sat/unsat ───────────────
     let _evalTimer = null;
 
     async function runEvaluate() {
         const schema = document.getElementById('schema-select').value;
         if (!schema || schema === 'Loading…') return;
-        const given  = getGivenBindings();
         const source = evEditor?.getSource() || '';
         if (!source.trim()) return;
         try {
             const resp = await fetch('/evaluate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, schema, given }),
+                body: JSON.stringify({ source, schema, given: {} }),
             });
             const data = await resp.json();
             renderEvalResult(data);
-        } catch (e) { /* silent on page load */ }
+        } catch (e) { /* silent */ }
     }
 
     function scheduleAutoEvaluate() {
@@ -230,7 +208,7 @@
         }
     });
 
-    // Schema selector change → evaluate immediately
+    // Schema selector change
     document.getElementById('schema-select').addEventListener('change', () => {
         runEvaluate();
         if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
@@ -252,46 +230,6 @@
         });
     });
 
-    // ── Clear bindings button ───────────────────────────────────────────
-    document.getElementById('btn-clear-bindings').addEventListener('click', () => {
-        document.querySelectorAll('.binding-input').forEach((input) => {
-            if (!input.disabled) {
-                input.value = '';
-                input.classList.remove('binding-solved');
-            }
-        });
-        document.getElementById('eval-result').innerHTML = '';
-    });
-
-    // ── Evaluate button ─────────────────────────────────────────────────
-    document.getElementById('btn-evaluate').addEventListener('click', async () => {
-        const schema = document.getElementById('schema-select').value;
-        const given  = getGivenBindings();
-        const source = evEditor.getSource();
-
-        if (!schema) return;
-
-        const statusText = document.getElementById('status-text');
-        statusText.textContent = 'Evaluating…';
-
-        try {
-            const resp = await fetch('/evaluate', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ source, schema, given }),
-            });
-            const data = await resp.json();
-
-            renderEvalResult(data);
-
-            // Update glyph decorations if the backend returned constraint status
-            if (data.constraint_status) {
-                evEditor.setConstraintGlyphs(data.constraint_status);
-            }
-        } catch (e) {
-            statusText.textContent = `Evaluate failed: ${e.message}`;
-        }
-    });
 
     // ── Continuous sampling — accumulates unique samples in the scatter plot ──
     let _sampleTimer  = null;
@@ -299,7 +237,6 @@
 
     async function runSample() {
         const schema   = document.getElementById('schema-select').value;
-        const given    = getGivenBindings();
         const source   = evEditor.getSource();
         const n        = parseInt(document.getElementById('sample-n').value, 10) || 200;
         const strategy = document.getElementById('sample-strategy').value || 'random';
@@ -308,7 +245,7 @@
         _isSampling = true;
         let result;
         try {
-            result = await renderSamples(source, schema, given, n, strategy);
+            result = await renderSamples(source, schema, {}, n, strategy);
         } finally {
             _isSampling = false;
         }
@@ -513,12 +450,7 @@
 
     // ── Keyboard shortcuts ───────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
-        // Ctrl/Cmd + Enter → Evaluate
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('btn-evaluate').click();
-        }
-        // Ctrl/Cmd + Shift + S → Sample
+        // Ctrl/Cmd + Enter or Ctrl/Cmd + Shift + S → Sample
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
             e.preventDefault();
             document.getElementById('btn-sample').click();

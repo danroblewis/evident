@@ -102,7 +102,6 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
         thead.innerHTML = `<tr>
             <th>#</th>
             ${vars.map(v => `<th class="col-header" data-col="${v}">${v}</th>`).join('')}
-            <th>Pin</th>
         </tr>`;
         table.appendChild(thead);
 
@@ -119,18 +118,7 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
                 tr.innerHTML = `
                     <td class="sample-index">${i + 1}</td>
                     ${vars.map(v => `<td class="sample-val">${formatVal(sample[v])}</td>`).join('')}
-                    <td>
-                        <button class="pin-btn" title="Pin these values">📌</button>
-                    </td>
                 `;
-
-                // Pin button: fill binding inputs with this sample
-                tr.querySelector('.pin-btn').addEventListener('click', () => {
-                    pinSample(sample);
-                    // Mark the row pinned
-                    tbody.querySelectorAll('tr.pinned').forEach(r => r.classList.remove('pinned'));
-                    tr.classList.add('pinned');
-                });
 
                 // Hover: highlight row
                 tr.addEventListener('mouseenter', () => tr.classList.add('hovered'));
@@ -208,18 +196,6 @@ function formatVal(v) {
     return String(v);
 }
 
-function pinSample(sample) {
-    // Fill all binding inputs with this sample's values
-    for (const [name, val] of Object.entries(sample)) {
-        const input = document.querySelector(`.binding-input[data-varname="${name}"]`);
-        if (input && !input.disabled) {
-            input.value = String(val);
-        }
-    }
-    // Prefer the status-bar notification from schema-panel.js if available
-    const notify = window.showNotification || showNotification;
-    notify('Values pinned to bindings ✓', 'success');
-}
 
 function exportCSV(vars, samples, schemaName) {
     const header = ['#', ...vars].join(',');
@@ -247,7 +223,7 @@ function exportCSV(vars, samples, schemaName) {
     URL.revokeObjectURL(url);
 }
 
-// Notification helper (used by pinSample; may also be defined elsewhere)
+// Notification helper
 function showNotification(message, type = 'info') {
     // If a global showNotification is already defined by another module, skip.
     if (window._notificationShowing) return;

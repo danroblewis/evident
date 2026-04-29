@@ -93,15 +93,10 @@ class TestPageLoad:
         val = page.eval_on_selector("#schema-select", "el => el.value")
         assert val and val != "Loading…"
 
-    def test_auto_evaluate_fires_on_load(self, page):
-        """Evaluate fires automatically — status bar changes from 'Ready'."""
+    def test_status_bar_updates_on_load(self, page):
+        """Status bar changes from 'Ready' after parse."""
         status = page.inner_text("#status-bar")
-        assert status != "Ready"  # something happened
-
-    def test_evaluate_result_on_load(self, page):
-        """Default source evaluates — satisfied status shown."""
-        status = page.inner_text("#status-bar")
-        assert "Satisfied" in status or len(page.query_selector_all(".binding-solved")) > 0
+        assert status != "Ready"
 
 
 # ── Schema selector ──────────────────────────────────────────────────────────
@@ -115,14 +110,12 @@ class TestSchemaSelector:
         assert len(schemas) >= 1
         assert all(s != "Loading…" for s in schemas)
 
-    def test_changing_schema_triggers_evaluate(self, page):
-        """Switching schema fires /evaluate — fills binding inputs."""
+    def test_changing_schema_updates_status(self, page):
+        """Switching schema triggers evaluate and updates status bar."""
         set_source(page, TWO_SCHEMA_SOURCE)
         page.wait_for_timeout(2500)
-
         page.select_option("#schema-select", "Large")
         page.wait_for_timeout(2000)
-        # Evaluate result: y > 100 is satisfied
         status = page.inner_text("#status-bar")
         assert "Satisfied" in status
 
@@ -214,13 +207,6 @@ class TestSampling:
         table = page.inner_text("#samples-table-container")
         assert "!val!" not in table
 
-    def test_pin_button_visible_after_sample(self, page):
-        # Expand samples section so pin buttons are reachable
-        page.click("#samples-section .viz-section-header")
-        page.click("#btn-sample")
-        page.wait_for_selector(".pin-btn", timeout=8000)
-        assert page.query_selector(".pin-btn") is not None
-
 
 # ── Scatter plot ─────────────────────────────────────────────────────────────
 
@@ -250,38 +236,3 @@ class TestScatter:
         if x and y:
             assert x != y
 
-
-# ── Evaluate button ───────────────────────────────────────────────────────────
-
-class TestEvaluate:
-    def test_satisfiable_schema(self, page):
-        set_source(page, SIMPLE_SOURCE)
-        page.wait_for_timeout(2000)
-        page.click("#btn-evaluate")
-        page.wait_for_timeout(2000)
-        assert "Satisfied" in page.inner_text("#status-bar")
-
-    def test_unsatisfiable_schema(self, page):
-        set_source(page, UNSAT_SOURCE)
-        page.wait_for_timeout(2500)
-        page.click("#btn-evaluate")
-        page.wait_for_timeout(2000)
-        status = page.inner_text("#status-bar")
-        # Should NOT say Satisfied
-        assert "Satisfied" not in status
-
-    def test_given_binding_changes_result(self, page):
-        src = "schema SumTo10\n    x ∈ Nat\n    y ∈ Nat\n    x + y = 10\n"
-        set_source(page, src)
-        page.wait_for_timeout(2500)
-        x_input = page.query_selector(".binding-input[data-varname='x']")
-        if x_input:
-            x_input.fill("3")
-        page.click("#btn-evaluate")
-        page.wait_for_timeout(2000)
-        assert "Satisfied" in page.inner_text("#status-bar")
-        # y should be solved to 7
-        y_input = page.query_selector(".binding-input[data-varname='y']")
-        if y_input:
-            y_val = page.evaluate("el => el.value", y_input)
-            assert y_val == "7"

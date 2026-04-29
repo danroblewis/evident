@@ -63,127 +63,15 @@ function updateSchemaList(schemas) {
     _activeSchema = sel.value;
 }
 
-// ── Given (pinned) bindings ──────────────────────────────────────────────
+// ── Eval result ───────────────────────────────────────────────────────────
 
-/**
- * Return the current "given" bindings — reads all non-empty binding inputs.
- * Called by index.html when building POST bodies.
- * @returns {{ [name: string]: number | string }}
- */
-function getGivenBindings() {
-    const bindings = {};
-    document.querySelectorAll('.binding-input').forEach((input) => {
-        const val = input.value.trim();
-        if (val !== '') {
-            const name = input.dataset.varname;
-            if (!name) return;
-            const num = Number(val);
-            bindings[name] = isNaN(num) ? val : num;
-        }
-    });
-    return bindings;
-}
-
-function _clearBindings() {
-    const el = document.getElementById('bindings-inputs');
-    if (el) el.innerHTML = '';
-}
-
-
-// ── Binding inputs ────────────────────────────────────────────────────────
-
-/**
- * Render one input row per variable in #bindings-inputs.
- * @param {{ [name: string]: { min?: number|null, max?: number|null, type?: string, fixed?: any } }} ranges
- */
-function renderBindingInputs(ranges) {
-    const container = document.getElementById('bindings-inputs');
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    const entries = Object.entries(ranges);
-    if (entries.length === 0) {
-        container.innerHTML =
-            '<p style="color:var(--fg-muted);font-size:12px;font-style:italic">No variables found.</p>';
-        return;
-    }
-
-    entries.forEach(([name, info]) => {
-        const row = document.createElement('div');
-        row.className = 'binding-row';
-
-        // Label
-        const label = document.createElement('span');
-        label.className   = 'binding-label';
-        label.textContent = name;
-
-        // Type badge
-        if (info.type) {
-            const typeSpan = document.createElement('span');
-            typeSpan.className   = 'binding-type';
-            typeSpan.textContent = info.type;
-            label.appendChild(typeSpan);
-        }
-
-        // Input
-        const input = document.createElement('input');
-        input.type      = 'text';
-        input.className = 'binding-input';
-        input.dataset.varname = name;
-
-        if (info.fixed !== undefined) {
-            input.value    = String(info.fixed);
-            input.disabled = true;
-            input.className += ' free';
-            input.title    = 'Fixed by "given" bindings';
-        } else {
-            const lo = info.min != null ? info.min : '?';
-            const hi = info.max != null ? info.max : '?';
-            input.placeholder = `[${lo}, ${hi}]`;
-        }
-
-        // Range hint
-        const hint = document.createElement('span');
-        hint.className = 'binding-range-hint';
-        if (info.fixed === undefined && info.min != null && info.max != null) {
-            hint.textContent = `${info.min}…${info.max}`;
-        }
-
-        row.appendChild(label);
-        row.appendChild(input);
-        row.appendChild(hint);
-        container.appendChild(row);
-    });
-}
-
-// ── Eval result rendering ────────────────────────────────────────────────
-
-/**
- * Show the /evaluate result in the bindings panel.
- * @param {{ satisfied: boolean, bindings?: object, error?: string }} data
- */
 function renderEvalResult(data) {
-    if (data.error) {
-        _showNotification(`Error: ${data.error}`, 'error');
-        return;
+    if (data.satisfied) {
+        const count = Object.keys(data.bindings || {}).length;
+        _showNotification(`Satisfied ✓  (${count} variable${count !== 1 ? 's' : ''})`, 'success');
+    } else if (!data.error) {
+        _showNotification('Unsatisfiable', 'error');
     }
-
-    if (!data.satisfied) {
-        _showNotification('Unsatisfiable — no valid assignment exists', 'error');
-        return;
-    }
-
-    // Fill in solved values in the binding inputs
-    for (const [name, val] of Object.entries(data.bindings || {})) {
-        const input = document.querySelector(`.binding-input[data-varname="${name}"]`);
-        if (input && !input.disabled) {
-            input.value = String(val);
-            input.classList.add('binding-solved');
-        }
-    }
-    const count = Object.keys(data.bindings || {}).length;
-    _showNotification(`Satisfied ✓  (${count} variable${count !== 1 ? 's' : ''})`, 'success');
 }
 
 // ── Notification helper ───────────────────────────────────────────────────
