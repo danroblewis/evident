@@ -198,15 +198,15 @@ class EvidentEditor {
         // partial matches inside identifiers (e.g. "island" ↛ "isl∧") are safe.
         // Longest keywords first to avoid 'in' matching before 'not in'.
         const WORD_SUBS = [
-            ['not in',      ' ∉ '],
-            ['superset',    ' ⊇ '],
-            ['subset',      ' ⊆ '],
-            ['intersection',' ∩ '],
-            ['union',       ' ∪ '],
-            ['mapsto',      '↦ ' ],
-            ['and',         ' ∧ '],
-            ['or',          ' ∨ '],
-            ['in',          ' ∈ '],
+            ['not in',      '∉ '],
+            ['superset',    '⊇ '],
+            ['subset',      '⊆ '],
+            ['intersection','∩ '],
+            ['union',       '∪ '],
+            ['mapsto',      '↦ '],
+            ['and',         '∧ '],
+            ['or',          '∨ '],
+            ['in',          '∈ '],
         ];
 
         // Operator pairs: trigger immediately on the second character.
