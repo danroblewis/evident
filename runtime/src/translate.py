@@ -240,6 +240,13 @@ def translate_constraint(
         rhs_name = right.name if isinstance(right, Identifier) else None
 
         if op in ("∈", "∉"):
+            # Resolve named set reference: x ∈ months_map
+            if isinstance(right, Identifier):
+                named = registry.get_named_set(right.name)
+                if named is not None:
+                    right = named
+                    constraint = MembershipConstraint(op=op, left=left, right=right)
+
             # Union/difference: x ∈ A ∪ B  ≡  x ∈ A ∨ x ∈ B
             #                   x ∉ A ∪ B  ≡  x ∉ A ∧ x ∉ B
             # Handles any nesting depth via recursion.

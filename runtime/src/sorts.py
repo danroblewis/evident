@@ -37,6 +37,8 @@ class SortRegistry:
         self._tuple_cache: dict[tuple[int, ...], z3.SortRef] = {}
         # Enum variant name → Z3 constructor value (e.g. "Red" → Color.Red)
         self._constructors: dict[str, z3.ExprRef] = {}
+        # Named set literals: assert months = {…}  — stores the AST node
+        self._named_sets: dict[str, object] = {}
 
     # ------------------------------------------------------------------
     # Primitive sort helpers
@@ -162,6 +164,14 @@ class SortRegistry:
     def get_constructor(self, name: str):
         """Return the Z3 constructor value for an enum variant, or None."""
         return self._constructors.get(name)
+
+    def register_named_set(self, name: str, expr) -> None:
+        """Store a set-valued assertion (AST node) under a name."""
+        self._named_sets[name] = expr
+
+    def get_named_set(self, name: str):
+        """Return the AST node for a named set, or None."""
+        return self._named_sets.get(name)
 
     def get_constructors_for(self, type_name: str) -> list:
         """Return all constructor values declared for a given enum type name."""

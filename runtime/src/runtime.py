@@ -190,14 +190,15 @@ class EvidentRuntime:
     def _handle_assert(self, stmt: AssertStmt) -> None:
         """Handle an AssertStmt from a loaded program."""
         if stmt.value is not None:
+            from .ast_types import SetLiteral, RangeLiteral, BinaryExpr
+            # assert months = { ... }  — named set, stored for ∈ resolution
+            if isinstance(stmt.value, (SetLiteral, RangeLiteral, BinaryExpr)):
+                self.solver.registry.register_named_set(stmt.name, stmt.value)
+                return
             # assert x = <literal>
             val = _extract_literal(stmt.value)
             if val is not None:
                 self.assert_ground(stmt.name, val)
-            # Non-literal expressions (e.g. set literals) are skipped for now —
-            # they require the full expression evaluator.
-        # assert x (unbound) and assert x ∈ T are not ground facts;
-        # they constrain future queries but we don't have a global solver context.
 
 
 def _extract_literal(expr) -> Any | None:
