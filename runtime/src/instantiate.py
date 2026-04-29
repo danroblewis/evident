@@ -102,10 +102,23 @@ def instantiate_schema(
         if isinstance(item, PassthroughItem):
             if schemas and item.name in schemas:
                 sub_schema = schemas[item.name]
-                # Passing the current env as `given` means shared names reuse
-                # existing Z3 variables automatically (names-match join).
+                # Apply explicit slot renames before names-match.
+                # ..claim (bronth ↦ month) pre-binds sub-schema's `bronth`
+                # to the parent's `month` Z3 variable so they share identity.
+                given_for_sub = env
+                for mapping in item.mappings:
+                    parent_name = (
+                        mapping.value.name
+                        if isinstance(mapping.value, Identifier) else None
+                    )
+                    if parent_name:
+                        parent_var = env.lookup(parent_name)
+                        if parent_var is not None:
+                            given_for_sub = given_for_sub.bind(mapping.slot, parent_var)
+                # Passing the (possibly augmented) env as `given` means shared
+                # names unify automatically (names-match relational join).
                 sub_env, sub_type_constraints = instantiate_schema(
-                    sub_schema, env, registry, prefix=prefix, schemas=schemas
+                    sub_schema, given_for_sub, registry, prefix=prefix, schemas=schemas
                 )
                 constraints.extend(sub_type_constraints)
                 # Import sub-schema body constraints

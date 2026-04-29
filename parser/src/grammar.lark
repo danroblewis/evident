@@ -39,7 +39,11 @@ body: body_line+
           | schema_decl
           | evident_block
 
-passthrough: ".." NAME
+// Passthrough with optional slot renames: ..claim (sub_var ↦ parent_var, ...)
+passthrough: ".." NAME "(" pass_rename ("," pass_rename)* ")"  -> passthrough_renamed
+           | ".." NAME                                          -> passthrough_plain
+
+pass_rename: NAME ("__MAPSTO__"|"mapsto") NAME    -> pass_rename_item
 
 // evident block at top level (outside a schema body)
 evident_top: "evident" pattern_arg+ _NEWLINE (_INDENT body _DEDENT)?

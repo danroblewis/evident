@@ -84,6 +84,18 @@ class EvidentTransformer(LarkTransformer):
     def body_evident(self, items):
         return items[0]
 
+    def passthrough_plain(self, items):
+        return PassthroughItem(name=_str(items[0]), mappings=[])
+
+    def passthrough_renamed(self, items):
+        name = _str(items[0])
+        mappings = [m for m in items[1:] if isinstance(m, InlineMapping)]
+        return PassthroughItem(name=name, mappings=mappings)
+
+    def pass_rename_item(self, items):
+        # sub_var ↦ parent_var  →  InlineMapping(slot=sub_var, value=Identifier(parent_var))
+        return InlineMapping(slot=_str(items[0]), value=Identifier(name=_str(items[1])))
+
     def passthrough(self, items):
         return PassthroughItem(name=_str(items[0]), mappings=[])
 
