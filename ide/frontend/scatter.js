@@ -370,5 +370,6 @@ function drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, container) {
 
 window.renderScatterControls = renderScatterControls;
 window.drawScatter = drawScatter;
+window.drawFromCache = drawFromCache;
 
 })();

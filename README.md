@@ -27,6 +27,8 @@ Query `ValidSchedule` and the solver returns a concrete assignment: `task.id=3, 
 
 ![Constraint shape visualised as a scatter plot](docs/screenshots/scatter.png)
 
+![Date schema: month columns colored by month name, day on Y axis](docs/screenshots/scatter-color.png)
+
 ## Language features
 
 **Types and enums**
