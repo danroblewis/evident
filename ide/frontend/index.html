@@ -230,8 +230,22 @@
     // Editor content change → re-evaluate after 800ms
     evEditor.onParseResult = () => scheduleAutoEvaluate();
 
-    evEditor.init().then(() => {
+    evEditor.init().then(async () => {
         window.evEditor = evEditor;
+        // ── URL-based file loading ───────────────────────────────────────
+        // ?file=name.ev  loads from /files/name.ev (saved programs)
+        // ?example=name.ev  loads from /examples/name.ev (built-ins)
+        const params = new URLSearchParams(window.location.search);
+        const fileParam    = params.get('file');
+        const exampleParam = params.get('example');
+        if (fileParam || exampleParam) {
+            try {
+                const endpoint = fileParam ? `/files/${encodeURIComponent(fileParam)}`
+                                           : `/examples/${encodeURIComponent(exampleParam)}`;
+                const data = await fetch(endpoint).then(r => r.json());
+                if (data.source) evEditor.editor.setValue(data.source);
+            } catch (e) { /* silent — fall back to default source */ }
+        }
     });
 
     // Schema selector change → evaluate immediately
@@ -449,6 +463,7 @@
                     body: JSON.stringify({ source }),
                 });
                 const data = await resp.json();
+                history.pushState({}, '', `?file=${encodeURIComponent(data.filename)}`);
                 overlay.remove();
                 // brief toast
                 const t = document.createElement('div');
@@ -498,10 +513,14 @@
                 el.addEventListener('mouseleave', () => el.style.background = '');
                 el.addEventListener('click', async () => {
                     const endpoint = el.dataset.endpoint;
-                    const resp = await fetch(`/${endpoint}/${encodeURIComponent(el.dataset.name)}`);
+                    const name     = el.dataset.name;
+                    const resp = await fetch(`/${endpoint}/${encodeURIComponent(name)}`);
                     const data = await resp.json();
                     evEditor.editor.setValue(data.source);
                     if (typeof resetSamples === 'function') resetSamples();
+                    // Update URL so the page is bookmarkable / shareable
+                    const param = endpoint === 'examples' ? 'example' : 'file';
+                    history.pushState({}, '', `?${param}=${encodeURIComponent(name)}`);
                     overlay.remove();
                 });
             });
