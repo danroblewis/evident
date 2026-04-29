@@ -19,9 +19,19 @@ enum_decl: "type" NAME "=" NAME ("|" NAME)+ _NEWLINE
 // ── Schema declarations ──────────────────────────────────────────────────────
 
 // Schema keyword captured via separate rules to distinguish "schema" vs "type" vs "claim"
-schema_decl: schema_kw NAME "=" NAME inline_mapping+ _NEWLINE   -> schema_alias_inline
-           | schema_kw NAME "=" NAME _NEWLINE                    -> schema_alias_simple
-           | schema_kw NAME _NEWLINE _INDENT body _DEDENT        -> schema_block
+// Parenthesised parameter list (newlines inside parens are ignored by Lark):
+//   schema Date(year ∈ Nat, month ∈ Nat, day ∈ Nat)
+//       0 < year
+schema_decl: schema_kw NAME "(" param_decl_list ")" _NEWLINE _INDENT body _DEDENT  -> schema_block_params
+           | schema_kw NAME "(" param_decl_list ")" _NEWLINE                        -> schema_block_params_no_body
+           | schema_kw NAME "=" NAME inline_mapping+ _NEWLINE                        -> schema_alias_inline
+           | schema_kw NAME "=" NAME _NEWLINE                                        -> schema_alias_simple
+           | schema_kw NAME _NEWLINE _INDENT body _DEDENT                            -> schema_block
+
+param_decl_list: param_decl ("," param_decl)*
+
+// x, y ∈ Nat   or   x ∈ Nat
+param_decl: name_list ("__IN__"|"in") expr  -> param_decl_item
 
 // Using separate rules for each keyword so they're recognized as string literals (higher prio than NAME)
 schema_kw: "schema"  -> kw_schema

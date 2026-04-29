@@ -31,6 +31,25 @@ class EvidentTransformer(LarkTransformer):
         variants = [_str(t) for t in items[1:]]
         return EnumDecl(name=name, variants=variants)
 
+    def param_decl_item(self, items):
+        return Param(names=items[0], set=items[1])
+
+    def param_decl_list(self, items):
+        return list(items)
+
+    def schema_block_params(self, items):
+        keyword = items[0]
+        name    = _str(items[1])
+        params  = items[2]
+        body    = items[3] if len(items) > 3 else []
+        return SchemaDecl(keyword=keyword, name=name, params=params, body=body)
+
+    def schema_block_params_no_body(self, items):
+        keyword = items[0]
+        name    = _str(items[1])
+        params  = items[2]
+        return SchemaDecl(keyword=keyword, name=name, params=params, body=[])
+
     def schema_block(self, items):
         # items = [schema_kw_str, NAME, body_list]
         keyword = items[0]
