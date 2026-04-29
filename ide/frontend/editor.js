@@ -159,12 +159,16 @@ class EvidentEditor {
                     statusEl.textContent = `✓ ${schemas.length} schema${schemas.length !== 1 ? 's' : ''}`;
                     statusEl.parentElement?.classList.remove('status-error');
                     statusEl.parentElement?.classList.add('status-ok');
+                    const sb = document.getElementById('status-bar');
+                    if (sb) { sb.style.cursor = ''; sb.onclick = null; }
+                    document.getElementById('error-modal')?.remove();
                 } else {
                     const first = errors[0].message || '';
                     const summary = first.length > 80 ? first.slice(0, 80) + '…' : first;
                     statusEl.textContent = `✗ ${errors.length} error${errors.length !== 1 ? 's' : ''}: ${summary}`;
                     statusEl.parentElement?.classList.remove('status-ok');
                     statusEl.parentElement?.classList.add('status-error');
+                    _setStatusErrors(errors);
                 }
             }
         } catch (e) {
@@ -175,6 +179,103 @@ class EvidentEditor {
                 statusEl.parentElement?.classList.add('status-idle');
             }
         }
+    }
+
+    // ── Error modal ──────────────────────────────────────────────────────
+
+    _setStatusErrors(errors) {
+        const statusBar = document.getElementById('status-bar');
+        if (!statusBar) return;
+        statusBar.style.cursor = 'pointer';
+        statusBar.onclick = () => this._openErrorModal(errors);
+    }
+
+    _openErrorModal(errors) {
+        // Remove any existing modal
+        document.getElementById('error-modal')?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'error-modal';
+        overlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 9999;
+            background: rgba(0,0,0,0.6);
+            display: flex; align-items: center; justify-content: center;
+        `;
+
+        const box = document.createElement('div');
+        box.style.cssText = `
+            background: var(--bg-surface, #1e1e2e);
+            border: 1px solid var(--border, #45475a);
+            border-radius: 8px;
+            max-width: min(700px, 90vw);
+            max-height: 80vh;
+            width: 100%;
+            display: flex; flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            font-family: var(--font-mono, monospace);
+        `;
+
+        // Header
+        const header = document.createElement('div');
+        header.style.cssText = `
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; border-bottom: 1px solid var(--border, #45475a);
+            font-size: 13px; font-weight: 600; color: var(--red, #f38ba8);
+        `;
+        header.innerHTML = `<span>✗ ${errors.length} error${errors.length !== 1 ? 's' : ''}</span>`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = `
+            background: none; border: none; color: var(--fg-muted, #6c7086);
+            cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;
+        `;
+        closeBtn.onclick = () => overlay.remove();
+        header.appendChild(closeBtn);
+        box.appendChild(header);
+
+        // Error list
+        const body = document.createElement('div');
+        body.style.cssText = `overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px;`;
+
+        errors.forEach((err, i) => {
+            const block = document.createElement('div');
+
+            // Location badge
+            if (err.line != null) {
+                const loc = document.createElement('div');
+                loc.style.cssText = `font-size: 11px; color: var(--fg-muted, #6c7086); margin-bottom: 4px;`;
+                loc.textContent = `Line ${err.line}${err.col != null ? ', Col ' + err.col : ''}`;
+                block.appendChild(loc);
+            }
+
+            // Message
+            const msg = document.createElement('pre');
+            msg.style.cssText = `
+                margin: 0; white-space: pre-wrap; word-break: break-word;
+                font-size: 12px; color: var(--fg, #cdd6f4);
+                line-height: 1.5;
+            `;
+            msg.textContent = err.message || String(err);
+            block.appendChild(msg);
+
+            if (i < errors.length - 1) {
+                block.style.borderBottom = '1px solid var(--border, #45475a)';
+                block.style.paddingBottom = '16px';
+            }
+
+            body.appendChild(block);
+        });
+
+        box.appendChild(body);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        // Dismiss on backdrop click or Escape
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        document.addEventListener('keydown', function esc(e) {
+            if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); }
+        });
     }
 
     // ── Symbol substitutions ─────────────────────────────────────────────
