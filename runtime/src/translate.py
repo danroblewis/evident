@@ -18,6 +18,8 @@ from .ast_types import (
     LogicConstraint,
     BindingConstraint,
     InlineEnumExpr,
+    SetLiteral,
+    RangeLiteral,
     # Expressions
     Identifier,
     FieldAccess,
@@ -239,9 +241,6 @@ def translate_constraint(
 
         if op == "∈":
             # Inline enum: x ∈ Red | Green | Blue
-            # The variable's sort was already set in instantiate_schema, so the
-            # enum sort constrains x automatically. Emit a disjunction for
-            # completeness (and to handle cases used as a sub-constraint).
             if isinstance(right, InlineEnumExpr):
                 x = translate_expr(left, env, registry)
                 ctors = [registry.get_constructor(v) for v in right.variants]
@@ -249,12 +248,23 @@ def translate_constraint(
                 if ctors:
                     return z3.Or(*[x == c for c in ctors])
                 return z3.BoolVal(True)
+            # Set literal: x ∈ {1, 2, 3}  →  x=1 ∨ x=2 ∨ x=3
+            if isinstance(right, SetLiteral):
+                x = translate_expr(left, env, registry)
+                if not right.elements:
+                    return z3.BoolVal(False)
+                return z3.Or(*[x == translate_expr(e, env, registry)
+                               for e in right.elements])
+            # Range literal: x ∈ {lo..hi}  →  lo ≤ x ≤ hi
+            if isinstance(right, RangeLiteral):
+                x   = translate_expr(left, env, registry)
+                lo  = translate_expr(right.from_, env, registry)
+                hi  = translate_expr(right.to, env, registry)
+                return z3.And(lo <= x, x <= hi)
             if rhs_name == "Nat":
-                # x ∈ Nat ≡ x ≥ 0  (Int with non-negativity constraint)
                 x = translate_expr(left, env, registry)
                 return x >= z3.IntVal(0)
             if rhs_name in ("Int", "Bool"):
-                # No additional constraint beyond the variable's sort.
                 return z3.BoolVal(True)
             # General case: right is a Set (Array sort) — use array select.
             x = translate_expr(left, env, registry)
@@ -262,6 +272,13 @@ def translate_constraint(
             return z3.Select(s, x)
 
         if op == "∉":
+            # Set literal: x ∉ {1, 2, 3}  →  x≠1 ∧ x≠2 ∧ x≠3
+            if isinstance(right, SetLiteral):
+                x = translate_expr(left, env, registry)
+                if not right.elements:
+                    return z3.BoolVal(True)
+                return z3.And(*[x != translate_expr(e, env, registry)
+                                for e in right.elements])
             x = translate_expr(left, env, registry)
             s = translate_expr(right, env, registry)
             return z3.Not(z3.Select(s, x))
