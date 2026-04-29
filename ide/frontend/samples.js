@@ -5,6 +5,7 @@ let _allSamples = [];
 const _seenKeys  = new Set();
 
 function clearAccumulatedSamples() {
+    clearTimeout(_streamTimer);
     _allSamples = [];
     _seenKeys.clear();
     const countEl = document.getElementById('sample-count');
@@ -26,6 +27,30 @@ function _mergeSamples(incoming) {
         }
     }
     return added;
+}
+
+// Drip-feed newly-added samples into the scatter plot one at a time.
+// Total animation window: ~2s regardless of batch size, so it always
+// looks like a continuous stream even though data arrives in batches.
+let _streamTimer = null;
+function _streamIntoPlot(newSamples) {
+    clearTimeout(_streamTimer);
+    if (!newSamples.length) return;
+
+    // Snapshot of accumulated set before this batch (already merged)
+    const base = _allSamples.length - newSamples.length;
+    const delay = Math.max(20, Math.min(150, 2000 / newSamples.length));
+
+    let i = 0;
+    function addNext() {
+        if (i >= newSamples.length) return;
+        i++;
+        if (typeof drawScatter === 'function') {
+            drawScatter(_allSamples.slice(0, base + i));
+        }
+        _streamTimer = setTimeout(addNext, delay);
+    }
+    addNext();
 }
 
 async function renderSamples(source, schemaName, given, n = 5, strategy = 'random') {
@@ -149,13 +174,11 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
         }
 
         // Pass all vars so scatter can offer enum axes too.
-        // Draw scatter from the full accumulated set so the plot grows over time.
         if (typeof renderScatterControls === 'function') {
             renderScatterControls(vars, _allSamples);
         }
-        if (typeof drawScatter === 'function') {
-            drawScatter(_allSamples);
-        }
+        // Stream new samples into the plot one-by-one for a continuous feel.
+        _streamIntoPlot(newlyAdded);
 
         return samples;
 
