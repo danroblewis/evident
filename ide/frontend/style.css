@@ -667,9 +667,13 @@ html, body {
     color: var(--fg);
     font-family: var(--font-mono);
     font-size: 12px;
-    padding: 3px 8px;
+    padding: 3px 4px;
     outline: none;
     cursor: pointer;
+    /* Fixed width so long variable names don't blow out the layout.
+       Full names are still visible in the open dropdown. */
+    width: 90px;
+    max-width: 90px;
 }
 
 .axis-select:focus {
