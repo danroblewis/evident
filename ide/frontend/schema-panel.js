@@ -50,6 +50,12 @@ function updateSchemaList(schemas) {
         sel.appendChild(opt);
     });
 
+    // Default to the last schema (most recently defined) when there's no
+    // prior selection to preserve.
+    if (!prev || !_schemas.includes(prev)) {
+        sel.value = _schemas[_schemas.length - 1];
+    }
+
     // If schema changed, clear the binding inputs
     if (prev !== sel.value) {
         _clearBindings();
