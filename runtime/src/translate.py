@@ -248,6 +248,18 @@ def translate_constraint(
                 if ctors:
                     return z3.Or(*[x == c for c in ctors])
                 return z3.BoolVal(True)
+            # Tuple membership: (x, y) ∈ {(a, b), (c, d), ...}
+            # Each tuple in the set produces a conjunction; the whole thing is a disjunction.
+            # This is the direct set-theoretic definition of a finite relation.
+            if isinstance(left, TupleLiteral) and isinstance(right, SetLiteral):
+                lhs = [translate_expr(e, env, registry) for e in left.elements]
+                clauses = []
+                for elem in right.elements:
+                    if isinstance(elem, TupleLiteral) and len(elem.elements) == len(lhs):
+                        rhs = [translate_expr(e, env, registry) for e in elem.elements]
+                        clauses.append(z3.And(*[l == r for l, r in zip(lhs, rhs)]))
+                return z3.Or(*clauses) if clauses else z3.BoolVal(False)
+
             # Set literal: x ∈ {1, 2, 3}  →  x=1 ∨ x=2 ∨ x=3
             if isinstance(right, SetLiteral):
                 x = translate_expr(left, env, registry)

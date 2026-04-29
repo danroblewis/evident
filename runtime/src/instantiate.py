@@ -17,7 +17,16 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral
+
+
+def _is_type_decl(item) -> bool:
+    """True for  x ∈ Type  declarations already handled by instantiate_schema."""
+    return (
+        isinstance(item, MembershipConstraint)
+        and item.op == "∈"
+        and isinstance(item.left, Identifier)  # plain variable, not a tuple
+    )
 
 try:
     from .sorts import SortRegistry  # type: ignore[import]
@@ -102,7 +111,7 @@ def instantiate_schema(
                 # Import sub-schema body constraints
                 from .translate import translate_constraint
                 for sub_item in sub_schema.body:
-                    if isinstance(sub_item, (MembershipConstraint, EvidentBlock, PassthroughItem)):
+                    if isinstance(sub_item, (EvidentBlock, PassthroughItem)) or _is_type_decl(sub_item):
                         continue
                     try:
                         constraints.append(translate_constraint(sub_item, sub_env, registry))
@@ -165,7 +174,7 @@ def instantiate_schema(
             # using the sub_env where names are short (duration, deadline, …)
             from .translate import translate_constraint
             for sub_item in sub_schema.body:
-                if isinstance(sub_item, (MembershipConstraint, EvidentBlock, PassthroughItem)):
+                if isinstance(sub_item, (EvidentBlock, PassthroughItem)) or _is_type_decl(sub_item):
                     continue
                 try:
                     constraints.append(translate_constraint(sub_item, sub_env, registry))
