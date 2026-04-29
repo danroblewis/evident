@@ -33,6 +33,19 @@
             ⟷ Ranges
         </button>
 
+        <div class="top-bar-sep"></div>
+
+        <select id="example-select" title="Load an example program"
+                style="background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);
+                       border-radius:4px;padding:2px 8px;font-size:11px;outline:none;cursor:pointer;">
+            <option value="" disabled selected>Examples…</option>
+        </select>
+
+        <button id="btn-open" title="Open .ev file" style="font-size:12px;">📂 Open</button>
+        <button id="btn-save" title="Save as .ev file" style="font-size:12px;">💾 Save</button>
+        <!-- Hidden file input for Open -->
+        <input type="file" id="file-input" accept=".ev,.txt" style="display:none">
+
         <div class="spacer"></div>
 
         <!-- Sample count selector -->
@@ -167,6 +180,7 @@
     <script src="samples.js"></script>
     <script src="ranges.js"></script>
     <script src="scatter.js"></script>
+    <script src="examples.js"></script>
 
     <script>
     'use strict';
@@ -382,6 +396,54 @@
             resizer.classList.remove('dragging');
         });
     })();
+
+    // ── Examples dropdown ────────────────────────────────────────────────
+    (() => {
+        const sel = document.getElementById('example-select');
+        EXAMPLES.forEach(({ name }) => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', () => {
+            const ex = EXAMPLES.find(e => e.name === sel.value);
+            if (!ex) return;
+            evEditor.editor.setValue(ex.source);
+            sel.value = '';          // reset so same example can be reloaded
+            if (typeof resetSamples === 'function') resetSamples();
+        });
+    })();
+
+    // ── Save / Open ──────────────────────────────────────────────────────
+    document.getElementById('btn-save').addEventListener('click', () => {
+        const source   = evEditor.getSource();
+        const schema   = document.getElementById('schema-select').value || 'program';
+        const filename = schema.toLowerCase().replace(/[^a-z0-9_-]/g, '_') + '.ev';
+        const blob     = new Blob([source], { type: 'text/plain' });
+        const url      = URL.createObjectURL(blob);
+        const a        = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('btn-open').addEventListener('click', () => {
+        document.getElementById('file-input').click();
+    });
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            evEditor.editor.setValue(ev.target.result);
+            if (typeof resetSamples === 'function') resetSamples();
+        };
+        reader.readAsText(file);
+        e.target.value = '';         // reset so same file can be reopened
+    });
 
     // ── Keyboard shortcuts ───────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
