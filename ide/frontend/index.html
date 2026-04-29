@@ -294,9 +294,10 @@
     document.getElementById('schema-select').addEventListener('change', resetSamples);
     document.addEventListener('binding-changed', scheduleAutoSample);
 
-    // Sample button: trigger immediately (still accumulates)
+    // Sample button: clear accumulated set and resample from scratch
     document.getElementById('btn-sample').addEventListener('click', () => {
         clearTimeout(_sampleTimer);
+        if (typeof clearAccumulatedSamples === 'function') clearAccumulatedSamples();
         runSample();
     });
 
