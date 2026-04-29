@@ -17,7 +17,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock
 
 try:
     from .sorts import SortRegistry  # type: ignore[import]
@@ -86,6 +86,34 @@ def instantiate_schema(
     constraints: list[z3.BoolRef] = []
 
     for item in schema.body:
+        # ── Passthrough: ..sub_schema ────────────────────────────────────
+        # Flat-merges the sub-schema into the current scope.  Variables with
+        # the same name are unified (relational join); new variables are added
+        # directly (no dot prefix).  All sub-schema constraints are imported.
+        if isinstance(item, PassthroughItem):
+            if schemas and item.name in schemas:
+                sub_schema = schemas[item.name]
+                # Passing the current env as `given` means shared names reuse
+                # existing Z3 variables automatically (names-match join).
+                sub_env, sub_type_constraints = instantiate_schema(
+                    sub_schema, env, registry, prefix=prefix, schemas=schemas
+                )
+                constraints.extend(sub_type_constraints)
+                # Import sub-schema body constraints
+                from .translate import translate_constraint
+                for sub_item in sub_schema.body:
+                    if isinstance(sub_item, (MembershipConstraint, EvidentBlock, PassthroughItem)):
+                        continue
+                    try:
+                        constraints.append(translate_constraint(sub_item, sub_env, registry))
+                    except (NotImplementedError, KeyError):
+                        pass
+                # Merge new variables (not already in parent env) into parent
+                for sub_name, sub_var in sub_env.bindings.items():
+                    if env.lookup(sub_name) is None:
+                        env = env.bind(sub_name, sub_var)
+            continue
+
         if not (
             isinstance(item, MembershipConstraint)
             and item.op == "∈"
@@ -136,7 +164,6 @@ def instantiate_schema(
             # Translate sub-schema body constraints (e.g. duration < deadline)
             # using the sub_env where names are short (duration, deadline, …)
             from .translate import translate_constraint
-            from .ast_types import EvidentBlock, PassthroughItem
             for sub_item in sub_schema.body:
                 if isinstance(sub_item, (MembershipConstraint, EvidentBlock, PassthroughItem)):
                     continue
