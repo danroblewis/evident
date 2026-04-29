@@ -9,14 +9,14 @@
       "body": [
         {
           "type": "MembershipConstraint",
-          "op": "⊆",
+          "op": "\u2286",
           "left": {
             "type": "Identifier",
             "name": "edges"
           },
           "right": {
             "type": "BinaryExpr",
-            "op": "×",
+            "op": "\u00d7",
             "left": {
               "type": "Identifier",
               "name": "T"
@@ -29,7 +29,7 @@
         },
         {
           "type": "MembershipConstraint",
-          "op": "∈",
+          "op": "\u2208",
           "left": {
             "type": "Identifier",
             "name": "a"
@@ -41,7 +41,7 @@
         },
         {
           "type": "MembershipConstraint",
-          "op": "∈",
+          "op": "\u2208",
           "left": {
             "type": "Identifier",
             "name": "b"
@@ -51,7 +51,92 @@
             "name": "T"
           }
         },
-        "Tree('logic_or', [MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='a'), Identifier(name='b')]), right=Identifier(name='edges')), ExistentialConstraint(quantifier='∃', bindings=[Binding(names=['c'], set=Identifier(name='T'), guard=None, distinct=False)], body=Tree('logic_and', [MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='a'), Identifier(name='c')]), right=Identifier(name='edges')), ApplicationConstraint(name='reachable', args=[Identifier(name='edges'), Identifier(name='c'), Identifier(name='b')], mappings=[], block_mappings=[])]))])"
+        {
+          "type": "LogicConstraint",
+          "op": "\u2228",
+          "right": {
+            "type": "ExistentialConstraint",
+            "quantifier": "\u2203",
+            "bindings": [
+              {
+                "type": "Binding",
+                "names": [
+                  "c"
+                ],
+                "set": {
+                  "type": "Identifier",
+                  "name": "T"
+                }
+              }
+            ],
+            "body": {
+              "type": "LogicConstraint",
+              "op": "\u2227",
+              "right": {
+                "type": "ApplicationConstraint",
+                "name": "reachable",
+                "args": [
+                  {
+                    "type": "Identifier",
+                    "name": "edges"
+                  },
+                  {
+                    "type": "Identifier",
+                    "name": "c"
+                  },
+                  {
+                    "type": "Identifier",
+                    "name": "b"
+                  }
+                ],
+                "mappings": [],
+                "block_mappings": []
+              },
+              "left": {
+                "type": "MembershipConstraint",
+                "op": "\u2208",
+                "left": {
+                  "type": "TupleLiteral",
+                  "elements": [
+                    {
+                      "type": "Identifier",
+                      "name": "a"
+                    },
+                    {
+                      "type": "Identifier",
+                      "name": "c"
+                    }
+                  ]
+                },
+                "right": {
+                  "type": "Identifier",
+                  "name": "edges"
+                }
+              }
+            }
+          },
+          "left": {
+            "type": "MembershipConstraint",
+            "op": "\u2208",
+            "left": {
+              "type": "TupleLiteral",
+              "elements": [
+                {
+                  "type": "Identifier",
+                  "name": "a"
+                },
+                {
+                  "type": "Identifier",
+                  "name": "b"
+                }
+              ]
+            },
+            "right": {
+              "type": "Identifier",
+              "name": "edges"
+            }
+          }
+        }
       ]
     }
   ]

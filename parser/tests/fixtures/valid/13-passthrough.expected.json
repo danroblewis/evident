@@ -26,7 +26,30 @@
               }
             }
           ],
-          "body": "Tree('logic_not', [ApplicationConstraint(name='reachable', args=[Identifier(name='edges'), Identifier(name='x'), Identifier(name='x')], mappings=[], block_mappings=[])])"
+          "body": {
+            "type": "LogicConstraint",
+            "op": "\u00ac",
+            "right": {
+              "type": "ApplicationConstraint",
+              "name": "reachable",
+              "args": [
+                {
+                  "type": "Identifier",
+                  "name": "edges"
+                },
+                {
+                  "type": "Identifier",
+                  "name": "x"
+                },
+                {
+                  "type": "Identifier",
+                  "name": "x"
+                }
+              ],
+              "mappings": [],
+              "block_mappings": []
+            }
+          }
         }
       ]
     }

@@ -220,6 +220,20 @@ class EvidentTransformer(LarkTransformer):
         # items[0] = NOT_OP token, items[1] = constraint
         return LogicConstraint(op='¬', left=None, right=items[1])
 
+    # The grammar uses aliases (-> logic_or, -> logic_and, -> logic_implies,
+    # -> logic_not) that differ from the method names above.  When Lark calls
+    # the alias method the operator tokens are already filtered, so items is
+    # just [left, right] (or [right] for not) — not the alternating
+    # [expr, op, expr] that the *_constraint methods expect.
+    def logic_or(self, items):
+        return LogicConstraint(op='∨', left=items[0], right=items[1])
+    def logic_and(self, items):
+        return LogicConstraint(op='∧', left=items[0], right=items[1])
+    def logic_implies(self, items):
+        return LogicConstraint(op='⇒', left=items[0], right=items[1])
+    def logic_not(self, items):
+        return LogicConstraint(op='¬', left=None, right=items[0])
+
     def paren_constraint(self, items):
         return items[0]
 
