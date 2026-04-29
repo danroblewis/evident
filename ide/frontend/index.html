@@ -19,15 +19,12 @@
         <span class="logo">Evident</span>
         <div class="top-bar-sep"></div>
 
-        <select id="schema-select" title="Active schema">
-            <option disabled selected>Loading…</option>
-        </select>
-
         <button id="btn-sample" title="Sample: generate N valid assignments">
             ⚂ Sample
         </button>
 
         <div class="top-bar-sep"></div>
+
 
         <button id="btn-open" title="Open a saved program or example" style="font-size:12px;">📂 Open</button>
         <button id="btn-save" title="Save program to server" style="font-size:12px;">💾 Save</button>
@@ -88,8 +85,16 @@
                     </div>
                 </div>
                 <div class="viz-section-body" id="scatter-body">
+                    <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+                        <div style="display:flex;flex-direction:column;gap:2px;">
+                            <span class="scatter-axis-label">Schema</span>
+                            <select id="schema-select" class="axis-select" title="Active schema">
+                                <option disabled selected>Loading…</option>
+                            </select>
+                        </div>
+                    </div>
                     <div id="scatter-controls">
-                        <span class="samples-empty">Run <strong>Sample</strong> first to populate axes.</span>
+                        <span class="samples-empty">Click <strong>Sample</strong> to generate data.</span>
                     </div>
                     <div id="scatter-plot"></div>
                 </div>
