@@ -34,8 +34,8 @@ function makeSelect(id, options, selectedVal) {
 }
 
 function makeGroup(labelText, selectEl) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+    const wrap = document.createElement('label');
+    wrap.style.cssText = 'display:flex;align-items:center;gap:4px;';
     const lbl = document.createElement('span');
     lbl.className = 'scatter-axis-label';
     lbl.textContent = labelText;
@@ -78,7 +78,7 @@ function renderScatterControls(allVars, samples) {
         : allVars.find(v => v !== defaultX) || NONE;
 
     container.innerHTML = '';
-    container.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:10px;';
+    container.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;';
 
     const xSel = makeSelect('scatter-x', allOpts, defaultX);
     const ySel = makeSelect('scatter-y', [{ value: NONE, label: '—' }, ...allOpts], defaultY);

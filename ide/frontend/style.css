@@ -670,10 +670,10 @@ html, body {
     padding: 3px 4px;
     outline: none;
     cursor: pointer;
-    /* Fixed width so long variable names don't blow out the layout.
-       Full names are still visible in the open dropdown. */
-    width: 90px;
-    max-width: 90px;
+    /* Fixed width — long names truncate in collapsed state, full text
+       visible in open dropdown. */
+    width: 80px;
+    max-width: 80px;
 }
 
 .axis-select:focus {
