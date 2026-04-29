@@ -1,0 +1,33 @@
+-- Real numbers: Z3's exact real arithmetic solver handles these natively.
+-- No approximation — solutions are exact rational values.
+-- Use 0.0, 1.5, 3.14 etc. for real literals.
+
+schema UnitInterval
+    x ∈ Real
+    y ∈ Real
+    0.0 < x < 1.0
+    0.0 < y < 1.0
+    x + y < 1.0
+
+schema GoldenRatio
+    -- φ ≈ 1.618: the ratio such that φ = 1 + 1/φ
+    -- Expressed as the constraint φ² = φ + 1
+    phi ∈ Real
+    phi > 1.0
+    phi * phi > phi + 0.99
+    phi * phi < phi + 1.01
+
+schema AspectRatio
+    width  ∈ Real
+    height ∈ Real
+    ratio  ∈ Real
+    width  > 0.0
+    height > 0.0
+    ratio  > 0.0
+    width  < 100.0
+    height < 100.0
+    -- 16:9 aspect ratio within tolerance
+    ratio > 1.77
+    ratio < 1.78
+    width > ratio * height * 0.99
+    width < ratio * height * 1.01
