@@ -1,33 +1,21 @@
--- Date validation with month-name mapping via relational passthrough.
--- months_have_names is a reusable relation (a function from month numbers
--- to names). ..months_have_names (bronth ↦ month) joins it into Date,
--- unifying bronth with month and adding monthName to scope.
-
 type MonthName = Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec
 
-claim months_have_names
-    bronth    ∈ Nat
+schema Date
+    year      ∈ Nat
+    month     ∈ Nat
+    day       ∈ Nat
     monthName ∈ MonthName
-    (bronth, monthName) ∈ {
+
+    0 < year
+    1 ≤ month ≤ 12
+    1 ≤ day   ≤ 31
+
+    (month, monthName) ∈ {
         (1, Jan),  (2, Feb),  (3, Mar),
         (4, Apr),  (5, May),  (6, Jun),
         (7, Jul),  (8, Aug),  (9, Sep),
         (10, Oct), (11, Nov), (12, Dec)
     }
 
-schema Date
-    year  ∈ Nat
-    month ∈ Nat
-    day   ∈ Nat
-
-    ..months_have_names (bronth ↦ month)
-
-    0 < year
-    1 ≤ month ≤ 12
-    1 ≤ day   ≤ 31
-
-    -- February: 28 days (no leap year support yet)
     monthName = Feb                  ⇒ day ≤ 28
-
-    -- 30-day months
     monthName ∈ {Apr, Jun, Sep, Nov} ⇒ day ≤ 30
