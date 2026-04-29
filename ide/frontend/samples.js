@@ -9,8 +9,11 @@ let _allSamples = [];
 const _seenKeys  = new Set();
 
 function clearAccumulatedSamples() {
-    clearTimeout(_streamTimer);
-    _allSamples = [];
+    clearTimeout(_plotTimer);
+    _plotTimer   = null;
+    _plotQueue   = [];
+    _plotShowing = 0;
+    _allSamples  = [];
     _seenKeys.clear();
     const countEl = document.getElementById('sample-count');
     if (countEl) countEl.textContent = '';
@@ -35,33 +38,35 @@ function _mergeSamples(incoming) {
 
 // Drip-feed newly-added samples into the scatter plot one at a time.
 // Total animation window: ~2s regardless of batch size, so it always
-// looks like a continuous stream even though data arrives in batches.
-let _streamTimer = null;
-function _streamIntoPlot(newSamples) {
-    clearTimeout(_streamTimer);
-    if (!newSamples.length) return;
+// Queue-based steady-rate plot reveal.
+// All new samples are pushed onto _plotQueue and drained at a fixed
+// PLOT_TICK_MS per dot, regardless of batch size. This gives a constant
+// visual pace even when multiple batches arrive in quick succession.
+const PLOT_TICK_MS = 30;   // ~33 dots/second — feels smooth without being slow
+let _plotQueue   = [];     // samples waiting to be shown
+let _plotShowing = 0;      // how many of _allSamples are currently visible
+let _plotTimer   = null;
 
-    // Snapshot of accumulated set before this batch (already merged)
-    const base = _allSamples.length - newSamples.length;
-    const delay = Math.max(20, Math.min(150, 2000 / newSamples.length));
-
-    // Above ~500 points the streaming animation taxes the browser more than it's
-    // worth — just do a single redraw at the end instead.
-    if (_allSamples.length > 500) {
-        if (typeof drawScatter === 'function') drawScatter(_allSamples);
+function _plotTick() {
+    if (_plotQueue.length === 0) {
+        _plotTimer = null;
         return;
     }
-
-    let i = 0;
-    function addNext() {
-        if (i >= newSamples.length) return;
-        i++;
-        if (typeof drawScatter === 'function') {
-            drawScatter(_allSamples.slice(0, base + i));
-        }
-        _streamTimer = setTimeout(addNext, delay);
+    _plotQueue.shift();
+    _plotShowing++;
+    if (typeof drawScatter === 'function') {
+        drawScatter(_allSamples.slice(0, _plotShowing));
     }
-    addNext();
+    _plotTimer = setTimeout(_plotTick, PLOT_TICK_MS);
+}
+
+function _streamIntoPlot(newSamples) {
+    if (!newSamples.length) return;
+    // Enqueue all newly-added samples; the tick loop drains at a steady pace.
+    _plotQueue.push(...newSamples);
+    if (!_plotTimer) {
+        _plotTick();
+    }
 }
 
 async function renderSamples(source, schemaName, given, n = 5, strategy = 'random') {
