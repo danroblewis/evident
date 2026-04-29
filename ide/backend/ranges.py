@@ -2,8 +2,8 @@
 Range analysis for the Evident IDE.
 
 Uses a fresh Z3 Solver per check (no push/pop, no Optimize) to find the
-minimum value for each free numeric variable. Avoids all Z3 global state
-issues that crash the server.
+minimum and maximum value for each free numeric variable. Avoids all Z3
+global state issues that crash the server.
 """
 
 import z3
@@ -52,36 +52,69 @@ def _schema_constraints(source: str, schema_name: str, given: dict):
     return body_constraints, env
 
 
-def _sat_with_bound(constraints, var, upper_bound: int) -> bool:
-    """Check if constraints + var <= upper_bound is satisfiable using a fresh solver."""
+def _check_sat(constraints) -> bool:
     s = z3.Solver()
     s.set("timeout", 2000)
     for c in constraints:
         s.add(c)
-    s.add(var <= upper_bound)
+    return s.check() == z3.sat
+
+
+def _sat_with_upper(constraints, var, bound: int) -> bool:
+    """Satisfiable with var <= bound?"""
+    s = z3.Solver()
+    s.set("timeout", 2000)
+    for c in constraints:
+        s.add(c)
+    s.add(var <= bound)
+    return s.check() == z3.sat
+
+
+def _sat_with_lower(constraints, var, bound: int) -> bool:
+    """Satisfiable with var >= bound?"""
+    s = z3.Solver()
+    s.set("timeout", 2000)
+    for c in constraints:
+        s.add(c)
+    s.add(var >= bound)
     return s.check() == z3.sat
 
 
 def _find_min(constraints, var, lo: int = 0, hi: int = 500) -> int | None:
-    """Binary search for minimum satisfying value using fresh solvers per check."""
-    # First verify the problem is satisfiable at all
-    s = z3.Solver()
-    s.set("timeout", 2000)
-    for c in constraints:
-        s.add(c)
-    if s.check() != z3.sat:
+    """Binary search for minimum satisfying value."""
+    if not _check_sat(constraints):
         return None
-
     result = None
-    for _ in range(12):  # log2(500) ≈ 9 iterations
+    for _ in range(12):
         if lo > hi:
             break
         mid = (lo + hi) // 2
-        if _sat_with_bound(constraints, var, mid):
+        if _sat_with_upper(constraints, var, mid):
             result = mid
             hi = mid - 1
         else:
             lo = mid + 1
+    return result
+
+
+def _find_max(constraints, var, lo: int = 0, hi: int = 500) -> int | None:
+    """Binary search for maximum satisfying value within [lo, hi].
+    Returns None if the variable is unbounded above hi."""
+    if not _check_sat(constraints):
+        return None
+    # If the variable can exceed hi, it's unbounded in our search range
+    if _sat_with_lower(constraints, var, hi + 1):
+        return None   # unbounded above
+    result = None
+    for _ in range(12):
+        if lo > hi:
+            break
+        mid = (lo + hi) // 2
+        if _sat_with_lower(constraints, var, mid):
+            result = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
     return result
 
 
@@ -121,17 +154,19 @@ def compute_ranges(source: str, schema_name: str, given: dict) -> dict:
             try:
                 constraints, env = _schema_constraints(source, schema_name, given)
                 if constraints is None or env is None:
-                    ranges[name] = {"min": None, "type": type_name}
+                    ranges[name] = {"min": None, "max": None, "type": type_name}
                     continue
                 target = env.lookup(name)
                 if target is None:
-                    ranges[name] = {"min": None, "type": type_name}
+                    ranges[name] = {"min": None, "max": None, "type": type_name}
                     continue
                 lo_start = 0 if type_name == "Nat" else -200
-                lo = _find_min(constraints, target, lo_start, 500)
-                ranges[name] = {"min": lo, "type": type_name}
+                hi_end   = 500
+                mn = _find_min(constraints, target, lo_start, hi_end)
+                mx = _find_max(constraints, target, lo_start, hi_end)
+                ranges[name] = {"min": mn, "max": mx, "type": type_name}
             except Exception:
-                ranges[name] = {"min": None, "type": type_name}
+                ranges[name] = {"min": None, "max": None, "type": type_name}
         else:
             ranges[name] = {"min": None, "type": type_name}
 
