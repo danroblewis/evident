@@ -26,6 +26,7 @@
         <div class="top-bar-sep"></div>
 
 
+        <button id="btn-new"  title="New program" style="font-size:12px;">✦ New</button>
         <button id="btn-open" title="Open a saved program or example" style="font-size:12px;">📂 Open</button>
         <button id="btn-save" title="Save program to server" style="font-size:12px;">💾 Save</button>
 
@@ -341,6 +342,13 @@
     })();
 
     // (Examples are accessible via the Open dialog)
+
+    // ── New ──────────────────────────────────────────────────────────────
+    document.getElementById('btn-new').addEventListener('click', () => {
+        evEditor.editor.setValue('schema MySchema\n    x ∈ Nat\n    x > 0\n');
+        if (typeof clearAccumulatedSamples === 'function') clearAccumulatedSamples();
+        history.pushState({}, '', window.location.pathname);  // clear ?file= / ?example=
+    });
 
     // ── Save / Open (server-backed) ──────────────────────────────────────
 
