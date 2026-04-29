@@ -4,7 +4,6 @@ FastAPI backend for the Evident IDE.
 Endpoints:
   POST /parse      — parse source, return schema names + errors
   POST /evaluate   — evaluate a schema with given bindings
-  POST /ranges     — compute min/max for each free variable via Z3 Optimize
   POST /sample     — sample valid assignments (blocking or random strategy)
   POST /transfer   — sweep x_var across a range, solve for y_var at each step
 """
@@ -152,11 +151,6 @@ class SampleRequest(BaseModel):
     strategy: str = "blocking"  # "blocking" | "random" | "grid"
 
 
-class RangesRequest(BaseModel):
-    source: str
-    schema: str
-    given: dict[str, Any] = {}
-
 
 class TransferRequest(BaseModel):
     source: str
@@ -218,20 +212,6 @@ def evaluate_schema(req: EvaluateRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
-@app.post("/ranges")
-def get_ranges(req: RangesRequest):
-    """Compute valid ranges for each variable in an isolated subprocess."""
-    payload = {"source": req.source, "schema": req.schema, "given": req.given}
-    key = _cache_key("ranges", payload)
-    cached = _cache_get(key)
-    if cached is not None:
-        return cached
-    result = _call_worker("ranges", payload)
-    if "error" in result and "ranges" not in result:
-        return {"ranges": {}, "error": result["error"]}
-    _cache_put(key, result)
-    return result
 
 
 @app.post("/sample")

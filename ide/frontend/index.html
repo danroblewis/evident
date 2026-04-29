@@ -29,9 +29,6 @@
         <button id="btn-sample" title="Sample: generate N valid assignments">
             ⚂ Sample
         </button>
-        <button id="btn-ranges" title="Ranges: compute min/max for each variable">
-            ⟷ Ranges
-        </button>
 
         <div class="top-bar-sep"></div>
 
@@ -95,27 +92,13 @@
                 <div class="viz-section-body" id="bindings-body">
                     <div id="bindings-inputs">
                         <p style="color:var(--fg-muted);font-size:12px;font-style:italic">
-                            Select a schema and click <strong>Ranges</strong> to load variables.
+                            Select a schema and click <strong>Evaluate</strong> to solve for bindings.
                         </p>
                     </div>
                     <div id="eval-result" style="margin-top:8px;"></div>
                 </div>
             </div>
 
-            <!-- ── Variable ranges section ───────────────────────── -->
-            <div id="ranges-section" class="viz-section">
-                <div class="viz-section-header open" data-section="ranges">
-                    <h3><span class="section-icon">⟷</span>Variable Ranges</h3>
-                    <div class="section-actions">
-                        <span class="chevron">▶</span>
-                    </div>
-                </div>
-                <div class="viz-section-body" id="ranges-body">
-                    <div id="ranges-display">
-                        <p class="samples-empty">Click <strong>Ranges</strong> to compute min/max bounds.</p>
-                    </div>
-                </div>
-            </div>
 
             <!-- ── 2D Scatter section ────────────────────────────── -->
             <div id="scatter-section" class="viz-section">
@@ -170,7 +153,6 @@
     <script src="editor.js"></script>
     <script src="schema-panel.js"></script>
     <script src="samples.js"></script>
-    <script src="ranges.js"></script>
     <script src="scatter.js"></script>
     <script src="examples.js"></script>
 
@@ -358,15 +340,6 @@
         runSample();
     });
 
-    // ── Ranges button ───────────────────────────────────────────────────
-    document.getElementById('btn-ranges').addEventListener('click', async () => {
-        const schema = document.getElementById('schema-select').value;
-        const given  = getGivenBindings();
-        const source = evEditor.getSource();
-        if (!schema) return;
-        await renderRanges(source, schema, given);
-        await loadSchemaVariables(source, schema);
-    });
 
     // ── Panel resizer ────────────────────────────────────────────────────
     (() => {
@@ -549,11 +522,6 @@
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
             e.preventDefault();
             document.getElementById('btn-sample').click();
-        }
-        // Ctrl/Cmd + Shift + R → Ranges
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
-            e.preventDefault();
-            document.getElementById('btn-ranges').click();
         }
     });
     </script>

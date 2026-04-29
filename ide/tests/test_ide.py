@@ -126,27 +126,16 @@ class TestSchemaSelector:
         status = page.inner_text("#status-bar")
         assert "Satisfied" in status
 
-    def test_switching_schemas_updates_bindings(self, page):
-        """Different schemas have different variable bindings."""
+    def test_switching_schemas_updates_selector(self, page):
+        """Switching schema updates the active schema."""
         set_source(page, TWO_SCHEMA_SOURCE)
         page.wait_for_timeout(2500)
-
         page.select_option("#schema-select", "Small")
-        page.wait_for_timeout(2000)
-        page.click("#btn-ranges")
-        page.wait_for_timeout(4000)
-        small_vars = [el.get_attribute("data-varname")
-                      for el in page.query_selector_all(".binding-input")]
-
+        page.wait_for_timeout(1000)
+        assert page.eval_on_selector("#schema-select", "el => el.value") == "Small"
         page.select_option("#schema-select", "Large")
-        page.wait_for_timeout(2000)
-        page.click("#btn-ranges")
-        page.wait_for_timeout(4000)
-        large_vars = [el.get_attribute("data-varname")
-                      for el in page.query_selector_all(".binding-input")]
-
-        # Variables should differ between schemas
-        assert small_vars != large_vars or ("x" in small_vars and "y" in large_vars)
+        page.wait_for_timeout(1000)
+        assert page.eval_on_selector("#schema-select", "el => el.value") == "Large"
 
 
 # ── Code change triggers evaluate ────────────────────────────────────────────
@@ -225,20 +214,12 @@ class TestSampling:
         table = page.inner_text("#samples-table-container")
         assert "!val!" not in table
 
-    def test_pin_button_fills_bindings(self, page):
-        page.click("#btn-ranges")
-        page.wait_for_timeout(4000)
+    def test_pin_button_visible_after_sample(self, page):
         # Expand samples section so pin buttons are reachable
         page.click("#samples-section .viz-section-header")
         page.click("#btn-sample")
         page.wait_for_selector(".pin-btn", timeout=8000)
-        # Use page.click (re-queries at click time, resilient to re-renders)
-        page.click(".pin-btn")
-        page.wait_for_timeout(500)
-        # At least one binding input should have a value now
-        filled = [i for i in page.query_selector_all(".binding-input")
-                  if page.evaluate("el => el.value", i)]
-        assert len(filled) > 0
+        assert page.query_selector(".pin-btn") is not None
 
 
 # ── Scatter plot ─────────────────────────────────────────────────────────────
@@ -270,26 +251,6 @@ class TestScatter:
             assert x != y
 
 
-# ── Ranges ───────────────────────────────────────────────────────────────────
-
-class TestRanges:
-    def test_ranges_show_rows(self, page):
-        set_source(page, SIMPLE_SOURCE)
-        page.wait_for_timeout(2000)
-        page.click("#btn-ranges")
-        page.wait_for_timeout(6000)
-        assert len(page.query_selector_all(".range-row")) >= 1
-
-    def test_simple_nat_min_correct(self, page):
-        """n > 5, n < 20 → min=6."""
-        set_source(page, SIMPLE_SOURCE)
-        page.wait_for_timeout(2000)
-        page.click("#btn-ranges")
-        page.wait_for_timeout(6000)
-        text = page.inner_text("#ranges-display")
-        assert "6" in text
-
-
 # ── Evaluate button ───────────────────────────────────────────────────────────
 
 class TestEvaluate:
@@ -313,8 +274,6 @@ class TestEvaluate:
         src = "schema SumTo10\n    x ∈ Nat\n    y ∈ Nat\n    x + y = 10\n"
         set_source(page, src)
         page.wait_for_timeout(2500)
-        page.click("#btn-ranges")
-        page.wait_for_timeout(5000)
         x_input = page.query_selector(".binding-input[data-varname='x']")
         if x_input:
             x_input.fill("3")

@@ -5,7 +5,6 @@ Reads a JSON request from stdin, runs the computation, writes JSON to stdout.
 Running in a subprocess isolates Z3's global state from the web server process.
 
 Usage:
-    python z3_worker.py ranges < request.json
     python z3_worker.py sample < request.json
 """
 
@@ -15,12 +14,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
-
-
-def _run_ranges(req: dict) -> dict:
-    from ranges import compute_ranges
-    ranges = compute_ranges(req["source"], req["schema"], req.get("given", {}))
-    return {"ranges": ranges}
 
 
 def _run_sample(req: dict) -> dict:
@@ -42,16 +35,14 @@ def _run_sample(req: dict) -> dict:
 
 def main():
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: z3_worker.py <ranges|sample>"}))
+        print(json.dumps({"error": "usage: z3_worker.py sample"}))
         sys.exit(1)
 
     command = sys.argv[1]
     req = json.loads(sys.stdin.read())
 
     try:
-        if command == "ranges":
-            result = _run_ranges(req)
-        elif command == "sample":
+        if command == "sample":
             result = _run_sample(req)
         else:
             result = {"error": f"unknown command: {command}"}

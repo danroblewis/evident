@@ -89,31 +89,6 @@ function _clearBindings() {
     if (el) el.innerHTML = '';
 }
 
-// ── Load schema variables from /ranges ───────────────────────────────────
-
-/**
- * Fetch the variable info for a schema by calling /ranges, then render inputs.
- * @param {string} source   Current Evident source text
- * @param {string} schemaName
- */
-async function loadSchemaVariables(source, schemaName) {
-    if (!schemaName) {
-        _clearBindings();
-        return;
-    }
-    try {
-        const resp = await fetch('/ranges', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ source, schema: schemaName, given: {} }),
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        renderBindingInputs(data.ranges || {});
-    } catch (e) {
-        console.warn('Could not load schema variables:', e.message);
-    }
-}
 
 // ── Binding inputs ────────────────────────────────────────────────────────
 
@@ -248,8 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (schemaSelect) {
         schemaSelect.addEventListener('change', () => {
             _activeSchema = schemaSelect.value;
-            const source  = window.evEditor?.getSource() || '';
-            loadSchemaVariables(source, _activeSchema);
         });
     }
 });
