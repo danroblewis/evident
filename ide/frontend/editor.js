@@ -194,15 +194,21 @@ class EvidentEditor {
         // [match string, replacement string]
         // Order: longest first to avoid partial matches.
         const SUBS = [
-            [' not in ',   ' ∉ '  ],
-            [' superset ', ' ⊇ '  ],
-            [' subset ',   ' ⊆ '  ],
-            [' in ',       ' ∈ '  ],
-            ['mapsto ',    '↦ '   ],
-            ['!=',         '≠'    ],
-            ['<=',         '≤'    ],
-            ['>=',         '≥'    ],
-            ['=>',         '⇒'    ],
+            // Word keywords — longest first
+            [' not in ',      ' ∉ '  ],
+            [' superset ',    ' ⊇ '  ],
+            [' subset ',      ' ⊆ '  ],
+            [' intersection ',' ∩ '  ],
+            [' union ',       ' ∪ '  ],
+            [' and ',         ' ∧ '  ],
+            [' or ',          ' ∨ '  ],
+            [' in ',          ' ∈ '  ],
+            ['mapsto ',       '↦ '   ],
+            // Operator pairs
+            ['!=',            '≠'    ],
+            ['<=',            '≤'    ],
+            ['>=',            '≥'    ],
+            ['=>',            '⇒'    ],
         ];
 
         this.editor.onDidChangeModelContent((e) => {
