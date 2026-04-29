@@ -225,16 +225,15 @@ def random_seed_sample(
     except Exception:
         pass
 
-    def _hint_range(vname: str, type_name: str) -> tuple[int, int]:
+    def _hint_range(vname: str, type_name: str) -> tuple:
         rng = computed_ranges.get(vname, {})
         lo = rng.get("min")
         if lo is not None:
-            # Use a tight fixed window (50 units) rather than scaling with n.
-            # Wide windows cause correlated variables to have very low joint
-            # hit rates (e.g. y > x and y < 2*x: [lo, lo+200] → 2.6% hit rate
-            # vs [lo, lo+50] → 25%+).
             return (lo, lo + 50)
-        return (0, 50) if type_name == "Nat" else (-50, 50)
+        if type_name == "Nat":          return (0,   50)
+        if type_name == "Int":          return (-50, 50)
+        if type_name == "Real":         return (0.0, 10.0)
+        return (0, 50)
 
     samples: list[Sample] = []
     seen: set = set()
@@ -255,7 +254,11 @@ def random_seed_sample(
                 continue
             if type_name in ("Nat", "Int"):
                 lo, hi = _hint_range(vname, type_name)
-                base_solver.add(z3_var == random.randint(lo, hi))
+                base_solver.add(z3_var == random.randint(int(lo), int(hi)))
+            elif type_name == "Real":
+                lo, hi = _hint_range(vname, type_name)
+                hint = random.uniform(lo, hi)
+                base_solver.add(z3_var == z3.RealVal(hint))
             else:
                 # Enum or other algebraic type — pick a random constructor
                 ctors = solver_obj.registry.get_constructors_for(type_name)

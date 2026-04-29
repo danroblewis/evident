@@ -255,7 +255,11 @@ class EvidentSolver:
         if z3.is_int_value(expr):
             return expr.as_long()
         if z3.is_rational_value(expr):
-            return float(expr.as_decimal(10))
+            # as_decimal() appends '?' when truncated — use exact fraction instead
+            try:
+                return expr.numerator_as_long() / expr.denominator_as_long()
+            except Exception:
+                return float(expr.as_decimal(15).rstrip('?'))
         if z3.is_true(expr):
             return True
         if z3.is_false(expr):
