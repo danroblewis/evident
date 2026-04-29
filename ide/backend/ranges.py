@@ -37,7 +37,7 @@ def _schema_constraints(source: str, schema_name: str, given: dict):
         z3_val = solver_obj._python_to_z3_untyped(val)
         init_env = init_env.bind(vname, z3_val)
 
-    env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry)
+    env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry, schemas=solver_obj.schemas)
 
     body_constraints = list(type_constraints)
     for item in schema.body:

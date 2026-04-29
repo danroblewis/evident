@@ -161,7 +161,7 @@ class EvidentSolver:
             init_env = init_env.bind(name, z3_val)
 
         # ── Step 2: instantiate the schema ─────────────────────────────────────
-        env, type_constraints = instantiate_schema(schema, init_env, self.registry)
+        env, type_constraints = instantiate_schema(schema, init_env, self.registry, schemas=self.schemas)
 
         # ── Step 3 & 4: build and populate a fresh solver ─────────────────────
         s = z3.Solver()

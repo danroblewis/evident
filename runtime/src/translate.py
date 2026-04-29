@@ -104,6 +104,25 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
 
     # ── Binary arithmetic / set ops ───────────────────────────────────────────
     if isinstance(expr, BinaryExpr):
+        # The parser produces `obj × .field` (juxt_dot_app) for `obj.field` syntax.
+        # Intercept this before evaluating operands, since `obj` may not exist as
+        # a standalone variable — only `obj.field` does.
+        if (expr.op == '×'
+                and isinstance(expr.right, FieldAccess)
+                and isinstance(expr.right.obj, Identifier)
+                and expr.right.obj.name == '.'):
+            # Reinterpret as a dotted field lookup: obj.field
+            if isinstance(expr.left, Identifier):
+                key = f"{expr.left.name}.{expr.right.field}"
+                value = env.lookup(key)
+                if value is not None:
+                    return value
+            # Could be a nested access like (a.b).c — recurse on left first
+            obj_val = translate_expr(expr.left, env, registry)
+            raise NotImplementedError(
+                f"Nested field access {expr!r} is not yet supported."
+            )
+
         left = translate_expr(expr.left, env, registry)
         right = translate_expr(expr.right, env, registry)
         op = expr.op

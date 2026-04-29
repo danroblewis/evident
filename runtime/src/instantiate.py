@@ -7,6 +7,11 @@ produces:
     become fresh Z3 constants with the appropriate sort).
   - A list of Z3 BoolRef assertions representing type-level constraints
     (e.g.  x ∈ Nat  →  x >= 0).
+
+When a variable is declared as `name ∈ SomeSchema` and SomeSchema is a
+known schema (not a primitive type), its fields are instantiated recursively
+with a `name.` prefix so that `name.field` is available in the environment
+for constraint translation and model extraction.
 """
 from __future__ import annotations
 import z3
@@ -14,26 +19,18 @@ import z3
 from .env import Environment
 from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr
 
-# sorts.py is being written in parallel (Phase 1).  Import it if available;
-# fall back to a minimal stub so this module remains usable and testable
-# independently.
 try:
     from .sorts import SortRegistry  # type: ignore[import]
-except ImportError:  # pragma: no cover – only during parallel development
+except ImportError:  # pragma: no cover
 
     class SortRegistry:  # type: ignore[no-redef]
-        """Minimal stub used when sorts.py has not been written yet."""
-
         def __init__(self):
             self._sorts: dict[str, z3.SortRef] = {}
 
         def get(self, type_name: str) -> z3.SortRef:
-            """Return a Z3 sort for a type name using simple built-in rules."""
             _builtin: dict[str, z3.SortRef] = {
-                "Nat": z3.IntSort(),
-                "Int": z3.IntSort(),
-                "Real": z3.RealSort(),
-                "Bool": z3.BoolSort(),
+                "Nat": z3.IntSort(), "Int": z3.IntSort(),
+                "Real": z3.RealSort(), "Bool": z3.BoolSort(),
                 "String": z3.StringSort(),
             }
             if type_name in _builtin:
@@ -41,7 +38,6 @@ except ImportError:  # pragma: no cover – only during parallel development
             raise KeyError(type_name)
 
         def declare_uninterpreted(self, type_name: str) -> z3.SortRef:
-            """Declare (or retrieve) an uninterpreted sort."""
             if type_name not in self._sorts:
                 self._sorts[type_name] = z3.DeclareSort(type_name)
             return self._sorts[type_name]
@@ -52,24 +48,12 @@ except ImportError:  # pragma: no cover – only during parallel development
 # ---------------------------------------------------------------------------
 
 def make_const(name: str, sort: z3.SortRef, prefix: str = "") -> z3.ExprRef:
-    """Create a fresh named Z3 constant.
-
-    The full Z3 name is ``prefix + name`` when *prefix* is non-empty, which
-    allows multiple instantiations of the same schema to have distinct
-    variables.
-    """
+    """Create a fresh named Z3 constant with an optional name prefix."""
     full_name = f"{prefix}{name}" if prefix else name
     return z3.Const(full_name, sort)
 
 
 def _resolve_type_name(param: Param) -> str:
-    """Extract the type name string from a Param's *set* expression.
-
-    For the common case ``x ∈ Nat`` the set expression is an ``Identifier``
-    whose ``name`` attribute is ``"Nat"``.  Other expression forms are not
-    handled here (they require the full elaborator from later phases); we
-    return a sentinel ``"unknown"`` so that callers can decide how to proceed.
-    """
     expr = param.set
     if isinstance(expr, Identifier):
         return expr.name
@@ -77,14 +61,6 @@ def _resolve_type_name(param: Param) -> str:
 
 
 def type_constraint(var: z3.ExprRef, type_name: str) -> list[z3.BoolRef]:
-    """Return Z3 constraints that enforce the type semantics.
-
-    Currently handled:
-    - ``Nat``: ``var >= 0``  (Z3 IntSort does not restrict to non-negatives on
-      its own)
-    - All other types: no additional constraints — the sort already encodes the
-      necessary structure.
-    """
     if type_name == "Nat":
         return [var >= 0]  # type: ignore[list-item]
     return []
@@ -95,47 +71,38 @@ def instantiate_schema(
     given: Environment,
     registry: SortRegistry,
     prefix: str = "",
+    schemas: dict | None = None,
 ) -> tuple[Environment, list[z3.BoolRef]]:
-    """Instantiate all parameters of *schema* against *given* bindings.
+    """Instantiate all variables of *schema* against *given* bindings.
 
-    For each parameter declared in ``schema.params``:
-    - If **all** of its names are already bound in *given*, use those bindings.
-    - Otherwise, create a fresh Z3 constant for each unbound name.
-
-    Returns ``(new_env, type_constraints)`` where:
-    - ``new_env`` is a copy of *given* extended with all schema variables.
-    - ``type_constraints`` is the list of Z3 assertions that enforce the
-      declared types (e.g. ``x >= 0`` for ``x ∈ Nat``).
+    When *schemas* is provided, variables declared as ``name ∈ SomeSchema``
+    are expanded recursively: each field of SomeSchema is added to the
+    environment as ``name.field``, and SomeSchema's body constraints are
+    collected.  This makes sub-schema fields available both for constraint
+    translation (``slot + task.duration ≤ budget``) and model extraction
+    (bindings include ``task.duration``, ``task.deadline``, etc.).
     """
     env = Environment(bindings=dict(given.bindings), parent=given.parent)
     constraints: list[z3.BoolRef] = []
 
-    # The parser emits all variable declarations as MembershipConstraint nodes
-    # in the body (e.g. `n ∈ Nat`, `c ∈ Red | Green | Blue`). Scan for those
-    # first so body translation can look up variables by name.
     for item in schema.body:
-        if (
+        if not (
             isinstance(item, MembershipConstraint)
             and item.op == "∈"
             and isinstance(item.left, Identifier)
         ):
-            name = item.left.name
-            if env.lookup(name) is not None:
-                continue  # already declared (from params or a prior body scan)
+            continue
 
-            if isinstance(item.right, InlineEnumExpr):
-                # x ∈ Red | Green | Blue — auto-declare an anonymous enum sort
-                variants = item.right.variants
-                enum_name = "_Enum_" + "_".join(sorted(variants))
-                sort = registry.declare_algebraic(enum_name, variants)
-                type_name = enum_name
-            else:
-                type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
-                try:
-                    sort = registry.get(type_name)
-                except KeyError:
-                    sort = registry.declare_uninterpreted(type_name)
+        name = item.left.name
+        if env.lookup(name) is not None:
+            continue  # already declared
 
+        # ── Inline enum: x ∈ Red | Green | Blue ─────────────────────────
+        if isinstance(item.right, InlineEnumExpr):
+            variants = item.right.variants
+            enum_name = "_Enum_" + "_".join(sorted(variants))
+            sort = registry.declare_algebraic(enum_name, variants)
+            type_name = enum_name
             existing = given.lookup(name)
             if existing is not None:
                 env = env.bind(name, existing)
@@ -144,29 +111,78 @@ def instantiate_schema(
                 var = make_const(name, sort, prefix=prefix)
                 env = env.bind(name, var)
             constraints.extend(type_constraint(var, type_name))
+            continue
 
+        type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
+
+        # ── Sub-schema expansion: name ∈ SomeSchema ──────────────────────
+        if schemas and type_name in schemas:
+            sub_schema = schemas[type_name]
+
+            # Build a sub-given from any `name.field` values in given
+            sub_given = Environment()
+            field_prefix = f"{name}."
+            for k, v in given.bindings.items():
+                if k.startswith(field_prefix):
+                    sub_given = sub_given.bind(k[len(field_prefix):], v)
+
+            sub_env, sub_type_constraints = instantiate_schema(
+                sub_schema, sub_given, registry,
+                prefix=f"{prefix}{name}.",
+                schemas=schemas,
+            )
+            constraints.extend(sub_type_constraints)
+
+            # Translate sub-schema body constraints (e.g. duration < deadline)
+            # using the sub_env where names are short (duration, deadline, …)
+            from .translate import translate_constraint
+            from .ast_types import EvidentBlock, PassthroughItem
+            for sub_item in sub_schema.body:
+                if isinstance(sub_item, (MembershipConstraint, EvidentBlock, PassthroughItem)):
+                    continue
+                try:
+                    constraints.append(translate_constraint(sub_item, sub_env, registry))
+                except (NotImplementedError, KeyError):
+                    pass
+
+            # Merge sub-fields into parent env as `name.field`
+            for sub_name, sub_var in sub_env.bindings.items():
+                full_name = f"{name}.{sub_name}"
+                if env.lookup(full_name) is None:
+                    env = env.bind(full_name, sub_var)
+            continue
+
+        # ── Primitive / uninterpreted sort ───────────────────────────────
+        try:
+            sort = registry.get(type_name)
+        except KeyError:
+            sort = registry.declare_uninterpreted(type_name)
+
+        existing = given.lookup(name)
+        if existing is not None:
+            env = env.bind(name, existing)
+            var = existing
+        else:
+            var = make_const(name, sort, prefix=prefix)
+            env = env.bind(name, var)
+        constraints.extend(type_constraint(var, type_name))
+
+    # Handle params (legacy path, usually empty for body-declared schemas)
     for param in schema.params:
         type_name = _resolve_type_name(param)
         try:
             sort = registry.get(type_name)
         except KeyError:
-            # Unknown / custom type — auto-register as uninterpreted sort
             sort = registry.declare_uninterpreted(type_name)
 
         for name in param.names:
             existing = given.lookup(name)
             if existing is not None:
-                # Variable is already bound — record it in the new env
-                # (it may only be in a parent; ensure it's in the flat layer)
                 env = env.bind(name, existing)
                 var = existing
             else:
-                # Create a fresh Z3 constant for this unbound variable
                 var = make_const(name, sort, prefix=prefix)
                 env = env.bind(name, var)
-
-            # Collect type-level constraints regardless of whether the variable
-            # was pre-bound — a pre-bound variable still has to satisfy Nat ≥ 0
             constraints.extend(type_constraint(var, type_name))
 
     return env, constraints

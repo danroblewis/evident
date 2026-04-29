@@ -193,7 +193,7 @@ def evaluate_with_evidence(
         z3_val = solver._python_to_z3_untyped(py_val)
         init_env = init_env.bind(name, z3_val)
 
-    env, _ = instantiate_schema(schema, init_env, solver.registry)
+    env, _ = instantiate_schema(schema, init_env, solver.registry, schemas=getattr(solver, "schemas", None))
 
     evidence = build_evidence(
         schema.name,

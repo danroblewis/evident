@@ -77,7 +77,7 @@ def blocking_clause_sample(
             z3_val = solver_obj._python_to_z3_untyped(val)
             init_env = init_env.bind(vname, z3_val)
 
-        env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry)
+        env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry, schemas=solver_obj.schemas)
 
         s = z3.Solver()
         for tc in type_constraints:
@@ -200,7 +200,7 @@ def random_seed_sample(
         z3_val = solver_obj._python_to_z3_untyped(val)
         init_env = init_env.bind(vname, z3_val)
 
-    env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry)
+    env, type_constraints = instantiate_schema(schema, init_env, solver_obj.registry, schemas=solver_obj.schemas)
 
     base_solver = z3.Solver()
     for tc in type_constraints:
@@ -261,6 +261,18 @@ def random_seed_sample(
                 ctors = solver_obj.registry.get_constructors_for(type_name)
                 if ctors:
                     base_solver.add(z3_var == random.choice(ctors))
+
+        # Also hint sub-schema fields (task.duration, task.deadline, …).
+        # These appear as dotted names in the env but not in free_vars.
+        for full_name, z3_var in env.bindings.items():
+            if '.' not in full_name or full_name in given:
+                continue
+            try:
+                if z3.is_int(z3_var):
+                    lo, hi = _hint_range(full_name, 'Nat')
+                    base_solver.add(z3_var == random.randint(lo, hi))
+            except Exception:
+                pass
 
         if base_solver.check() == z3.sat:
             model = base_solver.model()
