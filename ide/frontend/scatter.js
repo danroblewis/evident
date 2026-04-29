@@ -106,9 +106,73 @@ function _readSelects() {
 // Entry points
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Annotated plots — rendered from  -- @plot x=var y=var color=var  comments
+// ---------------------------------------------------------------------------
+
+let _annotations = [];   // parsed from source on each change
+
+function setPlotAnnotations(annotations) {
+    _annotations = annotations || [];
+    // Clear and redraw annotated plots immediately if we have samples
+    _renderAnnotatedPlots(_cachedSamples);
+}
+
+function _renderAnnotatedPlots(samples) {
+    let container = document.getElementById('annotated-plots');
+    if (!container) {
+        const body = document.getElementById('scatter-body');
+        if (!body) return;
+        container = document.createElement('div');
+        container.id = 'annotated-plots';
+        body.appendChild(container);
+    }
+    container.innerHTML = '';
+    if (!_annotations.length || !samples.length) return;
+
+    _annotations.forEach((cfg, idx) => {
+        const xVar = cfg.x || null;
+        const yVar = cfg.y || null;
+        const colorVar = cfg.color || null;
+        const sizeVar  = cfg.size  || null;
+        if (!xVar) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'margin-top:14px;border-top:1px solid var(--border,#45475a);padding-top:12px;';
+
+        if (cfg.title) {
+            const lbl = document.createElement('div');
+            lbl.style.cssText = 'font-size:11px;color:var(--fg-muted,#6c7086);margin-bottom:6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;';
+            lbl.textContent = cfg.title;
+            wrapper.appendChild(lbl);
+        }
+
+        const plotDiv = document.createElement('div');
+        wrapper.appendChild(plotDiv);
+        container.appendChild(wrapper);
+
+        const xt = varType(xVar, samples);
+        const yt = yVar ? varType(yVar, samples) : null;
+
+        if (!xt) return;
+        if (xt === 'numeric' && yt === 'numeric') {
+            drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, plotDiv);
+        } else if (xt === 'enum' && yt === 'numeric') {
+            drawStripPlot(samples, xVar, yVar, colorVar, sizeVar, plotDiv);
+        } else if (xt === 'numeric' && yt === 'enum') {
+            drawStripPlot(samples, yVar, xVar, colorVar, sizeVar, plotDiv);
+        } else if (xt === 'enum') {
+            drawCountBars(samples, xVar, colorVar, plotDiv);
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+
 function drawScatter(samples) {
     _cachedSamples = samples || [];
     drawFromCache();
+    _renderAnnotatedPlots(samples);
 }
 
 function drawFromCache() {
@@ -371,5 +435,6 @@ function drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, container) {
 window.renderScatterControls = renderScatterControls;
 window.drawScatter = drawScatter;
 window.drawFromCache = drawFromCache;
+window.setPlotAnnotations = setPlotAnnotations;
 
 })();

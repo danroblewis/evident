@@ -187,8 +187,30 @@
         }
     };
 
+    // ── @plot annotation parser ─────────────────────────────────────────
+    // Reads  -- @plot x=var y=var color=var size=var title="label"  from source.
+    function parsePlotAnnotations(source) {
+        const plots = [];
+        const re = /--\s*@plot\s+(.+)$/gm;
+        let m;
+        while ((m = re.exec(source)) !== null) {
+            const cfg = {};
+            // Split on spaces but respect quoted values
+            m[1].trim().replace(/(\w+)=("([^"]*)"|([\w.]+))/g, (_, k, __, q, u) => {
+                cfg[k] = q !== undefined ? q : u;
+            });
+            if (cfg.x || cfg.y) plots.push(cfg);
+        }
+        return plots;
+    }
+
+    function applyPlotAnnotations() {
+        const annotations = parsePlotAnnotations(evEditor?.getSource() || '');
+        if (typeof setPlotAnnotations === 'function') setPlotAnnotations(annotations);
+    }
+
     // Editor content change → re-evaluate after 800ms
-    evEditor.onParseResult = () => scheduleAutoEvaluate();
+    evEditor.onParseResult = () => { scheduleAutoEvaluate(); applyPlotAnnotations(); };
 
     evEditor.init().then(async () => {
         window.evEditor = evEditor;
@@ -211,6 +233,7 @@
     // Schema selector change
     document.getElementById('schema-select').addEventListener('change', () => {
         runEvaluate();
+        applyPlotAnnotations();
         if (typeof scheduleAutoSample === 'function') scheduleAutoSample();
     });
 
