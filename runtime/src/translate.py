@@ -239,6 +239,15 @@ def translate_constraint(
         # Determine if the right-hand side is a named primitive type.
         rhs_name = right.name if isinstance(right, Identifier) else None
 
+        if op in ("∈", "∉"):
+            # Union/difference: x ∈ A ∪ B  ≡  x ∈ A ∨ x ∈ B
+            #                   x ∉ A ∪ B  ≡  x ∉ A ∧ x ∉ B
+            # Handles any nesting depth via recursion.
+            if isinstance(right, BinaryExpr) and right.op == '∪':
+                left_c  = translate_constraint(MembershipConstraint(op=op, left=left, right=right.left),  env, registry)
+                right_c = translate_constraint(MembershipConstraint(op=op, left=left, right=right.right), env, registry)
+                return z3.Or(left_c, right_c) if op == '∈' else z3.And(left_c, right_c)
+
         if op == "∈":
             # Inline enum: x ∈ Red | Green | Blue
             if isinstance(right, InlineEnumExpr):
