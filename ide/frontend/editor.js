@@ -193,22 +193,28 @@ class EvidentEditor {
     _setupSubstitutions() {
         // [match string, replacement string]
         // Order: longest first to avoid partial matches.
-        const SUBS = [
-            // Word keywords — longest first
-            [' not in ',      ' ∉ '  ],
-            [' superset ',    ' ⊇ '  ],
-            [' subset ',      ' ⊆ '  ],
-            [' intersection ',' ∩ '  ],
-            [' union ',       ' ∪ '  ],
-            [' and ',         ' ∧ '  ],
-            [' or ',          ' ∨ '  ],
-            [' in ',          ' ∈ '  ],
-            ['mapsto ',       '↦ '   ],
-            // Operator pairs
-            ['!=',            '≠'    ],
-            ['<=',            '≤'    ],
-            ['>=',            '≥'    ],
-            ['=>',            '⇒'    ],
+        // Word keywords: trigger on trailing space; must be at a word boundary
+        // (preceded by a non-alphanumeric char or start of line) so that
+        // partial matches inside identifiers (e.g. "island" ↛ "isl∧") are safe.
+        // Longest keywords first to avoid 'in' matching before 'not in'.
+        const WORD_SUBS = [
+            ['not in',      ' ∉ '],
+            ['superset',    ' ⊇ '],
+            ['subset',      ' ⊆ '],
+            ['intersection',' ∩ '],
+            ['union',       ' ∪ '],
+            ['mapsto',      '↦ ' ],
+            ['and',         ' ∧ '],
+            ['or',          ' ∨ '],
+            ['in',          ' ∈ '],
+        ];
+
+        // Operator pairs: trigger immediately on the second character.
+        const OP_SUBS = [
+            ['!=', '≠'],
+            ['<=', '≤'],
+            ['>=', '≥'],
+            ['=>', '⇒'],
         ];
 
         this.editor.onDidChangeModelContent((e) => {
@@ -219,29 +225,50 @@ class EvidentEditor {
             const change = e.changes[0];
             if (change.text.length !== 1) return;
 
-            const pos   = this.editor.getPosition();
-            const model = this.editor.getModel();
-            const line  = model.getLineContent(pos.lineNumber);
-            // Text on this line up to (not including) the cursor
+            const pos    = this.editor.getPosition();
+            const model  = this.editor.getModel();
+            const line   = model.getLineContent(pos.lineNumber);
             const before = line.slice(0, pos.column - 1);
 
-            for (const [match, symbol] of SUBS) {
-                if (!before.endsWith(match)) continue;
+            // ── Word keywords (trigger on space) ─────────────────────────
+            if (change.text === ' ') {
+                for (const [kw, sym] of WORD_SUBS) {
+                    const full = kw + ' ';
+                    if (!before.endsWith(full)) continue;
+                    // Word boundary: char before the keyword must be non-alphanumeric
+                    // or there must be no char (start of line / only whitespace before).
+                    const prevIdx  = before.length - full.length - 1;
+                    const prevChar = prevIdx >= 0 ? before[prevIdx] : null;
+                    if (prevChar !== null && /[a-zA-Z0-9_]/.test(prevChar)) continue;
 
-                const startCol = pos.column - match.length;   // 1-indexed
-                const endCol   = pos.column;
+                    const startCol = pos.column - full.length;
+                    this._applyingSubstitution = true;
+                    this.editor.executeEdits('symbol-sub', [{
+                        range: new monaco.Range(pos.lineNumber, startCol,
+                                               pos.lineNumber, pos.column),
+                        text: sym,
+                    }]);
+                    this.editor.setPosition({ lineNumber: pos.lineNumber,
+                                             column: startCol + sym.length });
+                    this._applyingSubstitution = false;
+                    return;
+                }
+            }
 
+            // ── Operator pairs (trigger on 2nd character) ─────────────────
+            for (const [op, sym] of OP_SUBS) {
+                if (!before.endsWith(op)) continue;
+                const startCol = pos.column - op.length;
                 this._applyingSubstitution = true;
                 this.editor.executeEdits('symbol-sub', [{
                     range: new monaco.Range(pos.lineNumber, startCol,
-                                           pos.lineNumber, endCol),
-                    text: symbol,
+                                           pos.lineNumber, pos.column),
+                    text: sym,
                 }]);
-                // Place cursor right after the inserted symbol
-                const newCol = startCol + symbol.length;
-                this.editor.setPosition({ lineNumber: pos.lineNumber, column: newCol });
+                this.editor.setPosition({ lineNumber: pos.lineNumber,
+                                         column: startCol + sym.length });
                 this._applyingSubstitution = false;
-                break;
+                return;
             }
         });
     }
