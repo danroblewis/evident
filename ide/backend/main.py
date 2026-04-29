@@ -48,6 +48,8 @@ _programs_dir = Path(
 ).resolve()
 _programs_dir.mkdir(parents=True, exist_ok=True)
 
+_examples_dir = Path(__file__).parent.parent / "examples"
+
 
 def _safe_filename(name: str) -> str:
     """Strip path separators and ensure .ev extension."""
@@ -279,9 +281,20 @@ def transfer_function(req: TransferRequest):
 
 @app.get("/files")
 def list_files():
-    """List saved .ev programs and return the configured directory."""
-    files = sorted(p.name for p in _programs_dir.glob("*.ev"))
-    return {"files": files, "directory": str(_programs_dir)}
+    """List saved .ev programs, built-in examples, and the configured directory."""
+    files    = sorted(p.name for p in _programs_dir.glob("*.ev"))
+    examples = sorted(p.name for p in _examples_dir.glob("*.ev")) if _examples_dir.exists() else []
+    return {"files": files, "examples": examples, "directory": str(_programs_dir)}
+
+
+@app.get("/examples/{filename}")
+def load_example(filename: str):
+    """Load a built-in example by filename."""
+    name = _safe_filename(filename)
+    path = _examples_dir / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Example {name} not found")
+    return {"filename": name, "source": path.read_text(encoding="utf-8")}
 
 
 @app.get("/files/{filename}")

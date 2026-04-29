@@ -1,0 +1,20 @@
+-- Task scheduling: a Task has a duration and deadline,
+-- a ValidSchedule places a task in a time slot within a budget.
+
+schema Task
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
+
+    0 < id
+    0 < duration
+    duration < deadline
+
+schema ValidSchedule
+    task   ∈ Task
+    slot   ∈ Nat
+    budget ∈ Nat
+
+    slot > 0
+    slot + task.duration ≤ budget
+    task.duration < task.deadline

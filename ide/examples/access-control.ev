@@ -1,0 +1,23 @@
+-- Access control: which (role, action) pairs are allowed.
+-- The allowed set is defined as an explicit relation, then queried.
+
+type Role   = Admin | Editor | Viewer | Moderator
+type Action = Read  | Write  | Delete | Publish | Moderate
+
+assert allowed = {
+    (Admin,     Read),    (Admin,     Write),
+    (Admin,     Delete),  (Admin,     Publish),  (Admin,    Moderate),
+    (Editor,    Read),    (Editor,    Write),     (Editor,   Publish),
+    (Viewer,    Read),
+    (Moderator, Read),    (Moderator, Moderate)
+}
+
+schema Permission
+    role   ∈ Role
+    action ∈ Action
+    (role, action) ∈ allowed
+
+schema DeniedAction
+    role   ∈ Role
+    action ∈ Action
+    (role, action) ∉ allowed

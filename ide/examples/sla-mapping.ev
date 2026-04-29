@@ -1,0 +1,36 @@
+-- SLA (Service Level Agreement) mapping: each priority level maps
+-- to a response-time budget. Defined as an explicit relation so it
+-- can be extended (∪ another set) without touching the original.
+
+type Priority = Low | Medium | High | Critical
+
+assert standard_sla = {
+    (Low,      72),   -- hours to resolution
+    (Medium,   24),
+    (High,      4),
+    (Critical,  1)
+}
+
+assert emergency_sla = {
+    (High,      2),   -- override: emergencies get 2h not 4h
+    (Critical,  0)    -- immediate
+}
+
+schema Ticket
+    priority    ∈ Priority
+    hoursToFix  ∈ Nat
+    assignees   ∈ Nat
+
+    (priority, hoursToFix) ∈ standard_sla
+
+    -- Critical and High tickets need at least 2 assignees
+    priority ∈ {Critical, High} ⇒ assignees ≥ 2
+    assignees ≥ 1
+
+schema EmergencyTicket
+    priority    ∈ Priority
+    hoursToFix  ∈ Nat
+    assignees   ∈ Nat
+
+    (priority, hoursToFix) ∈ emergency_sla
+    assignees ≥ 3

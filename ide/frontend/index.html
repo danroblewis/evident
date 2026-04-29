@@ -35,13 +35,7 @@
 
         <div class="top-bar-sep"></div>
 
-        <select id="example-select" title="Load an example program"
-                style="background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);
-                       border-radius:4px;padding:2px 8px;font-size:11px;outline:none;cursor:pointer;">
-            <option value="" disabled selected>Examples…</option>
-        </select>
-
-        <button id="btn-open" title="Open a saved program" style="font-size:12px;">📂 Open</button>
+        <button id="btn-open" title="Open a saved program or example" style="font-size:12px;">📂 Open</button>
         <button id="btn-save" title="Save program to server" style="font-size:12px;">💾 Save</button>
 
         <div class="spacer"></div>
@@ -395,23 +389,7 @@
         });
     })();
 
-    // ── Examples dropdown ────────────────────────────────────────────────
-    (() => {
-        const sel = document.getElementById('example-select');
-        EXAMPLES.forEach(({ name }) => {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            sel.appendChild(opt);
-        });
-        sel.addEventListener('change', () => {
-            const ex = EXAMPLES.find(e => e.name === sel.value);
-            if (!ex) return;
-            evEditor.editor.setValue(ex.source);
-            sel.value = '';          // reset so same example can be reloaded
-            if (typeof resetSamples === 'function') resetSamples();
-        });
-    })();
+    // (Examples are accessible via the Open dialog)
 
     // ── Save / Open (server-backed) ──────────────────────────────────────
 
@@ -485,29 +463,42 @@
 
     document.getElementById('btn-open').addEventListener('click', async () => {
         const info = await fetch('/files').then(r => r.json());
-        const files = info.files;
 
-        const listHtml = files.length
-            ? files.map(f => `<div class="prog-file" data-name="${f}" style="padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;">${f}</div>`).join('')
-            : '<div style="color:var(--fg-muted);font-size:12px;font-style:italic;">No saved programs yet.</div>';
+        function fileRow(name, endpoint) {
+            return `<div class="prog-file" data-name="${name}" data-endpoint="${endpoint}"
+                style="padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;">${name}</div>`;
+        }
+
+        const examplesHtml = (info.examples || []).length
+            ? (info.examples || []).map(f => fileRow(f, 'examples')).join('')
+            : '<div style="color:var(--fg-muted);font-size:12px;font-style:italic;padding:6px 10px;">None</div>';
+
+        const savedHtml = info.files.length
+            ? info.files.map(f => fileRow(f, 'files')).join('')
+            : '<div style="color:var(--fg-muted);font-size:12px;font-style:italic;padding:6px 10px;">No saved programs yet.</div>';
+
+        const sectionLabel = (t) => `<div style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted);padding:6px 10px 2px;">${t}</div>`;
 
         _fileModal('Open Program', `
-            <div style="font-size:11px;color:var(--fg-muted);margin-bottom:4px;">Directory: ${info.directory}</div>
-            <div id="prog-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
-                ${listHtml}
+            <div id="prog-list" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
+                ${sectionLabel('Built-in Examples')}
+                ${examplesHtml}
+                ${sectionLabel('Saved Programs')}
+                ${savedHtml}
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
+                <span style="font-size:11px;color:var(--fg-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${info.directory}">📁 ${info.directory}</span>
                 <input id="new-dir" placeholder="Change directory…"
                     style="flex:1;background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">
                 <button id="dir-confirm" style="padding:5px 10px;background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;">Set</button>
             </div>
         `, (overlay) => {
-            // Hover highlight
             overlay.querySelectorAll('.prog-file').forEach(el => {
                 el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-overlay)');
                 el.addEventListener('mouseleave', () => el.style.background = '');
                 el.addEventListener('click', async () => {
-                    const resp = await fetch(`/files/${encodeURIComponent(el.dataset.name)}`);
+                    const endpoint = el.dataset.endpoint;
+                    const resp = await fetch(`/${endpoint}/${encodeURIComponent(el.dataset.name)}`);
                     const data = await resp.json();
                     evEditor.editor.setValue(data.source);
                     if (typeof resetSamples === 'function') resetSamples();
@@ -515,17 +506,15 @@
                 });
             });
 
-            // Directory change
             overlay.querySelector('#dir-confirm').onclick = async () => {
                 const dir = overlay.querySelector('#new-dir').value.trim();
                 if (!dir) return;
                 await fetch('/files/config/directory', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ directory: dir }),
                 });
                 overlay.remove();
-                document.getElementById('btn-open').click();  // reopen with new dir
+                document.getElementById('btn-open').click();
             };
         });
     });

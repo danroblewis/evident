@@ -1,0 +1,29 @@
+-- Enum types with implication constraints.
+-- Shows how enum variables interact with ⇒ to express rules.
+
+type Color = Red | Green | Blue | Yellow
+type Size  = Small | Medium | Large
+type Shape = Circle | Square | Triangle
+
+schema Widget
+    color ∈ Color
+    size  ∈ Size
+    shape ∈ Shape
+
+    -- Red widgets are never large
+    color = Red ⇒ size ≠ Large
+
+    -- Triangles must be small or medium
+    shape = Triangle ⇒ size ∈ {Small, Medium}
+
+    -- Blue squares are always large
+    color = Blue ∧ shape = Square ⇒ size = Large
+
+    -- Yellow only comes in circles
+    color = Yellow ⇒ shape = Circle
+
+schema LargeBlueSquare
+    w ∈ Widget
+    w.color = Blue
+    w.shape = Square
+    -- size will be forced to Large by the Widget constraint above

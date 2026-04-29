@@ -1,0 +1,10 @@
+-- Correlated variables: y is tightly bounded relative to x.
+-- A good example for the scatter plot — run Sample to see the
+-- constraint shape (a triangular wedge in x-y space).
+
+schema ValidSchedule
+    x ∈ Nat
+    y ∈ Nat
+    0 < x < 50
+    y > x
+    y < x * 2
