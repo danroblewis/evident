@@ -304,14 +304,17 @@
         if (!schema || schema === 'Loading…' || _isSampling) return;
 
         _isSampling = true;
+        let result;
         try {
-            await renderSamples(source, schema, given, n, strategy);
+            result = await renderSamples(source, schema, given, n, strategy);
         } finally {
             _isSampling = false;
         }
 
-        // Reschedule: keep accumulating until the source changes
-        _sampleTimer = setTimeout(runSample, 3000);
+        // Stop rescheduling when the accumulation cap is reached (result===false).
+        if (result !== false) {
+            _sampleTimer = setTimeout(runSample, 3000);
+        }
     }
 
     function scheduleAutoSample() {

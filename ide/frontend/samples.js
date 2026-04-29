@@ -1,5 +1,9 @@
 // Sample vectors table
 
+// Stop accumulating after this many unique samples — SVG slows past ~1000 points
+// and the continuous loop would otherwise run forever on large feasible spaces.
+const MAX_ACCUMULATED = 1000;
+
 // Accumulated sample set — grows across runs, cleared when source/schema changes.
 let _allSamples = [];
 const _seenKeys  = new Set();
@@ -41,6 +45,13 @@ function _streamIntoPlot(newSamples) {
     const base = _allSamples.length - newSamples.length;
     const delay = Math.max(20, Math.min(150, 2000 / newSamples.length));
 
+    // Above ~500 points the streaming animation taxes the browser more than it's
+    // worth — just do a single redraw at the end instead.
+    if (_allSamples.length > 500) {
+        if (typeof drawScatter === 'function') drawScatter(_allSamples);
+        return;
+    }
+
     let i = 0;
     function addNext() {
         if (i >= newSamples.length) return;
@@ -66,13 +77,15 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
         const data = await resp.json();
         const incoming = data.samples || [];
 
-        // Merge new samples into the accumulated set
+        // Merge new samples into the accumulated set (up to the cap)
         const newlyAdded = _mergeSamples(incoming);
         const samples = incoming;   // table shows latest batch
 
         const total = _allSamples.length;
-        document.getElementById('sample-count').textContent =
-            newlyAdded.length < total ? `(${total} total)` : `(${total})`;
+        const atCap = total >= MAX_ACCUMULATED;
+        document.getElementById('sample-count').textContent = atCap
+            ? `(${total} — max reached)`
+            : total > incoming.length ? `(${total} total)` : `(${total})`;
 
         if (samples.length === 0) {
             container.innerHTML = '<div class="empty">No valid assignments found</div>';
@@ -180,7 +193,8 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
         // Stream new samples into the plot one-by-one for a continuous feel.
         _streamIntoPlot(newlyAdded);
 
-        return samples;
+        // Return false when capped so the auto-loop knows to stop.
+        return atCap ? false : samples;
 
     } catch (e) {
         container.innerHTML = `<div class="error">Sampling failed: ${e.message}</div>`;
