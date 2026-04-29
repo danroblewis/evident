@@ -676,6 +676,11 @@ html, body {
     border-color: var(--accent);
 }
 
+/* scatter body: natural height so annotated plots push the panel scroll */
+#scatter-body {
+    flex: 0 0 auto;
+}
+
 #scatter-plot,
 #scatter3d-plot {
     width: 100%;
