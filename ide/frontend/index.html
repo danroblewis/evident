@@ -41,10 +41,8 @@
             <option value="" disabled selected>Examples…</option>
         </select>
 
-        <button id="btn-open" title="Open .ev file" style="font-size:12px;">📂 Open</button>
-        <button id="btn-save" title="Save as .ev file" style="font-size:12px;">💾 Save</button>
-        <!-- Hidden file input for Open -->
-        <input type="file" id="file-input" accept=".ev,.txt" style="display:none">
+        <button id="btn-open" title="Open a saved program" style="font-size:12px;">📂 Open</button>
+        <button id="btn-save" title="Save program to server" style="font-size:12px;">💾 Save</button>
 
         <div class="spacer"></div>
 
@@ -415,34 +413,121 @@
         });
     })();
 
-    // ── Save / Open ──────────────────────────────────────────────────────
-    document.getElementById('btn-save').addEventListener('click', () => {
-        const source   = evEditor.getSource();
-        const schema   = document.getElementById('schema-select').value || 'program';
-        const filename = schema.toLowerCase().replace(/[^a-z0-9_-]/g, '_') + '.ev';
-        const blob     = new Blob([source], { type: 'text/plain' });
-        const url      = URL.createObjectURL(blob);
-        const a        = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    // ── Save / Open (server-backed) ──────────────────────────────────────
+
+    function _fileModal(title, bodyHtml, onConfirm) {
+        document.getElementById('error-modal')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'error-modal';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;';
+        const box = document.createElement('div');
+        box.style.cssText = 'background:var(--bg-surface,#1e1e2e);border:1px solid var(--border,#45475a);border-radius:8px;width:min(480px,90vw);display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:var(--font-mono,monospace);';
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border,#45475a);font-size:13px;font-weight:600;color:var(--fg,#cdd6f4);';
+        hdr.innerHTML = `<span>${title}</span>`;
+        const close = document.createElement('button');
+        close.textContent = '✕';
+        close.style.cssText = 'background:none;border:none;color:var(--fg-muted,#6c7086);cursor:pointer;font-size:14px;padding:0 4px;';
+        close.onclick = () => overlay.remove();
+        hdr.appendChild(close);
+        box.appendChild(hdr);
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:10px;';
+        body.innerHTML = bodyHtml;
+        box.appendChild(body);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        document.addEventListener('keydown', function esc(e) {
+            if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); }
+        });
+        if (onConfirm) onConfirm(overlay, body);
+        return { overlay, body };
+    }
+
+    document.getElementById('btn-save').addEventListener('click', async () => {
+        const info = await fetch('/files').then(r => r.json());
+        const schema = document.getElementById('schema-select').value || 'program';
+        const suggested = schema.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+        _fileModal('Save Program', `
+            <label style="font-size:11px;color:var(--fg-muted)">Filename</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="save-name" value="${suggested}" placeholder="filename"
+                    style="flex:1;background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px;font-family:inherit;outline:none;">
+                <span style="color:var(--fg-muted);font-size:12px;">.ev</span>
+            </div>
+            <div style="font-size:11px;color:var(--fg-muted);">Directory: ${info.directory}</div>
+            <button id="save-confirm" style="align-self:flex-end;padding:6px 16px;background:var(--accent,#89b4fa);color:#1e1e2e;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Save</button>
+        `, (overlay) => {
+            const inp = overlay.querySelector('#save-name');
+            inp.focus(); inp.select();
+            overlay.querySelector('#save-confirm').onclick = async () => {
+                const name = inp.value.trim() || suggested;
+                const source = evEditor.getSource();
+                const resp = await fetch(`/files/${encodeURIComponent(name)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source }),
+                });
+                const data = await resp.json();
+                overlay.remove();
+                // brief toast
+                const t = document.createElement('div');
+                t.textContent = `Saved ${data.filename}`;
+                t.style.cssText = 'position:fixed;bottom:2.5rem;right:1.5rem;background:var(--green,#a6e3a1);color:#1e1e2e;padding:6px 14px;border-radius:6px;font-size:12px;z-index:9999;';
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 2000);
+            };
+            inp.addEventListener('keydown', e => { if (e.key === 'Enter') overlay.querySelector('#save-confirm').click(); });
+        });
     });
 
-    document.getElementById('btn-open').addEventListener('click', () => {
-        document.getElementById('file-input').click();
-    });
+    document.getElementById('btn-open').addEventListener('click', async () => {
+        const info = await fetch('/files').then(r => r.json());
+        const files = info.files;
 
-    document.getElementById('file-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            evEditor.editor.setValue(ev.target.result);
-            if (typeof resetSamples === 'function') resetSamples();
-        };
-        reader.readAsText(file);
-        e.target.value = '';         // reset so same file can be reopened
+        const listHtml = files.length
+            ? files.map(f => `<div class="prog-file" data-name="${f}" style="padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;">${f}</div>`).join('')
+            : '<div style="color:var(--fg-muted);font-size:12px;font-style:italic;">No saved programs yet.</div>';
+
+        _fileModal('Open Program', `
+            <div style="font-size:11px;color:var(--fg-muted);margin-bottom:4px;">Directory: ${info.directory}</div>
+            <div id="prog-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
+                ${listHtml}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="new-dir" placeholder="Change directory…"
+                    style="flex:1;background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">
+                <button id="dir-confirm" style="padding:5px 10px;background:var(--bg-overlay);color:var(--fg);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;">Set</button>
+            </div>
+        `, (overlay) => {
+            // Hover highlight
+            overlay.querySelectorAll('.prog-file').forEach(el => {
+                el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-overlay)');
+                el.addEventListener('mouseleave', () => el.style.background = '');
+                el.addEventListener('click', async () => {
+                    const resp = await fetch(`/files/${encodeURIComponent(el.dataset.name)}`);
+                    const data = await resp.json();
+                    evEditor.editor.setValue(data.source);
+                    if (typeof resetSamples === 'function') resetSamples();
+                    overlay.remove();
+                });
+            });
+
+            // Directory change
+            overlay.querySelector('#dir-confirm').onclick = async () => {
+                const dir = overlay.querySelector('#new-dir').value.trim();
+                if (!dir) return;
+                await fetch('/files/config/directory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ directory: dir }),
+                });
+                overlay.remove();
+                document.getElementById('btn-open').click();  // reopen with new dir
+            };
+        });
     });
 
     // ── Keyboard shortcuts ───────────────────────────────────────────────

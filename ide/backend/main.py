@@ -9,6 +9,8 @@ Endpoints:
   POST /transfer   — sweep x_var across a range, solve for y_var at each step
 """
 
+import os
+import re
 import sys
 import json
 import hashlib
@@ -34,6 +36,26 @@ from pydantic import BaseModel
 from typing import Any
 
 _worker_script = str(Path(__file__).parent / "z3_worker.py")
+
+# ---------------------------------------------------------------------------
+# Programs directory — server-side file persistence
+# Default: <project_root>/programs/   Override: EVIDENT_PROGRAMS_DIR env var
+# ---------------------------------------------------------------------------
+
+_programs_dir = Path(
+    os.environ.get("EVIDENT_PROGRAMS_DIR",
+                   Path(__file__).parent.parent.parent / "programs")
+).resolve()
+_programs_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _safe_filename(name: str) -> str:
+    """Strip path separators and ensure .ev extension."""
+    name = Path(name).name          # drop any directory component
+    name = re.sub(r"[^\w\-. ]", "_", name)   # sanitise
+    if not name.endswith(".ev"):
+        name += ".ev"
+    return name
 
 # ---------------------------------------------------------------------------
 # Request cache — keyed by sha256(json(payload)), LRU eviction at 128 entries
@@ -146,6 +168,10 @@ class TransferRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+class SaveFileRequest(BaseModel):
+    source: str
+
+
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -246,6 +272,57 @@ def transfer_function(req: TransferRequest):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# File persistence
+# ---------------------------------------------------------------------------
+
+
+@app.get("/files")
+def list_files():
+    """List saved .ev programs and return the configured directory."""
+    files = sorted(p.name for p in _programs_dir.glob("*.ev"))
+    return {"files": files, "directory": str(_programs_dir)}
+
+
+@app.get("/files/{filename}")
+def load_file(filename: str):
+    """Load a saved program by filename."""
+    name = _safe_filename(filename)
+    path = _programs_dir / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{name} not found")
+    return {"filename": name, "source": path.read_text(encoding="utf-8")}
+
+
+@app.post("/files/{filename}")
+def save_file(filename: str, req: SaveFileRequest):
+    """Save source to a named .ev file."""
+    name = _safe_filename(filename)
+    (_programs_dir / name).write_text(req.source, encoding="utf-8")
+    return {"filename": name, "saved": True}
+
+
+@app.delete("/files/{filename}")
+def delete_file(filename: str):
+    """Delete a saved program."""
+    name = _safe_filename(filename)
+    path = _programs_dir / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{name} not found")
+    path.unlink()
+    return {"filename": name, "deleted": True}
+
+
+@app.post("/files/config/directory")
+def set_programs_directory(body: dict):
+    """Change the programs directory at runtime."""
+    global _programs_dir
+    new_dir = Path(body.get("directory", "")).expanduser().resolve()
+    new_dir.mkdir(parents=True, exist_ok=True)
+    _programs_dir = new_dir
+    return {"directory": str(_programs_dir)}
+
+
 # Cache control
 # ---------------------------------------------------------------------------
 
