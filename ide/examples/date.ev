@@ -1,21 +1,25 @@
 type MonthName = Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec
 
-schema Date
-    year      ∈ Nat
+claim months_have_names
     month     ∈ Nat
-    day       ∈ Nat
     monthName ∈ MonthName
-
-    0 < year
-    1 ≤ month ≤ 12
-    1 ≤ day   ≤ 31
-
     (month, monthName) ∈ {
         (1, Jan),  (2, Feb),  (3, Mar),
         (4, Apr),  (5, May),  (6, Jun),
         (7, Jul),  (8, Aug),  (9, Sep),
         (10, Oct), (11, Nov), (12, Dec)
     }
+
+schema Date
+    year  ∈ Nat
+    month ∈ Nat
+    day   ∈ Nat
+
+    ..months_have_names
+
+    0 < year
+    1 ≤ month ≤ 12
+    1 ≤ day   ≤ 31
 
     monthName = Feb                  ⇒ day ≤ 28
     monthName ∈ {Apr, Jun, Sep, Nov} ⇒ day ≤ 30
