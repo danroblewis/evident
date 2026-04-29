@@ -1,7 +1,6 @@
 type MonthName = Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec
 
 claim months_have_names
-    month     ∈ Nat
     monthName ∈ MonthName
     (month, monthName) ∈ {
         (1, Jan),  (2, Feb),  (3, Mar),

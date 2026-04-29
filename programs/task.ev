@@ -1,0 +1,12 @@
+schema Task
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
+    duration < deadline
+
+schema ValidSchedule
+    task   ∈ Task
+    slot   ∈ Nat
+    budget ∈ Nat
+    slot > 0
+    slot + task.duration ≤ budget
