@@ -129,12 +129,19 @@ comp_op: "<"  -> cmp_lt
        | "!=" -> cmp_neq
 
 // Membership at constraint level
+// Regex literals /pattern/ are pre-processed by the normalizer into STRING
+// literals with a magic __REGEX__ prefix.  The transformer inspects the
+// StringLiteral value and creates a RegexLiteral node when needed.
+// This avoids any lexer ambiguity with the / division operator.
+
 // Inline enum: x ∈ Red | Green | Blue  (requires ≥1 pipe — unambiguous from mem_in)
-membership_constraint: expr ("__IN__"|"in") NAME ("|" NAME)+  -> mem_inline_enum
-                     | expr ("__IN__"|"in") expr               -> mem_in
-                     | expr ("__NOT_IN__"|"not_in") expr       -> mem_not_in
-                     | expr ("__SUBSET__"|"subset") expr       -> mem_subset
-                     | expr ("__SUPERSET__"|"superset") expr   -> mem_superset
+membership_constraint: expr ("__IN__"|"in") NAME ("|" NAME)+   -> mem_inline_enum
+                     | expr ("__IN__"|"in") expr                -> mem_in
+                     | expr ("__NOT_IN__"|"not_in") expr        -> mem_not_in
+                     | expr ("__CONTAINS__") expr               -> mem_contains
+                     | expr ("__NOT_CONTAINS__") expr           -> mem_not_contains
+                     | expr ("__SUBSET__"|"subset") expr        -> mem_subset
+                     | expr ("__SUPERSET__"|"superset") expr    -> mem_superset
 
 // Arithmetic/comparison
 // String predicates (constraint position)

@@ -301,14 +301,49 @@ class EvidentTransformer(LarkTransformer):
             result = LogicConstraint(op='∧', left=result, right=c)
         return result
 
+    def _maybe_regex(self, node):
+        """If node is a StringLiteral with __REGEX__ prefix, return RegexLiteral."""
+        from parser.src.normalizer import decode_regex_string
+        if isinstance(node, StringLiteral):
+            pattern = decode_regex_string(node.value)
+            if pattern is not None:
+                return RegexLiteral(pattern=pattern)
+        return node
+
+    def mem_in(self, items):
+        left  = items[0]
+        right = self._maybe_regex(items[1])
+        # /regex/ ∋ s was normalised to "__REGEX__..." ∈ s — flip it back
+        if isinstance(right, RegexLiteral) or isinstance(left, RegexLiteral):
+            # left is expr (could be regex from /re/ ∋ s normalisation)
+            left  = self._maybe_regex(left)
+            # If left is the regex and right is the string, swap for semantics
+            if isinstance(left, RegexLiteral):
+                left, right = right, left
+        return MembershipConstraint(op='∈', left=left, right=right)
+
+    def mem_contains(self, items):
+        # haystack ∋ needle  (string containment)
+        # Also handles "__REGEX__pattern" ∋ s (right side is string)
+        left  = self._maybe_regex(items[0])
+        right = items[1]
+        if isinstance(left, RegexLiteral):
+            # /re/ ∋ s  →  s ∈ /re/
+            return MembershipConstraint(op='∈', left=right, right=left)
+        return MembershipConstraint(op='∋', left=left, right=right)
+
+    def mem_not_contains(self, items):
+        left  = self._maybe_regex(items[0])
+        right = items[1]
+        if isinstance(left, RegexLiteral):
+            return MembershipConstraint(op='∉', left=right, right=left)
+        return MembershipConstraint(op='∌', left=left, right=right)
+
     def mem_inline_enum(self, items):
         # items = [left_expr, NAME, NAME, ...]
         left = items[0]
         variants = [_str(t) for t in items[1:]]
         return MembershipConstraint(op='∈', left=left, right=InlineEnumExpr(variants=variants))
-
-    def mem_in(self, items):
-        return MembershipConstraint(op='∈', left=items[0], right=items[1])
 
     def mem_not_in(self, items):
         return MembershipConstraint(op='∉', left=items[0], right=items[1])

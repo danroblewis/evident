@@ -32,7 +32,112 @@ from .ast_types import (
     RealLiteral,
     StringLiteral,
     BoolLiteral,
+    RegexLiteral,
 )
+
+
+def _build_z3_regex(pattern: str):
+    """Translate a regex pattern string into a Z3 regex expression.
+
+    Supports: literals, . * + ? | [] [^] \\d \\w \\s \\D \\W \\S
+    This is a simplified subset — not full PCRE.
+    """
+    import re as _re
+
+    pos = 0
+
+    def peek():
+        return pattern[pos] if pos < len(pattern) else None
+
+    def consume():
+        nonlocal pos
+        ch = pattern[pos]; pos += 1; return ch
+
+    def parse_char_class():
+        """Parse [...] or [^...] into a Z3 union of ranges/chars."""
+        nonlocal pos
+        negate = False
+        if peek() == '^':
+            negate = True; consume()
+        parts = []
+        while peek() and peek() != ']':
+            ch = consume()
+            if ch == '\\':
+                esc = consume()
+                parts.append(_esc_to_z3(esc))
+            elif peek() == '-' and pos + 1 < len(pattern) and pattern[pos+1] != ']':
+                consume()  # consume '-'
+                end = consume()
+                parts.append(z3.Range(ch, end))
+            else:
+                parts.append(z3.Re(z3.StringVal(ch)))
+        if peek() == ']':
+            consume()
+        if not parts:
+            return z3.Re(z3.StringVal(''))
+        result = parts[0] if len(parts) == 1 else z3.Union(*parts)
+        return z3.Complement(result) if negate else result
+
+    def _esc_to_z3(ch):
+        if ch == 'd': return z3.Range('0', '9')
+        if ch == 'D': return z3.Complement(z3.Range('0', '9'))
+        if ch == 'w': return z3.Union(z3.Range('a','z'), z3.Range('A','Z'), z3.Range('0','9'), z3.Re(z3.StringVal('_')))
+        if ch == 'W': return z3.Complement(z3.Union(z3.Range('a','z'), z3.Range('A','Z'), z3.Range('0','9'), z3.Re(z3.StringVal('_'))))
+        if ch == 's': return z3.Union(z3.Re(z3.StringVal(' ')), z3.Re(z3.StringVal('\t')), z3.Re(z3.StringVal('\n')))
+        if ch == 'S': return z3.Complement(z3.Union(z3.Re(z3.StringVal(' ')), z3.Re(z3.StringVal('\t')), z3.Re(z3.StringVal('\n'))))
+        return z3.Re(z3.StringVal(ch))  # escaped literal
+
+    def parse_atom():
+        ch = peek()
+        if ch is None:
+            return z3.Re(z3.StringVal(''))
+        if ch == '(':
+            consume()
+            inner = parse_alternation()
+            if peek() == ')': consume()
+            return inner
+        if ch == '[':
+            consume()
+            return parse_char_class()
+        if ch == '.':
+            consume()
+            return z3.AllChar()
+        if ch == '\\':
+            consume()
+            return _esc_to_z3(consume())
+        if ch in ('|', ')', '*', '+', '?'):
+            return z3.Re(z3.StringVal(''))
+        consume()
+        return z3.Re(z3.StringVal(ch))
+
+    def parse_quantified():
+        atom = parse_atom()
+        q = peek()
+        if q == '*':  consume(); return z3.Star(atom)
+        if q == '+':  consume(); return z3.Plus(atom)
+        if q == '?':  consume(); return z3.Option(atom)
+        return atom
+
+    def parse_concat():
+        parts = []
+        while peek() and peek() not in ('|', ')'):
+            parts.append(parse_quantified())
+        if not parts:
+            return z3.Re(z3.StringVal(''))
+        result = parts[0]
+        for p in parts[1:]:
+            result = z3.Concat(result, p)
+        return result
+
+    def parse_alternation():
+        left = parse_concat()
+        if peek() == '|':
+            consume()
+            right = parse_alternation()
+            return z3.Union(left, right)
+        return left
+
+    return parse_alternation()
 
 # Counter for generating fresh variable names in subset constraints.
 _fresh_counter = 0
@@ -269,7 +374,39 @@ def translate_constraint(
         # Determine if the right-hand side is a named primitive type.
         rhs_name = right.name if isinstance(right, Identifier) else None
 
+        # ── ∋ / ∌ : haystack ∋ needle (string/sequence containment) ─────────────
+        if op in ("∋", "∌"):
+            haystack = translate_expr(left,  env, registry)
+            needle   = translate_expr(right, env, registry)
+            result   = z3.Contains(haystack, needle)
+            return z3.Not(result) if op == "∌" else result
+
         if op in ("∈", "∉"):
+            # Regex literal: s ∈ /pattern/
+            if isinstance(right, RegexLiteral):
+                lhs = translate_expr(left, env, registry)
+                re  = _build_z3_regex(right.pattern)
+                result = z3.InRe(lhs, re)
+                return z3.Not(result) if op == "∉" else result
+
+            # String/sequence containment: needle ∈ haystack
+            # Only fires when right is a String-typed variable (not a type name or set)
+            if isinstance(right, Identifier) and right.name not in (
+                'Nat','Int','Real','Bool','String',
+            ):
+                named = registry.get_named_set(right.name)
+                rhs_expr = None
+                if named is None:
+                    # might be a string variable — try translating
+                    try:
+                        rhs_expr = translate_expr(right, env, registry)
+                    except (KeyError, NotImplementedError):
+                        rhs_expr = None
+                if rhs_expr is not None and z3.is_string(rhs_expr):
+                    lhs = translate_expr(left, env, registry)
+                    result = z3.Contains(rhs_expr, lhs)
+                    return z3.Not(result) if op == "∉" else result
+
             # Resolve named set reference: x ∈ months_map
             if isinstance(right, Identifier):
                 named = registry.get_named_set(right.name)

@@ -170,7 +170,7 @@ Expr = Union[
     "SetComprehension", "SetLiteral", "EmptySet", "RangeLiteral",
     "TupleLiteral", "BinaryExpr", "UnaryExpr", "CardinalityExpr",
     "ChainExpr", "NatLiteral", "IntLiteral", "RealLiteral",
-    "StringLiteral", "BoolLiteral", "InlineEnumExpr",
+    "StringLiteral", "BoolLiteral", "InlineEnumExpr", "RegexLiteral",
 ]
 
 @dataclass
@@ -241,6 +241,9 @@ class ChainExpr:
     right: Expr
 
 # ── Literals ──────────────────────────────────────────────────────────────────
+
+@dataclass
+class RegexLiteral:  pattern: str   # raw pattern string, e.g. r"\d+"
 
 @dataclass
 class NatLiteral:    value: int

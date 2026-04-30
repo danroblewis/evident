@@ -55,6 +55,7 @@ from parser.src.ast import (  # noqa: E402
     RealLiteral,
     StringLiteral,
     BoolLiteral,
+    RegexLiteral,
     EvidentBlock,
     PassthroughItem,
     AssertStmt,
