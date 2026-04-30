@@ -26,6 +26,7 @@ from .ast_types import (
     TupleLiteral,
     BinaryExpr,
     UnaryExpr,
+    CardinalityExpr,
     NatLiteral,
     IntLiteral,
     RealLiteral,
@@ -136,12 +137,22 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
             return left * right
         if op == "/":
             return left / right
+        if op == "++":
+            return z3.Concat(left, right)
         raise NotImplementedError(
             f"BinaryExpr op {op!r} not supported in translate_expr. "
             "Set operations (∪, ∩, \\, ×) are handled in the sets module."
         )
 
     # ── Unary negation ────────────────────────────────────────────────────────
+    # ── String length:  |s|  ─────────────────────────────────────────────────
+    if isinstance(expr, CardinalityExpr):
+        inner = translate_expr(expr.set, env, registry)
+        if z3.is_string(inner):
+            return z3.Length(inner)
+        # Fall through to set cardinality (handled in quantifiers.py via the constraint path)
+        raise NotImplementedError("Set cardinality |S| must appear as a constraint, not an expression.")
+
     if isinstance(expr, UnaryExpr):
         if expr.op == "¬":
             return z3.Not(translate_expr(expr.operand, env, registry))
@@ -230,6 +241,23 @@ def translate_constraint(
             return left <= right
         if op == "≥":
             return left >= right
+        # ── String predicates ──────────────────────────────────────────
+        if op == "starts_with":
+            lhs = translate_expr(constraint.left,  env, registry)
+            rhs = translate_expr(constraint.right, env, registry)
+            return z3.PrefixOf(rhs, lhs)   # PrefixOf(prefix, full_string)
+        if op == "ends_with":
+            lhs = translate_expr(constraint.left,  env, registry)
+            rhs = translate_expr(constraint.right, env, registry)
+            return z3.SuffixOf(rhs, lhs)   # SuffixOf(suffix, full_string)
+        if op == "contains":
+            lhs = translate_expr(constraint.left,  env, registry)
+            rhs = translate_expr(constraint.right, env, registry)
+            return z3.Contains(lhs, rhs)
+        if op == "matches":
+            lhs     = translate_expr(constraint.left,  env, registry)
+            pattern = translate_expr(constraint.right, env, registry)
+            return z3.InRe(lhs, z3.Re(pattern))
         raise NotImplementedError(f"ArithmeticConstraint op {op!r} not supported.")
 
     # ── MembershipConstraint ──────────────────────────────────────────────────

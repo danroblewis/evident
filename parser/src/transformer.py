@@ -505,6 +505,23 @@ class EvidentTransformer(LarkTransformer):
     def additive_expr(self, items):
         return items[0]
 
+    def str_concat_expr(self, items):
+        return BinaryExpr(op='++', left=items[0], right=items[1])
+
+    def str_starts_with(self, items):
+        return ArithmeticConstraint(op='starts_with', left=items[0], right=items[1])
+
+    def str_ends_with(self, items):
+        return ArithmeticConstraint(op='ends_with', left=items[0], right=items[1])
+
+    def str_contains(self, items):
+        return ArithmeticConstraint(op='contains', left=items[0], right=items[1])
+
+    def str_matches(self, items):
+        # right side is a STRING token — strip quotes and store as StringLiteral
+        pattern = str(items[1])[1:-1]  # strip surrounding quotes
+        return ArithmeticConstraint(op='matches', left=items[0], right=StringLiteral(value=pattern))
+
     def add_expr(self, items):
         return BinaryExpr(op='+', left=items[0], right=items[1])
 

@@ -111,6 +111,7 @@ exists_constraint: ("__EXISTS__"|"some") binding_list ":" constraint   -> exists
           | logic_and_constraint
 
 ?base_constraint: chained_comparison
+                | str_constraint
                 | membership_constraint
                 | arith_constraint
                 | app_constraint
@@ -136,6 +137,12 @@ membership_constraint: expr ("__IN__"|"in") NAME ("|" NAME)+  -> mem_inline_enum
                      | expr ("__SUPERSET__"|"superset") expr   -> mem_superset
 
 // Arithmetic/comparison
+// String predicates (constraint position)
+str_constraint: expr "starts_with" expr   -> str_starts_with
+              | expr "ends_with" expr     -> str_ends_with
+              | expr "contains" expr      -> str_contains
+              | expr "matches" STRING     -> str_matches
+
 arith_constraint: expr "=" expr   -> arith_eq
                 | expr "!=" expr  -> arith_neq
                 | expr "<" expr   -> arith_lt
@@ -200,6 +207,7 @@ constraint_stmt: constraint _NEWLINE
 
 ?additive_expr: additive_expr "+" mult_expr     -> add_expr
               | additive_expr "-" mult_expr     -> sub_expr
+              | additive_expr "++" mult_expr    -> str_concat_expr
               | additive_expr "__UNION__" mult_expr  -> union_expr
               | mult_expr
 

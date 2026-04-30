@@ -282,3 +282,59 @@ def test_multi_name_body_diverse_samples():
     results = mod.random_seed_sample(src, "S", {}, 10)
     assert len(results) >= 5
     assert len({r.bindings["a"] for r in results}) > 1
+
+
+# ── Z3 string operations ──────────────────────────────────────────────────────
+
+def test_str_concat_given():
+    rt = _rt('schema S\n    s, t ∈ String\n    s ++ t = "hello world"\n    s = "hello "\n')
+    r = rt.query('S')
+    assert r.satisfied and r.bindings['t'] == 'world'
+
+def test_str_concat_both_free():
+    rt = _rt('schema S\n    a, b, c ∈ String\n    a = "foo"\n    b = "bar"\n    c = a ++ b\n')
+    r = rt.query('S')
+    assert r.satisfied and r.bindings['c'] == 'foobar'
+
+def test_str_concat_chain():
+    rt = _rt('schema S\n    msg ∈ String\n    msg = "Hello" ++ ", " ++ "world" ++ "!"\n')
+    r = rt.query('S')
+    assert r.satisfied and r.bindings['msg'] == 'Hello, world!'
+
+def test_str_starts_with_sat():
+    rt = _rt('schema S\n    path ∈ String\n    path starts_with "/api"\n    path = "/api/users"\n')
+    assert rt.query('S').satisfied
+
+def test_str_starts_with_unsat():
+    rt = _rt('schema S\n    path ∈ String\n    path starts_with "/api"\n    path = "/home"\n')
+    assert not rt.query('S').satisfied
+
+def test_str_ends_with_sat():
+    rt = _rt('schema S\n    f ∈ String\n    f ends_with ".ev"\n    f = "program.ev"\n')
+    assert rt.query('S').satisfied
+
+def test_str_ends_with_unsat():
+    rt = _rt('schema S\n    f ∈ String\n    f ends_with ".ev"\n    f = "program.py"\n')
+    assert not rt.query('S').satisfied
+
+def test_str_contains_sat():
+    rt = _rt('schema S\n    email ∈ String\n    email contains "@"\n    email = "user@example.com"\n')
+    assert rt.query('S').satisfied
+
+def test_str_contains_unsat():
+    rt = _rt('schema S\n    email ∈ String\n    email contains "@"\n    email = "notanemail"\n')
+    assert not rt.query('S').satisfied
+
+def test_str_matches_sat():
+    rt = _rt('schema S\n    s ∈ String\n    s matches "hello"\n    s = "hello"\n')
+    assert rt.query('S').satisfied
+
+def test_str_matches_unsat():
+    rt = _rt('schema S\n    s ∈ String\n    s matches "hello"\n    s = "world"\n')
+    assert not rt.query('S').satisfied
+
+def test_str_concat_solve_unknown():
+    """Solver finds a string satisfying concatenation constraints."""
+    rt = _rt('schema S\n    x ∈ String\n    "foo" ++ x = "foobar"\n')
+    r = rt.query('S')
+    assert r.satisfied and r.bindings['x'] == 'bar'

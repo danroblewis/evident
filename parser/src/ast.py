@@ -100,7 +100,7 @@ class MembershipConstraint:
 
 @dataclass
 class ArithmeticConstraint:
-    op: Literal["=", "≠", "<", ">", "≤", "≥"]
+    op: Literal["=", "≠", "<", ">", "≤", "≥", "starts_with", "ends_with", "contains", "matches"]
     left: Expr
     right: Expr
 
@@ -221,7 +221,7 @@ class TupleLiteral:
 
 @dataclass
 class BinaryExpr:
-    op: Literal["+", "-", "*", "/", "∪", "∩", "\\", "×"]
+    op: Literal["+", "-", "*", "/", "++", "∪", "∩", "\\", "×"]
     left: Expr
     right: Expr
 
