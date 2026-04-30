@@ -48,7 +48,7 @@ def blocking_clause_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
+    from runtime.src.ast_types import MembershipConstraint, ArithmeticConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.evaluate import _translate_body_constraint
 
     # We'll build the constraint system incrementally in Z3, adding blocking
@@ -176,7 +176,7 @@ def random_seed_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver, _translate_body_constraint
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
+    from runtime.src.ast_types import MembershipConstraint, ArithmeticConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.env import Environment
 
     rt = EvidentRuntime()
@@ -204,6 +204,15 @@ def random_seed_sample(
         for vname in param.names:
             if vname not in given and vname not in free_vars:
                 free_vars[vname] = type_name
+
+    # Variables that appear on the LHS of an equality constraint (e.g. r = 2)
+    # are already determined by the solver — adding a random hint for them
+    # contradicts the equality and causes most attempts to be UNSAT.
+    equality_constrained = set()
+    for item in schema.body:
+        if (isinstance(item, ArithmeticConstraint) and item.op == '='
+                and isinstance(item.left, Identifier)):
+            equality_constrained.add(item.left.name)
 
     # Build the Z3 solver and environment ONCE
     solver_obj = EvidentSolver()
@@ -261,10 +270,12 @@ def random_seed_sample(
         if len(samples) >= n:
             break
 
-        # Push a scope, add one random assignment per free integer variable,
+        # Push a scope, add one random assignment per free variable,
         # check feasibility, then pop — reusing all base constraints.
         base_solver.push()
         for vname, type_name in free_vars.items():
+            if vname in equality_constrained:
+                continue  # already determined by an = constraint; don't hint
             z3_var = env.lookup(vname)
             if z3_var is None:
                 continue
