@@ -298,7 +298,7 @@ function _addOverlay(g, iW, iH, pts, cx, cy, tooltip) {
                 if (d < bestD) { bestD = d; best = p; }
             }
             if (best && Math.sqrt(bestD) < 40) {
-                const rect = container.getBoundingClientRect();
+                const rect = tooltip.node().parentElement.getBoundingClientRect();
                 tooltip.style('display', 'block').text(best.label);
                 tooltip.style('left', (event.clientX - rect.left + 14) + 'px')
                        .style('top',  (event.clientY - rect.top  - 12) + 'px');
