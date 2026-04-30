@@ -112,19 +112,25 @@ def blocking_clause_sample(
         # Try with a random enum hint first (push/pop so UNSAT from a bad hint
         # doesn't kill the loop — it just falls back to unconstrained solving).
         enum_hints = []
-        for item in schema.body:
-            if (isinstance(item, MembershipConstraint) and item.op == "∈"
-                    and isinstance(item.left, Identifier)):
-                vname = item.left.name
-                if vname in given:
-                    continue
-                type_name = item.right.name if isinstance(item.right, Identifier) else None
-                if type_name:
-                    ctors = solver_obj.registry.get_constructors_for(type_name)
-                    if ctors:
-                        z3_var = env.lookup(vname)
-                        if z3_var is not None:
-                            enum_hints.append(z3_var == random.choice(ctors))
+        # Scan both body and params for enum-typed variables to hint.
+        def _enum_candidates():
+            for item in schema.body:
+                if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                        and isinstance(item.left, Identifier)):
+                    yield item.left.name, item.right.name if isinstance(item.right, Identifier) else None
+            for param in schema.params:
+                tname = param.set.name if isinstance(param.set, Identifier) else None
+                for vname in param.names:
+                    yield vname, tname
+
+        for vname, type_name in _enum_candidates():
+            if vname in given or not type_name:
+                continue
+            ctors = solver_obj.registry.get_constructors_for(type_name)
+            if ctors:
+                z3_var = env.lookup(vname)
+                if z3_var is not None:
+                    enum_hints.append(z3_var == random.choice(ctors))
 
         model = None
         if enum_hints:
@@ -179,7 +185,9 @@ def random_seed_sample(
     if schema is None:
         return []
 
-    # Collect free variable names and their types
+    # Collect free variable names and types from body AND params.
+    # The params syntax (schema Foo(x ∈ Nat)) puts declarations in
+    # schema.params instead of schema.body — both must be scanned.
     free_vars: dict[str, str] = {}
     for item in schema.body:
         if (isinstance(item, MembershipConstraint) and item.op == "∈"
@@ -187,6 +195,11 @@ def random_seed_sample(
             vname = item.left.name
             type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
             if vname not in given:
+                free_vars[vname] = type_name
+    for param in schema.params:
+        type_name = param.set.name if isinstance(param.set, Identifier) else "unknown"
+        for vname in param.names:
+            if vname not in given and vname not in free_vars:
                 free_vars[vname] = type_name
 
     # Build the Z3 solver and environment ONCE

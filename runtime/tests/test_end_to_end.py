@@ -153,3 +153,86 @@ schema Bounded
     assert ev_dict["claim"] == "Bounded"
     ev_json = result.evidence.to_json()
     assert "Bounded" in ev_json
+
+
+# ── Parameter syntax tests ────────────────────────────────────────────────────
+
+def _rt(src):
+    rt = EvidentRuntime()
+    rt.load_source(src)
+    return rt
+
+
+def test_params_basic_query():
+    """Param syntax produces same result as body-style declaration."""
+    rt_body = _rt("schema S\n    a ∈ Nat\n    b ∈ Nat\n    a < b\n")
+    rt_param = _rt("schema S(a ∈ Nat, b ∈ Nat)\n    a < b\n")
+    rb = rt_body.query("S")
+    rp = rt_param.query("S")
+    assert rb.satisfied == rp.satisfied
+    assert rp.bindings["a"] < rp.bindings["b"]
+
+
+def test_params_unsat():
+    rt = _rt("schema S(a ∈ Nat, b ∈ Nat)\n    a < b\n    b < a\n")
+    assert not rt.query("S").satisfied
+
+
+def test_params_given():
+    rt = _rt("schema S(a ∈ Nat, b ∈ Nat)\n    a + b = 10\n")
+    r = rt.query("S", given={"a": 3})
+    assert r.satisfied
+    assert r.bindings["b"] == 7
+
+
+def test_params_multiline():
+    rt = _rt("schema S(\n    a ∈ Nat,\n    b ∈ Nat\n)\n    a < b\n")
+    r = rt.query("S")
+    assert r.satisfied
+    assert r.bindings["a"] < r.bindings["b"]
+
+
+def test_params_no_body():
+    rt = _rt("schema S(n ∈ Nat)\n")
+    r = rt.query("S")
+    assert r.satisfied
+    assert r.bindings["n"] >= 0
+
+
+def test_params_enum():
+    rt = _rt(
+        "type Color = Red | Green | Blue\n"
+        "schema S(c ∈ Color)\n    c ≠ Red\n"
+    )
+    r = rt.query("S")
+    assert r.satisfied
+    assert r.bindings["c"] in ("Green", "Blue")
+
+
+def test_params_sampling_is_diverse():
+    """Params syntax must produce diverse samples, not always min values."""
+    import importlib.util, pathlib
+    sampler_path = pathlib.Path(__file__).parent.parent.parent / 'ide' / 'backend' / 'sampler.py'
+    spec = importlib.util.spec_from_file_location('sampler', sampler_path)
+    sampler_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sampler_mod)
+    random_seed_sample = sampler_mod.random_seed_sample
+
+    src = "schema S(a ∈ Nat, b ∈ Nat)\n    a < b\n    a < 20\n    b < 30\n"
+    results = random_seed_sample(src, "S", {}, 10)
+    assert len(results) >= 5, f"Only got {len(results)} samples"
+    a_values = {r.bindings["a"] for r in results}
+    assert len(a_values) > 1, "All samples have the same 'a' — hints not being applied to params"
+
+
+def test_params_mix_with_body():
+    """Params and body-level declarations can coexist."""
+    rt = _rt(
+        "schema S(x ∈ Nat)\n"
+        "    y ∈ Nat\n"
+        "    y = x * 2\n"
+        "    x < 10\n"
+    )
+    r = rt.query("S", given={"x": 4})
+    assert r.satisfied
+    assert r.bindings["y"] == 8
