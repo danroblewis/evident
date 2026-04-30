@@ -1,0 +1,83 @@
+-- String constraints: ∈ /regex/, ∋ (contains), and ++.
+-- These are constraint relationships — the solver works bidirectionally.
+-- Give the schema a known value and verify; or leave it free and find one.
+
+type HttpMethod = GET | POST | PUT | DELETE | PATCH
+
+assert method_strings = {
+    (GET,    "GET"),
+    (POST,   "POST"),
+    (PUT,    "PUT"),
+    (DELETE, "DELETE"),
+    (PATCH,  "PATCH")
+}
+
+schema HttpRequest
+    method     ∈ HttpMethod
+    raw_method ∈ String
+    path       ∈ String
+
+    -- Method enum and its string representation are linked
+    (method, raw_method) ∈ method_strings
+
+    -- Path must start with /
+    path starts_with "/"
+
+    -- Path segments: letters, digits, hyphens, underscores
+    -- (no regex containing / to avoid delimiter conflict)
+    path ∋ "/"
+
+schema ApiRequest
+    -- @plot x=method y=path_segment color=method title="API request space"
+    ..HttpRequest
+    path_segment ∈ String
+
+    -- API paths are under /api/
+    path starts_with "/api/"
+
+    -- The segment after /api/
+    path = "/api/" ++ path_segment
+
+    -- Segment is a valid resource name: letters and hyphens
+    path_segment ∈ /[a-z][a-z\-]*/
+
+    -- DELETE requires a specific resource (not just a collection)
+    method = DELETE ⇒ path_segment ∋ "/"
+
+schema EmailAddress
+    -- @plot x=local y=domain title="Email local vs domain"
+    address ∈ String
+    local   ∈ String
+    domain  ∈ String
+
+    -- Structure: local@domain
+    address = local ++ "@" ++ domain
+    address ∋ "@"
+
+    -- Local part: alphanumeric, dots, hyphens
+    local ∈ /[a-zA-Z0-9][a-zA-Z0-9.\-]*/
+
+    -- Domain must contain a dot
+    domain ∋ "."
+    domain ∈ /[a-zA-Z0-9][a-zA-Z0-9.\-]+\.[a-zA-Z]+/
+
+schema SemanticVersion
+    -- @plot x=major y=minor title="Version numbers"
+    full  ∈ String
+    major ∈ Nat
+    minor ∈ Nat
+    patch ∈ Nat
+
+    -- Version string matches semver
+    full ∈ /[0-9]+\.[0-9]+\.[0-9]+/
+
+    -- Reasonable bounds
+    major < 20
+    minor < 100
+    patch < 1000
+
+schema Identifier
+    -- A valid programming language identifier
+    name ∈ String
+    name ∈ /[a-zA-Z_][a-zA-Z0-9_]*/
+    name ends_with "_handler" ⇒ name starts_with "on_"
