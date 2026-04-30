@@ -22,7 +22,6 @@ schema HttpRequest
 schema ApiRequest
     -- @plot x=raw_method y=path_segment color=method title="API request space"
     ..HttpRequest
-    path_segment ∈ String
     path ⊑ "/api/"
     path = "/api/" ++ path_segment
     path_segment ∈ /[a-z][a-z\-]*/
@@ -32,8 +31,6 @@ schema ApiRequest
 schema EmailAddress
     -- @plot x=local.length y=domain.length title="Local vs domain length"
     address ∈ String
-    local   ∈ String
-    domain  ∈ String
     address = local ++ "@" ++ domain
     local ∈ /[a-zA-Z0-9][a-zA-Z0-9.\-]*/
     #local ≤ 64
