@@ -528,6 +528,9 @@ class EvidentTransformer(LarkTransformer):
     def unary_not(self, items):
         return UnaryExpr(op='¬', operand=items[1])
 
+    def unary_neg(self, items):
+        return UnaryExpr(op='-', operand=items[0])
+
     def cardinality_expr(self, items):
         return CardinalityExpr(set=items[0])
 

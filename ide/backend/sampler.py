@@ -230,9 +230,9 @@ def random_seed_sample(
         lo = rng.get("min")
         if lo is not None:
             return (lo, lo + 50)
-        if type_name == "Nat":          return (0,   50)
-        if type_name == "Int":          return (-50, 50)
-        if type_name == "Real":         return (0.0, 10.0)
+        if type_name == "Nat":          return (0,    50)
+        if type_name == "Int":          return (-50,  50)
+        if type_name == "Real":         return (-5.0, 5.0)
         return (0, 50)
 
     samples: list[Sample] = []

@@ -216,7 +216,7 @@ class BinaryExpr:
 
 @dataclass
 class UnaryExpr:
-    op: Literal["¬"]
+    op: Literal["¬", "-"]
     operand: Expr
 
 @dataclass

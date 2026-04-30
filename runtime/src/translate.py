@@ -145,6 +145,8 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
     if isinstance(expr, UnaryExpr):
         if expr.op == "¬":
             return z3.Not(translate_expr(expr.operand, env, registry))
+        if expr.op == '-':
+            return -translate_expr(expr.operand, env, registry)
         raise NotImplementedError(f"UnaryExpr op {expr.op!r} not supported.")
 
     # ── Tuple literal ─────────────────────────────────────────────────────────

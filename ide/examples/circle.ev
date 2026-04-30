@@ -1,0 +1,28 @@
+-- A circle as a constraint: each sample is one point on the boundary.
+-- Run Sample repeatedly — the circle emerges from the point cloud.
+-- Set X=px, Y=py in the 2D plot.
+-- @plot x=px y=py title="Unit circle"
+
+schema PointOnCircle
+    px ∈ Real
+    py ∈ Real
+
+    -- Point lies on the unit circle (within tolerance)
+    px * px + py * py > 0.95
+    px * px + py * py < 1.05
+
+    -- Keep sampling bounded
+    px > -1.5
+    px < 1.5
+    py > -1.5
+    py < 1.5
+
+schema PointInDisk
+    -- @plot x=px y=py title="Unit disk (interior)"
+    px ∈ Real
+    py ∈ Real
+    px * px + py * py < 1.0
+    px > -1.5
+    px < 1.5
+    py > -1.5
+    py < 1.5

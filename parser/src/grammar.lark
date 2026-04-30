@@ -198,12 +198,16 @@ constraint_stmt: constraint _NEWLINE
               | additive_expr "__UNION__" mult_expr  -> union_expr
               | mult_expr
 
-?mult_expr: mult_expr "*" juxt_expr         -> mul_expr
-          | mult_expr "/" juxt_expr         -> div_expr
-          | mult_expr "__INTERSECT__" juxt_expr  -> intersect_expr
-          | mult_expr "\\" juxt_expr        -> diff_expr
-          | mult_expr "__CROSS__" juxt_expr  -> cross_expr
-          | juxt_expr
+?mult_expr: mult_expr "*" unary_expr         -> mul_expr
+          | mult_expr "/" unary_expr         -> div_expr
+          | mult_expr "__INTERSECT__" unary_expr  -> intersect_expr
+          | mult_expr "\\" unary_expr        -> diff_expr
+          | mult_expr "__CROSS__" unary_expr  -> cross_expr
+          | unary_expr
+
+// Unary minus: -x, -3.14, -(a + b)
+?unary_expr: "-" unary_expr  -> unary_neg
+           | juxt_expr
 
 // Juxtaposition: adjacent names/atoms = type application (Set Assignment → Set × Assignment)
 ?juxt_expr: juxt_expr juxt_name    -> juxt_app
