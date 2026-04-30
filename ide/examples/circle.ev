@@ -1,9 +1,9 @@
 -- A circle as a constraint: each sample is one point on the boundary.
--- Run Sample repeatedly — the circle emerges from the point cloud.
--- Set X=px, Y=py in the 2D plot.
--- @plot x=px y=py title="Unit circle"
+-- Run Sample — the circle emerges from the accumulated point cloud.
+-- Switch between PointOnCircle and PointInDisk in the Schema selector.
 
 schema PointOnCircle
+    -- @plot x=px y=py title="Unit circle boundary"
     px ∈ Real
     py ∈ Real
 
@@ -21,6 +21,7 @@ schema PointInDisk
     -- @plot x=px y=py title="Unit disk (interior)"
     px ∈ Real
     py ∈ Real
+
     px * px + py * py < 1.0
     px > -1.5
     px < 1.5

@@ -192,24 +192,41 @@
     };
 
     // ── @plot annotation parser ─────────────────────────────────────────
-    // Reads  -- @plot x=var y=var color=var size=var title="label"  from source.
+    // Reads  -- @plot x=var y=var color=var size=var title="label"  lines.
+    // Annotations are grouped by schema: each @plot belongs to the most
+    // recently declared schema above it (schema/claim/type keyword).
+    // Annotations before any schema declaration are "global" (key '').
     function parsePlotAnnotations(source) {
-        const plots = [];
-        const re = /--\s*@plot\s+(.+)$/gm;
-        let m;
-        while ((m = re.exec(source)) !== null) {
-            const cfg = {};
-            // Split on spaces but respect quoted values
-            m[1].trim().replace(/(\w+)=("([^"]*)"|([\w.]+))/g, (_, k, __, q, u) => {
-                cfg[k] = q !== undefined ? q : u;
-            });
-            if (cfg.x || cfg.y) plots.push(cfg);
+        const bySchema = {};   // { schemaName → [cfg, …], '' → [global] }
+        let currentSchema = '';
+
+        for (const line of source.split('\n')) {
+            const schemaDef = line.match(/^\s*(?:schema|claim|type)\s+(\w+)/);
+            if (schemaDef) currentSchema = schemaDef[1];
+
+            const plotLine = line.match(/--\s*@plot\s+(.+)$/);
+            if (plotLine) {
+                const cfg = {};
+                plotLine[1].trim().replace(/(\w+)=("([^"]*)"|([\w.]+))/g, (_, k, __, q, u) => {
+                    cfg[k] = q !== undefined ? q : u;
+                });
+                if (cfg.x || cfg.y) {
+                    if (!bySchema[currentSchema]) bySchema[currentSchema] = [];
+                    bySchema[currentSchema].push(cfg);
+                }
+            }
         }
-        return plots;
+        return bySchema;
     }
 
     function applyPlotAnnotations() {
-        const annotations = parsePlotAnnotations(evEditor?.getSource() || '');
+        const bySchema = parsePlotAnnotations(evEditor?.getSource() || '');
+        const activeSchema = document.getElementById('schema-select')?.value || '';
+        // Global annotations (before any schema) + active schema's annotations
+        const annotations = [
+            ...(bySchema['']           || []),
+            ...(bySchema[activeSchema] || []),
+        ];
         if (typeof setPlotAnnotations === 'function') setPlotAnnotations(annotations);
     }
 
