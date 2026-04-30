@@ -1,6 +1,5 @@
--- String constraints: ∈ /regex/, ∋ (contains), starts_with, ends_with, ++, #
--- These are constraint relationships — the solver works bidirectionally.
--- Give the schema a known value and verify; or leave it free and find one.
+-- String constraints: ∈ /regex/, ∋ (contains), ⊑ (prefix), ⊒ (suffix), ++, #
+-- Leave variables free and the solver finds values; pin one to verify others.
 
 type HttpMethod = GET | POST | PUT | DELETE | PATCH
 
@@ -16,35 +15,18 @@ schema HttpRequest
     method     ∈ HttpMethod
     raw_method ∈ String
     path       ∈ String
-
-    -- Method enum and its string representation are linked
     (method, raw_method) ∈ method_strings
-
-    -- Path must start with /
     path ⊑ "/"
-
-    -- Path is at least 1 character after the slash
     #path ≥ 2
 
 schema ApiRequest
     -- @plot x=raw_method y=path_segment color=method title="API request space"
     ..HttpRequest
     path_segment ∈ String
-
-    -- API paths are under /api/
     path ⊑ "/api/"
-
-    -- The segment after /api/ defines the resource
     path = "/api/" ++ path_segment
-
-    -- Segment is a valid resource name: letters and hyphens only
     path_segment ∈ /[a-z][a-z\-]*/
-
-    -- Length bounds on the segment
-    #path_segment ≥ 2
-    #path_segment ≤ 32
-
-    -- DELETE requires a specific resource (not just a collection)
+    2 ≤ #path_segment ≤ 32
     method = DELETE ⇒ path_segment ∋ "/"
 
 schema EmailAddress
@@ -52,22 +34,11 @@ schema EmailAddress
     address ∈ String
     local   ∈ String
     domain  ∈ String
-
-    -- Structure: local@domain
     address = local ++ "@" ++ domain
-
-    -- Local part: alphanumeric, dots, hyphens; 1–64 chars (RFC 5321)
     local ∈ /[a-zA-Z0-9][a-zA-Z0-9.\-]*/
-    #local ≥ 1
     #local ≤ 64
-
-    -- Domain must contain a dot; reasonable length
-    domain ∋ "."
     domain ∈ /[a-zA-Z0-9][a-zA-Z0-9.\-]+\.[a-zA-Z]+/
-    #domain ≥ 4
-    #domain ≤ 253
-
-    -- Total address length (RFC 5321)
+    4 ≤ #domain ≤ 253
     #address ≤ 254
 
 schema SemanticVersion
@@ -76,20 +47,13 @@ schema SemanticVersion
     major ∈ Nat
     minor ∈ Nat
     patch ∈ Nat
-
-    -- Version string is built from its numeric components.
-    -- Sample freely: solver generates e.g. "1.4.22" from the numbers.
     full = int_to_str major ++ "." ++ int_to_str minor ++ "." ++ int_to_str patch
-
-    -- Reasonable bounds
     major < 20
     minor < 100
     patch < 1000
 
 schema Identifier
-    -- A valid programming language identifier
     name ∈ String
     name ∈ /[a-zA-Z_][a-zA-Z0-9_]*/
-    #name ≥ 1
     #name ≤ 64
     name ⊒ "_handler" ⇒ name ⊑ "on_"
