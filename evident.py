@@ -53,6 +53,51 @@ def _fmt_bindings(bindings, as_json=False):
     return '\n'.join(lines)
 
 
+def _schema_vars(schema):
+    """Return [(name, type_name)] for all variables declared in a schema."""
+    from runtime.src.ast_types import (
+        MembershipConstraint, Identifier, InlineEnumExpr, MultiMembershipDecl
+    )
+    seen = set()
+    result = []
+    for param in schema.params:
+        t = param.set.name if isinstance(param.set, Identifier) else '?'
+        for n in param.names:
+            if n not in seen:
+                seen.add(n)
+                result.append((n, t))
+    for item in schema.body:
+        if isinstance(item, MembershipConstraint) and item.op == '∈' and isinstance(item.left, Identifier):
+            n = item.left.name
+            if n not in seen:
+                seen.add(n)
+                if isinstance(item.right, InlineEnumExpr):
+                    t = ' | '.join(item.right.variants)
+                elif isinstance(item.right, Identifier):
+                    t = item.right.name
+                else:
+                    t = '?'
+                result.append((n, t))
+        elif isinstance(item, MultiMembershipDecl):
+            t = item.set.name if isinstance(item.set, Identifier) else '?'
+            for n in item.names:
+                if n not in seen:
+                    seen.add(n)
+                    result.append((n, t))
+    return result
+
+
+def _print_vars(schema):
+    """Print the variables of a schema with their types."""
+    vars_ = _schema_vars(schema)
+    if not vars_:
+        print('  (no declared variables)')
+        return
+    width = max(len(n) for n, _ in vars_)
+    for name, type_name in vars_:
+        print(f'  {name:<{width}}  ∈  {type_name}')
+
+
 def _parse_given(given_list):
     """Parse ['x=3', 'y=hello'] → dict."""
     result = {}
@@ -186,7 +231,7 @@ def cmd_repl(args):
         _rl.set_history_length(1000)
 
         # Tab completion for schema names and keywords
-        _KEYWORDS = ['import', 'quit', 'exit', 'schemas', 'sample', 'check', 'help']
+        _KEYWORDS = ['import', 'quit', 'exit', 'schemas', 'sample', 'check', 'help', 'vars']
 
         def _completer(text, state):
             options = [k for k in (_KEYWORDS + list(rt.schemas.keys()))
@@ -228,10 +273,11 @@ def cmd_repl(args):
         if line in ('help', '?', 'h'):
             print("""
 Commands:
-  ? SchemaName            Query a schema — prints bindings or Unsatisfiable
+  ? SchemaName [k=v ...]  Query — prints bindings or Unsatisfiable
+  vars SchemaName         List variables and their types
   import "file.ev"        Load an Evident source file into the session
   schemas                 List all loaded schema names
-  sample SchemaName [N]   Print N sample bindings (default 5)
+  sample Schema [N] [k=v] Print N diverse samples (default 5)
   check                   Report SAT/UNSAT for every loaded schema
   help                    Show this message
   quit / exit             Exit the REPL
@@ -246,10 +292,21 @@ Keyboard shortcuts:
             continue
         if line.startswith('sample'):
             parts = line.split()
-            name = parts[1] if len(parts) > 1 else None
-            n    = int(parts[2]) if len(parts) > 2 else 5
+            name  = parts[1] if len(parts) > 1 else None
+            # remaining tokens: optional integer N and key=val pairs
+            rest  = parts[2:]
+            n     = 5
+            given = {}
+            for tok in rest:
+                if '=' in tok:
+                    given.update(_parse_given([tok]))
+                else:
+                    try:
+                        n = int(tok)
+                    except ValueError:
+                        pass
             if not name:
-                print('Usage: sample SchemaName [N]')
+                print('Usage: sample SchemaName [N] [key=val ...]')
             elif name not in rt.schemas:
                 print(f'Unknown schema {name!r}. Try: schemas')
             else:
@@ -257,7 +314,7 @@ Keyboard shortcuts:
                 try:
                     from sampler import random_seed_sample
                     src = '\n'.join(Path(f).read_text() for f in (args.files or []))
-                    results = random_seed_sample(src, name, {}, n)
+                    results = random_seed_sample(src, name, given, n)
                     print(f'{name}: {len(results)} samples')
                     for i, r in enumerate(results, 1):
                         print(f'  [{i}] {_fmt_bindings(r.bindings).strip()}')
@@ -278,17 +335,25 @@ Keyboard shortcuts:
                 print(f'Error: {e}')
             continue
         if line.startswith('?'):
-            name = line[1:].strip()
+            parts = line[1:].strip().split()
+            name  = parts[0] if parts else ''
+            given = _parse_given(p for p in parts[1:] if '=' in p)
             if name in rt.schemas:
-                r = rt.query(name)
+                r = rt.query(name, given=given)
                 if r.satisfied:
-                    print(f'Satisfied')
+                    print('Satisfied')
                     print(_fmt_bindings(r.bindings))
                 else:
                     print('Unsatisfiable')
             else:
-                schemas = list(rt.schemas.keys())
-                print(f'Unknown schema {name!r}. Loaded: {schemas}')
+                print(f'Unknown schema {name!r}. Try: schemas')
+            continue
+        if line.startswith('vars'):
+            name = line[4:].strip()
+            if name not in rt.schemas:
+                print(f'Unknown schema {name!r}. Try: schemas')
+            else:
+                _print_vars(rt.schemas[name])
             continue
         if line.startswith('schemas'):
             print(', '.join(rt.schemas.keys()) or '(none)')
