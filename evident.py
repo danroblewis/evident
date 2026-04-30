@@ -53,49 +53,67 @@ def _fmt_bindings(bindings, as_json=False):
     return '\n'.join(lines)
 
 
-def _schema_vars(schema):
-    """Return [(name, type_name)] for all variables declared in a schema."""
+def _schema_vars(schema, schemas=None, _visited=None):
+    """Return [(name, type_name, source_schema)] tracing through .. passthroughs."""
     from runtime.src.ast_types import (
-        MembershipConstraint, Identifier, InlineEnumExpr, MultiMembershipDecl
+        MembershipConstraint, Identifier, InlineEnumExpr,
+        MultiMembershipDecl, PassthroughItem,
     )
-    seen = set()
+    if _visited is None:
+        _visited = set()
+    if schema.name in _visited:
+        return []
+    _visited.add(schema.name)
+
+    seen_vars = set()
     result = []
+
+    def _add(name, type_name, source):
+        if name not in seen_vars:
+            seen_vars.add(name)
+            result.append((name, type_name, source))
+
     for param in schema.params:
         t = param.set.name if isinstance(param.set, Identifier) else '?'
         for n in param.names:
-            if n not in seen:
-                seen.add(n)
-                result.append((n, t))
+            _add(n, t, schema.name)
+
     for item in schema.body:
-        if isinstance(item, MembershipConstraint) and item.op == '∈' and isinstance(item.left, Identifier):
+        if isinstance(item, PassthroughItem) and schemas and item.name in schemas:
+            for (n, t, src) in _schema_vars(schemas[item.name], schemas, _visited):
+                _add(n, t, src)
+        elif isinstance(item, MembershipConstraint) and item.op == '∈' \
+                and isinstance(item.left, Identifier):
             n = item.left.name
-            if n not in seen:
-                seen.add(n)
-                if isinstance(item.right, InlineEnumExpr):
-                    t = ' | '.join(item.right.variants)
-                elif isinstance(item.right, Identifier):
-                    t = item.right.name
-                else:
-                    t = '?'
-                result.append((n, t))
+            if isinstance(item.right, InlineEnumExpr):
+                t = ' | '.join(item.right.variants)
+            elif isinstance(item.right, Identifier):
+                t = item.right.name
+            else:
+                t = '?'
+            _add(n, t, schema.name)
         elif isinstance(item, MultiMembershipDecl):
             t = item.set.name if isinstance(item.set, Identifier) else '?'
             for n in item.names:
-                if n not in seen:
-                    seen.add(n)
-                    result.append((n, t))
+                _add(n, t, schema.name)
+
     return result
 
 
-def _print_vars(schema):
-    """Print the variables of a schema with their types."""
-    vars_ = _schema_vars(schema)
+def _print_vars(schema, schemas=None):
+    """Print variables with types, grouped by the sub-claim they come from."""
+    vars_ = _schema_vars(schema, schemas)
     if not vars_:
         print('  (no declared variables)')
         return
-    width = max(len(n) for n, _ in vars_)
-    for name, type_name in vars_:
-        print(f'  {name:<{width}}  ∈  {type_name}')
+    width = max(len(n) for n, _, _ in vars_)
+    current_src = None
+    for name, type_name, src in vars_:
+        if src != current_src:
+            label = schema.name if src == schema.name else f'..{src}'
+            print(f'  -- {label}')
+            current_src = src
+        print(f'    {name:<{width}}  ∈  {type_name}')
 
 
 def _parse_given(given_list):
@@ -353,7 +371,7 @@ Keyboard shortcuts:
             if name not in rt.schemas:
                 print(f'Unknown schema {name!r}. Try: schemas')
             else:
-                _print_vars(rt.schemas[name])
+                _print_vars(rt.schemas[name], rt.schemas)
             continue
         if line.startswith('schemas'):
             print(', '.join(rt.schemas.keys()) or '(none)')
