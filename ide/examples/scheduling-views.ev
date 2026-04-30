@@ -1,0 +1,27 @@
+-- Multi-plot view of a composed schema hierarchy.
+-- Each @plot is a different projection of the same joint sample.
+-- Switch between Task and ValidSchedule in the Schema dropdown
+-- to see the constraint space at different levels.
+
+schema Task
+    -- @plot x=duration y=deadline title="Task: duration vs deadline"
+    id       ∈ Nat
+    duration ∈ Nat
+    deadline ∈ Nat
+
+    0 < id
+    0 < duration
+    duration < deadline
+    deadline < 100
+
+schema ValidSchedule
+    -- @plot x=slot y=budget           title="Schedule space"
+    -- @plot x=task.duration y=slot    title="How task duration affects slot"
+    -- @plot x=task.duration y=budget  title="Duration vs budget headroom"
+    task   ∈ Task
+    slot   ∈ Nat
+    budget ∈ Nat
+
+    slot > 0
+    slot + task.duration ≤ budget
+    budget < 100
