@@ -18,6 +18,26 @@ import json
 import sys
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# ANSI colour helpers — disabled automatically when not writing to a terminal
+# ---------------------------------------------------------------------------
+
+def _tty():
+    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+def _c(text, *codes):
+    if not _tty():
+        return str(text)
+    return '\033[' + ';'.join(str(c) for c in codes) + 'm' + str(text) + '\033[0m'
+
+def _green(t):  return _c(t, 92)
+def _red(t):    return _c(t, 91)
+def _cyan(t):   return _c(t, 96)
+def _yellow(t): return _c(t, 93)
+def _blue(t):   return _c(t, 94)
+def _dim(t):    return _c(t, 2)
+def _bold(t):   return _c(t, 1)
+
 # Ensure project root on path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -49,7 +69,7 @@ def _fmt_bindings(bindings, as_json=False):
     cleaned = {k: v for k, v in bindings.items() if v is not None}
     if as_json:
         return json.dumps(cleaned, default=str)
-    lines = [f'  {k} = {v}' for k, v in cleaned.items()]
+    lines = [f'  {_blue(k)} = {_yellow(v)}' for k, v in cleaned.items()]
     return '\n'.join(lines)
 
 
@@ -104,16 +124,16 @@ def _print_vars(schema, schemas=None):
     """Print variables with types, grouped by the sub-claim they come from."""
     vars_ = _schema_vars(schema, schemas)
     if not vars_:
-        print('  (no declared variables)')
+        print(_dim('  (no declared variables)'))
         return
     width = max(len(n) for n, _, _ in vars_)
     current_src = None
     for name, type_name, src in vars_:
         if src != current_src:
             label = schema.name if src == schema.name else f'..{src}'
-            print(f'  -- {label}')
+            print(_dim(f'  -- {label}'))
             current_src = src
-        print(f'    {name:<{width}}  ∈  {type_name}')
+        print(f'    {_blue(name):<{width + 9}}  ∈  {_cyan(type_name)}')
 
 
 def _parse_given(given_list):
@@ -161,11 +181,11 @@ def cmd_run(args):
         if name and name in rt.schemas:
             r = rt.query(name, given=given)
             if r.satisfied:
-                print(f'{name}: Satisfied')
+                print(f'{_cyan(name)}: {_green("Satisfied")}')
                 if r.bindings:
                     print(_fmt_bindings(r.bindings, args.json))
             else:
-                print(f'{name}: Unsatisfiable')
+                print(f'{_cyan(name)}: {_red("Unsatisfiable")}')
                 exit_code = 1
         else:
             print(f'(cannot resolve query: {c})', file=sys.stderr)
@@ -179,9 +199,10 @@ def cmd_check(args):
     exit_code = 0
     for name in rt.schemas:
         r = rt.query(name)
-        mark = '✓' if r.satisfied else '✗'
-        print(f'{mark}  {name}')
-        if not r.satisfied:
+        if r.satisfied:
+            print(f'{_green("✓")}  {_cyan(name)}')
+        else:
+            print(f'{_red("✗")}  {_cyan(name)}')
             exit_code = 1
     return exit_code
 
@@ -198,14 +219,14 @@ def cmd_query(args):
         if args.json:
             print(json.dumps({k: v for k, v in r.bindings.items() if v is not None}, default=str))
         else:
-            print(f'{args.schema}: Satisfied')
+            print(f'{_cyan(args.schema)}: {_green("Satisfied")}')
             print(_fmt_bindings(r.bindings))
         return 0
     else:
         if args.json:
             print(json.dumps({'satisfied': False}))
         else:
-            print(f'{args.schema}: Unsatisfiable')
+            print(f'{_cyan(args.schema)}: {_red("Unsatisfiable")}')
         return 1
 
 
@@ -227,7 +248,7 @@ def cmd_sample(args):
         print(json.dumps([{k: v for k, v in r.bindings.items() if v is not None}
                           for r in results], default=str))
     else:
-        print(f'{args.schema}: {len(results)} samples')
+        print(f'{_cyan(args.schema)}: {_bold(len(results))} samples')
         for i, r in enumerate(results, 1):
             print(f'  [{i}] {_fmt_bindings(r.bindings).strip()}')
     return 0 if results else 1
@@ -274,7 +295,7 @@ def cmd_repl(args):
     rt = EvidentRuntime()
     for f in (args.files or []):
         rt.load_file(f)
-        print(f'Loaded {f} ({len(rt.schemas)} schemas)')
+        print(_dim(f'Loaded {f} ({len(rt.schemas)} schemas)'))
 
     print('Evident interactive. Commands: import "file.ev" | ? Schema | quit')
     print('(↑↓ history, tab completion)')
@@ -333,7 +354,7 @@ Keyboard shortcuts:
                     from sampler import random_seed_sample
                     src = '\n'.join(Path(f).read_text() for f in (args.files or []))
                     results = random_seed_sample(src, name, given, n)
-                    print(f'{name}: {len(results)} samples')
+                    print(f'{_cyan(name)}: {_bold(len(results))} samples')
                     for i, r in enumerate(results, 1):
                         print(f'  [{i}] {_fmt_bindings(r.bindings).strip()}')
                 except Exception as e:
@@ -342,13 +363,13 @@ Keyboard shortcuts:
         if line == 'check':
             for name in rt.schemas:
                 r = rt.query(name)
-                print(('✓' if r.satisfied else '✗') + f'  {name}')
+                print((_green('✓') if r.satisfied else _red('✗')) + f'  {_cyan(name)}')
             continue
         if line.startswith('import '):
             path = line[7:].strip().strip('"\'')
             try:
                 rt.load_file(path)
-                print(f'Loaded {path} ({len(rt.schemas)} schemas)')
+                print(_dim(f'Loaded {path} ({len(rt.schemas)} schemas)'))
             except Exception as e:
                 print(f'Error: {e}')
             continue
@@ -359,10 +380,10 @@ Keyboard shortcuts:
             if name in rt.schemas:
                 r = rt.query(name, given=given)
                 if r.satisfied:
-                    print('Satisfied')
+                    print(_green('Satisfied'))
                     print(_fmt_bindings(r.bindings))
                 else:
-                    print('Unsatisfiable')
+                    print(_red('Unsatisfiable'))
             else:
                 print(f'Unknown schema {name!r}. Try: schemas')
             continue
