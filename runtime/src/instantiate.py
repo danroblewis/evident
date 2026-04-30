@@ -21,11 +21,14 @@ from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, Inli
 
 
 def _is_type_decl(item) -> bool:
-    """True for  x ∈ Type  declarations already handled by instantiate_schema."""
+    """True for  x ∈ TypeName  declarations already handled by instantiate_schema.
+    The right-hand side must be a bare Identifier (e.g. Nat, Real, Color),
+    NOT a set literal ({30, 45, 60}) or range ({1..10}), which are constraints."""
     return (
         isinstance(item, MembershipConstraint)
         and item.op == "∈"
-        and isinstance(item.left, Identifier)  # plain variable, not a tuple
+        and isinstance(item.left, Identifier)   # plain variable, not a tuple
+        and isinstance(item.right, Identifier)  # bare type name, not {…} or range
     )
 
 try:

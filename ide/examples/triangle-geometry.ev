@@ -1,0 +1,56 @@
+-- Triangle geometry using Real number constraints.
+-- The feasible regions are classic polytopes/curved surfaces.
+-- Great for visualising constraint shapes in the scatter plot.
+
+schema Triangle
+    -- @plot x=a y=b title="Side lengths — triangle inequality region"
+    -- @plot x=a y=c color=b title="Third side relative to first two"
+    a, b, c ∈ Real
+
+    a > 0.1
+    b > 0.1
+    c > 0.1
+    a < 5.0
+    b < 5.0
+    c < 5.0
+
+    -- Triangle inequality: each side < sum of the other two
+    a + b > c
+    b + c > a
+    a + c > b
+
+schema IsoscelesTriangle
+    -- @plot x=base y=leg title="Base vs equal leg (isosceles constraint)"
+    base, leg ∈ Real
+
+    base > 0.1
+    leg  > 0.1
+    base < 6.0
+    leg  < 6.0
+
+    -- Two equal sides; base is the third
+    -- Triangle inequality with isosceles structure
+    base < leg * 2.0    -- base < 2*leg (triangle inequality)
+    leg  > base * 0.3   -- legs must be meaningful
+
+schema AcuteTriangle
+    -- @plot x=a y=b title="Legs of acute triangle (c is hypotenuse)"
+    -- c is the longest side — only need to check one acute condition
+    a, b, c ∈ Real
+
+    a > 0.2
+    b > 0.2
+    c > 0.2
+    a < 4.0
+    b < 4.0
+
+    -- c is the longest side
+    c > a
+    c > b
+    c < a + b    -- triangle inequality (others follow since c is largest)
+
+    -- Acute condition: only need c² < a² + b² when c is largest
+    c * c < a * a + b * b - 0.05
+
+    -- Keep c bounded
+    c < 5.0

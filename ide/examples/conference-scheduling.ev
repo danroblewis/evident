@@ -1,0 +1,47 @@
+-- Conference scheduling: assign talks to rooms and time slots.
+-- Demonstrates schema composition, enum types, and implication constraints.
+-- Sample Talk to see the talk space; sample Assignment to see placements.
+
+type Track = Systems | ML | Theory | Industry
+type Room  = Auditorium | Hall | LabA | LabB
+type Slot  = EarlyMorning | LateMorning | Afternoon | LateAfternoon
+
+schema Talk
+    -- @plot x=duration y=expected_audience color=track title="Talk characteristics"
+    track             ∈ Track
+    duration          ∈ Nat
+    expected_audience ∈ Nat
+
+    30 ≤ duration ≤ 60
+    10 ≤ expected_audience ≤ 400
+
+    -- Content constraints
+    track = Theory   ⇒ expected_audience < 100
+    track = Industry ⇒ expected_audience > 80
+    track = ML       ⇒ expected_audience > 40
+
+schema Assignment
+    -- @plot x=talk.expected_audience y=talk.duration color=talk.track title="Talk profiles"
+    -- @plot x=room y=slot color=talk.track title="Schedule grid"
+
+    talk ∈ Talk
+    room ∈ Room
+    slot ∈ Slot
+
+    -- Room size matches audience
+    talk.expected_audience > 200 ⇒ room = Auditorium
+    talk.expected_audience < 60  ⇒ room ∈ {LabA, LabB}
+    talk.expected_audience > 100 ⇒ room ≠ LabA
+    talk.expected_audience > 100 ⇒ room ≠ LabB
+
+    -- Theory talks don't fill the auditorium
+    talk.track = Theory ⇒ room ≠ Auditorium
+
+    -- Industry keynotes open the conference
+    talk.track = Industry ⇒ slot = EarlyMorning
+
+    -- ML talks in afternoon
+    talk.track = ML ⇒ slot ∈ {Afternoon, LateAfternoon}
+
+    -- Systems talks anytime except early morning (warm-up needed)
+    talk.track = Systems ⇒ slot ≠ EarlyMorning

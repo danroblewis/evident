@@ -1,0 +1,28 @@
+-- Classic constraint satisfaction problem: map coloring.
+-- Assign one of four colors to each Australian state/territory so
+-- that no two adjacent regions share a color.
+-- This is the canonical CSP benchmark — it requires at least 3 colors.
+-- @plot annotations show the color distribution across regions.
+
+type Color = Red | Blue | Green | Yellow
+
+schema AustraliaColoring
+    -- @plot x=wa  y=sa  color=nt  title="Western triangle"
+    -- @plot x=qld y=nsw color=vic title="Eastern states"
+
+    wa, nt, sa, qld, nsw, vic, tas ∈ Color
+
+    -- Adjacency constraints (borders in the real map)
+    wa ≠ nt     -- WA–NT
+    wa ≠ sa     -- WA–SA
+    nt ≠ sa     -- NT–SA
+    nt ≠ qld    -- NT–QLD
+    sa ≠ qld    -- SA–QLD
+    sa ≠ nsw    -- SA–NSW
+    sa ≠ vic    -- SA–VIC
+    qld ≠ nsw   -- QLD–NSW
+    nsw ≠ vic   -- NSW–VIC
+    -- TAS is an island — no adjacency constraints
+
+    -- Break symmetry so we get diverse samples, not just permutations
+    wa = Red
