@@ -172,6 +172,41 @@ def cmd_sample(args):
 
 def cmd_repl(args):
     """Interactive Evident session."""
+    # Enable readline: arrow keys, history, line editing.
+    # Graceful fallback on Windows or if readline is unavailable.
+    _history_file = Path.home() / '.evident_history'
+    try:
+        import readline as _rl
+
+        # Load previous session history
+        try:
+            _rl.read_history_file(_history_file)
+        except FileNotFoundError:
+            pass
+        _rl.set_history_length(1000)
+
+        # Tab completion for schema names and keywords
+        _KEYWORDS = ['import', 'quit', 'exit', 'schemas', 'sample', 'check']
+
+        def _completer(text, state):
+            options = [k for k in (_KEYWORDS + list(rt.schemas.keys()))
+                       if k.startswith(text)]
+            return options[state] if state < len(options) else None
+
+        _rl.set_completer(_completer)
+        _rl.parse_and_bind('tab: complete')
+
+        def _save_history():
+            try:
+                _rl.write_history_file(_history_file)
+            except Exception:
+                pass
+
+        import atexit
+        atexit.register(_save_history)
+    except ImportError:
+        pass   # Windows without pyreadline — input() still works, just no history
+
     from runtime.src.runtime import EvidentRuntime
     rt = EvidentRuntime()
     for f in (args.files or []):
@@ -179,6 +214,7 @@ def cmd_repl(args):
         print(f'Loaded {f} ({len(rt.schemas)} schemas)')
 
     print('Evident interactive. Commands: import "file.ev" | ? Schema | quit')
+    print('(↑↓ history, tab completion)')
     while True:
         try:
             line = input('> ').strip()
