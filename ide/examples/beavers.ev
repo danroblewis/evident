@@ -1,0 +1,114 @@
+-- A scientific decomposition of beavers using layered constraint claims.
+-- The punchline: hairy_beavers_eat_fish is UNSATISFIABLE.
+-- Sample each sub-claim to explore the constraint space at that level.
+
+-- ── Taxonomy ──────────────────────────────────────────────────────────────
+
+claim is_vertebrate
+    vertebrae ∈ Nat
+    vertebrae > 20
+    vertebrae < 100
+
+claim is_mammal
+    -- @plot x=body_temp y=fur_coverage title="Mammal characteristics"
+    ..is_vertebrate
+    body_temp    ∈ Real   -- °C, endothermic
+    fur_coverage ∈ Real   -- fraction of body covered in fur
+    36.0 < body_temp    < 42.0
+    0.7  < fur_coverage < 1.0
+
+claim is_rodent
+    ..is_mammal
+    incisor_count  ∈ Nat
+    incisor_growth ∈ Real  -- mm/week, continuously growing
+    incisor_count = 4      -- two upper, two lower
+    incisor_growth > 0.5
+
+-- ── Physical characteristics ──────────────────────────────────────────────
+
+claim has_waterproof_fur
+    ..is_mammal
+    fur_density   ∈ Real   -- underfur density (0–1)
+    waterproofing ∈ Real   -- oil coating effectiveness (0–1)
+    fur_density   > 0.8
+    waterproofing > 0.85
+
+claim has_flat_tail
+    tail_width  ∈ Real
+    tail_length ∈ Real
+    tail_width  > 0.05
+    tail_length > 0.05
+    tail_width > tail_length * 0.35  -- paddle-shaped, distinctively wide
+
+claim is_large_rodent
+    -- @plot x=mass y=body_temp color=fur_coverage title="Large rodent profile"
+    ..is_rodent
+    mass ∈ Real     -- kg
+    11.0 < mass < 35.0   -- North American beaver: 11–32 kg
+
+-- ── Habitat ───────────────────────────────────────────────────────────────
+
+claim lives_near_freshwater
+    water_depth ∈ Real   -- m, must be deep enough to build a lodge
+    0.5 < water_depth < 4.0
+
+claim is_semiaquatic
+    -- @plot x=time_in_water y=water_depth title="Aquatic lifestyle"
+    ..lives_near_freshwater
+    time_in_water ∈ Real  -- fraction of active hours spent in water
+    0.2 < time_in_water < 0.7
+
+claim northern_habitat
+    latitude ∈ Real   -- degrees N, temperate and boreal zones
+    25.0 < latitude < 70.0
+
+-- ── Diet and metabolism ───────────────────────────────────────────────────
+
+claim is_strict_herbivore
+    -- @plot x=plant_fraction title="Diet composition"
+    plant_fraction ∈ Real   -- fraction of diet that is plant matter
+    plant_fraction > 0.99   -- beavers are obligate herbivores
+
+claim eats_woody_plants
+    ..is_strict_herbivore
+    bark_fraction    ∈ Real  -- bark, branches, twigs
+    aquatic_fraction ∈ Real  -- aquatic vegetation
+    bark_fraction    > 0.4
+    aquatic_fraction > 0.1
+    bark_fraction + aquatic_fraction < 1.01
+
+claim has_herbivore_metabolism
+    ..is_strict_herbivore
+    gut_length_ratio ∈ Real   -- gut length / body length (herbivores have longer guts)
+    cellulose_digestion ∈ Real -- fraction of cellulose digestible
+    gut_length_ratio   > 8.0
+    cellulose_digestion > 0.3
+
+-- ── The complete beaver ───────────────────────────────────────────────────
+
+claim is_beaver
+    -- @plot x=mass y=time_in_water color=bark_fraction title="The full beaver model"
+    ..is_large_rodent
+    ..has_waterproof_fur
+    ..has_flat_tail
+    ..is_semiaquatic
+    ..northern_habitat
+    ..eats_woody_plants
+    ..has_herbivore_metabolism
+
+-- ── The joke ─────────────────────────────────────────────────────────────
+--
+-- This claim is UNSATISFIABLE.
+--
+-- is_beaver includes is_strict_herbivore: plant_fraction > 0.99
+-- Adding fish to the diet: fish_fraction > 0.05
+-- Diet fractions must sum to ≤ 1.0
+-- Therefore: plant_fraction + fish_fraction > 1.04 > 1.0 — contradiction.
+--
+-- The constraint system proves that hairy beavers do NOT eat fish.
+
+claim hairy_beavers_eat_fish
+    ..is_beaver
+    fish_fraction ∈ Real
+    fish_fraction > 0.05            -- eating any meaningful amount of fish
+    plant_fraction + fish_fraction ≤ 1.0   -- diet cannot exceed 100%
