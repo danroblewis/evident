@@ -97,8 +97,10 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
             return;
         }
 
-        // Build table
-        const vars = Object.keys(samples[0]);
+        // All vars (including seq sub-vars like miles.0) go to the scatter selector.
+        // Table shows only top-level vars — indexed sub-vars are hidden there.
+        const allVarsForPlot = Object.keys(samples[0]);
+        const vars = allVarsForPlot.filter(v => !/\.\d+$/.test(v));
         const table = document.createElement('table');
         table.className = 'samples-table';
 
@@ -179,9 +181,9 @@ async function renderSamples(source, schemaName, given, n = 5, strategy = 'rando
             exportBtn.onclick = () => exportCSV(vars, currentSamples, schemaName);
         }
 
-        // Pass all vars so scatter can offer enum axes too.
+        // Pass all vars (including seq sub-vars) so scatter can offer them as axes.
         if (typeof renderScatterControls === 'function') {
-            renderScatterControls(vars, _allSamples);
+            renderScatterControls(allVarsForPlot, _allSamples);
         }
         // Stream new samples into the plot one-by-one for a continuous feel.
         _streamIntoPlot(newlyAdded);

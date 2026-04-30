@@ -295,17 +295,46 @@ class EvidentSolver:
 
         Returns a dict mapping variable name → Python value.  Only variables
         that have a concrete value in the model are included.
+
+        For sequence variables (Seq(T)), also emits name.0, name.1, … entries
+        so individual elements are available for plotting.  The top-level name
+        is set to a formatted ⟨a, b, c⟩ string for display.
+
+        For string variables, also emits name.length as a numeric binding.
         """
         result: dict[str, Any] = {}
         for name, z3_expr in env.bindings.items():
-            # Skip internal / synthetic names (e.g. fresh variables)
             if name.startswith("__") or name.startswith("."):
                 continue
             try:
                 val = model.eval(z3_expr, model_completion=True)
-                result[name] = self._z3_to_python(val)
+
+                # ── Non-string sequences: expand into indexed sub-bindings ──
+                if z3.is_seq(val) and not z3.is_string(val):
+                    length_val = model.eval(z3.Length(z3_expr), model_completion=True)
+                    if z3.is_int_value(length_val):
+                        n = length_val.as_long()
+                        elements = []
+                        for i in range(min(n, 50)):
+                            elem = model.eval(z3_expr[i], model_completion=True)
+                            py_elem = self._z3_to_python(elem)
+                            elements.append(py_elem)
+                            result[f"{name}.{i}"] = py_elem
+                        result[name] = "⟨" + ", ".join(
+                            str(e) if e is not None else "?" for e in elements
+                        ) + "⟩"
+                    else:
+                        result[name] = self._z3_to_python(val)
+                    continue
+
+                py_val = self._z3_to_python(val)
+                result[name] = py_val
+
+                # ── Strings: add a length sub-binding for plotting ──────────
+                if isinstance(py_val, str) and z3.is_string_value(val):
+                    result[f"{name}.length"] = len(py_val)
+
             except Exception:
-                # Some expressions can't be evaluated — skip them
                 pass
         return result
 

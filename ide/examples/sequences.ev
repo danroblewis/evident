@@ -7,7 +7,7 @@
 -- s ++ t      concatenation (already works for strings)
 
 -- ── Running log ───────────────────────────────────────────────────────────────
--- @plot x=miles[0] y=miles[1] title="First vs second day mileage"
+-- @plot x=miles.0 y=miles.1 title="First vs second day mileage"
 
 schema RunningLog
     miles ∈ Seq(Nat)
@@ -17,7 +17,7 @@ schema RunningLog
     miles[0] + miles[6] > 10
 
 -- ── Leaderboard ───────────────────────────────────────────────────────────────
--- @plot x=scores[0] y=scores[1] title="1st vs 2nd place scores"
+-- @plot x=scores.0 y=scores.1 title="1st vs 2nd place scores"
 
 schema Leaderboard
     scores ∈ Seq(Nat)
@@ -31,7 +31,7 @@ schema Leaderboard
     scores[3] > scores[4]
 
 -- ── Enum sequences ────────────────────────────────────────────────────────────
--- @plot x=hand[0] y=hand[1] color=hand[0] title="Card hand"
+-- @plot x=hand.0 y=hand.1 color=hand.0 title="Card hand"
 
 type Suit = Clubs | Diamonds | Hearts | Spades
 
