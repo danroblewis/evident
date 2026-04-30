@@ -17,7 +17,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl, SeqType
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl, SeqType, RegexLiteral
 
 
 def _is_type_decl(item) -> bool:
@@ -174,6 +174,17 @@ def instantiate_schema(
         name = item.left.name
         if env.lookup(name) is not None:
             continue  # already declared
+
+        # ── Regex literal: name ∈ /pattern/ → String ───────────────────
+        if isinstance(item.right, RegexLiteral):
+            sort = registry.get('String')
+            existing = given.lookup(name)
+            if existing is not None:
+                env = env.bind(name, existing)
+            else:
+                var = make_const(name, sort, prefix=prefix)
+                env = env.bind(name, var)
+            continue
 
         # ── Seq type: name ∈ Seq(T) ─────────────────────────────────────
         if isinstance(item.right, SeqType):
