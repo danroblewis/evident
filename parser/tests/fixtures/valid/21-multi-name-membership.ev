@@ -1,0 +1,9 @@
+schema Point
+    x, y ∈ Real
+    x * x + y * y < 1.0
+
+schema Box
+    width, height, depth ∈ Nat
+    width > 0
+    height > 0
+    depth > 0

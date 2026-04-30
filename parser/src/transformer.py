@@ -103,6 +103,11 @@ class EvidentTransformer(LarkTransformer):
     def body_evident(self, items):
         return items[0]
 
+    def multi_mem_in(self, items):
+        # NAME ("," NAME)+ ∈ expr  →  names=[…], set=expr
+        names = [_str(t) for t in items[:-1]]
+        return MultiMembershipDecl(names=names, set=items[-1])
+
     def passthrough_plain(self, items):
         return PassthroughItem(name=_str(items[0]), mappings=[])
 

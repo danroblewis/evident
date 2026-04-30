@@ -42,7 +42,8 @@ schema_kw: "schema"  -> kw_schema
 
 body: body_line+
 
-?body_line: constraint _NEWLINE
+?body_line: NAME ("," NAME)+ ("__IN__"|"in") expr _NEWLINE  -> multi_mem_in
+          | constraint _NEWLINE
           | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _NEWLINE _DEDENT  -> body_forall_indented
           | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _DEDENT  -> body_forall_indented_nodedent
           | passthrough _NEWLINE

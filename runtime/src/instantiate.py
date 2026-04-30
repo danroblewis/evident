@@ -17,7 +17,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl
 
 
 def _is_type_decl(item) -> bool:
@@ -95,6 +95,31 @@ def instantiate_schema(
     constraints: list[z3.BoolRef] = []
 
     for item in schema.body:
+        # ── Multi-name: x, y, z ∈ Type ──────────────────────────────────
+        if isinstance(item, MultiMembershipDecl):
+            type_name = item.set.name if isinstance(item.set, Identifier) else "unknown"
+            if isinstance(item.set, InlineEnumExpr):
+                variants  = item.set.variants
+                type_name = "_Enum_" + "_".join(sorted(variants))
+                sort      = registry.declare_algebraic(type_name, variants)
+            else:
+                try:
+                    sort = registry.get(type_name)
+                except KeyError:
+                    sort = registry.declare_uninterpreted(type_name)
+            for name in item.names:
+                if env.lookup(name) is not None:
+                    continue
+                existing = given.lookup(name)
+                if existing is not None:
+                    env = env.bind(name, existing)
+                    var = existing
+                else:
+                    var = make_const(name, sort, prefix=prefix)
+                    env = env.bind(name, var)
+                constraints.extend(type_constraint(var, type_name))
+            continue
+
         # ── Passthrough: ..sub_schema ────────────────────────────────────
         # Flat-merges the sub-schema into the current scope.  Variables with
         # the same name are unified (relational join); new variables are added

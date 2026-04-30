@@ -48,7 +48,7 @@ def blocking_clause_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem
+    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.evaluate import _translate_body_constraint
 
     # We'll build the constraint system incrementally in Z3, adding blocking
@@ -176,7 +176,7 @@ def random_seed_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver, _translate_body_constraint
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem
+    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.env import Environment
 
     rt = EvidentRuntime()
@@ -185,9 +185,7 @@ def random_seed_sample(
     if schema is None:
         return []
 
-    # Collect free variable names and types from body AND params.
-    # The params syntax (schema Foo(x ∈ Nat)) puts declarations in
-    # schema.params instead of schema.body — both must be scanned.
+    # Collect free variable names and types from body, multi-name decls, and params.
     free_vars: dict[str, str] = {}
     for item in schema.body:
         if (isinstance(item, MembershipConstraint) and item.op == "∈"
@@ -196,6 +194,11 @@ def random_seed_sample(
             type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
             if vname not in given:
                 free_vars[vname] = type_name
+        elif isinstance(item, MultiMembershipDecl):
+            type_name = item.set.name if isinstance(item.set, Identifier) else "unknown"
+            for vname in item.names:
+                if vname not in given and vname not in free_vars:
+                    free_vars[vname] = type_name
     for param in schema.params:
         type_name = param.set.name if isinstance(param.set, Identifier) else "unknown"
         for vname in param.names:

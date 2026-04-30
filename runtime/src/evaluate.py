@@ -23,6 +23,7 @@ from .ast_types import (
     CardinalityConstraint,
     EvidentBlock,
     PassthroughItem,
+    MultiMembershipDecl,
 )
 
 
@@ -169,8 +170,8 @@ class EvidentSolver:
             s.add(tc)
 
         for item in schema.body:
-            # Skip non-constraint body items (EvidentBlock, PassthroughItem)
-            if isinstance(item, (EvidentBlock, PassthroughItem)):
+            # Skip non-constraint body items
+            if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
                 continue
             try:
                 z3_constraint = _translate_body_constraint(item, env, self.registry)

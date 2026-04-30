@@ -1,0 +1,116 @@
+{
+  "type": "Program",
+  "statements": [
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "Point",
+      "params": [],
+      "body": [
+        {
+          "type": "MultiMembershipDecl",
+          "names": [
+            "x",
+            "y"
+          ],
+          "set": {
+            "type": "Identifier",
+            "name": "Real"
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": "<",
+          "left": {
+            "type": "BinaryExpr",
+            "op": "+",
+            "left": {
+              "type": "BinaryExpr",
+              "op": "*",
+              "left": {
+                "type": "Identifier",
+                "name": "x"
+              },
+              "right": {
+                "type": "Identifier",
+                "name": "x"
+              }
+            },
+            "right": {
+              "type": "BinaryExpr",
+              "op": "*",
+              "left": {
+                "type": "Identifier",
+                "name": "y"
+              },
+              "right": {
+                "type": "Identifier",
+                "name": "y"
+              }
+            }
+          },
+          "right": {
+            "type": "RealLiteral",
+            "value": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "type": "SchemaDecl",
+      "keyword": "schema",
+      "name": "Box",
+      "params": [],
+      "body": [
+        {
+          "type": "MultiMembershipDecl",
+          "names": [
+            "width",
+            "height",
+            "depth"
+          ],
+          "set": {
+            "type": "Identifier",
+            "name": "Nat"
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": ">",
+          "left": {
+            "type": "Identifier",
+            "name": "width"
+          },
+          "right": {
+            "type": "NatLiteral",
+            "value": 0
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": ">",
+          "left": {
+            "type": "Identifier",
+            "name": "height"
+          },
+          "right": {
+            "type": "NatLiteral",
+            "value": 0
+          }
+        },
+        {
+          "type": "ArithmeticConstraint",
+          "op": ">",
+          "left": {
+            "type": "Identifier",
+            "name": "depth"
+          },
+          "right": {
+            "type": "NatLiteral",
+            "value": 0
+          }
+        }
+      ]
+    }
+  ]
+}

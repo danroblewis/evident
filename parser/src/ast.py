@@ -13,6 +13,12 @@ Statement = Union[
 ]
 
 @dataclass
+class MultiMembershipDecl:
+    """x, y, z ∈ Type — shorthand for multiple same-type body declarations."""
+    names: list[str]
+    set: "Expr"
+
+@dataclass
 class EnumDecl:
     name: str
     variants: list[str]
@@ -34,7 +40,7 @@ class Param:
     names: list[str]
     set: Expr
 
-BodyItem = Union["Constraint", "EvidentBlock", "PassthroughItem"]
+BodyItem = Union["Constraint", "EvidentBlock", "PassthroughItem", "MultiMembershipDecl"]
 
 @dataclass
 class EvidentBlock:

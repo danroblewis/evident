@@ -236,3 +236,49 @@ def test_params_mix_with_body():
     r = rt.query("S", given={"x": 4})
     assert r.satisfied
     assert r.bindings["y"] == 8
+
+
+# ── Multi-name body membership  x, y ∈ Nat ───────────────────────────────────
+
+def test_multi_name_body_two_vars():
+    rt = _rt("schema S\n    x, y ∈ Nat\n    x + y = 10\n")
+    r = rt.query("S")
+    assert r.satisfied
+    assert r.bindings["x"] + r.bindings["y"] == 10
+
+def test_multi_name_body_three_vars():
+    rt = _rt("schema S\n    x, y, z ∈ Nat\n    x < y\n    y < z\n    z < 10\n")
+    r = rt.query("S")
+    assert r.satisfied
+    b = r.bindings
+    assert b["x"] < b["y"] < b["z"] < 10
+
+def test_multi_name_body_real():
+    rt = _rt("schema Circle\n    x, y ∈ Real\n    x * x + y * y < 1.0\n")
+    r = rt.query("Circle")
+    assert r.satisfied
+    assert r.bindings["x"] ** 2 + r.bindings["y"] ** 2 < 1.0
+
+def test_multi_name_body_mixed_with_single():
+    """Multi-name and single-name declarations can coexist."""
+    rt = _rt("schema S\n    a, b ∈ Nat\n    c ∈ Nat\n    a < b\n    b < c\n")
+    r = rt.query("S")
+    assert r.satisfied
+    assert r.bindings["a"] < r.bindings["b"] < r.bindings["c"]
+
+def test_multi_name_body_given():
+    rt = _rt("schema S\n    x, y ∈ Nat\n    x + y = 20\n")
+    r = rt.query("S", given={"x": 7})
+    assert r.satisfied
+    assert r.bindings["y"] == 13
+
+def test_multi_name_body_diverse_samples():
+    import importlib.util, pathlib
+    sampler_path = pathlib.Path(__file__).parent.parent.parent / 'ide' / 'backend' / 'sampler.py'
+    spec = importlib.util.spec_from_file_location('sampler', sampler_path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    src = "schema S\n    a, b ∈ Nat\n    a < b\n    a < 20\n    b < 30\n"
+    results = mod.random_seed_sample(src, "S", {}, 10)
+    assert len(results) >= 5
+    assert len({r.bindings["a"] for r in results}) > 1
