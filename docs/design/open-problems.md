@@ -113,3 +113,14 @@ The honest answer is: those are the two most important design innovations, but t
 - Top-down decomposition as the primary design act (unlike Datalog's bottom-up focus)
 
 ...has not been packaged together before. Whether packaging them together creates something qualitatively new, or just a more convenient combination of existing ideas, is an empirical question that only a working implementation can answer.
+
+## Debugging and observability
+
+When a schema is unsatisfiable or returns unexpected results, there is no good way to know why. Specific gaps:
+
+- **Field discoverability**: sub-schema fields like `task.duration` are in the flat bindings but invisible until samples arrive. No UI tells you they exist.
+- **Sub-schema contribution**: which child constraints were binding vs. had slack? The `Evidence` tree in `runtime/src/evidence.py` records this but is never shown.
+- **Why unsat?**: Z3 can produce an unsat core (minimal conflicting constraints) — not yet exposed.
+- **Schema shape before sampling**: axis dropdowns populate from the first sample's keys; you can't explore the space before sampling runs.
+
+The multi-`@plot` projection pattern (see `ide/examples/scheduling-views.ev`) is a step toward this. The `view` syntax (noted elsewhere) would formalize it. The `Evidence` tree is the right runtime foundation to build on.
