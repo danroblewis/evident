@@ -23,6 +23,7 @@ from .ast_types import (
     # Expressions
     Identifier,
     FieldAccess,
+    FilterExpr,
     TupleLiteral,
     BinaryExpr,
     UnaryExpr,
@@ -33,6 +34,7 @@ from .ast_types import (
     StringLiteral,
     BoolLiteral,
     RegexLiteral,
+    SeqLiteral,
 )
 
 
@@ -250,12 +252,34 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
         )
 
     # ── Unary negation ────────────────────────────────────────────────────────
-    # ── String length:  |s|  ─────────────────────────────────────────────────
+    # ── Sequence literal: ⟨a, b, c⟩ ─────────────────────────────────────────
+    if isinstance(expr, SeqLiteral):
+        if not expr.elements:
+            raise NotImplementedError(
+                "Empty sequence literal ⟨⟩ requires a known element type. "
+                "Declare the variable with a type first: s ∈ Seq(Nat)."
+            )
+        elements = [translate_expr(e, env, registry) for e in expr.elements]
+        result = z3.Unit(elements[0])
+        for e in elements[1:]:
+            result = z3.Concat(result, z3.Unit(e))
+        return result
+
+    # ── Sequence / string indexing: s[i] ─────────────────────────────────────
+    if isinstance(expr, FilterExpr):
+        collection = translate_expr(expr.set, env, registry)
+        if z3.is_seq(collection):
+            idx = translate_expr(expr.condition, env, registry)
+            return collection[idx]
+        raise NotImplementedError(
+            f"FilterExpr indexing is only supported on sequences, not {collection.sort()}."
+        )
+
+    # ── Sequence / string length: #s ─────────────────────────────────────────
     if isinstance(expr, CardinalityExpr):
         inner = translate_expr(expr.set, env, registry)
-        if z3.is_string(inner):
+        if z3.is_seq(inner):
             return z3.Length(inner)
-        # Fall through to set cardinality (handled in quantifiers.py via the constraint path)
         raise NotImplementedError("Set cardinality |S| must appear as a constraint, not an expression.")
 
     if isinstance(expr, UnaryExpr):
@@ -390,21 +414,26 @@ def translate_constraint(
                 return z3.Not(result) if op == "∉" else result
 
             # String/sequence containment: needle ∈ haystack
-            # Only fires when right is a String-typed variable (not a type name or set)
+            # Only fires when right is a variable (not a type name or set literal)
             if isinstance(right, Identifier) and right.name not in (
                 'Nat','Int','Real','Bool','String',
             ):
                 named = registry.get_named_set(right.name)
                 rhs_expr = None
                 if named is None:
-                    # might be a string variable — try translating
                     try:
                         rhs_expr = translate_expr(right, env, registry)
                     except (KeyError, NotImplementedError):
                         rhs_expr = None
                 if rhs_expr is not None and z3.is_string(rhs_expr):
+                    # String: needle ∈ string_var → substring check
                     lhs = translate_expr(left, env, registry)
                     result = z3.Contains(rhs_expr, lhs)
+                    return z3.Not(result) if op == "∉" else result
+                if rhs_expr is not None and z3.is_seq(rhs_expr):
+                    # Seq(T): element ∈ seq_var → element containment
+                    lhs = translate_expr(left, env, registry)
+                    result = z3.Contains(rhs_expr, z3.Unit(lhs))
                     return z3.Not(result) if op == "∉" else result
 
             # Resolve named set reference: x ∈ months_map

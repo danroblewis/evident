@@ -315,7 +315,10 @@ class EvidentEditor {
         ];
 
         // Operator pairs: trigger immediately on the second character.
+        // Longer patterns first: << and >> before < and >.
         const OP_SUBS = [
+            ['<<', '⟨'],
+            ['>>', '⟩'],
             ['!=', '≠'],
             ['<=', '≤'],
             ['>=', '≥'],

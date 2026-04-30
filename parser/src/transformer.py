@@ -596,6 +596,21 @@ class EvidentTransformer(LarkTransformer):
     def cardinality_expr(self, items):
         return CardinalityExpr(set=items[0])
 
+    def seq_length(self, items):
+        return CardinalityExpr(set=items[0])
+
+    def seq_type_expr(self, items):
+        return SeqType(element_name=_str(items[0]))
+
+    def seq_literal(self, items):
+        return items[0]  # seq_empty_lit or seq_elems_lit
+
+    def seq_empty_lit(self, items):
+        return SeqLiteral(elements=[])
+
+    def seq_elems_lit(self, items):
+        return SeqLiteral(elements=list(items))
+
     def postfix_expr(self, items):
         return items[0]
 

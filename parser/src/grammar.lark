@@ -226,7 +226,9 @@ constraint_stmt: constraint _NEWLINE
           | unary_expr
 
 // Unary minus: -x, -3.14, -(a + b)
+// Sequence length: #s
 ?unary_expr: "-" unary_expr  -> unary_neg
+           | "#" unary_expr  -> seq_length
            | juxt_expr
 
 // Juxtaposition: adjacent names/atoms = type application (Set Assignment → Set × Assignment)
@@ -250,9 +252,16 @@ filter_cond: "." NAME "=" expr   -> filter_dot_field
 
 ?primary: literal
         | set_or_range_expr
+        | seq_literal
         | tuple_paren_expr
         | "(" expr ")"           -> paren_expr
         | NAME                   -> identifier_expr
+        | "Seq" "(" NAME ")"     -> seq_type_expr
+
+// ── Sequence literals ─────────────────────────────────────────────────────────
+
+seq_literal: "__LSEQ__" "__RSEQ__"                        -> seq_empty_lit
+           | "__LSEQ__" expr ("," expr)* "__RSEQ__"       -> seq_elems_lit
 
 // ── Set and range expressions ─────────────────────────────────────────────────
 
@@ -303,6 +312,5 @@ RSQB: "]"
 
 %ignore /[ \t\f]+/
 %ignore /\/\/[^\n]*/
-%ignore /\#[^\n]*/
 
 _NEWLINE: ( /\r?\n[\t ]*/ )+

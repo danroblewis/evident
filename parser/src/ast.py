@@ -171,7 +171,18 @@ Expr = Union[
     "TupleLiteral", "BinaryExpr", "UnaryExpr", "CardinalityExpr",
     "ChainExpr", "NatLiteral", "IntLiteral", "RealLiteral",
     "StringLiteral", "BoolLiteral", "InlineEnumExpr", "RegexLiteral",
+    "SeqLiteral", "SeqType",
 ]
+
+@dataclass
+class SeqType:
+    """Seq(T) — the type of sequences of T, e.g. Seq(Nat), Seq(Color)."""
+    element_name: str
+
+@dataclass
+class SeqLiteral:
+    """⟨a, b, c⟩ — a sequence literal."""
+    elements: list["Expr"]
 
 @dataclass
 class Identifier:

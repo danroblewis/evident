@@ -17,7 +17,7 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl
+from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl, SeqType
 
 
 def _is_type_decl(item) -> bool:
@@ -175,6 +175,21 @@ def instantiate_schema(
         if env.lookup(name) is not None:
             continue  # already declared
 
+        # ── Seq type: name ∈ Seq(T) ─────────────────────────────────────
+        if isinstance(item.right, SeqType):
+            try:
+                elem_sort = registry.get(item.right.element_name)
+            except KeyError:
+                elem_sort = registry.declare_uninterpreted(item.right.element_name)
+            seq_sort = z3.SeqSort(elem_sort)
+            existing = given.lookup(name)
+            if existing is not None:
+                env = env.bind(name, existing)
+            else:
+                var = make_const(name, seq_sort, prefix=prefix)
+                env = env.bind(name, var)
+            continue
+
         # ── Inline enum: x ∈ Red | Green | Blue ─────────────────────────
         if isinstance(item.right, InlineEnumExpr):
             variants = item.right.variants
@@ -192,6 +207,14 @@ def instantiate_schema(
             continue
 
         type_name = item.right.name if isinstance(item.right, Identifier) else "unknown"
+
+        # If the right-hand side is an env variable (not a type name), this is a
+        # constraint like `5 ∈ s` or `Hearts ∈ hand` — skip instantiation.
+        if env.lookup(type_name) is not None:
+            continue
+        # Also skip if left side is a known enum constructor (Hearts, Red, etc.)
+        if registry.get_constructor(name) is not None:
+            continue
 
         # ── Sub-schema expansion: name ∈ SomeSchema ──────────────────────
         if schemas and type_name in schemas:
