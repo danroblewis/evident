@@ -48,7 +48,7 @@ def blocking_clause_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, ArithmeticConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
+    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.evaluate import _translate_body_constraint
 
     # We'll build the constraint system incrementally in Z3, adding blocking
@@ -176,7 +176,7 @@ def random_seed_sample(
     from runtime.src.runtime import EvidentRuntime
     from runtime.src.evaluate import EvidentSolver, _translate_body_constraint
     from runtime.src.instantiate import instantiate_schema
-    from runtime.src.ast_types import MembershipConstraint, ArithmeticConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
+    from runtime.src.ast_types import MembershipConstraint, Identifier, EvidentBlock, PassthroughItem, MultiMembershipDecl
     from runtime.src.env import Environment
 
     rt = EvidentRuntime()
@@ -205,15 +205,6 @@ def random_seed_sample(
             if vname not in given and vname not in free_vars:
                 free_vars[vname] = type_name
 
-    # Variables that appear on the LHS of an equality constraint (e.g. r = 2)
-    # are already determined by the solver — adding a random hint for them
-    # contradicts the equality and causes most attempts to be UNSAT.
-    equality_constrained = set()
-    for item in schema.body:
-        if (isinstance(item, ArithmeticConstraint) and item.op == '='
-                and isinstance(item.left, Identifier)):
-            equality_constrained.add(item.left.name)
-
     # Build the Z3 solver and environment ONCE
     solver_obj = EvidentSolver()
     solver_obj.registry = rt.solver.registry
@@ -241,6 +232,25 @@ def random_seed_sample(
     # Short-circuit if base constraints are already unsatisfiable
     if base_solver.check() != z3.sat:
         return []
+
+    # Ask Z3 which free variables are uniquely determined by the constraints.
+    # A variable is determined if its seed value is the only possible value
+    # (i.e. var != seed_val makes the system UNSAT). Random hints for these
+    # variables always conflict → skip them in the hint loop.
+    determined_vars: set = set()
+    _seed = base_solver.model()
+    for _vname in list(free_vars):
+        _z3v = env.lookup(_vname)
+        if _z3v is None:
+            continue
+        _val = _seed.eval(_z3v, model_completion=True)
+        if _val is None:
+            continue
+        base_solver.push()
+        base_solver.add(_z3v != _val)
+        if base_solver.check() == z3.unsat:
+            determined_vars.add(_vname)
+        base_solver.pop()
 
     # Compute hint ranges once (binary search, also cheap since we're in a subprocess)
     computed_ranges: dict = {}
@@ -274,8 +284,8 @@ def random_seed_sample(
         # check feasibility, then pop — reusing all base constraints.
         base_solver.push()
         for vname, type_name in free_vars.items():
-            if vname in equality_constrained:
-                continue  # already determined by an = constraint; don't hint
+            if vname in determined_vars:
+                continue  # uniquely determined; random hint would cause UNSAT
             z3_var = env.lookup(vname)
             if z3_var is None:
                 continue
