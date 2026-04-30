@@ -280,12 +280,32 @@ function _legend(g, samples, colorVar, iW) {
     });
 }
 
-function _tip(tooltip) {
-    return {
-        over: (event, d) => tooltip.style('display','block').text(d.label),
-        move: event => tooltip.style('left',(event.offsetX+12)+'px').style('top',(event.offsetY-10)+'px'),
-        out:  () => tooltip.style('display','none'),
-    };
+// Single invisible overlay + nearest-point search replaces per-element event
+// listeners.  With 1000+ circles, individual mouseover/out listeners cause
+// the browser to hit-test the full SVG tree on every mouse move — O(n) DOM
+// work per frame.  One overlay + O(n) arithmetic is far cheaper.
+function _addOverlay(g, iW, iH, pts, cx, cy, tooltip) {
+    g.append('rect')
+        .attr('width', iW).attr('height', iH)
+        .attr('fill', 'none')
+        .style('pointer-events', 'all')
+        .on('mousemove', (event) => {
+            const [mx, my] = d3.pointer(event);
+            let best = null, bestD = Infinity;
+            for (const p of pts) {
+                const dx = cx(p) - mx, dy = cy(p) - my;
+                const d  = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = p; }
+            }
+            if (best && Math.sqrt(bestD) < 40) {
+                tooltip.style('display', 'block').text(best.label);
+                tooltip.style('left', (event.offsetX + 14) + 'px')
+                       .style('top',  (event.offsetY - 12) + 'px');
+            } else {
+                tooltip.style('display', 'none');
+            }
+        })
+        .on('mouseout', () => tooltip.style('display', 'none'));
 }
 
 const jitter = i => (((i * 2654435761) % 1000) / 1000 - 0.5);
@@ -300,7 +320,6 @@ function drawStripPlot(samples, catVar, numVar, colorVar, sizeVar, container) {
     const M = { top: 20, right: 80, bottom: 40, left: 48 };
     const iW = W - M.left - M.right, iH = H - M.top - M.bottom;
     const { g, tooltip } = _svgSetup(container, W, H, M);
-    const tip = _tip(tooltip);
 
     const categories = catVar
         ? [...new Set(samples.map(s => s[catVar]).filter(v => v != null))].sort()
@@ -352,8 +371,11 @@ function drawStripPlot(samples, catVar, numVar, colorVar, sizeVar, container) {
         .attr('fill', d => colorOf(d.colorVal))
         .attr('opacity', 0.85)
         .attr('stroke','#1e1e2e').attr('stroke-width',1)
-        .on('mouseover', tip.over).on('mousemove', tip.move).on('mouseout', tip.out);
+        .style('pointer-events', 'none');
 
+    _addOverlay(g, iW, iH, pts,
+        d => xScale(d.cat) + bw/2 + jitter(d.ci) * bw * 0.5,
+        d => yScale(d.y), tooltip);
     _legend(g, samples, colorVar, iW);
 }
 
@@ -367,7 +389,6 @@ function drawCountBars(samples, catVar, colorVar, container) {
     const M = { top: 20, right: 80, bottom: 40, left: 48 };
     const iW = W - M.left - M.right, iH = H - M.top - M.bottom;
     const { g, tooltip } = _svgSetup(container, W, H, M);
-    const tip = _tip(tooltip);
 
     const counts = {};
     samples.forEach(s => { const v = s[catVar]; if (v != null) counts[v] = (counts[v]||0)+1; });
@@ -384,12 +405,19 @@ function drawCountBars(samples, catVar, colorVar, container) {
     g.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-36)
         .attr('text-anchor','middle').attr('fill','#cdd6f4').attr('font-size',12).text('count');
 
+    const barPts = cats.map(c => ({
+        label: `${catVar}: ${c}\ncount: ${counts[c]}`,
+        cx: xScale(c) + xScale.bandwidth() / 2,
+        cy: yScale(counts[c]),
+    }));
+
     g.selectAll('rect').data(cats).enter().append('rect')
         .attr('x', d => xScale(d)).attr('y', d => yScale(counts[d]))
         .attr('width', xScale.bandwidth()).attr('height', d => iH - yScale(counts[d]))
         .attr('fill', d => colorOf(d)).attr('opacity', 0.8)
-        .on('mouseover', (event, d) => tooltip.style('display','block').text(`${catVar}: ${d}\ncount: ${counts[d]}`))
-        .on('mousemove', tip.move).on('mouseout', tip.out);
+        .style('pointer-events', 'none');
+
+    _addOverlay(g, iW, iH, barPts, d => d.cx, d => d.cy, tooltip);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +430,6 @@ function drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, container) {
     const M = { top: 20, right: 80, bottom: 40, left: 48 };
     const iW = W - M.left - M.right, iH = H - M.top - M.bottom;
     const { g, tooltip } = _svgSetup(container, W, H, M);
-    const tip = _tip(tooltip);
 
     const pts = samples.filter(s => s[xVar] != null && s[yVar] != null).map(s => ({
         x: +s[xVar], y: +s[yVar],
@@ -447,8 +474,9 @@ function drawScatterPlot(samples, xVar, yVar, colorVar, sizeVar, container) {
         .attr('r',  d => rScale(d.sizeVal))
         .attr('fill', d => colorOf(d.colorVal)).attr('opacity', 0.8)
         .attr('stroke','#1e1e2e').attr('stroke-width',1)
-        .on('mouseover', tip.over).on('mousemove', tip.move).on('mouseout', tip.out);
+        .style('pointer-events', 'none');
 
+    _addOverlay(g, iW, iH, pts, d => xScale(d.x), d => yScale(d.y), tooltip);
     _legend(g, samples, colorVar, iW);
 }
 
