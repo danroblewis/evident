@@ -27,6 +27,8 @@ UNICODE_MAP = {
     'Σ': '__SUM__',
     '⟨': ' __LSEQ__ ',
     '⟩': ' __RSEQ__ ',
+    '⊑': '__PREFIX__',
+    '⊒': '__SUFFIX__',
 }
 
 # Regex literal: /pattern/ in membership context.

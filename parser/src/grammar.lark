@@ -145,10 +145,10 @@ membership_constraint: expr ("__IN__"|"in") NAME ("|" NAME)+   -> mem_inline_enu
 
 // Arithmetic/comparison
 // String predicates (constraint position)
-str_constraint: expr "starts_with" expr   -> str_starts_with
-              | expr "ends_with" expr     -> str_ends_with
-              | expr "contains" expr      -> str_contains
-              | expr "matches" STRING     -> str_matches
+str_constraint: expr ("starts_with"|"__PREFIX__") expr   -> str_starts_with
+              | expr ("ends_with"|"__SUFFIX__") expr     -> str_ends_with
+              | expr "contains" expr                     -> str_contains
+              | expr "matches" STRING                    -> str_matches
 
 arith_constraint: expr "=" expr   -> arith_eq
                 | expr "!=" expr  -> arith_neq

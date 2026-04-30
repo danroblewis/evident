@@ -300,6 +300,8 @@ class EvidentEditor {
         // Longest keywords first to avoid 'in' matching before 'not in'.
         const WORD_SUBS = [
             ['not in',      '∉ '],
+            ['starts_with', '⊑ '],
+            ['ends_with',   '⊒ '],
             ['superset',    '⊇ '],
             ['subset',      '⊆ '],
             ['intersection','∩ '],

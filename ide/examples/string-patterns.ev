@@ -21,7 +21,7 @@ schema HttpRequest
     (method, raw_method) ∈ method_strings
 
     -- Path must start with /
-    path starts_with "/"
+    path ⊑ "/"
 
     -- Path is at least 1 character after the slash
     #path ≥ 2
@@ -32,7 +32,7 @@ schema ApiRequest
     path_segment ∈ String
 
     -- API paths are under /api/
-    path starts_with "/api/"
+    path ⊑ "/api/"
 
     -- The segment after /api/ defines the resource
     path = "/api/" ++ path_segment
@@ -92,4 +92,4 @@ schema Identifier
     name ∈ /[a-zA-Z_][a-zA-Z0-9_]*/
     #name ≥ 1
     #name ≤ 64
-    name ends_with "_handler" ⇒ name starts_with "on_"
+    name ⊒ "_handler" ⇒ name ⊑ "on_"
