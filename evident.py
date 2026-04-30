@@ -186,7 +186,7 @@ def cmd_repl(args):
         _rl.set_history_length(1000)
 
         # Tab completion for schema names and keywords
-        _KEYWORDS = ['import', 'quit', 'exit', 'schemas', 'sample', 'check']
+        _KEYWORDS = ['import', 'quit', 'exit', 'schemas', 'sample', 'check', 'help']
 
         def _completer(text, state):
             options = [k for k in (_KEYWORDS + list(rt.schemas.keys()))
@@ -225,6 +225,50 @@ def cmd_repl(args):
             continue
         if line in ('quit', 'exit', 'q'):
             break
+        if line in ('help', '?', 'h'):
+            print("""
+Commands:
+  ? SchemaName            Query a schema — prints bindings or Unsatisfiable
+  import "file.ev"        Load an Evident source file into the session
+  schemas                 List all loaded schema names
+  sample SchemaName [N]   Print N sample bindings (default 5)
+  check                   Report SAT/UNSAT for every loaded schema
+  help                    Show this message
+  quit / exit             Exit the REPL
+
+Keyboard shortcuts:
+  ↑ / ↓                   Navigate history
+  ← / →                   Move cursor
+  Tab                     Complete schema names and keywords
+  Ctrl-R                  Search history
+  Ctrl-C / Ctrl-D         Exit
+""".strip())
+            continue
+        if line.startswith('sample'):
+            parts = line.split()
+            name = parts[1] if len(parts) > 1 else None
+            n    = int(parts[2]) if len(parts) > 2 else 5
+            if not name:
+                print('Usage: sample SchemaName [N]')
+            elif name not in rt.schemas:
+                print(f'Unknown schema {name!r}. Try: schemas')
+            else:
+                sys.path.insert(0, str(Path(__file__).parent / 'ide' / 'backend'))
+                try:
+                    from sampler import random_seed_sample
+                    src = '\n'.join(Path(f).read_text() for f in (args.files or []))
+                    results = random_seed_sample(src, name, {}, n)
+                    print(f'{name}: {len(results)} samples')
+                    for i, r in enumerate(results, 1):
+                        print(f'  [{i}] {_fmt_bindings(r.bindings).strip()}')
+                except Exception as e:
+                    print(f'Error: {e}')
+            continue
+        if line == 'check':
+            for name in rt.schemas:
+                r = rt.query(name)
+                print(('✓' if r.satisfied else '✗') + f'  {name}')
+            continue
         if line.startswith('import '):
             path = line[7:].strip().strip('"\'')
             try:
@@ -249,7 +293,7 @@ def cmd_repl(args):
         if line.startswith('schemas'):
             print(', '.join(rt.schemas.keys()) or '(none)')
             continue
-        print(f'Unknown command. Try: ? SchemaName | import "file.ev" | schemas | quit')
+        print(f'Unknown command. Type  help  for a list of commands.')
     return 0
 
 
