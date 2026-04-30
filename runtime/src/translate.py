@@ -233,6 +233,14 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
                 f"Nested field access {expr!r} is not yet supported."
             )
 
+        # Built-in function applications via juxtaposition: int_to_str n
+        if expr.op == '×' and isinstance(expr.left, Identifier):
+            fn = expr.left.name
+            if fn == 'int_to_str':
+                return z3.IntToStr(translate_expr(expr.right, env, registry))
+            if fn == 'str_to_int':
+                return z3.StrToInt(translate_expr(expr.right, env, registry))
+
         left = translate_expr(expr.left, env, registry)
         right = translate_expr(expr.right, env, registry)
         op = expr.op
