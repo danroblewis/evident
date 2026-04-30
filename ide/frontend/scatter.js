@@ -167,6 +167,7 @@ function _renderAnnotatedPlots(mainSamples) {
         }
 
         const plotDiv = document.createElement('div');
+        plotDiv.style.cssText = 'position:relative;';
         wrapper.appendChild(plotDiv);
         container.appendChild(wrapper);
 
@@ -284,7 +285,13 @@ function _legend(g, samples, colorVar, iW) {
 // listeners.  With 1000+ circles, individual mouseover/out listeners cause
 // the browser to hit-test the full SVG tree on every mouse move — O(n) DOM
 // work per frame.  One overlay + O(n) arithmetic is far cheaper.
-function _addOverlay(g, iW, iH, pts, cx, cy, tooltip) {
+// hitFn(p, mx, my) → bool — optional custom hit-test per point type.
+// Falls back to Euclidean distance < 40px when omitted.
+function _addOverlay(g, iW, iH, pts, cx, cy, tooltip, hitFn) {
+    const defaultHit = (p, mx, my) =>
+        Math.sqrt((cx(p) - mx) ** 2 + (cy(p) - my) ** 2) < 40;
+    const test = hitFn || defaultHit;
+
     g.append('rect')
         .attr('width', iW).attr('height', iH)
         .attr('fill', 'none')
@@ -293,11 +300,12 @@ function _addOverlay(g, iW, iH, pts, cx, cy, tooltip) {
             const [mx, my] = d3.pointer(event);
             let best = null, bestD = Infinity;
             for (const p of pts) {
+                if (!test(p, mx, my)) continue;
                 const dx = cx(p) - mx, dy = cy(p) - my;
                 const d  = dx * dx + dy * dy;
                 if (d < bestD) { bestD = d; best = p; }
             }
-            if (best && Math.sqrt(bestD) < 40) {
+            if (best) {
                 const rect = tooltip.node().parentElement.getBoundingClientRect();
                 tooltip.style('display', 'block').text(best.label);
                 tooltip.style('left', (event.clientX - rect.left + 14) + 'px')
@@ -409,7 +417,10 @@ function drawCountBars(samples, catVar, colorVar, container) {
     const barPts = cats.map(c => ({
         label: `${catVar}: ${c}\ncount: ${counts[c]}`,
         cx: xScale(c) + xScale.bandwidth() / 2,
-        cy: yScale(counts[c]),
+        cy: (yScale(counts[c]) + iH) / 2,   // vertical midpoint for tie-breaking
+        x1: xScale(c),
+        x2: xScale(c) + xScale.bandwidth(),
+        y1: yScale(counts[c]),
     }));
 
     g.selectAll('rect').data(cats).enter().append('rect')
@@ -418,7 +429,9 @@ function drawCountBars(samples, catVar, colorVar, container) {
         .attr('fill', d => colorOf(d)).attr('opacity', 0.8)
         .style('pointer-events', 'none');
 
-    _addOverlay(g, iW, iH, barPts, d => d.cx, d => d.cy, tooltip);
+    // Hit-test: cursor must be inside the bar's horizontal band and above the axis.
+    _addOverlay(g, iW, iH, barPts, d => d.cx, d => d.cy, tooltip,
+        (p, mx, my) => mx >= p.x1 && mx <= p.x2 && my >= p.y1 && my <= iH);
 }
 
 // ---------------------------------------------------------------------------
