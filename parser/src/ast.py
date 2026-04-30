@@ -9,8 +9,13 @@ class Program:
     statements: list[Statement]
 
 Statement = Union[
-    "SchemaDecl", "EnumDecl", "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt"
+    "SchemaDecl", "EnumDecl", "ImportStmt",
+    "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt"
 ]
+
+@dataclass
+class ImportStmt:
+    path: str   # raw path string, e.g. "beavers.ev"
 
 @dataclass
 class MultiMembershipDecl:

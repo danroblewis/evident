@@ -293,8 +293,17 @@ def random_seed_sample(
                 lo, hi = _hint_range(vname, type_name)
                 base_solver.add(z3_var == random.randint(int(lo), int(hi)))
             elif type_name == "Real":
-                lo, hi = _hint_range(vname, type_name)
-                hint = random.uniform(lo, hi)
+                # Use the seed model value as the centre of the hint window.
+                # The seed satisfies all constraints, so seeding ±1.0 around it
+                # stays inside bounds (e.g. body_temp=37.5 → hint in [36.5,38.5])
+                # rather than the fixed [-5,5] default which often misses bounds.
+                try:
+                    seed_val = _seed.eval(z3_var, model_completion=True)
+                    center = seed_val.numerator_as_long() / seed_val.denominator_as_long()
+                    hint = random.uniform(center - 1.0, center + 1.0)
+                except Exception:
+                    lo, hi = _hint_range(vname, type_name)
+                    hint = random.uniform(lo, hi)
                 base_solver.add(z3_var == z3.RealVal(hint))
             else:
                 # Enum or other algebraic type — pick a random constructor

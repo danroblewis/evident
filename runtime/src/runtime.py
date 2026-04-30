@@ -19,8 +19,10 @@ from .ast_types import (
     Program,
     SchemaDecl,
     EnumDecl,
+    ImportStmt,
     AssertStmt,
     ForwardRule,
+    QueryStmt,
     ConstraintStmt,
     NatLiteral,
     IntLiteral,
@@ -63,6 +65,8 @@ class EvidentRuntime:
         self.schemas: dict[str, SchemaDecl] = {}
         self.forward_rules: list[ForwardRule] = []
         self.evidence_base: list[Evidence] = []
+        self.pending_queries: list = []       # ? statements collected during load
+        self._loaded_files: set = set()       # resolved paths already loaded
 
     # ------------------------------------------------------------------
     # Schema registration
@@ -85,31 +89,45 @@ class EvidentRuntime:
     # Program loading
     # ------------------------------------------------------------------
 
-    def load_source(self, source: str) -> None:
+    def load_source(self, source: str, base_dir=None) -> None:
         """Parse Evident source text and load it into the runtime."""
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
         from parser.src.parser import parse
-        self.load_program(parse(source))
+        self.load_program(parse(source), base_dir=base_dir)
 
     def load_file(self, path) -> None:
-        """Load an Evident source file."""
+        """Load an Evident source file, resolving imports relative to its directory."""
         from pathlib import Path
-        self.load_source(Path(path).read_text())
+        p = Path(path).resolve()
+        if p in self._loaded_files:
+            return   # already loaded — skip (cycle / duplicate guard)
+        self._loaded_files.add(p)
+        self.load_source(p.read_text(), base_dir=p.parent)
 
-    def load_program(self, program: Program) -> None:
+    def load_program(self, program: Program, base_dir=None) -> None:
         """Load all statements from a parsed Program AST."""
+        from pathlib import Path
         for stmt in program.statements:
-            if isinstance(stmt, EnumDecl):
+            if isinstance(stmt, ImportStmt):
+                if base_dir is None:
+                    base_dir = Path.cwd()
+                candidate = Path(base_dir) / stmt.path
+                if not candidate.exists():
+                    # Fall back to cwd-relative (lets you write import "ide/examples/beavers.ev")
+                    candidate = Path.cwd() / stmt.path
+                self.load_file(candidate)
+            elif isinstance(stmt, EnumDecl):
                 self.solver.registry.declare_algebraic(stmt.name, stmt.variants)
             elif isinstance(stmt, SchemaDecl):
                 self.load_schema(stmt)
             elif isinstance(stmt, AssertStmt):
                 self._handle_assert(stmt)
+            elif isinstance(stmt, QueryStmt):
+                self.pending_queries.append(stmt)
             elif isinstance(stmt, ForwardRule):
                 self.forward_rules.append(stmt)
-                # TODO: translate and register with fixedpoint engine
             elif isinstance(stmt, ConstraintStmt):
                 # Top-level constraints — not yet handled
                 pass

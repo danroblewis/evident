@@ -25,6 +25,11 @@ class EvidentTransformer(LarkTransformer):
 
     # ── Enum declarations ─────────────────────────────────────────────────────
 
+    def import_stmt(self, items):
+        # STRING token includes surrounding quotes — strip them
+        raw = str(items[0])
+        return ImportStmt(path=raw[1:-1])
+
     def enum_decl(self, items):
         # items = [NAME, NAME, NAME, ...] — type name followed by variant names
         name = _str(items[0])

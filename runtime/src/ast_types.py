@@ -18,6 +18,7 @@ from parser.src.ast import (  # noqa: E402
     Program,
     SchemaDecl,
     EnumDecl,
+    ImportStmt,
     InlineEnumExpr,
     MultiMembershipDecl,
     Param,
