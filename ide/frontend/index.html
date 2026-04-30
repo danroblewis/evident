@@ -192,42 +192,53 @@
     };
 
     // ── @plot annotation parser ─────────────────────────────────────────
-    // Reads  -- @plot x=var y=var color=var size=var title="label"  lines.
-    // Annotations are grouped by schema: each @plot belongs to the most
-    // recently declared schema above it (schema/claim/type keyword).
-    // Annotations before any schema declaration are "global" (key '').
+    // Each -- @plot belongs to the most recently declared schema above it.
+    // Returns a flat array of {x, y, color, size, title, schema} objects.
     function parsePlotAnnotations(source) {
-        const bySchema = {};   // { schemaName → [cfg, …], '' → [global] }
+        const annotations = [];
         let currentSchema = '';
-
         for (const line of source.split('\n')) {
             const schemaDef = line.match(/^\s*(?:schema|claim|type)\s+(\w+)/);
             if (schemaDef) currentSchema = schemaDef[1];
-
             const plotLine = line.match(/--\s*@plot\s+(.+)$/);
             if (plotLine) {
-                const cfg = {};
+                const cfg = { schema: currentSchema };
                 plotLine[1].trim().replace(/(\w+)=("([^"]*)"|([\w.]+))/g, (_, k, __, q, u) => {
                     cfg[k] = q !== undefined ? q : u;
                 });
-                if (cfg.x || cfg.y) {
-                    if (!bySchema[currentSchema]) bySchema[currentSchema] = [];
-                    bySchema[currentSchema].push(cfg);
-                }
+                if (cfg.x || cfg.y) annotations.push(cfg);
             }
         }
-        return bySchema;
+        return annotations;
+    }
+
+    // Fetch samples for schemas with @plot annotations that aren't active.
+    async function _sampleAnnotatedSchemas(source, annotations, activeSchema) {
+        const n        = parseInt(document.getElementById('sample-n')?.value, 10) || 200;
+        const strategy = document.getElementById('sample-strategy')?.value || 'random';
+        const schemas  = [...new Set(
+            annotations.map(a => a.schema).filter(s => s && s !== activeSchema)
+        )];
+        for (const schemaName of schemas) {
+            try {
+                const resp = await fetch('/sample', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source, schema: schemaName, given: {}, n, strategy }),
+                });
+                const data = await resp.json();
+                if (typeof setSamplesForSchema === 'function')
+                    setSamplesForSchema(schemaName, data.samples || []);
+            } catch (e) { /* silent */ }
+        }
     }
 
     function applyPlotAnnotations() {
-        const bySchema = parsePlotAnnotations(evEditor?.getSource() || '');
-        const activeSchema = document.getElementById('schema-select')?.value || '';
-        // Global annotations (before any schema) + active schema's annotations
-        const annotations = [
-            ...(bySchema['']           || []),
-            ...(bySchema[activeSchema] || []),
-        ];
-        if (typeof setPlotAnnotations === 'function') setPlotAnnotations(annotations);
+        const source      = evEditor?.getSource() || '';
+        const annotations = parsePlotAnnotations(source);
+        const active      = document.getElementById('schema-select')?.value || '';
+        if (typeof setPlotAnnotations === 'function') setPlotAnnotations(annotations, active);
+        _sampleAnnotatedSchemas(source, annotations, active);
     }
 
     // Editor content change → re-evaluate after 800ms
@@ -309,6 +320,7 @@
     function resetSamples() {
         clearTimeout(_sampleTimer);
         if (typeof clearAccumulatedSamples === 'function') clearAccumulatedSamples();
+        if (typeof clearAnnotationSamples === 'function') clearAnnotationSamples();
         scheduleAutoSample();
     }
 

@@ -110,15 +110,26 @@ function _readSelects() {
 // Annotated plots — rendered from  -- @plot x=var y=var color=var  comments
 // ---------------------------------------------------------------------------
 
-let _annotations = [];   // parsed from source on each change
+let _annotations = [];           // [{x, y, color, size, title, schema}, …]
+let _activeSchema = '';          // currently selected schema name
+let _annotationSamples = {};     // { schemaName: [bindings, …] } — per-schema cache
 
-function setPlotAnnotations(annotations) {
+function setPlotAnnotations(annotations, activeSchema) {
     _annotations = annotations || [];
-    // Clear and redraw annotated plots immediately if we have samples
+    _activeSchema = activeSchema || '';
     _renderAnnotatedPlots(_cachedSamples);
 }
 
-function _renderAnnotatedPlots(samples) {
+function setSamplesForSchema(schemaName, samples) {
+    _annotationSamples[schemaName] = samples || [];
+    _renderAnnotatedPlots(_cachedSamples);
+}
+
+function clearAnnotationSamples() {
+    _annotationSamples = {};
+}
+
+function _renderAnnotatedPlots(mainSamples) {
     let container = document.getElementById('annotated-plots');
     if (!container) {
         const body = document.getElementById('scatter-body');
@@ -128,28 +139,41 @@ function _renderAnnotatedPlots(samples) {
         body.appendChild(container);
     }
     container.innerHTML = '';
-    if (!_annotations.length || !samples.length) return;
+    if (!_annotations.length) return;
 
-    _annotations.forEach((cfg, idx) => {
-        const xVar = cfg.x || null;
-        const yVar = cfg.y || null;
+    _annotations.forEach((cfg) => {
+        const xVar     = cfg.x     || null;
+        const yVar     = cfg.y     || null;
         const colorVar = cfg.color || null;
         const sizeVar  = cfg.size  || null;
         if (!xVar) return;
 
+        // Use this annotation's schema's samples; fall back to main samples
+        // when the annotation belongs to the currently active schema.
+        const isActiveSchema = !cfg.schema || cfg.schema === _activeSchema;
+        const samples = isActiveSchema
+            ? mainSamples
+            : (_annotationSamples[cfg.schema] || []);
+
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'margin-top:14px;border-top:1px solid var(--border,#45475a);padding-top:12px;';
 
-        if (cfg.title) {
+        const headerText = cfg.title || (cfg.schema ? `${cfg.schema}: ${xVar} × ${yVar || '…'}` : '');
+        if (headerText) {
             const lbl = document.createElement('div');
             lbl.style.cssText = 'font-size:11px;color:var(--fg-muted,#6c7086);margin-bottom:6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;';
-            lbl.textContent = cfg.title;
+            lbl.textContent = headerText;
             wrapper.appendChild(lbl);
         }
 
         const plotDiv = document.createElement('div');
         wrapper.appendChild(plotDiv);
         container.appendChild(wrapper);
+
+        if (!samples.length) {
+            plotDiv.innerHTML = '<p style="color:var(--fg-muted);font-size:11px;padding:8px 0;">Sampling…</p>';
+            return;
+        }
 
         const xt = varType(xVar, samples);
         const yt = yVar ? varType(yVar, samples) : null;
@@ -436,5 +460,7 @@ window.renderScatterControls = renderScatterControls;
 window.drawScatter = drawScatter;
 window.drawFromCache = drawFromCache;
 window.setPlotAnnotations = setPlotAnnotations;
+window.setSamplesForSchema = setSamplesForSchema;
+window.clearAnnotationSamples = clearAnnotationSamples;
 
 })();
