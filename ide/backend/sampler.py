@@ -252,9 +252,13 @@ def random_seed_sample(
             determined_vars.add(_vname)
         base_solver.pop()
 
-    # Compute hint ranges once (binary search, also cheap since we're in a subprocess)
+    # Compute hint ranges once using Optimize + tightening.
     computed_ranges: dict = {}
     try:
+        import sys as _sys
+        _backend_dir = str(Path(__file__).parent)
+        if _backend_dir not in _sys.path:
+            _sys.path.insert(0, _backend_dir)
         from ranges import compute_ranges
         computed_ranges = compute_ranges(source, schema_name, given)
     except Exception:
@@ -265,14 +269,20 @@ def random_seed_sample(
         lo = rng.get("min")
         hi = rng.get("max")
         if lo is not None and hi is not None:
-            return (lo, hi)
-        if lo is not None:
-            return (lo, lo + max(50, (hi or lo + 50) - lo))
-        if hi is not None:
-            return (hi - 50 if type_name != "Nat" else max(0, hi - 50), hi)
-        if type_name == "Nat":          return (0,     500)
-        if type_name == "Int":          return (-500,  500)
-        if type_name == "Real":         return (-50.0, 50.0)
+            return (lo, hi)                        # exact bounds known
+        if lo is not None and hi is None:
+            # bounded below, unbounded above — wide window from lo
+            width = 500 if type_name in ("Nat", "Int") else 50.0
+            return (lo, lo + width)
+        if hi is not None and lo is None:
+            # bounded above, unbounded below — wide window up to hi
+            width = 500 if type_name in ("Nat", "Int") else 50.0
+            lo_default = max(0, hi - width) if type_name == "Nat" else hi - width
+            return (lo_default, hi)
+        # no bounds known — use wide defaults
+        if type_name == "Nat":   return (0,     500)
+        if type_name == "Int":   return (-500,  500)
+        if type_name == "Real":  return (-50.0, 50.0)
         return (0, 500)
 
     samples: list[Sample] = []
