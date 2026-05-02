@@ -263,12 +263,17 @@ def random_seed_sample(
     def _hint_range(vname: str, type_name: str) -> tuple:
         rng = computed_ranges.get(vname, {})
         lo = rng.get("min")
+        hi = rng.get("max")
+        if lo is not None and hi is not None:
+            return (lo, hi)
         if lo is not None:
-            return (lo, lo + 50)
-        if type_name == "Nat":          return (0,    50)
-        if type_name == "Int":          return (-50,  50)
-        if type_name == "Real":         return (-5.0, 5.0)
-        return (0, 50)
+            return (lo, lo + max(50, (hi or lo + 50) - lo))
+        if hi is not None:
+            return (hi - 50 if type_name != "Nat" else max(0, hi - 50), hi)
+        if type_name == "Nat":          return (0,     500)
+        if type_name == "Int":          return (-500,  500)
+        if type_name == "Real":         return (-50.0, 50.0)
+        return (0, 500)
 
     samples: list[Sample] = []
     seen: set = set()
