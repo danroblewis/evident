@@ -176,6 +176,18 @@ function _renderAnnotatedPlots(mainSamples) {
             return;
         }
 
+        // Explicit type overrides auto-detection
+        if (cfg.type === 'graph' && yVar) {
+            if (typeof drawGraphPlot === 'function')
+                drawGraphPlot(samples, xVar, yVar, colorVar, plotDiv);
+            return;
+        }
+        if (cfg.type === 'relation' && yVar) {
+            if (typeof drawRelationPlot === 'function')
+                drawRelationPlot(samples, xVar, yVar, colorVar, plotDiv);
+            return;
+        }
+
         const xt = varType(xVar, samples);
         const yt = yVar ? varType(yVar, samples) : null;
 

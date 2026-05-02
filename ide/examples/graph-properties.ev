@@ -1,5 +1,7 @@
 -- Graph edges as a named set, queried by different schemas.
 -- Nodes are Nat, edges are (from, to) pairs.
+-- The @plot type=graph annotation renders the relation as a directed network
+-- rather than an x/y scatter plot.
 
 assert edges = {
     (1, 2), (1, 3),
@@ -8,18 +10,21 @@ assert edges = {
 }
 
 -- A directed edge in this graph
+-- @plot type=graph x=src y=dst title="Graph edges"
 schema Edge
     src ∈ Nat
     dst ∈ Nat
     (src, dst) ∈ edges
 
 -- A node with at least one outgoing edge
+-- @plot type=relation x=node y=next title="Node → successor"
 schema HasSuccessor
     node ∈ Nat
     next ∈ Nat
     (node, next) ∈ edges
 
 -- A node that appears as both source and destination
+-- @plot type=graph x=prev y=next title="Internal node paths"
 schema InternalNode
     node ∈ Nat
     prev ∈ Nat
