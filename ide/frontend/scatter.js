@@ -80,23 +80,32 @@ function renderScatterControls(allVars, samples) {
     container.innerHTML = '';
     container.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;';
 
+    const typeOpts = [
+        { value: 'auto',     label: 'Auto' },
+        { value: 'graph',    label: 'Graph' },
+        { value: 'relation', label: 'Relation' },
+    ];
+
     const xSel = makeSelect('scatter-x', allOpts, defaultX);
     const ySel = makeSelect('scatter-y', [{ value: NONE, label: '—' }, ...allOpts], defaultY);
+    const tSel = makeSelect('scatter-type', typeOpts, prev.type || 'auto');
     const cSel = makeSelect('scatter-color', noneOpts, prev.color && allVars.includes(prev.color) ? prev.color : NONE);
     const sSel = makeSelect('scatter-size', noneNumOpts, prev.size && numVars.includes(prev.size) ? prev.size : NONE);
 
     container.appendChild(makeGroup('X', xSel));
     container.appendChild(makeGroup('Y', ySel));
+    container.appendChild(makeGroup('Type', tSel));
     container.appendChild(makeGroup('Color', cSel));
     container.appendChild(makeGroup('Size', sSel));
 
-    [xSel, ySel, cSel, sSel].forEach(s => s.addEventListener('change', drawFromCache));
+    [xSel, ySel, tSel, cSel, sSel].forEach(s => s.addEventListener('change', drawFromCache));
 }
 
 function _readSelects() {
     return {
         x:     document.getElementById('scatter-x')?.value     ?? null,
         y:     document.getElementById('scatter-y')?.value     ?? null,
+        type:  document.getElementById('scatter-type')?.value  ?? 'auto',
         color: document.getElementById('scatter-color')?.value ?? null,
         size:  document.getElementById('scatter-size')?.value  ?? null,
     };
@@ -217,7 +226,7 @@ function drawFromCache() {
     const container = document.getElementById('scatter-plot');
     if (!container || !samples.length) return;
 
-    const { x: xVar, y: yVar, color: colorVar, size: sizeVar } = _readSelects();
+    const { x: xVar, y: yVar, type: plotType, color: colorVar, size: sizeVar } = _readSelects();
 
     const xt = varType(xVar, samples);
     const yt = yVar ? varType(yVar, samples) : null;
@@ -227,7 +236,19 @@ function drawFromCache() {
         return;
     }
 
-    // Determine actual cat/num vars — auto-swap if user put enum on Y
+    // Explicit type overrides auto-detection
+    if (plotType === 'graph' && yVar && yVar !== NONE) {
+        if (typeof drawGraphPlot === 'function')
+            drawGraphPlot(samples, xVar, yVar, colorVar || null, container);
+        return;
+    }
+    if (plotType === 'relation' && yVar && yVar !== NONE) {
+        if (typeof drawRelationPlot === 'function')
+            drawRelationPlot(samples, xVar, yVar, colorVar || null, container);
+        return;
+    }
+
+    // Auto-detect from variable types
     let catVar = null, numVarX = null, numVarY = null;
 
     if (xt === 'numeric' && yt === 'numeric') {
@@ -235,9 +256,9 @@ function drawFromCache() {
     } else if (xt === 'enum' && yt === 'numeric') {
         catVar = xVar; numVarY = yVar;
     } else if (xt === 'numeric' && yt === 'enum') {
-        catVar = yVar; numVarY = xVar;    // auto-swap
+        catVar = yVar; numVarY = xVar;
     } else if (xt === 'enum' && (!yt || yt === 'enum')) {
-        catVar = xVar;                     // strip with no numeric Y
+        catVar = xVar;
     } else {
         numVarX = xVar;
     }
