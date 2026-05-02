@@ -1,200 +1,248 @@
-# Runtime and I/O: The Execution Model
+# Runtime and I/O: Evident as a Constraint Automaton Executor
 
-## The Central Separation
+## The Formal Model
 
-Evident constraint schemas are pure mathematical relations. They describe *what
-is true* — valid combinations of variable values. They have no awareness of time,
-sequence, or the outside world.
+After research into state machines, automata theory, and coordination models,
+the right framing is now clear: **Evident programs are constraint automata.**
 
-The runtime is the execution engine that gives schemas life. It:
-- Manages external data sources and sinks
-- Decides when to trigger a solve
-- Threads state between solves
-- Handles all I/O mechanics
+A constraint automaton is a tuple A = (Q, N, →, q₀) where:
+- **Q** — a finite set of states (configurations of the system)
+- **N** — a finite set of **ports** (named I/O endpoints)
+- **→** — a transition relation: q -[P, D]→ q', where P ⊆ N is the set of
+  ports that must synchronize, and D is a data constraint over values on those
+  ports
+- **q₀** — the initial state
 
-The programmer writes only the relation. The runtime handles everything else.
-This is the core design principle: remove programmers from responsibility for
-imperative "do-er" operations — reading bytes, writing output, managing memory,
-advancing counters — by making those entirely the runtime's concern.
+A transition fires when all ports in P are simultaneously ready with data, and
+the data satisfies constraint D. This is the formal mechanism for I/O in a
+declarative system: not a special case, not a bolt-on, but the transition
+relation itself.
 
----
-
-## The Three Modes of Variable Binding
-
-Currently Evident populates variables in two ways:
-
-**1. Given (explicit):** the caller provides a value before solving.
-`rt.query('Schema', given={'x': 5})` pins `x = 5`; the solver fills in
-everything else.
-
-**2. Free / sampled:** no value is provided. The solver finds any satisfying
-value, or the sampler assigns a random one for exploration.
-
-For streaming programs, a third mode is needed:
-
-**3. Context-bound:** the variable receives its value from a named external
-context that the runtime manages. From the constraint system's perspective, the
-variable looks identical to a given — it arrives with a concrete value before
-solving begins. The *source* of that value is entirely the runtime's concern.
-
-Context-bound variables make I/O invisible to the schema body. The schema
-declares a constraint like `char ∈ Char`; the runtime decides that `char` comes
-from stdin and provides the value accordingly.
+Evident schemas are the data constraints D. The runtime is the automaton
+executor. Stdin and stdout are ports.
 
 ---
 
-## Contexts
+## What Changed from the Previous Framing
 
-A *context* is a named external data source or sink managed by the runtime.
-Concrete examples:
+The earlier version of this document introduced "contexts" as an ad-hoc concept
+for external data sources and sinks. Constraint automata give us the precise
+vocabulary that was missing:
 
-| Context | Direction | What it provides / accepts |
+| Previous term | Formal term | Meaning |
 |---|---|---|
-| `stdin` | source | bytes from standard input |
-| `stdout` | sink | bytes to standard output |
-| `file("path")` | source or sink | bytes from/to a file |
-| `socket(addr)` | bidirectional | bytes over a network connection |
-| Another schema | source | outputs from a sibling schema's solve |
+| Context | Port | Named I/O endpoint; part of the automaton's interface |
+| Context-bound variable | Port variable | Variable whose value is delivered via a port |
+| Source context | Input port | Port that delivers data into the automaton |
+| Sink context | Output port | Port that receives data from the automaton |
+| Carried state | Automaton state | Variable bindings that persist between transitions |
+| Universal executor loop | Automaton execution | The standard step-fire-advance cycle |
+| Schema composition | Product construction | Composition of automata at shared ports |
 
-Contexts are not sets in the mathematical sense. `stdin` is not the set of all
-possible bytes — it is a specific, ordered, stateful stream with a current
-position and an eventual EOF. The constraint system never sees the context
-directly. It only sees the values the runtime extracts from it.
-
-**Context binding** connects a variable to a context:
-- Source binding: before each solve, the runtime reads from the context and
-  provides the value as the variable's given.
-- Sink binding: after each solve, the runtime reads the variable's value from
-  the model and writes it to the context.
-
-The granularity of what is read per step — one byte, one chunk, one line — is
-a property of the context configuration, not of the schema.
+The concepts were right. The terminology is now grounded.
 
 ---
 
-## When Does a Solve Happen?
+## Evident Schemas as Symbolic Automata
 
-A solve is triggered when all context-bound *source* variables have received
-their values for the current step. This is the natural completion condition:
-the constraint system has all the inputs it needs, so it can run.
+A further refinement from symbolic automata theory (Veanes et al., Microsoft
+Research): Evident schemas are not just the data constraints D — they *are*
+symbolic automaton predicates.
 
-For a char-at-a-time program: one char arrives from stdin → the only source
-variable is ready → solve immediately. For a chunk-based program: the runtime
-reads however many bytes `read()` returns, provides the chunk as one variable,
-then solves. The schema is agnostic to read granularity.
+Classical automata label transitions with explicit alphabet symbols. Symbolic
+automata label transitions with *predicates* over an alphabet theory, decided
+by an SMT solver. Evident does exactly this:
 
-This "inputs are ready" trigger is an event model: an event is "a unit of
-external input has arrived." Each event triggers one solve. The solve produces
-outputs (written to sinks) and new state (carried to the next step). Then the
-runtime waits for the next event.
+- Transitions carry constraint predicates (`x > 5`, `s ∈ /[a-z]+/`, `n = 1`)
+- The oracle that decides predicate satisfiability is Z3
+- Composing schemas via `∧` is automaton intersection
 
-The event model is more general than the stream model. A stream is a special
-case where events arrive continuously from a single source. A program could also
-respond to multiple sources — a byte from stdin AND a timer — where the solve
-fires when any source has new data, or when all sources have new data, depending
-on configuration.
+The architecture of symbolic automata matches what Evident already does. The
+runtime is already a symbolic automaton executor — it just hasn't been named
+as such.
 
 ---
 
-## Carried State
+## Ports
 
-After each solve, some output variables persist as given for the *next* solve.
-These are *carried variables* — the memory of the system between steps.
+A port is a named, directed endpoint for data flow. Ports are the mechanism
+by which an Evident constraint automaton interacts with the world.
 
-The runtime stores carried variables. The programmer declares:
-- Which variables carry forward
-- What their initial values are (before the first solve)
-- Which output variable "replaces" which input variable (e.g. `n_next` replaces
-  `n`)
+**Input ports** deliver data *into* the automaton before a transition fires.
+**Output ports** receive data *from* the automaton after a transition fires.
 
-Carried variables are the only persistent state in an Evident program. The
-runtime allocates and manages their memory. The programmer never writes
-allocation, deallocation, or mutation — carried state is just "the output of
-this solve becomes the input of the next."
+Concrete ports:
 
-For `nl`:
-```
-Carried:  n (Nat, init 1), partial (String, init "")
-Source:   char (from stdin, one byte per step)
-Sink:     out (to stdout, only when out ≠ "")
-```
+| Port | Direction | Data |
+|---|---|---|
+| `stdin` | input | bytes or structured data from standard input |
+| `stdout` | output | bytes or structured data to standard output |
+| `file(path)` | input or output | data from/to a file |
+| `socket(addr)` | bidirectional | data over a network connection |
+| A sibling schema | bidirectional | shared port between composed automata |
 
-The schema body is purely the transition function:
-- If `char = "\n"`: emit `int_to_str n ++ "\t" ++ partial`, reset `partial`,
-  increment `n`
-- Otherwise: append `char` to `partial`, leave `n` unchanged
-
-No `fread`, no `printf`, no `n++`. The runtime handles all of that based on
-the context configuration.
+A port is not a set. `stdin` is a specific, ordered, stateful data source with
+a position and an eventual EOF signal. The constraint automaton never sees the
+port directly — it only sees the data value the runtime delivers through it.
 
 ---
 
-## The Runtime as a Universal Executor
+## States and Transitions
 
-The runtime for I/O programs is not specific to any application. It is a
-generic state machine executor:
+An Evident constraint automaton's **state** is its set of variable bindings
+that persist between transitions — what was previously called "carried
+variables." The runtime holds the state and provides it as `given` for each
+solve.
+
+A **transition** fires when:
+1. All input ports in the synchronization set have data ready
+2. The constraint schema is satisfiable with (state bindings) ∪ (port data) as
+   given
+3. The solver produces a model — new values for the state variables and output
+   port variables
+
+After a transition:
+- New state variable values replace the old ones (state advance)
+- Output port variable values are written to their ports
+- The automaton waits for the next input
+
+For the `nl` program, the constraint automaton is:
 
 ```
-loop:
-    1. Read from each source context → populate source variables
-    2. Merge with carried variables → build this step's given
-    3. Solve the schema with given
-    4. Extract model values
-    5. Write sink variables to their sink contexts
-    6. Store carried variables for next step
-    7. If EOF or terminal condition: stop. Otherwise: goto 1.
+State:        n : Nat = 1, partial : String = ""
+Input ports:  char : Char   (from stdin)
+Output ports: out  : String (to stdout, when non-empty)
+
+Transition constraint (schema body):
+  char = "\n" ⇒ out = int_to_str n ++ "\t" ++ partial
+  char = "\n" ⇒ partial_next = ""
+  char = "\n" ⇒ n_next = n + 1
+  char ≠ "\n" ⇒ out = ""
+  char ≠ "\n" ⇒ partial_next = partial ++ char
+  char ≠ "\n" ⇒ n_next = n
 ```
 
-This loop is the same for `nl`, for `grep`, for any streaming Evident program.
-The only things that vary are: which schema, which contexts, which variables are
-carried, and the initial state. These are configuration, not computation.
-
-The programmer writes only the schema. The runtime drives execution. This is
-a complete separation of *what* from *how*.
+The automaton has one state (the current n and partial values) and one
+transition that fires once per character from stdin. The runtime manages
+the state; the schema body is the transition constraint.
 
 ---
 
-## EOF and Termination
+## The Runtime as Constraint Automaton Executor
 
-EOF is a special event — the source context signals that no more data is coming.
-The runtime needs to handle it. Options:
+The runtime executes the standard constraint automaton step cycle:
 
-**Ignore and stop:** when EOF arrives, stop the loop. Simple, but misses the
-"flush" case — a partial line in `nl` that has no trailing newline.
+```
+Initialize: q₀ ← initial state (variable bindings at declared initial values)
 
-**Terminal solve:** when EOF arrives, trigger one final solve with a special
-`eof = true` variable set. The schema can have a clause that fires on EOF to
-handle remaining state (flush the partial buffer, emit a final record, etc.).
+Loop:
+  1. Wait for all input ports to be ready (synchronization)
+  2. Deliver port data + current state bindings to the solver as given
+  3. Solve the transition constraint (the schema body)
+  4. If UNSAT: transition is not enabled; report error or try alternatives
+  5. Extract model values
+  6. Write output port variables to their ports
+  7. Advance state: new state variable values replace old ones
+  8. If terminal condition (EOF, accepting state): stop
+  9. Otherwise: goto 1
+```
 
-**EOF as a value:** `eof ∈ Bool` is a source variable that is `false` for every
-normal step and `true` for the final step. The schema handles both cases as
-regular constraint clauses.
+This loop is generic — it executes any Evident constraint automaton. The
+only things that vary per program are the schema, the port declarations, the
+initial state, and the terminal condition.
 
-The terminal solve approach is cleanest — it doesn't require the runtime to
-know anything special about "flushing," and it lets the schema handle its own
-termination logic as a regular constraint.
+---
+
+## Composition
+
+Multiple schemas compose via **product construction** at shared ports.
+
+Given two constraint automata A₁ and A₂:
+- Their product A₁ ▷◁ A₂ has states Q₁ × Q₂
+- Ports are the union N₁ ∪ N₂
+- At shared ports (N₁ ∩ N₂), both automata must synchronize
+- Data constraints are conjoined: D = D₁ ∧ D₂
+
+Evident's existing `..SubSchema` passthrough is product construction where
+the shared ports are the matching variable names. Field access like
+`task.duration` is port sharing — the sub-automaton's output ports are the
+parent's internal variables.
+
+A sibling schema listed as a port is not a "context" — it is a composed
+automaton. The runtime executes the product.
+
+---
+
+## Synchronization and the "When" Question
+
+A transition fires when its synchronization set P is satisfied — when all
+input ports in P have data ready simultaneously.
+
+For a char-at-a-time program: P = {char} (one input port). One char arrives →
+port is ready → transition fires. For a program with two input ports (e.g.
+stdin and a config file): the transition fires when both ports have data.
+
+This is the formal answer to the earlier question "when does a solve happen?"
+A solve happens when the synchronization condition is met. The granularity of
+what constitutes a "ready" input port — one byte, one chunk, one line — is a
+property of the port configuration, not of the schema.
+
+---
+
+## EOF and Terminal States
+
+EOF is the input port's signal that no more data is coming. In constraint
+automaton terms, reaching EOF is reaching a state from which the only port in
+the synchronization set has no more data — no transition is enabled.
+
+Options for handling EOF:
+
+**Terminal state:** the automaton has an explicit state that it transitions to
+on EOF. The schema has a constraint clause matching an `eof = true` port
+variable. Final output (flushing partial buffers, etc.) happens in the
+transition to the terminal state.
+
+**Implicit termination:** when no transition is enabled (EOF, or no satisfying
+assignment), the runtime stops. Clean for simple programs; insufficient for
+programs needing a flush step.
+
+The terminal state approach is more general and matches how automata with
+accepting states work. The `nl` program needs it: a partial line with no
+trailing newline must be flushed when EOF arrives.
 
 ---
 
 ## What Remains to Design
 
-This model is architecturally settled. What hasn't been decided is syntax:
+The formal model is now clear. What remains:
 
-**How does the programmer declare the wiring?**
+**1. Port declaration syntax**
 
-The binding between variables and contexts, the carried variables, the initial
-state, the entry schema — all of this needs to be expressed somewhere. Options:
+How does the programmer declare which variables bind to which ports, what the
+initial state is, and what the terminal condition is? The constraint schemas
+themselves need no new syntax. The port declarations are the open question.
 
-1. A special `schema main` with new wiring declarations in the body
-2. Annotations on regular schemas (`-- @source`, `-- @carry`, etc.)
-3. A separate configuration file or command-line flags
-4. A new top-level block type distinct from `schema`
+Using Evident's existing membership notation: `char ∈ stdin` reads naturally
+as "char is delivered by the stdin port." This reuses the existing `∈` syntax
+and treats ports as named data sources — close to how the formal model works,
+since a port delivers values from some domain.
 
-The constraint schemas themselves need no new syntax. The wiring is configuration
-— the question is where that configuration lives and what it looks like.
+**2. Accepting states / terminal conditions**
 
-The guiding principle from Evident's existing design: if it can look like a
-constraint, make it look like a constraint. `char ∈ Stdin` reads naturally
-as "char comes from Stdin" — using the existing membership notation — even
-though Stdin is a context, not a set. This reuse reduces the number of new
-concepts the programmer needs to learn.
+Classical automata have explicit accepting states F ⊆ Q. For streaming
+programs, the terminal condition is usually EOF. But some programs terminate
+on a constraint (e.g. "stop when n = 100"). Accepting state declarations
+need syntax.
+
+**3. Multi-port synchronization**
+
+When a transition synchronizes on more than one input port, the runtime must
+wait for all of them. How is the synchronization set P declared? Is it
+implicit (all declared input ports) or explicit (named in the schema)?
+
+**4. Symbolic automata and the two-level execution model**
+
+The symbolic automata research suggests compiling schemas to automaton
+structure once, then querying Z3 per transition (rather than rebuilding the
+constraint system each step). This is a runtime optimization that follows
+from the formal model.
