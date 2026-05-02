@@ -40,14 +40,14 @@ The grammar is the single source of truth for syntax. The normalizer runs first
 to make the grammar purely ASCII.
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph Parser ["parser/src/"]
-        N["normalizer.py\n────────────────\n∈ → __IN__\n⇒ → __IMPLIES__\n⟨ → __LSEQ__\n⊑ → __PREFIX__\n/regex/ → string literal\n(runs before Lark)"]
-        G["grammar.lark\n────────────────\nLark Earley grammar\n317 lines\nschemas, constraints,\nexpressions, patterns"]
+        N["normalizer.py\n────────────────\nUnicode → ASCII tokens\n∈ → __IN__\n⇒ → __IMPLIES__\n/regex/ → string literal\nRuns before Lark"]
+        G["grammar.lark\n────────────────\nLark Earley grammar\n317 lines\nschemas, constraints\nexpressions, patterns"]
         T["transformer.py\n────────────────\nLark Tree → AST\n100+ visitor methods\nchained comparisons\nregex detection"]
-        A["ast.py\n────────────────\nProgram, SchemaDecl\nMembershipConstraint\nArithmeticConstraint\nLogicConstraint\nUniversalConstraint\nExistentialConstraint\nBinaryExpr, SetLiteral\nSeqLiteral, RegexLiteral\n(40+ dataclass nodes)"]
-        I["indenter.py\n────────────────\nIndentation-sensitive\nparsing (INDENT/DEDENT)"]
-        P["parser.py\n────────────────\nOrchestrates the above\nnormalize → lark.parse\n→ transform"]
+        A["ast.py\n────────────────\nProgram, SchemaDecl\nMembershipConstraint\nLogicConstraint\nUniversalConstraint\nBinaryExpr, SetLiteral\nSeqLiteral, RegexLiteral\n40+ dataclass nodes"]
+        I["indenter.py\n────────────────\nIndentation-sensitive\nparsing INDENT/DEDENT"]
+        P["parser.py\n────────────────\nOrchestrates the above\nnormalize → parse\n→ transform"]
     end
 
     N --> G --> T --> A
@@ -63,7 +63,7 @@ Eight modules form an ordered pipeline. Each stage transforms its input and
 passes a richer structure to the next.
 
 ```mermaid
-flowchart TD
+flowchart LR
     AST["AST (from parser)"]
 
     subgraph Runtime ["runtime/src/"]
@@ -98,7 +98,7 @@ The IDE is a single-page app backed by a FastAPI server. Z3 operations that coul
 crash the server process (sampling, range-finding) run in an isolated subprocess.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Browser ["Browser (ide/frontend/)"]
         ME["Monaco Editor\neditor.js\n────────────────\nAuto-substitution:\n'in' → ∈, '>>' → ⟩\nLive parse (500ms debounce)\nError decorations"]
         EL["evident-lang.js\nMonarch tokenizer\nSyntax highlighting\nDark theme"]
@@ -148,48 +148,48 @@ mindmap
       Real
       Bool
       String
-      Enum[type Color = Red : Green : Blue]
-      Seq[Seq⟨T⟩]
+      Enum["type Color = Red | Green | Blue"]
+      Seq["Seq(T)"]
     Schemas
-      schema[schema Name]
-      claim[claim Name]
-      params[params x ∈ Nat, y ∈ Nat]
-      passthrough[..SubSchema]
-      rename[..Sub ⟨x ↦ y⟩]
+      schema["schema Name"]
+      claim["claim Name"]
+      params["x, y ∈ Nat as params"]
+      passthrough["..SubSchema"]
+      rename["..Sub with slot renames"]
     Constraints
       Membership
-        in[x ∈ S]
-        not_in[x ∉ S]
-        contains[s ∋ t]
-        subset[S ⊆ T]
-        regex[s ∈ /pattern/]
+        in["x ∈ S"]
+        not_in["x ∉ S"]
+        contains["s ∋ t"]
+        subset["S ⊆ T"]
+        regex["s ∈ /pattern/"]
       Arithmetic
-        eq[x = y]
-        compare[x < y ≤ z]
-        chained[0 < x < 100]
+        eq["x = y"]
+        compare["x < y ≤ z"]
+        chained["0 < x < 100"]
       String
-        prefix[s ⊑ t]
-        suffix[s ⊒ t]
-        concat[s ++ t]
-        length[#s]
-        int_to_str[int_to_str n]
+        prefix["s ⊑ prefix"]
+        suffix["s ⊒ suffix"]
+        concat["s ++ t"]
+        length["#s"]
+        int_to_str["int_to_str n"]
       Logic
-        and[P ∧ Q]
-        or[P ∨ Q]
-        implies[P ⇒ Q]
-        not[¬P]
+        and["P ∧ Q"]
+        or["P ∨ Q"]
+        implies["P ⇒ Q"]
+        not["¬P"]
       Quantifiers
-        forall[∀ x ∈ S : P]
-        exists[∃ x ∈ S : P]
-        unique[∃! x ∈ S : P]
-        none[¬∃ x ∈ S : P]
+        forall["∀ x ∈ S . P"]
+        exists["∃ x ∈ S . P"]
+        unique["∃! x ∈ S . P"]
+        none["¬∃ x ∈ S . P"]
     Expressions
-      Set[{1, 2, 3}]
-      Range[{1..100}]
-      Seq[⟨a, b, c⟩]
-      Tuple[⟨a, b⟩]
-      Comprehension[{x ∈ S : P}]
-      FieldAccess[task.duration]
+      Set["{1, 2, 3}"]
+      Range["{1..100}"]
+      SeqLit["sequence literal"]
+      Tuple["tuple literal"]
+      Comprehension["set comprehension"]
+      FieldAccess["task.duration"]
 ```
 
 ---
