@@ -80,16 +80,20 @@ schema MultiRel
 """
 
 HOMOGENEOUS_GRAPH = """
-assert graph_edges = {
-    (1, 2), (1, 3),
-    (2, 4), (3, 4),
-    (4, 5)
+type Stage = Design | Code | Test | Review | Deploy
+
+assert pipeline = {
+    (Design, Code),
+    (Code,   Test),
+    (Code,   Review),
+    (Test,   Deploy),
+    (Review, Deploy)
 }
 
-schema GraphEdge
-    src ∈ Nat
-    dst ∈ Nat
-    (src, dst) ∈ graph_edges
+schema PipelineEdge
+    from_stage ∈ Stage
+    to_stage   ∈ Stage
+    (from_stage, to_stage) ∈ pipeline
 """
 
 SYMMETRIC_REL = """
@@ -183,36 +187,41 @@ class TestMultiRel:
 
 class TestHomogeneousGraph:
     def setup_method(self):
-        self.samples = _collect(HOMOGENEOUS_GRAPH, 'GraphEdge', n=30)
-        self.edge_map = _edges(self.samples, 'src', 'dst')
+        self.samples = _collect(HOMOGENEOUS_GRAPH, 'PipelineEdge', n=30)
+        self.edge_map = _edges(self.samples, 'from_stage', 'to_stage')
 
     def test_produces_samples(self):
         assert len(self.samples) >= 5
 
     def test_all_expected_edges(self):
-        expected = {('1','2'),('1','3'),('2','4'),('3','4'),('4','5')}
+        expected = {
+            ('Design','Code'), ('Code','Test'), ('Code','Review'),
+            ('Test','Deploy'), ('Review','Deploy'),
+        }
         assert set(self.edge_map.keys()) == expected
 
     def test_node_pool(self):
-        """All nodes should come from the same pool {1,2,3,4,5}."""
-        nodes = _nodes(self.edge_map)
-        assert nodes == {'1', '2', '3', '4', '5'}
+        """All nodes should come from the Stage enum."""
+        stages = {'Design', 'Code', 'Test', 'Review', 'Deploy'}
+        assert _nodes(self.edge_map) <= stages
 
     def test_homogeneous(self):
-        """src and dst values should come from the same set."""
+        """from_stage and to_stage values come from the same Stage enum."""
         srcs = {src for (src, _) in self.edge_map}
         dsts = {dst for (_, dst) in self.edge_map}
-        all_nodes = srcs | dsts
-        assert srcs <= all_nodes and dsts <= all_nodes
+        stages = {'Design', 'Code', 'Test', 'Review', 'Deploy'}
+        assert srcs <= stages and dsts <= stages
 
     def test_no_self_loops(self):
         for (src, dst) in self.edge_map:
-            assert src != dst, f"Unexpected self-loop ({src},{src})"
+            assert src != dst, f"Unexpected self-loop ({src}→{src})"
 
     def test_dag_structure(self):
-        """This specific graph is a DAG — all edges go from lower to higher ID."""
+        """No cycles — topological order: Design→Code→{Test,Review}→Deploy."""
+        order = ['Design', 'Code', 'Test', 'Review', 'Deploy']
+        idx = {s: i for i, s in enumerate(order)}
         for (src, dst) in self.edge_map:
-            assert int(src) < int(dst), f"Edge ({src},{dst}) goes backward in this DAG"
+            assert idx[src] < idx[dst], f"Edge {src}→{dst} goes backward in the pipeline"
 
 
 # ---------------------------------------------------------------------------

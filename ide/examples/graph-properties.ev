@@ -1,30 +1,34 @@
--- Graph edges as a named set, queried by different schemas.
--- Nodes are Nat, edges are (from, to) pairs.
--- Use @plot type=graph for a force-directed network diagram,
--- or @plot type=relation for a bipartite arrow diagram.
+-- Graph relations using enum node types.
+-- A CI/CD pipeline modelled as a directed graph of stages.
+-- @plot type=graph renders a force-directed network diagram.
+-- @plot type=relation renders a bipartite arrow diagram.
 
-assert edges = {
-    (1, 2), (1, 3),
-    (2, 4), (3, 4),
-    (4, 5)
+type Stage = Design | Code | Test | Review | Deploy
+
+assert pipeline = {
+    (Design, Code),
+    (Code,   Test),
+    (Code,   Review),
+    (Test,   Deploy),
+    (Review, Deploy)
 }
 
-schema Edge
-    -- @plot type=graph x=src y=dst title="Directed graph"
-    src ∈ Nat
-    dst ∈ Nat
-    (src, dst) ∈ edges
+schema PipelineEdge
+    -- @plot type=graph x=from_stage y=to_stage title="CI/CD pipeline"
+    from_stage ∈ Stage
+    to_stage   ∈ Stage
+    (from_stage, to_stage) ∈ pipeline
 
-schema HasSuccessor
-    -- @plot type=relation x=node y=next title="Node → successor"
-    node ∈ Nat
-    next ∈ Nat
-    (node, next) ∈ edges
+schema NextStep
+    -- @plot type=relation x=current y=next title="Stage → next stage"
+    current ∈ Stage
+    next    ∈ Stage
+    (current, next) ∈ pipeline
 
-schema InternalNode
-    -- @plot type=graph x=prev y=next title="Paths through internal nodes"
-    node ∈ Nat
-    prev ∈ Nat
-    next ∈ Nat
-    (prev, node) ∈ edges
-    (node, next) ∈ edges
+schema Intermediate
+    -- @plot type=graph x=before y=after title="Two-step paths through pipeline"
+    stage  ∈ Stage
+    before ∈ Stage
+    after  ∈ Stage
+    (before, stage) ∈ pipeline
+    (stage,  after) ∈ pipeline
