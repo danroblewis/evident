@@ -102,6 +102,90 @@ claim's fields and constraints directly into the current scope without a dotted
 prefix.  Think of it as trait composition.  The included declaration is still a
 `type` or `claim`; `..` is the composition mechanism.
 
+## Composing Types and Claims
+
+### Using a type inside a claim: `variable ∈ TypeName`
+
+Declares a variable of that type.  All of the type's fields become accessible
+as `variable.field`, and the type's invariants are automatically enforced.
+Use this when a claim needs to reason about a structured object.
+
+```evident
+claim assignment_fits_schedule
+    a        ∈ Assignment      -- a is an Assignment; a.room, a.slot available
+    schedule ∈ Set Assignment
+    ∀ b ∈ schedule : a.room = b.room ⇒ a.slot ≠ b.slot
+```
+
+### Using a claim inside a type: baking a property in
+
+When every instance of a type should satisfy a property, put the claim's
+name directly in the type body.  The names-match rule identifies variables
+automatically.
+
+```evident
+type ValidSchedule
+    slots   ∈ Seq(TimeSlot)
+    budget  ∈ Nat
+    no_conflicts     -- claim; 'slots' matches by name
+    within_budget    -- claim; 'budget' matches by name
+```
+
+This creates a **refined type** — a subset of all schedules that satisfy
+those additional properties.  Use it when the constraint should always hold
+for any valid instance, with no external data needed.
+
+### Passthrough `..`: flat mixin, no prefix
+
+`..SomeType` or `..SomeClaim` brings all fields into the current scope
+without a dotted prefix.  The included constraints also apply.
+
+```evident
+type main
+    ..LineReader    -- adds line, line_ready, src.* directly into scope
+    ..LineWriter    -- adds line_out, dst.* directly into scope
+    state ∈ GameState
+```
+
+Use passthrough when the fields of the included type/claim ARE fields of
+the current type — not a sub-object you reference by name.  `..LineReader`
+makes `line` available directly; `reader ∈ LineReader` would make it
+`reader.line`.
+
+### Names-match composition: zero-argument claims
+
+When variable names in scope match a claim's variable names, just name the
+claim — no explicit argument passing needed.  The solver identifies them.
+
+```evident
+claim valid_conference
+    schedule     ∈ Set Assignment
+    rooms        ∈ Set Room
+    max_parallel ∈ Nat
+
+    rooms_conflict_free    -- 'schedule' flows automatically by name
+    parallel_load_within   -- 'schedule', 'max_parallel' flow by name
+```
+
+### Renaming with `↦`: when names differ
+
+```evident
+claim manage_event
+    assignments ∈ Set Assignment
+    Conference.valid (schedule ↦ assignments)  -- rename to match
+```
+
+### Decision guide
+
+| Situation | Pattern |
+|---|---|
+| A claim needs one structured object | `variable ∈ TypeName` in the claim |
+| A type should always satisfy a property | name the claim in the type body |
+| Fields should live flat in scope (no prefix) | `..TypeName` or `..ClaimName` |
+| Reusing a claim whose variable names match | name it directly (names-match) |
+| Reusing a claim with different variable names | name it with `(x ↦ y)` |
+| A subset of a type with extra invariants | define a new `type` that names the original type and adds constraints |
+
 ## Key Invariants
 
 **Parser**
