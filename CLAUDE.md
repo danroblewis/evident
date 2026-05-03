@@ -51,12 +51,12 @@ Supporting modules:
 
 All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes
 (`SchemaDecl`) and are interchangeable at the runtime level.  The distinction is
-purely a reading contract:
+a reading contract described in `docs/design/what-we-learned.md`:
 
-**`type`** — Use for any named structure with fields and built-in validation.
-If you would call it a class, struct, record, or interface in another language,
-it is a `type`.  The constraints inside it are invariants that hold for any
-valid instance.
+**`type`** — Use for things that define the structure of a single record value.
+A type is a noun: something you instantiate and hold.  The constraints inside it
+are simple local invariants on its own fields — always true for any valid instance,
+no external dependencies.
 
 ```evident
 type GameState
@@ -64,51 +64,43 @@ type GameState
     inventory ∈ Seq(Item)
     turn      ∈ Nat
 
-type ParsedCommand
-    raw      ∈ String
-    verb     ∈ Verb
-    verb_str ∈ String
-    argument ∈ String
-    (raw = verb_str ++ " " ++ argument) ∨ (raw = verb_str ∧ argument = "")
-    (verb_str, verb) ∈ verb_words
-
-type GameTransition
-    state      ∈ GameState
-    state_next ∈ GameState
-    cmd        ∈ String
-    response   ∈ String
-    -- ... transition logic
+type DateRange
+    start ∈ Date
+    end   ∈ Date
+    start ≤ end        -- local invariant on DateRange's own fields
 ```
 
-**`claim`** — Use for assertions you want proven SAT or UNSAT.  Belongs in
-test files and property checks.  A claim is a question about the world, not a
-description of a shape.
+**`claim`** — Use for relations across multiple values, traits, properties, and
+constraint modules.  A claim is a predicate: something that holds or doesn't hold
+for a given set of values.  Claims are used both in test files (as assertions to
+verify) and as constraint modules that can be mixed into other claims or types.
+The test-file convention `sat_*` / `unsat_*` is just one application.
 
 ```evident
+-- Trait / constraint module: a reusable property
+claim assignment_fits_schedule
+    a        ∈ Assignment
+    schedule ∈ Set Assignment
+    ∀ b ∈ schedule : a.room = b.room ⇒ a.slot ≠ b.slot
+
+-- Test assertion
 claim sat_north_exit_exists
     ("entrance", "north", "forest") ∈ exits_map
-
-claim unsat_item_in_two_places
-    item  ∈ Item
-    room1 ∈ String
-    room2 ∈ String
-    (item, room1) ∈ initial_item_locations
-    (item, room2) ∈ initial_item_locations
-    room1 ≠ room2
 ```
 
-**`schema`** — **Never use.** It carries no meaning beyond `type` but implies
-"this is just a schema" rather than "this is a first-class thing with a shape."
-Every use of `schema` should be replaced by `type` (for structures) or `claim`
-(for assertions).  The word `schema` does not appear in any Evident source file
-written by humans.
+The practical line: if the constraints are purely local to the type's own fields
+→ `type`.  If they involve external data, multiple objects, or complex logic that
+varies by context → `claim`.
 
-**`..TypeName` (passthrough / trait composition)** — When a type includes
-`..LineReader` or `..GameTransition`, it is inheriting or mixing in that type's
-fields and constraints directly into its own scope.  Think of it as trait
-composition or multiple inheritance.  The included type is still a `type`;
-the `..` syntax just brings its fields into the current namespace without
-dotted prefix.
+**`schema`** — Avoid.  It is a synonym for `type` with no additional meaning.
+Prefer `type` when the thing is a noun (has a shape); prefer `claim` when it is a
+predicate (defines a relation or property).  The word `schema` does not appear in
+human-written Evident source files.
+
+**`..TypeName` (passthrough / trait composition)** — Brings another type's or
+claim's fields and constraints directly into the current scope without a dotted
+prefix.  Think of it as trait composition.  The included declaration is still a
+`type` or `claim`; `..` is the composition mechanism.
 
 ## Key Invariants
 
