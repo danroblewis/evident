@@ -201,10 +201,22 @@ def instantiate_schema(
                         mapping.value.name
                         if isinstance(mapping.value, Identifier) else None
                     )
-                    if parent_name:
-                        parent_var = env.lookup(parent_name)
-                        if parent_var is not None:
-                            given_for_sub = given_for_sub.bind(mapping.slot, parent_var)
+                    if not parent_name:
+                        continue
+                    # Leaf variable: bind directly
+                    parent_var = env.lookup(parent_name)
+                    if parent_var is not None:
+                        given_for_sub = given_for_sub.bind(mapping.slot, parent_var)
+                    else:
+                        # Sub-schema: map all parent_name.* entries to slot.*
+                        # e.g. next mapsto state_next binds next.location → state_next.location's Z3 var
+                        prefix_str = parent_name + '.'
+                        for env_name, env_var in env.bindings.items():
+                            if env_name.startswith(prefix_str):
+                                field = env_name[len(prefix_str):]
+                                given_for_sub = given_for_sub.bind(
+                                    mapping.slot + '.' + field, env_var
+                                )
                 # Passing the (possibly augmented) env as `given` means shared
                 # names unify automatically (names-match relational join).
                 sub_env, sub_type_constraints = instantiate_schema(

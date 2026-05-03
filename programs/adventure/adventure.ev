@@ -123,13 +123,12 @@ schema GameTransition
 
 -- ── Main program ─────────────────────────────────────────────────────────────
 --
--- Inline transition logic mirrors GameTransition above.
--- When the runtime supports sub-schema constraint inlining, this can become:
---   t ∈ GameTransition
---   t.state.location = state.location
---   t.cmd = line
---   line_out = t.response
---   state_next.location = t.next.location
+-- The intended form is:
+--   ..GameTransition(cmd mapsto line, response mapsto line_out, next mapsto state_next)
+-- This requires GameTransition to use `state_next` instead of `next` so that
+-- names-match unification handles the state variable. The passthrough mapping
+-- for sub-schemas (next mapsto state_next) is now supported in the runtime.
+-- Refactor pending.
 
 schema main
     ..LineReader
