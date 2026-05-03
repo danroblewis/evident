@@ -10,14 +10,14 @@ import "programs/adventure/commands.ev"
 
 -- ── Game state ────────────────────────────────────────────────────────────────
 
-schema GameState
+type GameState
     location  ∈ String
     inventory ∈ Seq(Item)
     turn      ∈ Nat
 
 -- ── ParsedCommand: separately testable parsing schema ─────────────────────────
 
-schema ParsedCommand
+type ParsedCommand
     raw      ∈ String
     verb     ∈ Verb
     verb_str ∈ String
@@ -32,7 +32,7 @@ schema ParsedCommand
 -- dest is uniquely pinned by a positive constraint. Free variables in
 -- implies antecedents let Z3 pick dest="" non-deterministically.
 
-schema GameTransition
+type GameTransition
     state      ∈ GameState
     state_next ∈ GameState
     cmd        ∈ String
@@ -177,7 +177,7 @@ schema GameTransition
 
 -- ── Main program ──────────────────────────────────────────────────────────────
 
-schema main
+type main
     ..LineReader
     ..LineWriter
     state      ∈ GameState

@@ -9,10 +9,10 @@
 
 import "stdlib/io.ev"
 
-schema LineState
+type LineState
     partial ∈ String
 
-schema LineReader
+type LineReader
     src        ∈ Stdin
     state      ∈ LineState
     state_next ∈ LineState

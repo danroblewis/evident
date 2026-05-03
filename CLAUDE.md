@@ -47,6 +47,69 @@ Supporting modules:
 - `ast_types.py` — re-exports parser AST so runtime shares the same class objects
   (critical: isinstance checks break if two separate module instances exist)
 
+## Keyword Conventions
+
+All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes
+(`SchemaDecl`) and are interchangeable at the runtime level.  The distinction is
+purely a reading contract:
+
+**`type`** — Use for any named structure with fields and built-in validation.
+If you would call it a class, struct, record, or interface in another language,
+it is a `type`.  The constraints inside it are invariants that hold for any
+valid instance.
+
+```evident
+type GameState
+    location  ∈ String
+    inventory ∈ Seq(Item)
+    turn      ∈ Nat
+
+type ParsedCommand
+    raw      ∈ String
+    verb     ∈ Verb
+    verb_str ∈ String
+    argument ∈ String
+    (raw = verb_str ++ " " ++ argument) ∨ (raw = verb_str ∧ argument = "")
+    (verb_str, verb) ∈ verb_words
+
+type GameTransition
+    state      ∈ GameState
+    state_next ∈ GameState
+    cmd        ∈ String
+    response   ∈ String
+    -- ... transition logic
+```
+
+**`claim`** — Use for assertions you want proven SAT or UNSAT.  Belongs in
+test files and property checks.  A claim is a question about the world, not a
+description of a shape.
+
+```evident
+claim sat_north_exit_exists
+    ("entrance", "north", "forest") ∈ exits_map
+
+claim unsat_item_in_two_places
+    item  ∈ Item
+    room1 ∈ String
+    room2 ∈ String
+    (item, room1) ∈ initial_item_locations
+    (item, room2) ∈ initial_item_locations
+    room1 ≠ room2
+```
+
+**`schema`** — **Never use.** It carries no meaning beyond `type` but implies
+"this is just a schema" rather than "this is a first-class thing with a shape."
+Every use of `schema` should be replaced by `type` (for structures) or `claim`
+(for assertions).  The word `schema` does not appear in any Evident source file
+written by humans.
+
+**`..TypeName` (passthrough / trait composition)** — When a type includes
+`..LineReader` or `..GameTransition`, it is inheriting or mixing in that type's
+fields and constraints directly into its own scope.  Think of it as trait
+composition or multiple inheritance.  The included type is still a `type`;
+the `..` syntax just brings its fields into the current namespace without
+dotted prefix.
+
 ## Key Invariants
 
 **Parser**

@@ -10,7 +10,7 @@
 
 import "stdlib/io.ev"
 
-schema LineWriter
+type LineWriter
     dst      ∈ Stdout
     line_out ∈ String
 

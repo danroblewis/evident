@@ -13,14 +13,14 @@ type TerminalMode    = Canonical | Raw | CBreak
 -- ── Base traits ───────────────────────────────────────────────────────────────
 
 -- Every Unix I/O resource is a file descriptor.
-schema Descriptor
+type Descriptor
     fd       ∈ Nat
     open     ∈ Bool
     blocking ∈ Bool
     fd ≤ 1024
 
 -- Anything you can read bytes from.
-schema Readable
+type Readable
     ..Descriptor
     available ∈ Nat
     eof       ∈ Bool
@@ -28,13 +28,13 @@ schema Readable
     open = false ⇒ eof = true
 
 -- Anything you can write bytes to.
-schema Writable
+type Writable
     ..Descriptor
     send_buffer ∈ Nat
     open = false ⇒ send_buffer = 0
 
 -- Anything with a seekable position (regular files only).
-schema Seekable
+type Seekable
     ..Readable
     position ∈ Nat
     size     ∈ Nat
@@ -44,7 +44,7 @@ schema Seekable
     available = size - position
 
 -- User-space buffering layer (libc FILE* style).
-schema Buffered
+type Buffered
     ..Descriptor
     buffer_size ∈ Nat
     buffered    ∈ Nat
@@ -53,7 +53,7 @@ schema Buffered
     flushed = true ⇒ buffered = 0
 
 -- Resources with explicit connection state.
-schema Connectable
+type Connectable
     ..Descriptor
     connection ∈ ConnectionState
     connection = Closed    ⇒ open = false
@@ -63,7 +63,7 @@ schema Connectable
 -- ── Composite traits ──────────────────────────────────────────────────────────
 
 -- A bidirectional, connectable stream (Unix and network sockets).
-schema SocketBase
+type SocketBase
     ..Readable
     ..Writable
     ..Connectable
@@ -74,36 +74,36 @@ schema SocketBase
 -- ── Character streaming traits ────────────────────────────────────────────────
 -- Convenience traits for automata that process one character at a time.
 
-schema CharInput
+type CharInput
     ..Readable
     char ∈ String
     eof = false ⇒ #char = 1
     eof = true  ⇒ #char = 0
 
-schema CharOutput
+type CharOutput
     ..Writable
     out ∈ String
 
 -- ── Concrete I/O types ────────────────────────────────────────────────────────
 
-schema Stdin
+type Stdin
     ..CharInput
     fd = 0
     blocking = true
 
-schema Stdout
+type Stdout
     ..CharOutput
     ..Buffered
     fd = 1
     open = true
 
-schema Stderr
+type Stderr
     ..CharOutput
     fd = 2
     buffer_size = 0
     open = true
 
-schema RegularFile
+type RegularFile
     ..Seekable
     ..Writable
     ..Buffered
@@ -112,21 +112,21 @@ schema RegularFile
     path ⊑ "/"
     mode = ReadOnly ⇒ send_buffer = 0
 
-schema Pipe
+type Pipe
     write_closed ∈ Bool
     write_closed = true ⇒ available = 0
 
-schema UnixSocket
+type UnixSocket
     ..SocketBase
     path ∈ String
 
-schema TcpSocket
+type TcpSocket
     ..SocketBase
     remote_addr ∈ String
     local_port  ∈ Nat
     1 ≤ local_port ≤ 65535
 
-schema Terminal
+type Terminal
     ..Readable
     ..Writable
     mode ∈ TerminalMode
@@ -139,25 +139,25 @@ schema Terminal
 
 -- Reads all of stdin split into lines (stripping the trailing newline from each).
 -- Use when the program needs the full input as a sequence before it can solve.
-schema StdinLines
+type StdinLines
     lines ∈ Seq(String)
 
 -- Reads all of stdin as a single string, newlines preserved.
 -- Use when the program processes raw byte content.
-schema StdinAll
+type StdinAll
     content ∈ String
 
 -- Reads stdin in fixed-size byte chunks.
 -- chunk_size is provided as a constraint in the schema body.
-schema StdinChunks
+type StdinChunks
     chunk_size ∈ Nat
     chunks     ∈ Seq(String)
     chunk_size ≥ 1
 
 -- Writes a sequence of strings to stdout, one per line.
-schema StdoutLines
+type StdoutLines
     lines ∈ Seq(String)
 
 -- Writes a single string to stdout verbatim.
-schema StdoutAll
+type StdoutAll
     content ∈ String
