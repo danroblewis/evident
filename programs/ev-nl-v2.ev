@@ -1,7 +1,6 @@
 import "stdlib/line-reader.ev"
 
 -- ev-nl: number each line of stdin.
--- Uses LineReader from stdlib; this schema only handles line numbering.
 
 schema NlState
     n ∈ Nat
@@ -15,10 +14,10 @@ schema main
 
     line_num = nl_state.n + 1
 
-    (line_ready = true) ⇒
+    line_ready ⇒
         dst.out         = int_to_str line_num ++ "\t" ++ line ++ "\n"
         nl_state_next.n = nl_state.n + 1
 
-    (line_ready = false) ⇒
+    ¬line_ready ⇒
         dst.out         = ""
         nl_state_next.n = nl_state.n

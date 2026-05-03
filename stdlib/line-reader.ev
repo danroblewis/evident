@@ -6,8 +6,6 @@
 -- without the trailing newline character.
 --
 -- Usage: include in schema main via ..LineReader
---   Brings in: src (Stdin port), state/state_next (LineState),
---              line (String), line_ready (Bool).
 
 import "stdlib/io.ev"
 
@@ -21,27 +19,20 @@ schema LineReader
     line       ∈ String
     line_ready ∈ Bool
 
-    -- Accumulating: normal character, not a newline
-    (src.eof = false ∧ src.char ≠ "\n") ⇒
-        line_ready = false
-        line = ""
-        state_next.partial = state.partial ++ src.char
-
-    -- Complete line: newline received, emit accumulated content
-    (src.eof = false ∧ src.char = "\n") ⇒
-        line_ready = true
-        line = state.partial
-        state_next.partial = ""
-
-    -- End of stream with remaining content: flush as a final line
-    (src.eof = true ∧ state.partial ≠ "") ⇒
-        line_ready = true
-        line = state.partial
-
-    -- End of stream with empty buffer: nothing to emit
-    (src.eof = true ∧ state.partial = "") ⇒
-        line_ready = false
-
-    -- State does not advance after EOF
-    src.eof = true ⇒
+    src.eof ⇒
+        (state.partial ≠ "") ⇒
+            line_ready = true
+            line       = state.partial
+        (state.partial = "") ⇒
+            line_ready = false
         state_next.partial = state.partial
+
+    ¬src.eof ⇒
+        (src.char = "\n") ⇒
+            line_ready = true
+            line       = state.partial
+            state_next.partial = ""
+        (src.char ≠ "\n") ⇒
+            line_ready = false
+            line       = ""
+            state_next.partial = state.partial ++ src.char
