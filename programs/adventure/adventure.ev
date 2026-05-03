@@ -36,15 +36,14 @@ schema GameTransition
             response = desc
             state_next.location = state.location
 
-        -- Pin dir from cmd, then use it in a single movement block.
-        -- (cmd, dir) ∈ movement_commands can't be used as an antecedent directly
-        -- because dir is free — Z3 would pick dir="" to make it vacuously false.
-        (cmd = "go north" ∨ cmd = "n") ⇒ dir = "north"
-        (cmd = "go south" ∨ cmd = "s") ⇒ dir = "south"
-        (cmd = "go east"  ∨ cmd = "e") ⇒ dir = "east"
-        (cmd = "go west"  ∨ cmd = "w") ⇒ dir = "west"
-        (cmd = "go up"    ∨ cmd = "u") ⇒ dir = "up"
-        (cmd = "go down"  ∨ cmd = "d") ⇒ dir = "down"
+        -- Pin dir from cmd.
+        -- "go X" form: string concat extracts X bidirectionally.
+        -- Abbreviations: direction_words lookup pins dir.
+        -- dir must be pinned before use as an antecedent — free vars in
+        -- antecedents let Z3 vacuously satisfy implies by picking dir="".
+        (cmd starts_with "go ") ⇒ cmd = "go " ++ dir
+        (cmd = "n" ∨ cmd = "s" ∨ cmd = "e" ∨ cmd = "w" ∨ cmd = "u" ∨ cmd = "d") ⇒
+            (cmd, dir) ∈ direction_words
 
         (cmd, dir) ∈ movement_commands ⇒
             ((state.location, dir, dest) ∈ exits_map) ⇒
