@@ -1,10 +1,12 @@
+import "stdlib/sequences.ev"
+
 -- Sequences: ordered collections of any type.
 -- ⟨a, b, c⟩  sequence literal  (type << and >> in the editor)
 -- Seq(T)      sequence type
 -- #s          length of s
 -- s[i]        element at index i (zero-based)
 -- x ∈ s       x is an element of s
--- s ++ t      concatenation (already works for strings)
+-- s ++ t      concatenation
 
 -- ── Running log ───────────────────────────────────────────────────────────────
 -- @plot x=miles.0 y=miles.1 title="First vs second day mileage"
@@ -12,8 +14,7 @@
 schema RunningLog
     miles ∈ Seq(Nat)
     #miles = 7
-    ∀ i ∈ {0..6}: miles[i] ≤ 20
-    ∀ i ∈ {0..6}: miles[i] ≥ 0
+    ∀ i ∈ {0..6}: 0 ≤ miles[i] ≤ 20
     miles[0] + miles[6] > 10
 
 -- ── Leaderboard ───────────────────────────────────────────────────────────────
@@ -23,12 +24,8 @@ schema Leaderboard
     scores ∈ Seq(Nat)
     #scores = 5
     ∀ i ∈ {0..4}: scores[i] ≤ 100
-    ∀ i ∈ {0..4}: scores[i] ≥ 0
-    -- strictly decreasing
-    scores[0] > scores[1]
-    scores[1] > scores[2]
-    scores[2] > scores[3]
-    scores[3] > scores[4]
+    -- strictly decreasing: each score beats the next
+    ∀ (higher, lower) ∈ adjacent scores: higher > lower
 
 -- ── Enum sequences ────────────────────────────────────────────────────────────
 -- @plot x=hand.0 y=hand.1 color=hand.0 title="Card hand"
@@ -38,7 +35,6 @@ type Suit = Clubs | Diamonds | Hearts | Spades
 schema CardHand
     hand ∈ Seq(Suit)
     #hand = 5
-    -- must include at least one heart
     Hearts ∈ hand
 
 -- ── Sequence literals ─────────────────────────────────────────────────────────
