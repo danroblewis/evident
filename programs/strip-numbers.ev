@@ -1,0 +1,41 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+import "stdlib/sequences.ev"
+
+-- NumberedDocument: the full constraint model for a numbered document.
+-- Same schema as number-lines.ev — both programs work with the same relation.
+-- Here we use it in the reverse direction: given numbered lines, find contents.
+schema NumberedDocument
+    lines    ∈ Seq(String)   -- numbered: "1\thello", "2\tworld", ...
+    contents ∈ Seq(String)   -- original: "hello", "world", ...
+    n        ∈ Nat
+
+    n = #lines
+    n = #contents
+    n ≥ 1
+
+    ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
+
+-- NumberedLine: the per-line projection of NumberedDocument.
+-- The solver uses this in reverse: given out, it finds n and text.
+schema NumberedLine
+    n    ∈ Nat
+    text ∈ String
+    out  ∈ String
+
+    n ≥ 1
+    out = int_to_str n ++ "\t" ++ text
+
+-- Each step: read a numbered line, recover the original text via NumberedLine.
+-- The solver is given nl.out (the numbered line) and finds nl.text (the content).
+schema main
+    ..LineReader
+    ..LineWriter
+    nl ∈ NumberedLine
+
+    line_ready ⇒
+        nl.out   = line
+        line_out = nl.text
+
+    ¬line_ready ⇒
+        line_out = ""

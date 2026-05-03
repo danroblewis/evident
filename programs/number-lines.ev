@@ -1,0 +1,55 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+import "stdlib/sequences.ev"
+
+-- NumberedDocument: the full constraint model for a numbered document.
+-- Describes the relation between numbered lines, their contents, and the count.
+-- Any two of (lines, contents, n) constrain the third — bidirectional.
+--
+-- The streaming program below satisfies this relation one line at a time.
+-- Each step instantiates NumberedLine, which is the per-element projection
+-- of NumberedDocument.
+schema NumberedDocument
+    lines    ∈ Seq(String)   -- numbered: "1\thello", "2\tworld", ...
+    contents ∈ Seq(String)   -- original: "hello", "world", ...
+    n        ∈ Nat
+
+    n = #lines
+    n = #contents
+    n ≥ 1
+
+    -- Every line contains a tab (the number-tab separator)
+    ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
+
+-- NumberedLine: the per-line projection of NumberedDocument.
+-- Given any two of (n, text, out), the solver finds the third.
+schema NumberedLine
+    n    ∈ Nat
+    text ∈ String
+    out  ∈ String
+
+    n ≥ 1
+    out = int_to_str n ++ "\t" ++ text
+
+-- Counter carries the line number between steps.
+schema Counter
+    n ∈ Nat
+
+-- Each step: read a line, produce a NumberedLine, write to stdout.
+schema main
+    ..LineReader
+    ..LineWriter
+    counter      ∈ Counter
+    counter_next ∈ Counter
+    nl           ∈ NumberedLine
+
+    nl.n    = counter.n + 1
+    nl.text = line
+
+    line_ready ⇒
+        line_out       = nl.out
+        counter_next.n = counter.n + 1
+
+    ¬line_ready ⇒
+        line_out       = ""
+        counter_next.n = counter.n
