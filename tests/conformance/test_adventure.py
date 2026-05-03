@@ -149,3 +149,41 @@ def test_look_after_move_shows_new_room():
     assert entrance_desc != forest_desc, \
         "Description after moving should differ from entrance"
     assert any('forest' in l.lower() for l in forest_desc)
+
+
+# ── Happy path ─────────────────────────────────────────────────────────────────
+
+def test_happy_path():
+    """A player walks through every room and quits. One output line per command."""
+    commands = [
+        'look',      # entrance
+        'go north',  # → forest
+        'go east',   # → tower
+        'go west',   # → forest
+        'go south',  # → entrance
+        'go east',   # → cave
+        'go down',   # → dungeon
+        'look',      # still dungeon
+        'go up',     # → cave
+        'go west',   # → entrance
+        'quit',
+    ]
+    outputs = run(commands)
+
+    assert len(outputs) == len(commands), (
+        f"Expected one output line per command ({len(commands)}), got {len(outputs)}:\n"
+        + '\n'.join(f'  {i}: {l}' for i, l in enumerate(outputs))
+    )
+
+    assert 'entrance' in outputs[0].lower(),  f"look at start: {outputs[0]!r}"
+    assert 'forest'   in outputs[1].lower(),  f"go north:      {outputs[1]!r}"
+    assert 'tower'    in outputs[2].lower(),  f"go east:       {outputs[2]!r}"
+    assert 'forest'   in outputs[3].lower(),  f"go west:       {outputs[3]!r}"
+    assert 'entrance' in outputs[4].lower(),  f"go south:      {outputs[4]!r}"
+    assert 'cave'     in outputs[5].lower(),  f"go east:       {outputs[5]!r}"
+    assert 'dungeon'  in outputs[6].lower(),  f"go down:       {outputs[6]!r}"
+    assert 'dungeon'  in outputs[7].lower(),  f"look in dungeon: {outputs[7]!r}"
+    assert 'cave'     in outputs[8].lower(),  f"go up:         {outputs[8]!r}"
+    assert 'entrance' in outputs[9].lower(),  f"go west:       {outputs[9]!r}"
+    assert any(w in outputs[10].lower() for w in ('goodbye', 'bye')), \
+        f"quit: {outputs[10]!r}"
