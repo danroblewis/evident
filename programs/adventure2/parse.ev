@@ -1,0 +1,27 @@
+-- parse.ev — Command parsing.
+--
+-- ParsedCommand is a `type`: a structural record whose constraints hold
+-- between its own fields (raw decomposes into verb_str + argument; verb_str
+-- maps to verb). It consults verb_words, which is a constant asserted set —
+-- acceptable in a type because it has no external variable dependencies.
+--
+-- Usage via passthrough:
+--   ..ParsedCommand (raw mapsto line)
+-- brings verb, verb_str, argument into scope with `line` as the raw string.
+
+import "programs/adventure2/commands.ev"
+
+type ParsedCommand
+    raw      ∈ String
+    verb     ∈ Verb
+    verb_str ∈ String
+    argument ∈ String
+
+    -- Bidirectional: "go north" → verb_str="go", argument="north"
+    --                "look"     → verb_str="look", argument=""
+    (raw = verb_str ++ " " ++ argument) ∨ (raw = verb_str ∧ argument = "")
+
+    -- verb is uniquely determined by verb_str through the word map.
+    -- No Unknown fallback: unrecognised verb_str makes this UNSAT,
+    -- which the executor treats as a silent no-op.
+    (verb_str, verb) ∈ verb_words

@@ -1,0 +1,16 @@
+-- game_state.ev — The player's state snapshot.
+--
+-- GameState is a `type`: a noun, a structural record whose constraints are
+-- local invariants on its own fields. No external data.
+
+import "programs/adventure2/world.ev"
+
+type GameState
+    location  ∈ String
+    inventory ∈ Seq(Item)
+    turn      ∈ Nat
+
+    -- Safety invariant: the dungeon is only accessible with the torch.
+    -- This is a local constraint on GameState's own fields — the canonical
+    -- example of a type-level invariant rather than a claim.
+    location = "dungeon" ⇒ Torch ∈ inventory

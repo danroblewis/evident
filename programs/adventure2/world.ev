@@ -1,0 +1,68 @@
+-- world.ev — Spatial world data for adventure2.
+
+type Item = Torch | Key | Sword | GoldCoin | OldMap
+
+-- ── Exits: (room, direction) → destination ────────────────────────────────────
+-- Partial map — only valid exits. Used for reference and constraint tests.
+
+assert exits_map = {
+    ("entrance", "north", "forest"),
+    ("entrance", "east",  "cave"),
+    ("forest",   "south", "entrance"),
+    ("forest",   "east",  "tower"),
+    ("cave",     "west",  "entrance"),
+    ("cave",     "down",  "dungeon"),
+    ("tower",    "west",  "forest"),
+    ("dungeon",  "up",    "cave")
+}
+
+-- Complete lookup: (room, direction) → destination or "".
+-- "" means blocked. Every room × every direction has an entry so the solver
+-- can uniquely determine dest from a positive constraint without a free
+-- variable in an implies antecedent.
+
+assert direction_exits = {
+    ("entrance", "north", "forest"), ("entrance", "south", ""),
+    ("entrance", "east",  "cave"),   ("entrance", "west",  ""),
+    ("entrance", "up",    ""),       ("entrance", "down",  ""),
+    ("forest",   "north", ""),       ("forest",   "south", "entrance"),
+    ("forest",   "east",  "tower"),  ("forest",   "west",  ""),
+    ("forest",   "up",    ""),       ("forest",   "down",  ""),
+    ("cave",     "north", ""),       ("cave",     "south", ""),
+    ("cave",     "east",  ""),       ("cave",     "west",  "entrance"),
+    ("cave",     "up",    ""),       ("cave",     "down",  "dungeon"),
+    ("tower",    "north", ""),       ("tower",    "south", ""),
+    ("tower",    "east",  ""),       ("tower",    "west",  "forest"),
+    ("tower",    "up",    ""),       ("tower",    "down",  ""),
+    ("dungeon",  "north", ""),       ("dungeon",  "south", ""),
+    ("dungeon",  "east",  ""),       ("dungeon",  "west",  ""),
+    ("dungeon",  "up",    "cave"),   ("dungeon",  "down",  "")
+}
+
+-- ── Room descriptions ─────────────────────────────────────────────────────────
+
+assert room_descriptions = {
+    ("entrance", "You stand at the entrance to a dark forest. Paths lead north and east."),
+    ("forest",   "A dense forest surrounds you. Paths lead south and east."),
+    ("cave",     "A damp cave. Passages lead west and down into the dark."),
+    ("tower",    "A ruined tower with a sweeping view. The only exit is west."),
+    ("dungeon",  "A cold stone dungeon. A ladder leads up.")
+}
+
+-- ── Item data ─────────────────────────────────────────────────────────────────
+
+assert item_names = {
+    (Torch,    "torch"),
+    (Key,      "key"),
+    (Sword,    "sword"),
+    (GoldCoin, "gold coin"),
+    (OldMap,   "old map")
+}
+
+assert initial_item_locations = {
+    (Torch,    "entrance"),
+    (Key,      "forest"),
+    (Sword,    "cave"),
+    (GoldCoin, "tower"),
+    (OldMap,   "dungeon")
+}

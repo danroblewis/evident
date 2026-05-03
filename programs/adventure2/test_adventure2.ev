@@ -1,0 +1,73 @@
+-- test_adventure2.ev — World model invariants and execution traces.
+
+import "world.ev"
+import "commands.ev"
+import "game_state.ev"
+
+-- ── Execution traces ──────────────────────────────────────────────────────────
+
+trace entrance_to_cave "programs/adventure2/adventure2.ev"
+    send "look" =>
+        location = "entrance"
+        output ∋ "entrance"
+    send "go east"  => location = "cave"
+    send "take sword" => output ∋ "pick up"
+    send "i"        => output ∋ "carrying"
+    send "quit"     => output ∋ "Goodbye"
+
+trace abbreviated_movement "programs/adventure2/adventure2.ev"
+    send "look" => location = "entrance"
+    send "n"    => location = "forest"
+    send "e"    => location = "tower"
+    send "w"    => location = "forest"
+    send "s"    => location = "entrance"
+    send "quit" => output ∋ "Goodbye"
+
+-- ── World invariants ──────────────────────────────────────────────────────────
+
+claim sat_all_rooms_have_descriptions
+    d1 ∈ String
+    d2 ∈ String
+    d3 ∈ String
+    d4 ∈ String
+    d5 ∈ String
+    ("entrance", d1) ∈ room_descriptions
+    ("forest",   d2) ∈ room_descriptions
+    ("cave",     d3) ∈ room_descriptions
+    ("tower",    d4) ∈ room_descriptions
+    ("dungeon",  d5) ∈ room_descriptions
+
+claim unsat_room_exits_to_itself
+    room ∈ String
+    dir  ∈ String
+    (room, dir, room) ∈ exits_map
+
+claim unsat_exit_leads_outside_known_rooms
+    from_room ∈ String
+    dir       ∈ String
+    to_room   ∈ String
+    (from_room, dir, to_room) ∈ exits_map
+    to_room ∉ {"entrance", "forest", "cave", "tower", "dungeon"}
+
+claim unsat_item_in_two_places
+    item  ∈ Item
+    room1 ∈ String
+    room2 ∈ String
+    (item, room1) ∈ initial_item_locations
+    (item, room2) ∈ initial_item_locations
+    room1 ≠ room2
+
+-- direction_exits contains all exits_map entries (it is a superset)
+claim sat_direction_exits_contains_exits_map
+    ("entrance", "north", "forest") ∈ direction_exits
+    ("cave",     "down",  "dungeon") ∈ direction_exits
+    ("dungeon",  "up",    "cave") ∈ direction_exits
+
+-- ── Safety constraint test ────────────────────────────────────────────────────
+
+-- GameState's local invariant: dungeon requires torch
+-- GameState's safety invariant prevents dungeon without torch
+claim unsat_dungeon_without_torch
+    s ∈ GameState
+    s.location = "dungeon"
+    Torch ∉ s.inventory

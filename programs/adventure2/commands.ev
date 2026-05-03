@@ -1,0 +1,45 @@
+-- commands.ev — Command vocabulary for adventure2.
+--
+-- No Unknown verb: unrecognised commands produce UNSAT, which the executor
+-- silently ignores. This avoids the Z3 non-determinism that arises when
+-- `∨ verb = Unknown` competes with a known verb match.
+
+import "programs/adventure2/world.ev"
+
+type Verb = Go | Take | Look | Inventory | Help | Quit
+
+-- Single-letter direction abbreviations (n/s/e/w/u/d) map to Go so that
+-- ParsedCommand recognises them. The transition resolves direction from
+-- verb_str when argument is empty.
+
+assert verb_words = {
+    ("go",        Go),    ("walk",      Go),    ("move",      Go),
+    ("n",         Go),    ("s",         Go),    ("e",         Go),
+    ("w",         Go),    ("u",         Go),    ("d",         Go),
+    ("take",      Take),  ("get",       Take),  ("pick",      Take),
+    ("look",      Look),  ("examine",   Look),  ("l",         Look),
+    ("inventory", Inventory), ("inv",   Inventory), ("i",     Inventory),
+    ("help",      Help),  ("?",         Help),
+    ("quit",      Quit),  ("q",         Quit)
+}
+
+-- Word → canonical direction string.
+-- Both abbreviations and full words map to the same canonical string so the
+-- direction_exits lookup uses a uniform key.
+
+assert direction_words = {
+    ("north", "north"), ("n", "north"),
+    ("south", "south"), ("s", "south"),
+    ("east",  "east"),  ("e", "east"),
+    ("west",  "west"),  ("w", "west"),
+    ("up",    "up"),    ("u", "up"),
+    ("down",  "down"),  ("d", "down")
+}
+
+assert item_words = {
+    ("torch",    Torch),
+    ("key",      Key),
+    ("sword",    Sword),
+    ("gold",     GoldCoin), ("coin", GoldCoin), ("gold coin", GoldCoin),
+    ("map",      OldMap),   ("old map", OldMap)
+}

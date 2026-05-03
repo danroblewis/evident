@@ -1,0 +1,28 @@
+-- adventure2.ev — Main entry point.
+--
+-- Purely wiring: composes I/O traits with the transition claim.
+-- No game logic lives here. All behaviour is in transition.ev.
+--
+-- Composition via variable names:
+--   ..LineReader                    → line, line_ready, state (partial buf), …
+--   state ∈ GameState               → state.location, state.inventory, state.turn
+--   state_next ∈ GameState          → same for next step
+--   ..GameTransition                → transition constraints, with renames:
+--     (cmd      mapsto line)          cmd in GameTransition = line from LineReader
+--     (response mapsto line_out)      response in GameTransition = line_out to LineWriter
+--     (ready    mapsto line_ready)    ready in GameTransition = line_ready from LineReader
+--   ..LineWriter                    → line_out, dst, …
+--
+-- Run with:
+--   echo -e "look\ngo north\ntake key\ni\nquit\n" | python3 evident.py execute programs/adventure2/adventure2.ev
+
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+import "programs/adventure2/transition.ev"
+
+type main
+    ..LineReader
+    ..LineWriter
+    state      ∈ GameState
+    state_next ∈ GameState
+    ..GameTransition (cmd mapsto line, response mapsto line_out, ready mapsto line_ready)
