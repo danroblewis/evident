@@ -64,6 +64,7 @@ class EvidentRuntime:
         self.solver = EvidentSolver()
         self.fixedpoint = FixedpointSolver(self.solver.registry)
         self.schemas: dict[str, SchemaDecl] = {}
+        self.traces: dict[str, Any] = {}      # TraceDecl objects keyed by name
         self.forward_rules: list[ForwardRule] = []
         self.evidence_base: list[Evidence] = []
         self.pending_queries: list = []       # ? statements collected during load
@@ -134,6 +135,9 @@ class EvidentRuntime:
             elif isinstance(stmt, ConstraintStmt):
                 # Top-level constraints — not yet handled
                 pass
+            elif hasattr(stmt, 'steps') and hasattr(stmt, 'program'):
+                # TraceDecl — store for the test runner
+                self.traces[stmt.name] = stmt
 
     # ------------------------------------------------------------------
     # Ground fact assertion

@@ -11,7 +11,7 @@ class Program:
 Statement = Union[
     "SchemaDecl", "EnumDecl", "ImportStmt",
     "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt",
-    "NotationDecl",
+    "NotationDecl", "TraceDecl",
 ]
 
 @dataclass
@@ -85,6 +85,17 @@ class QueryStmt:
 @dataclass
 class ConstraintStmt:
     constraint: Constraint
+
+@dataclass
+class TraceStep:
+    command: str
+    assertions: list["Constraint"]
+
+@dataclass
+class TraceDecl:
+    name: str
+    program: str
+    steps: list[TraceStep]
 
 # ── Constraints ───────────────────────────────────────────────────────────────
 

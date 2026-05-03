@@ -516,6 +516,29 @@ class EvidentTransformer(LarkTransformer):
     def constraint_stmt(self, items):
         return ConstraintStmt(constraint=items[0])
 
+    # ── Trace declarations ────────────────────────────────────────────────────
+
+    def trace_decl(self, items):
+        from .ast import TraceDecl
+        name    = str(items[0])
+        program = str(items[1]).strip('"')
+        steps   = [s for s in items[2:] if isinstance(s, TraceStep)]
+        return TraceDecl(name=name, program=program, steps=steps)
+
+    def trace_send_inline(self, items):
+        cmd        = str(items[0]).strip('"')
+        assertion  = items[1]
+        return TraceStep(command=cmd, assertions=[assertion])
+
+    def trace_send_block(self, items):
+        cmd        = str(items[0]).strip('"')
+        assertions = list(items[1:])
+        return TraceStep(command=cmd, assertions=assertions)
+
+    def trace_send_bare(self, items):
+        cmd = str(items[0]).strip('"')
+        return TraceStep(command=cmd, assertions=[])
+
     # ── Expressions ──────────────────────────────────────────────────────────
 
     def expr(self, items):

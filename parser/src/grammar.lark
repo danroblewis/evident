@@ -14,6 +14,7 @@ start: (_NEWLINE | statement)*
           | evident_top
           | constraint_stmt
           | notation_decl
+          | trace_decl
 
 // Notation: define a term-level syntactic rewrite with positional holes.
 // notation adjacent seq = {(seq[i], seq[i+1]) | i ∈ {0..#seq-2}}
@@ -203,6 +204,20 @@ premise: NAME app_arg*
 assert_stmt: "assert" NAME "=" expr _NEWLINE            -> assert_eq
            | "assert" NAME ("__IN__"|"in") expr _NEWLINE -> assert_in
            | "assert" NAME app_arg* _NEWLINE             -> assert_ground
+
+// ── Trace test declarations ───────────────────────────────────────────────────
+
+// trace name "path/to/program.ev"
+//     send "command" => assertion
+//     send "command" =>
+//         assertion1
+//         assertion2
+
+trace_decl: "trace" NAME STRING _NEWLINE _INDENT trace_step+ _DEDENT
+
+trace_step: "send" STRING ("__IMPLIES__"|"=>") constraint _NEWLINE            -> trace_send_inline
+          | "send" STRING ("__IMPLIES__"|"=>") _NEWLINE _INDENT (constraint _NEWLINE)+ _DEDENT  -> trace_send_block
+          | "send" STRING _NEWLINE                                             -> trace_send_bare
 
 // ── Query statements ──────────────────────────────────────────────────────────
 

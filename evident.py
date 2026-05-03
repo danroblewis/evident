@@ -301,17 +301,13 @@ def cmd_test(args):
     tests_dir = search_path / 'tests'
 
     if search_path.is_file():
-        if search_path.name.endswith('.trace.ev'):
-            files, trace_files = [], [search_path]
-        else:
-            files, trace_files = [search_path], []
+        files       = [search_path] if not search_path.name.endswith('.trace.ev') else []
+        trace_files = [search_path] if search_path.name.endswith('.trace.ev') else []
     else:
-        files = [f for f in sorted(search_path.glob('test_*.ev'))
-                 if not f.name.endswith('.trace.ev')]
+        files       = sorted(search_path.glob('test_*.ev'))
         trace_files = sorted(search_path.glob('*.trace.ev'))
         if tests_dir.is_dir():
-            files += [f for f in sorted(tests_dir.glob('test_*.ev'))
-                      if not f.name.endswith('.trace.ev')]
+            files       += sorted(tests_dir.glob('test_*.ev'))
             trace_files += sorted(tests_dir.glob('*.trace.ev'))
 
     if not files and not trace_files:
@@ -367,7 +363,80 @@ def cmd_test(args):
             results.append((path, name, ok, expected_sat, detail))
             print(_green('.') if ok else _red('F'), end='', flush=True)
 
-    # ── Trace tests ───────────────────────────────────────────────────────────
+    # ── Trace tests (.trace.ev legacy format + trace decls in test_*.ev) ────────
+
+    def _run_traces(path, trace_list):
+        """Execute a list of trace objects (dicts or TraceDecl) and append to results."""
+        from runtime.src.executor import EvidentExecutor
+        from runtime.src.prettyprint import pretty_constraint
+
+        for trace in trace_list:
+            # Normalise: TraceDecl or plain dict (legacy)
+            if hasattr(trace, 'steps'):
+                name    = trace.name
+                program = trace.program
+                steps   = [(s.command, s.assertions) for s in trace.steps]
+            else:
+                name    = trace['name']
+                program = trace['program']
+                steps   = [(s['cmd'], s['assertions']) for s in trace['steps']]
+
+            exe = EvidentExecutor()
+            try:
+                exe.load(program)
+                exe.initialize()
+            except Exception as e:
+                results.append((path, name, False, None,
+                                {'type': 'error', 'message': f'Failed to load {program}: {e}'}))
+                print(_red('E'), end='', flush=True)
+                continue
+
+            trace_ok    = True
+            fail_detail = []
+
+            for i, (cmd, assertions) in enumerate(steps, 1):
+                try:
+                    step_result = exe.step_line(cmd)
+                except Exception as e:
+                    trace_ok = False
+                    fail_detail.append(f'step {i} send "{cmd}": executor error: {e}')
+                    break
+
+                for assertion in assertions:
+                    # assertion may be a Constraint AST node or a plain string
+                    if isinstance(assertion, str):
+                        passed, detail_str = _check_trace_assertion(assertion, step_result)
+                        label = assertion
+                    else:
+                        label = pretty_constraint(assertion)
+                        passed, detail_str = _check_trace_assertion(label, step_result)
+
+                    if not passed:
+                        trace_ok = False
+                        fail_detail.append(
+                            f'step {i} send "{cmd}" failed:\n'
+                            f'      {_red("FAIL")} {detail_str}'
+                        )
+
+                if not trace_ok:
+                    break
+
+            ok = trace_ok
+            det = None if ok else {'type': 'trace', 'lines': fail_detail}
+            results.append((path, name, ok, True, det))
+            print(_green('.') if ok else _red('F'), end='', flush=True)
+
+    # Run trace declarations found inside test_*.ev files (already loaded into rt)
+    for path in files:
+        rt_for_traces = EvidentRuntime()
+        try:
+            rt_for_traces.load_file(str(path))
+        except Exception:
+            pass  # parse errors already reported in constraint section above
+        if rt_for_traces.traces:
+            _run_traces(path, list(rt_for_traces.traces.values()))
+
+    # Run legacy *.trace.ev files (hand-parsed)
     for path in trace_files:
         try:
             traces = _parse_trace_file(path)
@@ -376,49 +445,7 @@ def cmd_test(args):
                             {'type': 'error', 'message': f'Failed to parse: {e}'}))
             print(_red('E'), end='', flush=True)
             continue
-
-        for trace in traces:
-            from runtime.src.executor import EvidentExecutor
-            exe = EvidentExecutor()
-            try:
-                exe.load(trace['program'])
-                exe.initialize()
-            except Exception as e:
-                results.append((path, trace['name'], False, None,
-                                {'type': 'error', 'message': f'Failed to load {trace["program"]}: {e}'}))
-                print(_red('E'), end='', flush=True)
-                continue
-
-            trace_ok   = True
-            fail_step  = None
-            fail_detail= []
-
-            for i, step in enumerate(trace['steps'], 1):
-                try:
-                    step_result = exe.step_line(step['cmd'])
-                except Exception as e:
-                    trace_ok  = False
-                    fail_step = i
-                    fail_detail = [f'step {i} send "{step["cmd"]}": executor error: {e}']
-                    break
-
-                for assertion in step['assertions']:
-                    passed, detail = _check_trace_assertion(assertion, step_result)
-                    if not passed:
-                        trace_ok  = False
-                        fail_step = i
-                        fail_detail.append(
-                            f'step {i} send "{step["cmd"]}" failed:\n'
-                            f'      {_red("FAIL")} {detail}'
-                        )
-
-                if not trace_ok:
-                    break
-
-            ok = trace_ok
-            detail = None if ok else {'type': 'trace', 'lines': fail_detail}
-            results.append((path, trace['name'], ok, True, detail))
-            print(_green('.') if ok else _red('F'), end='', flush=True)
+        _run_traces(path, traces)
 
     print()
 
