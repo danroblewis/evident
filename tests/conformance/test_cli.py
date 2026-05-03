@@ -86,16 +86,13 @@ def test_check_reports_sat_and_unsat(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# evident run (execute ? queries in file)
+# evident run was removed — ? queries belong in the REPL, not as a subcommand
 # ---------------------------------------------------------------------------
 
-def test_run_query_statement(tmp_path):
-    """evident run executes ? queries in the file."""
-    f = tmp_path / 'test.ev'
-    # Use a membership query which is supported
-    f.write_text("schema S\n    x ∈ Nat\n    x = 7\n? S\n")
-    r = _evident('run', str(f))
-    assert r.returncode == 0
+def test_run_is_removed():
+    """evident run no longer exists; the REPL handles interactive ? queries."""
+    r = _evident('run', '/dev/null')
+    assert r.returncode != 0   # unrecognised subcommand
 
 
 # ---------------------------------------------------------------------------

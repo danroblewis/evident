@@ -201,42 +201,6 @@ def cmd_execute(args):
     return 0
 
 
-def cmd_run(args):
-    """Execute all ? query statements found in the file(s)."""
-    rt = _load(args.files, args.given)
-    given = _parse_given(args.given)
-
-    if not rt.pending_queries:
-        print('(no ? queries found — use  ?  SchemaName  to query a schema)', file=sys.stderr)
-        return 0
-
-    from runtime.src.ast_types import ApplicationConstraint, Identifier
-    exit_code = 0
-    for qstmt in rt.pending_queries:
-        # Extract schema name from the constraint if possible
-        c = qstmt.constraint
-        name = None
-        if isinstance(c, ApplicationConstraint):
-            name = c.name
-        elif isinstance(c, Identifier):
-            name = c.name
-        elif hasattr(c, 'name'):
-            name = c.name
-
-        if name and name in rt.schemas:
-            r = rt.query(name, given=given)
-            if r.satisfied:
-                print(f'{_cyan(name)}: {_green("Satisfied")}')
-                if r.bindings:
-                    print(_fmt_bindings(r.bindings, args.json))
-            else:
-                print(f'{_cyan(name)}: {_red("Unsatisfiable")}')
-                exit_code = 1
-        else:
-            print(f'(cannot resolve query: {c})', file=sys.stderr)
-
-    return exit_code
-
 
 def cmd_check(args):
     """Report SAT/UNSAT for every schema in the file(s)."""
@@ -465,12 +429,6 @@ def main():
     ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')
     ex.add_argument('file', help='Evident program with schema main')
 
-    # run
-    r = sub.add_parser('run', help='execute ? queries in file(s)')
-    r.add_argument('files', nargs='+')
-    r.add_argument('--given', nargs='*', metavar='k=v', default=[])
-    r.add_argument('--json', action='store_true')
-
     # check
     c = sub.add_parser('check', help='report SAT/UNSAT for all schemas')
     c.add_argument('files', nargs='+')
@@ -495,7 +453,7 @@ def main():
     rp.add_argument('files', nargs='*')
 
     args = p.parse_args()
-    dispatch = {'batch': cmd_batch, 'execute': cmd_execute, 'run': cmd_run, 'check': cmd_check,
+    dispatch = {'batch': cmd_batch, 'execute': cmd_execute, 'check': cmd_check,
                 'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl}
     sys.exit(dispatch[args.cmd](args))
 
