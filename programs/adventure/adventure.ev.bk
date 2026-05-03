@@ -1,0 +1,332 @@
+-- adventure.ev — Text adventure game.
+--
+-- Run with:
+--   echo -e "look\ngo north\ntake key\ni\nquit\n" | python3 evident.py execute programs/adventure/adventure.ev
+
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+import "programs/adventure/world.ev"
+import "programs/adventure/commands.ev"
+
+-- ── Game state ────────────────────────────────────────────────────────────────
+
+schema GameState
+    location  ∈ String
+    inventory ∈ Seq(Item)
+    turn      ∈ Nat
+
+-- ── ParsedCommand: separately testable parsing schema ─────────────────────────
+
+schema ParsedCommand
+    raw      ∈ String
+    verb     ∈ Verb
+    verb_str ∈ String
+    argument ∈ String
+
+    (raw = verb_str ++ " " ++ argument) ∨ (raw = verb_str ∧ argument = "")
+    (verb_str, verb) ∈ verb_words ∨ verb = Unknown
+
+-- ── GameTransition: pure transition schema, testable independently ─────────────
+--
+-- Uses direction_exits (complete lookup table) for movement so that
+-- dest is uniquely pinned by a positive constraint. Free variables in
+-- implies antecedents let Z3 pick dest="" non-deterministically.
+
+schema GameTransition
+    state      ∈ GameState
+    state_next ∈ GameState
+    cmd        ∈ String
+    response   ∈ String
+
+    verb      ∈ Verb
+    verb_str  ∈ String
+    argument  ∈ String
+    dest      ∈ String
+    room_desc ∈ String
+    item      ∈ Item
+    item_name ∈ String
+
+    (cmd = verb_str ++ " " ++ argument) ∨ (cmd = verb_str ∧ argument = "")
+    (verb_str, verb) ∈ verb_words ∨ verb = Unknown
+
+    verb = Look ⇒
+        (state.location, room_desc) ∈ room_descriptions
+        response             = room_desc
+        state_next.location  = state.location
+        state_next.inventory = state.inventory
+        state_next.turn      = state.turn + 1
+
+    verb = Go ⇒
+        (argument = "north" ∨ argument = "n") ⇒
+            (state.location, "north", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+        (argument = "south" ∨ argument = "s") ⇒
+            (state.location, "south", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+        (argument = "east" ∨ argument = "e") ⇒
+            (state.location, "east", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+        (argument = "west" ∨ argument = "w") ⇒
+            (state.location, "west", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+        (argument = "up" ∨ argument = "u") ⇒
+            (state.location, "up", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+        (argument = "down" ∨ argument = "d") ⇒
+            (state.location, "down", dest) ∈ direction_exits
+            dest ≠ "" ⇒
+                (dest, room_desc) ∈ room_descriptions
+                response             = room_desc
+                state_next.location  = dest
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+            dest = "" ⇒
+                response             = "You can't go that way."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+
+    verb = Take ⇒
+        (argument, item) ∈ item_words
+        (item, item_name) ∈ item_names
+        (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
+            response             = "You pick up the " ++ item_name ++ "."
+            state_next.location  = state.location
+            state_next.inventory = state.inventory ++ ⟨item⟩
+            state_next.turn      = state.turn + 1
+        ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
+            response             = "You don't see that here."
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn + 1
+
+    verb = Inventory ⇒
+        state_next.location  = state.location
+        state_next.inventory = state.inventory
+        state_next.turn      = state.turn + 1
+        #state.inventory = 0 ⇒ response = "You are carrying nothing."
+        #state.inventory > 0 ⇒ response = "You are carrying some items."
+
+    verb = Help ⇒
+        response             = "Commands: look, go <dir>, take <item>, inventory, help, quit"
+        state_next.location  = state.location
+        state_next.inventory = state.inventory
+        state_next.turn      = state.turn
+
+    verb = Quit ⇒
+        response             = "Goodbye!"
+        state_next.location  = state.location
+        state_next.inventory = state.inventory
+        state_next.turn      = state.turn
+
+    verb = Unknown ⇒
+        response             = "I don't understand that."
+        state_next.location  = state.location
+        state_next.inventory = state.inventory
+        state_next.turn      = state.turn
+
+-- ── Main program ──────────────────────────────────────────────────────────────
+
+schema main
+    ..LineReader
+    ..LineWriter
+    state      ∈ GameState
+    state_next ∈ GameState
+
+    verb      ∈ Verb
+    verb_str  ∈ String
+    argument  ∈ String
+    dest      ∈ String
+    room_desc ∈ String
+    item      ∈ Item
+    item_name ∈ String
+
+    line_ready ⇒
+        (line = verb_str ++ " " ++ argument) ∨ (line = verb_str ∧ argument = "")
+        (verb_str, verb) ∈ verb_words
+
+        verb = Look ⇒
+            (state.location, room_desc) ∈ room_descriptions
+            line_out             = room_desc
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn + 1
+
+        verb = Go ⇒
+            (argument = "north" ∨ argument = "n" ∨ (verb_str = "n" ∧ argument = "")) ⇒
+                (state.location, "north", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+            (argument = "south" ∨ argument = "s" ∨ (verb_str = "s" ∧ argument = "")) ⇒
+                (state.location, "south", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+            (argument = "east" ∨ argument = "e" ∨ (verb_str = "e" ∧ argument = "")) ⇒
+                (state.location, "east", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+            (argument = "west" ∨ argument = "w" ∨ (verb_str = "w" ∧ argument = "")) ⇒
+                (state.location, "west", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+            (argument = "up" ∨ argument = "u" ∨ (verb_str = "u" ∧ argument = "")) ⇒
+                (state.location, "up", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+            (argument = "down" ∨ argument = "d" ∨ (verb_str = "d" ∧ argument = "")) ⇒
+                (state.location, "down", dest) ∈ direction_exits
+                dest ≠ "" ⇒
+                    (dest, room_desc) ∈ room_descriptions
+                    line_out             = room_desc
+                    state_next.location  = dest
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+                dest = "" ⇒
+                    line_out             = "You can't go that way."
+                    state_next.location  = state.location
+                    state_next.inventory = state.inventory
+                    state_next.turn      = state.turn + 1
+
+        verb = Take ⇒
+            (argument, item) ∈ item_words
+            (item, item_name) ∈ item_names
+            (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
+                line_out             = "You pick up the " ++ item_name ++ "."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory ++ ⟨item⟩
+                state_next.turn      = state.turn + 1
+            ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
+                line_out             = "You don't see that here."
+                state_next.location  = state.location
+                state_next.inventory = state.inventory
+                state_next.turn      = state.turn + 1
+
+        verb = Inventory ⇒
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn + 1
+            #state.inventory = 0 ⇒ line_out = "You are carrying nothing."
+            #state.inventory > 0 ⇒ line_out = "You are carrying some items."
+
+        verb = Help ⇒
+            line_out             = "Commands: look, go <dir>, take <item>, inventory, help, quit"
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn
+
+        verb = Quit ⇒
+            line_out             = "Goodbye!"
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn
+
+        verb = Unknown ⇒
+            line_out             = "I don't understand that."
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
+            state_next.turn      = state.turn
+
+    ¬line_ready ⇒
+        line_out         = ""
+        state_next.turn  = state.turn
+        state.turn = 0 ⇒
+            state_next.location  = "entrance"
+            #state_next.inventory = 0
+        state.turn > 0 ⇒
+            state_next.location  = state.location
+            state_next.inventory = state.inventory
