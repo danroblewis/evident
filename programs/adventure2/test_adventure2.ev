@@ -37,16 +37,24 @@ claim sat_all_rooms_have_descriptions
     ("tower",    d4) ∈ room_descriptions
     ("dungeon",  d5) ∈ room_descriptions
 
+-- Valid exits (dest ≠ "") are expressed via direction_exits, which is the
+-- single source of truth. exits_map was redundant — it was a strict subset
+-- of direction_exits with the "" entries omitted.
+
 claim unsat_room_exits_to_itself
     room ∈ String
     dir  ∈ String
-    (room, dir, room) ∈ exits_map
+    dest ∈ String
+    (room, dir, dest) ∈ direction_exits
+    dest ≠ ""
+    dest = room
 
 claim unsat_exit_leads_outside_known_rooms
     from_room ∈ String
     dir       ∈ String
     to_room   ∈ String
-    (from_room, dir, to_room) ∈ exits_map
+    (from_room, dir, to_room) ∈ direction_exits
+    to_room ≠ ""
     to_room ∉ {"entrance", "forest", "cave", "tower", "dungeon"}
 
 claim unsat_item_in_two_places
@@ -57,8 +65,8 @@ claim unsat_item_in_two_places
     (item, room2) ∈ initial_item_locations
     room1 ≠ room2
 
--- direction_exits contains all exits_map entries (it is a superset)
-claim sat_direction_exits_contains_exits_map
+-- Key exits exist in direction_exits
+claim sat_key_exits_exist
     ("entrance", "north", "forest") ∈ direction_exits
     ("cave",     "down",  "dungeon") ∈ direction_exits
     ("dungeon",  "up",    "cave") ∈ direction_exits

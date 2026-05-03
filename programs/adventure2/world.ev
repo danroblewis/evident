@@ -2,20 +2,6 @@
 
 type Item = Torch | Key | Sword | GoldCoin | OldMap
 
--- ── Exits: (room, direction) → destination ────────────────────────────────────
--- Partial map — only valid exits. Used for reference and constraint tests.
-
-assert exits_map = {
-    ("entrance", "north", "forest"),
-    ("entrance", "east",  "cave"),
-    ("forest",   "south", "entrance"),
-    ("forest",   "east",  "tower"),
-    ("cave",     "west",  "entrance"),
-    ("cave",     "down",  "dungeon"),
-    ("tower",    "west",  "forest"),
-    ("dungeon",  "up",    "cave")
-}
-
 -- Complete lookup: (room, direction) → destination or "".
 -- "" means blocked. Every room × every direction has an entry so the solver
 -- can uniquely determine dest from a positive constraint without a free
