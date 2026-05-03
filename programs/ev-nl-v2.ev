@@ -1,0 +1,23 @@
+import "stdlib/line-reader.ev"
+
+-- ev-nl: number each line of stdin.
+
+schema NlState
+    n ∈ Nat
+
+schema main
+    ..LineReader
+    dst           ∈ Stdout
+    nl_state      ∈ NlState
+    nl_state_next ∈ NlState
+    line_num      ∈ Nat
+
+    line_num = nl_state.n + 1
+
+    line_ready ⇒
+        dst.out         = int_to_str line_num ++ "\t" ++ line ++ "\n"
+        nl_state_next.n = nl_state.n + 1
+
+    ¬line_ready ⇒
+        dst.out         = ""
+        nl_state_next.n = nl_state.n

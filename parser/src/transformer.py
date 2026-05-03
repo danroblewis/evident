@@ -198,6 +198,18 @@ class EvidentTransformer(LarkTransformer):
         body = items[1]
         return UniversalConstraint(bindings=bindings, body=body)
 
+    def implies_block(self, items):
+        # antecedent ⇒ \n INDENT body DEDENT
+        # Expands to:  antecedent ⇒ (c1 ∧ c2 ∧ ... ∧ cn)
+        antecedent = items[0]
+        body_items = items[1]   # list from the body rule
+        if len(body_items) == 1:
+            return LogicConstraint(op='⇒', left=antecedent, right=body_items[0])
+        conjunction = body_items[0]
+        for item in body_items[1:]:
+            conjunction = LogicConstraint(op='∧', left=conjunction, right=item)
+        return LogicConstraint(op='⇒', left=antecedent, right=conjunction)
+
     def body_forall_indented(self, items):
         # items = [binding_list, constraint] (keywords filtered)
         bindings = items[0]
@@ -725,7 +737,15 @@ class EvidentTransformer(LarkTransformer):
     def string_lit(self, items):
         raw = str(items[0])
         # strip surrounding quotes
-        return StringLiteral(value=raw[1:-1])
+        inner = raw[1:-1]
+        # process standard escape sequences
+        inner = (inner
+                 .replace('\\n', '\n')
+                 .replace('\\t', '\t')
+                 .replace('\\r', '\r')
+                 .replace('\\"', '"')
+                 .replace('\\\\', '\\'))
+        return StringLiteral(value=inner)
 
     def bool_true(self, items):
         return BoolLiteral(value=True)

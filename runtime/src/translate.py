@@ -14,6 +14,7 @@ from .sorts import SortRegistry
 from .ast_types import (
     # Constraints
     ArithmeticConstraint,
+    ApplicationConstraint,
     MembershipConstraint,
     LogicConstraint,
     BindingConstraint,
@@ -574,6 +575,30 @@ def translate_constraint(
             )
         rhs = translate_expr(constraint.value, env, registry)
         return lhs == rhs
+
+    # ── Bool expression used as a constraint ──────────────────────────────────
+    # Handles bare Bool variables (line_ready), Bool field accesses (src.eof),
+    # and their negations (¬src.eof) without requiring '= true' / '= false'.
+    #
+    # In constraint position, the parser produces ApplicationConstraint for a
+    # bare name or name.field. We resolve the env lookup and, if Bool, use
+    # the Z3 variable directly.
+    if isinstance(constraint, ApplicationConstraint):
+        # Bare name: line_ready  →  env['line_ready']
+        if not constraint.args and not constraint.mappings:
+            val = env.lookup(constraint.name)
+            if val is not None and z3.is_bool(val):
+                return val
+
+        # Single dot-field arg: src.eof  →  env['src.eof']
+        if (len(constraint.args) == 1
+                and isinstance(constraint.args[0], FieldAccess)
+                and isinstance(constraint.args[0].obj, Identifier)
+                and constraint.args[0].obj.name == '.'):
+            key = f"{constraint.name}.{constraint.args[0].field}"
+            val = env.lookup(key)
+            if val is not None and z3.is_bool(val):
+                return val
 
     raise NotImplementedError(
         f"translate_constraint: unsupported constraint type "

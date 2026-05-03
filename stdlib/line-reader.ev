@@ -1,0 +1,38 @@
+-- LineReader: a char-to-line transducer.
+--
+-- Reads characters from a Stdin port one at a time and accumulates them
+-- into lines. When a complete line is available (on newline or EOF with
+-- remaining content), line_ready = true and line holds the content
+-- without the trailing newline character.
+--
+-- Usage: include in schema main via ..LineReader
+
+import "stdlib/io.ev"
+
+schema LineState
+    partial ∈ String
+
+schema LineReader
+    src        ∈ Stdin
+    state      ∈ LineState
+    state_next ∈ LineState
+    line       ∈ String
+    line_ready ∈ Bool
+
+    src.eof ⇒
+        (state.partial ≠ "") ⇒
+            line_ready = true
+            line       = state.partial
+        (state.partial = "") ⇒
+            line_ready = false
+        state_next.partial = state.partial
+
+    ¬src.eof ⇒
+        (src.char = "\n") ⇒
+            line_ready = true
+            line       = state.partial
+            state_next.partial = ""
+        (src.char ≠ "\n") ⇒
+            line_ready = false
+            line       = ""
+            state_next.partial = state.partial ++ src.char

@@ -1,0 +1,134 @@
+-- Evident Standard Library: I/O Traits
+-- Models Unix I/O resources as composable constraint schemas.
+-- Traits compose via .. passthrough; constraints are enforced by the solver.
+
+-- ── Enumerations ─────────────────────────────────────────────────────────────
+
+type InputKind       = Terminal | Pipe | RegularFile | Socket
+type ConnectionState = Unconnected | Connecting | Connected | Listening | Closed
+type OpenMode        = ReadOnly | WriteOnly | ReadWrite | Append
+type SeekMode        = FromStart | FromCurrent | FromEnd
+type TerminalMode    = Canonical | Raw | CBreak
+
+-- ── Base traits ───────────────────────────────────────────────────────────────
+
+-- Every Unix I/O resource is a file descriptor.
+schema Descriptor
+    fd       ∈ Nat
+    open     ∈ Bool
+    blocking ∈ Bool
+    fd ≤ 1024
+
+-- Anything you can read bytes from.
+schema Readable
+    ..Descriptor
+    available ∈ Nat
+    eof       ∈ Bool
+    eof = true   ⇒ available = 0
+    open = false ⇒ eof = true
+
+-- Anything you can write bytes to.
+schema Writable
+    ..Descriptor
+    send_buffer ∈ Nat
+    open = false ⇒ send_buffer = 0
+
+-- Anything with a seekable position (regular files only).
+schema Seekable
+    ..Readable
+    position ∈ Nat
+    size     ∈ Nat
+    position ≤ size
+    position = size ⇒ eof = true
+    eof = true      ⇒ position = size
+    available = size - position
+
+-- User-space buffering layer (libc FILE* style).
+schema Buffered
+    ..Descriptor
+    buffer_size ∈ Nat
+    buffered    ∈ Nat
+    flushed     ∈ Bool
+    buffered ≤ buffer_size
+    flushed = true ⇒ buffered = 0
+
+-- Resources with explicit connection state.
+schema Connectable
+    ..Descriptor
+    connection ∈ ConnectionState
+    connection = Closed    ⇒ open = false
+    connection = Connected ⇒ open = true
+    connection = Listening ⇒ open = true
+
+-- ── Composite traits ──────────────────────────────────────────────────────────
+
+-- A bidirectional, connectable stream (Unix and network sockets).
+schema SocketBase
+    ..Readable
+    ..Writable
+    ..Connectable
+    connection = Unconnected ⇒ available = 0
+    connection = Listening   ⇒ available = 0
+    connection = Connecting  ⇒ available = 0
+
+-- ── Character streaming traits ────────────────────────────────────────────────
+-- Convenience traits for automata that process one character at a time.
+
+schema CharInput
+    ..Readable
+    char ∈ String
+    eof = false ⇒ #char = 1
+    eof = true  ⇒ #char = 0
+
+schema CharOutput
+    ..Writable
+    out ∈ String
+
+-- ── Concrete I/O types ────────────────────────────────────────────────────────
+
+schema Stdin
+    ..CharInput
+    fd = 0
+    blocking = true
+
+schema Stdout
+    ..CharOutput
+    ..Buffered
+    fd = 1
+    open = true
+
+schema Stderr
+    ..CharOutput
+    fd = 2
+    buffer_size = 0
+    open = true
+
+schema RegularFile
+    ..Seekable
+    ..Writable
+    ..Buffered
+    path ∈ String
+    mode ∈ OpenMode
+    path ⊑ "/"
+    mode = ReadOnly ⇒ send_buffer = 0
+
+schema Pipe
+    write_closed ∈ Bool
+    write_closed = true ⇒ available = 0
+
+schema UnixSocket
+    ..SocketBase
+    path ∈ String
+
+schema TcpSocket
+    ..SocketBase
+    remote_addr ∈ String
+    local_port  ∈ Nat
+    1 ≤ local_port ≤ 65535
+
+schema Terminal
+    ..Readable
+    ..Writable
+    mode ∈ TerminalMode
+    eof = false
+    mode = Canonical ⇒ blocking = true

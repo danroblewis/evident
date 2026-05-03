@@ -48,6 +48,7 @@ body: body_line+
 
 ?body_line: NAME ("," NAME)+ ("__IN__"|"in") expr _NEWLINE  -> multi_mem_in
           | constraint _NEWLINE
+          | constraint ("__IMPLIES__"|"=>") _NEWLINE _INDENT body _DEDENT  -> implies_block
           | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _NEWLINE _DEDENT  -> body_forall_indented
           | ("__FORALL__"|"all") binding_list ":" _NEWLINE _INDENT constraint _DEDENT  -> body_forall_indented_nodedent
           | passthrough _NEWLINE

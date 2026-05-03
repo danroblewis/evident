@@ -156,6 +156,18 @@ def _parse_given(given_list):
 # Commands
 # ---------------------------------------------------------------------------
 
+def cmd_execute(args):
+    """Run schema main as a constraint automaton against stdin/stdout."""
+    from runtime.src.executor import EvidentExecutor
+    executor = EvidentExecutor()
+    executor.load(args.file)
+    try:
+        executor.run()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def cmd_run(args):
     """Execute all ? query statements found in the file(s)."""
     rt = _load(args.files, args.given)
@@ -409,6 +421,10 @@ def main():
     p = argparse.ArgumentParser(prog='evident', description='Evident constraint language runtime')
     sub = p.add_subparsers(dest='cmd', required=True)
 
+    # execute (automaton mode)
+    ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')
+    ex.add_argument('file', help='Evident program with schema main')
+
     # run
     r = sub.add_parser('run', help='execute ? queries in file(s)')
     r.add_argument('files', nargs='+')
@@ -439,7 +455,7 @@ def main():
     rp.add_argument('files', nargs='*')
 
     args = p.parse_args()
-    dispatch = {'run': cmd_run, 'check': cmd_check,
+    dispatch = {'execute': cmd_execute, 'run': cmd_run, 'check': cmd_check,
                 'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl}
     sys.exit(dispatch[args.cmd](args))
 
