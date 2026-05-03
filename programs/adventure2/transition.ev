@@ -36,16 +36,18 @@ claim GameTransition
         (verb_str, verb) ∈ verb_words
 
         -- ── Defaults: what stays the same unless a verb specifically changes it ──
-        -- These apply via vacuous implication: e.g. verb ≠ Take is vacuously true
-        -- when verb = Take, so it doesn't conflict with Take's own inventory logic.
-        verb ≠ Take ⇒
+        -- Positive sets make it explicit which verbs share each behaviour.
+        -- Adding a new verb requires placing it in the right sets here.
+        verb ∈ {Look, Go, Inventory, Help, Quit} ⇒
             state_next.inventory = state.inventory
-        (verb ≠ Go ∨ dest = "") ⇒
+        verb ∈ {Look, Take, Inventory, Help, Quit} ⇒
             state_next.location = state.location
+        verb = Go ∧ dest = "" ⇒
+            state_next.location = state.location
+        verb ∈ {Look, Go, Take, Inventory} ⇒
+            state_next.turn = state.turn + 1
         verb ∈ {Help, Quit} ⇒
             state_next.turn = state.turn
-        verb ∉ {Help, Quit} ⇒
-            state_next.turn = state.turn + 1
 
         -- ── LOOK: unique part is looking up and returning the room description ──
         verb = Look ⇒
