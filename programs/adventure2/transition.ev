@@ -42,9 +42,9 @@ claim GameTransition
             state_next.inventory = state.inventory
         (verb ≠ Go ∨ dest = "") ⇒
             state_next.location = state.location
-        (verb = Help ∨ verb = Quit) ⇒
+        verb ∈ {Help, Quit} ⇒
             state_next.turn = state.turn
-        (verb ≠ Help ∧ verb ≠ Quit) ⇒
+        verb ∉ {Help, Quit} ⇒
             state_next.turn = state.turn + 1
 
         -- ── LOOK: unique part is looking up and returning the room description ──
