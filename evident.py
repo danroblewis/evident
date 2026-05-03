@@ -158,38 +158,34 @@ def _parse_given(given_list):
 
 def cmd_batch(args):
     """
-    Batch mode: read all stdin lines, query a schema once per line, write results.
+    Batch mode: read all stdin lines as a sequence, query a schema once, write results.
 
-    Reads every line from stdin, then for each line queries the schema with
-    the line bound to --in and the line index (1-based) bound to --index.
-    Writes the --out variable from each result to stdout.
+    Reads every line from stdin into a list, passes it as the --in variable
+    to the schema, then writes the elements of --out to stdout.
 
-    This unrolls the batch problem into n individual queries, each with
-    concrete values — avoiding Z3's limitation with Seq(String) synthesis.
-
-    Example (forward):  cat file.txt  | evident batch nl-batch.ev NumberedLine --in text --out out --index n
-    Example (reverse):  cat numbered  | evident batch nl-batch.ev NumberedLine --in out  --out text
+    Example (forward):  cat file.txt    | evident batch nl-batch.ev NumberedDocument --in contents --out lines
+    Example (reverse):  cat numbered    | evident batch nl-batch.ev NumberedDocument --in lines    --out contents
     """
     from runtime.src.runtime import EvidentRuntime
     rt = EvidentRuntime()
     rt.load_file(args.file)
 
     input_lines = [line.rstrip('\n') for line in sys.stdin]
+    result = rt.query(args.schema, given={args.input_var: input_lines})
 
-    for i, line_text in enumerate(input_lines):
-        given = {args.input_var: line_text}
-        if args.index_var:
-            given[args.index_var] = i + 1
+    if not result.satisfied:
+        print(f"UNSAT — {args.schema} has no solution for the given input.", file=sys.stderr)
+        return 1
 
-        result = rt.query(args.schema, given=given)
-        if not result.satisfied:
-            print(f"UNSAT at line {i+1}", file=sys.stderr)
-            return 1
-
-        val = result.bindings.get(args.output_var)
+    i = 0
+    while True:
+        key = f'{args.output_var}.{i}'
+        if key not in result.bindings:
+            break
+        val = result.bindings[key]
         if val is not None:
             sys.stdout.write(str(val) + '\n')
-
+        i += 1
     return 0
 
 
@@ -462,9 +458,8 @@ def main():
     bt = sub.add_parser('batch', help='read stdin as a sequence, solve a schema, write a sequence to stdout')
     bt.add_argument('file',       help='Evident program file')
     bt.add_argument('schema',     help='schema to query')
-    bt.add_argument('--in',    dest='input_var',  required=True,  help='variable to bind to each stdin line')
-    bt.add_argument('--out',   dest='output_var', required=True,  help='variable to extract and write to stdout')
-    bt.add_argument('--index', dest='index_var',  default=None,   help='variable to bind to the 1-based line number (optional)')
+    bt.add_argument('--in',  dest='input_var',  required=True, help='variable to bind to all stdin lines as a sequence')
+    bt.add_argument('--out', dest='output_var', required=True, help='sequence variable to extract and write to stdout')
 
     # execute (automaton mode)
     ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')

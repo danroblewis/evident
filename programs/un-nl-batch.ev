@@ -1,42 +1,20 @@
-import "stdlib/line-reader.ev"
-import "stdlib/line-writer.ev"
 import "stdlib/sequences.ev"
 
--- NumberedLine: the per-line projection of NumberedDocument.
--- Used here in reverse: given out (the numbered line), solver finds text.
-schema NumberedLine
-    n    ∈ Nat
-    text ∈ String
-    out  ∈ String
-    n ≥ 1
-    out = int_to_str n ++ "\t" ++ text
+-- NumberedDocument used in reverse: given lines, find contents.
+-- Run: cat numbered.txt | evident batch un-nl-batch.ev NumberedDocument --in lines --out contents
+--
+-- The schema is identical to nl-batch.ev — direction is determined
+-- by which variable is given on the command line.
 
--- NumberedDocument: the batch relation this program reads from.
--- A valid numbered document has equal-length parallel sequences,
--- every line contains a tab, and the first line starts with "1\t".
--- Each step of schema main reads a row of this relation and recovers
--- the original content via NumberedLine's reverse direction.
 schema NumberedDocument
     lines    ∈ Seq(String)
     contents ∈ Seq(String)
     n        ∈ Nat
+
     n = #lines
     n = #contents
     n ≥ 1
+
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
     lines[0] ⊑ "1\t"
     ∀ i ∈ {0..n-1}: lines[i] = int_to_str (i+1) ++ "\t" ++ contents[i]
-
-schema main
-    ..LineReader
-    ..LineWriter
-    nl ∈ NumberedLine
-
-    -- Each input line is a row of NumberedDocument.
-    -- The solver navigates NumberedLine in reverse to find nl.text.
-    line_ready ⇒
-        nl.out   = line
-        line_out = nl.text
-
-    ¬line_ready ⇒
-        line_out = ""
