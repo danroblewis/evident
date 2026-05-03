@@ -15,126 +15,15 @@ schema GameState
 
 -- ── Transition logic ──────────────────────────────────────────────────────────
 --
--- Pure constraint schema: no I/O dependency, fully testable.
--- Given a state and a command string, produces the next state and a response.
+-- Self-contained: owns its own state pair, the line_ready signal, and the
+-- initialization logic. schema main wires it to I/O via passthrough mapping.
 
 schema GameTransition
-    state    ∈ GameState
-    cmd      ∈ String
-    next     ∈ GameState
-    response ∈ String
-
-    -- Helper: current room description and per-direction destinations
-    desc       ∈ String
-    dest_north ∈ String
-    dest_south ∈ String
-    dest_east  ∈ String
-    dest_west  ∈ String
-    dest_up    ∈ String
-    dest_down  ∈ String
-    dest_desc  ∈ String
-
-    (state.location, desc) ∈ room_descriptions
-
-    -- look / l / examine
-    (cmd = "look" ∨ cmd = "l" ∨ cmd = "examine") ⇒
-        response        = desc
-        next.location   = state.location
-
-    -- go north / n
-    (cmd = "go north" ∨ cmd = "n") ⇒
-        ((state.location, "north", dest_north) ∈ exits_map) ⇒
-            (dest_north, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_north
-        ((state.location, "north", dest_north) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- go south / s
-    (cmd = "go south" ∨ cmd = "s") ⇒
-        ((state.location, "south", dest_south) ∈ exits_map) ⇒
-            (dest_south, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_south
-        ((state.location, "south", dest_south) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- go east / e
-    (cmd = "go east" ∨ cmd = "e") ⇒
-        ((state.location, "east", dest_east) ∈ exits_map) ⇒
-            (dest_east, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_east
-        ((state.location, "east", dest_east) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- go west / w
-    (cmd = "go west" ∨ cmd = "w") ⇒
-        ((state.location, "west", dest_west) ∈ exits_map) ⇒
-            (dest_west, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_west
-        ((state.location, "west", dest_west) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- go up / u
-    (cmd = "go up" ∨ cmd = "u") ⇒
-        ((state.location, "up", dest_up) ∈ exits_map) ⇒
-            (dest_up, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_up
-        ((state.location, "up", dest_up) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- go down / d
-    (cmd = "go down" ∨ cmd = "d") ⇒
-        ((state.location, "down", dest_down) ∈ exits_map) ⇒
-            (dest_down, dest_desc) ∈ room_descriptions
-            response      = dest_desc
-            next.location = dest_down
-        ((state.location, "down", dest_down) ∉ exits_map) ⇒
-            response      = "You can't go that way."
-            next.location = state.location
-
-    -- help / ?
-    (cmd = "help" ∨ cmd = "?") ⇒
-        response      = "Commands: look, go <north/south/east/west/up/down>, help, quit"
-        next.location = state.location
-
-    -- quit / q
-    (cmd = "quit" ∨ cmd = "q") ⇒
-        response      = "Goodbye!"
-        next.location = state.location
-
-    -- empty line
-    (cmd = "") ⇒
-        response      = ""
-        next.location = state.location
-
-    -- unknown command
-    (cmd ∉ known_commands) ⇒
-        response      = "I don't understand that."
-        next.location = state.location
-
--- ── Main program ─────────────────────────────────────────────────────────────
---
--- The intended form is:
---   ..GameTransition(cmd mapsto line, response mapsto line_out, next mapsto state_next)
--- This requires GameTransition to use `state_next` instead of `next` so that
--- names-match unification handles the state variable. The passthrough mapping
--- for sub-schemas (next mapsto state_next) is now supported in the runtime.
--- Refactor pending.
-
-schema main
-    ..LineReader
-    ..LineWriter
     state      ∈ GameState
     state_next ∈ GameState
+    cmd        ∈ String
+    response   ∈ String
+    line_ready ∈ Bool
 
     desc       ∈ String
     dest_north ∈ String
@@ -148,81 +37,88 @@ schema main
     line_ready ⇒
         (state.location, desc) ∈ room_descriptions
 
-        (line = "look" ∨ line = "l" ∨ line = "examine") ⇒
-            line_out = desc
+        (cmd = "look" ∨ cmd = "l" ∨ cmd = "examine") ⇒
+            response = desc
             state_next.location = state.location
 
-        (line = "go north" ∨ line = "n") ⇒
+        (cmd = "go north" ∨ cmd = "n") ⇒
             ((state.location, "north", dest_north) ∈ exits_map) ⇒
                 (dest_north, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_north
             ((state.location, "north", dest_north) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "go south" ∨ line = "s") ⇒
+        (cmd = "go south" ∨ cmd = "s") ⇒
             ((state.location, "south", dest_south) ∈ exits_map) ⇒
                 (dest_south, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_south
             ((state.location, "south", dest_south) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "go east" ∨ line = "e") ⇒
+        (cmd = "go east" ∨ cmd = "e") ⇒
             ((state.location, "east", dest_east) ∈ exits_map) ⇒
                 (dest_east, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_east
             ((state.location, "east", dest_east) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "go west" ∨ line = "w") ⇒
+        (cmd = "go west" ∨ cmd = "w") ⇒
             ((state.location, "west", dest_west) ∈ exits_map) ⇒
                 (dest_west, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_west
             ((state.location, "west", dest_west) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "go up" ∨ line = "u") ⇒
+        (cmd = "go up" ∨ cmd = "u") ⇒
             ((state.location, "up", dest_up) ∈ exits_map) ⇒
                 (dest_up, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_up
             ((state.location, "up", dest_up) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "go down" ∨ line = "d") ⇒
+        (cmd = "go down" ∨ cmd = "d") ⇒
             ((state.location, "down", dest_down) ∈ exits_map) ⇒
                 (dest_down, dest_desc) ∈ room_descriptions
-                line_out = dest_desc
+                response = dest_desc
                 state_next.location = dest_down
             ((state.location, "down", dest_down) ∉ exits_map) ⇒
-                line_out = "You can't go that way."
+                response = "You can't go that way."
                 state_next.location = state.location
 
-        (line = "help" ∨ line = "?") ⇒
-            line_out = "Commands: look, go <north/south/east/west/up/down>, help, quit"
+        (cmd = "help" ∨ cmd = "?") ⇒
+            response = "Commands: look, go <north/south/east/west/up/down>, help, quit"
             state_next.location = state.location
 
-        (line = "quit" ∨ line = "q") ⇒
-            line_out = "Goodbye!"
+        (cmd = "quit" ∨ cmd = "q") ⇒
+            response = "Goodbye!"
             state_next.location = state.location
 
-        (line = "") ⇒
-            line_out = ""
+        (cmd = "") ⇒
+            response = ""
             state_next.location = state.location
 
-        (line ∉ known_commands) ⇒
-            line_out = "I don't understand that."
+        (cmd ∉ known_commands) ⇒
+            response = "I don't understand that."
             state_next.location = state.location
 
     ¬line_ready ⇒
-        line_out = ""
+        response = ""
         (state.location = "") ⇒ state_next.location = "entrance"
         (state.location ≠ "") ⇒ state_next.location = state.location
+
+-- ── Main program ──────────────────────────────────────────────────────────────
+
+schema main
+    ..LineReader
+    ..LineWriter
+    ..GameTransition(cmd mapsto line, response mapsto line_out)
