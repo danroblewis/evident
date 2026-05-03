@@ -1,0 +1,54 @@
+{
+  "name": "evident-lang",
+  "displayName": "Evident",
+  "description": "Syntax highlighting for the Evident constraint programming language (.ev files)",
+  "version": "0.1.0",
+  "publisher": "danroblewis",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "evident",
+    "constraint",
+    "smt",
+    "z3",
+    "schema"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "evident",
+        "aliases": [
+          "Evident",
+          "evident"
+        ],
+        "extensions": [
+          ".ev"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "evident",
+        "scopeName": "source.evident",
+        "path": "./syntaxes/evident.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Evident Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/evident-dark-color-theme.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danroblewis/evident"
+  },
+  "license": "MIT"
+}

@@ -30,13 +30,49 @@ def _c(text, *codes):
         return str(text)
     return '\033[' + ';'.join(str(c) for c in codes) + 'm' + str(text) + '\033[0m'
 
-def _green(t):  return _c(t, 92)
-def _red(t):    return _c(t, 91)
-def _cyan(t):   return _c(t, 96)
-def _yellow(t): return _c(t, 93)
-def _blue(t):   return _c(t, 94)
-def _dim(t):    return _c(t, 2)
-def _bold(t):   return _c(t, 1)
+def _green(t):   return _c(t, 92)
+def _red(t):     return _c(t, 91)
+def _cyan(t):    return _c(t, 96)
+def _yellow(t):  return _c(t, 93)
+def _blue(t):    return _c(t, 94)
+def _dim(t):     return _c(t, 2)
+def _bold(t):    return _c(t, 1)
+def _magenta(t): return _c(t, 95)
+def _white(t):   return _c(t, 97)
+
+def _highlight_constraint(text: str) -> str:
+    """Syntax-colorize a pretty-printed Evident constraint for terminal display."""
+    import re
+    result = []
+    i = 0
+    while i < len(text):
+        # String literals  "..."
+        if text[i] == '"':
+            j = text.index('"', i + 1) + 1 if '"' in text[i+1:] else len(text)
+            result.append(_yellow(text[i:j]))
+            i = j
+            continue
+        # Unicode operators — color them white/bold so they pop
+        for op in ('∈', '∉', '⊆', '⊇', '∋', '∧', '∨', '¬', '⇒', '∀', '∃',
+                   '≠', '≤', '≥', '++', '∪', '∩'):
+            if text[i:].startswith(op):
+                result.append(_white(_bold(op)))
+                i += len(op)
+                break
+        else:
+            # Identifiers: lowercase = blue (variables), uppercase-first = cyan (sets/types)
+            m = re.match(r'[A-Za-z_][A-Za-z0-9_]*', text[i:])
+            if m:
+                word = m.group()
+                if word[0].isupper():
+                    result.append(_cyan(word))
+                else:
+                    result.append(_blue(word))
+                i += len(word)
+            else:
+                result.append(text[i])
+                i += 1
+    return ''.join(result)
 
 # Ensure project root on path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -155,6 +191,162 @@ def _parse_given(given_list):
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
+def _user_bindings(bindings: dict) -> dict:
+    """Filter solver bindings down to the ones a user cares about.
+
+    Removes .length (string internals), sequence indices (.0, .1, …),
+    and None values.
+    """
+    result = {}
+    for k, v in bindings.items():
+        if v is None:
+            continue
+        tail = k.rsplit('.', 1)[-1]
+        if tail == 'length' or tail.isdigit():
+            continue
+        result[k] = v
+    return result
+
+
+def _claim_body(rt, name: str) -> list[str]:
+    """Return the body constraints of a named schema as pretty-printed strings."""
+    from runtime.src.ast_types import EvidentBlock, PassthroughItem
+    from runtime.src.prettyprint import pretty_constraint
+
+    schema = rt.schemas.get(name)
+    if schema is None:
+        return []
+    lines = []
+    for item in schema.body:
+        if isinstance(item, (EvidentBlock, PassthroughItem)):
+            continue
+        try:
+            lines.append(pretty_constraint(item))
+        except Exception:
+            pass
+    return lines
+
+
+def cmd_test(args):
+    """Discover and run sat_*/unsat_* claims in test_*.ev files."""
+    from runtime.src.runtime import EvidentRuntime
+
+    search_path = Path(args.path) if args.path else Path('.')
+    if search_path.is_file():
+        files = [search_path]
+    else:
+        files = sorted(search_path.glob('test_*.ev'))
+        tests_dir = search_path / 'tests'
+        if tests_dir.is_dir():
+            files += sorted(tests_dir.glob('test_*.ev'))
+
+    if not files:
+        print(_dim(f'No test_*.ev files found in {search_path}'))
+        return 0
+
+    # Each entry: (path, name, ok, expected_sat, detail)
+    # detail: None | {'type': 'counterexample', 'bindings': {...}}
+    #                 {'type': 'core', 'constraints': [...]}
+    #                 {'type': 'error', 'message': str}
+    results = []
+
+    for path in files:
+        rt = EvidentRuntime()
+        try:
+            rt.load_file(str(path))
+        except Exception as e:
+            results.append((path, str(path), False, None,
+                            {'type': 'error', 'message': f'Failed to load: {e}'}))
+            print(_red('E'), end='', flush=True)
+            continue
+
+        for name in rt.schemas:
+            if name.startswith('sat_'):
+                expected_sat = True
+            elif name.startswith('unsat_'):
+                expected_sat = False
+            else:
+                continue
+
+            try:
+                r = rt.query(name)
+            except Exception as e:
+                results.append((path, name, False, expected_sat,
+                                {'type': 'error', 'message': str(e)}))
+                print(_red('E'), end='', flush=True)
+                continue
+
+            ok = r.satisfied == expected_sat
+            detail = None
+            if not ok:
+                if r.satisfied:
+                    bindings = _user_bindings(r.bindings)
+                    body     = _claim_body(rt, name)
+                    detail = {'type': 'counterexample', 'bindings': bindings, 'body': body}
+                else:
+                    try:
+                        core = rt.unsat_core(name)
+                        detail = {'type': 'core', 'constraints': core}
+                    except Exception:
+                        detail = {'type': 'core', 'constraints': []}
+
+            results.append((path, name, ok, expected_sat, detail))
+            print(_green('.') if ok else _red('F'), end='', flush=True)
+
+    print()
+
+    failures = [(p, n, exp, d) for p, n, ok, exp, d in results if not ok]
+    if failures:
+        print()
+        print(_bold('FAILURES'))
+        print(_dim('─' * 60))
+        for path, name, expected_sat, detail in failures:
+            print()
+            print(f'  {_dim(str(path))} :: {_cyan(name)}')
+            if detail and detail['type'] == 'error':
+                print(f'    {_red("ERROR")} {detail["message"]}')
+            elif detail and detail['type'] == 'counterexample':
+                from runtime.src.prettyprint import vars_in_constraint, pretty_constraint
+                from runtime.src.ast_types import EvidentBlock, PassthroughItem
+                print(f'    got {_red("SAT")}, expected UNSAT')
+                print(f'    {_dim("all constraints were satisfied — counterexample:")}')
+                schema = rt.schemas.get(name)
+                for item in (schema.body if schema else []):
+                    if isinstance(item, (EvidentBlock, PassthroughItem)):
+                        continue
+                    try:
+                        text = pretty_constraint(item)
+                        refs = vars_in_constraint(item)
+                        witnesses = {k: v for k, v in detail['bindings'].items()
+                                     if k in refs and v is not None}
+                        print(f'      {_highlight_constraint(text)}')
+                        for k, v in witnesses.items():
+                            print(f'        {_blue(k)} = {_yellow(repr(v) if isinstance(v, str) else v)}')
+                    except Exception:
+                        pass
+            elif detail and detail['type'] == 'core':
+                got, exp = 'UNSAT', 'SAT'
+                print(f'    got {_red(got)}, expected {exp}', end='')
+                if detail['constraints']:
+                    print('  — conflicting constraints:\n')
+                    for c in detail['constraints']:
+                        print(f'      {_highlight_constraint(c)}')
+                else:
+                    print()
+        print()
+        print(_dim('─' * 60))
+
+    passed  = sum(1 for (_, _n, ok, _e, _d) in results if ok)
+    total   = len(results)
+    failed  = total - passed
+    parts   = []
+    if failed:
+        parts.append(_red(f'{failed} failed'))
+    parts.append(_green(f'{passed} passed'))
+    print('  '.join(parts))
+    return 0 if failed == 0 else 1
+
 
 def cmd_batch(args):
     """
@@ -452,9 +644,14 @@ def main():
     rp = sub.add_parser('repl', help='interactive session')
     rp.add_argument('files', nargs='*')
 
+    # test
+    te = sub.add_parser('test', help='run sat_*/unsat_* claims in test_*.ev files')
+    te.add_argument('path', nargs='?', help='file or directory to search (default: current directory)')
+
     args = p.parse_args()
     dispatch = {'batch': cmd_batch, 'execute': cmd_execute, 'check': cmd_check,
-                'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl}
+                'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl,
+                'test': cmd_test}
     sys.exit(dispatch[args.cmd](args))
 
 

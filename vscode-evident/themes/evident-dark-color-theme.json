@@ -1,0 +1,356 @@
+{
+  "name": "Evident Dark",
+  "$schema": "vscode://schemas/color-theme",
+  "type": "dark",
+  "colors": {
+    "editor.background":                        "#1e1e2e",
+    "editor.foreground":                        "#cdd6f4",
+    "editorLineNumber.foreground":              "#6c7086",
+    "editorLineNumber.activeForeground":        "#cdd6f4",
+    "editorGutter.background":                  "#1e1e2e",
+    "editorCursor.foreground":                  "#f5c2e7",
+    "editor.selectionBackground":               "#313244",
+    "editor.inactiveSelectionBackground":       "#2a2a3d",
+    "editor.lineHighlightBackground":           "#24243a",
+    "editorIndentGuide.background1":            "#313244",
+    "editorIndentGuide.activeBackground1":      "#45475a",
+    "editor.findMatchBackground":               "#f9e2af40",
+    "editor.findMatchHighlightBackground":      "#f9e2af20",
+    "editorWidget.background":                  "#181825",
+    "editorWidget.border":                      "#313244",
+    "editorSuggestWidget.background":           "#181825",
+    "editorSuggestWidget.border":               "#313244",
+    "editorSuggestWidget.selectedBackground":   "#313244",
+    "list.hoverBackground":                     "#313244",
+    "list.activeSelectionBackground":           "#45475a",
+    "scrollbar.shadow":                         "#00000040",
+    "scrollbarSlider.background":               "#45475a80",
+    "scrollbarSlider.hoverBackground":          "#6c708680",
+    "scrollbarSlider.activeBackground":         "#9399b280",
+    "statusBar.background":                     "#181825",
+    "statusBar.foreground":                     "#cdd6f4",
+    "titleBar.activeBackground":                "#181825",
+    "titleBar.activeForeground":                "#cdd6f4",
+    "sideBar.background":                       "#181825",
+    "sideBarSectionHeader.background":          "#1e1e2e",
+    "activityBar.background":                   "#181825",
+    "tab.activeBackground":                     "#1e1e2e",
+    "tab.inactiveBackground":                   "#181825",
+    "tab.border":                               "#313244"
+  },
+  "tokenColors": [
+    {
+      "comment": "Comments",
+      "scope": [
+        "comment.line.double-dash.evident",
+        "comment"
+      ],
+      "settings": {
+        "foreground": "#6c7086",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "comment": "Annotation tags inside comments: @plot, @test",
+      "scope": "storage.type.annotation.evident",
+      "settings": {
+        "foreground": "#f9e2af",
+        "fontStyle": "bold italic"
+      }
+    },
+    {
+      "comment": "Schema and claim declaration keywords",
+      "scope": [
+        "keyword.declaration.schema.evident",
+        "keyword.declaration.claim.evident"
+      ],
+      "settings": {
+        "foreground": "#89b4fa",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "type declaration keyword",
+      "scope": "keyword.declaration.type.evident",
+      "settings": {
+        "foreground": "#cba6f7",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "notation declaration keyword",
+      "scope": "keyword.declaration.notation.evident",
+      "settings": {
+        "foreground": "#89b4fa",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "import keyword",
+      "scope": "keyword.control.import.evident",
+      "settings": {
+        "foreground": "#89b4fa",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "assert keyword",
+      "scope": "keyword.control.assert.evident",
+      "settings": {
+        "foreground": "#89b4fa",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "query ? operator",
+      "scope": "keyword.control.query.evident",
+      "settings": {
+        "foreground": "#f9e2af",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "Quantifier keywords: all, some, none, one, forall, exists",
+      "scope": [
+        "keyword.control.quantifier.evident",
+        "keyword.control.quantifier.unique.evident",
+        "keyword.control.quantifier.none.evident"
+      ],
+      "settings": {
+        "foreground": "#cba6f7",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "Logic keywords: not, and, or",
+      "scope": "keyword.operator.logical.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "comment": "not (¬) — slightly different shade",
+      "scope": "keyword.operator.logical.not.evident",
+      "settings": {
+        "foreground": "#f38ba8"
+      }
+    },
+    {
+      "comment": "Boolean literals",
+      "scope": "constant.language.boolean.evident",
+      "settings": {
+        "foreground": "#fab387"
+      }
+    },
+    {
+      "comment": "Schema/type names (entity names)",
+      "scope": [
+        "entity.name.type.schema.evident",
+        "entity.name.type.enum.evident"
+      ],
+      "settings": {
+        "foreground": "#a6e3a1",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "Passthrough ..SchemaName",
+      "scope": "entity.other.inherited-class.evident",
+      "settings": {
+        "foreground": "#a6e3a1",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "comment": "Built-in types: Nat, Int, Real, Bool, String, Set, Seq",
+      "scope": "support.type.builtin.evident",
+      "settings": {
+        "foreground": "#89dceb",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "User-defined type names (capitalized identifiers)",
+      "scope": "entity.name.type.evident",
+      "settings": {
+        "foreground": "#89dceb"
+      }
+    },
+    {
+      "comment": "Membership operators: ∈ ∉ ∋ ∌ ⊆ ⊇",
+      "scope": "keyword.operator.membership.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Implication arrow ⇒ and =>",
+      "scope": "keyword.operator.implies.evident",
+      "settings": {
+        "foreground": "#f38ba8",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "Mapsto ↦",
+      "scope": "keyword.operator.mapsto.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Set algebra: ∩ ∪ ×",
+      "scope": "keyword.operator.set.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Logical connectives: ∧ ∨",
+      "scope": "keyword.operator.logical.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "comment": "Comparison operators: ≤ ≥ ≠ < > = != <= >=",
+      "scope": "keyword.operator.comparison.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Prefix/suffix operators: ⊑ ⊒",
+      "scope": "keyword.operator.prefix-suffix.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Cardinality/length operator #",
+      "scope": "keyword.operator.cardinality.evident",
+      "settings": {
+        "foreground": "#fab387",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "comment": "String word operators: starts_with, ends_with, contains, matches",
+      "scope": "keyword.operator.string.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "Arithmetic operators: + - * /",
+      "scope": "keyword.operator.arithmetic.evident",
+      "settings": {
+        "foreground": "#f5c2e7"
+      }
+    },
+    {
+      "comment": "String concat ++",
+      "scope": "keyword.operator.concat.evident",
+      "settings": {
+        "foreground": "#a6e3a1"
+      }
+    },
+    {
+      "comment": "Range operator ..",
+      "scope": "keyword.operator.range.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "comment": "Pipe | in enum / set expressions",
+      "scope": "keyword.operator.pipe.evident",
+      "settings": {
+        "foreground": "#cba6f7"
+      }
+    },
+    {
+      "comment": "String literals",
+      "scope": [
+        "string.quoted.double.evident",
+        "string"
+      ],
+      "settings": {
+        "foreground": "#a6e3a1"
+      }
+    },
+    {
+      "comment": "Regex literals /pattern/",
+      "scope": "string.regexp.evident",
+      "settings": {
+        "foreground": "#94e2d5"
+      }
+    },
+    {
+      "comment": "String escape sequences",
+      "scope": "constant.character.escape.evident",
+      "settings": {
+        "foreground": "#fab387"
+      }
+    },
+    {
+      "comment": "Number literals",
+      "scope": [
+        "constant.numeric.integer.evident",
+        "constant.numeric.float.evident",
+        "constant.numeric"
+      ],
+      "settings": {
+        "foreground": "#fab387"
+      }
+    },
+    {
+      "comment": "Sequence literal brackets ⟨ ⟩",
+      "scope": "punctuation.definition.sequence.begin.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "scope": "punctuation.definition.sequence.end.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "comment": "Square brackets []",
+      "scope": "punctuation.definition.bracket.square.evident",
+      "settings": {
+        "foreground": "#89b4fa"
+      }
+    },
+    {
+      "comment": "Curly braces {}",
+      "scope": "punctuation.definition.bracket.curly.evident",
+      "settings": {
+        "foreground": "#cba6f7"
+      }
+    },
+    {
+      "comment": "Round brackets ()",
+      "scope": "punctuation.definition.bracket.round.evident",
+      "settings": {
+        "foreground": "#7f849c"
+      }
+    },
+    {
+      "comment": "Separators , . : ;",
+      "scope": "punctuation.separator.evident",
+      "settings": {
+        "foreground": "#6c7086"
+      }
+    },
+    {
+      "comment": "Lowercase identifiers — schema variable names",
+      "scope": "variable.other.evident",
+      "settings": {
+        "foreground": "#cdd6f4"
+      }
+    }
+  ]
+}

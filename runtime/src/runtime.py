@@ -204,6 +204,21 @@ class EvidentRuntime:
         self.load_schema(schema)
         return self.query(schema.name, given)
 
+    def unsat_core(
+        self,
+        schema_name: str,
+        given: dict[str, Any] | None = None,
+    ) -> list[str]:
+        """
+        Return the minimal conflicting constraints for a schema that is UNSAT,
+        as source-like strings.  Call this after query() returns satisfied=False
+        to get diagnostic information.
+        """
+        schema = self.schemas.get(schema_name)
+        if schema is None:
+            return []
+        return self.solver.get_unsat_core(schema, given or {})
+
     # ------------------------------------------------------------------
     # Automaton execution
     # ------------------------------------------------------------------

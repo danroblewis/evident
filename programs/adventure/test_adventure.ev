@@ -1,0 +1,142 @@
+-- test_adventure.ev — Claims about the adventure game world model.
+--
+-- Run with:  python evident.py test programs/adventure/test_adventure.ev
+
+import "world.ev"
+import "commands.ev"
+
+-- ── Room descriptions ──────────────────────────────────────────────────────────
+
+-- Every named room has a description
+claim sat_all_five_rooms_have_descriptions
+    d_entrance ∈ String
+    d_forest   ∈ String
+    d_cave     ∈ String
+    d_tower    ∈ String
+    d_dungeon  ∈ String
+    ("entrance", d_entrance) ∈ room_descriptions
+    ("forest",   d_forest)   ∈ room_descriptions
+    ("cave",     d_cave)     ∈ room_descriptions
+    ("tower",    d_tower)    ∈ room_descriptions
+    ("dungeon",  d_dungeon)  ∈ room_descriptions
+
+-- A room that doesn't exist has no description
+claim unsat_limbo_has_a_description
+    d ∈ String
+    ("limbo", d) ∈ room_descriptions
+
+-- ── Exit connectivity ──────────────────────────────────────────────────────────
+
+-- Specific exits exist
+claim sat_entrance_north_to_forest
+    ("entrance", "north", "forest") ∈ exits_map
+
+claim sat_forest_south_to_entrance
+    ("forest", "south", "entrance") ∈ exits_map
+
+claim sat_entrance_east_to_cave
+    ("entrance", "east", "cave") ∈ exits_map
+
+claim sat_cave_west_to_entrance
+    ("cave", "west", "entrance") ∈ exits_map
+
+claim sat_cave_down_to_dungeon
+    ("cave", "down", "dungeon") ∈ exits_map
+
+claim sat_dungeon_up_to_cave
+    ("dungeon", "up", "cave") ∈ exits_map
+
+-- The dungeon has no horizontal exits — only up
+claim unsat_dungeon_has_horizontal_exit
+    dir  ∈ String
+    dest ∈ String
+    ("dungeon", dir, dest) ∈ exits_map
+    dir ≠ "up"
+
+-- No room exits to itself
+claim unsat_room_exits_to_itself
+    room ∈ String
+    dir  ∈ String
+    (room, dir, room) ∈ exits_map
+
+-- A nonexistent room has no exits
+claim unsat_limbo_has_exits
+    dir  ∈ String
+    dest ∈ String
+    ("limbo", dir, dest) ∈ exits_map
+
+-- Every exit destination is one of the five known rooms
+claim unsat_exit_leads_outside_known_rooms
+    from_room ∈ String
+    dir       ∈ String
+    to_room   ∈ String
+    (from_room, dir, to_room) ∈ exits_map
+    to_room ≠ "entrance"
+    to_room ≠ "forest"
+    to_room ≠ "cave"
+    to_room ≠ "tower"
+    to_room ≠ "dungeon"
+
+-- ── Items ──────────────────────────────────────────────────────────────────────
+
+-- All items start in their expected rooms
+claim sat_torch_in_entrance
+    ("torch", "entrance") ∈ item_locations
+
+claim sat_key_in_forest
+    ("key", "forest") ∈ item_locations
+
+claim sat_sword_in_cave
+    ("sword", "cave") ∈ item_locations
+
+claim sat_goldcoin_in_tower
+    ("goldcoin", "tower") ∈ item_locations
+
+-- No item starts in the dungeon (must earn access)
+claim unsat_item_starts_in_dungeon
+    item ∈ String
+    (item, "dungeon") ∈ item_locations
+
+-- All items are placed in one of the five known rooms
+claim unsat_item_in_unknown_room
+    item ∈ String
+    room ∈ String
+    (item, room) ∈ item_locations
+    room ≠ "entrance"
+    room ≠ "forest"
+    room ≠ "cave"
+    room ≠ "tower"
+    room ≠ "dungeon"
+
+-- ── Command vocabulary ─────────────────────────────────────────────────────────
+
+-- Single-letter direction abbreviations work
+claim sat_direction_abbreviations
+    ("n", "north") ∈ direction_words
+    ("s", "south") ∈ direction_words
+    ("e", "east")  ∈ direction_words
+    ("w", "west")  ∈ direction_words
+    ("u", "up")    ∈ direction_words
+    ("d", "down")  ∈ direction_words
+
+-- Item word aliases work
+claim sat_gold_aliases
+    ("gold",     "goldcoin") ∈ item_words
+    ("coin",     "goldcoin") ∈ item_words
+    ("gold coin","goldcoin") ∈ item_words
+
+-- "northwest" is not a recognized direction
+claim unsat_northwest_is_a_direction
+    d ∈ String
+    ("northwest", d) ∈ direction_words
+
+-- ── Direction word symmetry ────────────────────────────────────────────────────
+
+-- Every canonical direction maps to itself
+claim sat_canonical_directions_are_self_mapped
+    ("north", "north") ∈ direction_words
+    ("south", "south") ∈ direction_words
+    ("east",  "east")  ∈ direction_words
+    ("west",  "west")  ∈ direction_words
+    ("up",    "up")    ∈ direction_words
+    ("down",  "down")  ∈ direction_words

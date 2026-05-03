@@ -624,26 +624,87 @@ class EvidentSolver:
         return result
 
     # ------------------------------------------------------------------
-    # Unsat explanation
+    # Unsat core (second-pass, tracking mode)
+    # ------------------------------------------------------------------
+
+    def get_unsat_core(
+        self,
+        schema: SchemaDecl,
+        given: dict | None = None,
+    ) -> list[str]:
+        """
+        Re-evaluate a schema with assert_and_track and return the minimal
+        set of conflicting body constraints as source-like strings.
+
+        Only called after a normal evaluate() returns UNSAT, so the overhead
+        of tracking is paid only on failure.
+        """
+        from .prettyprint import pretty_constraint
+
+        if given is None:
+            given = {}
+
+        init_env = Environment(bindings=dict(self.env.bindings))
+        for name, py_val in given.items():
+            z3_val = self._python_to_z3_untyped(py_val)
+            init_env = init_env.bind(name, z3_val)
+
+        env, type_constraints = instantiate_schema(
+            schema, init_env, self.registry, schemas=self.schemas
+        )
+
+        # Build the tracked body items once; iterate to find all cores.
+        body_items = [
+            (i, item)
+            for i, item in enumerate(schema.body)
+            if not isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl))
+        ]
+
+        all_conflicting: list[str] = []
+        excluded: set[str] = set()
+
+        for _ in range(len(body_items) + 1):
+            s = z3.Solver()
+            # Type constraints are never excluded — add without tracking.
+            for tc in type_constraints:
+                s.add(tc)
+
+            label_map: dict[str, str] = {}
+            for i, item in body_items:
+                label = f'_c{i}'
+                if label in excluded:
+                    continue
+                try:
+                    z3_c = _translate_body_constraint(item, env, self.registry)
+                    s.assert_and_track(z3_c, label)
+                    label_map[label] = pretty_constraint(item)
+                except (NotImplementedError, KeyError):
+                    pass
+
+            if not label_map or s.check() != z3.unsat:
+                break
+
+            core = s.unsat_core()
+            found = [label_map[str(c)] for c in core if str(c) in label_map]
+            if not found:
+                break
+
+            all_conflicting.extend(found)
+            excluded.update(str(c) for c in core if str(c) in label_map)
+
+        return all_conflicting
+
+    # ------------------------------------------------------------------
+    # Unsat explanation (legacy)
     # ------------------------------------------------------------------
 
     @staticmethod
     def _build_unsat_explanation(solver: z3.Solver) -> str:
-        """
-        Build a human-readable explanation for why the solver is unsatisfied.
-
-        Uses Z3's unsat core if available (requires tracking assertions),
-        otherwise returns a generic message.
-        """
         try:
-            # Try to get a simplified explanation by listing the assertions
             assertions = solver.assertions()
             if len(assertions) == 0:
-                return "No constraints were added — empty schema is somehow unsat."
-            return (
-                f"Constraints are unsatisfiable. "
-                f"The solver checked {len(assertions)} assertion(s)."
-            )
+                return "No constraints were added."
+            return f"Unsatisfiable ({len(assertions)} assertion(s) checked)."
         except Exception:
             return "Constraints are unsatisfiable."
 

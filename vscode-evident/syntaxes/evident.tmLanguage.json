@@ -1,0 +1,398 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Evident",
+  "scopeName": "source.evident",
+  "fileTypes": ["ev"],
+  "patterns": [
+    { "include": "#comment-annotation" },
+    { "include": "#comment" },
+    { "include": "#import" },
+    { "include": "#type-decl" },
+    { "include": "#schema-head" },
+    { "include": "#claim-head" },
+    { "include": "#assert-stmt" },
+    { "include": "#passthrough" },
+    { "include": "#notation-decl" },
+    { "include": "#forward-rule" },
+    { "include": "#query-stmt" },
+    { "include": "#quantifier-keywords" },
+    { "include": "#logic-keywords" },
+    { "include": "#string" },
+    { "include": "#regex-literal" },
+    { "include": "#sequence-literal" },
+    { "include": "#number" },
+    { "include": "#unicode-quantifiers" },
+    { "include": "#unicode-membership" },
+    { "include": "#unicode-set-ops" },
+    { "include": "#unicode-logic" },
+    { "include": "#unicode-arrows" },
+    { "include": "#unicode-compare" },
+    { "include": "#unicode-seq-brackets" },
+    { "include": "#word-operators" },
+    { "include": "#builtin-types" },
+    { "include": "#type-name" },
+    { "include": "#ascii-operators" },
+    { "include": "#brackets" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+
+    "comment-annotation": {
+      "comment": "Special annotations inside comments: -- @plot, -- @test, etc.",
+      "name": "comment.line.double-dash.evident",
+      "match": "(--)(\\s*)(@[a-zA-Z][a-zA-Z0-9_]*)(.*)$",
+      "captures": {
+        "1": { "name": "punctuation.definition.comment.evident" },
+        "3": { "name": "storage.type.annotation.evident" },
+        "4": { "name": "comment.line.annotation.body.evident" }
+      }
+    },
+
+    "comment": {
+      "comment": "Line comments starting with --",
+      "name": "comment.line.double-dash.evident",
+      "match": "--.*$",
+      "captures": {
+        "0": { "name": "comment.line.double-dash.evident" }
+      }
+    },
+
+    "import": {
+      "comment": "import \"path/to/file.ev\"",
+      "name": "meta.import.evident",
+      "match": "^(import)\\s+(\"[^\"]*\")",
+      "captures": {
+        "1": { "name": "keyword.control.import.evident" },
+        "2": { "name": "string.quoted.double.evident" }
+      }
+    },
+
+    "type-decl": {
+      "comment": "type Color = Red | Green | Blue",
+      "name": "meta.type-declaration.evident",
+      "match": "^(type)\\s+([A-Z][A-Za-z0-9_]*)\\s*(=)",
+      "captures": {
+        "1": { "name": "keyword.declaration.type.evident" },
+        "2": { "name": "entity.name.type.enum.evident" },
+        "3": { "name": "keyword.operator.assignment.evident" }
+      }
+    },
+
+    "schema-head": {
+      "comment": "schema Foo or schema Foo(x ∈ Nat, ...)",
+      "name": "meta.schema-declaration.evident",
+      "match": "^(schema)\\s+([A-Z][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.schema.evident" },
+        "2": { "name": "entity.name.type.schema.evident" }
+      }
+    },
+
+    "claim-head": {
+      "comment": "claim Foo (claim is a schema variant)",
+      "name": "meta.claim-declaration.evident",
+      "match": "^(claim)\\s+([A-Z][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.claim.evident" },
+        "2": { "name": "entity.name.type.schema.evident" }
+      }
+    },
+
+    "assert-stmt": {
+      "comment": "assert name = expr  or  assert name ∈ expr",
+      "name": "meta.assert.evident",
+      "match": "^(assert)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.assert.evident" }
+      }
+    },
+
+    "passthrough": {
+      "comment": "..SchemaName — passthrough inclusion of another schema",
+      "name": "meta.passthrough.evident",
+      "match": "\\.\\.[A-Z][A-Za-z0-9_]*",
+      "captures": {
+        "0": { "name": "entity.other.inherited-class.evident" }
+      }
+    },
+
+    "notation-decl": {
+      "comment": "notation keyword",
+      "match": "^(notation)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.notation.evident" }
+      }
+    },
+
+    "forward-rule": {
+      "comment": "Forward implication rules: A, B => C",
+      "name": "meta.forward-rule.evident",
+      "match": "(=>)",
+      "captures": {
+        "1": { "name": "keyword.operator.implies.evident" }
+      }
+    },
+
+    "query-stmt": {
+      "comment": "? constraint  — query line",
+      "match": "^(\\?)\\s",
+      "captures": {
+        "1": { "name": "keyword.control.query.evident" }
+      }
+    },
+
+    "quantifier-keywords": {
+      "comment": "Quantifier words: all, some, none, one",
+      "name": "keyword.control.quantifier.evident",
+      "match": "\\b(all|some|none|one|forall|exists)\\b"
+    },
+
+    "logic-keywords": {
+      "comment": "Boolean and logic keywords",
+      "patterns": [
+        {
+          "name": "keyword.operator.logical.evident",
+          "match": "\\b(not|and|or)\\b"
+        },
+        {
+          "name": "constant.language.boolean.evident",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+
+    "string": {
+      "comment": "Double-quoted string literals",
+      "name": "string.quoted.double.evident",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.evident",
+          "match": "\\\\."
+        }
+      ]
+    },
+
+    "regex-literal": {
+      "comment": "Regex literals /pattern/ in membership context (∈ /re/, /re/ ∋ x)",
+      "name": "string.regexp.evident",
+      "begin": "(?<=[∈∉∋∌]\\s)/",
+      "end": "/",
+      "patterns": [
+        {
+          "name": "constant.character.escape.regexp.evident",
+          "match": "\\\\."
+        }
+      ]
+    },
+
+    "sequence-literal": {
+      "comment": "Sequence literal brackets ⟨ ... ⟩",
+      "name": "meta.sequence-literal.evident",
+      "begin": "⟨",
+      "end": "⟩",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.sequence.begin.evident" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.sequence.end.evident" }
+      },
+      "patterns": [
+        { "include": "$self" }
+      ]
+    },
+
+    "number": {
+      "comment": "Integer and real number literals",
+      "patterns": [
+        {
+          "name": "constant.numeric.float.evident",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.evident",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+
+    "unicode-quantifiers": {
+      "comment": "Unicode quantifier symbols — order: ∃! and ¬∃ before ∃ and ¬",
+      "patterns": [
+        {
+          "name": "keyword.control.quantifier.unique.evident",
+          "match": "∃!"
+        },
+        {
+          "name": "keyword.control.quantifier.none.evident",
+          "match": "¬∃"
+        },
+        {
+          "name": "keyword.control.quantifier.evident",
+          "match": "[∀∃]"
+        },
+        {
+          "name": "keyword.operator.logical.not.evident",
+          "match": "¬"
+        }
+      ]
+    },
+
+    "unicode-membership": {
+      "comment": "Membership and subset operators",
+      "name": "keyword.operator.membership.evident",
+      "match": "[∈∉∋∌⊆⊇]"
+    },
+
+    "unicode-set-ops": {
+      "comment": "Set algebra operators",
+      "name": "keyword.operator.set.evident",
+      "match": "[∩∪×]"
+    },
+
+    "unicode-logic": {
+      "comment": "Unicode logical connectives",
+      "name": "keyword.operator.logical.evident",
+      "match": "[∧∨]"
+    },
+
+    "unicode-arrows": {
+      "comment": "Implication arrow ⇒ and mapsto ↦",
+      "patterns": [
+        {
+          "name": "keyword.operator.implies.evident",
+          "match": "⇒"
+        },
+        {
+          "name": "keyword.operator.mapsto.evident",
+          "match": "↦"
+        },
+        {
+          "name": "keyword.operator.chain.evident",
+          "match": "[·⋈]"
+        }
+      ]
+    },
+
+    "unicode-compare": {
+      "comment": "Unicode comparison operators ≤ ≥ ≠",
+      "name": "keyword.operator.comparison.evident",
+      "match": "[≤≥≠]"
+    },
+
+    "unicode-seq-brackets": {
+      "comment": "String prefix/suffix operators ⊑ ⊒ and sequence length #",
+      "patterns": [
+        {
+          "name": "keyword.operator.prefix-suffix.evident",
+          "match": "[⊑⊒]"
+        },
+        {
+          "name": "keyword.operator.cardinality.evident",
+          "match": "#(?=[a-zA-Z_({⟨])"
+        }
+      ]
+    },
+
+    "word-operators": {
+      "comment": "Word-form operators: in, not_in, subset, superset, mapsto, etc.",
+      "patterns": [
+        {
+          "name": "keyword.operator.membership.evident",
+          "match": "\\b(in|not_in|subset|superset)\\b"
+        },
+        {
+          "name": "keyword.operator.string.evident",
+          "match": "\\b(starts_with|ends_with|contains|matches)\\b"
+        },
+        {
+          "name": "keyword.operator.mapsto.evident",
+          "match": "\\b(mapsto)\\b"
+        },
+        {
+          "name": "keyword.operator.join.evident",
+          "match": "\\b(bowtie|adjacent)\\b"
+        }
+      ]
+    },
+
+    "builtin-types": {
+      "comment": "Built-in scalar and container types",
+      "name": "support.type.builtin.evident",
+      "match": "\\b(Nat|Int|Real|Bool|String|Seq|Set|Type|Prop)\\b"
+    },
+
+    "type-name": {
+      "comment": "Capitalized user-defined type or enum constructor",
+      "name": "entity.name.type.evident",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+
+    "ascii-operators": {
+      "comment": "ASCII operators — multi-char before single to avoid partial matches",
+      "patterns": [
+        {
+          "name": "keyword.operator.implies.evident",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.range.evident",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.concat.evident",
+          "match": "\\+\\+"
+        },
+        {
+          "name": "keyword.operator.comparison.evident",
+          "match": "<=|>=|!=|=="
+        },
+        {
+          "name": "keyword.operator.arithmetic.evident",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.comparison.evident",
+          "match": "[<>=!]"
+        },
+        {
+          "name": "keyword.operator.pipe.evident",
+          "match": "\\|"
+        },
+        {
+          "name": "keyword.operator.backslash.evident",
+          "match": "\\\\"
+        }
+      ]
+    },
+
+    "brackets": {
+      "comment": "Bracket and delimiter tokens",
+      "patterns": [
+        {
+          "name": "punctuation.definition.bracket.square.evident",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.definition.bracket.curly.evident",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.definition.bracket.round.evident",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.separator.evident",
+          "match": "[,.:;]"
+        }
+      ]
+    },
+
+    "identifier": {
+      "comment": "Lowercase identifiers — variables and schema field names",
+      "name": "variable.other.evident",
+      "match": "[a-z_][A-Za-z0-9_]*"
+    }
+  }
+}
