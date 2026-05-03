@@ -164,7 +164,35 @@ class EvidentSolver:
         # ── Step 2: instantiate the schema ─────────────────────────────────────
         env, type_constraints = instantiate_schema(schema, init_env, self.registry, schemas=self.schemas)
 
-        # ── Step 3 & 4: build and populate a fresh solver ─────────────────────
+        # ── Step 3: propagate concrete sequence lengths to bound variables ────────
+        #
+        # When a schema uses ∀ i ∈ {0..n-1}: body, the quantifier bound n-1
+        # is symbolic at translation time. Z3's ForAll with IntToStr + Seq
+        # indexing in the body exceeds its decidable fragment (returns unknown).
+        #
+        # Shim: scan the schema body for constraints of the form  n = #seq
+        # where seq is already bound to a concrete Z3 sequence in the env.
+        # For those, compute Length(seq) statically and bind n to the concrete
+        # integer — without calling the solver. The quantifier unroller then
+        # sees a concrete bound and unrolls rather than using ForAll.
+        from .ast_types import ArithmeticConstraint, CardinalityExpr
+
+        for item in schema.body:
+            if (isinstance(item, ArithmeticConstraint) and item.op == '='
+                    and isinstance(item.left, Identifier)
+                    and isinstance(item.right, CardinalityExpr)
+                    and isinstance(item.right.set, Identifier)):
+                var_name = item.left.name
+                seq_name = item.right.set.name
+                var_z3 = env.lookup(var_name)
+                seq_z3 = env.lookup(seq_name)
+                if (var_z3 is not None and seq_z3 is not None
+                        and z3.is_seq(seq_z3) and not z3.is_int_value(var_z3)):
+                    length = z3.simplify(z3.Length(seq_z3))
+                    if z3.is_int_value(length):
+                        env = env.bind(var_name, length)
+
+        # ── Step 4: build and populate the full solver ────────────────────────
         s = z3.Solver()
         for tc in type_constraints:
             s.add(tc)
@@ -177,8 +205,6 @@ class EvidentSolver:
                 z3_constraint = _translate_body_constraint(item, env, self.registry)
                 s.add(z3_constraint)
             except (NotImplementedError, KeyError) as exc:
-                # Gracefully skip constraints we can't yet translate.
-                # In a production system we'd warn; for now we document why.
                 pass
 
         # ── Step 5: check satisfiability ──────────────────────────────────────
@@ -201,13 +227,121 @@ class EvidentSolver:
                 explanation=self._build_unsat_explanation(s),
             )
         else:
-            # unknown — Z3 timed out or gave up
+            # unknown — try decomposing free Seq(String) variables into
+            # individual String variables and re-solving. Z3 can synthesize
+            # individual String vars with IntToStr constraints but not Seq
+            # elements. If n is concrete (resolved by the length shim above),
+            # we can replace Seq variables with n individual String vars.
+            fallback = self._try_seq_decomposition(
+                schema, env, type_constraints, given or {}
+            )
+            if fallback is not None:
+                return fallback
             return EvaluationResult(
                 satisfied=False,
                 bindings={},
                 model=None,
                 explanation="Z3 returned unknown (timeout or resource limit).",
             )
+
+    # ------------------------------------------------------------------
+    # Seq(String) decomposition fallback
+    # ------------------------------------------------------------------
+
+    def _try_seq_decomposition(self, schema, env, type_constraints, given):
+        """
+        Fallback for when Z3 returns unknown on a query involving Seq(String)
+        synthesis with IntToStr constraints.
+
+        Finds free Seq(String) variables whose length is concrete (resolved by
+        the length shim), replaces each with n individual String variables, and
+        re-solves. Z3 can synthesize individual String variables with IntToStr
+        constraints even though it cannot synthesize Seq elements.
+
+        Returns an EvaluationResult if the decomposed solve succeeds, else None.
+        """
+        # Find free Seq(String) variables with known concrete length.
+        # Two sources of concrete length:
+        # (a) z3.simplify(Length(seq)) is already concrete (seq given as list)
+        # (b) n = #seq where n is concrete in env (resolved by the length shim)
+        seq_vars = {}   # name → (z3_seq_var, concrete_length)
+
+        for name, z3_var in env.bindings.items():
+            if z3.is_seq(z3_var) and not z3.is_string(z3_var) and name not in given:
+                length_expr = z3.simplify(z3.Length(z3_var))
+                if z3.is_int_value(length_expr):
+                    seq_vars[name] = (z3_var, length_expr.as_long())
+
+        # Also check n = #seq constraints where n is concrete
+        from .ast_types import ArithmeticConstraint, CardinalityExpr, Identifier
+        for item in schema.body:
+            if (isinstance(item, ArithmeticConstraint) and item.op == '='
+                    and isinstance(item.left, Identifier)
+                    and isinstance(item.right, CardinalityExpr)
+                    and isinstance(item.right.set, Identifier)):
+                n_name   = item.left.name
+                seq_name = item.right.set.name
+                n_val    = env.lookup(n_name)
+                seq_z3   = env.lookup(seq_name)
+                if (n_val is not None and z3.is_int_value(n_val)
+                        and seq_z3 is not None
+                        and z3.is_seq(seq_z3) and not z3.is_string(seq_z3)
+                        and seq_name not in given
+                        and seq_name not in seq_vars):
+                    seq_vars[seq_name] = (seq_z3, n_val.as_long())
+
+        if not seq_vars:
+            return None
+
+        # Build a new env with the Seq vars replaced by individual String vars
+        new_env = env
+        elem_vars = {}  # name → list of individual String z3 vars
+
+        for seq_name, (seq_z3, n) in seq_vars.items():
+            elem_list = [z3.String(f'{seq_name}_{i}') for i in range(n)]
+            elem_vars[seq_name] = elem_list
+            # Replace the Seq var in env with a concrete sequence of the elem vars
+            seq_val = z3.Unit(elem_list[0])
+            for e in elem_list[1:]:
+                seq_val = z3.Concat(seq_val, z3.Unit(e))
+            new_env = new_env.bind(seq_name, seq_val)
+
+        # Re-solve with the decomposed env
+        s2 = z3.Solver()
+        for tc in type_constraints:
+            s2.add(tc)
+        for item in schema.body:
+            if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+                continue
+            try:
+                s2.add(_translate_body_constraint(item, new_env, self.registry))
+            except (NotImplementedError, KeyError):
+                pass
+
+        if s2.check() != z3.sat:
+            return None
+
+        model = s2.model()
+
+        # Reconstruct bindings: include individual element bindings
+        bindings = self._extract_model(new_env, model)
+
+        # Also expose the Seq vars as formatted strings and indexed elements
+        for seq_name, elem_list in elem_vars.items():
+            elements = []
+            for i, e in enumerate(elem_list):
+                val = model.eval(e, model_completion=True)
+                py_val = self._z3_to_python(val)
+                bindings[f'{seq_name}.{i}'] = py_val
+                elements.append(py_val if py_val is not None else '?')
+            bindings[seq_name] = '⟨' + ', '.join(repr(e) for e in elements) + '⟩'
+
+        return EvaluationResult(
+            satisfied=True,
+            bindings=bindings,
+            model=model,
+            explanation=None,
+        )
 
     # ------------------------------------------------------------------
     # Value conversion helpers

@@ -64,13 +64,20 @@ def _enumerate_elements(set_expr, env: Environment, registry: SortRegistry) -> l
 
     if isinstance(set_expr, RangeLiteral):
         from_val = translate_expr(set_expr.from_, env, registry)
-        to_val = translate_expr(set_expr.to, env, registry)
-        # Concrete bounds: unroll into a list of integer values.
-        if z3.is_int_value(from_val) and z3.is_int_value(to_val):
-            lo = from_val.as_long()
-            hi = to_val.as_long()
+        to_val   = translate_expr(set_expr.to,   env, registry)
+
+        # Try to simplify — if the given data makes the bounds concrete
+        # (e.g. {0..#contents-1} when contents is a given sequence),
+        # unroll into individual values instead of using a Z3 ForAll.
+        from_s = z3.simplify(from_val)
+        to_s   = z3.simplify(to_val)
+
+        if z3.is_int_value(from_s) and z3.is_int_value(to_s):
+            lo = from_s.as_long()
+            hi = to_s.as_long()
             return [z3.IntVal(i) for i in range(lo, hi + 1)]
-        # Symbolic bounds: signal the caller to use ForAll with arithmetic guard.
+
+        # Truly symbolic bounds: fall back to ForAll with arithmetic guard.
         raise _SymbolicRange(from_val, to_val)
 
     raise NotImplementedError(

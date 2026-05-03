@@ -25,6 +25,7 @@ schema NumberedDocument
     n ≥ 1
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
     lines[0] ⊑ "1\t"
+    ∀ i ∈ {0..n-1}: lines[i] = int_to_str (i+1) ++ "\t" ++ contents[i]
 
 schema Counter
     n ∈ Nat

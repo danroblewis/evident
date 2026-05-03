@@ -9,14 +9,14 @@
       "body": [
         {
           "type": "MembershipConstraint",
-          "op": "∈",
+          "op": "\u2208",
           "left": {
             "type": "Identifier",
             "name": "arr"
           },
           "right": {
             "type": "BinaryExpr",
-            "op": "×",
+            "op": "\u00d7",
             "left": {
               "type": "Identifier",
               "name": "Indexable"
@@ -29,14 +29,14 @@
         },
         {
           "type": "MembershipConstraint",
-          "op": "⊆",
+          "op": "\u2286",
           "left": {
             "type": "Identifier",
             "name": "pairs"
           },
           "right": {
             "type": "BinaryExpr",
-            "op": "×",
+            "op": "\u00d7",
             "left": {
               "type": "Identifier",
               "name": "T"
@@ -54,7 +54,104 @@
             "type": "Identifier",
             "name": "pairs"
           },
-          "right": "Tree(Token('RULE', 'compr_body'), [TupleLiteral(elements=[Identifier(name='v1'), Identifier(name='v2')]), [ComprehensionGenerator(binding=None, constraint=MembershipConstraint(op='∈', left=TupleLiteral(elements=[Identifier(name='i'), Identifier(name='v1')]), right=BinaryExpr(op='×', left=Identifier(name='arr'), right=FieldAccess(obj=Identifier(name='.'), field='entries')))), ComprehensionGenerator(binding=None, constraint=MembershipConstraint(op='∈', left=TupleLiteral(elements=[BinaryExpr(op='+', left=Identifier(name='i'), right=NatLiteral(value=1)), Identifier(name='v2')]), right=BinaryExpr(op='×', left=Identifier(name='arr'), right=FieldAccess(obj=Identifier(name='.'), field='entries'))))]])"
+          "right": {
+            "type": "SetComprehension",
+            "output": {
+              "type": "TupleLiteral",
+              "elements": [
+                {
+                  "type": "Identifier",
+                  "name": "v1"
+                },
+                {
+                  "type": "Identifier",
+                  "name": "v2"
+                }
+              ]
+            },
+            "generators": [
+              {
+                "type": "ComprehensionGenerator",
+                "constraint": {
+                  "type": "MembershipConstraint",
+                  "op": "\u2208",
+                  "left": {
+                    "type": "TupleLiteral",
+                    "elements": [
+                      {
+                        "type": "Identifier",
+                        "name": "i"
+                      },
+                      {
+                        "type": "Identifier",
+                        "name": "v1"
+                      }
+                    ]
+                  },
+                  "right": {
+                    "type": "BinaryExpr",
+                    "op": "\u00d7",
+                    "left": {
+                      "type": "Identifier",
+                      "name": "arr"
+                    },
+                    "right": {
+                      "type": "FieldAccess",
+                      "obj": {
+                        "type": "Identifier",
+                        "name": "."
+                      },
+                      "field": "entries"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "ComprehensionGenerator",
+                "constraint": {
+                  "type": "MembershipConstraint",
+                  "op": "\u2208",
+                  "left": {
+                    "type": "TupleLiteral",
+                    "elements": [
+                      {
+                        "type": "BinaryExpr",
+                        "op": "+",
+                        "left": {
+                          "type": "Identifier",
+                          "name": "i"
+                        },
+                        "right": {
+                          "type": "NatLiteral",
+                          "value": 1
+                        }
+                      },
+                      {
+                        "type": "Identifier",
+                        "name": "v2"
+                      }
+                    ]
+                  },
+                  "right": {
+                    "type": "BinaryExpr",
+                    "op": "\u00d7",
+                    "left": {
+                      "type": "Identifier",
+                      "name": "arr"
+                    },
+                    "right": {
+                      "type": "FieldAccess",
+                      "obj": {
+                        "type": "Identifier",
+                        "name": "."
+                      },
+                      "field": "entries"
+                    }
+                  }
+                }
+              }
+            ]
+          }
         }
       ]
     }

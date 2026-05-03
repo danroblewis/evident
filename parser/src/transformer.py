@@ -695,10 +695,14 @@ class EvidentTransformer(LarkTransformer):
     def set_literal(self, items):
         return SetLiteral(elements=list(items))
 
-    def comprehension_body(self, items):
+    def compr_body(self, items):
         output = items[0]
         generators = items[1]  # list of ComprehensionGenerator
         return SetComprehension(output=output, generators=generators)
+
+    # Legacy alias kept in case anything calls it directly
+    def comprehension_body(self, items):
+        return self.compr_body(items)
 
     def generator_list(self, items):
         return list(items)
