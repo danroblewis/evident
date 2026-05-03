@@ -262,7 +262,6 @@ def test_subset():
     assert_sat(query(src, "S"))
 
 
-@pytest.mark.xfail(reason="Known bug: {1,2,3} ⊆ {1,2} should be UNSAT but solver returns SAT")
 def test_subset_unsat():
     src = "schema S\n    A ⊆ B\n    A = {1, 2, 3}\n    B = {1, 2}\n"
     assert_unsat(query(src, "S"))

@@ -17,7 +17,11 @@ from __future__ import annotations
 import z3
 
 from .env import Environment
-from .ast_types import SchemaDecl, Param, Identifier, MembershipConstraint, InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral, MultiMembershipDecl, SeqType, RegexLiteral
+from .ast_types import (SchemaDecl, Param, Identifier, MembershipConstraint,
+                        InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral,
+                        MultiMembershipDecl, SeqType, RegexLiteral,
+                        ArithmeticConstraint, SetLiteral, EmptySet,
+                        NatLiteral, IntLiteral, RealLiteral, StringLiteral)
 
 
 def _is_type_decl(item) -> bool:
@@ -65,6 +69,60 @@ def make_const(name: str, sort: z3.SortRef, prefix: str = "") -> z3.ExprRef:
     return z3.Const(full_name, sort)
 
 
+def _infer_set_element_sort(set_expr, registry: "SortRegistry") -> z3.SortRef:
+    """Infer the element sort of a set literal from its contents."""
+    if isinstance(set_expr, SetLiteral) and set_expr.elements:
+        first = set_expr.elements[0]
+        if isinstance(first, (NatLiteral, IntLiteral)):
+            return registry._int_sort()
+        if isinstance(first, RealLiteral):
+            return registry._real_sort()
+        if isinstance(first, StringLiteral):
+            return registry._string_sort()
+    return registry._int_sort()  # default
+
+
+def _create_implicit_set_vars(
+    schema: SchemaDecl,
+    env: "Environment",
+    registry: "SortRegistry",
+    prefix: str,
+) -> "Environment":
+    """
+    Pre-pass: create Array(T, Bool) variables for names that appear in
+    set-context constraints (name = SetLiteral, or name ⊆/⊇ name) but
+    are not yet declared in env.  This lets schemas like
+
+        schema S
+            A ⊆ B
+            A = {1, 2, 3}
+            B = {1, 2}
+
+    work without explicit 'A ∈ SetType' declarations.
+    """
+    for item in schema.body:
+        # name = SetLiteral  or  name = EmptySet
+        if (isinstance(item, ArithmeticConstraint) and item.op == '='
+                and isinstance(item.left, Identifier)
+                and isinstance(item.right, (SetLiteral, EmptySet))):
+            name = item.left.name
+            if env.lookup(name) is None:
+                elem_sort = _infer_set_element_sort(item.right, registry)
+                set_sort = registry.set_sort(elem_sort)
+                var = make_const(name, set_sort, prefix=prefix)
+                env = env.bind(name, var)
+
+        # A ⊆ B  or  A ⊇ B  — both sides may be undeclared
+        if (isinstance(item, MembershipConstraint) and item.op in ('⊆', '⊇')):
+            for side in [item.left, item.right]:
+                if isinstance(side, Identifier) and env.lookup(side.name) is None:
+                    # Default element sort: try to infer later; use Int for now
+                    set_sort = registry.set_sort(registry._int_sort())
+                    var = make_const(side.name, set_sort, prefix=prefix)
+                    env = env.bind(side.name, var)
+    return env
+
+
 def _resolve_type_name(param: Param) -> str:
     expr = param.set
     if isinstance(expr, Identifier):
@@ -96,6 +154,10 @@ def instantiate_schema(
     """
     env = Environment(bindings=dict(given.bindings), parent=given.parent)
     constraints: list[z3.BoolRef] = []
+
+    # Create implicit set variables for names appearing in set-context
+    # constraints (A = {…}, A ⊆ B) before the main instantiation loop.
+    env = _create_implicit_set_vars(schema, env, registry, prefix)
 
     for item in schema.body:
         # ── Multi-name: x, y, z ∈ Type ──────────────────────────────────

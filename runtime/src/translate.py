@@ -285,6 +285,21 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
             f"FilterExpr indexing is only supported on sequences, not {collection.sort()}."
         )
 
+    # ── Set literal as Z3 Array (for use in ⊆ / = with set variables) ────────
+    # Translates {1, 2, 3} to an Array(T, Bool) where 1,2,3 → True, rest → False.
+    if isinstance(expr, SetLiteral):
+        if not expr.elements:
+            return z3.K(z3.IntSort(), z3.BoolVal(False))
+        elements = [translate_expr(e, env, registry) for e in expr.elements]
+        elem_sort = elements[0].sort()
+        arr = z3.K(elem_sort, z3.BoolVal(False))
+        for elem in elements:
+            arr = z3.Store(arr, elem, z3.BoolVal(True))
+        return arr
+
+    if isinstance(expr, EmptySet):
+        return z3.K(z3.IntSort(), z3.BoolVal(False))
+
     # ── Sequence / string length: #s ─────────────────────────────────────────
     if isinstance(expr, CardinalityExpr):
         inner = translate_expr(expr.set, env, registry)
