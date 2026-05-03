@@ -1,0 +1,26 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+
+-- ev-un-nl: strips line numbers, recovering the original text.
+-- Uses the same NumberedLine relation as ev-nl-v3 but in reverse:
+-- the solver is given nl.out and finds nl.text (and nl.n).
+schema NumberedLine
+    n    ∈ Nat
+    text ∈ String
+    out  ∈ String
+    n ≥ 1
+    out = int_to_str n ++ "\t" ++ text
+
+schema main
+    ..LineReader
+    ..LineWriter
+    nl ∈ NumberedLine
+
+    -- Each input line IS a numbered line: nl.out = line.
+    -- The solver works backward through NumberedLine to find nl.text.
+    line_ready ⇒
+        nl.out   = line
+        line_out = nl.text
+
+    ¬line_ready ⇒
+        line_out = ""

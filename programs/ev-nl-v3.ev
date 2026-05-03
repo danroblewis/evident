@@ -1,0 +1,33 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+
+-- NumberedLine: the relation between a line number, its text, and its
+-- formatted representation (without trailing newline — LineWriter adds that).
+-- Bidirectional: given any two of {n, text, out}, the solver finds the third.
+schema NumberedLine
+    n    ∈ Nat
+    text ∈ String
+    out  ∈ String
+    n ≥ 1
+    out = int_to_str n ++ "\t" ++ text
+
+schema Counter
+    n ∈ Nat
+
+schema main
+    ..LineReader
+    ..LineWriter
+    counter      ∈ Counter
+    counter_next ∈ Counter
+    nl           ∈ NumberedLine
+
+    nl.n    = counter.n + 1
+    nl.text = line
+
+    line_ready ⇒
+        line_out       = nl.out
+        counter_next.n = counter.n + 1
+
+    ¬line_ready ⇒
+        line_out       = ""
+        counter_next.n = counter.n

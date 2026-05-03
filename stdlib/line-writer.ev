@@ -1,0 +1,21 @@
+-- LineWriter: a line-to-char transducer.
+-- Counterpart to LineReader. Accepts a line string and writes it to
+-- Stdout with a trailing newline. Empty string means nothing to write.
+--
+-- Usage: include in schema main via ..LineWriter
+--   Brings in: dst (Stdout port), line_out (String)
+--
+-- The program sets line_out to the line content (without newline).
+-- LineWriter handles writing and the newline terminator.
+
+import "stdlib/io.ev"
+
+schema LineWriter
+    dst      ∈ Stdout
+    line_out ∈ String
+
+    (line_out ≠ "") ⇒
+        dst.out = line_out ++ "\n"
+
+    (line_out = "") ⇒
+        dst.out = ""
