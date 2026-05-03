@@ -1,14 +1,13 @@
 import "stdlib/line-reader.ev"
 
 -- ev-nl: number each line of stdin.
--- Uses LineReader from stdlib to handle char accumulation.
--- This schema only cares about line numbering.
+-- Uses LineReader from stdlib; this schema only handles line numbering.
 
 schema NlState
     n ∈ Nat
 
 schema main
-    ..LineReader          -- src ∈ Stdin, state/state_next ∈ LineState, line, line_ready
+    ..LineReader
     dst           ∈ Stdout
     nl_state      ∈ NlState
     nl_state_next ∈ NlState
@@ -16,7 +15,10 @@ schema main
 
     line_num = nl_state.n + 1
 
-    (line_ready = true)  ⇒ dst.out          = int_to_str line_num ++ "\t" ++ line ++ "\n"
-    (line_ready = true)  ⇒ nl_state_next.n  = nl_state.n + 1
-    (line_ready = false) ⇒ dst.out          = ""
-    (line_ready = false) ⇒ nl_state_next.n  = nl_state.n
+    (line_ready = true) ⇒
+        dst.out         = int_to_str line_num ++ "\t" ++ line ++ "\n"
+        nl_state_next.n = nl_state.n + 1
+
+    (line_ready = false) ⇒
+        dst.out         = ""
+        nl_state_next.n = nl_state.n

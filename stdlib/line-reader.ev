@@ -6,8 +6,8 @@
 -- without the trailing newline character.
 --
 -- Usage: include in schema main via ..LineReader
---   This brings in: src (Stdin port), state/state_next (LineState),
---   line (String), line_ready (Bool).
+--   Brings in: src (Stdin port), state/state_next (LineState),
+--              line (String), line_ready (Bool).
 
 import "stdlib/io.ev"
 
@@ -22,21 +22,26 @@ schema LineReader
     line_ready ∈ Bool
 
     -- Accumulating: normal character, not a newline
-    (src.eof = false ∧ src.char ≠ "\n") ⇒ line_ready = false
-    (src.eof = false ∧ src.char ≠ "\n") ⇒ line = ""
-    (src.eof = false ∧ src.char ≠ "\n") ⇒ state_next.partial = state.partial ++ src.char
+    (src.eof = false ∧ src.char ≠ "\n") ⇒
+        line_ready = false
+        line = ""
+        state_next.partial = state.partial ++ src.char
 
     -- Complete line: newline received, emit accumulated content
-    (src.eof = false ∧ src.char = "\n") ⇒ line_ready = true
-    (src.eof = false ∧ src.char = "\n") ⇒ line = state.partial
-    (src.eof = false ∧ src.char = "\n") ⇒ state_next.partial = ""
+    (src.eof = false ∧ src.char = "\n") ⇒
+        line_ready = true
+        line = state.partial
+        state_next.partial = ""
 
     -- End of stream with remaining content: flush as a final line
-    (src.eof = true ∧ state.partial ≠ "") ⇒ line_ready = true
-    (src.eof = true ∧ state.partial ≠ "") ⇒ line = state.partial
+    (src.eof = true ∧ state.partial ≠ "") ⇒
+        line_ready = true
+        line = state.partial
 
     -- End of stream with empty buffer: nothing to emit
-    (src.eof = true ∧ state.partial = "") ⇒ line_ready = false
+    (src.eof = true ∧ state.partial = "") ⇒
+        line_ready = false
 
     -- State does not advance after EOF
-    src.eof = true ⇒ state_next.partial = state.partial
+    src.eof = true ⇒
+        state_next.partial = state.partial
