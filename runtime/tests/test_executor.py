@@ -122,6 +122,48 @@ class TestEvNl:
         assert result.count('\n') == 5
 
 
+class TestEvNlV2:
+    """ev-nl-v2 uses ..LineReader from stdlib — tests passthrough inspection."""
+
+    V2_PATH = str(
+        __import__('pathlib').Path(__file__).parent.parent.parent
+        / 'programs' / 'ev-nl-v2.ev'
+    )
+
+    def _run_v2(self, stdin_text: str) -> str:
+        from runtime.src.executor import EvidentExecutor
+        import io
+        ex = EvidentExecutor()
+        ex.load(self.V2_PATH)
+        inp = io.StringIO(stdin_text)
+        out = io.StringIO()
+        ex.run(input_stream=inp, output_stream=out)
+        return out.getvalue()
+
+    def test_single_line(self):
+        assert self._run_v2("hello\n") == "1\thello\n"
+
+    def test_three_lines(self):
+        assert self._run_v2("foo\nbar\nbaz\n") == "1\tfoo\n2\tbar\n3\tbaz\n"
+
+    def test_no_trailing_newline(self):
+        assert self._run_v2("hello\nworld") == "1\thello\n2\tworld\n"
+
+    def test_empty_input(self):
+        assert self._run_v2("") == ""
+
+    def test_passthrough_vars_detected(self):
+        """Executor must follow ..LineReader to find src ∈ Stdin and state pair."""
+        from runtime.src.executor import EvidentExecutor
+        ex = EvidentExecutor()
+        ex.load(self.V2_PATH)
+        inp, out, state = ex._inspect_main()
+        assert 'src' in inp,   "src ∈ Stdin should be found via ..LineReader"
+        assert 'dst' in out,   "dst ∈ Stdout declared in main"
+        assert 'state' in state, "state/state_next ∈ LineState via ..LineReader"
+        assert 'nl_state' in state, "nl_state/nl_state_next ∈ NlState in main"
+
+
 class TestExecutorInspection:
     def test_inspects_port_vars(self):
         from runtime.src.executor import EvidentExecutor

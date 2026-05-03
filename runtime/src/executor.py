@@ -70,21 +70,25 @@ class EvidentExecutor:
 
     # ── Schema inspection ─────────────────────────────────────────────────────
 
-    def _inspect_main(self) -> tuple[dict, dict, dict]:
+    def _collect_vars(self, schema_name: str,
+                      visited: set) -> dict[str, str]:
         """
-        Scan schema main body and return three dicts:
-          input_vars  : {var_name: schema_type}   — ∈ Stdin / ∈ CharInput
-          output_vars : {var_name: schema_type}   — ∈ Stdout / ∈ CharOutput
-          state_pairs : {base_var: (next_var, schema_type)}
+        Recursively collect {var_name: type_name} from a schema and any
+        schemas it includes via .. passthrough.  Follows passthrough chains
+        so that port and state variables declared in sub-schemas (e.g.
+        LineReader) are visible when inspecting schema main.
         """
-        from .ast_types import MembershipConstraint, Identifier, MultiMembershipDecl
+        from .ast_types import (MembershipConstraint, Identifier,
+                                MultiMembershipDecl, PassthroughItem)
+        if schema_name in visited:
+            return {}
+        visited.add(schema_name)
 
-        schema = self.rt.schemas.get('main')
+        schema = self.rt.schemas.get(schema_name)
         if schema is None:
-            raise RuntimeError("No 'schema main' found in program.")
+            return {}
 
-        declared: dict[str, str] = {}   # var_name → type_name
-
+        declared: dict[str, str] = {}
         for item in schema.body:
             if (isinstance(item, MembershipConstraint) and item.op == '∈'
                     and isinstance(item.left, Identifier)
@@ -95,13 +99,31 @@ class EvidentExecutor:
                              if isinstance(item.set, Identifier) else 'unknown')
                 for name in item.names:
                     declared[name] = type_name
+            elif isinstance(item, PassthroughItem):
+                # Follow the passthrough — don't override explicit declarations
+                sub = self._collect_vars(item.name, visited)
+                for v, t in sub.items():
+                    if v not in declared:
+                        declared[v] = t
+        return declared
+
+    def _inspect_main(self) -> tuple[dict, dict, dict]:
+        """
+        Scan schema main (following .. passthrough chains) and return:
+          input_vars  : {var_name: schema_type}   — ∈ Stdin / ∈ CharInput
+          output_vars : {var_name: schema_type}   — ∈ Stdout / ∈ CharOutput
+          state_pairs : {base_var: (next_var, schema_type)}
+        """
+        if self.rt.schemas.get('main') is None:
+            raise RuntimeError("No 'schema main' found in program.")
+
+        declared = self._collect_vars('main', set())
 
         input_vars  = {v: t for v, t in declared.items() if t in INPUT_SCHEMAS}
         output_vars = {v: t for v, t in declared.items() if t in OUTPUT_SCHEMAS}
 
-        # State pairs: base_var ∈ T  +  base_var_next ∈ T  (same type, not IO)
-        state_pairs: dict[str, tuple[str, str]] = {}
         non_io = {v: t for v, t in declared.items() if t not in IO_SCHEMAS}
+        state_pairs: dict[str, tuple[str, str]] = {}
         for var, type_name in non_io.items():
             next_var = f'{var}_next'
             if next_var in non_io and non_io[next_var] == type_name:
