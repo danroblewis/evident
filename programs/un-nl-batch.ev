@@ -1,32 +1,41 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
 import "stdlib/sequences.ev"
 
--- NumberedDocument viewed from the reading side: given numbered lines,
--- what are their contents? Same schema as nl-batch.ev — the direction of
--- reasoning is determined by which variables are given.
---
--- NumberedLine is the per-element projection: fully bidirectional.
--- Given out = "3\tfoo", the solver finds n = 3 and text = "foo".
--- This is what the streaming strip-numbers.ev uses per step.
-
+-- NumberedLine: the per-line projection of NumberedDocument.
+-- Used here in reverse: given out (the numbered line), solver finds text.
 schema NumberedLine
-    -- @plot x=n y=text title="Line number vs content"
     n    ∈ Nat
     text ∈ String
     out  ∈ String
     n ≥ 1
     out = int_to_str n ++ "\t" ++ text
 
+-- NumberedDocument: the batch relation this program reads from.
+-- A valid numbered document has equal-length parallel sequences,
+-- every line contains a tab, and the first line starts with "1\t".
+-- Each step of schema main reads a row of this relation and recovers
+-- the original content via NumberedLine's reverse direction.
 schema NumberedDocument
     lines    ∈ Seq(String)
     contents ∈ Seq(String)
     n        ∈ Nat
-
     n = #lines
     n = #contents
     n ≥ 1
-
-    -- Structural: every numbered line contains a tab
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
-
-    -- First line is numbered 1
     lines[0] ⊑ "1\t"
+
+schema main
+    ..LineReader
+    ..LineWriter
+    nl ∈ NumberedLine
+
+    -- Each input line is a row of NumberedDocument.
+    -- The solver navigates NumberedLine in reverse to find nl.text.
+    line_ready ⇒
+        nl.out   = line
+        line_out = nl.text
+
+    ¬line_ready ⇒
+        line_out = ""

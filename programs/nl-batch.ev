@@ -1,44 +1,49 @@
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
 import "stdlib/sequences.ev"
 
--- NumberedDocument: constraint model for a complete numbered document.
---
--- lines    — the numbered lines:  "1\thello", "2\tworld", ...
--- contents — the original lines:  "hello",    "world",    ...
--- n        — the line count
---
--- The schema captures the STRUCTURAL constraints a numbered document must satisfy:
--- equal-length parallel sequences, every line contains a tab, the first line
--- begins with "1\t". These constraints are verifiable with Z3.
---
--- The FULL element-by-element relationship (lines[i] = int_to_str(i+1) ++ "\t" ++ contents[i])
--- exceeds Z3's current string-sequence theory for synthesis. For that, see
--- number-lines.ev (streaming) or query NumberedLine per element.
---
--- Query in the IDE: provide contents as given, explore valid lines structures.
--- Or use evident query to verify a concrete (lines, contents) pair.
-
+-- NumberedLine: the per-line projection of NumberedDocument.
+-- Fully bidirectional — give any two of (n, text, out), solver finds the third.
 schema NumberedLine
-    -- @plot x=n y=n title="Line numbers"
     n    ∈ Nat
     text ∈ String
     out  ∈ String
     n ≥ 1
     out = int_to_str n ++ "\t" ++ text
 
+-- NumberedDocument: the batch relation this program produces.
+-- A valid numbered document has equal-length parallel sequences,
+-- every line contains a tab, and the first line starts with "1\t".
+-- Each step of schema main produces a row satisfying NumberedLine,
+-- which is the per-line projection of this relation.
 schema NumberedDocument
-    -- @plot x=n y=n title="Document size"
     lines    ∈ Seq(String)
     contents ∈ Seq(String)
     n        ∈ Nat
-
     n = #lines
     n = #contents
     n ≥ 1
-
-    -- Every line in a numbered document contains a tab separator.
-    -- The adjacent notation lets us say this over all consecutive pairs,
-    -- which covers every element (each appears as prev or next, or both).
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
-
-    -- The first line always begins with "1\t"
     lines[0] ⊑ "1\t"
+
+schema Counter
+    n ∈ Nat
+
+schema main
+    ..LineReader
+    ..LineWriter
+    counter      ∈ Counter
+    counter_next ∈ Counter
+    nl           ∈ NumberedLine
+
+    -- Each step: nl is a row of NumberedDocument
+    nl.n    = counter.n + 1
+    nl.text = line
+
+    line_ready ⇒
+        line_out       = nl.out
+        counter_next.n = counter.n + 1
+
+    ¬line_ready ⇒
+        line_out       = ""
+        counter_next.n = counter.n
