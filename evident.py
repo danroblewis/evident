@@ -192,6 +192,71 @@ def _parse_given(given_list):
 # Commands
 # ---------------------------------------------------------------------------
 
+def _parse_trace_file(path: Path) -> list[dict]:
+    """Parse a *.trace.ev file into a list of trace dicts."""
+    import re
+    traces = []
+    current_trace = None
+    current_step  = None
+    awaiting_assertions = False
+
+    for raw in path.read_text().splitlines():
+        line    = raw.rstrip()
+        content = line.strip()
+        if not content or content.startswith('--'):
+            continue
+        indent = len(line) - len(line.lstrip())
+
+        if content.startswith('trace '):
+            m = re.match(r'trace\s+(\S+)\s+"([^"]+)"', content)
+            if m:
+                current_trace = {'name': m.group(1), 'program': m.group(2), 'steps': []}
+                traces.append(current_trace)
+            current_step = None
+            awaiting_assertions = False
+
+        elif content.startswith('send ') and current_trace is not None:
+            awaiting_assertions = False
+            if '=>' in content:
+                send_part, _, rest = content.partition('=>')
+                cmd = re.search(r'"([^"]*)"', send_part).group(1)
+                rest = rest.strip()
+                assertions = [rest] if rest else []
+                awaiting_assertions = not bool(rest)
+            else:
+                cmd = re.search(r'"([^"]*)"', content).group(1)
+                assertions = []
+                awaiting_assertions = True
+            current_step = {'cmd': cmd, 'assertions': assertions}
+            current_trace['steps'].append(current_step)
+
+        elif awaiting_assertions and current_step is not None and indent > 0:
+            current_step['assertions'].append(content)
+
+    return traces
+
+
+def _check_trace_assertion(assertion: str, result: dict) -> tuple[bool, str]:
+    """Check one assertion string against a step result. Returns (passed, detail)."""
+    import re
+    state  = result['state']
+    output = result['output']
+
+    m = re.match(r'(\w+)\s*∋\s*"([^"]*)"', assertion)
+    if m:
+        key, value = m.group(1), m.group(2)
+        actual = output if key == 'output' else str(state.get(key, ''))
+        return (value in actual), f'{_dim(assertion)}  actual: {_yellow(repr(actual))}'
+
+    m = re.match(r'(\w+)\s*=\s*"([^"]*)"', assertion)
+    if m:
+        key, value = m.group(1), m.group(2)
+        actual = output if key == 'output' else state.get(key)
+        return (actual == value), f'{_dim(assertion)}  actual: {_yellow(repr(actual))}'
+
+    return False, f'unparseable assertion: {assertion!r}'
+
+
 def _user_bindings(bindings: dict) -> dict:
     """Filter solver bindings down to the ones a user cares about.
 
@@ -233,16 +298,24 @@ def cmd_test(args):
     from runtime.src.runtime import EvidentRuntime
 
     search_path = Path(args.path) if args.path else Path('.')
-    if search_path.is_file():
-        files = [search_path]
-    else:
-        files = sorted(search_path.glob('test_*.ev'))
-        tests_dir = search_path / 'tests'
-        if tests_dir.is_dir():
-            files += sorted(tests_dir.glob('test_*.ev'))
+    tests_dir = search_path / 'tests'
 
-    if not files:
-        print(_dim(f'No test_*.ev files found in {search_path}'))
+    if search_path.is_file():
+        if search_path.name.endswith('.trace.ev'):
+            files, trace_files = [], [search_path]
+        else:
+            files, trace_files = [search_path], []
+    else:
+        files = [f for f in sorted(search_path.glob('test_*.ev'))
+                 if not f.name.endswith('.trace.ev')]
+        trace_files = sorted(search_path.glob('*.trace.ev'))
+        if tests_dir.is_dir():
+            files += [f for f in sorted(tests_dir.glob('test_*.ev'))
+                      if not f.name.endswith('.trace.ev')]
+            trace_files += sorted(tests_dir.glob('*.trace.ev'))
+
+    if not files and not trace_files:
+        print(_dim(f'No test_*.ev or *.trace.ev files found in {search_path}'))
         return 0
 
     # Each entry: (path, name, ok, expected_sat, detail)
@@ -294,6 +367,59 @@ def cmd_test(args):
             results.append((path, name, ok, expected_sat, detail))
             print(_green('.') if ok else _red('F'), end='', flush=True)
 
+    # ── Trace tests ───────────────────────────────────────────────────────────
+    for path in trace_files:
+        try:
+            traces = _parse_trace_file(path)
+        except Exception as e:
+            results.append((path, str(path), False, None,
+                            {'type': 'error', 'message': f'Failed to parse: {e}'}))
+            print(_red('E'), end='', flush=True)
+            continue
+
+        for trace in traces:
+            from runtime.src.executor import EvidentExecutor
+            exe = EvidentExecutor()
+            try:
+                exe.load(trace['program'])
+                exe.initialize()
+            except Exception as e:
+                results.append((path, trace['name'], False, None,
+                                {'type': 'error', 'message': f'Failed to load {trace["program"]}: {e}'}))
+                print(_red('E'), end='', flush=True)
+                continue
+
+            trace_ok   = True
+            fail_step  = None
+            fail_detail= []
+
+            for i, step in enumerate(trace['steps'], 1):
+                try:
+                    step_result = exe.step_line(step['cmd'])
+                except Exception as e:
+                    trace_ok  = False
+                    fail_step = i
+                    fail_detail = [f'step {i} send "{step["cmd"]}": executor error: {e}']
+                    break
+
+                for assertion in step['assertions']:
+                    passed, detail = _check_trace_assertion(assertion, step_result)
+                    if not passed:
+                        trace_ok  = False
+                        fail_step = i
+                        fail_detail.append(
+                            f'step {i} send "{step["cmd"]}" failed:\n'
+                            f'      {_red("FAIL")} {detail}'
+                        )
+
+                if not trace_ok:
+                    break
+
+            ok = trace_ok
+            detail = None if ok else {'type': 'trace', 'lines': fail_detail}
+            results.append((path, trace['name'], ok, True, detail))
+            print(_green('.') if ok else _red('F'), end='', flush=True)
+
     print()
 
     failures = [(p, n, exp, d) for p, n, ok, exp, d in results if not ok]
@@ -325,6 +451,11 @@ def cmd_test(args):
                             print(f'        {_blue(k)} = {_yellow(repr(v) if isinstance(v, str) else v)}')
                     except Exception:
                         pass
+            elif detail and detail['type'] == 'trace':
+                print(f'    {_red("trace failed")}')
+                for line in detail['lines']:
+                    for part in line.split('\n'):
+                        print(f'    {part}')
             elif detail and detail['type'] == 'core':
                 got, exp = 'UNSAT', 'SAT'
                 print(f'    got {_red(got)}, expected {exp}', end='')

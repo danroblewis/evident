@@ -271,6 +271,58 @@ class EvidentExecutor:
                 if val:
                     output_stream.write(str(val))
 
+    def initialize(self) -> None:
+        """Set up state for step-by-step execution via step_line()."""
+        self._input_vars, self._output_vars, self._state_pairs = self._inspect_main()
+        self._current_states: dict[str, dict] = {
+            base_var: self._initial_state(type_name)
+            for base_var, (_next_var, type_name) in self._state_pairs.items()
+        }
+
+    def step_line(self, command: str) -> dict:
+        """
+        Feed a complete command line character by character and return the
+        state and output after line_ready fires (on the newline).
+
+        Call initialize() before the first step_line().
+        Returns {'state': {field: value, ...}, 'output': str, 'bindings': dict}
+        """
+        output = ''
+        final_bindings: dict = {}
+
+        for char in (command + '\n'):
+            given: dict[str, Any] = {}
+            for var in self._input_vars:
+                given.update(self._stdin_given(var, char, False))
+            for var in self._output_vars:
+                given.update(self._stdout_given(var))
+            for base_var, state in self._current_states.items():
+                given.update(self._state_given(base_var, state))
+
+            result = self.rt.query('main', given=given)
+            if not result.satisfied:
+                continue
+
+            out = self._extract_output(result.bindings, self._output_vars)
+            if out:
+                output += out
+
+            new_states = self._advance_state(result.bindings, self._state_pairs)
+            for base_var in self._current_states:
+                if base_var in new_states and new_states[base_var]:
+                    self._current_states[base_var] = new_states[base_var]
+
+            final_bindings = result.bindings
+
+            if result.bindings.get('line_ready') is True:
+                break
+
+        flat_state = {}
+        for s in self._current_states.values():
+            flat_state.update(s)
+
+        return {'state': flat_state, 'output': output.strip(), 'bindings': final_bindings}
+
     def run(self, input_stream=None, output_stream=None) -> None:
         """
         Execute schema main. Detects batch vs streaming mode from the
