@@ -15,6 +15,7 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from parser.src.ast import (  # noqa: E402
+    NotationDecl,
     Program,
     SchemaDecl,
     EnumDecl,
@@ -74,7 +75,8 @@ from parser.src.ast import (  # noqa: E402
 )
 
 __all__ = [
-    "Program", "SchemaDecl", "EnumDecl", "InlineEnumExpr", "MultiMembershipDecl",
+    "Program", "SchemaDecl", "EnumDecl", "NotationDecl",
+    "InlineEnumExpr", "MultiMembershipDecl",
     "Param", "BodyItem", "Constraint",
     "MembershipConstraint", "ArithmeticConstraint", "UniversalConstraint",
     "ExistentialConstraint", "CardinalityConstraint", "ApplicationConstraint",

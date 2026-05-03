@@ -39,6 +39,8 @@ class SortRegistry:
         self._constructors: dict[str, z3.ExprRef] = {}
         # Named set literals: assert months = {…}  — stores the AST node
         self._named_sets: dict[str, object] = {}
+        # User-defined notations: name → NotationDecl
+        self._notations: dict[str, object] = {}
 
     # ------------------------------------------------------------------
     # Primitive sort helpers
@@ -172,6 +174,14 @@ class SortRegistry:
     def get_named_set(self, name: str):
         """Return the AST node for a named set, or None."""
         return self._named_sets.get(name)
+
+    def register_notation(self, decl) -> None:
+        """Store a user-defined notation declaration."""
+        self._notations[decl.name] = decl
+
+    def get_notations(self) -> dict:
+        """Return the full notation registry for expansion."""
+        return self._notations
 
     def get_constructors_for(self, type_name: str) -> list:
         """Return all constructor values declared for a given enum type name."""

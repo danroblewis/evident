@@ -24,6 +24,7 @@ from .ast_types import (
     ForwardRule,
     QueryStmt,
     ConstraintStmt,
+    NotationDecl,
     NatLiteral,
     IntLiteral,
     StringLiteral,
@@ -120,8 +121,10 @@ class EvidentRuntime:
                 self.load_file(candidate)
             elif isinstance(stmt, EnumDecl):
                 self.solver.registry.declare_algebraic(stmt.name, stmt.variants)
+            elif isinstance(stmt, NotationDecl):
+                self.solver.registry.register_notation(stmt)
             elif isinstance(stmt, SchemaDecl):
-                self.load_schema(stmt)
+                self.load_schema(_expand_schema_notations(stmt, self.solver.registry.get_notations()))
             elif isinstance(stmt, AssertStmt):
                 self._handle_assert(stmt)
             elif isinstance(stmt, QueryStmt):
@@ -236,6 +239,25 @@ class EvidentRuntime:
             val = _extract_literal(stmt.value)
             if val is not None:
                 self.assert_ground(stmt.name, val)
+
+
+def _expand_schema_notations(schema: SchemaDecl, notations: dict) -> SchemaDecl:
+    """Expand notation applications in every body constraint of a schema."""
+    if not notations:
+        return schema
+    from parser.src.notation import expand_notation_constraint
+    new_body = []
+    for item in schema.body:
+        try:
+            new_body.append(expand_notation_constraint(item, notations))
+        except Exception:
+            new_body.append(item)
+    return SchemaDecl(
+        keyword=schema.keyword,
+        name=schema.name,
+        params=schema.params,
+        body=new_body,
+    )
 
 
 def _extract_literal(expr) -> Any | None:

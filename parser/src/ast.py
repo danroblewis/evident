@@ -10,8 +10,16 @@ class Program:
 
 Statement = Union[
     "SchemaDecl", "EnumDecl", "ImportStmt",
-    "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt"
+    "AssertStmt", "ForwardRule", "QueryStmt", "ConstraintStmt",
+    "NotationDecl",
 ]
+
+@dataclass
+class NotationDecl:
+    """notation name param1 param2 = body — positional syntactic rewrite."""
+    name:   str
+    params: list[str]
+    body:   "Expr"
 
 @dataclass
 class ImportStmt:

@@ -13,6 +13,12 @@ start: (_NEWLINE | statement)*
           | query_stmt
           | evident_top
           | constraint_stmt
+          | notation_decl
+
+// Notation: define a term-level syntactic rewrite with positional holes.
+// notation adjacent seq = {(seq[i], seq[i+1]) | i ∈ {0..#seq-2}}
+// When 'adjacent expr' appears, it expands to the body with seq→expr.
+notation_decl: "notation" NAME NAME+ "=" expr _NEWLINE -> notation_def
 
 // Import another .ev file: import "path/to/file.ev"
 import_stmt: "import" STRING _NEWLINE
