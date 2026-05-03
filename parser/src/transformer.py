@@ -725,7 +725,15 @@ class EvidentTransformer(LarkTransformer):
     def string_lit(self, items):
         raw = str(items[0])
         # strip surrounding quotes
-        return StringLiteral(value=raw[1:-1])
+        inner = raw[1:-1]
+        # process standard escape sequences
+        inner = (inner
+                 .replace('\\n', '\n')
+                 .replace('\\t', '\t')
+                 .replace('\\r', '\r')
+                 .replace('\\"', '"')
+                 .replace('\\\\', '\\'))
+        return StringLiteral(value=inner)
 
     def bool_true(self, items):
         return BoolLiteral(value=True)

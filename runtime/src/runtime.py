@@ -202,6 +202,25 @@ class EvidentRuntime:
         return self.query(schema.name, given)
 
     # ------------------------------------------------------------------
+    # Automaton execution
+    # ------------------------------------------------------------------
+
+    def execute(self, schema_name: str = 'main',
+                input_stream=None, output_stream=None) -> None:
+        """
+        Run schema_name as a constraint automaton.
+        Reads from input_stream (default: sys.stdin),
+        writes to output_stream (default: sys.stdout).
+
+        Requires stdlib/io.ev to already be loaded (or the relevant
+        Stdin/Stdout schemas to be defined in the program).
+        """
+        from .executor import EvidentExecutor
+        executor = EvidentExecutor.__new__(EvidentExecutor)
+        executor.rt = self
+        executor.run(input_stream=input_stream, output_stream=output_stream)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

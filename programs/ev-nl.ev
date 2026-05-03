@@ -1,0 +1,38 @@
+-- ev-nl: number each line of stdin, like the Unix nl command.
+--
+-- Uses the io.ev traits. Stdin delivers one character per step via src.char.
+-- Stdout receives the output string via dst.out.
+--
+-- State: n (line counter, 0-indexed internally), partial (partial line buffer).
+-- line_num = n + 1 is the displayed number.
+
+schema NlState
+    n       ∈ Nat
+    partial ∈ String
+
+schema main
+    src        ∈ Stdin
+    dst        ∈ Stdout
+    state      ∈ NlState
+    state_next ∈ NlState
+    line_num   ∈ Nat
+
+    line_num = state.n + 1
+
+    -- Normal character: accumulate into partial, no output
+    (src.char ≠ "\n" ∧ src.eof = false) ⇒ dst.out            = ""
+    (src.char ≠ "\n" ∧ src.eof = false) ⇒ state_next.n       = state.n
+    (src.char ≠ "\n" ∧ src.eof = false) ⇒ state_next.partial = state.partial ++ src.char
+
+    -- Newline: emit numbered line, reset partial, increment counter
+    src.char = "\n" ⇒ dst.out            = int_to_str line_num ++ "\t" ++ state.partial ++ "\n"
+    src.char = "\n" ⇒ state_next.n       = state.n + 1
+    src.char = "\n" ⇒ state_next.partial = ""
+
+    -- EOF with remaining partial: flush it
+    (src.eof = true ∧ state.partial ≠ "") ⇒ dst.out = int_to_str line_num ++ "\t" ++ state.partial ++ "\n"
+    -- EOF with empty partial: nothing to emit
+    (src.eof = true ∧ state.partial = "")  ⇒ dst.out = ""
+
+    src.eof = true ⇒ state_next.n       = state.n
+    src.eof = true ⇒ state_next.partial  = state.partial
