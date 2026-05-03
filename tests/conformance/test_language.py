@@ -658,7 +658,6 @@ schema S
     assert_sat(query(src, "S"))
 
 
-@pytest.mark.xfail(reason="Known bug: adjacent notation ForAll over concrete Seq not enforced correctly")
 def test_notation_adjacent_unsat():
     src = """
 notation adjacent seq = {(seq[i], seq[i+1]) | i ∈ {0..#seq-2}}

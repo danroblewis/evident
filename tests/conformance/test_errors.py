@@ -22,7 +22,6 @@ def test_contradictory_equality():
 def test_contradictory_inequality():
     assert_unsat(query("schema S\n    x ∈ Nat\n    x > 5\n    x < 5\n    x = 5\n", "S"))
 
-@pytest.mark.xfail(reason="Known bug: x ∈ {} should be UNSAT but solver returns SAT")
 def test_empty_set_membership():
     assert_unsat(query("schema S\n    x ∈ Nat\n    x ∈ {}\n", "S"))
 

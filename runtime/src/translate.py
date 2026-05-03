@@ -20,6 +20,7 @@ from .ast_types import (
     BindingConstraint,
     InlineEnumExpr,
     SetLiteral,
+    EmptySet,
     RangeLiteral,
     # Expressions
     Identifier,
@@ -459,6 +460,11 @@ def translate_constraint(
                 left_c  = translate_constraint(MembershipConstraint(op=op, left=left, right=right.left),  env, registry)
                 right_c = translate_constraint(MembershipConstraint(op=op, left=left, right=right.right), env, registry)
                 return z3.Or(left_c, right_c) if op == '∈' else z3.And(left_c, right_c)
+
+        if op in ("∈", "∉"):
+            # Empty set: x ∈ {} is always false; x ∉ {} is always true
+            if isinstance(right, EmptySet):
+                return z3.BoolVal(op == "∉")
 
         if op == "∈":
             # Inline enum: x ∈ Red | Green | Blue

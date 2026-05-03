@@ -127,6 +127,55 @@ def translate_universal(
         set_expr = binding.set
         parts: list[z3.BoolRef] = []
 
+        # SetComprehension: ∀ (a, b) ∈ {output(i) | i ∈ range}: body
+        # Unroll by enumerating the generator's domain and substituting.
+        from .ast_types import SetComprehension, TupleLiteral as TL
+        if isinstance(set_expr, SetComprehension):
+            gens = set_expr.generators
+            if (len(gens) >= 1 and gens[0].binding is not None
+                    and len(gens[0].binding.names) == 1):
+                gen_name = gens[0].binding.names[0]
+                gen_range = gens[0].binding.set
+                if _is_concrete_set(gen_range):
+                    try:
+                        gen_elements = _enumerate_elements(gen_range, cur_env, registry)
+                    except (_SymbolicRange, NotImplementedError, KeyError):
+                        gen_elements = None
+                    if gen_elements is not None:
+                        output = set_expr.output
+                        from .translate import translate_expr, translate_constraint
+                        for gen_val in gen_elements:
+                            gen_env = cur_env.bind(gen_name, gen_val)
+                            if (isinstance(output, TL)
+                                    and len(output.elements) == len(binding.names)):
+                                # Tuple output: bind each name to its element
+                                bound_env = gen_env
+                                for bname, elem_expr in zip(binding.names, output.elements):
+                                    try:
+                                        elem_val = translate_expr(elem_expr, gen_env, registry)
+                                        bound_env = bound_env.bind(bname, elem_val)
+                                    except (NotImplementedError, KeyError):
+                                        bound_env = None
+                                        break
+                                if bound_env is not None:
+                                    try:
+                                        parts.append(
+                                            translate_constraint(node.body, bound_env, registry)
+                                        )
+                                    except (NotImplementedError, KeyError):
+                                        pass
+                            elif len(binding.names) == 1:
+                                try:
+                                    val = translate_expr(output, gen_env, registry)
+                                    bound_env = gen_env.bind(binding.names[0], val)
+                                    parts.append(
+                                        translate_constraint(node.body, bound_env, registry)
+                                    )
+                                except (NotImplementedError, KeyError):
+                                    pass
+                        if parts:
+                            return parts
+
         if _is_concrete_set(set_expr):
             try:
                 elements = _enumerate_elements(set_expr, cur_env, registry)
