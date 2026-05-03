@@ -1,8 +1,5 @@
 -- adventure.ev — Text adventure game main program.
 --
--- A small text adventure with 5 connected rooms.
--- Supports: look, go <direction>, help, quit
---
 -- Run with:
 --   echo -e "look\ngo north\nlook\nquit\n" | python3 evident.py execute programs/adventure/adventure.ev
 
@@ -16,7 +13,123 @@ import "programs/adventure/commands.ev"
 schema GameState
     location ∈ String
 
+-- ── Transition logic ──────────────────────────────────────────────────────────
+--
+-- Pure constraint schema: no I/O dependency, fully testable.
+-- Given a state and a command string, produces the next state and a response.
+
+schema GameTransition
+    state    ∈ GameState
+    cmd      ∈ String
+    next     ∈ GameState
+    response ∈ String
+
+    -- Helper: current room description and per-direction destinations
+    desc       ∈ String
+    dest_north ∈ String
+    dest_south ∈ String
+    dest_east  ∈ String
+    dest_west  ∈ String
+    dest_up    ∈ String
+    dest_down  ∈ String
+    dest_desc  ∈ String
+
+    (state.location, desc) ∈ room_descriptions
+
+    -- look / l / examine
+    (cmd = "look" ∨ cmd = "l" ∨ cmd = "examine") ⇒
+        response        = desc
+        next.location   = state.location
+
+    -- go north / n
+    (cmd = "go north" ∨ cmd = "n") ⇒
+        ((state.location, "north", dest_north) ∈ exits_map) ⇒
+            (dest_north, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_north
+        ((state.location, "north", dest_north) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- go south / s
+    (cmd = "go south" ∨ cmd = "s") ⇒
+        ((state.location, "south", dest_south) ∈ exits_map) ⇒
+            (dest_south, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_south
+        ((state.location, "south", dest_south) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- go east / e
+    (cmd = "go east" ∨ cmd = "e") ⇒
+        ((state.location, "east", dest_east) ∈ exits_map) ⇒
+            (dest_east, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_east
+        ((state.location, "east", dest_east) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- go west / w
+    (cmd = "go west" ∨ cmd = "w") ⇒
+        ((state.location, "west", dest_west) ∈ exits_map) ⇒
+            (dest_west, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_west
+        ((state.location, "west", dest_west) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- go up / u
+    (cmd = "go up" ∨ cmd = "u") ⇒
+        ((state.location, "up", dest_up) ∈ exits_map) ⇒
+            (dest_up, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_up
+        ((state.location, "up", dest_up) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- go down / d
+    (cmd = "go down" ∨ cmd = "d") ⇒
+        ((state.location, "down", dest_down) ∈ exits_map) ⇒
+            (dest_down, dest_desc) ∈ room_descriptions
+            response      = dest_desc
+            next.location = dest_down
+        ((state.location, "down", dest_down) ∉ exits_map) ⇒
+            response      = "You can't go that way."
+            next.location = state.location
+
+    -- help / ?
+    (cmd = "help" ∨ cmd = "?") ⇒
+        response      = "Commands: look, go <north/south/east/west/up/down>, help, quit"
+        next.location = state.location
+
+    -- quit / q
+    (cmd = "quit" ∨ cmd = "q") ⇒
+        response      = "Goodbye!"
+        next.location = state.location
+
+    -- empty line
+    (cmd = "") ⇒
+        response      = ""
+        next.location = state.location
+
+    -- unknown command
+    (cmd ∉ known_commands) ⇒
+        response      = "I don't understand that."
+        next.location = state.location
+
 -- ── Main program ─────────────────────────────────────────────────────────────
+--
+-- Inline transition logic mirrors GameTransition above.
+-- When the runtime supports sub-schema constraint inlining, this can become:
+--   t ∈ GameTransition
+--   t.state.location = state.location
+--   t.cmd = line
+--   line_out = t.response
+--   state_next.location = t.next.location
 
 schema main
     ..LineReader
@@ -24,31 +137,22 @@ schema main
     state      ∈ GameState
     state_next ∈ GameState
 
-    -- Current room description (looked up from state.location)
     desc       ∈ String
-
-    -- Destination variables for each direction (at schema level for lookup)
     dest_north ∈ String
     dest_south ∈ String
     dest_east  ∈ String
     dest_west  ∈ String
     dest_up    ∈ String
     dest_down  ∈ String
-
-    -- Destination room description (for display after moving)
     dest_desc  ∈ String
-
-    -- ── line_ready: process a complete input line ─────────────────────────────
 
     line_ready ⇒
         (state.location, desc) ∈ room_descriptions
 
-        -- look / l / examine: show current room description
         (line = "look" ∨ line = "l" ∨ line = "examine") ⇒
             line_out = desc
             state_next.location = state.location
 
-        -- go north / n
         (line = "go north" ∨ line = "n") ⇒
             ((state.location, "north", dest_north) ∈ exits_map) ⇒
                 (dest_north, dest_desc) ∈ room_descriptions
@@ -58,7 +162,6 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- go south / s
         (line = "go south" ∨ line = "s") ⇒
             ((state.location, "south", dest_south) ∈ exits_map) ⇒
                 (dest_south, dest_desc) ∈ room_descriptions
@@ -68,7 +171,6 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- go east / e
         (line = "go east" ∨ line = "e") ⇒
             ((state.location, "east", dest_east) ∈ exits_map) ⇒
                 (dest_east, dest_desc) ∈ room_descriptions
@@ -78,7 +180,6 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- go west / w
         (line = "go west" ∨ line = "w") ⇒
             ((state.location, "west", dest_west) ∈ exits_map) ⇒
                 (dest_west, dest_desc) ∈ room_descriptions
@@ -88,7 +189,6 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- go up / u
         (line = "go up" ∨ line = "u") ⇒
             ((state.location, "up", dest_up) ∈ exits_map) ⇒
                 (dest_up, dest_desc) ∈ room_descriptions
@@ -98,7 +198,6 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- go down / d
         (line = "go down" ∨ line = "d") ⇒
             ((state.location, "down", dest_down) ∈ exits_map) ⇒
                 (dest_down, dest_desc) ∈ room_descriptions
@@ -108,28 +207,21 @@ schema main
                 line_out = "You can't go that way."
                 state_next.location = state.location
 
-        -- help
         (line = "help" ∨ line = "?") ⇒
             line_out = "Commands: look, go <north/south/east/west/up/down>, help, quit"
             state_next.location = state.location
 
-        -- quit / q
         (line = "quit" ∨ line = "q") ⇒
             line_out = "Goodbye!"
             state_next.location = state.location
 
-        -- Empty line: just show prompt
         (line = "") ⇒
             line_out = ""
             state_next.location = state.location
 
-        -- Unknown command
         (line ∉ known_commands) ⇒
             line_out = "I don't understand that."
             state_next.location = state.location
-
-    -- ── ¬line_ready: accumulate input characters ──────────────────────────────
-    -- Also: initialize location to "entrance" on first step.
 
     ¬line_ready ⇒
         line_out = ""
