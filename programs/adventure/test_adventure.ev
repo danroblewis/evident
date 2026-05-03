@@ -1,9 +1,26 @@
--- test_adventure.ev — Claims about the adventure game world model.
+-- test_adventure.ev — World model claims and execution trace tests.
 --
 -- Run with:  python evident.py test programs/adventure/test_adventure.ev
 
 import "world.ev"
 import "commands.ev"
+
+-- ── Execution trace ────────────────────────────────────────────────────────────
+
+trace happy_path "programs/adventure/adventure.ev"
+    send "look" =>
+        location = "entrance"
+        output ∋ "entrance"
+    send "go north" => location = "forest"
+    send "go east"  => location = "tower"
+    send "go west"  => location = "forest"
+    send "go south" => location = "entrance"
+    send "go east"  => location = "cave"
+    send "go down"  => location = "dungeon"
+    send "look"     => location = "dungeon"
+    send "go up"    => location = "cave"
+    send "go west"  => location = "entrance"
+    send "quit"     => output ∋ "Goodbye"
 
 -- ── Room descriptions ──────────────────────────────────────────────────────────
 
