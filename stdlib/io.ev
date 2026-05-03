@@ -132,3 +132,32 @@ schema Terminal
     mode ∈ TerminalMode
     eof = false
     mode = Canonical ⇒ blocking = true
+
+-- ── Batch I/O schemas ─────────────────────────────────────────────────────────
+-- These schemas deliver stdin as a whole rather than byte-by-byte.
+-- The executor populates them before solving and drains them after.
+
+-- Reads all of stdin split into lines (stripping the trailing newline from each).
+-- Use when the program needs the full input as a sequence before it can solve.
+schema StdinLines
+    lines ∈ Seq(String)
+
+-- Reads all of stdin as a single string, newlines preserved.
+-- Use when the program processes raw byte content.
+schema StdinAll
+    content ∈ String
+
+-- Reads stdin in fixed-size byte chunks.
+-- chunk_size is provided as a constraint in the schema body.
+schema StdinChunks
+    chunk_size ∈ Nat
+    chunks     ∈ Seq(String)
+    chunk_size ≥ 1
+
+-- Writes a sequence of strings to stdout, one per line.
+schema StdoutLines
+    lines ∈ Seq(String)
+
+-- Writes a single string to stdout verbatim.
+schema StdoutAll
+    content ∈ String

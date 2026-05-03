@@ -1,20 +1,21 @@
+import "stdlib/io.ev"
 import "stdlib/sequences.ev"
-
--- NumberedDocument used in reverse: given lines, find contents.
--- Run: cat numbered.txt | evident batch un-nl-batch.ev NumberedDocument --in lines --out contents
---
--- The schema is identical to nl-batch.ev — direction is determined
--- by which variable is given on the command line.
 
 schema NumberedDocument
     lines    ∈ Seq(String)
     contents ∈ Seq(String)
     n        ∈ Nat
-
     n = #lines
     n = #contents
     n ≥ 1
-
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
     lines[0] ⊑ "1\t"
     ∀ i ∈ {0..n-1}: lines[i] = int_to_str (i+1) ++ "\t" ++ contents[i]
+
+schema main
+    src ∈ StdinLines
+    dst ∈ StdoutLines
+    nd  ∈ NumberedDocument
+
+    nd.lines    = src.lines
+    nd.contents = dst.lines

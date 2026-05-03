@@ -1,23 +1,21 @@
+import "stdlib/io.ev"
 import "stdlib/sequences.ev"
-
--- NumberedDocument: given contents, find lines.
--- Run: cat file.txt | evident batch nl-batch.ev NumberedDocument --in contents --out lines
---
--- The same schema works in reverse (strip-numbers):
--- Run: cat numbered.txt | evident batch nl-batch.ev NumberedDocument --in lines --out contents
---
--- NumberedDocument is fully bidirectional — the runtime solves whichever
--- direction is needed based on which variable is given.
 
 schema NumberedDocument
     lines    ∈ Seq(String)
     contents ∈ Seq(String)
     n        ∈ Nat
-
     n = #lines
     n = #contents
     n ≥ 1
-
     ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
     lines[0] ⊑ "1\t"
     ∀ i ∈ {0..n-1}: lines[i] = int_to_str (i+1) ++ "\t" ++ contents[i]
+
+schema main
+    src ∈ StdinLines
+    dst ∈ StdoutLines
+    nd  ∈ NumberedDocument
+
+    nd.contents = src.lines
+    nd.lines    = dst.lines

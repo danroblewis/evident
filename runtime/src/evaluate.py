@@ -177,6 +177,60 @@ class EvidentSolver:
         # sees a concrete bound and unrolls rather than using ForAll.
         from .ast_types import ArithmeticConstraint, CardinalityExpr
 
+        # Pass 1: propagate x = y where one side is a concrete Seq — makes
+        # sub-schema fields like nd.contents concrete when linked to a given Seq.
+        _orig_bindings = dict(env.bindings)
+        changed = True
+        while changed:
+            changed = False
+            for item in schema.body:
+                if (isinstance(item, ArithmeticConstraint) and item.op == '='):
+                    try:
+                        from .translate import translate_expr as _te
+                        lhs_z3 = _te(item.left, env, self.registry)
+                        rhs_z3 = _te(item.right, env, self.registry)
+                        for sym, conc in [(lhs_z3, rhs_z3), (rhs_z3, lhs_z3)]:
+                            if (z3.is_seq(sym) and not z3.is_string(sym)
+                                    and z3.is_int_value(z3.simplify(z3.Length(conc)))):
+                                for ename, evar in list(env.bindings.items()):
+                                    try:
+                                        if z3.eq(evar, sym) and not z3.eq(evar, conc):
+                                            env = env.bind(ename, conc)
+                                            changed = True
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+
+        # Pass 2: for each type_constraint, substitute the updated env bindings
+        # and simplify. If this yields  sym_int == concrete_int, bind it.
+        # No solver call needed — pure symbolic evaluation.
+        _subst_pairs = [
+            (orig_var, env.lookup(name))
+            for name, orig_var in _orig_bindings.items()
+            if env.lookup(name) is not None
+            and not z3.eq(orig_var, env.lookup(name))
+        ]
+        if _subst_pairs:
+            for tc in type_constraints:
+                try:
+                    simplified = z3.simplify(z3.substitute(tc, _subst_pairs))
+                    if z3.is_eq(simplified) and z3.is_int(simplified.arg(0)):
+                        for (sym_side, val_side) in [
+                            (simplified.arg(0), simplified.arg(1)),
+                            (simplified.arg(1), simplified.arg(0)),
+                        ]:
+                            if not z3.is_int_value(sym_side) and z3.is_int_value(val_side):
+                                for name, orig_var in _orig_bindings.items():
+                                    try:
+                                        if z3.eq(orig_var, sym_side):
+                                            env = env.bind(name, val_side)
+                                    except Exception:
+                                        pass
+                except Exception:
+                    pass
+
+        # Pass 3: propagate n = #seq directly (for cases covered by the shim).
         for item in schema.body:
             if (isinstance(item, ArithmeticConstraint) and item.op == '='
                     and isinstance(item.left, Identifier)
@@ -233,7 +287,7 @@ class EvidentSolver:
             # elements. If n is concrete (resolved by the length shim above),
             # we can replace Seq variables with n individual String vars.
             fallback = self._try_seq_decomposition(
-                schema, env, type_constraints, given or {}
+                schema, env, type_constraints, given or {}, _orig_bindings
             )
             if fallback is not None:
                 return fallback
@@ -248,7 +302,8 @@ class EvidentSolver:
     # Seq(String) decomposition fallback
     # ------------------------------------------------------------------
 
-    def _try_seq_decomposition(self, schema, env, type_constraints, given):
+    def _try_seq_decomposition(self, schema, env, type_constraints, given,
+                              orig_bindings=None):
         """
         Fallback for when Z3 returns unknown on a query involving Seq(String)
         synthesis with IntToStr constraints.
@@ -290,6 +345,46 @@ class EvidentSolver:
                         and seq_name not in seq_vars):
                     seq_vars[seq_name] = (seq_z3, n_val.as_long())
 
+        # Also find free Seqs whose lengths are determined by type constraints.
+        # After the shim, some Int vars are concrete (e.g. nd.n = 3). Substitute
+        # those into type_constraints and look for Length(free_seq) == concrete_int.
+        if orig_bindings:
+            _tc_subst = [
+                (orig_bindings[name], env.lookup(name))
+                for name in orig_bindings
+                if env.lookup(name) is not None
+                and not z3.eq(orig_bindings[name], env.lookup(name))
+            ]
+            if _tc_subst:
+                for tc in type_constraints:
+                    if z3.is_quantifier(tc):
+                        continue
+                    try:
+                        simplified = z3.simplify(z3.substitute(tc, _tc_subst))
+                        if z3.is_eq(simplified) and z3.is_int(simplified.arg(0)):
+                            for (int_side, len_side) in [
+                                (simplified.arg(0), simplified.arg(1)),
+                                (simplified.arg(1), simplified.arg(0)),
+                            ]:
+                                if (z3.is_int_value(int_side)
+                                        and z3.is_app(len_side)
+                                        and len_side.num_args() == 1):
+                                    seq_arg = len_side.arg(0)
+                                    for ename, evar in env.bindings.items():
+                                        if (ename not in given
+                                                and ename not in seq_vars
+                                                and z3.is_seq(evar)
+                                                and not z3.is_string(evar)):
+                                            try:
+                                                if z3.eq(evar, seq_arg):
+                                                    seq_vars[ename] = (
+                                                        evar, int_side.as_long()
+                                                    )
+                                            except Exception:
+                                                pass
+                    except Exception:
+                        pass
+
         if not seq_vars:
             return None
 
@@ -306,10 +401,57 @@ class EvidentSolver:
                 seq_val = z3.Concat(seq_val, z3.Unit(e))
             new_env = new_env.bind(seq_name, seq_val)
 
-        # Re-solve with the decomposed env
+        # Re-solve with the decomposed env.
+        # Build a substitution that includes BOTH the shim's Int bindings AND
+        # the decomposed Seq replacements, then apply to type_constraints so
+        # free Seq vars like nd.lines_orig become Concat(Unit(lines_0),...).
+        # Build substitution: orig symbolic vars → updated concrete values
+        # (from shim) AND orig Seq vars → decomposed Concat sequences.
+        _decomp_subst = []
+        if orig_bindings:
+            for name, orig_var in orig_bindings.items():
+                new_val = new_env.lookup(name)
+                if new_val is not None and not z3.eq(orig_var, new_val):
+                    _decomp_subst.append((orig_var, new_val))
+        # Also substitute original Seq vars → their decomposed forms
+        for seq_name, (seq_z3, _) in seq_vars.items():
+            decomposed = new_env.lookup(seq_name)
+            if decomposed is not None and not z3.eq(seq_z3, decomposed):
+                _decomp_subst.append((seq_z3, decomposed))
+
         s2 = z3.Solver()
+        s2.set('timeout', 10000)
         for tc in type_constraints:
-            s2.add(tc)
+            if not z3.is_quantifier(tc):
+                subst_tc = z3.substitute(tc, _decomp_subst) if _decomp_subst else tc
+                s2.add(z3.simplify(subst_tc))
+
+        # Re-translate sub-schema body constraints with prefix-stripped sub-envs
+        # so quantifiers unroll (n is concrete in new_env after shim).
+        # Schema main has 'nd.lines', 'nd.n' etc.; NumberedDocument body uses
+        # 'lines', 'n' — strip the 'nd.' prefix to build the sub-env.
+        from .ast_types import MembershipConstraint as _MC
+        for item in schema.body:
+            if (isinstance(item, _MC) and item.op == '∈'
+                    and isinstance(item.left, Identifier)
+                    and isinstance(item.right, Identifier)
+                    and item.right.name in self.schemas):
+                var_name  = item.left.name      # e.g. 'nd'
+                sub_name  = item.right.name     # e.g. 'NumberedDocument'
+                prefix    = f'{var_name}.'
+                sub_env   = Environment()
+                for ename, evar in new_env.bindings.items():
+                    if ename.startswith(prefix):
+                        sub_env = sub_env.bind(ename[len(prefix):], evar)
+                for sub_item in self.schemas[sub_name].body:
+                    if isinstance(sub_item, (EvidentBlock, PassthroughItem,
+                                             MultiMembershipDecl)):
+                        continue
+                    try:
+                        s2.add(_translate_body_constraint(sub_item, sub_env,
+                                                          self.registry))
+                    except (NotImplementedError, KeyError):
+                        pass
         for item in schema.body:
             if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
                 continue

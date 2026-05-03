@@ -26,9 +26,15 @@ from typing import Any
 # ── Port schema names ─────────────────────────────────────────────────────────
 # Schemas whose variables are driven by the runtime, not the solver.
 
+# Streaming: character-by-character (step loop)
 INPUT_SCHEMAS  = {'Stdin', 'CharInput'}
 OUTPUT_SCHEMAS = {'Stdout', 'Stderr', 'CharOutput'}
-IO_SCHEMAS     = INPUT_SCHEMAS | OUTPUT_SCHEMAS
+
+# Batch: entire stdin/stdout in one solve
+BATCH_INPUT_SCHEMAS  = {'StdinLines', 'StdinAll', 'StdinChunks'}
+BATCH_OUTPUT_SCHEMAS = {'StdoutLines', 'StdoutAll'}
+
+IO_SCHEMAS = INPUT_SCHEMAS | OUTPUT_SCHEMAS | BATCH_INPUT_SCHEMAS | BATCH_OUTPUT_SCHEMAS
 
 
 # ── Type-based default initial values ─────────────────────────────────────────
@@ -119,8 +125,10 @@ class EvidentExecutor:
 
         declared = self._collect_vars('main', set())
 
-        input_vars  = {v: t for v, t in declared.items() if t in INPUT_SCHEMAS}
-        output_vars = {v: t for v, t in declared.items() if t in OUTPUT_SCHEMAS}
+        input_vars  = {v: t for v, t in declared.items()
+                       if t in INPUT_SCHEMAS or t in BATCH_INPUT_SCHEMAS}
+        output_vars = {v: t for v, t in declared.items()
+                       if t in OUTPUT_SCHEMAS or t in BATCH_OUTPUT_SCHEMAS}
 
         non_io = {v: t for v, t in declared.items() if t not in IO_SCHEMAS}
         state_pairs: dict[str, tuple[str, str]] = {}
@@ -221,11 +229,58 @@ class EvidentExecutor:
 
     # ── Main execution loop ───────────────────────────────────────────────────
 
+    def _run_batch(self, input_stream, output_stream, batch_in, batch_out) -> None:
+        """
+        Batch execution: read all input, solve once, write all output.
+        Used when schema main declares StdinLines, StdinAll, or StdoutLines.
+        """
+        given: dict = {}
+
+        for var, schema_type in batch_in.items():
+            if schema_type == 'StdinLines':
+                lines = [line.rstrip('\n') for line in input_stream]
+                given[f'{var}.lines'] = lines
+            elif schema_type == 'StdinAll':
+                given[f'{var}.content'] = input_stream.read()
+            elif schema_type == 'StdinChunks':
+                # chunk_size must be a given or a concrete constraint
+                # For now, read as lines and let the schema constrain chunk_size
+                lines = [line.rstrip('\n') for line in input_stream]
+                given[f'{var}.chunks'] = lines
+
+        result = self.rt.query('main', given=given)
+        if not result.satisfied:
+            import sys as _sys
+            print("schema main: UNSAT — no solution for the given input.",
+                  file=_sys.stderr)
+            return
+
+        for var, schema_type in batch_out.items():
+            if schema_type in ('StdoutLines',):
+                i = 0
+                while True:
+                    key = f'{var}.lines.{i}'
+                    if key not in result.bindings:
+                        break
+                    val = result.bindings[key]
+                    if val is not None:
+                        output_stream.write(str(val) + '\n')
+                    i += 1
+            elif schema_type == 'StdoutAll':
+                val = result.bindings.get(f'{var}.content', '')
+                if val:
+                    output_stream.write(str(val))
+
     def run(self, input_stream=None, output_stream=None) -> None:
         """
-        Execute schema main as a constraint automaton.
-        Reads from input_stream (default: sys.stdin),
-        writes to output_stream (default: sys.stdout).
+        Execute schema main. Detects batch vs streaming mode from the
+        declared port schemas and dispatches accordingly.
+
+        Batch mode  (StdinLines, StdinAll, StdoutLines, StdoutAll):
+            Reads all input at once, solves once, writes all output.
+
+        Streaming mode (Stdin, Stdout via ..LineReader / ..LineWriter):
+            Reads one character at a time, solves per step.
         """
         if input_stream is None:
             input_stream = sys.stdin
@@ -233,6 +288,14 @@ class EvidentExecutor:
             output_stream = sys.stdout
 
         input_vars, output_vars, state_pairs = self._inspect_main()
+
+        # Dispatch to batch mode if any batch I/O schemas are declared
+        batch_in  = {v: t for v, t in input_vars.items()  if t in BATCH_INPUT_SCHEMAS}
+        batch_out = {v: t for v, t in output_vars.items() if t in BATCH_OUTPUT_SCHEMAS}
+        if batch_in or batch_out:
+            return self._run_batch(input_stream, output_stream, batch_in, batch_out)
+
+        # Fall through to streaming mode
 
         if not input_vars and not output_vars:
             raise RuntimeError(
