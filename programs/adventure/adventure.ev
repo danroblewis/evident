@@ -15,83 +15,42 @@ schema GameState
 
 -- ── Transition logic ──────────────────────────────────────────────────────────
 --
--- Self-contained: owns its own state pair, the line_ready signal, and the
--- initialization logic. schema main wires it to I/O via passthrough mapping.
+-- Pure transition function. `ready` is a generic "this step is active" signal —
+-- schema main maps it from whatever I/O signal is appropriate (e.g. line_ready).
 
 schema GameTransition
     state      ∈ GameState
     state_next ∈ GameState
     cmd        ∈ String
     response   ∈ String
-    line_ready ∈ Bool
+    ready      ∈ Bool
 
     desc       ∈ String
-    dest_north ∈ String
-    dest_south ∈ String
-    dest_east  ∈ String
-    dest_west  ∈ String
-    dest_up    ∈ String
-    dest_down  ∈ String
-    dest_desc  ∈ String
+    dir        ∈ String
+    dest       ∈ String
 
-    line_ready ⇒
+    ready ⇒
         (state.location, desc) ∈ room_descriptions
 
         (cmd = "look" ∨ cmd = "l" ∨ cmd = "examine") ⇒
             response = desc
             state_next.location = state.location
 
-        (cmd = "go north" ∨ cmd = "n") ⇒
-            ((state.location, "north", dest_north) ∈ exits_map) ⇒
-                (dest_north, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_north
-            ((state.location, "north", dest_north) ∉ exits_map) ⇒
-                response = "You can't go that way."
-                state_next.location = state.location
+        -- Pin dir from cmd, then use it in a single movement block.
+        -- (cmd, dir) ∈ movement_commands can't be used as an antecedent directly
+        -- because dir is free — Z3 would pick dir="" to make it vacuously false.
+        (cmd = "go north" ∨ cmd = "n") ⇒ dir = "north"
+        (cmd = "go south" ∨ cmd = "s") ⇒ dir = "south"
+        (cmd = "go east"  ∨ cmd = "e") ⇒ dir = "east"
+        (cmd = "go west"  ∨ cmd = "w") ⇒ dir = "west"
+        (cmd = "go up"    ∨ cmd = "u") ⇒ dir = "up"
+        (cmd = "go down"  ∨ cmd = "d") ⇒ dir = "down"
 
-        (cmd = "go south" ∨ cmd = "s") ⇒
-            ((state.location, "south", dest_south) ∈ exits_map) ⇒
-                (dest_south, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_south
-            ((state.location, "south", dest_south) ∉ exits_map) ⇒
-                response = "You can't go that way."
-                state_next.location = state.location
-
-        (cmd = "go east" ∨ cmd = "e") ⇒
-            ((state.location, "east", dest_east) ∈ exits_map) ⇒
-                (dest_east, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_east
-            ((state.location, "east", dest_east) ∉ exits_map) ⇒
-                response = "You can't go that way."
-                state_next.location = state.location
-
-        (cmd = "go west" ∨ cmd = "w") ⇒
-            ((state.location, "west", dest_west) ∈ exits_map) ⇒
-                (dest_west, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_west
-            ((state.location, "west", dest_west) ∉ exits_map) ⇒
-                response = "You can't go that way."
-                state_next.location = state.location
-
-        (cmd = "go up" ∨ cmd = "u") ⇒
-            ((state.location, "up", dest_up) ∈ exits_map) ⇒
-                (dest_up, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_up
-            ((state.location, "up", dest_up) ∉ exits_map) ⇒
-                response = "You can't go that way."
-                state_next.location = state.location
-
-        (cmd = "go down" ∨ cmd = "d") ⇒
-            ((state.location, "down", dest_down) ∈ exits_map) ⇒
-                (dest_down, dest_desc) ∈ room_descriptions
-                response = dest_desc
-                state_next.location = dest_down
-            ((state.location, "down", dest_down) ∉ exits_map) ⇒
+        (cmd, dir) ∈ movement_commands ⇒
+            ((state.location, dir, dest) ∈ exits_map) ⇒
+                (dest, response) ∈ room_descriptions
+                state_next.location = dest
+            ((state.location, dir, dest) ∉ exits_map) ⇒
                 response = "You can't go that way."
                 state_next.location = state.location
 
@@ -111,7 +70,7 @@ schema GameTransition
             response = "I don't understand that."
             state_next.location = state.location
 
-    ¬line_ready ⇒
+    ¬ready ⇒
         response = ""
         (state.location = "") ⇒ state_next.location = "entrance"
         (state.location ≠ "") ⇒ state_next.location = state.location
@@ -121,4 +80,4 @@ schema GameTransition
 schema main
     ..LineReader
     ..LineWriter
-    ..GameTransition(cmd mapsto line, response mapsto line_out)
+    ..GameTransition(cmd mapsto line, response mapsto line_out, ready mapsto line_ready)

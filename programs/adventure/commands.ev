@@ -27,6 +27,17 @@ assert item_words = {
     ("gold coin","goldcoin")
 }
 
+-- ── Movement commands: player input → canonical direction ────────────────────
+
+assert movement_commands = {
+    ("go north", "north"), ("n", "north"),
+    ("go south", "south"), ("s", "south"),
+    ("go east",  "east"),  ("e", "east"),
+    ("go west",  "west"),  ("w", "west"),
+    ("go up",    "up"),    ("u", "up"),
+    ("go down",  "down"),  ("d", "down")
+}
+
 -- ── Known command set (all valid player input strings) ────────────────────────
 
 assert known_commands = {
