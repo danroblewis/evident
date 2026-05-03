@@ -4,12 +4,6 @@
 -- (state × cmd → state_next × response). It gates itself on `ready`
 -- so it remains SAT on idle (character-accumulation) steps.
 --
--- Parsing (raw → verb/verb_str/argument) lives inside `ready ⇒` so that
--- on idle steps, where cmd = "", the parsing constraint is not active.
--- ParsedCommand in parse.ev expresses the same constraints independently
--- and can be queried for testing, but is not composed here via passthrough
--- because passhthroughs inside implies blocks are a current runtime limitation.
---
 -- Variable naming for composition with main:
 --   state, state_next  — matched by executor's state-pair convention
 --   cmd                — renamed to `line` when composed in main
@@ -37,76 +31,60 @@ claim GameTransition
 
     -- ── Active step: full command received ────────────────────────────────────
     ready ⇒
-        -- Parse cmd → verb + argument.
-        -- Single-word: "look" → verb_str="look", argument=""
-        -- Two-word:    "go north" → verb_str="go", argument="north"
+        -- Parse cmd → verb + argument
         (cmd = verb_str ++ " " ++ argument) ∨ (cmd = verb_str ∧ argument = "")
         (verb_str, verb) ∈ verb_words
 
-        -- ── LOOK ──────────────────────────────────────────────────────────────
+        -- ── Defaults: what stays the same unless a verb specifically changes it ──
+        -- These apply via vacuous implication: e.g. verb ≠ Take is vacuously true
+        -- when verb = Take, so it doesn't conflict with Take's own inventory logic.
+        verb ≠ Take ⇒
+            state_next.inventory = state.inventory
+        (verb ≠ Go ∨ dest = "") ⇒
+            state_next.location = state.location
+        (verb = Help ∨ verb = Quit) ⇒
+            state_next.turn = state.turn
+        (verb ≠ Help ∧ verb ≠ Quit) ⇒
+            state_next.turn = state.turn + 1
+
+        -- ── LOOK: unique part is looking up and returning the room description ──
         verb = Look ⇒
             (state.location, room_desc) ∈ room_descriptions
-            response             = room_desc
-            state_next.location  = state.location
-            state_next.inventory = state.inventory
-            state_next.turn      = state.turn + 1
+            response = room_desc
 
-        -- ── GO ────────────────────────────────────────────────────────────────
-        -- Two direction-pin implies with disjoint antecedents (argument = "" vs ≠ "")
-        -- pin `direction` deterministically. direction_exits then uniquely pins `dest`.
-        -- This collapses 6 repeated direction blocks into one.
+        -- ── GO: unique part is resolving direction and moving ─────────────────
         verb = Go ⇒
             argument ≠ "" ⇒ (argument, direction) ∈ direction_words
             argument = "" ⇒ (verb_str, direction) ∈ direction_words
             (state.location, direction, dest) ∈ direction_exits
             dest ≠ "" ⇒
                 (dest, room_desc) ∈ room_descriptions
-                response             = room_desc
-                state_next.location  = dest
-                state_next.inventory = state.inventory
-                state_next.turn      = state.turn + 1
+                response = room_desc
+                state_next.location = dest
             dest = "" ⇒
-                response             = "You can't go that way."
-                state_next.location  = state.location
-                state_next.inventory = state.inventory
-                state_next.turn      = state.turn + 1
+                response = "You can't go that way."
 
-        -- ── TAKE ──────────────────────────────────────────────────────────────
+        -- ── TAKE: unique part is checking item presence and updating inventory ──
         verb = Take ⇒
             (argument, item) ∈ item_words
             (item, item_name) ∈ item_names
             (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
-                response             = "You pick up the " ++ item_name ++ "."
-                state_next.location  = state.location
+                response = "You pick up the " ++ item_name ++ "."
                 state_next.inventory = state.inventory ++ ⟨item⟩
-                state_next.turn      = state.turn + 1
             ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
-                response             = "You don't see that here."
-                state_next.location  = state.location
-                state_next.inventory = state.inventory
-                state_next.turn      = state.turn + 1
+                response = "You don't see that here."
 
-        -- ── INVENTORY ─────────────────────────────────────────────────────────
+        -- ── INVENTORY: unique part is inspecting inventory count ──────────────
         verb = Inventory ⇒
-            state_next.location  = state.location
-            state_next.inventory = state.inventory
-            state_next.turn      = state.turn + 1
             #state.inventory = 0 ⇒ response = "You are carrying nothing."
             #state.inventory > 0 ⇒ response = "You are carrying some items."
 
-        -- ── HELP ──────────────────────────────────────────────────────────────
+        -- ── HELP / QUIT: unique part is the response string ───────────────────
         verb = Help ⇒
-            response             = "Commands: look, go <dir>, take <item>, inventory, help, quit"
-            state_next.location  = state.location
-            state_next.inventory = state.inventory
-            state_next.turn      = state.turn
+            response = "Commands: look, go <dir>, take <item>, inventory, help, quit"
 
-        -- ── QUIT ──────────────────────────────────────────────────────────────
         verb = Quit ⇒
-            response             = "Goodbye!"
-            state_next.location  = state.location
-            state_next.inventory = state.inventory
-            state_next.turn      = state.turn
+            response = "Goodbye!"
 
     -- ── Idle step: accumulating input characters ───────────────────────────────
     ¬ready ⇒
