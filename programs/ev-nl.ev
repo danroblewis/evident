@@ -1,3 +1,5 @@
+import "stdlib/io.ev"
+
 -- ev-nl: number each line of stdin, like the Unix nl command.
 --
 -- Uses the io.ev traits. Stdin delivers one character per step via src.char.

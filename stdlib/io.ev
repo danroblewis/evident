@@ -24,7 +24,7 @@ schema Readable
     ..Descriptor
     available ∈ Nat
     eof       ∈ Bool
-    eof = true  ⇒ available = 0
+    eof = true   ⇒ available = 0
     open = false ⇒ eof = true
 
 -- Anything you can write bytes to.
@@ -60,9 +60,19 @@ schema Connectable
     connection = Connected ⇒ open = true
     connection = Listening ⇒ open = true
 
+-- ── Composite traits ──────────────────────────────────────────────────────────
+
+-- A bidirectional, connectable stream (Unix and network sockets).
+schema SocketBase
+    ..Readable
+    ..Writable
+    ..Connectable
+    connection = Unconnected ⇒ available = 0
+    connection = Listening   ⇒ available = 0
+    connection = Connecting  ⇒ available = 0
+
 -- ── Character streaming traits ────────────────────────────────────────────────
 -- Convenience traits for automata that process one character at a time.
--- These are what ev-nl and similar programs use.
 
 schema CharInput
     ..Readable
@@ -107,22 +117,14 @@ schema Pipe
     write_closed = true ⇒ available = 0
 
 schema UnixSocket
-    ..Readable
-    ..Writable
-    ..Connectable
+    ..SocketBase
     path ∈ String
-    connection = Unconnected ⇒ available = 0
-    connection = Listening   ⇒ available = 0
 
 schema TcpSocket
-    ..Readable
-    ..Writable
-    ..Connectable
+    ..SocketBase
     remote_addr ∈ String
     local_port  ∈ Nat
     1 ≤ local_port ≤ 65535
-    connection = Listening  ⇒ available = 0
-    connection = Connecting ⇒ available = 0
 
 schema Terminal
     ..Readable

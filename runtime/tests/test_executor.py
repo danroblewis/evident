@@ -12,7 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 def _executor_with_source(source: str):
     from runtime.src.executor import EvidentExecutor
     ex = EvidentExecutor()
-    ex.load_source(source, load_stdlib=True)
+    ex.load_source(source, load_stdlib=False)
     return ex
 
 
@@ -28,7 +28,33 @@ def _run(source: str, stdin_text: str) -> str:
 # Minimal inline program (no NlState, no io trait passthrough needed)
 # ---------------------------------------------------------------------------
 
-NL_SOURCE = """\
+MINIMAL_IO = """\
+-- Minimal I/O schemas for tests (stdlib normally provides these via import)
+schema Descriptor
+    fd       ∈ Nat
+    open     ∈ Bool
+    blocking ∈ Bool
+
+schema Stdin
+    ..Descriptor
+    available ∈ Nat
+    eof       ∈ Bool
+    char      ∈ String
+    fd = 0
+    blocking = true
+
+schema Stdout
+    ..Descriptor
+    out         ∈ String
+    send_buffer ∈ Nat
+    buffer_size ∈ Nat
+    buffered    ∈ Nat
+    flushed     ∈ Bool
+    fd = 1
+    open = true
+"""
+
+NL_SOURCE = MINIMAL_IO + """\
 schema NlState
     n       ∈ Nat
     partial ∈ String

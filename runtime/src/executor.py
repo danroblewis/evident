@@ -59,9 +59,7 @@ class EvidentExecutor:
         self.rt = EvidentRuntime()
 
     def load(self, program_path: str) -> None:
-        """Load stdlib/io.ev then the user program."""
-        if self.STDLIB_PATH.exists():
-            self.rt.load_file(str(self.STDLIB_PATH))
+        """Load the user program. stdlib is pulled in via import statements in the program."""
         self.rt.load_file(program_path)
 
     def load_source(self, source: str, load_stdlib: bool = True) -> None:
