@@ -535,6 +535,13 @@ def translate_constraint(
                                 for e in right.elements])
             x = translate_expr(left, env, registry)
             s = translate_expr(right, env, registry)
+            # Seq(T): element ∉ seq  →  ¬Contains(seq, Unit(element))
+            if z3.is_seq(s) and not z3.is_string(s):
+                return z3.Not(z3.Contains(s, z3.Unit(x)))
+            # String: substring ∉ string  →  ¬Contains(string, substring)
+            if z3.is_string(s):
+                return z3.Not(z3.Contains(s, x))
+            # Z3 Set (Array sort)
             return z3.Not(z3.Select(s, x))
 
         if op == "⊆":

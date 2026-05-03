@@ -1,11 +1,26 @@
--- commands.ev — Command vocabulary for the text adventure.
---
--- Defines the canonical command strings and direction/item word maps.
--- Imported by adventure.ev.
+-- commands.ev — Command vocabulary and parsing maps.
 
 import "programs/adventure/world.ev"
 
--- ── Direction word map: canonical direction strings ────────────────────────────
+type Verb = Go | Take | Drop | Look | Inventory | Help | Quit | Unknown
+
+-- ── Verb word map ─────────────────────────────────────────────────────────────
+-- Single-letter direction abbreviations (n/s/e/w/u/d) are also Go commands;
+-- the Go branch checks verb_str when argument is empty.
+
+assert verb_words = {
+    ("go",        Go),    ("walk",      Go),    ("move",      Go),
+    ("n",         Go),    ("s",         Go),    ("e",         Go),
+    ("w",         Go),    ("u",         Go),    ("d",         Go),
+    ("take",      Take),  ("get",       Take),  ("pick",      Take),
+    ("drop",      Drop),  ("leave",     Drop),
+    ("look",      Look),  ("examine",   Look),  ("l",         Look),
+    ("inventory", Inventory), ("inv",   Inventory), ("i",     Inventory),
+    ("help",      Help),  ("?",         Help),
+    ("quit",      Quit),  ("q",         Quit)
+}
+
+-- ── Direction word map (string → canonical direction string) ──────────────────
 
 assert direction_words = {
     ("north", "north"), ("n", "north"),
@@ -16,35 +31,12 @@ assert direction_words = {
     ("down",  "down"),  ("d", "down")
 }
 
--- ── Item word map: player word → item key ─────────────────────────────────────
+-- ── Item word map ─────────────────────────────────────────────────────────────
 
 assert item_words = {
-    ("torch",    "torch"),
-    ("key",      "key"),
-    ("sword",    "sword"),
-    ("gold",     "goldcoin"),
-    ("coin",     "goldcoin"),
-    ("gold coin","goldcoin")
-}
-
--- ── Movement commands: player input → canonical direction ────────────────────
-
-assert movement_commands = {
-    ("go north", "north"), ("n", "north"),
-    ("go south", "south"), ("s", "south"),
-    ("go east",  "east"),  ("e", "east"),
-    ("go west",  "west"),  ("w", "west"),
-    ("go up",    "up"),    ("u", "up"),
-    ("go down",  "down"),  ("d", "down")
-}
-
--- ── Known command set (all valid player input strings) ────────────────────────
-
-assert known_commands = {
-    "look", "l", "examine",
-    "go north", "go south", "go east", "go west", "go up", "go down",
-    "n", "s", "e", "w", "u", "d",
-    "help", "?",
-    "quit", "q",
-    ""
+    ("torch",    Torch),
+    ("key",      Key),
+    ("sword",    Sword),
+    ("gold",     GoldCoin), ("coin", GoldCoin), ("gold coin", GoldCoin),
+    ("map",      OldMap),   ("old map", OldMap)
 }

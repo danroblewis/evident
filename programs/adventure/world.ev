@@ -1,20 +1,11 @@
--- world.ev — Room, item, and direction definitions for the text adventure.
+-- world.ev — Rooms, items, and directions.
 --
--- Five rooms: Entrance, Forest, Cave, Tower, Dungeon
--- Items: Torch, Key, Sword, GoldCoin
--- Directions: north, south, east, west, up, down (as strings)
+-- Rooms and directions are strings. Items use enum types for unambiguous
+-- inventory membership checks.
 
--- ── Room descriptions ─────────────────────────────────────────────────────────
+type Item = Torch | Key | Sword | GoldCoin | OldMap
 
-assert room_descriptions = {
-    ("entrance", "You stand at the entrance to a dark forest. Paths lead north and east."),
-    ("forest",   "A dense forest surrounds you. Paths lead south and east."),
-    ("cave",     "A damp cave. Passages lead west and down into the dark."),
-    ("tower",    "A ruined tower with a sweeping view. The only exit is west."),
-    ("dungeon",  "A cold stone dungeon. A ladder leads up.")
-}
-
--- ── Exit map: (from_room, direction, to_room) ─────────────────────────────────
+-- ── Exit map: (from_room, direction, to_room) — partial, only valid exits ─────
 
 assert exits_map = {
     ("entrance", "north", "forest"),
@@ -27,20 +18,55 @@ assert exits_map = {
     ("dungeon",  "up",    "cave")
 }
 
--- ── Item names (for display) ───────────────────────────────────────────────────
+-- ── Complete direction lookup: (room, direction) → destination or "" ──────────
+-- Every (room, direction) pair has an entry. "" means no exit.
+-- Using a positive constraint against this table uniquely pins dest — no free
+-- variables in implies antecedents, which Z3 would otherwise exploit.
 
-assert item_names = {
-    ("torch",    "torch"),
-    ("key",      "key"),
-    ("sword",    "sword"),
-    ("goldcoin", "gold coin")
+assert direction_exits = {
+    ("entrance", "north", "forest"), ("entrance", "south", ""),
+    ("entrance", "east",  "cave"),   ("entrance", "west",  ""),
+    ("entrance", "up",    ""),       ("entrance", "down",  ""),
+    ("forest",   "north", ""),       ("forest",   "south", "entrance"),
+    ("forest",   "east",  "tower"),  ("forest",   "west",  ""),
+    ("forest",   "up",    ""),       ("forest",   "down",  ""),
+    ("cave",     "north", ""),       ("cave",     "south", ""),
+    ("cave",     "east",  ""),       ("cave",     "west",  "entrance"),
+    ("cave",     "up",    ""),       ("cave",     "down",  "dungeon"),
+    ("tower",    "north", ""),       ("tower",    "south", ""),
+    ("tower",    "east",  ""),       ("tower",    "west",  "forest"),
+    ("tower",    "up",    ""),       ("tower",    "down",  ""),
+    ("dungeon",  "north", ""),       ("dungeon",  "south", ""),
+    ("dungeon",  "east",  ""),       ("dungeon",  "west",  ""),
+    ("dungeon",  "up",    "cave"),   ("dungeon",  "down",  "")
 }
 
--- ── Initial item locations ────────────────────────────────────────────────────
+-- ── Room descriptions ─────────────────────────────────────────────────────────
 
-assert item_locations = {
-    ("torch",    "entrance"),
-    ("key",      "forest"),
-    ("sword",    "cave"),
-    ("goldcoin", "tower")
+assert room_descriptions = {
+    ("entrance", "You stand at the entrance to a dark forest. Paths lead north and east."),
+    ("forest",   "A dense forest surrounds you. Paths lead south and east."),
+    ("cave",     "A damp cave. Passages lead west and down into the dark."),
+    ("tower",    "A ruined tower with a sweeping view. The only exit is west."),
+    ("dungeon",  "A cold stone dungeon. A ladder leads up.")
+}
+
+-- ── Item display names ────────────────────────────────────────────────────────
+
+assert item_names = {
+    (Torch,    "torch"),
+    (Key,      "key"),
+    (Sword,    "sword"),
+    (GoldCoin, "gold coin"),
+    (OldMap,   "old map")
+}
+
+-- ── Starting item locations ───────────────────────────────────────────────────
+
+assert initial_item_locations = {
+    (Torch,    "entrance"),
+    (Key,      "forest"),
+    (Sword,    "cave"),
+    (GoldCoin, "tower"),
+    (OldMap,   "dungeon")
 }

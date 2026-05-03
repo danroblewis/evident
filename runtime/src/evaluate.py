@@ -594,7 +594,8 @@ class EvidentSolver:
             try:
                 val = model.eval(z3_expr, model_completion=True)
 
-                # ── Non-string sequences: expand into indexed sub-bindings ──
+                # ── Non-string sequences: store as Python list so the executor
+                #    can carry them forward with the correct element sort. ──
                 if z3.is_seq(val) and not z3.is_string(val):
                     length_val = model.eval(z3.Length(z3_expr), model_completion=True)
                     if z3.is_int_value(length_val):
@@ -605,9 +606,9 @@ class EvidentSolver:
                             py_elem = self._z3_to_python(elem)
                             elements.append(py_elem)
                             result[f"{name}.{i}"] = py_elem
-                        result[name] = "⟨" + ", ".join(
-                            str(e) if e is not None else "?" for e in elements
-                        ) + "⟩"
+                        # Store as Python list (not "⟨⟩" string) so that
+                        # _python_to_z3_untyped can reconstruct the correct Z3 sort.
+                        result[name] = elements
                     else:
                         result[name] = self._z3_to_python(val)
                     continue

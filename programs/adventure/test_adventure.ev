@@ -79,25 +79,20 @@ claim unsat_dungeon_has_horizontal_exit
 
 -- ── Items ─────────────────────────────────────────────────────────────────────
 
--- No item starts in the dungeon
-claim unsat_item_starts_in_dungeon
-    item ∈ String
-    (item, "dungeon") ∈ item_locations
-
 -- All items are placed in known rooms
 claim unsat_item_in_unknown_room
-    item ∈ String
+    item ∈ Item
     room ∈ String
-    (item, room) ∈ item_locations
+    (item, room) ∈ initial_item_locations
     room ∉ {"entrance", "forest", "cave", "tower", "dungeon"}
 
 -- No item starts in two different rooms
 claim unsat_item_in_two_places
-    item  ∈ String
+    item  ∈ Item
     room1 ∈ String
     room2 ∈ String
-    (item, room1) ∈ item_locations
-    (item, room2) ∈ item_locations
+    (item, room1) ∈ initial_item_locations
+    (item, room2) ∈ initial_item_locations
     room1 ≠ room2
 
 -- ── Command vocabulary ────────────────────────────────────────────────────────

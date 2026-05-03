@@ -26,14 +26,13 @@ from .ast_types import (SchemaDecl, Param, Identifier, MembershipConstraint,
 
 def _is_type_decl(item) -> bool:
     """True for  x ∈ TypeName  declarations already handled by instantiate_schema.
-    The right-hand side must be a bare Identifier (e.g. Nat, Real, Color),
-    NOT a set literal ({30, 45, 60}) or range ({1..10}), which are constraints."""
-    return (
-        isinstance(item, MembershipConstraint)
-        and item.op == "∈"
-        and isinstance(item.left, Identifier)   # plain variable, not a tuple
-        and isinstance(item.right, Identifier)  # bare type name, not {…} or range
-    )
+    The right-hand side must be a type expression (bare Identifier, Seq(T), or
+    inline enum), NOT a set literal ({30, 45, 60}) or range ({1..10})."""
+    if not (isinstance(item, MembershipConstraint) and item.op == "∈"
+            and isinstance(item.left, Identifier)):
+        return False
+    from .ast_types import SeqType, InlineEnumExpr
+    return isinstance(item.right, (Identifier, SeqType, InlineEnumExpr))
 
 try:
     from .sorts import SortRegistry  # type: ignore[import]
@@ -246,8 +245,8 @@ def instantiate_schema(
             continue
 
         name = item.left.name
-        if env.lookup(name) is not None:
-            continue  # already declared
+        if env.lookup(name) is not None and not isinstance(item.right, SeqType):
+            continue  # already declared (SeqType gets its own sort-correction pass below)
 
         # ── Regex literal: name ∈ /pattern/ → String ───────────────────
         if isinstance(item.right, RegexLiteral):
@@ -269,7 +268,19 @@ def instantiate_schema(
             seq_sort = z3.SeqSort(elem_sort)
             existing = given.lookup(name)
             if existing is not None:
-                env = env.bind(name, existing)
+                # Verify the existing value has the correct seq sort.
+                # When the executor carries state across steps it converts sequences
+                # to Python lists and back; _python_to_z3_untyped([]) always produces
+                # Empty(StringSort) regardless of the actual element type. Detect the
+                # sort mismatch and substitute the correctly-sorted empty sequence.
+                if z3.is_seq(existing) and existing.sort() == seq_sort:
+                    env = env.bind(name, existing)   # correct sort — use as-is
+                elif z3.is_seq(existing):
+                    # Wrong sort (e.g. Empty(StringSort) for Seq(Item)):
+                    # replace with empty sequence of the correct element type.
+                    env = env.bind(name, z3.Empty(seq_sort))
+                else:
+                    env = env.bind(name, existing)   # non-seq — keep and let Z3 decide
             else:
                 var = make_const(name, seq_sort, prefix=prefix)
                 env = env.bind(name, var)
@@ -333,7 +344,16 @@ def instantiate_schema(
             # Merge sub-fields into parent env as `name.field`
             for sub_name, sub_var in sub_env.bindings.items():
                 full_name = f"{name}.{sub_name}"
-                if env.lookup(full_name) is None:
+                existing = env.lookup(full_name)
+                if existing is None:
+                    env = env.bind(full_name, sub_var)
+                elif (z3.is_seq(sub_var) and not z3.is_string(sub_var)
+                      and (not z3.is_seq(existing) or z3.is_string(existing)
+                           or sub_var.sort() != existing.sort())):
+                    # sub_var has the correct non-string Seq sort; existing has
+                    # a mismatched sort (e.g. Empty(StringSort) carried from the
+                    # executor as []→_python_to_z3_untyped→Empty(StringSort)).
+                    # Override with the correctly-typed value.
                     env = env.bind(full_name, sub_var)
             continue
 
