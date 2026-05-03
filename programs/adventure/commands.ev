@@ -1,0 +1,39 @@
+-- commands.ev — Command vocabulary for the text adventure.
+--
+-- Defines the canonical command strings and direction/item word maps.
+-- Imported by adventure.ev.
+
+import "programs/adventure/world.ev"
+
+-- ── Direction word map: canonical direction strings ────────────────────────────
+
+assert direction_words = {
+    ("north", "north"), ("n", "north"),
+    ("south", "south"), ("s", "south"),
+    ("east",  "east"),  ("e", "east"),
+    ("west",  "west"),  ("w", "west"),
+    ("up",    "up"),    ("u", "up"),
+    ("down",  "down"),  ("d", "down")
+}
+
+-- ── Item word map: player word → item key ─────────────────────────────────────
+
+assert item_words = {
+    ("torch",    "torch"),
+    ("key",      "key"),
+    ("sword",    "sword"),
+    ("gold",     "goldcoin"),
+    ("coin",     "goldcoin"),
+    ("gold coin","goldcoin")
+}
+
+-- ── Known command set (all valid player input strings) ────────────────────────
+
+assert known_commands = {
+    "look", "l", "examine",
+    "go north", "go south", "go east", "go west", "go up", "go down",
+    "n", "s", "e", "w", "u", "d",
+    "help", "?",
+    "quit", "q",
+    ""
+}

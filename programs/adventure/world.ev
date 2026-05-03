@@ -1,0 +1,46 @@
+-- world.ev — Room, item, and direction definitions for the text adventure.
+--
+-- Five rooms: Entrance, Forest, Cave, Tower, Dungeon
+-- Items: Torch, Key, Sword, GoldCoin
+-- Directions: north, south, east, west, up, down (as strings)
+
+-- ── Room descriptions ─────────────────────────────────────────────────────────
+
+assert room_descriptions = {
+    ("entrance", "You stand at the entrance to a dark forest. Paths lead north and east."),
+    ("forest",   "A dense forest surrounds you. Paths lead south and east."),
+    ("cave",     "A damp cave. Passages lead west and down into the dark."),
+    ("tower",    "A ruined tower with a sweeping view. The only exit is west."),
+    ("dungeon",  "A cold stone dungeon. A ladder leads up.")
+}
+
+-- ── Exit map: (from_room, direction, to_room) ─────────────────────────────────
+
+assert exits_map = {
+    ("entrance", "north", "forest"),
+    ("entrance", "east",  "cave"),
+    ("forest",   "south", "entrance"),
+    ("forest",   "east",  "tower"),
+    ("cave",     "west",  "entrance"),
+    ("cave",     "down",  "dungeon"),
+    ("tower",    "west",  "forest"),
+    ("dungeon",  "up",    "cave")
+}
+
+-- ── Item names (for display) ───────────────────────────────────────────────────
+
+assert item_names = {
+    ("torch",    "torch"),
+    ("key",      "key"),
+    ("sword",    "sword"),
+    ("goldcoin", "gold coin")
+}
+
+-- ── Initial item locations ────────────────────────────────────────────────────
+
+assert item_locations = {
+    ("torch",    "entrance"),
+    ("key",      "forest"),
+    ("sword",    "cave"),
+    ("goldcoin", "tower")
+}

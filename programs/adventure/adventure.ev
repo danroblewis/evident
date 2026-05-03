@@ -1,0 +1,137 @@
+-- adventure.ev — Text adventure game main program.
+--
+-- A small text adventure with 5 connected rooms.
+-- Supports: look, go <direction>, help, quit
+--
+-- Run with:
+--   echo -e "look\ngo north\nlook\nquit\n" | python3 evident.py execute programs/adventure/adventure.ev
+
+import "stdlib/line-reader.ev"
+import "stdlib/line-writer.ev"
+import "programs/adventure/world.ev"
+import "programs/adventure/commands.ev"
+
+-- ── Game state ────────────────────────────────────────────────────────────────
+
+schema GameState
+    location ∈ String
+
+-- ── Main program ─────────────────────────────────────────────────────────────
+
+schema main
+    ..LineReader
+    ..LineWriter
+    state      ∈ GameState
+    state_next ∈ GameState
+
+    -- Current room description (looked up from state.location)
+    desc       ∈ String
+
+    -- Destination variables for each direction (at schema level for lookup)
+    dest_north ∈ String
+    dest_south ∈ String
+    dest_east  ∈ String
+    dest_west  ∈ String
+    dest_up    ∈ String
+    dest_down  ∈ String
+
+    -- Destination room description (for display after moving)
+    dest_desc  ∈ String
+
+    -- ── line_ready: process a complete input line ─────────────────────────────
+
+    line_ready ⇒
+        (state.location, desc) ∈ room_descriptions
+
+        -- look / l / examine: show current room description
+        (line = "look" ∨ line = "l" ∨ line = "examine") ⇒
+            line_out = desc
+            state_next.location = state.location
+
+        -- go north / n
+        (line = "go north" ∨ line = "n") ⇒
+            ((state.location, "north", dest_north) ∈ exits_map) ⇒
+                (dest_north, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_north
+            ((state.location, "north", dest_north) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- go south / s
+        (line = "go south" ∨ line = "s") ⇒
+            ((state.location, "south", dest_south) ∈ exits_map) ⇒
+                (dest_south, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_south
+            ((state.location, "south", dest_south) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- go east / e
+        (line = "go east" ∨ line = "e") ⇒
+            ((state.location, "east", dest_east) ∈ exits_map) ⇒
+                (dest_east, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_east
+            ((state.location, "east", dest_east) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- go west / w
+        (line = "go west" ∨ line = "w") ⇒
+            ((state.location, "west", dest_west) ∈ exits_map) ⇒
+                (dest_west, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_west
+            ((state.location, "west", dest_west) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- go up / u
+        (line = "go up" ∨ line = "u") ⇒
+            ((state.location, "up", dest_up) ∈ exits_map) ⇒
+                (dest_up, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_up
+            ((state.location, "up", dest_up) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- go down / d
+        (line = "go down" ∨ line = "d") ⇒
+            ((state.location, "down", dest_down) ∈ exits_map) ⇒
+                (dest_down, dest_desc) ∈ room_descriptions
+                line_out = dest_desc
+                state_next.location = dest_down
+            ((state.location, "down", dest_down) ∉ exits_map) ⇒
+                line_out = "You can't go that way."
+                state_next.location = state.location
+
+        -- help
+        (line = "help" ∨ line = "?") ⇒
+            line_out = "Commands: look, go <north/south/east/west/up/down>, help, quit"
+            state_next.location = state.location
+
+        -- quit / q
+        (line = "quit" ∨ line = "q") ⇒
+            line_out = "Goodbye!"
+            state_next.location = state.location
+
+        -- Empty line: just show prompt
+        (line = "") ⇒
+            line_out = ""
+            state_next.location = state.location
+
+        -- Unknown command
+        (line ∉ known_commands) ⇒
+            line_out = "I don't understand that."
+            state_next.location = state.location
+
+    -- ── ¬line_ready: accumulate input characters ──────────────────────────────
+    -- Also: initialize location to "entrance" on first step.
+
+    ¬line_ready ⇒
+        line_out = ""
+        (state.location = "") ⇒ state_next.location = "entrance"
+        (state.location ≠ "") ⇒ state_next.location = state.location
