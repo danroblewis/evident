@@ -156,6 +156,40 @@ def _parse_given(given_list):
 # Commands
 # ---------------------------------------------------------------------------
 
+def cmd_batch(args):
+    """
+    Batch mode: read stdin as a sequence, query a schema, write a sequence to stdout.
+
+    Reads every line from stdin into a list, queries the given schema with
+    that list bound to --in, then writes the elements of --out to stdout.
+
+    Example (forward):  cat file.txt | evident batch nl-batch.ev NumberedDocument --in contents --out lines
+    Example (reverse):  cat numbered.txt | evident batch nl-batch.ev NumberedDocument --in lines --out contents
+    """
+    from runtime.src.runtime import EvidentRuntime
+    rt = EvidentRuntime()
+    rt.load_file(args.file)
+
+    lines = [line.rstrip('\n') for line in sys.stdin]
+    given = {args.input_var: lines}
+
+    result = rt.query(args.schema, given=given)
+    if not result.satisfied:
+        print(f"UNSAT — no valid {args.schema} found for the given input.", file=sys.stderr)
+        return 1
+
+    i = 0
+    while True:
+        key = f'{args.output_var}.{i}'
+        if key not in result.bindings:
+            break
+        val = result.bindings[key]
+        if val is not None:
+            sys.stdout.write(str(val) + '\n')
+        i += 1
+    return 0
+
+
 def cmd_execute(args):
     """Run schema main as a constraint automaton against stdin/stdout."""
     from runtime.src.executor import EvidentExecutor
@@ -421,6 +455,13 @@ def main():
     p = argparse.ArgumentParser(prog='evident', description='Evident constraint language runtime')
     sub = p.add_subparsers(dest='cmd', required=True)
 
+    # batch mode
+    bt = sub.add_parser('batch', help='read stdin as a sequence, solve a schema, write a sequence to stdout')
+    bt.add_argument('file',       help='Evident program file')
+    bt.add_argument('schema',     help='schema to query')
+    bt.add_argument('--in',  dest='input_var',  default='contents', help='variable to bind to stdin lines (default: contents)')
+    bt.add_argument('--out', dest='output_var', default='lines',    help='variable to extract and write to stdout (default: lines)')
+
     # execute (automaton mode)
     ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')
     ex.add_argument('file', help='Evident program with schema main')
@@ -455,7 +496,7 @@ def main():
     rp.add_argument('files', nargs='*')
 
     args = p.parse_args()
-    dispatch = {'execute': cmd_execute, 'run': cmd_run, 'check': cmd_check,
+    dispatch = {'batch': cmd_batch, 'execute': cmd_execute, 'run': cmd_run, 'check': cmd_check,
                 'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl}
     sys.exit(dispatch[args.cmd](args))
 

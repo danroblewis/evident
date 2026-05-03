@@ -243,8 +243,9 @@ constraint_stmt: constraint _NEWLINE
           | juxt_expr juxt_dot     -> juxt_dot_app
           | postfix_expr
 
-// juxt_name is a NAME not starting a statement
+// juxt_name is a NAME or a parenthesised expression (for int_to_str (i+1) etc.)
 ?juxt_name: NAME
+           | "(" expr ")"  -> paren_juxt_arg
 
 // juxt_dot is a .field reference (for grouped_by .slot etc)
 juxt_dot: "." NAME

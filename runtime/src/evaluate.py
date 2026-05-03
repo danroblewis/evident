@@ -227,9 +227,18 @@ class EvidentSolver:
             if ctor is not None:
                 return ctor
             return z3.StringVal(value)
+        if isinstance(value, (list, tuple)):
+            # Convert to a Z3 sequence
+            if not value:
+                return z3.Empty(z3.StringSort() if True else z3.IntSort())
+            elements = [self._python_to_z3_untyped(v) for v in value]
+            result = z3.Unit(elements[0])
+            for e in elements[1:]:
+                result = z3.Concat(result, z3.Unit(e))
+            return result
         raise ValueError(
             f"Cannot convert {value!r} to a Z3 expression. "
-            "Supported types: bool, int, float, str."
+            "Supported types: bool, int, float, str, list."
         )
 
     def _python_to_z3(self, value: Any, sort: z3.SortRef) -> z3.ExprRef:

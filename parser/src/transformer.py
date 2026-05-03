@@ -542,6 +542,9 @@ class EvidentTransformer(LarkTransformer):
             result = BinaryExpr(op='×', left=result, right=item)
         return result
 
+    def paren_juxt_arg(self, items):
+        return items[0]  # unwrap the parentheses — the expr is the value
+
     def juxt_app(self, items):
         left = items[0]
         right = items[1]

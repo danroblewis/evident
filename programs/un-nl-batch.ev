@@ -1,0 +1,32 @@
+import "stdlib/sequences.ev"
+
+-- NumberedDocument viewed from the reading side: given numbered lines,
+-- what are their contents? Same schema as nl-batch.ev — the direction of
+-- reasoning is determined by which variables are given.
+--
+-- NumberedLine is the per-element projection: fully bidirectional.
+-- Given out = "3\tfoo", the solver finds n = 3 and text = "foo".
+-- This is what the streaming strip-numbers.ev uses per step.
+
+schema NumberedLine
+    -- @plot x=n y=text title="Line number vs content"
+    n    ∈ Nat
+    text ∈ String
+    out  ∈ String
+    n ≥ 1
+    out = int_to_str n ++ "\t" ++ text
+
+schema NumberedDocument
+    lines    ∈ Seq(String)
+    contents ∈ Seq(String)
+    n        ∈ Nat
+
+    n = #lines
+    n = #contents
+    n ≥ 1
+
+    -- Structural: every numbered line contains a tab
+    ∀ (prev, next) ∈ adjacent lines: prev ∋ "\t" ∧ next ∋ "\t"
+
+    -- First line is numbered 1
+    lines[0] ⊑ "1\t"

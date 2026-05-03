@@ -615,4 +615,4 @@ class TestPythonToZ3:
     def test_unsupported_type_raises(self):
         solver = EvidentSolver()
         with pytest.raises(ValueError):
-            solver._python_to_z3_untyped([1, 2, 3])
+            solver._python_to_z3_untyped(object())  # truly unsupported type

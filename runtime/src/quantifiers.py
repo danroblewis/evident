@@ -16,6 +16,13 @@ from __future__ import annotations
 
 import z3
 
+
+class _SymbolicRange(Exception):
+    """Raised when a RangeLiteral has symbolic bounds that can't be unrolled."""
+    def __init__(self, lo, hi):
+        self.lo = lo
+        self.hi = hi
+
 from .env import Environment
 from .sorts import SortRegistry
 from .ast_types import (
@@ -58,15 +65,13 @@ def _enumerate_elements(set_expr, env: Environment, registry: SortRegistry) -> l
     if isinstance(set_expr, RangeLiteral):
         from_val = translate_expr(set_expr.from_, env, registry)
         to_val = translate_expr(set_expr.to, env, registry)
-        # Both must be concrete integer values for enumeration.
-        if not (z3.is_int_value(from_val) and z3.is_int_value(to_val)):
-            raise ValueError(
-                "RangeLiteral bounds must be concrete integer literals for quantifier unrolling. "
-                f"Got: {from_val!r} .. {to_val!r}"
-            )
-        lo = from_val.as_long()
-        hi = to_val.as_long()
-        return [z3.IntVal(i) for i in range(lo, hi + 1)]
+        # Concrete bounds: unroll into a list of integer values.
+        if z3.is_int_value(from_val) and z3.is_int_value(to_val):
+            lo = from_val.as_long()
+            hi = to_val.as_long()
+            return [z3.IntVal(i) for i in range(lo, hi + 1)]
+        # Symbolic bounds: signal the caller to use ForAll with arithmetic guard.
+        raise _SymbolicRange(from_val, to_val)
 
     raise NotImplementedError(
         f"Cannot enumerate elements of set expression {type(set_expr).__name__!r}."
@@ -116,7 +121,26 @@ def translate_universal(
         parts: list[z3.BoolRef] = []
 
         if _is_concrete_set(set_expr):
-            elements = _enumerate_elements(set_expr, cur_env, registry)
+            try:
+                elements = _enumerate_elements(set_expr, cur_env, registry)
+            except _SymbolicRange as sr:
+                # Symbolic integer range — use ForAll with arithmetic guard
+                from .translate import translate_constraint
+                for name in binding.names:
+                    i_var = z3.FreshInt(name)
+                    body_env = cur_env.bind(name, i_var)
+                    body_z3 = translate_constraint(node.body, body_env, registry)
+                    parts.append(
+                        z3.ForAll(
+                            [i_var],
+                            z3.Implies(
+                                z3.And(sr.lo <= i_var, i_var <= sr.hi),
+                                body_z3,
+                            ),
+                        )
+                    )
+                return parts
+
             if not elements:
                 # Vacuously true — return True
                 return [z3.BoolVal(True)]
