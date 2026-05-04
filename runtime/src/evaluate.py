@@ -149,13 +149,60 @@ class EvidentSolver:
         # Inline enums (x ∈ Red | Green | Blue) are normally registered during
         # instantiate_schema, but given values are converted before that. Scan
         # once so constructors are available when converting given strings.
-        from .ast_types import MembershipConstraint, Identifier, InlineEnumExpr
+        from .ast_types import (MembershipConstraint, Identifier, InlineEnumExpr,
+                                MultiMembershipDecl)
         for item in schema.body:
             if (isinstance(item, MembershipConstraint) and item.op == "∈"
                     and isinstance(item.right, InlineEnumExpr)):
                 variants = item.right.variants
                 enum_name = "_Enum_" + "_".join(sorted(variants))
                 self.registry.declare_algebraic(enum_name, variants)
+
+        # ── Step 0.5: pre-register composite element sorts for Seq(T)/Set(T)
+        # declarations across all loaded schemas. This mirrors what
+        # instantiate_schema does but eagerly — so that dict values in `given`
+        # (e.g. round-tripped Seq(Datatype) state from a previous step) can be
+        # converted to Z3 datatype values via _python_to_z3_untyped before
+        # instantiate runs.
+        #
+        # Walk every loaded schema body, not just the queried one — element
+        # types may be declared inside a nested type (e.g. state ∈ GameState
+        # where GameState contains dots ∈ Seq(DotState)).
+        #
+        # Only Seq(T)/Set(T) element types are pre-registered as composites.
+        # Bare `x ∈ T` declarations are still expanded by instantiate_schema
+        # into prefixed flat fields (`x.field`); pre-declaring T as a composite
+        # Datatype here would conflict with that.
+        from .instantiate import _declare_element_sort
+        from .ast_types import SeqType, BinaryExpr
+        def _is_set_type(expr):
+            return (isinstance(expr, BinaryExpr) and expr.op == '×'
+                    and isinstance(expr.left, Identifier)
+                    and expr.left.name == 'Set')
+        for sch in list(self.schemas.values()):
+            for item in sch.body:
+                type_expr = None
+                if isinstance(item, MembershipConstraint) and item.op == "∈":
+                    type_expr = item.right
+                elif isinstance(item, MultiMembershipDecl):
+                    type_expr = item.set
+                if type_expr is None:
+                    continue
+                if isinstance(type_expr, SeqType):
+                    try:
+                        _declare_element_sort(
+                            Identifier(type_expr.element_name),
+                            self.registry, self.schemas,
+                        )
+                    except Exception:
+                        pass
+                elif _is_set_type(type_expr):
+                    try:
+                        _declare_element_sort(
+                            type_expr.right, self.registry, self.schemas,
+                        )
+                    except Exception:
+                        pass
 
         # ── Step 1: build the initial environment from 'given' values ─────────
         init_env = Environment(bindings=dict(self.env.bindings))
@@ -531,6 +578,31 @@ class EvidentSolver:
             if ctor is not None:
                 return ctor
             return z3.StringVal(value)
+        if isinstance(value, dict):
+            # Composite Datatype value — match the registered composite whose
+            # field names equal the dict's keys, then call its constructor.
+            # This is what model extraction produces for Seq(T)/Set(T) where T
+            # is a composite, and lets that result round-trip back as a given.
+            composites = getattr(self.registry, '_composite_fields', {})
+            keys = set(value.keys())
+            matches = [
+                name for name, entry in composites.items()
+                if set(entry['__fields__']) == keys
+            ]
+            if len(matches) == 1:
+                entry = composites[matches[0]]
+                args = [self._python_to_z3_untyped(value[f])
+                        for f in entry['__fields__']]
+                return entry['__ctor__'](*args)
+            if len(matches) > 1:
+                raise ValueError(
+                    f"Ambiguous dict {value!r}: matches multiple composite "
+                    f"types {matches}. Use distinct field names."
+                )
+            raise ValueError(
+                f"Cannot convert dict {value!r}: no composite type with "
+                f"fields {sorted(keys)} is registered."
+            )
         if isinstance(value, (list, tuple)):
             # Convert to a Z3 sequence
             if not value:
@@ -542,7 +614,7 @@ class EvidentSolver:
             return result
         raise ValueError(
             f"Cannot convert {value!r} to a Z3 expression. "
-            "Supported types: bool, int, float, str, list."
+            "Supported types: bool, int, float, str, dict, list."
         )
 
     def _python_to_z3(self, value: Any, sort: z3.SortRef) -> z3.ExprRef:

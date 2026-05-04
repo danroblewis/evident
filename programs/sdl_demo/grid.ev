@@ -1,34 +1,31 @@
 -- grid.ev — Grid version of "Collect the Stars".
 --
--- N dots in a ROWS×COLS grid. Positions derived from constraints on the
--- index, layout adjustable by changing the formula. Per-dot rendering and
--- collection use ∀ over the index range. Adding more dots means changing
--- one number and the range bound — no per-dot copy-paste.
+-- N dots in a ROWS×COLS grid. Each dot carries its own position and
+-- collected status as a single composite value (DotState), held in a
+-- Seq(DotState) inside game state. Layout is constraint-defined: change
+-- the formula below to change the grid.
 --
--- This is the "many elements" version. For 4 specific dots in unique corners,
--- the explicit version (collect.ev) is clearer. This shape pays off when the
--- count is parameterised or large.
+-- This is the "many elements" version. For 4 specific dots in unique
+-- corners, the explicit version (collect.ev) is clearer. This shape pays
+-- off when the count is parameterised or large.
+--
+-- Player movement, rendering, and background come from game_engine.ev
+-- (shared with collect.ev). This file owns the dot grid, per-dot
+-- collection, and the win condition.
 --
 -- Run: python evident.py execute programs/sdl_demo/grid.ev
---
--- Caveats (real runtime gaps that shaped the design):
---   - Composite state (Seq(DotState)) doesn't round-trip cleanly through
---     state forwarding — dicts go out, but coming back in the executor doesn't
---     know how to reconstruct Datatype values. So per-dot mutable state is
---     kept as Seq(Bool) (collected status) while positions live as top-level
---     constant Seq(Int) (recomputed each tick from the layout formula).
---   - Indexed Bool fields can't be used as bare antecedents in implies; we
---     compare with `= true/false` instead. Same workaround as elsewhere.
 
-import "stdlib/sdl.ev"
+import "programs/sdl_demo/game_engine.ev"
+
+type DotState
+    pos_x     ∈ Int
+    pos_y     ∈ Int
+    collected ∈ Bool
 
 type GameState
-    player_x  ∈ Int
-    player_y  ∈ Int
-    vx        ∈ Int
-    vy        ∈ Int
-    collected ∈ Seq(Bool)   -- per-dot collected status (length = N)
-    won       ∈ Bool
+    player ∈ PlayerState
+    dots   ∈ Seq(DotState)
+    won    ∈ Bool
 
 type main
     input      ∈ SDLInput
@@ -38,96 +35,40 @@ type main
 
     player_rect ∈ SDLRect
 
-    -- ── Grid configuration ──────────────────────────────────────────────────
-    -- N = ROWS × COLS. Layout is constraint-defined: position of dot i is
-    --   x = LEFT_MARGIN + (i mod COLS) * STEP_X
-    --   y = TOP_MARGIN  + (i / COLS)   * STEP_Y
-    -- Change N, COLS, and the range {0..N-1} together to reshape the grid.
+    -- ── Cardinality: N=6 dots, plus the player rect ──────────────────────────
+    #state.dots      = 6
+    #state_next.dots = 6
+    #output.rects    = 7
 
-    -- Top-level constant Seq holding the per-dot positions, recomputed each
-    -- tick from the layout formula. Not in state — never changes.
-    dot_px ∈ Seq(Int)
-    dot_py ∈ Seq(Int)
-    #dot_px = 6
-    #dot_py = 6
+    -- ── Layout: position of dot i is (LEFT_MARGIN + (i mod COLS) * STEP_X,
+    --                                  TOP_MARGIN  + (i / COLS)   * STEP_Y).
+    -- Reasserted every step; positions are immutable.
+    ∀ i ∈ {0..5} : state.dots[i].pos_x      = 100 + (i - (i / 3) * 3) * 300
+    ∀ i ∈ {0..5} : state.dots[i].pos_y      = 100 + (i / 3) * 400
+    ∀ i ∈ {0..5} : state_next.dots[i].pos_x = state.dots[i].pos_x
+    ∀ i ∈ {0..5} : state_next.dots[i].pos_y = state.dots[i].pos_y
 
-    ∀ i ∈ {0..5} : dot_px[i] = 100 + (i - (i / 3) * 3) * 300   -- COLS=3, STEP_X=300, LEFT_MARGIN=100
-    ∀ i ∈ {0..5} : dot_py[i] = 100 + (i / 3) * 400              -- STEP_Y=400, TOP_MARGIN=100
+    -- ── Engine: player physics, rendering, background ────────────────────────
+    PlayerPhysics  (state mapsto state.player, state_next mapsto state_next.player, input mapsto input, won mapsto state.won, bound_x mapsto 760, bound_y mapsto 560)
+    PlayerRect     (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
+    GameBackground (bg mapsto output.bg, won mapsto state.won)
 
-    -- ── Collected state: Seq(Bool) of length N ──────────────────────────────
-    #state.collected = 6
-    #state_next.collected = 6
-
-    -- ── Background ────────────────────────────────────────────────────────────
-    state.won  ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
-    ¬state.won ⇒ (output.bg.r = 15 ∧ output.bg.g = 15  ∧ output.bg.b = 30)
-
-    -- ── Player rect ───────────────────────────────────────────────────────────
-    player_rect.x = state.player_x
-    player_rect.y = state.player_y
-    player_rect.w = 40
-    player_rect.h = 40
-    state.won  ⇒ (player_rect.color.r = 255 ∧ player_rect.color.g = 255 ∧ player_rect.color.b = 150)
-    ¬state.won ⇒ (player_rect.color.r = 220 ∧ player_rect.color.g = 180 ∧ player_rect.color.b = 60)
-
-    -- ── Dot rendering: one rect per dot, plus the player rect ────────────────
-    -- output.rects has N+1 entries: dots at 0..N-1, player at N
-    #output.rects = 7
-
-    ∀ i ∈ {0..5} : state.collected[i] = false ⇒ (output.rects[i].x = dot_px[i] ∧ output.rects[i].y = dot_py[i] ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
-    ∀ i ∈ {0..5} : state.collected[i] = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
+    -- ── Per-dot rendering: paired by index (dot i ↔ output.rects[i]). ───────
+    -- Indexed Bool fields can't appear as bare antecedents in ⇒, so the
+    -- comparison is explicit (= false / = true). Same workaround in collection.
+    ∀ i ∈ {0..5} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x ∧ output.rects[i].y = state.dots[i].pos_y ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
+    ∀ i ∈ {0..5} : state.dots[i].collected = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
 
     output.rects[6] = player_rect
 
-    -- ── Collection: per-dot bounding box overlap ──────────────────────────────
-    ∀ i ∈ {0..5} : (state.collected[i] = false ∧ state.player_x ≤ dot_px[i] + 25 ∧ state.player_x ≥ dot_px[i] - 40 ∧ state.player_y ≤ dot_py[i] + 25 ∧ state.player_y ≥ dot_py[i] - 40) ⇒ state_next.collected[i] = true
-    ∀ i ∈ {0..5} : ¬(state.collected[i] = false ∧ state.player_x ≤ dot_px[i] + 25 ∧ state.player_x ≥ dot_px[i] - 40 ∧ state.player_y ≤ dot_py[i] + 25 ∧ state.player_y ≥ dot_py[i] - 40) ⇒ state_next.collected[i] = state.collected[i]
+    -- ── Collection: per-dot bounding-box overlap on player position. ────────
+    -- Once collected, stays collected; otherwise update on overlap.
+    ∀ i ∈ {0..5} : (state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = true
+    ∀ i ∈ {0..5} : ¬(state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = state.dots[i].collected
 
-    -- ── Win condition: every dot collected ────────────────────────────────────
-    -- Enumerated since N is fixed; with N ranging in scope, an ∀-over-indices
-    -- formulation would also work but currently doesn't reduce to a
-    -- single-clause win flag without more runtime support.
-    (state_next.collected[0] = true ∧ state_next.collected[1] = true ∧ state_next.collected[2] = true ∧ state_next.collected[3] = true ∧ state_next.collected[4] = true ∧ state_next.collected[5] = true) ⇒ state_next.won = true
-    ¬(state_next.collected[0] = true ∧ state_next.collected[1] = true ∧ state_next.collected[2] = true ∧ state_next.collected[3] = true ∧ state_next.collected[4] = true ∧ state_next.collected[5] = true) ⇒ state_next.won = false
-
-    -- ── Physics (same as collect.ev) ──────────────────────────────────────────
-    subclaim AxisPhysics
-        pos       ∈ Int
-        pos_next  ∈ Int
-        v         ∈ Int
-        v_next    ∈ Int
-        pos_min   ∈ Int
-        pos_max   ∈ Int
-        won       ∈ Bool
-        accel_pos ∈ Bool
-        accel_neg ∈ Bool
-        intended  ∈ Int
-        target    ∈ Int
-
-        target = pos + intended
-
-        won ⇒ intended = 0
-        ¬won ⇒
-            accel_pos ⇒
-                v ≤ 10 ⇒ intended = v + 2
-                v > 10 ⇒ intended = 12
-            (¬accel_pos ∧ accel_neg) ⇒
-                v ≥ -10 ⇒ intended = v - 2
-                v < -10 ⇒ intended = -12
-            (¬accel_pos ∧ ¬accel_neg) ⇒
-                v > 2 ⇒ intended = v - 2
-                (v ≤ 2 ∧ v ≥ -2) ⇒ intended = 0
-                v < -2 ⇒ intended = v + 2
-
-        target > pos_max ⇒
-            v_next = 0
-            pos_next = pos_max
-        target < pos_min ⇒
-            v_next = 0
-            pos_next = pos_min
-        (target ≥ pos_min ∧ target ≤ pos_max) ⇒
-            v_next = intended
-            pos_next = target
-
-    AxisPhysics (pos mapsto state.player_x, pos_next mapsto state_next.player_x, v mapsto state.vx, v_next mapsto state_next.vx, pos_min mapsto 0, pos_max mapsto 760, won mapsto state.won, accel_pos mapsto input.right_held, accel_neg mapsto input.left_held)
-    AxisPhysics (pos mapsto state.player_y, pos_next mapsto state_next.player_y, v mapsto state.vy, v_next mapsto state_next.vy, pos_min mapsto 0, pos_max mapsto 560, won mapsto state.won, accel_pos mapsto input.down_held, accel_neg mapsto input.up_held)
+    -- ── Win condition: every dot collected. ──────────────────────────────────
+    -- The natural form is `(∀ d ∈ state_next.dots : d.collected) ⇒ won = true`,
+    -- but Z3 can't fold a ∀ into a single Bool used as the antecedent of ⇒
+    -- (it silently drops). Enumerate while N is fixed.
+    (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true) ⇒ state_next.won = true
+    ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true) ⇒ state_next.won = false
