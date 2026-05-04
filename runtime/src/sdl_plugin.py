@@ -9,6 +9,7 @@ and issues draw calls, then presents the frame.
 from __future__ import annotations
 
 import ctypes
+import time as _time
 from typing import Any
 
 try:
@@ -73,10 +74,12 @@ class SDLPlugin:
         self._mouse_y      = 0
         self._click        = False
         self._quit         = False
+        self._last_time_ms = 0
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def init(self) -> None:
+        self._last_time_ms = int(_time.monotonic() * 1000)
         sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)
         self.window = sdl2.SDL_CreateWindow(
             self.title.encode(),
@@ -127,12 +130,19 @@ class SDLPlugin:
                 self._mouse_y = event.button.y
                 self._click = True
 
+        now_ms = int(_time.monotonic() * 1000)
+        dt = min(now_ms - self._last_time_ms, 100)  # cap at 100 ms
+        self._last_time_ms = now_ms
+        unix_ms = int(_time.time() * 1000)
+
         return {
             f'{input_var}.key':     self._current_key,
             f'{input_var}.mouse_x': self._mouse_x,
             f'{input_var}.mouse_y': self._mouse_y,
             f'{input_var}.click':   self._click,
             f'{input_var}.quit':    self._quit,
+            f'{input_var}.time':    unix_ms,
+            f'{input_var}.dt':      dt,
         }
 
     # ── Rendering ─────────────────────────────────────────────────────────────

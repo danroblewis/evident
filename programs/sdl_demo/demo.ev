@@ -1,59 +1,53 @@
--- demo.ev — Moving square demo for the Evident SDL FFI.
+-- demo.ev — Bouncing ball demo for the Evident SDL FFI.
 --
--- A gold square on a dark background, with a static teal target square.
--- Arrow keys move the player. The player is constrained to stay within
--- the window bounds — hitting a wall causes UNSAT, the executor silently
--- skips the step, and the square stays put.
+-- A teal ball bounces around the window. Velocity is updated by the
+-- constraint model each step; position advances by vx * dt / 1000 pixels
+-- (dt in milliseconds, so velocity is in pixels/second).
+--
+-- X and Y bounce conditions are independent — each only constrains its own
+-- velocity component — so corner collisions are handled without conflict.
 --
 -- Run: python evident.py execute-sdl programs/sdl_demo/demo.ev
 
 import "stdlib/sdl.ev"
 
-type PlayerState
-    x ∈ Int
-    y ∈ Int
+type BallState
+    x  ∈ Int
+    y  ∈ Int
+    vx ∈ Int   -- pixels per second; negative = left/up
+    vy ∈ Int
 
 type main
-    input       ∈ SDLInput
-    output      ∈ SDLOutput
-    player      ∈ PlayerState
-    player_next ∈ PlayerState
+    input     ∈ SDLInput
+    output    ∈ SDLOutput
+    ball      ∈ BallState
+    ball_next ∈ BallState
 
     -- ── Background ────────────────────────────────────────────────────────────
-    output.bg_r = 20
-    output.bg_g = 20
-    output.bg_b = 35
+    output.bg_r = 15
+    output.bg_g = 15
+    output.bg_b = 30
 
-    -- ── Slot 0: target square (static teal, center of window) ─────────────────
-    output.rect0_x = 380
-    output.rect0_y = 280
-    output.rect0_w = 40
-    output.rect0_h = 40
-    output.rect0_r = 60
-    output.rect0_g = 180
-    output.rect0_b = 160
+    -- ── Ball: 30×30 teal square, drawn at current position ────────────────────
+    output.rect0_x = ball.x
+    output.rect0_y = ball.y
+    output.rect0_w = 30
+    output.rect0_h = 30
+    output.rect0_r = 80
+    output.rect0_g = 200
+    output.rect0_b = 180
 
-    -- ── Slot 1: player square (gold, moves with arrow keys) ───────────────────
-    output.rect1_x = player.x
-    output.rect1_y = player.y
-    output.rect1_w = 40
-    output.rect1_h = 40
-    output.rect1_r = 220
-    output.rect1_g = 180
-    output.rect1_b = 60
+    -- ── Position update ───────────────────────────────────────────────────────
+    -- dt is in milliseconds, velocity in pixels/second → pixels per step
+    ball_next.x = ball.x + ball.vx * input.dt / 1000
+    ball_next.y = ball.y + ball.vy * input.dt / 1000
 
-    -- ── Movement: 8 pixels per step ──────────────────────────────────────────
-    input.key = Up     ⇒ (player_next.x = player.x ∧ player_next.y = player.y - 8)
-    input.key = Down   ⇒ (player_next.x = player.x ∧ player_next.y = player.y + 8)
-    input.key = Left   ⇒ (player_next.x = player.x - 8 ∧ player_next.y = player.y)
-    input.key = Right  ⇒ (player_next.x = player.x + 8 ∧ player_next.y = player.y)
-    input.key = NoKey  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
-    input.key = Space  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
-    input.key = Enter  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
-    input.key = Escape ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
+    -- ── X-axis bounce (constrains only vx) ───────────────────────────────────
+    ball.x ≤ 0   ⇒ ball_next.vx = 280
+    ball.x ≥ 770 ⇒ ball_next.vx = -280
+    ¬(ball.x ≤ 0 ∨ ball.x ≥ 770) ⇒ ball_next.vx = ball.vx
 
-    -- ── Bounds: window 800×600, square 40×40 ─────────────────────────────────
-    player_next.x ≥ 0
-    player_next.x ≤ 760
-    player_next.y ≥ 0
-    player_next.y ≤ 560
+    -- ── Y-axis bounce (constrains only vy) ───────────────────────────────────
+    ball.y ≤ 0   ⇒ ball_next.vy = 210
+    ball.y ≥ 570 ⇒ ball_next.vy = -210
+    ¬(ball.y ≤ 0 ∨ ball.y ≥ 570) ⇒ ball_next.vy = ball.vy

@@ -18,6 +18,8 @@ type SDLInput
     mouse_y ∈ Int
     click   ∈ Bool
     quit    ∈ Bool
+    time    ∈ Int   -- milliseconds since unix epoch
+    dt      ∈ Int   -- milliseconds since the previous step (capped at 100)
 
 -- ── Output ────────────────────────────────────────────────────────────────────
 -- Each rect slot: x y w h r g b. Set w=0 and h=0 to leave a slot empty.
