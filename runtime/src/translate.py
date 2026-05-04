@@ -654,17 +654,30 @@ def translate_constraint(
             for mapping in all_mappings:
                 parent_name = (mapping.value.name
                                if isinstance(mapping.value, Identifier) else None)
-                if parent_name:
-                    parent_val = env.lookup(parent_name)
-                    if parent_val is not None:
-                        composed_env = composed_env.bind(mapping.slot, parent_val)
-                    else:
-                        # Sub-schema mapping: slot.* → parent_name.*
-                        prefix = parent_name + '.'
-                        for k, v in env.bindings.items():
-                            if k.startswith(prefix):
-                                field = k[len(prefix):]
-                                composed_env = composed_env.bind(mapping.slot + '.' + field, v)
+                if parent_name and env.lookup(parent_name) is not None:
+                    # Bare identifier already in env — bind directly.
+                    composed_env = composed_env.bind(
+                        mapping.slot, env.lookup(parent_name)
+                    )
+                elif parent_name:
+                    # Bare identifier NOT in env — sub-schema mapping:
+                    # slot.* → parent_name.*  (e.g. `next mapsto state_next`).
+                    prefix = parent_name + '.'
+                    for k, v in env.bindings.items():
+                        if k.startswith(prefix):
+                            field = k[len(prefix):]
+                            composed_env = composed_env.bind(
+                                mapping.slot + '.' + field, v
+                            )
+                else:
+                    # Arbitrary expression: translate and bind the result.
+                    # Handles literals (pos_x mapsto 80), field accesses
+                    # (player_x mapsto state.player_x), arithmetic, etc.
+                    try:
+                        z3_val = translate_expr(mapping.value, env, registry)
+                        composed_env = composed_env.bind(mapping.slot, z3_val)
+                    except (NotImplementedError, KeyError):
+                        pass
 
             # Translate the claim's body constraints using the composed env.
             # Route through the appropriate specialist translator so that

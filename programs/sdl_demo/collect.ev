@@ -6,10 +6,13 @@
 -- Controls: hold arrow keys — velocity builds up to a maximum and
 -- coasts to a stop when released.
 --
--- The scene is a Seq(SDLRect) of five elements: player + four dots.
--- Inactive dots have w=0 ∧ h=0 and the renderer skips them.
+-- Structure:
+--   subclaim Dot         — one dot's render rect (per position)
+--   subclaim Collect     — collision detection (per dot)
+--   subclaim AxisPhysics — 1D acceleration, deceleration, wall clamping
+--                          (used twice, once per axis)
 --
--- Run: python evident.py execute-sdl programs/sdl_demo/collect.ev
+-- Run: python evident.py execute programs/sdl_demo/collect.ev
 
 import "stdlib/sdl.ev"
 
@@ -30,13 +33,67 @@ type main
     state      ∈ GameState
     state_next ∈ GameState
 
-    -- Named SDLRect values — single Z3 Datatype consts because SDLRect appears
-    -- as a Seq element type below, which triggers composite registration.
     player_rect ∈ SDLRect
     dot0_rect   ∈ SDLRect
     dot1_rect   ∈ SDLRect
     dot2_rect   ∈ SDLRect
     dot3_rect   ∈ SDLRect
+
+    -- ── Reusable subclaims ────────────────────────────────────────────────────
+
+    -- A 25×25 teal dot at (pos_x, pos_y), drawn into `rect` when ¬collected.
+    subclaim Dot
+        rect      ∈ SDLRect
+        collected ∈ Bool
+        pos_x     ∈ Int
+        pos_y     ∈ Int
+
+        ¬collected ⇒ (
+            rect.x = pos_x ∧ rect.y = pos_y ∧ rect.w = 25 ∧ rect.h = 25 ∧
+            rect.color.r = 80 ∧ rect.color.g = 200 ∧ rect.color.b = 180
+        )
+        collected ⇒ (rect.w = 0 ∧ rect.h = 0)
+
+    -- Player (40×40) overlaps a dot (25×25) at (pos_x, pos_y) → collected becomes true.
+    subclaim Collect
+        pos_x          ∈ Int
+        pos_y          ∈ Int
+        player_x       ∈ Int
+        player_y       ∈ Int
+        collected      ∈ Bool
+        next_collected ∈ Bool
+
+        (¬collected ∧ player_x ≤ pos_x + 25 ∧ player_x ≥ pos_x - 40 ∧ player_y ≤ pos_y + 25 ∧ player_y ≥ pos_y - 40) ⇒ next_collected = true
+        ¬(¬collected ∧ player_x ≤ pos_x + 25 ∧ player_x ≥ pos_x - 40 ∧ player_y ≤ pos_y + 25 ∧ player_y ≥ pos_y - 40) ⇒ next_collected = collected
+
+    -- 1D acceleration / deceleration / wall clamping for one axis.
+    -- `intended` is fresh per composition (subclaim-internal variable).
+    subclaim AxisPhysics
+        pos       ∈ Int
+        pos_next  ∈ Int
+        v         ∈ Int
+        v_next    ∈ Int
+        pos_min   ∈ Int
+        pos_max   ∈ Int
+        won       ∈ Bool
+        accel_pos ∈ Bool
+        accel_neg ∈ Bool
+        intended  ∈ Int
+
+        won ⇒ intended = 0
+
+        (¬won ∧ accel_pos ∧ v ≤ 10) ⇒ intended = v + 2
+        (¬won ∧ accel_pos ∧ v > 10) ⇒ intended = 12
+        (¬won ∧ ¬accel_pos ∧ accel_neg ∧ v ≥ -10) ⇒ intended = v - 2
+        (¬won ∧ ¬accel_pos ∧ accel_neg ∧ v < -10) ⇒ intended = -12
+        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v > 2)               ⇒ intended = v - 2
+        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v ≤ 2 ∧ v ≥ -2)     ⇒ intended = 0
+        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v < -2)              ⇒ intended = v + 2
+
+        (pos + intended > pos_max) ⇒ (v_next = 0 ∧ pos_next = pos_max)
+        (pos + intended < pos_min) ⇒ (v_next = 0 ∧ pos_next = pos_min)
+        (pos + intended ≥ pos_min ∧ pos + intended ≤ pos_max) ⇒
+            (v_next = intended ∧ pos_next = pos + intended)
 
     -- ── Background ────────────────────────────────────────────────────────────
     state.won  ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
@@ -50,72 +107,25 @@ type main
     state.won  ⇒ (player_rect.color.r = 255 ∧ player_rect.color.g = 255 ∧ player_rect.color.b = 150)
     ¬state.won ⇒ (player_rect.color.r = 220 ∧ player_rect.color.g = 180 ∧ player_rect.color.b = 60)
 
-    -- ── Dot rects ─────────────────────────────────────────────────────────────
-    -- Active dot: 25×25 teal square at the corner. Collected dot: 0×0 (skipped).
-
-    ¬state.d0 ⇒ (dot0_rect.x = 80 ∧ dot0_rect.y = 80 ∧ dot0_rect.w = 25 ∧ dot0_rect.h = 25 ∧ dot0_rect.color.r = 80 ∧ dot0_rect.color.g = 200 ∧ dot0_rect.color.b = 180)
-    state.d0  ⇒ (dot0_rect.w = 0 ∧ dot0_rect.h = 0)
-
-    ¬state.d1 ⇒ (dot1_rect.x = 660 ∧ dot1_rect.y = 80 ∧ dot1_rect.w = 25 ∧ dot1_rect.h = 25 ∧ dot1_rect.color.r = 80 ∧ dot1_rect.color.g = 200 ∧ dot1_rect.color.b = 180)
-    state.d1  ⇒ (dot1_rect.w = 0 ∧ dot1_rect.h = 0)
-
-    ¬state.d2 ⇒ (dot2_rect.x = 80 ∧ dot2_rect.y = 460 ∧ dot2_rect.w = 25 ∧ dot2_rect.h = 25 ∧ dot2_rect.color.r = 80 ∧ dot2_rect.color.g = 200 ∧ dot2_rect.color.b = 180)
-    state.d2  ⇒ (dot2_rect.w = 0 ∧ dot2_rect.h = 0)
-
-    ¬state.d3 ⇒ (dot3_rect.x = 660 ∧ dot3_rect.y = 460 ∧ dot3_rect.w = 25 ∧ dot3_rect.h = 25 ∧ dot3_rect.color.r = 80 ∧ dot3_rect.color.g = 200 ∧ dot3_rect.color.b = 180)
-    state.d3  ⇒ (dot3_rect.w = 0 ∧ dot3_rect.h = 0)
+    -- ── Dots ──────────────────────────────────────────────────────────────────
+    Dot (rect mapsto dot0_rect, collected mapsto state.d0, pos_x mapsto 80,  pos_y mapsto 80)
+    Dot (rect mapsto dot1_rect, collected mapsto state.d1, pos_x mapsto 660, pos_y mapsto 80)
+    Dot (rect mapsto dot2_rect, collected mapsto state.d2, pos_x mapsto 80,  pos_y mapsto 460)
+    Dot (rect mapsto dot3_rect, collected mapsto state.d3, pos_x mapsto 660, pos_y mapsto 460)
 
     -- ── Scene ─────────────────────────────────────────────────────────────────
     output.rects = ⟨dot0_rect, dot1_rect, dot2_rect, dot3_rect, player_rect⟩
 
-    -- ── Dot collection ────────────────────────────────────────────────────────
-    (¬state.d0 ∧ state.player_x ≤ 105 ∧ state.player_x ≥ 40 ∧ state.player_y ≤ 105 ∧ state.player_y ≥ 40) ⇒ state_next.d0 = true
-    ¬(¬state.d0 ∧ state.player_x ≤ 105 ∧ state.player_x ≥ 40 ∧ state.player_y ≤ 105 ∧ state.player_y ≥ 40) ⇒ state_next.d0 = state.d0
-
-    (¬state.d1 ∧ state.player_x ≤ 685 ∧ state.player_x ≥ 620 ∧ state.player_y ≤ 105 ∧ state.player_y ≥ 40) ⇒ state_next.d1 = true
-    ¬(¬state.d1 ∧ state.player_x ≤ 685 ∧ state.player_x ≥ 620 ∧ state.player_y ≤ 105 ∧ state.player_y ≥ 40) ⇒ state_next.d1 = state.d1
-
-    (¬state.d2 ∧ state.player_x ≤ 105 ∧ state.player_x ≥ 40 ∧ state.player_y ≤ 485 ∧ state.player_y ≥ 420) ⇒ state_next.d2 = true
-    ¬(¬state.d2 ∧ state.player_x ≤ 105 ∧ state.player_x ≥ 40 ∧ state.player_y ≤ 485 ∧ state.player_y ≥ 420) ⇒ state_next.d2 = state.d2
-
-    (¬state.d3 ∧ state.player_x ≤ 685 ∧ state.player_x ≥ 620 ∧ state.player_y ≤ 485 ∧ state.player_y ≥ 420) ⇒ state_next.d3 = true
-    ¬(¬state.d3 ∧ state.player_x ≤ 685 ∧ state.player_x ≥ 620 ∧ state.player_y ≤ 485 ∧ state.player_y ≥ 420) ⇒ state_next.d3 = state.d3
+    -- ── Collection ────────────────────────────────────────────────────────────
+    Collect (pos_x mapsto 80,  pos_y mapsto 80,  player_x mapsto state.player_x, player_y mapsto state.player_y, collected mapsto state.d0, next_collected mapsto state_next.d0)
+    Collect (pos_x mapsto 660, pos_y mapsto 80,  player_x mapsto state.player_x, player_y mapsto state.player_y, collected mapsto state.d1, next_collected mapsto state_next.d1)
+    Collect (pos_x mapsto 80,  pos_y mapsto 460, player_x mapsto state.player_x, player_y mapsto state.player_y, collected mapsto state.d2, next_collected mapsto state_next.d2)
+    Collect (pos_x mapsto 660, pos_y mapsto 460, player_x mapsto state.player_x, player_y mapsto state.player_y, collected mapsto state.d3, next_collected mapsto state_next.d3)
 
     -- ── Win condition ─────────────────────────────────────────────────────────
     (state_next.d0 ∧ state_next.d1 ∧ state_next.d2 ∧ state_next.d3) ⇒ state_next.won = true
     ¬(state_next.d0 ∧ state_next.d1 ∧ state_next.d2 ∧ state_next.d3) ⇒ state_next.won = false
 
     -- ── Physics ───────────────────────────────────────────────────────────────
-    subclaim Physics
-        intended_vx ∈ Int
-        intended_vy ∈ Int
-
-        state.won ⇒ (intended_vx = 0 ∧ intended_vy = 0)
-
-        (¬state.won ∧ input.right_held ∧ state.vx ≤ 10) ⇒ intended_vx = state.vx + 2
-        (¬state.won ∧ input.right_held ∧ state.vx > 10)  ⇒ intended_vx = 12
-        (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx ≥ -10) ⇒ intended_vx = state.vx - 2
-        (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx < -10)  ⇒ intended_vx = -12
-        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx > 2)  ⇒ intended_vx = state.vx - 2
-        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx ≤ 2 ∧ state.vx ≥ -2) ⇒ intended_vx = 0
-        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx < -2) ⇒ intended_vx = state.vx + 2
-
-        (¬state.won ∧ input.down_held ∧ state.vy ≤ 10) ⇒ intended_vy = state.vy + 2
-        (¬state.won ∧ input.down_held ∧ state.vy > 10)  ⇒ intended_vy = 12
-        (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy ≥ -10) ⇒ intended_vy = state.vy - 2
-        (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy < -10)  ⇒ intended_vy = -12
-        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy > 2)  ⇒ intended_vy = state.vy - 2
-        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy ≤ 2 ∧ state.vy ≥ -2) ⇒ intended_vy = 0
-        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy < -2) ⇒ intended_vy = state.vy + 2
-
-        (state.player_x + intended_vx > 760) ⇒ (state_next.vx = 0 ∧ state_next.player_x = 760)
-        (state.player_x + intended_vx < 0)   ⇒ (state_next.vx = 0 ∧ state_next.player_x = 0)
-        (state.player_x + intended_vx ≥ 0 ∧ state.player_x + intended_vx ≤ 760) ⇒
-            (state_next.vx = intended_vx ∧ state_next.player_x = state.player_x + intended_vx)
-
-        (state.player_y + intended_vy > 560) ⇒ (state_next.vy = 0 ∧ state_next.player_y = 560)
-        (state.player_y + intended_vy < 0)   ⇒ (state_next.vy = 0 ∧ state_next.player_y = 0)
-        (state.player_y + intended_vy ≥ 0 ∧ state.player_y + intended_vy ≤ 560) ⇒
-            (state_next.vy = intended_vy ∧ state_next.player_y = state.player_y + intended_vy)
-
-    Physics
+    AxisPhysics (pos mapsto state.player_x, pos_next mapsto state_next.player_x, v mapsto state.vx, v_next mapsto state_next.vx, pos_min mapsto 0, pos_max mapsto 760, won mapsto state.won, accel_pos mapsto input.right_held, accel_neg mapsto input.left_held)
+    AxisPhysics (pos mapsto state.player_y, pos_next mapsto state_next.player_y, v mapsto state.vy, v_next mapsto state_next.vy, pos_min mapsto 0, pos_max mapsto 560, won mapsto state.won, accel_pos mapsto input.down_held, accel_neg mapsto input.up_held)

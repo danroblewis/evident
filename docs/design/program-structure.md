@@ -350,6 +350,149 @@ transition definition that can be read independently.
 
 ---
 
+## Common Refactors
+
+When the same constraint shape repeats with only small differences, the right
+move is almost always a parameterized claim invoked with `mapsto` mappings.
+Below are the patterns that come up most often, with examples drawn from
+`programs/sdl_demo/collect.ev`.
+
+### Repeated structural assignments → parameterized claim
+
+If you find yourself writing the same field-by-field assignment four times
+with only positions changing, that's a claim. The four dot-rendering blocks:
+
+```evident
+-- Before: 4 × 2 lines, only position differs
+¬state.d0 ⇒ (dot0_rect.x = 80  ∧ dot0_rect.y = 80  ∧ dot0_rect.w = 25 ∧ ... )
+state.d0  ⇒ (dot0_rect.w = 0   ∧ dot0_rect.h = 0)
+¬state.d1 ⇒ (dot1_rect.x = 660 ∧ dot1_rect.y = 80  ∧ ... )
+...
+```
+
+Becomes one definition + four invocations:
+
+```evident
+subclaim Dot
+    rect      ∈ SDLRect
+    collected ∈ Bool
+    pos_x     ∈ Int
+    pos_y     ∈ Int
+
+    ¬collected ⇒ (rect.x = pos_x ∧ rect.y = pos_y ∧ rect.w = 25 ∧ ... )
+    collected  ⇒ (rect.w = 0 ∧ rect.h = 0)
+
+Dot (rect mapsto dot0_rect, collected mapsto state.d0, pos_x mapsto 80,  pos_y mapsto 80)
+Dot (rect mapsto dot1_rect, collected mapsto state.d1, pos_x mapsto 660, pos_y mapsto 80)
+Dot (rect mapsto dot2_rect, collected mapsto state.d2, pos_x mapsto 80,  pos_y mapsto 460)
+Dot (rect mapsto dot3_rect, collected mapsto state.d3, pos_x mapsto 660, pos_y mapsto 460)
+```
+
+Mappings can be **literals** (`pos_x mapsto 80`), **field accesses**
+(`player_x mapsto state.player_x`), or any expression — not just bare
+identifiers. The `mapsto` value gets translated as an expression in the
+caller's scope and bound to the parameter.
+
+### Mirrored axes / dimensions → axis-parameterized claim
+
+X and Y physics are usually structurally identical with axis-specific
+inputs. Extract one `AxisPhysics` claim, invoke twice:
+
+```evident
+subclaim AxisPhysics
+    pos       ∈ Int
+    pos_next  ∈ Int
+    v         ∈ Int
+    v_next    ∈ Int
+    pos_min   ∈ Int
+    pos_max   ∈ Int
+    won       ∈ Bool
+    accel_pos ∈ Bool        -- right or down key
+    accel_neg ∈ Bool        -- left or up key
+    intended  ∈ Int          -- subclaim-internal: fresh per composition
+
+    -- acceleration / deceleration / wall clamping
+    ...
+
+AxisPhysics (pos mapsto state.player_x, ... accel_pos mapsto input.right_held, accel_neg mapsto input.left_held)
+AxisPhysics (pos mapsto state.player_y, ... accel_pos mapsto input.down_held,  accel_neg mapsto input.up_held)
+```
+
+Each composition gets its own fresh `intended` (subclaim-internal vars
+are fresh Z3 constants per invocation).
+
+### Active/inactive toggle → "show full state when active, minimal when not"
+
+Anywhere you have something that's optionally present (a dot that may be
+collected, an enemy that may be defeated, a UI element that may be
+hidden), the pattern is the same:
+
+```evident
+¬state.active ⇒ (full set of constraints describing the visible state)
+state.active  ⇒ (minimal "invisible" state — w=0, fd=-1, opacity=0, etc.)
+```
+
+The invisible state is whatever the consumer (renderer, executor) treats
+as "skip me." For SDL rects it's `w=0 ∧ h=0`. For an inventory slot it
+might be `kind = Empty`. Pick a sentinel that's safe to ignore.
+
+### Repeated antecedents → trait bundle
+
+Two or more separate constraints sharing the same antecedent is a hint that
+the antecedent should fire one trait that does both:
+
+```evident
+-- Before
+state.won ⇒ output.bg.r = 20
+state.won ⇒ output.bg.g = 120
+state.won ⇒ output.bg.b = 50
+
+-- After
+state.won ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
+```
+
+If the antecedent fires across many constraints (`PreservesInventory`,
+`PreservesLocation`, `AdvancesTurn` all gated by `verb = Look`), bundle
+them into a trait claim and dispatch once.
+
+### Long disjoint `⇒` chains → subclaim + `⟸` dispatch table
+
+When you have many `condition ⇒ (lots of constraints)` blocks where the
+conditions are mutually exclusive, pull each consequent into a named
+subclaim and dispatch:
+
+```evident
+-- Before
+verb = Look ⇒ ( ...look constraints... )
+verb = Go   ⇒ ( ...go constraints... )
+verb = Take ⇒ ( ...take constraints... )
+
+-- After
+subclaim LookAction { ... }
+subclaim GoAction   { ... }
+subclaim TakeAction { ... }
+
+LookAction ⟸ verb = Look
+GoAction   ⟸ verb = Go
+TakeAction ⟸ verb = Take
+```
+
+The named subclaim is its own self-contained transition; the dispatch
+table reads as a verb-to-action map.
+
+### Decision guide
+
+| Smell | Refactor |
+|---|---|
+| 4× similar blocks differ only in position/colour/etc. | Parameterized claim, `mapsto` mappings |
+| X and Y axes (or N rows/columns) with identical structure | Axis-parameterized claim, called per axis |
+| `condition ⇒ A; condition ⇒ B; condition ⇒ C` (same antecedent) | Combine: `condition ⇒ (A ∧ B ∧ C)` or trait |
+| Optional rendering / appearance | Active/inactive toggle with sentinel "invisible" state |
+| Many disjoint `⇒` branches with nameable consequents | Subclaims + `⟸` dispatch |
+| Repeated trait combos across subclaims | Bundle traits into one claim (`StateTurn`, `MetaTurn`) |
+
+---
+
 ## Diagnostic Questions
 
 When a constraint model feels tangled:
