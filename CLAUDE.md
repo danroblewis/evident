@@ -250,6 +250,29 @@ entry point    — wiring only (passthroughs + variable declarations)
 Each layer depends only on layers below it. The entry point (`type main`) should
 contain no logic — only passthrough composition and variable declarations.
 
+### Precedence: `⇒` binds tighter than `∧`
+
+**This is a footgun.** Evident's grammar has `⇒` at higher precedence than `∧` —
+opposite of standard mathematical convention. So:
+
+```evident
+A ⇒ B ∧ C        -- parses as (A ⇒ B) ∧ C  ← wrong!
+A ⇒ (B ∧ C)      -- correct: parentheses required for compound consequent
+```
+
+In a dispatch table, every consequent with multiple terms needs parens:
+```evident
+parsed.verb = Look ⇒ (StateTurn ∧ LookAction)   -- correct
+parsed.verb = Look ⇒ StateTurn ∧ LookAction      -- WRONG: LookAction fires unconditionally
+```
+
+Alternatively, use an implies_block (indented body) to avoid the issue:
+```evident
+parsed.verb = Look ⇒
+    StateTurn
+    LookAction
+```
+
 ### The complete lookup pattern
 
 Partial lookup tables cause Z3 non-determinism. If a table only has entries for

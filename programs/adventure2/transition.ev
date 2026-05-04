@@ -7,13 +7,14 @@
 --   ready              — renamed to `line_ready` when composed in main
 --
 -- Structure:
---   Trait claims  — shared state-transition behaviours (PreservesInventory, …)
---   GameTransition — subclaims for each verb, dispatched via ⟸ in the ready block
+--   Trait claims  — primitive state-transition fragments
+--   Trait bundles — StateTurn, MetaTurn: common combos of the primitives
+--   GameTransition — subclaims per verb; dispatch via ⇒ in the ready block
 
 import "programs/adventure2/game_state.ev"
 import "programs/adventure2/commands.ev"
 
--- ── Trait claims ──────────────────────────────────────────────────────────────
+-- ── Primitive trait claims ─────────────────────────────────────────────────────
 
 claim PreservesInventory
     state      ∈ GameState
@@ -35,6 +36,18 @@ claim HoldsTurn
     state_next ∈ GameState
     state_next.turn = state.turn
 
+-- ── Trait bundles ──────────────────────────────────────────────────────────────
+
+claim StateTurn
+    PreservesInventory
+    PreservesLocation
+    AdvancesTurn
+
+claim MetaTurn
+    PreservesInventory
+    PreservesLocation
+    HoldsTurn
+
 -- ── GameTransition ────────────────────────────────────────────────────────────
 
 claim GameTransition
@@ -47,28 +60,27 @@ claim GameTransition
     item       ∈ Item
 
     -- ── Action subclaims ──────────────────────────────────────────────────────
+    -- LookAction describes state_next.location — callers decide whether it
+    -- changed. StateTurn (in the dispatch) ensures state_next.location =
+    -- state.location for a plain look; GoAction sets state_next.location = dest
+    -- first, so LookAction naturally describes the destination.
 
     subclaim LookAction
         room_desc ∈ String
-        PreservesInventory
-        PreservesLocation
-        AdvancesTurn
-        (state.location, room_desc) ∈ room_descriptions
+        (state_next.location, room_desc) ∈ room_descriptions
         response = room_desc
 
     subclaim GoAction
         direction ∈ String
         dest      ∈ String
-        room_desc ∈ String
         PreservesInventory
         AdvancesTurn
         parsed.argument ≠ "" ⇒ (parsed.argument, direction) ∈ direction_words
         parsed.argument = "" ⇒ (parsed.verb_str, direction) ∈ direction_words
         (state.location, direction, dest) ∈ direction_exits
         dest ≠ "" ⇒
-            (dest, room_desc) ∈ room_descriptions
-            response = room_desc
             state_next.location = dest
+            LookAction
         dest = "" ⇒
             response = "You can't go that way."
             PreservesLocation
@@ -86,34 +98,25 @@ claim GameTransition
             PreservesInventory
 
     subclaim InventoryAction
-        PreservesInventory
-        PreservesLocation
-        AdvancesTurn
         #state.inventory = 0 ⇒ response = "You are carrying nothing."
         #state.inventory > 0 ⇒ response = "You are carrying some items."
 
     subclaim HelpAction
-        PreservesInventory
-        PreservesLocation
-        HoldsTurn
         response = "Commands: look, go <dir>, take <item>, inventory, help, quit"
 
     subclaim QuitAction
-        PreservesInventory
-        PreservesLocation
-        HoldsTurn
         response = "Goodbye!"
 
     -- ── Active step ───────────────────────────────────────────────────────────
     ready ⇒
         (cmd = parsed.verb_str ++ " " ++ parsed.argument) ∨ (cmd = parsed.verb_str ∧ parsed.argument = "")
         (parsed.verb_str, parsed.verb) ∈ verb_words
-        LookAction      ⟸ parsed.verb = Look
-        GoAction        ⟸ parsed.verb = Go
-        TakeAction      ⟸ parsed.verb = Take
-        InventoryAction ⟸ parsed.verb = Inventory
-        HelpAction      ⟸ parsed.verb = Help
-        QuitAction      ⟸ parsed.verb = Quit
+        parsed.verb = Look      ⇒ (StateTurn ∧ LookAction)
+        parsed.verb = Go        ⇒ GoAction
+        parsed.verb = Take      ⇒ TakeAction
+        parsed.verb = Inventory ⇒ (StateTurn ∧ InventoryAction)
+        parsed.verb = Help      ⇒ (MetaTurn ∧ HelpAction)
+        parsed.verb = Quit      ⇒ (MetaTurn ∧ QuitAction)
 
     -- ── Idle step ─────────────────────────────────────────────────────────────
     ¬ready ⇒
