@@ -48,11 +48,17 @@ type main
         pos_x     ∈ Int
         pos_y     ∈ Int
 
-        ¬collected ⇒ (
-            rect.x = pos_x ∧ rect.y = pos_y ∧ rect.w = 25 ∧ rect.h = 25 ∧
-            rect.color.r = 80 ∧ rect.color.g = 200 ∧ rect.color.b = 180
-        )
-        collected ⇒ (rect.w = 0 ∧ rect.h = 0)
+        ¬collected ⇒
+            rect.x = pos_x
+            rect.y = pos_y
+            rect.w = 25
+            rect.h = 25
+            rect.color.r = 80
+            rect.color.g = 200
+            rect.color.b = 180
+        collected ⇒
+            rect.w = 0
+            rect.h = 0
 
     -- Player (40×40) overlaps a dot (25×25) at (pos_x, pos_y) → collected becomes true.
     subclaim Collect
@@ -80,32 +86,55 @@ type main
         accel_neg ∈ Bool
         intended  ∈ Int
 
+        -- Velocity update — three input states, three deceleration sub-cases.
         won ⇒ intended = 0
+        ¬won ⇒
+            accel_pos ⇒
+                v ≤ 10 ⇒ intended = v + 2
+                v > 10 ⇒ intended = 12
+            (¬accel_pos ∧ accel_neg) ⇒
+                v ≥ -10 ⇒ intended = v - 2
+                v < -10 ⇒ intended = -12
+            (¬accel_pos ∧ ¬accel_neg) ⇒
+                v > 2 ⇒ intended = v - 2
+                (v ≤ 2 ∧ v ≥ -2) ⇒ intended = 0
+                v < -2 ⇒ intended = v + 2
 
-        (¬won ∧ accel_pos ∧ v ≤ 10) ⇒ intended = v + 2
-        (¬won ∧ accel_pos ∧ v > 10) ⇒ intended = 12
-        (¬won ∧ ¬accel_pos ∧ accel_neg ∧ v ≥ -10) ⇒ intended = v - 2
-        (¬won ∧ ¬accel_pos ∧ accel_neg ∧ v < -10) ⇒ intended = -12
-        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v > 2)               ⇒ intended = v - 2
-        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v ≤ 2 ∧ v ≥ -2)     ⇒ intended = 0
-        (¬won ∧ ¬accel_pos ∧ ¬accel_neg ∧ v < -2)              ⇒ intended = v + 2
-
-        (pos + intended > pos_max) ⇒ (v_next = 0 ∧ pos_next = pos_max)
-        (pos + intended < pos_min) ⇒ (v_next = 0 ∧ pos_next = pos_min)
+        -- Wall clamping. Position update folds in: if would-exceed, clamp;
+        -- otherwise advance normally.
+        (pos + intended > pos_max) ⇒
+            v_next = 0
+            pos_next = pos_max
+        (pos + intended < pos_min) ⇒
+            v_next = 0
+            pos_next = pos_min
         (pos + intended ≥ pos_min ∧ pos + intended ≤ pos_max) ⇒
-            (v_next = intended ∧ pos_next = pos + intended)
+            v_next = intended
+            pos_next = pos + intended
 
     -- ── Background ────────────────────────────────────────────────────────────
-    state.won  ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
-    ¬state.won ⇒ (output.bg.r = 15 ∧ output.bg.g = 15  ∧ output.bg.b = 30)
+    state.won ⇒
+        output.bg.r = 20
+        output.bg.g = 120
+        output.bg.b = 50
+    ¬state.won ⇒
+        output.bg.r = 15
+        output.bg.g = 15
+        output.bg.b = 30
 
     -- ── Player rect ───────────────────────────────────────────────────────────
     player_rect.x = state.player_x
     player_rect.y = state.player_y
     player_rect.w = 40
     player_rect.h = 40
-    state.won  ⇒ (player_rect.color.r = 255 ∧ player_rect.color.g = 255 ∧ player_rect.color.b = 150)
-    ¬state.won ⇒ (player_rect.color.r = 220 ∧ player_rect.color.g = 180 ∧ player_rect.color.b = 60)
+    state.won ⇒
+        player_rect.color.r = 255
+        player_rect.color.g = 255
+        player_rect.color.b = 150
+    ¬state.won ⇒
+        player_rect.color.r = 220
+        player_rect.color.g = 180
+        player_rect.color.b = 60
 
     -- ── Dots ──────────────────────────────────────────────────────────────────
     Dot (rect mapsto dot0_rect, collected mapsto state.d0, pos_x mapsto 80,  pos_y mapsto 80)

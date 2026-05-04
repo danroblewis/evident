@@ -436,10 +436,12 @@ The invisible state is whatever the consumer (renderer, executor) treats
 as "skip me." For SDL rects it's `w=0 ∧ h=0`. For an inventory slot it
 might be `kind = Empty`. Pick a sentinel that's safe to ignore.
 
-### Repeated antecedents → trait bundle
+### Repeated antecedents → trait bundle, or hoist into an implies-block
 
 Two or more separate constraints sharing the same antecedent is a hint that
-the antecedent should fire one trait that does both:
+the antecedent should fire once over a grouped consequent. There are two
+syntaxes for this; prefer the indented block form whenever the consequent
+has more than one part.
 
 ```evident
 -- Before
@@ -447,9 +449,46 @@ state.won ⇒ output.bg.r = 20
 state.won ⇒ output.bg.g = 120
 state.won ⇒ output.bg.b = 50
 
--- After
+-- After (inline form — needs parens around the conjunction)
 state.won ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
+
+-- After (block form — cleaner for multiple constraints, no parens needed)
+state.won ⇒
+    output.bg.r = 20
+    output.bg.g = 120
+    output.bg.b = 50
 ```
+
+The block form is the safest grouping. The inline form requires parens
+around the consequent because `⇒` binds tighter than `∧` (see Key
+Invariants). The block form has no precedence trap — `⇒` followed by
+newline+indent unambiguously means "everything indented below is the
+consequent."
+
+Implies-blocks nest cleanly. When a chain of constraints all share the
+same outer condition AND those constraints further branch on inner
+conditions, hoist the outer:
+
+```evident
+-- Before — six constraints, every one starts with ¬won ∧ ...
+(¬won ∧ accel_pos ∧ v ≤ 10) ⇒ intended = v + 2
+(¬won ∧ accel_pos ∧ v > 10) ⇒ intended = 12
+(¬won ∧ ¬accel_pos ∧ accel_neg ∧ v ≥ -10) ⇒ intended = v - 2
+...
+
+-- After — outer hoisted, inner conditions nest
+¬won ⇒
+    accel_pos ⇒
+        v ≤ 10 ⇒ intended = v + 2
+        v > 10 ⇒ intended = 12
+    (¬accel_pos ∧ accel_neg) ⇒
+        v ≥ -10 ⇒ intended = v - 2
+        v < -10 ⇒ intended = -12
+```
+
+The structure of the conditional logic becomes visible. Outer reading
+("when not won...") is separated from inner reading ("...accelerating
+right means..."). No repeated `¬won` boilerplate.
 
 If the antecedent fires across many constraints (`PreservesInventory`,
 `PreservesLocation`, `AdvancesTurn` all gated by `verb = Look`), bundle
