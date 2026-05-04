@@ -1,0 +1,28 @@
+-- scatter.ev — 7 dots placed by hand around the play area.
+--
+-- Derivative of DotCollectGameEngine. No formula — just literal positions.
+-- Useful as a template for hand-designed levels.
+--
+-- Run: python evident.py execute programs/sdl_demo/scatter.ev
+
+import "programs/sdl_demo/game_engine.ev"
+
+type main
+    ..DotCollectGameEngine
+
+    #state.dots      = 7
+    #state_next.dots = 7
+    #output.rects    = 8
+
+    -- Hand-placed positions across the play area.
+    state.dots[0].pos_x = 120  ∧  state.dots[0].pos_y = 80
+    state.dots[1].pos_x = 640  ∧  state.dots[1].pos_y = 80
+    state.dots[2].pos_x = 380  ∧  state.dots[2].pos_y = 200
+    state.dots[3].pos_x = 80   ∧  state.dots[3].pos_y = 380
+    state.dots[4].pos_x = 700  ∧  state.dots[4].pos_y = 380
+    state.dots[5].pos_x = 220  ∧  state.dots[5].pos_y = 540
+    state.dots[6].pos_x = 560  ∧  state.dots[6].pos_y = 540
+
+    -- Win when every dot is collected. Enumerated per N.
+    (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true ∧ state_next.dots[6].collected = true) ⇒ state_next.won = true
+    ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true ∧ state_next.dots[6].collected = true) ⇒ state_next.won = false
