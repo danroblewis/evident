@@ -1,21 +1,25 @@
--- game_engine.ev — Shared schemas for the collect/grid SDL demos.
+-- game_engine.ev — Shared engine for the dot-collect SDL demos.
 --
--- Holds the parts collect.ev and grid.ev have in common:
---   PlayerState     — x/y position and velocity
---   AxisPhysics     — 1D acceleration, deceleration, wall clamping
---   PlayerPhysics   — both axes wired to arrow keys
---   PlayerRect      — render the player as a 40×40 square (gold normally,
---                     bright when won)
---   GameBackground  — dark background normally, green on win
+-- Two layers:
 --
--- A game declares `state ∈ GameState` where GameState contains
--- `player ∈ PlayerState` plus game-specific fields, then calls these
--- claims via `mapsto` to wire them up. See collect.ev and grid.ev.
+-- 1. Generic building blocks (used by any SDL game):
+--      PlayerState     — x/y position and velocity
+--      AxisPhysics     — 1D acceleration, deceleration, wall clamping
+--      PlayerPhysics   — both axes wired to arrow keys
+--      PlayerRect      — render the player as a 40×40 square (gold normally,
+--                        bright when won)
+--      GameBackground  — dark background normally, green on win
 --
--- Game-specific things (objectives, collection logic, win condition)
--- stay in the game program — only the generic player + visual chrome
--- lives here. This is not part of the standard library; it's a local
--- module shared between the two demos in this directory.
+-- 2. Dot-collect specific:
+--      DotState                — pos_x/pos_y/collected per dot
+--      DotCollectState         — player + dots + won
+--      DotCollectGameEngine    — full game shape: I/O, state, physics,
+--                                rendering, per-dot collection, win-flag
+--                                propagation. Derivatives `..` it and
+--                                supply only the dot count and layout.
+--
+-- See collect.ev (4 fixed corners) and grid.ev (N=6 in a 3×2 grid) for
+-- the two derivatives. This file is local to the demos, not stdlib.
 
 import "stdlib/sdl.ev"
 
@@ -105,3 +109,65 @@ claim GameBackground
 
     won  ⇒ (bg.r = 20 ∧ bg.g = 120 ∧ bg.b = 50)
     ¬won ⇒ (bg.r = 15 ∧ bg.g = 15  ∧ bg.b = 30)
+
+-- ── Dot-collect engine ──────────────────────────────────────────────────────
+--
+-- Per-dot state: position and whether it's been picked up.
+
+type DotState
+    pos_x     ∈ Int
+    pos_y     ∈ Int
+    collected ∈ Bool
+
+type DotCollectState
+    player ∈ PlayerState
+    dots   ∈ Seq(DotState)
+    won    ∈ Bool
+
+-- Full dot-collect game shape. Derivatives use `..DotCollectGameEngine`
+-- and supply just the dot count and layout:
+--
+--   type main
+--       ..DotCollectGameEngine
+--       #state.dots = N        (also #state_next.dots, #output.rects = N+1)
+--       <per-dot positions>    (e.g. ∀ i : state.dots[i].pos_x = …)
+--       <win condition>        (enumerated AND of all collected flags)
+--
+-- The engine handles I/O wiring, player physics, rendering, background,
+-- per-dot bounding-box collection, and position state-forwarding. Per-dot
+-- loops use ∀ over {0..#state.dots - 1} so the count comes from the
+-- derivative's cardinality.
+--
+-- Win condition stays in the derivative because Z3 can't fold a quantifier
+-- back into a single Bool used as the antecedent of ⇒, so it has to be
+-- enumerated per N. (Indexed Bool fields also need explicit "= true"/"= false"
+-- comparisons rather than appearing as bare antecedents.)
+
+type DotCollectGameEngine
+    input      ∈ SDLInput
+    output     ∈ SDLOutput
+    state      ∈ DotCollectState
+    state_next ∈ DotCollectState
+
+    player_rect ∈ SDLRect
+
+    -- Player physics, render, background
+    PlayerPhysics  (state mapsto state.player, state_next mapsto state_next.player, input mapsto input, won mapsto state.won, bound_x mapsto 760, bound_y mapsto 560)
+    PlayerRect     (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
+    GameBackground (bg mapsto output.bg, won mapsto state.won)
+
+    -- Positions are immutable across steps. The derivative re-asserts them
+    -- every step (idempotent); the engine carries them forward into state_next.
+    ∀ i ∈ {0..#state.dots - 1} : state_next.dots[i].pos_x = state.dots[i].pos_x
+    ∀ i ∈ {0..#state.dots - 1} : state_next.dots[i].pos_y = state.dots[i].pos_y
+
+    -- Per-dot rendering: dot i ↔ output.rects[i]. Hidden once collected.
+    ∀ i ∈ {0..#state.dots - 1} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x ∧ output.rects[i].y = state.dots[i].pos_y ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
+    ∀ i ∈ {0..#state.dots - 1} : state.dots[i].collected = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
+
+    -- Player rect lives at the last index of output.rects.
+    output.rects[#state.dots] = player_rect
+
+    -- Per-dot collection: bounding-box overlap, monotonic.
+    ∀ i ∈ {0..#state.dots - 1} : (state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = true
+    ∀ i ∈ {0..#state.dots - 1} : ¬(state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = state.dots[i].collected

@@ -1,74 +1,33 @@
--- grid.ev — Grid version of "Collect the Stars".
+-- grid.ev — N dots in a constraint-defined grid.
 --
--- N dots in a ROWS×COLS grid. Each dot carries its own position and
--- collected status as a single composite value (DotState), held in a
--- Seq(DotState) inside game state. Layout is constraint-defined: change
--- the formula below to change the grid.
+-- Derivative of DotCollectGameEngine. The engine handles I/O, physics,
+-- rendering, per-dot collection, and position state-forwarding. This file
+-- supplies just three things: dot count, a layout formula, and an
+-- enumerated win condition.
 --
--- This is the "many elements" version. For 4 specific dots in unique
--- corners, the explicit version (collect.ev) is clearer. This shape pays
--- off when the count is parameterised or large.
---
--- Player movement, rendering, and background come from game_engine.ev
--- (shared with collect.ev). This file owns the dot grid, per-dot
--- collection, and the win condition.
+-- For the explicit 4-corner version, see collect.ev. This shape pays off
+-- when the count is parameterised or large.
 --
 -- Run: python evident.py execute programs/sdl_demo/grid.ev
 
 import "programs/sdl_demo/game_engine.ev"
 
-type DotState
-    pos_x     ∈ Int
-    pos_y     ∈ Int
-    collected ∈ Bool
-
-type GameState
-    player ∈ PlayerState
-    dots   ∈ Seq(DotState)
-    won    ∈ Bool
-
 type main
-    input      ∈ SDLInput
-    output     ∈ SDLOutput
-    state      ∈ GameState
-    state_next ∈ GameState
+    ..DotCollectGameEngine
 
-    player_rect ∈ SDLRect
-
-    -- ── Cardinality: N=6 dots, plus the player rect ──────────────────────────
+    -- N = 6 dots in a 3×2 grid; output has N+1 rects.
+    -- Adjust N, COLS, and the {0..N-1} range together to reshape the grid.
     #state.dots      = 6
     #state_next.dots = 6
     #output.rects    = 7
 
-    -- ── Layout: position of dot i is (LEFT_MARGIN + (i mod COLS) * STEP_X,
-    --                                  TOP_MARGIN  + (i / COLS)   * STEP_Y).
-    -- Reasserted every step; positions are immutable.
-    ∀ i ∈ {0..5} : state.dots[i].pos_x      = 100 + (i - (i / 3) * 3) * 300
-    ∀ i ∈ {0..5} : state.dots[i].pos_y      = 100 + (i / 3) * 400
-    ∀ i ∈ {0..5} : state_next.dots[i].pos_x = state.dots[i].pos_x
-    ∀ i ∈ {0..5} : state_next.dots[i].pos_y = state.dots[i].pos_y
+    -- Layout: position of dot i is
+    --   x = LEFT_MARGIN + (i mod COLS) * STEP_X
+    --   y = TOP_MARGIN  + (i / COLS)   * STEP_Y
+    -- (COLS = 3, STEP_X = 300, STEP_Y = 400, LEFT_MARGIN = TOP_MARGIN = 100.)
+    ∀ i ∈ {0..5} : state.dots[i].pos_x = 100 + (i - (i / 3) * 3) * 300
+    ∀ i ∈ {0..5} : state.dots[i].pos_y = 100 + (i / 3) * 400
 
-    -- ── Engine: player physics, rendering, background ────────────────────────
-    PlayerPhysics  (state mapsto state.player, state_next mapsto state_next.player, input mapsto input, won mapsto state.won, bound_x mapsto 760, bound_y mapsto 560)
-    PlayerRect     (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
-    GameBackground (bg mapsto output.bg, won mapsto state.won)
-
-    -- ── Per-dot rendering: paired by index (dot i ↔ output.rects[i]). ───────
-    -- Indexed Bool fields can't appear as bare antecedents in ⇒, so the
-    -- comparison is explicit (= false / = true). Same workaround in collection.
-    ∀ i ∈ {0..5} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x ∧ output.rects[i].y = state.dots[i].pos_y ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
-    ∀ i ∈ {0..5} : state.dots[i].collected = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
-
-    output.rects[6] = player_rect
-
-    -- ── Collection: per-dot bounding-box overlap on player position. ────────
-    -- Once collected, stays collected; otherwise update on overlap.
-    ∀ i ∈ {0..5} : (state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = true
-    ∀ i ∈ {0..5} : ¬(state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = state.dots[i].collected
-
-    -- ── Win condition: every dot collected. ──────────────────────────────────
-    -- The natural form is `(∀ d ∈ state_next.dots : d.collected) ⇒ won = true`,
-    -- but Z3 can't fold a ∀ into a single Bool used as the antecedent of ⇒
-    -- (it silently drops). Enumerate while N is fixed.
+    -- Win when every dot is collected. Enumerated per N.
     (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true) ⇒ state_next.won = true
     ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true) ⇒ state_next.won = false

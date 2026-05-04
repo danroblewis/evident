@@ -1,89 +1,30 @@
--- collect.ev — "Collect the Stars"
+-- collect.ev — "Collect the Stars": 4 dots in the corners.
 --
--- Move the gold square to each teal dot in the corners.
--- Collect all four to win (background turns green).
+-- Derivative of DotCollectGameEngine. The engine handles I/O, physics,
+-- rendering, per-dot collection, and position state-forwarding. This file
+-- supplies just three things: dot count, four corner positions, and an
+-- enumerated win condition.
 --
--- Player movement, rendering, background, and physics come from
--- game_engine.ev (shared with grid.ev). This file is the game-specific part:
---   - 4 dots at fixed corners
---   - dot rendering and collection
---   - win condition (all 4 collected)
+-- For the parameterised N-in-a-grid version, see grid.ev.
 --
 -- Run: python evident.py execute programs/sdl_demo/collect.ev
 
 import "programs/sdl_demo/game_engine.ev"
 
-type GameState
-    player ∈ PlayerState
-    d0 ∈ Bool
-    d1 ∈ Bool
-    d2 ∈ Bool
-    d3 ∈ Bool
-    won ∈ Bool
-
 type main
-    input      ∈ SDLInput
-    output     ∈ SDLOutput
-    state      ∈ GameState
-    state_next ∈ GameState
+    ..DotCollectGameEngine
 
-    player_rect ∈ SDLRect
-    dot0_rect   ∈ SDLRect
-    dot1_rect   ∈ SDLRect
-    dot2_rect   ∈ SDLRect
-    dot3_rect   ∈ SDLRect
+    -- N = 4 dots; output has N+1 rects (the player rect lives at index N).
+    #state.dots      = 4
+    #state_next.dots = 4
+    #output.rects    = 5
 
-    -- ── Game-specific subclaims ───────────────────────────────────────────────
+    -- Layout: one dot in each corner.
+    state.dots[0].pos_x = 80   ∧ state.dots[0].pos_y = 80
+    state.dots[1].pos_x = 660  ∧ state.dots[1].pos_y = 80
+    state.dots[2].pos_x = 80   ∧ state.dots[2].pos_y = 460
+    state.dots[3].pos_x = 660  ∧ state.dots[3].pos_y = 460
 
-    subclaim Dot
-        rect      ∈ SDLRect
-        collected ∈ Bool
-        pos_x     ∈ Int
-        pos_y     ∈ Int
-
-        ¬collected ⇒
-            rect.x = pos_x
-            rect.y = pos_y
-            rect.w = 25
-            rect.h = 25
-            rect.color.r = 80
-            rect.color.g = 200
-            rect.color.b = 180
-        collected ⇒
-            rect.w = 0
-            rect.h = 0
-
-    subclaim Collect
-        pos_x          ∈ Int
-        pos_y          ∈ Int
-        player_x       ∈ Int
-        player_y       ∈ Int
-        collected      ∈ Bool
-        next_collected ∈ Bool
-
-        (¬collected ∧ player_x ≤ pos_x + 25 ∧ player_x ≥ pos_x - 40 ∧ player_y ≤ pos_y + 25 ∧ player_y ≥ pos_y - 40) ⇒ next_collected = true
-        ¬(¬collected ∧ player_x ≤ pos_x + 25 ∧ player_x ≥ pos_x - 40 ∧ player_y ≤ pos_y + 25 ∧ player_y ≥ pos_y - 40) ⇒ next_collected = collected
-
-    -- ── Engine: player physics, rendering, background ────────────────────────
-    PlayerPhysics   (state mapsto state.player, state_next mapsto state_next.player, input mapsto input, won mapsto state.won, bound_x mapsto 760, bound_y mapsto 560)
-    PlayerRect      (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
-    GameBackground  (bg mapsto output.bg, won mapsto state.won)
-
-    -- ── Dots ──────────────────────────────────────────────────────────────────
-    Dot (rect mapsto dot0_rect, collected mapsto state.d0, pos_x mapsto 80,  pos_y mapsto 80)
-    Dot (rect mapsto dot1_rect, collected mapsto state.d1, pos_x mapsto 660, pos_y mapsto 80)
-    Dot (rect mapsto dot2_rect, collected mapsto state.d2, pos_x mapsto 80,  pos_y mapsto 460)
-    Dot (rect mapsto dot3_rect, collected mapsto state.d3, pos_x mapsto 660, pos_y mapsto 460)
-
-    -- ── Scene ─────────────────────────────────────────────────────────────────
-    output.rects = ⟨dot0_rect, dot1_rect, dot2_rect, dot3_rect, player_rect⟩
-
-    -- ── Collection ────────────────────────────────────────────────────────────
-    Collect (pos_x mapsto 80,  pos_y mapsto 80,  player_x mapsto state.player.x, player_y mapsto state.player.y, collected mapsto state.d0, next_collected mapsto state_next.d0)
-    Collect (pos_x mapsto 660, pos_y mapsto 80,  player_x mapsto state.player.x, player_y mapsto state.player.y, collected mapsto state.d1, next_collected mapsto state_next.d1)
-    Collect (pos_x mapsto 80,  pos_y mapsto 460, player_x mapsto state.player.x, player_y mapsto state.player.y, collected mapsto state.d2, next_collected mapsto state_next.d2)
-    Collect (pos_x mapsto 660, pos_y mapsto 460, player_x mapsto state.player.x, player_y mapsto state.player.y, collected mapsto state.d3, next_collected mapsto state_next.d3)
-
-    -- ── Win condition ─────────────────────────────────────────────────────────
-    (state_next.d0 ∧ state_next.d1 ∧ state_next.d2 ∧ state_next.d3) ⇒ state_next.won = true
-    ¬(state_next.d0 ∧ state_next.d1 ∧ state_next.d2 ∧ state_next.d3) ⇒ state_next.won = false
+    -- Win when every dot is collected. Enumerated per N.
+    (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = true
+    ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = false
