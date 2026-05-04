@@ -45,3 +45,20 @@ type SDLRect
 type SDLOutput
     bg    ∈ Color
     rects ∈ Seq(SDLRect)
+
+-- ── Window ──────────────────────────────────────────────────────────────────
+-- Optional. Programs that declare `window ∈ SDLWindow` get the window's
+-- position on the screen each step, plus the per-step delta. Useful for
+-- tricks like "anchor the world to the screen instead of the window" — the
+-- contents stay visually fixed while the window is being dragged.
+--   screen_x/y : window's top-left corner on the OS screen, in pixels
+--   width/height : window dimensions
+--   dx/dy : screen_x/y change since previous step (0 on the first step)
+
+type SDLWindow
+    screen_x ∈ Int
+    screen_y ∈ Int
+    width    ∈ Int
+    height   ∈ Int
+    dx       ∈ Int
+    dy       ∈ Int

@@ -26,7 +26,7 @@ except ImportError:
 class SDLPlugin(Plugin):
     """SDL2 plugin: window + renderer + event loop."""
 
-    handles_types = {'SDLInput', 'SDLOutput'}
+    handles_types = {'SDLInput', 'SDLOutput', 'SDLWindow'}
 
     def __init__(self, width: int = 800, height: int = 600,
                  title: str = 'Evident'):
@@ -42,6 +42,10 @@ class SDLPlugin(Plugin):
         self._click   = False
         self._quit    = False
         self._last_time_ms = 0
+        # Previous-step window position, for computing dx/dy. None until the
+        # first poll — first-step delta is reported as 0 by convention.
+        self._last_screen_x: int | None = None
+        self._last_screen_y: int | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -109,22 +113,42 @@ class SDLPlugin(Plugin):
         self._last_time_ms = now_ms
         unix_ms = int(_time.time() * 1000)
 
+        # Window position on the screen (for SDLWindow consumers). Computed
+        # once per step and shared across all matched window vars.
+        wx_c, wy_c = ctypes.c_int(0), ctypes.c_int(0)
+        sdl2.SDL_GetWindowPosition(self.window, ctypes.byref(wx_c), ctypes.byref(wy_c))
+        screen_x, screen_y = int(wx_c.value), int(wy_c.value)
+        if self._last_screen_x is None:
+            wdx, wdy = 0, 0
+        else:
+            wdx = screen_x - self._last_screen_x
+            wdy = screen_y - self._last_screen_y
+        self._last_screen_x, self._last_screen_y = screen_x, screen_y
+
         given: dict[str, Any] = {}
         for var, type_name in self.matched_vars.items():
-            if type_name != 'SDLInput':
-                continue
-            given.update({
-                f'{var}.right_held': bool(keys[sdl2.SDL_SCANCODE_RIGHT]),
-                f'{var}.left_held':  bool(keys[sdl2.SDL_SCANCODE_LEFT]),
-                f'{var}.up_held':    bool(keys[sdl2.SDL_SCANCODE_UP]),
-                f'{var}.down_held':  bool(keys[sdl2.SDL_SCANCODE_DOWN]),
-                f'{var}.mouse_x':    self._mouse_x,
-                f'{var}.mouse_y':    self._mouse_y,
-                f'{var}.click':      self._click,
-                f'{var}.quit':       self._quit,
-                f'{var}.time':       unix_ms,
-                f'{var}.dt':         dt,
-            })
+            if type_name == 'SDLInput':
+                given.update({
+                    f'{var}.right_held': bool(keys[sdl2.SDL_SCANCODE_RIGHT]),
+                    f'{var}.left_held':  bool(keys[sdl2.SDL_SCANCODE_LEFT]),
+                    f'{var}.up_held':    bool(keys[sdl2.SDL_SCANCODE_UP]),
+                    f'{var}.down_held':  bool(keys[sdl2.SDL_SCANCODE_DOWN]),
+                    f'{var}.mouse_x':    self._mouse_x,
+                    f'{var}.mouse_y':    self._mouse_y,
+                    f'{var}.click':      self._click,
+                    f'{var}.quit':       self._quit,
+                    f'{var}.time':       unix_ms,
+                    f'{var}.dt':         dt,
+                })
+            elif type_name == 'SDLWindow':
+                given.update({
+                    f'{var}.screen_x': screen_x,
+                    f'{var}.screen_y': screen_y,
+                    f'{var}.width':    self.width,
+                    f'{var}.height':   self.height,
+                    f'{var}.dx':       wdx,
+                    f'{var}.dy':       wdy,
+                })
         return given
 
     def after_step(self, bindings) -> bool:
