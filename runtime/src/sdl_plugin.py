@@ -169,7 +169,7 @@ class SDLPlugin:
             w = iget(f'{s}w')
             h = iget(f'{s}h')
             if w == 0 and h == 0:
-                break  # first empty slot signals end of draw list
+                continue  # empty slot — skip and check the rest
             x  = iget(f'{s}x')
             y  = iget(f'{s}y')
             cr = iget(f'{s}r', 255)

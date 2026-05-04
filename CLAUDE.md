@@ -250,6 +250,17 @@ entry point    — wiring only (passthroughs + variable declarations)
 Each layer depends only on layers below it. The entry point (`type main`) should
 contain no logic — only passthrough composition and variable declarations.
 
+### Boolean literals are lowercase
+
+`true` and `false` (lowercase). `True` and `False` (capitalized) parse as
+unbound identifiers — the constraint is silently dropped and the variable
+is left free. This produces no error, just wrong behavior.
+
+```evident
+state_next.done = true    -- correct
+state_next.done = True    -- SILENT BUG: True is an unbound name, constraint dropped
+```
+
 ### Precedence: `⇒` binds tighter than `∧`
 
 **This is a footgun.** Evident's grammar has `⇒` at higher precedence than `∧` —
