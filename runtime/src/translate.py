@@ -643,8 +643,15 @@ def translate_constraint(
                                 composed_env = composed_env.bind(mapping.slot + '.' + field, v)
 
             # Translate the claim's body constraints using the composed env.
+            # Route through the appropriate specialist translator so that
+            # CardinalityConstraint, UniversalConstraint, and ExistentialConstraint
+            # are handled correctly (same routing as _translate_body_constraint
+            # in evaluate.py, inlined here to avoid a circular import).
             from .instantiate import _is_type_decl
-            from .ast_types import EvidentBlock, PassthroughItem, MultiMembershipDecl
+            from .ast_types import (EvidentBlock, PassthroughItem, MultiMembershipDecl,
+                                    UniversalConstraint as UC,
+                                    ExistentialConstraint as EC,
+                                    CardinalityConstraint as CC)
             conjuncts = []
             for item in schema.body:
                 if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
@@ -652,9 +659,19 @@ def translate_constraint(
                 if _is_type_decl(item):
                     continue
                 try:
-                    conjuncts.append(
-                        translate_constraint(item, composed_env, registry, schemas)
-                    )
+                    if isinstance(item, UC):
+                        from .quantifiers import translate_universal
+                        conjuncts.append(translate_universal(item, composed_env, registry))
+                    elif isinstance(item, EC):
+                        from .quantifiers import translate_existential
+                        conjuncts.append(translate_existential(item, composed_env, registry))
+                    elif isinstance(item, CC):
+                        from .quantifiers import translate_cardinality_constraint
+                        conjuncts.append(translate_cardinality_constraint(item, composed_env, registry))
+                    else:
+                        conjuncts.append(
+                            translate_constraint(item, composed_env, registry, schemas)
+                        )
                 except (NotImplementedError, KeyError):
                     pass
             return z3.And(*conjuncts) if conjuncts else z3.BoolVal(True)

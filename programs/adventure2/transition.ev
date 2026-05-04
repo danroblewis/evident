@@ -1,17 +1,106 @@
 -- transition.ev — The game transition relation.
 --
--- GameTransition is a `claim`: a relation across multiple distinct values
--- (state × cmd → state_next × response). It gates itself on `ready`
--- so it remains SAT on idle (character-accumulation) steps.
---
 -- Variable naming for composition with main:
 --   state, state_next  — matched by executor's state-pair convention
 --   cmd                — renamed to `line` when composed in main
 --   response           — renamed to `line_out` when composed in main
 --   ready              — renamed to `line_ready` when composed in main
+--
+-- Structure:
+--   Trait claims  — shared state-transition behaviours (PreservesInventory, …)
+--   Action claims — verb-specific unique logic (LookAction, GoAction, …)
+--   GameTransition — composes traits and actions via claim composition
 
 import "programs/adventure2/game_state.ev"
 import "programs/adventure2/commands.ev"
+
+-- ── Trait claims ──────────────────────────────────────────────────────────────
+-- Each captures one shared behaviour. Composed into GameTransition by set
+-- membership: verb ∈ {…} ⇒ TraitName.
+
+claim PreservesInventory
+    state      ∈ GameState
+    state_next ∈ GameState
+    state_next.inventory = state.inventory
+
+claim PreservesLocation
+    state      ∈ GameState
+    state_next ∈ GameState
+    state_next.location = state.location
+
+claim AdvancesTurn
+    state      ∈ GameState
+    state_next ∈ GameState
+    state_next.turn = state.turn + 1
+
+claim HoldsTurn
+    state      ∈ GameState
+    state_next ∈ GameState
+    state_next.turn = state.turn
+
+-- ── Action claims ─────────────────────────────────────────────────────────────
+-- Each captures the unique logic for one verb. Intermediate variables
+-- (room_desc, direction, dest, item, item_name) must be declared in the
+-- outer scope (GameTransition) for names-match to bind them correctly.
+
+claim LookAction
+    state     ∈ GameState
+    response  ∈ String
+    room_desc ∈ String
+    (state.location, room_desc) ∈ room_descriptions
+    response = room_desc
+
+claim GoAction
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    verb_str   ∈ String
+    argument   ∈ String
+    direction  ∈ String
+    dest       ∈ String
+    room_desc  ∈ String
+    -- Pin direction from argument or verb_str (disjoint antecedents)
+    argument ≠ "" ⇒ (argument, direction) ∈ direction_words
+    argument = "" ⇒ (verb_str, direction) ∈ direction_words
+    -- Complete lookup uniquely pins dest
+    (state.location, direction, dest) ∈ direction_exits
+    dest ≠ "" ⇒
+        (dest, room_desc) ∈ room_descriptions
+        response = room_desc
+        state_next.location = dest
+    dest = "" ⇒
+        response = "You can't go that way."
+
+claim TakeAction
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    argument   ∈ String
+    item       ∈ Item
+    item_name  ∈ String
+    (argument, item) ∈ item_words
+    (item, item_name) ∈ item_names
+    (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
+        response = "You pick up the " ++ item_name ++ "."
+        state_next.inventory = state.inventory ++ ⟨item⟩
+    ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
+        response = "You don't see that here."
+
+claim InventoryAction
+    state    ∈ GameState
+    response ∈ String
+    #state.inventory = 0 ⇒ response = "You are carrying nothing."
+    #state.inventory > 0 ⇒ response = "You are carrying some items."
+
+claim HelpAction
+    response ∈ String
+    response = "Commands: look, go <dir>, take <item>, inventory, help, quit"
+
+claim QuitAction
+    response ∈ String
+    response = "Goodbye!"
+
+-- ── GameTransition ────────────────────────────────────────────────────────────
 
 claim GameTransition
     state      ∈ GameState
@@ -20,75 +109,43 @@ claim GameTransition
     response   ∈ String
     ready      ∈ Bool
 
+    -- Parsing intermediates
     verb      ∈ Verb
     verb_str  ∈ String
     argument  ∈ String
+
+    -- Movement intermediates (used by GoAction via names-match)
     direction ∈ String
     dest      ∈ String
     room_desc ∈ String
+
+    -- Item intermediates (used by TakeAction via names-match)
     item      ∈ Item
     item_name ∈ String
 
-    -- ── Active step: full command received ────────────────────────────────────
+    -- ── Active step ───────────────────────────────────────────────────────────
     ready ⇒
         -- Parse cmd → verb + argument
         (cmd = verb_str ++ " " ++ argument) ∨ (cmd = verb_str ∧ argument = "")
         (verb_str, verb) ∈ verb_words
 
-        -- ── Defaults: what stays the same unless a verb specifically changes it ──
-        -- Positive sets make it explicit which verbs share each behaviour.
-        -- Adding a new verb requires placing it in the right sets here.
-        verb ∈ {Look, Go, Inventory, Help, Quit} ⇒
-            state_next.inventory = state.inventory
-        verb ∈ {Look, Take, Inventory, Help, Quit} ⇒
-            state_next.location = state.location
-        verb = Go ∧ dest = "" ⇒
-            state_next.location = state.location
-        verb ∈ {Look, Go, Take, Inventory} ⇒
-            state_next.turn = state.turn + 1
-        verb ∈ {Help, Quit} ⇒
-            state_next.turn = state.turn
+        -- Trait defaults: which verbs share which behaviours.
+        -- Adding a new verb means placing it in the right sets here.
+        verb ∈ {Look, Go, Inventory, Help, Quit} ⇒ PreservesInventory
+        verb ∈ {Look, Take, Inventory, Help, Quit} ⇒ PreservesLocation
+        (verb = Go ∧ dest = "") ⇒ PreservesLocation
+        verb ∈ {Look, Go, Take, Inventory} ⇒ AdvancesTurn
+        verb ∈ {Help, Quit} ⇒ HoldsTurn
 
-        -- ── LOOK: unique part is looking up and returning the room description ──
-        verb = Look ⇒
-            (state.location, room_desc) ∈ room_descriptions
-            response = room_desc
+        -- Action claims: each verb's unique logic
+        verb = Look      ⇒ LookAction
+        verb = Go        ⇒ GoAction
+        verb = Take      ⇒ TakeAction
+        verb = Inventory ⇒ InventoryAction
+        verb = Help      ⇒ HelpAction
+        verb = Quit      ⇒ QuitAction
 
-        -- ── GO: unique part is resolving direction and moving ─────────────────
-        verb = Go ⇒
-            argument ≠ "" ⇒ (argument, direction) ∈ direction_words
-            argument = "" ⇒ (verb_str, direction) ∈ direction_words
-            (state.location, direction, dest) ∈ direction_exits
-            dest ≠ "" ⇒
-                (dest, room_desc) ∈ room_descriptions
-                response = room_desc
-                state_next.location = dest
-            dest = "" ⇒
-                response = "You can't go that way."
-
-        -- ── TAKE: unique part is checking item presence and updating inventory ──
-        verb = Take ⇒
-            (argument, item) ∈ item_words
-            (item, item_name) ∈ item_names
-            (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
-                response = "You pick up the " ++ item_name ++ "."
-                state_next.inventory = state.inventory ++ ⟨item⟩
-            ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
-                response = "You don't see that here."
-
-        -- ── INVENTORY: unique part is inspecting inventory count ──────────────
-        verb = Inventory ⇒
-            #state.inventory = 0 ⇒ response = "You are carrying nothing."
-            #state.inventory > 0 ⇒ response = "You are carrying some items."
-
-        -- ── HELP / QUIT: unique part is the response string ───────────────────
-        verb = Help ⇒
-            response = "Commands: look, go <dir>, take <item>, inventory, help, quit"
-
-        verb = Quit ⇒
-            response = "Goodbye!"
-
-    -- ── Idle step: accumulating input characters ───────────────────────────────
+    -- ── Idle step: accumulating input characters ──────────────────────────────
     ¬ready ⇒
         response         = ""
         state_next.turn  = state.turn
