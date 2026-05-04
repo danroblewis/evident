@@ -1,24 +1,35 @@
--- server.ev — Minimum HTTP server: respond 200 OK to every request.
+-- server.ev — Minimum HTTP/1.0 server, written entirely in Evident.
+--
+-- Uses raw TCPSocket primitive: the plugin handles listen/accept/read/write/close,
+-- the Evident program does the HTTP framing and response construction itself.
 --
 -- Run:    python evident.py execute programs/http_demo/server.ev --port 8080
 -- Curl:   curl -v http://localhost:8080/
 -- Quit:   Ctrl-C
 --
--- The HTTPServerPlugin handles the listening socket and all client
--- multiplexing. Each tick it presents at most one ready request as
--- server.request.*; this program produces a fixed response for any
--- request and an empty response (status = 0) when no client is ready.
+-- Protocol logic (this is the interesting part):
+--   * Wait until a client is connected AND we've received the end-of-headers
+--     marker "\r\n\r\n". Until then, send nothing and stay open.
+--   * Once we see the marker, send a fixed HTTP/1.0 200 OK response and
+--     close the connection. The plugin then accepts the next client.
+--
+-- HTTP framing is done with `contains "\r\n\r\n"` — exactly what an
+-- HTTP server actually does to detect end-of-headers. The escape sequences
+-- become real CR/LF bytes in the string.
 
-import "stdlib/sockets.ev"
+import "stdlib/tcp.ev"
 
 type main
-    server ∈ HTTPServer
+    sock ∈ TCPSocket
 
-    server.request.has_request ⇒ (
-        server.response.status = 200 ∧
-        server.response.body   = "Hello from Evident\n"
+    -- Headers complete: respond with 200 OK and close.
+    sock.has_conn ∧ sock.received contains "\r\n\r\n" ⇒ (
+        sock.out  = "HTTP/1.0 200 OK\r\nContent-Length: 19\r\nConnection: close\r\n\r\nHello from Evident\n" ∧
+        sock.close = true
     )
-    ¬server.request.has_request ⇒ (
-        server.response.status = 0 ∧
-        server.response.body   = ""
+
+    -- Anything else (no client, or partial request): send nothing, stay open.
+    ¬(sock.has_conn ∧ sock.received contains "\r\n\r\n") ⇒ (
+        sock.out  = "" ∧
+        sock.close = false
     )

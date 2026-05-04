@@ -238,9 +238,9 @@ class EvidentExecutor:
     def _all_plugin_classes() -> list:
         """Every plugin class registered in the runtime, for type-name lookup."""
         from .plugins import StdinPlugin, StdoutPlugin, BatchInputPlugin, BatchOutputPlugin
-        from .plugins.sockets import HTTPServerPlugin
+        from .plugins.tcp import TCPSocketPlugin
         classes = [StdinPlugin, StdoutPlugin, BatchInputPlugin, BatchOutputPlugin,
-                   HTTPServerPlugin]
+                   TCPSocketPlugin]
         try:
             from .plugins.sdl import SDLPlugin
             classes.append(SDLPlugin)

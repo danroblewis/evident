@@ -1,0 +1,31 @@
+-- stdlib/tcp.ev — Raw TCP socket type for the Evident FFI.
+--
+-- The TCPSocketPlugin owns one listening socket and accepts ONE client
+-- connection at a time. Subsequent connections wait in the OS backlog
+-- until the current one is closed. (Single-connection-at-a-time keeps
+-- the primitive small; future Seq(TCPSocket) is the multi-connection
+-- story.)
+--
+-- Plugin-set fields (read by Evident):
+--   has_conn ∈ Bool   — a client is currently connected
+--   received ∈ String — every byte received from this client so far,
+--                       accumulated across ticks. Reset to "" after close.
+--
+-- Evident-set fields (read by plugin):
+--   out  ∈ String — bytes to write to the client THIS tick.
+--                    Plugin outs them and clears for next tick.
+--   close ∈ Bool   — close the connection after outing this tick's bytes.
+--                    Plugin will accept the next client on a later tick.
+--
+-- A typical interaction (each row is one tick):
+--   has_conn  received                          out                   close
+--   false     ""                                ""                     false
+--   true      ""                                ""                     false
+--   true      "GET / HTTP/1.1\r\nHost: …\r\n\r\n"  "HTTP/1.0 200 OK\r\n…"  true
+--   false     ""                                ""                     false   ← next client
+
+type TCPSocket
+    has_conn ∈ Bool
+    received ∈ String
+    out     ∈ String
+    close    ∈ Bool

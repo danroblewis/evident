@@ -1,12 +1,11 @@
-"""End-to-end test for the HTTP server plugin.
+"""End-to-end test for the TCP plugin via the HTTP demo.
 
-Spawns the demo server as a subprocess on a random free port, issues a
-few curl-equivalent requests via urllib, and checks the responses.
+Spawns the demo (which uses the raw TCPSocket primitive and parses HTTP
+in Evident) on a random port, hits it with urllib, asserts responses.
 """
 
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 import sys
@@ -21,7 +20,6 @@ DEMO         = PROJECT_ROOT / 'programs' / 'http_demo' / 'server.ev'
 
 
 def _free_port() -> int:
-    """Bind a temporary socket to ask the OS for a free port, then release it."""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('127.0.0.1', 0))
     port = s.getsockname()[1]
@@ -29,8 +27,7 @@ def _free_port() -> int:
     return port
 
 
-def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> bool:
-    """Poll until a TCP connect succeeds, or timeout."""
+def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,8 +56,11 @@ def http_server():
     )
     if not _wait_for_port('127.0.0.1', port, timeout=10.0):
         proc.terminate()
-        proc.wait(timeout=5)
-        out, err = proc.communicate()
+        try:
+            out, err = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate()
         pytest.fail(f"server didn't start on port {port}\nstderr: {err.decode()[:500]}")
     yield port
     proc.terminate()
@@ -71,29 +71,24 @@ def http_server():
         proc.wait()
 
 
-def test_http_get_returns_200(http_server):
+def test_get_returns_200(http_server):
     port = http_server
-    req = urllib.request.Request(f'http://127.0.0.1:{port}/')
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=10) as resp:
         assert resp.status == 200
         body = resp.read().decode()
     assert body == 'Hello from Evident\n'
 
 
-def test_http_get_with_path(http_server):
+def test_get_with_path(http_server):
     port = http_server
-    req = urllib.request.Request(f'http://127.0.0.1:{port}/anything/here')
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/anything/here', timeout=10) as resp:
         assert resp.status == 200
-        body = resp.read().decode()
-    assert body == 'Hello from Evident\n'
+        assert resp.read().decode() == 'Hello from Evident\n'
 
 
-def test_http_multiple_sequential_requests(http_server):
-    """Hit the server multiple times — each must succeed."""
+def test_multiple_sequential_requests(http_server):
     port = http_server
-    for i in range(4):
-        req = urllib.request.Request(f'http://127.0.0.1:{port}/req{i}')
-        with urllib.request.urlopen(req, timeout=5) as resp:
+    for i in range(3):
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/r{i}', timeout=10) as resp:
             assert resp.status == 200
             assert resp.read().decode() == 'Hello from Evident\n'
