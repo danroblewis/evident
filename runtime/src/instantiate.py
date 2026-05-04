@@ -21,18 +21,101 @@ from .ast_types import (SchemaDecl, Param, Identifier, MembershipConstraint,
                         InlineEnumExpr, PassthroughItem, EvidentBlock, TupleLiteral,
                         MultiMembershipDecl, SeqType, RegexLiteral,
                         ArithmeticConstraint, SetLiteral, EmptySet,
-                        NatLiteral, IntLiteral, RealLiteral, StringLiteral)
+                        NatLiteral, IntLiteral, RealLiteral, StringLiteral,
+                        BinaryExpr)
+
+
+def _declare_element_sort(
+    type_expr,
+    registry: 'SortRegistry',
+    schemas: dict | None,
+) -> 'z3.SortRef':
+    """
+    Resolve the Z3 sort for a Set/Seq element type.
+    When type_expr names a composite schema, declare it as a Z3 Datatype
+    so that field accessors are available on quantifier-bound variables.
+    """
+    from .ast_types import SeqType, InlineEnumExpr, BinaryExpr
+
+    if isinstance(type_expr, SeqType):
+        inner = _declare_element_sort(Identifier(type_expr.element_name), registry, schemas)
+        return z3.SeqSort(inner)
+
+    if isinstance(type_expr, InlineEnumExpr):
+        variants  = type_expr.variants
+        enum_name = '_Enum_' + '_'.join(sorted(variants))
+        return registry.declare_algebraic(enum_name, variants)
+
+    if isinstance(type_expr, Identifier):
+        type_name = type_expr.name
+        # Already registered?
+        try:
+            return registry.get(type_name)
+        except KeyError:
+            pass
+        # Is it a composite schema?
+        if schemas and type_name in schemas:
+            sub = schemas[type_name]
+            fields = _collect_composite_fields(sub, registry, schemas)
+            if fields is not None:
+                return registry.declare_composite(type_name, fields)
+        return registry.declare_uninterpreted(type_name)
+
+    return z3.IntSort()   # fallback
+
+
+def _collect_composite_fields(
+    schema,
+    registry: 'SortRegistry',
+    schemas: dict | None,
+) -> 'list[tuple[str, z3.SortRef]] | None':
+    """
+    If schema is a pure struct (only type declarations, no other constraints),
+    return [(field_name, sort), ...] in declaration order. Else return None.
+    """
+    from .ast_types import (MembershipConstraint, Identifier, SeqType,
+                            InlineEnumExpr, PassthroughItem, EvidentBlock,
+                            MultiMembershipDecl, SchemaDecl)
+    fields = []
+    for item in schema.body:
+        # Skip passthrough, evident blocks, subclaim definitions
+        if isinstance(item, (PassthroughItem, EvidentBlock, SchemaDecl)):
+            continue
+        # Multi-name: x, y ∈ Type
+        if isinstance(item, MultiMembershipDecl):
+            fsort = _declare_element_sort(item.set, registry, schemas)
+            for fname in item.names:
+                fields.append((fname, fsort))
+            continue
+        # Single: x ∈ Type
+        if (isinstance(item, MembershipConstraint)
+                and item.op == '∈'
+                and isinstance(item.left, Identifier)):
+            fsort = _declare_element_sort(item.right, registry, schemas)
+            fields.append((item.left.name, fsort))
+            continue
+        # Any other constraint → not a pure struct
+        return None
+    return fields if fields else None
 
 
 def _is_type_decl(item) -> bool:
     """True for  x ∈ TypeName  declarations already handled by instantiate_schema.
-    The right-hand side must be a type expression (bare Identifier, Seq(T), or
-    inline enum), NOT a set literal ({30, 45, 60}) or range ({1..10})."""
+    The right-hand side must be a type expression (bare Identifier, Seq(T),
+    Set(T), or inline enum), NOT a set literal ({30, 45, 60}) or range ({1..10})."""
     if not (isinstance(item, MembershipConstraint) and item.op == "∈"
             and isinstance(item.left, Identifier)):
         return False
-    from .ast_types import SeqType, InlineEnumExpr
-    return isinstance(item.right, (Identifier, SeqType, InlineEnumExpr))
+    from .ast_types import SeqType, InlineEnumExpr, BinaryExpr
+    if isinstance(item.right, (Identifier, SeqType, InlineEnumExpr)):
+        return True
+    # Set(T) is parsed as BinaryExpr(×, Identifier('Set'), T)
+    if (isinstance(item.right, BinaryExpr)
+            and item.right.op == '×'
+            and isinstance(item.right.left, Identifier)
+            and item.right.left.name == 'Set'):
+        return True
+    return False
 
 try:
     from .sorts import SortRegistry  # type: ignore[import]
@@ -180,6 +263,29 @@ def instantiate_schema(
     # constraints (A = {…}, A ⊆ B) before the main instantiation loop.
     env = _create_implicit_set_vars(schema, env, registry, prefix)
 
+    # Pre-pass: scan for Set(T) and Seq(T) declarations and register element
+    # types as composite Datatypes BEFORE the main loop. This ensures that
+    # when 'x ∈ T' is later processed, T is already registered as a Datatype
+    # and x gets a single Datatype const rather than flat-expansion.
+    if schemas:
+        for item in schema.body:
+            if not (isinstance(item, MembershipConstraint)
+                    and item.op == '∈'
+                    and isinstance(item.left, Identifier)):
+                continue
+            # Set(T): BinaryExpr(×, Identifier('Set'), T)
+            if (isinstance(item.right, BinaryExpr)
+                    and item.right.op == '×'
+                    and isinstance(item.right.left, Identifier)
+                    and item.right.left.name == 'Set'):
+                elem_type_expr = item.right.right
+                _declare_element_sort(elem_type_expr, registry, schemas)
+            # Seq(T): register element type if it's a composite schema
+            elif isinstance(item.right, SeqType):
+                _declare_element_sort(
+                    Identifier(item.right.element_name), registry, schemas
+                )
+
     for item in schema.body:
         # ── Multi-name: x, y, z ∈ Type ──────────────────────────────────
         if isinstance(item, MultiMembershipDecl):
@@ -268,7 +374,12 @@ def instantiate_schema(
 
         name = item.left.name
         if env.lookup(name) is not None and not isinstance(item.right, SeqType):
-            continue  # already declared (SeqType gets its own sort-correction pass below)
+            # Check if it's also not a Set(T) BinaryExpr
+            if not (isinstance(item.right, BinaryExpr)
+                    and item.right.op == '×'
+                    and isinstance(item.right.left, Identifier)
+                    and item.right.left.name == 'Set'):
+                continue  # already declared
 
         # ── Regex literal: name ∈ /pattern/ → String ───────────────────
         if isinstance(item.right, RegexLiteral):
@@ -281,12 +392,28 @@ def instantiate_schema(
                 env = env.bind(name, var)
             continue
 
+        # ── Set type: name ∈ Set(T) ─────────────────────────────────────
+        # Parsed as BinaryExpr(×, Identifier('Set'), T)
+        if (isinstance(item.right, BinaryExpr)
+                and item.right.op == '×'
+                and isinstance(item.right.left, Identifier)
+                and item.right.left.name == 'Set'):
+            elem_type_expr = item.right.right
+            elem_sort = _declare_element_sort(elem_type_expr, registry, schemas)
+            set_sort = registry.set_sort(elem_sort)
+            existing = given.lookup(name)
+            if existing is not None:
+                env = env.bind(name, existing)
+            else:
+                var = make_const(name, set_sort, prefix=prefix)
+                env = env.bind(name, var)
+            continue
+
         # ── Seq type: name ∈ Seq(T) ─────────────────────────────────────
         if isinstance(item.right, SeqType):
-            try:
-                elem_sort = registry.get(item.right.element_name)
-            except KeyError:
-                elem_sort = registry.declare_uninterpreted(item.right.element_name)
+            elem_sort = _declare_element_sort(
+                Identifier(item.right.element_name), registry, schemas
+            )
             seq_sort = z3.SeqSort(elem_sort)
             existing = given.lookup(name)
             if existing is not None:
@@ -337,6 +464,28 @@ def instantiate_schema(
         # ── Sub-schema expansion: name ∈ SomeSchema ──────────────────────
         if schemas and type_name in schemas:
             sub_schema = schemas[type_name]
+
+            # If this schema has already been registered as a Z3 Datatype (composite)
+            # — e.g. because it appeared as Set(T) or Seq(T) element type first —
+            # create a single Datatype const and bind field accessors instead of
+            # flat-expanding. This keeps `player_rect` as a single Z3 const so it
+            # can appear in sequence literals (⟨player_rect, ...⟩).
+            composite = registry.get_composite_fields(type_name)
+            if composite is not None:
+                # Composite Datatype: single const + field accessor bindings.
+                dt_sort = registry.get(type_name)
+                existing = given.lookup(name)
+                if existing is not None:
+                    var = existing
+                else:
+                    var = make_const(name, dt_sort, prefix=prefix)
+                env = env.bind(name, var)
+                # Bind field accessors as name.field → accessor(var)
+                for fname in composite['__fields__']:
+                    accessor = composite[fname]
+                    env = env.bind(f"{name}.{fname}", accessor(var))
+                # No sub-schema body constraints for pure structs (no non-type items)
+                continue
 
             # Build a sub-given from any `name.field` values in given
             sub_given = Environment()

@@ -212,19 +212,42 @@ def translate_universal(
                 from .translate import translate_constraint
                 parts.append(translate_constraint(node.body, bound_env, registry))
         else:
-            # Symbolic set — use Z3 ForAll with Implies(Select(S, x), P(x)).
+            # Symbolic set/sequence — use Z3 ForAll.
             from .translate import translate_expr, translate_constraint
             s = translate_expr(set_expr, cur_env, registry)
-            # Infer element sort from the array domain.
-            elem_sort = s.sort().domain()
+            s_sort = s.sort()
+
+            # Determine element sort and membership predicate.
+            if z3.is_seq(s) and not z3.is_string(s):
+                # Seq(T): element sort is the basis; membership = Contains(s, Unit(x))
+                elem_sort = s_sort.basis()
+                def _membership(x, _s=s): return z3.Contains(_s, z3.Unit(x))
+            elif hasattr(s_sort, 'domain'):
+                # Array(T, Bool) set: element sort is the domain
+                elem_sort = s_sort.domain()
+                def _membership(x, _s=s): return z3.Select(_s, x)
+            else:
+                elem_sort = s_sort
+                def _membership(x, _s=s): return z3.Select(_s, x)
+
             for name in binding.names:
                 x_var = z3.FreshConst(elem_sort, name)
                 body_env = cur_env.bind(name, x_var)
+
+                # If element sort is a composite Datatype, bind field accessors
+                # so that 'name.field' is accessible in the quantifier body.
+                sort_name = str(elem_sort)
+                composite = registry.get_composite_fields(sort_name)
+                if composite:
+                    for fname in composite['__fields__']:
+                        accessor = composite[fname]
+                        body_env = body_env.bind(f'{name}.{fname}', accessor(x_var))
+
                 body_z3 = translate_constraint(node.body, body_env, registry)
                 parts.append(
                     z3.ForAll(
                         [x_var],
-                        z3.Implies(z3.Select(s, x_var), body_z3),
+                        z3.Implies(_membership(x_var), body_z3),
                     )
                 )
         return parts
@@ -315,7 +338,18 @@ def translate_existential(
     else:
         # Symbolic set path — use Z3 Exists.
         s = translate_expr(set_expr, env, registry)
-        elem_sort = s.sort().domain()
+        s_sort = s.sort()
+
+        # Determine element sort and membership predicate.
+        if z3.is_seq(s) and not z3.is_string(s):
+            elem_sort = s_sort.basis()
+            def _exist_membership(x, _s=s): return z3.Contains(_s, z3.Unit(x))
+        elif hasattr(s_sort, 'domain'):
+            elem_sort = s_sort.domain()
+            def _exist_membership(x, _s=s): return z3.Select(_s, x)
+        else:
+            elem_sort = s_sort
+            def _exist_membership(x, _s=s): return z3.Select(_s, x)
 
         if len(names) != 1:
             raise NotImplementedError(
@@ -324,8 +358,17 @@ def translate_existential(
         name = names[0]
         x_var = z3.FreshConst(elem_sort, name)
         body_env = env.bind(name, x_var)
+
+        # If element sort is a composite Datatype, bind field accessors.
+        sort_name = str(elem_sort)
+        composite = registry.get_composite_fields(sort_name)
+        if composite:
+            for fname in composite['__fields__']:
+                accessor = composite[fname]
+                body_env = body_env.bind(f'{name}.{fname}', accessor(x_var))
+
         body_z3 = translate_constraint(node.body, body_env, registry)
-        membership = z3.Select(s, x_var)
+        membership = _exist_membership(x_var)
         core = z3.Exists([x_var], z3.And(membership, body_z3))
 
         if quantifier == "∃":
@@ -336,11 +379,15 @@ def translate_existential(
             # unique: ∃x. S[x] ∧ P(x) ∧ ∀y. (S[y] ∧ P(y)) ⇒ y = x
             y_var = z3.FreshConst(elem_sort, name + "_uniq")
             body_y_env = env.bind(name, y_var)
+            if composite:
+                for fname in composite['__fields__']:
+                    accessor = composite[fname]
+                    body_y_env = body_y_env.bind(f'{name}.{fname}', accessor(y_var))
             body_y_z3 = translate_constraint(node.body, body_y_env, registry)
             uniqueness = z3.ForAll(
                 [y_var],
                 z3.Implies(
-                    z3.And(z3.Select(s, y_var), body_y_z3),
+                    z3.And(_exist_membership(y_var), body_y_z3),
                     y_var == x_var,
                 ),
             )

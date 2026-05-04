@@ -198,6 +198,37 @@ class SortRegistry:
         bool_sort = self._bool_sort()
         return z3.ArraySort(element_sort, bool_sort)
 
+    def declare_composite(
+        self, name: str, fields: list[tuple[str, z3.SortRef]]
+    ) -> z3.DatatypeSortRef:
+        """
+        Declare a composite type as a Z3 Datatype with one constructor and named field accessors.
+        Idempotent: calling again with the same name returns the existing sort.
+        """
+        if name in self._registry:
+            return self._registry[name]  # type: ignore[return-value]
+
+        dt = z3.Datatype(name, self._ctx) if self._ctx else z3.Datatype(name)
+        ctor_name = f'mk_{name}'
+        dt.declare(ctor_name, *fields)
+        sort = dt.create()
+        self._registry[name] = sort
+
+        if not hasattr(self, '_composite_fields'):
+            self._composite_fields: dict[str, dict] = {}
+        entry: dict = {
+            '__fields__': [fname for fname, _ in fields],
+            '__ctor__':   getattr(sort, ctor_name),
+        }
+        for fname, _ in fields:
+            entry[fname] = getattr(sort, fname)   # Z3 accessor function
+        self._composite_fields[name] = entry
+        return sort
+
+    def get_composite_fields(self, sort_name: str) -> dict | None:
+        """Return the composite field info for sort_name, or None."""
+        return getattr(self, '_composite_fields', {}).get(sort_name)
+
     def tuple_sort(self, sorts: list[z3.SortRef]) -> z3.SortRef:
         """
         Return a Z3 sort for a fixed-arity tuple/product type.

@@ -629,11 +629,22 @@ class EvidentSolver:
                     if z3.is_int_value(length_val):
                         n = length_val.as_long()
                         elements = []
+                        sort_name = str(z3_expr.sort().basis())
+                        composite = self.registry.get_composite_fields(sort_name)
                         for i in range(min(n, 50)):
                             elem = model.eval(z3_expr[i], model_completion=True)
-                            py_elem = self._z3_to_python(elem)
-                            elements.append(py_elem)
-                            result[f"{name}.{i}"] = py_elem
+                            if composite:
+                                elem_dict = {}
+                                for fname in composite['__fields__']:
+                                    accessor = composite[fname]
+                                    fval = z3.simplify(accessor(elem))
+                                    elem_dict[fname] = self._z3_to_python(fval)
+                                elements.append(elem_dict)
+                                result[f"{name}.{i}"] = elem_dict
+                            else:
+                                py_elem = self._z3_to_python(elem)
+                                elements.append(py_elem)
+                                result[f"{name}.{i}"] = py_elem
                         # Store as Python list (not "⟨⟩" string) so that
                         # _python_to_z3_untyped can reconstruct the correct Z3 sort.
                         result[name] = elements
