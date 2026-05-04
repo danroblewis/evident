@@ -556,6 +556,8 @@ def cmd_execute(args):
         sdl_width  = getattr(args, 'width',  800),
         sdl_height = getattr(args, 'height', 600),
         sdl_title  = getattr(args, 'title',  'Evident'),
+        http_host  = getattr(args, 'host',   '127.0.0.1'),
+        http_port  = getattr(args, 'port',   8080),
     )
     try:
         executor.run(plugins)
@@ -794,6 +796,8 @@ def main():
     ex.add_argument('--width',  type=int, default=800,        help='SDL window width (if SDL is active)')
     ex.add_argument('--height', type=int, default=600,        help='SDL window height (if SDL is active)')
     ex.add_argument('--title',  default='Evident',            help='SDL window title (if SDL is active)')
+    ex.add_argument('--host',   default='127.0.0.1',          help='HTTP server bind host (if HTTPServer is active)')
+    ex.add_argument('--port',   type=int, default=8080,       help='HTTP server bind port (if HTTPServer is active)')
 
     # check
     c = sub.add_parser('check', help='report SAT/UNSAT for all schemas')

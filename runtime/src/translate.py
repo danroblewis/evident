@@ -724,12 +724,16 @@ def translate_constraint(
             if val is not None and z3.is_bool(val):
                 return val
 
-        # Single dot-field arg: src.eof  →  env['src.eof']
-        if (len(constraint.args) == 1
-                and isinstance(constraint.args[0], FieldAccess)
-                and isinstance(constraint.args[0].obj, Identifier)
-                and constraint.args[0].obj.name == '.'):
-            key = f"{name}.{constraint.args[0].field}"
+        # Dotted Bool lookup as a constraint: src.eof, server.request.has_request, …
+        # The parser builds the chain as args=[FieldAccess('.', 'request'),
+        # FieldAccess('.', 'has_request'), …] — walk all of them and build
+        # the full dotted key.
+        if (constraint.args
+                and all(isinstance(a, FieldAccess)
+                        and isinstance(a.obj, Identifier)
+                        and a.obj.name == '.'
+                        for a in constraint.args)):
+            key = name + ''.join('.' + a.field for a in constraint.args)
             val = env.lookup(key)
             if val is not None and z3.is_bool(val):
                 return val

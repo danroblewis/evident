@@ -1,0 +1,24 @@
+-- server.ev — Minimum HTTP server: respond 200 OK to every request.
+--
+-- Run:    python evident.py execute programs/http_demo/server.ev --port 8080
+-- Curl:   curl -v http://localhost:8080/
+-- Quit:   Ctrl-C
+--
+-- The HTTPServerPlugin handles the listening socket and all client
+-- multiplexing. Each tick it presents at most one ready request as
+-- server.request.*; this program produces a fixed response for any
+-- request and an empty response (status = 0) when no client is ready.
+
+import "stdlib/sockets.ev"
+
+type main
+    server ∈ HTTPServer
+
+    server.request.has_request ⇒ (
+        server.response.status = 200 ∧
+        server.response.body   = "Hello from Evident\n"
+    )
+    ¬server.request.has_request ⇒ (
+        server.response.status = 0 ∧
+        server.response.body   = ""
+    )

@@ -1,0 +1,23 @@
+-- stdlib/sockets.ev — Network I/O types for the Evident FFI.
+--
+-- The HTTPServerPlugin owns the listening socket and all client connections.
+-- Each tick it presents one ready request to Evident (or has_request = false
+-- when no client is ready). Evident's constraints determine the response.
+--
+-- A status of 0 means "no response" — the plugin closes the connection
+-- without sending. Use this for the ¬has_request branch.
+--
+-- See docs/design/sockets-and-http-server.md.
+
+type HTTPRequest
+    has_request ∈ Bool
+    method      ∈ String
+    path        ∈ String
+
+type HTTPResponse
+    status ∈ Nat
+    body   ∈ String
+
+type HTTPServer
+    request  ∈ HTTPRequest
+    response ∈ HTTPResponse
