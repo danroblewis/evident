@@ -43,6 +43,9 @@ Supporting modules:
 - `evidence.py` — derivation trees returned from queries
 - `sets.py` — set/array constraint translation
 - `sorts.py` — Z3 sort registry; also owns enum variant name → constructor map
+- `executor.py` — constraint-automaton step loop (`run()` and `step_line()`)
+- `plugin.py` + `plugins/` — I/O plugins (Stdin/Stdout, batch, SDL); each plugin
+  declares which type names it handles, the executor activates the matching ones
 - `fixedpoint.py` — forward implication rules (A, B ⇒ C) via Z3 Fixedpoint
 - `ast_types.py` — re-exports parser AST so runtime shares the same class objects
   (critical: isinstance checks break if two separate module instances exist)
@@ -333,6 +336,42 @@ is in scope.
 - Are there repeated constraint patterns across branches? They may be a trait.
 - Can you name each dispatch branch? If not, it may need further decomposition.
 - Does the parent declare variables only one subclaim uses? Move them inside.
+
+## I/O Plugins
+
+The executor is one loop. Side-effectful I/O is handled by plugins, each
+claiming one or more Evident type names. Plugins live in `runtime/src/plugins/`
+and inherit from `runtime/src/plugin.py:Plugin`.
+
+**Built-in plugins:**
+
+| Plugin | Type names |
+|---|---|
+| `StdinPlugin`     | `Stdin`, `CharInput` — one char per step |
+| `StdoutPlugin`    | `Stdout`, `Stderr`, `CharOutput` — write `var.out` per step |
+| `BatchInputPlugin`  | `StdinLines`, `StdinAll`, `StdinChunks` — one-shot |
+| `BatchOutputPlugin` | `StdoutLines`, `StdoutAll` — one-shot |
+| `SDLPlugin`       | `SDLInput`, `SDLOutput` — graphical window |
+
+**Auto-detection.** `executor.run()` calls `plugin.initialize(declared_vars)`
+on every plugin in the default list; only those whose `handles_types`
+matches at least one variable in `main` become active. Programs that
+declare `∈ Stdin` get the StdinPlugin; programs that declare `∈ SDLOutput`
+get the SDLPlugin; programs that declare both get both.
+
+**Lifecycle.** `start()` once at the beginning, `before_step()` and
+`after_step()` per step, `stop()` once at shutdown (in a `finally` block).
+`before_step → None` and `after_step → False` both signal halt.
+
+**Adding a plugin.** Subclass `Plugin`, set `handles_types = {...}`, override
+the lifecycle methods you need, then add an instance to `default_plugins()`
+in `runtime/src/plugins/__init__.py`. The executor handles the rest.
+
+**Footgun: blocking I/O.** If a program declares both `∈ Stdin` and
+`∈ SDLInput`, the StdinPlugin's `before_step` blocks waiting for a character,
+which freezes the SDL window. Single-source-of-input is the supported case.
+Future: a "non-blocking" plugin trait or `select()` on stdin when SDL is also
+active.
 
 ## Key Invariants
 

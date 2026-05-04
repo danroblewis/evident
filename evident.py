@@ -540,28 +540,25 @@ def cmd_batch(args):
 
 
 def cmd_execute(args):
-    """Run schema main as a constraint automaton against stdin/stdout."""
+    """Run schema main as a constraint automaton.
+
+    The plugin loop auto-detects which I/O plugins to activate from the type
+    names declared in `main`: Stdin/Stdout for streaming, StdinLines etc. for
+    batch mode, SDLInput/SDLOutput for graphical mode. SDL options
+    (--width, --height, --title) are passed to the SDL plugin if active and
+    ignored otherwise.
+    """
     from runtime.src.executor import EvidentExecutor
+    from runtime.src.plugins  import default_plugins
     executor = EvidentExecutor()
     executor.load(args.file)
+    plugins = default_plugins(
+        sdl_width  = getattr(args, 'width',  800),
+        sdl_height = getattr(args, 'height', 600),
+        sdl_title  = getattr(args, 'title',  'Evident'),
+    )
     try:
-        executor.run()
-    except KeyboardInterrupt:
-        pass
-    return 0
-
-
-def cmd_execute_sdl(args):
-    """Run schema main as an SDL graphical program."""
-    from runtime.src.executor import EvidentExecutor
-    executor = EvidentExecutor()
-    executor.load(args.file)
-    try:
-        executor.run_sdl(
-            width=args.width,
-            height=args.height,
-            title=args.title,
-        )
+        executor.run(plugins)
     except KeyboardInterrupt:
         pass
     return 0
@@ -791,16 +788,12 @@ def main():
     bt.add_argument('--in',  dest='input_var',  required=True, help='variable to bind to all stdin lines as a sequence')
     bt.add_argument('--out', dest='output_var', required=True, help='sequence variable to extract and write to stdout')
 
-    # execute (automaton mode)
-    ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')
-    ex.add_argument('file', help='Evident program with schema main')
-
-    # execute-sdl (graphical SDL mode)
-    exsdl = sub.add_parser('execute-sdl', help='run schema main as an SDL graphical program')
-    exsdl.add_argument('file', help='Evident program with schema main declaring ∈ SDLInput and ∈ SDLOutput')
-    exsdl.add_argument('--width',  type=int, default=800, help='window width (default 800)')
-    exsdl.add_argument('--height', type=int, default=600, help='window height (default 600)')
-    exsdl.add_argument('--title',  default='Evident', help='window title')
+    # execute (plugin-based loop — auto-detects Stdin/Stdout, batch, SDL, …)
+    ex = sub.add_parser('execute', help='run schema main as a constraint automaton')
+    ex.add_argument('file',         help='Evident program with schema main')
+    ex.add_argument('--width',  type=int, default=800,        help='SDL window width (if SDL is active)')
+    ex.add_argument('--height', type=int, default=600,        help='SDL window height (if SDL is active)')
+    ex.add_argument('--title',  default='Evident',            help='SDL window title (if SDL is active)')
 
     # check
     c = sub.add_parser('check', help='report SAT/UNSAT for all schemas')
@@ -831,7 +824,7 @@ def main():
 
     args = p.parse_args()
     dispatch = {'batch': cmd_batch, 'execute': cmd_execute,
-                'execute-sdl': cmd_execute_sdl, 'check': cmd_check,
+                'check': cmd_check,
                 'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl,
                 'test': cmd_test}
     sys.exit(dispatch[args.cmd](args))

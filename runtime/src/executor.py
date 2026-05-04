@@ -24,20 +24,12 @@ from typing import Any
 
 
 # ── Port schema names ─────────────────────────────────────────────────────────
-# Schemas whose variables are driven by the runtime, not the solver.
+# I/O is handled by plugins (runtime/src/plugins/). The streaming port type names
+# are hardcoded here because step_line() — used by trace tests — drives the
+# streaming protocol directly without going through the plugin loop.
 
-# Streaming: character-by-character (step loop)
 INPUT_SCHEMAS  = {'Stdin', 'CharInput'}
 OUTPUT_SCHEMAS = {'Stdout', 'Stderr', 'CharOutput'}
-
-# Batch: entire stdin/stdout in one solve
-BATCH_INPUT_SCHEMAS  = {'StdinLines', 'StdinAll', 'StdinChunks'}
-BATCH_OUTPUT_SCHEMAS = {'StdoutLines', 'StdoutAll'}
-
-# SDL: graphical window with event input and rect-based output
-SDL_SCHEMAS = {'SDLInput', 'SDLOutput'}
-
-IO_SCHEMAS = INPUT_SCHEMAS | OUTPUT_SCHEMAS | BATCH_INPUT_SCHEMAS | BATCH_OUTPUT_SCHEMAS | SDL_SCHEMAS
 
 
 # ── Type-based default initial values ─────────────────────────────────────────
@@ -119,27 +111,21 @@ class EvidentExecutor:
     def _inspect_main(self) -> tuple[dict, dict, dict]:
         """
         Scan schema main (following .. passthrough chains) and return:
-          input_vars  : {var_name: schema_type}   — ∈ Stdin / ∈ CharInput
-          output_vars : {var_name: schema_type}   — ∈ Stdout / ∈ CharOutput
+          input_vars  : {var_name: schema_type}   — streaming Stdin / CharInput
+          output_vars : {var_name: schema_type}   — streaming Stdout / CharOutput
           state_pairs : {base_var: (next_var, schema_type)}
+
+        Used by step_line() for trace tests. The main run() loop uses plugins
+        and `_detect_state_pairs` instead.
         """
         if self.rt.schemas.get('main') is None:
             raise RuntimeError("No 'schema main' found in program.")
 
         declared = self._collect_vars('main', set())
 
-        input_vars  = {v: t for v, t in declared.items()
-                       if t in INPUT_SCHEMAS or t in BATCH_INPUT_SCHEMAS}
-        output_vars = {v: t for v, t in declared.items()
-                       if t in OUTPUT_SCHEMAS or t in BATCH_OUTPUT_SCHEMAS}
-
-        non_io = {v: t for v, t in declared.items() if t not in IO_SCHEMAS}
-        state_pairs: dict[str, tuple[str, str]] = {}
-        for var, type_name in non_io.items():
-            next_var = f'{var}_next'
-            if next_var in non_io and non_io[next_var] == type_name:
-                state_pairs[var] = (next_var, type_name)
-
+        input_vars  = {v: t for v, t in declared.items() if t in INPUT_SCHEMAS}
+        output_vars = {v: t for v, t in declared.items() if t in OUTPUT_SCHEMAS}
+        state_pairs = self._detect_state_pairs(declared)
         return input_vars, output_vars, state_pairs
 
     # ── Given construction ────────────────────────────────────────────────────
@@ -230,49 +216,37 @@ class EvidentExecutor:
             new_states[base_var] = new_state
         return new_states
 
-    # ── Main execution loop ───────────────────────────────────────────────────
+    # ── State pair detection ──────────────────────────────────────────────────
 
-    def _run_batch(self, input_stream, output_stream, batch_in, batch_out) -> None:
-        """
-        Batch execution: read all input, solve once, write all output.
-        Used when schema main declares StdinLines, StdinAll, or StdoutLines.
-        """
-        given: dict = {}
+    def _detect_state_pairs(self, declared: dict[str, str]) -> dict[str, tuple[str, str]]:
+        """Find foo / foo_next pairs of the same non-IO type in declared vars."""
+        from .plugin import Plugin
+        # All registered plugins' handles_types are the I/O type names; everything
+        # else is potentially a state field.
+        all_io_types: set[str] = set()
+        for cls in self._all_plugin_classes():
+            all_io_types |= cls.handles_types
+        non_io = {v: t for v, t in declared.items() if t not in all_io_types}
+        state_pairs: dict[str, tuple[str, str]] = {}
+        for var, type_name in non_io.items():
+            next_var = f'{var}_next'
+            if next_var in non_io and non_io[next_var] == type_name:
+                state_pairs[var] = (next_var, type_name)
+        return state_pairs
 
-        for var, schema_type in batch_in.items():
-            if schema_type == 'StdinLines':
-                lines = [line.rstrip('\n') for line in input_stream]
-                given[f'{var}.lines'] = lines
-            elif schema_type == 'StdinAll':
-                given[f'{var}.content'] = input_stream.read()
-            elif schema_type == 'StdinChunks':
-                # chunk_size must be a given or a concrete constraint
-                # For now, read as lines and let the schema constrain chunk_size
-                lines = [line.rstrip('\n') for line in input_stream]
-                given[f'{var}.chunks'] = lines
+    @staticmethod
+    def _all_plugin_classes() -> list:
+        """Every plugin class registered in the runtime, for type-name lookup."""
+        from .plugins import StdinPlugin, StdoutPlugin, BatchInputPlugin, BatchOutputPlugin
+        classes = [StdinPlugin, StdoutPlugin, BatchInputPlugin, BatchOutputPlugin]
+        try:
+            from .plugins.sdl import SDLPlugin
+            classes.append(SDLPlugin)
+        except ImportError:
+            pass
+        return classes
 
-        result = self.rt.query('main', given=given)
-        if not result.satisfied:
-            import sys as _sys
-            print("schema main: UNSAT — no solution for the given input.",
-                  file=_sys.stderr)
-            return
-
-        for var, schema_type in batch_out.items():
-            if schema_type in ('StdoutLines',):
-                i = 0
-                while True:
-                    key = f'{var}.lines.{i}'
-                    if key not in result.bindings:
-                        break
-                    val = result.bindings[key]
-                    if val is not None:
-                        output_stream.write(str(val) + '\n')
-                    i += 1
-            elif schema_type == 'StdoutAll':
-                val = result.bindings.get(f'{var}.content', '')
-                if val:
-                    output_stream.write(str(val))
+    # ── Step-by-step execution (used by trace tests via the IDE/CLI) ─────────
 
     def initialize(self) -> None:
         """Set up state for step-by-step execution via step_line()."""
@@ -326,143 +300,100 @@ class EvidentExecutor:
 
         return {'state': flat_state, 'output': output.strip(), 'bindings': final_bindings}
 
-    def run(self, input_stream=None, output_stream=None) -> None:
+    def run(self, plugins=None, *, input_stream=None, output_stream=None) -> None:
         """
-        Execute schema main. Detects batch vs streaming mode from the
-        declared port schemas and dispatches accordingly.
+        Execute schema main using the plugin-based loop.
 
-        Batch mode  (StdinLines, StdinAll, StdoutLines, StdoutAll):
-            Reads all input at once, solves once, writes all output.
+        Each step:
+          1. Every active plugin's before_step() contributes given values.
+             Returning None signals halt (e.g. stdin EOF, batch one-shot done).
+          2. Current state pairs are added to the given dict.
+          3. The runtime solves; on success, every plugin's after_step()
+             runs to perform side effects. Returning False signals halt.
+          4. State pairs advance for the next step.
 
-        Streaming mode (Stdin, Stdout via ..LineReader / ..LineWriter):
-            Reads one character at a time, solves per step.
+        Plugins are auto-detected from the type names declared in `main` —
+        only plugins that match at least one variable are activated.
+
+        For tests: pass `input_stream` and/or `output_stream` to wire the
+        default Stdin/Stdout/Batch plugins to those streams instead of
+        sys.stdin/sys.stdout. Ignored if `plugins` is also passed.
         """
-        if input_stream is None:
-            input_stream = sys.stdin
-        if output_stream is None:
-            output_stream = sys.stdout
+        if plugins is None:
+            from .plugins import default_plugins
+            from .plugins.streams import StdinPlugin, StdoutPlugin
+            from .plugins.batch   import BatchInputPlugin, BatchOutputPlugin
+            if input_stream is not None or output_stream is not None:
+                plugins = [
+                    StdinPlugin(stream=input_stream),
+                    StdoutPlugin(stream=output_stream),
+                    BatchInputPlugin(stream=input_stream),
+                    BatchOutputPlugin(stream=output_stream),
+                ]
+                # SDL is opt-out when custom streams are passed (tests)
+            else:
+                plugins = default_plugins()
 
-        input_vars, output_vars, state_pairs = self._inspect_main()
+        if self.rt.schemas.get('main') is None:
+            raise RuntimeError("No 'schema main' found in program.")
 
-        # Dispatch to batch mode if any batch I/O schemas are declared
-        batch_in  = {v: t for v, t in input_vars.items()  if t in BATCH_INPUT_SCHEMAS}
-        batch_out = {v: t for v, t in output_vars.items() if t in BATCH_OUTPUT_SCHEMAS}
-        if batch_in or batch_out:
-            return self._run_batch(input_stream, output_stream, batch_in, batch_out)
+        declared = self._collect_vars('main', set())
 
-        # Fall through to streaming mode
-
-        if not input_vars and not output_vars:
+        # Activate matching plugins
+        active = [p for p in plugins if p.initialize(declared)]
+        if not active:
             raise RuntimeError(
-                "schema main has no Stdin or Stdout variables. "
+                "No I/O plugin matches the types declared in main. "
                 "Declare e.g. src ∈ Stdin, dst ∈ Stdout."
             )
 
-        # Initialize state for each state pair
+        # State pairs — everything not claimed by a plugin
+        state_pairs = self._detect_state_pairs(declared)
         current_states: dict[str, dict] = {
-            base_var: self._initial_state(type_name)
-            for base_var, (_next_var, type_name) in state_pairs.items()
-        }
-
-        eof = False
-        while True:
-            # Read one character from the input stream
-            char = input_stream.read(1)
-            if char == '':
-                eof = True
-
-            # Build given dict
-            given: dict[str, Any] = {}
-
-            for var in input_vars:
-                given.update(self._stdin_given(var, char, eof))
-
-            for var in output_vars:
-                given.update(self._stdout_given(var))
-
-            for base_var, state in current_states.items():
-                given.update(self._state_given(base_var, state))
-
-            # Solve
-            result = self.rt.query('main', given=given)
-
-            if not result.satisfied:
-                # Try to continue — unsatisfied steps are silently skipped
-                # (could happen if constraints are incomplete)
-                if eof:
-                    break
-                current_states = self._advance_state(result.bindings, state_pairs)
-                continue
-
-            # Write output
-            out = self._extract_output(result.bindings, output_vars)
-            if out:
-                output_stream.write(out)
-                output_stream.flush()
-
-            # Advance state
-            new_states = self._advance_state(result.bindings, state_pairs)
-            for base_var in current_states:
-                if base_var in new_states and new_states[base_var]:
-                    current_states[base_var] = new_states[base_var]
-
-            if eof:
-                break
-
-    def run_sdl(self, width: int = 800, height: int = 600,
-                title: str = 'Evident') -> None:
-        """
-        Execute schema main in SDL graphical mode.
-
-        Detects variables declared ∈ SDLInput and ∈ SDLOutput in main
-        (following passthrough chains) and uses the SDL plugin to drive them.
-        All other variables are treated as state pairs as usual.
-        """
-        from .sdl_plugin import SDLPlugin
-
-        _input_vars, _output_vars, state_pairs = self._inspect_main()
-
-        # Find SDL I/O variable names
-        declared = self._collect_vars('main', set())
-        sdl_input_var  = next((v for v, t in declared.items()
-                                if t == SDLPlugin.SDL_INPUT_SCHEMA), None)
-        sdl_output_var = next((v for v, t in declared.items()
-                                if t == SDLPlugin.SDL_OUTPUT_SCHEMA), None)
-
-        if not sdl_input_var or not sdl_output_var:
-            raise RuntimeError(
-                "SDL mode requires schema main to declare variables "
-                "∈ SDLInput and ∈ SDLOutput."
-            )
-
-        plugin = SDLPlugin(width=width, height=height, title=title)
-        plugin.init()
-
-        current_states: dict[str, dict] = {
-            base_var: self._initial_state(type_name)
-            for base_var, (_next_var, type_name) in state_pairs.items()
+            base: self._initial_state(t) for base, (_, t) in state_pairs.items()
         }
 
         try:
-            while plugin.running:
+            for p in active:
+                p.start()
+
+            running = True
+            while running:
                 given: dict[str, Any] = {}
 
-                # SDL events → input given values
-                given.update(plugin.poll(input_var=sdl_input_var))
+                # Plugin contributions
+                for p in active:
+                    contrib = p.before_step(current_states)
+                    if contrib is None:
+                        running = False
+                        break
+                    given.update(contrib)
+                if not running:
+                    break
 
-                # Current state → given values
-                for base_var, state in current_states.items():
-                    given.update(self._state_given(base_var, state))
+                # Current state
+                for base, state in current_states.items():
+                    given.update(self._state_given(base, state))
 
                 # Solve
                 result = self.rt.query('main', given=given)
 
                 if result.satisfied:
-                    plugin.render(result.bindings, output_var=sdl_output_var)
-                    new_states = self._advance_state(result.bindings, state_pairs)
-                    for base_var in current_states:
-                        if base_var in new_states and new_states[base_var]:
-                            current_states[base_var] = new_states[base_var]
+                    halt = False
+                    for p in active:
+                        if not p.after_step(result.bindings):
+                            halt = True
+                    if halt:
+                        running = False
+                        break
 
+                    # Advance state
+                    new_states = self._advance_state(result.bindings, state_pairs)
+                    for base in current_states:
+                        if base in new_states and new_states[base]:
+                            current_states[base] = new_states[base]
+                # UNSAT: silently skip the step (state is preserved)
         finally:
-            plugin.cleanup()
+            for p in active:
+                p.stop()
+
