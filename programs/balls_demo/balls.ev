@@ -1,0 +1,54 @@
+-- balls.ev — N balls drop under gravity, bounce off the floor and side walls.
+--
+-- Each ball is a 40×40 square (radius 20) drawn as a SDLRect. State is
+-- Seq(BallState) — Z3 picks initial positions/velocities on step 1, and
+-- physics evolves them from there.
+--
+-- Per-step physics, applied to each ball independently:
+--   gravity: vy increases by 1
+--   floor   (y = 560, ball center max = 540): clamp + reverse vy with damping ×7/10
+--   walls   (x = 0..760, ball center ∈ [20, 740]): clamp + reverse vx with damping ×7/10
+--
+-- Ball-ball collision is not modelled here yet. Adding it is a follow-up:
+-- pairwise overlap detection + velocity swap.
+--
+-- Run: python evident.py execute programs/balls_demo/balls.ev
+
+import "stdlib/sdl.ev"
+
+type BallState
+    pos_x ∈ Int
+    pos_y ∈ Int
+    vx    ∈ Int
+    vy    ∈ Int
+
+type WorldState
+    balls ∈ Seq(BallState)
+
+type main
+    input      ∈ SDLInput
+    output     ∈ SDLOutput
+    state      ∈ WorldState
+    state_next ∈ WorldState
+
+    #state.balls      = 4
+    #state_next.balls = 4
+    #output.rects     = 4
+
+    -- Dark background
+    output.bg.r = 15
+    output.bg.g = 15
+    output.bg.b = 30
+
+    -- Y-axis: gravity then floor clamp/bounce.
+    -- Candidate next-y is current y plus current vy plus gravity (1).
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + state.balls[i].vy + 1) > 540 ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - (state.balls[i].vy + 1)) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + state.balls[i].vy + 1) ≤ 540 ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + state.balls[i].vy + 1 ∧ state_next.balls[i].vy = state.balls[i].vy + 1)
+
+    -- X-axis: wall clamps/bounces (no gravity).
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx) > 740 ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx) < 20  ⇒ (state_next.balls[i].pos_x = 20  ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.balls[i].pos_x + state.balls[i].vx) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx ∧ state_next.balls[i].vx = state.balls[i].vx)
+
+    -- Render: each ball as a 40×40 rect centered on (pos_x, pos_y).
+    ∀ i ∈ {0..3} : (output.rects[i].x = state.balls[i].pos_x - 20 ∧ output.rects[i].y = state.balls[i].pos_y - 20 ∧ output.rects[i].w = 40 ∧ output.rects[i].h = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)
