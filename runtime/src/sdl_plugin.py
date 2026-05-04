@@ -108,9 +108,9 @@ class SDLPlugin:
 
     def poll(self, input_var: str = 'input') -> dict[str, Any]:
         """Poll SDL events and return given dict for the input variable."""
-        self._current_key = 'NoKey'
         self._click = False
 
+        # Drain the event queue (handles quit, escape, mouse).
         event = sdl2.SDL_Event()
         while sdl2.SDL_PollEvent(ctypes.byref(event)):
             t = event.type
@@ -119,7 +119,6 @@ class SDLPlugin:
                 self.running = False
             elif t == sdl2.SDL_KEYDOWN:
                 sym = event.key.keysym.sym
-                self._current_key = _KEY_MAP.get(sym, 'NoKey')
                 if sym == sdl2.SDLK_ESCAPE:
                     self.running = False
             elif t == sdl2.SDL_MOUSEMOTION:
@@ -129,6 +128,20 @@ class SDLPlugin:
                 self._mouse_x = event.button.x
                 self._mouse_y = event.button.y
                 self._click = True
+
+        # Use keyboard state for continuous directional detection — this is what
+        # makes keys feel "held" rather than registering only on the initial press.
+        keys = sdl2.SDL_GetKeyboardState(None)
+        if keys[sdl2.SDL_SCANCODE_RIGHT]:
+            self._current_key = 'Right'
+        elif keys[sdl2.SDL_SCANCODE_LEFT]:
+            self._current_key = 'Left'
+        elif keys[sdl2.SDL_SCANCODE_DOWN]:
+            self._current_key = 'Down'
+        elif keys[sdl2.SDL_SCANCODE_UP]:
+            self._current_key = 'Up'
+        else:
+            self._current_key = 'NoKey'
 
         now_ms = int(_time.monotonic() * 1000)
         dt = min(now_ms - self._last_time_ms, 100)  # cap at 100 ms
