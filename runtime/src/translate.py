@@ -248,16 +248,44 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
                 and isinstance(expr.right, FieldAccess)
                 and isinstance(expr.right.obj, Identifier)
                 and expr.right.obj.name == '.'):
-            # Reinterpret as a dotted field lookup: obj.field, or for chained
-            # access like a.b.c, walk the chain to build a full dotted key.
+            # Two cases. (a) chain of identifiers: a.b.c — try the dotted
+            # env-lookup first (works for top-level composite vars expanded
+            # into env via _bind_composite_fields). (b) chain rooted in a
+            # non-Identifier expression (e.g. rects[0].x): translate the root
+            # to a Z3 datatype value and walk accessor functions.
             chain = _flatten_juxt_dot_chain(expr)
             if chain is not None:
                 value = env.lookup(chain)
                 if value is not None:
                     return value
-            raise NotImplementedError(
-                f"Nested field access {expr!r} is not yet supported."
-            )
+            # Walk the .field chain right-to-left, collecting field names.
+            fields: list[str] = []
+            cur = expr
+            while (isinstance(cur, BinaryExpr) and cur.op == '×'
+                   and isinstance(cur.right, FieldAccess)
+                   and isinstance(cur.right.obj, Identifier)
+                   and cur.right.obj.name == '.'):
+                fields.insert(0, cur.right.field)
+                cur = cur.left
+            # `cur` is now the root expression. Translate it, then apply the
+            # field accessors via the composite registry.
+            root_val = translate_expr(cur, env, registry)
+            val = root_val
+            for field in fields:
+                if not z3.is_app(val):
+                    raise NotImplementedError(
+                        f"Field access .{field} on non-datatype value")
+                sort = val.sort()
+                if not (z3.is_sort(sort) and sort.kind() == z3.Z3_DATATYPE_SORT):
+                    raise NotImplementedError(
+                        f"Field access .{field} on non-datatype sort {sort}")
+                sort_name = sort.name() if hasattr(sort, 'name') else str(sort)
+                composite = registry.get_composite_fields(sort_name)
+                if composite is None or field not in composite:
+                    raise NotImplementedError(
+                        f"Sort {sort_name!r} has no field {field!r}")
+                val = composite[field](val)
+            return val
 
         # Built-in function applications via juxtaposition: int_to_str n
         if expr.op == '×' and isinstance(expr.left, Identifier):
@@ -351,19 +379,33 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
 
     # ── Field access ──────────────────────────────────────────────────────────
     if isinstance(expr, FieldAccess):
-        # Simple case: the object is an Identifier — look up "obj.field".
+        # Identifier object: look up "obj.field" by dotted name (the flat-expansion
+        # convention for top-level composite variables).
         if isinstance(expr.obj, Identifier):
             key = f"{expr.obj.name}.{expr.field}"
             value = env.lookup(key)
             if value is not None:
                 return value
-            # Fall back to looking up the object and using a dotted-name convention.
             raise KeyError(
                 f"Field access {key!r} not found in environment. "
                 f"Bound names: {list(env.bindings.keys())}"
             )
+        # General case: translate the object expression. If the result is a Z3
+        # composite Datatype value, apply the field's accessor function. This
+        # enables expressions like rects[0].x (Seq indexing → datatype value
+        # → field access) and any other chain ending in field access on a
+        # composite value.
+        obj_val = translate_expr(expr.obj, env, registry)
+        if z3.is_app(obj_val):
+            sort = obj_val.sort()
+            if z3.is_sort(sort) and sort.kind() == z3.Z3_DATATYPE_SORT:
+                sort_name = sort.name() if hasattr(sort, 'name') else str(sort)
+                composite = registry.get_composite_fields(sort_name)
+                if composite and expr.field in composite:
+                    accessor = composite[expr.field]
+                    return accessor(obj_val)
         raise NotImplementedError(
-            "FieldAccess on non-Identifier objects is not yet supported."
+            f"FieldAccess: cannot resolve .{expr.field} on {type(expr.obj).__name__}"
         )
 
     raise NotImplementedError(
