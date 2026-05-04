@@ -694,27 +694,42 @@ def translate_constraint(
             composed_env = env
             all_mappings = list(constraint.mappings) + list(constraint.block_mappings)
             for mapping in all_mappings:
-                parent_name = (mapping.value.name
-                               if isinstance(mapping.value, Identifier) else None)
+                # Determine if the mapping value is a name path (bare identifier
+                # like `state_next`, or a dotted chain like `state.player`).
+                parent_name: 'str | None' = None
+                if isinstance(mapping.value, Identifier):
+                    parent_name = mapping.value.name
+                elif isinstance(mapping.value, BinaryExpr):
+                    parent_name = _flatten_juxt_dot_chain(mapping.value)
+
                 if parent_name and env.lookup(parent_name) is not None:
-                    # Bare identifier already in env — bind directly.
+                    # Path is a leaf var in env — bind directly.
                     composed_env = composed_env.bind(
                         mapping.slot, env.lookup(parent_name)
                     )
                 elif parent_name:
-                    # Bare identifier NOT in env — sub-schema mapping:
-                    # slot.* → parent_name.*  (e.g. `next mapsto state_next`).
+                    # Path doesn't exist as a leaf — try sub-schema mapping:
+                    # slot.field → parent_name.field for every matching env key.
+                    # Handles `next mapsto state_next` and `state mapsto state.player`.
                     prefix = parent_name + '.'
+                    matched_any = False
                     for k, v in env.bindings.items():
                         if k.startswith(prefix):
                             field = k[len(prefix):]
                             composed_env = composed_env.bind(
                                 mapping.slot + '.' + field, v
                             )
+                            matched_any = True
+                    if not matched_any:
+                        # Path didn't match a sub-schema either — try as expression.
+                        try:
+                            z3_val = translate_expr(mapping.value, env, registry)
+                            composed_env = composed_env.bind(mapping.slot, z3_val)
+                        except (NotImplementedError, KeyError):
+                            pass
                 else:
                     # Arbitrary expression: translate and bind the result.
-                    # Handles literals (pos_x mapsto 80), field accesses
-                    # (player_x mapsto state.player_x), arithmetic, etc.
+                    # Handles literals (pos_x mapsto 80), arithmetic, etc.
                     try:
                         z3_val = translate_expr(mapping.value, env, registry)
                         composed_env = composed_env.bind(mapping.slot, z3_val)
@@ -735,19 +750,22 @@ def translate_constraint(
                                     MembershipConstraint as MC,
                                     Identifier as Ident)
 
-            # For subclaims: create fresh Z3 constants for vars declared in
-            # the subclaim body but not already present in the parent env.
-            if schema.keyword == 'subclaim':
-                for item in schema.body:
-                    if _is_type_decl(item) and isinstance(item, MC):
-                        var_name = item.left.name if isinstance(item.left, Ident) else None
-                        if var_name and composed_env.lookup(var_name) is None:
-                            try:
-                                sort = _resolve_sort(item.right, registry)
-                                fresh = z3.FreshConst(sort, prefix=f'_{schema.name}_{var_name}_')
-                                composed_env = composed_env.bind(var_name, fresh)
-                            except Exception:
-                                pass
+            # Create fresh Z3 constants for vars declared in the claim body
+            # that weren't bound via mapping or names-match. These are the
+            # claim's "internal" variables — parameters the caller didn't
+            # supply, treated as fresh per invocation. Applies to both
+            # subclaims and top-level claims (e.g. AxisPhysics's `intended`
+            # and `target` which are computed from inputs).
+            for item in schema.body:
+                if _is_type_decl(item) and isinstance(item, MC):
+                    var_name = item.left.name if isinstance(item.left, Ident) else None
+                    if var_name and composed_env.lookup(var_name) is None:
+                        try:
+                            sort = _resolve_sort(item.right, registry)
+                            fresh = z3.FreshConst(sort, prefix=f'_{schema.name}_{var_name}_')
+                            composed_env = composed_env.bind(var_name, fresh)
+                        except Exception:
+                            pass
 
             conjuncts = []
             for item in schema.body:

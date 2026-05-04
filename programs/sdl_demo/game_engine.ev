@@ -1,0 +1,107 @@
+-- game_engine.ev — Shared schemas for the collect/grid SDL demos.
+--
+-- Holds the parts collect.ev and grid.ev have in common:
+--   PlayerState     — x/y position and velocity
+--   AxisPhysics     — 1D acceleration, deceleration, wall clamping
+--   PlayerPhysics   — both axes wired to arrow keys
+--   PlayerRect      — render the player as a 40×40 square (gold normally,
+--                     bright when won)
+--   GameBackground  — dark background normally, green on win
+--
+-- A game declares `state ∈ GameState` where GameState contains
+-- `player ∈ PlayerState` plus game-specific fields, then calls these
+-- claims via `mapsto` to wire them up. See collect.ev and grid.ev.
+--
+-- Game-specific things (objectives, collection logic, win condition)
+-- stay in the game program — only the generic player + visual chrome
+-- lives here. This is not part of the standard library; it's a local
+-- module shared between the two demos in this directory.
+
+import "stdlib/sdl.ev"
+
+-- ── Player state ──────────────────────────────────────────────────────────────
+
+type PlayerState
+    x  ∈ Int
+    y  ∈ Int
+    vx ∈ Int
+    vy ∈ Int
+
+-- ── 1D physics: acceleration, deceleration, wall clamping ────────────────────
+-- Acceleration: 2 px/step², capped at ±12. Deceleration: 2 px/step² toward
+-- zero, snaps to 0 within ±2. Position clamped at [pos_min, pos_max] with
+-- velocity zeroed on impact.
+
+claim AxisPhysics
+    pos       ∈ Int
+    pos_next  ∈ Int
+    v         ∈ Int
+    v_next    ∈ Int
+    pos_min   ∈ Int
+    pos_max   ∈ Int
+    won       ∈ Bool
+    accel_pos ∈ Bool
+    accel_neg ∈ Bool
+    intended  ∈ Int
+    target    ∈ Int
+
+    target = pos + intended
+
+    won ⇒ intended = 0
+    ¬won ⇒
+        accel_pos ⇒
+            v ≤ 10 ⇒ intended = v + 2
+            v > 10 ⇒ intended = 12
+        (¬accel_pos ∧ accel_neg) ⇒
+            v ≥ -10 ⇒ intended = v - 2
+            v < -10 ⇒ intended = -12
+        (¬accel_pos ∧ ¬accel_neg) ⇒
+            v > 2 ⇒ intended = v - 2
+            (v ≤ 2 ∧ v ≥ -2) ⇒ intended = 0
+            v < -2 ⇒ intended = v + 2
+
+    target > pos_max ⇒
+        v_next = 0
+        pos_next = pos_max
+    target < pos_min ⇒
+        v_next = 0
+        pos_next = pos_min
+    (target ≥ pos_min ∧ target ≤ pos_max) ⇒
+        v_next = intended
+        pos_next = target
+
+-- ── Both-axis player movement, wired to arrow keys ──────────────────────────
+
+claim PlayerPhysics
+    state      ∈ PlayerState
+    state_next ∈ PlayerState
+    input      ∈ SDLInput
+    won        ∈ Bool
+    bound_x    ∈ Int          -- max x (player_x ∈ [0, bound_x])
+    bound_y    ∈ Int          -- max y (player_y ∈ [0, bound_y])
+
+    AxisPhysics (pos mapsto state.x, pos_next mapsto state_next.x, v mapsto state.vx, v_next mapsto state_next.vx, pos_min mapsto 0, pos_max mapsto bound_x, won mapsto won, accel_pos mapsto input.right_held, accel_neg mapsto input.left_held)
+    AxisPhysics (pos mapsto state.y, pos_next mapsto state_next.y, v mapsto state.vy, v_next mapsto state_next.vy, pos_min mapsto 0, pos_max mapsto bound_y, won mapsto won, accel_pos mapsto input.down_held, accel_neg mapsto input.up_held)
+
+-- ── Player rect: 40×40 gold square (bright cream when won) ──────────────────
+
+claim PlayerRect
+    state ∈ PlayerState
+    rect  ∈ SDLRect
+    won   ∈ Bool
+
+    rect.x = state.x
+    rect.y = state.y
+    rect.w = 40
+    rect.h = 40
+    won  ⇒ (rect.color.r = 255 ∧ rect.color.g = 255 ∧ rect.color.b = 150)
+    ¬won ⇒ (rect.color.r = 220 ∧ rect.color.g = 180 ∧ rect.color.b = 60)
+
+-- ── Background color: dark navy normally, mossy green when won ──────────────
+
+claim GameBackground
+    bg  ∈ Color
+    won ∈ Bool
+
+    won  ⇒ (bg.r = 20 ∧ bg.g = 120 ∧ bg.b = 50)
+    ¬won ⇒ (bg.r = 15 ∧ bg.g = 15  ∧ bg.b = 30)
