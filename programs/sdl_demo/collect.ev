@@ -73,7 +73,8 @@ type main
         ¬(¬collected ∧ player_x ≤ pos_x + 25 ∧ player_x ≥ pos_x - 40 ∧ player_y ≤ pos_y + 25 ∧ player_y ≥ pos_y - 40) ⇒ next_collected = collected
 
     -- 1D acceleration / deceleration / wall clamping for one axis.
-    -- `intended` is fresh per composition (subclaim-internal variable).
+    -- `intended` (next velocity, before clamping) and `target` (next position
+    -- if we ignored bounds) are fresh per composition.
     subclaim AxisPhysics
         pos       ∈ Int
         pos_next  ∈ Int
@@ -84,7 +85,10 @@ type main
         won       ∈ Bool
         accel_pos ∈ Bool
         accel_neg ∈ Bool
-        intended  ∈ Int
+        intended  ∈ Int     -- next velocity, before wall clamping
+        target    ∈ Int     -- intended next position (pos + intended)
+
+        target = pos + intended
 
         -- Velocity update — three input states, three deceleration sub-cases.
         won ⇒ intended = 0
@@ -100,17 +104,17 @@ type main
                 (v ≤ 2 ∧ v ≥ -2) ⇒ intended = 0
                 v < -2 ⇒ intended = v + 2
 
-        -- Wall clamping. Position update folds in: if would-exceed, clamp;
-        -- otherwise advance normally.
-        (pos + intended > pos_max) ⇒
+        -- Wall clamping: if target would exceed bounds, clamp position and
+        -- zero the velocity; otherwise advance to target normally.
+        target > pos_max ⇒
             v_next = 0
             pos_next = pos_max
-        (pos + intended < pos_min) ⇒
+        target < pos_min ⇒
             v_next = 0
             pos_next = pos_min
-        (pos + intended ≥ pos_min ∧ pos + intended ≤ pos_max) ⇒
+        (target ≥ pos_min ∧ target ≤ pos_max) ⇒
             v_next = intended
-            pos_next = pos + intended
+            pos_next = target
 
     -- ── Background ────────────────────────────────────────────────────────────
     state.won ⇒

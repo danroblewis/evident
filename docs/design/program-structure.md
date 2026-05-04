@@ -393,6 +393,45 @@ Mappings can be **literals** (`pos_x mapsto 80`), **field accesses**
 identifiers. The `mapsto` value gets translated as an expression in the
 caller's scope and bound to the parameter.
 
+### Repeated subexpression → named subclaim-internal variable
+
+When the same arithmetic expression appears multiple times — usually
+because it represents a meaningful intermediate value — extract it into
+a fresh subclaim-internal variable and constrain it once:
+
+```evident
+-- Before — `pos + intended` repeated five times
+target > pos_max ⇒ ...
+target < pos_min ⇒ ...
+(target ≥ pos_min ∧ target ≤ pos_max) ⇒
+    pos_next = pos + intended
+```
+
+becomes
+
+```evident
+subclaim AxisPhysics
+    ...
+    intended ∈ Int     -- next velocity, before clamping
+    target   ∈ Int     -- intended next position
+
+    target = pos + intended
+
+    target > pos_max ⇒ (... pos_next = pos_max)
+    target < pos_min ⇒ (... pos_next = pos_min)
+    (target ≥ pos_min ∧ target ≤ pos_max) ⇒ (... pos_next = target)
+```
+
+The variable name communicates *what the expression means* (the
+"intended next position") and the constraint solver doesn't care that
+you named it. Same number of Z3 constraints, much clearer reading.
+
+This is the constraint-language equivalent of `let target = pos + intended in ...`
+in functional languages, or extracting a local variable in imperative ones.
+The mechanism is different (the value is constrained, not assigned) but the
+intent — name an intermediate so the surrounding code reads better — is
+the same.
+
 ### Mirrored axes / dimensions → axis-parameterized claim
 
 X and Y physics are usually structurally identical with axis-specific
@@ -525,6 +564,7 @@ table reads as a verb-to-action map.
 |---|---|
 | 4× similar blocks differ only in position/colour/etc. | Parameterized claim, `mapsto` mappings |
 | X and Y axes (or N rows/columns) with identical structure | Axis-parameterized claim, called per axis |
+| Same arithmetic expression appears 3+ times | Subclaim-internal variable; constrain once, reference by name |
 | `condition ⇒ A; condition ⇒ B; condition ⇒ C` (same antecedent) | Combine: `condition ⇒ (A ∧ B ∧ C)` or trait |
 | Optional rendering / appearance | Active/inactive toggle with sentinel "invisible" state |
 | Many disjoint `⇒` branches with nameable consequents | Subclaims + `⟸` dispatch |
