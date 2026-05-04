@@ -9,17 +9,20 @@
 -- The plugin stops at the first slot with w=0 and h=0.
 
 -- ── Input ─────────────────────────────────────────────────────────────────────
-
-type SDLKey = Up | Down | Left | Right | Space | Enter | Escape | NoKey
+-- Directional keys are four independent booleans so multiple can be held
+-- simultaneously (diagonal movement). quit, mouse_x/y and click are separate.
 
 type SDLInput
-    key     ∈ SDLKey
-    mouse_x ∈ Int
-    mouse_y ∈ Int
-    click   ∈ Bool
-    quit    ∈ Bool
-    time    ∈ Int   -- milliseconds since unix epoch
-    dt      ∈ Int   -- milliseconds since the previous step (capped at 100)
+    right_held ∈ Bool
+    left_held  ∈ Bool
+    up_held    ∈ Bool
+    down_held  ∈ Bool
+    mouse_x    ∈ Int
+    mouse_y    ∈ Int
+    click      ∈ Bool
+    quit       ∈ Bool
+    time       ∈ Int   -- milliseconds since unix epoch
+    dt         ∈ Int   -- milliseconds since the previous step (capped at 100)
 
 -- ── Output ────────────────────────────────────────────────────────────────────
 -- Each rect slot: x y w h r g b. Set w=0 and h=0 to leave a slot empty.

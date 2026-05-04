@@ -92,36 +92,40 @@ type main
         intended_vx ∈ Int
         intended_vy ∈ Int
 
-        -- ── X velocity ───────────────────────────────────────────────────────
-        -- Won: freeze
+        -- ── Won: freeze ───────────────────────────────────────────────────────
         state.won ⇒ (intended_vx = 0 ∧ intended_vy = 0)
 
-        -- Right key: accelerate rightward, cap at 12
-        (¬state.won ∧ input.key = Right ∧ state.vx ≤ 10) ⇒ intended_vx = state.vx + 2
-        (¬state.won ∧ input.key = Right ∧ state.vx > 10)  ⇒ intended_vx = 12
+        -- ── X velocity ───────────────────────────────────────────────────────
+        -- right_held takes priority; if only left_held, accelerate left;
+        -- if neither (or both cancel), decelerate. X and Y are independent so
+        -- holding Right+Up gives true diagonal movement.
 
-        -- Left key: accelerate leftward, cap at -12
-        (¬state.won ∧ input.key = Left ∧ state.vx ≥ -10) ⇒ intended_vx = state.vx - 2
-        (¬state.won ∧ input.key = Left ∧ state.vx < -10)  ⇒ intended_vx = -12
+        -- Right held: accelerate rightward, cap at 12
+        (¬state.won ∧ input.right_held ∧ state.vx ≤ 10) ⇒ intended_vx = state.vx + 2
+        (¬state.won ∧ input.right_held ∧ state.vx > 10)  ⇒ intended_vx = 12
 
-        -- No horizontal key: decelerate x toward zero
-        (¬state.won ∧ input.key ≠ Right ∧ input.key ≠ Left ∧ state.vx > 2)  ⇒ intended_vx = state.vx - 2
-        (¬state.won ∧ input.key ≠ Right ∧ input.key ≠ Left ∧ state.vx ≤ 2 ∧ state.vx ≥ -2) ⇒ intended_vx = 0
-        (¬state.won ∧ input.key ≠ Right ∧ input.key ≠ Left ∧ state.vx < -2) ⇒ intended_vx = state.vx + 2
+        -- Left held, right not held: accelerate leftward, cap at -12
+        (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx ≥ -10) ⇒ intended_vx = state.vx - 2
+        (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx < -10)  ⇒ intended_vx = -12
+
+        -- Neither horizontal key: decelerate x toward zero
+        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx > 2)  ⇒ intended_vx = state.vx - 2
+        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx ≤ 2 ∧ state.vx ≥ -2) ⇒ intended_vx = 0
+        (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx < -2) ⇒ intended_vx = state.vx + 2
 
         -- ── Y velocity ───────────────────────────────────────────────────────
-        -- Down key: accelerate downward, cap at 12
-        (¬state.won ∧ input.key = Down ∧ state.vy ≤ 10) ⇒ intended_vy = state.vy + 2
-        (¬state.won ∧ input.key = Down ∧ state.vy > 10)  ⇒ intended_vy = 12
+        -- Down held: accelerate downward, cap at 12
+        (¬state.won ∧ input.down_held ∧ state.vy ≤ 10) ⇒ intended_vy = state.vy + 2
+        (¬state.won ∧ input.down_held ∧ state.vy > 10)  ⇒ intended_vy = 12
 
-        -- Up key: accelerate upward, cap at -12
-        (¬state.won ∧ input.key = Up ∧ state.vy ≥ -10) ⇒ intended_vy = state.vy - 2
-        (¬state.won ∧ input.key = Up ∧ state.vy < -10)  ⇒ intended_vy = -12
+        -- Up held, down not held: accelerate upward, cap at -12
+        (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy ≥ -10) ⇒ intended_vy = state.vy - 2
+        (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy < -10)  ⇒ intended_vy = -12
 
-        -- No vertical key: decelerate y toward zero
-        (¬state.won ∧ input.key ≠ Down ∧ input.key ≠ Up ∧ state.vy > 2)  ⇒ intended_vy = state.vy - 2
-        (¬state.won ∧ input.key ≠ Down ∧ input.key ≠ Up ∧ state.vy ≤ 2 ∧ state.vy ≥ -2) ⇒ intended_vy = 0
-        (¬state.won ∧ input.key ≠ Down ∧ input.key ≠ Up ∧ state.vy < -2) ⇒ intended_vy = state.vy + 2
+        -- Neither vertical key: decelerate y toward zero
+        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy > 2)  ⇒ intended_vy = state.vy - 2
+        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy ≤ 2 ∧ state.vy ≥ -2) ⇒ intended_vy = 0
+        (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy < -2) ⇒ intended_vy = state.vy + 2
 
         -- ── Wall clamping and position update (x) ────────────────────────────
         (state.player_x + intended_vx > 760) ⇒ (state_next.vx = 0 ∧ state_next.player_x = 760)

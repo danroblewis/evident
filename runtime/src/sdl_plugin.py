@@ -19,21 +19,6 @@ try:
 except ImportError:
     HAS_SDL = False
 
-# Key symbol → SDLKey enum name
-_KEY_MAP: dict[int, str] = {}
-
-def _build_key_map():
-    if not HAS_SDL:
-        return
-    _KEY_MAP.update({
-        sdl2.SDLK_UP:     'Up',
-        sdl2.SDLK_DOWN:   'Down',
-        sdl2.SDLK_LEFT:   'Left',
-        sdl2.SDLK_RIGHT:  'Right',
-        sdl2.SDLK_SPACE:  'Space',
-        sdl2.SDLK_RETURN: 'Enter',
-        sdl2.SDLK_ESCAPE: 'Escape',
-    })
 
 
 class SDLPlugin:
@@ -62,14 +47,12 @@ class SDLPlugin:
             raise RuntimeError(
                 "pysdl2 is not installed. Run: pip install pysdl2 pysdl2-dll"
             )
-        _build_key_map()
         self.width   = width
         self.height  = height
         self.title   = title
         self.window   = None
         self.renderer = None
         self.running  = True
-        self._current_key  = 'NoKey'
         self._mouse_x      = 0
         self._mouse_y      = 0
         self._click        = False
@@ -129,19 +112,12 @@ class SDLPlugin:
                 self._mouse_y = event.button.y
                 self._click = True
 
-        # Use keyboard state for continuous directional detection — this is what
-        # makes keys feel "held" rather than registering only on the initial press.
+        # Read all four directional keys independently — allows diagonal movement.
         keys = sdl2.SDL_GetKeyboardState(None)
-        if keys[sdl2.SDL_SCANCODE_RIGHT]:
-            self._current_key = 'Right'
-        elif keys[sdl2.SDL_SCANCODE_LEFT]:
-            self._current_key = 'Left'
-        elif keys[sdl2.SDL_SCANCODE_DOWN]:
-            self._current_key = 'Down'
-        elif keys[sdl2.SDL_SCANCODE_UP]:
-            self._current_key = 'Up'
-        else:
-            self._current_key = 'NoKey'
+        right = bool(keys[sdl2.SDL_SCANCODE_RIGHT])
+        left  = bool(keys[sdl2.SDL_SCANCODE_LEFT])
+        down  = bool(keys[sdl2.SDL_SCANCODE_DOWN])
+        up    = bool(keys[sdl2.SDL_SCANCODE_UP])
 
         now_ms = int(_time.monotonic() * 1000)
         dt = min(now_ms - self._last_time_ms, 100)  # cap at 100 ms
@@ -149,13 +125,16 @@ class SDLPlugin:
         unix_ms = int(_time.time() * 1000)
 
         return {
-            f'{input_var}.key':     self._current_key,
-            f'{input_var}.mouse_x': self._mouse_x,
-            f'{input_var}.mouse_y': self._mouse_y,
-            f'{input_var}.click':   self._click,
-            f'{input_var}.quit':    self._quit,
-            f'{input_var}.time':    unix_ms,
-            f'{input_var}.dt':      dt,
+            f'{input_var}.right_held': right,
+            f'{input_var}.left_held':  left,
+            f'{input_var}.up_held':    up,
+            f'{input_var}.down_held':  down,
+            f'{input_var}.mouse_x':    self._mouse_x,
+            f'{input_var}.mouse_y':    self._mouse_y,
+            f'{input_var}.click':      self._click,
+            f'{input_var}.quit':       self._quit,
+            f'{input_var}.time':       unix_ms,
+            f'{input_var}.dt':         dt,
         }
 
     # ── Rendering ─────────────────────────────────────────────────────────────
