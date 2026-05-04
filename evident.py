@@ -551,6 +551,22 @@ def cmd_execute(args):
     return 0
 
 
+def cmd_execute_sdl(args):
+    """Run schema main as an SDL graphical program."""
+    from runtime.src.executor import EvidentExecutor
+    executor = EvidentExecutor()
+    executor.load(args.file)
+    try:
+        executor.run_sdl(
+            width=args.width,
+            height=args.height,
+            title=args.title,
+        )
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 
 def cmd_check(args):
     """Report SAT/UNSAT for every schema in the file(s)."""
@@ -779,6 +795,13 @@ def main():
     ex = sub.add_parser('execute', help='run schema main as a constraint automaton (reads stdin, writes stdout)')
     ex.add_argument('file', help='Evident program with schema main')
 
+    # execute-sdl (graphical SDL mode)
+    exsdl = sub.add_parser('execute-sdl', help='run schema main as an SDL graphical program')
+    exsdl.add_argument('file', help='Evident program with schema main declaring ∈ SDLInput and ∈ SDLOutput')
+    exsdl.add_argument('--width',  type=int, default=800, help='window width (default 800)')
+    exsdl.add_argument('--height', type=int, default=600, help='window height (default 600)')
+    exsdl.add_argument('--title',  default='Evident', help='window title')
+
     # check
     c = sub.add_parser('check', help='report SAT/UNSAT for all schemas')
     c.add_argument('files', nargs='+')
@@ -807,7 +830,8 @@ def main():
     te.add_argument('path', nargs='?', help='file or directory to search (default: current directory)')
 
     args = p.parse_args()
-    dispatch = {'batch': cmd_batch, 'execute': cmd_execute, 'check': cmd_check,
+    dispatch = {'batch': cmd_batch, 'execute': cmd_execute,
+                'execute-sdl': cmd_execute_sdl, 'check': cmd_check,
                 'query': cmd_query, 'sample': cmd_sample, 'repl': cmd_repl,
                 'test': cmd_test}
     sys.exit(dispatch[args.cmd](args))

@@ -1,0 +1,59 @@
+-- demo.ev — Moving square demo for the Evident SDL FFI.
+--
+-- A gold square on a dark background, with a static teal target square.
+-- Arrow keys move the player. The player is constrained to stay within
+-- the window bounds — hitting a wall causes UNSAT, the executor silently
+-- skips the step, and the square stays put.
+--
+-- Run: python evident.py execute-sdl programs/sdl_demo/demo.ev
+
+import "stdlib/sdl.ev"
+
+type PlayerState
+    x ∈ Int
+    y ∈ Int
+
+type main
+    input       ∈ SDLInput
+    output      ∈ SDLOutput
+    player      ∈ PlayerState
+    player_next ∈ PlayerState
+
+    -- ── Background ────────────────────────────────────────────────────────────
+    output.bg_r = 20
+    output.bg_g = 20
+    output.bg_b = 35
+
+    -- ── Slot 0: target square (static teal, center of window) ─────────────────
+    output.rect0_x = 380
+    output.rect0_y = 280
+    output.rect0_w = 40
+    output.rect0_h = 40
+    output.rect0_r = 60
+    output.rect0_g = 180
+    output.rect0_b = 160
+
+    -- ── Slot 1: player square (gold, moves with arrow keys) ───────────────────
+    output.rect1_x = player.x
+    output.rect1_y = player.y
+    output.rect1_w = 40
+    output.rect1_h = 40
+    output.rect1_r = 220
+    output.rect1_g = 180
+    output.rect1_b = 60
+
+    -- ── Movement: 8 pixels per step ──────────────────────────────────────────
+    input.key = Up     ⇒ (player_next.x = player.x ∧ player_next.y = player.y - 8)
+    input.key = Down   ⇒ (player_next.x = player.x ∧ player_next.y = player.y + 8)
+    input.key = Left   ⇒ (player_next.x = player.x - 8 ∧ player_next.y = player.y)
+    input.key = Right  ⇒ (player_next.x = player.x + 8 ∧ player_next.y = player.y)
+    input.key = NoKey  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
+    input.key = Space  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
+    input.key = Enter  ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
+    input.key = Escape ⇒ (player_next.x = player.x ∧ player_next.y = player.y)
+
+    -- ── Bounds: window 800×600, square 40×40 ─────────────────────────────────
+    player_next.x ≥ 0
+    player_next.x ≤ 760
+    player_next.y ≥ 0
+    player_next.y ≤ 560

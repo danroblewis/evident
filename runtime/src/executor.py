@@ -34,7 +34,10 @@ OUTPUT_SCHEMAS = {'Stdout', 'Stderr', 'CharOutput'}
 BATCH_INPUT_SCHEMAS  = {'StdinLines', 'StdinAll', 'StdinChunks'}
 BATCH_OUTPUT_SCHEMAS = {'StdoutLines', 'StdoutAll'}
 
-IO_SCHEMAS = INPUT_SCHEMAS | OUTPUT_SCHEMAS | BATCH_INPUT_SCHEMAS | BATCH_OUTPUT_SCHEMAS
+# SDL: graphical window with event input and rect-based output
+SDL_SCHEMAS = {'SDLInput', 'SDLOutput'}
+
+IO_SCHEMAS = INPUT_SCHEMAS | OUTPUT_SCHEMAS | BATCH_INPUT_SCHEMAS | BATCH_OUTPUT_SCHEMAS | SDL_SCHEMAS
 
 
 # ── Type-based default initial values ─────────────────────────────────────────
@@ -405,3 +408,61 @@ class EvidentExecutor:
 
             if eof:
                 break
+
+    def run_sdl(self, width: int = 800, height: int = 600,
+                title: str = 'Evident') -> None:
+        """
+        Execute schema main in SDL graphical mode.
+
+        Detects variables declared ∈ SDLInput and ∈ SDLOutput in main
+        (following passthrough chains) and uses the SDL plugin to drive them.
+        All other variables are treated as state pairs as usual.
+        """
+        from .sdl_plugin import SDLPlugin
+
+        _input_vars, _output_vars, state_pairs = self._inspect_main()
+
+        # Find SDL I/O variable names
+        declared = self._collect_vars('main', set())
+        sdl_input_var  = next((v for v, t in declared.items()
+                                if t == SDLPlugin.SDL_INPUT_SCHEMA), None)
+        sdl_output_var = next((v for v, t in declared.items()
+                                if t == SDLPlugin.SDL_OUTPUT_SCHEMA), None)
+
+        if not sdl_input_var or not sdl_output_var:
+            raise RuntimeError(
+                "SDL mode requires schema main to declare variables "
+                "∈ SDLInput and ∈ SDLOutput."
+            )
+
+        plugin = SDLPlugin(width=width, height=height, title=title)
+        plugin.init()
+
+        current_states: dict[str, dict] = {
+            base_var: self._initial_state(type_name)
+            for base_var, (_next_var, type_name) in state_pairs.items()
+        }
+
+        try:
+            while plugin.running:
+                given: dict[str, Any] = {}
+
+                # SDL events → input given values
+                given.update(plugin.poll(input_var=sdl_input_var))
+
+                # Current state → given values
+                for base_var, state in current_states.items():
+                    given.update(self._state_given(base_var, state))
+
+                # Solve
+                result = self.rt.query('main', given=given)
+
+                if result.satisfied:
+                    plugin.render(result.bindings, output_var=sdl_output_var)
+                    new_states = self._advance_state(result.bindings, state_pairs)
+                    for base_var in current_states:
+                        if base_var in new_states and new_states[base_var]:
+                            current_states[base_var] = new_states[base_var]
+
+        finally:
+            plugin.cleanup()
