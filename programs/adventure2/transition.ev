@@ -5,50 +5,9 @@
 --   cmd                — renamed to `line` when composed in main
 --   response           — renamed to `line_out` when composed in main
 --   ready              — renamed to `line_ready` when composed in main
---
--- Structure:
---   Trait claims  — primitive state-transition fragments
---   Trait bundles — StateTurn, MetaTurn: common combos of the primitives
---   GameTransition — subclaims per verb; dispatch via ⇒ in the ready block
 
 import "programs/adventure2/game_state.ev"
 import "programs/adventure2/commands.ev"
-
--- ── Primitive trait claims ─────────────────────────────────────────────────────
-
-claim PreservesInventory
-    state      ∈ GameState
-    state_next ∈ GameState
-    state_next.inventory = state.inventory
-
-claim PreservesLocation
-    state      ∈ GameState
-    state_next ∈ GameState
-    state_next.location = state.location
-
-claim AdvancesTurn
-    state      ∈ GameState
-    state_next ∈ GameState
-    state_next.turn = state.turn + 1
-
-claim HoldsTurn
-    state      ∈ GameState
-    state_next ∈ GameState
-    state_next.turn = state.turn
-
--- ── Trait bundles ──────────────────────────────────────────────────────────────
-
-claim StateTurn
-    PreservesInventory
-    PreservesLocation
-    AdvancesTurn
-
-claim MetaTurn
-    PreservesInventory
-    PreservesLocation
-    HoldsTurn
-
--- ── GameTransition ────────────────────────────────────────────────────────────
 
 claim GameTransition
     state      ∈ GameState
@@ -59,11 +18,34 @@ claim GameTransition
     parsed     ∈ ParsedCommand
     item       ∈ Item
 
+    -- ── Trait primitives ──────────────────────────────────────────────────────
+    -- state/state_next are in scope from parent; no type declarations needed.
+
+    subclaim PreservesInventory
+        state_next.inventory = state.inventory
+    subclaim PreservesLocation
+        state_next.location = state.location
+    subclaim AdvancesTurn
+        state_next.turn = state.turn + 1
+    subclaim HoldsTurn
+        state_next.turn = state.turn
+
+    -- ── Trait bundles ─────────────────────────────────────────────────────────
+
+    subclaim StateTurn
+        PreservesInventory
+        PreservesLocation
+        AdvancesTurn
+
+    subclaim MetaTurn
+        PreservesInventory
+        PreservesLocation
+        HoldsTurn
+
     -- ── Action subclaims ──────────────────────────────────────────────────────
-    -- LookAction describes state_next.location — callers decide whether it
-    -- changed. StateTurn (in the dispatch) ensures state_next.location =
-    -- state.location for a plain look; GoAction sets state_next.location = dest
-    -- first, so LookAction naturally describes the destination.
+    -- LookAction describes state_next.location. StateTurn (in the dispatch)
+    -- sets state_next.location = state.location for a plain look; GoAction
+    -- sets state_next.location = dest first, so LookAction describes the arrival.
 
     subclaim LookAction
         room_desc ∈ String
