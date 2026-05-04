@@ -8,15 +8,18 @@
 --
 -- Structure:
 --   Trait claims  — shared state-transition behaviours (PreservesInventory, …)
---   Action claims — verb-specific unique logic (LookAction, GoAction, …)
---   GameTransition — composes traits and actions via claim composition
+--   Action claims — self-contained verb definitions that compose the traits
+--                   they need. Each action fully declares what it does to all
+--                   state dimensions, including what it preserves.
+--   GameTransition — parses the command, dispatches to action claims.
 
 import "programs/adventure2/game_state.ev"
 import "programs/adventure2/commands.ev"
 
 -- ── Trait claims ──────────────────────────────────────────────────────────────
--- Each captures one shared behaviour. Composed into GameTransition by set
--- membership: verb ∈ {…} ⇒ TraitName.
+-- One constraint each. Composed into action claims that need them.
+-- Z3 only evaluates traits for the verb that actually fired; vacuous
+-- implies for other verbs cost essentially nothing.
 
 claim PreservesInventory
     state      ∈ GameState
@@ -39,14 +42,19 @@ claim HoldsTurn
     state_next.turn = state.turn
 
 -- ── Action claims ─────────────────────────────────────────────────────────────
--- Each captures the unique logic for one verb. Intermediate variables
--- (room_desc, direction, dest, item, item_name) must be declared in the
--- outer scope (GameTransition) for names-match to bind them correctly.
+-- Each action claim is a complete, self-contained transition definition.
+-- It composes the traits it needs so that nothing about state handling
+-- is implicit or spread across a lookup table in GameTransition.
+-- Adding a new action: define it here, add one dispatch line in GameTransition.
 
 claim LookAction
-    state     ∈ GameState
-    response  ∈ String
-    room_desc ∈ String
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    room_desc  ∈ String
+    PreservesInventory
+    PreservesLocation
+    AdvancesTurn
     (state.location, room_desc) ∈ room_descriptions
     response = room_desc
 
@@ -59,6 +67,8 @@ claim GoAction
     direction  ∈ String
     dest       ∈ String
     room_desc  ∈ String
+    PreservesInventory
+    AdvancesTurn
     -- Pin direction from argument or verb_str (disjoint antecedents)
     argument ≠ "" ⇒ (argument, direction) ∈ direction_words
     argument = "" ⇒ (verb_str, direction) ∈ direction_words
@@ -70,6 +80,7 @@ claim GoAction
         state_next.location = dest
     dest = "" ⇒
         response = "You can't go that way."
+        PreservesLocation
 
 claim TakeAction
     state      ∈ GameState
@@ -78,6 +89,8 @@ claim TakeAction
     argument   ∈ String
     item       ∈ Item
     item_name  ∈ String
+    PreservesLocation
+    AdvancesTurn
     (argument, item) ∈ item_words
     (item, item_name) ∈ item_names
     (item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory ⇒
@@ -85,22 +98,39 @@ claim TakeAction
         state_next.inventory = state.inventory ++ ⟨item⟩
     ¬((item, state.location) ∈ initial_item_locations ∧ item ∉ state.inventory) ⇒
         response = "You don't see that here."
+        PreservesInventory
 
 claim InventoryAction
-    state    ∈ GameState
-    response ∈ String
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    PreservesInventory
+    PreservesLocation
+    AdvancesTurn
     #state.inventory = 0 ⇒ response = "You are carrying nothing."
     #state.inventory > 0 ⇒ response = "You are carrying some items."
 
 claim HelpAction
-    response ∈ String
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    PreservesInventory
+    PreservesLocation
+    HoldsTurn
     response = "Commands: look, go <dir>, take <item>, inventory, help, quit"
 
 claim QuitAction
-    response ∈ String
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    PreservesInventory
+    PreservesLocation
+    HoldsTurn
     response = "Goodbye!"
 
 -- ── GameTransition ────────────────────────────────────────────────────────────
+-- Parses the command, then dispatches to the matching action claim.
+-- All state-transition logic lives in the action claims above.
 
 claim GameTransition
     state      ∈ GameState
@@ -125,19 +155,8 @@ claim GameTransition
 
     -- ── Active step ───────────────────────────────────────────────────────────
     ready ⇒
-        -- Parse cmd → verb + argument
         (cmd = verb_str ++ " " ++ argument) ∨ (cmd = verb_str ∧ argument = "")
         (verb_str, verb) ∈ verb_words
-
-        -- Trait defaults: which verbs share which behaviours.
-        -- Adding a new verb means placing it in the right sets here.
-        verb ∈ {Look, Go, Inventory, Help, Quit} ⇒ PreservesInventory
-        verb ∈ {Look, Take, Inventory, Help, Quit} ⇒ PreservesLocation
-        (verb = Go ∧ dest = "") ⇒ PreservesLocation
-        verb ∈ {Look, Go, Take, Inventory} ⇒ AdvancesTurn
-        verb ∈ {Help, Quit} ⇒ HoldsTurn
-
-        -- Action claims: each verb's unique logic
         verb = Look      ⇒ LookAction
         verb = Go        ⇒ GoAction
         verb = Take      ⇒ TakeAction
