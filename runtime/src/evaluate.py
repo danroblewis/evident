@@ -51,6 +51,7 @@ def _translate_body_constraint(
     constraint,
     env: Environment,
     registry: SortRegistry,
+    schemas: dict | None = None,
 ) -> z3.BoolRef:
     """
     Translate any Evident constraint AST node to a Z3 boolean.
@@ -69,8 +70,9 @@ def _translate_body_constraint(
     if isinstance(constraint, CardinalityConstraint):
         return translate_cardinality_constraint(constraint, env, registry)
 
-    # All other constraint types (Arithmetic, Membership, Logic, Binding, SetEquality)
-    return translate_constraint(constraint, env, registry)
+    # All other constraint types (Arithmetic, Membership, Logic, Binding, SetEquality,
+    # and ApplicationConstraint for claim composition)
+    return translate_constraint(constraint, env, registry, schemas)
 
 
 # ---------------------------------------------------------------------------
@@ -252,11 +254,28 @@ class EvidentSolver:
             s.add(tc)
 
         for item in schema.body:
-            # Skip non-constraint body items
+            # ── ..ClaimName passthrough as a body constraint ──────────────────
+            # PassthroughItem at this level means "..ClaimName" used as a
+            # body line (not inside an implies). Inline all of that claim's
+            # body constraints under the current env using names-match.
+            if isinstance(item, PassthroughItem) and self.schemas and item.name in self.schemas:
+                from .instantiate import _is_type_decl
+                sub = self.schemas[item.name]
+                for sub_item in sub.body:
+                    if isinstance(sub_item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+                        continue
+                    if _is_type_decl(sub_item):
+                        continue
+                    try:
+                        s.add(_translate_body_constraint(sub_item, env, self.registry, self.schemas))
+                    except (NotImplementedError, KeyError):
+                        pass
+                continue
+
             if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
                 continue
             try:
-                z3_constraint = _translate_body_constraint(item, env, self.registry)
+                z3_constraint = _translate_body_constraint(item, env, self.registry, self.schemas)
                 s.add(z3_constraint)
             except (NotImplementedError, KeyError) as exc:
                 pass
@@ -449,14 +468,14 @@ class EvidentSolver:
                         continue
                     try:
                         s2.add(_translate_body_constraint(sub_item, sub_env,
-                                                          self.registry))
+                                                          self.registry, self.schemas))
                     except (NotImplementedError, KeyError):
                         pass
         for item in schema.body:
             if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
                 continue
             try:
-                s2.add(_translate_body_constraint(item, new_env, self.registry))
+                s2.add(_translate_body_constraint(item, new_env, self.registry, self.schemas))
             except (NotImplementedError, KeyError):
                 pass
 
@@ -676,7 +695,7 @@ class EvidentSolver:
                 if label in excluded:
                     continue
                 try:
-                    z3_c = _translate_body_constraint(item, env, self.registry)
+                    z3_c = _translate_body_constraint(item, env, self.registry, self.schemas)
                     s.assert_and_track(z3_c, label)
                     label_map[label] = pretty_constraint(item)
                 except (NotImplementedError, KeyError):

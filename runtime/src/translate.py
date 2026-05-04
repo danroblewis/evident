@@ -354,7 +354,7 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
 
 
 def translate_constraint(
-    constraint, env: Environment, registry: SortRegistry
+    constraint, env: Environment, registry: SortRegistry, schemas: dict | None = None
 ) -> z3.BoolRef:
     """Translate an Evident constraint to a Z3 boolean expression.
 
@@ -472,8 +472,8 @@ def translate_constraint(
             #                   x ∉ A ∪ B  ≡  x ∉ A ∧ x ∉ B
             # Handles any nesting depth via recursion.
             if isinstance(right, BinaryExpr) and right.op == '∪':
-                left_c  = translate_constraint(MembershipConstraint(op=op, left=left, right=right.left),  env, registry)
-                right_c = translate_constraint(MembershipConstraint(op=op, left=left, right=right.right), env, registry)
+                left_c  = translate_constraint(MembershipConstraint(op=op, left=left, right=right.left),  env, registry, schemas)
+                right_c = translate_constraint(MembershipConstraint(op=op, left=left, right=right.right), env, registry, schemas)
                 return z3.Or(left_c, right_c) if op == '∈' else z3.And(left_c, right_c)
 
         if op in ("∈", "∉"):
@@ -574,21 +574,21 @@ def translate_constraint(
     if isinstance(constraint, LogicConstraint):
         op = constraint.op
         if op == "¬":
-            return z3.Not(translate_constraint(constraint.right, env, registry))
+            return z3.Not(translate_constraint(constraint.right, env, registry, schemas))
         if op == "∧":
             return z3.And(
-                translate_constraint(constraint.left, env, registry),
-                translate_constraint(constraint.right, env, registry),
+                translate_constraint(constraint.left, env, registry, schemas),
+                translate_constraint(constraint.right, env, registry, schemas),
             )
         if op == "∨":
             return z3.Or(
-                translate_constraint(constraint.left, env, registry),
-                translate_constraint(constraint.right, env, registry),
+                translate_constraint(constraint.left, env, registry, schemas),
+                translate_constraint(constraint.right, env, registry, schemas),
             )
         if op == "⇒":
             return z3.Implies(
-                translate_constraint(constraint.left, env, registry),
-                translate_constraint(constraint.right, env, registry),
+                translate_constraint(constraint.left, env, registry, schemas),
+                translate_constraint(constraint.right, env, registry, schemas),
             )
         raise NotImplementedError(f"LogicConstraint op {op!r} not supported.")
 
@@ -611,10 +611,57 @@ def translate_constraint(
     # In constraint position, the parser produces ApplicationConstraint for a
     # bare name or name.field. We resolve the env lookup and, if Bool, use
     # the Z3 variable directly.
+    #
+    # Also handles claim composition in three forms:
+    #   ClaimName                        — bare, names-match on current env
+    #   ClaimName (x mapsto y, …)        — with variable renaming
+    #   ..ClaimName / ..ClaimName (…)    — via PassthroughItem (handled separately)
     if isinstance(constraint, ApplicationConstraint):
+        name = constraint.name
+
+        # ── Claim composition: bare or mapped ────────────────────────────────
+        if schemas and name in schemas and not constraint.args:
+            schema = schemas[name]
+
+            # Build the env to use for this claim's body.
+            # Apply all mappings (both inline `name: expr` and block `name mapsto expr`).
+            composed_env = env
+            all_mappings = list(constraint.mappings) + list(constraint.block_mappings)
+            for mapping in all_mappings:
+                parent_name = (mapping.value.name
+                               if isinstance(mapping.value, Identifier) else None)
+                if parent_name:
+                    parent_val = env.lookup(parent_name)
+                    if parent_val is not None:
+                        composed_env = composed_env.bind(mapping.slot, parent_val)
+                    else:
+                        # Sub-schema mapping: slot.* → parent_name.*
+                        prefix = parent_name + '.'
+                        for k, v in env.bindings.items():
+                            if k.startswith(prefix):
+                                field = k[len(prefix):]
+                                composed_env = composed_env.bind(mapping.slot + '.' + field, v)
+
+            # Translate the claim's body constraints using the composed env.
+            from .instantiate import _is_type_decl
+            from .ast_types import EvidentBlock, PassthroughItem, MultiMembershipDecl
+            conjuncts = []
+            for item in schema.body:
+                if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+                    continue
+                if _is_type_decl(item):
+                    continue
+                try:
+                    conjuncts.append(
+                        translate_constraint(item, composed_env, registry, schemas)
+                    )
+                except (NotImplementedError, KeyError):
+                    pass
+            return z3.And(*conjuncts) if conjuncts else z3.BoolVal(True)
+
         # Bare name: line_ready  →  env['line_ready']
         if not constraint.args and not constraint.mappings:
-            val = env.lookup(constraint.name)
+            val = env.lookup(name)
             if val is not None and z3.is_bool(val):
                 return val
 
@@ -623,7 +670,7 @@ def translate_constraint(
                 and isinstance(constraint.args[0], FieldAccess)
                 and isinstance(constraint.args[0].obj, Identifier)
                 and constraint.args[0].obj.name == '.'):
-            key = f"{constraint.name}.{constraint.args[0].field}"
+            key = f"{name}.{constraint.args[0].field}"
             val = env.lookup(key)
             if val is not None and z3.is_bool(val):
                 return val
