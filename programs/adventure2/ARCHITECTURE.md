@@ -19,6 +19,24 @@ Every declaration in this program is either `type` (a noun with a shape) or
 
 ---
 
+## Dispatch pattern
+
+The active step uses `⟸` (reverse implication) to read as a dispatch table:
+
+```evident
+ready ⇒
+    (verb_str, verb) ∈ verb_words
+    LookAction ⟸ verb = Look    -- "LookAction applies when verb = Look"
+    GoAction   ⟸ verb = Go
+    ...
+```
+
+`A ⟸ B` desugars to `B ⇒ A`. Only the matching subclaim fires; all others
+are vacuously true. This is equivalent to `verb = Look ⇒ LookAction` but
+reads more naturally in a dispatch table.
+
+---
+
 ## Composition chain
 
 ```
@@ -117,6 +135,25 @@ without the torch, without any explicit blocking code in the transition).
 
 If the invariant involved external data (e.g., checking a game configuration
 table), it would move to a `claim`.
+
+---
+
+## Subclaims vs separate claims
+
+The original design used top-level `claim LookAction`, `claim GoAction`, etc.
+The refactored design uses `subclaim` inside `GameTransition`. The tradeoffs:
+
+| Aspect | Separate claims | Subclaims |
+|---|---|---|
+| Namespacing | Global — LookAction visible everywhere | Scoped to parent claim |
+| Reuse | Can be composed into other claims | Private to GameTransition |
+| Discovery | Listed in the file alongside GameTransition | Listed inside GameTransition |
+| Internal vars | Explicitly declared at top level of claim | Declared inside subclaim, fresh Z3 consts |
+
+Subclaims are better here because LookAction etc. are implementation details
+of GameTransition's dispatch, not independently useful relations. The parent
+claim's variables are directly accessible inside the subclaim body via
+names-match (no explicit mapping needed).
 
 ---
 

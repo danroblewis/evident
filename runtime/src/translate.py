@@ -647,14 +647,32 @@ def translate_constraint(
             # CardinalityConstraint, UniversalConstraint, and ExistentialConstraint
             # are handled correctly (same routing as _translate_body_constraint
             # in evaluate.py, inlined here to avoid a circular import).
-            from .instantiate import _is_type_decl
+            from .instantiate import _is_type_decl, _resolve_sort
             from .ast_types import (EvidentBlock, PassthroughItem, MultiMembershipDecl,
                                     UniversalConstraint as UC,
                                     ExistentialConstraint as EC,
-                                    CardinalityConstraint as CC)
+                                    CardinalityConstraint as CC,
+                                    SchemaDecl as SD,
+                                    MembershipConstraint as MC,
+                                    Identifier as Ident)
+
+            # For subclaims: create fresh Z3 constants for vars declared in
+            # the subclaim body but not already present in the parent env.
+            if schema.keyword == 'subclaim':
+                for item in schema.body:
+                    if _is_type_decl(item) and isinstance(item, MC):
+                        var_name = item.left.name if isinstance(item.left, Ident) else None
+                        if var_name and composed_env.lookup(var_name) is None:
+                            try:
+                                sort = _resolve_sort(item.right, registry)
+                                fresh = z3.FreshConst(sort, prefix=f'_{schema.name}_{var_name}_')
+                                composed_env = composed_env.bind(var_name, fresh)
+                            except Exception:
+                                pass
+
             conjuncts = []
             for item in schema.body:
-                if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+                if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl, SD)):
                     continue
                 if _is_type_decl(item):
                     continue

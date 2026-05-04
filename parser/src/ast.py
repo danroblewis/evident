@@ -43,7 +43,7 @@ class InlineEnumExpr:
 
 @dataclass
 class SchemaDecl:
-    keyword: Literal["schema", "type", "claim"]
+    keyword: Literal["schema", "type", "claim", "subclaim"]
     name: str
     params: list[Param]
     body: list[BodyItem]

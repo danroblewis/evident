@@ -58,7 +58,7 @@ claim unsat_exit_leads_outside_known_rooms
     to_room ∉ {"entrance", "forest", "cave", "tower", "dungeon"}
 
 claim unsat_item_in_two_places
-    item  ∈ Item
+    item  ∈ ItemKind
     room1 ∈ String
     room2 ∈ String
     (item, room1) ∈ initial_item_locations

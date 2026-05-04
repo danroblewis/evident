@@ -129,6 +129,28 @@ def _resolve_type_name(param: Param) -> str:
     return "unknown"
 
 
+def _resolve_sort(type_expr, registry: "SortRegistry") -> "z3.SortRef":
+    """Return the Z3 sort for a type expression (Identifier, SeqType, InlineEnumExpr)."""
+    from .ast_types import SeqType, InlineEnumExpr
+    if isinstance(type_expr, SeqType):
+        try:
+            elem_sort = registry.get(type_expr.element_name)
+        except KeyError:
+            elem_sort = registry.declare_uninterpreted(type_expr.element_name)
+        return z3.SeqSort(elem_sort)
+    if isinstance(type_expr, InlineEnumExpr):
+        variants = type_expr.variants
+        enum_name = "_Enum_" + "_".join(sorted(variants))
+        return registry.declare_algebraic(enum_name, variants)
+    if isinstance(type_expr, Identifier):
+        type_name = type_expr.name
+        try:
+            return registry.get(type_name)
+        except KeyError:
+            return registry.declare_uninterpreted(type_name)
+    return z3.IntSort()  # fallback
+
+
 def type_constraint(var: z3.ExprRef, type_name: str) -> list[z3.BoolRef]:
     if type_name == "Nat":
         return [var >= 0]  # type: ignore[list-item]

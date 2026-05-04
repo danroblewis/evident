@@ -7,7 +7,7 @@ import "programs/adventure2/world.ev"
 
 type GameState
     location  ∈ String
-    inventory ∈ Seq(Item)
+    inventory ∈ Seq(ItemKind)
     turn      ∈ Nat
 
     -- Safety invariant: the dungeon is only accessible with the torch.

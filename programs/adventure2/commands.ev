@@ -8,6 +8,14 @@ import "programs/adventure2/world.ev"
 
 type Verb = Go | Take | Look | Inventory | Help | Quit
 
+-- A parsed command: verb enum, the verb word as typed, and any argument.
+-- Pure struct — the (verb_str, verb) correspondence is enforced in the
+-- ready ⇒ block where verb_words is in scope.
+type ParsedCommand
+    verb     ∈ Verb
+    verb_str ∈ String
+    argument ∈ String
+
 -- Single-letter direction abbreviations (n/s/e/w/u/d) map to Go so that
 -- ParsedCommand recognises them. The transition resolves direction from
 -- verb_str when argument is empty.

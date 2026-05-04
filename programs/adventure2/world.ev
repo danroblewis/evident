@@ -1,6 +1,13 @@
 -- world.ev — Spatial world data for adventure2.
 
-type Item = Torch | Key | Sword | GoldCoin | OldMap
+type ItemKind = Torch | Key | Sword | GoldCoin | OldMap
+
+-- A resolved item: its kind (enum) and its human-readable name.
+-- Pure struct — the (kind, name) correspondence is enforced where item_names
+-- is in scope (TakeAction), not here.
+type Item
+    kind ∈ ItemKind
+    name ∈ String
 
 -- Complete lookup: (room, direction) → destination or "".
 -- "" means blocked. Every room × every direction has an entry so the solver

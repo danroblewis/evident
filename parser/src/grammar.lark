@@ -61,6 +61,7 @@ body: body_line+
           | passthrough _NEWLINE
           | schema_decl
           | evident_block
+          | "subclaim" NAME _NEWLINE _INDENT body _DEDENT  -> subclaim_def
 
 // Passthrough with optional slot renames: ..claim (sub_var ↦ parent_var, ...)
 passthrough: ".." NAME "(" pass_rename ("," pass_rename)* ")"  -> passthrough_renamed
@@ -108,6 +109,7 @@ exists_constraint: ("__EXISTS__"|"some") binding_list ":" constraint   -> exists
                      | logic_implies_constraint
 
 ?logic_implies_constraint: logic_implies_constraint ("__IMPLIES__"|"=>") logic_rhs  -> logic_implies
+                         | logic_not_constraint ("__REVERSE_IMPLIES__") logic_rhs  -> logic_reverse_implies
                          | logic_not_constraint
 
 ?logic_not_constraint: ("__NOT__"|"not") logic_rhs  -> logic_not

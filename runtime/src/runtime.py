@@ -86,6 +86,11 @@ class EvidentRuntime:
                 self.solver.registry.declare_algebraic(enum_name, variants)
         self.schemas[schema.name] = schema
         self.solver.register_schema(schema)
+        # Also register subclaims so they are available during composition.
+        for item in schema.body:
+            if isinstance(item, SchemaDecl) and item.keyword == 'subclaim':
+                self.schemas[item.name] = item
+                self.solver.register_schema(item)
 
     # ------------------------------------------------------------------
     # Program loading

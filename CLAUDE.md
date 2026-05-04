@@ -175,6 +175,52 @@ claim manage_event
     Conference.valid (schedule ↦ assignments)  -- rename to match
 ```
 
+### `subclaim`: nested claim scoped to a parent
+
+A `subclaim` is a claim definition nested inside another claim's body.  It
+has access to all of the parent claim's variables by name, but its
+own internal variables are fresh and not visible to the parent.
+
+```evident
+claim GameTransition
+    state      ∈ GameState
+    state_next ∈ GameState
+    response   ∈ String
+    verb       ∈ Verb
+
+    subclaim LookAction
+        -- state, state_next, response, verb are inherited from parent
+        state_next.location = state.location
+        (state.location, room_desc) ∈ room_descriptions
+        response = room_desc
+
+    subclaim GoAction
+        -- direction, dest are internal to GoAction — not in parent scope
+        direction ∈ String
+        dest      ∈ String
+        (state.location, direction, dest) ∈ direction_exits
+        ...
+```
+
+Use subclaims when a claim's dispatch logic is complex enough to name,
+but the branches are implementation details not independently composable.
+
+### `⟸` (reverse implication): dispatch tables
+
+`A ⟸ B` means `B ⇒ A` (A applies when B).  It's syntactic sugar that
+makes verb-dispatch tables read naturally:
+
+```evident
+-- "GoAction applies when verb = Go"
+GoAction ⟸ verb = Go
+
+-- Equivalent (but reads backward):
+verb = Go ⇒ GoAction
+```
+
+Use `⟸` in dispatch tables where the consequent is named and the
+condition is the selector.
+
 ### Decision guide
 
 | Situation | Pattern |
@@ -185,6 +231,74 @@ claim manage_event
 | Reusing a claim whose variable names match | name it directly (names-match) |
 | Reusing a claim with different variable names | name it with `(x ↦ y)` |
 | A subset of a type with extra invariants | define a new `type` that names the original type and adds constraints |
+| Named dispatch branches inside a parent claim | `subclaim` + `⟸` |
+
+## Program Structure
+
+Full guidance: `docs/design/program-structure.md`. Summary below.
+
+### The layered stack
+
+```
+data layer     — enums and complete lookup tables (ground facts, no logic)
+type layer     — pure structs and state snapshots (local invariants only)
+trait layer    — small reusable behavioral claims
+claim layer    — relations, dispatch, transition systems
+entry point    — wiring only (passthroughs + variable declarations)
+```
+
+Each layer depends only on layers below it. The entry point (`type main`) should
+contain no logic — only passthrough composition and variable declarations.
+
+### The complete lookup pattern
+
+Partial lookup tables cause Z3 non-determinism. If a table only has entries for
+valid cases, Z3 can satisfy `(A, B, result) ∈ table ⇒ body` by choosing a
+non-matching `(A, B)` to make the antecedent false.
+
+Fix: make every table complete, using a sentinel (e.g. `""`) for "nothing":
+```evident
+assert direction_exits = {
+    ("entrance", "north", "forest"),
+    ("entrance", "south", ""),     -- blocked: sentinel, not absent
+    ...
+}
+```
+Then branch positively on the result: `dest ≠ "" ⇒ ...` / `dest = "" ⇒ ...`.
+
+### Variable scope planning
+
+Parent-level variables = the public interface (everything subclaims share).
+Subclaim-internal variables = implementation details used by one branch only.
+
+If a variable appears in only one subclaim, declare it inside that subclaim
+(it becomes a fresh Z3 constant, not visible to the parent or other subclaims).
+
+### Constraint scope rule
+
+**Constraints referencing external data cannot live in a type body.**
+
+When `item ∈ Item` is expanded, the sub-env contains only Item's own fields.
+A constraint like `(kind, name) ∈ item_names` would be silently dropped because
+`item_names` is not in that sub-env. Move it to the claim where the global fact
+is in scope.
+
+### Naming conventions
+
+- **Enums**: `ItemKind`, `Verb` — name the set of identity values
+- **Pure structs**: `Item`, `ParsedCommand` — noun, no external constraints
+- **Traits**: `PreservesInventory`, `AdvancesTurn` — adjective/present-participle
+- **Action subclaims**: `LookAction`, `GoAction` — noun phrase naming the branch
+- **Dispatch**: `ActionName ⟸ condition` reads "ActionName applies when condition"
+
+### Diagnostic questions
+
+- Are all lookup tables complete? Any partial table risks Z3 non-determinism.
+- Do any type bodies reference lookup tables? Move those constraints to the claim.
+- Are there variables that always appear together? They may be a type.
+- Are there repeated constraint patterns across branches? They may be a trait.
+- Can you name each dispatch branch? If not, it may need further decomposition.
+- Does the parent declare variables only one subclaim uses? Move them inside.
 
 ## Key Invariants
 
@@ -218,6 +332,16 @@ claim manage_event
   variable is not created; only the leaf fields exist in Z3.
 - Type names (e.g. `Color`) can be reused as variable names inside a schema
   without conflict — they occupy different namespaces.
+
+**Subclaims**
+- `subclaim Name ... ` inside a claim body defines a locally-scoped claim.
+  It is registered into `self.schemas` by `runtime.py`'s `load_schema` at
+  load time, so it is available for names-match composition even when the
+  parent is used via passthrough (not directly evaluated).
+- Subclaim-internal variables (declared inside the subclaim body but not in
+  the parent scope) receive fresh Z3 constants via `z3.FreshConst` in
+  `translate.py`'s claim composition code.  They are not visible to the parent.
+- Adding a subclaim: define it in the parent body; it is automatically picked up.
 
 **Z3 safety**
 - Z3's C library is not safe for concurrent use from multiple threads.

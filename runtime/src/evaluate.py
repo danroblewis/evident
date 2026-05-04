@@ -248,6 +248,15 @@ class EvidentSolver:
                     if z3.is_int_value(length):
                         env = env.bind(var_name, length)
 
+        # ── Step 3.5: register subclaims into self.schemas ───────────────────
+        # Subclaims are SchemaDecl nodes with keyword='subclaim' inside the body.
+        # They are scoped to the parent claim's evaluation and inherit the
+        # parent's variables by name. Register them so that claim composition
+        # in the body can find them.
+        for item in schema.body:
+            if isinstance(item, SchemaDecl) and item.keyword == 'subclaim':
+                self.schemas[item.name] = item
+
         # ── Step 4: build and populate the full solver ────────────────────────
         s = z3.Solver()
         for tc in type_constraints:
@@ -272,7 +281,7 @@ class EvidentSolver:
                         pass
                 continue
 
-            if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+            if isinstance(item, (EvidentBlock, PassthroughItem, MultiMembershipDecl, SchemaDecl)):
                 continue
             try:
                 z3_constraint = _translate_body_constraint(item, env, self.registry, self.schemas)

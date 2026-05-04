@@ -15,6 +15,7 @@ UNICODE_MAP = {
     '∧': '__AND__',
     '∨': '__OR__',
     '⇒': '__IMPLIES__',
+    '⟸': '__REVERSE_IMPLIES__',
     '↦': '__MAPSTO__',
     '·': '__CHAIN__',
     '⋈': '__JOIN__',

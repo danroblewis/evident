@@ -290,8 +290,16 @@ class EvidentTransformer(LarkTransformer):
         return LogicConstraint(op='∧', left=items[0], right=items[1])
     def logic_implies(self, items):
         return LogicConstraint(op='⇒', left=items[0], right=items[1])
+    def logic_reverse_implies(self, items):
+        # A ⟸ B  means  B ⇒ A
+        return LogicConstraint(op='⇒', left=items[1], right=items[0])
     def logic_not(self, items):
         return LogicConstraint(op='¬', left=None, right=items[0])
+
+    def subclaim_def(self, items):
+        name = _str(items[0])
+        body = items[1]
+        return SchemaDecl(keyword='subclaim', name=name, params=[], body=body)
 
     def paren_constraint(self, items):
         return items[0]
