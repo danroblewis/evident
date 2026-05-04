@@ -1,18 +1,18 @@
 -- balls_collide.ev — Like balls.ev, but with ball-ball collision.
 --
--- N=4 balls. Same gravity + floor + wall physics as balls.ev. Added on top:
--- pairwise bounding-box overlap detection and a "colliding" gating flag per
--- ball.
+-- N=4 balls. Same time-based gravity + floor/wall/ceiling physics as balls.ev.
+-- Added on top: pairwise bounding-box overlap detection and a "colliding"
+-- gating flag per ball.
 --
 -- Collision model: when ball i overlaps any other ball, ball i flips both
--- velocities AND immediately moves by the new velocity, so the balls
--- separate within one step. (Naive "freeze position, reverse velocity"
--- traps overlapping pairs — they keep detecting overlap and oscillating
--- velocity each step but never moving apart.) This is a crude approximation
--- — real elastic collision exchanges momentum components along the
--- collision normal — but it keeps the constraint logic mutually exclusive:
--- a ball is either colliding (reversed + step apart) or doing normal
--- physics, never both.
+-- velocities. Position advances by the (now-reversed) velocity scaled by dt,
+-- so the balls separate the same way they normally move. (Naive "freeze
+-- position, reverse velocity" traps overlapping pairs — they keep detecting
+-- overlap and oscillating velocity each step but never moving apart.) This
+-- is a crude approximation — real elastic collision exchanges momentum
+-- components along the collision normal — but it keeps the constraint logic
+-- mutually exclusive: a ball is either colliding (reversed + step apart) or
+-- doing normal physics, never both.
 --
 -- Implementation note: the natural form `colliding[i] = (any-overlap-cond)`
 -- doesn't parse — Bool variables aren't assignable from boolean expressions
@@ -48,6 +48,19 @@ type main
     output.bg.g = 15
     output.bg.b = 30
 
+    -- ── State bounds: ball center ∈ [20, 740] × [20, 540], |v| ≤ 800.
+    ∀ i ∈ {0..3} : state.balls[i].pos_x ≥ 20  ∧ state.balls[i].pos_x ≤ 740
+    ∀ i ∈ {0..3} : state.balls[i].pos_y ≥ 20  ∧ state.balls[i].pos_y ≤ 540
+    ∀ i ∈ {0..3} : state.balls[i].vx    ≥ -800 ∧ state.balls[i].vx    ≤ 800
+    ∀ i ∈ {0..3} : state.balls[i].vy    ≥ -800 ∧ state.balls[i].vy    ≤ 800
+
+    -- ── Effective vy for this step: gravity-incremented and clamped to ±800.
+    effective_vy ∈ Seq(Int)
+    #effective_vy = 4
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
+    ∀ i ∈ {0..3} : ((state.balls[i].vy + 200 * input.dt / 1000) ≥ -800 ∧ (state.balls[i].vy + 200 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.balls[i].vy + 200 * input.dt / 1000
+
     -- ── Per-ball "colliding" flag — true iff ball i overlaps any other ball.
     colliding ∈ Seq(Bool)
     #colliding = 4
@@ -68,19 +81,28 @@ type main
     ((state.balls[3].pos_x ≤ state.balls[0].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[0].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[0].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[0].pos_y - 40) ∨ (state.balls[3].pos_x ≤ state.balls[1].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[1].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[1].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[1].pos_y - 40) ∨ (state.balls[3].pos_x ≤ state.balls[2].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[2].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[2].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[2].pos_y - 40)) ⇒ colliding[3] = true
     ¬((state.balls[3].pos_x ≤ state.balls[0].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[0].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[0].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[0].pos_y - 40) ∨ (state.balls[3].pos_x ≤ state.balls[1].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[1].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[1].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[1].pos_y - 40) ∨ (state.balls[3].pos_x ≤ state.balls[2].pos_x + 40 ∧ state.balls[3].pos_x ≥ state.balls[2].pos_x - 40 ∧ state.balls[3].pos_y ≤ state.balls[2].pos_y + 40 ∧ state.balls[3].pos_y ≥ state.balls[2].pos_y - 40)) ⇒ colliding[3] = false
 
-    -- ── Collision branch: reverse velocity AND step position by the
-    -- new velocity, so the colliding balls separate within one step.
-    ∀ i ∈ {0..3} : colliding[i] = true ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + (0 - state.balls[i].vx) ∧ state_next.balls[i].pos_y = state.balls[i].pos_y + (0 - state.balls[i].vy) ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) ∧ state_next.balls[i].vy = (0 - state.balls[i].vy))
+    -- ── Collision branch: reverse both velocities AND step position by the
+    -- (now-reversed) velocity scaled by dt, so the colliding balls separate.
+    -- Position is wall-clamped — without that, a collision near a wall can
+    -- push a ball out of bounds and violate the state constraint.
+    ∀ i ∈ {0..3} : colliding[i] = true ⇒ (state_next.balls[i].vx = (0 - state.balls[i].vx) ∧ state_next.balls[i].vy = (0 - state.balls[i].vy))
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_x + (0 - state.balls[i].vx) * input.dt / 1000) > 740) ⇒ state_next.balls[i].pos_x = 740
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_x + (0 - state.balls[i].vx) * input.dt / 1000) < 20)  ⇒ state_next.balls[i].pos_x = 20
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_x + (0 - state.balls[i].vx) * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_x + (0 - state.balls[i].vx) * input.dt / 1000) ≤ 740) ⇒ state_next.balls[i].pos_x = state.balls[i].pos_x + (0 - state.balls[i].vx) * input.dt / 1000
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_y + (0 - state.balls[i].vy) * input.dt / 1000) > 540) ⇒ state_next.balls[i].pos_y = 540
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_y + (0 - state.balls[i].vy) * input.dt / 1000) < 20)  ⇒ state_next.balls[i].pos_y = 20
+    ∀ i ∈ {0..3} : (colliding[i] = true ∧ (state.balls[i].pos_y + (0 - state.balls[i].vy) * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_y + (0 - state.balls[i].vy) * input.dt / 1000) ≤ 540) ⇒ state_next.balls[i].pos_y = state.balls[i].pos_y + (0 - state.balls[i].vy) * input.dt / 1000
 
-    -- ── Normal physics branch (gated on colliding[i] = false). ────────────────
-    -- Y-axis: gravity (+1) then floor clamp/bounce.
-    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_y + state.balls[i].vy + 1) > 540) ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - (state.balls[i].vy + 1)) * 7 / 10)
-    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_y + state.balls[i].vy + 1) ≤ 540) ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + state.balls[i].vy + 1 ∧ state_next.balls[i].vy = state.balls[i].vy + 1)
+    -- ── Normal physics branch (gated on colliding[i] = false). ────────────
+    -- Y-axis: floor/ceiling clamp/bounce on dt-stepped position using clamped vy.
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) > 540) ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) < 20) ⇒ (state_next.balls[i].pos_y = 20 ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + effective_vy[i] * input.dt / 1000 ∧ state_next.balls[i].vy = effective_vy[i])
 
-    -- X-axis: wall clamp/bounce (no gravity).
-    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx) > 740) ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx) < 20) ⇒ (state_next.balls[i].pos_x = 20 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx ∧ state_next.balls[i].vx = state.balls[i].vx)
+    -- X-axis: wall clamp/bounce (no gravity, no clamp needed).
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) > 740) ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) < 20) ⇒ (state_next.balls[i].pos_x = 20 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (colliding[i] = false ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000 ∧ state_next.balls[i].vx = state.balls[i].vx)
 
     -- ── Render: each ball as a 40×40 rect centered on (pos_x, pos_y). ──────
     ∀ i ∈ {0..3} : (output.rects[i].x = state.balls[i].pos_x - 20 ∧ output.rects[i].y = state.balls[i].pos_y - 20 ∧ output.rects[i].w = 40 ∧ output.rects[i].h = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)

@@ -1,25 +1,30 @@
--- balls.ev — N balls drop under gravity, bounce off the floor and side walls.
+-- balls.ev — N balls drop under gravity, bounce off floor, walls, and ceiling.
 --
--- Each ball is a 40×40 square (radius 20) drawn as a SDLRect. State is
--- Seq(BallState) — Z3 picks initial positions/velocities on step 1, and
--- physics evolves them from there.
+-- Time-based physics: velocity is in pixels per second, scaled by input.dt
+-- (milliseconds since previous step, capped at 100). Each step:
 --
--- Per-step physics, applied to each ball independently:
---   gravity: vy increases by 1
---   floor   (y = 560, ball center max = 540): clamp + reverse vy with damping ×7/10
---   walls   (x = 0..760, ball center ∈ [20, 740]): clamp + reverse vx with damping ×7/10
+--   gravity:   vy += GRAVITY * dt / 1000     (GRAVITY = 200 px/s²)
+--   clamp vy:  vy ∈ [-V_MAX, V_MAX]          (V_MAX = 800)
+--   position:  pos += vy * dt / 1000         (per-axis)
+--   bounds:    floor at y=540, ceiling at y=20, walls at x=20 and x=740
+--   bounce:    on impact, clamp position and reverse the relevant velocity ×7/10
 --
--- Ball-ball collision is not modelled here yet. Adding it is a follow-up:
--- pairwise overlap detection + velocity swap.
+-- Tuning: lowering GRAVITY makes balls fall slower. Lowering V_MAX caps
+-- terminal velocity (and stops fast crash-bouncing in the corners).
+--
+-- Initial-state bounds keep Z3 from picking ridiculous starting positions
+-- and velocities on step 1. Physics keeps state_next within bounds via:
+--   - position clamps at every wall
+--   - velocity clamp on the gravity update (effective_vy capped at ±V_MAX)
 --
 -- Run: python evident.py execute programs/balls_demo/balls.ev
 
 import "stdlib/sdl.ev"
 
 type BallState
-    pos_x ∈ Int
+    pos_x ∈ Int    -- pixels, ball center
     pos_y ∈ Int
-    vx    ∈ Int
+    vx    ∈ Int    -- pixels per second (negative = left/up)
     vy    ∈ Int
 
 type WorldState
@@ -35,20 +40,35 @@ type main
     #state_next.balls = 4
     #output.rects     = 4
 
-    -- Dark background
     output.bg.r = 15
     output.bg.g = 15
     output.bg.b = 30
 
-    -- Y-axis: gravity then floor clamp/bounce.
-    -- Candidate next-y is current y plus current vy plus gravity (1).
-    ∀ i ∈ {0..3} : (state.balls[i].pos_y + state.balls[i].vy + 1) > 540 ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - (state.balls[i].vy + 1)) * 7 / 10)
-    ∀ i ∈ {0..3} : (state.balls[i].pos_y + state.balls[i].vy + 1) ≤ 540 ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + state.balls[i].vy + 1 ∧ state_next.balls[i].vy = state.balls[i].vy + 1)
+    -- ── State bounds: ball center ∈ [20, 740] × [20, 540], |v| ≤ 800. ──────
+    ∀ i ∈ {0..3} : state.balls[i].pos_x ≥ 20  ∧ state.balls[i].pos_x ≤ 740
+    ∀ i ∈ {0..3} : state.balls[i].pos_y ≥ 20  ∧ state.balls[i].pos_y ≤ 540
+    ∀ i ∈ {0..3} : state.balls[i].vx    ≥ -800 ∧ state.balls[i].vx    ≤ 800
+    ∀ i ∈ {0..3} : state.balls[i].vy    ≥ -800 ∧ state.balls[i].vy    ≤ 800
 
-    -- X-axis: wall clamps/bounces (no gravity).
-    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx) > 740 ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx) < 20  ⇒ (state_next.balls[i].pos_x = 20  ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : ((state.balls[i].pos_x + state.balls[i].vx) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx ∧ state_next.balls[i].vx = state.balls[i].vx)
+    -- ── Effective vy for this step: gravity-incremented, then clamped to ±800.
+    -- Used in both the floor/ceiling check and the position update so the new
+    -- vy stored in state_next can never exceed the bound.
+    effective_vy ∈ Seq(Int)
+    #effective_vy = 4
 
-    -- Render: each ball as a 40×40 rect centered on (pos_x, pos_y).
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
+    ∀ i ∈ {0..3} : ((state.balls[i].vy + 200 * input.dt / 1000) ≥ -800 ∧ (state.balls[i].vy + 200 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.balls[i].vy + 200 * input.dt / 1000
+
+    -- ── Y-axis: floor/ceiling clamp/bounce on the dt-stepped position. ─────
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) > 540 ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_y = 20  ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + effective_vy[i] * input.dt / 1000 ∧ state_next.balls[i].vy = effective_vy[i])
+
+    -- ── X-axis: wall clamp/bounce (no gravity, no clamp needed). ───────────
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) > 740 ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_x = 20  ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000 ∧ state_next.balls[i].vx = state.balls[i].vx)
+
+    -- ── Render: each ball as a 40×40 rect centered on (pos_x, pos_y). ──────
     ∀ i ∈ {0..3} : (output.rects[i].x = state.balls[i].pos_x - 20 ∧ output.rects[i].y = state.balls[i].pos_y - 20 ∧ output.rects[i].w = 40 ∧ output.rects[i].h = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)
