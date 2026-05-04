@@ -25,6 +25,32 @@ from .ast_types import (SchemaDecl, Param, Identifier, MembershipConstraint,
                         BinaryExpr)
 
 
+def _bind_composite_fields(
+    env: 'Environment',
+    var_name: str,
+    var_z3: 'z3.ExprRef',
+    registry: 'SortRegistry',
+) -> 'Environment':
+    """
+    Recursively bind dotted field accessors for a composite Datatype value.
+
+    For `rect ∈ Rect` where Rect has `x ∈ Int` and `color ∈ Color` (and Color
+    is itself composite), this binds: rect.x, rect.color, rect.color.r,
+    rect.color.g, rect.color.b — every reachable dotted path.
+    """
+    sort_name = var_z3.sort().name() if hasattr(var_z3.sort(), 'name') else str(var_z3.sort())
+    composite = registry.get_composite_fields(sort_name)
+    if composite is None:
+        return env
+    for fname in composite['__fields__']:
+        accessor = composite[fname]
+        field_z3 = accessor(var_z3)
+        env = env.bind(f"{var_name}.{fname}", field_z3)
+        # Recurse if the field is itself a composite Datatype
+        env = _bind_composite_fields(env, f"{var_name}.{fname}", field_z3, registry)
+    return env
+
+
 def _declare_element_sort(
     type_expr,
     registry: 'SortRegistry',
@@ -480,10 +506,9 @@ def instantiate_schema(
                 else:
                     var = make_const(name, dt_sort, prefix=prefix)
                 env = env.bind(name, var)
-                # Bind field accessors as name.field → accessor(var)
-                for fname in composite['__fields__']:
-                    accessor = composite[fname]
-                    env = env.bind(f"{name}.{fname}", accessor(var))
+                # Recursively bind name.field, name.field.subfield, ... for every
+                # reachable dotted path through nested composite Datatypes.
+                env = _bind_composite_fields(env, name, var, registry)
                 # No sub-schema body constraints for pure structs (no non-type items)
                 continue
 

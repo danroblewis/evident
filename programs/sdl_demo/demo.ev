@@ -22,20 +22,23 @@ type main
     output    ∈ SDLOutput
     ball      ∈ BallState
     ball_next ∈ BallState
+    ball_rect ∈ SDLRect
 
     -- ── Background ────────────────────────────────────────────────────────────
-    output.bg_r = 15
-    output.bg_g = 15
-    output.bg_b = 30
+    output.bg.r = 15
+    output.bg.g = 15
+    output.bg.b = 30
 
-    -- ── Ball: 30×30 teal square, drawn at current position ────────────────────
-    output.rect0_x = ball.x
-    output.rect0_y = ball.y
-    output.rect0_w = 30
-    output.rect0_h = 30
-    output.rect0_r = 80
-    output.rect0_g = 200
-    output.rect0_b = 180
+    -- ── Ball rect: 30×30 teal square ─────────────────────────────────────────
+    ball_rect.x = ball.x
+    ball_rect.y = ball.y
+    ball_rect.w = 30
+    ball_rect.h = 30
+    ball_rect.color.r = 80
+    ball_rect.color.g = 200
+    ball_rect.color.b = 180
+
+    output.rects = ⟨ball_rect⟩
 
     -- ── Position update ───────────────────────────────────────────────────────
     -- dt is in milliseconds, velocity in pixels/second → pixels per step

@@ -234,14 +234,11 @@ def translate_universal(
                 x_var = z3.FreshConst(elem_sort, name)
                 body_env = cur_env.bind(name, x_var)
 
-                # If element sort is a composite Datatype, bind field accessors
-                # so that 'name.field' is accessible in the quantifier body.
-                sort_name = str(elem_sort)
-                composite = registry.get_composite_fields(sort_name)
-                if composite:
-                    for fname in composite['__fields__']:
-                        accessor = composite[fname]
-                        body_env = body_env.bind(f'{name}.{fname}', accessor(x_var))
+                # If element sort is a composite Datatype, recursively bind
+                # name.field, name.field.subfield, ... so the quantifier body
+                # can access nested composite fields.
+                from .instantiate import _bind_composite_fields
+                body_env = _bind_composite_fields(body_env, name, x_var, registry)
 
                 body_z3 = translate_constraint(node.body, body_env, registry)
                 parts.append(
@@ -359,13 +356,9 @@ def translate_existential(
         x_var = z3.FreshConst(elem_sort, name)
         body_env = env.bind(name, x_var)
 
-        # If element sort is a composite Datatype, bind field accessors.
-        sort_name = str(elem_sort)
-        composite = registry.get_composite_fields(sort_name)
-        if composite:
-            for fname in composite['__fields__']:
-                accessor = composite[fname]
-                body_env = body_env.bind(f'{name}.{fname}', accessor(x_var))
+        # Recursively bind composite field accessors (name.field, name.field.subfield, …).
+        from .instantiate import _bind_composite_fields
+        body_env = _bind_composite_fields(body_env, name, x_var, registry)
 
         body_z3 = translate_constraint(node.body, body_env, registry)
         membership = _exist_membership(x_var)
@@ -379,10 +372,7 @@ def translate_existential(
             # unique: ∃x. S[x] ∧ P(x) ∧ ∀y. (S[y] ∧ P(y)) ⇒ y = x
             y_var = z3.FreshConst(elem_sort, name + "_uniq")
             body_y_env = env.bind(name, y_var)
-            if composite:
-                for fname in composite['__fields__']:
-                    accessor = composite[fname]
-                    body_y_env = body_y_env.bind(f'{name}.{fname}', accessor(y_var))
+            body_y_env = _bind_composite_fields(body_y_env, name, y_var, registry)
             body_y_z3 = translate_constraint(node.body, body_y_env, registry)
             uniqueness = z3.ForAll(
                 [y_var],

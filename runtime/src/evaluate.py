@@ -583,11 +583,23 @@ class EvidentSolver:
                 return expr.as_string()
             except Exception:
                 pass
-        # Algebraic datatype value (enum variant) — return the constructor name
-        if z3.is_app(expr) and expr.num_args() == 0:
+        # Datatype value: enum variant (no args) → constructor name;
+        # composite struct (with named field accessors) → recursively
+        # extract fields as a nested dict.
+        if z3.is_app(expr):
             sort = expr.sort()
             if z3.is_sort(sort) and sort.kind() == z3.Z3_DATATYPE_SORT:
-                return expr.decl().name()
+                sort_name = sort.name() if hasattr(sort, 'name') else str(sort)
+                composite = self.registry.get_composite_fields(sort_name)
+                if composite is not None:
+                    out: dict = {}
+                    for fname in composite['__fields__']:
+                        accessor = composite[fname]
+                        fval = z3.simplify(accessor(expr))
+                        out[fname] = self._z3_to_python(fval)
+                    return out
+                if expr.num_args() == 0:
+                    return expr.decl().name()
         # Uninterpreted sort value (e.g. Task!val!0) — not meaningful
         expr_str = str(expr)
         if "!val!" in expr_str:

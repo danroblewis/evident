@@ -143,6 +143,31 @@ def _build_z3_regex(pattern: str):
 
     return parse_alternation()
 
+def _flatten_juxt_dot_chain(expr) -> str | None:
+    """
+    Convert a chained juxt-dot expression like `a.b.c.d` into the dotted
+    string `"a.b.c.d"`, or return None if the chain doesn't bottom out at
+    an Identifier.
+
+    The parser produces these chains as nested BinaryExpr(×, ..., FieldAccess('.', f)).
+    """
+    parts: list[str] = []
+    cur = expr
+    while True:
+        if (isinstance(cur, BinaryExpr)
+                and cur.op == '×'
+                and isinstance(cur.right, FieldAccess)
+                and isinstance(cur.right.obj, Identifier)
+                and cur.right.obj.name == '.'):
+            parts.append(cur.right.field)
+            cur = cur.left
+            continue
+        if isinstance(cur, Identifier):
+            parts.append(cur.name)
+            return '.'.join(reversed(parts))
+        return None
+
+
 # Counter for generating fresh variable names in subset constraints.
 _fresh_counter = 0
 
@@ -223,14 +248,13 @@ def translate_expr(expr, env: Environment, registry: SortRegistry) -> z3.ExprRef
                 and isinstance(expr.right, FieldAccess)
                 and isinstance(expr.right.obj, Identifier)
                 and expr.right.obj.name == '.'):
-            # Reinterpret as a dotted field lookup: obj.field
-            if isinstance(expr.left, Identifier):
-                key = f"{expr.left.name}.{expr.right.field}"
-                value = env.lookup(key)
+            # Reinterpret as a dotted field lookup: obj.field, or for chained
+            # access like a.b.c, walk the chain to build a full dotted key.
+            chain = _flatten_juxt_dot_chain(expr)
+            if chain is not None:
+                value = env.lookup(chain)
                 if value is not None:
                     return value
-            # Could be a nested access like (a.b).c — recurse on left first
-            obj_val = translate_expr(expr.left, env, registry)
             raise NotImplementedError(
                 f"Nested field access {expr!r} is not yet supported."
             )

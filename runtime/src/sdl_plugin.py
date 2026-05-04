@@ -140,35 +140,45 @@ class SDLPlugin:
     # ── Rendering ─────────────────────────────────────────────────────────────
 
     def render(self, bindings: dict[str, Any], output_var: str = 'output') -> None:
-        """Read output.* bindings and render one frame."""
+        """Read output.* bindings and render one frame.
+
+        Expects:
+          output.bg.r / .g / .b      — clear colour
+          output.rects               — list of dicts:
+              {x, y, w, h, color: {r, g, b}}
+        """
         r = self.renderer
         p = output_var + '.'
 
-        def iget(key: str, default: int = 0) -> int:
-            v = bindings.get(p + key, default)
+        def _int(v, default: int = 0) -> int:
             try:
                 return int(v)
             except (TypeError, ValueError):
                 return default
 
         # Clear with background colour
-        sdl2.SDL_SetRenderDrawColor(r, iget('bg_r'), iget('bg_g'), iget('bg_b'), 255)
+        bg = bindings.get(p + 'bg', {}) or {}
+        sdl2.SDL_SetRenderDrawColor(r,
+            _int(bg.get('r')), _int(bg.get('g')), _int(bg.get('b')), 255)
         sdl2.SDL_RenderClear(r)
 
-        # Draw rect slots 0..7 in order (painter's algorithm)
-        for i in range(8):
-            s = f'rect{i}_'
-            w = iget(f'{s}w')
-            h = iget(f'{s}h')
+        # Render the rect sequence (painter's algorithm — list order = z-order)
+        rects = bindings.get(p + 'rects', []) or []
+        for rect in rects:
+            if not isinstance(rect, dict):
+                continue
+            w = _int(rect.get('w'))
+            h = _int(rect.get('h'))
             if w == 0 and h == 0:
-                continue  # empty slot — skip and check the rest
-            x  = iget(f'{s}x')
-            y  = iget(f'{s}y')
-            cr = iget(f'{s}r', 255)
-            cg = iget(f'{s}g', 255)
-            cb = iget(f'{s}b', 255)
-            rect = SDL_Rect(x, y, w, h)
+                continue   # invisible — skip
+            x = _int(rect.get('x'))
+            y = _int(rect.get('y'))
+            color = rect.get('color', {}) or {}
+            cr = _int(color.get('r'), 255)
+            cg = _int(color.get('g'), 255)
+            cb = _int(color.get('b'), 255)
+            rect_obj = SDL_Rect(x, y, w, h)
             sdl2.SDL_SetRenderDrawColor(r, cr, cg, cb, 255)
-            sdl2.SDL_RenderFillRect(r, rect)
+            sdl2.SDL_RenderFillRect(r, rect_obj)
 
         sdl2.SDL_RenderPresent(r)

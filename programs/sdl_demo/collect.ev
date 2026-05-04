@@ -6,18 +6,12 @@
 -- Controls: hold arrow keys — velocity builds up to a maximum and
 -- coasts to a stop when released.
 --
--- Physics note: boolean literals are lowercase true/false.
--- Precedence note: ⇒ binds tighter than ∧, so multi-term consequents
--- need parentheses: A ⇒ (B ∧ C).
+-- The scene is a Seq(SDLRect) of five elements: player + four dots.
+-- Inactive dots have w=0 ∧ h=0 and the renderer skips them.
 --
 -- Run: python evident.py execute-sdl programs/sdl_demo/collect.ev
 
 import "stdlib/sdl.ev"
-
--- ── Game state ────────────────────────────────────────────────────────────────
--- d0..d3: false = dot present (default), true = collected.
--- vx/vy: pixels per step, capped at ±12. Intermediate velocity computed in
--- the Physics subclaim using intended_vx/vy to avoid constraint conflicts.
 
 type GameState
     player_x ∈ Int
@@ -36,30 +30,43 @@ type main
     state      ∈ GameState
     state_next ∈ GameState
 
+    -- Named SDLRect values — single Z3 Datatype consts because SDLRect appears
+    -- as a Seq element type below, which triggers composite registration.
+    player_rect ∈ SDLRect
+    dot0_rect   ∈ SDLRect
+    dot1_rect   ∈ SDLRect
+    dot2_rect   ∈ SDLRect
+    dot3_rect   ∈ SDLRect
+
     -- ── Background ────────────────────────────────────────────────────────────
-    state.won  ⇒ (output.bg_r = 20 ∧ output.bg_g = 120 ∧ output.bg_b = 50)
-    ¬state.won ⇒ (output.bg_r = 15 ∧ output.bg_g = 15  ∧ output.bg_b = 30)
+    state.won  ⇒ (output.bg.r = 20 ∧ output.bg.g = 120 ∧ output.bg.b = 50)
+    ¬state.won ⇒ (output.bg.r = 15 ∧ output.bg.g = 15  ∧ output.bg.b = 30)
 
-    -- ── Player: 40×40 square ──────────────────────────────────────────────────
-    output.rect0_x = state.player_x
-    output.rect0_y = state.player_y
-    output.rect0_w = 40
-    output.rect0_h = 40
-    state.won  ⇒ (output.rect0_r = 255 ∧ output.rect0_g = 255 ∧ output.rect0_b = 150)
-    ¬state.won ⇒ (output.rect0_r = 220 ∧ output.rect0_g = 180 ∧ output.rect0_b = 60)
+    -- ── Player rect ───────────────────────────────────────────────────────────
+    player_rect.x = state.player_x
+    player_rect.y = state.player_y
+    player_rect.w = 40
+    player_rect.h = 40
+    state.won  ⇒ (player_rect.color.r = 255 ∧ player_rect.color.g = 255 ∧ player_rect.color.b = 150)
+    ¬state.won ⇒ (player_rect.color.r = 220 ∧ player_rect.color.g = 180 ∧ player_rect.color.b = 60)
 
-    -- ── Dots ──────────────────────────────────────────────────────────────────
-    ¬state.d0 ⇒ (output.rect1_x = 80 ∧ output.rect1_y = 80 ∧ output.rect1_w = 25 ∧ output.rect1_h = 25 ∧ output.rect1_r = 80 ∧ output.rect1_g = 200 ∧ output.rect1_b = 180)
-    state.d0  ⇒ (output.rect1_w = 0 ∧ output.rect1_h = 0)
+    -- ── Dot rects ─────────────────────────────────────────────────────────────
+    -- Active dot: 25×25 teal square at the corner. Collected dot: 0×0 (skipped).
 
-    ¬state.d1 ⇒ (output.rect2_x = 660 ∧ output.rect2_y = 80 ∧ output.rect2_w = 25 ∧ output.rect2_h = 25 ∧ output.rect2_r = 80 ∧ output.rect2_g = 200 ∧ output.rect2_b = 180)
-    state.d1  ⇒ (output.rect2_w = 0 ∧ output.rect2_h = 0)
+    ¬state.d0 ⇒ (dot0_rect.x = 80 ∧ dot0_rect.y = 80 ∧ dot0_rect.w = 25 ∧ dot0_rect.h = 25 ∧ dot0_rect.color.r = 80 ∧ dot0_rect.color.g = 200 ∧ dot0_rect.color.b = 180)
+    state.d0  ⇒ (dot0_rect.w = 0 ∧ dot0_rect.h = 0)
 
-    ¬state.d2 ⇒ (output.rect3_x = 80 ∧ output.rect3_y = 460 ∧ output.rect3_w = 25 ∧ output.rect3_h = 25 ∧ output.rect3_r = 80 ∧ output.rect3_g = 200 ∧ output.rect3_b = 180)
-    state.d2  ⇒ (output.rect3_w = 0 ∧ output.rect3_h = 0)
+    ¬state.d1 ⇒ (dot1_rect.x = 660 ∧ dot1_rect.y = 80 ∧ dot1_rect.w = 25 ∧ dot1_rect.h = 25 ∧ dot1_rect.color.r = 80 ∧ dot1_rect.color.g = 200 ∧ dot1_rect.color.b = 180)
+    state.d1  ⇒ (dot1_rect.w = 0 ∧ dot1_rect.h = 0)
 
-    ¬state.d3 ⇒ (output.rect4_x = 660 ∧ output.rect4_y = 460 ∧ output.rect4_w = 25 ∧ output.rect4_h = 25 ∧ output.rect4_r = 80 ∧ output.rect4_g = 200 ∧ output.rect4_b = 180)
-    state.d3  ⇒ (output.rect4_w = 0 ∧ output.rect4_h = 0)
+    ¬state.d2 ⇒ (dot2_rect.x = 80 ∧ dot2_rect.y = 460 ∧ dot2_rect.w = 25 ∧ dot2_rect.h = 25 ∧ dot2_rect.color.r = 80 ∧ dot2_rect.color.g = 200 ∧ dot2_rect.color.b = 180)
+    state.d2  ⇒ (dot2_rect.w = 0 ∧ dot2_rect.h = 0)
+
+    ¬state.d3 ⇒ (dot3_rect.x = 660 ∧ dot3_rect.y = 460 ∧ dot3_rect.w = 25 ∧ dot3_rect.h = 25 ∧ dot3_rect.color.r = 80 ∧ dot3_rect.color.g = 200 ∧ dot3_rect.color.b = 180)
+    state.d3  ⇒ (dot3_rect.w = 0 ∧ dot3_rect.h = 0)
+
+    -- ── Scene ─────────────────────────────────────────────────────────────────
+    output.rects = ⟨dot0_rect, dot1_rect, dot2_rect, dot3_rect, player_rect⟩
 
     -- ── Dot collection ────────────────────────────────────────────────────────
     (¬state.d0 ∧ state.player_x ≤ 105 ∧ state.player_x ≥ 40 ∧ state.player_y ≤ 105 ∧ state.player_y ≥ 40) ⇒ state_next.d0 = true
@@ -79,61 +86,33 @@ type main
     ¬(state_next.d0 ∧ state_next.d1 ∧ state_next.d2 ∧ state_next.d3) ⇒ state_next.won = false
 
     -- ── Physics ───────────────────────────────────────────────────────────────
-    -- intended_vx / intended_vy are internal to this subclaim.
-    -- Velocity rules write to them; wall clamping reads them to set
-    -- state_next.vx and state_next.player_x. The two-step indirection
-    -- prevents the velocity and clamping constraints from conflicting.
-    --
-    -- Acceleration: 2 px/step².  Max speed: ±12 px/step.
-    -- Deceleration: 2 px/step² toward zero; snaps to 0 within ±2.
-    -- Wall clamping: position is pinned at 0 or 760/560; velocity zeroed.
-
     subclaim Physics
         intended_vx ∈ Int
         intended_vy ∈ Int
 
-        -- ── Won: freeze ───────────────────────────────────────────────────────
         state.won ⇒ (intended_vx = 0 ∧ intended_vy = 0)
 
-        -- ── X velocity ───────────────────────────────────────────────────────
-        -- right_held takes priority; if only left_held, accelerate left;
-        -- if neither (or both cancel), decelerate. X and Y are independent so
-        -- holding Right+Up gives true diagonal movement.
-
-        -- Right held: accelerate rightward, cap at 12
         (¬state.won ∧ input.right_held ∧ state.vx ≤ 10) ⇒ intended_vx = state.vx + 2
         (¬state.won ∧ input.right_held ∧ state.vx > 10)  ⇒ intended_vx = 12
-
-        -- Left held, right not held: accelerate leftward, cap at -12
         (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx ≥ -10) ⇒ intended_vx = state.vx - 2
         (¬state.won ∧ ¬input.right_held ∧ input.left_held ∧ state.vx < -10)  ⇒ intended_vx = -12
-
-        -- Neither horizontal key: decelerate x toward zero
         (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx > 2)  ⇒ intended_vx = state.vx - 2
         (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx ≤ 2 ∧ state.vx ≥ -2) ⇒ intended_vx = 0
         (¬state.won ∧ ¬input.right_held ∧ ¬input.left_held ∧ state.vx < -2) ⇒ intended_vx = state.vx + 2
 
-        -- ── Y velocity ───────────────────────────────────────────────────────
-        -- Down held: accelerate downward, cap at 12
         (¬state.won ∧ input.down_held ∧ state.vy ≤ 10) ⇒ intended_vy = state.vy + 2
         (¬state.won ∧ input.down_held ∧ state.vy > 10)  ⇒ intended_vy = 12
-
-        -- Up held, down not held: accelerate upward, cap at -12
         (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy ≥ -10) ⇒ intended_vy = state.vy - 2
         (¬state.won ∧ ¬input.down_held ∧ input.up_held ∧ state.vy < -10)  ⇒ intended_vy = -12
-
-        -- Neither vertical key: decelerate y toward zero
         (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy > 2)  ⇒ intended_vy = state.vy - 2
         (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy ≤ 2 ∧ state.vy ≥ -2) ⇒ intended_vy = 0
         (¬state.won ∧ ¬input.down_held ∧ ¬input.up_held ∧ state.vy < -2) ⇒ intended_vy = state.vy + 2
 
-        -- ── Wall clamping and position update (x) ────────────────────────────
         (state.player_x + intended_vx > 760) ⇒ (state_next.vx = 0 ∧ state_next.player_x = 760)
         (state.player_x + intended_vx < 0)   ⇒ (state_next.vx = 0 ∧ state_next.player_x = 0)
         (state.player_x + intended_vx ≥ 0 ∧ state.player_x + intended_vx ≤ 760) ⇒
             (state_next.vx = intended_vx ∧ state_next.player_x = state.player_x + intended_vx)
 
-        -- ── Wall clamping and position update (y) ────────────────────────────
         (state.player_y + intended_vy > 560) ⇒ (state_next.vy = 0 ∧ state_next.player_y = 560)
         (state.player_y + intended_vy < 0)   ⇒ (state_next.vy = 0 ∧ state_next.player_y = 0)
         (state.player_y + intended_vy ≥ 0 ∧ state.player_y + intended_vy ≤ 560) ⇒

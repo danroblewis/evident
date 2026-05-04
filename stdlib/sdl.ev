@@ -5,12 +5,12 @@
 -- their `main` type. The plugin injects event state before each solve and
 -- issues draw calls from the output bindings after each solve.
 --
--- Draw call slots: rect0..rect7. Rendered in order (painter's algorithm).
--- The plugin stops at the first slot with w=0 and h=0.
+-- Output is a Seq(SDLRect): a dynamic list of rectangles, rendered in order
+-- (painter's algorithm — earlier elements are drawn first, later ones on top).
 
 -- ── Input ─────────────────────────────────────────────────────────────────────
 -- Directional keys are four independent booleans so multiple can be held
--- simultaneously (diagonal movement). quit, mouse_x/y and click are separate.
+-- simultaneously (diagonal movement).
 
 type SDLInput
     right_held ∈ Bool
@@ -24,66 +24,24 @@ type SDLInput
     time       ∈ Int   -- milliseconds since unix epoch
     dt         ∈ Int   -- milliseconds since the previous step (capped at 100)
 
+-- ── Composite types ───────────────────────────────────────────────────────────
+
+type Color
+    r ∈ Nat
+    g ∈ Nat
+    b ∈ Nat
+
+type SDLRect
+    x     ∈ Int
+    y     ∈ Int
+    w     ∈ Nat
+    h     ∈ Nat
+    color ∈ Color
+
 -- ── Output ────────────────────────────────────────────────────────────────────
--- Each rect slot: x y w h r g b. Set w=0 and h=0 to leave a slot empty.
+-- bg is the clear colour. rects is the scene as a sequence of draw calls.
+-- A rect with w=0 ∧ h=0 is skipped by the renderer (useful for hide/show).
 
 type SDLOutput
-    bg_r ∈ Nat
-    bg_g ∈ Nat
-    bg_b ∈ Nat
-    rect0_x ∈ Int
-    rect0_y ∈ Int
-    rect0_w ∈ Nat
-    rect0_h ∈ Nat
-    rect0_r ∈ Nat
-    rect0_g ∈ Nat
-    rect0_b ∈ Nat
-    rect1_x ∈ Int
-    rect1_y ∈ Int
-    rect1_w ∈ Nat
-    rect1_h ∈ Nat
-    rect1_r ∈ Nat
-    rect1_g ∈ Nat
-    rect1_b ∈ Nat
-    rect2_x ∈ Int
-    rect2_y ∈ Int
-    rect2_w ∈ Nat
-    rect2_h ∈ Nat
-    rect2_r ∈ Nat
-    rect2_g ∈ Nat
-    rect2_b ∈ Nat
-    rect3_x ∈ Int
-    rect3_y ∈ Int
-    rect3_w ∈ Nat
-    rect3_h ∈ Nat
-    rect3_r ∈ Nat
-    rect3_g ∈ Nat
-    rect3_b ∈ Nat
-    rect4_x ∈ Int
-    rect4_y ∈ Int
-    rect4_w ∈ Nat
-    rect4_h ∈ Nat
-    rect4_r ∈ Nat
-    rect4_g ∈ Nat
-    rect4_b ∈ Nat
-    rect5_x ∈ Int
-    rect5_y ∈ Int
-    rect5_w ∈ Nat
-    rect5_h ∈ Nat
-    rect5_r ∈ Nat
-    rect5_g ∈ Nat
-    rect5_b ∈ Nat
-    rect6_x ∈ Int
-    rect6_y ∈ Int
-    rect6_w ∈ Nat
-    rect6_h ∈ Nat
-    rect6_r ∈ Nat
-    rect6_g ∈ Nat
-    rect6_b ∈ Nat
-    rect7_x ∈ Int
-    rect7_y ∈ Int
-    rect7_w ∈ Nat
-    rect7_h ∈ Nat
-    rect7_r ∈ Nat
-    rect7_g ∈ Nat
-    rect7_b ∈ Nat
+    bg    ∈ Color
+    rects ∈ Seq(SDLRect)
