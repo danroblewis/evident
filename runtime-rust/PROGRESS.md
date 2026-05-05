@@ -4,24 +4,23 @@
 
 ## Current status
 
-**Phase:** v0.6 — cardinality + indexing parser/AST done; runtime
-still gated on Seq sort support (z3-0.12 crate gap). 25/25 tests green.
+**Phase:** v0.7 — cached evaluator landed. 29/29 tests green.
 
-**Last action:** Parser/AST work for the sequence syntax landed:
-  - `#expr` parses as `Expr::Cardinality(Box<Expr>)` (unary prefix).
-  - `e[i]` parses as `Expr::Index(Box<Expr>, Box<Expr>)` (postfix at
-    atom level, binds tighter than any binary op).
-  - Compound type names `Seq(Int)`, `Set(Bool)`, etc. parse cleanly
-    in membership decls.
+**Last action:** Ported the Python `evaluate_cached` optimization.
+Runtime owns a leaked `Box<Context>` (one per process — fine for a
+CLI tool / test suite) and a `RefCell<HashMap<String, CachedSchema>>`.
+First `query_cached` for a schema runs `build_cache` (declarations +
+constraint translation into a fresh solver); subsequent queries hit
+`run_cached` which does push → assert givens → check → extract → pop.
 
-The runtime can't actually use these yet — see "z3 crate gap" under
-gotchas. Translation ignores both Cardinality and Index; declaring
-a `Seq(T)` variable logs a warning. The AST shape is settled, so
-when the runtime catches up, only translate.rs needs to change.
+Perf smoke: **195ms uncached vs 5.8ms cached** over 100 iterations of
+a small multi-passthrough schema (~33× speedup). Bigger margin than
+the Python port saw (3-6×) — Z3 retains more state when the solver
+is reused.
 
-**Next action:** Either (a) wrap z3-sys's `Z3_mk_seq_sort` directly
-to enable Seq runtime support, or (b) cached evaluator (Rust
-lifetime gymnastics — see sketch below).
+**Next action:** Seq sort runtime support is now top of the list —
+parser/AST already there, just need to wrap `z3_sys::Z3_mk_seq_sort`
+ourselves (the safe `z3` crate doesn't expose a generic `Seq<T>`).
 
 ## Milestones
 
@@ -89,32 +88,27 @@ lifetime gymnastics — see sketch below).
   but `declare_var` warns and skips `Seq(...)` types and the
   translator returns None for Cardinality / Index expressions.
 
-## Cached evaluator sketch
+## Cached evaluator (implemented)
 
-The Python runtime gained `evaluate_cached()` for the executor's hot
-loop: translate the body once, hold a Z3 solver, per query do
-`push → assert givens → check → extract → pop`. Drops per-step cost
-from ~33ms to ~7ms in the parent project.
+Done — went with the leaked-Context design (option 1 in the original
+sketch). The runtime owns a `&'static Context` from `Box::leak` and a
+`RefCell<HashMap<String, CachedSchema<'static>>>`. First call to
+`query_cached` for a given schema runs `build_cache` (declarations +
+constraint translation into a fresh solver); subsequent calls run
+`run_cached` which does push → assert givens → check → extract → pop.
 
-The Rust port can do the same, but Z3's lifetimes make it awkward.
-`Solver<'ctx>`, `Int<'ctx>` etc. all borrow from `Context<'ctx>`. To
-cache them per-schema, the Context has to live as long as the cache.
+Notes for anyone touching this:
 
-Two designs that work:
-
-1. **Runtime owns a leaked Context.** `Box::leak(Box::new(Config::new()))`
-   gives a `&'static Context`. Then the cache can be `HashMap<String,
-   (Solver<'static>, HashMap<String, Var<'static>>)>`. Simple, but
-   the Context never gets freed (one per process — OK for a CLI
-   tool, fine for tests, ugly for long-running embeddings).
-2. **Session struct.** A `Session<'ctx>` borrows a Context the caller
-   provides. Cache lives inside the Session. The runtime hands out
-   sessions; callers manage Context lifetime. Cleaner but the API
-   leaks the Z3 lifetime to consumers.
-
-Recommend (1) for the experimental port — it's the simplest path to
-demonstrating the perf story. If we ever care about clean shutdown,
-switch to (2).
+- `load_source` clears the cache. Loading a new schema can reference
+  existing ones via ClaimCall / passthrough, so old cache entries
+  may now be stale. Simplest to flush.
+- Cache key is the schema name. If you ever support reloading a
+  schema by the same name with a different body, cache invalidation
+  has to handle that.
+- The leaked Context is one per `EvidentRuntime`. Tests create many
+  runtimes; each leaks one Context. Fine for a test process; in a
+  long-running embedding switch to a `Session<'ctx>` design where
+  the caller controls Context lifetime.
 
 ## Next slices
 
@@ -139,6 +133,9 @@ Done in this session:
       translation deferred behind the z3 crate gap.
 - [x] `Seq(T)` / `Set(T)` parse as compound type names in membership
       decls. Runtime declaration deferred (logs warning).
+- [x] **Cached evaluator.** Leaked `'static Context`,
+      `RefCell<HashMap<String, CachedSchema>>` cache, push/pop per
+      query. ~33× speedup on a multi-passthrough schema.
 
 In rough order of leverage:
 
@@ -186,3 +183,7 @@ All in `tests/basic.rs`. 16/16 passing.
 | `claim_call_sub_schema_mapping`      | `state mapsto state.player` re-keys fields |
 | `subclaim_register_and_call`         | subclaim defined inside parent body    |
 | `subclaim_visible_to_sibling`        | subclaim accessible from sibling decl  |
+| `cached_query_matches_uncached`      | cached path produces identical results |
+| `cached_query_per_call_givens`       | per-query givens, cache reused         |
+| `cached_query_unsat`                 | UNSAT case across cache hits           |
+| `cached_query_perf_smoke`            | cached < uncached over many iterations |

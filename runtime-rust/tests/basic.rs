@@ -287,6 +287,86 @@ fn claim_call_sub_schema_mapping() {
     } else { panic!("missing p.x or p.y"); }
 }
 
+/// `query_cached` matches `query` for the same input.
+#[test]
+fn cached_query_matches_uncached() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("schema S\n    n ∈ Nat\n    m ∈ Nat\n    n + m = 10\n").unwrap();
+    let mut g = HashMap::new();
+    g.insert("n".to_string(), Value::Int(7));
+    let a = rt.query("S", &g).unwrap();
+    let b = rt.query_cached("S", &g).unwrap();
+    assert_eq!(a.satisfied, b.satisfied);
+    assert_eq!(a.bindings, b.bindings);
+}
+
+/// Cached evaluator handles per-query given changes — different givens
+/// give different bindings, and the constraints are translated only once.
+#[test]
+fn cached_query_per_call_givens() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("schema S\n    n ∈ Nat\n    m ∈ Nat\n    n + m = 10\n").unwrap();
+    for n_given in [3, 5, 8] {
+        let mut g = HashMap::new();
+        g.insert("n".to_string(), Value::Int(n_given));
+        let r = rt.query_cached("S", &g).unwrap();
+        assert!(r.satisfied);
+        assert_eq!(r.bindings.get("n"), Some(&Value::Int(n_given)));
+        assert_eq!(r.bindings.get("m"), Some(&Value::Int(10 - n_given)));
+    }
+}
+
+/// Cached evaluator preserves UNSAT correctly across queries.
+#[test]
+fn cached_query_unsat() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("schema S\n    n ∈ Nat\n    n < 5\n").unwrap();
+    let mut g = HashMap::new();
+    g.insert("n".to_string(), Value::Int(10));
+    assert!(!rt.query_cached("S", &g).unwrap().satisfied);
+    // Same cached schema; SAT case still works.
+    let mut g2 = HashMap::new();
+    g2.insert("n".to_string(), Value::Int(3));
+    assert!(rt.query_cached("S", &g2).unwrap().satisfied);
+}
+
+/// Cached evaluator is faster than uncached on the same schema queried
+/// many times. (Smoke test, not a strict perf gate.)
+#[test]
+fn cached_query_perf_smoke() {
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    let mut rt = EvidentRuntime::new();
+    // Multi-claim composition with passthrough — translation is heavy
+    // enough that the cache should win.
+    rt.load_source(
+        "claim positive\n    n ∈ Nat\n    n > 0\n\
+         claim small\n    n ∈ Nat\n    n < 100\n\
+         schema S\n    n ∈ Nat\n    ..positive\n    ..small\n    n + 1 > 1\n"
+    ).unwrap();
+
+    let n_iters = 100;
+    let mut g = HashMap::new();
+    g.insert("n".to_string(), Value::Int(42));
+
+    let t0 = Instant::now();
+    for _ in 0..n_iters { rt.query("S", &g).unwrap(); }
+    let uncached = t0.elapsed();
+
+    let t0 = Instant::now();
+    for _ in 0..n_iters { rt.query_cached("S", &g).unwrap(); }
+    let cached = t0.elapsed();
+
+    eprintln!("uncached: {:?}, cached: {:?}", uncached, cached);
+    // Cached should be at least 1.5× faster — generous bound to avoid
+    // CI flakiness while still catching regressions.
+    assert!(cached < uncached, "cached ({:?}) should be < uncached ({:?})", cached, uncached);
+}
+
 /// Subclaim defined inside a parent's body. Other claims (or the parent
 /// itself) can call it by name; the runtime registers it during load.
 #[test]

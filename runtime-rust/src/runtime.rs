@@ -2,7 +2,10 @@
 
 use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
+use crate::translate::{build_cache, run_cached, CachedSchema};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use z3::{Config, Context};
 
 pub use crate::translate::Value;
 
@@ -24,6 +27,18 @@ pub struct EvidentRuntime {
     /// Python's `EvidentRuntime.schemas`. Used to resolve user-defined
     /// type references during sub-schema expansion.
     schemas: HashMap<String, SchemaDecl>,
+    /// Z3 context shared by all cached evaluations from this runtime.
+    /// Leaked via Box::leak so its lifetime is `'static`, which lets
+    /// us store cached solvers and env entries that borrow from it
+    /// without lifetime gymnastics in the public API. The leak is
+    /// intentional — one Context per process is fine for a CLI tool
+    /// or a test suite. (For long-running embeddings we'd switch to
+    /// a Session<'ctx> design — see PROGRESS.md sketch.)
+    z3_ctx: &'static Context,
+    /// Per-schema cache for `query_cached`. RefCell because we want
+    /// `query_cached` to take `&self` (so multiple queries can share
+    /// the runtime) while the cache mutates on first access.
+    cache: RefCell<HashMap<String, CachedSchema<'static>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +68,14 @@ impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
 
 impl EvidentRuntime {
     pub fn new() -> Self {
-        EvidentRuntime { program: Program::default(), schemas: HashMap::new() }
+        let cfg = Config::new();
+        let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
+        EvidentRuntime {
+            program: Program::default(),
+            schemas: HashMap::new(),
+            z3_ctx: ctx,
+            cache: RefCell::new(HashMap::new()),
+        }
     }
 
     /// Parse and load Evident source. Multiple calls accumulate.
@@ -67,6 +89,9 @@ impl EvidentRuntime {
             register_subclaims(&s.body, &mut self.schemas);
         }
         self.program.schemas.extend(prog.schemas);
+        // Loading new schemas invalidates the cache: new schemas might
+        // be referenced by ClaimCall / passthrough in old ones.
+        self.cache.borrow_mut().clear();
         Ok(())
     }
 
@@ -83,5 +108,28 @@ impl EvidentRuntime {
     /// Convenience: query without any pre-bound values.
     pub fn query_free(&self, name: &str) -> Result<QueryResult, RuntimeError> {
         self.query(name, &HashMap::new())
+    }
+
+    /// Faster query — translates the schema once on first call and
+    /// reuses the resulting Z3 solver across subsequent calls
+    /// (push/pop per query). Mirrors Python's `query(name, given,
+    /// cached=True)` and the `evaluate_cached` optimization.
+    ///
+    /// Bindings, satisfaction result, and overall semantics are
+    /// identical to `query()`. Faster when called many times against
+    /// the same schema with changing `given` values (e.g. an executor
+    /// stepping a state machine 60×/sec).
+    pub fn query_cached(&self, name: &str, given: &HashMap<String, Value>)
+        -> Result<QueryResult, RuntimeError>
+    {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
+            .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
+        let mut cache = self.cache.borrow_mut();
+        let cached = cache.entry(name.to_string()).or_insert_with(|| {
+            build_cache(&schema, &self.schemas, self.z3_ctx)
+        });
+        let r = run_cached(cached, given, self.z3_ctx);
+        Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 }

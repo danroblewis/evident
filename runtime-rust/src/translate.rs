@@ -41,6 +41,139 @@ impl<'ctx> Var<'ctx> {
     }
 }
 
+/// Per-schema cache used by `evaluate_cached`. Holds the shared
+/// solver (with the schema's body constraints already asserted at
+/// the bottom of the assertion stack) and the env mapping used to
+/// resolve given-bindings + extract the model.
+pub struct CachedSchema<'ctx> {
+    env: HashMap<String, Var<'ctx>>,
+    solver: Solver<'ctx>,
+}
+
+/// Translate the schema's body once into a fresh solver and return a
+/// `CachedSchema` that subsequent queries can reuse via push/pop.
+pub fn build_cache<'ctx>(
+    schema: &SchemaDecl,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'ctx Context,
+) -> CachedSchema<'ctx> {
+    let solver = Solver::new(ctx);
+    let mut env: HashMap<String, Var<'ctx>> = HashMap::new();
+
+    // Same two passes as evaluate(), but writing into the cache's
+    // solver instead of a fresh one each time.
+    for item in &schema.body {
+        match item {
+            BodyItem::Membership { name, type_name } => {
+                declare_var(ctx, &solver, &mut env, name, type_name, schemas);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name } = sub {
+                            if !env.contains_key(name) {
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for item in &schema.body {
+        match item {
+            BodyItem::Constraint(e) => {
+                if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Constraint(e) = sub {
+                            if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
+                        }
+                    }
+                }
+            }
+            BodyItem::ClaimCall { name, mappings } => {
+                let Some(claim) = schemas.get(name) else { continue };
+                let mut inner = env.clone();
+                for m in mappings {
+                    for (k, v) in resolve_mapping(&m.slot, &m.value, ctx, &env) {
+                        inner.insert(k, v);
+                    }
+                }
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name } = sub {
+                        let prefix = format!("{}.", vname);
+                        let bound = inner.contains_key(vname)
+                            || inner.keys().any(|k| k.starts_with(&prefix));
+                        if !bound {
+                            declare_var(ctx, &solver, &mut inner, vname, type_name, schemas);
+                        }
+                    }
+                }
+                for sub in &claim.body {
+                    if let BodyItem::Constraint(e) = sub {
+                        if let Some(b) = translate_bool(e, ctx, &inner) { solver.assert(&b); }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    CachedSchema { env, solver }
+}
+
+/// Per-query work: push, assert givens against the cached env, check,
+/// extract model, pop. Reuses all the constraint translation already
+/// in the cache.
+pub fn run_cached<'ctx>(
+    cached: &CachedSchema<'ctx>,
+    given: &HashMap<String, Value>,
+    ctx: &'ctx Context,
+) -> EvalResult {
+    cached.solver.push();
+    for (name, value) in given {
+        let Some(var) = cached.env.get(name) else { continue };
+        match (var, value) {
+            (Var::IntVar(v),  Value::Int(n))  => cached.solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
+            (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
+            (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            _ => eprintln!("warning: type mismatch for given {:?}", name),
+        }
+    }
+    let satisfied = matches!(cached.solver.check(), SatResult::Sat);
+    let mut bindings = HashMap::new();
+    if satisfied {
+        if let Some(model) = cached.solver.get_model() {
+            for (name, var) in cached.env.iter() {
+                match var {
+                    Var::IntVar(i) => {
+                        if let Some(v) = model.eval(i, true).and_then(|x| x.as_i64()) {
+                            bindings.insert(name.clone(), Value::Int(v));
+                        }
+                    }
+                    Var::BoolVar(b) => {
+                        if let Some(v) = model.eval(b, true).and_then(|x| x.as_bool()) {
+                            bindings.insert(name.clone(), Value::Bool(v));
+                        }
+                    }
+                    Var::StrVar(s) => {
+                        if let Some(v) = model.eval(s, true).and_then(|x| x.as_string()) {
+                            bindings.insert(name.clone(), Value::Str(v));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cached.solver.pop(1);
+    EvalResult { satisfied, bindings }
+}
+
 /// Evaluate a single schema with optional pre-bound values, using the
 /// `schemas` table to resolve user-defined types referenced inside the
 /// schema body.
