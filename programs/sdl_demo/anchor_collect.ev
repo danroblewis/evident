@@ -41,6 +41,13 @@ type main
 
     player_rect ∈ SDLRect
 
+    -- Two audio voices: one for ball-edge bounces (low square thud),
+    -- one for player-catches-a-dot transitions (bright sine ding).
+    -- The audio plugin's mixer combines them, so simultaneous events
+    -- play together. See the audio constraints near the bottom.
+    audio_bounce ∈ SDLAudio
+    audio_catch  ∈ SDLAudio
+
     #state.dots      = 4
     #state_next.dots = 4
     #output.rects    = 5
@@ -111,3 +118,21 @@ type main
     -- ── Win condition. ─────────────────────────────────────────────────────
     (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = true
     ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = false
+
+    -- ── Audio. Two voices the mixer combines:
+    --
+    -- audio_bounce: a low square thud whenever an uncollected dot is at
+    -- any edge (the single frame of the bounce). The collected check
+    -- silences "ghost" bounces from dots that are still physically in
+    -- play but visually hidden.
+    --
+    -- audio_catch: a bright sine ding on the false→true transition of
+    -- any dot's `collected` field — the single frame the player just
+    -- caught a dot.
+    --
+    -- Both are one-frame events; they read as percussive blips at 60 fps.
+    audio_bounce.playing = ((state.dots[0].collected = false ∧ (state.dots[0].pos_y ≥ 540 ∨ state.dots[0].pos_y ≤ 20 ∨ state.dots[0].pos_x ≥ 740 ∨ state.dots[0].pos_x ≤ 20)) ∨ (state.dots[1].collected = false ∧ (state.dots[1].pos_y ≥ 540 ∨ state.dots[1].pos_y ≤ 20 ∨ state.dots[1].pos_x ≥ 740 ∨ state.dots[1].pos_x ≤ 20)) ∨ (state.dots[2].collected = false ∧ (state.dots[2].pos_y ≥ 540 ∨ state.dots[2].pos_y ≤ 20 ∨ state.dots[2].pos_x ≥ 740 ∨ state.dots[2].pos_x ≤ 20)) ∨ (state.dots[3].collected = false ∧ (state.dots[3].pos_y ≥ 540 ∨ state.dots[3].pos_y ≤ 20 ∨ state.dots[3].pos_x ≥ 740 ∨ state.dots[3].pos_x ≤ 20)))
+    audio_bounce.frequency = 165  ∧  audio_bounce.volume = 180  ∧  audio_bounce.waveform = 1
+
+    audio_catch.playing = ((state.dots[0].collected = false ∧ state_next.dots[0].collected = true) ∨ (state.dots[1].collected = false ∧ state_next.dots[1].collected = true) ∨ (state.dots[2].collected = false ∧ state_next.dots[2].collected = true) ∨ (state.dots[3].collected = false ∧ state_next.dots[3].collected = true))
+    audio_catch.frequency = 880  ∧  audio_catch.volume = 230  ∧  audio_catch.waveform = 0
