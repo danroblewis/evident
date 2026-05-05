@@ -36,8 +36,20 @@ pub enum BodyItem {
     /// variable in scope here resolves to the same Z3 const.
     Passthrough(String),
 
+    /// `ClaimName(slot mapsto value, …)` — claim composition with
+    /// explicit renaming. Each `Mapping` binds the included claim's
+    /// `slot` (a variable name in its body) to `value` (a literal or
+    /// an existing Z3 binding from the current env).
+    ClaimCall { name: String, mappings: Vec<Mapping> },
+
     /// Any other constraint (comparison, arithmetic equality, etc.).
     Constraint(Expr),
+}
+
+#[derive(Debug, Clone)]
+pub struct Mapping {
+    pub slot: String,
+    pub value: Expr,
 }
 
 /// Expression tree. Compact for v0.1.

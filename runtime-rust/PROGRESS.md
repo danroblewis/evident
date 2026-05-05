@@ -4,17 +4,22 @@
 
 ## Current status
 
-**Phase:** v0.3 — passthrough composition added. 19/19 tests green.
+**Phase:** v0.4 — claim composition with mappings landed. 22/22 tests green.
 
-**Last action:** Landed `..ClaimName` passthrough composition. Both
-declaration-pass and constraint-pass walk `BodyItem::Passthrough`
-items: declarations from the included claim are imported under
-names-match (existing names are reused, new ones get fresh consts);
-constraints are translated under the parent's env.
+**Last action:** Added `ClaimName(slot mapsto value, …)` syntax. The
+parser distinguishes claim-call from a parenthesized expression by
+peeking for `IDENT LPAREN` at body-item start. The translator clones
+the parent env, binds each mapping slot to its value (via a small
+`expr_as_var` helper that handles bare identifiers + literals), then
+runs the claim's declaration and constraint passes against that
+inner env. Internal slots of the claim that the caller didn't map
+get fresh Z3 consts (matches the Python runtime's behavior for
+`AxisPhysics`-style claims with `intended` / `target` internals).
 
 **Next action:** Either Seq sorts + cardinality (architectural, big),
-or cached evaluator (Rust lifetime gymnastics). See "Cached evaluator
-sketch" at the bottom for the design problem.
+or cached evaluator (Rust lifetime gymnastics — see sketch below).
+Sub-schema mapping (`state mapsto state.player`) is also still
+deferred and would require recursive expansion in `expr_as_var`.
 
 ## Milestones
 
@@ -113,6 +118,9 @@ Done in this session:
 - [x] Quantifier translation `∀ i ∈ {lo..hi} : body` — unrolled when
       both bounds are literal Ints.
 - [x] `..ClaimName` passthrough composition (names-match).
+- [x] Claim composition with mappings (`Foo(x mapsto y, lit mapsto 5)`).
+      Bare-identifier and literal mapping values supported; sub-schema
+      mapping (`state mapsto state.player`) still deferred.
 
 In rough order of leverage:
 
@@ -121,7 +129,8 @@ In rough order of leverage:
 - [ ] Sequence and Set Z3 sorts (Seq(T), Array(T, Bool)) — needed
       before composite-element story.
 - [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
-- [ ] Claim composition with mappings (`Foo(x mapsto y, …)`).
+- [ ] Sub-schema mapping in ClaimCall (`state mapsto state.player` →
+      expand both sides to fields and bind pairwise).
 - [ ] `subclaim` declaration + invocation with fresh internals.
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.
@@ -156,3 +165,6 @@ All in `tests/basic.rs`. 16/16 passing.
 | `passthrough_names_match`            | `..claim` with shared name             |
 | `passthrough_introduces_var`         | `..claim` adds a new var to scope      |
 | `passthrough_conflict_unsat`         | passthrough vs parent constraint conflict |
+| `claim_call_with_mapping`            | `Claim(slot mapsto var)`               |
+| `claim_call_mixed_mappings`          | mappings with literals and idents      |
+| `claim_call_unmapped_internal`       | unmapped internal slot → fresh const   |

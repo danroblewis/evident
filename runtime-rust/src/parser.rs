@@ -137,6 +137,36 @@ impl Parser {
                     "expected claim name after '..', got {:?}", other))),
             }
         }
+
+        // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
+        // Distinguished from a parenthesized expression by the IDENT
+        // immediately followed by `(`.
+        if let Token::Ident(_) = self.peek() {
+            if matches!(self.toks.get(self.pos + 1), Some(Token::LParen)) {
+                let name = match self.bump() {
+                    Token::Ident(s) => s,
+                    _ => unreachable!(),
+                };
+                self.eat(&Token::LParen)?;
+                let mut mappings = Vec::new();
+                if !matches!(self.peek(), Token::RParen) {
+                    loop {
+                        let slot = match self.bump() {
+                            Token::Ident(s) => s,
+                            other => return Err(ParseError(format!(
+                                "expected mapping slot name, got {:?}", other))),
+                        };
+                        self.eat(&Token::MapsTo)?;
+                        let value = self.parse_expr()?;
+                        mappings.push(crate::ast::Mapping { slot, value });
+                        if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                        break;
+                    }
+                }
+                self.eat(&Token::RParen)?;
+                return Ok(BodyItem::ClaimCall { name, mappings });
+            }
+        }
         if let Token::Ident(_) = self.peek() {
             let saved = self.pos;
             let lhs_name = match self.bump() {

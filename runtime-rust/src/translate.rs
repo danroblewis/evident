@@ -86,13 +86,18 @@ pub fn evaluate(
                     eprintln!("warning: ..{} references unknown claim", claim_name);
                 }
             }
+            BodyItem::ClaimCall { .. } => {
+                // Declarations from the claim's body are added in pass 2
+                // (where we have the inner env to bind into); no work here.
+            }
             BodyItem::Constraint(_) => {}
         }
     }
 
     // Pass 2: translate body constraints and assert. Passthrough items
     // also contribute their included claim's constraints under the
-    // current env.
+    // current env. ClaimCall items translate their claim's body in a
+    // fresh env where each mapping slot is pre-bound.
     for item in &schema.body {
         match item {
             BodyItem::Constraint(e) => {
@@ -109,6 +114,42 @@ pub fn evaluate(
                             if let Some(b) = translate_bool(e, &ctx, &env) {
                                 solver.assert(&b);
                             }
+                        }
+                    }
+                }
+            }
+            BodyItem::ClaimCall { name, mappings } => {
+                let Some(claim) = schemas.get(name) else {
+                    eprintln!("warning: ClaimCall to unknown claim {}", name);
+                    continue;
+                };
+                // Build the inner env: start from the parent env, then
+                // bind each mapping slot. For now we only handle leaf
+                // mappings — sub-schema mapping (`state mapsto state.player`)
+                // is deferred (would need to recursively expand).
+                let mut inner = env.clone();
+                for m in mappings {
+                    if let Some(v) = expr_as_var(&m.value, &ctx, &env) {
+                        inner.insert(m.slot.clone(), v);
+                    } else {
+                        eprintln!("warning: mapping value didn't resolve: {:?}", m.value);
+                    }
+                }
+                // Declare any of the claim's own variables that weren't
+                // mapped (fresh consts — these are the claim's "internal"
+                // parameters, like AxisPhysics's `intended`/`target`).
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name } = sub {
+                        if !inner.contains_key(vname) {
+                            declare_var(&ctx, &solver, &mut inner, vname, type_name, schemas);
+                        }
+                    }
+                }
+                // Translate the claim's constraints in the inner env.
+                for sub in &claim.body {
+                    if let BodyItem::Constraint(e) = sub {
+                        if let Some(b) = translate_bool(e, &ctx, &inner) {
+                            solver.assert(&b);
                         }
                     }
                 }
@@ -162,6 +203,29 @@ pub fn evaluate(
         }
     }
     EvalResult { satisfied, bindings }
+}
+
+/// Resolve a mapping-value expression to a `Var` so it can be bound into
+/// the included claim's env. Handles three cases:
+///   - bare identifier referring to an existing env binding (looked up
+///     directly so the slot shares the same Z3 const)
+///   - integer literal → fresh IntVar holding the constant
+///   - bool literal → fresh BoolVar holding the constant
+///   - string literal → fresh StrVar
+/// Anything else (arithmetic expressions, dotted sub-schema chains)
+/// returns None for now.
+fn expr_as_var<'ctx>(
+    e: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<Var<'ctx>> {
+    match e {
+        Expr::Identifier(name) => env.get(name).cloned(),
+        Expr::Int(n)  => Some(Var::IntVar(Int::from_i64(ctx, *n))),
+        Expr::Bool(b) => Some(Var::BoolVar(Bool::from_bool(ctx, *b))),
+        Expr::Str(s)  => Z3Str::from_str(ctx, s).ok().map(Var::StrVar),
+        _ => None,
+    }
 }
 
 /// Resolve `Range(Int, Int)` to a `(lo, hi)` pair. Returns None if

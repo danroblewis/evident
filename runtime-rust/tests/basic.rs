@@ -234,6 +234,57 @@ fn passthrough_introduces_var() {
     } else { panic!(); }
 }
 
+/// Claim composition with mappings: the called claim's slot binds to
+/// a value from the caller's scope.
+#[test]
+fn claim_call_with_mapping() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim positive\n    n ∈ Nat\n    n > 0\n\
+         schema S\n    a ∈ Nat\n    positive (n mapsto a)\n    a < 5\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(a)) = r.bindings.get("a") {
+        assert!(*a > 0 && *a < 5, "got {}", a);
+    } else { panic!(); }
+}
+
+/// Multiple mappings, with literal values and identifier values mixed.
+#[test]
+fn claim_call_mixed_mappings() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim in_range\n    x ∈ Int\n    lo ∈ Int\n    hi ∈ Int\n    x ≥ lo\n    x ≤ hi\n\
+         schema S\n    val ∈ Int\n    in_range (x mapsto val, lo mapsto 10, hi mapsto 20)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(v)) = r.bindings.get("val") {
+        assert!(*v >= 10 && *v <= 20, "got {}", v);
+    } else { panic!(); }
+}
+
+/// Internal slot of the claim that isn't mapped should get a fresh
+/// constant — Z3 picks any value satisfying the constraints.
+#[test]
+fn claim_call_unmapped_internal() {
+    let mut rt = EvidentRuntime::new();
+    // `pick` declares `picked ∈ Nat` and constrains it but doesn't
+    // expose it via a mapping. The caller doesn't see `picked`; Z3
+    // just needs to find some value to satisfy the claim.
+    rt.load_source(
+        "claim pick\n    picked ∈ Nat\n    out ∈ Nat\n    out = picked + 1\n    picked > 5\n\
+         schema S\n    n ∈ Nat\n    pick (out mapsto n)\n    n < 20\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(n)) = r.bindings.get("n") {
+        // n = picked + 1 with picked > 5 → n > 6; plus n < 20.
+        assert!(*n > 6 && *n < 20, "got {}", n);
+    } else { panic!(); }
+}
+
 /// Passthrough whose constraints contradict a parent constraint → UNSAT.
 #[test]
 fn passthrough_conflict_unsat() {

@@ -49,6 +49,7 @@ pub enum Token {
     Colon,        // :  (quantifier body separator)
     ForAll,       // ∀
     Exists,       // ∃
+    MapsTo,       // ↦ or "mapsto"
 
     // Layout
     Newline,
@@ -261,6 +262,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{2260}' => { chars.next(); col += 1; tokens.push(Token::Neq); }     // ≠
             '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }  // ∀
             '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }  // ∃
+            '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }  // ↦
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),
@@ -290,6 +292,7 @@ fn keyword_or_ident(s: String) -> Token {
         "in"     => Token::In,
         "true"   => Token::True,
         "false"  => Token::False,
+        "mapsto" => Token::MapsTo,
         _ => Token::Ident(s),
     }
 }
