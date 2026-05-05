@@ -887,3 +887,56 @@ fn contains_rev_set_literal() {
         assert!([2, 3].contains(n));
     } else { panic!(); }
 }
+
+/// `Seq(UserType)` LHS with bare-Identifier items in the literal: each
+/// item names a flat-expanded composite (`p1.x`, `p1.y`, `p2.x`, …) and
+/// the runtime assembles a Datatype constructor application per element.
+#[test]
+fn seq_literal_composite_assignment() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Point\n    x ∈ Int\n    y ∈ Int\n\
+         schema S\n    pts ∈ Seq(Point)\n    p1 ∈ Point\n    p2 ∈ Point\n    \
+         p1.x = 10\n    p1.y = 20\n    p2.x = 30\n    p2.y = 40\n    \
+         pts = ⟨p1, p2⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let pts = match r.bindings.get("pts") {
+        Some(Value::SeqComposite(v)) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(pts.len(), 2);
+    assert_eq!(pts[0].get("x"), Some(&Value::Int(10)));
+    assert_eq!(pts[0].get("y"), Some(&Value::Int(20)));
+    assert_eq!(pts[1].get("x"), Some(&Value::Int(30)));
+    assert_eq!(pts[1].get("y"), Some(&Value::Int(40)));
+}
+
+/// Mirrors SDL: Color nested inside Rect, Rect inside Seq(Rect). The
+/// translator has to recurse into the nested FieldKind to assemble the
+/// inner Color constructor before applying the outer Rect constructor.
+#[test]
+fn seq_literal_nested_composite_assignment() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Color\n    r ∈ Nat\n    g ∈ Nat\n    b ∈ Nat\n\
+         type Rect\n    x ∈ Int\n    color ∈ Color\n\
+         schema S\n    rs ∈ Seq(Rect)\n    rect ∈ Rect\n    \
+         rect.x = 10\n    rect.color.r = 255\n    rect.color.g = 0\n    rect.color.b = 0\n    \
+         rs = ⟨rect⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let rs = match r.bindings.get("rs") {
+        Some(Value::SeqComposite(v)) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(rs.len(), 1);
+    assert_eq!(rs[0].get("x"), Some(&Value::Int(10)));
+    let color = match rs[0].get("color") {
+        Some(Value::Composite(m)) => m,
+        other => panic!("expected nested Color Composite, got {:?}", other),
+    };
+    assert_eq!(color.get("r"), Some(&Value::Int(255)));
+}

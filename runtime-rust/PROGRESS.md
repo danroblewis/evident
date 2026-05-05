@@ -4,9 +4,34 @@
 
 ## Current status
 
+**Phase:** v1.9 — composite-element seq literal assignment. 91/91 tests
+green (+2 lib tests on top of v1.8's 89). Combined with v1.8's `++`/`∉`/`∋`,
+this lets the SDL `programs/sdl_demo/demo.ev` translate end-to-end (the
+import side already silently no-ops via the v1.7 stdlib shim list).
+
+**Last action:** Replaced the deferred `Var::DatatypeSeqVar` arm in
+`translate_seq_lit_eq` (in `runtime-rust/src/translate.rs`) with a real
+implementation. Each item in the literal must be a bare `Identifier(name)`
+referencing a flat-expanded sub-schema instance whose fields already
+exist in env as `name.field…` Z3 consts. New helper
+`build_composite_dynamic` walks the Datatype's `FieldKind` list:
+each `Primitive` looks up `env[&format!("{prefix}.{field_name}")]`
+(IntVar / BoolVar / StrVar / PinnedInt) and converts to a `Dynamic`;
+each `Nested` recurses with the extended prefix and applies the nested
+type's `dt.variants[0].constructor` to assemble the inner Datatype value.
+The outer constructor is then applied to the field Dynamics, yielding
+the per-element Datatype value, which is asserted equal to
+`arr.select(IntVal(i))`. Length is pinned with `len._eq(items.len())`
+once. Two new tests cover the flat-composite case (`Seq(Point)` with
+two-field Points) and the nested-composite case (`Seq(Rect)` with a
+nested `Color` field — same shape as `programs/sdl_demo/demo.ev`'s
+`output.rects = ⟨ball_rect⟩` line).
+
 **Phase:** v1.8 — three small operators (`++`, `∉`, `∋`). 89/89 tests
 green (+3 in `tests/basic.rs`: `string_concat_basic`, `not_in_set_literal`,
-`contains_rev_set_literal`).
+`contains_rev_set_literal`). Plus `--explain` flag for `evident query`
+and `install-bin.sh --debug` for faster iteration. Plus the dropped-
+constraint warning now includes the offending expression's `{:?}`.
 
 **Last action:** Wired the three operators that block several `programs/*.ev`
 demos through the lex/parse/translate pipeline:
@@ -32,10 +57,9 @@ demos through the lex/parse/translate pipeline:
 
 End-to-end smoke through the binary verified
 (`a ++ b`, `n ∉ {1, 2}`, `{3, 4} ∋ n` all round-trip via `evident query`).
-Demos that use these operators (`programs/number-lines.ev`,
-`programs/strip-numbers.ev`) still fail to parse — but on a different
-unimplemented feature (a parenthesized atom inside a quantifier bound),
-not the operators themselves.
+Demos `programs/number-lines.ev` / `programs/strip-numbers.ev` still
+fail to parse — on a different unimplemented feature (a parenthesized
+atom inside a quantifier bound), not the operators themselves.
 
 **Phase:** v1.7 — `import "path"` directive. 81/81 tests green
 (adds 3 CLI tests for the import slice).
@@ -88,18 +112,15 @@ checked. `collect_seq_lengths` was extended so a sequence literal
 also pins `#seq` to `items.len()`, which lets `∀ i ∈ {0..n - 1}`
 unroll downstream.
 
-**v1 limitation:** composite-element seq literals
-(`Seq(UserType)` on the LHS, e.g. `output.rects = ⟨ball_rect⟩`)
-log a warning and drop the constraint. The full implementation
-needs to walk the Datatype's `FieldKind` list, look up each
-`ident.field` in the env, and assemble a Datatype constructor
-application — left as a follow-up. Programs that need this will
-have to wait until that follow-up lands; the lexer/parser/AST
-support is in place so the only piece missing is the translator
-arm. Three new tests in `tests/basic.rs`
+**v1 limitation (RESOLVED in v1.8):** composite-element seq literals
+(`Seq(UserType)` on the LHS, e.g. `output.rects = ⟨ball_rect⟩`) now
+translate end-to-end via `build_composite_dynamic`. See the v1.8
+"Last action" entry above. Three original tests in `tests/basic.rs`
 (`seq_literal_int_assignment`, `seq_literal_with_arithmetic`,
 `seq_literal_empty`) plus one CLI smoke (`cli_query_seq_literal`)
-cover the primitive-element happy path.
+cover the primitive-element happy path; v1.8 adds two more
+(`seq_literal_composite_assignment`,
+`seq_literal_nested_composite_assignment`) for the composite path.
 
 
 
@@ -656,6 +677,8 @@ All in `tests/basic.rs`. 16/16 passing.
 | `string_concat_basic`                | `c = a ++ " " ++ b` (string concat)    |
 | `not_in_set_literal`                 | `n ∉ {1, 2, 3}` desugars to `¬(∈)`     |
 | `contains_rev_set_literal`           | `{1, 2, 3} ∋ n` desugars to `n ∈ {…}`  |
+| `seq_literal_composite_assignment`   | `pts = ⟨p1, p2⟩` for `Seq(Point)` (flat composite) |
+| `seq_literal_nested_composite_assignment` | `rs = ⟨rect⟩` for `Seq(Rect)` with nested `color ∈ Color` |
 
 **`tests/cli.rs` (16)**:
 
@@ -671,13 +694,10 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cli_execute_help_lists_flags`       | `execute --help` mentions the new flags |
 | `cli_batch_says_parked`              | parked `batch`/`repl` emit clear msg   |
 | `cli_parse_lists_schema_names`       | `parse` debug helper                   |
-<<<<<<< HEAD
 | `cli_query_seq_literal`              | `⟨…⟩` end-to-end through the binary   |
-=======
 | `cli_import_loads_referenced_file`   | `import "lib.ev"` from sibling resolves |
 | `cli_import_cycle_safe`              | A imports B, B imports A — no infinite loop |
 | `cli_import_relative_to_file`        | `import "sub/lib.ev"` resolves relative to source dir |
->>>>>>> 5bade7c (runtime-rust: import "path/to/file.ev" directive)
 
 **`src/executor.rs` unit tests (6)**:
 

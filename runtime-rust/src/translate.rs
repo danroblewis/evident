@@ -1665,20 +1665,76 @@ fn translate_seq_lit_eq<'ctx>(
         return Some(Bool::and(ctx, &refs));
     }
 
-    // Composite-element Seq: deferred. Each item should be a bare Identifier
-    // referring to flat sub-schema fields (e.g. `ball_rect`); assembling that
-    // into a Datatype constructor application requires walking the FieldKind
-    // list and looking up env["ident.field"] for each leaf. Out of scope for
-    // v1 — log and skip so the user knows.
-    if var.as_datatype_seq().is_some() {
-        eprintln!(
-            "warning: sequence-literal assignment to composite-element Seq \
-             ({}) is not yet supported in the Rust runtime; constraint dropped",
-            name
-        );
-        return None;
+    // Composite-element Seq: each item must be a bare Identifier referring to
+    // flat sub-schema fields (e.g. `ball_rect`). Walk the Datatype's FieldKind
+    // list and assemble a constructor application from `env["ident.field"]`
+    // lookups, recursing for nested composites (e.g. `ball_rect.color.r`).
+    if let Some((arr, len, _, dt, fields)) = var.as_datatype_seq() {
+        let n = items.len() as i64;
+        let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(items.len() + 1);
+        clauses.push(len._eq(&Int::from_i64(ctx, n)));
+        for (i, item) in items.iter().enumerate() {
+            // Each composite item must be an Identifier whose flat-expanded
+            // sub-schema fields live in env under `ident.field` keys.
+            let ident = match item {
+                Expr::Identifier(s) => s,
+                _ => return None,
+            };
+            let elem_dyn = build_composite_dynamic(ident, dt, fields, ctx, env)?;
+            let idx = Int::from_i64(ctx, i as i64);
+            let cell = arr.select(&idx);
+            clauses.push(cell._eq(&elem_dyn));
+        }
+        let refs: Vec<&Bool<'ctx>> = clauses.iter().collect();
+        return Some(Bool::and(ctx, &refs));
     }
     None
+}
+
+/// Build a single Datatype value (`Dynamic`) by applying `dt.variants[0]
+/// .constructor` to one Dynamic per `FieldKind`. Each primitive field is
+/// resolved via `env.get(&format!("{prefix}.{field_name}"))`; each nested
+/// composite is resolved by recursing with prefix
+/// `format!("{prefix}.{field_name}")`.
+///
+/// Used by `translate_seq_lit_eq` to translate `seq = ⟨ident1, ident2, …⟩`
+/// when seq is a `Seq(UserType)` and each `identK` names a flat-expanded
+/// sub-schema instance whose fields already exist in env as
+/// `identK.field…` Z3 consts.
+fn build_composite_dynamic<'ctx>(
+    prefix: &str,
+    dt: &'static DatatypeSort<'static>,
+    fields: &[FieldKind],
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<z3::ast::Dynamic<'ctx>> {
+    let mut field_dyns: Vec<z3::ast::Dynamic<'ctx>> = Vec::with_capacity(fields.len());
+    for fk in fields.iter() {
+        let dynamic = match fk {
+            FieldKind::Primitive { name, prim_type } => {
+                let key = format!("{}.{}", prefix, name);
+                let var = env.get(&key)?;
+                match (prim_type.as_str(), var) {
+                    ("Int" | "Nat" | "Pos", Var::IntVar(i)) =>
+                        z3::ast::Dynamic::from_ast(i),
+                    ("Int" | "Nat" | "Pos", Var::PinnedInt(v)) =>
+                        z3::ast::Dynamic::from_ast(&Int::from_i64(ctx, *v)),
+                    ("Bool", Var::BoolVar(b)) =>
+                        z3::ast::Dynamic::from_ast(b),
+                    ("String", Var::StrVar(s)) =>
+                        z3::ast::Dynamic::from_ast(s),
+                    _ => return None,
+                }
+            }
+            FieldKind::Nested { name, dt: nested_dt, sub_fields, .. } => {
+                let sub_prefix = format!("{}.{}", prefix, name);
+                build_composite_dynamic(&sub_prefix, nested_dt, sub_fields, ctx, env)?
+            }
+        };
+        field_dyns.push(dynamic);
+    }
+    let dyn_refs: Vec<&dyn Ast> = field_dyns.iter().map(|d| d as &dyn Ast).collect();
+    Some(dt.variants[0].constructor.apply(&dyn_refs))
 }
 
 fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Bool<'ctx>> {
