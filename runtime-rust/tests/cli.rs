@@ -483,3 +483,80 @@ fn cli_query_audio_bindings_resolve() {
     assert!(stdout.contains("audio.waveform=0"),
         "missing audio.waveform binding: {stdout}");
 }
+
+/// `next_main = "halt"` shuts the executor down cleanly. Verifies the
+/// MainCoordinator halt path: program runs at least one step, plugins
+/// produce their output, then the swap-check sees "halt" and breaks.
+#[test]
+fn cli_execute_main_coordinator_halt() {
+    let src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
+               next_main ∈ String\n    \
+               dst.out = \"H\"\n    \
+               next_main = \"halt\"\n";
+    let path = write_tmp("mc_halt", src);
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        // Need at least one byte so StdinPlugin's first before_step
+        // doesn't immediately halt on EOF.
+        stdin.write_all(b"a").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // First step writes "H" then halts on next_main = "halt".
+    assert_eq!(stdout, "H",
+        "expected exactly one 'H' before halt, got {stdout:?}; stderr: {}",
+        String::from_utf8_lossy(&out.stderr));
+}
+
+/// Real program-swap: scene_a writes "A" + sets next_main to scene_b's
+/// path; scene_b writes "B" + halts. Verifies the executor loads
+/// scene_b mid-run and continues stepping with the new program.
+#[test]
+fn cli_execute_main_coordinator_swap_between_programs() {
+    // Both files share the same temp dir so scene_a's relative
+    // `next_main = "scene_b.ev"` resolves correctly via the
+    // `resolve_swap_path` "join with current's parent" rule.
+    let dir = std::env::temp_dir();
+    let pid = std::process::id();
+    let scene_a = dir.join(format!("evident-mc-swap-a-{pid}.ev"));
+    let scene_b = dir.join(format!("evident-mc-swap-b-{pid}.ev"));
+    let scene_b_name = scene_b.file_name().unwrap().to_str().unwrap();
+
+    let a_src = format!("schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
+                         next_main ∈ String\n    \
+                         dst.out = \"A\"\n    \
+                         next_main = \"{scene_b_name}\"\n");
+    let b_src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
+                 next_main ∈ String\n    \
+                 dst.out = \"B\"\n    \
+                 next_main = \"halt\"\n";
+
+    std::fs::write(&scene_a, a_src).unwrap();
+    std::fs::write(&scene_b, b_src).unwrap();
+
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", scene_a.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"ab").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(stdout, "AB",
+        "expected swap A → B, got {stdout:?}; stderr: {}",
+        String::from_utf8_lossy(&out.stderr));
+
+    // Cleanup
+    let _ = std::fs::remove_file(&scene_a);
+    let _ = std::fs::remove_file(&scene_b);
+}

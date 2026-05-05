@@ -1,0 +1,44 @@
+-- scene_a.ev — Red scene. Click to swap to scene_b.
+--
+-- Demonstrates the MainCoordinator pattern: each scene declares
+-- its own transitions via `next_main`, and the world.* state pair
+-- carries shared state across swaps. `world.swap_count` tracks
+-- how many swaps have happened — used here to slide the rendered
+-- rectangle right by 10 pixels per swap.
+--
+-- Run: evident execute programs/swap_demo/scene_a.ev
+
+import "stdlib/sdl.ev"
+
+-- Shared world state. Survives swaps because the executor preserves
+-- any `world` / `world_next` state pair across program transitions.
+type World
+    swap_count ∈ Nat
+
+type main
+    next_main ∈ String        -- Inlined here instead of importing
+    -- (..MainCoordinator works too once stdlib/main_coordinator.ev
+    -- is on disk; the executor also embeds the type for safety.)
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+    world      ∈ World
+    world_next ∈ World
+
+    -- Transitions: click → swap to scene_b AND increment swap_count.
+    -- Both implications are needed to constrain next_main exhaustively
+    -- (Z3 picks any string for the un-constrained case otherwise).
+    input.click = true  ⇒ next_main = "scene_b.ev"
+    input.click = false ⇒ next_main = ""
+    input.click = true  ⇒ world_next.swap_count = world.swap_count + 1
+    input.click = false ⇒ world_next.swap_count = world.swap_count
+
+    -- Render: red background, red square that slides right with swap_count.
+    output.bg.r = 80  ∧  output.bg.g = 30  ∧  output.bg.b = 30
+    #output.rects = 1
+    output.rects[0].x = 100 + world.swap_count * 10
+    output.rects[0].y = 200
+    output.rects[0].w = 200
+    output.rects[0].h = 200
+    output.rects[0].color.r = 220
+    output.rects[0].color.g = 100
+    output.rects[0].color.b = 100

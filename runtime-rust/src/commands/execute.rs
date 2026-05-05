@@ -120,34 +120,34 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         Ok(o) => o,
         Err(e) => { eprintln!("execute: {e}"); return ExitCode::from(2); }
     };
-    let mut rt = EvidentRuntime::new();
-    // Load embedded stdlibs first so user programs can declare
-    // ∈ Stdin / ∈ Stdout / ∈ SDLInput etc. without `import`. Both are
-    // flat shims (no `..` passthrough chains) since the Rust runtime
-    // doesn't yet recurse into `..` during sub-schema field expansion.
-    if let Err(e) = executor::load_io_stdlib(&mut rt) {
-        eprintln!("execute: {e}");
-        return ExitCode::from(1);
-    }
-    if let Err(e) = rt.load_source(sdl_plugin::STDLIB_SDL_EV) {
-        eprintln!("execute: sdl stdlib: {e}");
-        return ExitCode::from(1);
-    }
-    if let Err(e) = rt.load_source(audio_plugin::STDLIB_SDL_AUDIO_EV) {
-        eprintln!("execute: audio stdlib: {e}");
-        return ExitCode::from(1);
-    }
-    // Use load_file so `import "..."` statements in the user program
-    // resolve relative to the file's own directory.
-    if let Err(e) = rt.load_file(Path::new(path)) {
-        eprintln!("execute: {path}: {e}");
-        return ExitCode::from(1);
-    }
+    // Loader: builds a fresh runtime with all stdlibs + the user file.
+    // Used both for the initial program and for any program loaded mid-
+    // run via `next_main = "..."` swap.
+    //
+    // Embedded MainCoordinator stdlib is inlined here so users can
+    // declare `..MainCoordinator` without an `import` and so program-
+    // swap works even when stdlib/ isn't on disk.
+    const STDLIB_MAIN_COORDINATOR_EV: &str =
+        "claim MainCoordinator\n    next_main ∈ String\n";
+    let load_program = |path: &Path| -> Result<EvidentRuntime, String> {
+        let mut rt = EvidentRuntime::new();
+        executor::load_io_stdlib(&mut rt)?;
+        rt.load_source(sdl_plugin::STDLIB_SDL_EV).map_err(|e| e.to_string())?;
+        rt.load_source(audio_plugin::STDLIB_SDL_AUDIO_EV).map_err(|e| e.to_string())?;
+        rt.load_source(STDLIB_MAIN_COORDINATOR_EV).map_err(|e| e.to_string())?;
+        rt.load_file(path).map_err(|e| e.to_string())?;
+        Ok(rt)
+    };
 
-    // Inspect main's body to find SDL var declarations. If any are
-    // present, instantiate the SDL plugin and add it to the plugin
-    // list. Otherwise, fall back to the headless stdin/stdout path.
-    let sdl_vars = collect_sdl_vars(&rt);
+    // Pre-load the initial program so we can decide whether to
+    // activate the SDL plugin (which needs window dimensions baked in
+    // at construction time).
+    let initial_path = std::path::PathBuf::from(path);
+    let initial_rt = match load_program(&initial_path) {
+        Ok(rt) => rt,
+        Err(e) => { eprintln!("execute: {path}: {e}"); return ExitCode::from(1); }
+    };
+    let sdl_vars = collect_sdl_vars(&initial_rt);
 
     let exec_opts = executor::ExecOptions { quiet: opts.quiet, explain: opts.explain };
     // Always include stdio + audio plugins. The executor's matcher
@@ -168,7 +168,27 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         plugins.push(sdl_plugin::create_sdl_plugin(
             opts.width, opts.height, opts.title.clone(), sdl_vars));
     }
-    match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
+
+    // Wrap loader for the multi-program executor: the executor calls
+    // it for every NEW program, so we need to re-build runtimes from
+    // scratch each time. We've already loaded the initial one — pass
+    // it through on the first call to avoid double-loading.
+    let mut initial_consumed = false;
+    let mut initial_holder = Some(initial_rt);
+    let loader_for_executor = move |p: &Path| -> Result<EvidentRuntime, String> {
+        if !initial_consumed && p == initial_path {
+            initial_consumed = true;
+            return Ok(initial_holder.take().unwrap());
+        }
+        load_program(p)
+    };
+
+    match executor::run_with_main_coordinator(
+        std::path::PathBuf::from(path),
+        loader_for_executor,
+        &mut plugins,
+        &exec_opts,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
     }

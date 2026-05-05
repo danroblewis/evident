@@ -43,7 +43,7 @@ levels/
   ...
   level_52.ev
   game_over.ev
-program_chooser.ev ← shared claim every level imports
+main_coordinator.ev ← shared claim every level imports
 world.json         ← initial state, deserialized into `given`
 ```
 
@@ -61,17 +61,17 @@ solver state, no leaked Z3 internals.
 
 ## The Swap Signal
 
-The executor watches one extra binding per step: `next_program`. It's
+The executor watches one extra binding per step: `next_main`. It's
 a normal Evident variable (string-typed) that any constraint can
 write. The contract:
 
-| `next_program` value | Executor behavior              |
+| `next_main` value | Executor behavior              |
 |---|---|
 | `""` (or unchanged)  | Stay in current program; advance state as usual |
 | `"some/file.ev"`     | Swap: extract `world.*`, drop cache, load + initialize that program |
 | `"halt"` (sentinel)  | Shut down the executor                          |
 
-`next_program` is just `state_next.*`-style output: the program
+`next_main` is just `state_next.*`-style output: the program
 writes it, the executor reads it after each solve. No new language
 machinery — the variable participates in the constraint model like
 any other.
@@ -79,32 +79,32 @@ any other.
 ### One solve per frame, not two
 
 The naive design has a separate "manager" program running in
-parallel with each level — one solve picks `next_program`, another
+parallel with each level — one solve picks `next_main`, another
 solve runs the level. That's 2× per-frame cost AND awkward
 state-sharing.
 
 Better: the chooser is a **claim** every level passthroughs.
 
 ```evident
--- stdlib/program_chooser.ev
-claim ProgramChooser
+-- stdlib/main_coordinator.ev
+claim MainCoordinator
     state         ∈ World     -- read whatever world fields you want
-    next_program  ∈ String    -- output the executor watches
+    next_main  ∈ String    -- output the executor watches
     -- Default: stay (the calling program's own constraints can override)
     -- Common transitions can live here too if shared across many programs.
 ```
 
 ```evident
 -- levels/level_03.ev
-import "stdlib/program_chooser.ev"
+import "stdlib/main_coordinator.ev"
 
 type main
-    ..ProgramChooser     -- adds `next_program` field + base rules
+    ..MainCoordinator     -- adds `next_main` field + base rules
     -- ... level-specific gameplay ...
 
     -- Local override:
-    state.player.lives = 0 ⇒ next_program = "game_over.ev"
-    state.player.score ≥ 1000 ⇒ next_program = "level_04.ev"
+    state.player.lives = 0 ⇒ next_main = "game_over.ev"
+    state.player.score ≥ 1000 ⇒ next_main = "level_04.ev"
 ```
 
 One solve per frame. The chooser is part of the same constraint
@@ -217,16 +217,19 @@ the world is the message space.
 
 ---
 
-## The Coordinator as a Real Concept
+## The Multi-Program Layer Inside the Executor
 
-Putting the pieces together, the runtime grows a "coordinator"
-layer that's distinct from any single Evident program:
+Putting the pieces together, the runtime grows a multi-program
+layer (separate from any single Evident program). It's part of the
+Rust executor, not user-facing — programs themselves participate by
+including the `MainCoordinator` claim, which writes the `next_main`
+field this layer watches:
 
 ```
   ┌────────────────────────────────────────────────────┐
   │                  Executor (Rust)                    │
   │  ┌──────────────────────────────────────────────┐  │
-  │  │              Coordinator                      │  │
+  │  │           Multi-program layer                 │  │
   │  │  - Active program registry                    │  │
   │  │  - World-state ownership + handoff            │  │
   │  │  - Cache (program_id, signature → schema)     │  │
@@ -240,7 +243,7 @@ layer that's distinct from any single Evident program:
   └────────────────────────────────────────────────────┘
 ```
 
-The coordinator owns:
+This layer owns:
 
   - **Program lifecycle.** Load on demand, evict on LRU pressure,
     drop on shutdown.
@@ -253,7 +256,7 @@ The coordinator owns:
     existing structural-signature rebuild, generalized.
 
 User-visible Evident programs see none of this. They see: their
-own state, their own next_program, the world fields they read and
+own state, their own next_main, the world fields they read and
 write. The fact that the executor might be running them in parallel
 with three other programs is invisible to the program's own logic
 — exactly because the program is a constraint model with no shared
@@ -300,8 +303,8 @@ These would need to be resolved before building:
     has `assert ... = ⟨…⟩` syntax for ground facts; could the
     initial state just be an Evident file that gets `import`-ed
     by the first program? That'd keep the format unified.
-  - **Halt semantics.** `next_program = "halt"` is one option;
-    `next_program = ""` plus an explicit `should_exit ∈ Bool`
+  - **Halt semantics.** `next_main = "halt"` is one option;
+    `next_main = ""` plus an explicit `should_exit ∈ Bool`
     is another. The first is simpler; the second is more readable.
   - **Plugin lifetime across swaps.** SDL window persists?
     Audio device persists? Stdin reader persists? Each plugin
@@ -317,7 +320,7 @@ This is forward-looking — not built. The order I'd build in:
      `cache: HashMap<String, (CachedSchema, StructuralSignature)>`
      to `cache: HashMap<(ProgramId, StructuralSignature), CachedSchema>`.
      Single program is N=1; semantics unchanged. ~50 lines.
-  2. **`next_program` recognition.** Executor reads the binding
+  2. **`next_main` recognition.** Executor reads the binding
      each step; if changed, drop the cache for the previous
      program, load the new program from disk, build a new cache
      against the carried world. ~100 lines plus tests.

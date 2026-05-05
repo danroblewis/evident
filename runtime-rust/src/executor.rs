@@ -577,6 +577,207 @@ pub fn run_with_plugins_opts(
     Ok(())
 }
 
+// ── Multi-program executor ───────────────────────────────────────────────────
+
+/// Multi-program executor. Programs participate by including the
+/// `MainCoordinator` stdlib trait (provides the `next_main` field);
+/// the executor reads that field after each step and decides what
+/// to do:
+///
+///   - `next_main = ""` (or no `MainCoordinator` in main) → stay
+///   - `next_main = "<path>"` → swap to that program; world.* state
+///                              survives the swap (see below)
+///   - `next_main = "halt"` → shut down
+///
+/// World state forwarding: any state pair named `world` / `world_next`
+/// is preserved across swaps. The latest `world.*` values from the
+/// previous program seed the new program's first frame as `given`.
+/// Programs that don't declare a `world` pair just don't get any
+/// state carried — the new program starts fresh.
+///
+/// Single-program use (no `MainCoordinator`, no `next_main` in
+/// bindings) is the N=1 case: the loop runs the same program forever
+/// and never swaps.
+///
+/// `loader` is called whenever a new program path is requested (and
+/// the path isn't already in the runtime cache). It should return a
+/// fully-loaded `EvidentRuntime` (stdlibs + the user file).
+///
+/// Plugin activation happens once against the FIRST program. This
+/// means programs after the first must use the same SDL/audio var
+/// names as the first one. Future work: re-activate plugins per
+/// program so each can have its own var names.
+pub fn run_with_main_coordinator<F>(
+    initial_path: std::path::PathBuf,
+    mut loader: F,
+    plugins: &mut [Box<dyn Plugin>],
+    opts: &ExecOptions,
+) -> io::Result<()>
+where
+    F: FnMut(&std::path::Path) -> Result<EvidentRuntime, String>,
+{
+    use std::path::PathBuf;
+    use std::collections::HashSet;
+
+    let mut runtimes: HashMap<PathBuf, EvidentRuntime> = HashMap::new();
+    let mut current = initial_path.clone();
+
+    // Load initial program.
+    let initial_rt = loader(&current)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    runtimes.insert(current.clone(), initial_rt);
+
+    // Plugin activation: matched against the FIRST program only.
+    // Re-activation per swap would be cleaner but is a larger change;
+    // for v1 we require consistent SDL/audio var names across programs.
+    let initial_declared = {
+        let rt = runtimes.get(&current).unwrap();
+        collect_vars(rt, "main", &mut Vec::new())
+    };
+    let mut active: Vec<usize> = Vec::new();
+    for (i, p) in plugins.iter_mut().enumerate() {
+        let types: HashSet<&str> = p.handles_types().iter().copied().collect();
+        let matched: Vec<String> = initial_declared.iter()
+            .filter(|(_, t)| types.contains(t.as_str()))
+            .map(|(v, _)| v.clone())
+            .collect();
+        if !matched.is_empty() {
+            p.initialize(matched);
+            active.push(i);
+        }
+    }
+
+    // Per-program state: state-pairs and current-state map.
+    let mut pairs = detect_state_pairs(&initial_declared);
+    let mut current_state: HashMap<String, HashMap<String, Value>> = HashMap::new();
+    {
+        let rt = runtimes.get(&current).unwrap();
+        for (base, _next, t) in &pairs {
+            current_state.insert(base.clone(), initial_state(rt, t));
+        }
+    }
+
+    let mut step_idx: u64 = 0;
+
+    loop {
+        // Build per-step `given`. Plugins first; halt if any returns None.
+        let mut given: HashMap<String, Value> = HashMap::new();
+        let mut halt = false;
+        for &i in &active {
+            match plugins[i].before_step() {
+                Some(g) => given.extend(g),
+                None    => { halt = true; break; }
+            }
+        }
+        if halt { break; }
+
+        // Add current state as `base.field` givens.
+        for (base, fields) in &current_state {
+            for (field, value) in fields {
+                given.insert(format!("{}.{}", base, field), value.clone());
+            }
+        }
+
+        // Solve.
+        let rt = runtimes.get(&current).unwrap();
+        let result = rt.query_cached("main", &given).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("query error: {e}"))
+        })?;
+
+        if !result.satisfied {
+            step_idx += 1;
+            if !opts.quiet {
+                eprintln!("warning: step {step_idx} UNSAT — state preserved, frame skipped");
+                if opts.explain {
+                    explain_step_unsat(rt, &given);
+                }
+            }
+            continue;
+        }
+        step_idx += 1;
+
+        // After-step (plugins run side effects).
+        let mut after_halt = false;
+        for &i in &active {
+            if !plugins[i].after_step(&result.bindings) {
+                after_halt = true;
+            }
+        }
+
+        // Advance state-pairs from state_next.* bindings.
+        for (base, next, _t) in &pairs {
+            let next_state = extract_next_state(&result.bindings, next);
+            if !next_state.is_empty() {
+                current_state.insert(base.clone(), next_state);
+            }
+        }
+
+        if after_halt { break; }
+
+        // Check next_main for swap signal. Missing field, empty string,
+        // or unchanged value all mean "stay in current program".
+        let Some(Value::Str(next_main)) = result.bindings.get("next_main") else {
+            continue;
+        };
+        if next_main == "halt" { break; }
+        if next_main.is_empty() { continue; }
+
+        let next_path = resolve_swap_path(&current, next_main);
+        if next_path == current { continue; }
+
+        // Preserve `world` state across the swap; everything else
+        // resets to the new program's initial-state defaults.
+        let preserved_world = current_state.remove("world");
+
+        // Load the new program if we haven't seen it before. Subsequent
+        // swaps to the same path reuse the cached runtime.
+        if !runtimes.contains_key(&next_path) {
+            let new_rt = loader(&next_path)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other,
+                    format!("load {}: {e}", next_path.display())))?;
+            runtimes.insert(next_path.clone(), new_rt);
+        }
+
+        // Switch active program.
+        current = next_path;
+        let rt = runtimes.get(&current).unwrap();
+        let new_declared = collect_vars(rt, "main", &mut Vec::new());
+        pairs = detect_state_pairs(&new_declared);
+        current_state.clear();
+        for (base, _next, t) in &pairs {
+            let s = if base == "world" {
+                // If the new program declares a `world` pair too, use the
+                // preserved values. Otherwise fall back to defaults.
+                preserved_world.clone().unwrap_or_else(|| initial_state(rt, t))
+            } else {
+                initial_state(rt, t)
+            };
+            current_state.insert(base.clone(), s);
+        }
+    }
+
+    Ok(())
+}
+
+/// Resolve a `next_main` path string against the current program's
+/// directory. Absolute paths pass through; relative paths are joined
+/// with the current program's parent so `next_main = "level_02.ev"`
+/// from `levels/level_01.ev` resolves to `levels/level_02.ev`.
+fn resolve_swap_path(current: &std::path::Path, target: &str) -> std::path::PathBuf {
+    let target_path = std::path::Path::new(target);
+    if target_path.is_absolute() {
+        target_path.to_path_buf()
+    } else if let Some(parent) = current.parent() {
+        if parent.as_os_str().is_empty() {
+            target_path.to_path_buf()
+        } else {
+            parent.join(target_path)
+        }
+    } else {
+        target_path.to_path_buf()
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
