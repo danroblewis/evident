@@ -4,20 +4,17 @@
 
 ## Current status
 
-**Phase:** v0.2 — strings, given, sub-schema, sets, ranges, quantifiers all in. 16/16 tests green.
+**Phase:** v0.3 — passthrough composition added. 19/19 tests green.
 
-**Last action:** Landed slices 2-5: string literals + `=`/`≠`,
-`query(name, given)` for pre-binding values, sub-schema field
-expansion (recursive `task ∈ Task` → `task.id`, `task.duration`
-under dotted env keys), set literal membership (`x ∈ {a, b, c}`
-reduced to OR of equalities), integer range literals (`{lo..hi}`),
-and `∀`/`∃` quantifiers unrolled when the range is two literal ints.
+**Last action:** Landed `..ClaimName` passthrough composition. Both
+declaration-pass and constraint-pass walk `BodyItem::Passthrough`
+items: declarations from the included claim are imported under
+names-match (existing names are reused, new ones get fresh consts);
+constraints are translated under the parent's env.
 
-**Next action:** Cardinality `#x`, then `..ClaimName` passthrough
-composition. Cached evaluator is also overdue — Rust's borrow rules
-on the Z3 solver need design (the Python push/pop pattern relies on
-mutating the cache; in Rust the cache will need RefCell or interior
-mutability on the solver).
+**Next action:** Either Seq sorts + cardinality (architectural, big),
+or cached evaluator (Rust lifetime gymnastics). See "Cached evaluator
+sketch" at the bottom for the design problem.
 
 ## Milestones
 
@@ -76,6 +73,33 @@ mutability on the solver).
   (`{0..n - 1}` where n is a variable) need the Python length-propagation
   shim — Pass 1/2/3 in `evaluate.py`. Deferred.
 
+## Cached evaluator sketch
+
+The Python runtime gained `evaluate_cached()` for the executor's hot
+loop: translate the body once, hold a Z3 solver, per query do
+`push → assert givens → check → extract → pop`. Drops per-step cost
+from ~33ms to ~7ms in the parent project.
+
+The Rust port can do the same, but Z3's lifetimes make it awkward.
+`Solver<'ctx>`, `Int<'ctx>` etc. all borrow from `Context<'ctx>`. To
+cache them per-schema, the Context has to live as long as the cache.
+
+Two designs that work:
+
+1. **Runtime owns a leaked Context.** `Box::leak(Box::new(Config::new()))`
+   gives a `&'static Context`. Then the cache can be `HashMap<String,
+   (Solver<'static>, HashMap<String, Var<'static>>)>`. Simple, but
+   the Context never gets freed (one per process — OK for a CLI
+   tool, fine for tests, ugly for long-running embeddings).
+2. **Session struct.** A `Session<'ctx>` borrows a Context the caller
+   provides. Cache lives inside the Session. The runtime hands out
+   sessions; callers manage Context lifetime. Cleaner but the API
+   leaks the Z3 lifetime to consumers.
+
+Recommend (1) for the experimental port — it's the simplest path to
+demonstrating the perf story. If we ever care about clean shutdown,
+switch to (2).
+
 ## Next slices
 
 Done in this session:
@@ -88,6 +112,7 @@ Done in this session:
 - [x] Range literals `{lo..hi}` (only valid as a quantifier bound).
 - [x] Quantifier translation `∀ i ∈ {lo..hi} : body` — unrolled when
       both bounds are literal Ints.
+- [x] `..ClaimName` passthrough composition (names-match).
 
 In rough order of leverage:
 
@@ -96,15 +121,15 @@ In rough order of leverage:
 - [ ] Sequence and Set Z3 sorts (Seq(T), Array(T, Bool)) — needed
       before composite-element story.
 - [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
-- [ ] `assert name = value` ground facts.
-- [ ] `..ClaimName` passthrough composition.
-- [ ] Claim composition with mappings (`mapsto`).
+- [ ] Claim composition with mappings (`Foo(x mapsto y, …)`).
 - [ ] `subclaim` declaration + invocation with fresh internals.
-- [ ] Cached evaluator (push/pop) — port the Python optimization.
-      Note: Rust borrow rules will require interior mutability around
-      the cached solver.
+- [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
+      Rust because the cached solver borrows the Context by lifetime.
 - [ ] Symbolic ∀ bounds via length propagation (see Python's
       `evaluate.py` "Pass 1/2/3").
+- [ ] `assert name = value` top-level ground facts. Mostly subsumed
+      by the `given` parameter, but useful for one-shot REPL-style
+      use.
 
 ## Test mapping
 
@@ -128,3 +153,6 @@ All in `tests/basic.rs`. 16/16 passing.
 | `set_literal_strings`                | (string set membership)                |
 | `forall_range_unroll`                | (`∀ i ∈ {0..3}` unroll)                |
 | `exists_range_unroll`                | (`∃ i ∈ {0..5}` unroll)                |
+| `passthrough_names_match`            | `..claim` with shared name             |
+| `passthrough_introduces_var`         | `..claim` adds a new var to scope      |
+| `passthrough_conflict_unsat`         | passthrough vs parent constraint conflict |

@@ -121,11 +121,22 @@ impl Parser {
     }
 
     fn parse_body_item(&mut self) -> Result<BodyItem> {
-        // Two shapes:
-        //   IDENT IN IDENT (followed by line-end)  → Membership declaration
+        // Three shapes:
+        //   ..IDENT                                 → Passthrough composition
+        //   IDENT IN IDENT (followed by line-end)   → Membership declaration
         //   <expr>                                  → Constraint
         // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
         // as an expression and ends up as a Constraint.
+
+        // Passthrough: `..ClaimName` at body-item start.
+        if matches!(self.peek(), Token::DotDot) {
+            self.bump();
+            match self.bump() {
+                Token::Ident(name) => return Ok(BodyItem::Passthrough(name)),
+                other => return Err(ParseError(format!(
+                    "expected claim name after '..', got {:?}", other))),
+            }
+        }
         if let Token::Ident(_) = self.peek() {
             let saved = self.pos;
             let lhs_name = match self.bump() {

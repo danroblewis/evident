@@ -203,6 +203,49 @@ fn exists_range_unroll() {
     } else { panic!(); }
 }
 
+/// `..ClaimName` passthrough — the included claim's constraints fold in
+/// under names-match composition.
+#[test]
+fn passthrough_names_match() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim positive\n    n ∈ Nat\n    n > 0\n\
+         schema S\n    n ∈ Nat\n    ..positive\n    n < 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(n)) = r.bindings.get("n") {
+        assert!(*n > 0 && *n < 10, "got {}", n);
+    } else { panic!(); }
+}
+
+/// Passthrough that introduces a new variable into the parent's scope.
+#[test]
+fn passthrough_introduces_var() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim has_age\n    age ∈ Nat\n    age > 18\n\
+         schema Person\n    ..has_age\n    age < 100\n"
+    ).unwrap();
+    let r = rt.query_free("Person").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(a)) = r.bindings.get("age") {
+        assert!(*a > 18 && *a < 100, "got {}", a);
+    } else { panic!(); }
+}
+
+/// Passthrough whose constraints contradict a parent constraint → UNSAT.
+#[test]
+fn passthrough_conflict_unsat() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim must_be_zero\n    n ∈ Nat\n    n = 0\n\
+         schema S\n    n ∈ Nat\n    ..must_be_zero\n    n > 5\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(!r.satisfied);
+}
+
 /// `given` on a sub-schema field via dotted name.
 #[test]
 fn given_sub_schema_field() {

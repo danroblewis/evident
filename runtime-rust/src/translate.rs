@@ -65,23 +65,55 @@ pub fn evaluate(
 
     // Pass 1: declare variables and add per-type constraints. User-defined
     // schema types expand into their leaf fields under a dotted prefix.
+    // ..Passthrough imports declarations from the named claim too — any
+    // variable name not already in env gets a fresh Z3 const, names that
+    // collide with the parent are reused (names-match composition).
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name } = item {
-            declare_var(&ctx, &solver, &mut env, name, type_name, schemas);
+        match item {
+            BodyItem::Membership { name, type_name } => {
+                declare_var(&ctx, &solver, &mut env, name, type_name, schemas);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name } = sub {
+                            if !env.contains_key(name) {
+                                declare_var(&ctx, &solver, &mut env, name, type_name, schemas);
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("warning: ..{} references unknown claim", claim_name);
+                }
+            }
+            BodyItem::Constraint(_) => {}
         }
     }
 
-    // Pass 2: translate body constraints and assert.
+    // Pass 2: translate body constraints and assert. Passthrough items
+    // also contribute their included claim's constraints under the
+    // current env.
     for item in &schema.body {
-        if let BodyItem::Constraint(e) = item {
-            let z3_bool = match translate_bool(e, &ctx, &env) {
-                Some(b) => b,
-                None => {
+        match item {
+            BodyItem::Constraint(e) => {
+                if let Some(b) = translate_bool(e, &ctx, &env) {
+                    solver.assert(&b);
+                } else {
                     eprintln!("warning: dropped constraint that didn't translate to Bool");
-                    continue;
                 }
-            };
-            solver.assert(&z3_bool);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Constraint(e) = sub {
+                            if let Some(b) = translate_bool(e, &ctx, &env) {
+                                solver.assert(&b);
+                            }
+                        }
+                    }
+                }
+            }
+            BodyItem::Membership { .. } => {}
         }
     }
 

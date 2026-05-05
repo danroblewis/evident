@@ -30,6 +30,12 @@ pub enum BodyItem {
     /// is always a simple identifier (e.g. `Nat`, `Int`, `Bool`).
     Membership { name: String, type_name: String },
 
+    /// `..ClaimName` — passthrough composition. The named claim's body
+    /// is inlined into the current schema's body using names-match: any
+    /// variable declared in the included claim with the same name as a
+    /// variable in scope here resolves to the same Z3 const.
+    Passthrough(String),
+
     /// Any other constraint (comparison, arithmetic equality, etc.).
     Constraint(Expr),
 }
