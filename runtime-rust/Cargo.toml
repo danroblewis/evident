@@ -1,0 +1,12 @@
+[package]
+name = "evident-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the Evident constraint runtime (experimental)"
+
+[dependencies]
+z3 = "0.12"
+
+[lib]
+name = "evident_runtime"
+path = "src/lib.rs"

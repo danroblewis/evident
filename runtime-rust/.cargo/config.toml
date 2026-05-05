@@ -1,0 +1,7 @@
+# Point z3-sys at the Z3 library bundled with Python's z3-solver package.
+# Avoids needing to brew install z3 separately. If Z3 is installed
+# elsewhere (e.g. via homebrew), update or remove these env entries.
+[env]
+Z3_SYS_Z3_HEADER       = "/opt/anaconda3/lib/python3.13/site-packages/z3/include/z3.h"
+LIBRARY_PATH           = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib"
+DYLD_LIBRARY_PATH      = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib"
