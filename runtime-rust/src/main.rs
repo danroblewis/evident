@@ -30,6 +30,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use evident_runtime::{executor, EvidentRuntime, QueryResult, Value};
+use evident_runtime::executor::Plugin;
+use evident_runtime::plugins::sdl as sdl_plugin;
+use evident_runtime::ast::BodyItem;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -486,27 +489,83 @@ fn cmd_execute(args: &[String]) -> ExitCode {
         Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
     };
     let mut rt = EvidentRuntime::new();
-    // Load the embedded I/O stdlib first so user programs can declare
-    // ∈ Stdin / ∈ Stdout. The stdlib is a flat shim — it does NOT
-    // mirror the full passthrough chain in the Python stdlib/io.ev,
-    // since the Rust runtime doesn't yet recurse into `..` during
-    // sub-schema field expansion.
+    // Load embedded stdlibs first so user programs can declare
+    // ∈ Stdin / ∈ Stdout / ∈ SDLInput etc. without `import`. Both are
+    // flat shims (no `..` passthrough chains) since the Rust runtime
+    // doesn't yet recurse into `..` during sub-schema field expansion.
     if let Err(e) = executor::load_io_stdlib(&mut rt) {
         eprintln!("execute: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_source(sdl_plugin::STDLIB_SDL_EV) {
+        eprintln!("execute: sdl stdlib: {e}");
         return ExitCode::from(1);
     }
     if let Err(e) = rt.load_source(&src) {
         eprintln!("execute: {path}: {e}");
         return ExitCode::from(1);
     }
-    // Today the executor only consumes the headless stdin/stdout
-    // plugins; SDL/TCP options are parsed and stored for the moment a
-    // sibling agent wires the SDL plugin in (it'll read width/height/
-    // title off `opts`).
-    let _ = &opts;
-    match executor::run_headless(&rt, std::io::stdin(), std::io::stdout()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
+
+    // Inspect main's body to find SDL var declarations. If any are
+    // present, instantiate the SDL plugin and add it to the plugin
+    // list. Otherwise, fall back to the headless stdin/stdout path.
+    let sdl_vars = collect_sdl_vars(&rt);
+
+    if sdl_vars.is_empty() {
+        // Pure headless: stdin/stdout only.
+        match executor::run_headless(&rt, std::io::stdin(), std::io::stdout()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
+        }
+    } else {
+        // SDL active: defaults from --width/--height/--title (else
+        // 800×600 "Evident" — same defaults as evident.py).
+        let sdl = sdl_plugin::create_sdl_plugin(
+            opts.width, opts.height, opts.title.clone(), sdl_vars);
+        let stdin = executor::StdinPlugin::new(std::io::stdin());
+        let stdout = executor::StdoutPlugin::new(std::io::stdout());
+        let mut plugins: Vec<Box<dyn Plugin>> = vec![Box::new(stdin), Box::new(stdout), sdl];
+        match executor::run_with_plugins(&rt, &mut plugins) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
+        }
+    }
+}
+
+/// Walk `main`'s body (including `..` passthroughs) collecting variables
+/// whose declared type is one of the SDL types. Returns the same
+/// `var → type_name` map shape that `SDLPlugin` needs in `var_types`.
+fn collect_sdl_vars(rt: &EvidentRuntime) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Some(main) = rt.get_schema("main") else { return out };
+    let mut visited: Vec<String> = Vec::new();
+    walk_body_for_sdl(rt, &main.name, &mut visited, &mut out);
+    out
+}
+
+fn walk_body_for_sdl(
+    rt: &EvidentRuntime,
+    schema_name: &str,
+    visited: &mut Vec<String>,
+    out: &mut HashMap<String, String>,
+) {
+    if visited.iter().any(|n| n == schema_name) {
+        return;
+    }
+    visited.push(schema_name.to_string());
+    let Some(schema) = rt.get_schema(schema_name) else { return };
+    for item in &schema.body {
+        match item {
+            BodyItem::Membership { name, type_name } => {
+                if sdl_plugin::SDL_TYPES.iter().any(|t| *t == type_name.as_str()) {
+                    out.entry(name.clone()).or_insert_with(|| type_name.clone());
+                }
+            }
+            BodyItem::Passthrough(claim) => {
+                walk_body_for_sdl(rt, claim, visited, out);
+            }
+            _ => {}
+        }
     }
 }
 
