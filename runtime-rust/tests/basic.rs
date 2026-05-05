@@ -1020,6 +1020,44 @@ fn seq_index_assign_composite_var() {
     assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
 }
 
+/// Multi-line expressions inside `(...)`/`[...]`/`{...}`/`⟨...⟩` —
+/// the lexer suppresses Newline + Indent tokens whenever bracket
+/// depth > 0, so a single logical expression can span any number of
+/// source lines as long as it's enclosed. Mirrors Lark's default
+/// "newlines inside parens are ignored" behavior.
+///
+/// Without this, the parser sees `Eq` followed by `Newline` and
+/// errors with "expected expression, got Newline".
+#[test]
+fn multi_line_expression_inside_parens() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        // The disjunction body is split across 5 source lines but
+        // lives inside one (...) group.
+        "schema S\n    a ∈ Bool\n    b ∈ Bool\n    c ∈ Bool\n    \
+         x ∈ Bool\n    a = true\n    b = false\n    c = false\n    \
+         x = (\n        a\n        ∨ b\n        ∨ c\n    )\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("x"), Some(&Value::Bool(true)));
+}
+
+/// Multi-line inside `⟨…⟩` — sequence literal with one element per
+/// line. Same suppression rule applies to all four bracket flavors
+/// (paren, square, brace, angle).
+#[test]
+fn multi_line_seq_literal() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    \
+         s = ⟨\n        10,\n        20,\n        30\n    ⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![10, 20, 30])));
+}
+
 /// `#b = #a` chains seq-length pinning. Without this, only `#a` is
 /// known and the quantifier `∀ i ∈ {0..#b - 1}` silently drops
 /// because the upper bound stays symbolic. Natural shape for

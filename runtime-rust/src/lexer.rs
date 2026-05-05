@@ -97,6 +97,15 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
     // value is true so the very first line gets an Indent.
     let mut at_line_start = true;
     let mut current_indent;
+    // Bracket-nesting depth: incremented on `(`, `[`, `{`, `⟨`,
+    // decremented on the matching closers. While > 0, newlines are
+    // consumed silently and Indent tracking is suspended — so a long
+    // expression can be split across multiple lines inside any group
+    // without the parser seeing intervening Newline / Indent tokens.
+    // Mirrors Lark's default "newlines inside parens are ignored"
+    // behavior, which the Python parser inherits for free. See
+    // `parser/src/grammar.lark` line 33 for the corresponding note.
+    let mut paren_depth: usize = 0;
 
     while let Some(&c) = chars.peek() {
         if at_line_start {
@@ -142,9 +151,16 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             ' ' | '\t' => { chars.next(); col += 1; }
             '\n' => {
                 chars.next();
-                tokens.push(Token::Newline);
                 line += 1; col = 1;
-                at_line_start = true;
+                if paren_depth == 0 {
+                    tokens.push(Token::Newline);
+                    at_line_start = true;
+                }
+                // Else: silently consume — we're mid-expression inside
+                // a (..)/[..]/{..}/⟨..⟩ group. Don't emit Newline;
+                // don't trigger the at_line_start indent-counting block
+                // on the next iteration. Leading whitespace on the
+                // continuation line falls through to the ' ' / '\t' arm.
             }
             '-' => {
                 // `--` comment, or unary/binary minus. Look at second char.
@@ -227,12 +243,12 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             }
             '*' => { chars.next(); col += 1; tokens.push(Token::Star); }
             '/' => { chars.next(); col += 1; tokens.push(Token::Slash); }
-            '(' => { chars.next(); col += 1; tokens.push(Token::LParen); }
-            ')' => { chars.next(); col += 1; tokens.push(Token::RParen); }
-            '{' => { chars.next(); col += 1; tokens.push(Token::LBrace); }
-            '}' => { chars.next(); col += 1; tokens.push(Token::RBrace); }
-            '[' => { chars.next(); col += 1; tokens.push(Token::LBracket); }
-            ']' => { chars.next(); col += 1; tokens.push(Token::RBracket); }
+            '(' => { chars.next(); col += 1; tokens.push(Token::LParen);   paren_depth += 1; }
+            ')' => { chars.next(); col += 1; tokens.push(Token::RParen);   paren_depth = paren_depth.saturating_sub(1); }
+            '{' => { chars.next(); col += 1; tokens.push(Token::LBrace);   paren_depth += 1; }
+            '}' => { chars.next(); col += 1; tokens.push(Token::RBrace);   paren_depth = paren_depth.saturating_sub(1); }
+            '[' => { chars.next(); col += 1; tokens.push(Token::LBracket); paren_depth += 1; }
+            ']' => { chars.next(); col += 1; tokens.push(Token::RBracket); paren_depth = paren_depth.saturating_sub(1); }
             '#' => { chars.next(); col += 1; tokens.push(Token::Hash); }
             ',' => { chars.next(); col += 1; tokens.push(Token::Comma); }
             ':' => { chars.next(); col += 1; tokens.push(Token::Colon); }
@@ -286,8 +302,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }  // ∀
             '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }  // ∃
             '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }  // ↦
-            '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); }    // ⟨
-            '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); }    // ⟩
+            '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }    // ⟨
+            '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }    // ⟩
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),
