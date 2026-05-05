@@ -3,24 +3,33 @@
 //! interchangeable for everything the Rust runtime currently supports.
 //!
 //! Subcommands:
-//!   query  <files…> <schema> [--given k=v …] [--json]
-//!   check  <files…>
-//!   sample <files…> <schema> [-n N] [--given k=v …] [--json]
-//!   test   [path]
-//!   parse  <file>     (Rust-only, debug helper)
+//!   query   <files…> <schema> [--given k=v …] [--json]
+//!   check   <files…>
+//!   sample  <files…> <schema> [-n N] [--given k=v …] [--json]
+//!   test    [path]
+//!   execute <file>          — run schema main as a constraint automaton
+//!                             (headless: stdin → solver → stdout)
+//!   parse   <file>          — Rust-only, debug helper
 //!
-//! Parked behind plugin/executor work (covered by the Python `evident.py`
-//! but not yet by this binary):
+//! Parked behind plugin work (covered by the Python `evident.py` but
+//! not yet by this binary):
 //!   batch     — stdin ↔ Seq round-trip
-//!   execute   — schema main as a constraint automaton (with SDL/TCP/etc)
 //!   repl      — interactive session
+//!
+//! Notes on `execute`:
+//!   - v1 is HEADLESS: stdin/stdout only. No SDL, no TCP, no batch.
+//!   - The runtime auto-loads a small embedded io stdlib defining
+//!     Stdin / Stdout / CharInput / CharOutput / Stderr (flat, with
+//!     just the fields the executor populates). Programs that import
+//!     these via `..` passthrough won't work because the Rust parser
+//!     doesn't yet handle `import` statements.
 
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, QueryResult, Value};
+use evident_runtime::{executor, EvidentRuntime, QueryResult, Value};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -34,7 +43,8 @@ fn main() -> ExitCode {
         "sample"  => cmd_sample(&args[1..]),
         "test"    => cmd_test(&args[1..]),
         "parse"   => cmd_parse(&args[1..]),
-        "execute" | "batch" | "repl" => {
+        "execute" => cmd_execute(&args[1..]),
+        "batch" | "repl" => {
             eprintln!("error: '{}' is not yet implemented in the Rust runtime.", args[0]);
             eprintln!("       Use evident.py for these subcommands. See PROGRESS.md for status.");
             ExitCode::from(2)
@@ -50,14 +60,15 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident query  <files…> <schema> [--given k=v …] [--json]");
-    eprintln!("  evident check  <files…>");
-    eprintln!("  evident sample <files…> <schema> [-n N] [--given k=v …] [--json]");
-    eprintln!("  evident test   [path]");
-    eprintln!("  evident parse  <file>");
+    eprintln!("  evident query   <files…> <schema> [--given k=v …] [--json]");
+    eprintln!("  evident check   <files…>");
+    eprintln!("  evident sample  <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident test    [path]");
+    eprintln!("  evident execute <file>     # headless stdin → main → stdout");
+    eprintln!("  evident parse   <file>");
     eprintln!();
     eprintln!("not yet implemented (use evident.py):");
-    eprintln!("  evident execute|batch|repl …");
+    eprintln!("  evident batch|repl …");
 }
 
 // ---------------------------------------------------------------------------
@@ -246,44 +257,15 @@ fn cmd_sample(args: &[String]) -> ExitCode {
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
 
-    // Naïve sample loop: query, accumulate, exclude prior bindings via
-    // adding `--given key=other_value` to the next call. Works for a
-    // small number of distinct samples on bindings dominated by one
-    // varying field. Real blocking-clause sampling needs solver-level
-    // assertions across calls — see PROGRESS.md (sampler limitations).
-    let mut samples: Vec<HashMap<String, Value>> = Vec::new();
-    let mut excluded_int: HashMap<String, Vec<i64>> = HashMap::new();
-    'outer: for _ in 0..flags.n_samples {
-        // Re-build given for this iteration: original givens + each
-        // excluded value as a new constraint encoded via inequality. We
-        // can't do that through `given` (which only equates), so instead
-        // we add additional clauses by reloading source with extra
-        // constraints. Simpler: just take the model and accept duplicates
-        // when the schema has only one solution.
-        let g = flags.given.clone();
-        let r = match rt.query(&schema, &g) {
-            Ok(r) if r.satisfied => r,
-            _ => break 'outer,
-        };
-        // De-dupe via exclusion of the (Int)-valued bindings we've
-        // already seen — only useful when the schema has multiple Int
-        // solutions and `given` doesn't pin them all.
-        let key_int = r.bindings.iter()
-            .filter_map(|(k, v)| match v { Value::Int(n) => Some((k.clone(), *n)), _ => None })
-            .collect::<Vec<_>>();
-        let already_seen = samples.iter().any(|prev| {
-            key_int.iter().all(|(k, n)| matches!(prev.get(k), Some(Value::Int(m)) if m == n))
-        });
-        if already_seen {
-            // Rotate one exclusion at a time to nudge the solver.
-            for (k, n) in &key_int {
-                excluded_int.entry(k.clone()).or_default().push(*n);
-            }
-            // If we're stuck in a cycle, give up.
-            if samples.len() == flags.n_samples { break; }
-        }
-        samples.push(r.bindings);
-    }
+    // Real blocking-clause sample loop: solver.push(), assert givens,
+    // loop check + extract + assert ¬(scalar bindings), pop. Returns
+    // up to `-n N` distinct models or stops at UNSAT. See
+    // `EvidentRuntime::sample` for limitations (Seq/Set bindings don't
+    // contribute to the blocking conjunction).
+    let samples: Vec<HashMap<String, Value>> = match rt.sample(&schema, &flags.given, flags.n_samples) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("sample error: {e}"); return ExitCode::from(1); }
+    };
 
     if flags.json {
         print!("[");
@@ -397,6 +379,40 @@ fn collect_test_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 // ---------------------------------------------------------------------------
+// execute — run schema main as a constraint automaton (headless v1)
+// ---------------------------------------------------------------------------
+
+fn cmd_execute(args: &[String]) -> ExitCode {
+    if args.is_empty() {
+        eprintln!("execute: need <file.ev>");
+        return ExitCode::from(2);
+    }
+    let path = &args[0];
+    let src = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
+    };
+    let mut rt = EvidentRuntime::new();
+    // Load the embedded I/O stdlib first so user programs can declare
+    // ∈ Stdin / ∈ Stdout. The stdlib is a flat shim — it does NOT
+    // mirror the full passthrough chain in the Python stdlib/io.ev,
+    // since the Rust runtime doesn't yet recurse into `..` during
+    // sub-schema field expansion.
+    if let Err(e) = executor::load_io_stdlib(&mut rt) {
+        eprintln!("execute: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_source(&src) {
+        eprintln!("execute: {path}: {e}");
+        return ExitCode::from(1);
+    }
+    match executor::run_headless(&rt, std::io::stdin(), std::io::stdout()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // parse — debug helper, not in evident.py
 // ---------------------------------------------------------------------------
 
@@ -432,6 +448,11 @@ fn format_value(v: &Value) -> String {
         Value::SeqInt(v)  => format!("{:?}", v),
         Value::SeqBool(v) => format!("{:?}", v),
         Value::SeqStr(v)  => format!("{:?}", v),
+        // Composite / SeqComposite are placeholder Value variants that
+        // aren't currently produced by the translator (sub-schema
+        // expansion still emits one leaf per field). Render with Debug
+        // until first-class formatting lands.
+        other => format!("{:?}", other),
     }
 }
 
@@ -452,6 +473,8 @@ fn value_as_json(v: &Value) -> String {
             let parts: Vec<_> = v.iter().map(|s| json_str(s)).collect();
             format!("[{}]", parts.join(", "))
         }
+        // See note in format_value: not yet produced by the translator.
+        other => json_str(&format!("{:?}", other)),
     }
 }
 

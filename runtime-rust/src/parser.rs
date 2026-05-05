@@ -395,15 +395,36 @@ impl Parser {
         self.parse_postfix()
     }
 
-    /// Atom followed by zero or more `[expr]` indexing suffixes.
-    /// Indexing binds tighter than any binary op.
+    /// Atom followed by zero or more `[expr]` indexing suffixes and/or
+    /// `.ident` field-access suffixes. Both bind tighter than any binary
+    /// op. The `.ident` chain on a bare Identifier is already collapsed
+    /// into a dotted name at the atom level (see `parse_atom`), so this
+    /// loop only sees `.ident` after a non-Ident receiver — typically
+    /// after an Index suffix like `pts[0].x`. We wrap it in `Field`,
+    /// which the runtime resolves through Datatype accessors instead of
+    /// env-key lookup.
     fn parse_postfix(&mut self) -> Result<Expr> {
         let mut e = self.parse_atom()?;
-        while matches!(self.peek(), Token::LBracket) {
-            self.bump();
-            let idx = self.parse_expr()?;
-            self.eat(&Token::RBracket)?;
-            e = Expr::Index(Box::new(e), Box::new(idx));
+        loop {
+            match self.peek() {
+                Token::LBracket => {
+                    self.bump();
+                    let idx = self.parse_expr()?;
+                    self.eat(&Token::RBracket)?;
+                    e = Expr::Index(Box::new(e), Box::new(idx));
+                }
+                Token::Dot => {
+                    self.bump();
+                    match self.bump() {
+                        Token::Ident(field) => {
+                            e = Expr::Field(Box::new(e), field);
+                        }
+                        other => return Err(ParseError(format!(
+                            "expected field name after '.', got {:?}", other))),
+                    }
+                }
+                _ => break,
+            }
         }
         Ok(e)
     }

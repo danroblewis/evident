@@ -8,5 +8,6 @@ pub mod lexer;
 pub mod parser;
 pub mod translate;
 pub mod runtime;
+pub mod executor;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};

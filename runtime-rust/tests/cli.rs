@@ -133,9 +133,31 @@ fn cli_query_json_output() {
 }
 
 #[test]
-fn cli_execute_says_parked() {
-    // Confirm we give a clear "use evident.py" message, not a generic crash.
-    let out = Command::new(bin()).args(["execute", "ignored.ev"])
+fn cli_execute_echoes_stdin() {
+    // Tiny echo automaton — copy each char from src.char to dst.out.
+    // Feed "hi\n" on stdin via the CLI, expect "hi\n" on stdout.
+    let path = write_tmp("execute_echo",
+        "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    dst.out = src.char\n");
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"hi\n").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "hi\n");
+}
+
+#[test]
+fn cli_batch_says_parked() {
+    // batch / repl still print the parked message and exit 2.
+    let out = Command::new(bin()).args(["batch", "ignored.ev"])
         .output().unwrap();
     assert!(!out.status.success());
     assert_eq!(out.status.code(), Some(2));

@@ -2,7 +2,7 @@
 
 use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
-use crate::translate::{build_cache, run_cached, CachedSchema};
+use crate::translate::{build_cache, run_cached, sample_cached_inner, CachedSchema, DatatypeRegistry};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use z3::{Config, Context};
@@ -39,6 +39,14 @@ pub struct EvidentRuntime {
     /// `query_cached` to take `&self` (so multiple queries can share
     /// the runtime) while the cache mutates on first access.
     cache: RefCell<HashMap<String, CachedSchema<'static>>>,
+    /// Lazily-built `Z3 DatatypeSort` per user type referenced as the
+    /// element of `Seq(UserType)`. Built on first `declare_var`; entries
+    /// are `Box::leak`'d to live for `'static` (consistent with the
+    /// leaked Context). Shared across `query`, `query_cached`, and
+    /// `sample` so a `Seq(Point)` declared in one schema reuses the
+    /// same Datatype if another schema references `Point` again — Z3
+    /// would otherwise error on duplicate type names.
+    datatypes: DatatypeRegistry,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +83,7 @@ impl EvidentRuntime {
             schemas: HashMap::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
+            datatypes: RefCell::new(HashMap::new()),
         }
     }
 
@@ -92,6 +101,14 @@ impl EvidentRuntime {
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones.
         self.cache.borrow_mut().clear();
+        // Datatype registry entries reference the previous schema body
+        // shape (field order / types). A new load could redefine a type
+        // with a different shape; flush so we rebuild on first reference.
+        // (The leaked DatatypeSorts themselves stay alive forever, so
+        // re-declaring the same name in Z3 will fail — but we have no
+        // tests that re-load with a redefined type, so leaving the leak
+        // intentional. PROGRESS.md's gotchas section flags this.)
+        self.datatypes.borrow_mut().clear();
         Ok(())
     }
 
@@ -101,7 +118,7 @@ impl EvidentRuntime {
     pub fn query(&self, name: &str, given: &HashMap<String, Value>) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
-        let r = crate::translate::evaluate(schema, given, &self.schemas);
+        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
@@ -114,6 +131,13 @@ impl EvidentRuntime {
     /// AND lifted subclaims). Useful for tooling.
     pub fn schema_names(&self) -> impl Iterator<Item = &str> {
         self.schemas.keys().map(|s| s.as_str())
+    }
+
+    /// Look up a loaded schema by name. Used by the executor (and other
+    /// tooling) to inspect the body of `main` for variable declarations,
+    /// passthroughs, and state pairs.
+    pub fn get_schema(&self, name: &str) -> Option<&SchemaDecl> {
+        self.schemas.get(name)
     }
 
     /// Faster query — translates the schema once on first call and
@@ -133,9 +157,33 @@ impl EvidentRuntime {
             .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
         let mut cache = self.cache.borrow_mut();
         let cached = cache.entry(name.to_string()).or_insert_with(|| {
-            build_cache(&schema, &self.schemas, self.z3_ctx)
+            build_cache(&schema, &self.schemas, self.z3_ctx, &self.datatypes)
         });
         let r = run_cached(cached, given, self.z3_ctx);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
+    }
+
+    /// Return up to `n` distinct satisfying models. Uses the cached
+    /// solver: one push for the per-query givens, then accumulating
+    /// blocking clauses (¬(b1=v1 ∧ … ∧ bn=vn) for each scalar binding)
+    /// across iterations until either `n` distinct models or UNSAT.
+    /// All blocking clauses + givens are popped before returning so the
+    /// cached solver is unchanged from the caller's perspective.
+    ///
+    /// Limitation (v1): blocking only covers Bool, Int, Str bindings.
+    /// Seq/Set values are skipped from the blocking conjunction, so
+    /// schemas whose only varying outputs are sequences will return
+    /// duplicates. See `sample_cached_inner` in translate.rs.
+    pub fn sample(&self, name: &str, given: &HashMap<String, Value>, n: usize)
+        -> Result<Vec<HashMap<String, Value>>, RuntimeError>
+    {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
+            .clone();
+        let mut cache = self.cache.borrow_mut();
+        let cached = cache.entry(name.to_string()).or_insert_with(|| {
+            build_cache(&schema, &self.schemas, self.z3_ctx, &self.datatypes)
+        });
+        Ok(sample_cached_inner(cached, given, n, self.z3_ctx))
     }
 }

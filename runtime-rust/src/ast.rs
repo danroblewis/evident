@@ -84,6 +84,13 @@ pub enum Expr {
     Cardinality(Box<Expr>),
     /// `expr[index]` — sequence indexing. Translates to Z3 nth.
     Index(Box<Expr>, Box<Expr>),
+    /// `expr.field` — field access on a non-Identifier expression
+    /// (e.g. `pts[0].x`). Field access on a bare identifier still
+    /// folds into a dotted `Identifier` at parse time; this variant
+    /// is for cases where the receiver is itself an expression like
+    /// `Index`. The runtime resolves these through the receiver's
+    /// Datatype accessors rather than env-key lookup.
+    Field(Box<Expr>, String),
     /// Binary operation: `lhs op rhs`.
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// Unary `¬e`.

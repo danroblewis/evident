@@ -4,6 +4,83 @@
 
 ## Current status
 
+**Phase:** v1.4 — `execute` subcommand + headless plugin framework.
+65/65 tests green (11 lib + 39 lib-style + 10 CLI + 5 sample).
+
+**Last action:** Implemented `evident execute <file.ev>` as a sync,
+blocking-stdin step loop. New `runtime-rust/src/executor.rs`:
+
+  - `Plugin` trait with `handles_types() / initialize() / before_step()
+    / after_step()`. `before_step → None` and `after_step → false`
+    both signal halt.
+  - `StdinPlugin<R: Read>` reads one char per step, contributes
+    `var.char / var.eof / var.fd / …` as `given` values. Emits one
+    final EOF step then halts.
+  - `StdoutPlugin<W: Write>` constrains structural fields per step
+    (`fd=1, open=true, …`) and writes `var.out` to the writer after
+    each successful solve.
+  - `run_headless(rt, input, output)` and `run_with_plugins(rt, &mut plugins)`.
+  - State pair detection: `foo / foo_next` of the same non-IO type;
+    initial state defaults via `default_for_type` (Nat→0, Bool→false,
+    String→"", Seq(_)→empty).
+  - Embedded I/O stdlib (flat type definitions for `Stdin`, `Stdout`,
+    `Stderr`, `CharInput`, `CharOutput`) auto-loaded by `cmd_execute`.
+    Flat (no `..` passthrough) because the Rust runtime's `declare_var`
+    doesn't yet recurse into passthroughs during sub-schema expansion.
+  - Z3 string outputs are unescaped at the StdoutPlugin boundary so
+    `\u{a}` becomes a real newline byte; otherwise the executor would
+    emit literal `\u{a}` text to stdout.
+
+**v1 limitations vs. Python `evident.py execute`:**
+
+  - **Headless only.** No SDL, no TCP, no batch-mode plugins. Programs
+    that declare `∈ SDLOutput` etc. won't activate any plugin and will
+    error with "no I/O plugin matches".
+  - **Embedded io stdlib is flat.** The Python `stdlib/io.ev` builds
+    Stdin via `..CharInput → ..Readable → ..Descriptor` passthrough
+    chains; the Rust runtime's `declare_var` doesn't recurse through
+    those, so we shipped a flattened version inline. Field set is
+    intentionally limited to what the executor populates (no
+    `connection`, `position`, `path`, etc. — those wouldn't have
+    accurate values from the plugin anyway).
+  - **No `import`.** Programs that begin with `import "stdlib/io.ev"`
+    will fail to parse; the embedded stdlib provides Stdin/Stdout
+    directly, so most one-file programs don't need `import`.
+  - **No string concat / int_to_str.** Schemas using `++` or
+    `int_to_str` won't translate. Useful programs are still possible
+    (echo, simple state machines, char-level filters) but the full
+    `programs/ev-nl.ev` etc. require the Python runtime.
+  - **Single-character stdin only.** Multi-byte UTF-8 will read one
+    byte per step and produce mangled `var.char` for non-ASCII text.
+    Same limitation as the Python streaming plugin.
+  - **No `batch` / `repl` subcommands.** Both still print the parked
+    "use evident.py" message. `execute` is the only added subcommand.
+
+**Phase:** v1.3 — real `sample` via blocking clauses.
+58/58 tests green in this slice (11 lib + 39 lib-style + 9 CLI + new
+`tests/sample.rs` with 3 `EvidentRuntime::sample` tests + 2 CLI smokes).
+
+**Last action:** Replaced the naïve `sample` loop with a real
+blocking-clause loop on the cached solver. New
+`translate::sample_cached_inner(cached, given, n, ctx) -> Vec<HashMap>`
+mirrors `run_cached`'s push/pop pattern but inside the outer push,
+loops `check → extract → assert ¬(AND of scalar bindings)` until
+either `n` distinct models or UNSAT. The accumulated blocking
+clauses live inside the outer push so the cached solver is
+unchanged from the caller's perspective when sampling returns.
+
+`EvidentRuntime::sample(name, given, n)` wraps it via the
+existing `cache: RefCell<HashMap<String, CachedSchema>>`.
+`cmd_sample` in `main.rs` is now a single call to `rt.sample(...)`.
+
+Limitations (v1):
+  - Blocking clauses cover only Bool/Int/Str scalar bindings.
+    `Var::SeqVar`, `Var::SetVar`, `Var::DatatypeSeqVar`, and
+    `Var::PinnedInt` are skipped — schemas whose only varying outputs
+    are Seq/Set values will return duplicates. Doc'd at the call site.
+  - If a schema has no scalar bindings at all, the loop returns one
+    model and bails (no useful blocking clause to add).
+
 **Phase:** v1.2 — CLI mirrors evident.py.
 53/53 tests green (5 unit + 39 lib + 9 CLI).
 
@@ -16,8 +93,8 @@ restructured `src/main.rs` to match `evident.py`'s subcommand shape:
   - `check  <files…>`                 — load + run every loaded
     schema with no givens; print `SAT/UNSAT/ERROR  <name>`.
   - `sample <files…> <schema> [-n N] [--given k=v …] [--json]` —
-    naïve loop (no blocking-clause assertion across calls yet, so
-    duplicates are common). Functional but limited.
+    real blocking-clause loop (see v1.3 above; was a naïve
+    re-query loop in this snapshot).
   - `test   [path]`                   — discovers `test_*.ev` under
     a directory (or one file), runs every `sat_*` / `unsat_*`
     schema, asserts the SAT result matches the prefix. Final summary.
@@ -197,9 +274,9 @@ Done in this session:
       (Int / Bool / String). Modeled as Array(Int → T) + length;
       cardinality + indexing translate cleanly.
 - [x] **CLI** — `evident` binary mirrors `evident.py`'s subcommand
-      shape: `query`, `check`, `sample`, `test`, `parse`. `execute` /
-      `batch` / `repl` print a clear "use evident.py" message and
-      exit 2 (parked behind plugin/executor work).
+      shape: `query`, `check`, `sample`, `test`, `parse`, `execute`
+      (headless, since v1.4). `batch` / `repl` still print a clear
+      "use evident.py" message and exit 2.
 - [x] **Symbolic ∀ bounds via length propagation.** `Var::PinnedInt`
       variant + `collect_pinned_ints` / `collect_seq_lengths` /
       `apply_pinned_ints` pre-pass. `literal_range` reduced to
@@ -209,23 +286,25 @@ Done in this session:
       Z3's `set.member(x)`. No iteration / cardinality (Z3 sets are
       functions, not finite containers); SetVars don't appear in
       extracted bindings.
+- [x] **Real sample loop with blocking clauses.** `sample_cached_inner`
+      in translate.rs reuses the cached schema's solver: outer push for
+      givens, then a loop of `check + extract bindings + assert ¬(AND
+      scalar = value)` accumulated inside the outer push, popped before
+      return. `EvidentRuntime::sample(name, given, n)` wraps it.
+      `cmd_sample` is now a single call. Scalar-only blocking (Bool/
+      Int/Str); Seq/Set/Composite/PinnedInt skipped from the conjunction
+      (documented limitation).
+- [x] **`execute` subcommand (headless v1).** New `runtime-rust/src/executor.rs`
+      with `Plugin` trait + `StdinPlugin` + `StdoutPlugin`. `run_headless(rt,
+      input, output)` drives the step loop: read char → build given (plugin
+      contributions + current state) → `query_cached("main", given)` → on
+      SAT, write `dst.out`, advance state from `state_next.*`. Embedded io
+      stdlib (flat type defs for Stdin/Stdout/etc.) auto-loaded by `cmd_execute`.
+      Limitations: stdin/stdout only (no SDL/TCP/batch), no `import` directive,
+      no `++`/`int_to_str` operators. See "Phase v1.4" above for the full list.
 
 In rough order of leverage:
 
-- [ ] **`execute` subcommand** — needs a plugin/executor framework.
-      The Python design is in `runtime/src/executor.py` and
-      `runtime/src/plugin.py`: one auto-detected `Plugin` per declared
-      I/O type (`Stdin`, `Stdout`, `SDLInput`, etc.), each gets
-      `before_step` (inject given) / `after_step` (consume bindings)
-      hooks. For Rust, simplest path is the trace-style headless one
-      first (no SDL): a loop that uses `query_cached` repeatedly,
-      forwarding `state_next.*` → `state.*` between steps, with
-      stdin/stdout plugins. SDL/TCP/sockets later.
-- [ ] **Real sample loop with blocking clauses.** Current `sample`
-      just queries N times with the same constraints — Z3 returns
-      the same model. Needs solver-level assertions added across
-      calls (push, assert ¬previous_model, check, pop) — fits the
-      cached-evaluator pattern but requires per-iteration mutation.
 - [ ] **`batch` subcommand** — stdin → Seq(String) → solve → Seq → stdout.
       Should be small once `execute`'s loop infrastructure is there.
 - [ ] **`repl` subcommand** — interactive read-eval-print.
@@ -288,7 +367,7 @@ All in `tests/basic.rs`. 16/16 passing.
 | `set_var_membership_int`             | `s ∈ Set(Int) ; x ∈ s` via Z3 member  |
 | `set_var_membership_string`          | `name ∈ Set(String)` membership        |
 
-**`tests/cli.rs` (9)**:
+**`tests/cli.rs` (10)**:
 
 | `cli_query_sat_prints_bindings`      | KEY=VALUE on stdout                    |
 | `cli_query_unsat_exits_1`            | UNSAT path                             |
@@ -297,8 +376,18 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cli_query_json_output`              | `--json` shape                         |
 | `cli_check_reports_per_schema`       | `check` SAT/UNSAT lines                |
 | `cli_test_runs_sat_unsat_claims`     | `test` discovery + result reporting    |
-| `cli_execute_says_parked`            | parked subcommand emits a clear msg    |
+| `cli_execute_echoes_stdin`           | `execute` headless echo automaton end-to-end |
+| `cli_batch_says_parked`              | parked `batch`/`repl` emit clear msg   |
 | `cli_parse_lists_schema_names`       | `parse` debug helper                   |
+
+**`src/executor.rs` unit tests (6)**:
+
+| `executor_echoes_input`              | `dst.out = src.char` copies stdin → stdout |
+| `executor_state_increments`          | `state_next.n = state.n + 1` advances 0→1→2 |
+| `executor_state_gated_output`        | `state.n = 2 ⇒ dst.out = "X"` fires once |
+| `executor_unsat_step_is_skipped`     | UNSAT step doesn't crash, output empty |
+| `detect_state_pairs_basic`           | state pair detection accepts foo/foo_next |
+| `detect_state_pairs_excludes_io_types` | excludes Stdout-typed pairs           |
 
 **`tests/cli.rs` (4)** — spawns the compiled binary:
 

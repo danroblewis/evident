@@ -597,3 +597,63 @@ fn given_sub_schema_field() {
     assert_eq!(r.bindings.get("task.id"), Some(&Value::Int(5)));
     assert_eq!(r.bindings.get("task.duration"), Some(&Value::Int(10)));
 }
+
+/// `Seq(UserType)` — element sort is a Z3 Datatype built from the
+/// user type's flat fields. Field access on indexed elements
+/// (`pts[i].x`) routes through the Datatype's accessors. The model
+/// extracts a `Value::SeqComposite` of per-element field maps.
+#[test]
+fn seq_composite_field_access() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Point\n    x ∈ Int\n    y ∈ Int\n\
+         schema S\n    pts ∈ Seq(Point)\n    #pts = 3\n    \
+         pts[0].x = 10\n    pts[1].x = 20\n    pts[2].x = 30\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied, "expected SAT, got UNSAT");
+    let pts = r.bindings.get("pts").expect("missing pts binding");
+    let elems = match pts {
+        Value::SeqComposite(v) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(elems.len(), 3, "expected 3 elements, got {}", elems.len());
+    assert_eq!(elems[0].get("x"), Some(&Value::Int(10)));
+    assert_eq!(elems[1].get("x"), Some(&Value::Int(20)));
+    assert_eq!(elems[2].get("x"), Some(&Value::Int(30)));
+    // y is unconstrained — just verify it appears in each element.
+    assert!(elems[0].contains_key("y"));
+    assert!(elems[1].contains_key("y"));
+    assert!(elems[2].contains_key("y"));
+}
+
+/// Quantifier over composite-seq indices: `∀ i ∈ {0..2} : pts[i].x > 0`.
+/// Verifies that field access works inside a quantifier body and that
+/// the resulting model satisfies the per-element field constraint.
+#[test]
+fn seq_composite_with_quantifier() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Point\n    x ∈ Int\n    y ∈ Int\n\
+         schema S\n    pts ∈ Seq(Point)\n    #pts = 3\n    \
+         ∀ i ∈ {0..2} : pts[i].x > 0\n    \
+         pts[0].x = 5\n    pts[1].x = 7\n    pts[2].x = 9\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let pts = r.bindings.get("pts").expect("missing pts binding");
+    let elems = match pts {
+        Value::SeqComposite(v) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(elems.len(), 3);
+    for (i, expected) in [5, 7, 9].iter().enumerate() {
+        match elems[i].get("x") {
+            Some(Value::Int(n)) => {
+                assert!(*n > 0, "elem {} x not positive: {}", i, n);
+                assert_eq!(*n, *expected, "elem {} x mismatch", i);
+            }
+            other => panic!("elem {} missing/typed x: {:?}", i, other),
+        }
+    }
+}
