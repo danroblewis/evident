@@ -1,0 +1,37 @@
+-- scheduling.ev — small demo using only features the Rust runtime
+-- currently supports. Verifies via the CLI test that real .ev files
+-- can be loaded end-to-end.
+
+-- A reusable trait: a value is in a 0..max range.
+claim in_range
+    x   ∈ Int
+    max ∈ Int
+    x ≥ 0
+    x < max
+
+-- A type with two fields.
+type Slot
+    start    ∈ Nat
+    duration ∈ Nat
+
+-- Reusable: a slot that fits before a deadline.
+claim fits_before
+    slot     ∈ Slot
+    deadline ∈ Nat
+    slot.start + slot.duration ≤ deadline
+
+-- The schema we'll query.
+schema FitTwoSlots
+    a  ∈ Slot
+    b  ∈ Slot
+    deadline ∈ Nat
+    deadline = 100
+    -- both fit before the deadline
+    fits_before (slot mapsto a, deadline mapsto deadline)
+    fits_before (slot mapsto b, deadline mapsto deadline)
+    -- a ends before b starts (no overlap)
+    a.start + a.duration ≤ b.start
+    -- give them concrete shapes
+    a.start = 10
+    a.duration = 30
+    b.duration = 25

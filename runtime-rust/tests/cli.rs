@@ -57,6 +57,35 @@ fn cli_query_with_given() {
     assert!(s.contains("b=3"));
 }
 
+/// Run the CLI against a real example file from examples/. Exercises
+/// types, claims with sub-schema mapping, ClaimCall, and field access
+/// — a realistic mix.
+#[test]
+fn cli_query_examples_scheduling() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let path = format!("{}/examples/scheduling.ev", manifest);
+    let out = Command::new(bin())
+        .args(["query", &path, "FitTwoSlots"])
+        .output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut found = std::collections::HashMap::new();
+    for line in s.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            found.insert(k.to_string(), v.to_string());
+        }
+    }
+    // Pinned-by-constraint values:
+    assert_eq!(found.get("a.start").map(|s| s.as_str()), Some("10"));
+    assert_eq!(found.get("a.duration").map(|s| s.as_str()), Some("30"));
+    assert_eq!(found.get("a.duration").map(|s| s.as_str()), Some("30"));
+    assert_eq!(found.get("b.duration").map(|s| s.as_str()), Some("25"));
+    assert_eq!(found.get("deadline").map(|s| s.as_str()), Some("100"));
+    // b.start should satisfy a.start + a.duration ≤ b.start ≤ 100 - 25.
+    let bs: i64 = found["b.start"].parse().unwrap();
+    assert!(bs >= 40 && bs <= 75, "b.start = {bs}");
+}
+
 #[test]
 fn cli_parse_lists_schema_names() {
     let path = write_tmp("multi",
