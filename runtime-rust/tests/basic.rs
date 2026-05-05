@@ -940,3 +940,52 @@ fn seq_literal_nested_composite_assignment() {
     };
     assert_eq!(color.get("r"), Some(&Value::Int(255)));
 }
+
+/// `#seq` should fold to a literal int via `apply_seq_lengths`, so
+/// quantifiers ranging over `0..#seq - 1` unroll. Regression for
+/// scatter.ev's per-dot ∀ loops, which previously dropped because
+/// Cardinality stayed symbolic. Also verifies the Membership
+/// idempotence guard in declare_var: without it, the passthrough
+/// re-declares state.dots and wipes the literal len.
+#[test]
+fn forall_over_cardinality_of_composite_seq() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Item\n    val ∈ Int\n\
+         schema S\n    items ∈ Seq(Item)\n    #items = 4\n    \
+         ∀ i ∈ {0..#items - 1} : items[i].val = i * 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let items = match r.bindings.get("items") {
+        Some(Value::SeqComposite(v)) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(items.len(), 4);
+    for i in 0..4 {
+        assert_eq!(items[i].get("val"), Some(&Value::Int(i as i64 * 10)));
+    }
+}
+
+/// `seq[i] = composite_var` — single-element composite assignment into
+/// a `Seq(UserType)` slot, where `composite_var` is a flat-expanded
+/// sub-schema instance. Regression for the player-rect-placement line
+/// `output.rects[#state.dots] = player_rect` in the dot-collect engine.
+#[test]
+fn seq_index_assign_composite_var() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Point\n    x ∈ Int\n    y ∈ Int\n\
+         schema S\n    pts ∈ Seq(Point)\n    p ∈ Point\n    \
+         #pts = 3\n    p.x = 99\n    p.y = 100\n    pts[2] = p\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let pts = match r.bindings.get("pts") {
+        Some(Value::SeqComposite(v)) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(pts.len(), 3);
+    assert_eq!(pts[2].get("x"), Some(&Value::Int(99)));
+    assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
+}

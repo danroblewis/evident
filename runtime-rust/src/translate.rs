@@ -584,6 +584,7 @@ pub fn build_cache(
     let seq_lens = collect_seq_lengths(&schema.body, &no_given);
     let pinned   = collect_pinned_ints(&schema.body, &no_given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
 
     let mut visited: HashSet<String> = HashSet::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
@@ -959,6 +960,7 @@ pub fn evaluate(
     let seq_lens = collect_seq_lengths(&schema.body, given);
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
 
     // Pass 2: translate body constraints and assert. Passthrough items
     // also contribute their included claim's constraints under the
@@ -1180,6 +1182,42 @@ fn apply_pinned_ints<'ctx>(
     }
 }
 
+/// Replace each `Var::SeqVar` / `Var::DatatypeSeqVar`'s symbolic `len`
+/// with an `Int::from_i64` literal when `seq_lengths` knows the value.
+/// Without this, `translate_int(Cardinality(seq))` returns the
+/// solver-side free `len` symbol, so `literal_range` can't fold
+/// `Range(0, #seq - 1)` to a concrete pair and the quantifier is
+/// silently dropped.
+///
+/// Idempotent and safe to run after `apply_pinned_ints` (different
+/// var kinds, no overlap).
+fn apply_seq_lengths<'ctx>(
+    env: &mut HashMap<String, Var<'ctx>>,
+    seq_lengths: &HashMap<String, i64>,
+    ctx: &'ctx Context,
+) {
+    for (name, n) in seq_lengths {
+        let Some(var) = env.get(name) else { continue };
+        let new_len = Int::from_i64(ctx, *n);
+        let new_var = match var {
+            Var::SeqVar { arr, elem, .. } => {
+                Var::SeqVar { arr: arr.clone(), len: new_len, elem: *elem }
+            }
+            Var::DatatypeSeqVar { arr, type_name, dt, fields, .. } => {
+                Var::DatatypeSeqVar {
+                    arr: arr.clone(),
+                    len: new_len,
+                    type_name: type_name.clone(),
+                    dt: *dt,
+                    fields: fields.clone(),
+                }
+            }
+            _ => continue,
+        };
+        env.insert(name.clone(), new_var);
+    }
+}
+
 /// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
 /// bindings to install in the inner env when entering a ClaimCall.
 ///
@@ -1289,6 +1327,19 @@ fn declare_var(
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
 ) {
+    // Idempotence guard: if the leaf is already declared (Int/Bool/Seq/
+    // Set/composite — anything that lands in env at this exact key),
+    // don't re-declare. Sub-schemas (`state ∈ DotCollectState`) never
+    // store the bare name (`state`) in env — only their flat-expanded
+    // leaves (`state.player.x`, …) — so this guard is a no-op there
+    // and the recursion proceeds to the leaves, which DO get the guard.
+    //
+    // Without this, when `inline_body_items` walks a passthrough's
+    // Memberships and calls declare_var(state, DotCollectState), the
+    // user-type recursion blindly re-declares `state.dots` — wiping
+    // the literal `len` that `apply_seq_lengths` just installed and
+    // breaking quantifier unrolling over `#state.dots`.
+    if env.contains_key(prefix) { return; }
     match type_name {
         "Int" => {
             env.insert(prefix.to_string(), Var::IntVar(Int::new_const(ctx, prefix)));
@@ -1707,6 +1758,48 @@ fn build_composite_dynamic<'ctx>(
     Some(dt.variants[0].constructor.apply(&dyn_refs))
 }
 
+/// Handle `seq[i] = composite_var` (single-element composite assignment
+/// against a `Seq(UserType)`). Used by `output.rects[#state.dots] = player_rect`
+/// in the dot-collect engine: assign one composite value into one slot of a
+/// composite-element seq.
+///
+/// LHS must be `Index(Identifier(seq_name), idx_expr)` where `seq_name`
+/// resolves to a `Var::DatatypeSeqVar`. RHS must be `Identifier(comp_name)`
+/// where `comp_name.*` keys exist in env (flat-expanded composite from a
+/// sub-schema membership). Builds the per-element Datatype value via
+/// `build_composite_dynamic` and asserts `arr.select(idx) == composite`.
+fn translate_seq_index_assign<'ctx>(
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<Bool<'ctx>> {
+    let (seq_name, idx_expr) = match lhs {
+        Expr::Index(seq_expr, idx_expr) => {
+            let Expr::Identifier(name) = seq_expr.as_ref() else { return None };
+            (name.as_str(), idx_expr.as_ref())
+        }
+        _ => return None,
+    };
+    let comp_name = match rhs {
+        Expr::Identifier(n) => n.as_str(),
+        _ => return None,
+    };
+    let var = env.get(seq_name)?;
+    let (arr, _, _, dt, fields) = var.as_datatype_seq()?;
+    // The composite must be flat-expanded — verify by checking at least one
+    // expected leaf exists in env. Without this, `output.rects[i] = player_rect`
+    // would silently match `player_rect ∈ Bool` and translate wrong.
+    let first_field = fields.first().map(|f| f.name())?;
+    if !env.contains_key(&format!("{}.{}", comp_name, first_field)) {
+        return None;
+    }
+    let idx = translate_int(idx_expr, ctx, env)?;
+    let composite = build_composite_dynamic(comp_name, dt, fields, ctx, env)?;
+    let elem = arr.select(&idx);
+    Some(elem._eq(&composite))
+}
+
 fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Bool<'ctx>> {
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
@@ -1823,6 +1916,22 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
                     });
                 }
                 if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                // `seq[i] = composite_var` (single-element composite-seq
+                // assignment). Try both orientations.
+                if let Some(b) = translate_seq_index_assign(lhs, rhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let Some(b) = translate_seq_index_assign(rhs, lhs, ctx, env) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),

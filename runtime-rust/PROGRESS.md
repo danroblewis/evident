@@ -4,6 +4,54 @@
 
 ## Current status
 
+**Phase:** v1.11 — Cardinality folds, declare_var is idempotent,
+single-element composite-seq assignment. 93/93 internal tests
+(+2 regression tests). All four dot-collect SDL demos
+(scatter, collect, grid, anchor_collect) now render the gold player
+rect + dots correctly with zero dropped-constraint warnings.
+
+**Last action:** Three small surgical fixes that together unlock
+`..DotCollectGameEngine` rendering end-to-end:
+
+  1. `apply_seq_lengths(env, seq_lens, ctx)` — for every `(name, n)`
+     in `seq_lens`, replace the seq variable's symbolic `len` field
+     with `Int::from_i64(ctx, n)`. Without this, the `len` Int stayed
+     a free Z3 const constrained-but-not-folded, so
+     `Cardinality(seq).simplify().as_i64()` returned None and any
+     quantifier ranging over `0..#seq - 1` (or `0..#seq`) was silently
+     dropped. Called right after `apply_pinned_ints` in both
+     `evaluate` and `build_cache`.
+
+  2. `declare_var` idempotence guard — `if env.contains_key(prefix)
+     { return; }` at the top. Sub-schema declaration walks to the
+     leaves; without this guard, a passthrough re-declaring `state ∈
+     DotCollectState` would walk back into `state.dots ∈ Seq(DotState)`
+     and **overwrite** the literal `len` that
+     `apply_seq_lengths` just installed (the parent already declared
+     `state.dots` in pass 1, but the bare `state` is never in env so
+     the recursion fires). Bare sub-schema names (`state`) never
+     collide; only leaves are guarded.
+
+  3. `translate_seq_index_assign(lhs, rhs, ctx, env)` — handles
+     `Index(DatatypeSeqVar, idx_expr) = Identifier(composite_var)`,
+     where `composite_var.*` keys exist in env (flat-expanded sub-
+     schema instance). Builds the per-element Datatype value via the
+     existing `build_composite_dynamic` helper and asserts
+     `arr.select(idx) == composite`. Wired into the Eq dispatch
+     before the bool/int/str scalar paths. Used by
+     `output.rects[#state.dots] = player_rect` in the dot-collect
+     engine.
+
+Two new regression tests:
+  - `forall_over_cardinality_of_composite_seq` — `∀ i ∈ {0..#items - 1}
+    : items[i].val = i*10` for `Seq(Item)`.
+  - `seq_index_assign_composite_var` — `pts[2] = p` for `Seq(Point)`
+    when `p` is a flat-expanded Point.
+
+Conformance unchanged (44/75): the score is bottlenecked by features
+the suite specifically tests (Real, chained comparison, regex, etc.),
+not seq-of-composite indexing.
+
 **Phase:** v1.10 — build/run-standalone fix + parent conformance suite
 wired in. 91/91 internal Rust tests still green; the parent project's
 `tests/conformance/test_language.py` (75 black-box CLI tests) is now
