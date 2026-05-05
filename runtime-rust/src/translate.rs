@@ -16,7 +16,14 @@ use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, SatResult, So
 /// the runtime already leaks its Context, so leaking the per-type
 /// `DatatypeSort` (which borrows from that Context) is consistent.
 /// See `EvidentRuntime::new` for why the Context is leaked.
-pub type DatatypeRegistry = RefCell<HashMap<String, &'static DatatypeSort<'static>>>;
+///
+/// Each entry caches both the DatatypeSort and the parallel
+/// `Vec<FieldKind>` that describes how to walk the type's fields
+/// (leaf primitives + nested sub-structs). Sharing the field list
+/// across siblings (e.g. SDLRect.color and SDLOutput.bg both use
+/// Color) avoids re-walking the schema body on every reference.
+pub type DatatypeRegistry =
+    RefCell<HashMap<String, (&'static DatatypeSort<'static>, Vec<FieldKind>)>>;
 
 /// Result of running one query.
 #[derive(Debug, Clone)]
@@ -51,6 +58,54 @@ pub enum Value {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SeqElem { Int, Bool, Str }
 
+/// One field of a user type stored as the element of `Seq(UserType)`.
+/// Two flavors: leaf primitives (Int/Nat/Pos/Bool/String), and nested
+/// composite fields whose own type is itself a user struct.
+///
+/// The accessor in the parent Datatype always returns a `Dynamic` of
+/// the field's sort. For primitives that's an Int/Bool/String; for
+/// nested composites it's another Datatype value, which has its own
+/// list of accessors (the `sub_fields` here, plus the `dt` pointer).
+///
+/// v1 still rejects fields that are themselves Seqs / Sets — the
+/// recursion only handles user-defined struct types.
+#[derive(Clone, Debug)]
+pub enum FieldKind {
+    Primitive {
+        name: String,
+        /// "Int" | "Nat" | "Pos" | "Bool" | "String" — routes the
+        /// extracted Dynamic through the right `as_int` / `as_bool`
+        /// / `as_string` extractor and tells callers what sort it
+        /// translates to.
+        prim_type: String,
+    },
+    Nested {
+        name: String,
+        /// User type's name, kept for diagnostics + cache key parity
+        /// with what `get_or_build_datatype` registers.
+        #[allow(dead_code)]
+        type_name: String,
+        /// Z3 Datatype for this nested type. Same `'static` lifetime
+        /// trick as the outer DatatypeSeqVar's `dt` — the runtime
+        /// already leaks its Context, so leaking the per-type sort
+        /// is consistent.
+        dt: &'static DatatypeSort<'static>,
+        /// Recursive: the nested type's own field list. Could itself
+        /// contain another `Nested` for two-deep composition (e.g.
+        /// SDLOutput.bg.color, if Color had another nested field).
+        sub_fields: Vec<FieldKind>,
+    },
+}
+
+impl FieldKind {
+    fn name(&self) -> &str {
+        match self {
+            FieldKind::Primitive { name, .. } => name,
+            FieldKind::Nested { name, .. } => name,
+        }
+    }
+}
+
 /// Z3 binding for a declared variable. Keep a typed handle so we know
 /// which AST kind to translate against.
 ///
@@ -82,11 +137,12 @@ enum Var<'ctx> {
         type_name: String,
         dt: &'static DatatypeSort<'static>,
         /// Per-field metadata in declaration order — the same order as
-        /// `dt.variants[0].accessors`. Each entry is `(field_name,
-        /// primitive_type_name)` where the type name routes the
-        /// extracted `Dynamic` through the right `as_int` / `as_bool`
-        /// / `as_string` extractor.
-        fields: Vec<(String, String)>,
+        /// `dt.variants[0].accessors`. Each entry is a `FieldKind`,
+        /// either a leaf primitive (which routes through `as_int` /
+        /// `as_bool` / `as_string`) or a `Nested` sub-struct (which
+        /// holds its own DatatypeSort + `sub_fields` for further
+        /// recursion).
+        fields: Vec<FieldKind>,
     },
     /// Z3 Set — characteristic function over an element sort. Supports
     /// `x ∈ s` membership; we don't expose cardinality / iteration
@@ -118,7 +174,7 @@ impl<'ctx> Var<'ctx> {
     }
     fn as_datatype_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, &str,
                                          &'static DatatypeSort<'static>,
-                                         &[(String, String)])> {
+                                         &[FieldKind])> {
         match self {
             Var::DatatypeSeqVar { arr, len, type_name, dt, fields } =>
                 Some((arr, len, type_name.as_str(), *dt, fields.as_slice())),
@@ -173,39 +229,91 @@ fn extract_seq<'ctx>(
 
 /// Get or build a Z3 `DatatypeSort` for a user type referenced as the
 /// element of `Seq(UserType)`. Walks the type's body for `Membership`
-/// items, mapping each to a primitive `DatatypeAccessor::Sort(...)`.
+/// items, building a parallel `Vec<FieldKind>` and a list of Z3 sorts
+/// suitable for `DatatypeBuilder::variant`.
 ///
-/// v1 limitation: only flat user structs whose fields are Int/Nat/Pos/
-/// Bool/String. Nested user types (recursive Datatype building) and
-/// `Seq`/`Set` fields are out of scope — returns None and logs a
-/// warning if any field doesn't fit.
+/// Recurses for nested user-type fields: a field declared `c ∈ Color`
+/// where Color is itself a struct triggers a nested
+/// `get_or_build_datatype` call, and the resulting Datatype's sort
+/// becomes the field's `DatatypeAccessor::Sort(...)`. Both the outer
+/// and inner Datatypes land in the shared `DatatypeRegistry` so
+/// siblings using the same nested type (e.g. SDLRect.color and
+/// SDLOutput.bg both pointing at Color) share the same Z3 sort.
 ///
-/// The returned reference has a `'static` lifetime: the runtime
+/// v1 limitation: nested fields can only be other user structs (or
+/// the same set of leaf primitives — Int/Nat/Pos/Bool/String). Fields
+/// of type `Seq(...)` / `Set(...)` are still rejected with a warning
+/// (would need different element-array handling that's out of scope
+/// for this slice).
+///
+/// The returned references have a `'static` lifetime: the runtime
 /// already leaks its `Context`, so leaking the per-type `DatatypeSort`
 /// (which borrows from that Context) is consistent. See
 /// `EvidentRuntime::new` for why the Context is leaked.
-///
-/// Also returns the parallel `(field_name, type_name)` list so the
-/// caller can build a `DatatypeSeqVar` without re-walking the body.
 fn get_or_build_datatype(
     type_name: &str,
     ctx: &'static Context,
     schemas: &HashMap<String, SchemaDecl>,
     registry: &DatatypeRegistry,
-) -> Option<(&'static DatatypeSort<'static>, Vec<(String, String)>)> {
+) -> Option<(&'static DatatypeSort<'static>, Vec<FieldKind>)> {
+    // Cache hit: return the previously-built sort + field list.
+    if let Some((dt, fields)) = registry.borrow().get(type_name) {
+        return Some((*dt, fields.clone()));
+    }
     let schema = schemas.get(type_name)?;
-    let mut fields: Vec<(String, String)> = Vec::new();
+
+    // First pass: walk the type body and resolve each field to either a
+    // primitive sort or a recursively-built nested Datatype. We collect
+    // both the FieldKind metadata and the parallel `(name, sort)` list
+    // for the DatatypeBuilder.
+    let mut fields: Vec<FieldKind> = Vec::new();
+    let mut field_sorts: Vec<(String, Sort<'static>)> = Vec::new();
     for item in &schema.body {
         if let BodyItem::Membership { name, type_name: ftype } = item {
             match ftype.as_str() {
-                "Int" | "Nat" | "Pos" | "Bool" | "String" => {
-                    fields.push((name.clone(), ftype.clone()));
+                "Int" | "Nat" | "Pos" => {
+                    fields.push(FieldKind::Primitive {
+                        name: name.clone(),
+                        prim_type: ftype.clone(),
+                    });
+                    field_sorts.push((name.clone(), Sort::int(ctx)));
+                }
+                "Bool" => {
+                    fields.push(FieldKind::Primitive {
+                        name: name.clone(),
+                        prim_type: ftype.clone(),
+                    });
+                    field_sorts.push((name.clone(), Sort::bool(ctx)));
+                }
+                "String" => {
+                    fields.push(FieldKind::Primitive {
+                        name: name.clone(),
+                        prim_type: ftype.clone(),
+                    });
+                    field_sorts.push((name.clone(), Sort::string(ctx)));
+                }
+                // Nested: recurse if this name is itself a user type.
+                user_type if schemas.contains_key(user_type) => {
+                    let Some((nested_dt, sub_fields)) =
+                        get_or_build_datatype(user_type, ctx, schemas, registry)
+                    else {
+                        // Inner build failed (warning already logged); abort the
+                        // outer build too — we can't include a partial Datatype.
+                        return None;
+                    };
+                    field_sorts.push((name.clone(), nested_dt.sort.clone()));
+                    fields.push(FieldKind::Nested {
+                        name: name.clone(),
+                        type_name: user_type.to_string(),
+                        dt: nested_dt,
+                        sub_fields,
+                    });
                 }
                 _ => {
                     eprintln!(
                         "warning: unsupported field type {} in Datatype for {}; \
-                         only Int/Nat/Pos/Bool/String fields are supported \
-                         in Seq(UserType) elements (v1)",
+                         only Int/Nat/Pos/Bool/String and other user struct types \
+                         are supported in Seq(UserType) elements (v1)",
                         ftype, type_name
                     );
                     return None;
@@ -221,19 +329,7 @@ fn get_or_build_datatype(
         eprintln!("warning: type {} has no fields; can't build Datatype", type_name);
         return None;
     }
-    if let Some(dt) = registry.borrow().get(type_name) {
-        return Some((*dt, fields));
-    }
-    let mut field_sorts: Vec<(String, Sort<'static>)> = Vec::with_capacity(fields.len());
-    for (fname, ftype) in &fields {
-        let sort = match ftype.as_str() {
-            "Int" | "Nat" | "Pos" => Sort::int(ctx),
-            "Bool" => Sort::bool(ctx),
-            "String" => Sort::string(ctx),
-            _ => unreachable!(),
-        };
-        field_sorts.push((fname.clone(), sort));
-    }
+
     let ctor_name = format!("mk_{}", type_name);
     let field_refs: Vec<(&str, DatatypeAccessor<'static>)> = field_sorts
         .iter()
@@ -243,36 +339,32 @@ fn get_or_build_datatype(
         .variant(&ctor_name, field_refs)
         .finish();
     let leaked: &'static DatatypeSort<'static> = Box::leak(Box::new(dt));
-    registry.borrow_mut().insert(type_name.to_string(), leaked);
+    registry.borrow_mut().insert(type_name.to_string(), (leaked, fields.clone()));
     Some((leaked, fields))
 }
 
-/// Read a `Seq(UserType)` value out of the model: read the length,
-/// then for each `i ∈ 0..length` select the array element (a
-/// Datatype value), walk the Datatype's accessors to extract each
-/// field's primitive value, and assemble into a `HashMap`. Push each
-/// element map into a `Vec` and wrap in `Value::SeqComposite`.
-fn extract_seq_composite<'ctx>(
-    arr: &Array<'ctx>,
-    len: &Int<'ctx>,
-    fields: &[(String, String)],
+/// Walk the accessors of a single Datatype value and assemble a flat
+/// `HashMap<String, Value>` of its fields. Recurses for nested
+/// composite fields: a `FieldKind::Nested` yields a `Value::Composite`
+/// whose own map is built by another call to this helper on the
+/// nested `(dt, sub_fields)` pair.
+///
+/// Caller is responsible for ensuring `dt` and `fields` were built
+/// together (same order). The accessor index aligns with `fields[i]`.
+fn extract_composite_value<'ctx>(
+    elem: &z3::ast::Datatype<'ctx>,
+    fields: &[FieldKind],
     dt: &DatatypeSort<'_>,
     model: &z3::Model<'ctx>,
     ctx: &'ctx Context,
-) -> Option<Value> {
-    let n = model.eval(len, true)?.as_i64()?;
-    if n < 0 { return None; }
-    let mut out: Vec<HashMap<String, Value>> = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        let idx = Int::from_i64(ctx, i);
-        let elem_dyn = arr.select(&idx);
-        let elem = elem_dyn.as_datatype()?;
-        let mut field_map: HashMap<String, Value> = HashMap::new();
-        for (fi, (fname, ftype)) in fields.iter().enumerate() {
-            if fi >= dt.variants[0].accessors.len() { break; }
-            let accessor = &dt.variants[0].accessors[fi];
-            let raw = accessor.apply(&[&elem]);
-            let value = match ftype.as_str() {
+) -> Option<HashMap<String, Value>> {
+    let mut field_map: HashMap<String, Value> = HashMap::new();
+    for (fi, fk) in fields.iter().enumerate() {
+        if fi >= dt.variants[0].accessors.len() { break; }
+        let accessor = &dt.variants[0].accessors[fi];
+        let raw = accessor.apply(&[elem]);
+        let value = match fk {
+            FieldKind::Primitive { prim_type, .. } => match prim_type.as_str() {
                 "Int" | "Nat" | "Pos" => {
                     let z = raw.as_int()?;
                     Value::Int(model.eval(&z, true)?.as_i64()?)
@@ -286,9 +378,40 @@ fn extract_seq_composite<'ctx>(
                     Value::Str(model.eval(&z, true)?.as_string()?)
                 }
                 _ => return None,
-            };
-            field_map.insert(fname.clone(), value);
-        }
+            },
+            FieldKind::Nested { dt: nested_dt, sub_fields, .. } => {
+                let nested_elem = raw.as_datatype()?;
+                let nested_map =
+                    extract_composite_value(&nested_elem, sub_fields, *nested_dt, model, ctx)?;
+                Value::Composite(nested_map)
+            }
+        };
+        field_map.insert(fk.name().to_string(), value);
+    }
+    Some(field_map)
+}
+
+/// Read a `Seq(UserType)` value out of the model: read the length,
+/// then for each `i ∈ 0..length` select the array element (a
+/// Datatype value) and call `extract_composite_value` to assemble
+/// its field map. Push each element map into a `Vec` and wrap in
+/// `Value::SeqComposite`.
+fn extract_seq_composite<'ctx>(
+    arr: &Array<'ctx>,
+    len: &Int<'ctx>,
+    fields: &[FieldKind],
+    dt: &DatatypeSort<'_>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+) -> Option<Value> {
+    let n = model.eval(len, true)?.as_i64()?;
+    if n < 0 { return None; }
+    let mut out: Vec<HashMap<String, Value>> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let idx = Int::from_i64(ctx, i);
+        let elem_dyn = arr.select(&idx);
+        let elem = elem_dyn.as_datatype()?;
+        let field_map = extract_composite_value(&elem, fields, dt, model, ctx)?;
         out.push(field_map);
     }
     Some(Value::SeqComposite(out))
@@ -1120,31 +1243,93 @@ fn declare_var(
     }
 }
 
-/// Resolve `Field(Index(seq_var_ident, idx_expr), field_name)` against
-/// a `DatatypeSeqVar` in the env. Returns the raw `Dynamic` produced by
-/// applying the matching field accessor; the caller routes it through
-/// `as_int` / `as_bool` / `as_string` based on the field's primitive
-/// type. Returns `(dynamic, primitive_type_name)` so callers can do
-/// the right cast.
+/// Resolve a (possibly-nested) field access chain against a
+/// `DatatypeSeqVar` in the env. Two shapes:
+///
+///   `Field(Index(Identifier(seq_name), idx_expr), field_name)` —
+///       direct primitive field of a `Seq(UserType)` element.
+///       Returns the field's primitive `Dynamic` and its type name.
+///
+///   `Field(Field(... , inner_field), leaf_field)` (recursively) —
+///       nested field of a composite element field. Walks the chain
+///       outward-in: bottom of the chain is the same Index pattern,
+///       each enclosing `Field` peels another level by applying the
+///       nested type's accessor and threading the new (dt, fields)
+///       pair down the recursion.
+///
+/// Returns the raw `Dynamic` for the final leaf field plus the
+/// primitive type name ("Int" / "Nat" / "Pos" / "Bool" / "String") so
+/// the caller can route through `as_int` / `as_bool` / `as_string`.
 fn resolve_seq_field<'ctx>(
     field_expr: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
 ) -> Option<(z3::ast::Dynamic<'ctx>, String)> {
-    // Expected shape: Field(Index(Identifier(seq_name), idx_expr), field_name).
-    let Expr::Field(receiver, field_name) = field_expr else { return None };
-    let Expr::Index(seq_expr, idx_expr) = receiver.as_ref() else { return None };
-    let Expr::Identifier(seq_name) = seq_expr.as_ref() else { return None };
+    // Decompose the chain. `outer_path` is the leaf-to-root list of
+    // field names; the receiver at the bottom of the chain must be
+    // the `Index(Identifier(seq_name), idx_expr)` pattern.
+    let mut path: Vec<&str> = Vec::new();
+    let mut cur = field_expr;
+    let (seq_name, idx_expr) = loop {
+        match cur {
+            Expr::Field(receiver, field_name) => {
+                path.push(field_name.as_str());
+                cur = receiver.as_ref();
+            }
+            Expr::Index(seq_expr, idx_expr) => {
+                let Expr::Identifier(seq_name) = seq_expr.as_ref() else { return None };
+                break (seq_name.as_str(), idx_expr.as_ref());
+            }
+            _ => return None,
+        }
+    };
+    // path is leaf-first; reverse to get root-to-leaf so we can apply
+    // accessors in forward order (outer composite → inner field → ...).
+    path.reverse();
+    if path.is_empty() { return None; }
+
     let var = env.get(seq_name)?;
-    let (arr, _, _, dt, fields) = var.as_datatype_seq()?;
-    let field_idx = fields.iter().position(|(n, _)| n == field_name)?;
-    if field_idx >= dt.variants[0].accessors.len() { return None; }
+    let (arr, _, _, root_dt, root_fields) = var.as_datatype_seq()?;
     let i = translate_int(idx_expr, ctx, env)?;
     let elem_dyn = arr.select(&i);
-    let elem = elem_dyn.as_datatype()?;
-    let raw = dt.variants[0].accessors[field_idx].apply(&[&elem]);
-    let ftype = fields[field_idx].1.clone();
-    Some((raw, ftype))
+    let mut cur_dyn = elem_dyn;
+
+    // Walk the field chain. At each step we're at a Datatype value
+    // (`cur_dyn`); look up the field in the current `(dt, fields)`
+    // pair, apply its accessor, and either return (if it's a
+    // primitive leaf) or recurse with the nested `(dt, sub_fields)`.
+    let mut cur_dt: &DatatypeSort = root_dt;
+    let mut cur_fields: &[FieldKind] = root_fields;
+    for (depth, fname) in path.iter().enumerate() {
+        let field_idx = cur_fields.iter().position(|fk| fk.name() == *fname)?;
+        if field_idx >= cur_dt.variants[0].accessors.len() { return None; }
+        let elem = cur_dyn.as_datatype()?;
+        let raw = cur_dt.variants[0].accessors[field_idx].apply(&[&elem]);
+        let is_last = depth == path.len() - 1;
+        match &cur_fields[field_idx] {
+            FieldKind::Primitive { prim_type, .. } => {
+                if !is_last {
+                    // Trying to index into a primitive — programmer error.
+                    return None;
+                }
+                return Some((raw, prim_type.clone()));
+            }
+            FieldKind::Nested { dt: nested_dt, sub_fields, .. } => {
+                if is_last {
+                    // The chain ends on a composite — translators only
+                    // know how to consume primitive leaves, so signal
+                    // "no leaf primitive" by returning None. Composite
+                    // values aren't first-class in Evident expressions
+                    // (you always reach into one of their fields).
+                    return None;
+                }
+                cur_dt = nested_dt;
+                cur_fields = sub_fields.as_slice();
+                cur_dyn = raw;
+            }
+        }
+    }
+    None
 }
 
 fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {

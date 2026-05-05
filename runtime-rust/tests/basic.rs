@@ -658,3 +658,116 @@ fn seq_composite_with_quantifier() {
     }
 }
 
+/// `Seq(UserType)` where the element type itself contains a nested
+/// composite field — Color is its own struct, Rect.color references
+/// Color. The Datatype builder should recurse to build Color first,
+/// then build Rect with `color` as a `DatatypeAccessor::Sort(Color.sort)`.
+/// Field-access chains like `rs[0].color.r` should resolve through
+/// the nested accessor.
+#[test]
+fn seq_nested_composite_extracts() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Color\n    r ∈ Nat\n    g ∈ Nat\n    b ∈ Nat\n\
+         type Rect\n    x ∈ Int\n    y ∈ Int\n    color ∈ Color\n\
+         schema S\n    rs ∈ Seq(Rect)\n    #rs = 2\n    \
+         rs[0].x = 10\n    rs[0].color.r = 255\n    \
+         rs[1].x = 20\n    rs[1].color.r = 0\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied, "expected SAT, got UNSAT");
+    let rs = r.bindings.get("rs").expect("missing rs binding");
+    let elems = match rs {
+        Value::SeqComposite(v) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(elems.len(), 2);
+    // Check first element: x=10, color.r=255.
+    assert_eq!(elems[0].get("x"), Some(&Value::Int(10)));
+    let c0 = match elems[0].get("color") {
+        Some(Value::Composite(m)) => m,
+        other => panic!("elem 0 color not Composite: {:?}", other),
+    };
+    assert_eq!(c0.get("r"), Some(&Value::Int(255)));
+    assert!(c0.contains_key("g"));
+    assert!(c0.contains_key("b"));
+    // Check second element: x=20, color.r=0.
+    assert_eq!(elems[1].get("x"), Some(&Value::Int(20)));
+    let c1 = match elems[1].get("color") {
+        Some(Value::Composite(m)) => m,
+        other => panic!("elem 1 color not Composite: {:?}", other),
+    };
+    assert_eq!(c1.get("r"), Some(&Value::Int(0)));
+}
+
+/// Quantifier ranges over composite-seq indices with nested-field
+/// access in the body. `rs[i].color.r ≥ 0` should unroll to two
+/// constraints (Color.r is a Nat so it's already trivially true,
+/// but the test is mostly about the parse-translate-extract path
+/// working end-to-end).
+#[test]
+fn seq_nested_composite_with_quantifier() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Color\n    r ∈ Nat\n    g ∈ Nat\n    b ∈ Nat\n\
+         type Rect\n    x ∈ Int\n    y ∈ Int\n    color ∈ Color\n\
+         schema S\n    rs ∈ Seq(Rect)\n    #rs = 2\n    \
+         ∀ i ∈ {0..1} : rs[i].color.r ≥ 0\n    \
+         rs[0].color.r = 100\n    rs[1].color.r = 200\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let rs = r.bindings.get("rs").expect("missing rs binding");
+    let elems = match rs {
+        Value::SeqComposite(v) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(elems.len(), 2);
+    let r0 = match elems[0].get("color") {
+        Some(Value::Composite(m)) => m.get("r").cloned(),
+        _ => panic!("elem 0 color"),
+    };
+    let r1 = match elems[1].get("color") {
+        Some(Value::Composite(m)) => m.get("r").cloned(),
+        _ => panic!("elem 1 color"),
+    };
+    assert_eq!(r0, Some(Value::Int(100)));
+    assert_eq!(r1, Some(Value::Int(200)));
+}
+
+/// Sibling user types share a nested composite field type — Color is
+/// referenced from both SDLRect.color and SDLOutput.bg. Both top-level
+/// composite (sub-schema expansion) and seq-element composite paths
+/// should produce a working program.
+#[test]
+fn nested_composite_shared_across_siblings() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Color\n    r ∈ Nat\n    g ∈ Nat\n    b ∈ Nat\n\
+         type SDLRect\n    x ∈ Int\n    y ∈ Int\n    w ∈ Nat\n    h ∈ Nat\n    color ∈ Color\n\
+         type SDLOutput\n    bg ∈ Color\n    rects ∈ Seq(SDLRect)\n\
+         schema S\n    output ∈ SDLOutput\n    \
+         output.bg.r = 255\n    output.bg.g = 0\n    output.bg.b = 0\n    \
+         #output.rects = 1\n    \
+         output.rects[0].x = 5\n    output.rects[0].color.r = 128\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied, "expected SAT, got UNSAT");
+    // Top-level sub-schema expansion still applies for output.bg.*.
+    assert_eq!(r.bindings.get("output.bg.r"), Some(&Value::Int(255)));
+    assert_eq!(r.bindings.get("output.bg.g"), Some(&Value::Int(0)));
+    assert_eq!(r.bindings.get("output.bg.b"), Some(&Value::Int(0)));
+    // Seq-of-composite extracts as SeqComposite under output.rects.
+    let rects = r.bindings.get("output.rects").expect("missing output.rects");
+    let elems = match rects {
+        Value::SeqComposite(v) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(elems.len(), 1);
+    assert_eq!(elems[0].get("x"), Some(&Value::Int(5)));
+    let color = match elems[0].get("color") {
+        Some(Value::Composite(m)) => m,
+        other => panic!("elem 0 color: {:?}", other),
+    };
+    assert_eq!(color.get("r"), Some(&Value::Int(128)));
+}

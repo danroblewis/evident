@@ -4,6 +4,42 @@
 
 ## Current status
 
+**Phase:** v1.6 — nested composite fields inside `Seq(UserType)`.
+70/70 tests green (11 lib + 44 lib-style + 10 CLI + 5 sample).
+
+**Last action:** Generalized the Datatype builder so a user struct
+referenced as a `Seq(UserType)` element can itself contain nested
+composite fields (e.g. `SDLRect.color ∈ Color` where Color is its
+own struct). New `FieldKind` enum with `Primitive { name, prim_type }`
+and `Nested { name, type_name, dt, sub_fields }` variants replaces
+the old `Vec<(String, String)>` field metadata on `Var::DatatypeSeqVar`
+and in the `DatatypeRegistry`. `get_or_build_datatype` now recurses
+when it encounters a field whose declared type is itself a user
+struct in `schemas`: it builds (or looks up) the nested DatatypeSort
+and uses `DatatypeAccessor::Sort(nested_dt.sort.clone())` for that
+field. The registry is keyed by type name so siblings (Color used by
+both SDLRect.color and SDLOutput.bg) share a single Z3 sort.
+
+`extract_seq_composite` and the new helper `extract_composite_value`
+walk fields recursively: a `FieldKind::Nested` becomes a
+`Value::Composite(HashMap)` whose own map is built by recursing on
+the nested `(dt, sub_fields)`. `resolve_seq_field` was rewritten to
+walk an arbitrarily-deep `Field(Field(Index(...), inner), leaf)`
+chain — at each step it applies the current field's accessor and,
+if that field is `Nested`, threads the inner DatatypeSort + sub-fields
+into the next iteration. Top-level composite vars (e.g. `output ∈
+SDLOutput` with `bg ∈ Color`) keep using sub-schema expansion: a
+constraint like `output.bg.r = 255` resolves through the flat env
+key `output.bg.r` (a Z3 Int const), not through the new Datatype
+machinery — that's intentional and documented by the
+`nested_composite_shared_across_siblings` test, which exercises
+both paths in one program.
+
+This unblocks the SDL output type: `SDLOutput.rects ∈ Seq(SDLRect)`
+where SDLRect has a nested `color ∈ Color` field now extracts as
+`Value::SeqComposite(Vec<HashMap>)` with each map containing
+`color → Value::Composite({r, g, b})`.
+
 **Phase:** v1.5 — composite element types (`Seq(UserType)`).
 67/67 tests green (11 lib + 41 lib-style + 10 CLI + 5 sample).
 
@@ -254,12 +290,15 @@ length propagation, and CLI / file-loading.
   error on the *next* `Seq(Point)` declaration because the leaked old
   Datatype still owns the name in Z3's context. v1 doesn't exercise
   reload-with-redefinition, so this is theoretical for now.
-- **Field types in user-type Datatype are limited.** `get_or_build_datatype`
-  rejects fields whose declared type is anything but Int/Nat/Pos/Bool/
-  String. Nested user types or `Seq`/`Set` element fields would need
-  recursive Datatype building (z3 supports it via `Z3_mk_datatypes` taking
-  multiple builders together) — not done in v1. The branch logs a warning
-  and skips the whole Seq declaration.
+- **Field types in user-type Datatype are still partially limited.**
+  `get_or_build_datatype` accepts Int/Nat/Pos/Bool/String *and* nested
+  user struct types (recursively built and shared across siblings via
+  the `DatatypeRegistry`). Still rejected: fields whose declared type
+  is itself a `Seq(...)` / `Set(...)` (would need building the array
+  sort *inside* the Datatype constructor — possible but has its own
+  recursive-extraction needs, deferred). The branch logs a warning and
+  the outer `Seq(UserType)` declaration is dropped if any field can't
+  be resolved.
 
 ## Cached evaluator (implemented)
 
@@ -350,18 +389,23 @@ In rough order of leverage:
       Less urgent — test-runner + query cover most workflows.
 - [x] **Composite element types (`Seq(UserType)`)**. New `Var::DatatypeSeqVar`
       variant + `DatatypeRegistry` (`RefCell<HashMap<String,
-      &'static DatatypeSort>>`) on the runtime. `declare_var`'s `Seq(...)`
-      branch dispatches on the inner name: primitives → `SeqVar`, user
-      types in `schemas` → `DatatypeSeqVar` after building (or looking
-      up) a Z3 Datatype via `DatatypeBuilder`. `Expr::Field(Box<Expr>,
-      String)` AST + `parse_postfix` chain `[i].field` parses cleanly.
-      `translate_int / _bool / _str` route `Field(Index(seq, idx), name)`
-      through `resolve_seq_field`, which applies the matching accessor.
-      `extract_seq_composite` walks the array element by element and
-      reads each field's value; result is `Value::SeqComposite(Vec<HashMap>)`.
-      v1 limitation: only flat user structs whose fields are
-      Int/Nat/Pos/Bool/String. Nested Seqs and nested user types are
-      out of scope (warned + skipped).
+      (&'static DatatypeSort, Vec<FieldKind>)>>`) on the runtime.
+      `declare_var`'s `Seq(...)` branch dispatches on the inner name:
+      primitives → `SeqVar`, user types in `schemas` → `DatatypeSeqVar`
+      after building (or looking up) a Z3 Datatype via `DatatypeBuilder`.
+      `Expr::Field(Box<Expr>, String)` AST + `parse_postfix` chain
+      `[i].field` parses cleanly. `translate_int / _bool / _str` route
+      `Field(...)` chains through `resolve_seq_field`, which walks an
+      arbitrarily-deep `Field(Field(Index(...), inner), leaf)` chain
+      and applies each level's accessor. `extract_seq_composite` +
+      `extract_composite_value` walk the array element by element and
+      recurse for `FieldKind::Nested` fields; result is
+      `Value::SeqComposite(Vec<HashMap>)` with nested fields surfaced
+      as `Value::Composite(HashMap)`.
+      v1.6: nested composite fields supported (Color used by both
+      SDLRect.color and SDLOutput.bg builds one shared Z3 sort).
+      Still out of scope: Seq fields inside a Datatype element
+      (`type Foo { items ∈ Seq(Bar) }` rejects the outer build).
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.
 - [ ] Symbolic ∀ bounds via length propagation (see Python's
@@ -417,6 +461,9 @@ All in `tests/basic.rs`. 16/16 passing.
 | `set_var_membership_string`          | `name ∈ Set(String)` membership        |
 | `seq_composite_field_access`         | `Seq(Point)` + `pts[0].x = 10` per-elem |
 | `seq_composite_with_quantifier`      | `∀ i ∈ {0..2} : pts[i].x > 0`         |
+| `seq_nested_composite_extracts`      | `Seq(Rect)` with `Rect.color ∈ Color` nested |
+| `seq_nested_composite_with_quantifier` | `∀ i : rs[i].color.r ≥ 0` resolves chain |
+| `nested_composite_shared_across_siblings` | Color shared by SDLRect.color + SDLOutput.bg |
 
 **`tests/cli.rs` (10)**:
 
