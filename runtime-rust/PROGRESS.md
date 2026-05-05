@@ -4,6 +4,17 @@
 
 ## Current status
 
+**Phase:** v1.1 — Set sort runtime (membership queries).
+49/49 tests green (5 unit + 39 lib + 5 CLI).
+
+**Last action:** `Set(Int)` / `Set(Bool)` / `Set(String)` now declare
+as Z3 Set values. `x ∈ s` (with `s` a SetVar identifier) translates
+to `set.member(x)`. SetLit-rhs path still works (reduces to OR of
+equalities). Set vars don't appear in extracted bindings — Z3 sets
+are characteristic functions over the element domain, not finite
+containers; iteration / cardinality aren't meaningful without
+explicit length tracking. Useful for membership constraints though.
+
 **Phase:** v1.0 — symbolic ∀ bounds via length propagation.
 47/47 tests green (5 unit + 37 lib + 5 CLI).
 
@@ -169,6 +180,10 @@ Done in this session:
       `apply_pinned_ints` pre-pass. `literal_range` reduced to
       `translate_int + Z3 simplify`. Iterates to fixed point so
       chains like `n = #s ∧ #s = 4 ∧ k = n - 1` all resolve.
+- [x] **Set sort runtime** for primitive element types. `x ∈ s` uses
+      Z3's `set.member(x)`. No iteration / cardinality (Z3 sets are
+      functions, not finite containers); SetVars don't appear in
+      extracted bindings.
 
 In rough order of leverage:
 
@@ -227,6 +242,8 @@ All in `tests/basic.rs`. 16/16 passing.
 | `forall_symbolic_bound_via_pinned_var` | `n = 4 ∧ ∀ i ∈ {0..n-1}` unrolls    |
 | `forall_symbolic_bound_via_length_propagation` | `n = #s ∧ #s = 3` chains      |
 | `forall_symbolic_bound_from_given`   | per-query `given` n=5 unrolls bound    |
+| `set_var_membership_int`             | `s ∈ Set(Int) ; x ∈ s` via Z3 member  |
+| `set_var_membership_string`          | `name ∈ Set(String)` membership        |
 
 **`tests/cli.rs` (4)** — spawns the compiled binary:
 

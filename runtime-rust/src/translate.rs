@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use std::collections::HashMap;
-use z3::ast::{Array, Ast, Bool, Int, String as Z3Str};
+use z3::ast::{Array, Ast, Bool, Int, Set, String as Z3Str};
 use z3::{Context, SatResult, Solver, Sort};
 
 /// Result of running one query.
@@ -48,6 +48,11 @@ enum Var<'ctx> {
     BoolVar(Bool<'ctx>),
     StrVar(Z3Str<'ctx>),
     SeqVar { arr: Array<'ctx>, len: Int<'ctx>, elem: SeqElem },
+    /// Z3 Set — characteristic function over an element sort. Supports
+    /// `x ∈ s` membership; we don't expose cardinality / iteration
+    /// because Z3 sets are functions over infinite domains, not finite
+    /// containers. Model extraction returns no binding for SetVars.
+    SetVar { set: Set<'ctx>, elem: SeqElem },
     /// Compile-time literal int. Mirrors Python's "value pre-bound in env"
     /// pattern: certain names are known to equal a specific integer
     /// before the solver runs (from `given` + literal-equality body
@@ -62,9 +67,6 @@ impl<'ctx> Var<'ctx> {
     fn as_int(&self) -> Option<&Int<'ctx>> {
         match self { Var::IntVar(i) => Some(i), _ => None }
     }
-    fn as_pinned_int(&self) -> Option<i64> {
-        match self { Var::PinnedInt(v) => Some(*v), _ => None }
-    }
     fn as_bool(&self) -> Option<&Bool<'ctx>> {
         match self { Var::BoolVar(b) => Some(b), _ => None }
     }
@@ -73,6 +75,9 @@ impl<'ctx> Var<'ctx> {
     }
     fn as_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, SeqElem)> {
         match self { Var::SeqVar { arr, len, elem } => Some((arr, len, *elem)), _ => None }
+    }
+    fn as_set(&self) -> Option<(&Set<'ctx>, SeqElem)> {
+        match self { Var::SetVar { set, elem } => Some((set, *elem)), _ => None }
     }
 }
 
@@ -260,6 +265,11 @@ pub fn run_cached<'ctx>(
                     }
                     Var::PinnedInt(v) => {
                         bindings.insert(name.clone(), Value::Int(*v));
+                    }
+                    Var::SetVar { .. } => {
+                        // Z3 sets are characteristic functions over an
+                        // (often infinite) element domain. We don't try
+                        // to enumerate; bindings just omit set vars.
                     }
                 }
             }
@@ -454,6 +464,11 @@ pub fn evaluate(
                     }
                     Var::PinnedInt(v) => {
                         bindings.insert(name.clone(), Value::Int(*v));
+                    }
+                    Var::SetVar { .. } => {
+                        // Z3 sets are characteristic functions over an
+                        // (often infinite) element domain. We don't try
+                        // to enumerate; bindings just omit set vars.
                     }
                 }
             }
@@ -731,6 +746,20 @@ fn declare_var<'ctx>(
             solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
             env.insert(prefix.to_string(), Var::SeqVar { arr, len, elem });
         }
+        s if s.starts_with("Set(") && s.ends_with(')') => {
+            let inner = &s[4..s.len() - 1];
+            let (eltype, elem) = match inner {
+                "Int"    => (Sort::int(ctx),    SeqElem::Int),
+                "Bool"   => (Sort::bool(ctx),   SeqElem::Bool),
+                "String" => (Sort::string(ctx), SeqElem::Str),
+                other => {
+                    eprintln!("warning: unsupported Set element type {} for {}", other, prefix);
+                    return;
+                }
+            };
+            let set = Set::new_const(ctx, prefix, &eltype);
+            env.insert(prefix.to_string(), Var::SetVar { set, elem });
+        }
         _ => {
             if let Some(schema) = schemas.get(type_name) {
                 // Expand each membership in the sub-schema's body.
@@ -828,10 +857,32 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
         }
 
         // `x ∈ {a, b, c}` → x = a ∨ x = b ∨ x = c.
+        // `x ∈ s` where s is a Set var → s.member(x).
         Expr::InExpr(lhs, rhs) => {
+            // Set-var RHS (Identifier whose env entry is SetVar): use Z3's
+            // native set membership.
+            if let Expr::Identifier(name) = rhs.as_ref() {
+                if let Some((set, elem)) = env.get(name).and_then(|v| v.as_set()) {
+                    return match elem {
+                        SeqElem::Int => {
+                            let x = translate_int(lhs, ctx, env)?;
+                            Some(set.member(&x))
+                        }
+                        SeqElem::Bool => {
+                            let x = translate_bool(lhs, ctx, env)?;
+                            Some(set.member(&x))
+                        }
+                        SeqElem::Str => {
+                            let x = translate_str(lhs, ctx, env)?;
+                            Some(set.member(&x))
+                        }
+                    };
+                }
+            }
+            // Set-literal RHS: reduce to OR of equalities.
             let items = match rhs.as_ref() {
                 Expr::SetLit(items) => items.clone(),
-                _ => return None,    // only SetLit RHS for v0.1
+                _ => return None,
             };
             let mut clauses: Vec<Bool> = Vec::with_capacity(items.len());
             for it in &items {

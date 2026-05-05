@@ -385,7 +385,36 @@ fn seq_with_quantifier() {
     assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![5, 7, 9])));
 }
 
-/// Symbolic ∀ bound: `∀ i ∈ {0..n - 1}` where n is pinned by a literal
+/// Z3 Set sort: `s ∈ Set(Int)` declared as a Z3 Set, `x ∈ s`
+/// translates to `set.member(x)`. We don't extract set values into
+/// bindings (Z3 sets are functions over the element domain, not
+/// finite containers); we just use them for membership queries.
+#[test]
+fn set_var_membership_int() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Set(Int)\n    x ∈ Int\n    y ∈ Int\n    \
+         x ∈ s\n    y ∈ s\n    x = 5\n    y = 5\n    x = y\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    // s itself isn't extracted (no SetVar binding); x and y are pinned.
+    assert_eq!(r.bindings.get("x"), Some(&Value::Int(5)));
+    assert_eq!(r.bindings.get("y"), Some(&Value::Int(5)));
+}
+
+/// Set membership of a string in a string-set.
+#[test]
+fn set_var_membership_string() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    names ∈ Set(String)\n    name ∈ String\n    \
+         name ∈ names\n    name = \"alice\"\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("name"), Some(&Value::Str("alice".into())));
+}
 /// equality (`n = 4`) should unroll into 4 instances.
 #[test]
 fn forall_symbolic_bound_via_pinned_var() {
