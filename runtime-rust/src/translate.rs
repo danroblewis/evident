@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int};
+use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult, Solver};
 
 /// Result of running one query.
@@ -17,13 +17,16 @@ pub struct EvalResult {
 pub enum Value {
     Int(i64),
     Bool(bool),
+    Str(String),
 }
 
 /// Z3 binding for a declared variable. Keep a typed handle so we know
 /// which AST kind to translate against.
+#[derive(Clone)]
 enum Var<'ctx> {
     IntVar(Int<'ctx>),
     BoolVar(Bool<'ctx>),
+    StrVar(Z3Str<'ctx>),
 }
 
 impl<'ctx> Var<'ctx> {
@@ -33,41 +36,38 @@ impl<'ctx> Var<'ctx> {
     fn as_bool(&self) -> Option<&Bool<'ctx>> {
         match self { Var::BoolVar(b) => Some(b), _ => None }
     }
+    fn as_str(&self) -> Option<&Z3Str<'ctx>> {
+        match self { Var::StrVar(s) => Some(s), _ => None }
+    }
 }
 
-/// Evaluate a single schema. Builds a fresh solver, declares variables,
-/// translates body constraints, calls check, extracts the model.
-pub fn evaluate(schema: &SchemaDecl) -> EvalResult {
+/// Evaluate a single schema with optional pre-bound values, using the
+/// `schemas` table to resolve user-defined types referenced inside the
+/// schema body.
+///
+/// Sub-schema expansion: `task ∈ Task` doesn't create a Z3 const named
+/// `task`. It recursively declares one Z3 const per leaf field of Task,
+/// keyed under the dotted prefix `task.field` in the env. Field access
+/// (parsed as `Identifier("task.field")` once we hit FieldAccess support)
+/// resolves through the env directly. For v0.1 we have a flat
+/// `Identifier(String)` so the parser must produce dotted names —
+/// currently it only sees bare idents, but the Membership case below
+/// expands them in the env regardless.
+pub fn evaluate(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> EvalResult {
     let cfg = z3::Config::new();
     let ctx = Context::new(&cfg);
     let solver = Solver::new(&ctx);
     let mut env: HashMap<String, Var> = HashMap::new();
 
-    // Pass 1: declare variables and add per-type constraints.
+    // Pass 1: declare variables and add per-type constraints. User-defined
+    // schema types expand into their leaf fields under a dotted prefix.
     for item in &schema.body {
         if let BodyItem::Membership { name, type_name } = item {
-            match type_name.as_str() {
-                "Int" => {
-                    env.insert(name.clone(), Var::IntVar(Int::new_const(&ctx, name.as_str())));
-                }
-                "Nat" => {
-                    let v = Int::new_const(&ctx, name.as_str());
-                    solver.assert(&v.ge(&Int::from_i64(&ctx, 0)));
-                    env.insert(name.clone(), Var::IntVar(v));
-                }
-                "Pos" => {
-                    let v = Int::new_const(&ctx, name.as_str());
-                    solver.assert(&v.gt(&Int::from_i64(&ctx, 0)));
-                    env.insert(name.clone(), Var::IntVar(v));
-                }
-                "Bool" => {
-                    env.insert(name.clone(), Var::BoolVar(Bool::new_const(&ctx, name.as_str())));
-                }
-                other => {
-                    // Unsupported type for v0.1 — skip with no constraints.
-                    eprintln!("warning: unsupported type {} for {}", other, name);
-                }
-            }
+            declare_var(&ctx, &solver, &mut env, name, type_name, schemas);
         }
     }
 
@@ -82,6 +82,19 @@ pub fn evaluate(schema: &SchemaDecl) -> EvalResult {
                 }
             };
             solver.assert(&z3_bool);
+        }
+    }
+
+    // Pass 3: assert ground facts for each given binding. Names that
+    // aren't declared in the schema are silently ignored (matches the
+    // Python runtime's behavior).
+    for (name, value) in given {
+        let Some(var) = env.get(name) else { continue };
+        match (var, value) {
+            (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(&ctx, *n))),
+            (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(&ctx, *b))),
+            (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(&ctx, s).expect("nul in str"))),
+            _ => eprintln!("warning: type mismatch for given {:?}", name),
         }
     }
 
@@ -105,11 +118,92 @@ pub fn evaluate(schema: &SchemaDecl) -> EvalResult {
                             }
                         }
                     }
+                    Var::StrVar(s) => {
+                        if let Some(val) = model.eval(s, true) {
+                            if let Some(sv) = val.as_string() {
+                                bindings.insert(name.clone(), Value::Str(sv));
+                            }
+                        }
+                    }
                 }
             }
         }
     }
     EvalResult { satisfied, bindings }
+}
+
+/// Resolve `Range(Int, Int)` to a `(lo, hi)` pair. Returns None if
+/// either bound isn't a literal Int (we don't support symbolic ∀ bounds
+/// yet — would need the Python length-propagation shim).
+fn literal_range(e: &Expr) -> Option<(i64, i64)> {
+    if let Expr::Range(lo, hi) = e {
+        if let (Expr::Int(l), Expr::Int(h)) = (lo.as_ref(), hi.as_ref()) {
+            return Some((*l, *h));
+        }
+    }
+    None
+}
+
+/// Clone an env. Var derives Clone (Z3 ast types are reference-counted)
+/// so we can shadow the bound variable in quantifier unrolling.
+fn env_clone<'ctx>(env: &HashMap<String, Var<'ctx>>) -> HashMap<String, Var<'ctx>> {
+    env.clone()
+}
+
+/// Declare one variable into env. For built-in types (Int, Nat, Pos,
+/// Bool, String) this allocates a single Z3 const. For user-defined
+/// schemas it recurses into the schema body, declaring one const per
+/// field under the dotted prefix `prefix.field`.
+fn declare_var<'ctx>(
+    ctx: &'ctx Context,
+    solver: &Solver<'ctx>,
+    env: &mut HashMap<String, Var<'ctx>>,
+    prefix: &str,
+    type_name: &str,
+    schemas: &HashMap<String, SchemaDecl>,
+) {
+    match type_name {
+        "Int" => {
+            env.insert(prefix.to_string(), Var::IntVar(Int::new_const(ctx, prefix)));
+        }
+        "Nat" => {
+            let v = Int::new_const(ctx, prefix);
+            solver.assert(&v.ge(&Int::from_i64(ctx, 0)));
+            env.insert(prefix.to_string(), Var::IntVar(v));
+        }
+        "Pos" => {
+            let v = Int::new_const(ctx, prefix);
+            solver.assert(&v.gt(&Int::from_i64(ctx, 0)));
+            env.insert(prefix.to_string(), Var::IntVar(v));
+        }
+        "Bool" => {
+            env.insert(prefix.to_string(), Var::BoolVar(Bool::new_const(ctx, prefix)));
+        }
+        "String" => {
+            env.insert(prefix.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
+        }
+        _ => {
+            if let Some(schema) = schemas.get(type_name) {
+                // Expand each membership in the sub-schema's body.
+                for item in &schema.body {
+                    if let BodyItem::Membership { name: field, type_name: ftype } = item {
+                        let dotted = format!("{}.{}", prefix, field);
+                        declare_var(ctx, solver, env, &dotted, ftype, schemas);
+                    }
+                }
+            } else {
+                eprintln!("warning: unknown type {} for {}", type_name, prefix);
+            }
+        }
+    }
+}
+
+fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
+    match e {
+        Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
+        Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
+        _ => None,
+    }
 }
 
 fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
@@ -136,6 +230,45 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
         Expr::Not(inner) => Some(translate_bool(inner, ctx, env)?.not()),
+
+        // `x ∈ {a, b, c}` → x = a ∨ x = b ∨ x = c.
+        Expr::InExpr(lhs, rhs) => {
+            let items = match rhs.as_ref() {
+                Expr::SetLit(items) => items.clone(),
+                _ => return None,    // only SetLit RHS for v0.1
+            };
+            let mut clauses: Vec<Bool> = Vec::with_capacity(items.len());
+            for it in &items {
+                let eq = Expr::Binary(BinOp::Eq, lhs.clone(), Box::new(it.clone()));
+                if let Some(b) = translate_bool(&eq, ctx, env) {
+                    clauses.push(b);
+                }
+            }
+            if clauses.is_empty() { return Some(Bool::from_bool(ctx, false)); }
+            let refs: Vec<&Bool> = clauses.iter().collect();
+            Some(Bool::or(ctx, &refs))
+        }
+
+        // `∀ i ∈ {lo..hi} : body` / `∃ …`: unroll when the range is a
+        // pair of integer literals.
+        Expr::Forall(var, range, body) | Expr::Exists(var, range, body) => {
+            let (lo, hi) = literal_range(range)?;
+            let mut clauses: Vec<Bool> = Vec::new();
+            for i in lo..=hi {
+                let mut env2 = env_clone(env);
+                env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
+                if let Some(b) = translate_bool(body, ctx, &env2) {
+                    clauses.push(b);
+                }
+            }
+            let refs: Vec<&Bool> = clauses.iter().collect();
+            if matches!(e, Expr::Forall(..)) {
+                Some(Bool::and(ctx, &refs))
+            } else {
+                if refs.is_empty() { Some(Bool::from_bool(ctx, false)) }
+                else                { Some(Bool::or(ctx, &refs)) }
+            }
+        }
         Expr::Binary(op, lhs, rhs) => match op {
             // Boolean combinators
             BinOp::And => {
@@ -153,8 +286,7 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
                 let r = translate_bool(rhs, ctx, env)?;
                 Some(l.implies(&r))
             }
-            // Eq/Neq work over either Bool or Int operands. Try Bool first;
-            // if either side isn't a Bool, retry as Int.
+            // Eq/Neq work over Bool, Int, or String. Try in that order.
             BinOp::Eq | BinOp::Neq => {
                 if let (Some(l), Some(r)) =
                     (translate_bool(lhs, ctx, env), translate_bool(rhs, ctx, env))
@@ -165,8 +297,17 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
                         _ => unreachable!(),
                     });
                 }
-                let l = translate_int(lhs, ctx, env)?;
-                let r = translate_int(rhs, ctx, env)?;
+                if let (Some(l), Some(r)) =
+                    (translate_int(lhs, ctx, env), translate_int(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Eq  => l._eq(&r),
+                        BinOp::Neq => l._eq(&r).not(),
+                        _ => unreachable!(),
+                    });
+                }
+                let l = translate_str(lhs, ctx, env)?;
+                let r = translate_str(rhs, ctx, env)?;
                 Some(match op {
                     BinOp::Eq  => l._eq(&r),
                     BinOp::Neq => l._eq(&r).not(),

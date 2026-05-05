@@ -121,10 +121,11 @@ impl Parser {
     }
 
     fn parse_body_item(&mut self) -> Result<BodyItem> {
-        // Two shapes for the v0.1 subset:
-        //   IDENT IN IDENT      → Membership
-        //   <expr>              → Constraint
-        // Distinguish by lookahead for IN after a leading ident.
+        // Two shapes:
+        //   IDENT IN IDENT (followed by line-end)  → Membership declaration
+        //   <expr>                                  → Constraint
+        // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
+        // as an expression and ends up as a Constraint.
         if let Token::Ident(_) = self.peek() {
             let saved = self.pos;
             let lhs_name = match self.bump() {
@@ -133,15 +134,22 @@ impl Parser {
             };
             if matches!(self.peek(), Token::In) {
                 self.bump();
-                match self.bump() {
-                    Token::Ident(type_name) => {
+                if let Token::Ident(type_name) = self.peek().clone() {
+                    // Lookahead: is this the end of the line? If so, it's a
+                    // type declaration. If the next token is `.` or any
+                    // expression-continuation, treat the IDENT as the start
+                    // of a constraint expression.
+                    let after_type = self.toks.get(self.pos + 1);
+                    let line_terminator = matches!(after_type,
+                        Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None);
+                    if line_terminator {
+                        self.bump(); // consume the type ident
                         return Ok(BodyItem::Membership { name: lhs_name, type_name });
                     }
-                    other => return Err(ParseError(format!(
-                        "expected type name after ∈, got {:?}", other))),
                 }
+                // Not a Membership — back up and parse the whole line as expr.
+                self.pos = saved;
             } else {
-                // Not a membership — restore and parse as expression.
                 self.pos = saved;
             }
         }
@@ -160,7 +168,31 @@ impl Parser {
     //   atoms          : ident, int, paren
 
     fn parse_expr(&mut self) -> Result<Expr> {
+        // Quantifier expressions are right at the top so the colon-separated
+        // body picks up everything to the right.
+        if matches!(self.peek(), Token::ForAll | Token::Exists) {
+            return self.parse_quantifier();
+        }
         self.parse_implies()
+    }
+
+    fn parse_quantifier(&mut self) -> Result<Expr> {
+        let is_forall = matches!(self.peek(), Token::ForAll);
+        self.bump();
+        let var = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected bound variable name, got {:?}", other))),
+        };
+        self.eat(&Token::In)?;
+        let range = self.parse_atom()?;   // expect a {lo..hi} or {a, b, c}
+        self.eat(&Token::Colon)?;
+        let body = self.parse_expr()?;
+        Ok(if is_forall {
+            Expr::Forall(var, Box::new(range), Box::new(body))
+        } else {
+            Expr::Exists(var, Box::new(range), Box::new(body))
+        })
     }
 
     fn parse_implies(&mut self) -> Result<Expr> {
@@ -195,6 +227,12 @@ impl Parser {
 
     fn parse_compare(&mut self) -> Result<Expr> {
         let lhs = self.parse_addsub()?;
+        // ∈ binds at the same level as =, <, etc.
+        if matches!(self.peek(), Token::In) {
+            self.bump();
+            let rhs = self.parse_addsub()?;
+            return Ok(Expr::InExpr(Box::new(lhs), Box::new(rhs)));
+        }
         let op = match self.peek() {
             Token::Eq  => Some(BinOp::Eq),
             Token::Neq => Some(BinOp::Neq),
@@ -260,14 +298,52 @@ impl Parser {
     fn parse_atom(&mut self) -> Result<Expr> {
         match self.peek().clone() {
             Token::Int(n)   => { self.bump(); Ok(Expr::Int(n)) }
+            Token::Str(s)   => { self.bump(); Ok(Expr::Str(s)) }
             Token::True     => { self.bump(); Ok(Expr::Bool(true)) }
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
-            Token::Ident(s) => { self.bump(); Ok(Expr::Identifier(s)) }
+            Token::Ident(s) => {
+                self.bump();
+                // Greedily consume `.ident` chains (sub-schema field access)
+                // and collapse into a single dotted Identifier.
+                let mut name = s;
+                while matches!(self.peek(), Token::Dot) {
+                    self.bump();
+                    match self.bump() {
+                        Token::Ident(field) => { name.push('.'); name.push_str(&field); }
+                        other => return Err(ParseError(format!(
+                            "expected field name after '.', got {:?}", other))),
+                    }
+                }
+                Ok(Expr::Identifier(name))
+            }
             Token::LParen   => {
                 self.bump();
                 let e = self.parse_expr()?;
                 self.eat(&Token::RParen)?;
                 Ok(e)
+            }
+            Token::LBrace => {
+                self.bump();
+                // Empty `{}` is a (vacuous) set literal.
+                if matches!(self.peek(), Token::RBrace) {
+                    self.bump();
+                    return Ok(Expr::SetLit(vec![]));
+                }
+                let first = self.parse_expr()?;
+                // Decide between range `{lo..hi}` and set `{a, b, c}`.
+                if matches!(self.peek(), Token::DotDot) {
+                    self.bump();
+                    let hi = self.parse_expr()?;
+                    self.eat(&Token::RBrace)?;
+                    return Ok(Expr::Range(Box::new(first), Box::new(hi)));
+                }
+                let mut items = vec![first];
+                while matches!(self.peek(), Token::Comma) {
+                    self.bump();
+                    items.push(self.parse_expr()?);
+                }
+                self.eat(&Token::RBrace)?;
+                Ok(Expr::SetLit(items))
             }
             other => Err(ParseError(format!("expected expression, got {:?}", other))),
         }

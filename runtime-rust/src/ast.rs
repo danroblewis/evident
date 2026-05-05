@@ -40,6 +40,20 @@ pub enum Expr {
     Identifier(String),
     Int(i64),
     Bool(bool),
+    Str(String),
+    /// `{e1, e2, …}` set literal — only used as the right side of `∈`
+    /// (membership). Not a first-class set value (no Z3 set sort yet).
+    SetLit(Vec<Expr>),
+    /// `{lo..hi}` integer range — only used as a quantifier bound.
+    Range(Box<Expr>, Box<Expr>),
+    /// `lhs ∈ rhs` membership constraint as an expression. We always
+    /// reduce this to a disjunction of equalities (lhs = e1 ∨ lhs = e2 ∨ …).
+    InExpr(Box<Expr>, Box<Expr>),
+    /// `∀ var ∈ range : body` and the existential variant.
+    /// Translation requires `range` to be a literal `Range(Int, Int)`
+    /// so we can unroll.
+    Forall(String, Box<Expr>, Box<Expr>),
+    Exists(String, Box<Expr>, Box<Expr>),
     /// Binary operation: `lhs op rhs`.
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// Unary `¬e`.

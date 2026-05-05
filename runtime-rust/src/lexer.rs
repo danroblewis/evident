@@ -12,6 +12,7 @@ pub enum Token {
     // Identifiers and literals
     Ident(String),
     Int(i64),
+    Str(String),
     True,
     False,
 
@@ -40,6 +41,14 @@ pub enum Token {
 
     LParen,       // (
     RParen,       // )
+    LBrace,       // {  (set / range literal)
+    RBrace,       // }
+    Comma,        // ,
+    DotDot,       // .. (range literal)
+    Dot,          // .  (sub-schema field access)
+    Colon,        // :  (quantifier body separator)
+    ForAll,       // ∀
+    Exists,       // ∃
 
     // Layout
     Newline,
@@ -141,6 +150,37 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     tokens.push(Token::Minus);
                 }
             }
+            '"' => {
+                // Double-quoted string. Supports \" and \\ escapes; everything
+                // else is literal. Single-line only — newlines inside are an
+                // error (matches the Python grammar).
+                chars.next(); col += 1;
+                let mut s = String::new();
+                loop {
+                    match chars.peek().copied() {
+                        Some('"') => { chars.next(); col += 1; break; }
+                        Some('\\') => {
+                            chars.next(); col += 1;
+                            match chars.peek().copied() {
+                                Some('"')  => { s.push('"');  chars.next(); col += 1; }
+                                Some('\\') => { s.push('\\'); chars.next(); col += 1; }
+                                Some('n')  => { s.push('\n'); chars.next(); col += 1; }
+                                Some('t')  => { s.push('\t'); chars.next(); col += 1; }
+                                Some(c)    => return Err(LexError {
+                                    message: format!("unknown escape \\{}", c), line, col }),
+                                None       => return Err(LexError {
+                                    message: "unterminated string escape".into(), line, col }),
+                            }
+                        }
+                        Some('\n') => return Err(LexError {
+                            message: "unterminated string literal".into(), line, col }),
+                        Some(c) => { s.push(c); chars.next(); col += 1; }
+                        None => return Err(LexError {
+                            message: "unterminated string at EOF".into(), line, col }),
+                    }
+                }
+                tokens.push(Token::Str(s));
+            }
             '0'..='9' => {
                 let mut s = String::new();
                 while let Some(&ch) = chars.peek() {
@@ -170,6 +210,19 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '/' => { chars.next(); col += 1; tokens.push(Token::Slash); }
             '(' => { chars.next(); col += 1; tokens.push(Token::LParen); }
             ')' => { chars.next(); col += 1; tokens.push(Token::RParen); }
+            '{' => { chars.next(); col += 1; tokens.push(Token::LBrace); }
+            '}' => { chars.next(); col += 1; tokens.push(Token::RBrace); }
+            ',' => { chars.next(); col += 1; tokens.push(Token::Comma); }
+            ':' => { chars.next(); col += 1; tokens.push(Token::Colon); }
+            '.' => {
+                chars.next(); col += 1;
+                if chars.peek() == Some(&'.') {
+                    chars.next(); col += 1;
+                    tokens.push(Token::DotDot);
+                } else {
+                    tokens.push(Token::Dot);
+                }
+            }
             '=' => { chars.next(); col += 1; tokens.push(Token::Eq); }
             '<' => {
                 chars.next(); col += 1;
@@ -206,6 +259,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{2264}' => { chars.next(); col += 1; tokens.push(Token::Le); }      // ≤
             '\u{2265}' => { chars.next(); col += 1; tokens.push(Token::Ge); }      // ≥
             '\u{2260}' => { chars.next(); col += 1; tokens.push(Token::Neq); }     // ≠
+            '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }  // ∀
+            '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }  // ∃
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),

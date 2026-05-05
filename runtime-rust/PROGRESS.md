@@ -4,16 +4,20 @@
 
 ## Current status
 
-**Phase:** v0.1 subset working end-to-end. 5/5 tests green.
+**Phase:** v0.2 — strings, given, sub-schema, sets, ranges, quantifiers all in. 16/16 tests green.
 
-**Last action:** All M0-M6 milestones land in one go. The pipeline
-(lexer → parser → translate → Z3) handles the SimpleNat shape, plus
-multi-var arithmetic, UNSAT detection, and Bool implies.
+**Last action:** Landed slices 2-5: string literals + `=`/`≠`,
+`query(name, given)` for pre-binding values, sub-schema field
+expansion (recursive `task ∈ Task` → `task.id`, `task.duration`
+under dotted env keys), set literal membership (`x ∈ {a, b, c}`
+reduced to OR of equalities), integer range literals (`{lo..hi}`),
+and `∀`/`∃` quantifiers unrolled when the range is two literal ints.
 
-**Next action:** Pick the next slice of Python features to port. See
-"Next slices" below — recommend starting with String literals + `=` on
-strings, since that's needed for `assert ground` patterns and the
-adventure-game style schemas use them everywhere.
+**Next action:** Cardinality `#x`, then `..ClaimName` passthrough
+composition. Cached evaluator is also overdue — Rust's borrow rules
+on the Z3 solver need design (the Python push/pop pattern relies on
+mutating the cache; in Rust the cache will need RefCell or interior
+mutability on the solver).
 
 ## Milestones
 
@@ -35,16 +39,6 @@ adventure-game style schemas use them everywhere.
 - [x] **M6**: First Python-equivalent test passes:
   `SimpleNat { n ∈ Nat ; n > 5 }` returns satisfied with `n > 5`.
 
-## Next slices
-
-- [ ] More numeric ops (=, ≠, <, ≤, ≥, +, -, *, /, mod-via-trick).
-- [ ] Bool ops (∧, ∨, ¬, ⇒) and the `⇒`-binds-tighter-than-∧ trap.
-- [ ] Multiple variables in one schema.
-- [ ] Set literals + ∈ on them.
-- [ ] String literals.
-- [ ] Type composition (sub-schema field expansion).
-- [ ] Quantifiers ∀ / ∃ over literal ranges.
-
 ## Known gotchas (record as we hit them)
 
 - **Z3 headers location.** The `z3-sys` crate needs `z3.h` and a libz3
@@ -65,35 +59,72 @@ adventure-game style schemas use them everywhere.
   blank lines or comment-only lines inside the at_line_start branch,
   remember to keep `at_line_start = true` (don't fall through to the
   general loop).
+- **Membership-decl vs membership-constraint disambiguation.** Both
+  `n ∈ Nat` (declaration) and `n ∈ {3, 5, 7}` (set membership) parse
+  the same prefix. The body-item parser distinguishes by lookahead:
+  if `IDENT IN IDENT` is followed by a line terminator (Newline, Eof,
+  Indent), it's a declaration; otherwise it's an expression. Without
+  this you can't write `n ∈ Nat` then later `m ∈ Bool` etc. and have
+  set-membership constraints in the same body.
+- **Z3 ast types are RC-cloneable.** `Int<'ctx>`, `Bool<'ctx>`,
+  `String<'ctx>` from the `z3` crate impl `Clone` cheaply (they're
+  internal-RC). So `#[derive(Clone)]` on the env's `Var` enum works,
+  which is what makes quantifier unrolling clean (clone env, shadow
+  the bound var, recurse on body).
+- **Quantifier bound must be a literal range for now.** `∀ i ∈ {lo..hi}`
+  unrolls only when both `lo` and `hi` are `Expr::Int`. Symbolic bounds
+  (`{0..n - 1}` where n is a variable) need the Python length-propagation
+  shim — Pass 1/2/3 in `evaluate.py`. Deferred.
 
 ## Next slices
 
+Done in this session:
+
+- [x] String literals + `=`/`≠` on strings.
+- [x] `given` parameter on `query` (pre-bind values via solver assertion).
+- [x] Sub-schema field expansion (`task ∈ Task` → `task.id`,
+      `task.duration`, …) — recursive, handles nested user types.
+- [x] Set literal expressions `{1, 2, 3}` and ∈ over them.
+- [x] Range literals `{lo..hi}` (only valid as a quantifier bound).
+- [x] Quantifier translation `∀ i ∈ {lo..hi} : body` — unrolled when
+      both bounds are literal Ints.
+
 In rough order of leverage:
 
-- [ ] String literals + `=`/`≠` on strings.
-- [ ] More numeric ops we already lex but haven't tested: `mod` via
-      `x - (x/n)*n`, integer division precision matches Python.
-- [ ] Set literal expressions `{1, 2, 3}` and ∈ over them.
-- [ ] Range literals `{0..N}` for use in ∀.
-- [ ] Quantifier translation `∀ i ∈ {0..N} : body` — unroll when N is
-      a literal int.
-- [ ] Sub-schema field expansion (`task ∈ Task` → `task.id`,
-      `task.duration`, …) so multi-field types work.
-- [ ] Multiple assertions: `assert n = 5` style ground facts.
-- [ ] Sequence and Set sorts as Z3 sorts (Seq, Array(T, Bool)).
-- [ ] Composite Datatypes for Seq(T)/Set(T) where T is a type.
-- [ ] Cardinality `#x` constraints.
+- [ ] Cardinality `#x` constraints (parse the `#` prefix; translate to
+      `Length(seq)` for Seq sorts).
+- [ ] Sequence and Set Z3 sorts (Seq(T), Array(T, Bool)) — needed
+      before composite-element story.
+- [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
+- [ ] `assert name = value` ground facts.
 - [ ] `..ClaimName` passthrough composition.
 - [ ] Claim composition with mappings (`mapsto`).
 - [ ] `subclaim` declaration + invocation with fresh internals.
 - [ ] Cached evaluator (push/pop) — port the Python optimization.
+      Note: Rust borrow rules will require interior mutability around
+      the cached solver.
+- [ ] Symbolic ∀ bounds via length propagation (see Python's
+      `evaluate.py` "Pass 1/2/3").
 
 ## Test mapping
 
-| Rust test                                    | Mirrors                                |
-|----------------------------------------------|----------------------------------------|
-| `tests/basic.rs::z3_hello_world`             | (toolchain check)                      |
-| `tests/basic.rs::simple_nat_satisfied_with_n_gt_5` | Python `test_load_source_basic_schema` |
-| `tests/basic.rs::impossible_is_unsat`        | Python `test_load_source_unsat`        |
-| `tests/basic.rs::two_vars_relation`          | (multi-var smoke)                      |
-| `tests/basic.rs::bool_implies`               | (Bool var + ⇒ smoke)                   |
+All in `tests/basic.rs`. 16/16 passing.
+
+| Rust test                            | Mirrors                                |
+|--------------------------------------|----------------------------------------|
+| `z3_hello_world`                     | (toolchain check)                      |
+| `simple_nat_satisfied_with_n_gt_5`   | Python `test_load_source_basic_schema` |
+| `impossible_is_unsat`                | Python `test_load_source_unsat`        |
+| `two_vars_relation`                  | (multi-var smoke)                      |
+| `bool_implies`                       | (Bool + ⇒)                             |
+| `string_literal_eq`                  | (String =)                             |
+| `string_neq_excludes_literal`        | (String ≠)                             |
+| `given_binds_int`                    | Python `query(name, given=…)`          |
+| `given_violation_unsat`              | (given that contradicts schema)        |
+| `given_sub_schema_field`             | (given on dotted field name)           |
+| `sub_schema_field_expansion`         | Python `task ∈ Task` expansion         |
+| `nested_sub_schema`                  | (recursive expansion)                  |
+| `set_literal_membership`             | (`x ∈ {a, b, c}`)                      |
+| `set_literal_strings`                | (string set membership)                |
+| `forall_range_unroll`                | (`∀ i ∈ {0..3}` unroll)                |
+| `exists_range_unroll`                | (`∃ i ∈ {0..5}` unroll)                |
