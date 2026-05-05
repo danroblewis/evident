@@ -1,0 +1,12 @@
+-- Simplest SDL demo: just a background color. Verifies the SDL plugin
+-- opens a window and renders, without depending on the parallel agent's
+-- nested-composite Seq element work.
+-- Run with:
+--   cargo run --release -- execute examples/sdl_bg_only.ev
+type main
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+
+    output.bg.r = 30
+    output.bg.g = 100
+    output.bg.b = 200

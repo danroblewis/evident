@@ -6,6 +6,9 @@ description = "Rust port of the Evident constraint runtime (experimental)"
 
 [dependencies]
 z3 = "0.12"
+# SDL2 plugin: graphical I/O. Requires SDL2 system library
+# (`brew install sdl2` on macOS). pkg-config locates it at build time.
+sdl2 = "0.36"
 
 [lib]
 name = "evident_runtime"

@@ -1,0 +1,19 @@
+-- SDL demo: a 40×40 yellow rect that follows the mouse.
+-- Run with: cargo run --release -- execute examples/sdl_mouse_rect.ev
+-- Close the window or press Escape to quit.
+type main
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+
+    output.bg.r = 15
+    output.bg.g = 15
+    output.bg.b = 30
+
+    #output.rects = 1
+    output.rects[0].x = input.mouse_x - 20
+    output.rects[0].y = input.mouse_y - 20
+    output.rects[0].w = 40
+    output.rects[0].h = 40
+    output.rects[0].color.r = 220
+    output.rects[0].color.g = 180
+    output.rects[0].color.b = 60

@@ -9,5 +9,6 @@ pub mod parser;
 pub mod translate;
 pub mod runtime;
 pub mod executor;
+pub mod plugins;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};
