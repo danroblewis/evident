@@ -10,3 +10,7 @@ z3 = "0.12"
 [lib]
 name = "evident_runtime"
 path = "src/lib.rs"
+
+[[bin]]
+name = "evident-runtime"
+path = "src/main.rs"

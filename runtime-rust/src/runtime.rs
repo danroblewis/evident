@@ -110,6 +110,12 @@ impl EvidentRuntime {
         self.query(name, &HashMap::new())
     }
 
+    /// Iterator over the names of every loaded schema (top-level decls
+    /// AND lifted subclaims). Useful for tooling.
+    pub fn schema_names(&self) -> impl Iterator<Item = &str> {
+        self.schemas.keys().map(|s| s.as_str())
+    }
+
     /// Faster query — translates the schema once on first call and
     /// reuses the resulting Z3 solver across subsequent calls
     /// (push/pop per query). Mirrors Python's `query(name, given,

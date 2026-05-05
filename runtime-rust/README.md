@@ -70,3 +70,14 @@ cargo test
 
 Z3 is required. On macOS: `brew install z3`. The `z3` crate uses
 `Z3_SYS_Z3_HEADER` to find the headers if not in standard locations.
+
+CLI:
+
+```bash
+cargo run --quiet -- query path/to/schema.ev SchemaName
+cargo run --quiet -- query path/to/schema.ev SchemaName --given a=4 --given b=true
+cargo run --quiet -- parse path/to/schema.ev          # list loaded schema names
+```
+
+Output: SAT prints `KEY=VALUE` lines (one per binding, sorted) and
+exits 0; UNSAT prints `UNSAT` and exits 1.

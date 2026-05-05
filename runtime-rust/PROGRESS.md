@@ -4,6 +4,13 @@
 
 ## Current status
 
+**Phase:** v0.9 — CLI binary added. 43/43 tests green (5 unit + 34 lib + 4 CLI).
+
+**Last action:** Added `src/main.rs` with `query` and `parse`
+subcommands. `cargo run -- query file.ev SchemaName --given key=value`
+loads, parses, evaluates, and prints `KEY=VALUE` lines (or `UNSAT`).
+4 new tests spawn the compiled binary and check stdout / exit codes.
+
 **Phase:** v0.8 — Seq runtime support landed. 34/34 tests green.
 
 **Last action:** `Seq(Int)` / `Seq(Bool)` / `Seq(String)` now actually
@@ -146,6 +153,9 @@ Done in this session:
 - [x] **Seq sort runtime support** for primitive element types
       (Int / Bool / String). Modeled as Array(Int → T) + length;
       cardinality + indexing translate cleanly.
+- [x] **CLI** — `evident-runtime query <file> <name> [--given …]`
+      and `evident-runtime parse <file>`. Spawns-binary integration
+      tests verify stdout + exit codes.
 
 In rough order of leverage:
 
@@ -201,3 +211,10 @@ All in `tests/basic.rs`. 16/16 passing.
 | `seq_string_basic`                   | `Seq(String)` round-trips              |
 | `seq_with_quantifier`                | `∀ i ∈ {0..N} : s[i] > 0`              |
 | `seq_cardinality_in_arithmetic`      | `#s + 1 = 5` pins length               |
+
+**`tests/cli.rs` (4)** — spawns the compiled binary:
+
+| `cli_query_sat_prints_bindings`      | KEY=VALUE lines on stdout              |
+| `cli_query_unsat_exits_1`            | UNSAT path: stdout "UNSAT", exit 1     |
+| `cli_query_with_given`               | `--given key=value` flag               |
+| `cli_parse_lists_schema_names`       | `parse` subcommand lists names         |
