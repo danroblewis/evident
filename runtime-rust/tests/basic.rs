@@ -657,3 +657,4 @@ fn seq_composite_with_quantifier() {
         }
     }
 }
+

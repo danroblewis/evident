@@ -4,6 +4,19 @@
 
 ## Current status
 
+**Phase:** v1.5 — composite element types (`Seq(UserType)`).
+67/67 tests green (11 lib + 41 lib-style + 10 CLI + 5 sample).
+
+**Last action:** Closed the missing piece in the v1.4 merge: `#pts`
+(cardinality) on a `Var::DatatypeSeqVar` now returns the length
+variable. Translate's `Cardinality(Identifier(name))` arm previously
+only consulted `var.as_seq()`, which matches `SeqVar` but not
+`DatatypeSeqVar`; the new arm tries `as_datatype_seq()` as a fallback.
+Without this, `#pts = 3` silently dropped and the model came back
+with `len = 0`, so `extract_seq_composite` produced an empty Vec
+even though field-equality constraints were satisfiable. The two
+`seq_composite_*` tests in `tests/basic.rs` are the regression cover.
+
 **Phase:** v1.4 — `execute` subcommand + headless plugin framework.
 65/65 tests green (11 lib + 39 lib-style + 10 CLI + 5 sample).
 
@@ -221,6 +234,32 @@ length propagation, and CLI / file-loading.
   total functions, so the model has values at all indices, not just
   0..len) but correct for our use case — we just don't read past
   `len` during model extraction.
+- **`as_seq()` accessor doesn't match `DatatypeSeqVar`.** When adding
+  the composite-element `Var::DatatypeSeqVar` we kept `as_seq()` returning
+  only `SeqVar` (the primitive case) so existing branches don't accidentally
+  swallow Datatype-element seqs through the wrong code path. The cost is
+  every `as_seq()` call site has to pair with an `as_datatype_seq()`
+  fallback if the operation should also work for composite seqs.
+  `Cardinality(Identifier(name))` is one such site — initially missed,
+  added in v1.5. If you add a new translator branch that operates on a
+  primitive Seq, decide explicitly whether it also makes sense for
+  composite Seqs and add the `as_datatype_seq()` arm.
+- **DatatypeBuilder requires globally-unique type names.** Z3's
+  `Z3_mk_datatypes` errors on duplicate sort names within the same
+  Context. The `DatatypeRegistry` deduplicates per type name within a
+  single runtime, so reusing `Point` across two schemas is fine. But
+  re-loading a schema with the same type name and a different field
+  shape would either bind the wrong shape (we hit the cache before
+  rebuilding) or, with `load_source`'s registry flush, produce a Z3
+  error on the *next* `Seq(Point)` declaration because the leaked old
+  Datatype still owns the name in Z3's context. v1 doesn't exercise
+  reload-with-redefinition, so this is theoretical for now.
+- **Field types in user-type Datatype are limited.** `get_or_build_datatype`
+  rejects fields whose declared type is anything but Int/Nat/Pos/Bool/
+  String. Nested user types or `Seq`/`Set` element fields would need
+  recursive Datatype building (z3 supports it via `Z3_mk_datatypes` taking
+  multiple builders together) — not done in v1. The branch logs a warning
+  and skips the whole Seq declaration.
 
 ## Cached evaluator (implemented)
 
@@ -309,10 +348,20 @@ In rough order of leverage:
       Should be small once `execute`'s loop infrastructure is there.
 - [ ] **`repl` subcommand** — interactive read-eval-print.
       Less urgent — test-runner + query cover most workflows.
-- [ ] Composite element types (`Seq(UserType)`) — would need a Z3
-      Datatype per user type, mirroring the Python
-      `_declare_element_sort`. The Array+Length encoding still works,
-      just with a Datatype range sort.
+- [x] **Composite element types (`Seq(UserType)`)**. New `Var::DatatypeSeqVar`
+      variant + `DatatypeRegistry` (`RefCell<HashMap<String,
+      &'static DatatypeSort>>`) on the runtime. `declare_var`'s `Seq(...)`
+      branch dispatches on the inner name: primitives → `SeqVar`, user
+      types in `schemas` → `DatatypeSeqVar` after building (or looking
+      up) a Z3 Datatype via `DatatypeBuilder`. `Expr::Field(Box<Expr>,
+      String)` AST + `parse_postfix` chain `[i].field` parses cleanly.
+      `translate_int / _bool / _str` route `Field(Index(seq, idx), name)`
+      through `resolve_seq_field`, which applies the matching accessor.
+      `extract_seq_composite` walks the array element by element and
+      reads each field's value; result is `Value::SeqComposite(Vec<HashMap>)`.
+      v1 limitation: only flat user structs whose fields are
+      Int/Nat/Pos/Bool/String. Nested Seqs and nested user types are
+      out of scope (warned + skipped).
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.
 - [ ] Symbolic ∀ bounds via length propagation (see Python's
@@ -366,6 +415,8 @@ All in `tests/basic.rs`. 16/16 passing.
 | `forall_symbolic_bound_from_given`   | per-query `given` n=5 unrolls bound    |
 | `set_var_membership_int`             | `s ∈ Set(Int) ; x ∈ s` via Z3 member  |
 | `set_var_membership_string`          | `name ∈ Set(String)` membership        |
+| `seq_composite_field_access`         | `Seq(Point)` + `pts[0].x = 10` per-elem |
+| `seq_composite_with_quantifier`      | `∀ i ∈ {0..2} : pts[i].x > 0`         |
 
 **`tests/cli.rs` (10)**:
 

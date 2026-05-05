@@ -1195,11 +1195,17 @@ fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
                 _ => return None,
             })
         }
-        // `#seq` → the seq's length variable.
+        // `#seq` → the seq's length variable. Both primitive Seq and
+        // composite-element Seq (DatatypeSeqVar) expose a length.
         Expr::Cardinality(inner) => {
             if let Expr::Identifier(name) = inner.as_ref() {
-                if let Some((_, len, _)) = env.get(name).and_then(|v| v.as_seq()) {
-                    return Some(len.clone());
+                if let Some(var) = env.get(name) {
+                    if let Some((_, len, _)) = var.as_seq() {
+                        return Some(len.clone());
+                    }
+                    if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
+                        return Some(len.clone());
+                    }
                 }
             }
             None
