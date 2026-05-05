@@ -205,11 +205,89 @@ fn cli_execute_help_lists_flags() {
         "stderr: {}", String::from_utf8_lossy(&out.stderr));
     // usage() writes to stderr.
     let s = String::from_utf8_lossy(&out.stderr);
-    assert!(s.contains("--width"),  "missing --width in help: {s}");
-    assert!(s.contains("--height"), "missing --height in help: {s}");
-    assert!(s.contains("--title"),  "missing --title in help: {s}");
-    assert!(s.contains("--host"),   "missing --host in help: {s}");
-    assert!(s.contains("--port"),   "missing --port in help: {s}");
+    assert!(s.contains("--width"),   "missing --width in help: {s}");
+    assert!(s.contains("--height"),  "missing --height in help: {s}");
+    assert!(s.contains("--title"),   "missing --title in help: {s}");
+    assert!(s.contains("--host"),    "missing --host in help: {s}");
+    assert!(s.contains("--port"),    "missing --port in help: {s}");
+    assert!(s.contains("--quiet"),   "missing --quiet in help: {s}");
+    assert!(s.contains("--explain"), "missing --explain in help: {s}");
+}
+
+/// `evident execute` on a program that UNSATs every step should warn
+/// loud (one stderr line per UNSAT step) by default. This is the
+/// production-mode contract: silent UNSAT is treated as a bug.
+#[test]
+fn cli_execute_unsat_warns_per_step() {
+    // Top-level `counter < 0` plus `counter ∈ Nat` is UNSAT for every
+    // value of counter. `src ∈ Stdin` makes the loop run a couple of
+    // iterations before EOF.
+    let path = write_tmp("execute_unsat",
+        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"ab").unwrap();  // 2 chars + EOF flush = 3 steps
+    }
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let warns = stderr.lines().filter(|l| l.starts_with("warning: step ")).count();
+    assert!(warns >= 2,
+        "expected ≥2 per-step UNSAT warnings, got {warns}. stderr:\n{stderr}");
+    assert!(stderr.contains("UNSAT"), "stderr should mention UNSAT: {stderr}");
+}
+
+/// `--quiet` should suppress per-step UNSAT warnings entirely.
+#[test]
+fn cli_execute_quiet_suppresses_unsat_warning() {
+    let path = write_tmp("execute_quiet",
+        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap(), "--quiet"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"ab").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("UNSAT"),
+        "--quiet should suppress UNSAT warnings, got: {stderr}");
+}
+
+/// `--explain` should add the schema-body dump after each per-step
+/// UNSAT warning. Verifies the pretty-printer is wired in (looks for
+/// the readable form of `counter < 0`, not the AST debug form).
+#[test]
+fn cli_execute_explain_dumps_body() {
+    let path = write_tmp("execute_explain",
+        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap(), "--explain"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"a").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("explain UNSAT step"),
+        "missing explain header: {stderr}");
+    assert!(stderr.contains("counter < 0"),
+        "missing pretty-printed body item `counter < 0`: {stderr}");
+    assert!(stderr.contains("counter ∈ Nat"),
+        "missing pretty-printed membership: {stderr}");
 }
 
 #[test]

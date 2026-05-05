@@ -68,15 +68,17 @@ fn usage() {
     eprintln!("  evident sample  <files…> <schema> [-n N] [--given k=v …] [--json]");
     eprintln!("  evident test    [path]");
     eprintln!("  evident execute <file> [--width N] [--height N] [--title S]");
-    eprintln!("                         [--host H] [--port P]");
+    eprintln!("                         [--host H] [--port P] [--quiet | --explain]");
     eprintln!("  evident parse   <file>");
     eprintln!();
-    eprintln!("execute flags (mirror evident.py):");
+    eprintln!("execute flags (mirror evident.py where applicable):");
     eprintln!("  --width  N   SDL window width  (default 800; used by SDL plugin)");
     eprintln!("  --height N   SDL window height (default 600; used by SDL plugin)");
     eprintln!("  --title  S   SDL window title  (default \"Evident\")");
     eprintln!("  --host   H   TCP listen host   (default 127.0.0.1; reserved for TCP plugin)");
     eprintln!("  --port   P   TCP listen port   (default 8080;       reserved for TCP plugin)");
+    eprintln!("  --quiet      suppress per-step UNSAT warnings (default: warn loud)");
+    eprintln!("  --explain    on UNSAT, dump per-step `given` + schema body to stderr");
     eprintln!();
     eprintln!("not yet implemented (use evident.py):");
     eprintln!("  evident batch|repl …");
@@ -169,6 +171,15 @@ struct ExecuteOpts {
     title:  String,
     host:   String,
     port:   u16,
+    /// `--quiet`: suppress per-step UNSAT warnings. Default behavior is
+    /// loud — every UNSAT step prints a one-line warning so the user
+    /// can't miss that the program is silently dropping frames.
+    quiet:  bool,
+    /// `--explain`: when a step is UNSAT, dump the per-step `given`
+    /// values + the schema body items pretty-printed, so the user has
+    /// enough context to start narrowing the conflict without re-running
+    /// `evident query` separately.
+    explain: bool,
 }
 
 impl Default for ExecuteOpts {
@@ -179,6 +190,8 @@ impl Default for ExecuteOpts {
             title:  "Evident".to_string(),
             host:   "127.0.0.1".to_string(),
             port:   8080,
+            quiet:  false,
+            explain: false,
         }
     }
 }
@@ -218,6 +231,8 @@ fn parse_execute_flags(flags: &[String]) -> Result<ExecuteOpts, String> {
                 out.port = v.parse::<u16>().map_err(|e| format!("bad --port {v:?}: {e}"))?;
                 i += 1;
             }
+            "--quiet"   => { out.quiet   = true; i += 1; }
+            "--explain" => { out.explain = true; i += 1; }
             "--help" | "-h" => {
                 usage();
                 std::process::exit(0);
@@ -290,11 +305,10 @@ fn explain_unsat(rt: &EvidentRuntime, schema_name: &str, given: &HashMap<String,
     }
     eprintln!("schema body has {} items:", schema.body.len());
     for (i, item) in schema.body.iter().enumerate() {
-        eprintln!("  [{i}] {:?}", item);
+        eprintln!("  [{i}] {}", evident_runtime::pretty::body_item(item));
     }
     eprintln!("--- end explain ---");
-    eprintln!("(hint: comment out body items to narrow the conflict; or")
-    ;
+    eprintln!("(hint: comment out body items to narrow the conflict; or");
     eprintln!(" check that no `--given` value contradicts a body equality.)");
 }
 
@@ -542,9 +556,13 @@ fn cmd_execute(args: &[String]) -> ExitCode {
     // list. Otherwise, fall back to the headless stdin/stdout path.
     let sdl_vars = collect_sdl_vars(&rt);
 
+    let exec_opts = executor::ExecOptions { quiet: opts.quiet, explain: opts.explain };
     if sdl_vars.is_empty() {
         // Pure headless: stdin/stdout only.
-        match executor::run_headless(&rt, std::io::stdin(), std::io::stdout()) {
+        let stdin  = executor::StdinPlugin::new(std::io::stdin());
+        let stdout = executor::StdoutPlugin::new(std::io::stdout());
+        let mut plugins: Vec<Box<dyn Plugin>> = vec![Box::new(stdin), Box::new(stdout)];
+        match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
         }
@@ -556,7 +574,7 @@ fn cmd_execute(args: &[String]) -> ExitCode {
         let stdin = executor::StdinPlugin::new(std::io::stdin());
         let stdout = executor::StdoutPlugin::new(std::io::stdout());
         let mut plugins: Vec<Box<dyn Plugin>> = vec![Box::new(stdin), Box::new(stdout), sdl];
-        match executor::run_with_plugins(&rt, &mut plugins) {
+        match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
         }

@@ -4,6 +4,43 @@
 
 ## Current status
 
+**Phase:** v1.13 — UNSAT is loud now. 97/97 internal tests (+3 CLI
+tests for the new flags). New `evident execute` flags `--quiet` and
+`--explain`; default behavior is loud (one stderr line per UNSAT step
++ a counter). New `pretty` module renders Expr/BodyItem back to
+readable infix Evident syntax for diagnostics.
+
+**Last action:** The Python executor silently skipped UNSAT steps,
+which made bugs like the AxisPhysics-shared-Z3-var (anchor_collect.ev
+v1.12) invisible until the screen visibly went black. Three pieces:
+
+  1. **`pretty.rs`** — recursive `Expr → String` and `BodyItem → String`
+     with Unicode operators (∈, ∀, ⇒, ¬, ≤, …) and bracket forms
+     (⟨…⟩, {lo..hi}, {…}). Not a precise round-trip pretty-printer,
+     just diagnostic-quality. Used wherever the runtime previously
+     dumped `{:?}` of a node.
+
+  2. **Loud per-step UNSAT** — `executor::run_with_plugins_opts(rt,
+     plugins, ExecOptions { quiet, explain })`. By default emits
+     `warning: step N UNSAT — state preserved, frame skipped`. With
+     `--explain`, also dumps the per-step `given` values + the full
+     pretty-printed schema body items, so the user has enough context
+     to start narrowing the conflict without re-running `evident
+     query` separately.
+
+  3. **CLI surface** — new `--quiet` (suppress) and `--explain`
+     (verbose) flags on `evident execute`. The existing `--explain`
+     on `evident query` was upgraded to use `pretty::body_item`
+     instead of `{:?}`. The dropped-constraint warning in
+     `translate.rs` likewise switched to `pretty::expr`.
+
+Future work: real Z3 unsat-core extraction via `assert_and_track`
+(would let `--explain` show *which* body items conflict, not just
+list them). The Python `runtime/src/evaluate.py:get_unsat_core` is
+the model. Out of scope for this slice — listing all body items is
+already actionable enough that the AxisPhysics class of bug would
+have been obvious from the dump.
+
 **Phase:** v1.12 — per-call fresh Z3 names for ClaimCall internals.
 94/94 internal tests (+1 regression). All eight SDL demos
 (scatter / collect / grid / anchor_collect / demo + balls / balls_anchor /

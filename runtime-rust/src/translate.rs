@@ -487,7 +487,8 @@ fn inline_body_items(
                 if let Some(b) = translate_bool(e, ctx, env) {
                     solver.assert(&b);
                 } else {
-                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {:?}", e);
+                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {}",
+                              crate::pretty::expr(e));
                 }
             }
             BodyItem::Passthrough(claim_name) => {

@@ -29,6 +29,7 @@
 
 use crate::ast::{BodyItem, Keyword};
 use crate::runtime::EvidentRuntime;
+use crate::pretty;
 use crate::translate::Value;
 
 use std::collections::HashMap;
@@ -346,6 +347,44 @@ fn initial_state(rt: &EvidentRuntime, type_name: &str) -> HashMap<String, Value>
     out
 }
 
+/// Verbose UNSAT dump for a single executor step. Called when the user
+/// passed `--explain` to `evident execute`. Mirrors `explain_unsat` in
+/// `main.rs` (which is for `evident query`) but pulls the per-step
+/// `given` from the executor's loop instead of the CLI's `--given`.
+fn explain_step_unsat(rt: &EvidentRuntime, given: &HashMap<String, Value>) {
+    let Some(schema) = rt.get_schema("main") else { return };
+    eprintln!("--- explain UNSAT step (schema main) ---");
+    if !given.is_empty() {
+        let mut keys: Vec<&String> = given.keys().collect();
+        keys.sort();
+        eprintln!("given values:");
+        for k in keys {
+            eprintln!("  {k} = {}", value_for_diag(&given[k]));
+        }
+    }
+    eprintln!("schema body has {} items:", schema.body.len());
+    for (i, item) in schema.body.iter().enumerate() {
+        eprintln!("  [{i}] {}", pretty::body_item(item));
+    }
+    eprintln!("--- end explain ---");
+}
+
+/// Compact one-line rendering of a `Value` for UNSAT diagnostics. Not
+/// the full pretty-printer in `pretty::expr` — this is for runtime
+/// values, not AST exprs. Long Seq/Set values are truncated.
+fn value_for_diag(v: &Value) -> String {
+    match v {
+        Value::Int(n)  => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s)  => format!("\"{}\"", s),
+        Value::SeqInt(v)  => format!("Seq(Int)[{}]",  v.len()),
+        Value::SeqBool(v) => format!("Seq(Bool)[{}]", v.len()),
+        Value::SeqStr(v)  => format!("Seq(String)[{}]", v.len()),
+        Value::SeqComposite(v) => format!("Seq(_)[{}]", v.len()),
+        other => format!("{:?}", other),
+    }
+}
+
 fn default_for_type(t: &str) -> Option<Value> {
     match t {
         "Nat" | "Int" | "Pos" => Some(Value::Int(0)),
@@ -402,6 +441,22 @@ where
     run_with_plugins(rt, &mut plugins)
 }
 
+/// Knobs for the per-step loop. UNSAT-handling lives here so the CLI
+/// can decide between silent (test fixtures), loud (default `execute`),
+/// and verbose `--explain` (dump body + givens) without each call site
+/// re-implementing the policy.
+#[derive(Debug, Clone, Default)]
+pub struct ExecOptions {
+    /// Suppress the per-step UNSAT warning entirely. Tests that
+    /// intentionally produce transient UNSAT (e.g. an automaton that
+    /// halts on a no-input frame) set this to keep stderr clean.
+    pub quiet: bool,
+    /// On UNSAT, dump the schema body items + the per-step `given` to
+    /// stderr — so the user can see the constraints that conflicted
+    /// without needing to re-run `evident query --explain` separately.
+    pub explain: bool,
+}
+
 /// Lower-level entry point: run with an explicit plugin list. Useful
 /// for tests that want to inspect a plugin's state after halt
 /// (e.g. read out the bytes a `StdoutPlugin<Vec<u8>>` collected) —
@@ -411,6 +466,14 @@ where
 pub fn run_with_plugins(
     rt: &EvidentRuntime,
     plugins: &mut [Box<dyn Plugin>],
+) -> io::Result<()> {
+    run_with_plugins_opts(rt, plugins, &ExecOptions::default())
+}
+
+pub fn run_with_plugins_opts(
+    rt: &EvidentRuntime,
+    plugins: &mut [Box<dyn Plugin>],
+    opts: &ExecOptions,
 ) -> io::Result<()> {
     let main = rt.get_schema("main").ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "no 'schema main' found in program")
@@ -444,6 +507,10 @@ pub fn run_with_plugins(
         current_state.insert(base.clone(), initial_state(rt, t));
     }
 
+    // Step counter for UNSAT warnings. Counts every loop iteration
+    // (SAT and UNSAT alike), incremented just before reporting.
+    let mut step_idx: u64 = 0;
+
     loop {
         // Build per-step `given`. Plugins contribute first; their
         // `before_step` returning None signals halt.
@@ -471,10 +538,23 @@ pub fn run_with_plugins(
         })?;
 
         if !result.satisfied {
-            // UNSAT step: silently skip. Matches Python executor behavior.
-            // State stays as-is, plugins still get their next-step turn.
+            // UNSAT step: state stays as-is, plugins still get their
+            // next-step turn. By default we print a one-line warning so
+            // the user can't miss a silently-broken automaton (Python's
+            // executor was silent here, which made the AxisPhysics-shared-
+            // var bug invisible until anchor_collect.ev was visibly
+            // black). `--quiet` turns this off; `--explain` adds the
+            // body + givens dump.
+            step_idx += 1;
+            if !opts.quiet {
+                eprintln!("warning: step {step_idx} UNSAT — state preserved, frame skipped");
+                if opts.explain {
+                    explain_step_unsat(rt, &given);
+                }
+            }
             continue;
         }
+        step_idx += 1;
 
         // SAT — let plugins run side effects.
         let mut after_halt = false;
