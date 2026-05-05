@@ -109,6 +109,8 @@ pub enum BinOp {
     And, Or, Implies,
     // Arithmetic → Int
     Add, Sub, Mul, Div,
+    // String concatenation (`++`) → String
+    Concat,
 }
 
 /// A parsed program (one or more top-level declarations).

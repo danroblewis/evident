@@ -379,6 +379,18 @@ impl Parser {
             let rhs = self.parse_addsub()?;
             return Ok(Expr::InExpr(Box::new(lhs), Box::new(rhs)));
         }
+        // ∉ — desugar `lhs ∉ rhs` to `¬(lhs ∈ rhs)`.
+        if matches!(self.peek(), Token::NotIn) {
+            self.bump();
+            let rhs = self.parse_addsub()?;
+            return Ok(Expr::Not(Box::new(Expr::InExpr(Box::new(lhs), Box::new(rhs)))));
+        }
+        // ∋ — reverse membership: `lhs ∋ rhs` means `rhs ∈ lhs`.
+        if matches!(self.peek(), Token::ContainsRev) {
+            self.bump();
+            let rhs = self.parse_addsub()?;
+            return Ok(Expr::InExpr(Box::new(rhs), Box::new(lhs)));
+        }
         let op = match self.peek() {
             Token::Eq  => Some(BinOp::Eq),
             Token::Neq => Some(BinOp::Neq),
@@ -400,8 +412,9 @@ impl Parser {
         let mut lhs = self.parse_muldiv()?;
         loop {
             let op = match self.peek() {
-                Token::Plus  => BinOp::Add,
-                Token::Minus => BinOp::Sub,
+                Token::Plus     => BinOp::Add,
+                Token::PlusPlus => BinOp::Concat,
+                Token::Minus    => BinOp::Sub,
                 _ => break,
             };
             self.bump();

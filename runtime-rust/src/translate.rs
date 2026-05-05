@@ -936,7 +936,7 @@ pub fn evaluate(
                 if let Some(b) = translate_bool(e, ctx, &env) {
                     solver.assert(&b);
                 } else {
-                    eprintln!("warning: dropped constraint that didn't translate to Bool");
+                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {:?}", e);
                 }
             }
             BodyItem::Passthrough(claim_name) => {
@@ -1513,6 +1513,13 @@ fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
     match e {
         Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
+        // `lhs ++ rhs` — string concatenation. Both operands must translate
+        // as strings; the result is a Z3 string concat.
+        Expr::Binary(BinOp::Concat, lhs, rhs) => {
+            let l = translate_str(lhs, ctx, env)?;
+            let r = translate_str(rhs, ctx, env)?;
+            Some(Z3Str::concat(ctx, &[&l, &r]))
+        }
         // `seq[i]` where seq holds String elements.
         Expr::Index(seq_expr, idx_expr) => {
             let name = match seq_expr.as_ref() {

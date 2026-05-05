@@ -845,3 +845,45 @@ fn seq_literal_empty() {
     assert!(r.satisfied);
     assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![])));
 }
+
+/// `++` — string concatenation. Chained left-associative: `a ++ " " ++ b`
+/// parses as `(a ++ " ") ++ b`. Pinning a and b lets Z3 derive c.
+#[test]
+fn string_concat_basic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    a ∈ String\n    b ∈ String\n    c ∈ String\n    \
+         a = \"hello\"\n    b = \"world\"\n    c = a ++ \" \" ++ b\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("c"), Some(&Value::Str("hello world".into())));
+}
+
+/// `∉` — non-membership; desugars to `¬(lhs ∈ rhs)`.
+#[test]
+fn not_in_set_literal() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    n ∉ {1, 2, 3}\n    n < 6\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(n)) = r.bindings.get("n") {
+        assert!(![1, 2, 3].contains(n) && *n < 6, "got {}", n);
+    } else { panic!(); }
+}
+
+/// `∋` — reverse membership; `set ∋ x` means `x ∈ set`.
+#[test]
+fn contains_rev_set_literal() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    {1, 2, 3} ∋ n\n    n > 1\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(n)) = r.bindings.get("n") {
+        assert!([2, 3].contains(n));
+    } else { panic!(); }
+}

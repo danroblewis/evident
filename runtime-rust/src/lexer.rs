@@ -23,6 +23,8 @@ pub enum Token {
     Subclaim,
     Import,       // import "path"
     In,           // ∈ or "in"
+    NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
+    ContainsRev,  // ∋ (U+220B) — reverse membership; desugars to (rhs ∈ lhs)
 
     // Operators
     Eq,           // =
@@ -32,6 +34,7 @@ pub enum Token {
     Gt,           // >
     Ge,           // ≥ or ">="
     Plus,         // +
+    PlusPlus,     // ++ (string concatenation)
     Minus,        // -
     Star,         // *
     Slash,        // /
@@ -213,7 +216,15 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 }
                 tokens.push(keyword_or_ident(s));
             }
-            '+' => { chars.next(); col += 1; tokens.push(Token::Plus); }
+            '+' => {
+                chars.next(); col += 1;
+                if chars.peek() == Some(&'+') {
+                    chars.next(); col += 1;
+                    tokens.push(Token::PlusPlus);
+                } else {
+                    tokens.push(Token::Plus);
+                }
+            }
             '*' => { chars.next(); col += 1; tokens.push(Token::Star); }
             '/' => { chars.next(); col += 1; tokens.push(Token::Slash); }
             '(' => { chars.next(); col += 1; tokens.push(Token::LParen); }
@@ -263,6 +274,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 }
             }
             '\u{2208}' => { chars.next(); col += 1; tokens.push(Token::In); }      // ∈
+            '\u{2209}' => { chars.next(); col += 1; tokens.push(Token::NotIn); }   // ∉
+            '\u{220B}' => { chars.next(); col += 1; tokens.push(Token::ContainsRev); } // ∋
             '\u{2227}' => { chars.next(); col += 1; tokens.push(Token::And); }     // ∧
             '\u{2228}' => { chars.next(); col += 1; tokens.push(Token::Or); }      // ∨
             '\u{00AC}' => { chars.next(); col += 1; tokens.push(Token::Not); }     // ¬

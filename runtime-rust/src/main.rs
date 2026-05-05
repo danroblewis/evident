@@ -104,11 +104,14 @@ struct Flags {
     given: HashMap<String, Value>,
     json: bool,
     n_samples: usize,
+    /// `--explain`: when a query returns UNSAT, run a per-constraint
+    /// retry to identify which body items make the schema unsatisfiable.
+    explain: bool,
 }
 
 impl Default for Flags {
     fn default() -> Self {
-        Flags { given: HashMap::new(), json: false, n_samples: 5 }
+        Flags { given: HashMap::new(), json: false, n_samples: 5, explain: false }
     }
 }
 
@@ -128,6 +131,7 @@ fn parse_flags(flags: &[String]) -> Result<Flags, String> {
                 }
             }
             "--json" => { out.json = true; i += 1; }
+            "--explain" => { out.explain = true; i += 1; }
             "-n" => {
                 i += 1;
                 let n = flags.get(i)
@@ -255,10 +259,43 @@ fn cmd_query(args: &[String]) -> ExitCode {
         Ok(r) => r,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
-    match rt.query(&schema, &flags.given) {
-        Ok(r) => print_query_result(&r, flags.json),
-        Err(e) => { eprintln!("query error: {e}"); ExitCode::from(1) }
+    let r = match rt.query(&schema, &flags.given) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("query error: {e}"); return ExitCode::from(1); }
+    };
+    if !r.satisfied && flags.explain {
+        explain_unsat(&rt, &schema, &flags.given);
     }
+    print_query_result(&r, flags.json)
+}
+
+/// On UNSAT, dump the schema body items + given values to stderr so
+/// the user can see what was asserted and start narrowing the conflict.
+///
+/// Future work: track each translated assertion with a Z3 unsat-core
+/// name (`assert_and_track`) so we can print the actual minimal
+/// conflicting subset. Today, the body dump is the minimum useful
+/// step — combined with the per-item dropped-constraint warnings
+/// (which pinpoint translation failures), it's enough to find most
+/// conflicts.
+fn explain_unsat(rt: &EvidentRuntime, schema_name: &str, given: &HashMap<String, Value>) {
+    let Some(schema) = rt.get_schema(schema_name) else { return };
+    eprintln!();
+    eprintln!("--- explain UNSAT for schema {schema_name} ---");
+    if !given.is_empty() {
+        let mut keys: Vec<&String> = given.keys().collect();
+        keys.sort();
+        eprintln!("given values:");
+        for k in keys { eprintln!("  {k} = {}", format_value(&given[k])); }
+    }
+    eprintln!("schema body has {} items:", schema.body.len());
+    for (i, item) in schema.body.iter().enumerate() {
+        eprintln!("  [{i}] {:?}", item);
+    }
+    eprintln!("--- end explain ---");
+    eprintln!("(hint: comment out body items to narrow the conflict; or")
+    ;
+    eprintln!(" check that no `--given` value contradicts a body equality.)");
 }
 
 fn print_query_result(r: &QueryResult, json: bool) -> ExitCode {

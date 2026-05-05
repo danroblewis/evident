@@ -4,6 +4,39 @@
 
 ## Current status
 
+**Phase:** v1.8 — three small operators (`++`, `∉`, `∋`). 89/89 tests
+green (+3 in `tests/basic.rs`: `string_concat_basic`, `not_in_set_literal`,
+`contains_rev_set_literal`).
+
+**Last action:** Wired the three operators that block several `programs/*.ev`
+demos through the lex/parse/translate pipeline:
+
+  - **`++`** (string concatenation, ASCII two-char): lexer's `'+' =>` arm
+    peeks for a second `+` and emits new `Token::PlusPlus`. New
+    `BinOp::Concat` AST variant. `parse_addsub` accepts `PlusPlus` at the
+    same precedence level as `+`/`-`. `translate_str` adds a
+    `Binary(BinOp::Concat, lhs, rhs)` arm that translates both operands
+    through itself and calls `Z3Str::concat(ctx, &[&l, &r])` (returns
+    `String<'ctx>` directly — no Result wrapping). Left-associative, so
+    `a ++ " " ++ b` parses as `(a ++ " ") ++ b`.
+  - **`∉`** (U+2209, non-membership): new `Token::NotIn` next to the
+    existing `'\u{2208}' => Token::In` arm. **Desugared at parse time**
+    in `parse_compare`: `lhs ∉ rhs` becomes
+    `Expr::Not(Box::new(Expr::InExpr(...)))`. No new AST variant, no
+    translator change.
+  - **`∋`** (U+220B, reverse membership): new `Token::ContainsRev`
+    alongside the In arm. Also desugared in `parse_compare`: `lhs ∋ rhs`
+    becomes `Expr::InExpr(rhs, lhs)` — operands swapped so the existing
+    `InExpr` translator handles set-var membership and set-literal
+    reduction without any extra plumbing.
+
+End-to-end smoke through the binary verified
+(`a ++ b`, `n ∉ {1, 2}`, `{3, 4} ∋ n` all round-trip via `evident query`).
+Demos that use these operators (`programs/number-lines.ev`,
+`programs/strip-numbers.ev`) still fail to parse — but on a different
+unimplemented feature (a parenthesized atom inside a quantifier bound),
+not the operators themselves.
+
 **Phase:** v1.7 — `import "path"` directive. 81/81 tests green
 (adds 3 CLI tests for the import slice).
 
@@ -620,6 +653,9 @@ All in `tests/basic.rs`. 16/16 passing.
 | `seq_literal_int_assignment`         | `s = ⟨10, 20, 30⟩` pins length + per-element |
 | `seq_literal_with_arithmetic`        | `s = ⟨n, n+1, n+2⟩` items are general exprs |
 | `seq_literal_empty`                  | `s = ⟨⟩` pins length to 0              |
+| `string_concat_basic`                | `c = a ++ " " ++ b` (string concat)    |
+| `not_in_set_literal`                 | `n ∉ {1, 2, 3}` desugars to `¬(∈)`     |
+| `contains_rev_set_literal`           | `{1, 2, 3} ∋ n` desugars to `n ∈ {…}`  |
 
 **`tests/cli.rs` (16)**:
 
