@@ -1062,7 +1062,8 @@ fn collect_seq_lengths(
         };
         out.insert(k.clone(), len);
     }
-    // From body: `#seq = N` (or `N = #seq`) where N is a literal Int.
+    // From body: `#seq = N` (or `N = #seq`) where N is a literal Int,
+    // or `seq = ⟨…⟩` (sequence literal pins length to its arity).
     for item in body {
         if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
             for (a, b) in [(lhs, rhs), (rhs, lhs)] {
@@ -1072,6 +1073,12 @@ fn collect_seq_lengths(
                             out.insert(name.clone(), *n);
                         }
                     }
+                }
+                // `seq_var = ⟨e1, e2, …⟩` pins #seq_var to items.len().
+                if let (Expr::Identifier(name), Expr::SeqLit(items)) =
+                    (a.as_ref(), b.as_ref())
+                {
+                    out.insert(name.clone(), items.len() as i64);
                 }
             }
         }
@@ -1479,6 +1486,84 @@ fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
     }
 }
 
+/// Handle `seq_var = ⟨e1, e2, …⟩` (sequence-literal assignment).
+///
+/// Returns the conjunction `len == items.len() ∧ ∀i: arr[i] == translated(e_i)`
+/// when `lhs` is an `Identifier(name)` resolving to a `Var::SeqVar` (primitive
+/// element) or `Var::DatatypeSeqVar` (composite element), and `rhs` is an
+/// `Expr::SeqLit(items)`. Returns `None` otherwise — caller then falls back
+/// through the Bool/Int/Str equality paths.
+///
+/// **v1 limitation**: composite-element seq literals (`Seq(UserType)` on the
+/// LHS) are not supported. Each item would need to be assembled into a
+/// Datatype constructor application from the corresponding sub-schema fields
+/// in env, which is fiddly enough to defer. We log a warning and return None
+/// in that case so the equality is dropped (rather than mis-translated), and
+/// callers know the constraint silently failed to apply.
+fn translate_seq_lit_eq<'ctx>(
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<Bool<'ctx>> {
+    let items = match rhs {
+        Expr::SeqLit(items) => items,
+        _ => return None,
+    };
+    let name = match lhs {
+        Expr::Identifier(n) => n,
+        _ => return None,
+    };
+    let var = env.get(name)?;
+
+    // Primitive-element Seq: pin length, then per-element equality on the
+    // underlying Z3 array.
+    if let Some((arr, len, elem)) = var.as_seq() {
+        let n = items.len() as i64;
+        let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(items.len() + 1);
+        clauses.push(len._eq(&Int::from_i64(ctx, n)));
+        for (i, item) in items.iter().enumerate() {
+            let idx = Int::from_i64(ctx, i as i64);
+            let cell = arr.select(&idx);
+            let eq = match elem {
+                SeqElem::Int => {
+                    let z = cell.as_int()?;
+                    let v = translate_int(item, ctx, env)?;
+                    z._eq(&v)
+                }
+                SeqElem::Bool => {
+                    let z = cell.as_bool()?;
+                    let v = translate_bool(item, ctx, env)?;
+                    z._eq(&v)
+                }
+                SeqElem::Str => {
+                    let z = cell.as_string()?;
+                    let v = translate_str(item, ctx, env)?;
+                    z._eq(&v)
+                }
+            };
+            clauses.push(eq);
+        }
+        let refs: Vec<&Bool<'ctx>> = clauses.iter().collect();
+        return Some(Bool::and(ctx, &refs));
+    }
+
+    // Composite-element Seq: deferred. Each item should be a bare Identifier
+    // referring to flat sub-schema fields (e.g. `ball_rect`); assembling that
+    // into a Datatype constructor application requires walking the FieldKind
+    // list and looking up env["ident.field"] for each leaf. Out of scope for
+    // v1 — log and skip so the user knows.
+    if var.as_datatype_seq().is_some() {
+        eprintln!(
+            "warning: sequence-literal assignment to composite-element Seq \
+             ({}) is not yet supported in the Rust runtime; constraint dropped",
+            name
+        );
+        return None;
+    }
+    None
+}
+
 fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Bool<'ctx>> {
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
@@ -1582,6 +1667,25 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
             }
             // Eq/Neq work over Bool, Int, or String. Try in that order.
             BinOp::Eq | BinOp::Neq => {
+                // First: handle `seq_var = ⟨e1, e2, …⟩` (sequence literal
+                // assignment). This pins both length and per-element values
+                // and lives outside the Bool/Int/Str scalar paths because
+                // it produces a conjunction over the elements rather than
+                // a single _eq.
+                if let Some(b) = translate_seq_lit_eq(lhs, rhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
                 if let (Some(l), Some(r)) =
                     (translate_bool(lhs, ctx, env), translate_bool(rhs, ctx, env))
                 {

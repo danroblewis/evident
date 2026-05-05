@@ -70,6 +70,10 @@ pub enum Expr {
     /// `{e1, e2, …}` set literal — only used as the right side of `∈`
     /// (membership). Not a first-class set value (no Z3 set sort yet).
     SetLit(Vec<Expr>),
+    /// `⟨e1, e2, …⟩` sequence literal. Used as the RHS of `=` against a
+    /// `Seq(T)` variable. The translator pins both length and per-element
+    /// values when it sees `seq_var = SeqLit(items)`.
+    SeqLit(Vec<Expr>),
     /// `{lo..hi}` integer range — only used as a quantifier bound.
     Range(Box<Expr>, Box<Expr>),
     /// `lhs ∈ rhs` membership constraint as an expression. We always

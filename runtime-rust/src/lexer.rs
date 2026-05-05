@@ -46,6 +46,8 @@ pub enum Token {
     RBrace,       // }
     LBracket,     // [  (sequence indexing)
     RBracket,     // ]
+    LSeq,         // ⟨  (Unicode U+27E8) sequence literal open
+    RSeq,         // ⟩  (Unicode U+27E9) sequence literal close
     Hash,         // #  (cardinality prefix)
     Comma,        // ,
     DotDot,       // .. (range literal)
@@ -270,6 +272,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }  // ∀
             '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }  // ∃
             '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }  // ↦
+            '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); }    // ⟨
+            '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); }    // ⟩
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),

@@ -479,6 +479,23 @@ impl Parser {
                 self.eat(&Token::RBrace)?;
                 Ok(Expr::SetLit(items))
             }
+            Token::LSeq => {
+                // `⟨e1, e2, …⟩` sequence literal. Distinct from `{…}` set
+                // literal — pinned by element index, not membership-only.
+                self.bump();
+                if matches!(self.peek(), Token::RSeq) {
+                    self.bump();
+                    return Ok(Expr::SeqLit(vec![]));
+                }
+                let first = self.parse_expr()?;
+                let mut items = vec![first];
+                while matches!(self.peek(), Token::Comma) {
+                    self.bump();
+                    items.push(self.parse_expr()?);
+                }
+                self.eat(&Token::RSeq)?;
+                Ok(Expr::SeqLit(items))
+            }
             other => Err(ParseError(format!("expected expression, got {:?}", other))),
         }
     }

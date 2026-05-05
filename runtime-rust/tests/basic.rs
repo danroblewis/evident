@@ -807,3 +807,41 @@ fn bare_bool_var_still_works_after_passthrough_change() {
         other => panic!("expected flag=true, got {:?}", other),
     }
 }
+
+/// `s = ⟨10, 20, 30⟩` should pin both length and per-element values.
+#[test]
+fn seq_literal_int_assignment() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    s = ⟨10, 20, 30⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![10, 20, 30])));
+}
+
+/// Sequence-literal items can be arbitrary expressions, not just literals.
+/// `n = 5` pins n; the literal `⟨n, n+1, n+2⟩` then becomes ⟨5, 6, 7⟩.
+#[test]
+fn seq_literal_with_arithmetic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    n ∈ Nat\n    n = 5\n    \
+         s = ⟨n, n + 1, n + 2⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![5, 6, 7])));
+}
+
+/// Empty sequence literal `⟨⟩` should pin length to 0.
+#[test]
+fn seq_literal_empty() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    s = ⟨⟩\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![])));
+}

@@ -225,3 +225,16 @@ fn cli_parse_lists_schema_names() {
     assert!(names.contains("T"));
     assert!(names.contains("S"));
 }
+
+/// `s = ⟨10, 20, 30⟩` — Unicode angle-bracket sequence literal end-to-end
+/// through the binary (lexer + parser + translator + extraction + stdout).
+#[test]
+fn cli_query_seq_literal() {
+    let path = write_tmp("seqlit",
+        "schema S\n    s ∈ Seq(Int)\n    s = ⟨10, 20, 30⟩\n");
+    let out = Command::new(bin()).args(["query", path.to_str().unwrap(), "S"])
+        .output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("s=[10, 20, 30]"), "expected 's=[10, 20, 30]' in: {s}");
+}

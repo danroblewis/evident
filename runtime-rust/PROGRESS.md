@@ -5,7 +5,42 @@
 ## Current status
 
 **Phase:** v1.6 — nested composite fields + execute CLI flags + bare-claim
-names-match passthrough. 73/73 tests green (3 parallel slices merged).
+names-match passthrough + sequence literals. 82/82 tests green
+(3 parallel slices + seq-literal slice merged).
+
+**Last action (slice 4 of v1.6):** `⟨ e1, e2, … ⟩` sequence literal
+expressions. Many Evident programs (especially the SDL demos) use
+Unicode angle brackets to construct Seq values — `output.rects =
+⟨ball_rect⟩`, `positions = ⟨1, 2, 3, 4⟩`. Lexer now recognizes
+U+27E8 (`⟨`) as `Token::LSeq` and U+27E9 (`⟩`) as `Token::RSeq`,
+mirroring the ∀/∃/↦ entries. AST has `Expr::SeqLit(Vec<Expr>)` —
+distinct from `SetLit` because the runtime semantics differ
+(elements are pinned by index, not membership-only). Parser adds
+a `LSeq` arm to `parse_atom` that consumes comma-separated
+expressions until `RSeq`. `translate_bool`'s `BinOp::Eq | BinOp::Neq`
+arm now tries a new `translate_seq_lit_eq` helper *before* the
+Bool/Int/Str scalar paths: when `lhs` is an `Identifier` resolving
+to a `Var::SeqVar` and `rhs` is a `SeqLit`, it emits `len ==
+items.len() ∧ ∀i: arr[i] == translated(e_i)` as a single
+`Bool::and`. Both `lhs = lit` and `lit = lhs` orientations are
+checked. `collect_seq_lengths` was extended so a sequence literal
+also pins `#seq` to `items.len()`, which lets `∀ i ∈ {0..n - 1}`
+unroll downstream.
+
+**v1 limitation:** composite-element seq literals
+(`Seq(UserType)` on the LHS, e.g. `output.rects = ⟨ball_rect⟩`)
+log a warning and drop the constraint. The full implementation
+needs to walk the Datatype's `FieldKind` list, look up each
+`ident.field` in the env, and assemble a Datatype constructor
+application — left as a follow-up. Programs that need this will
+have to wait until that follow-up lands; the lexer/parser/AST
+support is in place so the only piece missing is the translator
+arm. Three new tests in `tests/basic.rs`
+(`seq_literal_int_assignment`, `seq_literal_with_arithmetic`,
+`seq_literal_empty`) plus one CLI smoke (`cli_query_seq_literal`)
+cover the primitive-element happy path.
+
+
 
 **Last action:** Generalized the Datatype builder so a user struct
 referenced as a `Seq(UserType)` element can itself contain nested
@@ -426,6 +461,22 @@ Done in this session:
       fires when `name` is not a known claim. Both `evaluate` and
       `build_cache`'s pass 1 (declarations) and pass 2 (constraints)
       were updated.
+- [x] **Sequence literal expressions `⟨e1, e2, …⟩`.** Lexer recognizes
+      U+27E8 / U+27E9 as `Token::LSeq` / `Token::RSeq`. AST has
+      `Expr::SeqLit(Vec<Expr>)` (distinct from `SetLit` because the
+      runtime semantics differ). Parser's `parse_atom` consumes
+      comma-separated expressions until `RSeq`. Translator's
+      `BinOp::Eq | BinOp::Neq` arm tries `translate_seq_lit_eq` before
+      the scalar paths: when LHS is an `Identifier` resolving to
+      `Var::SeqVar` and RHS is a `SeqLit`, it emits `len ==
+      items.len() ∧ ∀i: arr[i] == translated(e_i)`. Both orientations
+      handled. `collect_seq_lengths` extended so a SeqLit equality
+      pins `#seq` to its arity, enabling downstream symbolic ∀
+      unrolling. **Composite-element seq literals (`Seq(UserType)`)
+      are deferred** — log a warning and drop the constraint; the
+      lexer/parser/AST support is in place, only the translator arm
+      that assembles a Datatype constructor application from
+      `ident.field` lookups remains.
 
 In rough order of leverage:
 
@@ -512,8 +563,11 @@ All in `tests/basic.rs`. 16/16 passing.
 | `nested_composite_shared_across_siblings` | Color shared by SDLRect.color + SDLOutput.bg |
 | `bare_claim_name_is_passthrough`     | bare ident in body acts like `..ClaimName` |
 | `bare_bool_var_still_works_after_passthrough_change` | bool fall-through regression guard |
+| `seq_literal_int_assignment`         | `s = ⟨10, 20, 30⟩` pins length + per-element |
+| `seq_literal_with_arithmetic`        | `s = ⟨n, n+1, n+2⟩` items are general exprs |
+| `seq_literal_empty`                  | `s = ⟨⟩` pins length to 0              |
 
-**`tests/cli.rs` (12)**:
+**`tests/cli.rs` (13)**:
 
 | `cli_query_sat_prints_bindings`      | KEY=VALUE on stdout                    |
 | `cli_query_unsat_exits_1`            | UNSAT path                             |
@@ -527,6 +581,7 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cli_execute_help_lists_flags`       | `execute --help` mentions the new flags |
 | `cli_batch_says_parked`              | parked `batch`/`repl` emit clear msg   |
 | `cli_parse_lists_schema_names`       | `parse` debug helper                   |
+| `cli_query_seq_literal`              | `⟨…⟩` end-to-end through the binary   |
 
 **`src/executor.rs` unit tests (6)**:
 
