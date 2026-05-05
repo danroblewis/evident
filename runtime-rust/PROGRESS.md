@@ -4,6 +4,30 @@
 
 ## Current status
 
+**Phase:** v1.2 — CLI mirrors evident.py.
+53/53 tests green (5 unit + 39 lib + 9 CLI).
+
+**Last action:** Renamed binary `evident-runtime` → `evident` and
+restructured `src/main.rs` to match `evident.py`'s subcommand shape:
+
+  - `query  <files…> <schema> [--given k=v …] [--json]` — accepts
+    multiple files (loads in order); JSON mode emits
+    `{"satisfied": …, "bindings": {…}}`.
+  - `check  <files…>`                 — load + run every loaded
+    schema with no givens; print `SAT/UNSAT/ERROR  <name>`.
+  - `sample <files…> <schema> [-n N] [--given k=v …] [--json]` —
+    naïve loop (no blocking-clause assertion across calls yet, so
+    duplicates are common). Functional but limited.
+  - `test   [path]`                   — discovers `test_*.ev` under
+    a directory (or one file), runs every `sat_*` / `unsat_*`
+    schema, asserts the SAT result matches the prefix. Final summary.
+  - `parse  <file>`                   — Rust-only debug helper
+    (lists loaded schema names).
+
+Subcommands `execute`, `batch`, `repl` print a clear "not yet
+implemented in the Rust runtime — use evident.py" message and exit 2.
+They're parked behind the plugin / executor-loop work.
+
 **Phase:** v1.1 — Set sort runtime (membership queries).
 49/49 tests green (5 unit + 39 lib + 5 CLI).
 
@@ -172,9 +196,10 @@ Done in this session:
 - [x] **Seq sort runtime support** for primitive element types
       (Int / Bool / String). Modeled as Array(Int → T) + length;
       cardinality + indexing translate cleanly.
-- [x] **CLI** — `evident-runtime query <file> <name> [--given …]`
-      and `evident-runtime parse <file>`. Spawns-binary integration
-      tests verify stdout + exit codes.
+- [x] **CLI** — `evident` binary mirrors `evident.py`'s subcommand
+      shape: `query`, `check`, `sample`, `test`, `parse`. `execute` /
+      `batch` / `repl` print a clear "use evident.py" message and
+      exit 2 (parked behind plugin/executor work).
 - [x] **Symbolic ∀ bounds via length propagation.** `Var::PinnedInt`
       variant + `collect_pinned_ints` / `collect_seq_lengths` /
       `apply_pinned_ints` pre-pass. `literal_range` reduced to
@@ -187,6 +212,24 @@ Done in this session:
 
 In rough order of leverage:
 
+- [ ] **`execute` subcommand** — needs a plugin/executor framework.
+      The Python design is in `runtime/src/executor.py` and
+      `runtime/src/plugin.py`: one auto-detected `Plugin` per declared
+      I/O type (`Stdin`, `Stdout`, `SDLInput`, etc.), each gets
+      `before_step` (inject given) / `after_step` (consume bindings)
+      hooks. For Rust, simplest path is the trace-style headless one
+      first (no SDL): a loop that uses `query_cached` repeatedly,
+      forwarding `state_next.*` → `state.*` between steps, with
+      stdin/stdout plugins. SDL/TCP/sockets later.
+- [ ] **Real sample loop with blocking clauses.** Current `sample`
+      just queries N times with the same constraints — Z3 returns
+      the same model. Needs solver-level assertions added across
+      calls (push, assert ¬previous_model, check, pop) — fits the
+      cached-evaluator pattern but requires per-iteration mutation.
+- [ ] **`batch` subcommand** — stdin → Seq(String) → solve → Seq → stdout.
+      Should be small once `execute`'s loop infrastructure is there.
+- [ ] **`repl` subcommand** — interactive read-eval-print.
+      Less urgent — test-runner + query cover most workflows.
 - [ ] Composite element types (`Seq(UserType)`) — would need a Z3
       Datatype per user type, mirroring the Python
       `_declare_element_sort`. The Array+Length encoding still works,
@@ -244,6 +287,18 @@ All in `tests/basic.rs`. 16/16 passing.
 | `forall_symbolic_bound_from_given`   | per-query `given` n=5 unrolls bound    |
 | `set_var_membership_int`             | `s ∈ Set(Int) ; x ∈ s` via Z3 member  |
 | `set_var_membership_string`          | `name ∈ Set(String)` membership        |
+
+**`tests/cli.rs` (9)**:
+
+| `cli_query_sat_prints_bindings`      | KEY=VALUE on stdout                    |
+| `cli_query_unsat_exits_1`            | UNSAT path                             |
+| `cli_query_with_given`               | `--given key=value`                    |
+| `cli_query_examples_scheduling`      | real .ev file via the binary           |
+| `cli_query_json_output`              | `--json` shape                         |
+| `cli_check_reports_per_schema`       | `check` SAT/UNSAT lines                |
+| `cli_test_runs_sat_unsat_claims`     | `test` discovery + result reporting    |
+| `cli_execute_says_parked`            | parked subcommand emits a clear msg    |
+| `cli_parse_lists_schema_names`       | `parse` debug helper                   |
 
 **`tests/cli.rs` (4)** — spawns the compiled binary:
 

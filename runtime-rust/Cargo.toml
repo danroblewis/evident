@@ -12,5 +12,5 @@ name = "evident_runtime"
 path = "src/lib.rs"
 
 [[bin]]
-name = "evident-runtime"
+name = "evident"
 path = "src/main.rs"

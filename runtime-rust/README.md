@@ -71,23 +71,46 @@ cargo test
 Z3 is required. On macOS: `brew install z3`. The `z3` crate uses
 `Z3_SYS_Z3_HEADER` to find the headers if not in standard locations.
 
-CLI — via cargo:
+## `evident` CLI
+
+Mirrors `evident.py`'s subcommand shape. Implemented:
+
+```bash
+evident query  <files…> <schema> [--given k=v …] [--json]
+evident check  <files…>
+evident sample <files…> <schema> [-n N] [--given k=v …] [--json]
+evident test   [path]
+evident parse  <file>     # debug helper, Rust-only
+```
+
+Parked behind plugin/executor work (use `evident.py` for now):
+
+```bash
+evident execute|batch|repl …    # → "not yet implemented" (exit 2)
+```
+
+Build via cargo (uses .cargo/config.toml's DYLD vars):
 
 ```bash
 cargo run --quiet -- query path/to/schema.ev SchemaName
-cargo run --quiet -- query path/to/schema.ev SchemaName --given a=4 --given b=true
-cargo run --quiet -- parse path/to/schema.ev          # list loaded schema names
+cargo run --quiet -- check path/to/schema.ev
+cargo run --quiet -- test programs/                 # walks for test_*.ev
 ```
 
-CLI — standalone binary (works after the script patches libz3's load
-command, since `libz3.dylib`'s install_name is bare and dyld won't
-search rpath for it on macOS):
+Or the standalone binary (build script patches libz3's load command —
+`libz3.dylib`'s install_name is bare and dyld won't search rpath for
+it on macOS, so `install_name_tool -change` rewrites it post-link):
 
 ```bash
 ./scripts/install-bin.sh                  # build + patch in place
-./target/release/evident-runtime query path/to/schema.ev SchemaName
+./target/release/evident query path/to/schema.ev SchemaName
 ./scripts/install-bin.sh /usr/local/bin   # also copy to a dest dir
 ```
 
-Output: SAT prints `KEY=VALUE` lines (one per binding, sorted) and
-exits 0; UNSAT prints `UNSAT` and exits 1.
+Output:
+  - `query` SAT  → `KEY=VALUE` lines (sorted), exit 0
+  - `query` UNSAT → `UNSAT`, exit 1
+  - `--json`      → `{"satisfied": …, "bindings": {…}}`
+  - `check`       → `SAT|UNSAT|ERROR  <name>` per schema; exit 1 if any UNSAT
+  - `test`        → `PASS|FAIL  <name>` per `sat_*` / `unsat_*` claim,
+                    plus a final `N passed, M failed, K skipped` summary

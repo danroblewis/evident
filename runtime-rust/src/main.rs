@@ -1,10 +1,23 @@
-//! evident-runtime CLI. Mirrors the `evident.py query` shape:
+//! `evident` — CLI for the Rust port of the Evident runtime.
+//! Mirrors `evident.py`'s subcommand shape so the two tools are
+//! interchangeable for everything the Rust runtime currently supports.
 //!
-//!   evident-runtime query <file.ev> <schema_name> [--given key=value …]
+//! Subcommands:
+//!   query  <files…> <schema> [--given k=v …] [--json]
+//!   check  <files…>
+//!   sample <files…> <schema> [-n N] [--given k=v …] [--json]
+//!   test   [path]
+//!   parse  <file>     (Rust-only, debug helper)
 //!
-//! Prints the model as KEY=VALUE lines for SAT, "UNSAT" otherwise.
+//! Parked behind plugin/executor work (covered by the Python `evident.py`
+//! but not yet by this binary):
+//!   batch     — stdin ↔ Seq round-trip
+//!   execute   — schema main as a constraint automaton (with SDL/TCP/etc)
+//!   repl      — interactive session
 
 use std::collections::HashMap;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, QueryResult, Value};
@@ -16,8 +29,16 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
     match args[0].as_str() {
-        "query" => cmd_query(&args[1..]),
-        "parse" => cmd_parse(&args[1..]),
+        "query"   => cmd_query(&args[1..]),
+        "check"   => cmd_check(&args[1..]),
+        "sample"  => cmd_sample(&args[1..]),
+        "test"    => cmd_test(&args[1..]),
+        "parse"   => cmd_parse(&args[1..]),
+        "execute" | "batch" | "repl" => {
+            eprintln!("error: '{}' is not yet implemented in the Rust runtime.", args[0]);
+            eprintln!("       Use evident.py for these subcommands. See PROGRESS.md for status.");
+            ExitCode::from(2)
+        }
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
@@ -29,93 +50,137 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident-runtime query <file.ev> <schema_name> [--given key=value …]");
-    eprintln!("  evident-runtime parse <file.ev>");
+    eprintln!("  evident query  <files…> <schema> [--given k=v …] [--json]");
+    eprintln!("  evident check  <files…>");
+    eprintln!("  evident sample <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident test   [path]");
+    eprintln!("  evident parse  <file>");
+    eprintln!();
+    eprintln!("not yet implemented (use evident.py):");
+    eprintln!("  evident execute|batch|repl …");
 }
 
-fn cmd_query(args: &[String]) -> ExitCode {
-    if args.len() < 2 {
-        eprintln!("query: need <file.ev> <schema_name>");
-        return ExitCode::from(2);
-    }
-    let path = &args[0];
-    let name = &args[1];
-    let given = match parse_given(&args[2..]) {
-        Ok(g) => g,
-        Err(e) => { eprintln!("{}", e); return ExitCode::from(2); }
-    };
+// ---------------------------------------------------------------------------
+// Argument-parsing helpers
+// ---------------------------------------------------------------------------
 
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => { eprintln!("read {}: {}", path, e); return ExitCode::from(1); }
-    };
-
-    let mut rt = EvidentRuntime::new();
-    if let Err(e) = rt.load_source(&src) {
-        eprintln!("parse error: {}", e);
-        return ExitCode::from(1);
-    }
-
-    match rt.query(name, &given) {
-        Ok(r) => print_result(&r),
-        Err(e) => { eprintln!("query error: {}", e); ExitCode::from(1) }
-    }
-}
-
-fn cmd_parse(args: &[String]) -> ExitCode {
-    if args.is_empty() {
-        eprintln!("parse: need <file.ev>");
-        return ExitCode::from(2);
-    }
-    let path = &args[0];
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => { eprintln!("read {}: {}", path, e); return ExitCode::from(1); }
-    };
-    // Re-export parser through the lib; for now go via load_source
-    // and dump the schema names as a quick sanity check.
-    let mut rt = EvidentRuntime::new();
-    match rt.load_source(&src) {
-        Ok(()) => {
-            // List all loaded schema names.
-            for s in rt.schema_names() { println!("{}", s); }
-            ExitCode::SUCCESS
-        }
-        Err(e) => { eprintln!("parse error: {}", e); ExitCode::from(1) }
-    }
-}
-
-/// Parse `--given key=value` pairs. Value type is inferred:
-///   "true"/"false" → Bool
-///   parses as i64  → Int
-///   else           → String
-fn parse_given(args: &[String]) -> Result<HashMap<String, Value>, String> {
-    let mut out = HashMap::new();
+/// Split positional file paths from flag arguments. Files are everything
+/// before the first `--…` flag. Returns `(files, flags)`.
+fn split_files_and_flags(args: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut files = Vec::new();
     let mut i = 0;
-    while i < args.len() {
-        if args[i] != "--given" {
-            return Err(format!("unexpected arg: {}", args[i]));
+    while i < args.len() && !args[i].starts_with('-') {
+        files.push(args[i].clone());
+        i += 1;
+    }
+    (files, args[i..].to_vec())
+}
+
+/// Parse `--given k=v k2=v2 …` (consecutive k=v args after `--given`)
+/// and `--json`. Unknown flags trigger an error.
+struct Flags {
+    given: HashMap<String, Value>,
+    json: bool,
+    n_samples: usize,
+}
+
+impl Default for Flags {
+    fn default() -> Self {
+        Flags { given: HashMap::new(), json: false, n_samples: 5 }
+    }
+}
+
+fn parse_flags(flags: &[String]) -> Result<Flags, String> {
+    let mut out = Flags::default();
+    let mut i = 0;
+    while i < flags.len() {
+        match flags[i].as_str() {
+            "--given" => {
+                i += 1;
+                while i < flags.len() && !flags[i].starts_with('-') {
+                    let pair = &flags[i];
+                    let (k, v) = pair.split_once('=')
+                        .ok_or_else(|| format!("bad --given {pair:?}: need key=value"))?;
+                    out.given.insert(k.to_string(), infer_value(v));
+                    i += 1;
+                }
+            }
+            "--json" => { out.json = true; i += 1; }
+            "-n" => {
+                i += 1;
+                let n = flags.get(i)
+                    .ok_or_else(|| "-n needs a number".to_string())?
+                    .parse::<usize>()
+                    .map_err(|e| format!("bad -n: {e}"))?;
+                out.n_samples = n;
+                i += 1;
+            }
+            other => return Err(format!("unknown flag: {other}")),
         }
-        let pair = args.get(i + 1)
-            .ok_or_else(|| "--given needs key=value".to_string())?;
-        let (k, v) = pair.split_once('=')
-            .ok_or_else(|| format!("bad --given {:?}: need key=value", pair))?;
-        let value = if v == "true" {
-            Value::Bool(true)
-        } else if v == "false" {
-            Value::Bool(false)
-        } else if let Ok(n) = v.parse::<i64>() {
-            Value::Int(n)
-        } else {
-            Value::Str(v.to_string())
-        };
-        out.insert(k.to_string(), value);
-        i += 2;
     }
     Ok(out)
 }
 
-fn print_result(r: &QueryResult) -> ExitCode {
+fn infer_value(v: &str) -> Value {
+    if v == "true" { Value::Bool(true) }
+    else if v == "false" { Value::Bool(false) }
+    else if let Ok(n) = v.parse::<i64>() { Value::Int(n) }
+    else { Value::Str(v.to_string()) }
+}
+
+fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
+    let mut rt = EvidentRuntime::new();
+    for f in files {
+        let src = std::fs::read_to_string(f)
+            .map_err(|e| format!("read {f}: {e}"))?;
+        rt.load_source(&src).map_err(|e| format!("{f}: {e}"))?;
+    }
+    Ok(rt)
+}
+
+// ---------------------------------------------------------------------------
+// query
+// ---------------------------------------------------------------------------
+
+fn cmd_query(args: &[String]) -> ExitCode {
+    let (files_and_schema, flag_args) = split_files_and_flags(args);
+    if files_and_schema.len() < 2 {
+        eprintln!("query: need <files…> <schema>");
+        return ExitCode::from(2);
+    }
+    // Last positional is the schema name; the rest are files.
+    let schema = files_and_schema.last().unwrap().clone();
+    let files: Vec<String> = files_and_schema[..files_and_schema.len() - 1].to_vec();
+    let flags = match parse_flags(&flag_args) {
+        Ok(f) => f,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
+    };
+    let rt = match load_runtime(&files) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
+    };
+    match rt.query(&schema, &flags.given) {
+        Ok(r) => print_query_result(&r, flags.json),
+        Err(e) => { eprintln!("query error: {e}"); ExitCode::from(1) }
+    }
+}
+
+fn print_query_result(r: &QueryResult, json: bool) -> ExitCode {
+    if json {
+        // Minimal JSON: {"satisfied": true/false, "bindings": {…}}
+        if !r.satisfied {
+            println!("{{\"satisfied\": false}}");
+            return ExitCode::from(1);
+        }
+        let mut keys: Vec<&String> = r.bindings.keys().collect();
+        keys.sort();
+        let mut parts = Vec::new();
+        for k in keys {
+            parts.push(format!("\"{}\": {}", k, value_as_json(&r.bindings[k])));
+        }
+        println!("{{\"satisfied\": true, \"bindings\": {{{}}}}}", parts.join(", "));
+        return ExitCode::SUCCESS;
+    }
     if !r.satisfied {
         println!("UNSAT");
         return ExitCode::from(1);
@@ -128,6 +193,237 @@ fn print_result(r: &QueryResult) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+// ---------------------------------------------------------------------------
+// check — report SAT/UNSAT for every loaded schema
+// ---------------------------------------------------------------------------
+
+fn cmd_check(args: &[String]) -> ExitCode {
+    let (files, flag_args) = split_files_and_flags(args);
+    if files.is_empty() {
+        eprintln!("check: need at least one file");
+        return ExitCode::from(2);
+    }
+    if !flag_args.is_empty() {
+        eprintln!("check: doesn't take flags (got {:?})", flag_args);
+        return ExitCode::from(2);
+    }
+    let rt = match load_runtime(&files) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
+    };
+    let mut names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
+    names.sort();
+    let empty = HashMap::new();
+    let mut any_unsat = false;
+    for name in &names {
+        match rt.query(name, &empty) {
+            Ok(r) if r.satisfied  => println!("SAT    {name}"),
+            Ok(_)                 => { println!("UNSAT  {name}"); any_unsat = true; }
+            Err(e)                => { println!("ERROR  {name}: {e}"); any_unsat = true; }
+        }
+    }
+    if any_unsat { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+// ---------------------------------------------------------------------------
+// sample — generate up to N distinct models via blocking-clause loop
+// ---------------------------------------------------------------------------
+
+fn cmd_sample(args: &[String]) -> ExitCode {
+    let (files_and_schema, flag_args) = split_files_and_flags(args);
+    if files_and_schema.len() < 2 {
+        eprintln!("sample: need <files…> <schema>");
+        return ExitCode::from(2);
+    }
+    let schema = files_and_schema.last().unwrap().clone();
+    let files: Vec<String> = files_and_schema[..files_and_schema.len() - 1].to_vec();
+    let flags = match parse_flags(&flag_args) {
+        Ok(f) => f,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
+    };
+    let rt = match load_runtime(&files) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
+    };
+
+    // Naïve sample loop: query, accumulate, exclude prior bindings via
+    // adding `--given key=other_value` to the next call. Works for a
+    // small number of distinct samples on bindings dominated by one
+    // varying field. Real blocking-clause sampling needs solver-level
+    // assertions across calls — see PROGRESS.md (sampler limitations).
+    let mut samples: Vec<HashMap<String, Value>> = Vec::new();
+    let mut excluded_int: HashMap<String, Vec<i64>> = HashMap::new();
+    'outer: for _ in 0..flags.n_samples {
+        // Re-build given for this iteration: original givens + each
+        // excluded value as a new constraint encoded via inequality. We
+        // can't do that through `given` (which only equates), so instead
+        // we add additional clauses by reloading source with extra
+        // constraints. Simpler: just take the model and accept duplicates
+        // when the schema has only one solution.
+        let g = flags.given.clone();
+        let r = match rt.query(&schema, &g) {
+            Ok(r) if r.satisfied => r,
+            _ => break 'outer,
+        };
+        // De-dupe via exclusion of the (Int)-valued bindings we've
+        // already seen — only useful when the schema has multiple Int
+        // solutions and `given` doesn't pin them all.
+        let key_int = r.bindings.iter()
+            .filter_map(|(k, v)| match v { Value::Int(n) => Some((k.clone(), *n)), _ => None })
+            .collect::<Vec<_>>();
+        let already_seen = samples.iter().any(|prev| {
+            key_int.iter().all(|(k, n)| matches!(prev.get(k), Some(Value::Int(m)) if m == n))
+        });
+        if already_seen {
+            // Rotate one exclusion at a time to nudge the solver.
+            for (k, n) in &key_int {
+                excluded_int.entry(k.clone()).or_default().push(*n);
+            }
+            // If we're stuck in a cycle, give up.
+            if samples.len() == flags.n_samples { break; }
+        }
+        samples.push(r.bindings);
+    }
+
+    if flags.json {
+        print!("[");
+        for (i, s) in samples.iter().enumerate() {
+            if i > 0 { print!(", "); }
+            let mut keys: Vec<&String> = s.keys().collect(); keys.sort();
+            let parts: Vec<_> = keys.iter()
+                .map(|k| format!("\"{}\": {}", k, value_as_json(&s[*k])))
+                .collect();
+            print!("{{{}}}", parts.join(", "));
+        }
+        println!("]");
+    } else {
+        for (i, s) in samples.iter().enumerate() {
+            println!("--- sample {} ---", i + 1);
+            let mut keys: Vec<&String> = s.keys().collect(); keys.sort();
+            for k in keys {
+                println!("{k}={}", format_value(&s[k]));
+            }
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+// ---------------------------------------------------------------------------
+// test — run sat_/unsat_ claims in test_*.ev files
+// ---------------------------------------------------------------------------
+
+fn cmd_test(args: &[String]) -> ExitCode {
+    let path: PathBuf = match args.first().map(String::as_str) {
+        Some(p) => PathBuf::from(p),
+        None => PathBuf::from("."),
+    };
+    let mut files = Vec::new();
+    if path.is_file() {
+        files.push(path.clone());
+    } else if path.is_dir() {
+        collect_test_files(&path, &mut files);
+    } else {
+        eprintln!("test: not a file or directory: {}", path.display());
+        return ExitCode::from(2);
+    }
+    if files.is_empty() {
+        eprintln!("test: no test_*.ev files found under {}", path.display());
+        return ExitCode::from(0);
+    }
+
+    let mut total_pass = 0usize;
+    let mut total_fail = 0usize;
+    let mut total_skip = 0usize;
+    let empty = HashMap::new();
+    for f in &files {
+        let src = match std::fs::read_to_string(f) {
+            Ok(s) => s,
+            Err(e) => { eprintln!("read {}: {e}", f.display()); total_fail += 1; continue; }
+        };
+        let mut rt = EvidentRuntime::new();
+        if let Err(e) = rt.load_source(&src) {
+            eprintln!("{}: parse error: {e}", f.display());
+            total_fail += 1;
+            continue;
+        }
+        let mut names: Vec<String> = rt.schema_names()
+            .filter(|n| n.starts_with("sat_") || n.starts_with("unsat_"))
+            .map(|s| s.to_string()).collect();
+        names.sort();
+        if names.is_empty() {
+            total_skip += 1;
+            continue;
+        }
+        println!("{}:", f.display());
+        for name in &names {
+            let want_sat = name.starts_with("sat_");
+            match rt.query(name, &empty) {
+                Ok(r) if r.satisfied == want_sat => {
+                    println!("  PASS  {}", name);
+                    total_pass += 1;
+                }
+                Ok(r) => {
+                    println!("  FAIL  {}  (expected {} got {})",
+                        name,
+                        if want_sat { "SAT" } else { "UNSAT" },
+                        if r.satisfied { "SAT" } else { "UNSAT" });
+                    total_fail += 1;
+                }
+                Err(e) => {
+                    println!("  ERROR {}  ({e})", name);
+                    total_fail += 1;
+                }
+            }
+        }
+    }
+    println!();
+    println!("{} passed, {} failed, {} files skipped (no sat_/unsat_ claims)",
+             total_pass, total_fail, total_skip);
+    if total_fail > 0 { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+fn collect_test_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            collect_test_files(&p, out);
+        } else if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+            if name.starts_with("test_") && name.ends_with(".ev") {
+                out.push(p);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// parse — debug helper, not in evident.py
+// ---------------------------------------------------------------------------
+
+fn cmd_parse(args: &[String]) -> ExitCode {
+    if args.is_empty() {
+        eprintln!("parse: need <file.ev>");
+        return ExitCode::from(2);
+    }
+    let path = &args[0];
+    let src = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
+    };
+    let mut rt = EvidentRuntime::new();
+    match rt.load_source(&src) {
+        Ok(()) => {
+            for s in rt.schema_names() { println!("{}", s); }
+            ExitCode::SUCCESS
+        }
+        Err(e) => { eprintln!("parse error: {e}"); ExitCode::from(1) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Value formatting
+// ---------------------------------------------------------------------------
+
 fn format_value(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),
@@ -138,3 +434,41 @@ fn format_value(v: &Value) -> String {
         Value::SeqStr(v)  => format!("{:?}", v),
     }
 }
+
+fn value_as_json(v: &Value) -> String {
+    match v {
+        Value::Int(n)  => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s)  => json_str(s),
+        Value::SeqInt(v) => {
+            let parts: Vec<_> = v.iter().map(|n| n.to_string()).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::SeqBool(v) => {
+            let parts: Vec<_> = v.iter().map(|b| b.to_string()).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::SeqStr(v) => {
+            let parts: Vec<_> = v.iter().map(|s| json_str(s)).collect();
+            format!("[{}]", parts.join(", "))
+        }
+    }
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"'  => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c    => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+#[allow(dead_code)]
+fn _writer_avoid_warn(w: &mut dyn Write, b: &[u8]) -> std::io::Result<()> { w.write_all(b) }

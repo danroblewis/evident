@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 Z3_LIB="/opt/anaconda3/lib/python3.13/site-packages/z3/lib/libz3.dylib"
-BIN="target/release/evident-runtime"
+BIN="target/release/evident"
 
 cargo build --release --quiet
 
@@ -22,10 +22,10 @@ cargo build --release --quiet
 install_name_tool -change libz3.dylib "$Z3_LIB" "$BIN" 2>/dev/null || true
 
 echo "built: $BIN"
-"$BIN" help
+"$BIN" --help
 
 if [[ $# -gt 0 ]]; then
     DEST="$1"
     cp "$BIN" "$DEST/"
-    echo "copied to: $DEST/evident-runtime"
+    echo "copied to: $DEST/evident"
 fi
