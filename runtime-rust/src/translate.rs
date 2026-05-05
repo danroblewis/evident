@@ -4,8 +4,19 @@
 use crate::ast::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use z3::ast::{Array, Ast, Bool, Int, Set, String as Z3Str};
 use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, SatResult, Solver, Sort};
+
+/// Monotonic counter used by `inline_body_items` to give each
+/// `ClaimCall` invocation a unique suffix on its Z3 const names.
+/// Without this, two invocations of the same claim share Z3 vars
+/// for the claim's internal parameters and end up contradicting.
+static CLAIM_CALL_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn next_call_id() -> u64 {
+    CLAIM_CALL_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Cache of Z3 Datatype sorts built for user types referenced as the
 /// element of `Seq(UserType)`. Built lazily on first reference. The
@@ -507,14 +518,22 @@ fn inline_body_items(
                 }
                 // Declare any of the claim's own variables that weren't
                 // bound by a mapping (the claim's "internal" parameters,
-                // like AxisPhysics's `intended` / `target`).
+                // like AxisPhysics's `intended` / `target`). Each
+                // invocation gets a per-call suffix on the Z3 name so
+                // two invocations of the same claim get distinct Z3
+                // constants — without this, both AxisPhysics calls in
+                // PlayerPhysics share one `intended` Z3 var and the
+                // x-axis vs. y-axis branches contradict → UNSAT.
+                let call_id = next_call_id();
                 for sub in &claim.body {
                     if let BodyItem::Membership { name: vname, type_name } = sub {
                         let slot_prefix = format!("{}.", vname);
                         let already_bound = inner.contains_key(vname)
                             || inner.keys().any(|k| k.starts_with(&slot_prefix));
                         if !already_bound {
-                            declare_var(ctx, solver, &mut inner, vname, type_name, schemas, Some(registry));
+                            let z3_name = format!("{}__{}__call{}", name, vname, call_id);
+                            declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                                              type_name, schemas, Some(registry));
                         }
                     }
                 }
@@ -1327,6 +1346,33 @@ fn declare_var(
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
 ) {
+    declare_var_named(ctx, solver, env, prefix, prefix, type_name, schemas, registry);
+}
+
+/// Like `declare_var`, but the Z3 const name is decoupled from the env
+/// key. Used by `ClaimCall` to give each invocation its own fresh Z3
+/// constants for the claim's *unmapped internal* variables (e.g.
+/// `AxisPhysics.intended`), so two parallel invocations don't collide.
+///
+/// Two `Int::new_const(ctx, "intended")` calls return the **same** Z3
+/// constant — the API treats names as identifiers, not tags. So when
+/// `PlayerPhysics` invokes `AxisPhysics` twice (once per axis) and
+/// each invocation declared `intended` with name `"intended"`, both
+/// shared one Z3 var; the x-axis branch and y-axis branch each tried
+/// to constrain that same var to different values → UNSAT. Passing a
+/// per-call suffix (`intended__call7`) makes the Z3 vars distinct
+/// while keeping the env key stable so the claim body's references
+/// resolve correctly.
+fn declare_var_named(
+    ctx: &'static Context,
+    solver: &Solver<'static>,
+    env: &mut HashMap<String, Var<'static>>,
+    env_key: &str,
+    z3_name: &str,
+    type_name: &str,
+    schemas: &HashMap<String, SchemaDecl>,
+    registry: Option<&DatatypeRegistry>,
+) {
     // Idempotence guard: if the leaf is already declared (Int/Bool/Seq/
     // Set/composite — anything that lands in env at this exact key),
     // don't re-declare. Sub-schemas (`state ∈ DotCollectState`) never
@@ -1339,26 +1385,27 @@ fn declare_var(
     // user-type recursion blindly re-declares `state.dots` — wiping
     // the literal `len` that `apply_seq_lengths` just installed and
     // breaking quantifier unrolling over `#state.dots`.
-    if env.contains_key(prefix) { return; }
+    if env.contains_key(env_key) { return; }
+    let prefix = z3_name;
     match type_name {
         "Int" => {
-            env.insert(prefix.to_string(), Var::IntVar(Int::new_const(ctx, prefix)));
+            env.insert(env_key.to_string(), Var::IntVar(Int::new_const(ctx, prefix)));
         }
         "Nat" => {
             let v = Int::new_const(ctx, prefix);
             solver.assert(&v.ge(&Int::from_i64(ctx, 0)));
-            env.insert(prefix.to_string(), Var::IntVar(v));
+            env.insert(env_key.to_string(), Var::IntVar(v));
         }
         "Pos" => {
             let v = Int::new_const(ctx, prefix);
             solver.assert(&v.gt(&Int::from_i64(ctx, 0)));
-            env.insert(prefix.to_string(), Var::IntVar(v));
+            env.insert(env_key.to_string(), Var::IntVar(v));
         }
         "Bool" => {
-            env.insert(prefix.to_string(), Var::BoolVar(Bool::new_const(ctx, prefix)));
+            env.insert(env_key.to_string(), Var::BoolVar(Bool::new_const(ctx, prefix)));
         }
         "String" => {
-            env.insert(prefix.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
+            env.insert(env_key.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
         }
         // Seq sorts: model as Array(Int → T) + a separate length
         // variable. Three element-type families:
@@ -1382,7 +1429,7 @@ fn declare_var(
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &range);
                     let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
                     solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
-                    env.insert(prefix.to_string(), Var::SeqVar { arr, len, elem });
+                    env.insert(env_key.to_string(), Var::SeqVar { arr, len, elem });
                 }
                 user_type if schemas.contains_key(user_type) => {
                     let Some(reg) = registry else {
@@ -1399,7 +1446,7 @@ fn declare_var(
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &dt.sort);
                     let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
                     solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
-                    env.insert(prefix.to_string(), Var::DatatypeSeqVar {
+                    env.insert(env_key.to_string(), Var::DatatypeSeqVar {
                         arr, len,
                         type_name: user_type.to_string(),
                         dt,
@@ -1423,15 +1470,22 @@ fn declare_var(
                 }
             };
             let set = Set::new_const(ctx, prefix, &eltype);
-            env.insert(prefix.to_string(), Var::SetVar { set, elem });
+            env.insert(env_key.to_string(), Var::SetVar { set, elem });
         }
         _ => {
             if let Some(schema) = schemas.get(type_name) {
-                // Expand each membership in the sub-schema's body.
+                // Expand each membership in the sub-schema's body. Both
+                // env key and Z3 name extend with the same field name —
+                // for sub-schemas, leaf-level isolation is what matters
+                // (e.g. `state.player.x`); whether `state` itself uses a
+                // fresh-suffixed Z3 name is irrelevant since the bare
+                // `state` never gets a Z3 const of its own.
                 for item in &schema.body {
                     if let BodyItem::Membership { name: field, type_name: ftype } = item {
-                        let dotted = format!("{}.{}", prefix, field);
-                        declare_var(ctx, solver, env, &dotted, ftype, schemas, registry);
+                        let dotted_env = format!("{}.{}", env_key, field);
+                        let dotted_z3  = format!("{}.{}", prefix, field);
+                        declare_var_named(ctx, solver, env, &dotted_env, &dotted_z3,
+                                          ftype, schemas, registry);
                     }
                 }
             } else {

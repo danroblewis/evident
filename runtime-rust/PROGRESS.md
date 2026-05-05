@@ -4,6 +4,36 @@
 
 ## Current status
 
+**Phase:** v1.12 — per-call fresh Z3 names for ClaimCall internals.
+94/94 internal tests (+1 regression). All eight SDL demos
+(scatter / collect / grid / anchor_collect / demo + balls / balls_anchor /
+balls_collide) now run end-to-end with zero dropped-constraint warnings
+**and** produce SAT models every step (the renderer was previously
+falling back to all-zero black on UNSAT for `anchor_collect.ev`).
+
+**Last action:** When `PlayerPhysics` invoked `AxisPhysics` twice (once
+per axis), both invocations declared the claim's unmapped internal
+parameters (`intended ∈ Int`, `target ∈ Int`) by calling
+`Int::new_const(ctx, "intended")` — and Z3 returns the **same**
+constant for the same name. So both axes' contradictory constraints
+all asserted on one shared `intended` Z3 var → UNSAT every step →
+black screen for `anchor_collect.ev`.
+
+Fix: split `declare_var(ctx, …, prefix, type_name, …)` into a thin
+wrapper around `declare_var_named(ctx, …, env_key, z3_name,
+type_name, …)`. The two diverge inside `inline_body_items`'s
+`ClaimCall` arm, which now generates a per-invocation suffix
+(`<claim>__<param>__call<N>`) for the Z3 name while keeping the env
+key stable so the claim body's references still resolve. The
+counter is a global `AtomicU64` (`CLAIM_CALL_COUNTER`) — claim calls
+are processed sequentially anyway, no contention concerns.
+
+Sub-schema declaration now also threads env_key and z3_name
+separately through the recursive walk — for sub-schemas the bare
+name (`state`) never gets a Z3 const, so the leaf-level uniqueness
+is what matters and the recursion uses `format!("{}.{}", env_key,
+field)` and `format!("{}.{}", z3_name, field)`.
+
 **Phase:** v1.11 — Cardinality folds, declare_var is idempotent,
 single-element composite-seq assignment. 93/93 internal tests
 (+2 regression tests). All four dot-collect SDL demos

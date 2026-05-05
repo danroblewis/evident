@@ -967,6 +967,36 @@ fn forall_over_cardinality_of_composite_seq() {
     }
 }
 
+/// Two ClaimCalls to the same claim must use distinct Z3 vars for the
+/// claim's unmapped internal parameters. Regression for the
+/// anchor_collect.ev black-screen bug: PlayerPhysics calls AxisPhysics
+/// twice (once per axis), and the two invocations both had Memberships
+/// for `intended` and `target`. Without per-call fresh Z3 names, both
+/// calls' `intended` mapped to the SAME Z3 const — the x-axis branch
+/// wanted `intended = 0` (no horizontal accel) and the y-axis branch
+/// wanted `intended = 0` too in this specific case, but in any
+/// scenario where the two axes' inputs differ, they contradicted →
+/// UNSAT every step → renderer fell back to all-zero/black.
+#[test]
+fn claim_call_invoked_twice_uses_distinct_internals() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        // SetVal exposes one Int output; `internal` is unmapped — each
+        // call must get its own. We invoke SetVal twice with
+        // different `out` slots and different desired values; without
+        // the fresh-name fix, `internal` collides → UNSAT.
+        "claim SetVal\n    out ∈ Int\n    target ∈ Int\n    internal ∈ Int\n    \
+         internal = target * 2\n    out = internal\n\
+         schema S\n    a ∈ Int\n    b ∈ Int\n    \
+         SetVal (out mapsto a, target mapsto 5)\n    \
+         SetVal (out mapsto b, target mapsto 9)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("a"), Some(&Value::Int(10)));
+    assert_eq!(r.bindings.get("b"), Some(&Value::Int(18)));
+}
+
 /// `seq[i] = composite_var` — single-element composite assignment into
 /// a `Seq(UserType)` slot, where `composite_var` is a flat-expanded
 /// sub-schema instance. Regression for the player-rect-placement line
