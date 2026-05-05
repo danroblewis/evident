@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use z3::ast::{Array, Ast, Bool, Int, Set, String as Z3Str};
 use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, SatResult, Solver, Sort};
 
@@ -426,6 +426,107 @@ pub struct CachedSchema<'ctx> {
     solver: Solver<'ctx>,
 }
 
+/// Recursively translate a list of body items into the solver. Used by
+/// the constraint-translation pass of both `evaluate` and `build_cache`,
+/// and also called recursively when a `Passthrough`, bare-identifier
+/// passthrough, or `ClaimCall` references another claim's body.
+///
+/// Without this, passthroughs only inlined `Constraint` items — any
+/// `ClaimCall` (e.g. `PlayerPhysics(state mapsto state.player, …)`)
+/// inside a passthrough was silently dropped. Same problem inside a
+/// `ClaimCall`: nested claim calls in the called claim's body were
+/// dropped. That broke `..DotCollectGameEngine` (no player, no physics,
+/// no background — black screen).
+///
+/// `visited` blocks recursion through cycles (`A` passthroughs `B`,
+/// `B` passthroughs `A`). Each entry is the claim name currently being
+/// inlined; we add on enter, remove on exit.
+fn inline_body_items(
+    items: &[BodyItem],
+    env: &mut HashMap<String, Var<'static>>,
+    solver: &Solver<'static>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    visited: &mut HashSet<String>,
+) {
+    for item in items {
+        match item {
+            BodyItem::Membership { name, type_name } => {
+                // Top-level Memberships are pre-declared by pass 1, so this
+                // is a no-op there. Useful when the helper recurses into a
+                // passthrough's body that introduces variables not yet in
+                // env (e.g. a nested claim's locals).
+                if !env.contains_key(name) {
+                    declare_var(ctx, solver, env, name, type_name, schemas, Some(registry));
+                }
+            }
+            // Bare-identifier-as-passthrough: `Constraint(Identifier(name))`
+            // whose name matches a known claim is treated as `..ClaimName`.
+            // Falls through to the regular Constraint arm if the name
+            // isn't a claim (e.g. a Bool variable named like a claim).
+            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
+                if visited.contains(name) { continue; }
+                let Some(claim) = schemas.get(name) else { continue };
+                visited.insert(name.clone());
+                inline_body_items(&claim.body, env, solver, schemas, ctx, registry, visited);
+                visited.remove(name);
+            }
+            BodyItem::Constraint(e) => {
+                if let Some(b) = translate_bool(e, ctx, env) {
+                    solver.assert(&b);
+                } else {
+                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {:?}", e);
+                }
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if visited.contains(claim_name) { continue; }
+                let Some(claim) = schemas.get(claim_name) else {
+                    eprintln!("warning: ..{} references unknown claim", claim_name);
+                    continue;
+                };
+                visited.insert(claim_name.clone());
+                inline_body_items(&claim.body, env, solver, schemas, ctx, registry, visited);
+                visited.remove(claim_name);
+            }
+            BodyItem::ClaimCall { name, mappings } => {
+                if visited.contains(name) { continue; }
+                let Some(claim) = schemas.get(name) else {
+                    eprintln!("warning: ClaimCall to unknown claim {}", name);
+                    continue;
+                };
+                let mut inner = env.clone();
+                for m in mappings {
+                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env);
+                    if bound.is_empty() {
+                        eprintln!("warning: mapping value didn't resolve: {:?}", m.value);
+                    }
+                    for (k, v) in bound {
+                        inner.insert(k, v);
+                    }
+                }
+                // Declare any of the claim's own variables that weren't
+                // bound by a mapping (the claim's "internal" parameters,
+                // like AxisPhysics's `intended` / `target`).
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name } = sub {
+                        let slot_prefix = format!("{}.", vname);
+                        let already_bound = inner.contains_key(vname)
+                            || inner.keys().any(|k| k.starts_with(&slot_prefix));
+                        if !already_bound {
+                            declare_var(ctx, solver, &mut inner, vname, type_name, schemas, Some(registry));
+                        }
+                    }
+                }
+                visited.insert(name.clone());
+                inline_body_items(&claim.body, &mut inner, solver, schemas, ctx, registry, visited);
+                visited.remove(name);
+            }
+            BodyItem::SubclaimDecl(_) => {}
+        }
+    }
+}
+
 /// Translate the schema's body once into a fresh solver and return a
 /// `CachedSchema` that subsequent queries can reuse via push/pop.
 pub fn build_cache(
@@ -484,60 +585,8 @@ pub fn build_cache(
     let pinned   = collect_pinned_ints(&schema.body, &no_given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
 
-    for item in &schema.body {
-        match item {
-            // Bare-identifier names-match passthrough: same logic as in
-            // pass 1; intercept Constraint(Identifier(name)) when name
-            // matches a known claim and inline the claim's constraints.
-            // Falls through to the regular Constraint arm if not.
-            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
-                if let Some(claim) = schemas.get(name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Constraint(e) = sub {
-                            if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
-                        }
-                    }
-                }
-            }
-            BodyItem::Constraint(e) => {
-                if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
-            }
-            BodyItem::Passthrough(claim_name) => {
-                if let Some(claim) = schemas.get(claim_name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Constraint(e) = sub {
-                            if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
-                        }
-                    }
-                }
-            }
-            BodyItem::ClaimCall { name, mappings } => {
-                let Some(claim) = schemas.get(name) else { continue };
-                let mut inner = env.clone();
-                for m in mappings {
-                    for (k, v) in resolve_mapping(&m.slot, &m.value, ctx, &env) {
-                        inner.insert(k, v);
-                    }
-                }
-                for sub in &claim.body {
-                    if let BodyItem::Membership { name: vname, type_name } = sub {
-                        let prefix = format!("{}.", vname);
-                        let bound = inner.contains_key(vname)
-                            || inner.keys().any(|k| k.starts_with(&prefix));
-                        if !bound {
-                            declare_var(ctx, &solver, &mut inner, vname, type_name, schemas, Some(registry));
-                        }
-                    }
-                }
-                for sub in &claim.body {
-                    if let BodyItem::Constraint(e) = sub {
-                        if let Some(b) = translate_bool(e, ctx, &inner) { solver.assert(&b); }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
+    let mut visited: HashSet<String> = HashSet::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
 
     CachedSchema { env, solver }
 }
@@ -914,90 +963,11 @@ pub fn evaluate(
     // Pass 2: translate body constraints and assert. Passthrough items
     // also contribute their included claim's constraints under the
     // current env. ClaimCall items translate their claim's body in a
-    // fresh env where each mapping slot is pre-bound.
-    for item in &schema.body {
-        match item {
-            // Bare-ident passthrough; same as build_cache. The guard
-            // (`if schemas.contains_key(name)`) keeps the existing
-            // bool-bare-ident path intact (e.g. `won` referring to a
-            // local Bool variable still translates as before).
-            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
-                if let Some(claim) = schemas.get(name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Constraint(e) = sub {
-                            if let Some(b) = translate_bool(e, ctx, &env) {
-                                solver.assert(&b);
-                            }
-                        }
-                    }
-                }
-            }
-            BodyItem::Constraint(e) => {
-                if let Some(b) = translate_bool(e, ctx, &env) {
-                    solver.assert(&b);
-                } else {
-                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {:?}", e);
-                }
-            }
-            BodyItem::Passthrough(claim_name) => {
-                if let Some(claim) = schemas.get(claim_name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Constraint(e) = sub {
-                            if let Some(b) = translate_bool(e, ctx, &env) {
-                                solver.assert(&b);
-                            }
-                        }
-                    }
-                }
-            }
-            BodyItem::ClaimCall { name, mappings } => {
-                let Some(claim) = schemas.get(name) else {
-                    eprintln!("warning: ClaimCall to unknown claim {}", name);
-                    continue;
-                };
-                // Build the inner env: start from the parent env, then
-                // bind each mapping slot. For now we only handle leaf
-                // mappings — sub-schema mapping (`state mapsto state.player`)
-                // is deferred (would need to recursively expand).
-                let mut inner = env.clone();
-                for m in mappings {
-                    let bound = resolve_mapping(&m.slot, &m.value, ctx, &env);
-                    if bound.is_empty() {
-                        eprintln!("warning: mapping value didn't resolve: {:?}", m.value);
-                    }
-                    for (k, v) in bound {
-                        inner.insert(k, v);
-                    }
-                }
-                // Declare any of the claim's own variables that weren't
-                // mapped (fresh consts — these are the claim's "internal"
-                // parameters, like AxisPhysics's `intended`/`target`).
-                // A slot counts as "already bound" if either the bare
-                // name is in env (leaf mapping) or any `slot.*` key is
-                // (sub-schema mapping like `state mapsto state.player`).
-                for sub in &claim.body {
-                    if let BodyItem::Membership { name: vname, type_name } = sub {
-                        let slot_prefix = format!("{}.", vname);
-                        let already_bound = inner.contains_key(vname)
-                            || inner.keys().any(|k| k.starts_with(&slot_prefix));
-                        if !already_bound {
-                            declare_var(ctx, &solver, &mut inner, vname, type_name, schemas, Some(registry));
-                        }
-                    }
-                }
-                // Translate the claim's constraints in the inner env.
-                for sub in &claim.body {
-                    if let BodyItem::Constraint(e) = sub {
-                        if let Some(b) = translate_bool(e, ctx, &inner) {
-                            solver.assert(&b);
-                        }
-                    }
-                }
-            }
-            BodyItem::SubclaimDecl(_) => {}
-            BodyItem::Membership { .. } => {}
-        }
-    }
+    // fresh env where each mapping slot is pre-bound. Both passthrough
+    // and ClaimCall recurse into nested claim composition (one helper
+    // unifies all four entry shapes).
+    let mut visited: HashSet<String> = HashSet::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
 
     // Pass 3: assert ground facts for each given binding. Names that
     // aren't declared in the schema are silently ignored (matches the
