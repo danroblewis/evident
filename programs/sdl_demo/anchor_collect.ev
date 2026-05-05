@@ -1,19 +1,30 @@
--- anchor_collect.ev — Collect-the-stars where the PLAYER is anchored to
--- the screen, but the DOTS stay in window coords.
+-- anchor_collect.ev — Catch the bouncing balls.
 --
--- Arrow keys move the player. The player's window-relative position is
--- pre-corrected by -window.dx / -window.dy each step before physics, so
--- when you drag the OS window the player stays put on the screen and
--- the world (the four dots) slides past underneath. Walk the player
--- over each dot to collect it; collect all four to win.
+-- Hybrid of three patterns:
+--   - balls.ev          : N moving "dots" with gravity + floor/wall/ceiling
+--                         bounce, time-scaled by input.dt
+--   - collect.ev        : player chases dots, each one collected on overlap,
+--                         all collected → win (background turns green)
+--   - balls_anchor.ev   : the player is anchored to the screen — its window
+--                         coordinates shift opposite to window.dx/dy each
+--                         step so it stays put while the world (bouncing
+--                         dots) slides past underneath
 --
--- This is a hybrid of collect.ev (player + 4 corner dots + win) and
--- balls_anchor.ev (drag compensation on positions). Doesn't extend
--- DotCollectGameEngine because that engine doesn't know about windows.
+-- Arrow keys move the player. Walk into a bouncing ball to catch it. Catch
+-- all four to win. Drag the window to make the chase harder — the balls
+-- keep bouncing in window coords while the player stays pinned to the
+-- screen, so dragging slides the targets in/out of reach.
 --
 -- Run: python evident.py execute programs/sdl_demo/anchor_collect.ev
 
 import "programs/sdl_demo/game_engine.ev"
+
+type DotState
+    pos_x     ∈ Int
+    pos_y     ∈ Int
+    vx        ∈ Int
+    vy        ∈ Int
+    collected ∈ Bool
 
 type GameState
     player ∈ PlayerState
@@ -33,9 +44,13 @@ type main
     #state_next.dots = 4
     #output.rects    = 5
 
+    -- ── State bounds for dots: same range as balls.ev. ─────────────────────
+    ∀ i ∈ {0..3} : state.dots[i].pos_x ≥ 20  ∧ state.dots[i].pos_x ≤ 740
+    ∀ i ∈ {0..3} : state.dots[i].pos_y ≥ 20  ∧ state.dots[i].pos_y ≤ 540
+    ∀ i ∈ {0..3} : state.dots[i].vx    ≥ -800 ∧ state.dots[i].vx    ≤ 800
+    ∀ i ∈ {0..3} : state.dots[i].vy    ≥ -800 ∧ state.dots[i].vy    ≤ 800
+
     -- ── Drag-compensated player state, fed into PlayerPhysics. ─────────────
-    -- Position is shifted opposite the window's per-step movement; velocity
-    -- carries through unchanged.
     dragged_player ∈ PlayerState
     dragged_player.x  = state.player.x - window.dx
     dragged_player.y  = state.player.y - window.dy
@@ -46,21 +61,31 @@ type main
     PlayerRect     (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
     GameBackground (bg mapsto output.bg, won mapsto state.won)
 
-    -- ── Four corner dots in window coords (constants reasserted each step).
-    state.dots[0].pos_x = 80   ∧ state.dots[0].pos_y = 80
-    state.dots[1].pos_x = 660  ∧ state.dots[1].pos_y = 80
-    state.dots[2].pos_x = 80   ∧ state.dots[2].pos_y = 460
-    state.dots[3].pos_x = 660  ∧ state.dots[3].pos_y = 460
-    ∀ i ∈ {0..3} : state_next.dots[i].pos_x = state.dots[i].pos_x
-    ∀ i ∈ {0..3} : state_next.dots[i].pos_y = state.dots[i].pos_y
+    -- ── Effective vy for each dot: gravity-incremented, clamped to ±800. ──
+    effective_vy ∈ Seq(Int)
+    #effective_vy = 4
+    ∀ i ∈ {0..3} : (state.dots[i].vy + 600 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
+    ∀ i ∈ {0..3} : (state.dots[i].vy + 600 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
+    ∀ i ∈ {0..3} : ((state.dots[i].vy + 600 * input.dt / 1000) ≥ -800 ∧ (state.dots[i].vy + 600 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.dots[i].vy + 600 * input.dt / 1000
 
-    -- ── Per-dot rendering: dot i ↔ output.rects[i]; hidden once collected.
-    ∀ i ∈ {0..3} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x ∧ output.rects[i].y = state.dots[i].pos_y ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
+    -- ── Y-axis physics for dots: floor/ceiling clamp/bounce. ───────────────
+    ∀ i ∈ {0..3} : (state.dots[i].pos_y + effective_vy[i] * input.dt / 1000) > 540 ⇒ (state_next.dots[i].pos_y = 540 ∧ state_next.dots[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.dots[i].pos_y + effective_vy[i] * input.dt / 1000) < 20  ⇒ (state_next.dots[i].pos_y = 20  ∧ state_next.dots[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.dots[i].pos_y + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (state.dots[i].pos_y + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.dots[i].pos_y = state.dots[i].pos_y + effective_vy[i] * input.dt / 1000 ∧ state_next.dots[i].vy = effective_vy[i])
+
+    -- ── X-axis physics for dots: wall clamp/bounce, no gravity. ────────────
+    ∀ i ∈ {0..3} : (state.dots[i].pos_x + state.dots[i].vx * input.dt / 1000) > 740 ⇒ (state_next.dots[i].pos_x = 740 ∧ state_next.dots[i].vx = (0 - state.dots[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.dots[i].pos_x + state.dots[i].vx * input.dt / 1000) < 20  ⇒ (state_next.dots[i].pos_x = 20  ∧ state_next.dots[i].vx = (0 - state.dots[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.dots[i].pos_x + state.dots[i].vx * input.dt / 1000) ≥ 20 ∧ (state.dots[i].pos_x + state.dots[i].vx * input.dt / 1000) ≤ 740) ⇒ (state_next.dots[i].pos_x = state.dots[i].pos_x + state.dots[i].vx * input.dt / 1000 ∧ state_next.dots[i].vx = state.dots[i].vx)
+
+    -- ── Per-dot rendering, paired by index. Hidden once collected. ─────────
+    ∀ i ∈ {0..3} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x - 12 ∧ output.rects[i].y = state.dots[i].pos_y - 12 ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
     ∀ i ∈ {0..3} : state.dots[i].collected = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
 
     output.rects[4] = player_rect
 
-    -- ── Per-dot collection: bounding-box overlap on player position. ───────
+    -- ── Collection: bounding-box overlap on player position. Once a dot
+    -- is collected, stay collected.
     ∀ i ∈ {0..3} : (state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = true
     ∀ i ∈ {0..3} : ¬(state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = state.dots[i].collected
 
