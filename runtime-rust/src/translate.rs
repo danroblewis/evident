@@ -64,9 +64,6 @@ enum Var<'ctx> {
 }
 
 impl<'ctx> Var<'ctx> {
-    fn as_int(&self) -> Option<&Int<'ctx>> {
-        match self { Var::IntVar(i) => Some(i), _ => None }
-    }
     fn as_bool(&self) -> Option<&Bool<'ctx>> {
         match self { Var::BoolVar(b) => Some(b), _ => None }
     }
@@ -234,6 +231,12 @@ pub fn run_cached<'ctx>(
             (Var::IntVar(v),  Value::Int(n))  => cached.solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            // PinnedInt was already folded in via apply_pinned_ints from
+            // this same given value, so the assertion is redundant. If
+            // the values disagree (caller passes a different int after a
+            // body equality pinned the var), force UNSAT.
+            (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
+            (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => eprintln!("warning: type mismatch for given {:?}", name),
         }
     }
@@ -426,6 +429,11 @@ pub fn evaluate(
             (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(&ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(&ctx, *b))),
             (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(&ctx, s).expect("nul in str"))),
+            // PinnedInt was already folded in via apply_pinned_ints from
+            // this same given value — assertion is redundant. If values
+            // disagree, force UNSAT.
+            (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
+            (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(&ctx, false)),
             _ => eprintln!("warning: type mismatch for given {:?}", name),
         }
     }
