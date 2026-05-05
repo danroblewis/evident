@@ -48,11 +48,22 @@ enum Var<'ctx> {
     BoolVar(Bool<'ctx>),
     StrVar(Z3Str<'ctx>),
     SeqVar { arr: Array<'ctx>, len: Int<'ctx>, elem: SeqElem },
+    /// Compile-time literal int. Mirrors Python's "value pre-bound in env"
+    /// pattern: certain names are known to equal a specific integer
+    /// before the solver runs (from `given` + literal-equality body
+    /// constraints + length propagation `n = #seq` where #seq is also
+    /// pinned). Translating an Identifier bound to PinnedInt yields a
+    /// Z3 IntVal, which lets `literal_range` recover the value via
+    /// simplify+as_i64. Without this, `∀ i ∈ {0..n - 1}` couldn't unroll.
+    PinnedInt(i64),
 }
 
 impl<'ctx> Var<'ctx> {
     fn as_int(&self) -> Option<&Int<'ctx>> {
         match self { Var::IntVar(i) => Some(i), _ => None }
+    }
+    fn as_pinned_int(&self) -> Option<i64> {
+        match self { Var::PinnedInt(v) => Some(*v), _ => None }
     }
     fn as_bool(&self) -> Option<&Bool<'ctx>> {
         match self { Var::BoolVar(b) => Some(b), _ => None }
@@ -150,6 +161,14 @@ pub fn build_cache<'ctx>(
         }
     }
 
+    // Pass 1.5: pin literal-int vars (no givens for build_cache — those
+    // come per-query). Lets `∀ i ∈ {0..n - 1}` unroll when n is fixed by
+    // a `n = literal` constraint or via #seq length propagation.
+    let no_given: HashMap<String, Value> = HashMap::new();
+    let seq_lens = collect_seq_lengths(&schema.body, &no_given);
+    let pinned   = collect_pinned_ints(&schema.body, &no_given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+
     for item in &schema.body {
         match item {
             BodyItem::Constraint(e) => {
@@ -239,6 +258,9 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::PinnedInt(v) => {
+                        bindings.insert(name.clone(), Value::Int(*v));
+                    }
                 }
             }
         }
@@ -304,6 +326,13 @@ pub fn evaluate(
             BodyItem::Constraint(_) => {}
         }
     }
+
+    // Pass 1.5: pin literal-int vars from `given` + body equalities +
+    // #seq length propagation. Quantifier ranges over those names then
+    // unroll because translate_int yields literal IntVals.
+    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
 
     // Pass 2: translate body constraints and assert. Passthrough items
     // also contribute their included claim's constraints under the
@@ -423,11 +452,140 @@ pub fn evaluate(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::PinnedInt(v) => {
+                        bindings.insert(name.clone(), Value::Int(*v));
+                    }
                 }
             }
         }
     }
     EvalResult { satisfied, bindings }
+}
+
+/// Pre-scan the schema body and `given` for variables that can be
+/// pinned to a literal int *before* the solver runs:
+///
+///   - any `given` entry of value `Value::Int(n)` → `name → n`
+///   - any body constraint of shape `name = literal_int_expr` (or
+///     reverse) where the literal side resolves to a constant under
+///     the names already pinned → `name → value`
+///   - any body constraint of shape `name = #seq` where `#seq`'s
+///     length itself reduces (e.g. via a sibling `#seq = N` constraint)
+///     → `name → length` (length-propagation, mirrors Python's Pass 3)
+///
+/// Iterates to a fixed point so chains like `n = #s ∧ #s = 4 ∧ k = n - 1`
+/// all resolve. The result is fed into `apply_pinned_ints` to upgrade
+/// env entries to `Var::PinnedInt`, which lets `literal_range` unroll
+/// quantifiers like `∀ i ∈ {0..n - 1}` even when `n` is symbolic.
+fn collect_pinned_ints(
+    body: &[BodyItem],
+    given: &HashMap<String, Value>,
+    seq_lengths: &HashMap<String, i64>,
+) -> HashMap<String, i64> {
+    let mut pinned: HashMap<String, i64> = HashMap::new();
+    for (k, v) in given {
+        if let Value::Int(n) = v { pinned.insert(k.clone(), *n); }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for item in body {
+            if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+                for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                    if let Expr::Identifier(name) = a.as_ref() {
+                        if !pinned.contains_key(name) {
+                            // Try as a pure-int expression over already-pinned
+                            // names + literal Ints + #seq lengths.
+                            if let Some(v) = eval_pure_int(b, &pinned, seq_lengths) {
+                                pinned.insert(name.clone(), v);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pinned
+}
+
+/// Pure constant-folding evaluator over Int expressions. Honors PinnedInt
+/// names, literal Ints, arithmetic, and `#seq` references whose lengths
+/// are concrete in `seq_lengths`.
+fn eval_pure_int(
+    e: &Expr,
+    pinned: &HashMap<String, i64>,
+    seq_lengths: &HashMap<String, i64>,
+) -> Option<i64> {
+    match e {
+        Expr::Int(n) => Some(*n),
+        Expr::Identifier(name) => pinned.get(name).copied(),
+        Expr::Cardinality(inner) => match inner.as_ref() {
+            Expr::Identifier(name) => seq_lengths.get(name).copied(),
+            _ => None,
+        },
+        Expr::Binary(op, lhs, rhs) => {
+            let l = eval_pure_int(lhs, pinned, seq_lengths)?;
+            let r = eval_pure_int(rhs, pinned, seq_lengths)?;
+            Some(match op {
+                BinOp::Add => l.checked_add(r)?,
+                BinOp::Sub => l.checked_sub(r)?,
+                BinOp::Mul => l.checked_mul(r)?,
+                BinOp::Div => if r == 0 { return None } else { l / r },
+                _ => return None,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Pre-scan body for `#seq = literal_int` constraints. Mirrors Python's
+/// "Pass 3" length propagation. The returned map is consumed by
+/// `collect_pinned_ints` so e.g. `n = #s` resolves through it.
+fn collect_seq_lengths(
+    body: &[BodyItem],
+    given: &HashMap<String, Value>,
+) -> HashMap<String, i64> {
+    let mut out = HashMap::new();
+    // Seq lengths from `given` Seq values are exact.
+    for (k, v) in given {
+        let len = match v {
+            Value::SeqInt(v)  => v.len() as i64,
+            Value::SeqBool(v) => v.len() as i64,
+            Value::SeqStr(v)  => v.len() as i64,
+            _ => continue,
+        };
+        out.insert(k.clone(), len);
+    }
+    // From body: `#seq = N` (or `N = #seq`) where N is a literal Int.
+    for item in body {
+        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+            for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                if let Expr::Cardinality(inner) = a.as_ref() {
+                    if let Expr::Identifier(name) = inner.as_ref() {
+                        if let Expr::Int(n) = b.as_ref() {
+                            out.insert(name.clone(), *n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Replace env entries for pinned names with `Var::PinnedInt(value)`.
+/// The replacement is a no-op for names not in env (e.g. a `n = 5`
+/// constraint where `n` was never declared with `n ∈ ...`).
+fn apply_pinned_ints<'ctx>(
+    env: &mut HashMap<String, Var<'ctx>>,
+    pinned: &HashMap<String, i64>,
+) {
+    for (name, value) in pinned {
+        if env.contains_key(name) {
+            env.insert(name.clone(), Var::PinnedInt(*value));
+        }
+    }
 }
 
 /// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
@@ -489,14 +647,28 @@ fn expr_as_var<'ctx>(
     }
 }
 
-/// Resolve `Range(Int, Int)` to a `(lo, hi)` pair. Returns None if
-/// either bound isn't a literal Int (we don't support symbolic ∀ bounds
-/// yet — would need the Python length-propagation shim).
-fn literal_range(e: &Expr) -> Option<(i64, i64)> {
+/// Resolve `Range(lo, hi)` to a `(lo, hi)` literal pair.
+///
+/// Both bounds are evaluated through `translate_int` (so identifiers
+/// bound to `Var::PinnedInt` resolve to literal `IntVal`s and arithmetic
+/// over them folds), then Z3 `simplify` reduces to a literal that
+/// `as_i64` can extract. Returns None if either bound stays symbolic
+/// (no PinnedInt for it) or the simplified form isn't a literal.
+///
+/// This is what enables `∀ i ∈ {0..n - 1}` when n is bound to a
+/// concrete value via `n = #seq` length propagation, `n = 4`
+/// pinning, or a `given` value.
+fn literal_range<'ctx>(
+    e: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<(i64, i64)> {
     if let Expr::Range(lo, hi) = e {
-        if let (Expr::Int(l), Expr::Int(h)) = (lo.as_ref(), hi.as_ref()) {
-            return Some((*l, *h));
-        }
+        let lo_z3 = translate_int(lo, ctx, env)?;
+        let hi_z3 = translate_int(hi, ctx, env)?;
+        let lo_v = lo_z3.simplify().as_i64()?;
+        let hi_v = hi_z3.simplify().as_i64()?;
+        return Some((lo_v, hi_v));
     }
     None
 }
@@ -597,7 +769,11 @@ fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
 fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
     match e {
         Expr::Int(n) => Some(Int::from_i64(ctx, *n)),
-        Expr::Identifier(name) => env.get(name).and_then(|v| v.as_int().cloned()),
+        Expr::Identifier(name) => match env.get(name) {
+            Some(Var::IntVar(i)) => Some(i.clone()),
+            Some(Var::PinnedInt(v)) => Some(Int::from_i64(ctx, *v)),
+            _ => None,
+        },
         Expr::Binary(op, lhs, rhs) => {
             let l = translate_int(lhs, ctx, env)?;
             let r = translate_int(rhs, ctx, env)?;
@@ -669,10 +845,10 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
             Some(Bool::or(ctx, &refs))
         }
 
-        // `∀ i ∈ {lo..hi} : body` / `∃ …`: unroll when the range is a
-        // pair of integer literals.
+        // `∀ i ∈ {lo..hi} : body` / `∃ …`: unroll when the range
+        // resolves to a literal pair (after PinnedInt substitution).
         Expr::Forall(var, range, body) | Expr::Exists(var, range, body) => {
-            let (lo, hi) = literal_range(range)?;
+            let (lo, hi) = literal_range(range, ctx, env)?;
             let mut clauses: Vec<Bool> = Vec::new();
             for i in lo..=hi {
                 let mut env2 = env_clone(env);

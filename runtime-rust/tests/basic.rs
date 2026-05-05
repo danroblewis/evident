@@ -385,6 +385,52 @@ fn seq_with_quantifier() {
     assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![5, 7, 9])));
 }
 
+/// Symbolic ∀ bound: `∀ i ∈ {0..n - 1}` where n is pinned by a literal
+/// equality (`n = 4`) should unroll into 4 instances.
+#[test]
+fn forall_symbolic_bound_via_pinned_var() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    n = 4\n    s ∈ Seq(Int)\n    #s = n\n    \
+         ∀ i ∈ {0..n - 1} : s[i] = i + 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("n"), Some(&Value::Int(4)));
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![10, 11, 12, 13])));
+}
+
+/// Length-propagation: `n = #s` and `#s = 5` together pin n.
+#[test]
+fn forall_symbolic_bound_via_length_propagation() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    s ∈ Seq(Int)\n    #s = 3\n    n = #s\n    \
+         ∀ i ∈ {0..n - 1} : s[i] = 100\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("n"), Some(&Value::Int(3)));
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![100, 100, 100])));
+}
+
+/// Symbolic bound from a `given` value (the key per-step path that the
+/// Python executor needs).
+#[test]
+fn forall_symbolic_bound_from_given() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    s ∈ Seq(Int)\n    #s = n\n    \
+         ∀ i ∈ {0..n - 1} : s[i] = i * 2\n"
+    ).unwrap();
+    let mut g = HashMap::new();
+    g.insert("n".to_string(), Value::Int(5));
+    let r = rt.query("S", &g).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![0, 2, 4, 6, 8])));
+}
+
 /// Length-of-sequence in arithmetic: `#s + 1 = 5` should pin length to 4.
 #[test]
 fn seq_cardinality_in_arithmetic() {

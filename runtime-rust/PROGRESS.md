@@ -4,14 +4,22 @@
 
 ## Current status
 
-**Phase:** v0.9 — CLI binary added. 43/43 tests green (5 unit + 34 lib + 4 CLI).
+**Phase:** v1.0 — symbolic ∀ bounds via length propagation.
+47/47 tests green (5 unit + 37 lib + 5 CLI).
 
-**Last action:** Added `src/main.rs` with `query` and `parse`
-subcommands. `cargo run -- query file.ev SchemaName --given key=value`
-loads, parses, evaluates, and prints `KEY=VALUE` lines (or `UNSAT`).
-4 new tests spawn the compiled binary and check stdout / exit codes.
+**Last action:** Added the Python-runtime "Pass 1/2/3" length-propagation
+shim. New `Var::PinnedInt(i64)` variant lets known-literal int names
+participate in compile-time arithmetic — `translate_int` of a PinnedInt
+identifier is `Int::from_i64(v)`, and `literal_range` now consults
+`translate_int + Z3 simplify` so `∀ i ∈ {0..n - 1}` unrolls when n is
+pinned by:
+  - `given` (per-query)
+  - `n = literal_int_expr` body constraint (build-time)
+  - `n = #seq` propagation when `#seq = N` is also pinned
+  - any chain of those, iterated to fixed point
 
-**Phase:** v0.8 — Seq runtime support landed. 34/34 tests green.
+3 new tests cover the three pin paths: pinned-via-equality,
+length-propagation, and given-value.
 
 **Last action:** `Seq(Int)` / `Seq(Bool)` / `Seq(String)` now actually
 declare and translate at runtime. We didn't end up using Z3's native
@@ -156,6 +164,11 @@ Done in this session:
 - [x] **CLI** — `evident-runtime query <file> <name> [--given …]`
       and `evident-runtime parse <file>`. Spawns-binary integration
       tests verify stdout + exit codes.
+- [x] **Symbolic ∀ bounds via length propagation.** `Var::PinnedInt`
+      variant + `collect_pinned_ints` / `collect_seq_lengths` /
+      `apply_pinned_ints` pre-pass. `literal_range` reduced to
+      `translate_int + Z3 simplify`. Iterates to fixed point so
+      chains like `n = #s ∧ #s = 4 ∧ k = n - 1` all resolve.
 
 In rough order of leverage:
 
@@ -211,6 +224,9 @@ All in `tests/basic.rs`. 16/16 passing.
 | `seq_string_basic`                   | `Seq(String)` round-trips              |
 | `seq_with_quantifier`                | `∀ i ∈ {0..N} : s[i] > 0`              |
 | `seq_cardinality_in_arithmetic`      | `#s + 1 = 5` pins length               |
+| `forall_symbolic_bound_via_pinned_var` | `n = 4 ∧ ∀ i ∈ {0..n-1}` unrolls    |
+| `forall_symbolic_bound_via_length_propagation` | `n = #s ∧ #s = 3` chains      |
+| `forall_symbolic_bound_from_given`   | per-query `given` n=5 unrolls bound    |
 
 **`tests/cli.rs` (4)** — spawns the compiled binary:
 
