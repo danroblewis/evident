@@ -89,9 +89,24 @@ fn eval_pure_int(
     }
 }
 
-/// Pre-scan body for `#seq = literal_int` constraints. Mirrors Python's
-/// "Pass 3" length propagation. The returned map is consumed by
-/// `collect_pinned_ints` so e.g. `n = #s` resolves through it.
+/// Pre-scan body for sequence-length pins. Three pin shapes:
+///
+///   - `given` value with a `Value::Seq*` payload — length comes from
+///     the Vec.
+///   - `seq = ⟨e1, e2, …⟩` — pins `#seq` to the literal's arity.
+///   - `#seq = expr` (or `expr = #seq`) where `expr` reduces to a
+///     literal int via `eval_pure_int`. This includes the simple case
+///     `#seq = 5` AND chains like `#b = #a` and `#b = #a + 1`. Iterates
+///     to a fixed point so a chain of N cardinality references resolves
+///     in N passes.
+///
+/// The chained form is what makes `#state_next.cells = #state.cells`
+/// work — the natural state-forwarding shape for stateful programs.
+/// Without it, only `#state.cells` would be pinned and any quantifier
+/// over `#state_next.cells` would silently drop.
+///
+/// Result is consumed by `collect_pinned_ints` so e.g. `n = #s` resolves
+/// through it via `eval_pure_int`'s `seq_lengths` lookup.
 pub(super) fn collect_seq_lengths(
     body: &[BodyItem],
     given: &HashMap<String, Value>,
@@ -107,23 +122,38 @@ pub(super) fn collect_seq_lengths(
         };
         out.insert(k.clone(), len);
     }
-    // From body: `#seq = N` (or `N = #seq`) where N is a literal Int,
-    // or `seq = ⟨…⟩` (sequence literal pins length to its arity).
-    for item in body {
-        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
-            for (a, b) in [(lhs, rhs), (rhs, lhs)] {
-                if let Expr::Cardinality(inner) = a.as_ref() {
-                    if let Expr::Identifier(name) = inner.as_ref() {
-                        if let Expr::Int(n) = b.as_ref() {
-                            out.insert(name.clone(), *n);
+    // Iterate body to a fixed point. Each pass walks every Eq constraint
+    // looking for a cardinality LHS whose other side reduces to a literal
+    // int under the lengths discovered so far. `pinned` is empty here —
+    // pinned-int discovery happens later, in `collect_pinned_ints`,
+    // which DOES see the `out` map we return.
+    let no_pinned: HashMap<String, i64> = HashMap::new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for item in body {
+            if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+                for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                    // `#name = pure-int-expr` (including `#name = #other`).
+                    if let Expr::Cardinality(inner) = a.as_ref() {
+                        if let Expr::Identifier(name) = inner.as_ref() {
+                            if !out.contains_key(name) {
+                                if let Some(v) = eval_pure_int(b, &no_pinned, &out) {
+                                    out.insert(name.clone(), v);
+                                    changed = true;
+                                }
+                            }
                         }
                     }
-                }
-                // `seq_var = ⟨e1, e2, …⟩` pins #seq_var to items.len().
-                if let (Expr::Identifier(name), Expr::SeqLit(items)) =
-                    (a.as_ref(), b.as_ref())
-                {
-                    out.insert(name.clone(), items.len() as i64);
+                    // `seq_var = ⟨e1, e2, …⟩` pins #seq_var to items.len().
+                    if let (Expr::Identifier(name), Expr::SeqLit(items)) =
+                        (a.as_ref(), b.as_ref())
+                    {
+                        if !out.contains_key(name) {
+                            out.insert(name.clone(), items.len() as i64);
+                            changed = true;
+                        }
+                    }
                 }
             }
         }

@@ -1020,6 +1020,37 @@ fn seq_index_assign_composite_var() {
     assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
 }
 
+/// `#b = #a` chains seq-length pinning. Without this, only `#a` is
+/// known and the quantifier `∀ i ∈ {0..#b - 1}` silently drops
+/// because the upper bound stays symbolic. Natural shape for
+/// state-forwarding: `#state_next.cells = #state.cells`.
+#[test]
+fn seq_length_chain_via_cardinality_eq() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    a ∈ Seq(Int)\n    b ∈ Seq(Int)\n    \
+         #a = 5\n    #b = #a\n    \
+         ∀ i ∈ {0..#b - 1} : b[i] = i * 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("b"), Some(&Value::SeqInt(vec![0, 10, 20, 30, 40])));
+}
+
+/// Multi-hop chain: `#c = #b + 1` after `#b = #a` after `#a = 4`.
+#[test]
+fn seq_length_chain_arithmetic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    a ∈ Seq(Int)\n    b ∈ Seq(Int)\n    c ∈ Seq(Int)\n    \
+         #a = 4\n    #b = #a\n    #c = #b + 1\n    \
+         ∀ i ∈ {0..#c - 1} : c[i] = i\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("c"), Some(&Value::SeqInt(vec![0, 1, 2, 3, 4])));
+}
+
 /// `∀`/`∃` are valid expressions wherever `⇒` is. Regression for the
 /// rule30.ev demo: `state.step = 0 ⇒ ∀ i ∈ {0..N} : seed[i] = ...`
 /// previously failed with "expected expression, got ForAll" because
