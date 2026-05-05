@@ -8,12 +8,23 @@ implementation of the Evident language, regardless of language or runtime.
 
 import json
 import os
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+
+# Pluggable CLI binary. Default = the Python reference implementation.
+# Override via env var to run the same suite against another binary, e.g.
+# the Rust port:
+#   EVIDENT_CMD="$PWD/runtime-rust/target/release/evident" pytest tests/conformance/
+# The value is split with shlex.split() so multi-word commands (the
+# default `python3 evident.py`) work as a single string.
+_DEFAULT_CMD = 'python3 evident.py'
+EVIDENT_CMD = shlex.split(os.environ.get('EVIDENT_CMD', _DEFAULT_CMD))
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +34,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 def _evident(*args: str, stdin: str | None = None, timeout: int = 30) -> subprocess.CompletedProcess:
     """Run the evident CLI with the given arguments."""
     return subprocess.run(
-        ['python3', 'evident.py', *args],
+        [*EVIDENT_CMD, *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -58,12 +69,19 @@ def query(source: str, schema: str, given: dict[str, Any] | None = None,
         raw = result.stdout.strip()
         if result.returncode == 0 and raw:
             parsed = json.loads(raw)
-            # SAT: just the bindings dict
+            # Two SAT shapes are accepted so the same suite runs against
+            # either the Python reference or the Rust port:
+            #   Python: `{<binding>: <value>, ...}` (just the bindings)
+            #   Rust:   `{"satisfied": true, "bindings": {<binding>: <value>}}`
+            if isinstance(parsed, dict) and 'satisfied' in parsed and 'bindings' in parsed:
+                return {'satisfied': bool(parsed['satisfied']),
+                        'bindings': parsed.get('bindings') or {}}
             return {'satisfied': True, 'bindings': parsed}
         elif raw:
             parsed = json.loads(raw)
             if 'satisfied' in parsed:
-                return {'satisfied': parsed['satisfied'], 'bindings': {}}
+                return {'satisfied': parsed['satisfied'],
+                        'bindings': parsed.get('bindings') or {}}
         return {'satisfied': False, 'bindings': {}}
     except (json.JSONDecodeError, Exception) as e:
         return {'satisfied': False, 'bindings': {}, '_error': str(e)}

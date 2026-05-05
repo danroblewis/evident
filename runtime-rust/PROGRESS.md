@@ -4,6 +4,36 @@
 
 ## Current status
 
+**Phase:** v1.10 — build/run-standalone fix + parent conformance suite
+wired in. 91/91 internal Rust tests still green; the parent project's
+`tests/conformance/test_language.py` (75 black-box CLI tests) is now
+runnable against the Rust binary via a shared `EVIDENT_CMD` env var.
+Current score against the Rust binary: **44/75 pass, 31 fail** — each
+red line is a real gap in the Rust port (Real, chained comparison,
+∃!/none quantifiers, range-membership, set comprehension, subset,
+tuple membership, enums, regex, seq concat/literal exhaustively,
+notation, schema params, forward rules). The string `++` test passes
+now; it would have caught the missing operator pre-v1.8.
+
+**Last action:** Two unrelated fixes that landed together:
+
+  - **Standalone binary from `cargo build --release`.** `libz3.dylib`
+    has a bare install_name, so dyld won't find it through `-rpath`
+    and ld-prime (Xcode 15+) refuses `-Wl,-change`. New
+    `runtime-rust/scripts/cc-wrapper.sh` wraps `cc`, runs the link,
+    then immediately patches the output's libz3 load command via
+    `install_name_tool -change`. `.cargo/config.toml` registers it as
+    the linker for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
+    Result: `cargo build --release && target/release/evident --help`
+    now works with no manual step.
+  - **Bilingual conformance harness.** Modified
+    `tests/conformance/conftest.py`: (a) `EVIDENT_CMD` env var picks
+    the binary (default `python3 evident.py`); (b) the SAT JSON
+    parser accepts both Python's bare-bindings shape and the Rust
+    binary's `{"satisfied": true, "bindings": {...}}` shape. Run
+    against Rust: `EVIDENT_CMD="$PWD/runtime-rust/target/release/evident"
+    pytest tests/conformance/test_language.py`.
+
 **Phase:** v1.9 — composite-element seq literal assignment. 91/91 tests
 green (+2 lib tests on top of v1.8's 89). Combined with v1.8's `++`/`∉`/`∋`,
 this lets the SDL `programs/sdl_demo/demo.ev` translate end-to-end (the

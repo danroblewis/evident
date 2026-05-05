@@ -9,3 +9,15 @@
 Z3_SYS_Z3_HEADER       = "/opt/anaconda3/lib/python3.13/site-packages/z3/include/z3.h"
 LIBRARY_PATH           = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
 DYLD_LIBRARY_PATH      = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+
+# Use a wrapper around `cc` for the link step so the produced binary's
+# libz3.dylib load command is rewritten to an absolute path immediately
+# after linking. ld-prime can't do this at link time and cargo has no
+# post-build hook — wrapping `cc` is the cleanest fix. Result:
+# `cargo build --release` produces a runnable binary with no manual
+# `install_name_tool` step.
+[target.aarch64-apple-darwin]
+linker = "scripts/cc-wrapper.sh"
+
+[target.x86_64-apple-darwin]
+linker = "scripts/cc-wrapper.sh"
