@@ -771,3 +771,39 @@ fn nested_composite_shared_across_siblings() {
     };
     assert_eq!(color.get("r"), Some(&Value::Int(128)));
 }
+
+/// Bare claim names in a body act as a names-match passthrough — same
+/// as `..ClaimName`. The Python runtime always allowed this; the Rust
+/// runtime previously required the explicit `..` prefix. Resolution
+/// happens at translate time (the parser leaves bare idents as
+/// `Constraint(Identifier(...))` because it can't tell at parse time
+/// whether a bare ident names a claim or a Bool variable).
+#[test]
+fn bare_claim_name_is_passthrough() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim is_positive\n    n ∈ Nat\n    n > 0\n\
+         schema S\n    n ∈ Nat\n    is_positive\n    n < 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(v)) = r.bindings.get("n") {
+        assert!(*v > 0 && *v < 10);
+    } else { panic!(); }
+}
+
+/// Negative case: a bare ident that is NOT a known claim still routes
+/// through the existing bool-bare-ident translation. `flag` here is a
+/// Bool variable; naming it as a body item asserts `flag = true`. Used
+/// to guard against the translate-time resolver swallowing bool vars.
+#[test]
+fn bare_bool_var_still_works_after_passthrough_change() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("schema S\n    flag ∈ Bool\n    flag\n").unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    match r.bindings.get("flag") {
+        Some(Value::Bool(true)) => {}
+        other => panic!("expected flag=true, got {:?}", other),
+    }
+}

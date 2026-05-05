@@ -455,6 +455,23 @@ pub fn build_cache(
                     }
                 }
             }
+            // Bare-identifier names-match passthrough: a `BodyItem::Constraint(
+            // Identifier(name))` whose `name` is a known claim/type behaves
+            // exactly like `..ClaimName`. The parser leaves bare idents as
+            // Constraint(Identifier(...)) because it can't disambiguate at
+            // parse time (the same shape might be a Bool variable). We
+            // resolve here, where `schemas` is in scope.
+            BodyItem::Constraint(Expr::Identifier(name)) => {
+                if let Some(claim) = schemas.get(name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name } = sub {
+                            if !env.contains_key(name) {
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -469,6 +486,19 @@ pub fn build_cache(
 
     for item in &schema.body {
         match item {
+            // Bare-identifier names-match passthrough: same logic as in
+            // pass 1; intercept Constraint(Identifier(name)) when name
+            // matches a known claim and inline the claim's constraints.
+            // Falls through to the regular Constraint arm if not.
+            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
+                if let Some(claim) = schemas.get(name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Constraint(e) = sub {
+                            if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
+                        }
+                    }
+                }
+            }
             BodyItem::Constraint(e) => {
                 if let Some(b) = translate_bool(e, ctx, &env) { solver.assert(&b); }
             }
@@ -751,6 +781,21 @@ pub fn evaluate(
                 // they're registered into the runtime's schemas table at
                 // load time so other items can reference them.
             }
+            // Bare-identifier names-match passthrough (see build_cache for
+            // the rationale): a `Constraint(Identifier(name))` whose name
+            // is a known claim/type is treated as `..ClaimName`. Adds any
+            // of the claim's own variables that aren't already in env.
+            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
+                if let Some(claim) = schemas.get(name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name } = sub {
+                            if !env.contains_key(name) {
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                            }
+                        }
+                    }
+                }
+            }
             BodyItem::Constraint(_) => {}
         }
     }
@@ -768,6 +813,21 @@ pub fn evaluate(
     // fresh env where each mapping slot is pre-bound.
     for item in &schema.body {
         match item {
+            // Bare-ident passthrough; same as build_cache. The guard
+            // (`if schemas.contains_key(name)`) keeps the existing
+            // bool-bare-ident path intact (e.g. `won` referring to a
+            // local Bool variable still translates as before).
+            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
+                if let Some(claim) = schemas.get(name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Constraint(e) = sub {
+                            if let Some(b) = translate_bool(e, ctx, &env) {
+                                solver.assert(&b);
+                            }
+                        }
+                    }
+                }
+            }
             BodyItem::Constraint(e) => {
                 if let Some(b) = translate_bool(e, ctx, &env) {
                     solver.assert(&b);

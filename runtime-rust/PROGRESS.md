@@ -4,8 +4,8 @@
 
 ## Current status
 
-**Phase:** v1.6 — nested composite fields inside `Seq(UserType)`.
-70/70 tests green (11 lib + 44 lib-style + 10 CLI + 5 sample).
+**Phase:** v1.6 — nested composite fields + execute CLI flags + bare-claim
+names-match passthrough. 73/73 tests green (3 parallel slices merged).
 
 **Last action:** Generalized the Datatype builder so a user struct
 referenced as a `Seq(UserType)` element can itself contain nested
@@ -39,6 +39,38 @@ This unblocks the SDL output type: `SDLOutput.rects ∈ Seq(SDLRect)`
 where SDLRect has a nested `color ∈ Color` field now extracts as
 `Value::SeqComposite(Vec<HashMap>)` with each map containing
 `color → Value::Composite({r, g, b})`.
+**Last action (slice 2 of v1.6):** Two small surface-area additions.
+
+  1. `cmd_execute` in `runtime-rust/src/main.rs` now accepts the same
+     flag set as Python's `evident.py execute`:
+     `--width N` (default 800), `--height N` (default 600),
+     `--title S` (default "Evident"), `--host H` (default 127.0.0.1),
+     `--port P` (default 8080). New `ExecuteOpts` struct + dedicated
+     `parse_execute_flags` parser. `--width / --height / --title` will
+     be consumed by the SDL plugin once a sibling agent merges it;
+     `--host / --port` are reserved for a future TCP plugin. Today
+     `cmd_execute` parses them, stores them in `ExecuteOpts`, and
+     keeps using `executor::run_headless` (which ignores them).
+     `evident execute --help` prints the flags.
+     New CLI tests: `cli_execute_accepts_sdl_and_tcp_flags` and
+     `cli_execute_help_lists_flags`.
+
+  2. Bare claim names in a body are now resolved as names-match
+     passthrough — same as `..ClaimName`. Implemented in
+     `runtime-rust/src/translate.rs` at translate time (not in the
+     parser), guarded by `schemas.contains_key(name)`. Reasoning:
+     the parser leaves bare idents as `BodyItem::Constraint(
+     Expr::Identifier(name))` because at parse time we can't tell
+     a claim name from a Bool variable name (`won`, `flag`, etc.).
+     At translate time `schemas` is in scope, so the disambiguation
+     is a single hash lookup. Both `evaluate` and `build_cache`
+     intercept the identifier-constraint case in pass 1 (declare
+     the included claim's vars) and pass 2 (assert its constraints).
+     The non-claim path is untouched, so the existing bool-bare-ident
+     translation still fires for genuine Bool variables.
+     New tests: `bare_claim_name_is_passthrough` (the documented
+     example) and `bare_bool_var_still_works_after_passthrough_change`
+     (regression guard for the bool fall-through).
 
 **Phase:** v1.5 — composite element types (`Seq(UserType)`).
 67/67 tests green (11 lib + 41 lib-style + 10 CLI + 5 sample).
@@ -380,6 +412,20 @@ Done in this session:
       stdlib (flat type defs for Stdin/Stdout/etc.) auto-loaded by `cmd_execute`.
       Limitations: stdin/stdout only (no SDL/TCP/batch), no `import` directive,
       no `++`/`int_to_str` operators. See "Phase v1.4" above for the full list.
+- [x] **`execute` CLI flags.** `--width / --height / --title / --host /
+      --port` now parse on `evident execute`. `width / height / title`
+      will be consumed by the SDL plugin once it merges; `host / port`
+      are reserved for a future TCP plugin. `ExecuteOpts` struct +
+      `parse_execute_flags` in `main.rs`. `evident execute --help`
+      lists the flags.
+- [x] **Bare claim names as names-match passthrough.** Resolved at
+      translate time (not in the parser) — `BodyItem::Constraint(
+      Identifier(name))` is treated as `BodyItem::Passthrough(name)`
+      whenever `name` is a key in the runtime's `schemas` map. The
+      bool-bare-ident path (`flag` referring to a Bool variable) still
+      fires when `name` is not a known claim. Both `evaluate` and
+      `build_cache`'s pass 1 (declarations) and pass 2 (constraints)
+      were updated.
 
 In rough order of leverage:
 
@@ -464,8 +510,10 @@ All in `tests/basic.rs`. 16/16 passing.
 | `seq_nested_composite_extracts`      | `Seq(Rect)` with `Rect.color ∈ Color` nested |
 | `seq_nested_composite_with_quantifier` | `∀ i : rs[i].color.r ≥ 0` resolves chain |
 | `nested_composite_shared_across_siblings` | Color shared by SDLRect.color + SDLOutput.bg |
+| `bare_claim_name_is_passthrough`     | bare ident in body acts like `..ClaimName` |
+| `bare_bool_var_still_works_after_passthrough_change` | bool fall-through regression guard |
 
-**`tests/cli.rs` (10)**:
+**`tests/cli.rs` (12)**:
 
 | `cli_query_sat_prints_bindings`      | KEY=VALUE on stdout                    |
 | `cli_query_unsat_exits_1`            | UNSAT path                             |
@@ -475,6 +523,8 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cli_check_reports_per_schema`       | `check` SAT/UNSAT lines                |
 | `cli_test_runs_sat_unsat_claims`     | `test` discovery + result reporting    |
 | `cli_execute_echoes_stdin`           | `execute` headless echo automaton end-to-end |
+| `cli_execute_accepts_sdl_and_tcp_flags` | `--width/--height/--title/--host/--port` parse cleanly |
+| `cli_execute_help_lists_flags`       | `execute --help` mentions the new flags |
 | `cli_batch_says_parked`              | parked `batch`/`repl` emit clear msg   |
 | `cli_parse_lists_schema_names`       | `parse` debug helper                   |
 

@@ -64,8 +64,16 @@ fn usage() {
     eprintln!("  evident check   <files…>");
     eprintln!("  evident sample  <files…> <schema> [-n N] [--given k=v …] [--json]");
     eprintln!("  evident test    [path]");
-    eprintln!("  evident execute <file>     # headless stdin → main → stdout");
+    eprintln!("  evident execute <file> [--width N] [--height N] [--title S]");
+    eprintln!("                         [--host H] [--port P]");
     eprintln!("  evident parse   <file>");
+    eprintln!();
+    eprintln!("execute flags (mirror evident.py):");
+    eprintln!("  --width  N   SDL window width  (default 800; used by SDL plugin)");
+    eprintln!("  --height N   SDL window height (default 600; used by SDL plugin)");
+    eprintln!("  --title  S   SDL window title  (default \"Evident\")");
+    eprintln!("  --host   H   TCP listen host   (default 127.0.0.1; reserved for TCP plugin)");
+    eprintln!("  --port   P   TCP listen port   (default 8080;       reserved for TCP plugin)");
     eprintln!();
     eprintln!("not yet implemented (use evident.py):");
     eprintln!("  evident batch|repl …");
@@ -137,6 +145,80 @@ fn infer_value(v: &str) -> Value {
     else if v == "false" { Value::Bool(false) }
     else if let Ok(n) = v.parse::<i64>() { Value::Int(n) }
     else { Value::Str(v.to_string()) }
+}
+
+/// Flags accepted by the `execute` subcommand. Mirrors the argparse
+/// declarations in `evident.py` (`ex.add_argument('--width', …)` etc.).
+///
+/// `width` / `height` / `title` are consumed by the SDL plugin; `host`
+/// / `port` are reserved for a future TCP-socket plugin. Parsing them
+/// today (even though the plugins they target may not be wired in yet)
+/// keeps the CLI surface stable so adding the plugin doesn't have to
+/// retouch arg-parsing.
+#[allow(dead_code)]
+struct ExecuteOpts {
+    width:  u32,
+    height: u32,
+    title:  String,
+    host:   String,
+    port:   u16,
+}
+
+impl Default for ExecuteOpts {
+    fn default() -> Self {
+        ExecuteOpts {
+            width:  800,
+            height: 600,
+            title:  "Evident".to_string(),
+            host:   "127.0.0.1".to_string(),
+            port:   8080,
+        }
+    }
+}
+
+fn parse_execute_flags(flags: &[String]) -> Result<ExecuteOpts, String> {
+    let mut out = ExecuteOpts::default();
+    let mut i = 0;
+    while i < flags.len() {
+        match flags[i].as_str() {
+            "--width" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--width needs a value".to_string())?;
+                out.width = v.parse::<u32>().map_err(|e| format!("bad --width {v:?}: {e}"))?;
+                i += 1;
+            }
+            "--height" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--height needs a value".to_string())?;
+                out.height = v.parse::<u32>().map_err(|e| format!("bad --height {v:?}: {e}"))?;
+                i += 1;
+            }
+            "--title" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--title needs a value".to_string())?;
+                out.title = v.clone();
+                i += 1;
+            }
+            "--host" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--host needs a value".to_string())?;
+                out.host = v.clone();
+                i += 1;
+            }
+            "--port" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--port needs a value".to_string())?;
+                out.port = v.parse::<u16>().map_err(|e| format!("bad --port {v:?}: {e}"))?;
+                i += 1;
+            }
+            "--help" | "-h" => {
+                usage();
+                std::process::exit(0);
+            }
+            other => return Err(format!("unknown execute flag: {other}")),
+        }
+    }
+    Ok(out)
 }
 
 fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
@@ -383,11 +465,22 @@ fn collect_test_files(dir: &Path, out: &mut Vec<PathBuf>) {
 // ---------------------------------------------------------------------------
 
 fn cmd_execute(args: &[String]) -> ExitCode {
+    // `--help` first, before file-positional check, so `execute --help`
+    // works without needing a file argument.
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        usage();
+        return ExitCode::SUCCESS;
+    }
     if args.is_empty() {
         eprintln!("execute: need <file.ev>");
         return ExitCode::from(2);
     }
+    // First positional is the file; everything after is flags.
     let path = &args[0];
+    let opts = match parse_execute_flags(&args[1..]) {
+        Ok(o) => o,
+        Err(e) => { eprintln!("execute: {e}"); return ExitCode::from(2); }
+    };
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
@@ -406,6 +499,11 @@ fn cmd_execute(args: &[String]) -> ExitCode {
         eprintln!("execute: {path}: {e}");
         return ExitCode::from(1);
     }
+    // Today the executor only consumes the headless stdin/stdout
+    // plugins; SDL/TCP options are parsed and stored for the moment a
+    // sibling agent wires the SDL plugin in (it'll read width/height/
+    // title off `opts`).
+    let _ = &opts;
     match executor::run_headless(&rt, std::io::stdin(), std::io::stdout()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }

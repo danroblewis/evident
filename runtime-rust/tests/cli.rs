@@ -164,6 +164,54 @@ fn cli_batch_says_parked() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("not yet implemented"));
 }
 
+/// Confirms the new `--width / --height / --title / --host / --port`
+/// flags parse cleanly and the program still gets to the executor
+/// entry point. The .ev file is the same trivial echo automaton from
+/// `cli_execute_echoes_stdin` — the SDL plugin isn't wired in yet, so
+/// what we're really testing here is that arg parsing doesn't reject
+/// the SDL/TCP-shaped flags.
+#[test]
+fn cli_execute_accepts_sdl_and_tcp_flags() {
+    let path = write_tmp("execute_flags",
+        "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    dst.out = src.char\n");
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap(),
+               "--width", "1024", "--height", "768",
+               "--title", "Test Window",
+               "--host", "0.0.0.0", "--port", "9090"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"x\n").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    // Echo automaton mirrors stdin to stdout; flags are stored but
+    // not consumed by the headless plugins yet.
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "x\n");
+}
+
+/// `evident execute --help` should print usage including the new
+/// flags, without requiring a file argument.
+#[test]
+fn cli_execute_help_lists_flags() {
+    let out = Command::new(bin()).args(["execute", "--help"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    // usage() writes to stderr.
+    let s = String::from_utf8_lossy(&out.stderr);
+    assert!(s.contains("--width"),  "missing --width in help: {s}");
+    assert!(s.contains("--height"), "missing --height in help: {s}");
+    assert!(s.contains("--title"),  "missing --title in help: {s}");
+    assert!(s.contains("--host"),   "missing --host in help: {s}");
+    assert!(s.contains("--port"),   "missing --port in help: {s}");
+}
+
 #[test]
 fn cli_parse_lists_schema_names() {
     let path = write_tmp("multi",
