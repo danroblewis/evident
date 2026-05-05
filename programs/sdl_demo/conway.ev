@@ -1,0 +1,67 @@
+-- conway.ev — Conway's Game of Life on a 20×20 toroidal grid.
+--
+-- Each cell has `alive` (Bool) and `alive_int` (Nat, 0 or 1) — the
+-- latter mirrors the Bool so the neighbor count can be expressed as
+-- an Int sum (Evident has no native Bool→Int cast, so we maintain
+-- both fields with `alive ⇒ alive_int = 1` / `¬alive ⇒ alive_int = 0`).
+--
+-- Rule: next = (count = 3) ∨ (count = 2 ∧ alive)
+-- where `count` is the sum of the 8 toroidal neighbors' alive_ints.
+--
+-- Toroidal-wrap formula for cell at (r, c) with W = 20:
+--   nrow(dr) = (r + dr + 20) mod 20 = (r + dr + 20) - ((r + dr + 20) / 20) * 20
+--   ncol(dc) = same shape over c
+--   nidx(dr, dc) = nrow(dr) * 20 + ncol(dc)
+-- After ∀-unroll, i is a literal so all this arithmetic constant-folds.
+--
+-- Seed: glider in the top-left at flat indices 22, 43, 61, 62, 63
+-- — the canonical 5-cell glider, which marches diagonally across
+-- the toroidal grid forever.
+--
+-- Run: evident execute programs/sdl_demo/conway.ev
+
+import "stdlib/sdl.ev"
+
+type Cell
+    alive ∈ Bool
+    alive_int ∈ Nat
+
+type W
+    cells ∈ Seq(Cell)
+    step  ∈ Nat
+
+type main
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+    state      ∈ W
+    state_next ∈ W
+    count ∈ Seq(Int)         -- Seq(Nat) isn't supported; use Int (sum is ≥0).
+
+    #state.cells      = 400  -- 20 × 20 toroidal grid
+    #state_next.cells = 400
+    #output.rects     = 400
+    #count            = 400
+
+    state_next.step = state.step + 1
+    output.bg.r = 15 ∧ output.bg.g = 15 ∧ output.bg.b = 30
+
+    -- Bool ↔ Int mirror, both states.
+    ∀ i ∈ {0..399} : state.cells[i].alive = true       ⇒ state.cells[i].alive_int = 1
+    ∀ i ∈ {0..399} : state.cells[i].alive = false      ⇒ state.cells[i].alive_int = 0
+    ∀ i ∈ {0..399} : state_next.cells[i].alive = true  ⇒ state_next.cells[i].alive_int = 1
+    ∀ i ∈ {0..399} : state_next.cells[i].alive = false ⇒ state_next.cells[i].alive_int = 0
+
+    -- Seed: glider, frame 0 only. Without this Z3 finds the all-dead
+    -- fixed point and nothing happens.
+    state.step = 0 ⇒ ∀ i ∈ {0..399} : state.cells[i].alive = (i = 22 ∨ i = 43 ∨ i = 61 ∨ i = 62 ∨ i = 63)
+
+    -- Live-neighbor count per cell. 8 toroidal neighbors. The dr=0 row
+    -- skips the wrap math (c is already in range); +19 stands in for -1
+    -- so we don't have to cope with negative-mod semantics.
+    ∀ i ∈ {0..399} : count[i] = state.cells[(((i/20 + 19) - ((i/20 + 19) / 20) * 20) * 20) + ((i - (i/20)*20 + 19) - ((i - (i/20)*20 + 19) / 20) * 20)].alive_int + state.cells[(((i/20 + 19) - ((i/20 + 19) / 20) * 20) * 20) + (i - (i/20)*20)].alive_int + state.cells[(((i/20 + 19) - ((i/20 + 19) / 20) * 20) * 20) + ((i - (i/20)*20 + 1) - ((i - (i/20)*20 + 1) / 20) * 20)].alive_int + state.cells[((i/20) * 20) + ((i - (i/20)*20 + 19) - ((i - (i/20)*20 + 19) / 20) * 20)].alive_int + state.cells[((i/20) * 20) + ((i - (i/20)*20 + 1) - ((i - (i/20)*20 + 1) / 20) * 20)].alive_int + state.cells[(((i/20 + 1) - ((i/20 + 1) / 20) * 20) * 20) + ((i - (i/20)*20 + 19) - ((i - (i/20)*20 + 19) / 20) * 20)].alive_int + state.cells[(((i/20 + 1) - ((i/20 + 1) / 20) * 20) * 20) + (i - (i/20)*20)].alive_int + state.cells[(((i/20 + 1) - ((i/20 + 1) / 20) * 20) * 20) + ((i - (i/20)*20 + 1) - ((i - (i/20)*20 + 1) / 20) * 20)].alive_int
+
+    -- Game of Life: born on 3, survive on 2 (with the cell currently alive).
+    ∀ i ∈ {0..399} : state_next.cells[i].alive = (count[i] = 3 ∨ (count[i] = 2 ∧ state.cells[i].alive))
+
+    -- Render: 30×30 cell. Alive = bright green, dead = bg.
+    ∀ i ∈ {0..399} : (output.rects[i].x = (i - (i/20)*20) * 30 ∧ output.rects[i].y = (i/20) * 30 ∧ output.rects[i].w = 30 ∧ output.rects[i].h = 30 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 220 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))
