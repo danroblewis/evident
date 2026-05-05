@@ -333,6 +333,73 @@ fn cached_query_unsat() {
     assert!(rt.query_cached("S", &g2).unwrap().satisfied);
 }
 
+/// `Seq(Int)` declared, length and indexed access constrained.
+#[test]
+fn seq_int_basic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    #s = 3\n    s[0] = 10\n    s[1] = 20\n    s[2] = 30\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![10, 20, 30])));
+}
+
+/// `Seq(Bool)` round-trip.
+#[test]
+fn seq_bool_basic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Bool)\n    #s = 2\n    s[0] = true\n    s[1] = false\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqBool(vec![true, false])));
+}
+
+/// `Seq(String)` round-trip.
+#[test]
+fn seq_string_basic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    names ∈ Seq(String)\n    #names = 2\n    names[0] = \"alice\"\n    names[1] = \"bob\"\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("names"),
+        Some(&Value::SeqStr(vec!["alice".into(), "bob".into()])));
+}
+
+/// `∀ i ∈ {0..2} : s[i] > 0` plus a length constraint, with elements
+/// constrained per-index by other rules.
+#[test]
+fn seq_with_quantifier() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    #s = 3\n    \
+         s[0] = 5\n    s[1] = 7\n    s[2] = 9\n    \
+         ∀ i ∈ {0..2} : s[i] > 0\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![5, 7, 9])));
+}
+
+/// Length-of-sequence in arithmetic: `#s + 1 = 5` should pin length to 4.
+#[test]
+fn seq_cardinality_in_arithmetic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    #s + 1 = 5\n    s[0] = 100\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::SeqInt(v)) = r.bindings.get("s") {
+        assert_eq!(v.len(), 4);
+        assert_eq!(v[0], 100);
+    } else { panic!(); }
+}
+
 /// Cached evaluator is faster than uncached on the same schema queried
 /// many times. (Smoke test, not a strict perf gate.)
 #[test]

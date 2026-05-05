@@ -4,23 +4,29 @@
 
 ## Current status
 
-**Phase:** v0.7 — cached evaluator landed. 29/29 tests green.
+**Phase:** v0.8 — Seq runtime support landed. 34/34 tests green.
 
-**Last action:** Ported the Python `evaluate_cached` optimization.
-Runtime owns a leaked `Box<Context>` (one per process — fine for a
-CLI tool / test suite) and a `RefCell<HashMap<String, CachedSchema>>`.
-First `query_cached` for a schema runs `build_cache` (declarations +
-constraint translation into a fresh solver); subsequent queries hit
-`run_cached` which does push → assert givens → check → extract → pop.
+**Last action:** `Seq(Int)` / `Seq(Bool)` / `Seq(String)` now actually
+declare and translate at runtime. We didn't end up using Z3's native
+Seq sort — `z3-sys` 0.8 has `Z3_mk_seq_sort` and `Z3_mk_seq_length`
+but not `Z3_mk_seq_nth` (only `Z3_mk_seq_at` which returns a length-1
+sub-sequence with no way to extract the element). Pivoted to modeling
+each Seq as an `Array(Int → T)` plus a separate length variable, which
+is well-supported by the safe `z3` crate.
 
-Perf smoke: **195ms uncached vs 5.8ms cached** over 100 iterations of
-a small multi-passthrough schema (~33× speedup). Bigger margin than
-the Python port saw (3-6×) — Z3 retains more state when the solver
-is reused.
+  - `#s` translates to the length variable (Int).
+  - `s[i]` translates to `Array.select(i)` cast to the element sort.
+  - Model extraction reads length first, then `arr.select(i)` for
+    `i ∈ 0..length`. Indices past length are unconstrained in Z3
+    (Arrays are total functions); we just don't read them.
 
-**Next action:** Seq sort runtime support is now top of the list —
-parser/AST already there, just need to wrap `z3_sys::Z3_mk_seq_sort`
-ourselves (the safe `z3` crate doesn't expose a generic `Seq<T>`).
+5 new tests cover Int/Bool/String elements, Seq with ∀, and length
+arithmetic.
+
+**Next action:** Composite element types (`Seq(UserType)`) — would
+need declaring a Z3 Datatype for the element first, similar to the
+Python `_declare_element_sort`. After that, symbolic ∀ bounds via
+length propagation, and CLI / file-loading.
 
 ## Milestones
 
@@ -78,15 +84,16 @@ ourselves (the safe `z3` crate doesn't expose a generic `Seq<T>`).
   unrolls only when both `lo` and `hi` are `Expr::Int`. Symbolic bounds
   (`{0..n - 1}` where n is a variable) need the Python length-propagation
   shim — Pass 1/2/3 in `evaluate.py`. Deferred.
-- **z3 crate gap: no generic `Seq<T>`.** z3-0.12.1's `ast` module
-  exposes `Bool, Int, Real, Float, String, BV, Array, Set, Datatype,
-  Dynamic, Regexp` — but no general sequence type. (`String<'ctx>` is
-  internally a char-seq via Z3's seq-of-codepoints, but that doesn't
-  generalize.) Z3 itself supports `Seq(T)` via `Z3_mk_seq_sort` etc.
-  — to use it from Rust we'd need to wrap the FFI ourselves. Until
-  then, the parser + AST handle `Seq(T)`, `#x`, and `e[i]` cleanly,
-  but `declare_var` warns and skips `Seq(...)` types and the
-  translator returns None for Cardinality / Index expressions.
+- **z3 crate gap: no generic `Seq<T>` ast type.** z3-0.12.1's `ast`
+  module exposes `Bool, Int, Real, Float, String, BV, Array, Set,
+  Datatype, Dynamic, Regexp` but no generic sequence. `z3-sys` 0.8
+  also doesn't expose `Z3_mk_seq_nth` (the only seq element-access
+  primitive), only `Z3_mk_seq_at` which returns a length-1 sub-seq.
+  We work around this by encoding `Seq(T)` as `Array(Int → T)` + a
+  separate length variable. Slightly less expressive (Arrays are
+  total functions, so the model has values at all indices, not just
+  0..len) but correct for our use case — we just don't read past
+  `len` during model extraction.
 
 ## Cached evaluator (implemented)
 
@@ -136,14 +143,16 @@ Done in this session:
 - [x] **Cached evaluator.** Leaked `'static Context`,
       `RefCell<HashMap<String, CachedSchema>>` cache, push/pop per
       query. ~33× speedup on a multi-passthrough schema.
+- [x] **Seq sort runtime support** for primitive element types
+      (Int / Bool / String). Modeled as Array(Int → T) + length;
+      cardinality + indexing translate cleanly.
 
 In rough order of leverage:
 
-- [ ] **Seq sort runtime support.** z3-0.12 doesn't expose a generic
-      `Seq<T>`. Path: write thin wrappers around `z3_sys::Z3_mk_seq_sort`,
-      `Z3_mk_seq_length`, `Z3_mk_seq_nth`. Unsafe but small. Once done,
-      Cardinality and Index translation come for free.
-- [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
+- [ ] Composite element types (`Seq(UserType)`) — would need a Z3
+      Datatype per user type, mirroring the Python
+      `_declare_element_sort`. The Array+Length encoding still works,
+      just with a Datatype range sort.
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.
 - [ ] Symbolic ∀ bounds via length propagation (see Python's
@@ -187,3 +196,8 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cached_query_per_call_givens`       | per-query givens, cache reused         |
 | `cached_query_unsat`                 | UNSAT case across cache hits           |
 | `cached_query_perf_smoke`            | cached < uncached over many iterations |
+| `seq_int_basic`                      | `Seq(Int)` declared, `#`, `[]` work    |
+| `seq_bool_basic`                     | `Seq(Bool)` round-trips                |
+| `seq_string_basic`                   | `Seq(String)` round-trips              |
+| `seq_with_quantifier`                | `∀ i ∈ {0..N} : s[i] > 0`              |
+| `seq_cardinality_in_arithmetic`      | `#s + 1 = 5` pins length               |

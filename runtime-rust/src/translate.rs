@@ -3,8 +3,8 @@
 
 use crate::ast::*;
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int, String as Z3Str};
-use z3::{Context, SatResult, Solver};
+use z3::ast::{Array, Ast, Bool, Int, String as Z3Str};
+use z3::{Context, SatResult, Solver, Sort};
 
 /// Result of running one query.
 #[derive(Debug, Clone)]
@@ -18,15 +18,36 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     Str(String),
+    /// Sequence values returned in the model. The variant tracks which
+    /// element type was declared so callers don't have to. Length is
+    /// implicit in the Vec's len().
+    SeqInt(Vec<i64>),
+    SeqBool(Vec<bool>),
+    SeqStr(Vec<String>),
 }
+
+/// What primitive a Seq holds. Lets `SeqVar` stay homogeneous while
+/// still letting model extraction pick the right path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SeqElem { Int, Bool, Str }
 
 /// Z3 binding for a declared variable. Keep a typed handle so we know
 /// which AST kind to translate against.
+///
+/// Seq values are modeled as a Z3 Array(Int → T) plus an explicit
+/// length variable. Z3's native Seq sort would work via `Z3_mk_seq_sort`
+/// but the safe `z3` crate doesn't expose `Z3_mk_seq_nth` (only
+/// `Z3_mk_seq_at` which returns a length-1 sub-sequence with no way
+/// to extract the element). The Array+Length encoding is simpler and
+/// gives us cardinality + indexing for free; the only downside is the
+/// Array has values at all indices, not just 0..len, but we just don't
+/// read past `len` during model extraction.
 #[derive(Clone)]
 enum Var<'ctx> {
     IntVar(Int<'ctx>),
     BoolVar(Bool<'ctx>),
     StrVar(Z3Str<'ctx>),
+    SeqVar { arr: Array<'ctx>, len: Int<'ctx>, elem: SeqElem },
 }
 
 impl<'ctx> Var<'ctx> {
@@ -38,6 +59,53 @@ impl<'ctx> Var<'ctx> {
     }
     fn as_str(&self) -> Option<&Z3Str<'ctx>> {
         match self { Var::StrVar(s) => Some(s), _ => None }
+    }
+    fn as_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, SeqElem)> {
+        match self { Var::SeqVar { arr, len, elem } => Some((arr, len, *elem)), _ => None }
+    }
+}
+
+/// Read a Seq value out of the model: read the length, then read each
+/// `arr.select(i)` for i ∈ 0..length and assemble into the right
+/// `Value::Seq*` variant. Indices past the length are unconstrained
+/// in Z3 (Arrays are total functions); we just don't read them.
+fn extract_seq<'ctx>(
+    arr: &Array<'ctx>,
+    len: &Int<'ctx>,
+    elem: SeqElem,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+) -> Option<Value> {
+    let n = model.eval(len, true)?.as_i64()?;
+    if n < 0 { return None; }
+    match elem {
+        SeqElem::Int => {
+            let mut out = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let idx = Int::from_i64(ctx, i);
+                let v = arr.select(&idx).as_int()?;
+                out.push(model.eval(&v, true)?.as_i64()?);
+            }
+            Some(Value::SeqInt(out))
+        }
+        SeqElem::Bool => {
+            let mut out = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let idx = Int::from_i64(ctx, i);
+                let v = arr.select(&idx).as_bool()?;
+                out.push(model.eval(&v, true)?.as_bool()?);
+            }
+            Some(Value::SeqBool(out))
+        }
+        SeqElem::Str => {
+            let mut out = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let idx = Int::from_i64(ctx, i);
+                let v = arr.select(&idx).as_string()?;
+                out.push(model.eval(&v, true)?.as_string()?);
+            }
+            Some(Value::SeqStr(out))
+        }
     }
 }
 
@@ -164,6 +232,11 @@ pub fn run_cached<'ctx>(
                     Var::StrVar(s) => {
                         if let Some(v) = model.eval(s, true).and_then(|x| x.as_string()) {
                             bindings.insert(name.clone(), Value::Str(v));
+                        }
+                    }
+                    Var::SeqVar { arr, len, elem } => {
+                        if let Some(v) = extract_seq(arr, len, *elem, &model, ctx) {
+                            bindings.insert(name.clone(), v);
                         }
                     }
                 }
@@ -345,6 +418,11 @@ pub fn evaluate(
                             }
                         }
                     }
+                    Var::SeqVar { arr, len, elem } => {
+                        if let Some(v) = extract_seq(arr, len, *elem, &model, &ctx) {
+                            bindings.insert(name.clone(), v);
+                        }
+                    }
                 }
             }
         }
@@ -461,14 +539,25 @@ fn declare_var<'ctx>(
         "String" => {
             env.insert(prefix.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
         }
-        // Primitive Seq sorts are parsed but not yet declared — the
-        // z3-0.12 crate doesn't expose a generic `Seq<T>` ast type
-        // (only `String<'ctx>` which is internally a char-seq). To add
-        // these we'd need to wrap z3-sys' `Z3_mk_seq_sort` directly.
-        // See PROGRESS.md gotchas. The declarations parse cleanly so
-        // syntax + AST are ready when the runtime catches up.
-        s if s.starts_with("Seq(") => {
-            eprintln!("warning: Seq(...) not yet supported by the runtime; declaration of {} ignored", prefix);
+        // Primitive Seq sorts: model as Array(Int → T) + a separate
+        // length variable. See the Var::SeqVar comment for why we
+        // don't use Z3's native Seq sort.
+        s if s.starts_with("Seq(") && s.ends_with(')') => {
+            let inner = &s[4..s.len() - 1];
+            let (range, elem) = match inner {
+                "Int"    => (Sort::int(ctx),    SeqElem::Int),
+                "Bool"   => (Sort::bool(ctx),   SeqElem::Bool),
+                "String" => (Sort::string(ctx), SeqElem::Str),
+                other => {
+                    eprintln!("warning: unsupported Seq element type {} for {}", other, prefix);
+                    return;
+                }
+            };
+            let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &range);
+            let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
+            // Length must be non-negative.
+            solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
+            env.insert(prefix.to_string(), Var::SeqVar { arr, len, elem });
         }
         _ => {
             if let Some(schema) = schemas.get(type_name) {
@@ -490,6 +579,17 @@ fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
     match e {
         Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
+        // `seq[i]` where seq holds String elements.
+        Expr::Index(seq_expr, idx_expr) => {
+            let name = match seq_expr.as_ref() {
+                Expr::Identifier(n) => n,
+                _ => return None,
+            };
+            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            if elem != SeqElem::Str { return None; }
+            let i = translate_int(idx_expr, ctx, env)?;
+            arr.select(&i).as_string()
+        }
         _ => None,
     }
 }
@@ -509,9 +609,26 @@ fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
                 _ => return None,
             })
         }
-        // `#x` and `x[i]` parse cleanly but can't be translated until
-        // the runtime declares Seq sorts. See PROGRESS.md (Seq gap).
-        Expr::Cardinality(_) | Expr::Index(_, _) => None,
+        // `#seq` → the seq's length variable.
+        Expr::Cardinality(inner) => {
+            if let Expr::Identifier(name) = inner.as_ref() {
+                if let Some((_, len, _)) = env.get(name).and_then(|v| v.as_seq()) {
+                    return Some(len.clone());
+                }
+            }
+            None
+        }
+        // `seq[i]` where seq holds Int elements → Array.select(i) → Int.
+        Expr::Index(seq_expr, idx_expr) => {
+            let name = match seq_expr.as_ref() {
+                Expr::Identifier(n) => n,
+                _ => return None,
+            };
+            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            if elem != SeqElem::Int { return None; }
+            let i = translate_int(idx_expr, ctx, env)?;
+            arr.select(&i).as_int()
+        }
         _ => None,
     }
 }
@@ -521,6 +638,18 @@ fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
         Expr::Not(inner) => Some(translate_bool(inner, ctx, env)?.not()),
+
+        // `seq[i]` where seq holds Bool elements.
+        Expr::Index(seq_expr, idx_expr) => {
+            let name = match seq_expr.as_ref() {
+                Expr::Identifier(n) => n,
+                _ => return None,
+            };
+            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            if elem != SeqElem::Bool { return None; }
+            let i = translate_int(idx_expr, ctx, env)?;
+            arr.select(&i).as_bool()
+        }
 
         // `x ∈ {a, b, c}` → x = a ∨ x = b ∨ x = c.
         Expr::InExpr(lhs, rhs) => {
