@@ -278,7 +278,7 @@ class EvidentExecutor:
             for base_var, state in self._current_states.items():
                 given.update(self._state_given(base_var, state))
 
-            result = self.rt.query('main', given=given)
+            result = self.rt.query('main', given=given, cached=True)
             if not result.satisfied:
                 continue
 
@@ -377,8 +377,8 @@ class EvidentExecutor:
                 for base, state in current_states.items():
                     given.update(self._state_given(base, state))
 
-                # Solve
-                result = self.rt.query('main', given=given)
+                # Solve (cached: schema doesn't change across steps)
+                result = self.rt.query('main', given=given, cached=True)
 
                 if result.satisfied:
                     halt = False

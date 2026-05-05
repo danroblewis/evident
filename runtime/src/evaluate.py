@@ -93,6 +93,11 @@ class EvidentSolver:
         self.env = Environment()
         self.schemas: dict[str, SchemaDecl] = {}
         self.fixedpoint: FixedpointSolver | None = None
+        # Per-schema cache of (env, solver) for evaluate_cached(). The solver
+        # holds the schema's translated constraints; per-query we push, assert
+        # given values, check, extract, pop. Keyed by id(schema) so loading
+        # the same source twice produces independent caches.
+        self._eval_cache: dict[int, dict] = {}
 
     # ------------------------------------------------------------------
     # Schema registration
@@ -372,6 +377,187 @@ class EvidentSolver:
                 model=None,
                 explanation="Z3 returned unknown (timeout or resource limit).",
             )
+
+    # ------------------------------------------------------------------
+    # Cached evaluation
+    # ------------------------------------------------------------------
+
+    def evaluate_cached(
+        self,
+        schema: SchemaDecl,
+        given: dict[str, Any] | None = None,
+    ) -> EvaluationResult:
+        """
+        Faster evaluate that translates the schema's constraints once and
+        reuses the resulting Z3 solver across queries.
+
+        Compared to evaluate(): given values are bound by ASSERTING equality
+        against pre-existing Z3 constants (inside a push/pop), not by
+        pre-populating the env before instantiate. That means instantiate
+        runs once, the body is translated once, and per-query work is
+        limited to a few `solver.add(const == value)` calls plus check().
+
+        Limitations vs. evaluate():
+          - The Pass 1/2/3 length-propagation shim (for symbolic-bound ∀)
+            is skipped — schemas that need it (e.g. ∀ i ∈ {0..n-1} where
+            n is bound to #given_seq) should keep using evaluate().
+          - The Seq(String) decomposition fallback is also skipped.
+          - No unsat-core explanation; UNSAT returns an empty bindings dict.
+
+        These limitations are fine for the per-step executor loop where the
+        same schema is queried 60×/sec with changing given values — the
+        common case this method exists for.
+        """
+        if given is None:
+            given = {}
+
+        cache_key = id(schema)
+        cached = self._eval_cache.get(cache_key)
+        if cached is None:
+            cached = self._build_eval_cache(schema)
+            self._eval_cache[cache_key] = cached
+
+        env = cached['env']
+        s   = cached['solver']
+
+        # Pre-register composite element sorts so dict→Z3 conversion of
+        # given values can find the right constructor. Idempotent.
+        self._pre_register_composites()
+
+        s.push()
+        try:
+            for name, py_val in given.items():
+                const = env.lookup(name)
+                if const is None:
+                    continue   # given key isn't a declared schema variable
+                try:
+                    z3_val = self._python_to_z3_untyped(py_val)
+                    s.add(const == z3_val)
+                except (z3.Z3Exception, ValueError, TypeError):
+                    pass
+
+            result = s.check()
+
+            if result == z3.sat:
+                model = s.model()
+                bindings = self._extract_model(env, model)
+                return EvaluationResult(
+                    satisfied=True,
+                    bindings=bindings,
+                    model=model,
+                    explanation=None,
+                )
+            else:
+                return EvaluationResult(
+                    satisfied=False,
+                    bindings={},
+                    model=None,
+                    explanation=None,
+                )
+        finally:
+            s.pop()
+
+    def _build_eval_cache(self, schema: SchemaDecl) -> dict:
+        """
+        First-call cache build: translate the schema body into a reusable
+        Z3 solver. Returns {'env': env, 'solver': s} where env binds every
+        declared name to its Z3 constant and s holds all the body's
+        translated constraints.
+        """
+        from .ast_types import (MembershipConstraint, Identifier, InlineEnumExpr,
+                                MultiMembershipDecl)
+
+        # Step 0: pre-register inline enums and composite element sorts.
+        for item in schema.body:
+            if (isinstance(item, MembershipConstraint) and item.op == "∈"
+                    and isinstance(item.right, InlineEnumExpr)):
+                variants = item.right.variants
+                enum_name = "_Enum_" + "_".join(sorted(variants))
+                self.registry.declare_algebraic(enum_name, variants)
+        self._pre_register_composites()
+
+        # Step 1+2: instantiate with no given values bound. Every declared
+        # schema variable becomes a fresh Z3 constant in env.
+        init_env = Environment(bindings=dict(self.env.bindings))
+        env, type_constraints = instantiate_schema(
+            schema, init_env, self.registry, schemas=self.schemas)
+
+        # Step 3.5: register subclaims (parent body's nested SchemaDecl
+        # entries) so claim composition can find them during translation.
+        for item in schema.body:
+            if isinstance(item, SchemaDecl) and item.keyword == 'subclaim':
+                self.schemas[item.name] = item
+
+        # Step 4: build solver, add type constraints, translate the body.
+        s = z3.Solver()
+        for tc in type_constraints:
+            s.add(tc)
+
+        for item in schema.body:
+            # ..ClaimName passthrough at body level → inline the named
+            # claim's constraints under the current env.
+            if isinstance(item, PassthroughItem) and self.schemas and item.name in self.schemas:
+                from .instantiate import _is_type_decl
+                sub = self.schemas[item.name]
+                for sub_item in sub.body:
+                    if isinstance(sub_item, (EvidentBlock, PassthroughItem, MultiMembershipDecl)):
+                        continue
+                    if _is_type_decl(sub_item):
+                        continue
+                    try:
+                        s.add(_translate_body_constraint(
+                            sub_item, env, self.registry, self.schemas))
+                    except (NotImplementedError, KeyError):
+                        pass
+                continue
+
+            if isinstance(item, (EvidentBlock, PassthroughItem,
+                                 MultiMembershipDecl, SchemaDecl)):
+                continue
+            try:
+                s.add(_translate_body_constraint(
+                    item, env, self.registry, self.schemas))
+            except (NotImplementedError, KeyError):
+                pass
+
+        return {'env': env, 'solver': s}
+
+    def _pre_register_composites(self) -> None:
+        """
+        Walk every loaded schema body and pre-register Seq(T)/Set(T) element
+        sorts as composite Datatypes. Idempotent. Used so that dict values
+        in `given` (e.g. round-tripped Seq(Datatype) state) can be converted
+        to Z3 datatype values via _python_to_z3_untyped.
+        """
+        from .instantiate import _declare_element_sort
+        from .ast_types import (SeqType, BinaryExpr, MembershipConstraint,
+                                Identifier, MultiMembershipDecl)
+        def _is_set_type(expr):
+            return (isinstance(expr, BinaryExpr) and expr.op == '×'
+                    and isinstance(expr.left, Identifier)
+                    and expr.left.name == 'Set')
+        for sch in list(self.schemas.values()):
+            for item in sch.body:
+                type_expr = None
+                if isinstance(item, MembershipConstraint) and item.op == "∈":
+                    type_expr = item.right
+                elif isinstance(item, MultiMembershipDecl):
+                    type_expr = item.set
+                if type_expr is None:
+                    continue
+                if isinstance(type_expr, SeqType):
+                    try:
+                        _declare_element_sort(
+                            Identifier(type_expr.element_name),
+                            self.registry, self.schemas)
+                    except Exception:
+                        pass
+                elif _is_set_type(type_expr):
+                    try:
+                        _declare_element_sort(
+                            type_expr.right, self.registry, self.schemas)
+                    except Exception:
+                        pass
 
     # ------------------------------------------------------------------
     # Seq(String) decomposition fallback

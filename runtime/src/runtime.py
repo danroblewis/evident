@@ -160,6 +160,7 @@ class EvidentRuntime:
         self,
         schema_name: str,
         given: dict[str, Any] | None = None,
+        cached: bool = False,
     ) -> QueryResult:
         """
         Query whether the named schema can be satisfied.
@@ -170,10 +171,19 @@ class EvidentRuntime:
             Name of a previously loaded SchemaDecl.
         given:
             Optional dict of pre-bound variable assignments.
+        cached:
+            If True, route through evaluate_cached() — translates the
+            schema's constraints once and reuses the resulting Z3 solver
+            across calls (push/pop per query). For per-step executor
+            loops this is ~3-6× faster. Side effects: skips evidence-tree
+            construction, the length-propagation shim, and Seq(String)
+            decomposition fallback. Use False (default) for one-shot
+            queries from the REPL/IDE/test runner.
 
         Returns
         -------
         QueryResult with satisfied, bindings, and evidence fields.
+        evidence is None when cached=True.
 
         Raises
         ------
@@ -183,6 +193,14 @@ class EvidentRuntime:
         schema = self.schemas.get(schema_name)
         if schema is None:
             raise KeyError(f"Unknown schema: {schema_name!r}")
+
+        if cached:
+            result = self.solver.evaluate_cached(schema, given=given)
+            return QueryResult(
+                satisfied=result.satisfied,
+                bindings=result.bindings,
+                evidence=None,
+            )
 
         result, evidence = evaluate_with_evidence(
             schema, given, self.schemas, registry=self.solver.registry
