@@ -51,9 +51,10 @@ type SDLAudio
 const SAMPLE_RATE: i32 = 44100;
 const VOLUME_CAP: f32 = 0.3;
 
-/// The synthesis callback. SDL invokes `callback` on its own audio
-/// thread; the executor mutates this struct's fields via
-/// `device.lock()`.
+/// One voice. Self-contained: holds its own phase + parameters,
+/// produces one sample per call. The mixer below runs N of these in
+/// parallel and sums the outputs.
+#[derive(Clone)]
 struct Synth {
     /// 0.0..1.0 cycle position. Advances by `phase_inc` per sample.
     phase: f32,
@@ -67,38 +68,65 @@ struct Synth {
     waveform: u8,
 }
 
-impl AudioCallback for Synth {
+impl Synth {
+    fn silent() -> Self {
+        Synth { phase: 0.0, phase_inc: 0.0, volume: 0.0, playing: false, waveform: 0 }
+    }
+
+    fn next_sample(&mut self) -> f32 {
+        if !self.playing || self.phase_inc <= 0.0 || self.volume <= 0.0 {
+            return 0.0;
+        }
+        let s = self.volume * match self.waveform {
+            0 => (self.phase * 2.0 * std::f32::consts::PI).sin(),
+            _ => if self.phase < 0.5 { 1.0 } else { -1.0 },
+        };
+        self.phase = (self.phase + self.phase_inc).fract();
+        s
+    }
+}
+
+/// Audio callback that mixes N synths into a single mono stream. SDL
+/// invokes `callback` on its own audio thread; the executor mutates
+/// `synths[i]` via `device.lock()` between buffer fills.
+///
+/// Mixing strategy: sum all voices, then divide by sqrt(N) so peak
+/// amplitude stays roughly bounded as voices are added (rather than
+/// dividing by N which would silence individual voices in dense
+/// mixes). With N=4 voices each capped at VOLUME_CAP=0.3, peak is
+/// 4 * 0.3 / 2 = 0.6 — still under 1.0 so no clipping.
+struct Mixer {
+    synths: Vec<Synth>,
+}
+
+impl AudioCallback for Mixer {
     type Channel = f32;
     fn callback(&mut self, out: &mut [f32]) {
+        let attenuation = 1.0 / (self.synths.len().max(1) as f32).sqrt();
         for sample in out.iter_mut() {
-            if !self.playing || self.phase_inc <= 0.0 || self.volume <= 0.0 {
-                *sample = 0.0;
-                continue;
+            let mut sum = 0.0_f32;
+            for s in self.synths.iter_mut() {
+                sum += s.next_sample();
             }
-            *sample = self.volume * match self.waveform {
-                0 => (self.phase * 2.0 * std::f32::consts::PI).sin(),
-                _ => if self.phase < 0.5 { 1.0 } else { -1.0 },
-            };
-            self.phase = (self.phase + self.phase_inc).fract();
+            *sample = sum * attenuation;
         }
     }
 }
 
 pub struct SDLAudioPlugin {
-    /// The matched variable name (e.g. "audio") so we know which
-    /// bindings to read in `after_step`. Audio plugins assume one
-    /// SDLAudio var per program; if multiple are declared we use the
-    /// first matched one.
-    var_name: Option<String>,
+    /// All matched SDLAudio variable names, sorted alphabetically for
+    /// stable index → var mapping. `synths[i]` (in the audio device's
+    /// Mixer) corresponds to `var_names[i]`.
+    var_names: Vec<String>,
     /// Kept alive so the audio subsystem stays initialized for the
     /// device's lifetime. Underscore-prefixed because we don't read it.
     _sdl: Option<Sdl>,
-    device: Option<AudioDevice<Synth>>,
+    device: Option<AudioDevice<Mixer>>,
 }
 
 impl SDLAudioPlugin {
     pub fn new() -> Self {
-        SDLAudioPlugin { var_name: None, _sdl: None, device: None }
+        SDLAudioPlugin { var_names: Vec::new(), _sdl: None, device: None }
     }
 
     fn open_device(&mut self) -> Result<(), String> {
@@ -115,14 +143,9 @@ impl SDLAudioPlugin {
             channels: Some(1), // mono — stereo would need (l, r) per sample
             samples: Some(512),
         };
+        let n_voices = self.var_names.len().max(1);
         let device = audio.open_playback(None, &desired, |_spec| {
-            Synth {
-                phase: 0.0,
-                phase_inc: 0.0,
-                volume: 0.0,
-                playing: false,
-                waveform: 0,
-            }
+            Mixer { synths: vec![Synth::silent(); n_voices] }
         }).map_err(|e| e.to_string())?;
         device.resume(); // start the callback firing
         self._sdl = Some(sdl);
@@ -141,7 +164,14 @@ impl Plugin for SDLAudioPlugin {
     }
 
     fn initialize(&mut self, matched_vars: Vec<String>) {
-        self.var_name = matched_vars.into_iter().next();
+        // Sort for stable order: the executor's matched_vars comes
+        // from a HashMap iteration so the input order is undefined.
+        // Sorted order means voice 0 always corresponds to the
+        // alphabetically-first SDLAudio var, which matters for
+        // diagnostics and tests that read the mixer state.
+        let mut sorted = matched_vars;
+        sorted.sort();
+        self.var_names = sorted;
         if let Err(e) = self.open_device() {
             eprintln!("SDL audio init failed: {e}");
         }
@@ -149,23 +179,25 @@ impl Plugin for SDLAudioPlugin {
 
     fn before_step(&mut self) -> Option<HashMap<String, Value>> {
         // Audio is output-only — the program's bindings drive the
-        // synth, no input back to the solver.
+        // synths, no input back to the solver.
         Some(HashMap::new())
     }
 
     fn after_step(&mut self, bindings: &HashMap<String, Value>) -> bool {
-        let Some(var) = self.var_name.clone() else { return true };
         let Some(device) = self.device.as_mut() else { return true };
-        let var = var.as_str();
-        let playing   = read_bool(bindings, &format!("{var}.playing")).unwrap_or(false);
-        let frequency = read_int(bindings,  &format!("{var}.frequency")).unwrap_or(0);
-        let volume    = read_int(bindings,  &format!("{var}.volume")).unwrap_or(0);
-        let waveform  = read_int(bindings,  &format!("{var}.waveform")).unwrap_or(0);
         let mut cb = device.lock();
-        cb.playing  = playing;
-        cb.phase_inc = (frequency.max(0) as f32) / (SAMPLE_RATE as f32);
-        cb.volume   = (volume.clamp(0, 255) as f32) / 255.0 * VOLUME_CAP;
-        cb.waveform = waveform.clamp(0, 255) as u8;
+        for (i, var) in self.var_names.iter().enumerate() {
+            if i >= cb.synths.len() { break; }
+            let synth = &mut cb.synths[i];
+            let playing   = read_bool(bindings, &format!("{var}.playing")).unwrap_or(false);
+            let frequency = read_int(bindings,  &format!("{var}.frequency")).unwrap_or(0);
+            let volume    = read_int(bindings,  &format!("{var}.volume")).unwrap_or(0);
+            let waveform  = read_int(bindings,  &format!("{var}.waveform")).unwrap_or(0);
+            synth.playing  = playing;
+            synth.phase_inc = (frequency.max(0) as f32) / (SAMPLE_RATE as f32);
+            synth.volume   = (volume.clamp(0, 255) as f32) / 255.0 * VOLUME_CAP;
+            synth.waveform = waveform.clamp(0, 255) as u8;
+        }
         // `cb` drops here, releasing the lock — audio thread resumes.
         true
     }

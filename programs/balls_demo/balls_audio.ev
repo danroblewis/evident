@@ -1,0 +1,82 @@
+-- balls_audio.ev — balls.ev + per-ball bounce sounds.
+--
+-- Same physics as balls.ev. Adds four SDLAudio voices, one per ball.
+-- Each voice plays a short blip whose pitch is fixed per ball (so you
+-- can hear which ball just bounced) and is gated on "ball is at any
+-- edge" — true for the single frame the bounce happens, silent
+-- otherwise. The voice mixer sums them, so multiple simultaneous
+-- bounces play together as a chord.
+--
+-- The blip is brief (one frame ≈ 16 ms ≈ ~one audio buffer at 512
+-- samples / 44.1 kHz). To make blips ring longer, add a per-ball
+-- "decay countdown" Nat that resets to N on bounce and counts down
+-- otherwise; gate audio on `decay > 0` and scale volume with it.
+-- Skipped here to keep the demo small.
+--
+-- Run: evident execute programs/balls_demo/balls_audio.ev
+
+import "stdlib/sdl.ev"
+
+type BallState
+    pos_x ∈ Int
+    pos_y ∈ Int
+    vx    ∈ Int
+    vy    ∈ Int
+
+type WorldState
+    balls ∈ Seq(BallState)
+
+type main
+    input      ∈ SDLInput
+    output     ∈ SDLOutput
+    state      ∈ WorldState
+    state_next ∈ WorldState
+
+    a0 ∈ SDLAudio
+    a1 ∈ SDLAudio
+    a2 ∈ SDLAudio
+    a3 ∈ SDLAudio
+
+    #state.balls      = 4
+    #state_next.balls = 4
+    #output.rects     = 4
+
+    output.bg.r = 15  ∧  output.bg.g = 15  ∧  output.bg.b = 30
+
+    -- ── Physics: same as balls.ev. ─────────────────────────────────────────
+    ∀ i ∈ {0..3} : state.balls[i].pos_x ≥ 20  ∧ state.balls[i].pos_x ≤ 740
+    ∀ i ∈ {0..3} : state.balls[i].pos_y ≥ 20  ∧ state.balls[i].pos_y ≤ 540
+    ∀ i ∈ {0..3} : state.balls[i].vx    ≥ -800 ∧ state.balls[i].vx    ≤ 800
+    ∀ i ∈ {0..3} : state.balls[i].vy    ≥ -800 ∧ state.balls[i].vy    ≤ 800
+
+    effective_vy ∈ Seq(Int)
+    #effective_vy = 4
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
+    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
+    ∀ i ∈ {0..3} : ((state.balls[i].vy + 200 * input.dt / 1000) ≥ -800 ∧ (state.balls[i].vy + 200 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.balls[i].vy + 200 * input.dt / 1000
+
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) > 540 ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_y = 20  ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_y + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.balls[i].pos_y = state.balls[i].pos_y + effective_vy[i] * input.dt / 1000 ∧ state_next.balls[i].vy = effective_vy[i])
+
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) > 740 ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_x = 20  ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
+    ∀ i ∈ {0..3} : ((state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≥ 20 ∧ (state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000) ≤ 740) ⇒ (state_next.balls[i].pos_x = state.balls[i].pos_x + state.balls[i].vx * input.dt / 1000 ∧ state_next.balls[i].vx = state.balls[i].vx)
+
+    -- ── Audio: each ball has its own pitch; voice plays only when ball is
+    -- at an edge (one frame per bounce). Pitches roughly correspond to
+    -- A3, C4, E4, A4 — an A-minor chord when all four bounce together.
+    a0.playing = (state.balls[0].pos_x ≤ 20 ∨ state.balls[0].pos_x ≥ 740 ∨ state.balls[0].pos_y ≤ 20 ∨ state.balls[0].pos_y ≥ 540)
+    a0.frequency = 220  ∧  a0.volume = 200  ∧  a0.waveform = 1
+
+    a1.playing = (state.balls[1].pos_x ≤ 20 ∨ state.balls[1].pos_x ≥ 740 ∨ state.balls[1].pos_y ≤ 20 ∨ state.balls[1].pos_y ≥ 540)
+    a1.frequency = 262  ∧  a1.volume = 200  ∧  a1.waveform = 1
+
+    a2.playing = (state.balls[2].pos_x ≤ 20 ∨ state.balls[2].pos_x ≥ 740 ∨ state.balls[2].pos_y ≤ 20 ∨ state.balls[2].pos_y ≥ 540)
+    a2.frequency = 330  ∧  a2.volume = 200  ∧  a2.waveform = 1
+
+    a3.playing = (state.balls[3].pos_x ≤ 20 ∨ state.balls[3].pos_x ≥ 740 ∨ state.balls[3].pos_y ≤ 20 ∨ state.balls[3].pos_y ≥ 540)
+    a3.frequency = 440  ∧  a3.volume = 200  ∧  a3.waveform = 1
+
+    -- ── Render: same as balls.ev. ──────────────────────────────────────────
+    ∀ i ∈ {0..3} : (output.rects[i].x = state.balls[i].pos_x - 20 ∧ output.rects[i].y = state.balls[i].pos_y - 20 ∧ output.rects[i].w = 40 ∧ output.rects[i].h = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)
