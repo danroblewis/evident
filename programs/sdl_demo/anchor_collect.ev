@@ -1,0 +1,69 @@
+-- anchor_collect.ev — Collect-the-stars where the PLAYER is anchored to
+-- the screen, but the DOTS stay in window coords.
+--
+-- Arrow keys move the player. The player's window-relative position is
+-- pre-corrected by -window.dx / -window.dy each step before physics, so
+-- when you drag the OS window the player stays put on the screen and
+-- the world (the four dots) slides past underneath. Walk the player
+-- over each dot to collect it; collect all four to win.
+--
+-- This is a hybrid of collect.ev (player + 4 corner dots + win) and
+-- balls_anchor.ev (drag compensation on positions). Doesn't extend
+-- DotCollectGameEngine because that engine doesn't know about windows.
+--
+-- Run: python evident.py execute programs/sdl_demo/anchor_collect.ev
+
+import "programs/sdl_demo/game_engine.ev"
+
+type GameState
+    player ∈ PlayerState
+    dots   ∈ Seq(DotState)
+    won    ∈ Bool
+
+type main
+    input      ∈ SDLInput
+    output     ∈ SDLOutput
+    window     ∈ SDLWindow
+    state      ∈ GameState
+    state_next ∈ GameState
+
+    player_rect ∈ SDLRect
+
+    #state.dots      = 4
+    #state_next.dots = 4
+    #output.rects    = 5
+
+    -- ── Drag-compensated player state, fed into PlayerPhysics. ─────────────
+    -- Position is shifted opposite the window's per-step movement; velocity
+    -- carries through unchanged.
+    dragged_player ∈ PlayerState
+    dragged_player.x  = state.player.x - window.dx
+    dragged_player.y  = state.player.y - window.dy
+    dragged_player.vx = state.player.vx
+    dragged_player.vy = state.player.vy
+
+    PlayerPhysics  (state mapsto dragged_player, state_next mapsto state_next.player, input mapsto input, won mapsto state.won, bound_x mapsto 760, bound_y mapsto 560)
+    PlayerRect     (state mapsto state.player, rect mapsto player_rect, won mapsto state.won)
+    GameBackground (bg mapsto output.bg, won mapsto state.won)
+
+    -- ── Four corner dots in window coords (constants reasserted each step).
+    state.dots[0].pos_x = 80   ∧ state.dots[0].pos_y = 80
+    state.dots[1].pos_x = 660  ∧ state.dots[1].pos_y = 80
+    state.dots[2].pos_x = 80   ∧ state.dots[2].pos_y = 460
+    state.dots[3].pos_x = 660  ∧ state.dots[3].pos_y = 460
+    ∀ i ∈ {0..3} : state_next.dots[i].pos_x = state.dots[i].pos_x
+    ∀ i ∈ {0..3} : state_next.dots[i].pos_y = state.dots[i].pos_y
+
+    -- ── Per-dot rendering: dot i ↔ output.rects[i]; hidden once collected.
+    ∀ i ∈ {0..3} : state.dots[i].collected = false ⇒ (output.rects[i].x = state.dots[i].pos_x ∧ output.rects[i].y = state.dots[i].pos_y ∧ output.rects[i].w = 25 ∧ output.rects[i].h = 25 ∧ output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 180)
+    ∀ i ∈ {0..3} : state.dots[i].collected = true  ⇒ (output.rects[i].w = 0 ∧ output.rects[i].h = 0)
+
+    output.rects[4] = player_rect
+
+    -- ── Per-dot collection: bounding-box overlap on player position. ───────
+    ∀ i ∈ {0..3} : (state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = true
+    ∀ i ∈ {0..3} : ¬(state.dots[i].collected = false ∧ state.player.x ≤ state.dots[i].pos_x + 25 ∧ state.player.x ≥ state.dots[i].pos_x - 40 ∧ state.player.y ≤ state.dots[i].pos_y + 25 ∧ state.player.y ≥ state.dots[i].pos_y - 40) ⇒ state_next.dots[i].collected = state.dots[i].collected
+
+    -- ── Win condition. ─────────────────────────────────────────────────────
+    (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = true
+    ¬(state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = false
