@@ -4,13 +4,138 @@
 //! where possible (and can then unroll quantifiers, fold Cardinality,
 //! etc.).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use z3::ast::{Ast, Int};
 use z3::Context;
 
 use crate::ast::*;
 use super::types::{Value, Var};
 use super::exprs::translate_int;
+
+/// Walk the schema body to find every name that appears in a
+/// quantifier bound (the `range` of a `∀` / `∃`). Those names are
+/// "structural" — changing their value changes how many iterations
+/// the quantifier unrolls into, which means the cached constraint
+/// set built from the previous value is wrong. Used by the runtime's
+/// cache-invalidation logic: when a `given` value for a structural
+/// name changes between steps, rebuild the cache; otherwise reuse it.
+///
+/// Names appear in bounds via either:
+///   - Direct: `∀ i ∈ {0..n - 1}` → `n` is structural.
+///   - Cardinality: `∀ i ∈ {0..#s - 1}` → `s` is structural (changing
+///     `#s`'s pinned value via a `Seq` given changes the unroll).
+///
+/// Pure value-only givens (e.g. player position used in body
+/// arithmetic but never as a quantifier bound) are NOT structural —
+/// the constraint structure is the same regardless of their value,
+/// and `run_cached` asserts them per-query without rebuilding.
+pub fn structural_names(body: &[BodyItem]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for item in body {
+        if let BodyItem::Constraint(e) = item {
+            walk_for_quantifier_bounds(e, &mut out);
+        }
+        // ClaimCall / Passthrough / SubclaimDecl bodies aren't walked
+        // — they live in other schemas and their bounds typically only
+        // reference the claim's own internal vars, not top-level
+        // givens. If a real cross-claim case shows up, walk
+        // schemas[claim_name].body here too.
+    }
+    out
+}
+
+fn walk_for_quantifier_bounds(e: &Expr, out: &mut HashSet<String>) {
+    match e {
+        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
+            collect_referenced_names(range, out);
+            walk_for_quantifier_bounds(body, out);
+        }
+        Expr::Binary(_, lhs, rhs) => {
+            walk_for_quantifier_bounds(lhs, out);
+            walk_for_quantifier_bounds(rhs, out);
+        }
+        Expr::Not(inner) => walk_for_quantifier_bounds(inner, out),
+        Expr::InExpr(lhs, rhs) => {
+            walk_for_quantifier_bounds(lhs, out);
+            walk_for_quantifier_bounds(rhs, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_referenced_names(e: &Expr, out: &mut HashSet<String>) {
+    match e {
+        Expr::Identifier(n) => { out.insert(n.clone()); }
+        Expr::Cardinality(inner) => {
+            // The seq name itself is structural — a `given` Seq value
+            // for it determines the length, which the bound consumes.
+            if let Expr::Identifier(name) = inner.as_ref() {
+                out.insert(name.clone());
+            }
+            collect_referenced_names(inner, out);
+        }
+        Expr::Binary(_, lhs, rhs) => {
+            collect_referenced_names(lhs, out);
+            collect_referenced_names(rhs, out);
+        }
+        Expr::Not(inner) => collect_referenced_names(inner, out),
+        Expr::Range(lo, hi) => {
+            collect_referenced_names(lo, out);
+            collect_referenced_names(hi, out);
+        }
+        Expr::Index(s, i) => {
+            collect_referenced_names(s, out);
+            collect_referenced_names(i, out);
+        }
+        Expr::Field(r, _) => collect_referenced_names(r, out),
+        Expr::InExpr(lhs, rhs) => {
+            collect_referenced_names(lhs, out);
+            collect_referenced_names(rhs, out);
+        }
+        Expr::SetLit(items) | Expr::SeqLit(items) => {
+            for it in items { collect_referenced_names(it, out); }
+        }
+        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
+            collect_referenced_names(range, out);
+            collect_referenced_names(body, out);
+        }
+        _ => {}
+    }
+}
+
+/// Structural signature for cache invalidation. Two queries with
+/// equal signatures share the same cached, unrolled constraint set.
+///
+/// Captured as `(filtered_pinned, filtered_seq_lens)` — the literal
+/// integer values that, after pre-translation, drive quantifier
+/// unrolling. Filtered to names that actually appear in some
+/// quantifier bound (`structural_names`); a non-structural Int
+/// given like `pos = 42` lands in `pinned` but is filtered out so
+/// it doesn't force a rebuild every step.
+///
+/// Why this isn't just "the structural subset of given":
+///   - A `Seq` given changing values but keeping the same length
+///     must NOT rebuild (constraint shape unchanged) — using length
+///     instead of the whole seq value gets this right.
+///   - A pinned-int derived via `n = #s` (chain) becomes part of
+///     `pinned` and is also filtered against structural names.
+pub type StructuralSignature = (HashMap<String, i64>, HashMap<String, i64>);
+
+pub fn structural_signature(
+    body: &[BodyItem],
+    given: &HashMap<String, Value>,
+) -> StructuralSignature {
+    let names = structural_names(body);
+    let seq_lens = collect_seq_lengths(body, given);
+    let pinned = collect_pinned_ints(body, given, &seq_lens);
+    let pinned_filtered: HashMap<String, i64> = pinned.into_iter()
+        .filter(|(k, _)| names.contains(k.as_str()))
+        .collect();
+    let seq_lens_filtered: HashMap<String, i64> = seq_lens.into_iter()
+        .filter(|(k, _)| names.contains(k.as_str()))
+        .collect();
+    (pinned_filtered, seq_lens_filtered)
+}
 
 /// Pre-scan the schema body and `given` for variables that can be
 /// pinned to a literal int *before* the solver runs:

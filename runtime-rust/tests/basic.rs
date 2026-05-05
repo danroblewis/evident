@@ -1051,6 +1051,113 @@ fn seq_length_chain_arithmetic() {
     assert_eq!(r.bindings.get("c"), Some(&Value::SeqInt(vec![0, 1, 2, 3, 4])));
 }
 
+/// `query_cached` should rebuild the cache when a structural given
+/// (one referenced in a quantifier bound) changes between calls,
+/// because the unrolled constraint set is now wrong for the new
+/// value. Models with the new value should be SAT and reflect the
+/// new bound.
+#[test]
+fn cache_rebuilds_when_structural_given_changes() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    s ∈ Seq(Int)\n    #s = n\n    \
+         ∀ i ∈ {0..n - 1} : s[i] = i * 10\n"
+    ).unwrap();
+
+    // First call: n = 3 → s = [0, 10, 20]. Builds the cache.
+    let mut g = HashMap::new();
+    g.insert("n".to_string(), Value::Int(3));
+    let r1 = rt.query_cached("S", &g).unwrap();
+    assert!(r1.satisfied);
+    assert_eq!(r1.bindings.get("s"), Some(&Value::SeqInt(vec![0, 10, 20])));
+    assert_eq!(rt.cache_rebuilds(), 0, "first call shouldn't count as a rebuild");
+
+    // Second call: same n → reuse cache, no rebuild.
+    let r2 = rt.query_cached("S", &g).unwrap();
+    assert!(r2.satisfied);
+    assert_eq!(rt.cache_rebuilds(), 0, "same structural given shouldn't rebuild");
+
+    // Third call: n = 5 → structural change → cache must rebuild.
+    g.insert("n".to_string(), Value::Int(5));
+    let r3 = rt.query_cached("S", &g).unwrap();
+    assert!(r3.satisfied);
+    assert_eq!(r3.bindings.get("s"), Some(&Value::SeqInt(vec![0, 10, 20, 30, 40])));
+    assert_eq!(rt.cache_rebuilds(), 1, "structural change should rebuild once");
+
+    // Fourth call: n = 5 again → no rebuild.
+    let r4 = rt.query_cached("S", &g).unwrap();
+    assert!(r4.satisfied);
+    assert_eq!(rt.cache_rebuilds(), 1, "stable structural given shouldn't rebuild");
+}
+
+/// Non-structural given changes (a value that appears in body
+/// arithmetic but never as a quantifier bound) must NOT rebuild the
+/// cache. This is the per-frame perf-critical case: a player
+/// position changes every step but the constraint shape is fixed.
+#[test]
+fn cache_does_not_rebuild_for_non_structural_given() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        // `pos` appears only in body arithmetic; not in any ∀ bound.
+        "schema S\n    pos ∈ Int\n    next_pos ∈ Int\n    \
+         next_pos = pos + 1\n"
+    ).unwrap();
+
+    let mut g = HashMap::new();
+    g.insert("pos".to_string(), Value::Int(10));
+    let _ = rt.query_cached("S", &g).unwrap();
+    assert_eq!(rt.cache_rebuilds(), 0);
+
+    // Change pos repeatedly. None should rebuild.
+    for new_pos in 11..20 {
+        g.insert("pos".to_string(), Value::Int(new_pos));
+        let r = rt.query_cached("S", &g).unwrap();
+        assert!(r.satisfied);
+        assert_eq!(r.bindings.get("next_pos"), Some(&Value::Int(new_pos + 1)));
+    }
+    assert_eq!(rt.cache_rebuilds(), 0,
+        "pos is not in any quantifier bound — should never rebuild");
+}
+
+/// Structural given via Cardinality: changing the LENGTH of a Seq
+/// given (not just its values) is a structural change because
+/// `∀ i ∈ {0..#s - 1}` uses #s as the bound.
+#[test]
+fn cache_rebuilds_when_seq_length_changes() {
+    use std::collections::HashMap;
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    out ∈ Seq(Int)\n    \
+         #out = #s\n    \
+         ∀ i ∈ {0..#s - 1} : out[i] = s[i] * 2\n"
+    ).unwrap();
+
+    let mut g = HashMap::new();
+    g.insert("s".to_string(), Value::SeqInt(vec![1, 2, 3]));
+    let r1 = rt.query_cached("S", &g).unwrap();
+    assert!(r1.satisfied);
+    assert_eq!(r1.bindings.get("out"), Some(&Value::SeqInt(vec![2, 4, 6])));
+    let baseline = rt.cache_rebuilds();
+
+    // Same length, different values → no rebuild.
+    g.insert("s".to_string(), Value::SeqInt(vec![10, 20, 30]));
+    let r2 = rt.query_cached("S", &g).unwrap();
+    assert!(r2.satisfied);
+    assert_eq!(r2.bindings.get("out"), Some(&Value::SeqInt(vec![20, 40, 60])));
+    assert_eq!(rt.cache_rebuilds(), baseline,
+        "same #s — values changed but structure is the same");
+
+    // Different length → structural change → rebuild.
+    g.insert("s".to_string(), Value::SeqInt(vec![1, 2, 3, 4, 5]));
+    let r3 = rt.query_cached("S", &g).unwrap();
+    assert!(r3.satisfied);
+    assert_eq!(r3.bindings.get("out"), Some(&Value::SeqInt(vec![2, 4, 6, 8, 10])));
+    assert_eq!(rt.cache_rebuilds(), baseline + 1,
+        "#s changed length — must rebuild");
+}
+
 /// `∀`/`∃` are valid expressions wherever `⇒` is. Regression for the
 /// rule30.ev demo: `state.step = 0 ⇒ ∀ i ∈ {0..N} : seed[i] = ...`
 /// previously failed with "expected expression, got ForAll" because

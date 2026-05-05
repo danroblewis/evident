@@ -15,11 +15,22 @@ use super::preprocess::{apply_pinned_ints, apply_seq_lengths, collect_pinned_int
 
 /// Translate the schema's body once into a fresh solver and return a
 /// `CachedSchema` that subsequent queries can reuse via push/pop.
+///
+/// `given` is the set of values that should be folded into the cache
+/// at build time — typically the structural subset (names appearing
+/// in quantifier bounds), so the cache contains the right unrolled
+/// shape. Non-structural givens can be left in or out; they won't
+/// change the cache's correctness, but if included they're folded as
+/// `Var::PinnedInt` and any subsequent `run_cached` with a different
+/// value for that name will hit the PinnedInt-mismatch UNSAT path.
+/// The runtime's cache layer takes care of this by passing only the
+/// structural subset and rebuilding on signature change.
 pub fn build_cache(
     schema: &SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    given: &HashMap<String, Value>,
 ) -> CachedSchema<'static> {
     let solver = Solver::new(ctx);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
@@ -63,12 +74,13 @@ pub fn build_cache(
         }
     }
 
-    // Pass 1.5: pin literal-int vars (no givens for build_cache — those
-    // come per-query). Lets `∀ i ∈ {0..n - 1}` unroll when n is fixed by
-    // a `n = literal` constraint or via #seq length propagation.
-    let no_given: HashMap<String, Value> = HashMap::new();
-    let seq_lens = collect_seq_lengths(&schema.body, &no_given);
-    let pinned   = collect_pinned_ints(&schema.body, &no_given, &seq_lens);
+    // Pass 1.5: pin literal-int vars + propagate seq lengths. `given`
+    // contributes both Int values (for pinned) and Seq* lengths (for
+    // seq_lens), so a structural value the runtime decided to bake into
+    // the cache (e.g. `cells_count = 80` from a config menu) makes
+    // every `∀ i ∈ {0..cells_count - 1}` unroll correctly.
+    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 

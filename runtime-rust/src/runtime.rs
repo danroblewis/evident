@@ -2,7 +2,10 @@
 
 use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
-use crate::translate::{build_cache, run_cached, sample_cached_inner, CachedSchema, DatatypeRegistry};
+use crate::translate::{
+    build_cache, run_cached, sample_cached_inner, structural_signature,
+    CachedSchema, DatatypeRegistry, StructuralSignature,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -39,7 +42,24 @@ pub struct EvidentRuntime {
     /// Per-schema cache for `query_cached`. RefCell because we want
     /// `query_cached` to take `&self` (so multiple queries can share
     /// the runtime) while the cache mutates on first access.
-    cache: RefCell<HashMap<String, CachedSchema<'static>>>,
+    ///
+    /// Each entry pairs the cached solver+env with the structural
+    /// signature it was built with — the subset of the previous
+    /// `given` keyed on names that appear in quantifier bounds. On
+    /// the next query, if the signature would be different (i.e. a
+    /// structural given changed), we drop the entry and rebuild
+    /// against the new given. Non-structural givens (e.g. a player
+    /// position used in body arithmetic but not as an unroll bound)
+    /// don't trigger a rebuild — `run_cached` just asserts the new
+    /// value per-query and Z3 solves with the existing constraint
+    /// shape.
+    cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
+    /// Counter incremented each time a cached entry is rebuilt due
+    /// to a structural-signature mismatch. Useful for debugging
+    /// performance issues (e.g. "every step is rebuilding — what
+    /// structural given is flipping?") and for testing the
+    /// invalidation logic.
+    cache_rebuilds: RefCell<u64>,
     /// Lazily-built `Z3 DatatypeSort` per user type referenced as the
     /// element of `Seq(UserType)`. Built on first `declare_var`; entries
     /// are `Box::leak`'d to live for `'static` (consistent with the
@@ -90,10 +110,19 @@ impl EvidentRuntime {
             schemas: HashMap::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
+            cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
         }
     }
+
+    /// Number of cache rebuilds triggered by structural-signature
+    /// mismatches since this runtime was created. Mostly useful for
+    /// tests verifying that a change to a non-structural given does
+    /// NOT rebuild, and that a change to a structural given DOES.
+    /// Also useful as a perf debugging knob — if this counter climbs
+    /// every step, you have an unintended structural dependency.
+    pub fn cache_rebuilds(&self) -> u64 { *self.cache_rebuilds.borrow() }
 
     /// Parse and load Evident source. Multiple calls accumulate.
     /// Subclaims (defined inside another claim's body) are also lifted
@@ -262,21 +291,60 @@ impl EvidentRuntime {
     /// (push/pop per query). Mirrors Python's `query(name, given,
     /// cached=True)` and the `evaluate_cached` optimization.
     ///
+    /// **Structural-signature invalidation.** The cache stores the
+    /// subset of the previous `given` keyed on names that appear in
+    /// quantifier bounds — the structural signature. If this query's
+    /// signature differs (e.g. a config value that drives an unroll
+    /// count just changed), the cache is dropped and rebuilt against
+    /// the new given. Non-structural changes (player position, etc.)
+    /// reuse the cache and just re-assert the new value per-query.
+    ///
     /// Bindings, satisfaction result, and overall semantics are
     /// identical to `query()`. Faster when called many times against
-    /// the same schema with changing `given` values (e.g. an executor
-    /// stepping a state machine 60×/sec).
+    /// the same schema with mostly-stable structural givens (e.g. an
+    /// executor stepping a state machine 60×/sec where lengths and
+    /// bound names don't change).
     pub fn query_cached(&self, name: &str, given: &HashMap<String, Value>)
         -> Result<QueryResult, RuntimeError>
     {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
             .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
+        let cur_sig = structural_signature(&schema.body, given);
         let mut cache = self.cache.borrow_mut();
-        let cached = cache.entry(name.to_string()).or_insert_with(|| {
-            build_cache(&schema, &self.schemas, self.z3_ctx, &self.datatypes)
-        });
-        let r = run_cached(cached, given, self.z3_ctx);
+        let needs_rebuild = match cache.get(name) {
+            Some((_, cached_sig)) => cached_sig != &cur_sig,
+            None => true,
+        };
+        if needs_rebuild {
+            if cache.contains_key(name) {
+                *self.cache_rebuilds.borrow_mut() += 1;
+            }
+            // Build with the full given so the structural values get
+            // folded as PinnedInts / literal seq lengths and unrolls
+            // fire correctly. Non-structural pinned values also get
+            // folded — this is fine when the same `given` is passed
+            // to the immediately-following `run_cached`, since the
+            // PinnedInt arm matches and is a no-op.
+            //
+            // Subsequent queries that change ONLY non-structural
+            // values would hit PinnedInt-mismatch UNSAT — to dodge
+            // that, the runtime could pass a stripped-given to
+            // build_cache (only structural keys). But that means
+            // re-walking pinned ints and is more code; the cleaner
+            // version is to filter `given` here. Doing that:
+            let names = crate::translate::structural_names(&schema.body);
+            let structural_given: HashMap<String, Value> = given.iter()
+                .filter(|(k, _)| names.contains(k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let new_cached = build_cache(
+                &schema, &self.schemas, self.z3_ctx, &self.datatypes,
+                &structural_given);
+            cache.insert(name.to_string(), (new_cached, cur_sig));
+        }
+        let entry = cache.get(name).unwrap();
+        let r = run_cached(&entry.0, given, self.z3_ctx);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
@@ -297,10 +365,27 @@ impl EvidentRuntime {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
             .clone();
+        let cur_sig = structural_signature(&schema.body, given);
         let mut cache = self.cache.borrow_mut();
-        let cached = cache.entry(name.to_string()).or_insert_with(|| {
-            build_cache(&schema, &self.schemas, self.z3_ctx, &self.datatypes)
-        });
-        Ok(sample_cached_inner(cached, given, n, self.z3_ctx))
+        let needs_rebuild = match cache.get(name) {
+            Some((_, cached_sig)) => cached_sig != &cur_sig,
+            None => true,
+        };
+        if needs_rebuild {
+            if cache.contains_key(name) {
+                *self.cache_rebuilds.borrow_mut() += 1;
+            }
+            let names = crate::translate::structural_names(&schema.body);
+            let structural_given: HashMap<String, Value> = given.iter()
+                .filter(|(k, _)| names.contains(k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let new_cached = build_cache(
+                &schema, &self.schemas, self.z3_ctx, &self.datatypes,
+                &structural_given);
+            cache.insert(name.to_string(), (new_cached, cur_sig));
+        }
+        let entry = cache.get(name).unwrap();
+        Ok(sample_cached_inner(&entry.0, given, n, self.z3_ctx))
     }
 }
