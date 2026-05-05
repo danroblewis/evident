@@ -90,6 +90,11 @@ pub fn evaluate(
                 // Declarations from the claim's body are added in pass 2
                 // (where we have the inner env to bind into); no work here.
             }
+            BodyItem::SubclaimDecl(_) => {
+                // Subclaims contribute no constraints to the parent —
+                // they're registered into the runtime's schemas table at
+                // load time so other items can reference them.
+            }
             BodyItem::Constraint(_) => {}
         }
     }
@@ -129,18 +134,26 @@ pub fn evaluate(
                 // is deferred (would need to recursively expand).
                 let mut inner = env.clone();
                 for m in mappings {
-                    if let Some(v) = expr_as_var(&m.value, &ctx, &env) {
-                        inner.insert(m.slot.clone(), v);
-                    } else {
+                    let bound = resolve_mapping(&m.slot, &m.value, &ctx, &env);
+                    if bound.is_empty() {
                         eprintln!("warning: mapping value didn't resolve: {:?}", m.value);
+                    }
+                    for (k, v) in bound {
+                        inner.insert(k, v);
                     }
                 }
                 // Declare any of the claim's own variables that weren't
                 // mapped (fresh consts — these are the claim's "internal"
                 // parameters, like AxisPhysics's `intended`/`target`).
+                // A slot counts as "already bound" if either the bare
+                // name is in env (leaf mapping) or any `slot.*` key is
+                // (sub-schema mapping like `state mapsto state.player`).
                 for sub in &claim.body {
                     if let BodyItem::Membership { name: vname, type_name } = sub {
-                        if !inner.contains_key(vname) {
+                        let slot_prefix = format!("{}.", vname);
+                        let already_bound = inner.contains_key(vname)
+                            || inner.keys().any(|k| k.starts_with(&slot_prefix));
+                        if !already_bound {
                             declare_var(&ctx, &solver, &mut inner, vname, type_name, schemas);
                         }
                     }
@@ -154,6 +167,7 @@ pub fn evaluate(
                     }
                 }
             }
+            BodyItem::SubclaimDecl(_) => {}
             BodyItem::Membership { .. } => {}
         }
     }
@@ -205,15 +219,51 @@ pub fn evaluate(
     EvalResult { satisfied, bindings }
 }
 
-/// Resolve a mapping-value expression to a `Var` so it can be bound into
-/// the included claim's env. Handles three cases:
-///   - bare identifier referring to an existing env binding (looked up
-///     directly so the slot shares the same Z3 const)
-///   - integer literal → fresh IntVar holding the constant
-///   - bool literal → fresh BoolVar holding the constant
-///   - string literal → fresh StrVar
-/// Anything else (arithmetic expressions, dotted sub-schema chains)
-/// returns None for now.
+/// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
+/// bindings to install in the inner env when entering a ClaimCall.
+///
+/// Three resolution paths, tried in order:
+///   1. Sub-schema mapping: the value is a dotted identifier (e.g.
+///      `state.player`) AND no env binding exists for that exact name,
+///      but multiple env keys share it as a prefix (`state.player.x`,
+///      `state.player.y`, …). Each matched leaf is bound under
+///      `slot.field`. This matches the Python translator's behavior
+///      for `state mapsto state.player`.
+///   2. Leaf identifier or literal: `expr_as_var` produces a single
+///      `Var`, bound to `slot` directly.
+///   3. Otherwise → empty (caller logs a warning).
+fn resolve_mapping<'ctx>(
+    slot: &str,
+    value: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Vec<(String, Var<'ctx>)> {
+    if let Expr::Identifier(name) = value {
+        // If the exact name is in env, prefer leaf binding.
+        if env.contains_key(name) {
+            return vec![(slot.to_string(), env[name].clone())];
+        }
+        // Otherwise try sub-schema expansion: gather every env key
+        // beginning with `name.` and re-key under `slot.field`.
+        let prefix = format!("{}.", name);
+        let mut out = Vec::new();
+        for (k, v) in env {
+            if let Some(field) = k.strip_prefix(&prefix) {
+                out.push((format!("{}.{}", slot, field), v.clone()));
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    if let Some(v) = expr_as_var(value, ctx, env) {
+        return vec![(slot.to_string(), v)];
+    }
+    Vec::new()
+}
+
+/// Resolve a leaf expression to a single `Var`. Used both for ClaimCall
+/// scalar mappings and as the tail-case of `resolve_mapping`.
 fn expr_as_var<'ctx>(
     e: &Expr,
     ctx: &'ctx Context,

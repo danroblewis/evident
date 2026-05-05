@@ -11,6 +11,7 @@ pub enum Keyword {
     Schema,
     Claim,
     Type,
+    Subclaim,
 }
 
 /// Top-level schema declaration:
@@ -35,6 +36,13 @@ pub enum BodyItem {
     /// variable declared in the included claim with the same name as a
     /// variable in scope here resolves to the same Z3 const.
     Passthrough(String),
+
+    /// `subclaim Name` — a claim defined inside the parent's body.
+    /// Has no effect on the parent at translation time (it doesn't
+    /// contribute constraints) but is registered into the runtime's
+    /// schemas table at load time so other ClaimCall / passthrough
+    /// items can reference it by name.
+    SubclaimDecl(SchemaDecl),
 
     /// `ClaimName(slot mapsto value, …)` — claim composition with
     /// explicit renaming. Each `Mapping` binds the included claim's

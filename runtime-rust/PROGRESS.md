@@ -4,22 +4,25 @@
 
 ## Current status
 
-**Phase:** v0.4 — claim composition with mappings landed. 22/22 tests green.
+**Phase:** v0.5 — sub-schema mapping + subclaim. 25/25 tests green.
 
-**Last action:** Added `ClaimName(slot mapsto value, …)` syntax. The
-parser distinguishes claim-call from a parenthesized expression by
-peeking for `IDENT LPAREN` at body-item start. The translator clones
-the parent env, binds each mapping slot to its value (via a small
-`expr_as_var` helper that handles bare identifiers + literals), then
-runs the claim's declaration and constraint passes against that
-inner env. Internal slots of the claim that the caller didn't map
-get fresh Z3 consts (matches the Python runtime's behavior for
-`AxisPhysics`-style claims with `intended` / `target` internals).
+**Last action:** Two related slices landed together:
+  - **Sub-schema mapping** in ClaimCall — `state mapsto state.player`
+    now expands to bind every `state.field` slot in the called claim
+    to the caller's `state.player.field` env entry. Implemented as a
+    new `resolve_mapping` that returns one or many `(name, Var)` pairs.
+    The "declare unmapped internals" pass now recognizes a slot as
+    already bound when *any* `slot.*` key is present, not just the
+    bare name.
+  - **Subclaim** declarations — `subclaim Name` inside a claim's body
+    is a new `BodyItem::SubclaimDecl(SchemaDecl)`. The runtime walks
+    every loaded schema's body during `load_source` and lifts
+    subclaims into the same `schemas` table as top-level decls, so
+    ClaimCall and passthrough can find them. Recursive — subclaims
+    of subclaims are also reachable.
 
-**Next action:** Either Seq sorts + cardinality (architectural, big),
-or cached evaluator (Rust lifetime gymnastics — see sketch below).
-Sub-schema mapping (`state mapsto state.player`) is also still
-deferred and would require recursive expansion in `expr_as_var`.
+**Next action:** Cardinality `#x` constraints, then Seq/Set Z3 sorts
+(big architectural piece). Cached evaluator still pending — see sketch.
 
 ## Milestones
 
@@ -119,8 +122,11 @@ Done in this session:
       both bounds are literal Ints.
 - [x] `..ClaimName` passthrough composition (names-match).
 - [x] Claim composition with mappings (`Foo(x mapsto y, lit mapsto 5)`).
-      Bare-identifier and literal mapping values supported; sub-schema
-      mapping (`state mapsto state.player`) still deferred.
+      Bare-identifier and literal mapping values + sub-schema mapping
+      (`state mapsto state.player` re-keys every matching field).
+- [x] `subclaim` declaration. Body has the same shape as a top-level
+      decl; runtime lifts subclaims into the global schemas table so
+      they're reachable by ClaimCall / passthrough from anywhere.
 
 In rough order of leverage:
 
@@ -129,9 +135,6 @@ In rough order of leverage:
 - [ ] Sequence and Set Z3 sorts (Seq(T), Array(T, Bool)) — needed
       before composite-element story.
 - [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
-- [ ] Sub-schema mapping in ClaimCall (`state mapsto state.player` →
-      expand both sides to fields and bind pairwise).
-- [ ] `subclaim` declaration + invocation with fresh internals.
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.
 - [ ] Symbolic ∀ bounds via length propagation (see Python's
@@ -168,3 +171,6 @@ All in `tests/basic.rs`. 16/16 passing.
 | `claim_call_with_mapping`            | `Claim(slot mapsto var)`               |
 | `claim_call_mixed_mappings`          | mappings with literals and idents      |
 | `claim_call_unmapped_internal`       | unmapped internal slot → fresh const   |
+| `claim_call_sub_schema_mapping`      | `state mapsto state.player` re-keys fields |
+| `subclaim_register_and_call`         | subclaim defined inside parent body    |
+| `subclaim_visible_to_sibling`        | subclaim accessible from sibling decl  |

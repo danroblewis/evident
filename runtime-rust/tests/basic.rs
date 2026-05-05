@@ -265,6 +265,67 @@ fn claim_call_mixed_mappings() {
     } else { panic!(); }
 }
 
+/// Sub-schema mapping in a ClaimCall: `state mapsto state.player`
+/// should re-key every `state.field` slot in the claim to the
+/// caller's `state.player.field` env entry.
+#[test]
+fn claim_call_sub_schema_mapping() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        // PlayerState is the field bag; positive_xy constrains both fields.
+        "type PlayerState\n    x ∈ Int\n    y ∈ Int\n\
+         claim positive_xy\n    state ∈ PlayerState\n    state.x > 0\n    state.y > 0\n\
+         schema World\n    p ∈ PlayerState\n    positive_xy (state mapsto p)\n    p.x < 5\n    p.y < 5\n"
+    ).unwrap();
+    let r = rt.query_free("World").unwrap();
+    assert!(r.satisfied);
+    if let (Some(Value::Int(x)), Some(Value::Int(y))) =
+        (r.bindings.get("p.x"), r.bindings.get("p.y"))
+    {
+        assert!(*x > 0 && *x < 5);
+        assert!(*y > 0 && *y < 5);
+    } else { panic!("missing p.x or p.y"); }
+}
+
+/// Subclaim defined inside a parent's body. Other claims (or the parent
+/// itself) can call it by name; the runtime registers it during load.
+#[test]
+fn subclaim_register_and_call() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim outer\n    \
+         subclaim inner\n        \
+         n ∈ Nat\n        \
+         n > 5\n    \
+         m ∈ Nat\n    \
+         inner (n mapsto m)\n"
+    ).unwrap();
+    let r = rt.query_free("outer").unwrap();
+    assert!(r.satisfied);
+    if let Some(Value::Int(m)) = r.bindings.get("m") {
+        assert!(*m > 5);
+    } else { panic!("missing m"); }
+}
+
+/// A subclaim from one parent isn't accidentally hidden — it's globally
+/// registered, so a sibling schema can also reach it.
+#[test]
+fn subclaim_visible_to_sibling() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim host\n    \
+         subclaim helper\n        \
+         k ∈ Nat\n        \
+         k = 42\n\
+         schema sibling\n    \
+         a ∈ Nat\n    \
+         helper (k mapsto a)\n"
+    ).unwrap();
+    let r = rt.query_free("sibling").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("a"), Some(&Value::Int(42)));
+}
+
 /// Internal slot of the claim that isn't mapped should get a fresh
 /// constant — Z3 picks any value satisfying the constraints.
 #[test]

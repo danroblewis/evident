@@ -81,6 +81,48 @@ impl Parser {
         Ok(program)
     }
 
+    /// Parse a `subclaim Name` body item. Same indented-body shape as
+    /// a top-level schema decl, but produces a `SubclaimDecl` body item
+    /// so the runtime can register it for later lookup.
+    fn parse_subclaim(&mut self) -> Result<BodyItem> {
+        self.bump(); // subclaim keyword
+        let name = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected name after subclaim, got {:?}", other))),
+        };
+        let body = self.parse_indented_body()?;
+        Ok(BodyItem::SubclaimDecl(SchemaDecl {
+            keyword: Keyword::Subclaim, name, body,
+        }))
+    }
+
+    /// Parse zero or more body items at a single indent level. Used by
+    /// both top-level schema decls and subclaims. Stops when the next
+    /// Indent is at a different level (or there's no Indent at all).
+    fn parse_indented_body(&mut self) -> Result<Vec<BodyItem>> {
+        self.skip_blank_newlines();
+        let body_indent = match self.peek() {
+            Token::Indent(n) if *n > 0 => *n,
+            _ => return Ok(vec![]),
+        };
+        let mut body = Vec::new();
+        loop {
+            match self.peek() {
+                Token::Indent(n) if *n == body_indent => { self.bump(); }
+                _ => break,
+            }
+            let item = self.parse_body_item()?;
+            body.push(item);
+            match self.peek() {
+                Token::Newline => { self.bump(); }
+                Token::Eof => break,
+                _ => {}
+            }
+        }
+        Ok(body)
+    }
+
     fn parse_schema_decl(&mut self) -> Result<SchemaDecl> {
         let keyword = match self.bump() {
             Token::Schema => Keyword::Schema,
@@ -94,29 +136,7 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected schema name, got {:?}", other))),
         };
-        // Optional newline + indented body.
-        self.skip_blank_newlines();
-        let body_indent = match self.peek() {
-            Token::Indent(n) if *n > 0 => *n,
-            _ => return Ok(SchemaDecl { keyword, name, body: vec![] }),
-        };
-        let mut body = Vec::new();
-        loop {
-            // Each body item starts with Indent(body_indent).
-            match self.peek() {
-                Token::Indent(n) if *n == body_indent => { self.bump(); }
-                _ => break,
-            }
-            // Now parse one body line.
-            let item = self.parse_body_item()?;
-            body.push(item);
-            // Consume the trailing newline (or EOF).
-            match self.peek() {
-                Token::Newline => { self.bump(); }
-                Token::Eof => break,
-                _ => {}
-            }
-        }
+        let body = self.parse_indented_body()?;
         Ok(SchemaDecl { keyword, name, body })
     }
 
@@ -136,6 +156,14 @@ impl Parser {
                 other => return Err(ParseError(format!(
                     "expected claim name after '..', got {:?}", other))),
             }
+        }
+
+        // Subclaim: `subclaim Name` followed by an indented body. Same
+        // shape as a top-level schema decl. The runtime-loader pulls
+        // the inner SchemaDecl out and registers it under its name so
+        // ClaimCall / passthrough can reference it.
+        if matches!(self.peek(), Token::Subclaim) {
+            return self.parse_subclaim();
         }
 
         // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.

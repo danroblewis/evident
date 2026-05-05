@@ -20,6 +20,7 @@ pub enum Token {
     Schema,
     Claim,
     Type,
+    Subclaim,
     In,           // ∈ or "in"
 
     // Operators
@@ -286,13 +287,14 @@ fn is_ident_continue(c: char) -> bool {
 
 fn keyword_or_ident(s: String) -> Token {
     match s.as_str() {
-        "schema" => Token::Schema,
-        "claim"  => Token::Claim,
-        "type"   => Token::Type,
-        "in"     => Token::In,
-        "true"   => Token::True,
-        "false"  => Token::False,
-        "mapsto" => Token::MapsTo,
+        "schema"   => Token::Schema,
+        "claim"    => Token::Claim,
+        "type"     => Token::Type,
+        "subclaim" => Token::Subclaim,
+        "in"       => Token::In,
+        "true"     => Token::True,
+        "false"    => Token::False,
+        "mapsto"   => Token::MapsTo,
         _ => Token::Ident(s),
     }
 }

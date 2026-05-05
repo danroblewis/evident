@@ -1,10 +1,22 @@
 //! Top-level API. Mirrors the Python `EvidentRuntime` for the v0.1 subset.
 
-use crate::ast::{Program, SchemaDecl};
+use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
 use std::collections::HashMap;
 
 pub use crate::translate::Value;
+
+/// Walk a schema body and register any nested `subclaim` declarations
+/// into `schemas` (recursively, so a subclaim of a subclaim is also
+/// reachable).
+fn register_subclaims(body: &[BodyItem], schemas: &mut HashMap<String, SchemaDecl>) {
+    for item in body {
+        if let BodyItem::SubclaimDecl(s) = item {
+            schemas.insert(s.name.clone(), s.clone());
+            register_subclaims(&s.body, schemas);
+        }
+    }
+}
 
 pub struct EvidentRuntime {
     program: Program,
@@ -45,10 +57,14 @@ impl EvidentRuntime {
     }
 
     /// Parse and load Evident source. Multiple calls accumulate.
+    /// Subclaims (defined inside another claim's body) are also lifted
+    /// into the runtime's schemas table so other claims can reference
+    /// them by name — same convention as the Python runtime.
     pub fn load_source(&mut self, src: &str) -> Result<(), RuntimeError> {
         let prog = parser::parse(src).map_err(|e| RuntimeError::Parse(e.to_string()))?;
         for s in &prog.schemas {
             self.schemas.insert(s.name.clone(), s.clone());
+            register_subclaims(&s.body, &mut self.schemas);
         }
         self.program.schemas.extend(prog.schemas);
         Ok(())
