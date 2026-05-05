@@ -203,17 +203,43 @@ impl Parser {
             };
             if matches!(self.peek(), Token::In) {
                 self.bump();
-                if let Token::Ident(type_name) = self.peek().clone() {
-                    // Lookahead: is this the end of the line? If so, it's a
-                    // type declaration. If the next token is `.` or any
-                    // expression-continuation, treat the IDENT as the start
-                    // of a constraint expression.
-                    let after_type = self.toks.get(self.pos + 1);
-                    let line_terminator = matches!(after_type,
+                if let Token::Ident(head) = self.peek().clone() {
+                    // Two type-name shapes accepted:
+                    //   - bare ident followed by line-end:  `n ∈ Nat`
+                    //   - compound `Ident(Ident)` followed by line-end:
+                    //     `s ∈ Seq(Int)` or `t ∈ Set(Bool)` etc.
+                    let after_head = self.toks.get(self.pos + 1);
+                    let plain_terminated = matches!(after_head,
                         Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None);
-                    if line_terminator {
-                        self.bump(); // consume the type ident
-                        return Ok(BodyItem::Membership { name: lhs_name, type_name });
+                    let compound = matches!(after_head, Some(Token::LParen));
+                    if plain_terminated {
+                        self.bump();
+                        return Ok(BodyItem::Membership { name: lhs_name, type_name: head });
+                    }
+                    if compound {
+                        // Greedy: consume `Ident ( inner )` and stitch a
+                        // single string. Inner can be Ident or another
+                        // compound — recursive shape, but for v0.5 we
+                        // only support one level deep (Seq(Int), Set(String)).
+                        let saved2 = self.pos;
+                        self.bump();           // outer ident
+                        self.bump();           // (
+                        if let Token::Ident(inner) = self.peek().clone() {
+                            let after_inner = self.toks.get(self.pos + 1);
+                            if matches!(after_inner, Some(Token::RParen)) {
+                                self.bump();   // inner ident
+                                self.bump();   // )
+                                let after = self.toks.get(self.pos);
+                                let line_end = matches!(after,
+                                    Some(Token::Newline) | Some(Token::Eof)
+                                    | Some(Token::Indent(_)) | None);
+                                if line_end {
+                                    let type_name = format!("{}({})", head, inner);
+                                    return Ok(BodyItem::Membership { name: lhs_name, type_name });
+                                }
+                            }
+                        }
+                        self.pos = saved2;
                     }
                 }
                 // Not a Membership — back up and parse the whole line as expr.
@@ -361,7 +387,25 @@ impl Parser {
             // Treat -x as 0 - x.
             return Ok(Expr::Binary(BinOp::Sub, Box::new(Expr::Int(0)), Box::new(e)));
         }
-        self.parse_atom()
+        if matches!(self.peek(), Token::Hash) {
+            self.bump();
+            let e = self.parse_unary()?;
+            return Ok(Expr::Cardinality(Box::new(e)));
+        }
+        self.parse_postfix()
+    }
+
+    /// Atom followed by zero or more `[expr]` indexing suffixes.
+    /// Indexing binds tighter than any binary op.
+    fn parse_postfix(&mut self) -> Result<Expr> {
+        let mut e = self.parse_atom()?;
+        while matches!(self.peek(), Token::LBracket) {
+            self.bump();
+            let idx = self.parse_expr()?;
+            self.eat(&Token::RBracket)?;
+            e = Expr::Index(Box::new(e), Box::new(idx));
+        }
+        Ok(e)
     }
 
     fn parse_atom(&mut self) -> Result<Expr> {
@@ -439,6 +483,31 @@ mod tests {
         assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name }
             if name == "n" && type_name == "Nat"));
         assert!(matches!(&s.body[1], BodyItem::Constraint(_)));
+    }
+
+    #[test]
+    fn parse_cardinality_and_index() {
+        // Even though the translator doesn't run these yet, the AST
+        // shape should be settled.
+        let p = parse("schema S\n    s ∈ Seq(Int)\n    #s = 3\n    s[0] > 0\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 3);
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name }
+            if name == "s" && type_name == "Seq(Int)"));
+        // #s = 3
+        match &s.body[1] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, _)) => {
+                assert!(matches!(lhs.as_ref(), Expr::Cardinality(_)));
+            }
+            other => panic!("expected #s = 3 constraint, got {:?}", other),
+        }
+        // s[0] > 0
+        match &s.body[2] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Gt, lhs, _)) => {
+                assert!(matches!(lhs.as_ref(), Expr::Index(_, _)));
+            }
+            other => panic!("expected s[0] > 0 constraint, got {:?}", other),
+        }
     }
 
     #[test]

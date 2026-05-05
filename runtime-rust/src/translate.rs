@@ -328,6 +328,15 @@ fn declare_var<'ctx>(
         "String" => {
             env.insert(prefix.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
         }
+        // Primitive Seq sorts are parsed but not yet declared — the
+        // z3-0.12 crate doesn't expose a generic `Seq<T>` ast type
+        // (only `String<'ctx>` which is internally a char-seq). To add
+        // these we'd need to wrap z3-sys' `Z3_mk_seq_sort` directly.
+        // See PROGRESS.md gotchas. The declarations parse cleanly so
+        // syntax + AST are ready when the runtime catches up.
+        s if s.starts_with("Seq(") => {
+            eprintln!("warning: Seq(...) not yet supported by the runtime; declaration of {} ignored", prefix);
+        }
         _ => {
             if let Some(schema) = schemas.get(type_name) {
                 // Expand each membership in the sub-schema's body.
@@ -367,6 +376,9 @@ fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'
                 _ => return None,
             })
         }
+        // `#x` and `x[i]` parse cleanly but can't be translated until
+        // the runtime declares Seq sorts. See PROGRESS.md (Seq gap).
+        Expr::Cardinality(_) | Expr::Index(_, _) => None,
         _ => None,
     }
 }

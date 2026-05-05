@@ -80,6 +80,10 @@ pub enum Expr {
     /// so we can unroll.
     Forall(String, Box<Expr>, Box<Expr>),
     Exists(String, Box<Expr>, Box<Expr>),
+    /// `#expr` — cardinality. For Seq translates to Z3 Length.
+    Cardinality(Box<Expr>),
+    /// `expr[index]` — sequence indexing. Translates to Z3 nth.
+    Index(Box<Expr>, Box<Expr>),
     /// Binary operation: `lhs op rhs`.
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// Unary `¬e`.

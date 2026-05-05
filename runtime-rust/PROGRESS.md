@@ -4,25 +4,24 @@
 
 ## Current status
 
-**Phase:** v0.5 — sub-schema mapping + subclaim. 25/25 tests green.
+**Phase:** v0.6 — cardinality + indexing parser/AST done; runtime
+still gated on Seq sort support (z3-0.12 crate gap). 25/25 tests green.
 
-**Last action:** Two related slices landed together:
-  - **Sub-schema mapping** in ClaimCall — `state mapsto state.player`
-    now expands to bind every `state.field` slot in the called claim
-    to the caller's `state.player.field` env entry. Implemented as a
-    new `resolve_mapping` that returns one or many `(name, Var)` pairs.
-    The "declare unmapped internals" pass now recognizes a slot as
-    already bound when *any* `slot.*` key is present, not just the
-    bare name.
-  - **Subclaim** declarations — `subclaim Name` inside a claim's body
-    is a new `BodyItem::SubclaimDecl(SchemaDecl)`. The runtime walks
-    every loaded schema's body during `load_source` and lifts
-    subclaims into the same `schemas` table as top-level decls, so
-    ClaimCall and passthrough can find them. Recursive — subclaims
-    of subclaims are also reachable.
+**Last action:** Parser/AST work for the sequence syntax landed:
+  - `#expr` parses as `Expr::Cardinality(Box<Expr>)` (unary prefix).
+  - `e[i]` parses as `Expr::Index(Box<Expr>, Box<Expr>)` (postfix at
+    atom level, binds tighter than any binary op).
+  - Compound type names `Seq(Int)`, `Set(Bool)`, etc. parse cleanly
+    in membership decls.
 
-**Next action:** Cardinality `#x` constraints, then Seq/Set Z3 sorts
-(big architectural piece). Cached evaluator still pending — see sketch.
+The runtime can't actually use these yet — see "z3 crate gap" under
+gotchas. Translation ignores both Cardinality and Index; declaring
+a `Seq(T)` variable logs a warning. The AST shape is settled, so
+when the runtime catches up, only translate.rs needs to change.
+
+**Next action:** Either (a) wrap z3-sys's `Z3_mk_seq_sort` directly
+to enable Seq runtime support, or (b) cached evaluator (Rust
+lifetime gymnastics — see sketch below).
 
 ## Milestones
 
@@ -80,6 +79,15 @@
   unrolls only when both `lo` and `hi` are `Expr::Int`. Symbolic bounds
   (`{0..n - 1}` where n is a variable) need the Python length-propagation
   shim — Pass 1/2/3 in `evaluate.py`. Deferred.
+- **z3 crate gap: no generic `Seq<T>`.** z3-0.12.1's `ast` module
+  exposes `Bool, Int, Real, Float, String, BV, Array, Set, Datatype,
+  Dynamic, Regexp` — but no general sequence type. (`String<'ctx>` is
+  internally a char-seq via Z3's seq-of-codepoints, but that doesn't
+  generalize.) Z3 itself supports `Seq(T)` via `Z3_mk_seq_sort` etc.
+  — to use it from Rust we'd need to wrap the FFI ourselves. Until
+  then, the parser + AST handle `Seq(T)`, `#x`, and `e[i]` cleanly,
+  but `declare_var` warns and skips `Seq(...)` types and the
+  translator returns None for Cardinality / Index expressions.
 
 ## Cached evaluator sketch
 
@@ -127,13 +135,17 @@ Done in this session:
 - [x] `subclaim` declaration. Body has the same shape as a top-level
       decl; runtime lifts subclaims into the global schemas table so
       they're reachable by ClaimCall / passthrough from anywhere.
+- [x] Cardinality `#x` and indexing `e[i]` syntax + AST. Runtime
+      translation deferred behind the z3 crate gap.
+- [x] `Seq(T)` / `Set(T)` parse as compound type names in membership
+      decls. Runtime declaration deferred (logs warning).
 
 In rough order of leverage:
 
-- [ ] Cardinality `#x` constraints (parse the `#` prefix; translate to
-      `Length(seq)` for Seq sorts).
-- [ ] Sequence and Set Z3 sorts (Seq(T), Array(T, Bool)) — needed
-      before composite-element story.
+- [ ] **Seq sort runtime support.** z3-0.12 doesn't expose a generic
+      `Seq<T>`. Path: write thin wrappers around `z3_sys::Z3_mk_seq_sort`,
+      `Z3_mk_seq_length`, `Z3_mk_seq_nth`. Unsafe but small. Once done,
+      Cardinality and Index translation come for free.
 - [ ] Composite Datatypes for Seq(T)/Set(T) where T is a user type.
 - [ ] Cached evaluator (push/pop). See sketch below — non-trivial in
       Rust because the cached solver borrows the Context by lifetime.

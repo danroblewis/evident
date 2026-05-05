@@ -44,6 +44,9 @@ pub enum Token {
     RParen,       // )
     LBrace,       // {  (set / range literal)
     RBrace,       // }
+    LBracket,     // [  (sequence indexing)
+    RBracket,     // ]
+    Hash,         // #  (cardinality prefix)
     Comma,        // ,
     DotDot,       // .. (range literal)
     Dot,          // .  (sub-schema field access)
@@ -214,6 +217,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             ')' => { chars.next(); col += 1; tokens.push(Token::RParen); }
             '{' => { chars.next(); col += 1; tokens.push(Token::LBrace); }
             '}' => { chars.next(); col += 1; tokens.push(Token::RBrace); }
+            '[' => { chars.next(); col += 1; tokens.push(Token::LBracket); }
+            ']' => { chars.next(); col += 1; tokens.push(Token::RBracket); }
+            '#' => { chars.next(); col += 1; tokens.push(Token::Hash); }
             ',' => { chars.next(); col += 1; tokens.push(Token::Comma); }
             ':' => { chars.next(); col += 1; tokens.push(Token::Colon); }
             '.' => {
