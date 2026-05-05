@@ -207,8 +207,25 @@ impl EvidentRuntime {
                 return Ok(candidate);
             }
         }
+        // (4) project-root-relative: programs/sdl_demo/scatter.ev imports
+        // "programs/sdl_demo/game_engine.ev" — that's relative to the
+        // project root, not the source file. Walk upward from the source
+        // file's directory (capped at 10 levels) and try the import path
+        // at each ancestor. This also handles `import "stdlib/sdl.ev"`
+        // and similar root-anchored shims when the cwd is somewhere else.
+        if let Some(base) = base {
+            let mut anc = base.parent();
+            for _ in 0..10 {
+                let Some(dir) = anc else { break };
+                let candidate = dir.join(p);
+                if candidate.exists() {
+                    return Ok(candidate);
+                }
+                anc = dir.parent();
+            }
+        }
         Err(RuntimeError::Io(format!(
-            "import not found: {:?} (tried verbatim, relative to source file, and cwd)",
+            "import not found: {:?} (tried verbatim, relative to source file, cwd, and ancestors of the source file)",
             import_path)))
     }
 
