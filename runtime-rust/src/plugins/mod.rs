@@ -8,4 +8,5 @@
 //!
 //! See `executor::Plugin` for the trait every plugin implements.
 
+pub mod audio;
 pub mod sdl;

@@ -447,3 +447,39 @@ fn cli_parse_parent_project_demos() {
             String::from_utf8_lossy(&out.stderr));
     }
 }
+
+/// `evident query` on a program declaring `audio ∈ SDLAudio` should
+/// resolve the type from the embedded audio stdlib (loaded by
+/// cmd_execute) AND from `stdlib/sdl.ev` (which now ships SDLAudio).
+/// This test runs query against a tiny synth program and verifies the
+/// audio.* bindings come out arithmetically correct — proves the
+/// audio-stdlib-types-aren't-dropped path works end-to-end without
+/// having to actually open an audio device.
+#[test]
+fn cli_query_audio_bindings_resolve() {
+    // Use stdlib/sdl.ev so SDLAudio resolves the same way `execute`
+    // would — via the project's stdlib import.
+    let src = "import \"stdlib/sdl.ev\"\n\
+               type main\n    audio ∈ SDLAudio\n    \
+               audio.playing = true\n    \
+               audio.frequency = 440\n    \
+               audio.volume = 80\n    \
+               audio.waveform = 0\n";
+    let path = write_tmp("audio_bindings", src);
+    let out = Command::new(bin())
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/..")
+        .args(["query", path.to_str().unwrap(), "main"])
+        .output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("unknown type SDLAudio"),
+        "SDLAudio should be resolvable from stdlib/sdl.ev: {stderr}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("audio.playing=true"),
+        "missing audio.playing binding: {stdout}");
+    assert!(stdout.contains("audio.frequency=440"),
+        "missing audio.frequency binding: {stdout}");
+    assert!(stdout.contains("audio.volume=80"),
+        "missing audio.volume binding: {stdout}");
+    assert!(stdout.contains("audio.waveform=0"),
+        "missing audio.waveform binding: {stdout}");
+}

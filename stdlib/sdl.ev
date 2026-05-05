@@ -62,3 +62,21 @@ type SDLWindow
     height   ∈ Int
     dx       ∈ Int
     dy       ∈ Int
+
+-- ── Audio ──────────────────────────────────────────────────────────────────
+-- Programs that declare `audio ∈ SDLAudio` activate the audio plugin. The
+-- runtime opens a mono 44.1 kHz audio device and runs a tiny synthesis
+-- callback on the audio thread. Each step, the executor reads the four
+-- fields below from the program's bindings, locks the device, and updates
+-- the synth's parameters. The audio thread picks them up on its next
+-- buffer fill (~12 ms latency at the default 512-sample buffer).
+--   playing   : on/off. False (or volume = 0, frequency = 0) → silence.
+--   frequency : pitch in Hz. Practical range ~20..20000.
+--   volume    : 0..255. Capped internally to keep peak amplitude moderate.
+--   waveform  : 0 = sine, anything else = square. (Easy to extend later.)
+
+type SDLAudio
+    playing   ∈ Bool
+    frequency ∈ Nat
+    volume    ∈ Nat
+    waveform  ∈ Nat

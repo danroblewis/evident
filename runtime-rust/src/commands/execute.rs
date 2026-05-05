@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 use evident_runtime::{executor, EvidentRuntime};
 use evident_runtime::executor::Plugin;
+use evident_runtime::plugins::audio as audio_plugin;
 use evident_runtime::plugins::sdl as sdl_plugin;
 use evident_runtime::ast::BodyItem;
 
@@ -132,6 +133,10 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         eprintln!("execute: sdl stdlib: {e}");
         return ExitCode::from(1);
     }
+    if let Err(e) = rt.load_source(audio_plugin::STDLIB_SDL_AUDIO_EV) {
+        eprintln!("execute: audio stdlib: {e}");
+        return ExitCode::from(1);
+    }
     // Use load_file so `import "..."` statements in the user program
     // resolve relative to the file's own directory.
     if let Err(e) = rt.load_file(Path::new(path)) {
@@ -145,27 +150,27 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
     let sdl_vars = collect_sdl_vars(&rt);
 
     let exec_opts = executor::ExecOptions { quiet: opts.quiet, explain: opts.explain };
-    if sdl_vars.is_empty() {
-        // Pure headless: stdin/stdout only.
-        let stdin  = executor::StdinPlugin::new(std::io::stdin());
-        let stdout = executor::StdoutPlugin::new(std::io::stdout());
-        let mut plugins: Vec<Box<dyn Plugin>> = vec![Box::new(stdin), Box::new(stdout)];
-        match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
-        }
-    } else {
-        // SDL active: defaults from --width/--height/--title (else
-        // 800×600 "Evident" — same defaults as evident.py).
-        let sdl = sdl_plugin::create_sdl_plugin(
-            opts.width, opts.height, opts.title.clone(), sdl_vars);
-        let stdin = executor::StdinPlugin::new(std::io::stdin());
-        let stdout = executor::StdoutPlugin::new(std::io::stdout());
-        let mut plugins: Vec<Box<dyn Plugin>> = vec![Box::new(stdin), Box::new(stdout), sdl];
-        match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
-        }
+    // Always include stdio + audio plugins. The executor's matcher
+    // filters out plugins whose handles_types() doesn't match any
+    // declared var in main, so unused ones are zero-cost (the audio
+    // device only opens if the program declares `∈ SDLAudio`).
+    let stdin  = executor::StdinPlugin::new(std::io::stdin());
+    let stdout = executor::StdoutPlugin::new(std::io::stdout());
+    let mut plugins: Vec<Box<dyn Plugin>> = vec![
+        Box::new(stdin),
+        Box::new(stdout),
+        audio_plugin::create_audio_plugin(),
+    ];
+    if !sdl_vars.is_empty() {
+        // SDL window plugin needs --width/--height/--title (else
+        // 800×600 "Evident" — same defaults as evident.py) and per-var
+        // type info, so we construct it explicitly when active.
+        plugins.push(sdl_plugin::create_sdl_plugin(
+            opts.width, opts.height, opts.title.clone(), sdl_vars));
+    }
+    match executor::run_with_plugins_opts(&rt, &mut plugins, &exec_opts) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }
     }
 }
 
