@@ -4,6 +4,53 @@
 
 ## Current status
 
+**Phase:** v1.14 — file structure refactor. 97/97 tests still passing,
+zero behavior change. `translate.rs` (2038 lines) and `main.rs` (699
+lines) split into the `translate/` and `commands/` sub-module trees
+following Rust 2018+ conventions (`src/foo.rs` entry + `src/foo/*.rs`
+sub-modules, no `mod.rs` files).
+
+Layout:
+```
+src/
+  main.rs              —  56 lines (dispatch + usage)
+  commands.rs          —  16 (mod decls only)
+  commands/
+    common.rs          — 191 (Flags, parse_flags, infer_value, format_value,
+                              value_as_json, json_str, load_runtime,
+                              split_files_and_flags, print_query_result, usage)
+    query.rs           —  66 (cmd_query + explain_unsat)
+    check.rs           —  35
+    sample.rs          —  61
+    test.rs            —  88
+    execute.rs         — 207 (cmd_execute + ExecuteOpts + parse_execute_flags
+                              + collect_sdl_vars + walk_body_for_sdl)
+    parse.rs           —  24
+
+  translate.rs         —  20 (mod decls + pub use)
+  translate/
+    types.rs           — 199 (Var, Value, FieldKind, EvalResult,
+                              DatatypeRegistry, CachedSchema, SeqElem)
+    datatypes.rs       — 126 (get_or_build_datatype)
+    extract.rs         — 220 (extract_seq, extract_seq_composite,
+                              extract_composite_value, assert_seq_given)
+    preprocess.rs      — 214 (collect_pinned_ints, collect_seq_lengths,
+                              apply_pinned_ints, apply_seq_lengths,
+                              eval_pure_int, literal_range, env_clone)
+    declare.rs         — 191 (declare_var, declare_var_named, next_call_id)
+    exprs.rs           — 606 (translate_int/bool/str + helpers)
+    inline.rs          — 125 (inline_body_items)
+    eval.rs            — 444 (evaluate, build_cache, run_cached, sample_cached_inner)
+```
+
+External API unchanged (re-exports preserve every previously-public
+symbol path). Internal items use `pub(super)` to stay scoped.
+
+`exprs.rs` at 606 is the new largest single file — translate_bool's
+Eq dispatch has to try seq-lit / seq-index-assign / bool / int / str
+orientations sequentially, all one cohesive piece. Not worth further
+splitting.
+
 **Phase:** v1.13 — UNSAT is loud now. 97/97 internal tests (+3 CLI
 tests for the new flags). New `evident execute` flags `--quiet` and
 `--explain`; default behavior is loud (one stderr line per UNSAT step
