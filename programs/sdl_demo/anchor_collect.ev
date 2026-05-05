@@ -58,11 +58,16 @@ type main
     -- seeds state.step = 0 from the Nat default, so this fires once and
     -- then the antecedent is permanently false. Without this, Z3 picks the
     -- simplest model — usually all four dots stacked at one corner.
+    --
+    -- Dot positions are pseudo-random from input.time (unix epoch ms): each
+    -- dot uses a different prime divisor so the residues spread out, then
+    -- `t - (t/n)*n` emulates `t mod n` (no native mod operator). Result:
+    -- a fresh scatter every time the program is launched.
     state.step = 0 ⇒ (state.player.x = 380 ∧ state.player.y = 280 ∧ state.player.vx = 0 ∧ state.player.vy = 0)
-    state.step = 0 ⇒ (state.dots[0].pos_x = 120 ∧ state.dots[0].pos_y = 80  ∧ state.dots[0].vx =  140 ∧ state.dots[0].vy = 0 ∧ state.dots[0].collected = false)
-    state.step = 0 ⇒ (state.dots[1].pos_x = 600 ∧ state.dots[1].pos_y = 80  ∧ state.dots[1].vx = -180 ∧ state.dots[1].vy = 0 ∧ state.dots[1].collected = false)
-    state.step = 0 ⇒ (state.dots[2].pos_x = 240 ∧ state.dots[2].pos_y = 240 ∧ state.dots[2].vx =  220 ∧ state.dots[2].vy = 0 ∧ state.dots[2].collected = false)
-    state.step = 0 ⇒ (state.dots[3].pos_x = 520 ∧ state.dots[3].pos_y = 240 ∧ state.dots[3].vx = -260 ∧ state.dots[3].vy = 0 ∧ state.dots[3].collected = false)
+    state.step = 0 ⇒ (state.dots[0].pos_x = 50 + (input.time / 7  - (input.time / 7  / 651) * 651) ∧ state.dots[0].pos_y = 50 + (input.time / 11 - (input.time / 11 / 451) * 451) ∧ state.dots[0].vx = (input.time / 13 - (input.time / 13 / 401) * 401) - 200 ∧ state.dots[0].vy = 0 ∧ state.dots[0].collected = false)
+    state.step = 0 ⇒ (state.dots[1].pos_x = 50 + (input.time / 17 - (input.time / 17 / 651) * 651) ∧ state.dots[1].pos_y = 50 + (input.time / 19 - (input.time / 19 / 451) * 451) ∧ state.dots[1].vx = (input.time / 23 - (input.time / 23 / 401) * 401) - 200 ∧ state.dots[1].vy = 0 ∧ state.dots[1].collected = false)
+    state.step = 0 ⇒ (state.dots[2].pos_x = 50 + (input.time / 29 - (input.time / 29 / 651) * 651) ∧ state.dots[2].pos_y = 50 + (input.time / 31 - (input.time / 31 / 451) * 451) ∧ state.dots[2].vx = (input.time / 37 - (input.time / 37 / 401) * 401) - 200 ∧ state.dots[2].vy = 0 ∧ state.dots[2].collected = false)
+    state.step = 0 ⇒ (state.dots[3].pos_x = 50 + (input.time / 41 - (input.time / 41 / 651) * 651) ∧ state.dots[3].pos_y = 50 + (input.time / 43 - (input.time / 43 / 451) * 451) ∧ state.dots[3].vx = (input.time / 47 - (input.time / 47 / 401) * 401) - 200 ∧ state.dots[3].vy = 0 ∧ state.dots[3].collected = false)
 
     -- ── Drag-compensated player state, fed into PlayerPhysics. ─────────────
     dragged_player ∈ PlayerState
