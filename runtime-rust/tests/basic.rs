@@ -1019,3 +1019,23 @@ fn seq_index_assign_composite_var() {
     assert_eq!(pts[2].get("x"), Some(&Value::Int(99)));
     assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
 }
+
+/// `∀`/`∃` are valid expressions wherever `⇒` is. Regression for the
+/// rule30.ev demo: `state.step = 0 ⇒ ∀ i ∈ {0..N} : seed[i] = ...`
+/// previously failed with "expected expression, got ForAll" because
+/// parse_implies recursed into parse_or for the RHS, and parse_or
+/// didn't know about quantifiers. Now parse_implies routes ∀/∃ at
+/// the top so the consequent of `⇒` (and the body items of an
+/// implies-block) accept quantifiers directly.
+#[test]
+fn implies_consequent_can_be_forall() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    n ∈ Nat\n    s ∈ Seq(Int)\n    \
+         #s = 4\n    n = 1\n    \
+         n = 1 ⇒ ∀ i ∈ {0..3} : s[i] = i + 10\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![10, 11, 12, 13])));
+}

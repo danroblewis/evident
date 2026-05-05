@@ -300,6 +300,13 @@ impl Parser {
     }
 
     fn parse_implies(&mut self) -> Result<Expr> {
+        // Quantifiers are valid wherever an `⇒` operand is — they live
+        // at the same precedence as `⇒`. Without this, `A ⇒ ∀ i : B`
+        // and the implies-block form `A ⇒\n    ∀ i : B` both fail
+        // (the body iteration recurses through parse_implies).
+        if matches!(self.peek(), Token::ForAll | Token::Exists) {
+            return self.parse_quantifier();
+        }
         let lhs = self.parse_or()?;
         if matches!(self.peek(), Token::Implies) {
             self.bump();

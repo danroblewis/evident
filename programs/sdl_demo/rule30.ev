@@ -1,0 +1,47 @@
+-- rule30.ev — Rule 30 elementary cellular automaton.
+--
+-- Each row is one generation. A single live cell seeds the bottom row
+-- on frame 0; every subsequent step shifts everything up one row and
+-- fills the new bottom row by applying Rule 30 to the old bottom row.
+--
+-- Rule 30: next[i] = left ⊕ (center ∨ right). XOR is expressed as
+-- (a ∨ b) ∧ ¬(a ∧ b) since the language has no native ⊕. Out-of-grid
+-- neighbors count as dead.
+--
+-- Run: evident execute programs/sdl_demo/rule30.ev
+
+import "stdlib/sdl.ev"
+
+type Cell
+    alive ∈ Bool
+
+type W
+    cells ∈ Seq(Cell)
+    step  ∈ Nat
+
+type main
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+    state      ∈ W
+    state_next ∈ W
+
+    #state.cells      = 600         -- 40 cols × 15 rows
+    #state_next.cells = 600
+    #output.rects     = 600
+
+    state_next.step = state.step + 1
+    output.bg.r = 15 ∧ output.bg.g = 15 ∧ output.bg.b = 30
+
+    -- Seed on frame 0: single live cell, bottom-row middle. Without
+    -- this Z3 finds the all-dead fixed point and nothing happens.
+    state.step = 0 ⇒ ∀ i ∈ {0..599} : state.cells[i].alive = (i = 580)
+
+    -- Shift up by one row (40 cells per row).
+    ∀ i ∈ {0..559} : state_next.cells[i].alive = state.cells[i + 40].alive
+
+    -- Bottom row (560..599): Rule 30 over old bottom row, with
+    -- bounded edges (out-of-grid = dead).
+    ∀ i ∈ {560..599} : state_next.cells[i].alive = (((i > 560 ∧ state.cells[i-1].alive) ∨ state.cells[i].alive ∨ (i < 599 ∧ state.cells[i+1].alive)) ∧ ¬((i > 560 ∧ state.cells[i-1].alive) ∧ (state.cells[i].alive ∨ (i < 599 ∧ state.cells[i+1].alive))))
+
+    -- Render: 20×40 rect per cell. Alive = warm yellow, dead = bg.
+    ∀ i ∈ {0..599} : (output.rects[i].x = (i - (i / 40) * 40) * 20 ∧ output.rects[i].y = (i / 40) * 40 ∧ output.rects[i].w = 20 ∧ output.rects[i].h = 40 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))
