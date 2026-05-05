@@ -573,7 +573,13 @@ pub fn sample_cached_inner<'ctx>(
             (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
-            _ => eprintln!("warning: type mismatch for given {:?}", name),
+            _ => {
+                if let Some(b) = assert_seq_given(var, value, ctx) {
+                    cached.solver.assert(&b);
+                } else {
+                    eprintln!("warning: type mismatch for given {:?}", name);
+                }
+            }
         }
     }
 
@@ -654,6 +660,98 @@ pub fn sample_cached_inner<'ctx>(
     out
 }
 
+/// Build a `Bool` constraint asserting that the named Seq variable
+/// equals the given Value::Seq* (length + per-index element equality).
+/// Returns None when the var/value shapes don't match — caller should
+/// then warn or fall through.
+///
+/// Supports:
+///   - Var::SeqVar (primitive elements: Int / Bool / String) +
+///     Value::SeqInt / SeqBool / SeqStr
+///   - Var::DatatypeSeqVar + Value::SeqComposite — builds a Datatype
+///     constructor application per element from the field map's
+///     primitive values (recursively for nested composites)
+fn assert_seq_given<'ctx>(
+    var: &Var<'ctx>,
+    value: &Value,
+    ctx: &'ctx Context,
+) -> Option<Bool<'ctx>> {
+    match (var, value) {
+        (Var::SeqVar { arr, len, elem: SeqElem::Int }, Value::SeqInt(items)) => {
+            let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
+            conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            for (i, n) in items.iter().enumerate() {
+                let idx = Int::from_i64(ctx, i as i64);
+                let cell = arr.select(&idx).as_int()?;
+                conjuncts.push(cell._eq(&Int::from_i64(ctx, *n)));
+            }
+            let refs: Vec<&Bool> = conjuncts.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        (Var::SeqVar { arr, len, elem: SeqElem::Bool }, Value::SeqBool(items)) => {
+            let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
+            conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            for (i, b) in items.iter().enumerate() {
+                let idx = Int::from_i64(ctx, i as i64);
+                let cell = arr.select(&idx).as_bool()?;
+                conjuncts.push(cell._eq(&Bool::from_bool(ctx, *b)));
+            }
+            let refs: Vec<&Bool> = conjuncts.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        (Var::SeqVar { arr, len, elem: SeqElem::Str }, Value::SeqStr(items)) => {
+            let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
+            conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            for (i, s) in items.iter().enumerate() {
+                let idx = Int::from_i64(ctx, i as i64);
+                let cell = arr.select(&idx).as_string()?;
+                let want = Z3Str::from_str(ctx, s).ok()?;
+                conjuncts.push(cell._eq(&want));
+            }
+            let refs: Vec<&Bool> = conjuncts.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        (Var::DatatypeSeqVar { arr, len, dt, fields, .. }, Value::SeqComposite(items)) => {
+            let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
+            conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            // The Datatype has a single constructor with fields in
+            // declaration order. Build an application per element.
+            let ctor = &dt.variants[0].constructor;
+            for (i, element) in items.iter().enumerate() {
+                let mut field_dyns: Vec<z3::ast::Dynamic> = Vec::with_capacity(fields.len());
+                for fk in fields.iter() {
+                    let dynamic = match fk {
+                        FieldKind::Primitive { name, prim_type } => {
+                            let v = element.get(name)?;
+                            match (prim_type.as_str(), v) {
+                                ("Int" | "Nat" | "Pos", Value::Int(n)) =>
+                                    z3::ast::Dynamic::from_ast(&Int::from_i64(ctx, *n)),
+                                ("Bool", Value::Bool(b)) =>
+                                    z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b)),
+                                ("String", Value::Str(s)) => {
+                                    let z = Z3Str::from_str(ctx, s).ok()?;
+                                    z3::ast::Dynamic::from_ast(&z)
+                                }
+                                _ => return None,
+                            }
+                        }
+                        FieldKind::Nested { .. } => return None, // skip for v1
+                    };
+                    field_dyns.push(dynamic);
+                }
+                let dyn_refs: Vec<&dyn Ast> = field_dyns.iter().map(|d| d as &dyn Ast).collect();
+                let elem_ast = ctor.apply(&dyn_refs);
+                let idx = Int::from_i64(ctx, i as i64);
+                let cell = arr.select(&idx);
+                conjuncts.push(cell._eq(&elem_ast));
+            }
+            let refs: Vec<&Bool> = conjuncts.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        _ => None,
+    }
+}
+
 /// Per-query work: push, assert givens against the cached env, check,
 /// extract model, pop. Reuses all the constraint translation already
 /// in the cache.
@@ -675,7 +773,13 @@ pub fn run_cached<'ctx>(
             // body equality pinned the var), force UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
-            _ => eprintln!("warning: type mismatch for given {:?}", name),
+            _ => {
+                if let Some(b) = assert_seq_given(var, value, ctx) {
+                    cached.solver.assert(&b);
+                } else {
+                    eprintln!("warning: type mismatch for given {:?}", name);
+                }
+            }
         }
     }
     let satisfied = matches!(cached.solver.check(), SatResult::Sat);
@@ -909,7 +1013,13 @@ pub fn evaluate(
             // disagree, force UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
-            _ => eprintln!("warning: type mismatch for given {:?}", name),
+            _ => {
+                if let Some(b) = assert_seq_given(var, value, ctx) {
+                    solver.assert(&b);
+                } else {
+                    eprintln!("warning: type mismatch for given {:?}", name);
+                }
+            }
         }
     }
 

@@ -327,3 +327,45 @@ fn cli_import_relative_to_file() {
     assert!(s.contains("i.z=42"), "stdout: {s}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `parse` of every real demo from the parent project under
+/// `programs/sdl_demo/` and `programs/balls_demo/` should succeed.
+/// Locks in: `import` resolution, implies-block parsing, ⟨…⟩ seq
+/// literals, and the engine schema patterns. We don't `query` /
+/// `execute` here (would need an SDL display); just a parse smoke
+/// to catch regressions in syntax support.
+#[test]
+fn cli_parse_parent_project_demos() {
+    // demo.ev intentionally skipped — it imports `stdlib/sdl.ev`
+    // (a project-root-relative path with no source-file context that
+    // would let us resolve it), and its `output.rects = ⟨ball_rect⟩`
+    // composite-element seq literal isn't yet supported in the Rust
+    // runtime (see PROGRESS.md known gotchas).
+    let demos = [
+        "programs/sdl_demo/collect.ev",
+        "programs/sdl_demo/grid.ev",
+        "programs/sdl_demo/diagonal.ev",
+        "programs/sdl_demo/ring.ev",
+        "programs/sdl_demo/scatter.ev",
+        "programs/sdl_demo/anchor_collect.ev",
+        "programs/balls_demo/balls.ev",
+        "programs/balls_demo/balls_collide.ev",
+        "programs/balls_demo/balls_anchor.ev",
+    ];
+    let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap();
+    for demo in &demos {
+        let path = project_root.join(demo);
+        if !path.exists() { continue; }   // skip if checkout is partial
+        // Imports in these demos are project-root-relative
+        // (`import "programs/sdl_demo/game_engine.ev"`), so run from
+        // the project root for resolution to work.
+        let out = Command::new(bin())
+            .current_dir(project_root)
+            .args(["parse", path.to_str().unwrap()])
+            .output().unwrap();
+        assert!(out.status.success(),
+            "parse failed for {demo}: stderr: {}",
+            String::from_utf8_lossy(&out.stderr));
+    }
+}

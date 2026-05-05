@@ -303,6 +303,48 @@ impl Parser {
         let lhs = self.parse_or()?;
         if matches!(self.peek(), Token::Implies) {
             self.bump();
+            // Implies-block form: `A ⇒` followed by Newline + Indent at a
+            // deeper level than the line `A ⇒` started on. Parse a stack
+            // of body items at that indent and AND them as the consequent.
+            // Mirrors the Python `implies_block` grammar rule.
+            if matches!(self.peek(), Token::Newline) {
+                let saved = self.pos;
+                self.bump();
+                // Skip blank newlines.
+                while matches!(self.peek(), Token::Newline) { self.bump(); }
+                if let Token::Indent(n) = self.peek().clone() {
+                    let block_indent = n;
+                    let mut conjuncts = Vec::new();
+                    loop {
+                        // Each line: Indent(block_indent) then expr then Newline.
+                        match self.peek() {
+                            Token::Indent(m) if *m == block_indent => { self.bump(); }
+                            _ => break,
+                        }
+                        let item = self.parse_implies()?;
+                        conjuncts.push(item);
+                        match self.peek() {
+                            Token::Newline => { self.bump(); }
+                            Token::Eof => break,
+                            _ => {}
+                        }
+                    }
+                    if conjuncts.is_empty() {
+                        // No body — restore and fall through to the
+                        // expression-RHS branch below (will likely error).
+                        self.pos = saved;
+                    } else {
+                        // Combine into a left-associative AND chain.
+                        let mut acc = conjuncts.remove(0);
+                        for c in conjuncts {
+                            acc = Expr::Binary(BinOp::And, Box::new(acc), Box::new(c));
+                        }
+                        return Ok(Expr::Binary(BinOp::Implies, Box::new(lhs), Box::new(acc)));
+                    }
+                } else {
+                    self.pos = saved;
+                }
+            }
             let rhs = self.parse_implies()?;
             return Ok(Expr::Binary(BinOp::Implies, Box::new(lhs), Box::new(rhs)));
         }
