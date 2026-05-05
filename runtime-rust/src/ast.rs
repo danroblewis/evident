@@ -112,7 +112,12 @@ pub enum BinOp {
 }
 
 /// A parsed program (one or more top-level declarations).
+///
+/// `imports` is captured at parse time but consumed during loading
+/// (see `EvidentRuntime::load_source` / `load_file`). After loading,
+/// only the `schemas` survive into the runtime's IR.
 #[derive(Debug, Clone, Default)]
 pub struct Program {
     pub schemas: Vec<SchemaDecl>,
+    pub imports: Vec<String>,
 }

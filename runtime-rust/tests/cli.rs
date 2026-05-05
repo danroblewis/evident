@@ -238,3 +238,92 @@ fn cli_query_seq_literal() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(s.contains("s=[10, 20, 30]"), "expected 's=[10, 20, 30]' in: {s}");
 }
+
+// ---------------------------------------------------------------------------
+// import "path"
+// ---------------------------------------------------------------------------
+
+/// Helper: write `body` to a temp file at a specific absolute path
+/// (for tests that need files at known relative locations to each
+/// other). Returns the path.
+fn write_at(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+    let p = dir.join(name);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    let mut f = std::fs::File::create(&p).unwrap();
+    f.write_all(body.as_bytes()).unwrap();
+    p
+}
+
+/// `import "lib.ev"` from a sibling file should resolve and the
+/// imported file's schemas should be queryable through the importing
+/// file.
+#[test]
+fn cli_import_loads_referenced_file() {
+    // Use a unique sub-directory under the OS temp dir so concurrent
+    // test runs don't collide on file names.
+    let dir = std::env::temp_dir().join(format!(
+        "evident-rt-import-{}-{}", std::process::id(), "loads"));
+    std::fs::create_dir_all(&dir).unwrap();
+    write_at(&dir, "lib.ev",
+        "type Point\n    x ∈ Int\n    y ∈ Int\n");
+    let main = write_at(&dir, "main.ev",
+        "import \"lib.ev\"\n\
+         schema HasPoint\n    p ∈ Point\n    p.x = 3\n    p.y = 7\n");
+    let out = Command::new(bin())
+        .args(["query", main.to_str().unwrap(), "HasPoint"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("p.x=3"), "stdout: {s}");
+    assert!(s.contains("p.y=7"), "stdout: {s}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A imports B, B imports A — the runtime should detect the cycle and
+/// not infinite-loop. Both files end up loaded exactly once.
+#[test]
+fn cli_import_cycle_safe() {
+    let dir = std::env::temp_dir().join(format!(
+        "evident-rt-import-{}-{}", std::process::id(), "cycle"));
+    std::fs::create_dir_all(&dir).unwrap();
+    write_at(&dir, "a.ev",
+        "import \"b.ev\"\n\
+         schema A\n    n ∈ Nat\n    n = 1\n");
+    write_at(&dir, "b.ev",
+        "import \"a.ev\"\n\
+         schema B\n    n ∈ Nat\n    n = 2\n");
+    let main = dir.join("a.ev");
+    let out = Command::new(bin())
+        .args(["query", main.to_str().unwrap(), "B"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("n=2"), "stdout: {s}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `import "sub/lib.ev"` from a file at /tmp/foo/main.ev should find
+/// /tmp/foo/sub/lib.ev — i.e. relative-to-file resolution works.
+#[test]
+fn cli_import_relative_to_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "evident-rt-import-{}-{}", std::process::id(), "relpath"));
+    std::fs::create_dir_all(&dir).unwrap();
+    write_at(&dir, "sub/lib.ev",
+        "type Inner\n    z ∈ Int\n");
+    let main = write_at(&dir, "main.ev",
+        "import \"sub/lib.ev\"\n\
+         schema HasInner\n    i ∈ Inner\n    i.z = 42\n");
+    let out = Command::new(bin())
+        .args(["query", main.to_str().unwrap(), "HasInner"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("i.z=42"), "stdout: {s}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

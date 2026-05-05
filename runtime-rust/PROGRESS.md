@@ -4,6 +4,34 @@
 
 ## Current status
 
+**Phase:** v1.7 — `import "path"` directive. 81/81 tests green
+(adds 3 CLI tests for the import slice).
+
+**Last action:** Added `import "path/to/file.ev"` as a top-level
+statement. Pipeline:
+
+  - Lexer: new `Token::Import` keyword.
+  - AST: `Program` gained an `imports: Vec<String>` field captured at
+    parse time and consumed by the loader (doesn't survive into the
+    runtime IR).
+  - Parser: `parse_program`'s top-level dispatch handles `Token::Import`
+    followed by a `Token::Str` payload.
+  - Runtime: new `EvidentRuntime::load_file(&Path)` records the file's
+    canonical path in a `loaded_files: RefCell<HashSet<PathBuf>>` for
+    cycle protection, then delegates to `load_source_with_base(src,
+    Some(canonical))`. The internal entry walks `prog.imports` first,
+    resolving each via `resolve_import` (verbatim → relative-to-source
+    → relative-to-cwd) and recursing through `load_file` (cycle check
+    short-circuits if already loaded). Existing `load_source(&str)`
+    is now a thin wrapper around `load_source_with_base(src, None)`,
+    so all existing callers and tests keep working.
+  - CLI: `cmd_query` / `cmd_check` / `cmd_sample` / `cmd_test` /
+    `cmd_execute` / `cmd_parse` switched from `read_to_string +
+    load_source` to `load_file(Path::new(p))` so imports inside the
+    user-supplied file resolve relative to that file's directory.
+  - 3 new CLI tests: `cli_import_loads_referenced_file`,
+    `cli_import_cycle_safe`, `cli_import_relative_to_file`.
+
 **Phase:** v1.6 — nested composite fields + execute CLI flags + bare-claim
 names-match passthrough + sequence literals. 82/82 tests green
 (3 parallel slices + seq-literal slice merged).
@@ -366,6 +394,21 @@ length propagation, and CLI / file-loading.
   recursive-extraction needs, deferred). The branch logs a warning and
   the outer `Seq(UserType)` declaration is dropped if any field can't
   be resolved.
+- **`import` resolution depends on the entry path.** `load_file`
+  canonicalizes the path via `Path::canonicalize`, which requires the
+  file to actually exist on disk. We fall back to the original path
+  if canonicalization fails (rare — usually means a missing parent
+  dir), so cycle detection on a non-existent file path technically
+  uses the verbatim path as the key. In practice this only matters
+  for tests that pre-construct paths under non-existent directories.
+  Also: a missing import is treated as a hard error (`RuntimeError::
+  Io`), not a warning. The Python runtime behaves the same way.
+- **`load_source(&str)` doesn't track a base path.** Imports inside a
+  raw source string (passed to `load_source`, not `load_file`) only
+  resolve verbatim or against cwd — there's no "relative to source
+  file" because there is no source file. This is fine for the embedded
+  stdlibs in `cmd_execute` (they don't use `import`), but if a future
+  caller hands a string with an `import`, behavior depends on cwd.
 
 ## Cached evaluator (implemented)
 
@@ -477,6 +520,17 @@ Done in this session:
       lexer/parser/AST support is in place, only the translator arm
       that assembles a Datatype constructor application from
       `ident.field` lookups remains.
+- [x] **`import "path"` directive.** New `Token::Import` keyword,
+      `Program.imports: Vec<String>` AST field, parser arm for the
+      top-level `import` statement, and `EvidentRuntime::load_file(&Path)`
+      with cycle protection (canonical-path `HashSet`) and three-tier
+      resolution (verbatim → relative-to-source-file →
+      relative-to-cwd). All CLI subcommands now use `load_file` so
+      relative imports resolve against the user file's directory.
+      `load_source(&str)` is preserved for callers that just want
+      string-only loading (used by embedded stdlib loads in
+      `cmd_execute`); imports inside such strings still work but
+      resolve only against verbatim/cwd, not relative-to-source.
 
 In rough order of leverage:
 
@@ -567,7 +621,7 @@ All in `tests/basic.rs`. 16/16 passing.
 | `seq_literal_with_arithmetic`        | `s = ⟨n, n+1, n+2⟩` items are general exprs |
 | `seq_literal_empty`                  | `s = ⟨⟩` pins length to 0              |
 
-**`tests/cli.rs` (13)**:
+**`tests/cli.rs` (16)**:
 
 | `cli_query_sat_prints_bindings`      | KEY=VALUE on stdout                    |
 | `cli_query_unsat_exits_1`            | UNSAT path                             |
@@ -581,7 +635,13 @@ All in `tests/basic.rs`. 16/16 passing.
 | `cli_execute_help_lists_flags`       | `execute --help` mentions the new flags |
 | `cli_batch_says_parked`              | parked `batch`/`repl` emit clear msg   |
 | `cli_parse_lists_schema_names`       | `parse` debug helper                   |
+<<<<<<< HEAD
 | `cli_query_seq_literal`              | `⟨…⟩` end-to-end through the binary   |
+=======
+| `cli_import_loads_referenced_file`   | `import "lib.ev"` from sibling resolves |
+| `cli_import_cycle_safe`              | A imports B, B imports A — no infinite loop |
+| `cli_import_relative_to_file`        | `import "sub/lib.ev"` resolves relative to source dir |
+>>>>>>> 5bade7c (runtime-rust: import "path/to/file.ev" directive)
 
 **`src/executor.rs` unit tests (6)**:
 

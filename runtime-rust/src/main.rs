@@ -227,9 +227,9 @@ fn parse_execute_flags(flags: &[String]) -> Result<ExecuteOpts, String> {
 fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
     let mut rt = EvidentRuntime::new();
     for f in files {
-        let src = std::fs::read_to_string(f)
-            .map_err(|e| format!("read {f}: {e}"))?;
-        rt.load_source(&src).map_err(|e| format!("{f}: {e}"))?;
+        // Use load_file so any `import "..."` statements inside the
+        // file resolve relative to the file itself.
+        rt.load_file(Path::new(f)).map_err(|e| format!("{f}: {e}"))?;
     }
     Ok(rt)
 }
@@ -403,13 +403,9 @@ fn cmd_test(args: &[String]) -> ExitCode {
     let mut total_skip = 0usize;
     let empty = HashMap::new();
     for f in &files {
-        let src = match std::fs::read_to_string(f) {
-            Ok(s) => s,
-            Err(e) => { eprintln!("read {}: {e}", f.display()); total_fail += 1; continue; }
-        };
         let mut rt = EvidentRuntime::new();
-        if let Err(e) = rt.load_source(&src) {
-            eprintln!("{}: parse error: {e}", f.display());
+        if let Err(e) = rt.load_file(f) {
+            eprintln!("{}: load error: {e}", f.display());
             total_fail += 1;
             continue;
         }
@@ -484,10 +480,6 @@ fn cmd_execute(args: &[String]) -> ExitCode {
         Ok(o) => o,
         Err(e) => { eprintln!("execute: {e}"); return ExitCode::from(2); }
     };
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
-    };
     let mut rt = EvidentRuntime::new();
     // Load embedded stdlibs first so user programs can declare
     // ∈ Stdin / ∈ Stdout / ∈ SDLInput etc. without `import`. Both are
@@ -501,7 +493,9 @@ fn cmd_execute(args: &[String]) -> ExitCode {
         eprintln!("execute: sdl stdlib: {e}");
         return ExitCode::from(1);
     }
-    if let Err(e) = rt.load_source(&src) {
+    // Use load_file so `import "..."` statements in the user program
+    // resolve relative to the file's own directory.
+    if let Err(e) = rt.load_file(Path::new(path)) {
         eprintln!("execute: {path}: {e}");
         return ExitCode::from(1);
     }
@@ -579,12 +573,8 @@ fn cmd_parse(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
     let path = &args[0];
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => { eprintln!("read {path}: {e}"); return ExitCode::from(1); }
-    };
     let mut rt = EvidentRuntime::new();
-    match rt.load_source(&src) {
+    match rt.load_file(Path::new(path)) {
         Ok(()) => {
             for s in rt.schema_names() { println!("{}", s); }
             ExitCode::SUCCESS

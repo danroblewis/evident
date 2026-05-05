@@ -4,7 +4,8 @@ use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
 use crate::translate::{build_cache, run_cached, sample_cached_inner, CachedSchema, DatatypeRegistry};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use z3::{Config, Context};
 
 pub use crate::translate::Value;
@@ -47,6 +48,10 @@ pub struct EvidentRuntime {
     /// same Datatype if another schema references `Point` again — Z3
     /// would otherwise error on duplicate type names.
     datatypes: DatatypeRegistry,
+    /// Canonicalized paths of every file already loaded via `load_file`
+    /// (or transitively via `import`). Used for cycle protection so
+    /// `A imports B; B imports A` doesn't recurse forever.
+    loaded_files: RefCell<HashSet<PathBuf>>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +64,7 @@ pub struct QueryResult {
 pub enum RuntimeError {
     Parse(String),
     UnknownSchema(String),
+    Io(String),
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -66,6 +72,7 @@ impl std::fmt::Display for RuntimeError {
         match self {
             RuntimeError::Parse(s) => write!(f, "{}", s),
             RuntimeError::UnknownSchema(s) => write!(f, "unknown schema {:?}", s),
+            RuntimeError::Io(s) => write!(f, "{}", s),
         }
     }
 }
@@ -84,6 +91,7 @@ impl EvidentRuntime {
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
             datatypes: RefCell::new(HashMap::new()),
+            loaded_files: RefCell::new(HashSet::new()),
         }
     }
 
@@ -91,8 +99,44 @@ impl EvidentRuntime {
     /// Subclaims (defined inside another claim's body) are also lifted
     /// into the runtime's schemas table so other claims can reference
     /// them by name — same convention as the Python runtime.
+    ///
+    /// `import "path"` statements are resolved relative to (1) the
+    /// path verbatim, then (2) the current working directory. To get
+    /// (3) "relative to the file being loaded" resolution, use
+    /// `load_file` instead — it tracks the source path and threads it
+    /// through.
     pub fn load_source(&mut self, src: &str) -> Result<(), RuntimeError> {
+        self.load_source_with_base(src, None)
+    }
+
+    /// Load Evident source from a file. Records the file's canonical
+    /// path so subsequent `import` statements can resolve relative to
+    /// it (and so cycle protection sees the file as already loaded).
+    pub fn load_file(&mut self, path: &Path) -> Result<(), RuntimeError> {
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if !self.loaded_files.borrow_mut().insert(canonical.clone()) {
+            // Already loaded — cycle / duplicate import. No-op.
+            return Ok(());
+        }
+        let src = std::fs::read_to_string(path)
+            .map_err(|e| RuntimeError::Io(format!("read {}: {e}", path.display())))?;
+        self.load_source_with_base(&src, Some(&canonical))
+    }
+
+    /// Internal entry point that knows the "current file" so it can
+    /// resolve relative imports. `base` is None when loading a raw
+    /// source string; `Some(path)` when loading from a file.
+    fn load_source_with_base(&mut self, src: &str, base: Option<&Path>) -> Result<(), RuntimeError> {
         let prog = parser::parse(src).map_err(|e| RuntimeError::Parse(e.to_string()))?;
+        // Process imports first so referenced types/claims exist when
+        // the importing file's schemas are registered. This ordering
+        // doesn't strictly matter for the runtime (schemas resolve
+        // lazily by name) but it matches the textual reading order of
+        // the file.
+        for import_path in &prog.imports {
+            let resolved = self.resolve_import(import_path, base)?;
+            self.load_file(&resolved)?;
+        }
         for s in &prog.schemas {
             self.schemas.insert(s.name.clone(), s.clone());
             register_subclaims(&s.body, &mut self.schemas);
@@ -110,6 +154,42 @@ impl EvidentRuntime {
         // intentional. PROGRESS.md's gotchas section flags this.)
         self.datatypes.borrow_mut().clear();
         Ok(())
+    }
+
+    /// Resolve an `import "path"` reference. Tries, in order:
+    ///   1. The path verbatim (absolute, or relative to the process
+    ///      working directory).
+    ///   2. Relative to the file currently being loaded (if any).
+    ///   3. Relative to the current working directory (explicitly).
+    ///
+    /// Returns the first existing path, or an Io error if none match.
+    fn resolve_import(&self, import_path: &str, base: Option<&Path>) -> Result<PathBuf, RuntimeError> {
+        let p = Path::new(import_path);
+        // (1) verbatim
+        if p.exists() {
+            return Ok(p.to_path_buf());
+        }
+        // (2) relative to base file's directory
+        if let Some(base) = base {
+            if let Some(dir) = base.parent() {
+                let candidate = dir.join(p);
+                if candidate.exists() {
+                    return Ok(candidate);
+                }
+            }
+        }
+        // (3) relative to current working directory (already covered by
+        // (1) for non-absolute paths, but be explicit in case the cwd
+        // differs from where the binary was invoked).
+        if let Ok(cwd) = std::env::current_dir() {
+            let candidate = cwd.join(p);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        Err(RuntimeError::Io(format!(
+            "import not found: {:?} (tried verbatim, relative to source file, and cwd)",
+            import_path)))
     }
 
     /// Evaluate the named schema and return whether it's satisfiable

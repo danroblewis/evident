@@ -72,9 +72,18 @@ impl Parser {
                     let s = self.parse_schema_decl()?;
                     program.schemas.push(s);
                 }
+                Token::Import => {
+                    self.bump();
+                    let path = match self.bump() {
+                        Token::Str(s) => s,
+                        other => return Err(ParseError(format!(
+                            "expected string literal after 'import', got {:?}", other))),
+                    };
+                    program.imports.push(path);
+                }
                 other => {
                     return Err(ParseError(format!(
-                        "expected schema/claim/type, got {:?}", other)));
+                        "expected schema/claim/type/import, got {:?}", other)));
                 }
             }
         }

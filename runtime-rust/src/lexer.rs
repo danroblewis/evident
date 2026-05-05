@@ -21,6 +21,7 @@ pub enum Token {
     Claim,
     Type,
     Subclaim,
+    Import,       // import "path"
     In,           // ∈ or "in"
 
     // Operators
@@ -301,6 +302,7 @@ fn keyword_or_ident(s: String) -> Token {
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,
+        "import"   => Token::Import,
         "in"       => Token::In,
         "true"     => Token::True,
         "false"    => Token::False,
