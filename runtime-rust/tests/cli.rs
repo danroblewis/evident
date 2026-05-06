@@ -514,6 +514,46 @@ fn cli_execute_main_coordinator_halt() {
         String::from_utf8_lossy(&out.stderr));
 }
 
+/// `--initial-state file.json` seeds the first frame's `given` from
+/// JSON. Verifies the file is parsed and the values reach the
+/// constraint solver — the program echoes the seeded `world.score`
+/// to stdout via dst.out, halts, expected output is the score char.
+#[test]
+fn cli_execute_initial_state_seeds_given() {
+    // Program: dst.out = (world.score = 65 ? "A" : "?") essentially.
+    // We use a constraint that maps an int-given to a char-output via
+    // a chain of equalities.
+    let src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
+               next_main ∈ String\n    score ∈ Int\n    \
+               score = 65 ⇒ dst.out = \"A\"\n    \
+               score = 66 ⇒ dst.out = \"B\"\n    \
+               next_main = \"halt\"\n";
+    let path = write_tmp("initial_state_program", src);
+
+    let json_path = std::env::temp_dir().join(
+        format!("evident-initial-state-{}.json", std::process::id()));
+    std::fs::write(&json_path, r#"{"score": 66}"#).unwrap();
+
+    let mut child = std::process::Command::new(bin())
+        .args(["execute", path.to_str().unwrap(),
+               "--initial-state", json_path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"x").unwrap();
+    }
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(stdout, "B",
+        "expected JSON's score=66 to drive dst.out='B', got {stdout:?}; stderr: {}",
+        String::from_utf8_lossy(&out.stderr));
+
+    let _ = std::fs::remove_file(&json_path);
+}
+
 /// Real program-swap: scene_a writes "A" + sets next_main to scene_b's
 /// path; scene_b writes "B" + halts. Verifies the executor loads
 /// scene_b mid-run and continues stepping with the new program.

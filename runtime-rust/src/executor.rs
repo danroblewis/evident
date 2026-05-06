@@ -114,10 +114,20 @@ pub trait Plugin {
     /// every variable declared in `main` by type name.
     fn handles_types(&self) -> &'static [&'static str];
 
-    /// Called once after activation. `matched_vars` lists the variables
-    /// in `main` whose types are in `handles_types()`. The plugin can
-    /// store these for use during the step loop.
-    fn initialize(&mut self, matched_vars: Vec<String>);
+    /// Called when this plugin's matched-var set might have changed.
+    /// In single-program use, called once at startup. In multi-program
+    /// use (`run_with_main_coordinator`), called again after every
+    /// swap with the new program's matched vars. Plugins must handle
+    /// repeated calls gracefully — typically by checking whether
+    /// expensive setup (open window, open audio device) is already
+    /// done before re-doing it.
+    ///
+    /// `matched_vars` is `Vec<(name, type_name)>` filtered to the
+    /// types this plugin handles. The type name is included so
+    /// plugins like SDL (which dispatches on type — SDLInput vs
+    /// SDLOutput vs SDLWindow) can route per-var work without a
+    /// separate side-channel.
+    fn initialize(&mut self, matched_vars: Vec<(String, String)>);
 
     /// Called before each solve. Returns `given` values to merge into
     /// the per-step solver inputs. Returning `None` signals halt
@@ -151,8 +161,8 @@ impl<R: Read> StdinPlugin<R> {
 impl<R: Read> Plugin for StdinPlugin<R> {
     fn handles_types(&self) -> &'static [&'static str] { INPUT_TYPES }
 
-    fn initialize(&mut self, matched_vars: Vec<String>) {
-        self.matched_vars = matched_vars;
+    fn initialize(&mut self, matched_vars: Vec<(String, String)>) {
+        self.matched_vars = matched_vars.into_iter().map(|(n, _)| n).collect();
     }
 
     fn before_step(&mut self) -> Option<HashMap<String, Value>> {
@@ -201,8 +211,8 @@ impl<W: Write> StdoutPlugin<W> {
 impl<W: Write> Plugin for StdoutPlugin<W> {
     fn handles_types(&self) -> &'static [&'static str] { OUTPUT_TYPES }
 
-    fn initialize(&mut self, matched_vars: Vec<String>) {
-        self.matched_vars = matched_vars;
+    fn initialize(&mut self, matched_vars: Vec<(String, String)>) {
+        self.matched_vars = matched_vars.into_iter().map(|(n, _)| n).collect();
     }
 
     fn before_step(&mut self) -> Option<HashMap<String, Value>> {
@@ -483,15 +493,15 @@ pub fn run_with_plugins_opts(
     // then route each to the plugin (if any) that handles its type.
     let declared = collect_vars(rt, &main.name, &mut Vec::new());
 
-    // For each plugin, compute its matched vars and `initialize`. Only
-    // keep plugins that matched something.
+    // For each plugin, compute its matched (name, type) pairs and
+    // `initialize`. Only keep plugins that matched something.
     let mut active: Vec<&mut Box<dyn Plugin>> = Vec::new();
     for p in plugins.iter_mut() {
         let types: std::collections::HashSet<&str> =
             p.handles_types().iter().copied().collect();
-        let matched: Vec<String> = declared.iter()
+        let matched: Vec<(String, String)> = declared.iter()
             .filter(|(_, t)| types.contains(t.as_str()))
-            .map(|(v, _)| v.clone())
+            .map(|(v, t)| (v.clone(), t.clone()))
             .collect();
         if !matched.is_empty() {
             p.initialize(matched);
@@ -612,20 +622,33 @@ pub fn run_with_main_coordinator<F>(
     mut loader: F,
     plugins: &mut [Box<dyn Plugin>],
     opts: &ExecOptions,
+    initial_given: HashMap<String, Value>,
 ) -> io::Result<()>
 where
     F: FnMut(&std::path::Path) -> Result<EvidentRuntime, String>,
 {
     use std::path::PathBuf;
-    use std::collections::HashSet;
+
+    /// Cache cap: number of program runtimes kept warm in memory.
+    /// Tuned for the menu↔level back-and-forth pattern (8 lets you
+    /// keep menu, settings, pause, game-over plus 4 recent levels
+    /// without paying re-load cost). Beyond this, LRU eviction
+    /// drops the least-recently-used. Increase if you have lots of
+    /// frequently-toured screens; decrease if memory matters more
+    /// than swap latency.
+    const CACHE_CAP: usize = 8;
 
     let mut runtimes: HashMap<PathBuf, EvidentRuntime> = HashMap::new();
+    // LRU order: most-recently-used at the back. Touched on every
+    // program activation (initial load + each swap).
+    let mut lru: Vec<PathBuf> = Vec::new();
     let mut current = initial_path.clone();
 
     // Load initial program.
     let initial_rt = loader(&current)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     runtimes.insert(current.clone(), initial_rt);
+    lru.push(current.clone());
 
     // Plugin activation: matched against the FIRST program only.
     // Re-activation per swap would be cleaner but is a larger change;
@@ -634,18 +657,7 @@ where
         let rt = runtimes.get(&current).unwrap();
         collect_vars(rt, "main", &mut Vec::new())
     };
-    let mut active: Vec<usize> = Vec::new();
-    for (i, p) in plugins.iter_mut().enumerate() {
-        let types: HashSet<&str> = p.handles_types().iter().copied().collect();
-        let matched: Vec<String> = initial_declared.iter()
-            .filter(|(_, t)| types.contains(t.as_str()))
-            .map(|(v, _)| v.clone())
-            .collect();
-        if !matched.is_empty() {
-            p.initialize(matched);
-            active.push(i);
-        }
-    }
+    let mut active: Vec<usize> = activate_plugins(plugins, &initial_declared);
 
     // Per-program state: state-pairs and current-state map.
     let mut pairs = detect_state_pairs(&initial_declared);
@@ -658,6 +670,11 @@ where
     }
 
     let mut step_idx: u64 = 0;
+    // `initial_given` is consumed only on the first iteration —
+    // typically used to seed `world.*` from a JSON file via the CLI's
+    // `--initial-state` flag. After step 1, state-pair forwarding
+    // takes over from the program's own `state_next.*` outputs.
+    let mut initial_given_remaining = Some(initial_given);
 
     loop {
         // Build per-step `given`. Plugins first; halt if any returns None.
@@ -675,6 +692,15 @@ where
         for (base, fields) in &current_state {
             for (field, value) in fields {
                 given.insert(format!("{}.{}", base, field), value.clone());
+            }
+        }
+
+        // Inject `--initial-state` JSON values on the FIRST frame only.
+        // Overrides plugin + state contributions for any matching key
+        // (a JSON `world.score=42` wins over the state-pair default of 0).
+        if let Some(seed) = initial_given_remaining.take() {
+            for (k, v) in seed {
+                given.insert(k, v);
             }
         }
 
@@ -729,13 +755,27 @@ where
         // resets to the new program's initial-state defaults.
         let preserved_world = current_state.remove("world");
 
-        // Load the new program if we haven't seen it before. Subsequent
-        // swaps to the same path reuse the cached runtime.
+        // Load the new program if we haven't seen it before, or if it
+        // was evicted from the LRU. Otherwise reuse the cached runtime.
         if !runtimes.contains_key(&next_path) {
             let new_rt = loader(&next_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other,
                     format!("load {}: {e}", next_path.display())))?;
             runtimes.insert(next_path.clone(), new_rt);
+            lru.push(next_path.clone());
+            // Evict least-recently-used while over cap. The currently-
+            // active program is always at the back (we just pushed it),
+            // so it's safe from eviction.
+            while runtimes.len() > CACHE_CAP {
+                let evicted = lru.remove(0);
+                runtimes.remove(&evicted);
+            }
+        } else {
+            // Touch: move to back of LRU as most-recently-used.
+            if let Some(pos) = lru.iter().position(|p| p == &next_path) {
+                let touched = lru.remove(pos);
+                lru.push(touched);
+            }
         }
 
         // Switch active program.
@@ -754,9 +794,44 @@ where
             };
             current_state.insert(base.clone(), s);
         }
+
+        // Re-activate plugins against the new program's vars. Plugins
+        // that no longer match (program A had SDL but program B
+        // doesn't) are removed from the active set; new matches join.
+        // Each plugin's initialize() is called with its new matched-
+        // var set — plugins must handle repeated calls (window/audio
+        // device stays open, just var dispatch tables update).
+        active = activate_plugins(plugins, &new_declared);
     }
 
     Ok(())
+}
+
+/// Compute matched (name, type) pairs per plugin against the given
+/// declared-vars map; call `initialize` on each plugin that has any
+/// matches; return the indices of plugins that ended up active.
+///
+/// Used both for initial activation and for re-activation on every
+/// program swap. Plugins must be idempotent under repeated
+/// `initialize` calls.
+fn activate_plugins(
+    plugins: &mut [Box<dyn Plugin>],
+    declared: &HashMap<String, String>,
+) -> Vec<usize> {
+    use std::collections::HashSet;
+    let mut active: Vec<usize> = Vec::new();
+    for (i, p) in plugins.iter_mut().enumerate() {
+        let types: HashSet<&str> = p.handles_types().iter().copied().collect();
+        let matched: Vec<(String, String)> = declared.iter()
+            .filter(|(_, t)| types.contains(t.as_str()))
+            .map(|(v, t)| (v.clone(), t.clone()))
+            .collect();
+        if !matched.is_empty() {
+            p.initialize(matched);
+            active.push(i);
+        }
+    }
+    active
 }
 
 /// Resolve a `next_main` path string against the current program's
@@ -828,7 +903,7 @@ mod tests {
         // through `__recorder__` which never appears in any program. We
         // override initialize() directly to bypass the matcher.
         fn handles_types(&self) -> &'static [&'static str] { &[] }
-        fn initialize(&mut self, _matched: Vec<String>) {}
+        fn initialize(&mut self, _matched: Vec<(String, String)>) {}
         fn before_step(&mut self) -> Option<HashMap<String, Value>> { Some(HashMap::new()) }
         fn after_step(&mut self, b: &HashMap<String, Value>) -> bool {
             self.0.borrow_mut().push(b.clone());
@@ -888,7 +963,7 @@ mod tests {
         // vars as StdinPlugin and activates us. The recorder doesn't
         // contribute givens — its before_step returns an empty map.
         fn handles_types(&self) -> &'static [&'static str] { INPUT_TYPES }
-        fn initialize(&mut self, m: Vec<String>) { self.0.initialize(m); }
+        fn initialize(&mut self, m: Vec<(String, String)>) { self.0.initialize(m); }
         fn before_step(&mut self) -> Option<HashMap<String, Value>> { self.0.before_step() }
         fn after_step(&mut self, b: &HashMap<String, Value>) -> bool { self.0.after_step(b) }
     }

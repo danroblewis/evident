@@ -7,6 +7,7 @@
 //! below, and wire it into `main.rs`'s dispatch.
 
 pub mod common;
+pub mod initial_state;
 
 pub mod check;
 pub mod execute;

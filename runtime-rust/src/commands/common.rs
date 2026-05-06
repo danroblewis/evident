@@ -24,8 +24,9 @@ pub fn usage() {
     eprintln!("  --title  S   SDL window title  (default \"Evident\")");
     eprintln!("  --host   H   TCP listen host   (default 127.0.0.1; reserved for TCP plugin)");
     eprintln!("  --port   P   TCP listen port   (default 8080;       reserved for TCP plugin)");
-    eprintln!("  --quiet      suppress per-step UNSAT warnings (default: warn loud)");
-    eprintln!("  --explain    on UNSAT, dump per-step `given` + schema body to stderr");
+    eprintln!("  --quiet              suppress per-step UNSAT warnings (default: warn loud)");
+    eprintln!("  --explain            on UNSAT, dump per-step `given` + schema body to stderr");
+    eprintln!("  --initial-state PATH  JSON file: top-level keys → first-frame `given`");
     eprintln!();
     eprintln!("not yet implemented (use evident.py):");
     eprintln!("  evident batch|repl …");

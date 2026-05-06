@@ -132,13 +132,6 @@ impl SDLPlugin {
         }
     }
 
-    /// Stash the per-var type. The executor's matcher only knows
-    /// "this plugin claims these vars" — we recover the per-var type
-    /// from a side-channel in `initialize_with_types`.
-    fn record_types(&mut self, types: HashMap<String, String>) {
-        self.var_types = types;
-    }
-
     /// Initialize SDL itself and open a window + renderer. Idempotent
     /// (no-op if already opened).
     fn open_window(&mut self) -> Result<(), String> {
@@ -172,18 +165,15 @@ impl Plugin for SDLPlugin {
         SDL_TYPES
     }
 
-    fn initialize(&mut self, matched_vars: Vec<String>) {
-        // The executor only hands us var names — it doesn't tell us
-        // what type each one was declared as. We require the caller to
-        // populate `var_types` before activation via
-        // `initialize_with_types` (see `create_sdl_plugin`). If they
-        // didn't, fall back to assuming any unmatched var is SDLInput
-        // (a no-op for safety; the dispatch in before_step will skip
-        // it if the type doesn't match anything we know).
-        for v in &matched_vars {
-            self.var_types.entry(v.clone()).or_insert_with(|| "SDLInput".to_string());
+    fn initialize(&mut self, matched_vars: Vec<(String, String)>) {
+        // Replace var_types entirely (rather than merge) so re-init
+        // after a program swap reflects the NEW program's declared
+        // SDL vars — old entries from a prior program are dropped.
+        // open_window() is idempotent so the window survives swaps.
+        self.var_types.clear();
+        for (name, ty) in matched_vars {
+            self.var_types.insert(name, ty);
         }
-        // Open the window now that we know we're active.
         if let Err(e) = self.open_window() {
             eprintln!("SDL init failed: {e}");
             self.running = false;
@@ -372,9 +362,6 @@ pub fn create_sdl_plugin(
     width: u32,
     height: u32,
     title: impl Into<String>,
-    var_types: HashMap<String, String>,
 ) -> Box<dyn Plugin> {
-    let mut plugin = SDLPlugin::new(width, height, title);
-    plugin.record_types(var_types);
-    Box::new(plugin)
+    Box::new(SDLPlugin::new(width, height, title))
 }

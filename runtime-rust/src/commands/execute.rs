@@ -8,11 +8,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
 
-use evident_runtime::{executor, EvidentRuntime};
+use evident_runtime::{executor, EvidentRuntime, Value};
 use evident_runtime::executor::Plugin;
 use evident_runtime::plugins::audio as audio_plugin;
 use evident_runtime::plugins::sdl as sdl_plugin;
 use evident_runtime::ast::BodyItem;
+
+use super::initial_state::parse_initial_state;
 
 use super::common::usage;
 
@@ -40,6 +42,12 @@ struct ExecuteOpts {
     /// enough context to start narrowing the conflict without re-running
     /// `evident query` separately.
     explain: bool,
+    /// `--initial-state path/to/file.json`: load a JSON object whose
+    /// top-level keys become first-frame `given` entries. Useful for
+    /// seeding `world.*` state at startup without hard-coding it in
+    /// the program. JSON shape: top-level object of int / bool /
+    /// string / homogeneous array values.
+    initial_state: Option<std::path::PathBuf>,
 }
 
 impl Default for ExecuteOpts {
@@ -52,6 +60,7 @@ impl Default for ExecuteOpts {
             port:   8080,
             quiet:  false,
             explain: false,
+            initial_state: None,
         }
     }
 }
@@ -93,6 +102,12 @@ fn parse_execute_flags(flags: &[String]) -> Result<ExecuteOpts, String> {
             }
             "--quiet"   => { out.quiet   = true; i += 1; }
             "--explain" => { out.explain = true; i += 1; }
+            "--initial-state" => {
+                i += 1;
+                let v = flags.get(i).ok_or_else(|| "--initial-state needs a path".to_string())?;
+                out.initial_state = Some(std::path::PathBuf::from(v));
+                i += 1;
+            }
             "--help" | "-h" => {
                 usage();
                 std::process::exit(0);
@@ -161,12 +176,18 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         Box::new(stdout),
         audio_plugin::create_audio_plugin(),
     ];
+    // Decide whether to bring the SDL window plugin along based on
+    // whether the initial program declares any SDL vars. Programs
+    // loaded later via `next_main` swap can also use SDL only if the
+    // initial program did — the executor reuses the same plugin list.
     if !sdl_vars.is_empty() {
-        // SDL window plugin needs --width/--height/--title (else
-        // 800×600 "Evident" — same defaults as evident.py) and per-var
-        // type info, so we construct it explicitly when active.
+        // SDL window plugin needs --width/--height/--title for window
+        // construction (defaults: 800×600 "Evident" — same as evident.py).
+        // Per-var type info is now handed to the plugin via the
+        // executor's plugin matcher; no need to pre-populate.
+        let _ = sdl_vars; // keep the activation check; var_types comes from initialize()
         plugins.push(sdl_plugin::create_sdl_plugin(
-            opts.width, opts.height, opts.title.clone(), sdl_vars));
+            opts.width, opts.height, opts.title.clone()));
     }
 
     // Wrap loader for the multi-program executor: the executor calls
@@ -183,11 +204,25 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         load_program(p)
     };
 
+    // Parse --initial-state JSON if provided, into a HashMap that
+    // seeds the first frame's `given`.
+    let initial_given: HashMap<String, Value> = match &opts.initial_state {
+        Some(p) => match std::fs::read_to_string(p) {
+            Ok(src) => match parse_initial_state(&src) {
+                Ok(map) => map,
+                Err(e) => { eprintln!("execute: --initial-state {}: {e}", p.display()); return ExitCode::from(1); }
+            },
+            Err(e) => { eprintln!("execute: --initial-state {}: {e}", p.display()); return ExitCode::from(1); }
+        },
+        None => HashMap::new(),
+    };
+
     match executor::run_with_main_coordinator(
         std::path::PathBuf::from(path),
         loader_for_executor,
         &mut plugins,
         &exec_opts,
+        initial_given,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => { eprintln!("execute: {e}"); ExitCode::from(1) }

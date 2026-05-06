@@ -117,10 +117,8 @@ fn sdl_plugin_handles_types_matches_stdlib() {
           // (close the window or press Escape to quit). This test
           // is kept as documentation of the API.
 fn sdl_window_actually_opens() {
-    let mut var_types = HashMap::new();
-    var_types.insert("output".to_string(), "SDLOutput".to_string());
-    let mut plugin = sdl_plugin::create_sdl_plugin(320, 240, "smoke-test", var_types);
-    plugin.initialize(vec!["output".to_string()]);
+    let mut plugin = sdl_plugin::create_sdl_plugin(320, 240, "smoke-test");
+    plugin.initialize(vec![("output".to_string(), "SDLOutput".to_string())]);
     let _ = plugin.before_step();
     let bindings: HashMap<String, Value> = HashMap::new();
     let _ = plugin.after_step(&bindings);

@@ -163,15 +163,21 @@ impl Plugin for SDLAudioPlugin {
         SDL_AUDIO_TYPES
     }
 
-    fn initialize(&mut self, matched_vars: Vec<String>) {
+    fn initialize(&mut self, matched_vars: Vec<(String, String)>) {
         // Sort for stable order: the executor's matched_vars comes
         // from a HashMap iteration so the input order is undefined.
         // Sorted order means voice 0 always corresponds to the
         // alphabetically-first SDLAudio var, which matters for
         // diagnostics and tests that read the mixer state.
-        let mut sorted = matched_vars;
-        sorted.sort();
-        self.var_names = sorted;
+        let mut names: Vec<String> = matched_vars.into_iter().map(|(n, _)| n).collect();
+        names.sort();
+        self.var_names = names;
+        // Open device on first activation. On re-activation after a
+        // program swap, the device stays open with its existing
+        // synth count — `after_step`'s `if i >= cb.synths.len()`
+        // guard skips voices beyond what the device was sized for.
+        // To support programs with more voices than the original,
+        // future work would re-open the device with `var_names.len()`.
         if let Err(e) = self.open_device() {
             eprintln!("SDL audio init failed: {e}");
         }
