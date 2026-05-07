@@ -8,17 +8,25 @@
 -- Output is a Seq(SDLRect): a dynamic list of rectangles, rendered in order
 -- (painter's algorithm — earlier elements are drawn first, later ones on top).
 
+-- ── Vector primitives ─────────────────────────────────────────────────────────
+-- A 2D integer vector — used for positions, sizes, deltas. Pairing the two
+-- axes into one field lets cross-axis constraints in user programs read as
+-- `rect.pos = state.pos` (record-lift) instead of two parallel `.x = .x` /
+-- `.y = .y` lines, and lets bounds collapse to chained comparisons like
+-- `0 ≤ pos ≤ window.size` (componentwise).
+
+type IVec2(x, y ∈ Int)
+
 -- ── Input ─────────────────────────────────────────────────────────────────────
 -- Directional keys are four independent booleans so multiple can be held
--- simultaneously (diagonal movement).
+-- simultaneously (diagonal movement). Mouse position is an IVec2.
 
 type SDLInput
     right_held ∈ Bool
     left_held  ∈ Bool
     up_held    ∈ Bool
     down_held  ∈ Bool
-    mouse_x    ∈ Int
-    mouse_y    ∈ Int
+    mouse      ∈ IVec2
     click      ∈ Bool
     quit       ∈ Bool
     time       ∈ Int   -- milliseconds since unix epoch
@@ -26,21 +34,17 @@ type SDLInput
 
 -- ── Composite types ───────────────────────────────────────────────────────────
 
-type Color
-    r ∈ Nat
-    g ∈ Nat
-    b ∈ Nat
+type Color(r, g, b ∈ Nat)
 
 type SDLRect
-    x     ∈ Int
-    y     ∈ Int
-    w     ∈ Nat
-    h     ∈ Nat
+    pos   ∈ IVec2
+    size  ∈ IVec2
     color ∈ Color
 
 -- ── Output ────────────────────────────────────────────────────────────────────
 -- bg is the clear colour. rects is the scene as a sequence of draw calls.
--- A rect with w=0 ∧ h=0 is skipped by the renderer (useful for hide/show).
+-- A rect with size.x = 0 ∧ size.y = 0 is skipped by the renderer (useful
+-- for hide/show).
 
 type SDLOutput
     bg    ∈ Color
@@ -48,20 +52,18 @@ type SDLOutput
 
 -- ── Window ──────────────────────────────────────────────────────────────────
 -- Optional. Programs that declare `window ∈ SDLWindow` get the window's
--- position on the screen each step, plus the per-step delta. Useful for
--- tricks like "anchor the world to the screen instead of the window" — the
--- contents stay visually fixed while the window is being dragged.
---   screen_x/y : window's top-left corner on the OS screen, in pixels
---   width/height : window dimensions
---   dx/dy : screen_x/y change since previous step (0 on the first step)
+-- position on the screen each step, plus the per-step screen-position delta.
+-- Useful for tricks like "anchor the world to the screen instead of the
+-- window" — the contents stay visually fixed while the window is being
+-- dragged.
+--   screen : window's top-left corner on the OS screen, in pixels
+--   size   : window dimensions (width = size.x, height = size.y)
+--   drag   : screen change since previous step (zero IVec2 on the first step)
 
 type SDLWindow
-    screen_x ∈ Int
-    screen_y ∈ Int
-    width    ∈ Int
-    height   ∈ Int
-    dx       ∈ Int
-    dy       ∈ Int
+    screen ∈ IVec2
+    size   ∈ IVec2
+    drag   ∈ IVec2
 
 -- ── Audio ──────────────────────────────────────────────────────────────────
 -- Programs that declare `audio ∈ SDLAudio` activate the audio plugin. The

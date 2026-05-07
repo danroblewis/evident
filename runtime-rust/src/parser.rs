@@ -81,13 +81,249 @@ impl Parser {
                     };
                     program.imports.push(path);
                 }
+                Token::Trace => {
+                    let t = self.parse_trace_decl()?;
+                    program.traces.push(t);
+                }
                 other => {
                     return Err(ParseError(format!(
-                        "expected schema/claim/type/import, got {:?}", other)));
+                        "expected schema/claim/type/import/trace, got {:?}", other)));
                 }
             }
         }
         Ok(program)
+    }
+
+    /// Parse a `trace name "path/to/program.ev"` declaration with an
+    /// indented body of `send "command" => assertion[s]` steps.
+    /// Stored on the Program's `traces` list, separate from schemas;
+    /// the test runner picks them up.
+    fn parse_trace_decl(&mut self) -> Result<TraceDecl> {
+        self.bump();   // trace
+        let name = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected trace name, got {:?}", other))),
+        };
+        let program_path = match self.bump() {
+            Token::Str(s) => s,
+            other => return Err(ParseError(format!(
+                "expected program path string, got {:?}", other))),
+        };
+        // Parse indented send-step body.
+        self.skip_blank_newlines();
+        let body_indent = match self.peek() {
+            Token::Indent(n) if *n > 0 => *n,
+            _ => return Err(ParseError(
+                "expected indented body after trace declaration".into()
+            )),
+        };
+        let mut steps = Vec::new();
+        loop {
+            match self.peek() {
+                Token::Indent(n) if *n == body_indent => { self.bump(); }
+                _ => break,
+            }
+            steps.push(self.parse_trace_step(body_indent)?);
+            match self.peek() {
+                Token::Newline => { self.bump(); }
+                Token::Eof => break,
+                _ => {}
+            }
+        }
+        Ok(TraceDecl { name, program_path, steps })
+    }
+
+    /// Parse one trace-body step. Five shapes:
+    ///   - `send "cmd"`                       — bare Stdin send
+    ///   - `send "cmd" => assertion`          — Stdin send + inline assertion
+    ///   - `send "cmd" =>\n   asserts…`       — Stdin send + assertion block
+    ///   - `key_down "Right"` / `key_up "Right"` — SDL key state toggle
+    ///   - `advance 0.5s [=> assertion[s]]`   — SDL clock tick
+    /// Trailing-assertion forms (single inline or indented block) are
+    /// shared by `Send` and `Advance` via `parse_trailing_assertions`.
+    fn parse_trace_step(&mut self, parent_indent: usize) -> Result<TraceStep> {
+        match self.peek() {
+            Token::Send => {
+                self.bump();
+                let command = match self.bump() {
+                    Token::Str(s) => s,
+                    other => return Err(ParseError(format!(
+                        "expected command string after 'send', got {:?}", other))),
+                };
+                let assertions = self.parse_trailing_assertions(parent_indent, "send command")?;
+                Ok(TraceStep::Send { command, assertions })
+            }
+            Token::KeyDown => {
+                self.bump();
+                let key = self.parse_key_name("key_down")?;
+                Ok(TraceStep::KeyDown { key })
+            }
+            Token::KeyUp => {
+                self.bump();
+                let key = self.parse_key_name("key_up")?;
+                Ok(TraceStep::KeyUp { key })
+            }
+            Token::Advance => {
+                self.bump();
+                let duration_ms = self.parse_duration()?;
+                let assertions = self.parse_trailing_assertions(parent_indent, "advance duration")?;
+                Ok(TraceStep::Advance { duration_ms, assertions })
+            }
+            other => Err(ParseError(format!(
+                "expected 'send' / 'key_down' / 'key_up' / 'advance' in trace body, got {:?}",
+                other
+            ))),
+        }
+    }
+
+    /// Parse `"KeyName"` after `key_down` / `key_up`. Restricted to
+    /// quoted strings (no bare identifiers) so the names are explicit
+    /// and a typo doesn't silently lex as an Ident the runner ignores.
+    fn parse_key_name(&mut self, ctx: &str) -> Result<String> {
+        match self.bump() {
+            Token::Str(s) => Ok(s),
+            other => Err(ParseError(format!(
+                "expected key name string after '{ctx}', got {:?}", other))),
+        }
+    }
+
+    /// Parse `<number><unit>` where the number is `Int` or `Real` and
+    /// the unit is `s` (seconds) or `ms` (milliseconds). Returns the
+    /// duration in milliseconds, rounded down. The unit is parsed as
+    /// an Ident token following the number — `0.5s` lexes as
+    /// `Real(0.5) Ident("s")` because the lexer doesn't combine
+    /// numeric literals with letter suffixes.
+    fn parse_duration(&mut self) -> Result<u32> {
+        let secs_or_ms: f64 = match self.bump() {
+            Token::Int(n)  => n as f64,
+            Token::Real(r) => r,
+            other => return Err(ParseError(format!(
+                "expected number after 'advance', got {:?}", other))),
+        };
+        let unit = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected duration unit ('s' or 'ms') after number, got {:?}", other))),
+        };
+        let ms = match unit.as_str() {
+            "s"  => secs_or_ms * 1000.0,
+            "ms" => secs_or_ms,
+            other => return Err(ParseError(format!(
+                "unknown duration unit {:?}; expected 's' or 'ms'", other))),
+        };
+        if ms < 0.0 {
+            return Err(ParseError("advance duration must be non-negative".into()));
+        }
+        Ok(ms as u32)
+    }
+
+    /// Parse the optional `=> assertion` (single inline) OR
+    /// `=>` newline + indented assertion block that may follow a
+    /// `send` or `advance` step. Returns an empty vec when neither
+    /// form is present (bare step). `ctx` names the preceding
+    /// construct for error messages (e.g. `"send command"`).
+    fn parse_trailing_assertions(
+        &mut self, parent_indent: usize, ctx: &str,
+    ) -> Result<Vec<TraceAssertion>> {
+        if matches!(self.peek(), Token::Newline | Token::Eof | Token::Indent(_)) {
+            return Ok(Vec::new());
+        }
+        if !matches!(self.peek(), Token::Implies) {
+            return Err(ParseError(format!(
+                "expected '=>' or end of line after {ctx}, got {:?}", self.peek()
+            )));
+        }
+        self.bump();   // =>
+        if matches!(self.peek(), Token::Newline) {
+            let saved = self.pos;
+            self.bump();
+            while matches!(self.peek(), Token::Newline) { self.bump(); }
+            if let Token::Indent(n) = self.peek().clone() {
+                if n > parent_indent {
+                    let block_indent = n;
+                    let mut assertions = Vec::new();
+                    loop {
+                        match self.peek() {
+                            Token::Indent(m) if *m == block_indent => { self.bump(); }
+                            _ => break,
+                        }
+                        assertions.push(self.parse_trace_assertion()?);
+                        if matches!(self.peek(), Token::Newline) { self.bump(); }
+                    }
+                    return Ok(assertions);
+                }
+            }
+            self.pos = saved;
+            self.bump();
+            return Ok(Vec::new());
+        }
+        let a = self.parse_trace_assertion()?;
+        Ok(vec![a])
+    }
+
+    /// Parse one assertion: `IDENT (= | ∋) <value>`. Value may be a
+    /// string literal, an Int, a Real, or a Bool (`true`/`false`) —
+    /// stored as the literal's `Display` form so the runner does a
+    /// stringified compare against the state-field's `Display`. The
+    /// `∋` operator only makes sense for strings; that's not enforced
+    /// here, just convention. Unrecognized value tokens are a parse
+    /// error so trace tests fail loudly rather than silently ignoring
+    /// an unsupported form.
+    fn parse_trace_assertion(&mut self) -> Result<TraceAssertion> {
+        let mut var = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected assertion variable name, got {:?}", other))),
+        };
+        // Dotted-and-indexed path: `hero.pos.x`, `coins[0].collected`,
+        // `dots[2].pos.y`. Stored as a single string; the runner
+        // re-tokenizes (`.` and `[N]`) when looking the path up.
+        loop {
+            match self.peek() {
+                Token::Dot => {
+                    self.bump();
+                    match self.bump() {
+                        Token::Ident(s) => { var.push('.'); var.push_str(&s); }
+                        other => return Err(ParseError(format!(
+                            "expected field name after '.', got {:?}", other))),
+                    }
+                }
+                Token::LBracket => {
+                    self.bump();
+                    let n = match self.bump() {
+                        Token::Int(n) if n >= 0 => n,
+                        other => return Err(ParseError(format!(
+                            "expected non-negative integer index, got {:?}", other))),
+                    };
+                    match self.bump() {
+                        Token::RBracket => {}
+                        other => return Err(ParseError(format!(
+                            "expected ']' after index, got {:?}", other))),
+                    }
+                    var.push('[');
+                    var.push_str(&n.to_string());
+                    var.push(']');
+                }
+                _ => break,
+            }
+        }
+        let op = match self.bump() {
+            Token::Eq          => AssertOp::Eq,
+            Token::ContainsRev => AssertOp::Contains,
+            other => return Err(ParseError(format!(
+                "expected '=' or '∋' in trace assertion, got {:?}", other))),
+        };
+        let value = match self.bump() {
+            Token::Str(s)   => s,
+            Token::Int(n)   => n.to_string(),
+            Token::Real(r)  => r.to_string(),
+            Token::True     => "true".into(),
+            Token::False    => "false".into(),
+            other => return Err(ParseError(format!(
+                "expected string/int/real/bool literal as assertion value, got {:?}", other))),
+        };
+        Ok(TraceAssertion { var, op, value })
     }
 
     /// Parse a `subclaim Name` body item. Same indented-body shape as
@@ -121,8 +357,8 @@ impl Parser {
                 Token::Indent(n) if *n == body_indent => { self.bump(); }
                 _ => break,
             }
-            let item = self.parse_body_item()?;
-            body.push(item);
+            let items = self.parse_body_item()?;
+            body.extend(items);
             match self.peek() {
                 Token::Newline => { self.bump(); }
                 Token::Eof => break,
@@ -145,11 +381,176 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected schema name, got {:?}", other))),
         };
-        let body = self.parse_indented_body()?;
+        // Optional first-line param list: `type Vec2(x, y ∈ Int)` is
+        // shorthand for declaring those Memberships at the top of the
+        // body. The order shown here is the canonical positional order
+        // for callers using positional pins (`v ∈ Vec2(10, 20)`).
+        let mut body = Vec::new();
+        if matches!(self.peek(), Token::LParen) {
+            body = self.parse_first_line_params()?;
+        }
+        body.extend(self.parse_indented_body()?);
         Ok(SchemaDecl { keyword, name, body })
     }
 
-    fn parse_body_item(&mut self) -> Result<BodyItem> {
+    /// Parse `( name1, name2, … ∈ Type, name3 ∈ Type2, … )`. Each
+    /// "group" (comma-separated names + `∈ Type`) becomes one
+    /// Membership per name. Bare types only — no inline pins or
+    /// compound types in this position (would be parser-noisy and
+    /// I haven't seen a use case yet).
+    fn parse_first_line_params(&mut self) -> Result<Vec<BodyItem>> {
+        self.eat(&Token::LParen)?;
+        let mut items = Vec::new();
+        if matches!(self.peek(), Token::RParen) {
+            self.bump();
+            return Ok(items);
+        }
+        loop {
+            // One group: comma-separated names ending at `∈`.
+            let mut names = Vec::new();
+            loop {
+                match self.bump() {
+                    Token::Ident(s) => names.push(s),
+                    other => return Err(ParseError(format!(
+                        "expected param name, got {:?}", other))),
+                }
+                match self.peek() {
+                    Token::Comma => { self.bump(); continue; }
+                    Token::In => { self.bump(); break; }
+                    other => return Err(ParseError(format!(
+                        "expected ',' or '∈' after param name, got {:?}", other))),
+                }
+            }
+            // Type name: bare ident, or compound `Seq(Inner)` /
+            // `Set(Inner)` / etc. Pins on first-line decls would be
+            // confusing (you're declaring a field, not constructing a
+            // value), so we don't accept them here.
+            let head = match self.bump() {
+                Token::Ident(s) => s,
+                other => return Err(ParseError(format!(
+                    "expected type name in first-line params, got {:?}", other))),
+            };
+            let type_name = if matches!(head.as_str(), "Seq" | "Set" | "Bag" | "Map")
+                && matches!(self.peek(), Token::LParen)
+            {
+                self.bump();   // (
+                let inner = match self.bump() {
+                    Token::Ident(s) => s,
+                    other => return Err(ParseError(format!(
+                        "expected inner type for {}, got {:?}", head, other))),
+                };
+                self.eat(&Token::RParen)?;
+                format!("{}({})", head, inner)
+            } else {
+                head
+            };
+            for n in names {
+                items.push(BodyItem::Membership {
+                    name: n,
+                    type_name: type_name.clone(),
+                    pins: crate::ast::Pins::None,
+                });
+            }
+            match self.peek() {
+                Token::Comma => { self.bump(); continue; }
+                Token::RParen => { self.bump(); break; }
+                other => return Err(ParseError(format!(
+                    "expected ',' or ')' after param group, got {:?}", other))),
+            }
+        }
+        Ok(items)
+    }
+
+    /// Parse a Membership's type name and optional pin clause, given
+    /// `head` is the type-name ident currently at `self.peek()`.
+    /// Returns `Ok(Some(...))` on success, `Ok(None)` if the input
+    /// doesn't look like a recognized Membership shape (caller backs
+    /// up and tries to parse as an expression instead).
+    ///
+    /// Type-name shapes accepted:
+    ///   - bare ident:               `Nat`
+    ///   - named pins:               `IVec2 (x ↦ 0, y ↦ 0)`
+    ///   - positional pins:          `IVec2 (-800, -800)`
+    ///   - compound `Ident(Ident)`:  `Seq(Int)` (only for hardcoded
+    ///     compound heads — Seq/Set/Bag/Map — so other `Type(arg)`
+    ///     reads as a positional pin).
+    fn try_parse_type_and_pins(&mut self, head: &str)
+        -> Result<Option<(String, crate::ast::Pins)>>
+    {
+        let after_head = self.toks.get(self.pos + 1);
+        let plain_terminated = matches!(after_head,
+            Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None);
+        let has_paren = matches!(after_head, Some(Token::LParen));
+        if plain_terminated {
+            self.bump();
+            return Ok(Some((head.to_string(), crate::ast::Pins::None)));
+        }
+        if has_paren {
+            let inside_first = self.toks.get(self.pos + 2);
+            let inside_second = self.toks.get(self.pos + 3);
+            let is_named_pin = matches!(inside_first, Some(Token::Ident(_)))
+                && matches!(inside_second, Some(Token::MapsTo));
+            let looks_like_compound = matches!(inside_first, Some(Token::Ident(_)))
+                && matches!(inside_second, Some(Token::RParen));
+            let is_known_compound_head =
+                matches!(head, "Seq" | "Set" | "Bag" | "Map");
+
+            if is_named_pin {
+                self.bump();   // type ident
+                self.bump();   // (
+                let mut pins = Vec::new();
+                loop {
+                    let slot = match self.bump() {
+                        Token::Ident(s) => s,
+                        other => return Err(ParseError(format!(
+                            "expected pin slot name, got {:?}", other))),
+                    };
+                    self.eat(&Token::MapsTo)?;
+                    let value = self.parse_expr()?;
+                    pins.push(crate::ast::Mapping { slot, value });
+                    if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                    break;
+                }
+                self.eat(&Token::RParen)?;
+                return Ok(Some((head.to_string(), crate::ast::Pins::Named(pins))));
+            } else if is_known_compound_head && looks_like_compound {
+                self.bump();           // outer ident
+                self.bump();           // (
+                let inner = match self.bump() {
+                    Token::Ident(s) => s,
+                    _ => unreachable!(),
+                };
+                self.bump();           // )
+                let after = self.toks.get(self.pos);
+                let line_end = matches!(after,
+                    Some(Token::Newline) | Some(Token::Eof)
+                    | Some(Token::Indent(_)) | None);
+                if line_end {
+                    return Ok(Some((format!("{}({})", head, inner), crate::ast::Pins::None)));
+                }
+                return Ok(None);
+            } else {
+                // Positional pins.
+                self.bump();   // type ident
+                self.bump();   // (
+                let mut args = Vec::new();
+                if !matches!(self.peek(), Token::RParen) {
+                    loop {
+                        args.push(self.parse_expr()?);
+                        if matches!(self.peek(), Token::Comma) {
+                            self.bump(); continue;
+                        }
+                        break;
+                    }
+                }
+                self.eat(&Token::RParen)?;
+                return Ok(Some((head.to_string(), crate::ast::Pins::Positional(args))));
+            }
+        }
+        Ok(None)
+    }
+
+    fn parse_body_item(&mut self) -> Result<Vec<BodyItem>> {
         // Three shapes:
         //   ..IDENT                                 → Passthrough composition
         //   IDENT IN IDENT (followed by line-end)   → Membership declaration
@@ -161,7 +562,7 @@ impl Parser {
         if matches!(self.peek(), Token::DotDot) {
             self.bump();
             match self.bump() {
-                Token::Ident(name) => return Ok(BodyItem::Passthrough(name)),
+                Token::Ident(name) => return Ok(vec![BodyItem::Passthrough(name)]),
                 other => return Err(ParseError(format!(
                     "expected claim name after '..', got {:?}", other))),
             }
@@ -172,93 +573,92 @@ impl Parser {
         // the inner SchemaDecl out and registers it under its name so
         // ClaimCall / passthrough can reference it.
         if matches!(self.peek(), Token::Subclaim) {
-            return self.parse_subclaim();
+            return Ok(vec![self.parse_subclaim()?]);
         }
 
         // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
         // Distinguished from a parenthesized expression by the IDENT
-        // immediately followed by `(`.
+        // immediately followed by `(`. Disambiguated from a generic
+        // function-call expression (record literal like `IVec2(0, 0)`)
+        // by checking that the second token inside the parens is
+        // `MapsTo` — that's specific to ClaimCall syntax.
         if let Token::Ident(_) = self.peek() {
             if matches!(self.toks.get(self.pos + 1), Some(Token::LParen)) {
-                let name = match self.bump() {
-                    Token::Ident(s) => s,
-                    _ => unreachable!(),
-                };
-                self.eat(&Token::LParen)?;
-                let mut mappings = Vec::new();
-                if !matches!(self.peek(), Token::RParen) {
-                    loop {
-                        let slot = match self.bump() {
-                            Token::Ident(s) => s,
-                            other => return Err(ParseError(format!(
-                                "expected mapping slot name, got {:?}", other))),
-                        };
-                        self.eat(&Token::MapsTo)?;
-                        let value = self.parse_expr()?;
-                        mappings.push(crate::ast::Mapping { slot, value });
-                        if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
-                        break;
+                let inside_first = self.toks.get(self.pos + 2);
+                let inside_second = self.toks.get(self.pos + 3);
+                let is_claim_call = matches!(inside_first, Some(Token::Ident(_)))
+                    && matches!(inside_second, Some(Token::MapsTo));
+                if is_claim_call {
+                    let name = match self.bump() {
+                        Token::Ident(s) => s,
+                        _ => unreachable!(),
+                    };
+                    self.eat(&Token::LParen)?;
+                    let mut mappings = Vec::new();
+                    if !matches!(self.peek(), Token::RParen) {
+                        loop {
+                            let slot = match self.bump() {
+                                Token::Ident(s) => s,
+                                other => return Err(ParseError(format!(
+                                    "expected mapping slot name, got {:?}", other))),
+                            };
+                            self.eat(&Token::MapsTo)?;
+                            let value = self.parse_expr()?;
+                            mappings.push(crate::ast::Mapping { slot, value });
+                            if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                            break;
+                        }
                     }
+                    self.eat(&Token::RParen)?;
+                    return Ok(vec![BodyItem::ClaimCall { name, mappings }]);
                 }
-                self.eat(&Token::RParen)?;
-                return Ok(BodyItem::ClaimCall { name, mappings });
+                // Otherwise fall through to expr-as-Constraint parsing,
+                // which handles record literals like `IVec2(0, 0)`.
             }
         }
         if let Token::Ident(_) = self.peek() {
             let saved = self.pos;
-            let lhs_name = match self.bump() {
-                Token::Ident(s) => s,
+            let mut lhs_names = match self.bump() {
+                Token::Ident(s) => vec![s],
                 _ => unreachable!(),
             };
+            // Multi-name shorthand: `x, y, z ∈ Type …`. Each comma must
+            // be followed by an Ident that's itself followed by a Comma
+            // or `In` — protects against confusing `(a, b)` tuple
+            // bindings or comma-in-expr from being eaten here.
+            while matches!(self.peek(), Token::Comma) {
+                let inner_save = self.pos;
+                self.bump();   // ,
+                if let Token::Ident(next_name) = self.peek().clone() {
+                    let next_after = self.toks.get(self.pos + 1);
+                    if matches!(next_after, Some(Token::Comma) | Some(Token::In)) {
+                        self.bump();
+                        lhs_names.push(next_name);
+                        continue;
+                    }
+                }
+                self.pos = inner_save;
+                break;
+            }
             if matches!(self.peek(), Token::In) {
                 self.bump();
                 if let Token::Ident(head) = self.peek().clone() {
-                    // Two type-name shapes accepted:
-                    //   - bare ident followed by line-end:  `n ∈ Nat`
-                    //   - compound `Ident(Ident)` followed by line-end:
-                    //     `s ∈ Seq(Int)` or `t ∈ Set(Bool)` etc.
-                    let after_head = self.toks.get(self.pos + 1);
-                    let plain_terminated = matches!(after_head,
-                        Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None);
-                    let compound = matches!(after_head, Some(Token::LParen));
-                    if plain_terminated {
-                        self.bump();
-                        return Ok(BodyItem::Membership { name: lhs_name, type_name: head });
-                    }
-                    if compound {
-                        // Greedy: consume `Ident ( inner )` and stitch a
-                        // single string. Inner can be Ident or another
-                        // compound — recursive shape, but for v0.5 we
-                        // only support one level deep (Seq(Int), Set(String)).
-                        let saved2 = self.pos;
-                        self.bump();           // outer ident
-                        self.bump();           // (
-                        if let Token::Ident(inner) = self.peek().clone() {
-                            let after_inner = self.toks.get(self.pos + 1);
-                            if matches!(after_inner, Some(Token::RParen)) {
-                                self.bump();   // inner ident
-                                self.bump();   // )
-                                let after = self.toks.get(self.pos);
-                                let line_end = matches!(after,
-                                    Some(Token::Newline) | Some(Token::Eof)
-                                    | Some(Token::Indent(_)) | None);
-                                if line_end {
-                                    let type_name = format!("{}({})", head, inner);
-                                    return Ok(BodyItem::Membership { name: lhs_name, type_name });
-                                }
-                            }
-                        }
-                        self.pos = saved2;
+                    if let Some((type_name, pins)) = self.try_parse_type_and_pins(&head)? {
+                        return Ok(lhs_names.into_iter().map(|n| BodyItem::Membership {
+                            name: n,
+                            type_name: type_name.clone(),
+                            pins: pins.clone(),
+                        }).collect());
                     }
                 }
-                // Not a Membership — back up and parse the whole line as expr.
+                // Not a recognized Membership shape — back up.
                 self.pos = saved;
             } else {
                 self.pos = saved;
             }
         }
         let e = self.parse_expr()?;
-        Ok(BodyItem::Constraint(e))
+        Ok(vec![BodyItem::Constraint(e)])
     }
 
     // Operator precedence (low → high):
@@ -283,13 +683,38 @@ impl Parser {
     fn parse_quantifier(&mut self) -> Result<Expr> {
         let is_forall = matches!(self.peek(), Token::ForAll);
         self.bump();
-        let var = match self.bump() {
-            Token::Ident(s) => s,
-            other => return Err(ParseError(format!(
-                "expected bound variable name, got {:?}", other))),
+        // Binding shapes:
+        //   `∀ x ∈ …`               — single-var (1-element Vec)
+        //   `∀ (a, b, c) ∈ …`       — tuple binding for pair/N-tuple
+        //                            iteration (`coindexed`, `edges`)
+        let vars: Vec<String> = if matches!(self.peek(), Token::LParen) {
+            self.bump();   // (
+            let mut names = Vec::new();
+            loop {
+                match self.bump() {
+                    Token::Ident(s) => names.push(s),
+                    other => return Err(ParseError(format!(
+                        "expected bound variable name in tuple binding, got {:?}", other))),
+                }
+                if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                break;
+            }
+            self.eat(&Token::RParen)?;
+            if names.len() < 2 {
+                return Err(ParseError(format!(
+                    "tuple binding `(…)` must contain ≥ 2 names; got {}", names.len()
+                )));
+            }
+            names
+        } else {
+            match self.bump() {
+                Token::Ident(s) => vec![s],
+                other => return Err(ParseError(format!(
+                    "expected bound variable name, got {:?}", other))),
+            }
         };
         self.eat(&Token::In)?;
-        let range = self.parse_atom()?;   // expect a {lo..hi} or {a, b, c}
+        let range = self.parse_atom()?;   // expect a {lo..hi}, {a, b, c}, or builtin call
         self.eat(&Token::Colon)?;
         // Quantifier-block form: `∀ var ∈ range :` followed by Newline +
         // Indent at a deeper level. Parse a stack of body items at that
@@ -329,9 +754,9 @@ impl Parser {
                         body = Expr::Binary(BinOp::And, Box::new(body), Box::new(c));
                     }
                     return Ok(if is_forall {
-                        Expr::Forall(var, Box::new(range), Box::new(body))
+                        Expr::Forall(vars, Box::new(range), Box::new(body))
                     } else {
-                        Expr::Exists(var, Box::new(range), Box::new(body))
+                        Expr::Exists(vars, Box::new(range), Box::new(body))
                     });
                 }
             } else {
@@ -340,9 +765,9 @@ impl Parser {
         }
         let body = self.parse_expr()?;
         Ok(if is_forall {
-            Expr::Forall(var, Box::new(range), Box::new(body))
+            Expr::Forall(vars, Box::new(range), Box::new(body))
         } else {
-            Expr::Exists(var, Box::new(range), Box::new(body))
+            Expr::Exists(vars, Box::new(range), Box::new(body))
         })
     }
 
@@ -582,11 +1007,32 @@ impl Parser {
     fn parse_atom(&mut self) -> Result<Expr> {
         match self.peek().clone() {
             Token::Int(n)   => { self.bump(); Ok(Expr::Int(n)) }
+            Token::Real(v)  => { self.bump(); Ok(Expr::Real(v)) }
             Token::Str(s)   => { self.bump(); Ok(Expr::Str(s)) }
             Token::True     => { self.bump(); Ok(Expr::Bool(true)) }
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Ident(s) => {
                 self.bump();
+                // Function-call expression: `name(arg, …)`. Recognized
+                // for builtins like `coindexed(A, B)` and `edges(seq)`
+                // in quantifier source position. Translator
+                // special-cases known names and errors on unknown.
+                if matches!(self.peek(), Token::LParen) {
+                    self.bump();   // (
+                    let mut args = Vec::new();
+                    if !matches!(self.peek(), Token::RParen) {
+                        loop {
+                            args.push(self.parse_expr()?);
+                            if matches!(self.peek(), Token::Comma) {
+                                self.bump();
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    self.eat(&Token::RParen)?;
+                    return Ok(Expr::Call(s, args));
+                }
                 // Greedily consume `.ident` chains (sub-schema field access)
                 // and collapse into a single dotted Identifier.
                 let mut name = s;
@@ -684,7 +1130,7 @@ mod tests {
         assert_eq!(s.name, "SimpleNat");
         assert!(matches!(s.keyword, Keyword::Schema));
         assert_eq!(s.body.len(), 2);
-        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name }
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
             if name == "n" && type_name == "Nat"));
         assert!(matches!(&s.body[1], BodyItem::Constraint(_)));
     }
@@ -696,7 +1142,7 @@ mod tests {
         let p = parse("schema S\n    s ∈ Seq(Int)\n    #s = 3\n    s[0] > 0\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 3);
-        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name }
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
             if name == "s" && type_name == "Seq(Int)"));
         // #s = 3
         match &s.body[1] {

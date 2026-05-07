@@ -319,6 +319,7 @@ impl EvidentRuntime {
             register_subclaims(&s.body, &mut self.schemas);
         }
         self.program.schemas.extend(prog.schemas);
+        self.program.traces.extend(prog.traces);
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones. Also
         // reset the auto-tuner — measurements taken under the old
@@ -404,6 +405,23 @@ impl EvidentRuntime {
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
+    /// Like `query`, but on UNSAT also returns the unsat-core: indices
+    /// into the schema's `body` for the constraints Z3 identified as
+    /// the conflicting subset. Used by `evident test` to highlight
+    /// which assertions made a `sat_*` test fail. Givens are not
+    /// tracked — the core only includes schema body items.
+    pub fn query_with_core(&self, name: &str, given: &HashMap<String, Value>)
+        -> Result<(QueryResult, Option<Vec<usize>>), RuntimeError>
+    {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let r = crate::translate::evaluate_with_core(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, arith);
+        let qr = QueryResult { satisfied: r.satisfied, bindings: r.bindings };
+        Ok((qr, r.unsat_core_items))
+    }
+
     /// Convenience: query without any pre-bound values.
     pub fn query_free(&self, name: &str) -> Result<QueryResult, RuntimeError> {
         self.query(name, &HashMap::new())
@@ -413,6 +431,13 @@ impl EvidentRuntime {
     /// AND lifted subclaims). Useful for tooling.
     pub fn schema_names(&self) -> impl Iterator<Item = &str> {
         self.schemas.keys().map(|s| s.as_str())
+    }
+
+    /// Trace declarations parsed from this runtime's loaded files.
+    /// Used by `evident test` to drive step-by-step program execution
+    /// and check assertions per send line.
+    pub fn traces(&self) -> &[crate::ast::TraceDecl] {
+        &self.program.traces
     }
 
     /// Look up a loaded schema by name. Used by the executor (and other

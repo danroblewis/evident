@@ -1,0 +1,260 @@
+-- engine.ev — physics, rendering, collision for a side-scrolling
+-- platformer. World coordinates: y grows downward; x grows right.
+--
+-- The reusable surface is the `PlatformerMain` claim at the bottom:
+-- a level file declares `state, state_next ∈ GameState`, an `Init…`
+-- claim with hero/platform/coin positions, the per-level constants
+-- and counts, then `..PlatformerMain` to bring in every wiring line.
+-- Production `mario.ev` and the test levels under `test_levels/`
+-- both consume the same wiring, so trace tests exercise the
+-- implementation, not a copy of it.
+
+import "stdlib/sdl.ev"
+
+type Hero(pos, vel ∈ IVec2, on_ground ∈ Bool)
+type Platform(pos, size ∈ IVec2)
+type Coin(pos ∈ IVec2, collected ∈ Bool)
+
+type GameState
+    hero      ∈ Hero
+    platforms ∈ Seq(Platform)
+    coins     ∈ Seq(Coin)
+    step      ∈ Nat
+    won       ∈ Bool
+
+-- ── Vertical velocity for this frame: jump if up+grounded, else
+-- gravity-incremented and clamped to ±vmax. Y-only intermediate.
+claim HeroEffectiveVy
+    cur ∈ Hero
+    input ∈ SDLInput
+    eff_vy ∈ Int
+    dt, gravity, jump_speed, vmax ∈ Int
+    (input.up_held = true ∧ cur.on_ground = true) ⇒ eff_vy = 0 - jump_speed
+    ¬(input.up_held = true ∧ cur.on_ground = true) ⇒
+        (cur.vel.y + gravity * dt / 1000) >  vmax       ⇒ eff_vy =  vmax
+        (cur.vel.y + gravity * dt / 1000) < (0 - vmax)  ⇒ eff_vy = 0 - vmax
+        (0 - vmax) ≤ (cur.vel.y + gravity * dt / 1000) ≤ vmax ⇒
+            eff_vy = cur.vel.y + gravity * dt / 1000
+
+-- ── Horizontal velocity: arrow keys → run_speed in that direction,
+-- no key → stop instantly (no momentum). Held writes nxt.vel.x.
+claim HeroHorizontal
+    nxt ∈ Hero
+    input ∈ SDLInput
+    run_speed ∈ Int
+    input.right_held = true                           ⇒ nxt.vel.x = run_speed
+    (input.left_held = true ∧ input.right_held = false) ⇒ nxt.vel.x = 0 - run_speed
+    (input.left_held = false ∧ input.right_held = false) ⇒ nxt.vel.x = 0
+
+-- ── Position update + landing logic.
+-- X: clamp to level bounds.
+-- Y: per-platform check — if hero feet would cross a platform top
+-- this frame from above with x overlap, snap to platform top.
+-- Else if would cross floor: snap to floor. Else: free fall.
+-- Platforms must not overlap in x (level design rule); otherwise
+-- two platforms could "claim" the same landing → conflicting nxt.pos.y.
+claim HeroPhysics
+    cur, nxt ∈ Hero
+    eff_vy, dt ∈ Int
+    floor_y, level_w, hero_w, hero_h ∈ Int
+    platforms ∈ Seq(Platform)
+    landed_on_platform ∈ Bool
+
+    (cur.pos.x + nxt.vel.x * dt / 1000) < 0 ⇒ nxt.pos.x = 0
+    (cur.pos.x + nxt.vel.x * dt / 1000) > level_w - hero_w ⇒ nxt.pos.x = level_w - hero_w
+    0 ≤ (cur.pos.x + nxt.vel.x * dt / 1000) ≤ level_w - hero_w ⇒
+        nxt.pos.x = cur.pos.x + nxt.vel.x * dt / 1000
+
+    landed_on_platform = (∃ p ∈ platforms :
+        cur.pos.y + hero_h ≤ p.pos.y
+        ∧ cur.pos.y + hero_h + eff_vy * dt / 1000 ≥ p.pos.y
+        ∧ cur.pos.x + hero_w > p.pos.x
+        ∧ cur.pos.x < p.pos.x + p.size.x)
+
+    ∀ p ∈ platforms :
+        (cur.pos.y + hero_h ≤ p.pos.y
+         ∧ cur.pos.y + hero_h + eff_vy * dt / 1000 ≥ p.pos.y
+         ∧ cur.pos.x + hero_w > p.pos.x
+         ∧ cur.pos.x < p.pos.x + p.size.x) ⇒
+            nxt.pos.y = p.pos.y - hero_h
+            nxt.vel.y = 0
+            nxt.on_ground = true
+
+    (landed_on_platform = false ∧ cur.pos.y + hero_h + eff_vy * dt / 1000 ≥ floor_y) ⇒
+        nxt.pos.y = floor_y - hero_h
+        nxt.vel.y = 0
+        nxt.on_ground = true
+    (landed_on_platform = false ∧ cur.pos.y + hero_h + eff_vy * dt / 1000 < floor_y) ⇒
+        nxt.pos.y = cur.pos.y + eff_vy * dt / 1000
+        nxt.vel.y = eff_vy
+        nxt.on_ground = false
+
+-- ── Platforms are static. Carry forward with whole-record assignment.
+claim PlatformsStatic
+    cur, nxt ∈ Seq(Platform)
+    ∀ (c, n) ∈ coindexed(cur, nxt) : n = c
+
+-- ── Coins: positions never change; collected flips false→true when
+-- the hero's bounding box overlaps an uncollected coin.
+claim CoinsStep
+    cur, nxt ∈ Seq(Coin)
+    hero ∈ Hero
+    hero_w, hero_h, coin_size ∈ Int
+    ∀ (c, n) ∈ coindexed(cur, nxt) :
+        n.pos = c.pos
+        (c.collected = false
+         ∧ hero.pos.x + hero_w > c.pos.x
+         ∧ hero.pos.x < c.pos.x + coin_size
+         ∧ hero.pos.y + hero_h > c.pos.y
+         ∧ hero.pos.y < c.pos.y + coin_size) ⇒ n.collected = true
+        ¬(c.collected = false
+          ∧ hero.pos.x + hero_w > c.pos.x
+          ∧ hero.pos.x < c.pos.x + coin_size
+          ∧ hero.pos.y + hero_h > c.pos.y
+          ∧ hero.pos.y < c.pos.y + coin_size) ⇒ n.collected = c.collected
+
+claim WinIfAllCollected
+    coins ∈ Seq(Coin)
+    won ∈ Bool
+    (∀ c ∈ coins : c.collected = true)  ⇒ won = true
+    (∃ c ∈ coins : c.collected = false) ⇒ won = false
+
+-- ── Camera scrolls to keep hero centered, clamped to level. ──────────
+claim CameraFollow
+    hero ∈ Hero
+    camera_x ∈ Int
+    level_w, screen_w ∈ Int
+    (hero.pos.x - screen_w / 2) < 0                         ⇒ camera_x = 0
+    (hero.pos.x - screen_w / 2) > level_w - screen_w        ⇒ camera_x = level_w - screen_w
+    0 ≤ (hero.pos.x - screen_w / 2) ≤ level_w - screen_w    ⇒ camera_x = hero.pos.x - screen_w / 2
+
+-- ── Render. World→screen translation applied to all rects.
+-- Collected coins are hidden by zeroing their size.
+claim RenderHero
+    hero ∈ Hero
+    rect ∈ SDLRect
+    camera_x, hero_w, hero_h ∈ Int
+    color ∈ Color
+    rect.pos.x = hero.pos.x - camera_x
+    rect.pos.y = hero.pos.y
+    rect.size  = IVec2(hero_w, hero_h)
+    rect.color = color
+
+claim RenderPlatforms
+    platforms ∈ Seq(Platform)
+    rects ∈ Seq(SDLRect)
+    camera_x ∈ Int
+    color ∈ Color
+    ∀ (p, r) ∈ coindexed(platforms, rects) :
+        r.pos.x = p.pos.x - camera_x
+        r.pos.y = p.pos.y
+        r.size  = p.size
+        r.color = color
+
+claim RenderCoins
+    coins ∈ Seq(Coin)
+    rects ∈ Seq(SDLRect)
+    camera_x, coin_size ∈ Int
+    color ∈ Color
+    ∀ (c, r) ∈ coindexed(coins, rects) :
+        c.collected = false ⇒
+            r.pos.x = c.pos.x - camera_x
+            r.pos.y = c.pos.y
+            r.size  = IVec2(coin_size, coin_size)
+            r.color = color
+        c.collected = true ⇒
+            r.size = IVec2(0, 0)
+
+-- ── Audio triggers (frequencies/volumes set by the game file). ──────
+claim PlatformerAudio
+    audio_jump, audio_coin ∈ SDLAudio
+    cur_hero ∈ Hero
+    input ∈ SDLInput
+    cur_coins, nxt_coins ∈ Seq(Coin)
+    audio_jump.playing = (input.up_held = true ∧ cur_hero.on_ground = true)
+    audio_coin.playing = (∃ (c, n) ∈ coindexed(cur_coins, nxt_coins) :
+        c.collected = false ∧ n.collected = true)
+
+-- ── Reusable wiring ───────────────────────────────────────────────────
+-- Everything a platformer level needs to plug the engine into the SDL
+-- I/O surface. Brought in via `..PlatformerMain` from a level file.
+-- The level supplies:
+--   1. An `Init<Level>` claim guarded by `state.step = 0 ⇒ …` (sets
+--      hero, platforms, coins). The wiring intentionally does NOT
+--      reference any init claim by name — names-match would force a
+--      single fixed name across all levels.
+--   2. Counts: `#state.platforms`, `#state.coins`, `#plat_rects`,
+--      `#coin_rects`, `#output.rects` (= 2 + #platforms + #coins).
+--   3. Constants (`floor_y`, `level_w`, `screen_w`, `hero_w`, `hero_h`,
+--      `coin_size`, `gravity`, `jump_speed`, `run_speed`, `vmax`).
+--   4. Aesthetic colors (`sky_color`, `win_color`, `floor_color`,
+--      `platform_color`, `coin_color`, `hero_color`, `win_hero_color`)
+--      and audio constants.
+claim PlatformerMain
+    state, state_next ∈ GameState
+    input  ∈ SDLInput
+    output ∈ SDLOutput
+    audio_jump, audio_coin ∈ SDLAudio
+
+    -- Level-pinned constants. Declared here so the body can reference
+    -- them; the level pins their values via names-match.
+    floor_y, level_w, screen_w     ∈ Int
+    hero_w, hero_h, coin_size      ∈ Int
+    gravity, jump_speed, run_speed ∈ Int
+    vmax                           ∈ Int
+
+    sky_color, win_color, floor_color, platform_color, coin_color ∈ Color
+    hero_color, win_hero_color                                    ∈ Color
+
+    -- ── Frame counter ────────────────────────────────────────────────
+    state_next.step = state.step + 1
+
+    -- ── Background tints green on win ────────────────────────────────
+    state.won = true  ⇒ output.bg = win_color
+    state.won = false ⇒ output.bg = sky_color
+
+    -- ── Per-frame intermediate (gravity-clamped vy + jump) ──────────
+    eff_vy ∈ Int
+    HeroEffectiveVy (cur mapsto state.hero, input mapsto input, eff_vy mapsto eff_vy, dt mapsto input.dt, gravity mapsto gravity, jump_speed mapsto jump_speed, vmax mapsto vmax)
+
+    -- ── Hero physics ────────────────────────────────────────────────
+    HeroHorizontal  (nxt mapsto state_next.hero, input mapsto input, run_speed mapsto run_speed)
+    HeroPhysics     (cur mapsto state.hero, nxt mapsto state_next.hero, eff_vy mapsto eff_vy, dt mapsto input.dt, floor_y mapsto floor_y, level_w mapsto level_w, hero_w mapsto hero_w, hero_h mapsto hero_h, platforms mapsto state.platforms)
+
+    -- ── World step ──────────────────────────────────────────────────
+    PlatformsStatic    (cur mapsto state.platforms, nxt mapsto state_next.platforms)
+    CoinsStep          (cur mapsto state.coins, nxt mapsto state_next.coins, hero mapsto state.hero, hero_w mapsto hero_w, hero_h mapsto hero_h, coin_size mapsto coin_size)
+    WinIfAllCollected  (coins mapsto state_next.coins, won mapsto state_next.won)
+
+    -- ── Camera ──────────────────────────────────────────────────────
+    camera_x ∈ Int
+    CameraFollow (hero mapsto state.hero, camera_x mapsto camera_x, level_w mapsto level_w, screen_w mapsto screen_w)
+
+    -- ── Render: floor at index 0, hero at 1, platforms at 2..2+P-1,
+    -- coins at 2+P..2+P+C-1. Counts come from the level.
+    output.rects[0].pos   = IVec2(0, floor_y)
+    output.rects[0].size  = IVec2(screen_w, 600 - floor_y)
+    output.rects[0].color = floor_color
+
+    -- Hero color brightens on win; resolve into a single Color so
+    -- the render call is unconditional.
+    hero_render_color ∈ Color
+    state.won = false ⇒ hero_render_color = hero_color
+    state.won = true  ⇒ hero_render_color = win_hero_color
+
+    hero_rect ∈ SDLRect
+    output.rects[1] = hero_rect
+    RenderHero (hero mapsto state.hero, rect mapsto hero_rect, camera_x mapsto camera_x, hero_w mapsto hero_w, hero_h mapsto hero_h, color mapsto hero_render_color)
+
+    plat_rects ∈ Seq(SDLRect)
+    ∀ i ∈ {0..#plat_rects - 1} : output.rects[i + 2] = plat_rects[i]
+    RenderPlatforms (platforms mapsto state.platforms, rects mapsto plat_rects, camera_x mapsto camera_x, color mapsto platform_color)
+
+    coin_rects ∈ Seq(SDLRect)
+    ∀ i ∈ {0..#coin_rects - 1} : output.rects[i + 2 + #plat_rects] = coin_rects[i]
+    RenderCoins (coins mapsto state.coins, rects mapsto coin_rects, camera_x mapsto camera_x, coin_size mapsto coin_size, color mapsto coin_color)
+
+    -- ── Audio (engine sets .playing; aesthetics inline) ─────────────
+    PlatformerAudio (audio_jump mapsto audio_jump, audio_coin mapsto audio_coin, cur_hero mapsto state.hero, input mapsto input, cur_coins mapsto state.coins, nxt_coins mapsto state_next.coins)
+    audio_jump.frequency = 440  ∧  audio_jump.volume = 180  ∧  audio_jump.waveform = 1
+    audio_coin.frequency = 1320 ∧  audio_coin.volume = 200  ∧  audio_coin.waveform = 0

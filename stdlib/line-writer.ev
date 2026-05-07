@@ -10,10 +10,7 @@
 
 import "stdlib/io.ev"
 
-type LineWriter
-    dst      ∈ Stdout
-    line_out ∈ String
-
+type LineWriter(dst ∈ Stdout, line_out ∈ String)
     (line_out ≠ "") ⇒
         dst.out = line_out ++ "\n"
 

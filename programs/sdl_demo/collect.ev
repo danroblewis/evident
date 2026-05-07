@@ -20,10 +20,10 @@ type main
     #output.rects    = 5
 
     -- Layout: one dot in each corner.
-    state.dots[0].pos_x = 80   ∧ state.dots[0].pos_y = 80
-    state.dots[1].pos_x = 660  ∧ state.dots[1].pos_y = 80
-    state.dots[2].pos_x = 80   ∧ state.dots[2].pos_y = 460
-    state.dots[3].pos_x = 660  ∧ state.dots[3].pos_y = 460
+    state.dots[0].pos.x = 80   ∧ state.dots[0].pos.y = 80
+    state.dots[1].pos.x = 660  ∧ state.dots[1].pos.y = 80
+    state.dots[2].pos.x = 80   ∧ state.dots[2].pos.y = 460
+    state.dots[3].pos.x = 660  ∧ state.dots[3].pos.y = 460
 
     -- Win when every dot is collected. Enumerated per N.
     (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true) ⇒ state_next.won = true

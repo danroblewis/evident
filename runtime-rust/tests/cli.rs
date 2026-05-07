@@ -110,13 +110,14 @@ fn cli_test_runs_sat_unsat_claims() {
     let parent = path.parent().unwrap();
     let renamed = parent.join(format!("test_{}.ev", std::process::id()));
     std::fs::rename(&path, &renamed).unwrap();
-    let out = Command::new(bin()).args(["test", renamed.to_str().unwrap()])
+    let out = Command::new(bin())
+        .args(["test", "-v", "--no-color", renamed.to_str().unwrap()])
         .output().unwrap();
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "stdout: {s}\nstderr: {}", String::from_utf8_lossy(&out.stderr));
-    assert!(s.contains("PASS  sat_ok"),    "stdout: {s}");
-    assert!(s.contains("PASS  unsat_bad"), "stdout: {s}");
-    assert!(s.contains("2 passed"),         "stdout: {s}");
+    assert!(s.contains("PASS sat_ok"),    "stdout: {s}");
+    assert!(s.contains("PASS unsat_bad"), "stdout: {s}");
+    assert!(s.contains("2 passed"),       "stdout: {s}");
     let _ = std::fs::remove_file(&renamed);
 }
 

@@ -5,7 +5,7 @@
 //! aren't pure scalar `_eq`.
 
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int, String as Z3Str};
+use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
 use crate::ast::*;
@@ -254,6 +254,424 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
     }
 }
 
+/// Translate an Expr that should evaluate to a Z3 Real. Mirrors
+/// `translate_int` for the Real domain. Supports:
+///   - Real literals (`3.14`)
+///   - Identifier resolving to `Var::RealVar`
+///   - Binary arithmetic (`+`, `-`, `*`, `/`) with operands that
+///     translate as Real OR can be coerced from Int (Z3 supports
+///     mixed Int/Real arithmetic by lifting Int to Real).
+///   - Unary minus via `0 - e` desugaring (parser does this already).
+/// Returns None if the expression doesn't fit any of these patterns —
+/// caller (typically `translate_bool`'s Eq/comparison arms) tries
+/// other type paths.
+pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Real<'ctx>> {
+    match e {
+        Expr::Real(f) => Some(real_from_f64(ctx, *f)),
+        Expr::Int(n)  => Some(Real::from_int(&Int::from_i64(ctx, *n))),  // numeric literal coercion
+        Expr::Identifier(name) => match env.get(name) {
+            Some(Var::RealVar(r)) => Some(r.clone()),
+            Some(Var::IntVar(i))  => Some(Real::from_int(i)),     // promote int var
+            Some(Var::PinnedInt(v)) => Some(Real::from_int(&Int::from_i64(ctx, *v))),
+            _ => None,
+        },
+        Expr::Binary(op, lhs, rhs) => {
+            let l = translate_real(lhs, ctx, env)?;
+            let r = translate_real(rhs, ctx, env)?;
+            Some(match op {
+                BinOp::Add => Real::add(ctx, &[&l, &r]),
+                BinOp::Sub => Real::sub(ctx, &[&l, &r]),
+                BinOp::Mul => Real::mul(ctx, &[&l, &r]),
+                BinOp::Div => l.div(&r),
+                _ => return None,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Local copy of the Real-from-f64 helper. Same shape as the one in
+/// `eval.rs` (private there); duplicated to avoid a cross-module
+/// dependency for one tiny helper.
+///
+/// Splits f64's Display form (`"3.14"`) into pure-integer num/den
+/// (`"314" / "100"`) so Z3's numeral parser only sees integers.
+/// Z3's parser is finicky about decimals embedded in `"num/den"`.
+fn real_from_f64<'ctx>(ctx: &'ctx Context, f: f64) -> Real<'ctx> {
+    if f.is_nan() || f.is_infinite() {
+        return Real::from_real(ctx, 0, 1);
+    }
+    let s = f.to_string();
+    let (num, den) = if let Some(dot) = s.find('.') {
+        let (int_part, frac_with_dot) = s.split_at(dot);
+        let frac = &frac_with_dot[1..];
+        (format!("{}{}", int_part, frac),
+         format!("1{}", "0".repeat(frac.len())))
+    } else {
+        (s, "1".to_string())
+    };
+    Real::from_real_str(ctx, &num, &den)
+        .unwrap_or_else(|| Real::from_real(ctx, 0, 1))
+}
+
+/// Field-wise broadcast for `lhs OP rhs` where at least one side is a
+/// record reference (Identifier or Field-of-Index) and the operator is
+/// any of `=`, `≠`, `<`, `≤`, `>`, `≥`. Either side may be an
+/// arithmetic expression involving record references and scalars.
+///
+/// For each leaf field path of the record's type, we substitute *both*
+/// sides by extending every record sub-expression with that leaf path,
+/// then translate the per-leaf op. Results fold with `Or` for `≠`
+/// (some-field-differs) and `And` for the others (componentwise).
+///
+/// Supported record reference shapes (anywhere in the expression):
+///   - `Identifier(name)` where `name.*` keys exist in env
+///   - `Field(Index(Identifier(seq), idx), name)` where `seq` is a
+///     `DatatypeSeqVar` whose element type has `name` as Nested
+///
+/// Other sub-expressions (literals, scalar identifiers like `input.dt`,
+/// scalar arithmetic, primitive Seq indexing) pass through unchanged.
+///
+/// Guards:
+///   - At least one side must contain a record reference. `vec = 5`
+///     (scalar-only RHS) would otherwise silently broadcast the
+///     scalar to every axis, which is almost always a bug.
+///   - All record references must have the *same* leaf set
+///     (bidirectional shape check). `vec2 = vec3` returns None
+///     so the constraint drops with a translator error rather than
+///     producing a partial-overlap conjunction.
+fn lift_record_op<'ctx>(
+    op: &BinOp,
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
+    if !matches!(op,
+        BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+    ) {
+        return None;
+    }
+    // Each side must contribute at least one record reference. Without
+    // this, `vec = 5` (or `vec ≤ 100`) would broadcast the scalar to
+    // every leaf — almost always a bug. Per-side counts also make it
+    // clear we're operating on records "all the way through" rather
+    // than mixing a record with a scalar at the top level.
+    let mut lhs_records = Vec::new();
+    let mut rhs_records = Vec::new();
+    collect_record_refs(lhs, env, schemas, &mut lhs_records);
+    collect_record_refs(rhs, env, schemas, &mut rhs_records);
+    if lhs_records.is_empty() || rhs_records.is_empty() { return None; }
+    let mut all_records = lhs_records;
+    all_records.extend(rhs_records);
+
+    // All record references must share the same leaf shape.
+    let leaves = lhs_record_leaves(&all_records[0], env, schemas)?;
+    for rec in all_records.iter().skip(1) {
+        let rec_leaves = lhs_record_leaves(rec, env, schemas)?;
+        if rec_leaves != leaves { return None; }
+    }
+
+    let mut clauses = Vec::with_capacity(leaves.len());
+    for leaf in &leaves {
+        let lhs_leaf = substitute_record_refs(lhs, leaf, env, schemas)?;
+        let rhs_leaf = substitute_record_refs(rhs, leaf, env, schemas)?;
+        let leaf_op = Expr::Binary(
+            op.clone(),
+            Box::new(lhs_leaf),
+            Box::new(rhs_leaf),
+        );
+        clauses.push(translate_bool(&leaf_op, ctx, env, schemas)?);
+    }
+    let refs: Vec<&Bool> = clauses.iter().collect();
+    Some(match op {
+        // Two records "differ" iff at least one field differs.
+        BinOp::Neq => Bool::or(ctx, &refs),
+        // =, <, ≤, >, ≥ are all componentwise (all axes must satisfy).
+        _ => Bool::and(ctx, &refs),
+    })
+}
+
+/// Enumerate the leaf field paths of an expression representing a
+/// record. Single-level paths (`["x", "y"]` for an IVec2) for
+/// flat records; dotted paths (`["pos.x", "pos.y", "color.r", …]`)
+/// for records containing sub-records.
+fn lhs_record_leaves<'ctx>(
+    lhs: &Expr,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Vec<String>> {
+    match lhs {
+        // Record-literal expression `IVec2(380, 280)` — the leaves come
+        // from the type's SchemaDecl, walked recursively for any nested
+        // fields the type might have.
+        Expr::Call(type_name, _args) => {
+            let schema = schemas.get(type_name)?;
+            let mut leaves = schema_leaf_paths(schema, schemas);
+            if leaves.is_empty() { return None; }
+            leaves.sort();
+            Some(leaves)
+        }
+        Expr::Identifier(name) => {
+            if env.contains_key(name) { return None; }   // not a record (already a primitive)
+            let prefix = format!("{}.", name);
+            let mut leaves: Vec<String> = env.keys()
+                .filter_map(|k| k.strip_prefix(&prefix).map(String::from))
+                .collect();
+            if leaves.is_empty() { return None; }
+            leaves.sort();
+            Some(leaves)
+        }
+        Expr::Field(receiver, field) => {
+            // Field-of-Index path: `seq[i].pos` where pos is a Nested
+            // record sub-field. Enumerate the Nested's sub-leaves from
+            // the DatatypeSeqVar's field metadata.
+            let Expr::Index(seq_expr, _) = receiver.as_ref() else { return None };
+            let Expr::Identifier(seq_name) = seq_expr.as_ref() else { return None };
+            let Some(Var::DatatypeSeqVar { fields, .. }) = env.get(seq_name) else { return None };
+            let nested_sub = fields.iter().find_map(|f| match f {
+                FieldKind::Nested { name, sub_fields, .. } if name == field => Some(sub_fields),
+                _ => None,
+            })?;
+            let mut leaves = enumerate_nested_leaves(nested_sub);
+            if leaves.is_empty() { return None; }
+            leaves.sort();
+            Some(leaves)
+        }
+        Expr::Index(receiver, _) => {
+            // Direct Seq-element record: `output.rects[4] = player_rect`.
+            // The element type is the entire DatatypeSeqVar's field
+            // shape — every leaf, including those reached through
+            // Nested sub-records.
+            let Expr::Identifier(seq_name) = receiver.as_ref() else { return None };
+            let Some(Var::DatatypeSeqVar { fields, .. }) = env.get(seq_name) else { return None };
+            let mut leaves = enumerate_nested_leaves(fields);
+            if leaves.is_empty() { return None; }
+            leaves.sort();
+            Some(leaves)
+        }
+        _ => None,
+    }
+}
+
+/// Recursively walk a `FieldKind` list and produce flat leaf paths.
+/// Primitive fields yield their name; Nested fields yield
+/// `name.<sub-leaf>` for each sub-leaf in their `sub_fields`.
+/// Walk a SchemaDecl and produce flat leaf paths the same way
+/// `enumerate_nested_leaves` does for `FieldKind`. Used for
+/// `lhs_record_leaves` on `Expr::Call(type, args)` (record literals
+/// in expression position) where we don't have the Z3 Datatype yet —
+/// just need leaf NAMES for the lift's positional substitution.
+///
+/// A field whose type appears in `schemas` is treated as nested
+/// (recurse into its body). Anything else (primitives, compound
+/// types like `Seq(T)`) is treated as a primitive leaf.
+fn schema_leaf_paths(
+    schema: &SchemaDecl,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for item in &schema.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            if let Some(sub) = schemas.get(type_name) {
+                for leaf in schema_leaf_paths(sub, schemas) {
+                    out.push(format!("{}.{}", name, leaf));
+                }
+            } else {
+                out.push(name.clone());
+            }
+        }
+    }
+    out
+}
+
+fn enumerate_nested_leaves(fields: &[FieldKind]) -> Vec<String> {
+    let mut out = Vec::new();
+    for f in fields {
+        match f {
+            FieldKind::Primitive { name, .. } => out.push(name.clone()),
+            FieldKind::Nested { name, sub_fields, .. } => {
+                for sub in enumerate_nested_leaves(sub_fields) {
+                    out.push(format!("{}.{}", name, sub));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Walk an expression and substitute each record reference with its
+/// `.leaf` extension. Scalars and non-record expressions pass through.
+/// Returns None on shape mismatch (record reference whose `.leaf`
+/// component doesn't exist in env).
+fn substitute_record_refs<'ctx>(
+    expr: &Expr,
+    leaf: &str,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Expr> {
+    match expr {
+        // Record-literal expression: `IVec2(380, 280)` → 380 for leaf x,
+        // 280 for leaf y. Looks up the type's field declaration order
+        // in schemas, finds the leaf's first segment in that order,
+        // then either returns the matching arg directly (single-level
+        // leaf) or recurses into it (multi-level leaf for a nested
+        // record).
+        Expr::Call(type_name, args) => {
+            let schema = schemas.get(type_name)?;
+            // Direct field names in declaration order — for nested
+            // sub-records this is the field ("pos"), not the sub-leaves.
+            let field_names: Vec<&str> = schema.body.iter()
+                .filter_map(|item| match item {
+                    BodyItem::Membership { name, .. } => Some(name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            // Split the leaf into its first segment (which is one of
+            // `field_names`) and the remainder.
+            let (first, rest) = match leaf.split_once('.') {
+                Some((a, b)) => (a, Some(b)),
+                None => (leaf, None),
+            };
+            let pos = field_names.iter().position(|&n| n == first)?;
+            if pos >= args.len() { return None; }
+            match rest {
+                None => Some(args[pos].clone()),
+                // Nested leaf: recurse into the arg with the rest of
+                // the path. Works for `SDLRect(IVec2(...), IVec2(...),
+                // Color(...))` accessed at leaf "pos.x".
+                Some(rest_path) => substitute_record_refs(&args[pos], rest_path, env, schemas),
+            }
+        }
+        Expr::Identifier(name) => {
+            if env.contains_key(name) {
+                // Scalar identifier — leave as-is.
+                return Some(expr.clone());
+            }
+            let prefix = format!("{}.", name);
+            if env.keys().any(|k| k.starts_with(&prefix)) {
+                // Record identifier — extend with leaf path. Verify
+                // the resulting key actually exists; else shape
+                // mismatch (e.g. `vec2.r` for a Color leaf).
+                let mut extended = name.clone();
+                for p in leaf.split('.') {
+                    extended.push('.');
+                    extended.push_str(p);
+                }
+                if env.contains_key(&extended) { Some(Expr::Identifier(extended)) }
+                else { None }
+            } else {
+                // Unknown identifier — leave; later translation
+                // either resolves it or fails on its own.
+                Some(expr.clone())
+            }
+        }
+        Expr::Field(receiver, field) => {
+            // Field-of-Index record sub-field? If so, wrap in Fields.
+            if is_field_of_index_record(receiver, field, env) {
+                let mut result = expr.clone();
+                for p in leaf.split('.') {
+                    result = Expr::Field(Box::new(result), p.to_string());
+                }
+                return Some(result);
+            }
+            // Primitive Field access — leave as-is.
+            Some(expr.clone())
+        }
+        Expr::Index(receiver, _) => {
+            // Direct Seq-element record (`output.rects[4] = player_rect`):
+            // the indexed element IS a Datatype value. Wrap with Field
+            // accesses for each leaf path component so the existing
+            // `resolve_seq_field` chain reaches the leaf.
+            if is_seq_element_record(receiver, env) {
+                let mut result = expr.clone();
+                for p in leaf.split('.') {
+                    result = Expr::Field(Box::new(result), p.to_string());
+                }
+                return Some(result);
+            }
+            // Primitive Seq indexing (e.g. effective_vy[i]) — leave as-is.
+            Some(expr.clone())
+        }
+        Expr::Binary(op, a, b) => {
+            let a2 = substitute_record_refs(a, leaf, env, schemas)?;
+            let b2 = substitute_record_refs(b, leaf, env, schemas)?;
+            Some(Expr::Binary(op.clone(), Box::new(a2), Box::new(b2)))
+        }
+        Expr::Not(x) => substitute_record_refs(x, leaf, env, schemas).map(|y| Expr::Not(Box::new(y))),
+        // Literals, etc.: scalar values, leave as-is.
+        _ => Some(expr.clone()),
+    }
+}
+
+/// True if `Field(receiver, field)` resolves to a record-typed
+/// sub-field of a Seq element (e.g. `state.dots[i].pos`). Drives both
+/// LHS leaf enumeration and RHS substitution.
+fn is_field_of_index_record<'ctx>(
+    receiver: &Expr,
+    field: &str,
+    env: &HashMap<String, Var<'ctx>>,
+) -> bool {
+    let Expr::Index(seq_expr, _) = receiver else { return false };
+    let Expr::Identifier(seq_name) = seq_expr.as_ref() else { return false };
+    let Some(Var::DatatypeSeqVar { fields, .. }) = env.get(seq_name) else { return false };
+    fields.iter().any(|f| matches!(f, FieldKind::Nested { name, .. } if name == field))
+}
+
+/// True if `Index(receiver, _)` indexes into a `Seq(UserType)` whose
+/// element is a Datatype record (e.g. `output.rects[4]` returns an
+/// SDLRect value). Drives `output.rects[4] = player_rect` lifting.
+fn is_seq_element_record<'ctx>(
+    receiver: &Expr,
+    env: &HashMap<String, Var<'ctx>>,
+) -> bool {
+    let Expr::Identifier(seq_name) = receiver else { return false };
+    matches!(env.get(seq_name), Some(Var::DatatypeSeqVar { .. }))
+}
+
+/// Walk `expr` and collect every record-reference sub-expression
+/// (bare-identifier records and Field-of-Index records). Used by
+/// `lift_record_assignment` to verify each RHS record has the same
+/// leaf shape as the LHS — without this check, `vec2 = vec3` would
+/// produce a partial-overlap broadcast over the LHS's leaves only.
+fn collect_record_refs<'ctx>(
+    expr: &Expr,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+    out: &mut Vec<Expr>,
+) {
+    match expr {
+        // Record literal `IVec2(380, 280)` IS a record reference.
+        Expr::Call(type_name, _) if schemas.contains_key(type_name) => {
+            out.push(expr.clone());
+        }
+        Expr::Identifier(name) => {
+            if !env.contains_key(name)
+                && env.keys().any(|k| k.starts_with(&format!("{}.", name)))
+            {
+                out.push(expr.clone());
+            }
+        }
+        Expr::Field(receiver, field) => {
+            if is_field_of_index_record(receiver, field, env) {
+                out.push(expr.clone());
+            }
+        }
+        Expr::Index(receiver, _) => {
+            if is_seq_element_record(receiver, env) {
+                out.push(expr.clone());
+            }
+        }
+        Expr::Binary(_, a, b) => {
+            collect_record_refs(a, env, schemas, out);
+            collect_record_refs(b, env, schemas, out);
+        }
+        Expr::Not(x) => collect_record_refs(x, env, schemas, out),
+        _ => {}
+    }
+}
+
 /// Handle `seq_var = ⟨e1, e2, …⟩` (sequence-literal assignment).
 ///
 /// Returns the conjunction `len == items.len() ∧ ∀i: arr[i] == translated(e_i)`
@@ -266,6 +684,7 @@ fn translate_seq_lit_eq<'ctx>(
     rhs: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<Bool<'ctx>> {
     let items = match rhs {
         Expr::SeqLit(items) => items,
@@ -294,7 +713,7 @@ fn translate_seq_lit_eq<'ctx>(
                 }
                 SeqElem::Bool => {
                     let z = cell.as_bool()?;
-                    let v = translate_bool(item, ctx, env)?;
+                    let v = translate_bool(item, ctx, env, schemas)?;
                     z._eq(&v)
                 }
                 SeqElem::Str => {
@@ -469,11 +888,16 @@ fn bind_composite_fields<'ctx>(
     true
 }
 
-pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Bool<'ctx>> {
+pub(super) fn translate_bool<'ctx>(
+    e: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
-        Expr::Not(inner) => Some(translate_bool(inner, ctx, env)?.not()),
+        Expr::Not(inner) => Some(translate_bool(inner, ctx, env, schemas)?.not()),
 
         // `seq[i]` where seq holds Bool elements.
         Expr::Index(seq_expr, idx_expr) => {
@@ -506,7 +930,7 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                             Some(set.member(&x))
                         }
                         SeqElem::Bool => {
-                            let x = translate_bool(lhs, ctx, env)?;
+                            let x = translate_bool(lhs, ctx, env, schemas)?;
                             Some(set.member(&x))
                         }
                         SeqElem::Str => {
@@ -524,7 +948,7 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
             let mut clauses: Vec<Bool> = Vec::with_capacity(items.len());
             for it in &items {
                 let eq = Expr::Binary(BinOp::Eq, lhs.clone(), Box::new(it.clone()));
-                if let Some(b) = translate_bool(&eq, ctx, env) {
+                if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
                     clauses.push(b);
                 }
             }
@@ -533,27 +957,151 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
             Some(Bool::or(ctx, &refs))
         }
 
-        // `∀ var ∈ <range> : body` / `∃ …`. Three range shapes:
+        // `∀ vars ∈ <range> : body` / `∃ …`. Range shapes:
         //
-        //   1. Integer range  `{lo..hi}` — unrolls to lo..=hi, each
-        //      iteration binds `var` to an Int literal.
-        //   2. Composite seq  `state.dots` (Seq(UserType)) — unrolls
-        //      to 0..len, each iteration binds `var.field` to the
-        //      corresponding field of `state.dots[i]` so the body
-        //      can reference `var.pos_x` etc. as if `var` were a
-        //      regular composite variable.
-        //   3. Primitive seq  `s` (Seq(Int|Bool|String)) — unrolls
-        //      to 0..len, each iteration binds `var` to the element
-        //      directly (an Int/Bool/Str Z3 expr).
-        Expr::Forall(var, range, body) | Expr::Exists(var, range, body) => {
+        //   1. Integer range `{lo..hi}` — unrolls lo..=hi, binds the
+        //      single var to each Int. Single-var binding only.
+        //   2. Composite seq `state.dots` (Seq(UserType)) — unrolls
+        //      0..len, binds `var.field` to each leaf of state.dots[i].
+        //      Single-var only.
+        //   3. Primitive seq `s` (Seq(Int|Bool|String)) — unrolls
+        //      0..len, binds the single var to each element.
+        //   4. `coindexed(A, B, C)` — N-arity zip. Tuple binding required;
+        //      each iteration binds vars[k] to seqs[k][i] (positionally
+        //      across all sequences).
+        //   5. `edges(seq)` — consecutive-pair iteration. 2-tuple binding;
+        //      each iteration binds vars[0] to seq[i], vars[1] to seq[i+1].
+        Expr::Forall(vars, range, body) | Expr::Exists(vars, range, body) => {
             let mut clauses: Vec<Bool> = Vec::new();
+
+            // Form 4: coindexed(A, B, …) — tuple-binding required.
+            if let Expr::Call(name, args) = range.as_ref() {
+                match (name.as_str(), args.len()) {
+                    ("coindexed", n_seqs) if n_seqs >= 1 => {
+                        if vars.len() != n_seqs {
+                            return None; // arity mismatch — let the caller's
+                                         // dropped-constraint path surface it
+                        }
+                        // All sequences must have the same pinned length.
+                        // Build the (Var-handle, length) per sequence so we
+                        // can iterate and bind each var per index.
+                        let mut seq_lens: Vec<i64> = Vec::with_capacity(n_seqs);
+                        for arg in args {
+                            let Expr::Identifier(seq_name) = arg else { return None };
+                            let seq_var = env.get(seq_name)?;
+                            let len = if let Some((_, len, _, _, _)) = seq_var.as_datatype_seq() {
+                                len.simplify().as_i64()?
+                            } else if let Some((_, len, _)) = seq_var.as_seq() {
+                                len.simplify().as_i64()?
+                            } else {
+                                return None;
+                            };
+                            seq_lens.push(len);
+                        }
+                        let n = *seq_lens.iter().min()?;
+                        for i in 0..n {
+                            let mut env2 = env_clone(env);
+                            for (var, arg) in vars.iter().zip(args.iter()) {
+                                let Expr::Identifier(seq_name) = arg else { return None };
+                                let seq_var = env.get(seq_name)?;
+                                let idx = Int::from_i64(ctx, i);
+                                if let Some((arr, _, _, dt, fields)) = seq_var.as_datatype_seq() {
+                                    let elem_dyn = arr.select(&idx);
+                                    if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
+                                        return None;
+                                    }
+                                } else if let Some((arr, _, elem)) = seq_var.as_seq() {
+                                    let cell = arr.select(&idx);
+                                    let v = match elem {
+                                        SeqElem::Int  => cell.as_int().map(Var::IntVar),
+                                        SeqElem::Bool => cell.as_bool().map(Var::BoolVar),
+                                        SeqElem::Str  => cell.as_string().map(Var::StrVar),
+                                    };
+                                    env2.insert(var.clone(), v?);
+                                } else {
+                                    return None;
+                                }
+                            }
+                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                                clauses.push(b);
+                            }
+                        }
+                        let refs: Vec<&Bool> = clauses.iter().collect();
+                        return Some(if matches!(e, Expr::Forall(..)) {
+                            Bool::and(ctx, &refs)
+                        } else if refs.is_empty() {
+                            Bool::from_bool(ctx, false)
+                        } else {
+                            Bool::or(ctx, &refs)
+                        });
+                    }
+                    ("edges", 1) => {
+                        // edges(seq) — adjacent-pair iteration, requires
+                        // a 2-tuple binding. Each step binds vars[0] to
+                        // seq[i] and vars[1] to seq[i+1] for i in 0..n-1.
+                        if vars.len() != 2 { return None; }
+                        let arg = &args[0];
+                        let Expr::Identifier(seq_name) = arg else { return None };
+                        let seq_var = env.get(seq_name)?;
+                        let (n, bind): (i64, Box<dyn Fn(&mut HashMap<String, Var<'ctx>>, i64, &str) -> bool>) =
+                            if let Some((arr, len, _, dt, fields)) = seq_var.as_datatype_seq() {
+                                let arr = arr.clone(); let fields = fields.to_vec();
+                                let n = len.simplify().as_i64()?;
+                                (n, Box::new(move |env2, i, var| {
+                                    let idx = Int::from_i64(ctx, i);
+                                    let elem_dyn = arr.select(&idx);
+                                    bind_composite_fields(env2, &elem_dyn, &fields, dt, var)
+                                }))
+                            } else if let Some((arr, len, elem)) = seq_var.as_seq() {
+                                let arr = arr.clone();
+                                let n = len.simplify().as_i64()?;
+                                (n, Box::new(move |env2, i, var| {
+                                    let idx = Int::from_i64(ctx, i);
+                                    let cell = arr.select(&idx);
+                                    let v = match elem {
+                                        SeqElem::Int  => cell.as_int().map(Var::IntVar),
+                                        SeqElem::Bool => cell.as_bool().map(Var::BoolVar),
+                                        SeqElem::Str  => cell.as_string().map(Var::StrVar),
+                                    };
+                                    match v {
+                                        Some(v) => { env2.insert(var.to_string(), v); true }
+                                        None => false,
+                                    }
+                                }))
+                            } else {
+                                return None;
+                            };
+                        for i in 0..(n - 1) {
+                            let mut env2 = env_clone(env);
+                            if !bind(&mut env2, i,     &vars[0]) { return None; }
+                            if !bind(&mut env2, i + 1, &vars[1]) { return None; }
+                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                                clauses.push(b);
+                            }
+                        }
+                        let refs: Vec<&Bool> = clauses.iter().collect();
+                        return Some(if matches!(e, Expr::Forall(..)) {
+                            Bool::and(ctx, &refs)
+                        } else if refs.is_empty() {
+                            Bool::from_bool(ctx, false)
+                        } else {
+                            Bool::or(ctx, &refs)
+                        });
+                    }
+                    _ => return None,    // unknown function in quantifier range
+                }
+            }
+
+            // Forms 1–3 require a single-name binding.
+            if vars.len() != 1 { return None; }
+            let var = &vars[0];
 
             // Form 1: integer range.
             if let Some((lo, hi)) = literal_range(range, ctx, env) {
                 for i in lo..=hi {
                     let mut env2 = env_clone(env);
                     env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
-                    if let Some(b) = translate_bool(body, ctx, &env2) {
+                    if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
                         clauses.push(b);
                     }
                 }
@@ -571,7 +1119,7 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                         if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
                             return None; // shape mismatch — fail loudly
                         }
-                        if let Some(b) = translate_bool(body, ctx, &env2) {
+                        if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
                             clauses.push(b);
                         }
                     }
@@ -589,7 +1137,7 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                         };
                         let v = v?;
                         env2.insert(var.clone(), v);
-                        if let Some(b) = translate_bool(body, ctx, &env2) {
+                        if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
                             clauses.push(b);
                         }
                     }
@@ -613,18 +1161,18 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
         Expr::Binary(op, lhs, rhs) => match op {
             // Boolean combinators
             BinOp::And => {
-                let l = translate_bool(lhs, ctx, env)?;
-                let r = translate_bool(rhs, ctx, env)?;
+                let l = translate_bool(lhs, ctx, env, schemas)?;
+                let r = translate_bool(rhs, ctx, env, schemas)?;
                 Some(Bool::and(ctx, &[&l, &r]))
             }
             BinOp::Or => {
-                let l = translate_bool(lhs, ctx, env)?;
-                let r = translate_bool(rhs, ctx, env)?;
+                let l = translate_bool(lhs, ctx, env, schemas)?;
+                let r = translate_bool(rhs, ctx, env, schemas)?;
                 Some(Bool::or(ctx, &[&l, &r]))
             }
             BinOp::Implies => {
-                let l = translate_bool(lhs, ctx, env)?;
-                let r = translate_bool(rhs, ctx, env)?;
+                let l = translate_bool(lhs, ctx, env, schemas)?;
+                let r = translate_bool(rhs, ctx, env, schemas)?;
                 Some(l.implies(&r))
             }
             // Eq/Neq work over Bool, Int, or String. Try in that order.
@@ -634,14 +1182,14 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                 // and lives outside the Bool/Int/Str scalar paths because
                 // it produces a conjunction over the elements rather than
                 // a single _eq.
-                if let Some(b) = translate_seq_lit_eq(lhs, rhs, ctx, env) {
+                if let Some(b) = translate_seq_lit_eq(lhs, rhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
                         _ => unreachable!(),
                     });
                 }
-                if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env) {
+                if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
@@ -665,7 +1213,7 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                     });
                 }
                 if let (Some(l), Some(r)) =
-                    (translate_bool(lhs, ctx, env), translate_bool(rhs, ctx, env))
+                    (translate_bool(lhs, ctx, env, schemas), translate_bool(rhs, ctx, env, schemas))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
@@ -682,25 +1230,63 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                         _ => unreachable!(),
                     });
                 }
-                let l = translate_str(lhs, ctx, env)?;
-                let r = translate_str(rhs, ctx, env)?;
-                Some(match op {
-                    BinOp::Eq  => l._eq(&r),
-                    BinOp::Neq => l._eq(&r).not(),
-                    _ => unreachable!(),
-                })
+                // Real path: at least one side is Real (RealVar or Real
+                // literal); the other side may be Int and gets coerced.
+                if let (Some(l), Some(r)) =
+                    (translate_real(lhs, ctx, env), translate_real(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Eq  => l._eq(&r),
+                        BinOp::Neq => l._eq(&r).not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let (Some(l), Some(r)) =
+                    (translate_str(lhs, ctx, env), translate_str(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Eq  => l._eq(&r),
+                        BinOp::Neq => l._eq(&r).not(),
+                        _ => unreachable!(),
+                    });
+                }
+                // Record-op broadcast: handles `=`, `≠` between
+                // record-typed expressions on either side, including
+                // arithmetic (`vec_lo = vec - offset`).
+                lift_record_op(op, lhs, rhs, ctx, env, schemas)
             }
-            // Numeric-only comparisons.
+            // Numeric comparisons. Try Int first; fall back to Real
+            // (with Int→Real coercion) so `realvar < 3` and
+            // `realvar < 3.14` both work.
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                let l = translate_int(lhs, ctx, env)?;
-                let r = translate_int(rhs, ctx, env)?;
-                Some(match op {
-                    BinOp::Lt => l.lt(&r),
-                    BinOp::Le => l.le(&r),
-                    BinOp::Gt => l.gt(&r),
-                    BinOp::Ge => l.ge(&r),
-                    _ => unreachable!(),
-                })
+                if let (Some(l), Some(r)) =
+                    (translate_int(lhs, ctx, env), translate_int(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Lt => l.lt(&r),
+                        BinOp::Le => l.le(&r),
+                        BinOp::Gt => l.gt(&r),
+                        BinOp::Ge => l.ge(&r),
+                        _ => unreachable!(),
+                    });
+                }
+                if let (Some(l), Some(r)) =
+                    (translate_real(lhs, ctx, env), translate_real(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Lt => l.lt(&r),
+                        BinOp::Le => l.le(&r),
+                        BinOp::Gt => l.gt(&r),
+                        BinOp::Ge => l.ge(&r),
+                        _ => unreachable!(),
+                    });
+                }
+                // Record-op broadcast: `<`, `≤`, `>`, `≥` between
+                // record-typed expressions are componentwise. Same
+                // helper as Eq/Neq — operator threads through.
+                // Handles `vec_lo ≤ vec` and arithmetic-laden forms
+                // like `dot.pos - offset_lo ≤ player.pos`.
+                lift_record_op(op, lhs, rhs, ctx, env, schemas)
             }
             _ => None,
         }

@@ -22,17 +22,17 @@ type main
 
     -- Audio: continuous output, parameters from mouse position.
     audio.playing   = true
-    audio.frequency = 200 + input.mouse_x
-    audio.volume    = (600 - input.mouse_y) / 5
-    audio.waveform  = input.mouse_y / 300
+    audio.frequency = 200 + input.mouse.x
+    audio.volume    = (600 - input.mouse.y) / 5
+    audio.waveform  = input.mouse.y / 300
 
     -- Visual feedback: a 60×60 red square follows the mouse.
     output.bg.r = 15  ∧  output.bg.g = 15  ∧  output.bg.b = 30
     #output.rects = 1
-    output.rects[0].x = input.mouse_x - 30
-    output.rects[0].y = input.mouse_y - 30
-    output.rects[0].w = 60
-    output.rects[0].h = 60
+    output.rects[0].pos.x = input.mouse.x - 30
+    output.rects[0].pos.y = input.mouse.y - 30
+    output.rects[0].size.x = 60
+    output.rects[0].size.y = 60
     output.rects[0].color.r = 220
     output.rects[0].color.g = 100
     output.rects[0].color.b = 100

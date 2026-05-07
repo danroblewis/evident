@@ -43,13 +43,13 @@ use std::io::{self, Read, Write};
 /// Stdin-shaped types: input plugin owns these. Plugin contributes
 /// `var.char`, `var.eof`, `var.open`, `var.fd`, `var.blocking`,
 /// `var.available` per step.
-const INPUT_TYPES: &[&str] = &["Stdin", "CharInput"];
+pub(crate) const INPUT_TYPES: &[&str] = &["Stdin", "CharInput"];
 
 /// Stdout-shaped types: output plugin owns these. Plugin contributes
 /// `var.fd`, `var.open`, `var.blocking`, `var.send_buffer`,
 /// `var.buffer_size`, `var.buffered`, `var.flushed` per step, then
 /// reads `var.out` after the solve.
-const OUTPUT_TYPES: &[&str] = &["Stdout", "Stderr", "CharOutput"];
+pub(crate) const OUTPUT_TYPES: &[&str] = &["Stdout", "Stderr", "CharOutput"];
 
 /// Embedded I/O stdlib. Flat type definitions (no `..` passthrough)
 /// so `declare_var` allocates one Z3 const per leaf field directly.
@@ -255,7 +255,7 @@ impl<W: Write> Plugin for StdoutPlugin<W> {
 /// the executor's `_extract_output` similarly trusts the value as-is —
 /// the difference is Python's stdout text mode handles the literal
 /// backslash-escapes on its own. We render bytes directly.)
-fn unescape_z3_string(s: &str) -> String {
+pub(crate) fn unescape_z3_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -290,7 +290,7 @@ fn unescape_z3_string(s: &str) -> String {
 /// Walk a schema body collecting `var → type_name`. Follows `..ClaimName`
 /// passthroughs recursively (matching the Python `_collect_vars` behavior),
 /// so vars declared in an included claim are visible at the parent level.
-fn collect_vars(rt: &EvidentRuntime, schema_name: &str, visited: &mut Vec<String>)
+pub(crate) fn collect_vars(rt: &EvidentRuntime, schema_name: &str, visited: &mut Vec<String>)
     -> HashMap<String, String>
 {
     if visited.iter().any(|n| n == schema_name) {
@@ -301,7 +301,7 @@ fn collect_vars(rt: &EvidentRuntime, schema_name: &str, visited: &mut Vec<String
     let mut out = HashMap::new();
     for item in &schema.body {
         match item {
-            BodyItem::Membership { name, type_name } => {
+            BodyItem::Membership { name, type_name, .. } => {
                 out.entry(name.clone()).or_insert_with(|| type_name.clone());
             }
             BodyItem::Passthrough(claim) => {
@@ -320,7 +320,7 @@ fn collect_vars(rt: &EvidentRuntime, schema_name: &str, visited: &mut Vec<String
 /// is NOT one of the I/O port types. Excluding I/O types stops e.g.
 /// `dst ∈ Stdout` from being treated as half of a state pair just because
 /// some other variable happens to be named `dst_next`.
-fn detect_state_pairs(declared: &HashMap<String, String>) -> Vec<(String, String, String)> {
+pub(crate) fn detect_state_pairs(declared: &HashMap<String, String>) -> Vec<(String, String, String)> {
     let io_types: std::collections::HashSet<&str> =
         INPUT_TYPES.iter().chain(OUTPUT_TYPES.iter()).copied().collect();
     let mut pairs = Vec::new();
@@ -341,14 +341,14 @@ fn detect_state_pairs(declared: &HashMap<String, String>) -> Vec<(String, String
 /// map for every `Membership` field whose type has a sensible default
 /// (Nat/Int → 0, Bool → false, String → ""). Sub-schema fields and Seq
 /// fields are skipped (no useful default).
-fn initial_state(rt: &EvidentRuntime, type_name: &str) -> HashMap<String, Value> {
+pub(crate) fn initial_state(rt: &EvidentRuntime, type_name: &str) -> HashMap<String, Value> {
     let mut out = HashMap::new();
     let Some(schema) = rt.get_schema(type_name) else { return out };
     if !matches!(schema.keyword, Keyword::Type | Keyword::Schema | Keyword::Claim) {
         return out;
     }
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name: ftype } = item {
+        if let BodyItem::Membership { name, type_name: ftype, .. } = item {
             if let Some(v) = default_for_type(ftype) {
                 out.insert(name.clone(), v);
             }
@@ -412,7 +412,7 @@ fn default_for_type(t: &str) -> Option<Value> {
 
 /// Extract `state_next.*` from `bindings` and return a `field → value` map
 /// suitable for replacing the current `base`'s state on the next step.
-fn extract_next_state(bindings: &HashMap<String, Value>, next_var: &str)
+pub(crate) fn extract_next_state(bindings: &HashMap<String, Value>, next_var: &str)
     -> HashMap<String, Value>
 {
     let prefix = format!("{}.", next_var);

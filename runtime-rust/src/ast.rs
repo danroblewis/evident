@@ -29,7 +29,18 @@ pub struct SchemaDecl {
 pub enum BodyItem {
     /// `x ∈ Type`  — declares a typed variable. For v0.1 the right side
     /// is always a simple identifier (e.g. `Nat`, `Int`, `Bool`).
-    Membership { name: String, type_name: String },
+    ///
+    /// `pins` narrows the declared variable to the subset of `Type`
+    /// satisfying additional per-field equalities. Two forms:
+    ///
+    ///   - Named: `x ∈ Type (a mapsto v1, b mapsto v2)` — unambiguous,
+    ///     order-independent.
+    ///   - Positional: `x ∈ Type (v1, v2, …)` — uses the type's field
+    ///     declaration order. Strict: must match the field count.
+    ///
+    /// Both desugar to a series of `name.field = value` constraints
+    /// at translate time. `Pins::None` for the bare `x ∈ Type` form.
+    Membership { name: String, type_name: String, pins: Pins },
 
     /// `..ClaimName` — passthrough composition. The named claim's body
     /// is inlined into the current schema's body using names-match: any
@@ -60,11 +71,32 @@ pub struct Mapping {
     pub value: Expr,
 }
 
+/// Optional per-field pinning for a `Membership`. See `Membership` for
+/// the source-level forms each variant comes from.
+#[derive(Debug, Clone)]
+pub enum Pins {
+    /// `x ∈ Type` — no pins, bare declaration.
+    None,
+    /// `x ∈ Type (a mapsto v1, b mapsto v2)` — explicit field names.
+    /// Order-independent, partial allowed.
+    Named(Vec<Mapping>),
+    /// `x ∈ Type (v1, v2, …)` — positional, by field declaration order
+    /// in the type's body. Translator looks up the SchemaDecl to resolve
+    /// each position to a field name. Strict count match required.
+    Positional(Vec<Expr>),
+}
+
 /// Expression tree. Compact for v0.1.
 #[derive(Debug, Clone)]
 pub enum Expr {
     Identifier(String),
     Int(i64),
+    /// Real literal. Stored as f64 for ergonomics; converted to a Z3
+    /// Real via the numeral's canonical decimal form (Rust's f64
+    /// formatter gives `"3.14"` exactly for `3.14`, which Z3's
+    /// `from_real_str` parses without precision loss for typical
+    /// game/physics constants).
+    Real(f64),
     Bool(bool),
     Str(String),
     /// `{e1, e2, …}` set literal — only used as the right side of `∈`
@@ -81,9 +113,17 @@ pub enum Expr {
     InExpr(Box<Expr>, Box<Expr>),
     /// `∀ var ∈ range : body` and the existential variant.
     /// Translation requires `range` to be a literal `Range(Int, Int)`
-    /// so we can unroll.
-    Forall(String, Box<Expr>, Box<Expr>),
-    Exists(String, Box<Expr>, Box<Expr>),
+    /// so we can unroll. The `Vec<String>` is the binding: usually
+    /// length 1 (`∀ x ∈ …`), length ≥ 2 for tuple destructuring
+    /// (`∀ (a, b) ∈ coindexed(A, B) : …` — pair iteration).
+    Forall(Vec<String>, Box<Expr>, Box<Expr>),
+    Exists(Vec<String>, Box<Expr>, Box<Expr>),
+    /// `name(arg, …)` — function-call expression. Used for builtins
+    /// like `coindexed(A, B, C)` and `edges(seq)` in quantifier source
+    /// position. We don't have user-defined functions yet; the
+    /// translator special-cases recognized names and errors on
+    /// unrecognized ones.
+    Call(String, Vec<Expr>),
     /// `#expr` — cardinality. For Seq translates to Z3 Length.
     Cardinality(Box<Expr>),
     /// `expr[index]` — sequence indexing. Translates to Z3 nth.
@@ -122,4 +162,79 @@ pub enum BinOp {
 pub struct Program {
     pub schemas: Vec<SchemaDecl>,
     pub imports: Vec<String>,
+    pub traces: Vec<TraceDecl>,
+}
+
+/// A trace test: drives a named program through a sequence of input
+/// commands and asserts state/output at each step. Source form:
+///
+/// ```text
+/// trace name "path/to/program.ev"
+///     send "command" => assertion
+///     send "command" =>
+///         assertion1
+///         assertion2
+///     send "command"
+/// ```
+///
+/// The trace runner loads the named program, sets up its main schema
+/// for step-by-step execution, feeds each command's chars (with
+/// trailing newline) through Stdin, and checks every assertion
+/// against the resulting state and accumulated output.
+#[derive(Debug, Clone)]
+pub struct TraceDecl {
+    pub name: String,
+    pub program_path: String,
+    pub steps: Vec<TraceStep>,
+}
+
+/// One step inside a trace block. Two flavors: the Stdin-shaped
+/// `Send` (used by char-stream programs like adventures), and the
+/// SDL-shaped `KeyDown` / `KeyUp` / `Advance` triplet (used by
+/// frame-loop programs). Held-key state and the simulated wall clock
+/// thread through the runner across all steps in one trace.
+#[derive(Debug, Clone)]
+pub enum TraceStep {
+    /// `send "command" [=> assertion[s]]` — feed the command string
+    /// char-by-char through the program's Stdin var, then check
+    /// assertions against the post-line state and accumulated output.
+    Send {
+        command: String,
+        assertions: Vec<TraceAssertion>,
+    },
+    /// `key_down "Right"` — start holding a named key. Subsequent
+    /// `Advance` steps emit `input.<key>_held = true` per frame
+    /// until a matching `KeyUp`. Recognized key names: `Up`, `Down`,
+    /// `Left`, `Right` (mapped to the SDLInput `*_held` Bools).
+    KeyDown { key: String },
+    /// `key_up "Right"` — release a previously held key. Idempotent
+    /// (releasing an unheld key is a no-op, matching the real SDL
+    /// keyboard event stream).
+    KeyUp { key: String },
+    /// `advance 0.5s [=> assertion[s]]` — tick the SDL frame loop at
+    /// a fixed dt (16ms) until `duration_ms` of simulated time has
+    /// elapsed, advancing the program's state pair each frame.
+    /// Assertions run after the last frame.
+    Advance {
+        duration_ms: u32,
+        assertions: Vec<TraceAssertion>,
+    },
+}
+
+/// A single trace assertion: `var op "value"`. `var` is either a
+/// state field name or the literal `output` (which checks the
+/// per-step accumulated Stdout text). Two operators:
+///   - `=`  exact equality
+///   - `∋`  substring containment (actual contains value)
+#[derive(Debug, Clone)]
+pub struct TraceAssertion {
+    pub var: String,
+    pub op: AssertOp,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssertOp {
+    Eq,
+    Contains,
 }

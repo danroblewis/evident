@@ -138,10 +138,24 @@ impl<'a> Parser<'a> {
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() { self.bump(); } else { break; }
         }
+        // Optional fractional part: `123.456` → Real, `123` → Int.
+        let has_fraction = self.peek() == Some('.');
+        if has_fraction {
+            self.bump();
+            while let Some(c) = self.peek() {
+                if c.is_ascii_digit() { self.bump(); } else { break; }
+            }
+        }
         let s = &self.src[start..self.pos];
-        s.parse::<i64>()
-            .map(Value::Int)
-            .map_err(|e| format!("bad integer {s:?} at offset {start}: {e}"))
+        if has_fraction {
+            s.parse::<f64>()
+                .map(Value::Real)
+                .map_err(|e| format!("bad real {s:?} at offset {start}: {e}"))
+        } else {
+            s.parse::<i64>()
+                .map(Value::Int)
+                .map_err(|e| format!("bad integer {s:?} at offset {start}: {e}"))
+        }
     }
 
     fn parse_array(&mut self) -> Result<Value, String> {

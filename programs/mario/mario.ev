@@ -1,0 +1,68 @@
+-- mario.ev — side-scrolling platformer. Arrow keys move + jump.
+-- Collect every coin to win (background turns green).
+--
+-- This file IS the production level. It declares the level data
+-- (InitMario), the per-level constants (counts, level dimensions,
+-- physics tuning, aesthetics), and pulls in every wiring line from
+-- `..PlatformerMain` defined in engine.ev. Keep level files this
+-- shape — anything that's level-independent belongs in the engine.
+
+import "programs/mario/engine.ev"
+
+claim InitMario
+    state ∈ GameState
+
+    state.hero.pos = IVec2(60, 460)
+    state.hero.vel = IVec2(0, 0)
+    state.hero.on_ground = true
+
+    state.platforms[0].pos = IVec2( 300, 440)  ∧ state.platforms[0].size = IVec2(120, 20)
+    state.platforms[1].pos = IVec2( 520, 340)  ∧ state.platforms[1].size = IVec2(120, 20)
+    state.platforms[2].pos = IVec2( 760, 240)  ∧ state.platforms[2].size = IVec2(120, 20)
+    state.platforms[3].pos = IVec2(1020, 380)  ∧ state.platforms[3].size = IVec2(160, 20)
+    state.platforms[4].pos = IVec2(1300, 280)  ∧ state.platforms[4].size = IVec2(140, 20)
+
+    state.coins[0] = Coin(IVec2( 350, 400), false)
+    state.coins[1] = Coin(IVec2( 570, 300), false)
+    state.coins[2] = Coin(IVec2( 800, 200), false)
+    state.coins[3] = Coin(IVec2(1060, 340), false)
+    state.coins[4] = Coin(IVec2(1100, 340), false)
+    state.coins[5] = Coin(IVec2(1340, 240), false)
+    state.coins[6] = Coin(IVec2(1500, 500), false)
+    state.coins[7] = Coin(IVec2( 200, 500), false)
+
+type main(state, state_next ∈ GameState)
+    -- ── Counts ──────────────────────────────────────────────────────
+    #state.platforms      = 5
+    #state_next.platforms = 5
+    #state.coins          = 8
+    #state_next.coins     = 8
+    #plat_rects           = 5
+    #coin_rects           = 8
+    -- 1 floor + 1 hero + 5 platforms + 8 coins
+    #output.rects = 15
+
+    -- ── Constants ───────────────────────────────────────────────────
+    floor_y    = 540
+    level_w    = 1600
+    screen_w   = 800
+    hero_w     = 30
+    hero_h     = 40
+    coin_size  = 18
+    gravity    = 1800
+    jump_speed = 700
+    run_speed  = 260
+    vmax       = 1100
+
+    -- ── Aesthetics ──────────────────────────────────────────────────
+    sky_color      ∈ Color(80, 150, 220)
+    win_color      ∈ Color(120, 200, 100)
+    floor_color    ∈ Color(60, 40, 20)
+    platform_color ∈ Color(140, 90, 40)
+    coin_color     ∈ Color(255, 220, 60)
+    hero_color     ∈ Color(220, 80, 60)
+    win_hero_color ∈ Color(255, 220, 80)
+
+    -- ── Init + wiring ──────────────────────────────────────────────
+    state.step = 0 ⇒ InitMario
+    ..PlatformerMain

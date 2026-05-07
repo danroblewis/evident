@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use z3::ast::{Array, Bool, Int, Set, String as Z3Str};
+use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
 use z3::{DatatypeSort, Solver};
 
 /// Cache of Z3 Datatype sorts built for user types referenced as the
@@ -36,11 +36,26 @@ pub type DatatypeRegistry =
 pub struct EvalResult {
     pub satisfied: bool,
     pub bindings: HashMap<String, Value>,
+    /// On UNSAT, optionally populated when `evaluate_with_core` was
+    /// used: indices into the schema's top-level body that Z3
+    /// identified as the conflicting subset (via `assert_and_track`
+    /// + `get_unsat_core`). `None` when the caller didn't request
+    /// it; `Some(empty)` when Z3 returned an empty core (rare —
+    /// usually means the conflict is encoded entirely outside the
+    /// tracked top-level constraints, e.g. in given values).
+    pub unsat_core_items: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i64),
+    /// Real-valued binding. Extracted from Z3 via `as_real()` →
+    /// `(num: i64, den: i64)` → `num as f64 / den as f64`. Z3
+    /// internally stores Real as exact rationals; we lossily project
+    /// to f64 at the boundary because that's what consumers use.
+    /// For "did the model satisfy x ≈ 3.14" tests, compare with a
+    /// tolerance — Z3 gives an exact rational, f64 may round.
+    Real(f64),
     Bool(bool),
     Str(String),
     /// Sequence values returned in the model. The variant tracks which
@@ -126,6 +141,9 @@ impl FieldKind {
 #[derive(Clone)]
 pub(super) enum Var<'ctx> {
     IntVar(Int<'ctx>),
+    /// Real-valued Z3 const. Supports add/sub/mul/div via Z3 LRA;
+    /// comparison via lt/le/gt/ge; equality via Ast::_eq.
+    RealVar(Real<'ctx>),
     BoolVar(Bool<'ctx>),
     StrVar(Z3Str<'ctx>),
     SeqVar { arr: Array<'ctx>, len: Int<'ctx>, elem: SeqElem },
@@ -171,6 +189,10 @@ impl<'ctx> Var<'ctx> {
     }
     pub(super) fn as_str(&self) -> Option<&Z3Str<'ctx>> {
         match self { Var::StrVar(s) => Some(s), _ => None }
+    }
+    #[allow(dead_code)]   // symmetry with as_bool/as_str; reserved for future use
+    pub(super) fn as_real(&self) -> Option<&Real<'ctx>> {
+        match self { Var::RealVar(r) => Some(r), _ => None }
     }
     pub(super) fn as_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, SeqElem)> {
         match self { Var::SeqVar { arr, len, elem } => Some((arr, len, *elem)), _ => None }

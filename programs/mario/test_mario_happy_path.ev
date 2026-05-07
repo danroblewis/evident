@@ -1,0 +1,15 @@
+-- Happy-path traces for the platformer engine. Each trace points at
+-- a small, hand-built test level under `test_levels/` rather than the
+-- full game in `mario.ev` — production levels are too physics-noisy
+-- for deterministic per-frame assertions, and the engine code is
+-- exactly what we want to exercise anyway. Add a new test level when
+-- you need a different scenario (jump arc, multi-platform pickup,
+-- etc.) and point a new trace at it.
+
+trace floor_coin_collected "programs/mario/test_levels/floor_coin.ev"
+    -- Hero starts on floor at (60, 500). One coin at (200, 500).
+    -- Run right; hero crosses coin around x∈(170, 218).
+    key_down "Right"
+    advance 1s =>
+        coins[0].collected = true
+        won = true

@@ -235,6 +235,166 @@ condition is the selector.
 | Reusing a claim with different variable names | name it with `(x ↦ y)` |
 | A subset of a type with extra invariants | define a new `type` that names the original type and adds constraints |
 | Named dispatch branches inside a parent claim | `subclaim` + `⟸` |
+| Multiple variables sharing a type | `x, y, z ∈ Int` (multi-name shorthand) |
+| Compact short-record type definition | `type IVec2(x, y ∈ Int)` (first-line param list) |
+| Construct a record value inline | `IVec2(380, 280)` positional, or `IVec2(x ↦ 1, y ↦ 2)` named |
+| Componentwise comparison/equality of records | `a ≤ b`, `a = b`, `a ≠ b` lift automatically |
+| Record-valued arithmetic equation | `c = a - b` lifts componentwise |
+| Bounding-box / chained range on a record | `lo ≤ vec ≤ hi` (vector chained comparison) |
+| Iterate parallel sequences | `∀ (a, b) ∈ coindexed(seqA, seqB) : …` |
+| Iterate consecutive pairs of one sequence | `∀ (a, b) ∈ edges(seq) : …` |
+| Inline a claim only when a condition holds | `cond ⇒ ClaimName` (guarded invocation) |
+| Pin some fields of a record at declaration | `name ∈ Type (slot ↦ v)` or `name ∈ Type(v1, v2)` |
+
+## Records as vectors
+
+A short record type used as a value carrier (positions, colors, sizes,
+velocities) gets first-class support throughout the runtime. Define
+the type once with the multi-name shorthand:
+
+```evident
+type IVec2(x, y ∈ Int)
+type Color(r, g, b ∈ Nat)
+```
+
+Once defined, four lifting forms work automatically:
+
+**1. Componentwise comparison and equality**
+```evident
+pos_lo ≤ dot.pos ≤ pos_hi    -- pos_lo.x ≤ pos.x ≤ pos_hi.x ∧ same for y
+a < b                         -- componentwise (every axis strict)
+a = b                         -- componentwise
+a ≠ b                         -- some-field-differs (disjunctive)
+```
+
+**2. Arithmetic broadcast in equation context**
+```evident
+c = a - b                     -- c.x = a.x - b.x ∧ c.y = a.y - b.y
+nxt.pos = cur.pos + cur.vel * input.dt / 1000
+state_next.dots[i] = src       -- whole-element record assignment via Index LHS
+```
+
+The lift sees `Identifier`, `Field-of-Index`, and `Index` records
+(e.g. `dots[i]`), composes through `Binary` arithmetic, and
+substitutes per-leaf. Shape mismatches (Vec2 = Vec3, etc.) are fatal
+via the dropped-constraint policy — no silent partial-overlap.
+
+**3. Type-use pins at declaration sites**
+```evident
+vel_lo ∈ IVec2 (x ↦ -800, y ↦ -800)   -- named, order-independent, partial allowed
+pos_hi ∈ IVec2(740, 540)               -- positional, declaration order
+sky    ∈ Color(30, 80, 120)
+```
+
+Both desugar to declaration + per-field equality. Named is partial
+(omit fields to leave them free); positional requires args ≤ field
+count and pins the leading fields.
+
+**4. Record literals in expression position**
+```evident
+state.player.pos = IVec2(380, 280)
+rect.pos   = dot.pos - IVec2(12, 12)
+rect.color = Color(80, 200, 180)
+```
+
+Same `Type(args)` syntax as positional pins, used as a value-producing
+expression. Lifts through equality and arithmetic identically to the
+declaration form. **One current gap**: `mapsto` doesn't yet resolve
+`Type(args)` literals as mapping values — for `color ↦ Color(...)` use
+an intermediate variable: `c ∈ Color(...) ; … color ↦ c`.
+
+## N-arity sequence iteration
+
+`coindexed(seqA, seqB, …)` zips parallel sequences by index;
+`edges(seq)` iterates adjacent `(seq[i], seq[i+1])` pairs. Both use
+tuple binding and require pinned lengths.
+
+```evident
+∀ (cur, nxt) ∈ coindexed(state.dots, state_next.dots) :
+    nxt.pos = cur.pos + cur.vel * input.dt / 1000
+
+∀ (cur, nxt, eff) ∈ coindexed(state.dots, state_next.dots, effective_vy) :
+    -- per-dot physics referencing both snapshots and a parallel intermediate
+
+∀ (a, b) ∈ edges(items) : a ≤ b   -- monotonicity
+```
+
+**Always prefer these over `∀ i ∈ {0..#seq - 1}` indexed loops.** The
+tuple binding makes "what's being paired" visible at the call site;
+the integer index never appears in the body.
+
+**Caveat: parallel-Seq lengths must be pinned in `type main`'s body.**
+The seq-length pinning preprocessor (`collect_seq_lengths`) only scans
+the entry schema's body items. Seqs declared inside subclaims or
+referenced through claim parameters won't have their `coindexed`
+length pinning visible. Declare the Seqs in main, even if only an
+inner subclaim uses them.
+
+## Guarded claim invocation
+
+`condition ⇒ ClaimName` inlines the claim's body but wraps each
+constraint in `condition ⇒ …`. Declarations from the claim fire
+unconditionally; only constraints get guarded. Composes with
+names-match — the claim's parameters resolve to outer-scope variables
+of the same name without explicit `mapsto`.
+
+```evident
+claim InitGameState
+    state ∈ GameState
+    input ∈ SDLInput
+    init_seeds ∈ Seq(Int)
+    -- … initialization constraints …
+
+type main(state, state_next ∈ GameState)
+    input ∈ SDLInput
+    init_seeds ∈ Seq(Int)
+    -- … other setup …
+    state.step = 0 ⇒ InitGameState   -- runs Init's constraints only on frame 0
+```
+
+Useful for one-shot setup ("first frame"), conditional behavioral
+modes, or anywhere you'd otherwise inline a guard onto every
+constraint of a named concern.
+
+## Style: keep main compact
+
+`type main` should read as **setup + configuration + claim wiring**,
+not as a place where logic lives. Aim for ~80–100 lines for a
+non-trivial game/simulation. Five tools that compound:
+
+1. **Multi-name + first-line params for short types** —
+   `type IVec2(x, y ∈ Int)` over four lines.
+2. **Positional pins for short type instantiation** —
+   `pos_lo ∈ IVec2(20, 20)` over two field equalities.
+3. **`coindexed(...)` / `edges(...)` over indexed loops** — drop
+   `∀ i ∈ {0..#seq - 1}` whenever the body operates on parallel-seq
+   elements at the same index, or on adjacent pairs.
+4. **Extract per-frame concerns into claims** — bounds, physics,
+   render, collection, win, audio each become a one-line invocation
+   from main; the claim body owns the `∀` and the per-element logic.
+5. **Guarded claim invocation for one-shot logic** — `state.step = 0
+   ⇒ InitGameState` reads as "run Init when initializing".
+
+See `programs/sdl_demo/anchor_collect.ev` (game) and
+`programs/sdl_demo/bouncing_dots.ev` (engine) for the canonical split:
+the engine file owns reusable claims; the game file owns the game's
+own types, init, parameter values, and aesthetic choices (colors,
+sounds).
+
+### Comments
+
+Names carry the meaning. Section headers with one-line context are
+fine; do not paragraph-explain every constraint. Counter-example to
+avoid:
+
+```evident
+-- Update the dot's x position by adding velocity * dt to current.
+nxt.pos.x = cur.pos.x + cur.vel.x * input.dt / 1000
+```
+
+The code already says this. Comment when the WHY isn't obvious — a
+hidden invariant, a runtime caveat, an "I tried the obvious thing and
+it broke" note. Otherwise let the names speak.
 
 ## Program Structure
 

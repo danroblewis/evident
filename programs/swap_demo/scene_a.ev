@@ -15,14 +15,12 @@ import "stdlib/sdl.ev"
 type World
     swap_count ∈ Nat
 
-type main
+type main(world, world_next ∈ World)
     next_main ∈ String        -- Inlined here instead of importing
     -- (..MainCoordinator works too once stdlib/main_coordinator.ev
     -- is on disk; the executor also embeds the type for safety.)
     input  ∈ SDLInput
     output ∈ SDLOutput
-    world      ∈ World
-    world_next ∈ World
 
     -- Transitions: click → swap to scene_b AND increment swap_count.
     -- Both implications are needed to constrain next_main exhaustively
@@ -35,10 +33,10 @@ type main
     -- Render: red background, red square that slides right with swap_count.
     output.bg.r = 80  ∧  output.bg.g = 30  ∧  output.bg.b = 30
     #output.rects = 1
-    output.rects[0].x = 100 + world.swap_count * 10
-    output.rects[0].y = 200
-    output.rects[0].w = 200
-    output.rects[0].h = 200
+    output.rects[0].pos.x = 100 + world.swap_count * 10
+    output.rects[0].pos.y = 200
+    output.rects[0].size.x = 200
+    output.rects[0].size.y = 200
     output.rects[0].color.r = 220
     output.rects[0].color.g = 100
     output.rects[0].color.b = 100

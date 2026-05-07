@@ -11,5 +11,6 @@ pub mod translate;
 pub mod runtime;
 pub mod executor;
 pub mod plugins;
+pub mod trace_runner;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};

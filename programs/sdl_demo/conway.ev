@@ -22,19 +22,13 @@
 
 import "stdlib/sdl.ev"
 
-type Cell
-    alive ∈ Bool
-    alive_int ∈ Nat
+type Cell(alive ∈ Bool, alive_int ∈ Nat)
 
-type W
-    cells ∈ Seq(Cell)
-    step  ∈ Nat
+type W(cells ∈ Seq(Cell), step ∈ Nat)
 
-type main
+type main(state, state_next ∈ W)
     input  ∈ SDLInput
     output ∈ SDLOutput
-    state      ∈ W
-    state_next ∈ W
     count ∈ Seq(Int)         -- Seq(Nat) isn't supported; use Int (sum is ≥0).
 
     #state.cells      = 400  -- 20 × 20 toroidal grid
@@ -64,4 +58,4 @@ type main
     ∀ i ∈ {0..399} : state_next.cells[i].alive = (count[i] = 3 ∨ (count[i] = 2 ∧ state.cells[i].alive))
 
     -- Render: 30×30 cell. Alive = bright green, dead = bg.
-    ∀ i ∈ {0..399} : (output.rects[i].x = (i - (i/20)*20) * 30 ∧ output.rects[i].y = (i/20) * 30 ∧ output.rects[i].w = 30 ∧ output.rects[i].h = 30 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 220 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))
+    ∀ i ∈ {0..399} : (output.rects[i].pos.x = (i - (i/20)*20) * 30 ∧ output.rects[i].pos.y = (i/20) * 30 ∧ output.rects[i].size.x = 30 ∧ output.rects[i].size.y = 30 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 80 ∧ output.rects[i].color.g = 220 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))

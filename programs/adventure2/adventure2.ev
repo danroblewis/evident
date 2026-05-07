@@ -20,9 +20,7 @@ import "stdlib/line-reader.ev"
 import "stdlib/line-writer.ev"
 import "programs/adventure2/transition.ev"
 
-type main
+type main(state, state_next ∈ GameState)
     ..LineReader
     ..LineWriter
-    state      ∈ GameState
-    state_next ∈ GameState
     ..GameTransition (cmd mapsto line, response mapsto line_out, ready mapsto line_ready)

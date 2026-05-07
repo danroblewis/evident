@@ -2,7 +2,7 @@
 --
 -- Same physics as balls.ev (gravity + floor/wall/ceiling bounce, time-scaled
 -- by input.dt). The twist: every step the balls' window-relative positions
--- are corrected by -window.dx / -window.dy before physics runs. So when the
+-- are corrected by -window.drag.x / -window.drag.y before physics runs. So when the
 -- user drags the window, the balls move the opposite way in window coords
 -- and appear to stay fixed on the screen — until they collide with the
 -- moving walls and bounce off, which makes dragging feel like sloshing
@@ -15,21 +15,14 @@
 
 import "stdlib/sdl.ev"
 
-type BallState
-    pos_x ∈ Int
-    pos_y ∈ Int
-    vx    ∈ Int
-    vy    ∈ Int
+type BallState(pos, vel ∈ IVec2)
 
-type WorldState
-    balls ∈ Seq(BallState)
+type WorldState(balls ∈ Seq(BallState))
 
-type main
+type main(state, state_next ∈ WorldState)
     input      ∈ SDLInput
     output     ∈ SDLOutput
     window     ∈ SDLWindow
-    state      ∈ WorldState
-    state_next ∈ WorldState
 
     #state.balls      = 4
     #state_next.balls = 4
@@ -40,38 +33,35 @@ type main
     output.bg.b = 30
 
     -- ── State bounds. ──────────────────────────────────────────────────────
-    ∀ i ∈ {0..3} : state.balls[i].pos_x ≥ 20  ∧ state.balls[i].pos_x ≤ 740
-    ∀ i ∈ {0..3} : state.balls[i].pos_y ≥ 20  ∧ state.balls[i].pos_y ≤ 540
-    ∀ i ∈ {0..3} : state.balls[i].vx    ≥ -800 ∧ state.balls[i].vx    ≤ 800
-    ∀ i ∈ {0..3} : state.balls[i].vy    ≥ -800 ∧ state.balls[i].vy    ≤ 800
+    ∀ i ∈ {0..3} : state.balls[i].pos.x ≥ 20  ∧ state.balls[i].pos.x ≤ 740
+    ∀ i ∈ {0..3} : state.balls[i].pos.y ≥ 20  ∧ state.balls[i].pos.y ≤ 540
+    ∀ i ∈ {0..3} : state.balls[i].vel.x    ≥ -800 ∧ state.balls[i].vel.x    ≤ 800
+    ∀ i ∈ {0..3} : state.balls[i].vel.y    ≥ -800 ∧ state.balls[i].vel.y    ≤ 800
 
     -- ── Drag compensation: subtract the window's per-step shift from each
     -- ball's window-relative position. The result is the position the ball
     -- WOULD have if it had stayed pinned to the screen instead of the window.
     -- Physics runs from there.
-    dragged_x ∈ Seq(Int)
-    dragged_y ∈ Seq(Int)
-    #dragged_x = 4
-    #dragged_y = 4
-    ∀ i ∈ {0..3} : dragged_x[i] = state.balls[i].pos_x - window.dx
-    ∀ i ∈ {0..3} : dragged_y[i] = state.balls[i].pos_y - window.dy
+    dragged ∈ Seq(IVec2)
+    #dragged = 4
+    ∀ i ∈ {0..3} : dragged[i] = state.balls[i].pos - window.drag
 
     -- ── Effective vy: gravity-incremented and clamped to ±800.
     effective_vy ∈ Seq(Int)
     #effective_vy = 4
-    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
-    ∀ i ∈ {0..3} : (state.balls[i].vy + 200 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
-    ∀ i ∈ {0..3} : ((state.balls[i].vy + 200 * input.dt / 1000) ≥ -800 ∧ (state.balls[i].vy + 200 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.balls[i].vy + 200 * input.dt / 1000
+    ∀ i ∈ {0..3} : (state.balls[i].vel.y + 200 * input.dt / 1000) >  800 ⇒ effective_vy[i] =  800
+    ∀ i ∈ {0..3} : (state.balls[i].vel.y + 200 * input.dt / 1000) < -800 ⇒ effective_vy[i] = -800
+    ∀ i ∈ {0..3} : ((state.balls[i].vel.y + 200 * input.dt / 1000) ≥ -800 ∧ (state.balls[i].vel.y + 200 * input.dt / 1000) ≤ 800) ⇒ effective_vy[i] = state.balls[i].vel.y + 200 * input.dt / 1000
 
-    -- ── Y-axis: floor/ceiling clamp/bounce, starting from dragged_y. ───────
-    ∀ i ∈ {0..3} : (dragged_y[i] + effective_vy[i] * input.dt / 1000) > 540 ⇒ (state_next.balls[i].pos_y = 540 ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
-    ∀ i ∈ {0..3} : (dragged_y[i] + effective_vy[i] * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_y = 20  ∧ state_next.balls[i].vy = (0 - effective_vy[i]) * 7 / 10)
-    ∀ i ∈ {0..3} : ((dragged_y[i] + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (dragged_y[i] + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.balls[i].pos_y = dragged_y[i] + effective_vy[i] * input.dt / 1000 ∧ state_next.balls[i].vy = effective_vy[i])
+    -- ── Y-axis: floor/ceiling clamp/bounce, starting from dragged.y. ───────
+    ∀ i ∈ {0..3} : (dragged[i].y + effective_vy[i] * input.dt / 1000) > 540 ⇒ (state_next.balls[i].pos.y = 540 ∧ state_next.balls[i].vel.y = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : (dragged[i].y + effective_vy[i] * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos.y = 20  ∧ state_next.balls[i].vel.y = (0 - effective_vy[i]) * 7 / 10)
+    ∀ i ∈ {0..3} : ((dragged[i].y + effective_vy[i] * input.dt / 1000) ≥ 20 ∧ (dragged[i].y + effective_vy[i] * input.dt / 1000) ≤ 540) ⇒ (state_next.balls[i].pos.y = dragged[i].y + effective_vy[i] * input.dt / 1000 ∧ state_next.balls[i].vel.y = effective_vy[i])
 
-    -- ── X-axis: wall clamp/bounce, starting from dragged_x. ────────────────
-    ∀ i ∈ {0..3} : (dragged_x[i] + state.balls[i].vx * input.dt / 1000) > 740 ⇒ (state_next.balls[i].pos_x = 740 ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : (dragged_x[i] + state.balls[i].vx * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos_x = 20  ∧ state_next.balls[i].vx = (0 - state.balls[i].vx) * 7 / 10)
-    ∀ i ∈ {0..3} : ((dragged_x[i] + state.balls[i].vx * input.dt / 1000) ≥ 20 ∧ (dragged_x[i] + state.balls[i].vx * input.dt / 1000) ≤ 740) ⇒ (state_next.balls[i].pos_x = dragged_x[i] + state.balls[i].vx * input.dt / 1000 ∧ state_next.balls[i].vx = state.balls[i].vx)
+    -- ── X-axis: wall clamp/bounce, starting from dragged.x. ────────────────
+    ∀ i ∈ {0..3} : (dragged[i].x + state.balls[i].vel.x * input.dt / 1000) > 740 ⇒ (state_next.balls[i].pos.x = 740 ∧ state_next.balls[i].vel.x = (0 - state.balls[i].vel.x) * 7 / 10)
+    ∀ i ∈ {0..3} : (dragged[i].x + state.balls[i].vel.x * input.dt / 1000) < 20  ⇒ (state_next.balls[i].pos.x = 20  ∧ state_next.balls[i].vel.x = (0 - state.balls[i].vel.x) * 7 / 10)
+    ∀ i ∈ {0..3} : ((dragged[i].x + state.balls[i].vel.x * input.dt / 1000) ≥ 20 ∧ (dragged[i].x + state.balls[i].vel.x * input.dt / 1000) ≤ 740) ⇒ (state_next.balls[i].pos.x = dragged[i].x + state.balls[i].vel.x * input.dt / 1000 ∧ state_next.balls[i].vel.x = state.balls[i].vel.x)
 
     -- ── Render. ────────────────────────────────────────────────────────────
-    ∀ i ∈ {0..3} : (output.rects[i].x = state.balls[i].pos_x - 20 ∧ output.rects[i].y = state.balls[i].pos_y - 20 ∧ output.rects[i].w = 40 ∧ output.rects[i].h = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)
+    ∀ i ∈ {0..3} : (output.rects[i].pos.x = state.balls[i].pos.x - 20 ∧ output.rects[i].pos.y = state.balls[i].pos.y - 20 ∧ output.rects[i].size.x = 40 ∧ output.rects[i].size.y = 40 ∧ output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 100 ∧ output.rects[i].color.b = 80)

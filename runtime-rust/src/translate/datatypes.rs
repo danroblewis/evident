@@ -51,7 +51,7 @@ pub(super) fn get_or_build_datatype(
     let mut fields: Vec<FieldKind> = Vec::new();
     let mut field_sorts: Vec<(String, Sort<'static>)> = Vec::new();
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name: ftype } = item {
+        if let BodyItem::Membership { name, type_name: ftype, .. } = item {
             match ftype.as_str() {
                 "Int" | "Nat" | "Pos" => {
                     fields.push(FieldKind::Primitive {

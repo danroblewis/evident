@@ -141,6 +141,7 @@ pub fn print_query_result(r: &QueryResult, json: bool) -> ExitCode {
 pub fn format_value(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),
+        Value::Real(f) => f.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Str(s)  => format!("{:?}", s),
         Value::SeqInt(v)  => format!("{:?}", v),
@@ -157,6 +158,7 @@ pub fn format_value(v: &Value) -> String {
 pub fn value_as_json(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),
+        Value::Real(f) => f.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Str(s)  => json_str(s),
         Value::SeqInt(v) => {

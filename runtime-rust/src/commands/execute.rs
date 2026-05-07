@@ -253,7 +253,7 @@ fn walk_body_for_sdl(
     let Some(schema) = rt.get_schema(schema_name) else { return };
     for item in &schema.body {
         match item {
-            BodyItem::Membership { name, type_name } => {
+            BodyItem::Membership { name, type_name, .. } => {
                 if sdl_plugin::SDL_TYPES.iter().any(|t| *t == type_name.as_str()) {
                     out.entry(name.clone()).or_insert_with(|| type_name.clone());
                 }

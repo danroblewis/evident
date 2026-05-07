@@ -10,20 +10,28 @@
 
 use crate::ast::{BinOp, BodyItem, Expr, Mapping};
 
+/// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
+fn fmt_binding(vs: &[String]) -> String {
+    if vs.len() == 1 { vs[0].clone() } else { format!("({})", vs.join(", ")) }
+}
+
 pub fn expr(e: &Expr) -> String {
     match e {
         Expr::Identifier(n) => n.clone(),
         Expr::Int(n)        => n.to_string(),
+        Expr::Real(f)       => f.to_string(),
         Expr::Bool(b)       => b.to_string(),
         Expr::Str(s)        => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
         Expr::SetLit(items) => format!("{{{}}}", items.iter().map(expr).collect::<Vec<_>>().join(", ")),
         Expr::SeqLit(items) => format!("⟨{}⟩",   items.iter().map(expr).collect::<Vec<_>>().join(", ")),
         Expr::Range(lo, hi) => format!("{{{}..{}}}", expr(lo), expr(hi)),
         Expr::InExpr(lhs, rhs) => format!("{} ∈ {}", expr(lhs), expr(rhs)),
-        Expr::Forall(v, range, body) =>
-            format!("∀ {} ∈ {} : {}", v, expr(range), expr(body)),
-        Expr::Exists(v, range, body) =>
-            format!("∃ {} ∈ {} : {}", v, expr(range), expr(body)),
+        Expr::Forall(vs, range, body) =>
+            format!("∀ {} ∈ {} : {}", fmt_binding(vs), expr(range), expr(body)),
+        Expr::Exists(vs, range, body) =>
+            format!("∃ {} ∈ {} : {}", fmt_binding(vs), expr(range), expr(body)),
+        Expr::Call(name, args) =>
+            format!("{}({})", name, args.iter().map(expr).collect::<Vec<_>>().join(", ")),
         Expr::Cardinality(inner) => format!("#{}", expr(inner)),
         Expr::Index(seq, idx)    => format!("{}[{}]", expr(seq), expr(idx)),
         Expr::Field(receiver, f) => format!("{}.{}", expr(receiver), f),
@@ -62,7 +70,7 @@ fn binop_sym(op: &BinOp) -> &'static str {
 
 pub fn body_item(item: &BodyItem) -> String {
     match item {
-        BodyItem::Membership { name, type_name } => format!("{} ∈ {}", name, type_name),
+        BodyItem::Membership { name, type_name, .. } => format!("{} ∈ {}", name, type_name),
         BodyItem::Passthrough(c) => format!("..{}", c),
         BodyItem::SubclaimDecl(s) => format!("subclaim {} (…)", s.name),
         BodyItem::ClaimCall { name, mappings } => {

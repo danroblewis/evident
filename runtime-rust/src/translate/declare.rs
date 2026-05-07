@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use z3::ast::{Array, Bool, Int, Set, String as Z3Str};
+use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
 use z3::{Context, Solver, Sort};
 
 use crate::ast::*;
@@ -99,6 +99,9 @@ pub(super) fn declare_var_named(
         "Bool" => {
             env.insert(env_key.to_string(), Var::BoolVar(Bool::new_const(ctx, prefix)));
         }
+        "Real" => {
+            env.insert(env_key.to_string(), Var::RealVar(Real::new_const(ctx, prefix)));
+        }
         "String" => {
             env.insert(env_key.to_string(), Var::StrVar(Z3Str::new_const(ctx, prefix)));
         }
@@ -176,7 +179,7 @@ pub(super) fn declare_var_named(
                 // fresh-suffixed Z3 name is irrelevant since the bare
                 // `state` never gets a Z3 const of its own.
                 for item in &schema.body {
-                    if let BodyItem::Membership { name: field, type_name: ftype } = item {
+                    if let BodyItem::Membership { name: field, type_name: ftype, .. } = item {
                         let dotted_env = format!("{}.{}", env_key, field);
                         let dotted_z3  = format!("{}.{}", prefix, field);
                         declare_var_named(ctx, solver, env, &dotted_env, &dotted_z3,

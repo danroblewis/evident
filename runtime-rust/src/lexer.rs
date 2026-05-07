@@ -12,6 +12,7 @@ pub enum Token {
     // Identifiers and literals
     Ident(String),
     Int(i64),
+    Real(f64),
     Str(String),
     True,
     False,
@@ -22,6 +23,11 @@ pub enum Token {
     Type,
     Subclaim,
     Import,       // import "path"
+    Trace,        // trace name "path/to/program.ev" — test declaration
+    Send,         // send "command" — Stdin trace step
+    KeyDown,      // key_down "Right" — SDL trace step (start hold)
+    KeyUp,        // key_up "Right"   — SDL trace step (release)
+    Advance,      // advance 0.5s     — SDL trace step (tick clock)
     In,           // ∈ or "in"
     NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
     ContainsRev,  // ∋ (U+220B) — reverse membership; desugars to (rhs ∈ lhs)
@@ -216,6 +222,29 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                         chars.next(); col += 1;
                     } else { break; }
                 }
+                // Real literal: `<digits>.<digits>`. Only consume the dot
+                // if it's followed by a digit — otherwise it's the field-
+                // access operator (`3.foo` stays Int(3) Dot Ident(foo)).
+                if chars.peek() == Some(&'.') {
+                    let mut clone = chars.clone();
+                    clone.next();
+                    if matches!(clone.peek(), Some(c) if c.is_ascii_digit()) {
+                        chars.next(); col += 1;
+                        s.push('.');
+                        while let Some(&ch) = chars.peek() {
+                            if ch.is_ascii_digit() {
+                                s.push(ch);
+                                chars.next(); col += 1;
+                            } else { break; }
+                        }
+                        let v: f64 = s.parse().map_err(|e| LexError {
+                            message: format!("invalid real {s:?}: {e}"),
+                            line, col,
+                        })?;
+                        tokens.push(Token::Real(v));
+                        continue;
+                    }
+                }
                 let n: i64 = s.parse().map_err(|e| LexError {
                     message: format!("invalid integer {s:?}: {e}"),
                     line, col,
@@ -261,7 +290,17 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     tokens.push(Token::Dot);
                 }
             }
-            '=' => { chars.next(); col += 1; tokens.push(Token::Eq); }
+            '=' => {
+                chars.next(); col += 1;
+                // ASCII `=>` → Implies (matches Unicode ⇒). Used in
+                // implies-blocks and trace-step assertions.
+                if chars.peek() == Some(&'>') {
+                    chars.next(); col += 1;
+                    tokens.push(Token::Implies);
+                } else {
+                    tokens.push(Token::Eq);
+                }
+            }
             '<' => {
                 chars.next(); col += 1;
                 if chars.peek() == Some(&'=') {
@@ -328,6 +367,11 @@ fn is_ident_continue(c: char) -> bool {
 fn keyword_or_ident(s: String) -> Token {
     match s.as_str() {
         "schema"   => Token::Schema,
+        "trace"    => Token::Trace,
+        "send"     => Token::Send,
+        "key_down" => Token::KeyDown,
+        "key_up"   => Token::KeyUp,
+        "advance"  => Token::Advance,
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,

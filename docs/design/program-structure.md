@@ -297,6 +297,66 @@ would be needed.
 The test: if main has any constraint beyond variable declarations and passthroughs,
 something belongs lower in the stack.
 
+### The engine + game split
+
+For larger systems with multiple programs sharing physics, rendering, and
+audio mechanics, factor reusable concerns into a *engine* file of named
+claims, and let each game file just configure parameters and wire
+claims. `programs/sdl_demo/anchor_collect.ev` (game) and
+`programs/sdl_demo/bouncing_dots.ev` (engine) are the canonical example:
+
+```
+bouncing_dots.ev:
+    type BouncingDot(pos, vel ∈ IVec2, collected ∈ Bool)
+    claim BouncingDotsBounds       -- ∀ dot ∈ dots : pos_lo ≤ dot.pos ≤ pos_hi …
+    claim EffectiveVy              -- gravity-clamped per-dot vy into a Seq(Int)
+    claim BouncingDotsPhysics      -- per-axis bounce + clamp + advance
+    claim BouncingDotsRender       -- dot → rect (hide if collected)
+    claim BouncingDotsCollection   -- bounding-box overlap, monotonic
+    claim WinIfAllCollected
+    claim BouncingDotsAudio
+
+anchor_collect.ev:
+    import "programs/sdl_demo/bouncing_dots.ev"
+    type GameState           ...                  -- 4 fields
+    claim InitGameState      ...                  -- first-frame setup
+    type main(state, state_next ∈ GameState)
+        -- I/O + parameter declarations + cardinality pins
+        BouncingDotsBounds  (...)
+        EffectiveVy         (...)
+        state.step = 0 ⇒ InitGameState
+        PlayerPhysics       (...)
+        BouncingDotsPhysics (...)
+        BouncingDotsRender  (...)
+        ...                                       -- one line per concern
+```
+
+Each invocation in main is one concern. The mapsto plumbing is local
+to the call site; the per-element `∀` lives inside the claim. Names-match
+composition removes the mapsto when the outer scope's variable name
+matches the claim's parameter name (so e.g. `pos_lo`, `pos_hi`,
+`effective_vy` flow without rename).
+
+A new game in the same family — say "balls bouncing in a circle" — only
+needs to import the engine and override the parameters. The mechanics
+are written once.
+
+### Compact-program toolbox
+
+The five language features that compound to keep a non-trivial main
+under ~100 lines:
+
+1. **Multi-name + first-line params** for short types: `type IVec2(x, y ∈ Int)`.
+2. **Positional or named pins** for short type instantiation:
+   `pos_lo ∈ IVec2(20, 20)` or `vel_lo ∈ IVec2(x ↦ -800, y ↦ -800)`.
+3. **Vector lift on comparison/arithmetic**: `pos_lo ≤ dot.pos ≤ pos_hi`,
+   `c = a - b`, etc. — see `CLAUDE.md` "Records as vectors".
+4. **`coindexed(...)` / `edges(...)` quantifier sources**: drops integer
+   indexing for parallel-sequence patterns. See `CLAUDE.md` "N-arity
+   sequence iteration".
+5. **Guarded claim invocation**: `condition ⇒ ClaimName` for one-shot
+   conditional concerns (init, mode toggles).
+
 ---
 
 ## Worked Example: Reduction from Flat to Structured

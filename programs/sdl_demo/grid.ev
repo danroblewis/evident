@@ -25,8 +25,8 @@ type main
     --   x = LEFT_MARGIN + (i mod COLS) * STEP_X
     --   y = TOP_MARGIN  + (i / COLS)   * STEP_Y
     -- (COLS = 3, STEP_X = 300, STEP_Y = 400, LEFT_MARGIN = TOP_MARGIN = 100.)
-    ∀ i ∈ {0..5} : state.dots[i].pos_x = 100 + (i - (i / 3) * 3) * 300
-    ∀ i ∈ {0..5} : state.dots[i].pos_y = 100 + (i / 3) * 400
+    ∀ i ∈ {0..5} : state.dots[i].pos.x = 100 + (i - (i / 3) * 3) * 300
+    ∀ i ∈ {0..5} : state.dots[i].pos.y = 100 + (i / 3) * 400
 
     -- Win when every dot is collected. Enumerated per N.
     (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true ∧ state_next.dots[5].collected = true) ⇒ state_next.won = true

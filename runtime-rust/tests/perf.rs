@@ -46,32 +46,42 @@ fn make_anchor_collect_given(frame: i64) -> HashMap<String, Value> {
     g.insert("input.left_held".into(),  b(false));
     g.insert("input.up_held".into(),    b(false));
     g.insert("input.down_held".into(),  b(frame % 3 == 0));
-    g.insert("input.mouse_x".into(),    v(400 + (frame % 50)));
-    g.insert("input.mouse_y".into(),    v(300));
+    g.insert("input.mouse.x".into(),    v(400 + (frame % 50)));
+    g.insert("input.mouse.y".into(),    v(300));
     g.insert("input.click".into(),      b(false));
     g.insert("input.quit".into(),       b(false));
     g.insert("input.time".into(),       v(1700000000 + frame));
     g.insert("input.dt".into(),         v(16));
 
-    g.insert("window.screen_x".into(), v(100));
-    g.insert("window.screen_y".into(), v(100));
-    g.insert("window.width".into(),    v(800));
-    g.insert("window.height".into(),   v(600));
-    g.insert("window.dx".into(),       v(0));
-    g.insert("window.dy".into(),       v(0));
+    g.insert("window.screen.x".into(), v(100));
+    g.insert("window.screen.y".into(), v(100));
+    g.insert("window.size.x".into(),   v(800));
+    g.insert("window.size.y".into(),   v(600));
+    g.insert("window.drag.x".into(),   v(0));
+    g.insert("window.drag.y".into(),   v(0));
 
-    g.insert("state.player.x".into(),         v(400));
-    g.insert("state.player.y".into(),         v(300));
-    g.insert("state.player.anchor_x".into(),  v(400));
-    g.insert("state.player.anchor_y".into(),  v(300));
+    // After PlayerState's flat x/y/vx/vy → pos/vel ∈ IVec2 refactor,
+    // these dotted env keys land directly in env via sub-schema
+    // expansion. (anchor_collect.ev's PlayerState doesn't have an
+    // anchor field — that was leftover from an earlier shape.)
+    g.insert("state.player.pos.x".into(),  v(400));
+    g.insert("state.player.pos.y".into(),  v(300));
+    g.insert("state.player.vel.x".into(),  v(0));
+    g.insert("state.player.vel.y".into(),  v(0));
 
+    // BouncingDot has nested pos/vel IVec2 fields; assert_seq_given
+    // now drills into Composite values for these.
+    let composite_ivec2 = |x: i64, y: i64| {
+        Value::Composite(HashMap::from([
+            ("x".to_string(), v(x)),
+            ("y".to_string(), v(y)),
+        ]))
+    };
     let mut dots: Vec<HashMap<String, Value>> = Vec::with_capacity(4);
     for i in 0..4 {
         let mut d = HashMap::new();
-        d.insert("pos_x".into(),     v(100 + i * 100 + frame % 10));
-        d.insert("pos_y".into(),     v(100 + frame % 50));
-        d.insert("vx".into(),        v(2));
-        d.insert("vy".into(),        v(-3));
+        d.insert("pos".into(),       composite_ivec2(100 + i * 100 + frame % 10, 100 + frame % 50));
+        d.insert("vel".into(),       composite_ivec2(2, -3));
         d.insert("collected".into(), b(false));
         dots.push(d);
     }

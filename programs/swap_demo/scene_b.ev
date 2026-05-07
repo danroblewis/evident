@@ -6,12 +6,10 @@ import "stdlib/sdl.ev"
 type World
     swap_count ∈ Nat
 
-type main
+type main(world, world_next ∈ World)
     next_main ∈ String
     input  ∈ SDLInput
     output ∈ SDLOutput
-    world      ∈ World
-    world_next ∈ World
 
     input.click = true  ⇒ next_main = "scene_a.ev"
     input.click = false ⇒ next_main = ""
@@ -20,10 +18,10 @@ type main
 
     output.bg.r = 30  ∧  output.bg.g = 30  ∧  output.bg.b = 80
     #output.rects = 1
-    output.rects[0].x = 100 + world.swap_count * 10
-    output.rects[0].y = 200
-    output.rects[0].w = 200
-    output.rects[0].h = 200
+    output.rects[0].pos.x = 100 + world.swap_count * 10
+    output.rects[0].pos.y = 200
+    output.rects[0].size.x = 200
+    output.rects[0].size.y = 200
     output.rects[0].color.r = 100
     output.rects[0].color.g = 100
     output.rects[0].color.b = 220

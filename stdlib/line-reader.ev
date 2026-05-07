@@ -12,13 +12,7 @@ import "stdlib/io.ev"
 type LineState
     partial ∈ String
 
-type LineReader
-    src        ∈ Stdin
-    state      ∈ LineState
-    state_next ∈ LineState
-    line       ∈ String
-    line_ready ∈ Bool
-
+type LineReader(src ∈ Stdin, state, state_next ∈ LineState, line ∈ String, line_ready ∈ Bool)
     src.eof ⇒
         (state.partial ≠ "") ⇒
             line_ready = true

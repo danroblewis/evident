@@ -7,12 +7,25 @@
 
 use std::collections::{HashMap, HashSet};
 use z3::{Context, Solver};
+use z3::ast::Bool;
 
 use crate::ast::*;
 use crate::pretty;
 use super::types::{DatatypeRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
 use super::exprs::{resolve_mapping, translate_bool};
+
+/// Add `b` to the solver. With a tracker, use `assert_and_track` so
+/// the constraint joins the unsat-core machinery; otherwise plain
+/// `assert`. The tracker stays the same across every assertion derived
+/// from one top-level body item, so the entire item shows up as one
+/// entry in the core.
+fn track_assert(solver: &Solver<'static>, b: &Bool<'static>, tracker: Option<&Bool<'static>>) {
+    match tracker {
+        Some(t) => solver.assert_and_track(b, t),
+        None    => solver.assert(b),
+    }
+}
 
 /// Recursively translate a list of body items into the solver. Used by
 /// the constraint-translation pass of both `evaluate` and `build_cache`,
@@ -29,6 +42,35 @@ use super::exprs::{resolve_mapping, translate_bool};
 /// `visited` blocks recursion through cycles (`A` passthroughs `B`,
 /// `B` passthroughs `A`). Each entry is the claim name currently being
 /// inlined; we add on enter, remove on exit.
+/// Wrap a constraint in an `antecedent ⇒ constraint` implication when
+/// a guard is active (i.e. we're inlining a claim's body under
+/// `state.step = 0 ⇒ ClaimName`). Returns the constraint unchanged
+/// when no guard is in effect.
+fn wrap_with_guard(c: Expr, guard: &Option<Expr>) -> Expr {
+    match guard {
+        None => c,
+        Some(g) => Expr::Binary(
+            crate::ast::BinOp::Implies,
+            Box::new(g.clone()),
+            Box::new(c),
+        ),
+    }
+}
+
+/// Compose two guards: `outer ∧ inner`. Used when entering a nested
+/// guarded-claim invocation so the inner claim's constraints fire only
+/// when both antecedents hold.
+fn compose_guards(outer: &Option<Expr>, inner: Expr) -> Option<Expr> {
+    match outer {
+        None => Some(inner),
+        Some(o) => Some(Expr::Binary(
+            crate::ast::BinOp::And,
+            Box::new(o.clone()),
+            Box::new(inner),
+        )),
+    }
+}
+
 pub(super) fn inline_body_items(
     items: &[BodyItem],
     env: &mut HashMap<String, Var<'static>>,
@@ -38,15 +80,141 @@ pub(super) fn inline_body_items(
     registry: &DatatypeRegistry,
     visited: &mut HashSet<String>,
 ) {
+    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, visited, &None, None)
+}
+
+/// Translate `items` and assert each derived constraint into the
+/// solver, additionally tagging every assertion with one of `trackers`
+/// so a later `solver.get_unsat_core()` can name the offending
+/// top-level body item. `trackers[i]` corresponds to `items[i]` —
+/// passing fewer trackers than items means tail items go untracked.
+/// Used by `evaluate_with_core` to surface unsat-cores back to the
+/// test runner; the regular `evaluate` path passes `None` for
+/// zero overhead.
+pub(super) fn inline_body_items_tracked(
+    items: &[BodyItem],
+    env: &mut HashMap<String, Var<'static>>,
+    solver: &Solver<'static>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    visited: &mut HashSet<String>,
+    trackers: &[Bool<'static>],
+) {
+    for (idx, item) in items.iter().enumerate() {
+        let tracker = trackers.get(idx);
+        let slice = std::slice::from_ref(item);
+        inline_body_items_guarded(
+            slice, env, solver, schemas, ctx, registry, visited, &None, tracker,
+        );
+    }
+}
+
+fn inline_body_items_guarded(
+    items: &[BodyItem],
+    env: &mut HashMap<String, Var<'static>>,
+    solver: &Solver<'static>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    visited: &mut HashSet<String>,
+    guard: &Option<Expr>,
+    tracker: Option<&Bool<'static>>,
+) {
     for item in items {
         match item {
-            BodyItem::Membership { name, type_name } => {
-                // Top-level Memberships are pre-declared by pass 1, so this
-                // is a no-op there. Useful when the helper recurses into a
-                // passthrough's body that introduces variables not yet in
-                // env (e.g. a nested claim's locals).
+            BodyItem::Membership { name, type_name, pins } => {
+                // Top-level Memberships are pre-declared by pass 1, so the
+                // declare_var call is a no-op there. Useful when the helper
+                // recurses into a passthrough's body that introduces
+                // variables not yet in env (e.g. a nested claim's locals).
                 if !env.contains_key(name) {
                     declare_var(ctx, solver, env, name, type_name, schemas, Some(registry));
+                }
+                // Resolve `pins` to a list of (field-name, value-expr)
+                // pairs. Named is direct; Positional looks up the type's
+                // body Membership order to map positions to field names.
+                let resolved_pins: Vec<(String, Expr)> = match pins {
+                    crate::ast::Pins::None => Vec::new(),
+                    crate::ast::Pins::Named(maps) => maps.iter()
+                        .map(|m| (m.slot.clone(), m.value.clone())).collect(),
+                    crate::ast::Pins::Positional(args) => {
+                        // Look up the type's field order from its
+                        // SchemaDecl. Strict count match required.
+                        let Some(schema) = schemas.get(type_name) else {
+                            eprintln!(
+                                "error: positional pin on unknown type `{}`",
+                                type_name
+                            );
+                            std::process::exit(1);
+                        };
+                        let field_order: Vec<String> = schema.body.iter()
+                            .filter_map(|item| match item {
+                                BodyItem::Membership { name, .. } => Some(name.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        // Partial allowed: too few args pin the leading
+                        // fields and leave the rest free. Too many is
+                        // a real error — the user is asking to pin
+                        // fields that don't exist.
+                        if args.len() > field_order.len() {
+                            eprintln!(
+                                "error: too many positional pins on `{}`: \
+                                 type declares {} fields, got {} args",
+                                type_name, field_order.len(), args.len()
+                            );
+                            std::process::exit(1);
+                        }
+                        field_order.into_iter()
+                            .zip(args.iter().cloned())
+                            .collect()
+                    }
+                };
+                // Fire each pin as `name.field = value`. Same machinery
+                // and same dropped-constraint policy as a regular
+                // Constraint — a pin to a non-existent field is the
+                // same kind of silent error as a generic dropped
+                // translation, so it shares the hard-fail behavior.
+                for (slot, value) in resolved_pins {
+                    let lhs = Expr::Identifier(format!("{}.{}", name, slot));
+                    let eq = Expr::Binary(
+                        crate::ast::BinOp::Eq,
+                        Box::new(lhs),
+                        Box::new(value.clone()),
+                    );
+                    let guarded_eq = wrap_with_guard(eq.clone(), guard);
+                    if let Some(b) = translate_bool(&guarded_eq, ctx, env, schemas) {
+                        track_assert(solver, &b, tracker);
+                    } else {
+                        let lenient = std::env::var("EVIDENT_LENIENT")
+                            .map(|v| !v.is_empty() && v != "0")
+                            .unwrap_or(false);
+                        let pretty = pretty::expr(&eq);
+                        if lenient {
+                            eprintln!(
+                                "warning: type-use pin didn't translate: {}",
+                                pretty
+                            );
+                        } else {
+                            eprintln!(
+                                "error: type-use pin didn't translate: {}",
+                                pretty
+                            );
+                            eprintln!();
+                            eprintln!(
+                                "The field `{}` probably doesn't exist on type `{}`,",
+                                slot, type_name
+                            );
+                            eprintln!(
+                                "or its type doesn't accept the pinned value's shape."
+                            );
+                            eprintln!(
+                                "Set EVIDENT_LENIENT=1 to demote this to a warning."
+                            );
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
             // Bare-identifier-as-passthrough: `Constraint(Identifier(name))`
@@ -57,26 +225,42 @@ pub(super) fn inline_body_items(
                 if visited.contains(name) { continue; }
                 let Some(claim) = schemas.get(name) else { continue };
                 visited.insert(name.clone());
-                inline_body_items(&claim.body, env, solver, schemas, ctx, registry, visited);
+                inline_body_items_guarded(
+                    &claim.body, env, solver, schemas, ctx, registry, visited, guard, tracker
+                );
                 visited.remove(name);
             }
+            // Guarded claim invocation: `cond ⇒ ClaimName` inlines the
+            // claim's body but wraps each constraint in `cond ⇒ …`.
+            // Declarations from the claim fire unconditionally; the
+            // guard only narrows what the constraints assert. Composes
+            // with an outer guard if we're already inside one.
+            BodyItem::Constraint(Expr::Binary(crate::ast::BinOp::Implies, ant, cons))
+                if matches!(cons.as_ref(),
+                    Expr::Identifier(n) if schemas.contains_key(n)) =>
+            {
+                let claim_name = match cons.as_ref() {
+                    Expr::Identifier(n) => n,
+                    _ => unreachable!(),
+                };
+                if visited.contains(claim_name) { continue; }
+                let Some(claim) = schemas.get(claim_name) else { continue };
+                visited.insert(claim_name.clone());
+                let new_guard = compose_guards(guard, (**ant).clone());
+                inline_body_items_guarded(
+                    &claim.body, env, solver, schemas, ctx, registry, visited, &new_guard, tracker
+                );
+                visited.remove(claim_name);
+            }
             BodyItem::Constraint(e) => {
-                if let Some(b) = translate_bool(e, ctx, env) {
-                    solver.assert(&b);
+                let guarded = wrap_with_guard(e.clone(), guard);
+                if let Some(b) = translate_bool(&guarded, ctx, env, schemas) {
+                    track_assert(solver, &b, tracker);
                 } else {
-                    // Hard-fail by default. A dropped constraint is silently-
-                    // incorrect — the user thinks their constraint fired but
-                    // the solver never saw it. Almost always a translator gap;
-                    // very rarely an actual program error.
-                    //
-                    // Escape hatch: `EVIDENT_LENIENT=1` demotes this to a
-                    // warning. Useful for incrementally-broken programs (e.g.
-                    // mid-refactor) and for tests that intentionally exercise
-                    // the un-translatable path.
                     let lenient = std::env::var("EVIDENT_LENIENT")
                         .map(|v| !v.is_empty() && v != "0")
                         .unwrap_or(false);
-                    let pretty = pretty::expr(e);
+                    let pretty = pretty::expr(&guarded);
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
                     } else {
@@ -98,7 +282,9 @@ pub(super) fn inline_body_items(
                     continue;
                 };
                 visited.insert(claim_name.clone());
-                inline_body_items(&claim.body, env, solver, schemas, ctx, registry, visited);
+                inline_body_items_guarded(
+                    &claim.body, env, solver, schemas, ctx, registry, visited, guard, tracker
+                );
                 visited.remove(claim_name);
             }
             BodyItem::ClaimCall { name, mappings } => {
@@ -127,7 +313,7 @@ pub(super) fn inline_body_items(
                 // x-axis vs. y-axis branches contradict → UNSAT.
                 let call_id = next_call_id();
                 for sub in &claim.body {
-                    if let BodyItem::Membership { name: vname, type_name } = sub {
+                    if let BodyItem::Membership { name: vname, type_name, .. } = sub {
                         let slot_prefix = format!("{}.", vname);
                         let already_bound = inner.contains_key(vname)
                             || inner.keys().any(|k| k.starts_with(&slot_prefix));
@@ -139,7 +325,9 @@ pub(super) fn inline_body_items(
                     }
                 }
                 visited.insert(name.clone());
-                inline_body_items(&claim.body, &mut inner, solver, schemas, ctx, registry, visited);
+                inline_body_items_guarded(
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, visited, guard, tracker
+                );
                 visited.remove(name);
             }
             BodyItem::SubclaimDecl(_) => {}

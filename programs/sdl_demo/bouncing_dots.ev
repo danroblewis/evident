@@ -1,0 +1,100 @@
+-- bouncing_dots.ev — reusable concerns for games with N bouncing
+-- dots (gravity, wall/floor bounce, collection on player overlap).
+-- Each claim takes the dot Seq(s) explicitly and runs ∀ internally,
+-- so a derivative just wires sequences and constants per invocation.
+
+import "stdlib/sdl.ev"
+import "programs/sdl_demo/game_engine.ev"
+
+type BouncingDot(pos, vel ∈ IVec2, collected ∈ Bool)
+
+claim BouncingDotsBounds
+    dots ∈ Seq(BouncingDot)
+    pos_lo, pos_hi ∈ IVec2
+    vel_lo, vel_hi ∈ IVec2
+    ∀ dot ∈ dots :
+        pos_lo ≤ dot.pos ≤ pos_hi
+        vel_lo ≤ dot.vel ≤ vel_hi
+
+claim EffectiveVy
+    dots ∈ Seq(BouncingDot)
+    eff_vy ∈ Seq(Int)
+    dt, gravity, vmax ∈ Int
+    ∀ (dot, eff) ∈ coindexed(dots, eff_vy) :
+        (dot.vel.y + gravity * dt / 1000) >  vmax       ⇒ eff =  vmax
+        (dot.vel.y + gravity * dt / 1000) < (0 - vmax)  ⇒ eff = 0 - vmax
+        (0 - vmax) ≤ (dot.vel.y + gravity * dt / 1000) ≤ vmax ⇒
+            eff = dot.vel.y + gravity * dt / 1000
+
+-- Per-axis bounce branches stay independent (mixed cases like "X
+-- bounces, Y in bounds" need per-axis updates), but both axes' three
+-- branches live under one claim so a derivative wires physics in
+-- one line. Y uses gravity-modified eff_vy; X uses raw vel.x.
+claim BouncingDotsPhysics
+    cur, nxt ∈ Seq(BouncingDot)
+    eff_vy ∈ Seq(Int)
+    dt ∈ Int
+    pos_lo, pos_hi ∈ IVec2
+    ∀ (c, n, eff) ∈ coindexed(cur, nxt, eff_vy) :
+        (c.pos.y + eff * dt / 1000) > pos_hi.y ⇒
+            n.pos.y = pos_hi.y
+            n.vel.y = (0 - eff) * 7 / 10
+        (c.pos.y + eff * dt / 1000) < pos_lo.y ⇒
+            n.pos.y = pos_lo.y
+            n.vel.y = (0 - eff) * 7 / 10
+        pos_lo.y ≤ (c.pos.y + eff * dt / 1000) ≤ pos_hi.y ⇒
+            n.pos.y = c.pos.y + eff * dt / 1000
+            n.vel.y = eff
+    ∀ (c, n) ∈ coindexed(cur, nxt) :
+        (c.pos.x + c.vel.x * dt / 1000) > pos_hi.x ⇒
+            n.pos.x = pos_hi.x
+            n.vel.x = (0 - c.vel.x) * 7 / 10
+        (c.pos.x + c.vel.x * dt / 1000) < pos_lo.x ⇒
+            n.pos.x = pos_lo.x
+            n.vel.x = (0 - c.vel.x) * 7 / 10
+        pos_lo.x ≤ (c.pos.x + c.vel.x * dt / 1000) ≤ pos_hi.x ⇒
+            n.pos.x = c.pos.x + c.vel.x * dt / 1000
+            n.vel.x = c.vel.x
+
+claim BouncingDotsRender
+    dots ∈ Seq(BouncingDot)
+    rects ∈ Seq(SDLRect)
+    color ∈ Color
+    size ∈ Int
+    ∀ (dot, rect) ∈ coindexed(dots, rects) :
+        dot.collected = false ⇒
+            rect.pos   = dot.pos - IVec2(size / 2, size / 2)
+            rect.size  = IVec2(size, size)
+            rect.color = color
+        dot.collected = true ⇒
+            rect.size = IVec2(0, 0)
+
+claim BouncingDotsCollection
+    cur, nxt ∈ Seq(BouncingDot)
+    player ∈ PlayerState
+    collect_lo, collect_hi ∈ IVec2
+    ∀ (c, n) ∈ coindexed(cur, nxt) :
+        (c.collected = false
+         ∧ c.pos + collect_lo ≤ player.pos ≤ c.pos + collect_hi) ⇒
+            n.collected = true
+        ¬(c.collected = false
+          ∧ c.pos + collect_lo ≤ player.pos ≤ c.pos + collect_hi) ⇒
+            n.collected = c.collected
+
+claim WinIfAllCollected
+    dots ∈ Seq(BouncingDot)
+    won ∈ Bool
+    (∀ dot ∈ dots : dot.collected = true)  ⇒ won = true
+    (∃ dot ∈ dots : dot.collected = false) ⇒ won = false
+
+-- Edge-bounce + catch-transition audio triggers. Just the .playing
+-- predicates — frequency/volume/waveform stay in the calling main
+-- since they're aesthetic choices.
+claim BouncingDotsAudio
+    audio_bounce, audio_catch ∈ SDLAudio
+    cur, nxt ∈ Seq(BouncingDot)
+    pos_lo, pos_hi ∈ IVec2
+    audio_bounce.playing = (∃ dot ∈ cur :
+        dot.collected = false ∧ ¬(pos_lo < dot.pos < pos_hi))
+    audio_catch.playing = (∃ (c, n) ∈ coindexed(cur, nxt) :
+        c.collected = false ∧ n.collected = true)

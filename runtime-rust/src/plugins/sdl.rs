@@ -158,16 +158,13 @@ fn draw_fps_overlay(canvas: &mut WindowCanvas, win_w: u32, samples: &VecDeque<f6
 /// Field shapes match exactly what `SDLPlugin::before_step` produces
 /// and what `after_step` reads, so every key resolves to a declared var.
 pub const STDLIB_SDL_EV: &str = "
-type Color
-    r ∈ Nat
-    g ∈ Nat
-    b ∈ Nat
+type IVec2(x, y ∈ Int)
+
+type Color(r, g, b ∈ Nat)
 
 type SDLRect
-    x     ∈ Int
-    y     ∈ Int
-    w     ∈ Nat
-    h     ∈ Nat
+    pos   ∈ IVec2
+    size  ∈ IVec2
     color ∈ Color
 
 type SDLInput
@@ -175,8 +172,7 @@ type SDLInput
     left_held  ∈ Bool
     up_held    ∈ Bool
     down_held  ∈ Bool
-    mouse_x    ∈ Int
-    mouse_y    ∈ Int
+    mouse      ∈ IVec2
     click      ∈ Bool
     quit       ∈ Bool
     time       ∈ Int
@@ -187,12 +183,9 @@ type SDLOutput
     rects ∈ Seq(SDLRect)
 
 type SDLWindow
-    screen_x ∈ Int
-    screen_y ∈ Int
-    width    ∈ Int
-    height   ∈ Int
-    dx       ∈ Int
-    dy       ∈ Int
+    screen ∈ IVec2
+    size   ∈ IVec2
+    drag   ∈ IVec2
 ";
 
 /// SDL plugin. Holds the window + canvas + event pump for the lifetime
@@ -392,20 +385,28 @@ impl Plugin for SDLPlugin {
                     out.insert(format!("{var}.left_held"), Value::Bool(left));
                     out.insert(format!("{var}.up_held"), Value::Bool(up));
                     out.insert(format!("{var}.down_held"), Value::Bool(down));
-                    out.insert(format!("{var}.mouse_x"), Value::Int(self.mouse_x as i64));
-                    out.insert(format!("{var}.mouse_y"), Value::Int(self.mouse_y as i64));
+                    // mouse is now an IVec2 sub-field; the runtime
+                    // expands `input.mouse ∈ IVec2` to flat env keys
+                    // `input.mouse.x` / `input.mouse.y`, so plugin
+                    // bindings target those dotted keys directly.
+                    out.insert(format!("{var}.mouse.x"), Value::Int(self.mouse_x as i64));
+                    out.insert(format!("{var}.mouse.y"), Value::Int(self.mouse_y as i64));
                     out.insert(format!("{var}.click"), Value::Bool(self.click));
                     out.insert(format!("{var}.quit"), Value::Bool(self.quit));
                     out.insert(format!("{var}.time"), Value::Int(unix_ms));
                     out.insert(format!("{var}.dt"), Value::Int(dt_ms));
                 }
                 "SDLWindow" => {
-                    out.insert(format!("{var}.screen_x"), Value::Int(screen_x as i64));
-                    out.insert(format!("{var}.screen_y"), Value::Int(screen_y as i64));
-                    out.insert(format!("{var}.width"), Value::Int(self.width as i64));
-                    out.insert(format!("{var}.height"), Value::Int(self.height as i64));
-                    out.insert(format!("{var}.dx"), Value::Int(wdx as i64));
-                    out.insert(format!("{var}.dy"), Value::Int(wdy as i64));
+                    // SDLWindow's three IVec2 sub-fields: window.screen
+                    // (top-left in screen coords), window.size (the
+                    // window's pixel dimensions), window.drag (this
+                    // step's screen-pos delta — non-zero on a drag).
+                    out.insert(format!("{var}.screen.x"), Value::Int(screen_x as i64));
+                    out.insert(format!("{var}.screen.y"), Value::Int(screen_y as i64));
+                    out.insert(format!("{var}.size.x"), Value::Int(self.width as i64));
+                    out.insert(format!("{var}.size.y"), Value::Int(self.height as i64));
+                    out.insert(format!("{var}.drag.x"), Value::Int(wdx as i64));
+                    out.insert(format!("{var}.drag.y"), Value::Int(wdy as i64));
                 }
                 _ => {} // SDLOutput is read-only on the input side
             }
@@ -435,16 +436,19 @@ impl Plugin for SDLPlugin {
             canvas.set_draw_color(SdlColor::RGB(r as u8, g as u8, b as u8));
             canvas.clear();
 
-            // Rects — Seq(SDLRect) → SeqComposite.
+            // Rects — Seq(SDLRect) → SeqComposite. SDLRect's `pos` and
+            // `size` are now `IVec2` sub-records, surfacing as
+            // `Value::Composite({x, y})` inside each rect map. Drill
+            // through `composite_nested_int` to read x/y leaves.
             if let Some(Value::SeqComposite(rects)) = bindings.get(&format!("{var}.rects")) {
                 for rect in rects {
-                    let w = composite_int(rect, "w").unwrap_or(0);
-                    let h = composite_int(rect, "h").unwrap_or(0);
+                    let w = composite_nested_int(rect, "size", "x").unwrap_or(0);
+                    let h = composite_nested_int(rect, "size", "y").unwrap_or(0);
                     if w == 0 && h == 0 {
                         continue;
                     }
-                    let x = composite_int(rect, "x").unwrap_or(0);
-                    let y = composite_int(rect, "y").unwrap_or(0);
+                    let x = composite_nested_int(rect, "pos", "x").unwrap_or(0);
+                    let y = composite_nested_int(rect, "pos", "y").unwrap_or(0);
 
                     // Per-rect color. The current Rust runtime's
                     // `extract_seq_composite` only handles flat
@@ -513,10 +517,20 @@ fn read_int_field(bindings: &HashMap<String, Value>, key: &str) -> Option<i64> {
     }
 }
 
-/// Read an Int field from a Composite map (used for rect.x/y/w/h).
+/// Read an Int field from a Composite map (used for rect.color.r/g/b).
 fn composite_int(map: &HashMap<String, Value>, key: &str) -> Option<i64> {
     match map.get(key)? {
         Value::Int(n) => Some(*n),
+        _ => None,
+    }
+}
+
+/// Read `outer.inner` where `outer` is a Composite sub-field of `map`
+/// and `inner` is an Int leaf inside it. Used for SDLRect's nested
+/// `pos.x` / `pos.y` / `size.x` / `size.y` after the IVec2 refactor.
+fn composite_nested_int(map: &HashMap<String, Value>, outer: &str, inner: &str) -> Option<i64> {
+    match map.get(outer)? {
+        Value::Composite(sub) => composite_int(sub, inner),
         _ => None,
     }
 }

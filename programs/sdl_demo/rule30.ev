@@ -12,18 +12,13 @@
 
 import "stdlib/sdl.ev"
 
-type Cell
-    alive ∈ Bool
+type Cell(alive ∈ Bool)
 
-type W
-    cells ∈ Seq(Cell)
-    step  ∈ Nat
+type W(cells ∈ Seq(Cell), step ∈ Nat)
 
-type main
+type main(state, state_next ∈ W)
     input  ∈ SDLInput
     output ∈ SDLOutput
-    state      ∈ W
-    state_next ∈ W
 
     #state.cells      = 600         -- 40 cols × 15 rows
     #state_next.cells = 600
@@ -44,4 +39,4 @@ type main
     ∀ i ∈ {560..599} : state_next.cells[i].alive = (((i > 560 ∧ state.cells[i-1].alive) ∨ state.cells[i].alive ∨ (i < 599 ∧ state.cells[i+1].alive)) ∧ ¬((i > 560 ∧ state.cells[i-1].alive) ∧ (state.cells[i].alive ∨ (i < 599 ∧ state.cells[i+1].alive))))
 
     -- Render: 20×40 rect per cell. Alive = warm yellow, dead = bg.
-    ∀ i ∈ {0..599} : (output.rects[i].x = (i - (i / 40) * 40) * 20 ∧ output.rects[i].y = (i / 40) * 40 ∧ output.rects[i].w = 20 ∧ output.rects[i].h = 40 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))
+    ∀ i ∈ {0..599} : (output.rects[i].pos.x = (i - (i / 40) * 40) * 20 ∧ output.rects[i].pos.y = (i / 40) * 40 ∧ output.rects[i].size.x = 20 ∧ output.rects[i].size.y = 40 ∧ (state.cells[i].alive = true ⇒ (output.rects[i].color.r = 220 ∧ output.rects[i].color.g = 200 ∧ output.rects[i].color.b = 100)) ∧ (state.cells[i].alive = false ⇒ (output.rects[i].color.r = 30 ∧ output.rects[i].color.g = 30 ∧ output.rects[i].color.b = 60)))

@@ -15,8 +15,8 @@ type main
     #output.rects    = 6
 
     -- Layout: from (100, 100) down-right to (600, 500), even spacing.
-    ∀ i ∈ {0..4} : state.dots[i].pos_x = 100 + i * 125
-    ∀ i ∈ {0..4} : state.dots[i].pos_y = 100 + i * 100
+    ∀ i ∈ {0..4} : state.dots[i].pos.x = 100 + i * 125
+    ∀ i ∈ {0..4} : state.dots[i].pos.y = 100 + i * 100
 
     -- Win when every dot is collected. Enumerated per N.
     (state_next.dots[0].collected = true ∧ state_next.dots[1].collected = true ∧ state_next.dots[2].collected = true ∧ state_next.dots[3].collected = true ∧ state_next.dots[4].collected = true) ⇒ state_next.won = true

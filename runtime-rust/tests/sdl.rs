@@ -79,8 +79,8 @@ type main
     given.insert("input.left_held".into(), Value::Bool(false));
     given.insert("input.up_held".into(), Value::Bool(false));
     given.insert("input.down_held".into(), Value::Bool(false));
-    given.insert("input.mouse_x".into(), Value::Int(100));
-    given.insert("input.mouse_y".into(), Value::Int(100));
+    given.insert("input.mouse.x".into(), Value::Int(100));
+    given.insert("input.mouse.y".into(), Value::Int(100));
     given.insert("input.click".into(), Value::Bool(false));
     given.insert("input.quit".into(), Value::Bool(false));
     given.insert("input.time".into(), Value::Int(1_700_000_000_000));

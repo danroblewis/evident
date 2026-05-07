@@ -11,17 +11,12 @@
 
 import "stdlib/sdl.ev"
 
-type BallState
-    x  ∈ Int
-    y  ∈ Int
-    vx ∈ Int   -- pixels per second; negative = left/up
-    vy ∈ Int
+-- vel: pixels per second; negative = left/up.
+type BallState(pos, vel ∈ IVec2)
 
-type main
+type main(ball, ball_next ∈ BallState)
     input     ∈ SDLInput
     output    ∈ SDLOutput
-    ball      ∈ BallState
-    ball_next ∈ BallState
     ball_rect ∈ SDLRect
 
     -- ── Background ────────────────────────────────────────────────────────────
@@ -30,10 +25,9 @@ type main
     output.bg.b = 30
 
     -- ── Ball rect: 30×30 teal square ─────────────────────────────────────────
-    ball_rect.x = ball.x
-    ball_rect.y = ball.y
-    ball_rect.w = 30
-    ball_rect.h = 30
+    ball_rect.pos = ball.pos
+    ball_rect.size.x = 30
+    ball_rect.size.y = 30
     ball_rect.color.r = 80
     ball_rect.color.g = 200
     ball_rect.color.b = 180
@@ -42,15 +36,15 @@ type main
 
     -- ── Position update ───────────────────────────────────────────────────────
     -- dt is in milliseconds, velocity in pixels/second → pixels per step
-    ball_next.x = ball.x + ball.vx * input.dt / 1000
-    ball_next.y = ball.y + ball.vy * input.dt / 1000
+    ball_next.pos.x = ball.pos.x + ball.vel.x * input.dt / 1000
+    ball_next.pos.y = ball.pos.y + ball.vel.y * input.dt / 1000
 
     -- ── X-axis bounce (constrains only vx) ───────────────────────────────────
-    ball.x ≤ 0   ⇒ ball_next.vx = 280
-    ball.x ≥ 770 ⇒ ball_next.vx = -280
-    ¬(ball.x ≤ 0 ∨ ball.x ≥ 770) ⇒ ball_next.vx = ball.vx
+    ball.pos.x ≤ 0   ⇒ ball_next.vel.x = 280
+    ball.pos.x ≥ 770 ⇒ ball_next.vel.x = -280
+    ¬(ball.pos.x ≤ 0 ∨ ball.pos.x ≥ 770) ⇒ ball_next.vel.x = ball.vel.x
 
     -- ── Y-axis bounce (constrains only vy) ───────────────────────────────────
-    ball.y ≤ 0   ⇒ ball_next.vy = 210
-    ball.y ≥ 570 ⇒ ball_next.vy = -210
-    ¬(ball.y ≤ 0 ∨ ball.y ≥ 570) ⇒ ball_next.vy = ball.vy
+    ball.pos.y ≤ 0   ⇒ ball_next.vel.y = 210
+    ball.pos.y ≥ 570 ⇒ ball_next.vel.y = -210
+    ¬(ball.pos.y ≤ 0 ∨ ball.pos.y ≥ 570) ⇒ ball_next.vel.y = ball.vel.y

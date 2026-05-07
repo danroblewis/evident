@@ -63,7 +63,7 @@ fn walk_for_quantifier_bounds(e: &Expr, out: &mut HashSet<String>) {
     }
 }
 
-fn collect_referenced_names(e: &Expr, out: &mut HashSet<String>) {
+pub fn collect_referenced_names(e: &Expr, out: &mut HashSet<String>) {
     match e {
         Expr::Identifier(n) => { out.insert(n.clone()); }
         Expr::Cardinality(inner) => {

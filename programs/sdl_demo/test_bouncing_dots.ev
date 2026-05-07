@@ -1,0 +1,184 @@
+-- Tests for the bouncing-dots engine. Run with:
+--     evident test programs/sdl_demo/test_bouncing_dots.ev
+
+import "programs/sdl_demo/bouncing_dots.ev"
+
+-- ── BouncingDotsBounds: clamps pos and vel ───────────────────────────
+
+claim sat_in_bounds_dot_passes
+    dots ∈ Seq(BouncingDot)
+    pos_lo, pos_hi, vel_lo, vel_hi ∈ IVec2
+    #dots = 1
+    pos_lo = IVec2(0, 0)
+    pos_hi = IVec2(800, 600)
+    vel_lo = IVec2(-500, -500)
+    vel_hi = IVec2(500, 500)
+    dots[0].pos = IVec2(100, 100)
+    dots[0].vel = IVec2(50, -50)
+    dots[0].collected = false
+    BouncingDotsBounds (dots mapsto dots, pos_lo mapsto pos_lo, pos_hi mapsto pos_hi, vel_lo mapsto vel_lo, vel_hi mapsto vel_hi)
+
+claim unsat_pos_out_of_bounds
+    dots ∈ Seq(BouncingDot)
+    pos_lo, pos_hi, vel_lo, vel_hi ∈ IVec2
+    #dots = 1
+    pos_lo = IVec2(0, 0)
+    pos_hi = IVec2(800, 600)
+    vel_lo = IVec2(-500, -500)
+    vel_hi = IVec2(500, 500)
+    dots[0].pos = IVec2(900, 100)            -- 900 > pos_hi.x = 800
+    dots[0].vel = IVec2(0, 0)
+    dots[0].collected = false
+    BouncingDotsBounds (dots mapsto dots, pos_lo mapsto pos_lo, pos_hi mapsto pos_hi, vel_lo mapsto vel_lo, vel_hi mapsto vel_hi)
+
+claim unsat_vel_out_of_bounds
+    dots ∈ Seq(BouncingDot)
+    pos_lo, pos_hi, vel_lo, vel_hi ∈ IVec2
+    #dots = 1
+    pos_lo = IVec2(0, 0)
+    pos_hi = IVec2(800, 600)
+    vel_lo = IVec2(-500, -500)
+    vel_hi = IVec2(500, 500)
+    dots[0].pos = IVec2(100, 100)
+    dots[0].vel = IVec2(-1000, 0)            -- vel.x < vel_lo.x = -500
+    dots[0].collected = false
+    BouncingDotsBounds (dots mapsto dots, pos_lo mapsto pos_lo, pos_hi mapsto pos_hi, vel_lo mapsto vel_lo, vel_hi mapsto vel_hi)
+
+-- ── EffectiveVy: gravity + clamp ─────────────────────────────────────
+
+claim sat_eff_vy_in_range
+    dots ∈ Seq(BouncingDot)
+    eff_vy ∈ Seq(Int)
+    #dots = 1
+    #eff_vy = 1
+    dots[0].pos = IVec2(0, 0)
+    dots[0].vel = IVec2(0, 100)
+    dots[0].collected = false
+    EffectiveVy (dots mapsto dots, eff_vy mapsto eff_vy, dt mapsto 16, gravity mapsto 600, vmax mapsto 800)
+    eff_vy[0] = 109                          -- 100 + 600 * 16 / 1000 = 109 (Int div)
+
+claim sat_eff_vy_clamped_high
+    dots ∈ Seq(BouncingDot)
+    eff_vy ∈ Seq(Int)
+    #dots = 1
+    #eff_vy = 1
+    dots[0].pos = IVec2(0, 0)
+    dots[0].vel = IVec2(0, 800)              -- already at vmax
+    dots[0].collected = false
+    EffectiveVy (dots mapsto dots, eff_vy mapsto eff_vy, dt mapsto 16, gravity mapsto 600, vmax mapsto 800)
+    eff_vy[0] = 800                          -- 800 + 9 = 809 > vmax → clamped to 800
+
+claim sat_eff_vy_clamped_low
+    dots ∈ Seq(BouncingDot)
+    eff_vy ∈ Seq(Int)
+    #dots = 1
+    #eff_vy = 1
+    dots[0].pos = IVec2(0, 0)
+    dots[0].vel = IVec2(0, -1000)            -- past -vmax
+    dots[0].collected = false
+    EffectiveVy (dots mapsto dots, eff_vy mapsto eff_vy, dt mapsto 16, gravity mapsto 600, vmax mapsto 800)
+    eff_vy[0] = -800                         -- -1000 + 9 = -991, clamped to -vmax
+
+-- ── BouncingDotsCollection ───────────────────────────────────────────
+
+claim sat_player_overlap_collects_dot
+    cur, nxt ∈ Seq(BouncingDot)
+    player ∈ PlayerState
+    collect_lo, collect_hi ∈ IVec2
+    #cur = 1
+    #nxt = 1
+    player.pos = IVec2(100, 100)
+    player.vel = IVec2(0, 0)
+    cur[0].pos = IVec2(110, 110)             -- close enough for box overlap
+    cur[0].vel = IVec2(0, 0)
+    cur[0].collected = false
+    collect_lo = IVec2(-40, -40)
+    collect_hi = IVec2(25, 25)
+    BouncingDotsCollection (cur mapsto cur, nxt mapsto nxt, player mapsto player, collect_lo mapsto collect_lo, collect_hi mapsto collect_hi)
+    nxt[0].collected = true
+
+claim sat_distant_dot_not_collected
+    cur, nxt ∈ Seq(BouncingDot)
+    player ∈ PlayerState
+    collect_lo, collect_hi ∈ IVec2
+    #cur = 1
+    #nxt = 1
+    player.pos = IVec2(0, 0)
+    player.vel = IVec2(0, 0)
+    cur[0].pos = IVec2(500, 500)             -- far away
+    cur[0].vel = IVec2(0, 0)
+    cur[0].collected = false
+    collect_lo = IVec2(-40, -40)
+    collect_hi = IVec2(25, 25)
+    BouncingDotsCollection (cur mapsto cur, nxt mapsto nxt, player mapsto player, collect_lo mapsto collect_lo, collect_hi mapsto collect_hi)
+    nxt[0].collected = false                 -- carried forward unchanged
+
+claim sat_collected_dot_stays_collected
+    cur, nxt ∈ Seq(BouncingDot)
+    player ∈ PlayerState
+    collect_lo, collect_hi ∈ IVec2
+    #cur = 1
+    #nxt = 1
+    player.pos = IVec2(0, 0)
+    player.vel = IVec2(0, 0)
+    cur[0].pos = IVec2(500, 500)
+    cur[0].vel = IVec2(0, 0)
+    cur[0].collected = true
+    collect_lo = IVec2(-40, -40)
+    collect_hi = IVec2(25, 25)
+    BouncingDotsCollection (cur mapsto cur, nxt mapsto nxt, player mapsto player, collect_lo mapsto collect_lo, collect_hi mapsto collect_hi)
+    nxt[0].collected = true
+
+-- ── WinIfAllCollected ────────────────────────────────────────────────
+
+claim sat_all_collected_wins
+    dots ∈ Seq(BouncingDot)
+    won ∈ Bool
+    #dots = 2
+    dots[0].collected = true
+    dots[1].collected = true
+    WinIfAllCollected (dots mapsto dots, won mapsto won)
+    won = true
+
+claim unsat_partial_collection_wins
+    dots ∈ Seq(BouncingDot)
+    won ∈ Bool
+    #dots = 2
+    dots[0].collected = true
+    dots[1].collected = false
+    WinIfAllCollected (dots mapsto dots, won mapsto won)
+    won = true                               -- engine forces won = false → UNSAT
+
+-- ── BouncingDotsAudio ────────────────────────────────────────────────
+
+claim sat_catch_audio_fires_on_transition
+    audio_bounce, audio_catch ∈ SDLAudio
+    cur, nxt ∈ Seq(BouncingDot)
+    pos_lo, pos_hi ∈ IVec2
+    #cur = 1
+    #nxt = 1
+    pos_lo = IVec2(20, 20)
+    pos_hi = IVec2(740, 540)
+    cur[0].pos = IVec2(100, 100)             -- inside bounds
+    cur[0].vel = IVec2(0, 0)
+    cur[0].collected = false                 -- false now
+    nxt[0].collected = true                  -- → true next frame
+    BouncingDotsAudio (audio_bounce mapsto audio_bounce, audio_catch mapsto audio_catch, cur mapsto cur, nxt mapsto nxt, pos_lo mapsto pos_lo, pos_hi mapsto pos_hi)
+    audio_catch.playing = true
+    audio_bounce.playing = false             -- not at edge
+
+claim sat_bounce_audio_fires_at_edge
+    audio_bounce, audio_catch ∈ SDLAudio
+    cur, nxt ∈ Seq(BouncingDot)
+    pos_lo, pos_hi ∈ IVec2
+    #cur = 1
+    #nxt = 1
+    pos_lo = IVec2(20, 20)
+    pos_hi = IVec2(740, 540)
+    cur[0].pos = IVec2(740, 100)             -- at right edge (pos.x = pos_hi.x)
+    cur[0].vel = IVec2(0, 0)
+    cur[0].collected = false
+    nxt[0].collected = false
+    BouncingDotsAudio (audio_bounce mapsto audio_bounce, audio_catch mapsto audio_catch, cur mapsto cur, nxt mapsto nxt, pos_lo mapsto pos_lo, pos_hi mapsto pos_hi)
+    audio_bounce.playing = true
+    audio_catch.playing = false

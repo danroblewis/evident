@@ -181,33 +181,8 @@ pub(super) fn assert_seq_given<'ctx>(
         (Var::DatatypeSeqVar { arr, len, dt, fields, .. }, Value::SeqComposite(items)) => {
             let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
             conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
-            // The Datatype has a single constructor with fields in
-            // declaration order. Build an application per element.
-            let ctor = &dt.variants[0].constructor;
             for (i, element) in items.iter().enumerate() {
-                let mut field_dyns: Vec<z3::ast::Dynamic> = Vec::with_capacity(fields.len());
-                for fk in fields.iter() {
-                    let dynamic = match fk {
-                        FieldKind::Primitive { name, prim_type } => {
-                            let v = element.get(name)?;
-                            match (prim_type.as_str(), v) {
-                                ("Int" | "Nat" | "Pos", Value::Int(n)) =>
-                                    z3::ast::Dynamic::from_ast(&Int::from_i64(ctx, *n)),
-                                ("Bool", Value::Bool(b)) =>
-                                    z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b)),
-                                ("String", Value::Str(s)) => {
-                                    let z = Z3Str::from_str(ctx, s).ok()?;
-                                    z3::ast::Dynamic::from_ast(&z)
-                                }
-                                _ => return None,
-                            }
-                        }
-                        FieldKind::Nested { .. } => return None, // skip for v1
-                    };
-                    field_dyns.push(dynamic);
-                }
-                let dyn_refs: Vec<&dyn Ast> = field_dyns.iter().map(|d| d as &dyn Ast).collect();
-                let elem_ast = ctor.apply(&dyn_refs);
+                let elem_ast = composite_value_to_dyn(element, fields, dt, ctx)?;
                 let idx = Int::from_i64(ctx, i as i64);
                 let cell = arr.select(&idx);
                 conjuncts.push(cell._eq(&elem_ast));
@@ -217,4 +192,56 @@ pub(super) fn assert_seq_given<'ctx>(
         }
         _ => None,
     }
+}
+
+/// Build a Z3 Datatype `Dynamic` from a `Value::Composite` field map +
+/// the type's `FieldKind` list. Mirror image of `extract_composite_value`:
+/// extraction reads the model + accessors to assemble a flat field map;
+/// this builds a constructor application from a flat field map back into
+/// a Datatype value.
+///
+/// The recursion handles nested record fields. For `BouncingDot` whose
+/// `pos` field is itself an `IVec2`, the field map carries
+/// `Value::Composite({x, y})` for `pos`, which this function passes
+/// back to itself with the nested type's `(dt, sub_fields)`.
+///
+/// Without this, round-tripping a state through `given` between
+/// executor frames silently failed for any user type with nested record
+/// fields — `assert_seq_given` returned None, the caller printed
+/// "type mismatch for given", and the next-frame solver ran with
+/// state.dots free → garbage output.
+fn composite_value_to_dyn<'ctx>(
+    map: &HashMap<String, Value>,
+    fields: &[FieldKind],
+    dt: &DatatypeSort<'ctx>,
+    ctx: &'ctx Context,
+) -> Option<z3::ast::Dynamic<'ctx>> {
+    let ctor = &dt.variants[0].constructor;
+    let mut field_dyns: Vec<z3::ast::Dynamic> = Vec::with_capacity(fields.len());
+    for fk in fields.iter() {
+        let dynamic = match fk {
+            FieldKind::Primitive { name, prim_type } => {
+                let v = map.get(name)?;
+                match (prim_type.as_str(), v) {
+                    ("Int" | "Nat" | "Pos", Value::Int(n)) =>
+                        z3::ast::Dynamic::from_ast(&Int::from_i64(ctx, *n)),
+                    ("Bool", Value::Bool(b)) =>
+                        z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b)),
+                    ("String", Value::Str(s)) => {
+                        let z = Z3Str::from_str(ctx, s).ok()?;
+                        z3::ast::Dynamic::from_ast(&z)
+                    }
+                    _ => return None,
+                }
+            }
+            FieldKind::Nested { name, dt: nested_dt, sub_fields, .. } => {
+                let v = map.get(name)?;
+                let Value::Composite(nested_map) = v else { return None };
+                composite_value_to_dyn(nested_map, sub_fields, *nested_dt, ctx)?
+            }
+        };
+        field_dyns.push(dynamic);
+    }
+    let dyn_refs: Vec<&dyn Ast> = field_dyns.iter().map(|d| d as &dyn Ast).collect();
+    Some(ctor.apply(&dyn_refs))
 }
