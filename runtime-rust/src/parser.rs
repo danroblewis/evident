@@ -291,6 +291,53 @@ impl Parser {
         self.eat(&Token::In)?;
         let range = self.parse_atom()?;   // expect a {lo..hi} or {a, b, c}
         self.eat(&Token::Colon)?;
+        // Quantifier-block form: `∀ var ∈ range :` followed by Newline +
+        // Indent at a deeper level. Parse a stack of body items at that
+        // indent and AND-combine them as the quantifier body. Mirrors
+        // the implies-block pattern in parse_implies. Lets users write
+        //
+        //   ∀ i ∈ {0..3} :
+        //       state.dots[i].pos_x ≥ 20
+        //       state.dots[i].pos_x ≤ 740
+        //
+        // instead of repeating `∀ i ∈ {0..3} : …` per constraint.
+        if matches!(self.peek(), Token::Newline) {
+            let saved = self.pos;
+            self.bump();
+            while matches!(self.peek(), Token::Newline) { self.bump(); }
+            if let Token::Indent(n) = self.peek().clone() {
+                let block_indent = n;
+                let mut conjuncts = Vec::new();
+                loop {
+                    match self.peek() {
+                        Token::Indent(m) if *m == block_indent => { self.bump(); }
+                        _ => break,
+                    }
+                    let item = self.parse_implies()?;
+                    conjuncts.push(item);
+                    match self.peek() {
+                        Token::Newline => { self.bump(); }
+                        Token::Eof => break,
+                        _ => {}
+                    }
+                }
+                if conjuncts.is_empty() {
+                    self.pos = saved;
+                } else {
+                    let mut body = conjuncts.remove(0);
+                    for c in conjuncts {
+                        body = Expr::Binary(BinOp::And, Box::new(body), Box::new(c));
+                    }
+                    return Ok(if is_forall {
+                        Expr::Forall(var, Box::new(range), Box::new(body))
+                    } else {
+                        Expr::Exists(var, Box::new(range), Box::new(body))
+                    });
+                }
+            } else {
+                self.pos = saved;
+            }
+        }
         let body = self.parse_expr()?;
         Ok(if is_forall {
             Expr::Forall(var, Box::new(range), Box::new(body))

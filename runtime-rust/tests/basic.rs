@@ -1020,6 +1020,73 @@ fn seq_index_assign_composite_var() {
     assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
 }
 
+/// `∀ var ∈ <composite-seq>` iterates over the seq's elements, with
+/// `var.field` resolving to the corresponding field of each element.
+/// Same shape as `∀ i ∈ {0..#seq - 1} : seq[i].field` but reads as
+/// what it does. Regression for the user's `∀ dot ∈ state.dots` ask.
+#[test]
+fn forall_iter_composite_seq() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type Dot\n    pos_x ∈ Int\n    pos_y ∈ Int\n\
+         schema S\n    dots ∈ Seq(Dot)\n    #dots = 3\n    \
+         ∀ dot ∈ dots :\n        dot.pos_x ≥ 0\n        dot.pos_x ≤ 100\n        dot.pos_y = dot.pos_x * 2\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let dots = match r.bindings.get("dots") {
+        Some(Value::SeqComposite(v)) => v,
+        other => panic!("expected SeqComposite, got {:?}", other),
+    };
+    assert_eq!(dots.len(), 3);
+    for d in dots {
+        let x = match d.get("pos_x") { Some(Value::Int(n)) => *n, _ => panic!() };
+        let y = match d.get("pos_y") { Some(Value::Int(n)) => *n, _ => panic!() };
+        assert!(x >= 0 && x <= 100);
+        assert_eq!(y, x * 2);
+    }
+}
+
+/// `∀ x ∈ <primitive-seq>` iterates a Seq(Int)/Seq(Bool)/Seq(String);
+/// the bound var holds the element directly (not a composite).
+#[test]
+fn forall_iter_primitive_seq() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    #s = 4\n    \
+         ∀ x ∈ s : x ≥ 10 ∧ x ≤ 20\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let s = match r.bindings.get("s") {
+        Some(Value::SeqInt(v)) => v,
+        other => panic!("expected SeqInt, got {:?}", other),
+    };
+    assert_eq!(s.len(), 4);
+    for x in s { assert!(*x >= 10 && *x <= 20); }
+}
+
+/// `∀`/`∃` accept an indent-block body the same way `⇒` does. Lets
+/// users write multi-constraint quantifiers as
+///
+///   ∀ i ∈ {0..3} :
+///       constraint_a
+///       constraint_b
+///       constraint_c
+///
+/// instead of repeating `∀ i ∈ {0..3} : …` per constraint.
+#[test]
+fn forall_indent_block_body() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Seq(Int)\n    #s = 4\n    \
+         ∀ i ∈ {0..3} :\n        s[i] ≥ 0\n        s[i] ≤ 100\n        s[i] = i * 5\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SeqInt(vec![0, 5, 10, 15])));
+}
+
 /// Multi-line expressions inside `(...)`/`[...]`/`{...}`/`⟨...⟩` —
 /// the lexer suppresses Newline + Indent tokens whenever bracket
 /// depth > 0, so a single logical expression can span any number of

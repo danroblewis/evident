@@ -423,6 +423,52 @@ fn translate_seq_index_assign<'ctx>(
     Some(elem._eq(&composite))
 }
 
+/// Walk a composite seq element and bind each declared field as
+/// `<prefix>.<field_name>` in env, with the field's Z3 expression
+/// extracted via the Datatype's accessor. Used by `∀ var ∈ <seq>`
+/// composite iteration: for each iteration index i, the body
+/// references `var.field1`, `var.field2`, etc. — those resolve via
+/// env-key lookup, so we populate env with the right per-iteration
+/// values before translating the body.
+///
+/// Recurses for `FieldKind::Nested` (e.g. `dot.color.r` where
+/// `color ∈ Color`). Returns false on shape mismatch (caller
+/// should fail the whole quantifier rather than silently produce
+/// a wrong model).
+fn bind_composite_fields<'ctx>(
+    env: &mut HashMap<String, Var<'ctx>>,
+    elem_dyn: &z3::ast::Dynamic<'ctx>,
+    fields: &[FieldKind],
+    dt: &DatatypeSort<'ctx>,
+    prefix: &str,
+) -> bool {
+    let Some(elem) = elem_dyn.as_datatype() else { return false };
+    for (fi, fk) in fields.iter().enumerate() {
+        if fi >= dt.variants[0].accessors.len() { return false; }
+        let raw = dt.variants[0].accessors[fi].apply(&[&elem]);
+        match fk {
+            FieldKind::Primitive { name, prim_type } => {
+                let key = format!("{}.{}", prefix, name);
+                let var = match prim_type.as_str() {
+                    "Int" | "Nat" | "Pos" => raw.as_int().map(Var::IntVar),
+                    "Bool"   => raw.as_bool().map(Var::BoolVar),
+                    "String" => raw.as_string().map(Var::StrVar),
+                    _ => None,
+                };
+                let Some(v) = var else { return false };
+                env.insert(key, v);
+            }
+            FieldKind::Nested { name, dt: nested_dt, sub_fields, .. } => {
+                let sub_prefix = format!("{}.{}", prefix, name);
+                if !bind_composite_fields(env, &raw, sub_fields, nested_dt, &sub_prefix) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Bool<'ctx>> {
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
@@ -487,18 +533,75 @@ pub(super) fn translate_bool<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
             Some(Bool::or(ctx, &refs))
         }
 
-        // `∀ i ∈ {lo..hi} : body` / `∃ …`: unroll when the range
-        // resolves to a literal pair (after PinnedInt substitution).
+        // `∀ var ∈ <range> : body` / `∃ …`. Three range shapes:
+        //
+        //   1. Integer range  `{lo..hi}` — unrolls to lo..=hi, each
+        //      iteration binds `var` to an Int literal.
+        //   2. Composite seq  `state.dots` (Seq(UserType)) — unrolls
+        //      to 0..len, each iteration binds `var.field` to the
+        //      corresponding field of `state.dots[i]` so the body
+        //      can reference `var.pos_x` etc. as if `var` were a
+        //      regular composite variable.
+        //   3. Primitive seq  `s` (Seq(Int|Bool|String)) — unrolls
+        //      to 0..len, each iteration binds `var` to the element
+        //      directly (an Int/Bool/Str Z3 expr).
         Expr::Forall(var, range, body) | Expr::Exists(var, range, body) => {
-            let (lo, hi) = literal_range(range, ctx, env)?;
             let mut clauses: Vec<Bool> = Vec::new();
-            for i in lo..=hi {
-                let mut env2 = env_clone(env);
-                env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
-                if let Some(b) = translate_bool(body, ctx, &env2) {
-                    clauses.push(b);
+
+            // Form 1: integer range.
+            if let Some((lo, hi)) = literal_range(range, ctx, env) {
+                for i in lo..=hi {
+                    let mut env2 = env_clone(env);
+                    env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
+                    if let Some(b) = translate_bool(body, ctx, &env2) {
+                        clauses.push(b);
+                    }
                 }
+            // Form 2 / 3: iterate over a Seq variable.
+            } else if let Expr::Identifier(seq_name) = range.as_ref() {
+                let seq_var = env.get(seq_name)?;
+                if let Some((arr, len, _, dt, fields)) = seq_var.as_datatype_seq() {
+                    // Composite seq: iterate elements, bind <var>.<field>
+                    // for each declared field in env on each iteration.
+                    let n = len.simplify().as_i64()?;
+                    for i in 0..n {
+                        let mut env2 = env_clone(env);
+                        let idx = Int::from_i64(ctx, i);
+                        let elem_dyn = arr.select(&idx);
+                        if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
+                            return None; // shape mismatch — fail loudly
+                        }
+                        if let Some(b) = translate_bool(body, ctx, &env2) {
+                            clauses.push(b);
+                        }
+                    }
+                } else if let Some((arr, len, elem)) = seq_var.as_seq() {
+                    // Primitive seq: bind `var` to the element directly.
+                    let n = len.simplify().as_i64()?;
+                    for i in 0..n {
+                        let mut env2 = env_clone(env);
+                        let idx = Int::from_i64(ctx, i);
+                        let cell = arr.select(&idx);
+                        let v = match elem {
+                            SeqElem::Int  => cell.as_int().map(Var::IntVar),
+                            SeqElem::Bool => cell.as_bool().map(Var::BoolVar),
+                            SeqElem::Str  => cell.as_string().map(Var::StrVar),
+                        };
+                        let v = v?;
+                        env2.insert(var.clone(), v);
+                        if let Some(b) = translate_bool(body, ctx, &env2) {
+                            clauses.push(b);
+                        }
+                    }
+                } else {
+                    // Identifier in scope but not a seq — can't iterate.
+                    return None;
+                }
+            } else {
+                // Range expression we don't recognize.
+                return None;
             }
+
             let refs: Vec<&Bool> = clauses.iter().collect();
             if matches!(e, Expr::Forall(..)) {
                 Some(Bool::and(ctx, &refs))

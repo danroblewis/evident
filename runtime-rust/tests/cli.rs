@@ -514,6 +514,42 @@ fn cli_execute_main_coordinator_halt() {
         String::from_utf8_lossy(&out.stderr));
 }
 
+/// Dropped constraints are now hard errors by default — silently
+/// dropping a constraint produces wrong models, so the runtime
+/// exits non-zero. `EVIDENT_LENIENT=1` demotes to a warning for
+/// mid-refactor work.
+#[test]
+fn cli_dropped_constraint_is_an_error() {
+    // `Set(Pos)` isn't supported (the runtime warns + drops); using
+    // it as the LHS of an equality forces translate_bool to fail and
+    // the constraint drops. With strict default, exits non-zero.
+    let path = write_tmp("dropped",
+        "schema S\n    s ∈ Set(Pos)\n    s = {1, 2}\n");
+    let out = Command::new(bin())
+        .args(["query", path.to_str().unwrap(), "S"])
+        .output().unwrap();
+    assert!(!out.status.success(),
+        "expected exit !=0 on dropped constraint; stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error: dropped constraint"),
+        "expected error message in stderr: {stderr}");
+}
+
+#[test]
+fn cli_dropped_constraint_lenient_demotes_to_warning() {
+    let path = write_tmp("dropped_lenient",
+        "schema S\n    s ∈ Set(Pos)\n    s = {1, 2}\n");
+    let out = Command::new(bin())
+        .args(["query", path.to_str().unwrap(), "S"])
+        .env("EVIDENT_LENIENT", "1")
+        .output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("warning: dropped constraint"),
+        "expected warning in stderr with EVIDENT_LENIENT=1: {stderr}");
+}
+
 /// `--initial-state file.json` seeds the first frame's `given` from
 /// JSON. Verifies the file is parsed and the values reach the
 /// constraint solver — the program echoes the seeded `world.score`

@@ -53,10 +53,11 @@ type main
     #output.rects    = 5
 
     -- ── State bounds for dots: same range as balls.ev. ─────────────────────
-    ∀ i ∈ {0..3} : state.dots[i].pos_x ≥ 20  ∧ state.dots[i].pos_x ≤ 740
-    ∀ i ∈ {0..3} : state.dots[i].pos_y ≥ 20  ∧ state.dots[i].pos_y ≤ 540
-    ∀ i ∈ {0..3} : state.dots[i].vx    ≥ -800 ∧ state.dots[i].vx    ≤ 800
-    ∀ i ∈ {0..3} : state.dots[i].vy    ≥ -800 ∧ state.dots[i].vy    ≤ 800
+    ∀ i ∈ {0..3} : 
+        state.dots[i].pos_x ≥ 20  ∧ state.dots[i].pos_x ≤ 740
+        state.dots[i].pos_y ≥ 20  ∧ state.dots[i].pos_y ≤ 540
+        state.dots[i].vx    ≥ -800 ∧ state.dots[i].vx    ≤ 800
+        state.dots[i].vy    ≥ -800 ∧ state.dots[i].vy    ≤ 800
 
     -- ── Frame counter: increments every step. ──────────────────────────────
     state_next.step = state.step + 1

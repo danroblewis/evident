@@ -64,8 +64,31 @@ pub(super) fn inline_body_items(
                 if let Some(b) = translate_bool(e, ctx, env) {
                     solver.assert(&b);
                 } else {
-                    eprintln!("warning: dropped constraint (couldn't translate to Bool): {}",
-                              pretty::expr(e));
+                    // Hard-fail by default. A dropped constraint is silently-
+                    // incorrect — the user thinks their constraint fired but
+                    // the solver never saw it. Almost always a translator gap;
+                    // very rarely an actual program error.
+                    //
+                    // Escape hatch: `EVIDENT_LENIENT=1` demotes this to a
+                    // warning. Useful for incrementally-broken programs (e.g.
+                    // mid-refactor) and for tests that intentionally exercise
+                    // the un-translatable path.
+                    let lenient = std::env::var("EVIDENT_LENIENT")
+                        .map(|v| !v.is_empty() && v != "0")
+                        .unwrap_or(false);
+                    let pretty = pretty::expr(e);
+                    if lenient {
+                        eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
+                    } else {
+                        eprintln!("error: dropped constraint (couldn't translate to Bool):");
+                        eprintln!("       {pretty}");
+                        eprintln!();
+                        eprintln!("This constraint can't be expressed as a Z3 Bool with the");
+                        eprintln!("current translator — almost certainly a translator gap.");
+                        eprintln!("Either rewrite the constraint to a supported shape, or");
+                        eprintln!("set EVIDENT_LENIENT=1 to demote this to a warning.");
+                        std::process::exit(1);
+                    }
                 }
             }
             BodyItem::Passthrough(claim_name) => {
