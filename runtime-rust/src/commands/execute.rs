@@ -181,20 +181,11 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
     // whether the initial program declares any SDL vars. Programs
     // loaded later via `next_main` swap can also use SDL only if the
     // initial program did — the executor reuses the same plugin list.
-    if !sdl_vars.is_empty() {
-        // SDL window plugin needs --width/--height/--title for window
-        // construction (defaults: 800×600 "Evident" — same as evident.py).
-        // Per-var type info is now handed to the plugin via the
-        // executor's plugin matcher; no need to pre-populate.
-        let _ = sdl_vars; // keep the activation check; var_types comes from initialize()
-        plugins.push(sdl_plugin::create_sdl_plugin(
-            opts.width, opts.height, opts.title.clone()));
-    }
-
-    // SDLShaderOutput plugin: activated when any var of that type is
-    // declared in the initial program. Hands the runtime's type +
-    // shader tables to the plugin so it can compile the GLSL on the
-    // first frame without holding a runtime borrow.
+    // SDL plugins are mutually exclusive — only one can own the
+    // EventPump (SDL allows only one alive at a time). Pick the
+    // shader plugin if the program declares SDLShaderOutput; that
+    // plugin also covers SDLInput / SDLWindow contributions, so
+    // the rect-renderer SDLPlugin sits this run out.
     let shader_vars = collect_shader_vars(&initial_rt);
     if !shader_vars.is_empty() {
         let mut sp = shader_plugin::SDLShaderPlugin::new(
@@ -202,6 +193,14 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         );
         sp.set_runtime(build_shader_runtime_handle(&initial_rt));
         plugins.push(Box::new(sp));
+    } else if !sdl_vars.is_empty() {
+        // SDL window plugin needs --width/--height/--title for window
+        // construction (defaults: 800×600 "Evident" — same as evident.py).
+        // Per-var type info is handed to the plugin via the
+        // executor's plugin matcher; no need to pre-populate.
+        let _ = sdl_vars;
+        plugins.push(sdl_plugin::create_sdl_plugin(
+            opts.width, opts.height, opts.title.clone()));
     }
 
     // Wrap loader for the multi-program executor: the executor calls

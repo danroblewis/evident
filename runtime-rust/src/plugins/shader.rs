@@ -19,19 +19,24 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::ptr;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use sdl2::keyboard::Scancode;
 use sdl2::video::{GLContext, GLProfile, Window};
-use sdl2::Sdl;
+use sdl2::{EventPump, Sdl};
 
 use crate::glsl::{transpile, TranspiledShader};
 use crate::translate::Value;
 use crate::executor::Plugin;
 
-/// Type names this plugin handles. Right now just `SDLShaderOutput`,
-/// but the plugin also needs to know `shader_name` for which shader
-/// decl to compile — that's read from a binding rather than the
-/// type-name list.
-pub const SDL_SHADER_TYPES: &[&str] = &["SDLShaderOutput"];
+/// Types this plugin handles. `SDLShaderOutput` triggers the
+/// transpile + render pipeline; `SDLInput` / `SDLWindow` are the
+/// usual SDL contributions, replicated here so a shader-rendering
+/// program doesn't need the rect-renderer SDLPlugin running too
+/// (only one plugin can own the SDL EventPump). `cmd_execute`
+/// suppresses SDLPlugin when this plugin is active.
+pub const SDL_SHADER_TYPES: &[&str] =
+    &["SDLShaderOutput", "SDLInput", "SDLWindow"];
 
 /// SDL+GL state held across the lifetime of a run. The Sdl context
 /// must outlive the GLContext (which must outlive the Window) — all
@@ -44,10 +49,25 @@ pub struct SDLShaderPlugin {
     sdl:        Option<Sdl>,
     window:     Option<Window>,
     gl_context: Option<GLContext>,
+    /// Owned event pump. SDL allows only one EventPump per Sdl
+    /// instance — creating a fresh one each frame silently errors
+    /// (`Result::Err` we used to swallow), which left close events
+    /// unpolled and the X button non-functional.
+    event_pump: Option<EventPump>,
 
-    /// `var_name → output_var` matched at initialize time. Used to
-    /// know which `<var>.shader_name` binding to read.
-    matched_var: Option<String>,
+    /// Map from declared var name → its type name, populated at
+    /// `initialize`. Used by `before_step` to know which SDLInput /
+    /// SDLWindow vars to contribute givens for, and by `after_step`
+    /// to find which `<var>.shader_name` binding to read.
+    var_types: HashMap<String, String>,
+
+    // Input state mirrored from the SDL event pump each frame.
+    mouse_x: i32,
+    mouse_y: i32,
+    click:   bool,
+    quit:    bool,
+    last_instant:   Instant,
+    last_screen_xy: Option<(i32, i32)>,
 
     /// Compiled shader program + uniform locations. Lazily filled on
     /// the first `after_step` once we know which shader to use.
@@ -90,7 +110,11 @@ impl SDLShaderPlugin {
         SDLShaderPlugin {
             width, height, title: title.into(),
             sdl: None, window: None, gl_context: None,
-            matched_var: None,
+            event_pump: None,
+            var_types: HashMap::new(),
+            mouse_x: 0, mouse_y: 0, click: false, quit: false,
+            last_instant: Instant::now(),
+            last_screen_xy: None,
             program: None,
             runtime_handle: RuntimeHandle::default(),
             vao: 0, vbo: 0,
@@ -153,8 +177,10 @@ impl SDLShaderPlugin {
                 ptr::null(),
             );
         }
+        let event_pump = sdl.event_pump()?;
         self.vao = vao;
         self.vbo = vbo;
+        self.event_pump = Some(event_pump);
         self.sdl        = Some(sdl);
         self.gl_context = Some(gl_context);
         self.window     = Some(window);
@@ -196,36 +222,105 @@ impl Plugin for SDLShaderPlugin {
     fn handles_types(&self) -> &'static [&'static str] { SDL_SHADER_TYPES }
 
     fn initialize(&mut self, matched_vars: Vec<(String, String)>) {
-        self.matched_var = matched_vars.into_iter().next().map(|(n, _)| n);
+        self.var_types.clear();
+        for (n, t) in matched_vars {
+            self.var_types.insert(n, t);
+        }
         if let Err(e) = self.open_window() {
             eprintln!("SDLShader init failed: {e}");
         }
     }
 
     fn before_step(&mut self) -> Option<HashMap<String, Value>> {
-        // Drain SDL events so the window stays responsive (close
-        // button works, esc quits). No input contributions — the
-        // shader doesn't need any givens.
-        if let Some(sdl) = &self.sdl {
-            if let Ok(mut pump) = sdl.event_pump() {
-                for event in pump.poll_iter() {
-                    use sdl2::event::Event;
-                    use sdl2::keyboard::Keycode;
-                    match event {
-                        Event::Quit { .. } => return None,
-                        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return None,
-                        _ => {}
+        // Drain events first — close button + escape stop the run.
+        // The pump is owned by this plugin (created once in
+        // open_window). Re-creating per frame silently fails because
+        // SDL allows only one EventPump per Sdl instance.
+        self.click = false;
+        if let Some(pump) = self.event_pump.as_mut() {
+            for event in pump.poll_iter() {
+                use sdl2::event::Event;
+                use sdl2::keyboard::Keycode;
+                match event {
+                    Event::Quit { .. } => { self.quit = true; return None; }
+                    Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return None,
+                    Event::MouseMotion { x, y, .. } => { self.mouse_x = x; self.mouse_y = y; }
+                    Event::MouseButtonDown { x, y, .. } => {
+                        self.mouse_x = x; self.mouse_y = y; self.click = true;
                     }
+                    _ => {}
                 }
             }
         }
-        Some(HashMap::new())
+
+        // Continuous keyboard state.
+        let pump = self.event_pump.as_ref()?;
+        let kb = pump.keyboard_state();
+        let right = kb.is_scancode_pressed(Scancode::Right);
+        let left  = kb.is_scancode_pressed(Scancode::Left);
+        let up    = kb.is_scancode_pressed(Scancode::Up);
+        let down  = kb.is_scancode_pressed(Scancode::Down);
+
+        // dt + wall clock.
+        let now = Instant::now();
+        let dt_ms = now.duration_since(self.last_instant).as_millis() as i64;
+        let dt_ms = dt_ms.min(100);
+        self.last_instant = now;
+        let unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+
+        // Window position + delta (for SDLWindow vars only).
+        let canvas_window = self.window.as_ref()?;
+        let (screen_x, screen_y) = canvas_window.position();
+        let (size_w, size_h)     = canvas_window.size();
+        let (wdx, wdy) = match self.last_screen_xy {
+            Some((px, py)) => (screen_x - px, screen_y - py),
+            None => (0, 0),
+        };
+        self.last_screen_xy = Some((screen_x, screen_y));
+
+        let mut out: HashMap<String, Value> = HashMap::new();
+        for (var, ty) in &self.var_types {
+            match ty.as_str() {
+                "SDLInput" => {
+                    out.insert(format!("{var}.right_held"), Value::Bool(right));
+                    out.insert(format!("{var}.left_held"),  Value::Bool(left));
+                    out.insert(format!("{var}.up_held"),    Value::Bool(up));
+                    out.insert(format!("{var}.down_held"),  Value::Bool(down));
+                    out.insert(format!("{var}.mouse.x"),    Value::Int(self.mouse_x as i64));
+                    out.insert(format!("{var}.mouse.y"),    Value::Int(self.mouse_y as i64));
+                    out.insert(format!("{var}.click"),      Value::Bool(self.click));
+                    out.insert(format!("{var}.quit"),       Value::Bool(self.quit));
+                    out.insert(format!("{var}.time"),       Value::Int(unix_ms));
+                    out.insert(format!("{var}.dt"),         Value::Int(dt_ms));
+                }
+                "SDLWindow" => {
+                    out.insert(format!("{var}.screen.x"), Value::Int(screen_x as i64));
+                    out.insert(format!("{var}.screen.y"), Value::Int(screen_y as i64));
+                    out.insert(format!("{var}.size.x"),   Value::Int(size_w as i64));
+                    out.insert(format!("{var}.size.y"),   Value::Int(size_h as i64));
+                    out.insert(format!("{var}.drag.x"),   Value::Int(wdx as i64));
+                    out.insert(format!("{var}.drag.y"),   Value::Int(wdy as i64));
+                }
+                _ => {} // SDLShaderOutput contributes nothing here
+            }
+        }
+        Some(out)
     }
 
     fn after_step(&mut self, bindings: &HashMap<String, Value>) -> bool {
         // First successful step: figure out which shader to compile.
+        // Find the (single) SDLShaderOutput var and read its
+        // `shader_name` binding.
         if self.program.is_none() {
-            let var = self.matched_var.clone().unwrap_or_default();
+            let Some(var) = self.var_types.iter()
+                .find(|(_, t)| t.as_str() == "SDLShaderOutput")
+                .map(|(n, _)| n.clone()) else {
+                eprintln!("SDLShader: no SDLShaderOutput var matched");
+                return false;
+            };
             let shader_name = match bindings.get(&format!("{var}.shader_name")) {
                 Some(Value::Str(s)) => s.clone(),
                 _ => {
