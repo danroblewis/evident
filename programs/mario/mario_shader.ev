@@ -117,7 +117,13 @@ type main(state, state_next ∈ GameState)
 
 shader MarioScene
     pixel ∈ Vec2
-    state ∈ MarioShaderState
+    -- Variable name MUST match main's `shader_state ∈ MarioShaderState`.
+    -- The shader plugin looks up uniforms in bindings by source name
+    -- (`shader_state.hero_x`, etc.). If this var were just named
+    -- `state`, the plugin would look for `state.hero_x`, which isn't
+    -- in main's bindings, and every uniform would stay at its GLSL
+    -- default (0) — silent rendering bug.
+    shader_state ∈ MarioShaderState
 
     -- Local declarations (in any order — topo handles the rest).
     world, hcenter ∈ Vec2
@@ -131,19 +137,19 @@ shader MarioScene
     in_c0, in_c1, in_c2, in_c3, in_c4, in_c5, in_c6, in_c7, in_coin ∈ Bool
 
     -- ── Time + world coord conversion.
-    t   = float(state.time_ms) / 1000.0
-    cam = float(state.camera_x)
-    hx  = float(state.hero_x)
-    hy  = float(state.hero_y)
-    hvx = float(state.hero_vx)
+    t   = float(shader_state.time_ms) / 1000.0
+    cam = float(shader_state.camera_x)
+    hx  = float(shader_state.hero_x)
+    hy  = float(shader_state.hero_y)
+    hvx = float(shader_state.hero_vx)
     world = pixel + Vec2(cam, 0.0)
 
     -- ── Sky gradient + sun. Sun lives in screen space (no scroll),
     -- gentle radius pulse via sin(t).
-    state.won = false ⇒ sky_top = Vec3(0.20, 0.45, 0.85)
-    state.won = false ⇒ sky_bot = Vec3(0.65, 0.85, 0.95)
-    state.won = true  ⇒ sky_top = Vec3(0.95, 0.55, 0.30)
-    state.won = true  ⇒ sky_bot = Vec3(1.00, 0.85, 0.55)
+    shader_state.won = false ⇒ sky_top = Vec3(0.20, 0.45, 0.85)
+    shader_state.won = false ⇒ sky_bot = Vec3(0.65, 0.85, 0.95)
+    shader_state.won = true  ⇒ sky_top = Vec3(0.95, 0.55, 0.30)
+    shader_state.won = true  ⇒ sky_bot = Vec3(1.00, 0.85, 0.55)
     sky = mix(sky_top, sky_bot, pixel.y / iResolution.y)
 
     sun_d  = length(pixel - Vec2(iResolution.x * 0.85, iResolution.y * 0.18)) - (35.0 + 4.0 * sin(t * 0.7))
@@ -178,14 +184,14 @@ shader MarioScene
     -- ── Coins: 8 hardcoded centers, each a 9px-radius disc. Hidden
     -- when collected (set in_cN = false for that coin). Shimmer
     -- pattern moves with time so they "spin" visually.
-    in_c0 = ((state.coin_0 = false) ∧ (length(world - Vec2( 359.0, 409.0)) < 9.0))
-    in_c1 = ((state.coin_1 = false) ∧ (length(world - Vec2( 579.0, 309.0)) < 9.0))
-    in_c2 = ((state.coin_2 = false) ∧ (length(world - Vec2( 809.0, 209.0)) < 9.0))
-    in_c3 = ((state.coin_3 = false) ∧ (length(world - Vec2(1069.0, 349.0)) < 9.0))
-    in_c4 = ((state.coin_4 = false) ∧ (length(world - Vec2(1109.0, 349.0)) < 9.0))
-    in_c5 = ((state.coin_5 = false) ∧ (length(world - Vec2(1349.0, 249.0)) < 9.0))
-    in_c6 = ((state.coin_6 = false) ∧ (length(world - Vec2(1509.0, 509.0)) < 9.0))
-    in_c7 = ((state.coin_7 = false) ∧ (length(world - Vec2( 209.0, 509.0)) < 9.0))
+    in_c0 = ((shader_state.coin_0 = false) ∧ (length(world - Vec2( 359.0, 409.0)) < 9.0))
+    in_c1 = ((shader_state.coin_1 = false) ∧ (length(world - Vec2( 579.0, 309.0)) < 9.0))
+    in_c2 = ((shader_state.coin_2 = false) ∧ (length(world - Vec2( 809.0, 209.0)) < 9.0))
+    in_c3 = ((shader_state.coin_3 = false) ∧ (length(world - Vec2(1069.0, 349.0)) < 9.0))
+    in_c4 = ((shader_state.coin_4 = false) ∧ (length(world - Vec2(1109.0, 349.0)) < 9.0))
+    in_c5 = ((shader_state.coin_5 = false) ∧ (length(world - Vec2(1349.0, 249.0)) < 9.0))
+    in_c6 = ((shader_state.coin_6 = false) ∧ (length(world - Vec2(1509.0, 509.0)) < 9.0))
+    in_c7 = ((shader_state.coin_7 = false) ∧ (length(world - Vec2( 209.0, 509.0)) < 9.0))
     in_coin = (in_c0 ∨ in_c1 ∨ in_c2 ∨ in_c3 ∨ in_c4 ∨ in_c5 ∨ in_c6 ∨ in_c7)
     coin_phase   = world.x * 0.4 + t * 4.0
     coin_shimmer = 0.5 + 0.5 * sin(coin_phase)
@@ -197,7 +203,7 @@ shader MarioScene
     -- Walk wobble shifts the legs when on_ground and moving.
     hcenter = Vec2(hx + 15.0, hy + 20.0)
     walk = sin(t * 12.0) * sign(hvx) * 3.0
-    state.hero_on_ground = false ⇒ walk = 0.0
+    shader_state.hero_on_ground = false ⇒ walk = 0.0
 
     -- Head (round): SDF disc at top of bbox.
     head_d = length(world - (hcenter + Vec2(0.0, -14.0))) - 7.0
