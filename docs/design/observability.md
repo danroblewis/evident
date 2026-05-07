@@ -207,3 +207,36 @@ reinforces an existing one (shown by edge weight / thickness).
 **Make structure visible at a glance.** A user should be able to tell in under
 five seconds whether a relation is a function, whether a graph is connected, and
 whether there are hubs — without counting arrows or reading numbers.
+
+---
+
+## Idea: state-machine transition diagrams
+
+(Captured 2026-05-06; not yet designed.)
+
+The language is drifting toward finite state machines as a dominant pattern:
+`state` / `state_next` pairs forwarded by the executor, dispatch tables that
+read `state.location` or `verb` and select an action subclaim, transitions
+expressed as `state_next.x = state.x + ...`. The shape is already there; we
+just don't visualise it.
+
+If a program's `main` follows the FSM shape, the renderer can extract the
+transition relation from the schema body and draw it: nodes for each reachable
+state (or each value of a `verb` / `location` enum), arcs labelled with the
+input that triggers the transition. For programs whose state space is small
+and enum-typed (text adventures, parser modes, menu/level coordinators) this
+gives a one-glance view of the whole program.
+
+Open questions when we get to it:
+
+- **Detection.** Heuristic ("name pair `foo` / `foo_next` of an enum-typed
+  field") or explicit (a `-- @fsm state=verb` annotation)?
+- **State space.** Enum-valued state is easy. Int / string state is unbounded —
+  sample-driven discovery (run the executor for N steps, draw the states it
+  actually visits) is the obvious fallback.
+- **Edge labels.** Pull from the dispatch condition (e.g. `verb = Look` for the
+  LookAction branch) or from input-channel givens (`src.char = "n"`)? Likely
+  both, depending on the program.
+- **Static vs. live.** Static diagram from schema analysis, or live diagram that
+  highlights the current state and recently-traversed edges as the executor
+  runs? Live is much more useful for debugging.
