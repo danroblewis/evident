@@ -182,8 +182,9 @@ shader S
     let shader = rt.shaders().iter().find(|s| s.name == "S").unwrap();
     let res = transpile(shader, &collect_type_leaves(&rt));
     let err = res.expect_err("cycle should be rejected");
-    assert!(format!("{err}").contains("cyclic"),
-        "expected cycle error, got: {err}");
+    let msg = format!("{err}");
+    assert!(msg.contains("cycle") || msg.contains("underdetermined"),
+        "expected cycle/underdetermined error, got: {err}");
 }
 
 #[test]
@@ -207,6 +208,153 @@ shader S
         .expect(&format!("second branch missing: {g}"));
     assert!(red_pos < blue_pos,
         "dispatch order must match source order:\n{g}");
+}
+
+#[test]
+fn bidirectional_lhs_unknown() {
+    // Standard direction — unknown is on the LHS, transpiler emits
+    // straight assignment.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b, c ∈ Real
+    a = pixel.x
+    b = 5.0
+    c = a + b
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("c = (a + b);"), "{g}");
+}
+
+#[test]
+fn bidirectional_rhs_unknown() {
+    // Unknown is on the RHS — transpiler should flip.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b, c ∈ Real
+    a = pixel.x
+    b = 5.0
+    a + b = c
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("c = (a + b);"),
+        "RHS unknown should flip to LHS:\n{g}");
+}
+
+#[test]
+fn bidirectional_subtraction_left() {
+    // a + b = c with c, b known: solve for a → a = c - b.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b, c ∈ Real
+    b = 5.0
+    c = pixel.x
+    a + b = c
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("a = (c - b);"),
+        "should isolate `a` via subtraction:\n{g}");
+}
+
+#[test]
+fn bidirectional_division() {
+    // 2 * x = y with y known: x = y / 2.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    x, y ∈ Real
+    y = pixel.x
+    2.0 * x = y
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("x = (y / 2.0);"),
+        "should isolate `x` via division:\n{g}");
+}
+
+#[test]
+fn bidirectional_subtract_with_unknown_on_right() {
+    // k - x = y with k, y known: x = k - y. Tests the
+    // non-commutative branch.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    k, x, y ∈ Real
+    k = 10.0
+    y = pixel.x
+    k - x = y
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("x = (k - y);"),
+        "should isolate `x = k - y`:\n{g}");
+}
+
+#[test]
+fn bidirectional_nested_chain() {
+    // (a + b) * c = d, isolating `a` with b, c, d known.
+    // → a = (d / c) - b
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b, c, d ∈ Real
+    b = 1.0
+    c = 2.0
+    d = pixel.x
+    (a + b) * c = d
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    assert!(g.contains("a = ((d / c) - b);"),
+        "should isolate `a` through chain:\n{g}");
+}
+
+#[test]
+fn bidirectional_multi_occurrence_rejected() {
+    // a + a = b — quadratic-ish, can't isolate.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b ∈ Real
+    b = pixel.x
+    a + a = b
+    output.fragment = Color(255, 0, 0)
+";
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(src).unwrap();
+    let shader = rt.shaders().iter().find(|s| s.name == "S").unwrap();
+    let err = transpile(shader, &collect_type_leaves(&rt))
+        .expect_err("multi-occurrence should be rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("multiple times"),
+        "expected multi-occurrence error, got: {err}");
+}
+
+#[test]
+fn bidirectional_nonlinear_rejected() {
+    // length(c) = r — c is the unknown; can't invert length.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    c ∈ Vec2
+    r ∈ Real
+    r = pixel.x
+    length(c) = r
+    output.fragment = Color(255, 0, 0)
+";
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(src).unwrap();
+    let shader = rt.shaders().iter().find(|s| s.name == "S").unwrap();
+    let err = transpile(shader, &collect_type_leaves(&rt))
+        .expect_err("nonlinear should be rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("can't isolate") || msg.contains("only +"),
+        "expected isolation error, got: {err}");
 }
 
 #[test]

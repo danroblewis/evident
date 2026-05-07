@@ -196,15 +196,29 @@ pub fn transpile(
             )));
         }
     }
-    let order = topo_sort_constraints(&shader.body)?;
+    let scheduled = schedule_constraints(&shader.body)?;
     let mut emitter = Emitter {
         out: String::new(), buckets: &buckets, body: &shader.body,
         seen_outputs: HashSet::new(),
     };
-    for idx in order {
-        if let BodyItem::Constraint(e) = &shader.body[idx] {
-            emitter.emit_constraint(e, idx)?;
-        }
+    for (idx, unknown, expr) in scheduled {
+        // If `unknown` is set and isn't already on the LHS, rewrite
+        // the equation so it is. Bidirectional in action: the user
+        // could have written `a + b = c`, `c - b = a`, or `c = a + b`
+        // — the scheduler picks the unknown, the rewriter puts it
+        // on the left, the emitter writes a normal GLSL assignment.
+        let rewritten = match (&unknown, &expr) {
+            (Some(u), Expr::Binary(BinOp::Eq, lhs, rhs)) if bare_ident(lhs).as_deref() != Some(u) => {
+                let isolated = isolate(lhs, rhs, u)?;
+                Expr::Binary(
+                    BinOp::Eq,
+                    Box::new(Expr::Identifier(u.clone())),
+                    Box::new(isolated),
+                )
+            }
+            _ => expr,
+        };
+        emitter.emit_constraint(&rewritten, idx)?;
     }
 
     // 3. Assemble the source.
@@ -243,125 +257,322 @@ pub fn transpile(
     Ok(TranspiledShader { source: src, uniforms })
 }
 
-/// Reorder a shader body's `Constraint` items into dependency
-/// order. Returns indices into `body` — Memberships are filtered out
-/// (they're declarations, emitted in a separate pass).
+/// Schedule a shader body's `Constraint` items: discover which var
+/// each one defines (it can be on either side of `=`), order them
+/// so every reference points at an already-defined var, and
+/// algebraically isolate the unknown when it isn't already the LHS.
 ///
-/// Each Constraint is treated as one node. An edge `a → b` means
-/// item `a` must be emitted before item `b` (because `b`'s expression
-/// references a var that `a` defines). Multiple constraints can
-/// define the same var (dispatch chains: `cond1 ⇒ var = X` then
-/// `cond2 ⇒ var = Y`); they're all considered "definers" of the var,
-/// and any item depending on `var` waits for all of them.
+/// Returns `(item_idx, unknown_var, isolated_expr)` triples ready
+/// for emission. `unknown_var = None` for items that don't define
+/// a local (output.fragment writes — they're terminal sinks).
 ///
-/// Tie-breaking is stable on source order so dispatch chains keep
-/// their original line ordering (matters for `if` / `if`-elseif
-/// semantics in the emitted GLSL).
+/// Wave scheduling instead of pure Kahn's: at each pass, find any
+/// constraint with exactly one not-yet-defined var among its
+/// references and schedule it. Repeat. If a pass makes no progress
+/// and unscheduled constraints remain, the body is either cyclic
+/// (a depends on b depends on a) or underdetermined (`a + b = c`
+/// when only `c` is known). Both surface as `TranspileError`.
 ///
-/// Cycles → `TranspileError` (the user wrote a self-referential
-/// constraint set the GLSL emitter can't unroll).
-fn topo_sort_constraints(body: &[BodyItem]) -> Result<Vec<usize>, TranspileError> {
-    // 1. Collect every Constraint item with its (lhs_var, deps).
-    //    `lhs_var = None` for items that don't define a local
-    //    (output.fragment writes go here — they sink to the end).
-    struct Item { idx: usize, lhs: Option<String>, deps: Vec<String> }
-    let mut items: Vec<Item> = Vec::new();
-    let mut definers_by_var: HashMap<String, Vec<usize>> = HashMap::new();
-    let mut local_names: HashSet<String> = HashSet::new();
+/// Guarded constraints (`cond ⇒ var = expr`) are treated
+/// non-bidirectionally for v1 — the LHS must still be a bare
+/// identifier. Bidirectional rearrangement under a guard is
+/// well-defined but adds branching cases that aren't motivated by
+/// any concrete shader pattern yet.
+fn schedule_constraints(body: &[BodyItem])
+    -> Result<Vec<(usize, Option<String>, Expr)>, TranspileError>
+{
+    // 1. Classify Memberships. Sub-record memberships (state ∈
+    //    GameState) become uniforms, available to every constraint
+    //    from the start. Primitive memberships (Real, Vec2, …) are
+    //    locals that need to be defined by some constraint — except
+    //    when no constraint references them at all, in which case
+    //    they're free-noise vars (still "defined" for scheduling
+    //    purposes — the noise expression initializes them).
+    let mut local_to_be_defined: HashSet<String> = HashSet::new();
+    let mut local_referenced: HashSet<String> = HashSet::new();
+    let mut all_local_names: HashSet<String> = HashSet::new();
 
-    // Locally-defined names = anything that ever appears as the LHS
-    // of a top-level `var = expr` or `cond ⇒ var = expr`. Memberships
-    // also contribute (they declare a name) so an item depending on
-    // a Membership-only var (e.g. a free-noise var) doesn't try to
-    // wait for a definer that doesn't exist.
     for item in body {
-        match item {
-            BodyItem::Membership { name, .. } => { local_names.insert(name.clone()); }
-            BodyItem::Constraint(e) => {
-                if let Some(name) = constraint_lhs_var(e) {
-                    local_names.insert(name);
-                }
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            // Anything Real/Int/Nat/Pos/Bool/Color/Vec2/Vec3/Vec4 is
+            // a primitive local; sub-records like `state ∈ GameState`
+            // are uniform-shaped and never get a constraint defining
+            // them in-shader.
+            if is_primitive_or_vec_type(type_name) {
+                local_to_be_defined.insert(name.clone());
             }
-            _ => {}
+            all_local_names.insert(name.clone());
         }
     }
-
-    for (idx, item) in body.iter().enumerate() {
-        let BodyItem::Constraint(e) = item else { continue };
-        let lhs  = constraint_lhs_var(e);
-        let mut refs: HashSet<String> = HashSet::new();
-        crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
-        // Only deps on locally-defined names matter — uniforms,
-        // pixel, builtins, etc. are independent of source order.
-        // Also drop a self-edge: `var = f(var)` doesn't make sense
-        // in a shader, but if it slips in, treating it as a dep
-        // would deadlock.
-        let deps: Vec<String> = refs.into_iter()
-            .filter_map(|r| dep_root(&r))
-            .filter(|r| local_names.contains(r))
-            .filter(|r| Some(r) != lhs.as_ref())
-            .collect();
-        let pos = items.len();
-        if let Some(name) = &lhs {
-            definers_by_var.entry(name.clone()).or_default().push(pos);
-        }
-        items.push(Item { idx, lhs, deps });
-    }
-
-    // 2. Build edges + in-degree. For each item i and each dep d,
-    //    every definer of d must precede i.
-    let n = items.len();
-    let mut out_edges: Vec<Vec<usize>> = vec![Vec::new(); n];
-    let mut indeg: Vec<usize> = vec![0; n];
-    for (i, it) in items.iter().enumerate() {
-        for dep in &it.deps {
-            if let Some(definers) = definers_by_var.get(dep) {
-                for &d in definers {
-                    out_edges[d].push(i);
-                    indeg[i] += 1;
+    // Identify which locals are referenced anywhere — anything
+    // unreferenced becomes Noise and is "free" from the scheduler's
+    // standpoint.
+    for item in body {
+        if let BodyItem::Constraint(e) = item {
+            let mut refs: HashSet<String> = HashSet::new();
+            crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
+            for r in refs {
+                if let Some(root) = dep_root(&r) {
+                    if local_to_be_defined.contains(&root) {
+                        local_referenced.insert(root);
+                    }
                 }
             }
         }
     }
+    // Defined-set seeds: locals that are never referenced (so don't
+    // need to be derived — they're noise) start as "defined." Plus
+    // `pixel` (varying) is always defined.
+    let mut defined: HashSet<String> = local_to_be_defined
+        .iter().filter(|n| !local_referenced.contains(*n)).cloned().collect();
+    defined.insert("pixel".to_string());
 
-    // 3. Kahn's. Initial queue: every item with indeg 0, in source
-    //    order (preserves dispatch-chain ordering for ties).
-    let mut ready: std::collections::VecDeque<usize> =
-        (0..n).filter(|&i| indeg[i] == 0).collect();
-    let mut order: Vec<usize> = Vec::with_capacity(n);
-    while let Some(i) = ready.pop_front() {
-        order.push(items[i].idx);
-        for &j in &out_edges[i] {
-            indeg[j] -= 1;
-            if indeg[j] == 0 {
-                // Insert at the end — stable wrt source order.
-                ready.push_back(j);
+    // Track which constraint index defines which var (for guarded
+    // dispatch, multiple constraints can define the same var).
+    let mut definer_pending: Vec<(usize, &Expr)> = body.iter().enumerate()
+        .filter_map(|(i, item)| match item {
+            BodyItem::Constraint(e) => Some((i, e)),
+            _ => None,
+        })
+        .collect();
+    let mut emit_order: Vec<(usize, Option<String>, Expr)> = Vec::new();
+
+    // Wave scheduling. In each pass, find every constraint whose
+    // unknown can be uniquely identified given the current defined
+    // set; schedule and remove. Loop until empty or stuck.
+    loop {
+        if definer_pending.is_empty() { break; }
+        let mut progressed = false;
+        let mut still_pending: Vec<(usize, &Expr)> = Vec::new();
+        for (idx, e) in definer_pending {
+            // Guarded shape always uses LHS-Identifier.
+            if let Expr::Binary(BinOp::Implies, ant, cons) = e {
+                if let Expr::Binary(BinOp::Eq, lhs, rhs) = cons.as_ref() {
+                    if let Some(name) = bare_ident(lhs) {
+                        // Defer until both the antecedent and the RHS
+                        // are fully resolvable (no unknowns).
+                        let mut needed: HashSet<String> = HashSet::new();
+                        crate::translate::preprocess_api::collect_referenced_names(ant, &mut needed);
+                        crate::translate::preprocess_api::collect_referenced_names(rhs, &mut needed);
+                        let unresolved: Vec<String> = needed.into_iter()
+                            .filter_map(|r| dep_root(&r))
+                            .filter(|r| local_to_be_defined.contains(r))
+                            .filter(|r| !defined.contains(r) && r != &name)
+                            .collect();
+                        if unresolved.is_empty() {
+                            emit_order.push((idx, Some(name.clone()), e.clone()));
+                            defined.insert(name);
+                            progressed = true;
+                            continue;
+                        }
+                    }
+                }
+                still_pending.push((idx, e));
+                continue;
+            }
+            // Unguarded equation: discover the unknown.
+            let Expr::Binary(BinOp::Eq, _, _) = e else {
+                // Anything else (a bare bool constraint, e.g.) is
+                // emitted as-is at the end with no defined var.
+                emit_order.push((idx, None, e.clone()));
+                progressed = true;
+                continue;
+            };
+            // Output sink: `output.fragment = expr` is terminal.
+            // Treat as a no-unknown emit when its RHS is fully
+            // resolvable.
+            if let Expr::Binary(BinOp::Eq, lhs, rhs) = e {
+                if is_output_fragment(lhs) {
+                    let mut needed: HashSet<String> = HashSet::new();
+                    crate::translate::preprocess_api::collect_referenced_names(rhs, &mut needed);
+                    let unresolved: Vec<String> = needed.into_iter()
+                        .filter_map(|r| dep_root(&r))
+                        .filter(|r| local_to_be_defined.contains(r))
+                        .filter(|r| !defined.contains(r))
+                        .collect();
+                    if unresolved.is_empty() {
+                        emit_order.push((idx, None, e.clone()));
+                        progressed = true;
+                        continue;
+                    } else {
+                        still_pending.push((idx, e));
+                        continue;
+                    }
+                }
+            }
+            // Generic equation. Find the (single) unknown across both sides.
+            let mut refs: HashSet<String> = HashSet::new();
+            crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
+            let unknowns: Vec<String> = refs.into_iter()
+                .filter_map(|r| dep_root(&r))
+                .filter(|r| local_to_be_defined.contains(r))
+                .filter(|r| !defined.contains(r))
+                .collect();
+            // Dedup, since an `a + a = c` would list `a` twice.
+            let unknowns: Vec<String> = unknowns.into_iter()
+                .collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+            match unknowns.len() {
+                0 => {
+                    // Tautology check. Drop with no emission — it's
+                    // a runtime-true constraint, useless for shaders.
+                    progressed = true;
+                }
+                1 => {
+                    let unk = unknowns[0].clone();
+                    emit_order.push((idx, Some(unk.clone()), e.clone()));
+                    defined.insert(unk);
+                    progressed = true;
+                }
+                _ => {
+                    // Multiple unknowns — wait for another constraint
+                    // to define some of them first.
+                    still_pending.push((idx, e));
+                }
             }
         }
+        definer_pending = still_pending;
+        if !progressed {
+            // Stuck. Either underdetermined or cyclic.
+            let stuck: Vec<usize> = definer_pending.iter().map(|(i, _)| *i).collect();
+            return Err(TranspileError(format!(
+                "shader: can't resolve constraint(s) at body indices {:?} \
+                 — {} unknowns remain. Either the constraint set is \
+                 underdetermined or you have a cycle.",
+                stuck, definer_pending.len()
+            )));
+        }
     }
-    if order.len() != n {
-        let cycle: Vec<String> = items.iter().enumerate()
-            .filter(|(i, _)| indeg[*i] > 0)
-            .filter_map(|(_, it)| it.lhs.clone())
-            .collect();
-        return Err(TranspileError(format!(
-            "shader: cyclic constraint(s) on {:?}", cycle
-        )));
-    }
-    Ok(order)
+    Ok(emit_order)
 }
 
-/// LHS var name of a constraint, when there is one. `var = expr` →
-/// Some("var"); `cond ⇒ var = expr` → Some("var"); anything else
-/// (like `output.fragment = expr`) → None.
-fn constraint_lhs_var(e: &Expr) -> Option<String> {
-    match e {
-        Expr::Binary(BinOp::Eq, lhs, _) => bare_ident(lhs),
-        Expr::Binary(BinOp::Implies, _, cons) => match cons.as_ref() {
-            Expr::Binary(BinOp::Eq, lhs, _) => bare_ident(lhs),
-            _ => None,
+/// Whether a type name is a primitive scalar / vector type that
+/// shows up as a local in the GLSL `main()` (as opposed to a sub-
+/// record type whose Membership becomes uniforms). The transpiler
+/// also accepts `Color` here even though it's a record under the
+/// hood — Color memberships become local vec3s.
+fn is_primitive_or_vec_type(t: &str) -> bool {
+    matches!(t, "Real" | "Int" | "Nat" | "Pos" | "Bool" |
+                "Color" | "Vec2" | "Vec3" | "Vec4")
+}
+
+/// Algebraic isolation: rearrange `lhs = rhs` so `unknown` is on
+/// the left. Walks down the side that contains `unknown`, peeling
+/// off binary ops and applying inverses to the other side.
+///
+/// Supported peels: `+`, `-`, `*`, `/`. Anything else (function
+/// calls, unary ops, comparisons) where the unknown lives inside
+/// is rejected — we'd need `length`/`sin`/etc. inverses, which
+/// don't exist in closed form for most cases. Z3 itself can't
+/// symbolically invert these either; the limit is fundamental,
+/// not a transpiler shortcut.
+///
+/// Multi-occurrence (`a + a = c`, `a * a = b`) is also rejected —
+/// would need quadratic-formula reasoning, out of scope for v1.
+fn isolate(lhs: &Expr, rhs: &Expr, unknown: &str) -> Result<Expr, TranspileError> {
+    let lhs_count = count_occurrences(lhs, unknown);
+    let rhs_count = count_occurrences(rhs, unknown);
+    if lhs_count + rhs_count == 0 {
+        return Err(TranspileError(format!(
+            "shader: tried to isolate `{}` but it doesn't appear in the equation",
+            unknown
+        )));
+    }
+    if lhs_count + rhs_count > 1 {
+        return Err(TranspileError(format!(
+            "shader: `{}` appears multiple times — can't isolate algebraically \
+             (would need quadratic-formula reasoning)",
+            unknown
+        )));
+    }
+    let (with_unknown, known) = if lhs_count == 1 { (lhs, rhs) } else { (rhs, lhs) };
+    isolate_chain(with_unknown, known.clone(), unknown)
+}
+
+/// Recursive peel: `(side OP other) = acc` → `side = acc OP_INV other`
+/// (or symmetric for non-commutative). When `side` is the bare
+/// unknown identifier, return `acc` directly.
+fn isolate_chain(side: &Expr, acc: Expr, unknown: &str) -> Result<Expr, TranspileError> {
+    if let Expr::Identifier(n) = side {
+        if n == unknown { return Ok(acc); }
+    }
+    let Expr::Binary(op, a, b) = side else {
+        return Err(TranspileError(format!(
+            "shader: can't isolate `{}` through {:?} — only +, -, *, / chains \
+             are supported (function calls and other ops have no closed-form \
+             inverse)",
+            unknown, side
+        )));
+    };
+    let a_has = count_occurrences(a, unknown) == 1;
+    let b_has = count_occurrences(b, unknown) == 1;
+    if !a_has && !b_has {
+        return Err(TranspileError(format!(
+            "shader: lost track of `{}` while isolating", unknown
+        )));
+    }
+    let (with_unknown, known) = if a_has {
+        (a.as_ref(), b.as_ref().clone())
+    } else {
+        (b.as_ref(), a.as_ref().clone())
+    };
+    let new_acc = match op {
+        // (x + k) = acc       → x = acc - k         (commutative)
+        // (k + x) = acc       → x = acc - k
+        BinOp::Add => Expr::Binary(
+            BinOp::Sub, Box::new(acc), Box::new(known)),
+        // (x - k) = acc       → x = acc + k
+        // (k - x) = acc       → x = k - acc
+        BinOp::Sub => if a_has {
+            Expr::Binary(BinOp::Add, Box::new(acc), Box::new(known))
+        } else {
+            Expr::Binary(BinOp::Sub, Box::new(known), Box::new(acc))
         },
-        _ => None,
+        // (x * k) = acc       → x = acc / k         (commutative)
+        BinOp::Mul => Expr::Binary(
+            BinOp::Div, Box::new(acc), Box::new(known)),
+        // (x / k) = acc       → x = acc * k
+        // (k / x) = acc       → x = k / acc
+        BinOp::Div => if a_has {
+            Expr::Binary(BinOp::Mul, Box::new(acc), Box::new(known))
+        } else {
+            Expr::Binary(BinOp::Div, Box::new(known), Box::new(acc))
+        },
+        other => return Err(TranspileError(format!(
+            "shader: can't isolate `{}` through operator {:?}", unknown, other
+        ))),
+    };
+    isolate_chain(with_unknown, new_acc, unknown)
+}
+
+/// Count how many times `unknown` (as a leaf identifier) appears
+/// inside `e`. Walks Binary, Field, Call, Not, etc. — anywhere a
+/// reference can hide. Returns 0/1/2+; the isolator only handles
+/// the count-1 case.
+fn count_occurrences(e: &Expr, unknown: &str) -> usize {
+    match e {
+        Expr::Identifier(n) => {
+            // Match either the bare name or a dotted form rooted at
+            // the unknown (so `a.x` counts when isolating `a` —
+            // though we'd then reject the isolation since vec
+            // swizzles aren't invertible).
+            let root = n.split('.').next().unwrap_or(n);
+            if root == unknown { 1 } else { 0 }
+        }
+        Expr::Binary(_, a, b) => count_occurrences(a, unknown) + count_occurrences(b, unknown),
+        Expr::Not(inner) | Expr::Cardinality(inner) =>
+            count_occurrences(inner, unknown),
+        Expr::Field(r, _) => count_occurrences(r, unknown),
+        Expr::Index(s, i) =>
+            count_occurrences(s, unknown) + count_occurrences(i, unknown),
+        Expr::Call(_, args) | Expr::SetLit(args) | Expr::SeqLit(args) =>
+            args.iter().map(|a| count_occurrences(a, unknown)).sum(),
+        Expr::Range(lo, hi) =>
+            count_occurrences(lo, unknown) + count_occurrences(hi, unknown),
+        Expr::InExpr(l, r) =>
+            count_occurrences(l, unknown) + count_occurrences(r, unknown),
+        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) =>
+            count_occurrences(range, unknown) + count_occurrences(body, unknown),
+        _ => 0,
     }
 }
 
