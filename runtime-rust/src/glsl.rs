@@ -116,8 +116,15 @@ pub fn transpile(
         });
     }
 
-    // First pass: identify pinned-by-equality vars so we can classify.
-    let pinned_by_body = pinned_locals(&shader.body);
+    // First pass: identify which primitive Memberships are
+    // referenced ANYWHERE in any constraint. Anything referenced
+    // becomes a Local (defined by some constraint via the
+    // bidirectional scheduler); anything not referenced becomes
+    // Noise. The old test was "appears as LHS Identifier of an
+    // = constraint", which under-counted bidirectional cases like
+    // `1.0 - vig = X` (vig isn't on a bare LHS but is still
+    // defined by that equation).
+    let pinned_by_body = referenced_anywhere(&shader.body);
 
     for item in &shader.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
@@ -616,22 +623,22 @@ fn bucket_primitive(
     }
 }
 
-/// Set of identifier names that appear on the LHS of an `=` in any
-/// top-level Constraint (`d = length(...)` → "d"). Used to decide
-/// Local vs Noise classification for primitive memberships.
-fn pinned_locals(body: &[BodyItem]) -> HashSet<String> {
+/// Set of identifier names referenced by any constraint in the
+/// shader body, anywhere. Used to decide Local vs Noise
+/// classification: a primitive Membership becomes Local if
+/// referenced (some constraint will define it), Noise if not.
+/// Because we're using the bidirectional scheduler, we don't care
+/// which side of `=` the var appears on — just whether it's
+/// reachable at all.
+fn referenced_anywhere(body: &[BodyItem]) -> HashSet<String> {
     let mut out = HashSet::new();
     for item in body {
-        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, _)) = item {
-            if let Expr::Identifier(n) = lhs.as_ref() {
-                out.insert(n.clone());
-            }
-        }
-        // Dispatch chains (`cond ⇒ var = …`) also pin the var.
-        if let BodyItem::Constraint(Expr::Binary(BinOp::Implies, _, cons)) = item {
-            if let Expr::Binary(BinOp::Eq, lhs, _) = cons.as_ref() {
-                if let Expr::Identifier(n) = lhs.as_ref() {
-                    out.insert(n.clone());
+        if let BodyItem::Constraint(e) = item {
+            let mut refs: HashSet<String> = HashSet::new();
+            crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
+            for r in refs {
+                if let Some(root) = r.split('.').next() {
+                    out.insert(root.to_string());
                 }
             }
         }
