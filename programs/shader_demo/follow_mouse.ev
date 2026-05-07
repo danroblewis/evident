@@ -2,6 +2,12 @@
 -- The Evident loop on CPU just hands `state.pos` to the GPU each frame;
 -- the shader does all the per-pixel math.
 --
+-- `pixel` is in PIXEL coordinates with a top-left origin (matches
+-- SDL mouse coords directly). `iResolution.x` / `iResolution.y` are
+-- auto-uniforms set by the SDLShaderPlugin every frame to the
+-- window's actual size — the user can divide pixel by them for
+-- aspect-correct normalized coords if needed.
+--
 -- Run with: evident execute programs/shader_demo/follow_mouse.ev
 
 type Vec2f
@@ -15,7 +21,7 @@ type main(state, state_next ∈ GameState)
     input  ∈ SDLInput
     output ∈ SDLShaderOutput
 
-    -- Every frame: move the circle toward the mouse.
+    -- Smoothly chase the mouse (low-pass filter).
     state_next.pos.x = (state.pos.x * 9 + input.mouse.x) / 10
     state_next.pos.y = (state.pos.y * 9 + input.mouse.y) / 10
 
@@ -23,11 +29,11 @@ type main(state, state_next ∈ GameState)
 
 shader Circle
     pixel ∈ Vec2
-    state ∈ GameState        -- uniforms: state_pos_x, state_pos_y
+    state ∈ GameState
     d, glow ∈ Real
     col ∈ Color
 
-    d    = length(pixel * 800.0 - state.pos) - 60.0
+    d    = length(pixel - state.pos) - 60.0
     glow = smoothstep(0.0, 12.0, 0 - d)
     col  = mix(Color(20, 20, 35), Color(255, 100, 50), glow)
     output.fragment = col

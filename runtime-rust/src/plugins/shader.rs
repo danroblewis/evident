@@ -240,15 +240,30 @@ impl Plugin for SDLShaderPlugin {
         }
 
         // Drive the GL pipeline: clear, use program, set uniforms,
-        // draw, swap.
+        // draw, swap. Width/height are pulled live from the SDL
+        // window so a future resize event would just work.
         let Some(prog) = &self.program else { return true };
+        let (vw, vh) = self.window.as_ref()
+            .map(|w| w.size())
+            .unwrap_or((self.width, self.height));
         unsafe {
-            gl::Viewport(0, 0, self.width as i32, self.height as i32);
+            gl::Viewport(0, 0, vw as i32, vh as i32);
             gl::ClearColor(0.0, 0.0, 0.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
             gl::UseProgram(prog.program);
+            // Auto-uniforms first — these are the built-in
+            // viewport uniforms the vertex shader needs and any
+            // user fragment shader can also consume as
+            // `iResolution.x` / `iResolution.y`.
+            if let Some((loc, _)) = prog.uniform_locations.get("iResolution.x") {
+                if *loc >= 0 { gl::Uniform1f(*loc, vw as f32); }
+            }
+            if let Some((loc, _)) = prog.uniform_locations.get("iResolution.y") {
+                if *loc >= 0 { gl::Uniform1f(*loc, vh as f32); }
+            }
             for (source_name, (loc, glsl_type)) in &prog.uniform_locations {
                 if *loc < 0 { continue; }
+                if source_name.starts_with("iResolution.") { continue; }
                 let Some(v) = bindings.get(source_name) else { continue };
                 upload_uniform(*loc, glsl_type, v);
             }

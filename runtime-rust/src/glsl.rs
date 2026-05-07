@@ -100,6 +100,22 @@ pub fn transpile(
     let mut uniforms: Vec<UniformInfo> = Vec::new();
     let mut buckets:  BTreeMap<String, Bucket> = BTreeMap::new();
 
+    // Built-in viewport uniforms, always available. The plugin sets
+    // these each frame to the SDL window size; the user references
+    // them as `iResolution.x` and `iResolution.y` from inside any
+    // shader body (no declaration needed).
+    for (axis, glsl_name) in &[("x", "iResolution_x"), ("y", "iResolution_y")] {
+        let dotted = format!("iResolution.{axis}");
+        uniforms.push(UniformInfo {
+            source_name: dotted.clone(),
+            glsl_name:   (*glsl_name).to_string(),
+            glsl_type:   "float",
+        });
+        buckets.insert(dotted.clone(), Bucket::Uniform {
+            dotted, glsl_name: (*glsl_name).to_string(), glsl_type: "float",
+        });
+    }
+
     // First pass: identify pinned-by-equality vars so we can classify.
     let pinned_by_body = pinned_locals(&shader.body);
 
