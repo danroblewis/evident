@@ -457,6 +457,38 @@ impl Parser {
         if let Some(op) = op {
             self.bump();
             let rhs = self.parse_addsub()?;
+            // Chained comparison: if another comparison op follows
+            // (`20 ≤ x ≤ 740`, `a < b ≤ c`, etc.), collect the rest
+            // and AND-combine pairwise. Standard math notation;
+            // matches the Python parser's `arith_chain` rule. The
+            // inner operands are shared between adjacent
+            // comparisons (the `x` in `20 ≤ x ≤ 740` appears in both
+            // (20 ≤ x) AND (x ≤ 740)) — semantics match Python and
+            // mainstream math; differs from C/Rust's left-fold which
+            // would type-error here.
+            if peek_compare_op(self.peek()).is_some() {
+                let mut operands: Vec<Expr> = vec![lhs, rhs];
+                let mut ops: Vec<BinOp> = vec![op];
+                while let Some(next_op) = peek_compare_op(self.peek()) {
+                    self.bump();
+                    operands.push(self.parse_addsub()?);
+                    ops.push(next_op);
+                }
+                // Build (operands[0] op[0] operands[1]) ∧ (operands[1] op[1] operands[2]) ∧ …
+                let mut acc: Option<Expr> = None;
+                for (i, op_i) in ops.into_iter().enumerate() {
+                    let pair = Expr::Binary(
+                        op_i,
+                        Box::new(operands[i].clone()),
+                        Box::new(operands[i + 1].clone()),
+                    );
+                    acc = Some(match acc {
+                        None    => pair,
+                        Some(a) => Expr::Binary(BinOp::And, Box::new(a), Box::new(pair)),
+                    });
+                }
+                return Ok(acc.unwrap());
+            }
             return Ok(Expr::Binary(op, Box::new(lhs), Box::new(rhs)));
         }
         Ok(lhs)
@@ -616,6 +648,22 @@ impl Parser {
             }
             other => Err(ParseError(format!("expected expression, got {:?}", other))),
         }
+    }
+}
+
+/// Recognize a comparison operator token. Used by `parse_compare` for
+/// chained-comparison detection (`20 ≤ x ≤ 740` etc.) — when the
+/// token after a `lhs op rhs` parse is another comparison op, we
+/// know we're in a chain and the desugaring kicks in.
+fn peek_compare_op(tok: &Token) -> Option<BinOp> {
+    match tok {
+        Token::Eq  => Some(BinOp::Eq),
+        Token::Neq => Some(BinOp::Neq),
+        Token::Lt  => Some(BinOp::Lt),
+        Token::Le  => Some(BinOp::Le),
+        Token::Gt  => Some(BinOp::Gt),
+        Token::Ge  => Some(BinOp::Ge),
+        _ => None,
     }
 }
 

@@ -1020,6 +1020,47 @@ fn seq_index_assign_composite_var() {
     assert_eq!(pts[2].get("y"), Some(&Value::Int(100)));
 }
 
+/// `20 ≤ x ≤ 100` desugars to `(20 ≤ x) ∧ (x ≤ 100)` — standard math
+/// notation, matches Python's parser. Mixed-operator chains
+/// (`a < b ≤ c`) work the same way: each adjacent pair becomes a
+/// constraint, all AND-combined.
+#[test]
+fn chained_comparisons_basic() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    x ∈ Int\n    y ∈ Int\n    \
+         20 ≤ x ≤ 100\n    -5 < y ≤ 5\n    x = 50\n    y = 0\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("x"), Some(&Value::Int(50)));
+    assert_eq!(r.bindings.get("y"), Some(&Value::Int(0)));
+}
+
+/// Triple chain: `a ≤ b ≤ c ≤ d` produces three pairwise constraints
+/// AND-combined: (a ≤ b) ∧ (b ≤ c) ∧ (c ≤ d).
+#[test]
+fn chained_comparisons_triple() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    a ∈ Int\n    b ∈ Int\n    c ∈ Int\n    d ∈ Int\n    \
+         a ≤ b ≤ c ≤ d\n    a = 1\n    b = 2\n    c = 3\n    d = 4\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+}
+
+/// Chain that should be UNSAT: `1 ≤ x ≤ 10` with `x = 99`.
+#[test]
+fn chained_comparison_unsat() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    x ∈ Int\n    1 ≤ x ≤ 10\n    x = 99\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(!r.satisfied);
+}
+
 /// `∀ var ∈ <composite-seq>` iterates over the seq's elements, with
 /// `var.field` resolving to the corresponding field of each element.
 /// Same shape as `∀ i ∈ {0..#seq - 1} : seq[i].field` but reads as
