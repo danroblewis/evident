@@ -439,13 +439,31 @@ fn schedule_constraints(body: &[BodyItem])
         }
         definer_pending = still_pending;
         if !progressed {
-            // Stuck. Either underdetermined or cyclic.
-            let stuck: Vec<usize> = definer_pending.iter().map(|(i, _)| *i).collect();
+            // Stuck. Either underdetermined or cyclic. Build a
+            // diagnostic: per-stuck-item, list its referenced
+            // locals that aren't yet in `defined` so the user can
+            // see what the scheduler is waiting on.
+            let mut diag = String::new();
+            for (idx, e) in &definer_pending {
+                let mut refs: HashSet<String> = HashSet::new();
+                crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
+                let blocked_on: Vec<String> = refs.iter()
+                    .filter_map(|r| dep_root(r))
+                    .filter(|r| local_to_be_defined.contains(r))
+                    .filter(|r| !defined.contains(r))
+                    .collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+                let snippet = crate::pretty::expr(e);
+                let snippet = if snippet.len() > 80 {
+                    format!("{}…", &snippet[..80])
+                } else { snippet };
+                diag.push_str(&format!(
+                    "\n  [{idx}] {snippet}\n        blocked on: {blocked_on:?}"
+                ));
+            }
             return Err(TranspileError(format!(
-                "shader: can't resolve constraint(s) at body indices {:?} \
-                 — {} unknowns remain. Either the constraint set is \
-                 underdetermined or you have a cycle.",
-                stuck, definer_pending.len()
+                "shader: can't resolve {} constraint(s) — set is \
+                 underdetermined or cyclic.{}",
+                definer_pending.len(), diag
             )));
         }
     }
@@ -951,7 +969,8 @@ fn is_glsl_builtin(name: &str) -> bool {
         "min" | "max" | "clamp" | "mix" | "smoothstep" | "step" |
         "abs" | "sign" | "floor" | "ceil" | "fract" | "mod" | "pow" | "sqrt" |
         "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "exp" | "log" |
-        "reflect" | "refract"
+        "reflect" | "refract" |
+        "radians" | "degrees" | "trunc" | "round" | "inversesqrt"
     )
 }
 

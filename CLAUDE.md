@@ -447,6 +447,32 @@ parsed.verb = Look ⇒
     LookAction
 ```
 
+### Precedence: `=` binds tighter than `∧` / `∨`
+
+**Same family of footgun.** A boolean assignment that mixes `=` with logical
+operators on the RHS needs outer parens or it splits into the wrong shape:
+
+```evident
+in_box = abs(x - cx) ≤ w ∧ abs(y - cy) ≤ h     -- WRONG
+-- parses as ((in_box = abs(x-cx)) ≤ w) ∧ (abs(y-cy) ≤ h)
+-- — a free-floating boolean expression, in_box is never assigned
+
+in_box = ((abs(x - cx) ≤ w) ∧ (abs(y - cy) ≤ h))   -- correct
+-- the outer parens scope `∧` inside the equation's RHS
+```
+
+Comparison operators (`<`, `>`, `≤`, `≥`) are also looser than `=`:
+
+```evident
+in_circle = length(p - c) < r       -- WRONG, parses as ((in_circle = length(...)) < r)
+in_circle = (length(p - c) < r)     -- correct
+```
+
+Rule of thumb in shader bodies (or anywhere you assign a boolean result):
+**always wrap the RHS in `( )` if it contains `<`, `>`, `≤`, `≥`, `∧`, `∨`, or
+multiple `=` signs**. Costs nothing and the parser will tell you if you wrote it
+wrong.
+
 ### The complete lookup pattern
 
 Partial lookup tables cause Z3 non-determinism. If a table only has entries for
