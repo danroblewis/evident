@@ -180,21 +180,30 @@ pub fn transpile(
     }
 
     // 2. Body translation. Skip Memberships (they're declarations);
-    //    process Constraints and dispatch chains.
+    //    process Constraints in dependency order so source-line
+    //    order doesn't matter — the user can write `r = length(c)`
+    //    before `c = …`, and the transpiler emits in the right
+    //    order. Cycles are a hard error.
+    //
+    //    Reject anything other than Membership / Constraint up front
+    //    (Passthrough, ClaimCall, etc. don't make sense in a shader
+    //    body and would silently fall through the topo step).
+    for item in &shader.body {
+        if !matches!(item, BodyItem::Membership { .. } | BodyItem::Constraint(_)) {
+            return Err(TranspileError(format!(
+                "shader `{}`: unsupported body item: {:?}",
+                shader.name, item
+            )));
+        }
+    }
+    let order = topo_sort_constraints(&shader.body)?;
     let mut emitter = Emitter {
         out: String::new(), buckets: &buckets, body: &shader.body,
         seen_outputs: HashSet::new(),
     };
-    for (idx, item) in shader.body.iter().enumerate() {
-        match item {
-            BodyItem::Membership { .. } => {} // declarations only
-            BodyItem::Constraint(e) => {
-                emitter.emit_constraint(e, idx)?;
-            }
-            other => return Err(TranspileError(format!(
-                "shader `{}`: unsupported body item: {:?}",
-                shader.name, other
-            ))),
+    for idx in order {
+        if let BodyItem::Constraint(e) = &shader.body[idx] {
+            emitter.emit_constraint(e, idx)?;
         }
     }
 
@@ -232,6 +241,152 @@ pub fn transpile(
     src.push_str("}\n");
 
     Ok(TranspiledShader { source: src, uniforms })
+}
+
+/// Reorder a shader body's `Constraint` items into dependency
+/// order. Returns indices into `body` — Memberships are filtered out
+/// (they're declarations, emitted in a separate pass).
+///
+/// Each Constraint is treated as one node. An edge `a → b` means
+/// item `a` must be emitted before item `b` (because `b`'s expression
+/// references a var that `a` defines). Multiple constraints can
+/// define the same var (dispatch chains: `cond1 ⇒ var = X` then
+/// `cond2 ⇒ var = Y`); they're all considered "definers" of the var,
+/// and any item depending on `var` waits for all of them.
+///
+/// Tie-breaking is stable on source order so dispatch chains keep
+/// their original line ordering (matters for `if` / `if`-elseif
+/// semantics in the emitted GLSL).
+///
+/// Cycles → `TranspileError` (the user wrote a self-referential
+/// constraint set the GLSL emitter can't unroll).
+fn topo_sort_constraints(body: &[BodyItem]) -> Result<Vec<usize>, TranspileError> {
+    // 1. Collect every Constraint item with its (lhs_var, deps).
+    //    `lhs_var = None` for items that don't define a local
+    //    (output.fragment writes go here — they sink to the end).
+    struct Item { idx: usize, lhs: Option<String>, deps: Vec<String> }
+    let mut items: Vec<Item> = Vec::new();
+    let mut definers_by_var: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut local_names: HashSet<String> = HashSet::new();
+
+    // Locally-defined names = anything that ever appears as the LHS
+    // of a top-level `var = expr` or `cond ⇒ var = expr`. Memberships
+    // also contribute (they declare a name) so an item depending on
+    // a Membership-only var (e.g. a free-noise var) doesn't try to
+    // wait for a definer that doesn't exist.
+    for item in body {
+        match item {
+            BodyItem::Membership { name, .. } => { local_names.insert(name.clone()); }
+            BodyItem::Constraint(e) => {
+                if let Some(name) = constraint_lhs_var(e) {
+                    local_names.insert(name);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for (idx, item) in body.iter().enumerate() {
+        let BodyItem::Constraint(e) = item else { continue };
+        let lhs  = constraint_lhs_var(e);
+        let mut refs: HashSet<String> = HashSet::new();
+        crate::translate::preprocess_api::collect_referenced_names(e, &mut refs);
+        // Only deps on locally-defined names matter — uniforms,
+        // pixel, builtins, etc. are independent of source order.
+        // Also drop a self-edge: `var = f(var)` doesn't make sense
+        // in a shader, but if it slips in, treating it as a dep
+        // would deadlock.
+        let deps: Vec<String> = refs.into_iter()
+            .filter_map(|r| dep_root(&r))
+            .filter(|r| local_names.contains(r))
+            .filter(|r| Some(r) != lhs.as_ref())
+            .collect();
+        let pos = items.len();
+        if let Some(name) = &lhs {
+            definers_by_var.entry(name.clone()).or_default().push(pos);
+        }
+        items.push(Item { idx, lhs, deps });
+    }
+
+    // 2. Build edges + in-degree. For each item i and each dep d,
+    //    every definer of d must precede i.
+    let n = items.len();
+    let mut out_edges: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut indeg: Vec<usize> = vec![0; n];
+    for (i, it) in items.iter().enumerate() {
+        for dep in &it.deps {
+            if let Some(definers) = definers_by_var.get(dep) {
+                for &d in definers {
+                    out_edges[d].push(i);
+                    indeg[i] += 1;
+                }
+            }
+        }
+    }
+
+    // 3. Kahn's. Initial queue: every item with indeg 0, in source
+    //    order (preserves dispatch-chain ordering for ties).
+    let mut ready: std::collections::VecDeque<usize> =
+        (0..n).filter(|&i| indeg[i] == 0).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    while let Some(i) = ready.pop_front() {
+        order.push(items[i].idx);
+        for &j in &out_edges[i] {
+            indeg[j] -= 1;
+            if indeg[j] == 0 {
+                // Insert at the end — stable wrt source order.
+                ready.push_back(j);
+            }
+        }
+    }
+    if order.len() != n {
+        let cycle: Vec<String> = items.iter().enumerate()
+            .filter(|(i, _)| indeg[*i] > 0)
+            .filter_map(|(_, it)| it.lhs.clone())
+            .collect();
+        return Err(TranspileError(format!(
+            "shader: cyclic constraint(s) on {:?}", cycle
+        )));
+    }
+    Ok(order)
+}
+
+/// LHS var name of a constraint, when there is one. `var = expr` →
+/// Some("var"); `cond ⇒ var = expr` → Some("var"); anything else
+/// (like `output.fragment = expr`) → None.
+fn constraint_lhs_var(e: &Expr) -> Option<String> {
+    match e {
+        Expr::Binary(BinOp::Eq, lhs, _) => bare_ident(lhs),
+        Expr::Binary(BinOp::Implies, _, cons) => match cons.as_ref() {
+            Expr::Binary(BinOp::Eq, lhs, _) => bare_ident(lhs),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Bare-identifier extractor. `Identifier("c")` → Some("c");
+/// `Identifier("c.y")` (parser-folded swizzle) → Some("c"); Field
+/// chains like `output.fragment` → None (they're not local-var
+/// definitions).
+fn bare_ident(e: &Expr) -> Option<String> {
+    if let Expr::Identifier(n) = e {
+        // Strip the swizzle suffix so `c.y = ...` (if it ever
+        // appeared as an LHS) would be classified as defining `c`.
+        // Today the transpiler doesn't accept LHS swizzles, but
+        // being lenient here costs nothing.
+        return Some(n.split('.').next().unwrap_or(n).to_string());
+    }
+    None
+}
+
+/// Map a referenced-name string back to its root variable name. A
+/// reference to `c.y` depends on `c`; `state.hero.pos.x` depends on
+/// `state` (which the shader treats as opaque uniforms — the topo
+/// pass filters by local_names so non-local refs drop out).
+fn dep_root(name: &str) -> Option<String> {
+    let root = name.split('.').next()?;
+    if root.is_empty() { None } else { Some(root.to_string()) }
 }
 
 fn bucket_primitive(

@@ -99,6 +99,9 @@ pub fn collect_referenced_names(e: &Expr, out: &mut HashSet<String>) {
             collect_referenced_names(range, out);
             collect_referenced_names(body, out);
         }
+        Expr::Call(_, args) => {
+            for a in args { collect_referenced_names(a, out); }
+        }
         _ => {}
     }
 }

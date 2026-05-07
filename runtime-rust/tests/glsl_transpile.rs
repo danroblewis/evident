@@ -143,6 +143,73 @@ shader S
 }
 
 #[test]
+fn constraints_can_be_written_in_any_order() {
+    // `r = length(c)` BEFORE `c = ...` — the topo sort should
+    // emit them in the right order regardless. If the transpiler
+    // ignored deps, the GLSL would have a use-before-define and
+    // either fail to compile or produce garbage.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    r ∈ Real
+    c ∈ Vec2
+    r = length(c)
+    c = pixel * 2.0
+    output.fragment = Color(255, 0, 0)
+";
+    let g = compile_shader(src, "S");
+    let c_pos = g.find("c = (pixel * 2.0);")
+        .expect(&format!("c = ... must be present: {g}"));
+    let r_pos = g.find("r = length(c);")
+        .expect(&format!("r = ... must be present: {g}"));
+    assert!(c_pos < r_pos,
+        "c must be defined before r consumes it; got order:\n{g}");
+}
+
+#[test]
+fn cyclic_constraints_error() {
+    // a = b + 1; b = a + 1 — true cycle, can't be unrolled to GLSL.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    a, b ∈ Real
+    a = b + 1.0
+    b = a + 1.0
+    output.fragment = Color(255, 0, 0)
+";
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(src).unwrap();
+    let shader = rt.shaders().iter().find(|s| s.name == "S").unwrap();
+    let res = transpile(shader, &collect_type_leaves(&rt));
+    let err = res.expect_err("cycle should be rejected");
+    assert!(format!("{err}").contains("cyclic"),
+        "expected cycle error, got: {err}");
+}
+
+#[test]
+fn dispatch_chain_keeps_source_order() {
+    // Two `if` blocks targeting the same var should appear in the
+    // same source order regardless of topo-sort tie-breaking.
+    let src = "\
+shader S
+    pixel ∈ Vec2
+    d ∈ Real
+    col ∈ Color
+    d = length(pixel) - 0.5
+    d < 0.0 ⇒ col = Color(255, 0, 0)
+    d ≥ 0.0 ⇒ col = Color(0, 0, 255)
+    output.fragment = col
+";
+    let g = compile_shader(src, "S");
+    let red_pos  = g.find("if ((d < 0.0))")
+        .expect(&format!("first branch missing: {g}"));
+    let blue_pos = g.find("if ((d >= 0.0))")
+        .expect(&format!("second branch missing: {g}"));
+    assert!(red_pos < blue_pos,
+        "dispatch order must match source order:\n{g}");
+}
+
+#[test]
 fn subrecord_synthesizes_vec_constructor() {
     let src = "\
 type IVec2(x, y ∈ Int)
