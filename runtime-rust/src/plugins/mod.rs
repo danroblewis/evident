@@ -10,3 +10,4 @@
 
 pub mod audio;
 pub mod sdl;
+pub mod shader;

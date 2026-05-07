@@ -186,6 +186,9 @@ type SDLWindow
     screen ∈ IVec2
     size   ∈ IVec2
     drag   ∈ IVec2
+
+type SDLShaderOutput
+    shader_name ∈ String
 ";
 
 /// SDL plugin. Holds the window + canvas + event pump for the lifetime

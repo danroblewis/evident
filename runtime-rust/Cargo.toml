@@ -9,6 +9,10 @@ z3 = "0.12"
 # SDL2 plugin: graphical I/O. Requires SDL2 system library
 # (`brew install sdl2` on macOS). pkg-config locates it at build time.
 sdl2 = "0.36"
+# OpenGL bindings for SDLShaderOutput. The plugin creates an SDL
+# window with a GL 3.3 core profile context, compiles the Evident-
+# transpiled fragment shader, and renders a fullscreen triangle.
+gl = "0.14"
 
 [lib]
 name = "evident_runtime"

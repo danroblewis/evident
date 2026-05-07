@@ -12,6 +12,7 @@ use evident_runtime::{executor, EvidentRuntime, Value};
 use evident_runtime::executor::Plugin;
 use evident_runtime::plugins::audio as audio_plugin;
 use evident_runtime::plugins::sdl as sdl_plugin;
+use evident_runtime::plugins::shader as shader_plugin;
 use evident_runtime::ast::BodyItem;
 
 use super::initial_state::parse_initial_state;
@@ -190,6 +191,19 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
             opts.width, opts.height, opts.title.clone()));
     }
 
+    // SDLShaderOutput plugin: activated when any var of that type is
+    // declared in the initial program. Hands the runtime's type +
+    // shader tables to the plugin so it can compile the GLSL on the
+    // first frame without holding a runtime borrow.
+    let shader_vars = collect_shader_vars(&initial_rt);
+    if !shader_vars.is_empty() {
+        let mut sp = shader_plugin::SDLShaderPlugin::new(
+            opts.width, opts.height, opts.title.clone(),
+        );
+        sp.set_runtime(build_shader_runtime_handle(&initial_rt));
+        plugins.push(Box::new(sp));
+    }
+
     // Wrap loader for the multi-program executor: the executor calls
     // it for every NEW program, so we need to re-build runtimes from
     // scratch each time. We've already loaded the initial one — pass
@@ -262,6 +276,91 @@ fn walk_body_for_sdl(
                 walk_body_for_sdl(rt, claim, visited, out);
             }
             _ => {}
+        }
+    }
+}
+
+/// Collect any vars in `main` (recursively through passthroughs)
+/// whose declared type is `SDLShaderOutput`. Same pattern as
+/// `collect_sdl_vars`; lives here so the plugin activation check
+/// in `cmd_execute` can decide whether to push the shader plugin.
+fn collect_shader_vars(rt: &EvidentRuntime) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Some(main) = rt.get_schema("main") else { return out };
+    let mut visited: Vec<String> = Vec::new();
+    walk_body_for_shader(rt, &main.name, &mut visited, &mut out);
+    out
+}
+
+fn walk_body_for_shader(
+    rt: &EvidentRuntime, schema_name: &str,
+    visited: &mut Vec<String>, out: &mut HashMap<String, String>,
+) {
+    if visited.iter().any(|n| n == schema_name) { return; }
+    visited.push(schema_name.to_string());
+    let Some(schema) = rt.get_schema(schema_name) else { return };
+    for item in &schema.body {
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                if shader_plugin::SDL_SHADER_TYPES.iter().any(|t| *t == type_name.as_str()) {
+                    out.entry(name.clone()).or_insert_with(|| type_name.clone());
+                }
+            }
+            BodyItem::Passthrough(claim) => {
+                walk_body_for_shader(rt, claim, visited, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Build the runtime-handle the shader plugin needs at compile time:
+/// a snapshot of every type's leaf-field expansion plus a
+/// shader-name → ShaderDecl table. Both wrapped in Arcs so the
+/// plugin can hold them across plugin re-init without copying.
+fn build_shader_runtime_handle(rt: &EvidentRuntime) -> shader_plugin::RuntimeHandle {
+    use evident_runtime::ast::ShaderDecl;
+    let mut type_leaves: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for name in rt.schema_names() {
+        let Some(schema) = rt.get_schema(name) else { continue };
+        let mut leaves: Vec<(String, String)> = Vec::new();
+        for item in &schema.body {
+            if let BodyItem::Membership { name: fname, type_name, .. } = item {
+                expand_field_for_shader(rt, fname, type_name, "", &mut leaves);
+            }
+        }
+        if !leaves.is_empty() {
+            type_leaves.insert(name.to_string(), leaves);
+        }
+    }
+    let mut shaders: HashMap<String, ShaderDecl> = HashMap::new();
+    for s in rt.shaders() {
+        shaders.insert(s.name.clone(), s.clone());
+    }
+    shader_plugin::RuntimeHandle {
+        type_leaves: std::sync::Arc::new(type_leaves),
+        shaders:     std::sync::Arc::new(shaders),
+    }
+}
+
+fn expand_field_for_shader(
+    rt: &EvidentRuntime, name: &str, type_name: &str,
+    prefix: &str, out: &mut Vec<(String, String)>,
+) {
+    let dotted = if prefix.is_empty() { name.to_string() }
+                 else { format!("{prefix}.{name}") };
+    match type_name {
+        "Real" | "Int" | "Nat" | "Pos" | "Bool" => {
+            out.push((dotted, type_name.to_string()));
+        }
+        _ => {
+            if let Some(sub) = rt.get_schema(type_name) {
+                for item in &sub.body {
+                    if let BodyItem::Membership { name: sn, type_name: st, .. } = item {
+                        expand_field_for_shader(rt, sn, st, &dotted, out);
+                    }
+                }
+            }
         }
     }
 }
