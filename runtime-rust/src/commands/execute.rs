@@ -301,7 +301,13 @@ fn walk_body_for_shader(
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                if shader_plugin::SDL_SHADER_TYPES.iter().any(|t| *t == type_name.as_str()) {
+                // Activation gate: ONLY count SDLShaderOutput. The
+                // shader plugin's `handles_types` is wider
+                // (it also covers SDLInput/SDLWindow so it can
+                // own the EventPump), but we mustn't activate
+                // it just because a program uses input — that
+                // would steal the SDL handle from the rect plugin.
+                if type_name == "SDLShaderOutput" {
                     out.entry(name.clone()).or_insert_with(|| type_name.clone());
                 }
             }
