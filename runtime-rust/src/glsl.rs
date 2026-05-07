@@ -421,6 +421,16 @@ impl<'a> Emitter<'a> {
             Expr::Bool(b) => Ok(b.to_string()),
             Expr::Identifier(name) => {
                 if name == "pixel" { return Ok("pixel".into()); }
+                // Pixel swizzles (`pixel.x`, `pixel.y`) — pass
+                // through as GLSL vec2 component access. The
+                // parser folds `<bare>.<field>` into a single
+                // dotted Identifier, so this case never reaches
+                // the Field arm.
+                if let Some(rest) = name.strip_prefix("pixel.") {
+                    if matches!(rest, "x" | "y") {
+                        return Ok(format!("pixel.{rest}"));
+                    }
+                }
                 if let Some(b) = self.buckets.get(name) {
                     return Ok(bucket_glsl(b));
                 }
@@ -555,7 +565,15 @@ fn is_glsl_builtin(name: &str) -> bool {
 }
 
 fn is_constructor(name: &str) -> bool {
-    matches!(name, "Vec2" | "Vec3" | "Vec4" | "Color" | "IVec2")
+    // Vec/Color constructors plus the GLSL primitive casts (`float(x)`,
+    // `int(x)`). The casts let users bring an `int` uniform into
+    // float arithmetic without an Evident-side conversion (which
+    // would force Z3 to do mixed Int/Real math, sometimes slow and
+    // sometimes outright unsupported).
+    matches!(name,
+        "Vec2" | "Vec3" | "Vec4" | "Color" | "IVec2" |
+        "float" | "int"
+    )
 }
 
 /// GLSL's float literal must contain a `.` to be parsed as float.
