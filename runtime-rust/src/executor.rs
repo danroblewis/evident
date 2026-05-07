@@ -676,8 +676,19 @@ where
     // takes over from the program's own `state_next.*` outputs.
     let mut initial_given_remaining = Some(initial_given);
 
+    // Optional per-second timing breakdown (EVIDENT_BENCH=1):
+    // before_step total, query_cached total, after_step total, frames.
+    let bench = std::env::var("EVIDENT_BENCH").as_deref() == Ok("1");
+    let mut bench_t_before = std::time::Duration::ZERO;
+    let mut bench_t_solve  = std::time::Duration::ZERO;
+    let mut bench_t_after  = std::time::Duration::ZERO;
+    let mut bench_frames: u64 = 0;
+    let mut bench_rebuilds_baseline: u64 = 0;
+    let mut bench_last_report = std::time::Instant::now();
+
     loop {
         // Build per-step `given`. Plugins first; halt if any returns None.
+        let t_b0 = if bench { Some(std::time::Instant::now()) } else { None };
         let mut given: HashMap<String, Value> = HashMap::new();
         let mut halt = false;
         for &i in &active {
@@ -703,12 +714,15 @@ where
                 given.insert(k, v);
             }
         }
+        if let Some(t) = t_b0 { bench_t_before += t.elapsed(); }
 
         // Solve.
         let rt = runtimes.get(&current).unwrap();
+        let t_s0 = if bench { Some(std::time::Instant::now()) } else { None };
         let result = rt.query_cached("main", &given).map_err(|e| {
             io::Error::new(io::ErrorKind::Other, format!("query error: {e}"))
         })?;
+        if let Some(t) = t_s0 { bench_t_solve += t.elapsed(); }
 
         if !result.satisfied {
             step_idx += 1;
@@ -723,6 +737,7 @@ where
         step_idx += 1;
 
         // After-step (plugins run side effects).
+        let t_a0 = if bench { Some(std::time::Instant::now()) } else { None };
         let mut after_halt = false;
         for &i in &active {
             if !plugins[i].after_step(&result.bindings) {
@@ -735,6 +750,32 @@ where
             let next_state = extract_next_state(&result.bindings, next);
             if !next_state.is_empty() {
                 current_state.insert(base.clone(), next_state);
+            }
+        }
+        if let Some(t) = t_a0 { bench_t_after += t.elapsed(); }
+
+        if bench {
+            bench_frames += 1;
+            let dt = bench_last_report.elapsed();
+            if dt.as_secs() >= 1 {
+                let rt = runtimes.get(&current).unwrap();
+                let cur_rebuilds = rt.cache_rebuilds();
+                let rb = cur_rebuilds.saturating_sub(bench_rebuilds_baseline);
+                bench_rebuilds_baseline = cur_rebuilds;
+                let n = bench_frames as f64;
+                eprintln!(
+                    "[bench] {:.0} fps   solve={:.2}ms  before={:.2}ms  after={:.2}ms  cache_rebuilds={}",
+                    n / dt.as_secs_f64(),
+                    bench_t_solve.as_secs_f64()  * 1000.0 / n,
+                    bench_t_before.as_secs_f64() * 1000.0 / n,
+                    bench_t_after.as_secs_f64()  * 1000.0 / n,
+                    rb,
+                );
+                bench_t_before = std::time::Duration::ZERO;
+                bench_t_solve  = std::time::Duration::ZERO;
+                bench_t_after  = std::time::Duration::ZERO;
+                bench_frames = 0;
+                bench_last_report = std::time::Instant::now();
             }
         }
 

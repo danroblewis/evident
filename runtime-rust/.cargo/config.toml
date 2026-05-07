@@ -1,21 +1,38 @@
-# Point z3-sys at the Z3 library bundled with Python's z3-solver package.
-# Avoids needing to brew install z3 separately. If Z3 is installed
-# elsewhere (e.g. via homebrew), update or remove these env entries.
+# Per-target env so macOS and Linux can both build without prefixing
+# every cargo invocation with env vars.
 #
-# LIBRARY_PATH also includes /opt/homebrew/lib so the linker can find
-# libSDL2 (installed via `brew install sdl2`). pkg-config picks up the
-# include path on its own; this list is for the link step only.
-[env]
-Z3_SYS_Z3_HEADER       = "/opt/anaconda3/lib/python3.13/site-packages/z3/include/z3.h"
-LIBRARY_PATH           = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
-DYLD_LIBRARY_PATH      = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+# macOS: point z3-sys at the Z3 library bundled with Python's
+# z3-solver package (avoids needing `brew install z3`). LIBRARY_PATH
+# also includes /opt/homebrew/lib for libSDL2.
+#
+# Linux: rely on the system Z3 (`apt install libz3-dev libsdl2-dev
+# libclang-dev`); /usr/include/z3.h and /usr/lib/x86_64-linux-gnu/libz3.so
+# are on the default search paths, so no env entries are required.
+# (Per-target env values still set them explicitly for clarity.)
+#
+# Per-target env requires Rust 1.74+ (we have 1.75 in CI/dev).
 
-# Use a wrapper around `cc` for the link step so the produced binary's
-# libz3.dylib load command is rewritten to an absolute path immediately
-# after linking. ld-prime can't do this at link time and cargo has no
-# post-build hook — wrapping `cc` is the cleanest fix. Result:
-# `cargo build --release` produces a runnable binary with no manual
-# `install_name_tool` step.
+[target.aarch64-apple-darwin.env]
+Z3_SYS_Z3_HEADER  = "/opt/anaconda3/lib/python3.13/site-packages/z3/include/z3.h"
+LIBRARY_PATH      = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+DYLD_LIBRARY_PATH = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+
+[target.x86_64-apple-darwin.env]
+Z3_SYS_Z3_HEADER  = "/opt/anaconda3/lib/python3.13/site-packages/z3/include/z3.h"
+LIBRARY_PATH      = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+DYLD_LIBRARY_PATH = "/opt/anaconda3/lib/python3.13/site-packages/z3/lib:/opt/homebrew/lib"
+
+[target.x86_64-unknown-linux-gnu.env]
+Z3_SYS_Z3_HEADER = "/usr/include/z3.h"
+LIBRARY_PATH     = "/usr/lib/x86_64-linux-gnu"
+
+[target.aarch64-unknown-linux-gnu.env]
+Z3_SYS_Z3_HEADER = "/usr/include/z3.h"
+LIBRARY_PATH     = "/usr/lib/aarch64-linux-gnu"
+
+# macOS link step: wrap cc to immediately rewrite libz3's bare
+# install_name to an absolute path post-link. ld-prime can't do this
+# at link time and cargo has no post-build hook.
 [target.aarch64-apple-darwin]
 linker = "scripts/cc-wrapper.sh"
 
