@@ -163,6 +163,7 @@ pub struct Program {
     pub schemas: Vec<SchemaDecl>,
     pub imports: Vec<String>,
     pub traces: Vec<TraceDecl>,
+    pub shaders: Vec<ShaderDecl>,
 }
 
 /// A trace test: drives a named program through a sequence of input
@@ -237,4 +238,38 @@ pub struct TraceAssertion {
 pub enum AssertOp {
     Eq,
     Contains,
+}
+
+/// A GLSL fragment-shader declaration. Sibling to `claim`/`type`/
+/// `trace` — never inlined into another schema's constraint system.
+/// The runtime parses + transpiles + caches GLSL source at load time;
+/// `SDLShaderOutput` (the new plugin/output type) references one by
+/// name and uploads `state.*` / `input.*` bindings as uniforms each
+/// frame.
+///
+/// Source form:
+///
+/// ```text
+/// shader StarsAndHero
+///     pixel ∈ Vec2          -- the swept fragment coord
+///     state ∈ GameState     -- expected uniform shape (main supplies)
+///     input ∈ SDLInput      -- ditto
+///     twinkle ∈ Real        -- FREE → transpiler emits noise(...)
+///     col ∈ Color
+///     col = mix(Color(0,0,0), Color(255,100,50), twinkle)
+///     output.fragment = col
+/// ```
+///
+/// Variables in the body fall into three buckets at transpile time:
+///   - Uniform: declared as part of a sub-record (`state ∈ GameState`).
+///     Each leaf becomes a `uniform` declaration.
+///   - Local: pinned by some constraint inside the body. Becomes a
+///     GLSL temporary.
+///   - Noise: declared with no pin and no parent record. The
+///     transpiler emits a hash-based noise expression seeded on
+///     `pixel` (and `input.time` if available).
+#[derive(Debug, Clone)]
+pub struct ShaderDecl {
+    pub name: String,
+    pub body: Vec<BodyItem>,
 }

@@ -28,6 +28,7 @@ pub enum Token {
     KeyDown,      // key_down "Right" — SDL trace step (start hold)
     KeyUp,        // key_up "Right"   — SDL trace step (release)
     Advance,      // advance 0.5s     — SDL trace step (tick clock)
+    Shader,       // shader Name      — GLSL fragment-shader decl
     In,           // ∈ or "in"
     NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
     ContainsRev,  // ∋ (U+220B) — reverse membership; desugars to (rhs ∈ lhs)
@@ -372,6 +373,7 @@ fn keyword_or_ident(s: String) -> Token {
         "key_down" => Token::KeyDown,
         "key_up"   => Token::KeyUp,
         "advance"  => Token::Advance,
+        "shader"   => Token::Shader,
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,

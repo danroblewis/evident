@@ -85,13 +85,32 @@ impl Parser {
                     let t = self.parse_trace_decl()?;
                     program.traces.push(t);
                 }
+                Token::Shader => {
+                    let s = self.parse_shader_decl()?;
+                    program.shaders.push(s);
+                }
                 other => {
                     return Err(ParseError(format!(
-                        "expected schema/claim/type/import/trace, got {:?}", other)));
+                        "expected schema/claim/type/import/trace/shader, got {:?}", other)));
                 }
             }
         }
         Ok(program)
+    }
+
+    /// Parse a `shader Name` top-level decl. Body is the same indented-
+    /// constraint shape as a `claim` body, but the runtime treats the
+    /// result as opaque (transpiled to GLSL at load time, never
+    /// inlined into another schema's constraint system).
+    fn parse_shader_decl(&mut self) -> Result<ShaderDecl> {
+        self.bump(); // shader
+        let name = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected shader name, got {:?}", other))),
+        };
+        let body = self.parse_indented_body()?;
+        Ok(ShaderDecl { name, body })
     }
 
     /// Parse a `trace name "path/to/program.ev"` declaration with an

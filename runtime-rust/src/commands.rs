@@ -15,3 +15,4 @@ pub mod parse;
 pub mod query;
 pub mod sample;
 pub mod test;
+pub mod transpile_shader;

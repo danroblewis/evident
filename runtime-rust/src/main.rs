@@ -41,6 +41,7 @@ fn main() -> ExitCode {
         "test"    => commands::test::cmd_test(&args[1..]),
         "parse"   => commands::parse::cmd_parse(&args[1..]),
         "execute" => commands::execute::cmd_execute(&args[1..]),
+        "transpile-shader" => commands::transpile_shader::cmd_transpile_shader(&args[1..]),
         "batch" | "repl" => {
             eprintln!("error: '{}' is not yet implemented in the Rust runtime.", args[0]);
             eprintln!("       Use evident.py for these subcommands. See PROGRESS.md for status.");
