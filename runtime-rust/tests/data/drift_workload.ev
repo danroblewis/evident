@@ -1,0 +1,49 @@
+-- drift_workload.ev — synthetic schema designed to expose Z3 push/pop
+-- accumulation. Many arithmetic relations involving a per-frame `seed`
+-- input force Z3 to learn distinct linear-arith facts every frame.
+-- Across thousands of frames the cached solver should accumulate
+-- learned clauses that drag down later push/pop performance — that's
+-- the regression the long_session_no_drift test is hunting.
+
+type DriftState
+    a   ∈ Int
+    b   ∈ Int
+    c   ∈ Int
+    d   ∈ Int
+    e   ∈ Int
+    f   ∈ Int
+    g   ∈ Int
+    h   ∈ Int
+    sum ∈ Int
+
+schema main
+    state      ∈ DriftState
+    state_next ∈ DriftState
+    seed       ∈ Int
+
+    -- bounds keep the search tractable but non-trivial
+    seed ≥ -10000
+    seed ≤  10000
+
+    -- relationships among the current state vars, each involving seed.
+    -- The constants are coprime-ish so Z3 can't trivially substitute.
+    state.a + state.b * 2  = seed * 3  + 7
+    state.c - state.d * 5  = seed * 11 - 13
+    state.e * 7 + state.a  = seed * 17 + state.b
+    state.f + state.g * 3  = seed - state.c * 2
+    state.h * 4 - state.f  = seed * 19 + state.d
+
+    state.sum = state.a + state.b + state.c + state.d + state.e + state.f + state.g + state.h
+
+    -- transition: every next-field references multiple current fields
+    -- and seed, ensuring the next solve has fresh arithmetic too.
+    state_next.a = state.a + seed
+    state_next.b = state.b - seed * 2
+    state_next.c = state.c + state.a - state.b
+    state_next.d = state.d * 2 - seed
+    state_next.e = state.e + state.f - seed * 3
+    state_next.f = state.f - state.g + state.h
+    state_next.g = state.g + seed - state.c
+    state_next.h = state.h * 3 + seed - state.e
+
+    state_next.sum = state_next.a + state_next.b + state_next.c + state_next.d + state_next.e + state_next.f + state_next.g + state_next.h

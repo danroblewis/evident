@@ -4,7 +4,19 @@
 
 use std::collections::{HashMap, HashSet};
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
-use z3::{Context, SatResult, Solver};
+use z3::{Context, Params, SatResult, Solver};
+
+/// Set `smt.arith.solver` to `arith_solver` on `solver`. Pass `0` to
+/// skip (lets Z3 use its built-in default). The chosen value depends
+/// on workload — the runtime's auto-tuner decides which to use; this
+/// helper is the dumb mechanism. See `runtime::SolveHistory` for the
+/// policy.
+fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
+    if arith_solver == 0 { return; }
+    let mut params = Params::new(ctx);
+    params.set_u32("smt.arith.solver", arith_solver);
+    solver.set_params(&params);
+}
 
 use crate::ast::*;
 use super::types::{CachedSchema, DatatypeRegistry, EvalResult, Value, Var};
@@ -31,8 +43,10 @@ pub fn build_cache(
     ctx: &'static Context,
     registry: &DatatypeRegistry,
     given: &HashMap<String, Value>,
+    arith_solver: u32,
 ) -> CachedSchema<'static> {
     let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
 
     // Same two passes as evaluate(), but writing into the cache's
@@ -87,7 +101,7 @@ pub fn build_cache(
     let mut visited: HashSet<String> = HashSet::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
 
-    CachedSchema { env, solver }
+    CachedSchema { env, solver, arith_solver }
 }
 
 /// Sample up to `n` distinct models from the cached schema's solver.
@@ -216,6 +230,7 @@ pub fn run_cached<'ctx>(
     given: &HashMap<String, Value>,
     ctx: &'ctx Context,
 ) -> EvalResult {
+    // Solver params were set once in build_cache; no per-call tuning here.
     cached.solver.push();
     for (name, value) in given {
         let Some(var) = cached.env.get(name) else { continue };
@@ -305,8 +320,10 @@ pub fn evaluate(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    arith_solver: u32,
 ) -> EvalResult {
     let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
 
     // Pass 1: declare variables and add per-type constraints. User-defined

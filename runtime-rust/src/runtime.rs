@@ -9,6 +9,7 @@ use crate::translate::{
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use z3::{Config, Context};
 
 pub use crate::translate::Value;
@@ -72,6 +73,132 @@ pub struct EvidentRuntime {
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
     loaded_files: RefCell<HashSet<PathBuf>>,
+    /// Per-schema solve-time history + auto-tuner state. Drives the
+    /// dynamic `smt.arith.solver` selection. See `SolveHistory` and
+    /// `EvidentRuntime::query_cached` for the pricing protocol.
+    solve_history: RefCell<HashMap<String, SolveHistory>>,
+}
+
+/// Candidate `smt.arith.solver` values the runtime will try when it
+/// hasn't yet committed to one. 2 is the older Simplex-based path that
+/// wins on Z3 4.8.12 for our workload; 6 is the newer default that
+/// wins for newer Z3 versions and on different schemas. The auto-tuner
+/// runs each one for a window of frames and locks in the faster one.
+///
+/// Add another value here (e.g. `12` if Z3 ever ships a useful new one)
+/// and pricing will pick it up automatically.
+const ARITH_SOLVER_CANDIDATES: &[u32] = &[2, 6];
+
+/// Number of frames each candidate is timed under during pricing.
+/// Long enough to swamp Z3's per-build overhead with steady-state
+/// per-frame cost; short enough that pricing finishes well within
+/// the warmup window of typical executor sessions.
+const PRICING_FRAMES_PER_CANDIDATE: u32 = 30;
+
+/// Per-schema history. Drives the auto-tuner. The state machine:
+///
+///   Pricing { idx } — currently timing candidate ARITH_SOLVER_CANDIDATES[idx].
+///                     After PRICING_FRAMES_PER_CANDIDATE frames the runtime
+///                     advances `idx` (rebuilding the cache under the next
+///                     candidate). After all candidates are timed, transitions
+///                     to Locked under the fastest config seen.
+///   Locked { config } — pricing complete. All future queries use this config.
+///
+/// `EVIDENT_Z3_AUTOTUNE=0` skips pricing entirely and locks immediately
+/// to the env-specified `EVIDENT_Z3_ARITH_SOLVER` value (default 2).
+struct SolveHistory {
+    state: TunerState,
+    /// Mean ms/iter observed for each candidate fully priced. Used to
+    /// pick the winner when pricing completes.
+    measured: HashMap<u32, f64>,
+    /// Solve times for the *current* candidate's pricing window. Cleared
+    /// every time we advance to the next candidate.
+    current_window: Vec<Duration>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TunerState {
+    /// Currently timing `ARITH_SOLVER_CANDIDATES[idx]`.
+    Pricing { idx: usize },
+    /// Pricing complete; this is the winner.
+    Locked { config: u32 },
+}
+
+impl SolveHistory {
+    /// Initial state. If autotune is disabled, lock immediately to the
+    /// env-specified config (default 2). Otherwise start pricing with
+    /// the first candidate.
+    fn new() -> Self {
+        let autotune = std::env::var("EVIDENT_Z3_AUTOTUNE").as_deref() != Ok("0");
+        if !autotune {
+            let initial: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+                .and_then(|s| s.parse().ok()).unwrap_or(2);
+            return SolveHistory {
+                state: TunerState::Locked { config: initial },
+                measured: HashMap::new(),
+                current_window: Vec::new(),
+            };
+        }
+        SolveHistory {
+            state: TunerState::Pricing { idx: 0 },
+            measured: HashMap::new(),
+            current_window: Vec::with_capacity(PRICING_FRAMES_PER_CANDIDATE as usize),
+        }
+    }
+
+    /// The `arith_solver` value the cache should be built under right now.
+    fn current_config(&self) -> u32 {
+        match self.state {
+            TunerState::Pricing { idx }     => ARITH_SOLVER_CANDIDATES[idx],
+            TunerState::Locked  { config }  => config,
+        }
+    }
+
+    /// Record a solve time. Returns `Some(new_config)` if the tuner
+    /// decided to swap configs (caller should evict the cache so the
+    /// next query rebuilds under the new value), `None` otherwise.
+    fn record(&mut self, dt: Duration) -> Option<u32> {
+        let TunerState::Pricing { idx } = self.state else { return None; };
+
+        self.current_window.push(dt);
+        if self.current_window.len() < PRICING_FRAMES_PER_CANDIDATE as usize {
+            return None;
+        }
+
+        // Window full — finalize this candidate's measurement.
+        let total_ms: f64 = self.current_window.iter()
+            .map(|d| d.as_secs_f64() * 1000.0).sum();
+        let mean_ms = total_ms / self.current_window.len() as f64;
+        let cfg = ARITH_SOLVER_CANDIDATES[idx];
+        self.measured.insert(cfg, mean_ms);
+        self.current_window.clear();
+
+        let next_idx = idx + 1;
+        if next_idx < ARITH_SOLVER_CANDIDATES.len() {
+            // More candidates to price.
+            self.state = TunerState::Pricing { idx: next_idx };
+            let next_cfg = ARITH_SOLVER_CANDIDATES[next_idx];
+            if std::env::var("EVIDENT_Z3_AUTOTUNE_LOG").as_deref() == Ok("1") {
+                eprintln!("[autotune] arith.solver={cfg} → {mean_ms:.2} ms/iter; \
+                           probing arith.solver={next_cfg} next");
+            }
+            Some(next_cfg)
+        } else {
+            // All candidates priced. Pick the fastest.
+            let winner = self.measured.iter()
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(c, _)| *c)
+                .unwrap_or(2);
+            self.state = TunerState::Locked { config: winner };
+            if std::env::var("EVIDENT_Z3_AUTOTUNE_LOG").as_deref() == Ok("1") {
+                eprintln!("[autotune] pricing complete: {:?}; locking arith.solver={winner}",
+                          self.measured);
+            }
+            // Return Some only if we need to rebuild cache (i.e. we
+            // were timing a different config than the winner).
+            if winner != cfg { Some(winner) } else { None }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +240,7 @@ impl EvidentRuntime {
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
+            solve_history: RefCell::new(HashMap::new()),
         }
     }
 
@@ -192,8 +320,11 @@ impl EvidentRuntime {
         }
         self.program.schemas.extend(prog.schemas);
         // Loading new schemas invalidates the cache: new schemas might
-        // be referenced by ClaimCall / passthrough in old ones.
+        // be referenced by ClaimCall / passthrough in old ones. Also
+        // reset the auto-tuner — measurements taken under the old
+        // schema body don't apply to the new one.
         self.cache.borrow_mut().clear();
+        self.solve_history.borrow_mut().clear();
         // Datatype registry entries reference the previous schema body
         // shape (field order / types). A new load could redefine a type
         // with a different shape; flush so we rebuild on first reference.
@@ -264,7 +395,12 @@ impl EvidentRuntime {
     pub fn query(&self, name: &str, given: &HashMap<String, Value>) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
-        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes);
+        // One-shot query: don't auto-tune (no chance to learn over many
+        // calls). Use the env override if set, default 2 (the value
+        // that wins on Z3 4.8.12 for our typical workload).
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, arith);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
@@ -311,28 +447,26 @@ impl EvidentRuntime {
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
             .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
         let cur_sig = structural_signature(&schema.body, given);
+
+        // Auto-tuner: which arith.solver should the cache use right now?
+        let arith_solver = {
+            let mut hist = self.solve_history.borrow_mut();
+            hist.entry(name.to_string()).or_insert_with(SolveHistory::new)
+                .current_config()
+        };
+
         let mut cache = self.cache.borrow_mut();
+        // Rebuild if (a) no entry, (b) structural signature changed, or
+        // (c) cached config doesn't match the auto-tuner's current pick.
         let needs_rebuild = match cache.get(name) {
-            Some((_, cached_sig)) => cached_sig != &cur_sig,
+            Some((cached, cached_sig)) =>
+                cached_sig != &cur_sig || cached.arith_solver != arith_solver,
             None => true,
         };
         if needs_rebuild {
             if cache.contains_key(name) {
                 *self.cache_rebuilds.borrow_mut() += 1;
             }
-            // Build with the full given so the structural values get
-            // folded as PinnedInts / literal seq lengths and unrolls
-            // fire correctly. Non-structural pinned values also get
-            // folded — this is fine when the same `given` is passed
-            // to the immediately-following `run_cached`, since the
-            // PinnedInt arm matches and is a no-op.
-            //
-            // Subsequent queries that change ONLY non-structural
-            // values would hit PinnedInt-mismatch UNSAT — to dodge
-            // that, the runtime could pass a stripped-given to
-            // build_cache (only structural keys). But that means
-            // re-walking pinned ints and is more code; the cleaner
-            // version is to filter `given` here. Doing that:
             let names = crate::translate::structural_names(&schema.body);
             let structural_given: HashMap<String, Value> = given.iter()
                 .filter(|(k, _)| names.contains(k.as_str()))
@@ -340,11 +474,25 @@ impl EvidentRuntime {
                 .collect();
             let new_cached = build_cache(
                 &schema, &self.schemas, self.z3_ctx, &self.datatypes,
-                &structural_given);
+                &structural_given, arith_solver);
             cache.insert(name.to_string(), (new_cached, cur_sig));
         }
         let entry = cache.get(name).unwrap();
+
+        // Time the actual solve so the auto-tuner can decide whether to
+        // advance to the next pricing window.
+        let t0 = Instant::now();
         let r = run_cached(&entry.0, given, self.z3_ctx);
+        let dt = t0.elapsed();
+        drop(cache);  // release before we may invalidate below
+
+        // Record the timing. If the tuner says to switch configs,
+        // evict so the next call rebuilds under the new value.
+        if let Some(_new_cfg) = self.solve_history.borrow_mut()
+            .get_mut(name).and_then(|h| h.record(dt))
+        {
+            self.cache.borrow_mut().remove(name);
+        }
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
@@ -365,27 +513,26 @@ impl EvidentRuntime {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
             .clone();
-        let cur_sig = structural_signature(&schema.body, given);
-        let mut cache = self.cache.borrow_mut();
-        let needs_rebuild = match cache.get(name) {
-            Some((_, cached_sig)) => cached_sig != &cur_sig,
-            None => true,
-        };
-        if needs_rebuild {
-            if cache.contains_key(name) {
-                *self.cache_rebuilds.borrow_mut() += 1;
-            }
-            let names = crate::translate::structural_names(&schema.body);
-            let structural_given: HashMap<String, Value> = given.iter()
-                .filter(|(k, _)| names.contains(k.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let new_cached = build_cache(
-                &schema, &self.schemas, self.z3_ctx, &self.datatypes,
-                &structural_given);
-            cache.insert(name.to_string(), (new_cached, cur_sig));
-        }
-        let entry = cache.get(name).unwrap();
-        Ok(sample_cached_inner(&entry.0, given, n, self.z3_ctx))
+        // Sample uses its own fresh, non-shared cached solver. Two reasons:
+        //   1. `arith.solver=2` (the runtime's per-frame default and a
+        //      candidate in the auto-tuner) is pathologically slow on
+        //      sample_cached_inner's cumulative blocking-clause workload.
+        //   2. The blocking clauses asserted inside sample's outer push
+        //      shouldn't influence the per-frame solver state that the
+        //      auto-tuner is timing.
+        // Sample is rare and amortizes the build_cache cost across N
+        // models, so the lack of cross-call caching is acceptable.
+        let names = crate::translate::structural_names(&schema.body);
+        let structural_given: HashMap<String, Value> = given.iter()
+            .filter(|(k, _)| names.contains(k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        // Sample's "safe" config: leave Z3 at its default arith path.
+        // 0 means "don't call set_params". Empirically this avoids the
+        // solver=2 blocking-clause pathology.
+        let cached = build_cache(
+            &schema, &self.schemas, self.z3_ctx, &self.datatypes,
+            &structural_given, 0);
+        Ok(sample_cached_inner(&cached, given, n, self.z3_ctx))
     }
 }

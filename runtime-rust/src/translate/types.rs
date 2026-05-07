@@ -196,4 +196,9 @@ impl<'ctx> Var<'ctx> {
 pub struct CachedSchema<'ctx> {
     pub(super) env: HashMap<String, Var<'ctx>>,
     pub(super) solver: Solver<'ctx>,
+    /// The `smt.arith.solver` value this cache was built under (0
+    /// means "no explicit setting, use Z3's default"). The runtime's
+    /// auto-tuner consults this to decide whether the cache needs
+    /// rebuilding under a different config.
+    pub arith_solver: u32,
 }
