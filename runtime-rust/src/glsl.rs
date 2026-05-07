@@ -427,12 +427,26 @@ impl<'a> Emitter<'a> {
                 // dotted Identifier, so this case never reaches
                 // the Field arm.
                 if let Some(rest) = name.strip_prefix("pixel.") {
-                    if matches!(rest, "x" | "y") {
+                    if is_glsl_swizzle(rest) {
                         return Ok(format!("pixel.{rest}"));
                     }
                 }
                 if let Some(b) = self.buckets.get(name) {
                     return Ok(bucket_glsl(b));
+                }
+                // Dotted swizzle on a local vec/color: `c.y`,
+                // `pal.rgb`, `mouse.xx`. The parser folds the dot
+                // into the identifier so we never reach the Field
+                // arm — split here and check the prefix against
+                // the bucket map.
+                if let Some(idx) = name.find('.') {
+                    let (prefix, dotted_rest) = name.split_at(idx);
+                    let suffix = &dotted_rest[1..];
+                    if is_glsl_swizzle(suffix) {
+                        if let Some(b) = self.buckets.get(prefix) {
+                            return Ok(format!("{}.{}", bucket_glsl(b), suffix));
+                        }
+                    }
                 }
                 // Dotted: try as a sub-record prefix
                 // (e.g. `state.hero` over leaves x, y).
@@ -477,16 +491,20 @@ impl<'a> Emitter<'a> {
                 if let Some(s) = self.synthesize_subrecord(&dotted) {
                     return Ok(s);
                 }
-                // Otherwise it's a swizzle on a local
-                // (`col.r`, `pixel.x`). Map by name.
+                // Otherwise it's a swizzle on a local — single
+                // component (`pixel.x`), color access (`col.r`), or
+                // a multi-char swizzle (`v.xy`, `c.rgb`, `pos.xx`).
+                // GLSL accepts any 1-4 char combination from one of
+                // the {x,y,z,w} / {r,g,b,a} / {s,t,p,q} sets; we
+                // permit the first two (the geometry + color sets,
+                // which is what users actually write).
                 let recv = self.expr_glsl(receiver)?;
-                let glsl_field = match field.as_str() {
-                    "r" | "g" | "b" | "x" | "y" | "z" | "w" => field.as_str(),
-                    other => return Err(TranspileError(format!(
-                        "shader: unknown field `.{}`", other
-                    ))),
-                };
-                Ok(format!("{}.{}", recv, glsl_field))
+                if !is_glsl_swizzle(field) {
+                    return Err(TranspileError(format!(
+                        "shader: unknown field `.{}`", field
+                    )));
+                }
+                Ok(format!("{}.{}", recv, field))
             }
             Expr::Call(name, args) => {
                 if !is_glsl_builtin(name) && !is_constructor(name) {
@@ -562,6 +580,17 @@ fn is_glsl_builtin(name: &str) -> bool {
         "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "exp" | "log" |
         "reflect" | "refract"
     )
+}
+
+/// Whether `s` is a valid GLSL swizzle: 1-4 chars, all from one of
+/// the geometry set (`xyzw`) or the color set (`rgba`). The third
+/// GLSL swizzle set (`stpq`, for textures) is intentionally not
+/// supported — texture coords aren't a thing in shader bodies yet.
+fn is_glsl_swizzle(s: &str) -> bool {
+    if s.is_empty() || s.len() > 4 { return false; }
+    let geom  = s.chars().all(|c| matches!(c, 'x' | 'y' | 'z' | 'w'));
+    let color = s.chars().all(|c| matches!(c, 'r' | 'g' | 'b' | 'a'));
+    geom || color
 }
 
 fn is_constructor(name: &str) -> bool {
