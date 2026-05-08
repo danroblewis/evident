@@ -1,0 +1,32 @@
+-- A tiny mutually-recursive AST in Evident itself.
+-- Demonstrates Stage 0c of self-hosting: forward references and
+-- mutual recursion between enums, both resolved by Z3's
+-- create_datatypes multi-builder API.
+--
+-- This is the shape stdlib/ast.ev will take in Stage 1: the
+-- canonical AST for Evident programs, expressed as Evident enums.
+-- Once that exists, compiler passes can be written as Evident
+-- claims that take a Program value and produce another Program
+-- value (or a list of types per variable, or whatever the pass
+-- yields).
+--
+--   evident query  programs/demos/mini_ast.ev sample_expr
+--   evident sample programs/demos/mini_ast.ev sample_expr -n 5
+
+-- Expr is forward-referenced by Stmt's payload, and Stmt is
+-- forward-referenced by Expr's EBlock payload — the runtime
+-- resolves both in one batch via Z3's create_datatypes.
+enum Expr =
+    ENum(Int)
+    EVar(String)
+    EAssign(String, Expr)
+    EBlock(Stmt)
+
+enum Stmt =
+    SExpr(Expr)
+    SSeq(Stmt, Stmt)
+
+claim sample_expr
+    e ∈ Expr
+    e = EBlock(SSeq(SExpr(EAssign("x", ENum(1))),
+                    SExpr(EAssign("y", EVar("x")))))

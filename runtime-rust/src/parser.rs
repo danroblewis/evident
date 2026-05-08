@@ -124,6 +124,29 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected '=' after enum name, got {:?}", other))),
         }
+        // Multi-line variant body: after `=`, if a Newline + deeper
+        // Indent follows, accept variants on separate lines with
+        // optional leading `|`. End of body = dedent / EOF / next
+        // top-level decl. Single-line form (variants joined by `|`
+        // on the same logical line) still works as before.
+        let mut block_indent: Option<usize> = None;
+        if matches!(self.peek(), Token::Newline) {
+            let saved = self.pos;
+            self.bump();
+            while matches!(self.peek(), Token::Newline) { self.bump(); }
+            if let Token::Indent(n) = self.peek().clone() {
+                if n > 0 {
+                    block_indent = Some(n);
+                    self.bump();
+                    // Optional leading `|` before the first variant.
+                    if matches!(self.peek(), Token::Pipe) { self.bump(); }
+                } else {
+                    self.pos = saved;
+                }
+            } else {
+                self.pos = saved;
+            }
+        }
         let mut variants = Vec::new();
         loop {
             let v_name = match self.bump() {
@@ -175,6 +198,35 @@ impl Parser {
             if matches!(self.peek(), Token::Pipe) {
                 self.bump();
                 continue;
+            }
+            // Multi-line continuation: a Newline followed by Indent at
+            // exactly `block_indent` introduces another variant. The
+            // optional `|` between variants is allowed but not
+            // required in the multi-line form.
+            if let Some(want) = block_indent {
+                if matches!(self.peek(), Token::Newline) {
+                    let cont_save = self.pos;
+                    self.bump();
+                    while matches!(self.peek(), Token::Newline) { self.bump(); }
+                    if let Token::Indent(n) = self.peek().clone() {
+                        if n == want {
+                            // Same indent → another variant follows.
+                            // Peek one token past the indent: must be
+                            // an Ident (variant name) or `|`.
+                            let next_kind = self.toks.get(self.pos + 1);
+                            let looks_like_variant = matches!(next_kind,
+                                Some(Token::Ident(_)) | Some(Token::Pipe));
+                            if looks_like_variant {
+                                self.bump();   // indent
+                                if matches!(self.peek(), Token::Pipe) {
+                                    self.bump();
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    self.pos = cont_save;
+                }
             }
             break;
         }
@@ -1634,6 +1686,59 @@ mod tests {
         let e = &p.enums[0];
         assert!(e.variants[0].fields.is_empty());
         assert_eq!(e.variants[1].fields.len(), 1);
+    }
+
+    #[test]
+    fn parse_enum_decl_multiline_no_leading_pipe() {
+        let p = parse(
+            "enum Expr =\n    ENum(Int)\n    EVar(String)\n    EAdd(Expr, Expr)\n"
+        ).unwrap();
+        let e = &p.enums[0];
+        assert_eq!(e.variants.len(), 3);
+        assert_eq!(e.variants[0].name, "ENum");
+        assert_eq!(e.variants[1].name, "EVar");
+        assert_eq!(e.variants[2].name, "EAdd");
+    }
+
+    #[test]
+    fn parse_enum_decl_multiline_with_leading_pipe() {
+        let p = parse(
+            "enum Color =\n    | Red\n    | Green\n    | Blue\n"
+        ).unwrap();
+        let e = &p.enums[0];
+        assert_eq!(e.variants.len(), 3);
+        let names: Vec<&str> = e.variants.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["Red", "Green", "Blue"]);
+    }
+
+    #[test]
+    fn parse_enum_decl_forward_reference_parses() {
+        // `Expr` declared first, references `BinOp` declared later.
+        // The parser doesn't validate types — that's runtime — so this
+        // just confirms the AST shape: 2 enum decls, the first
+        // references the second by name in a payload field.
+        let p = parse(
+            "enum Expr = Lit(Int) | Op(BinOp, Expr, Expr)\nenum BinOp = Add | Sub\n"
+        ).unwrap();
+        assert_eq!(p.enums.len(), 2);
+        assert_eq!(p.enums[0].name, "Expr");
+        assert_eq!(p.enums[1].name, "BinOp");
+        // Op variant's first field references BinOp.
+        assert_eq!(p.enums[0].variants[1].name, "Op");
+        assert_eq!(p.enums[0].variants[1].fields[0].type_name, "BinOp");
+    }
+
+    #[test]
+    fn parse_enum_decl_mutual_recursion_parses() {
+        // Expr ↔ Stmt — each references the other in payloads.
+        let p = parse(
+            "enum Expr = ENum(Int) | EBlock(Stmt)\nenum Stmt = SExpr(Expr) | SSeq(Stmt, Stmt)\n"
+        ).unwrap();
+        assert_eq!(p.enums.len(), 2);
+        // Expr.EBlock references Stmt.
+        assert_eq!(p.enums[0].variants[1].fields[0].type_name, "Stmt");
+        // Stmt.SExpr references Expr.
+        assert_eq!(p.enums[1].variants[0].fields[0].type_name, "Expr");
     }
 
     #[test]

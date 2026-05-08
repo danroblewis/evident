@@ -716,14 +716,17 @@ active.
   anonymous enum named `_Enum_<sorted_variants>` and is equivalent to declaring
   the type separately.
 - **Rust**: top-level `enum Color = Red | Green | Blue` with the dedicated
-  `enum` keyword (not `type`). Payload variants and recursive self-reference
-  are supported: `enum Result = Ok(Int) | Err(String)` and
-  `enum LinkedList = Nil | Cons(Int, LinkedList)` both work. Payload field
-  types must be primitives (Int/Nat/Pos/Bool/Real/String) or a previously-
-  declared enum (or self-references for recursion); cross-enum mutual
-  recursion isn't supported in v0.1. Constructors apply with positional
-  args: `r = Ok(5)`, `list = Cons(7, Cons(2, Nil))`. Variant names are
-  globally unique across all enums; duplicates fail at load.
+  `enum` keyword (not `type`). Payload variants, self-recursion, forward
+  references, and **cross-enum mutual recursion** are all supported:
+  `enum Result = Ok(Int) | Err(String)`,
+  `enum LinkedList = Nil | Cons(Int, LinkedList)`, and
+  `enum Expr = ENum(Int) | EBlock(Stmt) ; enum Stmt = SExpr(Expr) | SSeq(Stmt, Stmt)`
+  all work. Multiple enum decls per file are batched and built together via
+  Z3's `create_datatypes` so forward and mutual references resolve in one
+  pass. Multi-line variant lists are supported (with or without leading `|`).
+  Constructors apply with positional args: `r = Ok(5)`,
+  `list = Cons(7, Cons(2, Nil))`. Variant names are globally unique across
+  all enums; duplicates fail at load.
 
 **Variable scoping**
 - Variables declared inside a schema (`x ∈ Nat`) are local to that schema's
