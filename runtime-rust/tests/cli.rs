@@ -726,7 +726,7 @@ fn cli_infer_types_string_assignment() {
         "exit code {:?}; stderr: {}", out.status.code(),
         String::from_utf8_lossy(&out.stderr));
     let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("inferred `msg` ∈ String"),
+    assert!(s.contains("`msg` ∈ String"),
         "expected msg inferred as String; got: {s}");
     assert!(s.contains("in claim `t`"),
         "expected claim name `t` in output; got: {s}");
@@ -744,13 +744,13 @@ fn cli_infer_types_int_and_bool() {
         .args(["infer-types", path_int.to_str().unwrap()]).output().unwrap();
     assert!(out_int.status.success());
     let s_int = String::from_utf8_lossy(&out_int.stdout);
-    assert!(s_int.contains("inferred `n` ∈ Int"), "got: {s_int}");
+    assert!(s_int.contains("`n` ∈ Int"), "got: {s_int}");
 
     let out_bool = Command::new(bin()).current_dir(repo_root)
         .args(["infer-types", path_bool.to_str().unwrap()]).output().unwrap();
     assert!(out_bool.status.success());
     let s_bool = String::from_utf8_lossy(&out_bool.stdout);
-    assert!(s_bool.contains("inferred `flag` ∈ Bool"), "got: {s_bool}");
+    assert!(s_bool.contains("`flag` ∈ Bool"), "got: {s_bool}");
 
     let _ = std::fs::remove_file(&path_int);
     let _ = std::fs::remove_file(&path_bool);
@@ -759,7 +759,7 @@ fn cli_infer_types_int_and_bool() {
 #[test]
 fn cli_infer_types_no_match_exits_3() {
     let path = write_tmp("infer_noop",
-        "claim t\n    x = \"a\"\n    y = \"b\"\n");
+        "claim t\n    a > b\n");
     let manifest = env!("CARGO_MANIFEST_DIR");
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin()).current_dir(repo_root)
@@ -796,7 +796,7 @@ fn cli_infer_types_extract_membership() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(s.contains("extract_first_membership"),
         "expected extract_first_membership rule to fire; got: {s}");
-    assert!(s.contains("inferred `x` ∈ Int"),
+    assert!(s.contains("`x` ∈ Int"),
         "expected `x ∈ Int` to be extracted; got: {s}");
     let _ = std::fs::remove_file(&path);
 }
@@ -857,5 +857,70 @@ fn cli_infer_types_dispatch_order_extract_before_inferred() {
     let infer_pos   = s.find("infer_string_from_membership_plus_assignment").unwrap_or(usize::MAX);
     assert!(extract_pos < infer_pos,
         "extract rule should appear before inference rules; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── Stage 6: infer-types now dispatches iter_types rules too ───
+
+#[test]
+fn cli_infer_types_iter_finds_in_long_body() {
+    // 5-body program — beyond what literal_types.ev's 1-body /
+    // 2-body rules can match. The iter_types rules find everything
+    // via existential search.
+    let path = write_tmp("infer_long",
+        "claim t\n    a = \"first\"\n    b = 1\n    c = false\n    \
+         score ∈ Nat\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(), "stderr: {}",
+            String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    // All four iter rules should fire on this program.
+    for needle in [
+        "has_membership_of_var",   "score` ∈ Nat",
+        "has_string_assignment",   "a` ∈ String",
+        "has_int_assignment",      "b` ∈ Int",
+        "has_bool_assignment",     "c` ∈ Bool",
+    ] {
+        assert!(s.contains(needle),
+            "expected {needle:?} in iter-rules output; got:\n{s}");
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_iter_complements_literal_rules() {
+    // 1-body program — both literal_types and iter_types should
+    // fire (literal_types' single_assignment rule + iter_types'
+    // has_string_assignment).
+    let path = write_tmp("infer_complement",
+        "claim t\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("infer_string_from_single_assignment"),
+        "literal_types rule should fire");
+    assert!(s.contains("has_string_assignment"),
+        "iter_types rule should also fire");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_iter_unsat_for_empty_program() {
+    // Body has no items; nothing iterates; nothing matches.
+    // Still exits 3 (no rule matched), not 0 / 1.
+    let path = write_tmp("infer_empty", "claim t\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(3),
+        "expected exit 3 (no match); got {:?}; stderr: {}",
+        out.status.code(), String::from_utf8_lossy(&out.stderr));
     let _ = std::fs::remove_file(&path);
 }

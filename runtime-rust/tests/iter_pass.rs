@@ -157,6 +157,115 @@ fn iteration_isolates_between_user_loads() {
 }
 
 #[test]
+fn has_bool_assignment_finds_in_body() {
+    // Bool variant — wasn't in the initial test set.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    x ∈ Int
+    flag ∈ Bool
+    flag = true
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_bool_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("flag".to_string())));
+    assert_eq!(r.bindings.get("bool_lit"),
+               Some(&Value::Bool(true)));
+}
+
+#[test]
+fn iteration_handles_long_body() {
+    // A body with 6 items — well past anything literal_types.ev can
+    // pattern-match. Iteration should still find the assignment.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    a ∈ Int
+    b ∈ Bool
+    c ∈ String
+    a = 1
+    b = false
+    c = \"target\"
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_string_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied,
+        "iteration should find the String assignment in a 6-body program");
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("c".to_string())));
+    assert_eq!(r.bindings.get("string_lit"),
+               Some(&Value::Str("target".to_string())));
+}
+
+#[test]
+fn iteration_picks_one_of_many_matching_assignments() {
+    // Multiple String assignments exist; ∃ binds to whichever Z3
+    // picks first. The exact choice is a solver implementation
+    // detail — we just check that bindings are consistent (the
+    // bound (target_var, string_lit) match a real assignment in
+    // the body).
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    a = \"first\"
+    b = \"second\"
+    c = \"third\"
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_string_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    let var = match r.bindings.get("target_var") {
+        Some(Value::Str(s)) => s.clone(),
+        other => panic!("expected target_var as Str; got {other:?}"),
+    };
+    let lit = match r.bindings.get("string_lit") {
+        Some(Value::Str(s)) => s.clone(),
+        other => panic!("expected string_lit as Str; got {other:?}"),
+    };
+    let expected = [("a", "first"), ("b", "second"), ("c", "third")];
+    let valid = expected.iter()
+        .any(|(v, l)| *v == var && *l == lit);
+    assert!(valid,
+        "(target_var={var:?}, string_lit={lit:?}) doesn't match \
+         any real assignment in the body");
+}
+
+#[test]
+fn iteration_user_program_with_multiple_claims_uses_first() {
+    // The runtime injects only the FIRST user claim's body. The
+    // pass operates on that. Subsequent claims are visible in the
+    // Program value but not in the flat body Seq.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim alpha
+    msg = \"only_in_alpha\"
+
+claim beta
+    n ∈ Int
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_string_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("string_lit"),
+               Some(&Value::Str("only_in_alpha".to_string())),
+        "iteration should find the alpha-claim's String assignment");
+
+    // Beta's Int Membership is NOT in body (body is alpha's body).
+    // Verify by trying to find a Membership — should be UNSAT.
+    let r2 = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(!r2.satisfied,
+        "beta's Membership is in claim 2, not the injected body");
+}
+
+#[test]
 fn unknown_pass_claim_for_iter_errors() {
     let mut rt = fresh_rt_with_iter_pass();
     rt.load_source("claim t\n    x ∈ Int\n").unwrap();

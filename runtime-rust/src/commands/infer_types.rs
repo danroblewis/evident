@@ -1,20 +1,23 @@
-//! `evident infer-types <file>` — Stage 3 user-facing demo. Loads
-//! `stdlib/ast.ev` + `stdlib/passes/literal_types.ev`, marks both
-//! as system, then loads the user's file and runs each inference
-//! rule (`infer_string_from_single_assignment`,
-//! `infer_int_from_single_assignment`,
-//! `infer_bool_from_single_assignment`) against the encoded program.
-//! Prints the bindings any rule satisfied.
+//! `evident infer-types <file>` — Stage 6 user-facing self-hosted
+//! inference. Loads `stdlib/ast.ev` + the two pass files and runs:
 //!
-//! v0.1: pass rules are narrow (single-claim, single-body-item).
-//! Real iteration over arbitrary-length BodyItemLists is Stage 4.
+//!   * `literal_types.ev` rules — pattern-match fixed body shapes
+//!     (head Membership, single-body assignments, 2-body
+//!     declaration+assignment).
+//!   * `iter_types.ev` rules — iterate via ∃ over the user's first
+//!     claim's body to find Membership / String / Int / Bool
+//!     assignments anywhere.
+//!
+//! Each successful rule prints a one-line summary of the inferred
+//! variable + type. Order goes most-specific → most-general:
+//! literal_types.ev's extract first, then membership+assignment,
+//! then single-assignment, then iter_types.ev's existentials.
 //!
 //! Exit codes:
 //!   0 — at least one rule produced bindings
 //!   1 — load / encode error
 //!   2 — usage error
-//!   3 — no rule matched (the program doesn't fit any v0.1 pattern;
-//!       not an error, but worth distinguishing from "matched")
+//!   3 — no rule matched (the program doesn't fit any v0.1 pattern)
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -23,12 +26,10 @@ use evident_runtime::{EvidentRuntime, Value};
 
 const STDLIB_AST:    &str = "stdlib/ast.ev";
 const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
+const ITER_TYPES:    &str = "stdlib/passes/iter_types.ev";
 
-// Order matters: more-specific rules go first so the CLI prefers
-// extracted-from-Membership info over inferred-from-literal info
-// when both apply. (The user explicitly declared a type — respect
-// that over a guess.)
-const RULES: &[&str] = &[
+/// Rules invoked via `query_with_program` (no body Seq needed).
+const PROGRAM_RULES: &[&str] = &[
     "extract_first_membership",
     "infer_string_from_membership_plus_assignment",
     "infer_int_from_membership_plus_assignment",
@@ -38,14 +39,68 @@ const RULES: &[&str] = &[
     "infer_bool_from_single_assignment",
 ];
 
+/// Rules invoked via `query_with_program_and_body` (need the
+/// iteration-friendly flat Seq(BodyItem) injection).
+const ITER_RULES: &[&str] = &[
+    "has_membership_of_var",
+    "has_string_assignment",
+    "has_int_assignment",
+    "has_bool_assignment",
+];
+
+/// Tag for output labels: how the rule renders the inferred fact.
+fn label_for(rule: &str) -> &'static str {
+    if rule.starts_with("has_") { "found via iteration" }
+    else if rule.starts_with("extract_") { "extracted from declaration" }
+    else if rule.starts_with("infer_") && rule.contains("membership_plus") {
+        "inferred from declaration + assignment"
+    } else if rule.starts_with("infer_") {
+        "inferred from literal assignment"
+    } else { "matched" }
+}
+
+/// Pull the variable name + type out of common binding shapes.
+/// Different rule families bind slightly different names —
+/// extract/infer use `inferred_var`/`inferred_type`; iter uses
+/// `target_var`/`target_type` (or `target_var`/literal).
+fn render_bindings(rule: &str, b: &std::collections::HashMap<String, Value>)
+    -> Option<(String, String, String)>
+{
+    let claim_name = b.get("claim_name").and_then(|v| match v {
+        Value::Str(s) => Some(s.clone()),
+        _ => None,
+    }).unwrap_or_default();
+    // literal_types.ev: inferred_var, inferred_type
+    if let (Some(Value::Str(v)), Some(Value::Str(t))) =
+        (b.get("inferred_var"), b.get("inferred_type"))
+    {
+        return Some((v.clone(), t.clone(), claim_name));
+    }
+    // iter_types.ev with target_type (has_membership_of_var)
+    if let (Some(Value::Str(v)), Some(Value::Str(t))) =
+        (b.get("target_var"), b.get("target_type"))
+    {
+        return Some((v.clone(), t.clone(), claim_name));
+    }
+    // iter_types.ev assignment rules: derive type from rule name.
+    if let Some(Value::Str(v)) = b.get("target_var") {
+        let typ = if rule.contains("string") { "String" }
+                  else if rule.contains("int") { "Int" }
+                  else if rule.contains("bool") { "Bool" }
+                  else { "?" };
+        return Some((v.clone(), typ.to_string(), claim_name));
+    }
+    None
+}
+
 pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     if args.is_empty() {
         eprintln!("infer-types: need <file.ev>");
         eprintln!("       evident infer-types <file.ev>");
         eprintln!();
-        eprintln!("Loads stdlib/ast.ev + stdlib/passes/literal_types.ev,");
-        eprintln!("encodes the user's program, runs each inference rule,");
-        eprintln!("and prints any bindings recovered.");
+        eprintln!("Loads stdlib/ast.ev + the literal_types and iter_types passes,");
+        eprintln!("encodes the user's program, runs every inference rule, and");
+        eprintln!("prints any bindings recovered.");
         return ExitCode::from(2);
     }
     let user_path = &args[0];
@@ -60,6 +115,10 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
         eprintln!("error: failed to load {LITERAL_TYPES}: {e}");
         return ExitCode::from(1);
     }
+    if let Err(e) = rt.load_file(Path::new(ITER_TYPES)) {
+        eprintln!("error: failed to load {ITER_TYPES}: {e}");
+        return ExitCode::from(1);
+    }
     rt.mark_system_loads_complete();
 
     if let Err(e) = rt.load_file(Path::new(user_path)) {
@@ -68,23 +127,32 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     }
 
     let mut any_match = false;
-    for rule in RULES {
+    for rule in PROGRAM_RULES {
         match rt.query_with_program(rule, "program") {
             Ok(r) if r.satisfied => {
                 any_match = true;
-                let var = r.bindings.get("inferred_var")
-                    .and_then(|v| if let Value::Str(s) = v { Some(s.as_str()) } else { None })
-                    .unwrap_or("?");
-                let typ = r.bindings.get("inferred_type")
-                    .and_then(|v| if let Value::Str(s) = v { Some(s.as_str()) } else { None })
-                    .unwrap_or("?");
-                let claim_name = r.bindings.get("claim_name")
-                    .and_then(|v| if let Value::Str(s) = v { Some(s.as_str()) } else { None })
-                    .unwrap_or("?");
-                println!("{}: inferred `{}` ∈ {} (in claim `{}`)",
-                         rule, var, typ, claim_name);
+                if let Some((var, typ, claim)) = render_bindings(rule, &r.bindings) {
+                    let where_ = if claim.is_empty() { String::new() }
+                                 else { format!(" (in claim `{}`)", claim) };
+                    println!("{rule}: {} `{}` ∈ {}{}", label_for(rule), var, typ, where_);
+                }
             }
-            Ok(_) => { /* rule didn't match this program; silent */ }
+            Ok(_)  => {}
+            Err(e) => {
+                eprintln!("error: rule `{rule}` failed: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    }
+    for rule in ITER_RULES {
+        match rt.query_with_program_and_body(rule, "program", "body") {
+            Ok(r) if r.satisfied => {
+                any_match = true;
+                if let Some((var, typ, _claim)) = render_bindings(rule, &r.bindings) {
+                    println!("{rule}: {} `{}` ∈ {}", label_for(rule), var, typ);
+                }
+            }
+            Ok(_)  => {}
             Err(e) => {
                 eprintln!("error: rule `{rule}` failed: {e}");
                 return ExitCode::from(1);
@@ -96,8 +164,9 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         eprintln!("no inference rule matched this program.");
-        eprintln!("(v0.1 rules are narrow — single-claim, single-body-item");
-        eprintln!(" programs of shape `claim NAME : var = literal` only.)");
+        eprintln!("(v0.1 rules cover: head Membership, single-body");
+        eprintln!(" assignments, 2-body decl+assignment, and ∃-over-body");
+        eprintln!(" Membership/String/Int/Bool assignment.)");
         ExitCode::from(3)
     }
 }
