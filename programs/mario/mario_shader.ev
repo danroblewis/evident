@@ -18,6 +18,7 @@
 -- since the shader plugin can't upload Seqs.
 
 import "programs/mario/engine.ev"
+import "programs/mario/level_data.ev"     -- defines InitMario (shared with mario.ev)
 
 type MarioShaderState
     hero_x, hero_y, hero_vx, hero_vy ∈ Int
@@ -26,28 +27,6 @@ type MarioShaderState
     time_ms                          ∈ Nat
     won                              ∈ Bool
     coin_0, coin_1, coin_2, coin_3, coin_4, coin_5, coin_6, coin_7 ∈ Bool
-
-claim InitMarioShader
-    state ∈ GameState
-
-    state.hero.pos = IVec2(60, 460)
-    state.hero.vel = IVec2(0, 0)
-    state.hero.on_ground = true
-
-    state.platforms[0].pos = IVec2( 300, 440)  ∧ state.platforms[0].size = IVec2(120, 20)
-    state.platforms[1].pos = IVec2( 520, 340)  ∧ state.platforms[1].size = IVec2(120, 20)
-    state.platforms[2].pos = IVec2( 760, 240)  ∧ state.platforms[2].size = IVec2(120, 20)
-    state.platforms[3].pos = IVec2(1020, 380)  ∧ state.platforms[3].size = IVec2(160, 20)
-    state.platforms[4].pos = IVec2(1300, 280)  ∧ state.platforms[4].size = IVec2(140, 20)
-
-    state.coins[0] = Coin(IVec2( 350, 400), false)
-    state.coins[1] = Coin(IVec2( 570, 300), false)
-    state.coins[2] = Coin(IVec2( 800, 200), false)
-    state.coins[3] = Coin(IVec2(1060, 340), false)
-    state.coins[4] = Coin(IVec2(1100, 340), false)
-    state.coins[5] = Coin(IVec2(1340, 240), false)
-    state.coins[6] = Coin(IVec2(1500, 500), false)
-    state.coins[7] = Coin(IVec2( 200, 500), false)
 
 type main(state, state_next ∈ GameState)
     input         ∈ SDLInput
@@ -77,7 +56,7 @@ type main(state, state_next ∈ GameState)
     vmax       = 1100
 
     state_next.step = state.step + 1
-    state.step = 0 ⇒ InitMarioShader
+    state.step = 0 ⇒ InitMario
 
     -- Engine wiring (physics only; shader does rendering).
     eff_vy ∈ Int

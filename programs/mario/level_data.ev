@@ -1,0 +1,29 @@
+-- level_data.ev — shared production-level data for the Mario demos.
+-- Both `mario.ev` (rect renderer) and `mario_shader.ev` (shader
+-- renderer) consume `InitMario` to set up identical level layouts.
+--
+-- Editing the level here updates both renderers in lockstep.
+
+import "programs/mario/engine.ev"
+
+claim InitMario
+    state ∈ GameState
+
+    state.hero.pos = IVec2(60, 460)
+    state.hero.vel = IVec2(0, 0)
+    state.hero.on_ground = true
+
+    state.platforms[0].pos = IVec2( 300, 440)  ∧ state.platforms[0].size = IVec2(120, 20)
+    state.platforms[1].pos = IVec2( 520, 340)  ∧ state.platforms[1].size = IVec2(120, 20)
+    state.platforms[2].pos = IVec2( 760, 240)  ∧ state.platforms[2].size = IVec2(120, 20)
+    state.platforms[3].pos = IVec2(1020, 380)  ∧ state.platforms[3].size = IVec2(160, 20)
+    state.platforms[4].pos = IVec2(1300, 280)  ∧ state.platforms[4].size = IVec2(140, 20)
+
+    state.coins[0] = Coin(IVec2( 350, 400), false)
+    state.coins[1] = Coin(IVec2( 570, 300), false)
+    state.coins[2] = Coin(IVec2( 800, 200), false)
+    state.coins[3] = Coin(IVec2(1060, 340), false)
+    state.coins[4] = Coin(IVec2(1100, 340), false)
+    state.coins[5] = Coin(IVec2(1340, 240), false)
+    state.coins[6] = Coin(IVec2(1500, 500), false)
+    state.coins[7] = Coin(IVec2( 200, 500), false)
