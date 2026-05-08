@@ -118,6 +118,117 @@ claim sat_set_literal_empty
     e ∈ Expr
     e = ESetLit(ELNil)
 
+-- ── Real literal ────────────────────────────────────────────────
+
+claim sat_real_literal_expr
+    e ∈ Expr
+    e = EReal(3)
+
+claim unsat_real_literal_mismatch
+    e ∈ Expr
+    e = EReal(3)
+    e = EReal(7)
+
+-- ── In-expression (set / sequence membership inside a Bool) ────
+
+claim sat_in_expr_basic
+    -- AST for `x ∈ pts` (a Bool subexpression).
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"), EIdentifier("pts"))
+
+claim sat_in_expr_with_set_literal
+    -- `x ∈ {1, 2, 3}`.
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"),
+                ESetLit(ELCons(EInt(1),
+                        ELCons(EInt(2),
+                        ELCons(EInt(3), ELNil)))))
+
+claim unsat_in_expr_lhs_mismatch
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"), EIdentifier("pts"))
+    e = EInExpr(EIdentifier("y"), EIdentifier("pts"))
+
+-- ── Function/constructor call ───────────────────────────────────
+
+claim sat_call_no_args
+    -- AST for `Mon` parsed as a 0-arg call (would normally be an
+    -- Identifier in real source; this tests Call's encoding).
+    e ∈ Expr
+    e = ECall("Mon", ELNil)
+
+claim sat_call_with_args
+    -- `IVec2(380, 280)`.
+    e ∈ Expr
+    e = ECall("IVec2", ELCons(EInt(380), ELCons(EInt(280), ELNil)))
+
+claim sat_call_nested_args
+    -- `Cons(7, Cons(2, Nil))`.
+    e ∈ Expr
+    e = ECall("Cons",
+              ELCons(EInt(7),
+              ELCons(ECall("Cons",
+                       ELCons(EInt(2),
+                       ELCons(ECall("Nil", ELNil), ELNil))),
+                     ELNil)))
+
+claim unsat_call_arg_mismatch
+    e ∈ Expr
+    e = ECall("F", ELCons(EInt(1), ELNil))
+    e = ECall("F", ELCons(EInt(2), ELNil))
+
+-- ── Negation ────────────────────────────────────────────────────
+
+claim sat_not_expr
+    -- `¬b`.
+    e ∈ Expr
+    e = ENot(EIdentifier("b"))
+
+claim sat_not_of_binary
+    -- `¬(x = 5)`.
+    e ∈ Expr
+    e = ENot(EBinary(OpEq, EIdentifier("x"), EInt(5)))
+
+claim unsat_not_double_mismatch
+    e ∈ Expr
+    e = ENot(EIdentifier("a"))
+    e = ENot(EIdentifier("b"))
+
+-- ── BinOp variants: every one is distinct from the next ─────────
+
+claim sat_binop_all_distinct
+    -- 14 enum variants — picking 4 representative pairs proves
+    -- the registry assigned distinct constructor identities.
+    a, b, c, d ∈ BinOp
+    a = OpEq
+    b = OpAnd
+    c = OpAdd
+    d = OpConcat
+    a ≠ b
+    a ≠ c
+    a ≠ d
+    b ≠ c
+    b ≠ d
+    c ≠ d
+
+claim unsat_binop_self_contradiction
+    op ∈ BinOp
+    op = OpImplies
+    op = OpOr
+
+-- ── Keyword variants distinct ───────────────────────────────────
+
+claim sat_all_keywords_distinct
+    a, b, c, d ∈ Keyword
+    a = KSchema
+    b = KClaim
+    c = KType
+    d = KSubclaim
+    a ≠ b
+    b ≠ c
+    c ≠ d
+    a ≠ d
+
 -- ── Pins ────────────────────────────────────────────────────────
 
 claim sat_pins_none

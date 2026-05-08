@@ -55,10 +55,23 @@ fn register_enums(
     if decls.is_empty() { return Ok(()); }
 
     // Pre-flight checks: variant uniqueness (across this batch and
-    // previously-loaded enums), and enum-name uniqueness.
+    // previously-loaded enums), and enum-name uniqueness (same).
     let batch_names: std::collections::HashSet<&str> =
         decls.iter().map(|d| d.name.as_str()).collect();
     {
+        // Same-batch enum-name uniqueness: walk decls once and bail on
+        // the first repeat. If batch_names.len() != decls.len() then
+        // some name collided; locate it for a useful message.
+        if batch_names.len() != decls.len() {
+            let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            for d in decls {
+                if !seen.insert(d.name.as_str()) {
+                    return Err(RuntimeError::Parse(format!(
+                        "enum `{}` declared more than once in the same load",
+                        d.name)));
+                }
+            }
+        }
         let existing_by_name = registry.by_name.borrow();
         for d in decls {
             if existing_by_name.contains_key(&d.name) {

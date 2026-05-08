@@ -131,3 +131,42 @@ claim sat_set_membership_in_expr
 claim sat_plain_membership
     pos_x ∈ Int
     pos_x = 42
+
+-- ── Real type in chain ──────────────────────────────────────────
+
+claim sat_real_pin
+    -- The Real LRA path is separate from Int; verify the chain
+    -- works there too.
+    r ∈ Real = 1
+    r = 1
+
+claim sat_real_bound
+    r ∈ Real
+    r < 10
+    r = 5
+
+-- ── String type in chain ────────────────────────────────────────
+
+claim sat_string_pin
+    name ∈ String = "alice"
+    name = "alice"
+
+claim unsat_string_pin_contradicts
+    name ∈ String = "alice"
+    name = "bob"
+
+-- ── Composition: chain inside a claim that's invoked elsewhere ──
+
+claim bounded_score
+    score ∈ Nat
+    0 ≤ score ≤ 100
+
+claim sat_chain_via_composition
+    score ∈ Nat
+    bounded_score
+    score = 50
+
+claim unsat_chain_via_composition_violates
+    score ∈ Nat
+    bounded_score
+    score = 200
