@@ -160,6 +160,111 @@ fn unknown_pass_claim_errors() {
         "unexpected error: {s}");
 }
 
+// ── Stage 3 plumbing edge cases ────────────────────────────────
+
+#[test]
+fn mark_system_loads_complete_is_idempotent() {
+    // Calling twice should not corrupt state — the second call
+    // simply re-snapshots the current state.
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST)).unwrap();
+    rt.mark_system_loads_complete();
+    rt.mark_system_loads_complete();
+    rt.load_file(Path::new(LITERAL_TYPES)).unwrap();
+    rt.mark_system_loads_complete();   // re-snapshot includes the pass
+    rt.load_source("claim t\n    msg = \"hello\"\n").unwrap();
+    let r = rt.query_with_program("infer_string_from_single_assignment", "program").unwrap();
+    assert!(r.satisfied,
+        "after the second mark_system_loads_complete, only `claim t` \
+         counts as user; inference should still find the assignment");
+}
+
+#[test]
+fn mark_system_loads_complete_with_no_loads_filters_to_empty() {
+    // Marking system before loading anything means EVERYTHING after
+    // is user. With no user loads, the encoded program is empty.
+    let mut rt = EvidentRuntime::new();
+    rt.mark_system_loads_complete();
+    rt.load_file(Path::new(STDLIB_AST)).unwrap();
+    rt.load_file(Path::new(LITERAL_TYPES)).unwrap();
+    // Now ALL of the loaded schemas + enums are "user" — including
+    // stdlib/ast.ev's enums. has_at_least_one_schema asserts
+    // program ≠ empty; should be SAT (the pass file's claims are
+    // schemas that count as user).
+    let r = rt.query_with_program("has_at_least_one_schema", "program").unwrap();
+    assert!(r.satisfied,
+        "with no boundary, all schemas count as user; program is non-empty");
+}
+
+#[test]
+fn query_with_program_unknown_var_warns_but_returns_sat() {
+    // If the named var doesn't exist in the claim, the assertion
+    // is silently skipped (with a stderr warning). The query then
+    // runs without the injection, which for accepts_anything is SAT.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    msg = \"hello\"\n").unwrap();
+    let r = rt.query_with_program("accepts_anything", "totally_wrong_name").unwrap();
+    // accepts_anything just declares program ∈ Program; without
+    // any equality assertion against `totally_wrong_name`, it's
+    // trivially SAT.
+    assert!(r.satisfied,
+        "missing var should warn but not fail the query");
+}
+
+#[test]
+fn query_with_program_isolates_between_calls() {
+    // Two consecutive queries with different inferred values must
+    // not contaminate each other. Each call creates a fresh solver
+    // (per evaluate_with_extra_assertion), so the previous call's
+    // model shouldn't leak.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    msg = \"hello\"\n").unwrap();
+
+    // First query: inference returns "msg" / "String".
+    let r1 = rt.query_with_program("infer_string_from_single_assignment", "program").unwrap();
+    assert_eq!(r1.bindings.get("inferred_var"), Some(&Value::Str("msg".to_string())));
+
+    // Second query against the SAME runtime: should still return
+    // the same answer (same user program, no state drift).
+    let r2 = rt.query_with_program("infer_string_from_single_assignment", "program").unwrap();
+    assert_eq!(r2.bindings.get("inferred_var"), Some(&Value::Str("msg".to_string())),
+        "second call should produce the same inference (no state drift)");
+}
+
+#[test]
+fn literal_types_pass_parses_standalone() {
+    // Sanity check: the pass file itself parses without errors when
+    // loaded alongside its imports. Catches stdlib/ast.ev drift.
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST)).unwrap();
+    rt.load_file(Path::new(LITERAL_TYPES))
+        .expect("literal_types.ev failed to parse — \
+                 either the file or stdlib/ast.ev is broken");
+    // Confirm all expected pass claims registered.
+    let names: std::collections::HashSet<&str> = rt.schema_names().collect();
+    for expected in ["accepts_anything",
+                     "has_at_least_one_schema",
+                     "infer_string_from_single_assignment",
+                     "infer_int_from_single_assignment",
+                     "infer_bool_from_single_assignment"] {
+        assert!(names.contains(expected),
+            "literal_types.ev is missing claim `{expected}`");
+    }
+}
+
+#[test]
+fn query_with_program_works_when_user_loads_only_an_enum() {
+    // Edge case: user loads no schemas, only an enum. Encoder
+    // should still produce a valid Program; the inference pass
+    // returns UNSAT (no schemas to match) but the call shouldn't
+    // panic or error.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("enum Color = Red | Green\n").unwrap();
+    let r = rt.query_with_program("infer_string_from_single_assignment", "program").unwrap();
+    assert!(!r.satisfied,
+        "no schemas → no body items → no string assignment → UNSAT");
+}
+
 #[test]
 fn fails_without_stdlib_ast() {
     // Without stdlib/ast.ev loaded, the encoder can't find the

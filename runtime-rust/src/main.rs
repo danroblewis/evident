@@ -41,6 +41,7 @@ fn main() -> ExitCode {
         "test"    => commands::test::cmd_test(&args[1..]),
         "parse"   => commands::parse::cmd_parse(&args[1..]),
         "dump-ast" => commands::dump_ast::cmd_dump_ast(&args[1..]),
+        "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "execute" => commands::execute::cmd_execute(&args[1..]),
         "transpile-shader" => commands::transpile_shader::cmd_transpile_shader(&args[1..]),
         "export-smt2"      => commands::export_smt2::cmd_export_smt2(&args[1..]),

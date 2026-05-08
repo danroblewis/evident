@@ -710,3 +710,73 @@ fn cli_dump_ast_user_enum_appears() {
     assert!(s.contains("\"Red\""), "Red variant should appear");
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 3: `evident infer-types` ──────────────────────────────
+
+#[test]
+fn cli_infer_types_string_assignment() {
+    let path = write_tmp("infer_str", "claim t\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "exit code {:?}; stderr: {}", out.status.code(),
+        String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("inferred `msg` ∈ String"),
+        "expected msg inferred as String; got: {s}");
+    assert!(s.contains("in claim `t`"),
+        "expected claim name `t` in output; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_int_and_bool() {
+    let path_int = write_tmp("infer_int", "claim n_test\n    n = 42\n");
+    let path_bool = write_tmp("infer_bool", "claim flag_test\n    flag = true\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+
+    let out_int = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path_int.to_str().unwrap()]).output().unwrap();
+    assert!(out_int.status.success());
+    let s_int = String::from_utf8_lossy(&out_int.stdout);
+    assert!(s_int.contains("inferred `n` ∈ Int"), "got: {s_int}");
+
+    let out_bool = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path_bool.to_str().unwrap()]).output().unwrap();
+    assert!(out_bool.status.success());
+    let s_bool = String::from_utf8_lossy(&out_bool.stdout);
+    assert!(s_bool.contains("inferred `flag` ∈ Bool"), "got: {s_bool}");
+
+    let _ = std::fs::remove_file(&path_int);
+    let _ = std::fs::remove_file(&path_bool);
+}
+
+#[test]
+fn cli_infer_types_no_match_exits_3() {
+    let path = write_tmp("infer_noop",
+        "claim t\n    x = \"a\"\n    y = \"b\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    // v0.1 pass only matches single-body-item programs; multi-body
+    // programs match no rule. Exit code 3 documents this.
+    assert_eq!(out.status.code(), Some(3),
+        "expected exit 3 (no match); got {:?}; stderr: {}",
+        out.status.code(), String::from_utf8_lossy(&out.stderr));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_no_args_prints_usage() {
+    let out = Command::new(bin()).args(["infer-types"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("infer-types"),
+        "stderr should mention infer-types; got: {stderr}");
+}
