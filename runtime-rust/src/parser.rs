@@ -507,9 +507,11 @@ impl Parser {
     ///
     /// The variable being declared is the operand immediately to the
     /// left of `∈`. It must be a bare Identifier (no field access,
-    /// no expression). Multi-name shorthand (`x, y, z ∈ Int < 5`)
-    /// is not supported here — falls through to the existing
-    /// multi-name path which only handles plain `IDENT ∈ TYPE`.
+    /// expression). Multi-name shorthand is supported when the comma
+    /// list sits at the operand position immediately to the left of
+    /// `∈`: `x, y, z ∈ Int < 5` and `0 < x, y, z ∈ Int < 5` both
+    /// expand to one Membership per name plus per-name copies of
+    /// every comparison-pair constraint.
     ///
     /// Returns `None` (and rewinds the cursor) if the line doesn't fit
     /// this pattern. Carefully avoids consuming a regular set-membership
@@ -524,9 +526,50 @@ impl Parser {
         };
         let mut operands: Vec<Expr> = vec![first];
         let mut ops: Vec<BinOp> = Vec::new();
-        let mut membership_at: Option<(usize, String)> = None;
+        // (var_idx, type_name, all names — 1 element for single-name,
+        //  2+ for `x, y, z ∈ Type` shorthand)
+        let mut membership_at: Option<(usize, String, Vec<String>)> = None;
 
         loop {
+            // Multi-name shorthand: if the most recent operand is a
+            // bare Ident and the next tokens look like `, IDENT (, IDENT)* ∈`,
+            // consume the extra names. Only valid at the operand position
+            // immediately to the left of `∈`.
+            let mut extra_names: Vec<String> = Vec::new();
+            if matches!(self.peek(), Token::Comma) {
+                let last_is_bare = matches!(operands.last(),
+                    Some(Expr::Identifier(s)) if !s.contains('.'));
+                if last_is_bare {
+                    let mn_save = self.pos;
+                    let mut names: Vec<String> = Vec::new();
+                    while matches!(self.peek(), Token::Comma) {
+                        let inner_save = self.pos;
+                        self.bump();   // ,
+                        if let Token::Ident(s) = self.peek().clone() {
+                            // Same protective lookahead as the existing
+                            // multi-name body-item path: only consume if
+                            // the next token after the new ident is itself
+                            // a `,` or `∈`. Avoids eating `x, y` from a
+                            // tuple-like expression.
+                            let next_after = self.toks.get(self.pos + 1);
+                            if matches!(next_after, Some(Token::Comma) | Some(Token::In)) {
+                                self.bump();
+                                names.push(s);
+                                continue;
+                            }
+                        }
+                        self.pos = inner_save;
+                        break;
+                    }
+                    if matches!(self.peek(), Token::In) && !names.is_empty() {
+                        extra_names = names;
+                    } else {
+                        // Not a multi-name shorthand; rewind comma consumption.
+                        self.pos = mn_save;
+                    }
+                }
+            }
+
             if matches!(self.peek(), Token::In) {
                 if membership_at.is_some() {
                     // Two ∈ in one chain — not a recognized form.
@@ -577,7 +620,13 @@ impl Parser {
                 };
 
                 let var_idx = operands.len() - 1;
-                membership_at = Some((var_idx, type_name));
+                let first_name = match &operands[var_idx] {
+                    Expr::Identifier(s) if !s.contains('.') => s.clone(),
+                    _ => { self.pos = saved; return Ok(None); }
+                };
+                let mut all_names = vec![first_name];
+                all_names.extend(extra_names);
+                membership_at = Some((var_idx, type_name, all_names));
                 continue;
             }
             if let Some(op) = peek_compare_op(self.peek()) {
@@ -593,7 +642,7 @@ impl Parser {
             break;
         }
 
-        let Some((var_idx, type_name)) = membership_at else {
+        let Some((var_idx, type_name, names)) = membership_at else {
             self.pos = saved;
             return Ok(None);
         };
@@ -608,24 +657,23 @@ impl Parser {
             return Ok(None);
         }
 
-        // The variable being declared must be a bare Identifier with
-        // no dots — `state.foo ∈ Int < 5` is not allowed.
-        let var_name = match &operands[var_idx] {
-            Expr::Identifier(s) if !s.contains('.') => s.clone(),
-            _ => { self.pos = saved; return Ok(None); }
-        };
-
-        let mut items = vec![BodyItem::Membership {
-            name: var_name,
-            type_name,
+        // Desugar: emit one Membership per name first, then per-name
+        // copies of each comparison-pair constraint with the variable
+        // position substituted to the current name.
+        let mut items: Vec<BodyItem> = names.iter().map(|n| BodyItem::Membership {
+            name: n.clone(),
+            type_name: type_name.clone(),
             pins: crate::ast::Pins::None,
-        }];
-        for (i, op) in ops.into_iter().enumerate() {
-            let lhs = operands[i].clone();
-            let rhs = operands[i + 1].clone();
-            items.push(BodyItem::Constraint(Expr::Binary(
-                op, Box::new(lhs), Box::new(rhs),
-            )));
+        }).collect();
+        for name in &names {
+            let var_expr = Expr::Identifier(name.clone());
+            for (i, op) in ops.iter().enumerate() {
+                let lhs = if i == var_idx { var_expr.clone() } else { operands[i].clone() };
+                let rhs = if i + 1 == var_idx { var_expr.clone() } else { operands[i + 1].clone() };
+                items.push(BodyItem::Constraint(Expr::Binary(
+                    op.clone(), Box::new(lhs), Box::new(rhs),
+                )));
+            }
         }
         Ok(Some(items))
     }
@@ -1408,6 +1456,38 @@ mod tests {
         match s.body.last().unwrap() {
             BodyItem::Constraint(Expr::Binary(BinOp::And, _, _)) => {}
             other => panic!("expected `(x ∈ pts) ∧ (x > 0)` constraint, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_chained_membership_multi_name() {
+        // `x, y, z ∈ Int < 5` desugars to:
+        //   - Membership(x, Int), Membership(y, Int), Membership(z, Int)
+        //   - Constraint(x < 5), Constraint(y < 5), Constraint(z < 5)
+        let p = parse("claim t\n    x, y, z ∈ Int < 5\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 6, "expected 3 Memberships + 3 Constraints");
+        for (i, name) in ["x", "y", "z"].iter().enumerate() {
+            assert!(matches!(&s.body[i], BodyItem::Membership { name: n, type_name, .. }
+                if n == *name && type_name == "Int"));
+        }
+        for i in 3..6 {
+            assert!(matches!(&s.body[i], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
+        }
+    }
+
+    #[test]
+    fn parse_chained_membership_multi_name_two_sided() {
+        // `0 < x, y ∈ Int < 5` → 2 Memberships + 4 Constraints (lower + upper per name).
+        let p = parse("claim t\n    0 < x, y ∈ Int < 5\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 6);
+        // First two are Memberships
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, .. } if name == "x"));
+        assert!(matches!(&s.body[1], BodyItem::Membership { name, .. } if name == "y"));
+        // Next four are Constraints (per-name pair)
+        for i in 2..6 {
+            assert!(matches!(&s.body[i], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
         }
     }
 

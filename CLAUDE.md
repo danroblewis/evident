@@ -283,11 +283,17 @@ pos_x ∈ Int
 pos_x < 5
 ```
 
+Multi-name shorthand works in chains too — every comparison pair
+gets a per-name copy:
+
+```evident
+x, y, z ∈ Int < 5          -- 3 Memberships + 3 Constraints (each < 5)
+0 < x, y, z ∈ Int < 5      -- 3 Memberships + 6 Constraints (lower + upper per name)
+```
+
 The variable being declared must be a bare identifier (no field
-access — `state.x ∈ Int < 5` is rejected). Multi-name shorthand
-isn't supported in chains; for a list of vars sharing a type, use
-the existing `x, y, z ∈ Int` form on its own line. Compound types
-work without comparisons (`s ∈ Seq(Int)` parses normally) but the
+access — `state.x ∈ Int < 5` is rejected). Compound types work
+without comparisons (`s ∈ Seq(Int)` parses normally) but the
 chained form expects a plain type name on the right of `∈`.
 
 The chain detector requires the next token after the chain to be a
