@@ -99,11 +99,10 @@ claim PlayerRect
     rect  ∈ SDLRect
     won   ∈ Bool
 
-    rect.pos    = state.pos      -- record-lift: rect.pos.x = state.pos.x ∧ .y = .y
-    rect.size.x = 40
-    rect.size.y = 40
-    won  ⇒ (rect.color.r = 255 ∧ rect.color.g = 255 ∧ rect.color.b = 150)
-    ¬won ⇒ (rect.color.r = 220 ∧ rect.color.g = 180 ∧ rect.color.b = 60)
+    rect.pos   = state.pos        -- record-lift componentwise
+    rect.size  = IVec2(40, 40)
+    won  ⇒ rect.color = Color(255, 255, 150)
+    ¬won ⇒ rect.color = Color(220, 180, 60)
 
 -- ── Background color: dark navy normally, mossy green when won ──────────────
 
@@ -111,8 +110,8 @@ claim GameBackground
     bg  ∈ Color
     won ∈ Bool
 
-    won  ⇒ (bg.r = 20 ∧ bg.g = 120 ∧ bg.b = 50)
-    ¬won ⇒ (bg.r = 15 ∧ bg.g = 15  ∧ bg.b = 30)
+    won  ⇒ bg = Color(20, 120, 50)
+    ¬won ⇒ bg = Color(15, 15,  30)
 
 -- ── Dot-collect engine ──────────────────────────────────────────────────────
 --
@@ -166,15 +165,11 @@ type DotCollectGameEngine
     -- `output.rects[i].pos = state.dots[i].pos` lifts componentwise.
     ∀ i ∈ {0..#state.dots - 1} :
         state.dots[i].collected = false ⇒
-            output.rects[i].pos     = state.dots[i].pos
-            output.rects[i].size.x  = 25
-            output.rects[i].size.y  = 25
-            output.rects[i].color.r = 80
-            output.rects[i].color.g = 200
-            output.rects[i].color.b = 180
+            output.rects[i].pos   = state.dots[i].pos
+            output.rects[i].size  = IVec2(25, 25)
+            output.rects[i].color = Color(80, 200, 180)
         state.dots[i].collected = true ⇒
-            output.rects[i].size.x = 0
-            output.rects[i].size.y = 0
+            output.rects[i].size = IVec2(0, 0)
 
     -- Player rect lives at the last index of output.rects.
     output.rects[#state.dots] = player_rect

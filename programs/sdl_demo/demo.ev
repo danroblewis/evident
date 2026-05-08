@@ -20,24 +20,19 @@ type main(ball, ball_next ∈ BallState)
     ball_rect ∈ SDLRect
 
     -- ── Background ────────────────────────────────────────────────────────────
-    output.bg.r = 15
-    output.bg.g = 15
-    output.bg.b = 30
+    output.bg = Color(15, 15, 30)
 
     -- ── Ball rect: 30×30 teal square ─────────────────────────────────────────
-    ball_rect.pos = ball.pos
-    ball_rect.size.x = 30
-    ball_rect.size.y = 30
-    ball_rect.color.r = 80
-    ball_rect.color.g = 200
-    ball_rect.color.b = 180
+    ball_rect.pos   = ball.pos
+    ball_rect.size  = IVec2(30, 30)
+    ball_rect.color = Color(80, 200, 180)
 
     output.rects = ⟨ball_rect⟩
 
     -- ── Position update ───────────────────────────────────────────────────────
-    -- dt is in milliseconds, velocity in pixels/second → pixels per step
-    ball_next.pos.x = ball.pos.x + ball.vel.x * input.dt / 1000
-    ball_next.pos.y = ball.pos.y + ball.vel.y * input.dt / 1000
+    -- dt is in milliseconds, velocity in pixels/second → pixels per step.
+    -- Vector arithmetic broadcasts componentwise.
+    ball_next.pos = ball.pos + ball.vel * input.dt / 1000
 
     -- ── X-axis bounce (constrains only vx) ───────────────────────────────────
     ball.pos.x ≤ 0   ⇒ ball_next.vel.x = 280
