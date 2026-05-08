@@ -324,9 +324,11 @@ through the same machinery. Shape mismatches (Vec2 = Vec3) fail via the
 
 ### 4.6 Things that don't exist
 
-- **Named enum declarations** (`enum Day = Mon | Tue | Wed | …`) — supported as
-  of the `enum-syntax` work. Variants without payloads only (no
-  `Binary(BinOp, Expr, Expr)`-style algebraic datatypes yet).
+- **Named enum declarations** (`enum Day = Mon | Tue | Wed | …`) — supported,
+  including payload variants (`enum Result = Ok(Int) | Err(String)`) and
+  recursive self-references (`enum LinkedList = Nil | Cons(Int, LinkedList)`).
+  Constructors apply with positional args. Cross-enum mutual recursion is the
+  one remaining gap (would need Z3's multi-builder API).
 - **Inline anonymous enums** (`x ∈ Red | Green | Blue`) — no `|` operator
   in the parser.
 - **`Seq(T)` or `Set(T)` as record fields** — `datatypes.rs:94` rejects with

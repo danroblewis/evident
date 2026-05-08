@@ -48,7 +48,7 @@ pub type DatatypeRegistry =
 /// runtime.rs enforces this).
 pub struct EnumRegistry {
     pub by_name: RefCell<HashMap<String,
-        (&'static DatatypeSort<'static>, Vec<String>)>>,
+        (&'static DatatypeSort<'static>, Vec<crate::ast::EnumVariant>)>>,
     pub by_variant: RefCell<HashMap<String, (String, usize)>>,
 }
 
@@ -106,10 +106,19 @@ pub enum Value {
     /// `Seq(UserType)` — one map per element. Each map keys a flat
     /// field name to the field's primitive Value.
     SeqComposite(Vec<HashMap<String, Value>>),
-    /// An enum variant: the enum's name and the chosen variant.
-    /// Extracted from the Z3 datatype value by walking the constructors
-    /// and matching on which one applies.
-    Enum { enum_name: String, variant: String },
+    /// An enum variant: the enum's name, the chosen variant, and any
+    /// payload field values extracted from the Z3 model. Field order
+    /// matches the variant's declaration order. For nullary variants
+    /// `fields` is empty.
+    ///
+    /// Recursive payload values nest naturally — a `Cons(5, Cons(7, Nil))`
+    /// is `Enum { variant: "Cons", fields: [Int(5),
+    /// Enum { variant: "Cons", fields: [Int(7), Enum { variant: "Nil", fields: [] }] }] }`.
+    Enum {
+        enum_name: String,
+        variant: String,
+        fields: Vec<Value>,
+    },
 }
 
 /// What primitive a Seq holds. Lets `SeqVar` stay homogeneous while
@@ -235,6 +244,21 @@ pub(super) enum Var<'ctx> {
         ast: z3::ast::Datatype<'ctx>,
         enum_name: String,
         variant: String,
+    },
+    /// A reference to a payload-bearing variant's constructor — not
+    /// yet applied. Lets `Ok(5)` parse as `Call("Ok", [Int(5)])` and
+    /// then resolve via env-lookup + constructor application. Nullary
+    /// variants stay as `EnumValue` (pre-applied); only variants whose
+    /// `fields` are non-empty land here.
+    EnumCtor {
+        dt: &'static DatatypeSort<'static>,
+        variant_idx: usize,
+        enum_name: String,
+        variant: String,
+        /// Declared field types, in order. Used to type-check args at
+        /// the call site and to decide which translate_* function to
+        /// route each arg through.
+        field_types: Vec<String>,
     },
 }
 

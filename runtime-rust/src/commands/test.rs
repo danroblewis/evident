@@ -662,7 +662,10 @@ fn display_value_compact(v: &Value) -> String {
         Value::SeqStr(v)       => format!("Seq(String)[{}]", v.len()),
         Value::SeqComposite(v) => format!("Seq(struct)[{}]", v.len()),
         Value::Composite(map)  => format!("{{{} fields}}", map.len()),
-        Value::Enum { variant, .. } => variant.clone(),
+        Value::Enum { variant, fields, .. } => {
+            if fields.is_empty() { variant.clone() }
+            else { format!("{}({} fields)", variant, fields.len()) }
+        }
     }
 }
 

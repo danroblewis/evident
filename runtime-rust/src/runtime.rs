@@ -28,16 +28,24 @@ fn register_subclaims(body: &[BodyItem], schemas: &mut HashMap<String, SchemaDec
 
 /// Build a Z3 DatatypeSort for a top-level enum and add both the
 /// forward (enum_name → sort + variants) and reverse (variant_name →
-/// (enum_name, idx)) lookups to the registry. Errors on duplicate
-/// variant names across enums (Z3 requires globally-unique
-/// constructors anyway).
+/// (enum_name, idx)) lookups to the registry. Variant names must be
+/// globally unique across all enums.
+///
+/// Variant payloads are resolved to either:
+///   - a primitive Z3 sort (Int / Nat / Pos → Int, Bool, Real, String);
+///   - a `DatatypeAccessor::Datatype(self_name)` for self-references
+///     (the variant payload references the enum being declared);
+///   - a `DatatypeAccessor::Sort(other_enum.sort)` for references to
+///     a previously-declared enum.
+/// Cross-enum mutual recursion isn't supported in v0.1 (would need
+/// Z3's `create_datatypes` multi-builder API; out of scope here).
 fn register_enum(
     enum_name: &str,
-    variants: &[String],
+    variants: &[crate::ast::EnumVariant],
     ctx: &'static Context,
     registry: &crate::translate::EnumRegistry,
 ) -> Result<(), RuntimeError> {
-    use z3::{DatatypeBuilder, DatatypeSort};
+    use z3::{DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
     if variants.is_empty() {
         return Err(RuntimeError::Parse(
             format!("enum {} has no variants", enum_name)));
@@ -45,10 +53,10 @@ fn register_enum(
     {
         let by_variant = registry.by_variant.borrow();
         for v in variants {
-            if let Some((existing_enum, _)) = by_variant.get(v) {
+            if let Some((existing_enum, _)) = by_variant.get(&v.name) {
                 return Err(RuntimeError::Parse(format!(
                     "enum variant `{}` is declared twice — once in `{}` and once in `{}`",
-                    v, existing_enum, enum_name,
+                    v.name, existing_enum, enum_name,
                 )));
             }
         }
@@ -58,8 +66,40 @@ fn register_enum(
             "enum `{}` declared more than once", enum_name)));
     }
     let mut builder = DatatypeBuilder::new(ctx, enum_name);
-    for v in variants {
-        builder = builder.variant(v, vec![]);
+    for v in &variants[..] {
+        let mut accessors: Vec<(&str, DatatypeAccessor)> = Vec::new();
+        // Note: borrow `field.name` for the lifetime of the closure
+        // (DatatypeBuilder::variant takes &str). We collect into a
+        // temporary Vec because resolving the sort happens per-field.
+        // String allocations stay alive in `variants` itself.
+        for f in &v.fields {
+            let acc = if f.type_name == enum_name {
+                // Self-reference — Z3 resolves it during `finish()`.
+                DatatypeAccessor::Datatype(enum_name.into())
+            } else {
+                let sort = match f.type_name.as_str() {
+                    "Int" | "Nat" | "Pos" => Sort::int(ctx),
+                    "Bool"   => Sort::bool(ctx),
+                    "Real"   => Sort::real(ctx),
+                    "String" => Sort::string(ctx),
+                    other => {
+                        // Try referencing another already-registered enum.
+                        if let Some((dt, _)) = registry.by_name.borrow().get(other) {
+                            dt.sort.clone()
+                        } else {
+                            return Err(RuntimeError::Parse(format!(
+                                "unknown payload type `{}` in variant `{}::{}` \
+                                 (must be a primitive or a previously-declared enum)",
+                                other, enum_name, v.name,
+                            )));
+                        }
+                    }
+                };
+                DatatypeAccessor::Sort(sort)
+            };
+            accessors.push((f.name.as_str(), acc));
+        }
+        builder = builder.variant(&v.name, accessors);
     }
     let dt: DatatypeSort<'static> = builder.finish();
     let leaked: &'static DatatypeSort<'static> = Box::leak(Box::new(dt));
@@ -67,7 +107,7 @@ fn register_enum(
         enum_name.to_string(), (leaked, variants.to_vec()));
     let mut by_variant = registry.by_variant.borrow_mut();
     for (idx, v) in variants.iter().enumerate() {
-        by_variant.insert(v.clone(), (enum_name.to_string(), idx));
+        by_variant.insert(v.name.clone(), (enum_name.to_string(), idx));
     }
     Ok(())
 }
@@ -577,7 +617,7 @@ impl EvidentRuntime {
         // Time the actual solve so the auto-tuner can decide whether to
         // advance to the next pricing window.
         let t0 = Instant::now();
-        let r = run_cached(&entry.0, given, self.z3_ctx);
+        let r = run_cached(&entry.0, given, self.z3_ctx, Some(&self.enums));
         let dt = t0.elapsed();
         drop(cache);  // release before we may invalidate below
 
@@ -628,6 +668,6 @@ impl EvidentRuntime {
         let cached = build_cache(
             &schema, &self.schemas, self.z3_ctx, &self.datatypes,
             Some(&self.enums), &structural_given, 0);
-        Ok(sample_cached_inner(&cached, given, n, self.z3_ctx))
+        Ok(sample_cached_inner(&cached, given, n, self.z3_ctx, Some(&self.enums)))
     }
 }

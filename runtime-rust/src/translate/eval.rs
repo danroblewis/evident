@@ -78,15 +78,33 @@ fn populate_enum_variants<'ctx>(
 ) where 'ctx: 'static {
     let Some(reg) = enums else { return };
     for (enum_name, (dt, variants)) in reg.by_name.borrow().iter() {
-        for (idx, variant_name) in variants.iter().enumerate() {
-            let ctor = &dt.variants[idx].constructor;
-            let ast = ctor.apply(&[]).as_datatype()
-                .expect("nullary enum variant must yield a Datatype value");
-            env.insert(variant_name.clone(), super::types::Var::EnumValue {
-                ast,
-                enum_name: enum_name.clone(),
-                variant: variant_name.clone(),
-            });
+        for (idx, variant) in variants.iter().enumerate() {
+            if variant.fields.is_empty() {
+                // Nullary variant — pre-apply the constructor and stash
+                // the Datatype value directly. Lets bare identifiers
+                // resolve via env-lookup with no special-casing.
+                let ctor = &dt.variants[idx].constructor;
+                let ast = ctor.apply(&[]).as_datatype()
+                    .expect("nullary enum variant must yield a Datatype value");
+                env.insert(variant.name.clone(), super::types::Var::EnumValue {
+                    ast,
+                    enum_name: enum_name.clone(),
+                    variant: variant.name.clone(),
+                });
+            } else {
+                // Payload variant — store an unapplied constructor
+                // reference. exprs.rs's call-handling spots `Call(name,
+                // args)` where `name` resolves to EnumCtor and applies
+                // the constructor with translated args.
+                env.insert(variant.name.clone(), super::types::Var::EnumCtor {
+                    dt: *dt,
+                    variant_idx: idx,
+                    enum_name: enum_name.clone(),
+                    variant: variant.name.clone(),
+                    field_types: variant.fields.iter()
+                        .map(|f| f.type_name.clone()).collect(),
+                });
+            }
         }
     }
 }
@@ -198,6 +216,7 @@ pub fn sample_cached_inner<'ctx>(
     given: &HashMap<String, Value>,
     n: usize,
     ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
 ) -> Vec<HashMap<String, Value>> {
     cached.solver.push();
 
@@ -287,28 +306,26 @@ pub fn sample_cached_inner<'ctx>(
                     // (same shape as primitive seqs); skipped for v1.
                 }
                 Var::EnumVar { ast, enum_name, dt } => {
-                    if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                    if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
                         bindings.insert(name.clone(), v.clone());
                         // Push a positive `var = chosen` term — the
                         // outer code AND-s the term list and asserts
                         // NOT (this iteration's complete assignment).
-                        if let Value::Enum { variant, .. } = &v {
-                            if let Some(idx) = dt.variants.iter().position(
-                                |variant_info| {
-                                    let cn = variant_info.constructor.name();
-                                    cn == *variant
-                                })
-                            {
-                                let ctor = &dt.variants[idx].constructor;
-                                let chosen = ctor.apply(&[]).as_datatype().unwrap();
-                                block_terms.push(ast._eq(&chosen));
-                            }
+                        // Use the model-evaluated value directly so
+                        // payload variants block correctly (their
+                        // constructors take arguments; can't call
+                        // ctor.apply(&[]) the way nullary variants can).
+                        if let Some(chosen) = model.eval(ast, true) {
+                            block_terms.push(ast._eq(&chosen));
                         }
                     }
                 }
                 Var::EnumValue { .. } => {
                     // Variant literals have no model-side state; they're
                     // constants pre-populated into env at evaluate time.
+                }
+                Var::EnumCtor { .. } => {
+                    // Constructor reference; no per-model state.
                 }
             }
         }
@@ -336,6 +353,7 @@ pub fn run_cached<'ctx>(
     cached: &CachedSchema<'ctx>,
     given: &HashMap<String, Value>,
     ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
 ) -> EvalResult {
     // Solver params were set once in build_cache; no per-call tuning here.
     cached.solver.push();
@@ -408,11 +426,12 @@ pub fn run_cached<'ctx>(
                         }
                     }
                     Var::EnumVar { ast, enum_name, dt } => {
-                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
                             bindings.insert(name.clone(), v);
                         }
                     }
                     Var::EnumValue { .. } => { /* literal, no model state */ }
+                    Var::EnumCtor { .. }  => { /* constructor reference, no model state */ }
                 }
             }
         }
@@ -593,11 +612,12 @@ pub fn evaluate(
                         }
                     }
                     Var::EnumVar { ast, enum_name, dt } => {
-                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
                             bindings.insert(name.clone(), v);
                         }
                     }
                     Var::EnumValue { .. } => { /* literal */ }
+                    Var::EnumCtor { .. }  => { /* constructor */ }
                 }
             }
         }
@@ -708,7 +728,7 @@ pub fn evaluate_with_core(
     if satisfied {
         if let Some(model) = solver.get_model() {
             for (name, var) in env.iter() {
-                extract_binding(name, var, &model, ctx, &mut bindings);
+                extract_binding(name, var, &model, ctx, &mut bindings, enums);
             }
         }
     } else {
@@ -734,6 +754,7 @@ pub fn evaluate_with_core(
 fn extract_binding(
     name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
     bindings: &mut HashMap<String, Value>,
+    enums: Option<&EnumRegistry>,
 ) {
     match var {
         Var::IntVar(i) => {
@@ -777,32 +798,89 @@ fn extract_binding(
             }
         }
         Var::EnumVar { ast, enum_name, dt } => {
-            if let Some(v) = extract_enum_value(ast, enum_name, dt, model) {
+            if let Some(v) = extract_enum_value(ast, enum_name, dt, model, enums) {
                 bindings.insert(name.to_string(), v);
             }
         }
         Var::EnumValue { .. } => { /* literal */ }
+        Var::EnumCtor { .. }  => { /* constructor */ }
     }
 }
 
 /// Extract an enum-typed Z3 const from the model. Walks the
 /// DatatypeSort's variants looking for the one whose `tester` returns
-/// true on the model-evaluated value, then names that variant.
+/// true on the model-evaluated value, then recursively extracts each
+/// payload field. Recursion handles self-referential enums — the
+/// EnumRegistry is consulted to find the field's enum (by type name)
+/// when a payload field is itself an enum-typed value.
 fn extract_enum_value(
     ast: &z3::ast::Datatype<'_>,
     enum_name: &str,
     dt: &'static z3::DatatypeSort<'static>,
     model: &z3::Model<'_>,
+    enums: Option<&EnumRegistry>,
 ) -> Option<Value> {
     let evaluated = model.eval(ast, true)?;
-    for variant in &dt.variants {
+    // Find the active variant via its tester.
+    let mut active_idx: Option<usize> = None;
+    for (i, variant) in dt.variants.iter().enumerate() {
         let test = variant.tester.apply(&[&evaluated]).as_bool()?;
         if let Some(true) = model.eval(&test, true).and_then(|b| b.as_bool()) {
-            return Some(Value::Enum {
-                enum_name: enum_name.to_string(),
-                variant: variant.constructor.name(),
-            });
+            active_idx = Some(i);
+            break;
         }
     }
-    None
+    let idx = active_idx?;
+    let variant = &dt.variants[idx];
+    let variant_name = variant.constructor.name();
+
+    // Look up the variant's declared field types so we can route each
+    // accessor's Dynamic through the right `as_int` / `as_bool` /
+    // `as_string` extractor (or recurse for nested enums).
+    let mut field_values: Vec<Value> = Vec::new();
+    if let Some(reg) = enums {
+        if let Some((_, decl_variants)) = reg.by_name.borrow().get(enum_name) {
+            if let Some(decl_variant) = decl_variants.get(idx) {
+                for (acc_idx, decl_field) in decl_variant.fields.iter().enumerate() {
+                    let accessor = &variant.accessors[acc_idx];
+                    let raw = accessor.apply(&[&evaluated]);
+                    let extracted = match decl_field.type_name.as_str() {
+                        "Int" | "Nat" | "Pos" => raw.as_int()
+                            .and_then(|i| model.eval(&i, true))
+                            .and_then(|x| x.as_i64())
+                            .map(Value::Int),
+                        "Bool" => raw.as_bool()
+                            .and_then(|b| model.eval(&b, true))
+                            .and_then(|x| x.as_bool())
+                            .map(Value::Bool),
+                        "String" => raw.as_string()
+                            .and_then(|s| model.eval(&s, true))
+                            .and_then(|x| x.as_string())
+                            .map(Value::Str),
+                        // Self-reference or another enum: recurse.
+                        ref_type => {
+                            let target: &str = if ref_type == enum_name { enum_name }
+                                               else { ref_type };
+                            let nested_dt = reg.by_name.borrow().get(target)
+                                .map(|(d, _)| *d);
+                            if let Some(nested_dt) = nested_dt {
+                                raw.as_datatype().and_then(|child_ast| {
+                                    extract_enum_value(&child_ast, target,
+                                                       nested_dt, model, enums)
+                                })
+                            } else { None }
+                        }
+                    };
+                    if let Some(v) = extracted {
+                        field_values.push(v);
+                    }
+                }
+            }
+        }
+    }
+    Some(Value::Enum {
+        enum_name: enum_name.to_string(),
+        variant: variant_name,
+        fields: field_values,
+    })
 }

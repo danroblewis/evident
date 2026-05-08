@@ -167,16 +167,38 @@ pub struct Program {
     pub enums: Vec<EnumDecl>,
 }
 
-/// A simple enum declaration: `enum Name = Variant1 | Variant2 | …`.
-/// Each variant is a nullary constructor — the v0.1 self-hosting story
-/// only needs simple enums; payload variants (algebraic datatypes) come
-/// later. Translates to a Z3 datatype with N nullary constructors via
-/// the existing `datatypes.rs` machinery; variant names become bare
-/// identifiers usable in expressions, scoped under the enum's sort.
+/// An enum declaration: `enum Name = Variant1 | Variant2(T1, T2) | …`.
+/// Variants are either nullary (no payload) or carry an ordered tuple
+/// of typed fields. Self-references are allowed inside payload field
+/// types (the enum being declared can reference itself), enabling
+/// recursive types like `enum Expr = Int(Int) | Binary(BinOp, Expr, Expr)`.
+/// Translates to a Z3 algebraic datatype with one constructor per
+/// variant; payload field types resolve to either a primitive Z3 sort
+/// or a `DatatypeAccessor::Datatype(self_name)` for recursion.
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub name: String,
-    pub variants: Vec<String>,
+    pub variants: Vec<EnumVariant>,
+}
+
+/// One variant of an `EnumDecl`. Payload field names are auto-generated
+/// (`f0`, `f1`, …) when callers don't supply them — sufficient for
+/// positional Variant(T1, T2) syntax. Named-payload variants
+/// (`Variant { x ∈ Int, y ∈ Int }`) are out of scope for v0.1.
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    pub fields: Vec<EnumField>,
+}
+
+/// One field of an enum payload. `type_name` is a raw textual type
+/// reference (validated at registration time by looking it up against
+/// primitive sorts, the EnumRegistry itself for self-references, or
+/// future user types).
+#[derive(Debug, Clone)]
+pub struct EnumField {
+    pub name: String,
+    pub type_name: String,
 }
 
 /// A trace test: drives a named program through a sequence of input

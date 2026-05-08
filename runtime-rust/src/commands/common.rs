@@ -150,7 +150,14 @@ pub fn format_value(v: &Value) -> String {
         Value::SeqInt(v)  => format!("{:?}", v),
         Value::SeqBool(v) => format!("{:?}", v),
         Value::SeqStr(v)  => format!("{:?}", v),
-        Value::Enum { variant, .. } => variant.clone(),
+        Value::Enum { variant, fields, .. } => {
+            if fields.is_empty() {
+                variant.clone()
+            } else {
+                let parts: Vec<String> = fields.iter().map(format_value).collect();
+                format!("{}({})", variant, parts.join(", "))
+            }
+        }
         // Composite / SeqComposite are placeholder Value variants that
         // aren't currently produced by the translator (sub-schema
         // expansion still emits one leaf per field). Render with Debug
@@ -177,7 +184,15 @@ pub fn value_as_json(v: &Value) -> String {
             let parts: Vec<_> = v.iter().map(|s| json_str(s)).collect();
             format!("[{}]", parts.join(", "))
         }
-        Value::Enum { variant, .. } => json_str(variant),
+        Value::Enum { variant, fields, .. } => {
+            if fields.is_empty() {
+                json_str(variant)
+            } else {
+                let parts: Vec<String> = fields.iter().map(value_as_json).collect();
+                format!("{{\"variant\": {}, \"fields\": [{}]}}",
+                        json_str(variant), parts.join(", "))
+            }
+        }
         // See note in format_value: not yet produced by the translator.
         other => json_str(&format!("{:?}", other)),
     }

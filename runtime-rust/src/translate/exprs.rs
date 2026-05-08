@@ -71,22 +71,68 @@ fn expr_as_var<'ctx>(
     }
 }
 
-/// Resolve an expression that's expected to refer to an enum-typed
-/// value — either a declared `EnumVar` (`today`) or a variant
-/// constant pre-populated into env (`Mon`). Returns the underlying
-/// Z3 Datatype AST so a comparison can do `_eq`.
+/// Resolve an expression to an enum-typed Z3 Datatype AST. Three shapes:
+///
+///   * `Identifier(name)` where env has `EnumVar` — the user's `today`
+///   * `Identifier(name)` where env has `EnumValue` — bare nullary
+///     variant identifier like `Mon`
+///   * `Call(name, args)` where env has `EnumCtor` — payload variant
+///     constructor application like `Ok(5)` or `Cons(7, Nil)`
+///
+/// For Call: each arg is translated against the constructor's declared
+/// field type. Recursive payloads (a field whose type is the enum
+/// itself, e.g. `LinkedList`) recurse through `resolve_enum_ast` again.
+/// Arity mismatches and per-field type translation failures return None
+/// (the calling expression then drops as untranslatable).
 pub(super) fn resolve_enum_ast<'ctx>(
     e: &Expr,
+    ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<z3::ast::Datatype<'ctx>> {
-    if let Expr::Identifier(name) = e {
-        match env.get(name)? {
+    match e {
+        Expr::Identifier(name) => match env.get(name)? {
             Var::EnumVar { ast, .. }   => Some(ast.clone()),
             Var::EnumValue { ast, .. } => Some(ast.clone()),
             _ => None,
+        },
+        Expr::Call(name, args) => {
+            let ctor_info = env.get(name)?;
+            let (dt, variant_idx, field_types) = match ctor_info {
+                Var::EnumCtor { dt, variant_idx, field_types, .. } =>
+                    (*dt, *variant_idx, field_types.clone()),
+                _ => return None,
+            };
+            if args.len() != field_types.len() { return None; }
+            let ctor = &dt.variants[variant_idx].constructor;
+            // Translate each arg against its declared field type. We
+            // need a Vec<Box<dyn Ast>> kind of structure to call
+            // ctor.apply, but z3-rs uses `&[&dyn Ast]`. Build the
+            // typed Vec then borrow.
+            let mut owned_args: Vec<Box<dyn z3::ast::Ast<'ctx>>> = Vec::new();
+            for (arg_expr, field_type) in args.iter().zip(field_types.iter()) {
+                let v: Box<dyn z3::ast::Ast<'ctx>> = match field_type.as_str() {
+                    "Int" | "Nat" | "Pos" =>
+                        Box::new(translate_int(arg_expr, ctx, env)?),
+                    "Bool" =>
+                        Box::new(translate_bool(arg_expr, ctx, env, schemas)?),
+                    "String" =>
+                        Box::new(translate_str(arg_expr, ctx, env)?),
+                    "Real" =>
+                        Box::new(translate_real(arg_expr, ctx, env)?),
+                    _ => {
+                        // Either a self-reference or another enum.
+                        // Recurse via resolve_enum_ast.
+                        Box::new(resolve_enum_ast(arg_expr, ctx, env, schemas)?)
+                    }
+                };
+                owned_args.push(v);
+            }
+            let arg_refs: Vec<&dyn z3::ast::Ast<'ctx>> =
+                owned_args.iter().map(|b| b.as_ref()).collect();
+            ctor.apply(&arg_refs).as_datatype()
         }
-    } else {
-        None
+        _ => None,
     }
 }
 
@@ -1275,7 +1321,8 @@ pub(super) fn translate_bool<'ctx>(
                 // typed identifiers in env. Different enums on the two
                 // sides aren't allowed — caller has a type error.
                 if let (Some(l), Some(r)) =
-                    (resolve_enum_ast(lhs, env), resolve_enum_ast(rhs, env))
+                    (resolve_enum_ast(lhs, ctx, env, schemas),
+                     resolve_enum_ast(rhs, ctx, env, schemas))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),

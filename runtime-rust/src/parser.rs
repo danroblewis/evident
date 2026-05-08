@@ -126,12 +126,52 @@ impl Parser {
         }
         let mut variants = Vec::new();
         loop {
-            let v = match self.bump() {
+            let v_name = match self.bump() {
                 Token::Ident(s) => s,
                 other => return Err(ParseError(format!(
                     "expected variant name in enum, got {:?}", other))),
             };
-            variants.push(v);
+            // Optional payload `(Type1, Type2, …)`. Inner types are
+            // bare Idents (no compound `Seq(Int)` etc. yet — Stage 0c).
+            // Field names are auto-generated `f0`, `f1`, …; named
+            // fields are a future extension.
+            let mut fields: Vec<crate::ast::EnumField> = Vec::new();
+            if matches!(self.peek(), Token::LParen) {
+                self.bump();   // (
+                if matches!(self.peek(), Token::RParen) {
+                    return Err(ParseError(format!(
+                        "variant `{}` has empty payload — drop the parens for nullary",
+                        v_name)));
+                }
+                let mut idx = 0usize;
+                loop {
+                    let field_type = match self.bump() {
+                        Token::Ident(s) => s,
+                        other => return Err(ParseError(format!(
+                            "expected field type in variant `{}`, got {:?}",
+                            v_name, other))),
+                    };
+                    fields.push(crate::ast::EnumField {
+                        name: format!("f{}", idx),
+                        type_name: field_type,
+                    });
+                    idx += 1;
+                    if matches!(self.peek(), Token::Comma) {
+                        self.bump();
+                        continue;
+                    }
+                    break;
+                }
+                match self.bump() {
+                    Token::RParen => {}
+                    other => return Err(ParseError(format!(
+                        "expected ')' after variant payload, got {:?}", other))),
+                }
+            }
+            variants.push(crate::ast::EnumVariant {
+                name: v_name,
+                fields,
+            });
             if matches!(self.peek(), Token::Pipe) {
                 self.bump();
                 continue;
@@ -1544,7 +1584,9 @@ mod tests {
         assert_eq!(p.enums.len(), 1);
         let e = &p.enums[0];
         assert_eq!(e.name, "Day");
-        assert_eq!(e.variants, vec!["Mon", "Tue", "Wed"]);
+        let names: Vec<&str> = e.variants.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["Mon", "Tue", "Wed"]);
+        assert!(e.variants.iter().all(|v| v.fields.is_empty()));
     }
 
     #[test]
@@ -1557,7 +1599,47 @@ mod tests {
     #[test]
     fn parse_enum_decl_single_variant_ok() {
         let p = parse("enum Singleton = Only\n").unwrap();
-        assert_eq!(p.enums[0].variants, vec!["Only"]);
+        assert_eq!(p.enums[0].variants.len(), 1);
+        assert_eq!(p.enums[0].variants[0].name, "Only");
+        assert!(p.enums[0].variants[0].fields.is_empty());
+    }
+
+    #[test]
+    fn parse_enum_decl_payload_variants() {
+        let p = parse("enum Result = Ok(Int) | Err(String)\n").unwrap();
+        let e = &p.enums[0];
+        assert_eq!(e.variants.len(), 2);
+        assert_eq!(e.variants[0].name, "Ok");
+        assert_eq!(e.variants[0].fields.len(), 1);
+        assert_eq!(e.variants[0].fields[0].name, "f0");
+        assert_eq!(e.variants[0].fields[0].type_name, "Int");
+        assert_eq!(e.variants[1].name, "Err");
+        assert_eq!(e.variants[1].fields[0].type_name, "String");
+    }
+
+    #[test]
+    fn parse_enum_decl_recursive_self_reference() {
+        let p = parse("enum LinkedList = Nil | Cons(Int, LinkedList)\n").unwrap();
+        let e = &p.enums[0];
+        assert_eq!(e.variants.len(), 2);
+        assert_eq!(e.variants[1].name, "Cons");
+        assert_eq!(e.variants[1].fields.len(), 2);
+        assert_eq!(e.variants[1].fields[0].type_name, "Int");
+        assert_eq!(e.variants[1].fields[1].type_name, "LinkedList");
+    }
+
+    #[test]
+    fn parse_enum_decl_mixed_arities() {
+        let p = parse("enum Maybe = None | Some(Int)\n").unwrap();
+        let e = &p.enums[0];
+        assert!(e.variants[0].fields.is_empty());
+        assert_eq!(e.variants[1].fields.len(), 1);
+    }
+
+    #[test]
+    fn parse_enum_decl_empty_payload_errors() {
+        // `Variant()` is rejected — drop the parens for nullary variants.
+        assert!(parse("enum X = Foo() | Bar\n").is_err());
     }
 
     #[test]
