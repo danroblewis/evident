@@ -503,3 +503,51 @@ claim t
     assert!(count >= 2,
         "expected two EForall in encoded form for nested quantifiers; got {count}");
 }
+
+// ── Stage 5: Seq(enum) declaration + extraction ────────────────
+
+#[test]
+fn seq_of_unknown_type_warns_but_does_not_panic() {
+    // Sanity: declaring Seq(NotAType) where NotAType isn't a
+    // known enum or user type warns to stderr and skips. The query
+    // shouldn't panic; the variable simply ends up undeclared.
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("claim t\n    s ∈ Seq(NotAType)\n").unwrap();
+    let r = rt.query_free("t").unwrap();
+    assert!(r.satisfied,
+        "no constraints, no declared `s`; trivially SAT");
+    assert!(r.bindings.get("s").is_none(),
+        "`s` shouldn't have a binding (declaration was skipped)");
+}
+
+#[test]
+fn seq_of_enum_pin_then_extract() {
+    // Verify Seq(BodyItem) elements survive constraints. We
+    // currently see SeqComposite([{}, ...]) in the model output
+    // (model extraction for enum-seq elements isn't fully decoded
+    // yet — Stage 5.5 territory). But the constraints themselves
+    // hold: a contradiction on the same index is UNSAT.
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(std::path::Path::new(STDLIB_AST)).unwrap();
+    rt.load_source("\
+claim t
+    body ∈ Seq(BodyItem)
+    #body = 1
+    body[0] = BIPassthrough(\"x\")
+").unwrap();
+    let r = rt.query_free("t").unwrap();
+    assert!(r.satisfied, "consistent pin should be SAT");
+
+    // Same index, two different values → UNSAT.
+    let mut rt2 = EvidentRuntime::new();
+    rt2.load_file(std::path::Path::new(STDLIB_AST)).unwrap();
+    rt2.load_source("\
+claim t
+    body ∈ Seq(BodyItem)
+    #body = 1
+    body[0] = BIPassthrough(\"x\")
+    body[0] = BIPassthrough(\"y\")
+").unwrap();
+    let r2 = rt2.query_free("t").unwrap();
+    assert!(!r2.satisfied, "conflicting pin at same index should be UNSAT");
+}

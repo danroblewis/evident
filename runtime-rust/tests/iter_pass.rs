@@ -1,0 +1,169 @@
+//! Stage 5.5 integration tests: the iteration pass.
+//!
+//! Pipeline under test:
+//!   1. Load stdlib/ast.ev + stdlib/passes/iter_types.ev
+//!   2. mark_system_loads_complete
+//!   3. Load user file
+//!   4. Call query_with_program_and_body(rule, "program", "body")
+//!      which encodes the program AND the user's first claim's body
+//!      as a Seq(BodyItem), pinning both into the pass's vars.
+//!
+//! The iteration rules use ∃ over the seq indices, so the pass
+//! works for any user program length — not just single-body or
+//! 2-body shapes that literal_types.ev requires.
+
+use std::path::Path;
+use evident_runtime::{EvidentRuntime, Value};
+
+const STDLIB_AST:  &str = "../stdlib/ast.ev";
+const ITER_TYPES:  &str = "../stdlib/passes/iter_types.ev";
+
+fn fresh_rt_with_iter_pass() -> EvidentRuntime {
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST)).unwrap();
+    rt.load_file(Path::new(ITER_TYPES)).unwrap();
+    rt.mark_system_loads_complete();
+    rt
+}
+
+#[test]
+fn has_membership_finds_single_decl() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim t\n    x ∈ Int\n").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("x".to_string())));
+    assert_eq!(r.bindings.get("target_type"),
+               Some(&Value::Str("Int".to_string())));
+}
+
+#[test]
+fn has_membership_finds_in_third_position() {
+    // The win of iteration: a 3-body program where the Membership
+    // is the LAST item still gets picked up. literal_types.ev's
+    // extract_first_membership requires the head; this rule
+    // searches via ∃.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    a = \"hi\"
+    b = 1
+    score ∈ Nat
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied,
+        "iteration should find the Membership in the third position");
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("score".to_string())));
+    assert_eq!(r.bindings.get("target_type"),
+               Some(&Value::Str("Nat".to_string())));
+}
+
+#[test]
+fn has_membership_unsat_for_constraint_only_program() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim t\n    x = 5\n").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(!r.satisfied,
+        "no Membership in body → ∃ is UNSAT");
+}
+
+#[test]
+fn has_string_assignment_finds_in_body() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    x ∈ Int
+    msg ∈ String
+    msg = \"hello\"
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_string_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("msg".to_string())));
+    assert_eq!(r.bindings.get("string_lit"),
+               Some(&Value::Str("hello".to_string())));
+}
+
+#[test]
+fn has_int_assignment_iterates_past_others() {
+    // Mixed bag: the Int assignment is buried in the middle.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim t
+    x ∈ Int
+    msg ∈ String
+    x = 42
+    msg = \"hi\"
+").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_int_assignment", "program", "body",
+    ).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("target_var"),
+               Some(&Value::Str("x".to_string())));
+    assert_eq!(r.bindings.get("int_lit"),
+               Some(&Value::Int(42)));
+}
+
+#[test]
+fn has_string_unsat_when_only_int_assigned() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim t\n    n ∈ Int\n    n = 5\n").unwrap();
+    let r = rt.query_with_program_and_body(
+        "has_string_assignment", "program", "body",
+    ).unwrap();
+    assert!(!r.satisfied);
+}
+
+#[test]
+fn iteration_works_on_empty_user_program() {
+    // No user claim → body has length 0 → ∃ over empty range
+    // unrolls to false → UNSAT for the existential rules. Should
+    // NOT panic.
+    let mut rt = fresh_rt_with_iter_pass();
+    let r = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(!r.satisfied,
+        "empty body → no body items → ∃ is UNSAT");
+}
+
+#[test]
+fn iteration_isolates_between_user_loads() {
+    // First call: program has a Membership.
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim a\n    x ∈ Int\n").unwrap();
+    let r1 = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert!(r1.satisfied);
+    // Each call rebuilds env, so the second call sees the same
+    // user state — same answer.
+    let r2 = rt.query_with_program_and_body(
+        "has_membership_of_var", "program", "body",
+    ).unwrap();
+    assert_eq!(r1.bindings.get("target_var"),
+               r2.bindings.get("target_var"));
+}
+
+#[test]
+fn unknown_pass_claim_for_iter_errors() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim t\n    x ∈ Int\n").unwrap();
+    let err = rt.query_with_program_and_body(
+        "no_such_rule", "program", "body",
+    ).expect_err("expected UnknownSchema");
+    let s = format!("{err:?}");
+    assert!(s.contains("no_such_rule") || s.contains("UnknownSchema"),
+        "unexpected error: {s}");
+}

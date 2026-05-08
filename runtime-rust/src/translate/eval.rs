@@ -689,6 +689,84 @@ pub fn evaluate_with_extra_assertion(
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
 
+/// Stage 5.5: like `evaluate_with_extra_assertion` but injects two
+/// related values — the encoded `Program` datatype AND a flat
+/// `Seq(BodyItem)` for the user's first claim's body. Lets a
+/// self-hosted pass iterate over arbitrary-length user programs
+/// via `∀ i ∈ {0..#body-1} : …`.
+///
+/// The seq-injection asserts both `#body = items.len()` and
+/// `body[i] = encoded(items[i])` for each i, so the variable's
+/// model is fully pinned to the user's source.
+pub fn evaluate_with_program_and_body(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: &EnumRegistry,
+    arith_solver: u32,
+    program_var: &str,
+    program_value: z3::ast::Datatype<'static>,
+    body_var: &str,
+    body_items: &[BodyItem],
+) -> EvalResult {
+    let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
+    let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, Some(enums));
+
+    for item in &schema.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
+        }
+    }
+
+    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
+
+    let mut visited: HashSet<String> = HashSet::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited);
+
+    // Program injection.
+    if let Some(Var::EnumVar { ast, .. }) = env.get(program_var) {
+        solver.assert(&ast._eq(&program_value));
+    } else {
+        eprintln!("warning: program var `{}` is not enum-typed in `{}`",
+                  program_var, schema.name);
+    }
+    // Body Seq injection.
+    if let Some(Var::DatatypeSeqVar { arr, len, fields, .. }) = env.get(body_var) {
+        if !fields.is_empty() {
+            eprintln!("warning: body var `{}` is record-typed seq, not enum-typed; skipping",
+                      body_var);
+        } else {
+            match super::encode_ast::encode_body_items_into_seq(
+                body_items, arr, len, ctx, enums,
+            ) {
+                Ok(asserts) => for a in &asserts { solver.assert(a); },
+                Err(e) => eprintln!("warning: body encode failed: {e}"),
+            }
+        }
+    } else {
+        eprintln!("warning: body var `{}` is not a Seq(enum) in `{}`",
+                  body_var, schema.name);
+    }
+
+    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let mut bindings = HashMap::new();
+    if satisfied {
+        if let Some(model) = solver.get_model() {
+            for (name, var) in env.iter() {
+                extract_binding(name, var, &model, ctx, &mut bindings, Some(enums));
+            }
+        }
+    }
+    EvalResult { satisfied, bindings, unsat_core_items: None }
+}
+
 /// Same as `evaluate`, but tags every Z3 assertion derived from a
 /// top-level body item with a unique tracker bool so an UNSAT result
 /// produces a usable `unsat_core_items` (indices into `schema.body`).

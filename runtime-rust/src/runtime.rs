@@ -685,7 +685,54 @@ impl EvidentRuntime {
         )
     }
 
-    /// Stage 3 plumbing: run a self-hosted pass with this runtime's
+    /// Stage 5.5 plumbing: like `query_with_program`, but ALSO
+    /// injects the user's first claim's body as a `Seq(BodyItem)`
+    /// for the named seq variable. Lets a self-hosted pass iterate
+    /// over arbitrary-length user programs via `∀ i ∈ {0..#body-1} : …`.
+    ///
+    /// The user's "first claim" is `user_program().schemas[0]` — the
+    /// first user-loaded schema after `mark_system_loads_complete()`.
+    /// If the user has no schemas, `body_var` is constrained to
+    /// length 0; the pass can detect this via `#body = 0`.
+    ///
+    /// `program_var` and `body_var` must both be declared in the
+    /// pass schema (`program ∈ Program` and `body ∈ Seq(BodyItem)`,
+    /// typically). Passes can use either or both — having `body`
+    /// makes iteration possible without recursing through the
+    /// `BodyItemList` linked-list shape.
+    pub fn query_with_program_and_body(
+        &self,
+        claim_name: &str,
+        program_var: &str,
+        body_var: &str,
+    ) -> Result<QueryResult, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        let user = self.user_program();
+        let prog_value = crate::translate::ast_encoder::encode_program(
+            &user, self.z3_ctx, &self.enums,
+        ).map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
+        let body_items: Vec<crate::ast::BodyItem> = user.schemas.first()
+            .map(|s| s.body.clone())
+            .unwrap_or_default();
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        // Inject body length as a `given` Int so the literal-int +
+        // seq-length pre-passes can pin any `body_len ∈ Nat` /
+        // `n = #body` references for quantifier unrolling. The
+        // convention: pass `body_len` as the variable name; passes
+        // declare it themselves and use it as the upper bound of
+        // `∀ i ∈ {0..body_len - 1} : …`.
+        let mut given: HashMap<String, Value> = HashMap::new();
+        given.insert("body_len".to_string(), Value::Int(body_items.len() as i64));
+        let r = crate::translate::evaluate_with_program_and_body(
+            schema, &given, &self.schemas, self.z3_ctx,
+            &self.datatypes, &self.enums, arith,
+            program_var, prog_value,
+            body_var, &body_items,
+        );
+        Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
+    }
     /// accumulated `Program` injected as a `given` for one of the
     /// pass's variables.
     ///

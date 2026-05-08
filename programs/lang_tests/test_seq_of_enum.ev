@@ -125,3 +125,74 @@ claim sat_count_passthroughs_via_pinning
     -- demonstrates the ability to write counters once we have
     -- conditional accumulators (a Stage 6+ feature).
     n_pass = 2
+
+-- ── Seq of payload-bearing enums ───────────────────────────────
+
+-- A user-declared payload enum, separate from stdlib/ast.ev.
+-- Verifies the Seq(enum) machinery isn't tied to ast.ev's enums.
+enum Status = Pending | Done(Int) | Failed(String)
+
+claim sat_seq_of_payload_enum_pin_each
+    states ∈ Seq(Status)
+    #states = 3
+    states[0] = Pending
+    states[1] = Done(42)
+    states[2] = Failed("oops")
+
+claim unsat_seq_of_payload_enum_payload_mismatch
+    states ∈ Seq(Status)
+    #states = 1
+    states[0] = Done(1)
+    states[0] = Done(2)
+
+claim unsat_seq_of_payload_enum_variant_mismatch
+    states ∈ Seq(Status)
+    #states = 1
+    states[0] = Done(1)
+    states[0] = Failed("x")
+
+claim sat_seq_of_payload_enum_forall_match
+    states ∈ Seq(Status)
+    #states = 2
+    states[0] = Done(7)
+    states[1] = Done(7)
+    ∀ i ∈ {0..1} : states[i] = Done(7)
+
+-- ── Seq of recursive (self-referencing) enum ───────────────────
+
+enum Tree = Leaf | Node(Int, Tree, Tree)
+
+claim sat_seq_of_recursive_enum
+    forest ∈ Seq(Tree)
+    #forest = 2
+    forest[0] = Leaf
+    forest[1] = Node(1, Leaf, Leaf)
+
+claim sat_seq_of_recursive_enum_deep_nesting
+    forest ∈ Seq(Tree)
+    #forest = 1
+    forest[0] = Node(1, Node(2, Leaf, Leaf), Node(3, Leaf, Leaf))
+
+claim unsat_seq_of_recursive_enum_struct_mismatch
+    forest ∈ Seq(Tree)
+    #forest = 1
+    forest[0] = Node(1, Leaf, Leaf)
+    forest[0] = Node(1, Leaf, Node(2, Leaf, Leaf))
+
+-- ── Mixed forms in iteration ──────────────────────────────────
+
+claim sat_exists_done_with_specific_payload
+    states ∈ Seq(Status)
+    #states = 3
+    states[0] = Pending
+    states[1] = Failed("net")
+    states[2] = Done(99)
+    ∃ i ∈ {0..2} : states[i] = Done(99)
+
+claim unsat_exists_done_with_wrong_payload
+    states ∈ Seq(Status)
+    #states = 3
+    states[0] = Pending
+    states[1] = Failed("net")
+    states[2] = Done(99)
+    ∃ i ∈ {0..2} : states[i] = Done(100)

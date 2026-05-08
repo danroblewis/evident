@@ -489,3 +489,31 @@ pub fn encode_program<'ctx>(
 // avoiding unused-import warnings if someone strips a helper.
 #[allow(unused_imports)]
 use std::collections::HashMap as _Sentinel;
+
+/// Stage 5.5: encode a `Vec<BodyItem>` as a list of per-index Z3
+/// Bool assertions for an enum-typed Seq variable. The caller has
+/// declared something like `body ∈ Seq(BodyItem)`; this function
+/// returns:
+///   * `len_assertion`: the seq's length must equal `items.len()`
+///   * `elem_assertions`: one `seq[i] = <encoded item>` per item
+/// Caller asserts each into the solver before the satisfiability
+/// check. The seq variable must be in env as `Var::DatatypeSeqVar`
+/// with empty `fields` (the enum-seq marker from declare.rs).
+pub fn encode_body_items_into_seq<'ctx>(
+    items: &[BodyItem],
+    seq_arr: &z3::ast::Array<'ctx>,
+    seq_len: &z3::ast::Int<'ctx>,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Vec<z3::ast::Bool<'ctx>>> where 'ctx: 'static {
+    let mut asserts: Vec<z3::ast::Bool<'ctx>> = Vec::with_capacity(items.len() + 1);
+    asserts.push(seq_len._eq(&z3::ast::Int::from_i64(ctx, items.len() as i64)));
+    for (i, item) in items.iter().enumerate() {
+        let encoded = encode_body_item(item, ctx, enums)?;
+        let idx = z3::ast::Int::from_i64(ctx, i as i64);
+        let elem = seq_arr.select(&idx).as_datatype()
+            .expect("Seq(enum)'s element select must yield a Datatype value");
+        asserts.push(elem._eq(&encoded));
+    }
+    Ok(asserts)
+}
