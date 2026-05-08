@@ -10,13 +10,16 @@ use evident_runtime::{EvidentRuntime, QueryResult, Value};
 
 pub fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident query   <files…> <schema> [--given k=v …] [--json]");
-    eprintln!("  evident check   <files…>");
-    eprintln!("  evident sample  <files…> <schema> [-n N] [--given k=v …] [--json]");
-    eprintln!("  evident test    [path]");
-    eprintln!("  evident execute <file> [--width N] [--height N] [--title S]");
-    eprintln!("                         [--host H] [--port P] [--quiet | --explain]");
-    eprintln!("  evident parse   <file>");
+    eprintln!("  evident query            <files…> <schema> [--given k=v …] [--json]");
+    eprintln!("  evident check            <files…>");
+    eprintln!("  evident sample           <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident test             [path] [-v] [--no-color] [--format=tap|junit|json]");
+    eprintln!("  evident execute          <file> [--width N] [--height N] [--title S]");
+    eprintln!("                                  [--host H] [--port P] [--quiet | --explain]");
+    eprintln!("  evident parse            <file>");
+    eprintln!("  evident transpile-shader <file> <shader_name>");
+    eprintln!("  evident export-smt2      <file> <claim>          # Evident → SMT-LIB v2");
+    eprintln!("  evident import-smt2      <file> [claim_name]     # SMT-LIB v2 → Evident");
     eprintln!();
     eprintln!("execute flags (mirror evident.py where applicable):");
     eprintln!("  --width  N   SDL window width  (default 800; used by SDL plugin)");
