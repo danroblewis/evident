@@ -150,6 +150,20 @@ impl SDLShaderPlugin {
         let gl_context = window.gl_create_context()?;
         gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
 
+        // Lock framerate to monitor refresh so the per-frame `dt` the
+        // engine sees is consistent (~16ms at 60Hz). Without vsync,
+        // dt jitters wildly between 1ms and the 100ms cap, which
+        // turns physics into nonsense — `run_speed * 1ms / 1000` is
+        // 0 px (right arrow stops working) while a 100ms frame
+        // pumps a single jump into a screen-clearing leap. Mirrors
+        // the rect SDLPlugin's behavior.
+        // EVIDENT_SDL_NO_VSYNC=1 disables it (matching the rect
+        // plugin's env knob).
+        let no_vsync = std::env::var("EVIDENT_SDL_NO_VSYNC").as_deref() == Ok("1");
+        if !no_vsync {
+            let _ = video.gl_set_swap_interval(sdl2::video::SwapInterval::VSync);
+        }
+
         // Fullscreen triangle. Two-triangle quad covering [-1, 1]².
         // gl_FragCoord runs over the framebuffer in pixels; we'll
         // pass the normalized coord through `pixel` (vec2 in [0,1]).

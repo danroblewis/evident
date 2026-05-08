@@ -333,12 +333,18 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected '=' or '∋' in trace assertion, got {:?}", other))),
         };
+        // Optional leading `-` so negative numeric literals work
+        // (`hero.vel.y = -700`). Evident-the-language has no unary
+        // minus operator, but trace assertions are a restricted
+        // grammar where a literal-with-sign reads naturally.
+        let neg = matches!(self.peek(), Token::Minus);
+        if neg { self.bump(); }
         let value = match self.bump() {
-            Token::Str(s)   => s,
-            Token::Int(n)   => n.to_string(),
-            Token::Real(r)  => r.to_string(),
-            Token::True     => "true".into(),
-            Token::False    => "false".into(),
+            Token::Str(s) if !neg => s,
+            Token::Int(n)         => if neg { (-n).to_string() } else { n.to_string() },
+            Token::Real(r)        => if neg { (-r).to_string() } else { r.to_string() },
+            Token::True if !neg   => "true".into(),
+            Token::False if !neg  => "false".into(),
             other => return Err(ParseError(format!(
                 "expected string/int/real/bool literal as assertion value, got {:?}", other))),
         };
