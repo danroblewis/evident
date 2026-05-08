@@ -495,6 +495,141 @@ impl Parser {
     /// Type-name shapes accepted:
     ///   - bare ident:               `Nat`
     ///   - named pins:               `IVec2 (x ↦ 0, y ↦ 0)`
+    /// Body-item-level recognition of a chained-comparison expression
+    /// with an embedded `∈ TypeName` step. Splits into a Membership
+    /// declaration plus one Constraint per comparison pair.
+    ///
+    ///   `pos_x ∈ Int = 5`         →  `pos_x ∈ Int` ; `pos_x = 5`
+    ///   `pos_x ∈ Int < 5`         →  `pos_x ∈ Int` ; `pos_x < 5`
+    ///   `0 < pos_x ∈ Int`         →  `pos_x ∈ Int` ; `0 < pos_x`
+    ///   `0 < pos_x ∈ Int < 5`     →  `pos_x ∈ Int` ; `0 < pos_x` ; `pos_x < 5`
+    ///   `pos_x ∈ Seq(Int)`        →  same single-Membership case
+    ///
+    /// The variable being declared is the operand immediately to the
+    /// left of `∈`. It must be a bare Identifier (no field access,
+    /// no expression). Multi-name shorthand (`x, y, z ∈ Int < 5`)
+    /// is not supported here — falls through to the existing
+    /// multi-name path which only handles plain `IDENT ∈ TYPE`.
+    ///
+    /// Returns `None` (and rewinds the cursor) if the line doesn't fit
+    /// this pattern. Carefully avoids consuming a regular set-membership
+    /// expression like `x ∈ pts ∧ …` — the chain-end check requires
+    /// a Newline / Eof / Indent immediately after the chain.
+    fn try_parse_chained_membership(&mut self) -> Result<Option<Vec<BodyItem>>> {
+        let saved = self.pos;
+
+        let first = match self.parse_addsub() {
+            Ok(e) => e,
+            Err(_) => { self.pos = saved; return Ok(None); }
+        };
+        let mut operands: Vec<Expr> = vec![first];
+        let mut ops: Vec<BinOp> = Vec::new();
+        let mut membership_at: Option<(usize, String)> = None;
+
+        loop {
+            if matches!(self.peek(), Token::In) {
+                if membership_at.is_some() {
+                    // Two ∈ in one chain — not a recognized form.
+                    self.pos = saved;
+                    return Ok(None);
+                }
+                self.bump();
+                // The RHS of ∈ in a chained membership must be a
+                // simple type name: a bare Ident, or a recognized
+                // compound `Ident(Ident)` for Seq/Set/Bag/Map.
+                // Followed by either a Newline-class token or
+                // another comparison op. Anything else (function call,
+                // pin form, expression) → bail.
+                let head = match self.peek().clone() {
+                    Token::Ident(s) => s,
+                    _ => { self.pos = saved; return Ok(None); }
+                };
+                let after_head = self.toks.get(self.pos + 1).cloned();
+                let after_chain_class = |t: &Option<Token>| matches!(t,
+                    Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None
+                ) || peek_compare_op(t.as_ref().unwrap_or(&Token::Eof)).is_some();
+
+                let is_compound = matches!(after_head, Some(Token::LParen))
+                    && matches!(self.toks.get(self.pos + 2), Some(Token::Ident(_)))
+                    && matches!(self.toks.get(self.pos + 3), Some(Token::RParen));
+
+                let type_name = if is_compound {
+                    self.bump();   // head
+                    self.bump();   // (
+                    let inner = match self.bump() {
+                        Token::Ident(s) => s,
+                        _ => unreachable!(),
+                    };
+                    self.bump();   // )
+                    let after = self.toks.get(self.pos).cloned();
+                    if !after_chain_class(&after) {
+                        self.pos = saved;
+                        return Ok(None);
+                    }
+                    format!("{}({})", head, inner)
+                } else {
+                    if !after_chain_class(&after_head) {
+                        self.pos = saved;
+                        return Ok(None);
+                    }
+                    self.bump();   // head
+                    head
+                };
+
+                let var_idx = operands.len() - 1;
+                membership_at = Some((var_idx, type_name));
+                continue;
+            }
+            if let Some(op) = peek_compare_op(self.peek()) {
+                self.bump();
+                let rhs = match self.parse_addsub() {
+                    Ok(e) => e,
+                    Err(_) => { self.pos = saved; return Ok(None); }
+                };
+                operands.push(rhs);
+                ops.push(op);
+                continue;
+            }
+            break;
+        }
+
+        let Some((var_idx, type_name)) = membership_at else {
+            self.pos = saved;
+            return Ok(None);
+        };
+
+        // The chain must end at a body-item boundary; otherwise the
+        // user wrote something like `pos_x ∈ Int = 5 ∧ …` and we
+        // should let the regular expression parser handle it.
+        if !matches!(self.peek(),
+            Token::Newline | Token::Eof | Token::Indent(_)
+        ) {
+            self.pos = saved;
+            return Ok(None);
+        }
+
+        // The variable being declared must be a bare Identifier with
+        // no dots — `state.foo ∈ Int < 5` is not allowed.
+        let var_name = match &operands[var_idx] {
+            Expr::Identifier(s) if !s.contains('.') => s.clone(),
+            _ => { self.pos = saved; return Ok(None); }
+        };
+
+        let mut items = vec![BodyItem::Membership {
+            name: var_name,
+            type_name,
+            pins: crate::ast::Pins::None,
+        }];
+        for (i, op) in ops.into_iter().enumerate() {
+            let lhs = operands[i].clone();
+            let rhs = operands[i + 1].clone();
+            items.push(BodyItem::Constraint(Expr::Binary(
+                op, Box::new(lhs), Box::new(rhs),
+            )));
+        }
+        Ok(Some(items))
+    }
+
     ///   - positional pins:          `IVec2 (-800, -800)`
     ///   - compound `Ident(Ident)`:  `Seq(Int)` (only for hardcoded
     ///     compound heads — Seq/Set/Bag/Map — so other `Type(arg)`
@@ -576,9 +711,15 @@ impl Parser {
     }
 
     fn parse_body_item(&mut self) -> Result<Vec<BodyItem>> {
-        // Three shapes:
+        // Four shapes:
         //   ..IDENT                                 → Passthrough composition
         //   IDENT IN IDENT (followed by line-end)   → Membership declaration
+        //   <chain with ∈ TypeName embedded>        → Membership + Constraint(s)
+        //         e.g. `pos_x ∈ Int = 5`, `0 < pos_x ∈ Int < 5`,
+        //              `pos_x ∈ Int < 5`. Desugars to a Membership for
+        //              the var to the left of ∈, plus per-pair Constraints
+        //              for each comparison op in the chain. Single-name
+        //              only; multi-name + chain not supported yet.
         //   <expr>                                  → Constraint
         // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
         // as an expression and ends up as a Constraint.
@@ -641,6 +782,14 @@ impl Parser {
                 // which handles record literals like `IVec2(0, 0)`.
             }
         }
+        // Chained-membership: try to parse `[lhs comp]* IDENT ∈ TypeName [comp rhs]*`
+        // and split into a Membership + a Constraint per comparison pair.
+        // Returns None (and rewinds) for anything that doesn't fit; the
+        // existing Membership and expression branches below handle the rest.
+        if let Some(items) = self.try_parse_chained_membership()? {
+            return Ok(items);
+        }
+
         if let Token::Ident(_) = self.peek() {
             let saved = self.pos;
             let mut lhs_names = match self.bump() {
@@ -1205,5 +1354,68 @@ mod tests {
             }
             other => panic!("expected Gt, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn parse_chained_membership_two_sided() {
+        // `0 < pos_x ∈ Int < 5` desugars to:
+        //   - Membership(pos_x, Int)
+        //   - Constraint(0 < pos_x)
+        //   - Constraint(pos_x < 5)
+        let p = parse("claim t\n    0 < pos_x ∈ Int < 5\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 3, "expected 3 body items, got {}", s.body.len());
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
+            if name == "pos_x" && type_name == "Int"));
+        assert!(matches!(&s.body[1], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
+        assert!(matches!(&s.body[2], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
+    }
+
+    #[test]
+    fn parse_chained_membership_pin_form() {
+        // `pos_x ∈ Int = 5` desugars to Membership + Constraint(=).
+        let p = parse("claim t\n    pos_x ∈ Int = 5\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 2);
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
+            if name == "pos_x" && type_name == "Int"));
+        assert!(matches!(&s.body[1], BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _))));
+    }
+
+    #[test]
+    fn parse_chained_membership_compound_type() {
+        // Compound type like `Seq(Int)` allowed on the RHS of ∈.
+        // Tail comparison only — leading comparison would need to chain
+        // against a Seq, which isn't meaningful.
+        let p = parse("claim t\n    s ∈ Seq(Int)\n    #s = 3\n").unwrap();
+        // This particular form doesn't trigger chained-membership (no
+        // comparison op follows the type) — confirms the regular path
+        // still parses.
+        let s = &p.schemas[0];
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
+            if name == "s" && type_name == "Seq(Int)"));
+    }
+
+    #[test]
+    fn parse_chained_membership_does_not_eat_set_membership() {
+        // `x ∈ pts ∧ x > 0` must NOT be split into a Membership +
+        // Constraint — the `∧` after the Ident isn't a comparison op,
+        // so the chain detector bails and the regular expression
+        // parser handles it as `(x ∈ pts) ∧ (x > 0)`.
+        let p = parse("claim t\n    pts ∈ Set(Int)\n    x ∈ Int\n    x ∈ pts ∧ x > 0\n").unwrap();
+        let s = &p.schemas[0];
+        // Last body item should be a single Constraint with a Binary(And) at top.
+        match s.body.last().unwrap() {
+            BodyItem::Constraint(Expr::Binary(BinOp::And, _, _)) => {}
+            other => panic!("expected `(x ∈ pts) ∧ (x > 0)` constraint, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_chained_membership_rejects_dotted_lhs() {
+        // `state.x ∈ Int < 5` would try to declare a dotted name —
+        // not allowed. Falls through and errors at the schema-parse
+        // level (the trailing `< 5` is unexpected).
+        assert!(parse("claim t\n    state.x ∈ Int < 5\n").is_err());
     }
 }

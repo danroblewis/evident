@@ -258,6 +258,43 @@ depends on the type (e.g., a claim that only makes sense for Bool
 sequences) — give it a concrete `Seq(Bool)` so the type-check fires
 at the call site.
 
+### Chained-membership: declare and constrain on one line
+
+`∈` can sit inside a chained-comparison expression at the body-item
+level. The variable to its left gets declared with the type to its
+right, and every comparison pair in the chain becomes its own
+constraint. Three common shapes:
+
+```evident
+pos_x ∈ Int = 5            -- declare + pin
+pos_x ∈ Int < 5            -- declare + upper bound
+0 < pos_x ∈ Int            -- declare + lower bound
+0 < pos_x ∈ Int < 5        -- declare + range  (replaces 3 lines)
+0 ≤ score ∈ Nat ≤ 100      -- any comparison ops work
+val ∈ Int ≠ 0              -- inequality after declaration
+```
+
+Each desugars to a `Membership` plus one `Constraint` per comparison
+pair. `0 < pos_x ∈ Int < 5` becomes:
+
+```evident
+pos_x ∈ Int
+0 < pos_x
+pos_x < 5
+```
+
+The variable being declared must be a bare identifier (no field
+access — `state.x ∈ Int < 5` is rejected). Multi-name shorthand
+isn't supported in chains; for a list of vars sharing a type, use
+the existing `x, y, z ∈ Int` form on its own line. Compound types
+work without comparisons (`s ∈ Seq(Int)` parses normally) but the
+chained form expects a plain type name on the right of `∈`.
+
+The chain detector requires the next token after the chain to be a
+line-end. Constraints joined with `∧`/`∨` like `x ∈ pts ∧ x > 0`
+still parse as expressions (set-membership inside a Bool), not as
+chained-membership.
+
 ### Renaming with `↦`: when names differ
 
 ```evident
@@ -324,6 +361,7 @@ condition is the selector.
 | A subset of a type with extra invariants | define a new `type` that names the original type and adds constraints |
 | Named dispatch branches inside a parent claim | `subclaim` + `⟸` |
 | Multiple variables sharing a type | `x, y, z ∈ Int` (multi-name shorthand) |
+| Declare and constrain in one line | `pos_x ∈ Int = 5`, `pos_x ∈ Int < 5`, or `0 < pos_x ∈ Int < 5` (chained-membership) |
 | Compact short-record type definition | `type IVec2(x, y ∈ Int)` (first-line param list) |
 | Construct a record value inline | `IVec2(380, 280)` positional, or `IVec2(x ↦ 1, y ↦ 2)` named |
 | Componentwise comparison/equality of records | `a ≤ b`, `a = b`, `a ≠ b` lift automatically |
