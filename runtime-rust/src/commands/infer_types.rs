@@ -24,7 +24,15 @@ use evident_runtime::{EvidentRuntime, Value};
 const STDLIB_AST:    &str = "stdlib/ast.ev";
 const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
 
+// Order matters: more-specific rules go first so the CLI prefers
+// extracted-from-Membership info over inferred-from-literal info
+// when both apply. (The user explicitly declared a type — respect
+// that over a guess.)
 const RULES: &[&str] = &[
+    "extract_first_membership",
+    "infer_string_from_membership_plus_assignment",
+    "infer_int_from_membership_plus_assignment",
+    "infer_bool_from_membership_plus_assignment",
     "infer_string_from_single_assignment",
     "infer_int_from_single_assignment",
     "infer_bool_from_single_assignment",

@@ -265,6 +265,101 @@ fn query_with_program_works_when_user_loads_only_an_enum() {
         "no schemas → no body items → no string assignment → UNSAT");
 }
 
+// ── Stage 4: extract from Membership + 2-body programs ──────────
+
+#[test]
+fn extract_membership_recovers_declared_type() {
+    // The most common shape: user wrote `claim t : x ∈ Int`. The
+    // pass extracts the declared type directly.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    x ∈ Int\n").unwrap();
+    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("inferred_var"),
+               Some(&Value::Str("x".to_string())));
+    assert_eq!(r.bindings.get("inferred_type"),
+               Some(&Value::Str("Int".to_string())));
+    assert_eq!(r.bindings.get("claim_name"),
+               Some(&Value::Str("t".to_string())));
+}
+
+#[test]
+fn extract_membership_works_with_trailing_constraint() {
+    // The Membership rule's `rest_body` is a free var, so trailing
+    // body items are tolerated.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    name ∈ String\n    name = \"alice\"\n").unwrap();
+    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("inferred_var"),
+               Some(&Value::Str("name".to_string())));
+    assert_eq!(r.bindings.get("inferred_type"),
+               Some(&Value::Str("String".to_string())));
+}
+
+#[test]
+fn extract_membership_unsat_when_first_item_is_constraint() {
+    // Pattern requires Membership at the head — a Constraint-led
+    // body doesn't match.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    msg = \"hi\"\n").unwrap();
+    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
+    assert!(!r.satisfied,
+        "extract rule requires a leading Membership; constraint-only \
+         body should be UNSAT");
+}
+
+#[test]
+fn membership_plus_assignment_int_consistent() {
+    // `claim t : x ∈ Int ; x = 5` — both rule paths should bind
+    // inferred_type = "Int".
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    x ∈ Int\n    x = 5\n").unwrap();
+    let r = rt.query_with_program("infer_int_from_membership_plus_assignment", "program").unwrap();
+    assert!(r.satisfied,
+        "membership+assignment shape should match");
+    assert_eq!(r.bindings.get("inferred_var"),
+               Some(&Value::Str("x".to_string())));
+    assert_eq!(r.bindings.get("inferred_type"),
+               Some(&Value::Str("Int".to_string())));
+}
+
+#[test]
+fn membership_plus_assignment_string_consistent() {
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    name ∈ String\n    name = \"alice\"\n").unwrap();
+    let r = rt.query_with_program("infer_string_from_membership_plus_assignment", "program").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("inferred_type"),
+               Some(&Value::Str("String".to_string())));
+}
+
+#[test]
+fn membership_plus_assignment_bool_consistent() {
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    flag ∈ Bool\n    flag = true\n").unwrap();
+    let r = rt.query_with_program("infer_bool_from_membership_plus_assignment", "program").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("inferred_type"),
+               Some(&Value::Str("Bool".to_string())));
+}
+
+#[test]
+fn membership_plus_assignment_int_unsat_for_string_decl() {
+    // The Int membership+assignment rule has `inferred_type = "Int"`
+    // baked in. If the user declared `name ∈ String` but assigned
+    // an Int — wait, the rule requires EInt on the RHS. So if the
+    // user's body is `x ∈ String ; x = 5`, the rule will succeed
+    // on the structure but then `inferred_type` will be bound to
+    // "String" (from the membership) AND constrained to "Int" (by
+    // the rule body) — contradiction → UNSAT.
+    let mut rt = fresh_rt_with_pass();
+    rt.load_source("claim t\n    x ∈ String\n    x = 5\n").unwrap();
+    let r = rt.query_with_program("infer_int_from_membership_plus_assignment", "program").unwrap();
+    assert!(!r.satisfied,
+        "Int rule should reject String-declared var with Int literal");
+}
+
 #[test]
 fn fails_without_stdlib_ast() {
     // Without stdlib/ast.ev loaded, the encoder can't find the

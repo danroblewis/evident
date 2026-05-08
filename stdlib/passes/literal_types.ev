@@ -113,3 +113,94 @@ claim infer_bool_from_single_assignment
             SchLNil),
         enums_part_bool)
     inferred_type = "Bool"
+
+-- ── Stage 4: extract types from explicit Memberships ────────────
+
+-- The simplest "inference" of all: the user told us. If the body
+-- starts with `x ∈ Type`, recover x and Type as inferred_var and
+-- inferred_type. The rest of the body can be anything (free var).
+claim extract_first_membership
+    program       ∈ Program
+    claim_name    ∈ String
+    inferred_var  ∈ String
+    inferred_type ∈ String
+    pins_part     ∈ Pins
+    rest_body     ∈ BodyItemList
+    enums_em      ∈ EnumDeclList
+    program = MakeProgram(
+        SchLCons(
+            MakeSchemaDecl(KClaim, claim_name,
+                BILCons(BIMembership(inferred_var, inferred_type, pins_part),
+                       rest_body)),
+            SchLNil),
+        enums_em)
+
+-- ── Stage 4: 2-body-item programs (Membership + Constraint) ────
+
+-- Pattern: `claim NAME : x ∈ Int ; x = 5`. Both extracts the
+-- declared type AND verifies the literal-equality is consistent.
+-- inferred_type comes from the membership; the literal gives a
+-- consistency check.
+claim infer_int_from_membership_plus_assignment
+    program       ∈ Program
+    claim_name    ∈ String
+    inferred_var  ∈ String
+    inferred_type ∈ String
+    int_lit       ∈ Int
+    pins2         ∈ Pins
+    enums_2       ∈ EnumDeclList
+    program = MakeProgram(
+        SchLCons(
+            MakeSchemaDecl(KClaim, claim_name,
+                BILCons(BIMembership(inferred_var, inferred_type, pins2),
+                BILCons(BIConstraint(EBinary(OpEq,
+                                             EIdentifier(inferred_var),
+                                             EInt(int_lit))),
+                       BILNil))),
+            SchLNil),
+        enums_2)
+    -- Consistency: an Int literal binds to a variable that should
+    -- be one of the integer family or Real.
+    inferred_type = "Int"
+
+-- Same pattern for String.
+claim infer_string_from_membership_plus_assignment
+    program       ∈ Program
+    claim_name    ∈ String
+    inferred_var  ∈ String
+    inferred_type ∈ String
+    str_lit       ∈ String
+    pins_s        ∈ Pins
+    enums_s       ∈ EnumDeclList
+    program = MakeProgram(
+        SchLCons(
+            MakeSchemaDecl(KClaim, claim_name,
+                BILCons(BIMembership(inferred_var, inferred_type, pins_s),
+                BILCons(BIConstraint(EBinary(OpEq,
+                                             EIdentifier(inferred_var),
+                                             EStr(str_lit))),
+                       BILNil))),
+            SchLNil),
+        enums_s)
+    inferred_type = "String"
+
+-- Same pattern for Bool.
+claim infer_bool_from_membership_plus_assignment
+    program       ∈ Program
+    claim_name    ∈ String
+    inferred_var  ∈ String
+    inferred_type ∈ String
+    bool_l        ∈ Bool
+    pins_b        ∈ Pins
+    enums_b       ∈ EnumDeclList
+    program = MakeProgram(
+        SchLCons(
+            MakeSchemaDecl(KClaim, claim_name,
+                BILCons(BIMembership(inferred_var, inferred_type, pins_b),
+                BILCons(BIConstraint(EBinary(OpEq,
+                                             EIdentifier(inferred_var),
+                                             EBool(bool_l))),
+                       BILNil))),
+            SchLNil),
+        enums_b)
+    inferred_type = "Bool"
