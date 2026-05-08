@@ -635,6 +635,7 @@ The binary is `evident <subcommand>`. All subcommands:
 | `export-smt2 <file> <claim>` | Emit SMT-LIB v2                                  |
 | `import-smt2 <file> [claim_name]` | Parse SMT-LIB v2 → Evident                  |
 | `initial-state <file> <claim>` | Generate initial-state JSON for executor seeding |
+| `dump-ast <file>`    | Encode the parsed program as a Z3 datatype value matching `stdlib/ast.ev`'s `Program` enum and print it. Stage 2 of self-hosting — the bridge that lets self-hosted passes consume real source. |
 
 Conspicuously absent vs. Python: **no `batch` mode, no `repl`**. These
 were "parked behind plugin work" per the executor comments; users would

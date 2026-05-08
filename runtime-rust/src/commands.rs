@@ -10,6 +10,7 @@ pub mod common;
 pub mod initial_state;
 
 pub mod check;
+pub mod dump_ast;
 pub mod execute;
 pub mod parse;
 pub mod query;

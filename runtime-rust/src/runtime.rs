@@ -611,6 +611,25 @@ impl EvidentRuntime {
         self.schemas.get(name)
     }
 
+    /// Encode this runtime's accumulated `Program` as a Z3 Datatype
+    /// value matching `stdlib/ast.ev`'s `Program` enum. Caller is
+    /// expected to have loaded `stdlib/ast.ev` first; if any AST
+    /// enum is missing from the registry, `encode_program` returns
+    /// `EnumNotRegistered`.
+    ///
+    /// Used by `evident dump-ast` and (in Stage 3) by the CLI hooks
+    /// that hand a parsed Program to a self-hosted pass as a `given`.
+    pub fn encode_program_value(
+        &self,
+    ) -> std::result::Result<z3::ast::Datatype<'static>,
+                              crate::translate::ast_encoder::EncodeError> {
+        crate::translate::ast_encoder::encode_program(
+            &self.program,
+            self.z3_ctx,
+            &self.enums,
+        )
+    }
+
     /// Faster query — translates the schema once on first call and
     /// reuses the resulting Z3 solver across subsequent calls
     /// (push/pop per query). Mirrors Python's `query(name, given,

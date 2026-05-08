@@ -7,12 +7,20 @@
 
 mod datatypes;
 mod declare;
+mod encode_ast;
 mod eval;
 mod exprs;
 mod extract;
 mod inline;
 mod preprocess;
 mod types;
+
+pub mod ast_encoder {
+    //! Public surface of the AST → Z3 datatype encoder. Used by
+    //! `EvidentRuntime::encode_program_value` and the
+    //! `evident dump-ast` CLI.
+    pub use super::encode_ast::{encode_program, EncodeError};
+}
 
 // External API. Anything used by another module in this crate
 // (`runtime`, `executor`, `main`) is re-exported here.
