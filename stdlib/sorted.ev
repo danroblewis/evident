@@ -1,0 +1,33 @@
+-- sorted.ev — sortedness invariants over a Seq with configurable
+-- direction. Element type inferred from the caller via names-match
+-- — works for any T with `≤`/`≥` (Int, Real, String).
+--
+-- Caller declares `s` and `ascending` in scope, then invokes bare
+-- `Sorted`. Use `StrictlySorted` for the strict version (no
+-- duplicates allowed).
+--
+-- `edges(s)` yields each consecutive (prev, next) pair, so the
+-- whole invariant is one quantifier line.
+--
+-- Usage:
+--
+--   import "stdlib/sorted.ev"
+--
+--   claim my_problem
+--       s ∈ Seq(Int)         -- or Seq(String), Seq(Real), …
+--       ascending ∈ Bool
+--       #s = 5
+--       ascending = true
+--       Sorted
+
+claim Sorted
+    s ∈ Seq
+    ascending ∈ Bool
+    ascending = true  ⇒ ∀ (a, b) ∈ edges(s) : a ≤ b
+    ascending = false ⇒ ∀ (a, b) ∈ edges(s) : a ≥ b
+
+claim StrictlySorted
+    s ∈ Seq
+    ascending ∈ Bool
+    ascending = true  ⇒ ∀ (a, b) ∈ edges(s) : a < b
+    ascending = false ⇒ ∀ (a, b) ∈ edges(s) : a > b

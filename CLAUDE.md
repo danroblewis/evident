@@ -170,6 +170,46 @@ claim valid_conference
     parallel_load_within   -- 'schedule', 'max_parallel' flow by name
 ```
 
+### Generic Seq parameters: `s ∈ Seq` (no element type)
+
+A claim parameter declared as `s ∈ Seq` (bare, no element type) takes
+its element type from the caller's binding via names-match. The same
+claim then works for any orderable / equality-comparable element type:
+
+```evident
+claim Distinct
+    s ∈ Seq                  -- generic; element type comes from caller
+    n ∈ Nat
+    ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒ s[i] ≠ s[j]
+
+claim use_int
+    s ∈ Seq(Int)
+    n ∈ Nat
+    n = 4 ; #s = n
+    s[0] = 7 ∧ s[1] = 2 ∧ s[2] = 9 ∧ s[3] = 4
+    Distinct                 -- works on Int
+
+claim use_string
+    s ∈ Seq(String)
+    n ∈ Nat
+    n = 3 ; #s = n
+    s[0] = "a" ∧ s[1] = "b" ∧ s[2] = "c"
+    Distinct                 -- same claim, works on String
+```
+
+The runtime infers the element type at inline time from whatever the
+caller declared. Body operations (`s[i] ≠ s[j]`, `a ≤ b`, etc.) get
+translated against the caller's type. `stdlib/distinct.ev` and
+`stdlib/sorted.ev` use this pattern — single generic claim, not
+per-type variants.
+
+Use this whenever a claim's logic doesn't depend on the specific
+element type — distinctness, sortedness, bijection between two seqs,
+sum-of-elements, etc. Don't use it when the body's translation
+depends on the type (e.g., a claim that only makes sense for Bool
+sequences) — give it a concrete `Seq(Bool)` so the type-check fires
+at the call site.
+
 ### Renaming with `↦`: when names differ
 
 ```evident
