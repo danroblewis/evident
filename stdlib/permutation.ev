@@ -1,0 +1,27 @@
+-- permutation.ev — common shapes around "this Seq is a permutation
+-- of some range." Composed via names-match: the consuming claim
+-- declares a Seq named `s` of length `n`, and adding
+-- `PermutationOfRange` to its body asserts s = some permutation of
+-- {0, …, n-1}.
+--
+-- Distinctness falls out of pigeonhole — n positions surjective
+-- onto n values means injective, no duplicates. So consumers don't
+-- need a separate "distinct" constraint when they use this.
+--
+-- Usage:
+--
+--   import "stdlib/permutation.ev"
+--
+--   claim queens
+--       n ∈ Nat
+--       s ∈ Seq(Int)
+--       n = 8
+--       #s = n
+--       PermutationOfRange         -- names-match: shares s and n
+--       …diagonal constraints over s[i]…
+
+claim PermutationOfRange
+    s ∈ Seq(Int)
+    n ∈ Nat
+    ∀ i ∈ {0..n-1} : s[i] ≥ 0 ∧ s[i] < n
+    ∀ c ∈ {0..n-1} : ∃ i ∈ {0..n-1} : s[i] = c
