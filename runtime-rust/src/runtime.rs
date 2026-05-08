@@ -14,6 +14,15 @@ use z3::{Config, Context};
 
 pub use crate::translate::Value;
 
+/// Snapshot of "everything loaded so far is the system layer."
+/// Schemas / enums loaded after a `mark_system_loads_complete()` call
+/// are treated as the user's program for the purposes of AST encoding.
+#[derive(Default, Clone)]
+pub struct SystemBoundary {
+    pub schemas: HashSet<String>,
+    pub enums:   HashSet<String>,
+}
+
 /// Walk a schema body and register any nested `subclaim` declarations
 /// into `schemas` (recursively, so a subclaim of a subclaim is also
 /// reachable).
@@ -216,6 +225,14 @@ pub struct EvidentRuntime {
     /// `DatatypeBuilder` call per enum, with N nullary variants).
     /// Threaded into the translator alongside `datatypes`.
     enums: crate::translate::EnumRegistry,
+    /// Stage 3: schemas + enums loaded BEFORE
+    /// `mark_system_loads_complete()` was called. Used by the AST
+    /// encoder to filter so a self-hosted pass receives only the
+    /// user's program, not the pass + stdlib + ast.ev itself.
+    /// `None` means no boundary has been drawn — every schema/enum
+    /// is "user" (the default for non-self-hosting use cases like
+    /// `evident query`).
+    system_boundary: RefCell<Option<SystemBoundary>>,
     /// Canonicalized paths of every file already loaded via `load_file`
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
@@ -387,6 +404,7 @@ impl EvidentRuntime {
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
+            system_boundary: RefCell::new(None),
             loaded_files: RefCell::new(HashSet::new()),
             solve_history: RefCell::new(HashMap::new()),
         }
@@ -611,6 +629,42 @@ impl EvidentRuntime {
         self.schemas.get(name)
     }
 
+    /// Stage 3: snapshot everything currently loaded as "system"
+    /// (stdlib/ast.ev, the pass file, etc.). Subsequent `load_*`
+    /// calls register schemas/enums as user-side. `encode_program_value`
+    /// and `query_with_program` then encode only the user's program,
+    /// not the system layer — so a self-hosted pass sees exactly what
+    /// the user wrote.
+    ///
+    /// Idempotent: calling twice replaces the boundary with the
+    /// current state. (The earlier snapshot is lost, but in practice
+    /// you set the boundary once between system and user loads.)
+    pub fn mark_system_loads_complete(&self) {
+        let schemas: HashSet<String> = self.schemas.keys().cloned().collect();
+        let enums: HashSet<String> = self.enums.by_name.borrow().keys().cloned().collect();
+        *self.system_boundary.borrow_mut() = Some(SystemBoundary { schemas, enums });
+    }
+
+    /// Return a `Program` view containing only schemas/enums loaded
+    /// AFTER `mark_system_loads_complete()` was called. If no
+    /// boundary has been drawn, returns the full program (no
+    /// filtering — matches existing `encode_program_value` semantics).
+    fn user_program(&self) -> Program {
+        let boundary = self.system_boundary.borrow();
+        let Some(b) = boundary.as_ref() else { return self.program.clone() };
+        Program {
+            schemas: self.program.schemas.iter()
+                .filter(|s| !b.schemas.contains(&s.name))
+                .cloned().collect(),
+            enums: self.program.enums.iter()
+                .filter(|e| !b.enums.contains(&e.name))
+                .cloned().collect(),
+            imports: Vec::new(),
+            traces:  Vec::new(),
+            shaders: Vec::new(),
+        }
+    }
+
     /// Encode this runtime's accumulated `Program` as a Z3 Datatype
     /// value matching `stdlib/ast.ev`'s `Program` enum. Caller is
     /// expected to have loaded `stdlib/ast.ev` first; if any AST
@@ -623,11 +677,50 @@ impl EvidentRuntime {
         &self,
     ) -> std::result::Result<z3::ast::Datatype<'static>,
                               crate::translate::ast_encoder::EncodeError> {
+        let prog = self.user_program();
         crate::translate::ast_encoder::encode_program(
-            &self.program,
+            &prog,
             self.z3_ctx,
             &self.enums,
         )
+    }
+
+    /// Stage 3 plumbing: run a self-hosted pass with this runtime's
+    /// accumulated `Program` injected as a `given` for one of the
+    /// pass's variables.
+    ///
+    /// Concretely: encode the program as a Z3 Datatype value matching
+    /// `stdlib/ast.ev`'s `Program` enum, then evaluate `claim_name`
+    /// while asserting that the variable named `program_var` (declared
+    /// as `program ∈ Program` in the pass) equals that value. Any
+    /// other free variables in the pass behave normally — Z3 picks
+    /// values that satisfy the pass's constraints.
+    ///
+    /// Returns `RuntimeError::Encode` if `stdlib/ast.ev` isn't
+    /// loaded; `UnknownSchema` if the named claim doesn't exist.
+    pub fn query_with_program(
+        &self,
+        claim_name: &str,
+        program_var: &str,
+    ) -> Result<QueryResult, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        let prog_value = self.encode_program_value()
+            .map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let r = crate::translate::evaluate_with_extra_assertion(
+            schema,
+            &HashMap::new(),
+            &self.schemas,
+            self.z3_ctx,
+            &self.datatypes,
+            Some(&self.enums),
+            arith,
+            program_var,
+            prog_value,
+        );
+        Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
     /// Faster query — translates the schema once on first call and

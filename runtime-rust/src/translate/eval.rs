@@ -625,6 +625,70 @@ pub fn evaluate(
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
 
+/// Stage 3 helper: like `evaluate`, but additionally asserts that
+/// the variable named `extra_var` (which must have been declared in
+/// the schema body as an enum-typed Membership) equals `extra_value`.
+/// Used by `EvidentRuntime::query_with_program` to inject an
+/// encoded `Program` value into a self-hosted pass.
+///
+/// Implementation: copy of `evaluate` with one extra `solver.assert`
+/// after pass 2 and before the satisfiability check. Cleaner than
+/// extending `evaluate` with an Option<extra_assertion> closure
+/// because the AST-value injection is a niche operation that
+/// shouldn't pollute the main entry point's signature.
+pub fn evaluate_with_extra_assertion(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    arith_solver: u32,
+    extra_var: &str,
+    extra_value: z3::ast::Datatype<'static>,
+) -> EvalResult {
+    let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
+    let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
+
+    // Pass 1: declare. (Same as evaluate.)
+    for item in &schema.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+        }
+    }
+
+    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
+
+    let mut visited: HashSet<String> = HashSet::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+
+    // Inject the extra value. Look up the variable, must be EnumVar
+    // (i.e. enum-typed Membership). Anything else gets a warning;
+    // assertion is silently skipped to avoid forcing UNSAT.
+    if let Some(Var::EnumVar { ast, .. }) = env.get(extra_var) {
+        solver.assert(&ast._eq(&extra_value));
+    } else {
+        eprintln!("warning: query_with_program: variable `{}` is not enum-typed in `{}`",
+                  extra_var, schema.name);
+    }
+
+    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let mut bindings = HashMap::new();
+    if satisfied {
+        if let Some(model) = solver.get_model() {
+            for (name, var) in env.iter() {
+                extract_binding(name, var, &model, ctx, &mut bindings, enums);
+            }
+        }
+    }
+    EvalResult { satisfied, bindings, unsat_core_items: None }
+}
+
 /// Same as `evaluate`, but tags every Z3 assertion derived from a
 /// top-level body item with a unique tracker bool so an UNSAT result
 /// produces a usable `unsat_core_items` (indices into `schema.body`).
