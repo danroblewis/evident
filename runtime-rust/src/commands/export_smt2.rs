@@ -28,7 +28,15 @@ pub fn cmd_export_smt2(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
 
-    match smtlib::export(schema) {
+    // The exporter needs the full type table to flatten sub-record
+    // memberships (`task ∈ Task` → declarations for each leaf
+    // field, plus Task's own constraints under the `task.` prefix).
+    let schemas: std::collections::HashMap<String, evident_runtime::ast::SchemaDecl> =
+        rt.schema_names()
+            .filter_map(|n| rt.get_schema(n).map(|s| (n.to_string(), s.clone())))
+            .collect();
+
+    match smtlib::export(schema, &schemas) {
         Ok(s) => { print!("{s}"); ExitCode::SUCCESS }
         Err(e) => {
             eprintln!("export-smt2: {e}");

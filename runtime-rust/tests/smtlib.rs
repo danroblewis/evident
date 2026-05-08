@@ -15,13 +15,19 @@ fn first_claim_named(rt: &EvidentRuntime, name: &str) -> evident_runtime::ast::S
     rt.get_schema(name).expect("claim by name").clone()
 }
 
+fn schemas_table(rt: &EvidentRuntime) -> HashMap<String, evident_runtime::ast::SchemaDecl> {
+    rt.schema_names()
+        .filter_map(|n| rt.get_schema(n).map(|s| (n.to_string(), s.clone())))
+        .collect()
+}
+
 // ── Export tests ────────────────────────────────────────────────────────────
 
 #[test]
 fn export_basic_int_constraints() {
     let mut rt = EvidentRuntime::new();
     rt.load_source("claim c\n    x ∈ Int\n    x = 5\n").unwrap();
-    let s = smtlib::export(&first_claim_named(&rt, "c")).unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
     assert!(s.contains("(declare-const x Int)"), "{s}");
     assert!(s.contains("(assert (= x 5))"),     "{s}");
     assert!(s.contains("(check-sat)"),          "{s}");
@@ -31,7 +37,7 @@ fn export_basic_int_constraints() {
 fn export_nat_emits_nonneg_assertion() {
     let mut rt = EvidentRuntime::new();
     rt.load_source("claim c\n    n ∈ Nat\n").unwrap();
-    let s = smtlib::export(&first_claim_named(&rt, "c")).unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
     assert!(s.contains("(declare-const n Int)"), "{s}");
     assert!(s.contains("(assert (>= n 0))"),     "{s}");
 }
@@ -40,7 +46,7 @@ fn export_nat_emits_nonneg_assertion() {
 fn export_pos_emits_positive_assertion() {
     let mut rt = EvidentRuntime::new();
     rt.load_source("claim c\n    n ∈ Pos\n").unwrap();
-    let s = smtlib::export(&first_claim_named(&rt, "c")).unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
     assert!(s.contains("(assert (> n 0))"), "{s}");
 }
 
@@ -48,7 +54,7 @@ fn export_pos_emits_positive_assertion() {
 fn export_logical_ops() {
     let mut rt = EvidentRuntime::new();
     rt.load_source("claim c\n    a ∈ Bool\n    b ∈ Bool\n    a ∧ b\n").unwrap();
-    let s = smtlib::export(&first_claim_named(&rt, "c")).unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
     assert!(s.contains("(assert (and a b))"), "{s}");
 }
 
@@ -56,17 +62,51 @@ fn export_logical_ops() {
 fn export_implication() {
     let mut rt = EvidentRuntime::new();
     rt.load_source("claim c\n    a ∈ Bool\n    b ∈ Bool\n    a ⇒ b\n").unwrap();
-    let s = smtlib::export(&first_claim_named(&rt, "c")).unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
     assert!(s.contains("(assert (=> a b))"), "{s}");
 }
 
 #[test]
-fn export_unsupported_type_errors() {
-    // Sub-record types aren't in v1 scope.
+fn export_subrecord_flattens_to_leaves() {
+    // `p ∈ Pair` should expand to two `declare-const`s for the leaf
+    // fields, with the field references in Pair's own constraint
+    // rewritten under the parent prefix.
     let mut rt = EvidentRuntime::new();
-    rt.load_source("type Pair\n    a ∈ Int\n    b ∈ Int\n\
-                    claim c\n    p ∈ Pair\n").unwrap();
-    let err = smtlib::export(&first_claim_named(&rt, "c")).unwrap_err();
+    rt.load_source(
+        "type Pair\n    a ∈ Int\n    b ∈ Int\n    a < b\n\
+         claim c\n    p ∈ Pair\n    p.a = 5\n").unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
+    assert!(s.contains("(declare-const p.a Int)"), "{s}");
+    assert!(s.contains("(declare-const p.b Int)"), "{s}");
+    // Pair's own `a < b` constraint, lifted under the parent prefix.
+    assert!(s.contains("(assert (< p.a p.b))"), "{s}");
+    // Caller's own constraint on the parent.
+    assert!(s.contains("(assert (= p.a 5))"), "{s}");
+}
+
+#[test]
+fn export_subrecord_nested() {
+    // Sub-record type containing another sub-record type — recursion
+    // should produce fully-dotted leaf names.
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "type IVec2(x, y ∈ Int)\n\
+         type Hero\n    pos ∈ IVec2\n    on_ground ∈ Bool\n\
+         claim c\n    h ∈ Hero\n    h.pos.x = 100\n").unwrap();
+    let s = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap();
+    assert!(s.contains("(declare-const h.pos.x Int)"), "{s}");
+    assert!(s.contains("(declare-const h.pos.y Int)"), "{s}");
+    assert!(s.contains("(declare-const h.on_ground Bool)"), "{s}");
+    assert!(s.contains("(assert (= h.pos.x 100))"), "{s}");
+}
+
+#[test]
+fn export_unsupported_type_errors() {
+    // A type the schema table doesn't know about (typo, missing
+    // import) → still rejected with a clear message.
+    let mut rt = EvidentRuntime::new();
+    rt.load_source("claim c\n    x ∈ NoSuchType\n").unwrap();
+    let err = smtlib::export(&first_claim_named(&rt, "c"), &schemas_table(&rt)).unwrap_err();
     assert!(format!("{err}").contains("not in scope"),
         "expected scope error, got: {err}");
 }
@@ -179,7 +219,7 @@ fn roundtrip_solves_same(src: &str, claim_name: &str) {
     rt1.load_source(src).expect("original parses");
     let r1 = rt1.query(claim_name, &HashMap::new()).expect("original queries");
 
-    let smt = smtlib::export(&first_claim_named(&rt1, claim_name))
+    let smt = smtlib::export(&first_claim_named(&rt1, claim_name), &schemas_table(&rt1))
         .expect("export ok");
     let items = smtlib::import(&smt).expect("re-import ok");
     let evident_text = smtlib::body_items_to_evident("rt", &items);

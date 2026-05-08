@@ -112,6 +112,13 @@ This is a deliberately small first step. The goal is to prove the framing works 
 
 1. **Evident → SMT-LIB exporter** for the constraint subset:
    - Memberships of primitive types (`Int`, `Nat`, `Pos`, `Bool`, `Real`, `String`)
+   - Memberships of **user-defined record types whose leaves are primitives**.
+     `task ∈ Task` (where `Task` has primitive fields) flattens to one
+     `declare-const` per leaf, with the type's own constraints rewritten
+     under the parent's prefix. Recursive: `hero ∈ Hero` where `Hero` has
+     `pos ∈ IVec2` and `IVec2` has `x, y ∈ Int` produces `hero.pos.x` and
+     `hero.pos.y` as Int leaves. Named pins (`x ∈ Type(field ↦ value)`)
+     become per-field equality assertions.
    - Constraints over those: comparisons, arithmetic, logical ops, equality
    - Quantifiers (`∀`, `∃`) over integer ranges
    - Top-level `claim` decls (each becomes a block of declarations + assertions)
@@ -128,9 +135,13 @@ This is a deliberately small first step. The goal is to prove the framing works 
 
 ### Out of scope (later)
 
-- Datatypes (sum types, records). Need careful mapping for the recursive-Datatype Z3 representation.
+- **Sum types / enums** (`type Color = Red ∣ Green ∣ Blue`). Need to map
+  to SMT-LIB `declare-datatype`. Different shape from records.
+- **Constructor-call expressions** in constraint bodies (`hero.pos = IVec2(0, 0)`).
+  Sub-record memberships work, but a `Call("IVec2", …)` on the RHS doesn't —
+  it should lower to per-field equality (`hero.pos.x = 0 ∧ hero.pos.y = 0`)
+  but currently errors. The natural follow-up to the v1 sub-record support.
 - `Seq` and `Set` types. SMT-LIB has `Array` and the `seq` theory; mapping isn't direct.
-- Composite types (sub-records like `state ∈ GameState`). Would need flattening.
 - Trace / shader / passthrough — explicitly excluded; these don't map to constraints.
 - Bitvectors, uninterpreted sorts, recursive functions on the import side.
 
