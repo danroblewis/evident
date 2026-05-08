@@ -13,5 +13,6 @@ pub mod executor;
 pub mod plugins;
 pub mod trace_runner;
 pub mod glsl;
+pub mod smtlib;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};

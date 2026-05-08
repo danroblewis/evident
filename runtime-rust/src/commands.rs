@@ -16,3 +16,5 @@ pub mod query;
 pub mod sample;
 pub mod test;
 pub mod transpile_shader;
+pub mod export_smt2;
+pub mod import_smt2;
