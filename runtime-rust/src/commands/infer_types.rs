@@ -126,6 +126,10 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
+    // Collect every successful rule's inference into a flat list,
+    // then aggregate at the end. The per-rule lines are still
+    // printed live so the user sees provenance.
+    let mut inferences: Vec<(String, String, String, String)> = Vec::new();
     let mut any_match = false;
     for rule in PROGRAM_RULES {
         match rt.query_with_program(rule, "program") {
@@ -135,6 +139,8 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
                     let where_ = if claim.is_empty() { String::new() }
                                  else { format!(" (in claim `{}`)", claim) };
                     println!("{rule}: {} `{}` ∈ {}{}", label_for(rule), var, typ, where_);
+                    inferences.push((rule.to_string(), var, typ,
+                                     label_for(rule).to_string()));
                 }
             }
             Ok(_)  => {}
@@ -150,6 +156,8 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
                 any_match = true;
                 if let Some((var, typ, _claim)) = render_bindings(rule, &r.bindings) {
                     println!("{rule}: {} `{}` ∈ {}", label_for(rule), var, typ);
+                    inferences.push((rule.to_string(), var, typ,
+                                     label_for(rule).to_string()));
                 }
             }
             Ok(_)  => {}
@@ -159,6 +167,7 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
             }
         }
     }
+    aggregate_and_print(&inferences);
 
     if any_match {
         ExitCode::SUCCESS
@@ -168,5 +177,47 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
         eprintln!(" assignments, 2-body decl+assignment, and ∃-over-body");
         eprintln!(" Membership/String/Int/Bool assignment.)");
         ExitCode::from(3)
+    }
+}
+
+/// Stage 7: dedupe and aggregate inferences across all rules into a
+/// unified table. When the same `(var, type)` pair is found by
+/// multiple rules, only one row appears. When a var has multiple
+/// inferred types — a real contradiction (`x = 5` and `x = "hi"`)
+/// — both rows appear with `(via RULE)` annotations so the user
+/// can spot the conflict.
+fn aggregate_and_print(
+    inferences: &[(String, String, String, String)],
+    // (rule_name, var, type_name, label) tuples
+) {
+    if inferences.is_empty() { return; }
+    use std::collections::BTreeMap;
+    // var → (type → Vec<rule>) so we can see ambiguity.
+    let mut by_var: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    for (rule, var, typ, _label) in inferences {
+        by_var.entry(var.clone()).or_default()
+            .entry(typ.clone()).or_default()
+            .push(rule.clone());
+    }
+
+    println!();
+    println!("Inferred types:");
+    let max_var = by_var.keys().map(|v| v.len()).max().unwrap_or(0);
+    for (var, types) in &by_var {
+        if types.len() == 1 {
+            // Unambiguous — just print the type. List the rules
+            // that found it as a parenthesized hint.
+            let (typ, rules) = types.iter().next().unwrap();
+            let rules_str = rules.join(", ");
+            println!("  {:<width$} : {}    (via {})",
+                     var, typ, rules_str, width = max_var);
+        } else {
+            // Ambiguous — multiple types inferred. Flag it.
+            println!("  {:<width$} : *ambiguous* — got {} different types:",
+                     var, types.len(), width = max_var);
+            for (typ, rules) in types {
+                println!("      {} (via {})", typ, rules.join(", "));
+            }
+        }
     }
 }

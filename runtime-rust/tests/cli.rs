@@ -924,3 +924,136 @@ fn cli_infer_types_iter_unsat_for_empty_program() {
         out.status.code(), String::from_utf8_lossy(&out.stderr));
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 6 backfill ────────────────────────────────────────────
+
+#[test]
+fn cli_infer_types_label_format_for_iter_rule() {
+    // The "found via iteration" prefix is part of the contract.
+    let path = write_tmp("infer_label_iter",
+        "claim t\n    a = \"x\"\n    b = 1\n    c = false\n    d ∈ Int\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("found via iteration"),
+        "expected `found via iteration` label; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_label_format_for_extract_rule() {
+    let path = write_tmp("infer_label_extract",
+        "claim t\n    x ∈ Int\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("extracted from declaration"),
+        "expected `extracted from declaration` label; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_label_format_for_membership_plus_assignment() {
+    let path = write_tmp("infer_label_mem",
+        "claim t\n    msg ∈ String\n    msg = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("inferred from declaration + assignment"),
+        "expected `inferred from declaration + assignment` label; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_program_rules_run_before_iter_rules() {
+    // Output order: PROGRAM_RULES first (extract/infer), then ITER_RULES.
+    let path = write_tmp("infer_dispatch_order",
+        "claim t\n    x ∈ Int\n    x = 5\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let extract_pos = s.find("extract_first_membership").unwrap_or(usize::MAX);
+    let iter_pos    = s.find("has_membership_of_var").unwrap_or(usize::MAX);
+    assert!(extract_pos < iter_pos,
+        "PROGRAM_RULES (extract_first_membership) should appear before \
+         ITER_RULES (has_membership_of_var); got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── Stage 7: aggregated `Inferred types:` table ────────────────
+
+#[test]
+fn cli_infer_types_prints_aggregated_table() {
+    let path = write_tmp("infer_aggregate",
+        "claim t\n    a = \"hi\"\n    b = 1\n    c = false\n    \
+         score ∈ Nat\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    // The aggregated section appears after the per-rule lines.
+    assert!(s.contains("Inferred types:"),
+        "expected `Inferred types:` header; got:\n{s}");
+    // One row per variable.
+    for needle in ["a", "b", "c", "score"] {
+        // Each var name should appear in the aggregated section
+        // (separated from per-rule lines by the header).
+        let agg_pos = s.find("Inferred types:").unwrap();
+        let agg_section = &s[agg_pos..];
+        assert!(agg_section.contains(needle),
+            "expected var `{needle}` in aggregated section; got:\n{agg_section}");
+    }
+    // Aggregated section attributes types to rules via "(via ...)".
+    assert!(s.matches("(via ").count() >= 4,
+        "expected at least 4 `(via …)` annotations; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_aggregation_dedupes_by_var() {
+    // For msg ∈ String / msg = "hi", FOUR rules fire (extract_first,
+    // infer_string_from_membership_plus_assignment, and both iter
+    // rules). The aggregation should show ONE `msg : String` row
+    // with all four rules listed.
+    let path = write_tmp("infer_dedupe",
+        "claim t\n    msg ∈ String\n    msg = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let agg_pos = s.find("Inferred types:").unwrap();
+    let agg_section = &s[agg_pos..];
+    // msg appears EXACTLY ONCE in the aggregated section.
+    let msg_count = agg_section.matches("msg").count();
+    assert!(msg_count == 1,
+        "expected exactly one `msg` row in aggregated section; got {msg_count}: \n{agg_section}");
+    // The rule list should mention all four contributing rules.
+    assert!(agg_section.contains("extract_first_membership"));
+    assert!(agg_section.contains("has_membership_of_var"));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_aggregation_omitted_for_no_match() {
+    // No matches → no `Inferred types:` header.
+    let path = write_tmp("infer_no_agg", "claim t\n    a > b\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(!s.contains("Inferred types:"),
+        "no rules matched → no aggregated table; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
