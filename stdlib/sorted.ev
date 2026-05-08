@@ -31,3 +31,17 @@ claim StrictlySorted
     ascending ∈ Bool
     ascending = true  ⇒ ∀ (a, b) ∈ edges(s) : a < b
     ascending = false ⇒ ∀ (a, b) ∈ edges(s) : a > b
+
+-- Sort-by-key, the equivalent of Python's `sorted(items, key=…)`.
+-- Caller declares `items` (any Seq), `keys` (parallel Seq of
+-- comparable values, same length), and `ascending`. Caller also
+-- derives the keys from items, e.g.
+--     ∀ i ∈ {0..n-1} : keys[i] = items[i].some_field
+-- The constraint is that the keys are sorted; items are sorted by
+-- whatever expression you wrote into the keys.
+claim SortedBy
+    items ∈ Seq
+    keys ∈ Seq
+    ascending ∈ Bool
+    ascending = true  ⇒ ∀ (a, b) ∈ edges(keys) : a ≤ b
+    ascending = false ⇒ ∀ (a, b) ∈ edges(keys) : a ≥ b
