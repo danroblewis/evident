@@ -62,8 +62,37 @@ fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     solver.set_params(&params);
 }
 
+/// For every enum in the registry, pre-populate `env` with one
+/// `Var::EnumValue` per variant name. Lets bare identifiers like
+/// `Mon`, `Tue`, … resolve via the existing env-lookup path in
+/// `translate_*` without any new code in exprs.rs.
+///
+/// Variant names are globally unique across all enums (enforced at
+/// `register_enum`), so there's no clash risk. If a variant collides
+/// with a user-declared variable name, the user's declaration in the
+/// schema body will overwrite this entry — schema-local takes
+/// precedence over the language-level constant.
+fn populate_enum_variants<'ctx>(
+    env: &mut HashMap<String, super::types::Var<'ctx>>,
+    enums: Option<&EnumRegistry>,
+) where 'ctx: 'static {
+    let Some(reg) = enums else { return };
+    for (enum_name, (dt, variants)) in reg.by_name.borrow().iter() {
+        for (idx, variant_name) in variants.iter().enumerate() {
+            let ctor = &dt.variants[idx].constructor;
+            let ast = ctor.apply(&[]).as_datatype()
+                .expect("nullary enum variant must yield a Datatype value");
+            env.insert(variant_name.clone(), super::types::Var::EnumValue {
+                ast,
+                enum_name: enum_name.clone(),
+                variant: variant_name.clone(),
+            });
+        }
+    }
+}
+
 use crate::ast::*;
-use super::types::{CachedSchema, DatatypeRegistry, EvalResult, Value, Var};
+use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::declare::declare_var;
 use super::extract::{assert_seq_given, extract_seq, extract_seq_composite};
 use super::inline::inline_body_items;
@@ -86,26 +115,28 @@ pub fn build_cache(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CachedSchema<'static> {
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
 
     // Same two passes as evaluate(), but writing into the cache's
     // solver instead of a fresh one each time.
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -122,7 +153,7 @@ pub fn build_cache(
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -143,7 +174,7 @@ pub fn build_cache(
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
     let mut visited: HashSet<String> = HashSet::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     CachedSchema { env, solver, arith_solver }
 }
@@ -255,6 +286,30 @@ pub fn sample_cached_inner<'ctx>(
                     // Blocking on composite seq elements is non-trivial
                     // (same shape as primitive seqs); skipped for v1.
                 }
+                Var::EnumVar { ast, enum_name, dt } => {
+                    if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                        bindings.insert(name.clone(), v.clone());
+                        // Push a positive `var = chosen` term — the
+                        // outer code AND-s the term list and asserts
+                        // NOT (this iteration's complete assignment).
+                        if let Value::Enum { variant, .. } = &v {
+                            if let Some(idx) = dt.variants.iter().position(
+                                |variant_info| {
+                                    let cn = variant_info.constructor.name();
+                                    cn == *variant
+                                })
+                            {
+                                let ctor = &dt.variants[idx].constructor;
+                                let chosen = ctor.apply(&[]).as_datatype().unwrap();
+                                block_terms.push(ast._eq(&chosen));
+                            }
+                        }
+                    }
+                }
+                Var::EnumValue { .. } => {
+                    // Variant literals have no model-side state; they're
+                    // constants pre-populated into env at evaluate time.
+                }
             }
         }
 
@@ -352,6 +407,12 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::EnumVar { ast, enum_name, dt } => {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                            bindings.insert(name.clone(), v);
+                        }
+                    }
+                    Var::EnumValue { .. } => { /* literal, no model state */ }
                 }
             }
         }
@@ -378,11 +439,13 @@ pub fn evaluate(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     arith_solver: u32,
 ) -> EvalResult {
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
 
     // Pass 1: declare variables and add per-type constraints. User-defined
     // schema types expand into their leaf fields under a dotted prefix.
@@ -392,14 +455,14 @@ pub fn evaluate(
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -425,7 +488,7 @@ pub fn evaluate(
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -450,7 +513,7 @@ pub fn evaluate(
     // and ClaimCall recurse into nested claim composition (one helper
     // unifies all four entry shapes).
     let mut visited: HashSet<String> = HashSet::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     // Pass 3: assert ground facts for each given binding. Names that
     // aren't declared in the schema are silently ignored (matches the
@@ -529,6 +592,12 @@ pub fn evaluate(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::EnumVar { ast, enum_name, dt } => {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model) {
+                            bindings.insert(name.clone(), v);
+                        }
+                    }
+                    Var::EnumValue { .. } => { /* literal */ }
                 }
             }
         }
@@ -554,24 +623,26 @@ pub fn evaluate_with_core(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     arith_solver: u32,
 ) -> EvalResult {
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
 
     // Pass 1: declarations (same as evaluate).
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -582,7 +653,7 @@ pub fn evaluate_with_core(
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry));
+                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -605,7 +676,7 @@ pub fn evaluate_with_core(
 
     let mut visited: HashSet<String> = HashSet::new();
     super::inline::inline_body_items_tracked(
-        &schema.body, &mut env, &solver, schemas, ctx, registry, &mut visited, &trackers,
+        &schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, &trackers,
     );
 
     // Givens — same as evaluate, NOT tracked.
@@ -705,5 +776,33 @@ fn extract_binding(
                 bindings.insert(name.to_string(), v);
             }
         }
+        Var::EnumVar { ast, enum_name, dt } => {
+            if let Some(v) = extract_enum_value(ast, enum_name, dt, model) {
+                bindings.insert(name.to_string(), v);
+            }
+        }
+        Var::EnumValue { .. } => { /* literal */ }
     }
+}
+
+/// Extract an enum-typed Z3 const from the model. Walks the
+/// DatatypeSort's variants looking for the one whose `tester` returns
+/// true on the model-evaluated value, then names that variant.
+fn extract_enum_value(
+    ast: &z3::ast::Datatype<'_>,
+    enum_name: &str,
+    dt: &'static z3::DatatypeSort<'static>,
+    model: &z3::Model<'_>,
+) -> Option<Value> {
+    let evaluated = model.eval(ast, true)?;
+    for variant in &dt.variants {
+        let test = variant.tester.apply(&[&evaluated]).as_bool()?;
+        if let Some(true) = model.eval(&test, true).and_then(|b| b.as_bool()) {
+            return Some(Value::Enum {
+                enum_name: enum_name.to_string(),
+                variant: variant.constructor.name(),
+            });
+        }
+    }
+    None
 }

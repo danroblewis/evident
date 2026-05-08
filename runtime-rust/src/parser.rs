@@ -89,13 +89,60 @@ impl Parser {
                     let s = self.parse_shader_decl()?;
                     program.shaders.push(s);
                 }
+                Token::Enum => {
+                    let e = self.parse_enum_decl()?;
+                    program.enums.push(e);
+                }
                 other => {
                     return Err(ParseError(format!(
-                        "expected schema/claim/type/import/trace/shader, got {:?}", other)));
+                        "expected schema/claim/type/import/trace/shader/enum, got {:?}", other)));
                 }
             }
         }
         Ok(program)
+    }
+
+    /// Parse a top-level enum declaration:
+    ///   `enum Name = Variant1 | Variant2 | … | VariantN`
+    ///
+    /// Variants are nullary (no payloads in v0.1). Variant names must be
+    /// idents — they become the constructor names in the underlying Z3
+    /// datatype and must be globally unique across all enums in the
+    /// program (the existing datatypes.rs registry enforces this).
+    /// Whitespace and newlines around `|` are tolerated; the body lives
+    /// on a single logical line by default but parens/brackets aren't
+    /// required to span multiple lines because Pipe doesn't open a group.
+    fn parse_enum_decl(&mut self) -> Result<crate::ast::EnumDecl> {
+        self.bump(); // enum
+        let name = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected enum name, got {:?}", other))),
+        };
+        match self.bump() {
+            Token::Eq => {}
+            other => return Err(ParseError(format!(
+                "expected '=' after enum name, got {:?}", other))),
+        }
+        let mut variants = Vec::new();
+        loop {
+            let v = match self.bump() {
+                Token::Ident(s) => s,
+                other => return Err(ParseError(format!(
+                    "expected variant name in enum, got {:?}", other))),
+            };
+            variants.push(v);
+            if matches!(self.peek(), Token::Pipe) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        if variants.is_empty() {
+            return Err(ParseError(
+                "enum must have at least one variant".to_string()));
+        }
+        Ok(crate::ast::EnumDecl { name, variants })
     }
 
     /// Parse a `shader Name` top-level decl. Body is the same indented-
@@ -1489,6 +1536,35 @@ mod tests {
         for i in 2..6 {
             assert!(matches!(&s.body[i], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
         }
+    }
+
+    #[test]
+    fn parse_enum_decl_basic() {
+        let p = parse("enum Day = Mon | Tue | Wed\n").unwrap();
+        assert_eq!(p.enums.len(), 1);
+        let e = &p.enums[0];
+        assert_eq!(e.name, "Day");
+        assert_eq!(e.variants, vec!["Mon", "Tue", "Wed"]);
+    }
+
+    #[test]
+    fn parse_enum_decl_alongside_claim() {
+        let p = parse("enum Color = Red | Green | Blue\n\nclaim t\n    c ∈ Color\n").unwrap();
+        assert_eq!(p.enums.len(), 1);
+        assert_eq!(p.schemas.len(), 1);
+    }
+
+    #[test]
+    fn parse_enum_decl_single_variant_ok() {
+        let p = parse("enum Singleton = Only\n").unwrap();
+        assert_eq!(p.enums[0].variants, vec!["Only"]);
+    }
+
+    #[test]
+    fn parse_enum_decl_no_variants_errors() {
+        // The grammar requires at least one variant after `=`.
+        // Parser rejects "got X" where X is the unexpected token after `=`.
+        assert!(parse("enum Empty =\n").is_err());
     }
 
     #[test]

@@ -22,6 +22,7 @@ pub enum Token {
     Claim,
     Type,
     Subclaim,
+    Enum,         // enum Day = Mon | Tue | …
     Import,       // import "path"
     Trace,        // trace name "path/to/program.ev" — test declaration
     Send,         // send "command" — Stdin trace step
@@ -61,6 +62,7 @@ pub enum Token {
     RSeq,         // ⟩  (Unicode U+27E9) sequence literal close
     Hash,         // #  (cardinality prefix)
     Comma,        // ,
+    Pipe,         // |  (enum variant separator)
     DotDot,       // .. (range literal)
     Dot,          // .  (sub-schema field access)
     Colon,        // :  (quantifier body separator)
@@ -344,6 +346,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }  // ↦
             '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }    // ⟨
             '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }    // ⟩
+            '|' => { chars.next(); col += 1; tokens.push(Token::Pipe); }
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),
@@ -377,6 +380,7 @@ fn keyword_or_ident(s: String) -> Token {
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,
+        "enum"     => Token::Enum,
         "import"   => Token::Import,
         "in"       => Token::In,
         "true"     => Token::True,

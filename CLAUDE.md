@@ -711,9 +711,16 @@ active.
 - `SortRegistry` is the single owner of all Z3 sorts and enum constructors.
 - Enum variant names are **global** and must be unique across all enum types.
   `declare_algebraic` raises `ValueError` on duplicate variant names.
-- `type Color = Red | Green | Blue` declares a named enum.
-- `x ∈ Red | Green | Blue` (inline enum) auto-declares an anonymous enum named
-  `_Enum_<sorted_variants>` and is equivalent to declaring the type separately.
+- **Python**: `type Color = Red | Green | Blue` declares a named enum.
+- **Python only**: `x ∈ Red | Green | Blue` (inline enum) auto-declares an
+  anonymous enum named `_Enum_<sorted_variants>` and is equivalent to declaring
+  the type separately.
+- **Rust**: top-level `enum Color = Red | Green | Blue` with the dedicated
+  `enum` keyword (not `type`). Variants are nullary in v0.1 — payload variants
+  (`Binary(BinOp, Expr, Expr)`-style algebraic datatypes) are a follow-up. The
+  variants pre-populate the env at evaluate time, so bare identifiers `Red`,
+  `Green`, `Blue` resolve uniformly anywhere a value of `Color` is expected.
+  Variant names are globally unique across all enums; duplicates fail at load.
 
 **Variable scoping**
 - Variables declared inside a schema (`x ∈ Nat`) are local to that schema's

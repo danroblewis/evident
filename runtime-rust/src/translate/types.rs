@@ -31,6 +31,40 @@ use z3::{DatatypeSort, Solver};
 pub type DatatypeRegistry =
     RefCell<HashMap<String, (&'static DatatypeSort<'static>, Vec<FieldKind>)>>;
 
+/// Z3 Datatype + variant list for each declared `enum Name = A | B | C`.
+/// Built eagerly at `EvidentRuntime::load_source` time (unlike the
+/// lazily-built `DatatypeRegistry`) because enum variants need to be
+/// resolvable as identifier expressions everywhere — pre-populating
+/// the env with `Mon → EnumValue(Day, 0)` etc. is cheaper than
+/// looking up the registry on every Identifier translation.
+///
+/// `by_name` keys on the enum's name (e.g. `"Day"`); the value's
+/// `Vec<String>` lists the variant names in declaration order
+/// (the index also matches the underlying Z3 constructor index).
+///
+/// `by_variant` is the reverse lookup, populated alongside `by_name`,
+/// so a bare identifier `Mon` can be classified as "variant 0 of Day"
+/// in O(1). Variant names are globally unique (the load-time check in
+/// runtime.rs enforces this).
+pub struct EnumRegistry {
+    pub by_name: RefCell<HashMap<String,
+        (&'static DatatypeSort<'static>, Vec<String>)>>,
+    pub by_variant: RefCell<HashMap<String, (String, usize)>>,
+}
+
+impl EnumRegistry {
+    pub fn new() -> Self {
+        Self {
+            by_name: RefCell::new(HashMap::new()),
+            by_variant: RefCell::new(HashMap::new()),
+        }
+    }
+}
+
+impl Default for EnumRegistry {
+    fn default() -> Self { Self::new() }
+}
+
 /// Result of running one query.
 #[derive(Debug, Clone)]
 pub struct EvalResult {
@@ -72,6 +106,10 @@ pub enum Value {
     /// `Seq(UserType)` — one map per element. Each map keys a flat
     /// field name to the field's primitive Value.
     SeqComposite(Vec<HashMap<String, Value>>),
+    /// An enum variant: the enum's name and the chosen variant.
+    /// Extracted from the Z3 datatype value by walking the constructors
+    /// and matching on which one applies.
+    Enum { enum_name: String, variant: String },
 }
 
 /// What primitive a Seq holds. Lets `SeqVar` stay homogeneous while
@@ -181,6 +219,23 @@ pub(super) enum Var<'ctx> {
     /// Z3 IntVal, which lets `literal_range` recover the value via
     /// simplify+as_i64. Without this, `∀ i ∈ {0..n - 1}` couldn't unroll.
     PinnedInt(i64),
+    /// Z3 const of an enum's DatatypeSort (one of N nullary
+    /// constructors). `enum_name` lets model extraction look up the
+    /// variant list to decode the returned constructor index back to
+    /// a variant name.
+    EnumVar {
+        ast: z3::ast::Datatype<'ctx>,
+        enum_name: String,
+        dt: &'static DatatypeSort<'static>,
+    },
+    /// A specific variant value of an enum (e.g. the bare identifier
+    /// `Mon` after lookup). Holds the constructor's Datatype value
+    /// directly so equality `today = Mon` can dispatch via Ast::_eq.
+    EnumValue {
+        ast: z3::ast::Datatype<'ctx>,
+        enum_name: String,
+        variant: String,
+    },
 }
 
 impl<'ctx> Var<'ctx> {

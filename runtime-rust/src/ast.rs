@@ -164,6 +164,19 @@ pub struct Program {
     pub imports: Vec<String>,
     pub traces: Vec<TraceDecl>,
     pub shaders: Vec<ShaderDecl>,
+    pub enums: Vec<EnumDecl>,
+}
+
+/// A simple enum declaration: `enum Name = Variant1 | Variant2 | …`.
+/// Each variant is a nullary constructor — the v0.1 self-hosting story
+/// only needs simple enums; payload variants (algebraic datatypes) come
+/// later. Translates to a Z3 datatype with N nullary constructors via
+/// the existing `datatypes.rs` machinery; variant names become bare
+/// identifiers usable in expressions, scoped under the enum's sort.
+#[derive(Debug, Clone)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<String>,
 }
 
 /// A trace test: drives a named program through a sequence of input

@@ -11,7 +11,7 @@ use z3::ast::Bool;
 
 use crate::ast::*;
 use crate::pretty;
-use super::types::{DatatypeRegistry, Var};
+use super::types::{DatatypeRegistry, EnumRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
 use super::exprs::{resolve_mapping, translate_bool};
 
@@ -78,9 +78,10 @@ pub(super) fn inline_body_items(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     visited: &mut HashSet<String>,
 ) {
-    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, visited, &None, None)
+    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, None)
 }
 
 /// Translate `items` and assert each derived constraint into the
@@ -98,6 +99,7 @@ pub(super) fn inline_body_items_tracked(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     visited: &mut HashSet<String>,
     trackers: &[Bool<'static>],
 ) {
@@ -105,7 +107,7 @@ pub(super) fn inline_body_items_tracked(
         let tracker = trackers.get(idx);
         let slice = std::slice::from_ref(item);
         inline_body_items_guarded(
-            slice, env, solver, schemas, ctx, registry, visited, &None, tracker,
+            slice, env, solver, schemas, ctx, registry, enums, visited, &None, tracker,
         );
     }
 }
@@ -117,6 +119,7 @@ fn inline_body_items_guarded(
     schemas: &HashMap<String, SchemaDecl>,
     ctx: &'static Context,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
     visited: &mut HashSet<String>,
     guard: &Option<Expr>,
     tracker: Option<&Bool<'static>>,
@@ -129,7 +132,7 @@ fn inline_body_items_guarded(
                 // recurses into a passthrough's body that introduces
                 // variables not yet in env (e.g. a nested claim's locals).
                 if !env.contains_key(name) {
-                    declare_var(ctx, solver, env, name, type_name, schemas, Some(registry));
+                    declare_var(ctx, solver, env, name, type_name, schemas, Some(registry), enums);
                 }
                 // Resolve `pins` to a list of (field-name, value-expr)
                 // pairs. Named is direct; Positional looks up the type's
@@ -226,7 +229,7 @@ fn inline_body_items_guarded(
                 let Some(claim) = schemas.get(name) else { continue };
                 visited.insert(name.clone());
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, visited, guard, tracker
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
                 visited.remove(name);
             }
@@ -291,13 +294,13 @@ fn inline_body_items_guarded(
                         if !already_bound {
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                             declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
-                                              type_name, schemas, Some(registry));
+                                              type_name, schemas, Some(registry), enums);
                         }
                     }
                 }
                 visited.insert(name.clone());
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, visited, guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
                 visited.remove(name);
             }
@@ -319,7 +322,7 @@ fn inline_body_items_guarded(
                 visited.insert(claim_name.clone());
                 let new_guard = compose_guards(guard, (**ant).clone());
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, visited, &new_guard, tracker
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
                 );
                 visited.remove(claim_name);
             }
@@ -354,7 +357,7 @@ fn inline_body_items_guarded(
                 };
                 visited.insert(claim_name.clone());
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, visited, guard, tracker
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
                 visited.remove(claim_name);
             }
@@ -391,13 +394,13 @@ fn inline_body_items_guarded(
                         if !already_bound {
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                             declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
-                                              type_name, schemas, Some(registry));
+                                              type_name, schemas, Some(registry), enums);
                         }
                     }
                 }
                 visited.insert(name.clone());
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, visited, guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
                 visited.remove(name);
             }

@@ -26,6 +26,52 @@ fn register_subclaims(body: &[BodyItem], schemas: &mut HashMap<String, SchemaDec
     }
 }
 
+/// Build a Z3 DatatypeSort for a top-level enum and add both the
+/// forward (enum_name → sort + variants) and reverse (variant_name →
+/// (enum_name, idx)) lookups to the registry. Errors on duplicate
+/// variant names across enums (Z3 requires globally-unique
+/// constructors anyway).
+fn register_enum(
+    enum_name: &str,
+    variants: &[String],
+    ctx: &'static Context,
+    registry: &crate::translate::EnumRegistry,
+) -> Result<(), RuntimeError> {
+    use z3::{DatatypeBuilder, DatatypeSort};
+    if variants.is_empty() {
+        return Err(RuntimeError::Parse(
+            format!("enum {} has no variants", enum_name)));
+    }
+    {
+        let by_variant = registry.by_variant.borrow();
+        for v in variants {
+            if let Some((existing_enum, _)) = by_variant.get(v) {
+                return Err(RuntimeError::Parse(format!(
+                    "enum variant `{}` is declared twice — once in `{}` and once in `{}`",
+                    v, existing_enum, enum_name,
+                )));
+            }
+        }
+    }
+    if registry.by_name.borrow().contains_key(enum_name) {
+        return Err(RuntimeError::Parse(format!(
+            "enum `{}` declared more than once", enum_name)));
+    }
+    let mut builder = DatatypeBuilder::new(ctx, enum_name);
+    for v in variants {
+        builder = builder.variant(v, vec![]);
+    }
+    let dt: DatatypeSort<'static> = builder.finish();
+    let leaked: &'static DatatypeSort<'static> = Box::leak(Box::new(dt));
+    registry.by_name.borrow_mut().insert(
+        enum_name.to_string(), (leaked, variants.to_vec()));
+    let mut by_variant = registry.by_variant.borrow_mut();
+    for (idx, v) in variants.iter().enumerate() {
+        by_variant.insert(v.clone(), (enum_name.to_string(), idx));
+    }
+    Ok(())
+}
+
 pub struct EvidentRuntime {
     program: Program,
     /// Indexed view of program.schemas keyed by name. Mirrors
@@ -69,6 +115,11 @@ pub struct EvidentRuntime {
     /// same Datatype if another schema references `Point` again — Z3
     /// would otherwise error on duplicate type names.
     datatypes: DatatypeRegistry,
+    /// Z3 datatype + variant info for every `enum` declared in loaded
+    /// source. Built eagerly at `load_source_with_base` time (one Z3
+    /// `DatatypeBuilder` call per enum, with N nullary variants).
+    /// Threaded into the translator alongside `datatypes`.
+    enums: crate::translate::EnumRegistry,
     /// Canonicalized paths of every file already loaded via `load_file`
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
@@ -239,6 +290,7 @@ impl EvidentRuntime {
             cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
+            enums: crate::translate::EnumRegistry::new(),
             loaded_files: RefCell::new(HashSet::new()),
             solve_history: RefCell::new(HashMap::new()),
         }
@@ -318,9 +370,19 @@ impl EvidentRuntime {
             self.schemas.insert(s.name.clone(), s.clone());
             register_subclaims(&s.body, &mut self.schemas);
         }
+        // Build a Z3 DatatypeSort per declared enum, eagerly. Variant
+        // names go into the reverse `by_variant` lookup so an Identifier
+        // expression like `Mon` can be resolved to "variant 0 of Day"
+        // without scanning the schema body. Variant names must be
+        // globally unique across all enums; load fails on collision.
+        for enum_decl in &prog.enums {
+            register_enum(&enum_decl.name, &enum_decl.variants,
+                          self.z3_ctx, &self.enums)?;
+        }
         self.program.schemas.extend(prog.schemas);
         self.program.traces.extend(prog.traces);
         self.program.shaders.extend(prog.shaders);
+        self.program.enums.extend(prog.enums);
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones. Also
         // reset the auto-tuner — measurements taken under the old
@@ -402,7 +464,7 @@ impl EvidentRuntime {
         // that wins on Z3 4.8.12 for our typical workload).
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
-        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, arith);
+        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
@@ -418,7 +480,7 @@ impl EvidentRuntime {
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
-        let r = crate::translate::evaluate_with_core(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, arith);
+        let r = crate::translate::evaluate_with_core(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
         let qr = QueryResult { satisfied: r.satisfied, bindings: r.bindings };
         Ok((qr, r.unsat_core_items))
     }
@@ -507,7 +569,7 @@ impl EvidentRuntime {
                 .collect();
             let new_cached = build_cache(
                 &schema, &self.schemas, self.z3_ctx, &self.datatypes,
-                &structural_given, arith_solver);
+                Some(&self.enums), &structural_given, arith_solver);
             cache.insert(name.to_string(), (new_cached, cur_sig));
         }
         let entry = cache.get(name).unwrap();
@@ -565,7 +627,7 @@ impl EvidentRuntime {
         // solver=2 blocking-clause pathology.
         let cached = build_cache(
             &schema, &self.schemas, self.z3_ctx, &self.datatypes,
-            &structural_given, 0);
+            Some(&self.enums), &structural_given, 0);
         Ok(sample_cached_inner(&cached, given, n, self.z3_ctx))
     }
 }

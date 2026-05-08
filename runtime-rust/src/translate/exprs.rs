@@ -71,6 +71,25 @@ fn expr_as_var<'ctx>(
     }
 }
 
+/// Resolve an expression that's expected to refer to an enum-typed
+/// value — either a declared `EnumVar` (`today`) or a variant
+/// constant pre-populated into env (`Mon`). Returns the underlying
+/// Z3 Datatype AST so a comparison can do `_eq`.
+pub(super) fn resolve_enum_ast<'ctx>(
+    e: &Expr,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<z3::ast::Datatype<'ctx>> {
+    if let Expr::Identifier(name) = e {
+        match env.get(name)? {
+            Var::EnumVar { ast, .. }   => Some(ast.clone()),
+            Var::EnumValue { ast, .. } => Some(ast.clone()),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 /// Resolve a (possibly-nested) field access chain against a
 /// `DatatypeSeqVar` in the env. Two shapes:
 ///
@@ -1243,6 +1262,20 @@ pub(super) fn translate_bool<'ctx>(
                 }
                 if let (Some(l), Some(r)) =
                     (translate_str(lhs, ctx, env), translate_str(rhs, ctx, env))
+                {
+                    return Some(match op {
+                        BinOp::Eq  => l._eq(&r),
+                        BinOp::Neq => l._eq(&r).not(),
+                        _ => unreachable!(),
+                    });
+                }
+                // Enum equality: `today = Mon` where `today` is an
+                // EnumVar and `Mon` is an EnumValue (or vice versa, or
+                // both EnumValues). Both sides must reference enum-
+                // typed identifiers in env. Different enums on the two
+                // sides aren't allowed — caller has a type error.
+                if let (Some(l), Some(r)) =
+                    (resolve_enum_ast(lhs, env), resolve_enum_ast(rhs, env))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),

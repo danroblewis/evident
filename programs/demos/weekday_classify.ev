@@ -1,0 +1,32 @@
+-- Classify a day as weekday or weekend, and decide whether to work.
+-- Demonstrates the new top-level `enum` syntax.
+--
+-- Variants of an enum become bare identifiers usable in any constraint.
+-- Equality, inequality, and implication all dispatch on the underlying
+-- Z3 algebraic datatype.
+--
+--   evident query programs/demos/weekday_classify.ev day_off
+
+enum Day = Mon | Tue | Wed | Thu | Fri | Sat | Sun
+
+claim weekday_rule
+    day      ∈ Day
+    is_weekend ∈ Bool
+    day = Sat ⇒ is_weekend = true
+    day = Sun ⇒ is_weekend = true
+    day = Mon ⇒ is_weekend = false
+    day = Tue ⇒ is_weekend = false
+    day = Wed ⇒ is_weekend = false
+    day = Thu ⇒ is_weekend = false
+    day = Fri ⇒ is_weekend = false
+
+claim day_off
+    day        ∈ Day
+    is_weekend ∈ Bool
+    works      ∈ Bool
+    weekday_rule
+    -- A holiday (Friday off this week, in this fictional schedule).
+    day = Fri ⇒ works = false
+    is_weekend = true ⇒ works = false
+    is_weekend = false ⇒ (day = Fri ∨ works = true)
+    works = false

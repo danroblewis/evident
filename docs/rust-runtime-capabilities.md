@@ -324,7 +324,9 @@ through the same machinery. Shape mismatches (Vec2 = Vec3) fail via the
 
 ### 4.6 Things that don't exist
 
-- **Named enum declarations** — no syntax, no AST node.
+- **Named enum declarations** (`enum Day = Mon | Tue | Wed | …`) — supported as
+  of the `enum-syntax` work. Variants without payloads only (no
+  `Binary(BinOp, Expr, Expr)`-style algebraic datatypes yet).
 - **Inline anonymous enums** (`x ∈ Red | Green | Blue`) — no `|` operator
   in the parser.
 - **`Seq(T)` or `Set(T)` as record fields** — `datatypes.rs:94` rejects with

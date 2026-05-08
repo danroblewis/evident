@@ -10,7 +10,7 @@ use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
 use z3::{Context, Solver, Sort};
 
 use crate::ast::*;
-use super::types::{DatatypeRegistry, SeqElem, Var};
+use super::types::{DatatypeRegistry, EnumRegistry, SeqElem, Var};
 use super::datatypes::get_or_build_datatype;
 
 /// Monotonic counter used by `inline_body_items` to give each
@@ -40,8 +40,9 @@ pub(super) fn declare_var(
     type_name: &str,
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
+    enums: Option<&EnumRegistry>,
 ) {
-    declare_var_named(ctx, solver, env, prefix, prefix, type_name, schemas, registry);
+    declare_var_named(ctx, solver, env, prefix, prefix, type_name, schemas, registry, enums);
 }
 
 /// Like `declare_var`, but the Z3 const name is decoupled from the env
@@ -67,6 +68,7 @@ pub(super) fn declare_var_named(
     type_name: &str,
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
+    enums: Option<&EnumRegistry>,
 ) {
     // Idempotence guard: if the leaf is already declared (Int/Bool/Seq/
     // Set/composite — anything that lands in env at this exact key),
@@ -171,6 +173,19 @@ pub(super) fn declare_var_named(
             env.insert(env_key.to_string(), Var::SetVar { set, elem });
         }
         _ => {
+            // Enum type? Look up in the EnumRegistry, build a Z3 const
+            // of the enum's DatatypeSort, store as EnumVar.
+            if let Some(er) = enums {
+                if let Some((dt, _variants)) = er.by_name.borrow().get(type_name) {
+                    let ast = z3::ast::Datatype::new_const(ctx, prefix, &dt.sort);
+                    env.insert(env_key.to_string(), Var::EnumVar {
+                        ast,
+                        enum_name: type_name.to_string(),
+                        dt: *dt,
+                    });
+                    return;
+                }
+            }
             if let Some(schema) = schemas.get(type_name) {
                 // Expand each membership in the sub-schema's body. Both
                 // env key and Z3 name extend with the same field name —
@@ -183,7 +198,7 @@ pub(super) fn declare_var_named(
                         let dotted_env = format!("{}.{}", env_key, field);
                         let dotted_z3  = format!("{}.{}", prefix, field);
                         declare_var_named(ctx, solver, env, &dotted_env, &dotted_z3,
-                                          ftype, schemas, registry);
+                                          ftype, schemas, registry, enums);
                     }
                 }
             } else {
