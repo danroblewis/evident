@@ -53,6 +53,8 @@ type main(state, state_next ∈ GameState)
     input         ∈ SDLInput
     output        ∈ SDLShaderOutput
     shader_state  ∈ MarioShaderState
+    audio_jump    ∈ SDLAudio
+    audio_coin    ∈ SDLAudio
 
     #state.platforms      = 5
     #state_next.platforms = 5
@@ -88,6 +90,16 @@ type main(state, state_next ∈ GameState)
 
     camera_x ∈ Int
     CameraFollow (hero mapsto state.hero, camera_x mapsto camera_x, level_w mapsto level_w, screen_w mapsto screen_w)
+
+    -- Sound effects: PlatformerAudio (in engine.ev) sets `.playing`
+    -- based on game events — jump fires when up_held + on_ground;
+    -- coin fires when any coin's collected flag flipped this frame.
+    -- Frequency / volume / waveform are aesthetic and live here.
+    -- 440Hz square for the jump (chunky), 1320Hz sine for the coin
+    -- (bell-like).
+    PlatformerAudio (audio_jump mapsto audio_jump, audio_coin mapsto audio_coin, cur_hero mapsto state.hero, input mapsto input, cur_coins mapsto state.coins, nxt_coins mapsto state_next.coins)
+    audio_jump.frequency = 440  ∧  audio_jump.volume = 180  ∧  audio_jump.waveform = 1
+    audio_coin.frequency = 1320 ∧  audio_coin.volume = 200  ∧  audio_coin.waveform = 0
 
     -- Flatten state into shader uniforms.
     shader_state.hero_x         = state.hero.pos.x
