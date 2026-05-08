@@ -1,0 +1,144 @@
+-- Conformance tests for Stage 0c: forward refs, mutual recursion,
+-- multi-line variant syntax.
+--
+-- Run with:
+--     evident test programs/lang_tests/test_enums_mutual.ev
+--
+-- All enums in a single load go through Z3's create_datatypes
+-- batched build, so any enum can reference any other in this
+-- file's payload positions — including itself, ones declared
+-- later, or in cycles (Expr ↔ Stmt).
+
+-- ── Forward reference: Expr declared first, references BinOp ────
+
+enum Expr = ELit(Int) | EOp(BinOp, Expr, Expr)
+enum BinOp = OpAdd | OpSub | OpMul
+
+claim sat_expr_with_forward_binop_ref
+    e ∈ Expr
+    e = EOp(OpAdd, ELit(2), ELit(3))
+
+claim sat_expr_nested
+    e ∈ Expr
+    e = EOp(OpMul, ELit(4), EOp(OpAdd, ELit(1), ELit(2)))
+
+claim unsat_expr_op_mismatch
+    e ∈ Expr
+    e = EOp(OpAdd, ELit(1), ELit(2))
+    e = EOp(OpSub, ELit(1), ELit(2))
+
+claim unsat_expr_arg_mismatch
+    e ∈ Expr
+    e = EOp(OpAdd, ELit(1), ELit(2))
+    e = EOp(OpAdd, ELit(1), ELit(99))
+
+-- ── Mutual recursion: Expr/Stmt ─────────────────────────────────
+
+enum AstExpr = ANum(Int) | AVar(String) | AAssign(String, AstExpr) | ABlock(AstStmt)
+enum AstStmt = AStmtExpr(AstExpr) | ASeq(AstStmt, AstStmt)
+
+claim sat_mutual_recursion_basic
+    s ∈ AstStmt
+    s = AStmtExpr(ANum(7))
+
+claim sat_mutual_recursion_assignment
+    s ∈ AstStmt
+    s = AStmtExpr(AAssign("x", ANum(42)))
+
+claim sat_mutual_recursion_block
+    e ∈ AstExpr
+    e = ABlock(AStmtExpr(ANum(1)))
+
+claim sat_mutual_recursion_deep
+    e ∈ AstExpr
+    e = ABlock(ASeq(AStmtExpr(AAssign("x", ANum(1))),
+                    AStmtExpr(AAssign("y", AVar("x")))))
+
+claim unsat_mutual_recursion_mismatch
+    s ∈ AstStmt
+    s = AStmtExpr(ANum(7))
+    s = AStmtExpr(ANum(8))
+
+-- ── Multi-line syntax (no leading pipe) ─────────────────────────
+
+enum TrafficLight =
+    LRed
+    LYellow
+    LGreen
+
+claim sat_multiline_no_pipe_pin
+    t ∈ TrafficLight
+    t = LGreen
+
+claim unsat_multiline_no_pipe_contradiction
+    t ∈ TrafficLight
+    t = LRed
+    t = LGreen
+
+-- ── Multi-line syntax (with leading pipe) ───────────────────────
+
+enum Direction =
+    | North
+    | South
+    | East
+    | West
+
+claim sat_multiline_with_pipe
+    d ∈ Direction
+    d = North
+
+claim unsat_multiline_with_pipe_contradiction
+    d ∈ Direction
+    d = North
+    d = South
+
+-- ── Multi-line with payload variants ────────────────────────────
+
+enum Shape =
+    Circle(Int)
+    Square(Int)
+    Rectangle(Int, Int)
+
+claim sat_multiline_payload_circle
+    s ∈ Shape
+    s = Circle(5)
+
+claim sat_multiline_payload_rectangle
+    s ∈ Shape
+    s = Rectangle(3, 4)
+
+claim unsat_multiline_payload_field_mismatch
+    s ∈ Shape
+    s = Rectangle(3, 4)
+    s = Rectangle(3, 5)
+
+claim unsat_multiline_payload_variant_mismatch
+    s ∈ Shape
+    s = Circle(5)
+    s = Square(5)
+
+-- ── Mutual recursion with multi-line + payloads ────────────────
+
+enum JsonValue =
+    JNull
+    JBool(Bool)
+    JNum(Int)
+    JStr(String)
+    JArray(JsonList)
+
+enum JsonList =
+    JEmpty
+    JCons(JsonValue, JsonList)
+
+claim sat_json_null
+    j ∈ JsonValue
+    j = JNull
+
+claim sat_json_array
+    j ∈ JsonValue
+    j = JArray(JCons(JNum(1), JCons(JStr("hi"), JEmpty)))
+
+claim unsat_json_array_mismatch
+    j ∈ JsonValue
+    j = JArray(JCons(JNum(1), JEmpty))
+    j = JArray(JCons(JNum(2), JEmpty))
