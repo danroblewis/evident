@@ -780,3 +780,82 @@ fn cli_infer_types_no_args_prints_usage() {
     assert!(stderr.contains("infer-types"),
         "stderr should mention infer-types; got: {stderr}");
 }
+
+// ── Stage 4: CLI tests for new rules ────────────────────────────
+
+#[test]
+fn cli_infer_types_extract_membership() {
+    // `claim t : x ∈ Int` should fire extract_first_membership.
+    let path = write_tmp("infer_extract", "claim t\n    x ∈ Int\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("extract_first_membership"),
+        "expected extract_first_membership rule to fire; got: {s}");
+    assert!(s.contains("inferred `x` ∈ Int"),
+        "expected `x ∈ Int` to be extracted; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_chained_membership_desugars_to_2body() {
+    // `x ∈ Int = 5` desugars (in the parser) to two body items:
+    //   Membership(x, Int, None)
+    //   Constraint(x = 5)
+    // So the membership_plus_assignment rule should fire alongside
+    // extract_first_membership.
+    let path = write_tmp("infer_chain",
+        "claim t\n    x ∈ Int = 5\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(), "stderr: {}",
+            String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("extract_first_membership"),
+        "extract rule should fire for the desugared Membership; got: {s}");
+    assert!(s.contains("infer_int_from_membership_plus_assignment"),
+        "membership+assignment Int rule should fire on 2-body desugar; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_membership_with_string_assignment() {
+    let path = write_tmp("infer_mem_str",
+        "claim greeting\n    msg ∈ String\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    // Both the extract rule and the membership+assignment String rule fire.
+    assert!(s.contains("extract_first_membership"));
+    assert!(s.contains("infer_string_from_membership_plus_assignment"));
+    // Neither single-assignment rule should fire (program has 2 body items).
+    assert!(!s.contains("infer_string_from_single_assignment"),
+        "single-assignment rule must NOT fire for 2-body program; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_dispatch_order_extract_before_inferred() {
+    // Output ordering: more-specific rules (extract) come first.
+    let path = write_tmp("infer_order",
+        "claim t\n    msg ∈ String\n    msg = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let extract_pos = s.find("extract_first_membership").unwrap_or(usize::MAX);
+    let infer_pos   = s.find("infer_string_from_membership_plus_assignment").unwrap_or(usize::MAX);
+    assert!(extract_pos < infer_pos,
+        "extract rule should appear before inference rules; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}

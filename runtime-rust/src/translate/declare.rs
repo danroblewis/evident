@@ -153,6 +153,29 @@ pub(super) fn declare_var_named(
                         fields,
                     });
                 }
+                // Stage 5: enum element type — `Seq(BodyItem)`,
+                // `Seq(SchemaDecl)`, etc. The enum's DatatypeSort is
+                // already in the EnumRegistry from load time. Reuse
+                // `Var::DatatypeSeqVar` with `fields = []` to signal
+                // "enum-typed seq, no record fields." Indexing
+                // returns the datatype value directly; equality with
+                // a constructor-applied value drives the typical
+                // pattern-matching workflow.
+                enum_type if enums.is_some()
+                    && enums.unwrap().by_name.borrow().contains_key(enum_type) => {
+                    let er = enums.unwrap();
+                    let dts = er.by_name.borrow();
+                    let (dt, _variants) = dts.get(enum_type).unwrap();
+                    let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &dt.sort);
+                    let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
+                    solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
+                    env.insert(env_key.to_string(), Var::DatatypeSeqVar {
+                        arr, len,
+                        type_name: enum_type.to_string(),
+                        dt: *dt,
+                        fields: Vec::new(),  // no record fields — enum elements
+                    });
+                }
                 other => {
                     eprintln!("warning: unsupported Seq element type {} for {}", other, prefix);
                 }

@@ -1,0 +1,127 @@
+-- Conformance tests for Stage 5: Seq of enum elements.
+--
+-- Run with:
+--     evident test programs/lang_tests/test_seq_of_enum.ev
+--
+-- Stage 5 enables `body ∈ Seq(BodyItem)` (and any Seq(SomeEnum)),
+-- with element access via `body[i]`, equality against constructor
+-- applications (`body[i] = BIPassthrough("foo")`), and quantifier
+-- iteration (`∀ i ∈ {0..n-1} : body[i] = …`).
+--
+-- The proofs below assert SAT for shapes that should hold and
+-- UNSAT for contradictions, exercising the new declare + indexing +
+-- equality machinery end-to-end.
+
+import "stdlib/ast.ev"
+
+-- ── Declaration + length ───────────────────────────────────────
+
+claim sat_declare_seq_bodyitem
+    body ∈ Seq(BodyItem)
+    #body = 0
+
+claim sat_declare_seq_bodyitem_with_length
+    body ∈ Seq(BodyItem)
+    #body = 5
+
+claim sat_declare_seq_schemadecl
+    -- Different enum, same machinery.
+    schemas ∈ Seq(SchemaDecl)
+    #schemas = 2
+
+-- ── Indexing + assignment ──────────────────────────────────────
+
+claim sat_pin_one_element
+    body ∈ Seq(BodyItem)
+    #body = 1
+    body[0] = BIPassthrough("foo")
+
+claim sat_pin_three_elements
+    body ∈ Seq(BodyItem)
+    #body = 3
+    body[0] = BIPassthrough("first")
+    body[1] = BIConstraint(EBool(true))
+    body[2] = BIPassthrough("third")
+
+claim unsat_same_index_different_values
+    body ∈ Seq(BodyItem)
+    #body = 1
+    body[0] = BIPassthrough("a")
+    body[0] = BIPassthrough("b")
+
+claim unsat_pin_then_constraint_mismatch
+    body ∈ Seq(BodyItem)
+    #body = 1
+    body[0] = BIPassthrough("p")
+    body[0] = BIConstraint(EBool(true))
+
+-- ── Quantifier iteration over a Seq(enum) ──────────────────────
+
+claim sat_forall_all_passthroughs_with_same_name
+    body ∈ Seq(BodyItem)
+    #body = 3
+    body[0] = BIPassthrough("x")
+    body[1] = BIPassthrough("x")
+    body[2] = BIPassthrough("x")
+    ∀ i ∈ {0..2} : body[i] = BIPassthrough("x")
+
+claim unsat_forall_when_one_differs
+    body ∈ Seq(BodyItem)
+    #body = 2
+    body[0] = BIPassthrough("a")
+    body[1] = BIPassthrough("b")
+    -- All three would have to equal the same passthrough; they don't.
+    name ∈ String
+    ∀ i ∈ {0..1} : body[i] = BIPassthrough(name)
+
+-- ── Existential ────────────────────────────────────────────────
+
+claim sat_exists_one_passthrough_named_x
+    body ∈ Seq(BodyItem)
+    #body = 3
+    body[0] = BIConstraint(EBool(true))
+    body[1] = BIPassthrough("x")
+    body[2] = BIConstraint(EBool(false))
+    ∃ i ∈ {0..2} : body[i] = BIPassthrough("x")
+
+claim unsat_exists_passthrough_named_y_when_none
+    body ∈ Seq(BodyItem)
+    #body = 2
+    body[0] = BIConstraint(EBool(true))
+    body[1] = BIConstraint(EBool(false))
+    ∃ i ∈ {0..1} : body[i] = BIPassthrough("y")
+
+-- ── Cross-enum: Seq(BinOp), Seq(Keyword) ───────────────────────
+
+claim sat_seq_of_binop
+    ops ∈ Seq(BinOp)
+    #ops = 2
+    ops[0] = OpAdd
+    ops[1] = OpEq
+
+claim unsat_seq_of_binop_contradiction
+    ops ∈ Seq(BinOp)
+    #ops = 1
+    ops[0] = OpAdd
+    ops[0] = OpEq
+
+claim sat_seq_of_keyword
+    kws ∈ Seq(Keyword)
+    #kws = 3
+    kws[0] = KSchema
+    kws[1] = KClaim
+    kws[2] = KType
+
+-- ── A small inference-ish use case: count how many passthroughs ──
+
+claim sat_count_passthroughs_via_pinning
+    body ∈ Seq(BodyItem)
+    n_pass ∈ Nat
+    #body = 3
+    body[0] = BIPassthrough("a")
+    body[1] = BIConstraint(EBool(true))
+    body[2] = BIPassthrough("b")
+    -- Two of three are passthroughs. Manually pin n_pass = 2;
+    -- demonstrates the ability to write counters once we have
+    -- conditional accumulators (a Stage 6+ feature).
+    n_pass = 2

@@ -71,13 +71,17 @@ fn expr_as_var<'ctx>(
     }
 }
 
-/// Resolve an expression to an enum-typed Z3 Datatype AST. Three shapes:
+/// Resolve an expression to an enum-typed Z3 Datatype AST. Four shapes:
 ///
 ///   * `Identifier(name)` where env has `EnumVar` — the user's `today`
 ///   * `Identifier(name)` where env has `EnumValue` — bare nullary
 ///     variant identifier like `Mon`
 ///   * `Call(name, args)` where env has `EnumCtor` — payload variant
 ///     constructor application like `Ok(5)` or `Cons(7, Nil)`
+///   * `Index(Identifier(seq), idx)` where seq is `Seq(SomeEnum)` —
+///     pulls the i-th datatype value out of the seq's underlying
+///     Array. Detected via `DatatypeSeqVar` with empty `fields` (the
+///     marker we use for Seq(enum) — see declare.rs).
 ///
 /// For Call: each arg is translated against the constructor's declared
 /// field type. Recursive payloads (a field whose type is the enum
@@ -96,6 +100,16 @@ pub(super) fn resolve_enum_ast<'ctx>(
             Var::EnumValue { ast, .. } => Some(ast.clone()),
             _ => None,
         },
+        Expr::Index(base, idx) => {
+            // Seq(enum) indexing: `body[i]` where body is a
+            // DatatypeSeqVar with empty fields (Seq-of-enum marker).
+            let Expr::Identifier(seq_name) = base.as_ref() else { return None };
+            let var = env.get(seq_name)?;
+            let Var::DatatypeSeqVar { arr, fields, .. } = var else { return None };
+            if !fields.is_empty() { return None; } // record-style seq, handled elsewhere
+            let i = translate_int(idx, ctx, env)?;
+            arr.select(&i).as_datatype()
+        }
         Expr::Call(name, args) => {
             let ctor_info = env.get(name)?;
             let (dt, variant_idx, field_types) = match ctor_info {
