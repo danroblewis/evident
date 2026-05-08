@@ -170,6 +170,54 @@ claim valid_conference
     parallel_load_within   -- 'schedule', 'max_parallel' flow by name
 ```
 
+### Interface vars on the claim line + positional invocation
+
+When a claim takes parameters, put them on the claim line (first-line
+params) so callers can use **positional invocation** without `mapsto`:
+
+```evident
+claim Distinct(s ∈ Seq, n ∈ Nat)
+    ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒ s[i] ≠ s[j]
+
+claim my_problem
+    items ∈ Seq(Int)
+    #items = 8
+    Distinct(items, 8)             -- positional, no `mapsto` needed
+```
+
+The claim's first-line params define its **interface** — the variables
+the caller must supply. Other vars declared in the body are
+internal. This shape:
+
+  - Reads like a function signature.
+  - Saves verbosity at every call site (no `slot ↦ value` ceremony).
+  - Lets the same claim be invoked with different caller-side names
+    (no need for the caller's vars to match the claim's slot names).
+
+Compare:
+
+```evident
+-- Verbose: claim has body-level decls, caller uses mapsto OR
+-- must match names exactly:
+claim Distinct
+    s ∈ Seq
+    n ∈ Nat
+    …
+Distinct (s ↦ items, n ↦ 8)        -- mapsto every call
+-- or
+items_renamed_to_s ∈ Seq(Int)       -- contort the names
+Distinct                             -- bare names-match
+
+-- Compact: interface on the claim line, positional at call site:
+claim Distinct(s ∈ Seq, n ∈ Nat)
+    …
+Distinct(items, 8)                   -- one short call
+```
+
+**Rule of thumb**: any var the caller needs to supply belongs on the
+claim line. Internal helpers (intermediate Reals/Bools, named
+sub-results) stay in the body.
+
 ### Generic Seq parameters: `s ∈ Seq` (no element type)
 
 A claim parameter declared as `s ∈ Seq` (bare, no element type) takes

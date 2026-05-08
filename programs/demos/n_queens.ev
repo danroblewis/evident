@@ -2,19 +2,16 @@
 -- The whole problem is the constraints; there's no algorithm.
 --
 -- `s[i]` is the column of the queen on row i. Queens automatically
--- can't share rows. PermutationOfRange (stdlib) handles distinctness
--- via pigeonhole — n positions surjective onto n columns ⇒ injective.
--- Diagonals: `|s[i] - s[j]| ≠ |i - j|`, expanded both ways since
--- Evident has no unary minus.
+-- can't share rows. PermutationOfRange handles distinctness via
+-- pigeonhole. Diagonals: `|s[i] - s[j]| ≠ |i - j|`, expanded both
+-- ways since Evident has no unary minus.
 --
 --   evident query programs/demos/n_queens.ev queens
 
 import "stdlib/permutation.ev"
 
 claim queens
-    n ∈ Nat
     s ∈ Seq(Int)
-    n = 8
-    #s = n
-    PermutationOfRange
-    ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒ ((s[i] - s[j]) ≠ (i - j) ∧ (s[j] - s[i]) ≠ (i - j))
+    #s = 8
+    PermutationOfRange(s, 8)
+    ∀ i ∈ {0..7} : ∀ j ∈ {0..7} : i < j ⇒ ((s[i] - s[j]) ≠ (i - j) ∧ (s[j] - s[i]) ≠ (i - j))

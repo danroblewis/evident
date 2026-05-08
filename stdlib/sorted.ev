@@ -1,47 +1,33 @@
 -- sorted.ev — sortedness invariants over a Seq with configurable
--- direction. Element type inferred from the caller via names-match
--- — works for any T with `≤`/`≥` (Int, Real, String).
+-- direction. Element type inferred from caller (works for any T
+-- with `≤`/`≥` — Int, Real, String).
 --
--- Caller declares `s` and `ascending` in scope, then invokes bare
--- `Sorted`. Use `StrictlySorted` for the strict version (no
--- duplicates allowed).
---
--- `edges(s)` yields each consecutive (prev, next) pair, so the
--- whole invariant is one quantifier line.
+-- Interface vars on the claim line so callers use positional
+-- invocation. `edges(s)` yields each consecutive (prev, next) pair,
+-- so the whole invariant is one quantifier line.
 --
 -- Usage:
 --
 --   import "stdlib/sorted.ev"
 --
---   claim my_problem
---       s ∈ Seq(Int)         -- or Seq(String), Seq(Real), …
---       ascending ∈ Bool
---       #s = 5
---       ascending = true
---       Sorted
+--   Sorted(my_seq, true)           -- ascending
+--   Sorted(my_seq, false)          -- descending
+--   StrictlySorted(my_seq, true)   -- ascending, no duplicates
+--   SortedBy(items, keys, true)    -- sort items by parallel keys
 
-claim Sorted
-    s ∈ Seq
-    ascending ∈ Bool
+claim Sorted(s ∈ Seq, ascending ∈ Bool)
     ascending = true  ⇒ ∀ (a, b) ∈ edges(s) : a ≤ b
     ascending = false ⇒ ∀ (a, b) ∈ edges(s) : a ≥ b
 
-claim StrictlySorted
-    s ∈ Seq
-    ascending ∈ Bool
+claim StrictlySorted(s ∈ Seq, ascending ∈ Bool)
     ascending = true  ⇒ ∀ (a, b) ∈ edges(s) : a < b
     ascending = false ⇒ ∀ (a, b) ∈ edges(s) : a > b
 
 -- Sort-by-key, the equivalent of Python's `sorted(items, key=…)`.
--- Caller declares `items` (any Seq), `keys` (parallel Seq of
--- comparable values, same length), and `ascending`. Caller also
--- derives the keys from items, e.g.
+-- The caller derives `keys` from `items` (e.g.
 --     ∀ i ∈ {0..n-1} : keys[i] = items[i].some_field
--- The constraint is that the keys are sorted; items are sorted by
--- whatever expression you wrote into the keys.
-claim SortedBy
-    items ∈ Seq
-    keys ∈ Seq
-    ascending ∈ Bool
+-- ) and SortedBy enforces that the keys are sorted. items are sorted
+-- by whatever expression you wrote into the keys.
+claim SortedBy(items ∈ Seq, keys ∈ Seq, ascending ∈ Bool)
     ascending = true  ⇒ ∀ (a, b) ∈ edges(keys) : a ≤ b
     ascending = false ⇒ ∀ (a, b) ∈ edges(keys) : a ≥ b

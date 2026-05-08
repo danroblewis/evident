@@ -1,22 +1,22 @@
 -- distinct.ev — all-different constraint over a Seq.
 --
--- A Seq is "distinct" when no two of its elements are equal — the
--- canonical CSP all-different predicate. The element type is
--- inferred from the caller via names-match: declare `s ∈ Seq(T)`
--- and `n ∈ Nat` in scope (any T with `≠`), then add bare
--- `Distinct` to the body.
+-- Interface vars (s, n) live on the claim line, so callers can use
+-- positional invocation: `Distinct(my_seq, my_len)`. Element type
+-- inferred from the caller via the bare `Seq` parameter.
 --
 -- Usage:
 --
 --   import "stdlib/distinct.ev"
 --
 --   claim my_problem
---       s ∈ Seq(Int)         -- or Seq(String), Seq(Bool), …
---       n ∈ Nat
---       #s = n
---       Distinct             -- works for any element type with ≠
+--       items ∈ Seq(Int)
+--       Distinct(items, 8)        -- positional, no mapsto
+--
+-- Or, if the caller already has `s` and `n` named, names-match
+-- composition still works without args:
+--
+--       s ∈ Seq(Int) ; #s = 8
+--       Distinct(s, 8)            -- explicit, recommended
 
-claim Distinct
-    s ∈ Seq                  -- generic: element type inferred from caller
-    n ∈ Nat
+claim Distinct(s ∈ Seq, n ∈ Nat)
     ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒ s[i] ≠ s[j]

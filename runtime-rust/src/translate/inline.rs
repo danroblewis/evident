@@ -230,6 +230,77 @@ fn inline_body_items_guarded(
                 );
                 visited.remove(name);
             }
+
+            // Positional claim invocation: `Constraint(Call(name, args))`
+            // whose `name` matches a known claim is treated as a
+            // ClaimCall with positional args bound by index to the
+            // claim's first-line params (or first N Memberships in
+            // declaration order). Encourages the
+            //   claim Foo(items ∈ Seq, keys ∈ Seq, asc ∈ Bool)
+            //       …body using items/keys/asc…
+            //   ⋮
+            //   Foo(my_items, my_keys, true)
+            // pattern over the longer mapsto form.
+            BodyItem::Constraint(Expr::Call(name, args)) if schemas.contains_key(name) => {
+                if visited.contains(name) { continue; }
+                let Some(claim) = schemas.get(name) else { continue };
+
+                // Pair positional args with the claim's first N Membership
+                // body items (which include first-line params, since
+                // those desugar to Memberships at the head of the body).
+                let slot_names: Vec<String> = claim.body.iter()
+                    .filter_map(|i| if let BodyItem::Membership { name, .. } = i {
+                        Some(name.clone())
+                    } else { None })
+                    .take(args.len())
+                    .collect();
+                if slot_names.len() != args.len() {
+                    eprintln!(
+                        "warning: positional ClaimCall to `{}` got {} args but \
+                         the claim has only {} param Memberships",
+                        name, args.len(), slot_names.len()
+                    );
+                    continue;
+                }
+                let mappings: Vec<crate::ast::Mapping> = slot_names.into_iter()
+                    .zip(args.iter())
+                    .map(|(slot, value)| crate::ast::Mapping {
+                        slot, value: value.clone(),
+                    })
+                    .collect();
+
+                // Same binding logic as the named-mapsto ClaimCall arm
+                // below — bind args, declare per-call Z3 names for any
+                // claim-internal vars, recurse with fresh inner env.
+                let mut inner = env.clone();
+                for m in &mappings {
+                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env);
+                    if bound.is_empty() {
+                        eprintln!("warning: positional arg didn't resolve: {:?}", m.value);
+                    }
+                    for (k, v) in bound {
+                        inner.insert(k, v);
+                    }
+                }
+                let call_id = next_call_id();
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name, .. } = sub {
+                        let slot_prefix = format!("{}.", vname);
+                        let already_bound = inner.contains_key(vname)
+                            || inner.keys().any(|k| k.starts_with(&slot_prefix));
+                        if !already_bound {
+                            let z3_name = format!("{}__{}__call{}", name, vname, call_id);
+                            declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                                              type_name, schemas, Some(registry));
+                        }
+                    }
+                }
+                visited.insert(name.clone());
+                inline_body_items_guarded(
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, visited, guard, tracker
+                );
+                visited.remove(name);
+            }
             // Guarded claim invocation: `cond ⇒ ClaimName` inlines the
             // claim's body but wraps each constraint in `cond ⇒ …`.
             // Declarations from the claim fire unconditionally; the
