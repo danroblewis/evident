@@ -259,3 +259,247 @@ claim t
     assert!(s.contains("PPositional"),
         "expected PPositional pin form for `v ∈ Vec2(10, 20)`");
 }
+
+// ── Coverage fillers: every remaining Expr + BodyItem variant ──
+
+/// Helper: load stdlib + a single claim, encode, return the
+/// rendered Display string. Used by the per-variant tests below.
+fn encode_to_string(claim_src: &str) -> String {
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST)).unwrap();
+    rt.load_source(claim_src).unwrap();
+    let encoded = rt.encode_program_value().unwrap();
+    format!("{encoded}")
+}
+
+#[test]
+fn encode_expr_variant_estr() {
+    let s = encode_to_string("claim t\n    msg ∈ String\n    msg = \"hello\"\n");
+    assert!(s.contains("EStr"), "expected EStr for string literal");
+    assert!(s.contains("\"hello\""), "expected literal value in encoded form");
+}
+
+#[test]
+fn encode_expr_variant_ebool_literal() {
+    let s = encode_to_string("claim t\n    flag ∈ Bool\n    flag = true\n");
+    assert!(s.contains("EBool"), "expected EBool for bool literal");
+}
+
+#[test]
+fn encode_expr_variant_ereal() {
+    // The parser only emits EReal for literals containing `.`; an
+    // integer literal in a Real context still parses as EInt and
+    // gets coerced. Use 3.14 to force EReal.
+    let s = encode_to_string("claim t\n    r ∈ Real\n    r = 3.14\n");
+    assert!(s.contains("EReal"), "expected EReal for `3.14`; got {s}");
+}
+
+#[test]
+fn encode_expr_variant_enot() {
+    let s = encode_to_string("claim t\n    a, b ∈ Bool\n    a = ¬b\n");
+    assert!(s.contains("ENot"), "expected ENot for `¬b`");
+}
+
+#[test]
+fn encode_expr_variant_einexpr() {
+    // `x ∈ pts ∧ x > 0` → ENot... no wait, `x ∈ pts` is EInExpr.
+    // Avoid the chained-membership detector by joining with `∧`.
+    let s = encode_to_string("\
+claim t
+    pts ∈ Set(Int)
+    x ∈ Int
+    x ∈ pts ∧ x > 0
+");
+    assert!(s.contains("EInExpr"), "expected EInExpr for `x ∈ pts`");
+}
+
+#[test]
+fn encode_expr_variant_ecall() {
+    // Record literal `IVec2(380, 280)` parses as Call("IVec2", ...).
+    let s = encode_to_string("\
+type IVec2
+    x ∈ Int
+    y ∈ Int
+
+claim t
+    v ∈ IVec2
+    v = IVec2(380, 280)
+");
+    assert!(s.contains("ECall"), "expected ECall for `IVec2(380, 280)`");
+    assert!(s.contains("\"IVec2\""), "expected callee name `IVec2`");
+}
+
+#[test]
+fn encode_expr_variant_eexists() {
+    let s = encode_to_string("\
+claim t
+    s ∈ Seq(Int)
+    #s = 3
+    ∃ i ∈ {0..2} : s[i] = 7
+");
+    assert!(s.contains("EExists"), "expected EExists for `∃` quantifier");
+}
+
+#[test]
+fn encode_expr_variant_eseqlit() {
+    let s = encode_to_string("\
+claim t
+    s ∈ Seq(Int)
+    s = ⟨1, 2, 3⟩
+");
+    assert!(s.contains("ESeqLit"), "expected ESeqLit for `⟨1, 2, 3⟩`");
+}
+
+#[test]
+fn encode_expr_variant_esetlit() {
+    let s = encode_to_string("\
+claim t
+    pts ∈ Set(Int)
+    x ∈ Int
+    x ∈ {1, 2, 3} ∧ x ∈ pts
+");
+    assert!(s.contains("ESetLit"), "expected ESetLit for `{{1, 2, 3}}`");
+}
+
+#[test]
+fn encode_expr_variant_efield() {
+    // `state.dots[i]` parses as Identifier("state.dots") then Index.
+    // For EField, we need a non-identifier base. The simplest path
+    // is post-index field access: `pts[0].x`.
+    let s = encode_to_string("\
+type Point
+    x ∈ Int
+    y ∈ Int
+
+claim t
+    pts ∈ Seq(Point)
+    #pts = 1
+    pts[0].x = 7
+");
+    assert!(s.contains("EField"), "expected EField for `pts[0].x`");
+}
+
+#[test]
+fn encode_body_item_constraint_explicit() {
+    // BIConstraint is exercised by every claim with a body, but make
+    // it explicit so a deletion would fail this specific test.
+    let s = encode_to_string("claim t\n    x ∈ Int\n    x > 0\n");
+    assert!(s.contains("BIConstraint"), "expected BIConstraint variant");
+}
+
+#[test]
+fn encode_body_item_claim_call() {
+    let s = encode_to_string("\
+claim helper
+    s ∈ Seq(Int)
+    n ∈ Nat
+
+claim t
+    items ∈ Seq(Int)
+    helper (s ↦ items, n ↦ 8)
+");
+    assert!(s.contains("BIClaimCall"), "expected BIClaimCall for mapsto invocation");
+    assert!(s.contains("\"helper\""), "expected callee name `helper`");
+    assert!(s.contains("MakeMapping"), "expected MakeMapping for slot bindings");
+}
+
+#[test]
+fn encode_body_item_subclaim() {
+    let s = encode_to_string("\
+claim outer
+    x ∈ Int
+    subclaim Inner
+        y ∈ Int
+        y > 0
+");
+    assert!(s.contains("BISubclaim"),
+        "expected BISubclaim for `subclaim Inner` body item");
+}
+
+#[test]
+fn encode_is_deterministic() {
+    // Same source → same encoded value (twice, verbatim). If the
+    // encoder ever reorders fields or hashes nondeterministically
+    // this catches it.
+    let src = "\
+claim t
+    x ∈ Int
+    y ∈ Bool
+    s ∈ Seq(Int)
+    #s = 2
+    s = ⟨1, 2⟩
+    x > 0
+    y = true
+";
+    let a = encode_to_string(src);
+    let b = encode_to_string(src);
+    assert_eq!(a, b, "encoder is non-deterministic — two encodings of \
+                      the same source produced different output");
+}
+
+#[test]
+fn encode_all_binops_appear() {
+    // Use every BinOp at least once; assert the encoded form
+    // contains each OpXxx variant. Verifies the encode_binop
+    // dispatch hits every arm.
+    let s = encode_to_string("\
+claim t
+    a, b ∈ Int
+    p, q ∈ Bool
+    s, u ∈ String
+    a = b
+    a ≠ b
+    a < b
+    a ≤ b
+    a > b
+    a ≥ b
+    p ∧ q
+    p ∨ q
+    p ⇒ q
+    a + b > 0
+    a - b > 0
+    a * b > 0
+    a / b > 0
+    s ++ u = \"foo\"
+");
+    for op in ["OpEq", "OpNeq", "OpLt", "OpLe", "OpGt", "OpGe",
+               "OpAnd", "OpOr", "OpImplies",
+               "OpAdd", "OpSub", "OpMul", "OpDiv", "OpConcat"] {
+        assert!(s.contains(op), "expected {op} in encoded form");
+    }
+}
+
+#[test]
+fn encode_all_keywords_appear() {
+    // claim / type / schema all parse to the same SchemaDecl with
+    // a different keyword tag. Encoding should preserve all three.
+    let s = encode_to_string("\
+schema A
+    a ∈ Int
+
+claim B
+    b ∈ Int
+
+type C
+    c ∈ Int
+");
+    assert!(s.contains("KSchema"),  "expected KSchema for `schema A`");
+    assert!(s.contains("KClaim"),   "expected KClaim for `claim B`");
+    assert!(s.contains("KType"),    "expected KType for `type C`");
+}
+
+#[test]
+fn encode_recursive_quantifier_body() {
+    // ∀ inside ∀ — encoder should recurse through both EForall
+    // bodies without confusion.
+    let s = encode_to_string("\
+claim t
+    s ∈ Seq(Int)
+    #s = 3
+    ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒ s[i] ≤ s[j]
+");
+    // Two EForall constructors should appear (one per quantifier).
+    let count = s.matches("EForall").count();
+    assert!(count >= 2,
+        "expected two EForall in encoded form for nested quantifiers; got {count}");
+}

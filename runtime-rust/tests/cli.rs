@@ -637,3 +637,76 @@ fn cli_execute_main_coordinator_swap_between_programs() {
     let _ = std::fs::remove_file(&scene_a);
     let _ = std::fs::remove_file(&scene_b);
 }
+
+
+// ── Stage 2: `evident dump-ast` ─────────────────────────────────
+
+#[test]
+fn cli_dump_ast_simple_program() {
+    let path = write_tmp("dump_simple",
+        "claim t\n    x ∈ Int\n    x = 5\n");
+    // dump-ast must be invoked from the repo root so it can find
+    // stdlib/ast.ev. CARGO_MANIFEST_DIR points at runtime-rust/;
+    // step up one to reach the repo root.
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["dump-ast", path.to_str().unwrap()])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "dump-ast exited non-zero. stderr: {}",
+        String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    // Spot-check: encoded form should mention the user's identifier
+    // name, the type name, the literal, and the constructor names.
+    for needle in ["MakeProgram", "MakeSchemaDecl", "KClaim",
+                   "BIMembership", "BIConstraint", "EBinary", "OpEq",
+                   "EIdentifier", "EInt",
+                   "\"t\"", "\"x\"", "\"Int\"", "5"] {
+        assert!(s.contains(needle),
+            "dump-ast output missing {needle:?}; full:\n{s}");
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_dump_ast_no_args_prints_usage() {
+    let out = Command::new(bin()).args(["dump-ast"]).output().unwrap();
+    // No args → exit 2, usage printed to stderr.
+    assert_eq!(out.status.code(), Some(2),
+        "expected exit 2; got {:?}", out.status.code());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("dump-ast"), "stderr should mention dump-ast: {stderr}");
+}
+
+#[test]
+fn cli_dump_ast_missing_file_errors() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["dump-ast", "/no/such/file/should/exist.ev"])
+        .output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error"), "expected error message; got: {stderr}");
+}
+
+#[test]
+fn cli_dump_ast_user_enum_appears() {
+    let path = write_tmp("dump_user_enum",
+        "enum Color = Red | Green | Blue\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["dump-ast", path.to_str().unwrap()])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("\"Color\""), "user enum name should appear");
+    assert!(s.contains("\"Red\""), "Red variant should appear");
+    let _ = std::fs::remove_file(&path);
+}
