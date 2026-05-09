@@ -108,6 +108,7 @@ pub(super) fn resolve_mapping<'ctx>(
     value: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
 ) -> Vec<(String, Var<'ctx>)> {
     if let Expr::Identifier(name) = value {
         // If the exact name is in env, prefer leaf binding.
@@ -125,6 +126,64 @@ pub(super) fn resolve_mapping<'ctx>(
         }
         if !out.is_empty() {
             return out;
+        }
+    }
+    // Inline record literal: `Type(arg1, arg2, …)` where `Type` is a
+    // known schema (a record type). Expand per-field, binding each
+    // arg to `slot.field_name`. Unspecified fields stay free — same
+    // partial-pinning semantics as `name ∈ Type(args)` declarations.
+    //
+    // Without this branch, `set_draw_color(ren, Color(220, 40, 60), eff)`
+    // would warn "positional arg didn't resolve" and leave the claim's
+    // `color.*` fields unconstrained. Same fix applies whether the
+    // call site uses positional invocation or `mapsto` (`color ↦
+    // Color(220, 40, 60)`).
+    if let Expr::Call(type_name, args) = value {
+        if let Some(schema) = schemas.get(type_name) {
+            let fields: Vec<(String, String)> = schema.body.iter()
+                .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                    Some((name.clone(), type_name.clone()))
+                } else { None })
+                .collect();
+            if args.len() <= fields.len() {
+                let mut out = Vec::new();
+                let mut ok = true;
+                for (arg, (field_name, field_type)) in args.iter().zip(fields.iter()) {
+                    let key = format!("{}.{}", slot, field_name);
+                    let v: Option<Var<'ctx>> = match field_type.as_str() {
+                        "Int" | "Nat" | "Pos" =>
+                            translate_int(arg, ctx, env).map(Var::IntVar),
+                        "Bool" =>
+                            translate_bool(arg, ctx, env, schemas).map(Var::BoolVar),
+                        "String" =>
+                            translate_str(arg, ctx, env).map(Var::StrVar),
+                        "Real" =>
+                            translate_real(arg, ctx, env).map(Var::RealVar),
+                        _ => {
+                            // Composite field — recurse. Handles both
+                            // sub-record literals (`Foo(Bar(1, 2), 3)`)
+                            // and identifier passthrough by sub-schema
+                            // expansion (handled by the Identifier
+                            // branch above).
+                            let nested = resolve_mapping(&key, arg, ctx, env, schemas);
+                            if !nested.is_empty() {
+                                out.extend(nested);
+                                continue;
+                            }
+                            None
+                        }
+                    };
+                    if let Some(var) = v {
+                        out.push((key, var));
+                    } else {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ok && !out.is_empty() {
+                    return out;
+                }
+            }
         }
     }
     if let Some(v) = expr_as_var(value, ctx, env) {

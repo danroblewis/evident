@@ -95,11 +95,8 @@ claim main
     create_renderer_eff ∈ Effect
     create_renderer(win, create_renderer_eff)
 
-    red ∈ Color
-    red = Color(220, 40, 60, 255)
-
     color_eff ∈ Effect
-    set_draw_color(ren, red, color_eff)
+    set_draw_color(ren, Color(220, 40, 60, 255), color_eff)
 
     clear_eff ∈ Effect
     render_clear(ren, clear_eff)

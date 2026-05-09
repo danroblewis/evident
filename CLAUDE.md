@@ -452,9 +452,16 @@ rect.color = Color(80, 200, 180)
 
 Same `Type(args)` syntax as positional pins, used as a value-producing
 expression. Lifts through equality and arithmetic identically to the
-declaration form. **One current gap**: `mapsto` doesn't yet resolve
-`Type(args)` literals as mapping values — for `color ↦ Color(...)` use
-an intermediate variable: `c ∈ Color(...) ; … color ↦ c`.
+declaration form. Also valid as an inline argument to a claim call —
+positional or `mapsto`:
+
+```evident
+set_draw_color(ren, Color(220, 40, 60, 255), out)   -- positional
+use_color (c ↦ Color(7, 8, 9), sum ↦ s)             -- mapsto
+```
+
+The runtime expands the literal per-field and binds `slot.field` to
+each arg before inlining the claim's body.
 
 ## N-arity sequence iteration
 

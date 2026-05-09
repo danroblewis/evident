@@ -110,31 +110,18 @@ claim main
     create_renderer_eff ∈ Effect
     create_renderer(win, create_renderer_eff)
 
-    -- Color constants. Inline Color(...) doesn't resolve as a
-    -- positional claim arg yet; bind to a name first.
-    bg ∈ Color
-    bg = Color(20, 20, 30, 255)
-    fg ∈ Color
-    fg = Color(240, 220, 80, 255)
-
     bg_color_eff ∈ Effect
-    set_draw_color(ren, bg, bg_color_eff)
+    set_draw_color(ren, Color(20, 20, 30, 255), bg_color_eff)
 
     bg_clear_eff ∈ Effect
     render_clear(ren, bg_clear_eff)
 
     fg_color_eff ∈ Effect
-    set_draw_color(ren, fg, fg_color_eff)
-
-    -- Rectangle position and size as named IVec2s.
-    rect_pos ∈ IVec2
-    rect_pos = IVec2(100, 100)
-    rect_size ∈ IVec2
-    rect_size = IVec2(440, 280)
+    set_draw_color(ren, Color(240, 220, 80, 255), fg_color_eff)
 
     -- One library call → 4 lines packaged in one EffectList.
     rect_eff ∈ EffectList
-    draw_rect_outline(ren, rect_pos, rect_size, rect_eff)
+    draw_rect_outline(ren, IVec2(100, 100), IVec2(440, 280), rect_eff)
 
     present_eff ∈ Effect
     render_present(ren, present_eff)

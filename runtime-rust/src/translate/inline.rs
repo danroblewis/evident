@@ -279,7 +279,7 @@ fn inline_body_items_guarded(
                 // claim-internal vars, recurse with fresh inner env.
                 let mut inner = env.clone();
                 for m in &mappings {
-                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env);
+                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
                     if bound.is_empty() {
                         eprintln!("warning: positional arg didn't resolve: {:?}", m.value);
                     }
@@ -371,7 +371,7 @@ fn inline_body_items_guarded(
                 };
                 let mut inner = env.clone();
                 for m in mappings {
-                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env);
+                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
                     if bound.is_empty() {
                         eprintln!("warning: mapping value didn't resolve: {:?}", m.value);
                     }
