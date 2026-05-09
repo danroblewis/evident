@@ -13,6 +13,16 @@ sdl2 = "0.36"
 # window with a GL 3.3 core profile context, compiles the Evident-
 # transpiled fragment shader, and renders a fullscreen triangle.
 gl = "0.14"
+# FFI primitive (docs/design/ffi-design.md): dynamic library loading
+# + libffi for variadic C ABI calls. libloading wraps dlopen/dlsym
+# (and LoadLibrary on Windows, when we add it). The libffi crate
+# wraps libffi for argument marshalling at call time.
+libloading = "0.8"
+# libffi: enable the `system` feature so we link against the
+# OS-installed libffi (Homebrew on macOS, system pkg on Linux)
+# rather than building from source. The bundled build path was
+# failing on macOS aarch64 with CFI assembler errors.
+libffi = { version = "3", features = ["system"] }
 
 [lib]
 name = "evident_runtime"
