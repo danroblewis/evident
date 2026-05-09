@@ -250,49 +250,100 @@ does — is defined by the Evident program; the implementation can vary.
 
 ## A Staged Path Forward
 
-Each stage is shippable on its own and validates the next:
+Each stage is shippable on its own and validates the next.
+**Stages 0–11 have shipped** as of `e15b16c` on main.
 
-### Stage 0 — Close the language gaps
-Add `enum`, named sum types, and verify recursive datatypes in the
-Rust runtime. Without these, no self-hosting works.
+### ✅ Stage 0 — Close the language gaps
+Added `enum`, named sum types, recursive datatypes, mutual
+recursion. See commits `222177e` (0a, simple enums), `bfd36ad`
+(0b, payload variants + self-recursion), `508103d` (0c, mutual
+recursion + multi-line).
 
-### Stage 1 — Define `stdlib/ast.ev`
-Specify `Program`, `SchemaDecl`, `BodyItem`, `Expr`, `BinOp`, etc.
-as Evident types. The Rust runtime exposes a way to dump a parsed
-program in this shape (probably as JSON, deserialized into the
-Evident type at load time, or directly as a Z3 datatype value via
-a new `--as-evident` parser flag).
+### ✅ Stage 1 — Define `stdlib/ast.ev`
+Shipped in `8981f63`. The canonical Evident AST as 17
+mutually-recursive enums (Program, SchemaDecl, BodyItem, Expr,
+BinOp, Pins, Mapping, EnumDecl/Variant/Field, plus 8 list types).
+Every shape needed to express user programs.
 
-### Stage 2 — Self-host the smallest desugar
-Pick chained-membership (the most recent addition; ~200 lines of
-Rust). Move it to `stdlib/desugar/chained_membership.ev`. Add CLI
-support: `evident desugar --pass=chained-membership <file>`.
-Validate that the output matches the procedural version on a
-test corpus.
+### ✅ Stage 2 — Encoder + `dump-ast` CLI
+Shipped in `0d2aa90`. `runtime-rust/src/translate/encode_ast.rs`
+walks a parsed `Program` and returns a Z3 Datatype value matching
+`stdlib/ast.ev`'s `Program` enum. `evident dump-ast <file>` prints
+the encoded form for inspection. The Stage 1 → Stage 3 bridge.
 
-### Stage 3 — Self-host type inference (literal cases)
-Start with the unambiguous trivials: `x = "hello"` → String,
-`x = true` → Bool. Add a `--explain-types` flag that dumps the
-inferred type per variable plus the rule that fired. This is the
-visible win — users start writing programs with fewer explicit
-type annotations.
+### ✅ Stage 3 — First self-hosted pass
+Shipped in `496b3e7`. `stdlib/passes/literal_types.ev` infers
+types from single-body literal assignments. Three runtime
+additions: `evaluate_with_extra_assertion`, `SystemBoundary` /
+`mark_system_loads_complete`, `query_with_program`. Pivotal test:
+`infer_string_type_from_simple_assignment` returns
+`inferred_var = "msg"` for `claim t : msg = "hello"`.
 
-### Stage 4 — Self-host more passes
-Lookup-table completeness check. Unused-variable detection.
-Common subexpression. One per release.
+### ✅ Stage 4 — More inference rules
+Shipped in `a76d1da`. `extract_first_membership` recovers types
+from explicit declarations; `infer_*_from_membership_plus_assignment`
+handles 2-body decl+assignment shapes with consistency checking.
 
-### Stage 5 — Migrate the rest of the desugars
-Multi-name shorthand, chained comparisons, implies-block, etc.
-Each one shrinks the Rust parser. Eventually, the parser does only
-lexing + minimal AST construction; all transformations are stdlib
-passes.
+### ✅ Stage 5 + 5.5 — Real iteration
+Shipped in `1844e0a` and `3f6cf45`. `Seq(enum)` declares correctly
+(reuses `DatatypeSeqVar` with empty fields as the marker).
+`encode_body_items_into_seq` injects the user's body as a flat
+Seq. `query_with_program_and_body` glues it all. `iter_types.ev`
+uses `∃ i ∈ {0..body_len-1}` to find Memberships / assignments
+anywhere in arbitrary-length bodies.
 
-### Stage 6 — Document the runtime contract
-Write `docs/runtime-implementation-spec.md` listing exactly what a
-new Evident runtime must implement. Probably ~5 things:
-parse Evident syntax, build the canonical AST, encode AST + Evident
-constraints to Z3, query, format model values. Everything else is
-stdlib.
+### ✅ Stage 6 — CLI integration
+Shipped in `5248175`. `evident infer-types` dispatches both
+literal_types and iter_types rules with rich labels.
+
+### ✅ Stage 7 — Aggregator
+Shipped in `f967837`. `Inferred types:` table groups results,
+dedupes by `(var, type)`, attributes via `(via R1, R2, …)`,
+flags `*ambiguous*` when one var has multiple inferred types.
+
+### ✅ Stage 8 — Multi-claim iteration
+Shipped in `de237f6`. Runtime: `query_with_program_and_nth_claim_body`,
+`user_claim_count`, `user_claim_name`. CLI iterates every user
+claim and groups output by claim.
+
+### ✅ Stage 9 — `=` propagation
+Shipped in `94f2f31`. `propagation.ev` finds `x = y ∧ y = "literal"`
+via nested `∃ i, j` and infers `x ∈ String`. Cross-body-item
+reasoning that no prior rule could do.
+
+### ✅ Stage 10 — Consistency + `--strict`
+Shipped in `6017173`. `consistency.ev` catches user-level type
+mismatches (`x ∈ String ; x = 5`). `--strict` exits 4 on
+conflicts or ambiguities.
+
+### ✅ Stage 11 — Pure-Evident lint pass
+Shipped in `e15b16c`. New CLI subcommand `evident lint`. First
+pass: `lint_duplicate_decls.ev` finds two BIMembership items with
+the same name. Proves self-hosting works for non-inference passes.
+
+### ✅ Stage 12 — Docs + tutorial
+This commit. Updated `docs/design/self-hosting-compiler-passes.md`
+(this file) to mark stages done. Added `docs/tutorials/writing-a-pass.md`
+with worked example. Both kept current with what's shipped.
+
+### Future work (post-Stage 12)
+
+- **Migrate Rust desugars**: chained-membership, multi-name
+  shorthand, chained comparisons, etc. Each move shrinks the Rust
+  parser by N lines and reaches stdlib via the same pipeline.
+- **Lookup-table completeness check** (originally listed under
+  Stage 4): SAT iff every key in the table's domain has an entry.
+- **Common-subexpression detection**: pattern-match identical
+  sub-expressions; emit a hint.
+- **Cross-claim inference**: today inference is per-claim. A
+  variable shared via `..ClaimName` passthrough should have its
+  type unified.
+- **Runtime spec doc**: `docs/runtime-implementation-spec.md`
+  listing exactly what a new runtime must implement. Probably ~5
+  things: parse Evident syntax, build the canonical AST, encode
+  AST + Evident constraints to Z3, query, format model values.
+  Everything else is stdlib. (Originally Stage 6 in the old
+  numbering; renumbered after the actual shipping order.)
 
 ---
 

@@ -636,6 +636,8 @@ The binary is `evident <subcommand>`. All subcommands:
 | `import-smt2 <file> [claim_name]` | Parse SMT-LIB v2 → Evident                  |
 | `initial-state <file> <claim>` | Generate initial-state JSON for executor seeding |
 | `dump-ast <file>`    | Encode the parsed program as a Z3 datatype value matching `stdlib/ast.ev`'s `Program` enum and print it. Stage 2 of self-hosting — the bridge that lets self-hosted passes consume real source. |
+| `infer-types <file> [--strict]` | Run every self-hosted inference rule (literal_types, iter_types, propagation, consistency) and print an aggregated type table. `--strict` exits 4 on type conflicts or ambiguities. Stages 3–10. |
+| `lint <file>`        | Run self-hosted lint rules. Currently `duplicate_membership_in_body`. Exit 5 on findings. Stage 11 — proves self-hosting works for non-inference passes. |
 
 Conspicuously absent vs. Python: **no `batch` mode, no `repl`**. These
 were "parked behind plugin work" per the executor comments; users would
