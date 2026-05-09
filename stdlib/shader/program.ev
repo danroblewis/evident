@@ -199,3 +199,23 @@ claim gl_draw_arrays(mode ∈ Int, first ∈ Int, count ∈ Int, out ∈ Effect)
                   ArgCons(ArgInt(mode),
                   ArgCons(ArgInt(first),
                   ArgCons(ArgInt(count), ArgNil))))
+
+-- glViewport(x, y, width, height) — set the rectangle in the
+-- framebuffer that subsequent drawing maps to NDC. Without this
+-- on Apple's GL-on-Metal driver, the default viewport can be 0×0
+-- and nothing is visible despite draw calls dispatching.
+claim gl_viewport(x ∈ Int, y ∈ Int, width ∈ Int, height ∈ Int,
+                  out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glViewport", "v(iiii)",
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y),
+                  ArgCons(ArgInt(width),
+                  ArgCons(ArgInt(height), ArgNil)))))
+
+-- glGetError() → GLenum. Returns 0 (GL_NO_ERROR) when the queue is
+-- empty. Each call drains one error from the per-context queue.
+-- Useful for "did the previous draw actually issue?" diagnostics.
+claim gl_get_error(out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetError", "i()", ArgNil)

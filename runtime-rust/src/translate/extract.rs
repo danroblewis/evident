@@ -9,6 +9,77 @@ use z3::{Context, DatatypeSort};
 
 use super::types::{FieldKind, SeqElem, Value, Var};
 
+/// Decode Z3's `as_string()` output back to a Rust string. Z3
+/// represents non-printable characters (and a few others) using
+/// `\u{xxxx}` escape sequences; without unescaping, a `"abc\n"`
+/// shader source survives the solver round-trip as the seven
+/// literal characters `"abc\u{a}"`, which the GLSL compiler then
+/// rejects. This function reverses that escape — for every other
+/// character it's the identity.
+pub(super) fn unescape_z3_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() && bytes[i + 1] == b'u' {
+            // Try to parse `\u{HEX}`. If anything looks off, fall
+            // through and emit the backslash literally so we don't
+            // corrupt strings that happen to contain `\u` for real.
+            if i + 2 < bytes.len() && bytes[i + 2] == b'{' {
+                if let Some(close_rel) = bytes[i + 3..].iter().position(|&b| b == b'}') {
+                    let hex_end = i + 3 + close_rel;
+                    let hex = &s[i + 3..hex_end];
+                    if !hex.is_empty() && hex.len() <= 6 {
+                        if let Ok(cp) = u32::from_str_radix(hex, 16) {
+                            if let Some(ch) = char::from_u32(cp) {
+                                out.push(ch);
+                                i = hex_end + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Default: copy the byte. We re-derive `char` boundaries
+        // by reading the UTF-8 sequence starting at i.
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+#[cfg(test)]
+mod unescape_tests {
+    use super::unescape_z3_string;
+    #[test]
+    fn newline_escape_decoded() {
+        assert_eq!(unescape_z3_string("abc\\u{a}def"), "abc\ndef");
+    }
+    #[test]
+    fn multi_escape_decoded() {
+        assert_eq!(
+            unescape_z3_string("a\\u{9}b\\u{20}c"),  // \t and space
+            "a\tb c",
+        );
+    }
+    #[test]
+    fn high_codepoint_decoded() {
+        // U+1F600 is 😀 (4-byte UTF-8)
+        assert_eq!(unescape_z3_string("hi \\u{1f600}!"), "hi 😀!");
+    }
+    #[test]
+    fn no_escape_passthrough() {
+        assert_eq!(unescape_z3_string("plain ascii"), "plain ascii");
+    }
+    #[test]
+    fn malformed_passthrough() {
+        // Missing closing brace — emit literally.
+        assert_eq!(unescape_z3_string("\\u{xyz"), "\\u{xyz");
+    }
+}
+
 /// Read a Seq value out of the model: read the length, then read each
 /// `arr.select(i)` for i ∈ 0..length and assemble into the right
 /// `Value::Seq*` variant. Indices past the length are unconstrained
@@ -46,7 +117,7 @@ pub(super) fn extract_seq<'ctx>(
             for i in 0..n {
                 let idx = Int::from_i64(ctx, i);
                 let v = arr.select(&idx).as_string()?;
-                out.push(model.eval(&v, true)?.as_string()?);
+                out.push(unescape_z3_string(&model.eval(&v, true)?.as_string()?));
             }
             Some(Value::SeqStr(out))
         }
@@ -85,7 +156,7 @@ pub(super) fn extract_composite_value<'ctx>(
                 }
                 "String" => {
                     let z = raw.as_string()?;
-                    Value::Str(model.eval(&z, true)?.as_string()?)
+                    Value::Str(unescape_z3_string(&model.eval(&z, true)?.as_string()?))
                 }
                 _ => return None,
             },

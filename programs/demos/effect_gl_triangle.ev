@@ -198,6 +198,12 @@ claim main
     make_current_eff ∈ Effect
     gl_make_current(win, ctx, make_current_eff)
 
+    -- Apple's GL-on-Metal driver leaves the viewport defaulted to
+    -- the framebuffer size at context creation, but issuing it
+    -- explicitly is cheap insurance.
+    viewport_eff ∈ Effect
+    gl_viewport(0, 0, 640, 480, viewport_eff)
+
     -- ── GL pipeline effects ──────────────────────────────────────
 
     gen_vao_eff ∈ Effect
@@ -298,7 +304,7 @@ claim main
         AwaitWindow                   ⇒ ⟨⟩
         AfterWindow(_)                ⇒ ⟨create_ctx_eff⟩
         AwaitCtx(_)                   ⇒ ⟨⟩
-        HaveCtx(_, _)                 ⇒ ⟨gen_vao_eff, make_current_eff⟩
+        HaveCtx(_, _)                 ⇒ ⟨gen_vao_eff, make_current_eff, viewport_eff⟩
         AwaitVao(_, _)                ⇒ ⟨⟩
         HaveVao(_, _, _)              ⇒ ⟨create_vs_eff, bind_vao_eff⟩
         AwaitVs(_, _, _)              ⇒ ⟨⟩

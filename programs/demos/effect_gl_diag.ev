@@ -1,0 +1,302 @@
+-- programs/demos/effect_gl_diag.ev — print shader/program/GL status
+-- through the setup pipeline. No draw loop. Helps localize where a
+-- triangle demo is breaking when nothing visible appears.
+--
+--     evident effect-run programs/demos/effect_gl_diag.ev --max-steps 80
+
+import "stdlib/sdl/gl.ev"
+import "stdlib/shader/program.ev"
+
+enum DState =
+    Init
+    AfterInit
+    AwaitWindow
+    AfterWindow(Int)
+    AwaitCtx(Int)
+    HaveCtx(Int, Int)                        -- (w, c)
+    MadeCurrent(Int, Int)                    -- → CreateShader(VERTEX)
+    AwaitVs(Int, Int)
+    HaveVs(Int, Int, Int)                    -- → source+compile vs
+    CompiledVs(Int, Int, Int)                -- → GetShaderiv(vs, COMPILE_STATUS)
+    AwaitVsStatus(Int, Int, Int)
+    PrintedVs(Int, Int, Int)                 -- → CreateShader(FRAGMENT)
+    AwaitFs(Int, Int, Int)
+    HaveFs(Int, Int, Int, Int)               -- → source+compile fs
+    CompiledFs(Int, Int, Int, Int)           -- → GetShaderiv(fs, COMPILE_STATUS)
+    AwaitFsStatus(Int, Int, Int, Int)
+    PrintedFs(Int, Int, Int, Int)            -- → CreateProgram
+    AwaitProgram(Int, Int, Int, Int)
+    HaveProgram(Int, Int, Int, Int, Int)     -- → attach+link
+    LinkedProgram(Int, Int, Int, Int, Int)   -- → GetProgramiv(prog, LINK_STATUS)
+    AwaitLink(Int, Int, Int, Int, Int)
+    PrintedLink(Int, Int, Int, Int, Int)     -- → glGetError
+    AwaitErr(Int, Int, Int, Int, Int)
+    PrintedErr(Int, Int, Int, Int, Int)      -- → cleanup
+    DestroyCtx(Int, Int)
+    AfterDestroyCtx(Int)
+    DestroyW(Int)
+    AfterDestroyW
+    Quit
+    AfterQuit
+    Done
+
+claim main
+    state, state_next ∈ DState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    handle_out ∈ Int
+    handle_out = match last_results
+        ResCons(r, _) ⇒ match r
+            HandleResult(h) ⇒ h
+            _               ⇒ 0
+        _              ⇒ 0
+
+    int_out ∈ Int
+    int_out = match last_results
+        ResCons(r, _) ⇒ match r
+            IntResult(n) ⇒ n
+            _            ⇒ 0
+        _              ⇒ 0
+
+    state_next = match state
+        Init                          ⇒ AfterInit
+        AfterInit                     ⇒ AwaitWindow
+        AwaitWindow                   ⇒ AfterWindow(handle_out)
+        AfterWindow(w)                ⇒ AwaitCtx(w)
+        AwaitCtx(w)                   ⇒ HaveCtx(w, handle_out)
+        HaveCtx(w, c)                 ⇒ MadeCurrent(w, c)
+        MadeCurrent(w, c)             ⇒ AwaitVs(w, c)
+        AwaitVs(w, c)                 ⇒ HaveVs(w, c, int_out)
+        HaveVs(w, c, vs)              ⇒ CompiledVs(w, c, vs)
+        CompiledVs(w, c, vs)          ⇒ AwaitVsStatus(w, c, vs)
+        AwaitVsStatus(w, c, vs)       ⇒ PrintedVs(w, c, vs)
+        PrintedVs(w, c, vs)           ⇒ AwaitFs(w, c, vs)
+        AwaitFs(w, c, vs)             ⇒ HaveFs(w, c, vs, int_out)
+        HaveFs(w, c, vs, fs)          ⇒ CompiledFs(w, c, vs, fs)
+        CompiledFs(w, c, vs, fs)      ⇒ AwaitFsStatus(w, c, vs, fs)
+        AwaitFsStatus(w, c, vs, fs)   ⇒ PrintedFs(w, c, vs, fs)
+        PrintedFs(w, c, vs, fs)       ⇒ AwaitProgram(w, c, vs, fs)
+        AwaitProgram(w, c, vs, fs)    ⇒ HaveProgram(w, c, vs, fs, int_out)
+        HaveProgram(w, c, vs, fs, p)  ⇒ LinkedProgram(w, c, vs, fs, p)
+        LinkedProgram(w, c, vs, fs, p) ⇒ AwaitLink(w, c, vs, fs, p)
+        AwaitLink(w, c, vs, fs, p)    ⇒ PrintedLink(w, c, vs, fs, p)
+        PrintedLink(w, c, _, _, p)    ⇒ AwaitErr(w, c, 0, 0, p)
+        AwaitErr(w, c, _, _, p)       ⇒ PrintedErr(w, c, 0, 0, p)
+        PrintedErr(w, c, _, _, _)     ⇒ DestroyCtx(w, c)
+        DestroyCtx(w, _)              ⇒ AfterDestroyCtx(w)
+        AfterDestroyCtx(w)            ⇒ DestroyW(w)
+        DestroyW(_)                   ⇒ AfterDestroyW
+        AfterDestroyW                 ⇒ Quit
+        Quit                          ⇒ AfterQuit
+        AfterQuit                     ⇒ Done
+        Done                          ⇒ Done
+
+    -- ── Extracted handles ────────────────────────────────────────
+    win ∈ Int
+    win = match state
+        AfterWindow(w)                ⇒ w
+        AwaitCtx(w)                   ⇒ w
+        HaveCtx(w, _)                 ⇒ w
+        MadeCurrent(w, _)             ⇒ w
+        AwaitVs(w, _)                 ⇒ w
+        HaveVs(w, _, _)               ⇒ w
+        CompiledVs(w, _, _)           ⇒ w
+        AwaitVsStatus(w, _, _)        ⇒ w
+        PrintedVs(w, _, _)            ⇒ w
+        AwaitFs(w, _, _)              ⇒ w
+        HaveFs(w, _, _, _)            ⇒ w
+        CompiledFs(w, _, _, _)        ⇒ w
+        AwaitFsStatus(w, _, _, _)     ⇒ w
+        PrintedFs(w, _, _, _)         ⇒ w
+        AwaitProgram(w, _, _, _)      ⇒ w
+        HaveProgram(w, _, _, _, _)    ⇒ w
+        LinkedProgram(w, _, _, _, _)  ⇒ w
+        AwaitLink(w, _, _, _, _)      ⇒ w
+        PrintedLink(w, _, _, _, _)    ⇒ w
+        AwaitErr(w, _, _, _, _)       ⇒ w
+        PrintedErr(w, _, _, _, _)     ⇒ w
+        DestroyCtx(w, _)              ⇒ w
+        AfterDestroyCtx(w)            ⇒ w
+        DestroyW(w)                   ⇒ w
+        _                             ⇒ 0
+
+    ctx ∈ Int
+    ctx = match state
+        HaveCtx(_, c)                 ⇒ c
+        MadeCurrent(_, c)             ⇒ c
+        AwaitVs(_, c)                 ⇒ c
+        HaveVs(_, c, _)               ⇒ c
+        CompiledVs(_, c, _)           ⇒ c
+        AwaitVsStatus(_, c, _)        ⇒ c
+        PrintedVs(_, c, _)            ⇒ c
+        AwaitFs(_, c, _)              ⇒ c
+        HaveFs(_, c, _, _)            ⇒ c
+        CompiledFs(_, c, _, _)        ⇒ c
+        AwaitFsStatus(_, c, _, _)     ⇒ c
+        PrintedFs(_, c, _, _)         ⇒ c
+        AwaitProgram(_, c, _, _)      ⇒ c
+        HaveProgram(_, c, _, _, _)    ⇒ c
+        LinkedProgram(_, c, _, _, _)  ⇒ c
+        AwaitLink(_, c, _, _, _)      ⇒ c
+        PrintedLink(_, c, _, _, _)    ⇒ c
+        AwaitErr(_, c, _, _, _)       ⇒ c
+        PrintedErr(_, c, _, _, _)     ⇒ c
+        DestroyCtx(_, c)              ⇒ c
+        _                             ⇒ 0
+
+    vs ∈ Int
+    vs = match state
+        HaveVs(_, _, s)               ⇒ s
+        CompiledVs(_, _, s)           ⇒ s
+        AwaitVsStatus(_, _, s)        ⇒ s
+        PrintedVs(_, _, s)            ⇒ s
+        AwaitFs(_, _, s)              ⇒ s
+        HaveFs(_, _, s, _)            ⇒ s
+        CompiledFs(_, _, s, _)        ⇒ s
+        AwaitFsStatus(_, _, s, _)     ⇒ s
+        PrintedFs(_, _, s, _)         ⇒ s
+        AwaitProgram(_, _, s, _)      ⇒ s
+        HaveProgram(_, _, s, _, _)    ⇒ s
+        _                             ⇒ 0
+
+    fs ∈ Int
+    fs = match state
+        HaveFs(_, _, _, f)            ⇒ f
+        CompiledFs(_, _, _, f)        ⇒ f
+        AwaitFsStatus(_, _, _, f)     ⇒ f
+        PrintedFs(_, _, _, f)         ⇒ f
+        AwaitProgram(_, _, _, f)      ⇒ f
+        HaveProgram(_, _, _, f, _)    ⇒ f
+        _                             ⇒ 0
+
+    prog ∈ Int
+    prog = match state
+        HaveProgram(_, _, _, _, p)    ⇒ p
+        LinkedProgram(_, _, _, _, p)  ⇒ p
+        AwaitLink(_, _, _, _, p)      ⇒ p
+        PrintedLink(_, _, _, _, p)    ⇒ p
+        _                             ⇒ 0
+
+    -- ── Effect builders ────────────────────────────────────────
+
+    sdl_init_eff ∈ Effect
+    sdl_init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                           "SDL_Init", "i(i)",
+                           ArgCons(ArgInt(32), ArgNil))
+    set_major_eff ∈ Effect
+    gl_set_attribute(17, 3, set_major_eff)
+    set_minor_eff ∈ Effect
+    gl_set_attribute(18, 3, set_minor_eff)
+    set_profile_eff ∈ Effect
+    gl_set_attribute(21, 1, set_profile_eff)
+
+    create_window_eff ∈ Effect
+    create_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                "SDL_CreateWindow", "p(siiiii)",
+                                ArgCons(ArgStr("Evident GL Diag"),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(320),
+                                ArgCons(ArgInt(200),
+                                ArgCons(ArgInt(2), ArgNil)))))))
+
+    create_ctx_eff ∈ Effect
+    gl_create_context(win, create_ctx_eff)
+    make_current_eff ∈ Effect
+    gl_make_current(win, ctx, make_current_eff)
+
+    vertex_src ∈ String
+    vertex_src = "#version 410 core\nvoid main() {\n  vec2 verts[3] = vec2[3](vec2(-0.7, -0.7), vec2(0.7, -0.7), vec2(0.0, 0.7));\n  gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);\n}\n"
+
+    fragment_src ∈ String
+    fragment_src = "#version 410 core\nlayout(location = 0) out vec4 fragColor;\nvoid main() {\n  fragColor = vec4(1.0, 0.4, 0.6, 1.0);\n}\n"
+
+    create_vs_eff ∈ Effect
+    gl_create_shader(35633, create_vs_eff)
+    source_vs_eff ∈ Effect
+    gl_shader_source(vs, vertex_src, source_vs_eff)
+    compile_vs_eff ∈ Effect
+    gl_compile_shader(vs, compile_vs_eff)
+    vs_status_eff ∈ Effect
+    gl_get_shader_iv(vs, 35713, vs_status_eff)            -- COMPILE_STATUS
+
+    create_fs_eff ∈ Effect
+    gl_create_shader(35632, create_fs_eff)
+    source_fs_eff ∈ Effect
+    gl_shader_source(fs, fragment_src, source_fs_eff)
+    compile_fs_eff ∈ Effect
+    gl_compile_shader(fs, compile_fs_eff)
+    fs_status_eff ∈ Effect
+    gl_get_shader_iv(fs, 35713, fs_status_eff)
+
+    create_program_eff ∈ Effect
+    gl_create_program(create_program_eff)
+    attach_vs_eff ∈ Effect
+    gl_attach_shader(prog, vs, attach_vs_eff)
+    attach_fs_eff ∈ Effect
+    gl_attach_shader(prog, fs, attach_fs_eff)
+    link_eff ∈ Effect
+    gl_link_program(prog, link_eff)
+    link_status_eff ∈ Effect
+    gl_get_program_iv(prog, 35714, link_status_eff)       -- LINK_STATUS
+
+    err_eff ∈ Effect
+    gl_get_error(err_eff)
+
+    delete_ctx_eff ∈ Effect
+    gl_delete_context(ctx, delete_ctx_eff)
+
+    destroy_window_eff ∈ Effect
+    destroy_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                 "SDL_DestroyWindow", "v(p)",
+                                 ArgCons(ArgHandle(win), ArgNil))
+    quit_eff ∈ Effect
+    quit_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_Quit", "v()", ArgNil)
+
+    -- Status messages: int_out is in scope when state == AwaitXxxStatus.
+    -- COMPILE_STATUS / LINK_STATUS return 1 on success, 0 on failure.
+    vs_msg ∈ String
+    vs_msg = (int_out = 1 ? "vs compile: OK"   : "vs compile: FAILED")
+    fs_msg ∈ String
+    fs_msg = (int_out = 1 ? "fs compile: OK"   : "fs compile: FAILED")
+    link_msg ∈ String
+    link_msg = (int_out = 1 ? "link: OK"       : "link: FAILED")
+    err_msg ∈ String
+    err_msg = (int_out = 0 ? "gl error: NONE"
+                           : "gl error: NONZERO (see EVIDENT_FFI_TRACE)")
+
+    effects = match state
+        Init                          ⇒ ⟨sdl_init_eff,
+                                         set_major_eff, set_minor_eff, set_profile_eff⟩
+        AfterInit                     ⇒ ⟨create_window_eff⟩
+        AwaitWindow                   ⇒ ⟨⟩
+        AfterWindow(_)                ⇒ ⟨create_ctx_eff⟩
+        AwaitCtx(_)                   ⇒ ⟨⟩
+        HaveCtx(_, _)                 ⇒ ⟨make_current_eff⟩
+        MadeCurrent(_, _)             ⇒ ⟨create_vs_eff⟩
+        AwaitVs(_, _)                 ⇒ ⟨⟩
+        HaveVs(_, _, _)               ⇒ ⟨source_vs_eff, compile_vs_eff⟩
+        CompiledVs(_, _, _)           ⇒ ⟨vs_status_eff⟩
+        AwaitVsStatus(_, _, _)        ⇒ ⟨Println(vs_msg)⟩
+        PrintedVs(_, _, _)            ⇒ ⟨create_fs_eff⟩
+        AwaitFs(_, _, _)              ⇒ ⟨⟩
+        HaveFs(_, _, _, _)            ⇒ ⟨source_fs_eff, compile_fs_eff⟩
+        CompiledFs(_, _, _, _)        ⇒ ⟨fs_status_eff⟩
+        AwaitFsStatus(_, _, _, _)     ⇒ ⟨Println(fs_msg)⟩
+        PrintedFs(_, _, _, _)         ⇒ ⟨create_program_eff⟩
+        AwaitProgram(_, _, _, _)      ⇒ ⟨⟩
+        HaveProgram(_, _, _, _, _)    ⇒ ⟨attach_vs_eff, attach_fs_eff, link_eff⟩
+        LinkedProgram(_, _, _, _, _)  ⇒ ⟨link_status_eff⟩
+        AwaitLink(_, _, _, _, _)      ⇒ ⟨Println(link_msg)⟩
+        PrintedLink(_, _, _, _, _)    ⇒ ⟨err_eff⟩
+        AwaitErr(_, _, _, _, _)       ⇒ ⟨Println(err_msg)⟩
+        PrintedErr(_, _, _, _, _)     ⇒ ⟨delete_ctx_eff⟩
+        DestroyCtx(_, _)              ⇒ ⟨⟩
+        AfterDestroyCtx(_)            ⇒ ⟨destroy_window_eff⟩
+        DestroyW(_)                   ⇒ ⟨⟩
+        AfterDestroyW                 ⇒ ⟨quit_eff⟩
+        Quit                          ⇒ ⟨⟩
+        AfterQuit                     ⇒ ⟨⟩
+        Done                          ⇒ ⟨⟩

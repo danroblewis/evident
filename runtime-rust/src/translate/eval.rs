@@ -103,7 +103,7 @@ fn populate_enum_variants<'ctx>(
 use crate::ast::*;
 use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::declare::declare_var;
-use super::extract::{assert_seq_given, extract_seq, extract_seq_composite};
+use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unescape_z3_string};
 use super::inline::inline_body_items;
 use super::preprocess::{apply_pinned_ints, apply_seq_lengths, collect_pinned_ints, collect_seq_lengths};
 
@@ -253,6 +253,7 @@ pub fn sample_cached_inner<'ctx>(
                 }
                 Var::StrVar(s) => {
                     if let Some(v) = model.eval(s, true).and_then(|x| x.as_string()) {
+                        let v = unescape_z3_string(&v);
                         bindings.insert(name.clone(), Value::Str(v.clone()));
                         if let Ok(lit) = Z3Str::from_str(ctx, &v) {
                             block_terms.push(s._eq(&lit));
@@ -380,7 +381,7 @@ pub fn run_cached<'ctx>(
                     }
                     Var::StrVar(s) => {
                         if let Some(v) = model.eval(s, true).and_then(|x| x.as_string()) {
-                            bindings.insert(name.clone(), Value::Str(v));
+                            bindings.insert(name.clone(), Value::Str(unescape_z3_string(&v)));
                         }
                     }
                     Var::SeqVar { arr, len, elem } => {
@@ -553,7 +554,7 @@ pub fn evaluate(
                     Var::StrVar(s) => {
                         if let Some(val) = model.eval(s, true) {
                             if let Some(sv) = val.as_string() {
-                                bindings.insert(name.clone(), Value::Str(sv));
+                                bindings.insert(name.clone(), Value::Str(unescape_z3_string(&sv)));
                             }
                         }
                     }
@@ -935,7 +936,7 @@ fn extract_binding(
         Var::StrVar(s) => {
             if let Some(val) = model.eval(s, true) {
                 if let Some(sv) = val.as_string() {
-                    bindings.insert(name.to_string(), Value::Str(sv));
+                    bindings.insert(name.to_string(), Value::Str(unescape_z3_string(&sv)));
                 }
             }
         }
@@ -1012,7 +1013,7 @@ fn extract_enum_value(
                         "String" => raw.as_string()
                             .and_then(|s| model.eval(&s, true))
                             .and_then(|x| x.as_string())
-                            .map(Value::Str),
+                            .map(|s| Value::Str(unescape_z3_string(&s))),
                         "Real" => raw.as_real()
                             .and_then(|r| model.eval(&r, true))
                             .and_then(|x| x.as_real())
