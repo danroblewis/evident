@@ -203,6 +203,7 @@ enum Expr =
     ENot(Expr)
     ETernary(Expr, Expr, Expr)
     EMatch(Expr, MatchArmList)
+    EMatches(Expr, MatchPattern)
 
 -- ── Top-level program ───────────────────────────────────────────
 

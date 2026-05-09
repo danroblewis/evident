@@ -493,6 +493,12 @@ pub fn decode_expr(v: &Value) -> Result<Expr> {
             let arms = decode_match_arm_list(&fields[1])?;
             Expr::Match(Box::new(scr), arms)
         }
+        "EMatches" => {
+            need_arity(variant, fields, 2)?;
+            let e = decode_expr(&fields[0])?;
+            let p = decode_match_pattern(&fields[1])?;
+            Expr::Matches(Box::new(e), p)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Expr".into(), variant: other.into(),
         }),

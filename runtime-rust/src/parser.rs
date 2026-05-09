@@ -980,6 +980,14 @@ impl Parser {
 
     fn parse_compare(&mut self) -> Result<Expr> {
         let lhs = self.parse_addsub()?;
+        // `e matches Pattern` — constructor recognizer. Sits at
+        // comparison level so `e matches A ∨ e matches B` parses as
+        // `(matches A) ∨ (matches B)`.
+        if matches!(self.peek(), Token::Matches) {
+            self.bump();
+            let pattern = self.parse_match_pattern()?;
+            return Ok(Expr::Matches(Box::new(lhs), pattern));
+        }
         // ∈ binds at the same level as =, <, etc.
         if matches!(self.peek(), Token::In) {
             self.bump();

@@ -24,6 +24,7 @@ pub enum Token {
     Subclaim,
     Enum,         // enum Day = Mon | Tue | …
     Match,        // match scrutinee \n   Pattern ⇒ body  ...
+    Matches,      // e matches Pattern — Bool, true iff e's variant matches
     Import,       // import "path"
     In,           // ∈ or "in"
     NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
@@ -373,6 +374,7 @@ fn keyword_or_ident(s: String) -> Token {
         "subclaim" => Token::Subclaim,
         "enum"     => Token::Enum,
         "match"    => Token::Match,
+        "matches"  => Token::Matches,
         "import"   => Token::Import,
         "in"       => Token::In,
         "true"     => Token::True,

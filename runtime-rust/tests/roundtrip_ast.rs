@@ -240,6 +240,39 @@ claim t
 }
 
 #[test]
+fn roundtrip_matches_operator() {
+    let src = "\
+enum S = A | B(Int)
+
+claim t
+    s ∈ S
+    flag ∈ Bool
+    flag = (s matches B(_))
+";
+    let decoded = round_trip(src);
+    let claim_t = decoded.schemas.iter().find(|s| s.name == "t").unwrap();
+    let cstr = claim_t.body.iter().find_map(|i| match i {
+        evident_runtime::ast::BodyItem::Constraint(e) => Some(e),
+        _ => None,
+    }).expect("expected the flag = (... matches ...) constraint");
+    if let evident_runtime::ast::Expr::Binary(_, _, rhs) = cstr {
+        match rhs.as_ref() {
+            evident_runtime::ast::Expr::Matches(scr, pat) => {
+                assert!(matches!(scr.as_ref(),
+                    evident_runtime::ast::Expr::Identifier(n) if n == "s"));
+                if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = pat {
+                    assert_eq!(name, "B");
+                    assert_eq!(binds, &vec![None]);
+                } else {
+                    panic!("expected Ctor pattern, got {pat:?}");
+                }
+            }
+            other => panic!("expected Matches, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn roundtrip_match_expression() {
     let src = "\
 enum Result = Ok(Int) | Err(String)

@@ -468,6 +468,11 @@ pub fn encode_expr<'ctx>(
             let arm_list = encode_match_arm_list(arms, ctx, enums)?;
             apply(enums, "Expr", "EMatch", &[&scr, &arm_list])
         }
+        Expr::Matches(e, pat) => {
+            let e = encode_expr(e, ctx, enums)?;
+            let p = encode_match_pattern(pat, ctx, enums)?;
+            apply(enums, "Expr", "EMatches", &[&e, &p])
+        }
     }
 }
 

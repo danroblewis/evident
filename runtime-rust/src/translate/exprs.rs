@@ -1097,6 +1097,29 @@ pub(super) fn translate_bool<'ctx>(
                 |body, e| translate_bool(body, ctx, e, schemas))?;
             fold_arms_to_ite(compiled)
         }
+        // `e matches Pattern` — constructor recognizer. Returns Bool.
+        // Wildcard pattern → always true. Ctor pattern → is_Ctor(e).
+        // Payload binds in the pattern are IGNORED (use `match` to
+        // bind, or `e = Ctor(literal)` to compare payload values).
+        Expr::Matches(e, pattern) => {
+            use crate::ast::MatchPattern;
+            match pattern {
+                MatchPattern::Wildcard => Some(Bool::from_bool(ctx, true)),
+                MatchPattern::Ctor { name, .. } => {
+                    let scr_name = match e.as_ref() {
+                        Expr::Identifier(n) if !n.contains('.') => n,
+                        _ => return None,
+                    };
+                    let (scr_dt, dt) = match env.get(scr_name)? {
+                        Var::EnumVar { ast, dt, .. } => (ast.clone(), *dt),
+                        _ => return None,
+                    };
+                    let var_idx = dt.variants.iter()
+                        .position(|v| v.constructor.name() == *name)?;
+                    dt.variants[var_idx].tester.apply(&[&scr_dt]).as_bool()
+                }
+            }
+        }
 
         // `seq[i]` where seq holds Bool elements.
         Expr::Index(seq_expr, idx_expr) => {

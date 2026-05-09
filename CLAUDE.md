@@ -396,6 +396,7 @@ condition is the selector.
 | Pin some fields of a record at declaration | `name ∈ Type (slot ↦ v)` or `name ∈ Type(v1, v2)` |
 | Choose between two values based on a condition | `(cond ? a : b)` — ternary; both branches same sort, lowers to Z3 `ite` |
 | Pattern-match an enum-typed scrutinee | `match e \n   Ctor(b) ⇒ body \n   _ ⇒ fallback` — indented arms, lowers to nested ITE |
+| Test whether an enum value's variant is X (Bool result) | `e matches Ctor(_, _)` — recognizer; payload binds ignored. Use `match` to extract values, `e = Ctor(7)` for literal-payload comparison |
 
 ## Records as vectors
 

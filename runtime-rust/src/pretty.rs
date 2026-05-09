@@ -37,6 +37,20 @@ pub fn expr(e: &Expr) -> String {
         Expr::Field(receiver, f) => format!("{}.{}", expr(receiver), f),
         Expr::Not(inner)         => format!("¬({})", expr(inner)),
         Expr::Ternary(c, a, b)   => format!("({} ? {} : {})", expr(c), expr(a), expr(b)),
+        Expr::Matches(e, pat) => {
+            let p = match pat {
+                MatchPattern::Wildcard => "_".to_string(),
+                MatchPattern::Ctor { name, binds } => {
+                    if binds.is_empty() { name.clone() }
+                    else {
+                        let bs: Vec<String> = binds.iter().map(|b|
+                            b.clone().unwrap_or_else(|| "_".into())).collect();
+                        format!("{}({})", name, bs.join(", "))
+                    }
+                }
+            };
+            format!("({} matches {})", expr(e), p)
+        }
         Expr::Match(scr, arms)   => {
             let arms_s: Vec<String> = arms.iter().map(|a| {
                 let p = match &a.pattern {

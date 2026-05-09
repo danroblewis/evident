@@ -86,6 +86,29 @@ Other shapes that also work:
 - **Multiple `⇒` constraints:** `state = Init ⇒ state_next = Done`
   (one per state). More verbose; harder to confirm exhaustiveness
   by reading.
+- **Set membership:** `state ∈ { Init, Ready } ⇒ effects = ...` —
+  groups multiple states sharing an outcome. Concise when many
+  states share an effect. Works for nullary variants and for
+  literal-payload constructors (`{ Ready, Processing(0) }`); use
+  `matches` for "any payload" cases (next bullet).
+- **`matches` operator:** `state matches Processing(_)` returns Bool;
+  true iff the variant is Processing. Compose with `∨` / `∧` to
+  group payload-bearing states without naming a payload value:
+  ```evident
+  (state matches Init) ∨ (state matches Processing(_))
+      ⇒ effects = EffCons(...)
+  ```
+  Payload binds (`Processing(h)`) are IGNORED in this form — `h`
+  doesn't introduce a binding into the consequent. Use a `match`
+  expression if you need the payload value, or `state = Ctor(7)`
+  for a specific value.
+
+**Trade-off:** the implication form (`⇒`) is non-exhaustive — if you
+forget a state, Z3 picks any value for `state_next`/`effects`,
+producing baffling behavior. The `match` form errors at translation
+time on missing variants. Prefer `match` for `state_next`; the
+implication/set-membership style is better for `effects` when
+several states share an outcome.
 
 ## The two-phase "Issue → Await" pattern
 

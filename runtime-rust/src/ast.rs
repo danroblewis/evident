@@ -158,6 +158,12 @@ pub enum Expr {
     /// bodies must share a sort (same as ternary). Either all enum
     /// variants are covered or there's a wildcard `_ ⇒ ...` arm.
     Match(Box<Expr>, Vec<MatchArm>),
+    /// Constructor-recognizer test: `e matches Ctor(_, _, ...)`.
+    /// Returns Bool — true iff `e`'s variant tag is `Ctor`. Payload
+    /// bindings are IGNORED in this form (`_` and bare names alike
+    /// act as wildcards). For payload-aware extraction, use a `match`
+    /// expression. For literal-payload comparison, use `e = Ctor(7)`.
+    Matches(Box<Expr>, MatchPattern),
 }
 
 /// One arm of a `match` expression — a pattern + the body that fires
