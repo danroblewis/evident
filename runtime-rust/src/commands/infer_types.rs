@@ -101,9 +101,19 @@ pub fn collect_inferences(user_files: &[String])
             .map_err(|e| format!("load {path}: {e}"))?;
     }
 
+    // Encode the user's Program ONCE and reuse it across every
+    // rule call below. Without this cache, each rule re-walked the
+    // user's full AST and rebuilt an identical Datatype value —
+    // ~70-85% of the inference overhead on big programs (see
+    // commit `e767b52`'s notes for measurements on mario_shader).
+    let prog_value = rt.encode_program_value()
+        .map_err(|e| format!("encode program: {e}"))?;
+
     let mut out: Vec<Inference> = Vec::new();
     for rule in PROGRAM_RULES {
-        if let Ok(r) = rt.query_with_program(rule, "program") {
+        if let Ok(r) = rt.query_with_program_value(
+            rule, "program", prog_value.clone(),
+        ) {
             if r.satisfied {
                 if let Some((var, typ, claim)) = render_bindings(rule, &r.bindings) {
                     out.push(Inference {
@@ -114,12 +124,16 @@ pub fn collect_inferences(user_files: &[String])
             }
         }
     }
+    // ITER_RULES never reference `program` — only `body` and
+    // `body_len`. Use the body-only injection path which skips
+    // asserting the deep encoded-Program equality. On big programs
+    // this saves the bulk of the inference cost.
     let n_claims = rt.user_claim_count();
     for claim_idx in 0..n_claims {
         let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
         for rule in ITER_RULES {
-            if let Ok(Some(r)) = rt.query_with_program_and_nth_claim_body(
-                rule, "program", "body", claim_idx,
+            if let Ok(Some(r)) = rt.query_with_nth_claim_body_only(
+                rule, "body", claim_idx,
             ) {
                 if r.satisfied {
                     if let Some((var, typ, _)) = render_bindings(rule, &r.bindings) {
@@ -174,6 +188,7 @@ pub fn auto_apply_inferences(
     }
     applied
 }
+
 
 /// Filter `inferences` to those that are unambiguous —
 /// `(claim_name, var)` keys mapped to exactly one distinct type.
@@ -303,10 +318,20 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     // group output. (claim_name, rule, var, type, label) tuples.
     let mut inferences: Vec<(String, String, String, String, String)> = Vec::new();
     let mut any_match = false;
+    // Encode the user's Program ONCE; reuse across every rule call
+    // below. Saves the ~70-85% of inference cost spent re-walking
+    // the AST per rule on big programs (mario_shader etc.).
+    let prog_value = match rt.encode_program_value() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("error: encode program failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
     // PROGRAM_RULES match on the WHOLE program value — they
     // pattern-match the SchemaList shape internally. Run once.
     for rule in PROGRAM_RULES {
-        match rt.query_with_program(rule, "program") {
+        match rt.query_with_program_value(rule, "program", prog_value.clone()) {
             Ok(r) if r.satisfied => {
                 any_match = true;
                 if let Some((var, typ, claim)) = render_bindings(rule, &r.bindings) {
@@ -331,9 +356,10 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     for claim_idx in 0..n_claims {
         let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
         for rule in ITER_RULES {
-            match rt.query_with_program_and_nth_claim_body(
-                rule, "program", "body", claim_idx,
-            ) {
+            // Body-only path: skips the encoded-Program assertion.
+            // ITER_RULES never reference `program`, so the empty
+            // value is harmless and saves the deep-equality cost.
+            match rt.query_with_nth_claim_body_only(rule, "body", claim_idx) {
                 Ok(Some(r)) if r.satisfied => {
                     any_match = true;
                     if let Some((var, typ, _)) = render_bindings(rule, &r.bindings) {
@@ -353,13 +379,12 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     }
     // Stage 10: run the consistency checks per claim. Each rule's
     // SAT means "found this bug." Print + collect for strict-mode.
+    // Same body-only path — consistency rules also don't use program.
     let mut conflicts_found: Vec<(String, String, String)> = Vec::new();
     for claim_idx in 0..n_claims {
         let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
         for rule in CONFLICT_RULES {
-            match rt.query_with_program_and_nth_claim_body(
-                rule, "program", "body", claim_idx,
-            ) {
+            match rt.query_with_nth_claim_body_only(rule, "body", claim_idx) {
                 Ok(Some(r)) if r.satisfied => {
                     let bad_var = r.bindings.get("bad_var")
                         .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })

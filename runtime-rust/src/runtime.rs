@@ -764,15 +764,79 @@ impl EvidentRuntime {
         body_var: &str,
         claim_idx: usize,
     ) -> Result<Option<QueryResult>, RuntimeError> {
+        let prog_value = self.encode_program_value()
+            .map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
+        self.query_with_program_and_nth_claim_body_value(
+            claim_name, program_var, body_var, claim_idx, prog_value,
+        )
+    }
+
+    /// Variant of `query_with_program_and_nth_claim_body` that skips
+    /// the encoded-Program injection. Most iter-style rules
+    /// (`iter_types.ev`, `propagation.ev`, `consistency.ev`,
+    /// `lint_duplicate_decls.ev`) declare `program ∈ Program` but
+    /// never reference it — they only iterate over `body`. Skipping
+    /// the encoded-Program assertion eliminates the dominant Z3 cost
+    /// (asserting an equality against a deep recursive datatype
+    /// value), which on big programs like mario_shader is several
+    /// seconds of solver time.
+    ///
+    /// Returns `Ok(None)` for out-of-range claim_idx, same as the
+    /// program+body variant.
+    pub fn query_with_nth_claim_body_only(
+        &self,
+        claim_name: &str,
+        body_var: &str,
+        claim_idx: usize,
+    ) -> Result<Option<QueryResult>, RuntimeError> {
+        // Pass an empty Program value as the program injection.
+        // Cheap to construct (no recursive walk); the rule's
+        // `program ∈ Program` declaration just gets bound to the
+        // empty program, which is harmless because the rule never
+        // references it.
+        let empty_prog = self.encode_empty_program_value()
+            .map_err(|e| RuntimeError::Parse(format!("encode empty program: {e}")))?;
+        // Reuse the existing implementation with the cheap value.
+        // The "program_var" name doesn't have to match a declared var —
+        // if it does, it gets bound to empty; if not, the runtime
+        // warns and continues.
+        self.query_with_program_and_nth_claim_body_value(
+            claim_name, "program", body_var, claim_idx, empty_prog,
+        )
+    }
+
+    /// Build a trivial `MakeProgram(SchLNil, EDLNil)` Z3 Datatype
+    /// value. Used by `query_with_nth_claim_body_only` to satisfy
+    /// the program-var assertion without paying the recursive-walk
+    /// cost on the user's full AST.
+    fn encode_empty_program_value(
+        &self,
+    ) -> std::result::Result<z3::ast::Datatype<'static>,
+                              crate::translate::ast_encoder::EncodeError> {
+        let empty = Program::default();
+        crate::translate::ast_encoder::encode_program(
+            &empty, self.z3_ctx, &self.enums,
+        )
+    }
+
+    /// Same as `query_with_program_and_nth_claim_body` but takes the
+    /// encoded `Program` value directly. Pair with
+    /// `query_with_program_value` for the inference-pipeline use case
+    /// where one encoded value feeds many rule queries.
+    pub fn query_with_program_and_nth_claim_body_value(
+        &self,
+        claim_name: &str,
+        program_var: &str,
+        body_var: &str,
+        claim_idx: usize,
+        program_value: z3::ast::Datatype<'static>,
+    ) -> Result<Option<QueryResult>, RuntimeError> {
         let schema = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         let user = self.user_program();
         let Some(target_claim) = user.schemas.get(claim_idx) else {
             return Ok(None);
         };
-        let prog_value = crate::translate::ast_encoder::encode_program(
-            &user, self.z3_ctx, &self.enums,
-        ).map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
         let body_items = &target_claim.body;
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
@@ -781,7 +845,7 @@ impl EvidentRuntime {
         let r = crate::translate::evaluate_with_program_and_body(
             schema, &given, &self.schemas, self.z3_ctx,
             &self.datatypes, &self.enums, arith,
-            program_var, prog_value,
+            program_var, program_value,
             body_var, body_items,
         );
         Ok(Some(QueryResult { satisfied: r.satisfied, bindings: r.bindings }))
@@ -850,10 +914,24 @@ impl EvidentRuntime {
         claim_name: &str,
         program_var: &str,
     ) -> Result<QueryResult, RuntimeError> {
-        let schema = self.schemas.get(claim_name)
-            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         let prog_value = self.encode_program_value()
             .map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
+        self.query_with_program_value(claim_name, program_var, prog_value)
+    }
+
+    /// Same as `query_with_program` but takes the encoded `Program`
+    /// value directly. Lets callers running many rules over the same
+    /// program (like the inference pipeline) encode once and reuse,
+    /// avoiding the recursive-AST walk on every rule. Saves ~70-85%
+    /// of the per-rule cost on big programs.
+    pub fn query_with_program_value(
+        &self,
+        claim_name: &str,
+        program_var: &str,
+        program_value: z3::ast::Datatype<'static>,
+    ) -> Result<QueryResult, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
         let r = crate::translate::evaluate_with_extra_assertion(
@@ -865,7 +943,7 @@ impl EvidentRuntime {
             Some(&self.enums),
             arith,
             program_var,
-            prog_value,
+            program_value,
         );
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }

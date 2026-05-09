@@ -61,9 +61,8 @@ pub fn cmd_lint(args: &[String]) -> ExitCode {
     for claim_idx in 0..n_claims {
         let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
         for rule in LINT_RULES {
-            match rt.query_with_program_and_nth_claim_body(
-                rule, "program", "body", claim_idx,
-            ) {
+            // Body-only path — lint rules never reference `program`.
+            match rt.query_with_nth_claim_body_only(rule, "body", claim_idx) {
                 Ok(Some(r)) if r.satisfied => {
                     findings += 1;
                     let dup_var = r.bindings.get("dup_var")
