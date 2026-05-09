@@ -80,7 +80,7 @@ struct ParsedSig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypeCode { I, B, S, D, P, V }
+enum TypeCode { I, B, S, D, F, P, V }
 
 impl TypeCode {
     fn parse(c: char) -> Result<Self, FfiError> {
@@ -89,6 +89,12 @@ impl TypeCode {
             'b' => Ok(TypeCode::B),
             's' => Ok(TypeCode::S),
             'd' => Ok(TypeCode::D),
+            // 'f' is GL/single-precision-friendly; the Evident-side value
+            // is still ArgReal (f64) — the marshaller narrows to f32.
+            // Needed for glClearColor / glUniform1f / GLfloat APIs that
+            // ABI-wise take 32-bit floats (passed in s* registers on
+            // AArch64, distinct from d* registers used for f64).
+            'f' => Ok(TypeCode::F),
             'p' => Ok(TypeCode::P),
             'v' => Ok(TypeCode::V),
             other => Err(FfiError(format!("unknown type code {other:?}"))),
@@ -100,6 +106,7 @@ impl TypeCode {
             TypeCode::B => FfiType::i32(),
             TypeCode::S => FfiType::pointer(),
             TypeCode::D => FfiType::f64(),
+            TypeCode::F => FfiType::f32(),
             TypeCode::P => FfiType::pointer(),
             TypeCode::V => FfiType::void(),
         }
@@ -284,6 +291,7 @@ pub fn ffi_call(
     let mut bool_ints: Vec<i32>     = Vec::with_capacity(args.len());
     let mut int64s:    Vec<i64>     = Vec::with_capacity(args.len());
     let mut doubles:   Vec<f64>     = Vec::with_capacity(args.len());
+    let mut floats:    Vec<f32>     = Vec::with_capacity(args.len());
     let mut handles:   Vec<*mut std::ffi::c_void> = Vec::with_capacity(args.len());
     let mut str_ptrs:  Vec<*const std::os::raw::c_char> = Vec::with_capacity(args.len());
 
@@ -300,6 +308,7 @@ pub fn ffi_call(
                 c_strings.push(cs);
             }
             (FfiArg::Real(d), TypeCode::D) => doubles.push(*d),
+            (FfiArg::Real(d), TypeCode::F) => floats.push(*d as f32),
             (FfiArg::Handle(h), TypeCode::P) => {
                 let ptr = if *h == 0 {
                     std::ptr::null_mut()
@@ -325,7 +334,7 @@ pub fn ffi_call(
     // vec only grows for args of its own type.
     let mut idx_int = 0usize; let mut idx_bool = 0usize;
     let mut idx_str = 0usize; let mut idx_dbl  = 0usize;
-    let mut idx_p   = 0usize;
+    let mut idx_flt = 0usize; let mut idx_p   = 0usize;
     let mut ffi_args: Vec<Arg> = Vec::with_capacity(args.len());
     for code in &parsed.args {
         let a = match code {
@@ -333,6 +342,7 @@ pub fn ffi_call(
             TypeCode::B => { let r = Arg::new(&bool_ints[idx_bool]); idx_bool += 1; r }
             TypeCode::S => { let r = Arg::new(&str_ptrs[idx_str]); idx_str  += 1; r }
             TypeCode::D => { let r = Arg::new(&doubles[idx_dbl]); idx_dbl  += 1; r }
+            TypeCode::F => { let r = Arg::new(&floats[idx_flt]);  idx_flt  += 1; r }
             TypeCode::P => { let r = Arg::new(&handles[idx_p]);   idx_p    += 1; r }
             TypeCode::V => unreachable!("void rejected during signature parse"),
         };
@@ -361,6 +371,10 @@ pub fn ffi_call(
         TypeCode::D => {
             let r: f64 = unsafe { cif.call(code_ptr, &ffi_args) };
             FfiReturn::Real(r)
+        }
+        TypeCode::F => {
+            let r: f32 = unsafe { cif.call(code_ptr, &ffi_args) };
+            FfiReturn::Real(r as f64)
         }
         TypeCode::S => {
             let p: *const std::os::raw::c_char = unsafe { cif.call(code_ptr, &ffi_args) };
@@ -450,6 +464,37 @@ mod tests {
         match r {
             FfiReturn::Int(n) => assert_eq!(n, 42),
             other => panic!("expected Int, got {other:?}"),
+        }
+    }
+
+    /// f64 round-trip through libm's `sqrt`. Validates the
+    /// double-arg + double-return ABI slots.
+    #[test]
+    fn call_libm_sqrt_double() {
+        let reg = HandleRegistry::new();
+        let lib = ffi_open(&reg, libc_path()).unwrap();
+        let f = ffi_lookup(&reg, lib, "sqrt").unwrap();
+        let r = ffi_call(&reg, f, "d(d)", &[FfiArg::Real(16.0)]).unwrap();
+        match r {
+            FfiReturn::Real(x) => assert!((x - 4.0).abs() < 1e-12, "got {x}"),
+            other => panic!("expected Real, got {other:?}"),
+        }
+    }
+
+    /// f32 round-trip through libm's `sqrtf`. The Evident-side value
+    /// is f64 (ArgReal); the marshaller narrows to f32 for the
+    /// libffi arg slot, then widens the f32 return back to f64.
+    /// On AArch64 floats and doubles use distinct register banks,
+    /// so a wrong type code here would silently return garbage.
+    #[test]
+    fn call_libm_sqrtf_float() {
+        let reg = HandleRegistry::new();
+        let lib = ffi_open(&reg, libc_path()).unwrap();
+        let f = ffi_lookup(&reg, lib, "sqrtf").unwrap();
+        let r = ffi_call(&reg, f, "f(f)", &[FfiArg::Real(25.0)]).unwrap();
+        match r {
+            FfiReturn::Real(x) => assert!((x - 5.0).abs() < 1e-6, "got {x}"),
+            other => panic!("expected Real, got {other:?}"),
         }
     }
 

@@ -46,10 +46,20 @@ claim gl_get_string(name ∈ Int, out ∈ Effect)
                   "glGetString", "s(i)",
                   ArgCons(ArgInt(name), ArgNil))
 
--- glClear(mask) — clears the bound framebuffer. mask is an OR of
--- GL_*_BUFFER_BIT flags. The viewport's color is set by a prior
--- glClearColor call (not yet wrapped — needs a 32-bit float arg
--- type code, see the design plan).
+-- glClearColor(r, g, b, a) — set the color glClear writes into the
+-- framebuffer. Channels are 0..1 floats (GLfloat = 32-bit). The
+-- runtime's `f` type code narrows ArgReal (f64) to f32 for the
+-- libffi slot.
+claim gl_clear_color(r ∈ Real, g ∈ Real, b ∈ Real, a ∈ Real, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glClearColor", "v(ffff)",
+                  ArgCons(ArgReal(r),
+                  ArgCons(ArgReal(g),
+                  ArgCons(ArgReal(b),
+                  ArgCons(ArgReal(a), ArgNil)))))
+
+-- glClear(mask) — clears the bound framebuffer to the prior
+-- glClearColor. mask is an OR of GL_*_BUFFER_BIT flags.
 claim gl_clear(mask ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glClear", "v(i)",

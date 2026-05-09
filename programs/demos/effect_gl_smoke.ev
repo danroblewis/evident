@@ -10,8 +10,8 @@
 --   * stdlib/shader/program.ev — libGL is dlopen-able and dispatch
 --                         through Apple's GL-on-Metal driver returns
 --                         a non-empty version string + clears render
--- The clear color is the default (black) — glClearColor needs a
--- 32-bit float arg type code we haven't added yet.
+-- The first frame sets glClearColor to a teal so the swapped buffer
+-- shows something visible (default clear is black).
 
 import "stdlib/sdl/gl.ev"
 import "stdlib/shader/program.ev"
@@ -140,6 +140,12 @@ claim main
     get_version_eff ∈ Effect
     gl_get_string(7938, get_version_eff)                     -- GL_VERSION
 
+    -- Teal-ish clear color, set once at startup. Channels are 0..1
+    -- floats — the FFI's `f` type code narrows ArgReal to f32 for
+    -- the GLfloat ABI slot.
+    clear_color_eff ∈ Effect
+    gl_clear_color(0.05, 0.5, 0.55, 1.0, clear_color_eff)
+
     clear_eff ∈ Effect
     gl_clear(16384, clear_eff)                               -- COLOR_BUFFER_BIT
 
@@ -176,7 +182,7 @@ claim main
         AwaitGLContext(_)  ⇒ ⟨⟩
         HaveContext(_, _)  ⇒ ⟨make_current_eff⟩
         MadeCurrent(_, _)  ⇒ ⟨get_version_eff⟩
-        AwaitVersion(_, _) ⇒ ⟨Println(string_out)⟩
+        AwaitVersion(_, _) ⇒ ⟨Println(string_out), clear_color_eff⟩
         Frame(_, _, _)     ⇒ ⟨clear_eff, swap_eff, pump_eff, delay_eff⟩
         Pumped(_, _, _)    ⇒ ⟨⟩
         DestroyCtx(_, _)   ⇒ ⟨delete_ctx_eff⟩

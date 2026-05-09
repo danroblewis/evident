@@ -1013,6 +1013,10 @@ fn extract_enum_value(
                             .and_then(|s| model.eval(&s, true))
                             .and_then(|x| x.as_string())
                             .map(Value::Str),
+                        "Real" => raw.as_real()
+                            .and_then(|r| model.eval(&r, true))
+                            .and_then(|x| x.as_real())
+                            .map(|(num, den)| Value::Real(real_value_to_f64(num, den))),
                         // Self-reference or another enum: recurse.
                         ref_type => {
                             let target: &str = if ref_type == enum_name { enum_name }

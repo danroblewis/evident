@@ -203,6 +203,7 @@ fn expr_as_var<'ctx>(
         Expr::Identifier(name) => env.get(name).cloned(),
         Expr::Int(n)  => Some(Var::IntVar(Int::from_i64(ctx, *n))),
         Expr::Bool(b) => Some(Var::BoolVar(Bool::from_bool(ctx, *b))),
+        Expr::Real(f) => Some(Var::RealVar(real_from_f64(ctx, *f))),
         Expr::Str(s)  => Z3Str::from_str(ctx, s).ok().map(Var::StrVar),
         _ => None,
     }
