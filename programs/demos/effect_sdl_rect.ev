@@ -1,11 +1,11 @@
 -- programs/demos/effect_sdl_rect.ev — yellow rectangle outline on
--- a dark background, using stdlib/sdl/render.ev library claims.
+-- a dark background, using stdlib/sdl/render.ev.
 --
 --     evident effect-run programs/demos/effect_sdl_rect.ev --max-steps 1000
 --
--- The 4 line draws are packaged by the library's draw_rect_outline
--- claim into a single EffectList, so we only need ONE state for
--- "draw the rectangle" instead of Line1/Line2/Line3/Line4.
+-- Demonstrates positional library invocation + IVec2/Color records:
+--   set_draw_color(ren, Color(220, 40, 60, 255), out)
+--   draw_rect_outline(ren, IVec2(100, 100), IVec2(440, 280), out)
 
 import "stdlib/sdl/render.ev"
 
@@ -19,7 +19,7 @@ enum SDLState =
     BgColor(Int, Int, Int)
     BgClear(Int, Int, Int)
     FgColor(Int, Int, Int)
-    DrawRect(Int, Int, Int)             -- one state, draws all 4 sides
+    DrawRect(Int, Int, Int)             -- draws all 4 sides in one step
     Present(Int, Int, Int)
     Pumped(Int, Int, Int)
     -- Teardown
@@ -64,7 +64,7 @@ claim main
         AfterQuit                  ⇒ Done
         Done                       ⇒ Done
 
-    -- Top-level extract: renderer + window from whatever state we're in.
+    -- Renderer / window extracted from whatever state we're in.
     ren ∈ Int
     ren = match state
         BgColor(_, r, _)       ⇒ r
@@ -91,7 +91,7 @@ claim main
         DestroyW(w)            ⇒ w
         _                      ⇒ 0
 
-    -- Library-built effects.
+    -- Library-built effects. Positional calls; no mapsto needed.
     init_eff ∈ Effect
     init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
                        "SDL_Init", "i(i)",
@@ -108,26 +108,36 @@ claim main
                                 ArgCons(ArgInt(4), ArgNil)))))))
 
     create_renderer_eff ∈ Effect
-    create_renderer (window ↦ win, out ↦ create_renderer_eff)
+    create_renderer(win, create_renderer_eff)
+
+    -- Color constants. Inline Color(...) doesn't resolve as a
+    -- positional claim arg yet; bind to a name first.
+    bg ∈ Color
+    bg = Color(20, 20, 30, 255)
+    fg ∈ Color
+    fg = Color(240, 220, 80, 255)
 
     bg_color_eff ∈ Effect
-    set_draw_color (renderer ↦ ren, red ↦ 20, green ↦ 20, blue ↦ 30,
-                    alpha ↦ 255, out ↦ bg_color_eff)
+    set_draw_color(ren, bg, bg_color_eff)
 
     bg_clear_eff ∈ Effect
-    render_clear (renderer ↦ ren, out ↦ bg_clear_eff)
+    render_clear(ren, bg_clear_eff)
 
     fg_color_eff ∈ Effect
-    set_draw_color (renderer ↦ ren, red ↦ 240, green ↦ 220, blue ↦ 80,
-                    alpha ↦ 255, out ↦ fg_color_eff)
+    set_draw_color(ren, fg, fg_color_eff)
 
-    -- One library call → 4 RenderDrawLine effects in one EffectList.
+    -- Rectangle position and size as named IVec2s.
+    rect_pos ∈ IVec2
+    rect_pos = IVec2(100, 100)
+    rect_size ∈ IVec2
+    rect_size = IVec2(440, 280)
+
+    -- One library call → 4 lines packaged in one EffectList.
     rect_eff ∈ EffectList
-    draw_rect_outline (renderer ↦ ren, x ↦ 100, y ↦ 100, w ↦ 440, h ↦ 280,
-                       out ↦ rect_eff)
+    draw_rect_outline(ren, rect_pos, rect_size, rect_eff)
 
     present_eff ∈ Effect
-    render_present (renderer ↦ ren, out ↦ present_eff)
+    render_present(ren, present_eff)
 
     pump_eff ∈ Effect
     pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
@@ -139,7 +149,7 @@ claim main
                         ArgCons(ArgInt(33), ArgNil))
 
     destroy_renderer_eff ∈ Effect
-    destroy_renderer (renderer ↦ ren, out ↦ destroy_renderer_eff)
+    destroy_renderer(ren, destroy_renderer_eff)
 
     destroy_window_eff ∈ Effect
     destroy_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
@@ -159,7 +169,7 @@ claim main
         BgColor(_, _, _)           ⇒ EffCons(bg_color_eff, EffNil)
         BgClear(_, _, _)           ⇒ EffCons(bg_clear_eff, EffNil)
         FgColor(_, _, _)           ⇒ EffCons(fg_color_eff, EffNil)
-        DrawRect(_, _, _)          ⇒ rect_eff       -- already an EffectList
+        DrawRect(_, _, _)          ⇒ rect_eff
         Present(_, _, _)           ⇒ EffCons(present_eff,
                                        EffCons(pump_eff,
                                        EffCons(delay_eff, EffNil)))

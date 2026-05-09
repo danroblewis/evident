@@ -93,17 +93,19 @@ claim main
                                 ArgCons(ArgInt(4), ArgNil)))))))
 
     create_renderer_eff ∈ Effect
-    create_renderer (window ↦ win, out ↦ create_renderer_eff)
+    create_renderer(win, create_renderer_eff)
+
+    red ∈ Color
+    red = Color(220, 40, 60, 255)
 
     color_eff ∈ Effect
-    set_draw_color (renderer ↦ ren, red ↦ 220, green ↦ 40, blue ↦ 60,
-                    alpha ↦ 255, out ↦ color_eff)
+    set_draw_color(ren, red, color_eff)
 
     clear_eff ∈ Effect
-    render_clear (renderer ↦ ren, out ↦ clear_eff)
+    render_clear(ren, clear_eff)
 
     present_eff ∈ Effect
-    render_present (renderer ↦ ren, out ↦ present_eff)
+    render_present(ren, present_eff)
 
     pump_eff ∈ Effect
     pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
@@ -115,7 +117,7 @@ claim main
                         ArgCons(ArgInt(33), ArgNil))
 
     destroy_renderer_eff ∈ Effect
-    destroy_renderer (renderer ↦ ren, out ↦ destroy_renderer_eff)
+    destroy_renderer(ren, destroy_renderer_eff)
 
     destroy_window_eff ∈ Effect
     destroy_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
