@@ -1,0 +1,26 @@
+-- stdlib/shell.ev — run shell commands via libc system().
+--
+-- Wraps the cached LibCall effect so callers don't have to thread
+-- libSystem / `system` handles through state. One effect per shell
+-- invocation, regardless of how many times it's called — the
+-- runtime caches the lib + symbol resolution after the first use.
+
+import "stdlib/runtime.ev"
+
+-- Path to libSystem on macOS. Linux equivalent is "libc.so.6";
+-- pick at the call site or wrap in a per-platform shim.
+claim libsystem_path_macos(p ∈ String)
+    p = "/usr/lib/libSystem.dylib"
+
+-- Build a `LibCall` effect that runs `cmd` via libc system().
+-- Returns IntResult(exit_status) on the next step's last_results.
+claim shell_run(cmd ∈ String, e ∈ Effect)
+    e = LibCall("/usr/lib/libSystem.dylib", "system", "i(s)",
+                ArgCons(ArgStr(cmd), ArgNil))
+
+-- Convenience for a single Println followed by a shell command —
+-- but as a standalone EffectList builder. Most programs will
+-- compose shell_run themselves into their effects EffectList.
+claim shell_run_then_done(cmd ∈ String, effects ∈ EffectList)
+    effects = EffCons(LibCall("/usr/lib/libSystem.dylib", "system", "i(s)",
+                ArgCons(ArgStr(cmd), ArgNil)), EffNil)

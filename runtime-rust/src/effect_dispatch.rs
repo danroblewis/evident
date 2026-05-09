@@ -55,6 +55,11 @@ pub struct DispatchContext {
     pub stdout:   Box<dyn Write + Send>,
     pub start:    Instant,
     pub mode:     DispatchMode,
+    /// Cache for LibCall: `library_path → lib handle`. Populated on
+    /// first reference, reused on subsequent calls to the same lib.
+    pub lib_cache: std::collections::HashMap<String, u64>,
+    /// Cache for LibCall: `(lib handle, symbol name) → sym handle`.
+    pub sym_cache: std::collections::HashMap<(u64, String), u64>,
 }
 
 impl DispatchContext {
@@ -74,6 +79,8 @@ impl DispatchContext {
             stdin, stdout,
             start: Instant::now(),
             mode: DispatchMode::default(),
+            lib_cache: std::collections::HashMap::new(),
+            sym_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -223,6 +230,65 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                 DispatchMode::Replay { .. } => EffectResult::NoResult,
             }
         }
+        Effect::LibCall(lib_path, sym_name, sig, args) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                // Cached lib handle: reuse if the library was opened
+                // in any prior step; else dlopen and remember.
+                let lib_handle = match ctx.lib_cache.get(lib_path) {
+                    Some(h) => *h,
+                    None => match ffi::ffi_open(&ctx.registry, lib_path) {
+                        Ok(h)  => { ctx.lib_cache.insert(lib_path.clone(), h); h }
+                        Err(e) => return EffectResult::Error(e.0),
+                    },
+                };
+                // Cached symbol handle: keyed on (lib_handle, sym_name)
+                // so the same symbol resolved against different libs
+                // doesn't collide.
+                let key = (lib_handle, sym_name.clone());
+                let sym_handle = match ctx.sym_cache.get(&key) {
+                    Some(h) => *h,
+                    None => match ffi::ffi_lookup(&ctx.registry, lib_handle, sym_name) {
+                        Ok(h)  => { ctx.sym_cache.insert(key, h); h }
+                        Err(e) => return EffectResult::Error(e.0),
+                    },
+                };
+                // The actual call. Same arg-marshalling as FFICall.
+                let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
+                    EffectFfiArg::Int(n)    => FfiArg::Int(*n),
+                    EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
+                    EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
+                    EffectFfiArg::Real(r)   => FfiArg::Real(*r),
+                    EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+                }).collect();
+                match ffi::ffi_call(&ctx.registry, sym_handle, sig, &ffi_args) {
+                    Ok(FfiReturn::Void)      => EffectResult::NoResult,
+                    Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
+                    Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
+                    Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
+                    Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
+                    Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
+                    Err(e) => EffectResult::Error(e.0),
+                }
+            }
+            DispatchMode::Replay { calls, cursor, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let expected = &calls[*cursor];
+                if *sym_name != expected.symbol || *sig != expected.sig
+                   || !args_equal(args, &expected.args)
+                {
+                    return EffectResult::Error(format!(
+                        "replay mismatch at index {cursor}: LibCall {sym_name:?} vs expected {:?}",
+                        expected.symbol));
+                }
+                let r = expected.result.clone();
+                let _ = lib_path;
+                *cursor += 1;
+                r
+            }
+        },
     }
 }
 
@@ -422,6 +488,62 @@ mod tests {
         };
         match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
             EffectResult::Error(m) => assert!(m.contains("ran out"), "{}", m),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn libcall_caches_lib_and_sym() {
+        let mut ctx = ctx_with_input("");
+        let path = if cfg!(target_os = "macos") { "/usr/lib/libSystem.dylib" } else { "libc.so.6" };
+        // First call: cache miss for both lib and sym → populates both.
+        let r1 = dispatch_one(&mut ctx, &Effect::LibCall(
+            path.into(), "getpid".into(), "i()".into(), vec![],
+        ));
+        match r1 {
+            EffectResult::Int(pid) => assert_eq!(pid as u32, std::process::id()),
+            other => panic!("expected Int, got {other:?}"),
+        }
+        assert_eq!(ctx.lib_cache.len(), 1, "lib cache should have one entry");
+        assert_eq!(ctx.sym_cache.len(), 1, "sym cache should have one entry");
+
+        // Second call to same lib + sym: cache hit on both. Should
+        // still work and not re-dlopen / re-dlsym.
+        let next_id_before = ctx.lib_cache.values().copied().max().unwrap();
+        let r2 = dispatch_one(&mut ctx, &Effect::LibCall(
+            path.into(), "getpid".into(), "i()".into(), vec![],
+        ));
+        match r2 {
+            EffectResult::Int(_) => {}
+            other => panic!("expected Int, got {other:?}"),
+        }
+        let next_id_after = ctx.lib_cache.values().copied().max().unwrap();
+        assert_eq!(next_id_before, next_id_after,
+            "second call should not have allocated a new lib handle");
+    }
+
+    #[test]
+    fn libcall_with_string_arg() {
+        let mut ctx = ctx_with_input("");
+        let path = if cfg!(target_os = "macos") { "/usr/lib/libSystem.dylib" } else { "libc.so.6" };
+        let r = dispatch_one(&mut ctx, &Effect::LibCall(
+            path.into(), "strlen".into(), "i(s)".into(),
+            vec![EffectFfiArg::Str("hello world".into())],
+        ));
+        match r {
+            EffectResult::Int(n) => assert_eq!(n, 11),
+            other => panic!("expected Int(11), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn libcall_invalid_lib_returns_error() {
+        let mut ctx = ctx_with_input("");
+        let r = dispatch_one(&mut ctx, &Effect::LibCall(
+            "/nonexistent/lib".into(), "getpid".into(), "i()".into(), vec![],
+        ));
+        match r {
+            EffectResult::Error(_) => {}
             other => panic!("expected Error, got {other:?}"),
         }
     }

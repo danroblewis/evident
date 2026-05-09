@@ -549,6 +549,15 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
             )
         }
         "CloseHandle"  => { need_arity(variant, fields, 1)?; Effect::CloseHandle(decode_int(&fields[0])? as u64) }
+        "LibCall"      => {
+            need_arity(variant, fields, 4)?;
+            Effect::LibCall(
+                decode_str(&fields[0])?,
+                decode_str(&fields[1])?,
+                decode_str(&fields[2])?,
+                decode_arg_list(&fields[3])?,
+            )
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),

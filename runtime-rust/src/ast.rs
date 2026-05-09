@@ -263,6 +263,11 @@ pub enum Effect {
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),
     CloseHandle(u64),
+    /// Cached one-shot FFI call: `LibCall(library, symbol, signature, args)`.
+    /// The runtime lazily resolves and caches `library` + `symbol` so
+    /// repeated calls amortize dlopen/dlsym to once. See
+    /// `effect_dispatch::dispatch_one` for the cache implementation.
+    LibCall(String, String, String, Vec<EffectFfiArg>),
 }
 
 /// One argument to an FFICall effect. Distinct name from

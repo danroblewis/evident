@@ -41,10 +41,17 @@ enum Effect =
     ReadLine
     Time
     Exit(Int)
+    -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)
     FFICall(Int, String, ArgList)
     CloseHandle(Int)
+    -- Cached one-shot: LibCall(library_path, symbol, signature, args).
+    -- The runtime lazily dlopens `library_path` and dlsyms `symbol`
+    -- (caching both internally), then calls libffi with `args` per
+    -- `signature`. Use this when you don't want to thread library /
+    -- symbol handles through state.
+    LibCall(String, String, String, ArgList)
 
 enum EffectList =
     EffNil

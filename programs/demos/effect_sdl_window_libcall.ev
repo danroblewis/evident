@@ -1,0 +1,83 @@
+-- programs/demos/effect_sdl_window_libcall.ev — SDL window via LibCall.
+--
+-- Same behavior as effect_sdl_window.ev (open SDL window, hold ~2s
+-- with event pumping, tear down) but using the cached LibCall
+-- effect — the runtime caches the libSDL2 handle + SDL symbol
+-- handles after first use, so we don't thread them through state.
+--
+-- Result-capture across steps still requires a "wait one step"
+-- pattern when an effect's RESULT needs to flow into state, since
+-- step N's effects produce results visible only at step N+1.
+-- Specifically: SDL_CreateWindow → next step captures the window
+-- handle into HaveWindow(handle_out).
+--
+-- 11 states (vs 19 with raw FFIOpen+FFILookup+FFICall chains).
+
+import "stdlib/runtime.ev"
+
+enum SDLState =
+    Init                            -- emit SDL_Init
+    Step1                           -- SDL_Init returned; emit CreateWindow
+    Step2                           -- CreateWindow's handle is now in last_results
+    HaveWindow(Int)                 -- captured the window handle
+    Pumping(Int, Int)               -- emit pump+delay
+    Pumped(Int, Int)                -- check loop counter
+    DestroyWindow(Int)              -- emit destroy
+    AfterDestroy                    -- transition
+    Quit                            -- emit SDL_Quit
+    AfterQuit                       -- transition
+    Done
+
+claim main
+    state, state_next ∈ SDLState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    handle_out ∈ Int
+    handle_out = match last_results
+        ResCons(r, _) ⇒ match r
+            HandleResult(h) ⇒ h
+            _               ⇒ 0
+        _              ⇒ 0
+
+    state_next = match state
+        Init                 ⇒ Step1
+        Step1                ⇒ Step2
+        Step2                ⇒ HaveWindow(handle_out)
+        HaveWindow(win)      ⇒ Pumping(win, 60)
+        Pumping(win, n)      ⇒ Pumped(win, n)
+        Pumped(win, n)       ⇒ (n ≤ 1 ? DestroyWindow(win) : Pumping(win, n - 1))
+        DestroyWindow(_)     ⇒ AfterDestroy
+        AfterDestroy         ⇒ Quit
+        Quit                 ⇒ AfterQuit
+        AfterQuit            ⇒ Done
+        Done                 ⇒ Done
+
+    effects = match state
+        Init                 ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_Init", "i(i)",
+                                     ArgCons(ArgInt(32), ArgNil)), EffNil)
+        Step1                ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_CreateWindow", "p(siiiii)",
+                                     ArgCons(ArgStr("Evident SDL (LibCall)"),
+                                     ArgCons(ArgInt(100),
+                                     ArgCons(ArgInt(100),
+                                     ArgCons(ArgInt(640),
+                                     ArgCons(ArgInt(480),
+                                     ArgCons(ArgInt(4), ArgNil))))))), EffNil)
+        Step2                ⇒ EffNil
+        HaveWindow(_)        ⇒ EffNil
+        Pumping(_, _)        ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_PumpEvents", "v()", ArgNil),
+                                EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_Delay", "v(i)",
+                                     ArgCons(ArgInt(33), ArgNil)), EffNil))
+        Pumped(_, _)         ⇒ EffNil
+        DestroyWindow(win)   ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_DestroyWindow", "v(p)",
+                                     ArgCons(ArgHandle(win), ArgNil)), EffNil)
+        AfterDestroy         ⇒ EffNil
+        Quit                 ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                     "SDL_Quit", "v()", ArgNil), EffNil)
+        AfterQuit            ⇒ EffNil
+        Done                 ⇒ EffNil
