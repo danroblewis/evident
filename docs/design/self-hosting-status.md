@@ -155,6 +155,21 @@ Listed in order of estimated payoff. Each requires the decoder + a corresponding
 
 Total Rust removable: ~930 lines. Total Evident added: ~450 lines. Net: ~480 line reduction. Plus ~200 line decoder amortized across all migrations.
 
+> **2026-05-09 reality check.** When we actually went to migrate
+> bare-identifier-as-passthrough, the Rust code being replaced was
+> ~13 lines (one match arm in `inline.rs:227`), not the 40 estimated
+> above. Most of the other estimates above are likely also generous
+> — `parser.rs:try_parse_chained_membership` is 160 lines but only
+> ~17 are the desugar; the other 140 are lookahead-driven token
+> consumption that can't be moved post-parse without first inventing
+> a new placeholder AST node. The `exprs.rs` rows similarly cover
+> tightly coupled translator logic that doesn't separate cleanly
+> into "pure AST → AST". The honest takeaway: **most of the Rust
+> code is doing real work** (Z3 translation, solver state, type
+> dispatch), not pure AST normalization. Self-hosting compiler
+> passes is a reasonable goal in itself, but the LOC payoff per
+> migration is smaller than this table suggests.
+
 ## Migration recommendation (revised after decoder shipped)
 
 **`bare-identifier-as-passthrough`** is the recommended first
@@ -168,26 +183,51 @@ parser's job.
 `bare-identifier-as-passthrough` is already a post-parse
 transformation. Detect `BodyItem::Constraint(Expr::Identifier(name))`
 where `name` matches a known claim, treat as
-`BodyItem::Passthrough(name)`. Pure AST → AST rewrite, ~40 lines
-in `runtime-rust/src/translate/inline.rs`. Migration steps:
+`BodyItem::Passthrough(name)`. Pure AST → AST rewrite, ~13 lines
+(was estimated ~40) in `runtime-rust/src/translate/inline.rs`.
 
-1. Write `stdlib/passes/desugar_passthrough.ev`:
-   ```evident
-   claim desugar_passthrough_in_body
-       input  ∈ Program
-       output ∈ Program
-       -- Find any BIConstraint(EIdentifier(name)) where name is
-       -- a claim-name in input.schemas; replace with BIPassthrough(name).
-   ```
-2. Add `EvidentRuntime::desugar_with(pass_file, claim_name)` that
-   runs the pass and replaces the loaded Program with the decoded
-   output.
-3. Call `desugar_with("desugar_passthrough.ev", "desugar_passthrough_in_body")`
-   after `load_file` in the relevant code paths.
-4. Remove the bare-identifier-as-passthrough Rust code from
-   `inline.rs`.
-5. Verify all existing tests still pass — particularly the
-   bare-identifier-as-passthrough-using ones.
+### Status (2026-05-09): plumbing shipped (commit `af016fe`)
+
+What we built:
+
+  * `stdlib/passes/desugar_passthrough.ev` — `is_passthrough_at_index`
+    rule. Pinned-`target_idx` + body-only injection sidesteps the
+    sample-with-body API gap.
+  * `runtime-rust/src/commands/desugar.rs` —
+    `collect_passthrough_rewrites` (spins up an isolated runtime,
+    iterates each body index per user claim, queries the rule,
+    filters by known schemas) and `auto_apply_desugar` (mutates the
+    caller's runtime via `replace_body_item_in_claim`).
+  * Two new runtime methods:
+    `query_with_nth_claim_body_only_given` (extra `given` for the
+    body-only path) and `replace_body_item_in_claim` (mirrors
+    `add_membership_to_claim`'s dual-update of `self.schemas` and
+    `self.program.schemas`).
+  * Integration tests in `runtime-rust/tests/desugar_passthrough.rs`
+    proving the rewrite happens at the AST level + a negative case.
+
+What we deliberately did NOT do, and why:
+
+  * **Did not remove the Rust arm in `inline.rs:227`.** Removing it
+    would break `evident test`, `evident check`, and `evident lint`
+    on existing programs that use names-match composition
+    (`test_pass_*.ev`, `test_enums_*.ev`, `weekday_classify.ev`),
+    because none of those subcommands currently invoke the desugar
+    pipeline. To safely remove, the desugar must run inside
+    `load_file` (paid by every load, including unit tests using
+    `load_source`) OR be wired explicitly into all CLI subcommands.
+    Either path is more invasive than the proof-of-concept warranted.
+
+What this gives us going forward:
+
+  * The rails. Future migrations of similar shape (positional
+    `BIConstraint(Call)`, etc.) reuse the same machinery —
+    `query_with_nth_claim_body_only_given` + body-iteration loop +
+    `replace_body_item_in_claim`. The marginal cost of the next
+    desugar is the pass file (~30 lines) and a few lines of glue.
+  * A worked example and integration test pattern for "pure AST→AST
+    desugar via a self-hosted Evident pass" — the shape that the
+    other migration candidates above will use if pursued.
 
 The ORIGINAL recommendation (chained_membership) is preserved
 below for context.
