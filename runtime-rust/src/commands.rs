@@ -1,22 +1,13 @@
 //! CLI subcommand implementations. Each `cmd_<name>` lives in its
-//! own file under `commands/`; shared helpers (flag parsing, value
-//! formatting, runtime loading) live in `commands/common.rs`.
-//!
-//! Adding a new subcommand: create `commands/<name>.rs` with a
-//! `pub fn cmd_<name>(args: &[String]) -> ExitCode`, add `pub mod <name>;`
-//! below, and wire it into `main.rs`'s dispatch.
+//! own file under `commands/`; shared helpers in `commands/common.rs`.
 
 pub mod common;
-pub mod initial_state;
 
 pub mod check;
 pub mod desugar;
 pub mod effect_run;
-pub mod execute;
 pub mod infer_types;
 pub mod lint;
 pub mod query;
 pub mod sample;
 pub mod test;
-pub mod export_smt2;
-pub mod import_smt2;

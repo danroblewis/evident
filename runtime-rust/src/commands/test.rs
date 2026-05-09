@@ -21,8 +21,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use evident_runtime::ast::{AssertOp, BodyItem};
-use evident_runtime::trace_runner::{run_trace, TraceFailure};
+use evident_runtime::ast::BodyItem;
+// Trace tests removed in Phase 2 plugin removal — they relied on
+// the now-deleted trace_runner crate which depended on plugins.
+// Effect-driven trace testing is the future replacement; tracked in
+// docs/plans/01-ffi-effects/08-trace-shim.md (replay mode landed).
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::translate::preprocess_api::collect_referenced_names;
 use evident_runtime::pretty;
@@ -128,20 +131,14 @@ fn bold(on: bool, t: &str)   -> String { paint(on, BOLD, t) }
 #[derive(Debug)]
 enum TestKind {
     Schema { expected_sat: bool },
-    Trace,
 }
 
 #[derive(Debug)]
 enum FailDetail {
-    /// Schema sat_* test came back UNSAT. `core_indices` are positions
-    /// in the schema body that Z3 identified as the conflicting
-    /// subset (via assert_and_track + get_unsat_core); empty if Z3
-    /// couldn't pin one down (rare).
+    /// Schema sat_* test came back UNSAT.
     UnsatCore { core_indices: Vec<usize> },
-    /// Schema unsat_* test came back SAT. Bindings = the counterexample.
+    /// Schema unsat_* test came back SAT. Bindings = counterexample.
     SatCounterexample(HashMap<String, Value>),
-    /// Trace test: one entry per failing assertion across all steps.
-    Trace(Vec<TraceFailure>),
 }
 
 #[derive(Debug)]
@@ -246,25 +243,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
             }
         }
 
-        let base_dir = f.parent().unwrap_or_else(|| Path::new("."));
-        for t in &traces {
-            let t0 = Instant::now();
-            let r = run_trace(t, base_dir);
-            let outcome = if r.passed {
-                Outcome::Pass
-            } else {
-                Outcome::Fail(FailDetail::Trace(r.failures))
-            };
-            runs.push(TestRun {
-                file: f.clone(), name: format!("trace {}", t.name),
-                kind: TestKind::Trace,
-                outcome, elapsed_ms: t0.elapsed().as_millis() as u32,
-            });
-            if opts.format == Format::Human {
-                live_file_header(&opts, &mut prev_file, f);
-                live_emit(&opts, runs.last().unwrap());
-            }
-        }
+        // Trace tests removed (no plugin runner).
     }
 
     let elapsed_ms = started.elapsed().as_millis() as u32;
@@ -382,24 +361,6 @@ fn print_failure(run: &TestRun, opts: &Opts) {
         }
         Outcome::Fail(FailDetail::SatCounterexample(bindings)) => {
             print_counterexample(run, bindings, opts);
-        }
-        Outcome::Fail(FailDetail::Trace(failures)) => {
-            println!("    {}", red(oc, "trace failed"));
-            for fl in failures {
-                let op = match fl.op {
-                    AssertOp::Eq       => "=",
-                    AssertOp::Contains => "∋",
-                };
-                println!("      step {} {} {} {} {} {} {}",
-                    fl.step_index,
-                    dim(oc, &fl.kind),
-                    blue(oc, &fl.var),
-                    op,
-                    yellow(oc, &format!("{:?}", fl.expected)),
-                    dim(oc, "actual:"),
-                    yellow(oc, &format!("{:?}", fl.actual)),
-                );
-            }
         }
     }
 }
@@ -722,9 +683,6 @@ fn fail_summary(d: &FailDetail) -> String {
     match d {
         FailDetail::UnsatCore { .. }        => "expected SAT, got UNSAT".into(),
         FailDetail::SatCounterexample(_) => "expected UNSAT, got SAT".into(),
-        FailDetail::Trace(fls)          =>
-            format!("trace failed ({} assertion mismatch{})",
-                    fls.len(), if fls.len() == 1 { "" } else { "es" }),
     }
 }
 
@@ -802,17 +760,6 @@ fn junit_failure_body(d: &FailDetail) -> String {
             }
             s
         }
-        FailDetail::Trace(fls) => {
-            let mut s = String::new();
-            for fl in fls {
-                let op = match fl.op { AssertOp::Eq => "=", AssertOp::Contains => "∋" };
-                s.push_str(&format!(
-                    "step {} {}: {} {} {:?}  (actual: {:?})\n",
-                    fl.step_index, fl.kind, fl.var, op, fl.expected, fl.actual
-                ));
-            }
-            s
-        }
     }
 }
 
@@ -841,7 +788,6 @@ fn report_json(runs: &[TestRun], elapsed_ms: u32) {
         let kind = match r.kind {
             TestKind::Schema { expected_sat: true }  => "sat",
             TestKind::Schema { expected_sat: false } => "unsat",
-            TestKind::Trace                          => "trace",
         };
         let detail = match &r.outcome {
             Outcome::Pass        => "null".to_string(),
@@ -871,18 +817,6 @@ fn json_fail_detail(d: &FailDetail) -> String {
                 format!("{}: {}", json_str(k), json_value(&b[*k]))
             ).collect();
             format!(r#"{{ "kind": "counterexample", "bindings": {{ {} }} }}"#, pairs.join(", "))
-        }
-        FailDetail::Trace(fls) => {
-            let entries: Vec<String> = fls.iter().map(|fl| {
-                let op = match fl.op { AssertOp::Eq => "eq", AssertOp::Contains => "contains" };
-                format!(
-                    r#"{{ "step": {}, "kind": {}, "var": {}, "op": "{}", "expected": {}, "actual": {} }}"#,
-                    fl.step_index,
-                    json_str(&fl.kind), json_str(&fl.var), op,
-                    json_str(&fl.expected), json_str(&fl.actual),
-                )
-            }).collect();
-            format!(r#"{{ "kind": "trace", "failures": [{}] }}"#, entries.join(", "))
         }
     }
 }

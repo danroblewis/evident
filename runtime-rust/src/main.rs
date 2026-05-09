@@ -1,29 +1,13 @@
-//! `evident` — CLI for the Rust port of the Evident runtime.
-//! Mirrors `evident.py`'s subcommand shape so the two tools are
-//! interchangeable for everything the Rust runtime currently supports.
+//! `evident` — CLI for the Evident runtime.
 //!
 //! Subcommands:
-//!   query   <files…> <schema> [--given k=v …] [--json] [--infer-types]
+//!   query   <files…> <schema> [--given k=v …] [--json]
 //!   check   <files…>
-//!   sample  <files…> <schema> [-n N] [--given k=v …] [--json] [--infer-types]
+//!   sample  <files…> <schema> [-n N] [--given k=v …] [--json]
 //!   test    [path]
-//!   execute <file>          — run schema main as a constraint automaton
-//!                             (headless: stdin → solver → stdout, or SDL
-//!                              when SDLInput / SDLOutput / SDLWindow vars
-//!                              are declared in main)
-//!   infer-types <file> [--strict]   — print self-hosted type inferences
-//!   lint    <file>          — run self-hosted lint passes
-//!   export-smt2 <file> <claim>      — emit SMT-LIB v2
-//!   import-smt2 <file> [claim_name] — parse SMT-LIB v2 → Evident
-//!
-//! Parked behind plugin work (covered by the Python `evident.py` but
-//! not yet by this binary):
-//!   batch     — stdin ↔ Seq round-trip
-//!   repl      — interactive session
-//!
-//! Each subcommand's implementation lives in `src/commands/<name>.rs`.
-//! See `src/commands.rs` (entry) and `src/commands/common.rs` (shared
-//! flag parsing, value formatting, runtime loading).
+//!   effect-run <file>           — run an effect-driven program
+//!   infer-types <file> [--strict]
+//!   lint    <file>
 
 use std::process::ExitCode;
 
@@ -38,21 +22,13 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
     match args[0].as_str() {
-        "query"   => commands::query::cmd_query(&args[1..]),
-        "check"   => commands::check::cmd_check(&args[1..]),
-        "sample"  => commands::sample::cmd_sample(&args[1..]),
-        "test"    => commands::test::cmd_test(&args[1..]),
+        "query"       => commands::query::cmd_query(&args[1..]),
+        "check"       => commands::check::cmd_check(&args[1..]),
+        "sample"      => commands::sample::cmd_sample(&args[1..]),
+        "test"        => commands::test::cmd_test(&args[1..]),
+        "effect-run"  => commands::effect_run::cmd_effect_run(&args[1..]),
         "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "lint"        => commands::lint::cmd_lint(&args[1..]),
-        "execute" => commands::execute::cmd_execute(&args[1..]),
-        "effect-run" => commands::effect_run::cmd_effect_run(&args[1..]),
-        "export-smt2"      => commands::export_smt2::cmd_export_smt2(&args[1..]),
-        "import-smt2"      => commands::import_smt2::cmd_import_smt2(&args[1..]),
-        "batch" | "repl" => {
-            eprintln!("error: '{}' is not yet implemented in the Rust runtime.", args[0]);
-            eprintln!("       Use evident.py for these subcommands. See PROGRESS.md for status.");
-            ExitCode::from(2)
-        }
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);

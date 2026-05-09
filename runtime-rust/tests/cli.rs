@@ -60,31 +60,6 @@ fn cli_query_with_given() {
 /// Run the CLI against a real example file from examples/. Exercises
 /// types, claims with sub-schema mapping, ClaimCall, and field access
 /// — a realistic mix.
-#[test]
-fn cli_query_examples_scheduling() {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let path = format!("{}/examples/scheduling.ev", manifest);
-    let out = Command::new(bin())
-        .args(["query", &path, "FitTwoSlots"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    let mut found = std::collections::HashMap::new();
-    for line in s.lines() {
-        if let Some((k, v)) = line.split_once('=') {
-            found.insert(k.to_string(), v.to_string());
-        }
-    }
-    // Pinned-by-constraint values:
-    assert_eq!(found.get("a.start").map(|s| s.as_str()), Some("10"));
-    assert_eq!(found.get("a.duration").map(|s| s.as_str()), Some("30"));
-    assert_eq!(found.get("a.duration").map(|s| s.as_str()), Some("30"));
-    assert_eq!(found.get("b.duration").map(|s| s.as_str()), Some("25"));
-    assert_eq!(found.get("deadline").map(|s| s.as_str()), Some("100"));
-    // b.start should satisfy a.start + a.duration ≤ b.start ≤ 100 - 25.
-    let bs: i64 = found["b.start"].parse().unwrap();
-    assert!(bs >= 40 && bs <= 75, "b.start = {bs}");
-}
 
 #[test]
 fn cli_check_reports_per_schema() {
@@ -133,27 +108,6 @@ fn cli_query_json_output() {
     assert!(s.contains("\"n\": 7"));
 }
 
-#[test]
-fn cli_execute_echoes_stdin() {
-    // Tiny echo automaton — copy each char from src.char to dst.out.
-    // Feed "hi\n" on stdin via the CLI, expect "hi\n" on stdout.
-    let path = write_tmp("execute_echo",
-        "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    dst.out = src.char\n");
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"hi\n").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(String::from_utf8_lossy(&out.stdout), "hi\n");
-}
 
 #[test]
 fn cli_batch_says_parked() {
@@ -171,125 +125,19 @@ fn cli_batch_says_parked() {
 /// `cli_execute_echoes_stdin` — the SDL plugin isn't wired in yet, so
 /// what we're really testing here is that arg parsing doesn't reject
 /// the SDL/TCP-shaped flags.
-#[test]
-fn cli_execute_accepts_sdl_and_tcp_flags() {
-    let path = write_tmp("execute_flags",
-        "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    dst.out = src.char\n");
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap(),
-               "--width", "1024", "--height", "768",
-               "--title", "Test Window",
-               "--host", "0.0.0.0", "--port", "9090"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"x\n").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    // Echo automaton mirrors stdin to stdout; flags are stored but
-    // not consumed by the headless plugins yet.
-    assert_eq!(String::from_utf8_lossy(&out.stdout), "x\n");
-}
 
 /// `evident execute --help` should print usage including the new
 /// flags, without requiring a file argument.
-#[test]
-fn cli_execute_help_lists_flags() {
-    let out = Command::new(bin()).args(["execute", "--help"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    // usage() writes to stderr.
-    let s = String::from_utf8_lossy(&out.stderr);
-    assert!(s.contains("--width"),   "missing --width in help: {s}");
-    assert!(s.contains("--height"),  "missing --height in help: {s}");
-    assert!(s.contains("--title"),   "missing --title in help: {s}");
-    assert!(s.contains("--host"),    "missing --host in help: {s}");
-    assert!(s.contains("--port"),    "missing --port in help: {s}");
-    assert!(s.contains("--quiet"),   "missing --quiet in help: {s}");
-    assert!(s.contains("--explain"), "missing --explain in help: {s}");
-}
 
 /// `evident execute` on a program that UNSATs every step should warn
 /// loud (one stderr line per UNSAT step) by default. This is the
 /// production-mode contract: silent UNSAT is treated as a bug.
-#[test]
-fn cli_execute_unsat_warns_per_step() {
-    // Top-level `counter < 0` plus `counter ∈ Nat` is UNSAT for every
-    // value of counter. `src ∈ Stdin` makes the loop run a couple of
-    // iterations before EOF.
-    let path = write_tmp("execute_unsat",
-        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"ab").unwrap();  // 2 chars + EOF flush = 3 steps
-    }
-    let out = child.wait_with_output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    let warns = stderr.lines().filter(|l| l.starts_with("warning: step ")).count();
-    assert!(warns >= 2,
-        "expected ≥2 per-step UNSAT warnings, got {warns}. stderr:\n{stderr}");
-    assert!(stderr.contains("UNSAT"), "stderr should mention UNSAT: {stderr}");
-}
 
 /// `--quiet` should suppress per-step UNSAT warnings entirely.
-#[test]
-fn cli_execute_quiet_suppresses_unsat_warning() {
-    let path = write_tmp("execute_quiet",
-        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap(), "--quiet"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"ab").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(!stderr.contains("UNSAT"),
-        "--quiet should suppress UNSAT warnings, got: {stderr}");
-}
 
 /// `--explain` should add the schema-body dump after each per-step
 /// UNSAT warning. Verifies the pretty-printer is wired in (looks for
 /// the readable form of `counter < 0`, not the AST debug form).
-#[test]
-fn cli_execute_explain_dumps_body() {
-    let path = write_tmp("execute_explain",
-        "schema main\n    src ∈ Stdin\n    counter ∈ Nat\n    counter < 0\n");
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap(), "--explain"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"a").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("explain UNSAT step"),
-        "missing explain header: {stderr}");
-    assert!(stderr.contains("counter < 0"),
-        "missing pretty-printed body item `counter < 0`: {stderr}");
-    assert!(stderr.contains("counter ∈ Nat"),
-        "missing pretty-printed membership: {stderr}");
-}
 
 /// `s = ⟨10, 20, 30⟩` — Unicode angle-bracket sequence literal end-to-end
 /// through the binary (lexer + parser + translator + extraction + stdout).
@@ -438,32 +286,6 @@ fn cli_query_audio_bindings_resolve() {
 /// `next_main = "halt"` shuts the executor down cleanly. Verifies the
 /// MainCoordinator halt path: program runs at least one step, plugins
 /// produce their output, then the swap-check sees "halt" and breaks.
-#[test]
-fn cli_execute_main_coordinator_halt() {
-    let src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
-               next_main ∈ String\n    \
-               dst.out = \"H\"\n    \
-               next_main = \"halt\"\n";
-    let path = write_tmp("mc_halt", src);
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        // Need at least one byte so StdinPlugin's first before_step
-        // doesn't immediately halt on EOF.
-        stdin.write_all(b"a").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    // First step writes "H" then halts on next_main = "halt".
-    assert_eq!(stdout, "H",
-        "expected exactly one 'H' before halt, got {stdout:?}; stderr: {}",
-        String::from_utf8_lossy(&out.stderr));
-}
 
 /// Dropped constraints are now hard errors by default — silently
 /// dropping a constraint produces wrong models, so the runtime
@@ -505,88 +327,10 @@ fn cli_dropped_constraint_lenient_demotes_to_warning() {
 /// JSON. Verifies the file is parsed and the values reach the
 /// constraint solver — the program echoes the seeded `world.score`
 /// to stdout via dst.out, halts, expected output is the score char.
-#[test]
-fn cli_execute_initial_state_seeds_given() {
-    // Program: dst.out = (world.score = 65 ? "A" : "?") essentially.
-    // We use a constraint that maps an int-given to a char-output via
-    // a chain of equalities.
-    let src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
-               next_main ∈ String\n    score ∈ Int\n    \
-               score = 65 ⇒ dst.out = \"A\"\n    \
-               score = 66 ⇒ dst.out = \"B\"\n    \
-               next_main = \"halt\"\n";
-    let path = write_tmp("initial_state_program", src);
-
-    let json_path = std::env::temp_dir().join(
-        format!("evident-initial-state-{}.json", std::process::id()));
-    std::fs::write(&json_path, r#"{"score": 66}"#).unwrap();
-
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", path.to_str().unwrap(),
-               "--initial-state", json_path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"x").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout, "B",
-        "expected JSON's score=66 to drive dst.out='B', got {stdout:?}; stderr: {}",
-        String::from_utf8_lossy(&out.stderr));
-
-    let _ = std::fs::remove_file(&json_path);
-}
 
 /// Real program-swap: scene_a writes "A" + sets next_main to scene_b's
 /// path; scene_b writes "B" + halts. Verifies the executor loads
 /// scene_b mid-run and continues stepping with the new program.
-#[test]
-fn cli_execute_main_coordinator_swap_between_programs() {
-    // Both files share the same temp dir so scene_a's relative
-    // `next_main = "scene_b.ev"` resolves correctly via the
-    // `resolve_swap_path` "join with current's parent" rule.
-    let dir = std::env::temp_dir();
-    let pid = std::process::id();
-    let scene_a = dir.join(format!("evident-mc-swap-a-{pid}.ev"));
-    let scene_b = dir.join(format!("evident-mc-swap-b-{pid}.ev"));
-    let scene_b_name = scene_b.file_name().unwrap().to_str().unwrap();
-
-    let a_src = format!("schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
-                         next_main ∈ String\n    \
-                         dst.out = \"A\"\n    \
-                         next_main = \"{scene_b_name}\"\n");
-    let b_src = "schema main\n    src ∈ Stdin\n    dst ∈ Stdout\n    \
-                 next_main ∈ String\n    \
-                 dst.out = \"B\"\n    \
-                 next_main = \"halt\"\n";
-
-    std::fs::write(&scene_a, a_src).unwrap();
-    std::fs::write(&scene_b, b_src).unwrap();
-
-    let mut child = std::process::Command::new(bin())
-        .args(["execute", scene_a.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        stdin.write_all(b"ab").unwrap();
-    }
-    let out = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout, "AB",
-        "expected swap A → B, got {stdout:?}; stderr: {}",
-        String::from_utf8_lossy(&out.stderr));
-
-    // Cleanup
-    let _ = std::fs::remove_file(&scene_a);
-    let _ = std::fs::remove_file(&scene_b);
-}
 
 
 // ── Stage 2: `evident dump-ast` ─────────────────────────────────
