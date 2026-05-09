@@ -1,0 +1,41 @@
+-- Conformance tests for the Cons/Nil enum SeqLit shorthand.
+--
+-- `var = ⟨a, b, c⟩` where `var` is enum-typed and the enum has a
+-- 0-arity variant + a 2-arity self-recursive variant lowers to
+-- `Cons(a, Cons(b, Cons(c, Nil)))`. EffectList, ResultList,
+-- ArgList, and any user LinkedList qualify.
+
+import "stdlib/runtime.ev"
+
+claim sat_efflist_two_items
+    effs ∈ EffectList
+    effs = ⟨Println("a"), Println("b")⟩
+    effs = EffCons(Println("a"), EffCons(Println("b"), EffNil))
+
+claim sat_efflist_one_item
+    effs ∈ EffectList
+    effs = ⟨Time⟩
+    effs = EffCons(Time, EffNil)
+
+claim sat_efflist_empty
+    effs ∈ EffectList
+    effs = ⟨⟩
+    effs = EffNil
+
+claim sat_resultlist_via_seqlit
+    rs ∈ ResultList
+    rs = ⟨IntResult(7), StringResult("ok")⟩
+    rs = ResCons(IntResult(7), ResCons(StringResult("ok"), ResNil))
+
+claim sat_arglist_via_seqlit
+    al ∈ ArgList
+    al = ⟨ArgInt(1), ArgInt(2), ArgInt(3)⟩
+    al = ArgCons(ArgInt(1), ArgCons(ArgInt(2), ArgCons(ArgInt(3), ArgNil)))
+
+-- User-defined Cons/Nil enum
+enum IntList = INil | ICons(Int, IntList)
+
+claim sat_user_intlist
+    nums ∈ IntList
+    nums = ⟨10, 20, 30⟩
+    nums = ICons(10, ICons(20, ICons(30, INil)))

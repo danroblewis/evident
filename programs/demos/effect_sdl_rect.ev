@@ -161,23 +161,21 @@ claim main
                        "SDL_Quit", "v()", ArgNil)
 
     effects = match state
-        Init                       ⇒ EffCons(init_eff, EffNil)
-        AfterInit                  ⇒ EffCons(create_window_eff, EffNil)
-        AwaitWindow                ⇒ EffNil
-        AfterCreateWindow(_)       ⇒ EffCons(create_renderer_eff, EffNil)
-        AwaitRenderer(_)           ⇒ EffNil
-        BgColor(_, _, _)           ⇒ EffCons(bg_color_eff, EffNil)
-        BgClear(_, _, _)           ⇒ EffCons(bg_clear_eff, EffNil)
-        FgColor(_, _, _)           ⇒ EffCons(fg_color_eff, EffNil)
+        Init                       ⇒ ⟨init_eff⟩
+        AfterInit                  ⇒ ⟨create_window_eff⟩
+        AwaitWindow                ⇒ ⟨⟩
+        AfterCreateWindow(_)       ⇒ ⟨create_renderer_eff⟩
+        AwaitRenderer(_)           ⇒ ⟨⟩
+        BgColor(_, _, _)           ⇒ ⟨bg_color_eff⟩
+        BgClear(_, _, _)           ⇒ ⟨bg_clear_eff⟩
+        FgColor(_, _, _)           ⇒ ⟨fg_color_eff⟩
         DrawRect(_, _, _)          ⇒ rect_eff
-        Present(_, _, _)           ⇒ EffCons(present_eff,
-                                       EffCons(pump_eff,
-                                       EffCons(delay_eff, EffNil)))
-        Pumped(_, _, _)            ⇒ EffNil
-        DestroyR(_, _)             ⇒ EffCons(destroy_renderer_eff, EffNil)
-        AfterDestroyR(_)           ⇒ EffNil
-        DestroyW(_)                ⇒ EffCons(destroy_window_eff, EffNil)
-        AfterDestroyW              ⇒ EffNil
-        Quit                       ⇒ EffCons(quit_eff, EffNil)
-        AfterQuit                  ⇒ EffNil
-        Done                       ⇒ EffNil
+        Present(_, _, _)           ⇒ ⟨present_eff, pump_eff, delay_eff⟩
+        Pumped(_, _, _)            ⇒ ⟨⟩
+        DestroyR(_, _)             ⇒ ⟨destroy_renderer_eff⟩
+        AfterDestroyR(_)           ⇒ ⟨⟩
+        DestroyW(_)                ⇒ ⟨destroy_window_eff⟩
+        AfterDestroyW              ⇒ ⟨⟩
+        Quit                       ⇒ ⟨quit_eff⟩
+        AfterQuit                  ⇒ ⟨⟩
+        Done                       ⇒ ⟨⟩

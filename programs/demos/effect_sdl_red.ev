@@ -129,20 +129,18 @@ claim main
                        "SDL_Quit", "v()", ArgNil)
 
     effects = match state
-        Init                          ⇒ EffCons(init_eff, EffNil)
-        AfterInit                     ⇒ EffCons(create_window_eff, EffNil)
-        AwaitWindow                   ⇒ EffNil
-        AfterCreateWindow(_)          ⇒ EffCons(create_renderer_eff, EffNil)
-        AwaitRenderer(_)              ⇒ EffNil
-        SetColor(_, _, _)             ⇒ EffCons(color_eff, EffNil)
-        Cleared(_, _, _)              ⇒ EffCons(clear_eff, EffNil)
-        Presented(_, _, _)            ⇒ EffCons(present_eff,
-                                          EffCons(pump_eff,
-                                          EffCons(delay_eff, EffNil)))
-        DestroyR(_, _)                ⇒ EffCons(destroy_renderer_eff, EffNil)
-        AfterDestroyR(_)              ⇒ EffNil
-        DestroyW(_)                   ⇒ EffCons(destroy_window_eff, EffNil)
-        AfterDestroyW                 ⇒ EffNil
-        Quit                          ⇒ EffCons(quit_eff, EffNil)
-        AfterQuit                     ⇒ EffNil
-        Done                          ⇒ EffNil
+        Init                          ⇒ ⟨init_eff⟩
+        AfterInit                     ⇒ ⟨create_window_eff⟩
+        AwaitWindow                   ⇒ ⟨⟩
+        AfterCreateWindow(_)          ⇒ ⟨create_renderer_eff⟩
+        AwaitRenderer(_)              ⇒ ⟨⟩
+        SetColor(_, _, _)             ⇒ ⟨color_eff⟩
+        Cleared(_, _, _)              ⇒ ⟨clear_eff⟩
+        Presented(_, _, _)            ⇒ ⟨present_eff, pump_eff, delay_eff⟩
+        DestroyR(_, _)                ⇒ ⟨destroy_renderer_eff⟩
+        AfterDestroyR(_)              ⇒ ⟨⟩
+        DestroyW(_)                   ⇒ ⟨destroy_window_eff⟩
+        AfterDestroyW                 ⇒ ⟨⟩
+        Quit                          ⇒ ⟨quit_eff⟩
+        AfterQuit                     ⇒ ⟨⟩
+        Done                          ⇒ ⟨⟩

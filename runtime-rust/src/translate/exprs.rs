@@ -65,6 +65,31 @@ fn with_active_enums<R>(f: impl FnOnce(Option<&EnumRegistry>) -> R) -> R {
     f(opt)
 }
 
+thread_local! {
+    /// Currently expected enum type for SeqLit-as-Cons-chain lowering
+    /// inside enum-typed contexts. Set by `translate_bool`'s Eq path
+    /// when the LHS is enum-typed; read by `resolve_enum_ast`'s
+    /// SeqLit arm. Holds (enum_name, dt).
+    static TARGET_ENUM_HINT: std::cell::RefCell<Option<(String, &'static DatatypeSort<'static>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `f` with `target` as the current SeqLit-target hint. Restores
+/// the previous value on return so nested calls compose.
+fn with_target_enum_hint<R>(
+    target: Option<(String, &'static DatatypeSort<'static>)>,
+    f: impl FnOnce() -> R,
+) -> R {
+    let prev = TARGET_ENUM_HINT.with(|c| c.replace(target));
+    let r = f();
+    TARGET_ENUM_HINT.with(|c| { *c.borrow_mut() = prev; });
+    r
+}
+
+fn current_target_enum() -> Option<(String, &'static DatatypeSort<'static>)> {
+    TARGET_ENUM_HINT.with(|c| c.borrow().clone())
+}
+
 /// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
 /// bindings to install in the inner env when entering a ClaimCall.
 ///
@@ -211,8 +236,52 @@ pub(super) fn resolve_enum_ast<'ctx>(
                 |body, e| resolve_enum_ast(body, ctx, e, schemas))?;
             fold_arms_to_ite(compiled)
         }
+        // ⟨a, b, c⟩ as a Cons-chain over a hinted enum (set by
+        // translate_bool's Eq path when the LHS is enum-typed).
+        // Hint flows through Match arms via the body translator.
+        Expr::SeqLit(items) => {
+            let (enum_name, dt) = current_target_enum()?;
+            build_cons_chain(items, &enum_name, dt, ctx, env, schemas)
+        }
         _ => None,
     }
+}
+
+/// Build `Cons(items[0], Cons(items[1], ..., Nil))` for a hinted
+/// Cons/Nil-shaped enum. Returns the resulting Datatype value.
+fn build_cons_chain<'ctx>(
+    items: &[Expr],
+    enum_name: &str,
+    dt: &'static DatatypeSort<'static>,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<z3::ast::Datatype<'ctx>> {
+    let (nil_idx, cons_idx, elem_type) = with_active_enums(|enums_opt| {
+        let enums = enums_opt?;
+        let by_name = enums.by_name.borrow();
+        let (_, decl_variants) = by_name.get(enum_name)?;
+        let nil_idx = decl_variants.iter().position(|v| v.fields.is_empty())?;
+        let cons_idx = decl_variants.iter().position(|v|
+            v.fields.len() == 2 && v.fields[1].type_name == enum_name)?;
+        let elem_type = decl_variants[cons_idx].fields[0].type_name.clone();
+        Some((nil_idx, cons_idx, elem_type))
+    })?;
+
+    let mut acc = dt.variants[nil_idx].constructor.apply(&[]).as_datatype()?;
+    for item in items.iter().rev() {
+        let elem_dyn: z3::ast::Dynamic<'ctx> = match elem_type.as_str() {
+            "Int" | "Nat" | "Pos" => translate_int(item, ctx, env)?.into(),
+            "Bool"                => translate_bool(item, ctx, env, schemas)?.into(),
+            "String"              => translate_str(item, ctx, env)?.into(),
+            "Real"                => translate_real(item, ctx, env)?.into(),
+            _                     => resolve_enum_ast(item, ctx, env, schemas)?.into(),
+        };
+        acc = dt.variants[cons_idx].constructor
+            .apply(&[&elem_dyn, &acc])
+            .as_datatype()?;
+    }
+    Some(acc)
 }
 
 /// Resolve a (possibly-nested) field access chain against a
@@ -858,6 +927,35 @@ fn collect_record_refs<'ctx>(
     }
 }
 
+/// Handle `enum_var = ⟨a, b, c⟩` where `enum_var` is a Cons/Nil-shaped
+/// enum (one variant with 0 fields = "Nil", one variant with 2 fields
+/// where the second field's declared type matches the enum itself =
+/// "Cons"). `EffectList`, `ResultList`, `ArgList`, user-defined
+/// `LinkedList`, etc. all qualify. The literal is lowered to nested
+/// constructor calls: `Cons(a, Cons(b, Cons(c, Nil)))`.
+///
+/// `⟨⟩` (empty) lowers to just the Nil constructor.
+///
+/// Returns None if the LHS isn't an enum-typed Identifier, the RHS
+/// isn't a SeqLit, or the enum lacks the Nil/Cons shape.
+fn translate_cons_chain_eq<'ctx>(
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
+    let items = match rhs { Expr::SeqLit(items) => items, _ => return None };
+    let lhs_name = match lhs { Expr::Identifier(n) => n, _ => return None };
+    let var = env.get(lhs_name)?;
+    let (lhs_ast, enum_name, dt) = match var {
+        Var::EnumVar { ast, enum_name, dt } => (ast.clone(), enum_name.clone(), *dt),
+        _ => return None,
+    };
+    let acc = build_cons_chain(items, &enum_name, dt, ctx, env, schemas)?;
+    Some(lhs_ast._eq(&acc))
+}
+
 /// Handle `seq_var = ⟨e1, e2, …⟩` (sequence-literal assignment).
 ///
 /// Returns the conjunction `len == items.len() ∧ ∀i: arr[i] == translated(e_i)`
@@ -1399,6 +1497,23 @@ pub(super) fn translate_bool<'ctx>(
             }
             // Eq/Neq work over Bool, Int, or String. Try in that order.
             BinOp::Eq | BinOp::Neq => {
+                // Cons/Nil-shaped enum SeqLit: `effs = ⟨a, b, c⟩` where
+                // `effs` is e.g. EffectList (any enum with a 0-arity
+                // variant + a 2-arity self-recursive variant).
+                if let Some(b) = translate_cons_chain_eq(lhs, rhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let Some(b) = translate_cons_chain_eq(rhs, lhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
                 // First: handle `seq_var = ⟨e1, e2, …⟩` (sequence literal
                 // assignment). This pins both length and per-element values
                 // and lives outside the Bool/Int/Str scalar paths because
@@ -1477,10 +1592,24 @@ pub(super) fn translate_bool<'ctx>(
                 // both EnumValues). Both sides must reference enum-
                 // typed identifiers in env. Different enums on the two
                 // sides aren't allowed — caller has a type error.
-                if let (Some(l), Some(r)) =
-                    (resolve_enum_ast(lhs, ctx, env, schemas),
-                     resolve_enum_ast(rhs, ctx, env, schemas))
-                {
+                //
+                // If LHS is an enum-typed Identifier, set it as the
+                // SeqLit-target hint so any ⟨…⟩ inside RHS (including
+                // inside match arm bodies) lowers to the correct
+                // Cons/Nil chain.
+                let target_hint = match lhs.as_ref() {
+                    Expr::Identifier(n) => env.get(n).and_then(|v| match v {
+                        Var::EnumVar { enum_name, dt, .. } => Some((enum_name.clone(), *dt)),
+                        _ => None,
+                    }),
+                    _ => None,
+                };
+                let pair = with_target_enum_hint(target_hint.clone(), || {
+                    let l = resolve_enum_ast(lhs, ctx, env, schemas);
+                    let r = resolve_enum_ast(rhs, ctx, env, schemas);
+                    (l, r)
+                });
+                if let (Some(l), Some(r)) = pair {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
                         BinOp::Neq => l._eq(&r).not(),
