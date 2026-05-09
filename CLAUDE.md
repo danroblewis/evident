@@ -7,6 +7,23 @@ constraints over sets, and a Z3 SMT solver finds satisfying assignments.  The
 central abstraction is `schema`: a named set defined by membership conditions.
 Querying a schema asks whether a satisfying assignment exists.
 
+## Where to read first
+
+Before writing code in this repo, check whether one of these guides covers
+your task:
+
+| If you're … | Read |
+|---|---|
+| Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
+| Writing or extending an FFI wrapper library (`stdlib/sdl/`, `stdlib/audio/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
+| Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
+| Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
+| Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
+
+The two `docs/guide/*` docs were written specifically to spare future-you
+the painful debug sessions that produced them. If you're about to write a
+state machine or an FFI binding, **read those first**.
+
 ## Language Definitions
 
 | Thing | Where defined |
