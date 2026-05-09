@@ -165,6 +165,7 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         // per-step solves. Skipped under --strict.
         if !strict {
             let path_str = path.to_string_lossy().to_string();
+            super::desugar::auto_apply_desugar(&mut rt, &[path_str.clone()]);
             super::infer_types::auto_apply_inferences(&mut rt, &[path_str]);
         }
         Ok(rt)

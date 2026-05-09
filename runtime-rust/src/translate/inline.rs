@@ -1,17 +1,16 @@
 //! `inline_body_items` — the recursive constraint-translation walker.
 //! Handles `Membership` (declare-if-new), `Constraint` (translate +
-//! assert), `Passthrough` (`..ClaimName`), bare-identifier-as-passthrough
-//! (`Constraint(Identifier(name))` whose name is a known claim), and
-//! `ClaimCall` (with mappings + per-call fresh Z3 names for the
-//! claim's unmapped internals).
+//! assert), `Passthrough` (`..ClaimName`), and `ClaimCall` (with
+//! mappings + per-call fresh Z3 names for the claim's unmapped
+//! internals).
 //!
-//! Note on bare-identifier-as-passthrough: a self-hosted desugar pass
-//! (`stdlib/passes/desugar_passthrough.ev` + `commands/desugar.rs`)
-//! can rewrite the bare form to an explicit `Passthrough` AST node
-//! before this walker runs. Either path produces the same Z3
-//! constraints. The Rust arm below remains the authoritative
-//! handler — the desugar pass is currently opt-in proof-of-concept
-//! plumbing, not wired into all CLI subcommands.
+//! Bare-identifier-as-passthrough (`Constraint(Identifier(name))`
+//! where `name` is a known claim) is handled BEFORE this walker
+//! runs by a self-hosted desugar pass —
+//! `stdlib/passes/desugar_passthrough.ev` paired with
+//! `commands/desugar.rs::auto_apply_desugar`, wired into every CLI
+//! subcommand. By the time the AST arrives here, the rewrite has
+//! already turned the bare form into an explicit `Passthrough` node.
 
 use std::collections::{HashMap, HashSet};
 use z3::{Context, Solver};
@@ -228,19 +227,14 @@ fn inline_body_items_guarded(
                     }
                 }
             }
-            // Bare-identifier-as-passthrough: `Constraint(Identifier(name))`
-            // whose name matches a known claim is treated as `..ClaimName`.
-            // Falls through to the regular Constraint arm if the name
-            // isn't a claim (e.g. a Bool variable named like a claim).
-            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
-                if visited.contains(name) { continue; }
-                let Some(claim) = schemas.get(name) else { continue };
-                visited.insert(name.clone());
-                inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
-                );
-                visited.remove(name);
-            }
+            // Bare-identifier-as-passthrough handling moved to the
+            // self-hosted desugar pass (`stdlib/passes/desugar_passthrough.ev`
+            // + `commands/desugar.rs::auto_apply_desugar`). By the time
+            // any constraint arrives here, the rewrite has already turned
+            // `Constraint(Identifier(name))` (when `name` is a known
+            // claim) into `Passthrough(name)`. Bare-identifier
+            // constraints whose name does NOT match a claim fall through
+            // to the regular Constraint arm below, same as before.
 
             // Positional claim invocation: `Constraint(Call(name, args))`
             // whose `name` matches a known claim is treated as a

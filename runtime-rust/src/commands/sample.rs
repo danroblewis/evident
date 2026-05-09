@@ -31,6 +31,7 @@ pub fn cmd_sample(args: &[String]) -> ExitCode {
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
     if !strict {
+        super::desugar::auto_apply_desugar(&mut rt, &files);
         super::infer_types::auto_apply_inferences(&mut rt, &files);
     }
 

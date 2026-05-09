@@ -41,6 +41,8 @@ pub fn cmd_query(args: &[String]) -> ExitCode {
     // bodies as a Membership. From here on the query proceeds
     // normally.
     if !strict {
+        // Desugar runs first so inference sees the canonical AST.
+        super::desugar::auto_apply_desugar(&mut rt, &files);
         super::infer_types::auto_apply_inferences(&mut rt, &files);
     }
 

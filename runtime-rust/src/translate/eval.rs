@@ -160,23 +160,10 @@ pub fn build_cache(
                     }
                 }
             }
-            // Bare-identifier names-match passthrough: a `BodyItem::Constraint(
-            // Identifier(name))` whose `name` is a known claim/type behaves
-            // exactly like `..ClaimName`. The parser leaves bare idents as
-            // Constraint(Identifier(...)) because it can't disambiguate at
-            // parse time (the same shape might be a Bool variable). We
-            // resolve here, where `schemas` is in scope.
-            BodyItem::Constraint(Expr::Identifier(name)) => {
-                if let Some(claim) = schemas.get(name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Membership { name, type_name, .. } = sub {
-                            if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
-                            }
-                        }
-                    }
-                }
-            }
+            // (Bare-identifier-as-passthrough is desugared upstream by
+            // stdlib/passes/desugar_passthrough.ev; by the time we
+            // walk body items here, those constraints are already
+            // BodyItem::Passthrough nodes handled above.)
             _ => {}
         }
     }
@@ -498,21 +485,8 @@ pub fn evaluate(
                 // they're registered into the runtime's schemas table at
                 // load time so other items can reference them.
             }
-            // Bare-identifier names-match passthrough (see build_cache for
-            // the rationale): a `Constraint(Identifier(name))` whose name
-            // is a known claim/type is treated as `..ClaimName`. Adds any
-            // of the claim's own variables that aren't already in env.
-            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
-                if let Some(claim) = schemas.get(name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Membership { name, type_name, .. } = sub {
-                            if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
-                            }
-                        }
-                    }
-                }
-            }
+            // (Bare-identifier-as-passthrough desugared upstream — see
+            // the matching note in build_cache above.)
             BodyItem::Constraint(_) => {}
         }
     }
@@ -810,17 +784,8 @@ pub fn evaluate_with_core(
                     }
                 }
             }
-            BodyItem::Constraint(Expr::Identifier(name)) if schemas.contains_key(name) => {
-                if let Some(claim) = schemas.get(name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Membership { name, type_name, .. } = sub {
-                            if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
-                            }
-                        }
-                    }
-                }
-            }
+            // (Bare-identifier-as-passthrough desugared upstream — see
+            // build_cache notes.)
             _ => {}
         }
     }

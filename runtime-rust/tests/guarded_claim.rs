@@ -40,7 +40,7 @@ fn guarded_claim_constraints_vacuous_when_false() {
 #[test]
 fn unguarded_invocation_would_conflict() {
     let mut rt = EvidentRuntime::new();
-    let src = "claim Init\n    n ∈ Int\n    n = 42\nschema S\n    n ∈ Int\n    Init\n    n = 99\n";
+    let src = "claim Init\n    n ∈ Int\n    n = 42\nschema S\n    n ∈ Int\n    ..Init\n    n = 99\n";
     rt.load_source(src).unwrap();
     let r = rt.query_free("S").unwrap();
     assert!(!r.satisfied, "unguarded Init pins n=42, conflicting with n=99");

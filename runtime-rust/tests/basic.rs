@@ -772,18 +772,19 @@ fn nested_composite_shared_across_siblings() {
     assert_eq!(color.get("r"), Some(&Value::Int(128)));
 }
 
-/// Bare claim names in a body act as a names-match passthrough — same
-/// as `..ClaimName`. The Python runtime always allowed this; the Rust
-/// runtime previously required the explicit `..` prefix. Resolution
-/// happens at translate time (the parser leaves bare idents as
-/// `Constraint(Identifier(...))` because it can't tell at parse time
-/// whether a bare ident names a claim or a Bool variable).
+/// `..ClaimName` (explicit passthrough) composes a claim's body into
+/// the parent. This used to be testable as a bare `ClaimName` constraint
+/// too, but bare-ident → passthrough is now a CLI-level desugar pass
+/// (`stdlib/passes/desugar_passthrough.ev` + `commands/desugar.rs`)
+/// that doesn't run on direct `load_source`. The bare-name case is
+/// covered end-to-end in `tests/desugar_passthrough.rs`; this test keeps
+/// the explicit-form coverage.
 #[test]
-fn bare_claim_name_is_passthrough() {
+fn passthrough_composes_claim_body() {
     let mut rt = EvidentRuntime::new();
     rt.load_source(
         "claim is_positive\n    n ∈ Nat\n    n > 0\n\
-         schema S\n    n ∈ Nat\n    is_positive\n    n < 10\n"
+         schema S\n    n ∈ Nat\n    ..is_positive\n    n < 10\n"
     ).unwrap();
     let r = rt.query_free("S").unwrap();
     assert!(r.satisfied);
@@ -792,10 +793,12 @@ fn bare_claim_name_is_passthrough() {
     } else { panic!(); }
 }
 
-/// Negative case: a bare ident that is NOT a known claim still routes
-/// through the existing bool-bare-ident translation. `flag` here is a
-/// Bool variable; naming it as a body item asserts `flag = true`. Used
-/// to guard against the translate-time resolver swallowing bool vars.
+/// Negative case: a bare ident that is NOT a known claim routes through
+/// the existing bool-bare-ident translation. `flag` here is a Bool
+/// variable; naming it as a body item asserts `flag = true`. The CLI
+/// desugar pass also leaves this shape alone (the "is name a known
+/// schema" filter rejects it), so the behavior is the same with or
+/// without that pass running.
 #[test]
 fn bare_bool_var_still_works_after_passthrough_change() {
     let mut rt = EvidentRuntime::new();

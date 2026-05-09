@@ -56,6 +56,8 @@ pub fn cmd_lint(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
+    super::desugar::auto_apply_desugar(&mut rt, &[user_path.clone()]);
+
     let n_claims = rt.user_claim_count();
     let mut findings = 0usize;
     for claim_idx in 0..n_claims {
