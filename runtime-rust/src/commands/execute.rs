@@ -130,9 +130,16 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         eprintln!("execute: need <file.ev>");
         return ExitCode::from(2);
     }
+    // --strict opts out of the inference pre-pass (default behavior
+    // is to apply self-hosted inference automatically before the
+    // executor starts running steps). Strip before file/flag parsing.
+    let strict = args.iter().any(|a| a == "--strict");
+    let stripped: Vec<String> = args.iter()
+        .filter(|a| a.as_str() != "--strict")
+        .cloned().collect();
     // First positional is the file; everything after is flags.
-    let path = &args[0];
-    let opts = match parse_execute_flags(&args[1..]) {
+    let path = &stripped[0];
+    let opts = match parse_execute_flags(&stripped[1..]) {
         Ok(o) => o,
         Err(e) => { eprintln!("execute: {e}"); return ExitCode::from(2); }
     };
@@ -152,6 +159,14 @@ pub fn cmd_execute(args: &[String]) -> ExitCode {
         rt.load_source(audio_plugin::STDLIB_SDL_AUDIO_EV).map_err(|e| e.to_string())?;
         rt.load_source(STDLIB_MAIN_COORDINATOR_EV).map_err(|e| e.to_string())?;
         rt.load_file(path).map_err(|e| e.to_string())?;
+        // Inference pre-pass: graft any unambiguously-inferred
+        // Memberships into the loaded claim bodies so undeclared
+        // user vars don't drop constraints during the executor's
+        // per-step solves. Skipped under --strict.
+        if !strict {
+            let path_str = path.to_string_lossy().to_string();
+            super::infer_types::auto_apply_inferences(&mut rt, &[path_str]);
+        }
         Ok(rt)
     };
 

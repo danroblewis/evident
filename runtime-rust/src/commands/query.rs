@@ -11,10 +11,13 @@ use super::common::{
 };
 
 pub fn cmd_query(args: &[String]) -> ExitCode {
-    // Strip --infer-types before the standard flag parser sees it.
-    let infer_types = args.iter().any(|a| a == "--infer-types");
+    // --strict: skip the inference pre-pass. Default behavior is
+    // to apply self-hosted inference automatically. Strip both
+    // recognized flags before the standard parser sees them.
+    let strict = args.iter().any(|a| a == "--strict");
     let stripped: Vec<String> = args.iter()
-        .filter(|a| a.as_str() != "--infer-types").cloned().collect();
+        .filter(|a| a.as_str() != "--strict")
+        .cloned().collect();
     let (files_and_schema, flag_args) = split_files_and_flags(&stripped);
     if files_and_schema.len() < 2 {
         eprintln!("query: need <files…> <schema>");
@@ -31,35 +34,14 @@ pub fn cmd_query(args: &[String]) -> ExitCode {
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
 
-    // --infer-types: run the self-hosted inference pipeline (in a
-    // separate runtime, so the inference passes don't pollute this
-    // query's schema list), then graft each unambiguous inference
-    // into this runtime's claim bodies as a Membership. From here
-    // on the query proceeds normally — Z3 sees the user's body
-    // augmented with the inferred declarations.
-    if infer_types {
-        match super::infer_types::collect_inferences(&files) {
-            Ok(all) => {
-                let unambiguous = super::infer_types::unambiguous_inferences(&all);
-                let mut applied = 0;
-                for inf in &unambiguous {
-                    match rt.add_membership_to_claim(
-                        &inf.claim_name, &inf.var, &inf.type_name,
-                    ) {
-                        Ok(true)  => { applied += 1; }
-                        Ok(false) => { /* already declared, skip */ }
-                        Err(e)    => eprintln!("warning: couldn't add Membership: {e}"),
-                    }
-                }
-                if applied > 0 {
-                    eprintln!("--infer-types: added {applied} inferred Membership(s)");
-                }
-            }
-            Err(e) => {
-                eprintln!("warning: --infer-types pipeline failed: {e}");
-                eprintln!("(continuing without inferences)");
-            }
-        }
+    // Inference is on by default; --strict skips it. The pre-pass
+    // runs the self-hosted rules against the user's source (in a
+    // separate runtime so the pass schemas don't pollute), then
+    // grafts each unambiguous inference into this runtime's claim
+    // bodies as a Membership. From here on the query proceeds
+    // normally.
+    if !strict {
+        super::infer_types::auto_apply_inferences(&mut rt, &files);
     }
 
     let r = match rt.query(&schema, &flags.given) {

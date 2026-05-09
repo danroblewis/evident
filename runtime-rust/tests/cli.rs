@@ -1265,7 +1265,7 @@ fn cli_query_infer_types_succeeds_for_undeclared_vars() {
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin())
         .current_dir(repo_root)
-        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .args(["query", path.to_str().unwrap(), "t"])
         .output().unwrap();
     assert!(out.status.success(),
         "query with --infer-types should succeed; stderr: {}",
@@ -1280,18 +1280,18 @@ fn cli_query_infer_types_succeeds_for_undeclared_vars() {
 
 #[test]
 fn cli_query_without_infer_types_fails_for_undeclared_vars() {
-    // Same source — without --infer-types, the constraint `msg = "hello"`
-    // can't translate (no type for msg), so the query errors.
+    // Same source — under --strict, no inference fires and the
+    // constraint `msg = "hello"` can't translate (no type for msg).
     let path = write_tmp("query_no_infer",
         "claim t\n    msg = \"hello\"\n");
     let manifest = env!("CARGO_MANIFEST_DIR");
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin())
         .current_dir(repo_root)
-        .args(["query", path.to_str().unwrap(), "t"])
+        .args(["query", "--strict", path.to_str().unwrap(), "t"])
         .output().unwrap();
     assert!(!out.status.success(),
-        "without --infer-types, undeclared vars should fail the query");
+        "under --strict, undeclared vars should fail the query");
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1303,10 +1303,10 @@ fn cli_query_infer_types_announces_added_memberships() {
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin())
         .current_dir(repo_root)
-        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .args(["query", path.to_str().unwrap(), "t"])
         .output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("--infer-types: added"),
+    assert!(stderr.contains("inference: added"),
         "expected announce message on stderr; got: {stderr}");
     let _ = std::fs::remove_file(&path);
 }
@@ -1322,7 +1322,7 @@ fn cli_query_infer_types_skips_already_declared_vars() {
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin())
         .current_dir(repo_root)
-        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .args(["query", path.to_str().unwrap(), "t"])
         .output().unwrap();
     assert!(out.status.success());
     let s = String::from_utf8_lossy(&out.stdout);
@@ -1342,7 +1342,7 @@ fn cli_query_infer_types_skips_ambiguous_vars() {
     let repo_root = std::path::Path::new(manifest).parent().unwrap();
     let out = Command::new(bin())
         .current_dir(repo_root)
-        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .args(["query", path.to_str().unwrap(), "t"])
         .output().unwrap();
     assert!(out.status.success(),
         "ambiguous + already-declared shouldn't break the query; \

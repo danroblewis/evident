@@ -11,7 +11,11 @@ use super::common::{
 };
 
 pub fn cmd_sample(args: &[String]) -> ExitCode {
-    let (files_and_schema, flag_args) = split_files_and_flags(args);
+    let strict = args.iter().any(|a| a == "--strict");
+    let stripped: Vec<String> = args.iter()
+        .filter(|a| a.as_str() != "--strict")
+        .cloned().collect();
+    let (files_and_schema, flag_args) = split_files_and_flags(&stripped);
     if files_and_schema.len() < 2 {
         eprintln!("sample: need <files…> <schema>");
         return ExitCode::from(2);
@@ -22,10 +26,13 @@ pub fn cmd_sample(args: &[String]) -> ExitCode {
         Ok(f) => f,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
     };
-    let rt = match load_runtime(&files) {
+    let mut rt = match load_runtime(&files) {
         Ok(r) => r,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
+    if !strict {
+        super::infer_types::auto_apply_inferences(&mut rt, &files);
+    }
 
     // Real blocking-clause sample loop: solver.push(), assert givens,
     // loop check + extract + assert ¬(scalar bindings), pop. Returns

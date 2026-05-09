@@ -136,6 +136,45 @@ pub fn collect_inferences(user_files: &[String])
     Ok(out)
 }
 
+/// Convenience for the `query`/`sample`/`execute` paths: run the
+/// inference pipeline against `user_files`, filter to unambiguous
+/// `(claim, var)` keys, and apply each as a Membership to `rt`.
+/// Returns the count of memberships actually added (skipping ones
+/// the user already declared). On any failure, prints a warning
+/// to stderr and returns 0 — non-fatal so the caller's main flow
+/// continues even if inference machinery is broken or files are
+/// missing.
+///
+/// Quietness: nothing printed when 0 inferences are applied;
+/// otherwise one stderr line `inference: added N Membership(s)`.
+pub fn auto_apply_inferences(
+    rt: &mut EvidentRuntime,
+    user_files: &[String],
+) -> usize {
+    let inferences = match collect_inferences(user_files) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("warning: inference pipeline failed: {e}");
+            eprintln!("(continuing without inferences; pass --strict to suppress this message)");
+            return 0;
+        }
+    };
+    let unambiguous = unambiguous_inferences(&inferences);
+    let mut applied = 0usize;
+    for inf in &unambiguous {
+        match rt.add_membership_to_claim(&inf.claim_name, &inf.var, &inf.type_name) {
+            Ok(true)  => { applied += 1; }
+            Ok(false) => { /* user already declared, skip silently */ }
+            Err(e) => eprintln!("warning: couldn't add Membership for `{}` in `{}`: {e}",
+                                inf.var, inf.claim_name),
+        }
+    }
+    if applied > 0 {
+        eprintln!("inference: added {applied} Membership(s)");
+    }
+    applied
+}
+
 /// Filter `inferences` to those that are unambiguous —
 /// `(claim_name, var)` keys mapped to exactly one distinct type.
 /// Discards conflicts; useful for callers that want to apply
