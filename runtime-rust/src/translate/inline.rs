@@ -4,6 +4,14 @@
 //! (`Constraint(Identifier(name))` whose name is a known claim), and
 //! `ClaimCall` (with mappings + per-call fresh Z3 names for the
 //! claim's unmapped internals).
+//!
+//! Note on bare-identifier-as-passthrough: a self-hosted desugar pass
+//! (`stdlib/passes/desugar_passthrough.ev` + `commands/desugar.rs`)
+//! can rewrite the bare form to an explicit `Passthrough` AST node
+//! before this walker runs. Either path produces the same Z3
+//! constraints. The Rust arm below remains the authoritative
+//! handler — the desugar pass is currently opt-in proof-of-concept
+//! plumbing, not wired into all CLI subcommands.
 
 use std::collections::{HashMap, HashSet};
 use z3::{Context, Solver};

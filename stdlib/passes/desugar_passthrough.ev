@@ -1,0 +1,42 @@
+-- stdlib/passes/desugar_passthrough.ev
+--
+-- Self-hosted desugar pass: detect bare-identifier-as-passthrough.
+--
+-- Input shape (injected by the runtime, same convention as
+-- iter_types.ev):
+--   * `program  ∈ Program` pinned to the user's full program.
+--   * `body     ∈ Seq(BodyItem)` pinned to one user claim's body.
+--   * `body_len ∈ Nat` pinned to that body's length.
+--
+-- The runtime calls this rule once per body index of each user
+-- claim, with `target_idx` pinned to the index and `target_name`
+-- left free. SAT means body[target_idx] is a bare-identifier
+-- constraint; the model binds `target_name` to the identifier's
+-- text. The runtime then checks whether that name matches a known
+-- schema and (if so) replaces the body item with `BIPassthrough(name)`.
+--
+-- The "is a known schema" filter stays in Rust — iterating over
+-- `program.schemas` (a LinkedList) from Evident would need
+-- recursion that we don't yet have. The structural shape check
+-- (`body[i] = BIConstraint(EIdentifier(_))`) IS the part this
+-- pass owns — and it's the part that's repeated identically across
+-- this and any future single-arm desugar (positional ClaimCall,
+-- BIConstraint(Call(name, args)) → BIClaimCall, etc.).
+--
+-- Why pin-and-loop rather than a single existential + sampling?
+-- Sampling-with-body isn't an existing API path; pin-and-loop
+-- reuses `query_with_nth_claim_body_only` (cheap, body-only
+-- injection, no Program walk).
+
+import "stdlib/ast.ev"
+
+-- ── Detect a bare-identifier constraint at a specific index ──────
+
+claim is_passthrough_at_index
+    program     ∈ Program
+    body        ∈ Seq(BodyItem)
+    body_len    ∈ Nat
+    target_idx  ∈ Nat
+    target_name ∈ String
+
+    body[target_idx] = BIConstraint(EIdentifier(target_name))

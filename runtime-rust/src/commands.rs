@@ -10,6 +10,7 @@ pub mod common;
 pub mod initial_state;
 
 pub mod check;
+pub mod desugar;
 pub mod execute;
 pub mod infer_types;
 pub mod lint;

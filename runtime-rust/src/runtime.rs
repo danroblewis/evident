@@ -881,6 +881,62 @@ impl EvidentRuntime {
         Ok(Some(QueryResult { satisfied: r.satisfied, bindings: r.bindings }))
     }
 
+    /// Body-only query variant that accepts an extra `given` map for
+    /// caller-pinned variables (e.g. `target_idx → 3`). Same cheap
+    /// empty-Program injection as `query_with_nth_claim_body_only`.
+    /// Used by the desugar pipeline to ask "is body[i] of shape X?"
+    /// one index at a time.
+    pub fn query_with_nth_claim_body_only_given(
+        &self,
+        claim_name: &str,
+        body_var: &str,
+        claim_idx: usize,
+        extra_given: HashMap<String, Value>,
+    ) -> Result<Option<QueryResult>, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        let user = self.user_program();
+        let Some(target_claim) = user.schemas.get(claim_idx) else {
+            return Ok(None);
+        };
+        let body_items = &target_claim.body;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let mut given: HashMap<String, Value> = extra_given;
+        given.insert("body_len".to_string(), Value::Int(body_items.len() as i64));
+        let empty_prog = self.encode_empty_program_value()
+            .map_err(|e| RuntimeError::Parse(format!("encode empty program: {e}")))?;
+        let r = crate::translate::evaluate_with_program_and_body(
+            schema, &given, &self.schemas, self.z3_ctx,
+            &self.datatypes, &self.enums, arith,
+            "program", empty_prog,
+            body_var, body_items,
+        );
+        Ok(Some(QueryResult { satisfied: r.satisfied, bindings: r.bindings }))
+    }
+
+    /// Replace `body[body_idx]` of the named claim with `new_item`.
+    /// Mirrors `add_membership_to_claim`'s dual-update pattern so
+    /// both the schemas lookup and the encoder see the rewrite.
+    pub fn replace_body_item_in_claim(
+        &mut self,
+        claim_name: &str,
+        body_idx: usize,
+        new_item: crate::ast::BodyItem,
+    ) -> Result<bool, RuntimeError> {
+        let schema = self.schemas.get_mut(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        if body_idx >= schema.body.len() { return Ok(false); }
+        schema.body[body_idx] = new_item.clone();
+        for s in &mut self.program.schemas {
+            if s.name == claim_name && body_idx < s.body.len() {
+                s.body[body_idx] = new_item.clone();
+            }
+        }
+        self.cache.borrow_mut().clear();
+        Ok(true)
+    }
+
     /// Number of claims the user has loaded (after
     /// `mark_system_loads_complete`). Used by callers iterating over
     /// claims with `query_with_program_and_nth_claim_body`.
@@ -892,6 +948,12 @@ impl EvidentRuntime {
     /// label per-claim inference output.
     pub fn user_claim_name(&self, idx: usize) -> Option<String> {
         self.user_program().schemas.get(idx).map(|s| s.name.clone())
+    }
+
+    /// Body length of the n-th user claim. Used by the desugar
+    /// pipeline to bound the index loop over `body[i]` queries.
+    pub fn user_claim_body_len(&self, idx: usize) -> Option<usize> {
+        self.user_program().schemas.get(idx).map(|s| s.body.len())
     }
 
     /// Indices into `user_program().schemas` for claims directly
