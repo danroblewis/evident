@@ -1,0 +1,170 @@
+-- programs/demos/effect_sdl_rect.ev — clear to dark, draw a yellow
+-- rectangle outline using 4 line draws.
+--
+--     evident effect-run programs/demos/effect_sdl_rect.ev --max-steps 400
+--
+-- The outline is at (100,100)–(540,380), drawn with 4
+-- SDL_RenderDrawLine calls per frame:
+--   top:    (100,100) → (540,100)
+--   right:  (540,100) → (540,380)
+--   bottom: (540,380) → (100,380)
+--   left:   (100,380) → (100,100)
+--
+-- Each frame: clear (dark gray), set color (yellow), draw 4 lines,
+-- present, pump, delay. Repeats 60 times for ~2s of visibility.
+
+import "stdlib/runtime.ev"
+
+enum SDLState =
+    Init
+    AfterInit
+    AwaitWindow
+    AfterCreateWindow(Int)
+    AwaitRenderer(Int)
+    -- Per-frame stages: (window, renderer, frames_left)
+    BgColor(Int, Int, Int)
+    BgClear(Int, Int, Int)
+    FgColor(Int, Int, Int)
+    Line1(Int, Int, Int)
+    Line2(Int, Int, Int)
+    Line3(Int, Int, Int)
+    Line4(Int, Int, Int)
+    Present(Int, Int, Int)
+    Pumped(Int, Int, Int)
+    -- Teardown
+    DestroyRenderer(Int, Int)
+    AfterDestroyRenderer(Int)
+    DestroyWindow(Int)
+    AfterDestroyWindow
+    Quit
+    AfterQuit
+    Done
+
+claim main
+    state, state_next ∈ SDLState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    handle_out ∈ Int
+    handle_out = match last_results
+        ResCons(r, _) ⇒ match r
+            HandleResult(h) ⇒ h
+            _               ⇒ 0
+        _              ⇒ 0
+
+    state_next = match state
+        Init                       ⇒ AfterInit
+        AfterInit                  ⇒ AwaitWindow
+        AwaitWindow                ⇒ AfterCreateWindow(handle_out)
+        AfterCreateWindow(w)       ⇒ AwaitRenderer(w)
+        AwaitRenderer(w)           ⇒ BgColor(w, handle_out, 60)
+        BgColor(w, r, n)           ⇒ BgClear(w, r, n)
+        BgClear(w, r, n)           ⇒ FgColor(w, r, n)
+        FgColor(w, r, n)           ⇒ Line1(w, r, n)
+        Line1(w, r, n)             ⇒ Line2(w, r, n)
+        Line2(w, r, n)             ⇒ Line3(w, r, n)
+        Line3(w, r, n)             ⇒ Line4(w, r, n)
+        Line4(w, r, n)             ⇒ Present(w, r, n)
+        Present(w, r, n)           ⇒ Pumped(w, r, n)
+        Pumped(w, r, n)            ⇒ (n ≤ 1 ? DestroyRenderer(w, r)
+                                            : BgColor(w, r, n - 1))
+        DestroyRenderer(w, _)      ⇒ AfterDestroyRenderer(w)
+        AfterDestroyRenderer(w)    ⇒ DestroyWindow(w)
+        DestroyWindow(_)           ⇒ AfterDestroyWindow
+        AfterDestroyWindow         ⇒ Quit
+        Quit                       ⇒ AfterQuit
+        AfterQuit                  ⇒ Done
+        Done                       ⇒ Done
+
+    effects = match state
+        Init                       ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_Init", "i(i)",
+                                        ArgCons(ArgInt(32), ArgNil)), EffNil)
+        AfterInit                  ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_CreateWindow", "p(siiiii)",
+                                        ArgCons(ArgStr("Evident SDL — Yellow Rect"),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(640),
+                                        ArgCons(ArgInt(480),
+                                        ArgCons(ArgInt(4), ArgNil))))))), EffNil)
+        AwaitWindow                ⇒ EffNil
+        AfterCreateWindow(w)       ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_CreateRenderer", "p(pii)",
+                                        ArgCons(ArgHandle(w),
+                                        ArgCons(ArgInt(0 - 1),
+                                        ArgCons(ArgInt(0), ArgNil)))), EffNil)
+        AwaitRenderer(_)           ⇒ EffNil
+        -- Background: dark gray
+        BgColor(_, r, _)           ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_SetRenderDrawColor", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(20),
+                                        ArgCons(ArgInt(20),
+                                        ArgCons(ArgInt(30),
+                                        ArgCons(ArgInt(255), ArgNil)))))), EffNil)
+        BgClear(_, r, _)           ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderClear", "i(p)",
+                                        ArgCons(ArgHandle(r), ArgNil)), EffNil)
+        -- Foreground: yellow
+        FgColor(_, r, _)           ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_SetRenderDrawColor", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(240),
+                                        ArgCons(ArgInt(220),
+                                        ArgCons(ArgInt(80),
+                                        ArgCons(ArgInt(255), ArgNil)))))), EffNil)
+        -- Top: (100,100) → (540,100)
+        Line1(_, r, _)             ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderDrawLine", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(540),
+                                        ArgCons(ArgInt(100), ArgNil)))))), EffNil)
+        -- Right: (540,100) → (540,380)
+        Line2(_, r, _)             ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderDrawLine", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(540),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(540),
+                                        ArgCons(ArgInt(380), ArgNil)))))), EffNil)
+        -- Bottom: (540,380) → (100,380)
+        Line3(_, r, _)             ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderDrawLine", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(540),
+                                        ArgCons(ArgInt(380),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(380), ArgNil)))))), EffNil)
+        -- Left: (100,380) → (100,100)
+        Line4(_, r, _)             ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderDrawLine", "i(piiii)",
+                                        ArgCons(ArgHandle(r),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(380),
+                                        ArgCons(ArgInt(100),
+                                        ArgCons(ArgInt(100), ArgNil)))))), EffNil)
+        -- Present + pump + delay (one frame done)
+        Present(_, r, _)           ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_RenderPresent", "v(p)",
+                                        ArgCons(ArgHandle(r), ArgNil)),
+                                   EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_PumpEvents", "v()", ArgNil),
+                                   EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_Delay", "v(i)",
+                                        ArgCons(ArgInt(33), ArgNil)), EffNil)))
+        Pumped(_, _, _)            ⇒ EffNil
+        DestroyRenderer(_, r)      ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_DestroyRenderer", "v(p)",
+                                        ArgCons(ArgHandle(r), ArgNil)), EffNil)
+        AfterDestroyRenderer(_)    ⇒ EffNil
+        DestroyWindow(w)           ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_DestroyWindow", "v(p)",
+                                        ArgCons(ArgHandle(w), ArgNil)), EffNil)
+        AfterDestroyWindow         ⇒ EffNil
+        Quit                       ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_Quit", "v()", ArgNil), EffNil)
+        AfterQuit                  ⇒ EffNil
+        Done                       ⇒ EffNil
