@@ -663,6 +663,59 @@ pub fn evaluate_with_extra_assertion(
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
 
+/// Like `evaluate_with_extra_assertion` but pins multiple enum-typed
+/// variables in one solve. Used by the effect loop to pin both
+/// `state` and `last_results` per step.
+pub fn evaluate_with_extra_assertions(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    arith_solver: u32,
+    pins: &[(&str, z3::ast::Datatype<'static>)],
+) -> EvalResult {
+    let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
+    let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
+
+    for item in &schema.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+        }
+    }
+
+    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
+
+    let mut visited: HashSet<String> = HashSet::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+
+    for (var_name, value) in pins {
+        if let Some(Var::EnumVar { ast, .. }) = env.get(*var_name) {
+            solver.assert(&ast._eq(value));
+        } else {
+            eprintln!("warning: pin: variable `{}` is not enum-typed in `{}`",
+                      var_name, schema.name);
+        }
+    }
+
+    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let mut bindings = HashMap::new();
+    if satisfied {
+        if let Some(model) = solver.get_model() {
+            for (name, var) in env.iter() {
+                extract_binding(name, var, &model, ctx, &mut bindings, enums);
+            }
+        }
+    }
+    EvalResult { satisfied, bindings, unsat_core_items: None }
+}
+
 /// Stage 5.5: like `evaluate_with_extra_assertion` but injects two
 /// related values — the encoded `Program` datatype AND a flat
 /// `Seq(BodyItem)` for the user's first claim's body. Lets a

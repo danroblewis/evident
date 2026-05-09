@@ -4,6 +4,8 @@
 //! Evident-language gotchas worth knowing.
 
 pub mod ast;
+pub mod effect_dispatch;
+pub mod effect_loop;
 pub mod ffi;
 pub mod lexer;
 pub mod parser;

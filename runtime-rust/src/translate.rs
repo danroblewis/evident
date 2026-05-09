@@ -20,19 +20,25 @@ pub mod ast_decoder {
     //! Public surface of the Z3-model → Rust-AST decoder. Mirrors
     //! the encoder's shape; used by self-hosted desugar passes
     //! that need to read back a transformed Program.
-    pub use super::decode_ast::{decode_program, DecodeError};
+    pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
+                                  decode_ffi_arg, decode_arg_list,
+                                  decode_result, decode_result_list,
+                                  DecodeError};
 }
 
 pub mod ast_encoder {
     //! Public surface of the AST → Z3 datatype encoder. Used by
     //! `EvidentRuntime::encode_program_value` and the
     //! `evident dump-ast` CLI.
-    pub use super::encode_ast::{encode_program, encode_body_items_into_seq, EncodeError};
+    pub use super::encode_ast::{encode_program, encode_body_items_into_seq,
+                                 encode_effect_result, encode_effect_result_list,
+                                 EncodeError};
 }
 
 // External API. Anything used by another module in this crate
 // (`runtime`, `executor`, `main`) is re-exported here.
 pub use eval::{build_cache, evaluate, evaluate_with_core, evaluate_with_extra_assertion,
+                evaluate_with_extra_assertions,
                 evaluate_with_program_and_body,
                 run_cached, sample_cached_inner};
 pub use preprocess::{structural_names, structural_signature, StructuralSignature};

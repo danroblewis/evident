@@ -1049,6 +1049,52 @@ impl EvidentRuntime {
     /// program (like the inference pipeline) encode once and reuse,
     /// avoiding the recursive-AST walk on every rule. Saves ~70-85%
     /// of the per-rule cost on big programs.
+    /// Like `query_with_program_value` but pins multiple enum-typed
+    /// variables in one solve. Used by the effect loop to pin both
+    /// `state` and `last_results` per step.
+    pub fn query_with_pinned_datatypes(
+        &self,
+        claim_name: &str,
+        pins: &[(&str, z3::ast::Datatype<'static>)],
+    ) -> Result<QueryResult, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let r = crate::translate::evaluate_with_extra_assertions(
+            schema,
+            &HashMap::new(),
+            &self.schemas,
+            self.z3_ctx,
+            &self.datatypes,
+            Some(&self.enums),
+            arith,
+            pins,
+        );
+        Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
+    }
+
+    /// Read-only access to the EnumRegistry — used by the effect
+    /// loop to look up DatatypeSorts when re-encoding state values
+    /// for the next step's pin.
+    pub fn enums_registry(&self) -> &crate::translate::EnumRegistry {
+        &self.enums
+    }
+
+    /// Encode a list of EffectResults into a Z3 datatype value
+    /// matching stdlib/runtime.ev's `ResultList`. Used by the
+    /// effect loop to pin `last_results` for the next step's solve.
+    pub fn encode_effect_result_list(
+        &self,
+        items: &[crate::ast::EffectResult],
+    ) -> Result<z3::ast::Datatype<'static>,
+                crate::translate::ast_encoder::EncodeError>
+    {
+        crate::translate::ast_encoder::encode_effect_result_list(
+            items, self.z3_ctx, &self.enums,
+        )
+    }
+
     pub fn query_with_program_value(
         &self,
         claim_name: &str,

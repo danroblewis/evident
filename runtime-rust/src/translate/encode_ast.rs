@@ -582,3 +582,54 @@ pub fn encode_body_items_into_seq<'ctx>(
     }
     Ok(asserts)
 }
+
+// ── stdlib/runtime.ev: Effect / Result encoders ────────────────
+
+pub fn encode_effect_result<'ctx>(
+    r: &crate::ast::EffectResult,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    use crate::ast::EffectResult;
+    match r {
+        EffectResult::NoResult    => apply(enums, "Result", "NoResult", &[]),
+        EffectResult::Int(n)      => {
+            let v = z3_int(ctx, *n);
+            apply(enums, "Result", "IntResult", &[&v])
+        }
+        EffectResult::Str(s)      => {
+            let v = z3_str(ctx, s);
+            apply(enums, "Result", "StringResult", &[&v])
+        }
+        EffectResult::Bool(b)     => {
+            let v = z3_bool(ctx, *b);
+            apply(enums, "Result", "BoolResult", &[&v])
+        }
+        EffectResult::Real(_)     => {
+            // Real round-trips need real_from_f64 helper; defer
+            // until any actual program needs Real results.
+            apply(enums, "Result", "NoResult", &[])
+        }
+        EffectResult::Handle(h)   => {
+            let v = z3_int(ctx, *h as i64);
+            apply(enums, "Result", "HandleResult", &[&v])
+        }
+        EffectResult::Error(s)    => {
+            let v = z3_str(ctx, s);
+            apply(enums, "Result", "ErrorResult", &[&v])
+        }
+    }
+}
+
+pub fn encode_effect_result_list<'ctx>(
+    items: &[crate::ast::EffectResult],
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    if items.is_empty() {
+        return apply(enums, "ResultList", "ResNil", &[]);
+    }
+    let head = encode_effect_result(&items[0], ctx, enums)?;
+    let tail = encode_effect_result_list(&items[1..], ctx, enums)?;
+    apply(enums, "ResultList", "ResCons", &[&head, &tail])
+}

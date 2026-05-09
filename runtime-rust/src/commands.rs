@@ -11,6 +11,7 @@ pub mod initial_state;
 
 pub mod check;
 pub mod desugar;
+pub mod effect_run;
 pub mod execute;
 pub mod infer_types;
 pub mod lint;

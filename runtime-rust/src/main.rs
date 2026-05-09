@@ -45,6 +45,7 @@ fn main() -> ExitCode {
         "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "lint"        => commands::lint::cmd_lint(&args[1..]),
         "execute" => commands::execute::cmd_execute(&args[1..]),
+        "effect-run" => commands::effect_run::cmd_effect_run(&args[1..]),
         "export-smt2"      => commands::export_smt2::cmd_export_smt2(&args[1..]),
         "import-smt2"      => commands::import_smt2::cmd_import_smt2(&args[1..]),
         "batch" | "repl" => {

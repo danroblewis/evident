@@ -1,0 +1,5 @@
+[env]
+Z3_SYS_Z3_HEADER  = "/opt/homebrew/include/z3.h"
+PKG_CONFIG_PATH   = "/opt/homebrew/opt/libffi/lib/pkgconfig:/opt/homebrew/lib/pkgconfig"
+LIBRARY_PATH      = "/opt/homebrew/opt/sdl2/lib:/opt/homebrew/lib"
+DYLD_LIBRARY_PATH = "/opt/homebrew/lib:/opt/homebrew/opt/sdl2/lib:/opt/anaconda3/lib/python3.13/site-packages/z3/lib"

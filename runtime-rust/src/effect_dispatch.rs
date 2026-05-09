@@ -1,0 +1,267 @@
+//! Effect dispatcher — performs `Effect`s and produces `EffectResult`s.
+//!
+//! Sits between the executor (which solves for `effects` each step)
+//! and the OS / FFI layer. Built-in effects (Print/ReadLine/Time/Exit)
+//! hit the OS directly; FFI* effects route through `crate::ffi`.
+//!
+//! Phase 1.3 lands the dispatcher with built-ins working and FFI*
+//! arms returning Error stubs. Phase 1.5 wires the FFI primitives.
+
+use std::io::{BufRead, Write};
+use std::time::Instant;
+
+use crate::ast::{Effect, EffectFfiArg, EffectResult};
+use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
+
+/// Per-runtime mutable state the dispatcher reads/writes between
+/// effects. Held in the executor; one DispatchContext per step loop
+/// run. stdin/stdout are boxed so unit tests can swap in in-memory
+/// streams.
+pub struct DispatchContext {
+    pub registry: HandleRegistry,
+    pub stdin:    Box<dyn BufRead + Send>,
+    pub stdout:   Box<dyn Write + Send>,
+    pub start:    Instant,
+}
+
+impl DispatchContext {
+    pub fn new() -> Self {
+        Self::with_streams(
+            Box::new(std::io::BufReader::new(std::io::stdin())),
+            Box::new(std::io::stdout()),
+        )
+    }
+
+    pub fn with_streams(
+        stdin:  Box<dyn BufRead + Send>,
+        stdout: Box<dyn Write + Send>,
+    ) -> Self {
+        Self {
+            registry: HandleRegistry::new(),
+            stdin, stdout,
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Default for DispatchContext {
+    fn default() -> Self { Self::new() }
+}
+
+/// Perform one effect; return the matching result. Errors that
+/// don't tear down the runtime are reported as `EffectResult::Error`.
+/// `Exit` calls `process::exit` and never returns.
+pub fn dispatch_one(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
+    match e {
+        Effect::NoEffect => EffectResult::NoResult,
+
+        Effect::Print(s) => {
+            let _ = write!(ctx.stdout, "{s}");
+            let _ = ctx.stdout.flush();
+            EffectResult::NoResult
+        }
+        Effect::Println(s) => {
+            let _ = writeln!(ctx.stdout, "{s}");
+            let _ = ctx.stdout.flush();
+            EffectResult::NoResult
+        }
+        Effect::ReadLine => {
+            let mut line = String::new();
+            match ctx.stdin.read_line(&mut line) {
+                Ok(0)  => EffectResult::Error("readline: EOF".into()),
+                Ok(_)  => {
+                    if line.ends_with('\n') { line.pop(); }
+                    if line.ends_with('\r') { line.pop(); }
+                    EffectResult::Str(line)
+                }
+                Err(e) => EffectResult::Error(format!("readline: {e}")),
+            }
+        }
+        Effect::Time => {
+            let ms = ctx.start.elapsed().as_millis() as i64;
+            EffectResult::Int(ms)
+        }
+        Effect::Exit(n) => std::process::exit(*n as i32),
+
+        Effect::FFIOpen(path) => {
+            match ffi::ffi_open(&ctx.registry, path) {
+                Ok(h)  => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
+            }
+        }
+        Effect::FFILookup(lib, sym) => {
+            match ffi::ffi_lookup(&ctx.registry, *lib, sym) {
+                Ok(h)  => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
+            }
+        }
+        Effect::FFICall(fn_id, sig, args) => {
+            let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
+                EffectFfiArg::Int(n)    => FfiArg::Int(*n),
+                EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
+                EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
+                EffectFfiArg::Real(r)   => FfiArg::Real(*r),
+                EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+            }).collect();
+            match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
+                Ok(FfiReturn::Void)      => EffectResult::NoResult,
+                Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
+                Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
+                Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
+                Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
+                Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
+            }
+        }
+        Effect::CloseHandle(h) => {
+            if ctx.registry.close(*h) {
+                EffectResult::NoResult
+            } else {
+                EffectResult::Error(format!("close: unknown handle {h}"))
+            }
+        }
+    }
+}
+
+/// Walk an effect list, dispatch each, collect results.
+pub fn dispatch_all(ctx: &mut DispatchContext, effects: &[Effect]) -> Vec<EffectResult> {
+    effects.iter().map(|e| dispatch_one(ctx, e)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn ctx_with_input(input: &str) -> DispatchContext {
+        DispatchContext::with_streams(
+            Box::new(std::io::BufReader::new(Cursor::new(input.to_string().into_bytes()))),
+            Box::new(Vec::<u8>::new()),
+        )
+    }
+
+    fn captured_stdout(ctx: DispatchContext) -> String {
+        // The Box<dyn Write> can't be downcast; tests that need stdout
+        // capture should construct their own Vec<u8> and inspect it
+        // via a separate handle pattern. For simplicity these tests
+        // mostly verify the result, not the stdout bytes.
+        // (Returning empty here since we can't unwrap the Box.)
+        let _ = ctx;
+        String::new()
+    }
+
+    #[test]
+    fn no_effect_returns_no_result() {
+        let mut ctx = DispatchContext::new();
+        assert!(matches!(dispatch_one(&mut ctx, &Effect::NoEffect), EffectResult::NoResult));
+    }
+
+    #[test]
+    fn print_returns_no_result() {
+        let mut ctx = DispatchContext::with_streams(
+            Box::new(Cursor::new(Vec::<u8>::new())),
+            Box::new(Vec::<u8>::new()),
+        );
+        let r = dispatch_one(&mut ctx, &Effect::Print("hi".into()));
+        assert!(matches!(r, EffectResult::NoResult));
+    }
+
+    #[test]
+    fn readline_strips_trailing_newline() {
+        let mut ctx = ctx_with_input("hello\nworld\n");
+        match dispatch_one(&mut ctx, &Effect::ReadLine) {
+            EffectResult::Str(s) => assert_eq!(s, "hello"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+        match dispatch_one(&mut ctx, &Effect::ReadLine) {
+            EffectResult::Str(s) => assert_eq!(s, "world"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+        // Third read hits EOF.
+        assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
+        let _ = captured_stdout(ctx);
+    }
+
+    #[test]
+    fn time_returns_non_negative_int() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::Time) {
+            EffectResult::Int(n) => assert!(n >= 0),
+            other => panic!("expected Int, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn time_is_non_decreasing() {
+        let mut ctx = DispatchContext::new();
+        let a = match dispatch_one(&mut ctx, &Effect::Time) {
+            EffectResult::Int(n) => n, _ => unreachable!(),
+        };
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let b = match dispatch_one(&mut ctx, &Effect::Time) {
+            EffectResult::Int(n) => n, _ => unreachable!(),
+        };
+        assert!(b >= a, "time went backwards: {a} → {b}");
+    }
+
+    #[test]
+    fn ffi_open_real_libc_succeeds() {
+        let mut ctx = DispatchContext::new();
+        let path = if cfg!(target_os = "macos") { "libSystem.dylib" } else { "libc.so.6" };
+        match dispatch_one(&mut ctx, &Effect::FFIOpen(path.into())) {
+            EffectResult::Handle(h) => assert!(h > 0, "handle should be > 0, got {h}"),
+            other => panic!("expected Handle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ffi_open_invalid_path_returns_error() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::FFIOpen("/nonexistent/lib".into())) {
+            EffectResult::Error(_) => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ffi_call_getpid_end_to_end() {
+        let mut ctx = DispatchContext::new();
+        let path = if cfg!(target_os = "macos") { "libSystem.dylib" } else { "libc.so.6" };
+        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen(path.into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "getpid".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
+            EffectResult::Int(pid) => {
+                assert_eq!(pid as u32, std::process::id());
+            }
+            other => panic!("expected Int, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn close_unknown_handle_errors() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::CloseHandle(9999)) {
+            EffectResult::Error(_) => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_all_preserves_order_and_count() {
+        let mut ctx = ctx_with_input("");
+        let effects = vec![
+            Effect::NoEffect,
+            Effect::Time,
+            Effect::NoEffect,
+        ];
+        let results = dispatch_all(&mut ctx, &effects);
+        assert_eq!(results.len(), 3);
+        assert!(matches!(results[0], EffectResult::NoResult));
+        assert!(matches!(results[1], EffectResult::Int(_)));
+        assert!(matches!(results[2], EffectResult::NoResult));
+    }
+}

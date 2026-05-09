@@ -1,0 +1,30 @@
+-- programs/demos/effect_hello.ev — first effect-loop demo.
+--
+--     evident effect-run programs/demos/effect_hello.ev
+--
+-- Two-step state machine:
+--   step 0 (Init): emit a Println effect; transition to Done
+--   step 1 (Done): emit no effects; loop holds at Done (halt sentinel)
+--
+-- The runtime's effect dispatcher writes "hello from evident\n" to
+-- stdout between steps. Validates the Effect / Result / EffectList
+-- pipeline end to end without needing FFI features that depend on
+-- enum-typed pattern bindings (Phase 3.3).
+
+import "stdlib/runtime.ev"
+
+enum HelloState =
+    Init
+    Done
+
+claim main
+    state, state_next ∈ HelloState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    state = Init ⇒
+        (state_next = Done ∧
+         effects = EffCons(Println("hello from evident"), EffNil))
+
+    state = Done ⇒
+        (state_next = Done ∧ effects = EffNil)
