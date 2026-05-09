@@ -1299,3 +1299,76 @@ fn cli_infer_types_consistency_silent_when_no_conflict() {
         "no conflicts → no consistency warnings; got stderr: {stderr}");
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 11: `evident lint` self-hosted lint pass ─────────────
+
+#[test]
+fn cli_lint_clean_program_exits_0() {
+    let path = write_tmp("lint_clean", "claim t\n    x ∈ Int\n    y ∈ Bool\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["lint", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(),
+        "clean program → exit 0; got {:?}", out.status.code());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("no lint issues"),
+        "expected `no lint issues` message; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_lint_finds_duplicate_membership() {
+    let path = write_tmp("lint_dup",
+        "claim t\n    x ∈ Int\n    y ∈ Bool\n    x ∈ String\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["lint", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(5),
+        "lint with findings → exit 5; got {:?}", out.status.code());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("duplicate_membership_in_body"),
+        "expected rule name in output; got: {s}");
+    assert!(s.contains("`x`"),
+        "expected duplicated var name `x`; got: {s}");
+    assert!(s.contains("`Int`") && s.contains("`String`"),
+        "expected both type names; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_lint_finds_dup_in_specific_claim() {
+    // Multi-claim: dup is in claim `b` only.
+    let path = write_tmp("lint_multi_dup",
+        "claim a\n    x ∈ Int\n    y ∈ Bool\n\nclaim b\n    z ∈ Int\n    z ∈ String\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["lint", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(5));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("in claim `b`"),
+        "expected claim attribution `b`; got: {s}");
+    assert!(s.contains("`z`"),
+        "expected dup var `z`; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_lint_no_args_prints_usage() {
+    let out = Command::new(bin()).args(["lint"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("lint"),
+        "stderr should mention lint; got: {stderr}");
+}
+
+#[test]
+fn cli_lint_missing_file_exits_1() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["lint", "/no/such/lint/file/exists.ev"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+}

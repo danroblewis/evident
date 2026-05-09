@@ -13,6 +13,7 @@ pub mod check;
 pub mod dump_ast;
 pub mod execute;
 pub mod infer_types;
+pub mod lint;
 pub mod parse;
 pub mod query;
 pub mod sample;
