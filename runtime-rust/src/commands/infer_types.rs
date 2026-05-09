@@ -126,11 +126,12 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    // Collect every successful rule's inference into a flat list,
-    // then aggregate at the end. The per-rule lines are still
-    // printed live so the user sees provenance.
-    let mut inferences: Vec<(String, String, String, String)> = Vec::new();
+    // Stage 8: track inferences per-claim so the aggregator can
+    // group output. (claim_name, rule, var, type, label) tuples.
+    let mut inferences: Vec<(String, String, String, String, String)> = Vec::new();
     let mut any_match = false;
+    // PROGRAM_RULES match on the WHOLE program value — they
+    // pattern-match the SchemaList shape internally. Run once.
     for rule in PROGRAM_RULES {
         match rt.query_with_program(rule, "program") {
             Ok(r) if r.satisfied => {
@@ -139,7 +140,7 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
                     let where_ = if claim.is_empty() { String::new() }
                                  else { format!(" (in claim `{}`)", claim) };
                     println!("{rule}: {} `{}` ∈ {}{}", label_for(rule), var, typ, where_);
-                    inferences.push((rule.to_string(), var, typ,
+                    inferences.push((claim.clone(), rule.to_string(), var, typ,
                                      label_for(rule).to_string()));
                 }
             }
@@ -150,20 +151,30 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
             }
         }
     }
-    for rule in ITER_RULES {
-        match rt.query_with_program_and_body(rule, "program", "body") {
-            Ok(r) if r.satisfied => {
-                any_match = true;
-                if let Some((var, typ, _claim)) = render_bindings(rule, &r.bindings) {
-                    println!("{rule}: {} `{}` ∈ {}", label_for(rule), var, typ);
-                    inferences.push((rule.to_string(), var, typ,
-                                     label_for(rule).to_string()));
+    // ITER_RULES inject one body at a time. Loop over every user
+    // claim — each call sees a different body Seq. The pass file
+    // doesn't change; we just call it N times.
+    let n_claims = rt.user_claim_count();
+    for claim_idx in 0..n_claims {
+        let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
+        for rule in ITER_RULES {
+            match rt.query_with_program_and_nth_claim_body(
+                rule, "program", "body", claim_idx,
+            ) {
+                Ok(Some(r)) if r.satisfied => {
+                    any_match = true;
+                    if let Some((var, typ, _)) = render_bindings(rule, &r.bindings) {
+                        println!("{rule}: {} `{}` ∈ {} (in claim `{}`)",
+                                 label_for(rule), var, typ, claim_name);
+                        inferences.push((claim_name.clone(), rule.to_string(),
+                                         var, typ, label_for(rule).to_string()));
+                    }
                 }
-            }
-            Ok(_)  => {}
-            Err(e) => {
-                eprintln!("error: rule `{rule}` failed: {e}");
-                return ExitCode::from(1);
+                Ok(_)  => {}
+                Err(e) => {
+                    eprintln!("error: rule `{rule}` failed: {e}");
+                    return ExitCode::from(1);
+                }
             }
         }
     }
@@ -180,43 +191,58 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     }
 }
 
-/// Stage 7: dedupe and aggregate inferences across all rules into a
-/// unified table. When the same `(var, type)` pair is found by
-/// multiple rules, only one row appears. When a var has multiple
-/// inferred types — a real contradiction (`x = 5` and `x = "hi"`)
-/// — both rows appear with `(via RULE)` annotations so the user
-/// can spot the conflict.
+/// Stage 8: dedupe and aggregate inferences across all rules and
+/// all user claims into a unified table grouped by claim.
+///
+/// For each claim, vars get one row per declared type (single row
+/// when unambiguous). The same `(var, type)` pair found by multiple
+/// rules collapses to one row with `(via R1, R2, …)` attribution.
+/// Ambiguity (multiple types for one var in one claim) is flagged
+/// with `*ambiguous*` per the Stage 7 contract.
 fn aggregate_and_print(
-    inferences: &[(String, String, String, String)],
-    // (rule_name, var, type_name, label) tuples
+    inferences: &[(String, String, String, String, String)],
+    // (claim_name, rule_name, var, type_name, label) tuples
 ) {
     if inferences.is_empty() { return; }
     use std::collections::BTreeMap;
-    // var → (type → Vec<rule>) so we can see ambiguity.
-    let mut by_var: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
-    for (rule, var, typ, _label) in inferences {
-        by_var.entry(var.clone()).or_default()
+    // claim → var → (type → Vec<rule>)
+    let mut by_claim: BTreeMap<String,
+        BTreeMap<String, BTreeMap<String, Vec<String>>>> = BTreeMap::new();
+    for (claim, rule, var, typ, _label) in inferences {
+        by_claim.entry(claim.clone()).or_default()
+            .entry(var.clone()).or_default()
             .entry(typ.clone()).or_default()
             .push(rule.clone());
     }
 
     println!();
     println!("Inferred types:");
-    let max_var = by_var.keys().map(|v| v.len()).max().unwrap_or(0);
-    for (var, types) in &by_var {
-        if types.len() == 1 {
-            // Unambiguous — just print the type. List the rules
-            // that found it as a parenthesized hint.
-            let (typ, rules) = types.iter().next().unwrap();
-            let rules_str = rules.join(", ");
-            println!("  {:<width$} : {}    (via {})",
-                     var, typ, rules_str, width = max_var);
+    let multi_claim = by_claim.len() > 1
+        || (by_claim.len() == 1 && !by_claim.contains_key(""));
+    for (claim, by_var) in &by_claim {
+        let prefix = if multi_claim {
+            if claim.is_empty() {
+                println!("  (no claim attribution):");
+            } else {
+                println!("  in claim `{}`:", claim);
+            }
+            "    "
         } else {
-            // Ambiguous — multiple types inferred. Flag it.
-            println!("  {:<width$} : *ambiguous* — got {} different types:",
-                     var, types.len(), width = max_var);
-            for (typ, rules) in types {
-                println!("      {} (via {})", typ, rules.join(", "));
+            "  "
+        };
+        let max_var = by_var.keys().map(|v| v.len()).max().unwrap_or(0);
+        for (var, types) in by_var {
+            if types.len() == 1 {
+                let (typ, rules) = types.iter().next().unwrap();
+                let rules_str = rules.join(", ");
+                println!("{prefix}{:<width$} : {}    (via {})",
+                         var, typ, rules_str, width = max_var);
+            } else {
+                println!("{prefix}{:<width$} : *ambiguous* — got {} different types:",
+                         var, types.len(), width = max_var);
+                for (typ, rules) in types {
+                    println!("{prefix}    {} (via {})", typ, rules.join(", "));
+                }
             }
         }
     }

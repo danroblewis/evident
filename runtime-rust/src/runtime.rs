@@ -700,6 +700,54 @@ impl EvidentRuntime {
     /// typically). Passes can use either or both — having `body`
     /// makes iteration possible without recursing through the
     /// `BodyItemList` linked-list shape.
+    /// Stage 8: like `query_with_program_and_body` but lets the
+    /// caller pick which user claim's body to inject. Index is into
+    /// `user_program().schemas` (the user-loaded subset). Returns
+    /// `None` if `claim_idx` is out of range. Lets the CLI iterate
+    /// over every user claim and aggregate per-claim inferences.
+    pub fn query_with_program_and_nth_claim_body(
+        &self,
+        claim_name: &str,
+        program_var: &str,
+        body_var: &str,
+        claim_idx: usize,
+    ) -> Result<Option<QueryResult>, RuntimeError> {
+        let schema = self.schemas.get(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        let user = self.user_program();
+        let Some(target_claim) = user.schemas.get(claim_idx) else {
+            return Ok(None);
+        };
+        let prog_value = crate::translate::ast_encoder::encode_program(
+            &user, self.z3_ctx, &self.enums,
+        ).map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
+        let body_items = &target_claim.body;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let mut given: HashMap<String, Value> = HashMap::new();
+        given.insert("body_len".to_string(), Value::Int(body_items.len() as i64));
+        let r = crate::translate::evaluate_with_program_and_body(
+            schema, &given, &self.schemas, self.z3_ctx,
+            &self.datatypes, &self.enums, arith,
+            program_var, prog_value,
+            body_var, body_items,
+        );
+        Ok(Some(QueryResult { satisfied: r.satisfied, bindings: r.bindings }))
+    }
+
+    /// Number of claims the user has loaded (after
+    /// `mark_system_loads_complete`). Used by callers iterating over
+    /// claims with `query_with_program_and_nth_claim_body`.
+    pub fn user_claim_count(&self) -> usize {
+        self.user_program().schemas.len()
+    }
+
+    /// Name of the n-th user claim, if any. Used by the CLI to
+    /// label per-claim inference output.
+    pub fn user_claim_name(&self, idx: usize) -> Option<String> {
+        self.user_program().schemas.get(idx).map(|s| s.name.clone())
+    }
+
     pub fn query_with_program_and_body(
         &self,
         claim_name: &str,

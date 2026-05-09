@@ -1057,3 +1057,83 @@ fn cli_infer_types_aggregation_omitted_for_no_match() {
         "no rules matched → no aggregated table; got:\n{s}");
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 8: multi-claim iteration ─────────────────────────────
+
+#[test]
+fn cli_infer_types_iterates_multiple_claims() {
+    // Two-claim program. iter rules should fire for BOTH.
+    let path = write_tmp("infer_multi",
+        "claim alpha\n    msg = \"in_alpha\"\nclaim beta\n    score ∈ Nat\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    // Both claims should appear.
+    assert!(s.contains("in claim `alpha`"),
+        "expected `in claim alpha` in output; got:\n{s}");
+    assert!(s.contains("in claim `beta`"),
+        "expected `in claim beta` in output; got:\n{s}");
+    // Both inferences should appear.
+    assert!(s.contains("`msg` ∈ String"),
+        "expected msg inferred; got:\n{s}");
+    assert!(s.contains("`score` ∈ Nat"),
+        "expected score inferred; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_aggregator_groups_by_claim() {
+    // Multi-claim → table grouped under `in claim NAME:` headers.
+    let path = write_tmp("infer_group",
+        "claim a\n    x = 1\nclaim b\n    y = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let agg_pos = s.find("Inferred types:").unwrap();
+    let agg = &s[agg_pos..];
+    // Both claim group headers should be present in the aggregated section.
+    assert!(agg.contains("in claim `a`:"),
+        "missing `in claim a:` group; got:\n{agg}");
+    assert!(agg.contains("in claim `b`:"),
+        "missing `in claim b:` group; got:\n{agg}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_three_claim_program() {
+    let path = write_tmp("infer_three",
+        "claim a\n    x = 1\n\nclaim b\n    y = \"hi\"\n\nclaim c\n    z = true\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    for needle in ["`x` ∈ Int", "`y` ∈ String", "`z` ∈ Bool"] {
+        assert!(s.contains(needle),
+            "missing inference {needle:?} in:\n{s}");
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_aggregator_surfaces_ambiguity() {
+    // `score ∈ Nat` (extract → Nat) + `score = 100` (literal → Int).
+    // Stage 7's *ambiguous* path actually fires because Nat and Int
+    // are different type strings.
+    let path = write_tmp("infer_ambig",
+        "claim t\n    score ∈ Nat\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("*ambiguous*"),
+        "expected ambiguity flag for score; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}

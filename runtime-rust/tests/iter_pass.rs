@@ -276,3 +276,54 @@ fn unknown_pass_claim_for_iter_errors() {
     assert!(s.contains("no_such_rule") || s.contains("UnknownSchema"),
         "unexpected error: {s}");
 }
+
+// ── Stage 8: per-claim iteration via the runtime API ───────────
+
+#[test]
+fn nth_claim_body_reaches_each_claim() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("\
+claim alpha
+    msg = \"in_alpha\"
+claim beta
+    score ∈ Nat
+    score = 100
+").unwrap();
+    assert_eq!(rt.user_claim_count(), 2);
+    assert_eq!(rt.user_claim_name(0), Some("alpha".to_string()));
+    assert_eq!(rt.user_claim_name(1), Some("beta".to_string()));
+
+    // alpha's body has a string assignment; iter on body 0 finds it.
+    let r0 = rt.query_with_program_and_nth_claim_body(
+        "has_string_assignment", "program", "body", 0,
+    ).unwrap().unwrap();
+    assert!(r0.satisfied);
+    assert_eq!(r0.bindings.get("string_lit"),
+               Some(&Value::Str("in_alpha".to_string())));
+
+    // beta's body has a Membership; iter on body 1 finds it.
+    let r1 = rt.query_with_program_and_nth_claim_body(
+        "has_membership_of_var", "program", "body", 1,
+    ).unwrap().unwrap();
+    assert!(r1.satisfied);
+    assert_eq!(r1.bindings.get("target_var"),
+               Some(&Value::Str("score".to_string())));
+}
+
+#[test]
+fn nth_claim_body_returns_none_for_out_of_range() {
+    let mut rt = fresh_rt_with_iter_pass();
+    rt.load_source("claim only_one\n    x = 1\n").unwrap();
+    let r = rt.query_with_program_and_nth_claim_body(
+        "has_int_assignment", "program", "body", 5,
+    ).unwrap();
+    assert!(r.is_none(),
+        "out-of-range claim_idx should return Ok(None)");
+}
+
+#[test]
+fn user_claim_count_zero_when_no_user_loads() {
+    let rt = fresh_rt_with_iter_pass();
+    assert_eq!(rt.user_claim_count(), 0,
+        "no user-loaded claims after mark_system_loads_complete");
+}
