@@ -1,0 +1,110 @@
+-- stdlib/glsl/ast.ev — the GLSL AST as Evident enums.
+--
+-- Phase 4.1 of the runtime migration: replace the deleted Rust
+-- `glsl.rs` (an Evident-shader → GLSL string transpiler) with one
+-- written in Evident itself. This file is the *data*; the
+-- transpiler lives in stdlib/glsl/transpile.ev.
+--
+-- Design choices forced by v0.1 enum capabilities (mirrors
+-- stdlib/ast.ev's accommodations):
+--
+--   1. Numeric literals carry pre-rendered STRING values
+--      (`GFloatLit("0.5")`), not Real / Int values. Z3 doesn't
+--      have a clean Int→String path; until it does, the call site
+--      formats the number into a string.
+--
+--   2. List-of-T is a separate Cons/Nil enum per element type
+--      (`GLSLExprList`, `GLSLStmtList`, `GLSLBindingList`). The
+--      ⟨a, b, c⟩ shorthand lowers to nested Cons calls for each.
+--
+--   3. The Shader top-level is a single-variant enum
+--      `MakeShader(bindings, body)` (the "record-as-1-variant
+--      enum" idiom from stdlib/ast.ev).
+--
+-- Coverage today is the GLSL-410-core subset needed for SDF / fullscreen
+-- fragment shaders: literals, identifiers, binary ops, unary negation,
+-- function calls (intrinsics), swizzles, ternary, vec constructors;
+-- assignments, declared-with-init, if/else; layout(location=N) outs/ins
+-- and uniforms.
+
+-- ── Operators ────────────────────────────────────────────────
+
+enum GLSLBinOp =
+    GAdd
+    GSub
+    GMul
+    GDiv
+    GLt
+    GLe
+    GGt
+    GGe
+    GEq
+    GNeq
+    GAnd
+    GOr
+
+-- ── Type tags (used by declarations + bindings) ──────────────
+
+enum GLSLType =
+    GTFloat
+    GTInt
+    GTBool
+    GTVec2
+    GTVec3
+    GTVec4
+
+-- ── Expressions ──────────────────────────────────────────────
+--
+-- The recursive cases (GBinary, GUnaryNeg, GCall, GSwizzle,
+-- GTernary, GVecNLit) all reference GLSLExpr or GLSLExprList.
+-- Z3's create_datatypes resolves the bundle in one batch.
+
+enum GLSLExpr =
+    GFloatLit(String)               -- pre-formatted, e.g. "0.5"
+    GIntLit(String)                 -- pre-formatted, e.g. "42"
+    GBoolLit(Bool)
+    GIdent(String)
+    GBinary(GLSLBinOp, GLSLExpr, GLSLExpr)
+    GUnaryNeg(GLSLExpr)
+    GCall(String, GLSLExprList)
+    GSwizzle(GLSLExpr, String)      -- e.g. p.xyz → GSwizzle(GIdent("p"), "xyz")
+    GTernary(GLSLExpr, GLSLExpr, GLSLExpr)
+    GVec2Lit(GLSLExpr, GLSLExpr)
+    GVec3Lit(GLSLExpr, GLSLExpr, GLSLExpr)
+    GVec4Lit(GLSLExpr, GLSLExpr, GLSLExpr, GLSLExpr)
+
+enum GLSLExprList =
+    GELNil
+    GELCons(GLSLExpr, GLSLExprList)
+
+-- ── Statements ───────────────────────────────────────────────
+
+enum GLSLStmt =
+    GAssign(String, GLSLExpr)                    -- name = expr;
+    GDeclAssign(GLSLType, String, GLSLExpr)      -- type name = expr;
+    GIfElse(GLSLExpr, GLSLStmtList, GLSLStmtList)
+
+enum GLSLStmtList =
+    GSLNil
+    GSLCons(GLSLStmt, GLSLStmtList)
+
+-- ── I/O bindings ─────────────────────────────────────────────
+--
+-- Each binding renders as one line ABOVE main():
+--   GBindOut    → "layout(location = N) out TYPE NAME;\n"
+--   GBindIn     → "layout(location = N) in TYPE NAME;\n"
+--   GBindUniform → "uniform TYPE NAME;\n"
+
+enum GLSLBinding =
+    GBindOut(GLSLType, String, Int)
+    GBindIn(GLSLType, String, Int)
+    GBindUniform(GLSLType, String)
+
+enum GLSLBindingList =
+    GBLNil
+    GBLCons(GLSLBinding, GLSLBindingList)
+
+-- ── Top-level ────────────────────────────────────────────────
+
+enum Shader =
+    MakeShader(GLSLBindingList, GLSLStmtList)

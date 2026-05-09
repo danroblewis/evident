@@ -169,7 +169,7 @@ pub fn build_cache(
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     CachedSchema { env, solver, arith_solver }
@@ -498,7 +498,7 @@ pub fn evaluate(
     // fresh env where each mapping slot is pre-bound. Both passthrough
     // and ClaimCall recurse into nested claim composition (one helper
     // unifies all four entry shapes).
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     // Pass 3: assert ground facts for each given binding. Names that
@@ -632,7 +632,7 @@ pub fn evaluate_with_extra_assertion(
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     // Inject the extra value. Look up the variable, must be EnumVar
@@ -687,7 +687,7 @@ pub fn evaluate_with_extra_assertions(
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
     for (var_name, value) in pins {
@@ -750,7 +750,7 @@ pub fn evaluate_with_program_and_body(
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited);
 
     // Program injection.
@@ -851,7 +851,7 @@ pub fn evaluate_with_core(
         .map(|i| Bool::new_const(ctx, format!("__core_{i}__")))
         .collect();
 
-    let mut visited: HashSet<String> = HashSet::new();
+    let mut visited: HashMap<String, usize> = HashMap::new();
     super::inline::inline_body_items_tracked(
         &schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, &trackers,
     );

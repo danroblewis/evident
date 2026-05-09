@@ -46,9 +46,57 @@ fn track_assert(solver: &Solver<'static>, b: &Bool<'static>, tracker: Option<&Bo
 /// dropped. That broke `..DotCollectGameEngine` (no player, no physics,
 /// no background — black screen).
 ///
-/// `visited` blocks recursion through cycles (`A` passthroughs `B`,
-/// `B` passthroughs `A`). Each entry is the claim name currently being
-/// inlined; we add on enter, remove on exit.
+/// `visited` is a per-claim depth counter that bounds inlining
+/// recursion. Each entry maps a claim name to how many frames of
+/// it are currently on the inlining stack. A frame can re-enter the
+/// same claim up to `MAX_INLINE_DEPTH` times — enough to walk a
+/// recursive AST (transpilers, list emitters, etc.) but bounded so
+/// pathological self-passthrough cycles don't OOM. Without unrolling
+/// at all, the transpiler-as-recursive-claims pattern doesn't work
+/// (Z3 invents arbitrary string values for un-asserted `tail_out`
+/// bindings). The depth bound is overridable via
+/// `EVIDENT_MAX_INLINE_DEPTH` for ASTs deeper than the default.
+
+/// Default cap — large enough for any realistic shader/transpiler AST,
+/// small enough that a self-passthrough loop trips it before the
+/// translation context blows out.
+const DEFAULT_MAX_INLINE_DEPTH: usize = 64;
+
+fn max_inline_depth() -> usize {
+    std::env::var("EVIDENT_MAX_INLINE_DEPTH")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_INLINE_DEPTH)
+}
+
+/// Try to enter a frame of `name` on the inlining stack. Returns
+/// `Some(depth)` (the post-increment count) on success, `None` if
+/// we'd exceed the depth cap. `depth > 1` ⇒ this is a recursive
+/// frame; callers use that to force fresh per-call declarations
+/// for body-internal Memberships, otherwise the env-clone would
+/// shadow them with outer-scope vars and recursive claims would
+/// self-reference (e.g. `out = "x " ++ tail_out` where `tail_out`
+/// is the SAME Z3 const as the outer call's `tail_out`).
+fn try_enter(visited: &mut HashMap<String, usize>, name: &str) -> Option<usize> {
+    let max = max_inline_depth();
+    let cnt = visited.entry(name.to_string()).or_insert(0);
+    if *cnt >= max {
+        None
+    } else {
+        *cnt += 1;
+        Some(*cnt)
+    }
+}
+
+/// Counterpart to `try_enter` — call after the inlined body has been
+/// translated. Removes the entry entirely when its count hits zero
+/// so subsequent same-name lookups don't see stale state.
+fn exit_frame(visited: &mut HashMap<String, usize>, name: &str) {
+    if let Some(cnt) = visited.get_mut(name) {
+        *cnt -= 1;
+        if *cnt == 0 { visited.remove(name); }
+    }
+}
 /// Wrap a constraint in an `antecedent ⇒ constraint` implication when
 /// a guard is active (i.e. we're inlining a claim's body under
 /// `state.step = 0 ⇒ ClaimName`). Returns the constraint unchanged
@@ -86,7 +134,7 @@ pub(super) fn inline_body_items(
     ctx: &'static Context,
     registry: &DatatypeRegistry,
     enums: Option<&EnumRegistry>,
-    visited: &mut HashSet<String>,
+    visited: &mut HashMap<String, usize>,
 ) {
     inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, None)
 }
@@ -107,7 +155,7 @@ pub(super) fn inline_body_items_tracked(
     ctx: &'static Context,
     registry: &DatatypeRegistry,
     enums: Option<&EnumRegistry>,
-    visited: &mut HashSet<String>,
+    visited: &mut HashMap<String, usize>,
     trackers: &[Bool<'static>],
 ) {
     for (idx, item) in items.iter().enumerate() {
@@ -127,7 +175,7 @@ fn inline_body_items_guarded(
     ctx: &'static Context,
     registry: &DatatypeRegistry,
     enums: Option<&EnumRegistry>,
-    visited: &mut HashSet<String>,
+    visited: &mut HashMap<String, usize>,
     guard: &Option<Expr>,
     tracker: Option<&Bool<'static>>,
 ) {
@@ -247,8 +295,8 @@ fn inline_body_items_guarded(
             //   Foo(my_items, my_keys, true)
             // pattern over the longer mapsto form.
             BodyItem::Constraint(Expr::Call(name, args)) if schemas.contains_key(name) => {
-                if visited.contains(name) { continue; }
-                let Some(claim) = schemas.get(name) else { continue };
+                let Some(depth) = try_enter(visited, name) else { continue };
+                let Some(claim) = schemas.get(name) else { exit_frame(visited, name); continue };
 
                 // Pair positional args with the claim's first N Membership
                 // body items (which include first-line params, since
@@ -265,6 +313,7 @@ fn inline_body_items_guarded(
                          the claim has only {} param Memberships",
                         name, args.len(), slot_names.len()
                     );
+                    exit_frame(visited, name);
                     continue;
                 }
                 let mappings: Vec<crate::ast::Mapping> = slot_names.into_iter()
@@ -278,6 +327,8 @@ fn inline_body_items_guarded(
                 // below — bind args, declare per-call Z3 names for any
                 // claim-internal vars, recurse with fresh inner env.
                 let mut inner = env.clone();
+                let slot_set: std::collections::HashSet<String> =
+                    mappings.iter().map(|m| m.slot.clone()).collect();
                 for m in &mappings {
                     let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
                     if bound.is_empty() {
@@ -293,18 +344,35 @@ fn inline_body_items_guarded(
                         let slot_prefix = format!("{}.", vname);
                         let already_bound = inner.contains_key(vname)
                             || inner.keys().any(|k| k.starts_with(&slot_prefix));
-                        if !already_bound {
+                        // Recursive frames force-shadow body-internal
+                        // (non-slot) Memberships so each invocation gets
+                        // a fresh Z3 const. Without this the inner call
+                        // inherits the outer's Z3 const via env clone
+                        // and `out = ... ++ tail_out` becomes a
+                        // self-equation `T = ... ++ T` (UNSAT).
+                        let force_fresh = depth > 1 && !slot_set.contains(vname);
+                        if force_fresh {
+                            // declare_var_named's idempotence guard
+                            // would skip the re-declaration; pop the
+                            // inherited entry first so the fresh decl
+                            // sticks.
+                            inner.remove(vname);
+                            let dotted: Vec<String> = inner.keys()
+                                .filter(|k| k.starts_with(&slot_prefix))
+                                .cloned().collect();
+                            for k in dotted { inner.remove(&k); }
+                        }
+                        if !already_bound || force_fresh {
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                             declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
                                               type_name, schemas, Some(registry), enums);
                         }
                     }
                 }
-                visited.insert(name.clone());
                 inline_body_items_guarded(
                     &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
-                visited.remove(name);
+                exit_frame(visited, name);
             }
             // Guarded claim invocation: `cond ⇒ ClaimName` inlines the
             // claim's body but wraps each constraint in `cond ⇒ …`.
@@ -319,14 +387,15 @@ fn inline_body_items_guarded(
                     Expr::Identifier(n) => n,
                     _ => unreachable!(),
                 };
-                if visited.contains(claim_name) { continue; }
-                let Some(claim) = schemas.get(claim_name) else { continue };
-                visited.insert(claim_name.clone());
+                if try_enter(visited, claim_name).is_none() { continue; }
+                let Some(claim) = schemas.get(claim_name) else {
+                    exit_frame(visited, claim_name); continue
+                };
                 let new_guard = compose_guards(guard, (**ant).clone());
                 inline_body_items_guarded(
                     &claim.body, env, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
                 );
-                visited.remove(claim_name);
+                exit_frame(visited, claim_name);
             }
             BodyItem::Constraint(e) => {
                 let guarded = wrap_with_guard(e.clone(), guard);
@@ -352,24 +421,27 @@ fn inline_body_items_guarded(
                 }
             }
             BodyItem::Passthrough(claim_name) => {
-                if visited.contains(claim_name) { continue; }
+                if try_enter(visited, claim_name).is_none() { continue; }
                 let Some(claim) = schemas.get(claim_name) else {
                     eprintln!("warning: ..{} references unknown claim", claim_name);
+                    exit_frame(visited, claim_name);
                     continue;
                 };
-                visited.insert(claim_name.clone());
                 inline_body_items_guarded(
                     &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
-                visited.remove(claim_name);
+                exit_frame(visited, claim_name);
             }
             BodyItem::ClaimCall { name, mappings } => {
-                if visited.contains(name) { continue; }
+                let Some(depth) = try_enter(visited, name) else { continue };
                 let Some(claim) = schemas.get(name) else {
                     eprintln!("warning: ClaimCall to unknown claim {}", name);
+                    exit_frame(visited, name);
                     continue;
                 };
                 let mut inner = env.clone();
+                let slot_set: std::collections::HashSet<String> =
+                    mappings.iter().map(|m| m.slot.clone()).collect();
                 for m in mappings {
                     let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
                     if bound.is_empty() {
@@ -393,18 +465,32 @@ fn inline_body_items_guarded(
                         let slot_prefix = format!("{}.", vname);
                         let already_bound = inner.contains_key(vname)
                             || inner.keys().any(|k| k.starts_with(&slot_prefix));
-                        if !already_bound {
+                        // See positional-call arm: recursive frames
+                        // shadow body-internal Memberships so each
+                        // invocation gets a fresh Z3 const.
+                        let force_fresh = depth > 1 && !slot_set.contains(vname);
+                        if force_fresh {
+                            // declare_var_named's idempotence guard
+                            // would skip the re-declaration; pop the
+                            // inherited entry first so the fresh decl
+                            // sticks.
+                            inner.remove(vname);
+                            let dotted: Vec<String> = inner.keys()
+                                .filter(|k| k.starts_with(&slot_prefix))
+                                .cloned().collect();
+                            for k in dotted { inner.remove(&k); }
+                        }
+                        if !already_bound || force_fresh {
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                             declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
                                               type_name, schemas, Some(registry), enums);
                         }
                     }
                 }
-                visited.insert(name.clone());
                 inline_body_items_guarded(
                     &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
                 );
-                visited.remove(name);
+                exit_frame(visited, name);
             }
             BodyItem::SubclaimDecl(_) => {}
         }
