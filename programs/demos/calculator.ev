@@ -1,0 +1,90 @@
+-- A tiny constraint-shaped calculator showcasing `match`.
+--
+--   evident test programs/demos/calculator.ev
+--
+-- An `Op` is one of four binary operations carrying its two operands.
+-- A claim takes an `Op` and a `result`, asserting that the result is
+-- whatever the operation produces. Z3 either confirms (SAT, when result
+-- matches the computation) or refutes (UNSAT, when the result is wrong).
+--
+-- The same shape solves the inverse problem: leave `result` free and
+-- Z3 returns the computed value in the binding.
+
+enum Op =
+    Add(Int, Int)
+    Sub(Int, Int)
+    Mul(Int, Int)
+    Neg(Int)
+
+-- ── Forward computation: pin op + result, verify SAT ────────────
+
+claim sat_add
+    op ∈ Op
+    result ∈ Int
+    op = Add(7, 5)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result = 12
+
+claim sat_sub
+    op ∈ Op
+    result ∈ Int
+    op = Sub(20, 8)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result = 12
+
+claim sat_mul
+    op ∈ Op
+    result ∈ Int
+    op = Mul(4, 7)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result = 28
+
+claim sat_neg
+    op ∈ Op
+    result ∈ Int
+    op = Neg(42)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result = -42
+
+-- ── Wrong-result is UNSAT ───────────────────────────────────────
+
+claim unsat_add_wrong_result
+    op ∈ Op
+    result ∈ Int
+    op = Add(2, 3)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result = 100
+
+-- ── Inverse: free `result`, sat — Z3 picks the matching value ──
+
+claim sat_inverse_picks_result
+    op ∈ Op
+    result ∈ Int
+    op = Mul(11, 11)
+    result = match op
+        Add(a, b) ⇒ a + b
+        Sub(a, b) ⇒ a - b
+        Mul(a, b) ⇒ a * b
+        Neg(a)    ⇒ 0 - a
+    result > 100
+    result < 200
