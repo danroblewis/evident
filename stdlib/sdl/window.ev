@@ -15,7 +15,7 @@ import "stdlib/runtime.ev"
 -- ── Library path ──────────────────────────────────────────────
 
 claim sdl_lib_path_macos(p ∈ String)
-    p = "libSDL2.dylib"
+    p = "/opt/homebrew/lib/libSDL2.dylib"
 
 -- ── Init flag values ──────────────────────────────────────────
 
@@ -24,9 +24,9 @@ claim sdl_init_video(n ∈ Int)
 
 -- ── Effect builders ───────────────────────────────────────────
 
--- FFIOpen("libSDL2.dylib") — returns a library handle.
+-- FFIOpen("/opt/homebrew/lib/libSDL2.dylib") — returns a library handle.
 claim open_sdl_lib(e ∈ Effect)
-    e = FFIOpen("libSDL2.dylib")
+    e = FFIOpen("/opt/homebrew/lib/libSDL2.dylib")
 
 -- FFILookup(lib, "SDL_Init"). Returns the symbol handle.
 claim lookup_sdl_init(lib ∈ Int, e ∈ Effect)

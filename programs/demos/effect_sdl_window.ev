@@ -70,7 +70,7 @@ claim main
         Done                                   ⇒ Done
 
     effects = match state
-        Init                                   ⇒ EffCons(FFIOpen("libSDL2.dylib"), EffNil)
+        Init                                   ⇒ EffCons(FFIOpen("/opt/homebrew/lib/libSDL2.dylib"), EffNil)
         AwaitLib                               ⇒ EffNil
         HaveLib(lib)                           ⇒ EffCons(FFILookup(lib, "SDL_Init"), EffNil)
         AwaitInitSym(_)                        ⇒ EffNil
