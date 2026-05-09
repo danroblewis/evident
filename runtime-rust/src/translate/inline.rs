@@ -98,6 +98,44 @@ fn exit_frame(visited: &mut HashMap<String, usize>, name: &str) {
     }
 }
 
+/// Pre-isolate helper-local Z3 consts: when entering a ClaimCall, any
+/// caller-scope vars whose names match the called claim's body
+/// Memberships PAST `param_count` (i.e. the helper's internal locals,
+/// not its first-line input/output slots) are removed from the cloned
+/// inner env. This prevents recursive helper invocations from
+/// accidentally sharing locals via the env-clone chain — without it,
+/// nested `emit_ternary(...)` would reuse the OUTER `emit_ternary`'s
+/// `cnd`/`thn`/`els` Z3 consts, collapsing distinct AST values to one
+/// const and going UNSAT.
+///
+/// Slot params (the leading body Memberships up to `param_count`) are
+/// PRESERVED in the clone so the helper's body can reach the
+/// outer-supplied values via names-match composition.
+fn isolate_helper_locals(
+    body: &[BodyItem],
+    inner: &mut HashMap<String, Var<'static>>,
+    param_count: usize,
+) {
+    // When the claim has no first-line params (param_count == 0), we
+    // can't tell input slots from helper-locals — fall back to the
+    // legacy names-match behavior: keep everything in the cloned env
+    // so body Memberships that match outer scope re-use those Z3
+    // consts. Helpers that NEED isolation (transpiler-style recursive
+    // claims) must use first-line params to declare which body
+    // Memberships are inputs.
+    if param_count == 0 { return; }
+    for (i, item) in body.iter().enumerate() {
+        if i < param_count { continue; } // input/output slot — keep.
+        if let BodyItem::Membership { name, .. } = item {
+            inner.remove(name);
+            let prefix = format!("{}.", name);
+            let dotted: Vec<String> = inner.keys()
+                .filter(|k| k.starts_with(&prefix)).cloned().collect();
+            for k in dotted { inner.remove(&k); }
+        }
+    }
+}
+
 /// Returns true if the active inlining guard is satisfiable (or there
 /// is no guard). Used to PRUNE recursive ClaimCall expansion when the
 /// guard is provably false — the body would generate only dead
@@ -121,10 +159,15 @@ fn guard_is_satisfiable(
         None => return true,
         Some(g) => g,
     };
+    let trace = std::env::var("EVIDENT_INLINE_TRACE").is_ok();
+    let t0 = if trace { Some(std::time::Instant::now()) } else { None };
     solver.push();
     solver.assert(g);
     let result = solver.check();
     solver.pop(1);
+    if let Some(t0) = t0 {
+        eprintln!("[inline] sat-check {:?} in {:?}", result, t0.elapsed());
+    }
     !matches!(result, SatResult::Unsat)
 }
 /// Combine guard + body Bool: `guard ⇒ body` if guarded, else just
@@ -353,10 +396,24 @@ fn inline_body_items_guarded(
                     })
                     .collect();
 
-                // Same binding logic as the named-mapsto ClaimCall arm
-                // below — bind args, declare per-call Z3 names for any
-                // claim-internal vars, recurse with fresh inner env.
+                // Pre-isolate: the called claim's body Memberships
+                // are LOCAL to this invocation. Any caller-scope vars
+                // sharing those names are removed from `inner` so the
+                // body either gets the slot-mapped value (if the name
+                // is a slot param) or a per-call fresh declaration.
+                // Without this, recursive helpers (transpiler-style)
+                // that share body-Membership names with the caller's
+                // scope collapse Z3 consts across invocations and go
+                // UNSAT for inputs that disagree on the shared field.
+                let _ = depth;
                 let mut inner = env.clone();
+                // Slot params (the first param_count body items) are
+                // explicit inputs — caller's value goes here. Body
+                // Memberships past that index are helper-locals; clear
+                // any same-named entries inherited from the caller's
+                // scope so they don't collide across nested helper
+                // invocations.
+                isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
                 let slot_set: std::collections::HashSet<String> =
                     mappings.iter().map(|m| m.slot.clone()).collect();
                 for m in &mappings {
@@ -371,32 +428,11 @@ fn inline_body_items_guarded(
                 let call_id = next_call_id();
                 for sub in &claim.body {
                     if let BodyItem::Membership { name: vname, type_name, .. } = sub {
-                        let slot_prefix = format!("{}.", vname);
-                        let already_bound = inner.contains_key(vname)
-                            || inner.keys().any(|k| k.starts_with(&slot_prefix));
-                        // Recursive frames force-shadow body-internal
-                        // (non-slot) Memberships so each invocation gets
-                        // a fresh Z3 const. Without this the inner call
-                        // inherits the outer's Z3 const via env clone
-                        // and `out = ... ++ tail_out` becomes a
-                        // self-equation `T = ... ++ T` (UNSAT).
-                        let force_fresh = depth > 1 && !slot_set.contains(vname);
-                        if force_fresh {
-                            // declare_var_named's idempotence guard
-                            // would skip the re-declaration; pop the
-                            // inherited entry first so the fresh decl
-                            // sticks.
-                            inner.remove(vname);
-                            let dotted: Vec<String> = inner.keys()
-                                .filter(|k| k.starts_with(&slot_prefix))
-                                .cloned().collect();
-                            for k in dotted { inner.remove(&k); }
-                        }
-                        if !already_bound || force_fresh {
-                            let z3_name = format!("{}__{}__call{}", name, vname, call_id);
-                            declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
-                                              type_name, schemas, Some(registry), enums);
-                        }
+                        if slot_set.contains(vname) { continue; }
+                        if inner.contains_key(vname) { continue; }
+                        let z3_name = format!("{}__{}__call{}", name, vname, call_id);
+                        declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                                          type_name, schemas, Some(registry), enums);
                     }
                 }
                 inline_body_items_guarded(
@@ -426,8 +462,40 @@ fn inline_body_items_guarded(
                 let Some(claim) = schemas.get(claim_name) else {
                     exit_frame(visited, claim_name); continue
                 };
+                // Names-match invocation: clone env, isolate names
+                // that clash with the helper's body Memberships,
+                // declare those fresh per-call. Each sibling/nested
+                // invocation thus gets its own Z3 consts for body
+                // locals, rather than collapsing to the caller's
+                // same-named entries (see comment in the positional
+                // ClaimCall arm above for the recursive transpiler
+                // case that drove this design).
+                //
+                // Note we DON'T cherry-pick "input slot" names from
+                // outer — body Memberships that reference outer
+                // values via names-match already exist in `env` (the
+                // caller's scope), and the constraints they generate
+                // assert against the FRESH per-call consts. Those
+                // constraints then form an equivalence (the helper
+                // sets `out = ...` where `out` is the fresh local;
+                // upstream callers explicitly pass their `out` via
+                // the surrounding positional ClaimCall's slot
+                // mapping, which equates them through the assertion
+                // chain). Sharing the Z3 const directly is an
+                // optimization that breaks recursion, so we drop it.
+                let mut inner = env.clone();
+                isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
+                let call_id = next_call_id();
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name, .. } = sub {
+                        if inner.contains_key(vname) { continue; }
+                        let z3_name = format!("{}__{}__call{}", claim_name, vname, call_id);
+                        declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                                          type_name, schemas, Some(registry), enums);
+                    }
+                }
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
                 );
                 exit_frame(visited, claim_name);
             }

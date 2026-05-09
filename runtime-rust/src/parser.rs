@@ -241,7 +241,7 @@ impl Parser {
         };
         let body = self.parse_indented_body()?;
         Ok(BodyItem::SubclaimDecl(SchemaDecl {
-            keyword: Keyword::Subclaim, name, body,
+            keyword: Keyword::Subclaim, name, body, param_count: 0,
         }))
     }
 
@@ -292,8 +292,9 @@ impl Parser {
         if matches!(self.peek(), Token::LParen) {
             body = self.parse_first_line_params()?;
         }
+        let param_count = body.len();
         body.extend(self.parse_indented_body()?);
-        Ok(SchemaDecl { keyword, name, body })
+        Ok(SchemaDecl { keyword, name, body, param_count })
     }
 
     /// Parse `( name1, name2, … ∈ Type, name3 ∈ Type2, … )`. Each

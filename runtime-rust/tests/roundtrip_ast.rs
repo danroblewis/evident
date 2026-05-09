@@ -87,6 +87,7 @@ fn roundtrip_minimal_membership() {
                 pins: evident_runtime::ast::Pins::None,
             },
         ],
+        param_count: 0,
     });
 
     assert_program_eq(&decoded, &expected);

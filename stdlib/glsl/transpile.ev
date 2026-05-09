@@ -95,37 +95,27 @@ claim emit_expr(e ∈ GLSLExpr, out ∈ String)
 
 -- ── Per-variant helpers ──────────────────────────────────
 
-claim emit_floatlit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_floatlit(e ∈ GLSLExpr, out ∈ String)
     out = match e
         GFloatLit(s) ⇒ s
         _            ⇒ ""
 
-claim emit_intlit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_intlit(e ∈ GLSLExpr, out ∈ String)
     out = match e
         GIntLit(s) ⇒ s
         _          ⇒ ""
 
-claim emit_boollit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_boollit(e ∈ GLSLExpr, out ∈ String)
     out = match e
         GBoolLit(b) ⇒ (b ? "true" : "false")
         _           ⇒ ""
 
-claim emit_ident
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_ident(e ∈ GLSLExpr, out ∈ String)
     out = match e
         GIdent(n) ⇒ n
         _         ⇒ ""
 
-claim emit_binary
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_binary(e ∈ GLSLExpr, out ∈ String)
     bop ∈ GLSLBinOp
     blhs ∈ GLSLExpr
     brhs ∈ GLSLExpr
@@ -146,9 +136,7 @@ claim emit_binary
     emit_expr(brhs, brhs_str)
     out = "(" ++ blhs_str ++ " " ++ bop_str ++ " " ++ brhs_str ++ ")"
 
-claim emit_unaryneg
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_unaryneg(e ∈ GLSLExpr, out ∈ String)
     inner ∈ GLSLExpr
     inner = match e
         GUnaryNeg(x) ⇒ x
@@ -157,9 +145,7 @@ claim emit_unaryneg
     emit_expr(inner, inner_str)
     out = "(-" ++ inner_str ++ ")"
 
-claim emit_call
-    e    ∈ GLSLExpr
-    out  ∈ String
+claim emit_call(e ∈ GLSLExpr, out ∈ String)
     name ∈ String
     args ∈ GLSLExprList
     name = match e
@@ -172,9 +158,7 @@ claim emit_call
     emit_expr_list(args, args_str)
     out = name ++ "(" ++ args_str ++ ")"
 
-claim emit_swizzle
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_swizzle(e ∈ GLSLExpr, out ∈ String)
     inner ∈ GLSLExpr
     sw    ∈ String
     inner = match e
@@ -187,9 +171,7 @@ claim emit_swizzle
     emit_expr(inner, inner_str)
     out = inner_str ++ "." ++ sw
 
-claim emit_ternary
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_ternary(e ∈ GLSLExpr, out ∈ String)
     cnd ∈ GLSLExpr
     thn ∈ GLSLExpr
     els ∈ GLSLExpr
@@ -210,9 +192,7 @@ claim emit_ternary
     emit_expr(els, els_str)
     out = "(" ++ cnd_str ++ " ? " ++ thn_str ++ " : " ++ els_str ++ ")"
 
-claim emit_vec2lit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_vec2lit(e ∈ GLSLExpr, out ∈ String)
     vx  ∈ GLSLExpr
     vy  ∈ GLSLExpr
     vx = match e
@@ -227,9 +207,7 @@ claim emit_vec2lit
     emit_expr(vy, vy_str)
     out = "vec2(" ++ vx_str ++ ", " ++ vy_str ++ ")"
 
-claim emit_vec3lit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_vec3lit(e ∈ GLSLExpr, out ∈ String)
     vx  ∈ GLSLExpr
     vy  ∈ GLSLExpr
     vz  ∈ GLSLExpr
@@ -250,9 +228,7 @@ claim emit_vec3lit
     emit_expr(vz, vz_str)
     out = "vec3(" ++ vx_str ++ ", " ++ vy_str ++ ", " ++ vz_str ++ ")"
 
-claim emit_vec4lit
-    e   ∈ GLSLExpr
-    out ∈ String
+claim emit_vec4lit(e ∈ GLSLExpr, out ∈ String)
     vx  ∈ GLSLExpr
     vy  ∈ GLSLExpr
     vz  ∈ GLSLExpr
@@ -306,11 +282,8 @@ claim emit_expr_list(es ∈ GLSLExprList, out ∈ String)
 
 -- Names-match helper invoked only when es is non-empty. Walks the
 -- head + the rest (each rest element gets a leading ", ").
-claim emit_expr_list_recur
-    head ∈ GLSLExpr
-    head_str ∈ String
-    rest ∈ GLSLExprList
-    rest_str ∈ String
+claim emit_expr_list_recur(head ∈ GLSLExpr, head_str ∈ String,
+                           rest ∈ GLSLExprList, rest_str ∈ String)
     emit_expr(head, head_str)
     emit_expr_list_inner(rest, rest_str)
 
@@ -332,11 +305,8 @@ claim emit_expr_list_inner(es ∈ GLSLExprList, out ∈ String)
     es_nonempty = ¬ is_nil
     es_nonempty ⇒ emit_expr_list_inner_recur
 
-claim emit_expr_list_inner_recur
-    head ∈ GLSLExpr
-    head_str ∈ String
-    rest ∈ GLSLExprList
-    rest_str ∈ String
+claim emit_expr_list_inner_recur(head ∈ GLSLExpr, head_str ∈ String,
+                                  rest ∈ GLSLExprList, rest_str ∈ String)
     emit_expr(head, head_str)
     emit_expr_list_inner(rest, rest_str)
 
@@ -354,9 +324,7 @@ claim emit_stmt(s ∈ GLSLStmt, out ∈ String)
     s_is_declassign ⇒ emit_stmt_declassign
     s_is_ifelse     ⇒ emit_stmt_ifelse
 
-claim emit_stmt_assign
-    s   ∈ GLSLStmt
-    out ∈ String
+claim emit_stmt_assign(s ∈ GLSLStmt, out ∈ String)
     sa_name ∈ String
     sa_rhs  ∈ GLSLExpr
     sa_name = match s
@@ -369,9 +337,7 @@ claim emit_stmt_assign
     emit_expr(sa_rhs, sa_rhs_str)
     out = "  " ++ sa_name ++ " = " ++ sa_rhs_str ++ ";\n"
 
-claim emit_stmt_declassign
-    s   ∈ GLSLStmt
-    out ∈ String
+claim emit_stmt_declassign(s ∈ GLSLStmt, out ∈ String)
     sd_type ∈ GLSLType
     sd_name ∈ String
     sd_rhs  ∈ GLSLExpr
@@ -390,9 +356,7 @@ claim emit_stmt_declassign
     emit_expr(sd_rhs, sd_rhs_str)
     out = "  " ++ sd_type_str ++ " " ++ sd_name ++ " = " ++ sd_rhs_str ++ ";\n"
 
-claim emit_stmt_ifelse
-    s   ∈ GLSLStmt
-    out ∈ String
+claim emit_stmt_ifelse(s ∈ GLSLStmt, out ∈ String)
     si_cond ∈ GLSLExpr
     si_then ∈ GLSLStmtList
     si_else ∈ GLSLStmtList
@@ -431,11 +395,8 @@ claim emit_stmt_list(ss ∈ GLSLStmtList, out ∈ String)
     nonempty = ¬ is_nil
     nonempty ⇒ emit_stmt_list_recur
 
-claim emit_stmt_list_recur
-    head ∈ GLSLStmt
-    head_str ∈ String
-    rest ∈ GLSLStmtList
-    rest_str ∈ String
+claim emit_stmt_list_recur(head ∈ GLSLStmt, head_str ∈ String,
+                           rest ∈ GLSLStmtList, rest_str ∈ String)
     emit_stmt(head, head_str)
     emit_stmt_list(rest, rest_str)
 
@@ -453,9 +414,7 @@ claim emit_binding(b ∈ GLSLBinding, out ∈ String)
     b_is_in      ⇒ emit_binding_in
     b_is_uniform ⇒ emit_binding_uniform
 
-claim emit_binding_out
-    b   ∈ GLSLBinding
-    out ∈ String
+claim emit_binding_out(b ∈ GLSLBinding, out ∈ String)
     bo_type ∈ GLSLType
     bo_name ∈ String
     bo_loc  ∈ String
@@ -472,9 +431,7 @@ claim emit_binding_out
     emit_type(bo_type, bo_type_str)
     out = "layout(location = " ++ bo_loc ++ ") out " ++ bo_type_str ++ " " ++ bo_name ++ ";\n"
 
-claim emit_binding_in
-    b   ∈ GLSLBinding
-    out ∈ String
+claim emit_binding_in(b ∈ GLSLBinding, out ∈ String)
     bi_type ∈ GLSLType
     bi_name ∈ String
     bi_loc  ∈ String
@@ -491,9 +448,7 @@ claim emit_binding_in
     emit_type(bi_type, bi_type_str)
     out = "layout(location = " ++ bi_loc ++ ") in " ++ bi_type_str ++ " " ++ bi_name ++ ";\n"
 
-claim emit_binding_uniform
-    b   ∈ GLSLBinding
-    out ∈ String
+claim emit_binding_uniform(b ∈ GLSLBinding, out ∈ String)
     bu_type ∈ GLSLType
     bu_name ∈ String
     bu_type = match b
@@ -524,11 +479,8 @@ claim emit_binding_list(bs ∈ GLSLBindingList, out ∈ String)
     nonempty = ¬ is_nil
     nonempty ⇒ emit_binding_list_recur
 
-claim emit_binding_list_recur
-    head ∈ GLSLBinding
-    head_str ∈ String
-    rest ∈ GLSLBindingList
-    rest_str ∈ String
+claim emit_binding_list_recur(head ∈ GLSLBinding, head_str ∈ String,
+                              rest ∈ GLSLBindingList, rest_str ∈ String)
     emit_binding(head, head_str)
     emit_binding_list(rest, rest_str)
 

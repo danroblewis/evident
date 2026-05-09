@@ -22,6 +22,16 @@ pub struct SchemaDecl {
     pub keyword: Keyword,
     pub name: String,
     pub body: Vec<BodyItem>,
+    /// Number of leading body items that came from the first-line
+    /// param list — `claim Foo(a ∈ X, b ∈ Y) ...` desugars to those
+    /// Memberships at the head of `body`. They are the "input/output
+    /// slots" of the claim: the runtime treats them as outer-bound
+    /// (via slot mapping for positional invocation, via names-match
+    /// for guarded `cond ⇒ Foo` invocation), while body Memberships
+    /// past this index are helper-LOCALS that get fresh per-call Z3
+    /// consts to keep recursive helper invocations isolated.
+    /// Zero when the claim has no first-line params.
+    pub param_count: usize,
 }
 
 /// A single line in a schema body.
