@@ -625,19 +625,15 @@ The binary is `evident <subcommand>`. All subcommands:
 
 | Subcommand           | Purpose                                                  |
 |----------------------|----------------------------------------------------------|
-| `parse <file>`       | Debug: parse + print schema names. Exit 1 on parse error. |
-| `query <files…> <schema> [--given k=v …] [--json] [--explain]` | Single SAT/UNSAT decision |
+| `query <files…> <schema> [--given k=v …] [--json] [--explain] [--infer-types]` | Single SAT/UNSAT decision. With `--infer-types`, runs the self-hosted inference passes first and adds the deduced Memberships before solving. |
 | `check <files…>`     | Query every loaded schema with empty givens; SAT/UNSAT report |
-| `sample <files…> <schema> [-n N] [--given k=v] [--json]` | Up to N distinct models |
+| `sample <files…> <schema> [-n N] [--given k=v] [--json] [--infer-types]` | Up to N distinct models. Same `--infer-types` semantics as `query`. |
 | `test [path] [-v] [--no-color] [--format=tap\|junit\|json]` | Test discovery + run |
 | `execute <file> [SDL flags] [--initial-state PATH]` | Run `schema main` as constraint automaton |
-| `transpile-shader <file> <shader_name>` | Emit GLSL                                |
-| `export-smt2 <file> <claim>` | Emit SMT-LIB v2                                  |
-| `import-smt2 <file> [claim_name]` | Parse SMT-LIB v2 → Evident                  |
-| `initial-state <file> <claim>` | Generate initial-state JSON for executor seeding |
-| `dump-ast <file>`    | Encode the parsed program as a Z3 datatype value matching `stdlib/ast.ev`'s `Program` enum and print it. Stage 2 of self-hosting — the bridge that lets self-hosted passes consume real source. |
 | `infer-types <file> [--strict]` | Run every self-hosted inference rule (literal_types, iter_types, propagation, consistency) and print an aggregated type table. `--strict` exits 4 on type conflicts or ambiguities. Stages 3–10. |
 | `lint <file>`        | Run self-hosted lint rules. Currently `duplicate_membership_in_body`. Exit 5 on findings. Stage 11 — proves self-hosting works for non-inference passes. |
+| `export-smt2 <file> <claim>` | Emit SMT-LIB v2                                  |
+| `import-smt2 <file> [claim_name]` | Parse SMT-LIB v2 → Evident                  |
 
 Conspicuously absent vs. Python: **no `batch` mode, no `repl`**. These
 were "parked behind plugin work" per the executor comments; users would

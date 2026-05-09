@@ -10,14 +10,11 @@ pub mod common;
 pub mod initial_state;
 
 pub mod check;
-pub mod dump_ast;
 pub mod execute;
 pub mod infer_types;
 pub mod lint;
-pub mod parse;
 pub mod query;
 pub mod sample;
 pub mod test;
-pub mod transpile_shader;
 pub mod export_smt2;
 pub mod import_smt2;
