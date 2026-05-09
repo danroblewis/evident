@@ -1,0 +1,212 @@
+-- programs/demos/effect_gl_compile_shader.ev
+--
+--     evident effect-run programs/demos/effect_gl_compile_shader.ev --max-steps 60
+--
+-- Walks a real shader through the GL compile pipeline:
+--   glCreateShader → glShaderSource → glCompileShader → glIsShader
+-- then deletes it. Confirms StrArr arg marshalling works (the
+-- glShaderSource source-array parameter is `const char**`) and that
+-- the FFI cache replays the libGL symbol lookups efficiently.
+--
+-- We don't yet read back the compile-status / info-log because that
+-- needs an output-pointer arg type — sketched in the design plan.
+-- Instead we use glIsShader (returns GLboolean) as a "the handle is
+-- still valid" smoke probe.
+
+import "stdlib/sdl/gl.ev"
+import "stdlib/shader/program.ev"
+
+enum SDLState =
+    Init                                -- SDL_Init + 3× GL attrs
+    AfterInit                           -- → CreateWindow
+    AwaitWindow
+    AfterWindow(Int)                    -- → gl_create_context
+    AwaitGLContext(Int)
+    HaveContext(Int, Int)               -- → make_current
+    MadeCurrent(Int, Int)               -- → glCreateShader(VERTEX)
+    AwaitShader(Int, Int)               -- capture shader id
+    HaveShader(Int, Int, Int)           -- (win, ctx, sh) → ShaderSource
+    SourcedShader(Int, Int, Int)        -- → CompileShader
+    CompiledShader(Int, Int, Int)       -- → IsShader(sh)
+    AwaitIsShader(Int, Int, Int)        -- capture bool, print + DeleteShader
+    DeletedShader(Int, Int)             -- → DeleteContext
+    AfterDestroyCtx(Int)
+    DestroyW(Int)
+    AfterDestroyW
+    Quit
+    AfterQuit
+    Done
+
+claim main
+    state, state_next ∈ SDLState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    handle_out ∈ Int
+    handle_out = match last_results
+        ResCons(r, _) ⇒ match r
+            HandleResult(h) ⇒ h
+            _               ⇒ 0
+        _              ⇒ 0
+
+    int_out ∈ Int
+    int_out = match last_results
+        ResCons(r, _) ⇒ match r
+            IntResult(n) ⇒ n
+            _            ⇒ 0
+        _              ⇒ 0
+
+    bool_out ∈ Bool
+    bool_out = match last_results
+        ResCons(r, _) ⇒ match r
+            BoolResult(b) ⇒ b
+            _             ⇒ false
+        _              ⇒ false
+
+    state_next = match state
+        Init                       ⇒ AfterInit
+        AfterInit                  ⇒ AwaitWindow
+        AwaitWindow                ⇒ AfterWindow(handle_out)
+        AfterWindow(w)             ⇒ AwaitGLContext(w)
+        AwaitGLContext(w)          ⇒ HaveContext(w, handle_out)
+        HaveContext(w, c)          ⇒ MadeCurrent(w, c)
+        MadeCurrent(w, c)          ⇒ AwaitShader(w, c)
+        AwaitShader(w, c)          ⇒ HaveShader(w, c, int_out)
+        HaveShader(w, c, sh)       ⇒ SourcedShader(w, c, sh)
+        SourcedShader(w, c, sh)    ⇒ CompiledShader(w, c, sh)
+        CompiledShader(w, c, sh)   ⇒ AwaitIsShader(w, c, sh)
+        AwaitIsShader(w, c, _)     ⇒ DeletedShader(w, c)
+        DeletedShader(w, _)        ⇒ AfterDestroyCtx(w)
+        AfterDestroyCtx(w)         ⇒ DestroyW(w)
+        DestroyW(_)                ⇒ AfterDestroyW
+        AfterDestroyW              ⇒ Quit
+        Quit                       ⇒ AfterQuit
+        AfterQuit                  ⇒ Done
+        Done                       ⇒ Done
+
+    win ∈ Int
+    win = match state
+        AfterWindow(w)             ⇒ w
+        AwaitGLContext(w)          ⇒ w
+        HaveContext(w, _)          ⇒ w
+        MadeCurrent(w, _)          ⇒ w
+        AwaitShader(w, _)          ⇒ w
+        HaveShader(w, _, _)        ⇒ w
+        SourcedShader(w, _, _)     ⇒ w
+        CompiledShader(w, _, _)    ⇒ w
+        AwaitIsShader(w, _, _)     ⇒ w
+        DeletedShader(w, _)        ⇒ w
+        AfterDestroyCtx(w)         ⇒ w
+        DestroyW(w)                ⇒ w
+        _                          ⇒ 0
+
+    ctx ∈ Int
+    ctx = match state
+        HaveContext(_, c)          ⇒ c
+        MadeCurrent(_, c)          ⇒ c
+        AwaitShader(_, c)          ⇒ c
+        HaveShader(_, c, _)        ⇒ c
+        SourcedShader(_, c, _)     ⇒ c
+        CompiledShader(_, c, _)    ⇒ c
+        AwaitIsShader(_, c, _)     ⇒ c
+        DeletedShader(_, c)        ⇒ c
+        _                          ⇒ 0
+
+    sh ∈ Int
+    sh = match state
+        HaveShader(_, _, s)        ⇒ s
+        SourcedShader(_, _, s)     ⇒ s
+        CompiledShader(_, _, s)    ⇒ s
+        AwaitIsShader(_, _, s)     ⇒ s
+        _                          ⇒ 0
+
+    -- ── Effects ────────────────────────────────────────────────
+
+    sdl_init_eff ∈ Effect
+    sdl_init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                           "SDL_Init", "i(i)",
+                           ArgCons(ArgInt(32), ArgNil))
+
+    set_major_eff ∈ Effect
+    gl_set_attribute(17, 3, set_major_eff)
+    set_minor_eff ∈ Effect
+    gl_set_attribute(18, 3, set_minor_eff)
+    set_profile_eff ∈ Effect
+    gl_set_attribute(21, 1, set_profile_eff)
+
+    create_window_eff ∈ Effect
+    create_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                "SDL_CreateWindow", "p(siiiii)",
+                                ArgCons(ArgStr("Evident GL Compile-Shader Smoke"),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(320),
+                                ArgCons(ArgInt(200),
+                                ArgCons(ArgInt(2), ArgNil)))))))
+
+    create_ctx_eff ∈ Effect
+    gl_create_context(win, create_ctx_eff)
+
+    make_current_eff ∈ Effect
+    gl_make_current(win, ctx, make_current_eff)
+
+    -- A trivial GLSL 4.1 core vertex shader. Generates positions for
+    -- a fullscreen triangle from gl_VertexID — no buffers required.
+    -- The exact text doesn't matter for compile testing, but using
+    -- something realistic exercises a non-toy parser path.
+    vertex_src ∈ String
+    vertex_src = "#version 410 core\nvoid main() {\n  vec2 verts[3] = vec2[3](vec2(-1, -1), vec2(3, -1), vec2(-1, 3));\n  gl_Position = vec4(verts[gl_VertexID], 0, 1);\n}\n"
+
+    create_shader_eff ∈ Effect
+    gl_create_shader(35633, create_shader_eff)               -- VERTEX_SHADER
+
+    source_shader_eff ∈ Effect
+    gl_shader_source(sh, vertex_src, source_shader_eff)
+
+    compile_shader_eff ∈ Effect
+    gl_compile_shader(sh, compile_shader_eff)
+
+    is_shader_eff ∈ Effect
+    gl_is_shader(sh, is_shader_eff)
+
+    delete_shader_eff ∈ Effect
+    gl_delete_shader(sh, delete_shader_eff)
+
+    delete_ctx_eff ∈ Effect
+    gl_delete_context(ctx, delete_ctx_eff)
+
+    destroy_window_eff ∈ Effect
+    destroy_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                 "SDL_DestroyWindow", "v(p)",
+                                 ArgCons(ArgHandle(win), ArgNil))
+
+    quit_eff ∈ Effect
+    quit_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_Quit", "v()", ArgNil)
+
+    -- "shader handle survived" message uses the captured bool.
+    status_msg ∈ String
+    status_msg = (bool_out ? "shader handle is alive after compile"
+                           : "shader handle is INVALID after compile")
+
+    effects = match state
+        Init               ⇒ ⟨sdl_init_eff,
+                              set_major_eff, set_minor_eff, set_profile_eff⟩
+        AfterInit          ⇒ ⟨create_window_eff⟩
+        AwaitWindow        ⇒ ⟨⟩
+        AfterWindow(_)     ⇒ ⟨create_ctx_eff⟩
+        AwaitGLContext(_)  ⇒ ⟨⟩
+        HaveContext(_, _)  ⇒ ⟨make_current_eff⟩
+        MadeCurrent(_, _)  ⇒ ⟨create_shader_eff⟩
+        AwaitShader(_, _)  ⇒ ⟨⟩
+        HaveShader(_, _, _) ⇒ ⟨source_shader_eff⟩
+        SourcedShader(_, _, _) ⇒ ⟨compile_shader_eff⟩
+        CompiledShader(_, _, _) ⇒ ⟨is_shader_eff⟩
+        AwaitIsShader(_, _, _)  ⇒ ⟨Println(status_msg), delete_shader_eff⟩
+        DeletedShader(_, _)     ⇒ ⟨delete_ctx_eff⟩
+        AfterDestroyCtx(_)      ⇒ ⟨destroy_window_eff⟩
+        DestroyW(_)             ⇒ ⟨⟩
+        AfterDestroyW           ⇒ ⟨quit_eff⟩
+        Quit                    ⇒ ⟨⟩
+        AfterQuit               ⇒ ⟨⟩
+        Done                    ⇒ ⟨⟩

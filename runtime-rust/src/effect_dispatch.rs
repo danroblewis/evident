@@ -179,6 +179,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
                     EffectFfiArg::Real(r)   => FfiArg::Real(*r),
                     EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+                    EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
                 }).collect();
                 match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
                     Ok(FfiReturn::Void)      => EffectResult::NoResult,
@@ -259,6 +260,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
                     EffectFfiArg::Real(r)   => FfiArg::Real(*r),
                     EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+                    EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
                 }).collect();
                 match ffi::ffi_call(&ctx.registry, sym_handle, sig, &ffi_args) {
                     Ok(FfiReturn::Void)      => EffectResult::NoResult,
@@ -303,6 +305,7 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
         // differ between record and replay runs); sufficient that both
         // sides are Handle.
         (EffectFfiArg::Handle(_), EffectFfiArg::Handle(_)) => true,
+        (EffectFfiArg::StrArr(p), EffectFfiArg::StrArr(q)) => p == q,
         _ => false,
     })
 }

@@ -583,10 +583,19 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
         "ArgStr"    => { need_arity(variant, fields, 1)?; EffectFfiArg::Str(decode_str(&fields[0])?) }
         "ArgReal"   => { need_arity(variant, fields, 1)?; EffectFfiArg::Real(decode_real(&fields[0])?) }
         "ArgHandle" => { need_arity(variant, fields, 1)?; EffectFfiArg::Handle(decode_int(&fields[0])? as u64) }
+        "ArgStrArr" => {
+            need_arity(variant, fields, 1)?;
+            EffectFfiArg::StrArr(decode_str_list(&fields[0])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),
         }),
     })
+}
+
+/// Cons/Nil-shaped `StrList` decoder. Used as `ArgStrArr`'s payload.
+pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
+    decode_list(v, "StrList", "StrNil", "StrCons", |item| decode_str(item))
 }
 
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {

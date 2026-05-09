@@ -22,12 +22,21 @@
 -- registry at FFI call time.
 
 -- ── FFI argument: tagged union, carries the C-marshalled value ──
+-- A list-of-strings, used for FFI args that need `const char **`
+-- (e.g. glShaderSource's source-array parameter). The runtime
+-- marshals each element to a CString and passes a pointer to the
+-- pointer array; the C side sees `const GLchar * const *`.
+enum StrList =
+    StrNil
+    StrCons(String, StrList)
+
 enum FFIArg =
     ArgInt(Int)
     ArgBool(Bool)
     ArgStr(String)
     ArgReal(Real)
     ArgHandle(Int)
+    ArgStrArr(StrList)
 
 enum ArgList =
     ArgNil

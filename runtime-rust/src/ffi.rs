@@ -48,6 +48,10 @@ pub enum FfiArg {
     Str(String),
     Real(f64),
     Handle(u64),
+    /// Array of strings, marshalled as `const char * const *`. The
+    /// caller passes the C function the count separately (typically
+    /// as a preceding `ArgInt`), per the GL convention.
+    StrArr(Vec<String>),
 }
 
 /// One returned value from a libffi call. Maps back to an Evident
@@ -294,6 +298,12 @@ pub fn ffi_call(
     let mut floats:    Vec<f32>     = Vec::with_capacity(args.len());
     let mut handles:   Vec<*mut std::ffi::c_void> = Vec::with_capacity(args.len());
     let mut str_ptrs:  Vec<*const std::os::raw::c_char> = Vec::with_capacity(args.len());
+    // Per-StrArr backing: own the CStrings + the array of their
+    // pointers. The inner pointer arrays' heap allocations are
+    // stable across outer-Vec growth, so capturing `as_ptr()`
+    // post-population is safe.
+    let mut arr_cstrings:   Vec<Vec<CString>>                       = Vec::new();
+    let mut arr_ptr_lists:  Vec<Vec<*const std::os::raw::c_char>>   = Vec::new();
 
     // First pass: fill the backing-storage vectors. We must NOT push
     // to these between borrowing slots from them, because Vec growth
@@ -317,6 +327,19 @@ pub fn ffi_call(
                 };
                 handles.push(ptr);
             }
+            (FfiArg::StrArr(strs), TypeCode::P) => {
+                let mut cstrs: Vec<CString> = Vec::with_capacity(strs.len());
+                for (j, s) in strs.iter().enumerate() {
+                    let cs = CString::new(s.as_bytes()).map_err(|_| FfiError(format!(
+                        "arg {i}, string {j}: contains null byte",
+                    )))?;
+                    cstrs.push(cs);
+                }
+                let ptrs: Vec<*const std::os::raw::c_char> =
+                    cstrs.iter().map(|c| c.as_ptr()).collect();
+                arr_cstrings.push(cstrs);
+                arr_ptr_lists.push(ptrs);
+            }
             (other, expected) => {
                 return Err(FfiError(format!(
                     "arg {i}: type mismatch — value is {other:?}, signature says {expected:?}",
@@ -328,23 +351,31 @@ pub fn ffi_call(
     // Reserve str_ptrs *after* c_strings is fully populated so the
     // pointers we capture remain valid.
     for cs in &c_strings { str_ptrs.push(cs.as_ptr()); }
+    // For StrArr: capture each pointer-array's start. Each inner
+    // arr_ptr_lists[i] is heap-stable; this gives the C function
+    // a `const char * const *` pointing into our owned buffer.
+    let arr_starts: Vec<*const *const std::os::raw::c_char> =
+        arr_ptr_lists.iter().map(|v| v.as_ptr()).collect();
 
-    // Second pass: build the libffi `Arg` vector, indexing into the
-    // stable storage. We track per-type indices since each backing
-    // vec only grows for args of its own type.
+    // Second pass: build the libffi `Arg` vector. Iterate over the
+    // (FfiArg, TypeCode) pairs because TypeCode::P is shared by
+    // Handle and StrArr — we need the actual FfiArg variant to pick
+    // the right backing store.
     let mut idx_int = 0usize; let mut idx_bool = 0usize;
     let mut idx_str = 0usize; let mut idx_dbl  = 0usize;
     let mut idx_flt = 0usize; let mut idx_p   = 0usize;
+    let mut idx_arr = 0usize;
     let mut ffi_args: Vec<Arg> = Vec::with_capacity(args.len());
-    for code in &parsed.args {
-        let a = match code {
-            TypeCode::I => { let r = Arg::new(&int64s[idx_int]);  idx_int  += 1; r }
-            TypeCode::B => { let r = Arg::new(&bool_ints[idx_bool]); idx_bool += 1; r }
-            TypeCode::S => { let r = Arg::new(&str_ptrs[idx_str]); idx_str  += 1; r }
-            TypeCode::D => { let r = Arg::new(&doubles[idx_dbl]); idx_dbl  += 1; r }
-            TypeCode::F => { let r = Arg::new(&floats[idx_flt]);  idx_flt  += 1; r }
-            TypeCode::P => { let r = Arg::new(&handles[idx_p]);   idx_p    += 1; r }
-            TypeCode::V => unreachable!("void rejected during signature parse"),
+    for (arg, code) in args.iter().zip(parsed.args.iter()) {
+        let a = match (arg, *code) {
+            (FfiArg::Int(_),    TypeCode::I) => { let r = Arg::new(&int64s[idx_int]);    idx_int  += 1; r }
+            (FfiArg::Bool(_),   TypeCode::B) => { let r = Arg::new(&bool_ints[idx_bool]); idx_bool += 1; r }
+            (FfiArg::Str(_),    TypeCode::S) => { let r = Arg::new(&str_ptrs[idx_str]);   idx_str  += 1; r }
+            (FfiArg::Real(_),   TypeCode::D) => { let r = Arg::new(&doubles[idx_dbl]);    idx_dbl  += 1; r }
+            (FfiArg::Real(_),   TypeCode::F) => { let r = Arg::new(&floats[idx_flt]);     idx_flt  += 1; r }
+            (FfiArg::Handle(_), TypeCode::P) => { let r = Arg::new(&handles[idx_p]);      idx_p    += 1; r }
+            (FfiArg::StrArr(_), TypeCode::P) => { let r = Arg::new(&arr_starts[idx_arr]); idx_arr  += 1; r }
+            _ => unreachable!("pass 1 already validated all (arg, code) pairs"),
         };
         ffi_args.push(a);
     }

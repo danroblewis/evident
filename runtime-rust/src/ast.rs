@@ -286,6 +286,10 @@ pub enum EffectFfiArg {
     Str(String),
     Real(f64),
     Handle(u64),
+    /// `ArgStrArr(StrList)` — array of strings, marshalled as
+    /// `const char * const *`. Needed for `glShaderSource` and any
+    /// other API that wants a multi-string buffer.
+    StrArr(Vec<String>),
 }
 
 /// Outcome of one performed effect. Position-aligned with the

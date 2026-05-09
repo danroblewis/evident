@@ -64,3 +64,49 @@ claim gl_clear(mask ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glClear", "v(i)",
                   ArgCons(ArgInt(mask), ArgNil))
+
+-- ── Shader pipeline ──────────────────────────────────────────
+
+-- glCreateShader(shader_type) → GLuint shader id.
+-- shader_type is one of GL_VERTEX_SHADER (35633) or
+-- GL_FRAGMENT_SHADER (35632).
+claim gl_create_shader(shader_type ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glCreateShader", "i(i)",
+                  ArgCons(ArgInt(shader_type), ArgNil))
+
+-- glShaderSource(shader, count, string, length) — set the source for
+-- a shader object. We always pass count=1 + a single-element string
+-- array + a NULL length pointer (means "use strlen for each").
+-- The C signature is `void(GLuint, GLsizei, const GLchar* const*,
+-- const GLint*)` — argument 3 is `char**` (the StrArr lowering),
+-- argument 4 is a nullable int* (we pass ArgHandle(0) → NULL).
+claim gl_shader_source(shader ∈ Int, source ∈ String, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glShaderSource", "v(iipp)",
+                  ArgCons(ArgInt(shader),
+                  ArgCons(ArgInt(1),
+                  ArgCons(ArgStrArr(StrCons(source, StrNil)),
+                  ArgCons(ArgHandle(0), ArgNil)))))
+
+-- glCompileShader(shader) — compile the source previously set on
+-- this shader. Outcome is queryable via glGetShaderiv (not yet
+-- wrapped — needs an output-pointer arg type).
+claim gl_compile_shader(shader ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glCompileShader", "v(i)",
+                  ArgCons(ArgInt(shader), ArgNil))
+
+-- glIsShader(shader) → GLboolean. Lightweight "did the handle
+-- survive create+source+compile" probe.
+claim gl_is_shader(shader ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glIsShader", "b(i)",
+                  ArgCons(ArgInt(shader), ArgNil))
+
+-- glDeleteShader(shader) — drop a shader object. Safe even if the
+-- shader is still attached to a program (deletion is deferred).
+claim gl_delete_shader(shader ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glDeleteShader", "v(i)",
+                  ArgCons(ArgInt(shader), ArgNil))
