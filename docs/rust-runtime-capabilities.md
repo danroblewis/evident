@@ -204,6 +204,29 @@ share a sort (Int / Real / Bool / String / enum); a mismatch surfaces as
 the constraint dropping (translator returns `None`). Right-associative
 on the else side: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`.
 
+The `match scrutinee` expression sits at atom precedence (alongside
+parenthesized exprs and identifiers) and uses an indented-arm block:
+
+```
+match r
+    Ok(n)  ⇒ n * 10
+    Err(_) ⇒ 0
+```
+
+Translates to a nested Z3 ITE chain over the variant testers
+(`is_Ok(r) ? <body with n bound to Ok_arg0(r)> : ...`). Same sort
+rule as ternary — every arm body translates to the same Z3 sort.
+
+v1 limitations:
+  - Scrutinee must be a bare Identifier whose env entry is a
+    `Var::EnumVar`.
+  - Payload bindings restricted to `Int` / `Bool` / `String` /
+    `Real`; enum-typed payloads must use `_` to discard.
+  - Multi-line `match` can't sit inside `(...)` because the lexer
+    suppresses Newline tokens inside paren groups. Workaround: extract
+    into a named intermediate variable, then use the name in the outer
+    expression.
+
 This **matches** standard math conventions — and is the **opposite** of what
 CLAUDE.md describes for `⇒` vs `∧`. CLAUDE.md says "⇒ binds tighter than ∧"
 and warns that `A ⇒ B ∧ C` parses as `(A ⇒ B) ∧ C`. **The Rust parser does

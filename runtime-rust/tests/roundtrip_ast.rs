@@ -240,6 +240,45 @@ claim t
 }
 
 #[test]
+fn roundtrip_match_expression() {
+    let src = "\
+enum Result = Ok(Int) | Err(String)
+
+claim t
+    r ∈ Result
+    score ∈ Int
+    score = match r
+        Ok(n)  ⇒ n
+        Err(_) ⇒ 0
+";
+    let decoded = round_trip(src);
+    let claim_t = decoded.schemas.iter().find(|s| s.name == "t").unwrap();
+    let cstr = claim_t.body.iter().find_map(|i| match i {
+        evident_runtime::ast::BodyItem::Constraint(e) => Some(e),
+        _ => None,
+    }).expect("expected the score = match ... constraint");
+    if let evident_runtime::ast::Expr::Binary(_, _, rhs) = cstr {
+        match rhs.as_ref() {
+            evident_runtime::ast::Expr::Match(scr, arms) => {
+                assert!(matches!(scr.as_ref(), evident_runtime::ast::Expr::Identifier(n) if n == "r"));
+                assert_eq!(arms.len(), 2);
+                if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = &arms[0].pattern {
+                    assert_eq!(name, "Ok");
+                    assert_eq!(binds, &vec![Some("n".to_string())]);
+                } else { panic!("expected Ok pattern, got {:?}", arms[0].pattern); }
+                if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = &arms[1].pattern {
+                    assert_eq!(name, "Err");
+                    assert_eq!(binds, &vec![None]);
+                } else { panic!("expected Err pattern, got {:?}", arms[1].pattern); }
+            }
+            other => panic!("expected Match, got {other:?}"),
+        }
+    } else {
+        panic!("expected Binary outer constraint, got {cstr:?}");
+    }
+}
+
+#[test]
 fn roundtrip_ternary() {
     let src = "\
 claim t

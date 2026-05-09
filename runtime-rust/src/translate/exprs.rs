@@ -153,6 +153,11 @@ pub(super) fn resolve_enum_ast<'ctx>(
             let else_v = resolve_enum_ast(b, ctx, env, schemas)?;
             Some(cond.ite(&then_v, &else_v))
         }
+        Expr::Match(scr, arms) => {
+            let compiled = translate_match_arms(scr, arms, ctx, env,
+                |body, e| resolve_enum_ast(body, ctx, e, schemas))?;
+            fold_arms_to_ite(compiled)
+        }
         _ => None,
     }
 }
@@ -285,6 +290,11 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             let else_v = translate_str(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
         }
+        Expr::Match(scr, arms) => {
+            let compiled = translate_match_arms(scr, arms, ctx, env,
+                |body, e| translate_str(body, ctx, e))?;
+            fold_arms_to_ite(compiled)
+        }
         _ => None,
     }
 }
@@ -351,6 +361,13 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             let else_v = translate_int(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
         }
+        // `match scrutinee { Ctor(b) ⇒ body | _ ⇒ fallback }` with
+        // Int-typed arm bodies → nested ITE.
+        Expr::Match(scr, arms) => {
+            let compiled = translate_match_arms(scr, arms, ctx, env,
+                |body, e| translate_int(body, ctx, e))?;
+            fold_arms_to_ite(compiled)
+        }
         _ => None,
     }
 }
@@ -396,6 +413,11 @@ pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
             let then_v = translate_real(a, ctx, env)?;
             let else_v = translate_real(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
+        }
+        Expr::Match(scr, arms) => {
+            let compiled = translate_match_arms(scr, arms, ctx, env,
+                |body, e| translate_real(body, ctx, e))?;
+            fold_arms_to_ite(compiled)
         }
         _ => None,
     }
@@ -1017,6 +1039,11 @@ pub(super) fn translate_bool<'ctx>(
             let else_v = translate_bool(b, ctx, env, schemas)?;
             Some(cond.ite(&then_v, &else_v))
         }
+        Expr::Match(scr, arms) => {
+            let compiled = translate_match_arms(scr, arms, ctx, env,
+                |body, e| translate_bool(body, ctx, e, schemas))?;
+            fold_arms_to_ite(compiled)
+        }
 
         // `seq[i]` where seq holds Bool elements.
         Expr::Index(seq_expr, idx_expr) => {
@@ -1426,4 +1453,108 @@ pub(super) fn translate_bool<'ctx>(
         }
         _ => None,
     }
+}
+
+// ── match expression translator ────────────────────────────────
+//
+// `match scrutinee
+//      Ctor(b1, ...) ⇒ body
+//      _             ⇒ fallback`
+//
+// translates to a nested Z3 `Bool::ite(...)` chain over the
+// constructor-recognizer (tester) booleans. Each non-wildcard arm's
+// body is translated with payload bindings extended into a cloned env.
+//
+// v1 limitations:
+//   - Scrutinee must be a bare Identifier (Var::EnumVar in env).
+//   - Payload bindings are restricted to Int / Bool / String / Real
+//     fields. Enum-typed payloads can use `_` to discard but not bind.
+//   - Exhaustiveness isn't enforced — if no arm matches at runtime,
+//     the last arm's body is used as the trailing else (which may
+//     fire incorrectly if the user omitted variants).
+
+/// One compiled arm: an optional tester boolean (None = wildcard) and
+/// the translated body in a per-arm extended env. Type T is the body's
+/// Z3 sort (Int / Bool / Z3Str / Real / Datatype).
+type CompiledArm<'ctx, T> = (Option<Bool<'ctx>>, T);
+
+/// Resolve the scrutinee + walk arms, returning a Vec of (tester, body).
+/// Body translation is delegated to `body_translator` so the same
+/// machinery serves Int / Bool / Str / Real / Enum match results.
+fn translate_match_arms<'ctx, T>(
+    scr: &Expr,
+    arms: &[crate::ast::MatchArm],
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    body_translator: impl Fn(&Expr, &HashMap<String, Var<'ctx>>) -> Option<T>,
+) -> Option<Vec<CompiledArm<'ctx, T>>> {
+    use crate::ast::MatchPattern;
+    // v1: scrutinee must be a bare Identifier resolving to EnumVar.
+    let scr_name = match scr {
+        Expr::Identifier(n) if !n.contains('.') => n,
+        _ => return None,
+    };
+    let (scr_dt, dt) = match env.get(scr_name)? {
+        Var::EnumVar { ast, dt, .. }   => (ast.clone(), *dt),
+        Var::EnumValue { ast, .. }     => {
+            // A nullary enum constant — patterns still work but there's
+            // no dt with variants here. Skip; future work could lift.
+            let _ = ast; return None;
+        }
+        _ => return None,
+    };
+    let mut compiled: Vec<CompiledArm<T>> = Vec::new();
+    for arm in arms {
+        match &arm.pattern {
+            MatchPattern::Wildcard => {
+                let body = body_translator(&arm.body, env)?;
+                compiled.push((None, body));
+            }
+            MatchPattern::Ctor { name, binds } => {
+                let var_idx = dt.variants.iter()
+                    .position(|v| v.constructor.name() == *name)?;
+                let z3_var = &dt.variants[var_idx];
+                if binds.len() != z3_var.accessors.len() { return None; }
+                let tester = z3_var.tester.apply(&[&scr_dt]).as_bool()?;
+                let mut env2 = env_clone(env);
+                for (j, bind_opt) in binds.iter().enumerate() {
+                    let Some(bind_name) = bind_opt else { continue };
+                    let acc = &z3_var.accessors[j];
+                    let raw = acc.apply(&[&scr_dt]);
+                    // Try each primitive sort; reject enum-typed
+                    // bindings (caller can use `_` to skip them).
+                    let var = if let Some(i) = raw.as_int() { Var::IntVar(i) }
+                        else if let Some(b) = raw.as_bool() { Var::BoolVar(b) }
+                        else if let Some(s) = raw.as_string() { Var::StrVar(s) }
+                        else if let Some(r) = raw.as_real() { Var::RealVar(r) }
+                        else { return None; };
+                    env2.insert(bind_name.clone(), var);
+                }
+                let body = body_translator(&arm.body, &env2)?;
+                compiled.push((Some(tester), body));
+            }
+        }
+    }
+    Some(compiled)
+}
+
+/// Fold compiled arms bottom-up into a nested ITE. Last arm's body
+/// becomes the trailing else; any earlier wildcard arm short-circuits
+/// (its body becomes the new accumulator).
+fn fold_arms_to_ite<'ctx, T>(
+    mut compiled: Vec<CompiledArm<'ctx, T>>,
+) -> Option<T>
+where
+    T: z3::ast::Ast<'ctx>,
+{
+    if compiled.is_empty() { return None; }
+    let (_, last_body) = compiled.pop()?;
+    let mut acc = last_body;
+    for (tester_opt, body) in compiled.into_iter().rev() {
+        match tester_opt {
+            None       => { acc = body; }
+            Some(tester) => { acc = tester.ite(&body, &acc); }
+        }
+    }
+    Some(acc)
 }

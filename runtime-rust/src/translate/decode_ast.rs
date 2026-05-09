@@ -169,6 +169,58 @@ pub fn decode_body_item_list(v: &Value) -> Result<Vec<BodyItem>> {
     decode_list(v, "BodyItemList", "BILNil", "BILCons", decode_body_item)
 }
 
+pub fn decode_match_arm_list(v: &Value) -> Result<Vec<crate::ast::MatchArm>> {
+    decode_list(v, "MatchArmList", "MALNil", "MALCons", decode_match_arm)
+}
+
+pub fn decode_match_arm(v: &Value) -> Result<crate::ast::MatchArm> {
+    let (variant, fields) = check_enum(v, "MatchArm")?;
+    if variant != "MakeMatchArm" {
+        return Err(DecodeError::UnknownVariant {
+            enum_name: "MatchArm".into(), variant: variant.into(),
+        });
+    }
+    need_arity(variant, fields, 2)?;
+    let pattern = decode_match_pattern(&fields[0])?;
+    let body    = decode_expr(&fields[1])?;
+    Ok(crate::ast::MatchArm { pattern, body: Box::new(body) })
+}
+
+pub fn decode_match_pattern(v: &Value) -> Result<crate::ast::MatchPattern> {
+    use crate::ast::MatchPattern;
+    let (variant, fields) = check_enum(v, "MatchPattern")?;
+    Ok(match variant {
+        "PatWildcard" => {
+            need_arity(variant, fields, 0)?;
+            MatchPattern::Wildcard
+        }
+        "PatCtor" => {
+            need_arity(variant, fields, 2)?;
+            let name = decode_str(&fields[0])?;
+            let binds = decode_bind_list(&fields[1])?;
+            MatchPattern::Ctor { name, binds }
+        }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "MatchPattern".into(), variant: other.into(),
+        }),
+    })
+}
+
+pub fn decode_bind_list(v: &Value) -> Result<Vec<Option<String>>> {
+    decode_list(v, "BindList", "BLNil", "BLCons", decode_match_bind)
+}
+
+pub fn decode_match_bind(v: &Value) -> Result<Option<String>> {
+    let (variant, fields) = check_enum(v, "MatchBind")?;
+    Ok(match variant {
+        "BindWildcard" => { need_arity(variant, fields, 0)?; None }
+        "BindName"     => { need_arity(variant, fields, 1)?; Some(decode_str(&fields[0])?) }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "MatchBind".into(), variant: other.into(),
+        }),
+    })
+}
+
 pub fn decode_schema_list(v: &Value) -> Result<Vec<SchemaDecl>> {
     decode_list(v, "SchemaList", "SchLNil", "SchLCons", decode_schema_decl)
 }
@@ -434,6 +486,12 @@ pub fn decode_expr(v: &Value) -> Result<Expr> {
             Expr::Ternary(Box::new(decode_expr(&fields[0])?),
                           Box::new(decode_expr(&fields[1])?),
                           Box::new(decode_expr(&fields[2])?))
+        }
+        "EMatch" => {
+            need_arity(variant, fields, 2)?;
+            let scr = decode_expr(&fields[0])?;
+            let arms = decode_match_arm_list(&fields[1])?;
+            Expr::Match(Box::new(scr), arms)
         }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Expr".into(), variant: other.into(),

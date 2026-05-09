@@ -8,7 +8,7 @@
 //! nothing here is parsed back. If a future feature needs accurate
 //! re-parse, write a separate one.
 
-use crate::ast::{BinOp, BodyItem, Expr, Mapping};
+use crate::ast::{BinOp, BodyItem, Expr, Mapping, MatchPattern};
 
 /// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
 fn fmt_binding(vs: &[String]) -> String {
@@ -37,6 +37,23 @@ pub fn expr(e: &Expr) -> String {
         Expr::Field(receiver, f) => format!("{}.{}", expr(receiver), f),
         Expr::Not(inner)         => format!("¬({})", expr(inner)),
         Expr::Ternary(c, a, b)   => format!("({} ? {} : {})", expr(c), expr(a), expr(b)),
+        Expr::Match(scr, arms)   => {
+            let arms_s: Vec<String> = arms.iter().map(|a| {
+                let p = match &a.pattern {
+                    MatchPattern::Wildcard => "_".to_string(),
+                    MatchPattern::Ctor { name, binds } => {
+                        if binds.is_empty() { name.clone() }
+                        else {
+                            let bs: Vec<String> = binds.iter().map(|b|
+                                b.clone().unwrap_or_else(|| "_".into())).collect();
+                            format!("{}({})", name, bs.join(", "))
+                        }
+                    }
+                };
+                format!("{} ⇒ {}", p, expr(&a.body))
+            }).collect();
+            format!("match {} {{ {} }}", expr(scr), arms_s.join(" | "))
+        }
         Expr::Binary(op, lhs, rhs) => {
             let l = expr(lhs);
             let r = expr(rhs);

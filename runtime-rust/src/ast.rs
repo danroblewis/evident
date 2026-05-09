@@ -147,6 +147,38 @@ pub enum Expr {
     ///   `a ⇒ b ? c : d` parses as `a ⇒ (b ? c : d)`
     /// Right-associative: `a ? b : c ? d : e` is `a ? b : (c ? d : e)`.
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    /// Pattern-match expression over an enum-typed scrutinee:
+    /// ```text
+    /// match r
+    ///     Ok(n)  ⇒ n * 10
+    ///     Err(_) ⇒ 0
+    /// ```
+    /// Translates to a nested Z3 ITE chain: `is_Ok(r) ? <arm1 with
+    /// n bound to Ok_arg0(r)> : (is_Err(r) ? <arm2> : ...)`. All arm
+    /// bodies must share a sort (same as ternary). Either all enum
+    /// variants are covered or there's a wildcard `_ ⇒ ...` arm.
+    Match(Box<Expr>, Vec<MatchArm>),
+}
+
+/// One arm of a `match` expression — a pattern + the body that fires
+/// when the scrutinee matches.
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: MatchPattern,
+    pub body:    Box<Expr>,
+}
+
+/// Match pattern. Either a constructor with positional bindings
+/// (`Ctor(name, _, name2)`) or a wildcard `_` that catches any value.
+/// A binding of `_` discards the corresponding payload field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MatchPattern {
+    /// `Ctor(b0, b1, ...)`. `binds[i]` is the variable name to bind
+    /// the i-th payload field to, or `None` if the binding was `_`
+    /// (discard). Length must match the constructor's arity.
+    Ctor { name: String, binds: Vec<Option<String>> },
+    /// `_` — matches any value, no bindings.
+    Wildcard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

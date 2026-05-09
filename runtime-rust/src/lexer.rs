@@ -23,6 +23,7 @@ pub enum Token {
     Type,
     Subclaim,
     Enum,         // enum Day = Mon | Tue | …
+    Match,        // match scrutinee \n   Pattern ⇒ body  ...
     Import,       // import "path"
     Trace,        // trace name "path/to/program.ev" — test declaration
     Send,         // send "command" — Stdin trace step
@@ -383,6 +384,7 @@ fn keyword_or_ident(s: String) -> Token {
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,
         "enum"     => Token::Enum,
+        "match"    => Token::Match,
         "import"   => Token::Import,
         "in"       => Token::In,
         "true"     => Token::True,

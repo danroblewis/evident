@@ -154,6 +154,10 @@ fn walk_expr_features(e: &Expr, feat: &mut Features) {
             walk_expr_features(a, feat);
             walk_expr_features(b, feat);
         }
+        Expr::Match(scr, arms) => {
+            walk_expr_features(scr, feat);
+            for a in arms { walk_expr_features(&a.body, feat); }
+        }
         Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
             walk_expr_features(range, feat);
             walk_expr_features(body, feat);
@@ -344,6 +348,13 @@ fn rewrite_refs(e: &Expr, field_set: &HashSet<String>, parent: &str) -> Expr {
             Box::new(rewrite_refs(a, field_set, parent)),
             Box::new(rewrite_refs(b, field_set, parent)),
         ),
+        Expr::Match(scr, arms) => Expr::Match(
+            Box::new(rewrite_refs(scr, field_set, parent)),
+            arms.iter().map(|a| crate::ast::MatchArm {
+                pattern: a.pattern.clone(),
+                body: Box::new(rewrite_refs(&a.body, field_set, parent)),
+            }).collect(),
+        ),
         Expr::Forall(binders, range, body) => Expr::Forall(
             binders.clone(),
             Box::new(rewrite_refs(range, field_set, parent)),
@@ -397,6 +408,8 @@ fn emit_expr(e: &Expr) -> Result<String, ExportError> {
         Expr::Not(inner) => format!("(not {})", emit_expr(inner)?),
         Expr::Ternary(c, a, b) => format!("(ite {} {} {})",
             emit_expr(c)?, emit_expr(a)?, emit_expr(b)?),
+        Expr::Match(_, _) => return Err(ExportError(
+            "match expressions not yet supported in SMT-LIB export".into())),
         Expr::Forall(binders, range, body) => {
             let (var, sort, low, high) = parse_int_range(binders, range)?;
             let body_s = emit_expr(body)?;

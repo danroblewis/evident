@@ -82,6 +82,32 @@ enum MappingList =
     MLNil
     MLCons(Mapping, MappingList)
 
+-- ── Match patterns + arms ───────────────────────────────────────
+--
+-- A pattern is either a wildcard `_` (catches any value, no binds)
+-- or a constructor name with positional bindings. Each binding is
+-- either a name to bind the payload field to, or `BindWildcard`
+-- (the `_` placeholder discarding that field).
+enum BindList =
+    BLNil
+    BLCons(MatchBind, BindList)
+
+enum MatchBind =
+    BindName(String)
+    BindWildcard
+
+enum MatchPattern =
+    PatWildcard
+    PatCtor(String, BindList)
+
+-- One arm: pattern + body expression.
+enum MatchArm =
+    MakeMatchArm(MatchPattern, Expr)
+
+enum MatchArmList =
+    MALNil
+    MALCons(MatchArm, MatchArmList)
+
 -- Top-level decls.
 enum SchemaList =
     SchLNil
@@ -176,6 +202,7 @@ enum Expr =
     EBinary(BinOp, Expr, Expr)
     ENot(Expr)
     ETernary(Expr, Expr, Expr)
+    EMatch(Expr, MatchArmList)
 
 -- ── Top-level program ───────────────────────────────────────────
 

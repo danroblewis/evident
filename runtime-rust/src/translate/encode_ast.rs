@@ -473,7 +473,66 @@ pub fn encode_expr<'ctx>(
             let b = encode_expr(b, ctx, enums)?;
             apply(enums, "Expr", "ETernary", &[&c, &a, &b])
         }
+        Expr::Match(scr, arms) => {
+            let scr = encode_expr(scr, ctx, enums)?;
+            let arm_list = encode_match_arm_list(arms, ctx, enums)?;
+            apply(enums, "Expr", "EMatch", &[&scr, &arm_list])
+        }
     }
+}
+
+fn encode_match_arm_list<'ctx>(
+    arms: &[crate::ast::MatchArm],
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    if arms.is_empty() { return apply(enums, "MatchArmList", "MALNil", &[]); }
+    let head = encode_match_arm(&arms[0], ctx, enums)?;
+    let tail = encode_match_arm_list(&arms[1..], ctx, enums)?;
+    apply(enums, "MatchArmList", "MALCons", &[&head, &tail])
+}
+
+fn encode_match_arm<'ctx>(
+    arm: &crate::ast::MatchArm,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    let pat = encode_match_pattern(&arm.pattern, ctx, enums)?;
+    let body = encode_expr(&arm.body, ctx, enums)?;
+    apply(enums, "MatchArm", "MakeMatchArm", &[&pat, &body])
+}
+
+fn encode_match_pattern<'ctx>(
+    pat: &crate::ast::MatchPattern,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> {
+    use crate::ast::MatchPattern;
+    match pat {
+        MatchPattern::Wildcard => apply(enums, "MatchPattern", "PatWildcard", &[]),
+        MatchPattern::Ctor { name, binds } => {
+            let n = z3_str(ctx, name);
+            let binds_list = encode_bind_list(binds, ctx, enums)?;
+            apply(enums, "MatchPattern", "PatCtor", &[&n, &binds_list])
+        }
+    }
+}
+
+fn encode_bind_list<'ctx>(
+    binds: &[Option<String>],
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> {
+    if binds.is_empty() { return apply(enums, "BindList", "BLNil", &[]); }
+    let head = match &binds[0] {
+        None => apply(enums, "MatchBind", "BindWildcard", &[])?,
+        Some(name) => {
+            let n = z3_str(ctx, name);
+            apply(enums, "MatchBind", "BindName", &[&n])?
+        }
+    };
+    let tail = encode_bind_list(&binds[1..], ctx, enums)?;
+    apply(enums, "BindList", "BLCons", &[&head, &tail])
 }
 
 // ── Top-level Program ──────────────────────────────────────────
