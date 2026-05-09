@@ -1,0 +1,56 @@
+-- stdlib/shader/program.ev — OpenGL pipeline calls via libGL.
+--
+-- Why two libraries: SDL handles window + GL context lifecycle
+-- (stdlib/sdl/gl.ev); libGL provides the actual rendering ops
+-- (this file). On macOS, the OpenGL framework's Mach-O text-stub
+-- at /System/Library/Frameworks/OpenGL.framework/OpenGL is dlopenable
+-- even though `file(1)` can't read it. dlsym finds entry points
+-- through Apple's GL-on-Metal driver.
+--
+-- The functions here assume a GL context is already current —
+-- gl_make_current must run before any of these in a step.
+--
+-- Coverage today is intentionally minimal: the functions a "clear
+-- to a color, swap" smoke test needs. Shader compile/link/use,
+-- VAOs, VBOs, draw_arrays, attribute binding, and uniform setting
+-- all need additional FFI primitives (multi-string args, in-process
+-- byte buffers) and are sketched in docs/plans/02-plugin-migrations/04-shader.md.
+
+import "stdlib/runtime.ev"
+
+-- ── GL constants ──────────────────────────────────────────────
+-- Spelled out as comments rather than Evident consts (the language
+-- doesn't have global Int constants yet). Wrapper claims below take
+-- the constant as an Int arg so callers can keep them named at the
+-- call site:
+--
+--   GL_VERSION              = 7938   (0x1F02)  for glGetString
+--   GL_VENDOR               = 7936   (0x1F00)
+--   GL_RENDERER             = 7937   (0x1F01)
+--   GL_COLOR_BUFFER_BIT     = 16384  (0x4000)  for glClear
+--   GL_DEPTH_BUFFER_BIT     = 256    (0x0100)
+--   GL_VERTEX_SHADER        = 35633  (0x8B31)  for glCreateShader
+--   GL_FRAGMENT_SHADER      = 35632  (0x8B30)
+--   GL_TRIANGLES            = 4              for glDrawArrays mode
+--   GL_FLOAT                = 5126   (0x1406)
+--   GL_FALSE                = 0
+--   GL_TRUE                 = 1
+
+-- glGetString(name) → const char*. Common names: GL_VERSION (7938),
+-- GL_VENDOR (7936), GL_RENDERER (7937). Returns the driver-reported
+-- version / vendor / GPU name as a UTF-8 string. Useful as a
+-- post-init smoke probe — non-empty result confirms the GL context
+-- is current and dispatch through libGL works.
+claim gl_get_string(name ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetString", "s(i)",
+                  ArgCons(ArgInt(name), ArgNil))
+
+-- glClear(mask) — clears the bound framebuffer. mask is an OR of
+-- GL_*_BUFFER_BIT flags. The viewport's color is set by a prior
+-- glClearColor call (not yet wrapped — needs a 32-bit float arg
+-- type code, see the design plan).
+claim gl_clear(mask ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glClear", "v(i)",
+                  ArgCons(ArgInt(mask), ArgNil))

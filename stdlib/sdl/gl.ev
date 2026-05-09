@@ -1,0 +1,66 @@
+-- stdlib/sdl/gl.ev — SDL2's OpenGL context plumbing.
+--
+-- SDL handles window + GL context creation, attribute selection,
+-- and buffer swapping. The OpenGL calls themselves (glCreateShader,
+-- glClear, glDrawArrays, …) live in stdlib/shader/program.ev and are
+-- dispatched via libGL — see the "Why two libraries" note there.
+--
+-- Typical use:
+--   1. SDL_Init(SDL_INIT_VIDEO)
+--   2. gl_set_attribute (3 calls — major, minor, profile)
+--   3. SDL_CreateWindow with SDL_WINDOW_OPENGL flag (=2)
+--   4. gl_create_context(window)            → context handle
+--   5. gl_make_current(window, context)
+--   6. … your draw loop, ending each frame with gl_swap_window …
+--   7. gl_delete_context, then SDL_DestroyWindow
+
+import "stdlib/runtime.ev"
+
+-- ── SDL_GLattr enum values (from SDL_video.h) ─────────────────
+-- These are the integer constants you pass as the first arg to
+-- gl_set_attribute. A few common ones are spelled out — full list is
+-- in SDL_video.h. SDL_GL_CONTEXT_PROFILE_CORE = 1 is the value (not
+-- the attribute key) for the profile mask attribute.
+--
+-- attr keys
+--   17 = SDL_GL_CONTEXT_MAJOR_VERSION
+--   18 = SDL_GL_CONTEXT_MINOR_VERSION
+--   21 = SDL_GL_CONTEXT_PROFILE_MASK
+-- profile mask values
+--    1 = SDL_GL_CONTEXT_PROFILE_CORE
+--    2 = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+--    4 = SDL_GL_CONTEXT_PROFILE_ES
+-- window flag
+--    2 = SDL_WINDOW_OPENGL  (OR into SDL_CreateWindow's flags arg)
+
+-- SDL_GL_SetAttribute(attr, value) → int. Set BEFORE SDL_CreateWindow
+-- to influence the GL context that's created for that window.
+claim gl_set_attribute(attr ∈ Int, value ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SetAttribute",
+                  "i(ii)",
+                  ArgCons(ArgInt(attr),
+                  ArgCons(ArgInt(value), ArgNil)))
+
+-- SDL_GL_CreateContext(window) → SDL_GLContext (void*). Must follow
+-- a CreateWindow whose flags include SDL_WINDOW_OPENGL.
+claim gl_create_context(window ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_CreateContext",
+                  "p(p)", ArgCons(ArgHandle(window), ArgNil))
+
+-- SDL_GL_MakeCurrent(window, context) → int.
+claim gl_make_current(window ∈ Int, context ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_MakeCurrent",
+                  "i(pp)",
+                  ArgCons(ArgHandle(window),
+                  ArgCons(ArgHandle(context), ArgNil)))
+
+-- SDL_GL_SwapWindow(window) — flip back buffer. GL's equivalent of
+-- SDL_RenderPresent. Without this, nothing rendered is visible.
+claim gl_swap_window(window ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SwapWindow",
+                  "v(p)", ArgCons(ArgHandle(window), ArgNil))
+
+-- SDL_GL_DeleteContext(context) — teardown counterpart of CreateContext.
+claim gl_delete_context(context ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_DeleteContext",
+                  "v(p)", ArgCons(ArgHandle(context), ArgNil))
