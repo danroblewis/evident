@@ -375,7 +375,7 @@ pub enum Effect {
 /// One argument to an FFICall effect. Distinct name from
 /// `ffi::FfiArg` to avoid the cross-module type clash; the
 /// dispatcher converts when handing off to libffi.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EffectFfiArg {
     Int(i64),
     Bool(bool),
@@ -386,7 +386,7 @@ pub enum EffectFfiArg {
 
 /// Outcome of one performed effect. Position-aligned with the
 /// previous step's effect list.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EffectResult {
     NoResult,
     Int(i64),

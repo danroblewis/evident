@@ -13,6 +13,38 @@ use std::time::Instant;
 use crate::ast::{Effect, EffectFfiArg, EffectResult};
 use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
 
+/// One recorded FFI call for replay mode. When DispatchMode::Replay
+/// is active, each FFICall consumes the next RecordedCall from the
+/// list; if `symbol` and `args` match, the recorded `result` is
+/// returned. Mismatch → Error. Used for trace tests that should run
+/// without needing the actual external library.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedCall {
+    pub symbol: String,
+    pub sig:    String,
+    pub args:   Vec<EffectFfiArg>,
+    pub result: EffectResult,
+}
+
+/// FFI dispatch mode. v1 supports Real (hits libffi) and Replay
+/// (consults a pre-supplied log). Recording (write a log alongside
+/// the test) is YAGNI for now.
+#[derive(Default)]
+pub enum DispatchMode {
+    #[default]
+    Real,
+    /// Replay: walk through `calls` left-to-right; each FFI call
+    /// must match the next entry. Symbol-name lookup also tracked
+    /// via `name_for_handle` so we can compare symbol vs args at
+    /// call time (libffi otherwise loses the name).
+    Replay {
+        calls:           Vec<RecordedCall>,
+        cursor:          usize,
+        name_for_handle: std::collections::HashMap<u64, String>,
+        next_sentinel:   u64,
+    },
+}
+
 /// Per-runtime mutable state the dispatcher reads/writes between
 /// effects. Held in the executor; one DispatchContext per step loop
 /// run. stdin/stdout are boxed so unit tests can swap in in-memory
@@ -22,6 +54,7 @@ pub struct DispatchContext {
     pub stdin:    Box<dyn BufRead + Send>,
     pub stdout:   Box<dyn Write + Send>,
     pub start:    Instant,
+    pub mode:     DispatchMode,
 }
 
 impl DispatchContext {
@@ -40,7 +73,20 @@ impl DispatchContext {
             registry: HandleRegistry::new(),
             stdin, stdout,
             start: Instant::now(),
+            mode: DispatchMode::default(),
         }
+    }
+
+    /// Switch to replay mode with the supplied recorded calls. FFI
+    /// effects no longer hit real libraries; they consult `calls`
+    /// in order.
+    pub fn set_replay(&mut self, calls: Vec<RecordedCall>) {
+        self.mode = DispatchMode::Replay {
+            calls,
+            cursor: 0,
+            name_for_handle: std::collections::HashMap::new(),
+            next_sentinel: 1,
+        };
     }
 }
 
@@ -83,44 +129,108 @@ pub fn dispatch_one(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         }
         Effect::Exit(n) => std::process::exit(*n as i32),
 
-        Effect::FFIOpen(path) => {
-            match ffi::ffi_open(&ctx.registry, path) {
-                Ok(h)  => EffectResult::Handle(h),
-                Err(e) => EffectResult::Error(e.0),
+        Effect::FFIOpen(path) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                match ffi::ffi_open(&ctx.registry, path) {
+                    Ok(h)  => EffectResult::Handle(h),
+                    Err(e) => EffectResult::Error(e.0),
+                }
             }
-        }
-        Effect::FFILookup(lib, sym) => {
-            match ffi::ffi_lookup(&ctx.registry, *lib, sym) {
-                Ok(h)  => EffectResult::Handle(h),
-                Err(e) => EffectResult::Error(e.0),
+            DispatchMode::Replay { name_for_handle, next_sentinel, .. } => {
+                let h = *next_sentinel; *next_sentinel += 1;
+                name_for_handle.insert(h, format!("LIB:{path}"));
+                EffectResult::Handle(h)
             }
-        }
-        Effect::FFICall(fn_id, sig, args) => {
-            let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
-                EffectFfiArg::Int(n)    => FfiArg::Int(*n),
-                EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
-                EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
-                EffectFfiArg::Real(r)   => FfiArg::Real(*r),
-                EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
-            }).collect();
-            match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
-                Ok(FfiReturn::Void)      => EffectResult::NoResult,
-                Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
-                Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
-                Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
-                Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
-                Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
-                Err(e) => EffectResult::Error(e.0),
+        },
+        Effect::FFILookup(lib, sym) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                match ffi::ffi_lookup(&ctx.registry, *lib, sym) {
+                    Ok(h)  => EffectResult::Handle(h),
+                    Err(e) => EffectResult::Error(e.0),
+                }
             }
-        }
+            DispatchMode::Replay { name_for_handle, next_sentinel, .. } => {
+                let h = *next_sentinel; *next_sentinel += 1;
+                name_for_handle.insert(h, sym.clone());
+                let _ = lib;
+                EffectResult::Handle(h)
+            }
+        },
+        Effect::FFICall(fn_id, sig, args) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
+                    EffectFfiArg::Int(n)    => FfiArg::Int(*n),
+                    EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
+                    EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
+                    EffectFfiArg::Real(r)   => FfiArg::Real(*r),
+                    EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+                }).collect();
+                match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
+                    Ok(FfiReturn::Void)      => EffectResult::NoResult,
+                    Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
+                    Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
+                    Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
+                    Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
+                    Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
+                    Err(e) => EffectResult::Error(e.0),
+                }
+            }
+            DispatchMode::Replay { calls, cursor, name_for_handle, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let expected = &calls[*cursor];
+                let actual_name = name_for_handle.get(fn_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("<handle:{fn_id}>"));
+                if actual_name != expected.symbol {
+                    return EffectResult::Error(format!(
+                        "replay mismatch at index {cursor}: expected symbol {:?}, got {:?}",
+                        expected.symbol, actual_name));
+                }
+                if *sig != expected.sig {
+                    return EffectResult::Error(format!(
+                        "replay mismatch at index {cursor}: expected sig {:?}, got {:?}",
+                        expected.sig, sig));
+                }
+                if !args_equal(args, &expected.args) {
+                    return EffectResult::Error(format!(
+                        "replay mismatch at index {cursor}: args differ"));
+                }
+                let r = expected.result.clone();
+                *cursor += 1;
+                r
+            }
+        },
         Effect::CloseHandle(h) => {
-            if ctx.registry.close(*h) {
-                EffectResult::NoResult
-            } else {
-                EffectResult::Error(format!("close: unknown handle {h}"))
+            match &ctx.mode {
+                DispatchMode::Real => {
+                    if ctx.registry.close(*h) {
+                        EffectResult::NoResult
+                    } else {
+                        EffectResult::Error(format!("close: unknown handle {h}"))
+                    }
+                }
+                DispatchMode::Replay { .. } => EffectResult::NoResult,
             }
         }
     }
+}
+
+fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
+    if a.len() != b.len() { return false; }
+    a.iter().zip(b.iter()).all(|(x, y)| match (x, y) {
+        (EffectFfiArg::Int(p), EffectFfiArg::Int(q)) => p == q,
+        (EffectFfiArg::Bool(p), EffectFfiArg::Bool(q)) => p == q,
+        (EffectFfiArg::Str(p), EffectFfiArg::Str(q)) => p == q,
+        (EffectFfiArg::Real(p), EffectFfiArg::Real(q)) => (p - q).abs() < 1e-12,
+        // Handle args don't have to match exactly under replay (sentinels
+        // differ between record and replay runs); sufficient that both
+        // sides are Handle.
+        (EffectFfiArg::Handle(_), EffectFfiArg::Handle(_)) => true,
+        _ => false,
+    })
 }
 
 /// Walk an effect list, dispatch each, collect results.
@@ -246,6 +356,64 @@ mod tests {
         let mut ctx = DispatchContext::new();
         match dispatch_one(&mut ctx, &Effect::CloseHandle(9999)) {
             EffectResult::Error(_) => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn replay_mode_returns_recorded_results() {
+        let mut ctx = ctx_with_input("");
+        ctx.set_replay(vec![
+            RecordedCall {
+                symbol: "getpid".into(), sig: "i()".into(),
+                args: vec![], result: EffectResult::Int(12345),
+            },
+        ]);
+        // FFIOpen + FFILookup return sentinel handles; FFICall consumes
+        // the recorded entry.
+        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("anything".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "getpid".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
+            EffectResult::Int(n) => assert_eq!(n, 12345),
+            other => panic!("expected Int(12345), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn replay_mode_errors_on_symbol_mismatch() {
+        let mut ctx = ctx_with_input("");
+        ctx.set_replay(vec![RecordedCall {
+            symbol: "expected_sym".into(), sig: "i()".into(),
+            args: vec![], result: EffectResult::Int(1),
+        }]);
+        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("x".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "wrong_sym".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
+            EffectResult::Error(m) => assert!(m.contains("mismatch"), "{}", m),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn replay_mode_errors_when_log_exhausted() {
+        let mut ctx = ctx_with_input("");
+        ctx.set_replay(vec![]);
+        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("x".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "any".into())) {
+            EffectResult::Handle(h) => h, _ => panic!(),
+        };
+        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
+            EffectResult::Error(m) => assert!(m.contains("ran out"), "{}", m),
             other => panic!("expected Error, got {other:?}"),
         }
     }

@@ -8,6 +8,8 @@
 | 2026-05-09 | 18,112 | Phase 1.3 | effect_dispatch.rs: DispatchContext, dispatch_one (built-ins + FFI wired in same shot — collapsed Phase 1.5 here). 10 unit tests including real libc round-trip. +268. |
 | 2026-05-09 | 18,406 | Phase 1.4 | effect_loop.rs: step engine + main shape detection. evaluate_with_extra_assertions multi-pin variant. encode_effect_result_list. +294. |
 | 2026-05-09 | 18,631 | Phase 1.6 | effect-run CLI command + effect_hello.ev demo + 3 integration tests. .cargo/config.toml for cross-build env vars. +225. |
+| 2026-05-09 | 18,631 | Phase 1.7 | stdlib/posix.ev (Evident library, 0 Rust delta) + 9 conformance tests. |
+| 2026-05-09 | 18,799 | Phase 1.8 | Replay mode in DispatchContext + 3 tests. PartialEq derives on EffectFfiArg/EffectResult. +168. **Phase 1 COMPLETE.** |
 
 ## Outstanding
 

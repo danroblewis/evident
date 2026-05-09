@@ -1,0 +1,64 @@
+-- Conformance tests for stdlib/posix.ev — verifies effect builders
+-- produce the expected Effect values and POSIX flag constants are
+-- right.
+
+import "stdlib/posix.ev"
+
+claim sat_libc_path_macos
+    p ∈ String
+    libc_path_macos
+    p = "libSystem.dylib"
+
+claim sat_libc_path_linux
+    p ∈ String
+    libc_path_linux
+    p = "libc.so.6"
+
+claim sat_open_libc_macos_builds_ffiopen
+    e ∈ Effect
+    open_libc_macos
+    e = FFIOpen("libSystem.dylib")
+
+claim sat_o_rdonly_is_zero
+    n ∈ Int
+    flag_o_rdonly
+    n = 0
+
+claim sat_o_wronly_is_one
+    n ∈ Int
+    flag_o_wronly
+    n = 1
+
+claim sat_o_rdwr_is_two
+    n ∈ Int
+    flag_o_rdwr
+    n = 2
+
+claim sat_getpid_call_builds_ffi_call
+    sym ∈ Int
+    e ∈ Effect
+    sym = 7
+    getpid_call
+    e = FFICall(7, "i()", ArgNil)
+
+claim sat_open_call_builds_ffi_call
+    open_sym ∈ Int
+    path ∈ String
+    flags ∈ Int
+    e ∈ Effect
+    open_sym = 42
+    path = "/etc/hostname"
+    flags = 0
+    open_call
+    e = FFICall(42, "i(si)",
+                ArgCons(ArgStr("/etc/hostname"),
+                ArgCons(ArgInt(0), ArgNil)))
+
+claim sat_close_call_builds_ffi_call
+    close_sym ∈ Int
+    fd ∈ Int
+    e ∈ Effect
+    close_sym = 13
+    fd = 5
+    close_call
+    e = FFICall(13, "i(i)", ArgCons(ArgInt(5), ArgNil))
