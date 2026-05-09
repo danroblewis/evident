@@ -110,7 +110,12 @@ Further reduction would need cross-process state sharing (daemon mode) — large
 
 ## What's blocking further self-hosting
 
-**The decoder.** We have:
+UPDATE — as of commit ahead of here (see git log near
+"runtime: AST decoder + round-trip tests"), the decoder is shipped.
+Section below preserved for the historical reasoning trail; see
+"What the decoder enables now" further down for the new state.
+
+We have:
 
 - ✅ Rust AST → Z3 Datatype value (the encoder)
 - ❌ Z3 model → Rust AST (the decoder)
@@ -150,9 +155,47 @@ Listed in order of estimated payoff. Each requires the decoder + a corresponding
 
 Total Rust removable: ~930 lines. Total Evident added: ~450 lines. Net: ~480 line reduction. Plus ~200 line decoder amortized across all migrations.
 
-## Migration recommendation
+## Migration recommendation (revised after decoder shipped)
 
-**Start with `chained_membership`.** Most recent (best understood), well-bounded, pure AST transformation, and the smallest single file (~150 Rust → ~50 Evident). One commit teaches us:
+**`bare-identifier-as-passthrough`** is the recommended first
+target instead of chained-membership. Reasoning: chained-membership
+is parser-level — the parser detects the syntactic form
+`0 < x ∈ Int < 5` lexically. Moving it post-parse means either
+inventing new AST nodes or having the pass re-detect the pattern
+from arbitrary `Constraint` shapes. Either way, it's fighting the
+parser's job.
+
+`bare-identifier-as-passthrough` is already a post-parse
+transformation. Detect `BodyItem::Constraint(Expr::Identifier(name))`
+where `name` matches a known claim, treat as
+`BodyItem::Passthrough(name)`. Pure AST → AST rewrite, ~40 lines
+in `runtime-rust/src/translate/inline.rs`. Migration steps:
+
+1. Write `stdlib/passes/desugar_passthrough.ev`:
+   ```evident
+   claim desugar_passthrough_in_body
+       input  ∈ Program
+       output ∈ Program
+       -- Find any BIConstraint(EIdentifier(name)) where name is
+       -- a claim-name in input.schemas; replace with BIPassthrough(name).
+   ```
+2. Add `EvidentRuntime::desugar_with(pass_file, claim_name)` that
+   runs the pass and replaces the loaded Program with the decoded
+   output.
+3. Call `desugar_with("desugar_passthrough.ev", "desugar_passthrough_in_body")`
+   after `load_file` in the relevant code paths.
+4. Remove the bare-identifier-as-passthrough Rust code from
+   `inline.rs`.
+5. Verify all existing tests still pass — particularly the
+   bare-identifier-as-passthrough-using ones.
+
+The ORIGINAL recommendation (chained_membership) is preserved
+below for context.
+
+---
+
+**Start with `chained_membership`** (original — pre-decoder analysis,
+no longer the recommended first step). Most recent (best understood), well-bounded, pure AST transformation, and the smallest single file (~150 Rust → ~50 Evident). One commit teaches us:
 
 1. What the decoder looks like in practice.
 2. Whether the migration shape (parse → run pass → decode result → re-load) is as clean as it sounds, or has subtle issues (variable binding, source-location tracking, error messages, etc.).
@@ -210,7 +253,7 @@ What we considered but didn't do:
 
 ## Test counts (regression baseline)
 
-- 387 rust tests (cargo test --release)
+- 394 rust tests (cargo test --release; was 387 before decoder, +7 round-trip)
 - 221 program tests (`evident test programs/`)
 - 2 pre-existing parse errors in `programs/adventure*` — known-bad, not from this work
 

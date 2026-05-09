@@ -6,6 +6,7 @@
 //! See `runtime-rust/PROGRESS.md` for the layout rationale.
 
 mod datatypes;
+mod decode_ast;
 mod declare;
 mod encode_ast;
 mod eval;
@@ -14,6 +15,13 @@ mod extract;
 mod inline;
 mod preprocess;
 mod types;
+
+pub mod ast_decoder {
+    //! Public surface of the Z3-model → Rust-AST decoder. Mirrors
+    //! the encoder's shape; used by self-hosted desugar passes
+    //! that need to read back a transformed Program.
+    pub use super::decode_ast::{decode_program, DecodeError};
+}
 
 pub mod ast_encoder {
     //! Public surface of the AST → Z3 datatype encoder. Used by
