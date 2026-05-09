@@ -1201,3 +1201,101 @@ fn cli_infer_types_propagation_unsat_for_one_body_item() {
         "single-assignment rule should still fire; got:\n{s}");
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 10: --strict + consistency checks ────────────────────
+
+#[test]
+fn cli_infer_types_consistency_warns_on_string_int_conflict() {
+    // x ∈ String; x = 5 — real bug. Default mode warns to stderr
+    // but exits 0 (compatibility).
+    let path = write_tmp("infer_conflict",
+        "claim t\n    x ∈ String\n    x = 5\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0),
+        "default mode exits 0 even with conflicts; got {:?}", out.status.code());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("consistency"),
+        "expected consistency diagnostic on stderr; got: {stderr}");
+    assert!(stderr.contains("conflict_string_decl_with_int_assignment"),
+        "expected named conflict rule; got: {stderr}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_strict_exits_4_on_conflict() {
+    let path = write_tmp("infer_strict_conflict",
+        "claim t\n    x ∈ String\n    x = 5\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", "--strict", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(4),
+        "strict mode exits 4 on conflict; got {:?}; stderr: {}",
+        out.status.code(), String::from_utf8_lossy(&out.stderr));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_strict_exits_4_on_ambiguity_only() {
+    // No bugs but ambiguity (Nat vs Int) — strict still exits 4.
+    let path = write_tmp("infer_strict_ambig",
+        "claim t\n    score ∈ Nat\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", "--strict", path.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(4),
+        "strict mode exits 4 on ambiguity; got {:?}; stderr: {}",
+        out.status.code(), String::from_utf8_lossy(&out.stderr));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("ambiguous"),
+        "expected ambiguity diagnostic; got: {stderr}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_strict_exits_0_when_clean() {
+    // No conflicts, no ambiguity — even strict mode is happy.
+    let path = write_tmp("infer_strict_clean",
+        "claim t\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", "--strict", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(),
+        "strict mode should exit 0 when clean; got {:?}; stderr: {}",
+        out.status.code(), String::from_utf8_lossy(&out.stderr));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_consistency_catches_bool_int_conflict() {
+    // flag ∈ Bool; flag = 5
+    let path = write_tmp("infer_bool_int",
+        "claim t\n    flag ∈ Bool\n    flag = 5\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("conflict_bool_decl_with_int_assignment"),
+        "expected bool/int conflict; got: {stderr}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_consistency_silent_when_no_conflict() {
+    let path = write_tmp("infer_no_conflict",
+        "claim t\n    score ∈ Int\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("conflict"),
+        "no conflicts → no consistency warnings; got stderr: {stderr}");
+    let _ = std::fs::remove_file(&path);
+}

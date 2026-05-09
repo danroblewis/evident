@@ -28,6 +28,7 @@ const STDLIB_AST:    &str = "stdlib/ast.ev";
 const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
 const ITER_TYPES:    &str = "stdlib/passes/iter_types.ev";
 const PROPAGATION:   &str = "stdlib/passes/propagation.ev";
+const CONSISTENCY:   &str = "stdlib/passes/consistency.ev";
 
 /// Rules invoked via `query_with_program` (no body Seq needed).
 const PROGRAM_RULES: &[&str] = &[
@@ -51,6 +52,16 @@ const ITER_RULES: &[&str] = &[
     "propagate_string",
     "propagate_int",
     "propagate_bool",
+];
+
+/// Stage 10: consistency-check rules. Each is SAT precisely when
+/// the named bug is present in the user's code. Unlike inference
+/// rules, finding a SAT here is a USER ERROR worth surfacing.
+const CONFLICT_RULES: &[&str] = &[
+    "conflict_string_decl_with_int_assignment",
+    "conflict_int_decl_with_string_assignment",
+    "conflict_bool_decl_with_int_assignment",
+    "conflict_bool_decl_with_string_assignment",
 ];
 
 /// Tag for output labels: how the rule renders the inferred fact.
@@ -102,16 +113,23 @@ fn render_bindings(rule: &str, b: &std::collections::HashMap<String, Value>)
 }
 
 pub fn cmd_infer_types(args: &[String]) -> ExitCode {
-    if args.is_empty() {
+    // Stage 10: parse --strict flag (any position).
+    let strict = args.iter().any(|a| a == "--strict");
+    let positional: Vec<&String> = args.iter()
+        .filter(|a| a.as_str() != "--strict").collect();
+    if positional.is_empty() {
         eprintln!("infer-types: need <file.ev>");
-        eprintln!("       evident infer-types <file.ev>");
+        eprintln!("       evident infer-types [--strict] <file.ev>");
         eprintln!();
-        eprintln!("Loads stdlib/ast.ev + the literal_types and iter_types passes,");
-        eprintln!("encodes the user's program, runs every inference rule, and");
-        eprintln!("prints any bindings recovered.");
+        eprintln!("Loads stdlib/ast.ev + the inference passes (literal_types,");
+        eprintln!("iter_types, propagation, consistency), encodes the user's");
+        eprintln!("program, runs every rule, and prints recovered bindings.");
+        eprintln!();
+        eprintln!("--strict: exit 4 if any consistency check fires (a real bug)");
+        eprintln!("          OR any variable's inferred type is ambiguous.");
         return ExitCode::from(2);
     }
-    let user_path = &args[0];
+    let user_path = positional[0];
 
     let mut rt = EvidentRuntime::new();
     if let Err(e) = rt.load_file(Path::new(STDLIB_AST)) {
@@ -129,6 +147,10 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     }
     if let Err(e) = rt.load_file(Path::new(PROPAGATION)) {
         eprintln!("error: failed to load {PROPAGATION}: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_file(Path::new(CONSISTENCY)) {
+        eprintln!("error: failed to load {CONSISTENCY}: {e}");
         return ExitCode::from(1);
     }
     rt.mark_system_loads_complete();
@@ -190,9 +212,56 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
             }
         }
     }
+    // Stage 10: run the consistency checks per claim. Each rule's
+    // SAT means "found this bug." Print + collect for strict-mode.
+    let mut conflicts_found: Vec<(String, String, String)> = Vec::new();
+    for claim_idx in 0..n_claims {
+        let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
+        for rule in CONFLICT_RULES {
+            match rt.query_with_program_and_nth_claim_body(
+                rule, "program", "body", claim_idx,
+            ) {
+                Ok(Some(r)) if r.satisfied => {
+                    let bad_var = r.bindings.get("bad_var")
+                        .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_default();
+                    eprintln!("⚠ consistency: {rule} fires in claim `{}` for var `{}`",
+                              claim_name, bad_var);
+                    conflicts_found.push((claim_name.clone(),
+                                          rule.to_string(), bad_var));
+                }
+                Ok(_) | Err(_) => {}
+            }
+        }
+    }
+
+    // --strict path: ambiguity (in the aggregator) OR any conflict
+    // → exit 4. Detect ambiguity by re-walking the inferences map.
+    let has_ambiguity = {
+        use std::collections::BTreeMap;
+        let mut by: BTreeMap<(String, String), std::collections::BTreeSet<String>>
+            = BTreeMap::new();
+        for (claim, _, var, typ, _) in &inferences {
+            by.entry((claim.clone(), var.clone())).or_default().insert(typ.clone());
+        }
+        by.values().any(|types| types.len() > 1)
+    };
+
     aggregate_and_print(&inferences);
 
-    if any_match {
+    if strict && (!conflicts_found.is_empty() || has_ambiguity) {
+        if !conflicts_found.is_empty() {
+            eprintln!();
+            eprintln!("strict mode: {} consistency conflict(s) found", conflicts_found.len());
+        }
+        if has_ambiguity {
+            eprintln!();
+            eprintln!("strict mode: at least one variable has an ambiguous inferred type");
+        }
+        return ExitCode::from(4);
+    }
+
+    if any_match || !conflicts_found.is_empty() {
         ExitCode::SUCCESS
     } else {
         eprintln!("no inference rule matched this program.");
