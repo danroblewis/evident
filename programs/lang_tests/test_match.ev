@@ -78,3 +78,21 @@ claim sat_nullary_to_nullary
         Sun ⇒ true
         _   ⇒ false
     weekend = true
+
+-- ── Phase 3.3: enum-typed pattern bindings ──────────────────────
+-- A `match` arm can bind a payload field whose type is itself an
+-- enum (cross-enum or self-recursive). The binding becomes a Var
+-- usable in nested matches.
+
+enum Cell = Empty | Filled(Int)
+enum Pair = MakePair(Cell, Cell)
+
+claim sat_enum_payload_binding_self
+    p ∈ Pair
+    n ∈ Int
+    p = MakePair(Filled(7), Empty)
+    n = match p
+        MakePair(a, _) ⇒ match a
+            Filled(x) ⇒ x
+            Empty     ⇒ -1
+    n = 7

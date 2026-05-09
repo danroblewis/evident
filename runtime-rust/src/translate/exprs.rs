@@ -9,8 +9,61 @@ use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
 use crate::ast::*;
-use super::types::{FieldKind, SeqElem, Var};
+use super::types::{EnumRegistry, FieldKind, SeqElem, Var};
 use super::preprocess::{env_clone, literal_range};
+
+thread_local! {
+    /// Active EnumRegistry for the current translation. Set by
+    /// `with_enums(...)` (called from each `evaluate*` entry point in
+    /// eval.rs) and restored on drop. Read by `translate_match_arms`
+    /// to look up the DatatypeSort of a payload field whose declared
+    /// type is itself an enum (so the binding can become a proper
+    /// `Var::EnumVar` for further pattern matching).
+    ///
+    /// Stored as a raw `*const EnumRegistry` because the registry's
+    /// lifetime is tied to `EvidentRuntime` (which lives for the whole
+    /// translation), but we can't carry a `'static` reference through
+    /// thread-locals. The pointer is set/cleared via the RAII guard
+    /// `EnumRegistryGuard`; readers borrow it back as `&EnumRegistry`
+    /// inside the guard's lifetime.
+    static ACTIVE_ENUMS: std::cell::Cell<Option<*const EnumRegistry>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// RAII guard: stash an EnumRegistry pointer in thread-local for the
+/// duration of a translation. Restores the previous value on drop so
+/// nested calls compose correctly.
+pub struct EnumRegistryGuard {
+    prev: Option<*const EnumRegistry>,
+}
+
+impl EnumRegistryGuard {
+    pub fn new(enums: Option<&EnumRegistry>) -> Self {
+        let new_ptr = enums.map(|r| r as *const EnumRegistry);
+        let prev = ACTIVE_ENUMS.with(|c| {
+            let was = c.get();
+            c.set(new_ptr);
+            was
+        });
+        Self { prev }
+    }
+}
+
+impl Drop for EnumRegistryGuard {
+    fn drop(&mut self) {
+        ACTIVE_ENUMS.with(|c| c.set(self.prev));
+    }
+}
+
+/// Run `f` with the active EnumRegistry borrowed if one is set.
+fn with_active_enums<R>(f: impl FnOnce(Option<&EnumRegistry>) -> R) -> R {
+    let ptr = ACTIVE_ENUMS.with(|c| c.get());
+    // SAFETY: `ptr` was set by an EnumRegistryGuard whose Drop hasn't
+    // run yet (translation is single-threaded, the guard outlives the
+    // call stack that uses it).
+    let opt = ptr.map(|p| unsafe { &*p });
+    f(opt)
+}
 
 /// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
 /// bindings to install in the inner env when entering a ClaimCall.
@@ -1517,16 +1570,54 @@ fn translate_match_arms<'ctx, T>(
                 if binds.len() != z3_var.accessors.len() { return None; }
                 let tester = z3_var.tester.apply(&[&scr_dt]).as_bool()?;
                 let mut env2 = env_clone(env);
+                // Look up the scrutinee's enum-name → variant-fields
+                // metadata so we can resolve enum-typed payload binding
+                // types. The fields list is parallel to z3_var.accessors.
+                let scr_enum_name = match env.get(scr_name)? {
+                    Var::EnumVar { enum_name, .. } => enum_name.clone(),
+                    _ => return None,
+                };
+                let field_decls: Vec<crate::ast::EnumField> = with_active_enums(|enums| {
+                    enums.and_then(|er| {
+                        er.by_name.borrow().get(&scr_enum_name)
+                            .and_then(|(_, variants)| {
+                                variants.iter()
+                                    .find(|v| v.name == *name)
+                                    .map(|v| v.fields.clone())
+                            })
+                    }).unwrap_or_default()
+                });
                 for (j, bind_opt) in binds.iter().enumerate() {
                     let Some(bind_name) = bind_opt else { continue };
                     let acc = &z3_var.accessors[j];
                     let raw = acc.apply(&[&scr_dt]);
-                    // Try each primitive sort; reject enum-typed
-                    // bindings (caller can use `_` to skip them).
+                    // Try each primitive sort first.
                     let var = if let Some(i) = raw.as_int() { Var::IntVar(i) }
                         else if let Some(b) = raw.as_bool() { Var::BoolVar(b) }
                         else if let Some(s) = raw.as_string() { Var::StrVar(s) }
                         else if let Some(r) = raw.as_real() { Var::RealVar(r) }
+                        else if let Some(payload_dt) = raw.as_datatype() {
+                            // Enum-typed payload. The field's type name
+                            // comes from the EnumField list we looked up
+                            // above. For self-recursion the type matches
+                            // the scrutinee; for cross-enum we look up
+                            // the field's type in the EnumRegistry.
+                            let field_type = field_decls.get(j)
+                                .map(|f| f.type_name.clone())
+                                .unwrap_or_else(|| scr_enum_name.clone());
+                            let payload_dt_sort: &'static DatatypeSort<'static> =
+                                with_active_enums(|enums| {
+                                    enums.and_then(|er| {
+                                        er.by_name.borrow().get(&field_type)
+                                            .map(|(d, _)| *d)
+                                    })
+                                }).unwrap_or(dt);  // fall back to scrutinee's dt
+                            Var::EnumVar {
+                                ast: payload_dt,
+                                enum_name: field_type,
+                                dt: payload_dt_sort,
+                            }
+                        }
                         else { return None; };
                     env2.insert(bind_name.clone(), var);
                 }

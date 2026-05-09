@@ -439,6 +439,7 @@ pub fn evaluate(
     enums: Option<&EnumRegistry>,
     arith_solver: u32,
 ) -> EvalResult {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
@@ -612,6 +613,7 @@ pub fn evaluate_with_extra_assertion(
     extra_var: &str,
     extra_value: z3::ast::Datatype<'static>,
 ) -> EvalResult {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
@@ -667,6 +669,7 @@ pub fn evaluate_with_extra_assertions(
     arith_solver: u32,
     pins: &[(&str, z3::ast::Datatype<'static>)],
 ) -> EvalResult {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
@@ -729,6 +732,7 @@ pub fn evaluate_with_program_and_body(
     body_var: &str,
     body_items: &[BodyItem],
 ) -> EvalResult {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(Some(enums));
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
@@ -806,6 +810,7 @@ pub fn evaluate_with_core(
     enums: Option<&EnumRegistry>,
     arith_solver: u32,
 ) -> EvalResult {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = Solver::new(ctx);
     apply_solver_tuning(ctx, &solver, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
