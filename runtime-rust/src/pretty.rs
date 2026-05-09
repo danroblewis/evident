@@ -36,6 +36,7 @@ pub fn expr(e: &Expr) -> String {
         Expr::Index(seq, idx)    => format!("{}[{}]", expr(seq), expr(idx)),
         Expr::Field(receiver, f) => format!("{}.{}", expr(receiver), f),
         Expr::Not(inner)         => format!("¬({})", expr(inner)),
+        Expr::Ternary(c, a, b)   => format!("({} ? {} : {})", expr(c), expr(a), expr(b)),
         Expr::Binary(op, lhs, rhs) => {
             let l = expr(lhs);
             let r = expr(rhs);

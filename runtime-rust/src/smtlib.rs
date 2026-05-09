@@ -149,6 +149,11 @@ fn walk_expr_features(e: &Expr, feat: &mut Features) {
             walk_expr_features(r, feat);
         }
         Expr::Not(i) | Expr::Cardinality(i) | Expr::Field(i, _) => walk_expr_features(i, feat),
+        Expr::Ternary(c, a, b) => {
+            walk_expr_features(c, feat);
+            walk_expr_features(a, feat);
+            walk_expr_features(b, feat);
+        }
         Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
             walk_expr_features(range, feat);
             walk_expr_features(body, feat);
@@ -334,6 +339,11 @@ fn rewrite_refs(e: &Expr, field_set: &HashSet<String>, parent: &str) -> Expr {
             Box::new(rewrite_refs(r, field_set, parent)),
         ),
         Expr::Not(inner) => Expr::Not(Box::new(rewrite_refs(inner, field_set, parent))),
+        Expr::Ternary(c, a, b) => Expr::Ternary(
+            Box::new(rewrite_refs(c, field_set, parent)),
+            Box::new(rewrite_refs(a, field_set, parent)),
+            Box::new(rewrite_refs(b, field_set, parent)),
+        ),
         Expr::Forall(binders, range, body) => Expr::Forall(
             binders.clone(),
             Box::new(rewrite_refs(range, field_set, parent)),
@@ -385,6 +395,8 @@ fn emit_expr(e: &Expr) -> Result<String, ExportError> {
             format!("({smt_op} {l} {r})")
         }
         Expr::Not(inner) => format!("(not {})", emit_expr(inner)?),
+        Expr::Ternary(c, a, b) => format!("(ite {} {} {})",
+            emit_expr(c)?, emit_expr(a)?, emit_expr(b)?),
         Expr::Forall(binders, range, body) => {
             let (var, sort, low, high) = parse_int_range(binders, range)?;
             let body_s = emit_expr(body)?;

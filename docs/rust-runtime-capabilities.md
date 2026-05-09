@@ -187,16 +187,22 @@ invocation, recently added — see §6.3).
 ### 3.1 Precedence table (lowest → highest)
 
 ```
-1. Quantifiers      ∀ ∃                     right-associative, sucks up rest of line
-2. Implies          ⇒  =>                   right-associative
-3. Or               ∨                       left-associative
-4. And              ∧                       left-associative
-5. Comparison       = ≠ < ≤ > ≥ ∈ ∉ ∋       chained: `a ≤ b ≤ c` → `(a≤b) ∧ (b≤c)`
-6. Additive         + - ++                  left-associative
-7. Multiplicative   * /                     left-associative
-8. Unary            ¬ - #                   prefix; `-x` desugars to `0 - x`
-9. Atoms            literals, identifiers, ( ), calls, indexing, set/range/seq literals
+1.  Quantifiers      ∀ ∃                     right-associative, sucks up rest of line
+2.  Implies          ⇒  =>                   right-associative
+3.  Ternary          cond ? a : b            right-associative; sits below ∨, above ⇒
+4.  Or               ∨                       left-associative
+5.  And              ∧                       left-associative
+6.  Comparison       = ≠ < ≤ > ≥ ∈ ∉ ∋       chained: `a ≤ b ≤ c` → `(a≤b) ∧ (b≤c)`
+7.  Additive         + - ++                  left-associative
+8.  Multiplicative   * /                     left-associative
+9.  Unary            ¬ - #                   prefix; `-x` desugars to `0 - x`
+10. Atoms            literals, identifiers, ( ), calls, indexing, set/range/seq literals
 ```
+
+The ternary `cond ? a : b` translates to Z3's `ite`. Both branches must
+share a sort (Int / Real / Bool / String / enum); a mismatch surfaces as
+the constraint dropping (translator returns `None`). Right-associative
+on the else side: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`.
 
 This **matches** standard math conventions — and is the **opposite** of what
 CLAUDE.md describes for `⇒` vs `∧`. CLAUDE.md says "⇒ binds tighter than ∧"

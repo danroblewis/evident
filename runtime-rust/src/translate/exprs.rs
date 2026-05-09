@@ -146,6 +146,13 @@ pub(super) fn resolve_enum_ast<'ctx>(
                 owned_args.iter().map(|b| b.as_ref()).collect();
             ctor.apply(&arg_refs).as_datatype()
         }
+        // `cond ? a : b` with enum-typed branches → Z3 ITE on Datatype.
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, schemas)?;
+            let then_v = resolve_enum_ast(a, ctx, env, schemas)?;
+            let else_v = resolve_enum_ast(b, ctx, env, schemas)?;
+            Some(cond.ite(&then_v, &else_v))
+        }
         _ => None,
     }
 }
@@ -271,6 +278,13 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                 None
             }
         }
+        // `cond ? a : b` — String-typed branches via Z3 ITE.
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = translate_str(a, ctx, env)?;
+            let else_v = translate_str(b, ctx, env)?;
+            Some(cond.ite(&then_v, &else_v))
+        }
         _ => None,
     }
 }
@@ -329,6 +343,14 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                 None
             }
         }
+        // `cond ? a : b` — ternary conditional. Both branches must
+        // translate as Int; lifted to Z3's ITE.
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = translate_int(a, ctx, env)?;
+            let else_v = translate_int(b, ctx, env)?;
+            Some(cond.ite(&then_v, &else_v))
+        }
         _ => None,
     }
 }
@@ -364,6 +386,16 @@ pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
                 BinOp::Div => l.div(&r),
                 _ => return None,
             })
+        }
+        // `cond ? a : b` — Real-typed branches via Z3 ITE. The condition
+        // is a boolean expression; we don't have a `schemas` table here,
+        // so claim-call conditions in ternary aren't supported in Real
+        // context (use a Bool intermediate variable instead).
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = translate_real(a, ctx, env)?;
+            let else_v = translate_real(b, ctx, env)?;
+            Some(cond.ite(&then_v, &else_v))
         }
         _ => None,
     }
@@ -977,6 +1009,14 @@ pub(super) fn translate_bool<'ctx>(
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
         Expr::Not(inner) => Some(translate_bool(inner, ctx, env, schemas)?.not()),
+
+        // `cond ? a : b` with Bool branches → Z3 ITE.
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, schemas)?;
+            let then_v = translate_bool(a, ctx, env, schemas)?;
+            let else_v = translate_bool(b, ctx, env, schemas)?;
+            Some(cond.ite(&then_v, &else_v))
+        }
 
         // `seq[i]` where seq holds Bool elements.
         Expr::Index(seq_expr, idx_expr) => {

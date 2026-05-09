@@ -63,6 +63,7 @@ pub enum Token {
     Hash,         // #  (cardinality prefix)
     Comma,        // ,
     Pipe,         // |  (enum variant separator)
+    Question,     // ?  (ternary conditional: cond ? then : else)
     DotDot,       // .. (range literal)
     Dot,          // .  (sub-schema field access)
     Colon,        // :  (quantifier body separator)
@@ -347,6 +348,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }    // ⟨
             '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }    // ⟩
             '|' => { chars.next(); col += 1; tokens.push(Token::Pipe); }
+            '?' => { chars.next(); col += 1; tokens.push(Token::Question); }
             other => {
                 return Err(LexError {
                     message: format!("unexpected character {:?}", other),

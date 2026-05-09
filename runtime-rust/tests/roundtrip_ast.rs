@@ -238,3 +238,32 @@ claim t
         other => panic!("expected Membership, got {other:?}"),
     }
 }
+
+#[test]
+fn roundtrip_ternary() {
+    let src = "\
+claim t
+    x ∈ Int
+    flag ∈ Bool
+    x = (flag ? 10 : 20)
+";
+    let decoded = round_trip(src);
+    let claim_t = decoded.schemas.iter().find(|s| s.name == "t").unwrap();
+    let cstr = claim_t.body.iter().find_map(|i| match i {
+        evident_runtime::ast::BodyItem::Constraint(e) => Some(e),
+        _ => None,
+    }).expect("expected the x = (flag ? 10 : 20) constraint");
+    // Outer is `x = ternary(...)`.
+    if let evident_runtime::ast::Expr::Binary(_, _, rhs) = cstr {
+        match rhs.as_ref() {
+            evident_runtime::ast::Expr::Ternary(c, a, b) => {
+                assert!(matches!(c.as_ref(), evident_runtime::ast::Expr::Identifier(n) if n == "flag"));
+                assert!(matches!(a.as_ref(), evident_runtime::ast::Expr::Int(10)));
+                assert!(matches!(b.as_ref(), evident_runtime::ast::Expr::Int(20)));
+            }
+            other => panic!("expected Ternary, got {other:?}"),
+        }
+    } else {
+        panic!("expected Binary outer constraint, got {cstr:?}");
+    }
+}

@@ -139,6 +139,14 @@ pub enum Expr {
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// Unary `¬e`.
     Not(Box<Expr>),
+    /// Ternary conditional: `cond ? then_branch : else_branch`.
+    /// Both branches must translate to the same Z3 sort. Maps to
+    /// `Bool::ite(cond, then, else)` in the translator. Sits at
+    /// lower precedence than `∨` and higher than `⇒`, so:
+    ///   `a ∨ b ? c : d` parses as `(a ∨ b) ? c : d`
+    ///   `a ⇒ b ? c : d` parses as `a ⇒ (b ? c : d)`
+    /// Right-associative: `a ? b : c ? d : e` is `a ? b : (c ? d : e)`.
+    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -429,6 +429,12 @@ pub fn decode_expr(v: &Value) -> Result<Expr> {
             need_arity(variant, fields, 1)?;
             Expr::Not(Box::new(decode_expr(&fields[0])?))
         }
+        "ETernary" => {
+            need_arity(variant, fields, 3)?;
+            Expr::Ternary(Box::new(decode_expr(&fields[0])?),
+                          Box::new(decode_expr(&fields[1])?),
+                          Box::new(decode_expr(&fields[2])?))
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Expr".into(), variant: other.into(),
         }),

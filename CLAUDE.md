@@ -377,6 +377,7 @@ condition is the selector.
 | Iterate consecutive pairs of one sequence | `∀ (a, b) ∈ edges(seq) : …` |
 | Inline a claim only when a condition holds | `cond ⇒ ClaimName` (guarded invocation) |
 | Pin some fields of a record at declaration | `name ∈ Type (slot ↦ v)` or `name ∈ Type(v1, v2)` |
+| Choose between two values based on a condition | `(cond ? a : b)` — ternary; both branches same sort, lowers to Z3 `ite` |
 
 ## Records as vectors
 

@@ -175,6 +175,7 @@ enum Expr =
     EField(Expr, String)
     EBinary(BinOp, Expr, Expr)
     ENot(Expr)
+    ETernary(Expr, Expr, Expr)
 
 -- ── Top-level program ───────────────────────────────────────────
 

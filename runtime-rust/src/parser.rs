@@ -1140,7 +1140,7 @@ impl Parser {
         if matches!(self.peek(), Token::ForAll | Token::Exists) {
             return self.parse_quantifier();
         }
-        let lhs = self.parse_or()?;
+        let lhs = self.parse_ternary()?;
         if matches!(self.peek(), Token::Implies) {
             self.bump();
             // Implies-block form: `A ⇒` followed by Newline + Indent at a
@@ -1189,6 +1189,34 @@ impl Parser {
             return Ok(Expr::Binary(BinOp::Implies, Box::new(lhs), Box::new(rhs)));
         }
         Ok(lhs)
+    }
+
+    /// `cond ? then : else` — C-style ternary. Sits between `⇒` and
+    /// `∨` in precedence so:
+    ///   `a ⇒ b ? c : d`  parses as `a ⇒ (b ? c : d)`
+    ///   `a ∨ b ? c : d`  parses as `(a ∨ b) ? c : d`
+    /// Right-associative (`a ? b : c ? d : e` is `a ? b : (c ? d : e)`).
+    /// Both branches recursively call `parse_ternary` so nested
+    /// ternaries on either side work without parens.
+    fn parse_ternary(&mut self) -> Result<Expr> {
+        let cond = self.parse_or()?;
+        if !matches!(self.peek(), Token::Question) {
+            return Ok(cond);
+        }
+        self.bump(); // ?
+        let then_branch = self.parse_ternary()?;
+        match self.bump() {
+            Token::Colon => {}
+            other => return Err(ParseError(format!(
+                "expected `:` after ternary then-branch, got {:?}", other,
+            ))),
+        }
+        let else_branch = self.parse_ternary()?;
+        Ok(Expr::Ternary(
+            Box::new(cond),
+            Box::new(then_branch),
+            Box::new(else_branch),
+        ))
     }
 
     fn parse_or(&mut self) -> Result<Expr> {

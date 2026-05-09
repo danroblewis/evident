@@ -467,6 +467,12 @@ pub fn encode_expr<'ctx>(
             let i = encode_expr(inner, ctx, enums)?;
             apply(enums, "Expr", "ENot", &[&i])
         }
+        Expr::Ternary(c, a, b) => {
+            let c = encode_expr(c, ctx, enums)?;
+            let a = encode_expr(a, ctx, enums)?;
+            let b = encode_expr(b, ctx, enums)?;
+            apply(enums, "Expr", "ETernary", &[&c, &a, &b])
+        }
     }
 }
 
