@@ -514,8 +514,6 @@ pub fn decode_program(v: &Value) -> Result<Program> {
         // decoded form has them empty (consistent with what the
         // encoder skips).
         imports: Vec::new(),
-        traces:  Vec::new(),
-        shaders: Vec::new(),
     })
 }
 

@@ -1,20 +1,8 @@
 //! `evident test [path]` — discover and run `claim sat_*` /
-//! `claim unsat_*` claims AND `trace name "path"` blocks in
-//! `test_*.ev` files. Exits 1 on any failure.
-//!
-//! Output modes (one human, three machine-readable):
-//!
-//! ```text
-//! evident test [path]                  # default: dots + FAILURES section
-//! evident test -v [path]               # verbose: per-test PASS/FAIL line
-//! evident test --format=tap [path]     # TAP version 14
-//! evident test --format=junit [path]   # JUnit XML
-//! evident test --format=json [path]    # JSON
-//! ```
+//! `claim unsat_*` claims in `test_*.ev` files. Exits 1 on any failure.
 //!
 //! Color: auto-on when stdout is a TTY; disable with `--no-color` or
-//! the `NO_COLOR` env var (any non-empty value, per
-//! <https://no-color.org/>). Machine formats never emit ANSI codes.
+//! the `NO_COLOR` env var (per <https://no-color.org/>).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,43 +20,22 @@ use evident_runtime::pretty;
 
 // ── CLI options ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Format { Human, Tap, Junit, Json }
-
 #[derive(Debug, Clone)]
 struct Opts {
     path:      PathBuf,
     verbose:   bool,
     use_color: bool,
-    format:    Format,
 }
 
 fn parse_opts(args: &[String]) -> Result<Opts, String> {
     let mut path: Option<PathBuf> = None;
     let mut verbose = false;
     let mut use_color = stdout_supports_color();
-    let mut format = Format::Human;
-    let mut i = 0;
-    while i < args.len() {
-        let a = args[i].as_str();
-        match a {
-            "-v" | "--verbose" => { verbose = true; }
-            "--no-color"       => { use_color = false; }
-            "--color"          => { use_color = true; }
-            "--format=tap"     => { format = Format::Tap;   use_color = false; }
-            "--format=junit"   => { format = Format::Junit; use_color = false; }
-            "--format=json"    => { format = Format::Json;  use_color = false; }
-            "--format" => {
-                i += 1;
-                let v = args.get(i).ok_or("expected value after --format")?;
-                format = match v.as_str() {
-                    "human" => Format::Human,
-                    "tap"   => { use_color = false; Format::Tap   }
-                    "junit" => { use_color = false; Format::Junit }
-                    "json"  => { use_color = false; Format::Json  }
-                    other   => return Err(format!("unknown --format {other:?}")),
-                };
-            }
+    for a in args {
+        match a.as_str() {
+            "-v" | "--verbose" => verbose = true,
+            "--no-color"       => use_color = false,
+            "--color"          => use_color = true,
             other if other.starts_with("--") => {
                 return Err(format!("unknown flag {other:?}"));
             }
@@ -79,12 +46,8 @@ fn parse_opts(args: &[String]) -> Result<Opts, String> {
                 path = Some(PathBuf::from(a));
             }
         }
-        i += 1;
     }
-    Ok(Opts {
-        path: path.unwrap_or_else(|| PathBuf::from(".")),
-        verbose, use_color, format,
-    })
+    Ok(Opts { path: path.unwrap_or_else(|| PathBuf::from(".")), verbose, use_color })
 }
 
 /// Honor `NO_COLOR` (any non-empty value disables, per the spec) and
@@ -172,7 +135,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
     }
     files.sort();
     if files.is_empty() {
-        if opts.format == Format::Human {
+        {
             eprintln!("test: no test_*.ev files found under {}", opts.path.display());
         }
         return ExitCode::SUCCESS;
@@ -195,7 +158,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
                 outcome: Outcome::Error(format!("load: {e}")),
                 elapsed_ms: 0,
             });
-            if opts.format == Format::Human {
+            {
                 live_file_header(&opts, &mut prev_file, f);
                 live_emit(&opts, &runs[runs.len() - 1]);
             }
@@ -208,7 +171,6 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
             .filter(|n| n.starts_with("sat_") || n.starts_with("unsat_"))
             .map(|s| s.to_string()).collect();
         names.sort();
-        let traces: Vec<_> = rt.traces().to_vec();
         let empty = HashMap::new();
 
         for name in &names {
@@ -237,7 +199,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
                 kind: TestKind::Schema { expected_sat },
                 outcome, elapsed_ms: t0.elapsed().as_millis() as u32,
             });
-            if opts.format == Format::Human {
+            {
                 live_file_header(&opts, &mut prev_file, f);
                 live_emit(&opts, runs.last().unwrap());
             }
@@ -247,12 +209,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
     }
 
     let elapsed_ms = started.elapsed().as_millis() as u32;
-    match opts.format {
-        Format::Human => report_human(&runs, &opts, elapsed_ms),
-        Format::Tap   => report_tap(&runs),
-        Format::Junit => report_junit(&runs, elapsed_ms),
-        Format::Json  => report_json(&runs, elapsed_ms),
-    }
+    report_human(&runs, &opts, elapsed_ms);
 
     let any_fail = runs.iter().any(|r| !matches!(r.outcome, Outcome::Pass));
     if any_fail { ExitCode::from(1) } else { ExitCode::SUCCESS }
@@ -642,213 +599,4 @@ fn tally(runs: &[TestRun]) -> (usize, usize, usize) {
         }
     }
     (pass, fail, err)
-}
-
-// ── TAP format (Test Anything Protocol v14) ─────────────────────────────────
-
-fn report_tap(runs: &[TestRun]) {
-    println!("TAP version 14");
-    println!("1..{}", runs.len());
-    for (i, run) in runs.iter().enumerate() {
-        let n = i + 1;
-        match &run.outcome {
-            Outcome::Pass => {
-                println!("ok {n} - {} :: {}", run.file.display(), run.name);
-            }
-            Outcome::Fail(d) => {
-                println!("not ok {n} - {} :: {}", run.file.display(), run.name);
-                println!("  ---");
-                println!("  message: {}", tap_yaml_str(&fail_summary(d)));
-                if let FailDetail::SatCounterexample(b) = d {
-                    println!("  counterexample:");
-                    let mut keys: Vec<&String> = b.keys().collect();
-                    keys.sort();
-                    for k in keys {
-                        println!("    {}: {}", k, tap_yaml_str(&display_value_compact(&b[k])));
-                    }
-                }
-                println!("  ...");
-            }
-            Outcome::Error(msg) => {
-                println!("not ok {n} - {} :: {} # ERROR", run.file.display(), run.name);
-                println!("  ---");
-                println!("  message: {}", tap_yaml_str(msg));
-                println!("  ...");
-            }
-        }
-    }
-}
-
-fn fail_summary(d: &FailDetail) -> String {
-    match d {
-        FailDetail::UnsatCore { .. }        => "expected SAT, got UNSAT".into(),
-        FailDetail::SatCounterexample(_) => "expected UNSAT, got SAT".into(),
-    }
-}
-
-/// Quote a string as a YAML scalar safe for the TAP YAML block.
-/// Always-quoted form sidesteps every YAML-special-character corner.
-fn tap_yaml_str(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
-    format!("\"{escaped}\"")
-}
-
-// ── JUnit XML format ────────────────────────────────────────────────────────
-
-fn report_junit(runs: &[TestRun], elapsed_ms: u32) {
-    // Group by file so each file becomes one <testsuite>.
-    let mut by_file: std::collections::BTreeMap<&Path, Vec<&TestRun>> =
-        std::collections::BTreeMap::new();
-    for r in runs {
-        by_file.entry(r.file.as_path()).or_default().push(r);
-    }
-    let (pass, fail, err) = tally(runs);
-    println!(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
-    println!(
-        r#"<testsuites tests="{}" failures="{}" errors="{}" time="{:.3}">"#,
-        runs.len(), fail, err, elapsed_ms as f64 / 1000.0
-    );
-    for (file, file_runs) in &by_file {
-        let f_total = file_runs.len();
-        let f_fail  = file_runs.iter().filter(|r| matches!(r.outcome, Outcome::Fail(_))).count();
-        let f_err   = file_runs.iter().filter(|r| matches!(r.outcome, Outcome::Error(_))).count();
-        let f_time  = file_runs.iter().map(|r| r.elapsed_ms).sum::<u32>() as f64 / 1000.0;
-        println!(
-            r#"  <testsuite name="{}" tests="{}" failures="{}" errors="{}" time="{:.3}">"#,
-            xml_attr(&file.display().to_string()),
-            f_total, f_fail, f_err, f_time
-        );
-        for r in file_runs {
-            let time = r.elapsed_ms as f64 / 1000.0;
-            print!(
-                r#"    <testcase name="{}" classname="{}" time="{:.3}""#,
-                xml_attr(&r.name), xml_attr(&file.display().to_string()), time
-            );
-            match &r.outcome {
-                Outcome::Pass => { println!("/>"); }
-                Outcome::Fail(d) => {
-                    println!(">");
-                    println!(
-                        r#"      <failure message="{}">{}</failure>"#,
-                        xml_attr(&fail_summary(d)),
-                        xml_text(&junit_failure_body(d))
-                    );
-                    println!(r#"    </testcase>"#);
-                }
-                Outcome::Error(msg) => {
-                    println!(">");
-                    println!(r#"      <error message="{}"/>"#, xml_attr(msg));
-                    println!(r#"    </testcase>"#);
-                }
-            }
-        }
-        println!(r#"  </testsuite>"#);
-    }
-    println!(r#"</testsuites>"#);
-    let _ = pass; // shape parity with the other reporters
-}
-
-fn junit_failure_body(d: &FailDetail) -> String {
-    match d {
-        FailDetail::UnsatCore { .. }        => "expected SAT, got UNSAT".into(),
-        FailDetail::SatCounterexample(b) => {
-            let mut s = String::from("counterexample:\n");
-            let mut keys: Vec<&String> = b.keys().collect();
-            keys.sort();
-            for k in keys {
-                s.push_str(&format!("  {} = {}\n", k, display_value_compact(&b[k])));
-            }
-            s
-        }
-    }
-}
-
-fn xml_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-     .replace('"', "&quot;").replace('\'', "&apos;")
-}
-fn xml_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
-// ── JSON format ─────────────────────────────────────────────────────────────
-
-fn report_json(runs: &[TestRun], elapsed_ms: u32) {
-    let (pass, fail, err) = tally(runs);
-    println!("{{");
-    println!(r#"  "summary": {{ "passed": {pass}, "failed": {fail}, "errors": {err}, "elapsed_ms": {elapsed_ms} }},"#);
-    println!(r#"  "results": ["#);
-    for (i, r) in runs.iter().enumerate() {
-        let comma = if i + 1 < runs.len() { "," } else { "" };
-        let status = match &r.outcome {
-            Outcome::Pass     => "pass",
-            Outcome::Fail(_)  => "fail",
-            Outcome::Error(_) => "error",
-        };
-        let kind = match r.kind {
-            TestKind::Schema { expected_sat: true }  => "sat",
-            TestKind::Schema { expected_sat: false } => "unsat",
-        };
-        let detail = match &r.outcome {
-            Outcome::Pass        => "null".to_string(),
-            Outcome::Error(msg)  => format!(r#"{{ "kind": "error", "message": {} }}"#, json_str(msg)),
-            Outcome::Fail(d)     => json_fail_detail(d),
-        };
-        println!(
-            r#"    {{ "file": {}, "name": {}, "kind": "{}", "status": "{}", "elapsed_ms": {}, "detail": {} }}{}"#,
-            json_str(&r.file.display().to_string()),
-            json_str(&r.name),
-            kind, status, r.elapsed_ms, detail, comma
-        );
-    }
-    println!(r#"  ]"#);
-    println!("}}");
-}
-
-fn json_fail_detail(d: &FailDetail) -> String {
-    match d {
-        FailDetail::UnsatCore { .. } => {
-            r#"{ "kind": "unsat_no_model" }"#.into()
-        }
-        FailDetail::SatCounterexample(b) => {
-            let mut keys: Vec<&String> = b.keys().collect();
-            keys.sort();
-            let pairs: Vec<String> = keys.iter().map(|k|
-                format!("{}: {}", json_str(k), json_value(&b[*k]))
-            ).collect();
-            format!(r#"{{ "kind": "counterexample", "bindings": {{ {} }} }}"#, pairs.join(", "))
-        }
-    }
-}
-
-fn json_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"'  => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c    => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-fn json_value(v: &Value) -> String {
-    match v {
-        Value::Int(n)  => n.to_string(),
-        Value::Real(r) => r.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Str(s)  => json_str(s),
-        // Sequences / composites collapse to descriptive strings —
-        // emitting their full structure would balloon the JSON for
-        // little gain. Consumers wanting full bindings can re-run
-        // with --format=junit (failure body) or query directly.
-        other          => json_str(&display_value_compact(other)),
-    }
 }

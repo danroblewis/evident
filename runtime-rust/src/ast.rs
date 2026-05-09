@@ -202,8 +202,6 @@ pub enum BinOp {
 pub struct Program {
     pub schemas: Vec<SchemaDecl>,
     pub imports: Vec<String>,
-    pub traces: Vec<TraceDecl>,
-    pub shaders: Vec<ShaderDecl>,
     pub enums: Vec<EnumDecl>,
 }
 
@@ -241,113 +239,8 @@ pub struct EnumField {
     pub type_name: String,
 }
 
-/// A trace test: drives a named program through a sequence of input
-/// commands and asserts state/output at each step. Source form:
-///
-/// ```text
-/// trace name "path/to/program.ev"
-///     send "command" => assertion
-///     send "command" =>
-///         assertion1
-///         assertion2
-///     send "command"
-/// ```
-///
-/// The trace runner loads the named program, sets up its main schema
-/// for step-by-step execution, feeds each command's chars (with
-/// trailing newline) through Stdin, and checks every assertion
-/// against the resulting state and accumulated output.
-#[derive(Debug, Clone)]
-pub struct TraceDecl {
-    pub name: String,
-    pub program_path: String,
-    pub steps: Vec<TraceStep>,
-}
-
-/// One step inside a trace block. Two flavors: the Stdin-shaped
-/// `Send` (used by char-stream programs like adventures), and the
-/// SDL-shaped `KeyDown` / `KeyUp` / `Advance` triplet (used by
-/// frame-loop programs). Held-key state and the simulated wall clock
-/// thread through the runner across all steps in one trace.
-#[derive(Debug, Clone)]
-pub enum TraceStep {
-    /// `send "command" [=> assertion[s]]` — feed the command string
-    /// char-by-char through the program's Stdin var, then check
-    /// assertions against the post-line state and accumulated output.
-    Send {
-        command: String,
-        assertions: Vec<TraceAssertion>,
-    },
-    /// `key_down "Right"` — start holding a named key. Subsequent
-    /// `Advance` steps emit `input.<key>_held = true` per frame
-    /// until a matching `KeyUp`. Recognized key names: `Up`, `Down`,
-    /// `Left`, `Right` (mapped to the SDLInput `*_held` Bools).
-    KeyDown { key: String },
-    /// `key_up "Right"` — release a previously held key. Idempotent
-    /// (releasing an unheld key is a no-op, matching the real SDL
-    /// keyboard event stream).
-    KeyUp { key: String },
-    /// `advance 0.5s [=> assertion[s]]` — tick the SDL frame loop at
-    /// a fixed dt (16ms) until `duration_ms` of simulated time has
-    /// elapsed, advancing the program's state pair each frame.
-    /// Assertions run after the last frame.
-    Advance {
-        duration_ms: u32,
-        assertions: Vec<TraceAssertion>,
-    },
-}
-
-/// A single trace assertion: `var op "value"`. `var` is either a
-/// state field name or the literal `output` (which checks the
-/// per-step accumulated Stdout text). Two operators:
-///   - `=`  exact equality
-///   - `∋`  substring containment (actual contains value)
-#[derive(Debug, Clone)]
-pub struct TraceAssertion {
-    pub var: String,
-    pub op: AssertOp,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AssertOp {
-    Eq,
-    Contains,
-}
-
-/// A GLSL fragment-shader declaration. Sibling to `claim`/`type`/
-/// `trace` — never inlined into another schema's constraint system.
-/// The runtime parses + transpiles + caches GLSL source at load time;
-/// `SDLShaderOutput` (the new plugin/output type) references one by
-/// name and uploads `state.*` / `input.*` bindings as uniforms each
-/// frame.
-///
-/// Source form:
-///
-/// ```text
-/// shader StarsAndHero
-///     pixel ∈ Vec2          -- the swept fragment coord
-///     state ∈ GameState     -- expected uniform shape (main supplies)
-///     input ∈ SDLInput      -- ditto
-///     twinkle ∈ Real        -- FREE → transpiler emits noise(...)
-///     col ∈ Color
-///     col = mix(Color(0,0,0), Color(255,100,50), twinkle)
-///     output.fragment = col
-/// ```
-///
-/// Variables in the body fall into three buckets at transpile time:
-///   - Uniform: declared as part of a sub-record (`state ∈ GameState`).
-///     Each leaf becomes a `uniform` declaration.
-///   - Local: pinned by some constraint inside the body. Becomes a
-///     GLSL temporary.
-///   - Noise: declared with no pin and no parent record. The
-///     transpiler emits a hash-based noise expression seeded on
-///     `pixel` (and `input.time` if available).
-#[derive(Debug, Clone)]
-pub struct ShaderDecl {
-    pub name: String,
-    pub body: Vec<BodyItem>,
-}
+// TraceDecl, TraceStep, TraceAssertion, AssertOp, ShaderDecl removed
+// in Phase 2 plugin removal — the runners that consumed them are gone.
 
 // ── Effect / Result / FfiArg ─────────────────────────────────────
 //

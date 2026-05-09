@@ -25,12 +25,6 @@ pub enum Token {
     Enum,         // enum Day = Mon | Tue | …
     Match,        // match scrutinee \n   Pattern ⇒ body  ...
     Import,       // import "path"
-    Trace,        // trace name "path/to/program.ev" — test declaration
-    Send,         // send "command" — Stdin trace step
-    KeyDown,      // key_down "Right" — SDL trace step (start hold)
-    KeyUp,        // key_up "Right"   — SDL trace step (release)
-    Advance,      // advance 0.5s     — SDL trace step (tick clock)
-    Shader,       // shader Name      — GLSL fragment-shader decl
     In,           // ∈ or "in"
     NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
     ContainsRev,  // ∋ (U+220B) — reverse membership; desugars to (rhs ∈ lhs)
@@ -374,12 +368,6 @@ fn is_ident_continue(c: char) -> bool {
 fn keyword_or_ident(s: String) -> Token {
     match s.as_str() {
         "schema"   => Token::Schema,
-        "trace"    => Token::Trace,
-        "send"     => Token::Send,
-        "key_down" => Token::KeyDown,
-        "key_up"   => Token::KeyUp,
-        "advance"  => Token::Advance,
-        "shader"   => Token::Shader,
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,

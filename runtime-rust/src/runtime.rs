@@ -522,8 +522,6 @@ impl EvidentRuntime {
         // all enums; load fails on collision.
         register_enums(&prog.enums, self.z3_ctx, &self.enums)?;
         self.program.schemas.extend(prog.schemas);
-        self.program.traces.extend(prog.traces);
-        self.program.shaders.extend(prog.shaders);
         self.program.enums.extend(prog.enums);
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones. Also
@@ -638,20 +636,6 @@ impl EvidentRuntime {
         self.schemas.keys().map(|s| s.as_str())
     }
 
-    /// Trace declarations parsed from this runtime's loaded files.
-    /// Used by `evident test` to drive step-by-step program execution
-    /// and check assertions per send line.
-    pub fn traces(&self) -> &[crate::ast::TraceDecl] {
-        &self.program.traces
-    }
-
-    /// Shader declarations parsed from this runtime's loaded files.
-    /// Used by `evident transpile-shader` and the future
-    /// `SDLShaderPlugin` to look up a shader by name and emit GLSL.
-    pub fn shaders(&self) -> &[crate::ast::ShaderDecl] {
-        &self.program.shaders
-    }
-
     /// Look up a loaded schema by name. Used by the executor (and other
     /// tooling) to inspect the body of `main` for variable declarations,
     /// passthroughs, and state pairs.
@@ -742,8 +726,6 @@ impl EvidentRuntime {
                 .filter(|e| !b.enums.contains(&e.name))
                 .cloned().collect(),
             imports: Vec::new(),
-            traces:  Vec::new(),
-            shaders: Vec::new(),
         }
     }
 

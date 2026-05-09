@@ -11,6 +11,7 @@
 | 2026-05-09 | 18,631 | Phase 1.7 | stdlib/posix.ev (Evident library, 0 Rust delta) + 9 conformance tests. |
 | 2026-05-09 | 18,799 | Phase 1.8 | Replay mode in DispatchContext + 3 tests. PartialEq derives on EffectFfiArg/EffectResult. +168. **Phase 1 COMPLETE.** |
 | 2026-05-09 | 13,106 | Phase 2 | **AGGRESSIVE CUT**: deleted plugins/ (sdl/audio/shader = 1240), glsl.rs (1007), smtlib.rs (957), trace_runner.rs (533), executor.rs (1118), commands/{execute,export_smt2,import_smt2,initial_state}.rs (~735), tests/{sdl,glsl_transpile,smtlib,perf}.rs (4 files), examples/sdl_render_bench. Removed sdl_demo/, mario/, text_adventure/ programs. Dropped sdl2 + gl from Cargo.toml. Trimmed 10 cli_execute_* tests + cli_query_examples_scheduling. **−5,693 lines, 377 tests still pass, 211 conformance tests pass.** |
+| 2026-05-09 | 12,454 | Phase 5.1+5.2 | Test reporters (TAP/JUnit/JSON) deleted: −214. Format CLI flags trimmed. Parser: parse_trace_decl/parse_shader_decl/parse_trace_step/parse_key_name/parse_duration/parse_trailing_assertions/parse_trace_assertion deleted (~252 lines). AST: TraceDecl/TraceStep/TraceAssertion/AssertOp/ShaderDecl deleted. Lexer: Token::Trace/Send/KeyDown/KeyUp/Advance/Shader deleted. runtime.rs: traces()/shaders() accessors deleted. Net: **−652. 377 tests still pass.** |
 
 ## Outstanding
 
