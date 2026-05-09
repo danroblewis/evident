@@ -1,14 +1,12 @@
 -- programs/demos/effect_sdl_rect.ev — yellow rectangle outline on
--- a dark background, using stdlib/sdl/* library claims.
+-- a dark background, using stdlib/sdl/render.ev library claims.
 --
 --     evident effect-run programs/demos/effect_sdl_rect.ev --max-steps 1000
 --
--- Each per-frame stage uses one library claim; the program never
--- writes a raw `LibCall` directly. Library bindings are wired via
--- `mapsto` (↦) so a single state-extracted `ren` can serve all
--- builders despite the various stage-specific arg patterns.
+-- The 4 line draws are packaged by the library's draw_rect_outline
+-- claim into a single EffectList, so we only need ONE state for
+-- "draw the rectangle" instead of Line1/Line2/Line3/Line4.
 
-import "stdlib/sdl/window.ev"
 import "stdlib/sdl/render.ev"
 
 enum SDLState =
@@ -21,10 +19,7 @@ enum SDLState =
     BgColor(Int, Int, Int)
     BgClear(Int, Int, Int)
     FgColor(Int, Int, Int)
-    Line1(Int, Int, Int)
-    Line2(Int, Int, Int)
-    Line3(Int, Int, Int)
-    Line4(Int, Int, Int)
+    DrawRect(Int, Int, Int)             -- one state, draws all 4 sides
     Present(Int, Int, Int)
     Pumped(Int, Int, Int)
     -- Teardown
@@ -56,11 +51,8 @@ claim main
         AwaitRenderer(w)           ⇒ BgColor(w, handle_out, 60)
         BgColor(w, r, n)           ⇒ BgClear(w, r, n)
         BgClear(w, r, n)           ⇒ FgColor(w, r, n)
-        FgColor(w, r, n)           ⇒ Line1(w, r, n)
-        Line1(w, r, n)             ⇒ Line2(w, r, n)
-        Line2(w, r, n)             ⇒ Line3(w, r, n)
-        Line3(w, r, n)             ⇒ Line4(w, r, n)
-        Line4(w, r, n)             ⇒ Present(w, r, n)
+        FgColor(w, r, n)           ⇒ DrawRect(w, r, n)
+        DrawRect(w, r, n)          ⇒ Present(w, r, n)
         Present(w, r, n)           ⇒ Pumped(w, r, n)
         Pumped(w, r, n)            ⇒ (n ≤ 1 ? DestroyR(w, r)
                                             : BgColor(w, r, n - 1))
@@ -72,19 +64,13 @@ claim main
         AfterQuit                  ⇒ Done
         Done                       ⇒ Done
 
-    -- Top-level extracts of the renderer + window. They take the
-    -- value 0 for states that don't yet have one (Init, AwaitRenderer
-    -- before capture, Done) — that's harmless because those states
-    -- don't issue render or destroy calls.
+    -- Top-level extract: renderer + window from whatever state we're in.
     ren ∈ Int
     ren = match state
         BgColor(_, r, _)       ⇒ r
         BgClear(_, r, _)       ⇒ r
         FgColor(_, r, _)       ⇒ r
-        Line1(_, r, _)         ⇒ r
-        Line2(_, r, _)         ⇒ r
-        Line3(_, r, _)         ⇒ r
-        Line4(_, r, _)         ⇒ r
+        DrawRect(_, r, _)      ⇒ r
         Present(_, r, _)       ⇒ r
         Pumped(_, r, _)        ⇒ r
         DestroyR(_, r)         ⇒ r
@@ -97,10 +83,7 @@ claim main
         BgColor(w, _, _)       ⇒ w
         BgClear(w, _, _)       ⇒ w
         FgColor(w, _, _)       ⇒ w
-        Line1(w, _, _)         ⇒ w
-        Line2(w, _, _)         ⇒ w
-        Line3(w, _, _)         ⇒ w
-        Line4(w, _, _)         ⇒ w
+        DrawRect(w, _, _)      ⇒ w
         Present(w, _, _)       ⇒ w
         Pumped(w, _, _)        ⇒ w
         DestroyR(w, _)         ⇒ w
@@ -108,16 +91,7 @@ claim main
         DestroyW(w)            ⇒ w
         _                      ⇒ 0
 
-    -- Library-built effect values. Each call to a library claim
-    -- assigns its `out` parameter; we then drop those into the
-    -- effects-match arms.
-    --
-    -- (SDL_Init, SDL_CreateWindow, SDL_PumpEvents, SDL_Delay,
-    -- SDL_Quit, SDL_DestroyWindow are inlined LibCalls below — the
-    -- old stdlib/sdl/window.ev predates LibCall and uses the
-    -- separate dlopen/dlsym dance. Worth a follow-up rewrite to
-    -- give them LibCall-based wrappers too.)
-
+    -- Library-built effects.
     init_eff ∈ Effect
     init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
                        "SDL_Init", "i(i)",
@@ -147,18 +121,10 @@ claim main
     set_draw_color (renderer ↦ ren, red ↦ 240, green ↦ 220, blue ↦ 80,
                     alpha ↦ 255, out ↦ fg_color_eff)
 
-    line1_eff ∈ Effect
-    draw_line (renderer ↦ ren, x1 ↦ 100, y1 ↦ 100, x2 ↦ 540, y2 ↦ 100,
-               out ↦ line1_eff)
-    line2_eff ∈ Effect
-    draw_line (renderer ↦ ren, x1 ↦ 540, y1 ↦ 100, x2 ↦ 540, y2 ↦ 380,
-               out ↦ line2_eff)
-    line3_eff ∈ Effect
-    draw_line (renderer ↦ ren, x1 ↦ 540, y1 ↦ 380, x2 ↦ 100, y2 ↦ 380,
-               out ↦ line3_eff)
-    line4_eff ∈ Effect
-    draw_line (renderer ↦ ren, x1 ↦ 100, y1 ↦ 380, x2 ↦ 100, y2 ↦ 100,
-               out ↦ line4_eff)
+    -- One library call → 4 RenderDrawLine effects in one EffectList.
+    rect_eff ∈ EffectList
+    draw_rect_outline (renderer ↦ ren, x ↦ 100, y ↦ 100, w ↦ 440, h ↦ 280,
+                       out ↦ rect_eff)
 
     present_eff ∈ Effect
     render_present (renderer ↦ ren, out ↦ present_eff)
@@ -193,10 +159,7 @@ claim main
         BgColor(_, _, _)           ⇒ EffCons(bg_color_eff, EffNil)
         BgClear(_, _, _)           ⇒ EffCons(bg_clear_eff, EffNil)
         FgColor(_, _, _)           ⇒ EffCons(fg_color_eff, EffNil)
-        Line1(_, _, _)             ⇒ EffCons(line1_eff, EffNil)
-        Line2(_, _, _)             ⇒ EffCons(line2_eff, EffNil)
-        Line3(_, _, _)             ⇒ EffCons(line3_eff, EffNil)
-        Line4(_, _, _)             ⇒ EffCons(line4_eff, EffNil)
+        DrawRect(_, _, _)          ⇒ rect_eff       -- already an EffectList
         Present(_, _, _)           ⇒ EffCons(present_eff,
                                        EffCons(pump_eff,
                                        EffCons(delay_eff, EffNil)))

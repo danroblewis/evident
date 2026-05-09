@@ -79,3 +79,53 @@ claim draw_point(renderer ∈ Int, x ∈ Int, y ∈ Int, out ∈ Effect)
                   ArgCons(ArgHandle(renderer),
                   ArgCons(ArgInt(x),
                   ArgCons(ArgInt(y), ArgNil))))
+
+-- ── Rectangles ────────────────────────────────────────────────
+--
+-- Why no SDL_RenderDrawRect / SDL_RenderFillRect wrappers: those
+-- take `const SDL_Rect*` — a 16-byte C struct of 4 ints (x, y, w, h).
+-- Constructing that struct from Evident needs `malloc` + raw memory
+-- writes via FFI, which we haven't built yet. Sketched out in
+-- docs/guide/ffi-bindings.md as a future addition.
+--
+-- For now: outline rectangles via 4 line draws, returned as a single
+-- EffectList. One library invocation, one state in the caller.
+-- Filled rectangles need either:
+--   (a) the malloc'd-SDL_Rect path (best, native C performance), or
+--   (b) horizontal lines per row, where N = height
+--       (very slow for large fills — h LibCalls per frame).
+
+-- Outline rectangle as 4 lines (top, right, bottom, left). All
+-- drawn with the renderer's current draw color. Inclusive bounds:
+-- the rect spans (x, y) to (x + w, y + h).
+claim draw_rect_outline(renderer ∈ Int, x ∈ Int, y ∈ Int,
+                        w ∈ Int, h ∈ Int, out ∈ EffectList)
+    out = EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+                  "i(piiii)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y),
+                  ArgCons(ArgInt(x + w),
+                  ArgCons(ArgInt(y), ArgNil)))))),
+          EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+                  "i(piiii)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgInt(x + w),
+                  ArgCons(ArgInt(y),
+                  ArgCons(ArgInt(x + w),
+                  ArgCons(ArgInt(y + h), ArgNil)))))),
+          EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+                  "i(piiii)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgInt(x + w),
+                  ArgCons(ArgInt(y + h),
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y + h), ArgNil)))))),
+          EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+                  "i(piiii)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y + h),
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y), ArgNil)))))),
+                  EffNil))))
