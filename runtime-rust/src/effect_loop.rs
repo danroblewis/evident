@@ -59,9 +59,16 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     let mut effects_var = None;
     for item in &main.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
-            if type_name == "EffectList" {
+            // Convention: the main claim's "effects" output is named
+            // exactly "effects"; the "results" input is "last_results".
+            // Pick the FIRST match of each — programs may declare other
+            // EffectList / ResultList intermediates that the loop should
+            // ignore.
+            if type_name == "EffectList" && name == "effects" && effects_var.is_none() {
                 effects_var = Some(name.clone());
-            } else if type_name == "ResultList" {
+            } else if type_name == "ResultList" && name == "last_results"
+                   && last_results_var.is_none()
+            {
                 last_results_var = Some(name.clone());
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -194,11 +201,11 @@ fn run_with_shape(
 
         let new_results = dispatch_all(ctx, &effects);
 
-        // Phase 1.4 v1 limitation: we re-encode state via the model's
-        // variant value — works for nullary enums by looking up the
-        // constructor in the EnumRegistry. Payload-carrying state
-        // variants would need a richer Value→Datatype encoder; that's
-        // future work.
+        if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+            eprintln!("[loop] step {step_count}: state_next={state_next_val:?} effects={effects:?}");
+        }
+        // Re-encode state for the next step's pin. Handles nullary
+        // and payload variants.
         current_state_value = encode_state_value(rt, state_next_val);
 
         last_results = new_results;

@@ -1,11 +1,10 @@
--- programs/demos/effect_say.ev — speak via FFI to libc's system().
+-- programs/demos/effect_say.ev — speak via FFI, using stdlib/shell.ev.
 --
 --     evident effect-run programs/demos/effect_say.ev
 --
--- Uses stdlib/shell.ev which wraps the cached LibCall effect:
--- one effect per shell invocation, no handle threading through
--- state. The runtime resolves libSystem + `system` once on the
--- first call and caches both for subsequent calls.
+-- Demonstrates the library API: the program never mentions
+-- LibCall / libSystem / "system" / "i(s)" / ArgCons. The library
+-- claim `shell_run_only` builds the EffectList for us.
 
 import "stdlib/shell.ev"
 
@@ -18,6 +17,7 @@ claim main
     last_results ∈ ResultList
     effects ∈ EffectList
 
+    -- Pull the exit code from the previous step's result, if any.
     int_out ∈ Int
     int_out = match last_results
         ResCons(r, _) ⇒ match r
@@ -25,12 +25,21 @@ claim main
             _            ⇒ -1
         _              ⇒ -1
 
+    -- Hand the command to the library. Names-match composition wires
+    -- `cmd` here to shell_run_only's `cmd` parameter and binds its
+    -- `out` to our local `say_effect` (a Seq of Effects).
+    cmd ∈ String
+    cmd = "say -r 200 'evident is alive'"
+    say_effect ∈ EffectList
+    shell_run_only (out ↦ say_effect)
+
+    -- State transitions.
     state_next = match state
         Init     ⇒ Done(int_out)
         Done(c)  ⇒ Done(c)
 
+    -- Effects: use the library-built EffectList on the first step,
+    -- empty on subsequent steps.
     effects = match state
-        Init     ⇒ EffCons(LibCall("/usr/lib/libSystem.dylib", "system", "i(s)",
-                            ArgCons(ArgStr("say -r 200 'evident is alive'"), ArgNil)),
-                            EffNil)
+        Init     ⇒ say_effect
         Done(_)  ⇒ EffNil
