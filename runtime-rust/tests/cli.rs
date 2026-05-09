@@ -109,15 +109,6 @@ fn cli_query_json_output() {
 }
 
 
-#[test]
-fn cli_batch_says_parked() {
-    // batch / repl still print the parked message and exit 2.
-    let out = Command::new(bin()).args(["batch", "ignored.ev"])
-        .output().unwrap();
-    assert!(!out.status.success());
-    assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("not yet implemented"));
-}
 
 /// Confirms the new `--width / --height / --title / --host / --port`
 /// flags parse cleanly and the program still gets to the executor

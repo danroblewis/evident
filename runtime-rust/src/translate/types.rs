@@ -242,19 +242,13 @@ pub(super) enum Var<'ctx> {
     /// directly so equality `today = Mon` can dispatch via Ast::_eq.
     EnumValue {
         ast: z3::ast::Datatype<'ctx>,
-        enum_name: String,
-        variant: String,
     },
     /// A reference to a payload-bearing variant's constructor — not
-    /// yet applied. Lets `Ok(5)` parse as `Call("Ok", [Int(5)])` and
-    /// then resolve via env-lookup + constructor application. Nullary
-    /// variants stay as `EnumValue` (pre-applied); only variants whose
-    /// `fields` are non-empty land here.
+    /// yet applied. Nullary variants stay as `EnumValue` (pre-applied);
+    /// only variants whose `fields` are non-empty land here.
     EnumCtor {
         dt: &'static DatatypeSort<'static>,
         variant_idx: usize,
-        enum_name: String,
-        variant: String,
         /// Declared field types, in order. Used to type-check args at
         /// the call site and to decide which translate_* function to
         /// route each arg through.

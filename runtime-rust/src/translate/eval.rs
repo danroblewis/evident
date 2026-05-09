@@ -86,25 +86,16 @@ fn populate_enum_variants<'ctx>(
                 let ctor = &dt.variants[idx].constructor;
                 let ast = ctor.apply(&[]).as_datatype()
                     .expect("nullary enum variant must yield a Datatype value");
-                env.insert(variant.name.clone(), super::types::Var::EnumValue {
-                    ast,
-                    enum_name: enum_name.clone(),
-                    variant: variant.name.clone(),
-                });
+                env.insert(variant.name.clone(), super::types::Var::EnumValue { ast });
             } else {
-                // Payload variant — store an unapplied constructor
-                // reference. exprs.rs's call-handling spots `Call(name,
-                // args)` where `name` resolves to EnumCtor and applies
-                // the constructor with translated args.
                 env.insert(variant.name.clone(), super::types::Var::EnumCtor {
                     dt: *dt,
                     variant_idx: idx,
-                    enum_name: enum_name.clone(),
-                    variant: variant.name.clone(),
                     field_types: variant.fields.iter()
                         .map(|f| f.type_name.clone()).collect(),
                 });
             }
+            let _ = enum_name;
         }
     }
 }

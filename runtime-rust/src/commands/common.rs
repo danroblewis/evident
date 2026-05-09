@@ -10,29 +10,12 @@ use evident_runtime::{EvidentRuntime, QueryResult, Value};
 
 pub fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident query            <files…> <schema> [--given k=v …] [--json]");
-    eprintln!("  evident check            <files…>");
-    eprintln!("  evident sample           <files…> <schema> [-n N] [--given k=v …] [--json]");
-    eprintln!("  evident test             [path] [-v] [--no-color] [--format=tap|junit|json]");
-    eprintln!("  evident execute          <file> [--width N] [--height N] [--title S]");
-    eprintln!("                                  [--host H] [--port P] [--quiet | --explain]");
-    eprintln!("  evident parse            <file>");
-    eprintln!("  evident transpile-shader <file> <shader_name>");
-    eprintln!("  evident export-smt2      <file> <claim>          # Evident → SMT-LIB v2");
-    eprintln!("  evident import-smt2      <file> [claim_name]     # SMT-LIB v2 → Evident");
-    eprintln!();
-    eprintln!("execute flags (mirror evident.py where applicable):");
-    eprintln!("  --width  N   SDL window width  (default 800; used by SDL plugin)");
-    eprintln!("  --height N   SDL window height (default 600; used by SDL plugin)");
-    eprintln!("  --title  S   SDL window title  (default \"Evident\")");
-    eprintln!("  --host   H   TCP listen host   (default 127.0.0.1; reserved for TCP plugin)");
-    eprintln!("  --port   P   TCP listen port   (default 8080;       reserved for TCP plugin)");
-    eprintln!("  --quiet              suppress per-step UNSAT warnings (default: warn loud)");
-    eprintln!("  --explain            on UNSAT, dump per-step `given` + schema body to stderr");
-    eprintln!("  --initial-state PATH  JSON file: top-level keys → first-frame `given`");
-    eprintln!();
-    eprintln!("not yet implemented (use evident.py):");
-    eprintln!("  evident batch|repl …");
+    eprintln!("  evident query       <files…> <schema> [--given k=v …] [--json]");
+    eprintln!("  evident check       <files…>");
+    eprintln!("  evident sample      <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident test        [path] [-v] [--no-color]");
+    eprintln!("  evident effect-run  <file>           # run an effect-driven program");
+    eprintln!("  evident lint        <file>");
 }
 
 /// Split positional file paths from flag arguments. Files are everything

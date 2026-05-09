@@ -60,16 +60,6 @@ impl std::error::Error for EncodeError {}
 
 pub type Result<T> = std::result::Result<T, EncodeError>;
 
-/// Helper: look up an enum's DatatypeSort from the registry.
-fn dt<'a>(
-    enums: &'a EnumRegistry,
-    name: &'static str,
-) -> Result<&'static DatatypeSort<'static>> {
-    enums.by_name.borrow().get(name)
-        .map(|(d, _)| *d)
-        .ok_or(EncodeError::EnumNotRegistered(name))
-}
-
 /// Helper: find a variant by name on the given enum and apply its
 /// constructor with `args`. The args' Z3 types must already match
 /// the variant's declared payload field types — caller's job.

@@ -54,15 +54,6 @@ const ITER_RULES: &[&str] = &[
     "propagate_bool",
 ];
 
-/// Stage 10: consistency-check rules. Each is SAT precisely when
-/// the named bug is present in the user's code. Unlike inference
-/// rules, finding a SAT here is a USER ERROR worth surfacing.
-const CONFLICT_RULES: &[&str] = &[
-    "conflict_string_decl_with_int_assignment",
-    "conflict_int_decl_with_string_assignment",
-    "conflict_bool_decl_with_int_assignment",
-    "conflict_bool_decl_with_string_assignment",
-];
 
 /// One inference fact: in `claim_name`, variable `var` was inferred
 /// to have type `type_name`, by `source_rule`. Multiple inferences
@@ -73,7 +64,6 @@ pub struct Inference {
     pub claim_name: String,
     pub var: String,
     pub type_name: String,
-    pub source_rule: String,
 }
 
 /// Public callable used by `evident query` (and any future flag
@@ -127,7 +117,6 @@ pub fn collect_inferences(user_files: &[String])
                     if let Some((var, typ, claim)) = render_bindings(rule, &r.bindings) {
                         out.push(Inference {
                             claim_name: claim, var, type_name: typ,
-                            source_rule: rule.to_string(),
                         });
                     }
                 }
@@ -159,7 +148,6 @@ pub fn collect_inferences(user_files: &[String])
                         out.push(Inference {
                             claim_name: claim_name.clone(),
                             var, type_name: typ,
-                            source_rule: rule.to_string(),
                         });
                     }
                 }
@@ -237,17 +225,6 @@ pub fn unambiguous_inferences(inferences: &[Inference]) -> Vec<Inference> {
     out
 }
 
-/// Tag for output labels: how the rule renders the inferred fact.
-fn label_for(rule: &str) -> &'static str {
-    if rule.starts_with("propagate_") { "propagated through `=`" }
-    else if rule.starts_with("has_") { "found via iteration" }
-    else if rule.starts_with("extract_") { "extracted from declaration" }
-    else if rule.starts_with("infer_") && rule.contains("membership_plus") {
-        "inferred from declaration + assignment"
-    } else if rule.starts_with("infer_") {
-        "inferred from literal assignment"
-    } else { "matched" }
-}
 
 /// Pull the variable name + type out of common binding shapes.
 /// Different rule families bind slightly different names —
