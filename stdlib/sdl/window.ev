@@ -1,0 +1,80 @@
+-- stdlib/sdl/window.ev — SDL2 window via FFI.
+--
+-- Minimal v1 surface: SDL_Init / SDL_CreateWindow / SDL_Delay /
+-- SDL_DestroyWindow / SDL_Quit.
+--
+-- SDL_INIT_VIDEO = 0x20.
+-- SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000 (we use 100 instead — works fine).
+-- SDL_WINDOW_SHOWN = 0x4.
+--
+-- Programs build effects via the helper claims here, then extract
+-- handles from last_results in their own state-transition logic.
+
+import "stdlib/runtime.ev"
+
+-- ── Library path ──────────────────────────────────────────────
+
+claim sdl_lib_path_macos(p ∈ String)
+    p = "libSDL2.dylib"
+
+-- ── Init flag values ──────────────────────────────────────────
+
+claim sdl_init_video(n ∈ Int)
+    n = 32      -- 0x20
+
+-- ── Effect builders ───────────────────────────────────────────
+
+-- FFIOpen("libSDL2.dylib") — returns a library handle.
+claim open_sdl_lib(e ∈ Effect)
+    e = FFIOpen("libSDL2.dylib")
+
+-- FFILookup(lib, "SDL_Init"). Returns the symbol handle.
+claim lookup_sdl_init(lib ∈ Int, e ∈ Effect)
+    e = FFILookup(lib, "SDL_Init")
+
+claim lookup_sdl_create_window(lib ∈ Int, e ∈ Effect)
+    e = FFILookup(lib, "SDL_CreateWindow")
+
+claim lookup_sdl_delay(lib ∈ Int, e ∈ Effect)
+    e = FFILookup(lib, "SDL_Delay")
+
+claim lookup_sdl_destroy_window(lib ∈ Int, e ∈ Effect)
+    e = FFILookup(lib, "SDL_DestroyWindow")
+
+claim lookup_sdl_quit(lib ∈ Int, e ∈ Effect)
+    e = FFILookup(lib, "SDL_Quit")
+
+-- ── Calls ─────────────────────────────────────────────────────
+
+-- SDL_Init(flags) → int (0 on success, negative on error).
+-- Signature: i(i)
+claim call_sdl_init(sym ∈ Int, flags ∈ Int, e ∈ Effect)
+    e = FFICall(sym, "i(i)", ArgCons(ArgInt(flags), ArgNil))
+
+-- SDL_CreateWindow(title, x, y, w, h, flags) → SDL_Window*
+-- Signature: p(siiiii)
+claim call_sdl_create_window(sym ∈ Int, title ∈ String,
+                             x ∈ Int, y ∈ Int, w ∈ Int, h ∈ Int,
+                             flags ∈ Int, e ∈ Effect)
+    e = FFICall(sym, "p(siiiii)",
+                ArgCons(ArgStr(title),
+                ArgCons(ArgInt(x),
+                ArgCons(ArgInt(y),
+                ArgCons(ArgInt(w),
+                ArgCons(ArgInt(h),
+                ArgCons(ArgInt(flags), ArgNil)))))))
+
+-- SDL_Delay(ms) — pause the calling thread.
+-- Signature: v(i)
+claim call_sdl_delay(sym ∈ Int, ms ∈ Int, e ∈ Effect)
+    e = FFICall(sym, "v(i)", ArgCons(ArgInt(ms), ArgNil))
+
+-- SDL_DestroyWindow(window) — free the window resources.
+-- Signature: v(p)
+claim call_sdl_destroy_window(sym ∈ Int, window ∈ Int, e ∈ Effect)
+    e = FFICall(sym, "v(p)", ArgCons(ArgHandle(window), ArgNil))
+
+-- SDL_Quit() — shut down the SDL subsystems.
+-- Signature: v()
+claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
+    e = FFICall(sym, "v()", ArgNil)

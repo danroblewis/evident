@@ -229,21 +229,42 @@ fn model_matches_value(v: &Value, _state_type: &str) -> bool {
 }
 
 /// Re-encode a state Value as a Z3 Datatype for the next step's pin.
-/// v1: only handles nullary enum variants by looking up the constructor
-/// in the registry. Composite/payload variants need a richer encoder.
+/// Handles nullary AND payload variants by recursively encoding
+/// each field. Primitive payloads (Int, Bool, String, Real) are
+/// encoded as Z3 literals; nested enum payloads recurse.
 fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatype<'static>> {
+    use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Ast};
     let Value::Enum { enum_name, variant, fields } = v else { return None };
     let enums = rt.enums_registry();
     let by_name = enums.by_name.borrow();
     let (sort, _decl) = by_name.get(enum_name)?;
     let var_idx = sort.variants.iter().position(|v| v.constructor.name() == *variant)?;
     let ctor = &sort.variants[var_idx].constructor;
-    if !fields.is_empty() {
-        // Payload variants in state aren't supported v1 — would need
-        // recursive value→Datatype conversion.
-        return None;
+    if fields.is_empty() {
+        return ctor.apply(&[]).as_datatype();
     }
-    ctor.apply(&[]).as_datatype()
+    // Payload — encode each field. Need 'static refs to pass to
+    // ctor.apply, so box each Z3 value.
+    let ctx = rt.z3_context();
+    let mut owned: Vec<Box<dyn Ast<'static>>> = Vec::with_capacity(fields.len());
+    for f in fields {
+        let boxed: Box<dyn Ast<'static>> = match f {
+            Value::Int(n)  => Box::new(Z3Int::from_i64(ctx, *n)),
+            Value::Bool(b) => Box::new(Z3Bool::from_bool(ctx, *b)),
+            Value::Str(s)  => Box::new(Z3Str::from_str(ctx, s).ok()?),
+            Value::Real(r) => {
+                // Reuse runtime's encoder if available; for now, route
+                // via i64/denominator pair.
+                let i = (*r * 1_000_000.0) as i64;
+                Box::new(z3::ast::Real::from_real(ctx, i as i32, 1_000_000))
+            }
+            Value::Enum { .. } => Box::new(encode_state_value(rt, f)?),
+            _ => return None,
+        };
+        owned.push(boxed);
+    }
+    let refs: Vec<&dyn Ast<'static>> = owned.iter().map(|b| b.as_ref()).collect();
+    ctor.apply(&refs).as_datatype()
 }
 
 #[cfg(test)]

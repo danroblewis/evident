@@ -1063,6 +1063,11 @@ impl EvidentRuntime {
         &self.enums
     }
 
+    /// The 'static Z3 context this runtime allocates against.
+    pub fn z3_context(&self) -> &'static z3::Context {
+        self.z3_ctx
+    }
+
     /// Encode a list of EffectResults into a Z3 datatype value
     /// matching stdlib/runtime.ev's `ResultList`. Used by the
     /// effect loop to pin `last_results` for the next step's solve.

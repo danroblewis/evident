@@ -1,0 +1,96 @@
+-- programs/demos/effect_sdl_window.ev — open an SDL window via FFI.
+--
+--     evident effect-run programs/demos/effect_sdl_window.ev --max-steps 100
+--
+-- The chain has two phases per FFI call:
+--   "Issue X"   — emit the effect, transition to "AwaitX"
+--   "AwaitX"    — read last_results to capture the result
+--                 (last_results comes from the PREVIOUS step's
+--                  dispatched effects; results emitted in step N are
+--                  visible to state's transition logic in step N+1)
+
+import "stdlib/runtime.ev"
+
+enum SDLState =
+    Init
+    AwaitLib
+    HaveLib(Int)
+    AwaitInitSym(Int)
+    HaveInitSym(Int, Int)
+    AfterInit(Int)
+    AwaitWinSym(Int)
+    HaveWinSym(Int, Int)
+    AwaitWindow(Int)
+    HaveWindow(Int, Int)
+    AwaitDelaySym(Int, Int)
+    HaveDelaySym(Int, Int, Int)
+    AfterDelay(Int, Int)
+    AwaitDestroySym(Int, Int)
+    HaveDestroySym(Int, Int, Int)
+    AfterDestroy(Int)
+    AwaitQuitSym(Int)
+    HaveQuitSym(Int, Int)
+    Done
+
+claim main
+    state, state_next ∈ SDLState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    handle_out ∈ Int
+    handle_out = match last_results
+        ResCons(r, _) ⇒ match r
+            HandleResult(h) ⇒ h
+            _               ⇒ 0
+        _              ⇒ 0
+
+    state_next = match state
+        Init                          ⇒ AwaitLib
+        AwaitLib                      ⇒ HaveLib(handle_out)
+        HaveLib(lib)                  ⇒ AwaitInitSym(lib)
+        AwaitInitSym(lib)             ⇒ HaveInitSym(lib, handle_out)
+        HaveInitSym(lib, _)           ⇒ AfterInit(lib)
+        AfterInit(lib)                ⇒ AwaitWinSym(lib)
+        AwaitWinSym(lib)              ⇒ HaveWinSym(lib, handle_out)
+        HaveWinSym(lib, _)            ⇒ AwaitWindow(lib)
+        AwaitWindow(lib)              ⇒ HaveWindow(lib, handle_out)
+        HaveWindow(lib, win)          ⇒ AwaitDelaySym(lib, win)
+        AwaitDelaySym(lib, win)       ⇒ HaveDelaySym(lib, win, handle_out)
+        HaveDelaySym(lib, win, _)     ⇒ AfterDelay(lib, win)
+        AfterDelay(lib, win)          ⇒ AwaitDestroySym(lib, win)
+        AwaitDestroySym(lib, win)     ⇒ HaveDestroySym(lib, win, handle_out)
+        HaveDestroySym(lib, _, _)     ⇒ AfterDestroy(lib)
+        AfterDestroy(lib)             ⇒ AwaitQuitSym(lib)
+        AwaitQuitSym(lib)             ⇒ HaveQuitSym(lib, handle_out)
+        HaveQuitSym(_, _)             ⇒ Done
+        Done                          ⇒ Done
+
+    effects = match state
+        Init                          ⇒ EffCons(FFIOpen("libSDL2.dylib"), EffNil)
+        AwaitLib                      ⇒ EffNil
+        HaveLib(lib)                  ⇒ EffCons(FFILookup(lib, "SDL_Init"), EffNil)
+        AwaitInitSym(_)               ⇒ EffNil
+        HaveInitSym(_, sym)           ⇒ EffCons(FFICall(sym, "i(i)",
+                                            ArgCons(ArgInt(32), ArgNil)), EffNil)
+        AfterInit(lib)                ⇒ EffCons(FFILookup(lib, "SDL_CreateWindow"), EffNil)
+        AwaitWinSym(_)                ⇒ EffNil
+        HaveWinSym(_, sym)            ⇒ EffCons(FFICall(sym, "p(siiiii)",
+                                            ArgCons(ArgStr("Evident SDL Demo"),
+                                            ArgCons(ArgInt(100),
+                                            ArgCons(ArgInt(100),
+                                            ArgCons(ArgInt(640),
+                                            ArgCons(ArgInt(480),
+                                            ArgCons(ArgInt(4), ArgNil))))))), EffNil)
+        AwaitWindow(_)                ⇒ EffNil
+        HaveWindow(lib, _)            ⇒ EffCons(FFILookup(lib, "SDL_Delay"), EffNil)
+        AwaitDelaySym(_, _)           ⇒ EffNil
+        HaveDelaySym(_, _, sym)       ⇒ EffCons(FFICall(sym, "v(i)",
+                                            ArgCons(ArgInt(2000), ArgNil)), EffNil)
+        AfterDelay(lib, _)            ⇒ EffCons(FFILookup(lib, "SDL_DestroyWindow"), EffNil)
+        AwaitDestroySym(_, _)         ⇒ EffNil
+        HaveDestroySym(_, win, sym)   ⇒ EffCons(FFICall(sym, "v(p)",
+                                            ArgCons(ArgHandle(win), ArgNil)), EffNil)
+        AfterDestroy(lib)             ⇒ EffCons(FFILookup(lib, "SDL_Quit"), EffNil)
+        AwaitQuitSym(_)               ⇒ EffNil
+        HaveQuitSym(_, sym)           ⇒ EffCons(FFICall(sym, "v()", ArgNil), EffNil)
+        Done                          ⇒ EffNil
