@@ -110,3 +110,92 @@ claim gl_delete_shader(shader ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glDeleteShader", "v(i)",
                   ArgCons(ArgInt(shader), ArgNil))
+
+-- glGetShaderiv(shader, pname, params) — read a shader parameter
+-- into params. Common pnames:
+--   GL_COMPILE_STATUS       = 35713  (0x8B81) — bool
+--   GL_INFO_LOG_LENGTH      = 35716  (0x8B84) — int
+--   GL_SHADER_SOURCE_LENGTH = 35720  (0x8B88) — int
+-- Result: IntResult with the parameter value.
+claim gl_get_shader_iv(shader ∈ Int, pname ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetShaderiv", "v(iip)",
+                  ArgCons(ArgInt(shader),
+                  ArgCons(ArgInt(pname),
+                  ArgCons(ArgIntOut, ArgNil))))
+
+-- ── Programs (link multiple shaders into a runnable pipeline) ──
+
+-- glCreateProgram() → GLuint program id.
+claim gl_create_program(out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glCreateProgram", "i()", ArgNil)
+
+-- glAttachShader(program, shader) → void.
+claim gl_attach_shader(program ∈ Int, shader ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glAttachShader", "v(ii)",
+                  ArgCons(ArgInt(program),
+                  ArgCons(ArgInt(shader), ArgNil)))
+
+-- glLinkProgram(program) → void.
+claim gl_link_program(program ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glLinkProgram", "v(i)",
+                  ArgCons(ArgInt(program), ArgNil))
+
+-- glUseProgram(program) — bind a linked program for subsequent
+-- draw calls. Pass 0 to unbind.
+claim gl_use_program(program ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUseProgram", "v(i)",
+                  ArgCons(ArgInt(program), ArgNil))
+
+-- glDeleteProgram(program) — drop a program object.
+claim gl_delete_program(program ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glDeleteProgram", "v(i)",
+                  ArgCons(ArgInt(program), ArgNil))
+
+-- glGetProgramiv(program, pname, params) — same shape as
+-- glGetShaderiv but for programs. GL_LINK_STATUS = 35714 (0x8B82).
+claim gl_get_program_iv(program ∈ Int, pname ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetProgramiv", "v(iip)",
+                  ArgCons(ArgInt(program),
+                  ArgCons(ArgInt(pname),
+                  ArgCons(ArgIntOut, ArgNil))))
+
+-- ── VAOs + draw ────────────────────────────────────────────────
+-- Core profile 3.3+ requires a VAO bound to issue draw calls;
+-- without one, glDrawArrays silently fails on Apple's driver.
+
+-- glGenVertexArrays(1, &vao) — allocate one VAO id and return it
+-- via IntOut. Multi-VAO gen would need a buffer-out variant.
+claim gl_gen_vertex_array(out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGenVertexArrays", "v(ip)",
+                  ArgCons(ArgInt(1),
+                  ArgCons(ArgIntOut, ArgNil)))
+
+-- glBindVertexArray(vao) — bind the named VAO. Pass 0 to unbind.
+claim gl_bind_vertex_array(vao ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glBindVertexArray", "v(i)",
+                  ArgCons(ArgInt(vao), ArgNil))
+
+-- glDeleteVertexArrays(1, &vao) — destroy one VAO. The id is
+-- passed BY VALUE inside an int-array pointer; we use ArgIntOut to
+-- pre-populate would be wrong here (the call READS the id, not
+-- writes to it). For now, callers should leak the VAO until
+-- shutdown — proper teardown needs an ArgIntIn-buffer variant.
+
+-- glDrawArrays(mode, first, count) — issue a draw of `count`
+-- vertices starting at index `first`. mode is GL_TRIANGLES (4),
+-- GL_LINES (1), GL_POINTS (0), etc.
+claim gl_draw_arrays(mode ∈ Int, first ∈ Int, count ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glDrawArrays", "v(iii)",
+                  ArgCons(ArgInt(mode),
+                  ArgCons(ArgInt(first),
+                  ArgCons(ArgInt(count), ArgNil))))

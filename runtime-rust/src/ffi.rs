@@ -52,6 +52,11 @@ pub enum FfiArg {
     /// caller passes the C function the count separately (typically
     /// as a preceding `ArgInt`), per the GL convention.
     StrArr(Vec<String>),
+    /// Output-int slot. Allocates an i32 in the call's backing
+    /// storage and passes its pointer. After the call, the read-back
+    /// value is surfaced as the call's IntResult (only valid when the
+    /// function's declared return is void; only one IntOut per call).
+    IntOut,
 }
 
 /// One returned value from a libffi call. Maps back to an Evident
@@ -304,6 +309,9 @@ pub fn ffi_call(
     // post-population is safe.
     let mut arr_cstrings:   Vec<Vec<CString>>                       = Vec::new();
     let mut arr_ptr_lists:  Vec<Vec<*const std::os::raw::c_char>>   = Vec::new();
+    // Output-int slots: one i32 per ArgIntOut, plus a parallel Vec
+    // of pointers to those slots (for libffi to dereference).
+    let mut int_outs:       Vec<i32>                                = Vec::new();
 
     // First pass: fill the backing-storage vectors. We must NOT push
     // to these between borrowing slots from them, because Vec growth
@@ -340,6 +348,7 @@ pub fn ffi_call(
                 arr_cstrings.push(cstrs);
                 arr_ptr_lists.push(ptrs);
             }
+            (FfiArg::IntOut, TypeCode::P) => int_outs.push(0),
             (other, expected) => {
                 return Err(FfiError(format!(
                     "arg {i}: type mismatch — value is {other:?}, signature says {expected:?}",
@@ -356,6 +365,29 @@ pub fn ffi_call(
     // a `const char * const *` pointing into our owned buffer.
     let arr_starts: Vec<*const *const std::os::raw::c_char> =
         arr_ptr_lists.iter().map(|v| v.as_ptr()).collect();
+    // For IntOut: pointers to each i32 slot. int_outs is now
+    // fully populated and won't grow, so element addresses are
+    // stable for the duration of the call.
+    let int_out_base = int_outs.as_mut_ptr();
+    let int_out_ptrs: Vec<*mut std::ffi::c_void> = (0..int_outs.len())
+        .map(|i| unsafe { int_out_base.add(i) as *mut std::ffi::c_void })
+        .collect();
+    // Currently only one IntOut per call is supported (the surfaced
+    // result has no slot for more than one). Loosen by adding an
+    // IntListResult variant if a real call needs N>1.
+    if int_outs.len() > 1 {
+        return Err(FfiError(format!(
+            "this call has {} ArgIntOut slots; only 1 is supported per call",
+            int_outs.len(),
+        )));
+    }
+    if !int_outs.is_empty() && parsed.ret != TypeCode::V {
+        return Err(FfiError(
+            "ArgIntOut requires a void-returning function (its read-back value \
+             replaces the void return); use the function's actual return value \
+             via the regular sig+ArgInt path otherwise".into(),
+        ));
+    }
 
     // Second pass: build the libffi `Arg` vector. Iterate over the
     // (FfiArg, TypeCode) pairs because TypeCode::P is shared by
@@ -364,17 +396,18 @@ pub fn ffi_call(
     let mut idx_int = 0usize; let mut idx_bool = 0usize;
     let mut idx_str = 0usize; let mut idx_dbl  = 0usize;
     let mut idx_flt = 0usize; let mut idx_p   = 0usize;
-    let mut idx_arr = 0usize;
+    let mut idx_arr = 0usize; let mut idx_iout = 0usize;
     let mut ffi_args: Vec<Arg> = Vec::with_capacity(args.len());
     for (arg, code) in args.iter().zip(parsed.args.iter()) {
         let a = match (arg, *code) {
-            (FfiArg::Int(_),    TypeCode::I) => { let r = Arg::new(&int64s[idx_int]);    idx_int  += 1; r }
-            (FfiArg::Bool(_),   TypeCode::B) => { let r = Arg::new(&bool_ints[idx_bool]); idx_bool += 1; r }
-            (FfiArg::Str(_),    TypeCode::S) => { let r = Arg::new(&str_ptrs[idx_str]);   idx_str  += 1; r }
-            (FfiArg::Real(_),   TypeCode::D) => { let r = Arg::new(&doubles[idx_dbl]);    idx_dbl  += 1; r }
-            (FfiArg::Real(_),   TypeCode::F) => { let r = Arg::new(&floats[idx_flt]);     idx_flt  += 1; r }
-            (FfiArg::Handle(_), TypeCode::P) => { let r = Arg::new(&handles[idx_p]);      idx_p    += 1; r }
-            (FfiArg::StrArr(_), TypeCode::P) => { let r = Arg::new(&arr_starts[idx_arr]); idx_arr  += 1; r }
+            (FfiArg::Int(_),    TypeCode::I) => { let r = Arg::new(&int64s[idx_int]);      idx_int  += 1; r }
+            (FfiArg::Bool(_),   TypeCode::B) => { let r = Arg::new(&bool_ints[idx_bool]);  idx_bool += 1; r }
+            (FfiArg::Str(_),    TypeCode::S) => { let r = Arg::new(&str_ptrs[idx_str]);    idx_str  += 1; r }
+            (FfiArg::Real(_),   TypeCode::D) => { let r = Arg::new(&doubles[idx_dbl]);     idx_dbl  += 1; r }
+            (FfiArg::Real(_),   TypeCode::F) => { let r = Arg::new(&floats[idx_flt]);      idx_flt  += 1; r }
+            (FfiArg::Handle(_), TypeCode::P) => { let r = Arg::new(&handles[idx_p]);       idx_p    += 1; r }
+            (FfiArg::StrArr(_), TypeCode::P) => { let r = Arg::new(&arr_starts[idx_arr]);  idx_arr  += 1; r }
+            (FfiArg::IntOut,    TypeCode::P) => { let r = Arg::new(&int_out_ptrs[idx_iout]); idx_iout += 1; r }
             _ => unreachable!("pass 1 already validated all (arg, code) pairs"),
         };
         ffi_args.push(a);
@@ -389,7 +422,14 @@ pub fn ffi_call(
     let ret = match parsed.ret {
         TypeCode::V => {
             unsafe { cif.call::<()>(code_ptr, &ffi_args); }
-            FfiReturn::Void
+            // If the call had an ArgIntOut, surface the read-back
+            // value as Int instead of Void. (We already validated
+            // there's at most one IntOut.)
+            if !int_outs.is_empty() {
+                FfiReturn::Int(int_outs[0] as i64)
+            } else {
+                FfiReturn::Void
+            }
         }
         TypeCode::I => {
             let r: i64 = unsafe { cif.call(code_ptr, &ffi_args) };

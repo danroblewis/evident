@@ -290,6 +290,13 @@ pub enum EffectFfiArg {
     /// `const char * const *`. Needed for `glShaderSource` and any
     /// other API that wants a multi-string buffer.
     StrArr(Vec<String>),
+    /// `ArgIntOut` — 0-arity marker for "writes one i32 into the
+    /// pointed-to slot" output args (`glGenVertexArrays(1, &vao)`,
+    /// `glGetShaderiv(...)`, etc.). The dispatcher allocates a
+    /// stable i32, passes its pointer, then surfaces the read-back
+    /// value as the call's `IntResult` (replacing the function's
+    /// void return).
+    IntOut,
 }
 
 /// Outcome of one performed effect. Position-aligned with the

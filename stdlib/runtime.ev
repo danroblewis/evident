@@ -37,6 +37,14 @@ enum FFIArg =
     ArgReal(Real)
     ArgHandle(Int)
     ArgStrArr(StrList)
+    -- 0-arity output-int marker. The runtime allocates a fresh i32,
+    -- passes its pointer, then surfaces the read-back value as the
+    -- call's IntResult (replacing the function's void return). Only
+    -- one ArgIntOut per call is allowed for now; multiple would
+    -- need an IntListResult variant we haven't introduced. Used by
+    -- `glGenVertexArrays(1, &vao)`, `glGetShaderiv(s, pname, &v)`,
+    -- and other "void return + writes-into-pointer" GL APIs.
+    ArgIntOut
 
 enum ArgList =
     ArgNil

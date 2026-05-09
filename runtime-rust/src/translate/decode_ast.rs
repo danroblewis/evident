@@ -587,6 +587,10 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
             need_arity(variant, fields, 1)?;
             EffectFfiArg::StrArr(decode_str_list(&fields[0])?)
         }
+        "ArgIntOut" => {
+            need_arity(variant, fields, 0)?;
+            EffectFfiArg::IntOut
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),
         }),
