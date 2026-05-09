@@ -1,0 +1,66 @@
+-- stdlib/runtime.ev — runtime effect types for FSM-driven programs.
+--
+-- See docs/design/ffi-design.md and docs/plans/01-ffi-effects/02-effect-types.md.
+--
+-- An effect-driven program declares `main` claim parameters of:
+--     state, state_next ∈ <user-defined>
+--     last_results ∈ Seq(Result)
+--     effects      ∈ Seq(Effect)
+--
+-- Each step the runtime solves for `(state_next, effects)` given
+-- `(state, last_results)`. It performs each effect in order, collects
+-- results, and feeds them into the next step's solve as `last_results`.
+--
+-- Built-in effects (Print/Println/ReadLine/Time/Exit) hit the OS
+-- directly. FFI effects route through libffi for arbitrary C calls;
+-- see stdlib/posix.ev for typical wrappers.
+
+-- Handle: by convention an Int. The runtime's HandleRegistry
+-- allocates u64 IDs; 0 is the null sentinel. Evident has no nominal
+-- subtyping of primitives in v0.1, so Handle is just Int with a
+-- conventional name. The runtime validates handle IDs against the
+-- registry at FFI call time.
+
+-- ── FFI argument: tagged union, carries the C-marshalled value ──
+enum FFIArg =
+    ArgInt(Int)
+    ArgBool(Bool)
+    ArgStr(String)
+    ArgReal(Real)
+    ArgHandle(Int)
+
+enum ArgList =
+    ArgNil
+    ArgCons(FFIArg, ArgList)
+
+-- ── Effect: one side-effect to perform between solver steps ────
+enum Effect =
+    NoEffect
+    Print(String)
+    Println(String)
+    ReadLine
+    Time
+    Exit(Int)
+    FFIOpen(String)
+    FFILookup(Int, String)
+    FFICall(Int, String, ArgList)
+    CloseHandle(Int)
+
+enum EffectList =
+    EffNil
+    EffCons(Effect, EffectList)
+
+-- ── Result: outcome of one performed effect ────────────────────
+-- Position-aligned with the previous step's effect list.
+enum Result =
+    NoResult
+    IntResult(Int)
+    StringResult(String)
+    BoolResult(Bool)
+    RealResult(Real)
+    HandleResult(Int)
+    ErrorResult(String)
+
+enum ResultList =
+    ResNil
+    ResCons(Result, ResultList)

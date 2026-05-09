@@ -524,3 +524,186 @@ pub fn decode_program(v: &Value) -> Result<Program> {
 // warning when the only callers are inside this file.
 #[allow(dead_code)]
 fn _use_variant_name(v: &Value) -> &str { variant_name(v) }
+
+// ── stdlib/runtime.ev: Effect / Result / FFIArg ────────────────
+
+pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
+    use crate::ast::Effect;
+    let (variant, fields) = check_enum(v, "Effect")?;
+    Ok(match variant {
+        "NoEffect"     => { need_arity(variant, fields, 0)?; Effect::NoEffect }
+        "Print"        => { need_arity(variant, fields, 1)?; Effect::Print(decode_str(&fields[0])?) }
+        "Println"      => { need_arity(variant, fields, 1)?; Effect::Println(decode_str(&fields[0])?) }
+        "ReadLine"     => { need_arity(variant, fields, 0)?; Effect::ReadLine }
+        "Time"         => { need_arity(variant, fields, 0)?; Effect::Time }
+        "Exit"         => { need_arity(variant, fields, 1)?; Effect::Exit(decode_int(&fields[0])?) }
+        "FFIOpen"      => { need_arity(variant, fields, 1)?; Effect::FFIOpen(decode_str(&fields[0])?) }
+        "FFILookup"    => {
+            need_arity(variant, fields, 2)?;
+            Effect::FFILookup(decode_int(&fields[0])? as u64, decode_str(&fields[1])?)
+        }
+        "FFICall"      => {
+            need_arity(variant, fields, 3)?;
+            Effect::FFICall(
+                decode_int(&fields[0])? as u64,
+                decode_str(&fields[1])?,
+                decode_arg_list(&fields[2])?,
+            )
+        }
+        "CloseHandle"  => { need_arity(variant, fields, 1)?; Effect::CloseHandle(decode_int(&fields[0])? as u64) }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "Effect".into(), variant: other.into(),
+        }),
+    })
+}
+
+pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::ast::Effect>> {
+    decode_list(v, "EffectList", "EffNil", "EffCons", decode_effect)
+}
+
+pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
+    use crate::ast::EffectFfiArg;
+    let (variant, fields) = check_enum(v, "FFIArg")?;
+    Ok(match variant {
+        "ArgInt"    => { need_arity(variant, fields, 1)?; EffectFfiArg::Int(decode_int(&fields[0])?) }
+        "ArgBool"   => { need_arity(variant, fields, 1)?; EffectFfiArg::Bool(decode_bool(&fields[0])?) }
+        "ArgStr"    => { need_arity(variant, fields, 1)?; EffectFfiArg::Str(decode_str(&fields[0])?) }
+        "ArgReal"   => { need_arity(variant, fields, 1)?; EffectFfiArg::Real(decode_real(&fields[0])?) }
+        "ArgHandle" => { need_arity(variant, fields, 1)?; EffectFfiArg::Handle(decode_int(&fields[0])? as u64) }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "FFIArg".into(), variant: other.into(),
+        }),
+    })
+}
+
+pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {
+    decode_list(v, "ArgList", "ArgNil", "ArgCons", decode_ffi_arg)
+}
+
+pub fn decode_result(v: &Value) -> Result<crate::ast::EffectResult> {
+    use crate::ast::EffectResult;
+    let (variant, fields) = check_enum(v, "Result")?;
+    Ok(match variant {
+        "NoResult"     => { need_arity(variant, fields, 0)?; EffectResult::NoResult }
+        "IntResult"    => { need_arity(variant, fields, 1)?; EffectResult::Int(decode_int(&fields[0])?) }
+        "StringResult" => { need_arity(variant, fields, 1)?; EffectResult::Str(decode_str(&fields[0])?) }
+        "BoolResult"   => { need_arity(variant, fields, 1)?; EffectResult::Bool(decode_bool(&fields[0])?) }
+        "RealResult"   => { need_arity(variant, fields, 1)?; EffectResult::Real(decode_real(&fields[0])?) }
+        "HandleResult" => { need_arity(variant, fields, 1)?; EffectResult::Handle(decode_int(&fields[0])? as u64) }
+        "ErrorResult"  => { need_arity(variant, fields, 1)?; EffectResult::Error(decode_str(&fields[0])?) }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "Result".into(), variant: other.into(),
+        }),
+    })
+}
+
+#[allow(dead_code)]
+pub fn decode_result_list(v: &Value) -> Result<Vec<crate::ast::EffectResult>> {
+    decode_list(v, "ResultList", "ResNil", "ResCons", decode_result)
+}
+
+#[cfg(test)]
+mod effect_decoder_tests {
+    use super::*;
+    use crate::ast::{Effect, EffectFfiArg, EffectResult};
+
+    /// Helper: construct a `Value::Enum`.
+    fn e(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
+        Value::Enum {
+            enum_name: enum_name.into(),
+            variant: variant.into(),
+            fields,
+        }
+    }
+
+    #[test]
+    fn decode_println_effect() {
+        let v = e("Effect", "Println", vec![Value::Str("hello".into())]);
+        match decode_effect(&v).unwrap() {
+            Effect::Println(s) => assert_eq!(s, "hello"),
+            other => panic!("expected Println, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_no_effect_zero_arity() {
+        let v = e("Effect", "NoEffect", vec![]);
+        assert!(matches!(decode_effect(&v).unwrap(), Effect::NoEffect));
+    }
+
+    #[test]
+    fn decode_ffi_call_with_args() {
+        let arglist =
+            e("ArgList", "ArgCons", vec![
+                e("FFIArg", "ArgStr", vec![Value::Str("hi".into())]),
+                e("ArgList", "ArgCons", vec![
+                    e("FFIArg", "ArgInt", vec![Value::Int(42)]),
+                    e("ArgList", "ArgNil", vec![]),
+                ]),
+            ]);
+        let v = e("Effect", "FFICall", vec![
+            Value::Int(7),
+            Value::Str("i(si)".into()),
+            arglist,
+        ]);
+        match decode_effect(&v).unwrap() {
+            Effect::FFICall(h, sig, args) => {
+                assert_eq!(h, 7);
+                assert_eq!(sig, "i(si)");
+                assert_eq!(args.len(), 2);
+                assert!(matches!(&args[0], EffectFfiArg::Str(s) if s == "hi"));
+                assert!(matches!(&args[1], EffectFfiArg::Int(42)));
+            }
+            other => panic!("expected FFICall, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_effect_list_three_items() {
+        let list =
+            e("EffectList", "EffCons", vec![
+                e("Effect", "Println", vec![Value::Str("a".into())]),
+                e("EffectList", "EffCons", vec![
+                    e("Effect", "Time", vec![]),
+                    e("EffectList", "EffCons", vec![
+                        e("Effect", "Exit", vec![Value::Int(0)]),
+                        e("EffectList", "EffNil", vec![]),
+                    ]),
+                ]),
+            ]);
+        let decoded = decode_effect_list(&list).unwrap();
+        assert_eq!(decoded.len(), 3);
+        assert!(matches!(&decoded[0], Effect::Println(s) if s == "a"));
+        assert!(matches!(&decoded[1], Effect::Time));
+        assert!(matches!(&decoded[2], Effect::Exit(0)));
+    }
+
+    #[test]
+    fn decode_int_result() {
+        let v = e("Result", "IntResult", vec![Value::Int(42)]);
+        assert!(matches!(decode_result(&v).unwrap(), EffectResult::Int(42)));
+    }
+
+    #[test]
+    fn decode_result_list_round_trip() {
+        let list =
+            e("ResultList", "ResCons", vec![
+                e("Result", "IntResult", vec![Value::Int(1)]),
+                e("ResultList", "ResCons", vec![
+                    e("Result", "StringResult", vec![Value::Str("ok".into())]),
+                    e("ResultList", "ResNil", vec![]),
+                ]),
+            ]);
+        let decoded = decode_result_list(&list).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert!(matches!(&decoded[0], EffectResult::Int(1)));
+        assert!(matches!(&decoded[1], EffectResult::Str(s) if s == "ok"));
+    }
+
+    #[test]
+    fn decode_unknown_variant_errors() {
+        let v = e("Effect", "BogusVariant", vec![]);
+        let err = decode_effect(&v).unwrap_err();
+        assert!(matches!(err, DecodeError::UnknownVariant { .. }));
+    }
+}

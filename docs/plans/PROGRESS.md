@@ -4,6 +4,7 @@
 |---|---|---|---|
 | 2026-05-09 | 17,112 | (baseline) | Roadmap established. |
 | 2026-05-09 | 17,623 | Phase 1.1 | FFI primitive landed (commit `3e077ba`). +511. |
+| 2026-05-09 | 17,844 | Phase 1.2 | Effect/Result/FfiArg AST types + decoders + tests. +221. stdlib/runtime.ev added (Evident-side enums). |
 
 ## Outstanding
 

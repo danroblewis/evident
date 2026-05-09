@@ -348,3 +348,51 @@ pub struct ShaderDecl {
     pub name: String,
     pub body: Vec<BodyItem>,
 }
+
+// ── Effect / Result / FfiArg ─────────────────────────────────────
+//
+// Mirror of `stdlib/runtime.ev`'s Effect/Result/FFIArg enums. The
+// effect dispatcher in `effect_dispatch.rs` (Phase 1.3) walks
+// Vec<Effect> and produces Vec<EffectResult>. Decoded from Z3
+// datatype values by `decode_ast::decode_effect_list`.
+
+/// One side-effect to perform between solver steps. Variants align
+/// with the `Effect` enum in stdlib/runtime.ev.
+#[derive(Debug, Clone)]
+pub enum Effect {
+    NoEffect,
+    Print(String),
+    Println(String),
+    ReadLine,
+    Time,
+    Exit(i64),
+    FFIOpen(String),
+    FFILookup(u64, String),
+    FFICall(u64, String, Vec<EffectFfiArg>),
+    CloseHandle(u64),
+}
+
+/// One argument to an FFICall effect. Distinct name from
+/// `ffi::FfiArg` to avoid the cross-module type clash; the
+/// dispatcher converts when handing off to libffi.
+#[derive(Debug, Clone)]
+pub enum EffectFfiArg {
+    Int(i64),
+    Bool(bool),
+    Str(String),
+    Real(f64),
+    Handle(u64),
+}
+
+/// Outcome of one performed effect. Position-aligned with the
+/// previous step's effect list.
+#[derive(Debug, Clone)]
+pub enum EffectResult {
+    NoResult,
+    Int(i64),
+    Str(String),
+    Bool(bool),
+    Real(f64),
+    Handle(u64),
+    Error(String),
+}
