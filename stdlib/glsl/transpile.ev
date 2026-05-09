@@ -1,0 +1,552 @@
+-- stdlib/glsl/transpile.ev — recursive AST → GLSL string emitter.
+--
+-- Phase 4.1: the GLSL transpiler as an Evident library, replacing
+-- the deleted Rust glsl.rs.  Each `emit_X` claim takes an AST node
+-- of one variant and constrains `out` to the rendered GLSL string.
+--
+-- Architecture: per-variant helper claim, gated by a `matches`
+-- recognizer in `emit_expr`. The guards prevent the default-fallback
+-- recursion from blowing the inline-depth cap. Names-match
+-- composition propagates `e` and `out` from the dispatcher into
+-- each helper.
+--
+-- Recursion budget: each AST level burns ONE frame on `emit_expr`
+-- plus one on the per-variant helper. Depth cap defaults to 64
+-- (`EVIDENT_MAX_INLINE_DEPTH`), so ASTs up to ~30 deep transpile
+-- without configuration.
+
+import "stdlib/glsl/ast.ev"
+
+-- ── Operator + type rendering (no recursion) ────────────────
+
+claim emit_binop(op ∈ GLSLBinOp, out ∈ String)
+    out = match op
+        GAdd     ⇒ "+"
+        GSub     ⇒ "-"
+        GMul     ⇒ "*"
+        GDiv     ⇒ "/"
+        GLt      ⇒ "<"
+        GLe      ⇒ "<="
+        GGt      ⇒ ">"
+        GGe      ⇒ ">="
+        GEq      ⇒ "=="
+        GNeq     ⇒ "!="
+        GAnd     ⇒ "&&"
+        GOr      ⇒ "||"
+
+claim emit_type(t ∈ GLSLType, out ∈ String)
+    out = match t
+        GTFloat  ⇒ "float"
+        GTInt    ⇒ "int"
+        GTBool   ⇒ "bool"
+        GTVec2   ⇒ "vec2"
+        GTVec3   ⇒ "vec3"
+        GTVec4   ⇒ "vec4"
+
+-- ── Expression dispatcher ──────────────────────────────────
+--
+-- The top-level `emit_expr` is a thin recognizer that fires
+-- exactly one per-variant helper via guarded names-match
+-- invocation. Helper claims own the actual rendering AND the
+-- recursive walk into subexpressions.
+
+claim emit_expr(e ∈ GLSLExpr, out ∈ String)
+    -- Variant testers (one per GLSLExpr constructor).
+    e_is_floatlit ∈ Bool
+    e_is_floatlit = (e matches GFloatLit(_))
+    e_is_intlit ∈ Bool
+    e_is_intlit = (e matches GIntLit(_))
+    e_is_boollit ∈ Bool
+    e_is_boollit = (e matches GBoolLit(_))
+    e_is_ident ∈ Bool
+    e_is_ident = (e matches GIdent(_))
+    e_is_binary ∈ Bool
+    e_is_binary = (e matches GBinary(_, _, _))
+    e_is_unaryneg ∈ Bool
+    e_is_unaryneg = (e matches GUnaryNeg(_))
+    e_is_call ∈ Bool
+    e_is_call = (e matches GCall(_, _))
+    e_is_swizzle ∈ Bool
+    e_is_swizzle = (e matches GSwizzle(_, _))
+    e_is_ternary ∈ Bool
+    e_is_ternary = (e matches GTernary(_, _, _))
+    e_is_vec2lit ∈ Bool
+    e_is_vec2lit = (e matches GVec2Lit(_, _))
+    e_is_vec3lit ∈ Bool
+    e_is_vec3lit = (e matches GVec3Lit(_, _, _))
+    e_is_vec4lit ∈ Bool
+    e_is_vec4lit = (e matches GVec4Lit(_, _, _, _))
+
+    -- Dispatch via guarded names-match. Exactly one fires per
+    -- invocation; the rest are no-ops. Each helper constrains
+    -- `out` to the rendered string for its variant.
+    e_is_floatlit ⇒ emit_floatlit
+    e_is_intlit   ⇒ emit_intlit
+    e_is_boollit  ⇒ emit_boollit
+    e_is_ident    ⇒ emit_ident
+    e_is_binary   ⇒ emit_binary
+    e_is_unaryneg ⇒ emit_unaryneg
+    e_is_call     ⇒ emit_call
+    e_is_swizzle  ⇒ emit_swizzle
+    e_is_ternary  ⇒ emit_ternary
+    e_is_vec2lit  ⇒ emit_vec2lit
+    e_is_vec3lit  ⇒ emit_vec3lit
+    e_is_vec4lit  ⇒ emit_vec4lit
+
+-- ── Per-variant helpers ──────────────────────────────────
+
+claim emit_floatlit
+    e   ∈ GLSLExpr
+    out ∈ String
+    out = match e
+        GFloatLit(s) ⇒ s
+        _            ⇒ ""
+
+claim emit_intlit
+    e   ∈ GLSLExpr
+    out ∈ String
+    out = match e
+        GIntLit(s) ⇒ s
+        _          ⇒ ""
+
+claim emit_boollit
+    e   ∈ GLSLExpr
+    out ∈ String
+    out = match e
+        GBoolLit(b) ⇒ (b ? "true" : "false")
+        _           ⇒ ""
+
+claim emit_ident
+    e   ∈ GLSLExpr
+    out ∈ String
+    out = match e
+        GIdent(n) ⇒ n
+        _         ⇒ ""
+
+claim emit_binary
+    e   ∈ GLSLExpr
+    out ∈ String
+    bop ∈ GLSLBinOp
+    blhs ∈ GLSLExpr
+    brhs ∈ GLSLExpr
+    bop = match e
+        GBinary(o, _, _) ⇒ o
+        _                ⇒ GAdd
+    blhs = match e
+        GBinary(_, l, _) ⇒ l
+        _                ⇒ GBoolLit(false)
+    brhs = match e
+        GBinary(_, _, r) ⇒ r
+        _                ⇒ GBoolLit(false)
+    bop_str ∈ String
+    blhs_str ∈ String
+    brhs_str ∈ String
+    emit_binop(bop, bop_str)
+    emit_expr(blhs, blhs_str)
+    emit_expr(brhs, brhs_str)
+    out = "(" ++ blhs_str ++ " " ++ bop_str ++ " " ++ brhs_str ++ ")"
+
+claim emit_unaryneg
+    e   ∈ GLSLExpr
+    out ∈ String
+    inner ∈ GLSLExpr
+    inner = match e
+        GUnaryNeg(x) ⇒ x
+        _            ⇒ GBoolLit(false)
+    inner_str ∈ String
+    emit_expr(inner, inner_str)
+    out = "(-" ++ inner_str ++ ")"
+
+claim emit_call
+    e    ∈ GLSLExpr
+    out  ∈ String
+    name ∈ String
+    args ∈ GLSLExprList
+    name = match e
+        GCall(n, _) ⇒ n
+        _           ⇒ ""
+    args = match e
+        GCall(_, a) ⇒ a
+        _           ⇒ GELNil
+    args_str ∈ String
+    emit_expr_list(args, args_str)
+    out = name ++ "(" ++ args_str ++ ")"
+
+claim emit_swizzle
+    e   ∈ GLSLExpr
+    out ∈ String
+    inner ∈ GLSLExpr
+    sw    ∈ String
+    inner = match e
+        GSwizzle(x, _) ⇒ x
+        _              ⇒ GBoolLit(false)
+    sw = match e
+        GSwizzle(_, s) ⇒ s
+        _              ⇒ ""
+    inner_str ∈ String
+    emit_expr(inner, inner_str)
+    out = inner_str ++ "." ++ sw
+
+claim emit_ternary
+    e   ∈ GLSLExpr
+    out ∈ String
+    cnd ∈ GLSLExpr
+    thn ∈ GLSLExpr
+    els ∈ GLSLExpr
+    cnd = match e
+        GTernary(c, _, _) ⇒ c
+        _                 ⇒ GBoolLit(false)
+    thn = match e
+        GTernary(_, t, _) ⇒ t
+        _                 ⇒ GBoolLit(false)
+    els = match e
+        GTernary(_, _, l) ⇒ l
+        _                 ⇒ GBoolLit(false)
+    cnd_str ∈ String
+    thn_str ∈ String
+    els_str ∈ String
+    emit_expr(cnd, cnd_str)
+    emit_expr(thn, thn_str)
+    emit_expr(els, els_str)
+    out = "(" ++ cnd_str ++ " ? " ++ thn_str ++ " : " ++ els_str ++ ")"
+
+claim emit_vec2lit
+    e   ∈ GLSLExpr
+    out ∈ String
+    vx  ∈ GLSLExpr
+    vy  ∈ GLSLExpr
+    vx = match e
+        GVec2Lit(x, _) ⇒ x
+        _              ⇒ GBoolLit(false)
+    vy = match e
+        GVec2Lit(_, y) ⇒ y
+        _              ⇒ GBoolLit(false)
+    vx_str ∈ String
+    vy_str ∈ String
+    emit_expr(vx, vx_str)
+    emit_expr(vy, vy_str)
+    out = "vec2(" ++ vx_str ++ ", " ++ vy_str ++ ")"
+
+claim emit_vec3lit
+    e   ∈ GLSLExpr
+    out ∈ String
+    vx  ∈ GLSLExpr
+    vy  ∈ GLSLExpr
+    vz  ∈ GLSLExpr
+    vx = match e
+        GVec3Lit(x, _, _) ⇒ x
+        _                 ⇒ GBoolLit(false)
+    vy = match e
+        GVec3Lit(_, y, _) ⇒ y
+        _                 ⇒ GBoolLit(false)
+    vz = match e
+        GVec3Lit(_, _, z) ⇒ z
+        _                 ⇒ GBoolLit(false)
+    vx_str ∈ String
+    vy_str ∈ String
+    vz_str ∈ String
+    emit_expr(vx, vx_str)
+    emit_expr(vy, vy_str)
+    emit_expr(vz, vz_str)
+    out = "vec3(" ++ vx_str ++ ", " ++ vy_str ++ ", " ++ vz_str ++ ")"
+
+claim emit_vec4lit
+    e   ∈ GLSLExpr
+    out ∈ String
+    vx  ∈ GLSLExpr
+    vy  ∈ GLSLExpr
+    vz  ∈ GLSLExpr
+    vw  ∈ GLSLExpr
+    vx = match e
+        GVec4Lit(x, _, _, _) ⇒ x
+        _                    ⇒ GBoolLit(false)
+    vy = match e
+        GVec4Lit(_, y, _, _) ⇒ y
+        _                    ⇒ GBoolLit(false)
+    vz = match e
+        GVec4Lit(_, _, z, _) ⇒ z
+        _                    ⇒ GBoolLit(false)
+    vw = match e
+        GVec4Lit(_, _, _, w) ⇒ w
+        _                    ⇒ GBoolLit(false)
+    vx_str ∈ String
+    vy_str ∈ String
+    vz_str ∈ String
+    vw_str ∈ String
+    emit_expr(vx, vx_str)
+    emit_expr(vy, vy_str)
+    emit_expr(vz, vz_str)
+    emit_expr(vw, vw_str)
+    out = "vec4(" ++ vx_str ++ ", " ++ vy_str ++ ", " ++ vz_str ++ ", " ++ vw_str ++ ")"
+
+-- ── Expression list (comma-separated for call args) ─────────
+--
+-- Two claims: the outer never prepends a comma; the recursive
+-- inner does. Avoids leading "," / trailing "," handling.
+
+claim emit_expr_list(es ∈ GLSLExprList, out ∈ String)
+    is_nil ∈ Bool
+    is_nil = (es matches GELNil)
+    -- For empty list, out = "". For non-empty, out = head ++ tail-with-commas.
+    head ∈ GLSLExpr
+    head = match es
+        GELCons(h, _) ⇒ h
+        _             ⇒ GBoolLit(false)
+    rest ∈ GLSLExprList
+    rest = match es
+        GELCons(_, r) ⇒ r
+        _             ⇒ GELNil
+    head_str ∈ String
+    rest_str ∈ String
+    out = (is_nil ? "" : head_str ++ rest_str)
+    -- Guarded recursion: only walk subterms when list is non-empty.
+    es_nonempty ∈ Bool
+    es_nonempty = ¬ is_nil
+    es_nonempty ⇒ emit_expr_list_recur
+
+-- Names-match helper invoked only when es is non-empty. Walks the
+-- head + the rest (each rest element gets a leading ", ").
+claim emit_expr_list_recur
+    head ∈ GLSLExpr
+    head_str ∈ String
+    rest ∈ GLSLExprList
+    rest_str ∈ String
+    emit_expr(head, head_str)
+    emit_expr_list_inner(rest, rest_str)
+
+claim emit_expr_list_inner(es ∈ GLSLExprList, out ∈ String)
+    is_nil ∈ Bool
+    is_nil = (es matches GELNil)
+    head ∈ GLSLExpr
+    head = match es
+        GELCons(h, _) ⇒ h
+        _             ⇒ GBoolLit(false)
+    rest ∈ GLSLExprList
+    rest = match es
+        GELCons(_, r) ⇒ r
+        _             ⇒ GELNil
+    head_str ∈ String
+    rest_str ∈ String
+    out = (is_nil ? "" : ", " ++ head_str ++ rest_str)
+    es_nonempty ∈ Bool
+    es_nonempty = ¬ is_nil
+    es_nonempty ⇒ emit_expr_list_inner_recur
+
+claim emit_expr_list_inner_recur
+    head ∈ GLSLExpr
+    head_str ∈ String
+    rest ∈ GLSLExprList
+    rest_str ∈ String
+    emit_expr(head, head_str)
+    emit_expr_list_inner(rest, rest_str)
+
+-- ── Statements + statement lists ──────────────────────────
+
+claim emit_stmt(s ∈ GLSLStmt, out ∈ String)
+    s_is_assign ∈ Bool
+    s_is_assign = (s matches GAssign(_, _))
+    s_is_declassign ∈ Bool
+    s_is_declassign = (s matches GDeclAssign(_, _, _))
+    s_is_ifelse ∈ Bool
+    s_is_ifelse = (s matches GIfElse(_, _, _))
+
+    s_is_assign     ⇒ emit_stmt_assign
+    s_is_declassign ⇒ emit_stmt_declassign
+    s_is_ifelse     ⇒ emit_stmt_ifelse
+
+claim emit_stmt_assign
+    s   ∈ GLSLStmt
+    out ∈ String
+    sa_name ∈ String
+    sa_rhs  ∈ GLSLExpr
+    sa_name = match s
+        GAssign(n, _) ⇒ n
+        _             ⇒ ""
+    sa_rhs = match s
+        GAssign(_, r) ⇒ r
+        _             ⇒ GBoolLit(false)
+    sa_rhs_str ∈ String
+    emit_expr(sa_rhs, sa_rhs_str)
+    out = "  " ++ sa_name ++ " = " ++ sa_rhs_str ++ ";\n"
+
+claim emit_stmt_declassign
+    s   ∈ GLSLStmt
+    out ∈ String
+    sd_type ∈ GLSLType
+    sd_name ∈ String
+    sd_rhs  ∈ GLSLExpr
+    sd_type = match s
+        GDeclAssign(t, _, _) ⇒ t
+        _                    ⇒ GTFloat
+    sd_name = match s
+        GDeclAssign(_, n, _) ⇒ n
+        _                    ⇒ ""
+    sd_rhs = match s
+        GDeclAssign(_, _, r) ⇒ r
+        _                    ⇒ GBoolLit(false)
+    sd_type_str ∈ String
+    sd_rhs_str  ∈ String
+    emit_type(sd_type, sd_type_str)
+    emit_expr(sd_rhs, sd_rhs_str)
+    out = "  " ++ sd_type_str ++ " " ++ sd_name ++ " = " ++ sd_rhs_str ++ ";\n"
+
+claim emit_stmt_ifelse
+    s   ∈ GLSLStmt
+    out ∈ String
+    si_cond ∈ GLSLExpr
+    si_then ∈ GLSLStmtList
+    si_else ∈ GLSLStmtList
+    si_cond = match s
+        GIfElse(c, _, _) ⇒ c
+        _                ⇒ GBoolLit(false)
+    si_then = match s
+        GIfElse(_, t, _) ⇒ t
+        _                ⇒ GSLNil
+    si_else = match s
+        GIfElse(_, _, l) ⇒ l
+        _                ⇒ GSLNil
+    si_cond_str ∈ String
+    si_then_str ∈ String
+    si_else_str ∈ String
+    emit_expr(si_cond, si_cond_str)
+    emit_stmt_list(si_then, si_then_str)
+    emit_stmt_list(si_else, si_else_str)
+    out = "  if (" ++ si_cond_str ++ ") {\n" ++ si_then_str ++ "  } else {\n" ++ si_else_str ++ "  }\n"
+
+claim emit_stmt_list(ss ∈ GLSLStmtList, out ∈ String)
+    is_nil ∈ Bool
+    is_nil = (ss matches GSLNil)
+    head ∈ GLSLStmt
+    head = match ss
+        GSLCons(h, _) ⇒ h
+        _             ⇒ GAssign("", GBoolLit(false))
+    rest ∈ GLSLStmtList
+    rest = match ss
+        GSLCons(_, r) ⇒ r
+        _             ⇒ GSLNil
+    head_str ∈ String
+    rest_str ∈ String
+    out = (is_nil ? "" : head_str ++ rest_str)
+    nonempty ∈ Bool
+    nonempty = ¬ is_nil
+    nonempty ⇒ emit_stmt_list_recur
+
+claim emit_stmt_list_recur
+    head ∈ GLSLStmt
+    head_str ∈ String
+    rest ∈ GLSLStmtList
+    rest_str ∈ String
+    emit_stmt(head, head_str)
+    emit_stmt_list(rest, rest_str)
+
+-- ── Bindings (uniforms, ins, outs) ───────────────────────
+
+claim emit_binding(b ∈ GLSLBinding, out ∈ String)
+    b_is_out ∈ Bool
+    b_is_out = (b matches GBindOut(_, _, _))
+    b_is_in ∈ Bool
+    b_is_in = (b matches GBindIn(_, _, _))
+    b_is_uniform ∈ Bool
+    b_is_uniform = (b matches GBindUniform(_, _))
+
+    b_is_out     ⇒ emit_binding_out
+    b_is_in      ⇒ emit_binding_in
+    b_is_uniform ⇒ emit_binding_uniform
+
+claim emit_binding_out
+    b   ∈ GLSLBinding
+    out ∈ String
+    bo_type ∈ GLSLType
+    bo_name ∈ String
+    bo_loc  ∈ String
+    bo_type = match b
+        GBindOut(t, _, _) ⇒ t
+        _                 ⇒ GTFloat
+    bo_name = match b
+        GBindOut(_, n, _) ⇒ n
+        _                 ⇒ ""
+    bo_loc = match b
+        GBindOut(_, _, l) ⇒ l
+        _                 ⇒ "0"
+    bo_type_str ∈ String
+    emit_type(bo_type, bo_type_str)
+    out = "layout(location = " ++ bo_loc ++ ") out " ++ bo_type_str ++ " " ++ bo_name ++ ";\n"
+
+claim emit_binding_in
+    b   ∈ GLSLBinding
+    out ∈ String
+    bi_type ∈ GLSLType
+    bi_name ∈ String
+    bi_loc  ∈ String
+    bi_type = match b
+        GBindIn(t, _, _) ⇒ t
+        _                ⇒ GTFloat
+    bi_name = match b
+        GBindIn(_, n, _) ⇒ n
+        _                ⇒ ""
+    bi_loc = match b
+        GBindIn(_, _, l) ⇒ l
+        _                ⇒ "0"
+    bi_type_str ∈ String
+    emit_type(bi_type, bi_type_str)
+    out = "layout(location = " ++ bi_loc ++ ") in " ++ bi_type_str ++ " " ++ bi_name ++ ";\n"
+
+claim emit_binding_uniform
+    b   ∈ GLSLBinding
+    out ∈ String
+    bu_type ∈ GLSLType
+    bu_name ∈ String
+    bu_type = match b
+        GBindUniform(t, _) ⇒ t
+        _                  ⇒ GTFloat
+    bu_name = match b
+        GBindUniform(_, n) ⇒ n
+        _                  ⇒ ""
+    bu_type_str ∈ String
+    emit_type(bu_type, bu_type_str)
+    out = "uniform " ++ bu_type_str ++ " " ++ bu_name ++ ";\n"
+
+claim emit_binding_list(bs ∈ GLSLBindingList, out ∈ String)
+    is_nil ∈ Bool
+    is_nil = (bs matches GBLNil)
+    head ∈ GLSLBinding
+    head = match bs
+        GBLCons(h, _) ⇒ h
+        _             ⇒ GBindUniform(GTFloat, "")
+    rest ∈ GLSLBindingList
+    rest = match bs
+        GBLCons(_, r) ⇒ r
+        _             ⇒ GBLNil
+    head_str ∈ String
+    rest_str ∈ String
+    out = (is_nil ? "" : head_str ++ rest_str)
+    nonempty ∈ Bool
+    nonempty = ¬ is_nil
+    nonempty ⇒ emit_binding_list_recur
+
+claim emit_binding_list_recur
+    head ∈ GLSLBinding
+    head_str ∈ String
+    rest ∈ GLSLBindingList
+    rest_str ∈ String
+    emit_binding(head, head_str)
+    emit_binding_list(rest, rest_str)
+
+-- (int_to_string would normally live here — see ast.ev's note
+-- about pre-formatting numeric literals as strings until Evident
+-- gets a proper Int → String operator.)
+
+-- ── Top-level: wrap bindings + body in #version + main() ───
+
+claim emit_shader(s ∈ Shader, out ∈ String)
+    bindings ∈ GLSLBindingList
+    body     ∈ GLSLStmtList
+    bindings = match s
+        MakeShader(b, _) ⇒ b
+    body = match s
+        MakeShader(_, b) ⇒ b
+    bindings_str ∈ String
+    body_str     ∈ String
+    emit_binding_list(bindings, bindings_str)
+    emit_stmt_list(body, body_str)
+    out = "#version 410 core\n" ++ bindings_str ++ "void main() {\n" ++ body_str ++ "}\n"

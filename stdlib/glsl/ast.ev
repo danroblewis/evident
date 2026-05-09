@@ -96,8 +96,10 @@ enum GLSLStmtList =
 --   GBindUniform → "uniform TYPE NAME;\n"
 
 enum GLSLBinding =
-    GBindOut(GLSLType, String, Int)
-    GBindIn(GLSLType, String, Int)
+    -- locations as PRE-FORMATTED strings ("0", "1", …), not Int.
+    -- Same workaround as numeric literals: no Int→String yet.
+    GBindOut(GLSLType, String, String)
+    GBindIn(GLSLType, String, String)
     GBindUniform(GLSLType, String)
 
 enum GLSLBindingList =

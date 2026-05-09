@@ -13,7 +13,7 @@
 //! already turned the bare form into an explicit `Passthrough` node.
 
 use std::collections::{HashMap, HashSet};
-use z3::{Context, Solver};
+use z3::{Context, SatResult, Solver};
 use z3::ast::Bool;
 
 use crate::ast::*;
@@ -97,32 +97,62 @@ fn exit_frame(visited: &mut HashMap<String, usize>, name: &str) {
         if *cnt == 0 { visited.remove(name); }
     }
 }
-/// Wrap a constraint in an `antecedent ⇒ constraint` implication when
-/// a guard is active (i.e. we're inlining a claim's body under
-/// `state.step = 0 ⇒ ClaimName`). Returns the constraint unchanged
-/// when no guard is in effect.
-fn wrap_with_guard(c: Expr, guard: &Option<Expr>) -> Expr {
+
+/// Returns true if the active inlining guard is satisfiable (or there
+/// is no guard). Used to PRUNE recursive ClaimCall expansion when the
+/// guard is provably false — the body would generate only dead
+/// constraints (Z3 would prove them vacuously true), so skipping the
+/// inline saves the translation cost.
+///
+/// Without this prune, recursive transpiler-style claims (e.g.
+/// `e_is_binary ⇒ emit_binary` where `emit_binary` calls `emit_expr`
+/// on subexpressions) cascade unconditionally — each level multiplies
+/// the inlined body count even though most branches won't fire.
+///
+/// Implementation: push the guard into the solver, ask Z3 if it's
+/// satisfiable in the current scope, pop. Z3 prunes propositional
+/// contradictions in microseconds; this lets the depth bound do its
+/// real job (cutting genuine cycles) instead of bounding work-per-node.
+fn guard_is_satisfiable(
+    solver: &Solver<'static>,
+    guard: &Option<Bool<'static>>,
+) -> bool {
+    let g = match guard {
+        None => return true,
+        Some(g) => g,
+    };
+    solver.push();
+    solver.assert(g);
+    let result = solver.check();
+    solver.pop(1);
+    !matches!(result, SatResult::Unsat)
+}
+/// Combine guard + body Bool: `guard ⇒ body` if guarded, else just
+/// the body. Operates on already-translated Z3 Bool asts so the guard's
+/// resolution is FROZEN at the point a guarded claim was entered —
+/// subsequent shadowing in deeper recursive frames can't accidentally
+/// rebind the guard's identifiers to fresh per-frame consts of the
+/// same name. (That bug used to silently make recursive transpilers
+/// emit unconstrained outputs because the depth-1 `e_is_unaryneg`
+/// guard, when consumed at depth-2, resolved to depth-2's freshly
+/// shadowed `e_is_unaryneg` — which Z3 had constrained to `false`
+/// because the inner expression isn't a UnaryNeg.)
+fn guarded_bool<'ctx>(b: Bool<'ctx>, guard: &Option<Bool<'ctx>>) -> Bool<'ctx> {
     match guard {
-        None => c,
-        Some(g) => Expr::Binary(
-            crate::ast::BinOp::Implies,
-            Box::new(g.clone()),
-            Box::new(c),
-        ),
+        None => b,
+        Some(g) => g.implies(&b),
     }
 }
 
-/// Compose two guards: `outer ∧ inner`. Used when entering a nested
-/// guarded-claim invocation so the inner claim's constraints fire only
-/// when both antecedents hold.
-fn compose_guards(outer: &Option<Expr>, inner: Expr) -> Option<Expr> {
+/// Compose two pre-translated guards: `outer ∧ inner`.
+fn compose_guards<'ctx>(
+    ctx: &'ctx z3::Context,
+    outer: &Option<Bool<'ctx>>,
+    inner: Bool<'ctx>,
+) -> Option<Bool<'ctx>> {
     match outer {
         None => Some(inner),
-        Some(o) => Some(Expr::Binary(
-            crate::ast::BinOp::And,
-            Box::new(o.clone()),
-            Box::new(inner),
-        )),
+        Some(o) => Some(Bool::and(ctx, &[o, &inner])),
     }
 }
 
@@ -176,7 +206,7 @@ fn inline_body_items_guarded(
     registry: &DatatypeRegistry,
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
-    guard: &Option<Expr>,
+    guard: &Option<Bool<'static>>,
     tracker: Option<&Bool<'static>>,
 ) {
     for item in items {
@@ -241,9 +271,8 @@ fn inline_body_items_guarded(
                         Box::new(lhs),
                         Box::new(value.clone()),
                     );
-                    let guarded_eq = wrap_with_guard(eq.clone(), guard);
-                    if let Some(b) = translate_bool(&guarded_eq, ctx, env, schemas) {
-                        track_assert(solver, &b, tracker);
+                    if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
+                        track_assert(solver, &guarded_bool(b, guard), tracker);
                     } else {
                         let lenient = std::env::var("EVIDENT_LENIENT")
                             .map(|v| !v.is_empty() && v != "0")
@@ -295,6 +324,7 @@ fn inline_body_items_guarded(
             //   Foo(my_items, my_keys, true)
             // pattern over the longer mapsto form.
             BodyItem::Constraint(Expr::Call(name, args)) if schemas.contains_key(name) => {
+                if !guard_is_satisfiable(solver, guard) { continue; }
                 let Some(depth) = try_enter(visited, name) else { continue };
                 let Some(claim) = schemas.get(name) else { exit_frame(visited, name); continue };
 
@@ -387,25 +417,28 @@ fn inline_body_items_guarded(
                     Expr::Identifier(n) => n,
                     _ => unreachable!(),
                 };
+                let Some(ant_bool) = translate_bool(ant, ctx, env, schemas) else {
+                    continue;
+                };
+                let new_guard = compose_guards(ctx, guard, ant_bool);
+                if !guard_is_satisfiable(solver, &new_guard) { continue; }
                 if try_enter(visited, claim_name).is_none() { continue; }
                 let Some(claim) = schemas.get(claim_name) else {
                     exit_frame(visited, claim_name); continue
                 };
-                let new_guard = compose_guards(guard, (**ant).clone());
                 inline_body_items_guarded(
                     &claim.body, env, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
                 );
                 exit_frame(visited, claim_name);
             }
             BodyItem::Constraint(e) => {
-                let guarded = wrap_with_guard(e.clone(), guard);
-                if let Some(b) = translate_bool(&guarded, ctx, env, schemas) {
-                    track_assert(solver, &b, tracker);
+                if let Some(b) = translate_bool(e, ctx, env, schemas) {
+                    track_assert(solver, &guarded_bool(b, guard), tracker);
                 } else {
                     let lenient = std::env::var("EVIDENT_LENIENT")
                         .map(|v| !v.is_empty() && v != "0")
                         .unwrap_or(false);
-                    let pretty = pretty::expr(&guarded);
+                    let pretty = pretty::expr(e);
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
                     } else {
@@ -421,6 +454,7 @@ fn inline_body_items_guarded(
                 }
             }
             BodyItem::Passthrough(claim_name) => {
+                if !guard_is_satisfiable(solver, guard) { continue; }
                 if try_enter(visited, claim_name).is_none() { continue; }
                 let Some(claim) = schemas.get(claim_name) else {
                     eprintln!("warning: ..{} references unknown claim", claim_name);
@@ -433,6 +467,7 @@ fn inline_body_items_guarded(
                 exit_frame(visited, claim_name);
             }
             BodyItem::ClaimCall { name, mappings } => {
+                if !guard_is_satisfiable(solver, guard) { continue; }
                 let Some(depth) = try_enter(visited, name) else { continue };
                 let Some(claim) = schemas.get(name) else {
                     eprintln!("warning: ClaimCall to unknown claim {}", name);
