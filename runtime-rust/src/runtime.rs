@@ -233,6 +233,15 @@ pub struct EvidentRuntime {
     /// is "user" (the default for non-self-hosting use cases like
     /// `evident query`).
     system_boundary: RefCell<Option<SystemBoundary>>,
+    /// Per-schema source-file tracking: which file each top-level
+    /// schema was directly defined in. Schemas pulled in via
+    /// `import` chains get the importer's path. Lets the inference
+    /// pipeline restrict iteration to "claims defined in the user's
+    /// directly-specified file" rather than every transitively
+    /// loaded schema — saves substantial time when the user's file
+    /// imports a big helper library (mario_shader.ev → engine.ev's
+    /// 20+ helper claims).
+    schema_origins: RefCell<HashMap<String, PathBuf>>,
     /// Canonicalized paths of every file already loaded via `load_file`
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
@@ -405,6 +414,7 @@ impl EvidentRuntime {
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
             system_boundary: RefCell::new(None),
+            schema_origins: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
             solve_history: RefCell::new(HashMap::new()),
         }
@@ -483,6 +493,26 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             self.schemas.insert(s.name.clone(), s.clone());
             register_subclaims(&s.body, &mut self.schemas);
+            // Record source file for this schema (and its subclaims).
+            // Used by the inference pipeline to skip claims from
+            // imported helper files.
+            if let Some(path) = base {
+                let mut origins = self.schema_origins.borrow_mut();
+                origins.insert(s.name.clone(), path.to_path_buf());
+                fn record_subclaim_origins(
+                    body: &[BodyItem],
+                    path: &Path,
+                    out: &mut HashMap<String, PathBuf>,
+                ) {
+                    for item in body {
+                        if let BodyItem::SubclaimDecl(s) = item {
+                            out.insert(s.name.clone(), path.to_path_buf());
+                            record_subclaim_origins(&s.body, path, out);
+                        }
+                    }
+                }
+                record_subclaim_origins(&s.body, path, &mut origins);
+            }
         }
         // Build all Z3 DatatypeSorts for this batch of enums together
         // via `create_datatypes`. Lets enums forward-reference each
@@ -862,6 +892,39 @@ impl EvidentRuntime {
     /// label per-claim inference output.
     pub fn user_claim_name(&self, idx: usize) -> Option<String> {
         self.user_program().schemas.get(idx).map(|s| s.name.clone())
+    }
+
+    /// Indices into `user_program().schemas` for claims directly
+    /// defined in `path` (not pulled in via `import`). Used by the
+    /// inference pipeline to skip helper claims from imported
+    /// libraries — for `mario_shader.ev` (which imports `engine.ev`
+    /// and `level_data.ev` adding 20+ helper claims), this cuts
+    /// per-claim iteration from 26 schemas to typically 1-3.
+    ///
+    /// Returns indices in the same order as `user_program().schemas`.
+    /// Falls back to all user-claim indices if the runtime has no
+    /// origin tracking for `path` (which can happen with
+    /// `load_source` instead of `load_file`).
+    pub fn user_claim_indices_in_file(&self, path: &Path) -> Vec<usize> {
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let origins = self.schema_origins.borrow();
+        let mut out = Vec::new();
+        let user = self.user_program();
+        // If we have NO origins recorded for this path, the file
+        // likely wasn't loaded via load_file (e.g. tests use
+        // load_source). Fall back to all user claims.
+        let has_any = origins.values().any(|p| *p == canonical);
+        if !has_any {
+            return (0..user.schemas.len()).collect();
+        }
+        for (i, s) in user.schemas.iter().enumerate() {
+            if let Some(origin) = origins.get(&s.name) {
+                if *origin == canonical {
+                    out.push(i);
+                }
+            }
+        }
+        out
     }
 
     pub fn query_with_program_and_body(
