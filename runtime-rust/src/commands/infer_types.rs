@@ -27,6 +27,7 @@ use evident_runtime::{EvidentRuntime, Value};
 const STDLIB_AST:    &str = "stdlib/ast.ev";
 const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
 const ITER_TYPES:    &str = "stdlib/passes/iter_types.ev";
+const PROPAGATION:   &str = "stdlib/passes/propagation.ev";
 
 /// Rules invoked via `query_with_program` (no body Seq needed).
 const PROGRAM_RULES: &[&str] = &[
@@ -46,11 +47,16 @@ const ITER_RULES: &[&str] = &[
     "has_string_assignment",
     "has_int_assignment",
     "has_bool_assignment",
+    // Stage 9: cross-body-item propagation through `=`.
+    "propagate_string",
+    "propagate_int",
+    "propagate_bool",
 ];
 
 /// Tag for output labels: how the rule renders the inferred fact.
 fn label_for(rule: &str) -> &'static str {
-    if rule.starts_with("has_") { "found via iteration" }
+    if rule.starts_with("propagate_") { "propagated through `=`" }
+    else if rule.starts_with("has_") { "found via iteration" }
     else if rule.starts_with("extract_") { "extracted from declaration" }
     else if rule.starts_with("infer_") && rule.contains("membership_plus") {
         "inferred from declaration + assignment"
@@ -82,7 +88,9 @@ fn render_bindings(rule: &str, b: &std::collections::HashMap<String, Value>)
     {
         return Some((v.clone(), t.clone(), claim_name));
     }
-    // iter_types.ev assignment rules: derive type from rule name.
+    // iter_types.ev assignment rules + propagation.ev rules:
+    // derive type from rule name (`has_string_*` / `propagate_string`,
+    // etc.).
     if let Some(Value::Str(v)) = b.get("target_var") {
         let typ = if rule.contains("string") { "String" }
                   else if rule.contains("int") { "Int" }
@@ -117,6 +125,10 @@ pub fn cmd_infer_types(args: &[String]) -> ExitCode {
     }
     if let Err(e) = rt.load_file(Path::new(ITER_TYPES)) {
         eprintln!("error: failed to load {ITER_TYPES}: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_file(Path::new(PROPAGATION)) {
+        eprintln!("error: failed to load {PROPAGATION}: {e}");
         return ExitCode::from(1);
     }
     rt.mark_system_loads_complete();

@@ -1137,3 +1137,67 @@ fn cli_infer_types_aggregator_surfaces_ambiguity() {
         "expected ambiguity flag for score; got:\n{s}");
     let _ = std::fs::remove_file(&path);
 }
+
+// ── Stage 9: propagation rule reachable via CLI ────────────────
+
+#[test]
+fn cli_infer_types_propagation_via_eq_chain() {
+    let path = write_tmp("infer_propagate",
+        "claim t\n    x = y\n    y = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    assert!(out.status.success(),
+        "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("propagate_string"),
+        "expected propagate_string rule to fire; got:\n{s}");
+    assert!(s.contains("`x` ∈ String"),
+        "expected x ∈ String inference; got:\n{s}");
+    assert!(s.contains("propagated through `=`"),
+        "expected propagation label; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_propagation_in_aggregated_table() {
+    let path = write_tmp("infer_propagate_table",
+        "claim t\n    a = b\n    b = c\n    c = 42\n");
+    // Two-step propagation: a=b, b=c, c=42. The single-step
+    // propagation rule will catch (b, c, 42) → b ∈ Int and
+    // (a, b, ?) but b's literal isn't in the body — c is. So
+    // the rule fires for (b ← c via int).
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let agg_pos = s.find("Inferred types:").unwrap_or(0);
+    let agg = &s[agg_pos..];
+    // At minimum, c ∈ Int (from has_int_assignment) and b ∈ Int
+    // (from propagate_int via b = c, c = 42).
+    assert!(agg.contains("`b`") || agg.contains("b "),
+        "expected b in aggregated table; got:\n{agg}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_infer_types_propagation_unsat_for_one_body_item() {
+    // x = "literal" — single body item; propagation needs TWO.
+    // The literal-types rules will still fire for x.
+    let path = write_tmp("infer_no_propagate",
+        "claim t\n    x = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin()).current_dir(repo_root)
+        .args(["infer-types", path.to_str().unwrap()]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    // Propagation rules should NOT fire (no second body item).
+    assert!(!s.contains("propagate_string"),
+        "propagate_string should NOT fire on a 1-body program; got:\n{s}");
+    // Other rules still do.
+    assert!(s.contains("infer_string_from_single_assignment"),
+        "single-assignment rule should still fire; got:\n{s}");
+    let _ = std::fs::remove_file(&path);
+}
