@@ -27,7 +27,6 @@ fn main() -> ExitCode {
         "sample"      => commands::sample::cmd_sample(&args[1..]),
         "test"        => commands::test::cmd_test(&args[1..]),
         "effect-run"  => commands::effect_run::cmd_effect_run(&args[1..]),
-        "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "lint"        => commands::lint::cmd_lint(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
