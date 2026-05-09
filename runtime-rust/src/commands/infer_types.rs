@@ -64,6 +64,106 @@ const CONFLICT_RULES: &[&str] = &[
     "conflict_bool_decl_with_string_assignment",
 ];
 
+/// One inference fact: in `claim_name`, variable `var` was inferred
+/// to have type `type_name`, by `source_rule`. Multiple inferences
+/// for the same `(claim_name, var)` with different types signal
+/// ambiguity.
+#[derive(Debug, Clone)]
+pub struct Inference {
+    pub claim_name: String,
+    pub var: String,
+    pub type_name: String,
+    pub source_rule: String,
+}
+
+/// Public callable used by `evident query --infer-types` (and any
+/// future flag that needs inference results without printing them).
+/// Sets up its own EvidentRuntime, loads the inference passes,
+/// loads the user files, runs every rule per claim, and returns the
+/// flat list of (claim, var, type, rule) tuples it found.
+///
+/// Returns `Err` only on load/encode failure. Empty result + no
+/// error means the inference rules ran cleanly but found nothing
+/// to bind.
+pub fn collect_inferences(user_files: &[String])
+    -> Result<Vec<Inference>, String>
+{
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST))
+        .map_err(|e| format!("load {STDLIB_AST}: {e}"))?;
+    for f in [LITERAL_TYPES, ITER_TYPES, PROPAGATION, CONSISTENCY] {
+        rt.load_file(Path::new(f))
+            .map_err(|e| format!("load {f}: {e}"))?;
+    }
+    rt.mark_system_loads_complete();
+    for path in user_files {
+        rt.load_file(Path::new(path))
+            .map_err(|e| format!("load {path}: {e}"))?;
+    }
+
+    let mut out: Vec<Inference> = Vec::new();
+    for rule in PROGRAM_RULES {
+        if let Ok(r) = rt.query_with_program(rule, "program") {
+            if r.satisfied {
+                if let Some((var, typ, claim)) = render_bindings(rule, &r.bindings) {
+                    out.push(Inference {
+                        claim_name: claim, var, type_name: typ,
+                        source_rule: rule.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    let n_claims = rt.user_claim_count();
+    for claim_idx in 0..n_claims {
+        let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
+        for rule in ITER_RULES {
+            if let Ok(Some(r)) = rt.query_with_program_and_nth_claim_body(
+                rule, "program", "body", claim_idx,
+            ) {
+                if r.satisfied {
+                    if let Some((var, typ, _)) = render_bindings(rule, &r.bindings) {
+                        out.push(Inference {
+                            claim_name: claim_name.clone(),
+                            var, type_name: typ,
+                            source_rule: rule.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Filter `inferences` to those that are unambiguous —
+/// `(claim_name, var)` keys mapped to exactly one distinct type.
+/// Discards conflicts; useful for callers that want to apply
+/// inferences as Memberships and need confidence the type is
+/// uncontested.
+pub fn unambiguous_inferences(inferences: &[Inference]) -> Vec<Inference> {
+    use std::collections::HashMap;
+    let mut by_key: HashMap<(String, String), Vec<&Inference>> = HashMap::new();
+    for inf in inferences {
+        by_key.entry((inf.claim_name.clone(), inf.var.clone()))
+            .or_default()
+            .push(inf);
+    }
+    let mut out = Vec::new();
+    for (_key, infs) in by_key {
+        let mut types: std::collections::BTreeSet<&str> =
+            infs.iter().map(|i| i.type_name.as_str()).collect();
+        if types.len() == 1 {
+            // Pick the first inference for this (claim, var); type
+            // is the same across all of them.
+            out.push(infs[0].clone());
+            let _ = types.pop_first();
+        }
+        // Else ambiguous — drop.
+    }
+    out
+}
+
 /// Tag for output labels: how the rule renders the inferred fact.
 fn label_for(rule: &str) -> &'static str {
     if rule.starts_with("propagate_") { "propagated through `=`" }

@@ -1252,3 +1252,103 @@ fn cli_lint_missing_file_exits_1() {
         .args(["lint", "/no/such/lint/file/exists.ev"]).output().unwrap();
     assert_eq!(out.status.code(), Some(1));
 }
+
+// ── Stage 12+: --infer-types flag wires self-hosted inference ──
+//                into query
+
+#[test]
+fn cli_query_infer_types_succeeds_for_undeclared_vars() {
+    // Program with no ∈ Type annotations — inference fills them in.
+    let path = write_tmp("query_infer",
+        "claim t\n    msg = \"hello\"\n    n = 42\n    flag = true\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "query with --infer-types should succeed; stderr: {}",
+        String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    // All three bindings should appear.
+    assert!(s.contains("msg=\"hello\""), "missing msg binding; got: {s}");
+    assert!(s.contains("n=42"),          "missing n binding; got: {s}");
+    assert!(s.contains("flag=true"),     "missing flag binding; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_query_without_infer_types_fails_for_undeclared_vars() {
+    // Same source — without --infer-types, the constraint `msg = "hello"`
+    // can't translate (no type for msg), so the query errors.
+    let path = write_tmp("query_no_infer",
+        "claim t\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["query", path.to_str().unwrap(), "t"])
+        .output().unwrap();
+    assert!(!out.status.success(),
+        "without --infer-types, undeclared vars should fail the query");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_query_infer_types_announces_added_memberships() {
+    let path = write_tmp("query_infer_announce",
+        "claim t\n    msg = \"hi\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--infer-types: added"),
+        "expected announce message on stderr; got: {stderr}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_query_infer_types_skips_already_declared_vars() {
+    // User already declared msg ∈ String. --infer-types should be
+    // idempotent: adds nothing (or the same Membership), query
+    // still works the same way.
+    let path = write_tmp("query_infer_dup",
+        "claim t\n    msg ∈ String\n    msg = \"hello\"\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .output().unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("msg=\"hello\""),
+        "binding should still resolve; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn cli_query_infer_types_skips_ambiguous_vars() {
+    // score declared Nat AND assigned 100 (Int) — ambiguous.
+    // --infer-types should skip the ambiguous case (already
+    // declared ∈ Nat, so the user's annotation wins anyway).
+    let path = write_tmp("query_infer_ambig",
+        "claim t\n    score ∈ Nat\n    score = 100\n");
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let repo_root = std::path::Path::new(manifest).parent().unwrap();
+    let out = Command::new(bin())
+        .current_dir(repo_root)
+        .args(["query", "--infer-types", path.to_str().unwrap(), "t"])
+        .output().unwrap();
+    assert!(out.status.success(),
+        "ambiguous + already-declared shouldn't break the query; \
+         stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("score=100"),
+        "binding should resolve; got: {s}");
+    let _ = std::fs::remove_file(&path);
+}

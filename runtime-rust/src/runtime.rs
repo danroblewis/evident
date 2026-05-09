@@ -629,6 +629,58 @@ impl EvidentRuntime {
         self.schemas.get(name)
     }
 
+    /// Inject a `Membership` body item at the head of the named claim.
+    /// Used by the `--infer-types` flag pipeline: after running the
+    /// self-hosted inference passes against a separate runtime, the
+    /// query path calls this to graft the inferred declarations onto
+    /// the user's claims before solving.
+    ///
+    /// Returns `Ok(true)` if a Membership was added, `Ok(false)` if
+    /// the variable was already declared in the claim's body (the
+    /// idempotent skip lets callers loop over inferences without
+    /// double-checking). `Err(UnknownSchema)` if the named claim
+    /// doesn't exist.
+    ///
+    /// Mutates both `self.schemas` (the lookup table) and
+    /// `self.program.schemas` (the parsed Program — for encoder
+    /// consistency on subsequent calls). Clears the cache so a
+    /// re-query rebuilds with the new shape.
+    pub fn add_membership_to_claim(
+        &mut self,
+        claim_name: &str,
+        var_name: &str,
+        type_name: &str,
+    ) -> Result<bool, RuntimeError> {
+        use crate::ast::{BodyItem, Pins};
+        let already_declared = |body: &[BodyItem]| -> bool {
+            body.iter().any(|i| matches!(
+                i, BodyItem::Membership { name, .. } if name == var_name
+            ))
+        };
+        let new_item = BodyItem::Membership {
+            name: var_name.to_string(),
+            type_name: type_name.to_string(),
+            pins: Pins::None,
+        };
+        // Update the lookup table.
+        let schema = self.schemas.get_mut(claim_name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        if already_declared(&schema.body) {
+            return Ok(false);
+        }
+        schema.body.insert(0, new_item.clone());
+        // Mirror in self.program.schemas so the encoder sees the same
+        // body shape on subsequent queries.
+        for s in &mut self.program.schemas {
+            if s.name == claim_name && !already_declared(&s.body) {
+                s.body.insert(0, new_item.clone());
+            }
+        }
+        // Cached solver still has the old body asserted; flush.
+        self.cache.borrow_mut().clear();
+        Ok(true)
+    }
+
     /// Stage 3: snapshot everything currently loaded as "system"
     /// (stdlib/ast.ev, the pass file, etc.). Subsequent `load_*`
     /// calls register schemas/enums as user-side. `encode_program_value`

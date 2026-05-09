@@ -11,22 +11,57 @@ use super::common::{
 };
 
 pub fn cmd_query(args: &[String]) -> ExitCode {
-    let (files_and_schema, flag_args) = split_files_and_flags(args);
+    // Strip --infer-types before the standard flag parser sees it.
+    let infer_types = args.iter().any(|a| a == "--infer-types");
+    let stripped: Vec<String> = args.iter()
+        .filter(|a| a.as_str() != "--infer-types").cloned().collect();
+    let (files_and_schema, flag_args) = split_files_and_flags(&stripped);
     if files_and_schema.len() < 2 {
         eprintln!("query: need <files…> <schema>");
         return ExitCode::from(2);
     }
-    // Last positional is the schema name; the rest are files.
     let schema = files_and_schema.last().unwrap().clone();
     let files: Vec<String> = files_and_schema[..files_and_schema.len() - 1].to_vec();
     let flags = match parse_flags(&flag_args) {
         Ok(f) => f,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
     };
-    let rt = match load_runtime(&files) {
+    let mut rt = match load_runtime(&files) {
         Ok(r) => r,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
+
+    // --infer-types: run the self-hosted inference pipeline (in a
+    // separate runtime, so the inference passes don't pollute this
+    // query's schema list), then graft each unambiguous inference
+    // into this runtime's claim bodies as a Membership. From here
+    // on the query proceeds normally — Z3 sees the user's body
+    // augmented with the inferred declarations.
+    if infer_types {
+        match super::infer_types::collect_inferences(&files) {
+            Ok(all) => {
+                let unambiguous = super::infer_types::unambiguous_inferences(&all);
+                let mut applied = 0;
+                for inf in &unambiguous {
+                    match rt.add_membership_to_claim(
+                        &inf.claim_name, &inf.var, &inf.type_name,
+                    ) {
+                        Ok(true)  => { applied += 1; }
+                        Ok(false) => { /* already declared, skip */ }
+                        Err(e)    => eprintln!("warning: couldn't add Membership: {e}"),
+                    }
+                }
+                if applied > 0 {
+                    eprintln!("--infer-types: added {applied} inferred Membership(s)");
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: --infer-types pipeline failed: {e}");
+                eprintln!("(continuing without inferences)");
+            }
+        }
+    }
+
     let r = match rt.query(&schema, &flags.given) {
         Ok(r) => r,
         Err(e) => { eprintln!("query error: {e}"); return ExitCode::from(1); }
