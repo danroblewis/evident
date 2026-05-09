@@ -32,17 +32,19 @@ claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
 
 -- ── Color + clear + present ───────────────────────────────────
 
--- SDL_SetRenderDrawColor(renderer, r, g, b, a) → int
--- Each channel 0..255. Alpha 255 = opaque.
-claim set_draw_color(renderer ∈ Int, r ∈ Int, g ∈ Int, b ∈ Int, a ∈ Int,
-                     out ∈ Effect)
+-- SDL_SetRenderDrawColor(renderer, red, green, blue, alpha) → int.
+-- Each channel 0..255. alpha 255 = opaque. Parameter names spelled
+-- out so they don't collide with single-letter local var names
+-- (e.g. `r` for renderer handle in state-machine code).
+claim set_draw_color(renderer ∈ Int, red ∈ Int, green ∈ Int, blue ∈ Int,
+                     alpha ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
                   "i(piiii)",
                   ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgInt(r),
-                  ArgCons(ArgInt(g),
-                  ArgCons(ArgInt(b),
-                  ArgCons(ArgInt(a), ArgNil))))))
+                  ArgCons(ArgInt(red),
+                  ArgCons(ArgInt(green),
+                  ArgCons(ArgInt(blue),
+                  ArgCons(ArgInt(alpha), ArgNil))))))
 
 -- SDL_RenderClear(renderer) → int. Clears the entire viewport with
 -- the current draw color.

@@ -1,13 +1,11 @@
 -- programs/demos/effect_sdl_red.ev — fill the SDL window with red.
 --
---     evident effect-run programs/demos/effect_sdl_red.ev --max-steps 200
+--     evident effect-run programs/demos/effect_sdl_red.ev --max-steps 300
 --
--- Smallest possible "drawing actually works" test: clears the
--- back buffer to red, presents, repeats for ~2s with event pumping.
--- If the window shows up RED (not black), the renderer pipeline is
--- working and we're ready to draw shapes.
+-- Smallest possible "drawing actually works" test. Uses
+-- stdlib/sdl/render.ev for the renderer + draw plumbing.
 
-import "stdlib/runtime.ev"
+import "stdlib/sdl/render.ev"
 
 enum SDLState =
     Init
@@ -15,14 +13,14 @@ enum SDLState =
     AwaitWindow
     AfterCreateWindow(Int)               -- window
     AwaitRenderer(Int)                   -- window
-    -- Now have window + renderer; loop frames.
-    SetColor(Int, Int, Int)              -- window, renderer, frames_left
-    Cleared(Int, Int, Int)               -- after SetColor + Clear
-    Presented(Int, Int, Int)             -- after Present + Pump + Delay
-    DestroyRenderer(Int, Int)            -- window, renderer
-    AfterDestroyRenderer(Int)
-    DestroyWindow(Int)
-    AfterDestroyWindow
+    -- Per-frame stages: (window, renderer, frames_left)
+    SetColor(Int, Int, Int)
+    Cleared(Int, Int, Int)
+    Presented(Int, Int, Int)
+    DestroyR(Int, Int)
+    AfterDestroyR(Int)
+    DestroyW(Int)
+    AfterDestroyW
     Quit
     AfterQuit
     Done
@@ -47,62 +45,102 @@ claim main
         AwaitRenderer(w)              ⇒ SetColor(w, handle_out, 60)
         SetColor(w, r, n)             ⇒ Cleared(w, r, n)
         Cleared(w, r, n)              ⇒ Presented(w, r, n)
-        Presented(w, r, n)            ⇒ (n ≤ 1 ? DestroyRenderer(w, r)
+        Presented(w, r, n)            ⇒ (n ≤ 1 ? DestroyR(w, r)
                                                 : SetColor(w, r, n - 1))
-        DestroyRenderer(w, _)         ⇒ AfterDestroyRenderer(w)
-        AfterDestroyRenderer(w)       ⇒ DestroyWindow(w)
-        DestroyWindow(_)              ⇒ AfterDestroyWindow
-        AfterDestroyWindow            ⇒ Quit
+        DestroyR(w, _)                ⇒ AfterDestroyR(w)
+        AfterDestroyR(w)              ⇒ DestroyW(w)
+        DestroyW(_)                   ⇒ AfterDestroyW
+        AfterDestroyW                 ⇒ Quit
         Quit                          ⇒ AfterQuit
         AfterQuit                     ⇒ Done
         Done                          ⇒ Done
 
+    -- State-extracted handles (0 in pre-init / post-teardown states).
+    ren ∈ Int
+    ren = match state
+        SetColor(_, r, _)    ⇒ r
+        Cleared(_, r, _)     ⇒ r
+        Presented(_, r, _)   ⇒ r
+        DestroyR(_, r)       ⇒ r
+        _                    ⇒ 0
+
+    win ∈ Int
+    win = match state
+        AfterCreateWindow(w)  ⇒ w
+        AwaitRenderer(w)      ⇒ w
+        SetColor(w, _, _)     ⇒ w
+        Cleared(w, _, _)      ⇒ w
+        Presented(w, _, _)    ⇒ w
+        DestroyR(w, _)        ⇒ w
+        AfterDestroyR(w)      ⇒ w
+        DestroyW(w)           ⇒ w
+        _                     ⇒ 0
+
+    -- Library-built effects.
+    init_eff ∈ Effect
+    init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_Init", "i(i)",
+                       ArgCons(ArgInt(32), ArgNil))
+
+    create_window_eff ∈ Effect
+    create_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                "SDL_CreateWindow", "p(siiiii)",
+                                ArgCons(ArgStr("Evident SDL — Red Screen"),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(100),
+                                ArgCons(ArgInt(640),
+                                ArgCons(ArgInt(480),
+                                ArgCons(ArgInt(4), ArgNil)))))))
+
+    create_renderer_eff ∈ Effect
+    create_renderer (window ↦ win, out ↦ create_renderer_eff)
+
+    color_eff ∈ Effect
+    set_draw_color (renderer ↦ ren, red ↦ 220, green ↦ 40, blue ↦ 60,
+                    alpha ↦ 255, out ↦ color_eff)
+
+    clear_eff ∈ Effect
+    render_clear (renderer ↦ ren, out ↦ clear_eff)
+
+    present_eff ∈ Effect
+    render_present (renderer ↦ ren, out ↦ present_eff)
+
+    pump_eff ∈ Effect
+    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_PumpEvents", "v()", ArgNil)
+
+    delay_eff ∈ Effect
+    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_Delay", "v(i)",
+                        ArgCons(ArgInt(33), ArgNil))
+
+    destroy_renderer_eff ∈ Effect
+    destroy_renderer (renderer ↦ ren, out ↦ destroy_renderer_eff)
+
+    destroy_window_eff ∈ Effect
+    destroy_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                 "SDL_DestroyWindow", "v(p)",
+                                 ArgCons(ArgHandle(win), ArgNil))
+
+    quit_eff ∈ Effect
+    quit_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_Quit", "v()", ArgNil)
+
     effects = match state
-        Init                          ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_Init", "i(i)",
-                                            ArgCons(ArgInt(32), ArgNil)), EffNil)
-        AfterInit                     ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_CreateWindow", "p(siiiii)",
-                                            ArgCons(ArgStr("Evident SDL — Red Screen"),
-                                            ArgCons(ArgInt(100),
-                                            ArgCons(ArgInt(100),
-                                            ArgCons(ArgInt(640),
-                                            ArgCons(ArgInt(480),
-                                            ArgCons(ArgInt(4), ArgNil))))))), EffNil)
+        Init                          ⇒ EffCons(init_eff, EffNil)
+        AfterInit                     ⇒ EffCons(create_window_eff, EffNil)
         AwaitWindow                   ⇒ EffNil
-        AfterCreateWindow(w)          ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_CreateRenderer", "p(pii)",
-                                            ArgCons(ArgHandle(w),
-                                            ArgCons(ArgInt(0 - 1),
-                                            ArgCons(ArgInt(0), ArgNil)))), EffNil)
+        AfterCreateWindow(_)          ⇒ EffCons(create_renderer_eff, EffNil)
         AwaitRenderer(_)              ⇒ EffNil
-        SetColor(_, r, _)             ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_SetRenderDrawColor", "i(piiii)",
-                                            ArgCons(ArgHandle(r),
-                                            ArgCons(ArgInt(220),     -- R
-                                            ArgCons(ArgInt(40),      -- G
-                                            ArgCons(ArgInt(60),      -- B
-                                            ArgCons(ArgInt(255), ArgNil)))))), EffNil)
-        Cleared(_, r, _)              ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_RenderClear", "i(p)",
-                                            ArgCons(ArgHandle(r), ArgNil)), EffNil)
-        Presented(_, r, _)            ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_RenderPresent", "v(p)",
-                                            ArgCons(ArgHandle(r), ArgNil)),
-                                       EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_PumpEvents", "v()", ArgNil),
-                                       EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_Delay", "v(i)",
-                                            ArgCons(ArgInt(33), ArgNil)), EffNil)))
-        DestroyRenderer(_, r)         ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_DestroyRenderer", "v(p)",
-                                            ArgCons(ArgHandle(r), ArgNil)), EffNil)
-        AfterDestroyRenderer(_)       ⇒ EffNil
-        DestroyWindow(w)              ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_DestroyWindow", "v(p)",
-                                            ArgCons(ArgHandle(w), ArgNil)), EffNil)
-        AfterDestroyWindow            ⇒ EffNil
-        Quit                          ⇒ EffCons(LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                                            "SDL_Quit", "v()", ArgNil), EffNil)
+        SetColor(_, _, _)             ⇒ EffCons(color_eff, EffNil)
+        Cleared(_, _, _)              ⇒ EffCons(clear_eff, EffNil)
+        Presented(_, _, _)            ⇒ EffCons(present_eff,
+                                          EffCons(pump_eff,
+                                          EffCons(delay_eff, EffNil)))
+        DestroyR(_, _)                ⇒ EffCons(destroy_renderer_eff, EffNil)
+        AfterDestroyR(_)              ⇒ EffNil
+        DestroyW(_)                   ⇒ EffCons(destroy_window_eff, EffNil)
+        AfterDestroyW                 ⇒ EffNil
+        Quit                          ⇒ EffCons(quit_eff, EffNil)
         AfterQuit                     ⇒ EffNil
         Done                          ⇒ EffNil
