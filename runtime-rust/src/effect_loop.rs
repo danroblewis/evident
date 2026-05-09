@@ -125,12 +125,24 @@ fn run_with_shape(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
-    // Initial state: solve `main` with empty last_results, no state
-    // pin — Z3 picks the initial state value. The user's program is
-    // expected to constrain "step 0" via a guard like
-    // `state = Init ⇒ ...`.
+    // Initial state: pin to the FIRST variant of the state enum.
+    // Convention: programs declare the initial state as the first
+    // variant of their state type. This prevents Z3 from picking a
+    // non-initial variant on step 0 (which would silently skip the
+    // program's setup).
     let mut last_results: Vec<EffectResult> = Vec::new();
-    let mut current_state_value: Option<z3::ast::Datatype<'static>> = None;
+    let mut current_state_value: Option<z3::ast::Datatype<'static>> = {
+        let enums = rt.enums_registry();
+        let by_name = enums.by_name.borrow();
+        by_name.get(&shape.state_type)
+            .and_then(|(sort, _)| sort.variants.first()
+                .and_then(|v| v.constructor.apply(&[]).as_datatype()))
+    };
+    if current_state_value.is_none() {
+        return Err(format!(
+            "could not pin initial state: enum `{}` has no nullary first variant",
+            shape.state_type));
+    }
 
     let mut step_count = 0usize;
     let mut final_state_model: Option<Value> = None;

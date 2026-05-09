@@ -1,0 +1,49 @@
+-- programs/demos/effect_echo.ev — read lines, echo them.
+--
+--     echo -e "first\nsecond" | evident effect-run programs/demos/effect_echo.ev
+--
+-- State machine:
+--   Init                  → emit ReadLine                      → state := Reading
+--   Reading               → extract line; if eof, halt;
+--                           else emit Println(line)             → state := Wrote
+--   Wrote                 → emit ReadLine                       → state := Reading
+--   Done                  → no effect, stay
+--
+-- One effect per step keeps result-extraction simple (always
+-- look at last_results[0]).
+
+import "stdlib/io/line_io.ev"
+
+enum EchoState =
+    Init
+    Reading
+    Wrote
+    Done
+
+claim main
+    state, state_next ∈ EchoState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+
+    state = Init ⇒
+        (state_next = Reading
+         ∧ effects = EffCons(ReadLine, EffNil))
+
+    -- Extract from the previous step's read.
+    line ∈ String
+    eof  ∈ Bool
+    extract_line
+    extract_eof
+
+    (state = Reading ∧ eof = true) ⇒
+        (state_next = Done ∧ effects = EffNil)
+
+    (state = Reading ∧ eof = false) ⇒
+        (state_next = Wrote
+         ∧ effects = EffCons(Println(line), EffNil))
+
+    state = Wrote ⇒
+        (state_next = Reading
+         ∧ effects = EffCons(ReadLine, EffNil))
+
+    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
