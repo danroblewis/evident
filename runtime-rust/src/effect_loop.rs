@@ -423,11 +423,19 @@ fn run_multi_fsm(
     let loop_t0 = std::time::Instant::now();
     let mut total_solve = std::time::Duration::ZERO;
     let mut total_dispatch = std::time::Duration::ZERO;
+    // Per-FSM solve time + tick count, indexed parallel to `fsms`.
+    let mut per_fsm_solve: Vec<std::time::Duration> = vec![std::time::Duration::ZERO; fsms.len()];
+    let mut per_fsm_ticks: Vec<usize> = vec![0; fsms.len()];
 
     while step_count < opts.max_steps {
         // Any active FSMs left? If not, program halted.
         if fsm_rt.iter().all(|f| f.halted) {
-            if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+            if timing {
+                let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
+                    .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
+                    .collect();
+                print_timing_summary_full(loop_t0, step_count, total_solve, total_dispatch, &rows);
+            }
             return Ok(LoopResult {
                 steps: step_count,
                 // Synthesize a final-state value from the writer's
@@ -465,10 +473,17 @@ fn run_multi_fsm(
                 .map_err(|e| format!("FSM `{}` solve step {step_count}: {e}", fsm.claim_name))?;
             let solve_dt = solve_t0.elapsed();
             total_solve += solve_dt;
+            per_fsm_solve[idx] += solve_dt;
+            per_fsm_ticks[idx] += 1;
 
             if !r.satisfied {
                 eprintln!("[loop] FSM `{}` returned UNSAT on tick {step_count}", fsm.claim_name);
-                if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+                if timing {
+                    let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
+                        .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
+                        .collect();
+                    print_timing_summary_full(loop_t0, step_count, total_solve, total_dispatch, &rows);
+                }
                 return Ok(LoopResult {
                     steps: step_count,
                     final_state: fsm_rt[idx].current_state_v.clone(),
@@ -543,7 +558,12 @@ fn run_multi_fsm(
         step_count += 1;
     }
 
-    if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+    if timing {
+        let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
+            .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
+            .collect();
+        print_timing_summary_full(loop_t0, step_count, total_solve, total_dispatch, &rows);
+    }
     Ok(LoopResult {
         steps: step_count,
         final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
@@ -557,6 +577,18 @@ fn print_timing_summary(
     total_solve: std::time::Duration,
     total_dispatch: std::time::Duration,
 ) {
+    print_timing_summary_full(loop_t0, steps, total_solve, total_dispatch, &[]);
+}
+
+/// Per-FSM rows: `(claim_name, solve_total, ticks_solved)`.
+/// Empty slice = single-FSM mode → omit the breakdown.
+fn print_timing_summary_full(
+    loop_t0: std::time::Instant,
+    steps: usize,
+    total_solve: std::time::Duration,
+    total_dispatch: std::time::Duration,
+    per_fsm: &[(&str, std::time::Duration, usize)],
+) {
     let wall = loop_t0.elapsed();
     let other = wall.saturating_sub(total_solve).saturating_sub(total_dispatch);
     eprintln!("[timing] ── summary ──────────────────────────────");
@@ -567,6 +599,13 @@ fn print_timing_summary(
     eprintln!("[timing] solve:    {:>7.2}ms ({:>5.1}ms/step)",
         total_solve.as_secs_f64() * 1000.0,
         if steps > 0 { total_solve.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 });
+    for (name, solve, ticks) in per_fsm {
+        let per_tick = if *ticks > 0 {
+            solve.as_secs_f64() * 1000.0 / *ticks as f64
+        } else { 0.0 };
+        eprintln!("[timing]   {:<10} {:>7.2}ms ({:>5.1}ms/tick × {} ticks)",
+            name, solve.as_secs_f64() * 1000.0, per_tick, ticks);
+    }
     eprintln!("[timing] dispatch: {:>7.2}ms ({:>5.1}ms/step)",
         total_dispatch.as_secs_f64() * 1000.0,
         if steps > 0 { total_dispatch.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 });
