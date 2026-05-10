@@ -69,7 +69,7 @@ claim reader(world ∈ World,
 
 #[test]
 fn legacy_mode_writer_ticks_every_iteration() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     std::env::remove_var("EVIDENT_SCHEDULER");
 
     let mut rt = EvidentRuntime::new();
@@ -91,7 +91,7 @@ fn legacy_mode_writer_ticks_every_iteration() {
 
 #[test]
 fn delta_mode_writer_goes_quiet() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     std::env::set_var("EVIDENT_SCHEDULER", "delta");
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -174,9 +174,84 @@ claim reader(world ∈ World,
     effects = ⟨Println(msg)⟩
 ";
 
+/// Phase 3: halt is subscription-driven. No `Done` variant, no
+/// fixpoint heuristic — both FSMs go silent (no transitions, no
+/// effects, no plugin events) and the runtime halts cleanly. Two
+/// FSMs to force the multi-FSM scheduler path (single-FSM uses a
+/// different code path).
+const NATURAL_HALT_PROGRAM: &str = "\
+type World
+    flag ∈ Bool
+
+enum WorkState =
+    Working
+    Resting
+
+claim worker(world, world_next ∈ World,
+             state, state_next ∈ WorkState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = match state
+        Working ⇒ Resting
+        Resting ⇒ Resting
+    world_next.flag = true
+    effects = match state
+        Working ⇒ ⟨Println(\"working\")⟩
+        Resting ⇒ ⟨⟩
+
+enum WatchState = Watching | Settled
+
+claim observer(world ∈ World,
+               state, state_next ∈ WatchState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = match state
+        Watching ⇒ (world.flag ? Settled : Watching)
+        Settled  ⇒ Settled
+    effects = match state
+        Watching ⇒ (world.flag ? ⟨Println(\"saw\")⟩ : ⟨⟩)
+        Settled  ⇒ ⟨⟩
+";
+
+#[test]
+fn delta_mode_halts_cleanly_without_done_variant() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(NATURAL_HALT_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    // Worker: Working → Resting, prints once. Then Resting forever
+    // — no state change, no effects, no plugin subs → never woken.
+    // Observer: Watching → Settled (when flag becomes true), prints
+    //   "saw" once. Then Settled forever — same story.
+    // After both go quiet, the next tick has no scheduled FSMs →
+    // delta-mode halt fires.
+    let work_count = out.lines().filter(|l| *l == "working").count();
+    let saw_count  = out.lines().filter(|l| *l == "saw").count();
+    assert_eq!(work_count, 1, "worker prints once; out:\n{}", out);
+    assert!(saw_count >= 1, "observer should see the flag at least once; out:\n{}", out);
+    assert!(r.halted_clean,
+        "delta mode should halt cleanly when all FSMs go quiet; got {r:?}");
+    assert!(r.steps <= 8,
+        "should halt within a few ticks of going silent; got {} steps", r.steps);
+}
+
 #[test]
 fn delta_mode_writer_truly_goes_quiet_after_init() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     std::env::set_var("EVIDENT_SCHEDULER", "delta");
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();

@@ -558,12 +558,14 @@ fn run_multi_fsm(
                 .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
                     fsm.claim_name))?;
 
-            // Halt-check: state_next == state (value equality, true
-            // fixpoint) AND effects empty AND we're past tick 0. Tick
-            // 0 is skipped because the seeded initial state could
-            // self-loop on Idle while waiting for a writer to
-            // initialize world — that's polling, not halt.
-            let will_halt = step_count > 0
+            // Legacy halt-check: state_next == state (value equality,
+            // true fixpoint) AND effects empty AND we're past tick 0.
+            // Skipped in delta mode — under subscription scheduling,
+            // FSMs that fixpoint just stop being scheduled (no inputs
+            // to wake them); the program halts when no FSM is
+            // scheduled at all in a tick.
+            let will_halt = !delta_mode
+                && step_count > 0
                 && effects.is_empty()
                 && fsm_rt[idx].current_state_v.as_ref()
                     .map(|cv| cv == state_next_val).unwrap_or(false);
@@ -651,6 +653,29 @@ fn run_multi_fsm(
         total_dispatch += dispatch_dt;
 
         step_count += 1;
+
+        // Phase 3 halt criterion (delta mode only): if no FSM was
+        // scheduled this tick, no work happened — and since
+        // scheduling decisions are deterministic from world deltas
+        // + self-feedback + state-feedback, no work would happen
+        // next tick either. Halt cleanly.
+        //
+        // Note this fires after step_count++, so the count includes
+        // the empty tick. The empty-tick cost is one schedule check
+        // per FSM (cheap, no Z3 solve).
+        if delta_mode && scheduled_this_tick.iter().all(|s| !s) {
+            if timing {
+                let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
+                    .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
+                    .collect();
+                print_timing_summary_full(loop_t0, step_count, total_solve, total_dispatch, &rows);
+            }
+            return Ok(LoopResult {
+                steps: step_count,
+                final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
+                halted_clean: true,
+            });
+        }
     }
 
     if timing {

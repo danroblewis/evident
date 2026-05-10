@@ -196,20 +196,35 @@ In `effect_multi_fsm_transpiled.ev`, setup is scheduled exactly twice
 self-feedback) and never again — render keeps ticking because of
 self-feedback (its frame_seq emits effects each tick).
 
-### Phase 3: Per-FSM Exit + drop name-based halt
+### Phase 3: drop fixpoint halt in delta mode + new halt criterion
 
-  * `Effect::Exit(code)` may be emitted by any FSM. Runtime exits
-    cleanly, returning `code`.
-  * Remove `model_matches_value`'s `Done`/`Halt` special case from
-    `effect_loop.rs`. Halt is now subscription-driven.
-  * Remove the value-equality fixpoint halt from multi-FSM. Same.
-  * The single-FSM path keeps its existing fixpoint heuristic for
-    backward compatibility OR converts in-place — TBD by then.
+  * In `delta_mode`, the value-equality fixpoint halt
+    (`state_next == state ∧ effects == ⟨⟩`) is suppressed. FSMs
+    that "would have fixpointed" instead just stop being scheduled
+    (no inputs to wake them).
+  * New halt criterion: at end of each tick, if no FSM was
+    scheduled this tick, the program halts cleanly. Detection has
+    no Z3 cost — it's a plain check on the per-FSM scheduling
+    booleans.
+  * `Effect::Exit(code)` already works from any FSM (the
+    dispatcher calls `process::exit` regardless of source).
+  * Legacy mode unchanged — fixpoint halt + all-FSMs-halted check
+    still apply.
+  * The single-FSM path keeps its existing fixpoint heuristic;
+    delta-mode promotion happens with Phase 4.
+  * The `model_matches_value` `Done`/`Halt` name special case is
+    no longer reachable in multi-FSM (the multi-FSM scheduler
+    never used it — that was always single-FSM only). Cleanup
+    pending until single-FSM converts.
 
-Test: rewrite `runtime-rust/tests/multi_fsm.rs` to assert halt
-without any `Done` variant. The four `programs/lang_tests/multi_fsm/`
-files keep working; their `Done` variants become regular states with
-no special meaning, and halt is observed via subscription dropoff.
+Test results (delta mode):
+  * The four existing `programs/lang_tests/multi_fsm/` tests pass
+    — `04_halt_cascade.ev` halts cleanly even though its variants
+    are named `STDone`/`LTDone` (not exact `Done`/`Halt`), because
+    halt is now no-FSM-scheduled, not name-based.
+  * New `runtime-rust/tests/scheduler_delta.rs::
+    delta_mode_halts_cleanly_without_done_variant` proves halt
+    works with no Done-style variant at all.
 
 ### Phase 4: Plugin subscription model
 
