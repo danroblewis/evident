@@ -16,10 +16,10 @@
 //! halt sentinel — when state's model equals that variant, the loop
 //! exits.
 
-use crate::ast::{Effect, EffectResult, BodyItem};
+use crate::ast::{EffectResult, BodyItem};
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
 use crate::runtime::EvidentRuntime;
-use crate::translate::{Value, ast_encoder, ast_decoder};
+use crate::translate::{Value, ast_decoder};
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]
@@ -743,7 +743,7 @@ fn run_multi_fsm(
         // FIFO so nothing is lost.
         if delta_mode {
             for src in event_sources.iter_mut() {
-                let mut writes = src.drain_writes();
+                let writes = src.drain_writes();
                 pending_world_writes.append(&mut writes.into_iter().collect());
             }
             if let Some((field, val)) = pending_world_writes.pop_front() {
