@@ -1,39 +1,237 @@
 -- stdlib/sdl/scene.ev — declarative 2D scene rendering.
 --
--- The state machine + handle plumbing for a single-rect 2D scene
--- lives HERE, not in user code. Apps just declare the scene as
--- data and `..SDLScene` to pull the renderer in:
+-- A scene is a SET of renderable things (shapes, colors). The user
+-- provides:
+--   * window basics: title, width, height, frames
+--   * background color
+--   * a `RenderableList` — any number of shapes to draw each frame
+--
+-- and `..SDLScene` to pull the renderer in. The library owns
+-- everything else: state machine, handle plumbing, init/teardown,
+-- per-frame batching.
 --
 --     import "stdlib/sdl/scene.ev"
 --
 --     claim main
---         title      ∈ String      ; title       = "My App"
---         width      ∈ Int         ; width       = 640
---         height     ∈ Int         ; height      = 480
---         frames     ∈ Int         ; frames      = 90
---         background ∈ Color       ; background  = Color(20, 20, 30, 255)
---         rect       ∈ Rect        ; rect        = Rect(IVec2(100, 100),
---                                                       IVec2(440, 280),
---                                                       Color(240, 220, 80, 255))
+--         title      ∈ String       ; title       = "My App"
+--         width      ∈ Int          ; width       = 640
+--         height     ∈ Int          ; height      = 480
+--         frames     ∈ Int          ; frames      = 90
+--         background ∈ Color        ; background  = Color(20, 20, 30, 255)
+--
+--         items ∈ RenderableList
+--         items = ⟨
+--             RRect(IVec2(100, 100), IVec2(200, 200), Color(255, 0, 0, 255)),
+--             RLine(IVec2(0, 0),     IVec2(640, 480), Color(255, 255, 255, 255)),
+--             RPoint(IVec2(320, 240),                  Color(0, 255, 0, 255))
+--         ⟩
+--
 --         ..SDLScene
 --
--- That's the whole app. The library owns init/teardown, frame
--- timing, handle threading, and the SDL FFI calls.
---
 -- Limitations of v1:
---   * Single foreground rect (outlined). Multi-rect needs Seq(Rect)
---     unrolling — pattern is clear but isn't built yet.
+--   * Outlined rects (4 lines each). Filled rects need SDL_Rect
+--     malloc FFI — sketched in docs/guide/ffi-bindings.md.
 --   * No input handling.
---   * No filled rect (needs SDL_Rect malloc FFI).
+--   * No transformations / camera; positions are pixel-space.
 
 import "stdlib/sdl/render.ev"
 
--- ── User-facing scene types ──────────────────────────────────
+-- ── Renderable variants ──────────────────────────────────────
+--
+-- One drawable thing. Add new variants here as new shape types
+-- come online (filled rects, circles, polygons, sprites, text).
+--
+-- Payloads are flat Ints today because Evident enum variants don't
+-- yet accept record (`type`) payloads — a runtime extension would
+-- let `RRect(IVec2, IVec2, Color)` work directly and shrink these
+-- variants. For now the library reconstructs the IVec2/Color
+-- structures internally.
+enum Renderable =
+    -- pos.x, pos.y, size.x, size.y, color.red, .green, .blue, .alpha
+    RRect(Int, Int, Int, Int, Int, Int, Int, Int)
+    -- from.x, from.y, to.x, to.y, color.red, .green, .blue, .alpha
+    RLine(Int, Int, Int, Int, Int, Int, Int, Int)
+    -- p.x, p.y, color.red, .green, .blue, .alpha
+    RPoint(Int, Int, Int, Int, Int, Int)
 
--- One outlined rectangle: position (top-left), size (extent), color.
-type Rect(pos ∈ IVec2, size ∈ IVec2, color ∈ Color)
+-- Cons/Nil list of renderables — the canonical "scene contents"
+-- shape. The ⟨a, b, c⟩ shorthand lowers to RCons(a, RCons(b, RCons(c,
+-- RNil))) when the LHS is RenderableList-typed.
+enum RenderableList =
+    RNil
+    RCons(Renderable, RenderableList)
 
--- ── State machine (internal, but visible via passthrough) ────
+-- ── Per-renderable effect emitter ────────────────────────────
+
+-- Each Renderable variant maps to an Effect (often a Seq, since
+-- shapes need a color-set + one or more draw calls). render_one
+-- dispatches by variant via guarded names-match.
+
+claim render_one(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    is_rect ∈ Bool
+    is_rect  = (item matches RRect(_, _, _))
+    is_line ∈ Bool
+    is_line  = (item matches RLine(_, _, _))
+    is_point ∈ Bool
+    is_point = (item matches RPoint(_, _))
+
+    is_rect  ⇒ render_one_rect
+    is_line  ⇒ render_one_line
+    is_point ⇒ render_one_point
+
+claim render_one_rect(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    px, py, sx, sy, cr, cg, cb, ca ∈ Int
+    px = match item
+        RRect(v, _, _, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    py = match item
+        RRect(_, v, _, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    sx = match item
+        RRect(_, _, v, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    sy = match item
+        RRect(_, _, _, v, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    cr = match item
+        RRect(_, _, _, _, v, _, _, _) ⇒ v
+        _                              ⇒ 0
+    cg = match item
+        RRect(_, _, _, _, _, v, _, _) ⇒ v
+        _                              ⇒ 0
+    cb = match item
+        RRect(_, _, _, _, _, _, v, _) ⇒ v
+        _                              ⇒ 0
+    ca = match item
+        RRect(_, _, _, _, _, _, _, v) ⇒ v
+        _                              ⇒ 0
+
+    -- Reconstruct the records the SDL drawing claims expect.
+    rpos ∈ IVec2
+    rpos = IVec2(px, py)
+    rsize ∈ IVec2
+    rsize = IVec2(sx, sy)
+    rcolor ∈ Color
+    rcolor = Color(cr, cg, cb, ca)
+
+    color_eff ∈ Effect
+    set_draw_color(renderer, rcolor, color_eff)
+    line_eff_list ∈ EffectList
+    draw_rect_outline(renderer, rpos, rsize, line_eff_list)
+
+    full_inner ∈ EffectList
+    full_inner = EffCons(color_eff, line_eff_list)
+    out = Seq(full_inner)
+
+claim render_one_line(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    fx, fy, tx, ty, cr, cg, cb, ca ∈ Int
+    fx = match item
+        RLine(v, _, _, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    fy = match item
+        RLine(_, v, _, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    tx = match item
+        RLine(_, _, v, _, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    ty = match item
+        RLine(_, _, _, v, _, _, _, _) ⇒ v
+        _                              ⇒ 0
+    cr = match item
+        RLine(_, _, _, _, v, _, _, _) ⇒ v
+        _                              ⇒ 0
+    cg = match item
+        RLine(_, _, _, _, _, v, _, _) ⇒ v
+        _                              ⇒ 0
+    cb = match item
+        RLine(_, _, _, _, _, _, v, _) ⇒ v
+        _                              ⇒ 0
+    ca = match item
+        RLine(_, _, _, _, _, _, _, v) ⇒ v
+        _                              ⇒ 0
+
+    lfrom ∈ IVec2
+    lfrom = IVec2(fx, fy)
+    lto ∈ IVec2
+    lto = IVec2(tx, ty)
+    lcolor ∈ Color
+    lcolor = Color(cr, cg, cb, ca)
+
+    color_eff ∈ Effect
+    set_draw_color(renderer, lcolor, color_eff)
+    line_eff ∈ Effect
+    draw_line(renderer, lfrom, lto, line_eff)
+
+    full_inner ∈ EffectList
+    full_inner = EffCons(color_eff, EffCons(line_eff, EffNil))
+    out = Seq(full_inner)
+
+claim render_one_point(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    px, py, cr, cg, cb, ca ∈ Int
+    px = match item
+        RPoint(v, _, _, _, _, _) ⇒ v
+        _                         ⇒ 0
+    py = match item
+        RPoint(_, v, _, _, _, _) ⇒ v
+        _                         ⇒ 0
+    cr = match item
+        RPoint(_, _, v, _, _, _) ⇒ v
+        _                         ⇒ 0
+    cg = match item
+        RPoint(_, _, _, v, _, _) ⇒ v
+        _                         ⇒ 0
+    cb = match item
+        RPoint(_, _, _, _, v, _) ⇒ v
+        _                         ⇒ 0
+    ca = match item
+        RPoint(_, _, _, _, _, v) ⇒ v
+        _                         ⇒ 0
+
+    ppos ∈ IVec2
+    ppos = IVec2(px, py)
+    pcolor ∈ Color
+    pcolor = Color(cr, cg, cb, ca)
+
+    color_eff ∈ Effect
+    set_draw_color(renderer, pcolor, color_eff)
+    point_eff ∈ Effect
+    draw_point(renderer, ppos, point_eff)
+
+    full_inner ∈ EffectList
+    full_inner = EffCons(color_eff, EffCons(point_eff, EffNil))
+    out = Seq(full_inner)
+
+-- ── Recursive list walker: RenderableList → EffectList ─────
+
+claim render_items(renderer ∈ Int, items ∈ RenderableList, out ∈ EffectList)
+    is_nil ∈ Bool
+    is_nil = (items matches RNil)
+    head ∈ Renderable
+    head = match items
+        RCons(h, _) ⇒ h
+        _           ⇒ RPoint(0, 0, 0, 0, 0, 0)
+    tail ∈ RenderableList
+    tail = match items
+        RCons(_, t) ⇒ t
+        _           ⇒ RNil
+
+    head_eff ∈ Effect
+    render_one(renderer, head, head_eff)
+
+    rest_effects ∈ EffectList
+    -- Empty list → empty effect list. Non-empty → Cons head_eff
+    -- onto the recursively-built rest.
+    out = (is_nil ? EffNil : EffCons(head_eff, rest_effects))
+
+    nonempty ∈ Bool
+    nonempty = ¬ is_nil
+    nonempty ⇒ render_items_recur
+
+claim render_items_recur(renderer ∈ Int, tail ∈ RenderableList,
+                         rest_effects ∈ EffectList)
+    render_items(renderer, tail, rest_effects)
+
+-- ── State machine ───────────────────────────────────────────
 
 enum SDLSceneState =
     Setup
@@ -53,7 +251,7 @@ claim SDLScene
     height     ∈ Int
     frames     ∈ Int
     background ∈ Color
-    rect       ∈ Rect
+    items      ∈ RenderableList
 
     -- State-machine plumbing.
     state, state_next ∈ SDLSceneState
@@ -66,8 +264,6 @@ claim SDLScene
     --   [0] Int(0)            — SDL_Init
     --   [1] Handle(window)    — SDL_CreateWindow
     --   [2] Handle(renderer)  — SDL_CreateRenderer
-    --
-    -- A `nth_result` helper would shorten this; for now, walk.
 
     after_1 ∈ ResultList
     after_1 = match last_results
@@ -100,7 +296,6 @@ claim SDLScene
         AfterTeardown            ⇒ Done
         Done                     ⇒ Done
 
-    -- Per-state extracted handles for the effect builders.
     win ∈ Int
     win = match state
         Frame(w, _, _)    ⇒ w
@@ -119,7 +314,7 @@ claim SDLScene
     sdl_init_eff ∈ Effect
     sdl_init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
                            "SDL_Init", "i(i)",
-                           ArgCons(ArgInt(32), ArgNil))   -- SDL_INIT_VIDEO
+                           ArgCons(ArgInt(32), ArgNil))
 
     create_window_eff ∈ Effect
     create_window_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
@@ -127,9 +322,8 @@ claim SDLScene
                                 ArgCons(ArgStr(title),
                                 ArgCons(ArgInt(100), ArgCons(ArgInt(100),
                                 ArgCons(ArgInt(width), ArgCons(ArgInt(height),
-                                ArgCons(ArgInt(4), ArgNil)))))))   -- SHOWN
+                                ArgCons(ArgInt(4), ArgNil)))))))
 
-    -- Uses prior call's result (window handle from index 1).
     create_renderer_eff ∈ Effect
     create_renderer_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
                                   "SDL_CreateRenderer", "p(pii)",
@@ -142,21 +336,17 @@ claim SDLScene
     setup_seq ∈ Effect
     setup_seq = Seq(setup_inner)
 
-    -- ── Per-frame rendering ─────────────────────────────────────
+    -- ── Per-frame: clear + walk items + present + pump + delay ──
 
     bg_color_eff ∈ Effect
     set_draw_color(ren, background, bg_color_eff)
     clear_eff ∈ Effect
     render_clear(ren, clear_eff)
-    fg_color_eff ∈ Effect
-    set_draw_color(ren, rect.color, fg_color_eff)
 
-    -- draw_rect_outline returns 4 line-draw effects as an EffectList.
-    -- Wrap in Seq so we can splice them into the larger frame Seq.
-    rect_eff_list ∈ EffectList
-    draw_rect_outline(ren, rect.pos, rect.size, rect_eff_list)
-    rect_seq ∈ Effect
-    rect_seq = Seq(rect_eff_list)
+    item_effects ∈ EffectList
+    render_items(ren, items, item_effects)
+    items_seq ∈ Effect
+    items_seq = Seq(item_effects)
 
     present_eff ∈ Effect
     render_present(ren, present_eff)
@@ -169,7 +359,7 @@ claim SDLScene
                         ArgCons(ArgInt(33), ArgNil))
 
     frame_inner ∈ EffectList
-    frame_inner = ⟨bg_color_eff, clear_eff, fg_color_eff, rect_seq,
+    frame_inner = ⟨bg_color_eff, clear_eff, items_seq,
                     present_eff, pump_eff, delay_eff⟩
     frame_seq ∈ Effect
     frame_seq = Seq(frame_inner)
@@ -190,8 +380,6 @@ claim SDLScene
     teardown_inner = ⟨destroy_renderer_eff, destroy_window_eff, quit_eff⟩
     teardown_seq ∈ Effect
     teardown_seq = Seq(teardown_inner)
-
-    -- ── Per-state effect dispatch ──────────────────────────────
 
     effects = match state
         Setup            ⇒ ⟨setup_seq⟩

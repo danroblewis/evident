@@ -2,9 +2,11 @@
 --
 --     evident effect-run programs/demos/effect_scene_yellow_box.ev --max-steps 200
 --
--- A yellow rectangle on a dark teal background. The user's main is
--- ONLY the scene description plus `..SDLScene` — no state machine,
--- no FFI, no handle plumbing. The library owns all of that.
+-- Three shapes on a dark teal background: a yellow outlined box,
+-- a white diagonal line, and a green point in the middle. The
+-- user's main is the scene description (window basics + a list of
+-- Renderables) plus `..SDLScene` — no state machine, no FFI, no
+-- handle plumbing.
 
 import "stdlib/sdl/scene.ev"
 
@@ -23,8 +25,15 @@ claim main
     background ∈ Color
     background = Color(20, 20, 30, 255)
 
-    rect       ∈ Rect
-    rect       = Rect(IVec2(100, 100), IVec2(440, 280),
-                      Color(240, 220, 80, 255))
+    -- Each variant carries flat Ints today (RRect = pos.x, pos.y,
+    -- size.x, size.y, color.r, .g, .b, .a). When the runtime supports
+    -- record payloads in enum variants this collapses to
+    -- `RRect(IVec2(...), IVec2(...), Color(...))`.
+    items ∈ RenderableList
+    items = ⟨
+        RRect(100, 100, 440, 280,  240, 220,  80, 255),
+        RLine(0, 0,     640, 480,  255, 255, 255, 255),
+        RPoint(320, 240,            50, 230, 120, 255)
+    ⟩
 
     ..SDLScene
