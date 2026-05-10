@@ -347,6 +347,22 @@ pub fn run_with_ctx(
             ctx.stdin_owned_by_plugin = true;
         }
 
+        // WallClock — auto-install if World has `now_ms: Int`.
+        // Updates the field with current Unix time (ms) at the
+        // configured interval (default 100ms; override via
+        // EVIDENT_CLOCK_MS).
+        if has_field("now_ms", "Int") {
+            let ms: u64 = std::env::var("EVIDENT_CLOCK_MS").ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(100);
+            let mut c = crate::event_sources::WallClockSource::new(ms, "now_ms");
+            c.start(event_tx.clone())
+                .map_err(|e| format!("failed to start WallClock: {e}"))?;
+            event_sources.push(Box::new(c));
+            plugin_writes.insert("now_ms".to_string());
+        }
+
         // FileLineReader — auto-install if World has `file_line:
         // String`. Path comes from EVIDENT_FILE_INPUT env var.
         // Optional companions: `file_seq: Int` (sequence counter)

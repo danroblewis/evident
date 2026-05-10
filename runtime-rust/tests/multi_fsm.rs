@@ -130,6 +130,30 @@ fn request_response_lang_test_11() {
 }
 
 #[test]
+fn wallclock_lang_test_12() {
+    // WallClock auto-installs because World declares now_ms.
+    // Demo snapshots start time, exits after 200ms elapsed.
+    use std::process::{Command, Stdio};
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .env("EVIDENT_CLOCK_MS", "30")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/12_wallclock.ev",
+               "--max-steps", "200"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("clock works"), "out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn timer_and_stdin_lang_test_09_multi_plugin() {
     // Multi-plugin demo: World declares both tick_count + stdin
     // fields → both FrameTimer and StdinSource auto-install.
