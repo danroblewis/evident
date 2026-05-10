@@ -238,10 +238,11 @@ type Timer
 --
 -- See `programs/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
 type SDL_Window
-    title  ∈ String
-    width  ∈ Int
-    height ∈ Int
-    handle ∈ Int
+    title     ∈ String
+    width     ∈ Int
+    height    ∈ Int
+    handle    ∈ Int
+    gl_handle ∈ Int   -- GL context (also created + made current)
 
 -- (Earlier placeholder Timer type removed — superseded by the
 -- per-instance configurable Timer above.)

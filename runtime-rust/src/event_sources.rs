@@ -808,13 +808,14 @@ impl Drop for OneShotShellSource {
 /// management calls (resize, fullscreen toggle) from user
 /// code may behave oddly; for v1 keep window state read-only.
 pub struct SdlWindowSource {
-    title:        String,
-    width:        i32,
-    height:       i32,
-    handle_field: String,
-    write_queue:  WriteQueue,
-    stop_flag:    Arc<AtomicBool>,
-    handle:       Option<JoinHandle<()>>,
+    title:           String,
+    width:           i32,
+    height:          i32,
+    handle_field:    String,
+    gl_handle_field: Option<String>,
+    write_queue:     WriteQueue,
+    stop_flag:       Arc<AtomicBool>,
+    handle:          Option<JoinHandle<()>>,
 }
 
 impl SdlWindowSource {
@@ -823,13 +824,19 @@ impl SdlWindowSource {
                height: i32,
                handle_field: impl Into<String>) -> Self {
         SdlWindowSource {
-            title:        title.into(),
+            title:           title.into(),
             width, height,
-            handle_field: handle_field.into(),
-            write_queue:  new_write_queue(),
-            stop_flag:    Arc::new(AtomicBool::new(false)),
-            handle:       None,
+            handle_field:    handle_field.into(),
+            gl_handle_field: None,
+            write_queue:     new_write_queue(),
+            stop_flag:       Arc::new(AtomicBool::new(false)),
+            handle:          None,
         }
+    }
+
+    pub fn with_gl_context_field(mut self, field: impl Into<String>) -> Self {
+        self.gl_handle_field = Some(field.into());
+        self
     }
 
     /// Macos-friendly variant: call SDL_Init + SDL_CreateWindow
@@ -877,11 +884,44 @@ impl SdlWindowSource {
             return Err("SDL_CreateWindow returned null".to_string());
         }
 
-        // Push the handle to the write queue so the runtime
-        // applies it to the snapshot via the normal drain path.
+        // GL context (optional). Set GL attributes for Core 3.3
+        // before creating the context.
+        let gl_ptr = if let Some(_) = &self.gl_handle_field {
+            type SdlGlSetAttribute  = unsafe extern "C" fn(c_int, c_int) -> c_int;
+            type SdlGlCreateContext = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
+            type SdlGlMakeCurrent   = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
+            // SDL_GL_CONTEXT_MAJOR_VERSION=17, MINOR=18, PROFILE_MASK=21,
+            // SDL_GL_CONTEXT_PROFILE_CORE=1.
+            if let Ok(set_attr) = unsafe { lib.get::<Symbol<SdlGlSetAttribute>>(b"SDL_GL_SetAttribute\0") } {
+                unsafe {
+                    set_attr(17, 3);
+                    set_attr(18, 3);
+                    set_attr(21, 1);
+                }
+            }
+            let create_ctx: Symbol<SdlGlCreateContext> =
+                unsafe { lib.get(b"SDL_GL_CreateContext\0") }
+                    .map_err(|e| format!("SDL_GL_CreateContext lookup: {e}"))?;
+            let ctx_ptr = unsafe { create_ctx(win_ptr) };
+            if ctx_ptr.is_null() {
+                return Err("SDL_GL_CreateContext returned null".to_string());
+            }
+            if let Ok(make_current) = unsafe { lib.get::<Symbol<SdlGlMakeCurrent>>(b"SDL_GL_MakeCurrent\0") } {
+                unsafe { make_current(win_ptr, ctx_ptr) };
+            }
+            ctx_ptr as i64
+        } else {
+            0i64
+        };
+
+        // Push the handles to the write queue so the runtime
+        // applies them to the snapshot via the normal drain path.
         {
             let mut q = self.write_queue.lock().unwrap();
             q.push_back((self.handle_field.clone(), Value::Int(win_ptr as i64)));
+            if let Some(gl_field) = &self.gl_handle_field {
+                q.push_back((gl_field.clone(), Value::Int(gl_ptr)));
+            }
         }
         let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });
 
