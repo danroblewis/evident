@@ -70,7 +70,7 @@ claim reader(world ∈ World,
 #[test]
 fn legacy_mode_writer_ticks_every_iteration() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
+    std::env::set_var("EVIDENT_SCHEDULER", "legacy");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -81,7 +81,10 @@ fn legacy_mode_writer_ticks_every_iteration() {
         Box::new(SharedWrite(Arc::clone(&captured))),
     );
     let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
-    let out = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
     let writer_count = out.lines().filter(|l| *l == "writer-tick").count();
     let reader_count = out.lines().filter(|l| l.starts_with("reader:")).count();
     // Legacy: writer ticks every iteration → 5 writer prints.

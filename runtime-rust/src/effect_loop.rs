@@ -203,7 +203,10 @@ pub fn run_with_ctx(
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
     let fsms = detect_all_fsms(rt);
-    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("delta");
+    // Default scheduler: delta (subscription-driven). Opt out via
+    // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
+    // every iteration" behavior with name/fixpoint-based halt.
+    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
     match fsms.len() {
         0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
@@ -434,7 +437,10 @@ fn run_multi_fsm(
     // Phase 2: subscription-driven scheduling. Opt-in via env flag
     // until we trust it enough to flip the default. See
     // docs/design/fsm-subscriptions.md for the full model.
-    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("delta");
+    // Default scheduler: delta (subscription-driven). Opt out via
+    // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
+    // every iteration" behavior with name/fixpoint-based halt.
+    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
     let access_sets: Vec<crate::subscriptions::AccessSets> = if delta_mode {
         fsms.iter().map(|fsm| {
             rt.get_schema(&fsm.claim_name)
