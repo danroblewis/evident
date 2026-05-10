@@ -78,3 +78,22 @@ claim call_sdl_destroy_window(sym ∈ Int, window ∈ Int, e ∈ Effect)
 -- Signature: v()
 claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
     e = FFICall(sym, "v()", ArgNil)
+
+-- ── One-shot LibCall wrappers (no FFILookup needed) ──────────
+-- Use these in FTI-shaped programs where the SDL window is owned
+-- by the SDL_Window FTI bridge, so there's no `sym` handle to
+-- thread. Same end effect as the call_* claims above, just no
+-- caller-provided sym.
+
+-- SDL_PumpEvents() — pull pending events from the OS into SDL's
+-- internal queue. macOS in particular needs this called regularly
+-- or the window appears unresponsive.
+claim sdl_pump_events(out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_PumpEvents",
+                  "v()", ArgNil)
+
+-- SDL_Delay(ms) — sleep the calling thread. Useful as a crude
+-- frame-rate limiter when you don't have a real vsync source.
+claim sdl_delay(ms ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Delay",
+                  "v(i)", ArgCons(ArgInt(ms), ArgNil))

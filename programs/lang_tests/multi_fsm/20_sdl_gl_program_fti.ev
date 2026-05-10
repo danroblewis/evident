@@ -18,6 +18,7 @@
 
 import "stdlib/runtime.ev"
 import "stdlib/sdl/gl.ev"
+import "stdlib/sdl/window.ev"
 import "stdlib/shader/program.ev"
 
 enum S = Init | Frame(Int)
@@ -46,12 +47,9 @@ claim render(state, state_next ∈ S,
     swap_eff ∈ Effect
     gl_swap_window(win.handle, swap_eff)
     pump_eff ∈ Effect
-    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                       "SDL_PumpEvents", "v()", ArgNil)
+    sdl_pump_events(pump_eff)
     delay_eff ∈ Effect
-    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                        "SDL_Delay", "v(i)",
-                        ArgCons(ArgInt(33), ArgNil))
+    sdl_delay(33, delay_eff)
 
     frame_inner ∈ EffectList
     frame_inner = ⟨set_color_eff, clear_eff,

@@ -1,6 +1,6 @@
 -- effect_gl_triangle_fti.ev — FTI version of effect_gl_triangle.
 --
--- Same hot-pink triangle, ~80 lines vs the legacy demo's ~330.
+-- Same hot-pink triangle, ~75 lines vs the legacy demo's ~330.
 -- Compare side-by-side with `effect_gl_triangle.ev` to see what
 -- the FTI typed-resource approach buys you:
 --
@@ -17,6 +17,17 @@
 -- That's ~14 setup states collapsed into 2 typed declarations.
 -- The user FSM has 2 states (Init, Frame(n)) instead of ~20.
 --
+-- Why inline GLSL strings (and not the GLSL DSL)?
+--   FTI bridges install BEFORE any Z3 solve runs, so the pin
+--   reader only accepts literal Strings — `vertex_src ↦ "..."`.
+--   The GLSL DSL (`stdlib/glsl/transpile.ev`'s `emit_shader`)
+--   builds its String via constraints, which needs a solve. To
+--   feed DSL-built shaders into a GL_Program FTI we'd need
+--   either a pre-solve pass for pins or a deferred-install
+--   bridge — see TODO in `runtime-rust/src/fti.rs`. For
+--   dynamically-generated shaders today, see
+--   `effect_gl_transpiled_triangle.ev`.
+--
 -- Run:
 --     evident effect-run programs/demos/effect_gl_triangle_fti.ev --max-steps 70
 --
@@ -27,6 +38,7 @@
 
 import "stdlib/runtime.ev"
 import "stdlib/sdl/gl.ev"
+import "stdlib/sdl/window.ev"
 import "stdlib/shader/program.ev"
 
 enum S = Init | Frame(Int)
@@ -53,12 +65,9 @@ claim render(state, state_next ∈ S,
     swap_eff ∈ Effect
     gl_swap_window(win.handle, swap_eff)
     pump_eff ∈ Effect
-    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                       "SDL_PumpEvents", "v()", ArgNil)
+    sdl_pump_events(pump_eff)
     delay_eff ∈ Effect
-    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
-                        "SDL_Delay", "v(i)",
-                        ArgCons(ArgInt(33), ArgNil))
+    sdl_delay(33, delay_eff)
 
     frame_inner ∈ EffectList
     frame_inner = ⟨set_color_eff, clear_eff,
