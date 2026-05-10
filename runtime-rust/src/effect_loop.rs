@@ -353,6 +353,13 @@ pub fn run_with_ctx(
     drop(event_tx);
     let event_rx = if event_sources.is_empty() { None } else { Some(event_rx) };
 
+    if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+        eprintln!("[loop] startup: delta_mode={delta_mode} fsms=[{}] plugin_writes=[{}]",
+            fsms.iter().map(|f| f.claim_name.as_str()).collect::<Vec<_>>().join(","),
+            plugin_writes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(","),
+        );
+    }
+
     // Multi-writer disjoint-fields rule (Phase 4 v3.7+ unified
     // model): every writer FSM PLUS every plugin-write claim
     // must have a disjoint write-set. A field has at most one
