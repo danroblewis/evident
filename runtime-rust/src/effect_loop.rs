@@ -57,7 +57,38 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     let mut state_pair: Option<(String, String, String)> = None;
     let mut last_results_var = None;
     let mut effects_var = None;
-    for item in &main.body {
+    // Walk main's body PLUS the bodies of any `..PassthroughClaim` so a
+    // declarative library (e.g. stdlib/sdl/scene.ev's `..SDLScene`)
+    // contributes its state-machine vars even though the user's main
+    // contains only data + passthroughs.
+    let mut all_items: Vec<&BodyItem> = Vec::new();
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    fn collect<'a>(
+        items: &'a [BodyItem],
+        rt: &'a EvidentRuntime,
+        out: &mut Vec<&'a BodyItem>,
+        visited: &mut std::collections::HashSet<String>,
+    ) {
+        for item in items {
+            out.push(item);
+            if let BodyItem::Passthrough(name) = item {
+                if visited.insert(name.clone()) {
+                    if let Some(sub) = rt.get_schema(name) {
+                        // SAFETY: the borrowed body's lifetime is tied to
+                        // `rt`'s schemas; both this iteration and the
+                        // outer detect_main_shape function return before
+                        // `rt` could be mutated.
+                        let body: &'a [BodyItem] = unsafe {
+                            std::mem::transmute::<&[BodyItem], &'a [BodyItem]>(&sub.body)
+                        };
+                        collect(body, rt, out, visited);
+                    }
+                }
+            }
+        }
+    }
+    collect(&main.body, rt, &mut all_items, &mut visited);
+    for item in all_items.iter().copied() {
         if let BodyItem::Membership { name, type_name, .. } = item {
             // Convention: the main claim's "effects" output is named
             // exactly "effects"; the "results" input is "last_results".
@@ -86,7 +117,7 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
                        || matches!(&state_pair, Some((b, _, _)) if b != name)
                 {
                     let nxt = format!("{}_next", name);
-                    if main.body.iter().any(|i| matches!(
+                    if all_items.iter().any(|i| matches!(
                         i, BodyItem::Membership { name: n, type_name: t, .. }
                            if n == &nxt && t == type_name
                     )) {

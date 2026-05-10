@@ -1,0 +1,30 @@
+-- programs/demos/effect_scene_yellow_box.ev
+--
+--     evident effect-run programs/demos/effect_scene_yellow_box.ev --max-steps 200
+--
+-- A yellow rectangle on a dark teal background. The user's main is
+-- ONLY the scene description plus `..SDLScene` — no state machine,
+-- no FFI, no handle plumbing. The library owns all of that.
+
+import "stdlib/sdl/scene.ev"
+
+claim main
+    title      ∈ String
+    title      = "Yellow Box"
+
+    width      ∈ Int
+    width      = 640
+    height     ∈ Int
+    height     = 480
+
+    frames     ∈ Int
+    frames     = 90
+
+    background ∈ Color
+    background = Color(20, 20, 30, 255)
+
+    rect       ∈ Rect
+    rect       = Rect(IVec2(100, 100), IVec2(440, 280),
+                      Color(240, 220, 80, 255))
+
+    ..SDLScene
