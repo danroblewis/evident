@@ -1,49 +1,37 @@
 -- programs/demos/effect_echo.ev — read lines, echo them.
 --
---     echo -e "first\nsecond" | evident effect-run programs/demos/effect_echo.ev
+--     printf "first\nsecond\n" | evident effect-run programs/demos/effect_echo.ev
 --
--- State machine:
---   Init                  → emit ReadLine                      → state := Reading
---   Reading               → extract line; if eof, halt;
---                           else emit Println(line)             → state := Wrote
---   Wrote                 → emit ReadLine                       → state := Reading
---   Done                  → no effect, stay
+-- This is the modern (post-2026-05-09) version using
+-- plugin-as-writer StdinSource. The runtime auto-installs
+-- StdinSource because World declares `stdin_line: String`. The
+-- Echo FSM subscribes via its read of world.stdin_line; gates
+-- on stdin_seq to avoid re-emitting the same line via effect-
+-- feedback.
 --
--- One effect per step keeps result-extraction simple (always
--- look at last_results[0]).
+-- See the older version's history if you want the legacy
+-- ReadLine-based pattern. See
+-- `docs/guide/multi-fsm-programs.md` for the patterns this
+-- demonstrates.
 
-import "stdlib/io/line_io.ev"
+import "stdlib/runtime.ev"
 
-enum EchoState =
-    Init
-    Reading
-    Wrote
-    Done
+type World
+    stdin_line       ∈ String   -- runtime auto-installs StdinSource
+    stdin_seq        ∈ Int      -- runtime increments per line
+    last_echoed_seq  ∈ Int      -- echo writes (its own progress)
 
-claim main
-    state, state_next ∈ EchoState
-    last_results ∈ ResultList
-    effects ∈ EffectList
+enum EchoState = Echoing
 
-    state = Init ⇒
-        (state_next = Reading
-         ∧ effects = EffCons(ReadLine, EffNil))
+claim echo(world, world_next ∈ World,
+           state, state_next ∈ EchoState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = Echoing
 
-    -- Extract from the previous step's read.
-    line ∈ String
-    eof  ∈ Bool
-    extract_line
-    extract_eof
+    is_new ∈ Bool
+    is_new = (world.stdin_seq > world.last_echoed_seq)
 
-    (state = Reading ∧ eof = true) ⇒
-        (state_next = Done ∧ effects = EffNil)
+    world_next.last_echoed_seq = (is_new ? world.stdin_seq : world.last_echoed_seq)
 
-    (state = Reading ∧ eof = false) ⇒
-        (state_next = Wrote
-         ∧ effects = EffCons(Println(line), EffNil))
-
-    state = Wrote ⇒
-        (state_next = Reading
-         ∧ effects = EffCons(ReadLine, EffNil))
-
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+    effects = (is_new ? ⟨Println(world.stdin_line)⟩ : ⟨⟩)
