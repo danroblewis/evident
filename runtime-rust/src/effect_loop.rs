@@ -353,50 +353,49 @@ pub fn run_with_ctx(
     drop(event_tx);
     let event_rx = if event_sources.is_empty() { None } else { Some(event_rx) };
 
+    // Multi-writer disjoint-fields rule (Phase 4 v3.7+ unified
+    // model): every writer FSM PLUS every plugin-write claim
+    // must have a disjoint write-set. A field has at most one
+    // writer (single-owner). Hoisted out of the per-arity match
+    // so it runs for single-FSM-with-plugin too.
+    if delta_mode {
+        let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
+            .filter(|f| f.is_writer())
+            .map(|f| {
+                let aset = rt.get_schema(&f.claim_name)
+                    .map(|s| crate::subscriptions::world_access_sets(s))
+                    .unwrap_or_default();
+                (f.claim_name.clone(), aset.writes)
+            })
+            .collect();
+        for pf in &plugin_writes {
+            let mut s = std::collections::HashSet::new();
+            s.insert(pf.clone());
+            writer_sets.push((format!("<plugin>:{pf}"), s));
+        }
+        for i in 0..writer_sets.len() {
+            for j in (i + 1)..writer_sets.len() {
+                let (a_name, a_writes) = &writer_sets[i];
+                let (b_name, b_writes) = &writer_sets[j];
+                let overlap: Vec<&String> = a_writes.intersection(b_writes).collect();
+                if !overlap.is_empty() {
+                    // Stop all sources before returning Err to avoid leaking threads.
+                    for source in &mut event_sources { source.stop(); }
+                    return Err(format!(
+                        "multi-FSM: writers `{a_name}` and `{b_name}` both write \
+                         to world fields {overlap:?}. Each world field must have \
+                         at most one writer (single-owner rule)."
+                    ));
+                }
+            }
+        }
+    }
+
     let result = match fsms.len() {
         0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
-        // delta mode routes single-FSM through the multi-FSM
-        // scheduler too — same subscription semantics for both.
         1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources),
-        _ => {
-            // Multi-writer rule (Phase 4 v3.7+ unified model):
-            // multiple writers OK as long as their write-sets are
-            // disjoint. A field can be written by at most one
-            // schema (just like a file descriptor has one owner).
-            // Plugin-owned fields are part of the same check —
-            // a user FSM trying to write a field owned by a
-            // plugin is rejected.
-            let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
-                .filter(|f| f.is_writer())
-                .map(|f| {
-                    let aset = rt.get_schema(&f.claim_name)
-                        .map(|s| crate::subscriptions::world_access_sets(s))
-                        .unwrap_or_default();
-                    (f.claim_name.clone(), aset.writes)
-                })
-                .collect();
-            for pf in &plugin_writes {
-                let mut s = std::collections::HashSet::new();
-                s.insert(pf.clone());
-                writer_sets.push((format!("<plugin>:{pf}"), s));
-            }
-            for i in 0..writer_sets.len() {
-                for j in (i + 1)..writer_sets.len() {
-                    let (a_name, a_writes) = &writer_sets[i];
-                    let (b_name, b_writes) = &writer_sets[j];
-                    let overlap: Vec<&String> = a_writes.intersection(b_writes).collect();
-                    if !overlap.is_empty() {
-                        return Err(format!(
-                            "multi-FSM: writers `{a_name}` and `{b_name}` both write \
-                             to world fields {overlap:?}. Each world field must have \
-                             at most one writer (single-owner rule)."
-                        ));
-                    }
-                }
-            }
-            run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources)
-        }
+        _ => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources),
     };
     // Stop all event sources cleanly. Each source's stop signals
     // its background thread and joins. Drop also calls stop, but

@@ -362,6 +362,48 @@ fn delta_graceful_shutdown_lang_test_05() {
     assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// User FSM trying to write a plugin-owned field is rejected
+/// at load. The plugin (StdinSource here) owns stdin_line; a
+/// user FSM with `world_next.stdin_line = "..."` violates the
+/// disjoint write-set rule.
+const USER_WRITES_PLUGIN_FIELD_PROGRAM: &str = "\
+type World
+    stdin_line ∈ String   -- plugin owns this
+
+enum S = R
+
+claim main(world, world_next ∈ World,
+           state, state_next ∈ S,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = R
+    -- Trying to override the plugin's writes — should error.
+    world_next.stdin_line = \"forced\"
+    effects = ⟨⟩
+";
+
+#[test]
+fn user_fsm_writing_plugin_owned_field_rejected_at_load() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(USER_WRITES_PLUGIN_FIELD_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
+    assert!(r.is_err(), "user write to plugin-owned field should error; got {r:?}");
+    let err = r.unwrap_err();
+    assert!(err.contains("stdin_line"),
+        "error should name the conflicting field; got: {err}");
+    assert!(err.contains("main") || err.contains("plugin"),
+        "error should name the conflicting writers; got: {err}");
+}
+
 /// Single-owner: a program declaring `stdin_line: String` (which
 /// auto-installs StdinSource) AND emitting Effect::ReadLine is
 /// rejected at load — both want fd 0.
