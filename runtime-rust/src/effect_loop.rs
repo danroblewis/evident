@@ -573,14 +573,25 @@ fn run_multi_fsm(
             let enums = rt.enums_registry();
             let by_name = enums.by_name.borrow();
             let entry = by_name.get(&s.state_type);
-            let dt = entry.and_then(|(sort, _)| sort.variants.first()
-                .and_then(|v| v.constructor.apply(&[]).as_datatype()));
-            let val = entry.and_then(|(_, decl_variants)| decl_variants.first().map(|v|
-                Value::Enum {
-                    enum_name: s.state_type.clone(),
-                    variant:   v.name.clone(),
-                    fields:    Vec::new(),
-                }));
+            // Only seed if the first variant is nullary. Payload
+            // variants need actual values, which we don't have at
+            // seed time — let Z3 pick on tick 0 instead.
+            let dt = entry.and_then(|(sort, _)| {
+                let first = sort.variants.first()?;
+                if first.constructor.arity() == 0 {
+                    first.constructor.apply(&[]).as_datatype()
+                } else { None }
+            });
+            let val = entry.and_then(|(sort, decl_variants)| {
+                let first = decl_variants.first()?;
+                if sort.variants.first().map(|v| v.constructor.arity()).unwrap_or(0) == 0 {
+                    Some(Value::Enum {
+                        enum_name: s.state_type.clone(),
+                        variant:   first.name.clone(),
+                        fields:    Vec::new(),
+                    })
+                } else { None }
+            });
             (dt, val)
         };
         FsmRt {
@@ -590,13 +601,10 @@ fn run_multi_fsm(
             halted:          false,
         }
     }).collect();
-    for (i, s) in fsms.iter().enumerate() {
-        if fsm_rt[i].current_state.is_none() {
-            return Err(format!(
-                "FSM `{}`: state enum `{}` has no nullary first variant",
-                s.claim_name, s.state_type));
-        }
-    }
+    // Note: with a payload first-variant the FSM starts with no
+    // pinned state; Z3 picks on tick 0. Document as a current
+    // limitation if it bites — the workaround is to declare a
+    // nullary state as the first variant.
 
     // Tick 0 starts with no shared world; the writer's body must
     // initialize world_next without depending on world (typically
@@ -1064,7 +1072,7 @@ fn model_matches_value(v: &Value, _state_type: &str) -> bool {
 /// each field. Primitive payloads (Int, Bool, String, Real) are
 /// encoded as Z3 literals; nested enum payloads recurse.
 fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatype<'static>> {
-    use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Ast};
+    use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Dynamic, Ast};
     let Value::Enum { enum_name, variant, fields } = v else { return None };
     let enums = rt.enums_registry();
     let by_name = enums.by_name.borrow();
@@ -1074,27 +1082,30 @@ fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatyp
     if fields.is_empty() {
         return ctor.apply(&[]).as_datatype();
     }
-    // Payload — encode each field. Need 'static refs to pass to
-    // ctor.apply, so box each Z3 value.
+    // Payload — encode each field as a Dynamic so vtable dispatch
+    // through &dyn Ast works correctly. Earlier attempts using
+    // Box<dyn Ast> ran into a Z3 null-pointer return from apply,
+    // probably from variance issues with the dyn trait object.
     let ctx = rt.z3_context();
-    let mut owned: Vec<Box<dyn Ast<'static>>> = Vec::with_capacity(fields.len());
-    for f in fields {
-        let boxed: Box<dyn Ast<'static>> = match f {
-            Value::Int(n)  => Box::new(Z3Int::from_i64(ctx, *n)),
-            Value::Bool(b) => Box::new(Z3Bool::from_bool(ctx, *b)),
-            Value::Str(s)  => Box::new(Z3Str::from_str(ctx, s).ok()?),
+    let owned: Vec<Dynamic<'static>> = fields.iter().filter_map(|f| {
+        let dyn_v: Dynamic<'static> = match f {
+            Value::Int(n)  => Dynamic::from_ast(&Z3Int::from_i64(ctx, *n)),
+            Value::Bool(b) => Dynamic::from_ast(&Z3Bool::from_bool(ctx, *b)),
+            Value::Str(s)  => Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?),
             Value::Real(r) => {
-                // Reuse runtime's encoder if available; for now, route
-                // via i64/denominator pair.
                 let i = (*r * 1_000_000.0) as i64;
-                Box::new(z3::ast::Real::from_real(ctx, i as i32, 1_000_000))
+                Dynamic::from_ast(&z3::ast::Real::from_real(ctx, i as i32, 1_000_000))
             }
-            Value::Enum { .. } => Box::new(encode_state_value(rt, f)?),
+            Value::Enum { .. } => {
+                let dt = encode_state_value(rt, f)?;
+                Dynamic::from_ast(&dt)
+            }
             _ => return None,
         };
-        owned.push(boxed);
-    }
-    let refs: Vec<&dyn Ast<'static>> = owned.iter().map(|b| b.as_ref()).collect();
+        Some(dyn_v)
+    }).collect();
+    if owned.len() != fields.len() { return None; }
+    let refs: Vec<&dyn Ast> = owned.iter().map(|v| v as &dyn Ast).collect();
     ctor.apply(&refs).as_datatype()
 }
 

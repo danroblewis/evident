@@ -362,6 +362,48 @@ fn delta_graceful_shutdown_lang_test_05() {
     assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// Regression: previously, an FSM whose state enum had a payload
+/// FIRST variant (e.g. `Counting(Int)`) panicked at startup
+/// because the seeding code unconditionally called
+/// `constructor.apply(&[])` — which Z3 rejects for non-nullary
+/// constructors. Now: skip seeding for payload first-variants;
+/// Z3 picks on tick 0.
+const PAYLOAD_STATE_PROGRAM: &str = "\
+enum CountState = Counting(Int)
+
+claim main(state, state_next ∈ CountState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    n ∈ Int
+    n = match state
+        Counting(k) ⇒ k
+    state_next = Counting(n + 1)
+    effects = (n ≥ 3 ? ⟨Println(\"done\"), Exit(0)⟩ : ⟨Println(\"counting\")⟩)
+";
+
+#[test]
+fn payload_first_variant_does_not_crash_at_startup() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(PAYLOAD_STATE_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 20 }, &mut ctx)
+        .unwrap();
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+    assert!(out.contains("done"),
+        "FSM should run and reach 'done'; out:\n{}", out);
+    assert_eq!(r.exit_code, Some(0));
+}
+
 /// Phase 4 v3.7+ unified: FrameTimer auto-installs when World
 /// declares `tick_count: Int`. The plugin writes the count;
 /// user FSMs subscribe via existing world.tick_count read-set.
