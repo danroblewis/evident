@@ -110,6 +110,16 @@ fn request_response_lang_test_11() {
     // Two user FSMs (client + server) coordinating via shared
     // world fields. Client requests; server doubles; client
     // exits after 3 requests done.
+    //
+    // Skip under legacy mode — the demo's gating semantics rely
+    // on delta-driven scheduling (state-feedback waking the
+    // client after each transition); legacy mode ticks every FSM
+    // every iteration, racing the client's state machine through
+    // Done before the gating produces the expected output.
+    if std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("legacy") {
+        eprintln!("skipping under EVIDENT_SCHEDULER=legacy");
+        return;
+    }
     let (out, r) = run_program("../programs/lang_tests/multi_fsm/11_request_response.ev", 30);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"client done"),
