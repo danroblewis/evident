@@ -66,6 +66,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `2654171`       | FTI subscription-aware wakes                                  |
 | `34f5c94`       | SDL_Window FTI bridge — first real C-resource FTI             |
 | `e3948c0`       | SDL_Window FTI extends to GL context + render demo            |
+| `387951a`       | GL_Program FTI bridge — shader compile+link as declaration    |
 
 ## Documentation work
 
