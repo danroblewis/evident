@@ -101,10 +101,12 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 
 ## Tests
 
-  * **391 rust tests passing** under both default (delta) and legacy
+  * **392 rust tests passing** under both default (delta) and legacy
     (`EVIDENT_SCHEDULER=legacy`) modes. Stability verified across
-    multiple runs (16/16 scheduler tests, 8/8 multi-FSM tests
-    all consistently pass).
+    multiple runs (16/16 scheduler tests, 9/9 multi-FSM tests
+    all consistently pass). One test (request_response) skips
+    under legacy mode because its gating semantics need
+    delta-driven state-feedback scheduling.
   * **All multi-FSM lang tests** in `runtime-rust/tests/multi_fsm.rs`
     (subprocess-based for those that need real stdin/SIGINT).
   * **Scheduler-specific tests** in `runtime-rust/tests/scheduler_delta.rs`:
