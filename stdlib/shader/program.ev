@@ -219,3 +219,64 @@ claim gl_viewport(x ∈ Int, y ∈ Int, width ∈ Int, height ∈ Int,
 claim gl_get_error(out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetError", "i()", ArgNil)
+
+-- ── Uniforms ─────────────────────────────────────────────────
+--
+-- The proper way to feed per-frame data into shaders. Workflow:
+--   1. After glLinkProgram + glUseProgram, call gl_get_uniform_location
+--      ONCE per uniform name to get its `location` int. Store it
+--      (typically in the state machine's payload).
+--   2. Each frame, glUseProgram + gl_uniform_*(location, value) for
+--      every uniform you want to update, then draw.
+--
+-- glGetUniformLocation(program, name) → GLint. -1 if the name
+-- doesn't match any active uniform in the program. Names that the
+-- shader declares but doesn't actually USE may also return -1
+-- because the linker prunes them.
+claim gl_get_uniform_location(program ∈ Int, name ∈ String, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetUniformLocation", "i(is)",
+                  ArgCons(ArgInt(program),
+                  ArgCons(ArgStr(name), ArgNil)))
+
+-- glUniform1f(location, v) — set a `uniform float`.
+claim gl_uniform_1f(loc ∈ Int, v ∈ Real, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform1f", "v(if)",
+                  ArgCons(ArgInt(loc),
+                  ArgCons(ArgReal(v), ArgNil)))
+
+-- glUniform2f(location, v0, v1) — set a `uniform vec2`.
+claim gl_uniform_2f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform2f", "v(iff)",
+                  ArgCons(ArgInt(loc),
+                  ArgCons(ArgReal(v0),
+                  ArgCons(ArgReal(v1), ArgNil))))
+
+-- glUniform3f(location, v0, v1, v2) — set a `uniform vec3`.
+claim gl_uniform_3f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform3f", "v(ifff)",
+                  ArgCons(ArgInt(loc),
+                  ArgCons(ArgReal(v0),
+                  ArgCons(ArgReal(v1),
+                  ArgCons(ArgReal(v2), ArgNil)))))
+
+-- glUniform4f(location, v0, v1, v2, v3) — set a `uniform vec4`.
+claim gl_uniform_4f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, v3 ∈ Real,
+                    out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform4f", "v(iffff)",
+                  ArgCons(ArgInt(loc),
+                  ArgCons(ArgReal(v0),
+                  ArgCons(ArgReal(v1),
+                  ArgCons(ArgReal(v2),
+                  ArgCons(ArgReal(v3), ArgNil))))))
+
+-- glUniform1i(location, v) — set a `uniform int` (or sampler unit).
+claim gl_uniform_1i(loc ∈ Int, v ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform1i", "v(ii)",
+                  ArgCons(ArgInt(loc),
+                  ArgCons(ArgInt(v), ArgNil)))
