@@ -32,9 +32,42 @@ Iteration-only flags:
   * `./test.sh --rust-only` — skip conformance phase.
   * `./test.sh --conformance` — skip the cargo build + cargo test
     phases (useful when iterating on Python conformance tests).
+  * `./test.sh --examples` — phases 1–3 PLUS run every demo in
+    `programs/demos/` end-to-end via the binary, capturing
+    screenshots for visual demos.
+  * `./test.sh --examples-only` — just the examples runner;
+    assumes the binary is already built.
 
 The default — no flags — is what you should run before claiming work
 is done.
+
+### Visual verification of `--examples`
+
+When `--examples` runs, it iterates every `programs/demos/test_*.ev`:
+- Non-visual demos run with a timeout, asserting clean exit.
+- Visual demos (anything importing `stdlib/sdl/`) get spawned,
+  given ~2s to draw, screenshotted to `/tmp/evident-screenshots/`,
+  then killed.
+
+The exit-code check covers correctness for non-visual demos but
+**says nothing about whether visual demos render correctly** —
+they could exit cleanly while showing a black window. The
+agentic loop closes that gap:
+
+  1. Run `./test.sh --examples`.
+  2. List `/tmp/evident-screenshots/` to see which demos captured.
+  3. For each PNG, use the Read tool (it accepts image paths and
+     renders them inline). Visually verify the screenshot matches
+     what the demo's docstring claims it should show — red window
+     for `test_16_sdl_red`, RGB triangle for `test_17_sdl_triangle`,
+     etc.
+  4. If a demo renders something different from its docstring,
+     either fix the demo, fix the runtime, or document the gap in
+     `programs/demos/COUNTEREXAMPLES.md`.
+
+This is the only way visual regressions get caught — an agent
+running `./test.sh --examples` and Reading the PNGs is functionally
+the visual-test harness. We don't have a pixel-diff CI yet.
 
 ## Where to read first
 

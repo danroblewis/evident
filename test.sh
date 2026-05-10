@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 # ./test.sh — run every test in this repo.
 #
-# Phases (each phase fails the run if it fails):
+# Phases (each phase fails the run if it fails, except --examples
+# which is informational):
 #   1. Build the Rust binary (release).
 #   2. cargo test --release in runtime/ — Rust units + integration
 #      tests. Includes the multi-FSM scheduler tests and the demo
-#      driver (which runs every programs/demos/test_*.ev).
+#      driver (which runs every programs/demos/test_*.ev that has
+#      an EXPECTATIONS row).
 #   3. pytest tests/conformance/ — black-box CLI conformance tests.
+#
+# Optional phase (NOT run by default):
+#   --examples                  Run every programs/demos/test_*.ev
+#                               via the binary, end-to-end. For
+#                               visual demos (SDL etc.), capture
+#                               screenshots into
+#                               /tmp/evident-screenshots/. Use this
+#                               when you want eyes-on confirmation
+#                               that the visible demos still render.
+#                               (Visual demos are NOT in cargo
+#                               test's expectations because they
+#                               need a display.)
 #
 # This is THE test command. Any time an agent finishes a chunk of
 # work that touches code or stdlib or programs/, run this before
@@ -14,11 +28,13 @@
 # that the conformance triage just surfaced.
 #
 # Usage:
-#   ./test.sh                   # run everything
-#   ./test.sh --rust-only       # skip conformance phase
-#   ./test.sh --conformance     # only run conformance phase
-#                               # (useful while iterating; skips the
-#                               # ~30s release build)
+#   ./test.sh                   # phases 1-3 (default)
+#   ./test.sh --rust-only       # skip conformance
+#   ./test.sh --conformance     # only conformance
+#   ./test.sh --examples        # phases 1-3 PLUS the examples
+#                               # runner with screenshots
+#   ./test.sh --examples-only   # only examples runner
+#                               # (assumes binary already built)
 
 set -e -o pipefail
 
@@ -26,12 +42,16 @@ cd "$(dirname "$0")"
 
 RUST_ONLY=0
 CONFORMANCE_ONLY=0
+EXAMPLES=0
+EXAMPLES_ONLY=0
 for arg in "$@"; do
     case "$arg" in
-        --rust-only)    RUST_ONLY=1 ;;
-        --conformance)  CONFORMANCE_ONLY=1 ;;
+        --rust-only)      RUST_ONLY=1 ;;
+        --conformance)    CONFORMANCE_ONLY=1 ;;
+        --examples)       EXAMPLES=1 ;;
+        --examples-only)  EXAMPLES=1 ; EXAMPLES_ONLY=1 ;;
         -h|--help)
-            sed -n '2,16p' "$0"
+            sed -n '2,38p' "$0"
             exit 0
             ;;
         *)
@@ -46,20 +66,23 @@ if [ -t 1 ]; then
     BOLD=$(printf '\033[1m')
     GREEN=$(printf '\033[0;32m')
     RED=$(printf '\033[0;31m')
+    YELLOW=$(printf '\033[0;33m')
     DIM=$(printf '\033[2m')
     OFF=$(printf '\033[0m')
 else
-    BOLD=''; GREEN=''; RED=''; DIM=''; OFF=''
+    BOLD=''; GREEN=''; RED=''; YELLOW=''; DIM=''; OFF=''
 fi
 
 phase() { echo "${BOLD}── $1 ──${OFF}"; }
 ok()    { echo "${GREEN}✓${OFF} $1"; }
 fail()  { echo "${RED}✗${OFF} $1" >&2; }
+note()  { echo "${YELLOW}!${OFF} $1"; }
 
 started=$(date +%s)
 failures=()
 
-if [ "$CONFORMANCE_ONLY" -eq 0 ]; then
+# ── Phase 1: build ────────────────────────────────────────────
+if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 1: build runtime (release)"
     if (cd runtime && cargo build --release 2>&1 | tail -3); then
         ok "build"
@@ -68,11 +91,11 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ]; then
         failures+=("build")
     fi
     echo
+fi
 
+# ── Phase 2: cargo test ───────────────────────────────────────
+if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 2: cargo test --release (runtime/)"
-    # Counts: each "test result: ok. N passed; M failed" line.
-    # Failing the script if cargo exits non-zero — its own exit
-    # code is the source of truth.
     if (cd runtime && cargo test --release 2>&1 | tee /tmp/evident-cargo-test.log) ; then
         passed=$(grep "^test result" /tmp/evident-cargo-test.log \
                  | awk '{p+=$4} END {print p+0}')
@@ -88,17 +111,13 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ]; then
     echo
 fi
 
-if [ "$RUST_ONLY" -eq 0 ]; then
+# ── Phase 3: conformance ──────────────────────────────────────
+if [ "$RUST_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 3: conformance (tests/conformance/)"
-    # Check pytest is available; if not, skip with a warning rather
-    # than silently passing.
     if ! command -v pytest >/dev/null 2>&1; then
         fail "pytest not found in PATH; install it or run inside a venv"
         failures+=("conformance: pytest missing")
     else
-        # The conftest defaults EVIDENT_CMD to the release binary
-        # under runtime/target/release/evident. Build phase ensures
-        # that path exists when running the full suite.
         if pytest tests/conformance/ -q --tb=short 2>&1 | tee /tmp/evident-pytest.log ; then
             counts=$(grep -E "[0-9]+ passed" /tmp/evident-pytest.log | tail -1)
             ok "conformance: $counts"
@@ -106,6 +125,115 @@ if [ "$RUST_ONLY" -eq 0 ]; then
             counts=$(grep -E "[0-9]+ (passed|failed)" /tmp/evident-pytest.log | tail -1)
             fail "conformance: $counts"
             failures+=("conformance")
+        fi
+    fi
+    echo
+fi
+
+# ── Optional: examples runner ────────────────────────────────
+# Walks programs/demos/, runs each via effect-run. For visual
+# demos (anything that imports stdlib/sdl/), spawn the program,
+# screenshot after a brief wait, kill, save the PNG. Doesn't
+# fail the run on visual issues — those need eyes-on review by
+# either a human or by an LLM that Reads the captured PNGs.
+if [ "$EXAMPLES" -eq 1 ]; then
+    phase "Phase 4: examples runner (programs/demos/)"
+
+    EVIDENT="$PWD/runtime/target/release/evident"
+    if [ ! -x "$EVIDENT" ]; then
+        fail "binary not built at $EVIDENT — run without --examples-only first"
+        failures+=("examples: binary missing")
+    else
+        SHOTDIR="/tmp/evident-screenshots"
+        rm -rf "$SHOTDIR"
+        mkdir -p "$SHOTDIR"
+        echo "${DIM}screenshots → $SHOTDIR${OFF}"
+
+        examples_total=0
+        examples_ok=0
+        examples_visual=0
+        examples_failed=()
+
+        for f in programs/demos/test_*.ev; do
+            name=$(basename "$f" .ev)
+            examples_total=$((examples_total + 1))
+
+            # Visual demo? Check for SDL imports.
+            if grep -q "stdlib/sdl" "$f"; then
+                examples_visual=$((examples_visual + 1))
+                # Run in background, screenshot, kill.
+                "$EVIDENT" effect-run "$f" --max-steps 80 \
+                    >/tmp/evident-example.out 2>/tmp/evident-example.err &
+                pid=$!
+                sleep 2
+                # macOS screencapture; on Linux you'd swap this for
+                # `import` or `gnome-screenshot`. Best-effort either way.
+                if command -v screencapture >/dev/null 2>&1; then
+                    screencapture -x "$SHOTDIR/$name.png" 2>/dev/null
+                fi
+                # Wait for natural exit (capped) or kill.
+                for _ in 1 2 3; do
+                    if ! kill -0 $pid 2>/dev/null; then break; fi
+                    sleep 1
+                done
+                kill $pid 2>/dev/null || true
+                wait $pid 2>/dev/null || true
+                if [ -f "$SHOTDIR/$name.png" ]; then
+                    ok "$name (visual; screenshot saved)"
+                else
+                    note "$name (visual; no screencapture tool found)"
+                fi
+            else
+                # Non-visual: run with a short timeout, check exit.
+                # Demos that need stdin (test_14_stdin) get an empty
+                # stdin and short max-steps so they don't hang.
+                # `timeout` lives in /opt/homebrew/bin on macOS,
+                # /usr/bin on most Linux. Fall back to "run without
+                # timeout" if neither's around (fail-open: better
+                # to hang than to silently skip).
+                TO=$(command -v timeout || command -v gtimeout || echo "")
+                if [ -n "$TO" ]; then RUN="$TO 8 $EVIDENT"; else RUN="$EVIDENT"; fi
+                if $RUN effect-run "$f" --max-steps 60 \
+                        </dev/null >/tmp/evident-example.out 2>&1 ; then
+                    examples_ok=$((examples_ok + 1))
+                    ok "$name"
+                else
+                    ec=$?
+                    # Some demos exit non-zero deliberately (test_08_exit_code → 42).
+                    case "$name" in
+                        test_08_exit_code)
+                            if [ $ec -eq 42 ]; then
+                                examples_ok=$((examples_ok + 1))
+                                ok "$name (exit 42 expected)"
+                            else
+                                fail "$name (exit $ec, expected 42)"
+                                examples_failed+=("$name")
+                            fi
+                            ;;
+                        test_14_stdin|test_15_signal)
+                            # These need real stdin / SIGINT to be useful.
+                            note "$name (skipped: needs interactive input)"
+                            examples_ok=$((examples_ok + 1))
+                            ;;
+                        *)
+                            fail "$name (exit $ec)"
+                            examples_failed+=("$name")
+                            ;;
+                    esac
+                fi
+            fi
+        done
+
+        echo
+        ok "examples: $examples_ok/$examples_total ran cleanly, $examples_visual visual"
+        if [ ${#examples_failed[@]} -gt 0 ]; then
+            fail "examples: ${examples_failed[*]}"
+            failures+=("examples")
+        fi
+        if [ $examples_visual -gt 0 ]; then
+            note "Visual demos captured. Review the PNGs in $SHOTDIR — "
+            note "an agent should Read each and verify it matches the demo's"
+            note "docstring (red window for sdl_red, RGB triangle for triangle)."
         fi
     fi
     echo
