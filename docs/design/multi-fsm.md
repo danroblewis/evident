@@ -520,19 +520,24 @@ FSM halts, the render FSM's per-step solve is < 5ms. This catches
 "oh oops the transpiler is somehow still in the render FSM's
 constraint set".
 
-**Validated 2026-05-09** (`programs/demos/effect_multi_fsm_triangle.ev`):
+**Validated 2026-05-09**:
 
-| Demo | Steady-state solve / step |
+| Demo                                                | Steady solve / step |
 |---|---|
 | `effect_gl_uniform_triangle.ev` (single FSM)        | ~464ms |
-| `effect_multi_fsm_triangle.ev`  (setup + render)    | ~2.6ms |
+| `effect_multi_fsm_triangle.ev`  (setup + render, hardcoded shaders) | ~2.6ms |
+| `effect_gl_transpiled_triangle.ev` (single FSM, transpiler) | ~218ms |
+| `effect_multi_fsm_transpiled.ev` (setup + render, transpiler) | ~3ms |
 
-~180× speedup. Setup runs the entire SDL+GL init chain (one Seq, 25
-calls with `ArgPriorResult` threading), extracts handles into
-`world_next`, halts after 2 ticks. Render reads handles from
-`world` and emits glUniform1f + glClear + glDrawArrays + swap +
-pump + delay each frame. Wall time per frame is dominated by the
-intentional `SDL_Delay(33)` frame pacing (~26 fps).
+Roughly **180×** speedup on the uniform demo and **70×** on the
+transpiler-in-setup demo. Setup runs the full SDL+GL init chain
+(one Seq, 25 calls with `ArgPriorResult` threading) plus — in the
+transpiled variant — the GLSL transpiler over both shader ASTs.
+Setup pays ~700ms per tick across 3 ticks, then halts and is
+dropped from the scheduler. Render reads handles from `world` and
+emits `glUniform1f + glClear + glDrawArrays + swap + pump + delay`
+each frame. Wall time per frame is dominated by `SDL_Delay(33)`
+frame pacing (~26 fps).
 
 ### World encoding
 
