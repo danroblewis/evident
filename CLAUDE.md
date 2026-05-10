@@ -99,13 +99,28 @@ every iteration" behavior with name/fixpoint halt.
 
 **Async event sources.** When no FSM is ready to tick (all subscriptions
 silent), the scheduler blocks on a channel of `SchedulerEvent`s instead
-of immediately halting. Events wake only the FSMs whose declared
-subscription matches; FSMs declare via marker types in their parameter
-list (defined in `stdlib/runtime.ev`):
-  * `_ ∈ FrameTimer` → wakes on "tick" events. Set via `EVIDENT_TICK_MS=<u64>`.
-  * `_ ∈ Signal`     → wakes on "signal" events. SIGINT handler is
-    auto-installed when at least one FSM declares this.
-  * `_ ∈ Stdin`      → wakes on "stdin" line events (planned).
+of immediately halting.
+
+There are TWO ways an FSM subscribes to async events:
+
+  1. **Plugin-as-writer (preferred, unified model)** — the user's
+     `World` type declares a reserved field; the runtime auto-installs
+     a plugin to write that field. User FSMs subscribe via existing
+     world read-set inference. No marker types, no event-channel API.
+       * `tick_count: Int`     → FrameTimer (set rate via `EVIDENT_TICK_MS=<u64>`)
+       * `signal_received: Int` → SigintSource (auto-installed)
+       * `stdin_line: String`  → StdinSource (auto-installed)
+       * `stdin_seq: Int`      → StdinSource also writes seq counter
+     Plugin writes participate in the multi-writer disjoint check
+     — a user FSM trying to write a plugin-owned field is rejected
+     at load.
+
+  2. **Marker-type subscription (legacy v3 path)** — an FSM has a
+     parameter of type `FrameTimer` / `Signal` declared in
+     `stdlib/runtime.ev`. The plugin pushes wake-only events;
+     the FSM body has no payload to read. Useful when the user
+     wants to be woken without making the source's value part of
+     world.
 
 If NO FSM declares any subscription, falls back to coarse wake for
 back-compat. When all sources go dead (channel returns Err), the
