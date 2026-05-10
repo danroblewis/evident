@@ -181,6 +181,8 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             Ok(f)  => EffectResult::Real(f),
             Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
         },
+        Effect::IntToStr(n)  => EffectResult::Str(n.to_string()),
+        Effect::RealToStr(f) => EffectResult::Str(f.to_string()),
         Effect::ShellRun(cmd) => {
             // Use sh -c to interpret the command string. Errors
             // include exit code + first line of stderr (truncated
@@ -561,6 +563,30 @@ mod tests {
         // Third read hits EOF.
         assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
         let _ = captured_stdout(ctx);
+    }
+
+    #[test]
+    fn int_to_str_decimal() {
+        let mut ctx = DispatchContext::new();
+        for (n, expected) in [(0, "0"), (42, "42"), (-7, "-7"), (i64::MAX, "9223372036854775807")] {
+            match dispatch_one(&mut ctx, &Effect::IntToStr(n)) {
+                EffectResult::Str(s) => assert_eq!(s, expected),
+                other => panic!("expected Str({expected}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn real_to_str_decimal() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::RealToStr(3.14)) {
+            EffectResult::Str(s) => assert_eq!(s, "3.14"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+        match dispatch_one(&mut ctx, &Effect::RealToStr(-2500.0)) {
+            EffectResult::Str(s) => assert_eq!(s, "-2500"),
+            other => panic!("expected Str, got {other:?}"),
+        }
     }
 
     #[test]

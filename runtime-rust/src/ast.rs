@@ -283,6 +283,12 @@ pub enum Effect {
     /// Parse a decimal real (float) string. IEEE-754 double precision.
     /// On success: RealResult. On failure: ErrorResult.
     ParseReal(String),
+    /// Format an Int as decimal string. StringResult always.
+    IntToStr(i64),
+    /// Format a Real (f64) as decimal string. Uses Rust's default
+    /// f64 formatter — sufficient for typical numeric output.
+    /// StringResult always.
+    RealToStr(f64),
     /// Run a shell command synchronously, capture stdout. Result
     /// is StringResult(stdout) on success (exit code 0); otherwise
     /// ErrorResult with exit code + stderr. Synchronous (blocks

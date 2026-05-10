@@ -95,6 +95,10 @@ enum Effect =
     -- Parse a decimal real (f64). RealResult on success;
     -- ErrorResult on failure.
     ParseReal(String)
+    -- Format Int as decimal string (always succeeds).
+    IntToStr(Int)
+    -- Format Real (f64) as decimal string (always succeeds).
+    RealToStr(Real)
     -- Run a shell command synchronously, capture stdout.
     -- StringResult(stdout) on success (exit 0); ErrorResult on
     -- non-zero exit (with code + first ~200 chars of stderr) or

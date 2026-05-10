@@ -548,6 +548,8 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
         "Exit"         => { need_arity(variant, fields, 1)?; Effect::Exit(decode_int(&fields[0])?) }
         "ParseInt"     => { need_arity(variant, fields, 1)?; Effect::ParseInt(decode_str(&fields[0])?) }
         "ParseReal"    => { need_arity(variant, fields, 1)?; Effect::ParseReal(decode_str(&fields[0])?) }
+        "IntToStr"     => { need_arity(variant, fields, 1)?; Effect::IntToStr(decode_int(&fields[0])?) }
+        "RealToStr"    => { need_arity(variant, fields, 1)?; Effect::RealToStr(decode_real(&fields[0])?) }
         "ShellRun"     => { need_arity(variant, fields, 1)?; Effect::ShellRun(decode_str(&fields[0])?) }
         "SpawnFsm"     => {
             need_arity(variant, fields, 2)?;
