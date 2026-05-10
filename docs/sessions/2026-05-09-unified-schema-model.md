@@ -39,6 +39,10 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `17c2bcc`       | Reject ReadLine + StdinSource at load                         |
 | `87e09e6`       | Lang test 09 — multi-plugin (timer + stdin)                   |
 | `aae2bfd`       | Lang test 10 — SIGINT cleanup via plugin pattern              |
+| `b9e4869`       | Demo — guess-the-number game                                  |
+| `4cf23af`       | Integration test for lang test 09                             |
+| `e3a9dba`       | Hoist disjoint-write check (single-FSM-with-plugin too)       |
+| `b69e072`       | Startup trace under EVIDENT_LOOP_TRACE                        |
 
 ## Documentation work
 
@@ -95,7 +99,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 
 ## Tests
 
-  * **389 rust tests passing** under both default (delta) and legacy
+  * **391 rust tests passing** under both default (delta) and legacy
     (`EVIDENT_SCHEDULER=legacy`) modes.
   * **All multi-FSM lang tests** in `runtime-rust/tests/multi_fsm.rs`
     (subprocess-based for those that need real stdin/SIGINT).
