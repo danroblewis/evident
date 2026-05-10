@@ -372,6 +372,17 @@ fn run_multi_fsm(
         last_results:    Vec<EffectResult>,
         halted:          bool,
     }
+    // Seed each FSM's initial state to its enum's first variant. This
+    // is convention: the first variant declared in `enum FooState =
+    // Init | …` is the starting state. Without this pin, Z3 picks an
+    // arbitrary satisfying state on tick 0 — often a Done state that
+    // immediately self-loops with no effects, halting the FSM before
+    // any work happens.
+    //
+    // Halt-check below only fires if state_next is variant-named
+    // "Done"/"Halt", so the seeded Init pin doesn't cause spurious
+    // halts (we never set current_state_v to a value matching that
+    // pattern unless the user explicitly transitions there).
     let mut fsm_rt: Vec<FsmRt> = fsms.iter().map(|s| {
         let (initial_dt, initial_val) = {
             let enums = rt.enums_registry();
@@ -456,6 +467,7 @@ fn run_multi_fsm(
             total_solve += solve_dt;
 
             if !r.satisfied {
+                eprintln!("[loop] FSM `{}` returned UNSAT on tick {step_count}", fsm.claim_name);
                 if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
                 return Ok(LoopResult {
                     steps: step_count,
@@ -475,10 +487,13 @@ fn run_multi_fsm(
                 .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
                     fsm.claim_name))?;
 
-            // Halt-check for this FSM: state_next value equals
-            // current state value (true fixpoint, no Done/Halt name
-            // convention) AND effects empty. Dropped on the NEXT tick.
-            let will_halt = effects.is_empty()
+            // Halt-check: state_next == state (value equality, true
+            // fixpoint) AND effects empty AND we're past tick 0. Tick
+            // 0 is skipped because the seeded initial state could
+            // self-loop on Idle while waiting for a writer to
+            // initialize world — that's polling, not halt.
+            let will_halt = step_count > 0
+                && effects.is_empty()
                 && fsm_rt[idx].current_state_v.as_ref()
                     .map(|cv| cv == state_next_val).unwrap_or(false);
 
