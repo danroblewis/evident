@@ -5,24 +5,22 @@ After the unified-schema-model arc (see
 the runtime is in a coherent place. This file captures what's
 worth working on next, in rough priority order.
 
+## Explicitly NOT planned
+
+### Bounded write-queues for plugin sources
+
+Currently `WriteQueue` is `Arc<Mutex<VecDeque>>` — unbounded.
+Tempting to bound for memory safety, but the user's framing
+(2026-05-10): "in the future we want to expose memory more
+readily to Evident models. The boundedness of queues will
+emerge naturally, and the constraints will be different than
+what we would implement now." When memory becomes a first-class
+modeled concept, queue bounds will fall out of those constraints,
+not from runtime-side fiat.
+
 ## High value, bounded scope
 
-### 1. Bounded write-queues for plugin sources
-
-Currently `WriteQueue` is `Arc<Mutex<VecDeque>>` — unbounded. A
-plugin firing faster than ticks consume can grow memory
-unboundedly. Real impact: `EVIDENT_TICK_MS=1` for an FSM that
-solves at 50ms/tick → queue grows ~50 entries/sec.
-
-Fix: use a bounded queue (`mpsc::sync_channel(N)` or similar).
-Plugin background thread blocks on send when full → naturally
-rate-limits.
-
-Open question: per-source bound, or global? FrameTimer can drop
-intermediate values (only newest count matters); StdinSource
-must not (each line is a discrete event).
-
-### 2. Parse-int / parse-real built-ins
+### 1. Parse-int / parse-real built-ins
 
 `programs/demos/effect_guess_number.ev` works around the lack
 of int parsing by comparing strings. Most realistic interactive
@@ -34,15 +32,31 @@ programs need to parse numeric input. Either:
 
 Effect-based is simpler; FFI-based is more general. Either works.
 
-### 3. More worked examples that use the unified model
+### 2. Rewrite older demos using the unified model
 
-The lang_tests directory has 06–10 demonstrating the new
-patterns. Worth adding:
-  * A simple TCP echo server (would need socket plugin first)
-  * A REPL (stdin lines + state machine + prompt redraw)
-  * A file watcher demo (would need file-watch plugin)
+User direction (2026-05-10): "eventually we want to remove the
+old demos and replace them with more modern versions."
 
-These would force the plugin model to grow into more shapes.
+Targets in `programs/demos/`:
+  * `effect_echo.ev` (uses legacy ReadLine pattern) → rewrite
+    using StdinSource auto-install
+  * `effect_hello.ev`, `effect_say.ev` → keep as minimal one-shot
+    examples; no rewrite needed
+  * `effect_sdl_*` and `effect_gl_*` → eventually port to FTI
+    once that lands
+  * `calculator.ev` → rewrite as REPL using stdin + state machine
+
+After each rewrite + verification, retire the legacy version
+(or keep with a banner pointing to the modern replacement).
+
+### 3. More worked-example shapes
+
+The 06–11 lang tests cover stdin echo, timer, multi-plugin,
+SIGINT, request/response. Worth adding once supporting
+infrastructure exists:
+  * A simple TCP echo server (needs socket plugin)
+  * A real REPL (stdin + state machine + parsed input)
+  * A file watcher demo (needs file-watch plugin)
 
 ## Medium value, larger scope
 
