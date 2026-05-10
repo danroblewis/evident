@@ -152,7 +152,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 event_subs.insert("tick".to_string());
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
-            } else if type_name == "FrameClock" {
+            } else if type_name == "FrameClock" || type_name == "Hostname" {
                 fti_params.push((name.clone(), type_name.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -328,17 +328,30 @@ pub fn run_with_ctx(
         // instance IDs since each FSM has its own bridge).
         for fsm in &fsms {
             for (param_name, type_name) in &fsm.fti_params {
-                if type_name == "FrameClock" {
-                    let ms = env_tick_ms.unwrap_or(100);
-                    let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
-                    let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
-                        .with_count_field(&key);
-                    bridge.start(event_tx.clone())
-                        .map_err(|e| format!(
-                            "failed to start FrameClock bridge for `{}.{param_name}`: {e}",
-                            fsm.claim_name))?;
-                    event_sources.push(Box::new(bridge));
-                    plugin_writes.insert(key);
+                match type_name.as_str() {
+                    "FrameClock" => {
+                        let ms = env_tick_ms.unwrap_or(100);
+                        let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
+                        let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
+                            .with_count_field(&key);
+                        bridge.start(event_tx.clone())
+                            .map_err(|e| format!(
+                                "failed to start FrameClock bridge for `{}.{param_name}`: {e}",
+                                fsm.claim_name))?;
+                        event_sources.push(Box::new(bridge));
+                        plugin_writes.insert(key);
+                    }
+                    "Hostname" => {
+                        let key = format!("{}.{param_name}.name", fsm.claim_name);
+                        let mut bridge = crate::event_sources::OneShotShellSource::new("hostname", &key);
+                        bridge.start(event_tx.clone())
+                            .map_err(|e| format!(
+                                "failed to start Hostname bridge for `{}.{param_name}`: {e}",
+                                fsm.claim_name))?;
+                        event_sources.push(Box::new(bridge));
+                        plugin_writes.insert(key);
+                    }
+                    _ => {}  // unknown FTI type — silently skip
                 }
             }
         }

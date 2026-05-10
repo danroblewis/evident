@@ -204,6 +204,13 @@ type Signal
 type FrameClock
     tick_count ∈ Int
 
+-- Hostname FTI type. The bridge calls `hostname` once at startup
+-- and pins the result. Useful for programs that want to identify
+-- themselves (logging, distinguishing test runs, etc.) without
+-- threading a configuration parameter.
+type Hostname
+    name ∈ String
+
 -- ── FTI v1 — typed resources with bridge plugins ──────────────
 -- (See docs/design/foreign-type-interface.md.) Declare a
 -- `_ ∈ Timer` parameter on any FSM claim; the runtime detects
