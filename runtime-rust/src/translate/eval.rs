@@ -699,6 +699,25 @@ pub fn evaluate_with_extra_assertions(
         }
     }
 
+    // Apply scalar `given` values (Int/Bool/String/Real). Same loop
+    // as `evaluate`'s pass 3 — needed for the multi-FSM scheduler to
+    // pin world.* fields each tick. Without this, callers using
+    // query_with_pins_and_given for sub-field pins silently get free
+    // (model-picked) values for the supposedly-given fields.
+    for (name, value) in given {
+        let Some(var) = env.get(name) else { continue };
+        match (var, value) {
+            (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
+            (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
+            (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
+            (Var::StrVar(v),  Value::Str(s))  =>
+                solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
+            (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
+            _ => { /* type mismatch — silently skip, matches `evaluate` */ }
+        }
+    }
+
     let satisfied = matches!(solver.check(), SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {

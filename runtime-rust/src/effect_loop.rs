@@ -41,26 +41,53 @@ pub struct LoopResult {
     pub halted_clean: bool,
 }
 
-/// Detect whether `main` is effect-driven (declares `effects` and
-/// `last_results` of the right enum types). Returns the names of
-/// state/state_next vars and their type if so.
+/// One FSM-shaped claim's membership info. The runtime detects
+/// claims that match this shape (state pair + EffectList + ResultList,
+/// optionally + world record) and runs each as an FSM.
+///
+/// For backwards compat the struct is still called `MainShape`. The
+/// new `claim_name` and `world_*` fields default to "main" / None for
+/// single-FSM programs.
 pub struct MainShape {
+    pub claim_name:       String,
     pub state_var:        String,
     pub state_next_var:   String,
     pub state_type:       String,
     pub last_results_var: String,
     pub effects_var:      String,
+    /// Name of the `world` membership, if this FSM reads world.
+    pub world_var:        Option<String>,
+    /// Name of the `world_next` membership; presence makes this FSM
+    /// the world WRITER. v1: at most one writer per program.
+    pub world_next_var:   Option<String>,
+    /// Type name of the world record, if `world_var` or
+    /// `world_next_var` is set.
+    pub world_type:       Option<String>,
+}
+
+impl MainShape {
+    pub fn is_writer(&self) -> bool { self.world_next_var.is_some() }
 }
 
 pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
-    let main = rt.get_schema("main")?;
+    detect_fsm_shape(rt, "main")
+}
+
+/// Detect FSM shape for a specific claim. Returns Some if the claim
+/// has the four-membership shape (state/state_next/last_results/effects)
+/// plus optional world/world_next.
+pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
+    let claim = rt.get_schema(claim_name)?;
     let mut state_pair: Option<(String, String, String)> = None;
     let mut last_results_var = None;
     let mut effects_var = None;
-    // Walk main's body PLUS the bodies of any `..PassthroughClaim` so a
-    // declarative library (e.g. stdlib/sdl/scene.ev's `..SDLScene`)
-    // contributes its state-machine vars even though the user's main
-    // contains only data + passthroughs.
+    let mut world_var:      Option<String> = None;
+    let mut world_next_var: Option<String> = None;
+    let mut world_type:     Option<String> = None;
+    // Walk this claim's body PLUS the bodies of any
+    // `..PassthroughClaim` so a declarative library (e.g.
+    // stdlib/sdl/scene.ev's `..SDLScene`) contributes its
+    // state-machine vars to the outer claim.
     let mut all_items: Vec<&BodyItem> = Vec::new();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     fn collect<'a>(
@@ -74,10 +101,6 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
             if let BodyItem::Passthrough(name) = item {
                 if visited.insert(name.clone()) {
                     if let Some(sub) = rt.get_schema(name) {
-                        // SAFETY: the borrowed body's lifetime is tied to
-                        // `rt`'s schemas; both this iteration and the
-                        // outer detect_main_shape function return before
-                        // `rt` could be mutated.
                         let body: &'a [BodyItem] = unsafe {
                             std::mem::transmute::<&[BodyItem], &'a [BodyItem]>(&sub.body)
                         };
@@ -87,26 +110,31 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
             }
         }
     }
-    collect(&main.body, rt, &mut all_items, &mut visited);
+    collect(&claim.body, rt, &mut all_items, &mut visited);
     for item in all_items.iter().copied() {
         if let BodyItem::Membership { name, type_name, .. } = item {
-            // Convention: the main claim's "effects" output is named
-            // exactly "effects"; the "results" input is "last_results".
-            // Pick the FIRST match of each — programs may declare other
-            // EffectList / ResultList intermediates that the loop should
-            // ignore.
             if type_name == "EffectList" && name == "effects" && effects_var.is_none() {
                 effects_var = Some(name.clone());
             } else if type_name == "ResultList" && name == "last_results"
                    && last_results_var.is_none()
             {
                 last_results_var = Some(name.clone());
+            } else if name == "world" {
+                world_var = Some(name.clone());
+                world_type = Some(type_name.clone());
+            } else if name == "world_next" {
+                world_next_var = Some(name.clone());
+                if world_type.is_none() {
+                    world_type = Some(type_name.clone());
+                }
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
-                   && !type_name.starts_with("Seq")
-                   && !type_name.starts_with("Set")
+                   && !type_name.starts_with("Seq(")
+                   && !type_name.starts_with("Set(")
             {
-                // Look for state/state_next pair (same type, two vars).
+                // State-pair detection (same type, two vars, one
+                // ending in `_next`). Excludes world/world_next which
+                // matched above.
                 if name.ends_with("_next") {
                     let base = &name[..name.len() - 5];
                     if let Some((b, _, _)) = &state_pair {
@@ -129,20 +157,42 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     }
     let (s, sn, st) = state_pair?;
     Some(MainShape {
+        claim_name:       claim_name.to_string(),
         state_var:        s,
         state_next_var:   sn,
         state_type:       st,
         last_results_var: last_results_var?,
         effects_var:      effects_var?,
+        world_var,
+        world_next_var,
+        world_type,
     })
 }
 
-/// Run the effect loop. Solver is hit once per step, results
-/// dispatched, fed back as `last_results` for the next step.
+/// Walk every top-level claim and collect those that have the FSM
+/// membership shape. Returns the writer FIRST (if any), then readers
+/// in declaration order. Multi-FSM execution dispatches in this order.
+pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
+    let names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
+    let mut writers: Vec<MainShape> = Vec::new();
+    let mut readers: Vec<MainShape> = Vec::new();
+    for name in names {
+        if let Some(shape) = detect_fsm_shape(rt, &name) {
+            if shape.is_writer() { writers.push(shape) } else { readers.push(shape) }
+        }
+    }
+    let mut all = writers;
+    all.extend(readers);
+    all
+}
+
+/// Run the effect loop. Single-FSM programs (one main-shape claim,
+/// usually `main`) take the existing per-step path. Multi-FSM
+/// programs (≥2 main-shape claims) use the multi-FSM scheduler:
+/// per-tick writer-then-readers solving with shared world handoff
+/// and per-FSM halt detection.
 pub fn run(rt: &EvidentRuntime, opts: &LoopOpts) -> Result<LoopResult, String> {
-    let shape = detect_main_shape(rt)
-        .ok_or_else(|| "main claim is not effect-driven (missing state pair, EffectList, or ResultList)".to_string())?;
-    run_with_shape(rt, &shape, opts, &mut DispatchContext::new())
+    run_with_ctx(rt, opts, &mut DispatchContext::new())
 }
 
 /// Run with caller-supplied dispatch context. Test entry point —
@@ -152,9 +202,24 @@ pub fn run_with_ctx(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
-    let shape = detect_main_shape(rt)
-        .ok_or_else(|| "main claim is not effect-driven".to_string())?;
-    run_with_shape(rt, &shape, opts, ctx)
+    let fsms = detect_all_fsms(rt);
+    match fsms.len() {
+        0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
+        1 => run_with_shape(rt, &fsms[0], opts, ctx),
+        _ => {
+            // v1 single-writer rule.
+            let writer_count = fsms.iter().filter(|s| s.is_writer()).count();
+            if writer_count > 1 {
+                let names: Vec<&str> = fsms.iter()
+                    .filter(|s| s.is_writer())
+                    .map(|s| s.claim_name.as_str()).collect();
+                return Err(format!(
+                    "multi-FSM v1: only one FSM may declare `world_next`; found {writer_count}: {names:?}",
+                ));
+            }
+            run_multi_fsm(rt, &fsms, opts, ctx)
+        }
+    }
 }
 
 fn run_with_shape(
@@ -211,7 +276,7 @@ fn run_with_shape(
         };
 
         let solve_t0 = std::time::Instant::now();
-        let r = rt.query_with_pinned_datatypes("main", &pins)
+        let r = rt.query_with_pinned_datatypes(&shape.claim_name, &pins)
             .map_err(|e| format!("solve step {step_count}: {e}"))?;
         let solve_dt = solve_t0.elapsed();
         total_solve += solve_dt;
@@ -278,6 +343,195 @@ fn run_with_shape(
     Ok(LoopResult {
         steps: step_count,
         final_state: final_state_model,
+        halted_clean: false,
+    })
+}
+
+/// Multi-FSM scheduler. Per tick:
+///   1. Solve writer (if any), capture world_next.* values.
+///   2. Solve each reader with world.* pinned to writer's new values
+///      (or the previous tick's snapshot if no writer / writer halted).
+///   3. Dispatch all FSMs' effects (writer first, readers in order).
+///   4. Per-FSM halt detection (state_next == state ∧ effects empty).
+///   5. Drop halted FSMs from the active set.
+/// Program halts when no active FSMs remain.
+fn run_multi_fsm(
+    rt: &EvidentRuntime,
+    fsms: &[MainShape],
+    opts: &LoopOpts,
+    ctx: &mut DispatchContext,
+) -> Result<LoopResult, String> {
+    use std::collections::HashMap;
+    // Per-FSM mutable state. We track BOTH the encoded Datatype
+    // (for the next tick's pin) and the decoded Value (for halt
+    // detection — fixpoint = state_next_val equals previous tick's
+    // state value).
+    struct FsmRt {
+        current_state:   Option<z3::ast::Datatype<'static>>,
+        current_state_v: Option<Value>,
+        last_results:    Vec<EffectResult>,
+        halted:          bool,
+    }
+    let mut fsm_rt: Vec<FsmRt> = fsms.iter().map(|s| {
+        let (initial_dt, initial_val) = {
+            let enums = rt.enums_registry();
+            let by_name = enums.by_name.borrow();
+            let entry = by_name.get(&s.state_type);
+            let dt = entry.and_then(|(sort, _)| sort.variants.first()
+                .and_then(|v| v.constructor.apply(&[]).as_datatype()));
+            let val = entry.and_then(|(_, decl_variants)| decl_variants.first().map(|v|
+                Value::Enum {
+                    enum_name: s.state_type.clone(),
+                    variant:   v.name.clone(),
+                    fields:    Vec::new(),
+                }));
+            (dt, val)
+        };
+        FsmRt {
+            current_state:   initial_dt,
+            current_state_v: initial_val,
+            last_results:    Vec::new(),
+            halted:          false,
+        }
+    }).collect();
+    for (i, s) in fsms.iter().enumerate() {
+        if fsm_rt[i].current_state.is_none() {
+            return Err(format!(
+                "FSM `{}`: state enum `{}` has no nullary first variant",
+                s.claim_name, s.state_type));
+        }
+    }
+
+    // Tick 0 starts with no shared world; the writer's body must
+    // initialize world_next without depending on world (typically
+    // via state-pattern guards: `state matches Init ⇒ world_next.x = …`).
+    let mut world_snapshot: HashMap<String, Value> = HashMap::new();
+
+    let mut step_count = 0usize;
+    let timing = std::env::var("EVIDENT_LOOP_TIMING").is_ok();
+    let loop_t0 = std::time::Instant::now();
+    let mut total_solve = std::time::Duration::ZERO;
+    let mut total_dispatch = std::time::Duration::ZERO;
+
+    while step_count < opts.max_steps {
+        // Any active FSMs left? If not, program halted.
+        if fsm_rt.iter().all(|f| f.halted) {
+            if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+            return Ok(LoopResult {
+                steps: step_count,
+                // Synthesize a final-state value from the writer's
+                // last seen state if available; otherwise the first
+                // active FSM's. Multi-FSM doesn't have a single
+                // "final_state" the way single-FSM does, so this is
+                // best-effort.
+                final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
+                halted_clean: true,
+            });
+        }
+
+        // Per-tick effect ordering: writer first, then readers in
+        // declaration order (which is the order in `fsms`).
+        let mut all_effects: Vec<(usize, Vec<crate::ast::Effect>)> = Vec::new();
+
+        for (idx, fsm) in fsms.iter().enumerate() {
+            if fsm_rt[idx].halted { continue; }
+
+            // Build per-FSM pin list (state + last_results as Datatypes).
+            let last_results_dt = rt.encode_effect_result_list(&fsm_rt[idx].last_results)
+                .map_err(|e| format!("FSM `{}`: encode last_results: {e}", fsm.claim_name))?;
+            let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match &fsm_rt[idx].current_state {
+                Some(s) => vec![
+                    (fsm.state_var.as_str(), s.clone()),
+                    (fsm.last_results_var.as_str(), last_results_dt),
+                ],
+                None => vec![
+                    (fsm.last_results_var.as_str(), last_results_dt),
+                ],
+            };
+
+            let solve_t0 = std::time::Instant::now();
+            let r = rt.query_with_pins_and_given(&fsm.claim_name, &pins, &world_snapshot)
+                .map_err(|e| format!("FSM `{}` solve step {step_count}: {e}", fsm.claim_name))?;
+            let solve_dt = solve_t0.elapsed();
+            total_solve += solve_dt;
+
+            if !r.satisfied {
+                if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+                return Ok(LoopResult {
+                    steps: step_count,
+                    final_state: fsm_rt[idx].current_state_v.clone(),
+                    halted_clean: false,
+                });
+            }
+
+            // Read state_next + effects.
+            let state_next_val = r.bindings.get(&fsm.state_next_var)
+                .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
+                    fsm.claim_name, fsm.state_next_var))?;
+            let effects_val = r.bindings.get(&fsm.effects_var)
+                .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
+                    fsm.claim_name, fsm.effects_var))?;
+            let effects = ast_decoder::decode_effect_list(effects_val)
+                .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
+                    fsm.claim_name))?;
+
+            // Halt-check for this FSM: state_next value equals
+            // current state value (true fixpoint, no Done/Halt name
+            // convention) AND effects empty. Dropped on the NEXT tick.
+            let will_halt = effects.is_empty()
+                && fsm_rt[idx].current_state_v.as_ref()
+                    .map(|cv| cv == state_next_val).unwrap_or(false);
+
+            // Writer? Capture world_next.* for snapshot. The snapshot
+            // becomes the `world.*` given for subsequent FSM solves
+            // this tick AND the writer's own world.* given next tick.
+            if fsm.is_writer() {
+                world_snapshot.clear();
+                for (k, v) in r.bindings.iter() {
+                    if let Some(field) = k.strip_prefix("world_next.") {
+                        world_snapshot.insert(format!("world.{field}"), v.clone());
+                    }
+                }
+            }
+
+            // Update next-tick state for this FSM.
+            fsm_rt[idx].current_state = encode_state_value(rt, state_next_val);
+            fsm_rt[idx].current_state_v = Some(state_next_val.clone());
+
+            if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                eprintln!("[loop] tick {step_count} fsm={}: state_next={state_next_val:?} effects={effects:?}",
+                    fsm.claim_name);
+            }
+            if timing {
+                eprintln!("[timing] tick {step_count} fsm={}: solve={:.2}ms ({} effects)",
+                    fsm.claim_name, solve_dt.as_secs_f64() * 1000.0, effects.len());
+            }
+
+            all_effects.push((idx, effects));
+
+            // Mark halt — drops on next tick's iteration.
+            if will_halt {
+                fsm_rt[idx].halted = true;
+            }
+        }
+
+        // Dispatch all effects in order, capturing each FSM's
+        // results into its own last_results for next tick.
+        let dispatch_t0 = std::time::Instant::now();
+        for (fsm_idx, effects) in all_effects {
+            let results = dispatch_all(ctx, &effects);
+            fsm_rt[fsm_idx].last_results = results;
+        }
+        let dispatch_dt = dispatch_t0.elapsed();
+        total_dispatch += dispatch_dt;
+
+        step_count += 1;
+    }
+
+    if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+    Ok(LoopResult {
+        steps: step_count,
+        final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
         halted_clean: false,
     })
 }

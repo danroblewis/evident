@@ -1,0 +1,67 @@
+-- Multi-FSM test: basic world handoff between two concurrent FSMs.
+--
+-- Validates:
+--   * Detection: program with no `main` but two main-shape claims is
+--     recognized as multi-FSM (both `game` and `render` are FSMs).
+--   * Per-tick scheduling: writer (game) solves before reader (render).
+--   * Writer-first effect ordering: game's Println appears before
+--     render's Println in each tick's output.
+--   * World propagation within same tick: render reads the value
+--     game just wrote (not last tick's value).
+--
+-- Expected output (--max-steps 6, so 6 ticks):
+--   game tick
+--   render: world even
+--   game tick
+--   render: world odd
+--   game tick
+--   render: world even
+--   game tick
+--   render: world odd
+--   game tick
+--   render: world even
+--   game tick
+--   render: world odd
+--
+-- The "even / odd" alternation proves render sees game's new world
+-- value within the same tick, not last tick's. If render only saw
+-- last-tick's world, the first tick would print "even" (default
+-- Bool false flips to true on game's tick-0 write, but render would
+-- see the pre-write false → "render: world odd" on tick 0).
+
+import "stdlib/runtime.ev"
+
+type World
+    tick_even ∈ Bool
+
+enum GameState =
+    TickEven
+    TickOdd
+
+enum RenderState =
+    Frame
+
+claim game(world, world_next ∈ World,
+           state, state_next ∈ GameState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = match state
+        TickEven ⇒ TickOdd
+        TickOdd  ⇒ TickEven
+
+    is_even ∈ Bool
+    is_even = (state matches TickEven)
+    world_next.tick_even = is_even
+
+    effects = ⟨Println("game tick")⟩
+
+claim render(world ∈ World,
+             state, state_next ∈ RenderState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = Frame
+
+    msg ∈ String
+    msg = (world.tick_even ? "render: world even" : "render: world odd")
+
+    effects = ⟨Println(msg)⟩

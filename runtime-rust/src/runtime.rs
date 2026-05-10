@@ -183,6 +183,11 @@ pub struct EvidentRuntime {
     /// Python's `EvidentRuntime.schemas`. Used to resolve user-defined
     /// type references during sub-schema expansion.
     schemas: HashMap<String, SchemaDecl>,
+    /// Insertion order of `schemas` — used by callers (the multi-FSM
+    /// scheduler in particular) that need declaration order rather
+    /// than HashMap's nondeterministic key order. New names append;
+    /// re-loading an existing name doesn't reorder.
+    schema_order: Vec<String>,
     /// Z3 context shared by all cached evaluations from this runtime.
     /// Leaked via Box::leak so its lifetime is `'static`, which lets
     /// us store cached solvers and env entries that borrow from it
@@ -408,6 +413,7 @@ impl EvidentRuntime {
         EvidentRuntime {
             program: Program::default(),
             schemas: HashMap::new(),
+            schema_order: Vec::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
@@ -491,6 +497,9 @@ impl EvidentRuntime {
             self.load_file(&resolved)?;
         }
         for s in &prog.schemas {
+            if !self.schemas.contains_key(&s.name) {
+                self.schema_order.push(s.name.clone());
+            }
             self.schemas.insert(s.name.clone(), s.clone());
             register_subclaims(&s.body, &mut self.schemas);
             // Record source file for this schema (and its subclaims).
@@ -633,7 +642,7 @@ impl EvidentRuntime {
     /// Iterator over the names of every loaded schema (top-level decls
     /// AND lifted subclaims). Useful for tooling.
     pub fn schema_names(&self) -> impl Iterator<Item = &str> {
-        self.schemas.keys().map(|s| s.as_str())
+        self.schema_order.iter().map(|s| s.as_str())
     }
 
     /// Look up a loaded schema by name. Used by the executor (and other
@@ -1039,13 +1048,26 @@ impl EvidentRuntime {
         claim_name: &str,
         pins: &[(&str, z3::ast::Datatype<'static>)],
     ) -> Result<QueryResult, RuntimeError> {
+        self.query_with_pins_and_given(claim_name, pins, &HashMap::new())
+    }
+
+    /// Like `query_with_pinned_datatypes` but also accepts a `given`
+    /// map for scalar pins (Int/Bool/String/Real values). Used by the
+    /// multi-FSM scheduler to thread the writer's `world_next.*`
+    /// values into each reader's `world.*` slots in the same tick.
+    pub fn query_with_pins_and_given(
+        &self,
+        claim_name: &str,
+        pins: &[(&str, z3::ast::Datatype<'static>)],
+        given: &HashMap<String, Value>,
+    ) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
         let r = crate::translate::evaluate_with_extra_assertions(
             schema,
-            &HashMap::new(),
+            given,
             &self.schemas,
             self.z3_ctx,
             &self.datatypes,
