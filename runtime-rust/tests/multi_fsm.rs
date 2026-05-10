@@ -106,6 +106,40 @@ fn sibling_no_world() {
 // drops it before counter reaches the threshold.
 
 #[test]
+fn timer_and_stdin_lang_test_09_multi_plugin() {
+    // Multi-plugin demo: World declares both tick_count + stdin
+    // fields → both FrameTimer and StdinSource auto-install.
+    // Watcher subscribes to both, halts after 2 events.
+    use std::process::{Command, Stdio};
+    use std::io::Write;
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .env("EVIDENT_TICK_MS", "30")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/09_timer_and_stdin.ev",
+               "--max-steps", "100"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    {
+        // Pipe two lines fast — likely both arrive before any tick.
+        let stdin = child.stdin.as_mut().expect("stdin");
+        stdin.write_all(b"alpha\nbeta\n").unwrap();
+    }
+    let output = child.wait_with_output().expect("wait");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("threshold reached"),
+        "should reach threshold; out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; got {:?}; stderr:\n{}",
+        output.status, String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn timer_lang_test_07_plugin_as_writer() {
     // Timer demo: FrameTimer auto-installed (because World has
     // tick_count: Int). Plugin writes incrementing tick counts.
