@@ -63,6 +63,12 @@ The world record is the sole channel for shared state.
 
 ## Lifecycle: halt-per-FSM is the load-bearing semantic
 
+> **Note (2026-05-09)**: The halt mechanism described in this section
+> is being replaced by subscription-driven scheduling. See
+> [`fsm-subscriptions.md`](fsm-subscriptions.md) for the new model.
+> The rest of this doc (writer/reader, world composition, examples)
+> remains accurate.
+
 The single-FSM runtime treats halt as program termination
 (`state == state_next AND effects == ⟨⟩` → exit cleanly). In the
 multi-FSM design, halt is **per-FSM**: when one FSM hits the halt

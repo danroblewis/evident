@@ -1,0 +1,368 @@
+# FSM Subscription Scheduler
+
+Status: design (no code yet)
+Supersedes the halt mechanism in `docs/design/multi-fsm.md`.
+
+## Motivation
+
+The multi-FSM scheduler currently ticks every alive FSM on every
+iteration. Halt is a heuristic — either a name convention
+(`Done`/`Halt` variants) or a fixpoint check (`state_next == state ∧
+effects = ⟨⟩`). Both are proxies for the real question:
+
+> Does this FSM have any possible future input?
+
+If the answer is no, the FSM has nothing to compute over and should
+not be scheduled. If the answer is yes, it might tick — but only
+when one of those inputs actually changes.
+
+**The reframe**: an FSM is an I/O agent. It blocks naturally when its
+inputs are absent. The runtime is a scheduler that wakes FSMs when
+their declared inputs produce events. Halt becomes implicit — no
+inputs going forward means no schedule, no compute.
+
+This unifies several concerns that were ad-hoc:
+
+  * Halt — no longer a name convention or a fixpoint heuristic. An
+    FSM is "done" when none of its subscriptions can fire again.
+  * Polling — an FSM waiting on stdin doesn't burn cycles spinning
+    in `Idle`. The runtime simply doesn't tick it until stdin has
+    bytes.
+  * Cleanup — an FSM that subscribes to a `Shutdown` event source
+    sleeps until the runtime fires that source on program exit.
+  * Parallelism — FSMs whose subscriptions don't overlap could be
+    scheduled concurrently (deferred).
+
+## The model
+
+An FSM has zero or more **subscriptions**. Subscriptions come from
+three places, all known statically at load time:
+
+  1. **World read-set** — every `world.X` referenced anywhere in the
+     FSM body. Auto-inferred from the AST. Fires when the field is
+     written by some FSM (or by the runtime).
+  2. **Plugin event sources** — declared via type membership in the
+     FSM signature: `∈ Stdin`, `∈ FrameTimer`, etc. Each plugin owns
+     a set of event types and decides when its events fire.
+  3. **Self-feedback** — when an FSM emits effects, the dispatched
+     results flow into its `last_results` on the next tick. Implicit;
+     present iff the FSM emitted effects.
+
+Plus one **bootstrap event** that fires once at tick 0, scheduling
+every FSM for its initial run.
+
+A subscription is **alive** if its source can produce future events.
+**Dead** if it cannot:
+
+  * Plugin source — stdin EOF, frame timer canceled, plugin
+    explicitly closed.
+  * World field — the FSM that writes the field has no live
+    subscriptions of its own → never ticks again → field is frozen.
+    Transitive: a field written only by a dead FSM is dead.
+  * Self-feedback — the FSM emitted no effects on the previous tick.
+
+An FSM is **alive** iff at least one of its subscriptions is alive.
+
+The **program halts** when no FSM is alive AND no plugin event source
+has a pending event. There is no `Done` variant, no fixpoint detector
+— just "is there any event that could schedule any FSM?"
+
+`Effect::Exit(code)` from any FSM is the explicit kill switch,
+independent of natural halt. Useful for "user pressed Q" or fatal
+errors.
+
+## Granularity: one FSM with N subscriptions vs N FSMs with one each
+
+Two shapes are equivalent in capability:
+
+```evident
+-- Shape A: one FSM, multiple subscriptions, internal dispatch
+claim main(state, state_next ∈ AppState,
+           input ∈ Stdin,        -- subscription 1
+           timer ∈ FrameTimer,   -- subscription 2
+           ...)
+    state_next = match state
+        Booting   ⇒ ...
+        WaitInput ⇒ (input.ready ? ProcessKey : WaitInput)
+        WaitTimer ⇒ (timer.fired ? Render : WaitTimer)
+        ...
+```
+
+```evident
+-- Shape B: many FSMs, one subscription each, world-coordinated
+claim input_handler(input ∈ Stdin,
+                    world, world_next ∈ World, ...)
+    -- writes world.last_key on each stdin event
+
+claim renderer(timer ∈ FrameTimer,
+               world ∈ World, ...)
+    -- reads world.last_key and the timer; draws each frame
+```
+
+Runtime cost is the same (one cached Z3 model per FSM). The
+difference is purely a programming model choice — Shape A
+centralizes dispatch in `match`; Shape B distributes it via world
+writes.
+
+The runtime treats both identically. No special case for "one big
+FSM" vs "many small FSMs."
+
+## Implementation phases
+
+Each phase is independently testable; phases 1–3 ship the model
+end-to-end.
+
+### Phase 1: Static read-set inference
+
+Walk each top-level claim's AST once at load time. For every
+expression of the form `world.X`, record `X` in the claim's read-set.
+For `world_next.X`, record `X` in the claim's write-set.
+
+Output: `read_sets: HashMap<String, HashSet<String>>` and
+`write_sets: HashMap<String, HashSet<String>>`, indexed by claim
+name.
+
+Test: assert that for `effect_multi_fsm_transpiled.ev`,
+  * `setup.read_set` is `{}` (writer only)
+  * `setup.write_set` is `{window, ctx, vao, prog, time_loc}`
+  * `render.read_set` is `{window, prog, time_loc}` (matches what
+    the body actually uses; vao and ctx are written but not read by
+    render)
+  * `render.write_set` is `{}` (reader only)
+
+This is the foundation; no behavior change yet.
+
+### Phase 2: World-delta scheduler
+
+Replace the unconditional per-FSM iteration with delta-driven
+scheduling.
+
+Per tick:
+
+  1. Compute `changed_fields = {f ∣ world_next.f ≠ world.f}` from
+     the previous tick's writer solve. On tick 0, `changed_fields`
+     is "everything" (bootstrap).
+  2. For each FSM, schedule it iff
+     `read_set ∩ changed_fields ≠ ∅` OR
+     it has self-feedback pending (last tick emitted effects) OR
+     bootstrap (tick 0).
+  3. Solve scheduled FSMs in declaration order; writer first if it's
+     scheduled.
+  4. Dispatch effects; capture results into per-FSM `last_results`.
+  5. Update `world` from `world_next`; remember which fields
+     changed for the next tick's scheduler decision.
+
+Live-set maintenance:
+
+  * An FSM remains alive as long as it is scheduled or has any
+    plugin subscription.
+  * An FSM that is not scheduled this tick AND has no plugin
+    subscriptions AND its read-set is entirely fields-frozen →
+    becomes dead. Frozen = field's writer is dead.
+
+Halt: program halts when no FSM is alive AND no plugin source has
+events.
+
+Test: the 4 existing multi-FSM tests pass with the new scheduler.
+In `effect_multi_fsm_transpiled.ev`, setup is scheduled exactly twice
+(tick 0 bootstrap + tick 1 because effects from tick 0 fed back via
+self-feedback) and never again — render keeps ticking because of
+self-feedback (its frame_seq emits effects each tick).
+
+### Phase 3: Per-FSM Exit + drop name-based halt
+
+  * `Effect::Exit(code)` may be emitted by any FSM. Runtime exits
+    cleanly, returning `code`.
+  * Remove `model_matches_value`'s `Done`/`Halt` special case from
+    `effect_loop.rs`. Halt is now subscription-driven.
+  * Remove the value-equality fixpoint halt from multi-FSM. Same.
+  * The single-FSM path keeps its existing fixpoint heuristic for
+    backward compatibility OR converts in-place — TBD by then.
+
+Test: rewrite `runtime-rust/tests/multi_fsm.rs` to assert halt
+without any `Done` variant. The four `programs/lang_tests/multi_fsm/`
+files keep working; their `Done` variants become regular states with
+no special meaning, and halt is observed via subscription dropoff.
+
+### Phase 4: Plugin subscription model
+
+Plugins gain a method to report "I have a fresh event for this FSM"
+and "I am permanently done." Stdin plugin returns "done" on EOF.
+Frame timer plugin returns events on a wall-clock interval.
+
+Scheduler waits (`select`/`poll` style) when its ready set is empty
+and at least one plugin source is potentially-live. Returns when any
+plugin fires or all sources go dead.
+
+Test: a stdin-reader FSM that blocks until input arrives; verify
+zero CPU usage while waiting; verify clean exit on EOF.
+
+### Phase 5: Self-feedback as a first-class subscription
+
+Phases 2–3 treat self-feedback as a special "did we emit anything?"
+flag. Phase 5 unifies it: an FSM has a subscription on its own
+`last_results`, fired by the dispatcher.
+
+This is mostly internal cleanup — no new user-facing behavior.
+
+## Worked examples
+
+### Setup-then-render (transpiled triangle)
+
+```
+read_sets:
+  setup:  {}                        — writer only
+  render: {window, prog, time_loc}  — reads handles
+write_sets:
+  setup:  {window, ctx, vao, prog, time_loc}
+  render: {}
+
+Tick 0 (bootstrap): both scheduled.
+  setup  → emits setup_seq, world_next unchanged from defaults
+  render → reads world.prog == 0, idles, emits nothing
+Tick 0 dispatch: setup_seq runs, last_results filled.
+
+Tick 1: setup scheduled (self-feedback from tick 0's effects).
+        render not scheduled (no world delta yet, no self-feedback).
+  setup → captures handles into world_next, emits nothing
+Tick 1 dispatch: nothing for setup.
+
+Tick 2: world delta = {window, ctx, vao, prog, time_loc}.
+        setup not scheduled (no world fields in its read-set; no
+                              self-feedback from tick 1).
+        render scheduled (world delta intersects read-set).
+  render → emits frame_seq.
+Tick 2 dispatch: frame_seq runs.
+
+Tick 3+: render scheduled by self-feedback each tick. Setup is dead
+         (no live subscriptions). Frame timer is the actual pacing
+         (Phase 4).
+```
+
+Setup ticks exactly twice. Render ticks until frame counter reaches
+zero (currently a body-internal mechanism; Phase 4 makes it a real
+timer plugin).
+
+### Stdin reader that blocks
+
+```evident
+claim input_loop(input ∈ Stdin,
+                 state, state_next ∈ ReaderState,
+                 last_results ∈ ResultList,
+                 effects ∈ EffectList)
+    -- echoes each input character
+    state_next = state  -- always same
+    effects = ⟨Println(input.line)⟩
+```
+
+Subscriptions: `Stdin` (plugin). No world reads. No self-feedback
+needed for scheduling (stdin pushes).
+
+Tick 0: scheduled (bootstrap), input.line = first line. Print.
+Tick N: scheduled when stdin has another line. Print.
+EOF: stdin source dies. FSM has no live subscriptions. Halt.
+
+Zero polling. Sleeps in `select()` between lines.
+
+### Cleanup FSM
+
+```evident
+claim shutdown_handler(signal ∈ ShutdownSignal,
+                       world ∈ World,
+                       state, state_next ∈ CleanupState,
+                       last_results ∈ ResultList,
+                       effects ∈ EffectList)
+    -- runs cleanup effects when ShutdownSignal fires
+    state_next = match state
+        Idle    ⇒ (signal.fired ? Cleanup : Idle)
+        Cleanup ⇒ Done   -- regular state, no halt magic
+        Done    ⇒ Done
+    effects = match state
+        Cleanup ⇒ ⟨gl_delete_program(world.prog), sdl_quit⟩
+        _       ⇒ ⟨⟩
+```
+
+Subscriptions: `ShutdownSignal` (plugin). World read-set:
+`{prog}`. Self-feedback: when emitting cleanup effects.
+
+Tick 0: scheduled (bootstrap). signal.fired = false. Idle.
+Tick N: not scheduled (signal silent, prog unchanged).
+Some tick: program receives SIGTERM (or render emits a Shutdown
+  effect). Plugin fires the signal. FSM scheduled. Transitions
+  Idle → Cleanup, emits cleanup effects.
+Next tick: scheduled by self-feedback. Cleanup → Done. No effects.
+Subsequent ticks: signal silent (already fired), no self-feedback,
+  Done → Done would not fire because no input changes. FSM dead.
+
+## Open questions
+
+### Field-level vs whole-world deltas
+
+Phase 2 uses field-level granularity: `read_set ∩ changed_fields`. An
+alternative is "world changed" (any field) → schedule any reader.
+Cheaper to compute, less precise — every reader wakes on every world
+write. Probably field-level is right since we already have the AST
+walker; revisit if delta computation shows up in profiles.
+
+### Push vs pull for plugin events
+
+Plugins could push events to the runtime (callback), or the runtime
+polls plugins each tick. Push is more efficient for blocking
+sources; pull is simpler. Likely a hybrid: pollable interface with
+optional event-driven fast path.
+
+### Parallel scheduling
+
+If two scheduled FSMs have disjoint read-sets and write-sets in a
+tick, they could solve in parallel. Z3 isn't thread-safe but each
+FSM has its own cached `Solver` instance — separate solver
+processes or thread-local Z3 contexts could enable this. Pure
+optimization; defer.
+
+### Migration of existing programs
+
+Programs with `Done` variants and the value-equality fixpoint will
+behave differently. Possible compat shim: keep the name-based halt
+firing as an "implicit Exit" for one release, with a deprecation
+warning.
+
+### Static read-set under conditional reads
+
+`world.X` inside a `match` arm or `if` is still a read; we conserva-
+tively assume the worst (FSM might read X). That's the right call —
+the alternative is execution-trace-dependent scheduling, which leaks
+solver semantics into the scheduler.
+
+### Read-set of plugin types
+
+`input ∈ Stdin` is a subscription, not a world read. But the body
+can reference `input.line` etc. Those should be tracked as part of
+the plugin subscription, not the world read-set. Clean separation:
+`world.X` → world read-set; `<plugin_var>.field` → plugin
+subscription only matters that the plugin is live.
+
+## Migration plan
+
+1. Land Phase 1 with no behavior change. Add unit tests that pin
+   the read-sets for existing demos.
+2. Land Phase 2 behind an env flag (`EVIDENT_SCHEDULER=delta`)
+   defaulting to the current "tick everyone" behavior. Verify
+   existing tests pass under both modes.
+3. Flip the default. Drop name-based halt + fixpoint halt as part
+   of Phase 3.
+4. Phase 4 (plugin subscriptions) fixes the polling cost for
+   stdin-style FSMs.
+5. Phase 5 is internal cleanup; not user-visible.
+
+## What this replaces in `multi-fsm.md`
+
+  * "Lifecycle: halt-per-FSM is the load-bearing semantic" — replaced
+    by subscription-driven scheduling. Halt is no longer a primitive.
+  * "What 'halt' means precisely" — removed; halt is "no live
+    subscriptions."
+  * "Program-level halt" — restated as "no live FSM and no pending
+    plugin event."
+
+The rest of `multi-fsm.md` (writer/reader pattern, world
+composition, worked examples 1–5) stays valid; it's about how to
+*structure* multi-FSM programs, not how the runtime schedules them.
