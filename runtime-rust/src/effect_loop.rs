@@ -363,6 +363,24 @@ pub fn run_with_ctx(
             plugin_writes.insert("now_ms".to_string());
         }
 
+        // FileWatcher — auto-install if World has `file_changed:
+        // Int`. Watches the path from EVIDENT_FILE_WATCH env;
+        // increments the field on each detected mtime change.
+        // Poll interval via EVIDENT_FILE_WATCH_MS (default 200ms).
+        if has_field("file_changed", "Int") {
+            if let Ok(path) = std::env::var("EVIDENT_FILE_WATCH") {
+                let ms: u64 = std::env::var("EVIDENT_FILE_WATCH_MS").ok()
+                    .and_then(|s| s.parse().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or(200);
+                let mut w = crate::event_sources::FileWatcherSource::new(&path, ms, "file_changed");
+                w.start(event_tx.clone())
+                    .map_err(|e| format!("failed to start FileWatcher for {path:?}: {e}"))?;
+                event_sources.push(Box::new(w));
+                plugin_writes.insert("file_changed".to_string());
+            }
+        }
+
         // FileLineReader — auto-install if World has `file_line:
         // String`. Path comes from EVIDENT_FILE_INPUT env var.
         // Optional companions: `file_seq: Int` (sequence counter)
