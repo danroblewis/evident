@@ -921,13 +921,15 @@ impl SdlWindowSource {
             0i64
         };
 
-        // Default VAO (optional). Core profile draws need one
-        // bound; rather than make every program create + bind
-        // it inline, do it here. Loaded from the OpenGL framework
-        // since SDL's GL has the symbols.
-        let vao_id = if let Some(_) = &self.vao_field {
-            type GlGenVertexArrays = unsafe extern "C" fn(c_int, *mut c_uint);
-            type GlBindVertexArray = unsafe extern "C" fn(c_uint);
+        // Default VAO (optional) + viewport. Core profile draws
+        // need a bound VAO; on Apple's GL-on-Metal driver the
+        // default viewport is 0×0 until you set it. Both bridge
+        // installs reuse the same OpenGL handle so we open it
+        // once.
+        type GlGenVertexArrays = unsafe extern "C" fn(c_int, *mut c_uint);
+        type GlBindVertexArray = unsafe extern "C" fn(c_uint);
+        type GlViewport        = unsafe extern "C" fn(c_int, c_int, c_int, c_int);
+        let vao_id = if self.vao_field.is_some() {
             // Try OpenGL framework / libGL.
             let gl_paths = [
                 "/System/Library/Frameworks/OpenGL.framework/OpenGL",
@@ -941,13 +943,21 @@ impl SdlWindowSource {
                     unsafe { gl_lib.get(b"glGenVertexArrays\0") };
                 let bind_vao: Result<Symbol<GlBindVertexArray>, _> =
                     unsafe { gl_lib.get(b"glBindVertexArray\0") };
-                if let (Ok(gen), Ok(bind)) = (gen_vao, bind_vao) {
+                let viewport: Result<Symbol<GlViewport>, _> =
+                    unsafe { gl_lib.get(b"glViewport\0") };
+                let id = if let (Ok(gen), Ok(bind)) = (gen_vao, bind_vao) {
                     let mut id: c_uint = 0;
                     unsafe { gen(1, &mut id as *mut c_uint); bind(id); }
-                    // Leak the gl_lib to keep symbols alive for the program.
-                    let _: &'static Library = Box::leak(Box::new(gl_lib));
                     id as i64
-                } else { 0 }
+                } else { 0 };
+                // Apple's GL-on-Metal default viewport is 0×0; set
+                // it explicitly so draws actually rasterize. Width
+                // and height come from the SDL_Window FTI pin.
+                if let Ok(vp) = viewport {
+                    unsafe { vp(0, 0, self.width, self.height); }
+                }
+                let _: &'static Library = Box::leak(Box::new(gl_lib));
+                id
             } else { 0 }
         } else { 0 };
 
@@ -1160,6 +1170,8 @@ impl GlProgramSource {
         type GlDeleteShader   = unsafe extern "C" fn(c_uint);
         type GlGetShaderiv    = unsafe extern "C" fn(c_uint, c_uint, *mut c_int);
         type GlGetShaderInfoLog = unsafe extern "C" fn(c_uint, c_int, *mut c_int, *mut c_char);
+        type GlGetProgramiv     = unsafe extern "C" fn(c_uint, c_uint, *mut c_int);
+        type GlGetProgramInfoLog = unsafe extern "C" fn(c_uint, c_int, *mut c_int, *mut c_char);
 
         let create_shader: Symbol<GlCreateShader>   = unsafe { lib.get(b"glCreateShader\0") }
             .map_err(|e| format!("glCreateShader: {e}"))?;
@@ -1181,6 +1193,10 @@ impl GlProgramSource {
             .map_err(|e| format!("glGetShaderiv: {e}"))?;
         let get_shader_log: Symbol<GlGetShaderInfoLog> = unsafe { lib.get(b"glGetShaderInfoLog\0") }
             .map_err(|e| format!("glGetShaderInfoLog: {e}"))?;
+        let get_program_iv: Symbol<GlGetProgramiv> = unsafe { lib.get(b"glGetProgramiv\0") }
+            .map_err(|e| format!("glGetProgramiv: {e}"))?;
+        let get_program_log: Symbol<GlGetProgramInfoLog> = unsafe { lib.get(b"glGetProgramInfoLog\0") }
+            .map_err(|e| format!("glGetProgramInfoLog: {e}"))?;
 
         let compile = |kind: c_uint, src: &str| -> Result<c_uint, String> {
             let id = unsafe { create_shader(kind) };
@@ -1214,6 +1230,20 @@ impl GlProgramSource {
             attach_shader(prog, vs);
             attach_shader(prog, fs);
             link_program(prog);
+        }
+        // Check link status (GL_LINK_STATUS = 0x8B82). Silent
+        // link failure is the classic black-screen footgun.
+        let mut link_status: c_int = 0;
+        unsafe { get_program_iv(prog, 0x8B82, &mut link_status); }
+        if link_status == 0 {
+            let mut log = vec![0i8; 1024];
+            let mut len: c_int = 0;
+            unsafe { get_program_log(prog, 1024, &mut len, log.as_mut_ptr() as *mut c_char); }
+            let log_str: String = log.iter().take(len as usize)
+                .map(|&b| b as u8 as char).collect();
+            return Err(format!("program link failed: {log_str}"));
+        }
+        unsafe {
             use_program(prog);
             delete_shader(vs);
             delete_shader(fs);
