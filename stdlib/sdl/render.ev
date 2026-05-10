@@ -102,6 +102,19 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 --   (b) horizontal lines per row, where N = height
 --       (very slow for large fills — h LibCalls per frame).
 
+-- SDL_RenderFillRect(renderer, *SDL_Rect) — filled rectangle in
+-- the current draw color. The struct is built via the new
+-- ArgI32Buf primitive: `⟨pos.x, pos.y, size.x, size.y⟩` packs into
+-- a heap buffer that lives for the call's duration.
+claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
+                       out ∈ Effect)
+    rect_buf ∈ IntList
+    rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
+                  "i(pp)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgI32Buf(rect_buf), ArgNil)))
+
 -- Outline rectangle as 4 lines (top, right, bottom, left). All
 -- drawn with the renderer's current draw color. Inclusive bounds:
 -- the rect spans `pos` to `pos + size` (componentwise).

@@ -49,6 +49,9 @@ import "stdlib/sdl/render.ev"
 enum Renderable =
     -- pos.x, pos.y, size.x, size.y, color.red, .green, .blue, .alpha
     RRect(Int, Int, Int, Int, Int, Int, Int, Int)
+    -- pos.x, pos.y, size.x, size.y, color.red, .green, .blue, .alpha
+    -- Filled via SDL_RenderFillRect (uses ArgI32Buf for SDL_Rect).
+    RFilledRect(Int, Int, Int, Int, Int, Int, Int, Int)
     -- from.x, from.y, to.x, to.y, color.red, .green, .blue, .alpha
     RLine(Int, Int, Int, Int, Int, Int, Int, Int)
     -- p.x, p.y, color.red, .green, .blue, .alpha
@@ -70,14 +73,17 @@ enum RenderableList =
 claim render_one(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
     is_rect ∈ Bool
     is_rect  = (item matches RRect(_, _, _))
+    is_filled_rect ∈ Bool
+    is_filled_rect = (item matches RFilledRect(_, _, _))
     is_line ∈ Bool
     is_line  = (item matches RLine(_, _, _))
     is_point ∈ Bool
     is_point = (item matches RPoint(_, _))
 
-    is_rect  ⇒ render_one_rect
-    is_line  ⇒ render_one_line
-    is_point ⇒ render_one_point
+    is_rect        ⇒ render_one_rect
+    is_filled_rect ⇒ render_one_filled_rect
+    is_line        ⇒ render_one_line
+    is_point       ⇒ render_one_point
 
 claim render_one_rect(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
     px, py, sx, sy, cr, cg, cb, ca ∈ Int
@@ -121,6 +127,49 @@ claim render_one_rect(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
 
     full_inner ∈ EffectList
     full_inner = EffCons(color_eff, line_eff_list)
+    out = Seq(full_inner)
+
+claim render_one_filled_rect(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    px, py, sx, sy, cr, cg, cb, ca ∈ Int
+    px = match item
+        RFilledRect(v, _, _, _, _, _, _, _) ⇒ v
+        _                                    ⇒ 0
+    py = match item
+        RFilledRect(_, v, _, _, _, _, _, _) ⇒ v
+        _                                    ⇒ 0
+    sx = match item
+        RFilledRect(_, _, v, _, _, _, _, _) ⇒ v
+        _                                    ⇒ 0
+    sy = match item
+        RFilledRect(_, _, _, v, _, _, _, _) ⇒ v
+        _                                    ⇒ 0
+    cr = match item
+        RFilledRect(_, _, _, _, v, _, _, _) ⇒ v
+        _                                    ⇒ 0
+    cg = match item
+        RFilledRect(_, _, _, _, _, v, _, _) ⇒ v
+        _                                    ⇒ 0
+    cb = match item
+        RFilledRect(_, _, _, _, _, _, v, _) ⇒ v
+        _                                    ⇒ 0
+    ca = match item
+        RFilledRect(_, _, _, _, _, _, _, v) ⇒ v
+        _                                    ⇒ 0
+
+    rpos ∈ IVec2
+    rpos = IVec2(px, py)
+    rsize ∈ IVec2
+    rsize = IVec2(sx, sy)
+    rcolor ∈ Color
+    rcolor = Color(cr, cg, cb, ca)
+
+    color_eff ∈ Effect
+    set_draw_color(renderer, rcolor, color_eff)
+    fill_eff ∈ Effect
+    render_fill_rect(renderer, rpos, rsize, fill_eff)
+
+    full_inner ∈ EffectList
+    full_inner = EffCons(color_eff, EffCons(fill_eff, EffNil))
     out = Seq(full_inner)
 
 claim render_one_line(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)

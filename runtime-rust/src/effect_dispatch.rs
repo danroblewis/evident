@@ -181,6 +181,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
                     EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
                     EffectFfiArg::IntOut    => FfiArg::IntOut,
+                    EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
                     // PriorResult is resolved by dispatch_seq before
                     // it reaches us. If one slips through, bail.
                     EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
@@ -277,6 +278,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
                     EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
                     EffectFfiArg::IntOut    => FfiArg::IntOut,
+                    EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
                     // PriorResult is resolved by dispatch_seq before
                     // it reaches us. If one slips through, bail.
                     EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
@@ -331,6 +333,7 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
         (EffectFfiArg::Handle(_), EffectFfiArg::Handle(_)) => true,
         (EffectFfiArg::StrArr(p), EffectFfiArg::StrArr(q)) => p == q,
         (EffectFfiArg::IntOut,    EffectFfiArg::IntOut)    => true,
+        (EffectFfiArg::I32Buf(p), EffectFfiArg::I32Buf(q)) => p == q,
         (EffectFfiArg::PriorResult(p), EffectFfiArg::PriorResult(q)) => p == q,
         _ => false,
     })

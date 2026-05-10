@@ -30,6 +30,14 @@ enum StrList =
     StrNil
     StrCons(String, StrList)
 
+-- Cons/Nil list of Ints. Used by ArgI32Buf to pack N int32s into a
+-- contiguous heap buffer for FFI calls (SDL_Rect, SDL_Point, …).
+-- The ⟨a, b, c⟩ shorthand lowers to ICons(a, ICons(b, ICons(c, INil)))
+-- when the LHS is IntList-typed.
+enum IntList =
+    INil
+    ICons(Int, IntList)
+
 enum FFIArg =
     ArgInt(Int)
     ArgBool(Bool)
@@ -50,6 +58,10 @@ enum FFIArg =
     -- (typed by that result's variant: HandleResult → handle ptr,
     -- IntResult → int, etc.). Index is local to the enclosing Seq.
     ArgPriorResult(Int)
+    -- ArgI32Buf(IntList) — pack N int32s into a contiguous buffer,
+    -- pass pointer. Used for fixed-layout int-struct args like
+    -- SDL_Rect { x, y, w, h } (call site: ArgI32Buf(⟨x, y, w, h⟩)).
+    ArgI32Buf(IntList)
 
 enum ArgList =
     ArgNil

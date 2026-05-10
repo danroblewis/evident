@@ -315,6 +315,12 @@ pub enum EffectFfiArg {
     /// Real). Index is local to the enclosing Seq (0 = first call's
     /// result). Out of range → error.
     PriorResult(usize),
+    /// Pack N i32s into a contiguous heap buffer, pass its pointer
+    /// (`p` slot). Used for fixed-layout homogeneous-int32 structs:
+    /// `SDL_Rect { x, y, w, h }` (4 i32s = 16 bytes) and
+    /// `SDL_Point { x, y }` (2 i32s = 8 bytes). The buffer lives for
+    /// the duration of the call only — C side must not retain it.
+    I32Buf(Vec<i32>),
     /// `ArgIntOut` — 0-arity marker for "writes one i32 into the
     /// pointed-to slot" output args (`glGenVertexArrays(1, &vao)`,
     /// `glGetShaderiv(...)`, etc.). The dispatcher allocates a

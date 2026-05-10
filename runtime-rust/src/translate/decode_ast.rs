@@ -604,6 +604,11 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
             need_arity(variant, fields, 1)?;
             EffectFfiArg::PriorResult(decode_int(&fields[0])? as usize)
         }
+        "ArgI32Buf" => {
+            need_arity(variant, fields, 1)?;
+            let ints = decode_int_list(&fields[0])?;
+            EffectFfiArg::I32Buf(ints.into_iter().map(|n| n as i32).collect())
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),
         }),
@@ -613,6 +618,11 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
 /// Cons/Nil-shaped `StrList` decoder. Used as `ArgStrArr`'s payload.
 pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
     decode_list(v, "StrList", "StrNil", "StrCons", |item| decode_str(item))
+}
+
+/// Cons/Nil-shaped `IntList` decoder. Used as `ArgI32Buf`'s payload.
+pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
+    decode_list(v, "IntList", "INil", "ICons", decode_int)
 }
 
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {
