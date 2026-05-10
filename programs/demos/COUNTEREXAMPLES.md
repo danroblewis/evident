@@ -250,6 +250,7 @@ Every demo ships in green:
 | 14 | stdin | StdinSource plugin-as-writer |
 | 15 | signal | SigintSource plugin-as-writer |
 | 16 | sdl_red | SDL_Renderer (renderer-based, not GL) |
+| 17 | sdl_triangle | SDL_RenderGeometry triangle (everything in one Seq on tick 0) |
 
 Plus inline `sat_*` / `unsat_*` static tests and the Rust
 driver in `runtime-rust/tests/demos.rs`.

@@ -126,6 +126,16 @@ claim sdl_destroy_window(window ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyWindow",
                   "v(p)", ArgCons(ArgHandle(window), ArgNil))
 
+-- *_after variants for inside an Effect::Seq when the window
+-- pointer comes from a prior result rather than a known Int.
+claim sdl_show_window_after(prior_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_ShowWindow",
+                  "v(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+
+claim sdl_raise_window_after(prior_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RaiseWindow",
+                  "v(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+
 -- SDL_Quit() — shut down all initialized SDL subsystems.
 claim sdl_quit(out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Quit",

@@ -96,6 +96,21 @@ claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
                   "v(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
 
+-- SDL_RenderGeometry but takes the renderer pointer from the
+-- Nth prior result of the enclosing Seq (instead of a known
+-- Int handle). Use inside an Effect::Seq when the renderer
+-- was created earlier in the same Seq.
+claim render_geometry_after(prior_idx ∈ Int, vertices ∈ SDLVertexList,
+                            n ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
+                  "i(pppipi)",
+                  ArgCons(ArgPriorResult(prior_idx),
+                  ArgCons(ArgHandle(0),                   -- NULL texture
+                  ArgCons(ArgSDLVertexBuf(vertices),
+                  ArgCons(ArgInt(n),
+                  ArgCons(ArgHandle(0),                   -- NULL indices
+                  ArgCons(ArgInt(0), ArgNil)))))))
+
 -- ── Lines + points ────────────────────────────────────────────
 
 -- SDL_RenderDrawLine(renderer, from, to) → int.

@@ -1,0 +1,94 @@
+-- 17_sdl_triangle — SDL Renderer triangle.
+--
+-- Single-tick render: init, create window + renderer, draw the
+-- triangle 60 times (with delays between), and halt — all
+-- inside ONE Effect::Seq. This is the only render pattern
+-- known to work in this runtime today (see
+-- COUNTEREXAMPLES.md #7 and #9 for why per-tick rendering
+-- can't carry the renderer pointer across ticks).
+--
+-- All FFI is in stdlib helpers; the demo file has zero
+-- LibCall / dylib paths.
+
+import "stdlib/runtime.ev"
+import "stdlib/sdl/window.ev"
+import "stdlib/sdl/render.ev"
+
+enum TState = Init | Done
+
+claim triangle(state, state_next ∈ TState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    -- Triangle vertices: red top, green bottom-left, blue
+    -- bottom-right. Colors interpolate across the face.
+    v0 ∈ SDLVertex
+    v0 = MkSDLVertex(320.0, 80.0,  240, 80, 80, 255, 0.0, 0.0)
+    v1 ∈ SDLVertex
+    v1 = MkSDLVertex(80.0,  400.0, 80, 240, 80, 255, 0.0, 0.0)
+    v2 ∈ SDLVertex
+    v2 = MkSDLVertex(560.0, 400.0, 80, 80, 240, 255, 0.0, 0.0)
+    verts ∈ SDLVertexList
+    verts = SVCons(v0, SVCons(v1, SVCons(v2, SVNil)))
+
+    bg ∈ Color
+    bg = Color(20, 20, 30, 255)
+
+    -- One Seq does init → window → renderer (held in
+    -- PriorResult(2) for the rest of the chain) → frame loop
+    -- expanded inline → halt. PriorResult indices are
+    -- positional in the Seq.
+    init_eff ∈ Effect
+    sdl_init(32, init_eff)
+    create_win_eff ∈ Effect
+    sdl_create_window("Triangle", 805240832, 805240832, 640, 480, 4, create_win_eff)
+    show_eff ∈ Effect
+    sdl_show_window_after(1, show_eff)
+    raise_eff ∈ Effect
+    sdl_raise_window_after(1, raise_eff)
+    create_ren_eff ∈ Effect
+    create_renderer_after(1, create_ren_eff)
+
+    -- After init/win/show/raise/renderer, the renderer is at
+    -- Seq position 4. Per-frame ops reference PriorResult(4).
+    color_eff ∈ Effect
+    set_draw_color_after(4, bg, color_eff)
+    clear_eff ∈ Effect
+    render_clear_after(4, clear_eff)
+    geom_eff ∈ Effect
+    render_geometry_after(4, verts, 3, geom_eff)
+    present_eff ∈ Effect
+    render_present_after(4, present_eff)
+    pump_eff ∈ Effect
+    sdl_pump_events(pump_eff)
+    delay_eff ∈ Effect
+    sdl_delay(500, delay_eff)
+
+    -- Setup (5 effects: init, create_win, show, raise,
+    -- create_ren) + 5 inlined frame iterations + final delay
+    -- so the window stays open long enough to see.
+    full_chain ∈ EffectList
+    full_chain = ⟨init_eff, create_win_eff, show_eff, raise_eff, create_ren_eff,
+                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff⟩
+    full_seq ∈ Effect
+    full_seq = Seq(full_chain)
+
+    effects = match state
+        Init ⇒ ⟨full_seq, Println("done"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+claim sat_init_emits_full_seq_then_exit
+    state ∈ TState
+    state_next ∈ TState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    triangle
+    state_next = Done

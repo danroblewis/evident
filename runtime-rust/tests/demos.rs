@@ -137,9 +137,15 @@ const EXPECTATIONS: &[DemoExpect] = &[
     // test_15_signal — needs SIGINT, only meaningful interactive.
     // test_16_sdl_red — needs a display; renders correctly when run
     //   manually but not testable in a headless CI.
-    // (test_17_sdl_gl_window — REMOVED from demos; the
-    //  pattern doesn't render. Source preserved in
-    //  COUNTEREXAMPLES.md Appendix A.)
+    DemoExpect {
+        // SDL triangle: setup + render in ONE Seq on tick 0, halt.
+        // Visible verification needs a display; here we just check
+        // the program runs to its halt without error.
+        name: "test_17_sdl_triangle", exit: 0,
+        must_lines: &["done"],
+        forbid_exact_lines: &[],
+        max_steps: 5, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
