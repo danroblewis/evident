@@ -210,6 +210,14 @@ pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let mut writers: Vec<MainShape> = Vec::new();
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
+        // Skip test claims by naming convention. `sat_*` and
+        // `unsat_*` claims are the test prefixes recognized by
+        // `evident test`; if they happen to also match the FSM
+        // shape (because they pin state/effects/results to assert
+        // properties of an FSM), don't auto-instantiate them.
+        if name.starts_with("sat_") || name.starts_with("unsat_") {
+            continue;
+        }
         if let Some(shape) = detect_fsm_shape(rt, &name) {
             // Skip claims that include a body-level `spawnable_only`
             // marker — they should only run when explicitly spawned

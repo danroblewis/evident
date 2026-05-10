@@ -1,0 +1,59 @@
+-- 09_two_fsms — two FSMs sharing world state.
+--
+-- `producer` writes a counter into world.n each tick.
+-- `consumer` reads world.n and prints it. Demonstrates
+-- writer-first scheduling: producer's write is visible to
+-- consumer in the SAME tick.
+--
+-- COUNTEREXAMPLE NOTE: enum variant names are global. Two
+-- enums in the same file can't both have `Done` (or any other
+-- shared variant). Hence PEnd / CEnd below.
+
+import "stdlib/runtime.ev"
+
+type World
+    n ∈ Int
+
+enum PState = PStart | PTick(Int) | PEnd
+enum CState = CIdle | CEnd
+
+claim producer(world, world_next ∈ World,
+               state, state_next ∈ PState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = match state
+        PStart    ⇒ PTick(3)
+        PTick(k)  ⇒ (k ≤ 1 ? PEnd : PTick(k - 1))
+        PEnd      ⇒ PEnd
+
+    next_n ∈ Int
+    next_n = match state
+        PStart    ⇒ 3
+        PTick(k)  ⇒ k
+        PEnd      ⇒ 0
+    world_next.n = next_n
+
+    effects = match state
+        PEnd ⇒ ⟨Exit(0)⟩
+        _    ⇒ ⟨⟩
+
+claim consumer(world ∈ World,
+               state, state_next ∈ CState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = match state
+        CIdle ⇒ CIdle
+        CEnd  ⇒ CEnd
+
+    effects = (world.n > 0 ? ⟨Println("got n")⟩ : ⟨⟩)
+
+claim sat_producer_writes_n
+    world ∈ World
+    world_next ∈ World
+    state ∈ PState
+    state_next ∈ PState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = PTick(3)
+    producer
+    world_next.n = 3

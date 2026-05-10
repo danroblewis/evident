@@ -1,0 +1,42 @@
+-- 03_seq_chain — Effect::Seq chains multiple effects in one tick.
+--
+-- Each EffectList element runs in declaration order. Wrapping
+-- them in `Seq(...)` makes them a single Effect that the
+-- dispatcher executes atomically (and lets later calls reference
+-- earlier results via ArgPriorResult).
+--
+-- The simpler form — putting the effects directly in `effects`
+-- without Seq — also runs them in order. Use Seq when you need
+-- prior-result threading; otherwise either is fine.
+
+import "stdlib/runtime.ev"
+
+enum SeqState = Init | Done
+
+claim seq_demo(state, state_next ∈ SeqState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    inner ∈ EffectList
+    inner = ⟨Println("first"), Println("second"), Println("third")⟩
+    chain ∈ Effect
+    chain = Seq(inner)
+
+    effects = match state
+        Init ⇒ ⟨chain, Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+-- Init emits exactly the chained Seq + Exit.
+claim sat_init_emits_chain_then_exit
+    state ∈ SeqState
+    state_next ∈ SeqState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    seq_demo
+    inner ∈ EffectList
+    inner = ⟨Println("first"), Println("second"), Println("third")⟩
+    effects = ⟨Seq(inner), Exit(0)⟩

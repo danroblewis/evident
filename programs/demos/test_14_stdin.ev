@@ -1,0 +1,43 @@
+-- 14_stdin — Plugin-as-writer: declare `stdin_line ∈ String` in
+-- World and the runtime auto-installs StdinSource which writes
+-- one line per Enter to that field.
+--
+-- The FSM reads world.stdin_line and Println's it back —
+-- classic echo. Exits on empty input (EOF or empty line).
+--
+-- Run interactively:
+--   evident effect-run programs/demos/test_14_stdin.ev
+-- Or pipe stdin:
+--   echo -e "hi\nbye\n" | evident effect-run programs/demos/test_14_stdin.ev
+
+import "stdlib/runtime.ev"
+
+type World
+    stdin_line ∈ String
+    stdin_seq  ∈ Int
+
+enum EState = Listening | Done
+
+claim echo(world ∈ World,
+           state, state_next ∈ EState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = match state
+        Listening ⇒ (world.stdin_line = "" ∧ world.stdin_seq > 0 ? Done : Listening)
+        Done      ⇒ Done
+
+    effects = match state
+        Listening ⇒ (world.stdin_seq > 0 ∧ world.stdin_line ≠ "" ? ⟨Println(world.stdin_line)⟩ : ⟨⟩)
+        Done      ⇒ ⟨Println("eof"), Exit(0)⟩
+
+claim sat_done_on_empty_after_input
+    world ∈ World
+    state ∈ EState
+    state_next ∈ EState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    world.stdin_line = ""
+    world.stdin_seq = 3
+    state = Listening
+    echo
+    state_next = Done

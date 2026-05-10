@@ -1,0 +1,53 @@
+-- 10_spawn — Effect::SpawnFsm creates a new FSM instance with
+-- an Int argument.
+--
+-- The parent emits SpawnFsm("worker", N) which:
+--   1. Auto-instantiates the named claim (`worker`)
+--   2. Pins its first state-variant payload to N
+--
+-- The spawned worker reads its arg via `match state`.
+
+import "stdlib/runtime.ev"
+
+enum PState = Spawn | Done
+enum WState = WInit(Int) | WGo
+
+-- The worker is `spawnable_only` — it shouldn't auto-instantiate
+-- at startup, only when explicitly spawned.
+claim worker(state, state_next ∈ WState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    spawnable_only
+
+    state_next = match state
+        WInit(_) ⇒ WGo
+        WGo      ⇒ WGo
+
+    my_id ∈ Int
+    my_id = match state
+        WInit(id) ⇒ id
+        WGo       ⇒ -1
+
+    effects = match state
+        WInit(_) ⇒ ⟨Println("worker spawned")⟩
+        WGo      ⇒ ⟨⟩
+
+claim parent(state, state_next ∈ PState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = match state
+        Spawn ⇒ Done
+        Done  ⇒ Done
+
+    effects = match state
+        Spawn ⇒ ⟨SpawnFsm("worker", 7), Println("parent spawned worker"), Exit(0)⟩
+        Done  ⇒ ⟨⟩
+
+claim sat_parent_emits_spawn
+    state ∈ PState
+    state_next ∈ PState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Spawn
+    parent
+    effects = ⟨SpawnFsm("worker", 7), Println("parent spawned worker"), Exit(0)⟩

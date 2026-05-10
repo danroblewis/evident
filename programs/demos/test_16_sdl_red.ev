@@ -1,0 +1,94 @@
+-- 16_sdl_red — SDL_Renderer (NOT GL) red window. KNOWN WORKING.
+--
+-- Uses the legacy SDL_Renderer pipeline (SDL_CreateRenderer +
+-- SDL_RenderClear + SDL_RenderPresent), which works through
+-- Evident's effect dispatch. The new SDL_Window FTI bridge is
+-- GL-context-only; for the renderer path we still go via raw
+-- LibCalls (or stdlib/sdl/render.ev wrappers).
+--
+-- Window appears red and stays open. Exits after 60 frames.
+
+import "stdlib/runtime.ev"
+
+enum RState = Init | Loop(Int) | Done
+
+claim red(state, state_next ∈ RState,
+          last_results ∈ ResultList,
+          effects ∈ EffectList)
+    state_next = match state
+        Init    ⇒ Loop(60)
+        Loop(n) ⇒ (n ≤ 1 ? Done : Loop(n - 1))
+        Done    ⇒ Done
+
+    -- Inline SDL_Renderer setup. (TODO: provide a SDL_Renderer FTI
+    -- bridge so this becomes one declaration.)
+    init_eff ∈ Effect
+    init_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_Init", "i(i)",
+                       ArgCons(ArgInt(32), ArgNil))     -- SDL_INIT_VIDEO
+    create_win_eff ∈ Effect
+    create_win_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                              "SDL_CreateWindow", "p(siiiii)",
+                              ArgCons(ArgStr("Red"),
+                              ArgCons(ArgInt(805240832),  -- WINDOWPOS_CENTERED
+                              ArgCons(ArgInt(805240832),
+                              ArgCons(ArgInt(640),
+                              ArgCons(ArgInt(480),
+                              ArgCons(ArgInt(4), ArgNil)))))))   -- SHOWN flag
+    create_ren_eff ∈ Effect
+    create_ren_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                              "SDL_CreateRenderer", "p(pii)",
+                              ArgCons(ArgPriorResult(1),
+                              ArgCons(ArgInt(-1),
+                              ArgCons(ArgInt(0), ArgNil))))
+    set_color_eff ∈ Effect
+    set_color_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                             "SDL_SetRenderDrawColor", "i(piiii)",
+                             ArgCons(ArgPriorResult(2),
+                             ArgCons(ArgInt(220),
+                             ArgCons(ArgInt(40),
+                             ArgCons(ArgInt(60),
+                             ArgCons(ArgInt(255), ArgNil))))))
+    clear_eff ∈ Effect
+    clear_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_RenderClear", "i(p)",
+                        ArgCons(ArgPriorResult(2), ArgNil))
+    present_eff ∈ Effect
+    present_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                          "SDL_RenderPresent", "v(p)",
+                          ArgCons(ArgPriorResult(2), ArgNil))
+    pump_eff ∈ Effect
+    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_PumpEvents", "v()", ArgNil)
+    delay_eff ∈ Effect
+    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_Delay", "v(i)",
+                        ArgCons(ArgInt(33), ArgNil))
+
+    init_inner ∈ EffectList
+    init_inner = ⟨init_eff, create_win_eff, create_ren_eff,
+                   set_color_eff, clear_eff, present_eff⟩
+    init_seq ∈ Effect
+    init_seq = Seq(init_inner)
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff, present_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    -- The first Loop tick re-runs the init+frame seq. We inherit
+    -- the renderer pointer because LibCall caches lib+sym handles.
+    -- (Real apps would split setup-FSM and render-FSM.)
+    effects = match state
+        Init    ⇒ ⟨init_seq⟩
+        Loop(n) ⇒ (n > 0 ? ⟨frame_seq⟩ : ⟨⟩)
+        Done    ⇒ ⟨Println("done"), Exit(0)⟩
+
+claim sat_init_emits_init_seq
+    state ∈ RState
+    state_next ∈ RState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    red
+    state_next = Loop(60)

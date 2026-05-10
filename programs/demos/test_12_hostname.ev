@@ -1,0 +1,32 @@
+-- 12_hostname — FTI: declare `_ ∈ Hostname` and the runtime
+-- auto-installs a bridge that runs `hostname` once at startup.
+-- The FSM body reads `host.name` to learn its identity.
+
+import "stdlib/runtime.ev"
+
+enum HState = HWait | HShow | HEnd
+
+claim id(state, state_next ∈ HState,
+         last_results ∈ ResultList,
+         effects ∈ EffectList,
+         host ∈ Hostname)
+    state_next = match state
+        HWait ⇒ (host.name = "" ? HWait : HShow)
+        HShow ⇒ HEnd
+        HEnd  ⇒ HEnd
+
+    effects = match state
+        HWait ⇒ ⟨⟩
+        HShow ⇒ ⟨Println("hostname known"), Exit(0)⟩
+        HEnd  ⇒ ⟨⟩
+
+claim sat_show_when_name_set
+    state ∈ HState
+    state_next ∈ HState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    host ∈ Hostname
+    host.name = "machine"
+    state = HWait
+    id
+    state_next = HShow

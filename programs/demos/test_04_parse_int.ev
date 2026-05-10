@@ -1,0 +1,56 @@
+-- 04_parse_int — Effect::ParseInt with success and error paths.
+--
+-- ParseInt("42") returns IntResult(42); ParseInt("abc") returns
+-- ErrorResult("..."). The FSM emits both calls, then on the next
+-- tick reads last_results and Println's the outcomes.
+
+import "stdlib/runtime.ev"
+
+enum PState = Issue | Read | Done
+
+claim parse_demo(state, state_next ∈ PState,
+                 last_results ∈ ResultList,
+                 effects ∈ EffectList)
+    state_next = match state
+        Issue ⇒ Read
+        Read  ⇒ Done
+        Done  ⇒ Done
+
+    -- Pull the first two results from last_results (the two ParseInts).
+    good ∈ String
+    good = match last_results
+        ResCons(r, _) ⇒ match r
+            IntResult(n)    ⇒ "good: parsed an Int"
+            ErrorResult(_)  ⇒ "good: ERROR was expected to be success"
+            _               ⇒ "good: unknown result"
+        _             ⇒ "no results"
+
+    -- COUNTEREXAMPLE NOTE: nested constructor patterns in match
+    -- (e.g. `ResCons(_, ResCons(r, _))`) don't parse. Workaround:
+    -- descend with a sub-match in the body.
+    rest ∈ ResultList
+    rest = match last_results
+        ResCons(_, tail) ⇒ tail
+        _                ⇒ ResNil
+    bad ∈ String
+    bad = match rest
+        ResCons(r, _) ⇒ match r
+            IntResult(_)   ⇒ "bad: parsed but expected error"
+            ErrorResult(_) ⇒ "bad: ERROR was correct"
+            _              ⇒ "bad: unknown"
+        _             ⇒ "no second result"
+
+    effects = match state
+        Issue ⇒ ⟨ParseInt("42"), ParseInt("not-a-number")⟩
+        Read  ⇒ ⟨Println(good), Println(bad), Exit(0)⟩
+        Done  ⇒ ⟨⟩
+
+-- The Issue tick must emit both ParseInt effects.
+claim sat_issue_emits_two_parses
+    state ∈ PState
+    state_next ∈ PState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Issue
+    parse_demo
+    effects = ⟨ParseInt("42"), ParseInt("not-a-number")⟩

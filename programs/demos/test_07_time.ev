@@ -1,0 +1,45 @@
+-- 07_time — Effect::Time returns IntResult(elapsed_ms_since_start).
+--
+-- One-shot: emit Time, then on the next tick read last_results
+-- and check we got an IntResult (not NoResult / ErrorResult).
+--
+-- COUNTEREXAMPLE NOTE: an earlier version checked `n > 0` which
+-- failed when the FSM ticked faster than 1ms — elapsed-since-
+-- runtime-start was 0. The runtime convention here is
+-- elapsed-from-start, NOT unix epoch; the docstring on
+-- runtime.ev is silent on which.
+
+import "stdlib/runtime.ev"
+
+enum TState = Ask | Show | Done
+
+claim time_demo(state, state_next ∈ TState,
+                last_results ∈ ResultList,
+                effects ∈ EffectList)
+    state_next = match state
+        Ask  ⇒ Show
+        Show ⇒ Done
+        Done ⇒ Done
+
+    -- Check the result is shape IntResult(_) (any value).
+    got ∈ Bool
+    got = match last_results
+        ResCons(r, _) ⇒ r matches IntResult(_)
+        _             ⇒ false
+
+    msg ∈ String
+    msg = (got ? "got time" : "no time")
+
+    effects = match state
+        Ask  ⇒ ⟨Time⟩
+        Show ⇒ ⟨Println(msg), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+claim sat_ask_emits_time
+    state ∈ TState
+    state_next ∈ TState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Ask
+    time_demo
+    effects = ⟨Time⟩

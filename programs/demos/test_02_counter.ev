@@ -1,0 +1,71 @@
+-- 02_counter — multi-step state transition.
+--
+-- Counts from 5 down to 0, prints each tick, exits on 0.
+-- Demonstrates: payload-state variant (Count(Int)), conditional
+-- transitions, ternary in effects.
+--
+-- COUNTEREXAMPLE NOTE: enum's first variant must be nullary so
+-- the runtime can seed tick-0 state. If we wrote
+-- `enum CountState = Count(Int) | Done`, Z3 would pick the
+-- simplest satisfying state on tick 0 (Done) and the program
+-- would exit immediately. The Start nullary variant works
+-- around this — but the runtime should ideally seed payload
+-- first-variants too (e.g. via a per-FSM `state` pin
+-- parameter).
+
+import "stdlib/runtime.ev"
+
+enum CountState = Start | Count(Int) | Done
+
+claim counter(state, state_next ∈ CountState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    state_next = match state
+        Start    ⇒ Count(5)
+        Count(n) ⇒ (n ≤ 1 ? Done : Count(n - 1))
+        Done     ⇒ Done
+
+    effects = match state
+        Start    ⇒ ⟨Println("starting count")⟩
+        Count(n) ⇒ ⟨Println("tick")⟩
+        Done     ⇒ ⟨Println("bye"), Exit(0)⟩
+
+-- Start must transition to Count(5).
+claim sat_start_seeds_count_five
+    state ∈ CountState
+    state_next ∈ CountState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Start
+    counter
+    state_next = Count(5)
+
+-- Count(5) decrements to Count(4).
+claim sat_count_decrements
+    state ∈ CountState
+    state_next ∈ CountState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Count(5)
+    counter
+    state_next = Count(4)
+
+-- Count(1) advances to Done (boundary).
+claim sat_count_one_goes_done
+    state ∈ CountState
+    state_next ∈ CountState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Count(1)
+    counter
+    state_next = Done
+
+-- Counter never goes UP.
+claim unsat_count_increments
+    state ∈ CountState
+    state_next ∈ CountState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Count(3)
+    counter
+    state_next = Count(4)

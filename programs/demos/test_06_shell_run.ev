@@ -1,0 +1,40 @@
+-- 06_shell_run — Effect::ShellRun executes a shell command and
+-- captures stdout.
+--
+-- Synchronous: the runtime forks a shell, runs the command, and
+-- returns StringResult(stdout) on exit 0 or ErrorResult on
+-- failure. Trailing newline is stripped.
+
+import "stdlib/runtime.ev"
+
+enum ShellState = Issue | Show | Halt
+
+claim shell_demo(state, state_next ∈ ShellState,
+                 last_results ∈ ResultList,
+                 effects ∈ EffectList)
+    state_next = match state
+        Issue ⇒ Show
+        Show ⇒ Halt
+        Halt  ⇒ Halt
+
+    captured ∈ String
+    captured = match last_results
+        ResCons(r, _) ⇒ match r
+            StringResult(s) ⇒ s
+            ErrorResult(e)  ⇒ e
+            _               ⇒ "<no string>"
+        _             ⇒ "<no result>"
+
+    effects = match state
+        Issue ⇒ ⟨ShellRun("echo hello-from-shell")⟩
+        Show ⇒ ⟨Println(captured), Exit(0)⟩
+        Halt  ⇒ ⟨⟩
+
+claim sat_issue_emits_shell_run
+    state ∈ ShellState
+    state_next ∈ ShellState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Issue
+    shell_demo
+    effects = ⟨ShellRun("echo hello-from-shell")⟩

@@ -1,0 +1,65 @@
+-- 17_sdl_gl_window — SDL_Window FTI + raw GL clear.
+-- COUNTEREXAMPLE: window appears but renders BLACK on macOS.
+--
+-- Even with the bridge correctly setting up Core 3.3 + viewport
+-- + showing the window, per-frame GL calls dispatched through
+-- effect_loop don't visually present. The same GL calls work
+-- when issued INLINE inside the bridge install. Diagnostics
+-- show:
+--   * Same thread (ThreadId(1))
+--   * Same args, same function pointers
+--   * GL context current (glGetString(GL_VERSION) returns "4.1
+--     Metal - 89.3" at dispatch time)
+--   * glGetError returns 0 — calls succeed silently
+--
+-- Working hypothesis: a Cocoa runloop / NSOpenGLContext
+-- drawable-liveness boundary between bridge return and the
+-- first FSM tick.
+
+import "stdlib/runtime.ev"
+import "stdlib/sdl/gl.ev"
+import "stdlib/sdl/window.ev"
+import "stdlib/shader/program.ev"
+
+enum WState = WInit | WLoop(Int) | WEnd
+
+claim gl_demo(state, state_next ∈ WState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    win ∈ SDL_Window (title ↦ "Counterexample", width ↦ 640, height ↦ 480)
+
+    state_next = match state
+        WInit    ⇒ WLoop(60)
+        WLoop(n) ⇒ (n ≤ 1 ? WEnd : WLoop(n - 1))
+        WEnd     ⇒ WEnd
+
+    set_color_eff ∈ Effect
+    gl_clear_color(0.9, 0.1, 0.1, 1.0, set_color_eff)
+    clear_eff ∈ Effect
+    gl_clear(16384, clear_eff)
+    swap_eff ∈ Effect
+    gl_swap_window(win.handle, swap_eff)
+    pump_eff ∈ Effect
+    sdl_pump_events(pump_eff)
+    delay_eff ∈ Effect
+    sdl_delay(33, delay_eff)
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff, swap_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    effects = match state
+        WInit    ⇒ ⟨⟩
+        WLoop(n) ⇒ (n > 0 ? ⟨frame_seq⟩ : ⟨Println("done"), Exit(0)⟩)
+        WEnd     ⇒ ⟨⟩
+
+claim sat_init_advances_to_loop_60
+    state ∈ WState
+    state_next ∈ WState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    win ∈ SDL_Window
+    state = WInit
+    gl_demo
+    state_next = WLoop(60)
