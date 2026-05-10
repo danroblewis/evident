@@ -1,0 +1,57 @@
+-- Two plugins coordinating with one user FSM via shared world.
+--
+-- World declares fields for both FrameTimer (tick_count) and
+-- StdinSource (stdin_line, stdin_seq). The runtime auto-installs
+-- both plugins. The user FSM (Watcher) reacts to whichever
+-- changes — prints "tick" on each timer tick, "got: <line>" on
+-- each stdin line, halts after either accumulates 3 events.
+--
+-- Demonstrates:
+--   * Multi-plugin auto-install (FrameTimer + StdinSource)
+--   * Multi-writer disjoint check passing (each plugin owns
+--     different fields)
+--   * One reader subscribing to multiple sources
+--   * Halt via Effect::Exit when threshold met
+--
+-- Run:
+--     printf "alpha\nbeta\n" | EVIDENT_TICK_MS=50 evident effect-run \
+--         programs/lang_tests/multi_fsm/09_timer_and_stdin.ev --max-steps 50
+
+import "stdlib/runtime.ev"
+
+type World
+    tick_count        ∈ Int      -- FrameTimer writes
+    stdin_line        ∈ String   -- StdinSource writes
+    stdin_seq         ∈ Int      -- StdinSource writes (counter)
+    last_tick_seen    ∈ Int      -- Watcher writes (its progress)
+    last_line_seen    ∈ Int      -- Watcher writes (its progress)
+    total_events      ∈ Int      -- Watcher writes (combined count)
+
+enum WState = Watching
+
+claim watcher(world, world_next ∈ World,
+              state, state_next ∈ WState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    state_next = Watching
+
+    new_tick ∈ Bool
+    new_tick = (world.tick_count > world.last_tick_seen)
+    new_line ∈ Bool
+    new_line = (world.stdin_seq > world.last_line_seen)
+
+    world_next.last_tick_seen = (new_tick ? world.tick_count : world.last_tick_seen)
+    world_next.last_line_seen = (new_line ? world.stdin_seq  : world.last_line_seen)
+    world_next.total_events   = ((new_tick ∨ new_line)
+                                 ? world.total_events + 1
+                                 : world.total_events)
+
+    -- Threshold (2 events) triggers exit. Otherwise emit one
+    -- of the per-source messages.
+    effects = (world.total_events ≥ 2
+               ? ⟨Println("threshold reached"), Exit(0)⟩
+               : (new_tick
+                  ? ⟨Println("tick")⟩
+                  : (new_line
+                     ? ⟨Println("got: " ++ world.stdin_line)⟩
+                     : ⟨⟩)))
