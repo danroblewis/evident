@@ -54,22 +54,31 @@ remaining cleanup.
 Order: do these AFTER FTI v1 lands (next item) so the migration
 has a target shape to translate to.
 
-### 2. Foreign Type Interface v1 — per-instance typed resources
+### 2. Foreign Type Interface v1 (DONE) → v2 next
 
-FileLineReader (just landed) demonstrates the lifecycle pattern
-but is hard-coded to one instance via env var. The full FTI:
-  * `t ∈ Timer (interval_ms ↦ 50)` declares a per-instance
-    configurable resource.
-  * Bridge plugin materializes one instance per declaration.
-  * Type fields (e.g. `t.tick_count`) translate to per-instance
-    world-like state the user FSM reads.
+v1 shipped: `_ ∈ FrameClock` parameter triggers bridge auto-
+install; body reads `clock.tick_count` like a normal field.
 
-Real architectural change: needs read-set/write-set extended to
-type-instance-prefixed fields, and per-instance plugin lifecycle.
-First target: convert FileLineReader to use the typed shape (no
-env var), giving a per-file-instance pattern.
+Open work for v2:
+  * **Per-instance namespacing**: snapshot is currently shared.
+    Two FSMs each declaring `_ ∈ FrameClock` with the same
+    param name conflict. v2 needs per-FSM pin maps.
+  * **Extensible type registry**: `FrameClock` is hardcoded in
+    `detect_fsm_shape`. Should be discovered from stdlib (e.g.
+    via a `fti_type` annotation in the type body, or a
+    convention).
+  * **Multiple field types**: bridges currently only write Int
+    fields. String/Real/Bool field types should also work.
+  * **Configurable instances**: `t ∈ Timer (interval_ms ↦ 50)`
+    syntax for per-instance config. Currently config is
+    runtime-global (EVIDENT_TICK_MS).
+  * **Subscription-aware reads**: FTI field reads should
+    participate in scheduling triggers (currently they only
+    pin values when the FSM is otherwise scheduled).
 
-After FTI v1: migrate one SDL or socket binding as proof.
+Bigger v2 win: more FTI types — `FileReader`, `WallClockHandle`,
+`Socket`. Each replaces a corresponding world-field reserved-
+name pattern.
 
 ### 3. Parent-child communication for spawned FSMs
 

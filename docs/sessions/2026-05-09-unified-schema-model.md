@@ -59,6 +59,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `066a813`       | Effect::ShellRun — synchronous shell command execution        |
 | `6b1ffa4`       | Effect::IntToStr / RealToStr — symmetric to Parse*            |
 | `aaf9247`       | spawnable_only marker — claims that don't auto-instantiate    |
+| `833f419`       | FTI v1 — typed resource via parameter declaration             |
 
 ## Documentation work
 
