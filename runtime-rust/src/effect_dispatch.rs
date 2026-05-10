@@ -74,8 +74,10 @@ pub struct DispatchContext {
     /// FSM-spawn requests accumulated during dispatch. The
     /// effect loop drains this at end of each tick and
     /// instantiates new FSM entries from the named claims.
+    /// Each entry is `(claim_name, arg)` — arg gets pinned
+    /// into the new FSM's first state-variant payload.
     /// See `Effect::SpawnFsm`.
-    pub pending_spawns: Vec<String>,
+    pub pending_spawns: Vec<(String, i64)>,
 }
 
 impl DispatchContext {
@@ -179,13 +181,9 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             Ok(f)  => EffectResult::Real(f),
             Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
         },
-        Effect::SpawnFsm(claim_name) => {
-            // Accumulate; loop drains and instantiates after
-            // the dispatch pass. Returns the index this
-            // instance will get (current pending + existing
-            // FSM count is computed by the loop).
+        Effect::SpawnFsm(claim_name, arg) => {
             let idx = ctx.pending_spawns.len() as i64;
-            ctx.pending_spawns.push(claim_name.clone());
+            ctx.pending_spawns.push((claim_name.clone(), *arg));
             EffectResult::Int(idx)  // tentative — real ID assigned at instantiation
         }
         Effect::Exit(n) => {

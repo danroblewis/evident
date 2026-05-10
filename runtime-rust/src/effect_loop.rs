@@ -1009,7 +1009,7 @@ fn run_multi_fsm(
         // next tick. v1: shares the parent's world; no
         // per-instance world. See docs/design/fsm-spawning.md.
         if !ctx.pending_spawns.is_empty() {
-            for claim_name in std::mem::take(&mut ctx.pending_spawns) {
+            for (claim_name, spawn_arg) in std::mem::take(&mut ctx.pending_spawns) {
                 let shape = match detect_fsm_shape(rt, &claim_name) {
                     Some(s) => s,
                     None => {
@@ -1021,12 +1021,18 @@ fn run_multi_fsm(
                 };
                 if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
                     eprintln!("[loop] tick {step_count}: spawned `{claim_name}` \
-                               as FSM #{}", fsms.len());
+                               as FSM #{} with arg={spawn_arg}", fsms.len());
                 }
                 let aset = rt.get_schema(&shape.claim_name)
                     .map(|s| crate::subscriptions::world_access_sets(s))
                     .unwrap_or_default();
-                let (initial_dt, initial_val) = seed_state(&shape);
+                // Spawn-arg seeding: pin the new FSM's state to
+                // `FirstVariant(spawn_arg)` if the first variant
+                // takes a single Int payload. Otherwise fall back
+                // to the regular seed (nullary first variant) or
+                // None (Z3 picks).
+                let (initial_dt, initial_val) = seed_state_with_arg(rt, &shape, spawn_arg)
+                    .unwrap_or_else(|| seed_state(&shape));
                 fsms.push(shape);
                 access_sets.push(aset);
                 fsm_rt.push(FsmRt {
@@ -1183,6 +1189,39 @@ fn model_matches_value(v: &Value, _state_type: &str) -> bool {
 /// Handles nullary AND payload variants by recursively encoding
 /// each field. Primitive payloads (Int, Bool, String, Real) are
 /// encoded as Z3 literals; nested enum payloads recurse.
+/// Seed a spawned FSM's state to `FirstVariant(arg)` when the
+/// state enum's first variant takes a single Int payload. Used
+/// by `Effect::SpawnFsm(claim, arg)` — lets the parent pass
+/// an instance ID (or other Int parameter) into the spawned
+/// FSM's body, which can `match state` to read it.
+///
+/// Returns None if the first variant doesn't have exactly one
+/// Int payload (caller falls back to `seed_state`).
+fn seed_state_with_arg(
+    rt: &EvidentRuntime,
+    shape: &MainShape,
+    arg: i64,
+) -> Option<(Option<z3::ast::Datatype<'static>>, Option<Value>)> {
+    let enums = rt.enums_registry();
+    let by_name = enums.by_name.borrow();
+    let (sort, decl_variants) = by_name.get(&shape.state_type)?;
+    let first_sort = sort.variants.first()?;
+    let first_decl = decl_variants.first()?;
+    if first_sort.constructor.arity() != 1 { return None; }
+    // Check the field type is Int. The decl_variants entry has
+    // payload type info.
+    if first_decl.fields.len() != 1 { return None; }
+    if first_decl.fields[0].type_name != "Int" { return None; }
+    // Encode `FirstVariant(arg)`.
+    let value = Value::Enum {
+        enum_name: shape.state_type.clone(),
+        variant:   first_decl.name.clone(),
+        fields:    vec![Value::Int(arg)],
+    };
+    let dt = encode_state_value(rt, &value);
+    Some((dt, Some(value)))
+}
+
 fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatype<'static>> {
     use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Dynamic, Ast};
     let Value::Enum { enum_name, variant, fields } = v else { return None };

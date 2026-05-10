@@ -1,0 +1,70 @@
+-- SpawnFsm-with-arg demo: parent spawns 3 worker instances each
+-- with a different Int argument that gets pinned into the new
+-- FSM's first state-variant payload. The worker reads its own
+-- ID from match-on-state, branches on it for output.
+--
+-- Demonstrates v1 of parent-child communication for spawned
+-- FSMs: the parent passes a parameter (typically an instance
+-- ID) into each spawned instance; the worker can use it to
+-- distinguish itself from sibling instances. Sufficient for
+-- patterns like worker pools where each worker handles a
+-- specific item by ID.
+--
+-- v1 limitation: only one Int can be passed. v2 will support
+-- richer initial parameters. v1+ also needs per-instance world
+-- for connection-per-FSM use cases (siblings sharing world is
+-- fine for ID-based dispatch but not for per-instance state).
+--
+-- Run:
+--     evident effect-run programs/lang_tests/multi_fsm/13_spawn_with_arg.ev
+-- Expected output (order of worker outputs may vary; one
+-- "auto-instance" line because `worker` is auto-detected):
+--   parent: spawning 3 workers with ids 1,2,3
+--   worker (unknown) says hi
+--   worker 1 says hi
+--   worker 2 says hi
+--   worker 3 says hi
+
+import "stdlib/runtime.ev"
+
+enum PState = Spawning | Done
+
+claim parent(state, state_next ∈ PState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = match state
+        Spawning ⇒ Done
+        Done     ⇒ Done
+    effects = match state
+        Spawning ⇒ ⟨Println("parent: spawning 3 workers with ids 1,2,3"),
+                    SpawnFsm("worker", 1),
+                    SpawnFsm("worker", 2),
+                    SpawnFsm("worker", 3)⟩
+        Done     ⇒ ⟨⟩
+
+enum WState = WInit(Int) | WReporting(Int) | WDone(Int)
+
+claim worker(state, state_next ∈ WState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    my_id ∈ Int
+    my_id = match state
+        WInit(id)      ⇒ id
+        WReporting(id) ⇒ id
+        WDone(id)      ⇒ id
+
+    state_next = match state
+        WInit(id)      ⇒ WReporting(id)
+        WReporting(id) ⇒ WDone(id)
+        WDone(id)      ⇒ WDone(id)
+
+    msg ∈ String
+    msg = (my_id = 1 ? "worker 1 says hi"
+           : my_id = 2 ? "worker 2 says hi"
+           : my_id = 3 ? "worker 3 says hi"
+           : "worker (unknown) says hi")
+
+    effects = match state
+        WInit(_)      ⇒ ⟨⟩
+        WReporting(_) ⇒ ⟨Println(msg)⟩
+        WDone(_)      ⇒ ⟨⟩

@@ -95,12 +95,24 @@ enum Effect =
     -- Parse a decimal real (f64). RealResult on success;
     -- ErrorResult on failure.
     ParseReal(String)
-    -- Spawn a new FSM instance of the named claim. Result is
-    -- IntResult(instance_id). The new FSM joins the scheduler
-    -- from the next tick. v1: shares parent's world; no
-    -- per-instance world or parent/child message passing.
+    -- Spawn a new FSM instance of the named claim with an Int
+    -- argument that gets pinned into the new FSM's first
+    -- state-variant payload. Result is IntResult(instance_id).
+    --
+    -- Convention: define the spawnable claim's state enum with
+    -- a payload first variant taking an Int (the instance ID
+    -- or a parameter chosen by the parent):
+    --
+    --   enum WState = WInit(Int) | WGo
+    --   claim worker(state, state_next ∈ WState, ...)
+    --       my_id ∈ Int
+    --       my_id = match state
+    --           WInit(id) ⇒ id
+    --           WGo       ⇒ -1
+    --
+    -- v1: shares parent's world; no per-instance world.
     -- See docs/design/fsm-spawning.md.
-    SpawnFsm(String)
+    SpawnFsm(String, Int)
     -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)

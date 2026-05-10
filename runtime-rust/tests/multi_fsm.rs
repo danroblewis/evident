@@ -130,6 +130,18 @@ fn request_response_lang_test_11() {
 }
 
 #[test]
+fn spawn_with_arg_lang_test_13() {
+    // Parent spawns 3 workers each with a different ID arg.
+    // Each worker prints a message keyed on its ID.
+    let (out, r) = run_program("../programs/lang_tests/multi_fsm/13_spawn_with_arg.ev", 20);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines.contains(&"worker 1 says hi"), "missing worker 1; out:\n{}", out);
+    assert!(lines.contains(&"worker 2 says hi"), "missing worker 2; out:\n{}", out);
+    assert!(lines.contains(&"worker 3 says hi"), "missing worker 3; out:\n{}", out);
+    assert!(r.halted_clean, "should halt cleanly; got {r:?}");
+}
+
+#[test]
 fn wallclock_lang_test_12() {
     // WallClock auto-installs because World declares now_ms.
     // Demo snapshots start time, exits after 200ms elapsed.
