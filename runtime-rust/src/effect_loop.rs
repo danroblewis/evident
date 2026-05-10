@@ -930,11 +930,30 @@ fn run_multi_fsm(
             pending_world_writes = event_writes;
 
             // Apply all state writes (last value wins per key).
+            // For FTI keys (`<fsm>.<param>.<field>`), wake the
+            // matching FSM if its access_sets include the
+            // stripped `<param>.<field>` (or its first segment,
+            // <param>, since access_sets stores top-level field
+            // names from `world.X` reads but FTI param-field
+            // reads land directly in env without expansion).
             for (field, val) in state_writes {
                 let key = field.clone();  // dotted, used as-is
                 let changed = world_snapshot.get(&key) != Some(&val);
                 if changed {
-                    world_snapshot.insert(key, val);
+                    world_snapshot.insert(key.clone(), val);
+                    // FTI wake distribution: if the key matches
+                    // `<claim>.<rest>` for some FSM's claim_name,
+                    // wake that FSM.
+                    for (j, fsm) in fsms.iter().enumerate() {
+                        let prefix = format!("{}.", fsm.claim_name);
+                        if let Some(rest) = key.strip_prefix(&prefix) {
+                            // Top-level segment of `rest` is the param name.
+                            let param = rest.split('.').next().unwrap_or(rest);
+                            if fsm.fti_params.iter().any(|(p, _, _)| p == param) {
+                                pending_changes[j].insert(rest.to_string());
+                            }
+                        }
+                    }
                 }
             }
 
