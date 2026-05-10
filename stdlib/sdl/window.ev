@@ -97,3 +97,36 @@ claim sdl_pump_events(out ∈ Effect)
 claim sdl_delay(ms ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Delay",
                   "v(i)", ArgCons(ArgInt(ms), ArgNil))
+
+-- SDL_Init(flags) → int. flags=32 is SDL_INIT_VIDEO.
+claim sdl_init(flags ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
+                  "i(i)", ArgCons(ArgInt(flags), ArgNil))
+
+-- SDL_CreateWindow(title, x, y, w, h, flags) → SDL_Window*.
+-- Pass 805240832 (0x2FFF0000 = SDL_WINDOWPOS_CENTERED) for x/y
+-- to center. Common flag values:
+--   2 = SDL_WINDOW_OPENGL
+--   4 = SDL_WINDOW_SHOWN  (default; SDL2 ignores)
+claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
+                        w ∈ Int, h ∈ Int, flags ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateWindow",
+                  "p(siiiii)",
+                  ArgCons(ArgStr(title),
+                  ArgCons(ArgInt(x),
+                  ArgCons(ArgInt(y),
+                  ArgCons(ArgInt(w),
+                  ArgCons(ArgInt(h),
+                  ArgCons(ArgInt(flags), ArgNil)))))))
+
+-- SDL_DestroyWindow(window). Currently a no-op on macOS via the
+-- runtime (the window pointer must be released on the main
+-- thread; the OS reclaims it on process exit).
+claim sdl_destroy_window(window ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyWindow",
+                  "v(p)", ArgCons(ArgHandle(window), ArgNil))
+
+-- SDL_Quit() — shut down all initialized SDL subsystems.
+claim sdl_quit(out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Quit",
+                  "v()", ArgNil)

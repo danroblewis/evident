@@ -66,6 +66,36 @@ claim render_present(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
                   "v(p)", ArgCons(ArgHandle(renderer), ArgNil))
 
+-- ── *_after variants: take a prior-result index, not a renderer ──
+-- Use these inside an Effect::Seq when the renderer pointer
+-- isn't known at constraint-solve time — typically after a
+-- create_renderer call earlier in the same Seq. `prior_idx` is
+-- the Seq position whose return value is the renderer handle.
+
+claim create_renderer_after(prior_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
+                  "p(pii)",
+                  ArgCons(ArgPriorResult(prior_idx),
+                  ArgCons(ArgInt(0 - 1),
+                  ArgCons(ArgInt(0), ArgNil))))
+
+claim set_draw_color_after(prior_idx ∈ Int, color ∈ Color, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+                  "i(piiii)",
+                  ArgCons(ArgPriorResult(prior_idx),
+                  ArgCons(ArgInt(color.red),
+                  ArgCons(ArgInt(color.green),
+                  ArgCons(ArgInt(color.blue),
+                  ArgCons(ArgInt(color.alpha), ArgNil))))))
+
+claim render_clear_after(prior_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
+                  "i(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+
+claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
+                  "v(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+
 -- ── Lines + points ────────────────────────────────────────────
 
 -- SDL_RenderDrawLine(renderer, from, to) → int.

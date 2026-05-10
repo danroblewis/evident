@@ -4,11 +4,16 @@
 //!   1. `evident test <file>`      — static sat_/unsat_ claims
 //!   2. `evident effect-run <file>` — multi-FSM end-to-end
 //!
-//! Per-demo expected exit code + (optionally) expected stdout
-//! lives in the `EXPECTATIONS` table below. Add a row when a new
-//! demo lands; tests only fire for files that have an entry, so
-//! WIP demos (or interactive ones like stdin/SDL) can be left
-//! out without breaking CI.
+//! The expectations table below pins each demo to:
+//!   * exact exit code
+//!   * a sequence of stdout lines that must appear IN ORDER
+//!     (not just "contains substring" — the demo must walk
+//!     through the whole expected behavior, not just hit one
+//!     keyword by accident through a wrong code path).
+//!
+//! Add a row when a new demo lands. WIP / interactive demos
+//! (stdin, signals, broken counterexamples) can be left out
+//! without breaking CI; document why in the comment block.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -16,26 +21,123 @@ use std::time::Duration;
 
 const EVIDENT: &str = env!("CARGO_BIN_EXE_evident");
 
-/// (filename without .ev, expected effect-run exit, expected
-/// substring in stdout, max-steps, EVIDENT_TICK_MS override or 0)
-const EXPECTATIONS: &[(&str, i32, &str, usize, u64)] = &[
-    ("test_01_hello",         0,  "hello from evident",      10,  0),
-    ("test_02_counter",       0,  "bye",                     20,  0),
-    ("test_03_seq_chain",     0,  "third",                   10,  0),
-    ("test_04_parse_int",     0,  "bad: ERROR was correct",  10,  0),
-    ("test_05_int_to_str",    0,  "42",                      10,  0),
-    ("test_06_shell_run",     0,  "hello-from-shell",        10,  0),
-    ("test_07_time",          0,  "got time",                30,  0),
-    ("test_08_exit_code",     42, "exiting with code 42",    10,  0),
-    ("test_09_two_fsms",      0,  "got n",                   30,  0),
-    ("test_10_spawn",         0,  "parent spawned worker",   10,  0),
-    ("test_11_frameclock",    0,  "3 clock ticks observed",  60,  50),
-    ("test_12_hostname",      0,  "hostname known",          10,  0),
-    ("test_13_timer",         0,  "3 timer ticks observed",  60,  0),
-    // test_14_stdin needs piped input — tested separately if at all.
-    // test_15_signal needs SIGINT — tested separately if at all.
-    // test_16_sdl_red needs a display (skipped in headless CI).
-    // test_17_sdl_gl_window is a known counterexample.
+struct DemoExpect {
+    name:        &'static str,
+    exit:        i32,
+    /// Lines that MUST appear in stdout, in this order. Other
+    /// lines may appear between/around them. Empty = only check
+    /// exit code.
+    must_lines:  &'static [&'static str],
+    /// Exact whole-line strings that must NOT appear on their
+    /// own line in stdout. Catches placeholder output (e.g.
+    /// the literal "tick" instead of "tick 5") that would
+    /// satisfy a substring check via the wrong path.
+    forbid_exact_lines: &'static [&'static str],
+    max_steps:   usize,
+    tick_ms:     u64,  // 0 = unset
+    /// Optional stdin to pipe in.
+    stdin:       Option<&'static str>,
+}
+
+const EXPECTATIONS: &[DemoExpect] = &[
+    DemoExpect {
+        name: "test_01_hello", exit: 0,
+        must_lines: &["hello from evident"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        // Must walk 5 → 1 in order. Catches "tick" placeholder.
+        name: "test_02_counter", exit: 0,
+        must_lines: &["starting count", "tick 5", "tick 4", "tick 3",
+                      "tick 2", "tick 1", "bye"],
+        forbid_exact_lines: &["tick", "tick 0"],  // forbid "tick" with no number
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_03_seq_chain", exit: 0,
+        must_lines: &["first", "second", "third"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_04_parse_int", exit: 0,
+        must_lines: &["good: parsed an Int", "bad: ERROR was correct"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_05_int_to_str", exit: 0,
+        must_lines: &["42"],
+        forbid_exact_lines: &["?", "<no string>"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        // ShellRun captured `date` — should look like "2026-..".
+        name: "test_06_shell_run", exit: 0,
+        must_lines: &["20"],  // year prefix
+        forbid_exact_lines: &["<no string>", "<no result>"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_07_time", exit: 0,
+        must_lines: &["elapsed_ms = "],
+        forbid_exact_lines: &["?", "<no string>", "elapsed_ms = -1"],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_08_exit_code", exit: 42,
+        must_lines: &["exiting with code 42"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        // Consumer must echo specific n values, not just "got n".
+        name: "test_09_two_fsms", exit: 0,
+        must_lines: &["consumer saw n = 3", "producer done"],
+        forbid_exact_lines: &["got n", "consumer saw n = 0", "consumer saw n = ?"],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        // Worker must actually fire AFTER parent's spawn, not just
+        // parent's own "issued spawn" line.
+        name: "test_10_spawn", exit: 0,
+        must_lines: &["parent issued spawn", "worker spawned with id=7", "parent done"],
+        forbid_exact_lines: &[],
+        max_steps: 15, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_11_frameclock", exit: 0,
+        must_lines: &["3 clock ticks observed"],
+        forbid_exact_lines: &[],
+        max_steps: 60, tick_ms: 50, stdin: None,
+    },
+    DemoExpect {
+        // Must contain a real hostname value, not just an
+        // acknowledgement. The exact-line forbid catches the
+        // "= " with nothing after it (bridge wrote empty).
+        name: "test_12_hostname", exit: 0,
+        must_lines: &["hostname = "],
+        forbid_exact_lines: &["hostname = ", "hostname unknown"],
+        max_steps: 15, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_13_timer", exit: 0,
+        must_lines: &["3 timer ticks observed"],
+        forbid_exact_lines: &[],
+        max_steps: 60, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        // Stdin echo: pipe lines, expect each echoed back, then "bye".
+        name: "test_14_stdin", exit: 0,
+        must_lines: &["hi", "world", "bye"],
+        forbid_exact_lines: &["did not halt"],
+        max_steps: 100, tick_ms: 0, stdin: Some("hi\nworld\nquit\n"),
+    },
+    // test_15_signal — needs SIGINT, only meaningful interactive.
+    // test_16_sdl_red — needs a display; renders correctly when run
+    //   manually but not testable in a headless CI.
+    // test_17_sdl_gl_window — known counterexample (renders black).
 ];
 
 #[test]
@@ -54,58 +156,75 @@ fn static_tests_all_pass() {
 #[test]
 fn each_demo_runs_to_completion() {
     let mut failures = Vec::new();
-    for &(name, exp_exit, exp_substr, max_steps, tick_ms) in EXPECTATIONS {
-        let path = format!("programs/demos/{name}.ev");
+    for d in EXPECTATIONS {
+        let path = format!("programs/demos/{}.ev", d.name);
         if !Path::new(&format!("../{path}")).exists() {
-            failures.push(format!("{name}: file missing at {path}"));
+            failures.push(format!("{}: file missing at {path}", d.name));
             continue;
         }
         let mut cmd = Command::new(EVIDENT);
-        cmd.args(["effect-run", &path, "--max-steps", &max_steps.to_string()]);
-        cmd.current_dir("..");  // imports use repo-root-relative paths
+        cmd.args(["effect-run", &path, "--max-steps", &d.max_steps.to_string()]);
+        cmd.current_dir("..");
+        cmd.stdin(if d.stdin.is_some() { Stdio::piped() } else { Stdio::null() });
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        if tick_ms > 0 {
-            cmd.env("EVIDENT_TICK_MS", tick_ms.to_string());
-        }
-        let out = match wait_with_timeout(cmd, Duration::from_secs(15)) {
+        if d.tick_ms > 0 { cmd.env("EVIDENT_TICK_MS", d.tick_ms.to_string()); }
+
+        let out = match wait_with_timeout(cmd, d.stdin, Duration::from_secs(15)) {
             Ok(o) => o,
-            Err(e) => { failures.push(format!("{name}: {e}")); continue; }
+            Err(e) => { failures.push(format!("{}: {e}", d.name)); continue; }
         };
         let stdout = String::from_utf8_lossy(&out.stdout);
-        let actual_exit = out.status.code().unwrap_or(-1);
         let stderr = String::from_utf8_lossy(&out.stderr);
-        if actual_exit != exp_exit {
+        let actual_exit = out.status.code().unwrap_or(-1);
+
+        if actual_exit != d.exit {
             failures.push(format!(
-                "{name}: expected exit {exp_exit}, got {actual_exit}\nstdout:\n{stdout}\nstderr:\n{stderr}",
-            ));
+                "{}: expected exit {}, got {actual_exit}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+                d.name, d.exit));
             continue;
         }
-        if !stdout.contains(exp_substr) {
-            failures.push(format!(
-                "{name}: stdout missing {exp_substr:?}\ngot:\n{stdout}",
-            ));
+        // must_lines: each must appear, in this order.
+        let mut cursor = 0usize;
+        for needle in d.must_lines {
+            match stdout[cursor..].find(needle) {
+                Some(rel) => cursor += rel + needle.len(),
+                None => {
+                    failures.push(format!(
+                        "{}: missing {needle:?} (after position {cursor})\nstdout:\n{stdout}",
+                        d.name));
+                    break;
+                }
+            }
+        }
+        for forbid in d.forbid_exact_lines {
+            if stdout.lines().any(|l| l == *forbid) {
+                failures.push(format!(
+                    "{}: forbidden EXACT line {forbid:?} appeared in stdout:\n{stdout}",
+                    d.name));
+            }
         }
     }
     assert!(failures.is_empty(),
         "{} demo(s) failed:\n\n{}", failures.len(), failures.join("\n\n"));
 }
 
-/// Spawn + wait with a wall-clock cap. Avoids relying on shell
-/// `timeout` (which is GNU/Linux-flavored on macOS).
-fn wait_with_timeout(mut cmd: Command, dur: Duration)
+fn wait_with_timeout(mut cmd: Command, stdin: Option<&'static str>, dur: Duration)
     -> Result<std::process::Output, String>
 {
     let mut child = cmd.spawn().map_err(|e| format!("spawn: {e}"))?;
+    if let Some(s) = stdin {
+        if let Some(mut sin) = child.stdin.take() {
+            use std::io::Write;
+            let _ = sin.write_all(s.as_bytes());
+            // dropping sin closes stdin → EOF
+        }
+    }
     let start = std::time::Instant::now();
     loop {
-        if let Some(status) = child.try_wait().map_err(|e| format!("wait: {e}"))? {
-            // Collect output. try_wait already reaped; we need the
-            // captured streams. Re-run via wait_with_output on a
-            // freshly-spawned cmd — easier: just use output() with
-            // a separate timeout watcher thread. For simplicity
-            // here, we stream via wait_with_output above.
-            let _ = status;
-            return read_remaining(child);
+        match child.try_wait().map_err(|e| format!("wait: {e}"))? {
+            Some(_status) => return child.wait_with_output()
+                .map_err(|e| format!("wait_with_output: {e}")),
+            None => {}
         }
         if start.elapsed() > dur {
             let _ = child.kill();
@@ -113,8 +232,4 @@ fn wait_with_timeout(mut cmd: Command, dur: Duration)
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-}
-
-fn read_remaining(child: std::process::Child) -> Result<std::process::Output, String> {
-    child.wait_with_output().map_err(|e| format!("wait_with_output: {e}"))
 }

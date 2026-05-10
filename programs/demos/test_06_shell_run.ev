@@ -26,7 +26,7 @@ claim shell_demo(state, state_next ∈ ShellState,
         _             ⇒ "<no result>"
 
     effects = match state
-        Issue ⇒ ⟨ShellRun("echo hello-from-shell")⟩
+        Issue ⇒ ⟨ShellRun("date '+%Y-%m-%d %H:%M:%S'")⟩
         Show ⇒ ⟨Println(captured), Exit(0)⟩
         Halt  ⇒ ⟨⟩
 
@@ -37,4 +37,4 @@ claim sat_issue_emits_shell_run
     effects ∈ EffectList
     state = Issue
     shell_demo
-    effects = ⟨ShellRun("echo hello-from-shell")⟩
+    effects = ⟨ShellRun("date '+%Y-%m-%d %H:%M:%S'")⟩

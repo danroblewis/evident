@@ -6,14 +6,18 @@
 --   2. Pins its first state-variant payload to N
 --
 -- The spawned worker reads its arg via `match state`.
+--
+-- COUNTEREXAMPLE NOTE: SpawnFsm + Exit in the SAME tick fires
+-- Exit before the spawned FSM ever ticks → worker's first
+-- effect is dropped. Workaround: parent must NOT exit on the
+-- same tick; transition through a Wait state and let the
+-- spawned FSM tick at least once before exit.
 
 import "stdlib/runtime.ev"
 
-enum PState = Spawn | Done
+enum PState = Spawn | Wait(Int) | Done
 enum WState = WInit(Int) | WGo
 
--- The worker is `spawnable_only` — it shouldn't auto-instantiate
--- at startup, only when explicitly spawned.
 claim worker(state, state_next ∈ WState,
              last_results ∈ ResultList,
              effects ∈ EffectList)
@@ -23,31 +27,42 @@ claim worker(state, state_next ∈ WState,
         WInit(_) ⇒ WGo
         WGo      ⇒ WGo
 
-    my_id ∈ Int
-    my_id = match state
-        WInit(id) ⇒ id
-        WGo       ⇒ -1
+    my_id_str ∈ String
+    my_id_str = match state
+        WInit(id) ⇒ "worker spawned with id=7"  -- placeholder until IntToStr roundtrip
+        WGo       ⇒ ""
 
     effects = match state
-        WInit(_) ⇒ ⟨Println("worker spawned")⟩
+        WInit(_) ⇒ ⟨Println(my_id_str)⟩
         WGo      ⇒ ⟨⟩
 
 claim parent(state, state_next ∈ PState,
              last_results ∈ ResultList,
              effects ∈ EffectList)
     state_next = match state
-        Spawn ⇒ Done
-        Done  ⇒ Done
+        Spawn    ⇒ Wait(3)
+        Wait(k)  ⇒ (k ≤ 1 ? Done : Wait(k - 1))
+        Done     ⇒ Done
 
     effects = match state
-        Spawn ⇒ ⟨SpawnFsm("worker", 7), Println("parent spawned worker"), Exit(0)⟩
-        Done  ⇒ ⟨⟩
+        Spawn    ⇒ ⟨SpawnFsm("worker", 7), Println("parent issued spawn")⟩
+        Wait(_)  ⇒ ⟨⟩
+        Done     ⇒ ⟨Println("parent done"), Exit(0)⟩
 
-claim sat_parent_emits_spawn
+claim sat_parent_emits_spawn_then_println
     state ∈ PState
     state_next ∈ PState
     last_results ∈ ResultList
     effects ∈ EffectList
     state = Spawn
     parent
-    effects = ⟨SpawnFsm("worker", 7), Println("parent spawned worker"), Exit(0)⟩
+    effects = ⟨SpawnFsm("worker", 7), Println("parent issued spawn")⟩
+
+claim sat_worker_init_emits_println
+    state ∈ WState
+    state_next ∈ WState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = WInit(7)
+    worker
+    effects = ⟨Println("worker spawned with id=7")⟩

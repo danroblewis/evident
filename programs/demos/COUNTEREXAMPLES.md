@@ -138,6 +138,56 @@ Working hypothesis: a Cocoa runloop / NSOpenGLContext
 drawable-liveness boundary. Fix likely needs a Cocoa-aware
 runloop driver.
 
+## 8. SpawnFsm + same-tick Exit drops the spawned FSM's first effect
+
+**Where:** `test_10_spawn` (note in header)
+
+If parent emits `⟨SpawnFsm("worker", N), Exit(0)⟩` in a single
+tick, the worker is registered but `Exit(0)` halts the runtime
+before the worker ticks → "worker spawned" never prints.
+
+Workaround: parent transitions to a Wait state and exits a
+few ticks later, giving the spawned FSM time to fire.
+
+Fix idea: drain newly-spawned FSMs' tick-0 effects before
+honoring `exit_requested`.
+
+## 9. `Effect::Seq` doesn't share renderer/window handles across ticks
+
+**Where:** `test_16_sdl_red` (note in body)
+
+A renderer pointer created via `SDL_CreateRenderer` inside one
+`Effect::Seq` (the setup tick) isn't accessible to subsequent
+`Effect::Seq` invocations (the per-frame ticks) — there's no
+cross-Seq state. The workaround is to call `SDL_CreateRenderer`
+again at the head of each frame's Seq and reference its result
+via `ArgPriorResult(0)`. Functionally OK (libffi caches lib +
+sym handles) but wasteful.
+
+Fix idea: an `SDL_Renderer` FTI bridge, analogous to
+`GL_Program`, that owns the renderer pointer and exposes it as
+a known `Int` field on the type. Then per-frame ops can be
+plain stdlib calls on the known handle — no `Seq`, no
+`PriorResult`.
+
+## 10. Stdlib helpers can't take `ArgPriorResult` without explicit `*_after` variants
+
+**Where:** `stdlib/sdl/render.ev` (the new `*_after` family)
+
+A wrapper claim like `render_clear(renderer ∈ Int, out)` builds
+its own `ArgList` with `ArgHandle(renderer)`. To get an
+`ArgPriorResult(N)` slot in that list instead, the wrapper has
+to be re-coded with `ArgPriorResult(prior_idx)` and the
+`prior_idx` exposed as a parameter (`render_clear_after`). So
+every stdlib FFI helper grows a parallel `_after` variant for
+in-Seq use. Not great.
+
+Fix idea: a generic mechanism for converting a wrapper's typed
+`Int` arg into an `ArgPriorResult` inside a Seq (perhaps a
+phantom value `prior_at(N)` that the call-site translator
+recognizes), or move toward FTI bridges so most C resources
+have known typed handles instead of needing in-Seq chaining.
+
 ## What works without caveat
 
 Every demo ships in green:
