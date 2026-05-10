@@ -5,6 +5,30 @@ How to wrap a C library so Evident programs can call it. Read
 this guide assumes you understand effect dispatch, state machines,
 and the issue/await pattern.
 
+> **Repo convention** (see CLAUDE.md): for files we author
+> under this repo's `programs/` tree (especially `programs/demos/`
+> which doubles as our integration-test set), raw FFI
+> primitives — `LibCall`, `FFICall`, `FFIOpen`, `FFILookup` —
+> are forbidden. Those files reach C code by either:
+>
+>   * calling **named claims** from stdlib (`sdl_pump_events`,
+>     `gl_clear`, `shell_run_only`, …), or
+>   * declaring **FTI typed resources** (`win ∈ SDL_Window (...)`)
+>     and letting the bridge own the lifecycle.
+>
+> Raw FFI lives in `stdlib/` and in Rust-side FTI bridges
+> (`runtime-rust/src/event_sources.rs`, `runtime-rust/src/fti.rs`).
+> If a demo needs a C function that no stdlib helper covers,
+> the fix is to add the helper to stdlib first, then call it
+> from the demo. Hardcoded dylib paths like
+> `"/opt/homebrew/lib/libSDL2.dylib"` in a demo file are a
+> code-review blocker.
+>
+> This guide is for the stdlib author writing those wrappers.
+> (Outside this repo's test set — your own application — there
+> is no language-level restriction; you can call `LibCall`
+> directly if it's the right tool.)
+
 ## The two FFI styles
 
 Evident exposes two effect-level FFI primitives:

@@ -14,6 +14,8 @@ your task:
 
 | If you're … | Read |
 |---|---|
+| Writing a new program (any program) | [`programs/demos/`](programs/demos/) — copy the closest existing demo's shape |
+| Looking for the punch list of known runtime gaps | [`programs/demos/COUNTEREXAMPLES.md`](programs/demos/COUNTEREXAMPLES.md) |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`stdlib/sdl/`, `stdlib/audio/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |
@@ -26,6 +28,75 @@ your task:
 The two `docs/guide/*` docs were written specifically to spare future-you
 the painful debug sessions that produced them. If you're about to write a
 state machine or an FFI binding, **read those first**.
+
+## Conventions for `programs/demos/` (this repo's test/example set)
+
+These rules govern files we write into `programs/demos/`. They
+are NOT a property of the Evident language — a downstream user
+writing their own Evident program is not bound by them. Inside
+this repo, `programs/demos/` is our canonical test set: every
+file there doubles as a worked example AND an integration
+test, so we hold them to a strict shape.
+
+### 1. Demo files are integration tests
+
+Each file in `programs/demos/` is named `test_NN_<name>.ev`
+and contains both:
+
+  * The multi-FSM program (one or more `claim`s with state
+    pair + `last_results ∈ ResultList` + `effects ∈ EffectList`).
+    Single-FSM demos are written as multi-FSM programs with
+    one FSM — the multi-FSM scheduler is the only execution
+    path.
+  * Inline `claim sat_*` / `claim unsat_*` static tests that
+    pin state/inputs and assert on the FSM's response.
+
+Two test runners cover both halves:
+
+  * `evident test programs/demos/` — discovers `test_*.ev`
+    files, runs every `sat_*` / `unsat_*` claim.
+  * `cargo test --test demos` (in `runtime-rust/`) — runs
+    each demo end-to-end via the binary, asserts on exit
+    code and stdout substring. The `EXPECTATIONS` table in
+    `runtime-rust/tests/demos.rs` is the contract.
+
+When adding a demo: drop the file in `programs/demos/`, add a
+row to `EXPECTATIONS`. Both runners stay green.
+
+(The multi-FSM scheduler skips claims named `sat_*` / `unsat_*`
+from auto-instantiation runtime-wide — they have the FSM
+shape because they pin `state` / `effects` to assert
+properties, but they should never run as FSMs. This applies
+everywhere, not just to demo files.)
+
+### 2. Demo files MUST NOT contain raw FFI calls
+
+In any `programs/demos/*.ev` file (and any other file under
+`programs/` we author), `LibCall` / `FFICall` / `FFIOpen` /
+`FFILookup` are forbidden. Demos reach C code by either:
+
+  * Calling **named claims** from `stdlib/` that wrap the FFI
+    behind a typed interface. Example: `sdl_pump_events(out)` —
+    not `out = LibCall("/opt/homebrew/lib/libSDL2.dylib", …)`.
+  * Declaring **FTI typed resources** as parameters or body
+    items (`win ∈ SDL_Window (title ↦ "X", …)`) and letting
+    the runtime's bridge install own the C-side lifecycle.
+
+If a demo needs a C function that no stdlib helper covers:
+**add the helper to stdlib** (`stdlib/<library>/...ev`) first,
+then call it from the demo. A demo file containing
+`LibCall(...)` or a hardcoded library path like
+`"/opt/homebrew/lib/libSDL2.dylib"` is a code-review blocker —
+move it to stdlib.
+
+The COUNTEREXAMPLES file lists what the runtime can't yet do
+(e.g. SDL+GL render-via-dispatch). Don't work around those by
+reaching into raw FFI from a demo; either fix the runtime, add
+a stdlib wrapper, or document the limit.
+
+(Outside `programs/demos/` — your own application code, ad-hoc
+exploration, etc. — these rules don't apply. They're a quality
+bar for the canonical test set.)
 
 ## Language Definitions
 

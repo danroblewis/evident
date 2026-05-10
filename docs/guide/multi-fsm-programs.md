@@ -5,6 +5,26 @@ coordinating through shared world state. Read
 [`docs/design/schema-interface.md`](../design/schema-interface.md)
 first for the underlying model — this guide is the cookbook.
 
+> **Canonical exemplars in this repo**:
+> [`programs/demos/`](../../programs/demos/). Every demo there
+> is a multi-FSM program — even the single-FSM ones (those are
+> just multi-FSM with one FSM, since the multi-FSM scheduler
+> is the only execution path). Each demo ships with inline
+> `sat_*` / `unsat_*` static tests and an entry in
+> `runtime-rust/tests/demos.rs` for end-to-end coverage.
+> When adding to that directory, copy the closest existing
+> demo's shape. Worked patterns there:
+>   * `test_09_two_fsms` — writer/reader sharing world
+>   * `test_10_spawn` — dynamic FSM creation via `SpawnFsm`
+>   * `test_11_frameclock` / `test_13_timer` — FTI typed
+>     resources
+>   * `test_14_stdin` / `test_15_signal` — plugin-as-writer
+>     (stdin / signals via reserved World fields)
+>
+> [`programs/demos/COUNTEREXAMPLES.md`](../../programs/demos/COUNTEREXAMPLES.md)
+> lists the runtime gaps each demo had to work around — useful
+> reading before you assume a missing piece is your own bug.
+
 ## When to use multiple FSMs
 
 You want multiple FSMs when your program has **independent

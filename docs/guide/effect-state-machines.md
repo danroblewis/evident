@@ -6,6 +6,28 @@ This guide is what you wish you'd read before debugging your first
 program for an hour. Read it once end to end; refer back when
 something behaves wrong.
 
+> **Looking for worked patterns?** [`programs/demos/`](../../programs/demos/)
+> is this repo's canonical test set. Every primitive
+> (Println, ParseInt, ShellRun, Time, SpawnFsm, FrameClock /
+> Hostname / Timer FTI, SDL_Renderer, …) has a worked
+> `test_NN_<name>.ev`. Each demo is also its own integration
+> test (inline `sat_*` / `unsat_*` claims plus the Rust driver
+> in `runtime-rust/tests/demos.rs`). When adding to that
+> directory, match the existing shape — don't invent your own.
+>
+> **Two conventions for files we add to `programs/demos/`**
+> (also in `CLAUDE.md`; these are repo conventions, not
+> language requirements):
+>   1. Demo files run through the multi-FSM scheduler — even
+>      the single-FSM ones. There is no "single-FSM mode";
+>      claims with the FSM shape (state pair + ResultList +
+>      EffectList) are dispatched uniformly.
+>   2. Demo files don't contain raw FFI calls (`LibCall`,
+>      `FFICall`, `FFIOpen`, `FFILookup`). Wrap C in `stdlib/`,
+>      then call the wrapper claim. Hardcoded dylib paths in a
+>      demo file are a code-review blocker. (For your own
+>      programs outside this repo's test set, do as you like.)
+
 ## The execution model in one paragraph
 
 Every effect-driven program is a finite state machine that the
