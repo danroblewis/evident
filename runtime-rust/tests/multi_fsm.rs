@@ -138,6 +138,40 @@ fn timer_lang_test_07_plugin_as_writer() {
 }
 
 #[test]
+fn word_counter_lang_test_08_payload_state() {
+    // Variant of the echo demo using payload state instead of
+    // world-tracked counter. Verifies payload first-variant
+    // works alongside StdinSource auto-install.
+    use std::process::{Command, Stdio};
+    use std::io::Write;
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/08_word_counter.ev",
+               "--max-steps", "30"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    {
+        let stdin = child.stdin.as_mut().expect("stdin");
+        stdin.write_all(b"alpha\nbeta\ngamma\n").unwrap();
+    }
+    let output = child.wait_with_output().expect("wait");
+    let out = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines.contains(&"got: alpha"), "missing alpha; out:\n{}", out);
+    assert!(lines.contains(&"got: beta"),  "missing beta; out:\n{}",  out);
+    assert!(lines.contains(&"got: gamma"), "missing gamma; out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; got {:?}; stderr:\n{}",
+        output.status, String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn echo_lang_test_06_plugin_as_writer() {
     // The echo demo: StdinSource auto-installed (because World
     // has stdin_line + stdin_seq). Plugin reads piped stdin
