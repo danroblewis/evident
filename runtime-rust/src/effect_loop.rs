@@ -157,7 +157,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
             } else if type_name == "FrameClock" || type_name == "Hostname"
-                   || type_name == "Timer" {
+                   || type_name == "Timer" || type_name == "SDL_Window" {
                 fti_params.push((name.clone(), type_name.clone(), pins.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -377,6 +377,27 @@ pub fn run_with_ctx(
                         // tries to read t.interval_ms. Future:
                         // pin user-supplied values into the
                         // snapshot at run_multi_fsm startup.
+                    }
+                    "SDL_Window" => {
+                        let title  = pin_str_value(pins, "title")
+                            .unwrap_or_else(|| "Evident".to_string());
+                        let width  = pin_int_value(pins, "width").unwrap_or(640) as i32;
+                        let height = pin_int_value(pins, "height").unwrap_or(480) as i32;
+                        let key = format!("{}.{param_name}.handle", fsm.claim_name);
+                        let mut bridge = crate::event_sources::SdlWindowSource::new(
+                            title, width, height, &key);
+                        // Inline start: SDL on macOS requires
+                        // CreateWindow on the main thread. The
+                        // runtime is single-threaded so calling
+                        // here works. A keepalive thread holds
+                        // the library alive until the runtime
+                        // exits.
+                        bridge.start_inline(event_tx.clone())
+                            .map_err(|e| format!(
+                                "failed to start SDL_Window bridge for `{}.{param_name}`: {e}",
+                                fsm.claim_name))?;
+                        event_sources.push(Box::new(bridge));
+                        plugin_writes.insert(key);
                     }
                     _ => {}
                 }
@@ -1387,6 +1408,23 @@ fn pin_int_value(pins: &crate::ast::Pins, field: &str) -> Option<i64> {
         // Positional: not commonly used for FTI; would need the
         // type's field declaration order to map index → field name.
         // Skip for v1.
+        Pins::Positional(_) => None,
+    }
+}
+
+/// Read a String literal from a Pins block by field name.
+fn pin_str_value(pins: &crate::ast::Pins, field: &str) -> Option<String> {
+    use crate::ast::{Pins, Mapping, Expr};
+    match pins {
+        Pins::None => None,
+        Pins::Named(ms) => {
+            for Mapping { slot, value } in ms {
+                if slot == field {
+                    if let Expr::Str(s) = value { return Some(s.clone()); }
+                }
+            }
+            None
+        }
         Pins::Positional(_) => None,
     }
 }

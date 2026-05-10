@@ -224,5 +224,24 @@ type Timer
     interval_ms ∈ Int
     tick_count  ∈ Int
 
+-- SDL window resource. Bridge calls SDL_Init + SDL_CreateWindow
+-- at startup with the configured title/width/height; writes the
+-- window pointer (cast to Int) into `handle`. On program end:
+-- SDL_DestroyWindow + SDL_Quit.
+--
+--     claim app(win ∈ SDL_Window (title ↦ "App",
+--                                  width ↦ 640,
+--                                  height ↦ 480),
+--               ...)
+--         -- once win.handle is non-zero, the window exists
+--         -- and you can pass win.handle to GL/SDL effects
+--
+-- See `programs/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
+type SDL_Window
+    title  ∈ String
+    width  ∈ Int
+    height ∈ Int
+    handle ∈ Int
+
 -- (Earlier placeholder Timer type removed — superseded by the
 -- per-instance configurable Timer above.)

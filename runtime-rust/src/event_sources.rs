@@ -788,6 +788,247 @@ impl Drop for OneShotShellSource {
     fn drop(&mut self) { self.stop(); }
 }
 
+/// SDL_Window resource bridge. On start: load libSDL2, call
+/// SDL_Init + SDL_CreateWindow, write the window pointer (as
+/// i64) to the configured `handle` field. On stop: call
+/// SDL_DestroyWindow + SDL_Quit.
+///
+/// Lifecycle: the SDL library and window pointer are held by
+/// the source; both live until the source is dropped (i.e. the
+/// runtime exits or the source is explicitly stopped).
+///
+/// Caveat: SDL functions must be called from the same thread
+/// that initialized SDL on macOS. The current implementation
+/// uses a single bridge thread for both init and cleanup,
+/// avoiding the cross-thread issue. User FSMs that call SDL
+/// functions via Effect::LibCall (for glClear, swap, etc.)
+/// will execute on the dispatch thread, which is DIFFERENT —
+/// this works because OpenGL doesn't have the same single-
+/// thread restriction once a context is current. Window
+/// management calls (resize, fullscreen toggle) from user
+/// code may behave oddly; for v1 keep window state read-only.
+pub struct SdlWindowSource {
+    title:        String,
+    width:        i32,
+    height:       i32,
+    handle_field: String,
+    write_queue:  WriteQueue,
+    stop_flag:    Arc<AtomicBool>,
+    handle:       Option<JoinHandle<()>>,
+}
+
+impl SdlWindowSource {
+    pub fn new(title: impl Into<String>,
+               width: i32,
+               height: i32,
+               handle_field: impl Into<String>) -> Self {
+        SdlWindowSource {
+            title:        title.into(),
+            width, height,
+            handle_field: handle_field.into(),
+            write_queue:  new_write_queue(),
+            stop_flag:    Arc::new(AtomicBool::new(false)),
+            handle:       None,
+        }
+    }
+
+    /// Macos-friendly variant: call SDL_Init + SDL_CreateWindow
+    /// SYNCHRONOUSLY on the calling thread (which should be the
+    /// runtime's main thread). Pushes the resulting handle into
+    /// the queue immediately. Skip the background thread; cleanup
+    /// happens on Drop. Returns the window pointer (or 0 on failure)
+    /// so the caller can also note it for later use.
+    pub fn start_inline(&mut self, tx: Sender<SchedulerEvent>) -> Result<i64, String> {
+        use libloading::{Library, Symbol};
+        use std::ffi::CString;
+        use std::os::raw::{c_char, c_int, c_void};
+        let paths = [
+            "/opt/homebrew/lib/libSDL2.dylib",
+            "/usr/local/lib/libSDL2.dylib",
+            "/usr/lib/x86_64-linux-gnu/libSDL2.so",
+            "/usr/lib/libSDL2.so",
+        ];
+        let lib = paths.iter()
+            .find_map(|p| unsafe { Library::new(p) }.ok())
+            .ok_or_else(|| "couldn't find libSDL2 in standard paths".to_string())?;
+
+        type SdlInit = unsafe extern "C" fn(u32) -> c_int;
+        type SdlCreateWindow = unsafe extern "C" fn(*const c_char, c_int, c_int, c_int, c_int, u32) -> *mut c_void;
+
+        let sdl_init: Symbol<SdlInit> = unsafe { lib.get(b"SDL_Init\0") }
+            .map_err(|e| format!("SDL_Init lookup: {e}"))?;
+        let sdl_create_window: Symbol<SdlCreateWindow> = unsafe { lib.get(b"SDL_CreateWindow\0") }
+            .map_err(|e| format!("SDL_CreateWindow lookup: {e}"))?;
+
+        let init_rc = unsafe { sdl_init(0x20) };
+        if init_rc != 0 {
+            return Err(format!("SDL_Init returned {init_rc}"));
+        }
+        let title_c = CString::new(self.title.clone()).unwrap_or_default();
+        let win_ptr = unsafe {
+            sdl_create_window(
+                title_c.as_ptr(),
+                0x2FFF0000u32 as i32, 0x2FFF0000u32 as i32,
+                self.width, self.height,
+                2,  // SDL_WINDOW_OPENGL
+            )
+        };
+        if win_ptr.is_null() {
+            return Err("SDL_CreateWindow returned null".to_string());
+        }
+
+        // Push the handle to the write queue so the runtime
+        // applies it to the snapshot via the normal drain path.
+        {
+            let mut q = self.write_queue.lock().unwrap();
+            q.push_back((self.handle_field.clone(), Value::Int(win_ptr as i64)));
+        }
+        let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });
+
+        // Hold the library alive in a long-lived background thread
+        // so its Drop doesn't run prematurely. The thread parks
+        // until stop_flag is set; cleanup of window pointer is
+        // also done from this thread.
+        // Hold the library alive in a long-lived background
+        // thread that just waits for the stop signal. SDL
+        // teardown (DestroyWindow, Quit) intentionally NOT
+        // called — on macOS they need the main thread, and the
+        // runtime is exiting anyway when the source is dropped.
+        // The OS reclaims the window on process exit.
+        let stop = self.stop_flag.clone();
+        let _ = win_ptr;  // suppress unused (we want to keep the library alive)
+        let handle = std::thread::Builder::new()
+            .name("evident-sdl-keepalive".into())
+            .spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                drop(lib);
+            })
+            .map_err(|e| format!("sdl keepalive spawn: {e}"))?;
+        self.handle = Some(handle);
+        Ok(win_ptr as i64)
+    }
+}
+
+impl EventSource for SdlWindowSource {
+    fn start(&mut self, tx: Sender<SchedulerEvent>) -> Result<(), String> {
+        if self.handle.is_some() {
+            return Err("SdlWindowSource already started".to_string());
+        }
+        let title = self.title.clone();
+        let width = self.width;
+        let height = self.height;
+        let handle_field = self.handle_field.clone();
+        let write_queue = self.write_queue.clone();
+        let stop_flag = self.stop_flag.clone();
+        let handle = std::thread::Builder::new()
+            .name("evident-sdl".into())
+            .spawn(move || {
+                use libloading::{Library, Symbol};
+                use std::ffi::CString;
+                use std::os::raw::{c_char, c_int, c_void};
+                // Try common SDL2 paths.
+                let paths = [
+                    "/opt/homebrew/lib/libSDL2.dylib",
+                    "/usr/local/lib/libSDL2.dylib",
+                    "/usr/lib/x86_64-linux-gnu/libSDL2.so",
+                    "/usr/lib/libSDL2.so",
+                ];
+                let lib = paths.iter()
+                    .find_map(|p| unsafe { Library::new(p) }.ok());
+                let Some(lib) = lib else {
+                    eprintln!("[SdlWindowSource] couldn't find libSDL2 \
+                               in standard paths; window not created");
+                    let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });
+                    return;
+                };
+
+                // SDL_Init(SDL_INIT_VIDEO=0x20)
+                type SdlInit  = unsafe extern "C" fn(u32) -> c_int;
+                type SdlCreateWindow = unsafe extern "C" fn(*const c_char, c_int, c_int, c_int, c_int, u32) -> *mut c_void;
+                type SdlDestroyWindow = unsafe extern "C" fn(*mut c_void);
+                type SdlQuit  = unsafe extern "C" fn();
+
+                let sdl_init: Symbol<SdlInit> = match unsafe { lib.get(b"SDL_Init\0") } {
+                    Ok(s) => s,
+                    Err(e) => { eprintln!("[SdlWindowSource] SDL_Init lookup: {e}"); return; }
+                };
+                let sdl_create_window: Symbol<SdlCreateWindow> = match unsafe { lib.get(b"SDL_CreateWindow\0") } {
+                    Ok(s) => s,
+                    Err(e) => { eprintln!("[SdlWindowSource] SDL_CreateWindow lookup: {e}"); return; }
+                };
+                let sdl_destroy_window: Symbol<SdlDestroyWindow> = match unsafe { lib.get(b"SDL_DestroyWindow\0") } {
+                    Ok(s) => s,
+                    Err(_) => { eprintln!("[SdlWindowSource] SDL_DestroyWindow lookup failed"); return; }
+                };
+                let sdl_quit: Symbol<SdlQuit> = match unsafe { lib.get(b"SDL_Quit\0") } {
+                    Ok(s) => s,
+                    Err(_) => { eprintln!("[SdlWindowSource] SDL_Quit lookup failed"); return; }
+                };
+
+                let init_rc = unsafe { sdl_init(0x20) };
+                if init_rc != 0 {
+                    eprintln!("[SdlWindowSource] SDL_Init returned {init_rc}");
+                    return;
+                }
+                let title_c = CString::new(title.clone()).unwrap_or_default();
+                // Position SDL_WINDOWPOS_CENTERED = 0x2FFF0000.
+                // Flags 0x2 = SDL_WINDOW_OPENGL.
+                let win_ptr = unsafe {
+                    sdl_create_window(
+                        title_c.as_ptr(),
+                        0x2FFF0000u32 as i32, 0x2FFF0000u32 as i32,
+                        width, height,
+                        2,
+                    )
+                };
+                if win_ptr.is_null() {
+                    eprintln!("[SdlWindowSource] SDL_CreateWindow returned null");
+                    unsafe { sdl_quit() };
+                    return;
+                }
+                {
+                    let mut q = write_queue.lock().unwrap();
+                    q.push_back((handle_field.clone(), Value::Int(win_ptr as i64)));
+                }
+                let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });
+
+                // Wait for stop signal.
+                while !stop_flag.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+
+                // Cleanup.
+                unsafe { sdl_destroy_window(win_ptr) };
+                unsafe { sdl_quit() };
+                drop(lib);
+            })
+            .map_err(|e| format!("SdlWindowSource spawn: {e}"))?;
+        self.handle = Some(handle);
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        self.stop_flag.store(true, Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+
+    fn drain_writes(&mut self) -> Vec<(String, Value)> {
+        drain(&self.write_queue)
+    }
+
+    fn write_fields(&self) -> Vec<String> {
+        vec![self.handle_field.clone()]
+    }
+}
+
+impl Drop for SdlWindowSource {
+    fn drop(&mut self) { self.stop(); }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
