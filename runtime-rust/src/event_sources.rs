@@ -878,6 +878,25 @@ impl SdlWindowSource {
         if init_rc != 0 {
             return Err(format!("SDL_Init returned {init_rc}"));
         }
+
+        // GL attributes MUST be set BEFORE SDL_CreateWindow or
+        // they're silently ignored. Without these, the context
+        // defaults to legacy GL 2.1 on macOS, and #version 330
+        // core shaders fail to link / produce nothing visible.
+        // Only relevant if the caller wants a GL context — if
+        // not, attribute calls are harmless.
+        if self.gl_handle_field.is_some() {
+            type SdlGlSetAttribute = unsafe extern "C" fn(c_int, c_int) -> c_int;
+            if let Ok(set_attr) = unsafe { lib.get::<Symbol<SdlGlSetAttribute>>(b"SDL_GL_SetAttribute\0") } {
+                unsafe {
+                    set_attr(17, 3);  // CONTEXT_MAJOR_VERSION = 3
+                    set_attr(18, 3);  // CONTEXT_MINOR_VERSION = 3
+                    set_attr(21, 1);  // CONTEXT_PROFILE_MASK = CORE
+                    set_attr(5, 1);   // DOUBLEBUFFER = 1
+                }
+            }
+        }
+
         let title_c = CString::new(self.title.clone()).unwrap_or_default();
         let win_ptr = unsafe {
             sdl_create_window(
@@ -890,22 +909,24 @@ impl SdlWindowSource {
         if win_ptr.is_null() {
             return Err("SDL_CreateWindow returned null".to_string());
         }
+        // Explicitly show + raise. On macOS, terminal-launched
+        // SDL windows can stay hidden behind other apps until
+        // the activation policy is set; SDL_RaiseWindow nudges
+        // them to the front. Both calls are no-ops if the
+        // window is already visible.
+        type SdlVoidWin = unsafe extern "C" fn(*mut c_void);
+        if let Ok(show) = unsafe { lib.get::<Symbol<SdlVoidWin>>(b"SDL_ShowWindow\0") } {
+            unsafe { show(win_ptr); }
+        }
+        if let Ok(raise) = unsafe { lib.get::<Symbol<SdlVoidWin>>(b"SDL_RaiseWindow\0") } {
+            unsafe { raise(win_ptr); }
+        }
 
-        // GL context (optional). Set GL attributes for Core 3.3
-        // before creating the context.
-        let gl_ptr = if let Some(_) = &self.gl_handle_field {
-            type SdlGlSetAttribute  = unsafe extern "C" fn(c_int, c_int) -> c_int;
+        // GL context (optional). Attributes were already set
+        // above, before SDL_CreateWindow.
+        let gl_ptr = if self.gl_handle_field.is_some() {
             type SdlGlCreateContext = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
             type SdlGlMakeCurrent   = unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int;
-            // SDL_GL_CONTEXT_MAJOR_VERSION=17, MINOR=18, PROFILE_MASK=21,
-            // SDL_GL_CONTEXT_PROFILE_CORE=1.
-            if let Ok(set_attr) = unsafe { lib.get::<Symbol<SdlGlSetAttribute>>(b"SDL_GL_SetAttribute\0") } {
-                unsafe {
-                    set_attr(17, 3);
-                    set_attr(18, 3);
-                    set_attr(21, 1);
-                }
-            }
             let create_ctx: Symbol<SdlGlCreateContext> =
                 unsafe { lib.get(b"SDL_GL_CreateContext\0") }
                     .map_err(|e| format!("SDL_GL_CreateContext lookup: {e}"))?;
@@ -997,6 +1018,7 @@ impl SdlWindowSource {
             })
             .map_err(|e| format!("sdl keepalive spawn: {e}"))?;
         self.handle = Some(handle);
+
         Ok(win_ptr as i64)
     }
 }

@@ -1,5 +1,33 @@
 -- effect_gl_triangle_fti.ev — FTI version of effect_gl_triangle.
 --
+-- KNOWN BUG (2026-05-10): the window opens but renders BLACK on
+-- macOS. The setup is correct (Core 3.3 context, viewport set,
+-- shader compile+link checked, VAO bound, ShowWindow+RaiseWindow
+-- called) but per-frame GL calls dispatched through Evident's
+-- effect loop don't visually present.
+--
+-- Empirical findings from inline diagnostics:
+--   * Bridge inline native GL calls → render correctly
+--   * Bridge inline calls via Evident's `ffi_call` → render
+--   * Effect-dispatch path's `ffi_call` (same args, same thread,
+--     GL_VERSION confirmed active) → no visual output
+--
+-- Working hypothesis: a Cocoa runloop / NSOpenGLContext drawable
+-- liveness issue between bridge return and dispatch. The bridge
+-- runs while we're effectively inside SDL's CreateWindow runloop
+-- step; after returning, swap calls don't actually present until
+-- a proper Cocoa display cycle happens. SDL_PumpEvents from
+-- dispatch may not drive the right runloop iteration.
+--
+-- The legacy `effect_gl_triangle.ev` (no FTI) has the same
+-- issue. Resolution would need a Cocoa-aware runloop driver in
+-- the runtime — out of scope for this session.
+--
+-- See `_/sessions/2026-05-10-fti-render-bug.md` for the full
+-- investigation if/when that note is written.
+
+
+--
 -- Same hot-pink triangle, ~75 lines vs the legacy demo's ~330.
 -- Compare side-by-side with `effect_gl_triangle.ev` to see what
 -- the FTI typed-resource approach buys you:
