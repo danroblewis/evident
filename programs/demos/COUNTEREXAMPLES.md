@@ -116,27 +116,67 @@ into the env that the arm's RHS expression sees.
 
 ## 7. SDL+GL renders black through Effect dispatch
 
-**Where:** `test_17_sdl_gl_window` (full counterexample, with
-diagnostic findings in the file header)
+**Status:** unfixed. The demo file was REMOVED from
+`programs/demos/` because its presence implied it worked. The
+source is embedded at the bottom of this file under
+`Appendix A: SDL+GL counterexample source` so contributors can
+reproduce.
 
 Per-frame `glClearColor` / `glClear` / `SwapWindow` calls
 dispatched through Evident's effect loop don't visually
 present, even though:
 
-- Same thread (ThreadId(1)) as bridge install
-- Same args, same function pointers
-- GL context current (`glGetString(GL_VERSION)` returns
-  `"4.1 Metal - 89.3"`)
-- `glGetError` returns 0
+  - Same thread (ThreadId(1)) as bridge install
+  - Same args, same function pointers
+  - GL context current (`glGetString(GL_VERSION)` returns
+    `"4.1 Metal - 89.3"`)
+  - `glGetError` returns 0
 
 The same calls work when issued INLINE inside the bridge
 install, OR when the entire SDL+GL init is bundled into one
 `Effect::Seq` as the (now-deleted) `effect_multi_fsm_triangle`
 demo did.
 
-Working hypothesis: a Cocoa runloop / NSOpenGLContext
-drawable-liveness boundary. Fix likely needs a Cocoa-aware
-runloop driver.
+**Things tried (none fixed it):**
+
+  1. `glViewport(0, 0, w, h)` at install time — Apple's
+     GL-on-Metal default viewport is 0×0; setting it didn't
+     restore rendering (still needed though).
+  2. `SDL_GL_SetAttribute` reordered to BEFORE
+     `SDL_CreateWindow` (was being silently ignored in the
+     wrong order — fixed independently).
+  3. `glLinkProgram` status check (would have caught silent
+     link failures — wasn't the cause).
+  4. `SDL_ShowWindow` + `SDL_RaiseWindow` after
+     CreateWindow — got the window onscreen, didn't fix the
+     black render.
+  5. Two priming swaps inside the bridge install (so the
+     drawable is "exercised" before the first user tick) —
+     no effect.
+  6. Re-`SDL_GL_MakeCurrent` per frame from the user FSM —
+     no effect.
+  7. `glFlush` + `glFinish` before `SDL_GL_SwapWindow` from
+     the user FSM — no effect.
+  8. `NSApplicationLoad()` at bridge install (Cocoa
+     bootstrap for command-line tools) — no effect.
+
+**Working hypothesis:** a Cocoa runloop / NSOpenGLContext
+drawable-liveness boundary between bridge return and the
+first FSM tick. Likely needs either:
+
+  * a Cocoa-aware runloop driver in the runtime
+    (NSApp.run-style, with the FSM scheduler integrated as
+    a runloop source), OR
+  * deferred FTI install — bridge waits to do
+    SDL_CreateWindow + GL context creation until INSIDE the
+    first user tick's Effect dispatch, so the drawable's
+    creation, first use, and first swap all happen on the
+    same Cocoa runloop iteration.
+
+The working multi-FSM GL demo (`effect_multi_fsm_triangle`,
+deleted) put the entire SDL+GL init inside a single user
+`Effect::Seq` on tick 0 and rendered fine. That's the only
+known-working GL pattern in this runtime.
 
 ## 8. SpawnFsm + same-tick Exit drops the spawned FSM's first effect
 
@@ -211,5 +251,59 @@ Every demo ships in green:
 | 15 | signal | SigintSource plugin-as-writer |
 | 16 | sdl_red | SDL_Renderer (renderer-based, not GL) |
 
-Plus 22 inline `sat_*` / `unsat_*` static tests and the Rust
+Plus inline `sat_*` / `unsat_*` static tests and the Rust
 driver in `runtime-rust/tests/demos.rs`.
+
+---
+
+## Appendix A: SDL+GL counterexample source (counterexample #7)
+
+This file used to live at `programs/demos/test_17_sdl_gl_window.ev`.
+It was removed because its presence in the demos directory
+implied it worked. The runtime can't currently render through
+this pattern — see counterexample #7 above for the diagnostic
+findings and what's been tried.
+
+Reproduces the bug: window appears (titled "Counterexample")
+but stays black. Save as a `.ev` file and run with
+`evident effect-run`.
+
+```evident
+import "stdlib/runtime.ev"
+import "stdlib/sdl/gl.ev"
+import "stdlib/sdl/window.ev"
+import "stdlib/shader/program.ev"
+
+enum WState = WInit | WLoop(Int) | WEnd
+
+claim gl_demo(state, state_next ∈ WState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    win ∈ SDL_Window (title ↦ "Counterexample", width ↦ 640, height ↦ 480)
+
+    state_next = match state
+        WInit    ⇒ WLoop(60)
+        WLoop(n) ⇒ (n ≤ 1 ? WEnd : WLoop(n - 1))
+        WEnd     ⇒ WEnd
+
+    set_color_eff ∈ Effect
+    gl_clear_color(0.9, 0.1, 0.1, 1.0, set_color_eff)
+    clear_eff ∈ Effect
+    gl_clear(16384, clear_eff)
+    swap_eff ∈ Effect
+    gl_swap_window(win.handle, swap_eff)
+    pump_eff ∈ Effect
+    sdl_pump_events(pump_eff)
+    delay_eff ∈ Effect
+    sdl_delay(33, delay_eff)
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff, swap_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    effects = match state
+        WInit    ⇒ ⟨⟩
+        WLoop(n) ⇒ (n > 0 ? ⟨frame_seq⟩ : ⟨Println("done"), Exit(0)⟩)
+        WEnd     ⇒ ⟨⟩
+```

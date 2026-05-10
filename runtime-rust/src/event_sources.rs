@@ -879,6 +879,28 @@ impl SdlWindowSource {
             return Err(format!("SDL_Init returned {init_rc}"));
         }
 
+        // macOS: NSApplicationLoad() bootstraps Cocoa for a
+        // command-line tool. SDL's video init does this too,
+        // but calling it explicitly + asking the app to be
+        // "regular" (not "accessory" or "prohibited") may
+        // tighten the GL drawable lifecycle that's blocking
+        // dispatch-time renders. Best-effort — ignore if
+        // AppKit isn't loadable.
+        #[cfg(target_os = "macos")]
+        {
+            type NsApplicationLoad = unsafe extern "C" fn() -> bool;
+            if let Ok(appkit) = unsafe {
+                Library::new("/System/Library/Frameworks/AppKit.framework/AppKit")
+            } {
+                if let Ok(nsapp_load) = unsafe {
+                    appkit.get::<Symbol<NsApplicationLoad>>(b"NSApplicationLoad\0")
+                } {
+                    unsafe { nsapp_load(); }
+                }
+                let _: &'static Library = Box::leak(Box::new(appkit));
+            }
+        }
+
         // GL attributes MUST be set BEFORE SDL_CreateWindow or
         // they're silently ignored. Without these, the context
         // defaults to legacy GL 2.1 on macOS, and #version 330

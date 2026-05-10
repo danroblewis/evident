@@ -137,7 +137,9 @@ const EXPECTATIONS: &[DemoExpect] = &[
     // test_15_signal — needs SIGINT, only meaningful interactive.
     // test_16_sdl_red — needs a display; renders correctly when run
     //   manually but not testable in a headless CI.
-    // test_17_sdl_gl_window — known counterexample (renders black).
+    // (test_17_sdl_gl_window — REMOVED from demos; the
+    //  pattern doesn't render. Source preserved in
+    //  COUNTEREXAMPLES.md Appendix A.)
 ];
 
 #[test]
