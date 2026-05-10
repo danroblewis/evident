@@ -1,0 +1,60 @@
+-- Multi-FSM test: graceful shutdown via world coordination +
+-- Effect::Exit. Demonstrates the cleanup pattern from Phase 4 v2.
+--
+-- Roles:
+--   * `producer` (writer) — emits "produced" each tick, increments
+--     world.counter. Self-schedules forever via effect-feedback
+--     (it always emits at least one Println).
+--   * `consumer` (reader) — subscribes to world.counter via its
+--     read-set. Wakes on each producer write. When counter ≥ 3,
+--     emits cleanup + Exit(0). Effect::Exit is graceful so the
+--     producer's same-tick "produced" message also prints before
+--     the runtime halts at end-of-tick.
+--
+-- Validates:
+--   * World-delta wake on a single field (counter).
+--   * Effect-feedback keeps the writer alive across ticks without
+--     needing any external input.
+--   * Effect::Exit lets co-scheduled FSMs complete their effects
+--     in the same tick (the producer's Println prints alongside
+--     the consumer's cleanup).
+--   * Exit code propagates as the process exit code (0 here).
+--
+-- Expected output (--max-steps 20, halts at tick 3 with exit 0):
+--   produced
+--   produced
+--   produced
+--   produced
+--   consumer: cleanup
+--
+-- Behavior to verify:
+--   * Exactly 4 "produced" lines (ticks 0..3, the last alongside
+--     consumer's cleanup).
+--   * Exactly 1 "consumer: cleanup" line.
+--   * Program exits cleanly with code 0; steps < max_steps.
+
+import "stdlib/runtime.ev"
+
+type World
+    counter ∈ Int
+
+enum ProducerState = Producing
+
+claim producer(world, world_next ∈ World,
+               state, state_next ∈ ProducerState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Producing
+    world_next.counter = world.counter + 1
+    effects = ⟨Println("produced")⟩
+
+enum ConsumerState = Consuming
+
+claim consumer(world ∈ World,
+               state, state_next ∈ ConsumerState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Consuming
+    effects = (world.counter ≥ 3
+               ? ⟨Println("consumer: cleanup"), Exit(0)⟩
+               : ⟨⟩)
