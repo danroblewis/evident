@@ -157,7 +157,8 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
             } else if type_name == "FrameClock" || type_name == "Hostname"
-                   || type_name == "Timer" || type_name == "SDL_Window" {
+                   || type_name == "Timer" || type_name == "SDL_Window"
+                   || type_name == "GL_Program" {
                 fti_params.push((name.clone(), type_name.clone(), pins.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -377,6 +378,21 @@ pub fn run_with_ctx(
                         // tries to read t.interval_ms. Future:
                         // pin user-supplied values into the
                         // snapshot at run_multi_fsm startup.
+                    }
+                    "GL_Program" => {
+                        let vsrc = pin_str_value(pins, "vertex_src")
+                            .unwrap_or_default();
+                        let fsrc = pin_str_value(pins, "fragment_src")
+                            .unwrap_or_default();
+                        let key = format!("{}.{param_name}.handle", fsm.claim_name);
+                        let mut bridge = crate::event_sources::GlProgramSource::new(
+                            vsrc, fsrc, &key);
+                        bridge.start_inline(event_tx.clone())
+                            .map_err(|e| format!(
+                                "failed to compile GL_Program for `{}.{param_name}`: {e}",
+                                fsm.claim_name))?;
+                        event_sources.push(Box::new(bridge));
+                        plugin_writes.insert(key);
                     }
                     "SDL_Window" => {
                         let title  = pin_str_value(pins, "title")

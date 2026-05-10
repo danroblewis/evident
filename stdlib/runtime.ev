@@ -244,5 +244,21 @@ type SDL_Window
     handle    ∈ Int
     gl_handle ∈ Int   -- GL context (also created + made current)
 
+-- GL shader program. Bridge compiles vertex + fragment sources,
+-- links into a program, calls glUseProgram, writes the program
+-- ID into `handle`. Replaces a multi-call setup chain with one
+-- declaration.
+--
+--     prog ∈ GL_Program (vertex_src ↦ "...", fragment_src ↦ "...")
+--
+-- Requires a current GL context — declare AFTER an SDL_Window
+-- with a gl_handle in the same FSM (the bridges install in
+-- declaration order, so the context is current when the
+-- program bridge runs).
+type GL_Program
+    vertex_src   ∈ String
+    fragment_src ∈ String
+    handle       ∈ Int
+
 -- (Earlier placeholder Timer type removed — superseded by the
 -- per-instance configurable Timer above.)

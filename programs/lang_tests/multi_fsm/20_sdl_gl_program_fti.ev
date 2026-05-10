@@ -1,0 +1,74 @@
+-- SDL_Window + GL_Program FTI: full triangle render with NO
+-- setup state machine.
+--
+-- The user FSM declares both FTI types as parameters. The
+-- runtime's bridges (in declaration order):
+--   1. SDL_Window: SDL_Init + SDL_GL_SetAttribute + CreateWindow
+--      + SDL_GL_CreateContext + SDL_GL_MakeCurrent
+--   2. GL_Program: glCreateShader x2 + glShaderSource x2 +
+--      glCompileShader x2 + glCreateProgram + glAttachShader x2
+--      + glLinkProgram + glUseProgram + glDeleteShader x2
+--
+-- That's ~14 setup states in the legacy effect-driven shape,
+-- replaced by 2 typed declarations. Render loop solves at
+-- ~3ms/tick.
+--
+-- Run:
+--     evident effect-run programs/lang_tests/multi_fsm/20_sdl_gl_program_fti.ev --max-steps 100
+
+import "stdlib/runtime.ev"
+import "stdlib/sdl/gl.ev"
+import "stdlib/shader/program.ev"
+
+enum S = Init | Frame(Int)
+
+claim render(state, state_next ∈ S,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    win ∈ SDL_Window (title ↦ "FTI Triangle", width ↦ 640, height ↦ 480)
+    prog ∈ GL_Program (
+        vertex_src ↦ "#version 330 core\nvoid main(){vec2 p=(gl_VertexID==0?vec2(-0.5,-0.5):(gl_VertexID==1?vec2(0.5,-0.5):vec2(0.0,0.5)));gl_Position=vec4(p,0,1);}",
+        fragment_src ↦ "#version 330 core\nout vec4 c;\nvoid main(){c=vec4(1,0.4,0.6,1);}"
+    )
+
+    state_next = match state
+        Init     ⇒ Frame(60)
+        Frame(n) ⇒ (n ≤ 1 ? Frame(0) : Frame(n - 1))
+
+    set_color_eff ∈ Effect
+    gl_clear_color(0.05, 0.05, 0.1, 1.0, set_color_eff)
+    clear_eff ∈ Effect
+    gl_clear(16384, clear_eff)
+    gen_vao_eff ∈ Effect
+    gl_gen_vertex_array(gen_vao_eff)
+    bind_vao_eff ∈ Effect
+    bind_vao_eff = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                           "glBindVertexArray", "v(i)",
+                           ArgCons(ArgPriorResult(2), ArgNil))
+    draw_eff ∈ Effect
+    gl_draw_arrays(4, 0, 3, draw_eff)
+    swap_eff ∈ Effect
+    gl_swap_window(win.handle, swap_eff)
+    pump_eff ∈ Effect
+    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_PumpEvents", "v()", ArgNil)
+    delay_eff ∈ Effect
+    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_Delay", "v(i)",
+                        ArgCons(ArgInt(33), ArgNil))
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff, gen_vao_eff, bind_vao_eff,
+                    draw_eff, swap_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    n ∈ Int
+    n = match state
+        Init     ⇒ 60
+        Frame(k) ⇒ k
+
+    effects = match state
+        Init     ⇒ ⟨⟩
+        Frame(k) ⇒ (k > 0 ? ⟨frame_seq⟩
+                          : ⟨Println("triangle render done"), Exit(0)⟩)
