@@ -268,21 +268,55 @@ controller emits Exit(7), logger in same tick still prints its
 cleanup-done message, runtime returns LoopResult { halted_clean,
 exit_code: Some(7) }.
 
-### Phase 4 v3: pluggable async event sources (deferred)
+### Phase 4 v3: async event sources (done — frame timer)
 
-A real plugin-as-event-source mechanism — plugins push events to
-the scheduler on background threads, scheduler `select()`s when
-its ready set is empty, sources can declare permanently dead.
-Needed for:
-  * Frame timer that fires every N ms independent of FSM ticks.
-  * Multiple FSMs where one waits on stdin while others run on
-    other I/O sources concurrently.
-  * Signal handling (SIGINT → wake a shutdown FSM).
+`runtime-rust/src/event_sources.rs` defines an `EventSource` trait
+and a `FrameTimer` implementation. When the multi-FSM scheduler
+finds no FSM ready to tick, instead of halting immediately it
+checks whether any event source can wake it: if so, it blocks on
+the `mpsc::Receiver<SchedulerEvent>` until the next event (or
+until all senders are dropped, signaling all sources are dead).
 
-Not blocking the rest of the design. The current "block at
-dispatch time" approach handles single-source-of-input programs,
-the GL render loop pattern (delay-effect-as-pacing), and the
-graceful-shutdown pattern via `Effect::Exit` + world coordination.
+When an event arrives, every alive FSM is coarsely woken via the
+new `external_event` flag — they re-evaluate on the next tick. A
+future Phase 4 v3.5 can add per-FSM subscription matching so only
+FSMs interested in a specific source name wake.
+
+Configuration: `EVIDENT_TICK_MS=<u64>` installs a `FrameTimer`
+firing at the requested interval. Sources are started before the
+loop runs and stopped (via `EventSource::stop` + `Drop`) when it
+exits.
+
+`Effect::Exit` halt-check fires before the no-FSM-scheduled wait,
+so an explicit Exit always halts cleanly even if a timer is
+running.
+
+Tests:
+  * `event_sources::tests::frame_timer_*` — timer fires at
+    interval, stops cleanly.
+  * `scheduler_delta::delta_mode_without_timer_halts_when_silent`
+    — confirms the no-FSM-scheduled halt still fires when no
+    timer is configured.
+  * `scheduler_delta::delta_mode_with_timer_drives_silent_program_to_completion`
+    — same program + `EVIDENT_TICK_MS=20` keeps it running until
+    a sentinel triggers Exit.
+
+### Phase 4 v3.5: per-FSM event subscription (deferred)
+
+Currently every external event coarsely wakes every FSM. A more
+precise version would let an FSM declare which event source name(s)
+it subscribes to (analogous to the world read-set), and only wake
+matching FSMs. This is a refinement, not a fundamental capability;
+the coarse wake works for v3.
+
+### Phase 4 v4: more event sources (deferred)
+
+  * Stdin-as-event-source (background thread reading lines, push
+    line events). Currently stdin uses synchronous block-at-
+    dispatch via `Effect::ReadLine`, which works for single-source
+    programs but blocks all FSMs.
+  * Signal handling (SIGINT → push a shutdown event).
+  * SDL event polling.
 
 ### Phase 5: Self-feedback as a first-class subscription
 

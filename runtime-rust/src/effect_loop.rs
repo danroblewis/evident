@@ -211,12 +211,39 @@ pub fn run_with_ctx(
     // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
     // every iteration" behavior with name/fixpoint-based halt.
     let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
-    match fsms.len() {
+
+    // Set up async event sources from env config. Currently
+    // supports `EVIDENT_TICK_MS=<u64>` to install a periodic
+    // FrameTimer. The timer is created here, started, and stopped
+    // (via Drop) when this fn returns.
+    let mut event_sources: Vec<Box<dyn crate::event_sources::EventSource>> = Vec::new();
+    let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::event_sources::SchedulerEvent>();
+    if delta_mode {
+        use crate::event_sources::EventSource;
+        if let Ok(s) = std::env::var("EVIDENT_TICK_MS") {
+            if let Ok(ms) = s.parse::<u64>() {
+                if ms > 0 {
+                    let mut timer = crate::event_sources::FrameTimer::new(ms, "tick");
+                    timer.start(event_tx.clone())
+                        .map_err(|e| format!("failed to start tick timer: {e}"))?;
+                    event_sources.push(Box::new(timer));
+                }
+            }
+        }
+    }
+    // Drop our own clone of the sender now that all sources have
+    // their own. When the last source's sender is dropped (via
+    // EventSource::stop / Drop), the receiver returns Err and the
+    // scheduler knows all sources are dead.
+    drop(event_tx);
+    let event_rx = if event_sources.is_empty() { None } else { Some(event_rx) };
+
+    let result = match fsms.len() {
         0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
         // delta mode routes single-FSM through the multi-FSM
         // scheduler too — same subscription semantics for both.
-        1 => run_multi_fsm(rt, &fsms, opts, ctx),
+        1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref()),
         _ => {
             // v1 single-writer rule.
             let writer_count = fsms.iter().filter(|s| s.is_writer()).count();
@@ -228,9 +255,17 @@ pub fn run_with_ctx(
                     "multi-FSM v1: only one FSM may declare `world_next`; found {writer_count}: {names:?}",
                 ));
             }
-            run_multi_fsm(rt, &fsms, opts, ctx)
+            run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref())
         }
+    };
+    // Stop all event sources cleanly. Each source's stop signals
+    // its background thread and joins. Drop also calls stop, but
+    // explicit stop here ensures errors don't leak threads if the
+    // result was Err.
+    for source in &mut event_sources {
+        source.stop();
     }
+    result
 }
 
 fn run_with_shape(
@@ -387,6 +422,7 @@ fn run_multi_fsm(
     fsms: &[MainShape],
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
+    event_rx: Option<&std::sync::mpsc::Receiver<crate::event_sources::SchedulerEvent>>,
 ) -> Result<LoopResult, String> {
     use std::collections::HashMap;
     // Per-FSM mutable state. We track BOTH the encoded Datatype
@@ -486,6 +522,11 @@ fn run_multi_fsm(
     // that does Idle→Frame(N) on one tick (silently, no effects)
     // would never run its Frame(N) body.
     let mut state_changed_last: Vec<bool> = vec![false; fsms.len()];
+    // External-event feedback: an async event source (e.g.
+    // FrameTimer) fired since this FSM was last scheduled.
+    // Currently we coarsely wake every FSM on every external
+    // event — Phase 4 v3.5 will add per-FSM subscription matching.
+    let mut external_event: Vec<bool> = vec![false; fsms.len()];
 
     while step_count < opts.max_steps {
         // Any active FSMs left? If not, program halted.
@@ -530,7 +571,8 @@ fn run_multi_fsm(
             if delta_mode && step_count > 0 {
                 let woken = had_effects_last[idx]
                     || !pending_changes[idx].is_empty()
-                    || state_changed_last[idx];
+                    || state_changed_last[idx]
+                    || external_event[idx];
                 if !woken {
                     if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
                         eprintln!("[loop] tick {step_count} fsm={}: skipped (no inputs)",
@@ -539,6 +581,7 @@ fn run_multi_fsm(
                     continue;
                 }
                 pending_changes[idx].clear();
+                external_event[idx] = false;
             }
             scheduled_this_tick[idx] = true;
 
@@ -686,16 +729,10 @@ fn run_multi_fsm(
 
         step_count += 1;
 
-        // Phase 3 halt criterion (delta mode only): if no FSM was
-        // scheduled this tick, no work happened — and since
-        // scheduling decisions are deterministic from world deltas
-        // + self-feedback + state-feedback, no work would happen
-        // next tick either. Halt cleanly.
-        //
-        // Note this fires after step_count++, so the count includes
-        // the empty tick. The empty-tick cost is one schedule check
-        // per FSM (cheap, no Z3 solve).
-        if delta_mode && scheduled_this_tick.iter().all(|s| !s) {
+        // Effect::Exit handling: checked first — works in both
+        // legacy and delta mode, takes priority over the no-FSM
+        // halt and over event-wait.
+        if ctx.exit_requested.is_some() {
             if timing {
                 let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
                     .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
@@ -710,12 +747,30 @@ fn run_multi_fsm(
             });
         }
 
-        // Effect::Exit handling: an FSM emitted Exit. Dispatch
-        // already completed for this tick (other FSMs' effects
-        // ran), so halt cleanly with the requested code. Checked
-        // after the no-scheduled halt so a normal halt with no
-        // pending exit takes priority for clarity.
-        if ctx.exit_requested.is_some() {
+        // Phase 3 halt criterion (delta mode only): if no FSM was
+        // scheduled this tick, no work happened — and since
+        // scheduling decisions are deterministic from world deltas
+        // + self-feedback + state-feedback, no work would happen
+        // next tick either. Halt cleanly UNLESS an async event
+        // source can wake us (Phase 4 v3): block on the channel,
+        // then continue the loop on the next event.
+        if delta_mode && scheduled_this_tick.iter().all(|s| !s) {
+            if let Some(rx) = event_rx {
+                match rx.recv() {
+                    Ok(crate::event_sources::SchedulerEvent::Tick { name }) => {
+                        if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                            eprintln!("[loop] tick {step_count}: woke on event {name}");
+                        }
+                        for i in 0..fsms.len() {
+                            if !fsm_rt[i].halted { external_event[i] = true; }
+                        }
+                        continue;
+                    }
+                    Ok(crate::event_sources::SchedulerEvent::Closed { .. }) | Err(_) => {
+                        // All sources dead; fall through to halt.
+                    }
+                }
+            }
             if timing {
                 let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
                     .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))

@@ -322,6 +322,138 @@ fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
     assert!(r.steps < 50, "should halt before max_steps; got {} steps", r.steps);
 }
 
+#[test]
+fn delta_graceful_shutdown_lang_test_05() {
+    // Lang test 05_graceful_shutdown.ev: producer writes
+    // world.counter forever; consumer wakes on the delta, emits
+    // cleanup + Exit(0) when counter ≥ 3. Effect::Exit is graceful
+    // — producer's same-tick "produced" prints alongside cleanup.
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");  // default = delta
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_file(Path::new("../programs/lang_tests/multi_fsm/05_graceful_shutdown.ev"))
+        .unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 20 }, &mut ctx)
+        .unwrap();
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+
+    let produced_count = lines.iter().filter(|l| **l == "produced").count();
+    let cleanup_count  = lines.iter().filter(|l| **l == "consumer: cleanup").count();
+
+    assert_eq!(produced_count, 4,
+        "producer should print on ticks 0..3 (the last alongside cleanup); \
+         got {produced_count}; out:\n{}", out);
+    assert_eq!(cleanup_count, 1, "exactly one cleanup line; out:\n{}", out);
+
+    assert!(r.halted_clean, "should halt cleanly; got {r:?}");
+    assert_eq!(r.exit_code, Some(0), "Exit(0) propagates; got {r:?}");
+    assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
+}
+
+/// Phase 4 v3: external event sources keep an otherwise-silent
+/// program alive. Without the timer this program halts after one
+/// tick (writer makes no state change, emits no effects → no
+/// inputs to wake it). With the timer, the writer is woken on
+/// each tick event, increments world.pulse; reader sees pulse
+/// climb and exits at pulse ≥ 3.
+const TIMER_DRIVEN_PROGRAM: &str = "\
+type World
+    pulse ∈ Int
+
+enum WState = WActive
+
+claim writer(world, world_next ∈ World,
+             state, state_next ∈ WState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = WActive
+    world_next.pulse = world.pulse + 1
+    effects = ⟨⟩
+
+enum RState = RAlive
+
+claim reader(world ∈ World,
+             state, state_next ∈ RState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = RAlive
+    effects = (world.pulse ≥ 3
+               ? ⟨Println(\"done\"), Exit(0)⟩
+               : ⟨⟩)
+";
+
+#[test]
+fn delta_mode_without_timer_halts_when_silent() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(TIMER_DRIVEN_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    // No timer → writer increments to 1 on tick 0, then everyone
+    // goes silent → halt. Reader sees pulse=1 < 3, never emits.
+    assert!(!out.contains("done"),
+        "without timer, reader never reaches pulse≥3; out:\n{}", out);
+    assert!(r.halted_clean,
+        "should halt cleanly when silent; got {r:?}");
+    assert!(r.steps < 50,
+        "should halt early; got {} steps", r.steps);
+}
+
+#[test]
+fn delta_mode_with_timer_drives_silent_program_to_completion() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+    std::env::set_var("EVIDENT_TICK_MS", "20");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(TIMER_DRIVEN_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    // With timer: reader eventually sees pulse ≥ 3, prints "done",
+    // emits Exit(0). Runtime halts cleanly with that exit code.
+    assert!(out.contains("done"),
+        "with timer, reader should reach pulse≥3 and print done; out:\n{}", out);
+    assert!(r.halted_clean, "should halt cleanly via Exit; got {r:?}");
+    assert_eq!(r.exit_code, Some(0));
+}
+
 /// Phase 4 v2: Effect::Exit is now deferred to end-of-tick instead
 /// of calling process::exit mid-dispatch. Other FSMs that emit
 /// effects in the same tick still get to run — important for

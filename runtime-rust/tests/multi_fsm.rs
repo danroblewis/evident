@@ -99,27 +99,11 @@ fn sibling_no_world() {
     assert!(!r.halted_clean);
 }
 
-#[test]
-fn graceful_shutdown_via_world_and_exit() {
-    // Producer writes world.counter forever (self-feedback via
-    // emitted Println). Consumer wakes on the world delta, emits
-    // cleanup + Exit(0) when counter ≥ 3. Producer's same-tick
-    // "produced" still prints (Effect::Exit is graceful).
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/05_graceful_shutdown.ev", 20);
-    let lines: Vec<&str> = out.lines().collect();
-
-    let produced_count = lines.iter().filter(|l| **l == "produced").count();
-    let cleanup_count  = lines.iter().filter(|l| **l == "consumer: cleanup").count();
-
-    assert_eq!(produced_count, 4,
-        "producer should print on ticks 0..3 (the last alongside cleanup); \
-         got {produced_count}; out:\n{}", out);
-    assert_eq!(cleanup_count, 1, "exactly one cleanup line; out:\n{}", out);
-
-    assert!(r.halted_clean, "should halt cleanly; got {r:?}");
-    assert_eq!(r.exit_code, Some(0), "Exit(0) propagates; got {r:?}");
-    assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
-}
+// graceful_shutdown_via_world_and_exit lives in
+// runtime-rust/tests/scheduler_delta.rs because it depends on
+// delta-mode polling semantics — under legacy mode the fixpoint
+// halt heuristic mistakes the consumer's polling for "done" and
+// drops it before counter reaches the threshold.
 
 #[test]
 fn halt_cascade() {
