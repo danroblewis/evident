@@ -1,0 +1,68 @@
+-- Guess-the-number game using the unified schema model.
+--
+-- Demonstrates user-interactive programming against the
+-- plugin-as-writer pattern. The runtime owns stdin (via
+-- StdinSource auto-install). The Game FSM reads each guess via
+-- world.stdin_line, compares to a hidden target, prints feedback.
+-- Halts after correct guess via Effect::Exit(0).
+--
+-- The "target" is fixed at 42 here (we don't have an evident-side
+-- random number generator yet — that would be another plugin).
+--
+-- Run:
+--     evident effect-run programs/demos/effect_guess_number.ev --max-steps 100
+--     # Then type guesses like:
+--     #   50
+--     #   30
+--     #   42
+--     # Each gets feedback. Correct guess exits.
+
+import "stdlib/runtime.ev"
+
+type World
+    stdin_line       ∈ String   -- StdinSource writes
+    stdin_seq        ∈ Int      -- StdinSource writes
+    last_guess_seq   ∈ Int      -- game tracks
+    guess_count      ∈ Int      -- game's running tally
+
+enum GState =
+    Welcoming
+    Guessing
+
+claim game(world, world_next ∈ World,
+           state, state_next ∈ GState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+
+    is_new_guess ∈ Bool
+    is_new_guess = (world.stdin_seq > world.last_guess_seq)
+
+    state_next = match state
+        Welcoming ⇒ Guessing
+        Guessing  ⇒ Guessing
+
+    world_next.last_guess_seq = (is_new_guess
+                                  ? world.stdin_seq
+                                  : world.last_guess_seq)
+    world_next.guess_count    = (is_new_guess
+                                  ? world.guess_count + 1
+                                  : world.guess_count)
+
+    -- We can't parse stdin_line as Int yet (no parse-int FFI),
+    -- so we compare strings. Target is the literal string "42".
+    is_correct ∈ Bool
+    is_correct = (world.stdin_line = "42")
+
+    welcome_msg ∈ String
+    welcome_msg = "guess a number (target is 42, type to guess)"
+
+    feedback ∈ String
+    feedback = (is_correct ? "correct!" : "nope, try again")
+
+    effects = match state
+        Welcoming ⇒ ⟨Println(welcome_msg)⟩
+        Guessing  ⇒ (is_new_guess
+                     ? (is_correct
+                        ? ⟨Println(feedback), Exit(0)⟩
+                        : ⟨Println(feedback)⟩)
+                     : ⟨⟩)
