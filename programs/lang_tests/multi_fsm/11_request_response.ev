@@ -1,0 +1,81 @@
+-- Request/response demo: two user FSMs coordinating via world.
+--
+-- Demonstrates the "command/response" pattern using shared state
+-- (no special protocol — just disjoint world fields). Client
+-- writes a request; Server reads it, computes a response, writes
+-- it back; Client reads the response, decides next step.
+--
+-- Calculation: server doubles the input number. Client requests
+-- 5 → server responds 10. Client requests 7 → server responds 14.
+-- After 3 requests done, Client emits Exit.
+--
+-- Note: the "request" field is a counter the client increments;
+-- server reacts to changes. The "response" field is server's
+-- output. Two writers, disjoint fields. Single-owner per field.
+--
+-- Run:
+--     evident effect-run programs/lang_tests/multi_fsm/11_request_response.ev --max-steps 30
+
+import "stdlib/runtime.ev"
+
+type World
+    request_n      ∈ Int   -- client writes (input number)
+    request_seq    ∈ Int   -- client writes (sequence; bumps to signal new req)
+    response       ∈ Int   -- server writes (computed value)
+    response_seq   ∈ Int   -- server writes (matches request_seq when done)
+
+enum CState =
+    Initial               -- nullary first variant so the runtime can seed it
+    Sending(Int)          -- payload = next number to request
+    Done
+
+claim client(world, world_next ∈ World,
+             state, state_next ∈ CState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+
+    next_n ∈ Int
+    next_n = match state
+        Sending(n) ⇒ n
+        _          ⇒ 0
+
+    server_caught_up ∈ Bool
+    server_caught_up = (world.response_seq ≥ world.request_seq)
+
+    state_next = match state
+        Initial    ⇒ Sending(2)         -- start with 2 → server doubles to 4
+        Sending(n) ⇒ (server_caught_up
+                      ? (n ≥ 4 ? Done : Sending(n + 1))
+                      : state)
+        Done       ⇒ Done
+
+    world_next.request_n = match state
+        Initial    ⇒ 0
+        Sending(n) ⇒ n
+        Done       ⇒ world.request_n
+    world_next.request_seq = match state
+        Initial    ⇒ 0
+        Sending(_) ⇒ (server_caught_up ? world.request_seq + 1 : world.request_seq)
+        Done       ⇒ world.request_seq
+
+    effects = match state
+        Done ⇒ ⟨Println("client done"), Exit(0)⟩
+        _    ⇒ (server_caught_up ∧ world.request_seq > 0
+                ? ⟨Println("got response")⟩
+                : ⟨⟩)
+
+enum SState = Serving
+
+claim server(world, world_next ∈ World,
+             state, state_next ∈ SState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = Serving
+
+    is_new_req ∈ Bool
+    is_new_req = (world.request_seq > world.response_seq)
+
+    world_next.response = (is_new_req ? world.request_n + world.request_n : world.response)
+    world_next.response_seq = (is_new_req ? world.request_seq : world.response_seq)
+
+    effects = ⟨⟩
