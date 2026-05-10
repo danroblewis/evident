@@ -286,13 +286,18 @@ impl Drop for SigintSource {
 }
 
 /// Stdin line reader. Spawns a thread that does blocking
-/// `read_line` on stdin; each line is queued as a world write
-/// (`(field, Value::Str(line))`) and a `Tick { name: "stdin" }`
-/// wake event is sent. EOF stops the thread (and drops the
-/// channel sender).
+/// `read_line` on stdin; each line is queued as TWO world writes:
+///   * `(line_field, Str(line))` — the line text
+///   * `(seq_field, Int(seq))`   — incrementing counter (1, 2, 3, …)
+/// User FSMs can compare the seq against a value held in their
+/// own state to decide "is this a new line I haven't processed?"
+/// Without the seq, an FSM whose body emits unconditionally on
+/// non-empty `line` would loop forever via effect-feedback after
+/// EOF.
 pub struct StdinSource {
     name:        String,
     line_field:  String,
+    seq_field:   Option<String>,
     write_queue: WriteQueue,
     handle:      Option<JoinHandle<()>>,
 }
@@ -304,9 +309,17 @@ impl StdinSource {
         StdinSource {
             name:        "stdin".to_string(),
             line_field:  line_field.into(),
+            seq_field:   None,
             write_queue: new_write_queue(),
             handle:      None,
         }
+    }
+
+    /// Configure to also write an incrementing sequence number
+    /// into the named Int field on each line.
+    pub fn with_seq_field(mut self, field: impl Into<String>) -> Self {
+        self.seq_field = Some(field.into());
+        self
     }
 }
 
@@ -316,7 +329,8 @@ impl EventSource for StdinSource {
             return Err("StdinSource already started".to_string());
         }
         let name = self.name.clone();
-        let field = self.line_field.clone();
+        let line_field = self.line_field.clone();
+        let seq_field = self.seq_field.clone();
         let write_queue = self.write_queue.clone();
         let handle = std::thread::Builder::new()
             .name("evident-stdin".into())
@@ -324,6 +338,7 @@ impl EventSource for StdinSource {
                 use std::io::BufRead;
                 let stdin = std::io::stdin();
                 let mut reader = stdin.lock();
+                let mut seq: i64 = 0;
                 loop {
                     let mut line = String::new();
                     match reader.read_line(&mut line) {
@@ -332,9 +347,13 @@ impl EventSource for StdinSource {
                             // Strip trailing newline(s).
                             if line.ends_with('\n') { line.pop(); }
                             if line.ends_with('\r') { line.pop(); }
+                            seq += 1;
                             {
                                 let mut q = write_queue.lock().unwrap();
-                                q.push_back((field.clone(), Value::Str(line)));
+                                q.push_back((line_field.clone(), Value::Str(line)));
+                                if let Some(sf) = &seq_field {
+                                    q.push_back((sf.clone(), Value::Int(seq)));
+                                }
                             }
                             if tx.send(SchedulerEvent::Tick { name: name.clone() }).is_err() {
                                 break;
@@ -364,7 +383,11 @@ impl EventSource for StdinSource {
     }
 
     fn write_fields(&self) -> Vec<String> {
-        vec![self.line_field.clone()]
+        let mut v = vec![self.line_field.clone()];
+        if let Some(s) = &self.seq_field {
+            v.push(s.clone());
+        }
+        v
     }
 }
 

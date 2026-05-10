@@ -106,6 +106,53 @@ fn sibling_no_world() {
 // drops it before counter reaches the threshold.
 
 #[test]
+fn echo_lang_test_06_plugin_as_writer() {
+    // The echo demo: StdinSource auto-installed (because World
+    // has stdin_line + stdin_seq). Plugin reads piped stdin
+    // lines, writes them to world fields. Echo FSM gates on
+    // stdin_seq > last_echoed_seq → emits each line exactly
+    // once. Halts after EOF.
+    //
+    // StdinSource reads from the real fd 0, not from a
+    // DispatchContext stream — so we exercise the binary
+    // directly via `cargo run`.
+    use std::process::{Command, Stdio};
+    use std::io::Write;
+    // Run from repo root so the binary's relative paths to
+    // stdlib/runtime.ev resolve.
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")  // force default (delta)
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/06_echo.ev",
+               "--max-steps", "50"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn evident");
+    {
+        let stdin = child.stdin.as_mut().expect("stdin");
+        stdin.write_all(b"hello\nworld\nfoo\n").unwrap();
+        // Closing stdin happens when child.stdin is dropped at scope exit.
+    }
+    let output = child.wait_with_output().expect("wait");
+    let out = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = out.lines().collect();
+
+    assert!(lines.contains(&"hello"), "missing hello; out:\n{}", out);
+    assert!(lines.contains(&"world"), "missing world; out:\n{}", out);
+    assert!(lines.contains(&"foo"),   "missing foo; out:\n{}",   out);
+    assert_eq!(lines.iter().filter(|l| **l == "hello").count(), 1);
+    assert_eq!(lines.iter().filter(|l| **l == "world").count(), 1);
+    assert_eq!(lines.iter().filter(|l| **l == "foo").count(),   1);
+    assert!(output.status.success(),
+        "expected exit 0; got {:?}; stderr:\n{}",
+        output.status, String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn halt_cascade() {
     // short_fsm halts after 3 prints; long_fsm after 5. Then the
     // program exits cleanly. Validates: per-FSM halt + drop;

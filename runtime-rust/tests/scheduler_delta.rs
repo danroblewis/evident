@@ -351,9 +351,10 @@ fn delta_graceful_shutdown_lang_test_05() {
     let produced_count = lines.iter().filter(|l| **l == "produced").count();
     let cleanup_count  = lines.iter().filter(|l| **l == "consumer: cleanup").count();
 
-    assert_eq!(produced_count, 4,
-        "producer should print on ticks 0..3 (the last alongside cleanup); \
-         got {produced_count}; out:\n{}", out);
+    assert_eq!(produced_count, 3,
+        "producer should print on ticks 0..2 — counter starts at 0, \
+         increments by 1 per tick, consumer fires when counter ≥ 3 \
+         (which happens at tick 2's reader run); got {produced_count}; out:\n{}", out);
     assert_eq!(cleanup_count, 1, "exactly one cleanup line; out:\n{}", out);
 
     assert!(r.halted_clean, "should halt cleanly; got {r:?}");

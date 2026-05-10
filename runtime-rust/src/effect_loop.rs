@@ -311,9 +311,16 @@ pub fn run_with_ctx(
 
         // Stdin — auto-install if World has `stdin_line: String`.
         // Single-owner: the StdinSource owns the fd; user FSMs
-        // never call ReadLine alongside this (they'd race).
+        // never call ReadLine alongside this (they'd race). If
+        // World also has `stdin_seq: Int`, the source increments
+        // it on each line — used by user FSMs to gate "is this a
+        // new line?" without needing string-payload state.
         if has_field("stdin_line", "String") {
             let mut s = crate::event_sources::StdinSource::new("stdin_line");
+            if has_field("stdin_seq", "Int") {
+                s = s.with_seq_field("stdin_seq");
+                plugin_writes.insert("stdin_seq".to_string());
+            }
             s.start(event_tx.clone())
                 .map_err(|e| format!("failed to start stdin reader: {e}"))?;
             event_sources.push(Box::new(s));
@@ -595,6 +602,35 @@ fn run_multi_fsm(
     // initialize world_next without depending on world (typically
     // via state-pattern guards: `state matches Init ⇒ world_next.x = …`).
     let mut world_snapshot: HashMap<String, Value> = HashMap::new();
+    // Pre-populate plugin-managed fields with type defaults so
+    // Z3 doesn't pick arbitrary values on tick 0 before any
+    // plugin write has been applied. Without this, an FSM
+    // reading `world.stdin_seq` on tick 0 would see an
+    // unconstrained Int (any value Z3 chooses).
+    if let Some(_world_type_name) = fsms.iter().find_map(|f| f.world_type.as_ref()) {
+        for fsm in fsms {
+            if let Some(wt) = &fsm.world_type {
+                if let Some(world_schema) = rt.get_schema(wt) {
+                    for item in &world_schema.body {
+                        if let crate::ast::BodyItem::Membership { name, type_name, .. } = item {
+                            let key = format!("world.{name}");
+                            if world_snapshot.contains_key(&key) { continue; }
+                            let default = match type_name.as_str() {
+                                "Int"    => Some(Value::Int(0)),
+                                "Bool"   => Some(Value::Bool(false)),
+                                "String" => Some(Value::Str(String::new())),
+                                "Real"   => Some(Value::Real(0.0)),
+                                _        => None,
+                            };
+                            if let Some(d) = default {
+                                world_snapshot.insert(key, d);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let mut step_count = 0usize;
     let timing = std::env::var("EVIDENT_LOOP_TIMING").is_ok();
@@ -643,6 +679,13 @@ fn run_multi_fsm(
     // Currently we coarsely wake every FSM on every external
     // event — Phase 4 v3.5 will add per-FSM subscription matching.
     let mut external_event: Vec<bool> = vec![false; fsms.len()];
+    // Local FIFO of plugin-queued world writes drained from
+    // event sources. We apply one per tick so each change is
+    // visible to subscribers; remaining entries wait for the
+    // next tick. Prevents fast sources from collapsing many
+    // values into "last wins."
+    let mut pending_world_writes: std::collections::VecDeque<(String, Value)> =
+        std::collections::VecDeque::new();
 
     while step_count < opts.max_steps {
         // Any active FSMs left? If not, program halted.
@@ -666,24 +709,24 @@ fn run_multi_fsm(
             });
         }
 
-        // Drain any plugin world writes accumulated since the
-        // last tick. Apply them to the snapshot before any FSM
-        // solves; compute deltas; distribute to subscribers
-        // (same code path as a writer FSM's output).
+        // Drain plugin world writes — applying ONE entry per tick
+        // (so subscribers see each individual change with its own
+        // wake). Sources may produce writes faster than ticks can
+        // consume them; we move source-side queues into a local
+        // FIFO so nothing is lost.
         if delta_mode {
             for src in event_sources.iter_mut() {
-                let writes = src.drain_writes();
-                for (field, val) in writes {
-                    let key = format!("world.{field}");
-                    let changed = world_snapshot.get(&key) != Some(&val);
-                    if changed {
-                        world_snapshot.insert(key, val);
-                        // Distribute to subscribers — every FSM
-                        // whose read-set includes this field.
-                        for (j, _f) in fsms.iter().enumerate() {
-                            if access_sets[j].reads.contains(&field) {
-                                pending_changes[j].insert(field.clone());
-                            }
+                let mut writes = src.drain_writes();
+                pending_world_writes.append(&mut writes.into_iter().collect());
+            }
+            if let Some((field, val)) = pending_world_writes.pop_front() {
+                let key = format!("world.{field}");
+                let changed = world_snapshot.get(&key) != Some(&val);
+                if changed {
+                    world_snapshot.insert(key, val);
+                    for (j, _f) in fsms.iter().enumerate() {
+                        if access_sets[j].reads.contains(&field) {
+                            pending_changes[j].insert(field.clone());
                         }
                     }
                 }
@@ -908,7 +951,7 @@ fn run_multi_fsm(
         // next tick either. Halt cleanly UNLESS an async event
         // source can wake us (Phase 4 v3): block on the channel,
         // then continue the loop on the next event.
-        if delta_mode && scheduled_this_tick.iter().all(|s| !s) {
+        if delta_mode && scheduled_this_tick.iter().all(|s| !s) && pending_world_writes.is_empty() {
             if let Some(rx) = event_rx {
                 // Per-FSM event subscription matching. If ANY FSM
                 // declared an explicit subscription, only wake FSMs
