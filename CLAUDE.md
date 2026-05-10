@@ -16,6 +16,7 @@ your task:
 |---|---|
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`stdlib/sdl/`, `stdlib/audio/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
+| Designing/extending the multi-FSM runtime, halt semantics, or scheduler | [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) + [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md) |
 | Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
 | Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
@@ -66,6 +67,39 @@ Supporting modules:
 - `fixedpoint.py` — forward implication rules (A, B ⇒ C) via Z3 Fixedpoint
 - `ast_types.py` — re-exports parser AST so runtime shares the same class objects
   (critical: isinstance checks break if two separate module instances exist)
+
+## Multi-FSM Runtime (Rust)
+
+The Rust runtime in `runtime-rust/` is the production target (Python is the
+reference). For programs run via `evident effect-run`, the multi-FSM
+scheduler in `runtime-rust/src/effect_loop.rs` runs each top-level claim
+matching the FSM shape (state pair + EffectList + ResultList) as an
+independent FSM.
+
+**Scheduler: subscription-driven (default).** An FSM ticks only when one of
+its inputs changes:
+  * **World read-set** — fields it references via `world.X` (auto-inferred
+    by `subscriptions::world_access_sets`). Wakes when another FSM writes.
+  * **Effect self-feedback** — emitted ≥1 effect last tick.
+  * **State self-feedback** — transitioned to a new state value last tick.
+  * **Bootstrap** — every FSM ticks once on tick 0.
+
+**Halt is implicit.** No `Done`/`Halt` name convention, no fixpoint
+heuristic. The program halts when no FSM was scheduled in a tick (nothing
+more can happen) or when any FSM emits `Effect::Exit(code)`.
+
+**`Effect::Exit(code)` is graceful** — it sets `exit_requested` on the
+dispatch context. The runtime dispatches all of the current tick's
+effects first (so co-scheduled FSMs' cleanup writes / final logs run),
+then halts at end-of-tick with the requested code. `LoopResult::exit_code`
+propagates to the CLI as the process exit code.
+
+**Opt out** with `EVIDENT_SCHEDULER=legacy` for the older "tick every FSM
+every iteration" behavior with name/fixpoint halt.
+
+**Design**: [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) covers
+the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
+covers the scheduler model and 5-phase implementation status.
 
 ## Keyword Conventions
 
