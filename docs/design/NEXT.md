@@ -6,19 +6,31 @@ file captures what's left worth doing.
 
 ## Recently shipped (2026-05-10)
 
-  * **`Effect::ParseInt` / `Effect::ParseReal`** — runtime-side
-    string→int/real parsing. Demos can now do real numeric input.
-    `effect_guess_number.ev` rewritten to compare actual numbers.
-  * **`effect_echo.ev` / `effect_hello.ev`** — rewritten in modern
-    `match` + `⟨…⟩` style. Echo now uses StdinSource auto-install.
-  * **`FileLineReader` plugin** (FTI v0) — auto-installs when World
-    declares `file_line: String` and `EVIDENT_FILE_INPUT` points
-    to a path. Streams lines via world fields. First non-stdin
-    file resource demonstrating the lifecycle pattern.
-  * **`Effect::SpawnFsm(claim_name)`** — dynamic FSM instantiation.
-    A new instance of the named claim joins the scheduler from
-    the next tick. Per-instance world / parent-child messaging
-    deferred (see fsm-spawning.md for the design space).
+Effect surface (numeric ↔ string + shell):
+  * **`Effect::ParseInt` / `Effect::ParseReal`** — string→int/real.
+  * **`Effect::IntToStr` / `Effect::RealToStr`** — int/real→string.
+  * **`Effect::ShellRun`** — synchronous `sh -c …` capturing stdout.
+
+Plugins-as-writers:
+  * **`FileLineReader`** — auto-installs when World has `file_line:
+    String` and `EVIDENT_FILE_INPUT` env. Streams lines.
+  * **`WallClock`** — auto-installs when World has `now_ms: Int`.
+    Updates current Unix time at `EVIDENT_CLOCK_MS` interval.
+  * **`FileWatcher`** — auto-installs when World has `file_changed:
+    Int` and `EVIDENT_FILE_WATCH` env. Polls mtime, increments
+    counter on each detected change.
+
+Dynamic FSMs:
+  * **`Effect::SpawnFsm(claim, Int)`** — spawns a new instance of
+    `claim`, pinning the Int into the new FSM's first state-variant
+    payload. Lets parent pass an instance ID; spawned FSM reads it
+    via `match state`. v1 of parent-child communication.
+
+Demo rewrites:
+  * `effect_echo.ev` / `effect_hello.ev` — modern `match` +
+    `⟨…⟩` style, plugin-as-writer Stdin.
+  * `effect_guess_number.ev` — uses ParseInt for real numeric
+    comparison (higher/lower/correct).
 
 ## Explicitly NOT planned
 
@@ -61,17 +73,23 @@ After FTI v1: migrate one SDL or socket binding as proof.
 
 ### 3. Parent-child communication for spawned FSMs
 
-`Effect::SpawnFsm` returns an instance ID but nothing uses it. To
-make spawn useful for connection-per-FSM servers, REPLs, etc.,
-we need:
+v1 done — `Effect::SpawnFsm(claim, Int)` lets the parent pass
+an Int into the spawned FSM's first state-variant payload. The
+spawned FSM reads it via `match state` and uses it for
+self-identification. Sufficient for worker-pool patterns
+(siblings indexed by ID).
+
+Remaining for full parent-child:
   * **Instance-scoped world**: each spawned FSM gets a private
     world view (or a designated section of the parent's world).
-  * **Addressing**: parent writes `world.children[id].request_field`
-    to send work; child reads from its private view.
-  * **Cleanup**: instances halt via the same mechanisms; runtime
-    GCs after all parents have stopped referencing.
+  * **Richer initial parameters**: not just one Int — pass
+    Strings, records, etc.
+  * **Addressing**: parent writes `world.children[id].request`
+    to send work; child reads its slot.
+  * **Cleanup**: instance halt is automatic via subscription
+    silence; explicit Effect::Kill(id) for forced termination.
 
-Big chunk of work; design is in `fsm-spawning.md`.
+Big chunk of work; design in `fsm-spawning.md`.
 
 ### 4. Additional plugins
 
