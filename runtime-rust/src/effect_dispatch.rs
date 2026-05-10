@@ -165,6 +165,14 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             let ms = ctx.start.elapsed().as_millis() as i64;
             EffectResult::Int(ms)
         }
+        Effect::ParseInt(s) => match s.parse::<i64>() {
+            Ok(n)  => EffectResult::Int(n),
+            Err(e) => EffectResult::Error(format!("ParseInt: {e}: {s:?}")),
+        },
+        Effect::ParseReal(s) => match s.parse::<f64>() {
+            Ok(f)  => EffectResult::Real(f),
+            Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
+        },
         Effect::Exit(n) => {
             // Defer the exit: mark and continue. The effect loop
             // checks this at end of tick and halts cleanly. Lets
@@ -517,6 +525,54 @@ mod tests {
         // Third read hits EOF.
         assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
         let _ = captured_stdout(ctx);
+    }
+
+    #[test]
+    fn parse_int_decodes_decimal() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ParseInt("42".to_string())) {
+            EffectResult::Int(42) => {},
+            other => panic!("expected Int(42), got {other:?}"),
+        }
+        match dispatch_one(&mut ctx, &Effect::ParseInt("-7".to_string())) {
+            EffectResult::Int(-7) => {},
+            other => panic!("expected Int(-7), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_int_rejects_garbage() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ParseInt("not-a-number".to_string())) {
+            EffectResult::Error(_) => {},
+            other => panic!("expected Error, got {other:?}"),
+        }
+        match dispatch_one(&mut ctx, &Effect::ParseInt("".to_string())) {
+            EffectResult::Error(_) => {},
+            other => panic!("expected Error on empty string, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_real_decodes_decimal() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ParseReal("3.14".to_string())) {
+            EffectResult::Real(f) => assert!((f - 3.14).abs() < 1e-9),
+            other => panic!("expected Real, got {other:?}"),
+        }
+        match dispatch_one(&mut ctx, &Effect::ParseReal("-2.5e3".to_string())) {
+            EffectResult::Real(f) => assert!((f - (-2500.0)).abs() < 1e-9),
+            other => panic!("expected Real, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_real_rejects_garbage() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ParseReal("not-a-real".to_string())) {
+            EffectResult::Error(_) => {},
+            other => panic!("expected Error, got {other:?}"),
+        }
     }
 
     #[test]

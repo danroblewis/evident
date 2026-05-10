@@ -1,68 +1,83 @@
--- Guess-the-number game using the unified schema model.
+-- Guess-the-number game using the unified schema model + parsed
+-- numeric input. Demonstrates:
+--   * StdinSource auto-install via World.stdin_line + stdin_seq
+--   * Effect::ParseInt for converting text input to a number
+--   * Multi-writer disjoint fields (plugin owns stdin_*, the
+--     game owns its progress fields)
+--   * Effect::Exit on correct guess
 --
--- Demonstrates user-interactive programming against the
--- plugin-as-writer pattern. The runtime owns stdin (via
--- StdinSource auto-install). The Game FSM reads each guess via
--- world.stdin_line, compares to a hidden target, prints feedback.
--- Halts after correct guess via Effect::Exit(0).
---
--- The "target" is fixed at 42 here (we don't have an evident-side
--- random number generator yet — that would be another plugin).
+-- Target is fixed at 42. Type a number; game prints "lower" /
+-- "higher" / "correct!". After "correct!" the game halts.
 --
 -- Run:
 --     evident effect-run programs/demos/effect_guess_number.ev --max-steps 100
---     # Then type guesses like:
---     #   50
---     #   30
---     #   42
---     # Each gets feedback. Correct guess exits.
+--     # Then type guesses like 50, 30, 42, …
 
 import "stdlib/runtime.ev"
 
 type World
     stdin_line       ∈ String   -- StdinSource writes
     stdin_seq        ∈ Int      -- StdinSource writes
-    last_guess_seq   ∈ Int      -- game tracks
-    guess_count      ∈ Int      -- game's running tally
+    last_guess_seq   ∈ Int      -- game writes
+    parsed_value     ∈ Int      -- game writes (after parse completes)
+    parsed_seq       ∈ Int      -- game writes (matches stdin_seq when consumed)
 
 enum GState =
     Welcoming
-    Guessing
+    Reading
+    Awaiting    -- waiting for ParseInt result
 
 claim game(world, world_next ∈ World,
            state, state_next ∈ GState,
            last_results ∈ ResultList,
            effects ∈ EffectList)
 
-    is_new_guess ∈ Bool
-    is_new_guess = (world.stdin_seq > world.last_guess_seq)
+    is_new_input ∈ Bool
+    is_new_input = (world.stdin_seq > world.last_guess_seq)
+
+    -- Pull parsed result from last_results if Awaiting.
+    parsed_now ∈ Int
+    parsed_now = match last_results
+        ResCons(r, _) ⇒ match r
+            IntResult(n)   ⇒ n
+            _              ⇒ -999
+        _ ⇒ -999
+    parse_failed ∈ Bool
+    parse_failed = match last_results
+        ResCons(r, _) ⇒ match r
+            ErrorResult(_) ⇒ true
+            _              ⇒ false
+        _ ⇒ false
+
+    is_correct ∈ Bool
+    is_correct = (parsed_now = 42)
 
     state_next = match state
-        Welcoming ⇒ Guessing
-        Guessing  ⇒ Guessing
+        Welcoming ⇒ Reading
+        Reading   ⇒ (is_new_input ? Awaiting : Reading)
+        Awaiting  ⇒ Reading
 
-    world_next.last_guess_seq = (is_new_guess
-                                  ? world.stdin_seq
-                                  : world.last_guess_seq)
-    world_next.guess_count    = (is_new_guess
-                                  ? world.guess_count + 1
-                                  : world.guess_count)
+    -- last_guess_seq tracks "the input we've already started parsing"
+    world_next.last_guess_seq = match state
+        Reading ⇒ (is_new_input ? world.stdin_seq : world.last_guess_seq)
+        _       ⇒ world.last_guess_seq
 
-    -- We can't parse stdin_line as Int yet (no parse-int FFI),
-    -- so we compare strings. Target is the literal string "42".
-    is_correct ∈ Bool
-    is_correct = (world.stdin_line = "42")
-
-    welcome_msg ∈ String
-    welcome_msg = "guess a number (target is 42, type to guess)"
+    world_next.parsed_value = (state matches Awaiting ∧ ¬parse_failed
+                               ? parsed_now
+                               : world.parsed_value)
+    world_next.parsed_seq = (state matches Awaiting ∧ ¬parse_failed
+                             ? world.last_guess_seq
+                             : world.parsed_seq)
 
     feedback ∈ String
-    feedback = (is_correct ? "correct!" : "nope, try again")
+    feedback = (parse_failed ? "not a number, try again"
+                : is_correct ? "correct!"
+                : parsed_now < 42 ? "higher"
+                : "lower")
 
     effects = match state
-        Welcoming ⇒ ⟨Println(welcome_msg)⟩
-        Guessing  ⇒ (is_new_guess
-                     ? (is_correct
-                        ? ⟨Println(feedback), Exit(0)⟩
-                        : ⟨Println(feedback)⟩)
-                     : ⟨⟩)
+        Welcoming ⇒ ⟨Println("guess a number between 1 and 100")⟩
+        Reading   ⇒ (is_new_input ? ⟨ParseInt(world.stdin_line)⟩ : ⟨⟩)
+        Awaiting  ⇒ (is_correct ∧ ¬parse_failed
+                     ? ⟨Println(feedback), Exit(0)⟩
+                     : ⟨Println(feedback)⟩)

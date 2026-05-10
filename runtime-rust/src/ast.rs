@@ -275,6 +275,14 @@ pub enum Effect {
     ReadLine,
     Time,
     Exit(i64),
+    /// Parse a decimal integer string. On success the result is an
+    /// IntResult. On parse failure, an ErrorResult with the parse
+    /// error message. Empty string and trailing whitespace both
+    /// fail (use trim/strip in user code if needed).
+    ParseInt(String),
+    /// Parse a decimal real (float) string. IEEE-754 double precision.
+    /// On success: RealResult. On failure: ErrorResult.
+    ParseReal(String),
     FFIOpen(String),
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),
