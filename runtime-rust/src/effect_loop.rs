@@ -76,12 +76,16 @@ pub struct MainShape {
     /// subscription, the runtime coarsely wakes every FSM on every
     /// event (back-compat for v3-era programs).
     pub event_subscriptions: std::collections::HashSet<String>,
-    /// FTI v1 — typed resource parameters: `(param_name, type_name)`
-    /// pairs where `type_name` is a registered FTI type
-    /// (currently: `FrameClock`). The runtime auto-installs a
-    /// bridge plugin per entry that writes the type's fields,
-    /// pinned via `<param_name>.<field>` keys in the snapshot.
-    pub fti_params: Vec<(String, String)>,
+    /// FTI v1+ — typed resource parameters: `(param_name,
+    /// type_name, pins)` where `type_name` is a registered FTI
+    /// type (currently: `FrameClock`, `Hostname`, `Timer`).
+    /// `pins` carries any `(field ↦ value)` configuration the
+    /// user supplied (e.g. `t ∈ Timer (interval_ms ↦ 50)`); the
+    /// bridge install reads pins at startup for type-specific
+    /// configuration. The runtime auto-installs a bridge plugin
+    /// per entry that writes the type's fields via per-FSM
+    /// `<fsm>.<param>.<field>` pin keys.
+    pub fti_params: Vec<(String, String, crate::ast::Pins)>,
 }
 
 impl MainShape {
@@ -104,7 +108,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     let mut world_next_var: Option<String> = None;
     let mut world_type:     Option<String> = None;
     let mut event_subs:     std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut fti_params:     Vec<(String, String)> = Vec::new();
+    let mut fti_params:     Vec<(String, String, crate::ast::Pins)> = Vec::new();
     // Walk this claim's body PLUS the bodies of any
     // `..PassthroughClaim` so a declarative library (e.g.
     // stdlib/sdl/scene.ev's `..SDLScene`) contributes its
@@ -133,7 +137,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     }
     collect(&claim.body, rt, &mut all_items, &mut visited);
     for item in all_items.iter().copied() {
-        if let BodyItem::Membership { name, type_name, .. } = item {
+        if let BodyItem::Membership { name, type_name, pins } = item {
             if type_name == "EffectList" && name == "effects" && effects_var.is_none() {
                 effects_var = Some(name.clone());
             } else if type_name == "ResultList" && name == "last_results"
@@ -152,8 +156,9 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 event_subs.insert("tick".to_string());
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
-            } else if type_name == "FrameClock" || type_name == "Hostname" {
-                fti_params.push((name.clone(), type_name.clone()));
+            } else if type_name == "FrameClock" || type_name == "Hostname"
+                   || type_name == "Timer" {
+                fti_params.push((name.clone(), type_name.clone(), pins.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
                    && !type_name.starts_with("Seq(")
@@ -327,7 +332,7 @@ pub fn run_with_ctx(
         // the same param name get DIFFERENT clocks (different
         // instance IDs since each FSM has its own bridge).
         for fsm in &fsms {
-            for (param_name, type_name) in &fsm.fti_params {
+            for (param_name, type_name, pins) in &fsm.fti_params {
                 match type_name.as_str() {
                     "FrameClock" => {
                         let ms = env_tick_ms.unwrap_or(100);
@@ -351,7 +356,29 @@ pub fn run_with_ctx(
                         event_sources.push(Box::new(bridge));
                         plugin_writes.insert(key);
                     }
-                    _ => {}  // unknown FTI type — silently skip
+                    "Timer" => {
+                        // Per-instance configurable: interval_ms
+                        // pin sets the rate. Default 100ms.
+                        let ms = pin_int_value(pins, "interval_ms")
+                            .unwrap_or(100) as u64;
+                        let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
+                        let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
+                            .with_count_field(&key);
+                        bridge.start(event_tx.clone())
+                            .map_err(|e| format!(
+                                "failed to start Timer bridge for `{}.{param_name}`: {e}",
+                                fsm.claim_name))?;
+                        event_sources.push(Box::new(bridge));
+                        plugin_writes.insert(key);
+                        // Note: interval_ms pin from the user is
+                        // consumed at install time. It's not
+                        // mirrored back into the snapshot — the
+                        // body would see Z3-picked value if it
+                        // tries to read t.interval_ms. Future:
+                        // pin user-supplied values into the
+                        // snapshot at run_multi_fsm startup.
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1321,6 +1348,30 @@ fn model_matches_value(v: &Value, _state_type: &str) -> bool {
 /// Handles nullary AND payload variants by recursively encoding
 /// each field. Primitive payloads (Int, Bool, String, Real) are
 /// encoded as Z3 literals; nested enum payloads recurse.
+/// Read an Int literal from a Pins block by field name.
+/// Returns None if the pins are empty, the field isn't pinned,
+/// or the pinned value isn't a literal Int. Used by FTI bridge
+/// install for configurable instance parameters like
+/// `Timer (interval_ms ↦ 50)`.
+fn pin_int_value(pins: &crate::ast::Pins, field: &str) -> Option<i64> {
+    use crate::ast::{Pins, Mapping, Expr};
+    match pins {
+        Pins::None => None,
+        Pins::Named(ms) => {
+            for Mapping { slot, value } in ms {
+                if slot == field {
+                    if let Expr::Int(n) = value { return Some(*n); }
+                }
+            }
+            None
+        }
+        // Positional: not commonly used for FTI; would need the
+        // type's field declaration order to map index → field name.
+        // Skip for v1.
+        Pins::Positional(_) => None,
+    }
+}
+
 /// Seed a spawned FSM's state to `FirstVariant(arg)` when the
 /// state enum's first variant takes a single Int payload. Used
 /// by `Effect::SpawnFsm(claim, arg)` — lets the parent pass

@@ -211,21 +211,18 @@ type FrameClock
 type Hostname
     name ∈ String
 
--- ── FTI v1 — typed resources with bridge plugins ──────────────
--- (See docs/design/foreign-type-interface.md.) Declare a
--- `_ ∈ Timer` parameter on any FSM claim; the runtime detects
--- the declaration and installs a per-instance FrameTimer bridge
--- that writes the populated fields. Per-instance, not global —
--- two FSMs each with their own Timer get separate bridges.
+-- Per-instance configurable Timer. Declare with the desired
+-- interval in milliseconds:
 --
--- Read-only fields (runtime populates on each fire):
---   tick_count       ∈ Int   incrementing counter
---   ticks_since_last ∈ Int   ticks since this FSM last solved
---                            (placeholder; v1 just mirrors tick_count)
+--     claim my_render(t ∈ Timer (interval_ms ↦ 16), ...)
+--         -- t.tick_count increments every 16ms
 --
--- Configuration: rate set via EVIDENT_TICK_MS (no per-instance
--- config in v1; that's a v2 extension to support
--- `Timer (interval_ms ↦ 50)` syntax).
+-- Each `t ∈ Timer (...)` instance gets its own bridge running
+-- at the configured interval. Different FSMs can have different
+-- intervals. Without the pin, the runtime defaults to 100ms.
 type Timer
-    tick_count       ∈ Int
-    ticks_since_last ∈ Int
+    interval_ms ∈ Int
+    tick_count  ∈ Int
+
+-- (Earlier placeholder Timer type removed — superseded by the
+-- per-instance configurable Timer above.)

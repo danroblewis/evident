@@ -166,6 +166,29 @@ fn spawn_with_arg_lang_test_13() {
 }
 
 #[test]
+fn fti_configurable_timer_lang_test_17() {
+    // FTI v2: per-instance interval via type-use pin.
+    use std::process::{Command, Stdio};
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/17_fti_configurable_timer.ev",
+               "--max-steps", "1000"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("fast: 5 ticks @ 20ms"), "out:\n{}", out);
+    assert!(out.contains("slow: 3 ticks @ 100ms"), "out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn fti_per_instance_lang_test_16() {
     // FTI v1.5: two FSMs each with own clock instance. Each
     // sees its own tick_count (FSM-prefixed pins).
