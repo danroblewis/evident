@@ -71,6 +71,11 @@ pub struct DispatchContext {
     /// and a synchronous read would race with the source's
     /// background thread for the same bytes.
     pub stdin_owned_by_plugin: bool,
+    /// FSM-spawn requests accumulated during dispatch. The
+    /// effect loop drains this at end of each tick and
+    /// instantiates new FSM entries from the named claims.
+    /// See `Effect::SpawnFsm`.
+    pub pending_spawns: Vec<String>,
 }
 
 impl DispatchContext {
@@ -94,6 +99,7 @@ impl DispatchContext {
             sym_cache: std::collections::HashMap::new(),
             exit_requested: None,
             stdin_owned_by_plugin: false,
+            pending_spawns: Vec::new(),
         }
     }
 
@@ -173,6 +179,15 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             Ok(f)  => EffectResult::Real(f),
             Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
         },
+        Effect::SpawnFsm(claim_name) => {
+            // Accumulate; loop drains and instantiates after
+            // the dispatch pass. Returns the index this
+            // instance will get (current pending + existing
+            // FSM count is computed by the loop).
+            let idx = ctx.pending_spawns.len() as i64;
+            ctx.pending_spawns.push(claim_name.clone());
+            EffectResult::Int(idx)  // tentative — real ID assigned at instantiation
+        }
         Effect::Exit(n) => {
             // Defer the exit: mark and continue. The effect loop
             // checks this at end of tick and halts cleanly. Lets

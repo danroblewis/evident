@@ -95,6 +95,12 @@ enum Effect =
     -- Parse a decimal real (f64). RealResult on success;
     -- ErrorResult on failure.
     ParseReal(String)
+    -- Spawn a new FSM instance of the named claim. Result is
+    -- IntResult(instance_id). The new FSM joins the scheduler
+    -- from the next tick. v1: shares parent's world; no
+    -- per-instance world or parent/child message passing.
+    -- See docs/design/fsm-spawning.md.
+    SpawnFsm(String)
     -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)

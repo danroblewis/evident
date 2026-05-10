@@ -283,6 +283,12 @@ pub enum Effect {
     /// Parse a decimal real (float) string. IEEE-754 double precision.
     /// On success: RealResult. On failure: ErrorResult.
     ParseReal(String),
+    /// Spawn a new FSM instance of the named claim. Result is
+    /// IntResult(instance_id) — the new FSM joins the scheduler
+    /// from the next tick. v1 limitation: shares the parent's
+    /// world; no per-instance world or parent-child message
+    /// passing. See docs/design/fsm-spawning.md.
+    SpawnFsm(String),
     FFIOpen(String),
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),

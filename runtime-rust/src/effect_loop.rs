@@ -52,6 +52,7 @@ pub struct LoopResult {
 /// For backwards compat the struct is still called `MainShape`. The
 /// new `claim_name` and `world_*` fields default to "main" / None for
 /// single-FSM programs.
+#[derive(Clone)]
 pub struct MainShape {
     pub claim_name:       String,
     pub state_var:        String,
@@ -596,6 +597,8 @@ fn run_multi_fsm(
     event_sources: &mut [Box<dyn crate::event_sources::EventSource>],
 ) -> Result<LoopResult, String> {
     use std::collections::HashMap;
+    // Convert to owned Vec so we can grow at runtime (Effect::SpawnFsm).
+    let mut fsms: Vec<MainShape> = fsms.to_vec();
     // Per-FSM mutable state. We track BOTH the encoded Datatype
     // (for the next tick's pin) and the decoded Value (for halt
     // detection — fixpoint = state_next_val equals previous tick's
@@ -617,32 +620,35 @@ fn run_multi_fsm(
     // "Done"/"Halt", so the seeded Init pin doesn't cause spurious
     // halts (we never set current_state_v to a value matching that
     // pattern unless the user explicitly transitions there).
+    // Closure: build the seeded initial state for any FSM shape.
+    // Used for both auto-detected FSMs and dynamically spawned ones.
+    let seed_state = |s: &MainShape| -> (Option<z3::ast::Datatype<'static>>, Option<Value>) {
+        let enums = rt.enums_registry();
+        let by_name = enums.by_name.borrow();
+        let entry = by_name.get(&s.state_type);
+        // Only seed if the first variant is nullary. Payload
+        // variants need actual values, which we don't have at
+        // seed time — let Z3 pick on tick 0 instead.
+        let dt = entry.and_then(|(sort, _)| {
+            let first = sort.variants.first()?;
+            if first.constructor.arity() == 0 {
+                first.constructor.apply(&[]).as_datatype()
+            } else { None }
+        });
+        let val = entry.and_then(|(sort, decl_variants)| {
+            let first = decl_variants.first()?;
+            if sort.variants.first().map(|v| v.constructor.arity()).unwrap_or(0) == 0 {
+                Some(Value::Enum {
+                    enum_name: s.state_type.clone(),
+                    variant:   first.name.clone(),
+                    fields:    Vec::new(),
+                })
+            } else { None }
+        });
+        (dt, val)
+    };
     let mut fsm_rt: Vec<FsmRt> = fsms.iter().map(|s| {
-        let (initial_dt, initial_val) = {
-            let enums = rt.enums_registry();
-            let by_name = enums.by_name.borrow();
-            let entry = by_name.get(&s.state_type);
-            // Only seed if the first variant is nullary. Payload
-            // variants need actual values, which we don't have at
-            // seed time — let Z3 pick on tick 0 instead.
-            let dt = entry.and_then(|(sort, _)| {
-                let first = sort.variants.first()?;
-                if first.constructor.arity() == 0 {
-                    first.constructor.apply(&[]).as_datatype()
-                } else { None }
-            });
-            let val = entry.and_then(|(sort, decl_variants)| {
-                let first = decl_variants.first()?;
-                if sort.variants.first().map(|v| v.constructor.arity()).unwrap_or(0) == 0 {
-                    Some(Value::Enum {
-                        enum_name: s.state_type.clone(),
-                        variant:   first.name.clone(),
-                        fields:    Vec::new(),
-                    })
-                } else { None }
-            });
-            (dt, val)
-        };
+        let (initial_dt, initial_val) = seed_state(s);
         FsmRt {
             current_state:   initial_dt,
             current_state_v: initial_val,
@@ -665,7 +671,7 @@ fn run_multi_fsm(
     // reading `world.stdin_seq` on tick 0 would see an
     // unconstrained Int (any value Z3 chooses).
     if let Some(_world_type_name) = fsms.iter().find_map(|f| f.world_type.as_ref()) {
-        for fsm in fsms {
+        for fsm in &fsms {
             if let Some(wt) = &fsm.world_type {
                 if let Some(world_schema) = rt.get_schema(wt) {
                     for item in &world_schema.body {
@@ -710,7 +716,7 @@ fn run_multi_fsm(
     // them to scope each writer's snapshot updates to its own
     // write-set (so two writers with disjoint fields don't clobber
     // each other).
-    let access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
+    let mut access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
         rt.get_schema(&fsm.claim_name)
           .map(|s| crate::subscriptions::world_access_sets(s))
           .unwrap_or_default()
@@ -980,6 +986,47 @@ fn run_multi_fsm(
         }
         let dispatch_dt = dispatch_t0.elapsed();
         total_dispatch += dispatch_dt;
+
+        // Effect::SpawnFsm handling: any spawn requests
+        // accumulated during dispatch get instantiated as new
+        // FsmRt entries here. They join the scheduler from the
+        // next tick. v1: shares the parent's world; no
+        // per-instance world. See docs/design/fsm-spawning.md.
+        if !ctx.pending_spawns.is_empty() {
+            for claim_name in std::mem::take(&mut ctx.pending_spawns) {
+                let shape = match detect_fsm_shape(rt, &claim_name) {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("[loop] spawn: claim `{claim_name}` doesn't \
+                                   have FSM shape (state pair + EffectList + \
+                                   ResultList); spawn ignored.");
+                        continue;
+                    }
+                };
+                if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                    eprintln!("[loop] tick {step_count}: spawned `{claim_name}` \
+                               as FSM #{}", fsms.len());
+                }
+                let aset = rt.get_schema(&shape.claim_name)
+                    .map(|s| crate::subscriptions::world_access_sets(s))
+                    .unwrap_or_default();
+                let (initial_dt, initial_val) = seed_state(&shape);
+                fsms.push(shape);
+                access_sets.push(aset);
+                fsm_rt.push(FsmRt {
+                    current_state:   initial_dt,
+                    current_state_v: initial_val,
+                    last_results:    Vec::new(),
+                    halted:          false,
+                });
+                per_fsm_solve.push(std::time::Duration::ZERO);
+                per_fsm_ticks.push(0);
+                pending_changes.push(std::collections::HashSet::new());
+                had_effects_last.push(true);   // bootstrap-equivalent
+                state_changed_last.push(true); // ensure first-tick scheduling
+                external_event.push(false);
+            }
+        }
 
         step_count += 1;
 
