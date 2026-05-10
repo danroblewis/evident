@@ -318,26 +318,27 @@ pub fn run_with_ctx(
         // FTI v1 — typed resource bridges. For each FSM
         // parameter `_ ∈ FrameClock`, install a per-instance
         // FrameTimer that writes the param's tick_count field
-        // (keyed as "<param>.tick_count" — matches the param-
-        // field expansion in env so the body's `param.tick_count`
-        // reads pin correctly).
+        // with FSM-prefixed key: "<fsm>.<param>.tick_count".
+        // The per-FSM solve view strips the FSM prefix before
+        // applying the pin, so the body's `param.tick_count`
+        // reads from a per-instance value.
         //
-        // Limitation: snapshot is shared across FSMs, so two
-        // FSMs each declaring `_ ∈ FrameClock` with the same
-        // param name would conflict. Per-instance namespacing
-        // is v2.
+        // Result: two FSMs each declaring `_ ∈ FrameClock` with
+        // the same param name get DIFFERENT clocks (different
+        // instance IDs since each FSM has its own bridge).
         for fsm in &fsms {
             for (param_name, type_name) in &fsm.fti_params {
                 if type_name == "FrameClock" {
                     let ms = env_tick_ms.unwrap_or(100);
-                    let count_field = format!("{param_name}.tick_count");
+                    let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
                     let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
-                        .with_count_field(&count_field);
+                        .with_count_field(&key);
                     bridge.start(event_tx.clone())
                         .map_err(|e| format!(
-                            "failed to start FrameClock bridge for `{param_name}`: {e}"))?;
+                            "failed to start FrameClock bridge for `{}.{param_name}`: {e}",
+                            fsm.claim_name))?;
                     event_sources.push(Box::new(bridge));
-                    plugin_writes.insert(count_field);
+                    plugin_writes.insert(key);
                 }
             }
         }
@@ -864,28 +865,45 @@ fn run_multi_fsm(
                 let writes = src.drain_writes();
                 pending_world_writes.append(&mut writes.into_iter().collect());
             }
-            if let Some((field, val)) = pending_world_writes.pop_front() {
-                // Field-naming convention: bare names (no dot)
-                // are world fields → prefix with "world." for the
-                // pin map. Dotted names (e.g. "clock.tick_count")
-                // are FTI parameter fields → use as-is. Both
-                // forms get applied to the same snapshot; pin
-                // logic looks them up in env without distinction.
-                let key = if field.contains('.') {
-                    field.clone()
+            // Dual policy: STATE writes (dotted keys, FTI) apply
+            // ALL queued values immediately — only the latest
+            // matters; intermediate values would be invisible
+            // anyway because the FSM only solves once per tick.
+            // EVENT writes (bare keys, world reserved fields)
+            // apply ONE per tick — each individual value matters
+            // (e.g. each stdin line is a discrete event).
+            //
+            // For FTI: a bridge writing 5 values between ticks
+            // collapses to "the latest count," consistent with
+            // the field's role as continuous state.
+            let mut event_writes: std::collections::VecDeque<(String, Value)> =
+                std::collections::VecDeque::new();
+            let mut state_writes: Vec<(String, Value)> = Vec::new();
+            while let Some((field, val)) = pending_world_writes.pop_front() {
+                if field.contains('.') {
+                    state_writes.push((field, val));
                 } else {
-                    format!("world.{field}")
-                };
+                    event_writes.push_back((field, val));
+                }
+            }
+            // Re-queue event writes for the one-per-tick draining.
+            pending_world_writes = event_writes;
+
+            // Apply all state writes (last value wins per key).
+            for (field, val) in state_writes {
+                let key = field.clone();  // dotted, used as-is
                 let changed = world_snapshot.get(&key) != Some(&val);
                 if changed {
                     world_snapshot.insert(key, val);
-                    // Distribution: world-field writes wake FSMs
-                    // whose read-set includes the field name.
-                    // FTI writes don't currently trigger
-                    // subscription wakes — they only pin values
-                    // when the FSM is otherwise scheduled (via
-                    // event-feedback or other triggers). Future
-                    // work: extend access_sets to track FTI reads.
+                }
+            }
+
+            if let Some((field, val)) = pending_world_writes.pop_front() {
+                // Bare field name → world.X pin.
+                let key = format!("world.{field}");
+                let changed = world_snapshot.get(&key) != Some(&val);
+                if changed {
+                    world_snapshot.insert(key, val);
                     for (j, _f) in fsms.iter().enumerate() {
                         if access_sets[j].reads.contains(&field) {
                             pending_changes[j].insert(field.clone());
@@ -943,8 +961,26 @@ fn run_multi_fsm(
                 ],
             };
 
+            // Build per-FSM view of the snapshot: include all
+            // world.X entries as-is, plus FTI keys whose prefix
+            // matches THIS fsm's claim_name (with prefix stripped
+            // so they match env's `param.field` keys).
+            let mut fsm_view: HashMap<String, Value>;
+            let solve_input: &HashMap<String, Value> = if fsm.fti_params.is_empty() {
+                &world_snapshot
+            } else {
+                fsm_view = world_snapshot.clone();
+                let prefix = format!("{}.", fsm.claim_name);
+                for (k, v) in &world_snapshot {
+                    if let Some(stripped) = k.strip_prefix(&prefix) {
+                        fsm_view.insert(stripped.to_string(), v.clone());
+                    }
+                }
+                &fsm_view
+            };
+
             let solve_t0 = std::time::Instant::now();
-            let r = rt.query_with_pins_and_given(&fsm.claim_name, &pins, &world_snapshot)
+            let r = rt.query_with_pins_and_given(&fsm.claim_name, &pins, solve_input)
                 .map_err(|e| format!("FSM `{}` solve step {step_count}: {e}", fsm.claim_name))?;
             let solve_dt = solve_t0.elapsed();
             total_solve += solve_dt;

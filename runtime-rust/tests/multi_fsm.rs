@@ -166,6 +166,31 @@ fn spawn_with_arg_lang_test_13() {
 }
 
 #[test]
+fn fti_per_instance_lang_test_16() {
+    // FTI v1.5: two FSMs each with own clock instance. Each
+    // sees its own tick_count (FSM-prefixed pins).
+    use std::process::{Command, Stdio};
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .env("EVIDENT_TICK_MS", "20")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/16_fti_per_instance.ev",
+               "--max-steps", "300"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("fast: 5 ticks"), "out:\n{}", out);
+    assert!(out.contains("slow: 8 ticks"), "out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn fti_frameclock_lang_test_15() {
     // FTI v1: `clock ∈ FrameClock` parameter; runtime auto-
     // installs a bridge that pins clock.tick_count.
