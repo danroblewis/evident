@@ -226,18 +226,38 @@ Test results (delta mode):
     delta_mode_halts_cleanly_without_done_variant` proves halt
     works with no Done-style variant at all.
 
-### Phase 4: Plugin subscription model
+### Phase 4: blocking I/O via the existing dispatch model (v1 done)
 
-Plugins gain a method to report "I have a fresh event for this FSM"
-and "I am permanently done." Stdin plugin returns "done" on EOF.
-Frame timer plugin returns events on a wall-clock interval.
+Phase 4 v1: route the single-FSM path through the multi-FSM
+scheduler when delta mode is on (`run_with_ctx` checks the env
+flag). This gives single-FSM programs the same subscription
+semantics — including the "no-FSM-scheduled = halt" criterion
+that single-FSM's fixpoint heuristic doesn't have.
 
-Scheduler waits (`select`/`poll` style) when its ready set is empty
-and at least one plugin source is potentially-live. Returns when any
-plugin fires or all sources go dead.
+Stdin block-then-halt works without a new plugin abstraction:
+  * `Effect::ReadLine` already blocks at dispatch time (synchronous
+    `stdin.read_line`). Zero CPU while waiting.
+  * EOF returns `EffectResult::Error` — the FSM body inspects
+    `last_results` and transitions to a non-emitting state.
+  * Once it stops emitting, no inputs wake it → delta-mode halt
+    fires next tick.
 
-Test: a stdin-reader FSM that blocks until input arrives; verify
-zero CPU usage while waiting; verify clean exit on EOF.
+Test: `runtime-rust/tests/scheduler_delta.rs::
+delta_mode_single_fsm_stdin_reader_halts_on_eof` — feeds two
+lines + EOF, asserts clean halt.
+
+### Phase 4 v2: pluggable event sources (deferred)
+
+A real plugin-as-event-source mechanism — plugins push events to
+the scheduler, scheduler `select()`s when its ready set is empty,
+sources can declare permanently dead. Needed for:
+  * Frame timer that fires every N ms independent of FSM ticks.
+  * Multiple FSMs where one waits on stdin while others run.
+  * Signal handling (SIGINT → wake a shutdown FSM).
+
+Not blocking the rest of the design. The current "block at
+dispatch time" approach handles single-source-of-input programs
+and the GL render loop pattern (delay-effect-as-pacing).
 
 ### Phase 5: Self-feedback as a first-class subscription
 

@@ -203,9 +203,13 @@ pub fn run_with_ctx(
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
     let fsms = detect_all_fsms(rt);
+    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("delta");
     match fsms.len() {
         0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
-        1 => run_with_shape(rt, &fsms[0], opts, ctx),
+        1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
+        // delta mode routes single-FSM through the multi-FSM
+        // scheduler too — same subscription semantics for both.
+        1 => run_multi_fsm(rt, &fsms, opts, ctx),
         _ => {
             // v1 single-writer rule.
             let writer_count = fsms.iter().filter(|s| s.is_writer()).count();

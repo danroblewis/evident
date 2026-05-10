@@ -249,6 +249,76 @@ fn delta_mode_halts_cleanly_without_done_variant() {
         "should halt within a few ticks of going silent; got {} steps", r.steps);
 }
 
+/// Phase 4: single-FSM stdin reader. ReadLine blocks at dispatch
+/// (already worked); the new behavior is that under delta mode
+/// the single-FSM path routes through the multi-FSM scheduler,
+/// so EOF → ErrorResult → FSM stops emitting → no scheduled →
+/// clean halt. Without delta, the legacy fixpoint heuristic would
+/// have caught this too — but only because the program had a
+/// `Stopped` self-loop at the end. Phase 4 doesn't need it.
+const STDIN_LOOP_PROGRAM: &str = "\
+enum S = Reading | Stopped
+
+claim main(state, state_next ∈ S,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    is_eof ∈ Bool
+    is_eof = match last_results
+        ResCons(r, _) ⇒ match r
+            ErrorResult(_) ⇒ true
+            _              ⇒ false
+        _ ⇒ false
+
+    state_next = match state
+        Reading ⇒ (is_eof ? Stopped : Reading)
+        Stopped ⇒ Stopped
+
+    line ∈ String
+    line = match last_results
+        ResCons(r, _) ⇒ match r
+            StringResult(s) ⇒ s
+            _               ⇒ \"\"
+        _ ⇒ \"\"
+
+    effects = match state
+        Reading ⇒ (is_eof ? ⟨⟩ : ⟨ReadLine, Println(\"got: \" ++ line)⟩)
+        Stopped ⇒ ⟨⟩
+";
+
+#[test]
+fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(STDIN_LOOP_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    // 2 lines + EOF.
+    let stdin_data = b"hello\nworld\n".to_vec();
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(stdin_data))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    let lines: Vec<&str> = out.lines().collect();
+    // Each tick prints a "got: <prev_line>" — the first one is
+    // empty because last_results is ResNil at tick 0. Then "got:
+    // hello" and "got: world".
+    assert!(lines.contains(&"got: hello"), "missing got: hello; out:\n{}", out);
+    assert!(lines.contains(&"got: world"), "missing got: world; out:\n{}", out);
+
+    assert!(r.halted_clean,
+        "FSM should halt cleanly after EOF stops emitting effects; got {r:?}");
+    assert!(r.steps < 50, "should halt before max_steps; got {} steps", r.steps);
+}
+
 #[test]
 fn delta_mode_writer_truly_goes_quiet_after_init() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
