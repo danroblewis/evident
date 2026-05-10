@@ -215,5 +215,9 @@ phrased uniformly.
     that implements delta-driven coordination.
   * [`multi-fsm.md`](multi-fsm.md) — the writer/reader composition
     pattern at the program level.
+  * [`synchronous-reactive-concurrency.md`](synchronous-reactive-concurrency.md)
+    — the OG vision: Evident as a synchronous-reactive language
+    (Esterel/Lustre family). The schema-interface model implements
+    exactly that picture.
   * [`models-not-programs.md`](../../models-not-programs.md) — the
     earlier articulation that pointed in this direction.
