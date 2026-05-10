@@ -97,6 +97,16 @@ propagates to the CLI as the process exit code.
 **Opt out** with `EVIDENT_SCHEDULER=legacy` for the older "tick every FSM
 every iteration" behavior with name/fixpoint halt.
 
+**Async event sources.** When no FSM is ready to tick (all subscriptions
+silent), the scheduler blocks on a channel of `SchedulerEvent`s instead
+of immediately halting. `EVIDENT_TICK_MS=<u64>` installs a `FrameTimer`
+that fires `Tick` events at the requested interval; arriving events
+coarsely wake every alive FSM. When all sources go dead (channel returns
+Err), the scheduler halts cleanly. See `runtime-rust/src/event_sources.rs`
+for the `EventSource` trait — adding a new source (signal handler, real
+stdin push, SDL event poll) is implementing the trait + wiring it into
+`run_with_ctx`.
+
 **Design**: [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) covers
 the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
 covers the scheduler model and 5-phase implementation status.
