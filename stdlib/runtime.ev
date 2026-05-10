@@ -95,6 +95,15 @@ enum Effect =
     -- Parse a decimal real (f64). RealResult on success;
     -- ErrorResult on failure.
     ParseReal(String)
+    -- Run a shell command synchronously, capture stdout.
+    -- StringResult(stdout) on success (exit 0); ErrorResult on
+    -- non-zero exit (with code + first ~200 chars of stderr) or
+    -- spawn failure. Trailing newline is stripped.
+    --
+    -- Synchronous: blocks dispatch until the command returns.
+    -- Use sparingly — long-running commands stall the whole
+    -- runtime. For background processes, write a custom plugin.
+    ShellRun(String)
     -- Spawn a new FSM instance of the named claim with an Int
     -- argument that gets pinned into the new FSM's first
     -- state-variant payload. Result is IntResult(instance_id).

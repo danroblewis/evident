@@ -283,6 +283,13 @@ pub enum Effect {
     /// Parse a decimal real (float) string. IEEE-754 double precision.
     /// On success: RealResult. On failure: ErrorResult.
     ParseReal(String),
+    /// Run a shell command synchronously, capture stdout. Result
+    /// is StringResult(stdout) on success (exit code 0); otherwise
+    /// ErrorResult with exit code + stderr. Synchronous (blocks
+    /// dispatch until the command returns) — fine for short-lived
+    /// commands; for long-running programs use a custom plugin.
+    /// Trailing newline is stripped from stdout for convenience.
+    ShellRun(String),
     /// Spawn a new FSM instance of the named claim with an Int
     /// argument that gets pinned into the new FSM's first
     /// state-variant payload. The new FSM joins the scheduler

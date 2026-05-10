@@ -181,6 +181,29 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             Ok(f)  => EffectResult::Real(f),
             Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
         },
+        Effect::ShellRun(cmd) => {
+            // Use sh -c to interpret the command string. Errors
+            // include exit code + first line of stderr (truncated
+            // if longer than ~200 chars) for debuggability.
+            use std::process::Command;
+            match Command::new("sh").arg("-c").arg(cmd).output() {
+                Ok(out) if out.status.success() => {
+                    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
+                    if s.ends_with('\n') { s.pop(); }
+                    EffectResult::Str(s)
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    let snippet: String = stderr.chars().take(200).collect();
+                    EffectResult::Error(format!(
+                        "ShellRun: exit={} stderr={}",
+                        out.status.code().unwrap_or(-1),
+                        snippet.trim_end(),
+                    ))
+                }
+                Err(e) => EffectResult::Error(format!("ShellRun: spawn failed: {e}")),
+            }
+        }
         Effect::SpawnFsm(claim_name, arg) => {
             let idx = ctx.pending_spawns.len() as i64;
             ctx.pending_spawns.push((claim_name.clone(), *arg));
@@ -538,6 +561,34 @@ mod tests {
         // Third read hits EOF.
         assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
         let _ = captured_stdout(ctx);
+    }
+
+    #[test]
+    fn shell_run_returns_stdout() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ShellRun("echo hello".to_string())) {
+            EffectResult::Str(s) => assert_eq!(s, "hello"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_run_reports_nonzero_exit() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ShellRun("false".to_string())) {
+            EffectResult::Error(msg) => assert!(msg.contains("exit=1"),
+                "expected exit=1 in error; got {msg}"),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_run_strips_trailing_newline() {
+        let mut ctx = DispatchContext::new();
+        match dispatch_one(&mut ctx, &Effect::ShellRun("printf 'foo\\n'".to_string())) {
+            EffectResult::Str(s) => assert_eq!(s, "foo"),
+            other => panic!("expected Str, got {other:?}"),
+        }
     }
 
     #[test]
