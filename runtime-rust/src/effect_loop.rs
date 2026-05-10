@@ -197,6 +197,17 @@ pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
         if let Some(shape) = detect_fsm_shape(rt, &name) {
+            // Skip claims that include a body-level `spawnable_only`
+            // marker — they should only run when explicitly spawned
+            // via Effect::SpawnFsm, not auto-instantiated at startup.
+            if let Some(claim) = rt.get_schema(&name) {
+                let is_spawn_only = claim.body.iter().any(|item| {
+                    matches!(item,
+                        crate::ast::BodyItem::Constraint(crate::ast::Expr::Identifier(s))
+                        if s == "spawnable_only")
+                });
+                if is_spawn_only { continue; }
+            }
             if shape.is_writer() { writers.push(shape) } else { readers.push(shape) }
         }
     }

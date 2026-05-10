@@ -130,6 +130,30 @@ fn request_response_lang_test_11() {
 }
 
 #[test]
+fn spawnable_only_lang_test_14() {
+    // Worker has `spawnable_only` body marker → not
+    // auto-detected. Parent spawns 2 workers; output has
+    // EXACTLY worker A + worker B (no "worker ?" from auto-
+    // instance).
+    //
+    // Legacy mode: with worker spawnable_only, parent is the
+    // only FSM → run_with_shape (single-FSM path) → spawn isn't
+    // supported. Skip in legacy.
+    if std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("legacy") {
+        eprintln!("skipping spawnable_only test under legacy (single-FSM \
+                   path doesn't support SpawnFsm)");
+        return;
+    }
+    let (out, r) = run_program("../programs/lang_tests/multi_fsm/14_spawnable_only.ev", 10);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines.contains(&"worker A"), "missing worker A; out:\n{}", out);
+    assert!(lines.contains(&"worker B"), "missing worker B; out:\n{}", out);
+    assert!(!lines.contains(&"worker ?"),
+        "should NOT have worker ? (auto-instance); out:\n{}", out);
+    assert!(r.halted_clean);
+}
+
+#[test]
 fn spawn_with_arg_lang_test_13() {
     // Parent spawns 3 workers each with a different ID arg.
     // Each worker prints a message keyed on its ID.

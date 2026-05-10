@@ -500,6 +500,12 @@ fn inline_body_items_guarded(
                 exit_frame(visited, claim_name);
             }
             BodyItem::Constraint(e) => {
+                // Recognized runtime markers — bare identifiers that
+                // exist for side metadata (the loader picks them up
+                // before translation). Skip silently.
+                if let crate::ast::Expr::Identifier(s) = e {
+                    if s == "spawnable_only" { continue; }
+                }
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     track_assert(solver, &guarded_bool(b, guard), tracker);
                 } else {
