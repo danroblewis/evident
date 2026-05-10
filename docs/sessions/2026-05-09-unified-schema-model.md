@@ -64,6 +64,8 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `ed41dc9`       | Hostname FTI type + OneShotShellSource bridge                 |
 | `20b984c`       | FTI v2 — per-instance configurable resources                  |
 | `2654171`       | FTI subscription-aware wakes                                  |
+| `34f5c94`       | SDL_Window FTI bridge — first real C-resource FTI             |
+| `e3948c0`       | SDL_Window FTI extends to GL context + render demo            |
 
 ## Documentation work
 

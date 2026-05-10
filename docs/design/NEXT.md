@@ -43,16 +43,23 @@ what we would implement now."
 
 ## High value, bounded scope
 
-### 1. SDL/GL demo migrations to modern patterns
+### 1. SDL/GL demo migrations to modern patterns (in progress)
 
-The biggest bag of "old patterns" is in `programs/demos/effect_sdl_*`
-and `effect_gl_*`. They use legacy effect-list shapes (LibCall +
-ArgCons + state-payload-threaded handles). Migrating to the
-plugin-as-writer + Foreign-Type-Interface model is the dominant
-remaining cleanup.
+First migration shipped: `programs/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev`
+declares `win ∈ SDL_Window` and gets both window + GL context
+from one declaration. Render loop runs at 1.8ms/tick (no setup
+chain).
 
-Order: do these AFTER FTI v1 lands (next item) so the migration
-has a target shape to translate to.
+Remaining demo conversions:
+  * `effect_gl_smoke.ev` (14-state init machine) → 1 declaration
+  * `effect_gl_triangle.ev` → declaration + per-frame draw
+  * `effect_gl_transpiled_triangle.ev` → would need GL_Program FTI
+    (compile+link as a typed declaration, not a state machine)
+  * `effect_sdl_red.ev`, `effect_sdl_window.ev` → similar
+
+Blocking: more FTI types — GL_Program (vertex_src + fragment_src
+→ compiled program handle), VertexArray, Buffer. Each replaces
+a multi-step LibCall sequence with one declaration.
 
 ### 2. Foreign Type Interface v1.5 (DONE) → v2 next
 
