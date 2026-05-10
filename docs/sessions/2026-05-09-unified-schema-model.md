@@ -43,6 +43,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `4cf23af`       | Integration test for lang test 09                             |
 | `e3a9dba`       | Hoist disjoint-write check (single-FSM-with-plugin too)       |
 | `b69e072`       | Startup trace under EVIDENT_LOOP_TRACE                        |
+| `6a5a2c1`       | Lang test 11 — request/response coordination demo             |
 
 ## Documentation work
 
@@ -92,6 +93,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
   * `08_word_counter.ev` — same as 06 but using payload state
   * `09_timer_and_stdin.ev` — multi-plugin coordination
   * `10_sigint_cleanup.ev` — SIGINT-triggered cleanup
+  * `11_request_response.ev` — two user FSMs coordinating via world
 
 `programs/demos/`:
   * `effect_multi_fsm_transpiled.ev` — GL render with setup-then-halt
