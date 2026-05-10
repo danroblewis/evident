@@ -45,6 +45,21 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `b69e072`       | Startup trace under EVIDENT_LOOP_TRACE                        |
 | `6a5a2c1`       | Lang test 11 — request/response coordination demo             |
 
+## 2026-05-10 follow-up work
+
+| Commit          | What                                                         |
+|---|---|
+| `17eb674`       | Effect::ParseInt + Effect::ParseReal + guess-number rewrite   |
+| `ca10058`       | Rewrite effect_echo + effect_hello in modern style            |
+| `912a64e`       | FileLineReader plugin (FTI v0 — file resource lifecycle)      |
+| `cb1e6b4`       | Effect::SpawnFsm — dynamic FSM instantiation v1               |
+| `c50e3db`       | WallClock plugin + lang test 12                               |
+| `47b25e5`       | SpawnFsm takes Int arg pinned into spawned state              |
+| `44821c3`       | FileWatcher plugin (poll-based mtime change detection)        |
+| `066a813`       | Effect::ShellRun — synchronous shell command execution        |
+| `6b1ffa4`       | Effect::IntToStr / RealToStr — symmetric to Parse*            |
+| `aaf9247`       | spawnable_only marker — claims that don't auto-instantiate    |
+
 ## Documentation work
 
 | Commit          | Doc                                                          |
