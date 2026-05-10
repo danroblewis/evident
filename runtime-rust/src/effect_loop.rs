@@ -184,6 +184,13 @@ fn run_with_shape(
 
     let mut step_count = 0usize;
     let mut final_state_model: Option<Value> = None;
+    // EVIDENT_LOOP_TIMING=1 → per-step solve+dispatch timing + summary.
+    // Useful for figuring out where time goes in long-running demos
+    // (Z3 solve vs FFI dispatch vs idle in delays).
+    let timing = std::env::var("EVIDENT_LOOP_TIMING").is_ok();
+    let loop_t0 = std::time::Instant::now();
+    let mut total_solve = std::time::Duration::ZERO;
+    let mut total_dispatch = std::time::Duration::ZERO;
 
     while step_count < opts.max_steps {
         // Encode last_results.
@@ -203,8 +210,11 @@ fn run_with_shape(
             ],
         };
 
+        let solve_t0 = std::time::Instant::now();
         let r = rt.query_with_pinned_datatypes("main", &pins)
             .map_err(|e| format!("solve step {step_count}: {e}"))?;
+        let solve_dt = solve_t0.elapsed();
+        total_solve += solve_dt;
 
         if !r.satisfied {
             return Ok(LoopResult {
@@ -230,10 +240,21 @@ fn run_with_shape(
             && current_state_value.is_some()
             && model_matches_value(state_next_val, &shape.state_type);
 
+        let dispatch_t0 = std::time::Instant::now();
         let new_results = dispatch_all(ctx, &effects);
+        let dispatch_dt = dispatch_t0.elapsed();
+        total_dispatch += dispatch_dt;
 
         if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
             eprintln!("[loop] step {step_count}: state_next={state_next_val:?} effects={effects:?}");
+        }
+        if timing {
+            eprintln!(
+                "[timing] step {step_count}: solve={:.2}ms dispatch={:.2}ms ({} effects)",
+                solve_dt.as_secs_f64() * 1000.0,
+                dispatch_dt.as_secs_f64() * 1000.0,
+                effects.len(),
+            );
         }
         // Re-encode state for the next step's pin. Handles nullary
         // and payload variants.
@@ -244,6 +265,7 @@ fn run_with_shape(
         step_count += 1;
 
         if halted_by_fixpoint {
+            if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: final_state_model,
@@ -252,11 +274,35 @@ fn run_with_shape(
         }
     }
 
+    if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
     Ok(LoopResult {
         steps: step_count,
         final_state: final_state_model,
         halted_clean: false,
     })
+}
+
+fn print_timing_summary(
+    loop_t0: std::time::Instant,
+    steps: usize,
+    total_solve: std::time::Duration,
+    total_dispatch: std::time::Duration,
+) {
+    let wall = loop_t0.elapsed();
+    let other = wall.saturating_sub(total_solve).saturating_sub(total_dispatch);
+    eprintln!("[timing] ── summary ──────────────────────────────");
+    eprintln!("[timing] steps:    {steps}");
+    eprintln!("[timing] wall:     {:>7.2}ms ({:>5.1}ms/step)",
+        wall.as_secs_f64() * 1000.0,
+        if steps > 0 { wall.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 });
+    eprintln!("[timing] solve:    {:>7.2}ms ({:>5.1}ms/step)",
+        total_solve.as_secs_f64() * 1000.0,
+        if steps > 0 { total_solve.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 });
+    eprintln!("[timing] dispatch: {:>7.2}ms ({:>5.1}ms/step)",
+        total_dispatch.as_secs_f64() * 1000.0,
+        if steps > 0 { total_dispatch.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 });
+    eprintln!("[timing] other:    {:>7.2}ms (encoding, decoding, idle)",
+        other.as_secs_f64() * 1000.0);
 }
 
 /// Check whether a model `Value` corresponds to a halt sentinel —
