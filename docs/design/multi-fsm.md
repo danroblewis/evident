@@ -1,5 +1,24 @@
 # Multi-FSM execution: separate state machines, lifecycle phases, shared world
 
+> **2026-05-09 update**: this doc was the original framing for
+> "multi-FSM" in evident. It's still a useful overview of the
+> writer/reader composition pattern and worked examples, but the
+> halt mechanism described below has been **superseded** by
+> subscription-driven scheduling. Read these in order:
+> 1. [`schema-interface.md`](schema-interface.md) — what an Evident
+>    model IS (the unified model: read-set + write-set + private
+>    state + schedule + behavior).
+> 2. [`fsm-subscriptions.md`](fsm-subscriptions.md) — the scheduler
+>    that implements the unified model.
+> 3. This doc — composition patterns and worked examples (still valid).
+>
+> Specifically: the "halt-per-FSM is the load-bearing semantic"
+> section's name/fixpoint halt heuristic is gone. Halt is now
+> implicit ("no FSM scheduled in a tick = halt"). Plugins are
+> first-class schemas (FrameTimer, SigintSource, StdinSource);
+> they write world fields and other FSMs subscribe via standard
+> read-set inference.
+
 ## Motivation
 
 The current effect-driven runtime has a strict 1:1:1 model:
