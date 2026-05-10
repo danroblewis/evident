@@ -295,6 +295,18 @@ pub enum Effect {
     Seq(Vec<Effect>),
 }
 
+/// SDL_Vertex layout — 20 bytes, no padding (max alignment is f32 = 4).
+/// `#[repr(C)]` matches SDL's `typedef struct SDL_Vertex { SDL_FPoint
+/// position; SDL_Color color; SDL_FPoint tex_coord; }` exactly so a
+/// `Vec<SdlVertex>` is a valid `SDL_Vertex*` array.
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdlVertex {
+    pub pos:   [f32; 2],
+    pub color: [u8;  4],
+    pub tex:   [f32; 2],
+}
+
 /// One argument to an FFICall effect. Distinct name from
 /// `ffi::FfiArg` to avoid the cross-module type clash; the
 /// dispatcher converts when handing off to libffi.
@@ -321,6 +333,12 @@ pub enum EffectFfiArg {
     /// `SDL_Point { x, y }` (2 i32s = 8 bytes). The buffer lives for
     /// the duration of the call only — C side must not retain it.
     I32Buf(Vec<i32>),
+    /// Pack N `SDL_Vertex` structs into a contiguous heap buffer for
+    /// `SDL_RenderGeometry`. Each vertex is 20 bytes
+    /// (2 f32 position + 4 u8 RGBA + 2 f32 tex_coord). This is
+    /// SDL-specific until we have a general "packed struct array"
+    /// FFI primitive with a runtime layout descriptor.
+    SdlVertexBuf(Vec<SdlVertex>),
     /// `ArgIntOut` — 0-arity marker for "writes one i32 into the
     /// pointed-to slot" output args (`glGenVertexArrays(1, &vao)`,
     /// `glGetShaderiv(...)`, etc.). The dispatcher allocates a

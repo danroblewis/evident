@@ -609,6 +609,10 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
             let ints = decode_int_list(&fields[0])?;
             EffectFfiArg::I32Buf(ints.into_iter().map(|n| n as i32).collect())
         }
+        "ArgSDLVertexBuf" => {
+            need_arity(variant, fields, 1)?;
+            EffectFfiArg::SdlVertexBuf(decode_sdl_vertex_list(&fields[0])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),
         }),
@@ -623,6 +627,29 @@ pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
 /// Cons/Nil-shaped `IntList` decoder. Used as `ArgI32Buf`'s payload.
 pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     decode_list(v, "IntList", "INil", "ICons", decode_int)
+}
+
+/// Decode a single `MkSDLVertex(Real, Real, Int, Int, Int, Int, Real, Real)`
+/// to the packed Rust struct.
+pub fn decode_sdl_vertex(v: &Value) -> Result<crate::ast::SdlVertex> {
+    let (variant, fields) = check_enum(v, "SDLVertex")?;
+    if variant != "MkSDLVertex" {
+        return Err(DecodeError::UnknownVariant {
+            enum_name: "SDLVertex".into(), variant: variant.into(),
+        });
+    }
+    need_arity(variant, fields, 8)?;
+    Ok(crate::ast::SdlVertex {
+        pos: [decode_real(&fields[0])? as f32, decode_real(&fields[1])? as f32],
+        color: [decode_int(&fields[2])? as u8, decode_int(&fields[3])? as u8,
+                decode_int(&fields[4])? as u8, decode_int(&fields[5])? as u8],
+        tex: [decode_real(&fields[6])? as f32, decode_real(&fields[7])? as f32],
+    })
+}
+
+/// Cons/Nil-shaped `SDLVertexList` decoder.
+pub fn decode_sdl_vertex_list(v: &Value) -> Result<Vec<crate::ast::SdlVertex>> {
+    decode_list(v, "SDLVertexList", "SVNil", "SVCons", decode_sdl_vertex)
 }
 
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {

@@ -56,6 +56,9 @@ enum Renderable =
     RLine(Int, Int, Int, Int, Int, Int, Int, Int)
     -- p.x, p.y, color.red, .green, .blue, .alpha
     RPoint(Int, Int, Int, Int, Int, Int)
+    -- vertex list + count. Triangles via vertex order (every 3 = 1
+    -- triangle). Per-vertex colors. No texture / no indices.
+    RGeometry(SDLVertexList, Int)
 
 -- Cons/Nil list of renderables — the canonical "scene contents"
 -- shape. The ⟨a, b, c⟩ shorthand lowers to RCons(a, RCons(b, RCons(c,
@@ -80,10 +83,14 @@ claim render_one(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
     is_point ∈ Bool
     is_point = (item matches RPoint(_, _))
 
+    is_geometry ∈ Bool
+    is_geometry = (item matches RGeometry(_, _))
+
     is_rect        ⇒ render_one_rect
     is_filled_rect ⇒ render_one_filled_rect
     is_line        ⇒ render_one_line
     is_point       ⇒ render_one_point
+    is_geometry    ⇒ render_one_geometry
 
 claim render_one_rect(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
     px, py, sx, sy, cr, cg, cb, ca ∈ Int
@@ -249,6 +256,18 @@ claim render_one_point(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
     full_inner ∈ EffectList
     full_inner = EffCons(color_eff, EffCons(point_eff, EffNil))
     out = Seq(full_inner)
+
+claim render_one_geometry(renderer ∈ Int, item ∈ Renderable, out ∈ Effect)
+    verts ∈ SDLVertexList
+    verts = match item
+        RGeometry(v, _) ⇒ v
+        _               ⇒ SVNil
+    nverts ∈ Int
+    nverts = match item
+        RGeometry(_, n) ⇒ n
+        _               ⇒ 0
+    -- Single LibCall — no color-set needed (color is per-vertex).
+    render_geometry(renderer, verts, nverts, out)
 
 -- ── Recursive list walker: RenderableList → EffectList ─────
 

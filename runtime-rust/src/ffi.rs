@@ -61,6 +61,9 @@ pub enum FfiArg {
     /// slot). Used for SDL_Rect, SDL_Point, and other fixed-layout
     /// homogeneous-int32 structs.
     I32Buf(Vec<i32>),
+    /// Pack N SDL_Vertex structs (20 bytes each) into a contiguous
+    /// heap buffer; pass pointer for SDL_RenderGeometry.
+    SdlVertexBuf(Vec<crate::ast::SdlVertex>),
 }
 
 /// One returned value from a libffi call. Maps back to an Evident
@@ -319,6 +322,8 @@ pub fn ffi_call(
     // Per-I32Buf backing: own the i32 slice. Pointers to as_ptr()
     // captured post-population in `i32_buf_starts`.
     let mut i32_bufs:       Vec<Vec<i32>>                           = Vec::new();
+    // Per-SdlVertexBuf backing.
+    let mut vert_bufs:      Vec<Vec<crate::ast::SdlVertex>>         = Vec::new();
 
     // First pass: fill the backing-storage vectors. We must NOT push
     // to these between borrowing slots from them, because Vec growth
@@ -357,6 +362,7 @@ pub fn ffi_call(
             }
             (FfiArg::IntOut, TypeCode::P) => int_outs.push(0),
             (FfiArg::I32Buf(ints), TypeCode::P) => i32_bufs.push(ints.clone()),
+            (FfiArg::SdlVertexBuf(verts), TypeCode::P) => vert_bufs.push(verts.clone()),
             (other, expected) => {
                 return Err(FfiError(format!(
                     "arg {i}: type mismatch — value is {other:?}, signature says {expected:?}",
@@ -384,6 +390,9 @@ pub fn ffi_call(
     // post-population. Same reasoning as `arr_starts`.
     let i32_buf_starts: Vec<*const i32> =
         i32_bufs.iter().map(|v| v.as_ptr()).collect();
+    // Same for SdlVertexBuf.
+    let vert_buf_starts: Vec<*const crate::ast::SdlVertex> =
+        vert_bufs.iter().map(|v| v.as_ptr()).collect();
     // Currently only one IntOut per call is supported (the surfaced
     // result has no slot for more than one). Loosen by adding an
     // IntListResult variant if a real call needs N>1.
@@ -410,6 +419,7 @@ pub fn ffi_call(
     let mut idx_flt = 0usize; let mut idx_p   = 0usize;
     let mut idx_arr = 0usize; let mut idx_iout = 0usize;
     let mut idx_i32buf = 0usize;
+    let mut idx_vertbuf = 0usize;
     let mut ffi_args: Vec<Arg> = Vec::with_capacity(args.len());
     for (arg, code) in args.iter().zip(parsed.args.iter()) {
         let a = match (arg, *code) {
@@ -422,6 +432,7 @@ pub fn ffi_call(
             (FfiArg::StrArr(_), TypeCode::P) => { let r = Arg::new(&arr_starts[idx_arr]);  idx_arr  += 1; r }
             (FfiArg::IntOut,    TypeCode::P) => { let r = Arg::new(&int_out_ptrs[idx_iout]); idx_iout += 1; r }
             (FfiArg::I32Buf(_), TypeCode::P) => { let r = Arg::new(&i32_buf_starts[idx_i32buf]); idx_i32buf += 1; r }
+            (FfiArg::SdlVertexBuf(_), TypeCode::P) => { let r = Arg::new(&vert_buf_starts[idx_vertbuf]); idx_vertbuf += 1; r }
             _ => unreachable!("pass 1 already validated all (arg, code) pairs"),
         };
         ffi_args.push(a);

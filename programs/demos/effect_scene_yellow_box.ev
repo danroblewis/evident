@@ -29,12 +29,23 @@ claim main
     -- size.x, size.y, color.r, .g, .b, .a). When the runtime supports
     -- record payloads in enum variants this collapses to
     -- `RRect(IVec2(...), IVec2(...), Color(...))`.
+    -- Geometry triangle (gradient: red → green → blue corners).
+    -- SDL_RenderGeometry uses pixel coords directly when no
+    -- texture is bound; vertex order is triangle-list.
+    tri_verts ∈ SDLVertexList
+    tri_verts = ⟨
+        MkSDLVertex(400.0, 350.0, 220,  80,  80, 255, 0.0, 0.0),
+        MkSDLVertex(580.0, 450.0,  80, 220,  80, 255, 0.0, 0.0),
+        MkSDLVertex(450.0, 460.0,  80,  80, 220, 255, 0.0, 0.0)
+    ⟩
+
     items ∈ RenderableList
     items = ⟨
         RFilledRect(50, 50, 200, 150,   80,  40, 200, 255),
         RRect(100, 100, 440, 280,      240, 220,  80, 255),
         RLine(0, 0,     640, 480,      255, 255, 255, 255),
-        RPoint(320, 240,                50, 230, 120, 255)
+        RPoint(320, 240,                50, 230, 120, 255),
+        RGeometry(tri_verts, 3)
     ⟩
 
     ..SDLScene

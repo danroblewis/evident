@@ -102,6 +102,21 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 --   (b) horizontal lines per row, where N = height
 --       (very slow for large fills — h LibCalls per frame).
 
+-- SDL_RenderGeometry(renderer, NULL_texture, vertices, n,
+--                    NULL_indices, 0) — draws arbitrary triangles
+-- with per-vertex colors. No texture / no indices in this minimal
+-- form; vertex order = triangle list (every 3 vertices = 1 tri).
+claim render_geometry(renderer ∈ Int, vertices ∈ SDLVertexList,
+                      n ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
+                  "i(pppipi)",
+                  ArgCons(ArgHandle(renderer),
+                  ArgCons(ArgHandle(0),                   -- NULL texture
+                  ArgCons(ArgSDLVertexBuf(vertices),
+                  ArgCons(ArgInt(n),
+                  ArgCons(ArgHandle(0),                   -- NULL indices
+                  ArgCons(ArgInt(0), ArgNil)))))))
+
 -- SDL_RenderFillRect(renderer, *SDL_Rect) — filled rectangle in
 -- the current draw color. The struct is built via the new
 -- ArgI32Buf primitive: `⟨pos.x, pos.y, size.x, size.y⟩` packs into

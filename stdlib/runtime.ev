@@ -62,6 +62,19 @@ enum FFIArg =
     -- pass pointer. Used for fixed-layout int-struct args like
     -- SDL_Rect { x, y, w, h } (call site: ArgI32Buf(⟨x, y, w, h⟩)).
     ArgI32Buf(IntList)
+    -- ArgSDLVertexBuf(SDLVertexList) — pack N SDL_Vertex structs
+    -- (20 bytes each) for SDL_RenderGeometry. SDL-specific until
+    -- we have a general packed-struct-array FFI primitive.
+    ArgSDLVertexBuf(SDLVertexList)
+
+-- One SDL_Vertex: pos.x/y as Real (f32), color RGBA as Int (u8),
+-- tex_coord u/v as Real (f32). Order matches SDL's struct layout.
+enum SDLVertex =
+    MkSDLVertex(Real, Real, Int, Int, Int, Int, Real, Real)
+
+enum SDLVertexList =
+    SVNil
+    SVCons(SDLVertex, SDLVertexList)
 
 enum ArgList =
     ArgNil
