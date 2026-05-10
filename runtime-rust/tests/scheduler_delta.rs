@@ -322,6 +322,83 @@ fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
     assert!(r.steps < 50, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// Phase 4 v2: Effect::Exit is now deferred to end-of-tick instead
+/// of calling process::exit mid-dispatch. Other FSMs that emit
+/// effects in the same tick still get to run — important for
+/// cleanup / final-log patterns.
+const GRACEFUL_EXIT_PROGRAM: &str = "\
+type World
+    quit ∈ Bool
+
+enum CtrlState = Running | Stopping
+
+claim controller(world, world_next ∈ World,
+                 state, state_next ∈ CtrlState,
+                 last_results ∈ ResultList,
+                 effects ∈ EffectList)
+    state_next = match state
+        Running  ⇒ Stopping
+        Stopping ⇒ Stopping
+    world_next.quit = match state
+        Running  ⇒ true
+        Stopping ⇒ world.quit
+    -- On Stopping: emit Exit. Other FSMs in this tick should
+    -- still run their effects before the process exits.
+    effects = match state
+        Running  ⇒ ⟨Println(\"controller: signaling stop\")⟩
+        Stopping ⇒ ⟨Exit(7)⟩
+
+enum LogState = Logging
+
+claim logger(world ∈ World,
+             state, state_next ∈ LogState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = Logging
+    msg ∈ String
+    msg = (world.quit ? \"logger: cleanup-done\" : \"logger: alive\")
+    effects = ⟨Println(msg)⟩
+";
+
+#[test]
+fn delta_mode_exit_is_graceful_other_fsms_complete_tick() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(GRACEFUL_EXIT_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 20 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    // Tick 0: controller=Running emits "signaling stop", writes
+    //         quit=true. logger=Logging reads world.quit=true (writer-
+    //         first), prints "logger: cleanup-done".
+    // Tick 1: controller=Stopping emits Exit(7). logger reads
+    //         world.quit (still true via passthrough), prints
+    //         "logger: cleanup-done" — proving its effect ran in
+    //         the same tick where Exit was emitted.
+    // End of tick 1: ctx.exit_requested=Some(7), halt cleanly.
+    assert!(out.contains("controller: signaling stop"),
+        "controller's first message; out:\n{}", out);
+    let cleanup_count = out.lines().filter(|l| *l == "logger: cleanup-done").count();
+    assert!(cleanup_count >= 2,
+        "logger should print cleanup-done at least twice (tick 0 + tick 1 \
+         where Exit was emitted); got {cleanup_count}; out:\n{}", out);
+
+    assert!(r.halted_clean, "graceful exit should halt cleanly; got {r:?}");
+    assert_eq!(r.exit_code, Some(7), "exit code should propagate; got {r:?}");
+}
+
 #[test]
 fn delta_mode_writer_truly_goes_quiet_after_init() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());

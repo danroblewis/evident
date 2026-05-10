@@ -246,18 +246,43 @@ Test: `runtime-rust/tests/scheduler_delta.rs::
 delta_mode_single_fsm_stdin_reader_halts_on_eof` — feeds two
 lines + EOF, asserts clean halt.
 
-### Phase 4 v2: pluggable event sources (deferred)
+### Phase 4 v2: graceful Effect::Exit (done)
+
+`Effect::Exit(code)` no longer calls `process::exit` mid-dispatch.
+Instead it sets `DispatchContext::exit_requested = Some(code)`.
+The effect loop dispatches all of the current tick's effects
+first (so other FSMs' cleanup-writes / final-logs run) and then
+halts cleanly at end-of-tick. The exit code propagates through
+`LoopResult::exit_code` to the CLI, which uses it as the process
+exit code (clamped to 0..=255).
+
+This is the cleanup pattern: any FSM can emit Exit, all
+co-scheduled FSMs in the same tick complete first. Pair with the
+world-coordination idiom — a "supervisor" FSM writes
+`world.shutting_down = true` on tick N, cleanup FSMs subscribe to
+that field and run their teardown effects on tick N (including
+their own Exit if applicable), runtime halts at end-of-tick.
+
+Test: `delta_mode_exit_is_graceful_other_fsms_complete_tick` —
+controller emits Exit(7), logger in same tick still prints its
+cleanup-done message, runtime returns LoopResult { halted_clean,
+exit_code: Some(7) }.
+
+### Phase 4 v3: pluggable async event sources (deferred)
 
 A real plugin-as-event-source mechanism — plugins push events to
-the scheduler, scheduler `select()`s when its ready set is empty,
-sources can declare permanently dead. Needed for:
+the scheduler on background threads, scheduler `select()`s when
+its ready set is empty, sources can declare permanently dead.
+Needed for:
   * Frame timer that fires every N ms independent of FSM ticks.
-  * Multiple FSMs where one waits on stdin while others run.
+  * Multiple FSMs where one waits on stdin while others run on
+    other I/O sources concurrently.
   * Signal handling (SIGINT → wake a shutdown FSM).
 
 Not blocking the rest of the design. The current "block at
-dispatch time" approach handles single-source-of-input programs
-and the GL render loop pattern (delay-effect-as-pacing).
+dispatch time" approach handles single-source-of-input programs,
+the GL render loop pattern (delay-effect-as-pacing), and the
+graceful-shutdown pattern via `Effect::Exit` + world coordination.
 
 ### Phase 5: Self-feedback as a first-class subscription
 

@@ -39,6 +39,10 @@ pub struct LoopResult {
     pub steps:      usize,
     pub final_state: Option<Value>,
     pub halted_clean: bool,
+    /// `Some(code)` iff a FSM emitted `Effect::Exit(code)` during
+    /// the run. Recorded at end-of-tick so other FSMs' effects in
+    /// the same tick complete before we halt.
+    pub exit_code: Option<i32>,
 }
 
 /// One FSM-shaped claim's membership info. The runtime detects
@@ -293,6 +297,7 @@ fn run_with_shape(
                 steps: step_count,
                 final_state: final_state_model,
                 halted_clean: false,
+                exit_code: ctx.exit_requested,
             });
         }
 
@@ -336,12 +341,26 @@ fn run_with_shape(
         final_state_model = Some(state_next_val.clone());
         step_count += 1;
 
+        // Effect::Exit handling: an FSM emitted Exit. Dispatch
+        // already completed (other effects in this tick ran),
+        // so halt cleanly with the requested code.
+        if ctx.exit_requested.is_some() {
+            if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
+            return Ok(LoopResult {
+                steps: step_count,
+                final_state: final_state_model,
+                halted_clean: true,
+                exit_code: ctx.exit_requested,
+            });
+        }
+
         if halted_by_fixpoint {
             if timing { print_timing_summary(loop_t0, step_count, total_solve, total_dispatch); }
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: final_state_model,
                 halted_clean: true,
+                exit_code: None,
             });
         }
     }
@@ -351,6 +370,7 @@ fn run_with_shape(
         steps: step_count,
         final_state: final_state_model,
         halted_clean: false,
+        exit_code: None,
     })
 }
 
@@ -485,6 +505,7 @@ fn run_multi_fsm(
                 // best-effort.
                 final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
                 halted_clean: true,
+                exit_code: ctx.exit_requested,
             });
         }
 
@@ -554,6 +575,7 @@ fn run_multi_fsm(
                     steps: step_count,
                     final_state: fsm_rt[idx].current_state_v.clone(),
                     halted_clean: false,
+                    exit_code: ctx.exit_requested,
                 });
             }
 
@@ -684,6 +706,27 @@ fn run_multi_fsm(
                 steps: step_count,
                 final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
                 halted_clean: true,
+                exit_code: ctx.exit_requested,
+            });
+        }
+
+        // Effect::Exit handling: an FSM emitted Exit. Dispatch
+        // already completed for this tick (other FSMs' effects
+        // ran), so halt cleanly with the requested code. Checked
+        // after the no-scheduled halt so a normal halt with no
+        // pending exit takes priority for clarity.
+        if ctx.exit_requested.is_some() {
+            if timing {
+                let rows: Vec<(&str, std::time::Duration, usize)> = fsms.iter().enumerate()
+                    .map(|(i, f)| (f.claim_name.as_str(), per_fsm_solve[i], per_fsm_ticks[i]))
+                    .collect();
+                print_timing_summary_full(loop_t0, step_count, total_solve, total_dispatch, &rows);
+            }
+            return Ok(LoopResult {
+                steps: step_count,
+                final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
+                halted_clean: true,
+                exit_code: ctx.exit_requested,
             });
         }
     }
@@ -698,6 +741,7 @@ fn run_multi_fsm(
         steps: step_count,
         final_state: fsm_rt.iter().find_map(|f| f.current_state_v.clone()),
         halted_clean: false,
+        exit_code: ctx.exit_requested,
     })
 }
 

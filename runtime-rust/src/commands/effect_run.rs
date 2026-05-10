@@ -53,6 +53,12 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
 
     match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
         Ok(r) => {
+            // Effect::Exit(code) propagates as the process exit code.
+            // Other halt paths exit 0 on clean halt, 1 on max_steps.
+            if let Some(code) = r.exit_code {
+                let clamped = code.clamp(0, 255) as u8;
+                return ExitCode::from(clamped);
+            }
             if !r.halted_clean {
                 eprintln!("effect-run: did not halt cleanly after {} steps", r.steps);
                 return ExitCode::from(1);

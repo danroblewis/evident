@@ -60,6 +60,11 @@ pub struct DispatchContext {
     pub lib_cache: std::collections::HashMap<String, u64>,
     /// Cache for LibCall: `(lib handle, symbol name) → sym handle`.
     pub sym_cache: std::collections::HashMap<(u64, String), u64>,
+    /// Set by `Effect::Exit(code)`. The effect loop checks this at
+    /// end of each tick and halts cleanly with the requested code,
+    /// instead of `Exit` immediately calling `process::exit` and
+    /// cutting off other FSMs' effects mid-dispatch.
+    pub exit_requested: Option<i32>,
 }
 
 impl DispatchContext {
@@ -81,6 +86,7 @@ impl DispatchContext {
             mode: DispatchMode::default(),
             lib_cache: std::collections::HashMap::new(),
             sym_cache: std::collections::HashMap::new(),
+            exit_requested: None,
         }
     }
 
@@ -142,7 +148,18 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             let ms = ctx.start.elapsed().as_millis() as i64;
             EffectResult::Int(ms)
         }
-        Effect::Exit(n) => std::process::exit(*n as i32),
+        Effect::Exit(n) => {
+            // Defer the exit: mark and continue. The effect loop
+            // checks this at end of tick and halts cleanly. Lets
+            // other FSMs in the same tick complete their effects
+            // (cleanup writes, final logs, etc.) before we exit.
+            // First Exit wins if multiple FSMs emit one in the
+            // same tick.
+            if ctx.exit_requested.is_none() {
+                ctx.exit_requested = Some(*n as i32);
+            }
+            EffectResult::NoResult
+        }
 
         Effect::FFIOpen(path) => match &mut ctx.mode {
             DispatchMode::Real => {
