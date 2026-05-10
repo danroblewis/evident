@@ -1,28 +1,39 @@
 //! Async event sources for the multi-FSM scheduler. See
-//! `docs/design/fsm-subscriptions.md` Phase 4 v3.
+//! `docs/design/schema-interface.md` for the unified model:
+//! plugins are first-class schemas that write world fields. The
+//! older event-channel mechanism (Phase 4 v3) is kept as a wake
+//! channel; the new world-write capability is added on top so
+//! plugins behave like writer FSMs.
 //!
-//! An `EventSource` runs on a background thread and pushes
-//! `SchedulerEvent`s into a shared `mpsc` channel. When the
-//! scheduler has no FSM ready to tick, it blocks on the channel
-//! (or halts if all senders have been dropped — the "all sources
-//! dead" condition). Each event coarsely wakes every FSM, which
-//! re-checks its subscription state on the next tick.
+//! Two-channel design (transitional):
+//!   * **Wake channel** (`Sender<SchedulerEvent>`): one-bit "data
+//!     arrived" notifications. Used to unblock the scheduler when
+//!     no FSM is otherwise ready.
+//!   * **Write queue** (`drain_writes()`): per-source queue of
+//!     pending world-field writes. Drained at start of each tick
+//!     and applied through the same code path as writer-FSM
+//!     output (multi-writer disjoint-fields rule applies).
+//!
+//! v1 sources implement both: wake to unblock, writes to publish
+//! data. Future cleanup may collapse the two — every wake is
+//! "world changed," nothing else.
 //!
 //! Currently implemented sources:
-//!   * `FrameTimer` — sends `Tick` events at a fixed interval
-//!     until stopped.
-//!
-//! Adding a new source: implement `EventSource` (start spawns a
-//! thread that pushes events; stop signals the thread and joins).
-//! Wire it up in `effect_loop::run_with_ctx` based on whatever
-//! configuration mechanism is appropriate (env var, CLI flag,
-//! evident-program declaration).
+//!   * `FrameTimer` — periodic ticks; writes a count field if
+//!     the user's World declares one.
+//!   * `SigintSource` — SIGINT handler; writes a counter field
+//!     when triggered.
+//!   * `StdinSource` — background line reader; writes each line
+//!     to a String field.
 
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 use std::time::Duration;
+
+use crate::Value;
 
 /// One event delivered to the scheduler. Sources tag their events
 /// with a name (currently informational; a future "subscribed-to
@@ -47,26 +58,68 @@ pub trait EventSource: Send {
     /// it to terminate. After this returns, no more events will
     /// be sent (the source's clone of the sender is dropped).
     fn stop(&mut self);
+    /// Drain any pending world-field writes the source has
+    /// queued. Each entry is `(field_name, new_value)`. Returns
+    /// empty Vec by default (sources that only push wake events
+    /// without producing data have no writes). Called by the
+    /// runtime at the start of each tick; drained writes are
+    /// applied to the world snapshot through the same pathway as
+    /// writer-FSM output.
+    fn drain_writes(&mut self) -> Vec<(String, Value)> { Vec::new() }
+    /// World fields this source declares ownership of (its
+    /// write-set, in writer-FSM terms). Used at load time to
+    /// participate in the disjoint-write-set check. Returns empty
+    /// Vec by default (sources that don't write).
+    fn write_fields(&self) -> Vec<String> { Vec::new() }
+}
+
+/// A queue of pending writes, shared between a source's
+/// background thread (writer) and the scheduler (drainer). Cheap
+/// to clone the Arc for sender threads.
+pub type WriteQueue = Arc<Mutex<VecDeque<(String, Value)>>>;
+
+pub fn new_write_queue() -> WriteQueue {
+    Arc::new(Mutex::new(VecDeque::new()))
+}
+
+pub fn drain(q: &WriteQueue) -> Vec<(String, Value)> {
+    let mut g = q.lock().unwrap();
+    g.drain(..).collect()
 }
 
 /// Periodic-tick event source. Spawns a thread that sleeps for the
 /// configured interval and sends a `Tick` event, repeatedly, until
-/// `stop` is called.
+/// `stop` is called. If a `count_field` is configured, also queues
+/// a world write incrementing the named Int field on each fire —
+/// this lets user FSMs subscribe via `world.<count_field>` deltas
+/// rather than the marker-type wake mechanism.
 pub struct FrameTimer {
-    interval:  Duration,
-    name:      String,
-    stop_flag: Arc<AtomicBool>,
-    handle:    Option<JoinHandle<()>>,
+    interval:    Duration,
+    name:        String,
+    count_field: Option<String>,
+    write_queue: WriteQueue,
+    stop_flag:   Arc<AtomicBool>,
+    handle:      Option<JoinHandle<()>>,
 }
 
 impl FrameTimer {
     pub fn new(interval_ms: u64, name: impl Into<String>) -> Self {
         FrameTimer {
-            interval:  Duration::from_millis(interval_ms),
-            name:      name.into(),
-            stop_flag: Arc::new(AtomicBool::new(false)),
-            handle:    None,
+            interval:    Duration::from_millis(interval_ms),
+            name:        name.into(),
+            count_field: None,
+            write_queue: new_write_queue(),
+            stop_flag:   Arc::new(AtomicBool::new(false)),
+            handle:      None,
         }
+    }
+
+    /// Configure the timer to write its current tick count into
+    /// the named world field on each fire. The field must be of
+    /// type Int in the user's World type.
+    pub fn with_count_field(mut self, field: impl Into<String>) -> Self {
+        self.count_field = Some(field.into());
+        self
     }
 }
 
@@ -78,12 +131,20 @@ impl EventSource for FrameTimer {
         let stop = self.stop_flag.clone();
         let interval = self.interval;
         let name = self.name.clone();
+        let count_field = self.count_field.clone();
+        let write_queue = self.write_queue.clone();
         let handle = std::thread::Builder::new()
             .name(format!("evident-timer-{name}"))
             .spawn(move || {
+                let mut count: i64 = 0;
                 while !stop.load(Ordering::Relaxed) {
                     std::thread::sleep(interval);
                     if stop.load(Ordering::Relaxed) { break; }
+                    count += 1;
+                    if let Some(field) = &count_field {
+                        let mut q = write_queue.lock().unwrap();
+                        q.push_back((field.clone(), Value::Int(count)));
+                    }
                     // Send-error means the receiver was dropped —
                     // scheduler exited. Exit the thread cleanly.
                     if tx.send(SchedulerEvent::Tick { name: name.clone() }).is_err() {
@@ -102,6 +163,14 @@ impl EventSource for FrameTimer {
             let _ = h.join();
         }
     }
+
+    fn drain_writes(&mut self) -> Vec<(String, Value)> {
+        drain(&self.write_queue)
+    }
+
+    fn write_fields(&self) -> Vec<String> {
+        self.count_field.iter().cloned().collect()
+    }
 }
 
 impl Drop for FrameTimer {
@@ -119,20 +188,32 @@ impl Drop for FrameTimer {
 /// Naming the event "signal" lets FSMs subscribe via `_ ∈ Signal`
 /// in their parameter list (see `stdlib/runtime.ev`).
 pub struct SigintSource {
-    name:      String,
-    handle:    Option<JoinHandle<()>>,
-    sig_handle: Option<signal_hook::iterator::Handle>,
-    stop_flag: Arc<AtomicBool>,
+    name:        String,
+    handle:      Option<JoinHandle<()>>,
+    sig_handle:  Option<signal_hook::iterator::Handle>,
+    stop_flag:   Arc<AtomicBool>,
+    count_field: Option<String>,
+    write_queue: WriteQueue,
 }
 
 impl SigintSource {
     pub fn new() -> Self {
         SigintSource {
-            name: "signal".to_string(),
-            handle:     None,
-            sig_handle: None,
-            stop_flag:  Arc::new(AtomicBool::new(false)),
+            name:        "signal".to_string(),
+            handle:      None,
+            sig_handle:  None,
+            stop_flag:   Arc::new(AtomicBool::new(false)),
+            count_field: None,
+            write_queue: new_write_queue(),
         }
+    }
+
+    /// Configure to write the SIGINT count into the named world
+    /// field (Int) on each fire. User FSMs subscribe via
+    /// `world.<count_field>` deltas.
+    pub fn with_count_field(mut self, field: impl Into<String>) -> Self {
+        self.count_field = Some(field.into());
+        self
     }
 }
 
@@ -155,11 +236,19 @@ impl EventSource for SigintSource {
         let sig_handle = signals.handle();
         let stop = self.stop_flag.clone();
         let name = self.name.clone();
+        let count_field = self.count_field.clone();
+        let write_queue = self.write_queue.clone();
         let handle = std::thread::Builder::new()
             .name("evident-signal".into())
             .spawn(move || {
+                let mut count: i64 = 0;
                 for _sig in signals.forever() {
                     if stop.load(Ordering::Relaxed) { break; }
+                    count += 1;
+                    if let Some(field) = &count_field {
+                        let mut q = write_queue.lock().unwrap();
+                        q.push_back((field.clone(), Value::Int(count)));
+                    }
                     if tx.send(SchedulerEvent::Tick { name: name.clone() }).is_err() {
                         break;
                     }
@@ -182,9 +271,104 @@ impl EventSource for SigintSource {
             let _ = h.join();
         }
     }
+
+    fn drain_writes(&mut self) -> Vec<(String, Value)> {
+        drain(&self.write_queue)
+    }
+
+    fn write_fields(&self) -> Vec<String> {
+        self.count_field.iter().cloned().collect()
+    }
 }
 
 impl Drop for SigintSource {
+    fn drop(&mut self) { self.stop(); }
+}
+
+/// Stdin line reader. Spawns a thread that does blocking
+/// `read_line` on stdin; each line is queued as a world write
+/// (`(field, Value::Str(line))`) and a `Tick { name: "stdin" }`
+/// wake event is sent. EOF stops the thread (and drops the
+/// channel sender).
+pub struct StdinSource {
+    name:        String,
+    line_field:  String,
+    write_queue: WriteQueue,
+    handle:      Option<JoinHandle<()>>,
+}
+
+impl StdinSource {
+    /// `line_field` is the world field name to write each received
+    /// line into. Must be a String field in the user's World type.
+    pub fn new(line_field: impl Into<String>) -> Self {
+        StdinSource {
+            name:        "stdin".to_string(),
+            line_field:  line_field.into(),
+            write_queue: new_write_queue(),
+            handle:      None,
+        }
+    }
+}
+
+impl EventSource for StdinSource {
+    fn start(&mut self, tx: Sender<SchedulerEvent>) -> Result<(), String> {
+        if self.handle.is_some() {
+            return Err("StdinSource already started".to_string());
+        }
+        let name = self.name.clone();
+        let field = self.line_field.clone();
+        let write_queue = self.write_queue.clone();
+        let handle = std::thread::Builder::new()
+            .name("evident-stdin".into())
+            .spawn(move || {
+                use std::io::BufRead;
+                let stdin = std::io::stdin();
+                let mut reader = stdin.lock();
+                loop {
+                    let mut line = String::new();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,  // EOF
+                        Ok(_) => {
+                            // Strip trailing newline(s).
+                            if line.ends_with('\n') { line.pop(); }
+                            if line.ends_with('\r') { line.pop(); }
+                            {
+                                let mut q = write_queue.lock().unwrap();
+                                q.push_back((field.clone(), Value::Str(line)));
+                            }
+                            if tx.send(SchedulerEvent::Tick { name: name.clone() }).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                // EOF / error → close the channel by dropping tx.
+            })
+            .map_err(|e| format!("StdinSource spawn: {e}"))?;
+        self.handle = Some(handle);
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        // Stdin's blocking read can't be interrupted portably from
+        // another thread. We can't join here without potentially
+        // hanging — drop the JoinHandle (the thread will exit on
+        // its own when EOF arrives or when the channel closes).
+        // The OS reaps the thread at process exit.
+        let _ = self.handle.take();
+    }
+
+    fn drain_writes(&mut self) -> Vec<(String, Value)> {
+        drain(&self.write_queue)
+    }
+
+    fn write_fields(&self) -> Vec<String> {
+        vec![self.line_field.clone()]
+    }
+}
+
+impl Drop for StdinSource {
     fn drop(&mut self) { self.stop(); }
 }
 

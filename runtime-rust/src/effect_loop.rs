@@ -226,35 +226,98 @@ pub fn run_with_ctx(
     // every iteration" behavior with name/fixpoint-based halt.
     let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
 
-    // Set up async event sources from env config. Currently
-    // supports `EVIDENT_TICK_MS=<u64>` to install a periodic
-    // FrameTimer. The timer is created here, started, and stopped
-    // (via Drop) when this fn returns.
+    // Set up async event sources. Two trigger paths (transitional):
+    //
+    //   1. **Marker-type subscription** (Phase 4 v3): an FSM has a
+    //      parameter of type `FrameTimer` / `Signal`. Used in
+    //      conjunction with the wake channel.
+    //
+    //   2. **World-field plugin auto-install** (Phase 4 v3.7,
+    //      unified model): the user's World type declares fields
+    //      with reserved names; the runtime installs a plugin to
+    //      write those fields. User FSMs subscribe via existing
+    //      world read-set inference. No marker type needed.
+    //
+    // Reserved World field names (auto-installed plugins):
+    //
+    //      tick_count       ∈ Int    — FrameTimer (also needs EVIDENT_TICK_MS)
+    //      signal_received  ∈ Int    — SigintSource
+    //      stdin_line       ∈ String — StdinSource
+    //
+    // Both trigger paths can coexist for v3 back-compat.
     let mut event_sources: Vec<Box<dyn crate::event_sources::EventSource>> = Vec::new();
     let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::event_sources::SchedulerEvent>();
+    let mut plugin_writes: std::collections::HashSet<String> = std::collections::HashSet::new();
     if delta_mode {
         use crate::event_sources::EventSource;
-        if let Ok(s) = std::env::var("EVIDENT_TICK_MS") {
-            if let Ok(ms) = s.parse::<u64>() {
-                if ms > 0 {
-                    let mut timer = crate::event_sources::FrameTimer::new(ms, "tick");
-                    timer.start(event_tx.clone())
-                        .map_err(|e| format!("failed to start tick timer: {e}"))?;
-                    event_sources.push(Box::new(timer));
-                }
+
+        // Find the user's World type fields (if any FSM has one).
+        let world_fields: std::collections::HashMap<String, String> = fsms.iter()
+            .find_map(|f| f.world_type.as_ref())
+            .and_then(|wt| rt.get_schema(wt))
+            .map(|w| {
+                w.body.iter().filter_map(|item| {
+                    if let crate::ast::BodyItem::Membership { name, type_name, .. } = item {
+                        Some((name.clone(), type_name.clone()))
+                    } else { None }
+                }).collect()
+            })
+            .unwrap_or_default();
+
+        let has_field = |name: &str, ty: &str| -> bool {
+            world_fields.get(name).map(|t| t == ty).unwrap_or(false)
+        };
+
+        // FrameTimer — install if any of:
+        //   * EVIDENT_TICK_MS env var is set (back-compat: explicit
+        //     opt-in via env)
+        //   * World has `tick_count: Int` (new, world-write
+        //     auto-install)
+        //   * Any FSM has `_ ∈ FrameTimer` marker (back-compat
+        //     marker-subscription path)
+        let env_tick_ms: Option<u64> = std::env::var("EVIDENT_TICK_MS").ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|&n| n > 0);
+        let want_timer = env_tick_ms.is_some()
+            || has_field("tick_count", "Int")
+            || fsms.iter().any(|f| f.event_subscriptions.contains("tick"));
+        if want_timer {
+            let ms = env_tick_ms.unwrap_or(100);
+            let mut timer = crate::event_sources::FrameTimer::new(ms, "tick");
+            if has_field("tick_count", "Int") {
+                timer = timer.with_count_field("tick_count");
+                plugin_writes.insert("tick_count".to_string());
             }
+            timer.start(event_tx.clone())
+                .map_err(|e| format!("failed to start tick timer: {e}"))?;
+            event_sources.push(Box::new(timer));
         }
-        // SIGINT source — only install when at least one FSM
-        // subscribes to "signal" via `_ ∈ Signal` parameter.
-        // Otherwise we'd globally hijack Ctrl-C from programs that
-        // never opted in.
-        let any_signal_sub = fsms.iter()
-            .any(|f| f.event_subscriptions.contains("signal"));
-        if any_signal_sub {
+
+        // SIGINT — auto-install if World has `signal_received: Int`
+        // OR any FSM declares `_ ∈ Signal`. Otherwise we'd globally
+        // hijack Ctrl-C from programs that never opted in.
+        let want_signal = has_field("signal_received", "Int")
+            || fsms.iter().any(|f| f.event_subscriptions.contains("signal"));
+        if want_signal {
             let mut sig = crate::event_sources::SigintSource::new();
+            if has_field("signal_received", "Int") {
+                sig = sig.with_count_field("signal_received");
+                plugin_writes.insert("signal_received".to_string());
+            }
             sig.start(event_tx.clone())
                 .map_err(|e| format!("failed to install SIGINT handler: {e}"))?;
             event_sources.push(Box::new(sig));
+        }
+
+        // Stdin — auto-install if World has `stdin_line: String`.
+        // Single-owner: the StdinSource owns the fd; user FSMs
+        // never call ReadLine alongside this (they'd race).
+        if has_field("stdin_line", "String") {
+            let mut s = crate::event_sources::StdinSource::new("stdin_line");
+            s.start(event_tx.clone())
+                .map_err(|e| format!("failed to start stdin reader: {e}"))?;
+            event_sources.push(Box::new(s));
+            plugin_writes.insert("stdin_line".to_string());
         }
     }
     // Drop our own clone of the sender now that all sources have
@@ -269,15 +332,16 @@ pub fn run_with_ctx(
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
         // delta mode routes single-FSM through the multi-FSM
         // scheduler too — same subscription semantics for both.
-        1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref()),
+        1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources),
         _ => {
             // Multi-writer rule (Phase 4 v3.7+ unified model):
             // multiple writers OK as long as their write-sets are
             // disjoint. A field can be written by at most one
             // schema (just like a file descriptor has one owner).
-            // Read-only conflicts are fine — many readers per
-            // field. Computed from per-FSM access sets.
-            let writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
+            // Plugin-owned fields are part of the same check —
+            // a user FSM trying to write a field owned by a
+            // plugin is rejected.
+            let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
                 .filter(|f| f.is_writer())
                 .map(|f| {
                     let aset = rt.get_schema(&f.claim_name)
@@ -286,6 +350,11 @@ pub fn run_with_ctx(
                     (f.claim_name.clone(), aset.writes)
                 })
                 .collect();
+            for pf in &plugin_writes {
+                let mut s = std::collections::HashSet::new();
+                s.insert(pf.clone());
+                writer_sets.push((format!("<plugin>:{pf}"), s));
+            }
             for i in 0..writer_sets.len() {
                 for j in (i + 1)..writer_sets.len() {
                     let (a_name, a_writes) = &writer_sets[i];
@@ -300,7 +369,7 @@ pub fn run_with_ctx(
                     }
                 }
             }
-            run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref())
+            run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources)
         }
     };
     // Stop all event sources cleanly. Each source's stop signals
@@ -468,6 +537,7 @@ fn run_multi_fsm(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
     event_rx: Option<&std::sync::mpsc::Receiver<crate::event_sources::SchedulerEvent>>,
+    event_sources: &mut [Box<dyn crate::event_sources::EventSource>],
 ) -> Result<LoopResult, String> {
     use std::collections::HashMap;
     // Per-FSM mutable state. We track BOTH the encoded Datatype
@@ -594,6 +664,30 @@ fn run_multi_fsm(
                 halted_clean: true,
                 exit_code: ctx.exit_requested,
             });
+        }
+
+        // Drain any plugin world writes accumulated since the
+        // last tick. Apply them to the snapshot before any FSM
+        // solves; compute deltas; distribute to subscribers
+        // (same code path as a writer FSM's output).
+        if delta_mode {
+            for src in event_sources.iter_mut() {
+                let writes = src.drain_writes();
+                for (field, val) in writes {
+                    let key = format!("world.{field}");
+                    let changed = world_snapshot.get(&key) != Some(&val);
+                    if changed {
+                        world_snapshot.insert(key, val);
+                        // Distribute to subscribers — every FSM
+                        // whose read-set includes this field.
+                        for (j, _f) in fsms.iter().enumerate() {
+                            if access_sets[j].reads.contains(&field) {
+                                pending_changes[j].insert(field.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Per-tick effect ordering: writer first, then readers in
