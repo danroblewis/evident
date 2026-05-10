@@ -159,3 +159,22 @@ type FrameTimer
     fired ∈ Bool
 type Signal
     fired ∈ Bool
+
+-- ── FTI v1 — typed resources with bridge plugins ──────────────
+-- (See docs/design/foreign-type-interface.md.) Declare a
+-- `_ ∈ Timer` parameter on any FSM claim; the runtime detects
+-- the declaration and installs a per-instance FrameTimer bridge
+-- that writes the populated fields. Per-instance, not global —
+-- two FSMs each with their own Timer get separate bridges.
+--
+-- Read-only fields (runtime populates on each fire):
+--   tick_count       ∈ Int   incrementing counter
+--   ticks_since_last ∈ Int   ticks since this FSM last solved
+--                            (placeholder; v1 just mirrors tick_count)
+--
+-- Configuration: rate set via EVIDENT_TICK_MS (no per-instance
+-- config in v1; that's a v2 extension to support
+-- `Timer (interval_ms ↦ 50)` syntax).
+type Timer
+    tick_count       ∈ Int
+    ticks_since_last ∈ Int

@@ -345,6 +345,30 @@ pub fn run_with_ctx(
             // out at dispatch time rather than racing for bytes.
             ctx.stdin_owned_by_plugin = true;
         }
+
+        // FileLineReader — auto-install if World has `file_line:
+        // String`. Path comes from EVIDENT_FILE_INPUT env var.
+        // Optional companions: `file_seq: Int` (sequence counter)
+        // and `file_eof: Bool` (set true when EOF reached).
+        // First step toward FTI: a typed resource (file) with a
+        // declared lifecycle (open at start, EOF closes channel).
+        if has_field("file_line", "String") {
+            if let Ok(path) = std::env::var("EVIDENT_FILE_INPUT") {
+                let mut f = crate::event_sources::FileLineReader::new(&path, "file_line");
+                if has_field("file_seq", "Int") {
+                    f = f.with_seq_field("file_seq");
+                    plugin_writes.insert("file_seq".to_string());
+                }
+                if has_field("file_eof", "Bool") {
+                    f = f.with_eof_field("file_eof");
+                    plugin_writes.insert("file_eof".to_string());
+                }
+                f.start(event_tx.clone())
+                    .map_err(|e| format!("failed to start file reader for {path:?}: {e}"))?;
+                event_sources.push(Box::new(f));
+                plugin_writes.insert("file_line".to_string());
+            }
+        }
     }
     // Drop our own clone of the sender now that all sources have
     // their own. When the last source's sender is dropped (via
