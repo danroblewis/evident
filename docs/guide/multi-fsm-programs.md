@@ -207,6 +207,41 @@ claim watcher(world, world_next ∈ World, ...)
 
 Real example: `programs/lang_tests/multi_fsm/09_timer_and_stdin.ev`.
 
+## Pattern 6: request/response between user FSMs
+
+Two FSMs coordinating without a special protocol — just disjoint
+world fields and standard delta scheduling.
+
+```evident
+type World
+    request_n     ∈ Int   -- client writes
+    request_seq   ∈ Int   -- client writes (bump = "new request")
+    response      ∈ Int   -- server writes
+    response_seq  ∈ Int   -- server writes (matches request_seq when done)
+
+claim client(world, world_next ∈ World, ...)
+    -- gate on "has server caught up?"
+    server_caught_up = (world.response_seq ≥ world.request_seq)
+    -- only bump request when server's done with the previous one
+    world_next.request_seq = (server_caught_up
+                              ? world.request_seq + 1
+                              : world.request_seq)
+
+claim server(world, world_next ∈ World, ...)
+    is_new_req = (world.request_seq > world.response_seq)
+    world_next.response = (is_new_req
+                           ? <compute>(world.request_n)
+                           : world.response)
+    world_next.response_seq = (is_new_req
+                               ? world.request_seq
+                               : world.response_seq)
+```
+
+Two writers, disjoint fields. Each side gates on a sequence
+counter to know when the other has produced fresh state.
+
+Real example: `programs/lang_tests/multi_fsm/11_request_response.ev`.
+
 ## Common gotchas
 
 ### Effect-feedback loops
