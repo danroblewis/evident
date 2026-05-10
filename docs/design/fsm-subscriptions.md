@@ -81,6 +81,100 @@ has a pending event. There is no `Done` variant, no fixpoint detector
 independent of natural halt. Useful for "user pressed Q" or fatal
 errors.
 
+## The runtime is an FSM too
+
+This isn't a metaphor. The runtime's effect dispatcher and each
+event source it manages are themselves state machines participating
+in the same coordination model — they just happen to be implemented
+in Rust instead of as Z3 constraint claims.
+
+Every "source" is a stateful FSM:
+
+  * **Stdin source** holds state: the reading thread, line buffer,
+    EOF flag, current mode (line/byte).
+  * **File source** would hold: the open fd, current offset,
+    buffer of pending data.
+  * **Socket source** would hold: connection state, send/recv
+    buffers, peer address.
+  * Even **FrameTimer** has trivial state: the interval, the
+    sleeping thread.
+
+User-defined FSMs (in evident) coordinate with these runtime FSMs
+the same way they coordinate with each other:
+
+  * **User → runtime FSM** via effect emission. `Effect::Read(handle,
+    n)` is a command to a file source; `Effect::Println(s)` is a
+    command to the stdout source; `Effect::FFI*` is a command to the
+    FFI source. The dispatcher routes each effect to the matching
+    runtime sub-FSM.
+  * **Runtime FSM → user** via `last_results` (synchronous response
+    to a command) and via wake events (asynchronous notifications
+    that the runtime FSM's state changed independently — line
+    arrived on stdin, signal fired, timer ticked).
+
+The picture for a file-descriptor read/seek/read pattern:
+
+```
+user FSM                           file source FSM (Rust)
+  state=ReadingChunk(off, n)         state=Idle
+        │ emits FileRead(h, off, n)   │
+        ├────────────────────────────▶│
+        │                              │ transitions to Reading(off)
+        │                              │ does syscall
+        │                              │ transitions to DataReady(buf)
+        │  wakes + last_results=DataResult(buf)
+        │◀────────────────────────────┤
+        │ consumes data, transitions  │
+        │ to Seeking(new_off)         │
+        │ emits FileSeek(h, new_off)  │
+        ├────────────────────────────▶│
+        │                              │ transitions to Seeking
+        │                              │ does syscall
+        │                              │ transitions to Idle
+        │  wakes + ResultOk            │
+        │◀────────────────────────────┤
+        ...
+```
+
+This is just the existing effect/result protocol. The novel bit is
+the framing: source FSMs are first-class participants, not
+infrastructure outside the model. They have observable state that
+the owner can influence.
+
+### Implications
+
+  * **Single-owner per resource is honest, not a workaround.** A
+    file descriptor / socket / hardware register has exactly one
+    handler — that's true at the OS level too. The owner FSM is
+    the sole client of the source FSM. Other user FSMs that want
+    derived data subscribe to the world-fields the owner publishes.
+  * **Bidirectional command/event channels.** v1 sources are
+    push-only (events flow source → owner; owner sends nothing
+    back). v2 adds commands flowing the other way: mode switching,
+    explicit reads, seeks, close.
+  * **Sources can be observed.** A file source could expose its
+    current offset as a "world-like" field. Owner FSMs can read it.
+    Future generalization: source state becomes part of the world.
+  * **Generalizes naturally.** `_ ∈ Stdin`, `_ ∈ TcpSocket`,
+    `_ ∈ FileWatcher`, `_ ∈ ChildProcess` — every fd-style resource
+    follows the same pattern: declare via marker type, runtime
+    auto-installs the source, owner FSM uses it via effects +
+    wakes.
+
+### v1 source-FSM scope
+
+For each new source, v1 is the **degenerate case**:
+
+  * Push-only: source decides what events to emit; no commands.
+  * Fixed mode: source picks one behavior at startup (e.g. line
+    mode for stdin), no per-emit configuration.
+  * No state observation: owner can't query "current offset" or
+    similar.
+
+v2 adds commands. v3 generalizes source state into world-like
+read-sets. We're not blocking on v2/v3; v1 covers the dominant
+use cases (line-mode stdin, periodic ticks, signals).
+
 ## Granularity: one FSM with N subscriptions vs N FSMs with one each
 
 Two shapes are equivalent in capability:
@@ -328,10 +422,55 @@ opt in). Verified end-to-end via shell test
 (`evident effect-run /tmp/test_sigint.ev &; sleep 0.3; kill -INT
 $!`) — FSM transitions to cleanup state, emits Exit(0), exits 0.
 
-**Stdin-as-event-source (deferred)**: requires either deprecating
-`Effect::ReadLine` or supporting both stdin paths. The
-block-at-dispatch path works for single-source-of-input programs
-which is the common case today.
+**Stdin-as-event-source (planned, single-owner model)**:
+
+Stdin is a single-owner resource — the file descriptor is owned by
+exactly one logical agent. Trying to share reads across multiple
+consumers is the same fd-sharing footgun that bites C programs;
+whichever caller wins the race for `read_line()` consumes the bytes,
+others get nothing. The right model:
+
+  1. **One FSM owns stdin.** Declared by `_ ∈ Stdin` in its parameter
+     list. Runtime enforces single-owner at load time — declaring the
+     marker on a second FSM is a load error.
+  2. **The owner reads via wake events.** The runtime installs a
+     `StdinSource` (background thread doing blocking `read_line`).
+     Each line arrives as `SchedulerEvent::DataLine { name: "stdin",
+     line }`; the scheduler wakes the owner and the line lands in its
+     `last_results` so the body can match on it (a new
+     `EffectResult` variant carrying source data).
+  3. **Owner publishes parsed data to world.** It does its own
+     framing — line buffering, command parsing, JSON decoding,
+     whatever — and writes the result into a world field.
+  4. **Downstream FSMs subscribe via world.** Standard delta
+     scheduling already wakes them when the owner's writes change
+     fields they read. They never touch stdin.
+  5. **`Effect::ReadLine` stays for simple single-FSM programs.**
+     Programs that don't declare `_ ∈ Stdin` keep using ReadLine
+     synchronously (block at dispatch — fine when there's no
+     concurrency to preserve). Programs that DO declare `_ ∈ Stdin`
+     cannot also use ReadLine — load-time error, since the source
+     thread would race the dispatch read for the same bytes.
+
+The "push vs pull" framing the doc previously hinted at was wrong:
+for multi-FSM programs there's only push (the owner is woken by
+events from the source). The "pull" pattern is just the legacy
+single-FSM case where ReadLine blocks at dispatch and there are no
+other FSMs to starve.
+
+For byte-mode (rare — telnet-style protocols, raw terminal): a
+separate marker `_ ∈ StdinBytes` configures the source for byte
+mode. v1 ships line-mode only; byte mode is straightforward
+extension when a real use case arrives.
+
+This pattern generalizes to any fd-style resource:
+
+  * `_ ∈ TcpSocket(...)` — single-owner socket
+  * `_ ∈ FileWatcher(path)` — fs change notifications
+  * `_ ∈ ChildProcess(...)` — subprocess stdout
+
+All single-owner, all owner-publishes-to-world, all downstream-
+consumers-subscribe-to-world.
 
 **SDL event polling (deferred)**: needs FFI-based plugin loading
 rather than baking SDL knowledge into the runtime.

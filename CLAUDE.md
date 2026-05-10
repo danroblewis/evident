@@ -105,12 +105,30 @@ list (defined in `stdlib/runtime.ev`):
   * `_ ∈ FrameTimer` → wakes on "tick" events. Set via `EVIDENT_TICK_MS=<u64>`.
   * `_ ∈ Signal`     → wakes on "signal" events. SIGINT handler is
     auto-installed when at least one FSM declares this.
+  * `_ ∈ Stdin`      → wakes on "stdin" line events (planned).
 
 If NO FSM declares any subscription, falls back to coarse wake for
 back-compat. When all sources go dead (channel returns Err), the
 scheduler halts cleanly. See `runtime-rust/src/event_sources.rs` for
 the `EventSource` trait — adding a new source is implementing the
 trait + wiring it into `run_with_ctx`.
+
+**Sources are FSMs too.** Each event source is a stateful state
+machine implemented in Rust — same coordination model as user FSMs,
+different language. User FSMs talk to source FSMs via effect emission
+(commands) and `last_results` / wake events (responses). v1 sources
+are push-only (events flow source → owner; no commands). v2 will add
+bidirectional command channels (mode switching, explicit reads,
+seeks, close).
+
+**Single-owner per fd-style resource.** Stdin, sockets, files, child
+processes — every fd-shaped resource has exactly one owner FSM
+(declared via marker type), enforced at load time. The owner reads,
+parses, publishes to world. Downstream FSMs read world; they never
+touch the resource directly. Sharing an fd across FSMs without
+coordination is the same race-on-read footgun that bites C programs;
+the runtime refuses to allow it. See `docs/design/fsm-subscriptions.md`
+"The runtime is an FSM too" for the full framing.
 
 **Design**: [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) covers
 the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
