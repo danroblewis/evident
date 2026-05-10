@@ -569,6 +569,10 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
                 decode_arg_list(&fields[3])?,
             )
         }
+        "Seq"          => {
+            need_arity(variant, fields, 1)?;
+            Effect::Seq(decode_effect_list(&fields[0])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),
@@ -595,6 +599,10 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
         "ArgIntOut" => {
             need_arity(variant, fields, 0)?;
             EffectFfiArg::IntOut
+        }
+        "ArgPriorResult" => {
+            need_arity(variant, fields, 1)?;
+            EffectFfiArg::PriorResult(decode_int(&fields[0])? as usize)
         }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),

@@ -45,6 +45,11 @@ enum FFIArg =
     -- `glGenVertexArrays(1, &vao)`, `glGetShaderiv(s, pname, &v)`,
     -- and other "void return + writes-into-pointer" GL APIs.
     ArgIntOut
+    -- ArgPriorResult(N) — only meaningful inside an Effect::Seq.
+    -- Resolves at marshal time to the Nth prior call's result
+    -- (typed by that result's variant: HandleResult → handle ptr,
+    -- IntResult → int, etc.). Index is local to the enclosing Seq.
+    ArgPriorResult(Int)
 
 enum ArgList =
     ArgNil
@@ -69,6 +74,14 @@ enum Effect =
     -- `signature`. Use this when you don't want to thread library /
     -- symbol handles through state.
     LibCall(String, String, String, ArgList)
+    -- Seq(EffectList) — run a chain of effects in one solver step,
+    -- threading results so a later call's `ArgPriorResult(N)` arg
+    -- resolves to the Nth inner call's result. Use this to collapse
+    -- multi-step "issue, wait, capture, use" state machines (the SDL
+    -- init chain is the headline example) into a single state. Each
+    -- inner result is also appended to the next step's last_results
+    -- so callers can still extract them via the usual match patterns.
+    Seq(EffectList)
 
 enum EffectList =
     EffNil

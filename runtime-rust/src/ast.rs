@@ -284,6 +284,15 @@ pub enum Effect {
     /// repeated calls amortize dlopen/dlsym to once. See
     /// `effect_dispatch::dispatch_one` for the cache implementation.
     LibCall(String, String, String, Vec<EffectFfiArg>),
+    /// Sequenced execution group: dispatch each inner effect in order,
+    /// threading their results so a later call's `ArgPriorResult(N)`
+    /// resolves to the Nth inner call's result. Each inner result is
+    /// also appended to the parent effect-list's results — the next
+    /// state's `last_results` sees them as if issued separately, but
+    /// the whole sequence costs ONE Z3 solve instead of one per call.
+    /// Lets a multi-step init chain (CreateWindow → CreateContext →
+    /// MakeCurrent) collapse from N states to one.
+    Seq(Vec<Effect>),
 }
 
 /// One argument to an FFICall effect. Distinct name from
@@ -300,6 +309,12 @@ pub enum EffectFfiArg {
     /// `const char * const *`. Needed for `glShaderSource` and any
     /// other API that wants a multi-string buffer.
     StrArr(Vec<String>),
+    /// `ArgPriorResult(N)` — within an `Effect::Seq`, refers to the
+    /// Nth prior call's result. Resolved at marshal time to a typed
+    /// FfiArg matching the result's variant (Handle/Int/Bool/Str/
+    /// Real). Index is local to the enclosing Seq (0 = first call's
+    /// result). Out of range → error.
+    PriorResult(usize),
     /// `ArgIntOut` — 0-arity marker for "writes one i32 into the
     /// pointed-to slot" output args (`glGenVertexArrays(1, &vao)`,
     /// `glGetShaderiv(...)`, etc.). The dispatcher allocates a
