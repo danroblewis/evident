@@ -301,22 +301,40 @@ Tests:
     — same program + `EVIDENT_TICK_MS=20` keeps it running until
     a sentinel triggers Exit.
 
-### Phase 4 v3.5: per-FSM event subscription (deferred)
+### Phase 4 v3.5: per-FSM event subscription matching (done)
 
-Currently every external event coarsely wakes every FSM. A more
-precise version would let an FSM declare which event source name(s)
-it subscribes to (analogous to the world read-set), and only wake
-matching FSMs. This is a refinement, not a fundamental capability;
-the coarse wake works for v3.
+FSMs now declare which event sources they subscribe to via
+parameter type — `_ ∈ FrameTimer` subscribes to "tick" events,
+`_ ∈ Signal` subscribes to "signal" events. Marker types defined
+in `stdlib/runtime.ev`. `MainShape::event_subscriptions: HashSet<String>`
+is populated by `detect_fsm_shape`.
 
-### Phase 4 v4: more event sources (deferred)
+When an event arrives, the scheduler wakes only FSMs whose
+subscription set contains the event's name. If NO FSM declares any
+subscription, falls back to coarse wake (every alive FSM) for v3
+back-compat.
 
-  * Stdin-as-event-source (background thread reading lines, push
-    line events). Currently stdin uses synchronous block-at-
-    dispatch via `Effect::ReadLine`, which works for single-source
-    programs but blocks all FSMs.
-  * Signal handling (SIGINT → push a shutdown event).
-  * SDL event polling.
+Test: `delta_mode_per_fsm_subscription_matches_only_subscribed` —
+two FSMs, only one declares `_ ∈ FrameTimer`, only that one wakes
+on timer events.
+
+### Phase 4 v4: more event sources
+
+**SIGINT (done)**: `SigintSource` in `event_sources.rs` installs a
+SIGINT handler via `signal-hook`. On Ctrl-C, sends a `Tick { name:
+"signal" }` event. Auto-installed when at least one FSM declares
+`_ ∈ Signal` (so we don't hijack Ctrl-C from programs that didn't
+opt in). Verified end-to-end via shell test
+(`evident effect-run /tmp/test_sigint.ev &; sleep 0.3; kill -INT
+$!`) — FSM transitions to cleanup state, emits Exit(0), exits 0.
+
+**Stdin-as-event-source (deferred)**: requires either deprecating
+`Effect::ReadLine` or supporting both stdin paths. The
+block-at-dispatch path works for single-source-of-input programs
+which is the common case today.
+
+**SDL event polling (deferred)**: needs FFI-based plugin loading
+rather than baking SDL knowledge into the runtime.
 
 ### Phase 5: Self-feedback as a first-class subscription
 

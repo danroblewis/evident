@@ -361,6 +361,68 @@ fn delta_graceful_shutdown_lang_test_05() {
     assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// Phase 4 v3.5: per-FSM event subscription matching. With two
+/// FSMs where only one declares `_ ∈ FrameTimer`, only that FSM
+/// wakes on tick events; the other goes silent and stays silent.
+const PER_FSM_SUBSCRIPTION_PROGRAM: &str = "\
+type World
+    pulse ∈ Int
+
+enum WState = WActive
+
+claim subscriber(timer ∈ FrameTimer,
+                 world, world_next ∈ World,
+                 state, state_next ∈ WState,
+                 last_results ∈ ResultList,
+                 effects ∈ EffectList)
+    state_next = WActive
+    world_next.pulse = world.pulse + 1
+    effects = (world.pulse ≥ 2 ? ⟨Println(\"sub: done\"), Exit(0)⟩ : ⟨⟩)
+
+enum SState = SActive
+
+claim silent(world ∈ World,
+             state, state_next ∈ SState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    -- This FSM has no FrameTimer subscription. It would normally
+    -- wake on world.pulse delta — but if the subscriber doesn't
+    -- get woken by ticks, the world never updates, so this stays
+    -- silent indefinitely.
+    state_next = SActive
+    effects = ⟨⟩
+";
+
+#[test]
+fn delta_mode_per_fsm_subscription_matches_only_subscribed() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("EVIDENT_SCHEDULER", "delta");
+    std::env::set_var("EVIDENT_TICK_MS", "20");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(PER_FSM_SUBSCRIPTION_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_SCHEDULER");
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    // Subscriber gets woken by each tick → world.pulse climbs →
+    // eventually emits Exit(0). Silent FSM never wakes from the
+    // timer (no Signal/FrameTimer subscription in its signature).
+    assert!(r.halted_clean, "should halt cleanly via subscriber's Exit; got {r:?}");
+    assert_eq!(r.exit_code, Some(0));
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+    assert!(out.contains("sub: done"),
+        "subscriber should run and exit; out:\n{}", out);
+}
+
 /// Phase 4 v3: external event sources keep an otherwise-silent
 /// program alive. Without the timer this program halts after one
 /// tick (writer makes no state change, emits no effects → no

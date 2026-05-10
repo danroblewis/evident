@@ -126,3 +126,20 @@ enum Result =
 enum ResultList =
     ResNil
     ResCons(Result, ResultList)
+
+
+-- ── Async event subscription markers ──────────────────────────
+-- Place one of these as a parameter on an FSM claim to subscribe
+-- it to events from the matching async source. With per-FSM
+-- subscription matching active, only FSMs that declare a marker
+-- will be woken by the corresponding source's events. (If no FSM
+-- declares any marker, the runtime falls back to coarse wake — it
+-- treats every event as waking every FSM, for back-compat.)
+--
+-- Sources are wired up by the runtime based on environment:
+--   FrameTimer ↔ EVIDENT_TICK_MS=<u64>
+--   Signal     ↔ always installed (SIGINT)
+type FrameTimer
+    fired ∈ Bool
+type Signal
+    fired ∈ Bool

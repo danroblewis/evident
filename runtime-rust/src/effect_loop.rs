@@ -67,6 +67,14 @@ pub struct MainShape {
     /// Type name of the world record, if `world_var` or
     /// `world_next_var` is set.
     pub world_type:       Option<String>,
+    /// Async event source names this FSM subscribes to. Inferred
+    /// from FSM parameters of marker types in `stdlib/runtime.ev`:
+    ///   * `_ ∈ FrameTimer` → "tick"
+    ///   * `_ ∈ Signal`     → "signal"
+    /// If empty AND no other FSM in the program declares any
+    /// subscription, the runtime coarsely wakes every FSM on every
+    /// event (back-compat for v3-era programs).
+    pub event_subscriptions: std::collections::HashSet<String>,
 }
 
 impl MainShape {
@@ -88,6 +96,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     let mut world_var:      Option<String> = None;
     let mut world_next_var: Option<String> = None;
     let mut world_type:     Option<String> = None;
+    let mut event_subs:     std::collections::HashSet<String> = std::collections::HashSet::new();
     // Walk this claim's body PLUS the bodies of any
     // `..PassthroughClaim` so a declarative library (e.g.
     // stdlib/sdl/scene.ev's `..SDLScene`) contributes its
@@ -131,6 +140,10 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 if world_type.is_none() {
                     world_type = Some(type_name.clone());
                 }
+            } else if type_name == "FrameTimer" {
+                event_subs.insert("tick".to_string());
+            } else if type_name == "Signal" {
+                event_subs.insert("signal".to_string());
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
                    && !type_name.starts_with("Seq(")
@@ -170,6 +183,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
         world_var,
         world_next_var,
         world_type,
+        event_subscriptions: event_subs,
     })
 }
 
@@ -229,6 +243,18 @@ pub fn run_with_ctx(
                     event_sources.push(Box::new(timer));
                 }
             }
+        }
+        // SIGINT source — only install when at least one FSM
+        // subscribes to "signal" via `_ ∈ Signal` parameter.
+        // Otherwise we'd globally hijack Ctrl-C from programs that
+        // never opted in.
+        let any_signal_sub = fsms.iter()
+            .any(|f| f.event_subscriptions.contains("signal"));
+        if any_signal_sub {
+            let mut sig = crate::event_sources::SigintSource::new();
+            sig.start(event_tx.clone())
+                .map_err(|e| format!("failed to install SIGINT handler: {e}"))?;
+            event_sources.push(Box::new(sig));
         }
     }
     // Drop our own clone of the sender now that all sources have
@@ -756,13 +782,26 @@ fn run_multi_fsm(
         // then continue the loop on the next event.
         if delta_mode && scheduled_this_tick.iter().all(|s| !s) {
             if let Some(rx) = event_rx {
+                // Per-FSM event subscription matching. If ANY FSM
+                // declared an explicit subscription, only wake FSMs
+                // whose subscription set contains the event's name.
+                // If NO FSM declared any subscription, fall back to
+                // coarse wake (every alive FSM) for v3 back-compat.
+                let any_explicit = fsms.iter()
+                    .any(|f| !f.event_subscriptions.is_empty());
                 match rx.recv() {
                     Ok(crate::event_sources::SchedulerEvent::Tick { name }) => {
                         if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
                             eprintln!("[loop] tick {step_count}: woke on event {name}");
                         }
-                        for i in 0..fsms.len() {
-                            if !fsm_rt[i].halted { external_event[i] = true; }
+                        for (i, fsm) in fsms.iter().enumerate() {
+                            if fsm_rt[i].halted { continue; }
+                            let matches = if any_explicit {
+                                fsm.event_subscriptions.contains(&name)
+                            } else {
+                                true  // coarse wake
+                            };
+                            if matches { external_event[i] = true; }
                         }
                         continue;
                     }

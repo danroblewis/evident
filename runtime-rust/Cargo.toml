@@ -11,6 +11,9 @@ z3 = "0.12"
 # user libraries, etc.) without per-feature plugin code in Rust.
 libloading = "0.8"
 libffi     = { version = "3", features = ["system"] }
+# Signal handling: SIGINT (Ctrl-C) pushes a Signal event to the
+# scheduler so user FSMs can run cleanup before exiting.
+signal-hook = "0.3"
 
 [lib]
 name = "evident_runtime"
