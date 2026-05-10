@@ -328,7 +328,7 @@ self-feedback (its frame_seq emits effects each tick).
     pending until single-FSM converts.
 
 Test results (delta mode):
-  * The four existing `programs/lang_tests/multi_fsm/` tests pass
+  * The four existing `tests/lang_tests/multi_fsm/` tests pass
     — `04_halt_cascade.ev` halts cleanly even though its variants
     are named `STDone`/`LTDone` (not exact `Done`/`Halt`), because
     halt is now no-FSM-scheduled, not name-based.

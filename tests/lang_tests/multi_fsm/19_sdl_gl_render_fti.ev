@@ -1,0 +1,61 @@
+-- SDL_Window FTI + GL render loop. Demonstrates the FTI bridge
+-- replacing the SDL+GL setup chain (SDL_Init + CreateWindow +
+-- GL_CreateContext + MakeCurrent + glViewport — historically a
+-- multi-step state machine) with a single typed declaration.
+--
+-- The render loop still uses LibCall effects for per-frame draw
+-- (glClear, swap, pump, delay) because those are operations on
+-- the runtime-managed handles, not lifecycle. v2 might wrap
+-- these as additional FTI methods or co-located effect builders.
+--
+-- Run:
+--     evident effect-run tests/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev --max-steps 100
+--
+-- Expected: a colored window briefly opens (red clear color),
+-- ~30 frames rendered, then exit.
+
+import "stdlib/runtime.ev"
+import "stdlib/sdl/gl.ev"
+import "stdlib/shader/program.ev"
+
+enum S = Init | Frame(Int)
+
+claim render(state, state_next ∈ S,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    win ∈ SDL_Window (title ↦ "FTI GL Demo", width ↦ 640, height ↦ 480)
+
+    state_next = match state
+        Init     ⇒ Frame(30)
+        Frame(n) ⇒ (n ≤ 1 ? Frame(0) : Frame(n - 1))
+
+    n ∈ Int
+    n = match state
+        Init     ⇒ 30
+        Frame(k) ⇒ k
+
+    -- Per-frame effects.
+    set_color_eff ∈ Effect
+    gl_clear_color(0.2, 0.05, 0.4, 1.0, set_color_eff)
+    clear_eff ∈ Effect
+    gl_clear(16384, clear_eff)
+    swap_eff ∈ Effect
+    gl_swap_window(win.handle, swap_eff)
+    pump_eff ∈ Effect
+    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_PumpEvents", "v()", ArgNil)
+    delay_eff ∈ Effect
+    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_Delay", "v(i)",
+                        ArgCons(ArgInt(33), ArgNil))
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff, swap_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    -- Wait for FTI bridge to populate handle, then render until counter expires.
+    effects = match state
+        Init     ⇒ (win.handle > 0 ? ⟨⟩ : ⟨⟩)
+        Frame(k) ⇒ (k > 0 ? ⟨frame_seq⟩
+                          : ⟨Println("render done"), Exit(0)⟩)

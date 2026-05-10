@@ -13,27 +13,28 @@ There is one test command: **`./test.sh` from the repo root**.
 
 It builds the runtime in release mode, runs `cargo test --release` (Rust
 units + integration tests + the demo driver that runs every
-`programs/demos/test_*.ev` end-to-end), then runs `pytest tests/conformance/`
+`examples/test_*.ev` end-to-end), then runs `pytest tests/conformance/`
 (black-box CLI conformance). All phases must pass; the script exits non-zero
 if any phase fails.
 
 The full run is **~10 seconds** when the binary is already built.
 
 When to run it:
-  * After any change that touches `runtime/`, `stdlib/`, or `programs/`.
+  * After any change that touches `runtime/`, `stdlib/`, `examples/`,
+    or `tests/`.
   * Before the end of a multi-step task — even if you ran a subset of
     tests during the work, run the full thing once at the end.
   * If `./test.sh` fails, fix the failures before declaring done. Don't
     add `xfail` markers as a TODO; either fix the code or, if it
     surfaces a runtime gap, file an entry in
-    `programs/demos/COUNTEREXAMPLES.md` and delete the test.
+    `examples/COUNTEREXAMPLES.md` and delete the test.
 
 Iteration-only flags:
   * `./test.sh --rust-only` — skip conformance phase.
   * `./test.sh --conformance` — skip the cargo build + cargo test
     phases (useful when iterating on Python conformance tests).
   * `./test.sh --examples` — phases 1–3 PLUS run every demo in
-    `programs/demos/` end-to-end via the binary, capturing
+    `examples/` end-to-end via the binary, capturing
     screenshots for visual demos.
   * `./test.sh --examples-only` — just the examples runner;
     assumes the binary is already built.
@@ -43,7 +44,7 @@ is done.
 
 ### Visual verification of `--examples`
 
-When `--examples` runs, it iterates every `programs/demos/test_*.ev`:
+When `--examples` runs, it iterates every `examples/test_*.ev`:
 - Non-visual demos run with a timeout, asserting clean exit.
 - Visual demos (anything importing `stdlib/sdl/`) get spawned,
   given ~2s to draw, screenshotted to `/tmp/evident-screenshots/`,
@@ -63,7 +64,7 @@ agentic loop closes that gap:
      etc.
   4. If a demo renders something different from its docstring,
      either fix the demo, fix the runtime, or document the gap in
-     `programs/demos/COUNTEREXAMPLES.md`.
+     `examples/COUNTEREXAMPLES.md`.
 
 This is the only way visual regressions get caught — an agent
 running `./test.sh --examples` and Reading the PNGs is functionally
@@ -76,8 +77,8 @@ your task:
 
 | If you're … | Read |
 |---|---|
-| Writing a new program (any program) | [`programs/demos/`](programs/demos/) — copy the closest existing demo's shape |
-| Looking for the punch list of known runtime gaps | [`programs/demos/COUNTEREXAMPLES.md`](programs/demos/COUNTEREXAMPLES.md) |
+| Writing a new program (any program) | [`examples/`](examples/) — copy the closest existing demo's shape |
+| Looking for the punch list of known runtime gaps | [`examples/COUNTEREXAMPLES.md`](examples/COUNTEREXAMPLES.md) |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`stdlib/sdl/`, `stdlib/audio/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |
@@ -91,18 +92,18 @@ The two `docs/guide/*` docs were written specifically to spare future-you
 the painful debug sessions that produced them. If you're about to write a
 state machine or an FFI binding, **read those first**.
 
-## Conventions for `programs/demos/` (this repo's test/example set)
+## Conventions for `examples/` (this repo's test/example set)
 
-These rules govern files we write into `programs/demos/`. They
+These rules govern files we write into `examples/`. They
 are NOT a property of the Evident language — a downstream user
 writing their own Evident program is not bound by them. Inside
-this repo, `programs/demos/` is our canonical test set: every
+this repo, `examples/` is our canonical test set: every
 file there doubles as a worked example AND an integration
 test, so we hold them to a strict shape.
 
 ### 1. Demo files are integration tests
 
-Each file in `programs/demos/` is named `test_NN_<name>.ev`
+Each file in `examples/` is named `test_NN_<name>.ev`
 and contains both:
 
   * The multi-FSM program (one or more `claim`s with state
@@ -115,14 +116,14 @@ and contains both:
 
 Two test runners cover both halves:
 
-  * `evident test programs/demos/` — discovers `test_*.ev`
+  * `evident test examples/` — discovers `test_*.ev`
     files, runs every `sat_*` / `unsat_*` claim.
   * `cargo test --test demos` (in `runtime/`) — runs
     each demo end-to-end via the binary, asserts on exit
     code and stdout substring. The `EXPECTATIONS` table in
     `runtime/tests/demos.rs` is the contract.
 
-When adding a demo: drop the file in `programs/demos/`, add a
+When adding a demo: drop the file in `examples/`, add a
 row to `EXPECTATIONS`. Both runners stay green.
 
 (The multi-FSM scheduler skips claims named `sat_*` / `unsat_*`
@@ -133,9 +134,8 @@ everywhere, not just to demo files.)
 
 ### 2. Demo files MUST NOT contain raw FFI calls
 
-In any `programs/demos/*.ev` file (and any other file under
-`programs/` we author), `LibCall` / `FFICall` / `FFIOpen` /
-`FFILookup` are forbidden. Demos reach C code by either:
+In any `examples/*.ev` file (and any other example we author),
+`LibCall` / `FFICall` / `FFIOpen` / `FFILookup` are forbidden. Demos reach C code by either:
 
   * Calling **named claims** from `stdlib/` that wrap the FFI
     behind a typed interface. Example: `sdl_pump_events(out)` —
@@ -156,7 +156,7 @@ The COUNTEREXAMPLES file lists what the runtime can't yet do
 reaching into raw FFI from a demo; either fix the runtime, add
 a stdlib wrapper, or document the limit.
 
-(Outside `programs/demos/` — your own application code, ad-hoc
+(Outside `examples/` — your own application code, ad-hoc
 exploration, etc. — these rules don't apply. They're a quality
 bar for the canonical test set.)
 
@@ -177,7 +177,7 @@ ship with it.
 | FTI bridges | `runtime/src/event_sources.rs`, `runtime/src/fti.rs` |
 | Stdlib (Evident) | `stdlib/` |
 | Design docs | `docs/design/` |
-| Worked examples + integration tests | `programs/demos/` |
+| Worked examples + integration tests | `examples/` |
 
 ## Runtime Architecture
 
@@ -751,11 +751,11 @@ non-trivial game/simulation. Five tools that compound:
 5. **Guarded claim invocation for one-shot logic** — `state.step = 0
    ⇒ InitGameState` reads as "run Init when initializing".
 
-See `programs/sdl_demo/anchor_collect.ev` (game) and
-`programs/sdl_demo/bouncing_dots.ev` (engine) for the canonical split:
-the engine file owns reusable claims; the game file owns the game's
-own types, init, parameter values, and aesthetic choices (colors,
-sounds).
+(Earlier `sdl_demo/` engine + game pair is gone — the canonical
+split is now embodied across `examples/test_NN_*.ev`. When we
+build a richer game demo it should follow the same shape: an
+engine claim file in `stdlib/` for reusable per-frame logic,
+the game-specific types and aesthetic choices in the demo file.)
 
 ### Comments
 

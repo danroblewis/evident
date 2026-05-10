@@ -6,7 +6,7 @@ This guide is what you wish you'd read before debugging your first
 program for an hour. Read it once end to end; refer back when
 something behaves wrong.
 
-> **Looking for worked patterns?** [`programs/demos/`](../../programs/demos/)
+> **Looking for worked patterns?** [`examples/`](../../examples/)
 > is this repo's canonical test set. Every primitive
 > (Println, ParseInt, ShellRun, Time, SpawnFsm, FrameClock /
 > Hostname / Timer FTI, SDL_Renderer, …) has a worked
@@ -15,7 +15,7 @@ something behaves wrong.
 > in `runtime/tests/demos.rs`). When adding to that
 > directory, match the existing shape — don't invent your own.
 >
-> **Two conventions for files we add to `programs/demos/`**
+> **Two conventions for files we add to `examples/`**
 > (also in `CLAUDE.md`; these are repo conventions, not
 > language requirements):
 >   1. Demo files run through the multi-FSM scheduler — even
@@ -251,16 +251,16 @@ the effects might be unconstrained.
 
 ```bash
 EVIDENT_FFI_TRACE=1 EVIDENT_LOOP_TRACE=1 \
-  evident effect-run programs/demos/effect_say.ev 2>&1 | head -20
+  evident effect-run examples/effect_say.ev 2>&1 | head -20
 ```
 
 ## Worked examples
 
-- `programs/demos/effect_hello.ev` — 2-state Println-once.
-- `programs/demos/effect_echo.ev` — read+write loop with EOF detect.
-- `programs/demos/effect_say.ev` — uses `stdlib/shell.ev` library.
-- `programs/demos/effect_sdl_window.ev` — 19 states (raw FFI chain).
-- `programs/demos/effect_sdl_window_libcall.ev` — 11 states (LibCall).
+- `examples/effect_hello.ev` — 2-state Println-once.
+- `examples/effect_echo.ev` — read+write loop with EOF detect.
+- `examples/effect_say.ev` — uses `stdlib/shell.ev` library.
+- `examples/effect_sdl_window.ev` — 19 states (raw FFI chain).
+- `examples/effect_sdl_window_libcall.ev` — 11 states (LibCall).
 
 Read the LibCall version first; it's how new programs should look.
 The raw-FFI version is kept for comparison / when caching is

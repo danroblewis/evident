@@ -9,7 +9,7 @@ Tests that:
 
 `Set(T)` of composite types is NOT covered here — that shape is
 unsupported by the Rust runtime (silently dropped, see
-`programs/demos/COUNTEREXAMPLES.md` #15). Use `Seq(T)` with a pinned
+`examples/COUNTEREXAMPLES.md` #15). Use `Seq(T)` with a pinned
 length instead.
 
 Model extraction of `Seq(Composite)` values into structured JSON

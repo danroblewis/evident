@@ -44,7 +44,7 @@ pub struct RecordedCall {
 When the trace runner runs in **record** mode (a flag on
 `run_trace`), the dispatcher logs every FFI call. After the run,
 the recording is serialized to JSON next to the .ev file
-(e.g. `programs/demos/ffi_getpid.ev.recording.json`).
+(e.g. `examples/ffi_getpid.ev.recording.json`).
 
 ### Replay mode
 

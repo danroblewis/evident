@@ -45,7 +45,7 @@ what we would implement now."
 
 ### 1. SDL/GL demo migrations to modern patterns (in progress)
 
-First migration shipped: `programs/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev`
+First migration shipped: `tests/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev`
 declares `win ∈ SDL_Window` and gets both window + GL context
 from one declaration. Render loop runs at 1.8ms/tick (no setup
 chain).
@@ -134,7 +134,7 @@ Each unlocks a class of programs.
     in cargo test) — the runtime's `DispatchContext::stdin`
     doesn't reach the plugin's `std::io::stdin()`.
   * **Lang tests as documentation**. Each new pattern gets an
-    `programs/lang_tests/multi_fsm/0N_*.ev` + a Rust integration
+    `tests/lang_tests/multi_fsm/0N_*.ev` + a Rust integration
     test.
   * **Cross-link docs**. Every design doc → its siblings; every
     guide → the design.

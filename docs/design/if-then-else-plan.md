@@ -266,7 +266,7 @@ running tests after each should pass.
 | `parse_if_then_else_nested_else` | same | `if a then x else if b then y else z` (the `elif` pattern) |
 | `parse_if_then_else_missing_then_errors` | same | Clear error |
 | `parse_if_then_else_missing_else_errors` | same | Clear error |
-| Conformance: `programs/lang_tests/test_if_then_else.ev` | new file | sat/unsat tests for value branches of each type |
+| Conformance: `tests/lang_tests/test_if_then_else.ev` | new file | sat/unsat tests for value branches of each type |
 | Round-trip: `roundtrip_if_then_else` | `tests/roundtrip_ast.rs` | Encode + decode |
 
 ## Things to watch

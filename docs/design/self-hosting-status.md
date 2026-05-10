@@ -284,8 +284,8 @@ What we considered but didn't do:
 | `runtime/tests/iter_pass.rs` | 16 iteration tests |
 | `runtime/tests/propagation_pass.rs` | 8 propagation tests |
 | `runtime/tests/self_hosted_pass.rs` | 24 plumbing tests |
-| `programs/lang_tests/test_pass_*.ev` | Hand-built `.ev` conformance tests for each pass |
-| `programs/lang_tests/test_seq_of_enum.ev` | Stage 5 conformance |
+| `tests/lang_tests/test_pass_*.ev` | Hand-built `.ev` conformance tests for each pass |
+| `tests/lang_tests/test_seq_of_enum.ev` | Stage 5 conformance |
 | `docs/design/self-hosting-compiler-passes.md` | Original vision doc |
 | `docs/design/self-hosting-roadmap.md` | Post-Stage 7 plan (now closed) |
 | `docs/tutorials/writing-a-pass.md` | How-to for adding a new pass |

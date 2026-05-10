@@ -66,7 +66,7 @@ claim close_effect(close_sym ∈ Handle, fd ∈ Int, e ∈ Effect)
 
 ## Test it
 
-`programs/lang_tests/test_stdlib_posix.ev`:
+`tests/lang_tests/test_stdlib_posix.ev`:
 
 - Verify the helper claims load + each value-pin is satisfiable.
 - A trace-test program that opens `/etc/hostname` (or a temp file

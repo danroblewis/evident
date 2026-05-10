@@ -94,7 +94,7 @@ Build via cargo (uses .cargo/config.toml's DYLD vars):
 ```bash
 cargo run --quiet -- query path/to/schema.ev SchemaName
 cargo run --quiet -- check path/to/schema.ev
-cargo run --quiet -- test programs/                 # walks for test_*.ev
+cargo run --quiet -- test examples/                 # walks for test_*.ev
 ```
 
 Or the standalone binary (build script patches libz3's load command —

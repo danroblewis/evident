@@ -1,4 +1,4 @@
-//! End-to-end driver for `programs/demos/test_*.ev`.
+//! End-to-end driver for `examples/test_*.ev`.
 //!
 //! For each demo file, runs:
 //!   1. `evident test <file>`      — static sat_/unsat_ claims
@@ -151,7 +151,7 @@ const EXPECTATIONS: &[DemoExpect] = &[
 #[test]
 fn static_tests_all_pass() {
     let out = Command::new(EVIDENT)
-        .args(["test", "programs/demos/"])
+        .args(["test", "examples/"])
         .current_dir("..")
         .output()
         .expect("run evident test");
@@ -165,7 +165,7 @@ fn static_tests_all_pass() {
 fn each_demo_runs_to_completion() {
     let mut failures = Vec::new();
     for d in EXPECTATIONS {
-        let path = format!("programs/demos/{}.ev", d.name);
+        let path = format!("examples/{}.ev", d.name);
         if !Path::new(&format!("../{path}")).exists() {
             failures.push(format!("{}: file missing at {path}", d.name));
             continue;

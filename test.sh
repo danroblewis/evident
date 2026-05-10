@@ -6,12 +6,12 @@
 #   1. Build the Rust binary (release).
 #   2. cargo test --release in runtime/ — Rust units + integration
 #      tests. Includes the multi-FSM scheduler tests and the demo
-#      driver (which runs every programs/demos/test_*.ev that has
+#      driver (which runs every examples/test_*.ev that has
 #      an EXPECTATIONS row).
 #   3. pytest tests/conformance/ — black-box CLI conformance tests.
 #
 # Optional phase (NOT run by default):
-#   --examples                  Run every programs/demos/test_*.ev
+#   --examples                  Run every examples/test_*.ev
 #                               via the binary, end-to-end. For
 #                               visual demos (SDL etc.), capture
 #                               screenshots into
@@ -23,7 +23,7 @@
 #                               need a display.)
 #
 # This is THE test command. Any time an agent finishes a chunk of
-# work that touches code or stdlib or programs/, run this before
+# work that touches code or stdlib or examples/, run this before
 # declaring done. Anything less leaves room for the kind of drift
 # that the conformance triage just surfaced.
 #
@@ -131,13 +131,13 @@ if [ "$RUST_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
 fi
 
 # ── Optional: examples runner ────────────────────────────────
-# Walks programs/demos/, runs each via effect-run. For visual
+# Walks examples/, runs each via effect-run. For visual
 # demos (anything that imports stdlib/sdl/), spawn the program,
 # screenshot after a brief wait, kill, save the PNG. Doesn't
 # fail the run on visual issues — those need eyes-on review by
 # either a human or by an LLM that Reads the captured PNGs.
 if [ "$EXAMPLES" -eq 1 ]; then
-    phase "Phase 4: examples runner (programs/demos/)"
+    phase "Phase 4: examples runner (examples/)"
 
     EVIDENT="$PWD/runtime/target/release/evident"
     if [ ! -x "$EVIDENT" ]; then
@@ -154,7 +154,7 @@ if [ "$EXAMPLES" -eq 1 ]; then
         examples_visual=0
         examples_failed=()
 
-        for f in programs/demos/test_*.ev; do
+        for f in examples/test_*.ev; do
             name=$(basename "$f" .ev)
             examples_total=$((examples_total + 1))
 

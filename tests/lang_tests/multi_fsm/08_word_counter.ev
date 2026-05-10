@@ -1,0 +1,41 @@
+-- Stdin line processor — alternative shape for the echo pattern.
+--
+-- Same underlying mechanism as 06_echo.ev (StdinSource auto-
+-- installs because of `stdin_line: String`), but here the FSM
+-- tracks its progress in a STATE PAYLOAD instead of a world
+-- field. Demonstrates payload-state working alongside plugin
+-- writes — the runtime no longer crashes on payload first-
+-- variants.
+--
+-- The Counter state holds the last seen seq number internally;
+-- the user FSM is a pure reader (no world_next), and the gate
+-- is entirely in private state. Cleaner separation than the
+-- world-tracked variant — but requires the runtime to support
+-- payload state, which it now does.
+--
+-- Run:
+--     printf "alpha\nbeta\ngamma\n" | evident effect-run \
+--         tests/lang_tests/multi_fsm/08_word_counter.ev --max-steps 30
+
+import "stdlib/runtime.ev"
+
+type World
+    stdin_line ∈ String
+    stdin_seq  ∈ Int
+
+enum CountState =
+    Counting(Int)         -- payload = last_seen_seq
+
+claim counter(world ∈ World,
+              state, state_next ∈ CountState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    last_seen ∈ Int
+    last_seen = match state
+        Counting(s) ⇒ s
+
+    is_new ∈ Bool
+    is_new = (world.stdin_seq > last_seen)
+
+    state_next = (is_new ? Counting(world.stdin_seq) : state)
+    effects    = (is_new ? ⟨Println("got: " ++ world.stdin_line)⟩ : ⟨⟩)

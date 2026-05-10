@@ -1,0 +1,39 @@
+-- FrameTimer plugin-as-writer demo.
+--
+-- The runtime auto-installs a FrameTimer (because World declares
+-- `tick_count: Int`). The plugin's background thread sleeps for
+-- EVIDENT_TICK_MS milliseconds (default 100) and writes each tick
+-- count to world.tick_count. The Counter FSM subscribes via its
+-- read; it owns `last_seen_tick` to gate "is this a new tick?"
+-- After 5 ticks observed, it emits Exit(0).
+--
+-- Same plugin-as-writer pattern as the stdin echo demo. The
+-- runtime exposes the timer as a writer of a world field; user
+-- coordinates via standard delta scheduling.
+--
+-- Run:
+--     EVIDENT_TICK_MS=20 evident effect-run \
+--         tests/lang_tests/multi_fsm/07_timer_demo.ev --max-steps 50
+
+import "stdlib/runtime.ev"
+
+type World
+    tick_count      ∈ Int   -- runtime-managed by FrameTimer
+    last_seen_tick  ∈ Int   -- counter writes (its own state in world)
+
+enum CState = Counting
+
+claim counter(world, world_next ∈ World,
+              state, state_next ∈ CState,
+              last_results ∈ ResultList,
+              effects ∈ EffectList)
+    state_next = Counting
+
+    is_new ∈ Bool
+    is_new = (world.tick_count > world.last_seen_tick)
+
+    world_next.last_seen_tick = (is_new ? world.tick_count : world.last_seen_tick)
+
+    effects = (world.tick_count ≥ 5
+               ? ⟨Println("five ticks observed"), Exit(0)⟩
+               : (is_new ? ⟨Println("tick")⟩ : ⟨⟩))

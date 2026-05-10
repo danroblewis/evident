@@ -1,0 +1,43 @@
+-- Multi-FSM echo demonstrating plugins-as-writers.
+--
+-- The runtime auto-installs a StdinSource (because World has
+-- both `stdin_line: String` and `stdin_seq: Int`). The plugin's
+-- background thread reads stdin and writes both fields per line.
+--
+-- The Echo FSM owns its own `last_echoed_seq` field as a marker
+-- of "which sequence number have I already printed?" — gates on
+-- world.stdin_seq > world.last_echoed_seq. Without this gate, the
+-- FSM would re-emit the current line forever via effect-feedback.
+--
+-- Demonstrates the "two writers, disjoint fields" pattern: the
+-- runtime owns stdin_line+stdin_seq; the user FSM owns
+-- last_echoed_seq. Each writes only its own fields.
+--
+-- After EOF, no more world changes; Echo's gate is false; Echo
+-- emits nothing; no other inputs → halt.
+--
+-- Run:
+--     printf "hello\nworld\nfoo\n" | evident effect-run \
+--         tests/lang_tests/multi_fsm/06_echo.ev --max-steps 30
+
+import "stdlib/runtime.ev"
+
+type World
+    stdin_line      ∈ String   -- plugin writes
+    stdin_seq       ∈ Int      -- plugin writes
+    last_echoed_seq ∈ Int      -- echo writes (its own state in world)
+
+enum EchoState = Echoing
+
+claim echo(world, world_next ∈ World,
+           state, state_next ∈ EchoState,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = Echoing
+
+    is_new ∈ Bool
+    is_new = (world.stdin_seq > world.last_echoed_seq)
+
+    world_next.last_echoed_seq = (is_new ? world.stdin_seq : world.last_echoed_seq)
+
+    effects = (is_new ? ⟨Println(world.stdin_line)⟩ : ⟨⟩)

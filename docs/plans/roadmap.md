@@ -100,7 +100,7 @@ plan file, then execute without further context.
 Every task plan ends with a checklist:
 - [ ] Code change matches spec
 - [ ] All existing Rust tests pass (`cargo test`)
-- [ ] All conformance tests pass (`for f in programs/lang_tests/*.ev; do evident test "$f"; done`)
+- [ ] All conformance tests pass (`for f in tests/lang_tests/*.ev; do evident test "$f"; done`)
 - [ ] LOC delta matches expectation (or is documented when it doesn't)
 - [ ] Commit lands with co-author footer
 

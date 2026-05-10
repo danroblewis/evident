@@ -59,7 +59,7 @@ Modify `runtime/src/executor.rs`:
 - A program that loops `Time` and stops when elapsed > N. Verify
   result-feedback works.
 
-Plus add a `programs/demos/effect_hello.ev` that runs end-to-end:
+Plus add a `examples/effect_hello.ev` that runs end-to-end:
 
 ```evident
 import "stdlib/runtime.ev"
@@ -74,7 +74,7 @@ claim main(state, state_next ∈ State,
     state.step ≠ 0 ⇒ (state_next = state ∧ effects = ⟨⟩)
 ```
 
-`evident execute programs/demos/effect_hello.ev` should print "hello
+`evident execute examples/effect_hello.ev` should print "hello
 world" and exit cleanly.
 
 ## Acceptance

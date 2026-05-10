@@ -231,7 +231,7 @@ know.
 | 3. Add `Effect` and `Result` types in AST (or use stdlib enums via existing infrastructure) | 1h | Just type definitions — no integration yet. |
 | 4. Stub `Effect` dispatch in executor: handle Print/Println/Exit only | ~100 lines | Validates the effect-loop shape without FFI. |
 | 5. Wire FFI effects (`FFIOpen`, `FFILookup`, `FFICall`, `CloseHandle`) into the dispatcher | ~150 lines | First end-to-end FFI call from Evident. |
-| 6. Write `programs/demos/ffi_getpid.ev` | ~30 lines Evident | Prove the loop works. |
+| 6. Write `examples/ffi_getpid.ev` | ~30 lines Evident | Prove the loop works. |
 | 7. Write `stdlib/posix.ev` skeleton | ~100 lines Evident | Foundation for everything else. |
 | 8. Trace-test record/replay shim | ~150 lines | So FFI tests are reproducible. |
 

@@ -1,6 +1,6 @@
 //! Multi-FSM scheduler integration tests.
 //!
-//! Each test loads a .ev file from `programs/lang_tests/multi_fsm/`,
+//! Each test loads a .ev file from `tests/lang_tests/multi_fsm/`,
 //! runs the effect loop with captured stdout, and asserts on the
 //! output. The .ev files are the spec; these tests assert the spec
 //! is met. Don't change the .ev files to fit the tests — change the
@@ -43,7 +43,7 @@ fn basic_world_handoff() {
     // game writes world.tick_even (toggles each tick), render reads
     // it. Validates: writer-first order, world propagates within the
     // same tick, runs forever (no halt).
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/01_basic_world_handoff.ev", 8);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/01_basic_world_handoff.ev", 8);
 
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.len() >= 8, "expected ≥8 lines, got {lines:?}");
@@ -67,7 +67,7 @@ fn setup_then_render_lifecycle() {
     // "render: ready" forever (sees world.ready = true after halt).
     // The GL killer case: setup pushes state once, halts; render
     // runs with a tiny solve.
-    let (out, _r) = run_program("../programs/lang_tests/multi_fsm/02_setup_then_render_lifecycle.ev", 6);
+    let (out, _r) = run_program("../tests/lang_tests/multi_fsm/02_setup_then_render_lifecycle.ev", 6);
     let lines: Vec<&str> = out.lines().collect();
 
     // First line is setup, rest are render: ready.
@@ -86,7 +86,7 @@ fn sibling_no_world() {
     // ticker + heartbeat, no shared world. Both run forever.
     // Validates: declaration order ("tick" before "beat"); no
     // writer/reader distinction needed when no World type exists.
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/03_sibling_no_world.ev", 6);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/03_sibling_no_world.ev", 6);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.len() >= 6, "expected ≥6 lines, got {lines:?}");
 
@@ -120,7 +120,7 @@ fn request_response_lang_test_11() {
         eprintln!("skipping under EVIDENT_SCHEDULER=legacy");
         return;
     }
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/11_request_response.ev", 30);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/11_request_response.ev", 30);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"client done"),
         "should print client done; out:\n{}", out);
@@ -144,7 +144,7 @@ fn spawnable_only_lang_test_14() {
                    path doesn't support SpawnFsm)");
         return;
     }
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/14_spawnable_only.ev", 10);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/14_spawnable_only.ev", 10);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"worker A"), "missing worker A; out:\n{}", out);
     assert!(lines.contains(&"worker B"), "missing worker B; out:\n{}", out);
@@ -157,7 +157,7 @@ fn spawnable_only_lang_test_14() {
 fn spawn_with_arg_lang_test_13() {
     // Parent spawns 3 workers each with a different ID arg.
     // Each worker prints a message keyed on its ID.
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/13_spawn_with_arg.ev", 20);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/13_spawn_with_arg.ev", 20);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"worker 1 says hi"), "missing worker 1; out:\n{}", out);
     assert!(lines.contains(&"worker 2 says hi"), "missing worker 2; out:\n{}", out);
@@ -174,7 +174,7 @@ fn fti_sdl_gl_render_lang_test_19() {
         .current_dir(repo_root)
         .env_remove("EVIDENT_SCHEDULER")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev",
+               "tests/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev",
                "--max-steps", "50"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -196,7 +196,7 @@ fn fti_configurable_timer_lang_test_17() {
         .current_dir(repo_root)
         .env_remove("EVIDENT_SCHEDULER")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/17_fti_configurable_timer.ev",
+               "tests/lang_tests/multi_fsm/17_fti_configurable_timer.ev",
                "--max-steps", "1000"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -221,7 +221,7 @@ fn fti_per_instance_lang_test_16() {
         .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "20")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/16_fti_per_instance.ev",
+               "tests/lang_tests/multi_fsm/16_fti_per_instance.ev",
                "--max-steps", "300"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -246,7 +246,7 @@ fn fti_frameclock_lang_test_15() {
         .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "30")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/15_fti_frameclock.ev",
+               "tests/lang_tests/multi_fsm/15_fti_frameclock.ev",
                "--max-steps", "200"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -270,7 +270,7 @@ fn wallclock_lang_test_12() {
         .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_CLOCK_MS", "30")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/12_wallclock.ev",
+               "tests/lang_tests/multi_fsm/12_wallclock.ev",
                "--max-steps", "200"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -296,7 +296,7 @@ fn timer_and_stdin_lang_test_09_multi_plugin() {
         .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "30")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/09_timer_and_stdin.ev",
+               "tests/lang_tests/multi_fsm/09_timer_and_stdin.ev",
                "--max-steps", "100"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -330,7 +330,7 @@ fn timer_lang_test_07_plugin_as_writer() {
         .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "20")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/07_timer_demo.ev",
+               "tests/lang_tests/multi_fsm/07_timer_demo.ev",
                "--max-steps", "100"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -361,7 +361,7 @@ fn word_counter_lang_test_08_payload_state() {
         .current_dir(repo_root)
         .env_remove("EVIDENT_SCHEDULER")
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/08_word_counter.ev",
+               "tests/lang_tests/multi_fsm/08_word_counter.ev",
                "--max-steps", "30"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -403,7 +403,7 @@ fn echo_lang_test_06_plugin_as_writer() {
         .current_dir(repo_root)
         .env_remove("EVIDENT_SCHEDULER")  // force default (delta)
         .args(["effect-run",
-               "programs/lang_tests/multi_fsm/06_echo.ev",
+               "tests/lang_tests/multi_fsm/06_echo.ev",
                "--max-steps", "50"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -435,7 +435,7 @@ fn halt_cascade() {
     // short_fsm halts after 3 prints; long_fsm after 5. Then the
     // program exits cleanly. Validates: per-FSM halt + drop;
     // program-level all-halt → exit; halted FSM doesn't re-solve.
-    let (out, r) = run_program("../programs/lang_tests/multi_fsm/04_halt_cascade.ev", 20);
+    let (out, r) = run_program("../tests/lang_tests/multi_fsm/04_halt_cascade.ev", 20);
     let lines: Vec<&str> = out.lines().collect();
 
     let short_count = lines.iter().filter(|l| **l == "short").count();

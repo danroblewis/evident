@@ -13,7 +13,7 @@ Evident program → Effect → stdout.
 
 ## What to build
 
-`programs/demos/ffi_getpid.ev`:
+`examples/ffi_getpid.ev`:
 
 ```evident
 import "stdlib/runtime.ev"
@@ -61,21 +61,21 @@ need string formatting we don't have yet — see "Notes" below.)
 
 ## Files touched
 
-- `programs/demos/ffi_getpid.ev` (new)
+- `examples/ffi_getpid.ev` (new)
 - Possibly `stdlib/runtime.ev` for helper claims if not already
   there.
 
 ## Test it
 
 ```bash
-evident execute programs/demos/ffi_getpid.ev
+evident execute examples/ffi_getpid.ev
 # Should print a positive integer (the runtime's PID).
 ```
 
 Plus a trace test in the same file using the trace_runner:
 
 ```evident
-trace getpid_returns_pid "programs/demos/ffi_getpid.ev"
+trace getpid_returns_pid "examples/ffi_getpid.ev"
     advance 0.1s
     advance 0.1s
     advance 0.1s

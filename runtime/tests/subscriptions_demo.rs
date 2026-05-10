@@ -21,7 +21,7 @@ fn set(items: &[&str]) -> HashSet<String> {
 fn lang_test_world_handoff_access_sets() {
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
-    rt.load_file(Path::new("../programs/lang_tests/multi_fsm/01_basic_world_handoff.ev"))
+    rt.load_file(Path::new("../tests/lang_tests/multi_fsm/01_basic_world_handoff.ev"))
         .expect("load test 01");
 
     let game   = rt.get_schema("game").expect("game claim missing");

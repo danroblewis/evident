@@ -132,7 +132,7 @@ The GLSL transpiler in `stdlib/glsl/transpile.ev` re-runs every
 solver step. For shader programs the AST is constant — should be
 solved once at startup, the result string pinned via `given` for
 subsequent steps. Reduces the
-`programs/demos/effect_gl_transpiled_triangle.ev` runtime from
+`examples/effect_gl_transpiled_triangle.ev` runtime from
 ~32s for 90 frames to something close to the 33ms-per-frame target.
 
 Same pattern applies to any deterministic computation in main's

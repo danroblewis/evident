@@ -236,7 +236,7 @@ type Timer
 --         -- once win.handle is non-zero, the window exists
 --         -- and you can pass win.handle to GL/SDL effects
 --
--- See `programs/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
+-- See `tests/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
 type SDL_Window
     title     ∈ String
     width     ∈ Int

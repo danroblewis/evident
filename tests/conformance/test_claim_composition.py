@@ -10,7 +10,7 @@ Notes on what is intentionally NOT covered here:
   * `cond ⇒ ClaimName(x mapsto y)` — implies-RHS does not currently parse a
     claim-call with `mapsto`. The body-item parser recognises mapsto-call but
     the expression parser used inside an implies RHS does not. See
-    `programs/demos/COUNTEREXAMPLES.md` "Conformance gaps surfaced by triage".
+    `examples/COUNTEREXAMPLES.md` "Conformance gaps surfaced by triage".
   * `verb ∈ Verb` (enum) `--given` from the CLI — the CLI infers `Add` as
     a string, and `run_cached` rejects `(Var::EnumVar, Value::Str)`. The
     dispatch test below uses Bool dispatch instead. Same COUNTEREXAMPLES file.

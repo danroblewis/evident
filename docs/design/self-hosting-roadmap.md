@@ -177,7 +177,7 @@ where every var is used.
 
 **Test surface:** none — documentation. The tutorial's worked
 example doubles as a working test program if it's checked into
-`programs/lang_tests/`.
+`tests/lang_tests/`.
 
 ---
 

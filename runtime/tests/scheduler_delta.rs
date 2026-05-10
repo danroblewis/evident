@@ -334,7 +334,7 @@ fn delta_graceful_shutdown_lang_test_05() {
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
-    rt.load_file(Path::new("../programs/lang_tests/multi_fsm/05_graceful_shutdown.ev"))
+    rt.load_file(Path::new("../tests/lang_tests/multi_fsm/05_graceful_shutdown.ev"))
         .unwrap();
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(

@@ -237,7 +237,7 @@ Two test surfaces — use both:
 
 ### Hand-built `.ev` conformance
 
-Under `programs/lang_tests/test_pass_<name>.ev`. Construct
+Under `tests/lang_tests/test_pass_<name>.ev`. Construct
 sample `Program` / `body` / `body_len` values via the
 `MakeProgram(...)` constructors, invoke the rule via names-match,
 assert the bound output values:

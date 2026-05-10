@@ -1,0 +1,361 @@
+-- Conformance tests for stdlib/ast.ev — the canonical Evident AST
+-- expressed as Evident enums.
+--
+-- Run with:
+--     evident test tests/lang_tests/test_stdlib_ast.ev
+--
+-- These tests hand-construct AST values for tiny programs and
+-- assert the encoding round-trips (the value Z3 returns matches the
+-- value asserted). They validate Stage 1 of self-hosting: that
+-- stdlib/ast.ev's enum bundle is rich enough to express realistic
+-- Evident source.
+
+import "stdlib/ast.ev"
+
+-- ── Empty program loads + Z3 builds the full bundle ─────────────
+
+claim sat_empty_program
+    p ∈ Program
+    p = MakeProgram(SchLNil, EDLNil)
+
+-- ── Single literal expressions ──────────────────────────────────
+
+claim sat_int_literal_expr
+    e ∈ Expr
+    e = EInt(42)
+
+claim sat_string_literal_expr
+    e ∈ Expr
+    e = EStr("hello")
+
+claim sat_bool_literal_expr
+    e ∈ Expr
+    e = EBool(true)
+
+claim sat_identifier_expr
+    e ∈ Expr
+    e = EIdentifier("foo")
+
+claim unsat_two_different_int_literals
+    e ∈ Expr
+    e = EInt(1)
+    e = EInt(2)
+
+claim unsat_int_vs_str_literal
+    e ∈ Expr
+    e = EInt(1)
+    e = EStr("one")
+
+-- ── Binary expressions ──────────────────────────────────────────
+
+claim sat_binary_eq
+    -- The expression `x = 5`.
+    e ∈ Expr
+    e = EBinary(OpEq, EIdentifier("x"), EInt(5))
+
+claim sat_binary_lt
+    -- The expression `x < 100`.
+    e ∈ Expr
+    e = EBinary(OpLt, EIdentifier("x"), EInt(100))
+
+claim sat_binary_implies
+    -- `today = Sat ⇒ weekend = true`.
+    e ∈ Expr
+    e = EBinary(OpImplies,
+                EBinary(OpEq, EIdentifier("today"), EIdentifier("Sat")),
+                EBinary(OpEq, EIdentifier("weekend"), EBool(true)))
+
+claim unsat_binary_op_mismatch
+    e ∈ Expr
+    e = EBinary(OpEq, EIdentifier("x"), EInt(5))
+    e = EBinary(OpLt, EIdentifier("x"), EInt(5))
+
+-- ── Quantifier expressions ──────────────────────────────────────
+
+claim sat_forall_single_var
+    -- `∀ i ∈ {0..3} : i ≥ 0`.
+    e ∈ Expr
+    e = EForall(SLCons("i", SLNil),
+                ERange(EInt(0), EInt(3)),
+                EBinary(OpGe, EIdentifier("i"), EInt(0)))
+
+claim sat_exists_two_vars
+    -- `∃ x, y ∈ pts : x = y` (tuple binding via coindexed/edges
+    -- conceptually; the AST just stores the var list).
+    e ∈ Expr
+    e = EExists(SLCons("x", SLCons("y", SLNil)),
+                EIdentifier("pts"),
+                EBinary(OpEq, EIdentifier("x"), EIdentifier("y")))
+
+-- ── Cardinality, Index, Field ───────────────────────────────────
+
+claim sat_cardinality_expr
+    -- `#s = 3`.
+    e ∈ Expr
+    e = EBinary(OpEq, ECardinality(EIdentifier("s")), EInt(3))
+
+claim sat_index_expr
+    -- `s[0] = 7`.
+    e ∈ Expr
+    e = EBinary(OpEq,
+                EIndex(EIdentifier("s"), EInt(0)),
+                EInt(7))
+
+claim sat_field_expr
+    -- `state.x` (a field access on a non-identifier base would be
+    -- the typical use; this just stores the AST shape).
+    e ∈ Expr
+    e = EField(EIdentifier("state"), "x")
+
+-- ── Set / Seq literal ──────────────────────────────────────────
+
+claim sat_seq_literal
+    -- `⟨1, 2, 3⟩`.
+    e ∈ Expr
+    e = ESeqLit(ELCons(EInt(1), ELCons(EInt(2), ELCons(EInt(3), ELNil))))
+
+claim sat_set_literal_empty
+    e ∈ Expr
+    e = ESetLit(ELNil)
+
+-- ── Real literal ────────────────────────────────────────────────
+
+claim sat_real_literal_expr
+    e ∈ Expr
+    e = EReal(3)
+
+claim unsat_real_literal_mismatch
+    e ∈ Expr
+    e = EReal(3)
+    e = EReal(7)
+
+-- ── In-expression (set / sequence membership inside a Bool) ────
+
+claim sat_in_expr_basic
+    -- AST for `x ∈ pts` (a Bool subexpression).
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"), EIdentifier("pts"))
+
+claim sat_in_expr_with_set_literal
+    -- `x ∈ {1, 2, 3}`.
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"),
+                ESetLit(ELCons(EInt(1),
+                        ELCons(EInt(2),
+                        ELCons(EInt(3), ELNil)))))
+
+claim unsat_in_expr_lhs_mismatch
+    e ∈ Expr
+    e = EInExpr(EIdentifier("x"), EIdentifier("pts"))
+    e = EInExpr(EIdentifier("y"), EIdentifier("pts"))
+
+-- ── Function/constructor call ───────────────────────────────────
+
+claim sat_call_no_args
+    -- AST for `Mon` parsed as a 0-arg call (would normally be an
+    -- Identifier in real source; this tests Call's encoding).
+    e ∈ Expr
+    e = ECall("Mon", ELNil)
+
+claim sat_call_with_args
+    -- `IVec2(380, 280)`.
+    e ∈ Expr
+    e = ECall("IVec2", ELCons(EInt(380), ELCons(EInt(280), ELNil)))
+
+claim sat_call_nested_args
+    -- `Cons(7, Cons(2, Nil))`.
+    e ∈ Expr
+    e = ECall("Cons",
+              ELCons(EInt(7),
+              ELCons(ECall("Cons",
+                       ELCons(EInt(2),
+                       ELCons(ECall("Nil", ELNil), ELNil))),
+                     ELNil)))
+
+claim unsat_call_arg_mismatch
+    e ∈ Expr
+    e = ECall("F", ELCons(EInt(1), ELNil))
+    e = ECall("F", ELCons(EInt(2), ELNil))
+
+-- ── Negation ────────────────────────────────────────────────────
+
+claim sat_not_expr
+    -- `¬b`.
+    e ∈ Expr
+    e = ENot(EIdentifier("b"))
+
+claim sat_not_of_binary
+    -- `¬(x = 5)`.
+    e ∈ Expr
+    e = ENot(EBinary(OpEq, EIdentifier("x"), EInt(5)))
+
+claim unsat_not_double_mismatch
+    e ∈ Expr
+    e = ENot(EIdentifier("a"))
+    e = ENot(EIdentifier("b"))
+
+-- ── BinOp variants: every one is distinct from the next ─────────
+
+claim sat_binop_all_distinct
+    -- 14 enum variants — picking 4 representative pairs proves
+    -- the registry assigned distinct constructor identities.
+    a, b, c, d ∈ BinOp
+    a = OpEq
+    b = OpAnd
+    c = OpAdd
+    d = OpConcat
+    a ≠ b
+    a ≠ c
+    a ≠ d
+    b ≠ c
+    b ≠ d
+    c ≠ d
+
+claim unsat_binop_self_contradiction
+    op ∈ BinOp
+    op = OpImplies
+    op = OpOr
+
+-- ── Keyword variants distinct ───────────────────────────────────
+
+claim sat_all_keywords_distinct
+    a, b, c, d ∈ Keyword
+    a = KSchema
+    b = KClaim
+    c = KType
+    d = KSubclaim
+    a ≠ b
+    b ≠ c
+    c ≠ d
+    a ≠ d
+
+-- ── Pins ────────────────────────────────────────────────────────
+
+claim sat_pins_none
+    p ∈ Pins
+    p = PNone
+
+claim sat_pins_named
+    -- `(slot1 ↦ EInt(5), slot2 ↦ EBool(true))`.
+    p ∈ Pins
+    p = PNamed(MLCons(MakeMapping("slot1", EInt(5)),
+                MLCons(MakeMapping("slot2", EBool(true)),
+                       MLNil)))
+
+claim sat_pins_positional
+    p ∈ Pins
+    p = PPositional(ELCons(EInt(1), ELCons(EInt(2), ELNil)))
+
+claim unsat_pins_none_vs_named
+    p ∈ Pins
+    p = PNone
+    p = PNamed(MLNil)
+
+-- ── Body items ──────────────────────────────────────────────────
+
+claim sat_body_item_membership
+    -- `x ∈ Int` with no pins.
+    bi ∈ BodyItem
+    bi = BIMembership("x", "Int", PNone)
+
+claim sat_body_item_constraint
+    -- `x = 5` as a body item.
+    bi ∈ BodyItem
+    bi = BIConstraint(EBinary(OpEq, EIdentifier("x"), EInt(5)))
+
+claim sat_body_item_passthrough
+    bi ∈ BodyItem
+    bi = BIPassthrough("ClaimName")
+
+claim sat_body_item_claim_call
+    bi ∈ BodyItem
+    bi = BIClaimCall("Distinct",
+                     MLCons(MakeMapping("s", EIdentifier("items")),
+                            MLNil))
+
+-- ── Schema decl ─────────────────────────────────────────────────
+
+claim sat_schema_decl_minimal
+    -- `claim t` with empty body.
+    s ∈ SchemaDecl
+    s = MakeSchemaDecl(KClaim, "t", BILNil)
+
+claim sat_schema_decl_with_membership
+    -- `claim t : x ∈ Int`.
+    s ∈ SchemaDecl
+    s = MakeSchemaDecl(KClaim, "t",
+                       BILCons(BIMembership("x", "Int", PNone), BILNil))
+
+-- ── End-to-end: full program for `claim t : x ∈ Int = 5` ───────
+
+claim sat_realistic_program
+    -- Source:
+    --     claim t
+    --         x ∈ Int = 5
+    --
+    -- Desugars (per the chained-membership pass we've implemented
+    -- in the runtime) to two body items:
+    --     Membership(x, Int, None)
+    --     Constraint(Eq, Identifier(x), Int(5))
+    p ∈ Program
+    p = MakeProgram(
+        SchLCons(
+            MakeSchemaDecl(KClaim, "t",
+                BILCons(BIMembership("x", "Int", PNone),
+                BILCons(BIConstraint(EBinary(OpEq,
+                                             EIdentifier("x"),
+                                             EInt(5))),
+                       BILNil))),
+            SchLNil),
+        EDLNil)
+
+claim unsat_realistic_program_payload_mismatch
+    p ∈ Program
+    p = MakeProgram(
+        SchLCons(MakeSchemaDecl(KClaim, "t", BILNil), SchLNil),
+        EDLNil)
+    p = MakeProgram(
+        SchLCons(MakeSchemaDecl(KClaim, "DIFFERENT", BILNil), SchLNil),
+        EDLNil)
+
+-- ── Enum decls within the AST ───────────────────────────────────
+
+claim sat_enum_decl_in_ast
+    -- AST representation of `enum Color = Red | Green | Blue`.
+    ed ∈ EnumDecl
+    ed = MakeEnumDecl("Color",
+                      EVLCons(MakeEnumVariant("Red",   EFLNil),
+                      EVLCons(MakeEnumVariant("Green", EFLNil),
+                      EVLCons(MakeEnumVariant("Blue",  EFLNil),
+                             EVLNil))))
+
+claim sat_payload_enum_decl_in_ast
+    -- AST representation of `enum Result = Ok(Int) | Err(String)`.
+    ed ∈ EnumDecl
+    ed = MakeEnumDecl("Result",
+                      EVLCons(MakeEnumVariant("Ok",
+                                EFLCons(MakeEnumField("f0", "Int"),
+                                       EFLNil)),
+                      EVLCons(MakeEnumVariant("Err",
+                                EFLCons(MakeEnumField("f0", "String"),
+                                       EFLNil)),
+                             EVLNil)))
+
+claim unsat_enum_decl_name_mismatch
+    ed ∈ EnumDecl
+    ed = MakeEnumDecl("X", EVLNil)
+    ed = MakeEnumDecl("Y", EVLNil)
+
+-- ── Operators round-trip ────────────────────────────────────────
+
+claim sat_all_binops_distinct
+    -- Pin one BinOp and assert it's distinct from a different one.
+    a, b ∈ BinOp
+    a = OpEq
+    b = OpAdd
+    a ≠ b
+
+claim unsat_same_binop_different_variants
+    a ∈ BinOp
+    a = OpEq
+    a = OpAdd

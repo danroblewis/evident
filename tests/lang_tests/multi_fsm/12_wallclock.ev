@@ -1,0 +1,41 @@
+-- WallClock plugin demo. Auto-installed because World declares
+-- `now_ms: Int`. Plugin writes current Unix time (ms) at the
+-- configured interval (default 100ms; override via
+-- EVIDENT_CLOCK_MS). User FSM snapshots the start time, computes
+-- elapsed, exits after a threshold.
+--
+-- Demonstrates plugins that produce continuously-changing values
+-- (vs Stdin's discrete events). Wall-clock time is naturally
+-- monotonic and useful for timeouts, FPS measurement, etc.
+--
+-- Run:
+--     EVIDENT_CLOCK_MS=50 evident effect-run \
+--         tests/lang_tests/multi_fsm/12_wallclock.ev --max-steps 50
+
+import "stdlib/runtime.ev"
+
+type World
+    now_ms      ∈ Int      -- WallClock writes
+    start_ms    ∈ Int      -- our snapshot
+    initialized ∈ Bool     -- have we snapshotted yet?
+
+enum S = R
+
+claim main(world, world_next ∈ World,
+           state, state_next ∈ S,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = R
+
+    just_starting ∈ Bool
+    just_starting = (¬world.initialized ∧ world.now_ms > 0)
+
+    world_next.start_ms    = (just_starting ? world.now_ms : world.start_ms)
+    world_next.initialized = (just_starting ? true : world.initialized)
+
+    elapsed ∈ Int
+    elapsed = world.now_ms - world.start_ms
+
+    effects = (world.initialized ∧ elapsed ≥ 200
+               ? ⟨Println("200ms elapsed; clock works"), Exit(0)⟩
+               : ⟨⟩)

@@ -4,10 +4,10 @@ Practical how-to docs for writing Evident programs against the
 runtime as it is today (multi-FSM scheduler, FTI-first I/O).
 
 > **Worked examples** for this repo's primitives live in
-> [`programs/demos/`](../../programs/demos/) — every primitive
+> [`examples/`](../../examples/) — every primitive
 > has a `test_NN_<name>.ev` you can read or copy from. The
 > companion file
-> [`programs/demos/COUNTEREXAMPLES.md`](../../programs/demos/COUNTEREXAMPLES.md)
+> [`examples/COUNTEREXAMPLES.md`](../../examples/COUNTEREXAMPLES.md)
 > documents the runtime gaps each demo had to work around.
 >
 > The demos in that directory follow two repo-specific

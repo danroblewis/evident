@@ -108,7 +108,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 
 ## Worked examples
 
-`programs/lang_tests/multi_fsm/`:
+`tests/lang_tests/multi_fsm/`:
   * `01–04` — original multi-FSM tests
   * `05_graceful_shutdown.ev` — Exit + cleanup via world coordination
   * `06_echo.ev` — stdin reader with world-tracked seq counter
@@ -118,7 +118,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
   * `10_sigint_cleanup.ev` — SIGINT-triggered cleanup
   * `11_request_response.ev` — two user FSMs coordinating via world
 
-`programs/demos/`:
+`examples/`:
   * `effect_multi_fsm_transpiled.ev` — GL render with setup-then-halt
     pattern (the original perf motivation)
 

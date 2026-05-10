@@ -1,0 +1,140 @@
+-- Conformance tests for Stage 0a enums (nullary variants only).
+--
+-- Run with:
+--     evident test tests/lang_tests/test_enums_basic.ev
+--
+-- Nullary variants pre-populate env at evaluate time so bare
+-- identifiers (`Mon`, `Tue`, …) resolve as enum constants. Equality
+-- and inequality dispatch via Z3 _eq on the underlying datatype.
+
+enum Day = Mon | Tue | Wed | Thu | Fri | Sat | Sun
+
+enum Color = Red | Green | Blue
+
+-- ── Existence: any variant is satisfying ─────────────────────────
+
+claim sat_bare_declaration
+    today ∈ Day
+
+claim sat_bare_declaration_color
+    c ∈ Color
+
+-- ── Equality pin ─────────────────────────────────────────────────
+
+claim sat_pin_to_specific_variant
+    today ∈ Day
+    today = Wed
+
+claim sat_pin_to_color
+    c ∈ Color
+    c = Green
+
+claim unsat_two_different_variants
+    today ∈ Day
+    today = Mon
+    today = Tue
+
+-- ── Inequality ───────────────────────────────────────────────────
+
+claim sat_neq_one_variant
+    today ∈ Day
+    today ≠ Mon
+
+claim sat_neq_then_pin
+    today ∈ Day
+    today ≠ Mon
+    today = Tue
+
+claim unsat_neq_contradicts_pin
+    today ∈ Day
+    today = Mon
+    today ≠ Mon
+
+claim unsat_all_seven_excluded
+    today ∈ Day
+    today ≠ Mon
+    today ≠ Tue
+    today ≠ Wed
+    today ≠ Thu
+    today ≠ Fri
+    today ≠ Sat
+    today ≠ Sun
+
+claim sat_six_excluded_one_remains
+    today ∈ Day
+    today ≠ Mon
+    today ≠ Tue
+    today ≠ Wed
+    today ≠ Thu
+    today ≠ Fri
+    today ≠ Sat
+
+-- ── Implication: enum drives Bool ────────────────────────────────
+
+claim sat_implication_satisfied
+    today ∈ Day
+    is_weekend ∈ Bool
+    today = Sat ⇒ is_weekend = true
+    today = Sat
+    is_weekend = true
+
+claim unsat_implication_violated
+    today ∈ Day
+    is_weekend ∈ Bool
+    today = Sat ⇒ is_weekend = true
+    today = Sat
+    is_weekend = false
+
+claim sat_implication_vacuous
+    today ∈ Day
+    is_weekend ∈ Bool
+    today = Sat ⇒ is_weekend = true
+    today = Mon
+    is_weekend = false
+
+-- ── Two enum-typed vars with cross constraints ──────────────────
+
+claim sat_two_enum_vars_unequal
+    a, b ∈ Day
+    a = Mon
+    b = Tue
+    a ≠ b
+
+claim unsat_two_enum_vars_required_equal_but_different
+    a, b ∈ Day
+    a = Mon
+    b = Tue
+    a = b
+
+claim sat_enum_var_equals_enum_var
+    a, b ∈ Day
+    a = b
+    a = Wed
+    b = Wed
+
+-- ── Interaction with claims ─────────────────────────────────────
+
+claim is_weekend_rule
+    day ∈ Day
+    is_weekend ∈ Bool
+    day = Sat ⇒ is_weekend = true
+    day = Sun ⇒ is_weekend = true
+    day = Mon ⇒ is_weekend = false
+    day = Tue ⇒ is_weekend = false
+    day = Wed ⇒ is_weekend = false
+    day = Thu ⇒ is_weekend = false
+    day = Fri ⇒ is_weekend = false
+
+claim sat_weekend_via_claim
+    day ∈ Day
+    is_weekend ∈ Bool
+    is_weekend_rule
+    day = Sun
+    is_weekend = true
+
+claim unsat_weekend_via_claim_wrong
+    day ∈ Day
+    is_weekend ∈ Bool
+    is_weekend_rule
+    day = Wed
+    is_weekend = true

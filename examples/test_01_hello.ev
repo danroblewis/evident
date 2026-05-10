@@ -1,0 +1,60 @@
+-- 01_hello — minimal multi-FSM program: print and exit.
+--
+-- Run:    evident effect-run examples/test_01_hello.ev
+-- Test:   evident test examples/test_01_hello.ev
+--
+-- This is the smallest possible Evident program in the new model.
+-- A single FSM with two states (Init, Done). Init emits the
+-- greeting plus Exit(0) in one tick; Done is the absorbing state.
+--
+-- Even though there's only one FSM, it still runs through the
+-- multi-FSM scheduler. The runtime detects the FSM-shape claim
+-- (state pair + ResultList + EffectList) and treats it
+-- uniformly — no special-case for "single FSM".
+
+import "stdlib/runtime.ev"
+
+enum HelloState = Init | Done
+
+claim hello(state, state_next ∈ HelloState,
+            last_results ∈ ResultList,
+            effects ∈ EffectList)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("hello from evident"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- Init must transition to Done in one step.
+claim sat_init_advances_to_done
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    hello
+    state_next = Done
+
+-- Init must emit BOTH the greeting AND Exit(0).
+claim sat_init_emits_greeting_and_exit
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    hello
+    effects = ⟨Println("hello from evident"), Exit(0)⟩
+
+-- Done is absorbing — never re-enters Init.
+claim unsat_done_returns_to_init
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Done
+    hello
+    state_next = Init

@@ -6,7 +6,7 @@ this guide assumes you understand effect dispatch, state machines,
 and the issue/await pattern.
 
 > **Repo convention** (see CLAUDE.md): for files we author
-> under this repo's `programs/` tree (especially `programs/demos/`
+> under this repo's `programs/` tree (especially `examples/`
 > which doubles as our integration-test set), raw FFI
 > primitives — `LibCall`, `FFICall`, `FFIOpen`, `FFILookup` —
 > are forbidden. Those files reach C code by either:

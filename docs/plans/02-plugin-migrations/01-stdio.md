@@ -16,7 +16,7 @@ plugins/ files for them) is deleted. ~400 lines out.
 ## What to build
 
 1. Identify every program in `programs/`, `examples/`,
-   `runtime/tests/`, `programs/lang_tests/` that uses Stdin/Stdout.
+   `runtime/tests/`, `tests/lang_tests/` that uses Stdin/Stdout.
    Migrate each to the effect-based shape.
 
 2. Write `stdlib/io.ev` — convenience claims wrapping common

@@ -6,7 +6,7 @@ coordinating through shared world state. Read
 first for the underlying model — this guide is the cookbook.
 
 > **Canonical exemplars in this repo**:
-> [`programs/demos/`](../../programs/demos/). Every demo there
+> [`examples/`](../../examples/). Every demo there
 > is a multi-FSM program — even the single-FSM ones (those are
 > just multi-FSM with one FSM, since the multi-FSM scheduler
 > is the only execution path). Each demo ships with inline
@@ -21,7 +21,7 @@ first for the underlying model — this guide is the cookbook.
 >   * `test_14_stdin` / `test_15_signal` — plugin-as-writer
 >     (stdin / signals via reserved World fields)
 >
-> [`programs/demos/COUNTEREXAMPLES.md`](../../programs/demos/COUNTEREXAMPLES.md)
+> [`examples/COUNTEREXAMPLES.md`](../../examples/COUNTEREXAMPLES.md)
 > lists the runtime gaps each demo had to work around — useful
 > reading before you assume a missing piece is your own bug.
 
@@ -131,7 +131,7 @@ Setup runs ~2 ticks then halts (its state stops changing AND it
 emits no effects). Render runs forever via effect-feedback. The
 scheduler drops setup from the per-tick loop after it halts.
 
-Real example: `programs/demos/effect_multi_fsm_transpiled.ev`.
+Real example: `examples/effect_multi_fsm_transpiled.ev`.
 
 ## Pattern 2: stdin echo / line reader
 
@@ -157,7 +157,7 @@ The "last_seen_seq" tracking can live in:
   * **Another world field**: declare `last_echoed_seq ∈ Int` in
     World, make echo a writer of just that field
 
-Real examples: `programs/lang_tests/multi_fsm/06_echo.ev` (world
+Real examples: `tests/lang_tests/multi_fsm/06_echo.ev` (world
 field), `08_word_counter.ev` (payload state).
 
 ## Pattern 3: graceful shutdown via Effect::Exit
@@ -178,7 +178,7 @@ If you need SIGINT-triggered cleanup, declare `signal_received: Int`
 in World. The runtime installs a SIGINT handler that increments
 the field; an FSM reading the field is woken on Ctrl-C.
 
-Real example: `programs/lang_tests/multi_fsm/05_graceful_shutdown.ev`.
+Real example: `tests/lang_tests/multi_fsm/05_graceful_shutdown.ev`.
 
 ## Pattern 4: timer-driven counter
 
@@ -198,7 +198,7 @@ claim counter(world, world_next ∈ World, ...)
 
 Run with `EVIDENT_TICK_MS=100 evident effect-run …`.
 
-Real example: `programs/lang_tests/multi_fsm/07_timer_demo.ev`.
+Real example: `tests/lang_tests/multi_fsm/07_timer_demo.ev`.
 
 ## Pattern 5: multiple plugins coordinating
 
@@ -225,7 +225,7 @@ claim watcher(world, world_next ∈ World, ...)
               : ⟨⟩)
 ```
 
-Real example: `programs/lang_tests/multi_fsm/09_timer_and_stdin.ev`.
+Real example: `tests/lang_tests/multi_fsm/09_timer_and_stdin.ev`.
 
 ## Pattern 6: request/response between user FSMs
 
@@ -260,7 +260,7 @@ claim server(world, world_next ∈ World, ...)
 Two writers, disjoint fields. Each side gates on a sequence
 counter to know when the other has produced fresh state.
 
-Real example: `programs/lang_tests/multi_fsm/11_request_response.ev`.
+Real example: `tests/lang_tests/multi_fsm/11_request_response.ev`.
 
 ## Common gotchas
 
