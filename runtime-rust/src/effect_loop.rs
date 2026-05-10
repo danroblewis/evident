@@ -401,9 +401,11 @@ pub fn run_with_ctx(
                         let height = pin_int_value(pins, "height").unwrap_or(480) as i32;
                         let key = format!("{}.{param_name}.handle", fsm.claim_name);
                         let gl_key = format!("{}.{param_name}.gl_handle", fsm.claim_name);
+                        let vao_key = format!("{}.{param_name}.vao", fsm.claim_name);
                         let mut bridge = crate::event_sources::SdlWindowSource::new(
                             title, width, height, &key)
-                            .with_gl_context_field(&gl_key);
+                            .with_gl_context_field(&gl_key)
+                            .with_vao_field(&vao_key);
                         // Inline start: SDL on macOS requires
                         // CreateWindow on the main thread. The
                         // runtime is single-threaded so calling
@@ -415,6 +417,7 @@ pub fn run_with_ctx(
                         event_sources.push(Box::new(bridge));
                         plugin_writes.insert(key);
                         plugin_writes.insert(gl_key);
+                        plugin_writes.insert(vao_key);
                     }
                     _ => {}
                 }

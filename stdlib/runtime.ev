@@ -243,6 +243,7 @@ type SDL_Window
     height    ∈ Int
     handle    ∈ Int
     gl_handle ∈ Int   -- GL context (also created + made current)
+    vao       ∈ Int   -- default VAO (Core profile draws need one bound)
 
 -- GL shader program. Bridge compiles vertex + fragment sources,
 -- links into a program, calls glUseProgram, writes the program

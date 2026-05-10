@@ -35,16 +35,12 @@ claim render(state, state_next ∈ S,
         Init     ⇒ Frame(60)
         Frame(n) ⇒ (n ≤ 1 ? Frame(0) : Frame(n - 1))
 
+    -- Default VAO comes pre-bound from the SDL_Window bridge
+    -- (win.vao). No glGenVertexArrays / glBindVertexArray needed.
     set_color_eff ∈ Effect
     gl_clear_color(0.05, 0.05, 0.1, 1.0, set_color_eff)
     clear_eff ∈ Effect
     gl_clear(16384, clear_eff)
-    gen_vao_eff ∈ Effect
-    gl_gen_vertex_array(gen_vao_eff)
-    bind_vao_eff ∈ Effect
-    bind_vao_eff = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
-                           "glBindVertexArray", "v(i)",
-                           ArgCons(ArgPriorResult(2), ArgNil))
     draw_eff ∈ Effect
     gl_draw_arrays(4, 0, 3, draw_eff)
     swap_eff ∈ Effect
@@ -58,7 +54,7 @@ claim render(state, state_next ∈ S,
                         ArgCons(ArgInt(33), ArgNil))
 
     frame_inner ∈ EffectList
-    frame_inner = ⟨set_color_eff, clear_eff, gen_vao_eff, bind_vao_eff,
+    frame_inner = ⟨set_color_eff, clear_eff,
                     draw_eff, swap_eff, pump_eff, delay_eff⟩
     frame_seq ∈ Effect
     frame_seq = Seq(frame_inner)

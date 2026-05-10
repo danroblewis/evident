@@ -813,6 +813,7 @@ pub struct SdlWindowSource {
     height:          i32,
     handle_field:    String,
     gl_handle_field: Option<String>,
+    vao_field:       Option<String>,
     write_queue:     WriteQueue,
     stop_flag:       Arc<AtomicBool>,
     handle:          Option<JoinHandle<()>>,
@@ -828,6 +829,7 @@ impl SdlWindowSource {
             width, height,
             handle_field:    handle_field.into(),
             gl_handle_field: None,
+            vao_field:       None,
             write_queue:     new_write_queue(),
             stop_flag:       Arc::new(AtomicBool::new(false)),
             handle:          None,
@@ -836,6 +838,11 @@ impl SdlWindowSource {
 
     pub fn with_gl_context_field(mut self, field: impl Into<String>) -> Self {
         self.gl_handle_field = Some(field.into());
+        self
+    }
+
+    pub fn with_vao_field(mut self, field: impl Into<String>) -> Self {
+        self.vao_field = Some(field.into());
         self
     }
 
@@ -848,7 +855,7 @@ impl SdlWindowSource {
     pub fn start_inline(&mut self, tx: Sender<SchedulerEvent>) -> Result<i64, String> {
         use libloading::{Library, Symbol};
         use std::ffi::CString;
-        use std::os::raw::{c_char, c_int, c_void};
+        use std::os::raw::{c_char, c_int, c_uint, c_void};
         let paths = [
             "/opt/homebrew/lib/libSDL2.dylib",
             "/usr/local/lib/libSDL2.dylib",
@@ -914,6 +921,36 @@ impl SdlWindowSource {
             0i64
         };
 
+        // Default VAO (optional). Core profile draws need one
+        // bound; rather than make every program create + bind
+        // it inline, do it here. Loaded from the OpenGL framework
+        // since SDL's GL has the symbols.
+        let vao_id = if let Some(_) = &self.vao_field {
+            type GlGenVertexArrays = unsafe extern "C" fn(c_int, *mut c_uint);
+            type GlBindVertexArray = unsafe extern "C" fn(c_uint);
+            // Try OpenGL framework / libGL.
+            let gl_paths = [
+                "/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                "/usr/lib/x86_64-linux-gnu/libGL.so.1",
+                "/usr/lib/libGL.so",
+            ];
+            let gl_lib = gl_paths.iter()
+                .find_map(|p| unsafe { Library::new(p) }.ok());
+            if let Some(gl_lib) = gl_lib {
+                let gen_vao: Result<Symbol<GlGenVertexArrays>, _> =
+                    unsafe { gl_lib.get(b"glGenVertexArrays\0") };
+                let bind_vao: Result<Symbol<GlBindVertexArray>, _> =
+                    unsafe { gl_lib.get(b"glBindVertexArray\0") };
+                if let (Ok(gen), Ok(bind)) = (gen_vao, bind_vao) {
+                    let mut id: c_uint = 0;
+                    unsafe { gen(1, &mut id as *mut c_uint); bind(id); }
+                    // Leak the gl_lib to keep symbols alive for the program.
+                    let _: &'static Library = Box::leak(Box::new(gl_lib));
+                    id as i64
+                } else { 0 }
+            } else { 0 }
+        } else { 0 };
+
         // Push the handles to the write queue so the runtime
         // applies them to the snapshot via the normal drain path.
         {
@@ -921,6 +958,9 @@ impl SdlWindowSource {
             q.push_back((self.handle_field.clone(), Value::Int(win_ptr as i64)));
             if let Some(gl_field) = &self.gl_handle_field {
                 q.push_back((gl_field.clone(), Value::Int(gl_ptr)));
+            }
+            if let Some(vao_field) = &self.vao_field {
+                q.push_back((vao_field.clone(), Value::Int(vao_id)));
             }
         }
         let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });
