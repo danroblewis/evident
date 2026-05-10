@@ -15,5 +15,6 @@ pub mod translate;
 pub mod runtime;
 pub mod subscriptions;
 pub mod event_sources;
+pub mod fti;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};

@@ -156,9 +156,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 event_subs.insert("tick".to_string());
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
-            } else if type_name == "FrameClock" || type_name == "Hostname"
-                   || type_name == "Timer" || type_name == "SDL_Window"
-                   || type_name == "GL_Program" {
+            } else if crate::fti::is_fti_type(type_name) {
                 fti_params.push((name.clone(), type_name.clone(), pins.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -334,93 +332,16 @@ pub fn run_with_ctx(
         // instance IDs since each FSM has its own bridge).
         for fsm in &fsms {
             for (param_name, type_name, pins) in &fsm.fti_params {
-                match type_name.as_str() {
-                    "FrameClock" => {
-                        let ms = env_tick_ms.unwrap_or(100);
-                        let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
-                        let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
-                            .with_count_field(&key);
-                        bridge.start(event_tx.clone())
-                            .map_err(|e| format!(
-                                "failed to start FrameClock bridge for `{}.{param_name}`: {e}",
-                                fsm.claim_name))?;
-                        event_sources.push(Box::new(bridge));
-                        plugin_writes.insert(key);
-                    }
-                    "Hostname" => {
-                        let key = format!("{}.{param_name}.name", fsm.claim_name);
-                        let mut bridge = crate::event_sources::OneShotShellSource::new("hostname", &key);
-                        bridge.start(event_tx.clone())
-                            .map_err(|e| format!(
-                                "failed to start Hostname bridge for `{}.{param_name}`: {e}",
-                                fsm.claim_name))?;
-                        event_sources.push(Box::new(bridge));
-                        plugin_writes.insert(key);
-                    }
-                    "Timer" => {
-                        // Per-instance configurable: interval_ms
-                        // pin sets the rate. Default 100ms.
-                        let ms = pin_int_value(pins, "interval_ms")
-                            .unwrap_or(100) as u64;
-                        let key = format!("{}.{param_name}.tick_count", fsm.claim_name);
-                        let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
-                            .with_count_field(&key);
-                        bridge.start(event_tx.clone())
-                            .map_err(|e| format!(
-                                "failed to start Timer bridge for `{}.{param_name}`: {e}",
-                                fsm.claim_name))?;
-                        event_sources.push(Box::new(bridge));
-                        plugin_writes.insert(key);
-                        // Note: interval_ms pin from the user is
-                        // consumed at install time. It's not
-                        // mirrored back into the snapshot — the
-                        // body would see Z3-picked value if it
-                        // tries to read t.interval_ms. Future:
-                        // pin user-supplied values into the
-                        // snapshot at run_multi_fsm startup.
-                    }
-                    "GL_Program" => {
-                        let vsrc = pin_str_value(pins, "vertex_src")
-                            .unwrap_or_default();
-                        let fsrc = pin_str_value(pins, "fragment_src")
-                            .unwrap_or_default();
-                        let key = format!("{}.{param_name}.handle", fsm.claim_name);
-                        let mut bridge = crate::event_sources::GlProgramSource::new(
-                            vsrc, fsrc, &key);
-                        bridge.start_inline(event_tx.clone())
-                            .map_err(|e| format!(
-                                "failed to compile GL_Program for `{}.{param_name}`: {e}",
-                                fsm.claim_name))?;
-                        event_sources.push(Box::new(bridge));
-                        plugin_writes.insert(key);
-                    }
-                    "SDL_Window" => {
-                        let title  = pin_str_value(pins, "title")
-                            .unwrap_or_else(|| "Evident".to_string());
-                        let width  = pin_int_value(pins, "width").unwrap_or(640) as i32;
-                        let height = pin_int_value(pins, "height").unwrap_or(480) as i32;
-                        let key = format!("{}.{param_name}.handle", fsm.claim_name);
-                        let gl_key = format!("{}.{param_name}.gl_handle", fsm.claim_name);
-                        let vao_key = format!("{}.{param_name}.vao", fsm.claim_name);
-                        let mut bridge = crate::event_sources::SdlWindowSource::new(
-                            title, width, height, &key)
-                            .with_gl_context_field(&gl_key)
-                            .with_vao_field(&vao_key);
-                        // Inline start: SDL on macOS requires
-                        // CreateWindow on the main thread. The
-                        // runtime is single-threaded so calling
-                        // here works.
-                        bridge.start_inline(event_tx.clone())
-                            .map_err(|e| format!(
-                                "failed to start SDL_Window bridge for `{}.{param_name}`: {e}",
-                                fsm.claim_name))?;
-                        event_sources.push(Box::new(bridge));
-                        plugin_writes.insert(key);
-                        plugin_writes.insert(gl_key);
-                        plugin_writes.insert(vao_key);
-                    }
-                    _ => {}
-                }
+                let Some(install_fn) = crate::fti::fti_install_fn(type_name)
+                    else { continue };
+                let ctx = crate::fti::FtiContext {
+                    claim_name:  fsm.claim_name.clone(),
+                    param_name:  param_name.clone(),
+                    env_tick_ms,
+                };
+                let install = install_fn(&ctx, pins, event_tx.clone())?;
+                event_sources.push(install.source);
+                for k in install.keys { plugin_writes.insert(k); }
             }
         }
 
@@ -1408,46 +1329,7 @@ fn model_matches_value(v: &Value, _state_type: &str) -> bool {
 /// Handles nullary AND payload variants by recursively encoding
 /// each field. Primitive payloads (Int, Bool, String, Real) are
 /// encoded as Z3 literals; nested enum payloads recurse.
-/// Read an Int literal from a Pins block by field name.
-/// Returns None if the pins are empty, the field isn't pinned,
-/// or the pinned value isn't a literal Int. Used by FTI bridge
-/// install for configurable instance parameters like
-/// `Timer (interval_ms ↦ 50)`.
-fn pin_int_value(pins: &crate::ast::Pins, field: &str) -> Option<i64> {
-    use crate::ast::{Pins, Mapping, Expr};
-    match pins {
-        Pins::None => None,
-        Pins::Named(ms) => {
-            for Mapping { slot, value } in ms {
-                if slot == field {
-                    if let Expr::Int(n) = value { return Some(*n); }
-                }
-            }
-            None
-        }
-        // Positional: not commonly used for FTI; would need the
-        // type's field declaration order to map index → field name.
-        // Skip for v1.
-        Pins::Positional(_) => None,
-    }
-}
-
-/// Read a String literal from a Pins block by field name.
-fn pin_str_value(pins: &crate::ast::Pins, field: &str) -> Option<String> {
-    use crate::ast::{Pins, Mapping, Expr};
-    match pins {
-        Pins::None => None,
-        Pins::Named(ms) => {
-            for Mapping { slot, value } in ms {
-                if slot == field {
-                    if let Expr::Str(s) = value { return Some(s.clone()); }
-                }
-            }
-            None
-        }
-        Pins::Positional(_) => None,
-    }
-}
+/// (Pin-readers moved to `crate::fti` — used only by FTI install.)
 
 /// Seed a spawned FSM's state to `FirstVariant(arg)` when the
 /// state enum's first variant takes a single Int payload. Used
