@@ -191,6 +191,19 @@ type FrameTimer
 type Signal
     fired ∈ Bool
 
+-- ── FTI v1 — typed resources (experimental) ──────────────────
+-- Declare `_ ∈ FrameClock` as a parameter and the runtime
+-- auto-installs a bridge that updates the parameter's fields.
+-- The body reads `paramname.field` like any record access; the
+-- runtime pins those fields from the bridge's writes each tick.
+--
+-- v1 limitation: snapshot is shared across FSMs. Two FSMs each
+-- declaring `_ ∈ FrameClock` with the same parameter name would
+-- conflict (share the underlying state). Per-instance namespacing
+-- is v2. For now: one FTI parameter per program of each type.
+type FrameClock
+    tick_count ∈ Int
+
 -- ── FTI v1 — typed resources with bridge plugins ──────────────
 -- (See docs/design/foreign-type-interface.md.) Declare a
 -- `_ ∈ Timer` parameter on any FSM claim; the runtime detects

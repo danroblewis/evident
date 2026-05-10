@@ -76,6 +76,12 @@ pub struct MainShape {
     /// subscription, the runtime coarsely wakes every FSM on every
     /// event (back-compat for v3-era programs).
     pub event_subscriptions: std::collections::HashSet<String>,
+    /// FTI v1 — typed resource parameters: `(param_name, type_name)`
+    /// pairs where `type_name` is a registered FTI type
+    /// (currently: `FrameClock`). The runtime auto-installs a
+    /// bridge plugin per entry that writes the type's fields,
+    /// pinned via `<param_name>.<field>` keys in the snapshot.
+    pub fti_params: Vec<(String, String)>,
 }
 
 impl MainShape {
@@ -98,6 +104,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     let mut world_next_var: Option<String> = None;
     let mut world_type:     Option<String> = None;
     let mut event_subs:     std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut fti_params:     Vec<(String, String)> = Vec::new();
     // Walk this claim's body PLUS the bodies of any
     // `..PassthroughClaim` so a declarative library (e.g.
     // stdlib/sdl/scene.ev's `..SDLScene`) contributes its
@@ -145,6 +152,8 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 event_subs.insert("tick".to_string());
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
+            } else if type_name == "FrameClock" {
+                fti_params.push((name.clone(), type_name.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
                    && !type_name.starts_with("Seq(")
@@ -185,6 +194,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
         world_next_var,
         world_type,
         event_subscriptions: event_subs,
+        fti_params,
     })
 }
 
@@ -303,6 +313,33 @@ pub fn run_with_ctx(
             timer.start(event_tx.clone())
                 .map_err(|e| format!("failed to start tick timer: {e}"))?;
             event_sources.push(Box::new(timer));
+        }
+
+        // FTI v1 — typed resource bridges. For each FSM
+        // parameter `_ ∈ FrameClock`, install a per-instance
+        // FrameTimer that writes the param's tick_count field
+        // (keyed as "<param>.tick_count" — matches the param-
+        // field expansion in env so the body's `param.tick_count`
+        // reads pin correctly).
+        //
+        // Limitation: snapshot is shared across FSMs, so two
+        // FSMs each declaring `_ ∈ FrameClock` with the same
+        // param name would conflict. Per-instance namespacing
+        // is v2.
+        for fsm in &fsms {
+            for (param_name, type_name) in &fsm.fti_params {
+                if type_name == "FrameClock" {
+                    let ms = env_tick_ms.unwrap_or(100);
+                    let count_field = format!("{param_name}.tick_count");
+                    let mut bridge = crate::event_sources::FrameTimer::new(ms, "fti")
+                        .with_count_field(&count_field);
+                    bridge.start(event_tx.clone())
+                        .map_err(|e| format!(
+                            "failed to start FrameClock bridge for `{param_name}`: {e}"))?;
+                    event_sources.push(Box::new(bridge));
+                    plugin_writes.insert(count_field);
+                }
+            }
         }
 
         // SIGINT — auto-install if World has `signal_received: Int`
@@ -828,10 +865,27 @@ fn run_multi_fsm(
                 pending_world_writes.append(&mut writes.into_iter().collect());
             }
             if let Some((field, val)) = pending_world_writes.pop_front() {
-                let key = format!("world.{field}");
+                // Field-naming convention: bare names (no dot)
+                // are world fields → prefix with "world." for the
+                // pin map. Dotted names (e.g. "clock.tick_count")
+                // are FTI parameter fields → use as-is. Both
+                // forms get applied to the same snapshot; pin
+                // logic looks them up in env without distinction.
+                let key = if field.contains('.') {
+                    field.clone()
+                } else {
+                    format!("world.{field}")
+                };
                 let changed = world_snapshot.get(&key) != Some(&val);
                 if changed {
                     world_snapshot.insert(key, val);
+                    // Distribution: world-field writes wake FSMs
+                    // whose read-set includes the field name.
+                    // FTI writes don't currently trigger
+                    // subscription wakes — they only pin values
+                    // when the FSM is otherwise scheduled (via
+                    // event-feedback or other triggers). Future
+                    // work: extend access_sets to track FTI reads.
                     for (j, _f) in fsms.iter().enumerate() {
                         if access_sets[j].reads.contains(&field) {
                             pending_changes[j].insert(field.clone());

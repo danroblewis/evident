@@ -166,6 +166,30 @@ fn spawn_with_arg_lang_test_13() {
 }
 
 #[test]
+fn fti_frameclock_lang_test_15() {
+    // FTI v1: `clock ∈ FrameClock` parameter; runtime auto-
+    // installs a bridge that pins clock.tick_count.
+    use std::process::{Command, Stdio};
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .env("EVIDENT_TICK_MS", "30")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/15_fti_frameclock.ev",
+               "--max-steps", "200"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn");
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(out.contains("3 ticks observed via FTI"),
+        "FTI bridge should pin clock.tick_count and reach 3; out:\n{}", out);
+    assert!(output.status.success());
+}
+
+#[test]
 fn wallclock_lang_test_12() {
     // WallClock auto-installs because World declares now_ms.
     // Demo snapshots start time, exits after 200ms elapsed.
