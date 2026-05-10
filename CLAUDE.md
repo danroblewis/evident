@@ -7,6 +7,35 @@ constraints over sets, and a Z3 SMT solver finds satisfying assignments.  The
 central abstraction is `schema`: a named set defined by membership conditions.
 Querying a schema asks whether a satisfying assignment exists.
 
+## Run `./test.sh` before declaring work done
+
+There is one test command: **`./test.sh` from the repo root**.
+
+It builds the runtime in release mode, runs `cargo test --release` (Rust
+units + integration tests + the demo driver that runs every
+`programs/demos/test_*.ev` end-to-end), then runs `pytest tests/conformance/`
+(black-box CLI conformance). All phases must pass; the script exits non-zero
+if any phase fails.
+
+The full run is **~10 seconds** when the binary is already built.
+
+When to run it:
+  * After any change that touches `runtime/`, `stdlib/`, or `programs/`.
+  * Before the end of a multi-step task — even if you ran a subset of
+    tests during the work, run the full thing once at the end.
+  * If `./test.sh` fails, fix the failures before declaring done. Don't
+    add `xfail` markers as a TODO; either fix the code or, if it
+    surfaces a runtime gap, file an entry in
+    `programs/demos/COUNTEREXAMPLES.md` and delete the test.
+
+Iteration-only flags:
+  * `./test.sh --rust-only` — skip conformance phase.
+  * `./test.sh --conformance` — skip the cargo build + cargo test
+    phases (useful when iterating on Python conformance tests).
+
+The default — no flags — is what you should run before claiming work
+is done.
+
 ## Where to read first
 
 Before writing code in this repo, check whether one of these guides covers

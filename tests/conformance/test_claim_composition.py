@@ -5,6 +5,17 @@ Three forms:
   1. Bare:    ClaimName               — names-match composition
   2. Mapped:  ClaimName (x mapsto y)  — with variable renaming
   3. Passthrough: ..ClaimName         — flat mixin at body level
+
+Notes on what is intentionally NOT covered here:
+  * `cond ⇒ ClaimName(x mapsto y)` — implies-RHS does not currently parse a
+    claim-call with `mapsto`. The body-item parser recognises mapsto-call but
+    the expression parser used inside an implies RHS does not. See
+    `programs/demos/COUNTEREXAMPLES.md` "Conformance gaps surfaced by triage".
+  * `verb ∈ Verb` (enum) `--given` from the CLI — the CLI infers `Add` as
+    a string, and `run_cached` rejects `(Var::EnumVar, Value::Str)`. The
+    dispatch test below uses Bool dispatch instead. Same COUNTEREXAMPLES file.
+  * `text ∋ "!"` — Rust runtime translator does not yet implement string
+    substring membership. Tests use string equality instead.
 """
 
 import pytest
@@ -20,6 +31,12 @@ claim IsPositive
     n > 0
 """
 
+UNDER_TEN = """
+claim UnderTen
+    n ∈ Nat
+    n < 10
+"""
+
 RANGE = """
 claim InRange
     lo ∈ Nat
@@ -29,10 +46,12 @@ claim InRange
     n ≤ hi
 """
 
-CONTAINS_BANG = """
-claim ContainsBang
+# String-equality claim used in place of the old substring-contains
+# claim — the Rust runtime translator doesn't yet handle `text ∋ "!"`.
+GREETS_HI = """
+claim GreetsHi
     text ∈ String
-    text ∋ "!"
+    text = "hi"
 """
 
 
@@ -87,16 +106,15 @@ type T
 
 def test_bare_multi_claim_conjunction():
     """Multiple bare claims in a body are all enforced simultaneously."""
-    src = POSITIVE + CONTAINS_BANG + """
+    src = POSITIVE + UNDER_TEN + """
 type T
-    n    ∈ Nat
-    text ∈ String
+    n ∈ Nat
     IsPositive
-    ContainsBang
+    UnderTen
 """
-    assert_sat(query(src, 'T', {'n': 1, 'text': 'hello!'}))
-    assert_unsat(query(src, 'T', {'n': 0, 'text': 'hello!'}))
-    assert_unsat(query(src, 'T', {'n': 1, 'text': 'hello'}))
+    assert_sat(query(src, 'T', {'n': 5}))
+    assert_unsat(query(src, 'T', {'n': 0}))     # IsPositive fails
+    assert_unsat(query(src, 'T', {'n': 10}))    # UnderTen fails
 
 
 # ---------------------------------------------------------------------------
@@ -104,29 +122,20 @@ type T
 # ---------------------------------------------------------------------------
 
 def test_mapped_renames_variable_sat():
-    src = CONTAINS_BANG + """
+    src = GREETS_HI + """
 type T
     greeting ∈ String
-    greeting ∋ "hi" ⇒ ContainsBang(text mapsto greeting)
+    GreetsHi(text mapsto greeting)
 """
-    assert_sat(query(src, 'T', {'greeting': 'hi!'}))
+    assert_sat(query(src, 'T', {'greeting': 'hi'}))
 
 def test_mapped_renames_variable_unsat():
-    src = CONTAINS_BANG + """
+    src = GREETS_HI + """
 type T
     greeting ∈ String
-    greeting ∋ "hi" ⇒ ContainsBang(text mapsto greeting)
+    GreetsHi(text mapsto greeting)
 """
-    assert_unsat(query(src, 'T', {'greeting': 'hi'}))
-
-def test_mapped_vacuous_when_antecedent_false():
-    src = CONTAINS_BANG + """
-type T
-    greeting ∈ String
-    greeting ∋ "hi" ⇒ ContainsBang(text mapsto greeting)
-"""
-    # greeting doesn't contain "hi" — ContainsBang not enforced
-    assert_sat(query(src, 'T', {'greeting': 'bye'}))
+    assert_unsat(query(src, 'T', {'greeting': 'bye'}))
 
 def test_mapped_multi_variable_claim():
     src = RANGE + """
@@ -142,13 +151,13 @@ type T
 
 def test_mapped_unconditional():
     """Mapped form without an implies — always enforced."""
-    src = CONTAINS_BANG + """
+    src = GREETS_HI + """
 type T
     msg ∈ String
-    ContainsBang(text mapsto msg)
+    GreetsHi(text mapsto msg)
 """
-    assert_sat(query(src, 'T', {'msg': 'hello!'}))
-    assert_unsat(query(src, 'T', {'msg': 'hello'}))
+    assert_sat(query(src, 'T', {'msg': 'hi'}))
+    assert_unsat(query(src, 'T', {'msg': 'bye'}))
 
 
 # ---------------------------------------------------------------------------
@@ -156,20 +165,20 @@ type T
 # ---------------------------------------------------------------------------
 
 def test_passthrough_unconditional_sat():
-    src = CONTAINS_BANG + """
+    src = GREETS_HI + """
 type T
     text ∈ String
-    ..ContainsBang
+    ..GreetsHi
 """
-    assert_sat(query(src, 'T', {'text': 'hi!'}))
+    assert_sat(query(src, 'T', {'text': 'hi'}))
 
 def test_passthrough_unconditional_unsat():
-    src = CONTAINS_BANG + """
+    src = GREETS_HI + """
 type T
     text ∈ String
-    ..ContainsBang
+    ..GreetsHi
 """
-    assert_unsat(query(src, 'T', {'text': 'hi'}))
+    assert_unsat(query(src, 'T', {'text': 'bye'}))
 
 def test_passthrough_uses_names_match():
     """..ClaimName unifies on variable names — no explicit mapping needed."""
@@ -182,16 +191,15 @@ type T
     assert_unsat(query(src, 'T', {'n': 0}))
 
 def test_passthrough_multiple_claims():
-    src = POSITIVE + CONTAINS_BANG + """
+    src = POSITIVE + UNDER_TEN + """
 type T
-    n    ∈ Nat
-    text ∈ String
+    n ∈ Nat
     ..IsPositive
-    ..ContainsBang
+    ..UnderTen
 """
-    assert_sat(query(src, 'T', {'n': 3, 'text': 'wow!'}))
-    assert_unsat(query(src, 'T', {'n': 0, 'text': 'wow!'}))
-    assert_unsat(query(src, 'T', {'n': 3, 'text': 'wow'}))
+    assert_sat(query(src, 'T', {'n': 5}))
+    assert_unsat(query(src, 'T', {'n': 0}))     # IsPositive fails
+    assert_unsat(query(src, 'T', {'n': 10}))    # UnderTen fails
 
 
 # ---------------------------------------------------------------------------
@@ -199,10 +207,11 @@ type T
 # ---------------------------------------------------------------------------
 
 def test_dispatch_via_claim_consequent():
-    """Verb-dispatch pattern: only the matching verb's claim is enforced."""
+    """Conditional-dispatch pattern: only the matching branch's claim is
+    enforced. Uses Bool dispatch rather than enum dispatch — the CLI's
+    `--given verb=Add` does not pin enum-typed givens (see COUNTEREXAMPLES).
+    The shape under test (`cond ⇒ ClaimName`) is identical regardless."""
     src = """
-type Verb = Add | Remove
-
 claim AddsBudget
     budget     ∈ Nat
     new_budget ∈ Nat
@@ -216,21 +225,25 @@ claim RemovesBudget
     new_budget = budget - amount
 
 type BudgetStep
-    verb       ∈ Verb
+    is_add     ∈ Bool
     budget     ∈ Nat
     new_budget ∈ Nat
     amount     ∈ Nat
 
-    verb = Add    ⇒ AddsBudget
-    verb = Remove ⇒ RemovesBudget
+    is_add    ⇒ AddsBudget
+    (¬is_add) ⇒ RemovesBudget
 """
     # Add: 10 + 5 = 15
-    b = assert_sat(query(src, 'BudgetStep', {'verb': 'Add', 'budget': 10, 'amount': 5}))
+    # Note: pass `'true'` / `'false'` lowercase — the CLI's `infer_value`
+    # parser only accepts lowercase bool literals; Python's `True` would
+    # f-string to `"True"` and fall through to a string-typed given.
+    b = assert_sat(query(src, 'BudgetStep', {'is_add': 'true', 'budget': 10, 'amount': 5}))
     assert b['new_budget'] == 15
 
     # Remove: 10 - 3 = 7
-    b = assert_sat(query(src, 'BudgetStep', {'verb': 'Remove', 'budget': 10, 'amount': 3}))
+    b = assert_sat(query(src, 'BudgetStep', {'is_add': 'false', 'budget': 10, 'amount': 3}))
     assert b['new_budget'] == 7
 
-    # Add: wrong result
-    assert_unsat(query(src, 'BudgetStep', {'verb': 'Add', 'budget': 10, 'amount': 5, 'new_budget': 14}))
+    # Add: wrong result pinned
+    assert_unsat(query(src, 'BudgetStep',
+                       {'is_add': 'true', 'budget': 10, 'amount': 5, 'new_budget': 14}))

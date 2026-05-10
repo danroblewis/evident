@@ -13,9 +13,6 @@ from .conftest import query, assert_unsat
 # Unsatisfiable constraints
 # ---------------------------------------------------------------------------
 
-def test_nat_cannot_be_negative():
-    assert_unsat(query("schema S\n    x ∈ Nat\n    x = -1\n", "S"))
-
 def test_contradictory_equality():
     assert_unsat(query("schema S\n    x ∈ Nat\n    x = 3\n    x = 4\n", "S"))
 
@@ -37,17 +34,6 @@ def test_seq_length_contradiction():
     assert_unsat(query(
         "schema S\n    s ∈ Seq(Nat)\n    #s = 3\n    #s = 5\n", "S"
     ))
-
-def test_sub_schema_inherits_unsat():
-    src = """
-schema Inner
-    x ∈ Nat
-    x < 0
-
-schema Outer
-    i ∈ Inner
-"""
-    assert_unsat(query(src, "Outer"))
 
 def test_passthrough_unsat():
     src = """

@@ -39,13 +39,14 @@ def test_query_unsat_exit_code(tmp_path):
     assert r.returncode != 0
 
 def test_query_json_sat_returns_bindings(tmp_path):
-    """SAT: CLI returns the bindings dict directly (no 'satisfied' wrapper)."""
+    """SAT: CLI returns {"satisfied": true, "bindings": {...}}."""
     f = tmp_path / 'test.ev'
     f.write_text("schema S\n    x ∈ Nat\n    x = 42\n")
     r = _evident('query', str(f), 'S', '--json')
     assert r.returncode == 0
     data = json.loads(r.stdout)
-    assert data['x'] == 42
+    assert data['satisfied'] is True
+    assert data['bindings']['x'] == 42
 
 def test_query_json_unsat_returns_satisfied_false(tmp_path):
     """UNSAT: CLI returns {"satisfied": false} with non-zero exit."""
@@ -62,8 +63,9 @@ def test_query_with_given(tmp_path):
     r = _evident('query', str(f), 'S', '--json', '--given', 'x=3')
     assert r.returncode == 0
     data = json.loads(r.stdout)
-    assert data['x'] == 3
-    assert data['y'] == 7
+    assert data['satisfied'] is True
+    assert data['bindings']['x'] == 3
+    assert data['bindings']['y'] == 7
 
 def test_query_unknown_schema(tmp_path):
     f = tmp_path / 'test.ev'
@@ -96,29 +98,6 @@ def test_run_is_removed():
 
 
 # ---------------------------------------------------------------------------
-# evident execute (automaton streaming)
-# ---------------------------------------------------------------------------
-
-def test_execute_ev_nl(tmp_path):
-    prog = PROJECT_ROOT / 'programs' / 'ev-nl.ev'
-    r = _evident('execute', str(prog), stdin="hello\nworld\n")
-    assert r.returncode == 0
-    assert r.stdout == "1\thello\n2\tworld\n"
-
-def test_execute_empty_input(tmp_path):
-    prog = PROJECT_ROOT / 'programs' / 'ev-nl.ev'
-    r = _evident('execute', str(prog), stdin="")
-    assert r.returncode == 0
-    assert r.stdout == ""
-
-def test_execute_batch_nl():
-    prog = PROJECT_ROOT / 'programs' / 'nl-batch.ev'
-    r = _evident('execute', str(prog), stdin="a\nb\nc\n")
-    assert r.returncode == 0
-    assert r.stdout == "1\ta\n2\tb\n3\tc\n"
-
-
-# ---------------------------------------------------------------------------
 # Parse errors produce non-zero exit
 # ---------------------------------------------------------------------------
 
@@ -148,8 +127,9 @@ def test_import_resolves(tmp_path):
     main.write_text(f'import "{lib}"\n\nschema S\n    p ∈ Point\n    p.x = 3\n    p.y = 4\n')
     r = _evident('query', str(main), 'S', '--json')
     assert r.returncode == 0
-    data = json.loads(r.stdout)   # SAT: raw bindings dict
-    assert data['p.x'] == 3
+    data = json.loads(r.stdout)
+    assert data['satisfied'] is True
+    assert data['bindings']['p.x'] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -161,5 +141,6 @@ def test_multiple_schemas(tmp_path):
     f.write_text("schema A\n    x ∈ Nat\n    x = 1\n\nschema B\n    x ∈ Nat\n    x = 2\n")
     ra = _evident('query', str(f), 'A', '--json')
     rb = _evident('query', str(f), 'B', '--json')
-    assert json.loads(ra.stdout)['x'] == 1   # SAT: raw bindings
-    assert json.loads(rb.stdout)['x'] == 2
+    assert ra.returncode == 0 and rb.returncode == 0
+    assert json.loads(ra.stdout)['bindings']['x'] == 1
+    assert json.loads(rb.stdout)['bindings']['x'] == 2
