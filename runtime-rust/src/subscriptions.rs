@@ -113,6 +113,64 @@ fn first_segment(s: &str) -> &str {
     s.split('.').next().unwrap_or(s)
 }
 
+/// Returns true iff the claim's body references the named
+/// effect constructor (e.g. "ReadLine", "Exit"). Used at load
+/// time to detect conflicts — e.g. a program that has a stdin
+/// plugin auto-installed AND emits Effect::ReadLine would race
+/// for fd 0; the runtime rejects that combination.
+pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
+    fn walk(items: &[BodyItem], ident: &str) -> bool {
+        for item in items {
+            match item {
+                BodyItem::Membership { pins, .. } => {
+                    if walk_pins(pins, ident) { return true; }
+                }
+                BodyItem::Passthrough(_) => {}
+                BodyItem::SubclaimDecl(s) => {
+                    if walk(&s.body, ident) { return true; }
+                }
+                BodyItem::ClaimCall { mappings, .. } => {
+                    for m in mappings {
+                        if walk_expr(&m.value, ident) { return true; }
+                    }
+                }
+                BodyItem::Constraint(e) => {
+                    if walk_expr(e, ident) { return true; }
+                }
+            }
+        }
+        false
+    }
+    fn walk_pins(pins: &Pins, ident: &str) -> bool {
+        match pins {
+            Pins::None => false,
+            Pins::Named(ms) => ms.iter().any(|m| walk_expr(&m.value, ident)),
+            Pins::Positional(es) => es.iter().any(|e| walk_expr(e, ident)),
+        }
+    }
+    fn walk_expr(e: &Expr, ident: &str) -> bool {
+        match e {
+            Expr::Identifier(s) => s == ident,
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => false,
+            Expr::SetLit(es) | Expr::SeqLit(es) => es.iter().any(|x| walk_expr(x, ident)),
+            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) | Expr::Binary(_, a, b) =>
+                walk_expr(a, ident) || walk_expr(b, ident),
+            Expr::Forall(_, range, body) | Expr::Exists(_, range, body) =>
+                walk_expr(range, ident) || walk_expr(body, ident),
+            Expr::Call(name, args) =>
+                name == ident || args.iter().any(|a| walk_expr(a, ident)),
+            Expr::Cardinality(inner) | Expr::Not(inner) => walk_expr(inner, ident),
+            Expr::Field(recv, _) => walk_expr(recv, ident),
+            Expr::Ternary(c, t, f) =>
+                walk_expr(c, ident) || walk_expr(t, ident) || walk_expr(f, ident),
+            Expr::Match(scrut, arms) =>
+                walk_expr(scrut, ident) || arms.iter().any(|a| walk_expr(&a.body, ident)),
+            Expr::Matches(e, _) => walk_expr(e, ident),
+        }
+    }
+    walk(&claim.body, ident)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

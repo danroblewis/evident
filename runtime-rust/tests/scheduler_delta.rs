@@ -362,6 +362,43 @@ fn delta_graceful_shutdown_lang_test_05() {
     assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// Single-owner: a program declaring `stdin_line: String` (which
+/// auto-installs StdinSource) AND emitting Effect::ReadLine is
+/// rejected at load — both want fd 0.
+const STDIN_CONFLICT_PROGRAM: &str = "\
+type World
+    stdin_line ∈ String
+
+enum S = R
+
+claim main(world ∈ World,
+           state, state_next ∈ S,
+           last_results ∈ ResultList,
+           effects ∈ EffectList)
+    state_next = R
+    effects = ⟨ReadLine, Println(world.stdin_line)⟩
+";
+
+#[test]
+fn stdin_plugin_plus_readline_rejected_at_load() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(STDIN_CONFLICT_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
+    assert!(r.is_err(), "should reject; got {r:?}");
+    let err = r.unwrap_err();
+    assert!(err.contains("ReadLine") && err.contains("stdin_line"),
+        "error should mention both surfaces; got: {err}");
+}
+
 /// Regression: previously, an FSM whose state enum had a payload
 /// FIRST variant (e.g. `Counting(Int)`) panicked at startup
 /// because the seeding code unconditionally called

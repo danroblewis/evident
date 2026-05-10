@@ -316,6 +316,22 @@ pub fn run_with_ctx(
         // it on each line — used by user FSMs to gate "is this a
         // new line?" without needing string-payload state.
         if has_field("stdin_line", "String") {
+            // Reject programs that auto-install StdinSource AND
+            // use Effect::ReadLine — both want fd 0 and would
+            // race for bytes.
+            for fsm in &fsms {
+                if let Some(claim) = rt.get_schema(&fsm.claim_name) {
+                    if crate::subscriptions::body_references_identifier(claim, "ReadLine") {
+                        return Err(format!(
+                            "FSM `{}` emits Effect::ReadLine, but the program also \
+                             declares `stdin_line: String` in World which auto-installs \
+                             StdinSource. Both would race for fd 0. Use either the \
+                             plugin pattern (subscribe to world.stdin_line) OR remove \
+                             stdin_line from World and use ReadLine directly.",
+                            fsm.claim_name));
+                    }
+                }
+            }
             let mut s = crate::event_sources::StdinSource::new("stdin_line");
             if has_field("stdin_seq", "Int") {
                 s = s.with_seq_field("stdin_seq");
@@ -325,6 +341,9 @@ pub fn run_with_ctx(
                 .map_err(|e| format!("failed to start stdin reader: {e}"))?;
             event_sources.push(Box::new(s));
             plugin_writes.insert("stdin_line".to_string());
+            // Mark fd 0 as plugin-owned so Effect::ReadLine errors
+            // out at dispatch time rather than racing for bytes.
+            ctx.stdin_owned_by_plugin = true;
         }
     }
     // Drop our own clone of the sender now that all sources have

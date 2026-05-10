@@ -65,6 +65,12 @@ pub struct DispatchContext {
     /// instead of `Exit` immediately calling `process::exit` and
     /// cutting off other FSMs' effects mid-dispatch.
     pub exit_requested: Option<i32>,
+    /// True if the runtime has installed a StdinSource (because
+    /// the user's World declares stdin_line). When true,
+    /// `Effect::ReadLine` is an error — the source owns fd 0,
+    /// and a synchronous read would race with the source's
+    /// background thread for the same bytes.
+    pub stdin_owned_by_plugin: bool,
 }
 
 impl DispatchContext {
@@ -87,6 +93,7 @@ impl DispatchContext {
             lib_cache: std::collections::HashMap::new(),
             sym_cache: std::collections::HashMap::new(),
             exit_requested: None,
+            stdin_owned_by_plugin: false,
         }
     }
 
@@ -133,6 +140,16 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             EffectResult::NoResult
         }
         Effect::ReadLine => {
+            if ctx.stdin_owned_by_plugin {
+                return EffectResult::Error(
+                    "readline: stdin is owned by StdinSource plugin (declared via \
+                     `stdin_line: String` in World) — programs that auto-install \
+                     the plugin cannot also use Effect::ReadLine, since both would \
+                     race for the same bytes on fd 0. Use either the plugin pattern \
+                     (subscribe to world.stdin_line) OR remove stdin_line from World \
+                     and use ReadLine directly.".into()
+                );
+            }
             let mut line = String::new();
             match ctx.stdin.read_line(&mut line) {
                 Ok(0)  => EffectResult::Error("readline: EOF".into()),
