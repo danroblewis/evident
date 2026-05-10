@@ -1,6 +1,13 @@
 # FSM Subscription Scheduler
 
-Status: design (no code yet)
+> **Read [`schema-interface.md`](schema-interface.md) first.** That doc
+> articulates the unified model — every Evident schema (claim/type) is
+> a coordination unit with a read-set, write-set, private state,
+> schedule, and behavior. Plugins are first-class schemas implemented
+> in Rust; the only coordination primitive is shared-state delta.
+> This doc covers the scheduler that implements that model.
+
+Status: largely implemented (Phases 1–4 v3.5).
 Supersedes the halt mechanism in `docs/design/multi-fsm.md`.
 
 ## Motivation
@@ -34,6 +41,15 @@ This unifies several concerns that were ad-hoc:
     scheduled concurrently (deferred).
 
 ## The model
+
+> Updated 2026-05-09 — the unified view is **state-change is the only
+> coordination primitive**. Every schema is a writer (or reader) of
+> world fields; wakes are computed from world deltas. The earlier
+> separate "event source" mechanism (Phase 4 v3) is being absorbed
+> into this — plugins become writers of dedicated world fields,
+> world delta drives all wakes. See `schema-interface.md` for the
+> full framing; the rest of this section describes the scheduler
+> mechanics that implement it.
 
 An FSM has zero or more **subscriptions**. Subscriptions come from
 four places, all known statically at load time:
