@@ -106,6 +106,20 @@ fn sibling_no_world() {
 // drops it before counter reaches the threshold.
 
 #[test]
+fn request_response_lang_test_11() {
+    // Two user FSMs (client + server) coordinating via shared
+    // world fields. Client requests; server doubles; client
+    // exits after 3 requests done.
+    let (out, r) = run_program("../programs/lang_tests/multi_fsm/11_request_response.ev", 30);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines.contains(&"client done"),
+        "should print client done; out:\n{}", out);
+    assert!(r.halted_clean, "should halt cleanly via Exit; got {r:?}");
+    assert_eq!(r.exit_code, Some(0));
+    assert!(r.steps < 30);
+}
+
+#[test]
 fn timer_and_stdin_lang_test_09_multi_plugin() {
     // Multi-plugin demo: World declares both tick_count + stdin
     // fields → both FrameTimer and StdinSource auto-install.
