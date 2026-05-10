@@ -1,5 +1,10 @@
 -- programs/demos/effect_gl_triangle.ev
 --
+-- LEGACY effect-driven version. The FTI version
+-- (`effect_gl_triangle_fti.ev`, ~80 lines) replaces the bulk
+-- of this file's setup state machine with two typed
+-- declarations. Kept here for side-by-side comparison.
+--
 --     evident effect-run programs/demos/effect_gl_triangle.ev --max-steps 200
 --
 -- Renders a hot-pink triangle on a teal background by linking a

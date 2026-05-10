@@ -1,0 +1,72 @@
+-- effect_gl_triangle_fti.ev — FTI version of effect_gl_triangle.
+--
+-- Same hot-pink triangle, ~80 lines vs the legacy demo's ~330.
+-- Compare side-by-side with `effect_gl_triangle.ev` to see what
+-- the FTI typed-resource approach buys you:
+--
+--   * `win ∈ SDL_Window (...)` replaces a 4-state init chain
+--     (SDL_Init → CreateWindow → CreateContext → MakeCurrent
+--      → GenVertexArrays → BindVertexArray).
+--   * `prog ∈ GL_Program (vsrc, fsrc)` replaces a 9-state shader
+--     compile+link chain (CreateShader x2 → ShaderSource x2 →
+--     CompileShader x2 → CreateProgram → AttachShader x2 →
+--     LinkProgram → UseProgram → DeleteShader x2).
+--   * Default VAO comes pre-bound from the SDL_Window bridge
+--     (win.vao), so no per-frame VAO churn.
+--
+-- That's ~14 setup states collapsed into 2 typed declarations.
+-- The user FSM has 2 states (Init, Frame(n)) instead of ~20.
+--
+-- Run:
+--     evident effect-run programs/demos/effect_gl_triangle_fti.ev --max-steps 70
+--
+-- Cleanup is intentionally not called — process exit reclaims
+-- the window. macOS requires SDL_DestroyWindow on the main
+-- thread (which we are), but the runtime currently doesn't
+-- thread cleanup that way.
+
+import "stdlib/runtime.ev"
+import "stdlib/sdl/gl.ev"
+import "stdlib/shader/program.ev"
+
+enum S = Init | Frame(Int)
+
+claim render(state, state_next ∈ S,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    win ∈ SDL_Window (title ↦ "FTI Triangle", width ↦ 640, height ↦ 480)
+    prog ∈ GL_Program (
+        vertex_src ↦ "#version 330 core\nvoid main(){vec2 p=(gl_VertexID==0?vec2(-0.5,-0.5):(gl_VertexID==1?vec2(0.5,-0.5):vec2(0.0,0.5)));gl_Position=vec4(p,0,1);}",
+        fragment_src ↦ "#version 330 core\nout vec4 c;\nvoid main(){c=vec4(1,0.4,0.6,1);}"
+    )
+
+    state_next = match state
+        Init     ⇒ Frame(60)
+        Frame(n) ⇒ (n ≤ 1 ? Frame(0) : Frame(n - 1))
+
+    set_color_eff ∈ Effect
+    gl_clear_color(0.05, 0.05, 0.1, 1.0, set_color_eff)
+    clear_eff ∈ Effect
+    gl_clear(16384, clear_eff)
+    draw_eff ∈ Effect
+    gl_draw_arrays(4, 0, 3, draw_eff)
+    swap_eff ∈ Effect
+    gl_swap_window(win.handle, swap_eff)
+    pump_eff ∈ Effect
+    pump_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                       "SDL_PumpEvents", "v()", ArgNil)
+    delay_eff ∈ Effect
+    delay_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                        "SDL_Delay", "v(i)",
+                        ArgCons(ArgInt(33), ArgNil))
+
+    frame_inner ∈ EffectList
+    frame_inner = ⟨set_color_eff, clear_eff,
+                    draw_eff, swap_eff, pump_eff, delay_eff⟩
+    frame_seq ∈ Effect
+    frame_seq = Seq(frame_inner)
+
+    effects = match state
+        Init     ⇒ ⟨⟩
+        Frame(k) ⇒ (k > 0 ? ⟨frame_seq⟩
+                          : ⟨Println("triangle render done"), Exit(0)⟩)
