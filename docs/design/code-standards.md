@@ -2,345 +2,403 @@
 
 **Status: proposal — review before enforcement.**
 
-This document specifies what code belongs in which directory, why,
-and how those rules will be mechanically enforced. Goals:
+This is a rewrite of an earlier draft that started rule-first
+("MUST / MAY / MUST NOT" per directory). That was the wrong shape:
+"MAY" is useless because it doesn't enforce anything, "MUST" is hard
+to mechanically check without coverage tooling we don't have, and
+the rules read as arbitrary because they weren't grounded in WHY.
 
-  1. **Stop erosion.** Quick fixes that put library-specific code
-     into language-core files (the `SdlVertex` intrusion in `ast.rs`
-     was the canonical example) corrode the project. Linters should
-     refuse those PRs.
-  2. **Make adding a new C library obvious.** A contributor adding
-     SDL_Audio support should know exactly where each piece goes
-     without reading prior PRs to find out.
-  3. **Force a conscious decision when crossing layers.** The right
-     thing to do is sometimes to add a generic primitive (option B
-     of the "remove SdlVertexBuf" question) rather than a one-off
-     library-specific entry. The linter rejecting the one-off makes
-     the conscious decision necessary.
+This rewrite goes purpose → taxonomy → anti-patterns → rules.
 
-## The layer model
+## What this codebase is
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  L3   examples/, tests/lang_tests/                          │
-│       Pure Evident programs. NO FFI, NO library symbols.    │
-├─────────────────────────────────────────────────────────────┤
-│  L2   modules/<library>/                                    │
-│       Per-library Evident wrappers. LibCall + dylib paths   │
-│       LIVE HERE (and only here).                            │
-├─────────────────────────────────────────────────────────────┤
-│  L1   runtime/src/event_sources/<library>.rs                │
-│       Per-library Rust bridges. SDL/GL/AppKit-specific Rust │
-│       code lives in dedicated modules under event_sources/. │
-├─────────────────────────────────────────────────────────────┤
-│  L0   runtime/src/{ast,lexer,parser,translate,runtime,…}.rs │
-│       Language + library agnostic. Knows nothing about SDL, │
-│       GL, audio, or any specific C library. If `runtime/`   │
-│       had only L0 + L1's registry plumbing, the language    │
-│       would still build and run programs.                   │
-└─────────────────────────────────────────────────────────────┘
-```
+Evident is a constraint programming language. This repo's job is to
+**parse Evident source, translate it to Z3 constraints, solve, and
+run multi-FSM programs that talk to C libraries via FTI bridges.**
 
-**Each layer may call into layers below it. None may call up.**
+Concretely, four end-user verbs map to what `runtime/` does:
 
-## Proposed rearrangement (BEFORE enforcement)
+  * `evident query` / `check` / `sample` — solve constraints in a `.ev` file.
+  * `evident test` — discover and run `sat_*`/`unsat_*` claims.
+  * `evident effect-run` — execute a multi-FSM program against the OS.
+  * `evident lint` — surface translator-level diagnostics.
 
-These moves bring the tree into a state the linter can enforce. Some
-are renames; some are file splits. Each is independently justifiable.
+Everything in this repo serves one of those four verbs. Files that
+don't serve any of them are dead weight; files that serve more than
+one are usually mis-categorized.
 
-### 1. Split `runtime/src/event_sources.rs`
+## Why have code-organization standards at all
 
-Currently 1390 lines containing 9 distinct sources, all
-library-specific (FrameTimer, SigintSource, StdinSource,
-FileLineReader, WallClockSource, FileWatcherSource, OneShotShellSource,
-SdlWindowSource, GlProgramSource). Split into:
+Two reasons, both negative:
+
+**1. To prevent erosion via local quick fixes.** The canonical
+example: SDL needed a vertex buffer, so an `SdlVertex` struct got
+added to `runtime/src/ast.rs` (a 5-line change that "worked"). It
+turned the language-core AST module into a place that knows about
+SDL's struct layout. The fix is much bigger than the original 5
+lines. A rule against library-specific identifiers in `ast.rs`
+catches this kind of intrusion before it merges.
+
+**2. To force conscious decisions when crossing concerns.** Some
+quick fixes are right. Some indicate the structure is wrong and a
+generic primitive should be added instead. The rule itself doesn't
+make that decision — it makes the decision necessary instead of
+sliding past unnoticed.
+
+These rules are not about taste. Naming, formatting, comment style,
+import ordering — those are `cargo clippy` and `cargo fmt` and
+team convention. The rules here are about **layering**: which file
+is allowed to know about which other file's concerns.
+
+## Taxonomy: what kinds of files exist
+
+A file's *role* is a stable answer to "what concern does this file
+address." It's almost never the directory it's in (we've moved
+files around three times this week). The role is what should
+determine the rules.
+
+### Roles in `runtime/src/`
+
+| Role | Files (today) | Concern |
+|---|---|---|
+| **Language definition** | `ast.rs`, `lexer.rs`, `parser.rs` | What an Evident program IS (data shape + how text becomes that shape). Knows nothing about Z3, nothing about the runtime, nothing about C libraries. |
+| **Translation** | `translate/eval.rs`, `inline.rs`, `exprs.rs`, `encode_ast.rs`, `decode_ast.rs` | AST ↔ Z3. Owns the mapping from Evident expressions/types to Z3 constraints. Knows the AST and Z3; nothing about effects, schedulers, or C libraries. |
+| **Execution** | `runtime.rs`, `effect_loop.rs`, `effect_dispatch.rs` | Top-level API + multi-FSM scheduler + Effect → I/O dispatch. Knows about Effects but not about specific Effect implementations. |
+| **FFI plumbing** | `ffi.rs` | libffi marshaling. Knows about C calling conventions but not about specific C libraries. |
+| **Static analysis** | `subscriptions.rs` | Read/write-set inference per claim. Pure AST analysis. |
+| **Library bridges** | `event_sources.rs` (currently 1390 lines, 9 sources) | Per-library typed-resource lifecycles. THE ONLY place library-specific Rust code may live. |
+| **Bridge registry** | `fti.rs` | Dispatch table mapping Evident type names → bridge install functions. The boundary where execution-layer code names library-bridge code. |
+| **CLI surface** | `commands/*.rs` | One file per `evident <subcommand>`. Wires lower layers to user-facing arguments. |
+| **Pretty-printing** | `pretty.rs` | AST → string for diagnostics. Pure. |
+
+The big code smell visible in this table: **`event_sources.rs` is
+one role but nine concerns** (FrameTimer, SigintSource, StdinSource,
+FileLineReader, WallClockSource, FileWatcherSource,
+OneShotShellSource, SdlWindowSource, GlProgramSource). It violates
+"one file per concern" by mixing every C-library lifecycle in one
+place. That's a structural error, not a style one. Fixing it is
+prerequisite to lintability.
+
+### Roles in `stdlib/`
+
+| Role | Files (today) | Concern |
+|---|---|---|
+| **Core types** | `runtime.ev` | Effect / Result / FFIArg / FTI types. Mandatory — every program transitively imports this. |
+| **AST representation** | `ast.ev` | The Evident-side mirror of `runtime/src/ast.rs`, used by the self-hosted compiler passes. |
+| **Self-hosted passes** | `passes/*.ev` | Compiler passes that the Rust binary loads at runtime (literal_types, iter_types, propagation, consistency, lint_duplicate_decls, desugar_passthrough). |
+| **Library wrappers** | `posix.ev`, `sdl/*.ev`, `shader/program.ev` | Per-library FFI call wrappers. THE ONLY place `LibCall` / `FFICall` / dylib paths may live. |
+
+`stdlib/` mixes two categories: things every program needs (`runtime.ev`)
+or that the runtime itself loads (`passes/`, `ast.ev`), and things
+specific to one C library (`sdl/`, `shader/`, `posix.ev`). The
+contract for those categories is different — see "Reorganization"
+below.
+
+### Roles in `examples/`
+
+| Role | Files | Concern |
+|---|---|---|
+| **Worked examples + integration tests** | `test_NN_<name>.ev` | Each is a multi-FSM program (the demo) plus inline `sat_*`/`unsat_*` static tests. Also the contract that the runtime does what it says it does — failing demos = failing runtime. |
+| **Counterexample log** | `COUNTEREXAMPLES.md` | The honest list of runtime gaps surfaced by demo-writing or conformance triage. Not a TODO list of work; a list of things programs can't do today. |
+
+### Roles in `tests/`
+
+| Role | Files | Concern |
+|---|---|---|
+| **Conformance** | `tests/conformance/*.py` | Black-box CLI tests. Spec the LANGUAGE behavior; should pass against any correct implementation. |
+| **Lang fixtures** | `tests/lang_tests/*.ev`, `tests/lang_tests/multi_fsm/*.ev` | Inputs to specific Rust integration tests. May exercise edge cases that demo-writers never would. |
+
+## Anti-patterns observed
+
+This is the input that makes the rules concrete. Each entry is a
+real mistake from past sessions, named so we can refer to it.
+
+Add new entries as we discover them. Each entry should be
+falsifiable enough to write a test against.
+
+### AP-1. Library-specific identifier in a language-core file
+
+**Example.** `SdlVertex` struct in `runtime/src/ast.rs`,
+`SdlVertexBuf` variant in `EffectFfiArg`,
+`FfiArg::SdlVertexBuf(Vec<SdlVertex>)` in `runtime/src/ffi.rs`,
+`decode_sdl_vertex` in `runtime/src/translate/decode_ast.rs`. Four
+files in the language-core role each acquired SDL-specific code.
+Comment in `ast.rs:386` literally said "SDL-specific until we have
+a general 'packed struct array' FFI primitive" — past-self knew
+this was wrong and shipped it anyway.
+
+**Why it's bad.** Couples the language to one library. A second
+library wanting a similar feature would have to add its own variant.
+Removing or replacing SDL becomes a multi-file refactor.
+
+**Detection.** String search for library names (SDL, Sdl, Gl[A-Z],
+Glsl, Audio, etc.) in language-core role files.
+
+### AP-2. Raw FFI primitive in a worked-example file
+
+**Example.** Initial draft of `examples/test_16_sdl_red.ev`
+contained `LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init", …)`
+inline. The rule exists in CLAUDE.md ("demo files MUST NOT contain
+raw FFI calls"). The first SDL demo I wrote violated it, despite my
+having written the rule a few commits earlier.
+
+**Why it's bad.** Every program reaching directly into `LibCall`
+re-implements the same dylib-path + signature + arg-marshaling work.
+The wrapper-claims layer in `stdlib/modules/<library>/` exists to
+do that work once. Programs that bypass it duplicate work and
+couple to platform paths.
+
+**Detection.** Grep for `LibCall|FFICall|FFIOpen|FFILookup` in
+example files.
+
+### AP-3. Hardcoded dylib path or library-symbol string in non-stdlib file
+
+**Example.** `"/opt/homebrew/lib/libSDL2.dylib"` and
+`"SDL_PumpEvents"` strings in `examples/*.ev`. The path locks
+the program to one platform; the string makes the program know
+about one library's symbols by name.
+
+**Why it's bad.** Same family as AP-2. The path/symbol belongs in
+a stdlib wrapper, behind a typed claim like `sdl_pump_events(out)`.
+
+**Detection.** Grep for `\.dylib|\.framework/|/opt/homebrew/lib/`
+in non-stdlib-wrapper files; grep for known C symbol prefixes
+("SDL_", "gl[A-Z]", "ffi_") in example files.
+
+### AP-4. xfail / skip markers as TODO sediment
+
+**Example.** Conformance suite originally had 64 `xfail`-marked
+tests. I added them as a "known failing, will fix later" mechanism.
+A week later they were still there and no one had looked at them.
+The right move was always: fix the test, fix the code, or delete
+the test. Marking it as xfail is the third option dressed up as
+something more.
+
+**Why it's bad.** A test suite full of "known failures" is one
+nobody trusts. New failures hide among old "known" ones.
+
+**Detection.** Grep for `pytest.mark.xfail|pytest.mark.skip` in
+conformance tests. Grep for `#[ignore]` in Rust tests.
+
+### AP-5. Test passes via substring match through wrong code path
+
+**Example.** `examples/test_10_spawn.ev` test driver originally
+checked stdout contained `"parent spawned worker"`. That string was
+the **parent's** Println, emitted regardless of whether the spawn
+actually fired. The actual spawned-worker output (`"worker
+spawned with id=7"`) never reached stdout — the runtime had a
+SpawnFsm-on-Exit-tick bug — but the test passed because the parent's
+line was enough to satisfy `contains`.
+
+**Why it's bad.** Test driver passes give a false sense of
+verification. The test's stated intent (does SpawnFsm work?) and
+the test's actual assertion (does the parent print its line?) are
+disconnected.
+
+**Detection.** Manual review when writing assertions; harder to
+automate than the others. A weaker proxy: prefer multi-line
+ordered assertions ("must contain `A` then `B` then `C`") over
+single-substring ("must contain `B`").
+
+### AP-6. Placeholder output instead of computed value
+
+**Example.** `examples/test_02_counter.ev` printing `"tick"` each
+frame instead of `"tick 5"`, `"tick 4"`, …. `examples/test_09_two_fsms.ev`
+printing `"got n"` instead of the actual value of `n`. The demo's
+stated purpose (demonstrate IntToStr / shared world) is satisfied
+by printing the value; the placeholder is an unconscious shortcut.
+
+**Why it's bad.** A program "works" without exercising the feature
+the demo is supposed to demonstrate. Combined with AP-5, you can
+have green tests for a runtime that's silently broken.
+
+**Detection.** Manual review when reading new demo source. A weak
+linter heuristic: warn if a demo's stdout is identical across
+states/iterations when it claims to be tracking changing values.
+
+### AP-7. Stdlib helper without an `*_after` companion
+
+**Example.** `stdlib/modules/sdl/render.ev` originally had
+`set_draw_color(renderer ∈ Int, color, out)` taking a literal Int
+renderer. Inside an `Effect::Seq` where the renderer comes from
+`SDL_CreateRenderer`'s prior result, the helper was unusable —
+you couldn't pass `ArgPriorResult(N)` through a typed `Int` slot.
+Demos worked around it by inlining `LibCall` (triggering AP-2).
+
+**Why it's bad.** The wrapper layer's contract is "you never need
+raw FFI." When a wrapper helper has a usability gap inside Seq,
+demos break the contract. Fixing the wrapper (adding a parallel
+`*_after(prior_idx ∈ Int, ...)` variant) restores it.
+
+**Detection.** AST: every `claim X(handle ∈ Int, …, out ∈ Effect)`
+in `stdlib/modules/` should also have a sibling `claim X_after(prior_idx ∈ Int, …, out ∈ Effect)`.
+
+### AP-8. Demo file missing `sat_*`/`unsat_*` claims
+
+**Example.** Hypothetical, but easy to slip in: a new demo gets
+written, runs end-to-end, ships. No inline static-test claims.
+The demo is now an example only, not a test. Drift.
+
+**Why it's bad.** Examples that aren't tests stop catching
+regressions. The whole point of `examples/test_NN_<name>.ev` is
+that the file is BOTH.
+
+**Detection.** AST: load every `examples/test_*.ev`, verify it
+contains ≥1 claim whose name starts with `sat_` or `unsat_`.
+
+### AP-9. Demo file missing FSM-shape claim
+
+**Example.** Hypothetical: someone puts a pure-static-test file
+under `examples/`. It passes `evident test` but has no runnable
+program — it's in the wrong directory.
+
+**Why it's bad.** Examples are supposed to be runnable programs
+with inline tests. Static-only files belong in `tests/lang_tests/`.
+
+**Detection.** AST: load every `examples/test_*.ev`, verify ≥1
+claim has the FSM shape (state pair + `last_results ∈ ResultList`
++ `effects ∈ EffectList`).
+
+### AP-10. Demo not in EXPECTATIONS table
+
+**Example.** A demo gets added under `examples/` but not registered
+in `runtime/tests/demos.rs::EXPECTATIONS`. The demo doesn't run
+in CI; broken state goes uncaught.
+
+**Why it's bad.** The whole "demo IS test" contract relies on the
+test driver running each demo. Skipping = unmaintained.
+
+**Detection.** Cross-file: list `examples/test_*.ev`, list
+`EXPECTATIONS` rows, set-difference. Allow opt-out via a header
+tag (`-- interactive` for demos that need real stdin or SIGINT).
+
+### AP-11. Long single-file module mixing concerns
+
+**Example.** `runtime/src/event_sources.rs` at 1390 lines
+containing 9 distinct sources. Each source is its own struct +
+impl + EventSource impl + Drop, all in one file.
+
+**Why it's bad.** Hides the "one file per concern" pattern. New
+contributors don't know whether to add their bridge to this file
+or to make a new one. Code review becomes harder. Imports get
+tangled.
+
+**Detection.** Soft heuristic. A `.rs` file declaring more than 2
+`pub struct`s with `EventSource` implementations is a candidate
+for splitting.
+
+### AP-12. Self-evident comment
+
+**Example.** `// Update the dot's x position by adding velocity * dt to current.`
+on a line that says `nxt.pos.x = cur.pos.x + cur.vel.x * input.dt / 1000`.
+The comment restates what the names already say.
+
+**Why it's bad.** Costs reader time, decays as code changes.
+CLAUDE.md guidance: comment WHY, not WHAT.
+
+**Detection.** Hard to mechanize without false positives. Skip for
+now; rely on review.
+
+## Rules derived from anti-patterns
+
+Each rule corresponds to one or more anti-patterns and is checkable.
+Each lists what it catches, where it lives, and roughly what it
+looks like.
+
+| Rule | Catches | Implementation |
+|---|---|---|
+| `R1: language_core_is_library_agnostic` | AP-1 | Grep scanner. List of L0 files (everything in `runtime/src/` except `event_sources/`, `commands/`, `fti.rs`). Forbidden patterns: `SDL[_A-Za-z]`, `Sdl[A-Z][a-z]`, `\bGl[A-Z]`, `Glsl`, `Audio[A-Z]`, `glClear`, `glProgram`, `\.dylib`, `\.framework/`, `/opt/homebrew/`. Doc-comment-only mentions are OK; the scanner ignores lines that start with `//` or `///`. |
+| `R2: examples_no_raw_ffi` | AP-2 | Grep scanner. Forbidden in `examples/`: `\bLibCall\b`, `\bFFICall\b`, `\bFFIOpen\b`, `\bFFILookup\b`. Comment-only ignored. |
+| `R3: examples_no_dylib_paths` | AP-3 | Grep scanner. Forbidden in `examples/`: dylib path patterns + known C symbol prefixes (`"SDL_`, `"gl[A-Z]`, `"ffi_`). Comment-only ignored. |
+| `R4: no_xfail_in_conformance` | AP-4 | Grep scanner. Forbidden in `tests/conformance/`: `pytest.mark.xfail`, `pytest.mark.skip`, `pytest.skip`. |
+| `R5: no_ignore_in_rust_tests` | AP-4 | Grep scanner. Forbidden in `runtime/tests/`: `#[ignore]`. |
+| `R6: examples_have_sat_claims` | AP-8 | AST test (Rust). Load each `examples/test_*.ev`, count claims whose name starts with `sat_`/`unsat_`. Fail if zero. |
+| `R7: examples_have_fsm_claim` | AP-9 | AST test (Rust). Load each `examples/test_*.ev`, look for at least one claim with FSM-shape Membership items. Fail if zero. |
+| `R8: examples_in_expectations_table` | AP-10 | AST test (Rust). Read EXPECTATIONS rows from `runtime/tests/demos.rs`, list `examples/test_*.ev`. Set-difference. Allow opt-out via `-- interactive` header tag. |
+| `R9: stdlib_module_has_after_variants` | AP-7 | AST test (Rust). Walk `stdlib/modules/<lib>/*.ev`. For each claim with shape `(handle ∈ Int, ..., out ∈ Effect)`, verify a sibling `<name>_after(prior_idx ∈ Int, ..., out ∈ Effect)` exists. Fail with the missing list. (May warn-only initially.) |
+| `R10: bridge_files_one_concern_each` | AP-11 | Grep scanner. Each file under `runtime/src/event_sources/` declares exactly one `pub struct *Source`. Files declaring more than one fail. |
+| `R11: bridge_registered_in_fti` | AP-1 + AP-11 | AST test (Rust). For each `pub struct *Source` declared under `runtime/src/event_sources/`, verify `runtime/src/fti.rs::INSTALLERS` references it via the matching install fn. |
+| `R12: stdlib_core_doesnt_libcall` | (preventive) | Grep scanner. `LibCall`/`FFICall` allowed only under `stdlib/modules/`. Files at top of `stdlib/` and under `stdlib/passes/` must not contain them. |
+
+Two anti-patterns (AP-5, AP-6, AP-12) are review-only — too hard to
+mechanize without high false-positive rate. Documenting them in this
+list at least gives reviewers a checklist.
+
+## Reorganization implied by the taxonomy
+
+To make the rules express-able cleanly:
+
+### 1. Split `runtime/src/event_sources.rs` into `event_sources/`
 
 ```
 runtime/src/event_sources/
-  mod.rs                  EventSource trait, SchedulerEvent enum,
-                          WriteQueue helpers (the only generic stuff)
-  frame_timer.rs          FrameTimer — periodic ticks
-  sigint.rs               SigintSource — Ctrl-C handler
-  stdin.rs                StdinSource — line reader
-  file_reader.rs          FileLineReader, FileWatcherSource — fs watching
+  mod.rs                  EventSource trait, SchedulerEvent, WriteQueue
+  frame_timer.rs          FrameTimer
+  sigint.rs               SigintSource
+  stdin.rs                StdinSource
+  file_reader.rs          FileLineReader, FileWatcherSource
   wall_clock.rs           WallClockSource
-  shell.rs                OneShotShellSource — synchronous shell exec
-  sdl_window.rs           SdlWindowSource (window + GL context + VAO + viewport)
-  gl_program.rs           GlProgramSource (shader compile + link)
+  shell.rs                OneShotShellSource
+  sdl_window.rs           SdlWindowSource
+  gl_program.rs           GlProgramSource
 ```
 
-Each file owns one bridge. Adding a new bridge = new file under
-`event_sources/`, new entry in `fti.rs::INSTALLERS`. The linter
-enforces: nothing else under `runtime/src/` may contain
-library-specific symbols.
+R10 + R11 become enforceable. New bridges = new file + new
+`INSTALLERS` row.
 
 ### 2. Tier `stdlib/`
 
-Today `stdlib/` mixes two distinct categories:
-
-| Category | What | Files today |
-|---|---|---|
-| **Language core** | Types every Evident program transitively depends on; passes the Rust binary loads | `runtime.ev`, `ast.ev`, `passes/*.ev` |
-| **Library wrappers** | FFI to specific C libraries | `posix.ev`, `sdl/*.ev`, `shader/*.ev` |
-
-Split top-level:
-
 ```
-stdlib/                   Language core. Every program transitively
-                          imports stdlib/runtime.ev.
-  runtime.ev              Effect, Result, ArgList, FTI types
-  ast.ev                  AST representation (used by self-hosted
-                          passes that the Rust binary runs)
-  passes/                 Self-hosted compiler passes loaded by
-                          `evident infer-types`, `desugar`, `lint`
+stdlib/                   Core. Mandatory or runtime-loaded.
+  runtime.ev              Core types
+  ast.ev                  AST mirror
+  passes/                 Self-hosted passes
 
-modules/                  Per-library wrappers. Opt-in: a program
-                          imports only what it needs.
-  posix/posix.ev          libc (was stdlib/posix.ev)
-  sdl/                    SDL2 wrappers (was stdlib/sdl/)
-    window.ev
-    render.ev
-    gl.ev
-  shader/program.ev       OpenGL shader (was stdlib/shader/program.ev)
+stdlib/modules/           Per-library wrappers. Opt-in.
+  posix/posix.ev
+  sdl/window.ev
+  sdl/render.ev
+  sdl/gl.ev
+  shader/program.ev
 ```
 
-Renaming captures real semantic difference: `stdlib/runtime.ev` is
-mandatory for any FSM program; `modules/sdl/window.ev` is only there
-if you want a window.
+(Goes under `stdlib/modules/`, not a new top-level `modules/` —
+preserves the `import "stdlib/..."` convention. Each library lives
+in its own directory even if it's one file, since FFI wrappers
+tend to grow.)
 
-(Other names considered: `bindings/`, `wrappers/`, `plugins/`. Going
-with `modules/` because it matches what users in other ecosystems —
-Python, Node, Rust — would expect.)
+R2, R3, R9, R12 become checkable: `examples/` may not contain raw
+FFI; `stdlib/modules/<lib>/` is where it lives; `stdlib/` core
+must not contain it.
 
-### 3. No other moves
+## What this doc doesn't try to enforce
 
-`examples/`, `tests/conformance/`, `tests/lang_tests/`, `runtime/`,
-`docs/` all stay as-is. They were just sorted out in the previous
-restructure.
+  * **Naming style of internal Rust functions / variables.** `cargo
+    clippy` covers it.
+  * **Code formatting.** `cargo fmt`.
+  * **Comment style.** AP-12 documents the principle; mechanizing
+    is too noisy.
+  * **Test coverage percentages.** We don't have coverage tooling;
+    AP-10 catches the demo-coverage case which is what actually
+    matters.
+  * **Operator precedence footguns.** CLAUDE.md documents these
+    (`=` vs comparisons, `⇒` vs `∧`). Could lint via AST later
+    once we have a few real examples.
+  * **Comment density / docstring presence.** Reasonable judgment.
 
-## Per-directory rules
+## Process
 
-Each row lists what MUST be there, what MAY be there, what MUST NOT,
-and the lint-check pattern.
+If we agree on this:
 
-### `runtime/src/{ast,lexer,parser,translate,runtime,pretty,effect_loop,effect_dispatch,ffi,subscriptions,fti}.rs` — L0 core
+  1. Add to this doc any anti-patterns I missed from earlier sessions
+     (the AP list is the load-bearing part — every rule traces to
+     a real mistake).
+  2. Decide naming: `stdlib/modules/` vs `modules/` vs `bindings/`.
+  3. Do the rearrangement (one PR per move).
+  4. Implement R1-R5 (grep scanners) as a Phase 0 in `test.sh`.
+  5. Implement R6-R11 (AST tests) under `runtime/tests/lints.rs`.
+  6. Add the rule list to CLAUDE.md so agents see it without
+     reading this whole doc.
 
-| | |
-|---|---|
-| **Purpose** | Language and runtime infrastructure. Generic, library-agnostic. |
-| **MUST** | Compile and pass tests if every L1 file (event_sources/*) were deleted, modulo trivial registry-table changes. |
-| **MAY** | Reference L1 modules by name in the FTI registry table (`fti.rs`). |
-| **MUST NOT** | Contain identifiers matching `SDL`, `Sdl`, `Gl[A-Z]`, `Glsl`, `Audio`, `glClear`, `glProgram`, etc. — anything specific to a real C library. The exception: literal example strings inside doc comments are OK. |
-| **MUST NOT** | Contain `#[repr(C)]` structs that mirror a specific C library's struct layout. (Generic `#[repr(C)]` for libffi marshaling primitives is fine.) |
-| **MUST NOT** | Contain hardcoded dylib paths (`/opt/homebrew/`, `.dylib`, `.framework/`, etc.). |
-| **Lint** | grep-based file scanner, runs as part of `cargo test`. Fails on any of the patterns above appearing outside L1 paths. |
-
-### `runtime/src/event_sources/*.rs` — L1 bridges
-
-| | |
-|---|---|
-| **Purpose** | Per-library FTI bridge implementations. One file per bridge. |
-| **MUST** | Implement the `EventSource` trait. |
-| **MUST** | Be the ONLY place outside `commands/` that imports `libloading` or `libffi` directly for opening a specific C library. |
-| **MAY** | Contain library-specific symbols, `#[repr(C)]` structs, hardcoded dylib paths, OS-conditional code. |
-| **MAY NOT** | Reach into other L1 files unless going through a public trait method. (No `crate::event_sources::sdl_window::SdlWindowSource::__internal`.) |
-| **Naming** | One `pub struct <Library>Source` per file. File named after the resource (`sdl_window.rs`, `gl_program.rs`). |
-| **Lint** | (a) verify each file declares exactly one `pub struct *Source`; (b) verify each is registered in `fti.rs::INSTALLERS`; (c) verify imports stay within the layer. |
-
-### `runtime/src/fti.rs` — the registry
-
-| | |
-|---|---|
-| **Purpose** | Single dispatch table from Evident type name → install function. |
-| **MUST** | Be the only place that names L1 modules from L0. |
-| **MUST** | Mirror every entry in `INSTALLERS` with a `type` declaration in `stdlib/runtime.ev`. |
-| **Lint** | Cross-check: walk `INSTALLERS`, load `stdlib/runtime.ev`, verify each name is a declared type. (AST-based test, not grep.) |
-
-### `runtime/src/commands/*.rs` — CLI subcommands
-
-| | |
-|---|---|
-| **Purpose** | One file per CLI subcommand. |
-| **MUST** | Be the only place containing `cmd_*` entry points. |
-| **MAY** | Reference any layer below — they're the user-facing surface that wires everything. |
-| **Lint** | Each file matches `cmd_<command>.rs` shape (declares exactly one `pub fn cmd_<name>`). |
-
-### `runtime/tests/*.rs` — test harness
-
-| | |
-|---|---|
-| **Purpose** | Rust integration tests. |
-| **MUST** | Reference test fixtures via `../tests/lang_tests/` or `../examples/` paths only. |
-| **MUST NOT** | Embed Evident source as Rust string literals beyond ~20 lines (factor into a fixture file). |
-| **MAY** | Spawn the binary via `Command::new(env!("CARGO_BIN_EXE_evident"))`. |
-
-### `stdlib/` (post-tier) — language core
-
-| | |
-|---|---|
-| **Purpose** | Mandatory or near-mandatory Evident files. |
-| **MUST** | Live at top level of `stdlib/` OR under `stdlib/passes/`. |
-| **MAY** | Contain `LibCall` to libc/system functions ONLY if necessary for core runtime support (e.g. if any). |
-| **MUST NOT** | Contain library-specific imports beyond the core types. |
-| **Lint** | Whitelist: `stdlib/runtime.ev`, `stdlib/ast.ev`, `stdlib/passes/*.ev`. Anything else under `stdlib/` is a lint error (move to `modules/`). |
-
-### `modules/<name>/*.ev` — per-library wrappers
-
-| | |
-|---|---|
-| **Purpose** | FFI wrappers for one C library each. |
-| **MUST** | Live under `modules/<name>/` (a directory, even for one-file modules — leaves room for growth). |
-| **MAY** | Contain `LibCall`, `FFICall`, `FFIOpen`, `FFILookup`, hardcoded dylib paths. |
-| **MUST** | Be importable as `import "modules/<name>/<file>.ev"`. |
-| **MUST** | Have all top-level claims be `Effect`-builders (`out ∈ Effect` last param) — they don't define FSMs themselves; they build effects FSMs emit. |
-| **Naming** | Claims named `<verb>_<noun>` snake_case (`sdl_create_window`, `gl_clear_color`, `render_present_after`). |
-| **Lint** | (a) every file under `modules/` follows the directory rule; (b) no non-FFI files lurking under `modules/` (e.g. someone putting an FSM here); (c) claim-name regex check via grep. |
-
-### `examples/test_NN_<name>.ev` — worked examples + integration tests
-
-(Already documented in CLAUDE.md "Conventions for `examples/`". Below
-restates as enforceable rules.)
-
-| | |
-|---|---|
-| **Naming** | `test_NN_<name>.ev`, sequential N, lowercase + underscore name. |
-| **MUST** | Contain at least one FSM-shape claim (state pair + ResultList + EffectList). |
-| **MUST** | Contain at least one `claim sat_*` or `claim unsat_*` test. |
-| **MUST** | Have a row in `runtime/tests/demos.rs::EXPECTATIONS` (unless explicitly skipped — see "interactive only" tag below). |
-| **MUST NOT** | Contain `LibCall`, `FFICall`, `FFIOpen`, `FFILookup`, or any hardcoded dylib path. |
-| **MUST NOT** | Contain library symbol strings (`"SDL_PumpEvents"`, `"glClear"`, etc.) — those go in `modules/`. |
-| **MAY** | Be tagged `-- interactive` in the file's header to opt out of the EXPECTATIONS requirement (e.g. `test_15_signal` waits for SIGINT). |
-
-### `tests/lang_tests/*.ev` and `tests/lang_tests/multi_fsm/*.ev` — Rust regression fixtures
-
-| | |
-|---|---|
-| **Purpose** | Inputs to specific Rust integration tests. |
-| **Naming** | Numbered (`NN_<name>.ev`) under `multi_fsm/`; `test_<feature>.ev` at top level. |
-| **MAY** | Use any language feature, including ones we don't expose to demo writers (they're testing the runtime). |
-| **MUST** | Be referenced by a Rust test under `runtime/tests/`. |
-| **Lint** | Cross-check: every `.ev` under `tests/lang_tests/` appears in at least one `.rs` file under `runtime/tests/`. |
-
-### `tests/conformance/*.py` — black-box CLI conformance
-
-| | |
-|---|---|
-| **Purpose** | Spec the language behavior independent of implementation. |
-| **MAY** | Run subprocess invocations of `evident` only. |
-| **MUST NOT** | Import from `runtime/` (as Python) or any other implementation internal. |
-| **MUST NOT** | Contain `pytest.skip` / `xfail` markers. (If a test fails, fix it, file the bug in `examples/COUNTEREXAMPLES.md`, or delete it.) |
-
-## Lint implementation
-
-Two flavors:
-
-### A. Grep-style scanners — `tests/lints/*.sh`
-
-Fast, run from `test.sh` or as a `cargo test` driver. One script per
-rule. Each prints offending file:line and exits non-zero on failure.
-
-Examples:
-
-```bash
-# tests/lints/no_ffi_in_examples.sh
-violations=$(grep -rln 'LibCall\|FFICall\|FFIOpen\|FFILookup\|\.dylib\|\.framework/' examples/ 2>/dev/null)
-if [ -n "$violations" ]; then
-  echo "FAIL: examples/ contains FFI primitives or dylib paths:"
-  echo "$violations" | xargs -I{} grep -nE 'LibCall|FFICall|FFIOpen|FFILookup|\.dylib|\.framework/' {}
-  exit 1
-fi
-```
-
-```bash
-# tests/lints/no_library_specific_in_l0.sh
-# Forbidden: SDL, Gl<UPPER>, Glsl, Audio in any runtime/src/ file
-# OUTSIDE runtime/src/event_sources/ and runtime/src/commands/
-PATTERN='SDL[A-Z_]|Sdl[A-Z][a-zA-Z]|^[^/]*Gl[A-Z][a-zA-Z]|Glsl|^[^/]*Audio'
-violations=$(find runtime/src -name '*.rs' \
-  -not -path 'runtime/src/event_sources/*' \
-  -not -path 'runtime/src/commands/*' \
-  | xargs grep -lE "$PATTERN")
-...
-```
-
-Wired into `test.sh` as Phase 0 — they run before everything else
-because they're cheap (~50ms) and a layering violation should
-short-circuit the rest.
-
-### B. AST-based — `runtime/tests/lints.rs`
-
-Slower but precise. Uses the runtime's own parser/loader to walk
-Evident source ASTs. Used for rules grep can't express:
-
-  * **EXPECTATIONS coverage**: every `examples/test_*.ev` has a row in
-    `runtime/tests/demos.rs::EXPECTATIONS` OR is tagged interactive.
-  * **FTI registry coverage**: every name in `fti.rs::INSTALLERS` is a
-    declared type in `stdlib/runtime.ev`.
-  * **`examples/` shape**: each file declares ≥1 FSM-shape claim AND
-    ≥1 `sat_*`/`unsat_*` claim.
-  * **No L1 reach**: imports between L1 files only via the trait.
-
-Each rule is a `#[test] fn lint_*` in `runtime/tests/lints.rs`. Cargo
-test runs them as part of the standard suite. Failures are normal
-test failures with a clear message ("examples/test_42_foo.ev has no
-sat_*/unsat_* claim — required for L3 demos").
-
-### Wiring
-
-`test.sh` gains a Phase 0:
-
-```
-── Phase 0: lints ──
-✓ no_ffi_in_examples
-✓ no_library_specific_in_l0
-✓ examples_have_sat_claims
-... 12 lints passed
-```
-
-Phase 0 failures fail the run before any compilation happens.
-Iteration: `./test.sh --lints-only` for fast feedback while writing
-new code in a sensitive directory.
-
-## Examples of rules biting
-
-These would have caught real issues from the past few sessions:
-
-  * **SdlVertexBuf intrusion in `ast.rs`** — `no_library_specific_in_l0`
-    catches `SdlVertex`, `SdlVertexBuf` in `runtime/src/ast.rs`.
-  * **`LibCall` in `examples/test_16_sdl_red.ev` (initial draft)** —
-    `no_ffi_in_examples` catches it.
-  * **`/opt/homebrew/lib/libSDL2.dylib` in a demo file** —
-    `no_dylib_paths_in_examples` catches it.
-  * **An example missing inline `sat_*` claims** — `examples_have_sat_claims`
-    catches it.
-  * **A new `pub struct FooSource` in `event_sources.rs` not registered
-    in `fti.rs`** — `fti_registry_coverage` catches it.
-
-## What this doc does NOT enforce (and why)
-
-  * **Naming style of internal Rust functions.** `cargo clippy` covers
-    this. We don't reinvent it.
-  * **Code formatting.** `cargo fmt` covers it.
-  * **Comments / docstrings.** Reasonable judgment; the rules in
-    CLAUDE.md ("default to no comments; explain WHY when non-obvious")
-    are guidance, not lint-enforced.
-  * **Test coverage percentages.** Coverage tools catch real holes; the
-    `EXPECTATIONS` table catches *demo* coverage which is the part that
-    actually matters here.
-
-## Staging
-
-If we agree on this doc:
-
-  1. **Rearrange** (one PR per move): split `event_sources.rs` into
-     `event_sources/`; tier `stdlib/` into `stdlib/` + `modules/`. Each
-     of these is mechanical and breaks existing imports — fix the
-     imports, run `./test.sh`, commit.
-  2. **Implement Phase 0 lints** (one script per rule). Wire into
-     `test.sh`. Fix any violations the lints surface in current code.
-  3. **Implement AST-based lints** as `runtime/tests/lints.rs`.
-  4. **Add the rule list to CLAUDE.md** so agents see it in the
-     context window without having to read this doc fully.
-
-If we disagree on this doc, push back on the lines that don't fit and
-we'll revise before any rearrangement happens.
+If we disagree, push back on specific anti-patterns or rules; the
+doc is meant to be edited.
