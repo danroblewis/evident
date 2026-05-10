@@ -40,7 +40,7 @@ The other commands (`query`, `sample`, `execute`) run inference **by default**; 
 
 ## Runtime API surface (added for self-hosting)
 
-In `runtime-rust/src/runtime.rs`:
+In `runtime/src/runtime.rs`:
 
 ```rust
 // Encoder
@@ -64,7 +64,7 @@ query_with_nth_claim_body_only(claim, body_var, idx)           // skips Program 
 add_membership_to_claim(claim, var, type_name) → Result<bool>  // returns false if already declared
 ```
 
-In `runtime-rust/src/translate/encode_ast.rs`:
+In `runtime/src/translate/encode_ast.rs`:
 
 ```rust
 encode_program(&Program, ctx, enums) → Result<Datatype<'static>>
@@ -127,7 +127,7 @@ But to **migrate a Rust desugar to Evident**, the pass must produce a transforme
 The decoder shape:
 
 ```rust
-// In runtime-rust/src/translate/decode_ast.rs (new module):
+// In runtime/src/translate/decode_ast.rs (new module):
 pub fn decode_program(value: &Value, enums: &EnumRegistry) → Result<Program, DecodeError>
 pub fn decode_schema_decl(value: &Value, ...) → Result<SchemaDecl, _>
 pub fn decode_body_item(value: &Value, ...) → Result<BodyItem, _>
@@ -184,7 +184,7 @@ parser's job.
 transformation. Detect `BodyItem::Constraint(Expr::Identifier(name))`
 where `name` matches a known claim, treat as
 `BodyItem::Passthrough(name)`. Pure AST → AST rewrite, ~13 lines
-(was estimated ~40) in `runtime-rust/src/translate/inline.rs`.
+(was estimated ~40) in `runtime/src/translate/inline.rs`.
 
 ### Status (2026-05-09): plumbing shipped (commit `af016fe`)
 
@@ -193,7 +193,7 @@ What we built:
   * `stdlib/passes/desugar_passthrough.ev` — `is_passthrough_at_index`
     rule. Pinned-`target_idx` + body-only injection sidesteps the
     sample-with-body API gap.
-  * `runtime-rust/src/commands/desugar.rs` —
+  * `runtime/src/commands/desugar.rs` —
     `collect_passthrough_rewrites` (spins up an isolated runtime,
     iterates each body index per user claim, queries the rule,
     filters by known schemas) and `auto_apply_desugar` (mutates the
@@ -203,7 +203,7 @@ What we built:
     body-only path) and `replace_body_item_in_claim` (mirrors
     `add_membership_to_claim`'s dual-update of `self.schemas` and
     `self.program.schemas`).
-  * Integration tests in `runtime-rust/tests/desugar_passthrough.rs`
+  * Integration tests in `runtime/tests/desugar_passthrough.rs`
     proving the rewrite happens at the AST level + a negative case.
 
 What we deliberately did NOT do, and why:
@@ -276,14 +276,14 @@ What we considered but didn't do:
 |---|---|
 | `stdlib/ast.ev` | Canonical AST as Evident enums |
 | `stdlib/passes/*.ev` | All self-hosted compiler passes |
-| `runtime-rust/src/translate/encode_ast.rs` | Rust AST → Z3 Datatype value |
-| `runtime-rust/src/runtime.rs` | EvidentRuntime API including all the `query_with_program*` variants |
-| `runtime-rust/src/commands/infer_types.rs` | The inference pipeline (`collect_inferences`, `auto_apply_inferences`) |
-| `runtime-rust/src/commands/lint.rs` | The lint subcommand |
-| `runtime-rust/tests/encode_ast.rs` | 29 encoder tests |
-| `runtime-rust/tests/iter_pass.rs` | 16 iteration tests |
-| `runtime-rust/tests/propagation_pass.rs` | 8 propagation tests |
-| `runtime-rust/tests/self_hosted_pass.rs` | 24 plumbing tests |
+| `runtime/src/translate/encode_ast.rs` | Rust AST → Z3 Datatype value |
+| `runtime/src/runtime.rs` | EvidentRuntime API including all the `query_with_program*` variants |
+| `runtime/src/commands/infer_types.rs` | The inference pipeline (`collect_inferences`, `auto_apply_inferences`) |
+| `runtime/src/commands/lint.rs` | The lint subcommand |
+| `runtime/tests/encode_ast.rs` | 29 encoder tests |
+| `runtime/tests/iter_pass.rs` | 16 iteration tests |
+| `runtime/tests/propagation_pass.rs` | 8 propagation tests |
+| `runtime/tests/self_hosted_pass.rs` | 24 plumbing tests |
 | `programs/lang_tests/test_pass_*.ev` | Hand-built `.ev` conformance tests for each pass |
 | `programs/lang_tests/test_seq_of_enum.ev` | Stage 5 conformance |
 | `docs/design/self-hosting-compiler-passes.md` | Original vision doc |

@@ -3,7 +3,7 @@
 ## Goal
 
 Replace TAP / JUnit / JSON formatter functions in
-`runtime-rust/src/commands/test.rs` (~400 lines) with
+`runtime/src/commands/test.rs` (~400 lines) with
 `stdlib/testing/reporters/` Evident libraries.
 
 ## Prereqs
@@ -24,10 +24,10 @@ selects which reporter to invoke.
 
 ## Files touched
 
-- `runtime-rust/src/commands/test.rs` — delete the formatter functions,
+- `runtime/src/commands/test.rs` — delete the formatter functions,
   replace with calls to the Evident reporters.
 - `stdlib/testing/reporters/*.ev` (new)
-- `runtime-rust/src/ast.rs` — possibly a TestResult enum if not
+- `runtime/src/ast.rs` — possibly a TestResult enum if not
   already part of the AST.
 
 ## Acceptance

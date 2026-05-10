@@ -480,7 +480,7 @@ ALL FSMs are halted.
 
 Concrete behaviors that must validate the implementation. Each
 should be expressible as a `programs/lang_tests/multi_fsm/*.ev`
-file or a Rust integration test in `runtime-rust/tests/`.
+file or a Rust integration test in `runtime/tests/`.
 
 ### Detection
 

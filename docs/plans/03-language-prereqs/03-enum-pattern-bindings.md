@@ -12,7 +12,7 @@ match list
 
 ## Today's limitation
 
-`runtime-rust/src/translate/exprs.rs::translate_match_arms` rejects
+`runtime/src/translate/exprs.rs::translate_match_arms` rejects
 enum-typed bindings:
 
 ```rust
@@ -50,7 +50,7 @@ scrutinee's. Easy.
 
 ## Files touched
 
-- `runtime-rust/src/translate/exprs.rs::translate_match_arms`
+- `runtime/src/translate/exprs.rs::translate_match_arms`
 - Possibly threading `enums` through translate_* signatures
 
 ## Test it

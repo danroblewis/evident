@@ -1,3 +1,0 @@
-type Point
-    x ∈ Real
-    y ∈ Real

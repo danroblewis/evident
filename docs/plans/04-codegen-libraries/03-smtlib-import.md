@@ -23,8 +23,8 @@ it's a reasonable proving ground for "Evident can parse things."
 
 ## Files touched
 
-- `runtime-rust/src/smtlib.rs` — delete the import half
-- `runtime-rust/src/commands/import_smt2.rs` — call Evident library
+- `runtime/src/smtlib.rs` — delete the import half
+- `runtime/src/commands/import_smt2.rs` — call Evident library
 - `stdlib/smtlib/import.ev` (new)
 
 ## Acceptance

@@ -1,4 +1,0 @@
-claim sorted
-    T    ∈ Ordered
-    list ∈ List T
-    ∀ (a, b) ∈ each_consecutive list : a ≤ b

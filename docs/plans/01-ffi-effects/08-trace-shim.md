@@ -20,7 +20,7 @@ Phase 2.
 
 ### Recording mode
 
-Add to `runtime-rust/src/trace_runner.rs`:
+Add to `runtime/src/trace_runner.rs`:
 
 ```rust
 pub struct FFIRecording {
@@ -64,9 +64,9 @@ default replay; updating recordings is an explicit user action.
 
 ## Files touched
 
-- `runtime-rust/src/trace_runner.rs` — recording struct + serializer
-- `runtime-rust/src/effect_dispatch.rs` — optional shim mode
-- `runtime-rust/src/commands/test.rs` — `--record` flag
+- `runtime/src/trace_runner.rs` — recording struct + serializer
+- `runtime/src/effect_dispatch.rs` — optional shim mode
+- `runtime/src/commands/test.rs` — `--record` flag
 - A small test program with an FFI call + checked-in recording
 
 ## Test it

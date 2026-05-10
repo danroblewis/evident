@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the export half of `runtime-rust/src/smtlib.rs` (~500 lines)
+Replace the export half of `runtime/src/smtlib.rs` (~500 lines)
 with `stdlib/smtlib/export.ev`. Same shape as the GLSL transpiler:
 recursive AST walk producing a string.
 
@@ -22,8 +22,8 @@ transpiler instead of the Rust function.
 
 ## Files touched
 
-- `runtime-rust/src/smtlib.rs` — delete the export half
-- `runtime-rust/src/commands/export_smt2.rs` — call Evident library
+- `runtime/src/smtlib.rs` — delete the export half
+- `runtime/src/commands/export_smt2.rs` — call Evident library
 - `stdlib/smtlib/export.ev` (new)
 
 ## Acceptance

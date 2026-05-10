@@ -18,9 +18,9 @@ Strip them.
 
 ## Files touched
 
-- `runtime-rust/src/plugins/mod.rs` — delete
-- `runtime-rust/src/lib.rs` — drop `pub mod plugins;`
-- `runtime-rust/src/executor.rs` — remove plugin lifecycle hooks
+- `runtime/src/plugins/mod.rs` — delete
+- `runtime/src/lib.rs` — drop `pub mod plugins;`
+- `runtime/src/executor.rs` — remove plugin lifecycle hooks
   (start/before_step/after_step/stop dispatch loop), default_plugins
   registry, type-name-based auto-detection.
 

@@ -17,7 +17,7 @@ missed.
 
 ## Acceptance
 
-- [ ] `wc -l runtime-rust/src/**/*.rs` shows ≤ 11,000
+- [ ] `wc -l runtime/src/**/*.rs` shows ≤ 11,000
 - [ ] `cargo build --release` is warning-free
 - [ ] `cargo test` passes
 

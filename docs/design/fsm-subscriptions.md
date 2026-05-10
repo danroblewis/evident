@@ -332,7 +332,7 @@ Test results (delta mode):
     — `04_halt_cascade.ev` halts cleanly even though its variants
     are named `STDone`/`LTDone` (not exact `Done`/`Halt`), because
     halt is now no-FSM-scheduled, not name-based.
-  * New `runtime-rust/tests/scheduler_delta.rs::
+  * New `runtime/tests/scheduler_delta.rs::
     delta_mode_halts_cleanly_without_done_variant` proves halt
     works with no Done-style variant at all.
 
@@ -352,7 +352,7 @@ Stdin block-then-halt works without a new plugin abstraction:
   * Once it stops emitting, no inputs wake it → delta-mode halt
     fires next tick.
 
-Test: `runtime-rust/tests/scheduler_delta.rs::
+Test: `runtime/tests/scheduler_delta.rs::
 delta_mode_single_fsm_stdin_reader_halts_on_eof` — feeds two
 lines + EOF, asserts clean halt.
 
@@ -380,7 +380,7 @@ exit_code: Some(7) }.
 
 ### Phase 4 v3: async event sources (done — frame timer)
 
-`runtime-rust/src/event_sources.rs` defines an `EventSource` trait
+`runtime/src/event_sources.rs` defines an `EventSource` trait
 and a `FrameTimer` implementation. When the multi-FSM scheduler
 finds no FSM ready to tick, instead of halting immediately it
 checks whether any event source can wake it: if so, it blocks on

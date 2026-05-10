@@ -12,7 +12,7 @@ something behaves wrong.
 > Hostname / Timer FTI, SDL_Renderer, …) has a worked
 > `test_NN_<name>.ev`. Each demo is also its own integration
 > test (inline `sat_*` / `unsat_*` claims plus the Rust driver
-> in `runtime-rust/tests/demos.rs`). When adding to that
+> in `runtime/tests/demos.rs`). When adding to that
 > directory, match the existing shape — don't invent your own.
 >
 > **Two conventions for files we add to `programs/demos/`**

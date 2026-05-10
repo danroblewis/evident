@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace `runtime-rust/src/plugins/shader.rs` (443 lines) — the GL
+Replace `runtime/src/plugins/shader.rs` (443 lines) — the GL
 3.3 shader compilation/binding/render loop — with `stdlib/shader/`
 that calls libGL via FFI.
 
@@ -26,8 +26,8 @@ prerequisites.
 
 ## Files touched
 
-- `runtime-rust/src/plugins/shader.rs` — delete
-- `runtime-rust/Cargo.toml` — drop `gl` (already dropped if 2.2 took it)
+- `runtime/src/plugins/shader.rs` — delete
+- `runtime/Cargo.toml` — drop `gl` (already dropped if 2.2 took it)
 - `stdlib/shader/*.ev` (new)
 - mario_shader migrated
 

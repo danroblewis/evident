@@ -130,13 +130,13 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
     all consistently pass). One test (request_response) skips
     under legacy mode because its gating semantics need
     delta-driven state-feedback scheduling.
-  * **All multi-FSM lang tests** in `runtime-rust/tests/multi_fsm.rs`
+  * **All multi-FSM lang tests** in `runtime/tests/multi_fsm.rs`
     (subprocess-based for those that need real stdin/SIGINT).
-  * **Scheduler-specific tests** in `runtime-rust/tests/scheduler_delta.rs`:
+  * **Scheduler-specific tests** in `runtime/tests/scheduler_delta.rs`:
     multi-writer disjoint, multi-writer overlap rejection, payload-state,
     SIGINT, stdin conflict rejection, plugin auto-install, etc.
   * **Subscription inference tests** in
-    `runtime-rust/tests/subscriptions_demo.rs` — pin the read/write
+    `runtime/tests/subscriptions_demo.rs` — pin the read/write
     sets for the actual demo files.
 
 ## Design directions captured (no v1 implementation)
@@ -175,7 +175,7 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 
 Adding a new plugin (e.g. `FileWatcher`):
 
-  1. Define an `EventSource` impl in `runtime-rust/src/event_sources.rs`.
+  1. Define an `EventSource` impl in `runtime/src/event_sources.rs`.
      Background thread + write queue + `start()`/`stop()`/`drain_writes()`/`write_fields()`.
   2. Pick a reserved World field name; document.
   3. Wire auto-install into `effect_loop::run_with_ctx` —

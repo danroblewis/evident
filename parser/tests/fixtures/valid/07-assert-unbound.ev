@@ -1,2 +1,0 @@
-assert result ∈ Nat
-assert schedule ∈ Set Assignment

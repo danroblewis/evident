@@ -1,5 +1,0 @@
-schema reachable
-    edges ⊆ T × T
-    a     ∈ T
-    b     ∈ T
-    (a, b) ∈ edges ∨ ∃ c ∈ T : (a, c) ∈ edges, reachable edges c b

@@ -1,4 +1,0 @@
-schema sorted_ascii
-    T    in Ordered
-    list in List T
-    all (a, b) in each_consecutive list : a <= b

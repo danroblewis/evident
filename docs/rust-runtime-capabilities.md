@@ -2,7 +2,7 @@
 
 **A reverse-engineered reference, derived purely from the Rust source.**
 
-Generated 2026-05-08 from `runtime-rust/src/` (~14,500 LOC across 30 files).
+Generated 2026-05-08 from `runtime/src/` (~14,500 LOC across 30 files).
 File:line citations point into that tree. No spec files were consulted; if a
 feature isn't here, the Rust runtime doesn't have it (or it isn't reachable
 from any code path we found).
@@ -1081,7 +1081,7 @@ Catalogued from in-source TODOs, FIXMEs, and "not yet supported" branches:
 
 ## 17. File index
 
-For verifying any claim above, here's where to look in `runtime-rust/src/`:
+For verifying any claim above, here's where to look in `runtime/src/`:
 
 | Topic                            | File                                  |
 |----------------------------------|---------------------------------------|

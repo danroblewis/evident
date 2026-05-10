@@ -55,10 +55,10 @@ Two test runners cover both halves:
 
   * `evident test programs/demos/` — discovers `test_*.ev`
     files, runs every `sat_*` / `unsat_*` claim.
-  * `cargo test --test demos` (in `runtime-rust/`) — runs
+  * `cargo test --test demos` (in `runtime/`) — runs
     each demo end-to-end via the binary, asserts on exit
     code and stdout substring. The `EXPECTATIONS` table in
-    `runtime-rust/tests/demos.rs` is the contract.
+    `runtime/tests/demos.rs` is the contract.
 
 When adding a demo: drop the file in `programs/demos/`, add a
 row to `EXPECTATIONS`. Both runners stay green.
@@ -100,53 +100,52 @@ bar for the canonical test set.)
 
 ## Language Definitions
 
+The Rust runtime under `runtime/` is the only implementation. The
+language is defined by the lexer + parser + AST + translator that
+ship with it.
+
 | Thing | Where defined |
 |---|---|
-| Grammar (authoritative) | `parser/src/grammar.lark` |
-| Unicode normalizer (∈→`__IN__` etc.) | `parser/src/normalizer.py` |
-| AST node types | `parser/src/ast.py` |
-| Lark → AST transformer | `parser/src/transformer.py` |
-| Language spec (prose) | `spec/` (00-overview through 09-stdlib) |
-| Design docs | `language-design.md`, `vision.md`, `models-not-programs.md` |
-| Examples | `examples/` |
+| Lexer (Unicode operators → tokens) | `runtime/src/lexer.rs` |
+| Parser (recursive-descent) | `runtime/src/parser.rs` |
+| AST node types | `runtime/src/ast.rs` |
+| AST → Z3 translator | `runtime/src/translate/` |
+| Effect dispatch | `runtime/src/effect_dispatch.rs` |
+| Multi-FSM scheduler | `runtime/src/effect_loop.rs` |
+| FTI bridges | `runtime/src/event_sources.rs`, `runtime/src/fti.rs` |
+| Stdlib (Evident) | `stdlib/` |
+| Design docs | `docs/design/` |
+| Worked examples + integration tests | `programs/demos/` |
 
 ## Runtime Architecture
 
-The runtime is a pipeline.  Each stage is a separate file under `runtime/src/`:
+The runtime is a pipeline. Each stage is a separate module under
+`runtime/src/`:
 
 ```
 source text
-  → normalizer.py        Unicode symbols → __TOKEN__ keywords
-  → grammar.lark         Lark Earley parser
-  → transformer.py       Lark tree → AST (ast.py nodes)
-  → sorts.py             SortRegistry: maps type names to Z3 sorts
-  → instantiate.py       Creates Z3 constants for schema variables;
-                         expands sub-schema fields (task.duration, …)
-  → translate.py         AST expressions/constraints → Z3 expressions
-  → evaluate.py          EvidentSolver: runs the Z3 Solver, extracts model
-  → runtime.py           EvidentRuntime: top-level API (load_source, query)
+  → lexer.rs              Unicode operators + word-keywords → tokens
+  → parser.rs             Recursive-descent parser → AST (ast.rs)
+  → translate/            AST → Z3 sorts + constraints; per-claim inline
+  → runtime.rs            EvidentRuntime: top-level API (load_file, query)
+  → effect_loop.rs        Multi-FSM scheduler (the executor)
+  → effect_dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
+  → event_sources.rs      FTI bridge implementations (one struct per
+                          typed C resource)
+  → fti.rs                FTI registry: type-name → install fn
 ```
 
 Supporting modules:
-- `env.py` — immutable variable environment (name → Z3 expr)
-- `quantifiers.py` — ∀ / ∃ constraint translation
-- `compose.py` — names-match schema composition
-- `evidence.py` — derivation trees returned from queries
-- `sets.py` — set/array constraint translation
-- `sorts.py` — Z3 sort registry; also owns enum variant name → constructor map
-- `executor.py` — constraint-automaton step loop (`run()` and `step_line()`)
-- `plugin.py` + `plugins/` — I/O plugins (Stdin/Stdout, batch, SDL); each plugin
-  declares which type names it handles, the executor activates the matching ones
-- `fixedpoint.py` — forward implication rules (A, B ⇒ C) via Z3 Fixedpoint
-- `ast_types.py` — re-exports parser AST so runtime shares the same class objects
-  (critical: isinstance checks break if two separate module instances exist)
+- `subscriptions.rs` — static read/write-set inference per claim
+- `ffi.rs` — libffi marshaling, handle registry
+- `pretty.rs` — AST printer for diagnostics
+- `commands/` — per-CLI-subcommand entry points
 
-## Multi-FSM Runtime (Rust)
+## Multi-FSM Runtime
 
-The Rust runtime in `runtime-rust/` is the production target (Python is the
-reference). For programs run via `evident effect-run`, the multi-FSM
-scheduler in `runtime-rust/src/effect_loop.rs` runs each top-level claim
-matching the FSM shape (state pair + EffectList + ResultList) as an
+For programs run via `evident effect-run`, the multi-FSM scheduler
+in `runtime/src/effect_loop.rs` runs each top-level claim matching
+the FSM shape (state pair + EffectList + ResultList) as an
 independent FSM.
 
 **Scheduler: subscription-driven (default).** An FSM ticks only when one of
@@ -197,7 +196,7 @@ There are TWO ways an FSM subscribes to async events:
 
 If NO FSM declares any subscription, falls back to coarse wake for
 back-compat. When all sources go dead (channel returns Err), the
-scheduler halts cleanly. See `runtime-rust/src/event_sources.rs` for
+scheduler halts cleanly. See `runtime/src/event_sources.rs` for
 the `EventSource` trait — adding a new source is implementing the
 trait + wiring it into `run_with_ctx`.
 

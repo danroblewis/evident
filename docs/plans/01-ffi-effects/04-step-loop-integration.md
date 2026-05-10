@@ -17,7 +17,7 @@ possible.
 
 ## What to build
 
-Modify `runtime-rust/src/executor.rs`:
+Modify `runtime/src/executor.rs`:
 
 1. After `mark_system_loads_complete`, detect whether the user's
    `main` claim declares `effects ∈ Seq(Effect)` and `last_results ∈
@@ -44,13 +44,13 @@ Modify `runtime-rust/src/executor.rs`:
 
 ## Files touched
 
-- `runtime-rust/src/executor.rs` — new step-loop path
-- `runtime-rust/src/translate/encode_ast.rs` — `encode_effect_result` and `encode_effect_result_list`
-- `runtime-rust/src/runtime.rs` — possibly a new `step_with_effects` API
+- `runtime/src/executor.rs` — new step-loop path
+- `runtime/src/translate/encode_ast.rs` — `encode_effect_result` and `encode_effect_result_list`
+- `runtime/src/runtime.rs` — possibly a new `step_with_effects` API
 
 ## Test it
 
-`runtime-rust/tests/effects.rs`:
+`runtime/tests/effects.rs`:
 
 - A program that calls `Println("hello")` once then sets `state.done`.
   Verify stdout has "hello\n" and the executor halts after one step.

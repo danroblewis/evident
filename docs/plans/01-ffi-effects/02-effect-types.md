@@ -80,10 +80,10 @@ dispatch them. So the same shapes need:
   can `match effect { ... }`).
 - A Rust enum `Result` (or `EffectResult` to avoid clashing with
   `std::result::Result`) for the outcomes.
-- A small decoder in `runtime-rust/src/translate/decode_ast.rs` that
+- A small decoder in `runtime/src/translate/decode_ast.rs` that
   reads the Z3 datatype value into the Rust enum.
 
-Add to `runtime-rust/src/ast.rs` (or a new `runtime-rust/src/effect.rs`
+Add to `runtime/src/ast.rs` (or a new `runtime/src/effect.rs`
 if `ast.rs` is getting crowded — `ast.rs` is 350 lines, fine to add
 ~50 more):
 
@@ -140,13 +140,13 @@ when the dispatcher runs in Phase 1.3.)
 ## Files touched
 
 - `stdlib/runtime.ev` (new)
-- `runtime-rust/src/ast.rs` (or new `effect.rs`)
-- `runtime-rust/src/lib.rs` (export new module if separate file)
-- `runtime-rust/src/translate/decode_ast.rs`
+- `runtime/src/ast.rs` (or new `effect.rs`)
+- `runtime/src/lib.rs` (export new module if separate file)
+- `runtime/src/translate/decode_ast.rs`
 
 ## Test it
 
-- Add round-trip tests in `runtime-rust/tests/roundtrip_ast.rs` for
+- Add round-trip tests in `runtime/tests/roundtrip_ast.rs` for
   Effect / FfiArg encode + decode (encoder added later — for now,
   hand-construct a Z3 datatype value matching `Println("hi")` and
   verify decode produces the right Rust enum).

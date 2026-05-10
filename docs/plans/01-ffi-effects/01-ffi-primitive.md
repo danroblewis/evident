@@ -1,7 +1,7 @@
 # Phase 1.1: FFI primitive ✅ DONE (commit `3e077ba`)
 
 The runtime's `dlopen` + `dlsym` + libffi-call wrapper. Lives in
-`runtime-rust/src/ffi.rs`.
+`runtime/src/ffi.rs`.
 
 Validates end-to-end with libc round-trips: `getpid`, `strlen`,
 `abs`. Signature parser catches type mismatches before any unsafe

@@ -1,3 +1,0 @@
-assert x = 5
-assert name = "Alice"
-assert tasks = { task_a, task_b }

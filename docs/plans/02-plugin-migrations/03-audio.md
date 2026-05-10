@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace `runtime-rust/src/plugins/audio.rs` (228 lines) with
+Replace `runtime/src/plugins/audio.rs` (228 lines) with
 `stdlib/audio/` — Evident wrappers around SDL_audio (or PortAudio
 later if cleaner).
 
@@ -19,7 +19,7 @@ later if cleaner).
 
 ## Files touched
 
-- `runtime-rust/src/plugins/audio.rs` — delete
+- `runtime/src/plugins/audio.rs` — delete
 - `stdlib/audio/*.ev` (new)
 - Demo files migrated
 

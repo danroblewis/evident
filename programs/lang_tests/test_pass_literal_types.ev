@@ -6,7 +6,7 @@
 --     evident test programs/lang_tests/test_pass_literal_types.ev
 --
 -- These complement the Rust integration tests in
--- runtime-rust/tests/self_hosted_pass.rs by testing the pass rules
+-- runtime/tests/self_hosted_pass.rs by testing the pass rules
 -- in pure Evident, without depending on the encoder being correct.
 -- A regression in the pass file shows up here independently of any
 -- Rust-side bugs.

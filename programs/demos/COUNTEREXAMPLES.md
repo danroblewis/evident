@@ -253,7 +253,7 @@ Every demo ships in green:
 | 17 | sdl_triangle | SDL_RenderGeometry triangle (everything in one Seq on tick 0) |
 
 Plus inline `sat_*` / `unsat_*` static tests and the Rust
-driver in `runtime-rust/tests/demos.rs`.
+driver in `runtime/tests/demos.rs`.
 
 ---
 

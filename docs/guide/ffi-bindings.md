@@ -17,7 +17,7 @@ and the issue/await pattern.
 >     and letting the bridge own the lifecycle.
 >
 > Raw FFI lives in `stdlib/` and in Rust-side FTI bridges
-> (`runtime-rust/src/event_sources.rs`, `runtime-rust/src/fti.rs`).
+> (`runtime/src/event_sources.rs`, `runtime/src/fti.rs`).
 > If a demo needs a C function that no stdlib helper covers,
 > the fix is to add the helper to stdlib first, then call it
 > from the demo. Hardcoded dylib paths like

@@ -17,7 +17,7 @@ in isolation.
 
 ## What to build
 
-Add `runtime-rust/src/effect_dispatch.rs`:
+Add `runtime/src/effect_dispatch.rs`:
 
 ```rust
 use crate::ast::{Effect, EffectResult, FfiArg};
@@ -72,8 +72,8 @@ pub fn dispatch_all(ctx: &mut DispatchContext, effects: &[Effect]) -> Vec<Effect
 
 ## Files touched
 
-- `runtime-rust/src/effect_dispatch.rs` (new)
-- `runtime-rust/src/lib.rs` — export module
+- `runtime/src/effect_dispatch.rs` (new)
+- `runtime/src/lib.rs` — export module
 
 ## Test it
 

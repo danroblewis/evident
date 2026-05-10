@@ -6,7 +6,7 @@
 -- value and produce another Program value (or a list of types per
 -- variable, or an error report, or whatever the pass yields).
 --
--- The shape mirrors runtime-rust/src/ast.rs. Three accommodations for
+-- The shape mirrors runtime/src/ast.rs. Three accommodations for
 -- the v0.1 enum capabilities:
 --
 --   1. `Vec<T>` becomes a recursive list enum: `enum FooList = FLNil

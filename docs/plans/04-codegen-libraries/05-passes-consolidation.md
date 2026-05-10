@@ -28,8 +28,8 @@ Estimated drop: ~300 Rust lines moved to ~400 Evident lines.
 
 ## Files touched
 
-- `runtime-rust/src/commands/infer_types.rs` — slimmed
-- `runtime-rust/src/commands/desugar.rs` — slimmed
+- `runtime/src/commands/infer_types.rs` — slimmed
+- `runtime/src/commands/desugar.rs` — slimmed
 - `stdlib/passes/*.ev` — extended
 
 ## Acceptance

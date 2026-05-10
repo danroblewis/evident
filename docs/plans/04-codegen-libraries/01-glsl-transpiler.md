@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace `runtime-rust/src/glsl.rs` (1,007 lines, Evident shader AST →
+Replace `runtime/src/glsl.rs` (1,007 lines, Evident shader AST →
 GLSL string) with `stdlib/glsl/transpile.ev` — pure Evident.
 
 ## Prereqs
@@ -38,8 +38,8 @@ claim emit_expr(e ∈ Expr, out ∈ String)
 
 ## Files touched
 
-- `runtime-rust/src/glsl.rs` — DELETE
-- `runtime-rust/src/lib.rs` — drop `pub mod glsl;`
+- `runtime/src/glsl.rs` — DELETE
+- `runtime/src/lib.rs` — drop `pub mod glsl;`
 - Wherever the runtime calls into glsl::transpile — replace with
   loading + querying the Evident transpiler claim
 - `stdlib/glsl/*.ev` (new)

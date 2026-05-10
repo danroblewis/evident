@@ -1,3 +1,0 @@
-schema Task
-    id ∈ Nat
-  duration ∈ Nat

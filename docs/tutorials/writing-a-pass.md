@@ -123,7 +123,7 @@ Two integration points:
 
 ### Adding to `evident infer-types`
 
-Edit `runtime-rust/src/commands/infer_types.rs`:
+Edit `runtime/src/commands/infer_types.rs`:
 
 ```rust
 const PROGRAM_RULES: &[&str] = &[
@@ -145,9 +145,9 @@ rule via the existing `render_bindings` + `label_for` dispatch.
 
 For passes that don't fit the inference workflow (lints,
 optimizations, code transformers), write a new
-`runtime-rust/src/commands/<your>.rs` modeled on
-`commands/lint.rs`. Wire it into `runtime-rust/src/commands.rs`
-and `runtime-rust/src/main.rs`'s dispatch.
+`runtime/src/commands/<your>.rs` modeled on
+`commands/lint.rs`. Wire it into `runtime/src/commands.rs`
+and `runtime/src/main.rs`'s dispatch.
 
 Define your own exit-code conventions. Existing precedent:
 
@@ -199,7 +199,7 @@ expression.
 Add a CLI runner:
 
 ```rust
-// runtime-rust/src/commands/lint_undeclared.rs (sketch)
+// runtime/src/commands/lint_undeclared.rs (sketch)
 const STDLIB_AST: &str = "stdlib/ast.ev";
 const PASS:       &str = "stdlib/passes/lint_undeclared.ev";
 
@@ -261,7 +261,7 @@ encoder. A regression in the pass file fails here independently.
 
 ### Rust integration
 
-Under `runtime-rust/tests/<pass>_pass.rs`. Load the user source
+Under `runtime/tests/<pass>_pass.rs`. Load the user source
 as a real program string, call the runtime API, check bindings:
 
 ```rust
@@ -319,10 +319,10 @@ harder to make selective.
 | `stdlib/passes/propagation.ev` | Cross-body-item `=` propagation (Stage 9) |
 | `stdlib/passes/consistency.ev` | Type-mismatch detection (Stage 10) |
 | `stdlib/passes/lint_duplicate_decls.ev` | Duplicate-declaration lint (Stage 11) |
-| `runtime-rust/src/translate/encode_ast.rs` | Rust → Z3 datatype encoder |
-| `runtime-rust/src/runtime.rs` | `EvidentRuntime` API |
-| `runtime-rust/src/commands/infer_types.rs` | `evident infer-types` CLI |
-| `runtime-rust/src/commands/lint.rs` | `evident lint` CLI |
+| `runtime/src/translate/encode_ast.rs` | Rust → Z3 datatype encoder |
+| `runtime/src/runtime.rs` | `EvidentRuntime` API |
+| `runtime/src/commands/infer_types.rs` | `evident infer-types` CLI |
+| `runtime/src/commands/lint.rs` | `evident lint` CLI |
 
 For deeper background, see
 [`docs/design/self-hosting-compiler-passes.md`](../design/self-hosting-compiler-passes.md).

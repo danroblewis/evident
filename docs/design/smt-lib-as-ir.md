@@ -2,7 +2,7 @@
 
 ## The Framing
 
-Evident sits at a specific point in the constraint-language landscape: a source language that compiles to a constraint system, hands it to Z3, and uses the model. The "constraint system" we hand Z3 today is a Rust in-memory representation built by `runtime-rust/src/translate/`. Each translator call produces fresh Z3 expressions; the constraint system never escapes the process.
+Evident sits at a specific point in the constraint-language landscape: a source language that compiles to a constraint system, hands it to Z3, and uses the model. The "constraint system" we hand Z3 today is a Rust in-memory representation built by `runtime/src/translate/`. Each translator call produces fresh Z3 expressions; the constraint system never escapes the process.
 
 That has worked, but it has a cost: every consumer that wants to see Evident's constraint system has to be linked into the same Rust binary. There is no on-disk artifact that says "here is the meaning of this Evident program in a portable form." Other tools — Z3 itself can't ingest our representation, CVC5 has never heard of us, the SMT competition's benchmark library can't run our examples through other solvers — are all walled off.
 
@@ -16,8 +16,8 @@ The Evident pipeline today, viewed as compiler stages:
 
 ```
 Evident source
-  → AST (parser/src/, runtime-rust/src/parser.rs)
-  → Z3 expression tree (runtime-rust/src/translate/)
+  → AST (parser/src/, runtime/src/parser.rs)
+  → Z3 expression tree (runtime/src/translate/)
   → in-memory Z3 solve / sample
 ```
 

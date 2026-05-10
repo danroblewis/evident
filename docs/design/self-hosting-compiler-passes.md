@@ -266,7 +266,7 @@ BinOp, Pins, Mapping, EnumDecl/Variant/Field, plus 8 list types).
 Every shape needed to express user programs.
 
 ### ✅ Stage 2 — Encoder + `dump-ast` CLI
-Shipped in `0d2aa90`. `runtime-rust/src/translate/encode_ast.rs`
+Shipped in `0d2aa90`. `runtime/src/translate/encode_ast.rs`
 walks a parsed `Program` and returns a Z3 Datatype value matching
 `stdlib/ast.ev`'s `Program` enum. `evident dump-ast <file>` prints
 the encoded form for inspection. The Stage 1 → Stage 3 bridge.

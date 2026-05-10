@@ -64,11 +64,11 @@ Could merge later; not a priority.)
 
 ## Files touched
 
-- `runtime-rust/src/effect_dispatch.rs`
+- `runtime/src/effect_dispatch.rs`
 
 ## Test it
 
-Add to `runtime-rust/tests/effects.rs`:
+Add to `runtime/tests/effects.rs`:
 
 - Construct an `Effect::FFIOpen("libSystem.dylib")`, dispatch it,
   verify the result is a non-zero `EffectResult::Handle`.

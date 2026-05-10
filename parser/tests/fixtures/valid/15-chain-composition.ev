@@ -1,4 +1,0 @@
-schema can_edit
-    user     ∈ User
-    resource ∈ Resource
-    user ∈ active_account · email_verified · editor · resource_in_org

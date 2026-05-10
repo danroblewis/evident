@@ -33,8 +33,8 @@ expensive. Limit it to ranges over auto-derivable lengths.
 
 ## Files touched
 
-- `runtime-rust/src/translate/preprocess.rs` — relax length-pinning
-- `runtime-rust/src/translate/exprs.rs` — symbolic-range quantifiers
+- `runtime/src/translate/preprocess.rs` — relax length-pinning
+- `runtime/src/translate/exprs.rs` — symbolic-range quantifiers
 - New tests for unbounded-output programs
 
 ## Test it

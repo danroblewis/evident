@@ -49,7 +49,7 @@ recommended; deviations should have a reason in the commit message.
 
 ## AST shape
 
-Add to `runtime-rust/src/ast.rs`:
+Add to `runtime/src/ast.rs`:
 
 ```rust
 pub enum Expr {
@@ -63,7 +63,7 @@ pub enum Expr {
 }
 ```
 
-## Lexer (`runtime-rust/src/lexer.rs`)
+## Lexer (`runtime/src/lexer.rs`)
 
 Add three new keywords:
 
@@ -83,7 +83,7 @@ pub enum Token {
 
 No new operators or symbols. Single-line implementation.
 
-## Parser (`runtime-rust/src/parser.rs`)
+## Parser (`runtime/src/parser.rs`)
 
 Add an `if` arm to `parse_atom` (or wherever the highest-precedence
 expression slot is). Two forms:
@@ -124,7 +124,7 @@ value branches with multiple statements, use sequencing or
 parens). **Recommendation: skip block form initially** — inline
 form covers 95% of use cases. Add block form if user asks.
 
-## Translator (`runtime-rust/src/translate/exprs.rs`)
+## Translator (`runtime/src/translate/exprs.rs`)
 
 The `IfThenElse` variant needs handling in **every** `translate_*`
 path because the branches can be any type:
@@ -229,7 +229,7 @@ running tests after each should pass.
 - Add `Expr::IfThenElse` arm to `translate_int`, `translate_bool`,
   `translate_str`, `translate_real`.
 - Each uses `cond.ite(&then_v, &else_v)`.
-- Add integration tests in `runtime-rust/tests/`: queries with
+- Add integration tests in `runtime/tests/`: queries with
   `result = if cond then a else b` for each scalar type.
 
 ### Step 5: Translator (enum/Datatype)

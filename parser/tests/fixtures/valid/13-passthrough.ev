@@ -1,3 +1,0 @@
-schema dag
-    ..graph
-    ∀ x ∈ nodes : ¬ reachable edges x x

@@ -11,7 +11,7 @@ first for the underlying model — this guide is the cookbook.
 > just multi-FSM with one FSM, since the multi-FSM scheduler
 > is the only execution path). Each demo ships with inline
 > `sat_*` / `unsat_*` static tests and an entry in
-> `runtime-rust/tests/demos.rs` for end-to-end coverage.
+> `runtime/tests/demos.rs` for end-to-end coverage.
 > When adding to that directory, copy the closest existing
 > demo's shape. Worked patterns there:
 >   * `test_09_two_fsms` — writer/reader sharing world

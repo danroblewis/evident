@@ -16,7 +16,7 @@ plugins/ files for them) is deleted. ~400 lines out.
 ## What to build
 
 1. Identify every program in `programs/`, `examples/`,
-   `runtime-rust/tests/`, `programs/lang_tests/` that uses Stdin/Stdout.
+   `runtime/tests/`, `programs/lang_tests/` that uses Stdin/Stdout.
    Migrate each to the effect-based shape.
 
 2. Write `stdlib/io.ev` — convenience claims wrapping common
@@ -30,8 +30,8 @@ plugins/ files for them) is deleted. ~400 lines out.
 
 ## Files touched
 
-- `runtime-rust/src/executor.rs` — delete StdinPlugin and friends
-- `runtime-rust/src/trace_runner.rs` — update send-step semantics
+- `runtime/src/executor.rs` — delete StdinPlugin and friends
+- `runtime/src/trace_runner.rs` — update send-step semantics
 - `stdlib/io.ev` (new) — high-level read/print wrappers
 - All affected programs (likely 5-10 files)
 

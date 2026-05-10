@@ -1,2 +1,0 @@
-define Task
-    id ∈ Nat

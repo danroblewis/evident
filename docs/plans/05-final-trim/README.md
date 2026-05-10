@@ -18,4 +18,4 @@ Each builds on the previous. Run in order, in one branch.
 
 ## Acceptance gate
 
-After Phase 5: `wc -l runtime-rust/src/**/*.rs` ≤ 11,000.
+After Phase 5: `wc -l runtime/src/**/*.rs` ≤ 11,000.

@@ -29,6 +29,6 @@ When a task's commit lands, append a row:
 | YYYY-MM-DD | <new LOC> | Phase X.Y | <commit hash> + brief note |
 ```
 
-LOC is `wc -l runtime-rust/src/**/*.rs | tail -1`. Don't forget that
+LOC is `wc -l runtime/src/**/*.rs | tail -1`. Don't forget that
 new files added in tests/ or stdlib/ don't count toward the Rust
-runtime size — only the runtime-rust/src/ tree.
+runtime size — only the runtime/src/ tree.

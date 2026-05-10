@@ -35,9 +35,9 @@ pattern.
 
 ## Files touched
 
-- `runtime-rust/src/translate/inline.rs` — split inline path: if the
+- `runtime/src/translate/inline.rs` — split inline path: if the
   claim recurses, emit a recursive Z3 function instead of inlining.
-- `runtime-rust/src/translate/datatypes.rs` — possibly extended for
+- `runtime/src/translate/datatypes.rs` — possibly extended for
   the new recursive-function machinery.
 - New tests for recursive walks.
 

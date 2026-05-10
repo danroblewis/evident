@@ -116,7 +116,7 @@ model so it can read level state directly through the passthrough.
 
 The structural-signature cache rebuild we already implemented (see
 [`runtime-and-io.md`](./runtime-and-io.md) and the
-`structural_signature` machinery in `runtime-rust/src/translate/preprocess.rs`)
+`structural_signature` machinery in `runtime/src/translate/preprocess.rs`)
 was for one program with changing structural givens — "did the
 unroll count change?" → "yes, rebuild the cache against new given".
 

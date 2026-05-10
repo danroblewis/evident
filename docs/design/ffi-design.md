@@ -227,7 +227,7 @@ know.
 | Step | Effort | What lands |
 |---|---|---|
 | 1. Add deps: `libloading`, `libffi` (or `dlopen2` + manual ffi) | 30m | `Cargo.toml`. |
-| 2. Write `runtime-rust/src/ffi.rs` with `LoadLibrary`/`LoadSymbol`/`Call` primitives | ~400 lines | Standalone, unit-tested. |
+| 2. Write `runtime/src/ffi.rs` with `LoadLibrary`/`LoadSymbol`/`Call` primitives | ~400 lines | Standalone, unit-tested. |
 | 3. Add `Effect` and `Result` types in AST (or use stdlib enums via existing infrastructure) | 1h | Just type definitions — no integration yet. |
 | 4. Stub `Effect` dispatch in executor: handle Print/Println/Exit only | ~100 lines | Validates the effect-loop shape without FFI. |
 | 5. Wire FFI effects (`FFIOpen`, `FFILookup`, `FFICall`, `CloseHandle`) into the dispatcher | ~150 lines | First end-to-end FFI call from Evident. |

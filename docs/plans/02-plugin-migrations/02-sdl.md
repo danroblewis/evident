@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the 556-line `runtime-rust/src/plugins/sdl.rs` with a pure
+Replace the 556-line `runtime/src/plugins/sdl.rs` with a pure
 Evident library (`stdlib/sdl/`) that calls libSDL2 via FFI.
 
 ## Prereqs
@@ -31,8 +31,8 @@ runtime to dlopen it.
 
 ## Files touched
 
-- `runtime-rust/src/plugins/sdl.rs` — delete
-- `runtime-rust/Cargo.toml` — drop sdl2, gl
+- `runtime/src/plugins/sdl.rs` — delete
+- `runtime/Cargo.toml` — drop sdl2, gl
 - `stdlib/sdl/*.ev` (new, multiple files)
 - `programs/sdl_demo/*.ev` — migrated
 
