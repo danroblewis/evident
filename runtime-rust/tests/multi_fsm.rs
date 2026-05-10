@@ -106,6 +106,38 @@ fn sibling_no_world() {
 // drops it before counter reaches the threshold.
 
 #[test]
+fn timer_lang_test_07_plugin_as_writer() {
+    // Timer demo: FrameTimer auto-installed (because World has
+    // tick_count: Int). Plugin writes incrementing tick counts.
+    // Counter FSM gates on world.tick_count > last_seen, emits
+    // "tick" each new tick, "five ticks observed" + Exit(0) at 5.
+    use std::process::{Command, Stdio};
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
+        .current_dir(repo_root)
+        .env_remove("EVIDENT_SCHEDULER")
+        .env("EVIDENT_TICK_MS", "20")
+        .args(["effect-run",
+               "programs/lang_tests/multi_fsm/07_timer_demo.ev",
+               "--max-steps", "100"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("spawn");
+    let out = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = out.lines().collect();
+    let tick_count = lines.iter().filter(|l| **l == "tick").count();
+    let done_count = lines.iter().filter(|l| **l == "five ticks observed").count();
+    assert!(tick_count >= 1 && tick_count <= 5,
+        "expected 1..=5 tick lines (timing-sensitive); got {tick_count}; out:\n{}", out);
+    assert_eq!(done_count, 1, "exactly one 'five ticks observed' line; out:\n{}", out);
+    assert!(output.status.success(),
+        "expected exit 0; got {:?}; stderr:\n{}",
+        output.status, String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn echo_lang_test_06_plugin_as_writer() {
     // The echo demo: StdinSource auto-installed (because World
     // has stdin_line + stdin_seq). Plugin reads piped stdin
