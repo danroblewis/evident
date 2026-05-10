@@ -271,15 +271,34 @@ pub fn run_with_ctx(
         // scheduler too — same subscription semantics for both.
         1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref()),
         _ => {
-            // v1 single-writer rule.
-            let writer_count = fsms.iter().filter(|s| s.is_writer()).count();
-            if writer_count > 1 {
-                let names: Vec<&str> = fsms.iter()
-                    .filter(|s| s.is_writer())
-                    .map(|s| s.claim_name.as_str()).collect();
-                return Err(format!(
-                    "multi-FSM v1: only one FSM may declare `world_next`; found {writer_count}: {names:?}",
-                ));
+            // Multi-writer rule (Phase 4 v3.7+ unified model):
+            // multiple writers OK as long as their write-sets are
+            // disjoint. A field can be written by at most one
+            // schema (just like a file descriptor has one owner).
+            // Read-only conflicts are fine — many readers per
+            // field. Computed from per-FSM access sets.
+            let writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
+                .filter(|f| f.is_writer())
+                .map(|f| {
+                    let aset = rt.get_schema(&f.claim_name)
+                        .map(|s| crate::subscriptions::world_access_sets(s))
+                        .unwrap_or_default();
+                    (f.claim_name.clone(), aset.writes)
+                })
+                .collect();
+            for i in 0..writer_sets.len() {
+                for j in (i + 1)..writer_sets.len() {
+                    let (a_name, a_writes) = &writer_sets[i];
+                    let (b_name, b_writes) = &writer_sets[j];
+                    let overlap: Vec<&String> = a_writes.intersection(b_writes).collect();
+                    if !overlap.is_empty() {
+                        return Err(format!(
+                            "multi-FSM: writers `{a_name}` and `{b_name}` both write \
+                             to world fields {overlap:?}. Each world field must have \
+                             at most one writer (single-owner rule)."
+                        ));
+                    }
+                }
             }
             run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref())
         }
@@ -523,15 +542,16 @@ fn run_multi_fsm(
     // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
     // every iteration" behavior with name/fixpoint-based halt.
     let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
-    let access_sets: Vec<crate::subscriptions::AccessSets> = if delta_mode {
-        fsms.iter().map(|fsm| {
-            rt.get_schema(&fsm.claim_name)
-              .map(|s| crate::subscriptions::world_access_sets(s))
-              .unwrap_or_default()
-        }).collect()
-    } else {
-        Vec::new()  // unused in legacy mode
-    };
+    // Access sets are needed in BOTH modes now: delta mode uses
+    // them for scheduling decisions; multi-writer support uses
+    // them to scope each writer's snapshot updates to its own
+    // write-set (so two writers with disjoint fields don't clobber
+    // each other).
+    let access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
+        rt.get_schema(&fsm.claim_name)
+          .map(|s| crate::subscriptions::world_access_sets(s))
+          .unwrap_or_default()
+    }).collect();
     // Per-FSM "world fields that changed since I was last scheduled."
     // When the FSM is scheduled, this is consumed (cleared). Writers
     // populate it on other FSMs after their solve. NOT used in legacy
@@ -680,16 +700,30 @@ fn run_multi_fsm(
             // FSMs whose read-set includes a changed field. The
             // writer is excluded from its own deltas — own writes
             // shouldn't self-schedule (Phase 1 discovery).
+            //
+            // Multi-writer (Phase 4 v3.7+): each writer MERGES its
+            // own world_next.X fields into the snapshot rather than
+            // clearing it. Writers' write-sets are disjoint
+            // (enforced at load), so this is well-defined. Within
+            // a tick, writers run in declaration order (writers
+            // first via detect_all_fsms ordering); a later writer's
+            // body sees the earlier writers' just-written fields.
             if fsm.is_writer() {
-                let prev_snapshot = world_snapshot.clone();
-                world_snapshot.clear();
                 let mut just_changed: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
+                // Only consume fields that this writer actually
+                // owns (its write-set). Z3 may produce world_next
+                // bindings for fields outside the write-set if the
+                // body references them; ignoring those keeps each
+                // writer scoped to its own fields.
+                let my_writes = &access_sets[idx].writes;
                 for (k, v) in r.bindings.iter() {
                     if let Some(field) = k.strip_prefix("world_next.") {
+                        let first = field.split('.').next().unwrap_or(field);
+                        if !my_writes.contains(first) { continue; }
                         let key = format!("world.{field}");
-                        if prev_snapshot.get(&key) != Some(v) {
-                            just_changed.insert(field.to_string());
+                        if world_snapshot.get(&key) != Some(v) {
+                            just_changed.insert(first.to_string());
                         }
                         world_snapshot.insert(key, v.clone());
                     }

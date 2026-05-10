@@ -361,6 +361,122 @@ fn delta_graceful_shutdown_lang_test_05() {
     assert!(r.steps < 20, "should halt before max_steps; got {} steps", r.steps);
 }
 
+/// Phase 4 v3.7: multi-writer with disjoint write-sets. Two
+/// writer FSMs each own a different field of world; they don't
+/// interfere with each other; a reader sees both writes.
+const MULTI_WRITER_DISJOINT_PROGRAM: &str = "\
+type World
+    a ∈ Int
+    b ∈ Int
+
+enum AState = Aing
+
+claim writer_a(world, world_next ∈ World,
+               state, state_next ∈ AState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Aing
+    world_next.a = world.a + 1
+    effects = ⟨⟩
+
+enum BState = Bing
+
+claim writer_b(world, world_next ∈ World,
+               state, state_next ∈ BState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Bing
+    world_next.b = world.b + 10
+    effects = ⟨⟩
+
+enum RState = R
+
+claim reader(world ∈ World,
+             state, state_next ∈ RState,
+             last_results ∈ ResultList,
+             effects ∈ EffectList)
+    state_next = R
+    -- when a hits 3 AND b hits 30, both writers ran 3 times
+    effects = ((world.a ≥ 3 ∧ world.b ≥ 30)
+               ? ⟨Println(\"both writers reached threshold\"), Exit(0)⟩
+               : ⟨⟩)
+";
+
+#[test]
+fn delta_mode_multi_writer_disjoint_fields() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");
+    std::env::set_var("EVIDENT_TICK_MS", "20");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(MULTI_WRITER_DISJOINT_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
+        .unwrap();
+    std::env::remove_var("EVIDENT_TICK_MS");
+
+    let bytes = captured.lock().unwrap().clone();
+    let out = String::from_utf8(bytes).unwrap();
+
+    assert!(r.halted_clean, "should halt cleanly via Exit; got {r:?}");
+    assert_eq!(r.exit_code, Some(0));
+    assert!(out.contains("both writers reached threshold"),
+        "reader should see both fields advance; out:\n{}", out);
+}
+
+/// Multi-writer overlap should be rejected at load time.
+const MULTI_WRITER_OVERLAP_PROGRAM: &str = "\
+type World
+    shared ∈ Int
+
+enum AState = Aing
+
+claim writer_a(world, world_next ∈ World,
+               state, state_next ∈ AState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Aing
+    world_next.shared = world.shared + 1
+    effects = ⟨⟩
+
+enum BState = Bing
+
+claim writer_b(world, world_next ∈ World,
+               state, state_next ∈ BState,
+               last_results ∈ ResultList,
+               effects ∈ EffectList)
+    state_next = Bing
+    world_next.shared = world.shared + 10
+    effects = ⟨⟩
+";
+
+#[test]
+fn multi_writer_overlap_is_rejected_at_load_time() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::remove_var("EVIDENT_SCHEDULER");
+
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_source(MULTI_WRITER_OVERLAP_PROGRAM).unwrap();
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(SharedWrite(Arc::clone(&captured))),
+    );
+    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
+    assert!(r.is_err(), "overlapping writers should error; got {r:?}");
+    let err = r.unwrap_err();
+    assert!(err.contains("shared"),
+        "error should mention the conflicting field; got: {err}");
+    assert!(err.contains("writer_a") && err.contains("writer_b"),
+        "error should name both writers; got: {err}");
+}
+
 /// Phase 4 v3.5: per-FSM event subscription matching. With two
 /// FSMs where only one declares `_ ∈ FrameTimer`, only that FSM
 /// wakes on tick events; the other goes silent and stays silent.
