@@ -128,17 +128,26 @@ enum ResultList =
     ResCons(Result, ResultList)
 
 
--- ── Async event subscription markers ──────────────────────────
+-- ── Async event subscription markers (LEGACY) ─────────────────
 -- Place one of these as a parameter on an FSM claim to subscribe
--- it to events from the matching async source. With per-FSM
--- subscription matching active, only FSMs that declare a marker
--- will be woken by the corresponding source's events. (If no FSM
--- declares any marker, the runtime falls back to coarse wake — it
--- treats every event as waking every FSM, for back-compat.)
+-- it to wake events from the matching async source. The plugin
+-- pushes a wake signal but no payload — useful only when you
+-- want to be woken without making the source's value part of
+-- world.
 --
--- Sources are wired up by the runtime based on environment:
---   FrameTimer ↔ EVIDENT_TICK_MS=<u64>
---   Signal     ↔ always installed (SIGINT)
+-- PREFERRED: use plugin-as-writer instead. Declare reserved
+-- field names in your World type; the runtime auto-installs the
+-- plugin and writes the field; subscribe via standard world
+-- read-set inference. See docs/guide/multi-fsm-programs.md.
+--
+--   tick_count ∈ Int    in World → FrameTimer (rate via EVIDENT_TICK_MS)
+--   signal_received ∈ Int        → SigintSource (Ctrl-C)
+--   stdin_line ∈ String          → StdinSource
+--   stdin_seq ∈ Int              → StdinSource sequence counter
+--
+-- Marker types still work for back-compat:
+--   FrameTimer parameter → wakes on "tick" events
+--   Signal parameter     → wakes on "signal" events
 type FrameTimer
     fired ∈ Bool
 type Signal
