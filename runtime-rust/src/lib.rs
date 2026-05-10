@@ -13,5 +13,6 @@ pub mod parser;
 pub mod pretty;
 pub mod translate;
 pub mod runtime;
+pub mod subscriptions;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};

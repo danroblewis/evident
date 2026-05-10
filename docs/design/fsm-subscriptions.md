@@ -123,14 +123,30 @@ Output: `read_sets: HashMap<String, HashSet<String>>` and
 name.
 
 Test: assert that for `effect_multi_fsm_transpiled.ev`,
-  * `setup.read_set` is `{}` (writer only)
   * `setup.write_set` is `{window, ctx, vao, prog, time_loc}`
+  * `setup.read_set` is `{window, ctx, vao, prog, time_loc}` —
+    same as writes, because the `Done ⇒ world.X` passthrough arm
+    of each `world_next.X = match state …` reads its own field. See
+    "self-write reads" below for why this matters in Phase 2.
   * `render.read_set` is `{window, prog, time_loc}` (matches what
     the body actually uses; vao and ctx are written but not read by
     render)
   * `render.write_set` is `{}` (reader only)
 
 This is the foundation; no behavior change yet.
+
+**Self-write reads (discovered while implementing Phase 1)**: an
+FSM's read-set can include fields it itself writes, because the
+common passthrough idiom `world_next.X = match state … | Other ⇒
+world.X` literally reads `world.X`. Phase 2 must NOT schedule an
+FSM purely on the basis of its own writes — that would create an
+infinite self-loop. The rule for Phase 2 is:
+
+  > schedule iff `read_set ∩ (changed_fields − own_writes) ≠ ∅`
+  > OR self-feedback OR plugin event OR bootstrap.
+
+Equivalently: subtract the FSM's own write-set from the changed-set
+before intersecting with its read-set.
 
 ### Phase 2: World-delta scheduler
 
