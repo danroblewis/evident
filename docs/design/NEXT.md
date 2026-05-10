@@ -54,31 +54,37 @@ remaining cleanup.
 Order: do these AFTER FTI v1 lands (next item) so the migration
 has a target shape to translate to.
 
-### 2. Foreign Type Interface v1 (DONE) → v2 next
+### 2. Foreign Type Interface v1.5 (DONE) → v2 next
 
-v1 shipped: `_ ∈ FrameClock` parameter triggers bridge auto-
-install; body reads `clock.tick_count` like a normal field.
+Shipped:
+  * v1: `_ ∈ FrameClock` parameter triggers bridge auto-install;
+    body reads `clock.tick_count` like a normal field.
+  * v1.5: per-instance namespacing — each FSM gets its own
+    instance via FSM-prefixed pin keys.
+  * v1.6: dual STATE/EVENT drain policy (state writes coalesce,
+    event writes apply one-per-tick).
+  * Hostname FTI type — second registered type, demonstrates
+    pattern scales. Uses new OneShotShellSource bridge.
 
 Open work for v2:
-  * **Per-instance namespacing**: snapshot is currently shared.
-    Two FSMs each declaring `_ ∈ FrameClock` with the same
-    param name conflict. v2 needs per-FSM pin maps.
-  * **Extensible type registry**: `FrameClock` is hardcoded in
-    `detect_fsm_shape`. Should be discovered from stdlib (e.g.
-    via a `fti_type` annotation in the type body, or a
-    convention).
-  * **Multiple field types**: bridges currently only write Int
-    fields. String/Real/Bool field types should also work.
+  * **Extensible type registry**: `FrameClock` and `Hostname`
+    are hardcoded in `detect_fsm_shape` and `effect_loop.rs`.
+    Should be discovered from stdlib (via a `fti_type`
+    annotation in the type body, or a convention).
+  * **Multiple field types**: bridges currently write Int (
+    FrameClock) or String (Hostname). A per-type bridge can
+    handle anything; the GENERIC bridge would need extension.
   * **Configurable instances**: `t ∈ Timer (interval_ms ↦ 50)`
     syntax for per-instance config. Currently config is
-    runtime-global (EVIDENT_TICK_MS).
+    runtime-global (EVIDENT_TICK_MS, etc.).
   * **Subscription-aware reads**: FTI field reads should
-    participate in scheduling triggers (currently they only
-    pin values when the FSM is otherwise scheduled).
+    participate in scheduling triggers (currently they pin
+    values when the FSM is otherwise scheduled but don't WAKE
+    the FSM on update).
 
-Bigger v2 win: more FTI types — `FileReader`, `WallClockHandle`,
-`Socket`. Each replaces a corresponding world-field reserved-
-name pattern.
+Bigger v2 wins: more FTI types — `FileReader`, `Socket`,
+`HttpClient`, `Process`. Each replaces a function-call-shaped
+FFI sequence with a typed declaration.
 
 ### 3. Parent-child communication for spawned FSMs
 

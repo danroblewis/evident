@@ -60,6 +60,8 @@ Captured in [`docs/design/schema-interface.md`](design/schema-interface.md).
 | `6b1ffa4`       | Effect::IntToStr / RealToStr — symmetric to Parse*            |
 | `aaf9247`       | spawnable_only marker — claims that don't auto-instantiate    |
 | `833f419`       | FTI v1 — typed resource via parameter declaration             |
+| `88a2b4b`       | FTI v1.5 — per-instance namespacing                           |
+| `ed41dc9`       | Hostname FTI type + OneShotShellSource bridge                 |
 
 ## Documentation work
 
