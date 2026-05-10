@@ -36,17 +36,27 @@ This unifies several concerns that were ad-hoc:
 ## The model
 
 An FSM has zero or more **subscriptions**. Subscriptions come from
-three places, all known statically at load time:
+four places, all known statically at load time:
 
   1. **World read-set** — every `world.X` referenced anywhere in the
      FSM body. Auto-inferred from the AST. Fires when the field is
-     written by some FSM (or by the runtime).
+     written by some other FSM.
   2. **Plugin event sources** — declared via type membership in the
      FSM signature: `∈ Stdin`, `∈ FrameTimer`, etc. Each plugin owns
      a set of event types and decides when its events fire.
-  3. **Self-feedback** — when an FSM emits effects, the dispatched
-     results flow into its `last_results` on the next tick. Implicit;
-     present iff the FSM emitted effects.
+  3. **Self-feedback (effects)** — when an FSM emits effects, the
+     dispatched results flow into its `last_results` on the next
+     tick. Implicit; present iff the FSM emitted effects.
+  4. **Self-feedback (state)** — when an FSM transitions to a new
+     state value (`state_next ≠ state`), it's scheduled again next
+     tick. The body can compute different things when state pins to
+     a new value, even if world and last_results are unchanged.
+
+(Only #1 and #2 are "external" subscriptions in the strict sense.
+#3 and #4 are intra-FSM signals that ensure the FSM observes its
+own past actions before going quiet. Without #4, an FSM that does
+`Idle → Frame(N)` silently on one tick would never run its
+`Frame(N)` body.)
 
 Plus one **bootstrap event** that fires once at tick 0, scheduling
 every FSM for its initial run.
@@ -159,8 +169,9 @@ Per tick:
      the previous tick's writer solve. On tick 0, `changed_fields`
      is "everything" (bootstrap).
   2. For each FSM, schedule it iff
-     `read_set ∩ changed_fields ≠ ∅` OR
-     it has self-feedback pending (last tick emitted effects) OR
+     `read_set ∩ (changed_fields − own_writes) ≠ ∅` OR
+     it has effect-feedback pending (last tick emitted effects) OR
+     it has state-feedback pending (last tick changed state) OR
      bootstrap (tick 0).
   3. Solve scheduled FSMs in declaration order; writer first if it's
      scheduled.

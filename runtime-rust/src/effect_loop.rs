@@ -427,6 +427,36 @@ fn run_multi_fsm(
     let mut per_fsm_solve: Vec<std::time::Duration> = vec![std::time::Duration::ZERO; fsms.len()];
     let mut per_fsm_ticks: Vec<usize> = vec![0; fsms.len()];
 
+    // Phase 2: subscription-driven scheduling. Opt-in via env flag
+    // until we trust it enough to flip the default. See
+    // docs/design/fsm-subscriptions.md for the full model.
+    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("delta");
+    let access_sets: Vec<crate::subscriptions::AccessSets> = if delta_mode {
+        fsms.iter().map(|fsm| {
+            rt.get_schema(&fsm.claim_name)
+              .map(|s| crate::subscriptions::world_access_sets(s))
+              .unwrap_or_default()
+        }).collect()
+    } else {
+        Vec::new()  // unused in legacy mode
+    };
+    // Per-FSM "world fields that changed since I was last scheduled."
+    // When the FSM is scheduled, this is consumed (cleared). Writers
+    // populate it on other FSMs after their solve. NOT used in legacy
+    // mode (every FSM ticks unconditionally).
+    let mut pending_changes: Vec<std::collections::HashSet<String>> =
+        vec![std::collections::HashSet::new(); fsms.len()];
+    // Self-feedback: did this FSM emit effects last tick? If so, it
+    // has new last_results to consume → schedule it next.
+    let mut had_effects_last: Vec<bool> = vec![false; fsms.len()];
+    // State-change feedback: did this FSM transition to a new state
+    // last tick? If so, schedule it next — the body can compute
+    // different things when state pins to a new value, even if
+    // world and last_results are unchanged. Without this, an FSM
+    // that does Idle→Frame(N) on one tick (silently, no effects)
+    // would never run its Frame(N) body.
+    let mut state_changed_last: Vec<bool> = vec![false; fsms.len()];
+
     while step_count < opts.max_steps {
         // Any active FSMs left? If not, program halted.
         if fsm_rt.iter().all(|f| f.halted) {
@@ -451,9 +481,35 @@ fn run_multi_fsm(
         // Per-tick effect ordering: writer first, then readers in
         // declaration order (which is the order in `fsms`).
         let mut all_effects: Vec<(usize, Vec<crate::ast::Effect>)> = Vec::new();
+        // Track which FSMs we actually scheduled this tick — used
+        // for clearing self-feedback flags at the end.
+        let mut scheduled_this_tick: Vec<bool> = vec![false; fsms.len()];
 
         for (idx, fsm) in fsms.iter().enumerate() {
             if fsm_rt[idx].halted { continue; }
+
+            // Phase 2 scheduling decision. Three triggers wake an FSM:
+            //   1. Bootstrap (tick 0)
+            //   2. Self-feedback: emitted effects last tick → fresh
+            //      last_results to consume.
+            //   3. World delta: a field in the FSM's read-set was
+            //      written since this FSM was last scheduled.
+            // All others stay asleep this tick. `pending_changes` is
+            // cleared on schedule (events consumed).
+            if delta_mode && step_count > 0 {
+                let woken = had_effects_last[idx]
+                    || !pending_changes[idx].is_empty()
+                    || state_changed_last[idx];
+                if !woken {
+                    if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                        eprintln!("[loop] tick {step_count} fsm={}: skipped (no inputs)",
+                            fsm.claim_name);
+                    }
+                    continue;
+                }
+                pending_changes[idx].clear();
+            }
+            scheduled_this_tick[idx] = true;
 
             // Build per-FSM pin list (state + last_results as Datatypes).
             let last_results_dt = rt.encode_effect_result_list(&fsm_rt[idx].last_results)
@@ -515,14 +571,42 @@ fn run_multi_fsm(
             // Writer? Capture world_next.* for snapshot. The snapshot
             // becomes the `world.*` given for subsequent FSM solves
             // this tick AND the writer's own world.* given next tick.
+            //
+            // Phase 2: also compute the field-level delta (which
+            // fields actually changed value) and distribute to other
+            // FSMs whose read-set includes a changed field. The
+            // writer is excluded from its own deltas — own writes
+            // shouldn't self-schedule (Phase 1 discovery).
             if fsm.is_writer() {
+                let prev_snapshot = world_snapshot.clone();
                 world_snapshot.clear();
+                let mut just_changed: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 for (k, v) in r.bindings.iter() {
                     if let Some(field) = k.strip_prefix("world_next.") {
-                        world_snapshot.insert(format!("world.{field}"), v.clone());
+                        let key = format!("world.{field}");
+                        if prev_snapshot.get(&key) != Some(v) {
+                            just_changed.insert(field.to_string());
+                        }
+                        world_snapshot.insert(key, v.clone());
+                    }
+                }
+                if delta_mode {
+                    for j in 0..fsms.len() {
+                        if j == idx { continue; }
+                        for f in &just_changed {
+                            if access_sets[j].reads.contains(f) {
+                                pending_changes[j].insert(f.clone());
+                            }
+                        }
                     }
                 }
             }
+
+            // Mark whether this solve transitioned to a new state.
+            // Drives the state-change wake trigger next tick.
+            state_changed_last[idx] = fsm_rt[idx].current_state_v.as_ref()
+                .map(|prev| prev != state_next_val).unwrap_or(true);
 
             // Update next-tick state for this FSM.
             fsm_rt[idx].current_state = encode_state_value(rt, state_next_val);
@@ -546,11 +630,22 @@ fn run_multi_fsm(
         }
 
         // Dispatch all effects in order, capturing each FSM's
-        // results into its own last_results for next tick.
+        // results into its own last_results for next tick. Also
+        // update the per-FSM self-feedback flag — true iff this FSM
+        // emitted at least one effect this tick (so its
+        // last_results will be fresh next tick).
         let dispatch_t0 = std::time::Instant::now();
+        // Reset self-feedback for FSMs we scheduled this tick;
+        // unscheduled ones keep whatever they had (they didn't
+        // observe last_results yet).
+        for (i, was_scheduled) in scheduled_this_tick.iter().enumerate() {
+            if *was_scheduled { had_effects_last[i] = false; }
+        }
         for (fsm_idx, effects) in all_effects {
+            let emitted_anything = !effects.is_empty();
             let results = dispatch_all(ctx, &effects);
             fsm_rt[fsm_idx].last_results = results;
+            had_effects_last[fsm_idx] = emitted_anything;
         }
         let dispatch_dt = dispatch_t0.elapsed();
         total_dispatch += dispatch_dt;
