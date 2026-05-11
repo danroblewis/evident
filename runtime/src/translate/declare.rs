@@ -249,3 +249,42 @@ pub(super) fn declare_var_named(
     }
     post
 }
+
+/// Substitute a literal `Int::from_i64(n)` for the symbolic `len`
+/// field of every `Var::SeqVar` / `Var::DatatypeSeqVar` whose name
+/// has a known length in `seq_lengths`. Without this,
+/// `translate_int(Cardinality(seq))` returns the free `len` symbol,
+/// so `literal_range` can't fold `Range(0, #seq - 1)` to a concrete
+/// pair and the quantifier silently drops.
+///
+/// Lives here (rather than in `preprocess`) because mutating typed
+/// Z3 bindings is part of the "name binding" concern this module
+/// owns — preprocess is AST→AST only and must not allocate Z3
+/// values. Idempotent and safe to run after `apply_pinned_ints`
+/// (different var kinds, no overlap).
+pub(super) fn apply_seq_lengths<'ctx>(
+    env: &mut HashMap<String, Var<'ctx>>,
+    seq_lengths: &HashMap<String, i64>,
+    ctx: &'ctx Context,
+) {
+    for (name, n) in seq_lengths {
+        let Some(var) = env.get(name) else { continue };
+        let new_len = Int::from_i64(ctx, *n);
+        let new_var = match var {
+            Var::SeqVar { arr, elem, .. } => {
+                Var::SeqVar { arr: arr.clone(), len: new_len, elem: *elem }
+            }
+            Var::DatatypeSeqVar { arr, type_name, dt, fields, .. } => {
+                Var::DatatypeSeqVar {
+                    arr: arr.clone(),
+                    len: new_len,
+                    type_name: type_name.clone(),
+                    dt: *dt,
+                    fields: fields.clone(),
+                }
+            }
+            _ => continue,
+        };
+        env.insert(name.clone(), new_var);
+    }
+}

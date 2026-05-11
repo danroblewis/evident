@@ -3,10 +3,16 @@
 //! constraint translation so the translator sees concrete integers
 //! where possible (and can then unroll quantifiers, fold Cardinality,
 //! etc.).
+//!
+//! Pure data-shape passes — input AST + small `Value` map → updated
+//! `Value` / env map. No Z3 expression building, no `&Context`,
+//! no Solver. The two pieces that DID need a Context (`literal_range`,
+//! which evaluates `Range(lo, hi)` bounds, and `apply_seq_lengths`,
+//! which substitutes a literal Int into typed Seq bindings) live in
+//! their proper homes — `exprs::literal_range` and
+//! `declare::apply_seq_lengths`.
 
 use std::collections::{HashMap, HashSet};
-use z3::ast::Int;
-use z3::Context;
 
 use crate::ast::*;
 use super::types::{Value, Var};
@@ -302,39 +308,4 @@ pub(super) fn apply_pinned_ints<'ctx>(
     }
 }
 
-/// Replace each `Var::SeqVar` / `Var::DatatypeSeqVar`'s symbolic `len`
-/// with an `Int::from_i64` literal when `seq_lengths` knows the value.
-/// Without this, `translate_int(Cardinality(seq))` returns the
-/// solver-side free `len` symbol, so `literal_range` can't fold
-/// `Range(0, #seq - 1)` to a concrete pair and the quantifier is
-/// silently dropped.
-///
-/// Idempotent and safe to run after `apply_pinned_ints` (different
-/// var kinds, no overlap).
-pub(super) fn apply_seq_lengths<'ctx>(
-    env: &mut HashMap<String, Var<'ctx>>,
-    seq_lengths: &HashMap<String, i64>,
-    ctx: &'ctx Context,
-) {
-    for (name, n) in seq_lengths {
-        let Some(var) = env.get(name) else { continue };
-        let new_len = Int::from_i64(ctx, *n);
-        let new_var = match var {
-            Var::SeqVar { arr, elem, .. } => {
-                Var::SeqVar { arr: arr.clone(), len: new_len, elem: *elem }
-            }
-            Var::DatatypeSeqVar { arr, type_name, dt, fields, .. } => {
-                Var::DatatypeSeqVar {
-                    arr: arr.clone(),
-                    len: new_len,
-                    type_name: type_name.clone(),
-                    dt: *dt,
-                    fields: fields.clone(),
-                }
-            }
-            _ => continue,
-        };
-        env.insert(name.clone(), new_var);
-    }
-}
 

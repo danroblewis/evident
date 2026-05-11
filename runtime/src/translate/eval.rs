@@ -113,10 +113,10 @@ fn populate_enum_variants<'ctx>(
 
 use crate::ast::*;
 use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
-use super::declare::declare_var;
+use super::declare::{apply_seq_lengths, declare_var};
 use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unescape_z3_string};
 use super::inline::inline_body_items;
-use super::preprocess::{apply_pinned_ints, apply_seq_lengths, collect_pinned_ints, collect_seq_lengths};
+use super::preprocess::{apply_pinned_ints, collect_pinned_ints, collect_seq_lengths};
 
 /// Allocate a typed Z3 const for `(name, type_name)` and immediately
 /// issue any type-implied invariants on the solver. `declare_var`'s
