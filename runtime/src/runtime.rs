@@ -473,21 +473,12 @@ impl EvidentRuntime {
         // lazily by name) but it matches the textual reading order of
         // the file.
         for import_path in &prog.imports {
-            // Known-stdlib paths whose types are auto-installed by
-            // the FTI registry (`crate::fti::INSTALLERS`) when a
-            // program declares matching world fields. Silently
-            // no-op these so programs that import them — the
-            // convention, even though our embedded versions cover
-            // the same ground — don't fail just because we don't
-            // ship the .ev files at the expected path. Users who
-            // DO ship a real `stdlib/sdl.ev` alongside their program
-            // (via cwd) will still hit it via verbatim resolution
-            // above.
-            const STDLIB_SHIMS: &[&str] = &[
-                "stdlib/sdl.ev",
-                "stdlib/io.ev",
-            ];
-            if STDLIB_SHIMS.contains(&import_path.as_str()) {
+            // Known-shimmed stdlib paths (registered with the FTI
+            // registry) silently no-op when the file isn't found at
+            // the expected location — the registry stands in for the
+            // file's contents. See `crate::fti::is_shimmed_stdlib`
+            // for the policy and the list itself.
+            if crate::fti::is_shimmed_stdlib(import_path) {
                 // Try a real resolution first; only no-op if it fails.
                 if self.resolve_import(import_path, base).is_err() {
                     continue;

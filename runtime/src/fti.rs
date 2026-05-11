@@ -53,6 +53,30 @@ pub fn is_fti_type(type_name: &str) -> bool {
     fti_install_fn(type_name).is_some()
 }
 
+/// Stdlib paths whose types are auto-installed by `INSTALLERS` when
+/// a program declares matching world fields. The runtime treats
+/// `import "..."` of these paths as optional: if the file exists at
+/// the expected location, it loads normally; otherwise the import
+/// silently no-ops because the FTI registry already provides the
+/// types these files declare.
+///
+/// Lives here (not in `runtime.rs`) because the no-op policy is a
+/// property of the FTI registry — these are paths the FTI bridges
+/// stand in for. Adding a new shimmed stdlib file means: confirm
+/// the relevant `INSTALLERS` entry covers everything the file
+/// declares, then add the path here.
+const SHIMMED_STDLIB_PATHS: &[&str] = &[
+    "stdlib/sdl.ev",
+    "stdlib/io.ev",
+];
+
+/// True if `import_path` is a stdlib file whose types are
+/// already provided by the FTI registry, so a missing file at
+/// the expected path should silently no-op rather than error.
+pub fn is_shimmed_stdlib(import_path: &str) -> bool {
+    SHIMMED_STDLIB_PATHS.contains(&import_path)
+}
+
 // ── Pin readers ────────────────────────────────────────────────
 
 fn pin_int(pins: &Pins, field: &str) -> Option<i64> {
