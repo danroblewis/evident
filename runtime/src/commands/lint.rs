@@ -15,13 +15,13 @@
 //!   5 — at least one lint fired (distinguishes "found bugs" from
 //!        "ran cleanly")
 
-use std::path::Path;
 use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, Value};
+use evident_runtime::Value;
 
-const STDLIB_AST: &str = "stdlib/ast.ev";
-const LINT_DUPS:  &str = "stdlib/passes/lint_duplicate_decls.ev";
+use super::common::load_runtime_with_passes;
+
+const LINT_DUPS: &str = "stdlib/passes/lint_duplicate_decls.ev";
 
 const LINT_RULES: &[&str] = &[
     "duplicate_membership_in_body",
@@ -39,24 +39,14 @@ pub fn cmd_lint(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
     let user_path = &args[0];
+    let user_files = vec![user_path.clone()];
 
-    let mut rt = EvidentRuntime::new();
-    if let Err(e) = rt.load_file(Path::new(STDLIB_AST)) {
-        eprintln!("error: failed to load {STDLIB_AST}: {e}");
-        return ExitCode::from(1);
-    }
-    if let Err(e) = rt.load_file(Path::new(LINT_DUPS)) {
-        eprintln!("error: failed to load {LINT_DUPS}: {e}");
-        return ExitCode::from(1);
-    }
-    rt.mark_system_loads_complete();
+    let mut rt = match load_runtime_with_passes(&[LINT_DUPS], &user_files) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("error: {e}"); return ExitCode::from(1); }
+    };
 
-    if let Err(e) = rt.load_file(Path::new(user_path)) {
-        eprintln!("error: {e}");
-        return ExitCode::from(1);
-    }
-
-    super::desugar::auto_apply_desugar(&mut rt, &[user_path.clone()]);
+    super::desugar::auto_apply_desugar(&mut rt, &user_files);
 
     let n_claims = rt.user_claim_count();
     let mut findings = 0usize;

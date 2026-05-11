@@ -24,7 +24,8 @@ use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, Value};
 
-const STDLIB_AST:    &str = "stdlib/ast.ev";
+use super::common::load_runtime_with_passes;
+
 const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
 const ITER_TYPES:    &str = "stdlib/passes/iter_types.ev";
 const PROPAGATION:   &str = "stdlib/passes/propagation.ev";
@@ -80,18 +81,10 @@ pub struct Inference {
 pub fn collect_inferences(user_files: &[String])
     -> Result<Vec<Inference>, String>
 {
-    let mut rt = EvidentRuntime::new();
-    rt.load_file(Path::new(STDLIB_AST))
-        .map_err(|e| format!("load {STDLIB_AST}: {e}"))?;
-    for f in [LITERAL_TYPES, ITER_TYPES, PROPAGATION, CONSISTENCY] {
-        rt.load_file(Path::new(f))
-            .map_err(|e| format!("load {f}: {e}"))?;
-    }
-    rt.mark_system_loads_complete();
-    for path in user_files {
-        rt.load_file(Path::new(path))
-            .map_err(|e| format!("load {path}: {e}"))?;
-    }
+    let rt = load_runtime_with_passes(
+        &[LITERAL_TYPES, ITER_TYPES, PROPAGATION, CONSISTENCY],
+        user_files,
+    )?;
 
     let mut out: Vec<Inference> = Vec::new();
 

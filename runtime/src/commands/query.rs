@@ -6,55 +6,22 @@ use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, QueryResult, Value};
 
-use super::common::{
-    format_value, load_runtime, parse_flags, split_files_and_flags,
-};
+use super::common::{format_value, setup_query_or_sample};
 use super::sample::value_as_json;
 
 pub fn cmd_query(args: &[String]) -> ExitCode {
-    // --strict: skip the inference pre-pass. Default behavior is
-    // to apply self-hosted inference automatically. Strip both
-    // recognized flags before the standard parser sees them.
-    let strict = args.iter().any(|a| a == "--strict");
-    let stripped: Vec<String> = args.iter()
-        .filter(|a| a.as_str() != "--strict")
-        .cloned().collect();
-    let (files_and_schema, flag_args) = split_files_and_flags(&stripped);
-    if files_and_schema.len() < 2 {
-        eprintln!("query: need <files…> <schema>");
-        return ExitCode::from(2);
-    }
-    let schema = files_and_schema.last().unwrap().clone();
-    let files: Vec<String> = files_and_schema[..files_and_schema.len() - 1].to_vec();
-    let flags = match parse_flags(&flag_args) {
-        Ok(f) => f,
-        Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
+    let setup = match setup_query_or_sample("query", args) {
+        Ok(s) => s,
+        Err(code) => return code,
     };
-    let mut rt = match load_runtime(&files) {
-        Ok(r) => r,
-        Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
-    };
-
-    // Inference is on by default; --strict skips it. The pre-pass
-    // runs the self-hosted rules against the user's source (in a
-    // separate runtime so the pass schemas don't pollute), then
-    // grafts each unambiguous inference into this runtime's claim
-    // bodies as a Membership. From here on the query proceeds
-    // normally.
-    if !strict {
-        // Desugar runs first so inference sees the canonical AST.
-        super::desugar::auto_apply_desugar(&mut rt, &files);
-        super::infer_types::auto_apply_inferences(&mut rt, &files);
-    }
-
-    let r = match rt.query(&schema, &flags.given) {
+    let r = match setup.rt.query(&setup.schema, &setup.flags.given) {
         Ok(r) => r,
         Err(e) => { eprintln!("query error: {e}"); return ExitCode::from(1); }
     };
-    if !r.satisfied && flags.explain {
-        explain_unsat(&rt, &schema, &flags.given);
+    if !r.satisfied && setup.flags.explain {
+        explain_unsat(&setup.rt, &setup.schema, &setup.flags.given);
     }
-    print_query_result(&r, flags.json)
+    print_query_result(&r, setup.flags.json)
 }
 
 /// On UNSAT, dump the schema body items + given values to stderr so

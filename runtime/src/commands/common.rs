@@ -6,8 +6,13 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, Value};
+
+/// Path to the AST schema file every self-hosted pass loads first.
+/// Single source of truth for the lint / desugar / infer-types pipelines.
+pub const STDLIB_AST: &str = "stdlib/ast.ev";
 
 pub fn usage() {
     eprintln!("usage:");
@@ -95,6 +100,75 @@ pub fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
         rt.load_file(Path::new(f)).map_err(|e| format!("{f}: {e}"))?;
     }
     Ok(rt)
+}
+
+/// Load a fresh runtime pre-seeded with `STDLIB_AST` + the given pass
+/// files (marked as system loads), then load the user's files. Used
+/// by every self-hosted pass driver (lint, desugar, infer-types).
+pub fn load_runtime_with_passes(
+    pass_files: &[&str],
+    user_files: &[String],
+) -> Result<EvidentRuntime, String> {
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new(STDLIB_AST))
+        .map_err(|e| format!("load {STDLIB_AST}: {e}"))?;
+    for f in pass_files {
+        rt.load_file(Path::new(f))
+            .map_err(|e| format!("load {f}: {e}"))?;
+    }
+    rt.mark_system_loads_complete();
+    for path in user_files {
+        rt.load_file(Path::new(path))
+            .map_err(|e| format!("load {path}: {e}"))?;
+    }
+    Ok(rt)
+}
+
+/// Parsed result of the shared query/sample CLI prologue.
+pub struct CmdSetup {
+    pub rt: EvidentRuntime,
+    pub schema: String,
+    pub flags: Flags,
+}
+
+/// Shared prologue for `evident query` and `evident sample`:
+///   1. strip `--strict` (skip auto-applied desugar / inference passes),
+///   2. split positional files + schema from flag args,
+///   3. parse flags,
+///   4. construct an `EvidentRuntime` from the file list,
+///   5. unless `--strict`, run `desugar::auto_apply_desugar` then
+///      `infer_types::auto_apply_inferences` so the user's source has
+///      its canonical AST + inferred Memberships before the verb runs.
+///
+/// `cmd_name` is the verb word (`"query"` / `"sample"`) used in error
+/// messages. Returns `Err(ExitCode)` for a clean caller-bubbled exit
+/// on usage / load errors.
+pub fn setup_query_or_sample(cmd_name: &str, args: &[String]) -> Result<CmdSetup, ExitCode> {
+    let strict = args.iter().any(|a| a == "--strict");
+    let stripped: Vec<String> = args.iter()
+        .filter(|a| a.as_str() != "--strict")
+        .cloned().collect();
+    let (files_and_schema, flag_args) = split_files_and_flags(&stripped);
+    if files_and_schema.len() < 2 {
+        eprintln!("{cmd_name}: need <files…> <schema>");
+        return Err(ExitCode::from(2));
+    }
+    let schema = files_and_schema.last().unwrap().clone();
+    let files: Vec<String> = files_and_schema[..files_and_schema.len() - 1].to_vec();
+    let flags = match parse_flags(&flag_args) {
+        Ok(f) => f,
+        Err(e) => { eprintln!("{e}"); return Err(ExitCode::from(2)); }
+    };
+    let mut rt = match load_runtime(&files) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("{e}"); return Err(ExitCode::from(1)); }
+    };
+    if !strict {
+        // Desugar runs first so inference sees the canonical AST.
+        super::desugar::auto_apply_desugar(&mut rt, &files);
+        super::infer_types::auto_apply_inferences(&mut rt, &files);
+    }
+    Ok(CmdSetup { rt, schema, flags })
 }
 
 pub fn format_value(v: &Value) -> String {

@@ -38,9 +38,10 @@ use std::path::Path;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::ast::{BodyItem, Expr};
 
-const STDLIB_AST:           &str = "stdlib/ast.ev";
-const DESUGAR_PASSTHROUGH:  &str = "stdlib/passes/desugar_passthrough.ev";
-const RULE_NAME:            &str = "is_passthrough_at_index";
+use super::common::load_runtime_with_passes;
+
+const DESUGAR_PASSTHROUGH: &str = "stdlib/passes/desugar_passthrough.ev";
+const RULE_NAME:           &str = "is_passthrough_at_index";
 
 /// One detected rewrite: in `claim_name`, replace `body[body_idx]`
 /// with `BodyItem::Passthrough(target_name)`.
@@ -58,16 +59,7 @@ pub struct Rewrite {
 pub fn collect_passthrough_rewrites(user_files: &[String])
     -> Result<Vec<Rewrite>, String>
 {
-    let mut rt = EvidentRuntime::new();
-    rt.load_file(Path::new(STDLIB_AST))
-        .map_err(|e| format!("load {STDLIB_AST}: {e}"))?;
-    rt.load_file(Path::new(DESUGAR_PASSTHROUGH))
-        .map_err(|e| format!("load {DESUGAR_PASSTHROUGH}: {e}"))?;
-    rt.mark_system_loads_complete();
-    for f in user_files {
-        rt.load_file(Path::new(f))
-            .map_err(|e| format!("load {f}: {e}"))?;
-    }
+    let rt = load_runtime_with_passes(&[DESUGAR_PASSTHROUGH], user_files)?;
 
     // Set of every claim name the user (transitively) loaded — the
     // filter for "is target_name a known schema". `schema_names`
