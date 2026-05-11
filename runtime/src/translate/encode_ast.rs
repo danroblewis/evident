@@ -325,6 +325,21 @@ pub fn encode_enum_decl<'ctx>(
     apply(enums, "EnumDecl", "MakeEnumDecl", &[&name, &variants])
 }
 
+/// Encode a SchemaDecl into the `MakeSchemaDecl(Keyword, String,
+/// BodyItemList)` shape declared in stdlib/ast.ev.
+///
+/// **Intentional drop**: the Rust `SchemaDecl::param_count` field
+/// (which tracks how many of the body's leading Memberships are
+/// first-line interface params, vs. helper-locals) has no slot in
+/// `MakeSchemaDecl`. No current self-hosted pass uses interface-vs-
+/// helper distinction — every pass walks the body items uniformly —
+/// so encoding `param_count` would add a constructor slot every
+/// `decode_schema_decl` consumer must round-trip without observable
+/// benefit. The decoder reconstructs `param_count: 0`. If a future
+/// pass needs the distinction: add a fourth `Nat` slot to
+/// `MakeSchemaDecl` here and in stdlib/ast.ev; update
+/// `decode_schema_decl`; the cross-language contract is then carried
+/// explicitly.
 pub fn encode_schema_decl<'ctx>(
     s: &SchemaDecl,
     ctx: &'ctx Context,
@@ -600,10 +615,9 @@ pub fn encode_effect_result<'ctx>(
             let v = z3_bool(ctx, *b);
             apply(enums, "Result", "BoolResult", &[&v])
         }
-        EffectResult::Real(_)     => {
-            // Real round-trips need real_from_f64 helper; defer
-            // until any actual program needs Real results.
-            apply(enums, "Result", "NoResult", &[])
+        EffectResult::Real(f)     => {
+            let v = z3_real(ctx, *f);
+            apply(enums, "Result", "RealResult", &[&v])
         }
         EffectResult::Handle(h)   => {
             let v = z3_int(ctx, *h as i64);
