@@ -77,7 +77,7 @@ impl SdlWindowSource {
     pub fn start_inline(&mut self, tx: Sender<SchedulerEvent>) -> Result<i64, String> {
         use libloading::{Library, Symbol};
         use std::ffi::CString;
-        use std::os::raw::{c_char, c_int, c_uint, c_void};
+        use std::os::raw::{c_char, c_int, c_void};
         let paths = [
             "/opt/homebrew/lib/libSDL2.dylib",
             "/usr/local/lib/libSDL2.dylib",
@@ -188,42 +188,12 @@ impl SdlWindowSource {
 
         // Default VAO (optional) + viewport. Core profile draws
         // need a bound VAO; on Apple's GL-on-Metal driver the
-        // default viewport is 0×0 until you set it. Both bridge
-        // installs reuse the same OpenGL handle so we open it
-        // once.
-        type GlGenVertexArrays = unsafe extern "C" fn(c_int, *mut c_uint);
-        type GlBindVertexArray = unsafe extern "C" fn(c_uint);
-        type GlViewport        = unsafe extern "C" fn(c_int, c_int, c_int, c_int);
+        // default viewport is 0×0 until you set it. The actual
+        // GL FFI lives in the sibling `gl_context` helper so
+        // this file doesn't open libGL itself.
         let vao_id = if self.vao_field.is_some() {
-            // Try OpenGL framework / libGL.
-            let gl_paths = [
-                "/System/Library/Frameworks/OpenGL.framework/OpenGL",
-                "/usr/lib/x86_64-linux-gnu/libGL.so.1",
-                "/usr/lib/libGL.so",
-            ];
-            let gl_lib = gl_paths.iter()
-                .find_map(|p| unsafe { Library::new(p) }.ok());
-            if let Some(gl_lib) = gl_lib {
-                let gen_vao: Result<Symbol<GlGenVertexArrays>, _> =
-                    unsafe { gl_lib.get(b"glGenVertexArrays\0") };
-                let bind_vao: Result<Symbol<GlBindVertexArray>, _> =
-                    unsafe { gl_lib.get(b"glBindVertexArray\0") };
-                let viewport: Result<Symbol<GlViewport>, _> =
-                    unsafe { gl_lib.get(b"glViewport\0") };
-                let id = if let (Ok(gen), Ok(bind)) = (gen_vao, bind_vao) {
-                    let mut id: c_uint = 0;
-                    unsafe { gen(1, &mut id as *mut c_uint); bind(id); }
-                    id as i64
-                } else { 0 };
-                // Apple's GL-on-Metal default viewport is 0×0; set
-                // it explicitly so draws actually rasterize. Width
-                // and height come from the SDL_Window FTI pin.
-                if let Ok(vp) = viewport {
-                    unsafe { vp(0, 0, self.width, self.height); }
-                }
-                let _: &'static Library = Box::leak(Box::new(gl_lib));
-                id
-            } else { 0 }
+            super::gl_context::setup_default_vao_and_viewport(self.width, self.height)
+                .unwrap_or(0) as i64
         } else { 0 };
 
         // Push the handles to the write queue so the runtime

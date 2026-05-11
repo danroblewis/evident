@@ -44,6 +44,12 @@ mod file_watcher;
 mod oneshot_shell;
 mod sdl_window;
 mod gl_program;
+// `gl_context` is NOT a bridge (no struct, no EventSource impl);
+// it's a sibling helper for GL-aware bridges so the
+// `OpenGL.framework` dlopen doesn't get duplicated across files.
+// Keeping it under `event_sources/` (the only role permitted to
+// touch library specifics) per AP-001's scope clause.
+mod gl_context;
 
 // Bridges referenced by name elsewhere in the runtime (FTI
 // registry in `fti.rs` builds them directly): export those.
