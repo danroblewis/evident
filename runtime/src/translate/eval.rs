@@ -749,6 +749,14 @@ pub fn evaluate_with_extra_assertions(
     // pin world.* fields each tick. Without this, callers using
     // query_with_pins_and_given for sub-field pins silently get free
     // (model-picked) values for the supposedly-given fields.
+    //
+    // `Value::Enum` values are also accepted here, so plugins that
+    // write enum-typed world fields (currently the reflection
+    // bridge's `world.program`) flow through the same path. The
+    // value is re-encoded as a Z3 Datatype against the registry,
+    // then asserted equal to the EnumVar's ast — same shape as the
+    // explicit `pins` list above, just discovered through the
+    // `given` map instead.
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         match (var, value) {
@@ -759,6 +767,16 @@ pub fn evaluate_with_extra_assertions(
                 solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
+            (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
+                if let Some(reg) = enums {
+                    if let Some(dt) = super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                        solver.assert(&ast._eq(&dt));
+                    } else {
+                        eprintln!("warning: given `{name}`: enum value did not encode \
+                                   (registry missing variant?); leaving free");
+                    }
+                }
+            }
             _ => { /* type mismatch — silently skip, matches `evaluate` */ }
         }
     }

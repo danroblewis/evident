@@ -146,6 +146,16 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 5, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Reflection world-plugin: declare `program ∈ Program` in
+        // the World type, runtime auto-installs the bridge, FSM
+        // pattern-matches the encoded AST. Success line proves
+        // the value flowed through to Z3 (Bool decided by the pin).
+        name: "test_18_reflection", exit: 0,
+        must_lines: &["reflected: program is loaded"],
+        forbid_exact_lines: &["reflected: program missing"],
+        max_steps: 5, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

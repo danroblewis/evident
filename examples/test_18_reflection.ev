@@ -1,0 +1,57 @@
+-- 18_reflection — Reflection world-plugin: declare `program ∈ Program`
+-- in World and the runtime auto-installs the reflection bridge,
+-- which writes the loaded user-side AST encoded as a `Program`
+-- value (the same shape `stdlib/ast.ev` defines).
+--
+-- The FSM consumes `world.program` to confirm the value flowed
+-- through, then prints + exits. Foundation for the upcoming GLSL
+-- transpiler FSM, which will pattern-match the Program tree.
+--
+-- Reflection plugin guarantees the value matches `MakeProgram(_, _)`
+-- with non-empty schemas (any program importing stdlib/ast.ev will
+-- have at least the AST enum decls visible).
+
+import "stdlib/runtime.ev"
+import "stdlib/ast.ev"
+
+type World
+    program ∈ Program            -- auto-populated by reflection plugin
+
+enum RState = Init | Done
+
+claim reflect_demo(world ∈ World,
+                   state, state_next ∈ RState,
+                   last_results ∈ ResultList,
+                   effects ∈ EffectList)
+    -- Probe: bind a local copy of world.program (the `matches`
+    -- recognizer requires a bare-identifier scrutinee; dotted
+    -- world-field references aren't allowed there). Then check
+    -- the value's top-level shape. Z3 has no freedom once
+    -- world.program is pinned by the plugin — this Bool is
+    -- fully determined by whether reflection delivered a
+    -- `MakeProgram(_, _)` value.
+    prog ∈ Program
+    prog = world.program
+
+    is_program ∈ Bool
+    is_program = (prog matches MakeProgram(_, _))
+
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ (is_program
+                ? ⟨Println("reflected: program is loaded"), Exit(0)⟩
+                : ⟨Println("reflected: program missing"), Exit(0)⟩)
+        Done ⇒ ⟨⟩
+
+claim sat_init_advances_to_done
+    world ∈ World
+    state ∈ RState
+    state_next ∈ RState
+    last_results ∈ ResultList
+    effects ∈ EffectList
+    state = Init
+    reflect_demo
+    state_next = Done
