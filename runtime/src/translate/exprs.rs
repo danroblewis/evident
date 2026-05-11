@@ -3,6 +3,26 @@
 //! `ClaimCall` mapping resolution; `translate_seq_lit_eq` and
 //! `translate_seq_index_assign` for the two seq-equality shapes that
 //! aren't pure scalar `_eq`.
+//!
+//! File layout (top-to-bottom):
+//!   1. Thread-local context — active EnumRegistry pointer, target
+//!      enum hint for SeqLit-as-Cons-chain lowering, RAII guards.
+//!   2. ClaimCall mapping resolution — `resolve_mapping`, `expr_as_var`.
+//!   3. Enum / Cons-chain helpers — `resolve_enum_ast`, `build_cons_chain`.
+//!   4. Seq field resolution — `resolve_seq_field`.
+//!   5. Per-sort translators — `translate_str`, `translate_int`,
+//!      `translate_real`.
+//!   6. Real-literal helpers — `real_from_f64` and friends.
+//!   7. Record / vector lifting — `lift_record_op`, leaf enumeration,
+//!      record-ref substitution. The plumbing for componentwise
+//!      operations on `IVec2`-style record types.
+//!   8. Seq-equality translation — `translate_seq_lit_eq`,
+//!      `translate_seq_index_assign`, composite Seq plumbing.
+//!   9. `translate_bool` — the big Bool dispatcher (~500 LOC).
+//!  10. Match-expression translator — `translate_match_arms`,
+//!      `fold_arms_to_ite`.
+//!  11. Literal-range folder — `literal_range`, used by
+//!      `translate_bool`'s quantifier-unroll path.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
@@ -10,6 +30,8 @@ use z3::{Context, DatatypeSort};
 
 use crate::ast::*;
 use super::types::{env_clone, EnumRegistry, FieldKind, SeqElem, Var};
+
+// ── Section 1: Thread-local context (active enums + target hint) ─────
 
 thread_local! {
     /// Active EnumRegistry for the current translation. Set by
@@ -88,6 +110,8 @@ fn with_target_enum_hint<R>(
 fn current_target_enum() -> Option<(String, &'static DatatypeSort<'static>)> {
     TARGET_ENUM_HINT.with(|c| c.borrow().clone())
 }
+
+// ── Section 2: ClaimCall mapping resolution ──────────────────────────
 
 /// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
 /// bindings to install in the inner env when entering a ClaimCall.
@@ -207,6 +231,8 @@ fn expr_as_var<'ctx>(
         _ => None,
     }
 }
+
+// ── Section 3: Enum / Cons-chain helpers ─────────────────────────────
 
 /// Resolve an expression to an enum-typed Z3 Datatype AST. Four shapes:
 ///
@@ -343,6 +369,8 @@ fn build_cons_chain<'ctx>(
     Some(acc)
 }
 
+// ── Section 4: Seq field resolution ──────────────────────────────────
+
 /// Resolve a (possibly-nested) field access chain against a
 /// `DatatypeSeqVar` in the env. Two shapes:
 ///
@@ -431,6 +459,8 @@ fn resolve_seq_field<'ctx>(
     }
     None
 }
+
+// ── Section 5: Per-sort translators (str / int / real) ───────────────
 
 pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
     match e {
@@ -604,6 +634,8 @@ pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
     }
 }
 
+// ── Section 6: Real-literal helpers ──────────────────────────────────
+
 /// Local copy of the Real-from-f64 helper. Same shape as the one in
 /// `eval.rs` (private there); duplicated to avoid a cross-module
 /// dependency for one tiny helper.
@@ -627,6 +659,8 @@ fn real_from_f64<'ctx>(ctx: &'ctx Context, f: f64) -> Real<'ctx> {
     Real::from_real_str(ctx, &num, &den)
         .unwrap_or_else(|| Real::from_real(ctx, 0, 1))
 }
+
+// ── Section 7: Record / vector lifting ───────────────────────────────
 
 /// Field-wise broadcast for `lhs OP rhs` where at least one side is a
 /// record reference (Identifier or Field-of-Index) and the operator is
@@ -986,6 +1020,8 @@ fn collect_record_refs<'ctx>(
     }
 }
 
+// ── Section 8: Seq-equality translation ──────────────────────────────
+
 /// Handle `enum_var = ⟨a, b, c⟩` where `enum_var` is a Cons/Nil-shaped
 /// enum (one variant with 0 fields = "Nil", one variant with 2 fields
 /// where the second field's declared type matches the enum itself =
@@ -1230,6 +1266,8 @@ fn bind_composite_fields<'ctx>(
     }
     true
 }
+
+// ── Section 9: translate_bool — the Bool dispatcher ──────────────────
 
 pub(super) fn translate_bool<'ctx>(
     e: &Expr,
@@ -1719,7 +1757,7 @@ pub(super) fn translate_bool<'ctx>(
     }
 }
 
-// ── match expression translator ────────────────────────────────
+// ── Section 10: Match-expression translator ──────────────────────────
 //
 // `match scrutinee
 //      Ctor(b1, ...) ⇒ body
@@ -1860,6 +1898,8 @@ where
     }
     Some(acc)
 }
+
+// ── Section 11: Literal-range folder ─────────────────────────────────
 
 /// Resolve `Range(lo, hi)` to a `(lo, hi)` literal pair.
 ///
