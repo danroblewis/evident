@@ -45,4 +45,4 @@ Comment-only lines (starting with `--`) are exempt.
     SDL_CreateWindow, SDL_CreateRenderer, etc. Fixed by adding
     `sdl_init`, `sdl_create_window`, `create_renderer_after`,
     `set_draw_color_after`, `render_clear_after`,
-    `render_present_after` to `stdlib/sdl/{window,render}.ev`.
+    `render_present_after` to `packages/sdl/{window,render}.ev`.

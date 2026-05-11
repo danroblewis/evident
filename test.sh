@@ -161,7 +161,7 @@ fi
 
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual
-# demos (anything that imports stdlib/sdl/), spawn the program,
+# demos (anything that imports packages/sdl/), spawn the program,
 # screenshot after a brief wait, kill, save the PNG. Doesn't
 # fail the run on visual issues — those need eyes-on review by
 # either a human or by an LLM that Reads the captured PNGs.
@@ -188,7 +188,7 @@ if [ "$EXAMPLES" -eq 1 ]; then
             examples_total=$((examples_total + 1))
 
             # Visual demo? Check for SDL imports.
-            if grep -q "stdlib/sdl" "$f"; then
+            if grep -q "packages/sdl" "$f"; then
                 examples_visual=$((examples_visual + 1))
                 # Run in background, screenshot, kill.
                 "$EVIDENT" effect-run "$f" --max-steps 80 \

@@ -1,7 +1,7 @@
 # SDL stdlib follow-ups
 
 Tracks deferred work for the declarative SDL scene library
-(`stdlib/sdl/scene.ev`) and the SDL FFI surface. Items are roughly
+(`packages/sdl/scene.ev`) and the SDL FFI surface. Items are roughly
 ordered by user-visible impact / unlock potential.
 
 The renderer surface today: `RFilledRect`, `RRect` (outlined),
@@ -144,7 +144,7 @@ A scene library that pairs with the GL/shader path instead of
 SDL's 2D renderer. Drop-in replacement for the triangle demo:
 
 ```evident
-import "stdlib/sdl/gl_scene.ev"
+import "packages/sdl/gl_scene.ev"
 
 claim main
     title  ∈ String      ; title  = "GL App"

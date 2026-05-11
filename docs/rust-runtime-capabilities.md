@@ -618,7 +618,7 @@ passthroughs.
    file's directory looking for `programs/`.
 
 Embedded **stdlib shims** are auto-loaded if no real file exists on disk:
-`stdlib/sdl.ev`, `stdlib/io.ev`. This is how programs that declare
+`packages/sdl.ev`, `stdlib/io.ev`. This is how programs that declare
 `∈ SDLOutput` work without an explicit import.
 
 ### 8.2 Cached query / structural signature

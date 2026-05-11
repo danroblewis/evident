@@ -87,9 +87,9 @@ plugin/executor code, not from heroic self-hosting.
 
 | Today's Rust | Lines today | New home |
 |---|---|---|
-| `plugins/sdl.rs` | 556 | `stdlib/sdl/` — Evident library wrapping libSDL2 via FFI |
-| `plugins/audio.rs` | 228 | `stdlib/audio/` — wraps SDL_audio or PulseAudio |
-| `plugins/shader.rs` | 443 | `stdlib/shader/` — wraps libshaderc / glslang via FFI |
+| `plugins/sdl.rs` | 556 | `packages/sdl/` — Evident library wrapping libSDL2 via FFI |
+| `plugins/audio.rs` | 228 | `packages/audio/` — wraps SDL_audio or PulseAudio |
+| `plugins/shader.rs` | 443 | `packages/gl/` — wraps libshaderc / glslang / OpenGL via FFI |
 | `glsl.rs` | 1,007 | `stdlib/glsl/` — pure Evident AST → string transpiler (needs recursive claims; see "Prerequisites") |
 | `smtlib.rs` (import + export) | 957 | `stdlib/smtlib/` — same shape as GLSL transpiler |
 | Inference passes (`commands/infer_types.rs`, etc.) | ~700 | `stdlib/passes/` — already self-hosted in spirit; the Rust glue can shrink |
@@ -149,7 +149,7 @@ the language extensions above.
    end-to-end call (libc `getpid` from Evident, returning Int).
 2. **Next**: design Effect type and dispatch loop in executor. Migrate
    the simplest plugin (Stdin/Stdout) to effects, drop ~400 lines.
-3. **Then**: port SDL plugin to `stdlib/sdl/` library. Drop ~556 lines.
+3. **Then**: port SDL plugin to `packages/sdl/` library. Drop ~556 lines.
 4. **After that**: port audio + shader, drop another ~670.
 5. **Later** (needs language work): GLSL transpiler, SMT-LIB,
    recursive desugar passes.
@@ -197,7 +197,7 @@ evident execute programs/sdl_demo/bouncing_dots.ev
 ```
 
 — same command, same behavior. The difference is invisible: `bouncing_dots.ev`
-now `import`s `stdlib/sdl/window.ev`, which is Evident code calling FFI. The
+now `import`s `packages/sdl/window.ev`, which is Evident code calling FFI. The
 runtime doesn't know about SDL; it knows about effects.
 
 This is the architectural goal: the runtime becomes language infrastructure.

@@ -1,9 +1,9 @@
-# Phase 2.2: SDL plugin → stdlib/sdl/ Evident library
+# Phase 2.2: SDL plugin → packages/sdl/ Evident library
 
 ## Goal
 
 Replace the 556-line `runtime/src/plugins/sdl.rs` with a pure
-Evident library (`stdlib/sdl/`) that calls libSDL2 via FFI.
+Evident library (`packages/sdl/`) that calls libSDL2 via FFI.
 
 ## Prereqs
 
@@ -11,8 +11,8 @@ Evident library (`stdlib/sdl/`) that calls libSDL2 via FFI.
 
 ## What to build
 
-`stdlib/sdl/window.ev`, `stdlib/sdl/event.ev`,
-`stdlib/sdl/render.ev` — wrappers around the SDL functions the
+`packages/sdl/window.ev`, `packages/sdl/event.ev`,
+`packages/sdl/render.ev` — wrappers around the SDL functions the
 existing plugin uses. Read sdl.rs to enumerate them.
 
 Effect-based shape: Evident issues `FFICall(SDL_PollEvent, ...)`,
@@ -33,7 +33,7 @@ runtime to dlopen it.
 
 - `runtime/src/plugins/sdl.rs` — delete
 - `runtime/Cargo.toml` — drop sdl2, gl
-- `stdlib/sdl/*.ev` (new, multiple files)
+- `packages/sdl/*.ev` (new, multiple files)
 - `programs/sdl_demo/*.ev` — migrated
 
 ## Acceptance

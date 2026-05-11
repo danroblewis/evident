@@ -1,7 +1,7 @@
--- stdlib/shader/program.ev — OpenGL pipeline calls via libGL.
+-- packages/gl/program.ev — OpenGL pipeline calls via libGL.
 --
 -- Why two libraries: SDL handles window + GL context lifecycle
--- (stdlib/sdl/gl.ev); libGL provides the actual rendering ops
+-- (packages/sdl/gl.ev); libGL provides the actual rendering ops
 -- (this file). On macOS, the OpenGL framework's Mach-O text-stub
 -- at /System/Library/Frameworks/OpenGL.framework/OpenGL is dlopenable
 -- even though `file(1)` can't read it. dlsym finds entry points

@@ -23,7 +23,7 @@ multi-file refactor of the language definition.
 **Fix.** Library-specific code goes in the bridge role
 (`runtime/src/event_sources/<library>.rs`, currently in the
 single 1390-line `event_sources.rs` pending split) and in the
-stdlib wrapper role (`stdlib/sdl/`, etc.). If the language-core
+stdlib wrapper role (`packages/sdl/`, etc.). If the language-core
 role needs a hook (e.g. a generic typed buffer to support
 `SDL_RenderGeometry`), add a generic primitive
 (`ArgByteBuf(Vec<u8>)`), not a library-specific variant.

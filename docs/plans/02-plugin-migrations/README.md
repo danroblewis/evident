@@ -41,8 +41,8 @@ the abstraction stays.
 ## Per-task plans
 
 - `01-stdio.md` — Stdin/Stdout/CharInput/CharOutput → Effects + library wrappers
-- `02-sdl.md` — SDLInput/SDLOutput → stdlib/sdl/ Evident library
-- `03-audio.md` — SDL_audio plugin → stdlib/audio/
-- `04-shader.md` — SDLShaderOutput → stdlib/shader/
+- `02-sdl.md` — SDLInput/SDLOutput → packages/sdl/ Evident library
+- `03-audio.md` — SDL_audio plugin → packages/audio/
+- `04-shader.md` — SDLShaderOutput → packages/gl/
 - `05-remove-plugin-abstraction.md` — strip plugin trait + lifecycle
   + executor dispatch from `executor.rs`

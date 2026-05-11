@@ -1,4 +1,4 @@
--- stdlib/sdl/render.ev — SDL2 renderer + drawing primitives via FFI.
+-- packages/sdl/render.ev — SDL2 renderer + drawing primitives via FFI.
 --
 -- This library covers the SDL functions that DON'T need an SDL_Rect
 -- struct (which we can't construct from Evident yet):

@@ -17,9 +17,9 @@
 --     evident effect-run tests/lang_tests/multi_fsm/20_sdl_gl_program_fti.ev --max-steps 100
 
 import "stdlib/runtime.ev"
-import "stdlib/sdl/gl.ev"
-import "stdlib/sdl/window.ev"
-import "stdlib/shader/program.ev"
+import "packages/sdl/gl.ev"
+import "packages/sdl/window.ev"
+import "packages/gl/program.ev"
 
 enum S = Init | Frame(Int)
 

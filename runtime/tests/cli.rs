@@ -239,7 +239,7 @@ fn cli_import_relative_to_file() {
 /// `execute` here (would need an SDL display); just a parse smoke
 /// to catch regressions in syntax support.
 // (Removed: cli_query_audio_bindings_resolve — depended on
-// stdlib/sdl.ev's legacy SDLAudio plugin type, deleted in the
+// packages/sdl.ev's legacy SDLAudio plugin type, deleted in the
 // stdlib cleanup. Audio is now expected to land via the FTI
 // pattern; replace with an FTI-shaped test once an SDL_Audio
 // bridge exists.)

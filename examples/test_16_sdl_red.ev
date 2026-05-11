@@ -9,8 +9,8 @@
 -- inside the setup Seq).
 
 import "stdlib/runtime.ev"
-import "stdlib/sdl/window.ev"
-import "stdlib/sdl/render.ev"
+import "packages/sdl/window.ev"
+import "packages/sdl/render.ev"
 
 enum RState = Init | Loop(Int) | Done
 

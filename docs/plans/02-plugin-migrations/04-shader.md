@@ -1,9 +1,9 @@
-# Phase 2.4: Shader plugin → stdlib/shader/
+# Phase 2.4: Shader plugin → packages/gl/
 
 ## Goal
 
 Replace `runtime/src/plugins/shader.rs` (443 lines) — the GL
-3.3 shader compilation/binding/render loop — with `stdlib/shader/`
+3.3 shader compilation/binding/render loop — with `packages/gl/`
 that calls libGL via FFI.
 
 NOTE: This task migrates the shader RUNTIME (compiling + binding +
@@ -17,9 +17,9 @@ prerequisites.
 
 ## What to build
 
-- `stdlib/shader/program.ev` — glCreateProgram, glAttachShader,
+- `packages/gl/program.ev` — glCreateProgram, glAttachShader,
   glLinkProgram via FFI.
-- `stdlib/shader/draw.ev` — glDraw* calls.
+- `packages/gl/draw.ev` — glDraw* calls.
 - Update mario_shader and other shader demos to use the new
   library. They still depend on the GLSL transpiler being in Rust
   for now — that's Phase 4.
@@ -28,7 +28,7 @@ prerequisites.
 
 - `runtime/src/plugins/shader.rs` — delete
 - `runtime/Cargo.toml` — drop `gl` (already dropped if 2.2 took it)
-- `stdlib/shader/*.ev` (new)
+- `packages/gl/*.ev` (new)
 - mario_shader migrated
 
 ## Acceptance

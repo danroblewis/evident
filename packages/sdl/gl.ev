@@ -1,8 +1,8 @@
--- stdlib/sdl/gl.ev — SDL2's OpenGL context plumbing.
+-- packages/sdl/gl.ev — SDL2's OpenGL context plumbing.
 --
 -- SDL handles window + GL context creation, attribute selection,
 -- and buffer swapping. The OpenGL calls themselves (glCreateShader,
--- glClear, glDrawArrays, …) live in stdlib/shader/program.ev and are
+-- glClear, glDrawArrays, …) live in packages/gl/program.ev and are
 -- dispatched via libGL — see the "Why two libraries" note there.
 --
 -- Typical use:

@@ -46,7 +46,7 @@ is done.
 
 When `--examples` runs, it iterates every `examples/test_*.ev`:
 - Non-visual demos run with a timeout, asserting clean exit.
-- Visual demos (anything importing `stdlib/sdl/`) get spawned,
+- Visual demos (anything importing `packages/sdl/`) get spawned,
   given ~2s to draw, screenshotted to `/tmp/evident-screenshots/`,
   then killed.
 
@@ -80,7 +80,7 @@ your task:
 | Writing a new program (any program) | [`examples/`](examples/) — copy the closest existing demo's shape |
 | Looking for the punch list of known runtime gaps | [`examples/COUNTEREXAMPLES.md`](examples/COUNTEREXAMPLES.md) |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
-| Writing or extending an FFI wrapper library (`stdlib/sdl/`, `stdlib/audio/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
+| Writing or extending an FFI wrapper library (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |
 | Writing a multi-FSM program (cookbook) | [`docs/guide/multi-fsm-programs.md`](docs/guide/multi-fsm-programs.md) |
 | Designing/extending the multi-FSM runtime, halt semantics, or scheduler | [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) + [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md) |

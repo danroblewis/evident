@@ -149,7 +149,7 @@ doc) — both are about "instances of declared things."
 
 ### 4. Migration of existing FFI bindings
 
-Current `stdlib/sdl/`, `stdlib/audio/`, etc. are written against
+Current `packages/sdl/`, `packages/gl/`, etc. are written against
 `Effect::FFICall`. Migrating to FTI is a per-binding effort. The
 two paths can coexist — `Effect::FFICall` doesn't go away. New
 bindings can use FTI; old ones stay as-is until rewritten.

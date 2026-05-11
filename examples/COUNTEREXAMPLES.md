@@ -212,7 +212,7 @@ plain stdlib calls on the known handle — no `Seq`, no
 
 ## 10. Stdlib helpers can't take `ArgPriorResult` without explicit `*_after` variants
 
-**Where:** `stdlib/sdl/render.ev` (the new `*_after` family)
+**Where:** `packages/sdl/render.ev` (the new `*_after` family)
 
 A wrapper claim like `render_clear(renderer ∈ Int, out)` builds
 its own `ArgList` with `ArgHandle(renderer)`. To get an
@@ -599,9 +599,9 @@ but stays black. Save as a `.ev` file and run with
 
 ```evident
 import "stdlib/runtime.ev"
-import "stdlib/sdl/gl.ev"
-import "stdlib/sdl/window.ev"
-import "stdlib/shader/program.ev"
+import "packages/sdl/gl.ev"
+import "packages/sdl/window.ev"
+import "packages/gl/program.ev"
 
 enum WState = WInit | WLoop(Int) | WEnd
 

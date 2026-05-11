@@ -139,7 +139,7 @@ If it DOES clear the bar:
   higher-level one).
 - Not flagging a symbol just because it's library-specific —
   library-specific code is **expected** in
-  `runtime/src/event_sources/` and `stdlib/sdl/`. Check the rule's
+  `runtime/src/event_sources/` and `packages/sdl/`. Check the rule's
   scope before flagging.
 
 ## Tone

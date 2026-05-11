@@ -294,7 +294,7 @@ implementation detail.
 The simplest interesting case. Game owns world, render reads it.
 
 ```evident
-import "stdlib/sdl/scene.ev"
+import "packages/sdl/scene.ev"
 
 type World
     player_pos ∈ IVec2
@@ -346,9 +346,9 @@ The headline use case. Setup pushes GL state once, halts.
 Render runs forever with a tiny constraint set.
 
 ```evident
-import "stdlib/sdl/gl.ev"
-import "stdlib/shader/program.ev"
-import "stdlib/glsl/transpile.ev"
+import "packages/sdl/gl.ev"
+import "packages/gl/program.ev"
+import "packages/glsl/transpile.ev"
 
 type World
     window   ∈ Int

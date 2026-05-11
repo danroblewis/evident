@@ -44,9 +44,9 @@ Phase 1: FFI + Effects (sequential)
        ▼
 Phase 2: Plugin migrations (parallelizable after Phase 1)
    2.1  Stdin/Stdout → effects
-   2.2  SDL → stdlib/sdl/ Evident library
-   2.3  Audio → stdlib/audio/
-   2.4  Shader → stdlib/shader/
+   2.2  SDL → packages/sdl/ Evident library
+   2.3  Audio → packages/audio/
+   2.4  Shader → packages/gl/
    2.5  Remove plugin abstraction code
        │
        ▼

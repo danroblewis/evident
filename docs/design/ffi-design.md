@@ -73,7 +73,7 @@ runs the cleanup closure (if any) and removes the entry. There is no
 GC; programs manage their own resource lifetimes.
 
 Handles allocated with no cleanup closure (the default) leak when the
-runtime exits. Cleanup is opt-in via library code — `stdlib/sdl/` would
+runtime exits. Cleanup is opt-in via library code — `packages/sdl/` would
 register `SDL_DestroyWindow` as cleanup when allocating a window.
 
 ## The effect type
@@ -217,7 +217,7 @@ claim close_fd(h ∈ Handle, fd ∈ Int, ok ∈ Bool)
     ok = rc = 0
 ```
 
-Libraries like `stdlib/sdl/` import `stdlib/posix.ev` for shared
+Libraries like `packages/sdl/` import `stdlib/posix.ev` for shared
 plumbing, then add their own FFI wrappers. The pattern compounds —
 every library written this way reduces what the runtime needs to
 know.

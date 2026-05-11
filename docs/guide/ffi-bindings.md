@@ -132,11 +132,13 @@ Recommendations:
   `LD_LIBRARY_PATH` plus standard paths).
 
 Hardcode absolute paths until we have a per-platform path-lookup
-helper. See `stdlib/sdl/window.ev` for the established pattern.
+helper. See `packages/sdl/window.ev` for the established pattern.
 
 ## Writing a wrapper library
 
-A library file lives under `stdlib/`. Conventions:
+A library file lives under `packages/<library>/` (e.g. `packages/sdl/`,
+`packages/gl/`) when it wraps an external C library. Pure language-level
+helpers stay in `stdlib/`. Conventions:
 
 1. **Import `stdlib/runtime.ev`** for the Effect / Result / FFIArg
    types.

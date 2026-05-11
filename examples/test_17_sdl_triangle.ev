@@ -11,8 +11,8 @@
 -- LibCall / dylib paths.
 
 import "stdlib/runtime.ev"
-import "stdlib/sdl/window.ev"
-import "stdlib/sdl/render.ev"
+import "packages/sdl/window.ev"
+import "packages/sdl/render.ev"
 
 enum TState = Init | Done
 

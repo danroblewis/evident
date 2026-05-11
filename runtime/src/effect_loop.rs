@@ -166,7 +166,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     let mut fti_params:     Vec<(String, String, crate::ast::Pins)> = Vec::new();
     // Walk this claim's body PLUS the bodies of any
     // `..PassthroughClaim` so a declarative library (e.g.
-    // stdlib/sdl/scene.ev's `..SDLScene`) contributes its
+    // packages/sdl/scene.ev's `..SDLScene`) contributes its
     // state-machine vars to the outer claim.
     let mut all_items: Vec<&BodyItem> = Vec::new();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();

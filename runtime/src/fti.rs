@@ -66,7 +66,7 @@ pub fn is_fti_type(type_name: &str) -> bool {
 /// the relevant `INSTALLERS` entry covers everything the file
 /// declares, then add the path here.
 const SHIMMED_STDLIB_PATHS: &[&str] = &[
-    "stdlib/sdl.ev",
+    "packages/sdl.ev",
     "stdlib/io.ev",
 ];
 

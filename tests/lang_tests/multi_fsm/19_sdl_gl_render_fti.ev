@@ -15,8 +15,8 @@
 -- ~30 frames rendered, then exit.
 
 import "stdlib/runtime.ev"
-import "stdlib/sdl/gl.ev"
-import "stdlib/shader/program.ev"
+import "packages/sdl/gl.ev"
+import "packages/gl/program.ev"
 
 enum S = Init | Frame(Int)
 
