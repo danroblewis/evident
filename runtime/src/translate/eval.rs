@@ -1,6 +1,17 @@
-//! The four public orchestrator entry points: `evaluate` (one-shot
-//! query), `build_cache` + `run_cached` (per-step cached query for the
-//! executor), `sample_cached_inner` (n-distinct-models for sampling).
+//! Public orchestrator entry points, in two families:
+//!
+//!   * **One-shot query** — `evaluate`, `evaluate_with_extra_assertion`,
+//!     `evaluate_with_extra_assertions`, `evaluate_with_program_and_body`,
+//!     `evaluate_with_core`. Each builds a fresh Solver, asserts the
+//!     schema's body (plus any caller extras), runs `check`, returns
+//!     a `QueryResult`. Variants exist for the different shapes of
+//!     "extra constraints" callers want to layer on (CLI `--given`,
+//!     test scaffolding, multi-FSM coordinator).
+//!
+//!   * **Per-step cached query** — `build_cache` (compile once) +
+//!     `run_cached` (step many times re-using the compiled solver) +
+//!     `sample_cached_inner` (n-distinct-models for `sample`). Used
+//!     by the effect loop to amortize translate cost across ticks.
 
 use std::collections::{HashMap, HashSet};
 use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};

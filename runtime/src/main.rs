@@ -6,7 +6,6 @@
 //!   sample  <files…> <schema> [-n N] [--given k=v …] [--json]
 //!   test    [path]
 //!   effect-run <file>           — run an effect-driven program
-//!   infer-types <file> [--strict]
 //!   lint    <file>
 
 use std::process::ExitCode;

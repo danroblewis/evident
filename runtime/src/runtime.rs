@@ -473,16 +473,16 @@ impl EvidentRuntime {
         // lazily by name) but it matches the textual reading order of
         // the file.
         for import_path in &prog.imports {
-            // Known-stdlib paths whose types are already provided by the
-            // embedded stdlibs we auto-load in `cmd_execute` (Stdin/Stdout
-            // via `executor::load_io_stdlib`, SDLInput/SDLOutput/etc. via
-            // `plugins::sdl::STDLIB_SDL_EV`). Silently no-op these so
-            // programs that import them — which is the convention even
-            // though our embedded versions cover the same ground — don't
-            // fail just because we don't ship the .ev files at the
-            // expected path. Users who DO ship a real `stdlib/sdl.ev`
-            // alongside their program (via cwd) will still hit it via
-            // verbatim resolution above.
+            // Known-stdlib paths whose types are auto-installed by
+            // the FTI registry (`crate::fti::INSTALLERS`) when a
+            // program declares matching world fields. Silently
+            // no-op these so programs that import them — the
+            // convention, even though our embedded versions cover
+            // the same ground — don't fail just because we don't
+            // ship the .ev files at the expected path. Users who
+            // DO ship a real `stdlib/sdl.ev` alongside their program
+            // (via cwd) will still hit it via verbatim resolution
+            // above.
             const STDLIB_SHIMS: &[&str] = &[
                 "stdlib/sdl.ev",
                 "stdlib/io.ev",

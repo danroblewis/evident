@@ -8,8 +8,8 @@
 //! Currently one rewrite:
 //!   `BodyItem::Constraint(Expr::Identifier(name))` where `name` is
 //!   a known schema → `BodyItem::Passthrough(name)`. Previously this
-//!   was handled by a match arm in `translate/inline.rs:223`; that
-//!   arm is now removed.
+//!   was handled inline by a match arm in `translate/inline.rs`;
+//!   that arm is now removed.
 //!
 //! Pipeline shape:
 //!   1. Spin up an isolated EvidentRuntime, load `stdlib/ast.ev` +
