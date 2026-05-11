@@ -396,6 +396,29 @@ pub fn run_with_ctx(
             }
             None
         };
+        // Encoder closure for plugins that need the loaded program
+        // as a `Value::Enum` tree (reflection plugin et al.). Pure-
+        // Rust mirror of `encode_program` — no Z3 needed because
+        // the closure produces `Value`, not `Datatype`. Plugins that
+        // don't reflect ignore this field.
+        let encode_program = || -> Result<crate::Value, String> {
+            // Detect missing stdlib/ast.ev with a clear message
+            // before encoding (otherwise the user gets a much later,
+            // less obvious "Program enum unknown" failure when the
+            // FSM tries to pin the value).
+            let by_name = rt.enums_registry().by_name.borrow();
+            if !by_name.contains_key("Program") {
+                return Err(
+                    "reflection plugin: world declares a `Program` field, \
+                     but `stdlib/ast.ev` isn't imported — add \
+                     `import \"stdlib/ast.ev\"` to make the AST schema \
+                     available".to_string());
+            }
+            drop(by_name);
+            Ok(crate::translate::ast_encoder::program_to_value(
+                &rt.program_ast(),
+            ))
+        };
         let plugin_ctx = crate::event_sources::WorldPluginCtx {
             world_fields:            &world_fields,
             fsm_event_subscriptions: &fsm_event_subscriptions,
@@ -405,6 +428,7 @@ pub fn run_with_ctx(
             env_file_watch_ms:       env.file_watch_ms,
             env_file_input:          env.file_input.as_deref(),
             fsm_using_identifier:    &fsm_using_identifier,
+            encode_program:          &encode_program,
         };
 
         // World-plugin auto-install (Phase 4 v3.7, unified model).

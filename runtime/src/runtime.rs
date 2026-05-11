@@ -787,6 +787,19 @@ impl EvidentRuntime {
         )
     }
 
+    /// Return a clone of the user-side `Program` AST (everything
+    /// loaded after `mark_system_loads_complete()`). When the system
+    /// boundary hasn't been drawn, returns the full program — same
+    /// semantics as `encode_program_value`.
+    ///
+    /// Used by the reflection world-plugin to build a `Value::Enum`
+    /// tree without having to construct Z3 datatype values. Also
+    /// useful for any future consumer that wants the raw AST shape
+    /// (lints walking the program, custom encoders, etc.).
+    pub fn program_ast(&self) -> Program {
+        self.user_program()
+    }
+
     /// Stage 5.5 plumbing: like `query_with_program`, but ALSO
     /// injects the user's first claim's body as a `Seq(BodyItem)`
     /// for the named seq variable. Lets a self-hosted pass iterate

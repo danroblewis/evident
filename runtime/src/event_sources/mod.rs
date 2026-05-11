@@ -167,6 +167,14 @@ pub struct WorldPluginCtx<'a> {
     /// the auto-install-vs-Effect::ReadLine race; returns None if
     /// no FSM references the identifier.
     pub fsm_using_identifier: &'a dyn Fn(&str) -> Option<String>,
+    /// Closure returning the user-side `Program` AST encoded as a
+    /// `Value::Enum` tree matching `stdlib/ast.ev`'s `Program`
+    /// shape. Reflection plugin (and any future plugin that needs
+    /// to expose the loaded program declaratively) calls this at
+    /// install time. Returns `Err` if `stdlib/ast.ev` isn't
+    /// loaded — the registry is empty or the `Program` enum is
+    /// missing. Other plugins ignore this field.
+    pub encode_program: &'a dyn Fn() -> Result<Value, String>,
 }
 
 impl<'a> WorldPluginCtx<'a> {

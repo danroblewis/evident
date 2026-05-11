@@ -642,3 +642,290 @@ pub fn encode_effect_result_list<'ctx>(
     let tail = encode_effect_result_list(&items[1..], ctx, enums)?;
     apply(enums, "ResultList", "ResCons", &[&head, &tail])
 }
+
+// ── Pure-Rust mirror: Program → Value::Enum tree ───────────────
+//
+// The encoders above produce Z3 `Datatype<'static>` values for use
+// as solver assertions. The reflection world-plugin (and other
+// future consumers) need the SAME information shaped as a
+// `Value::Enum` tree — the runtime's neutral value currency that
+// flows through `world_snapshot` and the `given` map.
+//
+// These helpers mirror `encode_program` / `encode_schema_decl` /
+// etc. but produce `Value` directly, never touching Z3. The shape
+// is identical to what `encode_program` would emit and what
+// `decode_ast`'s round-trip expects — same constructor names, same
+// argument order. Adding a variant here means the Z3 path AND
+// stdlib/ast.ev's enum decl must be kept in sync (same as the
+// existing encoders).
+
+use super::types::Value;
+
+fn ev(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
+    Value::Enum {
+        enum_name: enum_name.to_string(),
+        variant:   variant.to_string(),
+        fields,
+    }
+}
+
+pub fn program_to_value(prog: &Program) -> Value {
+    let schemas = schema_list_to_value(&prog.schemas);
+    let enums   = enum_decl_list_to_value(&prog.enums);
+    ev("Program", "MakeProgram", vec![schemas, enums])
+}
+
+fn schema_list_to_value(items: &[SchemaDecl]) -> Value {
+    let mut acc = ev("SchemaList", "SchLNil", vec![]);
+    for s in items.iter().rev() {
+        acc = ev("SchemaList", "SchLCons",
+                 vec![schema_decl_to_value(s), acc]);
+    }
+    acc
+}
+
+fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
+    let mut acc = ev("EnumDeclList", "EDLNil", vec![]);
+    for e in items.iter().rev() {
+        acc = ev("EnumDeclList", "EDLCons",
+                 vec![enum_decl_to_value(e), acc]);
+    }
+    acc
+}
+
+fn schema_decl_to_value(s: &SchemaDecl) -> Value {
+    let kw = keyword_to_value(&s.keyword);
+    let body = body_item_list_to_value(&s.body);
+    ev("SchemaDecl", "MakeSchemaDecl",
+       vec![kw, Value::Str(s.name.clone()), body])
+}
+
+fn keyword_to_value(kw: &Keyword) -> Value {
+    let v = match kw {
+        Keyword::Schema   => "KSchema",
+        Keyword::Claim    => "KClaim",
+        Keyword::Type     => "KType",
+        Keyword::Subclaim => "KSubclaim",
+    };
+    ev("Keyword", v, vec![])
+}
+
+fn body_item_list_to_value(items: &[BodyItem]) -> Value {
+    let mut acc = ev("BodyItemList", "BILNil", vec![]);
+    for it in items.iter().rev() {
+        acc = ev("BodyItemList", "BILCons",
+                 vec![body_item_to_value(it), acc]);
+    }
+    acc
+}
+
+fn body_item_to_value(bi: &BodyItem) -> Value {
+    match bi {
+        BodyItem::Membership { name, type_name, pins } => {
+            ev("BodyItem", "BIMembership",
+               vec![Value::Str(name.clone()),
+                    Value::Str(type_name.clone()),
+                    pins_to_value(pins)])
+        }
+        BodyItem::Passthrough(name) => {
+            ev("BodyItem", "BIPassthrough", vec![Value::Str(name.clone())])
+        }
+        BodyItem::ClaimCall { name, mappings } => {
+            ev("BodyItem", "BIClaimCall",
+               vec![Value::Str(name.clone()),
+                    mapping_list_to_value(mappings)])
+        }
+        BodyItem::Constraint(e) => {
+            ev("BodyItem", "BIConstraint", vec![expr_to_value(e)])
+        }
+        BodyItem::SubclaimDecl(s) => {
+            ev("BodyItem", "BISubclaim", vec![schema_decl_to_value(s)])
+        }
+    }
+}
+
+fn pins_to_value(p: &Pins) -> Value {
+    match p {
+        Pins::None => ev("Pins", "PNone", vec![]),
+        Pins::Named(maps) => {
+            ev("Pins", "PNamed", vec![mapping_list_to_value(maps)])
+        }
+        Pins::Positional(args) => {
+            ev("Pins", "PPositional", vec![expr_list_to_value(args)])
+        }
+    }
+}
+
+fn mapping_to_value(m: &Mapping) -> Value {
+    ev("Mapping", "MakeMapping",
+       vec![Value::Str(m.slot.clone()), expr_to_value(&m.value)])
+}
+
+fn mapping_list_to_value(items: &[Mapping]) -> Value {
+    let mut acc = ev("MappingList", "MLNil", vec![]);
+    for m in items.iter().rev() {
+        acc = ev("MappingList", "MLCons",
+                 vec![mapping_to_value(m), acc]);
+    }
+    acc
+}
+
+fn string_list_to_value(items: &[String]) -> Value {
+    let mut acc = ev("StringList", "SLNil", vec![]);
+    for s in items.iter().rev() {
+        acc = ev("StringList", "SLCons",
+                 vec![Value::Str(s.clone()), acc]);
+    }
+    acc
+}
+
+fn expr_list_to_value(items: &[Expr]) -> Value {
+    let mut acc = ev("ExprList", "ELNil", vec![]);
+    for e in items.iter().rev() {
+        acc = ev("ExprList", "ELCons",
+                 vec![expr_to_value(e), acc]);
+    }
+    acc
+}
+
+fn binop_to_value(op: &BinOp) -> Value {
+    let v = match op {
+        BinOp::Eq      => "OpEq",
+        BinOp::Neq     => "OpNeq",
+        BinOp::Lt      => "OpLt",
+        BinOp::Le      => "OpLe",
+        BinOp::Gt      => "OpGt",
+        BinOp::Ge      => "OpGe",
+        BinOp::And     => "OpAnd",
+        BinOp::Or      => "OpOr",
+        BinOp::Implies => "OpImplies",
+        BinOp::Add     => "OpAdd",
+        BinOp::Sub     => "OpSub",
+        BinOp::Mul     => "OpMul",
+        BinOp::Div     => "OpDiv",
+        BinOp::Concat  => "OpConcat",
+    };
+    ev("BinOp", v, vec![])
+}
+
+fn expr_to_value(e: &Expr) -> Value {
+    match e {
+        Expr::Identifier(s) => ev("Expr", "EIdentifier", vec![Value::Str(s.clone())]),
+        Expr::Int(n)        => ev("Expr", "EInt",        vec![Value::Int(*n)]),
+        Expr::Real(f)       => ev("Expr", "EReal",       vec![Value::Real(*f)]),
+        Expr::Bool(b)       => ev("Expr", "EBool",       vec![Value::Bool(*b)]),
+        Expr::Str(s)        => ev("Expr", "EStr",        vec![Value::Str(s.clone())]),
+        Expr::SetLit(items) => ev("Expr", "ESetLit",     vec![expr_list_to_value(items)]),
+        Expr::SeqLit(items) => ev("Expr", "ESeqLit",     vec![expr_list_to_value(items)]),
+        Expr::Range(lo, hi) => ev("Expr", "ERange",
+                                   vec![expr_to_value(lo), expr_to_value(hi)]),
+        Expr::InExpr(l, r)  => ev("Expr", "EInExpr",
+                                   vec![expr_to_value(l), expr_to_value(r)]),
+        Expr::Forall(vars, range, body) =>
+            ev("Expr", "EForall",
+               vec![string_list_to_value(vars),
+                    expr_to_value(range),
+                    expr_to_value(body)]),
+        Expr::Exists(vars, range, body) =>
+            ev("Expr", "EExists",
+               vec![string_list_to_value(vars),
+                    expr_to_value(range),
+                    expr_to_value(body)]),
+        Expr::Call(name, args) =>
+            ev("Expr", "ECall",
+               vec![Value::Str(name.clone()), expr_list_to_value(args)]),
+        Expr::Cardinality(inner) =>
+            ev("Expr", "ECardinality", vec![expr_to_value(inner)]),
+        Expr::Index(seq, idx) =>
+            ev("Expr", "EIndex", vec![expr_to_value(seq), expr_to_value(idx)]),
+        Expr::Field(base, name) =>
+            ev("Expr", "EField",
+               vec![expr_to_value(base), Value::Str(name.clone())]),
+        Expr::Binary(op, l, r) =>
+            ev("Expr", "EBinary",
+               vec![binop_to_value(op), expr_to_value(l), expr_to_value(r)]),
+        Expr::Not(inner) =>
+            ev("Expr", "ENot", vec![expr_to_value(inner)]),
+        Expr::Ternary(c, a, b) =>
+            ev("Expr", "ETernary",
+               vec![expr_to_value(c), expr_to_value(a), expr_to_value(b)]),
+        Expr::Match(scr, arms) =>
+            ev("Expr", "EMatch",
+               vec![expr_to_value(scr), match_arm_list_to_value(arms)]),
+        Expr::Matches(e, pat) =>
+            ev("Expr", "EMatches",
+               vec![expr_to_value(e), match_pattern_to_value(pat)]),
+    }
+}
+
+fn match_arm_list_to_value(arms: &[crate::ast::MatchArm]) -> Value {
+    let mut acc = ev("MatchArmList", "MALNil", vec![]);
+    for a in arms.iter().rev() {
+        acc = ev("MatchArmList", "MALCons",
+                 vec![match_arm_to_value(a), acc]);
+    }
+    acc
+}
+
+fn match_arm_to_value(a: &crate::ast::MatchArm) -> Value {
+    ev("MatchArm", "MakeMatchArm",
+       vec![match_pattern_to_value(&a.pattern), expr_to_value(&a.body)])
+}
+
+fn match_pattern_to_value(p: &crate::ast::MatchPattern) -> Value {
+    use crate::ast::MatchPattern;
+    match p {
+        MatchPattern::Wildcard => ev("MatchPattern", "PatWildcard", vec![]),
+        MatchPattern::Ctor { name, binds } => {
+            ev("MatchPattern", "PatCtor",
+               vec![Value::Str(name.clone()), bind_list_to_value(binds)])
+        }
+    }
+}
+
+fn bind_list_to_value(binds: &[Option<String>]) -> Value {
+    let mut acc = ev("BindList", "BLNil", vec![]);
+    for b in binds.iter().rev() {
+        let head = match b {
+            None => ev("MatchBind", "BindWildcard", vec![]),
+            Some(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
+        };
+        acc = ev("BindList", "BLCons", vec![head, acc]);
+    }
+    acc
+}
+
+fn enum_decl_to_value(e: &EnumDecl) -> Value {
+    ev("EnumDecl", "MakeEnumDecl",
+       vec![Value::Str(e.name.clone()),
+            enum_variant_list_to_value(&e.variants)])
+}
+
+fn enum_variant_list_to_value(items: &[EnumVariant]) -> Value {
+    let mut acc = ev("EnumVariantList", "EVLNil", vec![]);
+    for v in items.iter().rev() {
+        acc = ev("EnumVariantList", "EVLCons",
+                 vec![enum_variant_to_value(v), acc]);
+    }
+    acc
+}
+
+fn enum_variant_to_value(v: &EnumVariant) -> Value {
+    ev("EnumVariant", "MakeEnumVariant",
+       vec![Value::Str(v.name.clone()),
+            enum_field_list_to_value(&v.fields)])
+}
+
+fn enum_field_list_to_value(items: &[EnumField]) -> Value {
+    let mut acc = ev("EnumFieldList", "EFLNil", vec![]);
+    for f in items.iter().rev() {
+        acc = ev("EnumFieldList", "EFLCons",
+                 vec![enum_field_to_value(f), acc]);
+    }
+    acc
+}
+
+fn enum_field_to_value(f: &EnumField) -> Value {
+    ev("EnumField", "MakeEnumField",
+       vec![Value::Str(f.name.clone()), Value::Str(f.type_name.clone())])
+}
