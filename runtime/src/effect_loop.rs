@@ -33,6 +33,61 @@ impl Default for LoopOpts {
     fn default() -> Self { Self { max_steps: 10_000 } }
 }
 
+/// Snapshot of every `EVIDENT_*` env var the scheduler consults.
+/// Read ONCE at scheduler startup; per-tick code references the
+/// cached fields. Without this, `eprintln!`-gating env reads run
+/// per-FSM-per-tick — a syscall each — purely to gate diagnostics
+/// nobody is reading.
+#[derive(Debug, Clone)]
+struct LoopEnv {
+    /// `EVIDENT_SCHEDULER` — `false` for the legacy "tick every
+    /// FSM every iteration" mode; `true` for the default
+    /// subscription-driven scheduler.
+    delta_mode:     bool,
+    /// `EVIDENT_LOOP_TRACE` — gate per-tick scheduling diagnostics.
+    /// Hot — checked inside per-FSM body.
+    trace:          bool,
+    /// `EVIDENT_LOOP_TIMING` — gate per-step solve/dispatch timing.
+    timing:         bool,
+    /// `EVIDENT_TICK_MS` — explicit FrameTimer interval; opt-in via
+    /// env even if World doesn't declare `tick_count`.
+    tick_ms:        Option<u64>,
+    /// `EVIDENT_CLOCK_MS` — WallClock interval (default 100).
+    clock_ms:       u64,
+    /// `EVIDENT_FILE_WATCH` — path to watch (FileWatcher only
+    /// installs if present).
+    file_watch:     Option<String>,
+    /// `EVIDENT_FILE_WATCH_MS` — FileWatcher poll interval
+    /// (default 200).
+    file_watch_ms:  u64,
+    /// `EVIDENT_FILE_INPUT` — path to read (FileLineReader only
+    /// installs if present).
+    file_input:     Option<String>,
+}
+
+impl LoopEnv {
+    fn from_process_env() -> Self {
+        Self {
+            delta_mode:    std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy"),
+            trace:         std::env::var("EVIDENT_LOOP_TRACE").is_ok(),
+            timing:        std::env::var("EVIDENT_LOOP_TIMING").is_ok(),
+            tick_ms:       std::env::var("EVIDENT_TICK_MS").ok()
+                               .and_then(|s| s.parse().ok())
+                               .filter(|&n: &u64| n > 0),
+            clock_ms:      std::env::var("EVIDENT_CLOCK_MS").ok()
+                               .and_then(|s| s.parse().ok())
+                               .filter(|&n: &u64| n > 0)
+                               .unwrap_or(100),
+            file_watch:    std::env::var("EVIDENT_FILE_WATCH").ok(),
+            file_watch_ms: std::env::var("EVIDENT_FILE_WATCH_MS").ok()
+                               .and_then(|s| s.parse().ok())
+                               .filter(|&n: &u64| n > 0)
+                               .unwrap_or(200),
+            file_input:    std::env::var("EVIDENT_FILE_INPUT").ok(),
+        }
+    }
+}
+
 /// Result of running an effect-driven program.
 #[derive(Debug)]
 pub struct LoopResult {
@@ -281,10 +336,15 @@ pub fn run_with_ctx(
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
     let fsms = detect_all_fsms(rt);
+    // Snapshot every EVIDENT_* env var the scheduler consults
+    // ONCE here; per-tick code references the cached fields.
+    // Avoids syscall-per-tick overhead on hot diagnostic gates
+    // and keeps env-read sites discoverable in one place.
+    let env = LoopEnv::from_process_env();
     // Default scheduler: delta (subscription-driven). Opt out via
     // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
     // every iteration" behavior with name/fixpoint-based halt.
-    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
+    let delta_mode = env.delta_mode;
 
     // Set up async event sources. Two trigger paths (transitional):
     //
@@ -335,9 +395,7 @@ pub fn run_with_ctx(
         //     auto-install)
         //   * Any FSM has `_ ∈ FrameTimer` marker (back-compat
         //     marker-subscription path)
-        let env_tick_ms: Option<u64> = std::env::var("EVIDENT_TICK_MS").ok()
-            .and_then(|s| s.parse().ok())
-            .filter(|&n| n > 0);
+        let env_tick_ms: Option<u64> = env.tick_ms;
         let want_timer = env_tick_ms.is_some()
             || has_field("tick_count", "Int")
             || fsms.iter().any(|f| f.event_subscriptions.contains("tick"));
@@ -437,10 +495,7 @@ pub fn run_with_ctx(
         // configured interval (default 100ms; override via
         // EVIDENT_CLOCK_MS).
         if has_field("now_ms", "Int") {
-            let ms: u64 = std::env::var("EVIDENT_CLOCK_MS").ok()
-                .and_then(|s| s.parse().ok())
-                .filter(|&n| n > 0)
-                .unwrap_or(100);
+            let ms: u64 = env.clock_ms;
             let mut c = crate::event_sources::WallClockSource::new(ms, "now_ms");
             c.start(event_tx.clone())
                 .map_err(|e| format!("failed to start WallClock: {e}"))?;
@@ -453,12 +508,9 @@ pub fn run_with_ctx(
         // increments the field on each detected mtime change.
         // Poll interval via EVIDENT_FILE_WATCH_MS (default 200ms).
         if has_field("file_changed", "Int") {
-            if let Ok(path) = std::env::var("EVIDENT_FILE_WATCH") {
-                let ms: u64 = std::env::var("EVIDENT_FILE_WATCH_MS").ok()
-                    .and_then(|s| s.parse().ok())
-                    .filter(|&n| n > 0)
-                    .unwrap_or(200);
-                let mut w = crate::event_sources::FileWatcherSource::new(&path, ms, "file_changed");
+            if let Some(path) = env.file_watch.as_deref() {
+                let ms: u64 = env.file_watch_ms;
+                let mut w = crate::event_sources::FileWatcherSource::new(path, ms, "file_changed");
                 w.start(event_tx.clone())
                     .map_err(|e| format!("failed to start FileWatcher for {path:?}: {e}"))?;
                 event_sources.push(Box::new(w));
@@ -473,8 +525,8 @@ pub fn run_with_ctx(
         // First step toward FTI: a typed resource (file) with a
         // declared lifecycle (open at start, EOF closes channel).
         if has_field("file_line", "String") {
-            if let Ok(path) = std::env::var("EVIDENT_FILE_INPUT") {
-                let mut f = crate::event_sources::FileLineReader::new(&path, "file_line");
+            if let Some(path) = env.file_input.as_deref() {
+                let mut f = crate::event_sources::FileLineReader::new(path, "file_line");
                 if has_field("file_seq", "Int") {
                     f = f.with_seq_field("file_seq");
                     plugin_writes.insert("file_seq".to_string());
@@ -497,7 +549,7 @@ pub fn run_with_ctx(
     drop(event_tx);
     let event_rx = if event_sources.is_empty() { None } else { Some(event_rx) };
 
-    if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+    if env.trace {
         eprintln!("[loop] startup: delta_mode={delta_mode} fsms=[{}] plugin_writes=[{}]",
             fsms.iter().map(|f| f.claim_name.as_str()).collect::<Vec<_>>().join(","),
             plugin_writes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(","),
@@ -544,9 +596,9 @@ pub fn run_with_ctx(
 
     let result = match fsms.len() {
         0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
-        1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx),
-        1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources),
-        _ => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources),
+        1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx, &env),
+        1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
+        _ => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
     };
     // Stop all event sources cleanly. Each source's stop signals
     // its background thread and joins. Drop also calls stop, but
@@ -563,6 +615,7 @@ fn run_with_shape(
     shape: &MainShape,
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
+    env: &LoopEnv,
 ) -> Result<LoopResult, String> {
     // Initial state: pin to the FIRST variant of the state enum.
     // Convention: programs declare the initial state as the first
@@ -588,7 +641,7 @@ fn run_with_shape(
     // EVIDENT_LOOP_TIMING=1 → per-step solve+dispatch timing + summary.
     // Useful for figuring out where time goes in long-running demos
     // (Z3 solve vs FFI dispatch vs idle in delays).
-    let timing = std::env::var("EVIDENT_LOOP_TIMING").is_ok();
+    let timing = env.timing;
     let loop_t0 = std::time::Instant::now();
     let mut total_solve = std::time::Duration::ZERO;
     let mut total_dispatch = std::time::Duration::ZERO;
@@ -647,7 +700,7 @@ fn run_with_shape(
         let dispatch_dt = dispatch_t0.elapsed();
         total_dispatch += dispatch_dt;
 
-        if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+        if env.trace {
             eprintln!("[loop] step {step_count}: state_next={state_next_val:?} effects={effects:?}");
         }
         if timing {
@@ -714,6 +767,7 @@ fn run_multi_fsm(
     ctx: &mut DispatchContext,
     event_rx: Option<&std::sync::mpsc::Receiver<crate::event_sources::SchedulerEvent>>,
     event_sources: &mut [Box<dyn crate::event_sources::EventSource>],
+    env: &LoopEnv,
 ) -> Result<LoopResult, String> {
     use std::collections::HashMap;
     // Convert to owned Vec so we can grow at runtime (Effect::SpawnFsm).
@@ -815,7 +869,7 @@ fn run_multi_fsm(
     }
 
     let mut step_count = 0usize;
-    let timing = std::env::var("EVIDENT_LOOP_TIMING").is_ok();
+    let timing = env.timing;
     let loop_t0 = std::time::Instant::now();
     let mut total_solve = std::time::Duration::ZERO;
     let mut total_dispatch = std::time::Duration::ZERO;
@@ -829,7 +883,7 @@ fn run_multi_fsm(
     // Default scheduler: delta (subscription-driven). Opt out via
     // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
     // every iteration" behavior with name/fixpoint-based halt.
-    let delta_mode = std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy");
+    let delta_mode = env.delta_mode;
     // Access sets are needed in BOTH modes now: delta mode uses
     // them for scheduling decisions; multi-writer support uses
     // them to scope each writer's snapshot updates to its own
@@ -992,7 +1046,7 @@ fn run_multi_fsm(
                     || state_changed_last[idx]
                     || external_event[idx];
                 if !woken {
-                    if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                    if env.trace {
                         eprintln!("[loop] tick {step_count} fsm={}: skipped (no inputs)",
                             fsm.claim_name);
                     }
@@ -1139,7 +1193,7 @@ fn run_multi_fsm(
             fsm_rt[idx].current_state = encode_state_value(rt, state_next_val);
             fsm_rt[idx].current_state_v = Some(state_next_val.clone());
 
-            if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+            if env.trace {
                 eprintln!("[loop] tick {step_count} fsm={}: state_next={state_next_val:?} effects={effects:?}",
                     fsm.claim_name);
             }
@@ -1193,7 +1247,7 @@ fn run_multi_fsm(
                         continue;
                     }
                 };
-                if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                if env.trace {
                     eprintln!("[loop] tick {step_count}: spawned `{claim_name}` \
                                as FSM #{} with arg={spawn_arg}", fsms.len());
                 }
@@ -1262,7 +1316,7 @@ fn run_multi_fsm(
                     .any(|f| !f.event_subscriptions.is_empty());
                 match rx.recv() {
                     Ok(crate::event_sources::SchedulerEvent::Tick { name }) => {
-                        if std::env::var("EVIDENT_LOOP_TRACE").is_ok() {
+                        if env.trace {
                             eprintln!("[loop] tick {step_count}: woke on event {name}");
                         }
                         for (i, fsm) in fsms.iter().enumerate() {
