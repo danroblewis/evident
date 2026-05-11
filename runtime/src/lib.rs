@@ -7,14 +7,14 @@
 pub mod ast;
 pub mod effect_dispatch;
 pub mod effect_loop;
-pub mod ffi;
-pub mod lexer;
-pub mod parser;
+mod ffi;
+mod lexer;
+mod parser;
 pub mod pretty;
 pub mod translate;
-pub mod runtime;
+mod runtime;
 pub mod subscriptions;
-pub mod event_sources;
-pub mod fti;
+mod event_sources;
+mod fti;
 
 pub use runtime::{EvidentRuntime, QueryResult, Value};
