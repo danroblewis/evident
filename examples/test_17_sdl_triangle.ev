@@ -24,15 +24,15 @@ claim triangle(state, state_next ∈ TState,
         Done ⇒ Done
 
     -- Triangle vertices: red top, green bottom-left, blue
-    -- bottom-right. Colors interpolate across the face.
-    v0 ∈ SDLVertex
-    v0 = MkSDLVertex(320.0, 80.0,  240, 80, 80, 255, 0.0, 0.0)
-    v1 ∈ SDLVertex
-    v1 = MkSDLVertex(80.0,  400.0, 80, 240, 80, 255, 0.0, 0.0)
-    v2 ∈ SDLVertex
-    v2 = MkSDLVertex(560.0, 400.0, 80, 80, 240, 255, 0.0, 0.0)
-    verts ∈ SDLVertexList
-    verts = SVCons(v0, SVCons(v1, SVCons(v2, SVNil)))
+    -- bottom-right. Colors interpolate across the face. Build
+    -- the packed-field stream by chaining `sdl_vertex` calls
+    -- — each one prepends its 8 fields to the prior tail.
+    verts2 ∈ PackedFieldList
+    sdl_vertex(560.0, 400.0,  80,  80, 240, 255, 0.0, 0.0, PfNil,  verts2)
+    verts1 ∈ PackedFieldList
+    sdl_vertex( 80.0, 400.0,  80, 240,  80, 255, 0.0, 0.0, verts2, verts1)
+    verts ∈ PackedFieldList
+    sdl_vertex(320.0,  80.0, 240,  80,  80, 255, 0.0, 0.0, verts1, verts)
 
     bg ∈ Color
     bg = Color(20, 20, 30, 255)

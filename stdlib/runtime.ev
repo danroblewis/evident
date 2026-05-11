@@ -62,19 +62,25 @@ enum FFIArg =
     -- pass pointer. Used for fixed-layout int-struct args like
     -- SDL_Rect { x, y, w, h } (call site: ArgI32Buf(⟨x, y, w, h⟩)).
     ArgI32Buf(IntList)
-    -- ArgSDLVertexBuf(SDLVertexList) — pack N SDL_Vertex structs
-    -- (20 bytes each) for SDL_RenderGeometry. SDL-specific until
-    -- we have a general packed-struct-array FFI primitive.
-    ArgSDLVertexBuf(SDLVertexList)
+    -- ArgPackedBuf(PackedFieldList) — pack a sequence of typed
+    -- primitives into a contiguous heap buffer at natural widths
+    -- (little-endian) and pass the pointer. The wrapper that
+    -- declares the foreign function picks the field sequence to
+    -- match the C struct's layout. SDL_Vertex (20 bytes) is
+    -- ⟨PfF32, PfF32, PfU8, PfU8, PfU8, PfU8, PfF32, PfF32⟩;
+    -- other packed-struct shapes follow the same pattern.
+    ArgPackedBuf(PackedFieldList)
 
--- One SDL_Vertex: pos.x/y as Real (f32), color RGBA as Int (u8),
--- tex_coord u/v as Real (f32). Order matches SDL's struct layout.
-enum SDLVertex =
-    MkSDLVertex(Real, Real, Int, Int, Int, Int, Real, Real)
+-- One field of a packed C struct. PfU8 / PfI32 / PfF32 cover the
+-- current bridges; extend as new ones land.
+enum PackedField =
+    PfU8(Int)
+    PfI32(Int)
+    PfF32(Real)
 
-enum SDLVertexList =
-    SVNil
-    SVCons(SDLVertex, SDLVertexList)
+enum PackedFieldList =
+    PfNil
+    PfCons(PackedField, PackedFieldList)
 
 enum ArgList =
     ArgNil

@@ -618,9 +618,9 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
             let ints = decode_int_list(&fields[0])?;
             EffectFfiArg::I32Buf(ints.into_iter().map(|n| n as i32).collect())
         }
-        "ArgSDLVertexBuf" => {
+        "ArgPackedBuf" => {
             need_arity(variant, fields, 1)?;
-            EffectFfiArg::SdlVertexBuf(decode_sdl_vertex_list(&fields[0])?)
+            EffectFfiArg::PackedBuf(decode_packed_field_list(&fields[0])?)
         }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "FFIArg".into(), variant: other.into(),
@@ -638,27 +638,28 @@ pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     decode_list(v, "IntList", "INil", "ICons", decode_int)
 }
 
-/// Decode a single `MkSDLVertex(Real, Real, Int, Int, Int, Int, Real, Real)`
-/// to the packed Rust struct.
-pub fn decode_sdl_vertex(v: &Value) -> Result<crate::ast::SdlVertex> {
-    let (variant, fields) = check_enum(v, "SDLVertex")?;
-    if variant != "MkSDLVertex" {
-        return Err(DecodeError::UnknownVariant {
-            enum_name: "SDLVertex".into(), variant: variant.into(),
-        });
-    }
-    need_arity(variant, fields, 8)?;
-    Ok(crate::ast::SdlVertex {
-        pos: [decode_real(&fields[0])? as f32, decode_real(&fields[1])? as f32],
-        color: [decode_int(&fields[2])? as u8, decode_int(&fields[3])? as u8,
-                decode_int(&fields[4])? as u8, decode_int(&fields[5])? as u8],
-        tex: [decode_real(&fields[6])? as f32, decode_real(&fields[7])? as f32],
+/// Decode a single `PackedField` (PfU8 / PfI32 / PfF32) into the
+/// matching Rust enum variant. The field's natural-width Evident type
+/// (Int / Real) is narrowed to the storage width here; callers
+/// should ensure values fit before this runs.
+pub fn decode_packed_field(v: &Value) -> Result<crate::ast::PackedField> {
+    let (variant, fields) = check_enum(v, "PackedField")?;
+    Ok(match variant {
+        "PfU8"  => { need_arity(variant, fields, 1)?;
+                     crate::ast::PackedField::U8(decode_int(&fields[0])? as u8) }
+        "PfI32" => { need_arity(variant, fields, 1)?;
+                     crate::ast::PackedField::I32(decode_int(&fields[0])? as i32) }
+        "PfF32" => { need_arity(variant, fields, 1)?;
+                     crate::ast::PackedField::F32(decode_real(&fields[0])? as f32) }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "PackedField".into(), variant: other.into(),
+        }),
     })
 }
 
-/// Cons/Nil-shaped `SDLVertexList` decoder.
-pub fn decode_sdl_vertex_list(v: &Value) -> Result<Vec<crate::ast::SdlVertex>> {
-    decode_list(v, "SDLVertexList", "SVNil", "SVCons", decode_sdl_vertex)
+/// Cons/Nil-shaped `PackedFieldList` decoder.
+pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::ast::PackedField>> {
+    decode_list(v, "PackedFieldList", "PfNil", "PfCons", decode_packed_field)
 }
 
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {

@@ -357,16 +357,36 @@ pub enum Effect {
     Seq(Vec<Effect>),
 }
 
-/// SDL_Vertex layout — 20 bytes, no padding (max alignment is f32 = 4).
-/// `#[repr(C)]` matches SDL's `typedef struct SDL_Vertex { SDL_FPoint
-/// position; SDL_Color color; SDL_FPoint tex_coord; }` exactly so a
-/// `Vec<SdlVertex>` is a valid `SDL_Vertex*` array.
-#[repr(C)]
+/// One field of a packed C struct passed through `ArgPackedBuf`.
+/// Each variant carries its natural-width value; the marshaller
+/// writes the bytes contiguously in declaration order. The runtime
+/// has no opinion about which library or struct a sequence of
+/// `PackedField`s is destined for — the stdlib wrapper that declares
+/// the foreign function knows the layout and emits a matching field
+/// sequence.
+///
+/// Extend as new bridges need new widths. Today's set covers
+/// SDL_Vertex (`[F32, F32, U8, U8, U8, U8, F32, F32]`). A future
+/// GL_Float vertex array would add F32 only; an audio s16 buffer
+/// would add I16; etc.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SdlVertex {
-    pub pos:   [f32; 2],
-    pub color: [u8;  4],
-    pub tex:   [f32; 2],
+pub enum PackedField {
+    U8(u8),
+    I32(i32),
+    F32(f32),
+}
+
+impl PackedField {
+    /// Append this field's bytes (little-endian, natural width) to
+    /// `out`. Used by the FFI marshaller to build a contiguous heap
+    /// buffer for `ArgPackedBuf`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        match self {
+            PackedField::U8(b)  => out.push(*b),
+            PackedField::I32(n) => out.extend_from_slice(&n.to_le_bytes()),
+            PackedField::F32(f) => out.extend_from_slice(&f.to_le_bytes()),
+        }
+    }
 }
 
 /// One argument to an FFICall effect. Distinct name from
@@ -395,12 +415,13 @@ pub enum EffectFfiArg {
     /// `SDL_Point { x, y }` (2 i32s = 8 bytes). The buffer lives for
     /// the duration of the call only — C side must not retain it.
     I32Buf(Vec<i32>),
-    /// Pack N `SDL_Vertex` structs into a contiguous heap buffer for
-    /// `SDL_RenderGeometry`. Each vertex is 20 bytes
-    /// (2 f32 position + 4 u8 RGBA + 2 f32 tex_coord). This is
-    /// SDL-specific until we have a general "packed struct array"
-    /// FFI primitive with a runtime layout descriptor.
-    SdlVertexBuf(Vec<SdlVertex>),
+    /// Pack a sequence of `PackedField`s into a contiguous heap
+    /// buffer (each field at its natural width, little-endian) and
+    /// pass the pointer (`p` slot). The stdlib wrapper that declares
+    /// the foreign function chooses the field sequence to match the
+    /// C struct layout. Replaces what would otherwise be one
+    /// runtime variant per packed-struct shape.
+    PackedBuf(Vec<PackedField>),
     /// `ArgIntOut` — 0-arity marker for "writes one i32 into the
     /// pointed-to slot" output args (`glGenVertexArrays(1, &vao)`,
     /// `glGetShaderiv(...)`, etc.). The dispatcher allocates a

@@ -100,13 +100,13 @@ claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
 -- Nth prior result of the enclosing Seq (instead of a known
 -- Int handle). Use inside an Effect::Seq when the renderer
 -- was created earlier in the same Seq.
-claim render_geometry_after(prior_idx ∈ Int, vertices ∈ SDLVertexList,
+claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
                             n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
                   ArgCons(ArgPriorResult(prior_idx),
                   ArgCons(ArgHandle(0),                   -- NULL texture
-                  ArgCons(ArgSDLVertexBuf(vertices),
+                  ArgCons(ArgPackedBuf(vertices),
                   ArgCons(ArgInt(n),
                   ArgCons(ArgHandle(0),                   -- NULL indices
                   ArgCons(ArgInt(0), ArgNil)))))))
@@ -151,16 +151,39 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 --                    NULL_indices, 0) — draws arbitrary triangles
 -- with per-vertex colors. No texture / no indices in this minimal
 -- form; vertex order = triangle list (every 3 vertices = 1 tri).
-claim render_geometry(renderer ∈ Int, vertices ∈ SDLVertexList,
+claim render_geometry(renderer ∈ Int, vertices ∈ PackedFieldList,
                       n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
                   ArgCons(ArgHandle(renderer),
                   ArgCons(ArgHandle(0),                   -- NULL texture
-                  ArgCons(ArgSDLVertexBuf(vertices),
+                  ArgCons(ArgPackedBuf(vertices),
                   ArgCons(ArgInt(n),
                   ArgCons(ArgHandle(0),                   -- NULL indices
                   ArgCons(ArgInt(0), ArgNil)))))))
+
+-- Build one SDL_Vertex's field sequence and prepend it to `tail`.
+-- SDL_Vertex is 20 bytes, no padding:
+--   2 × f32  position
+--   4 × u8   RGBA color
+--   2 × f32  tex_coord
+-- Chain vertices by passing the previous result as `tail`; pass
+-- `PfNil` for the last vertex. Render with `render_geometry` /
+-- `render_geometry_after`, with `n = #vertices`. SDL_RenderGeometry
+-- expects a triangle list (every 3 vertices = 1 triangle).
+claim sdl_vertex(pos_x, pos_y ∈ Real,
+                 r, g, b, a ∈ Int,
+                 tex_u, tex_v ∈ Real,
+                 tail ∈ PackedFieldList,
+                 out ∈ PackedFieldList)
+    out = PfCons(PfF32(pos_x),
+          PfCons(PfF32(pos_y),
+          PfCons(PfU8(r),
+          PfCons(PfU8(g),
+          PfCons(PfU8(b),
+          PfCons(PfU8(a),
+          PfCons(PfF32(tex_u),
+          PfCons(PfF32(tex_v), tail))))))))
 
 -- SDL_RenderFillRect(renderer, *SDL_Rect) — filled rectangle in
 -- the current draw color. The struct is built via the new

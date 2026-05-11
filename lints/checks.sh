@@ -75,14 +75,21 @@ strip_rs_comments() {
 # subject to "no library-specific in language-core" rules.
 #
 # Detection: regex match the cfg attribute, then track brace depth
-# from the next `{` until it returns to 0. Caveat: brace counting
-# does not account for braces inside string or char literals.
-# A test fn like `let s = "}}";` would trip the counter early. None
-# of today's test code does this, but parser-level fixtures might
-# in the future — fix when it actually breaks.
+# from the next `{` until it returns to 0.
+#
+# `test` is matched with explicit non-word-char lookahead
+# (`test[^a-zA-Z0-9_]`) rather than `\<test\>` because BSD awk
+# (macOS default) doesn't support GNU's word-boundary escapes.
+# Side-benefit: identifiers like `testfeature` won't false-match.
+#
+# Caveat: brace counting does not account for braces inside string
+# or char literals. A test fn like `let s = "}}";` would trip the
+# counter early. None of today's test code does this, but
+# parser-level fixtures might in the future — fix when it actually
+# breaks.
 strip_rs_test_modules() {
     awk '
-        /^[[:space:]]*#\[(cfg|cfg_attr)\([^)]*\<test\>/ {
+        /^[[:space:]]*#\[(cfg|cfg_attr)\([^)]*test[^a-zA-Z0-9_]/ {
             in_test = 1; depth = 0; print ""; next
         }
         in_test {
