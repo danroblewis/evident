@@ -1,4 +1,42 @@
 //! Top-level API. Mirrors the Python `EvidentRuntime` for the v0.1 subset.
+//!
+//! ## Public verbs
+//!
+//! Most callers (commands/, embedders, tests) use the
+//! constraint-solver verbs: `load_file` / `load_source` to load
+//! programs, `query` / `query_cached` / `sample` to ask whether
+//! claims are satisfiable, `get_schema` / `schema_names` to
+//! introspect what's loaded.
+//!
+//! ## Execution-layer extension surface
+//!
+//! A small handful of verbs exist explicitly to support the
+//! multi-FSM scheduler (`effect_loop.rs`):
+//!
+//!   * `query_with_pinned_datatypes` / `query_with_pins_and_given`
+//!     — pin enum-valued variables (`state`, `last_results`)
+//!     across a query so the scheduler can advance an FSM one
+//!     tick under known-state.
+//!   * `enums_registry` / `z3_context` — read-only access to the
+//!     EnumRegistry and `'static` Z3 Context so the scheduler can
+//!     re-encode `state_next` as a Datatype value for the next
+//!     tick's pin.
+//!   * `encode_effect_result_list` — encode a `Vec<EffectResult>`
+//!     as the Z3 Datatype shape `stdlib/runtime.ev::ResultList`
+//!     for pinning `last_results`.
+//!
+//! These methods are part of the facade rather than a separate
+//! trait because the per-tick query path needs read access to
+//! state (registries, context, schemas, cache) that lives behind
+//! `&self` and would otherwise need parallel exposure. They
+//! intentionally do NOT widen the constraint-side facade — they
+//! expose the read-handles necessary for execution-layer
+//! callers, nothing more. Callers outside the execution layer
+//! should use `query` / `query_cached`; if you find yourself
+//! reaching for one of these methods from elsewhere, reconsider
+//! whether the verb you need exists on the constraint-side
+//! facade or whether your concern belongs in the execution
+//! layer alongside `effect_loop.rs`.
 
 use crate::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
@@ -1031,9 +1069,12 @@ impl EvidentRuntime {
     /// program (like the inference pipeline) encode once and reuse,
     /// avoiding the recursive-AST walk on every rule. Saves ~70-85%
     /// of the per-rule cost on big programs.
-    /// Like `query_with_program_value` but pins multiple enum-typed
-    /// variables in one solve. Used by the effect loop to pin both
-    /// `state` and `last_results` per step.
+
+    /// Pin one or more enum-typed (Datatype) variables across a
+    /// single query. Each entry of `pins` is `(var_name, value)`.
+    /// Used by the multi-FSM scheduler to fix `state` and
+    /// `last_results` per tick — see the "execution-layer
+    /// extension surface" section in the module docs.
     pub fn query_with_pinned_datatypes(
         &self,
         claim_name: &str,
@@ -1042,10 +1083,12 @@ impl EvidentRuntime {
         self.query_with_pins_and_given(claim_name, pins, &HashMap::new())
     }
 
-    /// Like `query_with_pinned_datatypes` but also accepts a `given`
-    /// map for scalar pins (Int/Bool/String/Real values). Used by the
-    /// multi-FSM scheduler to thread the writer's `world_next.*`
-    /// values into each reader's `world.*` slots in the same tick.
+    /// Like `query_with_pinned_datatypes` but also accepts a
+    /// `given` map for scalar pins (Int/Bool/String/Real values).
+    /// Used by the multi-FSM scheduler to thread `world_next.*`
+    /// writer values into reader `world.*` slots within the same
+    /// tick — see the "execution-layer extension surface"
+    /// section in the module docs.
     pub fn query_with_pins_and_given(
         &self,
         claim_name: &str,
@@ -1069,21 +1112,28 @@ impl EvidentRuntime {
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
-    /// Read-only access to the EnumRegistry — used by the effect
-    /// loop to look up DatatypeSorts when re-encoding state values
-    /// for the next step's pin.
+    /// Read-only access to the EnumRegistry. Execution-layer
+    /// callers use this to look up DatatypeSorts when re-encoding
+    /// values for subsequent solves — see the "execution-layer
+    /// extension surface" section in the module docs.
     pub fn enums_registry(&self) -> &crate::translate::EnumRegistry {
         &self.enums
     }
 
-    /// The 'static Z3 context this runtime allocates against.
+    /// The `'static` Z3 context this runtime allocates against.
+    /// Execution-layer callers need this when constructing
+    /// Datatype values (e.g. an enum constructor application)
+    /// for subsequent pins — see the "execution-layer extension
+    /// surface" section in the module docs.
     pub fn z3_context(&self) -> &'static z3::Context {
         self.z3_ctx
     }
 
     /// Encode a list of EffectResults into a Z3 datatype value
-    /// matching stdlib/runtime.ev's `ResultList`. Used by the
-    /// effect loop to pin `last_results` for the next step's solve.
+    /// matching stdlib/runtime.ev's `ResultList`. The
+    /// scheduler pins last-tick's results into `last_results`
+    /// before each per-FSM solve — see the "execution-layer
+    /// extension surface" section in the module docs.
     pub fn encode_effect_result_list(
         &self,
         items: &[crate::ast::EffectResult],
