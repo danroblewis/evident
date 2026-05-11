@@ -726,6 +726,41 @@ file owns one piece of hardware (or one C library); the
 overall driver framework / scheduler doesn't know what's inside.
 Adding hardware = adding a file, not modifying existing ones.
 
+### `runtime/src/event_sources/reflection.rs` (per-bridge exception)
+
+**Purpose.** One-shot world-plugin bridge that publishes the
+loaded user-side `Program` AST as a `Value::Enum` tree into a
+reserved world field. Lets an in-`effect-run` FSM consume the
+same encoded form the desugar pass works against (matches
+`stdlib/ast.ev`'s `Program` shape exactly). Field name is auto-
+detected from the user's `World` type — any field declared as
+`∈ Program` is the trigger, regardless of its name.
+
+**Why it's special.** Unlike every other bridge under
+`event_sources/`, reflection wraps NO C library — it's pure-Rust
+plumbing that happens to fit the `EventSource` trait shape. The
+"resource" it owns is the encoded program value, captured at
+install time via `WorldPluginCtx::encode_program` and pushed to
+the write queue once on `start`. After that the source goes
+silent. This is the only bridge that legitimately produces an
+enum-typed write (every other bridge writes Int/Bool/String);
+the eval `given` loop's `Value::Enum` re-encoding path exists
+specifically to support it.
+
+**Foundation for.** The upcoming GLSL transpiler FSM, which will
+be the first non-trivial reflection consumer — it pattern-matches
+on the Program tree (walking `EnumDecl` and `SchemaDecl`
+children) to lower a shader DSL into emitted GLSL source. Once
+that lands, reflection will have proven its design across two
+consumers; further reflective tooling (Evident-side type
+inference, lint passes-as-FSMs) becomes additive.
+
+**Dependencies.** Same as any bridge — `event_sources::mod` for
+the trait + queue, `std`, plus the `WorldPluginCtx::encode_program`
+closure from the install context. Does NOT depend on `runtime`
+or `translate` directly; the closure abstracts the encode call
+behind a `Fn() -> Result<Value, String>` trait object.
+
 ### `runtime/src/event_sources/mod.rs`
 
 **Purpose.** Owns the `EventSource` trait (the contract every
