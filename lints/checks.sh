@@ -273,6 +273,41 @@ check_no_z3_exprs_in_preprocess() {
     fi
 }
 
+# ── AP-011: no preprocess ↔ exprs cycle ────────────────────────
+check_no_preprocess_exprs_cycle() {
+    # AP-011: shared helpers between preprocess and exprs belong
+    # in types.rs (the shared data leaf). Mutual imports are
+    # forbidden — that's the historical cycle this rule guards.
+    local pre=runtime/src/translate/preprocess.rs
+    local exp=runtime/src/translate/exprs.rs
+    local violations=""
+    if [ -f "$pre" ]; then
+        local hits
+        hits=$(strip_rs_test_modules "$pre" \
+               | grep -nE 'use (super::|crate::translate::)exprs' \
+               | grep -vE ':[[:space:]]*//' \
+               || true)
+        if [ -n "$hits" ]; then
+            violations+="$pre:"$'\n'"$hits"$'\n'
+        fi
+    fi
+    if [ -f "$exp" ]; then
+        local hits
+        hits=$(strip_rs_test_modules "$exp" \
+               | grep -nE 'use (super::|crate::translate::)preprocess' \
+               | grep -vE ':[[:space:]]*//' \
+               || true)
+        if [ -n "$hits" ]; then
+            violations+="$exp:"$'\n'"$hits"$'\n'
+        fi
+    fi
+    if [ -z "$violations" ]; then
+        report AP-011 pass
+    else
+        report AP-011 fail "$violations"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -282,6 +317,7 @@ ACTIVE=(
     check_no_ignore_in_rust_tests                 # AP-005
     check_no_solver_assert_in_declare             # AP-009
     check_no_z3_exprs_in_preprocess               # AP-010
+    check_no_preprocess_exprs_cycle               # AP-011
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 

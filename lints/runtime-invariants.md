@@ -225,8 +225,10 @@ updated `Value` map. (The "must not build Z3 expressions" half is
 now mechanically enforced by AP-010 — Z3 expression construction
 belongs in `exprs.rs`.)
 
-**Dependencies.** `types`, `exprs` (uses `translate_int` as a
-sub-evaluator for literal folding only), `ast`.
+**Dependencies.** `types`, `ast`. Notably NOT `exprs` — the
+literal-folding helper that used to live in `exprs` and was
+imported here was promoted down to `types` to break the cycle
+(see AP-011).
 
 **Generic-runtime analogue.** Constant-folding / partial-
 evaluation / dead-code-elimination passes in classical compilers.
@@ -244,12 +246,11 @@ two seq-equality shapes that aren't pure scalar `_eq`.
 `declare`. Assert constraints — that's `inline`. Call into
 `eval`. The translation is pure: `(env, ast) → z3-expr`.
 
-**Dependencies.** `types`, `ast`. Must NOT depend on
-`preprocess` — `preprocess` already depends on `exprs` (via
-`translate_int` for literal folding), and a back-edge would
-create a cycle. Helpers shared between the two (env utilities,
-literal-range queries) belong in `types` so both can borrow
-without forming a loop.
+**Dependencies.** `types`, `ast`. Helpers shared between
+`preprocess` and `exprs` (env utilities, literal-range queries)
+belong in `types` so both can borrow without forming a loop.
+(The "no mutual import between preprocess and exprs" half is now
+mechanically enforced by AP-011.)
 
 **Generic-runtime analogue.** "Expression codegen" / "expression
 elaboration" — the part of a compiler that emits IR for one
