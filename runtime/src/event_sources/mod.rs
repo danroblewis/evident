@@ -230,6 +230,7 @@ pub const WORLD_PLUGIN_INSTALLERS: &[WorldPluginInstallFn] = &[
     wall_clock::install_world_plugin,
     file_watcher::install_world_plugin,
     file_line_reader::install_world_plugin,
+    reflection::install_world_plugin,
 ];
 
 #[cfg(test)]
