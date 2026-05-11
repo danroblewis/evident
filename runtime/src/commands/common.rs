@@ -16,12 +16,14 @@ pub const STDLIB_AST: &str = "stdlib/ast.ev";
 
 pub fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident query       <files…> <schema> [--given k=v …] [--json]");
-    eprintln!("  evident check       <files…>");
-    eprintln!("  evident sample      <files…> <schema> [-n N] [--given k=v …] [--json]");
-    eprintln!("  evident test        [path] [-v] [--no-color]");
-    eprintln!("  evident effect-run  <file>           # run an effect-driven program");
-    eprintln!("  evident lint        <file>");
+    eprintln!("  evident query        <files…> <schema> [--given k=v …] [--json]");
+    eprintln!("  evident check        <files…>");
+    eprintln!("  evident sample       <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident test         [path] [-v] [--no-color]");
+    eprintln!("  evident effect-run   <file>           # run an effect-driven program");
+    eprintln!("  evident lint         <file>");
+    eprintln!("  evident desugar      <file>           # report self-hosted desugar rewrites");
+    eprintln!("  evident infer-types  <file>           # report self-hosted type inferences");
 }
 
 /// Split positional file paths from flag arguments. Files are everything

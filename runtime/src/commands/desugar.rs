@@ -34,6 +34,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::ast::{BodyItem, Expr};
@@ -132,4 +133,42 @@ pub fn auto_apply_desugar(
         }
     }
     applied
+}
+
+/// `evident desugar <file.ev>` — Stage 11 user-facing self-hosted
+/// desugar pass. Loads the user's file in an isolated runtime, runs
+/// `collect_passthrough_rewrites`, and prints each detected rewrite
+/// in `<claim>:<body_idx>: <bare-ident> → ..<TypeName>` form. Does
+/// not mutate any caller state — this is the report-only verb.
+///
+/// Exit codes:
+///   0 — pipeline ran (with or without rewrites)
+///   1 — load / encode error
+///   2 — usage error
+pub fn cmd_desugar(args: &[String]) -> ExitCode {
+    if args.is_empty() {
+        eprintln!("desugar: need <file.ev>");
+        eprintln!("       evident desugar <file.ev>");
+        eprintln!();
+        eprintln!("Loads stdlib/ast.ev + the desugar pass, runs the rewrite");
+        eprintln!("detector against the user's source, and prints each");
+        eprintln!("detected rewrite. Read-only — does not modify the file.");
+        return ExitCode::from(2);
+    }
+    let user_files: Vec<String> = args.to_vec();
+    let rewrites = match collect_passthrough_rewrites(&user_files) {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {e}"); return ExitCode::from(1); }
+    };
+    if rewrites.is_empty() {
+        println!("no desugar rewrites detected.");
+    } else {
+        for r in &rewrites {
+            println!("{}:{}: bare-identifier `{}` → ..{}",
+                     r.claim_name, r.body_idx, r.target_name, r.target_name);
+        }
+        eprintln!();
+        eprintln!("{} rewrite(s) detected", rewrites.len());
+    }
+    ExitCode::SUCCESS
 }
