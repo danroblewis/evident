@@ -200,9 +200,9 @@ to generate per-invocation suffixes when a claim is inlined more
 than once in the same query (so the second call's internal
 variables don't collide with the first's).
 
-**What it must NEVER do.** Assert constraints — declaration is
-its single concern. Never call into `eval` or `extract`. Never
-know what an Effect is.
+**What it must NEVER do.** Never call into `eval` or `extract`.
+Never know what an Effect is. (The "must not assert constraints"
+half is now mechanically enforced by AP-009.)
 
 **Dependencies.** `types`, `datatypes`, `ast`.
 

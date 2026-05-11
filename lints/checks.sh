@@ -235,6 +235,25 @@ check_no_ignore_in_rust_tests() {
     fi
 }
 
+# ── AP-009: no solver.assert in declare.rs ─────────────────────
+check_no_solver_assert_in_declare() {
+    # AP-009: declaration must not assert on the Solver — only
+    # allocate Z3 constants. Asserting belongs in `inline`.
+    local f=runtime/src/translate/declare.rs
+    [ -f "$f" ] || { report AP-009 pass "(file missing — skip)"; return; }
+    local pattern='solver\.(assert|add)\b'
+    local hits
+    hits=$(strip_rs_test_modules "$f" \
+           | grep -nE "$pattern" \
+           | grep -vE ':[[:space:]]*//' \
+           || true)
+    if [ -z "$hits" ]; then
+        report AP-009 pass
+    else
+        report AP-009 fail "$f:"$'\n'"$hits"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -242,6 +261,7 @@ ACTIVE=(
     check_no_platform_paths_or_c_symbols_in_examples  # AP-003
     check_no_skip_or_xfail_in_conformance         # AP-004
     check_no_ignore_in_rust_tests                 # AP-005
+    check_no_solver_assert_in_declare             # AP-009
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 
