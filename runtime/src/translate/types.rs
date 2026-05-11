@@ -297,3 +297,16 @@ pub struct CachedSchema<'ctx> {
     /// rebuilding under a different config.
     pub arith_solver: u32,
 }
+
+/// Clone an env. `Var` derives `Clone` (Z3 ast types are reference-
+/// counted), so this is a shallow copy — both envs continue to refer
+/// to the same Z3 constants. Used by quantifier unrollers that need
+/// to shadow the bound variable per iteration without disturbing the
+/// outer env.
+///
+/// Lives here because it's a pure data utility — no Z3 expression
+/// building, no Solver use — and other translate siblings need it
+/// from the leaf layer to keep the dependency graph acyclic.
+pub(super) fn env_clone<'ctx>(env: &HashMap<String, Var<'ctx>>) -> HashMap<String, Var<'ctx>> {
+    env.clone()
+}
