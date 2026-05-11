@@ -126,6 +126,31 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
             if let BodyItem::Passthrough(name) = item {
                 if visited.insert(name.clone()) {
                     if let Some(sub) = rt.get_schema(name) {
+                        // SAFETY: lifetime laundering — borrow checker
+                        // can't prove the elided lifetime on `sub.body`
+                        // is `'a` across the recursive closure call.
+                        //
+                        // Invariant being upheld: `sub.body` is owned by
+                        // `rt.schemas` (a HashMap<String, SchemaDecl>),
+                        // and `rt: &'a EvidentRuntime` borrows the
+                        // runtime for `'a`. The HashMap is not mutated
+                        // through interior mutability anywhere in the
+                        // call graph below `detect_fsm_shape`, so every
+                        // `&SchemaDecl` we obtain via `get_schema` lives
+                        // exactly as long as `rt` itself — which is `'a`.
+                        // The borrow checker can't see that across the
+                        // closure-recursion boundary because `get_schema`'s
+                        // returned lifetime is elided and tied to its
+                        // `&self`, which the inner call site re-borrows.
+                        //
+                        // What would break this: any future change that
+                        // makes `EvidentRuntime::schemas` interior-mutable
+                        // (e.g. `RefCell<HashMap>`) so a passthrough
+                        // resolution could invalidate previously-handed-out
+                        // `&SchemaDecl`s. The fix in that world is a
+                        // restructure (clone bodies into an owned Vec,
+                        // or take a `&mut` borrow once at the top), not
+                        // another transmute.
                         let body: &'a [BodyItem] = unsafe {
                             std::mem::transmute::<&[BodyItem], &'a [BodyItem]>(&sub.body)
                         };
