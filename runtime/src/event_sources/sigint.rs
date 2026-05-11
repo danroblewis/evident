@@ -7,7 +7,10 @@ use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// SIGINT (Ctrl-C) event source. Installs a signal-hook iterator
 /// for SIGINT; on each signal, sends a `Tick { name: "signal" }`
@@ -115,4 +118,32 @@ impl EventSource for SigintSource {
 
 impl Drop for SigintSource {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for SigintSource. Installs if either:
+///   * the user's World declares `signal_received: Int`
+///   * any FSM has `_ ∈ Signal` parameter
+/// Otherwise we'd globally hijack Ctrl-C from programs that
+/// never opted in.
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    let want = ctx.has_world_field("signal_received", "Int")
+        || ctx.fsm_event_subscriptions.contains("signal");
+    if !want { return Ok(None); }
+
+    let mut sig = SigintSource::new();
+    let mut writes: Vec<String> = Vec::new();
+    if ctx.has_world_field("signal_received", "Int") {
+        sig = sig.with_count_field("signal_received");
+        writes.push("signal_received".to_string());
+    }
+    sig.start(event_tx.clone())
+        .map_err(|e| format!("failed to install SIGINT handler: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(sig),
+        plugin_writes: writes,
+        owns_stdin:    false,
+    }))
 }

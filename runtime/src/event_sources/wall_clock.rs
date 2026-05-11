@@ -8,7 +8,10 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// Wall-clock time source. Spawns a thread that updates the
 /// configured world field with current Unix time (ms) at the
@@ -97,4 +100,24 @@ impl EventSource for WallClockSource {
 
 impl Drop for WallClockSource {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for WallClockSource. Installs iff
+/// the user's World declares `now_ms: Int`. Interval comes from
+/// `EVIDENT_CLOCK_MS` (default 100).
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    if !ctx.has_world_field("now_ms", "Int") {
+        return Ok(None);
+    }
+    let mut c = WallClockSource::new(ctx.env_clock_ms, "now_ms");
+    c.start(event_tx.clone())
+        .map_err(|e| format!("failed to start WallClock: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(c),
+        plugin_writes: vec!["now_ms".to_string()],
+        owns_stdin:    false,
+    }))
 }

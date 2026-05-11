@@ -8,7 +8,10 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// File modification watcher. Polls the file's mtime at the
 /// configured interval; when it changes, increments the
@@ -102,4 +105,26 @@ impl EventSource for FileWatcherSource {
 
 impl Drop for FileWatcherSource {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for FileWatcherSource. Installs iff
+/// the user's World declares `file_changed: Int` AND
+/// `EVIDENT_FILE_WATCH` names a path to watch. Poll interval
+/// comes from `EVIDENT_FILE_WATCH_MS` (default 200).
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    if !ctx.has_world_field("file_changed", "Int") {
+        return Ok(None);
+    }
+    let Some(path) = ctx.env_file_watch else { return Ok(None); };
+    let mut w = FileWatcherSource::new(path, ctx.env_file_watch_ms, "file_changed");
+    w.start(event_tx.clone())
+        .map_err(|e| format!("failed to start FileWatcher for {path:?}: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(w),
+        plugin_writes: vec!["file_changed".to_string()],
+        owns_stdin:    false,
+    }))
 }

@@ -5,7 +5,10 @@ use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// File line reader. Like StdinSource but reads from a path
 /// instead of fd 0. Spawns a thread that opens the file at
@@ -137,4 +140,37 @@ impl EventSource for FileLineReader {
 
 impl Drop for FileLineReader {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for FileLineReader. Installs iff the
+/// user's World declares `file_line: String` AND
+/// `EVIDENT_FILE_INPUT` names a path. Optional companion fields:
+/// `file_seq: Int` (sequence counter), `file_eof: Bool` (set
+/// true when EOF reached).
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    if !ctx.has_world_field("file_line", "String") {
+        return Ok(None);
+    }
+    let Some(path) = ctx.env_file_input else { return Ok(None); };
+
+    let mut f = FileLineReader::new(path, "file_line");
+    let mut writes: Vec<String> = vec!["file_line".to_string()];
+    if ctx.has_world_field("file_seq", "Int") {
+        f = f.with_seq_field("file_seq");
+        writes.push("file_seq".to_string());
+    }
+    if ctx.has_world_field("file_eof", "Bool") {
+        f = f.with_eof_field("file_eof");
+        writes.push("file_eof".to_string());
+    }
+    f.start(event_tx.clone())
+        .map_err(|e| format!("failed to start file reader for {path:?}: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(f),
+        plugin_writes: writes,
+        owns_stdin:    false,
+    }))
 }

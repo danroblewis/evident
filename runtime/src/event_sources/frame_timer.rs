@@ -8,7 +8,10 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// Periodic-tick event source. Spawns a thread that sleeps for the
 /// configured interval and sends a `Tick` event, repeatedly, until
@@ -98,4 +101,36 @@ impl EventSource for FrameTimer {
 
 impl Drop for FrameTimer {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for FrameTimer. Installs if any of:
+///   * `EVIDENT_TICK_MS` env var is set (back-compat: explicit
+///     opt-in via env even without a world field)
+///   * the user's World declares `tick_count: Int` (new
+///     world-write auto-install path)
+///   * any FSM has `_ ∈ FrameTimer` parameter (back-compat
+///     marker-subscription)
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    let want = ctx.env_tick_ms.is_some()
+        || ctx.has_world_field("tick_count", "Int")
+        || ctx.fsm_event_subscriptions.contains("tick");
+    if !want { return Ok(None); }
+
+    let ms = ctx.env_tick_ms.unwrap_or(100);
+    let mut timer = FrameTimer::new(ms, "tick");
+    let mut writes: Vec<String> = Vec::new();
+    if ctx.has_world_field("tick_count", "Int") {
+        timer = timer.with_count_field("tick_count");
+        writes.push("tick_count".to_string());
+    }
+    timer.start(event_tx.clone())
+        .map_err(|e| format!("failed to start tick timer: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(timer),
+        plugin_writes: writes,
+        owns_stdin:    false,
+    }))
 }

@@ -5,7 +5,10 @@ use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use crate::Value;
-use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
+use super::{
+    drain, new_write_queue, EventSource, SchedulerEvent, WorldPluginCtx,
+    WorldPluginInstall, WriteQueue,
+};
 
 /// Stdin line reader. Spawns a thread that does blocking
 /// `read_line` on stdin; each line is queued as TWO world writes:
@@ -115,4 +118,42 @@ impl EventSource for StdinSource {
 
 impl Drop for StdinSource {
     fn drop(&mut self) { self.stop(); }
+}
+
+/// World-plugin install fn for StdinSource. Installs iff the
+/// user's World declares `stdin_line: String`. Single-owner: the
+/// source owns fd 0; user FSMs cannot also use Effect::ReadLine
+/// (they'd race for bytes). When `stdin_seq: Int` is also
+/// declared, the source increments it on each line.
+pub(super) fn install_world_plugin(
+    ctx:      &WorldPluginCtx,
+    event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String> {
+    if !ctx.has_world_field("stdin_line", "String") {
+        return Ok(None);
+    }
+    // Reject programs that auto-install StdinSource AND use
+    // Effect::ReadLine — both want fd 0 and would race for bytes.
+    if let Some(claim_name) = (ctx.fsm_using_identifier)("ReadLine") {
+        return Err(format!(
+            "FSM `{claim_name}` emits Effect::ReadLine, but the program also \
+             declares `stdin_line: String` in World which auto-installs \
+             StdinSource. Both would race for fd 0. Use either the \
+             plugin pattern (subscribe to world.stdin_line) OR remove \
+             stdin_line from World and use ReadLine directly."));
+    }
+
+    let mut s = StdinSource::new("stdin_line");
+    let mut writes: Vec<String> = vec!["stdin_line".to_string()];
+    if ctx.has_world_field("stdin_seq", "Int") {
+        s = s.with_seq_field("stdin_seq");
+        writes.push("stdin_seq".to_string());
+    }
+    s.start(event_tx.clone())
+        .map_err(|e| format!("failed to start stdin reader: {e}"))?;
+    Ok(Some(WorldPluginInstall {
+        source:        Box::new(s),
+        plugin_writes: writes,
+        owns_stdin:    true,
+    }))
 }

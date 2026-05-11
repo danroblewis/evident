@@ -23,7 +23,7 @@
 //! under `event_sources/<name>.rs` per the per-bridge invariant
 //! in `lints/runtime-invariants.md`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 
@@ -45,12 +45,12 @@ mod oneshot_shell;
 mod sdl_window;
 mod gl_program;
 
+// Bridges referenced by name elsewhere in the runtime (FTI
+// registry in `fti.rs` builds them directly): export those.
+// The other world-plugin-only bridges live behind the
+// WORLD_PLUGIN_INSTALLERS registry and don't need a public
+// re-export.
 pub use frame_timer::FrameTimer;
-pub use sigint::SigintSource;
-pub use stdin::StdinSource;
-pub use file_line_reader::FileLineReader;
-pub use wall_clock::WallClockSource;
-pub use file_watcher::FileWatcherSource;
 pub use oneshot_shell::OneShotShellSource;
 pub use sdl_window::SdlWindowSource;
 pub use gl_program::GlProgramSource;
@@ -109,9 +109,118 @@ pub fn drain(q: &WriteQueue) -> Vec<(String, Value)> {
     g.drain(..).collect()
 }
 
+// ── World-plugin install registry ────────────────────────────
+//
+// World-plugin bridges are installed by walking a `&'static [...]`
+// table of (owned_world_fields, install_fn) entries. Each entry
+// declares which world-field names it owns; the scheduler iterates
+// the table once at startup and asks each installer whether it
+// wants to install given the current world type's fields and a
+// few env knobs.
+//
+// This keeps the scheduler unaware of which specific bridges
+// exist. Adding a new world-field-driven bridge means: implement
+// the EventSource, write an `install_world_plugin` fn, and append
+// one row to `WORLD_PLUGIN_INSTALLERS`. The scheduler does not
+// need editing.
+//
+// The FTI registry (`crate::fti::INSTALLERS`) is the analogous
+// shape for typed-resource bridges declared as FSM parameters.
+// World plugins and FTI live in separate registries because they
+// serve different declaration sites in the user's Evident program.
+
+/// Read-only view of the runtime state a world-plugin installer
+/// needs to decide whether (and how) to install. Threaded through
+/// once at scheduler startup; installers query the fields and
+/// return Some(install) iff the world declares the trigger fields.
+pub struct WorldPluginCtx<'a> {
+    /// `field_name → type_name` for the user's World type. Empty
+    /// if no FSM declares a `world ∈ World`.
+    pub world_fields: &'a HashMap<String, String>,
+    /// Set of event-subscription names declared across all FSMs
+    /// (e.g. "tick" for `_ ∈ FrameTimer`, "signal" for `_ ∈ Signal`).
+    /// Used by FrameTimer / Sigint installers as an opt-in path
+    /// independent of world fields.
+    pub fsm_event_subscriptions: &'a std::collections::HashSet<String>,
+    /// `EVIDENT_TICK_MS` snapshot. FrameTimer treats Some(_) as an
+    /// explicit opt-in even without a `tick_count` world field.
+    pub env_tick_ms: Option<u64>,
+    /// `EVIDENT_CLOCK_MS` snapshot (default 100). WallClock uses it.
+    pub env_clock_ms: u64,
+    /// `EVIDENT_FILE_WATCH` snapshot. FileWatcher only installs
+    /// when this is set AND the world declares `file_changed`.
+    pub env_file_watch: Option<&'a str>,
+    /// `EVIDENT_FILE_WATCH_MS` snapshot (default 200).
+    pub env_file_watch_ms: u64,
+    /// `EVIDENT_FILE_INPUT` snapshot. FileLineReader only installs
+    /// when this is set AND the world declares `file_line`.
+    pub env_file_input: Option<&'a str>,
+    /// Closure returning the name of the first FSM whose body
+    /// references `ident` (e.g. an effect constructor name like
+    /// "ReadLine"). Used by the StdinSource installer to detect
+    /// the auto-install-vs-Effect::ReadLine race; returns None if
+    /// no FSM references the identifier.
+    pub fsm_using_identifier: &'a dyn Fn(&str) -> Option<String>,
+}
+
+impl<'a> WorldPluginCtx<'a> {
+    /// True iff the user's World type declares a field named
+    /// `name` of the given Evident `ty`.
+    pub fn has_world_field(&self, name: &str, ty: &str) -> bool {
+        self.world_fields.get(name).map(|t| t == ty).unwrap_or(false)
+    }
+}
+
+/// What an installer returns when it decides to install. Carries
+/// the started bridge plus the world-field names the bridge now
+/// writes (added to the multi-writer disjoint-set check) and any
+/// scheduler-level side effects the install requires (e.g. the
+/// stdin bridge taking ownership of fd 0).
+pub struct WorldPluginInstall {
+    /// The started EventSource. Already had `start(tx)` called
+    /// successfully — the scheduler just stores it.
+    pub source: Box<dyn EventSource>,
+    /// World fields the bridge writes. Added to `plugin_writes`
+    /// so the disjoint-write-set check rejects user FSMs that
+    /// would clobber these fields.
+    pub plugin_writes: Vec<String>,
+    /// True iff the bridge takes exclusive ownership of stdin
+    /// (fd 0). The scheduler propagates this to the dispatch
+    /// context so `Effect::ReadLine` errors out instead of
+    /// racing with the bridge for bytes.
+    pub owns_stdin: bool,
+}
+
+/// Signature for a world-plugin install function. Returns
+/// `Ok(Some(install))` when the bridge wants to start (the user
+/// declared the trigger fields / env opt-in), `Ok(None)` when it
+/// declines (no trigger), or `Err` if the bridge tried to start
+/// but failed (the scheduler bubbles this up as a load error).
+pub type WorldPluginInstallFn = fn(
+    ctx: &WorldPluginCtx,
+    event_tx: &Sender<SchedulerEvent>,
+) -> Result<Option<WorldPluginInstall>, String>;
+
+/// The world-plugin registry. The scheduler iterates this slice
+/// once at startup and calls each install fn; each one decides
+/// independently whether to install.
+///
+/// **Order is preserved** (slice, not HashMap). FrameTimer first
+/// to mirror the original auto-install order from when these were
+/// hardcoded `if has_field(...)` blocks in the scheduler.
+pub const WORLD_PLUGIN_INSTALLERS: &[WorldPluginInstallFn] = &[
+    frame_timer::install_world_plugin,
+    sigint::install_world_plugin,
+    stdin::install_world_plugin,
+    wall_clock::install_world_plugin,
+    file_watcher::install_world_plugin,
+    file_line_reader::install_world_plugin,
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::sigint::SigintSource;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 

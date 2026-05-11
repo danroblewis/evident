@@ -369,9 +369,9 @@ pub fn run_with_ctx(
     let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::event_sources::SchedulerEvent>();
     let mut plugin_writes: std::collections::HashSet<String> = std::collections::HashSet::new();
     if delta_mode {
-        use crate::event_sources::EventSource;
-
-        // Find the user's World type fields (if any FSM has one).
+        // Build the read-only context the world-plugin installers
+        // consult. The registry walk below is generic over which
+        // bridges exist; the scheduler doesn't enumerate them.
         let world_fields: std::collections::HashMap<String, String> = fsms.iter()
             .find_map(|f| f.world_type.as_ref())
             .and_then(|wt| rt.get_schema(wt))
@@ -383,162 +383,60 @@ pub fn run_with_ctx(
                 }).collect()
             })
             .unwrap_or_default();
-
-        let has_field = |name: &str, ty: &str| -> bool {
-            world_fields.get(name).map(|t| t == ty).unwrap_or(false)
+        let fsm_event_subscriptions: std::collections::HashSet<String> = fsms.iter()
+            .flat_map(|f| f.event_subscriptions.iter().cloned())
+            .collect();
+        let fsm_using_identifier = |ident: &str| -> Option<String> {
+            for fsm in &fsms {
+                if let Some(claim) = rt.get_schema(&fsm.claim_name) {
+                    if crate::subscriptions::body_references_identifier(claim, ident) {
+                        return Some(fsm.claim_name.clone());
+                    }
+                }
+            }
+            None
+        };
+        let plugin_ctx = crate::event_sources::WorldPluginCtx {
+            world_fields:            &world_fields,
+            fsm_event_subscriptions: &fsm_event_subscriptions,
+            env_tick_ms:             env.tick_ms,
+            env_clock_ms:            env.clock_ms,
+            env_file_watch:          env.file_watch.as_deref(),
+            env_file_watch_ms:       env.file_watch_ms,
+            env_file_input:          env.file_input.as_deref(),
+            fsm_using_identifier:    &fsm_using_identifier,
         };
 
-        // FrameTimer — install if any of:
-        //   * EVIDENT_TICK_MS env var is set (back-compat: explicit
-        //     opt-in via env)
-        //   * World has `tick_count: Int` (new, world-write
-        //     auto-install)
-        //   * Any FSM has `_ ∈ FrameTimer` marker (back-compat
-        //     marker-subscription path)
-        let env_tick_ms: Option<u64> = env.tick_ms;
-        let want_timer = env_tick_ms.is_some()
-            || has_field("tick_count", "Int")
-            || fsms.iter().any(|f| f.event_subscriptions.contains("tick"));
-        if want_timer {
-            let ms = env_tick_ms.unwrap_or(100);
-            let mut timer = crate::event_sources::FrameTimer::new(ms, "tick");
-            if has_field("tick_count", "Int") {
-                timer = timer.with_count_field("tick_count");
-                plugin_writes.insert("tick_count".to_string());
+        // World-plugin auto-install (Phase 4 v3.7, unified model).
+        // Each registry entry decides for itself whether to install,
+        // based on world fields and a few env knobs. The scheduler
+        // is unaware of which specific bridges exist.
+        for installer in crate::event_sources::WORLD_PLUGIN_INSTALLERS {
+            if let Some(install) = installer(&plugin_ctx, &event_tx)? {
+                for k in install.plugin_writes { plugin_writes.insert(k); }
+                if install.owns_stdin { ctx.stdin_owned_by_plugin = true; }
+                event_sources.push(install.source);
             }
-            timer.start(event_tx.clone())
-                .map_err(|e| format!("failed to start tick timer: {e}"))?;
-            event_sources.push(Box::new(timer));
         }
 
-        // FTI v1 — typed resource bridges. For each FSM
-        // parameter `_ ∈ FrameClock`, install a per-instance
-        // FrameTimer that writes the param's tick_count field
-        // with FSM-prefixed key: "<fsm>.<param>.tick_count".
-        // The per-FSM solve view strips the FSM prefix before
-        // applying the pin, so the body's `param.tick_count`
-        // reads from a per-instance value.
-        //
-        // Result: two FSMs each declaring `_ ∈ FrameClock` with
-        // the same param name get DIFFERENT clocks (different
-        // instance IDs since each FSM has its own bridge).
+        // FTI v1 — typed-resource bridges declared as FSM
+        // parameters (e.g. `t ∈ Timer (interval_ms ↦ 50)`).
+        // Independent of world plugins: each FTI instance is
+        // per-FSM-per-param, with FSM-prefixed write keys
+        // ("<fsm>.<param>.<field>") so two FSMs declaring the
+        // same param type get distinct bridges.
         for fsm in &fsms {
             for (param_name, type_name, pins) in &fsm.fti_params {
                 let Some(install_fn) = crate::fti::fti_install_fn(type_name)
                     else { continue };
-                let ctx = crate::fti::FtiContext {
+                let fti_ctx = crate::fti::FtiContext {
                     claim_name:  fsm.claim_name.clone(),
                     param_name:  param_name.clone(),
-                    env_tick_ms,
+                    env_tick_ms: env.tick_ms,
                 };
-                let install = install_fn(&ctx, pins, event_tx.clone())?;
+                let install = install_fn(&fti_ctx, pins, event_tx.clone())?;
                 event_sources.push(install.source);
                 for k in install.keys { plugin_writes.insert(k); }
-            }
-        }
-
-        // SIGINT — auto-install if World has `signal_received: Int`
-        // OR any FSM declares `_ ∈ Signal`. Otherwise we'd globally
-        // hijack Ctrl-C from programs that never opted in.
-        let want_signal = has_field("signal_received", "Int")
-            || fsms.iter().any(|f| f.event_subscriptions.contains("signal"));
-        if want_signal {
-            let mut sig = crate::event_sources::SigintSource::new();
-            if has_field("signal_received", "Int") {
-                sig = sig.with_count_field("signal_received");
-                plugin_writes.insert("signal_received".to_string());
-            }
-            sig.start(event_tx.clone())
-                .map_err(|e| format!("failed to install SIGINT handler: {e}"))?;
-            event_sources.push(Box::new(sig));
-        }
-
-        // Stdin — auto-install if World has `stdin_line: String`.
-        // Single-owner: the StdinSource owns the fd; user FSMs
-        // never call ReadLine alongside this (they'd race). If
-        // World also has `stdin_seq: Int`, the source increments
-        // it on each line — used by user FSMs to gate "is this a
-        // new line?" without needing string-payload state.
-        if has_field("stdin_line", "String") {
-            // Reject programs that auto-install StdinSource AND
-            // use Effect::ReadLine — both want fd 0 and would
-            // race for bytes.
-            for fsm in &fsms {
-                if let Some(claim) = rt.get_schema(&fsm.claim_name) {
-                    if crate::subscriptions::body_references_identifier(claim, "ReadLine") {
-                        return Err(format!(
-                            "FSM `{}` emits Effect::ReadLine, but the program also \
-                             declares `stdin_line: String` in World which auto-installs \
-                             StdinSource. Both would race for fd 0. Use either the \
-                             plugin pattern (subscribe to world.stdin_line) OR remove \
-                             stdin_line from World and use ReadLine directly.",
-                            fsm.claim_name));
-                    }
-                }
-            }
-            let mut s = crate::event_sources::StdinSource::new("stdin_line");
-            if has_field("stdin_seq", "Int") {
-                s = s.with_seq_field("stdin_seq");
-                plugin_writes.insert("stdin_seq".to_string());
-            }
-            s.start(event_tx.clone())
-                .map_err(|e| format!("failed to start stdin reader: {e}"))?;
-            event_sources.push(Box::new(s));
-            plugin_writes.insert("stdin_line".to_string());
-            // Mark fd 0 as plugin-owned so Effect::ReadLine errors
-            // out at dispatch time rather than racing for bytes.
-            ctx.stdin_owned_by_plugin = true;
-        }
-
-        // WallClock — auto-install if World has `now_ms: Int`.
-        // Updates the field with current Unix time (ms) at the
-        // configured interval (default 100ms; override via
-        // EVIDENT_CLOCK_MS).
-        if has_field("now_ms", "Int") {
-            let ms: u64 = env.clock_ms;
-            let mut c = crate::event_sources::WallClockSource::new(ms, "now_ms");
-            c.start(event_tx.clone())
-                .map_err(|e| format!("failed to start WallClock: {e}"))?;
-            event_sources.push(Box::new(c));
-            plugin_writes.insert("now_ms".to_string());
-        }
-
-        // FileWatcher — auto-install if World has `file_changed:
-        // Int`. Watches the path from EVIDENT_FILE_WATCH env;
-        // increments the field on each detected mtime change.
-        // Poll interval via EVIDENT_FILE_WATCH_MS (default 200ms).
-        if has_field("file_changed", "Int") {
-            if let Some(path) = env.file_watch.as_deref() {
-                let ms: u64 = env.file_watch_ms;
-                let mut w = crate::event_sources::FileWatcherSource::new(path, ms, "file_changed");
-                w.start(event_tx.clone())
-                    .map_err(|e| format!("failed to start FileWatcher for {path:?}: {e}"))?;
-                event_sources.push(Box::new(w));
-                plugin_writes.insert("file_changed".to_string());
-            }
-        }
-
-        // FileLineReader — auto-install if World has `file_line:
-        // String`. Path comes from EVIDENT_FILE_INPUT env var.
-        // Optional companions: `file_seq: Int` (sequence counter)
-        // and `file_eof: Bool` (set true when EOF reached).
-        // First step toward FTI: a typed resource (file) with a
-        // declared lifecycle (open at start, EOF closes channel).
-        if has_field("file_line", "String") {
-            if let Some(path) = env.file_input.as_deref() {
-                let mut f = crate::event_sources::FileLineReader::new(path, "file_line");
-                if has_field("file_seq", "Int") {
-                    f = f.with_seq_field("file_seq");
-                    plugin_writes.insert("file_seq".to_string());
-                }
-                if has_field("file_eof", "Bool") {
-                    f = f.with_eof_field("file_eof");
-                    plugin_writes.insert("file_eof".to_string());
-                }
-                f.start(event_tx.clone())
-                    .map_err(|e| format!("failed to start file reader for {path:?}: {e}"))?;
-                event_sources.push(Box::new(f));
-                plugin_writes.insert("file_line".to_string());
             }
         }
     }
