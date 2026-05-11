@@ -13,8 +13,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
@@ -25,34 +23,11 @@ _DEFAULT_CMD = str(PROJECT_ROOT / 'runtime' / 'target' / 'release' / 'evident')
 EVIDENT_CMD = shlex.split(os.environ.get('EVIDENT_CMD', _DEFAULT_CMD))
 
 
-# ── Known-failing tests (xfail with TODO reason) ───────────────────────
-#
-# These were written for the Python reference implementation. The Rust
-# runtime either doesn't support the feature yet, has a regression, or
-# the test exercises syntax we no longer use. xfail keeps the run green
-# for what works while preserving the spec — pytest yells (XPASS) if any
-# of them quietly start passing, prompting un-mark.
-#
-# Triage TODO: walk this list. For each:
-#   * if the language no longer supports the feature, delete the test
-#   * if the runtime should support it but doesn't, file a real bug;
-#     once fixed, remove the entry here.
-KNOWN_FAILING = {
-}
-
-
-def pytest_collection_modifyitems(config, items):
-    """Apply xfail to entries in KNOWN_FAILING (whole-file or per-test)."""
-    for item in items:
-        rel_path = Path(item.fspath).name
-        if KNOWN_FAILING.get(rel_path) == '*':
-            item.add_marker(pytest.mark.xfail(
-                reason="see KNOWN_FAILING in conftest.py", strict=False))
-            continue
-        key = f"{rel_path}::{item.name}"
-        if key in KNOWN_FAILING:
-            item.add_marker(pytest.mark.xfail(
-                reason="see KNOWN_FAILING in conftest.py", strict=False))
+# (Removed: KNOWN_FAILING dict + pytest_collection_modifyitems hook
+# that applied xfail markers from it. Conformance tests don't carry
+# xfail/skip sediment — see lints/rules/AP-004. If a test fails:
+# fix it, delete it, or file the runtime gap in
+# examples/COUNTEREXAMPLES.md and delete it.)
 
 
 # ---------------------------------------------------------------------------

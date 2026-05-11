@@ -1,0 +1,47 @@
+# AP-001 known offenders.
+#
+# Format: <path>:<line>  # <reason / link>
+#
+# Each line is a documented decision NOT to fix today. The check
+# silently passes for these specific (file, line) pairs; any NEW
+# violation outside this list fails the lint.
+#
+# When you fix one, delete its line. When the file is empty, the
+# rule is fully clean — leave the empty file in place so future
+# lints/checks.sh runs still find it.
+
+# The SdlVertex intrusion documented in examples/COUNTEREXAMPLES.md
+# (the original "library-specific in language-core" anti-pattern
+# that motivated this whole rulebook). Refactor plan: replace
+# SdlVertexBuf with a generic ArgByteBuf primitive; user packs
+# bytes via stdlib helpers. Big change, deferred.
+
+runtime/src/ast.rs:345  # struct SdlVertex
+runtime/src/ast.rs:351  # pub struct SdlVertex {
+runtime/src/ast.rs:383  # doc comment about SDL_Vertex
+runtime/src/ast.rs:384  # SDL-specific buffer doc
+runtime/src/ast.rs:388  # SdlVertexBuf(Vec<SdlVertex>)
+runtime/src/ffi.rs:66   # SdlVertexBuf(Vec<crate::ast::SdlVertex>)
+runtime/src/ffi.rs:325  # comment about SdlVertexBuf
+runtime/src/ffi.rs:326  # vert_bufs Vec
+runtime/src/ffi.rs:365  # SdlVertexBuf marshal
+runtime/src/ffi.rs:393  # SdlVertexBuf comment
+runtime/src/ffi.rs:394  # vert_buf_starts
+runtime/src/ffi.rs:435  # SdlVertexBuf arg-construction
+runtime/src/ffi.rs:503  # libSystem.dylib path used by libc fallback
+runtime/src/translate/decode_ast.rs:623  # SdlVertexBuf decode arm
+runtime/src/translate/decode_ast.rs:643  # decode_sdl_vertex fn
+runtime/src/translate/decode_ast.rs:651  # SdlVertex constructor
+runtime/src/translate/decode_ast.rs:660  # decode_sdl_vertex_list fn
+runtime/src/effect_dispatch.rs:265  # SdlVertexBuf arm
+runtime/src/effect_dispatch.rs:363  # SdlVertexBuf arm
+runtime/src/effect_dispatch.rs:419  # SdlVertexBuf arm
+
+# libSystem.dylib / libc.so.6 paths are libc-fallback paths used by
+# the FFI primitive itself, NOT library-specific in the AP-001
+# sense. The rule's regex over-matches these; exempted.
+runtime/src/ffi.rs:503   # libSystem.dylib libc path
+runtime/src/effect_dispatch.rs:693  # libSystem.dylib libc path (test)
+runtime/src/effect_dispatch.rs:712  # libSystem.dylib libc path (test)
+runtime/src/effect_dispatch.rs:797  # libSystem.dylib libc path (test)
+runtime/src/effect_dispatch.rs:827  # libSystem.dylib libc path (test)

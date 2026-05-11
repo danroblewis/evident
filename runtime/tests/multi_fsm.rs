@@ -165,27 +165,11 @@ fn spawn_with_arg_lang_test_13() {
     assert!(r.halted_clean, "should halt cleanly; got {r:?}");
 }
 
-#[test]
-#[ignore]  // opens an SDL window — skip in normal test runs
-fn fti_sdl_gl_render_lang_test_19() {
-    use std::process::{Command, Stdio};
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
-        .args(["effect-run",
-               "tests/lang_tests/multi_fsm/19_sdl_gl_render_fti.ev",
-               "--max-steps", "50"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .expect("spawn");
-    let out = String::from_utf8_lossy(&output.stdout);
-    assert!(out.contains("render done"), "out:\n{}", out);
-    assert!(output.status.success(),
-        "stderr:\n{}", String::from_utf8_lossy(&output.stderr));
-}
+// (Removed: fti_sdl_gl_render_lang_test_19. It asserted on
+// stdout "render done" which the binary emits even when the
+// window renders BLACK — see examples/COUNTEREXAMPLES.md #7.
+// Paper assertion on a known-broken visual path. The lang_test
+// 19 file remains for manual exercise via `evident effect-run`.)
 
 #[test]
 fn fti_configurable_timer_lang_test_17() {

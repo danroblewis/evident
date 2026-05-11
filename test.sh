@@ -3,6 +3,8 @@
 #
 # Phases (each phase fails the run if it fails, except --examples
 # which is informational):
+#   0. lints/checks.sh — mechanical layering lints. Cheap; if
+#      the structure is broken there's no point compiling.
 #   1. Build the Rust binary (release).
 #   2. cargo test --release in runtime/ — Rust units + integration
 #      tests. Includes the multi-FSM scheduler tests and the demo
@@ -24,14 +26,14 @@
 #
 # This is THE test command. Any time an agent finishes a chunk of
 # work that touches code or stdlib or examples/, run this before
-# declaring done. Anything less leaves room for the kind of drift
-# that the conformance triage just surfaced.
+# declaring done.
 #
 # Usage:
-#   ./test.sh                   # phases 1-3 (default)
-#   ./test.sh --rust-only       # skip conformance
+#   ./test.sh                   # phases 0-3 (default)
+#   ./test.sh --lints-only      # only Phase 0 lints (~50ms)
+#   ./test.sh --rust-only       # phases 0-2 (skip conformance)
 #   ./test.sh --conformance     # only conformance
-#   ./test.sh --examples        # phases 1-3 PLUS the examples
+#   ./test.sh --examples        # phases 0-3 PLUS the examples
 #                               # runner with screenshots
 #   ./test.sh --examples-only   # only examples runner
 #                               # (assumes binary already built)
@@ -44,12 +46,14 @@ RUST_ONLY=0
 CONFORMANCE_ONLY=0
 EXAMPLES=0
 EXAMPLES_ONLY=0
+LINTS_ONLY=0
 for arg in "$@"; do
     case "$arg" in
         --rust-only)      RUST_ONLY=1 ;;
         --conformance)    CONFORMANCE_ONLY=1 ;;
         --examples)       EXAMPLES=1 ;;
         --examples-only)  EXAMPLES=1 ; EXAMPLES_ONLY=1 ;;
+        --lints-only)     LINTS_ONLY=1 ;;
         -h|--help)
             sed -n '2,38p' "$0"
             exit 0
@@ -80,6 +84,31 @@ note()  { echo "${YELLOW}!${OFF} $1"; }
 
 started=$(date +%s)
 failures=()
+
+# ── Phase 0: mechanical lints ────────────────────────────────
+# Cheap (~50ms). Layering violations should short-circuit the
+# rest of the run — there's no point compiling and testing if
+# the structure is broken.
+if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
+    phase "Phase 0: lints (lints/checks.sh)"
+    if ./lints/checks.sh ; then
+        :  # checks.sh prints its own summary
+    else
+        failures+=("lints")
+    fi
+    echo
+fi
+
+if [ "$LINTS_ONLY" -eq 1 ]; then
+    elapsed=$(( $(date +%s) - started ))
+    if [ ${#failures[@]} -eq 0 ]; then
+        echo "${GREEN}${BOLD}lints passed.${OFF} ${DIM}(${elapsed}s)${OFF}"
+        exit 0
+    else
+        echo "${RED}${BOLD}lints FAILED.${OFF} ${DIM}(${elapsed}s)${OFF}"
+        exit 1
+    fi
+fi
 
 # ── Phase 1: build ────────────────────────────────────────────
 if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
