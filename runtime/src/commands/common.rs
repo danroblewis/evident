@@ -1,12 +1,13 @@
 //! Shared helpers used by multiple `cmd_*` subcommands: usage banner,
-//! generic flag parsing, runtime loading, value formatting (text +
-//! JSON), and the SAT/UNSAT printer used by both `query` and `sample`.
+//! generic flag parsing, runtime loading, and shared value formatting.
+//!
+//! Single-use helpers (e.g. JSON formatting, the SAT/UNSAT printer)
+//! live in their owning command file, not here.
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, QueryResult, Value};
+use evident_runtime::{EvidentRuntime, Value};
 
 pub fn usage() {
     eprintln!("usage:");
@@ -96,34 +97,6 @@ pub fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
     Ok(rt)
 }
 
-pub fn print_query_result(r: &QueryResult, json: bool) -> ExitCode {
-    if json {
-        // Minimal JSON: {"satisfied": true/false, "bindings": {…}}
-        if !r.satisfied {
-            println!("{{\"satisfied\": false}}");
-            return ExitCode::from(1);
-        }
-        let mut keys: Vec<&String> = r.bindings.keys().collect();
-        keys.sort();
-        let mut parts = Vec::new();
-        for k in keys {
-            parts.push(format!("\"{}\": {}", k, value_as_json(&r.bindings[k])));
-        }
-        println!("{{\"satisfied\": true, \"bindings\": {{{}}}}}", parts.join(", "));
-        return ExitCode::SUCCESS;
-    }
-    if !r.satisfied {
-        println!("UNSAT");
-        return ExitCode::from(1);
-    }
-    let mut keys: Vec<&String> = r.bindings.keys().collect();
-    keys.sort();
-    for k in keys {
-        println!("{}={}", k, format_value(&r.bindings[k]));
-    }
-    ExitCode::SUCCESS
-}
-
 pub fn format_value(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),
@@ -147,51 +120,4 @@ pub fn format_value(v: &Value) -> String {
         // until first-class formatting lands.
         other => format!("{:?}", other),
     }
-}
-
-pub fn value_as_json(v: &Value) -> String {
-    match v {
-        Value::Int(n)  => n.to_string(),
-        Value::Real(f) => f.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Str(s)  => json_str(s),
-        Value::SeqInt(v) => {
-            let parts: Vec<_> = v.iter().map(|n| n.to_string()).collect();
-            format!("[{}]", parts.join(", "))
-        }
-        Value::SeqBool(v) => {
-            let parts: Vec<_> = v.iter().map(|b| b.to_string()).collect();
-            format!("[{}]", parts.join(", "))
-        }
-        Value::SeqStr(v) => {
-            let parts: Vec<_> = v.iter().map(|s| json_str(s)).collect();
-            format!("[{}]", parts.join(", "))
-        }
-        Value::Enum { variant, fields, .. } => {
-            if fields.is_empty() {
-                json_str(variant)
-            } else {
-                let parts: Vec<String> = fields.iter().map(value_as_json).collect();
-                format!("{{\"variant\": {}, \"fields\": [{}]}}",
-                        json_str(variant), parts.join(", "))
-            }
-        }
-        // See note in format_value: not yet produced by the translator.
-        other => json_str(&format!("{:?}", other)),
-    }
-}
-
-pub fn json_str(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '"'  => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            c    => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }

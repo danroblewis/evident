@@ -4,11 +4,12 @@
 use std::collections::HashMap;
 use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, Value};
+use evident_runtime::{EvidentRuntime, QueryResult, Value};
 
 use super::common::{
-    format_value, load_runtime, parse_flags, print_query_result, split_files_and_flags,
+    format_value, load_runtime, parse_flags, split_files_and_flags,
 };
+use super::sample::value_as_json;
 
 pub fn cmd_query(args: &[String]) -> ExitCode {
     // --strict: skip the inference pre-pass. Default behavior is
@@ -82,4 +83,34 @@ fn explain_unsat(rt: &EvidentRuntime, schema_name: &str, given: &HashMap<String,
     eprintln!("--- end explain ---");
     eprintln!("(hint: comment out body items to narrow the conflict; or");
     eprintln!(" check that no `--given` value contradicts a body equality.)");
+}
+
+/// Print a `QueryResult` in either text (`k=v` lines) or JSON form.
+/// Returns the exit code: 0 for SAT, 1 for UNSAT.
+fn print_query_result(r: &QueryResult, json: bool) -> ExitCode {
+    if json {
+        // Minimal JSON: {"satisfied": true/false, "bindings": {…}}
+        if !r.satisfied {
+            println!("{{\"satisfied\": false}}");
+            return ExitCode::from(1);
+        }
+        let mut keys: Vec<&String> = r.bindings.keys().collect();
+        keys.sort();
+        let mut parts = Vec::new();
+        for k in keys {
+            parts.push(format!("\"{}\": {}", k, value_as_json(&r.bindings[k])));
+        }
+        println!("{{\"satisfied\": true, \"bindings\": {{{}}}}}", parts.join(", "));
+        return ExitCode::SUCCESS;
+    }
+    if !r.satisfied {
+        println!("UNSAT");
+        return ExitCode::from(1);
+    }
+    let mut keys: Vec<&String> = r.bindings.keys().collect();
+    keys.sort();
+    for k in keys {
+        println!("{}={}", k, format_value(&r.bindings[k]));
+    }
+    ExitCode::SUCCESS
 }

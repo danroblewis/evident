@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use evident_runtime::Value;
 
 use super::common::{
-    format_value, load_runtime, parse_flags, split_files_and_flags, value_as_json,
+    format_value, load_runtime, parse_flags, split_files_and_flags,
 };
 
 pub fn cmd_sample(args: &[String]) -> ExitCode {
@@ -66,4 +66,56 @@ pub fn cmd_sample(args: &[String]) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// JSON serializer for `Value`. Pub so `query::print_query_result` can
+/// reuse it for its `--json` output; private helper `json_str` stays
+/// local.
+pub fn value_as_json(v: &Value) -> String {
+    match v {
+        Value::Int(n)  => n.to_string(),
+        Value::Real(f) => f.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s)  => json_str(s),
+        Value::SeqInt(v) => {
+            let parts: Vec<_> = v.iter().map(|n| n.to_string()).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::SeqBool(v) => {
+            let parts: Vec<_> = v.iter().map(|b| b.to_string()).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::SeqStr(v) => {
+            let parts: Vec<_> = v.iter().map(|s| json_str(s)).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::Enum { variant, fields, .. } => {
+            if fields.is_empty() {
+                json_str(variant)
+            } else {
+                let parts: Vec<String> = fields.iter().map(value_as_json).collect();
+                format!("{{\"variant\": {}, \"fields\": [{}]}}",
+                        json_str(variant), parts.join(", "))
+            }
+        }
+        // Composite / SeqComposite are placeholder Value variants that
+        // aren't currently produced by the translator. Render with the
+        // Debug form until first-class formatting lands.
+        other => json_str(&format!("{:?}", other)),
+    }
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"'  => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c    => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
