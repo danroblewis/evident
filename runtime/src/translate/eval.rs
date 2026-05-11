@@ -12,16 +12,29 @@
 //!     `run_cached` (step many times re-using the compiled solver) +
 //!     `sample_cached_inner` (n-distinct-models for `sample`). Used
 //!     by the effect loop to amortize translate cost across ticks.
+//!
+//! File layout (top-to-bottom, each section depends only on those above):
+//!   1. Helpers — Real-literal / numeric conversions, solver tuning,
+//!      env priming, the declare-and-assert convenience.
+//!   2. Cached-query path — `build_cache` / `run_cached` /
+//!      `sample_cached_inner`, used by the multi-FSM scheduler.
+//!   3. One-shot evaluate variants — used by `query` / `check` / `sample`.
+//!   4. Local model-extraction helpers — leaf-level Var → Value plumbing
+//!      shared by both query paths.
 
 use std::collections::{HashMap, HashSet};
 use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, Params, SatResult, Solver};
 
-/// Set `smt.arith.solver` to `arith_solver` on `solver`. Pass `0` to
-/// skip (lets Z3 use its built-in default). The chosen value depends
-/// on workload — the runtime's auto-tuner decides which to use; this
-/// helper is the dumb mechanism. See `runtime::SolveHistory` for the
-/// policy.
+use crate::ast::*;
+use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
+use super::declare::{apply_seq_lengths, declare_var};
+use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unescape_z3_string};
+use super::inline::inline_body_items;
+use super::preprocess::{apply_pinned_ints, collect_pinned_ints, collect_seq_lengths};
+
+// ── Section 1: Helpers ────────────────────────────────────────────────
+
 /// Build a Z3 Real literal from an f64 source value.
 ///
 /// Splits `f.to_string()` (Rust's shortest-round-trip Display form,
@@ -66,6 +79,11 @@ fn real_value_to_f64(num: i64, den: i64) -> f64 {
     if den == 0 { 0.0 } else { num as f64 / den as f64 }
 }
 
+/// Set `smt.arith.solver` to `arith_solver` on `solver`. Pass `0` to
+/// skip (lets Z3 use its built-in default). The chosen value depends
+/// on workload — the runtime's auto-tuner decides which to use; this
+/// helper is the dumb mechanism. See `runtime::SolveHistory` for the
+/// policy.
 fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     if arith_solver == 0 { return; }
     let mut params = Params::new(ctx);
@@ -84,7 +102,7 @@ fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
 /// schema body will overwrite this entry — schema-local takes
 /// precedence over the language-level constant.
 fn populate_enum_variants<'ctx>(
-    env: &mut HashMap<String, super::types::Var<'ctx>>,
+    env: &mut HashMap<String, Var<'ctx>>,
     enums: Option<&EnumRegistry>,
 ) where 'ctx: 'static {
     let Some(reg) = enums else { return };
@@ -97,9 +115,9 @@ fn populate_enum_variants<'ctx>(
                 let ctor = &dt.variants[idx].constructor;
                 let ast = ctor.apply(&[]).as_datatype()
                     .expect("nullary enum variant must yield a Datatype value");
-                env.insert(variant.name.clone(), super::types::Var::EnumValue { ast });
+                env.insert(variant.name.clone(), Var::EnumValue { ast });
             } else {
-                env.insert(variant.name.clone(), super::types::Var::EnumCtor {
+                env.insert(variant.name.clone(), Var::EnumCtor {
                     dt: *dt,
                     variant_idx: idx,
                     field_types: variant.fields.iter()
@@ -110,13 +128,6 @@ fn populate_enum_variants<'ctx>(
         }
     }
 }
-
-use crate::ast::*;
-use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
-use super::declare::{apply_seq_lengths, declare_var};
-use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unescape_z3_string};
-use super::inline::inline_body_items;
-use super::preprocess::{apply_pinned_ints, collect_pinned_ints, collect_seq_lengths};
 
 /// Allocate a typed Z3 const for `(name, type_name)` and immediately
 /// issue any type-implied invariants on the solver. `declare_var`'s
@@ -136,6 +147,8 @@ fn declare_and_assert(
     let post = declare_var(ctx, env, name, type_name, schemas, registry, enums);
     for c in &post { solver.assert(c); }
 }
+
+// ── Section 2: Cached-query path (build_cache / run_cached / sample) ─
 
 /// Translate the schema's body once into a fresh solver and return a
 /// `CachedSchema` that subsequent queries can reuse via push/pop.
@@ -448,6 +461,8 @@ pub fn run_cached<'ctx>(
     cached.solver.pop(1);
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
+
+// ── Section 3: One-shot evaluate variants (query / check / sample) ───
 
 /// Evaluate a single schema with optional pre-bound values, using the
 /// `schemas` table to resolve user-defined types referenced inside the
@@ -953,6 +968,8 @@ pub fn evaluate_with_core(
     }
     EvalResult { satisfied, bindings, unsat_core_items: core_items }
 }
+
+// ── Section 4: Local model-extraction helpers ────────────────────────
 
 /// Pull one variable's value out of the model into the bindings map.
 /// Mirrors the inline match in `evaluate`'s SAT branch — extracted so
