@@ -972,6 +972,9 @@ the file's only logic, and it's the only place subcommand names
 are listed. Adding a subcommand means: add a `commands/<name>.rs`
 file (with `pub fn cmd_<name>`), add a `pub mod <name>;` line
 to `commands.rs`, add a match arm here. Three files, mechanical.
+(AP-014 enforces the file ↔ dispatch arm pairing — a
+`commands/X.rs` without `pub fn cmd_X` or without a matching
+`"<verb>" => …` arm in `main.rs` fails the lint.)
 
 **Dependencies.** `commands` (the local module tree from the
 binary's perspective; not the library), `std::process::ExitCode`.

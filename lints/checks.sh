@@ -365,6 +365,37 @@ check_no_stdlib_paths_in_language_core() {
     fi
 }
 
+# ── AP-014: every cmd_X file has main.rs dispatch ──────────────
+check_cmd_files_have_dispatch_arm() {
+    # AP-014: each commands/X.rs (other than common/mod) must
+    # declare `pub fn cmd_X` AND main.rs must dispatch the verb
+    # form (kebab-case) to it.
+    local main_rs=runtime/src/main.rs
+    [ -f "$main_rs" ] || { report AP-014 fail "missing $main_rs"; return; }
+    local violations=""
+    for f in runtime/src/commands/*.rs; do
+        [ -f "$f" ] || continue
+        local base
+        base=$(basename "$f" .rs)
+        case "$base" in
+            common|mod) continue ;;
+        esac
+        if ! grep -q "pub fn cmd_$base" "$f"; then
+            violations+="$f: missing \`pub fn cmd_$base\`"$'\n'
+        fi
+        local verb="${base//_/-}"
+        # Look for the verb as a quoted match arm key in main.rs.
+        if ! grep -qE "\"$verb\"[[:space:]]*=>" "$main_rs"; then
+            violations+="$main_rs: missing dispatch arm \"$verb\" => commands::$base::cmd_$base(...)"$'\n'
+        fi
+    done
+    if [ -z "$violations" ]; then
+        report AP-014 pass
+    else
+        report AP-014 fail "$violations"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -377,6 +408,7 @@ ACTIVE=(
     check_no_preprocess_exprs_cycle               # AP-011
     check_no_specific_bridges_in_scheduler        # AP-012
     check_no_stdlib_paths_in_language_core        # AP-013
+    check_cmd_files_have_dispatch_arm             # AP-014
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 
