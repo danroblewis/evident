@@ -44,6 +44,7 @@ mod file_watcher;
 mod oneshot_shell;
 mod sdl_window;
 mod gl_program;
+mod reflection;
 // `gl_context` is NOT a bridge (no struct, no EventSource impl);
 // it's a sibling helper for GL-aware bridges so the
 // `OpenGL.framework` dlopen doesn't get duplicated across files.
