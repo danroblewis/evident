@@ -308,6 +308,26 @@ check_no_preprocess_exprs_cycle() {
     fi
 }
 
+# ── AP-012: no specific bridge structs in scheduler ────────────
+check_no_specific_bridges_in_scheduler() {
+    # AP-012: effect_loop.rs runs against a registry of bridges,
+    # not against named struct types. Scheduler must not reach
+    # past the abstraction.
+    local f=runtime/src/effect_loop.rs
+    [ -f "$f" ] || { report AP-012 pass "(file missing — skip)"; return; }
+    local pattern='event_sources::(FrameTimer|SigintSource|StdinSource|WallClockSource|FileWatcherSource|FileLineReader|OneShotShellSource|SdlWindowSource|GlProgramSource|GlContext)'
+    local hits
+    hits=$(strip_rs_test_modules "$f" \
+           | grep -nE "$pattern" \
+           | grep -vE ':[[:space:]]*//' \
+           || true)
+    if [ -z "$hits" ]; then
+        report AP-012 pass
+    else
+        report AP-012 fail "$f:"$'\n'"$hits"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -318,6 +338,7 @@ ACTIVE=(
     check_no_solver_assert_in_declare             # AP-009
     check_no_z3_exprs_in_preprocess               # AP-010
     check_no_preprocess_exprs_cycle               # AP-011
+    check_no_specific_bridges_in_scheduler        # AP-012
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 

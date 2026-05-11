@@ -495,25 +495,21 @@ The scheduler's concerns are: which FSMs to wake (subscriptions,
 self-feedback, external events), when to halt, how to thread
 state and effects per tick. Anything outside that — what kinds
 of background event sources exist, how typed C resources get
-installed at startup, what specific bridge types live in the
-codebase — is NOT a scheduler concern. The scheduler should run
-correctly against any collection of objects that can wake FSMs,
-without knowing how that collection was assembled or what each
-object's specific origin is. Adding a new typed C resource
-(SDL_Audio, etc.) or removing the FTI mechanism entirely should
-not require touching this file. If a change to the registry or
-a specific bridge type forces a change here, the file has
-reached past its concern.
+installed at startup — is NOT a scheduler concern. The scheduler
+should run correctly against any collection of objects that can
+wake FSMs, without knowing how that collection was assembled or
+what each object's specific origin is. Adding a new typed C
+resource (SDL_Audio, etc.) or removing the FTI mechanism entirely
+should not require touching this file. (The "no `use` of any
+specific bridge struct type" half of this invariant is now
+mechanically enforced by AP-012.)
 
 **Dependencies.** `ast` (BodyItem + EffectResult shape),
 `effect_dispatch` (DispatchContext + dispatch_all), `runtime`
 (EvidentRuntime facade for solving), `translate` (Value +
 ast_decoder for reading models), and an abstraction over event
 sources sufficient to receive wake events and read source-
-written world fields. The current import of specific bridge
-types or the registry mechanism is acceptable only as a
-transitional shape; the right long-term invariant is that this
-file holds no `use` of any specific bridge or registry symbol.
+written world fields.
 
 **Cross-file contracts.** The scheduler reads
 `DispatchContext::pending_spawns` after each `dispatch_all`
