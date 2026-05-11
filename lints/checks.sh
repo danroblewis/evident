@@ -396,6 +396,38 @@ check_cmd_files_have_dispatch_arm() {
     fi
 }
 
+# ── AP-015: every pub mod in lib.rs has external consumer ─────
+check_pub_mod_has_external_use() {
+    # AP-015: a `pub mod X` in lib.rs must have a corresponding
+    # evident_runtime::X reference somewhere external (tests,
+    # benches, or commands). Otherwise the `pub` is speculative.
+    local lib=runtime/src/lib.rs
+    [ -f "$lib" ] || { report AP-015 fail "missing $lib"; return; }
+    local violations=""
+    # Extract `pub mod NAME;` from lib.rs (production code only).
+    local mods
+    mods=$(strip_rs_test_modules "$lib" \
+           | grep -vE '^[[:space:]]*//' \
+           | grep -oE '^pub mod [a-z_]+' \
+           | awk '{print $3}')
+    for m in $mods; do
+        # Match either `evident_runtime::<m>` (path use, with `::`
+        # or word boundary after) OR `<m>` inside a brace import
+        # `use evident_runtime::{..., <m>, ...}`.
+        local pattern="evident_runtime::($m\b|\{[^}]*\b$m\b)"
+        local hits
+        hits=$(grep -rEln "$pattern" runtime/tests/ runtime/benches/ runtime/src/commands/ 2>/dev/null || true)
+        if [ -z "$hits" ]; then
+            violations+="$lib: \`pub mod $m\` has no external consumer (searched runtime/tests, runtime/benches, runtime/src/commands)"$'\n'
+        fi
+    done
+    if [ -z "$violations" ]; then
+        report AP-015 pass
+    else
+        report AP-015 fail "$violations"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -409,6 +441,7 @@ ACTIVE=(
     check_no_specific_bridges_in_scheduler        # AP-012
     check_no_stdlib_paths_in_language_core        # AP-013
     check_cmd_files_have_dispatch_arm             # AP-014
+    check_pub_mod_has_external_use                # AP-015
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 

@@ -933,13 +933,15 @@ under `runtime::`.
 
 **What it must NEVER do.** Contain implementation. Re-export
 everything indiscriminately — the public API is intentionally
-narrow. A sub-module is `pub mod` only if external callers
-need to reach into it; otherwise it's `mod` (crate-internal).
-A type is `pub use`'d at the crate root only if it's part of
-the canonical facade — niche internal types remain accessible
-only through their owning module's path. Hold state. Wire
-together components — that's the runtime facade's job, not the
-crate-entry file's.
+narrow. A type is `pub use`'d at the crate root only if it's
+part of the canonical facade — niche internal types remain
+accessible only through their owning module's path. Hold state.
+Wire together components — that's the runtime facade's job, not
+the crate-entry file's. (The "a sub-module is `pub mod` only if
+external callers reach into it" half is now mechanically enforced
+by AP-015 — every `pub mod X` must have an `evident_runtime::X`
+consumer in `runtime/tests/`, `runtime/benches/`, or
+`runtime/src/commands/`.)
 
 **Dependencies.** None. It's the top of the dependency graph.
 
