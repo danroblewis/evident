@@ -1,226 +1,181 @@
 # Findings: runtime/src/translate/inline.rs
 
-Reviewed against `lints/rules/` as of baf8078.
+Reviewed against `lints/rules/` as of 53fa1fe.
 
-## Violations of existing rules
+## Status of prior findings
 
-### AP-001 at runtime/src/translate/inline.rs:507
-> ```
-> if let crate::ast::Expr::Identifier(s) = e {
->     if s == "spawnable_only" { continue; }
-> }
-> ```
+### RESOLVED — `spawnable_only` literal at inline.rs:507 (was AP-001-spirit)
 
-Not strictly a token-grep AP-001 hit (`spawnable_only` doesn't match
-`Sdl[A-Z]` etc.), but it is the same family of violation against the
-file's runtime-invariant brief: "Must NOT know about Effects, the
-scheduler, or any I/O." `spawnable_only` is a scheduler-side marker
-consumed in `runtime/src/effect_loop.rs:222–229` (the only other
-mention in the runtime). Hard-coding the literal in the translate
-walker means the translation pass has been taught one specific
-scheduler-side feature flag. If a second such marker appears the
-list grows here too — exactly the leak `lints/runtime-invariants.md`
-calls out for this file.
+The prior wave flagged the file's direct check of the literal string
+`"spawnable_only"` — a scheduler-side body marker — as a violation of
+the file's invariant ("must NOT know about Effects, scheduler, or any
+I/O"). That violation is **resolved**.
 
-Listed under "violations" because it directly contradicts the
-explicit invariant ("Know about Effects, the scheduler, or any
-I/O" forbidden) even though no existing AP-NNN rule names it.
+What changed:
+
+1. `runtime/src/ast.rs:19` declares `pub const BODY_MARKERS: &[&str] =
+   &["spawnable_only"]` with a doc comment establishing it as an
+   AST-level concept ("Bare-identifier body items recognized as
+   runtime metadata rather than translatable constraints"). The doc
+   explicitly states the invariant going forward: "The translator MUST
+   NOT reference any specific marker by literal string; scheduler /
+   runtime layers MAY reference specific entries by looking them up
+   against this list."
+2. `runtime/src/translate/inline.rs:509` now reads:
+   ```
+   if crate::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
+   ```
+   No literal scheduler-marker name appears anywhere in this file.
+3. The accompanying comment at lines 503–507 is updated to describe
+   the new design ("Recognized runtime markers (declared in
+   `crate::ast::BODY_MARKERS`) are bare identifiers that carry
+   metadata for some other runtime layer — they have no Bool
+   translation. Skip silently so they don't trip the dropped-
+   constraint diagnostic.") No mention of the scheduler, no mention
+   of `spawnable_only`. The comment correctly describes the generic
+   shape, not a specific consumer.
+
+**Does inline.rs still "know about" the scheduler?** No. It knows
+that *some* names are AST-level markers without Bool translation;
+who consumes them and what they mean is opaque to it. If a second
+marker is added (parser-level pragma, future runtime-layer hint,
+type-checker hint, etc.), `BODY_MARKERS` grows by one entry and
+inline.rs is unchanged. The abstraction is at the right layer.
+
+**Is the abstraction sufficient?** Yes, with one mild observation
+(below): `BODY_MARKERS` is currently a flat string list with no
+per-marker metadata about which layer consumes it. If a future marker
+needs different translator behavior than "skip silently" (e.g. "skip
+but emit a warning if it appears outside its expected enclosing
+shape"), the list-of-strings form will need to grow into a struct.
+But for the current contract — "these names are not constraints,
+ignore them" — a `&[&str]` is the right shape.
+
+The companion side (effect_loop.rs:222–230) still references the
+literal `"spawnable_only"` string directly rather than going through
+`BODY_MARKERS`. That's acceptable per the AST doc-comment ("scheduler
+/ runtime layers MAY reference specific entries by looking them up
+against this list"), but reads as "may look up", not "must look up
+by name only" — effect_loop.rs uses a hardcoded literal `s ==
+"spawnable_only"`, which means a typo on the AST side wouldn't
+fire a compile error. A small follow-up would be to expose a named
+const (`pub const SPAWNABLE_ONLY: &str = "spawnable_only"`) that
+both files reference. Out of scope for this file's review.
+
+### UNCHANGED — AP-009 candidate: 4 std::process::exit calls
+
+Prior finding listed lines 280, 298, 345, 526. Current state, lines
+280, 298, 345, 528 (one call moved by 2 lines from a comment shift).
+Same four sites, same shapes:
+
+- `runtime/src/translate/inline.rs:280` — positional pin on unknown type
+- `runtime/src/translate/inline.rs:298` — positional pin arg-count overflow
+- `runtime/src/translate/inline.rs:345` — pin-translation failure
+  (under EVIDENT_LENIENT=0)
+- `runtime/src/translate/inline.rs:528` — constraint-translation failure
+  (under EVIDENT_LENIENT=0)
+
+The candidate has not been promoted to a rule; it remains a candidate
+in this findings file. No fix yet.
+
+### UNCHANGED — AP-010 candidate: env-var reads in hot paths
+
+Prior finding listed lines 65–70 (`max_inline_depth()`), 162
+(`EVIDENT_INLINE_TRACE`), and 320 / 512 (`EVIDENT_LENIENT`). Current
+state matches: 66 (max_inline_depth body), 162, 320, 514. Same four
+sites, same shapes — no `OnceLock` / `LazyLock` introduced. Candidate
+stands as before.
+
+### UNCHANGED — AP-011 candidate: 3 claim-inline arms drifted
+
+Prior finding listed three arms (positional `Constraint(Expr::Call)`,
+guarded `Implies`, explicit `ClaimCall`) running near-identical
+env-clone + isolate-helper-locals + per-call-fresh + recurse
+sequences with documented divergence (only positional arm calls
+`isolate_helper_locals` initially; only ClaimCall arm has
+`force_fresh`; only guarded arm has the explanatory comment).
+
+Current state: the positional arm AND the guarded arm now both call
+`isolate_helper_locals` (lines 416 and 487), so the prior "only
+positional" divergence on isolate is fixed. But the third divergence
+remains: `force_fresh` at lines 580–598 still lives only in the
+explicit `ClaimCall` arm; positional and guarded arms have no
+equivalent recursive-shadowing logic. Three sites still have
+`call_id = next_call_id()` + per-Membership `declare_var_named` loops
+with subtly different behavior:
+
+- positional Call arm (428–437): loops, skips if `slot_set.contains`
+  or `inner.contains_key`, declares fresh.
+- guarded Implies arm (488–495): loops, skips only if
+  `inner.contains_key` (no `slot_set` because guarded form has no
+  positional args — but `isolate_helper_locals` has already been run,
+  so the post-isolation env is the relevant input).
+- explicit ClaimCall arm (573–599): loops, computes `force_fresh`,
+  removes from inner before re-declaring on recursive frames.
+
+The rule's underlying claim ("the arms are drifted, fix once = fix
+everywhere only if they're a shared helper") is still true. Partial
+convergence has happened; full convergence has not. Candidate stands.
 
 ## Per-file-invariant compliance check
 
-Other invariants from `lints/runtime-invariants.md` for this file:
+From `lints/runtime-invariants.md` for `translate/inline.rs`:
 
 - "Must NOT own the Solver (borrows)." — satisfied. Every entry
-  point takes `solver: &Solver<'static>`; no Solver construction
-  in this file.
+  point takes `solver: &Solver<'static>`.
 - "Must NOT own registries (borrows)." — satisfied. `registry:
   &DatatypeRegistry`, `enums: Option<&EnumRegistry>` everywhere.
 - "Must NOT decide what's a 'schema' vs 'claim' vs 'type'" —
-  satisfied. The walker uses one `schemas: &HashMap<String,
-  SchemaDecl>` and treats all entries uniformly. No `if keyword ==
-  "claim"` branches.
-- "Must NOT know about Effects, scheduler, or any I/O" —
-  violated by the `spawnable_only` arm at line 507 (above).
+  satisfied. One uniform `schemas: &HashMap<String, SchemaDecl>`.
+  No keyword-based branching.
+- "Must NOT know about Effects, scheduler, or any I/O" — **now
+  satisfied**, via the `BODY_MARKERS` indirection. See "RESOLVED"
+  above.
 
-## Candidate new rules
-
-### Suggested AP-009: no-process-exit-in-library-layers
-
-**Pattern observed at runtime/src/translate/inline.rs:280, 298, 345,
-526:**
-> ```
-> std::process::exit(1);
-> ```
-
-Four hard exits inside the translation walker. They fire on
-positional-pin shape errors (lines 280, 298), pin-translation
-failures (345), and constraint-translation failures (526).
-
-**Why it might be bad.** `runtime/src/` is a library crate
-(`evident_runtime`) consumed by `commands/*` (CLI), `runtime/tests/`,
-and external embedders. A library calling `std::process::exit`
-terminates the host process from arbitrary depth, defeats unit /
-integration test isolation (no caller can recover from a malformed
-fixture), and bypasses every `ExitCode` chain the CLI commands set
-up. The runtime-invariants doc establishes the `commands/*` ↔
-library split explicitly: commands return `ExitCode`, the library
-returns results. Inside the library these errors should propagate
-as `Err` / `Result` (or at minimum panic, which a test harness can
-catch) rather than calling `exit`. Survey of the rest of
-`runtime/src/`: `effect_dispatch.rs` is the only other file using
-`process::exit`; every other translate sibling uses `eprintln!`
-warnings. inline.rs's behavior is anomalous within its own
-sub-package.
-
-**Suggested fix.** Return `Result<_, TranslateError>` from
-`inline_body_items*`, surface to the runtime facade, let the CLI
-layer translate to `ExitCode::from(1)`. As a smaller-scope first
-step: replace `process::exit(1)` with `panic!(...)` so test
-runners can `catch_unwind`.
-
-**Detection idea.** grep
-`std::process::exit\|process::exit\(` with scope = `runtime/src/`
-**excluding** `runtime/src/commands/**` and `runtime/src/main.rs`.
-Likely 6 hits today (4 in inline.rs + 2 in effect_dispatch.rs);
-both files would need fixing.
-
-### Suggested AP-010: env-var-read-in-hot-path
-
-**Pattern observed at runtime/src/translate/inline.rs:65–70 (called
-from line 81):**
-> ```rust
-> fn max_inline_depth() -> usize {
->     std::env::var("EVIDENT_MAX_INLINE_DEPTH").ok()...
-> }
-> // …
-> fn try_enter(visited: &mut HashMap<String, usize>, name: &str) -> Option<usize> {
->     let max = max_inline_depth();      // env::var on every call
->     ...
-> }
-> ```
-
-`try_enter` runs once per claim invocation entered (positional
-Call, guarded ⇒, Passthrough, ClaimCall — four callers). It calls
-`max_inline_depth()` which does an `std::env::var` syscall every
-time. For a recursive transpiler claim that fires hundreds of
-times per query, that's hundreds of env lookups per query.
-
-The same pattern appears at lines 162 (`EVIDENT_INLINE_TRACE`),
-320 and 512 (`EVIDENT_LENIENT`) — all read fresh each time the
-arm is taken. `EVIDENT_LENIENT` reading per-failure is acceptable
-(failure is rare); `EVIDENT_MAX_INLINE_DEPTH` reading per-claim-
-call is not.
-
-**Why it might be bad.** Two issues. (a) Performance: env::var is
-a process-global lock + string clone; it's the kind of per-call
-overhead that disappears in a profile but adds up under recursive
-inlining. (b) Semantics: re-reading the env var per call means a
-caller that mutates the env mid-run would see the new value at
-unpredictable points. Env knobs should be snapshotted at runtime
-construction (or at most lazily once per process via `OnceLock`).
-
-**Suggested fix.** Lift `max_inline_depth()` to a `OnceLock<usize>`
-(or `LazyLock` once stabilized), so the env read happens once and
-the cap is fixed for the process. Apply the same fix to
-`EVIDENT_INLINE_TRACE`. `EVIDENT_LENIENT` may stay per-call (rare
-path) but consistency-wise should also be `OnceLock`.
-
-**Detection idea.** grep `std::env::var\("EVIDENT_` inside
-function bodies that are called from within recursive walkers.
-Hard to fully mechanize ("hot path"); review-only is OK, but a
-weaker mechanizable form is "any `env::var` call inside a
-non-`new`/`init`/`build` function within `runtime/src/translate/`
-or `runtime/src/runtime.rs`." Today: ~3 hot-path hits (this file).
-
-### Suggested AP-011: duplicated-claim-inline-prelude
-
-**Pattern observed at runtime/src/translate/inline.rs:399–442,
-465–501, 543–603:**
-
-Three arms (positional `Constraint(Expr::Call)`, guarded
-`Implies`, and explicit `ClaimCall`) all run the same pre-inline
-sequence: clone env, isolate helper-locals (or skip), insert slot
-mappings, walk the claim body and `declare_var_named` each
-unmapped Membership with a per-call-suffixed Z3 name, then
-recurse. The three implementations have drifted: only the
-positional arm calls `isolate_helper_locals`; only the ClaimCall
-arm has the `force_fresh` recursive-shadowing logic; only the
-guarded arm has the explanatory comment about why slots aren't
-cherry-picked from outer.
-
-**Why it might be bad.** When the recursive-frame correctness
-fixes happened (the "cnd/thn/els collapse" comment at lines
-105–109, the `force_fresh` block at 580–598), they had to land in
-multiple arms but didn't all get them. Today the positional and
-guarded arms are missing the `force_fresh` shadowing, so a
-recursive helper invoked positionally could still suffer the
-collapse the ClaimCall arm guards against. Deduping into a
-shared `inline_claim_call(env, claim, mappings, depth, guard,
-tracker, ...)` helper would mean one site to fix and three
-callers that look identical. The drift IS the reason for the
-rule.
-
-**Why this might NOT clear the bar.** The arms differ in pattern
-matching (Call vs. Implies vs. ClaimCall) and in mapping
-construction (positional zip vs. guard composition vs. explicit
-mappings field). The shared payload is the env-clone + isolate +
-declare-fresh + recurse sequence — a 30-line helper. This is
-"refactor opportunity," which the agent prompt explicitly says
-doesn't qualify ("This file is too complex" doesn't count). The
-observable structural symptom would be "≥3 sites in one file
-each calling `declare_var_named` in a per-Membership loop after
-`env.clone()`" — mechanizable but specific to one file.
-
-**Suggested fix.** Extract `inline_claim_call_helper` taking
-mappings + depth + guard, run it from all three arms. While
-extracting, audit which features (force_fresh, isolate_helper_
-locals, slot_set tracking) every site needs and apply uniformly.
-
-**Detection idea.** Review-only. The grep "≥N copies of
-`declare_var_named.*call_id.*format!`" would catch this file but
-is unlikely to recur usefully elsewhere.
-
-## Other observations (review-only, not promoted)
+## Other observations (review-only, unchanged from prior wave)
 
 - **Unused `HashSet` import** at line 15: `use std::collections::
   {HashMap, HashSet};` — `HashSet` is referenced only via
-  fully-qualified `std::collections::HashSet` at lines 417 and
-  552. The import is dead. Trivial cleanup, not a rule.
+  fully-qualified `std::collections::HashSet` at lines 417 and 554.
+  The unqualified import is dead. Trivial cleanup, not a rule.
 
 - **Doc-comment claim mismatch** at lines 350–357: comment says
   "Bare-identifier-as-passthrough handling moved to the self-
-  hosted desugar pass," but the very next arm (line 369) does
-  exactly that handling for `Constraint(Call(name, args))` — i.e.
-  the desugar pass handled the `Identifier`-only case but the
-  Rust side still has to recognize `Call(known_claim, args)` as a
-  positional claim invocation. The comment as written suggests
-  no special-cased claim handling remains; in fact a major arm
-  follows. Local clarity issue; not a rule.
+  hosted desugar pass," but the next arm (line 369) does the
+  positional-Call form of the same handling for
+  `Constraint(Call(known_claim, args))`. Local clarity issue;
+  not a rule.
 
-- **`exit_frame` ordering bug risk** at lines 372 / 462 / 549:
-  the `Some(claim) = schemas.get(name) else { exit_frame(visited,
-  name); continue }` pattern relies on `try_enter` having run
-  first. Three sites; one type-check change to the lookup order
-  would silently desync `visited`. Cosmetic — would benefit from
-  a guard struct that calls `exit_frame` on Drop — but the
-  current code is correct.
+- **`exit_frame` ordering bug risk** at lines 372 / 462 / 548: the
+  `Some(claim) = schemas.get(name) else { exit_frame(...); continue
+  }` pattern depends on `try_enter` having run first. Three sites; a
+  reorder would silently desync `visited`. Cosmetic — would benefit
+  from a guard struct that calls `exit_frame` on Drop.
 
 ## Clean against rule scope
 
+- **AP-001 letter** (no `Sdl[A-Z]` / `gl[A-Z]` etc.): clean. No
+  library-specific tokens in this file.
 - **AP-002, AP-003, AP-006, AP-007, AP-008**: examples-scoped, not
-  applicable.
+  applicable to runtime/src/.
 - **AP-004**: conformance-scoped, not applicable.
-- **AP-005**: `runtime/tests/**.rs`-scoped, not applicable to
-  `runtime/src/translate/inline.rs`.
+- **AP-005**: `runtime/tests/**.rs`-scoped, not applicable.
 
 ## Summary
 
-One existing-rule-family violation (AP-001 spirit, not letter:
-`spawnable_only` knowledge). Three candidate new rules — process-
-exit in library layers (concrete enough to mechanize, 4 sites in
-this file + 2 in `effect_dispatch.rs`), env-var-read in hot path
-(concrete and mechanizable), duplicated-claim-inline-prelude
-(real correctness drift but barely mechanizable, leaning review-
-only). All three are listed under "Candidate new rules" without
-being added to `lints/rules/` or `checks.sh` per the
-"propose-don't-promote-yet" workflow.
+The `spawnable_only` violation is fully resolved by the `BODY_MARKERS`
+indirection in `runtime/src/ast.rs`. The translation layer now knows
+only about a generic AST-level concept (named runtime markers); the
+specific scheduler-side meaning has moved to the consumer
+(effect_loop.rs). The doc-comment in inline.rs at lines 503–507 also
+reflects the new design — no scheduler reference. Abstraction is
+sufficient for the current single-marker case; would need a small
+shape change if a future marker needs translator-side behavior beyond
+"skip silently."
+
+Three prior candidate findings (AP-009 process-exit, AP-010 env-var
+in hot paths, AP-011 claim-inline arm drift) all stand essentially
+unchanged. AP-011 has partial progress — `isolate_helper_locals` now
+fires in two of three arms, where previously only one — but the
+`force_fresh` recursive-shadowing logic still lives only in the
+explicit `ClaimCall` arm.

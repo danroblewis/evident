@@ -16,11 +16,8 @@
 # SdlVertexBuf with a generic ArgByteBuf primitive; user packs
 # bytes via stdlib helpers. Big change, deferred.
 
-runtime/src/ast.rs:345  # struct SdlVertex
-runtime/src/ast.rs:351  # pub struct SdlVertex {
-runtime/src/ast.rs:383  # doc comment about SDL_Vertex
-runtime/src/ast.rs:384  # SDL-specific buffer doc
-runtime/src/ast.rs:388  # SdlVertexBuf(Vec<SdlVertex>)
+runtime/src/ast.rs:366  # pub struct SdlVertex {
+runtime/src/ast.rs:403  # SdlVertexBuf(Vec<SdlVertex>)
 runtime/src/ffi.rs:66   # SdlVertexBuf(Vec<crate::ast::SdlVertex>)
 runtime/src/ffi.rs:325  # comment about SdlVertexBuf
 runtime/src/ffi.rs:326  # vert_bufs Vec

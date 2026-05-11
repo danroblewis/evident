@@ -3,6 +3,21 @@
 //! Only what the v0.1 milestone (`SimpleNat { n ∈ Nat ; n > 5 }`) needs.
 //! Add more variants as we expand support.
 
+/// Bare-identifier body items recognized as runtime metadata rather
+/// than translatable constraints. When one of these names appears as
+/// a `BodyItem::Constraint(Identifier(name))`, the constraint
+/// translator skips it (it has no Bool meaning) and runtime layers
+/// that care about the marker (currently the multi-FSM scheduler)
+/// inspect the body for it directly.
+///
+/// Add a new entry here ONLY when the meaning of a bare-identifier
+/// body item is established at the AST level — i.e. when it's a
+/// language convention, not a one-off scheduler hook. The translator
+/// MUST NOT reference any specific marker by literal string;
+/// scheduler / runtime layers MAY reference specific entries by
+/// looking them up against this list.
+pub const BODY_MARKERS: &[&str] = &["spawnable_only"];
+
 /// One of the three keywords that all parse to a "schema" header. Kept
 /// distinct because some downstream features (subclaim, the type/claim/
 /// schema reading convention) check it.

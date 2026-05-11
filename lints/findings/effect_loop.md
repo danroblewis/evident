@@ -1,8 +1,74 @@
 # Findings: runtime/src/effect_loop.rs
 
-Reviewed against `lints/rules/` as of HEAD (baf8078).
+Reviewed against `lints/rules/` as of HEAD (53fa1fe).
 
-## Violations of existing rules
+## Update from prior findings
+
+The previous review's headline findings (AP-001 by-scope violation, the
+~160 lines of per-bridge auto-install blocks at lines 305-465, the lifetime-
+laundering transmute at lines 129-131, the env-var reads in hot loops) all
+remain present and unchanged. The recent edit only touched the
+`spawnable_only` marker-detection comment around line 222. The rest of this
+file is the same as the prior write-up; the new section is "Spawnable_only
+marker check (after edit)" below.
+
+## Spawnable_only marker check (after edit) — CORRECTLY SHAPED
+
+**Location: effect_loop.rs:221-233.**
+```rust
+if let Some(shape) = detect_fsm_shape(rt, &name) {
+    // Skip claims that carry the `spawnable_only` body marker
+    // (one of `crate::ast::BODY_MARKERS`) — they should only
+    // run when explicitly spawned via Effect::SpawnFsm, not
+    // auto-instantiated at startup.
+    if let Some(claim) = rt.get_schema(&name) {
+        let is_spawn_only = claim.body.iter().any(|item| {
+            matches!(item,
+                crate::ast::BodyItem::Constraint(crate::ast::Expr::Identifier(s))
+                if s == "spawnable_only")
+        });
+        if is_spawn_only { continue; }
+    }
+    ...
+}
+```
+
+The shape is right and matches the layering invariant in `ast.rs`'s
+`BODY_MARKERS` doc comment ("scheduler / runtime layers MAY reference
+specific entries by looking them up against this list"). The pieces line up:
+
+- `ast.rs:19` (`BODY_MARKERS`) owns the registry of recognized
+  bare-identifier markers — the AST layer enumerates which names exist as
+  markers, with no knowledge of what any of them mean.
+- `translate/inline.rs:509` consumes the registry uniformly:
+  `BODY_MARKERS.contains(&s.as_str()) { continue; }` — the translator skips
+  every marker without caring which one it is.
+- `effect_loop.rs:230` consumes one specific marker by name (`"spawnable_only"`)
+  because the scheduler is the layer that knows what spawn-only behavior
+  means. This is correct: a marker's *meaning* lives with the layer that
+  acts on it; only the *registry* is centralized.
+
+The comment update referencing `crate::ast::BODY_MARKERS` is the right form
+of documentation — it tells the reader where the registry lives without
+forcing the scheduler to enumerate the registry. Reading from `BODY_MARKERS`
+here would be wrong: the scheduler would then have to either (a) act on
+every marker uniformly (which is what the translator does, and the wrong
+behavior here — `spawnable_only` is the only marker that gates startup
+auto-instantiation), or (b) re-derive which entries it cares about, which
+is just the same hardcoded string with extra steps. The hardcode IS the
+"this layer knows this marker's meaning" signal.
+
+**Minor consistency polish (review-only, not a violation):** a
+`debug_assert!(crate::ast::BODY_MARKERS.contains(&"spawnable_only"))` near
+the check would catch the drift case where someone removes the entry from
+the registry without removing the consumer. Not worth a rule; the test
+suite would catch it via failing spawn-only tests anyway.
+
+The spawnable_only edit did NOT make the bigger AP-001-by-scope problem
+worse — no new bridge `use`s, no new per-bridge `if has_field(...)` blocks,
+no new event_sources references. This is the correctly shaped local fix.
+
+## Pre-existing violations (unchanged from prior findings)
 
 ### AP-001 at effect_loop.rs (multiple sites)
 
@@ -53,10 +119,10 @@ registry (anything beyond the generic `EventSource` trait + `SchedulerEvent`
   surface enum, not a specific bridge)
 
 The two acceptable references are `crate::event_sources::EventSource` (the
-trait, line 282/286/690) and `crate::event_sources::SchedulerEvent` (the
-event enum, lines 283/689/1238/1253). Everything else in the list above
-makes effect_loop.rs intimately aware of WHICH bridges exist, what their
-reserved field names are, and what their constructors look like.
+trait) and `crate::event_sources::SchedulerEvent` (the event enum).
+Everything else in the list above makes effect_loop.rs intimately aware of
+WHICH bridges exist, what their reserved field names are, and what their
+constructors look like.
 
 The current `lints/rules/AP-001-no-library-specific-in-language-core.md`
 greps for `Sdl[A-Z]`, `SDL_`, `\bGl[A-Z]`, `Glsl`, `Audio[A-Z]`, dlopen
@@ -189,6 +255,12 @@ specific `with_*_field` configurator calls. Permitted: the trait
 (`WriteQueue`, `new_write_queue`, `drain`), and registry indirection
 (walk a `&'static [...]` table of installers).
 
+The `BODY_MARKERS` design (registry in `ast.rs`, scheduler reads one
+specific marker by name) is the working analogue for what this should
+look like at the bridge layer — push the names into a centralized
+registry, let consumers either iterate it generically or look up the
+ones whose meaning they own.
+
 **Suggested fix:** Promote the per-bridge `if has_field(...) { ... }`
 blocks into entries in a generic installer registry. The scheduler's job
 becomes "for each registered installer, ask it whether it wants to
@@ -272,7 +344,7 @@ control-flow analysis. Review-only.
 
 ## Clean
 
-Not clean. The headline finding is that effect_loop.rs lines 305-465
+Not clean. The headline finding is unchanged: effect_loop.rs lines 305-465
 encode specific knowledge of six different bridge types
 (`FrameTimer`, `SigintSource`, `StdinSource`, `WallClockSource`,
 `FileWatcherSource`, `FileLineReader`) plus the FTI registry, directly
@@ -281,9 +353,20 @@ contradicting the file's invariant that "adding a new typed C resource
 behind a small registry analogous to `fti::INSTALLERS`, after which
 this file would hold zero specific-bridge `use` paths and the per-bridge
 `if has_field(...)` blocks would collapse into a single iterator over
-the registry. AP-001 technically fires by scope (the file is in
-AP-001's scope clause) but its grep patterns don't match these
-identifiers — proposed AP-009 generalizes the structural rule. Two
-additional candidate rules: AP-010 (`unsafe transmute` lifetime
-laundering, mechanizable, preventive) and AP-011 (env var reads in hot
-loops, review-only).
+the registry.
+
+The recent edit (the `spawnable_only` marker comment update around line
+222) is correctly shaped: the `BODY_MARKERS` registry lives in `ast.rs`
+where it owns the language-level enumeration of marker names; the
+translator (`translate/inline.rs:509`) consumes the registry generically
+via `.contains()`; the scheduler consumes ONE specific entry by string
+literal because the scheduler is the layer that knows what
+`spawnable_only` means. This is the right layering — meanings live with
+the layer that acts on them; only the registry is centralized — and the
+edit did not introduce any new bridge-specific coupling.
+
+AP-001 technically fires by scope (the file is in AP-001's scope clause)
+but its grep patterns don't match these identifiers — proposed AP-009
+generalizes the structural rule. Two additional candidate rules: AP-010
+(`unsafe transmute` lifetime laundering, mechanizable, preventive) and
+AP-011 (env var reads in hot loops, review-only).

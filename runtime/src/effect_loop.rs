@@ -219,9 +219,10 @@ pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
             continue;
         }
         if let Some(shape) = detect_fsm_shape(rt, &name) {
-            // Skip claims that include a body-level `spawnable_only`
-            // marker — they should only run when explicitly spawned
-            // via Effect::SpawnFsm, not auto-instantiated at startup.
+            // Skip claims that carry the `spawnable_only` body marker
+            // (one of `crate::ast::BODY_MARKERS`) — they should only
+            // run when explicitly spawned via Effect::SpawnFsm, not
+            // auto-instantiated at startup.
             if let Some(claim) = rt.get_schema(&name) {
                 let is_spawn_only = claim.body.iter().any(|item| {
                     matches!(item,
