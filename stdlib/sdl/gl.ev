@@ -64,3 +64,25 @@ claim gl_swap_window(window ∈ Int, out ∈ Effect)
 claim gl_delete_context(context ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_DeleteContext",
                   "v(p)", ArgCons(ArgHandle(context), ArgNil))
+
+-- ── _after variants for inside an Effect::Seq ────────────────
+-- When the window / context handle was created earlier in the
+-- same Seq and there's no Int handle to thread.
+
+-- SDL_GL_CreateContext(window=prior).
+claim gl_create_context_after(prior_window_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_CreateContext",
+                  "p(p)", ArgCons(ArgPriorResult(prior_window_idx), ArgNil))
+
+-- SDL_GL_MakeCurrent(window=prior, context=prior).
+claim gl_make_current_after(prior_window_idx ∈ Int, prior_ctx_idx ∈ Int,
+                            out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_MakeCurrent",
+                  "i(pp)",
+                  ArgCons(ArgPriorResult(prior_window_idx),
+                  ArgCons(ArgPriorResult(prior_ctx_idx), ArgNil)))
+
+-- SDL_GL_SwapWindow(window=prior).
+claim gl_swap_window_after(prior_window_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SwapWindow",
+                  "v(p)", ArgCons(ArgPriorResult(prior_window_idx), ArgNil))

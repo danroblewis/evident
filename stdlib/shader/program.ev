@@ -280,3 +280,59 @@ claim gl_uniform_1i(loc ∈ Int, v ∈ Int, out ∈ Effect)
                   "glUniform1i", "v(ii)",
                   ArgCons(ArgInt(loc),
                   ArgCons(ArgInt(v), ArgNil)))
+
+-- ── _after variants for inside an Effect::Seq ────────────────
+-- When a shader / program / VAO / uniform-location id was
+-- produced earlier in the same Seq.
+
+claim gl_shader_source_after(prior_shader_idx ∈ Int, source ∈ String,
+                             out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glShaderSource", "v(iipp)",
+                  ArgCons(ArgPriorResult(prior_shader_idx),
+                  ArgCons(ArgInt(1),
+                  ArgCons(ArgStrArr(StrCons(source, StrNil)),
+                  ArgCons(ArgHandle(0), ArgNil)))))
+
+claim gl_compile_shader_after(prior_shader_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glCompileShader", "v(i)",
+                  ArgCons(ArgPriorResult(prior_shader_idx), ArgNil))
+
+claim gl_attach_shader_after(prior_program_idx ∈ Int,
+                             prior_shader_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glAttachShader", "v(ii)",
+                  ArgCons(ArgPriorResult(prior_program_idx),
+                  ArgCons(ArgPriorResult(prior_shader_idx), ArgNil)))
+
+claim gl_link_program_after(prior_program_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glLinkProgram", "v(i)",
+                  ArgCons(ArgPriorResult(prior_program_idx), ArgNil))
+
+claim gl_use_program_after(prior_program_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUseProgram", "v(i)",
+                  ArgCons(ArgPriorResult(prior_program_idx), ArgNil))
+
+claim gl_bind_vertex_array_after(prior_vao_idx ∈ Int, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glBindVertexArray", "v(i)",
+                  ArgCons(ArgPriorResult(prior_vao_idx), ArgNil))
+
+claim gl_get_uniform_location_after(prior_program_idx ∈ Int, name ∈ String,
+                                    out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glGetUniformLocation", "i(is)",
+                  ArgCons(ArgPriorResult(prior_program_idx),
+                  ArgCons(ArgStr(name), ArgNil)))
+
+-- glUniform1f with the location coming from a prior glGetUniformLocation
+-- result. The value is a literal Real — useful when a per-frame caller
+-- has the time value baked into the chain (no SDL_GetTicks dance).
+claim gl_uniform_1f_after_loc(prior_loc_idx ∈ Int, v ∈ Real, out ∈ Effect)
+    out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
+                  "glUniform1f", "v(if)",
+                  ArgCons(ArgPriorResult(prior_loc_idx),
+                  ArgCons(ArgReal(v), ArgNil)))
