@@ -219,10 +219,11 @@ concrete integers where possible so the downstream translator can
 unroll quantifiers, fold cardinalities, and produce smaller Z3
 formulas.
 
-**What it must NEVER do.** Build Z3 expressions (that's `exprs`).
-Assert constraints. Use a Solver. The pass shape is pure:
-input AST + small `Value` map → refined AST + updated `Value`
-map.
+**What it must NEVER do.** Assert constraints. Use a Solver. The
+pass shape is pure: input AST + small `Value` map → refined AST +
+updated `Value` map. (The "must not build Z3 expressions" half is
+now mechanically enforced by AP-010 — Z3 expression construction
+belongs in `exprs.rs`.)
 
 **Dependencies.** `types`, `exprs` (uses `translate_int` as a
 sub-evaluator for literal folding only), `ast`.

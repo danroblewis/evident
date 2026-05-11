@@ -254,6 +254,25 @@ check_no_solver_assert_in_declare() {
     fi
 }
 
+# ── AP-010: no Z3 expression construction in preprocess.rs ────
+check_no_z3_exprs_in_preprocess() {
+    # AP-010: preprocess is an AST→AST rewrite stage. Z3
+    # expression construction belongs in `exprs.rs`.
+    local f=runtime/src/translate/preprocess.rs
+    [ -f "$f" ] || { report AP-010 pass "(file missing — skip)"; return; }
+    local pattern='z3::ast::(Int|Bool|Real|String|Datatype)::(new_const|new|from_)'
+    local hits
+    hits=$(strip_rs_test_modules "$f" \
+           | grep -nE "$pattern" \
+           | grep -vE ':[[:space:]]*//' \
+           || true)
+    if [ -z "$hits" ]; then
+        report AP-010 pass
+    else
+        report AP-010 fail "$f:"$'\n'"$hits"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -262,6 +281,7 @@ ACTIVE=(
     check_no_skip_or_xfail_in_conformance         # AP-004
     check_no_ignore_in_rust_tests                 # AP-005
     check_no_solver_assert_in_declare             # AP-009
+    check_no_z3_exprs_in_preprocess               # AP-010
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 
