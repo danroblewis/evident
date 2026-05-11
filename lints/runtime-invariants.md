@@ -412,7 +412,9 @@ not the other way around. Know about Effects, the multi-FSM
 scheduler, FFI, FTI, library bridges, or anything in the
 "execution" or "foreign" layers. The runtime API is for
 constraint solving over loaded programs; the execution layer
-sits on top.
+sits on top. (The "no hardcoded `stdlib/<name>.ev` path literals"
+sub-rule of "no library bridges" is now mechanically enforced by
+AP-013; AP-001 covers the matching Rust-type form.)
 
 The wide method surface (load + query + introspection +
 self-hosted-pass support) is the cost of being THE facade. New

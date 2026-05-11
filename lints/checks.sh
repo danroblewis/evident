@@ -328,6 +328,43 @@ check_no_specific_bridges_in_scheduler() {
     fi
 }
 
+# ── AP-013: no stdlib/*.ev path literals in language-core ──────
+check_no_stdlib_paths_in_language_core() {
+    # AP-013: hardcoded stdlib shim paths are a registry-layer
+    # concern. They must not appear in language-core files.
+    local files=(
+        runtime/src/ast.rs
+        runtime/src/lexer.rs
+        runtime/src/parser.rs
+        runtime/src/pretty.rs
+        runtime/src/subscriptions.rs
+        runtime/src/runtime.rs
+        runtime/src/effect_loop.rs
+        runtime/src/effect_dispatch.rs
+        runtime/src/ffi.rs
+    )
+    while IFS= read -r f; do files+=("$f"); done < <(find runtime/src/translate -name '*.rs')
+
+    local pattern='"stdlib/[^"]*\.ev"'
+    local violations=""
+    for f in "${files[@]}"; do
+        [ -f "$f" ] || continue
+        local hits
+        hits=$(strip_rs_test_modules "$f" \
+               | grep -nE "$pattern" \
+               | grep -vE ':[[:space:]]*//' \
+               || true)
+        if [ -n "$hits" ]; then
+            violations+="$f:"$'\n'"$hits"$'\n'
+        fi
+    done
+    if [ -z "$violations" ]; then
+        report AP-013 pass
+    else
+        report AP-013 fail "$violations"
+    fi
+}
+
 # ── ACTIVE rules (all `check_*` functions to run) ──────────────
 ACTIVE=(
     check_no_library_specific_in_language_core   # AP-001
@@ -339,6 +376,7 @@ ACTIVE=(
     check_no_z3_exprs_in_preprocess               # AP-010
     check_no_preprocess_exprs_cycle               # AP-011
     check_no_specific_bridges_in_scheduler        # AP-012
+    check_no_stdlib_paths_in_language_core        # AP-013
     # AP-006 / AP-007 / AP-008 are AST-based — see runtime/tests/lints.rs
 )
 
