@@ -1,9 +1,39 @@
 //! AST → Z3 expressions. Entry point for the `translate` module: just
 //! sub-module declarations and re-exports of the public API. The
 //! actual code lives in `translate/{types,datatypes,extract,
-//! preprocess,declare,exprs,inline,eval}.rs`.
+//! preprocess,declare,exprs,inline,eval,encode_ast,decode_ast}.rs`.
 //!
-//! See `runtime/PROGRESS.md` for the layout rationale.
+//! Public API surface (the *only* items external callers may use).
+//! Adding to either list is a deliberate expansion, not an oversight:
+//!
+//!   * From `eval` — the orchestrator entry points:
+//!       `evaluate`, `evaluate_with_core`,
+//!       `evaluate_with_extra_assertion`,
+//!       `evaluate_with_extra_assertions`,
+//!       `evaluate_with_program_and_body`,
+//!       `build_cache`, `run_cached`, `sample_cached_inner`.
+//!     The `_with_*` variants exist because the runtime facade has
+//!     several callers (CLI givens, multi-FSM scheduler extras,
+//!     unsat-core extraction) and each needs a slightly different
+//!     extra-assertion shape.
+//!
+//!   * From `preprocess` — pre-translation helpers consumed by the
+//!     runtime cache layer and by `commands/test.rs`'s diagnostic
+//!     path: `structural_names`, `structural_signature`,
+//!     `StructuralSignature`, `collect_referenced_names`.
+//!
+//!   * From `types` — the typed-binding + model-output data types:
+//!     `CachedSchema`, `DatatypeRegistry`, `EnumRegistry`,
+//!     `EvalResult`, `FieldKind`, `Value`. `EnumRegistry` is part
+//!     of the API because the runtime facade owns one and passes
+//!     references into `evaluate*`.
+//!
+//!   * `ast_encoder` / `ast_decoder` namespaces — the AST↔Z3-Datatype
+//!     bridge for self-hosted compiler passes. Kept as namespaces
+//!     (rather than flat `pub use`) because callers consume them as
+//!     `ast_encoder::encode_program(...)` / `ast_decoder::decode_*` —
+//!     the qualified form makes the bridge boundary visible at the
+//!     call site.
 
 mod datatypes;
 mod decode_ast;
@@ -35,12 +65,10 @@ pub mod ast_encoder {
                                  EncodeError};
 }
 
-// External API. Anything used by another module in this crate
-// (`runtime`, `executor`, `main`) is re-exported here.
 pub use eval::{build_cache, evaluate, evaluate_with_core, evaluate_with_extra_assertion,
                 evaluate_with_extra_assertions,
                 evaluate_with_program_and_body,
                 run_cached, sample_cached_inner};
-pub use preprocess::{structural_names, structural_signature, StructuralSignature};
-pub mod preprocess_api { pub use super::preprocess::collect_referenced_names; }
+pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
+                     StructuralSignature};
 pub use types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value};

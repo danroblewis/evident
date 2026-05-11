@@ -15,7 +15,7 @@ use evident_runtime::ast::BodyItem;
 // Effect-driven trace testing is the future replacement; tracked in
 // docs/plans/01-ffi-effects/08-trace-shim.md (replay mode landed).
 use evident_runtime::{EvidentRuntime, Value};
-use evident_runtime::translate::preprocess_api::collect_referenced_names;
+use evident_runtime::translate::collect_referenced_names;
 use evident_runtime::pretty;
 
 // ── CLI options ──────────────────────────────────────────────────────────────
