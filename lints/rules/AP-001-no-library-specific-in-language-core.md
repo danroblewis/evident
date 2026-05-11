@@ -54,6 +54,14 @@ role needs a hook (e.g. a generic typed buffer to support
   - String literals naming a generic FFI thing
     ("libffi", "dlopen") are NOT library-specific; only real
     C libraries count.
+  - Code gated by a `#[cfg(...)]` (or `#[cfg_attr(...)]`)
+    that includes `test` as a predicate is exempt — tests
+    legitimately reference real libraries (libc to exercise
+    the FFI primitive, etc.). Covers the common forms
+    `#[cfg(test)]`, `#[cfg(any(test, feature = "..."))]`,
+    `#[cfg(all(test, target_os = "macos"))]`,
+    `#[cfg_attr(test, ...)]`. The rule applies only to
+    production code.
 
 **Examples.**
   - `runtime/src/ast.rs` lines ~345-355 today: `pub struct

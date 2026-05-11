@@ -65,6 +65,38 @@ strip_rs_comments() {
     sed -E 's|//.*$||' "$1"
 }
 
+# strip_rs_test_modules <file>: prints the file with the contents of
+# any `#[cfg(test)]`-gated item (mod, fn, impl, …) replaced with
+# blank lines (so line numbers stay stable for downstream grep
+# diagnostics). Recognizes compound cfg predicates that include
+# `test` as one alternative — `#[cfg(test)]`, `#[cfg(any(test, …))]`,
+# `#[cfg(all(test, …))]`, `#[cfg_attr(test, …)]`. Tests legitimately
+# reference real libraries (libc to exercise FFI etc.); they're not
+# subject to "no library-specific in language-core" rules.
+#
+# Detection: regex match the cfg attribute, then track brace depth
+# from the next `{` until it returns to 0. Caveat: brace counting
+# does not account for braces inside string or char literals.
+# A test fn like `let s = "}}";` would trip the counter early. None
+# of today's test code does this, but parser-level fixtures might
+# in the future — fix when it actually breaks.
+strip_rs_test_modules() {
+    awk '
+        /^[[:space:]]*#\[(cfg|cfg_attr)\([^)]*\<test\>/ {
+            in_test = 1; depth = 0; print ""; next
+        }
+        in_test {
+            opens = gsub(/\{/, "&")
+            closes = gsub(/\}/, "&")
+            depth += opens - closes
+            print ""
+            if (depth <= 0 && (opens > 0 || closes > 0)) in_test = 0
+            next
+        }
+        { print }
+    ' "$1"
+}
+
 # strip_py_comments <file>: prints the file with # comments stripped.
 strip_py_comments() {
     sed -E 's/#.*$//' "$1"
@@ -90,10 +122,15 @@ check_no_library_specific_in_language_core() {
     local violations=""
     for f in "${files[@]}"; do
         [ -f "$f" ] || continue
-        # Find lines matching the pattern, then drop pure-comment
-        # lines (start with //, ///, //!, optionally indented).
+        # Strip #[cfg(test)] mod blocks (test code legitimately
+        # references real libraries to exercise the FFI primitive),
+        # then find lines matching the pattern, then drop pure-
+        # comment lines. `grep -n` reports line numbers from the
+        # stripped text, which uses blank-line replacement to
+        # preserve original line numbers.
         local hits
-        hits=$(grep -nE "$pattern" "$f" 2>/dev/null \
+        hits=$(strip_rs_test_modules "$f" \
+               | grep -nE "$pattern" \
                | grep -vE ':[[:space:]]*//' \
                || true)
         if [ -n "$hits" ]; then
