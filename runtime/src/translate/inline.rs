@@ -260,7 +260,8 @@ fn inline_body_items_guarded(
                 // recurses into a passthrough's body that introduces
                 // variables not yet in env (e.g. a nested claim's locals).
                 if !env.contains_key(name) {
-                    declare_var(ctx, solver, env, name, type_name, schemas, Some(registry), enums);
+                    let post = declare_var(ctx, env, name, type_name, schemas, Some(registry), enums);
+                    for c in &post { track_assert(solver, c, tracker); }
                 }
                 // Resolve `pins` to a list of (field-name, value-expr)
                 // pairs. Named is direct; Positional looks up the type's
@@ -431,8 +432,9 @@ fn inline_body_items_guarded(
                         if slot_set.contains(vname) { continue; }
                         if inner.contains_key(vname) { continue; }
                         let z3_name = format!("{}__{}__call{}", name, vname, call_id);
-                        declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                        let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                           type_name, schemas, Some(registry), enums);
+                        for c in &post { track_assert(solver, c, tracker); }
                     }
                 }
                 inline_body_items_guarded(
@@ -490,8 +492,9 @@ fn inline_body_items_guarded(
                     if let BodyItem::Membership { name: vname, type_name, .. } = sub {
                         if inner.contains_key(vname) { continue; }
                         let z3_name = format!("{}__{}__call{}", claim_name, vname, call_id);
-                        declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                        let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                           type_name, schemas, Some(registry), enums);
+                        for c in &post { track_assert(solver, c, tracker); }
                     }
                 }
                 inline_body_items_guarded(
@@ -593,8 +596,9 @@ fn inline_body_items_guarded(
                         }
                         if !already_bound || force_fresh {
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
-                            declare_var_named(ctx, solver, &mut inner, vname, &z3_name,
+                            let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                               type_name, schemas, Some(registry), enums);
+                            for c in &post { track_assert(solver, c, tracker); }
                         }
                     }
                 }

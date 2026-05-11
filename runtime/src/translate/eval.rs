@@ -118,6 +118,25 @@ use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unesc
 use super::inline::inline_body_items;
 use super::preprocess::{apply_pinned_ints, apply_seq_lengths, collect_pinned_ints, collect_seq_lengths};
 
+/// Allocate a typed Z3 const for `(name, type_name)` and immediately
+/// issue any type-implied invariants on the solver. `declare_var`'s
+/// own concern is allocation only — it returns a list of `Bool`
+/// constraints (Nat / Pos / Seq-length non-negativity) that the caller
+/// must assert. This helper bundles the common case.
+fn declare_and_assert(
+    ctx: &'static Context,
+    solver: &Solver<'static>,
+    env: &mut HashMap<String, Var<'static>>,
+    name: &str,
+    type_name: &str,
+    schemas: &HashMap<String, SchemaDecl>,
+    registry: Option<&DatatypeRegistry>,
+    enums: Option<&EnumRegistry>,
+) {
+    let post = declare_var(ctx, env, name, type_name, schemas, registry, enums);
+    for c in &post { solver.assert(c); }
+}
+
 /// Translate the schema's body once into a fresh solver and return a
 /// `CachedSchema` that subsequent queries can reuse via push/pop.
 ///
@@ -149,14 +168,14 @@ pub fn build_cache(
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -465,14 +484,14 @@ pub fn evaluate(
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }
@@ -634,7 +653,7 @@ pub fn evaluate_with_extra_assertion(
     // Pass 1: declare. (Same as evaluate.)
     for item in &schema.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
         }
     }
 
@@ -689,7 +708,7 @@ pub fn evaluate_with_extra_assertions(
 
     for item in &schema.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
         }
     }
 
@@ -771,7 +790,7 @@ pub fn evaluate_with_program_and_body(
 
     for item in &schema.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
+            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
         }
     }
 
@@ -851,14 +870,14 @@ pub fn evaluate_with_core(
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
-                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
                             if !env.contains_key(name) {
-                                declare_var(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
                             }
                         }
                     }

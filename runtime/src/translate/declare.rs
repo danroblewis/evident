@@ -3,11 +3,19 @@
 //! `next_call_id`) used to generate per-invocation suffixes for the
 //! Z3 names of claim-internal parameters — see `declare_var_named` for
 //! why.
+//!
+//! Declaration ALLOCATES typed Z3 constants and inserts them into the
+//! caller's `env`. It does NOT assert constraints on a Solver — the
+//! type-implied invariants for `Nat`, `Pos`, and Seq-length fields
+//! (non-negativity / strict positivity) are returned as a `Vec<Bool>`
+//! the caller must issue itself. Keeping the boundary clean: this
+//! file is "name binding"; the inline / eval orchestrators are where
+//! constraint assertion lives.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
-use z3::{Context, Solver, Sort};
+use z3::{Context, Sort};
 
 use crate::ast::*;
 use super::types::{DatatypeRegistry, EnumRegistry, SeqElem, Var};
@@ -32,17 +40,26 @@ pub(super) fn next_call_id() -> u64 {
 /// present, a Z3 Datatype for the user type is built (or reused) and
 /// the variable is bound as `Var::DatatypeSeqVar`. Without it, the
 /// branch logs a warning and skips.
+///
+/// Returns a list of `Bool` constraints the caller MUST assert on the
+/// solver after declaration completes. These are the type-implied
+/// non-negativity invariants for `Nat`, `Pos`, and Seq-length fields:
+/// the values are facts about the typed binding, but issuing them on
+/// the solver is the consumer's responsibility (declare's single
+/// concern is allocation; the inline / eval orchestrators decide when
+/// and how to assert — including whether to attach an unsat-core
+/// tracker, etc.).
+#[must_use]
 pub(super) fn declare_var(
     ctx: &'static Context,
-    solver: &Solver<'static>,
     env: &mut HashMap<String, Var<'static>>,
     prefix: &str,
     type_name: &str,
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
     enums: Option<&EnumRegistry>,
-) {
-    declare_var_named(ctx, solver, env, prefix, prefix, type_name, schemas, registry, enums);
+) -> Vec<Bool<'static>> {
+    declare_var_named(ctx, env, prefix, prefix, type_name, schemas, registry, enums)
 }
 
 /// Like `declare_var`, but the Z3 const name is decoupled from the env
@@ -59,9 +76,9 @@ pub(super) fn declare_var(
 /// per-call suffix (`intended__call7`) makes the Z3 vars distinct
 /// while keeping the env key stable so the claim body's references
 /// resolve correctly.
+#[must_use]
 pub(super) fn declare_var_named(
     ctx: &'static Context,
-    solver: &Solver<'static>,
     env: &mut HashMap<String, Var<'static>>,
     env_key: &str,
     z3_name: &str,
@@ -69,7 +86,8 @@ pub(super) fn declare_var_named(
     schemas: &HashMap<String, SchemaDecl>,
     registry: Option<&DatatypeRegistry>,
     enums: Option<&EnumRegistry>,
-) {
+) -> Vec<Bool<'static>> {
+    let mut post: Vec<Bool<'static>> = Vec::new();
     // Idempotence guard: if the leaf is already declared (Int/Bool/Seq/
     // Set/composite — anything that lands in env at this exact key),
     // don't re-declare. Sub-schemas (`state ∈ DotCollectState`) never
@@ -82,7 +100,7 @@ pub(super) fn declare_var_named(
     // user-type recursion blindly re-declares `state.dots` — wiping
     // the literal `len` that `apply_seq_lengths` just installed and
     // breaking quantifier unrolling over `#state.dots`.
-    if env.contains_key(env_key) { return; }
+    if env.contains_key(env_key) { return post; }
     let prefix = z3_name;
     match type_name {
         "Int" => {
@@ -90,12 +108,12 @@ pub(super) fn declare_var_named(
         }
         "Nat" => {
             let v = Int::new_const(ctx, prefix);
-            solver.assert(&v.ge(&Int::from_i64(ctx, 0)));
+            post.push(v.ge(&Int::from_i64(ctx, 0)));
             env.insert(env_key.to_string(), Var::IntVar(v));
         }
         "Pos" => {
             let v = Int::new_const(ctx, prefix);
-            solver.assert(&v.gt(&Int::from_i64(ctx, 0)));
+            post.push(v.gt(&Int::from_i64(ctx, 0)));
             env.insert(env_key.to_string(), Var::IntVar(v));
         }
         "Bool" => {
@@ -128,7 +146,7 @@ pub(super) fn declare_var_named(
                     };
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &range);
                     let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
-                    solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
+                    post.push(len.ge(&Int::from_i64(ctx, 0)));
                     env.insert(env_key.to_string(), Var::SeqVar { arr, len, elem });
                 }
                 user_type if schemas.contains_key(user_type) => {
@@ -138,14 +156,14 @@ pub(super) fn declare_var_named(
                              skipping declaration of {}",
                             user_type, prefix
                         );
-                        return;
+                        return post;
                     };
                     let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg) else {
-                        return; // warning already emitted by get_or_build_datatype
+                        return post; // warning already emitted by get_or_build_datatype
                     };
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &dt.sort);
                     let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
-                    solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
+                    post.push(len.ge(&Int::from_i64(ctx, 0)));
                     env.insert(env_key.to_string(), Var::DatatypeSeqVar {
                         arr, len,
                         type_name: user_type.to_string(),
@@ -168,7 +186,7 @@ pub(super) fn declare_var_named(
                     let (dt, _variants) = dts.get(enum_type).unwrap();
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &dt.sort);
                     let len = Int::new_const(ctx, format!("{}__len", prefix).as_str());
-                    solver.assert(&len.ge(&Int::from_i64(ctx, 0)));
+                    post.push(len.ge(&Int::from_i64(ctx, 0)));
                     env.insert(env_key.to_string(), Var::DatatypeSeqVar {
                         arr, len,
                         type_name: enum_type.to_string(),
@@ -189,7 +207,7 @@ pub(super) fn declare_var_named(
                 "String" => (Sort::string(ctx), SeqElem::Str),
                 other => {
                     eprintln!("warning: unsupported Set element type {} for {}", other, prefix);
-                    return;
+                    return post;
                 }
             };
             let set = Set::new_const(ctx, prefix, &eltype);
@@ -206,7 +224,7 @@ pub(super) fn declare_var_named(
                         enum_name: type_name.to_string(),
                         dt: *dt,
                     });
-                    return;
+                    return post;
                 }
             }
             if let Some(schema) = schemas.get(type_name) {
@@ -220,8 +238,8 @@ pub(super) fn declare_var_named(
                     if let BodyItem::Membership { name: field, type_name: ftype, .. } = item {
                         let dotted_env = format!("{}.{}", env_key, field);
                         let dotted_z3  = format!("{}.{}", prefix, field);
-                        declare_var_named(ctx, solver, env, &dotted_env, &dotted_z3,
-                                          ftype, schemas, registry, enums);
+                        post.extend(declare_var_named(ctx, env, &dotted_env, &dotted_z3,
+                                          ftype, schemas, registry, enums));
                     }
                 }
             } else {
@@ -229,4 +247,5 @@ pub(super) fn declare_var_named(
             }
         }
     }
+    post
 }
