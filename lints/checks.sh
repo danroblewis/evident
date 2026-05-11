@@ -70,25 +70,6 @@ strip_py_comments() {
     sed -E 's/#.*$//' "$1"
 }
 
-# filter_exempt <rule_id> [stdin]: reads `path:line:rest` lines on
-# stdin, drops any whose `path:line` prefix appears in the rule's
-# exemptions file (lints/exemptions/<rule_id>.txt). Comment lines
-# (starting with #) and blank lines in the exemptions file are
-# ignored. Outputs only NEW (un-exempted) violations.
-filter_exempt() {
-    local rule="$1"
-    local exempt_file="lints/exemptions/$rule.txt"
-    if [ ! -f "$exempt_file" ]; then cat; return; fi
-    # Build a set of exempt path:line keys from the exemptions file.
-    local pattern
-    pattern=$(grep -vE '^\s*(#|$)' "$exempt_file" \
-              | awk '{print $1}' \
-              | sed 's/[][\.|^$*?+(){}]/\\&/g' \
-              | paste -sd '|' -)
-    if [ -z "$pattern" ]; then cat; return; fi
-    grep -vE "^($pattern):" || true
-}
-
 # ── AP-001: no library-specific in language-core ──────────────
 check_no_library_specific_in_language_core() {
     # AP-001: forbidden tokens in language-core role files.
@@ -106,33 +87,21 @@ check_no_library_specific_in_language_core() {
     while IFS= read -r f; do files+=("$f"); done < <(find runtime/src/translate -name '*.rs')
 
     local pattern='SDL_|Sdl[A-Z][a-zA-Z]|\bGl[A-Z]|Glsl|Audio[A-Z]|\.dylib|\.framework/|/opt/homebrew/lib/|/usr/lib/lib'
-    local raw=""
+    local violations=""
     for f in "${files[@]}"; do
         [ -f "$f" ] || continue
         # Find lines matching the pattern, then drop pure-comment
         # lines (start with //, ///, //!, optionally indented).
-        # Format each hit as `path:line:rest` so filter_exempt can
-        # match by `path:line` prefix.
         local hits
         hits=$(grep -nE "$pattern" "$f" 2>/dev/null \
                | grep -vE ':[[:space:]]*//' \
-               | sed "s|^|$f:|" \
                || true)
-        if [ -n "$hits" ]; then raw+="$hits"$'\n'; fi
+        if [ -n "$hits" ]; then
+            violations+="$f:"$'\n'"$hits"$'\n'
+        fi
     done
-    # Apply exemptions, then format remaining for the report.
-    local violations
-    violations=$(echo "$raw" | grep -v '^$' | filter_exempt AP-001)
     if [ -z "$violations" ]; then
-        local exempt_count=0
-        if [ -f lints/exemptions/AP-001.txt ]; then
-            exempt_count=$(grep -cvE '^\s*(#|$)' lints/exemptions/AP-001.txt || echo 0)
-        fi
-        if [ "$exempt_count" -gt 0 ]; then
-            report AP-001 pass "${DIM}($exempt_count exempt; see lints/exemptions/AP-001.txt)${OFF}"
-        else
-            report AP-001 pass
-        fi
+        report AP-001 pass
     else
         report AP-001 fail "$violations"
     fi

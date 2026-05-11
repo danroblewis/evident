@@ -216,6 +216,13 @@ runtime/tests/lints.rs   AST-based rules that need a real parser
                          (cross-file invariants, structural checks)
 ```
 
+There are no exemption files. A failing lint means a real
+violation; the response is to fix the code (or, rarely, fix
+the rule if the rule itself is wrong). We don't keep a list
+of "documented decisions not to fix today" — same lesson as
+xfail markers in conformance tests, the same sediment by a
+different name.
+
 ## How a rule is born
 
 Two paths, same shape:
