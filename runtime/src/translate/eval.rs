@@ -1120,6 +1120,22 @@ fn extract_enum_value<'ctx>(
                 let mut acc_idx: usize = 0;
                 for decl_field in decl_variant.fields.iter() {
                     if let Some(inner) = crate::runtime::parse_seq_type(&decl_field.type_name) {
+                        // Internal-Cons backing: single Datatype
+                        // accessor; walk the __SeqOf_T chain to
+                        // recover the elements.
+                        let helper_name = crate::runtime::internal_cons_helper_name(inner);
+                        let has_helper = reg.by_name.borrow().contains_key(&helper_name);
+                        if has_helper {
+                            let acc = &variant.accessors[acc_idx];
+                            let cons_dyn = acc.apply(&[&evaluated]);
+                            let extracted = extract_internal_cons_seq(
+                                &helper_name, inner, &cons_dyn, model, ctx, enums);
+                            if let Some(v) = extracted {
+                                field_values.push(v);
+                            }
+                            acc_idx += 1;
+                            continue;
+                        }
                         // Two-accessor expansion: arr at acc_idx, len at acc_idx+1.
                         let arr_acc = &variant.accessors[acc_idx];
                         let len_acc = &variant.accessors[acc_idx + 1];
@@ -1218,6 +1234,55 @@ fn extract_seq_payload<'ctx>(
             extract_seq_enum(&arr, &len, enum_type, dt, model, ctx, enums)
         }
     }
+}
+
+/// Walk a `__SeqOf_T`-shaped Cons chain in the model and extract
+/// the element list. Used by `extract_enum_value` when a variant
+/// field is `Seq(T)` and T has internal-Cons backing (the field is
+/// a single Datatype slot pointing to `__SeqOf_T`).
+///
+/// `__SeqOf_T` has variants `__Empty_T` (0-ary terminator) and
+/// `__Cell_T(head: T, tail: __SeqOf_T)`. Walk via tester +
+/// accessors until Empty.
+fn extract_internal_cons_seq<'ctx>(
+    helper_name: &str,
+    elem_type: &str,
+    cons_dyn: &z3::ast::Dynamic<'ctx>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
+) -> Option<Value> {
+    let reg = enums?;
+    let by_name = reg.by_name.borrow();
+    let (helper_dt, helper_variants) = by_name.get(helper_name)?;
+    let helper_dt: &'static z3::DatatypeSort<'static> = *helper_dt;
+    let empty_idx = helper_variants.iter().position(|v| v.fields.is_empty())?;
+    let cell_idx = helper_variants.iter().position(|v| v.fields.len() == 2)?;
+    let (elem_dt, _) = by_name.get(elem_type)?;
+    let elem_dt: &'static z3::DatatypeSort<'static> = *elem_dt;
+    drop(by_name);
+
+    let empty_tester = &helper_dt.variants[empty_idx].tester;
+    let cell_v = &helper_dt.variants[cell_idx];
+    let head_acc = &cell_v.accessors[0];
+    let tail_acc = &cell_v.accessors[1];
+
+    let mut out: Vec<Value> = Vec::new();
+    let mut cur = cons_dyn.clone();
+    // Cap iteration so a model bug can't make us walk forever.
+    for _ in 0..10_000 {
+        let is_empty_bool = empty_tester.apply(&[&cur]).as_bool()?;
+        let is_empty = model.eval(&is_empty_bool, true)?.as_bool()?;
+        if is_empty {
+            return Some(Value::SeqEnum(out));
+        }
+        let head_dyn = head_acc.apply(&[&cur]);
+        let head_dt = head_dyn.as_datatype()?;
+        let head_val = extract_enum_value(&head_dt, elem_type, elem_dt, model, ctx, enums)?;
+        out.push(head_val);
+        cur = tail_acc.apply(&[&cur]);
+    }
+    None
 }
 
 /// Read a `Seq(EnumType)` value out of the model. Mirror of

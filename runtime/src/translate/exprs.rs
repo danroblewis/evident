@@ -294,6 +294,22 @@ pub(super) fn resolve_enum_ast<'ctx>(
             let mut owned_args: Vec<Box<dyn z3::ast::Ast<'ctx>>> = Vec::new();
             for (arg_expr, field_type) in args.iter().zip(field_types.iter()) {
                 if let Some(inner) = crate::runtime::parse_seq_type(field_type) {
+                    // Internal-Cons backing? Look up the helper enum
+                    // in the registry; if it exists, the field is a
+                    // single Datatype slot, not (arr, len). Build the
+                    // Cons chain via build_cons_chain targeted at
+                    // __SeqOf_<inner>.
+                    let helper_name = crate::runtime::internal_cons_helper_name(inner);
+                    let helper_dt: Option<&'static DatatypeSort<'static>> =
+                        with_active_enums(|opt| opt.and_then(|er|
+                            er.by_name.borrow().get(&helper_name).map(|(d, _)| *d)));
+                    if let Some(helper_dt) = helper_dt {
+                        let cons_val = build_cons_chain_from_items(
+                            arg_expr, &helper_name, helper_dt, ctx, env, schemas)?;
+                        owned_args.push(
+                            Box::new(cons_val) as Box<dyn z3::ast::Ast<'ctx>>);
+                        continue;
+                    }
                     let (arr_dyn, len_dyn) =
                         translate_seq_arg_for_ctor(arg_expr, inner, ctx, env, schemas)?;
                     owned_args.push(arr_dyn);
@@ -455,6 +471,53 @@ fn translate_seq_arg_for_ctor<'ctx>(
 
 /// Build `Cons(items[0], Cons(items[1], ..., Nil))` for a hinted
 /// Cons/Nil-shaped enum. Returns the resulting Datatype value.
+/// Build a Cons-chain Datatype value from an `Expr` argument that
+/// can be either a SeqLit (build it from items) or an Identifier
+/// (already a Cons-shaped variable in env — return its value).
+/// Used by enum-constructor-call translation for `Seq(T)` fields
+/// that the runtime backs with an internal `__SeqOf_T` helper.
+pub(super) fn build_cons_chain_from_items<'ctx>(
+    arg: &Expr,
+    enum_name: &str,
+    dt: &'static DatatypeSort<'static>,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<z3::ast::Datatype<'ctx>> {
+    match arg {
+        Expr::SeqLit(items) =>
+            build_cons_chain(items, enum_name, dt, ctx, env, schemas),
+        Expr::Identifier(name) => {
+            // Three identifier shapes we accept here:
+            //   * Var::EnumVar of the helper's sort — already Cons-
+            //     shaped, return its ast directly.
+            //   * Var::DatatypeSeqVar (top-level `Seq(T)` Array+Int
+            //     representation) — the user is passing it as a
+            //     "don't-care" Cons-field arg (typical literal_types.
+            //     ev existential pattern). Materialize a FRESH Cons
+            //     constant of the helper's sort; Z3 picks freely.
+            //     The Array+Int value and this Cons constant are
+            //     independent; if the user needs them linked,
+            //     they'd express that constraint explicitly.
+            //   * Anything else — None.
+            match env.get(name)? {
+                Var::EnumVar { ast, .. } => Some(ast.clone()),
+                // Nullary variant identifier (e.g. `__Empty_SchemaDecl`,
+                // or a user-named empty list value) — already a
+                // pre-applied constructor of the helper's sort.
+                Var::EnumValue { ast, .. } => Some(ast.clone()),
+                Var::DatatypeSeqVar { .. } => {
+                    Some(z3::ast::Datatype::fresh_const(
+                        ctx, "__cons_view", &dt.sort))
+                }
+                _ => None,
+            }
+        }
+        // Cons-call like `Cell_Tree(head, tail)` — resolve as enum.
+        _ => resolve_enum_ast(arg, ctx, env, schemas),
+    }
+}
+
 fn build_cons_chain<'ctx>(
     items: &[Expr],
     enum_name: &str,

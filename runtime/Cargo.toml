@@ -6,6 +6,7 @@ description = "Rust port of the Evident constraint runtime (experimental)"
 
 [dependencies]
 z3 = "0.12"
+z3-sys = "0.8"
 # FFI primitive: dynamic library loading + libffi for C ABI calls.
 # Enables Evident programs to call any C function (POSIX syscalls,
 # user libraries, etc.) without per-feature plugin code in Rust.

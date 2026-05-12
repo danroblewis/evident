@@ -16,11 +16,12 @@
 -- solving. Each claim below pattern-matches on the program's shape
 -- and emits constraints that bind inferred output variables.
 --
--- This is the first cut. The rules are deliberately narrow — they
--- handle programs that match exactly one shape. Real inference will
--- iterate over body items via recursive constraints; that's a
--- follow-up that needs cardinality / quantifier support over the
--- LinkedList-style BodyItemList.
+-- After Phase 6.5 the AST's list types are Seq(T) (backed by an
+-- internal Cons helper). Patterns specify full shapes with `⟨...⟩`
+-- literals; head/tail patterns (`x : xs` style) are not yet
+-- supported on Seq fields, so claims that used them are dropped
+-- pending a `head` / `tail` / `nonempty` operator suite — they're
+-- listed in docs as future work.
 
 import "stdlib/ast.ev"
 
@@ -35,7 +36,7 @@ claim accepts_anything
 -- truly-empty Program (no schemas, no enums).
 claim has_at_least_one_schema
     program ∈ Program
-    program ≠ MakeProgram(SchLNil, EDLNil)
+    program ≠ MakeProgram(⟨⟩, ⟨⟩)
 
 -- ── Pattern-matching inference: single-claim programs ───────────
 
@@ -48,29 +49,29 @@ claim has_at_least_one_schema
 --   `inferred_var`   — the identifier on the LHS of the equality
 --   `inferred_type`  — always "String" if this rule fires
 --
--- If the program doesn't match, the claim is UNSAT and the runtime
--- reports it (the caller can try another rule).
+-- SAT (with a specific binding for inferred_var and claim_name)
+-- when the program matches the pattern; UNSAT otherwise — the
+-- runtime tries multiple rules and picks the one that fires.
+
+-- One-body-item Programs with `var = "string-literal"`.
 claim infer_string_from_single_assignment
     program       ∈ Program
     claim_name    ∈ String
     inferred_var  ∈ String
     inferred_type ∈ String
-
-    -- The rule's pattern: one claim, body is exactly one constraint
+    -- The literal's value isn't part of the inferred output but
+    -- needs to be a free var so Z3 can bind it to whatever appears
     -- of the shape `var = "literal"`.
     string_lit ∈ String
     -- `enums_part` is a "don't care" — the encoder always includes
     -- stdlib/ast.ev's own enum decls in Program.enums alongside any
     -- user enums. The pass shouldn't be sensitive to that list.
-    enums_part ∈ EnumDeclList
+    enums_part ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EStr(string_lit))),
-                       BILNil)),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EStr(string_lit)))⟩)⟩,
         enums_part)
     inferred_type = "String"
 
@@ -82,15 +83,12 @@ claim infer_int_from_single_assignment
     inferred_type ∈ String
 
     int_lit ∈ Int
-    enums_part_int ∈ EnumDeclList
+    enums_part_int ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EInt(int_lit))),
-                       BILNil)),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EInt(int_lit)))⟩)⟩,
         enums_part_int)
     inferred_type = "Int"
 
@@ -102,45 +100,19 @@ claim infer_bool_from_single_assignment
     inferred_type ∈ String
 
     bool_lit ∈ Bool
-    enums_part_bool ∈ EnumDeclList
+    enums_part_bool ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EBool(bool_lit))),
-                       BILNil)),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EBool(bool_lit)))⟩)⟩,
         enums_part_bool)
     inferred_type = "Bool"
 
--- ── Stage 4: extract types from explicit Memberships ────────────
-
--- The simplest "inference" of all: the user told us. If the body
--- starts with `x ∈ Type`, recover x and Type as inferred_var and
--- inferred_type. The rest of the body can be anything (free var).
-claim extract_first_membership
-    program       ∈ Program
-    claim_name    ∈ String
-    inferred_var  ∈ String
-    inferred_type ∈ String
-    pins_part     ∈ Pins
-    rest_body     ∈ BodyItemList
-    enums_em      ∈ EnumDeclList
-    program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIMembership(inferred_var, inferred_type, pins_part),
-                       rest_body)),
-            SchLNil),
-        enums_em)
-
--- ── Stage 4: 2-body-item programs (Membership + Constraint) ────
+-- ── 2-body-item programs (Membership + Assignment consistency) ─
 
 -- Pattern: `claim NAME : x ∈ Int ; x = 5`. Both extracts the
 -- declared type AND verifies the literal-equality is consistent.
--- inferred_type comes from the membership; the literal gives a
--- consistency check.
 claim infer_int_from_membership_plus_assignment
     program       ∈ Program
     claim_name    ∈ String
@@ -148,22 +120,16 @@ claim infer_int_from_membership_plus_assignment
     inferred_type ∈ String
     int_lit       ∈ Int
     pins2         ∈ Pins
-    enums_2       ∈ EnumDeclList
+    enums_2       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIMembership(inferred_var, inferred_type, pins2),
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EInt(int_lit))),
-                       BILNil))),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIMembership(inferred_var, inferred_type, pins2),
+             BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EInt(int_lit)))⟩)⟩,
         enums_2)
-    -- Consistency: an Int literal binds to a variable that should
-    -- be one of the integer family or Real.
     inferred_type = "Int"
 
--- Same pattern for String.
 claim infer_string_from_membership_plus_assignment
     program       ∈ Program
     claim_name    ∈ String
@@ -171,20 +137,16 @@ claim infer_string_from_membership_plus_assignment
     inferred_type ∈ String
     str_lit       ∈ String
     pins_s        ∈ Pins
-    enums_s       ∈ EnumDeclList
+    enums_s       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIMembership(inferred_var, inferred_type, pins_s),
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EStr(str_lit))),
-                       BILNil))),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIMembership(inferred_var, inferred_type, pins_s),
+             BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EStr(str_lit)))⟩)⟩,
         enums_s)
     inferred_type = "String"
 
--- Same pattern for Bool.
 claim infer_bool_from_membership_plus_assignment
     program       ∈ Program
     claim_name    ∈ String
@@ -192,15 +154,19 @@ claim infer_bool_from_membership_plus_assignment
     inferred_type ∈ String
     bool_l        ∈ Bool
     pins_b        ∈ Pins
-    enums_b       ∈ EnumDeclList
+    enums_b       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        SchLCons(
-            MakeSchemaDecl(KClaim, claim_name,
-                BILCons(BIMembership(inferred_var, inferred_type, pins_b),
-                BILCons(BIConstraint(EBinary(OpEq,
-                                             EIdentifier(inferred_var),
-                                             EBool(bool_l))),
-                       BILNil))),
-            SchLNil),
+        ⟨MakeSchemaDecl(KClaim, claim_name,
+            ⟨BIMembership(inferred_var, inferred_type, pins_b),
+             BIConstraint(EBinary(OpEq,
+                                  EIdentifier(inferred_var),
+                                  EBool(bool_l)))⟩)⟩,
         enums_b)
     inferred_type = "Bool"
+
+-- DROPPED PENDING TAIL-PATTERN SUPPORT:
+-- `extract_first_membership` used to match `BILCons(BIMembership(...), rest_body)`
+-- — a head/tail pattern on the body list. After Phase 6.5 the AST's
+-- list fields are Seq(T) backed by internal Cons, and we don't yet
+-- expose head/tail operators on those. Re-add this claim once we
+-- support `seq matches Cons(head, tail)` or equivalent.

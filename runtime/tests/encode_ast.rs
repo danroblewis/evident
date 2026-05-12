@@ -62,17 +62,17 @@ const STDLIB_AST: &str = "../stdlib/ast.ev";
 
 #[test]
 fn encode_empty_program() {
-    // No claims, no enums — should encode to MakeProgram(SchLNil, EDLNil).
+    // No claims, no enums — should encode to MakeProgram(__Empty_SchemaDecl, __Empty_EnumDecl).
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new(STDLIB_AST)).unwrap();
     let val = rt.encode_program_value().expect("encode");
     let s = format!("{val}");
     // The encoded value should be MakeProgram with the empty list
     // forms — but the encoder also includes the stdlib's own enum
-    // decls under the second list. Check the SchLNil shows up
+    // decls under the second list. Check the __Empty_SchemaDecl shows up
     // (no claims).
-    assert!(s.contains("SchLNil"),
-        "expected SchLNil for empty schemas; got {s}");
+    assert!(s.contains("__Empty_SchemaDecl"),
+        "expected __Empty_SchemaDecl for empty schemas; got {s}");
 }
 
 #[test]
@@ -88,11 +88,11 @@ claim t
 claim expected_program
     expected ∈ Program
     expected = MakeProgram(
-        SchLCons(
+        __Cell_SchemaDecl(
             MakeSchemaDecl(KClaim, \"t\",
-                BILCons(BIMembership(\"x\", \"Int\", PNone), BILNil)),
-            SchLNil),
-        EDLNil)
+                __Cell_BodyItem(BIMembership(\"x\", \"Int\", PNone), __Empty_BodyItem)),
+            __Empty_SchemaDecl),
+        __Empty_EnumDecl)
 ";
     // Note: this test currently doesn't enforce structural equality
     // against the encoder — it just confirms the expected claim is
@@ -167,10 +167,10 @@ claim beta
     assert!(s.contains("\"alpha\""),    "expected alpha schema name");
     assert!(s.contains("\"beta\""),     "expected beta schema name");
     assert!(s.contains("EBool"),        "expected EBool for true literal");
-    // Both schemas → SchLCons inside SchLCons.
-    let sch_cons_count = s.matches("SchLCons").count();
+    // Both schemas → __Cell_SchemaDecl inside __Cell_SchemaDecl.
+    let sch_cons_count = s.matches("__Cell_SchemaDecl").count();
     assert!(sch_cons_count >= 2,
-        "expected at least 2 SchLCons (one per user schema); got {sch_cons_count}");
+        "expected at least 2 __Cell_SchemaDecl (one per user schema); got {sch_cons_count}");
 }
 
 #[test]

@@ -55,20 +55,20 @@ fn smoke_has_at_least_one_schema_sat_when_user_loads_one() {
 #[test]
 fn smoke_has_at_least_one_schema_unsat_for_truly_empty_user_program() {
     // After mark_system_loads_complete, no user schemas/enums means
-    // the encoded Program is genuinely empty: MakeProgram(SchLNil, EDLNil).
+    // the encoded Program is genuinely empty: MakeProgram(__Empty_SchemaDecl, __Empty_EnumDecl).
     // The pass's inequality assertion fails → UNSAT.
     let mut rt = fresh_rt_with_pass();
     let r = rt.query_with_program("has_at_least_one_schema", "program").unwrap();
     assert!(!r.satisfied,
         "with no user-loaded schemas, encoded program is the empty \
-         MakeProgram(SchLNil, EDLNil) — the inequality should fail");
+         MakeProgram(__Empty_SchemaDecl, __Empty_EnumDecl) — the inequality should fail");
 }
 
 #[test]
 fn smoke_has_at_least_one_schema_sat_for_user_enum_only() {
     // User loads only an enum (no schemas). The encoded program
-    // becomes MakeProgram(SchLNil, EDLCons(...)). The inequality
-    // against MakeProgram(SchLNil, EDLNil) holds → SAT.
+    // becomes MakeProgram(__Empty_SchemaDecl, __Cell_EnumDecl(...)). The inequality
+    // against MakeProgram(__Empty_SchemaDecl, __Empty_EnumDecl) holds → SAT.
     let mut rt = fresh_rt_with_pass();
     rt.load_source("enum Color = Red | Green\n").unwrap();
     let r = rt.query_with_program("has_at_least_one_schema", "program").unwrap();
@@ -266,48 +266,17 @@ fn query_with_program_works_when_user_loads_only_an_enum() {
 }
 
 // ── Stage 4: extract from Membership + 2-body programs ──────────
-
-#[test]
-fn extract_membership_recovers_declared_type() {
-    // The most common shape: user wrote `claim t : x ∈ Int`. The
-    // pass extracts the declared type directly.
-    let mut rt = fresh_rt_with_pass();
-    rt.load_source("claim t\n    x ∈ Int\n").unwrap();
-    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
-    assert!(r.satisfied);
-    assert_eq!(r.bindings.get("inferred_var"),
-               Some(&Value::Str("x".to_string())));
-    assert_eq!(r.bindings.get("inferred_type"),
-               Some(&Value::Str("Int".to_string())));
-    assert_eq!(r.bindings.get("claim_name"),
-               Some(&Value::Str("t".to_string())));
-}
-
-#[test]
-fn extract_membership_works_with_trailing_constraint() {
-    // The Membership rule's `rest_body` is a free var, so trailing
-    // body items are tolerated.
-    let mut rt = fresh_rt_with_pass();
-    rt.load_source("claim t\n    name ∈ String\n    name = \"alice\"\n").unwrap();
-    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
-    assert!(r.satisfied);
-    assert_eq!(r.bindings.get("inferred_var"),
-               Some(&Value::Str("name".to_string())));
-    assert_eq!(r.bindings.get("inferred_type"),
-               Some(&Value::Str("String".to_string())));
-}
-
-#[test]
-fn extract_membership_unsat_when_first_item_is_constraint() {
-    // Pattern requires Membership at the head — a Constraint-led
-    // body doesn't match.
-    let mut rt = fresh_rt_with_pass();
-    rt.load_source("claim t\n    msg = \"hi\"\n").unwrap();
-    let r = rt.query_with_program("extract_first_membership", "program").unwrap();
-    assert!(!r.satisfied,
-        "extract rule requires a leading Membership; constraint-only \
-         body should be UNSAT");
-}
+//
+// `extract_first_membership` used to match `BILCons(BIMembership(...),
+// rest_body)` — a head/tail pattern on the body list. After Phase 6.5
+// the AST's list fields are `Seq(T)` backed by an internal Cons
+// helper, and we don't yet expose head/tail operators on those.
+// Three tests were deleted here (extract_membership_recovers_declared_type,
+// extract_membership_works_with_trailing_constraint,
+// extract_membership_unsat_when_first_item_is_constraint); restore
+// them when the Seq head/tail-pattern operator suite lands.
+// The claim itself is documented as DROPPED in
+// stdlib/passes/literal_types.ev.
 
 #[test]
 fn membership_plus_assignment_int_consistent() {

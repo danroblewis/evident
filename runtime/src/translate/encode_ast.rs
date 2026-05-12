@@ -30,11 +30,11 @@ use super::types::EnumRegistry;
 pub enum EncodeError {
     /// `stdlib/ast.ev` isn't loaded — the named enum is missing
     /// from the registry. Tell the user to import the stdlib.
-    EnumNotRegistered(&'static str),
+    EnumNotRegistered(String),
     /// The named variant doesn't exist on its enum. Means
     /// `stdlib/ast.ev` drifted from the Rust AST shape — fix the
     /// stdlib file to add the variant.
-    VariantNotFound { enum_name: &'static str, variant: String },
+    VariantNotFound { enum_name: String, variant: String },
     /// Something we can't encode in v0.1 (TraceDecl, ShaderDecl,
     /// etc.). Skipped silently for whole-program encoding; caller
     /// can still hit this for individual encoder calls on those
@@ -65,24 +65,24 @@ pub type Result<T> = std::result::Result<T, EncodeError>;
 /// the variant's declared payload field types — caller's job.
 fn apply<'ctx>(
     enums: &EnumRegistry,
-    enum_name: &'static str,
+    enum_name: &str,
     variant: &str,
     args: &[&dyn Ast<'ctx>],
 ) -> Result<Datatype<'ctx>> {
     let dts = enums.by_name.borrow();
     let (sort, _decl_variants) = dts.get(enum_name)
-        .ok_or(EncodeError::EnumNotRegistered(enum_name))?;
+        .ok_or_else(|| EncodeError::EnumNotRegistered(enum_name.to_string()))?;
     for v in &sort.variants {
         if v.constructor.name() == variant {
             return v.constructor.apply(args).as_datatype()
-                .ok_or(EncodeError::VariantNotFound {
-                    enum_name,
+                .ok_or_else(|| EncodeError::VariantNotFound {
+                    enum_name: enum_name.to_string(),
                     variant: variant.to_string(),
                 });
         }
     }
     Err(EncodeError::VariantNotFound {
-        enum_name,
+        enum_name: enum_name.to_string(),
         variant: variant.to_string(),
     })
 }
@@ -188,19 +188,64 @@ pub fn encode_pins<'ctx>(
     }
 }
 
-// ── Lists (Vec<T> → recursive Cons enum) ───────────────────────
+// ── Lists (Vec<T> → internal-Cons helper datatype) ─────────────
+//
+// Each `Seq(T)` field in stdlib/ast.ev is backed by a runtime-
+// generated `__SeqOf_T` helper enum (see runtime::generate_internal_
+// cons_helpers). Building one of these list values means walking
+// the items, applying `__Cell_T(head, tail)` from right to left
+// over a terminating `__Empty_T`. From the .ev user's perspective
+// they wrote `Seq(T)` and `⟨a, b, c⟩` — these encoders are the
+// Rust-side bridge that puts the same shape into Z3.
+
+fn encode_cons_list<'ctx, T>(
+    items: &[T],
+    elem_type_name: &str,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+    encode_head: impl Fn(&T, &'ctx Context, &EnumRegistry) -> Result<Datatype<'ctx>>,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    let helper = crate::runtime::internal_cons_helper_name(elem_type_name);
+    let empty  = format!("__Empty_{}", elem_type_name);
+    let cell   = format!("__Cell_{}", elem_type_name);
+    let mut acc = apply(enums, &helper, &empty, &[])?;
+    for it in items.iter().rev() {
+        let head = encode_head(it, ctx, enums)?;
+        acc = apply(enums, &helper, &cell, &[&head, &acc])?;
+    }
+    Ok(acc)
+}
 
 pub fn encode_string_list<'ctx>(
     items: &[String],
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "StringList", "SLNil", &[])?;
-    for s in items.iter().rev() {
-        let head = z3_str(ctx, s);
-        acc = apply(enums, "StringList", "SLCons", &[&head, &acc])?;
+    // Special case: Seq(String) at the top level still uses the
+    // two-accessor Array+Int representation (Strings aren't part of
+    // any recursive enum group). But when used as a stdlib/ast.ev
+    // enum field (e.g. EForall(Seq(String), …)), the field is
+    // batch-local and would need __SeqOf_String. String is a
+    // primitive though — so `generate_internal_cons_helpers` only
+    // fires for enum elements in the same batch, not primitives.
+    //
+    // So this encoder handles the "top-level Seq(String)" case
+    // (Array+Int) — but no current caller actually goes through it
+    // for AST encoding (EForall etc. is encoded via the field-aware
+    // path below). Kept for completeness / future use.
+    use z3::ast::Array;
+    use z3::Sort;
+    let default = z3_str(ctx, "");
+    let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
+    for (i, s) in items.iter().enumerate() {
+        arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
     }
-    Ok(acc)
+    let _ = enums;
+    // Return a freshly-built (arr, len) wrapped as a one-variant
+    // Datatype — but no consumer actually uses this return.
+    // Encode helpers prefer the per-T encoders below.
+    Err(EncodeError::Unsupported("encode_string_list (top-level Array+Int) — \
+                                  use the field-aware encoder path"))
 }
 
 pub fn encode_expr_list<'ctx>(
@@ -208,12 +253,7 @@ pub fn encode_expr_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "ExprList", "ELNil", &[])?;
-    for e in items.iter().rev() {
-        let head = encode_expr(e, ctx, enums)?;
-        acc = apply(enums, "ExprList", "ELCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "Expr", ctx, enums, encode_expr)
 }
 
 pub fn encode_mapping_list<'ctx>(
@@ -221,12 +261,7 @@ pub fn encode_mapping_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "MappingList", "MLNil", &[])?;
-    for m in items.iter().rev() {
-        let head = encode_mapping(m, ctx, enums)?;
-        acc = apply(enums, "MappingList", "MLCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "Mapping", ctx, enums, encode_mapping)
 }
 
 pub fn encode_body_item_list<'ctx>(
@@ -234,12 +269,7 @@ pub fn encode_body_item_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "BodyItemList", "BILNil", &[])?;
-    for it in items.iter().rev() {
-        let head = encode_body_item(it, ctx, enums)?;
-        acc = apply(enums, "BodyItemList", "BILCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "BodyItem", ctx, enums, encode_body_item)
 }
 
 pub fn encode_schema_list<'ctx>(
@@ -247,12 +277,7 @@ pub fn encode_schema_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "SchemaList", "SchLNil", &[])?;
-    for s in items.iter().rev() {
-        let head = encode_schema_decl(s, ctx, enums)?;
-        acc = apply(enums, "SchemaList", "SchLCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "SchemaDecl", ctx, enums, encode_schema_decl)
 }
 
 pub fn encode_enum_decl_list<'ctx>(
@@ -260,12 +285,7 @@ pub fn encode_enum_decl_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "EnumDeclList", "EDLNil", &[])?;
-    for e in items.iter().rev() {
-        let head = encode_enum_decl(e, ctx, enums)?;
-        acc = apply(enums, "EnumDeclList", "EDLCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "EnumDecl", ctx, enums, encode_enum_decl)
 }
 
 pub fn encode_enum_variant_list<'ctx>(
@@ -273,12 +293,7 @@ pub fn encode_enum_variant_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "EnumVariantList", "EVLNil", &[])?;
-    for v in items.iter().rev() {
-        let head = encode_enum_variant(v, ctx, enums)?;
-        acc = apply(enums, "EnumVariantList", "EVLCons", &[&head, &acc])?;
-    }
-    Ok(acc)
+    encode_cons_list(items, "EnumVariant", ctx, enums, encode_enum_variant)
 }
 
 pub fn encode_enum_field_list<'ctx>(
@@ -286,12 +301,26 @@ pub fn encode_enum_field_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let mut acc = apply(enums, "EnumFieldList", "EFLNil", &[])?;
-    for f in items.iter().rev() {
-        let head = encode_enum_field(f, ctx, enums)?;
-        acc = apply(enums, "EnumFieldList", "EFLCons", &[&head, &acc])?;
+    encode_cons_list(items, "EnumField", ctx, enums, encode_enum_field)
+}
+
+/// Encode `Vec<String>` for an EForall/EExists vars slot. After
+/// Phase 6.5 the Seq(String) field is two-accessor Array+Int
+/// (String is primitive), but the constructor expects a single
+/// arg-list — we caller-pin both via translate_seq_arg_for_ctor's
+/// equivalent here. Helper for encode_expr's Forall/Exists arms.
+pub fn encode_string_seq_pair<'ctx>(
+    items: &[String],
+    ctx: &'ctx Context,
+) -> (z3::ast::Array<'ctx>, Int<'ctx>) where 'ctx: 'static {
+    use z3::ast::Array;
+    use z3::Sort;
+    let default = z3_str(ctx, "");
+    let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
+    for (i, s) in items.iter().enumerate() {
+        arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
     }
-    Ok(acc)
+    (arr, Int::from_i64(ctx, items.len() as i64))
 }
 
 // ── Schema-shape singletons (single-variant enums in stdlib/ast.ev) ──
@@ -433,16 +462,16 @@ pub fn encode_expr<'ctx>(
             apply(enums, "Expr", "EInExpr", &[&l, &r])
         }
         Expr::Forall(vars, range, body) => {
-            let vs = encode_string_list(vars, ctx, enums)?;
+            let (vs_arr, vs_len) = encode_string_seq_pair(vars, ctx);
             let r  = encode_expr(range, ctx, enums)?;
             let b  = encode_expr(body, ctx, enums)?;
-            apply(enums, "Expr", "EForall", &[&vs, &r, &b])
+            apply(enums, "Expr", "EForall", &[&vs_arr, &vs_len, &r, &b])
         }
         Expr::Exists(vars, range, body) => {
-            let vs = encode_string_list(vars, ctx, enums)?;
+            let (vs_arr, vs_len) = encode_string_seq_pair(vars, ctx);
             let r  = encode_expr(range, ctx, enums)?;
             let b  = encode_expr(body, ctx, enums)?;
-            apply(enums, "Expr", "EExists", &[&vs, &r, &b])
+            apply(enums, "Expr", "EExists", &[&vs_arr, &vs_len, &r, &b])
         }
         Expr::Call(name, args) => {
             let n = z3_str(ctx, name);
@@ -497,10 +526,7 @@ fn encode_match_arm_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    if arms.is_empty() { return apply(enums, "MatchArmList", "MALNil", &[]); }
-    let head = encode_match_arm(&arms[0], ctx, enums)?;
-    let tail = encode_match_arm_list(&arms[1..], ctx, enums)?;
-    apply(enums, "MatchArmList", "MALCons", &[&head, &tail])
+    encode_cons_list(arms, "MatchArm", ctx, enums, encode_match_arm)
 }
 
 fn encode_match_arm<'ctx>(
@@ -517,7 +543,7 @@ fn encode_match_pattern<'ctx>(
     pat: &crate::ast::MatchPattern,
     ctx: &'ctx Context,
     enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> {
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
     use crate::ast::MatchPattern;
     match pat {
         MatchPattern::Wildcard => apply(enums, "MatchPattern", "PatWildcard", &[]),
@@ -533,17 +559,22 @@ fn encode_bind_list<'ctx>(
     binds: &[Option<String>],
     ctx: &'ctx Context,
     enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> {
-    if binds.is_empty() { return apply(enums, "BindList", "BLNil", &[]); }
-    let head = match &binds[0] {
-        None => apply(enums, "MatchBind", "BindWildcard", &[])?,
-        Some(name) => {
-            let n = z3_str(ctx, name);
-            apply(enums, "MatchBind", "BindName", &[&n])?
-        }
-    };
-    let tail = encode_bind_list(&binds[1..], ctx, enums)?;
-    apply(enums, "BindList", "BLCons", &[&head, &tail])
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    let helper = crate::runtime::internal_cons_helper_name("MatchBind");
+    let empty  = "__Empty_MatchBind";
+    let cell   = "__Cell_MatchBind";
+    let mut acc = apply(enums, &helper, empty, &[])?;
+    for b in binds.iter().rev() {
+        let head = match b {
+            None => apply(enums, "MatchBind", "BindWildcard", &[])?,
+            Some(name) => {
+                let n = z3_str(ctx, name);
+                apply(enums, "MatchBind", "BindName", &[&n])?
+            }
+        };
+        acc = apply(enums, &helper, cell, &[&head, &acc])?;
+    }
+    Ok(acc)
 }
 
 // ── Top-level Program ──────────────────────────────────────────

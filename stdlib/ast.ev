@@ -4,31 +4,26 @@
 -- This file lets compiler passes — type inference, desugars, lints,
 -- optimizations — be written as Evident programs that take a Program
 -- value and produce another Program value (or a list of types per
--- variable, or an error report, or whatever the pass yields).
+-- variable, or an error report, or whatever the pass yields). It's
+-- also the surface for general AST reflection: anything that wants
+-- to inspect, transform, or generate Evident source operates on
+-- these types.
 --
--- The shape mirrors runtime/src/ast.rs. Three accommodations for
--- the v0.1 enum capabilities:
+-- The shape mirrors runtime/src/ast.rs. Vec<T>-typed fields use
+-- `Seq(T)` directly. (The runtime back-stops mutually-recursive
+-- Seq fields with a hidden Cons-shaped helper enum — internal
+-- detail; users never write or see those helpers.)
 --
---   1. `Vec<T>` becomes a recursive list enum: `enum FooList = FLNil
---      | FLCons(Foo, FooList)`. Verbose but works with what we have.
---      A future runtime extension could let Datatype fields be Z3
---      Seq sorts directly, collapsing these into a single Seq(T).
+-- Single-variant "records" (Mapping, EnumField, etc.) are also
+-- enums with one variant. Convention: variant name is `MakeXxx`
+-- and field order is documented above the decl. Once Datatype
+-- fields can be user records directly, these can collapse to
+-- `type Foo { … }` declarations.
 --
---   2. Single-variant "records" (Mapping, EnumField, etc.) are also
---      enums with one variant. Convention: variant name is `MakeXxx`
---      and field order is documented above the decl. Once Datatype
---      fields can be user records, these can collapse to `type Foo
---      { … }` declarations.
---
---   3. `TraceDecl` and `ShaderDecl` are out of scope here. They're
---      runtime-loaded scaffolding, not part of the canonical AST a
---      desugar/inference pass needs to consume. Add them later when
---      a pass actually needs them.
---
--- The encoding deliberately avoids cycles between top-level enums
--- and primitive types — every recursive reference goes through
--- another enum decl in this file. Z3's `create_datatypes` resolves
--- the whole bundle in one pass.
+-- `TraceDecl` and `ShaderDecl` are out of scope here. They're
+-- runtime-loaded scaffolding, not part of the canonical AST a
+-- desugar/inference pass needs to consume. Add them later when
+-- a pass actually needs them.
 
 -- ── Operators ────────────────────────────────────────────────────
 
@@ -59,72 +54,23 @@ enum Keyword =
     KSubclaim
     KFsm
 
--- ── List types — one per element kind we need ───────────────────
-
--- Plain string list (for import paths, multi-var quantifier
--- bindings).
-enum StringList =
-    SLNil
-    SLCons(String, StringList)
-
--- Body items inside a schema body.
-enum BodyItemList =
-    BILNil
-    BILCons(BodyItem, BodyItemList)
-
--- Expressions, used for SetLit/SeqLit element vectors and Call
--- argument lists.
-enum ExprList =
-    ELNil
-    ELCons(Expr, ExprList)
-
--- Mappings, used for Pins::Named and ClaimCall mappings.
-enum MappingList =
-    MLNil
-    MLCons(Mapping, MappingList)
-
 -- ── Match patterns + arms ───────────────────────────────────────
 --
 -- A pattern is either a wildcard `_` (catches any value, no binds)
 -- or a constructor name with positional bindings. Each binding is
 -- either a name to bind the payload field to, or `BindWildcard`
 -- (the `_` placeholder discarding that field).
-enum BindList =
-    BLNil
-    BLCons(MatchBind, BindList)
-
 enum MatchBind =
     BindName(String)
     BindWildcard
 
 enum MatchPattern =
     PatWildcard
-    PatCtor(String, BindList)
+    PatCtor(String, Seq(MatchBind))
 
 -- One arm: pattern + body expression.
 enum MatchArm =
     MakeMatchArm(MatchPattern, Expr)
-
-enum MatchArmList =
-    MALNil
-    MALCons(MatchArm, MatchArmList)
-
--- Top-level decls.
-enum SchemaList =
-    SchLNil
-    SchLCons(SchemaDecl, SchemaList)
-
-enum EnumDeclList =
-    EDLNil
-    EDLCons(EnumDecl, EnumDeclList)
-
-enum EnumVariantList =
-    EVLNil
-    EVLCons(EnumVariant, EnumVariantList)
-
-enum EnumFieldList =
-    EFLNil
-    EFLCons(EnumField, EnumFieldList)
 
 -- ── Single-variant records (poor man's structs) ─────────────────
 
@@ -134,7 +80,7 @@ enum Mapping =
 
 -- One variant of an enum decl. MakeEnumVariant(name, fields).
 enum EnumVariant =
-    MakeEnumVariant(String, EnumFieldList)
+    MakeEnumVariant(String, Seq(EnumField))
 
 -- One field of an enum variant payload. MakeEnumField(name, type_name).
 enum EnumField =
@@ -142,7 +88,7 @@ enum EnumField =
 
 -- A top-level enum declaration. MakeEnumDecl(name, variants).
 enum EnumDecl =
-    MakeEnumDecl(String, EnumVariantList)
+    MakeEnumDecl(String, Seq(EnumVariant))
 
 -- ── Pins (how a Membership annotates its type) ──────────────────
 
@@ -150,8 +96,8 @@ enum EnumDecl =
 -- `x ∈ T(v1, v2)` (Positional).
 enum Pins =
     PNone
-    PNamed(MappingList)
-    PPositional(ExprList)
+    PNamed(Seq(Mapping))
+    PPositional(Seq(Expr))
 
 -- ── Body items ──────────────────────────────────────────────────
 
@@ -164,7 +110,7 @@ enum Pins =
 enum BodyItem =
     BIMembership(String, String, Pins)
     BIPassthrough(String)
-    BIClaimCall(String, MappingList)
+    BIClaimCall(String, Seq(Mapping))
     BIConstraint(Expr)
     BISubclaim(SchemaDecl)
 
@@ -172,7 +118,7 @@ enum BodyItem =
 
 -- MakeSchemaDecl(keyword, name, body).
 enum SchemaDecl =
-    MakeSchemaDecl(Keyword, String, BodyItemList)
+    MakeSchemaDecl(Keyword, String, Seq(BodyItem))
 
 -- ── Expressions ─────────────────────────────────────────────────
 
@@ -190,20 +136,20 @@ enum Expr =
     EReal(Real)
     EBool(Bool)
     EStr(String)
-    ESetLit(ExprList)
-    ESeqLit(ExprList)
+    ESetLit(Seq(Expr))
+    ESeqLit(Seq(Expr))
     ERange(Expr, Expr)
     EInExpr(Expr, Expr)
-    EForall(StringList, Expr, Expr)
-    EExists(StringList, Expr, Expr)
-    ECall(String, ExprList)
+    EForall(Seq(String), Expr, Expr)
+    EExists(Seq(String), Expr, Expr)
+    ECall(String, Seq(Expr))
     ECardinality(Expr)
     EIndex(Expr, Expr)
     EField(Expr, String)
     EBinary(BinOp, Expr, Expr)
     ENot(Expr)
     ETernary(Expr, Expr, Expr)
-    EMatch(Expr, MatchArmList)
+    EMatch(Expr, Seq(MatchArm))
     EMatches(Expr, MatchPattern)
 
 -- ── Top-level program ───────────────────────────────────────────
@@ -212,4 +158,4 @@ enum Expr =
 -- shaders are out of scope for v0.1.
 -- MakeProgram(schemas, enums).
 enum Program =
-    MakeProgram(SchemaList, EnumDeclList)
+    MakeProgram(Seq(SchemaDecl), Seq(EnumDecl))

@@ -130,10 +130,32 @@ fn decode_real(v: &Value) -> Result<f64> {
     }
 }
 
-// ── List decoders (Nil/Cons recursive enums in stdlib/ast.ev) ──
+// ── Seq decoders ───────────────────────────────────────────────
+//
+// Post-Phase-6.5 the AST's list-typed fields are `Seq(T)`, backed
+// by an internal Cons helper for mutually-recursive cases. The
+// extract path walks the helper and produces a `Value::SeqEnum`
+// (or `Value::SeqStr` for Seq(String)). These decoders take that
+// SeqEnum/SeqStr and map per-element decoders over its contents.
 
-/// Generic Nil/Cons walker: `nil_variant` ends the list,
-/// `cons_variant` has fields `[head, tail]`.
+fn decode_seq_enum<T>(
+    v: &Value,
+    what: &'static str,
+    decode_elem: impl Fn(&Value) -> Result<T>,
+) -> Result<Vec<T>> {
+    if let Value::SeqEnum(items) = v {
+        return items.iter().map(decode_elem).collect();
+    }
+    Err(DecodeError::FieldKind {
+        what: what.into(),
+        want: "Value::SeqEnum".into(),
+        got: format!("{:?}", v),
+    })
+}
+
+/// `PackedFieldList` is still a Cons-shaped user-declared enum
+/// (gates on Seq concatenation; see plans/06-cons-removal). Keep
+/// the Cons-walker for it.
 fn decode_list<T>(
     v: &Value,
     list_enum: &'static str,
@@ -160,23 +182,28 @@ fn decode_list<T>(
 }
 
 pub fn decode_string_list(v: &Value) -> Result<Vec<String>> {
-    decode_list(v, "StringList", "SLNil", "SLCons", decode_str)
+    if let Value::SeqStr(items) = v { return Ok(items.clone()); }
+    Err(DecodeError::FieldKind {
+        what: "string list".into(),
+        want: "Value::SeqStr".into(),
+        got: format!("{:?}", v),
+    })
 }
 
 pub fn decode_expr_list(v: &Value) -> Result<Vec<Expr>> {
-    decode_list(v, "ExprList", "ELNil", "ELCons", decode_expr)
+    decode_seq_enum(v, "expr list", decode_expr)
 }
 
 pub fn decode_mapping_list(v: &Value) -> Result<Vec<Mapping>> {
-    decode_list(v, "MappingList", "MLNil", "MLCons", decode_mapping)
+    decode_seq_enum(v, "mapping list", decode_mapping)
 }
 
 pub fn decode_body_item_list(v: &Value) -> Result<Vec<BodyItem>> {
-    decode_list(v, "BodyItemList", "BILNil", "BILCons", decode_body_item)
+    decode_seq_enum(v, "body item list", decode_body_item)
 }
 
 pub fn decode_match_arm_list(v: &Value) -> Result<Vec<crate::ast::MatchArm>> {
-    decode_list(v, "MatchArmList", "MALNil", "MALCons", decode_match_arm)
+    decode_seq_enum(v, "match arm list", decode_match_arm)
 }
 
 pub fn decode_match_arm(v: &Value) -> Result<crate::ast::MatchArm> {
@@ -213,7 +240,7 @@ pub fn decode_match_pattern(v: &Value) -> Result<crate::ast::MatchPattern> {
 }
 
 pub fn decode_bind_list(v: &Value) -> Result<Vec<Option<String>>> {
-    decode_list(v, "BindList", "BLNil", "BLCons", decode_match_bind)
+    decode_seq_enum(v, "bind list", decode_match_bind)
 }
 
 pub fn decode_match_bind(v: &Value) -> Result<Option<String>> {
@@ -228,19 +255,19 @@ pub fn decode_match_bind(v: &Value) -> Result<Option<String>> {
 }
 
 pub fn decode_schema_list(v: &Value) -> Result<Vec<SchemaDecl>> {
-    decode_list(v, "SchemaList", "SchLNil", "SchLCons", decode_schema_decl)
+    decode_seq_enum(v, "schema list", decode_schema_decl)
 }
 
 pub fn decode_enum_decl_list(v: &Value) -> Result<Vec<EnumDecl>> {
-    decode_list(v, "EnumDeclList", "EDLNil", "EDLCons", decode_enum_decl)
+    decode_seq_enum(v, "enum decl list", decode_enum_decl)
 }
 
 pub fn decode_enum_variant_list(v: &Value) -> Result<Vec<EnumVariant>> {
-    decode_list(v, "EnumVariantList", "EVLNil", "EVLCons", decode_enum_variant)
+    decode_seq_enum(v, "enum variant list", decode_enum_variant)
 }
 
 pub fn decode_enum_field_list(v: &Value) -> Result<Vec<EnumField>> {
-    decode_list(v, "EnumFieldList", "EFLNil", "EFLCons", decode_enum_field)
+    decode_seq_enum(v, "enum field list", decode_enum_field)
 }
 
 // ── Per-AST-type decoders ──────────────────────────────────────
