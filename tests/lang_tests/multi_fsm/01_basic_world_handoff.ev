@@ -41,10 +41,8 @@ enum GameState =
 enum RenderState =
     Frame
 
-claim game(world, world_next ∈ World,
-           state, state_next ∈ GameState,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm game(world, world_next ∈ World,
+           state ∈ GameState)
     state_next = match state
         TickEven ⇒ TickOdd
         TickOdd  ⇒ TickEven
@@ -55,10 +53,8 @@ claim game(world, world_next ∈ World,
 
     effects = ⟨Println("game tick")⟩
 
-claim render(world ∈ World,
-             state, state_next ∈ RenderState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm render(world ∈ World,
+             state ∈ RenderState)
     state_next = Frame
 
     msg ∈ String

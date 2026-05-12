@@ -21,10 +21,8 @@ type World
 
 enum S = R
 
-claim main(world, world_next ∈ World,
-           state, state_next ∈ S,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(world, world_next ∈ World,
+           state ∈ S)
     state_next = R
 
     just_starting ∈ Bool

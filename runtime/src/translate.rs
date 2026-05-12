@@ -52,7 +52,7 @@ pub mod ast_decoder {
     //! that need to read back a transformed Program.
     pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
                                   decode_ffi_arg, decode_arg_list,
-                                  decode_result, decode_result_list,
+                                  decode_result,
                                   DecodeError};
 }
 
@@ -61,7 +61,7 @@ pub mod ast_encoder {
     //! `EvidentRuntime::encode_program_value` and the
     //! `evident dump-ast` CLI.
     pub use super::encode_ast::{encode_program, encode_body_items_into_seq,
-                                 encode_effect_result, encode_effect_result_list,
+                                 encode_effect_result,
                                  effect_results_to_value,
                                  program_to_value, value_enum_to_datatype,
                                  EncodeError};

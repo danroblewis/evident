@@ -25,14 +25,10 @@ import "stdlib/runtime.ev"
 enum TickerState = T
 enum BeatState   = B
 
-claim ticker(state, state_next ∈ TickerState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm ticker(state ∈ TickerState)
     state_next = T
     effects = ⟨Println("tick")⟩
 
-claim heartbeat(state, state_next ∈ BeatState,
-                last_results ∈ ResultList,
-                effects ∈ EffectList)
+fsm heartbeat(state ∈ BeatState)
     state_next = B
     effects = ⟨Println("beat")⟩

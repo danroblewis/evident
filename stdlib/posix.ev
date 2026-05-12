@@ -3,11 +3,11 @@
 -- Phase 1.7 v1: effect *builders* only. This file declares helpers
 -- that construct the right Effect value given a previously-resolved
 -- libc symbol handle and arguments. Handle-extraction from
--- last_results is NOT in this file — pattern matching on
--- ResCons(HandleResult(h), _) needs Phase 3.3's enum-typed pattern
--- bindings. Until then, programs use this library to BUILD effect
--- values once they have handles via other means (state-carried Ints
--- or future syntactic sugar).
+-- last_results is NOT in this file — `last_results[0]` returns a
+-- `Result`, and pattern matching `HandleResult(h)` on that requires
+-- enum-typed pattern bindings (Phase 3.3's gap). Until then,
+-- programs use this library to BUILD effect values once they have
+-- handles via other means (state-carried Ints or future sugar).
 --
 -- Platform note: libc_path is hard-coded for v1. macOS uses
 -- libSystem; Linux uses libc.so.6. A future build-time platform

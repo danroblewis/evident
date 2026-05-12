@@ -3,11 +3,11 @@
 //!
 //! Programs eligible for this runner declare a main claim with:
 //!   state, state_next ∈ <enum>
-//!   last_results      ∈ ResultList
+//!   last_results      ∈ Seq(Result)
 //!   effects           ∈ EffectList
 //!
-//! and import "stdlib/runtime.ev" for the Effect/Result/EffectList/
-//! ResultList types.
+//! and import "stdlib/runtime.ev" for the Effect/Result/EffectList
+//! types.
 
 use std::path::Path;
 use std::process::ExitCode;

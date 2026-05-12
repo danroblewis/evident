@@ -43,10 +43,8 @@ enum WriterState =
     Initing
     Settled
 
-claim writer(world, world_next ∈ World,
-             state, state_next ∈ WriterState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm writer(world, world_next ∈ World,
+             state ∈ WriterState)
     state_next = match state
         Initing ⇒ Settled
         Settled ⇒ Settled
@@ -57,10 +55,8 @@ claim writer(world, world_next ∈ World,
 
 enum ReaderState = Reading
 
-claim reader(world ∈ World,
-             state, state_next ∈ ReaderState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm reader(world ∈ World,
+             state ∈ ReaderState)
     state_next = Reading
     msg ∈ String
     msg = (world.gate ? \"reader: gate=true\" : \"reader: gate=false\")
@@ -150,10 +146,8 @@ enum WriterState =
     Initing
     Settled
 
-claim writer(world, world_next ∈ World,
-             state, state_next ∈ WriterState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm writer(world, world_next ∈ World,
+             state ∈ WriterState)
     state_next = match state
         Initing ⇒ Settled
         Settled ⇒ Settled
@@ -167,10 +161,8 @@ claim writer(world, world_next ∈ World,
 
 enum ReaderState = Reading
 
-claim reader(world ∈ World,
-             state, state_next ∈ ReaderState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm reader(world ∈ World,
+             state ∈ ReaderState)
     state_next = Reading
     msg ∈ String
     msg = (world.gate ? \"reader: ON\" : \"reader: OFF\")
@@ -190,10 +182,8 @@ enum WorkState =
     Working
     Resting
 
-claim worker(world, world_next ∈ World,
-             state, state_next ∈ WorkState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm worker(world, world_next ∈ World,
+             state ∈ WorkState)
     state_next = match state
         Working ⇒ Resting
         Resting ⇒ Resting
@@ -204,10 +194,8 @@ claim worker(world, world_next ∈ World,
 
 enum WatchState = Watching | Settled
 
-claim observer(world ∈ World,
-               state, state_next ∈ WatchState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm observer(world ∈ World,
+               state ∈ WatchState)
     state_next = match state
         Watching ⇒ (world.flag ? Settled : Watching)
         Settled  ⇒ Settled
@@ -262,26 +250,20 @@ fn delta_mode_halts_cleanly_without_done_variant() {
 const STDIN_LOOP_PROGRAM: &str = "\
 enum S = Reading | Stopped
 
-claim main(state, state_next ∈ S,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(state ∈ S)
     is_eof ∈ Bool
-    is_eof = match last_results
-        ResCons(r, _) ⇒ match r
-            ErrorResult(_) ⇒ true
-            _              ⇒ false
-        _ ⇒ false
+    is_eof = match last_results[0]
+        ErrorResult(_) ⇒ true
+        _              ⇒ false
 
     state_next = match state
         Reading ⇒ (is_eof ? Stopped : Reading)
         Stopped ⇒ Stopped
 
     line ∈ String
-    line = match last_results
-        ResCons(r, _) ⇒ match r
-            StringResult(s) ⇒ s
-            _               ⇒ \"\"
-        _ ⇒ \"\"
+    line = match last_results[0]
+        StringResult(s) ⇒ s
+        _               ⇒ \"\"
 
     effects = match state
         Reading ⇒ (is_eof ? ⟨⟩ : ⟨ReadLine, Println(\"got: \" ++ line)⟩)
@@ -312,7 +294,7 @@ fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
 
     let lines: Vec<&str> = out.lines().collect();
     // Each tick prints a "got: <prev_line>" — the first one is
-    // empty because last_results is ResNil at tick 0. Then "got:
+    // empty because last_results is ⟨⟩ at tick 0. Then "got:
     // hello" and "got: world".
     assert!(lines.contains(&"got: hello"), "missing got: hello; out:\n{}", out);
     assert!(lines.contains(&"got: world"), "missing got: world; out:\n{}", out);
@@ -372,10 +354,8 @@ type World
 
 enum S = R
 
-claim main(world, world_next ∈ World,
-           state, state_next ∈ S,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(world, world_next ∈ World,
+           state ∈ S)
     state_next = R
     -- Trying to override the plugin's writes — should error.
     world_next.stdin_line = \"forced\"
@@ -413,10 +393,8 @@ type World
 
 enum S = R
 
-claim main(world ∈ World,
-           state, state_next ∈ S,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(world ∈ World,
+           state ∈ S)
     state_next = R
     effects = ⟨ReadLine, Println(world.stdin_line)⟩
 ";
@@ -450,9 +428,7 @@ fn stdin_plugin_plus_readline_rejected_at_load() {
 const PAYLOAD_STATE_PROGRAM: &str = "\
 enum CountState = Counting(Int)
 
-claim main(state, state_next ∈ CountState,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(state ∈ CountState)
     n ∈ Int
     n = match state
         Counting(k) ⇒ k
@@ -494,10 +470,8 @@ type World
 
 enum WState = WActive
 
-claim writer(world, world_next ∈ World,
-             state, state_next ∈ WState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm writer(world, world_next ∈ World,
+             state ∈ WState)
     state_next = WActive
     -- writer doesn't write tick_count (plugin owns it); just
     -- writes nothing. Field stays as-is from plugin.
@@ -554,30 +528,24 @@ type World
 
 enum AState = Aing
 
-claim writer_a(world, world_next ∈ World,
-               state, state_next ∈ AState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm writer_a(world, world_next ∈ World,
+               state ∈ AState)
     state_next = Aing
     world_next.a = world.a + 1
     effects = ⟨⟩
 
 enum BState = Bing
 
-claim writer_b(world, world_next ∈ World,
-               state, state_next ∈ BState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm writer_b(world, world_next ∈ World,
+               state ∈ BState)
     state_next = Bing
     world_next.b = world.b + 10
     effects = ⟨⟩
 
 enum RState = R
 
-claim reader(world ∈ World,
-             state, state_next ∈ RState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm reader(world ∈ World,
+             state ∈ RState)
     state_next = R
     -- when a hits 3 AND b hits 30, both writers ran 3 times
     effects = ((world.a ≥ 3 ∧ world.b ≥ 30)
@@ -619,20 +587,16 @@ type World
 
 enum AState = Aing
 
-claim writer_a(world, world_next ∈ World,
-               state, state_next ∈ AState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm writer_a(world, world_next ∈ World,
+               state ∈ AState)
     state_next = Aing
     world_next.shared = world.shared + 1
     effects = ⟨⟩
 
 enum BState = Bing
 
-claim writer_b(world, world_next ∈ World,
-               state, state_next ∈ BState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm writer_b(world, world_next ∈ World,
+               state ∈ BState)
     state_next = Bing
     world_next.shared = world.shared + 10
     effects = ⟨⟩
@@ -669,21 +633,17 @@ type World
 
 enum WState = WActive
 
-claim subscriber(timer ∈ FrameTimer,
+fsm subscriber(timer ∈ FrameTimer,
                  world, world_next ∈ World,
-                 state, state_next ∈ WState,
-                 last_results ∈ ResultList,
-                 effects ∈ EffectList)
+                 state ∈ WState)
     state_next = WActive
     world_next.pulse = world.pulse + 1
     effects = (world.pulse ≥ 2 ? ⟨Println(\"sub: done\"), Exit(0)⟩ : ⟨⟩)
 
 enum SState = SActive
 
-claim silent(world ∈ World,
-             state, state_next ∈ SState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm silent(world ∈ World,
+             state ∈ SState)
     -- This FSM has no FrameTimer subscription. It would normally
     -- wake on world.pulse delta — but if the subscriber doesn't
     -- get woken by ticks, the world never updates, so this stays
@@ -734,20 +694,16 @@ type World
 
 enum WState = WActive
 
-claim writer(world, world_next ∈ World,
-             state, state_next ∈ WState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm writer(world, world_next ∈ World,
+             state ∈ WState)
     state_next = WActive
     world_next.pulse = world.pulse + 1
     effects = ⟨⟩
 
 enum RState = RAlive
 
-claim reader(world ∈ World,
-             state, state_next ∈ RState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm reader(world ∈ World,
+             state ∈ RState)
     state_next = RAlive
     effects = (world.pulse ≥ 3
                ? ⟨Println(\"done\"), Exit(0)⟩
@@ -825,10 +781,8 @@ type World
 
 enum CtrlState = Running | Stopping
 
-claim controller(world, world_next ∈ World,
-                 state, state_next ∈ CtrlState,
-                 last_results ∈ ResultList,
-                 effects ∈ EffectList)
+fsm controller(world, world_next ∈ World,
+                 state ∈ CtrlState)
     state_next = match state
         Running  ⇒ Stopping
         Stopping ⇒ Stopping
@@ -843,10 +797,8 @@ claim controller(world, world_next ∈ World,
 
 enum LogState = Logging
 
-claim logger(world ∈ World,
-             state, state_next ∈ LogState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm logger(world ∈ World,
+             state ∈ LogState)
     state_next = Logging
     msg ∈ String
     msg = (world.quit ? \"logger: cleanup-done\" : \"logger: alive\")

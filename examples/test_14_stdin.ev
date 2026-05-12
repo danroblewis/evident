@@ -22,10 +22,8 @@ type World
 -- tick 0); Listening(Int) carries the last-echoed seq.
 enum EState = Start | Listening(Int) | Done
 
-claim echo(world ∈ World,
-           state, state_next ∈ EState,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm echo(world ∈ World,
+           state ∈ EState)
     last_seq ∈ Int
     last_seq = match state
         Start         ⇒ 0
@@ -56,7 +54,7 @@ claim sat_echoes_first_line
     world ∈ World
     state ∈ EState
     state_next ∈ EState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     world.stdin_line = "hello"
     world.stdin_seq = 1
@@ -68,7 +66,7 @@ claim sat_quits_on_quit_command
     world ∈ World
     state ∈ EState
     state_next ∈ EState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     world.stdin_line = "quit"
     world.stdin_seq = 5
@@ -80,7 +78,7 @@ claim sat_skips_re_tick_with_same_seq
     world ∈ World
     state ∈ EState
     state_next ∈ EState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     world.stdin_line = "stale"
     world.stdin_seq = 5

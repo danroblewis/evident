@@ -9,9 +9,7 @@ import "stdlib/runtime.ev"
 
 enum HState = HWait | HShow | HEnd
 
-claim id(state, state_next ∈ HState,
-         last_results ∈ ResultList,
-         effects ∈ EffectList,
+fsm id(state ∈ HState,
          host ∈ Hostname)
     state_next = match state
         HWait ⇒ (host.name = "" ? HWait : HShow)
@@ -26,7 +24,7 @@ claim id(state, state_next ∈ HState,
 claim sat_show_when_name_set
     state ∈ HState
     state_next ∈ HState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     host ∈ Hostname
     host.name = "machine"
@@ -37,7 +35,7 @@ claim sat_show_when_name_set
 claim sat_show_emits_println_with_name
     state ∈ HState
     state_next ∈ HState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     host ∈ Hostname
     host.name = "machine"

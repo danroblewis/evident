@@ -23,10 +23,8 @@ type World
 
 enum CState = Counting
 
-claim counter(world, world_next ∈ World,
-              state, state_next ∈ CState,
-              last_results ∈ ResultList,
-              effects ∈ EffectList)
+fsm counter(world, world_next ∈ World,
+              state ∈ CState)
     state_next = Counting
 
     is_new ∈ Bool

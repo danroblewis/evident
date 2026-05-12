@@ -27,6 +27,13 @@ pub enum Keyword {
     Claim,
     Type,
     Subclaim,
+    /// `fsm Name(state ∈ S, …)` — a claim that the multi-FSM scheduler
+    /// auto-instantiates. Distinguishes scheduler-eligible FSMs from
+    /// ordinary predicates so we don't shape-detect. The runtime
+    /// injects `state_next`, `last_results ∈ Seq(Result)`, and
+    /// `effects ∈ EffectList` at load time if the body doesn't
+    /// already declare them.
+    Fsm,
 }
 
 /// Top-level schema declaration:

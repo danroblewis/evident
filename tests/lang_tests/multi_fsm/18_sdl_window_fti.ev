@@ -28,9 +28,7 @@ import "stdlib/runtime.ev"
 
 enum S = Waiting | Open | Done
 
-claim app(state, state_next ∈ S,
-          last_results ∈ ResultList,
-          effects ∈ EffectList)
+fsm app(state ∈ S)
     win ∈ SDL_Window (title ↦ "FTI Window Test", width ↦ 640, height ↦ 480)
     state_next = match state
         Waiting ⇒ (win.handle > 0 ? Open : Waiting)

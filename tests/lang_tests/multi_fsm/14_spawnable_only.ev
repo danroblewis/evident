@@ -2,7 +2,7 @@
 -- explicitly spawned via Effect::SpawnFsm, not auto-instantiated.
 --
 -- Without the marker, any claim with the FSM shape (state pair
--- + EffectList + ResultList) is auto-detected and run as an
+-- + EffectList + Seq(Result)) is auto-detected and run as an
 -- FSM at startup. That's fine for top-level FSMs but pollutes
 -- spawn-only patterns: when parent spawns 2 workers, you get 3
 -- (1 auto + 2 spawned).
@@ -22,9 +22,7 @@ import "stdlib/runtime.ev"
 
 enum PState = Spawning | Done
 
-claim parent(state, state_next ∈ PState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm parent(state ∈ PState)
     state_next = match state
         Spawning ⇒ Done
         Done     ⇒ Done
@@ -36,9 +34,7 @@ claim parent(state, state_next ∈ PState,
 
 enum WState = WInit(Int) | WDone(Int)
 
-claim worker(state, state_next ∈ WState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm worker(state ∈ WState)
     spawnable_only
 
     my_id ∈ Int

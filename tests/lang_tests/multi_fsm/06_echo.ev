@@ -29,10 +29,8 @@ type World
 
 enum EchoState = Echoing
 
-claim echo(world, world_next ∈ World,
-           state, state_next ∈ EchoState,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm echo(world, world_next ∈ World,
+           state ∈ EchoState)
     state_next = Echoing
 
     is_new ∈ Bool

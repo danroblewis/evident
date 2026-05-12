@@ -21,9 +21,9 @@
 //!     EnumRegistry and `'static` Z3 Context so the scheduler can
 //!     re-encode `state_next` as a Datatype value for the next
 //!     tick's pin.
-//!   * `encode_effect_result_list` — encode a `Vec<EffectResult>`
-//!     as the Z3 Datatype shape `stdlib/runtime.ev::ResultList`
-//!     for pinning `last_results`.
+//!   * `effect_results_to_value` — build a `Value::SeqEnum` of
+//!     Result enums for pinning `last_results ∈ Seq(Result)` via
+//!     the multi-FSM scheduler's `given` map.
 //!
 //! These methods are part of the facade rather than a separate
 //! trait because the per-tick query path needs read access to
@@ -59,6 +59,68 @@ pub use crate::translate::Value;
 pub struct SystemBoundary {
     pub schemas: HashSet<String>,
     pub enums:   HashSet<String>,
+}
+
+/// When a `fsm`-keyword schema doesn't declare `state_next`,
+/// `last_results`, or `effects`, inject those memberships from the
+/// canonical types — the body looks the same as if the user had
+/// written them out. Errors if the user didn't declare `state`.
+///
+/// Injected just after the user's first-line params (`param_count`)
+/// so the order in error messages is: explicit params, then
+/// implicit FSM machinery, then body constraints. Order doesn't
+/// affect translation (memberships set up env names; constraints
+/// reference them by name).
+fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+    use crate::ast::{BodyItem, Keyword, Pins};
+    if !matches!(s.keyword, Keyword::Fsm) {
+        return Ok(());
+    }
+    let mut state_type: Option<String> = None;
+    let mut have_state_next = false;
+    let mut have_last_results = false;
+    let mut have_effects = false;
+    for item in &s.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            match name.as_str() {
+                "state" if state_type.is_none() => state_type = Some(type_name.clone()),
+                "state_next"   => have_state_next   = true,
+                "last_results" => have_last_results = true,
+                "effects"      => have_effects      = true,
+                _ => {}
+            }
+        }
+    }
+    let state_type = state_type.ok_or_else(|| RuntimeError::Parse(format!(
+        "fsm `{}` requires a `state ∈ <StateType>` parameter", s.name
+    )))?;
+    let mut injected: Vec<BodyItem> = Vec::new();
+    if !have_state_next {
+        injected.push(BodyItem::Membership {
+            name: "state_next".to_string(),
+            type_name: state_type,
+            pins: Pins::None,
+        });
+    }
+    if !have_last_results {
+        injected.push(BodyItem::Membership {
+            name: "last_results".to_string(),
+            type_name: "Seq(Result)".to_string(),
+            pins: Pins::None,
+        });
+    }
+    if !have_effects {
+        injected.push(BodyItem::Membership {
+            name: "effects".to_string(),
+            type_name: "EffectList".to_string(),
+            pins: Pins::None,
+        });
+    }
+    let insert_pos = s.param_count;
+    for (i, item) in injected.into_iter().enumerate() {
+        s.body.insert(insert_pos + i, item);
+    }
+    Ok(())
 }
 
 /// Walk a schema body and register any nested `subclaim` declarations
@@ -742,6 +804,8 @@ impl EvidentRuntime {
             self.load_file(&resolved)?;
         }
         for s in &prog.schemas {
+            let mut s = s.clone();
+            inject_fsm_params(&mut s)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());
             }
@@ -1358,23 +1422,10 @@ impl EvidentRuntime {
         self.z3_ctx
     }
 
-    /// Encode a list of EffectResults into a Z3 datatype value
-    /// matching stdlib/runtime.ev's `ResultList`.
-    pub fn encode_effect_result_list(
-        &self,
-        items: &[crate::ast::EffectResult],
-    ) -> Result<z3::ast::Datatype<'static>,
-                crate::translate::ast_encoder::EncodeError>
-    {
-        crate::translate::ast_encoder::encode_effect_result_list(
-            items, self.z3_ctx, &self.enums,
-        )
-    }
-
-    /// Build a `Value::SeqEnum` of `Result` enums. Future use:
-    /// Phase 6.3 will switch `last_results ∈ Seq(Result)` and
-    /// pin via given. Kept for that migration; unused today.
-    #[allow(dead_code)]
+    /// Build a `Value::SeqEnum` of `Result` enums. Used by the
+    /// multi-FSM scheduler to pin `last_results ∈ Seq(Result)`
+    /// via the `given` map (`assert_seq_given` handles the
+    /// `(DatatypeSeqVar, SeqEnum)` pair).
     pub fn effect_results_to_value(
         &self,
         items: &[crate::ast::EffectResult],

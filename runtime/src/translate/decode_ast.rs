@@ -275,6 +275,7 @@ pub fn decode_keyword(v: &Value) -> Result<Keyword> {
         "KClaim"    => Keyword::Claim,
         "KType"     => Keyword::Type,
         "KSubclaim" => Keyword::Subclaim,
+        "KFsm"      => Keyword::Fsm,
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Keyword".into(), variant: other.into(),
         }),
@@ -715,11 +716,6 @@ pub fn decode_result(v: &Value) -> Result<crate::ast::EffectResult> {
     })
 }
 
-#[allow(dead_code)]
-pub fn decode_result_list(v: &Value) -> Result<Vec<crate::ast::EffectResult>> {
-    decode_list(v, "ResultList", "ResNil", "ResCons", decode_result)
-}
-
 #[cfg(test)]
 mod effect_decoder_tests {
     use super::*;
@@ -798,22 +794,6 @@ mod effect_decoder_tests {
     fn decode_int_result() {
         let v = e("Result", "IntResult", vec![Value::Int(42)]);
         assert!(matches!(decode_result(&v).unwrap(), EffectResult::Int(42)));
-    }
-
-    #[test]
-    fn decode_result_list_round_trip() {
-        let list =
-            e("ResultList", "ResCons", vec![
-                e("Result", "IntResult", vec![Value::Int(1)]),
-                e("ResultList", "ResCons", vec![
-                    e("Result", "StringResult", vec![Value::Str("ok".into())]),
-                    e("ResultList", "ResNil", vec![]),
-                ]),
-            ]);
-        let decoded = decode_result_list(&list).unwrap();
-        assert_eq!(decoded.len(), 2);
-        assert!(matches!(&decoded[0], EffectResult::Int(1)));
-        assert!(matches!(&decoded[1], EffectResult::Str(s) if s == "ok"));
     }
 
     #[test]

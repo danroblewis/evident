@@ -40,9 +40,7 @@ enum LongState =
     LT4
     LTDone
 
-claim short_fsm(state, state_next ∈ ShortState,
-                last_results ∈ ResultList,
-                effects ∈ EffectList)
+fsm short_fsm(state ∈ ShortState)
     state_next = match state
         ST0    ⇒ ST1
         ST1    ⇒ ST2
@@ -53,9 +51,7 @@ claim short_fsm(state, state_next ∈ ShortState,
         STDone ⇒ ⟨⟩
         _      ⇒ ⟨Println("short")⟩
 
-claim long_fsm(state, state_next ∈ LongState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm long_fsm(state ∈ LongState)
     state_next = match state
         LT0    ⇒ LT1
         LT1    ⇒ LT2

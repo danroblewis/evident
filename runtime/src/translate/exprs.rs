@@ -1146,8 +1146,8 @@ fn collect_record_refs<'ctx>(
 /// Handle `enum_var = ⟨a, b, c⟩` where `enum_var` is a Cons/Nil-shaped
 /// enum (one variant with 0 fields = "Nil", one variant with 2 fields
 /// where the second field's declared type matches the enum itself =
-/// "Cons"). `EffectList`, `ResultList`, `ArgList`, user-defined
-/// `LinkedList`, etc. all qualify. The literal is lowered to nested
+/// "Cons"). `EffectList` (pending Phase 6.4 migration to Seq),
+/// user-defined `LinkedList`, etc. all qualify. The literal is lowered to nested
 /// constructor calls: `Cons(a, Cons(b, Cons(c, Nil)))`.
 ///
 /// `⟨⟩` (empty) lowers to just the Nil constructor.
@@ -1228,17 +1228,45 @@ fn translate_seq_lit_eq<'ctx>(
         return Some(Bool::and(ctx, &refs));
     }
 
-    // Composite-element Seq: each item must be a bare Identifier referring to
-    // flat sub-schema fields (e.g. `ball_rect`). Walk the Datatype's FieldKind
-    // list and assemble a constructor application from `env["ident.field"]`
-    // lookups, recursing for nested composites (e.g. `ball_rect.color.r`).
+    // Enum-element Seq (`Seq(EnumType)` — DatatypeSeqVar with empty
+    // fields). Each item is an enum constructor call like `IntResult(42)`
+    // (or a bare nullary variant identifier). Translate to a Datatype
+    // value via the existing enum-aware path and assert per-index
+    // equality. `last_results = ⟨IntResult(42)⟩` is the headline use.
     if let Some((arr, len, _, dt, fields)) = var.as_datatype_seq() {
+        if fields.is_empty() {
+            let enum_name = match var {
+                Var::DatatypeSeqVar { type_name, .. } => type_name.clone(),
+                _ => unreachable!(),
+            };
+            let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(items.len() + 1);
+            clauses.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            // Hint so that nested ⟨...⟩ items lower against this enum.
+            let elems: Option<Vec<Bool<'ctx>>> = with_target_enum_hint(
+                Some((enum_name, dt)),
+                || {
+                    let mut tmp: Vec<Bool<'ctx>> = Vec::with_capacity(items.len());
+                    for (i, item) in items.iter().enumerate() {
+                        let v = resolve_enum_ast(item, ctx, env, schemas)?;
+                        let idx = Int::from_i64(ctx, i as i64);
+                        let cell = arr.select(&idx).as_datatype()?;
+                        tmp.push(cell._eq(&v));
+                    }
+                    Some(tmp)
+                },
+            );
+            clauses.extend(elems?);
+            let refs: Vec<&Bool<'ctx>> = clauses.iter().collect();
+            return Some(Bool::and(ctx, &refs));
+        }
+        // Composite-element Seq: each item must be a bare Identifier referring to
+        // flat sub-schema fields (e.g. `ball_rect`). Walk the Datatype's FieldKind
+        // list and assemble a constructor application from `env["ident.field"]`
+        // lookups, recursing for nested composites (e.g. `ball_rect.color.r`).
         let n = items.len() as i64;
         let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(items.len() + 1);
         clauses.push(len._eq(&Int::from_i64(ctx, n)));
         for (i, item) in items.iter().enumerate() {
-            // Each composite item must be an Identifier whose flat-expanded
-            // sub-schema fields live in env under `ident.field` keys.
             let ident = match item {
                 Expr::Identifier(s) => s,
                 _ => return None,
@@ -2019,17 +2047,33 @@ fn translate_match_arms<'ctx, T>(
     body_translator: impl Fn(&Expr, &HashMap<String, Var<'ctx>>) -> Option<T>,
 ) -> Option<Vec<CompiledArm<'ctx, T>>> {
     use crate::ast::MatchPattern;
-    // v1: scrutinee must be a bare Identifier resolving to EnumVar.
-    let scr_name = match scr {
-        Expr::Identifier(n) if !n.contains('.') => n,
-        _ => return None,
-    };
-    let (scr_dt, dt) = match env.get(scr_name)? {
-        Var::EnumVar { ast, dt, .. }   => (ast.clone(), *dt),
-        Var::EnumValue { ast, .. }     => {
-            // A nullary enum constant — patterns still work but there's
-            // no dt with variants here. Skip; future work could lift.
-            let _ = ast; return None;
+    // Scrutinee shapes supported:
+    //   * Bare Identifier resolving to Var::EnumVar.
+    //   * Index(Identifier(seq), idx) where `seq` is a Var::DatatypeSeqVar
+    //     with empty fields (i.e. Seq(EnumType)) — element pulled via
+    //     arr.select(idx). Lets `match last_results[0]` reach the same
+    //     arm machinery as bare-identifier matches.
+    let (scr_dt, dt, scr_enum_name) = match scr {
+        Expr::Identifier(n) if !n.contains('.') => {
+            match env.get(n)? {
+                Var::EnumVar { ast, dt, enum_name } =>
+                    (ast.clone(), *dt, enum_name.clone()),
+                Var::EnumValue { .. } => return None,
+                _ => return None,
+            }
+        }
+        Expr::Index(seq_expr, idx_expr) => {
+            let Expr::Identifier(seq_name) = seq_expr.as_ref() else { return None };
+            if seq_name.contains('.') { return None; }
+            let (arr, dt, type_name) = match env.get(seq_name)? {
+                Var::DatatypeSeqVar { arr, dt, type_name, fields, .. }
+                    if fields.is_empty() =>
+                        (arr.clone(), *dt, type_name.clone()),
+                _ => return None,
+            };
+            let idx = translate_int(idx_expr, ctx, env)?;
+            let elem_dt = arr.select(&idx).as_datatype()?;
+            (elem_dt, dt, type_name)
         }
         _ => return None,
     };
@@ -2047,13 +2091,7 @@ fn translate_match_arms<'ctx, T>(
                 if binds.len() != z3_var.accessors.len() { return None; }
                 let tester = z3_var.tester.apply(&[&scr_dt]).as_bool()?;
                 let mut env2 = env_clone(env);
-                // Look up the scrutinee's enum-name → variant-fields
-                // metadata so we can resolve enum-typed payload binding
-                // types. The fields list is parallel to z3_var.accessors.
-                let scr_enum_name = match env.get(scr_name)? {
-                    Var::EnumVar { enum_name, .. } => enum_name.clone(),
-                    _ => return None,
-                };
+                let scr_enum_name = scr_enum_name.clone();
                 let field_decls: Vec<crate::ast::EnumField> = with_active_enums(|enums| {
                     enums.and_then(|er| {
                         er.by_name.borrow().get(&scr_enum_name)

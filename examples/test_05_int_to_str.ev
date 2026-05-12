@@ -8,20 +8,16 @@ import "stdlib/runtime.ev"
 
 enum FmtState = Issue | Show | Halt
 
-claim fmt_demo(state, state_next ∈ FmtState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm fmt_demo(state ∈ FmtState)
     state_next = match state
         Issue ⇒ Show
         Show ⇒ Halt
         Halt  ⇒ Halt
 
     formatted ∈ String
-    formatted = match last_results
-        ResCons(r, _) ⇒ match r
-            StringResult(s) ⇒ s
-            _               ⇒ "<no string>"
-        _             ⇒ "<no result>"
+    formatted = match last_results[0]
+        StringResult(s) ⇒ s
+        _               ⇒ "<no string>"
 
     effects = match state
         Issue ⇒ ⟨IntToStr(42)⟩
@@ -31,7 +27,7 @@ claim fmt_demo(state, state_next ∈ FmtState,
 claim sat_issue_emits_int_to_str
     state ∈ FmtState
     state_next ∈ FmtState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Issue
     fmt_demo

@@ -26,10 +26,8 @@ type World
 enum CountState =
     Counting(Int)         -- payload = last_seen_seq
 
-claim counter(world ∈ World,
-              state, state_next ∈ CountState,
-              last_results ∈ ResultList,
-              effects ∈ EffectList)
+fsm counter(world ∈ World,
+              state ∈ CountState)
     last_seen ∈ Int
     last_seen = match state
         Counting(s) ⇒ s

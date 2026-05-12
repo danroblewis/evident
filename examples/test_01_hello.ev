@@ -9,16 +9,14 @@
 --
 -- Even though there's only one FSM, it still runs through the
 -- multi-FSM scheduler. The runtime detects the FSM-shape claim
--- (state pair + ResultList + EffectList) and treats it
+-- (state pair + Seq(Result) + EffectList) and treats it
 -- uniformly — no special-case for "single FSM".
 
 import "stdlib/runtime.ev"
 
 enum HelloState = Init | Done
 
-claim hello(state, state_next ∈ HelloState,
-            last_results ∈ ResultList,
-            effects ∈ EffectList)
+fsm hello(state ∈ HelloState)
     state_next = match state
         Init ⇒ Done
         Done ⇒ Done
@@ -33,7 +31,7 @@ claim hello(state, state_next ∈ HelloState,
 claim sat_init_advances_to_done
     state ∈ HelloState
     state_next ∈ HelloState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     hello
@@ -43,7 +41,7 @@ claim sat_init_advances_to_done
 claim sat_init_emits_greeting_and_exit
     state ∈ HelloState
     state_next ∈ HelloState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     hello
@@ -53,7 +51,7 @@ claim sat_init_emits_greeting_and_exit
 claim unsat_done_returns_to_init
     state ∈ HelloState
     state_next ∈ HelloState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Done
     hello

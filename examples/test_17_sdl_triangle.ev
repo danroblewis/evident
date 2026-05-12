@@ -16,9 +16,7 @@ import "packages/sdl/render.ev"
 
 enum TState = Init | Done
 
-claim triangle(state, state_next ∈ TState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm triangle(state ∈ TState)
     state_next = match state
         Init ⇒ Done
         Done ⇒ Done
@@ -87,7 +85,7 @@ claim triangle(state, state_next ∈ TState,
 claim sat_init_emits_full_seq_then_exit
     state ∈ TState
     state_next ∈ TState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     triangle

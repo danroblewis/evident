@@ -25,10 +25,8 @@ import "stdlib/runtime.ev"
 
 enum S = Watching
 
-claim main(clock ∈ FrameClock,
-           state, state_next ∈ S,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm main(clock ∈ FrameClock,
+           state ∈ S)
     state_next = Watching
     effects = (clock.tick_count ≥ 3
                ? ⟨Println("3 ticks observed via FTI"), Exit(0)⟩

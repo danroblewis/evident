@@ -155,6 +155,7 @@ pub fn encode_keyword(
         Keyword::Claim    => "KClaim",
         Keyword::Type     => "KType",
         Keyword::Subclaim => "KSubclaim",
+        Keyword::Fsm      => "KFsm",
     };
     apply(enums, "Keyword", v, &[])
 }
@@ -630,25 +631,11 @@ pub fn encode_effect_result<'ctx>(
     }
 }
 
-pub fn encode_effect_result_list<'ctx>(
-    items: &[crate::ast::EffectResult],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    if items.is_empty() {
-        return apply(enums, "ResultList", "ResNil", &[]);
-    }
-    let head = encode_effect_result(&items[0], ctx, enums)?;
-    let tail = encode_effect_result_list(&items[1..], ctx, enums)?;
-    apply(enums, "ResultList", "ResCons", &[&head, &tail])
-}
-
 /// Build a `Value::SeqEnum` of `Result` enums from a slice of
-/// `EffectResult`s. Future use: when Phase 6.3 ships,
-/// `last_results` will be declared `∈ Seq(Result)` and pinned
-/// via the `given` map (using `assert_seq_given`'s SeqEnum case).
-/// Currently `last_results ∈ ResultList`; this helper is unused
-/// but kept in place for the future migration.
+/// `EffectResult`s. Used by the multi-FSM scheduler to pin
+/// `last_results ∈ Seq(Result)` via the `given` map; the
+/// `(DatatypeSeqVar, SeqEnum)` case in `assert_seq_given` does
+/// the per-index Z3 assertions.
 pub fn effect_results_to_value(items: &[crate::ast::EffectResult]) -> Value {
     let mk = |n: &str, fields: Vec<Value>| Value::Enum {
         enum_name: "Result".into(),
@@ -785,6 +772,7 @@ fn keyword_to_value(kw: &Keyword) -> Value {
         Keyword::Claim    => "KClaim",
         Keyword::Type     => "KType",
         Keyword::Subclaim => "KSubclaim",
+        Keyword::Fsm      => "KFsm",
     };
     ev("Keyword", v, vec![])
 }

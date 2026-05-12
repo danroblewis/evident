@@ -4,7 +4,7 @@
 --
 -- An effect-driven program declares `main` claim parameters of:
 --     state, state_next ∈ <user-defined>
---     last_results ∈ ResultList
+--     last_results ∈ Seq(Result)
 --     effects      ∈ Seq(Effect)
 --
 -- Each step the runtime solves for `(state_next, effects)` given
@@ -142,7 +142,8 @@ enum EffectList =
     EffCons(Effect, EffectList)
 
 -- ── Result: outcome of one performed effect ────────────────────
--- Position-aligned with the previous step's effect list.
+-- Position-aligned with the previous step's effect list. Threaded
+-- to user FSMs via `last_results ∈ Seq(Result)`.
 enum Result =
     NoResult
     IntResult(Int)
@@ -151,10 +152,6 @@ enum Result =
     RealResult(Real)
     HandleResult(Int)
     ErrorResult(String)
-
-enum ResultList =
-    ResNil
-    ResCons(Result, ResultList)
 
 
 -- ── Async event subscription markers (LEGACY) ─────────────────

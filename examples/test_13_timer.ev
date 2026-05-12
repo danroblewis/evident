@@ -14,9 +14,7 @@ import "stdlib/runtime.ev"
 
 enum T = Watching
 
-claim slow(state, state_next ∈ T,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm slow(state ∈ T)
     t ∈ Timer (interval_ms ↦ 50)
 
     state_next = Watching
@@ -27,7 +25,7 @@ claim slow(state, state_next ∈ T,
 claim sat_exits_at_three_ticks
     state ∈ T
     state_next ∈ T
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     t ∈ Timer
     t.tick_count = 3

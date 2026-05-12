@@ -57,6 +57,7 @@ enum Keyword =
     KClaim
     KType
     KSubclaim
+    KFsm
 
 -- ── List types — one per element kind we need ───────────────────
 

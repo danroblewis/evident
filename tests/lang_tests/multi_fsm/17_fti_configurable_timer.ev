@@ -23,9 +23,7 @@ import "stdlib/runtime.ev"
 enum FastS = FA | FDone
 enum SlowS = SA
 
-claim fast(state, state_next ∈ FastS,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm fast(state ∈ FastS)
     t ∈ Timer (interval_ms ↦ 20)
     state_next = match state
         FA    ⇒ (t.tick_count ≥ 5 ? FDone : FA)
@@ -34,9 +32,7 @@ claim fast(state, state_next ∈ FastS,
         FA    ⇒ (t.tick_count ≥ 5 ? ⟨Println("fast: 5 ticks @ 20ms")⟩ : ⟨⟩)
         FDone ⇒ ⟨⟩
 
-claim slow(state, state_next ∈ SlowS,
-           last_results ∈ ResultList,
-           effects ∈ EffectList)
+fsm slow(state ∈ SlowS)
     t ∈ Timer (interval_ms ↦ 100)
     state_next = SA
     effects = (t.tick_count ≥ 3

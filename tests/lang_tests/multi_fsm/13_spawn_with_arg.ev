@@ -29,9 +29,7 @@ import "stdlib/runtime.ev"
 
 enum PState = Spawning | Done
 
-claim parent(state, state_next ∈ PState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm parent(state ∈ PState)
     state_next = match state
         Spawning ⇒ Done
         Done     ⇒ Done
@@ -44,9 +42,7 @@ claim parent(state, state_next ∈ PState,
 
 enum WState = WInit(Int) | WReporting(Int) | WDone(Int)
 
-claim worker(state, state_next ∈ WState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm worker(state ∈ WState)
     my_id ∈ Int
     my_id = match state
         WInit(id)      ⇒ id

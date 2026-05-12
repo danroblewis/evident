@@ -29,10 +29,8 @@ enum CState =
     Sending(Int)          -- payload = next number to request
     Done
 
-claim client(world, world_next ∈ World,
-             state, state_next ∈ CState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm client(world, world_next ∈ World,
+             state ∈ CState)
 
     next_n ∈ Int
     next_n = match state
@@ -66,10 +64,8 @@ claim client(world, world_next ∈ World,
 
 enum SState = Serving
 
-claim server(world, world_next ∈ World,
-             state, state_next ∈ SState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm server(world, world_next ∈ World,
+             state ∈ SState)
     state_next = Serving
 
     is_new_req ∈ Bool

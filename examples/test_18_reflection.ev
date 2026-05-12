@@ -19,10 +19,8 @@ type World
 
 enum RState = Init | Done
 
-claim reflect_demo(world ∈ World,
-                   state, state_next ∈ RState,
-                   last_results ∈ ResultList,
-                   effects ∈ EffectList)
+fsm reflect_demo(world ∈ World,
+                   state ∈ RState)
     -- Probe: bind a local copy of world.program (the `matches`
     -- recognizer requires a bare-identifier scrutinee; dotted
     -- world-field references aren't allowed there). Then check
@@ -50,7 +48,7 @@ claim sat_init_advances_to_done
     world ∈ World
     state ∈ RState
     state_next ∈ RState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     reflect_demo

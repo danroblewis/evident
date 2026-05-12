@@ -2,8 +2,11 @@
 --
 -- `var = ⟨a, b, c⟩` where `var` is enum-typed and the enum has a
 -- 0-arity variant + a 2-arity self-recursive variant lowers to
--- `Cons(a, Cons(b, Cons(c, Nil)))`. EffectList, ResultList,
--- ArgList, and any user LinkedList qualify.
+-- `Cons(a, Cons(b, Cons(c, Nil)))`. EffectList (still Cons-shaped
+-- pending Phase 6.4) and any user LinkedList qualify. The runtime's
+-- ResultList / ArgList / StrList / IntList went to Seq(...) in
+-- earlier Cons-removal phases — see test_seq_of_enum_lit.ev for
+-- the Seq-targeted form of the same shorthand.
 
 import "stdlib/runtime.ev"
 
@@ -21,16 +24,6 @@ claim sat_efflist_empty
     effs ∈ EffectList
     effs = ⟨⟩
     effs = EffNil
-
-claim sat_resultlist_via_seqlit
-    rs ∈ ResultList
-    rs = ⟨IntResult(7), StringResult("ok")⟩
-    rs = ResCons(IntResult(7), ResCons(StringResult("ok"), ResNil))
-
-claim sat_arglist_via_seqlit
-    al ∈ ArgList
-    al = ⟨ArgInt(1), ArgInt(2), ArgInt(3)⟩
-    al = ArgCons(ArgInt(1), ArgCons(ArgInt(2), ArgCons(ArgInt(3), ArgNil)))
 
 -- User-defined Cons/Nil enum
 enum IntList = INil | ICons(Int, IntList)

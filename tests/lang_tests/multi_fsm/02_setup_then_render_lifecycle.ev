@@ -36,10 +36,8 @@ enum SetupState =
 enum RenderState =
     Frame
 
-claim setup(world, world_next ∈ World,
-            state, state_next ∈ SetupState,
-            last_results ∈ ResultList,
-            effects ∈ EffectList)
+fsm setup(world, world_next ∈ World,
+            state ∈ SetupState)
     state_next = match state
         Booting ⇒ Done
         Done    ⇒ Done
@@ -51,10 +49,8 @@ claim setup(world, world_next ∈ World,
         Booting ⇒ ⟨Println("setup: booting")⟩
         Done    ⇒ ⟨⟩
 
-claim render(world ∈ World,
-             state, state_next ∈ RenderState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm render(world ∈ World,
+             state ∈ RenderState)
     state_next = Frame
 
     msg ∈ String

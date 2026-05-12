@@ -14,9 +14,7 @@ import "packages/sdl/render.ev"
 
 enum RState = Init | Loop(Int) | Done
 
-claim red_window(state, state_next ∈ RState,
-                 last_results ∈ ResultList,
-                 effects ∈ EffectList)
+fsm red_window(state ∈ RState)
     state_next = match state
         Init    ⇒ Loop(60)
         Loop(n) ⇒ (n ≤ 1 ? Done : Loop(n - 1))
@@ -99,7 +97,7 @@ claim red_window(state, state_next ∈ RState,
 claim sat_init_advances_to_loop_60
     state ∈ RState
     state_next ∈ RState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     red_window

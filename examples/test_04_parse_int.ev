@@ -8,37 +8,25 @@ import "stdlib/runtime.ev"
 
 enum PState = Issue | Read | Done
 
-claim parse_demo(state, state_next ∈ PState,
-                 last_results ∈ ResultList,
-                 effects ∈ EffectList)
+fsm parse_demo(state ∈ PState)
     state_next = match state
         Issue ⇒ Read
         Read  ⇒ Done
         Done  ⇒ Done
 
     -- Pull the first two results from last_results (the two ParseInts).
+    -- Nested-list traversal is gone: index into Seq(Result) directly.
     good ∈ String
-    good = match last_results
-        ResCons(r, _) ⇒ match r
-            IntResult(n)    ⇒ "good: parsed an Int"
-            ErrorResult(_)  ⇒ "good: ERROR was expected to be success"
-            _               ⇒ "good: unknown result"
-        _             ⇒ "no results"
+    good = match last_results[0]
+        IntResult(n)    ⇒ "good: parsed an Int"
+        ErrorResult(_)  ⇒ "good: ERROR was expected to be success"
+        _               ⇒ "good: unknown result"
 
-    -- COUNTEREXAMPLE NOTE: nested constructor patterns in match
-    -- (e.g. `ResCons(_, ResCons(r, _))`) don't parse. Workaround:
-    -- descend with a sub-match in the body.
-    rest ∈ ResultList
-    rest = match last_results
-        ResCons(_, tail) ⇒ tail
-        _                ⇒ ResNil
     bad ∈ String
-    bad = match rest
-        ResCons(r, _) ⇒ match r
-            IntResult(_)   ⇒ "bad: parsed but expected error"
-            ErrorResult(_) ⇒ "bad: ERROR was correct"
-            _              ⇒ "bad: unknown"
-        _             ⇒ "no second result"
+    bad = match last_results[1]
+        IntResult(_)    ⇒ "bad: parsed but expected error"
+        ErrorResult(_)  ⇒ "bad: ERROR was correct"
+        _               ⇒ "bad: unknown"
 
     effects = match state
         Issue ⇒ ⟨ParseInt("42"), ParseInt("not-a-number")⟩
@@ -49,7 +37,7 @@ claim parse_demo(state, state_next ∈ PState,
 claim sat_issue_emits_two_parses
     state ∈ PState
     state_next ∈ PState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Issue
     parse_demo

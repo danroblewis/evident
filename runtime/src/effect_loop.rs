@@ -102,7 +102,7 @@ pub struct LoopResult {
 }
 
 /// One FSM-shaped claim's membership info. The runtime detects
-/// claims that match this shape (state pair + EffectList + ResultList,
+/// claims that match this shape (state pair + EffectList + Seq(Result),
 /// optionally + world record) and runs each as an FSM.
 ///
 /// For backwards compat the struct is still called `MainShape`. The
@@ -152,11 +152,18 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     detect_fsm_shape(rt, "main")
 }
 
-/// Detect FSM shape for a specific claim. Returns Some if the claim
-/// has the four-membership shape (state/state_next/last_results/effects)
-/// plus optional world/world_next.
+/// Detect FSM shape for a specific claim. Returns Some only when the
+/// claim is declared with the `fsm` keyword AND its body resolves to
+/// the canonical state pair + last_results + effects (the implicit-
+/// param injector guarantees the latter three for any `fsm`).
+///
+/// We deliberately keep the body walk for state-pair / world /
+/// FTI / event-subscription discovery; only the gate is new.
 pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let claim = rt.get_schema(claim_name)?;
+    if !matches!(claim.keyword, crate::ast::Keyword::Fsm) {
+        return None;
+    }
     let mut state_pair: Option<(String, String, String)> = None;
     let mut last_results_var = None;
     let mut effects_var = None;
@@ -221,7 +228,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
         if let BodyItem::Membership { name, type_name, pins } = item {
             if type_name == "EffectList" && name == "effects" && effects_var.is_none() {
                 effects_var = Some(name.clone());
-            } else if type_name == "ResultList" && name == "last_results"
+            } else if type_name == "Seq(Result)" && name == "last_results"
                    && last_results_var.is_none()
             {
                 last_results_var = Some(name.clone());
@@ -291,14 +298,6 @@ pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let mut writers: Vec<MainShape> = Vec::new();
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
-        // Skip test claims by naming convention. `sat_*` and
-        // `unsat_*` claims are the test prefixes recognized by
-        // `evident test`; if they happen to also match the FSM
-        // shape (because they pin state/effects/results to assert
-        // properties of an FSM), don't auto-instantiate them.
-        if name.starts_with("sat_") || name.starts_with("unsat_") {
-            continue;
-        }
         if let Some(shape) = detect_fsm_shape(rt, &name) {
             // Skip claims that carry the `spawnable_only` body marker
             // (one of `crate::ast::BODY_MARKERS`) — they should only
@@ -518,7 +517,7 @@ pub fn run_with_ctx(
     }
 
     let result = match fsms.len() {
-        0 => Err("no effect-driven claims found (need state pair + EffectList + ResultList)".to_string()),
+        0 => Err("no effect-driven claims found (need state pair + EffectList + Seq(Result))".to_string()),
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx, &env),
         1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
         _ => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
@@ -570,25 +569,24 @@ fn run_with_shape(
     let mut total_dispatch = std::time::Duration::ZERO;
 
     while step_count < opts.max_steps {
-        // Encode last_results.
-        let last_results_dt = rt.encode_effect_result_list(&last_results)
-            .map_err(|e| format!("encode last_results: {e}"))?;
+        // Pin last_results as a Seq(Result) via the `given` map —
+        // assert_seq_given handles the (DatatypeSeqVar, SeqEnum)
+        // pair, asserting `len + arr[i]=elem` per element.
+        let last_results_val = rt.effect_results_to_value(&last_results);
+        let mut given: std::collections::HashMap<String, Value> =
+            std::collections::HashMap::new();
+        given.insert(shape.last_results_var.clone(), last_results_val);
 
         // Build pin list. For step 0 we don't pin state (Z3 picks
         // the initial — the user's main pins it via state.step = 0
         // pattern or similar).
         let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match &current_state_value {
-            Some(s) => vec![
-                (shape.state_var.as_str(), s.clone()),
-                (shape.last_results_var.as_str(), last_results_dt),
-            ],
-            None => vec![
-                (shape.last_results_var.as_str(), last_results_dt),
-            ],
+            Some(s) => vec![(shape.state_var.as_str(), s.clone())],
+            None => vec![],
         };
 
         let solve_t0 = std::time::Instant::now();
-        let r = rt.query_with_pinned_datatypes(&shape.claim_name, &pins)
+        let r = rt.query_with_pins_and_given(&shape.claim_name, &pins, &given)
             .map_err(|e| format!("solve step {step_count}: {e}"))?;
         let solve_dt = solve_t0.elapsed();
         total_solve += solve_dt;
@@ -980,36 +978,34 @@ fn run_multi_fsm(
             }
             scheduled_this_tick[idx] = true;
 
-            // Build per-FSM pin list (state + last_results as Datatypes).
-            let last_results_dt = rt.encode_effect_result_list(&fsm_rt[idx].last_results)
-                .map_err(|e| format!("FSM `{}`: encode last_results: {e}", fsm.claim_name))?;
+            // Build per-FSM pin list (state as Datatype; last_results
+            // goes through the given map below as a Seq(Result)).
             let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match &fsm_rt[idx].current_state {
-                Some(s) => vec![
-                    (fsm.state_var.as_str(), s.clone()),
-                    (fsm.last_results_var.as_str(), last_results_dt),
-                ],
-                None => vec![
-                    (fsm.last_results_var.as_str(), last_results_dt),
-                ],
+                Some(s) => vec![(fsm.state_var.as_str(), s.clone())],
+                None => vec![],
             };
 
             // Build per-FSM view of the snapshot: include all
             // world.X entries as-is, plus FTI keys whose prefix
             // matches THIS fsm's claim_name (with prefix stripped
-            // so they match env's `param.field` keys).
-            let mut fsm_view: HashMap<String, Value>;
-            let solve_input: &HashMap<String, Value> = if fsm.fti_params.is_empty() {
-                &world_snapshot
+            // so they match env's `param.field` keys). Also include
+            // last_results as a Seq(Result) — pinned via the given
+            // map's assert_seq_given path.
+            let last_results_val = rt.effect_results_to_value(&fsm_rt[idx].last_results);
+            let mut fsm_view: HashMap<String, Value> = if fsm.fti_params.is_empty() {
+                world_snapshot.clone()
             } else {
-                fsm_view = world_snapshot.clone();
+                let mut v = world_snapshot.clone();
                 let prefix = format!("{}.", fsm.claim_name);
-                for (k, v) in &world_snapshot {
+                for (k, val) in &world_snapshot {
                     if let Some(stripped) = k.strip_prefix(&prefix) {
-                        fsm_view.insert(stripped.to_string(), v.clone());
+                        v.insert(stripped.to_string(), val.clone());
                     }
                 }
-                &fsm_view
+                v
             };
+            fsm_view.insert(fsm.last_results_var.clone(), last_results_val);
+            let solve_input: &HashMap<String, Value> = &fsm_view;
 
             let solve_t0 = std::time::Instant::now();
             let r = rt.query_with_pins_and_given(&fsm.claim_name, &pins, solve_input)
@@ -1166,7 +1162,7 @@ fn run_multi_fsm(
                     None => {
                         eprintln!("[loop] spawn: claim `{claim_name}` doesn't \
                                    have FSM shape (state pair + EffectList + \
-                                   ResultList); spawn ignored.");
+                                   Seq(Result)); spawn ignored.");
                         continue;
                     }
                 };
@@ -1432,11 +1428,8 @@ mod tests {
         rt.load_source("\
 enum S = Init | Done
 
-claim main
+fsm main
     state ∈ S
-    state_next ∈ S
-    last_results ∈ ResultList
-    effects ∈ EffectList
     state = Init ⇒ (state_next = Done ∧ effects = EffNil)
     state = Done ⇒ (state_next = Done ∧ effects = EffNil)
 ").unwrap();
@@ -1455,11 +1448,8 @@ claim main
         rt.load_source("\
 enum S = Init | Done
 
-claim main
+fsm main
     state ∈ S
-    state_next ∈ S
-    last_results ∈ ResultList
-    effects ∈ EffectList
     state = Init ⇒ (state_next = Done ∧ effects = EffNil)
     state = Done ⇒ (state_next = Done ∧ effects = EffNil)
 ").unwrap();

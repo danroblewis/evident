@@ -17,10 +17,8 @@ import "stdlib/runtime.ev"
 
 enum F = Watching
 
-claim watcher(clock ∈ FrameClock,
-              state, state_next ∈ F,
-              last_results ∈ ResultList,
-              effects ∈ EffectList)
+fsm watcher(clock ∈ FrameClock,
+              state ∈ F)
     state_next = Watching
     effects = (clock.tick_count ≥ 3
                ? ⟨Println("3 clock ticks observed"), Exit(0)⟩
@@ -30,7 +28,7 @@ claim sat_exits_at_three_ticks
     clock ∈ FrameClock
     state ∈ F
     state_next ∈ F
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     clock.tick_count = 3
     state = Watching

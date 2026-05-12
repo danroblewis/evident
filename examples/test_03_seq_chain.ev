@@ -13,9 +13,7 @@ import "stdlib/runtime.ev"
 
 enum SeqState = Init | Done
 
-claim seq_demo(state, state_next ∈ SeqState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm seq_demo(state ∈ SeqState)
     state_next = match state
         Init ⇒ Done
         Done ⇒ Done
@@ -33,7 +31,7 @@ claim seq_demo(state, state_next ∈ SeqState,
 claim sat_init_emits_chain_then_exit
     state ∈ SeqState
     state_next ∈ SeqState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     seq_demo

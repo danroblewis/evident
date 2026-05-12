@@ -791,7 +791,15 @@ pub fn evaluate_with_extra_assertions(
                     }
                 }
             }
-            _ => { /* type mismatch — silently skip, matches `evaluate` */ }
+            _ => {
+                // Seq pin: (DatatypeSeqVar, SeqEnum) / (SeqVar, SeqInt) etc.
+                // The multi-FSM scheduler routes `last_results ∈ Seq(Result)`
+                // through here; without this the pin is silently dropped and
+                // the FSM solves with an unconstrained Seq.
+                if let Some(b) = super::extract::assert_seq_given(var, value, ctx, enums) {
+                    solver.assert(&b);
+                }
+            }
         }
     }
 

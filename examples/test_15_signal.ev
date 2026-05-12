@@ -16,10 +16,8 @@ type World
 
 enum SState = Running | Done
 
-claim guard(world ∈ World,
-            state, state_next ∈ SState,
-            last_results ∈ ResultList,
-            effects ∈ EffectList)
+fsm guard(world ∈ World,
+            state ∈ SState)
     state_next = match state
         Running ⇒ (world.signal_received > 0 ? Done : Running)
         Done    ⇒ Done
@@ -32,7 +30,7 @@ claim sat_done_on_signal
     world ∈ World
     state ∈ SState
     state_next ∈ SState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     world.signal_received = 1
     state = Running

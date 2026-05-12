@@ -8,9 +8,7 @@ import "stdlib/runtime.ev"
 
 enum XState = Init | Done
 
-claim exit_demo(state, state_next ∈ XState,
-                last_results ∈ ResultList,
-                effects ∈ EffectList)
+fsm exit_demo(state ∈ XState)
     state_next = match state
         Init ⇒ Done
         Done ⇒ Done
@@ -22,7 +20,7 @@ claim exit_demo(state, state_next ∈ XState,
 claim sat_init_exits_42
     state ∈ XState
     state_next ∈ XState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Init
     exit_demo

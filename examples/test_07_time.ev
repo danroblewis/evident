@@ -17,9 +17,7 @@ import "stdlib/runtime.ev"
 
 enum TState = Ask | Format | Show | Done
 
-claim time_demo(state, state_next ∈ TState,
-                last_results ∈ ResultList,
-                effects ∈ EffectList)
+fsm time_demo(state ∈ TState)
     state_next = match state
         Ask    ⇒ Format
         Format ⇒ Show
@@ -28,19 +26,15 @@ claim time_demo(state, state_next ∈ TState,
 
     -- In Format state, last_results carries the Time IntResult.
     n_int ∈ Int
-    n_int = match last_results
-        ResCons(r, _) ⇒ match r
-            IntResult(n) ⇒ n
-            _            ⇒ -1
-        _             ⇒ -1
+    n_int = match last_results[0]
+        IntResult(n) ⇒ n
+        _            ⇒ -1
 
     -- In Show state, last_results carries IntToStr's StringResult.
     n_str ∈ String
-    n_str = match last_results
-        ResCons(r, _) ⇒ match r
-            StringResult(s) ⇒ s
-            _               ⇒ "?"
-        _             ⇒ "?"
+    n_str = match last_results[0]
+        StringResult(s) ⇒ s
+        _               ⇒ "?"
 
     effects = match state
         Ask    ⇒ ⟨Time⟩
@@ -51,7 +45,7 @@ claim time_demo(state, state_next ∈ TState,
 claim sat_ask_emits_time
     state ∈ TState
     state_next ∈ TState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Ask
     time_demo
@@ -60,9 +54,9 @@ claim sat_ask_emits_time
 claim sat_format_emits_int_to_str_of_int_result
     state ∈ TState
     state_next ∈ TState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Format
-    last_results = ResCons(IntResult(42), ResNil)
+    last_results = ⟨IntResult(42)⟩
     time_demo
     effects = ⟨IntToStr(42)⟩

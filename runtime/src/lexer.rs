@@ -22,6 +22,7 @@ pub enum Token {
     Claim,
     Type,
     Subclaim,
+    Fsm,
     Enum,         // enum Day = Mon | Tue | …
     Match,        // match scrutinee \n   Pattern ⇒ body  ...
     Matches,      // e matches Pattern — Bool, true iff e's variant matches
@@ -372,6 +373,7 @@ fn keyword_or_ident(s: String) -> Token {
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,
+        "fsm"      => Token::Fsm,
         "enum"     => Token::Enum,
         "match"    => Token::Match,
         "matches"  => Token::Matches,

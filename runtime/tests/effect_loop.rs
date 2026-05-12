@@ -35,10 +35,8 @@ fn rt_with_stdlib(user: &str) -> EvidentRuntime {
 fn println_one_step_then_halt() {
     let rt = rt_with_stdlib("\
 enum S = Init | Done
-claim main
-    state, state_next ∈ S
-    last_results ∈ ResultList
-    effects ∈ EffectList
+fsm main
+    state ∈ S
     state = Init ⇒ (state_next = Done ∧ effects = EffCons(Println(\"hi\"), EffNil))
     state = Done ⇒ (state_next = Done ∧ effects = EffNil)
 ");
@@ -58,10 +56,8 @@ claim main
 fn no_effect_program_halts_immediately() {
     let rt = rt_with_stdlib("\
 enum S = Init | Done
-claim main
-    state, state_next ∈ S
-    last_results ∈ ResultList
-    effects ∈ EffectList
+fsm main
+    state ∈ S
     state = Init ⇒ (state_next = Done ∧ effects = EffNil)
     state = Done ⇒ (state_next = Done ∧ effects = EffNil)
 ");
@@ -80,10 +76,8 @@ claim main
 fn multiple_println_in_one_step() {
     let rt = rt_with_stdlib("\
 enum S = Init | Done
-claim main
-    state, state_next ∈ S
-    last_results ∈ ResultList
-    effects ∈ EffectList
+fsm main
+    state ∈ S
     state = Init ⇒
         (state_next = Done ∧
          effects = EffCons(Println(\"a\"), EffCons(Println(\"b\"), EffNil)))

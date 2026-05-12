@@ -68,7 +68,7 @@ impl Parser {
             }
             match self.peek() {
                 Token::Eof => break,
-                Token::Schema | Token::Claim | Token::Type => {
+                Token::Schema | Token::Claim | Token::Type | Token::Fsm => {
                     let s = self.parse_schema_decl()?;
                     program.schemas.push(s);
                 }
@@ -302,6 +302,7 @@ impl Parser {
             Token::Schema => Keyword::Schema,
             Token::Claim  => Keyword::Claim,
             Token::Type   => Keyword::Type,
+            Token::Fsm    => Keyword::Fsm,
             other => return Err(ParseError(format!(
                 "expected keyword, got {:?}", other))),
         };

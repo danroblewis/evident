@@ -18,9 +18,7 @@ import "stdlib/runtime.ev"
 enum PState = Spawn | Wait(Int) | Done
 enum WState = WInit(Int) | WGo
 
-claim worker(state, state_next ∈ WState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm worker(state ∈ WState)
     spawnable_only
 
     state_next = match state
@@ -36,9 +34,7 @@ claim worker(state, state_next ∈ WState,
         WInit(_) ⇒ ⟨Println(my_id_str)⟩
         WGo      ⇒ ⟨⟩
 
-claim parent(state, state_next ∈ PState,
-             last_results ∈ ResultList,
-             effects ∈ EffectList)
+fsm parent(state ∈ PState)
     state_next = match state
         Spawn    ⇒ Wait(3)
         Wait(k)  ⇒ (k ≤ 1 ? Done : Wait(k - 1))
@@ -52,7 +48,7 @@ claim parent(state, state_next ∈ PState,
 claim sat_parent_emits_spawn_then_println
     state ∈ PState
     state_next ∈ PState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Spawn
     parent
@@ -61,7 +57,7 @@ claim sat_parent_emits_spawn_then_println
 claim sat_worker_init_emits_println
     state ∈ WState
     state_next ∈ WState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = WInit(7)
     worker

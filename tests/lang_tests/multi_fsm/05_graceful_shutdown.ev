@@ -40,20 +40,16 @@ type World
 
 enum ProducerState = Producing
 
-claim producer(world, world_next ∈ World,
-               state, state_next ∈ ProducerState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm producer(world, world_next ∈ World,
+               state ∈ ProducerState)
     state_next = Producing
     world_next.counter = world.counter + 1
     effects = ⟨Println("produced")⟩
 
 enum ConsumerState = Consuming
 
-claim consumer(world ∈ World,
-               state, state_next ∈ ConsumerState,
-               last_results ∈ ResultList,
-               effects ∈ EffectList)
+fsm consumer(world ∈ World,
+               state ∈ ConsumerState)
     state_next = Consuming
     effects = (world.counter ≥ 3
                ? ⟨Println("consumer: cleanup"), Exit(0)⟩

@@ -29,10 +29,8 @@ type World
 
 enum WState = Watching
 
-claim watcher(world, world_next ∈ World,
-              state, state_next ∈ WState,
-              last_results ∈ ResultList,
-              effects ∈ EffectList)
+fsm watcher(world, world_next ∈ World,
+              state ∈ WState)
     state_next = Watching
 
     new_tick ∈ Bool

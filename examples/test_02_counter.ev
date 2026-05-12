@@ -18,9 +18,7 @@ import "stdlib/runtime.ev"
 
 enum CountState = Start | Count(Int) | Format(Int) | Done
 
-claim counter(state, state_next ∈ CountState,
-              last_results ∈ ResultList,
-              effects ∈ EffectList)
+fsm counter(state ∈ CountState)
     state_next = match state
         Start     ⇒ Count(5)
         Count(n)  ⇒ Format(n)
@@ -29,11 +27,9 @@ claim counter(state, state_next ∈ CountState,
 
     -- Format state: pull the prior IntToStr result and print it.
     n_str ∈ String
-    n_str = match last_results
-        ResCons(r, _) ⇒ match r
-            StringResult(s) ⇒ s
-            _               ⇒ "?"
-        _             ⇒ "?"
+    n_str = match last_results[0]
+        StringResult(s) ⇒ s
+        _               ⇒ "?"
 
     effects = match state
         Start     ⇒ ⟨Println("starting count")⟩
@@ -44,7 +40,7 @@ claim counter(state, state_next ∈ CountState,
 claim sat_start_seeds_count_five
     state ∈ CountState
     state_next ∈ CountState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Start
     counter
@@ -53,7 +49,7 @@ claim sat_start_seeds_count_five
 claim sat_count_emits_int_to_str
     state ∈ CountState
     state_next ∈ CountState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Count(3)
     counter
@@ -62,7 +58,7 @@ claim sat_count_emits_int_to_str
 claim sat_format_one_goes_done
     state ∈ CountState
     state_next ∈ CountState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Format(1)
     counter
@@ -71,7 +67,7 @@ claim sat_format_one_goes_done
 claim unsat_count_increments
     state ∈ CountState
     state_next ∈ CountState
-    last_results ∈ ResultList
+    last_results ∈ Seq(Result)
     effects ∈ EffectList
     state = Format(3)
     counter
