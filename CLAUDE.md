@@ -80,12 +80,12 @@ your task:
 | Writing a new program (any program) | [`examples/`](examples/) — copy the closest existing demo's shape |
 | Looking for the punch list of known runtime gaps | [`examples/COUNTEREXAMPLES.md`](examples/COUNTEREXAMPLES.md) |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
-| Writing or extending a foreign resource binding — FTI typed resource, world-plugin bridge, or stdlib FFI wrapper (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/foreign-bindings.md`](docs/guide/foreign-bindings.md) |
+| Writing or extending an FFI wrapper library (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |
 | Writing a multi-FSM program (cookbook) | [`docs/guide/multi-fsm-programs.md`](docs/guide/multi-fsm-programs.md) |
 | Designing/extending the multi-FSM runtime, halt semantics, or scheduler | [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) + [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md) |
-| Trying to understand the architectural goals (~11K Rust target, FTI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
-| Designing the foreign-resource layer (FTI thesis, bridge model, v3 lifecycle gap) | [`docs/design/foreign-type-interface.md`](docs/design/foreign-type-interface.md) + [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
+| Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
+| Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
 
 The two `docs/guide/*` docs were written specifically to spare future-you
@@ -174,7 +174,7 @@ ship with it.
 | AST → Z3 translator | `runtime/src/translate/` |
 | Effect dispatch | `runtime/src/effect_dispatch.rs` |
 | Multi-FSM scheduler | `runtime/src/effect_loop.rs` |
-| FTI bridges | `runtime/src/event_sources/` (one file per bridge), `runtime/src/fti.rs` (registry) |
+| FTI bridges | `runtime/src/event_sources.rs`, `runtime/src/fti.rs` |
 | Stdlib (Evident) | `stdlib/` |
 | Design docs | `docs/design/` |
 | Worked examples + integration tests | `examples/` |
@@ -192,13 +192,9 @@ source text
   → runtime.rs            EvidentRuntime: top-level API (load_file, query)
   → effect_loop.rs        Multi-FSM scheduler (the executor)
   → effect_dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
-  → event_sources/        FTI bridge implementations (one file per
-                          typed C resource); mod.rs holds the
-                          EventSource trait + WORLD_PLUGIN_INSTALLERS
-                          (auto-install via reserved world fields)
+  → event_sources.rs      FTI bridge implementations (one struct per
+                          typed C resource)
   → fti.rs                FTI registry: type-name → install fn
-                          (for typed-parameter resources like
-                          win ∈ SDL_Window)
 ```
 
 Supporting modules:
@@ -262,11 +258,9 @@ There are TWO ways an FSM subscribes to async events:
 
 If NO FSM declares any subscription, falls back to coarse wake for
 back-compat. When all sources go dead (channel returns Err), the
-scheduler halts cleanly. See `runtime/src/event_sources/mod.rs`
-for the `EventSource` trait — adding a new source is implementing
-the trait in a sibling file and appending it to
-`WORLD_PLUGIN_INSTALLERS` (or to `INSTALLERS` in `fti.rs` for a
-typed-parameter resource).
+scheduler halts cleanly. See `runtime/src/event_sources.rs` for
+the `EventSource` trait — adding a new source is implementing the
+trait + wiring it into `run_with_ctx`.
 
 **Sources are FSMs too.** Each event source is a stateful state
 machine implemented in Rust — same coordination model as user FSMs,
@@ -288,57 +282,6 @@ the runtime refuses to allow it. See `docs/design/fsm-subscriptions.md`
 **Design**: [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) covers
 the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
 covers the scheduler model and 5-phase implementation status.
-
-## Foreign resources (FTI)
-
-The language's framing for foreign I/O is the **Foreign Type
-Interface**, not FFI. A file handle isn't an `int`; a window isn't
-a pointer. `open` / `read` / `write` / `close` aren't independent
-functions — they're operations on a stateful resource whose valid
-sequence the runtime should own. The mental model: foreign
-resources are state machines, and Evident is a language for
-coordinating state machines.
-
-**Two shipped patterns** (both treat the bridge as a writer FSM
-in the multi-FSM scheduler):
-
-  * **Plugin-as-writer** — user's `World` declares a reserved
-    field (`tick_count: Int`, `stdin_line: String`,
-    `signal_received: Int`, …); the runtime auto-installs a bridge
-    that writes it. User FSMs subscribe through normal world
-    read-set inference. Registry: `WORLD_PLUGIN_INSTALLERS` in
-    `runtime/src/event_sources/mod.rs`.
-  * **Typed-parameter** — FSM declares
-    `name ∈ Type (config ↦ value)`; the runtime starts a per-
-    instance bridge keyed on the declaration site. Each
-    declaration gets a distinct instance. Registry: `INSTALLERS`
-    in `runtime/src/fti.rs`. Types today: `FrameClock`, `Timer`,
-    `Hostname`, `SDL_Window`, `GL_Program`.
-
-**FFI (`LibCall` / `FFICall`) remains as the escape hatch** —
-useful for one-shot syscalls and for wrapping C libraries whose
-state machine isn't worth modeling yet. Stdlib claims wrap raw
-FFI behind typed effect-builder claims (`shell_run`,
-`sdl_pump_events`); demo files are forbidden from using raw FFI
-directly. When you reach for `LibCall` from inside the runtime
-crate, consider whether a bridge would be a better fit.
-
-**Open question (v3)**: the runtime doesn't yet validate
-*operation sequences* — `read` after `close`, `SwapBuffers` after
-`DestroyWindow`. The bridge owns the C pointer so the user can't
-free it manually, but the order of operations on a live resource
-is the user's responsibility. The thesis-completing work is to
-declare each foreign type's lifecycle stages as an enum, tag each
-operation with its valid pre-state, and let the solver enforce
-the sequence at load time. See
-`docs/design/foreign-type-interface.md` for the design.
-
-**Guide**: [`docs/guide/foreign-bindings.md`](docs/guide/foreign-bindings.md)
-— how to use FTI from Evident, write a new bridge, and use the
-FFI escape hatch.
-**Design**: [`docs/design/foreign-type-interface.md`](docs/design/foreign-type-interface.md)
-covers the thesis and v3 gap; [`docs/design/ffi-design.md`](docs/design/ffi-design.md)
-covers the `Effect::FFICall` primitive.
 
 ## Keyword Conventions
 

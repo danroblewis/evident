@@ -343,6 +343,5 @@ enum CountState =
   * [`multi-fsm.md`](../design/multi-fsm.md) — composition patterns.
   * [`effect-state-machines.md`](effect-state-machines.md) — how to
     write a single FSM (the building block).
-  * [`foreign-bindings.md`](foreign-bindings.md) — the Foreign
-    Type Interface (FTI) for typed foreign resources, plus the
-    raw FFI escape hatch.
+  * [`ffi-bindings.md`](ffi-bindings.md) — adding FFI surface for
+    custom C libraries.

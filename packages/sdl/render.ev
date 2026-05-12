@@ -9,7 +9,7 @@
 -- For outlined rectangles: `draw_rect_outline` packages 4 line
 -- draws into one EffectList. For filled rectangles, the
 -- malloc'd-SDL_Rect path needs additional FFI plumbing — sketched
--- in docs/guide/foreign-bindings.md.
+-- in docs/guide/ffi-bindings.md.
 --
 -- All call effects go through the cached LibCall — the runtime
 -- resolves libSDL2 + each symbol once and reuses thereafter.
@@ -138,7 +138,7 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 -- take `const SDL_Rect*` — a 16-byte C struct of 4 ints (x, y, w, h).
 -- Constructing that struct from Evident needs `malloc` + raw memory
 -- writes via FFI, which we haven't built yet. Sketched out in
--- docs/guide/foreign-bindings.md as a future addition.
+-- docs/guide/ffi-bindings.md as a future addition.
 --
 -- For now: outline rectangles via 4 line draws, returned as a single
 -- EffectList. One library invocation, one state in the caller.
