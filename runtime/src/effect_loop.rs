@@ -20,6 +20,7 @@ use crate::ast::{EffectResult, BodyItem};
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
 use crate::runtime::EvidentRuntime;
 use crate::translate::{Value, ast_decoder};
+use std::collections::HashMap;
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]

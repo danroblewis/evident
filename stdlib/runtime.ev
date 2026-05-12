@@ -4,7 +4,7 @@
 --
 -- An effect-driven program declares `main` claim parameters of:
 --     state, state_next ∈ <user-defined>
---     last_results ∈ Seq(Result)
+--     last_results ∈ ResultList
 --     effects      ∈ Seq(Effect)
 --
 -- Each step the runtime solves for `(state_next, effects)` given

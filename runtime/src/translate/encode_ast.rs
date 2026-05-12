@@ -643,6 +643,30 @@ pub fn encode_effect_result_list<'ctx>(
     apply(enums, "ResultList", "ResCons", &[&head, &tail])
 }
 
+/// Build a `Value::SeqEnum` of `Result` enums from a slice of
+/// `EffectResult`s. Future use: when Phase 6.3 ships,
+/// `last_results` will be declared `∈ Seq(Result)` and pinned
+/// via the `given` map (using `assert_seq_given`'s SeqEnum case).
+/// Currently `last_results ∈ ResultList`; this helper is unused
+/// but kept in place for the future migration.
+pub fn effect_results_to_value(items: &[crate::ast::EffectResult]) -> Value {
+    let mk = |n: &str, fields: Vec<Value>| Value::Enum {
+        enum_name: "Result".into(),
+        variant: n.into(),
+        fields,
+    };
+    let elems: Vec<Value> = items.iter().map(|r| match r {
+        crate::ast::EffectResult::NoResult     => mk("NoResult", vec![]),
+        crate::ast::EffectResult::Int(n)       => mk("IntResult", vec![Value::Int(*n)]),
+        crate::ast::EffectResult::Str(s)       => mk("StringResult", vec![Value::Str(s.clone())]),
+        crate::ast::EffectResult::Bool(b)      => mk("BoolResult", vec![Value::Bool(*b)]),
+        crate::ast::EffectResult::Real(f)      => mk("RealResult", vec![Value::Real(*f)]),
+        crate::ast::EffectResult::Handle(h)    => mk("HandleResult", vec![Value::Int(*h as i64)]),
+        crate::ast::EffectResult::Error(s)     => mk("ErrorResult", vec![Value::Str(s.clone())]),
+    }).collect();
+    Value::SeqEnum(elems)
+}
+
 // ── Pure-Rust mirror: Program → Value::Enum tree ───────────────
 //
 // The encoders above produce Z3 `Datatype<'static>` values for use

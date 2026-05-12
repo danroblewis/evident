@@ -252,7 +252,7 @@ pub fn sample_cached_inner<'ctx>(
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
-                if let Some(b) = assert_seq_given(var, value, ctx) {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     cached.solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
@@ -401,7 +401,7 @@ pub fn run_cached<'ctx>(
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
-                if let Some(b) = assert_seq_given(var, value, ctx) {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     cached.solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
@@ -573,7 +573,7 @@ pub fn evaluate(
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
-                if let Some(b) = assert_seq_given(var, value, ctx) {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
@@ -963,7 +963,7 @@ pub fn evaluate_with_core(
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
-                if let Some(b) = assert_seq_given(var, value, ctx) {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);
                 }
             }

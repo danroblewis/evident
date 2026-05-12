@@ -213,7 +213,30 @@ pub(super) fn assert_seq_given<'ctx>(
     var: &Var<'ctx>,
     value: &Value,
     ctx: &'ctx Context,
+    enums: Option<&super::types::EnumRegistry>,
 ) -> Option<Bool<'ctx>> {
+    if let (Var::DatatypeSeqVar { arr, len, dt, fields, .. }, Value::SeqEnum(items)) =
+        (var, value)
+    {
+        if fields.is_empty() {
+            // Seq(EnumType) — build each Datatype element from its
+            // Value::Enum and pin into arr[i]. Uses the cached
+            // 'static DatatypeSort directly so we don't need the
+            // EnumRegistry's name lookup (and don't need a 'static
+            // lifetime bound on this function).
+            let _ = enums;
+            let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
+            conjuncts.push(len._eq(&Int::from_i64(ctx, items.len() as i64)));
+            for (i, element) in items.iter().enumerate() {
+                let elem_dyn = value_enum_to_dyn_with_dt(element, dt, ctx)?;
+                let idx = Int::from_i64(ctx, i as i64);
+                let cell = arr.select(&idx);
+                conjuncts.push(cell._eq(&elem_dyn));
+            }
+            let refs: Vec<&Bool> = conjuncts.iter().collect();
+            return Some(Bool::and(ctx, &refs));
+        }
+    }
     match (var, value) {
         (Var::SeqVar { arr, len, elem: SeqElem::Int }, Value::SeqInt(items)) => {
             let mut conjuncts: Vec<Bool> = Vec::with_capacity(items.len() + 1);
@@ -263,6 +286,47 @@ pub(super) fn assert_seq_given<'ctx>(
         }
         _ => None,
     }
+}
+
+/// Build a Z3 Dynamic of an enum value from `Value::Enum` + the
+/// enum's already-built `DatatypeSort`. Used by `assert_seq_given`
+/// when pinning a `Seq(EnumType)` from a `Value::SeqEnum`. Doesn't
+/// require the EnumRegistry — the dt has everything we need.
+fn value_enum_to_dyn_with_dt<'ctx>(
+    v: &Value,
+    dt: &DatatypeSort<'ctx>,
+    ctx: &'ctx Context,
+) -> Option<z3::ast::Dynamic<'ctx>> {
+    let Value::Enum { variant, fields, .. } = v else { return None };
+    let var_idx = dt.variants.iter()
+        .position(|vv| vv.constructor.name() == *variant)?;
+    let ctor = &dt.variants[var_idx].constructor;
+    if fields.is_empty() {
+        return Some(z3::ast::Dynamic::from_ast(&ctor.apply(&[]).as_datatype()?));
+    }
+    // Build owned arg vec.
+    let owned: Vec<z3::ast::Dynamic<'ctx>> = fields.iter().filter_map(|f| {
+        match f {
+            Value::Int(n) =>
+                Some(z3::ast::Dynamic::from_ast(&Int::from_i64(ctx, *n))),
+            Value::Bool(b) =>
+                Some(z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b))),
+            Value::Str(s) =>
+                Some(z3::ast::Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?)),
+            Value::Real(r) => {
+                let i = (*r * 1_000_000.0) as i64;
+                Some(z3::ast::Dynamic::from_ast(
+                    &z3::ast::Real::from_real(ctx, i as i32, 1_000_000)))
+            }
+            // Nested enum: would need its own DatatypeSort which we
+            // don't have here. v1 fallback: bail.
+            _ => None,
+        }
+    }).collect();
+    if owned.len() != fields.len() { return None; }
+    let refs: Vec<&dyn z3::ast::Ast<'ctx>> = owned.iter()
+        .map(|v| v as &dyn z3::ast::Ast<'ctx>).collect();
+    Some(z3::ast::Dynamic::from_ast(&ctor.apply(&refs).as_datatype()?))
 }
 
 /// Read a Set value out of the model. Z3 sets are characteristic

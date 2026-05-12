@@ -62,6 +62,7 @@ pub mod ast_encoder {
     //! `evident dump-ast` CLI.
     pub use super::encode_ast::{encode_program, encode_body_items_into_seq,
                                  encode_effect_result, encode_effect_result_list,
+                                 effect_results_to_value,
                                  program_to_value, value_enum_to_datatype,
                                  EncodeError};
 }

@@ -1359,10 +1359,7 @@ impl EvidentRuntime {
     }
 
     /// Encode a list of EffectResults into a Z3 datatype value
-    /// matching stdlib/runtime.ev's `ResultList`. The
-    /// scheduler pins last-tick's results into `last_results`
-    /// before each per-FSM solve — see the "execution-layer
-    /// extension surface" section in the module docs.
+    /// matching stdlib/runtime.ev's `ResultList`.
     pub fn encode_effect_result_list(
         &self,
         items: &[crate::ast::EffectResult],
@@ -1372,6 +1369,17 @@ impl EvidentRuntime {
         crate::translate::ast_encoder::encode_effect_result_list(
             items, self.z3_ctx, &self.enums,
         )
+    }
+
+    /// Build a `Value::SeqEnum` of `Result` enums. Future use:
+    /// Phase 6.3 will switch `last_results ∈ Seq(Result)` and
+    /// pin via given. Kept for that migration; unused today.
+    #[allow(dead_code)]
+    pub fn effect_results_to_value(
+        &self,
+        items: &[crate::ast::EffectResult],
+    ) -> crate::translate::Value {
+        crate::translate::ast_encoder::effect_results_to_value(items)
     }
 
     pub fn query_with_program_value(
