@@ -368,10 +368,11 @@ pub fn decode_schema_decl(v: &Value) -> Result<SchemaDecl> {
         name:    decode_str(&fields[1])?,
         body:    decode_body_item_list(&fields[2])?,
         // The encoded AST shape (stdlib/ast.ev) doesn't yet carry
-        // first-line params separately; conservatively treat 0 as
-        // "no first-line params". Self-hosted passes can still
+        // first-line params or the external flag separately;
+        // conservatively treat 0/false. Self-hosted passes can still
         // observe the body items.
         param_count: 0,
+        external: false,
     })
 }
 

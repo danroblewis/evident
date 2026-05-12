@@ -68,7 +68,8 @@ impl Parser {
             }
             match self.peek() {
                 Token::Eof => break,
-                Token::Schema | Token::Claim | Token::Type | Token::Fsm => {
+                Token::Schema | Token::Claim | Token::Type | Token::Fsm
+                | Token::External => {
                     let s = self.parse_schema_decl()?;
                     program.schemas.push(s);
                 }
@@ -268,6 +269,7 @@ impl Parser {
         let body = self.parse_indented_body()?;
         Ok(BodyItem::SubclaimDecl(SchemaDecl {
             keyword: Keyword::Subclaim, name, body, param_count: 0,
+            external: false,
         }))
     }
 
@@ -298,11 +300,37 @@ impl Parser {
     }
 
     fn parse_schema_decl(&mut self) -> Result<SchemaDecl> {
+        // Optional `external` modifier before the host keyword.
+        // `external type` and `external claim` are the only legal
+        // combinations: `external fsm` and `external schema` are
+        // rejected so the modifier reads "FFI is permitted in this
+        // declaration's body and nowhere else."
+        let external = if matches!(self.peek(), Token::External) {
+            self.bump();
+            true
+        } else {
+            false
+        };
         let keyword = match self.bump() {
-            Token::Schema => Keyword::Schema,
+            Token::Schema => {
+                if external {
+                    return Err(ParseError(
+                        "`external schema` is not allowed — use \
+                         `external type` (`schema` is deprecated anyway)".to_string()));
+                }
+                Keyword::Schema
+            }
             Token::Claim  => Keyword::Claim,
             Token::Type   => Keyword::Type,
-            Token::Fsm    => Keyword::Fsm,
+            Token::Fsm    => {
+                if external {
+                    return Err(ParseError(
+                        "`external fsm` is not allowed — FSMs orchestrate, \
+                         `external` schemas handle the boundary. Define an \
+                         `external claim` helper and call it from the fsm".to_string()));
+                }
+                Keyword::Fsm
+            }
             other => return Err(ParseError(format!(
                 "expected keyword, got {:?}", other))),
         };
@@ -321,7 +349,7 @@ impl Parser {
         }
         let param_count = body.len();
         body.extend(self.parse_indented_body()?);
-        Ok(SchemaDecl { keyword, name, body, param_count })
+        Ok(SchemaDecl { keyword, name, body, param_count, external })
     }
 
     /// Parse `( name1, name2, … ∈ Type, name3 ∈ Type2, … )`. Each

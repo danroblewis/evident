@@ -54,6 +54,14 @@ pub struct SchemaDecl {
     /// consts to keep recursive helper invocations isolated.
     /// Zero when the claim has no first-line params.
     pub param_count: usize,
+    /// `external` modifier — `external type X(...)` or
+    /// `external claim X(...)`. Marks the schema as a boundary-crossing
+    /// declaration: only `external` schemas may construct FFI / LibCall
+    /// effects in their body. The load-time check in
+    /// `runtime::enforce_external_only` rejects non-`external` claims
+    /// that try to emit those effects. `external` cannot combine with
+    /// `fsm` or `schema` — both are rejected at parse time.
+    pub external: bool,
 }
 
 /// A single line in a schema body.

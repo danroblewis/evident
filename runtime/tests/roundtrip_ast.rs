@@ -88,6 +88,7 @@ fn roundtrip_minimal_membership() {
             },
         ],
         param_count: 0,
+        external: false,
     });
 
     assert_program_eq(&decoded, &expected);

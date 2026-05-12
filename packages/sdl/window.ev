@@ -19,41 +19,41 @@ claim sdl_lib_path_macos(p ∈ String)
 
 -- ── Init flag values ──────────────────────────────────────────
 
-claim sdl_init_video(n ∈ Int)
+external claim sdl_init_video(n ∈ Int)
     n = 32      -- 0x20
 
 -- ── Effect builders ───────────────────────────────────────────
 
 -- FFIOpen("/opt/homebrew/lib/libSDL2.dylib") — returns a library handle.
-claim open_sdl_lib(e ∈ Effect)
+external claim open_sdl_lib(e ∈ Effect)
     e = FFIOpen("/opt/homebrew/lib/libSDL2.dylib")
 
 -- FFILookup(lib, "SDL_Init"). Returns the symbol handle.
-claim lookup_sdl_init(lib ∈ Int, e ∈ Effect)
+external claim lookup_sdl_init(lib ∈ Int, e ∈ Effect)
     e = FFILookup(lib, "SDL_Init")
 
-claim lookup_sdl_create_window(lib ∈ Int, e ∈ Effect)
+external claim lookup_sdl_create_window(lib ∈ Int, e ∈ Effect)
     e = FFILookup(lib, "SDL_CreateWindow")
 
-claim lookup_sdl_delay(lib ∈ Int, e ∈ Effect)
+external claim lookup_sdl_delay(lib ∈ Int, e ∈ Effect)
     e = FFILookup(lib, "SDL_Delay")
 
-claim lookup_sdl_destroy_window(lib ∈ Int, e ∈ Effect)
+external claim lookup_sdl_destroy_window(lib ∈ Int, e ∈ Effect)
     e = FFILookup(lib, "SDL_DestroyWindow")
 
-claim lookup_sdl_quit(lib ∈ Int, e ∈ Effect)
+external claim lookup_sdl_quit(lib ∈ Int, e ∈ Effect)
     e = FFILookup(lib, "SDL_Quit")
 
 -- ── Calls ─────────────────────────────────────────────────────
 
 -- SDL_Init(flags) → int (0 on success, negative on error).
 -- Signature: i(i)
-claim call_sdl_init(sym ∈ Int, flags ∈ Int, e ∈ Effect)
+external claim call_sdl_init(sym ∈ Int, flags ∈ Int, e ∈ Effect)
     e = FFICall(sym, "i(i)", ⟨ArgInt(flags)⟩)
 
 -- SDL_CreateWindow(title, x, y, w, h, flags) → SDL_Window*
 -- Signature: p(siiiii)
-claim call_sdl_create_window(sym ∈ Int, title ∈ String,
+external claim call_sdl_create_window(sym ∈ Int, title ∈ String,
                              x ∈ Int, y ∈ Int, w ∈ Int, h ∈ Int,
                              flags ∈ Int, e ∈ Effect)
     e = FFICall(sym, "p(siiiii)",
@@ -61,17 +61,17 @@ claim call_sdl_create_window(sym ∈ Int, title ∈ String,
 
 -- SDL_Delay(ms) — pause the calling thread.
 -- Signature: v(i)
-claim call_sdl_delay(sym ∈ Int, ms ∈ Int, e ∈ Effect)
+external claim call_sdl_delay(sym ∈ Int, ms ∈ Int, e ∈ Effect)
     e = FFICall(sym, "v(i)", ⟨ArgInt(ms)⟩)
 
 -- SDL_DestroyWindow(window) — free the window resources.
 -- Signature: v(p)
-claim call_sdl_destroy_window(sym ∈ Int, window ∈ Int, e ∈ Effect)
+external claim call_sdl_destroy_window(sym ∈ Int, window ∈ Int, e ∈ Effect)
     e = FFICall(sym, "v(p)", ⟨ArgHandle(window)⟩)
 
 -- SDL_Quit() — shut down the SDL subsystems.
 -- Signature: v()
-claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
+external claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
     e = FFICall(sym, "v()", ⟨⟩)
 
 -- ── One-shot LibCall wrappers (no FFILookup needed) ──────────
@@ -83,18 +83,18 @@ claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
 -- SDL_PumpEvents() — pull pending events from the OS into SDL's
 -- internal queue. macOS in particular needs this called regularly
 -- or the window appears unresponsive.
-claim sdl_pump_events(out ∈ Effect)
+external claim sdl_pump_events(out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_PumpEvents",
                   "v()", ⟨⟩)
 
 -- SDL_Delay(ms) — sleep the calling thread. Useful as a crude
 -- frame-rate limiter when you don't have a real vsync source.
-claim sdl_delay(ms ∈ Int, out ∈ Effect)
+external claim sdl_delay(ms ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Delay",
                   "v(i)", ⟨ArgInt(ms)⟩)
 
 -- SDL_Init(flags) → int. flags=32 is SDL_INIT_VIDEO.
-claim sdl_init(flags ∈ Int, out ∈ Effect)
+external claim sdl_init(flags ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
                   "i(i)", ⟨ArgInt(flags)⟩)
 
@@ -103,7 +103,7 @@ claim sdl_init(flags ∈ Int, out ∈ Effect)
 -- to center. Common flag values:
 --   2 = SDL_WINDOW_OPENGL
 --   4 = SDL_WINDOW_SHOWN  (default; SDL2 ignores)
-claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
+external claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
                         w ∈ Int, h ∈ Int, flags ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateWindow",
                   "p(siiiii)",
@@ -112,21 +112,21 @@ claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
 -- SDL_DestroyWindow(window). Currently a no-op on macOS via the
 -- runtime (the window pointer must be released on the main
 -- thread; the OS reclaims it on process exit).
-claim sdl_destroy_window(window ∈ Int, out ∈ Effect)
+external claim sdl_destroy_window(window ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyWindow",
                   "v(p)", ⟨ArgHandle(window)⟩)
 
 -- *_after variants for inside an Effect::Seq when the window
 -- pointer comes from a prior result rather than a known Int.
-claim sdl_show_window_after(prior_idx ∈ Int, out ∈ Effect)
+external claim sdl_show_window_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_ShowWindow",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
-claim sdl_raise_window_after(prior_idx ∈ Int, out ∈ Effect)
+external claim sdl_raise_window_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RaiseWindow",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 -- SDL_Quit() — shut down all initialized SDL subsystems.
-claim sdl_quit(out ∈ Effect)
+external claim sdl_quit(out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Quit",
                   "v()", ⟨⟩)

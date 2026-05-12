@@ -163,9 +163,9 @@ enum Result =
 -- Marker types still work for back-compat:
 --   FrameTimer parameter → wakes on "tick" events
 --   Signal parameter     → wakes on "signal" events
-type FrameTimer
+external type FrameTimer
     fired ∈ Bool
-type Signal
+external type Signal
     fired ∈ Bool
 
 -- ── FTI v1 — typed resources (experimental) ──────────────────
@@ -178,14 +178,14 @@ type Signal
 -- declaring `_ ∈ FrameClock` with the same parameter name would
 -- conflict (share the underlying state). Per-instance namespacing
 -- is v2. For now: one FTI parameter per program of each type.
-type FrameClock
+external type FrameClock
     tick_count ∈ Int
 
 -- Hostname FTI type. The bridge calls `hostname` once at startup
 -- and pins the result. Useful for programs that want to identify
 -- themselves (logging, distinguishing test runs, etc.) without
 -- threading a configuration parameter.
-type Hostname
+external type Hostname
     name ∈ String
 
 -- Per-instance configurable Timer. Declare with the desired
@@ -197,7 +197,7 @@ type Hostname
 -- Each `t ∈ Timer (...)` instance gets its own bridge running
 -- at the configured interval. Different FSMs can have different
 -- intervals. Without the pin, the runtime defaults to 100ms.
-type Timer
+external type Timer
     interval_ms ∈ Int
     tick_count  ∈ Int
 
@@ -214,7 +214,7 @@ type Timer
 --         -- and you can pass win.handle to GL/SDL effects
 --
 -- See `tests/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
-type SDL_Window
+external type SDL_Window
     title     ∈ String
     width     ∈ Int
     height    ∈ Int
@@ -233,7 +233,7 @@ type SDL_Window
 -- with a gl_handle in the same FSM (the bridges install in
 -- declaration order, so the context is current when the
 -- program bridge runs).
-type GL_Program
+external type GL_Program
     vertex_src   ∈ String
     fragment_src ∈ String
     handle       ∈ Int

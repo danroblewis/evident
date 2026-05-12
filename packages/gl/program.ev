@@ -41,7 +41,7 @@ import "stdlib/runtime.ev"
 -- version / vendor / GPU name as a UTF-8 string. Useful as a
 -- post-init smoke probe — non-empty result confirms the GL context
 -- is current and dispatch through libGL works.
-claim gl_get_string(name ∈ Int, out ∈ Effect)
+external claim gl_get_string(name ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetString", "s(i)",
                   ⟨ArgInt(name)⟩)
@@ -50,14 +50,14 @@ claim gl_get_string(name ∈ Int, out ∈ Effect)
 -- framebuffer. Channels are 0..1 floats (GLfloat = 32-bit). The
 -- runtime's `f` type code narrows ArgReal (f64) to f32 for the
 -- libffi slot.
-claim gl_clear_color(r ∈ Real, g ∈ Real, b ∈ Real, a ∈ Real, out ∈ Effect)
+external claim gl_clear_color(r ∈ Real, g ∈ Real, b ∈ Real, a ∈ Real, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glClearColor", "v(ffff)",
                   ⟨ArgReal(r), ArgReal(g), ArgReal(b), ArgReal(a)⟩)
 
 -- glClear(mask) — clears the bound framebuffer to the prior
 -- glClearColor. mask is an OR of GL_*_BUFFER_BIT flags.
-claim gl_clear(mask ∈ Int, out ∈ Effect)
+external claim gl_clear(mask ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glClear", "v(i)",
                   ⟨ArgInt(mask)⟩)
@@ -67,7 +67,7 @@ claim gl_clear(mask ∈ Int, out ∈ Effect)
 -- glCreateShader(shader_type) → GLuint shader id.
 -- shader_type is one of GL_VERTEX_SHADER (35633) or
 -- GL_FRAGMENT_SHADER (35632).
-claim gl_create_shader(shader_type ∈ Int, out ∈ Effect)
+external claim gl_create_shader(shader_type ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glCreateShader", "i(i)",
                   ⟨ArgInt(shader_type)⟩)
@@ -78,7 +78,7 @@ claim gl_create_shader(shader_type ∈ Int, out ∈ Effect)
 -- The C signature is `void(GLuint, GLsizei, const GLchar* const*,
 -- const GLint*)` — argument 3 is `char**` (the StrArr lowering),
 -- argument 4 is a nullable int* (we pass ArgHandle(0) → NULL).
-claim gl_shader_source(shader ∈ Int, source ∈ String, out ∈ Effect)
+external claim gl_shader_source(shader ∈ Int, source ∈ String, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glShaderSource", "v(iipp)",
                   ⟨ArgInt(shader), ArgInt(1), ArgStrArr(⟨source⟩), ArgHandle(0)⟩)
@@ -86,21 +86,21 @@ claim gl_shader_source(shader ∈ Int, source ∈ String, out ∈ Effect)
 -- glCompileShader(shader) — compile the source previously set on
 -- this shader. Outcome is queryable via glGetShaderiv (not yet
 -- wrapped — needs an output-pointer arg type).
-claim gl_compile_shader(shader ∈ Int, out ∈ Effect)
+external claim gl_compile_shader(shader ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glCompileShader", "v(i)",
                   ⟨ArgInt(shader)⟩)
 
 -- glIsShader(shader) → GLboolean. Lightweight "did the handle
 -- survive create+source+compile" probe.
-claim gl_is_shader(shader ∈ Int, out ∈ Effect)
+external claim gl_is_shader(shader ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glIsShader", "b(i)",
                   ⟨ArgInt(shader)⟩)
 
 -- glDeleteShader(shader) — drop a shader object. Safe even if the
 -- shader is still attached to a program (deletion is deferred).
-claim gl_delete_shader(shader ∈ Int, out ∈ Effect)
+external claim gl_delete_shader(shader ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glDeleteShader", "v(i)",
                   ⟨ArgInt(shader)⟩)
@@ -111,7 +111,7 @@ claim gl_delete_shader(shader ∈ Int, out ∈ Effect)
 --   GL_INFO_LOG_LENGTH      = 35716  (0x8B84) — int
 --   GL_SHADER_SOURCE_LENGTH = 35720  (0x8B88) — int
 -- Result: IntResult with the parameter value.
-claim gl_get_shader_iv(shader ∈ Int, pname ∈ Int, out ∈ Effect)
+external claim gl_get_shader_iv(shader ∈ Int, pname ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetShaderiv", "v(iip)",
                   ⟨ArgInt(shader), ArgInt(pname), ArgIntOut⟩)
@@ -119,38 +119,38 @@ claim gl_get_shader_iv(shader ∈ Int, pname ∈ Int, out ∈ Effect)
 -- ── Programs (link multiple shaders into a runnable pipeline) ──
 
 -- glCreateProgram() → GLuint program id.
-claim gl_create_program(out ∈ Effect)
+external claim gl_create_program(out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glCreateProgram", "i()", ⟨⟩)
 
 -- glAttachShader(program, shader) → void.
-claim gl_attach_shader(program ∈ Int, shader ∈ Int, out ∈ Effect)
+external claim gl_attach_shader(program ∈ Int, shader ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glAttachShader", "v(ii)",
                   ⟨ArgInt(program), ArgInt(shader)⟩)
 
 -- glLinkProgram(program) → void.
-claim gl_link_program(program ∈ Int, out ∈ Effect)
+external claim gl_link_program(program ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glLinkProgram", "v(i)",
                   ⟨ArgInt(program)⟩)
 
 -- glUseProgram(program) — bind a linked program for subsequent
 -- draw calls. Pass 0 to unbind.
-claim gl_use_program(program ∈ Int, out ∈ Effect)
+external claim gl_use_program(program ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUseProgram", "v(i)",
                   ⟨ArgInt(program)⟩)
 
 -- glDeleteProgram(program) — drop a program object.
-claim gl_delete_program(program ∈ Int, out ∈ Effect)
+external claim gl_delete_program(program ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glDeleteProgram", "v(i)",
                   ⟨ArgInt(program)⟩)
 
 -- glGetProgramiv(program, pname, params) — same shape as
 -- glGetShaderiv but for programs. GL_LINK_STATUS = 35714 (0x8B82).
-claim gl_get_program_iv(program ∈ Int, pname ∈ Int, out ∈ Effect)
+external claim gl_get_program_iv(program ∈ Int, pname ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetProgramiv", "v(iip)",
                   ⟨ArgInt(program), ArgInt(pname), ArgIntOut⟩)
@@ -161,13 +161,13 @@ claim gl_get_program_iv(program ∈ Int, pname ∈ Int, out ∈ Effect)
 
 -- glGenVertexArrays(1, &vao) — allocate one VAO id and return it
 -- via IntOut. Multi-VAO gen would need a buffer-out variant.
-claim gl_gen_vertex_array(out ∈ Effect)
+external claim gl_gen_vertex_array(out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGenVertexArrays", "v(ip)",
                   ⟨ArgInt(1), ArgIntOut⟩)
 
 -- glBindVertexArray(vao) — bind the named VAO. Pass 0 to unbind.
-claim gl_bind_vertex_array(vao ∈ Int, out ∈ Effect)
+external claim gl_bind_vertex_array(vao ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glBindVertexArray", "v(i)",
                   ⟨ArgInt(vao)⟩)
@@ -181,7 +181,7 @@ claim gl_bind_vertex_array(vao ∈ Int, out ∈ Effect)
 -- glDrawArrays(mode, first, count) — issue a draw of `count`
 -- vertices starting at index `first`. mode is GL_TRIANGLES (4),
 -- GL_LINES (1), GL_POINTS (0), etc.
-claim gl_draw_arrays(mode ∈ Int, first ∈ Int, count ∈ Int, out ∈ Effect)
+external claim gl_draw_arrays(mode ∈ Int, first ∈ Int, count ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glDrawArrays", "v(iii)",
                   ⟨ArgInt(mode), ArgInt(first), ArgInt(count)⟩)
@@ -190,7 +190,7 @@ claim gl_draw_arrays(mode ∈ Int, first ∈ Int, count ∈ Int, out ∈ Effect)
 -- framebuffer that subsequent drawing maps to NDC. Without this
 -- on Apple's GL-on-Metal driver, the default viewport can be 0×0
 -- and nothing is visible despite draw calls dispatching.
-claim gl_viewport(x ∈ Int, y ∈ Int, width ∈ Int, height ∈ Int,
+external claim gl_viewport(x ∈ Int, y ∈ Int, width ∈ Int, height ∈ Int,
                   out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glViewport", "v(iiii)",
@@ -199,7 +199,7 @@ claim gl_viewport(x ∈ Int, y ∈ Int, width ∈ Int, height ∈ Int,
 -- glGetError() → GLenum. Returns 0 (GL_NO_ERROR) when the queue is
 -- empty. Each call drains one error from the per-context queue.
 -- Useful for "did the previous draw actually issue?" diagnostics.
-claim gl_get_error(out ∈ Effect)
+external claim gl_get_error(out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetError", "i()", ⟨⟩)
 
@@ -216,38 +216,38 @@ claim gl_get_error(out ∈ Effect)
 -- doesn't match any active uniform in the program. Names that the
 -- shader declares but doesn't actually USE may also return -1
 -- because the linker prunes them.
-claim gl_get_uniform_location(program ∈ Int, name ∈ String, out ∈ Effect)
+external claim gl_get_uniform_location(program ∈ Int, name ∈ String, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetUniformLocation", "i(is)",
                   ⟨ArgInt(program), ArgStr(name)⟩)
 
 -- glUniform1f(location, v) — set a `uniform float`.
-claim gl_uniform_1f(loc ∈ Int, v ∈ Real, out ∈ Effect)
+external claim gl_uniform_1f(loc ∈ Int, v ∈ Real, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform1f", "v(if)",
                   ⟨ArgInt(loc), ArgReal(v)⟩)
 
 -- glUniform2f(location, v0, v1) — set a `uniform vec2`.
-claim gl_uniform_2f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, out ∈ Effect)
+external claim gl_uniform_2f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform2f", "v(iff)",
                   ⟨ArgInt(loc), ArgReal(v0), ArgReal(v1)⟩)
 
 -- glUniform3f(location, v0, v1, v2) — set a `uniform vec3`.
-claim gl_uniform_3f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, out ∈ Effect)
+external claim gl_uniform_3f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform3f", "v(ifff)",
                   ⟨ArgInt(loc), ArgReal(v0), ArgReal(v1), ArgReal(v2)⟩)
 
 -- glUniform4f(location, v0, v1, v2, v3) — set a `uniform vec4`.
-claim gl_uniform_4f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, v3 ∈ Real,
+external claim gl_uniform_4f(loc ∈ Int, v0 ∈ Real, v1 ∈ Real, v2 ∈ Real, v3 ∈ Real,
                     out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform4f", "v(iffff)",
                   ⟨ArgInt(loc), ArgReal(v0), ArgReal(v1), ArgReal(v2), ArgReal(v3)⟩)
 
 -- glUniform1i(location, v) — set a `uniform int` (or sampler unit).
-claim gl_uniform_1i(loc ∈ Int, v ∈ Int, out ∈ Effect)
+external claim gl_uniform_1i(loc ∈ Int, v ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform1i", "v(ii)",
                   ⟨ArgInt(loc), ArgInt(v)⟩)
@@ -256,39 +256,39 @@ claim gl_uniform_1i(loc ∈ Int, v ∈ Int, out ∈ Effect)
 -- When a shader / program / VAO / uniform-location id was
 -- produced earlier in the same Seq.
 
-claim gl_shader_source_after(prior_shader_idx ∈ Int, source ∈ String,
+external claim gl_shader_source_after(prior_shader_idx ∈ Int, source ∈ String,
                              out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glShaderSource", "v(iipp)",
                   ⟨ArgPriorResult(prior_shader_idx), ArgInt(1), ArgStrArr(⟨source⟩), ArgHandle(0)⟩)
 
-claim gl_compile_shader_after(prior_shader_idx ∈ Int, out ∈ Effect)
+external claim gl_compile_shader_after(prior_shader_idx ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glCompileShader", "v(i)",
                   ⟨ArgPriorResult(prior_shader_idx)⟩)
 
-claim gl_attach_shader_after(prior_program_idx ∈ Int,
+external claim gl_attach_shader_after(prior_program_idx ∈ Int,
                              prior_shader_idx ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glAttachShader", "v(ii)",
                   ⟨ArgPriorResult(prior_program_idx), ArgPriorResult(prior_shader_idx)⟩)
 
-claim gl_link_program_after(prior_program_idx ∈ Int, out ∈ Effect)
+external claim gl_link_program_after(prior_program_idx ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glLinkProgram", "v(i)",
                   ⟨ArgPriorResult(prior_program_idx)⟩)
 
-claim gl_use_program_after(prior_program_idx ∈ Int, out ∈ Effect)
+external claim gl_use_program_after(prior_program_idx ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUseProgram", "v(i)",
                   ⟨ArgPriorResult(prior_program_idx)⟩)
 
-claim gl_bind_vertex_array_after(prior_vao_idx ∈ Int, out ∈ Effect)
+external claim gl_bind_vertex_array_after(prior_vao_idx ∈ Int, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glBindVertexArray", "v(i)",
                   ⟨ArgPriorResult(prior_vao_idx)⟩)
 
-claim gl_get_uniform_location_after(prior_program_idx ∈ Int, name ∈ String,
+external claim gl_get_uniform_location_after(prior_program_idx ∈ Int, name ∈ String,
                                     out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glGetUniformLocation", "i(is)",
@@ -297,7 +297,7 @@ claim gl_get_uniform_location_after(prior_program_idx ∈ Int, name ∈ String,
 -- glUniform1f with the location coming from a prior glGetUniformLocation
 -- result. The value is a literal Real — useful when a per-frame caller
 -- has the time value baked into the chain (no SDL_GetTicks dance).
-claim gl_uniform_1f_after_loc(prior_loc_idx ∈ Int, v ∈ Real, out ∈ Effect)
+external claim gl_uniform_1f_after_loc(prior_loc_idx ∈ Int, v ∈ Real, out ∈ Effect)
     out = LibCall("/System/Library/Frameworks/OpenGL.framework/OpenGL",
                   "glUniform1f", "v(if)",
                   ⟨ArgPriorResult(prior_loc_idx), ArgReal(v)⟩)

@@ -26,11 +26,11 @@ claim libc_path_linux(p ∈ String)
 -- ── Effect builders for FFI plumbing ─────────────────────────
 
 -- Build the FFIOpen effect for libc on macOS.
-claim open_libc_macos(e ∈ Effect)
+external claim open_libc_macos(e ∈ Effect)
     e = FFIOpen("libSystem.dylib")
 
 -- Build FFILookup for a libc symbol.
-claim lookup_in_libc(libc ∈ Int, sym ∈ String, e ∈ Effect)
+external claim lookup_in_libc(libc ∈ Int, sym ∈ String, e ∈ Effect)
     e = FFILookup(libc, sym)
 
 -- ── POSIX open(2) flag values ─────────────────────────────────
@@ -52,17 +52,17 @@ claim flag_o_trunc(n ∈ Int)
 
 -- ── Effect builders for common syscalls ───────────────────────
 
-claim getpid_call(getpid_sym ∈ Int, e ∈ Effect)
+external claim getpid_call(getpid_sym ∈ Int, e ∈ Effect)
     e = FFICall(getpid_sym, "i()", ⟨⟩)
 
-claim open_call(open_sym ∈ Int, path ∈ String, flags ∈ Int, e ∈ Effect)
+external claim open_call(open_sym ∈ Int, path ∈ String, flags ∈ Int, e ∈ Effect)
     e = FFICall(open_sym, "i(si)",
                 ⟨ArgStr(path), ArgInt(flags)⟩)
 
-claim close_call(close_sym ∈ Int, fd ∈ Int, e ∈ Effect)
+external claim close_call(close_sym ∈ Int, fd ∈ Int, e ∈ Effect)
     e = FFICall(close_sym, "i(i)",
                 ⟨ArgInt(fd)⟩)
 
-claim write_call(write_sym ∈ Int, fd ∈ Int, buf ∈ String, len ∈ Int, e ∈ Effect)
+external claim write_call(write_sym ∈ Int, fd ∈ Int, buf ∈ String, len ∈ Int, e ∈ Effect)
     e = FFICall(write_sym, "i(isi)",
                 ⟨ArgInt(fd), ArgStr(buf), ArgInt(len)⟩)

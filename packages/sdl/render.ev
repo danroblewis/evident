@@ -31,32 +31,32 @@ type Color(red, green, blue, alpha ∈ Int)
 -- SDL_CreateRenderer(window, index, flags) → SDL_Renderer*
 -- index: -1 means "first matching driver".
 -- flags: 0 = SDL_RENDERER_ACCELERATED is the default; 0x2 explicit accel.
-claim create_renderer(window ∈ Int, out ∈ Effect)
+external claim create_renderer(window ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                   "p(pii)",
                   ⟨ArgHandle(window), ArgInt(0 - 1), ArgInt(0)⟩)
 
-claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
+external claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyRenderer",
                   "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── Color + clear + present ───────────────────────────────────
 
 -- SDL_SetRenderDrawColor(renderer, color) → int.
-claim set_draw_color(renderer ∈ Int, color ∈ Color, out ∈ Effect)
+external claim set_draw_color(renderer ∈ Int, color ∈ Color, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
                   "i(piiii)",
                   ⟨ArgHandle(renderer), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
 -- SDL_RenderClear(renderer) → int. Clears the entire viewport with
 -- the current draw color.
-claim render_clear(renderer ∈ Int, out ∈ Effect)
+external claim render_clear(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
                   "i(p)", ⟨ArgHandle(renderer)⟩)
 
 -- SDL_RenderPresent(renderer) — flip the back buffer to screen.
 -- Without this, nothing rendered is visible.
-claim render_present(renderer ∈ Int, out ∈ Effect)
+external claim render_present(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
                   "v(p)", ⟨ArgHandle(renderer)⟩)
 
@@ -66,21 +66,21 @@ claim render_present(renderer ∈ Int, out ∈ Effect)
 -- create_renderer call earlier in the same Seq. `prior_idx` is
 -- the Seq position whose return value is the renderer handle.
 
-claim create_renderer_after(prior_idx ∈ Int, out ∈ Effect)
+external claim create_renderer_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                   "p(pii)",
                   ⟨ArgPriorResult(prior_idx), ArgInt(0 - 1), ArgInt(0)⟩)
 
-claim set_draw_color_after(prior_idx ∈ Int, color ∈ Color, out ∈ Effect)
+external claim set_draw_color_after(prior_idx ∈ Int, color ∈ Color, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
                   "i(piiii)",
                   ⟨ArgPriorResult(prior_idx), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
-claim render_clear_after(prior_idx ∈ Int, out ∈ Effect)
+external claim render_clear_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
                   "i(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
-claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
+external claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
@@ -88,7 +88,7 @@ claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
 -- Nth prior result of the enclosing Seq (instead of a known
 -- Int handle). Use inside an Effect::Seq when the renderer
 -- was created earlier in the same Seq.
-claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
+external claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
                             n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
@@ -98,13 +98,13 @@ claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
 
 -- SDL_RenderDrawLine(renderer, from, to) → int.
 -- Draws using the renderer's current draw color.
-claim draw_line(renderer ∈ Int, from ∈ IVec2, to ∈ IVec2, out ∈ Effect)
+external claim draw_line(renderer ∈ Int, from ∈ IVec2, to ∈ IVec2, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
                   "i(piiii)",
                   ⟨ArgHandle(renderer), ArgInt(from.x), ArgInt(from.y), ArgInt(to.x), ArgInt(to.y)⟩)
 
 -- SDL_RenderDrawPoint(renderer, p) → int.
-claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
+external claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawPoint",
                   "i(pii)",
                   ⟨ArgHandle(renderer), ArgInt(p.x), ArgInt(p.y)⟩)
@@ -128,7 +128,7 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 --                    NULL_indices, 0) — draws arbitrary triangles
 -- with per-vertex colors. No texture / no indices in this minimal
 -- form; vertex order = triangle list (every 3 vertices = 1 tri).
-claim render_geometry(renderer ∈ Int, vertices ∈ PackedFieldList,
+external claim render_geometry(renderer ∈ Int, vertices ∈ PackedFieldList,
                       n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
@@ -161,7 +161,7 @@ claim sdl_vertex(pos_x, pos_y ∈ Real,
 -- the current draw color. The struct is built via the new
 -- ArgI32Buf primitive: `⟨pos.x, pos.y, size.x, size.y⟩` packs into
 -- a heap buffer that lives for the call's duration.
-claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
+external claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
                        out ∈ Effect)
     rect_buf ∈ Seq(Int)
     rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
