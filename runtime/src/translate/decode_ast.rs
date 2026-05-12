@@ -29,6 +29,10 @@ pub enum DecodeError {
     /// Expected a primitive (`Int` / `Bool` / `Str` / `Real`) but
     /// got something else.
     NotPrimitive { expected: &'static str, got: String },
+    /// A field had the wrong runtime kind (e.g. expected
+    /// `Value::SeqStr` but got something else). Distinct from
+    /// `NotPrimitive` because the expected kind isn't a primitive.
+    FieldKind { what: String, want: String, got: String },
 }
 
 impl std::fmt::Display for DecodeError {
@@ -44,6 +48,8 @@ impl std::fmt::Display for DecodeError {
                 write!(f, "variant `{variant}`: expected {expected} fields, got {got}"),
             DecodeError::NotPrimitive { expected, got } =>
                 write!(f, "expected primitive `{expected}`; got {got}"),
+            DecodeError::FieldKind { what, want, got } =>
+                write!(f, "{what}: expected {want}; got {got}"),
         }
     }
 }
@@ -628,14 +634,29 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
     })
 }
 
-/// Cons/Nil-shaped `StrList` decoder. Used as `ArgStrArr`'s payload.
+/// `ArgStrArr`'s payload — `Seq(String)` since Phase 6.2.b.
+/// Extract path produces Value::SeqStr; we just clone the Vec.
 pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
-    decode_list(v, "StrList", "StrNil", "StrCons", |item| decode_str(item))
+    if let Value::SeqStr(items) = v {
+        return Ok(items.clone());
+    }
+    Err(DecodeError::FieldKind {
+        what: "ArgStrArr payload".into(),
+        want: "Seq(String)".into(),
+        got: format!("{:?}", v),
+    })
 }
 
-/// Cons/Nil-shaped `IntList` decoder. Used as `ArgI32Buf`'s payload.
+/// `ArgI32Buf`'s payload — `Seq(Int)` since Phase 6.2.b.
 pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
-    decode_list(v, "IntList", "INil", "ICons", decode_int)
+    if let Value::SeqInt(items) = v {
+        return Ok(items.clone());
+    }
+    Err(DecodeError::FieldKind {
+        what: "ArgI32Buf payload".into(),
+        want: "Seq(Int)".into(),
+        got: format!("{:?}", v),
+    })
 }
 
 /// Decode a single `PackedField` (PfU8 / PfI32 / PfF32) into the
@@ -662,8 +683,19 @@ pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::ast::PackedField
     decode_list(v, "PackedFieldList", "PfNil", "PfCons", decode_packed_field)
 }
 
+/// `Effect::FFICall` / `Effect::LibCall`'s args payload —
+/// `Seq(FFIArg)` since Phase 6.2.c. Extract path produces
+/// `Value::SeqEnum`; we map each enum element through
+/// `decode_ffi_arg`.
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {
-    decode_list(v, "ArgList", "ArgNil", "ArgCons", decode_ffi_arg)
+    if let Value::SeqEnum(items) = v {
+        return items.iter().map(decode_ffi_arg).collect();
+    }
+    Err(DecodeError::FieldKind {
+        what: "FFICall/LibCall args".into(),
+        want: "Seq(FFIArg)".into(),
+        got: format!("{:?}", v),
+    })
 }
 
 pub fn decode_result(v: &Value) -> Result<crate::ast::EffectResult> {
@@ -719,14 +751,12 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_ffi_call_with_args() {
-        let arglist =
-            e("ArgList", "ArgCons", vec![
-                e("FFIArg", "ArgStr", vec![Value::Str("hi".into())]),
-                e("ArgList", "ArgCons", vec![
-                    e("FFIArg", "ArgInt", vec![Value::Int(42)]),
-                    e("ArgList", "ArgNil", vec![]),
-                ]),
-            ]);
+        // Phase 6.2.c: args are now Seq(FFIArg), extracted as
+        // Value::SeqEnum of FFIArg Value::Enum elements.
+        let arglist = Value::SeqEnum(vec![
+            e("FFIArg", "ArgStr", vec![Value::Str("hi".into())]),
+            e("FFIArg", "ArgInt", vec![Value::Int(42)]),
+        ]);
         let v = e("Effect", "FFICall", vec![
             Value::Int(7),
             Value::Str("i(si)".into()),

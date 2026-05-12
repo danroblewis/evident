@@ -34,13 +34,11 @@ type Color(red, green, blue, alpha ∈ Int)
 claim create_renderer(window ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                   "p(pii)",
-                  ArgCons(ArgHandle(window),
-                  ArgCons(ArgInt(0 - 1),
-                  ArgCons(ArgInt(0), ArgNil))))
+                  ⟨ArgHandle(window), ArgInt(0 - 1), ArgInt(0)⟩)
 
 claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyRenderer",
-                  "v(p)", ArgCons(ArgHandle(renderer), ArgNil))
+                  "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── Color + clear + present ───────────────────────────────────
 
@@ -48,23 +46,19 @@ claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
 claim set_draw_color(renderer ∈ Int, color ∈ Color, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
                   "i(piiii)",
-                  ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgInt(color.red),
-                  ArgCons(ArgInt(color.green),
-                  ArgCons(ArgInt(color.blue),
-                  ArgCons(ArgInt(color.alpha), ArgNil))))))
+                  ⟨ArgHandle(renderer), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
 -- SDL_RenderClear(renderer) → int. Clears the entire viewport with
 -- the current draw color.
 claim render_clear(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
-                  "i(p)", ArgCons(ArgHandle(renderer), ArgNil))
+                  "i(p)", ⟨ArgHandle(renderer)⟩)
 
 -- SDL_RenderPresent(renderer) — flip the back buffer to screen.
 -- Without this, nothing rendered is visible.
 claim render_present(renderer ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
-                  "v(p)", ArgCons(ArgHandle(renderer), ArgNil))
+                  "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── *_after variants: take a prior-result index, not a renderer ──
 -- Use these inside an Effect::Seq when the renderer pointer
@@ -75,26 +69,20 @@ claim render_present(renderer ∈ Int, out ∈ Effect)
 claim create_renderer_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                   "p(pii)",
-                  ArgCons(ArgPriorResult(prior_idx),
-                  ArgCons(ArgInt(0 - 1),
-                  ArgCons(ArgInt(0), ArgNil))))
+                  ⟨ArgPriorResult(prior_idx), ArgInt(0 - 1), ArgInt(0)⟩)
 
 claim set_draw_color_after(prior_idx ∈ Int, color ∈ Color, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
                   "i(piiii)",
-                  ArgCons(ArgPriorResult(prior_idx),
-                  ArgCons(ArgInt(color.red),
-                  ArgCons(ArgInt(color.green),
-                  ArgCons(ArgInt(color.blue),
-                  ArgCons(ArgInt(color.alpha), ArgNil))))))
+                  ⟨ArgPriorResult(prior_idx), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
 claim render_clear_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
-                  "i(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+                  "i(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
-                  "v(p)", ArgCons(ArgPriorResult(prior_idx), ArgNil))
+                  "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 -- SDL_RenderGeometry but takes the renderer pointer from the
 -- Nth prior result of the enclosing Seq (instead of a known
@@ -104,12 +92,7 @@ claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
                             n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
-                  ArgCons(ArgPriorResult(prior_idx),
-                  ArgCons(ArgHandle(0),                   -- NULL texture
-                  ArgCons(ArgPackedBuf(vertices),
-                  ArgCons(ArgInt(n),
-                  ArgCons(ArgHandle(0),                   -- NULL indices
-                  ArgCons(ArgInt(0), ArgNil)))))))
+                  ⟨ArgPriorResult(prior_idx), ArgHandle(0), ArgPackedBuf(vertices), ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
 
 -- ── Lines + points ────────────────────────────────────────────
 
@@ -118,19 +101,13 @@ claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
 claim draw_line(renderer ∈ Int, from ∈ IVec2, to ∈ IVec2, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
                   "i(piiii)",
-                  ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgInt(from.x),
-                  ArgCons(ArgInt(from.y),
-                  ArgCons(ArgInt(to.x),
-                  ArgCons(ArgInt(to.y), ArgNil))))))
+                  ⟨ArgHandle(renderer), ArgInt(from.x), ArgInt(from.y), ArgInt(to.x), ArgInt(to.y)⟩)
 
 -- SDL_RenderDrawPoint(renderer, p) → int.
 claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawPoint",
                   "i(pii)",
-                  ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgInt(p.x),
-                  ArgCons(ArgInt(p.y), ArgNil))))
+                  ⟨ArgHandle(renderer), ArgInt(p.x), ArgInt(p.y)⟩)
 
 -- ── Rectangles ────────────────────────────────────────────────
 --
@@ -155,12 +132,7 @@ claim render_geometry(renderer ∈ Int, vertices ∈ PackedFieldList,
                       n ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
                   "i(pppipi)",
-                  ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgHandle(0),                   -- NULL texture
-                  ArgCons(ArgPackedBuf(vertices),
-                  ArgCons(ArgInt(n),
-                  ArgCons(ArgHandle(0),                   -- NULL indices
-                  ArgCons(ArgInt(0), ArgNil)))))))
+                  ⟨ArgHandle(renderer), ArgHandle(0), ArgPackedBuf(vertices), ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
 
 -- Build one SDL_Vertex's field sequence and prepend it to `tail`.
 -- SDL_Vertex is 20 bytes, no padding:
@@ -191,12 +163,11 @@ claim sdl_vertex(pos_x, pos_y ∈ Real,
 -- a heap buffer that lives for the call's duration.
 claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
                        out ∈ Effect)
-    rect_buf ∈ IntList
+    rect_buf ∈ Seq(Int)
     rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
                   "i(pp)",
-                  ArgCons(ArgHandle(renderer),
-                  ArgCons(ArgI32Buf(rect_buf), ArgNil)))
+                  ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
 
 -- Outline rectangle as 4 lines (top, right, bottom, left). All
 -- drawn with the renderer's current draw color. Inclusive bounds:

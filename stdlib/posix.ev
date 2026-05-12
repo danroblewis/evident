@@ -53,19 +53,16 @@ claim flag_o_trunc(n ∈ Int)
 -- ── Effect builders for common syscalls ───────────────────────
 
 claim getpid_call(getpid_sym ∈ Int, e ∈ Effect)
-    e = FFICall(getpid_sym, "i()", ArgNil)
+    e = FFICall(getpid_sym, "i()", ⟨⟩)
 
 claim open_call(open_sym ∈ Int, path ∈ String, flags ∈ Int, e ∈ Effect)
     e = FFICall(open_sym, "i(si)",
-                ArgCons(ArgStr(path),
-                ArgCons(ArgInt(flags), ArgNil)))
+                ⟨ArgStr(path), ArgInt(flags)⟩)
 
 claim close_call(close_sym ∈ Int, fd ∈ Int, e ∈ Effect)
     e = FFICall(close_sym, "i(i)",
-                ArgCons(ArgInt(fd), ArgNil))
+                ⟨ArgInt(fd)⟩)
 
 claim write_call(write_sym ∈ Int, fd ∈ Int, buf ∈ String, len ∈ Int, e ∈ Effect)
     e = FFICall(write_sym, "i(isi)",
-                ArgCons(ArgInt(fd),
-                ArgCons(ArgStr(buf),
-                ArgCons(ArgInt(len), ArgNil))))
+                ⟨ArgInt(fd), ArgStr(buf), ArgInt(len)⟩)

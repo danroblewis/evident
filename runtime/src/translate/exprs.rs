@@ -427,12 +427,26 @@ fn translate_seq_arg_for_ctor<'ctx>(
                     Box::new(len_int) as Box<dyn z3::ast::Ast<'ctx>>,
                 ));
             }
-            // Enum element: seed const-array with the enum's first
-            // variant (always constructible — declaration order). For
-            // a 0-arity first variant we apply its constructor; for a
-            // payload-bearing first variant we'd need values to apply
-            // it with, which complicates things. v1 fallback: bail.
-            _other => return None,
+            // Enum element: use Array::fresh_const (unconstrained Z3
+            // array of the right sort) as the base, then store each
+            // translated enum constructor at its index. Values past
+            // `len` are unconstrained — extract_seq truncates at len.
+            enum_type => {
+                let dt: &'static z3::DatatypeSort<'static> = with_active_enums(|opt| {
+                    let reg = opt?;
+                    reg.by_name.borrow().get(enum_type).map(|(d, _)| *d)
+                })?;
+                let mut arr = z3::ast::Array::fresh_const(
+                    ctx, "__seq_payload", &Sort::int(ctx), &dt.sort);
+                for (i, item) in items.iter().enumerate() {
+                    let v = resolve_enum_ast(item, ctx, env, schemas)?;
+                    arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
+                }
+                return Some((
+                    Box::new(arr) as Box<dyn z3::ast::Ast<'ctx> + 'ctx>,
+                    Box::new(len_int) as Box<dyn z3::ast::Ast<'ctx> + 'ctx>,
+                ));
+            }
         }
     }
 

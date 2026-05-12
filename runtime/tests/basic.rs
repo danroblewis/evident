@@ -463,11 +463,42 @@ fn enum_payload_with_seq_string() {
     }
 }
 
-// Seq-of-enum-in-payload via SeqLit (`b = Many(⟨Red, Green⟩)`) is
-// not yet supported — translate_seq_arg_for_ctor bails on enum
-// element types in this commit. A future commit will adapt
-// build_cons_chain's logic to build an Array via successive
-// `store`s using enum constructors. Test will be added then.
+/// Seq-of-enum payload via SeqLit: `enum Box = Many(Seq(Color))`
+/// with `b = Many(⟨Red, Green, Blue⟩)`. translate_seq_arg_for_ctor
+/// builds an Array via Array::fresh_const + successive stores of
+/// the resolved enum constructor values; extract_seq_enum reads
+/// back via the two-accessor expansion.
+#[test]
+fn enum_payload_with_seq_enum() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "enum Color = Red | Green | Blue\n\
+         enum BoxOfColors = Empty | Many(Seq(Color))\n\
+         schema S\n    \
+         b ∈ BoxOfColors\n    \
+         b = Many(⟨Red, Green, Blue⟩)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    match r.bindings.get("b") {
+        Some(Value::Enum { variant, fields, .. }) => {
+            assert_eq!(variant, "Many");
+            assert_eq!(fields.len(), 1);
+            match &fields[0] {
+                Value::SeqEnum(elems) => {
+                    assert_eq!(elems.len(), 3);
+                    let names: Vec<String> = elems.iter().map(|e| match e {
+                        Value::Enum { variant, .. } => variant.clone(),
+                        _ => "?".into(),
+                    }).collect();
+                    assert_eq!(names, vec!["Red", "Green", "Blue"]);
+                }
+                other => panic!("expected SeqEnum, got {:?}", other),
+            }
+        }
+        other => panic!("expected Many(SeqEnum), got {:?}", other),
+    }
+}
 
 /// `Seq(EnumType)` extraction — declare a seq of enum-typed
 /// elements, pin specific variants, query, expect Value::SeqEnum

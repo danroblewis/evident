@@ -311,59 +311,121 @@ fn resolve_concrete_sort<'ctx>(
     }
 }
 
-/// Partition `decls` into stages such that every Seq(T) payload field
-/// has its element type T resolvable to a concrete sort (primitive,
-/// already-loaded enum, or in an earlier stage). Within a stage,
-/// regular Datatype references resolve via Z3's batch forward-ref;
-/// they don't constrain ordering.
+/// Partition `decls` into stages. Two kinds of dependencies:
+///
+///   * **Hard** (regular Datatype payload ref like `EffCons(Effect,
+///     EffectList)`): the referenced enum must be in the SAME stage
+///     as the referencer, so Z3's batch forward-ref machinery can
+///     resolve it. Hard edges are transitive — they merge enums
+///     into one stage via union-find.
+///   * **Soft** (Seq-in-payload like `FFICall(Int, String, Seq(FFIArg))`):
+///     the Seq element's sort must be concrete when the referencer's
+///     batch is built. Soft edges order stages: the referencer's
+///     group must come AFTER the element type's group.
 ///
 /// Returns a list of stages, each containing indices into `decls`.
-/// Errors if Seq-in-payload references form a cycle.
+/// Errors if Seq-in-payload references form a cycle across hard-edge
+/// groups (a single group requiring Seq into itself).
 fn topo_stage_enums(
     decls: &[crate::ast::EnumDecl],
     _batch_names: &std::collections::HashSet<&str>,
 ) -> Result<Vec<Vec<usize>>, RuntimeError> {
-    use std::collections::HashSet;
-    // For each enum, the set of in-batch enum names it must wait for
-    // (Seq(T) payload fields where T is in the batch).
-    let names_set: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
-    let mut deps: Vec<HashSet<String>> = Vec::with_capacity(decls.len());
-    for d in decls {
-        let mut ds: HashSet<String> = HashSet::new();
+    use std::collections::{HashMap, HashSet};
+
+    let n = decls.len();
+    let name_to_idx: HashMap<&str, usize> =
+        decls.iter().enumerate().map(|(i, d)| (d.name.as_str(), i)).collect();
+
+    // Union-find over enum indices for hard-edge merging.
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while parent[r] != r { r = parent[r]; }
+        // Path compression.
+        let mut cur = x;
+        while parent[cur] != r {
+            let next = parent[cur];
+            parent[cur] = r;
+            cur = next;
+        }
+        r
+    }
+    fn union(parent: &mut [usize], a: usize, b: usize) {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb { parent[ra] = rb; }
+    }
+
+    // Walk every variant field; collect hard + soft edges.
+    let mut soft: Vec<(usize, usize)> = Vec::new();  // (src_idx, dst_idx) — src needs dst earlier
+    for (i, d) in decls.iter().enumerate() {
         for v in &d.variants {
             for f in &v.fields {
                 if let Some(inner) = parse_seq_type(&f.type_name) {
-                    if names_set.contains(inner) {
-                        ds.insert(inner.to_string());
+                    if let Some(&j) = name_to_idx.get(inner) {
+                        soft.push((i, j));
+                    }
+                    continue;
+                }
+                if let Some(&j) = name_to_idx.get(f.type_name.as_str()) {
+                    if j != i {  // self-ref doesn't merge
+                        union(&mut parent, i, j);
                     }
                 }
             }
         }
-        deps.push(ds);
     }
 
-    let mut remaining: Vec<usize> = (0..decls.len()).collect();
-    let mut built: HashSet<String> = HashSet::new();
+    // Group indices by their union-find root.
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let r = find(&mut parent, i);
+        groups.entry(r).or_default().push(i);
+    }
+
+    // Group-level soft deps.
+    let mut group_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
+    for &(src, dst) in &soft {
+        let rs = find(&mut parent, src);
+        let rd = find(&mut parent, dst);
+        if rs == rd {
+            // Seq inside its own hard-edge group: would need a
+            // forward-ref Array sort, which Z3 doesn't support.
+            return Err(RuntimeError::Parse(format!(
+                "Seq-in-payload references a type in the same hard-edge group: \
+                 `{}` has Seq(`{}`) and they're in one mutually-recursive batch",
+                decls[src].name, decls[dst].name,
+            )));
+        }
+        group_deps.entry(rs).or_default().insert(rd);
+    }
+
+    // Topologically order groups.
+    let group_roots: Vec<usize> = groups.keys().copied().collect();
+    let mut remaining: Vec<usize> = group_roots.clone();
+    let mut built: HashSet<usize> = HashSet::new();
     let mut stages: Vec<Vec<usize>> = Vec::new();
     while !remaining.is_empty() {
-        let mut this_stage: Vec<usize> = Vec::new();
+        let mut this_round: Vec<usize> = Vec::new();
         let mut next: Vec<usize> = Vec::new();
-        for &i in &remaining {
-            if deps[i].iter().all(|n| built.contains(n)) {
-                this_stage.push(i);
-            } else {
-                next.push(i);
-            }
+        for &g in &remaining {
+            let deps = group_deps.get(&g);
+            let ready = deps.map(|d| d.iter().all(|x| built.contains(x))).unwrap_or(true);
+            if ready { this_round.push(g); } else { next.push(g); }
         }
-        if this_stage.is_empty() {
-            let names: Vec<&str> = remaining.iter().map(|&i| decls[i].name.as_str()).collect();
+        if this_round.is_empty() {
+            let names: Vec<&str> = remaining.iter()
+                .flat_map(|g| groups[g].iter().map(|&i| decls[i].name.as_str()))
+                .collect();
             return Err(RuntimeError::Parse(format!(
-                "circular Seq-in-payload dependency among enums: {:?}", names)));
+                "circular Seq-in-payload dependency across groups: {:?}", names)));
         }
-        for &i in &this_stage {
-            built.insert(decls[i].name.clone());
+        for &g in &this_round {
+            built.insert(g);
+            let mut stage: Vec<usize> = groups[&g].clone();
+            stage.sort();
+            stages.push(stage);
         }
-        stages.push(this_stage);
         remaining = next;
     }
     Ok(stages)
