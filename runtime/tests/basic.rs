@@ -415,6 +415,54 @@ fn set_var_membership_string() {
     assert!(r.satisfied);
     assert_eq!(r.bindings.get("name"), Some(&Value::Str("alice".into())));
 }
+/// `Seq(EnumType)` extraction — declare a seq of enum-typed
+/// elements, pin specific variants, query, expect Value::SeqEnum
+/// with each element's variant + payload preserved.
+#[test]
+fn seq_enum_extraction() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "enum Color = Red | Green | Blue(Int)\n\
+         schema S\n    \
+         cs ∈ Seq(Color)\n    \
+         #cs = 3\n    \
+         cs[0] = Red\n    \
+         cs[1] = Green\n    \
+         cs[2] = Blue(42)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let cs = r.bindings.get("cs").expect("cs should be extracted");
+    match cs {
+        Value::SeqEnum(elems) => {
+            assert_eq!(elems.len(), 3);
+            match &elems[0] {
+                Value::Enum { variant, fields, .. } => {
+                    assert_eq!(variant, "Red");
+                    assert!(fields.is_empty());
+                }
+                other => panic!("expected Red enum at [0], got {:?}", other),
+            }
+            match &elems[1] {
+                Value::Enum { variant, fields, .. } => {
+                    assert_eq!(variant, "Green");
+                    assert!(fields.is_empty());
+                }
+                other => panic!("expected Green enum at [1], got {:?}", other),
+            }
+            match &elems[2] {
+                Value::Enum { variant, fields, .. } => {
+                    assert_eq!(variant, "Blue");
+                    assert_eq!(fields.len(), 1);
+                    assert_eq!(fields[0], Value::Int(42));
+                }
+                other => panic!("expected Blue(42) at [2], got {:?}", other),
+            }
+        }
+        other => panic!("expected SeqEnum, got {:?}", other),
+    }
+}
+
 /// `Set(Int)` extraction via literal pinning. `s = {1, 2, 3}` records
 /// the candidates and `extract_set` walks them, asking the model for
 /// membership of each.

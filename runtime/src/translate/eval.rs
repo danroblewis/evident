@@ -323,13 +323,16 @@ pub fn sample_cached_inner<'ctx>(
                     // membership for each candidate ∧ cardinality); skipped
                     // for v1.
                 }
-                Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
-                    if let Some(v) = extract_seq_composite(
-                        arr, len, fields.as_slice(), *dt, &model, ctx)
-                    {
+                Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
+                    let extracted = if fields.is_empty() {
+                        extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
+                    } else {
+                        extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                    };
+                    if let Some(v) = extracted {
                         bindings.insert(name.clone(), v);
                     }
-                    // Blocking on composite seq elements is non-trivial
+                    // Blocking on composite/enum seq elements is non-trivial
                     // (same shape as primitive seqs); skipped for v1.
                 }
                 Var::EnumVar { ast, enum_name, dt } => {
@@ -445,10 +448,13 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
-                    Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
-                        if let Some(v) = extract_seq_composite(
-                            arr, len, fields.as_slice(), *dt, &model, ctx)
-                        {
+                    Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
+                        let extracted = if fields.is_empty() {
+                            extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
+                        } else {
+                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                        };
+                        if let Some(v) = extracted {
                             bindings.insert(name.clone(), v);
                         }
                     }
@@ -621,10 +627,13 @@ pub fn evaluate(
                             bindings.insert(name.clone(), v);
                         }
                     }
-                    Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
-                        if let Some(v) = extract_seq_composite(
-                            arr, len, fields.as_slice(), *dt, &model, ctx)
-                        {
+                    Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
+                        let extracted = if fields.is_empty() {
+                            extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
+                        } else {
+                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                        };
+                        if let Some(v) = extracted {
                             bindings.insert(name.clone(), v);
                         }
                     }
@@ -1040,10 +1049,13 @@ fn extract_binding(
                 bindings.insert(name.to_string(), v);
             }
         }
-        Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
-            if let Some(v) = extract_seq_composite(
-                arr, len, fields.as_slice(), *dt, model, ctx)
-            {
+        Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
+            let extracted = if fields.is_empty() {
+                extract_seq_enum(arr, len, type_name, *dt, model, ctx, enums)
+            } else {
+                extract_seq_composite(arr, len, fields.as_slice(), *dt, model, ctx)
+            };
+            if let Some(v) = extracted {
                 bindings.insert(name.to_string(), v);
             }
         }
@@ -1137,4 +1149,31 @@ fn extract_enum_value(
         variant: variant_name,
         fields: field_values,
     })
+}
+
+/// Read a `Seq(EnumType)` value out of the model. Mirror of
+/// `extract_seq_composite` but for enum-typed elements: each array
+/// element is a Datatype value of the enum's sort, decoded via
+/// `extract_enum_value` (which handles variant detection + payload
+/// recursion). Returned as `Value::SeqEnum(Vec<Value::Enum>)`.
+fn extract_seq_enum<'ctx>(
+    arr: &z3::ast::Array<'ctx>,
+    len: &Int<'ctx>,
+    type_name: &str,
+    dt: &'static z3::DatatypeSort<'static>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
+) -> Option<Value> {
+    let n = model.eval(len, true)?.as_i64()?;
+    if n < 0 { return None; }
+    let mut out: Vec<Value> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let idx = Int::from_i64(ctx, i);
+        let elem_dyn = arr.select(&idx);
+        let elem = elem_dyn.as_datatype()?;
+        let v = extract_enum_value(&elem, type_name, dt, model, enums)?;
+        out.push(v);
+    }
+    Some(Value::SeqEnum(out))
 }

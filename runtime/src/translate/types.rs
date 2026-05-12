@@ -106,6 +106,11 @@ pub enum Value {
     /// `Seq(UserType)` — one map per element. Each map keys a flat
     /// field name to the field's primitive Value.
     SeqComposite(Vec<HashMap<String, Value>>),
+    /// `Seq(EnumType)` — one Value::Enum per element. Distinct from
+    /// SeqComposite because enum elements have a variant tag + payload,
+    /// not a flat field map. Populated by `extract_seq_enum` when the
+    /// DatatypeSeqVar has empty `fields` (enum case).
+    SeqEnum(Vec<Value>),
     /// `Set(Int|Bool|String)` extracted as a Vec for deterministic
     /// iteration. The runtime picks an order at extract time
     /// (currently the order of the SetLit RHS that pinned the Set);
