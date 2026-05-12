@@ -211,7 +211,11 @@ pub(super) fn declare_var_named(
                 }
             };
             let set = Set::new_const(ctx, prefix, &eltype);
-            env.insert(env_key.to_string(), Var::SetVar { set, elem });
+            env.insert(env_key.to_string(), Var::SetVar {
+                set,
+                elem,
+                candidates: std::rc::Rc::new(std::cell::RefCell::new(None)),
+            });
         }
         _ => {
             // Enum type? Look up in the EnumRegistry, build a Z3 const

@@ -29,7 +29,7 @@ use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
 use crate::ast::*;
-use super::types::{env_clone, EnumRegistry, FieldKind, SeqElem, Var};
+use super::types::{env_clone, EnumRegistry, FieldKind, SeqElem, Value, Var};
 
 // ── Section 1: Thread-local context (active enums + target hint) ─────
 
@@ -1133,6 +1133,96 @@ fn translate_seq_lit_eq<'ctx>(
     None
 }
 
+/// Resolve an expression to a compile-time `Value` if it's a literal
+/// (or an identifier bound to a known constant). Used by
+/// `translate_set_lit_eq` to record the Set's members for later
+/// extraction without needing to model-evaluate at extract time.
+///
+/// Returns None for expressions whose value depends on the model
+/// (free variables, arithmetic over them, etc.). v1 supports this
+/// statically-resolvable subset because every Set use site in the
+/// FFI surface is expected to be `S = {literal_constants…}`. The
+/// dynamic case is a Phase 6.6+ extension.
+fn expr_to_const_value(e: &Expr, env: &HashMap<String, Var>) -> Option<Value> {
+    match e {
+        Expr::Int(n) => Some(Value::Int(*n)),
+        Expr::Bool(b) => Some(Value::Bool(*b)),
+        Expr::Str(s) => Some(Value::Str(s.clone())),
+        Expr::Identifier(name) => match env.get(name)? {
+            Var::PinnedInt(v) => Some(Value::Int(*v)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Translate `S = {a, b, c}` where S is a SetVar and the RHS is a
+/// SetLit. Builds a Z3 literal set by add'ing each element to
+/// `Set::empty`, then asserts set-equality against the variable —
+/// this gives EXACT membership semantics (S contains a, b, c and
+/// nothing else). Also records the literal items in S's `candidates`
+/// cell so `extract_set` can recover the members from the model
+/// without needing general Z3-set enumeration.
+///
+/// Returns None when LHS isn't a SetVar or RHS isn't a SetLit, or
+/// when the SetLit elements can't all be translated as the Set's
+/// element type — caller falls through to the regular Eq path.
+fn translate_set_lit_eq<'ctx>(
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
+    use z3::ast::Set as Z3Set;
+    use z3::Sort;
+
+    let items = match rhs {
+        Expr::SetLit(items) => items,
+        _ => return None,
+    };
+    let name = match lhs {
+        Expr::Identifier(n) => n,
+        _ => return None,
+    };
+    let (set_var, elem, candidates_cell) = env.get(name)?.as_set_with_candidates()?;
+
+    // Build the Z3 literal set by add'ing each translated item.
+    let domain = match elem {
+        SeqElem::Int  => Sort::int(ctx),
+        SeqElem::Bool => Sort::bool(ctx),
+        SeqElem::Str  => Sort::string(ctx),
+    };
+    let mut lit = Z3Set::empty(ctx, &domain);
+    for item in items {
+        match elem {
+            SeqElem::Int  => { let z = translate_int(item, ctx, env)?; lit = lit.add(&z); }
+            SeqElem::Bool => {
+                let z = translate_bool(item, ctx, env, schemas)?;
+                lit = lit.add(&z);
+            }
+            SeqElem::Str  => { let z = translate_str(item, ctx, env)?; lit = lit.add(&z); }
+        }
+    }
+
+    // Best-effort: record statically-resolvable candidates for the
+    // extract path. If any item isn't a compile-time constant, leave
+    // candidates as None — extraction silently omits the binding,
+    // matching the pre-Phase-6.1 behavior for that case.
+    let mut static_cands: Option<Vec<Value>> = Some(Vec::with_capacity(items.len()));
+    for item in items {
+        match (&mut static_cands, expr_to_const_value(item, env)) {
+            (Some(acc), Some(v)) => acc.push(v),
+            _ => { static_cands = None; break; }
+        }
+    }
+    if let Some(cands) = static_cands {
+        *candidates_cell.borrow_mut() = Some(cands);
+    }
+
+    Some(set_var._eq(&lit))
+}
+
 /// Build a single Datatype value (`Dynamic`) by applying `dt.variants[0]
 /// .constructor` to one Dynamic per `FieldKind`. Each primitive field is
 /// resolved via `env.get(&format!("{prefix}.{field_name}"))`; each nested
@@ -1624,6 +1714,23 @@ pub(super) fn translate_bool<'ctx>(
                     });
                 }
                 if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                // `set_var = {a, b, c}` — exact set membership. Mirror of
+                // translate_seq_lit_eq but for SetVar + SetLit. Records
+                // candidates for the extract path.
+                if let Some(b) = translate_set_lit_eq(lhs, rhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let Some(b) = translate_set_lit_eq(rhs, lhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),

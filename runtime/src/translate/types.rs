@@ -106,6 +106,16 @@ pub enum Value {
     /// `Seq(UserType)` — one map per element. Each map keys a flat
     /// field name to the field's primitive Value.
     SeqComposite(Vec<HashMap<String, Value>>),
+    /// `Set(Int|Bool|String)` extracted as a Vec for deterministic
+    /// iteration. The runtime picks an order at extract time
+    /// (currently the order of the SetLit RHS that pinned the Set);
+    /// programs must not depend on which order — that's what Set
+    /// is for. Future general-extraction work may sort/canonicalize.
+    /// Only populated when the Set was constructed via a `S = {…}`
+    /// literal assignment; free Sets extract as missing bindings.
+    SetInt(Vec<i64>),
+    SetBool(Vec<bool>),
+    SetStr(Vec<String>),
     /// An enum variant: the enum's name, the chosen variant, and any
     /// payload field values extracted from the Z3 model. Field order
     /// matches the variant's declaration order. For nullary variants
@@ -216,10 +226,21 @@ pub(super) enum Var<'ctx> {
         fields: Vec<FieldKind>,
     },
     /// Z3 Set — characteristic function over an element sort. Supports
-    /// `x ∈ s` membership; we don't expose cardinality / iteration
-    /// because Z3 sets are functions over infinite domains, not finite
-    /// containers. Model extraction returns no binding for SetVars.
-    SetVar { set: Set<'ctx>, elem: SeqElem },
+    /// `x ∈ s` membership directly. Z3 sets are functions over an
+    /// (often infinite) element domain so general model extraction
+    /// would need to enumerate the domain.
+    ///
+    /// For v1 we support extraction *only* when the Set was pinned to
+    /// a literal `S = {a, b, c}`. The translate path then records the
+    /// literal items in `candidates`, and `extract_set` reads them.
+    /// `candidates` is None at declaration; the first `S = SetLit(...)`
+    /// against this var populates it. The `Rc<RefCell<…>>` shape lets
+    /// the field survive `Var: Clone` — all clones see the same cell.
+    SetVar {
+        set: Set<'ctx>,
+        elem: SeqElem,
+        candidates: std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>,
+    },
     /// Compile-time literal int. Mirrors Python's "value pre-bound in env"
     /// pattern: certain names are known to equal a specific integer
     /// before the solver runs (from `given` + literal-equality body
@@ -271,7 +292,15 @@ impl<'ctx> Var<'ctx> {
         match self { Var::SeqVar { arr, len, elem } => Some((arr, len, *elem)), _ => None }
     }
     pub(super) fn as_set(&self) -> Option<(&Set<'ctx>, SeqElem)> {
-        match self { Var::SetVar { set, elem } => Some((set, *elem)), _ => None }
+        match self { Var::SetVar { set, elem, .. } => Some((set, *elem)), _ => None }
+    }
+    pub(super) fn as_set_with_candidates(&self) -> Option<(&Set<'ctx>, SeqElem,
+        &std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>)>
+    {
+        match self {
+            Var::SetVar { set, elem, candidates } => Some((set, *elem, candidates)),
+            _ => None,
+        }
     }
     pub(super) fn as_datatype_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, &str,
                                          &'static DatatypeSort<'static>,

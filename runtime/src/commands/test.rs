@@ -581,6 +581,9 @@ fn display_value_compact(v: &Value) -> String {
         Value::SeqBool(v)      => format!("Seq(Bool)[{}]", v.len()),
         Value::SeqStr(v)       => format!("Seq(String)[{}]", v.len()),
         Value::SeqComposite(v) => format!("Seq(struct)[{}]", v.len()),
+        Value::SetInt(v)       => format!("Set(Int)[{}]", v.len()),
+        Value::SetBool(v)      => format!("Set(Bool)[{}]", v.len()),
+        Value::SetStr(v)       => format!("Set(String)[{}]", v.len()),
         Value::Composite(map)  => format!("{{{} fields}}", map.len()),
         Value::Enum { variant, fields, .. } => {
             if fields.is_empty() { variant.clone() }

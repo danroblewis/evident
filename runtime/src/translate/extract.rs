@@ -265,6 +265,105 @@ pub(super) fn assert_seq_given<'ctx>(
     }
 }
 
+/// Read a Set value out of the model. Z3 sets are characteristic
+/// functions over an (often infinite) element domain — there's no
+/// general "list the members" operation. We rely on a stored
+/// candidates list, populated by `translate_set_lit_eq` when the
+/// program pins the set via `S = {a, b, c}`. Each candidate's
+/// membership is verified against the model (defends against the
+/// candidate list growing stale through future translation paths)
+/// and the surviving values are deduplicated and returned in the
+/// Set's stable extraction order (declaration order of the literal).
+///
+/// Returns None when no candidates were recorded (free SetVar, no
+/// literal pinning) — caller then omits the binding, matching the
+/// pre-Phase-6.1 behavior.
+pub(super) fn extract_set<'ctx>(
+    set: &z3::ast::Set<'ctx>,
+    elem: SeqElem,
+    candidates: &std::cell::RefCell<Option<Vec<Value>>>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+) -> Option<Value> {
+    let borrow = candidates.borrow();
+    let cands = borrow.as_ref()?;
+    match elem {
+        SeqElem::Int => {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut out: Vec<i64> = Vec::new();
+            for v in cands {
+                let Value::Int(n) = v else { continue };
+                let member_bool = set.member(&Int::from_i64(ctx, *n));
+                let evaluated = model.eval(&member_bool, true).and_then(|b| b.as_bool());
+                if evaluated == Some(true) && seen.insert(*n) {
+                    out.push(*n);
+                }
+            }
+            Some(Value::SetInt(out))
+        }
+        SeqElem::Bool => {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut out: Vec<bool> = Vec::new();
+            for v in cands {
+                let Value::Bool(b) = v else { continue };
+                let member_bool = set.member(&Bool::from_bool(ctx, *b));
+                let evaluated = model.eval(&member_bool, true).and_then(|x| x.as_bool());
+                if evaluated == Some(true) && seen.insert(*b) {
+                    out.push(*b);
+                }
+            }
+            Some(Value::SetBool(out))
+        }
+        SeqElem::Str => {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut out: Vec<String> = Vec::new();
+            for v in cands {
+                let Value::Str(s) = v else { continue };
+                let z = Z3Str::from_str(ctx, s).ok()?;
+                let member_bool = set.member(&z);
+                let evaluated = model.eval(&member_bool, true).and_then(|b| b.as_bool());
+                if evaluated == Some(true) && seen.insert(s.clone()) {
+                    out.push(s.clone());
+                }
+            }
+            Some(Value::SetStr(out))
+        }
+    }
+}
+
+/// Inverse of `extract_set`: pin a SetVar to equal a Value::Set*
+/// (membership for each element, plus set-equality against the
+/// constructed literal so the set contains *no other* members).
+pub(super) fn assert_set_given<'ctx>(
+    var: &Var<'ctx>,
+    value: &Value,
+    ctx: &'ctx Context,
+) -> Option<Bool<'ctx>> {
+    use z3::ast::Set as Z3Set;
+    use z3::Sort;
+    match (var, value) {
+        (Var::SetVar { set, elem: SeqElem::Int, .. }, Value::SetInt(items)) => {
+            let mut lit = Z3Set::empty(ctx, &Sort::int(ctx));
+            for n in items { lit = lit.add(&Int::from_i64(ctx, *n)); }
+            Some(set._eq(&lit))
+        }
+        (Var::SetVar { set, elem: SeqElem::Bool, .. }, Value::SetBool(items)) => {
+            let mut lit = Z3Set::empty(ctx, &Sort::bool(ctx));
+            for b in items { lit = lit.add(&Bool::from_bool(ctx, *b)); }
+            Some(set._eq(&lit))
+        }
+        (Var::SetVar { set, elem: SeqElem::Str, .. }, Value::SetStr(items)) => {
+            let mut lit = Z3Set::empty(ctx, &Sort::string(ctx));
+            for s in items {
+                let z = Z3Str::from_str(ctx, s).ok()?;
+                lit = lit.add(&z);
+            }
+            Some(set._eq(&lit))
+        }
+        _ => None,
+    }
+}
+
 /// Build a Z3 Datatype `Dynamic` from a `Value::Composite` field map +
 /// the type's `FieldKind` list. Mirror image of `extract_composite_value`:
 /// extraction reads the model + accessors to assemble a flat field map;

@@ -29,7 +29,7 @@ use z3::{Context, Params, SatResult, Solver};
 use crate::ast::*;
 use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::declare::{apply_seq_lengths, declare_var};
-use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, unescape_z3_string};
+use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;
 use super::preprocess::{apply_pinned_ints, collect_pinned_ints, collect_seq_lengths};
 
@@ -315,8 +315,13 @@ pub fn sample_cached_inner<'ctx>(
                     // PinnedInts are constants, not solver vars — no
                     // useful blocking term to add.
                 }
-                Var::SetVar { .. } => {
-                    // Same as run_cached: SetVars aren't enumerable; skip.
+                Var::SetVar { set, elem, candidates } => {
+                    if let Some(v) = extract_set(set, *elem, candidates, &model, ctx) {
+                        bindings.insert(name.clone(), v);
+                    }
+                    // Set blocking is non-trivial (would need to negate
+                    // membership for each candidate ∧ cardinality); skipped
+                    // for v1.
                 }
                 Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
                     if let Some(v) = extract_seq_composite(
@@ -435,10 +440,10 @@ pub fn run_cached<'ctx>(
                     Var::PinnedInt(v) => {
                         bindings.insert(name.clone(), Value::Int(*v));
                     }
-                    Var::SetVar { .. } => {
-                        // Z3 sets are characteristic functions over an
-                        // (often infinite) element domain. We don't try
-                        // to enumerate; bindings just omit set vars.
+                    Var::SetVar { set, elem, candidates } => {
+                        if let Some(v) = extract_set(set, *elem, candidates, &model, ctx) {
+                            bindings.insert(name.clone(), v);
+                        }
                     }
                     Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
                         if let Some(v) = extract_seq_composite(
@@ -611,10 +616,10 @@ pub fn evaluate(
                     Var::PinnedInt(v) => {
                         bindings.insert(name.clone(), Value::Int(*v));
                     }
-                    Var::SetVar { .. } => {
-                        // Z3 sets are characteristic functions over an
-                        // (often infinite) element domain. We don't try
-                        // to enumerate; bindings just omit set vars.
+                    Var::SetVar { set, elem, candidates } => {
+                        if let Some(v) = extract_set(set, *elem, candidates, &model, ctx) {
+                            bindings.insert(name.clone(), v);
+                        }
                     }
                     Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
                         if let Some(v) = extract_seq_composite(
@@ -1030,7 +1035,11 @@ fn extract_binding(
             }
         }
         Var::PinnedInt(v) => { bindings.insert(name.to_string(), Value::Int(*v)); }
-        Var::SetVar { .. } => {}
+        Var::SetVar { set, elem, candidates } => {
+            if let Some(v) = extract_set(set, *elem, candidates, model, ctx) {
+                bindings.insert(name.to_string(), v);
+            }
+        }
         Var::DatatypeSeqVar { arr, len, dt, fields, .. } => {
             if let Some(v) = extract_seq_composite(
                 arr, len, fields.as_slice(), *dt, model, ctx)

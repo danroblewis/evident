@@ -415,6 +415,78 @@ fn set_var_membership_string() {
     assert!(r.satisfied);
     assert_eq!(r.bindings.get("name"), Some(&Value::Str("alice".into())));
 }
+/// `Set(Int)` extraction via literal pinning. `s = {1, 2, 3}` records
+/// the candidates and `extract_set` walks them, asking the model for
+/// membership of each.
+#[test]
+fn set_int_literal_pinning() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Set(Int)\n    s = {1, 2, 3}\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::SetInt(vec![1, 2, 3])));
+}
+
+/// `Set(String)` extraction via literal pinning.
+#[test]
+fn set_string_literal_pinning() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    flags ∈ Set(String)\n    flags = {\"a\", \"b\"}\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("flags"),
+        Some(&Value::SetStr(vec!["a".into(), "b".into()])));
+}
+
+/// `Set(Bool)` extraction via literal pinning.
+#[test]
+fn set_bool_literal_pinning() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    bs ∈ Set(Bool)\n    bs = {true, false}\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    let extracted = r.bindings.get("bs");
+    // Order in the Vec mirrors literal declaration order.
+    assert_eq!(extracted, Some(&Value::SetBool(vec![true, false])));
+}
+
+/// A free SetVar (declared but never pinned to a literal) should extract
+/// to a missing binding — back-compat with pre-Phase-6.1 behavior.
+#[test]
+fn set_no_candidates_omits_binding() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Set(Int)\n    x ∈ Int\n    x = 5\n    x ∈ s\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("x"), Some(&Value::Int(5)));
+    // s isn't pinned to a literal → no candidates → no Value::Set* binding.
+    assert!(r.bindings.get("s").is_none(),
+        "free SetVar should have no extracted binding, got {:?}",
+        r.bindings.get("s"));
+}
+
+/// Pinning a Set to a literal that contains a value also asserts
+/// EXACT membership — the set cannot contain other elements. Verify
+/// by attempting a membership constraint on a non-member; it should
+/// be unsat.
+#[test]
+fn set_literal_is_exact_membership() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "schema S\n    s ∈ Set(Int)\n    s = {1, 2}\n    99 ∈ s\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(!r.satisfied, "99 ∈ {{1, 2}} should be unsat");
+}
+
 /// equality (`n = 4`) should unroll into 4 instances.
 #[test]
 fn forall_symbolic_bound_via_pinned_var() {
