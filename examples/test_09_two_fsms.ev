@@ -60,7 +60,7 @@ claim sat_producer_writes_n
     state ∈ PState
     state_next ∈ PState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = PTick(3)
     producer
     world_next.n = 3
@@ -70,7 +70,7 @@ claim sat_consumer_emits_int_to_str_when_n_positive
     state ∈ CState
     state_next ∈ CState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     world.n = 7
     state = CWait
     consumer

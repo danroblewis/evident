@@ -49,7 +49,7 @@ claim sat_parent_emits_spawn_then_println
     state ∈ PState
     state_next ∈ PState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Spawn
     parent
     effects = ⟨SpawnFsm("worker", 7), Println("parent issued spawn")⟩
@@ -58,7 +58,7 @@ claim sat_worker_init_emits_println
     state ∈ WState
     state_next ∈ WState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = WInit(7)
     worker
     effects = ⟨Println("worker spawned with id=7")⟩

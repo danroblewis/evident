@@ -37,8 +37,8 @@ fn println_one_step_then_halt() {
 enum S = Init | Done
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = EffCons(Println(\"hi\"), EffNil))
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+    state = Init ⇒ (state_next = Done ∧ effects = ⟨Println(\"hi\")⟩)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(
@@ -58,8 +58,8 @@ fn no_effect_program_halts_immediately() {
 enum S = Init | Done
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = EffNil)
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(
@@ -80,8 +80,8 @@ fsm main
     state ∈ S
     state = Init ⇒
         (state_next = Done ∧
-         effects = EffCons(Println(\"a\"), EffCons(Println(\"b\"), EffNil)))
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+         effects = ⟨Println(\"a\"), Println(\"b\")⟩)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(

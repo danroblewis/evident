@@ -31,7 +31,7 @@ claim sat_done_on_signal
     state ∈ SState
     state_next ∈ SState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     world.signal_received = 1
     state = Running
     guard

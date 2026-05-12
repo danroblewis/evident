@@ -1,13 +1,11 @@
--- 03_seq_chain — Effect::Seq chains multiple effects in one tick.
+-- 03_seq_chain — multi-effect emission in one tick.
 --
--- Each EffectList element runs in declaration order. Wrapping
--- them in `Seq(...)` makes them a single Effect that the
--- dispatcher executes atomically (and lets later calls reference
--- earlier results via ArgPriorResult).
---
--- The simpler form — putting the effects directly in `effects`
--- without Seq — also runs them in order. Use Seq when you need
--- prior-result threading; otherwise either is fine.
+-- The top-level effects emission IS the atomic batch — every
+-- effect dispatches in order within a single Z3 solve. Later
+-- effects can reference earlier ones' results via
+-- ArgPriorResult(N). Before Phase 6.4 this required wrapping
+-- the list in an Effect::Seq variant; now the wrapper is gone
+-- and the top-level list does the same job.
 
 import "stdlib/runtime.ev"
 
@@ -18,23 +16,16 @@ fsm seq_demo(state ∈ SeqState)
         Init ⇒ Done
         Done ⇒ Done
 
-    inner ∈ EffectList
-    inner = ⟨Println("first"), Println("second"), Println("third")⟩
-    chain ∈ Effect
-    chain = Seq(inner)
-
     effects = match state
-        Init ⇒ ⟨chain, Exit(0)⟩
+        Init ⇒ ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩
         Done ⇒ ⟨⟩
 
--- Init emits exactly the chained Seq + Exit.
+-- Init emits all four effects in one tick.
 claim sat_init_emits_chain_then_exit
     state ∈ SeqState
     state_next ∈ SeqState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Init
     seq_demo
-    inner ∈ EffectList
-    inner = ⟨Println("first"), Println("second"), Println("third")⟩
-    effects = ⟨Seq(inner), Exit(0)⟩
+    effects = ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩

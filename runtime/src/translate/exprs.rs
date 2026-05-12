@@ -1186,14 +1186,81 @@ fn translate_seq_lit_eq<'ctx>(
     env: &HashMap<String, Var<'ctx>>,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<Bool<'ctx>> {
-    let items = match rhs {
-        Expr::SeqLit(items) => items,
-        _ => return None,
-    };
     let name = match lhs {
         Expr::Identifier(n) => n,
         _ => return None,
     };
+    if env.get(name).is_none() { return None; }
+    translate_seq_rhs_eq(name, rhs, ctx, env, schemas)
+}
+
+/// Translate `seq_name = <rhs>` where `rhs` is a Seq-valued expression
+/// — a SeqLit, a `cond ? a : b` ternary whose branches are Seq-valued,
+/// or a `match scrutinee | arm ⇒ body` whose arm bodies are Seq-valued.
+///
+/// The result is a Bool conjunction: each arm/branch contributes a
+/// guarded equality `(arm_guard ⇒ seq_name = arm_body)`. For wildcard
+/// arms the guard is the negation of all prior arms' guards.
+fn translate_seq_rhs_eq<'ctx>(
+    name: &str,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
+    match rhs {
+        Expr::SeqLit(items) =>
+            translate_seq_lit_for_var(name, items, ctx, env, schemas),
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, schemas)?;
+            let then_eq = translate_seq_rhs_eq(name, a, ctx, env, schemas)?;
+            let else_eq = translate_seq_rhs_eq(name, b, ctx, env, schemas)?;
+            Some(Bool::and(ctx, &[
+                &cond.implies(&then_eq),
+                &cond.not().implies(&else_eq),
+            ]))
+        }
+        Expr::Match(scr, arms) => {
+            // Body translator: produces `seq_name = arm_body` for each arm.
+            let owned_name = name.to_string();
+            let compiled = translate_match_arms(scr, arms, ctx, env, |body, e| {
+                translate_seq_rhs_eq(&owned_name, body, ctx, e, schemas)
+            })?;
+            // Fold: each arm contributes a guarded equality. Wildcard
+            // arms fire when no prior tester matched (¬OR(priors)).
+            let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(compiled.len());
+            let mut prior_testers: Vec<Bool<'ctx>> = Vec::new();
+            for (tester_opt, body_eq) in compiled {
+                let guard = match &tester_opt {
+                    Some(t) => t.clone(),
+                    None => {
+                        let nots: Vec<Bool<'ctx>> =
+                            prior_testers.iter().map(|p| p.not()).collect();
+                        let refs: Vec<&Bool<'ctx>> = nots.iter().collect();
+                        Bool::and(ctx, &refs)
+                    }
+                };
+                clauses.push(guard.implies(&body_eq));
+                if let Some(t) = tester_opt { prior_testers.push(t); }
+            }
+            let refs: Vec<&Bool<'ctx>> = clauses.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        _ => None,
+    }
+}
+
+/// Core: assert `seq_name = ⟨items[0], items[1], …⟩` — pins length and
+/// per-index equality. Handles primitive, enum-element, and composite-
+/// record Seq element kinds. Returns None if `seq_name` doesn't resolve
+/// to a Seq-shaped Var or any item doesn't translate.
+fn translate_seq_lit_for_var<'ctx>(
+    name: &str,
+    items: &[Expr],
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Bool<'ctx>> {
     let var = env.get(name)?;
 
     // Primitive-element Seq: pin length, then per-element equality on the

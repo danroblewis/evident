@@ -29,7 +29,7 @@ claim sat_exits_at_three_ticks
     state ∈ F
     state_next ∈ F
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     clock.tick_count = 3
     state = Watching
     watcher

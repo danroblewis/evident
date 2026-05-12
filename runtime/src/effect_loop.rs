@@ -226,7 +226,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     collect(&claim.body, rt, &mut all_items, &mut visited);
     for item in all_items.iter().copied() {
         if let BodyItem::Membership { name, type_name, pins } = item {
-            if type_name == "EffectList" && name == "effects" && effects_var.is_none() {
+            if type_name == "Seq(Effect)" && name == "effects" && effects_var.is_none() {
                 effects_var = Some(name.clone());
             } else if type_name == "Seq(Result)" && name == "last_results"
                    && last_results_var.is_none()
@@ -1430,8 +1430,8 @@ enum S = Init | Done
 
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = EffNil)
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ").unwrap();
         let shape = detect_main_shape(&rt).expect("should detect");
         assert_eq!(shape.state_var, "state");
@@ -1450,8 +1450,8 @@ enum S = Init | Done
 
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = EffNil)
-    state = Done ⇒ (state_next = Done ∧ effects = EffNil)
+    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ").unwrap();
         let mut ctx = ctx_silent();
         let r = run_with_ctx(&rt, &LoopOpts { max_steps: 5 }, &mut ctx).unwrap();

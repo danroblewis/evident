@@ -46,7 +46,7 @@ claim sat_ask_emits_time
     state ∈ TState
     state_next ∈ TState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Ask
     time_demo
     effects = ⟨Time⟩
@@ -55,7 +55,7 @@ claim sat_format_emits_int_to_str_of_int_result
     state ∈ TState
     state_next ∈ TState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Format
     last_results = ⟨IntResult(42)⟩
     time_demo

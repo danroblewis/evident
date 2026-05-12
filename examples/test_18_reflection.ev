@@ -49,7 +49,7 @@ claim sat_init_advances_to_done
     state ∈ RState
     state_next ∈ RState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Init
     reflect_demo
     state_next = Done

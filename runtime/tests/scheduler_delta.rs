@@ -251,19 +251,29 @@ const STDIN_LOOP_PROGRAM: &str = "\
 enum S = Reading | Stopped
 
 fsm main(state ∈ S)
-    is_eof ∈ Bool
-    is_eof = match last_results[0]
+    -- Tick 0: last_results is empty so arr[0] is unconstrained; we
+    -- explicitly default both intermediates so Z3 doesn't get to pick
+    -- ErrorResult and halt the FSM before the first read.
+    has_result ∈ Bool
+    has_result = (#last_results > 0)
+
+    first_is_error ∈ Bool
+    first_is_error = match last_results[0]
         ErrorResult(_) ⇒ true
         _              ⇒ false
+    is_eof ∈ Bool
+    is_eof = (has_result ∧ first_is_error)
 
     state_next = match state
         Reading ⇒ (is_eof ? Stopped : Reading)
         Stopped ⇒ Stopped
 
-    line ∈ String
-    line = match last_results[0]
+    first_line ∈ String
+    first_line = match last_results[0]
         StringResult(s) ⇒ s
         _               ⇒ \"\"
+    line ∈ String
+    line = (has_result ? first_line : \"\")
 
     effects = match state
         Reading ⇒ (is_eof ? ⟨⟩ : ⟨ReadLine, Println(\"got: \" ++ line)⟩)

@@ -55,7 +55,7 @@ claim sat_echoes_first_line
     state ∈ EState
     state_next ∈ EState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     world.stdin_line = "hello"
     world.stdin_seq = 1
     state = Listening(0)
@@ -67,7 +67,7 @@ claim sat_quits_on_quit_command
     state ∈ EState
     state_next ∈ EState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     world.stdin_line = "quit"
     world.stdin_seq = 5
     state = Listening(4)
@@ -79,7 +79,7 @@ claim sat_skips_re_tick_with_same_seq
     state ∈ EState
     state_next ∈ EState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     world.stdin_line = "stale"
     world.stdin_seq = 5
     state = Listening(5)

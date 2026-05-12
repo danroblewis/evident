@@ -2,7 +2,7 @@
 -- explicitly spawned via Effect::SpawnFsm, not auto-instantiated.
 --
 -- Without the marker, any claim with the FSM shape (state pair
--- + EffectList + Seq(Result)) is auto-detected and run as an
+-- + Seq(Effect) + Seq(Result)) is auto-detected and run as an
 -- FSM at startup. That's fine for top-level FSMs but pollutes
 -- spawn-only patterns: when parent spawns 2 workers, you get 3
 -- (1 auto + 2 spawned).

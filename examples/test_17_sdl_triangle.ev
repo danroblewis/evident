@@ -1,10 +1,10 @@
 -- 17_sdl_triangle — SDL Renderer triangle.
 --
 -- Single-tick render: init, create window + renderer, draw the
--- triangle 60 times (with delays between), and halt — all
--- inside ONE Effect::Seq. This is the only render pattern
--- known to work in this runtime today (see
--- COUNTEREXAMPLES.md #7 and #9 for why per-tick rendering
+-- triangle 5 times (with delays between), and halt — all
+-- emitted as one atomic top-level effects list. This is the
+-- only render pattern known to work in this runtime today
+-- (see COUNTEREXAMPLES.md #7 and #9 for why per-tick rendering
 -- can't carry the renderer pointer across ticks).
 --
 -- All FFI is in stdlib helpers; the demo file has zero
@@ -35,10 +35,9 @@ fsm triangle(state ∈ TState)
     bg ∈ Color
     bg = Color(20, 20, 30, 255)
 
-    -- One Seq does init → window → renderer (held in
-    -- PriorResult(2) for the rest of the chain) → frame loop
-    -- expanded inline → halt. PriorResult indices are
-    -- positional in the Seq.
+    -- The top-level effects list IS the atomic batch: init →
+    -- window → renderer → frame loop → halt. PriorResult indices
+    -- are positional in the top-level emission.
     init_eff ∈ Effect
     sdl_init(32, init_eff)
     create_win_eff ∈ Effect
@@ -66,27 +65,25 @@ fsm triangle(state ∈ TState)
     sdl_delay(500, delay_eff)
 
     -- Setup (5 effects: init, create_win, show, raise,
-    -- create_ren) + 5 inlined frame iterations + final delay
-    -- so the window stays open long enough to see.
-    full_chain ∈ EffectList
-    full_chain = ⟨init_eff, create_win_eff, show_eff, raise_eff, create_ren_eff,
-                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
-                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
-                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
-                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
-                   color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff⟩
-    full_seq ∈ Effect
-    full_seq = Seq(full_chain)
-
+    -- create_ren) + 5 inlined frame iterations, then Println +
+    -- Exit. The whole list dispatches atomically — earlier
+    -- effects' results stay accessible to later ones via
+    -- ArgPriorResult.
     effects = match state
-        Init ⇒ ⟨full_seq, Println("done"), Exit(0)⟩
+        Init ⇒ ⟨init_eff, create_win_eff, show_eff, raise_eff, create_ren_eff,
+                color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                color_eff, clear_eff, geom_eff, present_eff, pump_eff, delay_eff,
+                Println("done"), Exit(0)⟩
         Done ⇒ ⟨⟩
 
 claim sat_init_emits_full_seq_then_exit
     state ∈ TState
     state_next ∈ TState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Init
     triangle
     state_next = Done

@@ -3,10 +3,10 @@
 --
 -- Zero LibCall / FFICall / hardcoded dylib paths in this file —
 -- the rule from CLAUDE.md. All FFI is in stdlib helpers; the
--- demo composes them with `Effect::Seq` and the `*_after`
--- variants that take a prior-result index for the renderer
--- handle (which only exists after SDL_CreateRenderer fires
--- inside the setup Seq).
+-- demo emits each tick's effects as one atomic top-level list,
+-- where the `*_after` variants take a prior-result index for the
+-- renderer handle (which exists at position 2 of the setup tick
+-- after SDL_CreateRenderer fires).
 
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
@@ -20,10 +20,10 @@ fsm red_window(state ∈ RState)
         Loop(n) ⇒ (n ≤ 1 ? Done : Loop(n - 1))
         Done    ⇒ Done
 
-    -- Setup chain (one Seq):
+    -- Setup tick (Init state):
     --   [0] sdl_init(SDL_INIT_VIDEO)
     --   [1] sdl_create_window      → window pointer
-    --   [2] create_renderer_after(1) → renderer pointer (= prior 2)
+    --   [2] create_renderer_after(1) → renderer pointer
     --   [3] set_draw_color_after(2, red)
     --   [4] render_clear_after(2)
     --   [5] render_present_after(2)
@@ -43,35 +43,13 @@ fsm red_window(state ∈ RState)
     present_setup ∈ Effect
     render_present_after(2, present_setup)
 
-    setup_inner ∈ EffectList
-    setup_inner = ⟨init_eff, create_win_eff, create_ren_eff,
-                    set_color_setup, clear_setup, present_setup⟩
-    setup_seq ∈ Effect
-    setup_seq = Seq(setup_inner)
-
-    -- Per-frame chain. Renderer stays at Seq position 0 of the
-    -- frame (we re-use the cached SDL_CreateRenderer result by
-    -- calling it again — libffi caches, so it returns fast).
-    -- Then each subsequent op references prior 0.
+    -- Per-frame tick (Loop(n)): re-create the renderer (libffi
+    -- caches dlopen/dlsym; macOS SDL re-creates an accelerated
+    -- renderer cheaply), then reference position 0 for the rest
+    -- of the frame. COUNTEREXAMPLES.md #8: there's no way to
+    -- carry a renderer handle across ticks without an FTI bridge.
     frame_create_ren ∈ Effect
     create_renderer_after(0, frame_create_ren)
-
-    -- WAIT — that won't work either; prior 0 in the frame Seq
-    -- would be the renderer's *first* call slot, but
-    -- SDL_CreateRenderer returns a NEW renderer each time.
-    -- For the per-frame loop we need the same renderer the
-    -- setup Seq created. There's no cross-Seq state today.
-    --
-    -- Workaround for now: the per-frame Seq has its OWN
-    -- create_renderer at index 0 of the frame Seq. SDL on
-    -- macOS re-creates a new accelerated renderer (cheap;
-    -- ~ms). Subsequent frame ops reference position 0.
-    --
-    -- COUNTEREXAMPLE NOTE in COUNTEREXAMPLES.md #8: Effect::Seq
-    -- doesn't share state with prior ticks' Seqs. Without
-    -- cross-tick handles (e.g. an FTI bridge that owns the
-    -- renderer), every per-frame Seq pays full re-creation cost.
-
     frame_set_color ∈ Effect
     set_draw_color_after(0, red, frame_set_color)
     frame_clear ∈ Effect
@@ -83,22 +61,19 @@ fsm red_window(state ∈ RState)
     delay_eff ∈ Effect
     sdl_delay(33, delay_eff)
 
-    frame_inner ∈ EffectList
-    frame_inner = ⟨frame_create_ren, frame_set_color, frame_clear,
-                    frame_present, pump_eff, delay_eff⟩
-    frame_seq ∈ Effect
-    frame_seq = Seq(frame_inner)
-
     effects = match state
-        Init    ⇒ ⟨setup_seq⟩
-        Loop(n) ⇒ (n > 0 ? ⟨frame_seq⟩ : ⟨⟩)
+        Init    ⇒ ⟨init_eff, create_win_eff, create_ren_eff,
+                   set_color_setup, clear_setup, present_setup⟩
+        Loop(n) ⇒ (n > 0 ? ⟨frame_create_ren, frame_set_color, frame_clear,
+                            frame_present, pump_eff, delay_eff⟩
+                         : ⟨⟩)
         Done    ⇒ ⟨Println("done"), Exit(0)⟩
 
 claim sat_init_advances_to_loop_60
     state ∈ RState
     state_next ∈ RState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Init
     red_window
     state_next = Loop(60)

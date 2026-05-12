@@ -25,7 +25,7 @@ claim sat_show_when_name_set
     state ∈ HState
     state_next ∈ HState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     host ∈ Hostname
     host.name = "machine"
     state = HWait
@@ -36,7 +36,7 @@ claim sat_show_emits_println_with_name
     state ∈ HState
     state_next ∈ HState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     host ∈ Hostname
     host.name = "machine"
     state = HShow

@@ -21,7 +21,7 @@ claim sat_init_exits_42
     state ∈ XState
     state_next ∈ XState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Init
     exit_demo
     effects = ⟨Println("exiting with code 42"), Exit(42)⟩

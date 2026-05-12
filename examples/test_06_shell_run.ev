@@ -30,7 +30,7 @@ claim sat_issue_emits_shell_run
     state ∈ ShellState
     state_next ∈ ShellState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Issue
     shell_demo
     effects = ⟨ShellRun("date '+%Y-%m-%d %H:%M:%S'")⟩

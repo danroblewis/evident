@@ -41,7 +41,7 @@ claim sat_start_seeds_count_five
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Start
     counter
     state_next = Count(5)
@@ -50,7 +50,7 @@ claim sat_count_emits_int_to_str
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Count(3)
     counter
     effects = ⟨IntToStr(3)⟩
@@ -59,7 +59,7 @@ claim sat_format_one_goes_done
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Format(1)
     counter
     state_next = Done
@@ -68,7 +68,7 @@ claim unsat_count_increments
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
-    effects ∈ EffectList
+    effects ∈ Seq(Effect)
     state = Format(3)
     counter
     state_next = Count(4)

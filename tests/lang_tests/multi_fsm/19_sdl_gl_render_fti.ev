@@ -47,7 +47,7 @@ fsm render(state ∈ S)
                         "SDL_Delay", "v(i)",
                         ArgCons(ArgInt(33), ArgNil))
 
-    frame_inner ∈ EffectList
+    frame_inner ∈ Seq(Effect)
     frame_inner = ⟨set_color_eff, clear_eff, swap_eff, pump_eff, delay_eff⟩
     frame_seq ∈ Effect
     frame_seq = Seq(frame_inner)

@@ -112,7 +112,7 @@ fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     if !have_effects {
         injected.push(BodyItem::Membership {
             name: "effects".to_string(),
-            type_name: "EffectList".to_string(),
+            type_name: "Seq(Effect)".to_string(),
             pins: Pins::None,
         });
     }

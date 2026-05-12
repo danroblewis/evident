@@ -283,9 +283,10 @@ pub struct EnumField {
 // ── Effect / Result / FfiArg ─────────────────────────────────────
 //
 // Mirror of `stdlib/runtime.ev`'s Effect/Result/FFIArg enums. The
-// effect dispatcher in `effect_dispatch.rs` (Phase 1.3) walks
-// Vec<Effect> and produces Vec<EffectResult>. Decoded from Z3
-// datatype values by `decode_ast::decode_effect_list`.
+// effect dispatcher in `effect_dispatch.rs` walks Vec<Effect> and
+// produces Vec<EffectResult>. Decoded from Z3 datatype values by
+// `decode_ast::decode_effect_list` (which now reads a Value::SeqEnum
+// — the Seq(Effect) shape — rather than a Cons chain).
 
 /// One side-effect to perform between solver steps. Variants align
 /// with the `Effect` enum in stdlib/runtime.ev.
@@ -353,15 +354,6 @@ pub enum Effect {
     /// repeated calls amortize dlopen/dlsym to once. See
     /// `effect_dispatch::dispatch_one` for the cache implementation.
     LibCall(String, String, String, Vec<EffectFfiArg>),
-    /// Sequenced execution group: dispatch each inner effect in order,
-    /// threading their results so a later call's `ArgPriorResult(N)`
-    /// resolves to the Nth inner call's result. Each inner result is
-    /// also appended to the parent effect-list's results — the next
-    /// state's `last_results` sees them as if issued separately, but
-    /// the whole sequence costs ONE Z3 solve instead of one per call.
-    /// Lets a multi-step init chain (CreateWindow → CreateContext →
-    /// MakeCurrent) collapse from N states to one.
-    Seq(Vec<Effect>),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

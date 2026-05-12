@@ -585,18 +585,24 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
                 decode_arg_list(&fields[3])?,
             )
         }
-        "Seq"          => {
-            need_arity(variant, fields, 1)?;
-            Effect::Seq(decode_effect_list(&fields[0])?)
-        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),
     })
 }
 
+/// Decode `effects ∈ Seq(Effect)` from the model — a `Value::SeqEnum`
+/// of Effect enums (since Phase 6.4 retired the `EffectList` Cons
+/// shape). Maps each element through `decode_effect`.
 pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::ast::Effect>> {
-    decode_list(v, "EffectList", "EffNil", "EffCons", decode_effect)
+    if let Value::SeqEnum(items) = v {
+        return items.iter().map(decode_effect).collect();
+    }
+    Err(DecodeError::FieldKind {
+        what: "effects".into(),
+        want: "Seq(Effect)".into(),
+        got: format!("{:?}", v),
+    })
 }
 
 pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
@@ -772,17 +778,12 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_effect_list_three_items() {
-        let list =
-            e("EffectList", "EffCons", vec![
-                e("Effect", "Println", vec![Value::Str("a".into())]),
-                e("EffectList", "EffCons", vec![
-                    e("Effect", "Time", vec![]),
-                    e("EffectList", "EffCons", vec![
-                        e("Effect", "Exit", vec![Value::Int(0)]),
-                        e("EffectList", "EffNil", vec![]),
-                    ]),
-                ]),
-            ]);
+        // Post-6.4: effects come back as Value::SeqEnum of Effect.
+        let list = Value::SeqEnum(vec![
+            e("Effect", "Println", vec![Value::Str("a".into())]),
+            e("Effect", "Time", vec![]),
+            e("Effect", "Exit", vec![Value::Int(0)]),
+        ]);
         let decoded = decode_effect_list(&list).unwrap();
         assert_eq!(decoded.len(), 3);
         assert!(matches!(&decoded[0], Effect::Println(s) if s == "a"));

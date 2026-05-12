@@ -7,7 +7,7 @@
 --   SDL_RenderDrawLine, SDL_RenderDrawPoint
 --
 -- For outlined rectangles: `draw_rect_outline` packages 4 line
--- draws into one EffectList. For filled rectangles, the
+-- draws into one `Seq(Effect)`. For filled rectangles, the
 -- malloc'd-SDL_Rect path needs additional FFI plumbing — sketched
 -- in docs/guide/ffi-bindings.md.
 --
@@ -118,7 +118,7 @@ claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
 -- docs/guide/ffi-bindings.md as a future addition.
 --
 -- For now: outline rectangles via 4 line draws, returned as a single
--- EffectList. One library invocation, one state in the caller.
+-- `Seq(Effect)`. One library invocation, one state in the caller.
 -- Filled rectangles need either:
 --   (a) the malloc'd-SDL_Rect path (best, native C performance), or
 --   (b) horizontal lines per row, where N = height
@@ -173,7 +173,7 @@ claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
 -- drawn with the renderer's current draw color. Inclusive bounds:
 -- the rect spans `pos` to `pos + size` (componentwise).
 claim draw_rect_outline(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
-                        out ∈ EffectList)
+                        out ∈ Seq(Effect))
     -- Pre-compute the four corners as IVec2s.
     tl ∈ IVec2
     tl = pos
@@ -193,7 +193,4 @@ claim draw_rect_outline(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
     left_eff ∈ Effect
     draw_line(renderer, bl, tl, left_eff)
 
-    out = EffCons(top_eff,
-          EffCons(right_eff,
-          EffCons(bottom_eff,
-          EffCons(left_eff, EffNil))))
+    out = ⟨top_eff, right_eff, bottom_eff, left_eff⟩

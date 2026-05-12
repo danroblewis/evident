@@ -263,13 +263,14 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::IntOut    => FfiArg::IntOut,
                     EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
                     EffectFfiArg::PackedBuf(v) => FfiArg::PackedBuf(v.clone()),
-                    // PriorResult is resolved by dispatch_seq before
+                    // PriorResult is resolved by dispatch_all before
                     // it reaches us. If one slips through, bail.
                     EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
                 }).collect();
                 if args.iter().any(|a| matches!(a, EffectFfiArg::PriorResult(_))) {
                     return EffectResult::Error(
-                        "ArgPriorResult must be inside Effect::Seq".into(),
+                        "ArgPriorResult unresolved at dispatch_one (should have been \
+                         resolved against prior effects in dispatch_all)".into(),
                     );
                 }
                 match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
@@ -322,12 +323,6 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                 DispatchMode::Replay { .. } => EffectResult::NoResult,
             }
         }
-        // Seq is handled at the dispatch_all level (transparent
-        // expansion); a Seq landing here means the caller went through
-        // dispatch_one directly. Return NoResult so the call doesn't
-        // crash, but the inner effects WON'T fire — use dispatch_all
-        // / dispatch_seq for proper Seq semantics.
-        Effect::Seq(_) => EffectResult::NoResult,
         Effect::LibCall(lib_path, sym_name, sig, args) => match &mut ctx.mode {
             DispatchMode::Real => {
                 // Cached lib handle: reuse if the library was opened
@@ -422,56 +417,23 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
     })
 }
 
-/// Walk an effect list, dispatch each, collect results. `Effect::Seq`
-/// is expanded inline: its inner calls' results are appended to the
-/// output as if they had been issued as separate top-level effects,
-/// so the next state's `last_results` sees them in the same flat
-/// sequence — but the whole Seq executes WITHOUT returning to the
-/// solver between calls. Within a Seq, `ArgPriorResult(N)` resolves
-/// to the Nth prior-in-this-Seq result.
+/// Walk an effect list, dispatch each in order, collect results. The
+/// list IS the atomic batch: later effects can reference prior
+/// results via `ArgPriorResult(N)` — which resolves to a typed
+/// FfiArg at marshal time against the running prior vector.
+///
+/// Before Phase 6.4 this was a two-tier model (top-level dispatch_all
+/// + nested Effect::Seq for atomic groups with prior threading);
+/// since Effect::Seq collapsed into the top-level batch, this is the
+/// only dispatch path.
 pub fn dispatch_all(ctx: &mut DispatchContext, effects: &[Effect]) -> Vec<EffectResult> {
-    let mut out: Vec<EffectResult> = Vec::new();
-    for e in effects {
-        if let Effect::Seq(inner) = e {
-            dispatch_seq(ctx, inner, &mut out);
-        } else {
-            out.push(dispatch_one(ctx, e));
-        }
+    let mut out: Vec<EffectResult> = Vec::with_capacity(effects.len());
+    for sub in effects {
+        let resolved = resolve_prior_in_effect(sub, &out);
+        let r = dispatch_one(ctx, &resolved);
+        out.push(r);
     }
     out
-}
-
-/// Run a sequenced effect group: each inner call's result joins a
-/// per-Seq `prior` list AND the global result vector. Later calls in
-/// the same Seq can reference earlier results via `ArgPriorResult(N)`,
-/// which is resolved to a typed FfiArg at marshal time.
-fn dispatch_seq(
-    ctx: &mut DispatchContext,
-    inner: &[Effect],
-    out: &mut Vec<EffectResult>,
-) {
-    let mut prior: Vec<EffectResult> = Vec::new();
-    for sub in inner {
-        if let Effect::Seq(deeper) = sub {
-            // Nested Seq: inner Seq has its own prior scope. Its
-            // calls' results join the global out and the OUTER Seq's
-            // prior list sees the LAST inner result as a single
-            // entry.
-            let before = out.len();
-            dispatch_seq(ctx, deeper, out);
-            let summary = if out.len() > before {
-                out[out.len() - 1].clone()
-            } else {
-                EffectResult::NoResult
-            };
-            prior.push(summary);
-        } else {
-            let resolved = resolve_prior_in_effect(sub, &prior);
-            let r = dispatch_one(ctx, &resolved);
-            out.push(r.clone());
-            prior.push(r);
-        }
-    }
 }
 
 /// Walk an Effect's args and replace each `EffectFfiArg::PriorResult(N)`
