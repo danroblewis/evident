@@ -147,9 +147,12 @@ impl Parser {
                     "expected variant name in enum, got {:?}", other))),
             };
             // Optional payload `(Type1, Type2, …)`. Inner types are
-            // bare Idents (no compound `Seq(Int)` etc. yet — Stage 0c).
-            // Field names are auto-generated `f0`, `f1`, …; named
-            // fields are a future extension.
+            // either bare Idents (`Int`, `MyEnum`) or compound types
+            // (`Seq(Int)`, `Set(String)`) — the parser accepts both
+            // and serializes to a flat String like `"Seq(Int)"`; the
+            // translator dispatches on the leading prefix at
+            // enum-load time. Field names are auto-generated `f0`,
+            // `f1`, …; named fields are a future extension.
             let mut fields: Vec<crate::ast::EnumField> = Vec::new();
             if matches!(self.peek(), Token::LParen) {
                 self.bump();   // (
@@ -160,12 +163,7 @@ impl Parser {
                 }
                 let mut idx = 0usize;
                 loop {
-                    let field_type = match self.bump() {
-                        Token::Ident(s) => s,
-                        other => return Err(ParseError(format!(
-                            "expected field type in variant `{}`, got {:?}",
-                            v_name, other))),
-                    };
+                    let field_type = self.parse_enum_field_type(&v_name)?;
                     fields.push(crate::ast::EnumField {
                         name: format!("f{}", idx),
                         type_name: field_type,
@@ -227,6 +225,34 @@ impl Parser {
                 "enum must have at least one variant".to_string()));
         }
         Ok(crate::ast::EnumDecl { name, variants })
+    }
+
+    /// Parse one enum-variant payload field type. Accepts bare idents
+    /// (`Int`, `MyEnum`) and one level of compound type with a single
+    /// inner type (`Seq(Int)`, `Set(String)`, `Seq(Color)`). Nested
+    /// compounds (`Seq(Seq(Int))`) parse recursively. The serialized
+    /// String round-trips through the translator's
+    /// `s.starts_with("Seq(")` dispatch at enum-load time.
+    fn parse_enum_field_type(&mut self, v_name: &str) -> Result<String> {
+        let head = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(ParseError(format!(
+                "expected field type in variant `{}`, got {:?}",
+                v_name, other))),
+        };
+        // Compound form `Head(InnerType)` — recurse.
+        if matches!(self.peek(), Token::LParen) {
+            self.bump();   // (
+            let inner = self.parse_enum_field_type(v_name)?;
+            match self.bump() {
+                Token::RParen => {}
+                other => return Err(ParseError(format!(
+                    "expected ')' after compound type in variant `{}`, got {:?}",
+                    v_name, other))),
+            }
+            return Ok(format!("{}({})", head, inner));
+        }
+        Ok(head)
     }
 
     /// Parse a `subclaim Name` body item. Same indented-body shape as
