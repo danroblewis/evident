@@ -152,67 +152,221 @@ fn register_enums(
         }
     }
 
-    // Build all DatatypeBuilders. Forward refs (incl. self) use
-    // `Datatype(name)`; primitives + previously-registered enums use
-    // `Sort(...)`. We need owned String for the variant name passed
-    // to `builder.variant(&str, ...)` — they're already owned via
-    // `decls[i].variants[j].name`, so we can borrow.
-    let mut builders: Vec<DatatypeBuilder<'static>> = Vec::with_capacity(decls.len());
-    for d in decls {
-        let mut builder = DatatypeBuilder::new(ctx, d.name.as_str());
-        for v in &d.variants {
-            let mut accessors: Vec<(&str, DatatypeAccessor)> = Vec::new();
-            for f in &v.fields {
-                let acc = match f.type_name.as_str() {
-                    "Int" | "Nat" | "Pos" =>
-                        DatatypeAccessor::Sort(Sort::int(ctx)),
-                    "Bool"   => DatatypeAccessor::Sort(Sort::bool(ctx)),
-                    "Real"   => DatatypeAccessor::Sort(Sort::real(ctx)),
-                    "String" => DatatypeAccessor::Sort(Sort::string(ctx)),
-                    other if batch_names.contains(other) => {
-                        // Self-reference or forward-reference to
-                        // another enum in this same batch — Z3 resolves
-                        // it during `create_datatypes`.
-                        DatatypeAccessor::Datatype(other.into())
-                    }
-                    other => {
-                        // Reference to an enum loaded previously (not
-                        // in this batch). Resolve to a concrete sort.
-                        if let Some((prev, _)) = registry.by_name.borrow().get(other) {
-                            DatatypeAccessor::Sort(prev.sort.clone())
-                        } else {
+    // Stage decls by Seq-in-payload dependency: an enum X depends on
+    // an enum Y if X has any variant field typed `Seq(Y)` and Y is
+    // also in this batch. The Array(Int → Y) sort needed to declare
+    // the Seq field requires Y's concrete sort to exist already, so
+    // X must go in a later stage than Y. Regular Datatype references
+    // (`Variant(Y)` without Seq) are still resolved via Z3's in-batch
+    // forward-ref machinery.
+    let stages = topo_stage_enums(decls, &batch_names)?;
+
+    for stage in stages {
+        // Names of enums declared in this stage (for in-stage forward
+        // refs via DatatypeAccessor::Datatype).
+        let stage_names: std::collections::HashSet<&str> =
+            stage.iter().map(|&i| decls[i].name.as_str()).collect();
+
+        let mut builders: Vec<DatatypeBuilder<'static>> = Vec::with_capacity(stage.len());
+        for &i in &stage {
+            let d = &decls[i];
+            let mut builder = DatatypeBuilder::new(ctx, d.name.as_str());
+            for v in &d.variants {
+                let mut accessors: Vec<(&str, DatatypeAccessor)> = Vec::new();
+                // Owned names for two-accessor expansion (`f_arr`,
+                // `f_len`) — kept alive via this Vec so the &str
+                // pushed into `accessors` outlives the variant build.
+                let mut owned_names: Vec<String> = Vec::new();
+                for f in &v.fields {
+                    if let Some(inner) = parse_seq_type(&f.type_name) {
+                        // Two-accessor expansion: Seq(T) becomes
+                        // (arr: Array(Int → T), len: Int).
+                        let elem_sort = resolve_concrete_sort(
+                            inner, ctx, &stage_names, registry, &d.name, &v.name)?;
+                        if elem_sort.is_none() {
+                            // Element is in this stage — would need a
+                            // forward-ref Array sort, which Z3 doesn't
+                            // support. The stager prevents this.
                             return Err(RuntimeError::Parse(format!(
-                                "unknown payload type `{}` in variant `{}::{}` \
-                                 (must be a primitive or a declared enum)",
-                                other, d.name, v.name,
-                            )));
+                                "internal: Seq({}) field in `{}::{}` references \
+                                 an in-stage enum (stager should have ordered it earlier)",
+                                inner, d.name, v.name)));
                         }
+                        let arr_sort = Sort::array(ctx, &Sort::int(ctx), &elem_sort.unwrap());
+                        owned_names.push(format!("{}_arr", f.name));
+                        let arr_name_idx = owned_names.len() - 1;
+                        owned_names.push(format!("{}_len", f.name));
+                        let len_name_idx = owned_names.len() - 1;
+                        // SAFETY of the borrow extension: owned_names
+                        // is held until builders.push() consumes the
+                        // accessors. The actual &str borrows stay
+                        // valid for that lifetime.
+                        let arr_name: &str = unsafe {
+                            &*(owned_names[arr_name_idx].as_str() as *const str)
+                        };
+                        let len_name: &str = unsafe {
+                            &*(owned_names[len_name_idx].as_str() as *const str)
+                        };
+                        accessors.push((arr_name, DatatypeAccessor::Sort(arr_sort)));
+                        accessors.push((len_name, DatatypeAccessor::Sort(Sort::int(ctx))));
+                        continue;
                     }
-                };
-                accessors.push((f.name.as_str(), acc));
+                    let acc = match f.type_name.as_str() {
+                        "Int" | "Nat" | "Pos" =>
+                            DatatypeAccessor::Sort(Sort::int(ctx)),
+                        "Bool"   => DatatypeAccessor::Sort(Sort::bool(ctx)),
+                        "Real"   => DatatypeAccessor::Sort(Sort::real(ctx)),
+                        "String" => DatatypeAccessor::Sort(Sort::string(ctx)),
+                        other if stage_names.contains(other) => {
+                            // In-stage forward-ref via Z3's resolver.
+                            DatatypeAccessor::Datatype(other.into())
+                        }
+                        other => {
+                            // Previously-loaded enum (earlier stage or
+                            // earlier load batch). Resolve to concrete.
+                            if let Some((prev, _)) = registry.by_name.borrow().get(other) {
+                                DatatypeAccessor::Sort(prev.sort.clone())
+                            } else {
+                                return Err(RuntimeError::Parse(format!(
+                                    "unknown payload type `{}` in variant `{}::{}` \
+                                     (must be a primitive or a declared enum)",
+                                    other, d.name, v.name,
+                                )));
+                            }
+                        }
+                    };
+                    accessors.push((f.name.as_str(), acc));
+                }
+                builder = builder.variant(v.name.as_str(), accessors);
+                // Drop owned_names at end of variant — the builder
+                // has copied its contents (datatype_builder.rs:21
+                // does `accessor_name.to_string()`).
+                drop(owned_names);
             }
-            builder = builder.variant(v.name.as_str(), accessors);
+            builders.push(builder);
         }
-        builders.push(builder);
-    }
 
-    let sorts: Vec<DatatypeSort<'static>> =
-        z3::datatype_builder::create_datatypes(builders);
-    assert_eq!(sorts.len(), decls.len());
+        let sorts: Vec<DatatypeSort<'static>> =
+            z3::datatype_builder::create_datatypes(builders);
+        assert_eq!(sorts.len(), stage.len());
 
-    // Stash each built sort + its variant decl list in the registry.
-    {
-        let mut by_name = registry.by_name.borrow_mut();
-        let mut by_variant = registry.by_variant.borrow_mut();
-        for (d, dt) in decls.iter().zip(sorts.into_iter()) {
-            let leaked: &'static DatatypeSort<'static> = Box::leak(Box::new(dt));
-            by_name.insert(d.name.clone(), (leaked, d.variants.clone()));
-            for (idx, v) in d.variants.iter().enumerate() {
-                by_variant.insert(v.name.clone(), (d.name.clone(), idx));
+        // Stash each built sort + its variant decl list.
+        {
+            let mut by_name = registry.by_name.borrow_mut();
+            let mut by_variant = registry.by_variant.borrow_mut();
+            for (&i, dt) in stage.iter().zip(sorts.into_iter()) {
+                let d = &decls[i];
+                let leaked: &'static DatatypeSort<'static> = Box::leak(Box::new(dt));
+                by_name.insert(d.name.clone(), (leaked, d.variants.clone()));
+                for (idx, v) in d.variants.iter().enumerate() {
+                    by_variant.insert(v.name.clone(), (d.name.clone(), idx));
+                }
             }
         }
     }
     Ok(())
+}
+
+/// Parse `Seq(T)` → `Some(T)`; otherwise `None`. Used by the enum
+/// loader to detect Seq-typed payload fields.
+pub(crate) fn parse_seq_type(s: &str) -> Option<&str> {
+    if s.starts_with("Seq(") && s.ends_with(')') {
+        Some(&s[4..s.len() - 1])
+    } else {
+        None
+    }
+}
+
+/// Resolve a payload element type to a concrete Z3 Sort. Returns
+/// `Ok(Some(sort))` for primitives + previously-loaded enums,
+/// `Ok(None)` when the type is in the current stage (caller decides
+/// how to handle — Seq fields error out, plain Datatype refs use
+/// forward-ref). Returns `Err` on unknown types.
+fn resolve_concrete_sort<'ctx>(
+    type_name: &str,
+    ctx: &'ctx z3::Context,
+    stage_names: &std::collections::HashSet<&str>,
+    registry: &crate::translate::EnumRegistry,
+    enclosing_enum: &str,
+    enclosing_variant: &str,
+) -> Result<Option<z3::Sort<'ctx>>, RuntimeError> {
+    use z3::Sort;
+    match type_name {
+        "Int" | "Nat" | "Pos" => Ok(Some(Sort::int(ctx))),
+        "Bool"   => Ok(Some(Sort::bool(ctx))),
+        "Real"   => Ok(Some(Sort::real(ctx))),
+        "String" => Ok(Some(Sort::string(ctx))),
+        other if stage_names.contains(other) => Ok(None),
+        other => {
+            if let Some((prev, _)) = registry.by_name.borrow().get(other) {
+                Ok(Some(prev.sort.clone()))
+            } else {
+                Err(RuntimeError::Parse(format!(
+                    "unknown element type `{}` in Seq payload of `{}::{}` \
+                     (must be a primitive or a declared enum)",
+                    other, enclosing_enum, enclosing_variant,
+                )))
+            }
+        }
+    }
+}
+
+/// Partition `decls` into stages such that every Seq(T) payload field
+/// has its element type T resolvable to a concrete sort (primitive,
+/// already-loaded enum, or in an earlier stage). Within a stage,
+/// regular Datatype references resolve via Z3's batch forward-ref;
+/// they don't constrain ordering.
+///
+/// Returns a list of stages, each containing indices into `decls`.
+/// Errors if Seq-in-payload references form a cycle.
+fn topo_stage_enums(
+    decls: &[crate::ast::EnumDecl],
+    _batch_names: &std::collections::HashSet<&str>,
+) -> Result<Vec<Vec<usize>>, RuntimeError> {
+    use std::collections::HashSet;
+    // For each enum, the set of in-batch enum names it must wait for
+    // (Seq(T) payload fields where T is in the batch).
+    let names_set: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+    let mut deps: Vec<HashSet<String>> = Vec::with_capacity(decls.len());
+    for d in decls {
+        let mut ds: HashSet<String> = HashSet::new();
+        for v in &d.variants {
+            for f in &v.fields {
+                if let Some(inner) = parse_seq_type(&f.type_name) {
+                    if names_set.contains(inner) {
+                        ds.insert(inner.to_string());
+                    }
+                }
+            }
+        }
+        deps.push(ds);
+    }
+
+    let mut remaining: Vec<usize> = (0..decls.len()).collect();
+    let mut built: HashSet<String> = HashSet::new();
+    let mut stages: Vec<Vec<usize>> = Vec::new();
+    while !remaining.is_empty() {
+        let mut this_stage: Vec<usize> = Vec::new();
+        let mut next: Vec<usize> = Vec::new();
+        for &i in &remaining {
+            if deps[i].iter().all(|n| built.contains(n)) {
+                this_stage.push(i);
+            } else {
+                next.push(i);
+            }
+        }
+        if this_stage.is_empty() {
+            let names: Vec<&str> = remaining.iter().map(|&i| decls[i].name.as_str()).collect();
+            return Err(RuntimeError::Parse(format!(
+                "circular Seq-in-payload dependency among enums: {:?}", names)));
+        }
+        for &i in &this_stage {
+            built.insert(decls[i].name.clone());
+        }
+        stages.push(this_stage);
+        remaining = next;
+    }
+    Ok(stages)
 }
 
 pub struct EvidentRuntime {

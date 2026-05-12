@@ -336,7 +336,7 @@ pub fn sample_cached_inner<'ctx>(
                     // (same shape as primitive seqs); skipped for v1.
                 }
                 Var::EnumVar { ast, enum_name, dt } => {
-                    if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
+                    if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, ctx, enums) {
                         bindings.insert(name.clone(), v.clone());
                         // Push a positive `var = chosen` term — the
                         // outer code AND-s the term list and asserts
@@ -459,7 +459,7 @@ pub fn run_cached<'ctx>(
                         }
                     }
                     Var::EnumVar { ast, enum_name, dt } => {
-                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, ctx, enums) {
                             bindings.insert(name.clone(), v);
                         }
                     }
@@ -638,7 +638,7 @@ pub fn evaluate(
                         }
                     }
                     Var::EnumVar { ast, enum_name, dt } => {
-                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, enums) {
+                        if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, ctx, enums) {
                             bindings.insert(name.clone(), v);
                         }
                     }
@@ -1060,7 +1060,7 @@ fn extract_binding(
             }
         }
         Var::EnumVar { ast, enum_name, dt } => {
-            if let Some(v) = extract_enum_value(ast, enum_name, dt, model, enums) {
+            if let Some(v) = extract_enum_value(ast, enum_name, dt, model, ctx, enums) {
                 bindings.insert(name.to_string(), v);
             }
         }
@@ -1075,11 +1075,12 @@ fn extract_binding(
 /// payload field. Recursion handles self-referential enums — the
 /// EnumRegistry is consulted to find the field's enum (by type name)
 /// when a payload field is itself an enum-typed value.
-fn extract_enum_value(
-    ast: &z3::ast::Datatype<'_>,
+fn extract_enum_value<'ctx>(
+    ast: &z3::ast::Datatype<'ctx>,
     enum_name: &str,
     dt: &'static z3::DatatypeSort<'static>,
-    model: &z3::Model<'_>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
     enums: Option<&EnumRegistry>,
 ) -> Option<Value> {
     let evaluated = model.eval(ast, true)?;
@@ -1099,11 +1100,31 @@ fn extract_enum_value(
     // Look up the variant's declared field types so we can route each
     // accessor's Dynamic through the right `as_int` / `as_bool` /
     // `as_string` extractor (or recurse for nested enums).
+    //
+    // Seq(T) payload fields are two-accessor-expanded in the Z3
+    // datatype (one logical field → arr accessor + len accessor),
+    // so we maintain a separate physical accessor offset that
+    // advances by 1 for primitive/enum fields and by 2 for Seq.
     let mut field_values: Vec<Value> = Vec::new();
     if let Some(reg) = enums {
         if let Some((_, decl_variants)) = reg.by_name.borrow().get(enum_name) {
             if let Some(decl_variant) = decl_variants.get(idx) {
-                for (acc_idx, decl_field) in decl_variant.fields.iter().enumerate() {
+                let mut acc_idx: usize = 0;
+                for decl_field in decl_variant.fields.iter() {
+                    if let Some(inner) = crate::runtime::parse_seq_type(&decl_field.type_name) {
+                        // Two-accessor expansion: arr at acc_idx, len at acc_idx+1.
+                        let arr_acc = &variant.accessors[acc_idx];
+                        let len_acc = &variant.accessors[acc_idx + 1];
+                        let arr_dyn = arr_acc.apply(&[&evaluated]);
+                        let len_dyn = len_acc.apply(&[&evaluated]);
+                        let extracted = extract_seq_payload(
+                            inner, &arr_dyn, &len_dyn, model, ctx, enums);
+                        if let Some(v) = extracted {
+                            field_values.push(v);
+                        }
+                        acc_idx += 2;
+                        continue;
+                    }
                     let accessor = &variant.accessors[acc_idx];
                     let raw = accessor.apply(&[&evaluated]);
                     let extracted = match decl_field.type_name.as_str() {
@@ -1132,7 +1153,7 @@ fn extract_enum_value(
                             if let Some(nested_dt) = nested_dt {
                                 raw.as_datatype().and_then(|child_ast| {
                                     extract_enum_value(&child_ast, target,
-                                                       nested_dt, model, enums)
+                                                       nested_dt, model, ctx, enums)
                                 })
                             } else { None }
                         }
@@ -1140,6 +1161,7 @@ fn extract_enum_value(
                     if let Some(v) = extracted {
                         field_values.push(v);
                     }
+                    acc_idx += 1;
                 }
             }
         }
@@ -1149,6 +1171,45 @@ fn extract_enum_value(
         variant: variant_name,
         fields: field_values,
     })
+}
+
+/// Extract a Seq-typed enum-variant payload field given the (arr,
+/// len) pair produced by the two-accessor expansion. Routes to
+/// `extract_seq` for primitive element types or `extract_seq_enum`
+/// for enum elements. Used by `extract_enum_value` when it
+/// encounters a `Seq(T)` field in a variant's declared types.
+fn extract_seq_payload<'ctx>(
+    inner_type: &str,
+    arr_dyn: &z3::ast::Dynamic<'ctx>,
+    len_dyn: &z3::ast::Dynamic<'ctx>,
+    model: &z3::Model<'ctx>,
+    ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
+) -> Option<Value> {
+    use super::types::SeqElem;
+    let len = len_dyn.as_int()?;
+    match inner_type {
+        "Int" | "Nat" | "Pos" => {
+            let arr = arr_dyn.as_array()?;
+            super::extract::extract_seq(&arr, &len, SeqElem::Int, model, ctx)
+        }
+        "Bool" => {
+            let arr = arr_dyn.as_array()?;
+            super::extract::extract_seq(&arr, &len, SeqElem::Bool, model, ctx)
+        }
+        "String" => {
+            let arr = arr_dyn.as_array()?;
+            super::extract::extract_seq(&arr, &len, SeqElem::Str, model, ctx)
+        }
+        enum_type => {
+            // Enum element: look up the DatatypeSort and walk
+            // arr[0..len], calling extract_enum_value per element.
+            let reg = enums?;
+            let dt = reg.by_name.borrow().get(enum_type).map(|(d, _)| *d)?;
+            let arr = arr_dyn.as_array()?;
+            extract_seq_enum(&arr, &len, enum_type, dt, model, ctx, enums)
+        }
+    }
 }
 
 /// Read a `Seq(EnumType)` value out of the model. Mirror of
@@ -1172,7 +1233,7 @@ fn extract_seq_enum<'ctx>(
         let idx = Int::from_i64(ctx, i);
         let elem_dyn = arr.select(&idx);
         let elem = elem_dyn.as_datatype()?;
-        let v = extract_enum_value(&elem, type_name, dt, model, enums)?;
+        let v = extract_enum_value(&elem, type_name, dt, model, ctx, enums)?;
         out.push(v);
     }
     Some(Value::SeqEnum(out))

@@ -415,6 +415,60 @@ fn set_var_membership_string() {
     assert!(r.satisfied);
     assert_eq!(r.bindings.get("name"), Some(&Value::Str("alice".into())));
 }
+/// Seq-typed enum-variant payload: `enum Bag = Empty | OfInts(Seq(Int))`
+/// with `b = OfInts(⟨1, 2, 3⟩)`. Verifies the parser, multi-stage
+/// datatype batching, two-accessor expansion, constructor
+/// application, and extraction paths all line up.
+#[test]
+fn enum_payload_with_seq_int() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "enum Bag = Empty | OfInts(Seq(Int))\n\
+         schema S\n    \
+         b ∈ Bag\n    \
+         b = OfInts(⟨1, 2, 3⟩)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    match r.bindings.get("b") {
+        Some(Value::Enum { variant, fields, .. }) => {
+            assert_eq!(variant, "OfInts");
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0], Value::SeqInt(vec![1, 2, 3]));
+        }
+        other => panic!("expected OfInts(SeqInt[1,2,3]), got {:?}", other),
+    }
+}
+
+/// Same shape, Seq(String) payload — confirms the String element
+/// path works alongside Int.
+#[test]
+fn enum_payload_with_seq_string() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "enum Pile = Empty | OfStrs(Seq(String))\n\
+         schema S\n    \
+         p ∈ Pile\n    \
+         p = OfStrs(⟨\"a\", \"b\"⟩)\n"
+    ).unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    match r.bindings.get("p") {
+        Some(Value::Enum { variant, fields, .. }) => {
+            assert_eq!(variant, "OfStrs");
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0], Value::SeqStr(vec!["a".into(), "b".into()]));
+        }
+        other => panic!("expected OfStrs(SeqStr[a,b]), got {:?}", other),
+    }
+}
+
+// Seq-of-enum-in-payload via SeqLit (`b = Many(⟨Red, Green⟩)`) is
+// not yet supported — translate_seq_arg_for_ctor bails on enum
+// element types in this commit. A future commit will adapt
+// build_cons_chain's logic to build an Array via successive
+// `store`s using enum constructors. Test will be added then.
+
 /// `Seq(EnumType)` extraction — declare a seq of enum-typed
 /// elements, pin specific variants, query, expect Value::SeqEnum
 /// with each element's variant + payload preserved.

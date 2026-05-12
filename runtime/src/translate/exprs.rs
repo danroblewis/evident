@@ -286,8 +286,20 @@ pub(super) fn resolve_enum_ast<'ctx>(
             // need a Vec<Box<dyn Ast>> kind of structure to call
             // ctor.apply, but z3-rs uses `&[&dyn Ast]`. Build the
             // typed Vec then borrow.
+            //
+            // Seq(T) payload fields are two-accessor-expanded in the
+            // Z3 datatype: one logical arg becomes two Z3 values
+            // (arr, len). We push both here so the constructor call
+            // sees the right physical arg count.
             let mut owned_args: Vec<Box<dyn z3::ast::Ast<'ctx>>> = Vec::new();
             for (arg_expr, field_type) in args.iter().zip(field_types.iter()) {
+                if let Some(inner) = crate::runtime::parse_seq_type(field_type) {
+                    let (arr_dyn, len_dyn) =
+                        translate_seq_arg_for_ctor(arg_expr, inner, ctx, env, schemas)?;
+                    owned_args.push(arr_dyn);
+                    owned_args.push(len_dyn);
+                    continue;
+                }
                 let v: Box<dyn z3::ast::Ast<'ctx>> = match field_type.as_str() {
                     "Int" | "Nat" | "Pos" =>
                         Box::new(translate_int(arg_expr, ctx, env)?),
@@ -330,6 +342,101 @@ pub(super) fn resolve_enum_ast<'ctx>(
         }
         _ => None,
     }
+}
+
+/// Build a (Array, Int) pair for an enum-constructor's Seq-typed
+/// payload field. Two source shapes:
+///
+///   * `Identifier(name)` resolving to `Var::SeqVar` /
+///     `Var::DatatypeSeqVar` — pull (arr, len) out directly.
+///   * `Expr::SeqLit(items)` — build a Z3 Array literal by
+///     starting from a constant-array (default value) and
+///     storing each item at its index. Length is the item count.
+///
+/// Used by the `Call`-case constructor-application path when a
+/// variant field's declared type is `Seq(T)`. The two-accessor
+/// expansion in the enum loader means the underlying Z3
+/// constructor expects two args (arr_sort, Int) for this slot.
+fn translate_seq_arg_for_ctor<'ctx>(
+    arg_expr: &Expr,
+    inner_type: &str,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<(Box<dyn z3::ast::Ast<'ctx> + 'ctx>, Box<dyn z3::ast::Ast<'ctx> + 'ctx>)> {
+    use z3::Sort;
+    use z3::ast::{Array, Ast as _, Bool, Int, String as Z3Str};
+
+    // Identifier: pull (arr, len) out of an existing Seq variable.
+    if let Expr::Identifier(name) = arg_expr {
+        if let Some(var) = env.get(name) {
+            if let Some((arr, len, _elem)) = var.as_seq() {
+                return Some((
+                    Box::new(arr.clone()) as Box<dyn z3::ast::Ast<'ctx>>,
+                    Box::new(len.clone()) as Box<dyn z3::ast::Ast<'ctx>>,
+                ));
+            }
+            if let Some((arr, len, _name, _dt, _fields)) = var.as_datatype_seq() {
+                return Some((
+                    Box::new(arr.clone()) as Box<dyn z3::ast::Ast<'ctx>>,
+                    Box::new(len.clone()) as Box<dyn z3::ast::Ast<'ctx>>,
+                ));
+            }
+        }
+    }
+
+    // SeqLit: build an Array literal via successive `store`s on a
+    // constant-array seeded with a default value of the right sort.
+    if let Expr::SeqLit(items) = arg_expr {
+        let n = items.len() as i64;
+        let len_int = Int::from_i64(ctx, n);
+        match inner_type {
+            "Int" | "Nat" | "Pos" => {
+                let mut arr = Array::const_array(
+                    ctx, &Sort::int(ctx), &Int::from_i64(ctx, 0));
+                for (i, item) in items.iter().enumerate() {
+                    let v = translate_int(item, ctx, env)?;
+                    arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
+                }
+                return Some((
+                    Box::new(arr) as Box<dyn z3::ast::Ast<'ctx>>,
+                    Box::new(len_int) as Box<dyn z3::ast::Ast<'ctx>>,
+                ));
+            }
+            "Bool" => {
+                let mut arr = Array::const_array(
+                    ctx, &Sort::int(ctx), &Bool::from_bool(ctx, false));
+                for (i, item) in items.iter().enumerate() {
+                    let v = translate_bool(item, ctx, env, schemas)?;
+                    arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
+                }
+                return Some((
+                    Box::new(arr) as Box<dyn z3::ast::Ast<'ctx>>,
+                    Box::new(len_int) as Box<dyn z3::ast::Ast<'ctx>>,
+                ));
+            }
+            "String" => {
+                let default = Z3Str::from_str(ctx, "").ok()?;
+                let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
+                for (i, item) in items.iter().enumerate() {
+                    let v = translate_str(item, ctx, env)?;
+                    arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
+                }
+                return Some((
+                    Box::new(arr) as Box<dyn z3::ast::Ast<'ctx>>,
+                    Box::new(len_int) as Box<dyn z3::ast::Ast<'ctx>>,
+                ));
+            }
+            // Enum element: seed const-array with the enum's first
+            // variant (always constructible — declaration order). For
+            // a 0-arity first variant we apply its constructor; for a
+            // payload-bearing first variant we'd need values to apply
+            // it with, which complicates things. v1 fallback: bail.
+            _other => return None,
+        }
+    }
+
+    None
 }
 
 /// Build `Cons(items[0], Cons(items[1], ..., Nil))` for a hinted
