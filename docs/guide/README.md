@@ -27,16 +27,16 @@ runtime as it is today (multi-FSM scheduler, FTI-first I/O).
 |---|---|
 | [`effect-state-machines.md`](effect-state-machines.md) | Before writing any program that uses `evident effect-run`. Explains the step loop, halt convention, the issue/await pattern, and the common pitfalls. |
 | [`multi-fsm-programs.md`](multi-fsm-programs.md) | Cookbook for programs composing FSMs through shared world — setup-then-render, stdin echo, graceful shutdown, timer-driven counters, multi-plugin coordination. |
-| [`ffi-bindings.md`](ffi-bindings.md) | For stdlib authors wrapping a C library (or extending an existing wrapper) — `LibCall` shape, signature codes, ArgList encoding, library paths, debugging. **Programs should never need this guide directly.** |
+| [`foreign-bindings.md`](foreign-bindings.md) | The Foreign Type Interface (FTI) and the raw FFI escape hatch. Read it when declaring a typed foreign resource (`win ∈ SDL_Window`), wiring a reserved world field to a bridge, writing a new Rust-side bridge, or wrapping a C library in `stdlib/`. |
 
 Read them in that order. Each guide builds on the previous.
 
 ## See also
 
 - `docs/design/minimal-runtime.md` — the architectural goals
-  (~11K Rust target, FFI-first, libraries-not-plugins).
-- `docs/design/ffi-design.md` — the FFI primitive's design rationale.
-- `docs/design/foreign-type-interface.md` — FTI bridge design,
-  the typed-resource alternative to threading FFI handles
-  through state.
+  (~11K Rust target, FTI-first, libraries-not-plugins).
+- `docs/design/foreign-type-interface.md` — the FTI thesis,
+  shipped state, and the v3 operation-sequence-validation gap.
+- `docs/design/ffi-design.md` — the underlying `Effect::FFICall`
+  primitive (escape hatch when no FTI bridge exists yet).
 - Library code under `stdlib/{io,sdl,audio,shell}.ev`.
