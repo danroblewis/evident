@@ -420,6 +420,21 @@ pub enum Effect {
     /// returns a strictly-increasing nanosecond counter suitable
     /// for benchmarking and rate-limiting. Result is `IntResult`.
     MonotonicTime,
+    /// Register an Evident claim as a C-callable function. The
+    /// runtime builds a libffi closure that, when invoked from C,
+    /// dispatches the named claim with the unmarshalled args and
+    /// returns the claim's computed value.
+    ///
+    /// Result is `IntResult(handle)` — the handle's pointer is
+    /// the C function address. Pass it to C via `ArgHandle(h)`.
+    ///
+    /// **NOT YET IMPLEMENTED.** Dispatch currently returns an
+    /// Error. Implementing this needs: libffi closure setup, a
+    /// thread-safe path for C-thread → scheduler dispatch,
+    /// decisions on whether the callback body may emit Effects.
+    /// See `docs/design/ffi-os-evolution.md` § Tier 4 for the
+    /// design and constraints.
+    RegisterCallback(String, String),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

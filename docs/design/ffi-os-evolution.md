@@ -283,29 +283,54 @@ test bench (memory safety stakes are real).
 
 ## Implementation order
 
-Suggested sequence, each shippable independently:
+Suggested sequence, each shippable independently. Status as
+of the recent FFI-evolution push:
 
-1. **Memory reads** (`ReadI16`/`ReadI32`/`ReadI64`/`ReadF32`/
-   `ReadF64`/`ReadStr`). Mostly mechanical extension of the
-   existing `ReadByte` arm. Unlocks reading SDL events,
-   parsing C-side data structures.
+1. ✅ **Memory reads** (`ReadI16`/`ReadI32`/`ReadI64`/`ReadF32`/
+   `ReadF64`/`ReadStr`) — shipped in commit 12f25aa.
 
-2. **Memory writes** (`WriteByte`/`WriteI16`/... / `WriteStr`).
-   Same shape as reads. Unlocks providing buffers to C functions.
+2. ✅ **Memory writes** (`WriteByte`/`WriteI16`/... / `WriteStr`)
+   — shipped in 4fcf554.
 
-3. **Allocation** (`Malloc`, optional `Free` alias). Tiny.
-   Unlocks anything that needs Evident-owned buffers.
+3. ✅ **Allocation** (`Malloc`) — shipped in 40393f1. `CloseHandle`
+   already serves as Free.
 
-4. **`packages/posix/`** — file, env, random, sleep. Pure
-   Evident; no runtime changes. The interesting test is
-   demonstrating these without ever editing Rust.
+4. ✅ **`packages/posix/`** — sleep/env/random/file shipped in
+   cf59197. Zero Rust changes; proves the primitive set is
+   complete enough for POSIX bindings to live entirely in Evident.
 
-5. **`MonotonicTime`** — one new Effect, replaces the
-   "malloc + clock_gettime + ReadI64 × 2" workaround.
+5. ✅ **`MonotonicTime`** — shipped in b26e158.
 
-6. **Callbacks** — the standalone arc. Earliest demo: SDL timer
-   callback rendering a single frame, no input dependency.
+6. 🟡 **Callbacks** — Effect surface defined (commit pending);
+   dispatch returns Error pending implementation. Real
+   implementation requires:
+     * libffi closure setup (the `libffi` crate has a Closure API).
+     * Thread-safety: C-side may call from any thread. Decide
+       sync-on-main vs async-via-mpsc-to-scheduler. mpsc is more
+       general but adds latency and changes the synchronous-
+       return-value semantics.
+     * Effects-from-callback: probably forbid for v1.
+     * Lifetimes: closure's drop fn must un-register before
+       dropping; the user must thread the close call.
+   The Effect's surface lets future user code be forward-
+   compatible — `RegisterCallback(claim_name, sig)` is the call
+   shape; only the dispatcher implementation changes.
 
-After step 4 we should be able to write `packages/posix/`
-covering most of POSIX without any Rust changes. That's the
-real test of "is the FFI primitive set complete enough?"
+## Known gap surfaced by Phase 4
+
+The Read/Write/Malloc/MonotonicTime effects take literal handle
+Ints, not EffectFfiArg. So they can't appear inside a single
+Seq with a just-Malloc'd handle threaded via ArgPriorResult:
+within-Seq buffer-then-fill patterns require the handle to be
+captured across ticks (via the Bind path used by declarative
+install) or via the world snapshot. Lifting this means making
+Read/Write/Malloc accept `ArgPriorResult` for the handle slot —
+a smaller targeted change to the Effect enum + dispatch.
+
+## After all phases
+
+After Phase 4 we proved the primitive set is complete enough
+for POSIX bindings to live in Evident. After Phase 6 the same
+will be true for callback-heavy APIs (GUI event loops, async
+completions). The runtime stays small (~10K LOC); platform-
+specific code lives entirely in `packages/` and `stdlib/`.

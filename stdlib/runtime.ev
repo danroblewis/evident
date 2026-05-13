@@ -173,6 +173,17 @@ enum Effect =
     -- Use for benchmarking and rate-limiting; use `Time` for
     -- wall-clock ms.
     MonotonicTime
+    -- Register an Evident claim as a C function pointer. When the
+    -- C side invokes the callback, libffi unmarshals the args and
+    -- the runtime dispatches the named claim. Result is
+    -- `IntResult(handle)` — pass via `ArgHandle(h)` to C
+    -- functions that take a function pointer.
+    --
+    -- NOT YET IMPLEMENTED. Dispatch currently returns Error.
+    -- The Effect surface is defined; the libffi closure machinery
+    -- + thread-safety decisions are deferred. See
+    -- docs/design/ffi-os-evolution.md § Tier 4.
+    RegisterCallback(String, String)
 
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded

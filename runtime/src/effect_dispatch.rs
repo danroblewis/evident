@@ -475,6 +475,20 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
                     *dst.offset(bytes.len() as isize) = 0;
                 }),
+        Effect::RegisterCallback(claim, sig) => match &mut ctx.mode {
+            DispatchMode::Real => EffectResult::Error(format!(
+                "RegisterCallback({claim}, {sig}) not yet implemented — see \
+                 docs/design/ffi-os-evolution.md § Tier 4")),
+            DispatchMode::Replay { calls, cursor, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let r = calls[*cursor].result.clone();
+                *cursor += 1;
+                r
+            }
+        },
         Effect::MonotonicTime => match &mut ctx.mode {
             DispatchMode::Real => {
                 // Instant::now ↔ arbitrary monotonic clock; convert
