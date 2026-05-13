@@ -221,6 +221,8 @@ external type SDL_Window
     handle    ∈ Int
     gl_handle ∈ Int   -- GL context (also created + made current)
     vao       ∈ Int   -- default VAO (Core profile draws need one bound)
+    renderer  ∈ Int   -- SDL_Renderer; persistent across ticks so
+                      -- per-frame draw calls can pass ArgHandle(win.renderer)
 
 -- GL shader program. Bridge compiles vertex + fragment sources,
 -- links into a program, calls glUseProgram, writes the program

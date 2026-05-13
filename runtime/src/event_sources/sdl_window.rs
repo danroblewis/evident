@@ -30,15 +30,16 @@ use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
 /// management calls (resize, fullscreen toggle) from user
 /// code may behave oddly; for v1 keep window state read-only.
 pub struct SdlWindowSource {
-    title:           String,
-    width:           i32,
-    height:          i32,
-    handle_field:    String,
-    gl_handle_field: Option<String>,
-    vao_field:       Option<String>,
-    write_queue:     WriteQueue,
-    stop_flag:       Arc<AtomicBool>,
-    handle:          Option<JoinHandle<()>>,
+    title:            String,
+    width:            i32,
+    height:           i32,
+    handle_field:     String,
+    gl_handle_field:  Option<String>,
+    vao_field:        Option<String>,
+    renderer_field:   Option<String>,
+    write_queue:      WriteQueue,
+    stop_flag:        Arc<AtomicBool>,
+    handle:           Option<JoinHandle<()>>,
 }
 
 impl SdlWindowSource {
@@ -52,6 +53,7 @@ impl SdlWindowSource {
             handle_field:    handle_field.into(),
             gl_handle_field: None,
             vao_field:       None,
+            renderer_field:  None,
             write_queue:     new_write_queue(),
             stop_flag:       Arc::new(AtomicBool::new(false)),
             handle:          None,
@@ -65,6 +67,16 @@ impl SdlWindowSource {
 
     pub fn with_vao_field(mut self, field: impl Into<String>) -> Self {
         self.vao_field = Some(field.into());
+        self
+    }
+
+    /// Configure a renderer field. When set, `start_inline` calls
+    /// SDL_CreateRenderer after the window is created and writes
+    /// the renderer pointer to the field — giving user FSMs a
+    /// persistent renderer handle across ticks (which raw FFI
+    /// calls otherwise can't carry — see COUNTEREXAMPLES.md #9).
+    pub fn with_renderer_field(mut self, field: impl Into<String>) -> Self {
+        self.renderer_field = Some(field.into());
         self
     }
 
@@ -196,6 +208,27 @@ impl SdlWindowSource {
                 .unwrap_or(0) as i64
         } else { 0 };
 
+        // SDL_Renderer (optional). When the user's SDL_Window
+        // declaration includes a `renderer` field, create one
+        // bound to this window. This is the missing piece that
+        // makes per-tick rendering work (COUNTEREXAMPLES.md #9):
+        // the renderer pointer is in the world snapshot from
+        // here on, so each tick's FFI calls can pass it via
+        // ArgHandle(world.renderer).
+        let renderer_ptr = if self.renderer_field.is_some() {
+            type SdlCreateRenderer = unsafe extern "C"
+                fn(*mut c_void, c_int, u32) -> *mut c_void;
+            let create_ren: Symbol<SdlCreateRenderer> =
+                unsafe { lib.get(b"SDL_CreateRenderer\0") }
+                    .map_err(|e| format!("SDL_CreateRenderer lookup: {e}"))?;
+            // index=-1 (any driver), flags=0 (default; accelerated).
+            let r = unsafe { create_ren(win_ptr, -1, 0) };
+            if r.is_null() {
+                return Err("SDL_CreateRenderer returned null".to_string());
+            }
+            r as i64
+        } else { 0 };
+
         // Push the handles to the write queue so the runtime
         // applies them to the snapshot via the normal drain path.
         {
@@ -206,6 +239,9 @@ impl SdlWindowSource {
             }
             if let Some(vao_field) = &self.vao_field {
                 q.push_back((vao_field.clone(), Value::Int(vao_id)));
+            }
+            if let Some(r_field) = &self.renderer_field {
+                q.push_back((r_field.clone(), Value::Int(renderer_ptr)));
             }
         }
         let _ = tx.send(SchedulerEvent::Tick { name: "sdl".into() });

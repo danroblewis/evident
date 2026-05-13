@@ -149,9 +149,11 @@ fn install_sdl_window(
     let h_key  = key(ctx, "handle");
     let g_key  = key(ctx, "gl_handle");
     let v_key  = key(ctx, "vao");
+    let r_key  = key(ctx, "renderer");
     let mut bridge = SdlWindowSource::new(title, width, height, &h_key)
         .with_gl_context_field(&g_key)
-        .with_vao_field(&v_key);
+        .with_vao_field(&v_key)
+        .with_renderer_field(&r_key);
     // Inline start: SDL on macOS requires CreateWindow on the
     // main thread. The runtime is single-threaded here.
     bridge.start_inline(event_tx)
@@ -159,7 +161,7 @@ fn install_sdl_window(
                              ctx.claim_name, ctx.param_name))?;
     Ok(FtiInstall {
         source: Box::new(bridge),
-        keys:   vec![h_key, g_key, v_key],
+        keys:   vec![h_key, g_key, v_key, r_key],
     })
 }
 
