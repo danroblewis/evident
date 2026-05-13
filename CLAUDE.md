@@ -284,6 +284,142 @@ the runtime refuses to allow it. See `docs/design/fsm-subscriptions.md`
 the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
 covers the scheduler model and 5-phase implementation status.
 
+## Idiomatic Evident — drop annotations the inference can recover
+
+The runtime infers types from RHS expressions, claim signatures,
+and constructor calls. **When generating Evident code, prefer the
+shorter form**; spelling out `∈ Type` where it would be inferred
+is noise that bloats the source.
+
+### Chained-membership and dropped annotations
+
+Prefer one line over two:
+
+```evident
+-- Don't:
+result ∈ Int
+result = x + 1
+
+-- Do (chained-membership):
+result ∈ Int = x + 1
+```
+
+When the RHS makes the type determinable, drop the annotation
+entirely (the lhs-eq inference recovers it):
+
+```evident
+-- All of these have their type inferred:
+on_ground = (_pos.y ≥ 400)                  -- Bool from comparison
+walk_vx = (key_left > 0 ? 0 - 5 : 0)        -- Int from ternary arms
+sky = Color(80, 160, 220, 255)              -- Color from ctor
+eff = LibCall("...", "...", "...", ⟨⟩)      -- Effect from variant
+target = _world.pos                          -- IVec2 from field type
+m_str = match last_results[0]                -- Int from arm bodies
+    IntResult(n) ⇒ n
+    _           ⇒ 0
+```
+
+Inference covers ternary arms, match arm bodies, binary ops
+(comparisons / logical → Bool; arithmetic → operand type; `++`
+→ String), constructor calls (`Color`, `IVec2`, `LibCall`, etc.),
+field access on declared records (chains through schema bodies),
+and claim-call args (fresh names used multiply get types from
+the called claim's signature).
+
+What stays explicit:
+- **Top-level primitive literals** — `x = 5` doesn't auto-infer
+  at load time. Use `x ∈ Int = 5`.
+- **Record arithmetic with no anchoring side** — `tent ∈ IVec2 =
+  _pos + grav_vel` (inference doesn't yet propagate record type
+  through `+`).
+- **Type definitions** — `type World` body needs annotations.
+
+### Multi-FSM shared state: `_world` / `world` syntax
+
+```evident
+type World
+    pos ∈ IVec2
+
+-- Don't (legacy writer pattern):
+fsm game(world ∈ World, world_next ∈ World)
+    new_pos ∈ IVec2 = world.pos + ...       -- world.X = previous tick
+    world_next.pos = new_pos                 -- world_next.X = write
+
+-- Do (unified `_var` time-shift):
+fsm game(world ∈ World)
+    world.pos = _world.pos + ...             -- _world.X read prev, world.X = write
+```
+
+`_world.X` reads the previous tick's value; `world.X = ...`
+writes the current tick's value. Runtime rewrites internally
+to the legacy pattern.
+
+### Subclaim dispatch over receiver-prefix
+
+When a type has subclaims, prefer `recv.subclaim(args)` over
+threading the receiver explicitly:
+
+```evident
+-- Don't:
+set_draw_color(win.renderer, Color(220, 40, 40, 255), eff)
+
+-- Do (set_draw_color is a subclaim of SDL_Window):
+win.set_draw_color((220, 40, 40, 255), eff)
+```
+
+The subclaim body uses the receiver's fields by bare name
+(field-rebinding at invocation). The runtime resolves
+`renderer` to `win.renderer`.
+
+### Tuple-as-record coercion in claim arg slots
+
+When a claim's slot has a record type, pass a bare tuple and
+the runtime constructs the record literal:
+
+```evident
+-- Don't:
+win.set_draw_color(Color(220, 40, 40, 255), eff)
+win.render_fill_rect(IVec2(pos.x, pos.y), IVec2(32, 32), eff)
+
+-- Do:
+win.set_draw_color((220, 40, 40, 255), eff)
+win.render_fill_rect((pos.x, pos.y), (32, 32), eff)
+```
+
+### Claim-arg type inference for fresh output names
+
+When you pass a fresh identifier as a claim arg AND reference
+it elsewhere, the runtime infers its type from the called
+claim's param signature:
+
+```evident
+-- Don't:
+sky_eff ∈ Effect
+set_draw_color(win.renderer, Color(...), sky_eff)
+effects = ⟨sky_eff, ...⟩
+
+-- Do (sky_eff inferred as Effect from set_draw_color's `out` slot,
+-- since it appears in both the call and the effects list):
+set_draw_color(win.renderer, Color(...), sky_eff)
+effects = ⟨sky_eff, ...⟩
+```
+
+Typo defense: only fires when the name has ≥ 2 uses. A
+single-use fresh name stays undeclared so translation fails
+loudly on typos.
+
+### `_var` for previous-tick reads
+
+Inside an fsm body, `_var` is the previous tick's value of
+`var`. Works for primitive Ints, records (per-field), and
+shared world (via `_world.X`). `is_first_tick ∈ Bool` auto-
+injects when any `_var` is referenced.
+
+```evident
+fsm counter
+    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+```
+
 ## Keyword Conventions
 
 All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes
@@ -406,8 +542,8 @@ claim valid_conference
 
 ### Interface vars on the claim line + positional invocation
 
-When a claim takes parameters, put them on the claim line (first-line
-params) so callers can use **positional invocation** without `mapsto`:
+When a claim takes parameters, put them on the claim line so
+callers can use positional invocation without `mapsto`:
 
 ```evident
 claim Distinct(s ∈ Seq, n ∈ Nat)
@@ -419,121 +555,49 @@ claim my_problem
     Distinct(items, 8)             -- positional, no `mapsto` needed
 ```
 
-The claim's first-line params define its **interface** — the variables
-the caller must supply. Other vars declared in the body are
-internal. This shape:
+The first-line params are the claim's **interface** — what the
+caller must supply. Body-level decls are internal helpers.
 
-  - Reads like a function signature.
-  - Saves verbosity at every call site (no `slot ↦ value` ceremony).
-  - Lets the same claim be invoked with different caller-side names
-    (no need for the caller's vars to match the claim's slot names).
-
-Compare:
-
-```evident
--- Verbose: claim has body-level decls, caller uses mapsto OR
--- must match names exactly:
-claim Distinct
-    s ∈ Seq
-    n ∈ Nat
-    …
-Distinct (s ↦ items, n ↦ 8)        -- mapsto every call
--- or
-items_renamed_to_s ∈ Seq(Int)       -- contort the names
-Distinct                             -- bare names-match
-
--- Compact: interface on the claim line, positional at call site:
-claim Distinct(s ∈ Seq, n ∈ Nat)
-    …
-Distinct(items, 8)                   -- one short call
-```
-
-**Rule of thumb**: any var the caller needs to supply belongs on the
-claim line. Internal helpers (intermediate Reals/Bools, named
-sub-results) stay in the body.
+**Rule**: any var the caller supplies belongs on the claim line.
+Internal helpers stay in the body.
 
 ### Generic Seq parameters: `s ∈ Seq` (no element type)
 
-A claim parameter declared as `s ∈ Seq` (bare, no element type) takes
-its element type from the caller's binding via names-match. The same
-claim then works for any orderable / equality-comparable element type:
+A claim parameter declared as `s ∈ Seq` (bare, no element type)
+takes its element type from the caller's binding via names-match.
+The same claim works for any element type whose body operations
+are type-agnostic (distinctness, sortedness, …):
 
 ```evident
 claim Distinct
-    s ∈ Seq                  -- generic; element type comes from caller
+    s ∈ Seq                  -- generic
     n ∈ Nat
     ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒ s[i] ≠ s[j]
-
-claim use_int
-    s ∈ Seq(Int)
-    n ∈ Nat
-    n = 4 ; #s = n
-    s[0] = 7 ∧ s[1] = 2 ∧ s[2] = 9 ∧ s[3] = 4
-    Distinct                 -- works on Int
-
-claim use_string
-    s ∈ Seq(String)
-    n ∈ Nat
-    n = 3 ; #s = n
-    s[0] = "a" ∧ s[1] = "b" ∧ s[2] = "c"
-    Distinct                 -- same claim, works on String
 ```
 
-The runtime infers the element type at inline time from whatever the
-caller declared. Body operations (`s[i] ≠ s[j]`, `a ≤ b`, etc.) get
-translated against the caller's type. `stdlib/distinct.ev` and
-`stdlib/sorted.ev` use this pattern — single generic claim, not
-per-type variants.
+`stdlib/distinct.ev` and `stdlib/sorted.ev` use this — single
+generic claim, not per-type variants. Don't use when the body's
+translation depends on the element type — give a concrete
+`Seq(Bool)` so the type-check fires at the call site.
 
-Use this whenever a claim's logic doesn't depend on the specific
-element type — distinctness, sortedness, bijection between two seqs,
-sum-of-elements, etc. Don't use it when the body's translation
-depends on the type (e.g., a claim that only makes sense for Bool
-sequences) — give it a concrete `Seq(Bool)` so the type-check fires
-at the call site.
+### Chained-membership with comparison chains
 
-### Chained-membership: declare and constrain on one line
-
-`∈` can sit inside a chained-comparison expression at the body-item
-level. The variable to its left gets declared with the type to its
-right, and every comparison pair in the chain becomes its own
-constraint. Three common shapes:
+Beyond the basic `name ∈ Type = expr` form (covered above in
+"Idiomatic Evident"), `∈` can sit inside a chained-comparison
+expression — declare + bound in one line:
 
 ```evident
-pos_x ∈ Int = 5            -- declare + pin
 pos_x ∈ Int < 5            -- declare + upper bound
-0 < pos_x ∈ Int            -- declare + lower bound
-0 < pos_x ∈ Int < 5        -- declare + range  (replaces 3 lines)
-0 ≤ score ∈ Nat ≤ 100      -- any comparison ops work
-val ∈ Int ≠ 0              -- inequality after declaration
+0 < pos_x ∈ Int < 5        -- declare + range (replaces 3 lines)
+0 ≤ score ∈ Nat ≤ 100
+val ∈ Int ≠ 0
+x, y, z ∈ Int < 5          -- multi-name (3 decls, each bounded)
 ```
 
-Each desugars to a `Membership` plus one `Constraint` per comparison
-pair. `0 < pos_x ∈ Int < 5` becomes:
-
-```evident
-pos_x ∈ Int
-0 < pos_x
-pos_x < 5
-```
-
-Multi-name shorthand works in chains too — every comparison pair
-gets a per-name copy:
-
-```evident
-x, y, z ∈ Int < 5          -- 3 Memberships + 3 Constraints (each < 5)
-0 < x, y, z ∈ Int < 5      -- 3 Memberships + 6 Constraints (lower + upper per name)
-```
-
-The variable being declared must be a bare identifier (no field
-access — `state.x ∈ Int < 5` is rejected). Compound types work
-without comparisons (`s ∈ Seq(Int)` parses normally) but the
-chained form expects a plain type name on the right of `∈`.
-
-The chain detector requires the next token after the chain to be a
-line-end. Constraints joined with `∧`/`∨` like `x ∈ pts ∧ x > 0`
-still parse as expressions (set-membership inside a Bool), not as
-chained-membership.
+Each comparison pair desugars to its own `Constraint`. The
+variable must be a bare identifier (no field access), and the
+chain detector requires a line-end after the chain (so
+`x ∈ pts ∧ x > 0` parses as Bool set-membership, not chained).
 
 ### Renaming with `↦`: when names differ
 
@@ -900,143 +964,32 @@ is in scope.
 - Can you name each dispatch branch? If not, it may need further decomposition.
 - Does the parent declare variables only one subclaim uses? Move them inside.
 
-## I/O Plugins
-
-The executor is one loop. Side-effectful I/O is handled by plugins, each
-claiming one or more Evident type names. Plugins live in `runtime/src/plugins/`
-and inherit from `runtime/src/plugin.py:Plugin`.
-
-**Built-in plugins:**
-
-| Plugin | Type names |
-|---|---|
-| `StdinPlugin`     | `Stdin`, `CharInput` — one char per step |
-| `StdoutPlugin`    | `Stdout`, `Stderr`, `CharOutput` — write `var.out` per step |
-| `BatchInputPlugin`  | `StdinLines`, `StdinAll`, `StdinChunks` — one-shot |
-| `BatchOutputPlugin` | `StdoutLines`, `StdoutAll` — one-shot |
-| `SDLPlugin`       | `SDLInput`, `SDLOutput` — graphical window |
-
-**Auto-detection.** `executor.run()` calls `plugin.initialize(declared_vars)`
-on every plugin in the default list; only those whose `handles_types`
-matches at least one variable in `main` become active. Programs that
-declare `∈ Stdin` get the StdinPlugin; programs that declare `∈ SDLOutput`
-get the SDLPlugin; programs that declare both get both.
-
-**Lifecycle.** `start()` once at the beginning, `before_step()` and
-`after_step()` per step, `stop()` once at shutdown (in a `finally` block).
-`before_step → None` and `after_step → False` both signal halt.
-
-**Adding a plugin.** Subclass `Plugin`, set `handles_types = {...}`, override
-the lifecycle methods you need, then add an instance to `default_plugins()`
-in `runtime/src/plugins/__init__.py`. The executor handles the rest.
-
-**Footgun: blocking I/O.** If a program declares both `∈ Stdin` and
-`∈ SDLInput`, the StdinPlugin's `before_step` blocks waiting for a character,
-which freezes the SDL window. Single-source-of-input is the supported case.
-Future: a "non-blocking" plugin trait or `select()` on stdin when SDL is also
-active.
-
 ## Key Invariants
 
-**Parser**
-- The grammar is the single source of truth for syntax.  The normalizer runs
-  first and converts Unicode operators to `__TOKEN__` form before Lark sees the
-  source, so the grammar only contains ASCII tokens for operators.
-- `normalizer.py` maps both directions: Unicode symbols *and* word keywords
-  (`in`, `not in`, `subset`, `superset`, `mapsto`) to the same `__TOKEN__`.
-  Adding a new keyword requires updating the normalizer *and* the grammar.
-
-**AST**
-- Runtime files import AST types from `runtime/src/ast_types.py`, not directly
-  from `parser/src/ast.py`.  `ast_types.py` re-exports via a proper package
-  import so all code shares one class identity — two separate `importlib.util`
-  loads produce different class objects and break `isinstance`.
-
-**Sorts and enums**
-- `SortRegistry` is the single owner of all Z3 sorts and enum constructors.
-- Enum variant names are **global** and must be unique across all enum types.
-  `declare_algebraic` raises `ValueError` on duplicate variant names.
-- **Python**: `type Color = Red | Green | Blue` declares a named enum.
-- **Python only**: `x ∈ Red | Green | Blue` (inline enum) auto-declares an
-  anonymous enum named `_Enum_<sorted_variants>` and is equivalent to declaring
-  the type separately.
-- **Rust**: top-level `enum Color = Red | Green | Blue` with the dedicated
-  `enum` keyword (not `type`). Payload variants, self-recursion, forward
-  references, and **cross-enum mutual recursion** are all supported:
-  `enum Result = Ok(Int) | Err(String)`,
-  `enum LinkedList = Nil | Cons(Int, LinkedList)`, and
-  `enum Expr = ENum(Int) | EBlock(Stmt) ; enum Stmt = SExpr(Expr) | SSeq(Stmt, Stmt)`
-  all work. Multiple enum decls per file are batched and built together via
-  Z3's `create_datatypes` so forward and mutual references resolve in one
-  pass. Multi-line variant lists are supported (with or without leading `|`).
-  Constructors apply with positional args: `r = Ok(5)`,
-  `list = Cons(7, Cons(2, Nil))`. Variant names are globally unique across
-  all enums; duplicates fail at load.
+**Enums**
+- Top-level `enum Color = Red | Green | Blue` with the dedicated
+  `enum` keyword (not `type`). Payload variants, self-recursion,
+  forward references, and cross-enum mutual recursion all work
+  (`enum Result = Ok(Int) | Err(String)`,
+   `enum LL = Nil | Cons(Int, LL)`,
+   `enum A = X(B) ; enum B = Y(A)`). Variant names are GLOBALLY
+  unique across all enums; duplicates fail at load.
+- Multiple enum decls per file batch through Z3's
+  `create_datatypes` so forward / mutual references resolve in
+  one pass.
 
 **Variable scoping**
-- Variables declared inside a schema (`x ∈ Nat`) are local to that schema's
-  query.  Independent queries do not share environments.
-- Composed sub-schemas get a dotted prefix: `task ∈ Task` expands into
-  `task.id`, `task.duration`, etc. in the parent environment.  The bare `task`
-  variable is not created; only the leaf fields exist in Z3.
-- Type names (e.g. `Color`) can be reused as variable names inside a schema
-  without conflict — they occupy different namespaces.
+- Variables declared inside a schema body are local to that
+  schema's query.
+- A sub-schema membership `task ∈ Task` expands into per-field
+  Z3 leaves (`task.id`, `task.duration`, …). The bare `task`
+  variable is never stored in env; only the leaves are.
+- Type names can shadow as variable names without conflict —
+  they live in different namespaces.
 
 **Subclaims**
-- `subclaim Name ... ` inside a claim body defines a locally-scoped claim.
-  It is registered into `self.schemas` by `runtime.py`'s `load_schema` at
-  load time, so it is available for names-match composition even when the
-  parent is used via passthrough (not directly evaluated).
-- Subclaim-internal variables (declared inside the subclaim body but not in
-  the parent scope) receive fresh Z3 constants via `z3.FreshConst` in
-  `translate.py`'s claim composition code.  They are not visible to the parent.
-- Adding a subclaim: define it in the parent body; it is automatically picked up.
-
-**Z3 safety**
-- Z3's C library is not safe for concurrent use from multiple threads.
-- The IDE backend runs `/sample` and `/ranges` in isolated subprocesses via
-  `ide/backend/z3_worker.py` to prevent server crashes.
-- `/ranges` results are cached (LRU, 128 entries) keyed by request hash.
-  `/sample` is intentionally **not** cached — results are random.
-- Push/pop inside a single subprocess is safe.  Never use push/pop across
-  request boundaries in the web server process.
-
-**Sub-schema field access**
-- `task.duration` in source is parsed as `BinaryExpr(×, Identifier('task'),
-  FieldAccess('.', 'duration'))` by the grammar (juxt-dot ambiguity).
-  `translate.py` intercepts this pattern and resolves it as a dotted env
-  lookup before evaluating operands.
-
-## IDE
-
-```
-ide/
-  backend/
-    main.py          FastAPI app; /parse, /evaluate, /ranges, /sample, /transfer
-    z3_worker.py     Subprocess worker for Z3 isolation
-    ranges.py        Binary-search minimum finder (no Z3 Optimize)
-    sampler.py       blocking_clause_sample, random_seed_sample, grid_sample
-  frontend/
-    editor.js        Monaco setup + LaTeX-style keyword→symbol substitution
-    evident-lang.js  Monaco Monarch tokenizer + dark theme
-    schema-panel.js  Schema selector and variable binding inputs
-    samples.js       Sample table; accumulates unique samples across runs
-    ranges.js        Variable range bars
-    scatter.js       2D plot: scatter (num×num), strip (enum×num), count bars (enum)
-  tests/
-    test_ide.py      Playwright end-to-end tests (server must be on :8765)
-```
-
-**Running the IDE**
-
-```bash
-uvicorn ide.backend.main:app --port 8765
-# then open http://localhost:8765/app/
-```
-
-**Running tests**
-
-```bash
-pytest runtime/tests/ parser/tests/     # unit tests (fast, ~2s)
-pytest ide/tests/test_ide.py            # Playwright e2e (requires server on :8765)
-```
+- `subclaim Name` inside any schema body registers a top-level
+  schema at load time. Available for names-match composition,
+  receiver-prefix dispatch, or subschema-of-type dispatch.
+- Subclaim-internal vars are fresh per-invocation; not visible
+  to the parent.
