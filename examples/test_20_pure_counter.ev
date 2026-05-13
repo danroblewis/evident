@@ -1,0 +1,59 @@
+-- 20_pure_counter — unified state model: an fsm with no state
+-- enum at all. The whole "state" is `count ∈ Int`, advanced via
+-- the `_var` time-shift convention (`_count + 1`). Smart-inject
+-- means we don't get state/state_next forced on us.
+--
+-- Compare test_02_counter: that demo encodes its state machine
+-- explicitly with a 4-variant enum (Start, Count, Format, Done).
+-- This one expresses the same shape with a plain Int counter
+-- and `is_first_tick`.
+--
+-- See docs/design/state-machines-as-relations.md.
+
+import "stdlib/runtime.ev"
+
+fsm counter
+    count ∈ Int
+    count = (is_first_tick ? 0 : _count + 1)
+
+    -- Print the previous tick's IntToStr result (canonical
+    -- "format an Int" pattern: emit IntToStr(n) on tick K,
+    -- read the StringResult on tick K+1).
+    fmt_str ∈ String
+    fmt_str = match last_results[0]
+        StringResult(s) ⇒ s
+        _               ⇒ "?"
+
+    -- IntToStr always comes FIRST so last_results[0] always
+    -- holds the StringResult on the next tick. Println comes
+    -- after, using the PREVIOUS tick's fmt_str.
+    effects = (count = 0   ? ⟨IntToStr(count), Println("starting")⟩
+            : (count ≤ 3   ? ⟨IntToStr(count), Println("count = " ++ fmt_str)⟩
+                           : ⟨Println("count = " ++ fmt_str), Exit(0)⟩))
+
+-- ── Static tests ─────────────────────────────────────────────
+
+claim sat_first_tick_starts_at_zero
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    count ∈ Int
+    _count ∈ Int
+    is_first_tick ∈ Bool
+    fmt_str ∈ String
+
+    is_first_tick = true
+    counter
+    count = 0
+
+claim sat_second_tick_is_one
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    count ∈ Int
+    _count ∈ Int
+    is_first_tick ∈ Bool
+    fmt_str ∈ String
+
+    is_first_tick = false
+    _count = 0
+    counter
+    count = 1

@@ -166,6 +166,17 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Unified state model: an fsm with NO state enum, NO
+        // state-pair — just `count ∈ Int` advanced via `_count
+        // + 1`. Smart-inject only adds the slots that are
+        // referenced (effects + last_results). Demonstrates
+        // that the canonical fsm machinery is opt-in.
+        name: "test_20_pure_counter", exit: 0,
+        must_lines: &["starting", "count = 0", "count = 1", "count = 2", "count = 3"],
+        forbid_exact_lines: &["count = ?"],
+        max_steps: 15, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
