@@ -182,14 +182,16 @@ const EXPECTATIONS: &[DemoExpect] = &[
         // draw using the SDL_Window FTI bridge's persistent
         // renderer handle (win.renderer). Auto-walks across
         // screen bouncing off walls, falls under gravity to
-        // ground level, halts after 60 frames.
+        // ground level. 240 frames × 16ms ≈ 4s of visible
+        // animation (the sdl_delay each tick paces the fsm
+        // to ~60fps so SDL has time to show the window).
         // Visual verification: capture with --examples and Read
         // the PNG — should show a red square on green ground
         // against sky-blue background.
         name: "test_21_mario", exit: 0,
         must_lines: &["mario done"],
         forbid_exact_lines: &[],
-        max_steps: 80, tick_ms: 0, stdin: None,
+        max_steps: 260, tick_ms: 0, stdin: None,
     },
     DemoExpect {
         // `_var` time-shift through RECORD types: `_pos.x` and

@@ -80,12 +80,18 @@ fsm mario
     win.render_fill_rect(pos, (32, 32), mario_eff)
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
+    -- Frame pacing: 16 ms ≈ 60 fps. Without this the fsm zips
+    -- through every frame in microseconds and SDL closes the
+    -- window before anything is visible. Could also be driven
+    -- by a FrameTimer plugin, but sdl_delay is simpler for a
+    -- single-fsm demo.
+    sdl_delay(16, delay_eff)
 
-    -- Halt after 60 frames so the demo terminates on its own.
-    effects = (frame ≥ 60
+    -- Halt after 240 frames (~4 seconds at 60 fps).
+    effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
         : ⟨sky_eff, clear_eff, ground_color_eff, ground_eff,
-            mario_color_eff, mario_eff, present_eff, pump_eff⟩)
+            mario_color_eff, mario_eff, present_eff, pump_eff, delay_eff⟩)
 
 -- ── Static tests ─────────────────────────────────────────────
 
