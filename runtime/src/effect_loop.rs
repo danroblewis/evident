@@ -488,7 +488,12 @@ pub fn run_with_ctx(
                 ).unwrap_or(false);
                 if has_declarative {
                     let mut src = crate::event_sources::DeclarativeInstallSource::new();
-                    src.run_install(rt, type_name, &fti_ctx, pins, &event_tx)?;
+                    // CRITICAL: pass the scheduler's DispatchContext so the
+                    // HandleRegistry IDs assigned at install (window ptr,
+                    // renderer ptr, …) are visible to per-tick effect
+                    // dispatch — otherwise ArgHandle lookups go to a
+                    // different (empty) registry.
+                    src.run_install(rt, type_name, &fti_ctx, pins, &event_tx, ctx)?;
                     // Captured keys = leading Memberships of the type
                     // that aren't first-line input pins. The drain pass
                     // applies them to world_snapshot below.

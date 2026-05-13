@@ -51,6 +51,15 @@ impl DeclarativeInstallSource {
     /// Resolve the install Seq for `type_name` with `pins` applied,
     /// dispatch each step, and queue captured results onto the write
     /// queue under `<fsm>.<param>.<field>`.
+    ///
+    /// `dispatch_ctx` MUST be the same context the scheduler will use
+    /// for per-tick effect dispatch. The HandleRegistry it holds is
+    /// where libffi stores pointer-return IDs; per-tick code passes
+    /// `ArgHandle(id)` and the same registry resolves the id back to
+    /// the pointer. Using a fresh context here would orphan the IDs
+    /// (this was the "renders black" failure mode — the renderer
+    /// pointer was registered in a context that got dropped after
+    /// install, leaving the per-tick lookups pointing at nothing).
     pub fn run_install(
         &mut self,
         rt:   &crate::runtime::EvidentRuntime,
@@ -58,6 +67,7 @@ impl DeclarativeInstallSource {
         ctx:  &FtiContext,
         pins: &Pins,
         tx:   &Sender<SchedulerEvent>,
+        dispatch_ctx: &mut DispatchContext,
     ) -> Result<(), String> {
         // Build given map from pin values. pin_int / pin_str helpers
         // are private to fti.rs, so duplicate the shape here.
@@ -92,8 +102,7 @@ impl DeclarativeInstallSource {
         // created earlier in the Seq feed forward to later steps without
         // any explicit threading from the user.
         let effects: Vec<_> = steps.iter().map(|s| s.effect.clone()).collect();
-        let mut dctx = DispatchContext::new();
-        let results = dispatch_all(&mut dctx, &effects);
+        let results = dispatch_all(dispatch_ctx, &effects);
 
         // Capture Bind'd results into the per-instance world keys.
         let mut q = self.write_queue.lock().unwrap();
