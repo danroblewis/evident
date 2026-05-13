@@ -9,15 +9,15 @@ type World
     key_up ∈ Int
     tick ∈ Int
 
-fsm game(world ∈ World, world_next ∈ World)
-    game_clock = world.tick
+fsm game(world ∈ World)
+    game_clock = _world.tick
 
-    on_ground = (world.pos.y ≥ 400)
-    walk_vx = (world.key_left > 0 ? 0 - 5
-                : (world.key_right > 0 ? 5 : 0))
-    jump_vy = (on_ground ∧ world.key_up > 0 ? 0 - 14 : _vel.y + 2)
+    on_ground = (_world.pos.y ≥ 400)
+    walk_vx = (_world.key_left > 0 ? 0 - 5
+                : (_world.key_right > 0 ? 5 : 0))
+    jump_vy = (on_ground ∧ _world.key_up > 0 ? 0 - 14 : _vel.y + 2)
 
-    tent ∈ IVec2 = world.pos + IVec2(walk_vx, jump_vy)
+    tent ∈ IVec2 = _world.pos + IVec2(walk_vx, jump_vy)
 
     clamped = IVec2(
         (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
@@ -27,12 +27,12 @@ fsm game(world ∈ World, world_next ∈ World)
         walk_vx,
         (tent.y > 400 ? 0 : jump_vy))
 
-    world_next.pos = IVec2((is_first_tick ? 304 : clamped.x),
-                            (is_first_tick ? 100 : clamped.y))
+    world.pos = IVec2((is_first_tick ? 304 : clamped.x),
+                       (is_first_tick ? 100 : clamped.y))
     vel = IVec2((is_first_tick ? 0 : next_vel.x),
                 (is_first_tick ? 0 : next_vel.y))
 
-fsm display(world ∈ World, world_next ∈ World)
+fsm display(world ∈ World)
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
     frame = (is_first_tick ? 0 : _frame + 1)
@@ -47,10 +47,10 @@ fsm display(world ∈ World, world_next ∈ World)
         IntResult(n) ⇒ n
         _           ⇒ 0
 
-    world_next.key_left  = (is_first_tick ? 0 : key_left_raw)
-    world_next.key_right = (is_first_tick ? 0 : key_right_raw)
-    world_next.key_up    = (is_first_tick ? 0 : key_up_raw)
-    world_next.tick      = frame
+    world.key_left  = (is_first_tick ? 0 : key_left_raw)
+    world.key_right = (is_first_tick ? 0 : key_right_raw)
+    world.key_up    = (is_first_tick ? 0 : key_up_raw)
+    world.tick      = frame
 
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
@@ -58,13 +58,13 @@ fsm display(world ∈ World, world_next ∈ World)
     win.render_fill_rect((0, 432), (640, 48), ground_eff)
 
     win.set_draw_color((220, 40, 40, 255), hat_color_eff)
-    win.render_fill_rect(world.pos, (32, 6), hat_eff)
+    win.render_fill_rect(_world.pos, (32, 6), hat_eff)
     win.set_draw_color((240, 200, 160, 255), face_color_eff)
-    win.render_fill_rect(IVec2(world.pos.x + 4, world.pos.y + 6), (24, 10), face_eff)
+    win.render_fill_rect(IVec2(_world.pos.x + 4, _world.pos.y + 6), (24, 10), face_eff)
     win.set_draw_color((220, 40, 40, 255), shirt_color_eff)
-    win.render_fill_rect(IVec2(world.pos.x, world.pos.y + 16), (32, 10), shirt_eff)
+    win.render_fill_rect(IVec2(_world.pos.x, _world.pos.y + 16), (32, 10), shirt_eff)
     win.set_draw_color((40, 70, 200, 255), pants_color_eff)
-    win.render_fill_rect(IVec2(world.pos.x + 4, world.pos.y + 26), (24, 6), pants_eff)
+    win.render_fill_rect(IVec2(_world.pos.x + 4, _world.pos.y + 26), (24, 6), pants_eff)
 
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
