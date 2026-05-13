@@ -15,18 +15,24 @@
 -- resolves libSDL2 + each symbol once and reuses thereafter.
 
 import "stdlib/runtime.ev"
+import "packages/sdl/window.ev"
 
--- ── Records ───────────────────────────────────────────────────
-
--- 2D integer vector — positions, sizes, deltas. Componentwise
--- arithmetic and chained comparisons work via the runtime's
--- record-lift (see CLAUDE.md "Records as vectors").
-type IVec2(x, y ∈ Int)
-
--- RGBA color, 0..255 per channel. alpha 255 = opaque.
-type Color(red, green, blue, alpha ∈ Int)
-
--- ── Renderer ──────────────────────────────────────────────────
+-- ── Note on the moved renderer-taking claims ──────────────────
+-- The renderer-taking forms — `set_draw_color`, `render_clear`,
+-- `render_present`, `render_fill_rect`, `draw_line`, `draw_point`,
+-- `render_geometry`, `destroy_renderer` — now live as subclaims
+-- of `SDL_Window` in `packages/sdl/window.ev`. Invoke them via
+-- `win.set_draw_color(color, out)` etc.; the runtime rebinds
+-- SDL_Window's `renderer` field onto the bare name in the
+-- subclaim body. `IVec2` and `Color` records also live in
+-- window.ev now.
+--
+-- This file retains:
+--   * `create_renderer` — creates a renderer (not "operates on
+--     one"), so doesn't fit the subclaim shape.
+--   * `*_after` variants — take a prior-result index instead of
+--     a renderer handle, used for single-Seq atomic batches
+--     where the renderer ptr lives in last_results, not world.
 
 -- SDL_CreateRenderer(window, index, flags) → SDL_Renderer*
 -- index: -1 means "first matching driver".
@@ -35,30 +41,6 @@ external claim create_renderer(window ∈ Int, out ∈ Effect)
     out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                   "p(pii)",
                   ⟨ArgHandle(window), ArgInt(0 - 1), ArgInt(0)⟩)
-
-external claim destroy_renderer(renderer ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyRenderer",
-                  "v(p)", ⟨ArgHandle(renderer)⟩)
-
--- ── Color + clear + present ───────────────────────────────────
-
--- SDL_SetRenderDrawColor(renderer, color) → int.
-external claim set_draw_color(renderer ∈ Int, color ∈ Color, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
-                  "i(piiii)",
-                  ⟨ArgHandle(renderer), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
-
--- SDL_RenderClear(renderer) → int. Clears the entire viewport with
--- the current draw color.
-external claim render_clear(renderer ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
-                  "i(p)", ⟨ArgHandle(renderer)⟩)
-
--- SDL_RenderPresent(renderer) — flip the back buffer to screen.
--- Without this, nothing rendered is visible.
-external claim render_present(renderer ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
-                  "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── *_after variants: take a prior-result index, not a renderer ──
 -- Use these inside an Effect::Seq when the renderer pointer
@@ -94,46 +76,7 @@ external claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedField
                   "i(pppipi)",
                   ⟨ArgPriorResult(prior_idx), ArgHandle(0), ArgPackedBuf(vertices), ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
 
--- ── Lines + points ────────────────────────────────────────────
-
--- SDL_RenderDrawLine(renderer, from, to) → int.
--- Draws using the renderer's current draw color.
-external claim draw_line(renderer ∈ Int, from ∈ IVec2, to ∈ IVec2, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
-                  "i(piiii)",
-                  ⟨ArgHandle(renderer), ArgInt(from.x), ArgInt(from.y), ArgInt(to.x), ArgInt(to.y)⟩)
-
--- SDL_RenderDrawPoint(renderer, p) → int.
-external claim draw_point(renderer ∈ Int, p ∈ IVec2, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawPoint",
-                  "i(pii)",
-                  ⟨ArgHandle(renderer), ArgInt(p.x), ArgInt(p.y)⟩)
-
--- ── Rectangles ────────────────────────────────────────────────
---
--- Why no SDL_RenderDrawRect / SDL_RenderFillRect wrappers: those
--- take `const SDL_Rect*` — a 16-byte C struct of 4 ints (x, y, w, h).
--- Constructing that struct from Evident needs `malloc` + raw memory
--- writes via FFI, which we haven't built yet. Sketched out in
--- docs/guide/ffi-bindings.md as a future addition.
---
--- For now: outline rectangles via 4 line draws, returned as a single
--- `Seq(Effect)`. One library invocation, one state in the caller.
--- Filled rectangles need either:
---   (a) the malloc'd-SDL_Rect path (best, native C performance), or
---   (b) horizontal lines per row, where N = height
---       (very slow for large fills — h LibCalls per frame).
-
--- SDL_RenderGeometry(renderer, NULL_texture, vertices, n,
---                    NULL_indices, 0) — draws arbitrary triangles
--- with per-vertex colors. No texture / no indices in this minimal
--- form; vertex order = triangle list (every 3 vertices = 1 tri).
-external claim render_geometry(renderer ∈ Int, vertices ∈ PackedFieldList,
-                      n ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
-                  "i(pppipi)",
-                  ⟨ArgHandle(renderer), ArgHandle(0), ArgPackedBuf(vertices), ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
-
+-- ── SDL_Vertex builder ───────────────────────────────────────
 -- Build one SDL_Vertex's field sequence and prepend it to `tail`.
 -- SDL_Vertex is 20 bytes, no padding:
 --   2 × f32  position
@@ -157,40 +100,7 @@ claim sdl_vertex(pos_x, pos_y ∈ Real,
           PfCons(PfF32(tex_u),
           PfCons(PfF32(tex_v), tail))))))))
 
--- SDL_RenderFillRect(renderer, *SDL_Rect) — filled rectangle in
--- the current draw color. The struct is built via the new
--- ArgI32Buf primitive: `⟨pos.x, pos.y, size.x, size.y⟩` packs into
--- a heap buffer that lives for the call's duration.
-external claim render_fill_rect(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
-                       out ∈ Effect)
-    rect_buf ∈ Seq(Int)
-    rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
-                  "i(pp)",
-                  ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
-
--- Outline rectangle as 4 lines (top, right, bottom, left). All
--- drawn with the renderer's current draw color. Inclusive bounds:
--- the rect spans `pos` to `pos + size` (componentwise).
-claim draw_rect_outline(renderer ∈ Int, pos ∈ IVec2, size ∈ IVec2,
-                        out ∈ Seq(Effect))
-    -- Pre-compute the four corners as IVec2s.
-    tl ∈ IVec2
-    tl = pos
-    tr ∈ IVec2
-    tr = IVec2(pos.x + size.x, pos.y)
-    br ∈ IVec2
-    br = IVec2(pos.x + size.x, pos.y + size.y)
-    bl ∈ IVec2
-    bl = IVec2(pos.x, pos.y + size.y)
-
-    top_eff ∈ Effect
-    draw_line(renderer, tl, tr, top_eff)
-    right_eff ∈ Effect
-    draw_line(renderer, tr, br, right_eff)
-    bottom_eff ∈ Effect
-    draw_line(renderer, br, bl, bottom_eff)
-    left_eff ∈ Effect
-    draw_line(renderer, bl, tl, left_eff)
-
-    out = ⟨top_eff, right_eff, bottom_eff, left_eff⟩
+-- (`draw_rect_outline` removed — it called the old standalone
+-- `draw_line(renderer, ...)` which is now a subclaim of SDL_Window.
+-- If you need outlined rectangles, call `win.draw_line(...)` four
+-- times directly, or add a new subclaim inside SDL_Window.)

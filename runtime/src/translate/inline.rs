@@ -199,40 +199,240 @@ fn compose_guards<'ctx>(
     }
 }
 
-/// Method-call dispatch: split a (possibly dotted) call name on its
-/// last `.` and check whether the suffix is a known schema. Returns
-/// `Some((claim_name, Some(receiver)))` for method-style
-/// `recv.claim(args)`; `Some((claim_name, None))` for plain
-/// `claim(args)`; `None` when no segment matches a schema.
+/// Resolution result for a (possibly dotted) call name like
+/// `recv.subclaim_name`. Three flavors, tried in priority order:
 ///
-/// The receiver string keeps its dots intact (`win.renderer` for
-/// `win.renderer.set_draw_color(...)`) so it can be re-emitted as
-/// an `Identifier` and resolved through env's dotted leaf keys
-/// (`win.renderer` lives in env as an IntVar from the SDL_Window
-/// FTI expansion).
-fn method_dispatch_call(
-    name: &str,
-    schemas: &HashMap<String, SchemaDecl>,
-) -> Option<(String, Option<String>)> {
-    if schemas.contains_key(name) {
-        return Some((name.to_string(), None));
-    }
-    let (prefix, suffix) = name.rsplit_once('.')?;
-    if schemas.contains_key(suffix) {
-        return Some((suffix.to_string(), Some(prefix.to_string())));
+///   * `Subschema { recv, type, subclaim }` — `recv` is a body
+///     Membership of record type T and `subclaim` is declared as
+///     `subclaim … ` inside T. Dispatch rebinds T's fields onto
+///     `recv.field` so the subclaim body's bare references resolve
+///     to the receiver's leaves.
+///
+///   * `ReceiverPrefix { claim_name, recv }` — `recv` is anything
+///     (an Int, a dotted field) and the SUFFIX is a known claim.
+///     The receiver becomes the first positional arg. Fallback when
+///     the subschema path doesn't apply.
+///
+///   * `Plain { claim_name }` — the whole name is a known schema;
+///     no receiver involved.
+enum CallDispatch {
+    Subschema { recv: String, type_name: String, claim_name: String },
+    ReceiverPrefix { claim_name: String, recv: String },
+    Plain { claim_name: String },
+}
+
+/// Walk the current body slice for a Membership matching `name`,
+/// return its declared type_name. Used to find a receiver's type
+/// when dispatching `recv.subclaim(args)`.
+fn find_membership_type(items: &[BodyItem], name: &str) -> Option<String> {
+    for item in items {
+        if let BodyItem::Membership { name: n, type_name, .. } = item {
+            if n == name { return Some(type_name.clone()); }
+        }
     }
     None
 }
 
-/// Same dispatch logic for the `(args) ∈ recv.claim_name` form,
-/// where the RHS is an `Identifier`. Returns
-/// `Some((claim_name, Option<receiver>))` or `None`.
-fn method_dispatch_name(
+/// Walk a type's body for a SubclaimDecl matching `name`.
+fn type_has_subclaim(type_decl: &SchemaDecl, name: &str) -> bool {
+    type_decl.body.iter().any(|item| matches!(item,
+        BodyItem::SubclaimDecl(s) if s.name == name))
+}
+
+/// Resolve a call name with full receiver awareness. `body_items`
+/// is the surrounding body slice (used to look up the receiver's
+/// declared type).
+fn resolve_call(
+    name: &str,
+    body_items: &[BodyItem],
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<CallDispatch> {
+    // No dots → plain claim invocation.
+    if !name.contains('.') {
+        if schemas.contains_key(name) {
+            return Some(CallDispatch::Plain { claim_name: name.to_string() });
+        }
+        return None;
+    }
+    let (prefix, suffix) = name.rsplit_once('.')?;
+    // (1) Subschema path: prefix is a bare body var of a record type
+    //     T, and T has a SubclaimDecl `suffix`. This is the
+    //     "use a field of a schema as a subschema" form.
+    if !prefix.contains('.') {
+        if let Some(type_name) = find_membership_type(body_items, prefix) {
+            if let Some(type_decl) = schemas.get(&type_name) {
+                if type_has_subclaim(type_decl, suffix) {
+                    return Some(CallDispatch::Subschema {
+                        recv: prefix.to_string(),
+                        type_name,
+                        claim_name: suffix.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    // (2) Receiver-prefix fallback: suffix is a known claim and the
+    //     prefix gets prepended as the first positional arg. Works
+    //     even with multi-segment prefixes (`win.renderer.foo`).
+    if schemas.contains_key(suffix) {
+        return Some(CallDispatch::ReceiverPrefix {
+            claim_name: suffix.to_string(),
+            recv: prefix.to_string(),
+        });
+    }
+    None
+}
+
+/// Resolve for the `(args) ∈ rhs` form where rhs is an Identifier.
+fn resolve_call_name(
     rhs: &Expr,
+    body_items: &[BodyItem],
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<CallDispatch> {
+    let Expr::Identifier(n) = rhs else { return None; };
+    resolve_call(n, body_items, schemas)
+}
+
+/// Back-compat wrappers — the existing Plain / ReceiverPrefix
+/// dispatch arms below want the old `(claim_name, Option<recv>)`
+/// shape. These collapse Subschema cases out so those arms only
+/// see Plain / ReceiverPrefix (the Subschema arm above catches
+/// the rest first).
+fn method_dispatch_call_compat(
+    name: &str,
+    body_items: &[BodyItem],
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<(String, Option<String>)> {
+    match resolve_call(name, body_items, schemas)? {
+        CallDispatch::Plain { claim_name } => Some((claim_name, None)),
+        CallDispatch::ReceiverPrefix { claim_name, recv } => Some((claim_name, Some(recv))),
+        CallDispatch::Subschema { .. } => None,  // handled by dedicated arm
+    }
+}
+
+fn method_dispatch_name_compat(
+    rhs: &Expr,
+    body_items: &[BodyItem],
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<(String, Option<String>)> {
     let Expr::Identifier(n) = rhs else { return None; };
-    method_dispatch_call(n, schemas)
+    method_dispatch_call_compat(n, body_items, schemas)
+}
+
+/// Inline a subclaim-of-type invocation `recv.subclaim(args)`.
+///
+/// The "use a field of a schema as a subschema" form: the
+/// receiver's record fields get rebound onto T's bare-name
+/// fields so the subclaim body's references resolve to the
+/// receiver's leaves. Caller has already confirmed that `recv`
+/// is a body Membership of `type_name` and that `claim_name`
+/// is a subclaim inside `type_name`'s body.
+#[allow(clippy::too_many_arguments)]
+fn inline_subschema_call(
+    recv: &str,
+    type_name: &str,
+    claim_name: &str,
+    args: &[Expr],
+    env: &mut HashMap<String, Var<'static>>,
+    solver: &Solver<'static>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    visited: &mut HashMap<String, usize>,
+    guard: &Option<Bool<'static>>,
+    tracker: Option<&Bool<'static>>,
+) {
+    // Look up the subclaim inside the type's body.
+    let Some(type_decl) = schemas.get(type_name) else { return; };
+    let mut subclaim: Option<&SchemaDecl> = None;
+    for item in &type_decl.body {
+        if let BodyItem::SubclaimDecl(s) = item {
+            if s.name == claim_name { subclaim = Some(s); break; }
+        }
+    }
+    let Some(subclaim) = subclaim else { return; };
+
+    // Recursion guard via the standard visited map.
+    let qualified = format!("{}.{}", type_name, claim_name);
+    let Some(_depth) = try_enter(visited, &qualified) else { return; };
+
+    // Build inner env starting from outer. The Z3 vars themselves
+    // are shared (same constants); we just add bare-name aliases
+    // for each parent-type field so the subclaim's body sees
+    // `renderer` and resolves to `recv.renderer`.
+    let mut inner = env.clone();
+    // Parent-type fields = top-level Memberships inside the type's
+    // body (NOT subclaim decls or constraints). For each leaf key
+    // in env starting with `recv.`, mirror it without the prefix.
+    let prefix = format!("{recv}.");
+    let outer_keys: Vec<(String, String)> = env.keys()
+        .filter_map(|k| k.strip_prefix(&prefix).map(|rest|
+            (k.clone(), rest.to_string())))
+        .collect();
+    for (full_key, bare) in &outer_keys {
+        if let Some(v) = env.get(full_key) {
+            inner.insert(bare.clone(), v.clone());
+        }
+    }
+
+    // Slot info: the subclaim's first-line params (its leading
+    // body Memberships up to `args.len()` if needed). Subclaims
+    // don't have first-line params today, so this is just the
+    // leading body Memberships.
+    let slot_info: Vec<(String, String)> = subclaim.body.iter()
+        .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+            Some((name.clone(), type_name.clone()))
+        } else { None })
+        .take(args.len())
+        .collect();
+    if slot_info.len() != args.len() {
+        eprintln!(
+            "warning: subschema call `{}.{}` got {} args but the \
+             subclaim has only {} param Memberships",
+            recv, claim_name, args.len(), slot_info.len()
+        );
+        exit_frame(visited, &qualified);
+        return;
+    }
+    // Tuple-as-record-literal coercion (same as positional Call arm).
+    let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
+        .zip(args.iter())
+        .map(|((slot, slot_type), value)| {
+            let coerced = match value {
+                Expr::Tuple(items) if schemas.contains_key(slot_type) =>
+                    Expr::Call(slot_type.clone(), items.clone()),
+                _ => value.clone(),
+            };
+            crate::ast::Mapping { slot: slot.clone(), value: coerced }
+        })
+        .collect();
+
+    isolate_helper_locals(&subclaim.body, &mut inner, subclaim.param_count);
+    let slot_set: std::collections::HashSet<String> =
+        mappings.iter().map(|m| m.slot.clone()).collect();
+    for m in &mappings {
+        let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
+        if bound.is_empty() {
+            eprintln!("warning: subschema arg didn't resolve: {:?}", m.value);
+        }
+        for (k, v) in bound { inner.insert(k, v); }
+    }
+    let call_id = next_call_id();
+    for sub in &subclaim.body {
+        if let BodyItem::Membership { name: vname, type_name: vty, .. } = sub {
+            if slot_set.contains(vname) { continue; }
+            if inner.contains_key(vname) { continue; }
+            let z3_name = format!("{}__{}__call{}", claim_name, vname, call_id);
+            let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
+                              vty, schemas, Some(registry), enums);
+            for c in &post { track_assert(solver, c, tracker); }
+        }
+    }
+    inline_body_items_guarded(
+        &subclaim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+    );
+    exit_frame(visited, &qualified);
 }
 
 pub(super) fn inline_body_items(
@@ -412,12 +612,36 @@ fn inline_body_items_guarded(
             // BodyItem position, not as a value-producing
             // expression — a claim invocation contributes constraints,
             // not a Bool.
+            // Subschema dispatch (priority over receiver-prefix):
+            // `(args) ∈ recv.subclaim_name` where `recv` is a body
+            // Membership of a record type T AND `subclaim_name` is
+            // declared as `subclaim …` inside T. The receiver's
+            // fields get rebound onto T's bare-name fields so the
+            // subclaim body's references (`renderer`, etc.) resolve
+            // to the leaves of `recv`.
             BodyItem::Constraint(Expr::InExpr(lhs, rhs))
-                if method_dispatch_name(rhs.as_ref(), schemas).is_some()
+                if matches!(resolve_call_name(rhs.as_ref(), items, schemas),
+                    Some(CallDispatch::Subschema { .. }))
                 && matches!(lhs.as_ref(), Expr::Tuple(_)) =>
             {
                 if !guard_is_satisfiable(solver, guard) { continue; }
-                let (name, receiver) = method_dispatch_name(rhs.as_ref(), schemas)
+                let Some(CallDispatch::Subschema { recv, type_name, claim_name }) =
+                    resolve_call_name(rhs.as_ref(), items, schemas) else { unreachable!() };
+                let args: Vec<Expr> = match lhs.as_ref() {
+                    Expr::Tuple(items) => items.clone(),
+                    _ => unreachable!(),
+                };
+                inline_subschema_call(
+                    &recv, &type_name, &claim_name, &args,
+                    env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+                );
+            }
+            BodyItem::Constraint(Expr::InExpr(lhs, rhs))
+                if method_dispatch_name_compat(rhs.as_ref(), items, schemas).is_some()
+                && matches!(lhs.as_ref(), Expr::Tuple(_)) =>
+            {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                let (name, receiver) = method_dispatch_name_compat(rhs.as_ref(), items, schemas)
                     .expect("guarded above");
                 let mut args: Vec<Expr> = match lhs.as_ref() {
                     Expr::Tuple(items) => items.clone(),
@@ -491,11 +715,29 @@ fn inline_body_items_guarded(
                 );
                 exit_frame(visited, &name);
             }
+            // Subschema dispatch (priority): `recv.subclaim_name(args)`
+            // where `recv` is a body Membership of a record type T
+            // AND `subclaim_name` is a SubclaimDecl inside T's body.
+            // Field-rebinds T's leaves onto bare names so the
+            // subclaim body's references (`renderer`, …) resolve
+            // to the receiver's leaves.
             BodyItem::Constraint(Expr::Call(name, args))
-                if method_dispatch_call(name, schemas).is_some() =>
+                if matches!(resolve_call(name, items, schemas),
+                    Some(CallDispatch::Subschema { .. })) =>
             {
                 if !guard_is_satisfiable(solver, guard) { continue; }
-                let (claim_name, receiver) = method_dispatch_call(name, schemas)
+                let Some(CallDispatch::Subschema { recv, type_name, claim_name }) =
+                    resolve_call(name, items, schemas) else { unreachable!() };
+                inline_subschema_call(
+                    &recv, &type_name, &claim_name, args,
+                    env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+                );
+            }
+            BodyItem::Constraint(Expr::Call(name, args))
+                if method_dispatch_call_compat(name, items, schemas).is_some() =>
+            {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                let (claim_name, receiver) = method_dispatch_call_compat(name, items, schemas)
                     .expect("guarded above");
                 // Method-style: `recv.claim_name(args)` prepends
                 // `Identifier(recv)` to the positional args.

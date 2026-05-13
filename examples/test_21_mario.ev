@@ -66,18 +66,19 @@ fsm mario
                 (is_first_tick ? 0   : next_vel.y))
 
     -- ── Render: clear sky, draw ground, draw mario, present.
-    -- Method-style: `win.renderer.<claim>(…)` desugars to
-    -- `<claim>(win.renderer, …)`. Output args aren't declared —
-    -- their types come from each claim's signature (`out ∈ Effect`)
-    -- since they're used twice (call + effects list). Bare tuples
-    -- `(r, g, b, a)` / `(x, y)` coerce to the slot's record type.
-    win.renderer.set_draw_color((80, 160, 220, 255), sky_eff)
-    win.renderer.render_clear(clear_eff)
-    win.renderer.set_draw_color((60, 140, 60, 255), ground_color_eff)
-    win.renderer.render_fill_rect((0, 432), (640, 48), ground_eff)
-    win.renderer.set_draw_color((220, 40, 40, 255), mario_color_eff)
-    win.renderer.render_fill_rect(pos, (32, 32), mario_eff)
-    win.renderer.render_present(present_eff)
+    -- `win.<subclaim>(…)` invokes a subclaim of SDL_Window with
+    -- field-rebinding — the subclaim body references `renderer`
+    -- (a field of SDL_Window) and the runtime resolves it to
+    -- `win.renderer`. Output `_eff` names are inferred from each
+    -- subclaim's signature; bare tuples `(r, g, b, a)` / `(x, y)`
+    -- coerce to the slot's record type.
+    win.set_draw_color((80, 160, 220, 255), sky_eff)
+    win.render_clear(clear_eff)
+    win.set_draw_color((60, 140, 60, 255), ground_color_eff)
+    win.render_fill_rect((0, 432), (640, 48), ground_eff)
+    win.set_draw_color((220, 40, 40, 255), mario_color_eff)
+    win.render_fill_rect(pos, (32, 32), mario_eff)
+    win.render_present(present_eff)
     sdl_pump_events(pump_eff)
 
     -- Halt after 60 frames so the demo terminates on its own.

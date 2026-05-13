@@ -12,6 +12,15 @@
 
 import "stdlib/runtime.ev"
 
+-- ── Shared records ────────────────────────────────────────────
+-- 2D integer vector. Componentwise arithmetic and chained
+-- comparisons work via the runtime's record-lift (see CLAUDE.md
+-- "Records as vectors").
+type IVec2(x, y ∈ Int)
+
+-- RGBA color, 0..255 per channel. alpha 255 = opaque.
+type Color(red, green, blue, alpha ∈ Int)
+
 -- ── FTI type contract ─────────────────────────────────────────
 -- The Rust SDL_Window bridge (runtime/src/event_sources/sdl_window.rs)
 -- looks for this name in the FTI registry. The declaration is a
@@ -44,6 +53,64 @@ external type SDL_Window
     vao       ∈ Int   -- default VAO (Core profile draws need one bound)
     renderer  ∈ Int   -- SDL_Renderer; persistent across ticks so
                       -- per-frame draw calls can pass ArgHandle(win.renderer)
+
+    -- ── Render subclaims ─────────────────────────────────────
+    -- Invoked as `win.set_draw_color(color_value, sky_eff)` etc.
+    -- The runtime rebinds SDL_Window's `renderer` field onto the
+    -- bare name when the subclaim body is inlined, so
+    -- `ArgHandle(renderer)` resolves to the receiver's
+    -- `win.renderer` Int leaf at the call site.
+    --
+    -- Conventions:
+    --   * Caller-supplied inputs sit as first-line params
+    --     (`color`, `pos`, `size`, `n`, …).
+    --   * `out` is the produced Effect — its type is inferred
+    --     from `out = LibCall(...)` (LibCall is an Effect
+    --     variant), so we don't need a declaration line. The
+    --     caller binds it positionally:
+    --     `win.set_draw_color(some_color, my_eff_name)`.
+
+    subclaim set_draw_color(color ∈ Color)
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+                      "i(piiii)",
+                      ⟨ArgHandle(renderer), ArgInt(color.red), ArgInt(color.green),
+                       ArgInt(color.blue), ArgInt(color.alpha)⟩)
+
+    subclaim render_clear
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
+                      "i(p)", ⟨ArgHandle(renderer)⟩)
+
+    subclaim render_present
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
+                      "v(p)", ⟨ArgHandle(renderer)⟩)
+
+    subclaim render_fill_rect(pos ∈ IVec2, size ∈ IVec2)
+        rect_buf ∈ Seq(Int)
+        rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
+                      "i(pp)",
+                      ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
+
+    subclaim draw_line(p_from ∈ IVec2, p_to ∈ IVec2)
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+                      "i(piiii)",
+                      ⟨ArgHandle(renderer), ArgInt(p_from.x), ArgInt(p_from.y),
+                       ArgInt(p_to.x), ArgInt(p_to.y)⟩)
+
+    subclaim draw_point(p ∈ IVec2)
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawPoint",
+                      "i(pii)",
+                      ⟨ArgHandle(renderer), ArgInt(p.x), ArgInt(p.y)⟩)
+
+    subclaim render_geometry(vertices ∈ PackedFieldList, n ∈ Int)
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
+                      "i(pppipi)",
+                      ⟨ArgHandle(renderer), ArgHandle(0), ArgPackedBuf(vertices),
+                       ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
+
+    subclaim destroy_renderer
+        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyRenderer",
+                      "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── Library path ──────────────────────────────────────────────
 

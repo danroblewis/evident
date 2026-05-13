@@ -266,9 +266,18 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected name after subclaim, got {:?}", other))),
         };
-        let body = self.parse_indented_body()?;
+        // Optional first-line params — same shape as top-level
+        // schemas (`subclaim foo(color ∈ Color)`). Caller-supplied
+        // inputs sit on the signature; outputs and locals go in
+        // the body.
+        let mut body = Vec::new();
+        if matches!(self.peek(), Token::LParen) {
+            body = self.parse_first_line_params()?;
+        }
+        let param_count = body.len();
+        body.extend(self.parse_indented_body()?);
         Ok(BodyItem::SubclaimDecl(SchemaDecl {
-            keyword: Keyword::Subclaim, name, body, param_count: 0,
+            keyword: Keyword::Subclaim, name, body, param_count,
             external: false,
         }))
     }
