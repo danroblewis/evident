@@ -394,28 +394,51 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                 r
             }
         },
-        Effect::ReadByte(handle, offset) => match &mut ctx.mode {
-            DispatchMode::Real => {
-                match ctx.registry.lookup(*handle) {
-                    Ok(ptr) => {
-                        let byte = unsafe {
-                            *(ptr as *const u8).offset(*offset as isize)
-                        };
-                        EffectResult::Int(byte as i64)
+        Effect::ReadByte(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadByte",
+                |ptr| EffectResult::Int(unsafe { *ptr as i64 })),
+        Effect::ReadI16(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadI16",
+                |ptr| EffectResult::Int(unsafe {
+                    (ptr as *const i16).read_unaligned() as i64
+                })),
+        Effect::ReadI32(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadI32",
+                |ptr| EffectResult::Int(unsafe {
+                    (ptr as *const i32).read_unaligned() as i64
+                })),
+        Effect::ReadI64(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadI64",
+                |ptr| EffectResult::Int(unsafe {
+                    (ptr as *const i64).read_unaligned()
+                })),
+        Effect::ReadF32(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadF32",
+                |ptr| EffectResult::Real(unsafe {
+                    (ptr as *const f32).read_unaligned() as f64
+                })),
+        Effect::ReadF64(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadF64",
+                |ptr| EffectResult::Real(unsafe {
+                    (ptr as *const f64).read_unaligned()
+                })),
+        Effect::ReadStr(handle, offset) =>
+            do_read(ctx, *handle, *offset, "ReadStr",
+                |ptr| {
+                    let start = ptr as *const u8;
+                    let mut len: isize = 0;
+                    unsafe {
+                        while *start.offset(len) != 0 { len += 1; }
                     }
-                    Err(e) => EffectResult::Error(format!("ReadByte: {}", e.0)),
-                }
-            }
-            DispatchMode::Replay { calls, cursor, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let r = calls[*cursor].result.clone();
-                *cursor += 1;
-                r
-            }
-        },
+                    let slice = unsafe {
+                        std::slice::from_raw_parts(start, len as usize)
+                    };
+                    match std::str::from_utf8(slice) {
+                        Ok(s) => EffectResult::Str(s.to_string()),
+                        Err(_) => EffectResult::Error(
+                            "ReadStr: invalid UTF-8".to_string()),
+                    }
+                }),
     }
 }
 
@@ -437,6 +460,45 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
         (EffectFfiArg::PriorResult(p), EffectFfiArg::PriorResult(q)) => p == q,
         _ => false,
     })
+}
+
+/// Shared read-from-pointer-at-offset path for all `ReadX` effects.
+/// Looks up the handle in the registry, computes
+/// `(ptr + offset) as *const u8`, then calls `extract` to do the
+/// actual read at that address. In Replay mode, returns the next
+/// recorded call's result.
+///
+/// SAFETY: caller's `extract` MUST do `read_unaligned` (or read
+/// a single byte) — the pointer is not guaranteed to be aligned
+/// for the type being read. The runtime can't enforce alignment
+/// because the offset is user-supplied.
+fn do_read(
+    ctx: &mut DispatchContext,
+    handle: u64,
+    offset: i64,
+    name: &'static str,
+    extract: impl FnOnce(*const u8) -> EffectResult,
+) -> EffectResult {
+    match &mut ctx.mode {
+        DispatchMode::Real => {
+            match ctx.registry.lookup(handle) {
+                Ok(ptr) => {
+                    let p = unsafe { (ptr as *const u8).offset(offset as isize) };
+                    extract(p)
+                }
+                Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
+            }
+        }
+        DispatchMode::Replay { calls, cursor, .. } => {
+            if *cursor >= calls.len() {
+                return EffectResult::Error(format!(
+                    "replay: ran out of recorded calls at index {cursor}"));
+            }
+            let r = calls[*cursor].result.clone();
+            *cursor += 1;
+            r
+        }
+    }
 }
 
 /// Walk an effect list, dispatch each in order, collect results. The

@@ -380,6 +380,20 @@ pub enum Effect {
     /// the SDL_GetKeyboardState array is the motivating case
     /// (`ReadByte(state_ptr, SDL_SCANCODE_LEFT)` → 0 or 1).
     ReadByte(u64, i64),
+    /// Signed wide reads. All use unaligned access so the offset
+    /// doesn't need to be aligned. Result is sign-extended into i64
+    /// (`Read{Width} == read_unaligned::<i{Width}>` as i64).
+    ReadI16(u64, i64),
+    ReadI32(u64, i64),
+    ReadI64(u64, i64),
+    /// Float reads (unaligned). f32 result is widened to f64.
+    ReadF32(u64, i64),
+    ReadF64(u64, i64),
+    /// Null-terminated UTF-8 string read. Walks bytes from
+    /// `(ptr + offset)` to the first 0 byte, returns the result
+    /// as StringResult. Invalid UTF-8 returns ErrorResult; no
+    /// length cap, so callers must trust the buffer contents.
+    ReadStr(u64, i64),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

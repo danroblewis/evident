@@ -129,15 +129,25 @@ enum Effect =
     -- `signature`. Use this when you don't want to thread library /
     -- symbol handles through state.
     LibCall(String, String, String, Seq(FFIArg))
-    -- ReadByte(handle, offset): read a single u8 at handle+offset.
-    -- The handle must be a registered pointer (from a prior FFI
-    -- call that returned `p`). Result is `IntResult(byte_value)`
-    -- with byte ∈ 0..255. Used for reading flat memory regions
-    -- exposed by C libraries — typically things like
-    -- SDL_GetKeyboardState's keyboard-state array. The caller is
-    -- responsible for keeping `offset` within the buffer's bounds;
-    -- out-of-bounds is undefined behavior.
-    ReadByte(Int, Int)
+    -- Memory reads at handle+offset. The handle must be a
+    -- registered pointer (from an FFI call that returned `p`).
+    -- All reads are unaligned, so offset can be any byte boundary.
+    -- Caller is responsible for in-bounds offsets; out-of-bounds
+    -- is undefined behavior.
+    --
+    -- Used for reading flat memory exposed by C libraries:
+    -- SDL_GetKeyboardState array (ReadByte), SDL_Event struct
+    -- fields (ReadI32 for type, etc.), audio sample buffers
+    -- (ReadF32), C-side strings returned through opaque pointers
+    -- (ReadStr).
+    ReadByte(Int, Int)    -- u8  → IntResult(0..255)
+    ReadI16(Int, Int)     -- i16 → IntResult (sign-extended)
+    ReadI32(Int, Int)     -- i32 → IntResult
+    ReadI64(Int, Int)     -- i64 → IntResult
+    ReadF32(Int, Int)     -- f32 → RealResult (widened to f64)
+    ReadF64(Int, Int)     -- f64 → RealResult
+    ReadStr(Int, Int)     -- C string at offset, stops at first 0
+                          -- → StringResult, or ErrorResult on bad UTF-8
 
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded
