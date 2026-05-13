@@ -1,54 +1,19 @@
--- 21_mario — a rectangle "Mario" that auto-walks, bounces off
--- the walls, and falls under gravity until it hits the ground.
--- The first multi-tick rendering demo: each tick recomputes
--- physics, redraws the scene, and presents.
---
--- Demonstrates two unified-model features at once:
---   * SDL_Window FTI bridge exposes a persistent `renderer`
---     handle (runtime/src/event_sources/sdl_window.rs); each
---     tick passes `win.renderer` directly to draw calls.
---   * `_var` time-shift works through RECORD types — `_pos`
---     and `_vel` get auto-declared `∈ IVec2`, and the runtime
---     pins each per-field key (`_pos.x`, `_pos.y`, …) from
---     the previous tick's bindings. Physics reads like a
---     normal 2D update.
---
--- No keyboard input — Mario walks autonomously, bouncing off
--- the screen edges. Demo exits after 60 frames.
---
--- Run interactively:
---   evident effect-run examples/test_21_mario.ev
-
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
 import "packages/sdl/render.ev"
 
 fsm mario
-    -- FTI: runtime auto-installs the SDL_Window bridge which
-    -- creates the window + renderer and writes their handles
-    -- into `win.handle` / `win.renderer`. The renderer is the
-    -- new bit (see runtime/src/event_sources/sdl_window.rs).
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
-    -- Frame counter for halt.
     frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
 
-    -- Player state as 2D vectors. `_pos` and `_vel` are
-    -- auto-declared `∈ IVec2`; their .x and .y fields get
-    -- pinned from the previous tick's bindings.
     pos ∈ IVec2
     vel ∈ IVec2
 
-    -- Velocity with gravity applied (only y changes).
     grav_vel ∈ IVec2 = IVec2(_vel.x, _vel.y + 2)
 
-    -- Tentative next position. `_pos + grav_vel` is componentwise
-    -- vector addition (record-lift in equation context — see
-    -- CLAUDE.md "Records as vectors").
     tent ∈ IVec2 = _pos + grav_vel
 
-    -- Bounce x off [0, 608] (screen width 640 - mario width 32);
-    -- clamp y to floor at 400.
     clamped ∈ IVec2 = IVec2(
         (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
         (tent.y > 400 ? 400 : tent.y))
@@ -57,21 +22,11 @@ fsm mario
         ((tent.x < 0 ∨ tent.x > 608) ? 0 - _vel.x : _vel.x),
         (tent.y > 400 ? 0 : grav_vel.y))
 
-    -- Compose next state. Ternary lives INSIDE the IVec2 ctor
-    -- (record-lift through ternary not supported on both arms).
-    -- Start at (100, 100) with vx=5, vy=0.
     pos = IVec2((is_first_tick ? 100 : clamped.x),
                 (is_first_tick ? 100 : clamped.y))
     vel = IVec2((is_first_tick ? 5   : next_vel.x),
                 (is_first_tick ? 0   : next_vel.y))
 
-    -- ── Render: clear sky, draw ground, draw mario, present.
-    -- `win.<subclaim>(…)` invokes a subclaim of SDL_Window with
-    -- field-rebinding — the subclaim body references `renderer`
-    -- (a field of SDL_Window) and the runtime resolves it to
-    -- `win.renderer`. Output `_eff` names are inferred from each
-    -- subclaim's signature; bare tuples `(r, g, b, a)` / `(x, y)`
-    -- coerce to the slot's record type.
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
     win.set_draw_color((60, 140, 60, 255), ground_color_eff)
@@ -80,20 +35,12 @@ fsm mario
     win.render_fill_rect(pos, (32, 32), mario_eff)
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
-    -- Frame pacing: 16 ms ≈ 60 fps. Without this the fsm zips
-    -- through every frame in microseconds and SDL closes the
-    -- window before anything is visible. Could also be driven
-    -- by a FrameTimer plugin, but sdl_delay is simpler for a
-    -- single-fsm demo.
     sdl_delay(16, delay_eff)
 
-    -- Halt after 240 frames (~4 seconds at 60 fps).
     effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
         : ⟨sky_eff, clear_eff, ground_color_eff, ground_eff,
             mario_color_eff, mario_eff, present_eff, pump_eff, delay_eff⟩)
-
--- ── Static tests ─────────────────────────────────────────────
 
 claim sat_first_tick_seeds_start_pos
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
