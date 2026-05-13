@@ -295,6 +295,158 @@ fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+/// Infer types for fresh names used as positional args in claim
+/// calls. When the user writes
+///
+///   set_draw_color(win.renderer, Color(...), sky_eff)
+///   effects = ⟨sky_eff, ...⟩
+///
+/// `sky_eff` is not declared as a Membership but its type is recoverable
+/// from `set_draw_color`'s third param (`out ∈ Effect`). This pass
+/// auto-injects `sky_eff ∈ Effect` so the user can drop the manual
+/// decl line.
+///
+/// **Typo defense**: we only infer when the name appears in ≥ 2
+/// expression positions across the body. If a name shows up exactly
+/// once (just the call site), it might be a typo of an intended
+/// reference — leave it alone so translation fails loudly. The common
+/// case (claim-call output threaded into the effects list) hits ≥ 2
+/// uses naturally.
+///
+/// Handles method-style `recv.claim(args)` too: the receiver counts
+/// as a positional arg, shifting the arg-to-param mapping by 1.
+fn inject_claim_arg_types(
+    s: &mut SchemaDecl,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Result<(), RuntimeError> {
+    use crate::ast::{BodyItem, Expr, Keyword, Pins};
+    if s.external { return Ok(()); }
+    // Apply to fsm bodies and ordinary claim bodies alike — the
+    // pattern is the same wherever a positional claim call has a
+    // fresh output arg.
+    let _ = Keyword::Fsm;
+
+    // Step 1: declared names (memberships).
+    let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for item in &s.body {
+        if let BodyItem::Membership { name, .. } = item {
+            declared.insert(name.clone());
+        }
+    }
+
+    // Step 2: count Identifier references across body expressions.
+    let mut uses: HashMap<String, usize> = HashMap::new();
+    fn walk(e: &Expr, uses: &mut HashMap<String, usize>) {
+        match e {
+            Expr::Identifier(n) => { *uses.entry(n.clone()).or_default() += 1; }
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
+                for x in es { walk(x, uses); },
+            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
+                { walk(a, uses); walk(b, uses); }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
+                { walk(r, uses); walk(b, uses); }
+            Expr::Call(_, args) => for a in args { walk(a, uses); },
+            Expr::Cardinality(i) | Expr::Not(i) => walk(i, uses),
+            Expr::Field(recv, _) => walk(recv, uses),
+            Expr::Binary(_, l, r) => { walk(l, uses); walk(r, uses); }
+            Expr::Ternary(c, a, b) =>
+                { walk(c, uses); walk(a, uses); walk(b, uses); }
+            Expr::Match(scr, arms) => {
+                walk(scr, uses);
+                for arm in arms { walk(&arm.body, uses); }
+            }
+            Expr::Matches(e, _) => walk(e, uses),
+        }
+    }
+    for item in &s.body {
+        match item {
+            BodyItem::Constraint(e) => walk(e, &mut uses),
+            BodyItem::ClaimCall { mappings, .. } =>
+                for m in mappings { walk(&m.value, &mut uses); },
+            _ => {}
+        }
+    }
+
+    // Step 3: scan body for positional claim calls. For each
+    // Identifier arg that's fresh + multi-use, look up the
+    // corresponding param's type from the called claim and queue
+    // a Membership injection.
+    let mut to_inject_map: HashMap<String, String> = HashMap::new();
+
+    // Method-dispatch resolver: split on last `.`, check both the
+    // full name and the suffix. Returns (claim_name, receiver?).
+    let resolve = |name: &str| -> Option<(String, Option<String>)> {
+        if schemas.contains_key(name) {
+            return Some((name.to_string(), None));
+        }
+        let (prefix, suffix) = name.rsplit_once('.')?;
+        if schemas.contains_key(suffix) {
+            return Some((suffix.to_string(), Some(prefix.to_string())));
+        }
+        None
+    };
+
+    let process_call = |claim_name: &str, receiver: Option<&str>, args: &[Expr],
+                        declared: &std::collections::HashSet<String>,
+                        uses: &HashMap<String, usize>,
+                        to_inject_map: &mut HashMap<String, String>| {
+        let Some(claim) = schemas.get(claim_name) else { return; };
+        // First-line param names + types (in order). For claims with
+        // body-only params, take leading Memberships up to param_count.
+        let claim_params: Vec<(String, String)> = claim.body.iter()
+            .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                Some((name.clone(), type_name.clone()))
+            } else { None })
+            .take(claim.param_count.max(args.len() + receiver.is_some() as usize))
+            .collect();
+        let offset = if receiver.is_some() { 1 } else { 0 };
+        for (i, arg) in args.iter().enumerate() {
+            let Expr::Identifier(arg_name) = arg else { continue; };
+            if arg_name.contains('.') { continue; }   // field-access, not fresh
+            if declared.contains(arg_name) { continue; }
+            if schemas.contains_key(arg_name) { continue; }   // claim/type name
+            let Some((_, param_type)) = claim_params.get(i + offset) else { continue; };
+            let count = uses.get(arg_name).copied().unwrap_or(0);
+            if count < 2 { continue; }                // typo defense
+            // First call wins if multiple sites disagree on type.
+            to_inject_map.entry(arg_name.clone()).or_insert_with(|| param_type.clone());
+        }
+    };
+
+    for item in &s.body {
+        match item {
+            BodyItem::Constraint(Expr::Call(name, args)) => {
+                if let Some((cn, recv)) = resolve(name) {
+                    process_call(&cn, recv.as_deref(), args, &declared, &uses, &mut to_inject_map);
+                }
+            }
+            BodyItem::Constraint(Expr::InExpr(lhs, rhs)) => {
+                if let (Expr::Tuple(items), Expr::Identifier(rname)) =
+                    (lhs.as_ref(), rhs.as_ref())
+                {
+                    if let Some((cn, recv)) = resolve(rname) {
+                        process_call(&cn, recv.as_deref(), items, &declared, &uses, &mut to_inject_map);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if to_inject_map.is_empty() { return Ok(()); }
+    let insert_pos = s.param_count;
+    // Stable order for diagnostics.
+    let mut entries: Vec<(String, String)> = to_inject_map.into_iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (i, (name, type_name)) in entries.into_iter().enumerate() {
+        s.body.insert(insert_pos + i, BodyItem::Membership {
+            name, type_name, pins: Pins::None,
+        });
+    }
+    Ok(())
+}
+
 /// Reject non-`external` schemas that try to construct FFI effects
 /// (`FFICall` / `LibCall` / `FFIOpen` / `FFILookup`). The rule:
 /// only `external` schemas (`external type` / `external claim` /
@@ -1183,6 +1335,11 @@ impl EvidentRuntime {
             let mut s = s.clone();
             inject_fsm_params(&mut s)?;
             inject_prev_tick_decls(&mut s)?;
+            // Needs the schemas table — runs against already-loaded
+            // claims AND siblings in this same prog batch as they get
+            // registered below. Self-reference works because we look
+            // up the called claim's signature, not the current claim's.
+            inject_claim_arg_types(&mut s, &self.schemas)?;
             enforce_external_only(&s)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());

@@ -67,26 +67,17 @@ fsm mario
 
     -- ── Render: clear sky, draw ground, draw mario, present.
     -- Method-style: `win.renderer.<claim>(…)` desugars to
-    -- `<claim>(win.renderer, …)` — the receiver becomes the
-    -- first positional arg.
-    sky_eff ∈ Effect
+    -- `<claim>(win.renderer, …)`. Output args (sky_eff, clear_eff, …)
+    -- aren't declared — their types are inferred from each
+    -- claim's signature (`out ∈ Effect`) since they're used in
+    -- both the call and the effects list.
     win.renderer.set_draw_color(Color(80, 160, 220, 255), sky_eff)
-    clear_eff ∈ Effect
     win.renderer.render_clear(clear_eff)
-
-    ground_color_eff ∈ Effect
     win.renderer.set_draw_color(Color(60, 140, 60, 255), ground_color_eff)
-    ground_eff ∈ Effect
     win.renderer.render_fill_rect(IVec2(0, 432), IVec2(640, 48), ground_eff)
-
-    mario_color_eff ∈ Effect
     win.renderer.set_draw_color(Color(220, 40, 40, 255), mario_color_eff)
-    mario_eff ∈ Effect
     win.renderer.render_fill_rect(pos, IVec2(32, 32), mario_eff)
-
-    present_eff ∈ Effect
     win.renderer.render_present(present_eff)
-    pump_eff ∈ Effect
     sdl_pump_events(pump_eff)
 
     -- Halt after 60 frames so the demo terminates on its own.
