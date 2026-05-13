@@ -53,6 +53,8 @@ pub mod ast_decoder {
     pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
                                   decode_ffi_arg, decode_arg_list,
                                   decode_result,
+                                  decode_install_step, decode_install_step_list,
+                                  InstallStep,
                                   DecodeError};
 }
 

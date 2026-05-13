@@ -14,7 +14,7 @@ use std::sync::mpsc::Sender;
 
 use crate::ast::Pins;
 use crate::event_sources::{
-    EventSource, FrameTimer, GlProgramSource, OneShotShellSource,
+    EventSource, FrameTimer, GlProgramSource,
     SchedulerEvent, SdlWindowSource,
 };
 
@@ -35,9 +35,13 @@ pub type FtiInstallFn = fn(
     event_tx: Sender<SchedulerEvent>,
 ) -> Result<FtiInstall, String>;
 
+// Types listed here use bespoke Rust bridges — typically thread-
+// driven (FrameTimer / Timer wake the scheduler at intervals) or
+// requiring platform-specific glue. Types with a declarative
+// `install ∈ Seq(InstallStep)` member skip this registry and use
+// the generic dispatcher in `event_sources/declarative_install.rs`.
 const INSTALLERS: &[(&str, FtiInstallFn)] = &[
     ("FrameClock", install_frame_clock),
-    ("Hostname",   install_hostname),
     ("Timer",      install_timer),
     ("SDL_Window", install_sdl_window),
     ("GL_Program", install_gl_program),
@@ -99,6 +103,16 @@ fn pin_str(pins: &Pins, field: &str) -> Option<String> {
         }).flatten())
 }
 
+fn pin_bool(pins: &Pins, field: &str) -> Option<bool> {
+    use crate::ast::{Expr, Mapping};
+    let Pins::Named(ms) = pins else { return None };
+    ms.iter().find_map(|Mapping { slot, value }|
+        (slot == field).then(|| match value {
+            Expr::Bool(b) => Some(*b),
+            _ => None,
+        }).flatten())
+}
+
 fn key(ctx: &FtiContext, field: &str) -> String {
     format!("{}.{}.{}", ctx.claim_name, ctx.param_name, field)
 }
@@ -113,17 +127,6 @@ fn install_frame_clock(
     let mut bridge = FrameTimer::new(ms, "fti").with_count_field(&key);
     bridge.start(event_tx)
         .map_err(|e| format!("FrameClock bridge `{}.{}`: {e}",
-                             ctx.claim_name, ctx.param_name))?;
-    Ok(FtiInstall { source: Box::new(bridge), keys: vec![key] })
-}
-
-fn install_hostname(
-    ctx: &FtiContext, _pins: &Pins, event_tx: Sender<SchedulerEvent>,
-) -> Result<FtiInstall, String> {
-    let key = key(ctx, "name");
-    let mut bridge = OneShotShellSource::new("hostname", &key);
-    bridge.start(event_tx)
-        .map_err(|e| format!("Hostname bridge `{}.{}`: {e}",
                              ctx.claim_name, ctx.param_name))?;
     Ok(FtiInstall { source: Box::new(bridge), keys: vec![key] })
 }
@@ -146,14 +149,28 @@ fn install_sdl_window(
     let title  = pin_str(pins, "title").unwrap_or_else(|| "Evident".into());
     let width  = pin_int(pins, "width").unwrap_or(640) as i32;
     let height = pin_int(pins, "height").unwrap_or(480) as i32;
+    // GL mode is opt-in (`gl ↦ true`). Default is renderer mode
+    // because SDL_Renderer and a manual GL context on the same
+    // window conflict — the renderer comes up but RenderClear/
+    // Present don't actually paint pixels visible to the user.
+    // Demos that want raw GL (gl_swap_window etc.) pin `gl ↦ true`.
+    let gl_mode = pin_bool(pins, "gl").unwrap_or(false);
     let h_key  = key(ctx, "handle");
     let g_key  = key(ctx, "gl_handle");
     let v_key  = key(ctx, "vao");
     let r_key  = key(ctx, "renderer");
-    let mut bridge = SdlWindowSource::new(title, width, height, &h_key)
-        .with_gl_context_field(&g_key)
-        .with_vao_field(&v_key)
-        .with_renderer_field(&r_key);
+    let mut bridge = SdlWindowSource::new(title, width, height, &h_key);
+    let mut keys = vec![h_key.clone()];
+    if gl_mode {
+        bridge = bridge
+            .with_gl_context_field(&g_key)
+            .with_vao_field(&v_key);
+        keys.push(g_key);
+        keys.push(v_key);
+    } else {
+        bridge = bridge.with_renderer_field(&r_key);
+        keys.push(r_key);
+    }
     // Inline start: SDL on macOS requires CreateWindow on the
     // main thread. The runtime is single-threaded here.
     bridge.start_inline(event_tx)
@@ -161,7 +178,7 @@ fn install_sdl_window(
                              ctx.claim_name, ctx.param_name))?;
     Ok(FtiInstall {
         source: Box::new(bridge),
-        keys:   vec![h_key, g_key, v_key, r_key],
+        keys,
     })
 }
 

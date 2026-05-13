@@ -154,12 +154,19 @@ impl SdlWindowSource {
         }
 
         let title_c = CString::new(self.title.clone()).unwrap_or_default();
+        // Flag selection: SDL_WINDOW_OPENGL (=2) when we're going to
+        // create a GL context; SDL_WINDOW_SHOWN (=4) for plain
+        // renderer-mode windows. Setting OPENGL on a non-GL window
+        // makes SDL_CreateRenderer paint into a buffer the user
+        // never sees on macOS, which is exactly the "renders black"
+        // failure mode this code path used to hit.
+        let win_flags: u32 = if self.gl_handle_field.is_some() { 2 } else { 4 };
         let win_ptr = unsafe {
             sdl_create_window(
                 title_c.as_ptr(),
                 0x2FFF0000u32 as i32, 0x2FFF0000u32 as i32,
                 self.width, self.height,
-                2,  // SDL_WINDOW_OPENGL
+                win_flags,
             )
         };
         if win_ptr.is_null() {

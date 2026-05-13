@@ -22,7 +22,8 @@ import "packages/gl/program.ev"
 enum S = Init | Frame(Int)
 
 fsm render(state ∈ S)
-    win ∈ SDL_Window (title ↦ "FTI GL Demo", width ↦ 640, height ↦ 480)
+    win ∈ SDL_Window (title ↦ "FTI GL Demo", width ↦ 640, height ↦ 480,
+                       gl ↦ true)
 
     state_next = match state
         Init     ⇒ Frame(30)

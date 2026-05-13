@@ -142,6 +142,20 @@ enum Result =
     HandleResult(Int)
     ErrorResult(String)
 
+-- ── Install step: declarative bridge bootstrap ───────────────
+-- `external type` declarations bind their setup to an
+-- `install ∈ Seq(InstallStep)` body member. The runtime
+-- dispatches the Seq atomically at FTI install time and
+-- captures `Bind`'d results into the named field of the
+-- type instance — the persistent-handle path that the old
+-- Rust bridges (sdl_window.rs, gl_program.rs, oneshot_shell.rs)
+-- used to provide. ArgPriorResult(N) inside an effect refers
+-- to the Nth step's result, so handles created earlier in the
+-- install Seq feed forward to later steps.
+enum InstallStep =
+    Run(Effect)               -- fire, discard result
+    Bind(String, Effect)      -- fire, capture result into the named field
+
 
 -- ── Async event subscription markers (LEGACY) ─────────────────
 -- Place one of these as a parameter on an FSM claim to subscribe
@@ -181,12 +195,13 @@ external type Signal
 external type FrameClock
     tick_count ∈ Int
 
--- Hostname FTI type. The bridge calls `hostname` once at startup
--- and pins the result. Useful for programs that want to identify
--- themselves (logging, distinguishing test runs, etc.) without
--- threading a configuration parameter.
+-- Hostname FTI type. At install time, dispatches `ShellRun("hostname")`
+-- and captures its stdout into `name`. Declarative — the runtime's
+-- generic install dispatcher (event_sources/declarative_install.rs)
+-- reads this Seq, no Rust knowledge of `hostname` required.
 external type Hostname
     name ∈ String
+    install ∈ Seq(InstallStep) = ⟨Bind("name", ShellRun("hostname"))⟩
 
 -- Per-instance configurable Timer. Declare with the desired
 -- interval in milliseconds:

@@ -254,7 +254,12 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                 event_subs.insert("tick".to_string());
             } else if type_name == "Signal" {
                 event_subs.insert("signal".to_string());
-            } else if crate::fti::is_fti_type(type_name) {
+            } else if crate::fti::is_fti_type(type_name)
+                   || rt.get_schema(type_name).map(|s| s.body.iter().any(|i|
+                          matches!(i, BodyItem::Membership { name, type_name: ty, .. }
+                                   if name == "install" && ty == "Seq(InstallStep)"))
+                      ).unwrap_or(false)
+            {
                 fti_params.push((name.clone(), type_name.clone(), pins.clone()));
             } else if type_name != "Int" && type_name != "Bool"
                    && type_name != "String" && type_name != "Real"
@@ -464,13 +469,44 @@ pub fn run_with_ctx(
         // same param type get distinct bridges.
         for fsm in &fsms {
             for (param_name, type_name, pins) in &fsm.fti_params {
-                let Some(install_fn) = crate::fti::fti_install_fn(type_name)
-                    else { continue };
                 let fti_ctx = crate::fti::FtiContext {
                     claim_name:  fsm.claim_name.clone(),
                     param_name:  param_name.clone(),
                     env_tick_ms: env.tick_ms,
                 };
+                // Declarative install (preferred): if the type's
+                // body has an `install ∈ Seq(InstallStep)` member,
+                // dispatch it via the generic mechanism and skip
+                // any specific Rust bridge. Only falls back to
+                // INSTALLERS for thread-driven bridges (FrameTimer,
+                // Timer — long-running event sources that can't be
+                // expressed as a one-shot Seq).
+                let has_declarative = rt.get_schema(type_name).map(|s|
+                    s.body.iter().any(|i| matches!(i,
+                        crate::ast::BodyItem::Membership { name, type_name: ty, .. }
+                        if name == "install" && ty == "Seq(InstallStep)"))
+                ).unwrap_or(false);
+                if has_declarative {
+                    let mut src = crate::event_sources::DeclarativeInstallSource::new();
+                    src.run_install(rt, type_name, &fti_ctx, pins, &event_tx)?;
+                    // Captured keys = leading Memberships of the type
+                    // that aren't first-line input pins. The drain pass
+                    // applies them to world_snapshot below.
+                    if let Some(type_decl) = rt.get_schema(type_name) {
+                        for item in &type_decl.body {
+                            if let crate::ast::BodyItem::Membership { name, type_name: _, .. } = item {
+                                if name == "install" { continue; }
+                                let key = format!("{}.{}.{}",
+                                    fsm.claim_name, param_name, name);
+                                plugin_writes.insert(key);
+                            }
+                        }
+                    }
+                    event_sources.push(Box::new(src));
+                    continue;
+                }
+                let Some(install_fn) = crate::fti::fti_install_fn(type_name)
+                    else { continue };
                 let install = install_fn(&fti_ctx, pins, event_tx.clone())?;
                 event_sources.push(install.source);
                 for k in install.keys { plugin_writes.insert(k); }

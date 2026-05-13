@@ -24,7 +24,8 @@ import "packages/gl/program.ev"
 enum S = Init | Frame(Int)
 
 fsm render(state ∈ S)
-    win ∈ SDL_Window (title ↦ "FTI Triangle", width ↦ 640, height ↦ 480)
+    win ∈ SDL_Window (title ↦ "FTI Triangle", width ↦ 640, height ↦ 480,
+                       gl ↦ true)
     prog ∈ GL_Program (
         vertex_src ↦ "#version 330 core\nvoid main(){vec2 p=(gl_VertexID==0?vec2(-0.5,-0.5):(gl_VertexID==1?vec2(0.5,-0.5):vec2(0.0,0.5)));gl_Position=vec4(p,0,1);}",
         fragment_src ↦ "#version 330 core\nout vec4 c;\nvoid main(){c=vec4(1,0.4,0.6,1);}"

@@ -637,6 +637,47 @@ pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::ast::Effect>> {
     })
 }
 
+/// Decoded `InstallStep`: an Effect to dispatch + an optional field
+/// name to capture the result into. `None` = `Run(Effect)` (discard
+/// result), `Some(field)` = `Bind(field, Effect)`. Used by the
+/// declarative install path in `event_sources/declarative_install.rs`.
+#[derive(Debug, Clone)]
+pub struct InstallStep {
+    pub field:  Option<String>,
+    pub effect: crate::ast::Effect,
+}
+
+pub fn decode_install_step(v: &Value) -> Result<InstallStep> {
+    let (variant, fields) = check_enum(v, "InstallStep")?;
+    Ok(match variant {
+        "Run" => {
+            need_arity(variant, fields, 1)?;
+            InstallStep { field: None, effect: decode_effect(&fields[0])? }
+        }
+        "Bind" => {
+            need_arity(variant, fields, 2)?;
+            InstallStep {
+                field:  Some(decode_str(&fields[0])?),
+                effect: decode_effect(&fields[1])?,
+            }
+        }
+        other => return Err(DecodeError::UnknownVariant {
+            enum_name: "InstallStep".into(), variant: other.into(),
+        }),
+    })
+}
+
+pub fn decode_install_step_list(v: &Value) -> Result<Vec<InstallStep>> {
+    if let Value::SeqEnum(items) = v {
+        return items.iter().map(decode_install_step).collect();
+    }
+    Err(DecodeError::FieldKind {
+        what: "install".into(),
+        want: "Seq(InstallStep)".into(),
+        got: format!("{:?}", v),
+    })
+}
+
 pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
     use crate::ast::EffectFfiArg;
     let (variant, fields) = check_enum(v, "FFIArg")?;
