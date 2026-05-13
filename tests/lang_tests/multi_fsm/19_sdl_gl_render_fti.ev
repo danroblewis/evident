@@ -15,6 +15,7 @@
 -- ~30 frames rendered, then exit.
 
 import "stdlib/runtime.ev"
+import "packages/sdl/window.ev"
 import "packages/sdl/gl.ev"
 import "packages/gl/program.ev"
 

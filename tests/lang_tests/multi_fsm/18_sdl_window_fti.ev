@@ -25,6 +25,7 @@
 --     Exit 0.
 
 import "stdlib/runtime.ev"
+import "packages/sdl/window.ev"
 
 enum S = Waiting | Open | Done
 

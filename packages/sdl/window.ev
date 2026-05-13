@@ -12,6 +12,39 @@
 
 import "stdlib/runtime.ev"
 
+-- ── FTI type contract ─────────────────────────────────────────
+-- The Rust SDL_Window bridge (runtime/src/event_sources/sdl_window.rs)
+-- looks for this name in the FTI registry. The declaration is a
+-- documentation contract: it names the fields the bridge writes
+-- (and the user pins) so callers can see at a glance which keys
+-- live on the window resource.
+--
+-- Bridge behavior: at install time, calls SDL_Init +
+-- SDL_CreateWindow with the configured title/width/height; writes
+-- the window pointer (cast to Int) into `handle`. When `gl_handle`
+-- is referenced, also creates a GL 3.3 Core context + default VAO
+-- and writes those handles. When `renderer` is referenced, calls
+-- SDL_CreateRenderer and writes the renderer pointer — the
+-- persistent renderer handle that makes per-tick rendering work
+-- (COUNTEREXAMPLES.md #9). At program end: SDL_DestroyWindow +
+-- SDL_Quit.
+--
+--     fsm app
+--         win ∈ SDL_Window (title  ↦ "App",
+--                            width  ↦ 640,
+--                            height ↦ 480)
+--         -- once win.handle is non-zero, the window exists;
+--         -- pass win.handle / win.renderer to SDL/GL effects.
+external type SDL_Window
+    title     ∈ String
+    width     ∈ Int
+    height    ∈ Int
+    handle    ∈ Int
+    gl_handle ∈ Int   -- GL context (also created + made current)
+    vao       ∈ Int   -- default VAO (Core profile draws need one bound)
+    renderer  ∈ Int   -- SDL_Renderer; persistent across ticks so
+                      -- per-frame draw calls can pass ArgHandle(win.renderer)
+
 -- ── Library path ──────────────────────────────────────────────
 
 claim sdl_lib_path_macos(p ∈ String)

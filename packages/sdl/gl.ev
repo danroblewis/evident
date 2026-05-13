@@ -16,6 +16,23 @@
 
 import "stdlib/runtime.ev"
 
+-- ── FTI type contract ─────────────────────────────────────────
+-- GL_Program FTI: compiles vertex + fragment sources, links into a
+-- program, calls glUseProgram, writes the program ID into `handle`.
+-- One declaration replaces the multi-call setup chain (CreateShader
+-- × 2, ShaderSource, CompileShader × 2, CreateProgram, AttachShader
+-- × 2, LinkProgram, UseProgram).
+--
+--     prog ∈ GL_Program (vertex_src ↦ "...", fragment_src ↦ "...")
+--
+-- Requires a current GL context — declare AFTER an SDL_Window with
+-- a gl_handle in the same FSM. Bridges install in declaration order,
+-- so the context is current when the program bridge runs.
+external type GL_Program
+    vertex_src   ∈ String
+    fragment_src ∈ String
+    handle       ∈ Int
+
 -- ── SDL_GLattr enum values (from SDL_video.h) ─────────────────
 -- These are the integer constants you pass as the first arg to
 -- gl_set_attribute. A few common ones are spelled out — full list is

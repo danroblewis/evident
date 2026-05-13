@@ -40,33 +40,35 @@ fsm mario
     pos ∈ IVec2
     vel ∈ IVec2
 
-    -- Apply gravity to vy, then tentative next position.
-    grav_vy ∈ Int
-    grav_vy = _vel.y + 2
-    tent_x ∈ Int
-    tent_x = _pos.x + _vel.x
-    tent_y ∈ Int
-    tent_y = _pos.y + grav_vy
+    -- Velocity with gravity applied (only y changes).
+    grav_vel ∈ IVec2
+    grav_vel = IVec2(_vel.x, _vel.y + 2)
 
-    -- Bounce x off [0, 608] (screen width 640 - mario width 32).
-    bounced_vx ∈ Int
-    bounced_vx = ((tent_x < 0 ∨ tent_x > 608) ? 0 - _vel.x : _vel.x)
-    clamped_x ∈ Int
-    clamped_x = (tent_x < 0 ? 0 : (tent_x > 608 ? 608 : tent_x))
+    -- Tentative next position. `_pos + grav_vel` is componentwise
+    -- vector addition (record-lift in equation context — see
+    -- CLAUDE.md "Records as vectors").
+    tent ∈ IVec2
+    tent = _pos + grav_vel
 
-    -- Floor at y=400; reset vy on contact.
-    clamped_y ∈ Int
-    clamped_y = (tent_y > 400 ? 400 : tent_y)
-    new_vy ∈ Int
-    new_vy = (tent_y > 400 ? 0 : grav_vy)
+    -- Bounce x off [0, 608] (screen width 640 - mario width 32);
+    -- clamp y to floor at 400.
+    clamped ∈ IVec2
+    clamped = IVec2(
+        (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
+        (tent.y > 400 ? 400 : tent.y))
+
+    next_vel ∈ IVec2
+    next_vel = IVec2(
+        ((tent.x < 0 ∨ tent.x > 608) ? 0 - _vel.x : _vel.x),
+        (tent.y > 400 ? 0 : grav_vel.y))
 
     -- Compose next state. Ternary lives INSIDE the IVec2 ctor
     -- (record-lift through ternary not supported on both arms).
     -- Start at (100, 100) with vx=5, vy=0.
-    pos = IVec2((is_first_tick ? 100 : clamped_x),
-                (is_first_tick ? 100 : clamped_y))
-    vel = IVec2((is_first_tick ? 5   : bounced_vx),
-                (is_first_tick ? 0   : new_vy))
+    pos = IVec2((is_first_tick ? 100 : clamped.x),
+                (is_first_tick ? 100 : clamped.y))
+    vel = IVec2((is_first_tick ? 5   : next_vel.x),
+                (is_first_tick ? 0   : next_vel.y))
 
     -- ── Render: clear sky, draw ground, draw mario, present.
     sky_eff ∈ Effect

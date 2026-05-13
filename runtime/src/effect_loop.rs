@@ -1057,8 +1057,24 @@ fn run_multi_fsm(
                     if let crate::ast::BodyItem::Membership { name, .. } = item {
                         if let Some(stripped) = name.strip_prefix('_') {
                             sees_underscore = true;
+                            // Primitive case: prev_values has a direct
+                            // entry for `stripped` (Int / Bool / etc.).
                             if let Some(prev) = fsm_rt[idx].prev_values.get(stripped) {
                                 fsm_view.insert(name.clone(), prev.clone());
+                            }
+                            // Record case: prev_values has per-field
+                            // entries like `pos.x` / `pos.y` (records
+                            // get flattened at translation). Mirror
+                            // every `stripped.<field>` entry into
+                            // `_name.<field>` so `_pos.x` resolves.
+                            let prefix = format!("{stripped}.");
+                            for (k, v) in &fsm_rt[idx].prev_values {
+                                if let Some(field) = k.strip_prefix(&prefix) {
+                                    fsm_view.insert(
+                                        format!("{name}.{field}"),
+                                        v.clone(),
+                                    );
+                                }
                             }
                             // If no previous value yet, leave `_name`
                             // unconstrained — the fsm's body should

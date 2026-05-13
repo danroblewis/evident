@@ -201,44 +201,14 @@ external type Timer
     interval_ms ∈ Int
     tick_count  ∈ Int
 
--- SDL window resource. Bridge calls SDL_Init + SDL_CreateWindow
--- at startup with the configured title/width/height; writes the
--- window pointer (cast to Int) into `handle`. On program end:
--- SDL_DestroyWindow + SDL_Quit.
---
---     claim app(win ∈ SDL_Window (title ↦ "App",
---                                  width ↦ 640,
---                                  height ↦ 480),
---               ...)
---         -- once win.handle is non-zero, the window exists
---         -- and you can pass win.handle to GL/SDL effects
---
--- See `tests/lang_tests/multi_fsm/18_sdl_window_fti.ev`.
-external type SDL_Window
-    title     ∈ String
-    width     ∈ Int
-    height    ∈ Int
-    handle    ∈ Int
-    gl_handle ∈ Int   -- GL context (also created + made current)
-    vao       ∈ Int   -- default VAO (Core profile draws need one bound)
-    renderer  ∈ Int   -- SDL_Renderer; persistent across ticks so
-                      -- per-frame draw calls can pass ArgHandle(win.renderer)
-
--- GL shader program. Bridge compiles vertex + fragment sources,
--- links into a program, calls glUseProgram, writes the program
--- ID into `handle`. Replaces a multi-call setup chain with one
--- declaration.
---
---     prog ∈ GL_Program (vertex_src ↦ "...", fragment_src ↦ "...")
---
--- Requires a current GL context — declare AFTER an SDL_Window
--- with a gl_handle in the same FSM (the bridges install in
--- declaration order, so the context is current when the
--- program bridge runs).
-external type GL_Program
-    vertex_src   ∈ String
-    fragment_src ∈ String
-    handle       ∈ Int
+-- SDL_Window and GL_Program FTI types are NOT declared here —
+-- they live with their package code:
+--   * `SDL_Window` → `packages/sdl/window.ev`
+--   * `GL_Program` → `packages/sdl/gl.ev`
+-- The FTI registry resolves them by name regardless of which
+-- file holds the declaration (see `runtime/src/fti.rs`); the
+-- package-local decls are documentation contracts that live
+-- alongside the matching FFI claims.
 
 -- (Earlier placeholder Timer type removed — superseded by the
 -- per-instance configurable Timer above.)
