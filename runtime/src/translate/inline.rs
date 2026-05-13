@@ -432,25 +432,33 @@ fn inline_body_items_guarded(
                 let Some(claim) = schemas.get(&name) else {
                     exit_frame(visited, &name); continue
                 };
-                let slot_names: Vec<String> = claim.body.iter()
-                    .filter_map(|i| if let BodyItem::Membership { name, .. } = i {
-                        Some(name.clone())
+                let slot_info: Vec<(String, String)> = claim.body.iter()
+                    .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                        Some((name.clone(), type_name.clone()))
                     } else { None })
                     .take(args.len())
                     .collect();
-                if slot_names.len() != args.len() {
+                if slot_info.len() != args.len() {
                     eprintln!(
                         "warning: tuple-in-claim `(...) ∈ {}` got {} args but \
                          the claim has only {} param Memberships",
-                        name, args.len(), slot_names.len()
+                        name, args.len(), slot_info.len()
                     );
                     exit_frame(visited, &name);
                     continue;
                 }
-                let mappings: Vec<crate::ast::Mapping> = slot_names.into_iter()
+                // Tuple-as-record-literal coercion (same rule as the
+                // positional-Call arm above) for nested `(a, b, c)`
+                // args whose slot is a known record type.
+                let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
                     .zip(args.iter())
-                    .map(|(slot, value)| crate::ast::Mapping {
-                        slot, value: value.clone(),
+                    .map(|((slot, slot_type), value)| {
+                        let coerced = match value {
+                            Expr::Tuple(items) if schemas.contains_key(slot_type) =>
+                                Expr::Call(slot_type.clone(), items.clone()),
+                            _ => value.clone(),
+                        };
+                        crate::ast::Mapping { slot: slot.clone(), value: coerced }
                     })
                     .collect();
                 let _ = depth;
@@ -503,25 +511,37 @@ fn inline_body_items_guarded(
                 // Pair positional args with the claim's first N Membership
                 // body items (which include first-line params, since
                 // those desugar to Memberships at the head of the body).
-                let slot_names: Vec<String> = claim.body.iter()
-                    .filter_map(|i| if let BodyItem::Membership { name, .. } = i {
-                        Some(name.clone())
+                let slot_info: Vec<(String, String)> = claim.body.iter()
+                    .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                        Some((name.clone(), type_name.clone()))
                     } else { None })
                     .take(args.len())
                     .collect();
-                if slot_names.len() != args.len() {
+                if slot_info.len() != args.len() {
                     eprintln!(
                         "warning: positional ClaimCall to `{}` got {} args but \
                          the claim has only {} param Memberships",
-                        name, args.len(), slot_names.len()
+                        name, args.len(), slot_info.len()
                     );
                     exit_frame(visited, name);
                     continue;
                 }
-                let mappings: Vec<crate::ast::Mapping> = slot_names.into_iter()
+                // Tuple-as-record-literal coercion: when an arg is a
+                // bare `(a, b, c)` Tuple AND the slot's type names a
+                // known record schema, rewrite to `Call(type, items)`
+                // — the existing record-literal-in-expression-position
+                // path. Lets the user write
+                //   set_draw_color((220, 40, 40, 255), out)
+                // instead of `Color(220, 40, 40, 255)`.
+                let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
                     .zip(args.iter())
-                    .map(|(slot, value)| crate::ast::Mapping {
-                        slot, value: value.clone(),
+                    .map(|((slot, slot_type), value)| {
+                        let coerced = match value {
+                            Expr::Tuple(items) if schemas.contains_key(slot_type) =>
+                                Expr::Call(slot_type.clone(), items.clone()),
+                            _ => value.clone(),
+                        };
+                        crate::ast::Mapping { slot: slot.clone(), value: coerced }
                     })
                     .collect();
 

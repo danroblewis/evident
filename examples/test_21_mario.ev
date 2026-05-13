@@ -67,16 +67,16 @@ fsm mario
 
     -- ── Render: clear sky, draw ground, draw mario, present.
     -- Method-style: `win.renderer.<claim>(…)` desugars to
-    -- `<claim>(win.renderer, …)`. Output args (sky_eff, clear_eff, …)
-    -- aren't declared — their types are inferred from each
-    -- claim's signature (`out ∈ Effect`) since they're used in
-    -- both the call and the effects list.
-    win.renderer.set_draw_color(Color(80, 160, 220, 255), sky_eff)
+    -- `<claim>(win.renderer, …)`. Output args aren't declared —
+    -- their types come from each claim's signature (`out ∈ Effect`)
+    -- since they're used twice (call + effects list). Bare tuples
+    -- `(r, g, b, a)` / `(x, y)` coerce to the slot's record type.
+    win.renderer.set_draw_color((80, 160, 220, 255), sky_eff)
     win.renderer.render_clear(clear_eff)
-    win.renderer.set_draw_color(Color(60, 140, 60, 255), ground_color_eff)
-    win.renderer.render_fill_rect(IVec2(0, 432), IVec2(640, 48), ground_eff)
-    win.renderer.set_draw_color(Color(220, 40, 40, 255), mario_color_eff)
-    win.renderer.render_fill_rect(pos, IVec2(32, 32), mario_eff)
+    win.renderer.set_draw_color((60, 140, 60, 255), ground_color_eff)
+    win.renderer.render_fill_rect((0, 432), (640, 48), ground_eff)
+    win.renderer.set_draw_color((220, 40, 40, 255), mario_color_eff)
+    win.renderer.render_fill_rect(pos, (32, 32), mario_eff)
     win.renderer.render_present(present_eff)
     sdl_pump_events(pump_eff)
 
