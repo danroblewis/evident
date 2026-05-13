@@ -7,9 +7,16 @@ type World
     key_left ∈ Int
     key_right ∈ Int
     key_up ∈ Int
+    tick ∈ Int
 
 fsm game(world ∈ World, world_next ∈ World)
     vel ∈ IVec2
+
+    -- Subscribe to display's tick counter so game wakes every
+    -- frame even when no key state changes. Without this, the
+    -- scheduler only re-ticks game when its read-set (keys / pos)
+    -- changes, so gravity halts whenever input is idle.
+    game_clock ∈ Int = world.tick
 
     on_ground ∈ Bool = (world.pos.y ≥ 400)
     walk_vx ∈ Int = (world.key_left > 0 ? 0 - 5
@@ -52,6 +59,7 @@ fsm display(world ∈ World, world_next ∈ World)
     world_next.key_left  = (is_first_tick ? 0 : key_left_raw)
     world_next.key_right = (is_first_tick ? 0 : key_right_raw)
     world_next.key_up    = (is_first_tick ? 0 : key_up_raw)
+    world_next.tick      = frame
 
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
