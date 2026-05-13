@@ -1288,10 +1288,28 @@ impl Parser {
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
                 self.bump();
+                // Greedily consume `.ident` chains (sub-schema field access)
+                // and collapse into a single dotted Identifier. Done
+                // BEFORE the call check so `win.renderer.set_draw_color(args)`
+                // parses as `Call("win.renderer.set_draw_color", args)` —
+                // method-style invocation. The inline-translator splits
+                // the name on the last dot and treats the prefix as the
+                // receiver (prepended to args) when the suffix is a
+                // known schema.
+                let mut name = s;
+                while matches!(self.peek(), Token::Dot) {
+                    self.bump();
+                    match self.bump() {
+                        Token::Ident(field) => { name.push('.'); name.push_str(&field); }
+                        other => return Err(ParseError(format!(
+                            "expected field name after '.', got {:?}", other))),
+                    }
+                }
                 // Function-call expression: `name(arg, …)`. Recognized
-                // for builtins like `coindexed(A, B)` and `edges(seq)`
-                // in quantifier source position. Translator
-                // special-cases known names and errors on unknown.
+                // for builtins like `coindexed(A, B)` / `edges(seq)`,
+                // record literals like `IVec2(0, 0)`, claim invocations
+                // like `set_draw_color(ren, c, out)`, and method-style
+                // `recv.claim(args)` (dispatched in inline.rs).
                 if matches!(self.peek(), Token::LParen) {
                     self.bump();   // (
                     let mut args = Vec::new();
@@ -1306,18 +1324,7 @@ impl Parser {
                         }
                     }
                     self.eat(&Token::RParen)?;
-                    return Ok(Expr::Call(s, args));
-                }
-                // Greedily consume `.ident` chains (sub-schema field access)
-                // and collapse into a single dotted Identifier.
-                let mut name = s;
-                while matches!(self.peek(), Token::Dot) {
-                    self.bump();
-                    match self.bump() {
-                        Token::Ident(field) => { name.push('.'); name.push_str(&field); }
-                        other => return Err(ParseError(format!(
-                            "expected field name after '.', got {:?}", other))),
-                    }
+                    return Ok(Expr::Call(name, args));
                 }
                 Ok(Expr::Identifier(name))
             }

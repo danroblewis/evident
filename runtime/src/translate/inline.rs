@@ -199,6 +199,42 @@ fn compose_guards<'ctx>(
     }
 }
 
+/// Method-call dispatch: split a (possibly dotted) call name on its
+/// last `.` and check whether the suffix is a known schema. Returns
+/// `Some((claim_name, Some(receiver)))` for method-style
+/// `recv.claim(args)`; `Some((claim_name, None))` for plain
+/// `claim(args)`; `None` when no segment matches a schema.
+///
+/// The receiver string keeps its dots intact (`win.renderer` for
+/// `win.renderer.set_draw_color(...)`) so it can be re-emitted as
+/// an `Identifier` and resolved through env's dotted leaf keys
+/// (`win.renderer` lives in env as an IntVar from the SDL_Window
+/// FTI expansion).
+fn method_dispatch_call(
+    name: &str,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<(String, Option<String>)> {
+    if schemas.contains_key(name) {
+        return Some((name.to_string(), None));
+    }
+    let (prefix, suffix) = name.rsplit_once('.')?;
+    if schemas.contains_key(suffix) {
+        return Some((suffix.to_string(), Some(prefix.to_string())));
+    }
+    None
+}
+
+/// Same dispatch logic for the `(args) ∈ recv.claim_name` form,
+/// where the RHS is an `Identifier`. Returns
+/// `Some((claim_name, Option<receiver>))` or `None`.
+fn method_dispatch_name(
+    rhs: &Expr,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<(String, Option<String>)> {
+    let Expr::Identifier(n) = rhs else { return None; };
+    method_dispatch_call(n, schemas)
+}
+
 pub(super) fn inline_body_items(
     items: &[BodyItem],
     env: &mut HashMap<String, Var<'static>>,
@@ -377,19 +413,21 @@ fn inline_body_items_guarded(
             // expression — a claim invocation contributes constraints,
             // not a Bool.
             BodyItem::Constraint(Expr::InExpr(lhs, rhs))
-                if matches!(rhs.as_ref(),
-                    Expr::Identifier(n) if schemas.contains_key(n))
+                if method_dispatch_name(rhs.as_ref(), schemas).is_some()
                 && matches!(lhs.as_ref(), Expr::Tuple(_)) =>
             {
                 if !guard_is_satisfiable(solver, guard) { continue; }
-                let name = match rhs.as_ref() {
-                    Expr::Identifier(n) => n.clone(),
-                    _ => unreachable!(),
-                };
-                let args: Vec<Expr> = match lhs.as_ref() {
+                let (name, receiver) = method_dispatch_name(rhs.as_ref(), schemas)
+                    .expect("guarded above");
+                let mut args: Vec<Expr> = match lhs.as_ref() {
                     Expr::Tuple(items) => items.clone(),
                     _ => unreachable!(),
                 };
+                // Method-style: `(args) ∈ recv.claim_name` prepends
+                // `Identifier(recv)` as the first positional arg.
+                if let Some(recv) = receiver {
+                    args.insert(0, Expr::Identifier(recv));
+                }
                 let Some(depth) = try_enter(visited, &name) else { continue };
                 let Some(claim) = schemas.get(&name) else {
                     exit_frame(visited, &name); continue
@@ -445,8 +483,20 @@ fn inline_body_items_guarded(
                 );
                 exit_frame(visited, &name);
             }
-            BodyItem::Constraint(Expr::Call(name, args)) if schemas.contains_key(name) => {
+            BodyItem::Constraint(Expr::Call(name, args))
+                if method_dispatch_call(name, schemas).is_some() =>
+            {
                 if !guard_is_satisfiable(solver, guard) { continue; }
+                let (claim_name, receiver) = method_dispatch_call(name, schemas)
+                    .expect("guarded above");
+                // Method-style: `recv.claim_name(args)` prepends
+                // `Identifier(recv)` to the positional args.
+                let mut owned_args: Vec<Expr> = args.clone();
+                if let Some(recv) = receiver {
+                    owned_args.insert(0, Expr::Identifier(recv));
+                }
+                let args = &owned_args;
+                let name = &claim_name;
                 let Some(depth) = try_enter(visited, name) else { continue };
                 let Some(claim) = schemas.get(name) else { exit_frame(visited, name); continue };
 

@@ -66,23 +66,26 @@ fsm mario
                 (is_first_tick ? 0   : next_vel.y))
 
     -- ── Render: clear sky, draw ground, draw mario, present.
+    -- Method-style: `win.renderer.<claim>(…)` desugars to
+    -- `<claim>(win.renderer, …)` — the receiver becomes the
+    -- first positional arg.
     sky_eff ∈ Effect
-    set_draw_color(win.renderer, Color(80, 160, 220, 255), sky_eff)
+    win.renderer.set_draw_color(Color(80, 160, 220, 255), sky_eff)
     clear_eff ∈ Effect
-    render_clear(win.renderer, clear_eff)
+    win.renderer.render_clear(clear_eff)
 
     ground_color_eff ∈ Effect
-    set_draw_color(win.renderer, Color(60, 140, 60, 255), ground_color_eff)
+    win.renderer.set_draw_color(Color(60, 140, 60, 255), ground_color_eff)
     ground_eff ∈ Effect
-    render_fill_rect(win.renderer, IVec2(0, 432), IVec2(640, 48), ground_eff)
+    win.renderer.render_fill_rect(IVec2(0, 432), IVec2(640, 48), ground_eff)
 
     mario_color_eff ∈ Effect
-    set_draw_color(win.renderer, Color(220, 40, 40, 255), mario_color_eff)
+    win.renderer.set_draw_color(Color(220, 40, 40, 255), mario_color_eff)
     mario_eff ∈ Effect
-    render_fill_rect(win.renderer, pos, IVec2(32, 32), mario_eff)
+    win.renderer.render_fill_rect(pos, IVec2(32, 32), mario_eff)
 
     present_eff ∈ Effect
-    render_present(win.renderer, present_eff)
+    win.renderer.render_present(present_eff)
     pump_eff ∈ Effect
     sdl_pump_events(pump_eff)
 
