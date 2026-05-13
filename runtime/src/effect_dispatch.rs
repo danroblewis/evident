@@ -475,6 +475,44 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
                     *dst.offset(bytes.len() as isize) = 0;
                 }),
+        Effect::Malloc(size) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                if *size <= 0 {
+                    return EffectResult::Error(format!(
+                        "Malloc: size must be positive, got {size}"));
+                }
+                let size_usize = *size as usize;
+                let layout = match std::alloc::Layout::from_size_align(size_usize, 8) {
+                    Ok(l) => l,
+                    Err(e) => return EffectResult::Error(format!(
+                        "Malloc: layout for {size} bytes: {e}")),
+                };
+                // zeroed so callers don't read uninitialized memory.
+                let raw = unsafe { std::alloc::alloc_zeroed(layout) };
+                if raw.is_null() {
+                    return EffectResult::Error(format!(
+                        "Malloc: out of memory for {size} bytes"));
+                }
+                // Drop fn: deallocate with the same layout we used.
+                // Box-erased; HandleRegistry invokes it on close.
+                let drop_fn: Box<dyn FnOnce(*mut std::ffi::c_void) + Send> =
+                    Box::new(move |p| unsafe {
+                        std::alloc::dealloc(p as *mut u8, layout);
+                    });
+                let id = ctx.registry.register_with_drop(
+                    raw as *mut std::ffi::c_void, Some(drop_fn));
+                EffectResult::Int(id as i64)
+            }
+            DispatchMode::Replay { calls, cursor, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let r = calls[*cursor].result.clone();
+                *cursor += 1;
+                r
+            }
+        },
     }
 }
 

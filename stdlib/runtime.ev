@@ -161,6 +161,14 @@ enum Effect =
     WriteF64(Int, Int, Real)
     WriteStr(Int, Int, String)   -- bytes + null terminator
 
+    -- Allocate `size` bytes (zeroed) on the heap. Result is
+    -- `IntResult(handle)` where the handle resolves to the
+    -- pointer at ArgHandle marshal time. Memory is freed when
+    -- CloseHandle(handle) fires OR at program end. Buffer is
+    -- writable; pass to C functions that need to fill in data
+    -- (SDL_PollEvent, getline, read(), etc.).
+    Malloc(Int)
+
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded
 -- to user FSMs via `last_results ∈ Seq(Result)`.

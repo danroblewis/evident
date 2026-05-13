@@ -409,6 +409,12 @@ pub enum Effect {
     /// must have allocated at least `bytes + 1` bytes at the
     /// offset.
     WriteStr(u64, i64, String),
+    /// Allocate `size` bytes (zeroed) and register the resulting
+    /// pointer in the HandleRegistry with `libc::free` as its
+    /// drop fn. Result is `IntResult(handle)`. The handle's
+    /// memory is freed when CloseHandle(handle) fires OR when
+    /// the runtime exits.
+    Malloc(i64),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

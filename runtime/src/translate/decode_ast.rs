@@ -687,6 +687,10 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
                              decode_int(&fields[1])?,
                              decode_str(&fields[2])?)
         }
+        "Malloc"       => {
+            need_arity(variant, fields, 1)?;
+            Effect::Malloc(decode_int(&fields[0])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),

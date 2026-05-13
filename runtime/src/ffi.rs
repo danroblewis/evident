@@ -207,7 +207,7 @@ impl HandleRegistry {
         }
     }
 
-    fn register_with_drop(
+    pub fn register_with_drop(
         &self,
         ptr: *mut std::ffi::c_void,
         drop: Option<Box<dyn FnOnce(*mut std::ffi::c_void) + Send>>,
