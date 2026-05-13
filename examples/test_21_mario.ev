@@ -3,18 +3,21 @@
 -- The first multi-tick rendering demo: each tick recomputes
 -- physics, redraws the scene, and presents.
 --
--- Demonstrates the SDL_Window FTI bridge's new `renderer` field
--- (runtime/src/event_sources/sdl_window.rs): the renderer
--- pointer is in `win.renderer`, persistent across ticks, so
--- per-frame `set_draw_color` / `render_fill_rect` / `render_present`
--- calls just pass `ArgHandle(win.renderer)`.
+-- Demonstrates two unified-model features at once:
+--   * SDL_Window FTI bridge exposes a persistent `renderer`
+--     handle (runtime/src/event_sources/sdl_window.rs); each
+--     tick passes `win.renderer` directly to draw calls.
+--   * `_var` time-shift works through RECORD types — `_pos`
+--     and `_vel` get auto-declared `∈ IVec2`, and the runtime
+--     pins each per-field key (`_pos.x`, `_pos.y`, …) from
+--     the previous tick's bindings. Physics reads like a
+--     normal 2D update.
 --
 -- No keyboard input — Mario walks autonomously, bouncing off
 -- the screen edges. Demo exits after 60 frames.
 --
 -- Run interactively:
 --   evident effect-run examples/test_21_mario.ev
--- Pacing controlled by EVIDENT_TICK_MS (default 100).
 
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
@@ -27,47 +30,43 @@ fsm mario
     -- new bit (see runtime/src/event_sources/sdl_window.rs).
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
-    -- Frame counter for halt. `_frame` is auto-declared via the
-    -- prev-tick mechanism; `is_first_tick` is auto-injected.
+    -- Frame counter for halt.
     frame ∈ Int
     frame = (is_first_tick ? 0 : _frame + 1)
 
-    -- Player state (Int per axis — keeps `_var` semantics simple).
-    pos_x ∈ Int
-    pos_y ∈ Int
-    vel_x ∈ Int
-    vel_y ∈ Int
-
-    -- Physics constants (inline so reads are obvious).
-    -- Ground top = 432, mario size = 32 → mario rests at y = 400.
-    -- Screen 640×480; mario stays in [0, 608] horizontally.
+    -- Player state as 2D vectors. `_pos` and `_vel` are
+    -- auto-declared `∈ IVec2`; their .x and .y fields get
+    -- pinned from the previous tick's bindings.
+    pos ∈ IVec2
+    vel ∈ IVec2
 
     -- Apply gravity to vy, then tentative next position.
     grav_vy ∈ Int
-    grav_vy = _vel_y + 2
-
+    grav_vy = _vel.y + 2
     tent_x ∈ Int
-    tent_x = _pos_x + _vel_x
+    tent_x = _pos.x + _vel.x
     tent_y ∈ Int
-    tent_y = _pos_y + grav_vy
+    tent_y = _pos.y + grav_vy
 
-    -- Bounce x off [0, 608]. Reverse velocity and clamp.
+    -- Bounce x off [0, 608] (screen width 640 - mario width 32).
     bounced_vx ∈ Int
-    bounced_vx = ((tent_x < 0 ∨ tent_x > 608) ? 0 - _vel_x : _vel_x)
+    bounced_vx = ((tent_x < 0 ∨ tent_x > 608) ? 0 - _vel.x : _vel.x)
     clamped_x ∈ Int
     clamped_x = (tent_x < 0 ? 0 : (tent_x > 608 ? 608 : tent_x))
 
-    -- Floor: clamp y ≤ 400; reset vy on contact.
+    -- Floor at y=400; reset vy on contact.
     clamped_y ∈ Int
     clamped_y = (tent_y > 400 ? 400 : tent_y)
     new_vy ∈ Int
     new_vy = (tent_y > 400 ? 0 : grav_vy)
 
-    -- Compose next state. Start at (100, 100) with vx=5, vy=0.
-    pos_x = (is_first_tick ? 100 : clamped_x)
-    pos_y = (is_first_tick ? 100 : clamped_y)
-    vel_x = (is_first_tick ? 5   : bounced_vx)
-    vel_y = (is_first_tick ? 0   : new_vy)
+    -- Compose next state. Ternary lives INSIDE the IVec2 ctor
+    -- (record-lift through ternary not supported on both arms).
+    -- Start at (100, 100) with vx=5, vy=0.
+    pos = IVec2((is_first_tick ? 100 : clamped_x),
+                (is_first_tick ? 100 : clamped_y))
+    vel = IVec2((is_first_tick ? 5   : bounced_vx),
+                (is_first_tick ? 0   : new_vy))
 
     -- ── Render: clear sky, draw ground, draw mario, present.
     sky_eff ∈ Effect
@@ -83,7 +82,7 @@ fsm mario
     mario_color_eff ∈ Effect
     set_draw_color(win.renderer, Color(220, 40, 40, 255), mario_color_eff)
     mario_eff ∈ Effect
-    render_fill_rect(win.renderer, IVec2(pos_x, pos_y), IVec2(32, 32), mario_eff)
+    render_fill_rect(win.renderer, pos, IVec2(32, 32), mario_eff)
 
     present_eff ∈ Effect
     render_present(win.renderer, present_eff)
@@ -104,18 +103,15 @@ claim sat_first_tick_seeds_start_pos
     effects ∈ Seq(Effect)
     frame ∈ Int
     _frame ∈ Int
-    pos_x ∈ Int
-    pos_y ∈ Int
-    vel_x ∈ Int
-    vel_y ∈ Int
-    _pos_x ∈ Int
-    _pos_y ∈ Int
-    _vel_x ∈ Int
-    _vel_y ∈ Int
+    pos ∈ IVec2
+    vel ∈ IVec2
+    _pos ∈ IVec2
+    _vel ∈ IVec2
     is_first_tick ∈ Bool
 
     is_first_tick = true
     win.renderer = 1
     mario
 
-    pos_x = 100 ∧ pos_y = 100 ∧ vel_x = 5 ∧ vel_y = 0
+    pos = IVec2(100, 100)
+    vel = IVec2(5, 0)

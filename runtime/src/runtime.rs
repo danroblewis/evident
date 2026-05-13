@@ -212,10 +212,22 @@ fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
             prev_refs: &mut HashMap<String, String>) {
         match e {
             Expr::Identifier(n) => {
-                if let Some(stripped) = n.strip_prefix('_') {
-                    if let Some(ty) = declared.get(stripped) {
-                        prev_refs.insert(n.clone(), ty.clone());
-                    }
+                // Two shapes:
+                //   * `_count`         → strip → `count`
+                //   * `_pos.x`         → strip first segment → `pos`
+                // The parser collapses dotted chains in `parse_atom`,
+                // so `_pos.x` arrives as Identifier("_pos.x"); we
+                // only want to register the prev-tick parent (`pos`).
+                let Some(after_underscore) = n.strip_prefix('_') else { return; };
+                let first_seg = after_underscore
+                    .split('.').next().unwrap_or(after_underscore);
+                if let Some(ty) = declared.get(first_seg) {
+                    // Key by the bare `_first_seg`, value is its type.
+                    // We inject `_first_seg ∈ ty` once; per-field
+                    // expansion (`_pos.x`, `_pos.y`) happens at
+                    // translation via declare_var_named.
+                    let key = format!("_{first_seg}");
+                    prev_refs.insert(key, ty.clone());
                 }
             }
             Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
