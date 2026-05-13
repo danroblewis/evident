@@ -240,3 +240,53 @@ external type GL_Program
 
 -- (Earlier placeholder Timer type removed — superseded by the
 -- per-instance configurable Timer above.)
+
+-- ── Runtime bridge contracts (external fsms) ──────────────────
+-- Each `external fsm` below names the shared-state slots a
+-- runtime bridge writes (the Rust implementation lives in
+-- `runtime/src/event_sources/`). Auto-install fires when the
+-- user's program declares the matching field NAME + TYPE in a
+-- World record; the bridge then writes that field on its own
+-- schedule. User FSMs subscribe via standard world read-set
+-- inference — no marker types needed.
+--
+-- These are CONTRACTS, not user-callable schemas. The scheduler
+-- skips them in `detect_fsm_shape` (external fsms aren't
+-- auto-instantiated); the Rust bridges do the work.
+--
+-- The unified-state framing: a runtime bridge IS an fsm — it
+-- has state (its own internal timing, byte buffer, etc.) and it
+-- writes named shared-state slots. The `external` modifier just
+-- means "implemented in Rust, not Evident."  See
+-- docs/design/state-machines-as-relations.md.
+
+-- Reads one line of stdin per Enter (or pipe-EOF). On each line:
+-- writes `stdin_line` (the bytes, without trailing newline) and
+-- increments `stdin_seq`. Downstream FSMs use the seq counter to
+-- detect "this is a new line, not a re-tick on the same value."
+external fsm StdinSource
+    stdin_line ∈ String
+    stdin_seq  ∈ Int
+
+-- Fires every `EVIDENT_TICK_MS` milliseconds (default: 100).
+-- On each fire: increments `tick_count`.
+external fsm FrameTimerSource
+    tick_count ∈ Int
+
+-- Installs a SIGINT handler. On each Ctrl-C: increments
+-- `signal_received`. v1 collapses all signals into the int
+-- count; future bridges can split by signo.
+external fsm SigintSource
+    signal_received ∈ Int
+
+-- Polls system time every `EVIDENT_CLOCK_MS` milliseconds
+-- (default: 100). Writes Unix time in milliseconds to `now_ms`.
+external fsm WallClockSource
+    now_ms ∈ Int
+
+-- Watches a single path (configured via `EVIDENT_FILE_WATCH=path`)
+-- at `EVIDENT_FILE_WATCH_MS` ms (default: 200). Writes the file's
+-- mtime epoch-seconds to `file_changed` whenever it changes. The
+-- field staying at the same value across ticks = nothing changed.
+external fsm FileWatcherSource
+    file_changed ∈ Int
