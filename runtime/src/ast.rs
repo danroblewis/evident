@@ -370,6 +370,16 @@ pub enum Effect {
     /// repeated calls amortize dlopen/dlsym to once. See
     /// `effect_dispatch::dispatch_one` for the cache implementation.
     LibCall(String, String, String, Vec<EffectFfiArg>),
+    /// `ReadByte(handle, offset)` — read a single u8 at the byte
+    /// offset from the registered pointer. Result is `IntResult(byte)`
+    /// with byte ∈ 0..255. The handle must be a registered pointer
+    /// from a prior FFI call. Caller is responsible for in-bounds
+    /// offsets; out-of-bounds is undefined behavior.
+    ///
+    /// Primary use: reading flat memory exposed by C libraries —
+    /// the SDL_GetKeyboardState array is the motivating case
+    /// (`ReadByte(state_ptr, SDL_SCANCODE_LEFT)` → 0 or 1).
+    ReadByte(u64, i64),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

@@ -54,11 +54,12 @@ type Color(red, green, blue, alpha ∈ Int)
 -- can't share one declaration cleanly because a renderer and a
 -- manual GL context on the same window conflict.
 external type SDL_Window
-    title    ∈ String
-    width    ∈ Int
-    height   ∈ Int
-    handle   ∈ Int
-    renderer ∈ Int
+    title          ∈ String
+    width          ∈ Int
+    height         ∈ Int
+    handle         ∈ Int
+    renderer       ∈ Int
+    keyboard_state ∈ Int
 
     -- The persistent install Seq. ArgPriorResult(N) refers to
     -- the result of the Nth step earlier in this same Seq; that's
@@ -78,8 +79,19 @@ external type SDL_Window
                     "v(p)", ⟨ArgPriorResult(1)⟩)),
         Bind("renderer", LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
                                   "p(pii)",
-                                  ⟨ArgPriorResult(1), ArgInt(0 - 1), ArgInt(0)⟩))
+                                  ⟨ArgPriorResult(1), ArgInt(0 - 1), ArgInt(0)⟩)),
+        Bind("keyboard_state", LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                                        "SDL_GetKeyboardState",
+                                        "p(p)", ⟨ArgHandle(0)⟩))
     ⟩
+
+    -- Read a single key's state. Returns 0 (up) or 1 (down). The
+    -- caller passes SDL scancode values (SDL_SCANCODE_LEFT = 80,
+    -- _RIGHT = 79, _UP = 82, _DOWN = 81, _SPACE = 44, etc.).
+    -- For up-to-date state, SDL_PumpEvents must run earlier in
+    -- the same effect Seq.
+    subclaim is_key_down(scancode ∈ Int)
+        out = ReadByte(keyboard_state, scancode)
 
     -- ── Render subclaims ─────────────────────────────────────
     -- Invoked as `win.set_draw_color(color_value, sky_eff)` etc.

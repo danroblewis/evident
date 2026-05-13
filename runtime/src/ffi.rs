@@ -219,7 +219,7 @@ impl HandleRegistry {
         id
     }
 
-    fn lookup(&self, id: u64) -> Result<*mut std::ffi::c_void, FfiError> {
+    pub fn lookup(&self, id: u64) -> Result<*mut std::ffi::c_void, FfiError> {
         let inner = self.inner.lock().unwrap();
         inner.entries.get(&id)
             .map(|o| o.ptr)

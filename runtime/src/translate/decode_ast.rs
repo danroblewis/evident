@@ -617,6 +617,10 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
                 decode_arg_list(&fields[3])?,
             )
         }
+        "ReadByte"     => {
+            need_arity(variant, fields, 2)?;
+            Effect::ReadByte(decode_int(&fields[0])? as u64, decode_int(&fields[1])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),

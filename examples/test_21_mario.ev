@@ -10,53 +10,76 @@ fsm mario
     pos ∈ IVec2
     vel ∈ IVec2
 
-    grav_vel ∈ IVec2 = IVec2(_vel.x, _vel.y + 2)
+    key_left_raw ∈ Int
+    key_left_raw = match last_results[14]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_right_raw ∈ Int
+    key_right_raw = match last_results[15]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_up_raw ∈ Int
+    key_up_raw = match last_results[16]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
 
-    tent ∈ IVec2 = _pos + grav_vel
+    key_left ∈ Int = (is_first_tick ? 0 : key_left_raw)
+    key_right ∈ Int = (is_first_tick ? 0 : key_right_raw)
+    key_up ∈ Int = (is_first_tick ? 0 : key_up_raw)
+
+    on_ground ∈ Bool = (_pos.y ≥ 400)
+
+    walk_vx ∈ Int = (key_left > 0 ? 0 - 5 : (key_right > 0 ? 5 : 0))
+    jump_vy ∈ Int = (on_ground ∧ key_up > 0 ? 0 - 14 : _vel.y + 2)
+
+    tent ∈ IVec2 = _pos + IVec2(walk_vx, jump_vy)
 
     clamped ∈ IVec2 = IVec2(
         (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
         (tent.y > 400 ? 400 : tent.y))
 
     next_vel ∈ IVec2 = IVec2(
-        ((tent.x < 0 ∨ tent.x > 608) ? 0 - _vel.x : _vel.x),
-        (tent.y > 400 ? 0 : grav_vel.y))
+        walk_vx,
+        (tent.y > 400 ? 0 : jump_vy))
 
-    pos = IVec2((is_first_tick ? 100 : clamped.x),
+    pos = IVec2((is_first_tick ? 304 : clamped.x),
                 (is_first_tick ? 100 : clamped.y))
-    vel = IVec2((is_first_tick ? 5   : next_vel.x),
-                (is_first_tick ? 0   : next_vel.y))
+    vel = IVec2((is_first_tick ? 0 : next_vel.x),
+                (is_first_tick ? 0 : next_vel.y))
 
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
     win.set_draw_color((60, 140, 60, 255), ground_color_eff)
     win.render_fill_rect((0, 432), (640, 48), ground_eff)
-    win.set_draw_color((220, 40, 40, 255), mario_color_eff)
-    win.render_fill_rect(pos, (32, 32), mario_eff)
+
+    win.set_draw_color((220, 40, 40, 255), hat_color_eff)
+    win.render_fill_rect(pos, (32, 6), hat_eff)
+    win.set_draw_color((240, 200, 160, 255), face_color_eff)
+    win.render_fill_rect(IVec2(pos.x + 4, pos.y + 6), (24, 10), face_eff)
+    win.set_draw_color((220, 40, 40, 255), shirt_color_eff)
+    win.render_fill_rect(IVec2(pos.x, pos.y + 16), (32, 10), shirt_eff)
+    win.set_draw_color((40, 70, 200, 255), pants_color_eff)
+    win.render_fill_rect(IVec2(pos.x + 4, pos.y + 26), (24, 6), pants_eff)
+
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
+
+    key_left_eff ∈ Effect
+    key_left_eff = ReadByte(win.keyboard_state, 80)
+    key_right_eff ∈ Effect
+    key_right_eff = ReadByte(win.keyboard_state, 79)
+    key_up_eff ∈ Effect
+    key_up_eff = ReadByte(win.keyboard_state, 82)
+
     sdl_delay(16, delay_eff)
 
     effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
         : ⟨sky_eff, clear_eff, ground_color_eff, ground_eff,
-            mario_color_eff, mario_eff, present_eff, pump_eff, delay_eff⟩)
-
-claim sat_first_tick_seeds_start_pos
-    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    frame ∈ Int
-    _frame ∈ Int
-    pos ∈ IVec2
-    vel ∈ IVec2
-    _pos ∈ IVec2
-    _vel ∈ IVec2
-    is_first_tick ∈ Bool
-
-    is_first_tick = true
-    win.renderer = 1
-    mario
-
-    pos = IVec2(100, 100)
-    vel = IVec2(5, 0)
+            hat_color_eff, hat_eff,
+            face_color_eff, face_eff,
+            shirt_color_eff, shirt_eff,
+            pants_color_eff, pants_eff,
+            present_eff, pump_eff,
+            key_left_eff, key_right_eff, key_up_eff,
+            delay_eff⟩)

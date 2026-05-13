@@ -394,6 +394,28 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                 r
             }
         },
+        Effect::ReadByte(handle, offset) => match &mut ctx.mode {
+            DispatchMode::Real => {
+                match ctx.registry.lookup(*handle) {
+                    Ok(ptr) => {
+                        let byte = unsafe {
+                            *(ptr as *const u8).offset(*offset as isize)
+                        };
+                        EffectResult::Int(byte as i64)
+                    }
+                    Err(e) => EffectResult::Error(format!("ReadByte: {}", e.0)),
+                }
+            }
+            DispatchMode::Replay { calls, cursor, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let r = calls[*cursor].result.clone();
+                *cursor += 1;
+                r
+            }
+        },
     }
 }
 
