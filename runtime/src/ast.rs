@@ -415,6 +415,11 @@ pub enum Effect {
     /// memory is freed when CloseHandle(handle) fires OR when
     /// the runtime exits.
     Malloc(i64),
+    /// Monotonic clock in nanoseconds since an arbitrary epoch.
+    /// `Time` returns Unix-epoch ms (subject to NTP jumps); this
+    /// returns a strictly-increasing nanosecond counter suitable
+    /// for benchmarking and rate-limiting. Result is `IntResult`.
+    MonotonicTime,
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

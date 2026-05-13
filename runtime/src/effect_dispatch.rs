@@ -475,6 +475,30 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
                     *dst.offset(bytes.len() as isize) = 0;
                 }),
+        Effect::MonotonicTime => match &mut ctx.mode {
+            DispatchMode::Real => {
+                // Instant::now ↔ arbitrary monotonic clock; convert
+                // to ns since an arbitrary fixed epoch. We use the
+                // OnceLock pattern to anchor the epoch on first call
+                // so subsequent calls return monotonically-increasing
+                // values WITHOUT exposing Instant::now's actual epoch
+                // (which varies per platform and isn't documented).
+                use std::sync::OnceLock;
+                static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
+                let epoch = EPOCH.get_or_init(std::time::Instant::now);
+                let ns = epoch.elapsed().as_nanos() as i64;
+                EffectResult::Int(ns)
+            }
+            DispatchMode::Replay { calls, cursor, .. } => {
+                if *cursor >= calls.len() {
+                    return EffectResult::Error(format!(
+                        "replay: ran out of recorded calls at index {cursor}"));
+                }
+                let r = calls[*cursor].result.clone();
+                *cursor += 1;
+                r
+            }
+        },
         Effect::Malloc(size) => match &mut ctx.mode {
             DispatchMode::Real => {
                 if *size <= 0 {

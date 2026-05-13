@@ -691,6 +691,7 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
             need_arity(variant, fields, 1)?;
             Effect::Malloc(decode_int(&fields[0])?)
         }
+        "MonotonicTime" => { need_arity(variant, fields, 0)?; Effect::MonotonicTime }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),

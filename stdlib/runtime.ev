@@ -168,6 +168,11 @@ enum Effect =
     -- writable; pass to C functions that need to fill in data
     -- (SDL_PollEvent, getline, read(), etc.).
     Malloc(Int)
+    -- Monotonic nanosecond counter (arbitrary epoch). Strictly
+    -- increasing; NOT subject to NTP / wall-clock adjustments.
+    -- Use for benchmarking and rate-limiting; use `Time` for
+    -- wall-clock ms.
+    MonotonicTime
 
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded
