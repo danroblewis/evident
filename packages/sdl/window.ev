@@ -44,32 +44,42 @@ type Color(red, green, blue, alpha ∈ Int)
 --                            height ↦ 480)
 --         -- once win.handle is non-zero, the window exists;
 --         -- pass win.handle / win.renderer to SDL/GL effects.
--- Two mutually-exclusive modes, selected by the `gl` pin:
+-- Renderer-mode SDL window. Bridge is declarative — the install
+-- Seq below drives SDL_Init + SDL_CreateWindow + SDL_CreateRenderer
+-- via LibCall effects, captures the resulting handles, and writes
+-- them to `handle` / `renderer` in the world snapshot. No Rust-side
+-- SDL knowledge required.
 --
---   gl ↦ false (default) — renderer mode. Window opens with
---     SDL_WINDOW_SHOWN; bridge calls SDL_CreateRenderer and
---     writes the renderer pointer to `renderer`. Use the
---     subclaim helpers (set_draw_color, render_clear, etc.)
---     for 2D drawing.
---
---   gl ↦ true — OpenGL mode. Window opens with SDL_WINDOW_OPENGL;
---     bridge calls SDL_GL_CreateContext + SDL_GL_MakeCurrent and
---     writes the context handle to `gl_handle` + default VAO to
---     `vao`. Pass `win.handle` to gl_swap_window for buffer flips.
---
--- The two modes can't coexist on one window: SDL_Renderer and
--- a manual GL context fight over the GL state, with the usual
--- failure mode being "render calls succeed but paint to a buffer
--- the user never sees."
+-- For OpenGL-mode windows, use `SDL_GL_Window` instead. The two
+-- can't share one declaration cleanly because a renderer and a
+-- manual GL context on the same window conflict.
 external type SDL_Window
-    title     ∈ String
-    width     ∈ Int
-    height    ∈ Int
-    gl        ∈ Bool  -- opt into GL mode; default false (renderer)
-    handle    ∈ Int
-    gl_handle ∈ Int   -- written only in GL mode
-    vao       ∈ Int   -- written only in GL mode (Core profile needs one bound)
-    renderer  ∈ Int   -- written only in renderer mode (the default)
+    title    ∈ String
+    width    ∈ Int
+    height   ∈ Int
+    handle   ∈ Int
+    renderer ∈ Int
+
+    -- The persistent install Seq. ArgPriorResult(N) refers to
+    -- the result of the Nth step earlier in this same Seq; that's
+    -- how SDL_CreateRenderer threads in the window handle from
+    -- SDL_CreateWindow without anyone declaring it as a positional
+    -- arg outside the install context.
+    install ∈ Seq(InstallStep) = ⟨
+        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
+                    "i(i)", ⟨ArgInt(32)⟩)),
+        Bind("handle", LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateWindow",
+                                "p(siiiii)",
+                                ⟨ArgStr(title), ArgInt(805240832), ArgInt(805240832),
+                                 ArgInt(width), ArgInt(height), ArgInt(4)⟩)),
+        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_ShowWindow",
+                    "v(p)", ⟨ArgPriorResult(1)⟩)),
+        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RaiseWindow",
+                    "v(p)", ⟨ArgPriorResult(1)⟩)),
+        Bind("renderer", LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
+                                  "p(pii)",
+                                  ⟨ArgPriorResult(1), ArgInt(0 - 1), ArgInt(0)⟩))
+    ⟩
 
     -- ── Render subclaims ─────────────────────────────────────
     -- Invoked as `win.set_draw_color(color_value, sky_eff)` etc.
