@@ -61,28 +61,27 @@ pub struct SystemBoundary {
     pub enums:   HashSet<String>,
 }
 
-/// When a `fsm`-keyword schema doesn't declare `state_next`,
-/// `last_results`, or `effects`, inject those memberships from the
-/// canonical types — the body looks the same as if the user had
-/// written them out. Errors if the user didn't declare `state`.
+/// Smart-inject implicit fsm machinery. For each canonical slot
+/// (`state_next`, `last_results`, `effects`), inject the membership
+/// only when (a) the body actually references the name AND (b) the
+/// user didn't already declare it. A "pure" fsm that just maintains
+/// internal state via `_var` time-shift gets nothing injected.
 ///
-/// Injected just after the user's first-line params (`param_count`)
-/// so the order in error messages is: explicit params, then
-/// implicit FSM machinery, then body constraints. Order doesn't
-/// affect translation (memberships set up env names; constraints
-/// reference them by name).
+/// `state_next` additionally requires `state ∈ <Type>` to be
+/// declared (it mirrors that type). If `state` isn't declared, we
+/// skip — the fsm is free to have no state-pair.
+///
+/// `external fsm` declarations are CONTRACTS for runtime-side
+/// bridge FSMs; they get no injection at all.
 fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Keyword, Pins};
+    use crate::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) {
         return Ok(());
     }
-    // `external fsm` declarations are CONTRACTS for runtime-side
-    // bridge FSMs. They name the shared-state slots they read/write
-    // and don't have user-FSM machinery (state/state_next/effects).
-    // Skip implicit injection entirely.
     if s.external {
         return Ok(());
     }
+    // Scan declared names + find the state type (for state_next mirror).
     let mut state_type: Option<String> = None;
     let mut have_state_next = false;
     let mut have_last_results = false;
@@ -98,25 +97,73 @@ fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
             }
         }
     }
-    let state_type = state_type.ok_or_else(|| RuntimeError::Parse(format!(
-        "fsm `{}` requires a `state ∈ <StateType>` parameter", s.name
-    )))?;
-    let mut injected: Vec<BodyItem> = Vec::new();
-    if !have_state_next {
-        injected.push(BodyItem::Membership {
-            name: "state_next".to_string(),
-            type_name: state_type,
-            pins: Pins::None,
-        });
+
+    // Scan body expressions for references to the canonical slots.
+    fn walk(e: &Expr, targets: &mut [(&str, &mut bool)]) {
+        match e {
+            Expr::Identifier(n) => {
+                for (name, hit) in targets.iter_mut() {
+                    if n == *name { **hit = true; }
+                }
+            }
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
+                for x in es { walk(x, targets); },
+            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
+                { walk(a, targets); walk(b, targets); }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
+                { walk(r, targets); walk(b, targets); }
+            Expr::Call(_, args) =>
+                for a in args { walk(a, targets); },
+            Expr::Cardinality(i) | Expr::Not(i) => walk(i, targets),
+            Expr::Field(recv, _) => walk(recv, targets),
+            Expr::Binary(_, l, r) => { walk(l, targets); walk(r, targets); }
+            Expr::Ternary(c, a, b) =>
+                { walk(c, targets); walk(a, targets); walk(b, targets); }
+            Expr::Match(scr, arms) => {
+                walk(scr, targets);
+                for arm in arms { walk(&arm.body, targets); }
+            }
+            Expr::Matches(e, _) => walk(e, targets),
+        }
     }
-    if !have_last_results {
+    let mut ref_state_next = false;
+    let mut ref_last_results = false;
+    let mut ref_effects = false;
+    {
+        let mut targets: Vec<(&str, &mut bool)> = vec![
+            ("state_next",   &mut ref_state_next),
+            ("last_results", &mut ref_last_results),
+            ("effects",      &mut ref_effects),
+        ];
+        for item in &s.body {
+            match item {
+                BodyItem::Constraint(e) => walk(e, &mut targets),
+                BodyItem::ClaimCall { mappings, .. } =>
+                    for m in mappings { walk(&m.value, &mut targets); },
+                _ => {}
+            }
+        }
+    }
+
+    let mut injected: Vec<BodyItem> = Vec::new();
+    if !have_state_next && ref_state_next {
+        if let Some(st) = &state_type {
+            injected.push(BodyItem::Membership {
+                name: "state_next".to_string(),
+                type_name: st.clone(),
+                pins: Pins::None,
+            });
+        }
+    }
+    if !have_last_results && ref_last_results {
         injected.push(BodyItem::Membership {
             name: "last_results".to_string(),
             type_name: "Seq(Result)".to_string(),
             pins: Pins::None,
         });
     }
-    if !have_effects {
+    if !have_effects && ref_effects {
         injected.push(BodyItem::Membership {
             name: "effects".to_string(),
             type_name: "Seq(Effect)".to_string(),

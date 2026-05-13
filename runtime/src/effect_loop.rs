@@ -102,20 +102,21 @@ pub struct LoopResult {
 }
 
 /// One FSM-shaped claim's membership info. The runtime detects
-/// claims that match this shape (state pair + EffectList + Seq(Result),
-/// optionally + world record) and runs each as an FSM.
-///
-/// For backwards compat the struct is still called `MainShape`. The
-/// new `claim_name` and `world_*` fields default to "main" / None for
-/// single-FSM programs.
+/// claims that have the `fsm` keyword and any subset of the
+/// canonical slots (state pair / EffectList / Seq(Result) /
+/// optional world record). Each slot is `Option` because the
+/// unified state model (state-machines-as-relations) lets an
+/// author opt out — a pure-counter fsm has no state pair, no
+/// effects, no last_results, just plain variables coordinated
+/// via `_var` time-shift.
 #[derive(Clone)]
 pub struct MainShape {
     pub claim_name:       String,
-    pub state_var:        String,
-    pub state_next_var:   String,
-    pub state_type:       String,
-    pub last_results_var: String,
-    pub effects_var:      String,
+    pub state_var:        Option<String>,
+    pub state_next_var:   Option<String>,
+    pub state_type:       Option<String>,
+    pub last_results_var: Option<String>,
+    pub effects_var:      Option<String>,
     /// Name of the `world` membership, if this FSM reads world.
     pub world_var:        Option<String>,
     /// Name of the `world_next` membership; presence makes this FSM
@@ -283,14 +284,17 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
             }
         }
     }
-    let (s, sn, st) = state_pair?;
+    let (state_var, state_next_var, state_type) = match state_pair {
+        Some((s, sn, st)) => (Some(s), Some(sn), Some(st)),
+        None => (None, None, None),
+    };
     Some(MainShape {
         claim_name:       claim_name.to_string(),
-        state_var:        s,
-        state_next_var:   sn,
-        state_type:       st,
-        last_results_var: last_results_var?,
-        effects_var:      effects_var?,
+        state_var,
+        state_next_var,
+        state_type,
+        last_results_var,
+        effects_var,
         world_var,
         world_next_var,
         world_type,
@@ -554,17 +558,20 @@ fn run_with_shape(
     // non-initial variant on step 0 (which would silently skip the
     // program's setup).
     let mut last_results: Vec<EffectResult> = Vec::new();
-    let mut current_state_value: Option<z3::ast::Datatype<'static>> = {
-        let enums = rt.enums_registry();
-        let by_name = enums.by_name.borrow();
-        by_name.get(&shape.state_type)
-            .and_then(|(sort, _)| sort.variants.first()
-                .and_then(|v| v.constructor.apply(&[]).as_datatype()))
+    let mut current_state_value: Option<z3::ast::Datatype<'static>> = match &shape.state_type {
+        Some(st) => {
+            let enums = rt.enums_registry();
+            let by_name = enums.by_name.borrow();
+            by_name.get(st)
+                .and_then(|(sort, _)| sort.variants.first()
+                    .and_then(|v| v.constructor.apply(&[]).as_datatype()))
+        }
+        None => None,
     };
-    if current_state_value.is_none() {
+    if shape.state_type.is_some() && current_state_value.is_none() {
         return Err(format!(
             "could not pin initial state: enum `{}` has no nullary first variant",
-            shape.state_type));
+            shape.state_type.as_deref().unwrap_or("?")));
     }
 
     let mut step_count = 0usize;
@@ -581,17 +588,19 @@ fn run_with_shape(
         // Pin last_results as a Seq(Result) via the `given` map —
         // assert_seq_given handles the (DatatypeSeqVar, SeqEnum)
         // pair, asserting `len + arr[i]=elem` per element.
-        let last_results_val = rt.effect_results_to_value(&last_results);
         let mut given: std::collections::HashMap<String, Value> =
             std::collections::HashMap::new();
-        given.insert(shape.last_results_var.clone(), last_results_val);
+        if let Some(lr_var) = &shape.last_results_var {
+            let last_results_val = rt.effect_results_to_value(&last_results);
+            given.insert(lr_var.clone(), last_results_val);
+        }
 
         // Build pin list. For step 0 we don't pin state (Z3 picks
         // the initial — the user's main pins it via state.step = 0
         // pattern or similar).
-        let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match &current_state_value {
-            Some(s) => vec![(shape.state_var.as_str(), s.clone())],
-            None => vec![],
+        let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match (&shape.state_var, &current_state_value) {
+            (Some(name), Some(s)) => vec![(name.as_str(), s.clone())],
+            _ => vec![],
         };
 
         let solve_t0 = std::time::Instant::now();
@@ -609,21 +618,30 @@ fn run_with_shape(
             });
         }
 
-        // Read state_next from model.
-        let state_next_val = r.bindings.get(&shape.state_next_var)
-            .ok_or_else(|| format!("step {step_count}: model has no `{}`", shape.state_next_var))?;
-        let effects_val = r.bindings.get(&shape.effects_var)
-            .ok_or_else(|| format!("step {step_count}: model has no `{}`", shape.effects_var))?;
-
-        let effects = ast_decoder::decode_effect_list(effects_val)
-            .map_err(|e| format!("step {step_count}: decode effects: {e}"))?;
+        // Read state_next + effects from model when those slots exist.
+        let state_next_val: Option<&Value> = match &shape.state_next_var {
+            Some(sn) => Some(r.bindings.get(sn)
+                .ok_or_else(|| format!("step {step_count}: model has no `{}`", sn))?),
+            None => None,
+        };
+        let effects: Vec<crate::ast::Effect> = match &shape.effects_var {
+            Some(ev) => {
+                let effects_val = r.bindings.get(ev)
+                    .ok_or_else(|| format!("step {step_count}: model has no `{}`", ev))?;
+                ast_decoder::decode_effect_list(effects_val)
+                    .map_err(|e| format!("step {step_count}: decode effects: {e}"))?
+            }
+            None => Vec::new(),
+        };
 
         // Halt-check: if effects empty AND state_next equals state, we
         // consider the program halted (fixpoint). User can also issue
         // `Effect::Exit(0)` to terminate immediately.
         let halted_by_fixpoint = effects.is_empty()
             && current_state_value.is_some()
-            && model_matches_value(state_next_val, &shape.state_type);
+            && state_next_val.is_some()
+            && model_matches_value(state_next_val.unwrap(),
+                shape.state_type.as_deref().unwrap_or(""));
 
         let dispatch_t0 = std::time::Instant::now();
         let new_results = dispatch_all(ctx, &effects);
@@ -642,11 +660,13 @@ fn run_with_shape(
             );
         }
         // Re-encode state for the next step's pin. Handles nullary
-        // and payload variants.
-        current_state_value = encode_state_value(rt, state_next_val);
+        // and payload variants. Skip when state isn't part of this fsm.
+        if let Some(snv) = state_next_val {
+            current_state_value = encode_state_value(rt, snv);
+            final_state_model = Some(snv.clone());
+        }
 
         last_results = new_results;
-        final_state_model = Some(state_next_val.clone());
         step_count += 1;
 
         // Effect::Exit handling: an FSM emitted Exit. Dispatch
@@ -732,9 +752,10 @@ fn run_multi_fsm(
     // Closure: build the seeded initial state for any FSM shape.
     // Used for both auto-detected FSMs and dynamically spawned ones.
     let seed_state = |s: &MainShape| -> (Option<z3::ast::Datatype<'static>>, Option<Value>) {
+        let Some(state_type) = s.state_type.as_ref() else { return (None, None); };
         let enums = rt.enums_registry();
         let by_name = enums.by_name.borrow();
-        let entry = by_name.get(&s.state_type);
+        let entry = by_name.get(state_type);
         // Only seed if the first variant is nullary. Payload
         // variants need actual values, which we don't have at
         // seed time — let Z3 pick on tick 0 instead.
@@ -748,7 +769,7 @@ fn run_multi_fsm(
             let first = decl_variants.first()?;
             if sort.variants.first().map(|v| v.constructor.arity()).unwrap_or(0) == 0 {
                 Some(Value::Enum {
-                    enum_name: s.state_type.clone(),
+                    enum_name: state_type.clone(),
                     variant:   first.name.clone(),
                     fields:    Vec::new(),
                 })
@@ -996,9 +1017,9 @@ fn run_multi_fsm(
 
             // Build per-FSM pin list (state as Datatype; last_results
             // goes through the given map below as a Seq(Result)).
-            let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match &fsm_rt[idx].current_state {
-                Some(s) => vec![(fsm.state_var.as_str(), s.clone())],
-                None => vec![],
+            let pins: Vec<(&str, z3::ast::Datatype<'static>)> = match (&fsm.state_var, &fsm_rt[idx].current_state) {
+                (Some(name), Some(s)) => vec![(name.as_str(), s.clone())],
+                _ => vec![],
             };
 
             // Build per-FSM view of the snapshot: include all
@@ -1007,7 +1028,6 @@ fn run_multi_fsm(
             // so they match env's `param.field` keys). Also include
             // last_results as a Seq(Result) — pinned via the given
             // map's assert_seq_given path.
-            let last_results_val = rt.effect_results_to_value(&fsm_rt[idx].last_results);
             let mut fsm_view: HashMap<String, Value> = if fsm.fti_params.is_empty() {
                 world_snapshot.clone()
             } else {
@@ -1020,7 +1040,10 @@ fn run_multi_fsm(
                 }
                 v
             };
-            fsm_view.insert(fsm.last_results_var.clone(), last_results_val);
+            if let Some(lr_var) = &fsm.last_results_var {
+                let last_results_val = rt.effect_results_to_value(&fsm_rt[idx].last_results);
+                fsm_view.insert(lr_var.clone(), last_results_val);
+            }
             // Time-shift convention: for every `_name` in this fsm's
             // body whose `name` we have a previous-tick value for,
             // pin `_name` to that value. Also pin `is_first_tick`
@@ -1076,16 +1099,24 @@ fn run_multi_fsm(
                 });
             }
 
-            // Read state_next + effects.
-            let state_next_val = r.bindings.get(&fsm.state_next_var)
-                .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
-                    fsm.claim_name, fsm.state_next_var))?;
-            let effects_val = r.bindings.get(&fsm.effects_var)
-                .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
-                    fsm.claim_name, fsm.effects_var))?;
-            let effects = ast_decoder::decode_effect_list(effects_val)
-                .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
-                    fsm.claim_name))?;
+            // Read state_next + effects when those slots exist.
+            let state_next_val: Option<&Value> = match &fsm.state_next_var {
+                Some(sn) => Some(r.bindings.get(sn)
+                    .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
+                        fsm.claim_name, sn))?),
+                None => None,
+            };
+            let effects: Vec<crate::ast::Effect> = match &fsm.effects_var {
+                Some(ev) => {
+                    let effects_val = r.bindings.get(ev)
+                        .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
+                            fsm.claim_name, ev))?;
+                    ast_decoder::decode_effect_list(effects_val)
+                        .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
+                            fsm.claim_name))?
+                }
+                None => Vec::new(),
+            };
 
             // Legacy halt-check: state_next == state (value equality,
             // true fixpoint) AND effects empty AND we're past tick 0.
@@ -1096,8 +1127,9 @@ fn run_multi_fsm(
             let will_halt = !delta_mode
                 && step_count > 0
                 && effects.is_empty()
+                && state_next_val.is_some()
                 && fsm_rt[idx].current_state_v.as_ref()
-                    .map(|cv| cv == state_next_val).unwrap_or(false);
+                    .map(|cv| Some(cv) == state_next_val).unwrap_or(false);
 
             // Writer? Capture world_next.* for snapshot. The snapshot
             // becomes the `world.*` given for subsequent FSM solves
@@ -1150,12 +1182,18 @@ fn run_multi_fsm(
 
             // Mark whether this solve transitioned to a new state.
             // Drives the state-change wake trigger next tick.
-            state_changed_last[idx] = fsm_rt[idx].current_state_v.as_ref()
-                .map(|prev| prev != state_next_val).unwrap_or(true);
+            state_changed_last[idx] = match state_next_val {
+                Some(snv) => fsm_rt[idx].current_state_v.as_ref()
+                    .map(|prev| prev != snv).unwrap_or(true),
+                None => false,
+            };
 
-            // Update next-tick state for this FSM.
-            fsm_rt[idx].current_state = encode_state_value(rt, state_next_val);
-            fsm_rt[idx].current_state_v = Some(state_next_val.clone());
+            // Update next-tick state for this FSM (only when this fsm
+            // has a state-pair).
+            if let Some(snv) = state_next_val {
+                fsm_rt[idx].current_state = encode_state_value(rt, snv);
+                fsm_rt[idx].current_state_v = Some(snv.clone());
+            }
 
             // Capture every non-prefix variable's bound value for
             // the next tick's `_name` pinning. The underscore-prefix
@@ -1407,9 +1445,10 @@ fn seed_state_with_arg(
     shape: &MainShape,
     arg: i64,
 ) -> Option<(Option<z3::ast::Datatype<'static>>, Option<Value>)> {
+    let state_type = shape.state_type.as_ref()?;
     let enums = rt.enums_registry();
     let by_name = enums.by_name.borrow();
-    let (sort, decl_variants) = by_name.get(&shape.state_type)?;
+    let (sort, decl_variants) = by_name.get(state_type)?;
     let first_sort = sort.variants.first()?;
     let first_decl = decl_variants.first()?;
     if first_sort.constructor.arity() != 1 { return None; }
@@ -1419,7 +1458,7 @@ fn seed_state_with_arg(
     if first_decl.fields[0].type_name != "Int" { return None; }
     // Encode `FirstVariant(arg)`.
     let value = Value::Enum {
-        enum_name: shape.state_type.clone(),
+        enum_name: state_type.clone(),
         variant:   first_decl.name.clone(),
         fields:    vec![Value::Int(arg)],
     };
@@ -1481,6 +1520,32 @@ mod tests {
     fn detect_main_shape_finds_state_and_lists() {
         let mut rt = EvidentRuntime::new();
         rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+        // Body references all three implicit slots (state_next,
+        // effects, last_results) so smart-inject fires for each.
+        rt.load_source("\
+enum S = Init | Done
+
+fsm main
+    state ∈ S
+    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩ ∧ #last_results = 0)
+    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩ ∧ #last_results = 0)
+").unwrap();
+        let shape = detect_main_shape(&rt).expect("should detect");
+        assert_eq!(shape.state_var.as_deref(), Some("state"));
+        assert_eq!(shape.state_next_var.as_deref(), Some("state_next"));
+        assert_eq!(shape.state_type.as_deref(), Some("S"));
+        assert_eq!(shape.effects_var.as_deref(), Some("effects"));
+        assert_eq!(shape.last_results_var.as_deref(), Some("last_results"));
+    }
+
+    /// Smart-inject: an fsm body that doesn't reference
+    /// `last_results` doesn't get it injected, and detection
+    /// returns None for that slot. Confirms the unified state
+    /// model's "opt-in" behavior for canonical slots.
+    #[test]
+    fn smart_inject_skips_unreferenced_slots() {
+        let mut rt = EvidentRuntime::new();
+        rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
         rt.load_source("\
 enum S = Init | Done
 
@@ -1490,11 +1555,11 @@ fsm main
     state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ").unwrap();
         let shape = detect_main_shape(&rt).expect("should detect");
-        assert_eq!(shape.state_var, "state");
-        assert_eq!(shape.state_next_var, "state_next");
-        assert_eq!(shape.state_type, "S");
-        assert_eq!(shape.effects_var, "effects");
-        assert_eq!(shape.last_results_var, "last_results");
+        assert_eq!(shape.state_var.as_deref(), Some("state"));
+        assert_eq!(shape.state_next_var.as_deref(), Some("state_next"));
+        assert_eq!(shape.effects_var.as_deref(), Some("effects"));
+        assert_eq!(shape.last_results_var, None,
+            "last_results never referenced → should not be auto-injected");
     }
 
     #[test]
