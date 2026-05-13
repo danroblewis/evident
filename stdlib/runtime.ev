@@ -149,6 +149,18 @@ enum Effect =
     ReadStr(Int, Int)     -- C string at offset, stops at first 0
                           -- → StringResult, or ErrorResult on bad UTF-8
 
+    -- Memory writes at handle+offset. Caller must hold a handle
+    -- to writable memory (typically from Malloc). All return
+    -- NoResult; unaligned access is safe. Out-of-bounds offsets
+    -- are undefined behavior.
+    WriteByte(Int, Int, Int)     -- value's low byte stored
+    WriteI16(Int, Int, Int)      -- truncated to 16 bits
+    WriteI32(Int, Int, Int)
+    WriteI64(Int, Int, Int)
+    WriteF32(Int, Int, Real)     -- narrowed to f32
+    WriteF64(Int, Int, Real)
+    WriteStr(Int, Int, String)   -- bytes + null terminator
+
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded
 -- to user FSMs via `last_results ∈ Seq(Result)`.

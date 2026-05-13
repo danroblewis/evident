@@ -394,6 +394,21 @@ pub enum Effect {
     /// as StringResult. Invalid UTF-8 returns ErrorResult; no
     /// length cap, so callers must trust the buffer contents.
     ReadStr(u64, i64),
+    /// Memory writes. Mirror of the Read variants; same
+    /// alignment-tolerant unaligned access. All return NoResult.
+    /// Caller must hold a handle to writable memory (typically
+    /// from Malloc); writing into pointers backed by const-
+    /// qualified C buffers is undefined behavior.
+    WriteByte(u64, i64, i64),         // value's low byte stored
+    WriteI16(u64, i64, i64),
+    WriteI32(u64, i64, i64),
+    WriteI64(u64, i64, i64),
+    WriteF32(u64, i64, f64),          // narrowed to f32
+    WriteF64(u64, i64, f64),
+    /// Writes the UTF-8 bytes followed by a 0 terminator. Caller
+    /// must have allocated at least `bytes + 1` bytes at the
+    /// offset.
+    WriteStr(u64, i64, String),
 }
 
 /// One field of a packed C struct passed through `ArgPackedBuf`.

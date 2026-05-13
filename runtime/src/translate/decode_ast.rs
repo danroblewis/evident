@@ -645,6 +645,48 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
             need_arity(variant, fields, 2)?;
             Effect::ReadStr(decode_int(&fields[0])? as u64, decode_int(&fields[1])?)
         }
+        "WriteByte"    => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteByte(decode_int(&fields[0])? as u64,
+                              decode_int(&fields[1])?,
+                              decode_int(&fields[2])?)
+        }
+        "WriteI16"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteI16(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_int(&fields[2])?)
+        }
+        "WriteI32"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteI32(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_int(&fields[2])?)
+        }
+        "WriteI64"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteI64(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_int(&fields[2])?)
+        }
+        "WriteF32"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteF32(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_real(&fields[2])?)
+        }
+        "WriteF64"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteF64(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_real(&fields[2])?)
+        }
+        "WriteStr"     => {
+            need_arity(variant, fields, 3)?;
+            Effect::WriteStr(decode_int(&fields[0])? as u64,
+                             decode_int(&fields[1])?,
+                             decode_str(&fields[2])?)
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "Effect".into(), variant: other.into(),
         }),

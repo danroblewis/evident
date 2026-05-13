@@ -439,6 +439,42 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                             "ReadStr: invalid UTF-8".to_string()),
                     }
                 }),
+        Effect::WriteByte(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteByte",
+                |ptr| unsafe { *(ptr as *mut u8) = *value as u8; }),
+        Effect::WriteI16(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteI16",
+                |ptr| unsafe {
+                    (ptr as *mut i16).write_unaligned(*value as i16);
+                }),
+        Effect::WriteI32(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteI32",
+                |ptr| unsafe {
+                    (ptr as *mut i32).write_unaligned(*value as i32);
+                }),
+        Effect::WriteI64(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteI64",
+                |ptr| unsafe {
+                    (ptr as *mut i64).write_unaligned(*value);
+                }),
+        Effect::WriteF32(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteF32",
+                |ptr| unsafe {
+                    (ptr as *mut f32).write_unaligned(*value as f32);
+                }),
+        Effect::WriteF64(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteF64",
+                |ptr| unsafe {
+                    (ptr as *mut f64).write_unaligned(*value);
+                }),
+        Effect::WriteStr(handle, offset, value) =>
+            do_write(ctx, *handle, *offset, "WriteStr",
+                |ptr| unsafe {
+                    let bytes = value.as_bytes();
+                    let dst = ptr as *mut u8;
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+                    *dst.offset(bytes.len() as isize) = 0;
+                }),
     }
 }
 
@@ -485,6 +521,41 @@ fn do_read(
                 Ok(ptr) => {
                     let p = unsafe { (ptr as *const u8).offset(offset as isize) };
                     extract(p)
+                }
+                Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
+            }
+        }
+        DispatchMode::Replay { calls, cursor, .. } => {
+            if *cursor >= calls.len() {
+                return EffectResult::Error(format!(
+                    "replay: ran out of recorded calls at index {cursor}"));
+            }
+            let r = calls[*cursor].result.clone();
+            *cursor += 1;
+            r
+        }
+    }
+}
+
+/// Shared write-to-pointer-at-offset path for all `WriteX` effects.
+/// Mirrors `do_read` — looks up the handle, computes the target
+/// pointer, runs `apply` to perform the write. Always returns
+/// `NoResult`. Replay mode returns the next recorded call's
+/// result (which should be NoResult; we don't enforce).
+fn do_write(
+    ctx: &mut DispatchContext,
+    handle: u64,
+    offset: i64,
+    name: &'static str,
+    apply: impl FnOnce(*mut u8),
+) -> EffectResult {
+    match &mut ctx.mode {
+        DispatchMode::Real => {
+            match ctx.registry.lookup(handle) {
+                Ok(ptr) => {
+                    let p = unsafe { (ptr as *mut u8).offset(offset as isize) };
+                    apply(p);
+                    EffectResult::NoResult
                 }
                 Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
             }
