@@ -156,6 +156,16 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["reflected: program missing"],
         max_steps: 5, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // `_var` time-shift convention: every var's previous-tick
+        // value is available as `_var`; `is_first_tick` is auto-
+        // injected when any `_var` is referenced. Counter counts
+        // 0..2 via `_count + 1`, then halts.
+        name: "test_19_prev_tick", exit: 0,
+        must_lines: &["count = 0", "count = 1", "count = 2", "done"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

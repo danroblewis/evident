@@ -130,6 +130,112 @@ fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+/// Auto-declare `_name` memberships for any underscore-prefix
+/// identifier referenced in an `fsm` body where the corresponding
+/// `name` is declared. Adds `is_first_tick ∈ Bool` once if any
+/// `_name` was referenced.
+///
+/// This is the syntactic half of the time-shift convention: in an
+/// fsm body, writing `_count` reads the previous tick's `count`.
+/// The runtime half (pinning `_count = prev_values["count"]` per
+/// tick) lives in the scheduler — see `effect_loop.rs`.
+///
+/// External fsm declarations are CONTRACTS for runtime-side bridges
+/// and don't get this treatment — their slots are written by Rust.
+fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+    use crate::ast::{BodyItem, Keyword, Pins, Expr};
+    if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
+    if s.external { return Ok(()); }
+
+    // Step 1: Collect every name → type from this body's
+    // memberships. Determines whether a `_name` reference has a
+    // matching `name` to mirror.
+    let mut declared: HashMap<String, String> = HashMap::new();
+    for item in &s.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declared.insert(name.clone(), type_name.clone());
+        }
+    }
+
+    // Step 2: Walk the body's expressions for any
+    // `Identifier(_name)` where `name` (without the underscore) is
+    // declared. Collect their target types.
+    let mut prev_refs: HashMap<String, String> = HashMap::new();
+    fn walk(e: &Expr, declared: &HashMap<String, String>,
+            prev_refs: &mut HashMap<String, String>) {
+        match e {
+            Expr::Identifier(n) => {
+                if let Some(stripped) = n.strip_prefix('_') {
+                    if let Some(ty) = declared.get(stripped) {
+                        prev_refs.insert(n.clone(), ty.clone());
+                    }
+                }
+            }
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
+                for x in es { walk(x, declared, prev_refs); },
+            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
+                { walk(a, declared, prev_refs); walk(b, declared, prev_refs); }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
+                { walk(r, declared, prev_refs); walk(b, declared, prev_refs); }
+            Expr::Call(_, args) =>
+                for a in args { walk(a, declared, prev_refs); },
+            Expr::Cardinality(i) | Expr::Not(i) =>
+                walk(i, declared, prev_refs),
+            Expr::Field(recv, _) => walk(recv, declared, prev_refs),
+            Expr::Binary(_, l, r) =>
+                { walk(l, declared, prev_refs); walk(r, declared, prev_refs); }
+            Expr::Ternary(c, a, b) => {
+                walk(c, declared, prev_refs);
+                walk(a, declared, prev_refs);
+                walk(b, declared, prev_refs);
+            }
+            Expr::Match(scr, arms) => {
+                walk(scr, declared, prev_refs);
+                for arm in arms { walk(&arm.body, declared, prev_refs); }
+            }
+            Expr::Matches(e, _) => walk(e, declared, prev_refs),
+        }
+    }
+    for item in &s.body {
+        match item {
+            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs),
+            BodyItem::ClaimCall { mappings, .. } =>
+                for m in mappings { walk(&m.value, &declared, &mut prev_refs); },
+            _ => {}
+        }
+    }
+
+    if prev_refs.is_empty() { return Ok(()); }
+
+    // Step 3: For each `_name` referenced, add a Membership for
+    // it (typed to match `name`) unless the user already declared
+    // it themselves. Also add `is_first_tick ∈ Bool` for tick-0
+    // dispatch.
+    let mut to_inject: Vec<BodyItem> = Vec::new();
+    for (prev_name, ty) in &prev_refs {
+        if !declared.contains_key(prev_name) {
+            to_inject.push(BodyItem::Membership {
+                name: prev_name.clone(),
+                type_name: ty.clone(),
+                pins: Pins::None,
+            });
+        }
+    }
+    if !declared.contains_key("is_first_tick") {
+        to_inject.push(BodyItem::Membership {
+            name: "is_first_tick".to_string(),
+            type_name: "Bool".to_string(),
+            pins: Pins::None,
+        });
+    }
+    let insert_pos = s.param_count;
+    for (i, item) in to_inject.into_iter().enumerate() {
+        s.body.insert(insert_pos + i, item);
+    }
+    Ok(())
+}
+
 /// Reject non-`external` schemas that try to construct FFI effects
 /// (`FFICall` / `LibCall` / `FFIOpen` / `FFILookup`). The rule:
 /// only `external` schemas (`external type` / `external claim` /
@@ -1017,6 +1123,7 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             let mut s = s.clone();
             inject_fsm_params(&mut s)?;
+            inject_prev_tick_decls(&mut s)?;
             enforce_external_only(&s)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());

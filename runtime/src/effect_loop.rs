@@ -711,6 +711,12 @@ fn run_multi_fsm(
         current_state_v: Option<Value>,
         last_results:    Vec<EffectResult>,
         halted:          bool,
+        /// Per-FSM cache of every variable's value at end of the
+        /// previous tick. Used to pin `_name` references this tick
+        /// (the runtime half of the `_var` time-shift convention —
+        /// see docs/design/state-machines-as-relations.md).
+        /// Empty on tick 0: `is_first_tick` will be pinned true.
+        prev_values:     HashMap<String, Value>,
     }
     // Seed each FSM's initial state to its enum's first variant. This
     // is convention: the first variant declared in `enum FooState =
@@ -757,6 +763,7 @@ fn run_multi_fsm(
             current_state_v: initial_val,
             last_results:    Vec::new(),
             halted:          false,
+            prev_values:     HashMap::new(),
         }
     }).collect();
     // Note: with a payload first-variant the FSM starts with no
@@ -1014,6 +1021,35 @@ fn run_multi_fsm(
                 v
             };
             fsm_view.insert(fsm.last_results_var.clone(), last_results_val);
+            // Time-shift convention: for every `_name` in this fsm's
+            // body whose `name` we have a previous-tick value for,
+            // pin `_name` to that value. Also pin `is_first_tick`
+            // (true iff we have no previous values yet — i.e., tick
+            // 0 for this fsm). See docs/design/state-machines-as-
+            // relations.md for the framing.
+            if let Some(claim) = rt.get_schema(&fsm.claim_name) {
+                let is_first = fsm_rt[idx].prev_values.is_empty();
+                let mut sees_underscore = false;
+                for item in &claim.body {
+                    if let crate::ast::BodyItem::Membership { name, .. } = item {
+                        if let Some(stripped) = name.strip_prefix('_') {
+                            sees_underscore = true;
+                            if let Some(prev) = fsm_rt[idx].prev_values.get(stripped) {
+                                fsm_view.insert(name.clone(), prev.clone());
+                            }
+                            // If no previous value yet, leave `_name`
+                            // unconstrained — the fsm's body should
+                            // gate via `is_first_tick`.
+                        }
+                    }
+                }
+                if sees_underscore {
+                    fsm_view.insert(
+                        "is_first_tick".to_string(),
+                        Value::Bool(is_first),
+                    );
+                }
+            }
             let solve_input: &HashMap<String, Value> = &fsm_view;
 
             let solve_t0 = std::time::Instant::now();
@@ -1121,6 +1157,16 @@ fn run_multi_fsm(
             fsm_rt[idx].current_state = encode_state_value(rt, state_next_val);
             fsm_rt[idx].current_state_v = Some(state_next_val.clone());
 
+            // Capture every non-prefix variable's bound value for
+            // the next tick's `_name` pinning. The underscore-prefix
+            // bindings themselves (and the `is_first_tick` flag)
+            // are skipped — they're rebuilt fresh each tick.
+            for (k, v) in r.bindings.iter() {
+                if k.starts_with('_') { continue; }
+                if k == "is_first_tick" { continue; }
+                fsm_rt[idx].prev_values.insert(k.clone(), v.clone());
+            }
+
             if env.trace {
                 eprintln!("[loop] tick {step_count} fsm={}: state_next={state_next_val:?} effects={effects:?}",
                     fsm.claim_name);
@@ -1196,6 +1242,7 @@ fn run_multi_fsm(
                     current_state_v: initial_val,
                     last_results:    Vec::new(),
                     halted:          false,
+                    prev_values:     HashMap::new(),
                 });
                 per_fsm_solve.push(std::time::Duration::ZERO);
                 per_fsm_ticks.push(0);
