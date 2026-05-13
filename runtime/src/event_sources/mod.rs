@@ -41,16 +41,8 @@ mod stdin;
 mod file_line_reader;
 mod wall_clock;
 mod file_watcher;
-mod sdl_window;
-mod gl_program;
 mod reflection;
 mod declarative_install;
-// `gl_context` is NOT a bridge (no struct, no EventSource impl);
-// it's a sibling helper for GL-aware bridges so the
-// `OpenGL.framework` dlopen doesn't get duplicated across files.
-// Keeping it under `event_sources/` (the only role permitted to
-// touch library specifics) per AP-001's scope clause.
-mod gl_context;
 
 // Bridges referenced by name elsewhere in the runtime (FTI
 // registry in `fti.rs` builds them directly): export those.
@@ -58,8 +50,6 @@ mod gl_context;
 // WORLD_PLUGIN_INSTALLERS registry and don't need a public
 // re-export.
 pub use frame_timer::FrameTimer;
-pub use sdl_window::SdlWindowSource;
-pub use gl_program::GlProgramSource;
 pub use declarative_install::DeclarativeInstallSource;
 
 // ── Shared abstraction layer ─────────────────────────────────
