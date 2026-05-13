@@ -1,0 +1,121 @@
+-- 21_mario — a rectangle "Mario" that auto-walks, bounces off
+-- the walls, and falls under gravity until it hits the ground.
+-- The first multi-tick rendering demo: each tick recomputes
+-- physics, redraws the scene, and presents.
+--
+-- Demonstrates the SDL_Window FTI bridge's new `renderer` field
+-- (runtime/src/event_sources/sdl_window.rs): the renderer
+-- pointer is in `win.renderer`, persistent across ticks, so
+-- per-frame `set_draw_color` / `render_fill_rect` / `render_present`
+-- calls just pass `ArgHandle(win.renderer)`.
+--
+-- No keyboard input — Mario walks autonomously, bouncing off
+-- the screen edges. Demo exits after 60 frames.
+--
+-- Run interactively:
+--   evident effect-run examples/test_21_mario.ev
+-- Pacing controlled by EVIDENT_TICK_MS (default 100).
+
+import "stdlib/runtime.ev"
+import "packages/sdl/window.ev"
+import "packages/sdl/render.ev"
+
+fsm mario
+    -- FTI: runtime auto-installs the SDL_Window bridge which
+    -- creates the window + renderer and writes their handles
+    -- into `win.handle` / `win.renderer`. The renderer is the
+    -- new bit (see runtime/src/event_sources/sdl_window.rs).
+    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
+
+    -- Frame counter for halt. `_frame` is auto-declared via the
+    -- prev-tick mechanism; `is_first_tick` is auto-injected.
+    frame ∈ Int
+    frame = (is_first_tick ? 0 : _frame + 1)
+
+    -- Player state (Int per axis — keeps `_var` semantics simple).
+    pos_x ∈ Int
+    pos_y ∈ Int
+    vel_x ∈ Int
+    vel_y ∈ Int
+
+    -- Physics constants (inline so reads are obvious).
+    -- Ground top = 432, mario size = 32 → mario rests at y = 400.
+    -- Screen 640×480; mario stays in [0, 608] horizontally.
+
+    -- Apply gravity to vy, then tentative next position.
+    grav_vy ∈ Int
+    grav_vy = _vel_y + 2
+
+    tent_x ∈ Int
+    tent_x = _pos_x + _vel_x
+    tent_y ∈ Int
+    tent_y = _pos_y + grav_vy
+
+    -- Bounce x off [0, 608]. Reverse velocity and clamp.
+    bounced_vx ∈ Int
+    bounced_vx = ((tent_x < 0 ∨ tent_x > 608) ? 0 - _vel_x : _vel_x)
+    clamped_x ∈ Int
+    clamped_x = (tent_x < 0 ? 0 : (tent_x > 608 ? 608 : tent_x))
+
+    -- Floor: clamp y ≤ 400; reset vy on contact.
+    clamped_y ∈ Int
+    clamped_y = (tent_y > 400 ? 400 : tent_y)
+    new_vy ∈ Int
+    new_vy = (tent_y > 400 ? 0 : grav_vy)
+
+    -- Compose next state. Start at (100, 100) with vx=5, vy=0.
+    pos_x = (is_first_tick ? 100 : clamped_x)
+    pos_y = (is_first_tick ? 100 : clamped_y)
+    vel_x = (is_first_tick ? 5   : bounced_vx)
+    vel_y = (is_first_tick ? 0   : new_vy)
+
+    -- ── Render: clear sky, draw ground, draw mario, present.
+    sky_eff ∈ Effect
+    set_draw_color(win.renderer, Color(80, 160, 220, 255), sky_eff)
+    clear_eff ∈ Effect
+    render_clear(win.renderer, clear_eff)
+
+    ground_color_eff ∈ Effect
+    set_draw_color(win.renderer, Color(60, 140, 60, 255), ground_color_eff)
+    ground_eff ∈ Effect
+    render_fill_rect(win.renderer, IVec2(0, 432), IVec2(640, 48), ground_eff)
+
+    mario_color_eff ∈ Effect
+    set_draw_color(win.renderer, Color(220, 40, 40, 255), mario_color_eff)
+    mario_eff ∈ Effect
+    render_fill_rect(win.renderer, IVec2(pos_x, pos_y), IVec2(32, 32), mario_eff)
+
+    present_eff ∈ Effect
+    render_present(win.renderer, present_eff)
+    pump_eff ∈ Effect
+    sdl_pump_events(pump_eff)
+
+    -- Halt after 60 frames so the demo terminates on its own.
+    effects = (frame ≥ 60
+        ? ⟨Println("mario done"), Exit(0)⟩
+        : ⟨sky_eff, clear_eff, ground_color_eff, ground_eff,
+            mario_color_eff, mario_eff, present_eff, pump_eff⟩)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+claim sat_first_tick_seeds_start_pos
+    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    frame ∈ Int
+    _frame ∈ Int
+    pos_x ∈ Int
+    pos_y ∈ Int
+    vel_x ∈ Int
+    vel_y ∈ Int
+    _pos_x ∈ Int
+    _pos_y ∈ Int
+    _vel_x ∈ Int
+    _vel_y ∈ Int
+    is_first_tick ∈ Bool
+
+    is_first_tick = true
+    win.renderer = 1
+    mario
+
+    pos_x = 100 ∧ pos_y = 100 ∧ vel_x = 5 ∧ vel_y = 0

@@ -177,6 +177,20 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["count = ?"],
         max_steps: 15, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // First multi-tick rendering demo. Per-tick physics +
+        // draw using the SDL_Window FTI bridge's persistent
+        // renderer handle (win.renderer). Auto-walks across
+        // screen bouncing off walls, falls under gravity to
+        // ground level, halts after 60 frames.
+        // Visual verification: capture with --examples and Read
+        // the PNG — should show a red square on green ground
+        // against sky-blue background.
+        name: "test_21_mario", exit: 0,
+        must_lines: &["mario done"],
+        forbid_exact_lines: &[],
+        max_steps: 80, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
