@@ -24,6 +24,7 @@ pub fn expr(e: &Expr) -> String {
         Expr::Str(s)        => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
         Expr::SetLit(items) => format!("{{{}}}", items.iter().map(expr).collect::<Vec<_>>().join(", ")),
         Expr::SeqLit(items) => format!("⟨{}⟩",   items.iter().map(expr).collect::<Vec<_>>().join(", ")),
+        Expr::Tuple(items)  => format!("({})",   items.iter().map(expr).collect::<Vec<_>>().join(", ")),
         Expr::Range(lo, hi) => format!("{{{}..{}}}", expr(lo), expr(hi)),
         Expr::InExpr(lhs, rhs) => format!("{} ∈ {}", expr(lhs), expr(rhs)),
         Expr::Forall(vs, range, body) =>

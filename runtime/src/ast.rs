@@ -151,6 +151,14 @@ pub enum Expr {
     /// `lhs ∈ rhs` membership constraint as an expression. We always
     /// reduce this to a disjunction of equalities (lhs = e1 ∨ lhs = e2 ∨ …).
     InExpr(Box<Expr>, Box<Expr>),
+    /// `(e1, e2, …)` — a tuple expression. Currently produced by the
+    /// parser only as the LHS of `∈ claim_name` — the relational
+    /// invocation form for a claim with multiple parameters. See
+    /// `inline.rs`'s body-item dispatch for the translation: the
+    /// elements bind positionally to the claim's parameters.
+    /// Other contexts that see this variant should recurse into
+    /// the elements (or reject if a tuple isn't meaningful there).
+    Tuple(Vec<Expr>),
     /// `∀ var ∈ range : body` and the existential variant.
     /// Translation requires `range` to be a literal `Range(Int, Int)`
     /// so we can unroll. The `Vec<String>` is the binding: usually

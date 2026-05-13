@@ -138,6 +138,7 @@ enum Expr =
     EStr(String)
     ESetLit(Seq(Expr))
     ESeqLit(Seq(Expr))
+    ETuple(Seq(Expr))
     ERange(Expr, Expr)
     EInExpr(Expr, Expr)
     EForall(Seq(String), Expr, Expr)

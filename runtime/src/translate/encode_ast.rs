@@ -451,6 +451,10 @@ pub fn encode_expr<'ctx>(
             let list = encode_expr_list(items, ctx, enums)?;
             apply(enums, "Expr", "ESeqLit", &[&list])
         }
+        Expr::Tuple(items) => {
+            let list = encode_expr_list(items, ctx, enums)?;
+            apply(enums, "Expr", "ETuple", &[&list])
+        }
         Expr::Range(lo, hi) => {
             let l = encode_expr(lo, ctx, enums)?;
             let h = encode_expr(hi, ctx, enums)?;
@@ -915,6 +919,7 @@ fn expr_to_value(e: &Expr) -> Value {
         Expr::Str(s)        => ev("Expr", "EStr",        vec![Value::Str(s.clone())]),
         Expr::SetLit(items) => ev("Expr", "ESetLit",     vec![expr_list_to_value(items)]),
         Expr::SeqLit(items) => ev("Expr", "ESeqLit",     vec![expr_list_to_value(items)]),
+        Expr::Tuple(items)  => ev("Expr", "ETuple",      vec![expr_list_to_value(items)]),
         Expr::Range(lo, hi) => ev("Expr", "ERange",
                                    vec![expr_to_value(lo), expr_to_value(hi)]),
         Expr::InExpr(l, r)  => ev("Expr", "EInExpr",

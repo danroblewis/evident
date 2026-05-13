@@ -470,6 +470,10 @@ pub fn decode_expr(v: &Value) -> Result<Expr> {
             need_arity(variant, fields, 1)?;
             Expr::SeqLit(decode_expr_list(&fields[0])?)
         }
+        "ETuple" => {
+            need_arity(variant, fields, 1)?;
+            Expr::Tuple(decode_expr_list(&fields[0])?)
+        }
         "ERange" => {
             need_arity(variant, fields, 2)?;
             Expr::Range(Box::new(decode_expr(&fields[0])?),

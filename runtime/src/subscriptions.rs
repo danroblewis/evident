@@ -81,7 +81,8 @@ fn walk_expr(e: &Expr, sets: &mut AccessSets) {
             }
         }
         Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-        Expr::SetLit(es) | Expr::SeqLit(es) => for x in es { walk_expr(x, sets); },
+        Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
+            for x in es { walk_expr(x, sets); },
         Expr::Range(a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
         Expr::InExpr(a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
         Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
@@ -152,7 +153,8 @@ pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
         match e {
             Expr::Identifier(s) => s == ident,
             Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => false,
-            Expr::SetLit(es) | Expr::SeqLit(es) => es.iter().any(|x| walk_expr(x, ident)),
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
+                es.iter().any(|x| walk_expr(x, ident)),
             Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) | Expr::Binary(_, a, b) =>
                 walk_expr(a, ident) || walk_expr(b, ident),
             Expr::Forall(_, range, body) | Expr::Exists(_, range, body) =>

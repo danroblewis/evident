@@ -367,6 +367,84 @@ fn inline_body_items_guarded(
             //   ⋮
             //   Foo(my_items, my_keys, true)
             // pattern over the longer mapsto form.
+            // Tuple-in-claim invocation: `(a, b, c) ∈ claim_name` is
+            // the relational reading of a positional claim call —
+            // "this tuple is in the set of satisfying assignments."
+            // Desugars to the same positional ClaimCall path as
+            // `claim_name(a, b, c)`. The dispatch is here (not in
+            // exprs.rs's InExpr handler) because it has to fire at
+            // BodyItem position, not as a value-producing
+            // expression — a claim invocation contributes constraints,
+            // not a Bool.
+            BodyItem::Constraint(Expr::InExpr(lhs, rhs))
+                if matches!(rhs.as_ref(),
+                    Expr::Identifier(n) if schemas.contains_key(n))
+                && matches!(lhs.as_ref(), Expr::Tuple(_)) =>
+            {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                let name = match rhs.as_ref() {
+                    Expr::Identifier(n) => n.clone(),
+                    _ => unreachable!(),
+                };
+                let args: Vec<Expr> = match lhs.as_ref() {
+                    Expr::Tuple(items) => items.clone(),
+                    _ => unreachable!(),
+                };
+                let Some(depth) = try_enter(visited, &name) else { continue };
+                let Some(claim) = schemas.get(&name) else {
+                    exit_frame(visited, &name); continue
+                };
+                let slot_names: Vec<String> = claim.body.iter()
+                    .filter_map(|i| if let BodyItem::Membership { name, .. } = i {
+                        Some(name.clone())
+                    } else { None })
+                    .take(args.len())
+                    .collect();
+                if slot_names.len() != args.len() {
+                    eprintln!(
+                        "warning: tuple-in-claim `(...) ∈ {}` got {} args but \
+                         the claim has only {} param Memberships",
+                        name, args.len(), slot_names.len()
+                    );
+                    exit_frame(visited, &name);
+                    continue;
+                }
+                let mappings: Vec<crate::ast::Mapping> = slot_names.into_iter()
+                    .zip(args.iter())
+                    .map(|(slot, value)| crate::ast::Mapping {
+                        slot, value: value.clone(),
+                    })
+                    .collect();
+                let _ = depth;
+                let mut inner = env.clone();
+                isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
+                let slot_set: std::collections::HashSet<String> =
+                    mappings.iter().map(|m| m.slot.clone()).collect();
+                for m in &mappings {
+                    let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
+                    if bound.is_empty() {
+                        eprintln!("warning: tuple-in-claim arg didn't resolve: {:?}", m.value);
+                    }
+                    for (k, v) in bound {
+                        inner.insert(k, v);
+                    }
+                }
+                let call_id = next_call_id();
+                for sub in &claim.body {
+                    if let BodyItem::Membership { name: vname, type_name, .. } = sub {
+                        if slot_set.contains(vname) { continue; }
+                        if inner.contains_key(vname) { continue; }
+                        let z3_name = format!("{}__{}__call{}", name, vname, call_id);
+                        let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
+                                          type_name, schemas, Some(registry), enums);
+                        for c in &post { track_assert(solver, c, tracker); }
+                    }
+                }
+                inline_body_items_guarded(
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                );
+                exit_frame(visited, &name);
+            }
             BodyItem::Constraint(Expr::Call(name, args)) if schemas.contains_key(name) => {
                 if !guard_is_satisfiable(solver, guard) { continue; }
                 let Some(depth) = try_enter(visited, name) else { continue };

@@ -1329,9 +1329,23 @@ impl Parser {
             }
             Token::LParen   => {
                 self.bump();
-                let e = self.parse_expr()?;
+                let first = self.parse_expr()?;
+                // Tuple form: `(e1, e2, …)`. Used as the LHS of
+                // `∈ claim_name` (the relational invocation form). A
+                // single expression in parens (`(e)`) is just a
+                // grouped expression — no Tuple wrapper, to preserve
+                // the natural reading of `(a + b) * c`.
+                if matches!(self.peek(), Token::Comma) {
+                    let mut items = vec![first];
+                    while matches!(self.peek(), Token::Comma) {
+                        self.bump();
+                        items.push(self.parse_expr()?);
+                    }
+                    self.eat(&Token::RParen)?;
+                    return Ok(Expr::Tuple(items));
+                }
                 self.eat(&Token::RParen)?;
-                Ok(e)
+                Ok(first)
             }
             Token::LBrace => {
                 self.bump();
