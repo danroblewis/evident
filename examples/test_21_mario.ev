@@ -31,8 +31,7 @@ fsm mario
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
     -- Frame counter for halt.
-    frame ∈ Int
-    frame = (is_first_tick ? 0 : _frame + 1)
+    frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
 
     -- Player state as 2D vectors. `_pos` and `_vel` are
     -- auto-declared `∈ IVec2`; their .x and .y fields get
@@ -41,24 +40,20 @@ fsm mario
     vel ∈ IVec2
 
     -- Velocity with gravity applied (only y changes).
-    grav_vel ∈ IVec2
-    grav_vel = IVec2(_vel.x, _vel.y + 2)
+    grav_vel ∈ IVec2 = IVec2(_vel.x, _vel.y + 2)
 
     -- Tentative next position. `_pos + grav_vel` is componentwise
     -- vector addition (record-lift in equation context — see
     -- CLAUDE.md "Records as vectors").
-    tent ∈ IVec2
-    tent = _pos + grav_vel
+    tent ∈ IVec2 = _pos + grav_vel
 
     -- Bounce x off [0, 608] (screen width 640 - mario width 32);
     -- clamp y to floor at 400.
-    clamped ∈ IVec2
-    clamped = IVec2(
+    clamped ∈ IVec2 = IVec2(
         (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
         (tent.y > 400 ? 400 : tent.y))
 
-    next_vel ∈ IVec2
-    next_vel = IVec2(
+    next_vel ∈ IVec2 = IVec2(
         ((tent.x < 0 ∨ tent.x > 608) ? 0 - _vel.x : _vel.x),
         (tent.y > 400 ? 0 : grav_vel.y))
 
