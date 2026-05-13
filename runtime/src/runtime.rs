@@ -492,20 +492,78 @@ fn inject_lhs_eq_types(
 ) {
     use crate::ast::{BinOp, BodyItem, Expr, Pins};
 
-    // Resolve an Expr's type to a single name string when it's
-    // unambiguous. None for cases we don't know how to type.
-    fn infer_type(
+    // Collect names already declared in this body, with their types
+    // (for field-access inference via dotted identifiers).
+    let mut declared_types: HashMap<String, String> = HashMap::new();
+    for item in &s.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declared_types.insert(name.clone(), type_name.clone());
+        }
+    }
+    let declared: std::collections::HashSet<String> =
+        declared_types.keys().cloned().collect();
+
+    // Walk a dotted identifier path (`world.tick`, `win.pos.x`) and
+    // return the leaf field's declared type. Looks up `head` in the
+    // current body's memberships, then chains through schema bodies
+    // for each subsequent segment.
+    fn lookup_field_type(
+        dotted: &str,
+        declared_types: &HashMap<String, String>,
+        schemas: &HashMap<String, SchemaDecl>,
+    ) -> Option<String> {
+        let mut parts = dotted.split('.');
+        let head = parts.next()?;
+        let mut current_type = declared_types.get(head).cloned()?;
+        for field in parts {
+            let type_decl = schemas.get(&current_type)?;
+            let mut next_type: Option<String> = None;
+            for item in &type_decl.body {
+                if let BodyItem::Membership { name, type_name, .. } = item {
+                    if name == field { next_type = Some(type_name.clone()); break; }
+                }
+            }
+            current_type = next_type?;
+        }
+        Some(current_type)
+    }
+
+    // Top-level inference: looks at an Expr and returns its type if
+    // determinable. Leaves bare primitive literals (`Int(_)`, etc.)
+    // to query-time inference. Recursive helpers DO match literals
+    // because they're inside compound shapes (ternary arms, binary
+    // operands) where the chained-membership inference is the only
+    // way to know the result type.
+    //
+    // Recursive: ternaries / matches descend into arms; binary ops
+    // either yield Bool (comparisons / logical) or recurse into
+    // operands (arithmetic).
+    fn infer_recursive(
         e: &Expr,
+        declared_types: &HashMap<String, String>,
         schemas: &HashMap<String, SchemaDecl>,
         enums: &crate::translate::EnumRegistry,
     ) -> Option<String> {
-        // Primitive literals (`Int(_)`, `Str(_)`, `Bool(_)`, `Real(_)`)
-        // are intentionally left to the query-time inference pass
-        // in `commands/infer_types.rs` so this load-time pass doesn't
-        // race with it. We handle the cases that pass doesn't:
-        // constructor calls (enum variants like LibCall, record
-        // literals like IVec2).
         match e {
+            Expr::Int(_)  => Some("Int".to_string()),
+            Expr::Bool(_) => Some("Bool".to_string()),
+            Expr::Str(_)  => Some("String".to_string()),
+            Expr::Real(_) => Some("Real".to_string()),
+            Expr::Identifier(n) => {
+                if let Some(t) = declared_types.get(n) { return Some(t.clone()); }
+                if n.contains('.') {
+                    return lookup_field_type(n, declared_types, schemas);
+                }
+                None
+            }
+            Expr::Field(recv, field) => {
+                // Compose the dotted path from receiver if it's an Identifier.
+                if let Expr::Identifier(head) = recv.as_ref() {
+                    return lookup_field_type(
+                        &format!("{head}.{field}"), declared_types, schemas);
+                }
+                None
+            }
             Expr::Call(name, _) => {
                 if let Some((enum_name, _)) = enums.by_variant.borrow().get(name) {
                     return Some(enum_name.clone());
@@ -515,18 +573,40 @@ fn inject_lhs_eq_types(
                 }
                 None
             }
-            Expr::Ternary(_, a, b) => infer_type(a, schemas, enums)
-                .or_else(|| infer_type(b, schemas, enums)),
+            Expr::Ternary(_, a, b) =>
+                infer_recursive(a, declared_types, schemas, enums)
+                    .or_else(|| infer_recursive(b, declared_types, schemas, enums)),
+            Expr::Match(_, arms) => arms.iter().find_map(|arm|
+                infer_recursive(&arm.body, declared_types, schemas, enums)),
+            Expr::Binary(op, l, r) => match op {
+                BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+                | BinOp::Eq | BinOp::Neq
+                | BinOp::And | BinOp::Or | BinOp::Implies =>
+                    Some("Bool".to_string()),
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div =>
+                    infer_recursive(l, declared_types, schemas, enums)
+                        .or_else(|| infer_recursive(r, declared_types, schemas, enums)),
+                BinOp::Concat => Some("String".to_string()),
+            },
+            Expr::Not(_) => Some("Bool".to_string()),
+            Expr::Cardinality(_) => Some("Int".to_string()),
             _ => None,
         }
     }
 
-    // Collect names already declared in this body.
-    let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for item in &s.body {
-        if let BodyItem::Membership { name, .. } = item {
-            declared.insert(name.clone());
+    // Top-level wrapper: skip bare primitive literals so the
+    // query-time pass picks them up (preserves the `--strict`
+    // contract — see `cli_query_without_infer_types_fails…`).
+    fn infer_type(
+        e: &Expr,
+        declared_types: &HashMap<String, String>,
+        schemas: &HashMap<String, SchemaDecl>,
+        enums: &crate::translate::EnumRegistry,
+    ) -> Option<String> {
+        if matches!(e, Expr::Int(_) | Expr::Bool(_) | Expr::Str(_) | Expr::Real(_)) {
+            return None;
         }
+        infer_recursive(e, declared_types, schemas, enums)
     }
 
     // Walk body constraints; queue inferrable Memberships.
@@ -539,7 +619,7 @@ fn inject_lhs_eq_types(
         if declared.contains(name) { continue; }              // already declared
         if already_queued.contains(name) { continue; }        // first eq wins
         if schemas.contains_key(name) { continue; }           // not a fresh local — claim/type name
-        let Some(ty) = infer_type(rhs, schemas, enums) else { continue };
+        let Some(ty) = infer_type(rhs, &declared_types, schemas, enums) else { continue };
         to_inject.push((name.clone(), ty));
         already_queued.insert(name.clone());
     }
@@ -1447,17 +1527,18 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             let mut s = s.clone();
             inject_fsm_params(&mut s)?;
+            // lhs-eq inference runs BEFORE prev-tick injection so
+            // that inferred memberships (e.g., `frame ∈ Int` from
+            // `frame = ternary`) are visible when the prev-tick
+            // walker resolves `_frame`'s type. Otherwise `_frame`
+            // refers to an undeclared name and never gets injected.
+            inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);
             inject_prev_tick_decls(&mut s)?;
             // Needs the schemas table — runs against already-loaded
             // claims AND siblings in this same prog batch as they get
             // registered below. Self-reference works because we look
             // up the called claim's signature, not the current claim's.
             inject_claim_arg_types(&mut s, &self.schemas)?;
-            // Order matters: lhs-eq inference runs AFTER claim-arg
-            // inference because the latter populates declared names
-            // that the former should NOT redeclare. Subclaim bodies
-            // get inference too via recursion.
-            inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);
             enforce_external_only(&s)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());

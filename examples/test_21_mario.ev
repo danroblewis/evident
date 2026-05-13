@@ -10,26 +10,20 @@ type World
     tick ∈ Int
 
 fsm game(world ∈ World, world_next ∈ World)
-    vel ∈ IVec2
+    game_clock = world.tick
 
-    -- Subscribe to display's tick counter so game wakes every
-    -- frame even when no key state changes. Without this, the
-    -- scheduler only re-ticks game when its read-set (keys / pos)
-    -- changes, so gravity halts whenever input is idle.
-    game_clock ∈ Int = world.tick
-
-    on_ground ∈ Bool = (world.pos.y ≥ 400)
-    walk_vx ∈ Int = (world.key_left > 0 ? 0 - 5
-                      : (world.key_right > 0 ? 5 : 0))
-    jump_vy ∈ Int = (on_ground ∧ world.key_up > 0 ? 0 - 14 : _vel.y + 2)
+    on_ground = (world.pos.y ≥ 400)
+    walk_vx = (world.key_left > 0 ? 0 - 5
+                : (world.key_right > 0 ? 5 : 0))
+    jump_vy = (on_ground ∧ world.key_up > 0 ? 0 - 14 : _vel.y + 2)
 
     tent ∈ IVec2 = world.pos + IVec2(walk_vx, jump_vy)
 
-    clamped ∈ IVec2 = IVec2(
+    clamped = IVec2(
         (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
         (tent.y > 400 ? 400 : tent.y))
 
-    next_vel ∈ IVec2 = IVec2(
+    next_vel = IVec2(
         walk_vx,
         (tent.y > 400 ? 0 : jump_vy))
 
@@ -41,17 +35,14 @@ fsm game(world ∈ World, world_next ∈ World)
 fsm display(world ∈ World, world_next ∈ World)
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
-    frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
+    frame = (is_first_tick ? 0 : _frame + 1)
 
-    key_left_raw ∈ Int
     key_left_raw = match last_results[14]
         IntResult(n) ⇒ n
         _           ⇒ 0
-    key_right_raw ∈ Int
     key_right_raw = match last_results[15]
         IntResult(n) ⇒ n
         _           ⇒ 0
-    key_up_raw ∈ Int
     key_up_raw = match last_results[16]
         IntResult(n) ⇒ n
         _           ⇒ 0
@@ -78,11 +69,8 @@ fsm display(world ∈ World, world_next ∈ World)
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
 
-    key_left_eff ∈ Effect
     key_left_eff = ReadByte(win.keyboard_state, 80)
-    key_right_eff ∈ Effect
     key_right_eff = ReadByte(win.keyboard_state, 79)
-    key_up_eff ∈ Effect
     key_up_eff = ReadByte(win.keyboard_state, 82)
 
     sdl_delay(16, delay_eff)
