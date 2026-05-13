@@ -1,0 +1,53 @@
+-- packages/posix/file.ev — file descriptor I/O.
+--
+-- POSIX open / read / write / close. The fd is just an Int —
+-- no HandleRegistry indirection since fd 0/1/2 are stdin/
+-- stdout/stderr and the user shouldn't need a separate handle
+-- to use them.
+--
+-- For paths the caller wants the runtime to lifecycle-manage,
+-- a future `external type File` with declarative install + a
+-- subclaim that closes on drop would fit; this file gives the
+-- raw primitives.
+--
+-- Common open() flag values (from <fcntl.h>):
+--   O_RDONLY = 0
+--   O_WRONLY = 1
+--   O_RDWR   = 2
+--   O_CREAT  = 0x0200 on macOS (Linux uses 0x40)
+--   O_TRUNC  = 0x0400 on macOS (Linux uses 0x200)
+--   O_APPEND = 0x0008 on macOS (Linux uses 0x400)
+
+import "stdlib/runtime.ev"
+
+-- Read-only / write-only / read-write convenience constants.
+-- Callers can also pass raw flag values to `open` directly.
+external claim o_rdonly(out ∈ Int)
+    out = 0
+external claim o_wronly(out ∈ Int)
+    out = 1
+external claim o_rdwr(out ∈ Int)
+    out = 2
+
+-- open(path, flags) → fd ≥ 0 on success, -1 on error.
+external claim open(path ∈ String, flags ∈ Int, out ∈ Effect)
+    out = LibCall("/usr/lib/libSystem.B.dylib", "open",
+                  "i(si)",
+                  ⟨ArgStr(path), ArgInt(flags)⟩)
+
+-- read(fd, buf, n) → bytes read on success (0 = EOF), -1 on error.
+external claim read(fd ∈ Int, buf ∈ Int, n ∈ Int, out ∈ Effect)
+    out = LibCall("/usr/lib/libSystem.B.dylib", "read",
+                  "i(ipi)",
+                  ⟨ArgInt(fd), ArgHandle(buf), ArgInt(n)⟩)
+
+-- write(fd, buf, n) → bytes written on success, -1 on error.
+external claim write(fd ∈ Int, buf ∈ Int, n ∈ Int, out ∈ Effect)
+    out = LibCall("/usr/lib/libSystem.B.dylib", "write",
+                  "i(ipi)",
+                  ⟨ArgInt(fd), ArgHandle(buf), ArgInt(n)⟩)
+
+-- close(fd) → 0 on success, -1 on error.
+external claim close(fd ∈ Int, out ∈ Effect)
+    out = LibCall("/usr/lib/libSystem.B.dylib", "close",
+                  "i(i)", ⟨ArgInt(fd)⟩)
