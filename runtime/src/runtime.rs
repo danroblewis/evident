@@ -76,6 +76,13 @@ fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     if !matches!(s.keyword, Keyword::Fsm) {
         return Ok(());
     }
+    // `external fsm` declarations are CONTRACTS for runtime-side
+    // bridge FSMs. They name the shared-state slots they read/write
+    // and don't have user-FSM machinery (state/state_next/effects).
+    // Skip implicit injection entirely.
+    if s.external {
+        return Ok(());
+    }
     let mut state_type: Option<String> = None;
     let mut have_state_next = false;
     let mut have_last_results = false;
@@ -125,10 +132,10 @@ fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
 
 /// Reject non-`external` schemas that try to construct FFI effects
 /// (`FFICall` / `LibCall` / `FFIOpen` / `FFILookup`). The rule:
-/// only `external type` and `external claim` declarations may
-/// produce those effect values. Demos and ordinary library code
-/// reach C through the `external claim` wrappers in `packages/`
-/// and `stdlib/posix.ev`.
+/// only `external` schemas (`external type` / `external claim` /
+/// `external fsm`) may produce those effect values. Demos and
+/// ordinary library code reach C through the `external claim`
+/// wrappers in `packages/` and `stdlib/posix.ev`.
 ///
 /// The check walks every `Constraint` body item's expression tree.
 /// SubclaimDecl bodies are skipped — their own load pass handles them.

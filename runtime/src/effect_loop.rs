@@ -164,6 +164,15 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     if !matches!(claim.keyword, crate::ast::Keyword::Fsm) {
         return None;
     }
+    // `external fsm` declarations are CONTRACTS for runtime-side
+    // bridge FSMs (StdinSource, FrameTimer, EffectDispatcher, …).
+    // Their body is implemented in Rust; the Evident declaration
+    // names the shared-state slots they read/write so user FSMs
+    // can name-match against them. Do NOT auto-instantiate them
+    // as user FSMs — the Rust bridges run them.
+    if claim.external {
+        return None;
+    }
     let mut state_pair: Option<(String, String, String)> = None;
     let mut last_results_var = None;
     let mut effects_var = None;

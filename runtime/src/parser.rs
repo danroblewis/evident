@@ -301,10 +301,12 @@ impl Parser {
 
     fn parse_schema_decl(&mut self) -> Result<SchemaDecl> {
         // Optional `external` modifier before the host keyword.
-        // `external type` and `external claim` are the only legal
-        // combinations: `external fsm` and `external schema` are
-        // rejected so the modifier reads "FFI is permitted in this
-        // declaration's body and nowhere else."
+        // Legal combinations: `external type` (OS-side resource),
+        // `external claim` (effect builder), `external fsm`
+        // (runtime-side bridge fsm — see
+        // docs/design/state-machines-as-relations.md). The only
+        // illegal combination is `external schema`, since `schema`
+        // is the deprecated synonym for `type`.
         let external = if matches!(self.peek(), Token::External) {
             self.bump();
             true
@@ -322,15 +324,7 @@ impl Parser {
             }
             Token::Claim  => Keyword::Claim,
             Token::Type   => Keyword::Type,
-            Token::Fsm    => {
-                if external {
-                    return Err(ParseError(
-                        "`external fsm` is not allowed — FSMs orchestrate, \
-                         `external` schemas handle the boundary. Define an \
-                         `external claim` helper and call it from the fsm".to_string()));
-                }
-                Keyword::Fsm
-            }
+            Token::Fsm    => Keyword::Fsm,
             other => return Err(ParseError(format!(
                 "expected keyword, got {:?}", other))),
         };
