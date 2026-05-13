@@ -191,6 +191,18 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 80, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // `_var` time-shift through RECORD types: `_pos.x` and
+        // `_pos.y` get pinned from the previous tick's `pos.x`
+        // and `pos.y` bindings. Diagonal walker: (0,0) → (1,2)
+        // → (2,4) → (3,6), halts when pos.x ≥ 3.
+        // Sums printed are pos.x + pos.y = 0, 3, 6 (the prior
+        // tick's IntToStr surfaces next).
+        name: "test_22_prev_record", exit: 0,
+        must_lines: &["pos.x+pos.y = 0", "pos.x+pos.y = 3", "walker done at 6"],
+        forbid_exact_lines: &["pos.x+pos.y = ?"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
