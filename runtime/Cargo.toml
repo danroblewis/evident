@@ -15,6 +15,10 @@ libffi     = { version = "3", features = ["system"] }
 # Signal handling: SIGINT (Ctrl-C) pushes a Signal event to the
 # scheduler so user FSMs can run cleanup before exiting.
 signal-hook = "0.3"
+# Seedable RNG for effect-dispatch tie-breaking — unconstrained
+# orderings are randomized so accidental-ordering bugs surface;
+# EVIDENT_DISPATCH_SEED reproduces a specific run.
+rand = "0.8"
 
 [lib]
 name = "evident_runtime"

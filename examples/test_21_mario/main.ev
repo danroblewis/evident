@@ -478,29 +478,35 @@ fsm display(world ∈ World)
 
     win.render_present(present_eff)
 
-    -- ── Effect chunks by intent ───────────────────────────────
+    -- ── Effect ordering ───────────────────────────────────────
     --
-    -- No `effects` Seq — the runtime walks the model and dispatches
-    -- every Effect / Seq(Effect) binding (commit f4f1072). Cross-Seq
-    -- dispatch order is alphabetical by binding name, so the
-    -- a_/b_/c_/d_/e_/f_ prefixes pin the required render order:
-    -- sky+clear → platforms → player → enemies → present → delay.
-    -- The alphabetical-prefix is a stopgap until toposort lands —
-    -- see commit message.
+    -- The runtime walks Effect-typed bindings + extracts ordering
+    -- edges from any `Seq(Effect)` literal in the body (a→b→c for
+    -- ⟨a, b, c⟩). Cross-Seq order with no declared edge is random
+    -- (so accidental-ordering bugs surface). Set
+    -- `EVIDENT_DISPATCH_SEED=N` to reproduce a specific run.
+    --
+    -- Each sub-Seq below declares its intra-group ordering. The
+    -- `phase_chain` Seq adds the cross-group edges so the render
+    -- order is sky → platforms → player → enemies → present →
+    -- delay each frame.
 
-    a_sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
-    b_plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
-                                    plat_1_color_eff, plat_1_fill_eff,
-                                    plat_2_color_eff, plat_2_fill_eff,
-                                    plat_3_color_eff, plat_3_fill_eff⟩
-    c_player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
-                                    face_color_eff,  face_fill_eff,
-                                    shirt_color_eff, shirt_fill_eff,
-                                    pants_color_eff, pants_fill_eff⟩
-    d_enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
-                                    e1_color_eff, e1_fill_eff⟩
-    e_present_eff ∈ Effect      = present_eff
-    f_delay_eff   ∈ Effect      = delay_eff
+    sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+    plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
+                                  plat_1_color_eff, plat_1_fill_eff,
+                                  plat_2_color_eff, plat_2_fill_eff,
+                                  plat_3_color_eff, plat_3_fill_eff⟩
+    player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
+                                  face_color_eff,  face_fill_eff,
+                                  shirt_color_eff, shirt_fill_eff,
+                                  pants_color_eff, pants_fill_eff⟩
+    enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
+                                  e1_color_eff, e1_fill_eff⟩
+    phase_chain ∈ Seq(Effect) = ⟨clear_eff,        plat_0_color_eff,
+                                  plat_3_fill_eff,  hat_color_eff,
+                                  pants_fill_eff,   e0_color_eff,
+                                  e1_fill_eff,      present_eff,
+                                  delay_eff⟩
 
     -- Conditional exit at frame ≥ 240. NoEffect when not yet —
     -- the dispatcher drops NoEffect cleanly.
