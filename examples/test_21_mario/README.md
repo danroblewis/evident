@@ -8,37 +8,34 @@ collection (no hardcoded floor / wall coordinates).
 
 ## Files
 
-- `main.ev` — entry point. Declares the entity types, the world,
-  the level data, and two FSMs (`game` for physics, `display` for
-  input + rendering).
-- `level_gen.ev` — constraint-based layout generator. A standalone
-  `LevelGen` claim that picks valid (x, y) coordinates for the
-  three elevated platforms subject to in-bounds, non-overlap,
-  reachability, and layout-spread constraints.
+- `main.ev` — the whole program. Entity types, a `Level` claim
+  whose body asserts the layout constraints (in-bounds,
+  non-overlap, jump-reachability, spread), two FSMs (`game` for
+  physics, `display` for input + rendering) that share `Level`
+  via `..Level`.
 
-## Regenerating the platform layout
+## Level as a constraint problem
 
-`main.ev`'s `platforms[1..3]` positions come from solving `LevelGen`.
-To pick a new layout (e.g. after editing constraints in
-`level_gen.ev`):
+`Level`'s body has no hand-pinned coordinates for the elevated
+platforms. Instead, `plat_x[i]` and `plat_y[i]` are free Int
+Seqs Z3 picks subject to:
 
-```
-evident query examples/test_21_mario/level_gen.ev LevelGen --json
-```
+- **In-bounds:** every platform fits inside the world horizontally
+  and sits in a band above the ground and below the ceiling.
+- **Non-overlap:** pairwise separation on at least one axis by
+  at least `MIN_GAP` pixels.
+- **Reachability:** every elevated platform is jump-reachable
+  from the ground OR from another platform below it whose
+  x-range overlaps (cheap-arc approximation of the player's
+  jump parabola given `grav` and `jump_strength`).
+- **Spread:** at least one platform high, one low; one on the
+  left half, one on the right. Stops Z3 from clustering them.
 
-The output looks like:
-
-```
-{"satisfied": true, "bindings": {
-    "plat_x": [320, 38, 480],
-    "plat_y": [350, 236, 262],
-    ...
-}}
-```
-
-Hand-paste the values into `main.ev`'s `platforms[1..3]` definitions
-(both FSMs — they have to match, see runtime gap below). Z3 picks
-the same layout on every run unless you pass a different seed.
+The cached solver returns the same valid layout on every
+per-tick query, so the game and display FSMs see identical
+platforms even though they each run their own Z3 instance.
+To get a different layout, tweak the constraints (or pass a
+different `EVIDENT_Z3_ARITH_SOLVER` / seed env var).
 
 ## Runtime gaps the file works around
 
@@ -53,10 +50,9 @@ the same layout on every run unless you pass a different seed.
 
 ## Future shape
 
-Today the LevelGen output is hand-pasted into `Level`. A natural
-next step is folding LevelGen's constraint body into `Level`
-directly (with `plat_x`, `plat_y` as free Int Seqs Z3 solves
-each tick), making the level layout truly constraint-derived.
-That requires confirming Z3 picks the same solution across
-per-tick queries (deterministic seed) — otherwise platforms
-would shift between frames.
+If Mario grows to multiple levels (level 1 → boss → level 2),
+the natural move is a `LevelGen` FSM that owns `world.platforms`
+and rewrites it on level transitions. Game/display subscribe to
+the world field. That'd require addressing the
+cardinality-as-write classification bug and deciding the
+multi-writer semantics for `world.platforms`.

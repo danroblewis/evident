@@ -18,11 +18,15 @@ type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ In
 -- ── Level: static configuration of the world ──────────────────
 --
 -- Both fsms `..Level` to bring constants AND entity-Seq data
--- into scope. The platform positions for the 3 elevated platforms
--- are the output of `level_gen.ev`'s LevelGen constraint solve —
--- see README.md for the regen workflow.
+-- into scope. The 3 elevated platforms' positions are not pinned —
+-- they're free `plat_x[i]` / `plat_y[i]` Int Seqs that Z3 picks
+-- subject to the constraints below (in-bounds, pairwise
+-- non-overlap, jump-reachability, layout spread). The cached
+-- solver returns the same valid layout every per-tick query, so
+-- both fsms see the same level.
 
 claim Level
+    -- Physics / sizing constants.
     bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
     p_size        ∈ IVec2 = IVec2(32, 32)
     enemy_size    ∈ IVec2 = IVec2(28, 28)
@@ -31,16 +35,65 @@ claim Level
     jump_strength ∈ Int   = 14
     enemy_speed   ∈ Int   = 2
 
+    -- Placement constants for the elevated platforms.
+    PLAT_W         ∈ Int = 120
+    PLAT_H         ∈ Int = 16
+    GROUND_Y       ∈ Int = 432
+    -- Empirical max y the player can climb in one jump from the
+    -- ground (derivable from grav=2 and jump_strength=14:
+    -- apex at jump_strength/grav = 7 ticks, rise ≈ 196 px).
+    MAX_JUMP_RISE  ∈ Int = 196
+    MIN_GAP        ∈ Int = 40
+
+    -- Free placement vars Z3 picks subject to the constraints
+    -- below. Z3 is deterministic given the same constraint set,
+    -- so each per-tick query returns the same layout.
+    plat_x ∈ Seq(Int)
+    plat_y ∈ Seq(Int)
+    #plat_x = 3
+    #plat_y = 3
+
+    -- Each elevated platform fits horizontally and sits within a
+    -- vertical band the player can plausibly traverse.
+    ∀ i ∈ {0..2} :
+        0 ≤ plat_x[i] ∧ plat_x[i] ≤ 640 - PLAT_W
+        GROUND_Y - MAX_JUMP_RISE ≤ plat_y[i] ∧ plat_y[i] ≤ GROUND_Y - PLAT_H - 24
+
+    -- Pairwise non-overlap with at least MIN_GAP on some axis.
+    ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
+        (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
+         ∨ plat_x[j] + PLAT_W + MIN_GAP ≤ plat_x[i]
+         ∨ plat_y[i] + PLAT_H + MIN_GAP ≤ plat_y[j]
+         ∨ plat_y[j] + PLAT_H + MIN_GAP ≤ plat_y[i])
+
+    -- Reachability: each elevated platform is jump-reachable from
+    -- the ground OR from another platform below it whose x-range
+    -- overlaps (cheap-arc approximation).
+    reachable ∈ Seq(Bool)
+    #reachable = 3
+    ∀ i ∈ {0..2} : reachable[i]
+    ∀ i ∈ {0..2} : reachable[i] = ((GROUND_Y - plat_y[i] ≤ MAX_JUMP_RISE) ∨ (∃ j ∈ {0..2} : i ≠ j ∧ plat_y[j] > plat_y[i] ∧ plat_y[j] - plat_y[i] ≤ MAX_JUMP_RISE ∧ ¬(plat_x[j] + PLAT_W < plat_x[i] ∨ plat_x[i] + PLAT_W < plat_x[j])))
+
+    -- Spread: at least one platform high, one near the ground;
+    -- at least one on each side of the screen. Stops Z3 picking
+    -- three rectangles clustered in one corner.
+    ∃ i ∈ {0..2} : plat_y[i] ≤ 300
+    ∃ i ∈ {0..2} : plat_y[i] ≥ 350
+    ∃ i ∈ {0..2} : plat_x[i] + PLAT_W ≤ 320
+    ∃ i ∈ {0..2} : plat_x[i] ≥ 320
+
+    -- Materialized platforms. Ground (platforms[0]) is pinned;
+    -- the other three are derived from the Z3-picked plat_x/y.
     platforms ∈ Seq(Body)
     #platforms = 4
-    platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
-                         Color(60,  140, 60,  255))
-    platforms[1] = Body(AABB(IVec2(320, 350), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
-    platforms[2] = Body(AABB(IVec2(38,  236), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
-    platforms[3] = Body(AABB(IVec2(480, 262), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
+    platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(640, 48)),
+                         Color(60,  140, 60, 255))
+    platforms[1] = Body(AABB(IVec2(plat_x[0], plat_y[0]), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
+    platforms[2] = Body(AABB(IVec2(plat_x[1], plat_y[1]), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
+    platforms[3] = Body(AABB(IVec2(plat_x[2], plat_y[2]), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
 
     e_init ∈ Seq(EnemyInit)
     #e_init = 2
