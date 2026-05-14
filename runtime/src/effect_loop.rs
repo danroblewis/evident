@@ -22,36 +22,58 @@ use crate::runtime::EvidentRuntime;
 use crate::translate::{Value, ast_decoder};
 use std::collections::HashMap;
 
-/// Collect every Effect / Seq(Effect) binding in the solution and
-/// flatten them into a dispatch order, deduplicating by value.
+/// Collect the dispatchable Effects from a satisfying model.
 ///
-/// Today's model: every Effect-typed value in the satisfying model
-/// gets dispatched. That includes both bare `e ∈ Effect = LibCall(…)`
-/// bindings and `seq ∈ Seq(Effect) = ⟨…⟩` bindings — the user doesn't
-/// have to construct an `effects` Seq just to get IO to happen.
+/// Two modes, picked by `primary_var`:
 ///
-/// Ordering rules (v1):
-///   1. If `primary_var` is set (the legacy `effects` binding), its
-///      elements dispatch FIRST in order — preserving `last_results`
-///      indexing for programs that read it. (last_results is parallel
-///      to the dispatched list.)
-///   2. Other Seq(Effect) bindings dispatch in alphabetical key
-///      order, elements in index order.
-///   3. Bare Effect bindings dispatch interleaved with #2 in
-///      alphabetical key order.
-///   4. Dedup by Value equality — an Effect that appears in two
-///      different Seqs (e.g. `sky_effs` and `effects = sky_effs ++ …`)
-///      is dispatched once, in its first encountered position.
+///   * **`effects` slot present** (the legacy / ordered shape): the
+///     `primary_var` Seq(Effect) IS the dispatch list. Only those
+///     elements dispatch, in that order. Other Effect-typed
+///     bindings (intermediate names used to BUILD `effects`, or
+///     names bound in a `match`-on-state branch the program doesn't
+///     intend to dispatch this tick) are IGNORED.
+///   * **no `effects` slot**: walk every binding in the model and
+///     dispatch any `Effect` / `Seq(Effect)` value found. Dedup by
+///     value equality (the same Effect across two Seqs runs once,
+///     in its first-encountered position).
 ///
-/// Effect ordering across non-primary bindings is intentionally
-/// unspecified beyond the alphabetical-stability hack — when a
-/// program cares about cross-Seq order, it should compose them into
-/// a single Seq(Effect) and bind it as `effects`. The "no-effects-slot"
-/// path is for programs whose effects don't have ordering constraints.
+/// The split exists because in idiomatic effect-driven programs,
+/// users construct intermediate Effect bindings (`frame_clear`,
+/// `init_eff`, …) whose values are MATERIAL even when the program
+/// doesn't intend to run them this tick — Z3 always assigns SOME
+/// value to a declared `Effect`-typed name. The `effects` slot
+/// IS the gate that says "of all these Effect bindings, dispatch
+/// these in this order." Programs without that gate are opting
+/// into "every Effect in the model runs."
+///
+/// Ordering for the no-slot mode:
+///   * Seq(Effect) bindings dispatch in alphabetical key order,
+///     elements in index order.
+///   * Bare Effect bindings dispatch interleaved with the Seqs,
+///     also in alphabetical key order.
+///   * Cross-Seq ordering beyond alphabetical-stability is
+///     intentionally unspecified — a future toposort layer can
+///     derive a valid order from per-Effect constraints.
 pub(crate) fn collect_dispatchable_effects(
     bindings: &HashMap<String, Value>,
     primary_var: Option<&str>,
 ) -> Vec<Effect> {
+    // Mode 1: `effects` slot present — dispatch ONLY that Seq.
+    // Intermediate / off-branch Effect bindings stay in the model
+    // but don't run. Preserves the legacy gate semantics.
+    if let Some(pv) = primary_var {
+        if let Some(Value::SeqEnum(items)) = bindings.get(pv) {
+            return items.iter()
+                .filter_map(|v| ast_decoder::decode_effect(v).ok())
+                .collect();
+        }
+        // primary_var declared but no model binding — fall through
+        // to the walk-everything path. (Shouldn't happen for a
+        // satisfied fsm, but defensive.)
+    }
+
+    // Mode 2: no `effects` slot — walk the whole model for Effect
+    // and Seq(Effect) bindings, dedup by value.
     let mut out: Vec<Effect> = Vec::new();
     let mut seen: Vec<Value> = Vec::new();
 
@@ -63,25 +85,10 @@ pub(crate) fn collect_dispatchable_effects(
         }
     }
 
-    // (1) Primary `effects` binding, in order. Last_results is
-    // parallel to whatever ends up in `out` — putting `effects`
-    // first preserves the legacy `last_results[i]` indexing for
-    // programs that read it.
-    if let Some(pv) = primary_var {
-        if let Some(Value::SeqEnum(items)) = bindings.get(pv) {
-            for item in items {
-                try_push(item, &mut seen, &mut out);
-            }
-        }
-    }
+    let mut keys: Vec<&String> = bindings.keys().collect();
+    keys.sort();
 
-    // (2 + 3) Other bindings, alphabetical key order for stability.
-    let mut other_keys: Vec<&String> = bindings.keys()
-        .filter(|k| Some(k.as_str()) != primary_var)
-        .collect();
-    other_keys.sort();
-
-    for k in other_keys {
+    for k in keys {
         match &bindings[k] {
             v @ Value::Enum { enum_name, .. } if enum_name == "Effect" => {
                 try_push(v, &mut seen, &mut out);
