@@ -1,27 +1,49 @@
 -- Topological sort as a constraint problem — generic over node type.
 --
--- `Edge<T>` carries a directed dependency between two nodes of
--- type `T`. `Toposort<T>` solves for a permutation of items where
--- every edge respects ordering. Domain types in, domain types out
--- — indices stay internal.
+-- `Edge<T>` carries a directed dependency between two nodes of type
+-- `T`. `Toposort<T>` solves for a permutation of items where every
+-- edge respects ordering. Domain types in, domain types out —
+-- indices stay inside the body's quantifiers, never at the interface.
 --
--- Interface (caller pins via `given` or chained-membership):
---   * `n ∈ Nat`                   — node count.
---   * `items ∈ Seq(T)`            — the nodes, in arbitrary order.
---   * `edges ∈ Seq(Edge<T>)`      — directed dependencies between
---                                    items (matched by Z3 value
---                                    equality, not by position).
+-- Interface:
+--   * `n ∈ Nat`               — node count.
+--   * `items ∈ Seq(T)`        — the nodes, in arbitrary order.
+--   * `edges ∈ Seq(Edge<T>)`  — directed dependencies. Endpoints are
+--                                MATCHED to items by Z3 value
+--                                equality, not by position.
 -- Output:
---   * `sorted ∈ Seq(T)`           — items reordered so every
---                                    edge from→to has from
---                                    appearing earlier.
+--   * `sorted ∈ Seq(T)`       — items reordered so every edge from→to
+--                                has from appearing earlier than to.
 --
 -- SAT iff the graph is acyclic; UNSAT iff a cycle exists.
 --
 -- Identity is by Z3 value equality on T. If two items are
--- structurally equal, they're the same vertex.
+-- structurally equal, they're the same vertex. Use distinct values
+-- if you need to distinguish two otherwise-equal nodes.
 
 type Edge<T>(from, to ∈ T)
+
+-- ── How this is encoded ──────────────────────────────────────────
+--
+-- A topological sort is the answer to: "given a partial order
+-- (the edges), find a total order (the sorted sequence) extending
+-- it." Mathematically this has no integer indices in it —
+-- "extending" is a relation on partial orders, and the result IS
+-- the sorted sequence.
+--
+-- In Evident's current constraint vocabulary, "X before Y in
+-- sorted" is expressed via index quantifiers (`∃ i, j : sorted[i]
+-- = X ∧ sorted[j] = Y ∧ i < j`). The indices are an artifact of
+-- how the language exposes sequences (Array<Int, T> + length)
+-- rather than something the math requires. They live entirely
+-- inside the body — the interface and the user-visible contract
+-- have none.
+--
+-- A future `position_of(seq, x) → Int` primitive (lowering to Z3's
+-- `seq.indexof` or a constrained internal Int) would let the body
+-- read as `position_of(sorted, e.from) < position_of(sorted, e.to)`,
+-- removing the quantifiers entirely. See `docs/design/toposort.md`
+-- "Future" for the path.
 
 claim Toposort<T>
     n ∈ Nat
@@ -31,29 +53,46 @@ claim Toposort<T>
     #items = n
     #sorted = n
 
-    -- Internal: position[i] is items[i]'s rank in the sort.
-    position ∈ Seq(Int)
-    #position = n
+    -- Permutation: every items[i] appears somewhere in sorted.
+    -- Combined with `#items = #sorted` and distinct-T-values
+    -- (the identity assumption), this gives a permutation.
+    ∀ i ∈ {0..n - 1} : (∃ j ∈ {0..n - 1} : sorted[j] = items[i])
 
-    -- Range: each position ∈ [0, n).
-    ∀ i ∈ {0..n - 1} : (0 ≤ position[i] ∧ position[i] < n)
+    -- Edge ordering. Find each edge's endpoints in sorted by value
+    -- equality; the earlier-than constraint goes on the indices
+    -- where those endpoints land. No separate `position` array.
+    --
+    -- The quantifier structure is O(m · n²) constraints — for each
+    -- edge, for each potential (i, j) pair. That's the cost of
+    -- "find positions by value equality." A `position_of` primitive
+    -- would drop this to O(m).
+    ∀ k ∈ {0..#edges - 1} : ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : ((sorted[i] = edges[k].from ∧ sorted[j] = edges[k].to) ⇒ i < j)
 
-    -- Permutation: positions all distinct.
-    ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : (i < j ⇒ position[i] ≠ position[j])
+-- ── Reference: the same problem with an explicit `position` Seq ──
+--
+-- The implementation above expresses ordering as a constraint on
+-- `sorted` directly. An earlier version materialized a
+-- `position ∈ Seq(Int)` permutation indexed by items's positions,
+-- with `position[i]` being where items[i] lands in sorted. That
+-- version reads:
+--
+--     position ∈ Seq(Int)
+--     #position = n
+--     ∀ i : 0 ≤ position[i] ∧ position[i] < n
+--     ∀ i, j : i < j ⇒ position[i] ≠ position[j]   -- distinct
+--     ∀ k, i, j :
+--         (items[i] = edges[k].from ∧ items[j] = edges[k].to)
+--             ⇒ position[i] < position[j]
+--     ∀ i : sorted[position[i]] = items[i]            -- materialize
+--
+-- The `position` Seq surfaces every index-arithmetic step the
+-- implementation does to map values to positions. The form above
+-- elides this by quantifying over sorted's positions directly:
+-- "if edge.from happens to be at sorted[i] and edge.to at sorted[j],
+-- then i < j." Same answer, fewer named indices, same constraint
+-- count up to a scalar.
 
-    -- Edge ordering. For each edge, find the items it relates by
-    -- value-equality and constrain their positions. O(m · n²)
-    -- constraints; the alternative would be a separate index Seq
-    -- for edges, which leaks indices to the interface.
-    ∀ k ∈ {0..#edges - 1} : ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : ((items[i] = edges[k].from ∧ items[j] = edges[k].to) ⇒ position[i] < position[j])
-
-    -- Materialize sorted: sorted[position[i]] = items[i].
-    ∀ i ∈ {0..n - 1} : (sorted[position[i]] = items[i])
-
--- ── Tests (per-element-type instantiations) ──────────────────
-
--- For test claims we need a concrete element type. Pick `Int`
--- since it's already available and Z3 equality is trivial.
+-- ── Tests ────────────────────────────────────────────────────────
 
 claim sat_two_edges_4_nodes
     n ∈ Nat
