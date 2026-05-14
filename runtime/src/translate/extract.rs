@@ -398,6 +398,9 @@ pub(super) fn extract_set<'ctx>(
 /// Inverse of `extract_set`: pin a SetVar to equal a Value::Set*
 /// (membership for each element, plus set-equality against the
 /// constructed literal so the set contains *no other* members).
+/// Also populates `candidates` so `#s` (cardinality) sees the
+/// element count — without this, a `given` of a set leaves
+/// candidates empty and downstream `#s` drops.
 pub(super) fn assert_set_given<'ctx>(
     var: &Var<'ctx>,
     value: &Value,
@@ -406,22 +409,25 @@ pub(super) fn assert_set_given<'ctx>(
     use z3::ast::Set as Z3Set;
     use z3::Sort;
     match (var, value) {
-        (Var::SetVar { set, elem: SeqElem::Int, .. }, Value::SetInt(items)) => {
+        (Var::SetVar { set, elem: SeqElem::Int, candidates }, Value::SetInt(items)) => {
             let mut lit = Z3Set::empty(ctx, &Sort::int(ctx));
             for n in items { lit = lit.add(&Int::from_i64(ctx, *n)); }
+            *candidates.borrow_mut() = Some(items.iter().map(|n| Value::Int(*n)).collect());
             Some(set._eq(&lit))
         }
-        (Var::SetVar { set, elem: SeqElem::Bool, .. }, Value::SetBool(items)) => {
+        (Var::SetVar { set, elem: SeqElem::Bool, candidates }, Value::SetBool(items)) => {
             let mut lit = Z3Set::empty(ctx, &Sort::bool(ctx));
             for b in items { lit = lit.add(&Bool::from_bool(ctx, *b)); }
+            *candidates.borrow_mut() = Some(items.iter().map(|b| Value::Bool(*b)).collect());
             Some(set._eq(&lit))
         }
-        (Var::SetVar { set, elem: SeqElem::Str, .. }, Value::SetStr(items)) => {
+        (Var::SetVar { set, elem: SeqElem::Str, candidates }, Value::SetStr(items)) => {
             let mut lit = Z3Set::empty(ctx, &Sort::string(ctx));
             for s in items {
                 let z = Z3Str::from_str(ctx, s).ok()?;
                 lit = lit.add(&z);
             }
+            *candidates.borrow_mut() = Some(items.iter().map(|s| Value::Str(s.clone())).collect());
             Some(set._eq(&lit))
         }
         _ => None,

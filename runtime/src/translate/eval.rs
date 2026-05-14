@@ -28,8 +28,8 @@ use z3::{Context, Params, SatResult, Solver};
 
 use crate::ast::*;
 use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
-use super::declare::{apply_seq_lengths, declare_var};
-use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
+use super::declare::{apply_seq_lengths, apply_set_candidates, declare_var};
+use super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;
 use super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 
@@ -212,6 +212,9 @@ pub fn build_cache(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
+    // Populate Set var candidates from given Value::Set* — needed before
+    // body translation so `#s` cardinality folds to a literal count.
+    apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
@@ -254,6 +257,8 @@ pub fn sample_cached_inner<'ctx>(
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
+                    cached.solver.assert(&b);
+                } else if let Some(b) = assert_set_given(var, value, ctx) {
                     cached.solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
@@ -323,6 +328,13 @@ pub fn sample_cached_inner<'ctx>(
                     // Set blocking is non-trivial (would need to negate
                     // membership for each candidate ∧ cardinality); skipped
                     // for v1.
+                }
+                Var::DatatypeSetVar { .. } => {
+                    // Composite-element Set extraction is unsupported in v1
+                    // — we'd need per-field model-eval over each candidate's
+                    // accessor application. The constraint side (∈, =, ⊆,
+                    // #) all work; check/all_solutions just omits the
+                    // binding from the output.
                 }
                 Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
                     let extracted = if fields.is_empty() {
@@ -404,6 +416,8 @@ pub fn run_cached<'ctx>(
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     cached.solver.assert(&b);
+                } else if let Some(b) = assert_set_given(var, value, ctx) {
+                    cached.solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
                 }
@@ -449,6 +463,7 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
                     Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
                         let extracted = if fields.is_empty() {
                             extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
@@ -549,6 +564,9 @@ pub fn evaluate(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
+    // Populate Set candidates from given Value::Set* before body
+    // translation — `#s` reads `candidates.len()`.
+    apply_set_candidates(&env, given);
 
     // Pass 2: translate body constraints and assert. Passthrough items
     // also contribute their included claim's constraints under the
@@ -576,6 +594,8 @@ pub fn evaluate(
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
+                    solver.assert(&b);
+                } else if let Some(b) = assert_set_given(var, value, ctx) {
                     solver.assert(&b);
                 } else {
                     eprintln!("warning: type mismatch for given {:?}", name);
@@ -629,6 +649,7 @@ pub fn evaluate(
                             bindings.insert(name.clone(), v);
                         }
                     }
+                    Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
                     Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
                         let extracted = if fields.is_empty() {
                             extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
@@ -707,6 +728,9 @@ pub fn evaluate_with_extra_assertion(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
+    // Populate Set var candidates from given Value::Set* — needed before
+    // body translation so `#s` cardinality folds to a literal count.
+    apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
@@ -783,6 +807,9 @@ pub fn evaluate_with_extra_assertions(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
+    // Populate Set var candidates from given Value::Set* — needed before
+    // body translation so `#s` cardinality folds to a literal count.
+    apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
@@ -1111,6 +1138,7 @@ fn extract_binding(
                 bindings.insert(name.to_string(), v);
             }
         }
+        Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
         Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
             let extracted = if fields.is_empty() {
                 extract_seq_enum(arr, len, type_name, *dt, model, ctx, enums)

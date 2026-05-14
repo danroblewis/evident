@@ -201,21 +201,47 @@ pub(super) fn declare_var_named(
         }
         s if s.starts_with("Set(") && s.ends_with(')') => {
             let inner = &s[4..s.len() - 1];
-            let (eltype, elem) = match inner {
-                "Int"    => (Sort::int(ctx),    SeqElem::Int),
-                "Bool"   => (Sort::bool(ctx),   SeqElem::Bool),
-                "String" => (Sort::string(ctx), SeqElem::Str),
+            match inner {
+                "Int" | "Bool" | "String" => {
+                    let (eltype, elem) = match inner {
+                        "Int"    => (Sort::int(ctx),    SeqElem::Int),
+                        "Bool"   => (Sort::bool(ctx),   SeqElem::Bool),
+                        "String" => (Sort::string(ctx), SeqElem::Str),
+                        _ => unreachable!(),
+                    };
+                    let set = Set::new_const(ctx, prefix, &eltype);
+                    env.insert(env_key.to_string(), Var::SetVar {
+                        set,
+                        elem,
+                        candidates: std::rc::Rc::new(std::cell::RefCell::new(None)),
+                    });
+                }
+                user_type if schemas.contains_key(user_type) => {
+                    let Some(reg) = registry else {
+                        eprintln!(
+                            "warning: Set({}) requires a DatatypeRegistry; \
+                             skipping declaration of {}",
+                            user_type, prefix
+                        );
+                        return post;
+                    };
+                    let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg) else {
+                        return post; // warning already emitted by get_or_build_datatype
+                    };
+                    let set = Set::new_const(ctx, prefix, &dt.sort);
+                    env.insert(env_key.to_string(), Var::DatatypeSetVar {
+                        set,
+                        type_name: user_type.to_string(),
+                        dt,
+                        fields,
+                        candidates: std::rc::Rc::new(std::cell::RefCell::new(None)),
+                    });
+                }
                 other => {
                     eprintln!("warning: unsupported Set element type {} for {}", other, prefix);
                     return post;
                 }
-            };
-            let set = Set::new_const(ctx, prefix, &eltype);
-            env.insert(env_key.to_string(), Var::SetVar {
-                set,
-                elem,
-                candidates: std::rc::Rc::new(std::cell::RefCell::new(None)),
-            });
+            }
         }
         _ => {
             // Enum type? Look up in the EnumRegistry, build a Z3 const
@@ -290,5 +316,39 @@ pub(super) fn apply_seq_lengths<'ctx>(
             _ => continue,
         };
         env.insert(name.clone(), new_var);
+    }
+}
+
+/// Pre-translation pass that populates `candidates` on Set vars whose
+/// bindings come from `given`. Mirrors `apply_seq_lengths` but for the
+/// Set cardinality path: `#s` (translated by `Expr::Cardinality`) reads
+/// `candidates.len()`, so candidates have to be set BEFORE body
+/// constraints translate. The assertion that pins the set's contents
+/// (membership against the literal) still happens later in `run_cached`
+/// — this pass only fills in the count.
+pub(super) fn apply_set_candidates<'ctx>(
+    env: &HashMap<String, Var<'ctx>>,
+    given: &HashMap<String, super::types::Value>,
+) {
+    use super::types::Value;
+    for (name, value) in given {
+        let Some(var) = env.get(name) else { continue };
+        if let Var::SetVar { candidates, .. } = var {
+            match value {
+                Value::SetInt(items) => {
+                    *candidates.borrow_mut() =
+                        Some(items.iter().map(|n| Value::Int(*n)).collect());
+                }
+                Value::SetBool(items) => {
+                    *candidates.borrow_mut() =
+                        Some(items.iter().map(|b| Value::Bool(*b)).collect());
+                }
+                Value::SetStr(items) => {
+                    *candidates.borrow_mut() =
+                        Some(items.iter().map(|s| Value::Str(s.clone())).collect());
+                }
+                _ => {}
+            }
+        }
     }
 }

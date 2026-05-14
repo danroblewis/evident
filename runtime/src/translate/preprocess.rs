@@ -64,6 +64,18 @@ fn walk_for_quantifier_bounds(e: &Expr, out: &mut HashSet<String>) {
             walk_for_quantifier_bounds(lhs, out);
             walk_for_quantifier_bounds(rhs, out);
         }
+        // `#name` outside a quantifier range is still structural —
+        // its value drives seq-length / set-cardinality propagation
+        // (`#items = #sorted` chains a Set's cardinality into a Seq's
+        // length, which then unrolls a downstream quantifier). Without
+        // this, a top-level `#items` only fires for `items` if it ALSO
+        // appears in a quantifier range, which Toposort<T>'s body
+        // doesn't directly do.
+        Expr::Cardinality(inner) => {
+            if let Expr::Identifier(name) = inner.as_ref() {
+                out.insert(name.clone());
+            }
+        }
         _ => {}
     }
 }
@@ -256,7 +268,9 @@ pub(super) fn collect_seq_lengths_with_schemas(
     schemas: Option<&HashMap<String, SchemaDecl>>,
 ) -> HashMap<String, i64> {
     let mut out = HashMap::new();
-    // Seq lengths from `given` Seq values are exact.
+    // Seq lengths from `given` Seq values are exact. Set cardinalities
+    // are also "lengths" for the purpose of `#s` propagation — they
+    // feed `#s = #p` chains where one side is a Set and the other a Seq.
     for (k, v) in given {
         let len = match v {
             Value::SeqInt(v)       => v.len() as i64,
@@ -264,6 +278,9 @@ pub(super) fn collect_seq_lengths_with_schemas(
             Value::SeqStr(v)       => v.len() as i64,
             Value::SeqComposite(v) => v.len() as i64,
             Value::SeqEnum(v)      => v.len() as i64,
+            Value::SetInt(v)       => v.len() as i64,
+            Value::SetBool(v)      => v.len() as i64,
+            Value::SetStr(v)       => v.len() as i64,
             _ => continue,
         };
         out.insert(k.clone(), len);
@@ -277,12 +294,58 @@ pub(super) fn collect_seq_lengths_with_schemas(
     for (k, v) in given {
         if let Value::Int(n) = v { pinned.insert(k.clone(), *n); }
     }
+    // Fixed-point. Two kinds of discoveries can extend `pinned`
+    // (Int values) and `out` (Seq lengths) each pass:
+    //   * `#seq = N` pins `out["seq"] = N`.
+    //   * `n = N` (Int = literal) seeds `pinned["n"] = N`, so a
+    //     later `#seq = n` resolves.
     let mut changed = true;
     while changed {
         changed = false;
         walk_constraints(body, schemas, &pinned, &mut out, &mut changed);
+        // Also scan for `name = literal_int_expr` and add to `pinned`
+        // so `#seq = name` in a later pass resolves.
+        scan_int_pins(body, schemas, &mut pinned, &out, &mut changed);
     }
     out
+}
+
+/// Walk body Eq constraints for `name = literal_int_expr` patterns
+/// (where the RHS reduces to a concrete Int via `eval_pure_int`)
+/// and add them to `pinned`. Lets `collect_seq_lengths` resolve
+/// chains like `n = 3 ; #position = n` where the `n` pin only
+/// appears in body, not in `given`. Recurses into passthroughs.
+fn scan_int_pins(
+    body: &[BodyItem],
+    schemas: Option<&HashMap<String, SchemaDecl>>,
+    pinned: &mut HashMap<String, i64>,
+    seq_lens: &HashMap<String, i64>,
+    changed: &mut bool,
+) {
+    for item in body {
+        match item {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) => {
+                for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                    if let Expr::Identifier(name) = a.as_ref() {
+                        if !pinned.contains_key(name) {
+                            if let Some(v) = eval_pure_int(b, pinned, seq_lens) {
+                                pinned.insert(name.clone(), v);
+                                *changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(schemas) = schemas {
+                    if let Some(claim) = schemas.get(claim_name) {
+                        scan_int_pins(&claim.body, Some(schemas), pinned, seq_lens, changed);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Walk a body's Eq constraints for cardinality pins, recursing into

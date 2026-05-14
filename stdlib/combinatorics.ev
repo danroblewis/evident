@@ -1,0 +1,103 @@
+-- Combinatorial relations between Sets and Sequences. A permutation
+-- is an ordered arrangement of a set, so its output type is Seq; a
+-- combination is an unordered subset, so its type is Set. Use the
+-- mathematical typing — the runtime tracks both.
+
+-- ── Permutation ──────────────────────────────────────────────
+--
+-- `p` is a permutation of the set `s` — same elements, in some order.
+-- Asserts:
+--   * `#s = #p` — same cardinality.
+--   * `distinct(p)` — the sequence has no duplicates (sets don't have
+--     duplicates by construction, so we only assert it on the seq).
+--   * `∀ x ∈ p : x ∈ s` — every element of the sequence comes from
+--     the set. With matching cardinality + distinctness, this pins
+--     `p` to an ordering of `s`'s elements.
+
+claim Permutation<T>(s ∈ Set(T), p ∈ Seq(T))
+    #s = #p
+    distinct(p)
+    ∀ x ∈ p : x ∈ s
+
+-- ── Combination ──────────────────────────────────────────────
+--
+-- `c` is a combination of `of` — a subset. Order doesn't matter (both
+-- are Sets), duplicates don't exist by definition. Just subset.
+
+claim Combination<T>(c ∈ Set(T), of ∈ Set(T))
+    ∀ x ∈ c : x ∈ of
+
+-- ── Permutation tests ────────────────────────────────────────
+
+claim sat_identity_is_permutation
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {1, 2, 3}
+    p = ⟨1, 2, 3⟩
+    Permutation<Int>(s, p)
+
+claim sat_reversed_is_permutation
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {1, 2, 3}
+    p = ⟨3, 2, 1⟩
+    Permutation<Int>(s, p)
+
+claim sat_p_picks_some_permutation
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {10, 20, 30}
+    #p = 3
+    Permutation<Int>(s, p)
+    -- Z3 picks some ordering of {10, 20, 30} for p.
+
+claim unsat_different_elements
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {1, 2, 3}
+    p = ⟨1, 2, 4⟩
+    Permutation<Int>(s, p)
+
+claim unsat_different_lengths
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {1, 2, 3}
+    p = ⟨1, 2⟩
+    Permutation<Int>(s, p)
+
+claim unsat_p_has_duplicates
+    s ∈ Set(Int)
+    p ∈ Seq(Int)
+    s = {1, 2, 3}
+    p = ⟨1, 1, 2⟩
+    Permutation<Int>(s, p)
+
+-- ── Combination tests ────────────────────────────────────────
+
+claim sat_subset_is_combination
+    of ∈ Set(Int)
+    c ∈ Set(Int)
+    of = {1, 2, 3, 4, 5}
+    c = {2, 4}
+    Combination<Int>(c, of)
+
+claim sat_empty_combination
+    of ∈ Set(Int)
+    c ∈ Set(Int)
+    of = {1, 2, 3}
+    c = {}
+    Combination<Int>(c, of)
+
+claim sat_full_combination
+    of ∈ Set(Int)
+    c ∈ Set(Int)
+    of = {1, 2, 3}
+    c = {1, 2, 3}
+    Combination<Int>(c, of)
+
+claim unsat_combination_has_outsider
+    of ∈ Set(Int)
+    c ∈ Set(Int)
+    of = {1, 2, 3}
+    c = {2, 99}
+    Combination<Int>(c, of)

@@ -43,6 +43,20 @@ pub enum Keyword {
 pub struct SchemaDecl {
     pub keyword: Keyword,
     pub name: String,
+    /// Formal type parameters declared with the schema. `type Edge<T>(...)`
+    /// captures `["T"]`; `type Pair<A, B>(...)` captures `["A", "B"]`.
+    /// Empty for non-generic schemas. At translation time the
+    /// `monomorphize_generics` pass produces concrete copies of each
+    /// generic schema for every distinct `<args>` instantiation found
+    /// in the program; the original generic SchemaDecl is kept as a
+    /// template and is never directly translated to Z3.
+    ///
+    /// Type-parameter names follow the convention of being capitalized
+    /// single letters or short capitalized identifiers (`T`, `A`, `B`,
+    /// `K`, `V`, `Item`, `Element`, …). They live in a separate
+    /// namespace from concrete type names — `T` inside a generic body
+    /// is *only* a type variable, never an existing concrete type.
+    pub type_params: Vec<String>,
     pub body: Vec<BodyItem>,
     /// Number of leading body items that came from the first-line
     /// param list — `claim Foo(a ∈ X, b ∈ Y) ...` desugars to those

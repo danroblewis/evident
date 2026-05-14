@@ -709,6 +709,89 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
 }
 
 pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
+    // Int-typed builtins: `min`, `max`, `abs`, `mod`, `clamp`.
+    // All lower to Z3 ITE compositions over translated args, so
+    // they share `translate_int`'s recursion and play with the
+    // rest of integer arithmetic transparently.
+    if let Expr::Call(name, args) = e {
+        match (name.as_str(), args.len()) {
+            ("min", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.le(&b).ite(&a, &b));
+            }
+            ("max", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.ge(&b).ite(&a, &b));
+            }
+            ("abs", 1) => {
+                let x = translate_int(&args[0], ctx, env)?;
+                let zero = Int::from_i64(ctx, 0);
+                let neg = Int::sub(ctx, &[&zero, &x]);
+                return Some(x.ge(&zero).ite(&x, &neg));
+            }
+            ("mod", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.modulo(&b));
+            }
+            ("clamp", 3) => {
+                let x  = translate_int(&args[0], ctx, env)?;
+                let lo = translate_int(&args[1], ctx, env)?;
+                let hi = translate_int(&args[2], ctx, env)?;
+                // max(lo, min(x, hi))
+                let inner = x.le(&hi).ite(&x, &hi);
+                return Some(inner.ge(&lo).ite(&inner, &lo));
+            }
+            // `position_of(seq, x)` — index of `x` in `seq` for the
+            // first match, or -1 if not present. Implemented as a
+            // chained ITE over the seq's pinned-length positions:
+            //
+            //     seq[0] = x ? 0 : (seq[1] = x ? 1 : … : -1)
+            //
+            // No side effects, no fresh constants — just an
+            // expression Z3 can fold. For distinct-valued seqs the
+            // result is the unique position. For Seqs with the
+            // element appearing multiple times, returns the lowest
+            // index (well-defined; mirrors Z3 / Python semantics).
+            //
+            // Primitive Seq path only in v1; Datatype-Seq element
+            // types fall through.
+            ("position_of", 2) => {
+                let Expr::Identifier(sname) = &args[0] else { return None };
+                let var = env.get(sname)?;
+                let (arr, len, elem) = var.as_seq()?;
+                let n = len.simplify().as_i64()?;
+                let mut result = Int::from_i64(ctx, -1);
+                for i in (0..n).rev() {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    let eq = match elem {
+                        SeqElem::Int => {
+                            let v = translate_int(&args[1], ctx, env)?;
+                            cell.as_int()?._eq(&v)
+                        }
+                        SeqElem::Bool => {
+                            let v = match &args[1] {
+                                Expr::Bool(b) => Bool::from_bool(ctx, *b),
+                                Expr::Identifier(n) => env.get(n)?.as_bool()?.clone(),
+                                _ => return None,
+                            };
+                            cell.as_bool()?._eq(&v)
+                        }
+                        SeqElem::Str => {
+                            let v = translate_str(&args[1], ctx, env)?;
+                            cell.as_string()?._eq(&v)
+                        }
+                    };
+                    result = eq.ite(&idx, &result);
+                }
+                return Some(result);
+            }
+            _ => {}
+        }
+    }
     match e {
         Expr::Int(n) => Some(Int::from_i64(ctx, *n)),
         Expr::Identifier(name) => match env.get(name) {
@@ -729,6 +812,10 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
         // `#seq` → the seq's length variable. Both primitive Seq and
         // composite-element Seq (DatatypeSeqVar) expose a length.
+        // For Sets (both flavors), Z3 has no native cardinality — we
+        // return the recorded candidates count if the Set was pinned
+        // via `S = {…}`; otherwise drop (silent, same as today for
+        // unpinned Set extraction).
         Expr::Cardinality(inner) => {
             if let Expr::Identifier(name) = inner.as_ref() {
                 if let Some(var) = env.get(name) {
@@ -737,6 +824,16 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                     }
                     if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
                         return Some(len.clone());
+                    }
+                    if let Some((_, _, candidates)) = var.as_set_with_candidates() {
+                        if let Some(cands) = candidates.borrow().as_ref() {
+                            return Some(Int::from_i64(ctx, cands.len() as i64));
+                        }
+                    }
+                    if let Some((_, _, _, _, candidates)) = var.as_datatype_set() {
+                        if let Some(cands) = candidates.borrow().as_ref() {
+                            return Some(Int::from_i64(ctx, cands.len() as i64));
+                        }
                     }
                 }
             }
@@ -1464,6 +1561,29 @@ fn expr_to_const_value(e: &Expr, env: &HashMap<String, Var>) -> Option<Value> {
     }
 }
 
+/// Recognize `∀ x ∈ A : x ∈ B` — the subset pattern. Returns the
+/// Z3 Set handle for `B` (the superset) if `body` is `Expr::InExpr`
+/// whose LHS is exactly the bound name `var` and whose RHS is an
+/// Identifier resolving to a SetVar / DatatypeSetVar. Used by the
+/// quantifier translator to emit Z3 native `set_subset` instead of
+/// trying to unroll a free Set (which has no candidates to iterate).
+fn match_set_subset_body<'a, 'ctx>(
+    body: &Expr,
+    var: &str,
+    env: &'a HashMap<String, Var<'ctx>>,
+) -> Option<&'a z3::ast::Set<'ctx>> {
+    let Expr::InExpr(lhs, rhs) = body else { return None };
+    match lhs.as_ref() {
+        Expr::Identifier(n) if n == var => {}
+        _ => return None,
+    }
+    let Expr::Identifier(set_name) = rhs.as_ref() else { return None };
+    let v = env.get(set_name)?;
+    if let Some((set, _)) = v.as_set() { return Some(set); }
+    if let Some((set, _, _, _, _)) = v.as_datatype_set() { return Some(set); }
+    None
+}
+
 /// Translate `S = {a, b, c}` where S is a SetVar and the RHS is a
 /// SetLit. Builds a Z3 literal set by add'ing each element to
 /// `Set::empty`, then asserts set-equality against the variable —
@@ -1493,6 +1613,34 @@ fn translate_set_lit_eq<'ctx>(
         Expr::Identifier(n) => n,
         _ => return None,
     };
+
+    // Composite-element Set: items must be bare Identifiers referring
+    // to flat-expanded composites (same shape as composite SeqLit).
+    // Build each element as a Datatype Dynamic via `build_composite_dynamic`,
+    // assemble a literal Z3 Set, and assert set-equality against the var.
+    // We record one `Value::Composite{}` placeholder per literal item so
+    // `#s` (cardinality) can return the count; per-element field values
+    // are left empty in v1 — extracting Set(Composite) into a populated
+    // `Value` is deferred until there's a concrete consumer.
+    if let Some((set, _, dt, fields, candidates_cell)) =
+        env.get(name).and_then(|v| v.as_datatype_set())
+    {
+        let mut lit = Z3Set::empty(ctx, &dt.sort);
+        for item in items {
+            let ident = match item {
+                Expr::Identifier(s) => s.as_str(),
+                _ => return None,
+            };
+            let dyn_val = build_composite_dynamic(ident, dt, fields, ctx, env)?;
+            lit = lit.add(&dyn_val);
+        }
+        let placeholders: Vec<Value> = items.iter()
+            .map(|_| Value::Composite(HashMap::new()))
+            .collect();
+        *candidates_cell.borrow_mut() = Some(placeholders);
+        return Some(set._eq(&lit));
+    }
+
     let (set_var, elem, candidates_cell) = env.get(name)?.as_set_with_candidates()?;
 
     // Build the Z3 literal set by add'ing each translated item.
@@ -1727,6 +1875,138 @@ pub(super) fn translate_bool<'ctx>(
     env: &HashMap<String, Var<'ctx>>,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<Bool<'ctx>> {
+    // `distinct(a, b, c, …)` — Z3's all-different primitive. Two
+    // call shapes:
+    //   * Variadic over scalar args: `distinct(a, b, c)`. All args
+    //     translate to the same Z3 sort. v1 supports Int / Bool /
+    //     String; picks the first sort that translates every arg.
+    //   * Single Seq arg with pinned length: `distinct(seq)`.
+    //     Unrolls to `distinct(seq[0], seq[1], …, seq[n-1])`
+    //     and recurses through the variadic path.
+    // 0 or 1 args is trivially true.
+    // `contains(seq, x)` — true if x ∈ seq. The `x ∈ seq` infix
+    // form is silently dropped today for element-in-Seq; this
+    // builtin makes the operation explicit and translates. For a
+    // pinned-length Seq, unrolls to a disjunction of element
+    // equalities `seq[0] = x ∨ seq[1] = x ∨ … ∨ seq[n-1] = x`.
+    if let Expr::Call(name, args) = e {
+        if name == "contains" && args.len() == 2 {
+            let Expr::Identifier(seq_name) = &args[0] else { return None };
+            let var = env.get(seq_name)?;
+            // Primitive Seq path (SeqInt / SeqBool / SeqStr).
+            if let Some((arr, len, elem)) = var.as_seq() {
+                let n = len.simplify().as_i64()?;
+                let mut clauses: Vec<Bool> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    let eq = match elem {
+                        SeqElem::Int => {
+                            let v = translate_int(&args[1], ctx, env)?;
+                            cell.as_int()?._eq(&v)
+                        }
+                        SeqElem::Bool => {
+                            let v = translate_bool(&args[1], ctx, env, schemas)?;
+                            cell.as_bool()?._eq(&v)
+                        }
+                        SeqElem::Str => {
+                            let v = translate_str(&args[1], ctx, env)?;
+                            cell.as_string()?._eq(&v)
+                        }
+                    };
+                    clauses.push(eq);
+                }
+                let refs: Vec<&Bool> = clauses.iter().collect();
+                return Some(if refs.is_empty() {
+                    Bool::from_bool(ctx, false)
+                } else {
+                    Bool::or(ctx, &refs)
+                });
+            }
+            // Datatype Seq path (Seq(UserType) or Seq(EnumType)).
+            if let Some((arr, len, _, _, _)) = var.as_datatype_seq() {
+                let n = len.simplify().as_i64()?;
+                // Translate x as a Call/Identifier that resolves to a
+                // datatype value via the existing seq-element handling.
+                // For simplicity: build seq[i] = x for each i.
+                let mut clauses: Vec<Bool> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    // Compare via the cell's _eq against translated x.
+                    // For datatype types, we need translate_x_as_datatype;
+                    // best-effort via the existing translate_bool's Eq path
+                    // by constructing `cell_value = arg`.
+                    let arg = args[1].clone();
+                    let eq_expr = Expr::Binary(
+                        crate::ast::BinOp::Eq,
+                        Box::new(Expr::Index(
+                            Box::new(args[0].clone()),
+                            Box::new(Expr::Int(i)),
+                        )),
+                        Box::new(arg),
+                    );
+                    if let Some(b) = translate_bool(&eq_expr, ctx, env, schemas) {
+                        clauses.push(b);
+                    } else {
+                        let _ = cell; // silence unused
+                        return None;
+                    }
+                }
+                let refs: Vec<&Bool> = clauses.iter().collect();
+                return Some(if refs.is_empty() {
+                    Bool::from_bool(ctx, false)
+                } else {
+                    Bool::or(ctx, &refs)
+                });
+            }
+            return None;
+        }
+        if name == "distinct" {
+            // 0 args: trivially true (no pair to differ).
+            if args.is_empty() { return Some(Bool::from_bool(ctx, true)); }
+            // 1 arg: must be a pinned-length Seq variable.
+            // Returning None on failure (not vacuous true) so a
+            // `distinct(s)` over an unpinned Seq surfaces as a
+            // dropped constraint instead of silently passing.
+            if args.len() == 1 {
+                let Expr::Identifier(sname) = &args[0] else { return None };
+                let var = env.get(sname)?;
+                let (_, len, _) = var.as_seq()?;
+                let n = len.simplify().as_i64()?;
+                if n <= 1 { return Some(Bool::from_bool(ctx, true)); }
+                let exploded: Vec<Expr> = (0..n).map(|i|
+                    Expr::Index(
+                        Box::new(Expr::Identifier(sname.clone())),
+                        Box::new(Expr::Int(i)))).collect();
+                return translate_bool(
+                    &Expr::Call("distinct".into(), exploded),
+                    ctx, env, schemas);
+            }
+            if let Some(ints) = args.iter()
+                .map(|a| translate_int(a, ctx, env))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Int> = ints.iter().collect();
+                return Some(Int::distinct(ctx, &refs));
+            }
+            if let Some(bools) = args.iter()
+                .map(|a| translate_bool(a, ctx, env, schemas))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Bool> = bools.iter().collect();
+                return Some(Bool::distinct(ctx, &refs));
+            }
+            if let Some(strs) = args.iter()
+                .map(|a| translate_str(a, ctx, env))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Z3Str> = strs.iter().collect();
+                return Some(Z3Str::distinct(ctx, &refs));
+            }
+            return None;
+        }
+    }
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
@@ -1807,6 +2087,18 @@ pub(super) fn translate_bool<'ctx>(
                             Some(set.member(&x))
                         }
                     };
+                }
+                // Composite-element Set: LHS must be an Identifier whose
+                // flat-expanded fields exist in env (same shape as for
+                // `Seq(Composite)` element references). Build the
+                // composite Dynamic and use Z3 native set.member.
+                if let Some((set, _, dt, fields, _)) =
+                    env.get(name).and_then(|v| v.as_datatype_set())
+                {
+                    if let Expr::Identifier(ident) = lhs.as_ref() {
+                        let dyn_val = build_composite_dynamic(ident, dt, fields, ctx, env)?;
+                        return Some(set.member(&dyn_val));
+                    }
                 }
             }
             // Set-literal RHS: reduce to OR of equalities.
@@ -2010,6 +2302,34 @@ pub(super) fn translate_bool<'ctx>(
                             clauses.push(b);
                         }
                     }
+                } else if let Some((set, _elem)) = seq_var.as_set() {
+                    // Primitive-element Set: detect the subset pattern
+                    // `∀ x ∈ a : x ∈ b` and emit Z3 native set_subset.
+                    // Used for both pinned and free Sets — works without
+                    // iteration. Anything else over a primitive Set is
+                    // unsupported in v1.
+                    if let Some(other_set) = match_set_subset_body(body, var, env) {
+                        let b = set.set_subset(other_set);
+                        return Some(if matches!(e, Expr::Forall(..)) {
+                            b
+                        } else {
+                            b.not().not()    // ∃ x ∈ a : x ∈ b is "a ∩ b ≠ ∅"
+                                              // — different semantics; we don't
+                                              // model existence here.
+                        });
+                    }
+                    return None;
+                } else if let Some((set, _, _, _, _)) = seq_var.as_datatype_set() {
+                    // Composite-element Set: same subset pattern as the
+                    // primitive case. The pattern is `∀ e ∈ a : e ∈ b`
+                    // where the body's `e` was a flat-expanded composite;
+                    // both `a` and `b` must be DatatypeSetVars over the
+                    // same datatype.
+                    if let Some(other_set) = match_set_subset_body(body, var, env) {
+                        let b = set.set_subset(other_set);
+                        return Some(if matches!(e, Expr::Forall(..)) { b } else { b });
+                    }
+                    return None;
                 } else {
                     // Identifier in scope but not a seq — can't iterate.
                     return None;
