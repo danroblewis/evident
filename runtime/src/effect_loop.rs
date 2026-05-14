@@ -105,17 +105,30 @@ pub(crate) fn collect_dispatchable_effects(
     //     name = `<binding>[i]`. Adjacent elements get an implicit edge
     //     (intra-Seq order is part of the contract).
     //
-    // Different bindings can refer to the SAME effect value — e.g.
-    // `sky_effs[0]` and bare `sky_eff` are both the "set sky color"
-    // LibCall, and `phase_chain[k]` mirrors whatever effect it
-    // references. Build a canonical-name map keyed on effect value
-    // so the dispatch list has each unique effect exactly once.
-    // Aliases (secondary names) get resolved to their canonical name
-    // when we translate ordering edges below — so a chain like
-    // `phase_chain ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩` still
-    // contributes the right ordering edge between the canonical
-    // sky and clear nodes, even though phase_chain's own synthetic
-    // node names don't survive dedup.
+    // Two kinds of `Seq(Effect)` bindings:
+    //   * **Dispatch bundles** — populated by a subclaim invocation
+    //     like `win.draw_rect(r, plat_0_effs)`. The SeqLit assignment
+    //     lives inside the subclaim's body, not the outer schema's.
+    //     The outer schema only sees the binding name; the runtime
+    //     synthesizes `name[i]` nodes for each element with auto-
+    //     edges (color before fill), since those nodes are the only
+    //     dispatch handle.
+    //   * **Ordering declarations** — written explicitly in the
+    //     outer body as `name = ⟨ref1, ref2, …⟩` (e.g. `sky_effs`,
+    //     `phase_chain`). The elements are references to other
+    //     dispatchable bindings; their effect values are ALREADY
+    //     dispatched via those references. Synthesizing nodes for
+    //     them would create duplicate dispatches AND, since the
+    //     same effect can legitimately appear multiple times in
+    //     such a chain (e.g. when two rects share a color, the
+    //     state-changing `set_color` effect must fire BEFORE EACH
+    //     fill that wants that color), value-based dedup would
+    //     wrongly drop the redundant set_color and let the wrong
+    //     color leak through.
+    //
+    // So: ordering declarations contribute EDGES only, not nodes.
+    // The chain-extraction walks their SeqLit and turns adjacent
+    // references into ordering edges between existing nodes.
     // A `Seq(Effect)` binding has a body SeqLit when the user wrote
     // `name = ⟨…⟩` explicitly (ordering declarations like phase_chain,
     // or trivial bundles like sky_effs). Bindings WITHOUT a body
@@ -158,18 +171,21 @@ pub(crate) fn collect_dispatchable_effects(
                 let is_effect_seq = !items.is_empty() && items.iter().all(|it|
                     matches!(it, Value::Enum { enum_name, .. } if enum_name == "Effect")
                 );
-                if is_effect_seq {
-                    let emit_auto = !has_body_seqlit.contains(name.as_str());
+                // Ordering declarations have a body SeqLit; their
+                // elements are references to other dispatchable bindings,
+                // not fresh dispatch handles. Skip node creation
+                // entirely for these — the chain-extraction below will
+                // produce the ordering edges between the referenced
+                // existing nodes.
+                if is_effect_seq && !has_body_seqlit.contains(name.as_str()) {
                     let mut prev: Option<String> = None;
                     for (i, item) in items.iter().enumerate() {
                         if let Ok(e) = ast_decoder::decode_effect(item) {
                             let syn = format!("{}[{}]", name, i);
                             node_values.insert(syn.clone(), e);
                             all_names.push(syn.clone());
-                            if emit_auto {
-                                if let Some(p) = prev.take() {
-                                    all_auto_edges.push((p, syn.clone()));
-                                }
+                            if let Some(p) = prev.take() {
+                                all_auto_edges.push((p, syn.clone()));
                             }
                             prev = Some(syn);
                         }
@@ -181,17 +197,24 @@ pub(crate) fn collect_dispatchable_effects(
     }
     if all_names.is_empty() { return Vec::new(); }
 
-    // Canonical name = first occurrence per unique Effect value.
-    // `Effect` doesn't derive Hash (Real-variant payload is f64),
-    // so we keep `(Effect, canonical_name)` pairs and linear-search.
-    // Mario's ~50 nodes per tick run sub-millisecond.
+    // Per-effect-value dedup, narrowly scoped: when two distinct
+    // dispatch nodes happen to share the same Effect value (e.g.
+    // bare `sky_eff` bound by `set_draw_color` AND `sky_effs[0]`
+    // synthesized from the `sky_effs` Seq, both decoding to the
+    // identical LibCall), we want exactly one dispatch. First-seen
+    // wins as the canonical; the alias map collapses any auto-edge
+    // referencing the alias back onto the canonical.
+    //
+    // Importantly, ordering-declaration bindings (e.g. phase_chain)
+    // never reach this code — their elements aren't added as nodes
+    // above — so we don't accidentally drop legitimate
+    // re-applications of a stateful effect like `set_color` that
+    // need to fire before each consumer.
     fn effect_eq(a: &Effect, b: &Effect) -> bool {
-        // PartialEq isn't derived either but the existing
-        // collect_dispatchable_effects' seen-list compared `Value`s
-        // via `==`. We rebuilt nodes from Values, so two same-valued
-        // bindings produce structurally-equal Effect ASTs we can
-        // detect by serializing — Debug is enough for the dedup
-        // semantics (only used as a hash-key surrogate).
+        // Effect derives Clone+Debug but not PartialEq (the Real
+        // variant carries f64). Compare via Debug — coarse but
+        // suffices for the "is this LibCall identical to that
+        // LibCall" question we're asking.
         format!("{:?}", a) == format!("{:?}", b)
     }
     let mut canonical: Vec<(Effect, String)> = Vec::new();
@@ -211,9 +234,6 @@ pub(crate) fn collect_dispatchable_effects(
         }
     }
 
-    // Rewrite auto-edges to canonical names; drop self-loops created
-    // when aliases collapse to the same canonical (e.g. sky_effs[0] →
-    // sky_eff both canonicalize to sky_eff).
     let mut auto_edges: Vec<(String, String)> = Vec::new();
     for (from, to) in &all_auto_edges {
         let f = alias_to_canonical.get(from).cloned().unwrap_or_else(|| from.clone());
