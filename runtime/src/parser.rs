@@ -1419,6 +1419,24 @@ impl Parser {
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
+                // Optional type-args suffix: `Edge<Rect>(args)` —
+                // typed constructor for a monomorphic instance of a
+                // generic type. Only accepted when immediately
+                // followed by `(` (a call); anything else means
+                // `<` is comparison and we rewind. Catches errors
+                // from the suffix parser too — they'd mean the `<`
+                // wasn't actually opening a type-args list (e.g.
+                // `n < 5 + 1`).
+                if matches!(self.peek(), Token::Lt) {
+                    let saved = self.pos;
+                    let parsed = self.try_parse_generic_args_suffix();
+                    match parsed {
+                        Ok(Some(args)) if matches!(self.peek(), Token::LParen) => {
+                            name.push_str(&args);
+                        }
+                        _ => { self.pos = saved; }
+                    }
+                }
                 // Function-call expression: `name(arg, …)`. Recognized
                 // for builtins like `coindexed(A, B)` / `edges(seq)`,
                 // record literals like `IVec2(0, 0)`, claim invocations
