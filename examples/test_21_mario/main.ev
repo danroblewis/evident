@@ -360,7 +360,53 @@ fsm game(world ∈ World)
             (nxt = Mover(IVec2(cur.pos.x + cur.vel.x, cur.pos.y),
                           IVec2(cur.vel.x, 0)))
 
--- ── Display FSM: input + rendering ────────────────────────────
+-- ── Keyboard FSM: input poll, owns world.keys ────────────────
+--
+-- Owns `world.keys`. Pumps SDL events and reads three keys via
+-- ReadByte. This fsm keeps the `effects` slot because it actually
+-- needs `last_results` indexing — the three ReadByte results land
+-- at known indices.
+
+fsm keyboard(world ∈ World)
+    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
+
+    -- Subscribe to `world.tick` so we wake every frame (same
+    -- pattern as game). Without this read, keyboard's read-set is
+    -- empty and the scheduler never wakes it after tick 0.
+    tick_anchor ∈ Int = _world.tick
+
+    -- Local frame counter — its `_kb_frame` reference also drives
+    -- `is_first_tick` auto-injection (which the `world.keys.*`
+    -- bootstrap branches need). The `_world.X` reference above
+    -- gets rewritten by `unify_world_syntax` to `world.X` and
+    -- stops looking like a `_var` reference to the inject pass.
+    kb_frame ∈ Int = (is_first_tick ? 0 : _kb_frame + 1)
+
+    sdl_pump_events(pump_eff)
+    key_left_eff  = ReadByte(win.keyboard_state, 80)
+    key_right_eff = ReadByte(win.keyboard_state, 79)
+    key_up_eff    = ReadByte(win.keyboard_state, 82)
+
+    -- last_results follows the `effects` Seq below in order:
+    -- [0]=pump, [1]=key_left, [2]=key_right, [3]=key_up.
+    key_left_raw  ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_right_raw ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_up_raw    ∈ Int = match last_results[3]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+
+    world.keys.x = (is_first_tick ? 0
+                    : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
+                       : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
+    world.keys.y = (is_first_tick ? 0 : key_up_raw)
+
+    effects = ⟨pump_eff, key_left_eff, key_right_eff, key_up_eff⟩
+
+-- ── Display FSM: rendering ────────────────────────────────────
 
 fsm display(world ∈ World)
     ..Level
@@ -379,33 +425,9 @@ fsm display(world ∈ World)
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
     frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
+    world.tick = frame
 
-    -- ── Input poll ────────────────────────────────────────────
-    sdl_pump_events(pump_eff)
-    key_left_eff  = ReadByte(win.keyboard_state, 80)
-    key_right_eff = ReadByte(win.keyboard_state, 79)
-    key_up_eff    = ReadByte(win.keyboard_state, 82)
     sdl_delay(16, delay_eff)
-
-    -- last_results indices follow the effects-list ordering. The
-    -- input_effs chunk sits AFTER 2 sky + 8 platform + 8 player +
-    -- 4 enemy + 1 present + 1 pump = 24 effects, so the three
-    -- ReadByte results land at indices 24 / 25 / 26.
-    key_left_raw  ∈ Int = match last_results[24]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_right_raw ∈ Int = match last_results[25]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_up_raw    ∈ Int = match last_results[26]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-
-    world.keys.x = (is_first_tick ? 0
-                    : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
-                       : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
-    world.keys.y = (is_first_tick ? 0 : key_up_raw)
-    world.tick   = frame
 
     -- ── Render: sky + platforms + player + enemies ────────────
     -- The player figure is a stack of 4 small rects derived
@@ -457,22 +479,30 @@ fsm display(world ∈ World)
     win.render_present(present_eff)
 
     -- ── Effect chunks by intent ───────────────────────────────
+    --
+    -- No `effects` Seq — the runtime walks the model and dispatches
+    -- every Effect / Seq(Effect) binding (commit f4f1072). Cross-Seq
+    -- dispatch order is alphabetical by binding name, so the
+    -- a_/b_/c_/d_/e_/f_ prefixes pin the required render order:
+    -- sky+clear → platforms → player → enemies → present → delay.
+    -- The alphabetical-prefix is a stopgap until toposort lands —
+    -- see commit message.
 
-    sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
-    plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
-                                  plat_1_color_eff, plat_1_fill_eff,
-                                  plat_2_color_eff, plat_2_fill_eff,
-                                  plat_3_color_eff, plat_3_fill_eff⟩
-    player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
-                                  face_color_eff,  face_fill_eff,
-                                  shirt_color_eff, shirt_fill_eff,
-                                  pants_color_eff, pants_fill_eff⟩
-    enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
-                                  e1_color_eff, e1_fill_eff⟩
-    input_effs  ∈ Seq(Effect) = ⟨pump_eff,
-                                  key_left_eff, key_right_eff, key_up_eff⟩
+    a_sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+    b_plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
+                                    plat_1_color_eff, plat_1_fill_eff,
+                                    plat_2_color_eff, plat_2_fill_eff,
+                                    plat_3_color_eff, plat_3_fill_eff⟩
+    c_player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
+                                    face_color_eff,  face_fill_eff,
+                                    shirt_color_eff, shirt_fill_eff,
+                                    pants_color_eff, pants_fill_eff⟩
+    d_enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
+                                    e1_color_eff, e1_fill_eff⟩
+    e_present_eff ∈ Effect      = present_eff
+    f_delay_eff   ∈ Effect      = delay_eff
 
-    effects = (frame ≥ 240
-        ? ⟨Println("mario done"), Exit(0)⟩
-        : sky_effs ++ plat_effs ++ player_effs ++ enemy_effs
-            ++ ⟨present_eff⟩ ++ input_effs ++ ⟨delay_eff⟩)
+    -- Conditional exit at frame ≥ 240. NoEffect when not yet —
+    -- the dispatcher drops NoEffect cleanly.
+    done_print ∈ Effect = (frame ≥ 240 ? Println("mario done") : NoEffect)
+    done_exit  ∈ Effect = (frame ≥ 240 ? Exit(0) : NoEffect)
