@@ -247,3 +247,95 @@ type BudgetStep
     # Add: wrong result pinned
     assert_unsat(query(src, 'BudgetStep',
                        {'is_add': 'true', 'budget': 10, 'amount': 5, 'new_budget': 14}))
+
+
+# ---------------------------------------------------------------------------
+# 4. Sub-schema usage:  `instance ∈ UserType` inherits the type's body
+# ---------------------------------------------------------------------------
+#
+# CLAUDE.md states "the type's invariants are automatically enforced" when a
+# claim contains `variable ∈ TypeName`. These tests pin that contract: body
+# Constraints in the type definition fire on the instance with field
+# references prefixed by the instance name.
+
+def test_subschema_inherits_primitive_derived_field():
+    """`Foo(p ∈ Int)` with body `derived = p + 1`; instance must satisfy."""
+    src = """
+type Foo(p ∈ Int)
+    derived ∈ Int = p + 1
+
+claim SatDerivedCorrect
+    f ∈ Foo (p mapsto 5)
+    f.derived = 6
+
+claim UnsatDerivedOverridden
+    f ∈ Foo (p mapsto 5)
+    f.derived = 99
+"""
+    assert_sat(query(src, 'SatDerivedCorrect'))
+    assert_unsat(query(src, 'UnsatDerivedOverridden'))
+
+
+def test_subschema_inherits_record_arithmetic():
+    """Type body uses record arithmetic; the lift fires after the prefix
+    rewrite so `offset_pos = pos + IVec2(10, 20)` becomes
+    `f.offset_pos.x = f.pos.x + 10 ∧ f.offset_pos.y = f.pos.y + 20`."""
+    src = """
+type IVec2(x, y ∈ Int)
+
+type Sprite(pos ∈ IVec2)
+    offset_pos ∈ IVec2 = pos + IVec2(10, 20)
+
+claim SatOffsetCorrect
+    s ∈ Sprite
+    s.pos.x = 5
+    s.pos.y = 7
+    s.offset_pos.x = 15
+    s.offset_pos.y = 27
+
+claim UnsatOffsetXWrong
+    s ∈ Sprite
+    s.pos.x = 5
+    s.pos.y = 7
+    s.offset_pos.x = 99
+"""
+    assert_sat(query(src, 'SatOffsetCorrect'))
+    assert_unsat(query(src, 'UnsatOffsetXWrong'))
+
+
+def test_subschema_shadowing_by_quantifier_bound():
+    """A quantifier-bound name inside the type body shadows a same-named
+    field — body uses of the bound name shouldn't get the instance prefix."""
+    src = """
+type Counter(n ∈ Int)
+    all_pos ∈ Bool = (∀ i ∈ {0..2} : i ≥ 0)
+
+claim SatAllPos
+    c ∈ Counter (n mapsto 7)
+    c.all_pos = true
+"""
+    # The quantifier introduces `i`. The body of the forall just references
+    # `i ≥ 0` — `i` is bound, not a field. The rewrite must NOT prefix it.
+    # If it did, translation would fail (env has no `c.i`).
+    assert_sat(query(src, 'SatAllPos'))
+
+
+def test_subschema_inheritance_unrelated_external_name_untouched():
+    """An identifier in the type body that doesn't name a field of the type
+    is left as-is and resolves against the outer scope. Verifies the rewrite
+    is field-set-driven, not blanket-prefix."""
+    src = """
+claim Outer
+    shared_const ∈ Int = 42
+
+type Holder(local ∈ Int)
+    -- `shared_const` is NOT a field of Holder; should resolve to the
+    -- caller's scope. `local` IS a field; gets prefixed.
+    sum ∈ Int = local + shared_const
+
+claim SatSum
+    ..Outer
+    h ∈ Holder (local mapsto 8)
+    h.sum = 50
+"""
+    assert_sat(query(src, 'SatSum'))

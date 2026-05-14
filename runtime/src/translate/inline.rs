@@ -34,6 +34,114 @@ fn track_assert(solver: &Solver<'static>, b: &Bool<'static>, tracker: Option<&Bo
     }
 }
 
+/// Rewrite identifiers in `e` so any leading-segment match against the
+/// type's `field_set` becomes `<prefix>.<original>`. Used to inherit a
+/// type body's Constraint items onto a sub-schema instance:
+///
+/// ```text
+/// type Foo(p ∈ Int)
+///     d ∈ Int = p + 1   -- inside Foo's body, `p` and `d` are bare
+///
+/// claim caller
+///     f ∈ Foo (p ↦ 5)
+///     -- The body constraint `d = p + 1`, when inherited onto `f`,
+///     -- becomes `f.d = f.p + 1`. This function does that rewrite.
+/// ```
+///
+/// Identifiers whose leading segment is NOT a field of the type are
+/// left untouched — they're external references (other schemas,
+/// quantifier-bound names, constants like `is_first_tick`).
+///
+/// Both `Identifier("foo")` and `Identifier("foo.bar")` are recognized
+/// — the parser folds source-level `foo.bar` into a single dotted
+/// `Identifier` (see ast.rs::Field comment). Receiver-side recursion
+/// also covers the explicit `Field(receiver, …)` shape used when the
+/// receiver is itself an expression (e.g. `seq[i].x`).
+fn rewrite_idents_with_prefix(
+    e: &Expr,
+    prefix: &str,
+    field_set: &HashSet<String>,
+) -> Expr {
+    let r = |x: &Expr| Box::new(rewrite_idents_with_prefix(x, prefix, field_set));
+    let rv = |xs: &Vec<Expr>| xs.iter()
+        .map(|x| rewrite_idents_with_prefix(x, prefix, field_set))
+        .collect();
+    match e {
+        Expr::Identifier(name) => {
+            let first_seg = name.split('.').next().unwrap_or("");
+            if field_set.contains(first_seg) {
+                Expr::Identifier(format!("{}.{}", prefix, name))
+            } else {
+                e.clone()
+            }
+        }
+        Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => e.clone(),
+        Expr::SetLit(xs)  => Expr::SetLit(rv(xs)),
+        Expr::SeqLit(xs)  => Expr::SeqLit(rv(xs)),
+        Expr::Tuple(xs)   => Expr::Tuple(rv(xs)),
+        Expr::Range(a, b) => Expr::Range(r(a), r(b)),
+        Expr::InExpr(a, b) => Expr::InExpr(r(a), r(b)),
+        Expr::Forall(vars, range, body) => {
+            // Quantifier bound names shadow field names within the body.
+            // If a quantifier introduces `pos` (say) and the type also
+            // has a field `pos`, body uses of `pos` inside this forall
+            // should NOT get prefixed — they're the bound var, not the
+            // field. Build a temporary field_set that excludes the
+            // shadowed names.
+            let inner_set: HashSet<String> = field_set.iter()
+                .filter(|f| !vars.contains(f))
+                .cloned()
+                .collect();
+            Expr::Forall(
+                vars.clone(),
+                Box::new(rewrite_idents_with_prefix(range, prefix, field_set)),
+                Box::new(rewrite_idents_with_prefix(body,  prefix, &inner_set)),
+            )
+        }
+        Expr::Exists(vars, range, body) => {
+            let inner_set: HashSet<String> = field_set.iter()
+                .filter(|f| !vars.contains(f))
+                .cloned()
+                .collect();
+            Expr::Exists(
+                vars.clone(),
+                Box::new(rewrite_idents_with_prefix(range, prefix, field_set)),
+                Box::new(rewrite_idents_with_prefix(body,  prefix, &inner_set)),
+            )
+        }
+        // Call's first arg is the function/type/constructor NAME — don't
+        // touch. Only its args might contain field refs.
+        Expr::Call(name, args) => Expr::Call(name.clone(), rv(args)),
+        Expr::Cardinality(x) => Expr::Cardinality(r(x)),
+        Expr::Index(a, b)    => Expr::Index(r(a), r(b)),
+        Expr::Field(recv, f) => Expr::Field(r(recv), f.clone()),
+        Expr::Binary(op, a, b) => Expr::Binary(op.clone(), r(a), r(b)),
+        Expr::Not(x)           => Expr::Not(r(x)),
+        Expr::Ternary(c, a, b) => Expr::Ternary(r(c), r(a), r(b)),
+        Expr::Match(scr, arms) => {
+            let new_arms: Vec<MatchArm> = arms.iter().map(|arm| {
+                // Pattern-bound names shadow field names within this arm.
+                let shadowed: HashSet<String> = match &arm.pattern {
+                    MatchPattern::Ctor { binds, .. } => binds.iter()
+                        .filter_map(|b| b.clone())
+                        .collect(),
+                    MatchPattern::Wildcard => HashSet::new(),
+                };
+                let inner: HashSet<String> = field_set.iter()
+                    .filter(|n| !shadowed.contains(*n))
+                    .cloned()
+                    .collect();
+                MatchArm {
+                    pattern: arm.pattern.clone(),
+                    body: Box::new(rewrite_idents_with_prefix(&arm.body, prefix, &inner)),
+                }
+            }).collect();
+            Expr::Match(r(scr), new_arms)
+        }
+        Expr::Matches(x, p) => Expr::Matches(r(x), p.clone()),
+    }
+}
+
 /// Recursively translate a list of body items into the solver. Used by
 /// the constraint-translation pass of both `evaluate` and `build_cache`,
 /// and also called recursively when a `Passthrough`, bare-identifier
@@ -580,6 +688,45 @@ fn inline_body_items_guarded(
                                 "Set EVIDENT_LENIENT=1 to demote this to a warning."
                             );
                             std::process::exit(1);
+                        }
+                    }
+                }
+
+                // Inherit the type's body Constraints onto this instance.
+                // For each `Constraint(e)` in the type's body, rewrite any
+                // identifier whose leading dotted segment names one of the
+                // type's own fields by prefixing `name.`. Skip if the type
+                // is not a user-defined schema (built-ins like Int / Nat /
+                // Seq(...) etc. — they have no body to inherit).
+                //
+                // This is what makes `mario ∈ MarioSprite (pos ↦ p)` mean
+                // "mario satisfies MarioSprite's invariants" rather than
+                // "mario has MarioSprite's leaf fields but no constraints
+                // between them." Without it, body equalities like
+                // `hat = Rect(Color(220, …), pos, …)` in the type body
+                // produce no constraint on `mario.hat`, and the instance
+                // ends up free.
+                if let Some(type_schema) = schemas.get(type_name) {
+                    let field_set: std::collections::HashSet<String> = type_schema
+                        .body
+                        .iter()
+                        .filter_map(|item| match item {
+                            BodyItem::Membership { name: n, .. } => Some(n.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    for item in &type_schema.body {
+                        if let BodyItem::Constraint(e) = item {
+                            let rewritten = rewrite_idents_with_prefix(e, name, &field_set);
+                            if let Some(b) = translate_bool(&rewritten, ctx, env, schemas) {
+                                track_assert(solver, &guarded_bool(b, guard), tracker);
+                            }
+                            // Silently skip on translation failure — the
+                            // type body might contain shapes that only
+                            // apply when used with a passthrough (e.g.,
+                            // bare claim names that match-by-name). The
+                            // hard-fail policy stays on direct body items
+                            // of the calling schema.
                         }
                     }
                 }

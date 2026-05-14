@@ -543,6 +543,17 @@ fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
             BodyItem::Constraint(e) => walk(e),
             BodyItem::ClaimCall { mappings, .. } =>
                 for m in mappings { walk(&mut m.value); },
+            // Pin values inside type-use Memberships also need
+            // rewriting — `mario ∈ MarioSprite (pos ↦ _world.player.pos)`
+            // desugars at translate time to `mario.pos =
+            // _world.player.pos`, which only resolves if the RHS has
+            // been promoted to `world.player.pos` like the rest of the
+            // body's `_world` reads.
+            BodyItem::Membership { pins, .. } => match pins {
+                Pins::Named(named) => for m in named { walk(&mut m.value); },
+                Pins::Positional(vals) => for v in vals { walk(v); },
+                Pins::None => {}
+            },
             _ => {}
         }
     }

@@ -15,6 +15,23 @@ type Mover(pos ∈ IVec2, vel ∈ IVec2)
 type Body(aabb ∈ AABB, color ∈ Color)
 type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ Int)
 
+-- ── Sprites: visual shape derived from position ──────────────
+--
+-- A sprite is a pure constraint model. Given a position, it derives
+-- the Rects that make up its visual representation. No knowledge of
+-- SDL, windows, or Effects — those concerns live in the `display`
+-- fsm, which queries the sprite for its Rects and emits the
+-- corresponding draw effects.
+
+type MarioSprite(pos ∈ IVec2)
+    hat   ∈ Rect = Rect(Color(220, 40,  40,  255), pos,                IVec2(32, 6))
+    face  ∈ Rect = Rect(Color(240, 200, 160, 255), pos + IVec2(4, 6),  IVec2(24, 10))
+    shirt ∈ Rect = Rect(Color(220, 40,  40,  255), pos + IVec2(0, 16), IVec2(32, 10))
+    pants ∈ Rect = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
+
+type EnemySprite(pos ∈ IVec2)
+    rect ∈ Rect = Rect(Color(200, 80, 220, 255), pos, IVec2(28, 28))
+
 -- ── Level: the level VALUE (a noun) ───────────────────────────
 --
 -- A `Level` is a level value: physics constants, free placement
@@ -450,31 +467,16 @@ fsm display(world ∈ World)
     win.draw_rect(plat_2, plat_2_color_eff, plat_2_fill_eff)
     win.draw_rect(plat_3, plat_3_color_eff, plat_3_fill_eff)
 
-    hat   ∈ Rect = Rect(Color(220, 40,  40,  255), _world.player.pos,
-                         IVec2(32, 6))
-    face  ∈ Rect = Rect(Color(240, 200, 160, 255),
-                         IVec2(_world.player.pos.x + 4,
-                                _world.player.pos.y + 6),
-                         IVec2(24, 10))
-    shirt ∈ Rect = Rect(Color(220, 40,  40,  255),
-                         IVec2(_world.player.pos.x,
-                                _world.player.pos.y + 16),
-                         IVec2(32, 10))
-    pants ∈ Rect = Rect(Color(40,  70,  200, 255),
-                         IVec2(_world.player.pos.x + 4,
-                                _world.player.pos.y + 26),
-                         IVec2(24, 6))
-    win.draw_rect(hat,   hat_color_eff,   hat_fill_eff)
-    win.draw_rect(face,  face_color_eff,  face_fill_eff)
-    win.draw_rect(shirt, shirt_color_eff, shirt_fill_eff)
-    win.draw_rect(pants, pants_color_eff, pants_fill_eff)
+    mario ∈ MarioSprite (pos ↦ _world.player.pos)
+    win.draw_rect(mario.hat,   hat_color_eff,   hat_fill_eff)
+    win.draw_rect(mario.face,  face_color_eff,  face_fill_eff)
+    win.draw_rect(mario.shirt, shirt_color_eff, shirt_fill_eff)
+    win.draw_rect(mario.pants, pants_color_eff, pants_fill_eff)
 
-    enemy_0 ∈ Rect = Rect(Color(200, 80, 220, 255),
-                           _world.enemies[0].pos, enemy_size)
-    enemy_1 ∈ Rect = Rect(Color(200, 80, 220, 255),
-                           _world.enemies[1].pos, enemy_size)
-    win.draw_rect(enemy_0, e0_color_eff, e0_fill_eff)
-    win.draw_rect(enemy_1, e1_color_eff, e1_fill_eff)
+    e0 ∈ EnemySprite (pos ↦ _world.enemies[0].pos)
+    e1 ∈ EnemySprite (pos ↦ _world.enemies[1].pos)
+    win.draw_rect(e0.rect, e0_color_eff, e0_fill_eff)
+    win.draw_rect(e1.rect, e1_color_eff, e1_fill_eff)
 
     win.render_present(present_eff)
 
