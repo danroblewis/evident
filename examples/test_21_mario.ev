@@ -64,6 +64,8 @@ fsm display(world ∈ World)
                           IVec2(_world.pos.x + 4, _world.pos.y + 26),
                           (24, 6))
 
+    -- Per-rect effects, each `win.draw_rect` asserts a (color, fill)
+    -- pair of LibCalls.
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
     win.draw_rect(ground, ground_color_eff, ground_fill_eff)
@@ -73,21 +75,23 @@ fsm display(world ∈ World)
     win.draw_rect(pants,  pants_color_eff,  pants_fill_eff)
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
-
-    key_left_eff = ReadByte(win.keyboard_state, 80)
+    key_left_eff  = ReadByte(win.keyboard_state, 80)
     key_right_eff = ReadByte(win.keyboard_state, 79)
-    key_up_eff = ReadByte(win.keyboard_state, 82)
-
+    key_up_eff    = ReadByte(win.keyboard_state, 82)
     sdl_delay(16, delay_eff)
+
+    -- The frame's effects, by intent. `++` is Seq concat; the
+    -- runtime flattens these into one sequence at load time.
+    sky_clear   ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+    scene_draws ∈ Seq(Effect) = ⟨ground_color_eff, ground_fill_eff,
+                                  hat_color_eff,    hat_fill_eff,
+                                  face_color_eff,   face_fill_eff,
+                                  shirt_color_eff,  shirt_fill_eff,
+                                  pants_color_eff,  pants_fill_eff⟩
+    input_poll  ∈ Seq(Effect) = ⟨pump_eff,
+                                  key_left_eff, key_right_eff, key_up_eff⟩
 
     effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
-        : ⟨sky_eff, clear_eff,
-            ground_color_eff, ground_fill_eff,
-            hat_color_eff,    hat_fill_eff,
-            face_color_eff,   face_fill_eff,
-            shirt_color_eff,  shirt_fill_eff,
-            pants_color_eff,  pants_fill_eff,
-            present_eff, pump_eff,
-            key_left_eff, key_right_eff, key_up_eff,
-            delay_eff⟩)
+        : sky_clear ++ scene_draws ++ ⟨present_eff⟩
+            ++ input_poll ++ ⟨delay_eff⟩)
