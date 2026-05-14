@@ -101,12 +101,14 @@ pub struct LoopResult {
     pub exit_code: Option<i32>,
 }
 
-/// One FSM-shaped claim's membership info. The runtime detects
-/// claims that have the `fsm` keyword and any subset of the
-/// canonical slots (state pair / EffectList / Seq(Result) /
-/// optional world record). Each slot is `Option` because the
-/// unified state model (state-machines-as-relations) lets an
-/// author opt out — a pure-counter fsm has no state pair, no
+/// Resolved param info for one `fsm`-keyword'd schema. The set
+/// of FSMs is determined by the `fsm` keyword, NOT by walking
+/// the body looking for "fsm-shaped" structure — there's no
+/// shape check anywhere; we just read the parse-time tag. The
+/// body walk here is for *resolving* which slots an fsm uses
+/// (state pair, last_results, effects, world, FTI params), all
+/// of which are Option because the unified state model lets
+/// authors opt out — a pure-counter fsm has no state pair, no
 /// effects, no last_results, just plain variables coordinated
 /// via `_var` time-shift.
 #[derive(Clone)]
@@ -150,17 +152,17 @@ impl MainShape {
 }
 
 pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
-    detect_fsm_shape(rt, "main")
+    resolve_fsm(rt, "main")
 }
 
-/// Detect FSM shape for a specific claim. Returns Some only when the
-/// claim is declared with the `fsm` keyword AND its body resolves to
-/// the canonical state pair + last_results + effects (the implicit-
-/// param injector guarantees the latter three for any `fsm`).
-///
-/// We deliberately keep the body walk for state-pair / world /
-/// FTI / event-subscription discovery; only the gate is new.
-pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
+/// Resolve a single schema's FSM param info. Returns Some only
+/// when the schema is declared with the `fsm` keyword (and isn't
+/// `external` — those are Rust-side bridge contracts, not user
+/// FSMs). The body walk inside resolves which slots the FSM
+/// actually uses (state pair, last_results, effects, world, FTI
+/// params); it does NOT decide whether the schema is an FSM.
+/// That decision is purely the parse-time keyword tag.
+pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let claim = rt.get_schema(claim_name)?;
     if !matches!(claim.keyword, crate::ast::Keyword::Fsm) {
         return None;
@@ -208,7 +210,7 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
                         // and `rt: &'a EvidentRuntime` borrows the
                         // runtime for `'a`. The HashMap is not mutated
                         // through interior mutability anywhere in the
-                        // call graph below `detect_fsm_shape`, so every
+                        // call graph below `resolve_fsm`, so every
                         // `&SchemaDecl` we obtain via `get_schema` lives
                         // exactly as long as `rt` itself — which is `'a`.
                         // The borrow checker can't see that across the
@@ -308,15 +310,15 @@ pub fn detect_fsm_shape(rt: &EvidentRuntime, claim_name: &str) -> Option<MainSha
     })
 }
 
-/// Walk every top-level claim and collect those that have the FSM
-/// membership shape. Returns the writer FIRST (if any), then readers
-/// in declaration order. Multi-FSM execution dispatches in this order.
-pub fn detect_all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
+/// Collect every `fsm`-keyword'd schema's resolved param info.
+/// Returns the writer FIRST (if any), then readers in declaration
+/// order. Multi-FSM execution dispatches in this order.
+pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
     let mut writers: Vec<MainShape> = Vec::new();
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
-        if let Some(shape) = detect_fsm_shape(rt, &name) {
+        if let Some(shape) = resolve_fsm(rt, &name) {
             // Skip claims that carry the `spawnable_only` body marker
             // (one of `crate::ast::BODY_MARKERS`) — they should only
             // run when explicitly spawned via Effect::SpawnFsm, not
@@ -353,7 +355,7 @@ pub fn run_with_ctx(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
-    let fsms = detect_all_fsms(rt);
+    let fsms = all_fsms(rt);
     // Snapshot every EVIDENT_* env var the scheduler consults
     // ONCE here; per-tick code references the cached fields.
     // Avoids syscall-per-tick overhead on hot diagnostic gates
@@ -571,7 +573,7 @@ pub fn run_with_ctx(
     }
 
     let result = match fsms.len() {
-        0 => Err("no effect-driven claims found (need state pair + EffectList + Seq(Result))".to_string()),
+        0 => Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string()),
         1 if !delta_mode => run_with_shape(rt, &fsms[0], opts, ctx, &env),
         1 => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
         _ => run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
@@ -790,8 +792,9 @@ fn run_multi_fsm(
     // "Done"/"Halt", so the seeded Init pin doesn't cause spurious
     // halts (we never set current_state_v to a value matching that
     // pattern unless the user explicitly transitions there).
-    // Closure: build the seeded initial state for any FSM shape.
-    // Used for both auto-detected FSMs and dynamically spawned ones.
+    // Closure: build the seeded initial state for an FSM's resolved
+    // param info. Used for both startup-collected FSMs and
+    // dynamically spawned ones.
     let seed_state = |s: &MainShape| -> (Option<z3::ast::Datatype<'static>>, Option<Value>) {
         let Some(state_type) = s.state_type.as_ref() else { return (None, None); };
         let enums = rt.enums_registry();
@@ -1203,7 +1206,7 @@ fn run_multi_fsm(
             // clearing it. Writers' write-sets are disjoint
             // (enforced at load), so this is well-defined. Within
             // a tick, writers run in declaration order (writers
-            // first via detect_all_fsms ordering); a later writer's
+            // first via all_fsms ordering); a later writer's
             // body sees the earlier writers' just-written fields.
             if fsm.is_writer() {
                 let mut just_changed: std::collections::HashSet<String> =
@@ -1307,12 +1310,12 @@ fn run_multi_fsm(
         // per-instance world. See docs/design/fsm-spawning.md.
         if !ctx.pending_spawns.is_empty() {
             for (claim_name, spawn_arg) in std::mem::take(&mut ctx.pending_spawns) {
-                let shape = match detect_fsm_shape(rt, &claim_name) {
+                let shape = match resolve_fsm(rt, &claim_name) {
                     Some(s) => s,
                     None => {
-                        eprintln!("[loop] spawn: claim `{claim_name}` doesn't \
-                                   have FSM shape (state pair + EffectList + \
-                                   Seq(Result)); spawn ignored.");
+                        eprintln!("[loop] spawn: schema `{claim_name}` isn't \
+                                   declared with the `fsm` keyword (or is \
+                                   `external fsm`); spawn ignored.");
                         continue;
                     }
                 };
