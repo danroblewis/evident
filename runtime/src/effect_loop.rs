@@ -196,58 +196,42 @@ pub(crate) fn collect_dispatchable_effects(
     }
 
     // Edge extraction from the FSM's AST: each `Seq(Effect)` literal
-    // body Constraint contributes edges between adjacent elements.
-    // We pass the full alias set (canonical AND alias names) so the
-    // extraction can recognize references; afterward we map each
-    // endpoint through `alias_to_canonical` so duplicate-aliased
-    // edges collapse onto canonical nodes.
+    // body Constraint contributes edges. Two-step process:
+    //
+    //   1. Walk each SeqLit, resolve every element to its canonical
+    //      name, drop duplicates (keep first occurrence) — produces a
+    //      canonical-dedup'd chain.
+    //   2. Make pairwise edges between adjacent elements of the
+    //      deduped chain.
+    //
+    // Why dedup inside the SeqLit rather than at edge time: the user's
+    // chain visits each unique canonical at most once. If the same
+    // canonical reappears later (e.g. `phase_chain` references
+    // `plat_2_color_eff` which is set_color(brown) — same as
+    // `plat_1_color_eff`), the later reference can't fire again —
+    // canonicals dispatch once. The dedup'd chain is a linear order
+    // through unique canonicals that the toposort respects without
+    // any cycles.
     let alias_set: HashSet<&String> = all_names.iter().collect();
-    let raw_edges = match rt.get_schema(claim_name) {
-        Some(schema) => extract_seq_effect_edges(&schema.body, &alias_set),
+    let raw_chains = match rt.get_schema(claim_name) {
+        Some(schema) => extract_seq_effect_chains(&schema.body, &alias_set),
         None => Vec::new(),
     };
     let mut edges: Vec<(String, String)> = Vec::new();
-    for (from, to) in raw_edges {
-        let f = alias_to_canonical.get(&from).cloned().unwrap_or(from);
-        let t = alias_to_canonical.get(&to).cloned().unwrap_or(to);
-        if f != t { edges.push((f, t)); }
-    }
-    edges.extend(auto_edges);
-
-    // Cycle-safe edge filtering. When dedup collapses multiple bindings
-    // onto the same canonical node (e.g., three platforms sharing one
-    // set_color(brown) effect), the user's phase_chain — which visits
-    // each binding by name — may produce contradictory edges after
-    // canonicalization (color → fill_1 → color → fill_2 becomes
-    // color → fill_1 → color which is a self-cycle).
-    //
-    // Resolution: drop any edge whose target already reaches its source
-    // in the partial graph built so far. The dropped edge is asking
-    // for an ordering that contradicts an existing constraint; since
-    // the canonical effect fires only once, the "later" reference in
-    // the chain is meaningless and can be discarded.
-    let edges = {
-        let mut accepted: Vec<(String, String)> = Vec::new();
-        let mut succ: HashMap<String, Vec<String>> = HashMap::new();
-        for (from, to) in edges {
-            // BFS from `to` to see if it can already reach `from`.
-            let mut visited: HashSet<String> = HashSet::new();
-            let mut stack: Vec<&str> = vec![to.as_str()];
-            let mut reaches_from = false;
-            while let Some(n) = stack.pop() {
-                if n == from { reaches_from = true; break; }
-                if !visited.insert(n.to_string()) { continue; }
-                if let Some(next) = succ.get(n) {
-                    for m in next { stack.push(m.as_str()); }
-                }
-            }
-            if !reaches_from {
-                succ.entry(from.clone()).or_default().push(to.clone());
-                accepted.push((from, to));
+    for chain in raw_chains {
+        let mut deduped: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for name in chain {
+            let canon = alias_to_canonical.get(&name).cloned().unwrap_or(name);
+            if seen.insert(canon.clone()) {
+                deduped.push(canon);
             }
         }
-        accepted
-    };
+        for w in deduped.windows(2) {
+            edges.push((w[0].clone(), w[1].clone()));
+        }
+    }
+    edges.extend(auto_edges);
 
     // Random tie-break — unconstrained orderings get a fresh
     // linearization each run so accidental-ordering bugs surface.
@@ -390,10 +374,10 @@ fn topo_sort_with_random_tiebreak(
 /// desugar (during parse) into a `Membership` plus a separate
 /// `Constraint(Eq(Identifier("xs"), SeqLit(...)))` — only the
 /// Constraint half is what we look for here.
-fn extract_seq_effect_edges(
+fn extract_seq_effect_chains(
     body: &[BodyItem],
     effect_node_set: &HashSet<&String>,
-) -> Vec<(String, String)> {
+) -> Vec<Vec<String>> {
     // Resolve a SeqLit element to its node name. Recognizes:
     //   * `Identifier(name)` where `name` is a bare Effect binding.
     //   * `Index(Identifier(name), Int(i))` where `name[i]` names a
@@ -411,7 +395,7 @@ fn extract_seq_effect_edges(
             _ => None,
         }
     }
-    let mut edges: Vec<(String, String)> = Vec::new();
+    let mut chains: Vec<Vec<String>> = Vec::new();
     for item in body {
         if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
             let seq_items = match (lhs.as_ref(), rhs.as_ref()) {
@@ -422,16 +406,14 @@ fn extract_seq_effect_edges(
             let names: Vec<String> = seq_items.iter()
                 .filter_map(|e| node_name(e, effect_node_set))
                 .collect();
-            // Only emit edges from chains where every element resolves to a
-            // known node. A Seq with even one unresolved element isn't a
-            // clean ordering chain — bail.
+            // Only emit a chain when every element resolves to a known
+            // node. A Seq with even one unresolved element isn't a clean
+            // ordering chain — bail.
             if names.len() != seq_items.len() { continue; }
-            for w in names.windows(2) {
-                edges.push((w[0].clone(), w[1].clone()));
-            }
+            chains.push(names);
         }
     }
-    edges
+    chains
 }
 
 /// Map dispatch-order binding names back to their Effect values from
