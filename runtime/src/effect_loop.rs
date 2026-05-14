@@ -105,18 +105,26 @@ pub(crate) fn collect_dispatchable_effects(
     //     name = `<binding>[i]`. Adjacent elements get an implicit edge
     //     (intra-Seq order is part of the contract).
     //
-    // The synthetic-index naming lets the user reference specific
-    // bundled effects from cross-phase ordering chains, e.g.
-    // `phase_chain ∈ Seq(Effect) = ⟨…, hat_effs[1], …⟩`.
-    let mut nodes: Vec<String> = Vec::new();
+    // Different bindings can refer to the SAME effect value — e.g.
+    // `sky_effs[0]` and bare `sky_eff` are both the "set sky color"
+    // LibCall, and `phase_chain[k]` mirrors whatever effect it
+    // references. Build a canonical-name map keyed on effect value
+    // so the dispatch list has each unique effect exactly once.
+    // Aliases (secondary names) get resolved to their canonical name
+    // when we translate ordering edges below — so a chain like
+    // `phase_chain ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩` still
+    // contributes the right ordering edge between the canonical
+    // sky and clear nodes, even though phase_chain's own synthetic
+    // node names don't survive dedup.
     let mut node_values: HashMap<String, Effect> = HashMap::new();
-    let mut auto_edges: Vec<(String, String)> = Vec::new();
+    let mut all_names: Vec<String> = Vec::new();
+    let mut all_auto_edges: Vec<(String, String)> = Vec::new();
     for (name, v) in bindings {
         match v {
             Value::Enum { enum_name, .. } if enum_name == "Effect" => {
                 if let Ok(e) = ast_decoder::decode_effect(v) {
                     node_values.insert(name.clone(), e);
-                    nodes.push(name.clone());
+                    all_names.push(name.clone());
                 }
             }
             Value::SeqEnum(items) => {
@@ -129,9 +137,9 @@ pub(crate) fn collect_dispatchable_effects(
                         if let Ok(e) = ast_decoder::decode_effect(item) {
                             let syn = format!("{}[{}]", name, i);
                             node_values.insert(syn.clone(), e);
-                            nodes.push(syn.clone());
+                            all_names.push(syn.clone());
                             if let Some(p) = prev.take() {
-                                auto_edges.push((p, syn.clone()));
+                                all_auto_edges.push((p, syn.clone()));
                             }
                             prev = Some(syn);
                         }
@@ -141,19 +149,105 @@ pub(crate) fn collect_dispatchable_effects(
             _ => {}
         }
     }
-    if nodes.is_empty() { return Vec::new(); }
+    if all_names.is_empty() { return Vec::new(); }
+
+    // Canonical name = first occurrence per unique Effect value.
+    // `Effect` doesn't derive Hash (Real-variant payload is f64),
+    // so we keep `(Effect, canonical_name)` pairs and linear-search.
+    // Mario's ~50 nodes per tick run sub-millisecond.
+    fn effect_eq(a: &Effect, b: &Effect) -> bool {
+        // PartialEq isn't derived either but the existing
+        // collect_dispatchable_effects' seen-list compared `Value`s
+        // via `==`. We rebuilt nodes from Values, so two same-valued
+        // bindings produce structurally-equal Effect ASTs we can
+        // detect by serializing — Debug is enough for the dedup
+        // semantics (only used as a hash-key surrogate).
+        format!("{:?}", a) == format!("{:?}", b)
+    }
+    let mut canonical: Vec<(Effect, String)> = Vec::new();
+    let mut alias_to_canonical: HashMap<String, String> = HashMap::new();
+    let mut nodes: Vec<String> = Vec::new();
+    for name in &all_names {
+        let e = node_values.get(name).cloned().unwrap();
+        match canonical.iter().find(|(c, _)| effect_eq(c, &e)) {
+            Some((_, canon)) => {
+                alias_to_canonical.insert(name.clone(), canon.clone());
+            }
+            None => {
+                canonical.push((e, name.clone()));
+                alias_to_canonical.insert(name.clone(), name.clone());
+                nodes.push(name.clone());
+            }
+        }
+    }
+
+    // Rewrite auto-edges to canonical names; drop self-loops created
+    // when aliases collapse to the same canonical (e.g. sky_effs[0] →
+    // sky_eff both canonicalize to sky_eff).
+    let mut auto_edges: Vec<(String, String)> = Vec::new();
+    for (from, to) in &all_auto_edges {
+        let f = alias_to_canonical.get(from).cloned().unwrap_or_else(|| from.clone());
+        let t = alias_to_canonical.get(to).cloned().unwrap_or_else(|| to.clone());
+        if f != t { auto_edges.push((f, t)); }
+    }
+    if std::env::var("EVIDENT_DISPATCH_TIMING").is_ok() {
+        eprintln!("dispatch: {} canonical / {} total bindings",
+                  nodes.len(), all_names.len());
+    }
 
     // Edge extraction from the FSM's AST: each `Seq(Effect)` literal
-    // body Constraint of shape `seq_name = ⟨a, b, c⟩` contributes edges
-    // `(a, b), (b, c)`. Identifier elements name top-level Effect
-    // bindings; Index elements like `hat_effs[1]` name synthetic
-    // Seq(Effect)-bundle nodes.
-    let node_set: HashSet<&String> = nodes.iter().collect();
-    let mut edges = match rt.get_schema(claim_name) {
-        Some(schema) => extract_seq_effect_edges(&schema.body, &node_set),
+    // body Constraint contributes edges between adjacent elements.
+    // We pass the full alias set (canonical AND alias names) so the
+    // extraction can recognize references; afterward we map each
+    // endpoint through `alias_to_canonical` so duplicate-aliased
+    // edges collapse onto canonical nodes.
+    let alias_set: HashSet<&String> = all_names.iter().collect();
+    let raw_edges = match rt.get_schema(claim_name) {
+        Some(schema) => extract_seq_effect_edges(&schema.body, &alias_set),
         None => Vec::new(),
     };
+    let mut edges: Vec<(String, String)> = Vec::new();
+    for (from, to) in raw_edges {
+        let f = alias_to_canonical.get(&from).cloned().unwrap_or(from);
+        let t = alias_to_canonical.get(&to).cloned().unwrap_or(to);
+        if f != t { edges.push((f, t)); }
+    }
     edges.extend(auto_edges);
+
+    // Cycle-safe edge filtering. When dedup collapses multiple bindings
+    // onto the same canonical node (e.g., three platforms sharing one
+    // set_color(brown) effect), the user's phase_chain — which visits
+    // each binding by name — may produce contradictory edges after
+    // canonicalization (color → fill_1 → color → fill_2 becomes
+    // color → fill_1 → color which is a self-cycle).
+    //
+    // Resolution: drop any edge whose target already reaches its source
+    // in the partial graph built so far. The dropped edge is asking
+    // for an ordering that contradicts an existing constraint; since
+    // the canonical effect fires only once, the "later" reference in
+    // the chain is meaningless and can be discarded.
+    let edges = {
+        let mut accepted: Vec<(String, String)> = Vec::new();
+        let mut succ: HashMap<String, Vec<String>> = HashMap::new();
+        for (from, to) in edges {
+            // BFS from `to` to see if it can already reach `from`.
+            let mut visited: HashSet<String> = HashSet::new();
+            let mut stack: Vec<&str> = vec![to.as_str()];
+            let mut reaches_from = false;
+            while let Some(n) = stack.pop() {
+                if n == from { reaches_from = true; break; }
+                if !visited.insert(n.to_string()) { continue; }
+                if let Some(next) = succ.get(n) {
+                    for m in next { stack.push(m.as_str()); }
+                }
+            }
+            if !reaches_from {
+                succ.entry(from.clone()).or_default().push(to.clone());
+                accepted.push((from, to));
+            }
+        }
+        accepted
+    };
 
     // Random tie-break — unconstrained orderings get a fresh
     // linearization each run so accidental-ordering bugs surface.
