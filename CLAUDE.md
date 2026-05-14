@@ -1091,6 +1091,67 @@ See `docs/design/toposort.md` for the worked example — toposort
 as a constraint problem, why the natural representation isn't
 `Seq(Int) of positions` even though the implementation uses one.
 
+## Iterate over elements, not over `{0..#seq - 1}` ranges
+
+When you reach for `∀ i ∈ {0..#seq - 1} : ... seq[i] ...`, **stop**.
+The range-of-integers form is a low-level fallback. The
+language already lets you iterate elements directly, and for
+record-element Seqs it auto-binds `.field` access on the
+element name. Use that.
+
+```evident
+-- Don't (index-style):
+∀ i ∈ {0..#edges - 1} :
+    position_of(sorted, edges[i].from) < position_of(sorted, edges[i].to)
+∀ i ∈ {0..#items - 1} :
+    contains(sorted, items[i])
+
+-- Do (element-style):
+∀ e ∈ edges :
+    position_of(sorted, e.from) < position_of(sorted, e.to)
+∀ x ∈ items :
+    contains(sorted, x)
+```
+
+**Why this matters.** Indices in the quantifier are an artifact
+of "I'm walking a sequence by position." The math says "for
+every edge in the graph, this relation holds" — the bound name
+is *an edge*, not *the index of an edge*. The element form
+matches the math; the index form makes you mentally unwind
+"what's at position i" every time you read it.
+
+**The element form is supported for both primitive and
+record-element Seqs.** For a `Seq(Int)`, `∀ x ∈ s : x > 0`
+binds `x` to each Int element. For a `Seq(Edge<T>)`, `∀ e ∈
+edges : e.from = ...` binds `e` as the element AND makes
+`e.field` accessible for each field on the element record.
+The runtime's `Forall` translator at
+`runtime/src/translate/exprs.rs` does the field-binding via
+`bind_composite_fields` for composite-element Seqs; primitive
+Seqs bind the element value to the variable directly.
+
+**When indices ARE necessary**:
+- You need the position itself in the constraint (e.g. "the
+  i-th element relates to the i-th element of another Seq" —
+  but for that, `coindexed(A, B)` is usually cleaner; see
+  "N-arity sequence iteration").
+- You need to compare positions of two specific elements (e.g.
+  `position_of(seq, x) < position_of(seq, y)` — but
+  `position_of` is the right tool, not a `∀ i ∈ {0..n-1}` loop).
+- You're computing a function of the index itself (rare).
+
+For everything else: `∀ x ∈ seq` reads as the math and runs
+the same constraints.
+
+**The deeper point**: the range-over-integers form is
+unrolled-by-the-runtime over a pinned length — Rust loops
+through 0..n at translate time, generates a constraint per
+iteration. The element form does *exactly the same thing*
+under the hood, just with the element value bound to the name
+instead of the integer. The work happens in the runtime
+either way; the source-level form should be the one closer to
+the math.
+
 ## Program Structure
 
 Full guidance: `docs/design/program-structure.md`. Summary below.
