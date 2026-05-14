@@ -197,52 +197,29 @@ pub(crate) fn collect_dispatchable_effects(
     }
     if all_names.is_empty() { return Vec::new(); }
 
-    // Per-effect-value dedup, narrowly scoped: when two distinct
-    // dispatch nodes happen to share the same Effect value (e.g.
-    // bare `sky_eff` bound by `set_draw_color` AND `sky_effs[0]`
-    // synthesized from the `sky_effs` Seq, both decoding to the
-    // identical LibCall), we want exactly one dispatch. First-seen
-    // wins as the canonical; the alias map collapses any auto-edge
-    // referencing the alias back onto the canonical.
+    // No value-dedup: two dispatch nodes that happen to produce the
+    // same Effect value (e.g. `hat_effs[0]` and `shirt_effs[0]` both
+    // emitting `set_color(red)` because hat and shirt share a color
+    // literal) are SEPARATE dispatch points. The renderer's color
+    // state changes between them (face_color sets tan in between),
+    // so each call to set_color is load-bearing — collapsing them
+    // onto a single dispatch would let the wrong color leak through.
     //
-    // Importantly, ordering-declaration bindings (e.g. phase_chain)
-    // never reach this code — their elements aren't added as nodes
-    // above — so we don't accidentally drop legitimate
-    // re-applications of a stateful effect like `set_color` that
-    // need to fire before each consumer.
-    fn effect_eq(a: &Effect, b: &Effect) -> bool {
-        // Effect derives Clone+Debug but not PartialEq (the Real
-        // variant carries f64). Compare via Debug — coarse but
-        // suffices for the "is this LibCall identical to that
-        // LibCall" question we're asking.
-        format!("{:?}", a) == format!("{:?}", b)
-    }
-    let mut canonical: Vec<(Effect, String)> = Vec::new();
-    let mut alias_to_canonical: HashMap<String, String> = HashMap::new();
-    let mut nodes: Vec<String> = Vec::new();
-    for name in &all_names {
-        let e = node_values.get(name).cloned().unwrap();
-        match canonical.iter().find(|(c, _)| effect_eq(c, &e)) {
-            Some((_, canon)) => {
-                alias_to_canonical.insert(name.clone(), canon.clone());
-            }
-            None => {
-                canonical.push((e, name.clone()));
-                alias_to_canonical.insert(name.clone(), name.clone());
-                nodes.push(name.clone());
-            }
-        }
-    }
-
-    let mut auto_edges: Vec<(String, String)> = Vec::new();
-    for (from, to) in &all_auto_edges {
-        let f = alias_to_canonical.get(from).cloned().unwrap_or_else(|| from.clone());
-        let t = alias_to_canonical.get(to).cloned().unwrap_or_else(|| to.clone());
-        if f != t { auto_edges.push((f, t)); }
-    }
+    // The original motivation for dedup was that phase_chain's
+    // synthetic nodes mirrored other bundles' values. That problem
+    // is gone now that ordering declarations don't synthesize nodes
+    // at all (they contribute edges only). The remaining
+    // value-duplicates across dispatch bundles are intentional
+    // and must each fire.
+    let mut nodes: Vec<String> = all_names.clone();
+    let auto_edges: Vec<(String, String)> = all_auto_edges.clone();
+    // Identity map (no aliasing) — kept so the chain-edge translation
+    // below has a uniform lookup path even though it's currently a
+    // no-op for the dispatch-bundle case.
+    let alias_to_canonical: HashMap<String, String> =
+        all_names.iter().map(|n| (n.clone(), n.clone())).collect();
     if std::env::var("EVIDENT_DISPATCH_TIMING").is_ok() {
-        eprintln!("dispatch: {} canonical / {} total bindings",
-                  nodes.len(), all_names.len());
+        eprintln!("dispatch: {} nodes", nodes.len());
     }
 
     // Edge extraction from the FSM's AST: each `Seq(Effect)` literal
