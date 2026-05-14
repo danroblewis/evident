@@ -20,7 +20,7 @@
 -- structurally equal, they're the same vertex. Use distinct values
 -- if you need to distinguish two otherwise-equal nodes.
 
-import "stdlib/permutation.ev"
+import "stdlib/combinatorics.ev"
 
 type Edge<T>(from, to ∈ T)
 
@@ -44,7 +44,7 @@ claim Toposort<T>(items ∈ Seq(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
     -- queries without a separate `#sorted = N` from the caller.
     #items = #sorted
     Permutation<T>(items, sorted)
-    ∀ k ∈ {0..#edges - 1} : position_of(sorted, edges[k].from) < position_of(sorted, edges[k].to)
+    ∀ e ∈ edges : position_of(sorted, e.from) < position_of(sorted, e.to)
 
 -- ── Tests ────────────────────────────────────────────────────────
 

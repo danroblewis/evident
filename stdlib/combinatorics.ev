@@ -1,28 +1,24 @@
--- Permutation: `b` is a permutation of `a`.
+-- Combinatorial relations between Seqs: permutations, subsets,
+-- combinations, partitions. The kind of "set-y" predicates you'd
+-- reach for in any constraint program over collections.
 --
--- Asserts that two Seqs hold the same elements (with the
--- distinct-values identity assumption — same caveat as elsewhere
--- in the language).
+-- All claims here use `distinct` as the implicit identity model:
+-- two structurally-equal elements are the same vertex / item.
+-- For multiset semantics (allowing duplicates), use a different
+-- claim or relax the distinct constraint at the call site.
+
+-- ── Permutation ──────────────────────────────────────────────
 --
--- Caller pattern:
---     a ∈ Seq(T)
---     b ∈ Seq(T)
---     #a = N
---     #b = N
---     Permutation<T>(a, b)
---
--- Body asserts: same length, both distinct, every a[i] appears in b.
--- Combined, those pin b to a permutation of a's elements.
---
--- For Seqs with duplicate values, the body's `distinct` checks
--- will be UNSAT — Permutation is for genuine sets-of-values
--- represented as Seqs.
+-- `b` is a permutation of `a` — same elements, possibly reordered.
+-- Asserts: same length, both distinct, every a[i] appears in b.
+-- The three together pin b to a permutation when values are
+-- distinct.
 
 claim Permutation<T>(a ∈ Seq(T), b ∈ Seq(T))
     #a = #b
     distinct(a)
     distinct(b)
-    ∀ i ∈ {0..#a - 1} : contains(b, a[i])
+    ∀ x ∈ a : contains(b, x)
 
 -- ── Tests ────────────────────────────────────────────────────
 
