@@ -61,6 +61,120 @@ pub struct SystemBoundary {
     pub enums:   HashSet<String>,
 }
 
+/// Desugar `Seq(T)` concatenation. The user writes
+///
+/// ```text
+/// effects = sky_effs ++ rect_effs ++ ⟨present_eff⟩ ++ input_effs
+/// ```
+///
+/// This pass walks the body twice: first to gather every
+/// `name = ⟨items⟩` binding into a name→items map, then to walk
+/// every body expression and rewrite each `Concat` subtree into a
+/// flat `SeqLit`. The flattener resolves operands by:
+///   * `SeqLit(items)` → use `items`.
+///   * `Identifier(name)` → look up `seq_lits[name]`.
+///   * `Concat(a, b)` → recurse.
+///
+/// If a `Concat` subtree fully resolves, it's replaced by a single
+/// `SeqLit` of the flattened items. Concat nested inside a `Ternary`,
+/// `Match` arm, claim-call argument, or further `Binary` ops is
+/// rewritten too. If any operand can't be resolved (an opaque Seq
+/// var coming from a claim invocation, for example), that subtree
+/// is left alone and the translator will fail with the usual
+/// "couldn't translate to Bool" error pointing at it.
+fn desugar_seq_concat(s: &mut SchemaDecl) {
+    use crate::ast::{BinOp, BodyItem, Expr};
+    if s.external { return; }
+
+    // Pass 1: gather SeqLit bindings.
+    let mut seq_lits: HashMap<String, Vec<Expr>> = HashMap::new();
+    for item in &s.body {
+        let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else { continue };
+        if let (Expr::Identifier(name), Expr::SeqLit(items)) =
+            (lhs.as_ref(), rhs.as_ref())
+        {
+            seq_lits.insert(name.clone(), items.clone());
+        }
+    }
+
+    fn flatten(
+        e: &Expr,
+        seq_lits: &HashMap<String, Vec<Expr>>,
+    ) -> Option<Vec<Expr>> {
+        match e {
+            Expr::Binary(BinOp::Concat, l, r) => {
+                let mut left = flatten(l, seq_lits)?;
+                let right = flatten(r, seq_lits)?;
+                left.extend(right);
+                Some(left)
+            }
+            Expr::SeqLit(items) => Some(items.clone()),
+            Expr::Identifier(name) => seq_lits.get(name).cloned(),
+            _ => None,
+        }
+    }
+
+    // Replace any Concat subexpression that fully flattens into a
+    // SeqLit. Walks the entire tree so Concat inside Ternary,
+    // Match arms, Call args, etc. all get rewritten.
+    fn rewrite(
+        e: &mut Expr,
+        seq_lits: &HashMap<String, Vec<Expr>>,
+    ) {
+        if let Expr::Binary(BinOp::Concat, ..) = e {
+            if let Some(items) = flatten(e, seq_lits) {
+                *e = Expr::SeqLit(items);
+                return;
+            }
+        }
+        match e {
+            Expr::Binary(_, l, r)
+            | Expr::Range(l, r)
+            | Expr::InExpr(l, r)
+            | Expr::Index(l, r) => { rewrite(l, seq_lits); rewrite(r, seq_lits); }
+            Expr::Ternary(c, a, b) => {
+                rewrite(c, seq_lits); rewrite(a, seq_lits); rewrite(b, seq_lits);
+            }
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es)
+            | Expr::Call(_, es) => {
+                for x in es { rewrite(x, seq_lits); }
+            }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+                rewrite(r, seq_lits); rewrite(b, seq_lits);
+            }
+            Expr::Cardinality(i) | Expr::Not(i) | Expr::Matches(i, _) => {
+                rewrite(i, seq_lits);
+            }
+            Expr::Field(recv, _) => rewrite(recv, seq_lits),
+            Expr::Match(scr, arms) => {
+                rewrite(scr, seq_lits);
+                for a in arms { rewrite(&mut a.body, seq_lits); }
+            }
+            _ => {}
+        }
+    }
+
+    // Pass 2: walk every body item's expressions and rewrite Concat in place.
+    for item in s.body.iter_mut() {
+        match item {
+            BodyItem::Constraint(e) => rewrite(e, &seq_lits),
+            BodyItem::ClaimCall { mappings, .. } => {
+                for m in mappings.iter_mut() {
+                    rewrite(&mut m.value, &seq_lits);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Recurse into subclaims.
+    for item in s.body.iter_mut() {
+        if let BodyItem::SubclaimDecl(sub) = item {
+            desugar_seq_concat(sub);
+        }
+    }
+}
+
 /// Unified-state world syntax. When an fsm declares
 /// `world ∈ World` but NOT `world_next ∈ World`, the user is
 /// using the `_var` time-shift convention for shared state:
@@ -1665,6 +1779,11 @@ impl EvidentRuntime {
             // works without changes. No-op for fsms that already
             // declared `world_next` (legacy pattern stays as is).
             unify_world_syntax(&mut s)?;
+            // Flatten Seq concatenations (`a ++ b ++ ⟨…⟩`) into a
+            // single SeqLit when all operands resolve to literal
+            // sequences. The existing `translate_seq_lit_eq` path
+            // handles the result. Recurses into subclaims.
+            desugar_seq_concat(&mut s);
             inject_fsm_params(&mut s)?;
             // lhs-eq inference runs BEFORE prev-tick injection so
             // that inferred memberships (e.g., `frame ∈ Int` from
