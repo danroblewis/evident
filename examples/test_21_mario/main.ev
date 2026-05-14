@@ -220,6 +220,15 @@ fsm game(world ∈ World)
     -- without this `_var` the scheduler wouldn't pin tick 0).
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
 
+    -- Subscribe game to `world.tick` so it wakes every frame, not
+    -- only when the player presses a key. Without this read, the
+    -- only things in game's read-set are `_world.keys` and
+    -- `_world.player` — both static when nothing happens —
+    -- so the scheduler never schedules game and Mario freezes
+    -- mid-air. `display` increments `world.tick` every frame and
+    -- the value change wakes anyone reading it.
+    tick_anchor ∈ Int = _world.tick
+
     -- Level platforms come from world (written by level_gen).
     -- `..Level` brings `plat_x` / `plat_y` as free Seqs into our
     -- scope and materializes `platforms[i]` from them; we pin
@@ -379,13 +388,17 @@ fsm display(world ∈ World)
     key_up_eff    = ReadByte(win.keyboard_state, 82)
     sdl_delay(16, delay_eff)
 
-    key_left_raw  ∈ Int = match last_results[1]
+    -- last_results indices follow the effects-list ordering. The
+    -- input_effs chunk sits AFTER 2 sky + 8 platform + 8 player +
+    -- 4 enemy + 1 present + 1 pump = 24 effects, so the three
+    -- ReadByte results land at indices 24 / 25 / 26.
+    key_left_raw  ∈ Int = match last_results[24]
         IntResult(n) ⇒ n
         _           ⇒ 0
-    key_right_raw ∈ Int = match last_results[2]
+    key_right_raw ∈ Int = match last_results[25]
         IntResult(n) ⇒ n
         _           ⇒ 0
-    key_up_raw    ∈ Int = match last_results[3]
+    key_up_raw    ∈ Int = match last_results[26]
         IntResult(n) ⇒ n
         _           ⇒ 0
 
