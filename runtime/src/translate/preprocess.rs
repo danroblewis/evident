@@ -266,11 +266,19 @@ pub(super) fn collect_seq_lengths_with_schemas(
         };
         out.insert(k.clone(), len);
     }
-    let no_pinned: HashMap<String, i64> = HashMap::new();
+    // `given` Int values seed `pinned` for the fixed-point walk so
+    // chains like `#position = n` resolve when the caller pinned
+    // `n` via given (e.g. invoking `Toposort` from Rust). Without
+    // this, only seq-length pins propagate; an int-named length
+    // bound stays symbolic and the ∀-unroll bails.
+    let mut pinned: HashMap<String, i64> = HashMap::new();
+    for (k, v) in given {
+        if let Value::Int(n) = v { pinned.insert(k.clone(), *n); }
+    }
     let mut changed = true;
     while changed {
         changed = false;
-        walk_constraints(body, schemas, &no_pinned, &mut out, &mut changed);
+        walk_constraints(body, schemas, &pinned, &mut out, &mut changed);
     }
     out
 }
