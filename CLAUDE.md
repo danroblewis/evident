@@ -87,6 +87,7 @@ your task:
 | Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
 | Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Planning what to add to FFI / OS coverage (reads, writes, alloc, callbacks, posix) | [`docs/design/ffi-os-evolution.md`](docs/design/ffi-os-evolution.md) |
+| Working with topological sort, or hitting "I want generics / higher-order claims" | [`docs/design/toposort.md`](docs/design/toposort.md) |
 | Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
 
 The two `docs/guide/*` docs were written specifically to spare future-you
@@ -924,6 +925,108 @@ Reach for it sparingly.
 constant (window edge, floor `y`, sprite size) means you're
 inlining an entity system. Define the entities and the relations,
 and the ternaries dissolve.
+
+## Parallel Seqs are forbidden
+
+If you ever find yourself reaching for two Seqs that are *supposed
+to line up* — `from ∈ Seq(Int)` and `to ∈ Seq(Int)` representing
+edges, `xs ∈ Seq(Int)` and `ys ∈ Seq(Int)` representing points,
+`names ∈ Seq(String)` and `ages ∈ Seq(Int)` representing people —
+**stop**. Use a record type.
+
+```evident
+-- Don't:
+from ∈ Seq(Int)
+to   ∈ Seq(Int)
+#from = #to    -- and now hope nothing else breaks the invariant
+
+-- Do:
+type Edge(from, to ∈ Int)
+edges ∈ Seq(Edge)
+```
+
+**Why this matters more in Evident than in a normal language.** Z3
+silently assigns values to anything you leave unconstrained. If
+you have parallel Seqs and the length-equality drifts (or you
+forget to write `#from = #to`), Z3 picks a "solution" by filling
+in whatever fits — silently. You won't get a type error or a
+runtime panic; you'll get *the wrong answer*, indistinguishable
+from a real answer to a model consumer. The structural invariant
+"these two Seqs are paired" can't be enforced by the type system,
+only by hand-written constraints, and missing constraints in
+Evident are silent bugs.
+
+A record type makes the pairing *structural*. Two fields move
+together by construction; there's no way to misalign them.
+
+**Symptoms that mean you've drifted toward parallel Seqs**:
+- `#a = #b` appearing as a constraint.
+- A `∀ k ∈ {0..#a - 1}` whose body references `a[k]` *and* `b[k]`.
+- "Did I remember to update both lists when I added an entry?"
+  as a question you ever have to ask.
+- A reviewer mentally zipping two Seqs to read a constraint.
+
+Each of these is the type system asking to be a record.
+
+**The mathematical generalization**: any relation between data is
+a record. `Edge(from, to)` is a pair. `Map<K, V>` entries are
+`Pair(key, value)`. `Coordinates(x, y, z)` is a triple. When you
+hear yourself say "these are paired" or "indexed in lockstep" or
+"the i-th of A matches the i-th of B" — that's a record begging
+to exist.
+
+## Indices in interfaces are a leak
+
+If a claim's input or output traffics in `Int` indices to
+identify "which item we mean", the interface is leaking an
+implementation encoding into the contract. **Domain types in,
+domain types out.** Indices are for internal computation; they
+have no place at the API boundary.
+
+```evident
+-- Don't (output is index assignments):
+claim Sort
+    items ∈ Seq(Rect)
+    position ∈ Seq(Int)        -- output: where each item lands
+    -- caller has to invert: sorted[position[i]] = items[i]
+
+-- Do (output is the sorted thing):
+claim Sort
+    items ∈ Seq(Rect)
+    sorted ∈ Seq(Rect)         -- output is in the domain
+```
+
+**Why this matters.** Indices ARE a valid encoding of "which one"
+— but they're an *implementation choice*, not a property of the
+domain. A topological sort operates on graphs of nodes; nothing
+in the math says nodes are integers. A sort operates on
+comparable values; nothing says they're indexed. When the
+interface returns indices, every caller has to do the same
+"map → solve → unmap" boilerplate, AND every reader has to hold
+that extra layer in their head. The cost is paid N times so the
+implementation can save it once.
+
+The implementation can still use indices freely. Just hide them.
+
+**The rule**: if a parameter or output of a public claim has
+type `Int` (or `Seq(Int)`) and its *meaning* is "an index into
+some other variable", you're leaking. Either return the items
+directly, or wrap the indices in a record type that carries them
+along with the thing they index.
+
+**When indices ARE legitimate at the interface**:
+- They're a domain concept in their own right (a "tick number",
+  a "frame index", an "event sequence number").
+- The caller doesn't need to invert them; they're consumed as IDs.
+
+If you write a claim and find yourself documenting "to use this,
+the caller does the following lookup loop", the lookup loop
+belongs *inside* the claim. Bring the indices in; surface the
+domain type out.
+
+See `docs/design/toposort.md` for the worked example — toposort
+as a constraint problem, why the natural representation isn't
+`Seq(Int) of positions` even though the implementation uses one.
 
 ## Program Structure
 
