@@ -116,6 +116,33 @@ pub(crate) fn collect_dispatchable_effects(
     // contributes the right ordering edge between the canonical
     // sky and clear nodes, even though phase_chain's own synthetic
     // node names don't survive dedup.
+    // A `Seq(Effect)` binding has a body SeqLit when the user wrote
+    // `name = ⟨…⟩` explicitly (ordering declarations like phase_chain,
+    // or trivial bundles like sky_effs). Bindings WITHOUT a body
+    // SeqLit are populated by subclaim invocations (e.g., the four
+    // plat_X_effs from `win.draw_rect(...)` calls), where the intra-
+    // bundle order is implicit and must come from auto-edges between
+    // adjacent synthetic nodes.
+    //
+    // For ordering-declaration bindings, the chain extraction walks
+    // their SeqLit and produces deduped ordering edges; auto-edges
+    // would generate contradictions when the same canonical appears
+    // multiple times in the chain. So we skip auto-edges for those.
+    let has_body_seqlit: HashSet<&str> = match rt.get_schema(claim_name) {
+        Some(schema) => schema.body.iter().filter_map(|item| match item {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) => {
+                let lhs_name = match (lhs.as_ref(), rhs.as_ref()) {
+                    (Expr::Identifier(n), Expr::SeqLit(_)) => Some(n.as_str()),
+                    (Expr::SeqLit(_), Expr::Identifier(n)) => Some(n.as_str()),
+                    _ => None,
+                };
+                lhs_name
+            }
+            _ => None,
+        }).collect(),
+        None => HashSet::new(),
+    };
+
     let mut node_values: HashMap<String, Effect> = HashMap::new();
     let mut all_names: Vec<String> = Vec::new();
     let mut all_auto_edges: Vec<(String, String)> = Vec::new();
@@ -132,14 +159,17 @@ pub(crate) fn collect_dispatchable_effects(
                     matches!(it, Value::Enum { enum_name, .. } if enum_name == "Effect")
                 );
                 if is_effect_seq {
+                    let emit_auto = !has_body_seqlit.contains(name.as_str());
                     let mut prev: Option<String> = None;
                     for (i, item) in items.iter().enumerate() {
                         if let Ok(e) = ast_decoder::decode_effect(item) {
                             let syn = format!("{}[{}]", name, i);
                             node_values.insert(syn.clone(), e);
                             all_names.push(syn.clone());
-                            if let Some(p) = prev.take() {
-                                all_auto_edges.push((p, syn.clone()));
+                            if emit_auto {
+                                if let Some(p) = prev.take() {
+                                    all_auto_edges.push((p, syn.clone()));
+                                }
                             }
                             prev = Some(syn);
                         }
@@ -221,8 +251,8 @@ pub(crate) fn collect_dispatchable_effects(
     for chain in raw_chains {
         let mut deduped: Vec<String> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
-        for name in chain {
-            let canon = alias_to_canonical.get(&name).cloned().unwrap_or(name);
+        for name in &chain {
+            let canon = alias_to_canonical.get(name).cloned().unwrap_or_else(|| name.clone());
             if seen.insert(canon.clone()) {
                 deduped.push(canon);
             }
