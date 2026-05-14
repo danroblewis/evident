@@ -16,11 +16,92 @@
 //! halt sentinel — when state's model equals that variant, the loop
 //! exits.
 
-use crate::ast::{EffectResult, BodyItem};
+use crate::ast::{Effect, EffectResult, BodyItem};
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
 use crate::runtime::EvidentRuntime;
 use crate::translate::{Value, ast_decoder};
 use std::collections::HashMap;
+
+/// Collect every Effect / Seq(Effect) binding in the solution and
+/// flatten them into a dispatch order, deduplicating by value.
+///
+/// Today's model: every Effect-typed value in the satisfying model
+/// gets dispatched. That includes both bare `e ∈ Effect = LibCall(…)`
+/// bindings and `seq ∈ Seq(Effect) = ⟨…⟩` bindings — the user doesn't
+/// have to construct an `effects` Seq just to get IO to happen.
+///
+/// Ordering rules (v1):
+///   1. If `primary_var` is set (the legacy `effects` binding), its
+///      elements dispatch FIRST in order — preserving `last_results`
+///      indexing for programs that read it. (last_results is parallel
+///      to the dispatched list.)
+///   2. Other Seq(Effect) bindings dispatch in alphabetical key
+///      order, elements in index order.
+///   3. Bare Effect bindings dispatch interleaved with #2 in
+///      alphabetical key order.
+///   4. Dedup by Value equality — an Effect that appears in two
+///      different Seqs (e.g. `sky_effs` and `effects = sky_effs ++ …`)
+///      is dispatched once, in its first encountered position.
+///
+/// Effect ordering across non-primary bindings is intentionally
+/// unspecified beyond the alphabetical-stability hack — when a
+/// program cares about cross-Seq order, it should compose them into
+/// a single Seq(Effect) and bind it as `effects`. The "no-effects-slot"
+/// path is for programs whose effects don't have ordering constraints.
+pub(crate) fn collect_dispatchable_effects(
+    bindings: &HashMap<String, Value>,
+    primary_var: Option<&str>,
+) -> Vec<Effect> {
+    let mut out: Vec<Effect> = Vec::new();
+    let mut seen: Vec<Value> = Vec::new();
+
+    fn try_push(val: &Value, seen: &mut Vec<Value>, out: &mut Vec<Effect>) {
+        if seen.iter().any(|s| s == val) { return; }
+        if let Ok(e) = ast_decoder::decode_effect(val) {
+            seen.push(val.clone());
+            out.push(e);
+        }
+    }
+
+    // (1) Primary `effects` binding, in order. Last_results is
+    // parallel to whatever ends up in `out` — putting `effects`
+    // first preserves the legacy `last_results[i]` indexing for
+    // programs that read it.
+    if let Some(pv) = primary_var {
+        if let Some(Value::SeqEnum(items)) = bindings.get(pv) {
+            for item in items {
+                try_push(item, &mut seen, &mut out);
+            }
+        }
+    }
+
+    // (2 + 3) Other bindings, alphabetical key order for stability.
+    let mut other_keys: Vec<&String> = bindings.keys()
+        .filter(|k| Some(k.as_str()) != primary_var)
+        .collect();
+    other_keys.sort();
+
+    for k in other_keys {
+        match &bindings[k] {
+            v @ Value::Enum { enum_name, .. } if enum_name == "Effect" => {
+                try_push(v, &mut seen, &mut out);
+            }
+            Value::SeqEnum(items) => {
+                let is_effect_seq = !items.is_empty() && items.iter().all(|it|
+                    matches!(it, Value::Enum { enum_name, .. } if enum_name == "Effect")
+                );
+                if is_effect_seq {
+                    for item in items {
+                        try_push(item, &mut seen, &mut out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    out
+}
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]
@@ -667,15 +748,11 @@ fn run_with_shape(
                 .ok_or_else(|| format!("step {step_count}: model has no `{}`", sn))?),
             None => None,
         };
-        let effects: Vec<crate::ast::Effect> = match &shape.effects_var {
-            Some(ev) => {
-                let effects_val = r.bindings.get(ev)
-                    .ok_or_else(|| format!("step {step_count}: model has no `{}`", ev))?;
-                ast_decoder::decode_effect_list(effects_val)
-                    .map_err(|e| format!("step {step_count}: decode effects: {e}"))?
-            }
-            None => Vec::new(),
-        };
+        // Walk the entire model for dispatchable Effect / Seq(Effect)
+        // bindings. The legacy `effects` Seq (when present) dispatches
+        // first to preserve `last_results` indexing.
+        let effects = collect_dispatchable_effects(&r.bindings,
+            shape.effects_var.as_deref());
 
         // Halt-check: if effects empty AND state_next equals state, we
         // consider the program halted (fixpoint). User can also issue
@@ -1166,17 +1243,12 @@ fn run_multi_fsm(
                         fsm.claim_name, sn))?),
                 None => None,
             };
-            let effects: Vec<crate::ast::Effect> = match &fsm.effects_var {
-                Some(ev) => {
-                    let effects_val = r.bindings.get(ev)
-                        .ok_or_else(|| format!("FSM `{}` step {step_count}: model has no `{}`",
-                            fsm.claim_name, ev))?;
-                    ast_decoder::decode_effect_list(effects_val)
-                        .map_err(|e| format!("FSM `{}` step {step_count}: decode effects: {e}",
-                            fsm.claim_name))?
-                }
-                None => Vec::new(),
-            };
+            // Walk the entire model for dispatchable Effect / Seq(Effect)
+            // bindings (see collect_dispatchable_effects). Same ordering
+            // rules apply per FSM: legacy `effects` Seq first if present,
+            // then other Effect-typed bindings dedup'd by value.
+            let effects = collect_dispatchable_effects(&r.bindings,
+                fsm.effects_var.as_deref());
 
             // Legacy halt-check: state_next == state (value equality,
             // true fixpoint) AND effects empty AND we're past tick 0.
