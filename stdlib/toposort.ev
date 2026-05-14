@@ -53,9 +53,11 @@ claim Toposort<T>
     #items = n
     #sorted = n
 
-    -- Permutation: every items[i] appears somewhere in sorted.
-    -- Combined with `#items = #sorted` and distinct-T-values
-    -- (the identity assumption), this gives a permutation.
+    -- Permutation: same length (above), every items[i] appears in
+    -- sorted, and sorted itself has distinct elements (no duplicate
+    -- positions). With distinct items as the identity assumption,
+    -- these three together pin sorted to a permutation.
+    distinct(sorted)
     ∀ i ∈ {0..n - 1} : (∃ j ∈ {0..n - 1} : sorted[j] = items[i])
 
     -- Edge ordering. Find each edge's endpoints in sorted by value

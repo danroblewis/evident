@@ -1727,6 +1727,63 @@ pub(super) fn translate_bool<'ctx>(
     env: &HashMap<String, Var<'ctx>>,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<Bool<'ctx>> {
+    // `distinct(a, b, c, …)` — Z3's all-different primitive. Two
+    // call shapes:
+    //   * Variadic over scalar args: `distinct(a, b, c)`. All args
+    //     translate to the same Z3 sort. v1 supports Int / Bool /
+    //     String; picks the first sort that translates every arg.
+    //   * Single Seq arg with pinned length: `distinct(seq)`.
+    //     Unrolls to `distinct(seq[0], seq[1], …, seq[n-1])`
+    //     and recurses through the variadic path.
+    // 0 or 1 args is trivially true.
+    if let Expr::Call(name, args) = e {
+        if name == "distinct" {
+            if args.len() <= 1 {
+                // Check single-Seq form. If the one arg is a
+                // pinned-length Seq, unroll its elements.
+                if args.len() == 1 {
+                    if let Expr::Identifier(sname) = &args[0] {
+                        if let Some(var) = env.get(sname) {
+                            if let Some((_, len, _)) = var.as_seq() {
+                                if let Some(n) = len.simplify().as_i64() {
+                                    let exploded: Vec<Expr> = (0..n).map(|i|
+                                        Expr::Index(
+                                            Box::new(Expr::Identifier(sname.clone())),
+                                            Box::new(Expr::Int(i)))).collect();
+                                    return translate_bool(
+                                        &Expr::Call("distinct".into(), exploded),
+                                        ctx, env, schemas);
+                                }
+                            }
+                        }
+                    }
+                }
+                return Some(Bool::from_bool(ctx, true));
+            }
+            if let Some(ints) = args.iter()
+                .map(|a| translate_int(a, ctx, env))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Int> = ints.iter().collect();
+                return Some(Int::distinct(ctx, &refs));
+            }
+            if let Some(bools) = args.iter()
+                .map(|a| translate_bool(a, ctx, env, schemas))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Bool> = bools.iter().collect();
+                return Some(Bool::distinct(ctx, &refs));
+            }
+            if let Some(strs) = args.iter()
+                .map(|a| translate_str(a, ctx, env))
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs: Vec<&Z3Str> = strs.iter().collect();
+                return Some(Z3Str::distinct(ctx, &refs));
+            }
+            return None;
+        }
+    }
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
