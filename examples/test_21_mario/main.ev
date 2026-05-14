@@ -200,12 +200,11 @@ fsm level_gen(world ∈ World)
 
     -- Freeze: when the level didn't change, hold plat_x/plat_y
     -- at the previous tick's values. Z3 picks once per level.
-    ¬level_changed ⇒ (∀ i ∈ {0..2} :
-        plat_x[i] = _world.plat_x[i] ∧ plat_y[i] = _world.plat_y[i])
+    ¬level_changed ⇒ (plat_x = _world.plat_x ∧ plat_y = _world.plat_y)
 
-    -- Publish to world (per-element; Seq=Seq isn't supported).
-    ∀ i ∈ {0..2} : world.plat_x[i] = plat_x[i]
-    ∀ i ∈ {0..2} : world.plat_y[i] = plat_y[i]
+    -- Publish to world.
+    world.plat_x = plat_x
+    world.plat_y = plat_y
 
 -- ── Game FSM: physics ─────────────────────────────────────────
 
@@ -236,8 +235,8 @@ fsm game(world ∈ World)
     -- the active level.
     #_world.plat_x = 3
     #_world.plat_y = 3
-    ∀ i ∈ {0..2} : plat_x[i] = _world.plat_x[i]
-    ∀ i ∈ {0..2} : plat_y[i] = _world.plat_y[i]
+    plat_x = _world.plat_x
+    plat_y = _world.plat_y
 
     -- ── Player: input intent ──────────────────────────────────
     --
@@ -374,8 +373,8 @@ fsm display(world ∈ World)
     -- (same pattern as game).
     #_world.plat_x = 3
     #_world.plat_y = 3
-    ∀ i ∈ {0..2} : plat_x[i] = _world.plat_x[i]
-    ∀ i ∈ {0..2} : plat_y[i] = _world.plat_y[i]
+    plat_x = _world.plat_x
+    plat_y = _world.plat_y
 
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 

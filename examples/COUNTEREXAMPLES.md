@@ -640,32 +640,22 @@ field updates (build the inner record from the existing one with
 just the leaf field replaced; for Seq-of-record writes, build the
 new element similarly and `set_at(i, …)`).
 
-### 24. `Seq = Seq` (whole-sequence assignment) is dropped
+### 24. ~~`Seq = Seq` (whole-sequence assignment) is dropped~~ — FIXED
 
-**Where:** `examples/test_21_mario/main.ev`; surfaced wiring the
-`level_gen` FSM. Trying to publish a local `plat_x ∈ Seq(Int)`
-into `world.plat_x` as a single assignment fails:
+**Was:** `world.plat_x = plat_x` (or `plat_x = _world.plat_x`)
+dropped at translate time. Required element-wise workarounds like
+`∀ i ∈ {0..2} : world.plat_x[i] = plat_x[i]`.
 
-```evident
-world.plat_x = plat_x          -- DROPPED
-plat_x = _world.plat_x         -- also DROPPED
-```
-
-Workaround: element-wise via `∀`, with the length pinned:
-
-```evident
-∀ i ∈ {0..2} : world.plat_x[i] = plat_x[i]
-```
-
-The translator handles `Seq[i] = expr` per element but bails on
-the whole-Seq form. Same shape for any element type — Int / Bool /
-String / record Seq.
-
-Fix idea: in the assignment translator, when both sides are
-Seq vars with the same pinned length, expand to an element-wise
-constraint AND to a sequence-array equality on the Z3 side (so
-unification of derived sub-fields propagates). Or simply desugar
-`A = B` to `#A = #B ∧ ∀ i : A[i] = B[i]` upstream of translation.
+**Fix:** `translate_seq_eq` in `runtime/src/translate/exprs.rs`
+recognizes `A = B` where both `A` and `B` are `SeqVar` or
+`DatatypeSeqVar` with matching element kinds and known
+lengths, and lowers it to an element-wise conjunction
+`Array.select(i)._eq(Array.select(i))` over `i ∈ 0..n-1`.
+Same routing for `≠`. Element types: Int / Bool / String for
+`SeqVar`; whole-record `_eq` on the `Dynamic` for
+`DatatypeSeqVar`. Length-mismatch / unknown-length / mixed-kind
+cases return None so the dispatch falls through (and the
+constraint visibly drops, as before).
 
 ## What works without caveat
 

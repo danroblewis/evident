@@ -78,6 +78,3 @@ That's the whole edit.
 - **3-level nested writes through `world_next` are dropped.**
   Enemy physics writes the whole `Mover` per implication branch.
   See COUNTEREXAMPLES.md #23.
-- **Seq=Seq assignment isn't translated.** `plat_x = _world.plat_x`
-  drops; element-wise `∀ i : plat_x[i] = _world.plat_x[i]` works.
-  (Not yet in COUNTEREXAMPLES; should be filed.)

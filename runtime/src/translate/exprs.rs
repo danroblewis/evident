@@ -1665,6 +1665,60 @@ fn bind_composite_fields<'ctx>(
     true
 }
 
+/// Whole-Seq equality: `A = B` where both `A` and `B` resolve to Seq
+/// vars (primitive `SeqVar` or `DatatypeSeqVar`). Desugars to
+/// element-wise `∀ i ∈ {0..n-1} : A[i] = B[i]` plus a length match.
+///
+/// Returns None if either side isn't a Seq, the element kinds don't
+/// match, or either length isn't a literal int (we need a pinned
+/// length to unroll the element-wise conjunction).
+fn translate_seq_eq<'ctx>(
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<Bool<'ctx>> {
+    let Expr::Identifier(l_name) = lhs else { return None };
+    let Expr::Identifier(r_name) = rhs else { return None };
+    let l = env.get(l_name)?;
+    let r = env.get(r_name)?;
+    match (l, r) {
+        (Var::SeqVar { arr: la, len: ll, elem: le },
+         Var::SeqVar { arr: ra, len: lr, elem: re }) => {
+            if le != re { return None; }
+            let ln = ll.simplify().as_i64()?;
+            let rn = lr.simplify().as_i64()?;
+            if ln != rn { return None; }
+            let mut clauses: Vec<Bool> = Vec::with_capacity(ln as usize);
+            for i in 0..ln {
+                let idx = Int::from_i64(ctx, i);
+                let l_elem = la.select(&idx);
+                let r_elem = ra.select(&idx);
+                clauses.push(l_elem._eq(&r_elem));
+            }
+            let refs: Vec<&Bool> = clauses.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        (Var::DatatypeSeqVar { arr: la, len: ll, type_name: lt, .. },
+         Var::DatatypeSeqVar { arr: ra, len: lr, type_name: rt, .. }) => {
+            if lt != rt { return None; }
+            let ln = ll.simplify().as_i64()?;
+            let rn = lr.simplify().as_i64()?;
+            if ln != rn { return None; }
+            let mut clauses: Vec<Bool> = Vec::with_capacity(ln as usize);
+            for i in 0..ln {
+                let idx = Int::from_i64(ctx, i);
+                let l_elem = la.select(&idx);
+                let r_elem = ra.select(&idx);
+                clauses.push(l_elem._eq(&r_elem));
+            }
+            let refs: Vec<&Bool> = clauses.iter().collect();
+            Some(Bool::and(ctx, &refs))
+        }
+        _ => None,
+    }
+}
+
 // ── Section 9: translate_bool — the Bool dispatcher ──────────────────
 
 pub(super) fn translate_bool<'ctx>(
@@ -2039,6 +2093,17 @@ pub(super) fn translate_bool<'ctx>(
                     });
                 }
                 if let Some(b) = translate_set_lit_eq(rhs, lhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                // `A = B` (whole-Seq equality between two named Seq
+                // vars). Desugars to element-wise equality + length
+                // match. Try lhs/rhs in only one direction since the
+                // helper is symmetric in operand roles.
+                if let Some(b) = translate_seq_eq(lhs, rhs, ctx, env) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
