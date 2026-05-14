@@ -1,0 +1,70 @@
+-- Permutation: `b` is a permutation of `a`.
+--
+-- Asserts that two Seqs hold the same elements (with the
+-- distinct-values identity assumption — same caveat as elsewhere
+-- in the language).
+--
+-- Caller pattern:
+--     a ∈ Seq(T)
+--     b ∈ Seq(T)
+--     #a = N
+--     #b = N
+--     Permutation<T>(a, b)
+--
+-- Body asserts: same length, both distinct, every a[i] appears in b.
+-- Combined, those pin b to a permutation of a's elements.
+--
+-- For Seqs with duplicate values, the body's `distinct` checks
+-- will be UNSAT — Permutation is for genuine sets-of-values
+-- represented as Seqs.
+
+claim Permutation<T>(a ∈ Seq(T), b ∈ Seq(T))
+    #a = #b
+    distinct(a)
+    distinct(b)
+    ∀ i ∈ {0..#a - 1} : contains(b, a[i])
+
+-- ── Tests ────────────────────────────────────────────────────
+
+claim sat_identity_is_permutation
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨1, 2, 3⟩
+    b = ⟨1, 2, 3⟩
+    Permutation<Int>(a, b)
+
+claim sat_reversed_is_permutation
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨1, 2, 3⟩
+    b = ⟨3, 2, 1⟩
+    Permutation<Int>(a, b)
+
+claim sat_b_picks_some_permutation
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨10, 20, 30⟩
+    #b = 3
+    Permutation<Int>(a, b)
+    -- Z3 will pick some permutation of ⟨10, 20, 30⟩ for b.
+
+claim unsat_different_elements
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨1, 2, 3⟩
+    b = ⟨1, 2, 4⟩
+    Permutation<Int>(a, b)
+
+claim unsat_different_lengths
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨1, 2, 3⟩
+    b = ⟨1, 2⟩
+    Permutation<Int>(a, b)
+
+claim unsat_b_has_duplicates
+    a ∈ Seq(Int)
+    b ∈ Seq(Int)
+    a = ⟨1, 2, 3⟩
+    b = ⟨1, 1, 2⟩
+    Permutation<Int>(a, b)

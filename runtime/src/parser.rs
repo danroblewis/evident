@@ -419,13 +419,25 @@ impl Parser {
                 && matches!(self.peek(), Token::LParen)
             {
                 self.bump();   // (
-                let inner = match self.bump() {
+                let inner_head = match self.bump() {
                     Token::Ident(s) => s,
                     other => return Err(ParseError(format!(
                         "expected inner type for {}, got {:?}", head, other))),
                 };
+                // Inner type may itself carry generic args:
+                // `Seq(Edge<T>)`. Consume those if present.
+                let inner = if let Some(args) = self.try_parse_generic_args_suffix()? {
+                    format!("{inner_head}{args}")
+                } else {
+                    inner_head
+                };
                 self.eat(&Token::RParen)?;
                 format!("{}({})", head, inner)
+            } else if matches!(self.peek(), Token::Lt) {
+                // Bare-type with generic args: `Edge<T>`, `Pair<A, B>`.
+                let args = self.try_parse_generic_args_suffix()?
+                    .expect("Lt was peeked");
+                format!("{head}{args}")
             } else {
                 head
             };

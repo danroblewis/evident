@@ -158,6 +158,39 @@ fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, S
     use crate::ast::BodyItem;
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    fn walk_expr(e: &crate::ast::Expr, out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
+        use crate::ast::Expr;
+        match e {
+            // `Foo<Bar>(args, …)` — positional generic invocation
+            // (e.g. `Permutation<Int>(a, b)` as a body constraint).
+            Expr::Call(name, args) => {
+                collect_from_type_name(name, out, seen);
+                for a in args { walk_expr(a, out, seen); }
+            }
+            Expr::Binary(_, l, r) | Expr::Range(l, r)
+            | Expr::InExpr(l, r) | Expr::Index(l, r) => {
+                walk_expr(l, out, seen); walk_expr(r, out, seen);
+            }
+            Expr::Ternary(c, a, b) => {
+                walk_expr(c, out, seen); walk_expr(a, out, seen); walk_expr(b, out, seen);
+            }
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) => {
+                for x in es { walk_expr(x, out, seen); }
+            }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+                walk_expr(r, out, seen); walk_expr(b, out, seen);
+            }
+            Expr::Cardinality(i) | Expr::Not(i) | Expr::Matches(i, _) => {
+                walk_expr(i, out, seen);
+            }
+            Expr::Field(recv, _) => walk_expr(recv, out, seen),
+            Expr::Match(scr, arms) => {
+                walk_expr(scr, out, seen);
+                for arm in arms { walk_expr(&arm.body, out, seen); }
+            }
+            _ => {}
+        }
+    }
     fn walk(body: &[BodyItem], out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
         for item in body {
             match item {
@@ -166,15 +199,17 @@ fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, S
                 }
                 BodyItem::SubclaimDecl(sub) => walk(&sub.body, out, seen),
                 // Generic claim invocations: `FirstEqual<Rect>(a ↦ …)`.
-                // The name is the composite `FirstEqual<Rect>`.
-                BodyItem::ClaimCall { name, .. } => {
+                BodyItem::ClaimCall { name, mappings } => {
                     collect_from_type_name(name, out, seen);
+                    for m in mappings { walk_expr(&m.value, out, seen); }
                 }
                 // Generic passthrough: `..Edge<Rect>`.
                 BodyItem::Passthrough(name) => {
                     collect_from_type_name(name, out, seen);
                 }
-                _ => {}
+                // Body constraints can contain `Foo<Bar>(args)` positional
+                // invocations or `Foo<Bar>` constructor calls inline.
+                BodyItem::Constraint(e) => walk_expr(e, out, seen),
             }
         }
     }
