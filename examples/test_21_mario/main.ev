@@ -70,9 +70,9 @@ claim Jumpable
     #plat_x = 3
     #plat_y = 3
 
-    ∀ i ∈ {0..2} :
-        0 ≤ plat_x[i] ∧ plat_x[i] ≤ 640 - PLAT_W
-        GROUND_Y - MAX_JUMP_RISE ≤ plat_y[i] ∧ plat_y[i] ≤ GROUND_Y - PLAT_H - 24
+    ∀ (x, y) ∈ coindexed(plat_x, plat_y) :
+        0 ≤ x ∧ x ≤ 640 - PLAT_W
+        GROUND_Y - MAX_JUMP_RISE ≤ y ∧ y ≤ GROUND_Y - PLAT_H - 24
 
     ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
         (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
@@ -95,10 +95,10 @@ claim Level1
 
     Jumpable
 
-    ∃ i ∈ {0..2} : plat_y[i] ≤ 280
-    ∃ i ∈ {0..2} : plat_y[i] ≥ 350
-    ∃ i ∈ {0..2} : plat_x[i] + PLAT_W ≤ 280
-    ∃ i ∈ {0..2} : plat_x[i] ≥ 360
+    ∃ y ∈ plat_y : y ≤ 280
+    ∃ y ∈ plat_y : y ≥ 350
+    ∃ x ∈ plat_x : x + PLAT_W ≤ 280
+    ∃ x ∈ plat_x : x ≥ 360
 
 claim Level2
     PLAT_W ∈ Int
@@ -113,9 +113,9 @@ claim Level2
 
     Jumpable
 
-    ∀ i ∈ {0..2} : plat_y[i] ≤ 320
-    ∃ i ∈ {0..2} : plat_y[i] ≤ 250
-    ∃ i ∈ {0..2} : plat_y[i] ≥ 290
+    ∀ y ∈ plat_y : y ≤ 320
+    ∃ y ∈ plat_y : y ≤ 250
+    ∃ y ∈ plat_y : y ≥ 290
 
 type World
     player    ∈ Mover
@@ -166,15 +166,15 @@ fsm game(world ∈ World)
     plat_y = _world.plat_y
 
     on_ground ∈ Bool
-    ∀ i ∈ {0..#platforms - 1} :
-        (((_world.player.pos.y + p_size.y = platforms[i].aabb.pos.y)
-          ∧ (_world.player.pos.x + p_size.x > platforms[i].aabb.pos.x)
-          ∧ (_world.player.pos.x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x))
+    ∀ p ∈ platforms :
+        (((_world.player.pos.y + p_size.y = p.aabb.pos.y)
+          ∧ (_world.player.pos.x + p_size.x > p.aabb.pos.x)
+          ∧ (_world.player.pos.x < p.aabb.pos.x + p.aabb.size.x))
          ⇒ on_ground)
-    ¬on_ground ⇒ (∀ i ∈ {0..#platforms - 1} :
-        ¬((_world.player.pos.y + p_size.y = platforms[i].aabb.pos.y)
-          ∧ (_world.player.pos.x + p_size.x > platforms[i].aabb.pos.x)
-          ∧ (_world.player.pos.x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)))
+    ¬on_ground ⇒ (∀ p ∈ platforms :
+        ¬((_world.player.pos.y + p_size.y = p.aabb.pos.y)
+          ∧ (_world.player.pos.x + p_size.x > p.aabb.pos.x)
+          ∧ (_world.player.pos.x < p.aabb.pos.x + p.aabb.size.x)))
 
     will_jump ∈ Bool = (on_ground ∧ _world.keys.y > 0)
 
@@ -193,30 +193,30 @@ fsm game(world ∈ World)
     new_vy ∈ Int
 
     any_landing ∈ Bool
-    ∀ i ∈ {0..#platforms - 1} :
-        (((res_x + p_size.x > platforms[i].aabb.pos.x)
-          ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
-          ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
-          ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y))
+    ∀ p ∈ platforms :
+        (((res_x + p_size.x > p.aabb.pos.x)
+          ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
+          ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+          ∧ (tent.y + p_size.y > p.aabb.pos.y))
          ⇒ any_landing)
-    ¬any_landing ⇒ (∀ i ∈ {0..#platforms - 1} :
-        ¬((res_x + p_size.x > platforms[i].aabb.pos.x)
-          ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
-          ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
-          ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y)))
+    ¬any_landing ⇒ (∀ p ∈ platforms :
+        ¬((res_x + p_size.x > p.aabb.pos.x)
+          ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
+          ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+          ∧ (tent.y + p_size.y > p.aabb.pos.y)))
 
-    ∀ i ∈ {0..#platforms - 1} : (((res_x + p_size.x > platforms[i].aabb.pos.x)
-         ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
-         ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
-         ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y))
-        ⇒ (new_py + p_size.y ≤ platforms[i].aabb.pos.y))
+    ∀ p ∈ platforms : (((res_x + p_size.x > p.aabb.pos.x)
+         ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
+         ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+         ∧ (tent.y + p_size.y > p.aabb.pos.y))
+        ⇒ (new_py + p_size.y ≤ p.aabb.pos.y))
 
-    any_landing ⇒ (∃ i ∈ {0..#platforms - 1} :
-        (res_x + p_size.x > platforms[i].aabb.pos.x)
-        ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
-        ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
-        ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y)
-        ∧ (new_py + p_size.y = platforms[i].aabb.pos.y))
+    any_landing ⇒ (∃ p ∈ platforms :
+        (res_x + p_size.x > p.aabb.pos.x)
+        ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
+        ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+        ∧ (tent.y + p_size.y > p.aabb.pos.y)
+        ∧ (new_py + p_size.y = p.aabb.pos.y))
 
     ¬any_landing ⇒ (new_py = tent.y)
     any_landing  ⇒ (new_vy = 0)
