@@ -700,6 +700,43 @@ What's still pending:
   `composite_value_to_dyn` returns None for SeqField; needed for
   multi-step executor frames carrying composites with Seq fields.
 
+### 26. Subclaim invocations inside `∀` bodies don't assert their constraints
+
+**Where this came up:** trying to write Mario's render block as
+
+```evident
+plat_effs ∈ Seq(EffectBundle)
+#plat_effs = 4
+∀ (p, b) ∈ coindexed(platforms, plat_effs) :
+    win.draw_rect(Rect(p.color, p.aabb.pos, p.aabb.size), b.effs)
+```
+
+The body of a `∀` is translated by `translate_bool` (which returns a
+`Bool`), but `translate_bool` doesn't have solver access. A subclaim
+invocation like `win.draw_rect(…)` lives at the `inline_body_items` /
+`inline_subschema_call` layer because it asserts new constraints on
+the solver — those internal assertions like `out = ⟨color_eff,
+fill_eff⟩` (which pin the output Seq's length to 2 and its elements
+to specific LibCalls) need solver access.
+
+Inside a `∀` body, the subclaim call's invocation runs (the body
+expression is evaluated for each iteration), but the assertions
+silently drop. The output `b.effs` is left free, so Z3 picks
+arbitrary effect values for it and the rendered output is wrong.
+
+**Workaround**: keep subclaim invocations at the outer body level,
+one per index. The downstream Seq(Composite-with-Seq-field) support
+(#25) makes the ∀ shape *syntactically* expressible — the gap is
+purely in the inline / translate layering.
+
+**Fix idea**: pre-process `∀` bodies that contain subclaim
+invocations into explicit per-iteration body items at AST level,
+expanded over a known pinned length. Same approach that
+`apply_seq_lengths` uses for length pinning, but applied to
+subclaim-bearing bodies. The user-facing `∀ (…) ∈ coindexed(…)`
+syntax stays; the AST expansion makes each iteration a regular
+top-level body item the inline pass can see.
+
 ## What works without caveat
 
 Every demo ships in green:

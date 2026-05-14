@@ -340,7 +340,7 @@ pub fn sample_cached_inner<'ctx>(
                     let extracted = if fields.is_empty() {
                         extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
                     } else {
-                        extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                        extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx, enums)
                     };
                     if let Some(v) = extracted {
                         bindings.insert(name.clone(), v);
@@ -468,7 +468,7 @@ pub fn run_cached<'ctx>(
                         let extracted = if fields.is_empty() {
                             extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
                         } else {
-                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx, enums)
                         };
                         if let Some(v) = extracted {
                             bindings.insert(name.clone(), v);
@@ -654,7 +654,7 @@ pub fn evaluate(
                         let extracted = if fields.is_empty() {
                             extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
                         } else {
-                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx)
+                            extract_seq_composite(arr, len, fields.as_slice(), *dt, &model, ctx, enums)
                         };
                         if let Some(v) = extracted {
                             bindings.insert(name.clone(), v);
@@ -1143,7 +1143,7 @@ fn extract_binding(
             let extracted = if fields.is_empty() {
                 extract_seq_enum(arr, len, type_name, *dt, model, ctx, enums)
             } else {
-                extract_seq_composite(arr, len, fields.as_slice(), *dt, model, ctx)
+                extract_seq_composite(arr, len, fields.as_slice(), *dt, model, ctx, enums)
             };
             if let Some(v) = extracted {
                 bindings.insert(name.to_string(), v);
@@ -1165,7 +1165,7 @@ fn extract_binding(
 /// payload field. Recursion handles self-referential enums — the
 /// EnumRegistry is consulted to find the field's enum (by type name)
 /// when a payload field is itself an enum-typed value.
-fn extract_enum_value<'ctx>(
+pub(super) fn extract_enum_value<'ctx>(
     ast: &z3::ast::Datatype<'ctx>,
     enum_name: &str,
     dt: &'static z3::DatatypeSort<'static>,
@@ -1372,7 +1372,7 @@ fn extract_internal_cons_seq<'ctx>(
 /// element is a Datatype value of the enum's sort, decoded via
 /// `extract_enum_value` (which handles variant detection + payload
 /// recursion). Returned as `Value::SeqEnum(Vec<Value::Enum>)`.
-fn extract_seq_enum<'ctx>(
+pub(super) fn extract_seq_enum<'ctx>(
     arr: &z3::ast::Array<'ctx>,
     len: &Int<'ctx>,
     type_name: &str,

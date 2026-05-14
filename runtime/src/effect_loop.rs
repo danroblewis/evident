@@ -192,6 +192,40 @@ pub(crate) fn collect_dispatchable_effects(
                     }
                 }
             }
+            // `Seq(Composite-with-Seq(Effect)-field)` — the
+            // `Seq(EffectBundle)` shape from per-iteration ∀-render
+            // patterns. Each outer element holds an inner Seq(Effect);
+            // synthesize nodes `outer[i].field[j]` for every effect
+            // element, plus intra-bundle auto-edges between adjacent
+            // (i, j) and (i, j+1) within the same outer index.
+            //
+            // Cross-bundle order (`outer[i].field[last] → outer[i+1].
+            // field[0]`) is NOT auto-emitted — that's an inter-iteration
+            // ordering choice the user expresses via a phase_chain Seq.
+            Value::SeqComposite(items) => {
+                for (i, fields_map) in items.iter().enumerate() {
+                    for (fname, fval) in fields_map {
+                        let Value::SeqEnum(inner) = fval else { continue };
+                        let is_effect_inner = !inner.is_empty() && inner.iter().all(|it|
+                            matches!(it, Value::Enum { enum_name, .. }
+                                if enum_name == "Effect")
+                        );
+                        if !is_effect_inner { continue; }
+                        let mut prev: Option<String> = None;
+                        for (j, item) in inner.iter().enumerate() {
+                            if let Ok(e) = ast_decoder::decode_effect(item) {
+                                let syn = format!("{}[{}].{}[{}]", name, i, fname, j);
+                                node_values.insert(syn.clone(), e);
+                                all_names.push(syn.clone());
+                                if let Some(p) = prev.take() {
+                                    all_auto_edges.push((p, syn.clone()));
+                                }
+                                prev = Some(syn);
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -409,16 +443,35 @@ fn extract_seq_effect_chains(
     //   * `Identifier(name)` where `name` is a bare Effect binding.
     //   * `Index(Identifier(name), Int(i))` where `name[i]` names a
     //     synthetic Seq(Effect) element (e.g. `hat_effs[0]`).
+    //   * `Index(Field(Index(Identifier(outer), Int(i)), field), Int(j))`
+    //     where `outer[i].field[j]` names a synthetic
+    //     Seq(Composite-with-Seq-Effect-field) element (e.g.
+    //     `plat_effs[0].effs[0]`).
     fn node_name(e: &Expr, set: &HashSet<&String>) -> Option<String> {
         match e {
             Expr::Identifier(n) if set.contains(n) => Some(n.clone()),
-            Expr::Index(seq, idx) => {
-                if let (Expr::Identifier(name), Expr::Int(i)) = (seq.as_ref(), idx.as_ref()) {
-                    let syn = format!("{}[{}]", name, i);
-                    if set.contains(&syn) { return Some(syn); }
+            Expr::Index(seq, idx) => match seq.as_ref() {
+                Expr::Identifier(name) => {
+                    if let Expr::Int(i) = idx.as_ref() {
+                        let syn = format!("{}[{}]", name, i);
+                        if set.contains(&syn) { return Some(syn); }
+                    }
+                    None
                 }
-                None
-            }
+                Expr::Field(inner_seq, field) => {
+                    let Expr::Index(outer_seq, outer_idx) = inner_seq.as_ref() else {
+                        return None;
+                    };
+                    let Expr::Identifier(outer_name) = outer_seq.as_ref() else {
+                        return None;
+                    };
+                    let (Expr::Int(i), Expr::Int(j)) = (outer_idx.as_ref(), idx.as_ref())
+                        else { return None };
+                    let syn = format!("{}[{}].{}[{}]", outer_name, i, field, j);
+                    if set.contains(&syn) { Some(syn) } else { None }
+                }
+                _ => None,
+            },
             _ => None,
         }
     }

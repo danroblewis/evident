@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use z3::ast::{Array, Ast, Bool, Int, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
-use super::types::{FieldKind, SeqElem, Value, Var};
+use super::types::{EnumRegistry, FieldKind, SeqElem, Value, Var};
 
 /// Decode Z3's `as_string()` output back to a Rust string. Z3
 /// represents non-printable characters (and a few others) using
@@ -138,6 +138,7 @@ pub(super) fn extract_composite_value<'ctx>(
     dt: &DatatypeSort<'_>,
     model: &z3::Model<'ctx>,
     ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
 ) -> Option<HashMap<String, Value>> {
     let mut field_map: HashMap<String, Value> = HashMap::new();
     // SeqField consumes two consecutive accessors (arr + len) and uses
@@ -172,21 +173,72 @@ pub(super) fn extract_composite_value<'ctx>(
                 acc_pos += 1;
                 let nested_elem = raw.as_datatype()?;
                 let nested_map =
-                    extract_composite_value(&nested_elem, sub_fields, *nested_dt, model, ctx)?;
+                    extract_composite_value(&nested_elem, sub_fields, *nested_dt, model, ctx, enums)?;
                 Value::Composite(nested_map)
             }
-            FieldKind::SeqField { .. } => {
-                // Extracting a Seq field's value into a typed Value
-                // (SeqInt / SeqComposite / SeqEnum) needs the inner
-                // arr accessor's selection over 0..len. Wired in a
-                // follow-up; for now skip the binding so the outer
-                // composite Value omits this field. Constraint side
-                // still works.
-                acc_pos = match fk {
-                    FieldKind::SeqField { len_idx, .. } => *len_idx + 1,
-                    _ => acc_pos,
+            FieldKind::SeqField { name, arr_idx, len_idx, elem: seq_elem, .. } => {
+                use super::types::SeqFieldElem;
+                if *len_idx >= dt.variants[0].accessors.len() { break; }
+                let arr_dyn = dt.variants[0].accessors[*arr_idx].apply(&[elem]);
+                let len_dyn = dt.variants[0].accessors[*len_idx].apply(&[elem]);
+                acc_pos = *len_idx + 1;
+                let arr = arr_dyn.as_array()?;
+                let len_z3 = len_dyn.as_int()?;
+                let len = model.eval(&len_z3, true)?.as_i64()?;
+                let _ = name;
+                let extracted = match seq_elem {
+                    SeqFieldElem::Primitive(prim) => {
+                        match prim {
+                            super::types::SeqElem::Int => {
+                                let mut out: Vec<i64> = Vec::with_capacity(len as usize);
+                                for k in 0..len {
+                                    let idx = Int::from_i64(ctx, k);
+                                    let cell = arr.select(&idx).as_int()?;
+                                    out.push(model.eval(&cell, true)?.as_i64()?);
+                                }
+                                Value::SeqInt(out)
+                            }
+                            super::types::SeqElem::Bool => {
+                                let mut out: Vec<bool> = Vec::with_capacity(len as usize);
+                                for k in 0..len {
+                                    let idx = Int::from_i64(ctx, k);
+                                    let cell = arr.select(&idx).as_bool()?;
+                                    out.push(model.eval(&cell, true)?.as_bool()?);
+                                }
+                                Value::SeqBool(out)
+                            }
+                            super::types::SeqElem::Str => {
+                                let mut out: Vec<String> = Vec::with_capacity(len as usize);
+                                for k in 0..len {
+                                    let idx = Int::from_i64(ctx, k);
+                                    let cell = arr.select(&idx).as_string()?;
+                                    out.push(unescape_z3_string(
+                                        &model.eval(&cell, true)?.as_string()?));
+                                }
+                                Value::SeqStr(out)
+                            }
+                        }
+                    }
+                    SeqFieldElem::Enum { enum_name, dt: enum_dt } => {
+                        let len_int = Int::from_i64(ctx, len);
+                        let extracted = super::eval::extract_seq_enum(
+                            &arr, &len_int, enum_name, *enum_dt, model, ctx, enums);
+                        extracted?
+                    }
+                    SeqFieldElem::Composite { dt: inner_dt, sub_fields, .. } => {
+                        let mut out: Vec<HashMap<String, Value>> = Vec::with_capacity(len as usize);
+                        for k in 0..len {
+                            let idx = Int::from_i64(ctx, k);
+                            let cell = arr.select(&idx);
+                            let inner_elem = cell.as_datatype()?;
+                            let nested =
+                                extract_composite_value(&inner_elem, sub_fields, *inner_dt, model, ctx, enums)?;
+                            out.push(nested);
+                        }
+                        Value::SeqComposite(out)
+                    }
                 };
-                continue;
+                extracted
             }
         };
         field_map.insert(fk.name().to_string(), value);
@@ -206,6 +258,7 @@ pub(super) fn extract_seq_composite<'ctx>(
     dt: &DatatypeSort<'_>,
     model: &z3::Model<'ctx>,
     ctx: &'ctx Context,
+    enums: Option<&EnumRegistry>,
 ) -> Option<Value> {
     let n = model.eval(len, true)?.as_i64()?;
     if n < 0 { return None; }
@@ -214,7 +267,7 @@ pub(super) fn extract_seq_composite<'ctx>(
         let idx = Int::from_i64(ctx, i);
         let elem_dyn = arr.select(&idx);
         let elem = elem_dyn.as_datatype()?;
-        let field_map = extract_composite_value(&elem, fields, dt, model, ctx)?;
+        let field_map = extract_composite_value(&elem, fields, dt, model, ctx, enums)?;
         out.push(field_map);
     }
     Some(Value::SeqComposite(out))

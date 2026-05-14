@@ -302,12 +302,17 @@ pub(super) fn resolve_enum_ast<'ctx>(
             _ => None,
         },
         Expr::Index(base, idx) => {
-            // Seq(enum) indexing: `body[i]` where body is a
-            // DatatypeSeqVar with empty fields (Seq-of-enum marker).
-            let Expr::Identifier(seq_name) = base.as_ref() else { return None };
-            let var = env.get(seq_name)?;
-            let Var::DatatypeSeqVar { arr, fields, .. } = var else { return None };
-            if !fields.is_empty() { return None; } // record-style seq, handled elsewhere
+            // Seq(enum) indexing — both the bare Identifier case
+            // (`body[i]` for a top-level Seq(EnumType) binding) and
+            // the SeqField-of-composite case (`outer[i].field[j]`
+            // for a Seq(Composite-with-Seq-EnumType-field) binding).
+            // resolve_seq_handle unifies both shapes; we then check
+            // the handle is enum-element-shaped (Composite variant
+            // with empty `fields` = the Seq-of-enum marker, same
+            // as DatatypeSeqVar's empty `fields`).
+            let handle = resolve_seq_handle(base.as_ref(), ctx, env)?;
+            let SeqHandleRef::Composite { arr, fields, .. } = handle else { return None };
+            if !fields.is_empty() { return None; }   // record-style seq, handled elsewhere
             let i = translate_int(idx, ctx, env)?;
             arr.select(&i).as_datatype()
         }
