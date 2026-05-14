@@ -173,22 +173,36 @@ pub(super) fn resolve_mapping<'ctx>(
                 let mut ok = true;
                 for (arg, (field_name, field_type)) in args.iter().zip(fields.iter()) {
                     let key = format!("{}.{}", slot, field_name);
+                    // Tuple → sub-record coercion. When the arg is a
+                    // bare `(a, b, c)` and the field's type is a known
+                    // record schema, treat the tuple as positional
+                    // args for that schema. Same rule applies inside
+                    // record literals as for top-level claim args.
+                    let coerced_storage: Expr;
+                    let arg_ref: &Expr = match arg {
+                        Expr::Tuple(items) if schemas.contains_key(field_type) => {
+                            coerced_storage = Expr::Call(
+                                field_type.clone(), items.clone());
+                            &coerced_storage
+                        }
+                        other => other,
+                    };
                     let v: Option<Var<'ctx>> = match field_type.as_str() {
                         "Int" | "Nat" | "Pos" =>
-                            translate_int(arg, ctx, env).map(Var::IntVar),
+                            translate_int(arg_ref, ctx, env).map(Var::IntVar),
                         "Bool" =>
-                            translate_bool(arg, ctx, env, schemas).map(Var::BoolVar),
+                            translate_bool(arg_ref, ctx, env, schemas).map(Var::BoolVar),
                         "String" =>
-                            translate_str(arg, ctx, env).map(Var::StrVar),
+                            translate_str(arg_ref, ctx, env).map(Var::StrVar),
                         "Real" =>
-                            translate_real(arg, ctx, env).map(Var::RealVar),
+                            translate_real(arg_ref, ctx, env).map(Var::RealVar),
                         _ => {
                             // Composite field — recurse. Handles both
                             // sub-record literals (`Foo(Bar(1, 2), 3)`)
                             // and identifier passthrough by sub-schema
                             // expansion (handled by the Identifier
                             // branch above).
-                            let nested = resolve_mapping(&key, arg, ctx, env, schemas);
+                            let nested = resolve_mapping(&key, arg_ref, ctx, env, schemas);
                             if !nested.is_empty() {
                                 out.extend(nested);
                                 continue;
@@ -1052,28 +1066,43 @@ fn substitute_record_refs<'ctx>(
         // record).
         Expr::Call(type_name, args) => {
             let schema = schemas.get(type_name)?;
-            // Direct field names in declaration order — for nested
+            // Field name + type in declaration order — for nested
             // sub-records this is the field ("pos"), not the sub-leaves.
-            let field_names: Vec<&str> = schema.body.iter()
+            let fields: Vec<(&str, &str)> = schema.body.iter()
                 .filter_map(|item| match item {
-                    BodyItem::Membership { name, .. } => Some(name.as_str()),
+                    BodyItem::Membership { name, type_name, .. } =>
+                        Some((name.as_str(), type_name.as_str())),
                     _ => None,
                 })
                 .collect();
             // Split the leaf into its first segment (which is one of
-            // `field_names`) and the remainder.
+            // `fields`) and the remainder.
             let (first, rest) = match leaf.split_once('.') {
                 Some((a, b)) => (a, Some(b)),
                 None => (leaf, None),
             };
-            let pos = field_names.iter().position(|&n| n == first)?;
+            let pos = fields.iter().position(|(n, _)| *n == first)?;
             if pos >= args.len() { return None; }
+            // Tuple → sub-record coercion: if the arg is a bare
+            // `(a, b, c)` AND the field's declared type is a known
+            // record schema, treat the tuple as positional args for
+            // that schema. Lets the caller write
+            //     Rect((220, 40, 40, 255), (0, 432), (640, 48))
+            // instead of fully spelling out each ctor.
+            let coerced: Expr;
+            let arg_ref: &Expr = match &args[pos] {
+                Expr::Tuple(items) if schemas.contains_key(fields[pos].1) => {
+                    coerced = Expr::Call(fields[pos].1.to_string(), items.clone());
+                    &coerced
+                }
+                other => other,
+            };
             match rest {
-                None => Some(args[pos].clone()),
+                None => Some(arg_ref.clone()),
                 // Nested leaf: recurse into the arg with the rest of
                 // the path. Works for `SDLRect(IVec2(...), IVec2(...),
                 // Color(...))` accessed at leaf "pos.x".
-                Some(rest_path) => substitute_record_refs(&args[pos], rest_path, env, schemas),
+                Some(rest_path) => substitute_record_refs(arg_ref, rest_path, env, schemas),
             }
         }
         Expr::Identifier(name) => {

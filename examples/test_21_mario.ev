@@ -52,20 +52,25 @@ fsm display(world ∈ World)
     world.key_up    = (is_first_tick ? 0 : key_up_raw)
     world.tick      = frame
 
+    ground ∈ Rect = Rect((60, 140, 60, 255), (0, 432), (640, 48))
+    hat    ∈ Rect = Rect((220, 40, 40, 255), _world.pos, (32, 6))
+    face   ∈ Rect = Rect((240, 200, 160, 255),
+                          IVec2(_world.pos.x + 4, _world.pos.y + 6),
+                          (24, 10))
+    shirt  ∈ Rect = Rect((220, 40, 40, 255),
+                          IVec2(_world.pos.x, _world.pos.y + 16),
+                          (32, 10))
+    pants  ∈ Rect = Rect((40, 70, 200, 255),
+                          IVec2(_world.pos.x + 4, _world.pos.y + 26),
+                          (24, 6))
+
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
-    win.set_draw_color((60, 140, 60, 255), ground_color_eff)
-    win.render_fill_rect((0, 432), (640, 48), ground_eff)
-
-    win.set_draw_color((220, 40, 40, 255), hat_color_eff)
-    win.render_fill_rect(_world.pos, (32, 6), hat_eff)
-    win.set_draw_color((240, 200, 160, 255), face_color_eff)
-    win.render_fill_rect(IVec2(_world.pos.x + 4, _world.pos.y + 6), (24, 10), face_eff)
-    win.set_draw_color((220, 40, 40, 255), shirt_color_eff)
-    win.render_fill_rect(IVec2(_world.pos.x, _world.pos.y + 16), (32, 10), shirt_eff)
-    win.set_draw_color((40, 70, 200, 255), pants_color_eff)
-    win.render_fill_rect(IVec2(_world.pos.x + 4, _world.pos.y + 26), (24, 6), pants_eff)
-
+    win.draw_rect(ground, ground_color_eff, ground_fill_eff)
+    win.draw_rect(hat,    hat_color_eff,    hat_fill_eff)
+    win.draw_rect(face,   face_color_eff,   face_fill_eff)
+    win.draw_rect(shirt,  shirt_color_eff,  shirt_fill_eff)
+    win.draw_rect(pants,  pants_color_eff,  pants_fill_eff)
     win.render_present(present_eff)
     sdl_pump_events(pump_eff)
 
@@ -77,11 +82,12 @@ fsm display(world ∈ World)
 
     effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
-        : ⟨sky_eff, clear_eff, ground_color_eff, ground_eff,
-            hat_color_eff, hat_eff,
-            face_color_eff, face_eff,
-            shirt_color_eff, shirt_eff,
-            pants_color_eff, pants_eff,
+        : ⟨sky_eff, clear_eff,
+            ground_color_eff, ground_fill_eff,
+            hat_color_eff,    hat_fill_eff,
+            face_color_eff,   face_fill_eff,
+            shirt_color_eff,  shirt_fill_eff,
+            pants_color_eff,  pants_fill_eff,
             present_eff, pump_eff,
             key_left_eff, key_right_eff, key_up_eff,
             delay_eff⟩)

@@ -21,6 +21,13 @@ type IVec2(x, y ∈ Int)
 -- RGBA color, 0..255 per channel. alpha 255 = opaque.
 type Color(red, green, blue, alpha ∈ Int)
 
+-- Filled rectangle: color + top-left + size. The natural unit
+-- of 2D rendering for this stack. Drawing a `Rect` via
+-- `win.draw_rect(rect, color_eff, fill_eff)` produces two
+-- effects (set-color + fill); the rectangle itself is a
+-- value-level thing the user can name, store, derive.
+type Rect(color ∈ Color, pos ∈ IVec2, size ∈ IVec2)
+
 -- ── FTI type contract ─────────────────────────────────────────
 -- The Rust SDL_Window bridge (runtime/src/event_sources/sdl_window.rs)
 -- looks for this name in the FTI registry. The declaration is a
@@ -129,6 +136,31 @@ external type SDL_Window
         out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
                       "i(pp)",
                       ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
+
+    -- `draw_rect(r)` is the declarative form: a Rect is a noun
+    -- that names "this color filled at this position with this
+    -- size." Invoking the subclaim asserts that color_eff sets
+    -- the renderer's color to r.color and fill_eff fills a
+    -- rectangle at r.pos / r.size. Caller puts both effects in
+    -- the effects list (in this order, so the color is set
+    -- BEFORE the fill):
+    --
+    --     win.draw_rect(hat, hat_color_eff, hat_fill_eff)
+    --
+    -- The `color_eff` / `fill_eff` types are inferred from the
+    -- LibCall RHS by the lhs-eq inference pass; rect_buf is
+    -- declared explicitly because its RHS is a SeqLit (which
+    -- the inference doesn't yet attribute to Seq(Int)).
+    subclaim draw_rect(r ∈ Rect)
+        color_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+                            "i(piiii)",
+                            ⟨ArgHandle(renderer),
+                             ArgInt(r.color.red), ArgInt(r.color.green),
+                             ArgInt(r.color.blue), ArgInt(r.color.alpha)⟩)
+        fill_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
+                           "i(pp)",
+                           ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
+        rect_buf ∈ Seq(Int) = ⟨r.pos.x, r.pos.y, r.size.x, r.size.y⟩
 
     subclaim draw_line(p_from ∈ IVec2, p_to ∈ IVec2)
         out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
