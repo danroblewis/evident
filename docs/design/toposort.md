@@ -201,6 +201,10 @@ operation parameterized by a predicate, comparator, or
 transformation (`Sort`, `Filter`, `Map`, `Fold`, `EffectOrdering`,
 …). They're real language work, not toposort-specific tweaks.
 
+The design for generics — the path we're taking first — lives in
+[`docs/design/generics.md`](generics.md), with toposort as the
+worked end-to-end example.
+
 ## Decision
 
 For now: **Option 1 (separate Edge type, per node type)**. It's

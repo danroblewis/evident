@@ -88,6 +88,7 @@ your task:
 | Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Planning what to add to FFI / OS coverage (reads, writes, alloc, callbacks, posix) | [`docs/design/ffi-os-evolution.md`](docs/design/ffi-os-evolution.md) |
 | Working with topological sort, or hitting "I want generics / higher-order claims" | [`docs/design/toposort.md`](docs/design/toposort.md) |
+| Adding or working with generic types / claims (`type Edge<T>`, `claim Toposort<T>`) | [`docs/design/generics.md`](docs/design/generics.md) |
 | Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
 
 The two `docs/guide/*` docs were written specifically to spare future-you
