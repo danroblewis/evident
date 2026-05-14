@@ -1,97 +1,322 @@
+-- Entity-based Mario. The level is a Seq(Body) of static
+-- platforms and a Seq(Mover) of enemies; the player is a
+-- single Mover. Physics is expressed as constraints over
+-- the entity collection — no hardcoded floor or wall
+-- coordinates appear in the FSM bodies.
+
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
 import "packages/sdl/render.ev"
 
+-- ── Entity types ──────────────────────────────────────────────
+
+type AABB(pos ∈ IVec2, size ∈ IVec2)
+type Mover(pos ∈ IVec2, vel ∈ IVec2)
+type Body(aabb ∈ AABB, color ∈ Color)
+type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ Int)
+
+-- ── Level: static configuration of the world ──────────────────
+--
+-- Scalar / IVec2 constants are shared via passthrough; the
+-- entity Seqs (platforms + enemy spawn data) get copied into
+-- each fsm body because `collect_pinned_ints` doesn't follow
+-- passthroughs and ∀-unroll needs to see per-element values.
+--
+-- Adding a platform or enemy: edit BOTH the game and display
+-- fsms (the entity-Seq block is identical between them).
+-- A runtime fix would make this a single edit.
+claim LevelConsts
+    bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
+    p_size        ∈ IVec2 = IVec2(32, 32)
+    enemy_size    ∈ IVec2 = IVec2(28, 28)
+    grav          ∈ Int   = 2
+    walk_speed    ∈ Int   = 5
+    jump_strength ∈ Int   = 14
+    enemy_speed   ∈ Int   = 2
+
+-- Entity-Seq data lives inside each fsm directly (see notes in
+-- the game/display bodies). Touching the level is still a single
+-- file — these blocks are textually identical between fsms and
+-- can be copy-pasted as a unit.
+
+-- ── Shared world (dynamic state) ──────────────────────────────
+
 type World
-    pos ∈ IVec2
-    key_left ∈ Int
-    key_right ∈ Int
-    key_up ∈ Int
-    tick ∈ Int
+    player  ∈ Mover
+    enemies ∈ Seq(Mover)
+    keys    ∈ IVec2     -- x: right−left (-1/0/+1), y: up_pressed (0/1)
+    tick    ∈ Int
+
+-- ── Game FSM: physics ─────────────────────────────────────────
 
 fsm game(world ∈ World)
-    game_clock = _world.tick
+    ..LevelConsts
+    #_world.enemies = 2
+    #world.enemies  = 2
 
-    on_ground = (_world.pos.y ≥ 400)
-    walk_vx = (_world.key_left > 0 ? 0 - 5
-                : (_world.key_right > 0 ? 5 : 0))
-    jump_vy = (on_ground ∧ _world.key_up > 0 ? 0 - 14 : _vel.y + 2)
+    -- The entity Seqs are defined here (rather than pulled in via
+    -- `..LevelEntities`) because `collect_pinned_ints` only walks
+    -- the entry-schema body, so the ∀-unroll below needs the
+    -- per-element Body / EnemyInit pins to live in this body.
+    -- Duplicated identically into display.
+    platforms ∈ Seq(Body)
+    #platforms = 4
+    platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
+                         Color(60,  140, 60,  255))
+    platforms[1] = Body(AABB(IVec2(80,  360), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
+    platforms[2] = Body(AABB(IVec2(440, 360), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
+    platforms[3] = Body(AABB(IVec2(260, 280), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
 
-    tent ∈ IVec2 = _world.pos + IVec2(walk_vx, jump_vy)
+    e_init ∈ Seq(EnemyInit)
+    #e_init = 2
+    e_init[0] = EnemyInit(IVec2(40,  404), IVec2(2,     0), 40,  200)
+    e_init[1] = EnemyInit(IVec2(560, 404), IVec2(0 - 2, 0), 440, 600)
 
-    clamped = IVec2(
-        (tent.x < 0 ? 0 : (tent.x > 608 ? 608 : tent.x)),
-        (tent.y > 400 ? 400 : tent.y))
+    -- Anchor the prev-tick mechanism: referencing `_game_clock`
+    -- triggers is_first_tick auto-injection (unify_world_syntax
+    -- has already rewritten away every `_world.X` reference, so
+    -- without this `_var` the scheduler wouldn't pin tick 0).
+    game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
 
-    next_vel = IVec2(
-        walk_vx,
-        (tent.y > 400 ? 0 : jump_vy))
+    -- ── Player: input intent ──────────────────────────────────
+    --
+    -- `on_ground` is the player's contact predicate: there
+    -- exists a platform whose top equals the player's foot AND
+    -- whose x-range overlaps the player's x-range. It's a
+    -- relation over the entity collection — adding a platform
+    -- automatically expands the predicate.
 
-    world.pos = IVec2((is_first_tick ? 304 : clamped.x),
-                       (is_first_tick ? 100 : clamped.y))
-    vel = IVec2((is_first_tick ? 0 : next_vel.x),
-                (is_first_tick ? 0 : next_vel.y))
+    -- on_ground iff some platform supports the player. Expressed as
+    -- a Bool with bidirectional ∀-implications (the translator
+    -- accepts ∃ only as a top-level constraint, not as a value
+    -- expression, so we couple `on_ground` to the existential via
+    -- forward + contrapositive constraints).
+    on_ground ∈ Bool
+    ∀ i ∈ {0..#platforms - 1} :
+        (((_world.player.pos.y + p_size.y = platforms[i].aabb.pos.y)
+          ∧ (_world.player.pos.x + p_size.x > platforms[i].aabb.pos.x)
+          ∧ (_world.player.pos.x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x))
+         ⇒ on_ground)
+    ¬on_ground ⇒ (∀ i ∈ {0..#platforms - 1} :
+        ¬((_world.player.pos.y + p_size.y = platforms[i].aabb.pos.y)
+          ∧ (_world.player.pos.x + p_size.x > platforms[i].aabb.pos.x)
+          ∧ (_world.player.pos.x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)))
+
+    will_jump ∈ Bool = (on_ground ∧ _world.keys.y > 0)
+
+    intent_vx ∈ Int = _world.keys.x * walk_speed
+    intent_vy ∈ Int = (will_jump ? 0 - jump_strength
+                       : _world.player.vel.y + grav)
+
+    -- ── Tentative integration ─────────────────────────────────
+
+    tent ∈ IVec2 = _world.player.pos + IVec2(intent_vx, intent_vy)
+
+    -- ── X resolution: clamp into world bounds ─────────────────
+    -- World walls are the only X obstacles in this level. The
+    -- clamp uses the bounds record, not literal 0/608.
+
+    x_min ∈ Int = bounds.pos.x
+    x_max ∈ Int = bounds.pos.x + bounds.size.x - p_size.x
+    res_x ∈ Int = (tent.x < x_min ? x_min
+                   : (tent.x > x_max ? x_max : tent.x))
+
+    -- ── Y resolution: per-platform landing detection ──────────
+    -- A platform "applies" to this tick if all four hold:
+    --   * res_x range overlaps platform x range
+    --   * player's previous foot was at or above platform top
+    --   * tent would put the foot at or below platform top
+    --
+    -- The components `new_py` / `new_vy` get pinned by the
+    -- per-platform ∀-clamp (forces top ≤ p_top for every
+    -- applicable p) plus the ∃-equality (realizes one of those
+    -- tops). Same pattern as `any_landing` — the translator
+    -- only accepts ∃ as a top-level constraint, never as a
+    -- value, so we couple via implications.
+
+    new_py ∈ Int
+    new_vy ∈ Int
+
+    any_landing ∈ Bool
+    ∀ i ∈ {0..#platforms - 1} :
+        (((res_x + p_size.x > platforms[i].aabb.pos.x)
+          ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
+          ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
+          ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y))
+         ⇒ any_landing)
+    ¬any_landing ⇒ (∀ i ∈ {0..#platforms - 1} :
+        ¬((res_x + p_size.x > platforms[i].aabb.pos.x)
+          ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
+          ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
+          ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y)))
+
+    ∀ i ∈ {0..#platforms - 1} : (((res_x + p_size.x > platforms[i].aabb.pos.x)
+         ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
+         ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
+         ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y))
+        ⇒ (new_py + p_size.y ≤ platforms[i].aabb.pos.y))
+
+    any_landing ⇒ (∃ i ∈ {0..#platforms - 1} :
+        (res_x + p_size.x > platforms[i].aabb.pos.x)
+        ∧ (res_x < platforms[i].aabb.pos.x + platforms[i].aabb.size.x)
+        ∧ (_world.player.pos.y + p_size.y ≤ platforms[i].aabb.pos.y)
+        ∧ (tent.y + p_size.y > platforms[i].aabb.pos.y)
+        ∧ (new_py + p_size.y = platforms[i].aabb.pos.y))
+
+    ¬any_landing ⇒ (new_py = tent.y)
+    any_landing  ⇒ (new_vy = 0)
+    ¬any_landing ⇒ (new_vy = intent_vy)
+
+    -- ── Commit player next state ──────────────────────────────
+    -- Bootstrap fork is a genuine source-vs-source split (initial
+    -- vs computed), so ternary is the natural shape per CLAUDE.md.
+    -- The whole Mover is written at once because the translator
+    -- doesn't support 3-level nested writes (world.player.pos.x).
+
+    new_px ∈ Int = (is_first_tick ? 304 : res_x)
+    new_vx ∈ Int = (is_first_tick ? 0   : intent_vx)
+    is_first_tick ⇒ (new_py = 100)
+    is_first_tick ⇒ (new_vy = 0)
+
+    world.player = Mover(IVec2(new_px, new_py), IVec2(new_vx, new_vy))
+
+    -- ── Enemy physics ─────────────────────────────────────────
+    -- Each enemy is a uniform Mover. The patrol bounds and
+    -- initial state come from `e_init`. Reverse direction at
+    -- patrol edges; otherwise carry velocity.
+
+    -- Each implication writes the whole Mover record: writes through
+    -- a Seq index need to land on a top-level field of the element,
+    -- not on a nested sub-field (translator gap).
+    ∀ (cur, nxt, init) ∈ coindexed(_world.enemies, world.enemies, e_init) :
+        is_first_tick ⇒ (nxt = Mover(init.pos, init.vel))
+        (¬is_first_tick ∧ cur.pos.x ≤ init.patrol_lo) ⇒
+            (nxt = Mover(IVec2(cur.pos.x + enemy_speed, cur.pos.y),
+                          IVec2(enemy_speed, 0)))
+        (¬is_first_tick ∧ cur.pos.x ≥ init.patrol_hi) ⇒
+            (nxt = Mover(IVec2(cur.pos.x + 0 - enemy_speed, cur.pos.y),
+                          IVec2(0 - enemy_speed, 0)))
+        (¬is_first_tick ∧ cur.pos.x > init.patrol_lo ∧ cur.pos.x < init.patrol_hi) ⇒
+            (nxt = Mover(IVec2(cur.pos.x + cur.vel.x, cur.pos.y),
+                          IVec2(cur.vel.x, 0)))
+
+-- ── Display FSM: input + rendering ────────────────────────────
 
 fsm display(world ∈ World)
+    ..LevelConsts
+    -- Only read-side length pin: `#world.enemies = 2` reads as a
+    -- write under unify_world_syntax and would clash with game's
+    -- ownership of enemies.
+    #_world.enemies = 2
+
+    -- Entity Seq data, duplicated from game (see comment there).
+    platforms ∈ Seq(Body)
+    #platforms = 4
+    platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
+                         Color(60,  140, 60,  255))
+    platforms[1] = Body(AABB(IVec2(80,  360), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
+    platforms[2] = Body(AABB(IVec2(440, 360), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
+    platforms[3] = Body(AABB(IVec2(260, 280), IVec2(120, 16)),
+                         Color(150, 100, 60,  255))
+
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
-    frame = (is_first_tick ? 0 : _frame + 1)
+    frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
 
-    key_left_raw = match last_results[14]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_right_raw = match last_results[15]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_up_raw = match last_results[16]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-
-    world.key_left  = (is_first_tick ? 0 : key_left_raw)
-    world.key_right = (is_first_tick ? 0 : key_right_raw)
-    world.key_up    = (is_first_tick ? 0 : key_up_raw)
-    world.tick      = frame
-
-    ground ∈ Rect = Rect((60, 140, 60, 255), (0, 432), (640, 48))
-    hat    ∈ Rect = Rect((220, 40, 40, 255), _world.pos, (32, 6))
-    face   ∈ Rect = Rect((240, 200, 160, 255),
-                          IVec2(_world.pos.x + 4, _world.pos.y + 6),
-                          (24, 10))
-    shirt  ∈ Rect = Rect((220, 40, 40, 255),
-                          IVec2(_world.pos.x, _world.pos.y + 16),
-                          (32, 10))
-    pants  ∈ Rect = Rect((40, 70, 200, 255),
-                          IVec2(_world.pos.x + 4, _world.pos.y + 26),
-                          (24, 6))
-
-    -- Per-rect effects, each `win.draw_rect` asserts a (color, fill)
-    -- pair of LibCalls.
-    win.set_draw_color((80, 160, 220, 255), sky_eff)
-    win.render_clear(clear_eff)
-    win.draw_rect(ground, ground_color_eff, ground_fill_eff)
-    win.draw_rect(hat,    hat_color_eff,    hat_fill_eff)
-    win.draw_rect(face,   face_color_eff,   face_fill_eff)
-    win.draw_rect(shirt,  shirt_color_eff,  shirt_fill_eff)
-    win.draw_rect(pants,  pants_color_eff,  pants_fill_eff)
-    win.render_present(present_eff)
+    -- ── Input poll ────────────────────────────────────────────
     sdl_pump_events(pump_eff)
     key_left_eff  = ReadByte(win.keyboard_state, 80)
     key_right_eff = ReadByte(win.keyboard_state, 79)
     key_up_eff    = ReadByte(win.keyboard_state, 82)
     sdl_delay(16, delay_eff)
 
-    -- The frame's effects, by intent. `++` is Seq concat; the
-    -- runtime flattens these into one sequence at load time.
-    sky_clear   ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
-    scene_draws ∈ Seq(Effect) = ⟨ground_color_eff, ground_fill_eff,
-                                  hat_color_eff,    hat_fill_eff,
-                                  face_color_eff,   face_fill_eff,
-                                  shirt_color_eff,  shirt_fill_eff,
-                                  pants_color_eff,  pants_fill_eff⟩
-    input_poll  ∈ Seq(Effect) = ⟨pump_eff,
+    key_left_raw  ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_right_raw ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_up_raw    ∈ Int = match last_results[3]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+
+    world.keys.x = (is_first_tick ? 0
+                    : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
+                       : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
+    world.keys.y = (is_first_tick ? 0 : key_up_raw)
+    world.tick   = frame
+
+    -- ── Render: sky + platforms + player + enemies ────────────
+    -- The player figure is a stack of 4 small rects derived
+    -- from `_world.player.pos`. Platforms and enemies render
+    -- straight from their AABBs.
+
+    win.set_draw_color((80, 160, 220, 255), sky_eff)
+    win.render_clear(clear_eff)
+
+    pb_0 ∈ Body = platforms[0]
+    pb_1 ∈ Body = platforms[1]
+    pb_2 ∈ Body = platforms[2]
+    pb_3 ∈ Body = platforms[3]
+    plat_0 ∈ Rect = Rect(pb_0.color, pb_0.aabb.pos, pb_0.aabb.size)
+    plat_1 ∈ Rect = Rect(pb_1.color, pb_1.aabb.pos, pb_1.aabb.size)
+    plat_2 ∈ Rect = Rect(pb_2.color, pb_2.aabb.pos, pb_2.aabb.size)
+    plat_3 ∈ Rect = Rect(pb_3.color, pb_3.aabb.pos, pb_3.aabb.size)
+    win.draw_rect(plat_0, plat_0_color_eff, plat_0_fill_eff)
+    win.draw_rect(plat_1, plat_1_color_eff, plat_1_fill_eff)
+    win.draw_rect(plat_2, plat_2_color_eff, plat_2_fill_eff)
+    win.draw_rect(plat_3, plat_3_color_eff, plat_3_fill_eff)
+
+    hat   ∈ Rect = Rect(Color(220, 40,  40,  255), _world.player.pos,
+                         IVec2(32, 6))
+    face  ∈ Rect = Rect(Color(240, 200, 160, 255),
+                         IVec2(_world.player.pos.x + 4,
+                                _world.player.pos.y + 6),
+                         IVec2(24, 10))
+    shirt ∈ Rect = Rect(Color(220, 40,  40,  255),
+                         IVec2(_world.player.pos.x,
+                                _world.player.pos.y + 16),
+                         IVec2(32, 10))
+    pants ∈ Rect = Rect(Color(40,  70,  200, 255),
+                         IVec2(_world.player.pos.x + 4,
+                                _world.player.pos.y + 26),
+                         IVec2(24, 6))
+    win.draw_rect(hat,   hat_color_eff,   hat_fill_eff)
+    win.draw_rect(face,  face_color_eff,  face_fill_eff)
+    win.draw_rect(shirt, shirt_color_eff, shirt_fill_eff)
+    win.draw_rect(pants, pants_color_eff, pants_fill_eff)
+
+    enemy_0 ∈ Rect = Rect(Color(200, 80, 220, 255),
+                           _world.enemies[0].pos, enemy_size)
+    enemy_1 ∈ Rect = Rect(Color(200, 80, 220, 255),
+                           _world.enemies[1].pos, enemy_size)
+    win.draw_rect(enemy_0, e0_color_eff, e0_fill_eff)
+    win.draw_rect(enemy_1, e1_color_eff, e1_fill_eff)
+
+    win.render_present(present_eff)
+
+    -- ── Effect chunks by intent ───────────────────────────────
+
+    sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+    plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
+                                  plat_1_color_eff, plat_1_fill_eff,
+                                  plat_2_color_eff, plat_2_fill_eff,
+                                  plat_3_color_eff, plat_3_fill_eff⟩
+    player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
+                                  face_color_eff,  face_fill_eff,
+                                  shirt_color_eff, shirt_fill_eff,
+                                  pants_color_eff, pants_fill_eff⟩
+    enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
+                                  e1_color_eff, e1_fill_eff⟩
+    input_effs  ∈ Seq(Effect) = ⟨pump_eff,
                                   key_left_eff, key_right_eff, key_up_eff⟩
 
     effects = (frame ≥ 240
         ? ⟨Println("mario done"), Exit(0)⟩
-        : sky_clear ++ scene_draws ++ ⟨present_eff⟩
-            ++ input_poll ++ ⟨delay_eff⟩)
+        : sky_effs ++ plat_effs ++ player_effs ++ enemy_effs
+            ++ ⟨present_eff⟩ ++ input_effs ++ ⟨delay_eff⟩)

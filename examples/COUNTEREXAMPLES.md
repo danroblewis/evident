@@ -556,6 +556,112 @@ constructor by name on the var's enum sort and assert
 `var._eq(&ctor.apply(&[]))`. Reject as `type mismatch` only if the
 named variant doesn't exist on that sort.
 
+### 21. `∃` is not accepted as an expression
+
+**Where:** parser; surfaced while writing `examples/test_21_mario.ev`.
+
+```evident
+on_ground ∈ Bool = ∃ i ∈ {0..#platforms - 1} : cond_i    -- parse error
+on_ground ∈ Bool = (∃ i ∈ …)                              -- parses, but
+                                                          -- translator drops it
+```
+
+`parse_expr` handles `Token::Exists` at the top, but the `=` of a
+chained-membership / equality constraint sits at compare-level — the
+RHS is parsed via `parse_compare` ⇒ … ⇒ `parse_atom`, which has no
+quantifier branch. Wrapping in parens lifts to `parse_expr` via
+`LParen → parse_expr` and parses successfully, but the translator then
+rejects it: `∃` is only supported as a top-level Bool constraint, not
+as a value to bind to a Bool var.
+
+Workaround pattern (used in Mario for `on_ground` / `any_landing`):
+
+```evident
+on_ground ∈ Bool
+∀ i ∈ {0..#platforms - 1} : (cond_i ⇒ on_ground)
+¬on_ground ⇒ (∀ i ∈ {0..#platforms - 1} : ¬cond_i)
+```
+
+Forward direction couples each `cond_i` to `on_ground`;
+contrapositive direction realizes "no cond holds when on_ground is
+false." Together this expresses `on_ground = (∃ i : cond_i)` as two
+top-level ∀ constraints — verbose but each piece is in a slot the
+translator accepts.
+
+Fix idea: in the translator's expression dispatch, recognize
+`Expr::Exists` in Bool-valued position and lower it to a disjunction
+of unrolled instances (mirror of how `Forall` already lowers to a
+conjunction). Or, less invasively, recognize `name = ∃ …` at body-item
+shape and rewrite to the bidirectional ∀ form here so user code can
+stay compact.
+
+### 22. ∀-unroll over `Seq(UserType)` can't see element values defined via `..Passthrough`
+
+**Where:** `examples/test_21_mario.ev`; `collect_pinned_ints` /
+`collect_seq_lengths` don't follow `BodyItem::Passthrough(name)` into
+the included claim's body items.
+
+```evident
+claim Level
+    platforms ∈ Seq(Body)
+    #platforms = 4
+    platforms[0] = Body(...)
+    ...
+
+fsm game(world ∈ World)
+    ..Level
+    #platforms = 4     -- this is visible in the fsm body
+    ∀ i ∈ {0..#platforms - 1} :
+        (platforms[i].aabb.pos.y > 0) ⇒ flag   -- DROPPED at translate
+```
+
+The `#platforms` pin in the fsm body is fine, but the per-element
+`platforms[i] = Body(...)` constraints live in `Level`'s body. When
+the fsm's ∀ is translated, the element values aren't pinned into the
+env yet (passthrough constraints get inlined in Pass 2, after the
+∀-unroll), so `platforms[i].aabb.pos.y` is a free Datatype access and
+the unroller bails.
+
+Workaround: duplicate the `Seq(UserType)` definitions into each fsm's
+body directly. Small constants (Int / IVec2 / etc.) stay fine in a
+passthrough claim — only entity-Seq pins need to move.
+
+Fix idea: extend the preprocess passes to follow `Passthrough(name)`
+into the named claim's body when gathering pinned ints / seq lengths
+/ element values. Cheap version: a single level of passthrough,
+non-recursive. Full version: fixpoint walk.
+
+### 23. Writing to a 3-level-nested field through `world_next` is dropped
+
+**Where:** `examples/test_21_mario.ev`; surfaced by trying to write
+`world.player.pos.x = …` (post-unify: `world_next.player.pos.x = …`).
+
+```evident
+-- DROPPED:
+world.player.pos.x = (is_first_tick ? 304 : res_x)
+
+-- works (1-level nested write to a top-level world field):
+world.player = Mover(IVec2(new_px, new_py), IVec2(new_vx, new_vy))
+```
+
+The translator handles 2-level writes (`world.player = Mover(...)`)
+through Datatype update / fresh-const + equality, but the
+3-level form (`world_next.player.pos.x = X`) bottoms out in
+"couldn't translate to Bool." Same shape inside a `∀` over a Seq
+also fails when the LHS is `seq[i].field.subfield = X`.
+
+Workaround: build the new value at the highest-level field site and
+assign the whole record at once. For Mario this means computing
+`new_px` / `new_py` / `new_vx` / `new_vy` as plain Ints, then a
+single `world.player = Mover(IVec2(…), IVec2(…))`. Inside `∀
+(cur, nxt) ∈ coindexed(...)` the same pattern works: write
+`nxt = Mover(IVec2(…), IVec2(…))` per guarded implication.
+
+Fix idea: extend the Datatype-write translator to compose nested
+field updates (build the inner record from the existing one with
+just the leaf field replaced; for Seq-of-record writes, build the
+new element similarly and `set_at(i, …)`).
+
 ## What works without caveat
 
 Every demo ships in green:
