@@ -160,11 +160,21 @@ fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, S
     let mut seen: HashSet<String> = HashSet::new();
     fn walk(body: &[BodyItem], out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
         for item in body {
-            if let BodyItem::Membership { type_name, .. } = item {
-                collect_from_type_name(type_name, out, seen);
-            }
-            if let BodyItem::SubclaimDecl(sub) = item {
-                walk(&sub.body, out, seen);
+            match item {
+                BodyItem::Membership { type_name, .. } => {
+                    collect_from_type_name(type_name, out, seen);
+                }
+                BodyItem::SubclaimDecl(sub) => walk(&sub.body, out, seen),
+                // Generic claim invocations: `FirstEqual<Rect>(a ↦ …)`.
+                // The name is the composite `FirstEqual<Rect>`.
+                BodyItem::ClaimCall { name, .. } => {
+                    collect_from_type_name(name, out, seen);
+                }
+                // Generic passthrough: `..Edge<Rect>`.
+                BodyItem::Passthrough(name) => {
+                    collect_from_type_name(name, out, seen);
+                }
+                _ => {}
             }
         }
     }

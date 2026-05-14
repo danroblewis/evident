@@ -833,40 +833,76 @@ impl Parser {
         }
 
         // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
-        // Distinguished from a parenthesized expression by the IDENT
-        // immediately followed by `(`. Disambiguated from a generic
-        // function-call expression (record literal like `IVec2(0, 0)`)
-        // by checking that the second token inside the parens is
-        // `MapsTo` — that's specific to ClaimCall syntax.
+        // Also accepts `IDENT<T>(slot mapsto value, …)` — generic claim
+        // invocation. Distinguished from a parenthesized expression by
+        // the IDENT (optionally followed by `<...>`) immediately
+        // followed by `(`. Disambiguated from a generic function-call
+        // expression (record literal like `IVec2(0, 0)`) by checking
+        // that the second token inside the parens is `MapsTo` —
+        // specific to ClaimCall syntax.
         if let Token::Ident(_) = self.peek() {
-            if matches!(self.toks.get(self.pos + 1), Some(Token::LParen)) {
-                let inside_first = self.toks.get(self.pos + 2);
-                let inside_second = self.toks.get(self.pos + 3);
-                let is_claim_call = matches!(inside_first, Some(Token::Ident(_)))
-                    && matches!(inside_second, Some(Token::MapsTo));
-                if is_claim_call {
-                    let name = match self.bump() {
-                        Token::Ident(s) => s,
-                        _ => unreachable!(),
-                    };
-                    self.eat(&Token::LParen)?;
-                    let mut mappings = Vec::new();
-                    if !matches!(self.peek(), Token::RParen) {
-                        loop {
-                            let slot = match self.bump() {
-                                Token::Ident(s) => s,
-                                other => return Err(ParseError(format!(
-                                    "expected mapping slot name, got {:?}", other))),
-                            };
-                            self.eat(&Token::MapsTo)?;
-                            let value = self.parse_expr()?;
-                            mappings.push(crate::ast::Mapping { slot, value });
-                            if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
-                            break;
+            // Peek past optional `<...>` to find the `(` that opens
+            // the mappings list.
+            let lparen_offset: Option<usize> = {
+                let after = self.toks.get(self.pos + 1);
+                if matches!(after, Some(Token::LParen)) {
+                    Some(1)
+                } else if matches!(after, Some(Token::Lt)) {
+                    // Scan forward past balanced angle brackets.
+                    let mut depth = 0i32;
+                    let mut i = self.pos + 1;
+                    loop {
+                        match self.toks.get(i) {
+                            Some(Token::Lt) => depth += 1,
+                            Some(Token::Gt) => {
+                                depth -= 1;
+                                if depth == 0 { break Some(i - self.pos + 1); }
+                            }
+                            None => break None,
+                            _ => {}
                         }
+                        i += 1;
                     }
-                    self.eat(&Token::RParen)?;
-                    return Ok(vec![BodyItem::ClaimCall { name, mappings }]);
+                } else {
+                    None
+                }
+            };
+            if let Some(lp) = lparen_offset {
+                if matches!(self.toks.get(self.pos + lp), Some(Token::LParen)) {
+                    let inside_first = self.toks.get(self.pos + lp + 1);
+                    let inside_second = self.toks.get(self.pos + lp + 2);
+                    let is_claim_call = matches!(inside_first, Some(Token::Ident(_)))
+                        && matches!(inside_second, Some(Token::MapsTo));
+                    if is_claim_call {
+                        let mut name = match self.bump() {
+                            Token::Ident(s) => s,
+                            _ => unreachable!(),
+                        };
+                        // Consume optional `<args>` and append to name.
+                        if matches!(self.peek(), Token::Lt) {
+                            if let Some(args) = self.try_parse_generic_args_suffix()? {
+                                name.push_str(&args);
+                            }
+                        }
+                        self.eat(&Token::LParen)?;
+                        let mut mappings = Vec::new();
+                        if !matches!(self.peek(), Token::RParen) {
+                            loop {
+                                let slot = match self.bump() {
+                                    Token::Ident(s) => s,
+                                    other => return Err(ParseError(format!(
+                                        "expected mapping slot name, got {:?}", other))),
+                                };
+                                self.eat(&Token::MapsTo)?;
+                                let value = self.parse_expr()?;
+                                mappings.push(crate::ast::Mapping { slot, value });
+                                if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                                break;
+                            }
+                        }
+                        self.eat(&Token::RParen)?;
+                        return Ok(vec![BodyItem::ClaimCall { name, mappings }]);
+                    }
                 }
                 // Otherwise fall through to expr-as-Constraint parsing,
                 // which handles record literals like `IVec2(0, 0)`.
