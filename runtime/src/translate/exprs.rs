@@ -247,10 +247,141 @@ pub(super) fn resolve_mapping<'ctx>(
             }
         }
     }
+
+    // `Field(Index(seq, i), field)` (possibly nested) — reaching a
+    // sub-field of a Seq element. Walk outward to find the Index root,
+    // then drill in along the field path applying composite accessors.
+    // At the leaf: bind either the primitive directly, the inner Seq
+    // (if SeqField), or all the composite's leaves under `slot`.
+    //
+    // Used by the ∀-expansion path: `∀ (p, b) ∈ coindexed(platforms,
+    // plat_effs) : win.draw_rect(Rect(p.color, …), b.effs)` expands
+    // each iteration's `b.effs` arg to `Field(Index(plat_effs, i),
+    // "effs")` and `p.color` to `Field(Index(platforms, i), "color")`.
+    if matches!(value, Expr::Field(_, _)) {
+        let mut path: Vec<String> = Vec::new();
+        let mut cur = value;
+        let (seq_name, idx_expr) = loop {
+            match cur {
+                Expr::Field(recv, fname) => {
+                    path.push(fname.clone());
+                    cur = recv.as_ref();
+                }
+                Expr::Index(seq, idx) => {
+                    if let Expr::Identifier(name) = seq.as_ref() {
+                        break (name.clone(), idx.clone());
+                    }
+                    return Vec::new();
+                }
+                _ => return Vec::new(),
+            }
+        };
+        path.reverse();
+        let Some(out) = resolve_field_chain_to_bindings(
+            &seq_name, &idx_expr, &path, slot, ctx, env) else {
+            return Vec::new();
+        };
+        return out;
+    }
     if let Some(v) = expr_as_var(value, ctx, env) {
         return vec![(slot.to_string(), v)];
     }
     Vec::new()
+}
+
+/// Drill into a `Seq(Composite)` element along a dotted field path and
+/// produce bindings under `slot`. Handles three terminating shapes:
+///
+///   * primitive leaf — single binding `slot → IntVar/BoolVar/StrVar`.
+///   * composite sub-field — `bind_composite_fields` with prefix `slot`.
+///   * `SeqField` — single binding `slot → SeqVar/DatatypeSeqVar` from
+///     the inner Seq's accessors.
+///
+/// Used by the ∀-expansion: per-iteration substituted args like
+/// `Field(Field(Index(platforms, 0), "aabb"), "pos")` reach a sub-record;
+/// `Field(Index(plat_effs, 0), "effs")` reaches a Seq.
+fn resolve_field_chain_to_bindings<'ctx>(
+    seq_name: &str,
+    idx_expr: &Expr,
+    path: &[String],
+    slot: &str,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<Vec<(String, Var<'ctx>)>> {
+    use super::types::SeqFieldElem;
+    let var = env.get(seq_name)?;
+    let (arr, _, _, root_dt, root_fields) = var.as_datatype_seq()?;
+    let i = translate_int(idx_expr, ctx, env)?;
+    let elem_dyn = arr.select(&i);
+
+    // Walk inward along the path. At each step we have a current
+    // Dynamic (elem_dyn) + a current (dt, fields) describing it.
+    let mut cur_dyn = elem_dyn;
+    let mut cur_dt: &DatatypeSort = root_dt;
+    let mut cur_fields: &[FieldKind] = root_fields;
+    for (depth, fname) in path.iter().enumerate() {
+        let pos = cur_fields.iter().position(|fk| fk.name() == fname)?;
+        let fk = &cur_fields[pos];
+        let is_last = depth == path.len() - 1;
+        match fk {
+            FieldKind::Primitive { prim_type, .. } => {
+                if !is_last { return None; }
+                if pos >= cur_dt.variants[0].accessors.len() { return None; }
+                let raw = cur_dt.variants[0].accessors[pos].apply(
+                    &[&cur_dyn.as_datatype()?]);
+                let var: Option<Var<'ctx>> = match prim_type.as_str() {
+                    "Int" | "Nat" | "Pos" => raw.as_int().map(Var::IntVar),
+                    "Bool" => raw.as_bool().map(Var::BoolVar),
+                    "String" => raw.as_string().map(Var::StrVar),
+                    _ => None,
+                };
+                return Some(vec![(slot.to_string(), var?)]);
+            }
+            FieldKind::Nested { dt: nested_dt, sub_fields, .. } => {
+                if pos >= cur_dt.variants[0].accessors.len() { return None; }
+                let raw = cur_dt.variants[0].accessors[pos].apply(
+                    &[&cur_dyn.as_datatype()?]);
+                if is_last {
+                    // Bind all of the nested composite's leaves under
+                    // `slot.X.Y…`.
+                    let mut tmp: HashMap<String, Var<'ctx>> = HashMap::new();
+                    if !bind_composite_fields(&mut tmp, &raw, sub_fields, nested_dt, slot) {
+                        return None;
+                    }
+                    return Some(tmp.into_iter().collect());
+                }
+                cur_dyn = raw;
+                cur_dt = nested_dt;
+                cur_fields = sub_fields;
+            }
+            FieldKind::SeqField { arr_idx, len_idx, elem: seq_elem, .. } => {
+                if !is_last { return None; }
+                if *len_idx >= cur_dt.variants[0].accessors.len() { return None; }
+                let elem_d = cur_dyn.as_datatype()?;
+                let arr_d = cur_dt.variants[0].accessors[*arr_idx].apply(&[&elem_d]);
+                let len_d = cur_dt.variants[0].accessors[*len_idx].apply(&[&elem_d]);
+                let inner_arr = arr_d.as_array()?;
+                let inner_len = len_d.as_int()?;
+                let var = match seq_elem {
+                    SeqFieldElem::Primitive(e) => Var::SeqVar {
+                        arr: inner_arr, len: inner_len, elem: *e,
+                    },
+                    SeqFieldElem::Enum { dt, enum_name } => Var::DatatypeSeqVar {
+                        arr: inner_arr, len: inner_len,
+                        type_name: enum_name.clone(),
+                        dt: *dt, fields: Vec::new(),
+                    },
+                    SeqFieldElem::Composite { dt, type_name, sub_fields } => Var::DatatypeSeqVar {
+                        arr: inner_arr, len: inner_len,
+                        type_name: type_name.clone(),
+                        dt: *dt, fields: sub_fields.clone(),
+                    },
+                };
+                return Some(vec![(slot.to_string(), var)]);
+            }
+        }
+    }
+    None
 }
 
 /// Resolve a leaf expression to a single `Var`. Used both for ClaimCall

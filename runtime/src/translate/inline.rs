@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 use z3::{Context, SatResult, Solver};
-use z3::ast::Bool;
+use z3::ast::{Ast, Bool};
 
 use crate::ast::*;
 use crate::pretty;
@@ -332,6 +332,188 @@ enum CallDispatch {
 /// Walk the current body slice for a Membership matching `name`,
 /// return its declared type_name. Used to find a receiver's type
 /// when dispatching `recv.subclaim(args)`.
+/// True if `e` contains a subexpression that's a method-style
+/// subclaim call (`recv.subclaim(args)` resolving to a SubschemaDecl
+/// on `recv`'s type). Used to decide whether a `∀` body needs to
+/// be AST-expanded into per-iteration body items so each subclaim
+/// invocation reaches the inline pass (which has solver access)
+/// instead of going through translate_bool (which doesn't).
+fn body_contains_subschema_call(
+    e: &Expr,
+    body_items: &[BodyItem],
+    schemas: &HashMap<String, SchemaDecl>,
+) -> bool {
+    match e {
+        Expr::Call(name, _) => matches!(
+            resolve_call(name, body_items, schemas),
+            Some(CallDispatch::Subschema { .. })),
+        Expr::Binary(_, l, r) =>
+            body_contains_subschema_call(l, body_items, schemas)
+                || body_contains_subschema_call(r, body_items, schemas),
+        Expr::Not(x) | Expr::Cardinality(x) =>
+            body_contains_subschema_call(x, body_items, schemas),
+        Expr::Ternary(c, a, b) =>
+            body_contains_subschema_call(c, body_items, schemas)
+                || body_contains_subschema_call(a, body_items, schemas)
+                || body_contains_subschema_call(b, body_items, schemas),
+        Expr::SeqLit(items) | Expr::SetLit(items) | Expr::Tuple(items) =>
+            items.iter().any(|x| body_contains_subschema_call(x, body_items, schemas)),
+        Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
+            body_contains_subschema_call(r, body_items, schemas)
+                || body_contains_subschema_call(b, body_items, schemas),
+        Expr::Index(a, b) | Expr::InExpr(a, b) | Expr::Range(a, b) =>
+            body_contains_subschema_call(a, body_items, schemas)
+                || body_contains_subschema_call(b, body_items, schemas),
+        Expr::Field(recv, _) => body_contains_subschema_call(recv, body_items, schemas),
+        Expr::Match(scr, arms) =>
+            body_contains_subschema_call(scr, body_items, schemas)
+                || arms.iter().any(|a| body_contains_subschema_call(&a.body, body_items, schemas)),
+        Expr::Matches(x, _) => body_contains_subschema_call(x, body_items, schemas),
+        _ => false,
+    }
+}
+
+/// Recursively replace identifier paths that start with `bound_var`
+/// with the per-iteration element expression. Handles bare matches
+/// (`p`) and dotted suffixes (`p.color`, `p.aabb.pos.x`).
+///
+/// `elem_expr` is the expression that the bound variable refers to
+/// at this iteration (e.g. `Index(Identifier("platforms"), Int(i))`).
+/// A dotted suffix like `p.color` becomes
+/// `Field(elem_expr, "color")`; deeper paths chain `Field`s.
+fn substitute_bound_var(e: &Expr, bound: &str, elem: &Expr) -> Expr {
+    let r = |x: &Expr| Box::new(substitute_bound_var(x, bound, elem));
+    let rv = |xs: &Vec<Expr>| xs.iter()
+        .map(|x| substitute_bound_var(x, bound, elem))
+        .collect();
+    match e {
+        Expr::Identifier(name) => {
+            if name == bound { return elem.clone(); }
+            let prefix = format!("{}.", bound);
+            if let Some(suffix) = name.strip_prefix(&prefix) {
+                // Build Field(Field(... Field(elem, seg1), seg2), …, segN).
+                let mut out = elem.clone();
+                for seg in suffix.split('.') {
+                    out = Expr::Field(Box::new(out), seg.to_string());
+                }
+                return out;
+            }
+            e.clone()
+        }
+        Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => e.clone(),
+        Expr::SetLit(xs)  => Expr::SetLit(rv(xs)),
+        Expr::SeqLit(xs)  => Expr::SeqLit(rv(xs)),
+        Expr::Tuple(xs)   => Expr::Tuple(rv(xs)),
+        Expr::Range(a, b) => Expr::Range(r(a), r(b)),
+        Expr::InExpr(a, b) => Expr::InExpr(r(a), r(b)),
+        Expr::Forall(vars, range, body) => {
+            // Inner quantifier shadows the substitution if it rebinds
+            // the same name.
+            if vars.iter().any(|v| v == bound) {
+                Expr::Forall(vars.clone(), r(range), body.clone())
+            } else {
+                Expr::Forall(vars.clone(), r(range), r(body))
+            }
+        }
+        Expr::Exists(vars, range, body) => {
+            if vars.iter().any(|v| v == bound) {
+                Expr::Exists(vars.clone(), r(range), body.clone())
+            } else {
+                Expr::Exists(vars.clone(), r(range), r(body))
+            }
+        }
+        Expr::Call(n, args)    => Expr::Call(n.clone(), rv(args)),
+        Expr::Cardinality(x)   => Expr::Cardinality(r(x)),
+        Expr::Index(a, b)      => Expr::Index(r(a), r(b)),
+        Expr::Field(recv, f)   => Expr::Field(r(recv), f.clone()),
+        Expr::Binary(op, a, b) => Expr::Binary(op.clone(), r(a), r(b)),
+        Expr::Not(x)           => Expr::Not(r(x)),
+        Expr::Ternary(c, a, b) => Expr::Ternary(r(c), r(a), r(b)),
+        Expr::Match(scr, arms) => {
+            let new_arms: Vec<MatchArm> = arms.iter().map(|arm| MatchArm {
+                pattern: arm.pattern.clone(),
+                body: Box::new(substitute_bound_var(&arm.body, bound, elem)),
+            }).collect();
+            Expr::Match(r(scr), new_arms)
+        }
+        Expr::Matches(x, p) => Expr::Matches(r(x), p.clone()),
+    }
+}
+
+/// Resolve the per-iteration element exprs for each bound variable
+/// in a `∀ … : body`. Returns `Some(Vec<(bound_var, element_expr_for_iter_i)>)`
+/// per iteration, OR None if the range shape isn't statically
+/// unrollable (length unknown / unsupported range form).
+///
+/// Supported ranges:
+///   * `coindexed(seq1, seq2, …)` with tuple binding `(a, b, …)` —
+///     element_i for bound k is `Index(Identifier(seq_k), Int(i))`.
+///   * Bare `Identifier(seq_name)` with single binding `a` —
+///     element_i is `Index(Identifier(seq_name), Int(i))`.
+fn resolve_forall_unroll(
+    vars: &[String],
+    range: &Expr,
+    env: &HashMap<String, Var<'static>>,
+) -> Option<Vec<Vec<(String, Expr)>>> {
+    // coindexed(seq1, …) — tuple binding.
+    if let Expr::Call(name, args) = range {
+        if name == "coindexed" && args.len() == vars.len() && !args.is_empty() {
+            // Collect each seq's pinned length.
+            let mut seq_names: Vec<String> = Vec::with_capacity(args.len());
+            let mut lens: Vec<i64> = Vec::with_capacity(args.len());
+            for arg in args {
+                let Expr::Identifier(seq_name) = arg else { return None };
+                let var = env.get(seq_name)?;
+                let len = if let Some((_, len, _)) = var.as_seq() {
+                    len.simplify().as_i64()?
+                } else if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
+                    len.simplify().as_i64()?
+                } else {
+                    return None;
+                };
+                seq_names.push(seq_name.clone());
+                lens.push(len);
+            }
+            let n = *lens.iter().min()?;
+            let mut iters: Vec<Vec<(String, Expr)>> = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let mut binds: Vec<(String, Expr)> = Vec::with_capacity(vars.len());
+                for (v, seq) in vars.iter().zip(seq_names.iter()) {
+                    let elem = Expr::Index(
+                        Box::new(Expr::Identifier(seq.clone())),
+                        Box::new(Expr::Int(i)),
+                    );
+                    binds.push((v.clone(), elem));
+                }
+                iters.push(binds);
+            }
+            return Some(iters);
+        }
+    }
+    // Bare Identifier(seq_name) — single-name binding.
+    if let Expr::Identifier(seq_name) = range {
+        if vars.len() != 1 { return None; }
+        let var = env.get(seq_name)?;
+        let n = if let Some((_, len, _)) = var.as_seq() {
+            len.simplify().as_i64()?
+        } else if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
+            len.simplify().as_i64()?
+        } else {
+            return None;
+        };
+        let v = &vars[0];
+        let iters: Vec<Vec<(String, Expr)>> = (0..n).map(|i| {
+            let elem = Expr::Index(
+                Box::new(Expr::Identifier(seq_name.clone())),
+                Box::new(Expr::Int(i)),
+            );
+            vec![(v.clone(), elem)]
+        }).collect();
+        return Some(iters);
+    }
+    None
+}
+
 fn find_membership_type(items: &[BodyItem], name: &str) -> Option<String> {
     for item in items {
         if let BodyItem::Membership { name: n, type_name, .. } = item {
@@ -1038,6 +1220,85 @@ fn inline_body_items_guarded(
                     &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
                 );
                 exit_frame(visited, claim_name);
+            }
+            // `∀ vars ∈ range : body` where `body` contains a method-
+            // style subclaim invocation (`recv.subclaim(args)`).
+            //
+            // translate_bool's ∀ translator runs the body through
+            // translate_bool, which has no solver access and can't
+            // fire the subclaim's per-iteration assertions (the
+            // `out = ⟨…⟩` pin inside the subclaim body never lands,
+            // leaving outputs free; see COUNTEREXAMPLES #26).
+            //
+            // Fix: expand the ∀ at AST level for known-length ranges
+            // (coindexed of pinned-length Seqs, or a bare pinned Seq).
+            // Each iteration becomes a regular BodyItem the inline
+            // pass can dispatch — subclaim calls get full solver
+            // access via inline_subschema_call as usual.
+            BodyItem::Constraint(Expr::Forall(vars, range, body))
+                if body_contains_subschema_call(body, items, schemas) =>
+            {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                let Some(iterations) =
+                    resolve_forall_unroll(vars, range, env)
+                else {
+                    // Range shape not statically unrollable —
+                    // fall through to the regular Constraint
+                    // translation path. The subclaim assertions
+                    // will drop, but the user gets the same
+                    // behavior as before this fix.
+                    let e = Expr::Forall(
+                        vars.clone(), range.clone(), body.clone());
+                    if let Some(b) = translate_bool(&e, ctx, env, schemas) {
+                        track_assert(solver, &guarded_bool(b, guard), tracker);
+                    }
+                    continue;
+                };
+                for binds in iterations {
+                    let mut item_body: Expr = (**body).clone();
+                    for (bound, elem) in &binds {
+                        item_body = substitute_bound_var(&item_body, bound, elem);
+                    }
+                    // Append the substituted body as the next item of
+                    // the OUTER `items` slice and dispatch through
+                    // inline_body_items_guarded again. Keeping the
+                    // outer items in scope is important: `resolve_call`
+                    // walks `items` to find the receiver's type (e.g.
+                    // `win ∈ SDL_Window`) for method-style subclaim
+                    // dispatch. Passing only the substituted item
+                    // would lose those Memberships.
+                    let item = BodyItem::Constraint(item_body);
+                    let mut expanded = items.to_vec();
+                    expanded.push(item);
+                    let single_slice = &expanded[expanded.len() - 1 ..];
+                    // ↑ a slice of just the new item, but its
+                    // `items` siblings (passed via the outer `items`
+                    // arg below) include all of the surrounding body.
+                    let _ = single_slice;
+                    // We can't easily slice the merged vec without
+                    // hitting borrow-checker issues; instead, dispatch
+                    // the single item directly here without recursion.
+                    if let BodyItem::Constraint(ref e) = expanded[expanded.len() - 1] {
+                        if let Expr::Call(name, args) = e {
+                            if let Some(CallDispatch::Subschema { recv, type_name, claim_name }) =
+                                resolve_call(name, items, schemas)
+                            {
+                                inline_subschema_call(
+                                    &recv, &type_name, &claim_name, args,
+                                    env, solver, schemas, ctx, registry,
+                                    enums, visited, guard, tracker,
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    // Fall back: regular Constraint translation.
+                    if let BodyItem::Constraint(e) = &expanded[expanded.len() - 1] {
+                        if let Some(b) = translate_bool(e, ctx, env, schemas) {
+                            track_assert(solver, &guarded_bool(b, guard), tracker);
+                        }
+                    }
+                }
             }
             BodyItem::Constraint(e) => {
                 // Recognized runtime markers (declared in

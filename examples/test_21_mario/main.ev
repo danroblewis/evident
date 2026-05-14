@@ -15,11 +15,6 @@ type MarioSprite(pos ∈ IVec2)
     rects[2] = Rect(Color(220, 40,  40,  255), pos + IVec2(0, 16), IVec2(32, 10))
     rects[3] = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
 
-type EnemySprite(pos ∈ IVec2)
-    rects ∈ Seq(Rect)
-    #rects = 1
-    rects[0] = Rect(Color(200, 80, 220, 255), pos, IVec2(28, 28))
-
 type Level
     bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
     p_size        ∈ IVec2 = IVec2(32, 32)
@@ -289,48 +284,40 @@ fsm display(world ∈ World)
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
 
-    pb_0 ∈ Body = platforms[0]
-    pb_1 ∈ Body = platforms[1]
-    pb_2 ∈ Body = platforms[2]
-    pb_3 ∈ Body = platforms[3]
-    plat_0 ∈ Rect = Rect(pb_0.color, pb_0.aabb.pos, pb_0.aabb.size)
-    plat_1 ∈ Rect = Rect(pb_1.color, pb_1.aabb.pos, pb_1.aabb.size)
-    plat_2 ∈ Rect = Rect(pb_2.color, pb_2.aabb.pos, pb_2.aabb.size)
-    plat_3 ∈ Rect = Rect(pb_3.color, pb_3.aabb.pos, pb_3.aabb.size)
-    plat_0_effs, plat_1_effs, plat_2_effs, plat_3_effs ∈ Seq(Effect)
-    win.draw_rect(plat_0, plat_0_effs)
-    win.draw_rect(plat_1, plat_1_effs)
-    win.draw_rect(plat_2, plat_2_effs)
-    win.draw_rect(plat_3, plat_3_effs)
+    plat_effs ∈ Seq(EffectBundle)
+    #plat_effs = 4
+    ∀ i ∈ {0..3} : #plat_effs[i].effs = 2
+    ∀ (p, b) ∈ coindexed(platforms, plat_effs) :
+        win.draw_rect(Rect(p.color, p.aabb.pos, p.aabb.size), b.effs)
 
     mario ∈ MarioSprite (pos ↦ _world.player.pos)
-    hat_effs, face_effs, shirt_effs, pants_effs ∈ Seq(Effect)
-    win.draw_rect(mario.rects[0], hat_effs)
-    win.draw_rect(mario.rects[1], face_effs)
-    win.draw_rect(mario.rects[2], shirt_effs)
-    win.draw_rect(mario.rects[3], pants_effs)
+    mario_effs ∈ Seq(EffectBundle)
+    #mario_effs = 4
+    ∀ i ∈ {0..3} : #mario_effs[i].effs = 2
+    ∀ (r, b) ∈ coindexed(mario.rects, mario_effs) :
+        win.draw_rect(r, b.effs)
 
-    e0 ∈ EnemySprite (pos ↦ _world.enemies[0].pos)
-    e1 ∈ EnemySprite (pos ↦ _world.enemies[1].pos)
-    e0_effs, e1_effs ∈ Seq(Effect)
-    win.draw_rect(e0.rects[0], e0_effs)
-    win.draw_rect(e1.rects[0], e1_effs)
+    enemy_effs ∈ Seq(EffectBundle)
+    #enemy_effs = 2
+    ∀ i ∈ {0..1} : #enemy_effs[i].effs = 2
+    ∀ (m, b) ∈ coindexed(_world.enemies, enemy_effs) :
+        win.draw_rect(Rect(Color(200, 80, 220, 255), m.pos, IVec2(28, 28)), b.effs)
 
     win.render_present(present_eff)
 
     sky_effs ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
     phase_chain ∈ Seq(Effect) = ⟨
-        clear_eff,         plat_0_effs[0],
-        plat_0_effs[1],    plat_1_effs[0],
-        plat_1_effs[1],    plat_2_effs[0],
-        plat_2_effs[1],    plat_3_effs[0],
-        plat_3_effs[1],    hat_effs[0],
-        hat_effs[1],       face_effs[0],
-        face_effs[1],      shirt_effs[0],
-        shirt_effs[1],     pants_effs[0],
-        pants_effs[1],     e0_effs[0],
-        e0_effs[1],        e1_effs[0],
-        e1_effs[1],        present_eff,
+        clear_eff,              plat_effs[0].effs[0],
+        plat_effs[0].effs[1],   plat_effs[1].effs[0],
+        plat_effs[1].effs[1],   plat_effs[2].effs[0],
+        plat_effs[2].effs[1],   plat_effs[3].effs[0],
+        plat_effs[3].effs[1],   mario_effs[0].effs[0],
+        mario_effs[0].effs[1],  mario_effs[1].effs[0],
+        mario_effs[1].effs[1],  mario_effs[2].effs[0],
+        mario_effs[2].effs[1],  mario_effs[3].effs[0],
+        mario_effs[3].effs[1],  enemy_effs[0].effs[0],
+        enemy_effs[0].effs[1],  enemy_effs[1].effs[0],
+        enemy_effs[1].effs[1],  present_eff,
         delay_eff
     ⟩
 

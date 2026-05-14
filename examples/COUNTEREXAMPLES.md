@@ -700,42 +700,43 @@ What's still pending:
   `composite_value_to_dyn` returns None for SeqField; needed for
   multi-step executor frames carrying composites with Seq fields.
 
-### 26. Subclaim invocations inside `∀` bodies don't assert their constraints
+### 26. Subclaim invocations inside `∀` bodies — supported (was a gap)
 
-**Where this came up:** trying to write Mario's render block as
+`∀ (p, b) ∈ coindexed(platforms, plat_effs) : win.draw_rect(Rect(…),
+b.effs)` now works end-to-end. `inline_body_items_guarded` recognizes
+a `Forall` Constraint whose body contains a method-style subclaim
+invocation and expands each iteration at AST level. The substituted
+body for index `i` becomes a regular `BodyItem::Constraint(Expr::Call(
+"win.draw_rect", […]))` that dispatches through `inline_subschema_call`
+as usual — full solver access, internal `out = ⟨…⟩` assertions fire.
 
-```evident
-plat_effs ∈ Seq(EffectBundle)
-#plat_effs = 4
-∀ (p, b) ∈ coindexed(platforms, plat_effs) :
-    win.draw_rect(Rect(p.color, p.aabb.pos, p.aabb.size), b.effs)
-```
+Supported range shapes:
 
-The body of a `∀` is translated by `translate_bool` (which returns a
-`Bool`), but `translate_bool` doesn't have solver access. A subclaim
-invocation like `win.draw_rect(…)` lives at the `inline_body_items` /
-`inline_subschema_call` layer because it asserts new constraints on
-the solver — those internal assertions like `out = ⟨color_eff,
-fill_eff⟩` (which pin the output Seq's length to 2 and its elements
-to specific LibCalls) need solver access.
+* `coindexed(seq1, seq2, …)` — tuple binding, all seqs must have a
+  pinned length. Bound vars substitute to `Index(Identifier(seq_k),
+  Int(i))` per iteration.
+* Bare `Identifier(seq_name)` — single-name binding, pinned length.
 
-Inside a `∀` body, the subclaim call's invocation runs (the body
-expression is evaluated for each iteration), but the assertions
-silently drop. The output `b.effs` is left free, so Z3 picks
-arbitrary effect values for it and the rendered output is wrong.
+The substitution walks the body expression and rewrites:
 
-**Workaround**: keep subclaim invocations at the outer body level,
-one per index. The downstream Seq(Composite-with-Seq-field) support
-(#25) makes the ∀ shape *syntactically* expressible — the gap is
-purely in the inline / translate layering.
+* `Identifier("p")` → `Index(Identifier("platforms"), Int(i))`.
+* `Identifier("p.color")` (the parser folds dots) → `Field(Index(…),
+  "color")`.
+* Deeper paths chain `Field`s.
 
-**Fix idea**: pre-process `∀` bodies that contain subclaim
-invocations into explicit per-iteration body items at AST level,
-expanded over a known pinned length. Same approach that
-`apply_seq_lengths` uses for length pinning, but applied to
-subclaim-bearing bodies. The user-facing `∀ (…) ∈ coindexed(…)`
-syntax stays; the AST expansion makes each iteration a regular
-top-level body item the inline pass can see.
+`resolve_mapping` was extended to accept the `Field(Index(…), …)` chain
+as a mapping value: it drills along the field path applying composite
+accessors, then binds the leaf composite's leaves under the slot
+prefix, or binds a SeqField as a `SeqVar`/`DatatypeSeqVar` for inner
+Seqs. So `r ↦ Rect(p.color, p.aabb.pos, p.aabb.size)` after
+substitution still resolves cleanly: each Rect field gets its leaves
+bound by drilling through the indexed platform element.
+
+One caller-side wrinkle remains: inner-Seq length pins from
+`type Body(...)` invariants don't propagate to Seq elements (see #25
+last bullet). The user has to pin `#plat_effs[i].effs = 2` explicitly
+before the `∀` for the per-iteration subclaim length-pinning to be
+load-bearing. Mario uses this form.
 
 ## What works without caveat
 
