@@ -679,6 +679,7 @@ condition is the selector.
 | Pattern-match an enum-typed scrutinee | `match e \n   Ctor(b) ⇒ body \n   _ ⇒ fallback` — indented arms, lowers to nested ITE |
 | Test whether an enum value's variant is X (Bool result) | `e matches Ctor(_, _)` — recognizer; payload binds ignored. Use `match` to extract values, `e = Ctor(7)` for literal-payload comparison |
 | Build a `Cons/Nil`-shaped enum value (EffectList, ResultList, ArgList, user LinkedList) | `var = ⟨a, b, c⟩` — lowers to `Cons(a, Cons(b, Cons(c, Nil)))`. Empty `⟨⟩` = `Nil`. Works inline in `match` arms when the LHS hints the enum type |
+| Assemble a `Seq(T)` from named chunks | `xs ∈ Seq(T) = ⟨…⟩` then `out = a ++ b ++ ⟨c⟩` — `++` flattens at load time |
 
 ## Records as vectors
 
@@ -771,6 +772,40 @@ referenced through claim parameters won't have their `coindexed`
 length pinning visible. Declare the Seqs in main, even if only an
 inner subclaim uses them.
 
+## Seq concatenation with `++`
+
+Build a `Seq(T)` by naming subsequences and joining them with `++`.
+A pre-translation pass (`desugar_seq_concat`) walks the body, gathers
+`name = ⟨items⟩` bindings, then rewrites every `Concat` subtree
+into a single flat `SeqLit` at load time. The translator never sees
+`++` — it sees the already-flattened literal.
+
+```evident
+sky_clear   ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+scene_draws ∈ Seq(Effect) = ⟨ground_color_eff, ground_fill_eff,
+                              hat_color_eff,    hat_fill_eff,
+                              shirt_color_eff,  shirt_fill_eff⟩
+input_poll  ∈ Seq(Effect) = ⟨pump_eff, key_left_eff, key_right_eff⟩
+
+effects = (halting ? ⟨Println("done"), Exit(0)⟩
+           : sky_clear ++ scene_draws ++ ⟨present_eff⟩
+               ++ input_poll ++ ⟨delay_eff⟩)
+```
+
+The rewrite recurses through `Ternary`, `Match` arms, claim-call
+arguments, and further `Binary` operations — so `++` works wherever
+a `Seq(T)` value is expected. The use case is reading-clarity: the
+frame's effects read as "what it's composed of, by intent" instead
+of one 18-element flat list.
+
+**Operands must be statically resolvable.** Each leaf has to be
+either a `SeqLit` literal or an `Identifier` that names a body-level
+`name = ⟨...⟩` binding. Opaque `Seq` vars (e.g. coming from a claim
+invocation that produces a Seq) won't flatten — that subtree is left
+alone and the translator surfaces the usual "couldn't translate to
+Bool" error pointing at it. Inline the chunks at the call site, or
+push the assembly down into the producing claim.
+
 ## Guarded claim invocation
 
 `condition ⇒ ClaimName` inlines the claim's body but wraps each
@@ -801,7 +836,7 @@ constraint of a named concern.
 
 `type main` should read as **setup + configuration + claim wiring**,
 not as a place where logic lives. Aim for ~80–100 lines for a
-non-trivial game/simulation. Five tools that compound:
+non-trivial game/simulation. Six tools that compound:
 
 1. **Multi-name + first-line params for short types** —
    `type IVec2(x, y ∈ Int)` over four lines.
@@ -815,6 +850,10 @@ non-trivial game/simulation. Five tools that compound:
    from main; the claim body owns the `∀` and the per-element logic.
 5. **Guarded claim invocation for one-shot logic** — `state.step = 0
    ⇒ InitGameState` reads as "run Init when initializing".
+6. **`++` over a flat effects list** — name the chunks by intent
+   (`sky_clear`, `scene_draws`, `input_poll`) and assemble with `++`.
+   Reads as "what the frame is composed of" instead of an N-element
+   list of named LibCalls.
 
 (Earlier `sdl_demo/` engine + game pair is gone — the canonical
 split is now embodied across `examples/test_NN_*.ev`. When we
