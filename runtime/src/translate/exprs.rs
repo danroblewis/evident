@@ -744,6 +744,51 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                 let inner = x.le(&hi).ite(&x, &hi);
                 return Some(inner.ge(&lo).ite(&inner, &lo));
             }
+            // `position_of(seq, x)` — index of `x` in `seq` for the
+            // first match, or -1 if not present. Implemented as a
+            // chained ITE over the seq's pinned-length positions:
+            //
+            //     seq[0] = x ? 0 : (seq[1] = x ? 1 : … : -1)
+            //
+            // No side effects, no fresh constants — just an
+            // expression Z3 can fold. For distinct-valued seqs the
+            // result is the unique position. For Seqs with the
+            // element appearing multiple times, returns the lowest
+            // index (well-defined; mirrors Z3 / Python semantics).
+            //
+            // Primitive Seq path only in v1; Datatype-Seq element
+            // types fall through.
+            ("position_of", 2) => {
+                let Expr::Identifier(sname) = &args[0] else { return None };
+                let var = env.get(sname)?;
+                let (arr, len, elem) = var.as_seq()?;
+                let n = len.simplify().as_i64()?;
+                let mut result = Int::from_i64(ctx, -1);
+                for i in (0..n).rev() {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    let eq = match elem {
+                        SeqElem::Int => {
+                            let v = translate_int(&args[1], ctx, env)?;
+                            cell.as_int()?._eq(&v)
+                        }
+                        SeqElem::Bool => {
+                            let v = match &args[1] {
+                                Expr::Bool(b) => Bool::from_bool(ctx, *b),
+                                Expr::Identifier(n) => env.get(n)?.as_bool()?.clone(),
+                                _ => return None,
+                            };
+                            cell.as_bool()?._eq(&v)
+                        }
+                        SeqElem::Str => {
+                            let v = translate_str(&args[1], ctx, env)?;
+                            cell.as_string()?._eq(&v)
+                        }
+                    };
+                    result = eq.ite(&idx, &result);
+                }
+                return Some(result);
+            }
             _ => {}
         }
     }
@@ -1853,27 +1898,25 @@ pub(super) fn translate_bool<'ctx>(
             return None;
         }
         if name == "distinct" {
-            if args.len() <= 1 {
-                // Check single-Seq form. If the one arg is a
-                // pinned-length Seq, unroll its elements.
-                if args.len() == 1 {
-                    if let Expr::Identifier(sname) = &args[0] {
-                        if let Some(var) = env.get(sname) {
-                            if let Some((_, len, _)) = var.as_seq() {
-                                if let Some(n) = len.simplify().as_i64() {
-                                    let exploded: Vec<Expr> = (0..n).map(|i|
-                                        Expr::Index(
-                                            Box::new(Expr::Identifier(sname.clone())),
-                                            Box::new(Expr::Int(i)))).collect();
-                                    return translate_bool(
-                                        &Expr::Call("distinct".into(), exploded),
-                                        ctx, env, schemas);
-                                }
-                            }
-                        }
-                    }
-                }
-                return Some(Bool::from_bool(ctx, true));
+            // 0 args: trivially true (no pair to differ).
+            if args.is_empty() { return Some(Bool::from_bool(ctx, true)); }
+            // 1 arg: must be a pinned-length Seq variable.
+            // Returning None on failure (not vacuous true) so a
+            // `distinct(s)` over an unpinned Seq surfaces as a
+            // dropped constraint instead of silently passing.
+            if args.len() == 1 {
+                let Expr::Identifier(sname) = &args[0] else { return None };
+                let var = env.get(sname)?;
+                let (_, len, _) = var.as_seq()?;
+                let n = len.simplify().as_i64()?;
+                if n <= 1 { return Some(Bool::from_bool(ctx, true)); }
+                let exploded: Vec<Expr> = (0..n).map(|i|
+                    Expr::Index(
+                        Box::new(Expr::Identifier(sname.clone())),
+                        Box::new(Expr::Int(i)))).collect();
+                return translate_bool(
+                    &Expr::Call("distinct".into(), exploded),
+                    ctx, env, schemas);
             }
             if let Some(ints) = args.iter()
                 .map(|a| translate_int(a, ctx, env))

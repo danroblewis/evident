@@ -54,21 +54,17 @@ claim Toposort<T>
     #sorted = n
 
     -- Permutation: same length (above), every items[i] appears in
-    -- sorted, and sorted itself has distinct elements (no duplicate
-    -- positions). With distinct items as the identity assumption,
-    -- these three together pin sorted to a permutation.
+    -- sorted, and sorted itself has distinct elements. With
+    -- distinct items as the identity assumption, these three
+    -- pin sorted to a permutation.
     distinct(sorted)
-    ∀ i ∈ {0..n - 1} : (∃ j ∈ {0..n - 1} : sorted[j] = items[i])
+    ∀ i ∈ {0..n - 1} : contains(sorted, items[i])
 
-    -- Edge ordering. Find each edge's endpoints in sorted by value
-    -- equality; the earlier-than constraint goes on the indices
-    -- where those endpoints land. No separate `position` array.
-    --
-    -- The quantifier structure is O(m · n²) constraints — for each
-    -- edge, for each potential (i, j) pair. That's the cost of
-    -- "find positions by value equality." A `position_of` primitive
-    -- would drop this to O(m).
-    ∀ k ∈ {0..#edges - 1} : ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : ((sorted[i] = edges[k].from ∧ sorted[j] = edges[k].to) ⇒ i < j)
+    -- Edge ordering — one constraint per edge, no nested quantifiers.
+    -- `position_of(sorted, x)` returns the index of x in sorted via
+    -- a chained ITE; the comparison gives the partial-order
+    -- constraint directly.
+    ∀ k ∈ {0..#edges - 1} : position_of(sorted, edges[k].from) < position_of(sorted, edges[k].to)
 
 -- ── Reference: the same problem with an explicit `position` Seq ──
 --
@@ -101,7 +97,8 @@ claim sat_two_edges_4_nodes
     items ∈ Seq(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    n = 4
+    #sorted = n
+    n =4
     items = ⟨10, 20, 30, 40⟩
     #edges = 2
     edges[0] = Edge<Int>(10, 30)
@@ -113,7 +110,8 @@ claim sat_linear_chain_forces_unique_order
     items ∈ Seq(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    n = 3
+    #sorted = n
+    n =3
     items = ⟨100, 200, 300⟩
     #edges = 2
     edges[0] = Edge<Int>(100, 200)
@@ -126,7 +124,8 @@ claim unsat_three_cycle
     items ∈ Seq(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    n = 3
+    #sorted = n
+    n =3
     items = ⟨1, 2, 3⟩
     #edges = 3
     edges[0] = Edge<Int>(1, 2)
@@ -139,7 +138,8 @@ claim sat_empty_edges
     items ∈ Seq(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    n = 3
+    #sorted = n
+    n =3
     items = ⟨1, 2, 3⟩
     #edges = 0
     Toposort<Int> (n ↦ n, items ↦ items, edges ↦ edges, sorted ↦ sorted)

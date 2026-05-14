@@ -277,12 +277,58 @@ pub(super) fn collect_seq_lengths_with_schemas(
     for (k, v) in given {
         if let Value::Int(n) = v { pinned.insert(k.clone(), *n); }
     }
+    // Fixed-point. Two kinds of discoveries can extend `pinned`
+    // (Int values) and `out` (Seq lengths) each pass:
+    //   * `#seq = N` pins `out["seq"] = N`.
+    //   * `n = N` (Int = literal) seeds `pinned["n"] = N`, so a
+    //     later `#seq = n` resolves.
     let mut changed = true;
     while changed {
         changed = false;
         walk_constraints(body, schemas, &pinned, &mut out, &mut changed);
+        // Also scan for `name = literal_int_expr` and add to `pinned`
+        // so `#seq = name` in a later pass resolves.
+        scan_int_pins(body, schemas, &mut pinned, &out, &mut changed);
     }
     out
+}
+
+/// Walk body Eq constraints for `name = literal_int_expr` patterns
+/// (where the RHS reduces to a concrete Int via `eval_pure_int`)
+/// and add them to `pinned`. Lets `collect_seq_lengths` resolve
+/// chains like `n = 3 ; #position = n` where the `n` pin only
+/// appears in body, not in `given`. Recurses into passthroughs.
+fn scan_int_pins(
+    body: &[BodyItem],
+    schemas: Option<&HashMap<String, SchemaDecl>>,
+    pinned: &mut HashMap<String, i64>,
+    seq_lens: &HashMap<String, i64>,
+    changed: &mut bool,
+) {
+    for item in body {
+        match item {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) => {
+                for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                    if let Expr::Identifier(name) = a.as_ref() {
+                        if !pinned.contains_key(name) {
+                            if let Some(v) = eval_pure_int(b, pinned, seq_lens) {
+                                pinned.insert(name.clone(), v);
+                                *changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(schemas) = schemas {
+                    if let Some(claim) = schemas.get(claim_name) {
+                        scan_int_pins(&claim.body, Some(schemas), pinned, seq_lens, changed);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Walk a body's Eq constraints for cardinality pins, recursing into
