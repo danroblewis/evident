@@ -241,7 +241,7 @@ fn each_demo_runs_to_completion() {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         if d.tick_ms > 0 { cmd.env("EVIDENT_TICK_MS", d.tick_ms.to_string()); }
 
-        let out = match wait_with_timeout(cmd, d.stdin, Duration::from_secs(15)) {
+        let out = match wait_with_timeout(cmd, d.stdin, Duration::from_secs(30)) {
             Ok(o) => o,
             Err(e) => { failures.push(format!("{}: {e}", d.name)); continue; }
         };

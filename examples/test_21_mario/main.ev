@@ -24,13 +24,17 @@ type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ In
 -- corresponding draw effects.
 
 type MarioSprite(pos ∈ IVec2)
-    hat   ∈ Rect = Rect(Color(220, 40,  40,  255), pos,                IVec2(32, 6))
-    face  ∈ Rect = Rect(Color(240, 200, 160, 255), pos + IVec2(4, 6),  IVec2(24, 10))
-    shirt ∈ Rect = Rect(Color(220, 40,  40,  255), pos + IVec2(0, 16), IVec2(32, 10))
-    pants ∈ Rect = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
+    rects ∈ Seq(Rect)
+    #rects = 4
+    rects[0] = Rect(Color(220, 40,  40,  255), pos,                IVec2(32, 6))
+    rects[1] = Rect(Color(240, 200, 160, 255), pos + IVec2(4, 6),  IVec2(24, 10))
+    rects[2] = Rect(Color(220, 40,  40,  255), pos + IVec2(0, 16), IVec2(32, 10))
+    rects[3] = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
 
 type EnemySprite(pos ∈ IVec2)
-    rect ∈ Rect = Rect(Color(200, 80, 220, 255), pos, IVec2(28, 28))
+    rects ∈ Seq(Rect)
+    #rects = 1
+    rects[0] = Rect(Color(200, 80, 220, 255), pos, IVec2(28, 28))
 
 -- ── Level: the level VALUE (a noun) ───────────────────────────
 --
@@ -462,21 +466,24 @@ fsm display(world ∈ World)
     plat_1 ∈ Rect = Rect(pb_1.color, pb_1.aabb.pos, pb_1.aabb.size)
     plat_2 ∈ Rect = Rect(pb_2.color, pb_2.aabb.pos, pb_2.aabb.size)
     plat_3 ∈ Rect = Rect(pb_3.color, pb_3.aabb.pos, pb_3.aabb.size)
-    win.draw_rect(plat_0, plat_0_color_eff, plat_0_fill_eff)
-    win.draw_rect(plat_1, plat_1_color_eff, plat_1_fill_eff)
-    win.draw_rect(plat_2, plat_2_color_eff, plat_2_fill_eff)
-    win.draw_rect(plat_3, plat_3_color_eff, plat_3_fill_eff)
+    plat_0_effs, plat_1_effs, plat_2_effs, plat_3_effs ∈ Seq(Effect)
+    win.draw_rect(plat_0, plat_0_effs)
+    win.draw_rect(plat_1, plat_1_effs)
+    win.draw_rect(plat_2, plat_2_effs)
+    win.draw_rect(plat_3, plat_3_effs)
 
     mario ∈ MarioSprite (pos ↦ _world.player.pos)
-    win.draw_rect(mario.hat,   hat_color_eff,   hat_fill_eff)
-    win.draw_rect(mario.face,  face_color_eff,  face_fill_eff)
-    win.draw_rect(mario.shirt, shirt_color_eff, shirt_fill_eff)
-    win.draw_rect(mario.pants, pants_color_eff, pants_fill_eff)
+    hat_effs, face_effs, shirt_effs, pants_effs ∈ Seq(Effect)
+    win.draw_rect(mario.rects[0], hat_effs)
+    win.draw_rect(mario.rects[1], face_effs)
+    win.draw_rect(mario.rects[2], shirt_effs)
+    win.draw_rect(mario.rects[3], pants_effs)
 
     e0 ∈ EnemySprite (pos ↦ _world.enemies[0].pos)
     e1 ∈ EnemySprite (pos ↦ _world.enemies[1].pos)
-    win.draw_rect(e0.rect, e0_color_eff, e0_fill_eff)
-    win.draw_rect(e1.rect, e1_color_eff, e1_fill_eff)
+    e0_effs, e1_effs ∈ Seq(Effect)
+    win.draw_rect(e0.rects[0], e0_effs)
+    win.draw_rect(e1.rects[0], e1_effs)
 
     win.render_present(present_eff)
 
@@ -493,22 +500,32 @@ fsm display(world ∈ World)
     -- order is sky → platforms → player → enemies → present →
     -- delay each frame.
 
-    sky_effs    ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
-    plat_effs   ∈ Seq(Effect) = ⟨plat_0_color_eff, plat_0_fill_eff,
-                                  plat_1_color_eff, plat_1_fill_eff,
-                                  plat_2_color_eff, plat_2_fill_eff,
-                                  plat_3_color_eff, plat_3_fill_eff⟩
-    player_effs ∈ Seq(Effect) = ⟨hat_color_eff,   hat_fill_eff,
-                                  face_color_eff,  face_fill_eff,
-                                  shirt_color_eff, shirt_fill_eff,
-                                  pants_color_eff, pants_fill_eff⟩
-    enemy_effs  ∈ Seq(Effect) = ⟨e0_color_eff, e0_fill_eff,
-                                  e1_color_eff, e1_fill_eff⟩
-    phase_chain ∈ Seq(Effect) = ⟨clear_eff,        plat_0_color_eff,
-                                  plat_3_fill_eff,  hat_color_eff,
-                                  pants_fill_eff,   e0_color_eff,
-                                  e1_fill_eff,      present_eff,
-                                  delay_eff⟩
+    -- Each `*_effs` Seq is a 2-element bundle (color + fill) produced
+    -- by a single `win.draw_rect(...)` call; intra-bundle order (color
+    -- before fill) is automatic — the dispatcher emits an implicit
+    -- edge between adjacent Seq(Effect) elements.
+    --
+    -- `phase_chain` chains end-of-one-rect to start-of-next so the
+    -- render order is sky → plat0 → plat1 → plat2 → plat3 → hat →
+    -- face → shirt → pants → enemy 0 → enemy 1 → present → delay.
+    -- A future Seq(Seq(Effect)) sugar would let us collapse the four
+    -- platform pairs / four mario pairs into per-group bundles.
+    sky_effs ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
+    phase_chain ∈ Seq(Effect) = ⟨
+        clear_eff,         plat_0_effs[0],   -- sky end → plat 0 start
+        plat_0_effs[1],    plat_1_effs[0],   -- plat 0 → plat 1
+        plat_1_effs[1],    plat_2_effs[0],   -- plat 1 → plat 2
+        plat_2_effs[1],    plat_3_effs[0],   -- plat 2 → plat 3
+        plat_3_effs[1],    hat_effs[0],      -- plats end → mario start
+        hat_effs[1],       face_effs[0],     -- hat → face
+        face_effs[1],      shirt_effs[0],    -- face → shirt
+        shirt_effs[1],     pants_effs[0],    -- shirt → pants
+        pants_effs[1],     e0_effs[0],       -- mario end → enemy 0
+        e0_effs[1],        e1_effs[0],       -- enemy 0 → enemy 1
+        e1_effs[1],        present_eff,      -- enemies end → present
+        delay_eff                              -- (present_eff already in chain
+                                               --  above; flow continues to delay)
+    ⟩
 
     -- Conditional exit at frame ≥ 240. NoEffect when not yet —
     -- the dispatcher drops NoEffect cleanly.

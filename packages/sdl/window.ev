@@ -137,30 +137,36 @@ external type SDL_Window
                       "i(pp)",
                       ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
 
-    -- `draw_rect(r)` is the declarative form: a Rect is a noun
+    -- `draw_rect(r, out)` is the declarative form: a Rect is a noun
     -- that names "this color filled at this position with this
-    -- size." Invoking the subclaim asserts that color_eff sets
-    -- the renderer's color to r.color and fill_eff fills a
-    -- rectangle at r.pos / r.size. Caller puts both effects in
-    -- the effects list (in this order, so the color is set
-    -- BEFORE the fill):
+    -- size." Invoking the subclaim emits the two effects (set
+    -- color + fill rect) as a 2-element `out ∈ Seq(Effect)` —
+    -- one logical operation, one output binding. Caller dispatch
+    -- order within the Seq is preserved: color before fill.
     --
-    --     win.draw_rect(hat, hat_color_eff, hat_fill_eff)
+    --     win.draw_rect(mario.rects[0], hat_effs)
+    --     win.draw_rect(mario.rects[1], face_effs)
     --
-    -- The `color_eff` / `fill_eff` types are inferred from the
-    -- LibCall RHS by the lhs-eq inference pass; rect_buf is
-    -- declared explicitly because its RHS is a SeqLit (which
-    -- the inference doesn't yet attribute to Seq(Int)).
-    subclaim draw_rect(r ∈ Rect)
-        color_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+    -- Each `*_effs` is its own `Seq(Effect)` binding the runtime
+    -- walks and dispatches (in Seq order). Replaces the older
+    -- two-slot form (`draw_rect(r, color_eff, fill_eff)`) — that
+    -- shape's two outputs were always paired anyway, and the new
+    -- one consolidates them so ∀-render patterns don't need
+    -- parallel Seq(Effect) outputs (which violate the
+    -- parallel-Seqs anti-pattern in CLAUDE.md).
+    subclaim draw_rect(r ∈ Rect, out ∈ Seq(Effect))
+        color_eff ∈ Effect = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                            "SDL_SetRenderDrawColor",
                             "i(piiii)",
                             ⟨ArgHandle(renderer),
                              ArgInt(r.color.red), ArgInt(r.color.green),
                              ArgInt(r.color.blue), ArgInt(r.color.alpha)⟩)
-        fill_eff = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
+        rect_buf ∈ Seq(Int) = ⟨r.pos.x, r.pos.y, r.size.x, r.size.y⟩
+        fill_eff ∈ Effect = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+                           "SDL_RenderFillRect",
                            "i(pp)",
                            ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
-        rect_buf ∈ Seq(Int) = ⟨r.pos.x, r.pos.y, r.size.x, r.size.y⟩
+        out = ⟨color_eff, fill_eff⟩
 
     subclaim draw_line(p_from ∈ IVec2, p_to ∈ IVec2)
         out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
