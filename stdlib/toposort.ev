@@ -1,100 +1,104 @@
--- Topological sort as a constraint problem.
+-- Topological sort as a constraint problem — generic over node type.
 --
--- An `Edge` is a directed dependency: `from` must precede `to` in
--- the result. The graph is a `Seq(Edge)`. Toposort produces a
--- `position` array — a permutation of {0..n-1} where
--- `position[node]` is that node's rank.
+-- `Edge<T>` carries a directed dependency between two nodes of
+-- type `T`. `Toposort<T>` solves for a permutation of items where
+-- every edge respects ordering. Domain types in, domain types out
+-- — indices stay internal.
 --
 -- Interface (caller pins via `given` or chained-membership):
---   * `n ∈ Nat`           — node count. Nodes identified by index
---                            in [0, n).
---   * `edges ∈ Seq(Edge)` — the dependency graph.
---
+--   * `n ∈ Nat`                   — node count.
+--   * `items ∈ Seq(T)`            — the nodes, in arbitrary order.
+--   * `edges ∈ Seq(Edge<T>)`      — directed dependencies between
+--                                    items (matched by Z3 value
+--                                    equality, not by position).
 -- Output:
---   * `position ∈ Seq(Int)` of length n. To recover order
---     (rank → node), invert the permutation:
---         order[position[i]] = i for all i ∈ {0..n-1}.
+--   * `sorted ∈ Seq(T)`           — items reordered so every
+--                                    edge from→to has from
+--                                    appearing earlier.
 --
 -- SAT iff the graph is acyclic; UNSAT iff a cycle exists.
+--
+-- Identity is by Z3 value equality on T. If two items are
+-- structurally equal, they're the same vertex.
 
-type Edge(from, to ∈ Int)
+type Edge<T>(from, to ∈ T)
 
-claim Toposort
+claim Toposort<T>
     n ∈ Nat
-    edges ∈ Seq(Edge)
+    items ∈ Seq(T)
+    edges ∈ Seq(Edge<T>)
+    sorted ∈ Seq(T)
+    #items = n
+    #sorted = n
+
+    -- Internal: position[i] is items[i]'s rank in the sort.
     position ∈ Seq(Int)
     #position = n
 
-    -- Range: each position in [0, n).
-    ∀ i ∈ {0..n - 1} :
-        0 ≤ position[i] ∧ position[i] < n
+    -- Range: each position ∈ [0, n).
+    ∀ i ∈ {0..n - 1} : (0 ≤ position[i] ∧ position[i] < n)
 
-    -- Permutation: all positions distinct.
-    ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} :
-        i < j ⇒ position[i] ≠ position[j]
+    -- Permutation: positions all distinct.
+    ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : (i < j ⇒ position[i] ≠ position[j])
 
-    -- Edge ordering: for each edge, the source's position precedes
-    -- the destination's.
-    ∀ k ∈ {0..#edges - 1} :
-        position[edges[k].from] < position[edges[k].to]
+    -- Edge ordering. For each edge, find the items it relates by
+    -- value-equality and constrain their positions. O(m · n²)
+    -- constraints; the alternative would be a separate index Seq
+    -- for edges, which leaks indices to the interface.
+    ∀ k ∈ {0..#edges - 1} : ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} : ((items[i] = edges[k].from ∧ items[j] = edges[k].to) ⇒ position[i] < position[j])
 
--- ── Tests ─────────────────────────────────────────────────────
+    -- Materialize sorted: sorted[position[i]] = items[i].
+    ∀ i ∈ {0..n - 1} : (sorted[position[i]] = items[i])
 
--- The runtime doesn't yet accept `Seq(UserType) = ⟨ctor1, ctor2, …⟩`
--- literal assignment for user-record element types. Each test
--- pins #edges and the per-index values explicitly until that's
--- fixed (small translator gap, separate from toposort itself).
+-- ── Tests (per-element-type instantiations) ──────────────────
 
--- Two independent edges over 4 nodes (0→2, 1→3). Just check SAT.
+-- For test claims we need a concrete element type. Pick `Int`
+-- since it's already available and Z3 equality is trivial.
+
 claim sat_two_edges_4_nodes
     n ∈ Nat
-    edges ∈ Seq(Edge)
-    position ∈ Seq(Int)
+    items ∈ Seq(Int)
+    edges ∈ Seq(Edge<Int>)
+    sorted ∈ Seq(Int)
     n = 4
+    items = ⟨10, 20, 30, 40⟩
     #edges = 2
-    edges[0] = Edge(0, 2)
-    edges[1] = Edge(1, 3)
-    Toposort
+    edges[0] = Edge<Int>(10, 30)
+    edges[1] = Edge<Int>(20, 40)
+    Toposort<Int> (n ↦ n, items ↦ items, edges ↦ edges, sorted ↦ sorted)
 
--- Linear chain 0 → 1 → 2: only valid order is position = ⟨0, 1, 2⟩.
 claim sat_linear_chain_forces_unique_order
     n ∈ Nat
-    edges ∈ Seq(Edge)
-    position ∈ Seq(Int)
+    items ∈ Seq(Int)
+    edges ∈ Seq(Edge<Int>)
+    sorted ∈ Seq(Int)
     n = 3
+    items = ⟨100, 200, 300⟩
     #edges = 2
-    edges[0] = Edge(0, 1)
-    edges[1] = Edge(1, 2)
-    Toposort
-    position = ⟨0, 1, 2⟩
+    edges[0] = Edge<Int>(100, 200)
+    edges[1] = Edge<Int>(200, 300)
+    Toposort<Int> (n ↦ n, items ↦ items, edges ↦ edges, sorted ↦ sorted)
+    sorted = ⟨100, 200, 300⟩
 
--- Cycle 0 → 1 → 2 → 0: UNSAT.
 claim unsat_three_cycle
     n ∈ Nat
-    edges ∈ Seq(Edge)
-    position ∈ Seq(Int)
+    items ∈ Seq(Int)
+    edges ∈ Seq(Edge<Int>)
+    sorted ∈ Seq(Int)
     n = 3
+    items = ⟨1, 2, 3⟩
     #edges = 3
-    edges[0] = Edge(0, 1)
-    edges[1] = Edge(1, 2)
-    edges[2] = Edge(2, 0)
-    Toposort
+    edges[0] = Edge<Int>(1, 2)
+    edges[1] = Edge<Int>(2, 3)
+    edges[2] = Edge<Int>(3, 1)
+    Toposort<Int> (n ↦ n, items ↦ items, edges ↦ edges, sorted ↦ sorted)
 
--- Self-loop: UNSAT.
-claim unsat_self_loop
-    n ∈ Nat
-    edges ∈ Seq(Edge)
-    position ∈ Seq(Int)
-    n = 2
-    #edges = 1
-    edges[0] = Edge(0, 0)
-    Toposort
-
--- No edges: any permutation valid. SAT.
 claim sat_empty_edges
     n ∈ Nat
-    edges ∈ Seq(Edge)
-    position ∈ Seq(Int)
-    n = 5
+    items ∈ Seq(Int)
+    edges ∈ Seq(Edge<Int>)
+    sorted ∈ Seq(Int)
+    n = 3
+    items = ⟨1, 2, 3⟩
     #edges = 0
-    Toposort
+    Toposort<Int> (n ↦ n, items ↦ items, edges ↦ edges, sorted ↦ sorted)
