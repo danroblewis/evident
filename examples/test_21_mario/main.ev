@@ -17,15 +17,12 @@ type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ In
 
 -- ── Level: static configuration of the world ──────────────────
 --
--- Scalar / IVec2 constants are shared via passthrough; the
--- entity Seqs (platforms + enemy spawn data) get copied into
--- each fsm body because `collect_pinned_ints` doesn't follow
--- passthroughs and ∀-unroll needs to see per-element values.
---
--- Adding a platform or enemy: edit BOTH the game and display
--- fsms (the entity-Seq block is identical between them).
--- A runtime fix would make this a single edit.
-claim LevelConsts
+-- Both fsms `..Level` to bring constants AND entity-Seq data
+-- into scope. The platform positions for the 3 elevated platforms
+-- are the output of `level_gen.ev`'s LevelGen constraint solve —
+-- see README.md for the regen workflow.
+
+claim Level
     bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
     p_size        ∈ IVec2 = IVec2(32, 32)
     enemy_size    ∈ IVec2 = IVec2(28, 28)
@@ -34,36 +31,6 @@ claim LevelConsts
     jump_strength ∈ Int   = 14
     enemy_speed   ∈ Int   = 2
 
--- Entity-Seq data lives inside each fsm directly (see notes in
--- the game/display bodies). Touching the level is still a single
--- file — these blocks are textually identical between fsms and
--- can be copy-pasted as a unit.
-
--- ── Shared world (dynamic state) ──────────────────────────────
-
-type World
-    player  ∈ Mover
-    enemies ∈ Seq(Mover)
-    keys    ∈ IVec2     -- x: right−left (-1/0/+1), y: up_pressed (0/1)
-    tick    ∈ Int
-
--- ── Game FSM: physics ─────────────────────────────────────────
-
-fsm game(world ∈ World)
-    ..LevelConsts
-    #_world.enemies = 2
-    #world.enemies  = 2
-
-    -- The platform positions for the 3 elevated platforms are
-    -- the output of `level_gen.ev`'s LevelGen claim — a constraint
-    -- solve that picks layouts respecting in-bounds, non-overlap,
-    -- reachability, and spread. The values below correspond to
-    --     plat_x = [320, 38, 480], plat_y = [350, 236, 262]
-    -- See examples/test_21_mario/README.md for the regen workflow.
-    --
-    -- These blocks are duplicated identically into display because
-    -- `collect_pinned_ints` doesn't follow `..Passthrough` for
-    -- ∀-unroll (COUNTEREXAMPLES.md #22).
     platforms ∈ Seq(Body)
     #platforms = 4
     platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
@@ -79,6 +46,21 @@ fsm game(world ∈ World)
     #e_init = 2
     e_init[0] = EnemyInit(IVec2(40,  404), IVec2(2,     0), 40,  200)
     e_init[1] = EnemyInit(IVec2(560, 404), IVec2(0 - 2, 0), 440, 600)
+
+-- ── Shared world (dynamic state) ──────────────────────────────
+
+type World
+    player  ∈ Mover
+    enemies ∈ Seq(Mover)
+    keys    ∈ IVec2     -- x: right−left (-1/0/+1), y: up_pressed (0/1)
+    tick    ∈ Int
+
+-- ── Game FSM: physics ─────────────────────────────────────────
+
+fsm game(world ∈ World)
+    ..Level
+    #_world.enemies = 2
+    #world.enemies  = 2
 
     -- Anchor the prev-tick mechanism: referencing `_game_clock`
     -- triggers is_first_tick auto-injection (unify_world_syntax
@@ -211,23 +193,11 @@ fsm game(world ∈ World)
 -- ── Display FSM: input + rendering ────────────────────────────
 
 fsm display(world ∈ World)
-    ..LevelConsts
+    ..Level
     -- Only read-side length pin: `#world.enemies = 2` reads as a
     -- write under unify_world_syntax and would clash with game's
     -- ownership of enemies.
     #_world.enemies = 2
-
-    -- Entity Seq data, duplicated from game (see comment there).
-    platforms ∈ Seq(Body)
-    #platforms = 4
-    platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
-                         Color(60,  140, 60,  255))
-    platforms[1] = Body(AABB(IVec2(80,  360), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
-    platforms[2] = Body(AABB(IVec2(440, 360), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
-    platforms[3] = Body(AABB(IVec2(260, 280), IVec2(120, 16)),
-                         Color(150, 100, 60,  255))
 
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 

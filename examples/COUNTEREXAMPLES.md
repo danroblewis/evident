@@ -595,41 +595,19 @@ conjunction). Or, less invasively, recognize `name = ∃ …` at body-item
 shape and rewrite to the bidirectional ∀ form here so user code can
 stay compact.
 
-### 22. ∀-unroll over `Seq(UserType)` can't see element values defined via `..Passthrough`
+### 22. ~~∀-unroll over `Seq(UserType)` can't see element values defined via `..Passthrough`~~ — FIXED
 
-**Where:** `examples/test_21_mario.ev`; `collect_pinned_ints` /
-`collect_seq_lengths` don't follow `BodyItem::Passthrough(name)` into
-the included claim's body items.
+**Was:** `examples/test_21_mario.ev` had to duplicate its
+`platforms[i] = Body(...)` pins into both fsms because
+`collect_seq_lengths` and `evaluate_with_extra_assertions`'s
+Pass 1 didn't follow `Passthrough(name)`.
 
-```evident
-claim Level
-    platforms ∈ Seq(Body)
-    #platforms = 4
-    platforms[0] = Body(...)
-    ...
-
-fsm game(world ∈ World)
-    ..Level
-    #platforms = 4     -- this is visible in the fsm body
-    ∀ i ∈ {0..#platforms - 1} :
-        (platforms[i].aabb.pos.y > 0) ⇒ flag   -- DROPPED at translate
-```
-
-The `#platforms` pin in the fsm body is fine, but the per-element
-`platforms[i] = Body(...)` constraints live in `Level`'s body. When
-the fsm's ∀ is translated, the element values aren't pinned into the
-env yet (passthrough constraints get inlined in Pass 2, after the
-∀-unroll), so `platforms[i].aabb.pos.y` is a free Datatype access and
-the unroller bails.
-
-Workaround: duplicate the `Seq(UserType)` definitions into each fsm's
-body directly. Small constants (Int / IVec2 / etc.) stay fine in a
-passthrough claim — only entity-Seq pins need to move.
-
-Fix idea: extend the preprocess passes to follow `Passthrough(name)`
-into the named claim's body when gathering pinned ints / seq lengths
-/ element values. Cheap version: a single level of passthrough,
-non-recursive. Full version: fixpoint walk.
+**Fix:** `collect_seq_lengths_with_schemas` recurses into
+passthrough'd claim bodies for cardinality pins, and every
+`evaluate*` entry point declares Memberships from passthroughs
+in Pass 1 (mirroring `evaluate`'s existing behavior). Mario's
+`Level` claim now consolidates the entity-Seq data and both
+fsms `..Level` once.
 
 ### 23. Writing to a 3-level-nested field through `world_next` is dropped
 

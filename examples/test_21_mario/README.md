@@ -46,11 +46,6 @@ the same layout on every run unless you pass a different seed.
   set-membership declaration would be the natural way to define
   platforms; today we use `Seq(Body)` with `#platforms = N` plus
   `platforms[i] = Body(...)` pins. See COUNTEREXAMPLES.md #15.
-- **`..Passthrough` doesn't propagate to the ∀-unroller.** The
-  platform pins have to be inlined into both game and display
-  bodies (duplicated), because moving them into a separate claim
-  reachable via `..Level` would leave them invisible to
-  `collect_pinned_ints`. See COUNTEREXAMPLES.md #22.
 - **3-level nested writes through `world_next` are dropped.** Each
   guarded enemy-physics implication assigns the whole `Mover`
   record at once instead of `nxt.pos.x = …`. See
@@ -58,8 +53,10 @@ the same layout on every run unless you pass a different seed.
 
 ## Future shape
 
-When the runtime gaps land, `level_gen.ev` becomes the only
-source of truth: `main.ev` would import it directly, the FSMs
-would `..Level` and access `platforms[i]` through the passthrough,
-and Z3 would solve the layout once at program load. No regen
-step, no duplicated pin block.
+Today the LevelGen output is hand-pasted into `Level`. A natural
+next step is folding LevelGen's constraint body into `Level`
+directly (with `plat_x`, `plat_y` as free Int Seqs Z3 solves
+each tick), making the level layout truly constraint-derived.
+That requires confirming Z3 picks the same solution across
+per-tick queries (deterministic seed) — otherwise platforms
+would shift between frames.
