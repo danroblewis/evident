@@ -398,6 +398,7 @@ pub fn decode_schema_decl(v: &Value) -> Result<SchemaDecl> {
         // first-line params or the external flag separately;
         // conservatively treat 0/false. Self-hosted passes can still
         // observe the body items.
+        type_params: vec![],
         param_count: 0,
         external: false,
     })

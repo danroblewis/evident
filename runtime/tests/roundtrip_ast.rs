@@ -80,6 +80,7 @@ fn roundtrip_minimal_membership() {
     expected.schemas.push(evident_runtime::ast::SchemaDecl {
         keyword: evident_runtime::ast::Keyword::Claim,
         name: "t".into(),
+        type_params: vec![],
         body: vec![
             evident_runtime::ast::BodyItem::Membership {
                 name: "x".into(),
