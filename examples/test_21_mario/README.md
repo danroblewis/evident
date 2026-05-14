@@ -1,58 +1,83 @@
-# test_21_mario — entity-based Mario demo
+# test_21_mario — entity-based Mario with constraint-generated levels
 
-Multi-FSM platformer over a hand-rolled entity system. The level
-(platforms + enemy spawn data) and the physics are both expressed
-as constraints over Seq-of-record types; the player + enemies are
-Mover records; collision is a relation over the platform
-collection (no hardcoded floor / wall coordinates).
+Multi-FSM platformer. Three FSMs:
+
+- **`level_gen`** owns the level state in `world.plat_x` /
+  `world.plat_y` / `world.level_idx`. On tick 0 (and on every
+  level-beat transition) it solves the active level's constraints
+  and writes the platform positions to world; otherwise it freezes
+  them to the previous tick's values.
+- **`game`** owns `world.player` / `world.enemies`. Reads
+  `_world.plat_x` to know where the platforms are.
+- **`display`** owns `world.keys` / `world.tick`. Polls the
+  keyboard, renders the scene.
 
 ## Files
 
-- `main.ev` — the whole program. Entity types, a `Level` claim
-  whose body asserts the layout constraints (in-bounds,
-  non-overlap, jump-reachability, spread), two FSMs (`game` for
-  physics, `display` for input + rendering) that share `Level`
-  via `..Level`.
+- `main.ev` — all three FSMs, the level type, and the per-level
+  claims (`Jumpable`, `Level1`, `Level2`).
 
-## Level as a constraint problem
+## What's a `type` vs a `claim` here?
 
-`Level`'s body has no hand-pinned coordinates for the elevated
-platforms. Instead, `plat_x[i]` and `plat_y[i]` are free Int
-Seqs Z3 picks subject to:
+- **`type Level`** is the level VALUE — a noun. Constants
+  (`PLAT_W`, `GROUND_Y`, …), free placement vars (`plat_x`,
+  `plat_y`), the materialized `platforms` and `e_init` Seqs.
+  The body has only local invariants (each `platforms[i]` is
+  built from the Level's own `plat_x[i]` / `plat_y[i]`); no
+  external dependencies.
+- **`claim Jumpable`** is a property OF a Level: every platform
+  fits, none overlap, every elevated platform is jump-reachable.
+  Generic — works on any Level via names-match.
+- **`claim Level1` / `claim Level2`** are level-specific
+  predicates: each composes `Jumpable` plus its own extras
+  (spread, vertical staircase, etc.). Adding a new level =
+  add a `Level3` claim and one dispatch line in `level_gen`.
 
-- **In-bounds:** every platform fits inside the world horizontally
-  and sits in a band above the ground and below the ceiling.
-- **Non-overlap:** pairwise separation on at least one axis by
-  at least `MIN_GAP` pixels.
-- **Reachability:** every elevated platform is jump-reachable
-  from the ground OR from another platform below it whose
-  x-range overlaps (cheap-arc approximation of the player's
-  jump parabola given `grav` and `jump_strength`).
-- **Spread:** at least one platform high, one low; one on the
-  left half, one on the right. Stops Z3 from clustering them.
+## How `level_gen` switches levels
 
-The cached solver returns the same valid layout on every
-per-tick query, so the game and display FSMs see identical
-platforms even though they each run their own Z3 instance.
-To get a different layout, tweak the constraints (or pass a
-different `EVIDENT_Z3_ARITH_SOLVER` / seed env var).
+```
+beat ∈ Bool = (¬is_first_tick ∧ _world.player.pos.x ≥ 580)
+
+world.level_idx = (is_first_tick ? 0
+                   : (beat ? (_world.level_idx + 1) mod 2
+                      : _world.level_idx))
+
+level_changed ∈ Bool = (is_first_tick ∨ beat)
+
+world.level_idx = 0 ⇒ Level1
+world.level_idx = 1 ⇒ Level2
+
+¬level_changed ⇒ (∀ i : plat_x[i] = _world.plat_x[i] ∧ …)
+```
+
+Two things make the level stable:
+- **Dispatch is guarded** — only the active `LevelN`'s
+  constraints fire (others are vacuous because their
+  antecedent is false).
+- **Freeze constraint** — when the level didn't change, the
+  current tick's `plat_x[i]` is pinned to the previous tick's,
+  so Z3 can't pick a different valid solution.
+
+When the player walks off the right edge (`pos.x ≥ 580`),
+`beat` flips true → `level_idx` increments → the next tick the
+freeze is OFF, the new `LevelN`'s constraints take over, Z3
+picks a fresh layout, `world.plat_x` updates. Game and display
+read the new positions via `_world.plat_x`.
+
+## Adding a level
+
+1. Write `claim LevelN` with `..Jumpable` + your specifics.
+2. Add `world.level_idx = N ⇒ LevelN` to `level_gen`.
+3. Bump the modulus in the `level_idx` transition.
+
+That's the whole edit.
 
 ## Runtime gaps the file works around
 
-- **Set-of-records is unsupported.** `Body(...) ∈ platforms` as a
-  set-membership declaration would be the natural way to define
-  platforms; today we use `Seq(Body)` with `#platforms = N` plus
-  `platforms[i] = Body(...)` pins. See COUNTEREXAMPLES.md #15.
-- **3-level nested writes through `world_next` are dropped.** Each
-  guarded enemy-physics implication assigns the whole `Mover`
-  record at once instead of `nxt.pos.x = …`. See
-  COUNTEREXAMPLES.md #23.
-
-## Future shape
-
-If Mario grows to multiple levels (level 1 → boss → level 2),
-the natural move is a `LevelGen` FSM that owns `world.platforms`
-and rewrites it on level transitions. Game/display subscribe to
-the world field. That'd require addressing the
-cardinality-as-write classification bug and deciding the
-multi-writer semantics for `world.platforms`.
+- **Set-of-records is unsupported.** See COUNTEREXAMPLES.md #15.
+- **3-level nested writes through `world_next` are dropped.**
+  Enemy physics writes the whole `Mover` per implication branch.
+  See COUNTEREXAMPLES.md #23.
+- **Seq=Seq assignment isn't translated.** `plat_x = _world.plat_x`
+  drops; element-wise `∀ i : plat_x[i] = _world.plat_x[i]` works.
+  (Not yet in COUNTEREXAMPLES; should be filed.)

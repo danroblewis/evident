@@ -15,17 +15,17 @@ type Mover(pos ∈ IVec2, vel ∈ IVec2)
 type Body(aabb ∈ AABB, color ∈ Color)
 type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ Int)
 
--- ── Level: static configuration of the world ──────────────────
+-- ── Level: the level VALUE (a noun) ───────────────────────────
 --
--- Both fsms `..Level` to bring constants AND entity-Seq data
--- into scope. The 3 elevated platforms' positions are not pinned —
--- they're free `plat_x[i]` / `plat_y[i]` Int Seqs that Z3 picks
--- subject to the constraints below (in-bounds, pairwise
--- non-overlap, jump-reachability, layout spread). The cached
--- solver returns the same valid layout every per-tick query, so
--- both fsms see the same level.
+-- A `Level` is a level value: physics constants, free placement
+-- variables, materialized platforms derived locally from those
+-- placements, and enemy spawn data. The body has only local
+-- invariants (platforms[i] follows from plat_x[i] / plat_y[i]
+-- and the level's own size constants) — there are no placement
+-- constraints in here. Those are CLAIMS *about* a Level
+-- (Jumpable, Level1, Level2 below).
 
-claim Level
+type Level
     -- Physics / sizing constants.
     bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
     p_size        ∈ IVec2 = IVec2(32, 32)
@@ -40,59 +40,32 @@ claim Level
     PLAT_H         ∈ Int = 16
     GROUND_Y       ∈ Int = 432
     -- Empirical max y the player can climb in one jump from the
-    -- ground (derivable from grav=2 and jump_strength=14:
-    -- apex at jump_strength/grav = 7 ticks, rise ≈ 196 px).
+    -- ground (grav=2, jump_strength=14 → rise ≈ 196 px).
     MAX_JUMP_RISE  ∈ Int = 196
     MIN_GAP        ∈ Int = 40
 
-    -- Free placement vars Z3 picks subject to the constraints
-    -- below. Z3 is deterministic given the same constraint set,
-    -- so each per-tick query returns the same layout.
+    -- Free placement vars. Constraints on these are claims
+    -- (Jumpable, Level1, Level2) applied externally.
     plat_x ∈ Seq(Int)
     plat_y ∈ Seq(Int)
     #plat_x = 3
     #plat_y = 3
 
-    -- Each elevated platform fits horizontally and sits within a
-    -- vertical band the player can plausibly traverse.
-    ∀ i ∈ {0..2} :
-        0 ≤ plat_x[i] ∧ plat_x[i] ≤ 640 - PLAT_W
-        GROUND_Y - MAX_JUMP_RISE ≤ plat_y[i] ∧ plat_y[i] ≤ GROUND_Y - PLAT_H - 24
-
-    -- Pairwise non-overlap with at least MIN_GAP on some axis.
-    ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
-        (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
-         ∨ plat_x[j] + PLAT_W + MIN_GAP ≤ plat_x[i]
-         ∨ plat_y[i] + PLAT_H + MIN_GAP ≤ plat_y[j]
-         ∨ plat_y[j] + PLAT_H + MIN_GAP ≤ plat_y[i])
-
-    -- Reachability: each elevated platform is jump-reachable from
-    -- the ground OR from another platform below it whose x-range
-    -- overlaps (cheap-arc approximation).
-    reachable ∈ Seq(Bool)
-    #reachable = 3
-    ∀ i ∈ {0..2} : reachable[i]
-    ∀ i ∈ {0..2} : reachable[i] = ((GROUND_Y - plat_y[i] ≤ MAX_JUMP_RISE) ∨ (∃ j ∈ {0..2} : i ≠ j ∧ plat_y[j] > plat_y[i] ∧ plat_y[j] - plat_y[i] ≤ MAX_JUMP_RISE ∧ ¬(plat_x[j] + PLAT_W < plat_x[i] ∨ plat_x[i] + PLAT_W < plat_x[j])))
-
-    -- Spread: at least one platform high, one near the ground;
-    -- at least one on each side of the screen. Stops Z3 picking
-    -- three rectangles clustered in one corner.
-    ∃ i ∈ {0..2} : plat_y[i] ≤ 300
-    ∃ i ∈ {0..2} : plat_y[i] ≥ 350
-    ∃ i ∈ {0..2} : plat_x[i] + PLAT_W ≤ 320
-    ∃ i ∈ {0..2} : plat_x[i] ≥ 320
-
-    -- Materialized platforms. Ground (platforms[0]) is pinned;
-    -- the other three are derived from the Z3-picked plat_x/y.
+    -- Materialized platforms — local invariant: each platform's
+    -- AABB is determined by the level's own plat_x/plat_y and
+    -- size constants. Ground is the only hand-pinned platform.
     platforms ∈ Seq(Body)
     #platforms = 4
     platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(640, 48)),
                          Color(60,  140, 60, 255))
-    platforms[1] = Body(AABB(IVec2(plat_x[0], plat_y[0]), IVec2(PLAT_W, PLAT_H)),
+    platforms[1] = Body(AABB(IVec2(plat_x[0], plat_y[0]),
+                              IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
-    platforms[2] = Body(AABB(IVec2(plat_x[1], plat_y[1]), IVec2(PLAT_W, PLAT_H)),
+    platforms[2] = Body(AABB(IVec2(plat_x[1], plat_y[1]),
+                              IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
-    platforms[3] = Body(AABB(IVec2(plat_x[2], plat_y[2]), IVec2(PLAT_W, PLAT_H)),
+    platforms[3] = Body(AABB(IVec2(plat_x[2], plat_y[2]),
+                              IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
 
     e_init ∈ Seq(EnemyInit)
@@ -100,13 +73,139 @@ claim Level
     e_init[0] = EnemyInit(IVec2(40,  404), IVec2(2,     0), 40,  200)
     e_init[1] = EnemyInit(IVec2(560, 404), IVec2(0 - 2, 0), 440, 600)
 
+-- ── Claims about a Level ──────────────────────────────────────
+--
+-- `Jumpable` is the generic well-formedness predicate: the
+-- platforms fit in the world, don't overlap, and every elevated
+-- platform is reachable by a single jump from the ground or
+-- another platform. `Level1` / `Level2` are level-specific
+-- claims: each composes Jumpable plus its own additional
+-- constraints (spread, vertical layout, …). Names-match
+-- composition flows the level's fields (plat_x, plat_y,
+-- PLAT_W, …) into each claim transparently.
+
+claim Jumpable
+    PLAT_W         ∈ Int
+    PLAT_H         ∈ Int
+    GROUND_Y       ∈ Int
+    MAX_JUMP_RISE  ∈ Int
+    MIN_GAP        ∈ Int
+    plat_x ∈ Seq(Int)
+    plat_y ∈ Seq(Int)
+    #plat_x = 3
+    #plat_y = 3
+
+    -- In-bounds: every platform fits horizontally and sits in
+    -- a band the player can plausibly traverse.
+    ∀ i ∈ {0..2} :
+        0 ≤ plat_x[i] ∧ plat_x[i] ≤ 640 - PLAT_W
+        GROUND_Y - MAX_JUMP_RISE ≤ plat_y[i] ∧ plat_y[i] ≤ GROUND_Y - PLAT_H - 24
+
+    -- Pairwise non-overlap with MIN_GAP separation on some axis.
+    ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
+        (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
+         ∨ plat_x[j] + PLAT_W + MIN_GAP ≤ plat_x[i]
+         ∨ plat_y[i] + PLAT_H + MIN_GAP ≤ plat_y[j]
+         ∨ plat_y[j] + PLAT_H + MIN_GAP ≤ plat_y[i])
+
+    -- Reachability (cheap-arc approximation).
+    ∀ i ∈ {0..2} : ((GROUND_Y - plat_y[i] ≤ MAX_JUMP_RISE) ∨ (∃ j ∈ {0..2} : i ≠ j ∧ plat_y[j] > plat_y[i] ∧ plat_y[j] - plat_y[i] ≤ MAX_JUMP_RISE ∧ ¬(plat_x[j] + PLAT_W < plat_x[i] ∨ plat_x[i] + PLAT_W < plat_x[j])))
+
+-- Level 1: easy — platforms spread across the screen, one high.
+claim Level1
+    PLAT_W ∈ Int
+    PLAT_H ∈ Int
+    GROUND_Y ∈ Int
+    MAX_JUMP_RISE ∈ Int
+    MIN_GAP ∈ Int
+    plat_x ∈ Seq(Int)
+    plat_y ∈ Seq(Int)
+    #plat_x = 3
+    #plat_y = 3
+
+    Jumpable
+
+    -- One platform high, one near ground; one on each half.
+    ∃ i ∈ {0..2} : plat_y[i] ≤ 280
+    ∃ i ∈ {0..2} : plat_y[i] ≥ 350
+    ∃ i ∈ {0..2} : plat_x[i] + PLAT_W ≤ 280
+    ∃ i ∈ {0..2} : plat_x[i] ≥ 360
+
+-- Level 2: harder — all platforms in the upper half (more jumping).
+claim Level2
+    PLAT_W ∈ Int
+    PLAT_H ∈ Int
+    GROUND_Y ∈ Int
+    MAX_JUMP_RISE ∈ Int
+    MIN_GAP ∈ Int
+    plat_x ∈ Seq(Int)
+    plat_y ∈ Seq(Int)
+    #plat_x = 3
+    #plat_y = 3
+
+    Jumpable
+
+    ∀ i ∈ {0..2} : plat_y[i] ≤ 320
+    -- Vertical "staircase": lowest well below the highest.
+    ∃ i ∈ {0..2} : plat_y[i] ≤ 250
+    ∃ i ∈ {0..2} : plat_y[i] ≥ 290
+
 -- ── Shared world (dynamic state) ──────────────────────────────
 
 type World
-    player  ∈ Mover
-    enemies ∈ Seq(Mover)
-    keys    ∈ IVec2     -- x: right−left (-1/0/+1), y: up_pressed (0/1)
-    tick    ∈ Int
+    player    ∈ Mover
+    enemies   ∈ Seq(Mover)
+    keys      ∈ IVec2   -- x: right−left (-1/0/+1), y: up_pressed (0/1)
+    tick      ∈ Int
+    -- Owned by level_gen — the active level's platform positions
+    -- and which level is currently active.
+    plat_x    ∈ Seq(Int)
+    plat_y    ∈ Seq(Int)
+    level_idx ∈ Int
+
+-- ── Level generator FSM ───────────────────────────────────────
+--
+-- Owns world.plat_x / world.plat_y / world.level_idx. On tick 0
+-- and on every level-beat transition, dispatches to the active
+-- LevelN claim — Z3 picks fresh plat_x/plat_y satisfying that
+-- level's constraints. Between transitions, the freeze constraint
+-- pins plat_x/plat_y to the previous tick's values, so the level
+-- doesn't drift between frames.
+
+fsm level_gen(world ∈ World)
+    ..Level
+    #world.plat_x  = 3
+    #world.plat_y  = 3
+    #_world.plat_x = 3
+    #_world.plat_y = 3
+
+    -- Anchor is_first_tick auto-injection.
+    gen_clock ∈ Int = (is_first_tick ? 0 : _gen_clock + 1)
+
+    -- Beat condition: player walked off the right edge.
+    beat ∈ Bool = (¬is_first_tick ∧ _world.player.pos.x ≥ 580)
+
+    -- Level transitions. Cap at 1 so we cycle between Level1 and
+    -- Level2 (mod 2). Adding more levels = bump the modulus.
+    world.level_idx = (is_first_tick ? 0
+                       : (beat ? (_world.level_idx + 1) - 2 * ((_world.level_idx + 1) / 2)
+                          : _world.level_idx))
+
+    level_changed ∈ Bool = (is_first_tick ∨ beat)
+
+    -- Dispatch the active level's constraints. When level_idx=N,
+    -- LevelN's constraints apply (others vacuous).
+    world.level_idx = 0 ⇒ Level1
+    world.level_idx = 1 ⇒ Level2
+
+    -- Freeze: when the level didn't change, hold plat_x/plat_y
+    -- at the previous tick's values. Z3 picks once per level.
+    ¬level_changed ⇒ (∀ i ∈ {0..2} :
+        plat_x[i] = _world.plat_x[i] ∧ plat_y[i] = _world.plat_y[i])
+
+    -- Publish to world (per-element; Seq=Seq isn't supported).
+    ∀ i ∈ {0..2} : world.plat_x[i] = plat_x[i]
+    ∀ i ∈ {0..2} : world.plat_y[i] = plat_y[i]
 
 -- ── Game FSM: physics ─────────────────────────────────────────
 
@@ -120,6 +219,16 @@ fsm game(world ∈ World)
     -- has already rewritten away every `_world.X` reference, so
     -- without this `_var` the scheduler wouldn't pin tick 0).
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
+
+    -- Level platforms come from world (written by level_gen).
+    -- `..Level` brings `plat_x` / `plat_y` as free Seqs into our
+    -- scope and materializes `platforms[i]` from them; we pin
+    -- them to the world's values so the materialization matches
+    -- the active level.
+    #_world.plat_x = 3
+    #_world.plat_y = 3
+    ∀ i ∈ {0..2} : plat_x[i] = _world.plat_x[i]
+    ∀ i ∈ {0..2} : plat_y[i] = _world.plat_y[i]
 
     -- ── Player: input intent ──────────────────────────────────
     --
@@ -251,6 +360,13 @@ fsm display(world ∈ World)
     -- write under unify_world_syntax and would clash with game's
     -- ownership of enemies.
     #_world.enemies = 2
+
+    -- Pin the level's free placement vars to the world's values
+    -- (same pattern as game).
+    #_world.plat_x = 3
+    #_world.plat_y = 3
+    ∀ i ∈ {0..2} : plat_x[i] = _world.plat_x[i]
+    ∀ i ∈ {0..2} : plat_y[i] = _world.plat_y[i]
 
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
