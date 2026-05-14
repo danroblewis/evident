@@ -158,7 +158,7 @@ pub(super) fn declare_var_named(
                         );
                         return post;
                     };
-                    let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg) else {
+                    let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg, enums) else {
                         return post; // warning already emitted by get_or_build_datatype
                     };
                     let arr = Array::new_const(ctx, prefix, &Sort::int(ctx), &dt.sort);
@@ -225,7 +225,7 @@ pub(super) fn declare_var_named(
                         );
                         return post;
                     };
-                    let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg) else {
+                    let Some((dt, fields)) = get_or_build_datatype(user_type, ctx, schemas, reg, enums) else {
                         return post; // warning already emitted by get_or_build_datatype
                     };
                     let set = Set::new_const(ctx, prefix, &dt.sort);

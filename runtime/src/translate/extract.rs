@@ -140,31 +140,53 @@ pub(super) fn extract_composite_value<'ctx>(
     ctx: &'ctx Context,
 ) -> Option<HashMap<String, Value>> {
     let mut field_map: HashMap<String, Value> = HashMap::new();
-    for (fi, fk) in fields.iter().enumerate() {
-        if fi >= dt.variants[0].accessors.len() { break; }
-        let accessor = &dt.variants[0].accessors[fi];
-        let raw = accessor.apply(&[elem]);
+    // SeqField consumes two consecutive accessors (arr + len) and uses
+    // its stored arr_idx/len_idx — don't index by the enumerate
+    // counter when those are mixed in.
+    let mut acc_pos: usize = 0;
+    for fk in fields.iter() {
         let value = match fk {
-            FieldKind::Primitive { prim_type, .. } => match prim_type.as_str() {
-                "Int" | "Nat" | "Pos" => {
-                    let z = raw.as_int()?;
-                    Value::Int(model.eval(&z, true)?.as_i64()?)
+            FieldKind::Primitive { prim_type, .. } => {
+                if acc_pos >= dt.variants[0].accessors.len() { break; }
+                let raw = dt.variants[0].accessors[acc_pos].apply(&[elem]);
+                acc_pos += 1;
+                match prim_type.as_str() {
+                    "Int" | "Nat" | "Pos" => {
+                        let z = raw.as_int()?;
+                        Value::Int(model.eval(&z, true)?.as_i64()?)
+                    }
+                    "Bool" => {
+                        let z = raw.as_bool()?;
+                        Value::Bool(model.eval(&z, true)?.as_bool()?)
+                    }
+                    "String" => {
+                        let z = raw.as_string()?;
+                        Value::Str(unescape_z3_string(&model.eval(&z, true)?.as_string()?))
+                    }
+                    _ => return None,
                 }
-                "Bool" => {
-                    let z = raw.as_bool()?;
-                    Value::Bool(model.eval(&z, true)?.as_bool()?)
-                }
-                "String" => {
-                    let z = raw.as_string()?;
-                    Value::Str(unescape_z3_string(&model.eval(&z, true)?.as_string()?))
-                }
-                _ => return None,
-            },
+            }
             FieldKind::Nested { dt: nested_dt, sub_fields, .. } => {
+                if acc_pos >= dt.variants[0].accessors.len() { break; }
+                let raw = dt.variants[0].accessors[acc_pos].apply(&[elem]);
+                acc_pos += 1;
                 let nested_elem = raw.as_datatype()?;
                 let nested_map =
                     extract_composite_value(&nested_elem, sub_fields, *nested_dt, model, ctx)?;
                 Value::Composite(nested_map)
+            }
+            FieldKind::SeqField { .. } => {
+                // Extracting a Seq field's value into a typed Value
+                // (SeqInt / SeqComposite / SeqEnum) needs the inner
+                // arr accessor's selection over 0..len. Wired in a
+                // follow-up; for now skip the binding so the outer
+                // composite Value omits this field. Constraint side
+                // still works.
+                acc_pos = match fk {
+                    FieldKind::SeqField { len_idx, .. } => *len_idx + 1,
+                    _ => acc_pos,
+                };
+                continue;
             }
         };
         field_map.insert(fk.name().to_string(), value);
@@ -478,6 +500,15 @@ fn composite_value_to_dyn<'ctx>(
                 let v = map.get(name)?;
                 let Value::Composite(nested_map) = v else { return None };
                 composite_value_to_dyn(nested_map, sub_fields, *nested_dt, ctx)?
+            }
+            FieldKind::SeqField { .. } => {
+                // Round-tripping a Seq-valued composite field through
+                // `given` requires building both the Array literal and
+                // the Int length as TWO accessor values. The structural
+                // path's wired separately; here we fail the build so
+                // the caller falls back rather than silently producing
+                // a partial composite.
+                return None;
             }
         };
         field_dyns.push(dynamic);

@@ -195,3 +195,115 @@ claim unsat_set_subset_missing
     ∀ x ∈ small : x ∈ big
 """, "unsat_set_subset_missing")
     assert_unsat(r)
+
+
+# ---------------------------------------------------------------------------
+# Seq fields inside composite types (tree-of-sequences) — was COUNTEREXAMPLES #25
+# ---------------------------------------------------------------------------
+#
+# A composite type whose field type is `Seq(T)` now compiles to a Datatype
+# with two accessors per Seq field (Array and Int-length). Lets a type
+# declare an internal Seq, and `Seq(Composite)` over that type indirectly
+# yields the Seq-of-Seq shape needed for the Mario render refactor.
+
+def test_seq_field_in_type_indexing():
+    """A `Seq(T)` field inside a composite is addressable as
+    `instance.field[i]` and pinned via the type body's invariants."""
+    r = query("""
+type Sprite(pos ∈ Int)
+    rects ∈ Seq(Int)
+    #rects = 3
+    rects[0] = pos
+    rects[1] = pos + 1
+    rects[2] = pos + 2
+
+claim sat_field_index
+    s ∈ Sprite (pos mapsto 10)
+    s.rects[0] = 10
+    s.rects[1] = 11
+    s.rects[2] = 12
+""", "sat_field_index")
+    assert_sat(r)
+
+
+def test_seq_field_unsat_when_body_constraint_violated():
+    """Type-body constraint `rects[1] = pos + 1` should reject any
+    inconsistent pin from the caller."""
+    r = query("""
+type Sprite(pos ∈ Int)
+    rects ∈ Seq(Int)
+    #rects = 3
+    rects[0] = pos
+    rects[1] = pos + 1
+    rects[2] = pos + 2
+
+claim unsat_field_value
+    s ∈ Sprite (pos mapsto 10)
+    s.rects[1] = 99
+""", "unsat_field_value")
+    assert_unsat(r)
+
+
+def test_seq_field_cardinality_propagation():
+    """`#instance.field` reads the inherited length pin."""
+    r = query("""
+type Sprite(p ∈ Int)
+    items ∈ Seq(Int)
+    #items = 5
+
+claim sat_card
+    s ∈ Sprite (p mapsto 0)
+    #s.items = 5
+""", "sat_card")
+    assert_sat(r)
+
+
+def test_seq_field_forall_iteration():
+    """`∀ x ∈ instance.field : …` unrolls over the field's pinned length."""
+    r = query("""
+type Sprite(base ∈ Int)
+    nums ∈ Seq(Int)
+    #nums = 3
+
+claim sat_forall_through_field
+    s ∈ Sprite (base mapsto 10)
+    s.nums[0] = 5
+    s.nums[1] = 7
+    s.nums[2] = 11
+    ∀ x ∈ s.nums : x ≥ 0
+""", "sat_forall_through_field")
+    assert_sat(r)
+
+
+def test_seq_of_composite_with_seq_field():
+    """`Seq(Composite)` where Composite has a `Seq(T)` field — the
+    full tree-of-sequences shape, reachable as `outer[i].field[j]`."""
+    r = query("""
+type Group
+    items ∈ Seq(Int)
+    #items = 2
+
+claim sat_nested_access
+    groups ∈ Seq(Group)
+    #groups = 3
+    groups[0].items[0] = 10
+    groups[0].items[1] = 20
+    groups[2].items[1] = 60
+""", "sat_nested_access")
+    assert_sat(r)
+
+
+def test_seq_of_composite_with_seq_field_unsat():
+    """Outer Seq element addressable + per-element pinning."""
+    r = query("""
+type Group
+    items ∈ Seq(Int)
+    #items = 2
+
+claim unsat_nested_inconsistent
+    groups ∈ Seq(Group)
+    #groups = 2
+    groups[0].items[0] = 10
+    groups[0].items[0] = 99
+""", "unsat_nested_inconsistent")
+    assert_unsat(r)

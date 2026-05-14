@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
 
 use crate::ast::*;
-use super::types::{DatatypeRegistry, FieldKind};
+use super::types::{DatatypeRegistry, EnumRegistry, FieldKind, SeqElem, SeqFieldElem};
 
 /// Get or build a Z3 `DatatypeSort` for a user type referenced as the
 /// element of `Seq(UserType)`. Walks the type's body for `Membership`
@@ -37,6 +37,7 @@ pub(super) fn get_or_build_datatype(
     ctx: &'static Context,
     schemas: &HashMap<String, SchemaDecl>,
     registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
 ) -> Option<(&'static DatatypeSort<'static>, Vec<FieldKind>)> {
     // Cache hit: return the previously-built sort + field list.
     if let Some((dt, fields)) = registry.borrow().get(type_name) {
@@ -45,9 +46,10 @@ pub(super) fn get_or_build_datatype(
     let schema = schemas.get(type_name)?;
 
     // First pass: walk the type body and resolve each field to either a
-    // primitive sort or a recursively-built nested Datatype. We collect
-    // both the FieldKind metadata and the parallel `(name, sort)` list
-    // for the DatatypeBuilder.
+    // primitive sort, a recursively-built nested Datatype, or a Seq(T)
+    // field that contributes TWO accessors (an Array and an Int length).
+    // We collect both the FieldKind metadata and the parallel `(name,
+    // sort)` list for the DatatypeBuilder.
     let mut fields: Vec<FieldKind> = Vec::new();
     let mut field_sorts: Vec<(String, Sort<'static>)> = Vec::new();
     for item in &schema.body {
@@ -74,10 +76,67 @@ pub(super) fn get_or_build_datatype(
                     });
                     field_sorts.push((name.clone(), Sort::string(ctx)));
                 }
+                // Seq(T) field: two accessors per field — an Array(Int → T_sort)
+                // for elements and an Int for length. Element type can be
+                // primitive, enum, or composite. Unlocks tree-of-Seqs shapes
+                // (see COUNTEREXAMPLES.md #25).
+                s if s.starts_with("Seq(") && s.ends_with(')') => {
+                    let inner = &s[4..s.len() - 1];
+                    let (elem_sort, seq_elem): (Sort<'static>, SeqFieldElem) = match inner {
+                        "Int" | "Nat" | "Pos" =>
+                            (Sort::int(ctx), SeqFieldElem::Primitive(SeqElem::Int)),
+                        "Bool" =>
+                            (Sort::bool(ctx), SeqFieldElem::Primitive(SeqElem::Bool)),
+                        "String" =>
+                            (Sort::string(ctx), SeqFieldElem::Primitive(SeqElem::Str)),
+                        enum_name if enums
+                            .map(|er| er.by_name.borrow().contains_key(enum_name))
+                            .unwrap_or(false) =>
+                        {
+                            let er = enums.unwrap();
+                            let dts = er.by_name.borrow();
+                            let (dt, _variants) = dts.get(enum_name).unwrap();
+                            (dt.sort.clone(), SeqFieldElem::Enum {
+                                enum_name: enum_name.to_string(),
+                                dt: *dt,
+                            })
+                        }
+                        user_type if schemas.contains_key(user_type) => {
+                            let Some((nested_dt, sub_fields)) = get_or_build_datatype(
+                                user_type, ctx, schemas, registry, enums)
+                            else { return None; };
+                            (nested_dt.sort.clone(), SeqFieldElem::Composite {
+                                type_name: user_type.to_string(),
+                                dt: nested_dt,
+                                sub_fields,
+                            })
+                        }
+                        _ => {
+                            eprintln!(
+                                "warning: unsupported Seq element {} in Datatype \
+                                 field `{}` for {}; supported: Int/Nat/Pos/Bool/\
+                                 String, enums, user structs",
+                                inner, name, type_name
+                            );
+                            return None;
+                        }
+                    };
+                    let arr_idx = fields.len(); // before push of either accessor
+                    let arr_sort = Sort::array(ctx, &Sort::int(ctx), &elem_sort);
+                    field_sorts.push((format!("{}__arr", name), arr_sort));
+                    field_sorts.push((format!("{}__len", name), Sort::int(ctx)));
+                    fields.push(FieldKind::SeqField {
+                        name: name.clone(),
+                        arr_idx,
+                        len_idx: arr_idx + 1,
+                        elem_type_name: inner.to_string(),
+                        elem: seq_elem,
+                    });
+                }
                 // Nested: recurse if this name is itself a user type.
                 user_type if schemas.contains_key(user_type) => {
                     let Some((nested_dt, sub_fields)) =
-                        get_or_build_datatype(user_type, ctx, schemas, registry)
+                        get_or_build_datatype(user_type, ctx, schemas, registry, enums)
                     else {
                         // Inner build failed (warning already logged); abort the
                         // outer build too — we can't include a partial Datatype.
@@ -94,8 +153,8 @@ pub(super) fn get_or_build_datatype(
                 _ => {
                     eprintln!(
                         "warning: unsupported field type {} in Datatype for {}; \
-                         only Int/Nat/Pos/Bool/String and other user struct types \
-                         are supported in Seq(UserType) elements (v1)",
+                         supported: Int/Nat/Pos/Bool/String, Seq(...), enums, \
+                         user struct types",
                         ftype, type_name
                     );
                     return None;

@@ -223,6 +223,30 @@ pub(super) fn resolve_mapping<'ctx>(
             }
         }
     }
+    // `seq[i]` where seq is a `Seq(Composite)` — select the i-th
+    // element's Datatype value and bind each of its fields under
+    // `slot.field_name`. Mirrors how a bare Identifier referencing a
+    // flat-expanded composite resolves. Without this branch, calls
+    // like `win.draw_rect(mario.rects[0], hat_effs)` couldn't pass
+    // `r` as the rect arg.
+    if let Expr::Index(seq_expr, idx_expr) = value {
+        if let Expr::Identifier(seq_name) = seq_expr.as_ref() {
+            if let Some(var) = env.get(seq_name) {
+                if let Some((arr, _, _, dt, fields)) = var.as_datatype_seq() {
+                    if let Some(i) = translate_int(idx_expr, ctx, env) {
+                        let elem_dyn = arr.select(&i);
+                        // Build a temporary env into which bind_composite_fields
+                        // writes leaves under `slot.field_name`. Then lift those
+                        // entries out into the (slot.X → Var) pairs.
+                        let mut tmp: HashMap<String, Var<'ctx>> = HashMap::new();
+                        if bind_composite_fields(&mut tmp, &elem_dyn, fields, dt, slot) {
+                            return tmp.into_iter().collect();
+                        }
+                    }
+                }
+            }
+        }
+    }
     if let Some(v) = expr_as_var(value, ctx, env) {
         return vec![(slot.to_string(), v)];
     }
@@ -569,6 +593,119 @@ fn build_cons_chain<'ctx>(
 
 // ── Section 4: Seq field resolution ──────────────────────────────────
 
+/// Internal handle for a Seq value reachable from various expression
+/// shapes — used by the Index / Cardinality / ∀ paths to consume seqs
+/// uniformly whether the source is a top-level binding or a SeqField on
+/// a composite-Seq element.
+pub(super) enum SeqHandleRef<'ctx> {
+    Primitive {
+        arr: z3::ast::Array<'ctx>,
+        len: Int<'ctx>,
+        elem: SeqElem,
+    },
+    Composite {
+        arr: z3::ast::Array<'ctx>,
+        len: Int<'ctx>,
+        #[allow(dead_code)]
+        type_name: String,
+        dt: &'static DatatypeSort<'static>,
+        fields: Vec<FieldKind>,
+    },
+}
+
+impl<'ctx> SeqHandleRef<'ctx> {
+    pub(super) fn arr(&self) -> &z3::ast::Array<'ctx> {
+        match self {
+            SeqHandleRef::Primitive { arr, .. } => arr,
+            SeqHandleRef::Composite { arr, .. } => arr,
+        }
+    }
+    pub(super) fn len(&self) -> &Int<'ctx> {
+        match self {
+            SeqHandleRef::Primitive { len, .. } => len,
+            SeqHandleRef::Composite { len, .. } => len,
+        }
+    }
+}
+
+/// Resolve an Expr to a `SeqHandleRef` — the (arr, len, elem info) for
+/// the Seq it names. Handles two shapes:
+///
+///   * `Identifier(name)` resolving to `Var::SeqVar` / `DatatypeSeqVar`
+///     (the top-level Seq binding case; covers `s.rects` since the
+///     parser folds dotted names into a single Identifier).
+///   * `Field(Index(Identifier(outer), idx), seq_field_name)` where
+///     `outer` is a `DatatypeSeqVar` whose element type has
+///     `seq_field_name` as a `FieldKind::SeqField` — i.e., reaching
+///     into a Seq-typed field of a Seq element (the Seq-of-Seq
+///     unlocking case).
+///
+/// Returns None when neither shape applies. Recursion into deeper
+/// `Field(Field(...), ...)` chains over composite-with-Seq-field
+/// elements is supported but rare; the immediate Mario use case stays
+/// one level deep.
+pub(super) fn resolve_seq_handle<'ctx>(
+    expr: &Expr,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+) -> Option<SeqHandleRef<'ctx>> {
+    use super::types::SeqFieldElem;
+    // Shape 1: bare Identifier — env lookup.
+    if let Expr::Identifier(name) = expr {
+        if let Some(var) = env.get(name) {
+            if let Some((arr, len, elem)) = var.as_seq() {
+                return Some(SeqHandleRef::Primitive {
+                    arr: arr.clone(), len: len.clone(), elem,
+                });
+            }
+            if let Some((arr, len, type_name, dt, fields)) = var.as_datatype_seq() {
+                return Some(SeqHandleRef::Composite {
+                    arr: arr.clone(), len: len.clone(),
+                    type_name: type_name.to_string(),
+                    dt, fields: fields.to_vec(),
+                });
+            }
+        }
+        return None;
+    }
+    // Shape 2: Field(Index(Identifier(outer), idx), seq_field_name)
+    let Expr::Field(receiver, field_name) = expr else { return None };
+    let Expr::Index(seq_expr, idx_expr) = receiver.as_ref() else { return None };
+    let Expr::Identifier(outer_name) = seq_expr.as_ref() else { return None };
+    let var = env.get(outer_name)?;
+    let (arr, _, _, dt, fields) = var.as_datatype_seq()?;
+    let i = translate_int(idx_expr, ctx, env)?;
+    let elem_dyn = arr.select(&i);
+    let elem = elem_dyn.as_datatype()?;
+
+    // Find the named field; must be a SeqField.
+    let fk = fields.iter().find(|f| f.name() == field_name)?;
+    let FieldKind::SeqField { arr_idx, len_idx, elem: seq_elem, .. } = fk else {
+        return None;
+    };
+    if *len_idx >= dt.variants[0].accessors.len() { return None; }
+    let inner_arr_dyn = dt.variants[0].accessors[*arr_idx].apply(&[&elem]);
+    let inner_len_dyn = dt.variants[0].accessors[*len_idx].apply(&[&elem]);
+    let inner_arr = inner_arr_dyn.as_array()?;
+    let inner_len = inner_len_dyn.as_int()?;
+    match seq_elem {
+        SeqFieldElem::Primitive(e) => Some(SeqHandleRef::Primitive {
+            arr: inner_arr, len: inner_len, elem: *e,
+        }),
+        SeqFieldElem::Enum { dt, enum_name } => Some(SeqHandleRef::Composite {
+            arr: inner_arr, len: inner_len,
+            type_name: enum_name.clone(),
+            dt: *dt, fields: Vec::new(),    // enum-element marker
+        }),
+        SeqFieldElem::Composite { dt, type_name, sub_fields } => Some(SeqHandleRef::Composite {
+            arr: inner_arr, len: inner_len,
+            type_name: type_name.clone(),
+            dt: *dt, fields: sub_fields.clone(),
+        }),
+    }
+}
+
+
 /// Resolve a (possibly-nested) field access chain against a
 /// `DatatypeSeqVar` in the env. Two shapes:
 ///
@@ -653,6 +790,13 @@ fn resolve_seq_field<'ctx>(
                 cur_fields = sub_fields.as_slice();
                 cur_dyn = raw;
             }
+            FieldKind::SeqField { .. } => {
+                // Reaching a Seq-typed field by dotted access doesn't
+                // produce a primitive leaf — the caller would need to
+                // index into it (`field[i]`) to reach a scalar. Signal
+                // "no leaf primitive" the same way Nested does.
+                return None;
+            }
         }
     }
     None
@@ -673,11 +817,8 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
         // `seq[i]` where seq holds String elements.
         Expr::Index(seq_expr, idx_expr) => {
-            let name = match seq_expr.as_ref() {
-                Expr::Identifier(n) => n,
-                _ => return None,
-            };
-            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
+            let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Str { return None; }
             let i = translate_int(idx_expr, ctx, env)?;
             arr.select(&i).as_string()
@@ -816,15 +957,16 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         // return the recorded candidates count if the Set was pinned
         // via `S = {…}`; otherwise drop (silent, same as today for
         // unpinned Set extraction).
+        //
+        // Also handles `#groups[0].items` — Cardinality of a Seq-field
+        // on a composite-Seq element. Routes through `resolve_seq_handle`
+        // which understands both shapes.
         Expr::Cardinality(inner) => {
+            if let Some(handle) = resolve_seq_handle(inner.as_ref(), ctx, env) {
+                return Some(handle.len().clone());
+            }
             if let Expr::Identifier(name) = inner.as_ref() {
                 if let Some(var) = env.get(name) {
-                    if let Some((_, len, _)) = var.as_seq() {
-                        return Some(len.clone());
-                    }
-                    if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
-                        return Some(len.clone());
-                    }
                     if let Some((_, _, candidates)) = var.as_set_with_candidates() {
                         if let Some(cands) = candidates.borrow().as_ref() {
                             return Some(Int::from_i64(ctx, cands.len() as i64));
@@ -840,12 +982,13 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             None
         }
         // `seq[i]` where seq holds Int elements → Array.select(i) → Int.
+        // The seq can be a bare Identifier (top-level Seq var) OR a
+        // `Field(Index(...), seq_field_name)` chain (a SeqField on a
+        // composite-Seq element — unlocks `groups[0].items[0]`-style
+        // nested access).
         Expr::Index(seq_expr, idx_expr) => {
-            let name = match seq_expr.as_ref() {
-                Expr::Identifier(n) => n,
-                _ => return None,
-            };
-            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
+            let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Int { return None; }
             let i = translate_int(idx_expr, ctx, env)?;
             arr.select(&i).as_int()
@@ -1138,6 +1281,13 @@ fn enumerate_nested_leaves(fields: &[FieldKind]) -> Vec<String> {
                 for sub in enumerate_nested_leaves(sub_fields) {
                     out.push(format!("{}.{}", name, sub));
                 }
+            }
+            FieldKind::SeqField { name, .. } => {
+                // A Seq field doesn't have addressable primitive leaves
+                // — accesses are via `field[i]`, not `field.x`. Surface
+                // the bare field name so the record-leaf consumers see
+                // it (most translate paths skip non-primitive names).
+                out.push(name.clone());
             }
         }
     }
@@ -1718,6 +1868,15 @@ fn build_composite_dynamic<'ctx>(
                 let sub_prefix = format!("{}.{}", prefix, name);
                 build_composite_dynamic(&sub_prefix, nested_dt, sub_fields, ctx, env)?
             }
+            FieldKind::SeqField { .. } => {
+                // Building a Dynamic composite-value when one of its fields
+                // is a Seq requires reading the user's flat-expanded
+                // (arr, len) pair and packing them as two accessor values.
+                // Wire-up TBD; for now signal failure so the literal path
+                // drops and the user gets a translator error pointing at
+                // their composite literal.
+                return None;
+            }
         };
         field_dyns.push(dynamic);
     }
@@ -1786,12 +1945,18 @@ fn bind_composite_fields<'ctx>(
     dt: &DatatypeSort<'ctx>,
     prefix: &str,
 ) -> bool {
+    use super::types::SeqFieldElem;
     let Some(elem) = elem_dyn.as_datatype() else { return false };
-    for (fi, fk) in fields.iter().enumerate() {
-        if fi >= dt.variants[0].accessors.len() { return false; }
-        let raw = dt.variants[0].accessors[fi].apply(&[&elem]);
+    // Track linear accessor position for Primitive / Nested fields.
+    // SeqField uses its own arr_idx / len_idx, not the loop counter,
+    // since each SeqField consumes TWO accessor slots.
+    let mut acc_pos: usize = 0;
+    for fk in fields.iter() {
         match fk {
             FieldKind::Primitive { name, prim_type } => {
+                if acc_pos >= dt.variants[0].accessors.len() { return false; }
+                let raw = dt.variants[0].accessors[acc_pos].apply(&[&elem]);
+                acc_pos += 1;
                 let key = format!("{}.{}", prefix, name);
                 let var = match prim_type.as_str() {
                     "Int" | "Nat" | "Pos" => raw.as_int().map(Var::IntVar),
@@ -1803,9 +1968,39 @@ fn bind_composite_fields<'ctx>(
                 env.insert(key, v);
             }
             FieldKind::Nested { name, dt: nested_dt, sub_fields, .. } => {
+                if acc_pos >= dt.variants[0].accessors.len() { return false; }
+                let raw = dt.variants[0].accessors[acc_pos].apply(&[&elem]);
+                acc_pos += 1;
                 let sub_prefix = format!("{}.{}", prefix, name);
                 if !bind_composite_fields(env, &raw, sub_fields, nested_dt, &sub_prefix) {
                     return false;
+                }
+            }
+            FieldKind::SeqField { name, arr_idx, len_idx, elem: seq_elem, .. } => {
+                if *len_idx >= dt.variants[0].accessors.len() { return false; }
+                let arr_dyn = dt.variants[0].accessors[*arr_idx].apply(&[&elem]);
+                let len_dyn = dt.variants[0].accessors[*len_idx].apply(&[&elem]);
+                acc_pos = *len_idx + 1;
+                let arr = arr_dyn.as_array();
+                let len = len_dyn.as_int();
+                let (Some(arr), Some(len)) = (arr, len) else { return false; };
+                let key = format!("{}.{}", prefix, name);
+                match seq_elem {
+                    SeqFieldElem::Primitive(elem) => {
+                        env.insert(key, Var::SeqVar { arr, len, elem: *elem });
+                    }
+                    SeqFieldElem::Enum { dt, enum_name } => {
+                        env.insert(key, Var::DatatypeSeqVar {
+                            arr, len, type_name: enum_name.clone(),
+                            dt: *dt, fields: Vec::new(),
+                        });
+                    }
+                    SeqFieldElem::Composite { dt, type_name, sub_fields } => {
+                        env.insert(key, Var::DatatypeSeqVar {
+                            arr, len, type_name: type_name.clone(),
+                            dt: *dt, fields: sub_fields.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -2048,13 +2243,12 @@ pub(super) fn translate_bool<'ctx>(
             }
         }
 
-        // `seq[i]` where seq holds Bool elements.
+        // `seq[i]` where seq holds Bool elements. Accepts both bare
+        // Identifier seqs and Seq-field accesses via the unified
+        // `resolve_seq_handle` helper (handles e.g. `groups[0].flags[2]`).
         Expr::Index(seq_expr, idx_expr) => {
-            let name = match seq_expr.as_ref() {
-                Expr::Identifier(n) => n,
-                _ => return None,
-            };
-            let (arr, _, elem) = env.get(name)?.as_seq()?;
+            let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
+            let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Bool { return None; }
             let i = translate_int(idx_expr, ctx, env)?;
             arr.select(&i).as_bool()
@@ -2267,6 +2461,48 @@ pub(super) fn translate_bool<'ctx>(
                     }
                 }
             // Form 2 / 3: iterate over a Seq variable.
+            } else if let Some(handle) = (!matches!(range.as_ref(), Expr::Identifier(_)))
+                .then(|| resolve_seq_handle(range.as_ref(), ctx, env))
+                .flatten()
+            {
+                // Forall over a non-Identifier seq expression — typically
+                // `∀ x ∈ outer[i].seq_field : …`. Reuses the same
+                // primitive-vs-composite element machinery as the
+                // Identifier path below, but pulls (arr, len) from the
+                // resolved handle.
+                let n = handle.len().simplify().as_i64()?;
+                match &handle {
+                    SeqHandleRef::Composite { arr, dt, fields, .. } => {
+                        for i in 0..n {
+                            let mut env2 = env_clone(env);
+                            let idx = Int::from_i64(ctx, i);
+                            let elem_dyn = arr.select(&idx);
+                            if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
+                                return None;
+                            }
+                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                                clauses.push(b);
+                            }
+                        }
+                    }
+                    SeqHandleRef::Primitive { arr, elem, .. } => {
+                        for i in 0..n {
+                            let mut env2 = env_clone(env);
+                            let idx = Int::from_i64(ctx, i);
+                            let cell = arr.select(&idx);
+                            let v = match elem {
+                                SeqElem::Int  => cell.as_int().map(Var::IntVar),
+                                SeqElem::Bool => cell.as_bool().map(Var::BoolVar),
+                                SeqElem::Str  => cell.as_string().map(Var::StrVar),
+                            };
+                            let v = v?;
+                            env2.insert(var.clone(), v);
+                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                                clauses.push(b);
+                            }
+                        }
+                    }
+                }
             } else if let Expr::Identifier(seq_name) = range.as_ref() {
                 let seq_var = env.get(seq_name)?;
                 if let Some((arr, len, _, dt, fields)) = seq_var.as_datatype_seq() {

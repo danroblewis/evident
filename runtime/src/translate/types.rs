@@ -178,6 +178,62 @@ pub enum FieldKind {
         /// SDLOutput.bg.color, if Color had another nested field).
         sub_fields: Vec<FieldKind>,
     },
+    /// A `Seq(T)` field inside a composite. The parent Datatype has
+    /// TWO accessors per Seq field (an Array(Int → element-sort) for
+    /// the elements and an Int for the length). They're stored
+    /// contiguously in the parent's accessor list at indices
+    /// `arr_idx` and `len_idx = arr_idx + 1`.
+    ///
+    /// Unlocks tree-of-sequences shapes — a composite can contain a
+    /// Seq field, and `Seq(Composite)` therefore reaches Seq-of-Seq
+    /// via the wrapping composite. Without this variant, fields
+    /// typed `Seq(T)` were silently rejected (see COUNTEREXAMPLES.md
+    /// #25 before this landed).
+    SeqField {
+        name: String,
+        /// Index of the Array accessor in the parent Datatype's
+        /// accessor list.
+        arr_idx: usize,
+        /// Index of the Int-length accessor (always `arr_idx + 1`
+        /// by construction; cached here so callers don't have to
+        /// recompute).
+        len_idx: usize,
+        /// Element type's spelled name — "Int", "Bool", "String",
+        /// or a user-defined type / enum name. For diagnostics
+        /// and to round-trip the field's declared type in
+        /// `extract_seq_composite`'s mirror.
+        #[allow(dead_code)]
+        elem_type_name: String,
+        /// What sort the elements have, mirroring the top-level
+        /// Seq encoding (SeqVar for primitives, DatatypeSeqVar
+        /// for enums/composites).
+        elem: SeqFieldElem,
+    },
+}
+
+/// Per-element metadata for a `FieldKind::SeqField`. Mirrors the
+/// flavors of top-level `Seq(T)` declarations.
+#[derive(Clone, Debug)]
+pub enum SeqFieldElem {
+    /// Int / Bool / String element type.
+    Primitive(SeqElem),
+    /// Enum element type — the inner Array's range sort is the enum's
+    /// DatatypeSort. Stored similarly to `Var::DatatypeSeqVar` with
+    /// empty `fields` (the "enum-element seq" marker).
+    Enum {
+        enum_name: String,
+        dt: &'static DatatypeSort<'static>,
+    },
+    /// Composite element type — the inner Array's range is a
+    /// user-defined record's DatatypeSort. `sub_fields` walks the
+    /// record's accessors for `seq_field[i].subfield` lookups.
+    /// (Recursive `Seq` sub-fields inside this composite are also
+    /// supported — `sub_fields` can itself contain `SeqField`.)
+    Composite {
+        type_name: String,
+        dt: &'static DatatypeSort<'static>,
+        sub_fields: Vec<FieldKind>,
+    },
 }
 
 impl FieldKind {
@@ -185,6 +241,7 @@ impl FieldKind {
         match self {
             FieldKind::Primitive { name, .. } => name,
             FieldKind::Nested { name, .. } => name,
+            FieldKind::SeqField { name, .. } => name,
         }
     }
 }

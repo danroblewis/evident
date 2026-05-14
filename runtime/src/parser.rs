@@ -1026,7 +1026,15 @@ impl Parser {
             }
         };
         self.eat(&Token::In)?;
-        let range = self.parse_atom()?;   // expect a {lo..hi}, {a, b, c}, or builtin call
+        // The range can be:
+        //   - `{lo..hi}` or `{a, b, c}` — set / range literal (parsed
+        //     by parse_atom's `{` branch).
+        //   - `coindexed(A, B)` / `edges(seq)` — builtin call.
+        //   - A Seq expression: a bare Identifier OR a Field/Index
+        //     chain like `groups[0].items` reaching a Seq via a
+        //     SeqField on a composite element. parse_postfix is the
+        //     entry that consumes the postfix `[…]` / `.field` chain.
+        let range = self.parse_postfix()?;
         self.eat(&Token::Colon)?;
         // Quantifier-block form: `∀ var ∈ range :` followed by Newline +
         // Indent at a deeper level. Parse a stack of body items at that

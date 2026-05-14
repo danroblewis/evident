@@ -391,9 +391,82 @@ fn walk_constraints(
                     }
                 }
             }
+            // Sub-schema usage: `m ∈ MarioSprite (...)`. The type's body
+            // constraints fire on the instance (see inline.rs constraint
+            // inheritance). Mirror that here: walk the type's body for
+            // length pins, prefixing identifiers with the instance name
+            // and matching only on identifiers naming the type's fields.
+            BodyItem::Membership { name: inst_name, type_name, .. } => {
+                if let Some(schemas) = schemas {
+                    if let Some(ty) = schemas.get(type_name) {
+                        let field_set: std::collections::HashSet<String> = ty.body.iter()
+                            .filter_map(|it| match it {
+                                BodyItem::Membership { name, .. } => Some(name.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        walk_constraints_with_prefix(
+                            &ty.body, Some(schemas), no_pinned, out, changed,
+                            inst_name, &field_set);
+                    }
+                }
+            }
             _ => {}
         }
     }
+}
+
+/// Like `walk_constraints` but rewrites identifiers naming `field_set`
+/// entries with the `prefix.` qualifier. Used to harvest length pins
+/// from a sub-schema's body when the instance binds it.
+fn walk_constraints_with_prefix(
+    body: &[BodyItem],
+    schemas: Option<&HashMap<String, SchemaDecl>>,
+    no_pinned: &HashMap<String, i64>,
+    out: &mut HashMap<String, i64>,
+    changed: &mut bool,
+    prefix: &str,
+    field_set: &std::collections::HashSet<String>,
+) {
+    for item in body {
+        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+            for (a, b) in [(lhs, rhs), (rhs, lhs)] {
+                // `#name = literal-int` — prefix the name if it's a field.
+                if let Expr::Cardinality(inner) = a.as_ref() {
+                    if let Expr::Identifier(name) = inner.as_ref() {
+                        let first_seg = name.split('.').next().unwrap_or("");
+                        if field_set.contains(first_seg) {
+                            let dotted = format!("{}.{}", prefix, name);
+                            if !out.contains_key(&dotted) {
+                                if let Some(v) = eval_pure_int(b, no_pinned, out) {
+                                    out.insert(dotted, v);
+                                    *changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                // `seq_var = ⟨e1, e2, …⟩` — same field-prefix rewrite.
+                if let (Expr::Identifier(name), Expr::SeqLit(items)) =
+                    (a.as_ref(), b.as_ref())
+                {
+                    let first_seg = name.split('.').next().unwrap_or("");
+                    if field_set.contains(first_seg) {
+                        let dotted = format!("{}.{}", prefix, name);
+                        if !out.contains_key(&dotted) {
+                            out.insert(dotted, items.len() as i64);
+                            *changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Don't recurse further — the type's own Passthrough / nested
+    // Membership decls are flat-expanded by declare_var, not by this
+    // length-collection pass. Adding nested recursion would need to
+    // re-prefix at each level and isn't load-bearing for v1.
+    let _ = schemas;
 }
 
 /// Replace env entries for pinned names with `Var::PinnedInt(value)`.

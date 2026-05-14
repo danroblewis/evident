@@ -651,45 +651,54 @@ Same routing for `≠`. Element types: Int / Bool / String for
 cases return None so the dispatch falls through (and the
 constraint visibly drops, as before).
 
-### 25. Higher-order containers — `Seq(Seq(T))` / `Set(Seq(T))` / `Set(Set(T))` aren't supported
+### 25. Tree-of-sequences — Seq fields inside composites — supported (was a gap)
 
-**Where this came up:** wanting an `AllPermutations<T>(s ∈ Set(T), perms ∈ Seq(Seq(T)))`
-or `AllCombinations<T>(s ∈ Set(T), combs ∈ Set(Set(T)))` claim in
-`stdlib/combinatorics.ev` — a single value holding every permutation /
-combination of `s`. There's no way to declare these container shapes
-today.
-
-`Seq(T)` and `Set(T)` work when `T` is a primitive (Int/Bool/String),
-an enum, or a user-defined record type. They don't work when `T` is
-itself a `Seq` or `Set`: the `FieldKind` enum (`runtime/src/translate/types.rs`)
-that drives `Seq(Composite)` element encoding only knows about
-`Primitive` and `Nested` (sub-records). A field whose type is `Seq(T)`
-isn't representable as a Z3 datatype accessor.
-
-The constraint-system workaround is to use a **one-at-a-time
-generator claim** plus runtime enumeration:
+A composite type can have a `Seq(T)` field, and `Seq(Composite)` over
+that type yields the tree-of-sequences shape. The runtime encodes each
+Seq field as TWO accessors on the parent Datatype (an `Array(Int → T)`
+and an `Int` length) — see `FieldKind::SeqField` in
+`runtime/src/translate/types.rs`. The element type `T` can be primitive
+(Int/Bool/String), an enum, or another composite.
 
 ```evident
-claim KPermutation<T>(s ∈ Set(T), k ∈ Nat, p ∈ Seq(T))
-    #p = k
-    distinct(p)
-    ∀ x ∈ p : x ∈ s
+type Group
+    items ∈ Seq(Int)
+    #items = 2
+
+claim sat_nested_access
+    groups ∈ Seq(Group)
+    #groups = 3
+    groups[0].items[0] = 10
+    groups[2].items[1] = 60
 ```
 
-Calling `rt.all_solutions("KPermutation<Int>", given)` enumerates
-permutations via Z3's blocking-clause loop — same end result as a
-materialized `perms ∈ Seq(Seq(T))`, but the language doesn't have
-to express the higher-order shape.
+What works:
 
-Fix idea: extend `FieldKind` with a `Seq` variant whose element
-sort is itself a `DatatypeSort`, encoded as a parallel
-Array(Int → DatatypeSort)+length pair stored on the outer record.
-Cardinality + indexing then chain through the outer accessor.
-Non-trivial — touches declare, eval, extract, the SeqLit
-translator, and all the field-resolution paths. Not blocking
-anything today since `KPermutation` covers the use case via
-enumeration, but worth doing eventually so combinatorics claims
-can return materialized container values.
+* Composite with one or more `Seq(T)` fields, used at the instance level
+  (`g ∈ Group`) — fields are addressable as `g.items[i]`, cardinality
+  `#g.items` resolves via inherited body pins.
+* `Seq(Composite-with-Seq-field)` — outer indexing into the Seq returns
+  a composite Dynamic; `.items` reaches the inner Seq's Array+length pair
+  via the type's SeqField accessors; inner indexing reads elements.
+* `∀ x ∈ outer[i].items : …` unrolls over the inner Seq's pinned length.
+* Sub-schema declaration: `g ∈ Group` declares both `g.items__arr` and
+  `g.items__len` (the latter pinned via constraint inheritance — see #24).
+
+What's still pending:
+
+* **Top-level `Seq(Seq(T))`** — no native syntax. Workaround: wrap with
+  a composite (`type EffectGroup(effs ∈ Seq(Effect)); xs ∈ Seq(EffectGroup)`).
+  A future parser sugar could auto-generate the wrapper.
+* **Set(Seq(T))** and **Set(Set(T))** — same blocker as the wrapping
+  workaround above; doable once we decide on a syntax.
+* **Element-level body-constraint inheritance for Seq(Composite)** — if
+  Group has `#items = 2` as a body invariant, that pin DOES fire for a
+  sub-schema instance (`g ∈ Group` → `#g.items = 2`), but NOT for
+  elements of `Seq(Group)` (`#groups[i].items` is symbolic). Users
+  must pin per-element explicitly when iterating.
+* **Round-tripping Seq-valued composite fields through `given`** —
+  `composite_value_to_dyn` returns None for SeqField; needed for
+  multi-step executor frames carrying composites with Seq fields.
 
 ## What works without caveat
 
