@@ -224,11 +224,16 @@ fn static_tests_all_pass() {
 fn each_demo_runs_to_completion() {
     let mut failures = Vec::new();
     for d in EXPECTATIONS {
-        let path = format!("examples/{}.ev", d.name);
-        if !Path::new(&format!("../{path}")).exists() {
-            failures.push(format!("{}: file missing at {path}", d.name));
-            continue;
-        }
+        // Demos can be either a single file (`examples/{name}.ev`) or
+        // a directory (`examples/{name}/main.ev`).
+        let flat = format!("examples/{}.ev", d.name);
+        let dir  = format!("examples/{}/main.ev", d.name);
+        let path = if Path::new(&format!("../{flat}")).exists() { flat }
+                   else if Path::new(&format!("../{dir}")).exists() { dir }
+                   else {
+                       failures.push(format!("{}: file missing at {flat} or {dir}", d.name));
+                       continue;
+                   };
         let mut cmd = Command::new(EVIDENT);
         cmd.args(["effect-run", &path, "--max-steps", &d.max_steps.to_string()]);
         cmd.current_dir("..");

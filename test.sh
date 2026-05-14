@@ -183,8 +183,15 @@ if [ "$EXAMPLES" -eq 1 ]; then
         examples_visual=0
         examples_failed=()
 
-        for f in examples/test_*.ev; do
-            name=$(basename "$f" .ev)
+        # Match flat single-file demos AND directory-based ones with a main.ev.
+        files=( examples/test_*.ev examples/test_*/main.ev )
+        for f in "${files[@]}"; do
+            [ -e "$f" ] || continue
+            if [ "$(basename "$f")" = "main.ev" ]; then
+                name=$(basename "$(dirname "$f")")
+            else
+                name=$(basename "$f" .ev)
+            fi
             examples_total=$((examples_total + 1))
 
             # Visual demo? Check for SDL imports.

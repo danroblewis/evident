@@ -54,20 +54,25 @@ fsm game(world ∈ World)
     #_world.enemies = 2
     #world.enemies  = 2
 
-    -- The entity Seqs are defined here (rather than pulled in via
-    -- `..LevelEntities`) because `collect_pinned_ints` only walks
-    -- the entry-schema body, so the ∀-unroll below needs the
-    -- per-element Body / EnemyInit pins to live in this body.
-    -- Duplicated identically into display.
+    -- The platform positions for the 3 elevated platforms are
+    -- the output of `level_gen.ev`'s LevelGen claim — a constraint
+    -- solve that picks layouts respecting in-bounds, non-overlap,
+    -- reachability, and spread. The values below correspond to
+    --     plat_x = [320, 38, 480], plat_y = [350, 236, 262]
+    -- See examples/test_21_mario/README.md for the regen workflow.
+    --
+    -- These blocks are duplicated identically into display because
+    -- `collect_pinned_ints` doesn't follow `..Passthrough` for
+    -- ∀-unroll (COUNTEREXAMPLES.md #22).
     platforms ∈ Seq(Body)
     #platforms = 4
     platforms[0] = Body(AABB(IVec2(0,   432), IVec2(640, 48)),
                          Color(60,  140, 60,  255))
-    platforms[1] = Body(AABB(IVec2(80,  360), IVec2(120, 16)),
+    platforms[1] = Body(AABB(IVec2(320, 350), IVec2(120, 16)),
                          Color(150, 100, 60,  255))
-    platforms[2] = Body(AABB(IVec2(440, 360), IVec2(120, 16)),
+    platforms[2] = Body(AABB(IVec2(38,  236), IVec2(120, 16)),
                          Color(150, 100, 60,  255))
-    platforms[3] = Body(AABB(IVec2(260, 280), IVec2(120, 16)),
+    platforms[3] = Body(AABB(IVec2(480, 262), IVec2(120, 16)),
                          Color(150, 100, 60,  255))
 
     e_init ∈ Seq(EnemyInit)
