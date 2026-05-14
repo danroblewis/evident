@@ -1,103 +1,100 @@
 -- Topological sort as a constraint problem.
 --
--- An edge is a pair `(_edge[k], edge[k])` meaning the node at
--- `_edge[k]` must precede the node at `edge[k]` in the result.
--- The naming mirrors the time-shift convention (`_var` before
--- `var`) — toposort is the per-pair generalization: many parallel
--- "before / after" relations, all of which must hold.
+-- An `Edge` is a directed dependency: `from` must precede `to` in
+-- the result. The graph is a `Seq(Edge)`. Toposort produces a
+-- `position` array — a permutation of {0..n-1} where
+-- `position[node]` is that node's rank.
 --
 -- Interface (caller pins via `given` or chained-membership):
---   * `n ∈ Nat`         — node count. Nodes are identified by
---                          index in [0, n).
---   * `_edge ∈ Seq(Int)` — source node indices.
---   * `edge  ∈ Seq(Int)` — target node indices, parallel to `_edge`.
+--   * `n ∈ Nat`           — node count. Nodes identified by index
+--                            in [0, n).
+--   * `edges ∈ Seq(Edge)` — the dependency graph.
 --
 -- Output:
---   * `position ∈ Seq(Int)` of length n. `position[node]` is that
---     node's rank in the resulting order. To recover order itself
---     (rank → node) invert the permutation:
---         order[position[i]] = i  for all i ∈ {0..n-1}.
+--   * `position ∈ Seq(Int)` of length n. To recover order
+--     (rank → node), invert the permutation:
+--         order[position[i]] = i for all i ∈ {0..n-1}.
 --
 -- SAT iff the graph is acyclic; UNSAT iff a cycle exists.
 
+type Edge(from, to ∈ Int)
+
 claim Toposort
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
-    #_edge = #edge
     #position = n
 
     -- Range: each position in [0, n).
     ∀ i ∈ {0..n - 1} :
         0 ≤ position[i] ∧ position[i] < n
 
-    -- Permutation: positions all distinct. O(n²); n is small in
-    -- practice (effect dispatch ~10s of effects, level layouts
-    -- ~10s of nodes). For larger workloads a Rust fast path
-    -- could short-circuit.
+    -- Permutation: all positions distinct.
     ∀ i ∈ {0..n - 1} : ∀ j ∈ {0..n - 1} :
         i < j ⇒ position[i] ≠ position[j]
 
-    -- Edge ordering: every (_edge[k], edge[k]) has src before dst.
-    ∀ k ∈ {0..#edge - 1} :
-        position[_edge[k]] < position[edge[k]]
+    -- Edge ordering: for each edge, the source's position precedes
+    -- the destination's.
+    ∀ k ∈ {0..#edges - 1} :
+        position[edges[k].from] < position[edges[k].to]
 
 -- ── Tests ─────────────────────────────────────────────────────
 
--- Two independent edges over 4 nodes (0→2, 1→3). Many valid
--- orders; just check SAT.
+-- The runtime doesn't yet accept `Seq(UserType) = ⟨ctor1, ctor2, …⟩`
+-- literal assignment for user-record element types. Each test
+-- pins #edges and the per-index values explicitly until that's
+-- fixed (small translator gap, separate from toposort itself).
+
+-- Two independent edges over 4 nodes (0→2, 1→3). Just check SAT.
 claim sat_two_edges_4_nodes
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
     n = 4
-    _edge = ⟨0, 1⟩
-    edge  = ⟨2, 3⟩
+    #edges = 2
+    edges[0] = Edge(0, 2)
+    edges[1] = Edge(1, 3)
     Toposort
 
 -- Linear chain 0 → 1 → 2: only valid order is position = ⟨0, 1, 2⟩.
 claim sat_linear_chain_forces_unique_order
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
     n = 3
-    _edge = ⟨0, 1⟩
-    edge  = ⟨1, 2⟩
+    #edges = 2
+    edges[0] = Edge(0, 1)
+    edges[1] = Edge(1, 2)
     Toposort
     position = ⟨0, 1, 2⟩
 
 -- Cycle 0 → 1 → 2 → 0: UNSAT.
 claim unsat_three_cycle
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
     n = 3
-    _edge = ⟨0, 1, 2⟩
-    edge  = ⟨1, 2, 0⟩
+    #edges = 3
+    edges[0] = Edge(0, 1)
+    edges[1] = Edge(1, 2)
+    edges[2] = Edge(2, 0)
     Toposort
 
 -- Self-loop: UNSAT.
 claim unsat_self_loop
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
     n = 2
-    _edge = ⟨0⟩
-    edge  = ⟨0⟩
+    #edges = 1
+    edges[0] = Edge(0, 0)
     Toposort
 
--- No edges: any permutation is valid. SAT.
+-- No edges: any permutation valid. SAT.
 claim sat_empty_edges
     n ∈ Nat
-    _edge ∈ Seq(Int)
-    edge  ∈ Seq(Int)
+    edges ∈ Seq(Edge)
     position ∈ Seq(Int)
     n = 5
-    _edge = ⟨⟩
-    edge  = ⟨⟩
+    #edges = 0
     Toposort

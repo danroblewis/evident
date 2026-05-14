@@ -259,9 +259,11 @@ pub(super) fn collect_seq_lengths_with_schemas(
     // Seq lengths from `given` Seq values are exact.
     for (k, v) in given {
         let len = match v {
-            Value::SeqInt(v)  => v.len() as i64,
-            Value::SeqBool(v) => v.len() as i64,
-            Value::SeqStr(v)  => v.len() as i64,
+            Value::SeqInt(v)       => v.len() as i64,
+            Value::SeqBool(v)      => v.len() as i64,
+            Value::SeqStr(v)       => v.len() as i64,
+            Value::SeqComposite(v) => v.len() as i64,
+            Value::SeqEnum(v)      => v.len() as i64,
             _ => continue,
         };
         out.insert(k.clone(), len);
