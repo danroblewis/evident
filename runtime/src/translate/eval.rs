@@ -31,7 +31,7 @@ use super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Val
 use super::declare::{apply_seq_lengths, declare_var};
 use super::extract::{assert_seq_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;
-use super::preprocess::{apply_pinned_ints, collect_pinned_ints, collect_seq_lengths};
+use super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 
 // ── Section 1: Helpers ────────────────────────────────────────────────
 
@@ -207,7 +207,8 @@ pub fn build_cache(
     // seq_lens), so a structural value the runtime decided to bake into
     // the cache (e.g. `cells_count = 80` from a config menu) makes
     // every `∀ i ∈ {0..cells_count - 1}` unroll correctly.
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
@@ -543,7 +544,8 @@ pub fn evaluate(
     // Pass 1.5: pin literal-int vars from `given` + body equalities +
     // #seq length propagation. Quantifier ranges over those names then
     // unroll because translate_int yields literal IntVals.
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
@@ -681,12 +683,27 @@ pub fn evaluate_with_extra_assertion(
 
     // Pass 1: declare. (Same as evaluate.)
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name, .. } = sub {
+                            if !env.contains_key(name) {
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
@@ -736,12 +753,33 @@ pub fn evaluate_with_extra_assertions(
     populate_enum_variants(&mut env, enums);
 
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                // Same as `evaluate` — pull in the passthrough'd
+                // claim's Memberships so Pass 1.5's seq-length /
+                // pinned-int collection can apply to them before
+                // any `∀` over the inherited Seq tries to unroll.
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name, .. } = sub {
+                            if !env.contains_key(name) {
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("warning: ..{} references unknown claim", claim_name);
+                }
+            }
+            _ => {}
         }
     }
 
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
@@ -844,12 +882,27 @@ pub fn evaluate_with_program_and_body(
     populate_enum_variants(&mut env, Some(enums));
 
     for item in &schema.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name, .. } = sub {
+                            if !env.contains_key(name) {
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
@@ -944,7 +997,8 @@ pub fn evaluate_with_core(
         }
     }
 
-    let seq_lens = collect_seq_lengths(&schema.body, given);
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);

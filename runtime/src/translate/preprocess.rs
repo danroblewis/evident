@@ -244,6 +244,17 @@ pub(super) fn collect_seq_lengths(
     body: &[BodyItem],
     given: &HashMap<String, Value>,
 ) -> HashMap<String, i64> {
+    collect_seq_lengths_with_schemas(body, given, None)
+}
+
+/// `collect_seq_lengths` variant that follows `..Passthrough` body items
+/// into the named claim's body. Lets a fsm with `..Level; ∀ i : … platforms[i] …`
+/// see `#platforms = N` even when the pin lives in `Level`'s body.
+pub(super) fn collect_seq_lengths_with_schemas(
+    body: &[BodyItem],
+    given: &HashMap<String, Value>,
+    schemas: Option<&HashMap<String, SchemaDecl>>,
+) -> HashMap<String, i64> {
     let mut out = HashMap::new();
     // Seq lengths from `given` Seq values are exact.
     for (k, v) in given {
@@ -255,25 +266,36 @@ pub(super) fn collect_seq_lengths(
         };
         out.insert(k.clone(), len);
     }
-    // Iterate body to a fixed point. Each pass walks every Eq constraint
-    // looking for a cardinality LHS whose other side reduces to a literal
-    // int under the lengths discovered so far. `pinned` is empty here —
-    // pinned-int discovery happens later, in `collect_pinned_ints`,
-    // which DOES see the `out` map we return.
     let no_pinned: HashMap<String, i64> = HashMap::new();
     let mut changed = true;
     while changed {
         changed = false;
-        for item in body {
-            if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+        walk_constraints(body, schemas, &no_pinned, &mut out, &mut changed);
+    }
+    out
+}
+
+/// Walk a body's Eq constraints for cardinality pins, recursing into
+/// `..Passthrough` body items via `schemas` (when supplied). Marks
+/// `changed = true` whenever a new pin is discovered.
+fn walk_constraints(
+    body: &[BodyItem],
+    schemas: Option<&HashMap<String, SchemaDecl>>,
+    no_pinned: &HashMap<String, i64>,
+    out: &mut HashMap<String, i64>,
+    changed: &mut bool,
+) {
+    for item in body {
+        match item {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) => {
                 for (a, b) in [(lhs, rhs), (rhs, lhs)] {
                     // `#name = pure-int-expr` (including `#name = #other`).
                     if let Expr::Cardinality(inner) = a.as_ref() {
                         if let Expr::Identifier(name) = inner.as_ref() {
                             if !out.contains_key(name) {
-                                if let Some(v) = eval_pure_int(b, &no_pinned, &out) {
+                                if let Some(v) = eval_pure_int(b, no_pinned, out) {
                                     out.insert(name.clone(), v);
-                                    changed = true;
+                                    *changed = true;
                                 }
                             }
                         }
@@ -284,14 +306,21 @@ pub(super) fn collect_seq_lengths(
                     {
                         if !out.contains_key(name) {
                             out.insert(name.clone(), items.len() as i64);
-                            changed = true;
+                            *changed = true;
                         }
                     }
                 }
             }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(schemas) = schemas {
+                    if let Some(claim) = schemas.get(claim_name) {
+                        walk_constraints(&claim.body, Some(schemas), no_pinned, out, changed);
+                    }
+                }
+            }
+            _ => {}
         }
     }
-    out
 }
 
 /// Replace env entries for pinned names with `Var::PinnedInt(value)`.
