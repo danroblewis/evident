@@ -246,6 +246,24 @@ pub(super) enum Var<'ctx> {
         elem: SeqElem,
         candidates: std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>,
     },
+    /// `Set(UserType)` — element sort is a Z3 Datatype. Mirrors
+    /// `DatatypeSeqVar` for composite-element collections, but uses
+    /// Z3's native Set sort (characteristic function over the
+    /// DatatypeSort) instead of an Array+length encoding. Membership
+    /// `x ∈ s` routes to `set.member(build_composite_dynamic(x))`;
+    /// `S = {a, b, c}` builds a literal set by add'ing each composite
+    /// Dynamic to `Set::empty`.
+    ///
+    /// `candidates` lifecycle matches `SetVar`: None at declaration,
+    /// populated by the first `S = {…}` literal assignment. Cardinality
+    /// `#s` uses `candidates.len()` (Z3 has no native set cardinality).
+    DatatypeSetVar {
+        set: Set<'ctx>,
+        type_name: String,
+        dt: &'static DatatypeSort<'static>,
+        fields: Vec<FieldKind>,
+        candidates: std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>,
+    },
     /// Compile-time literal int. Mirrors Python's "value pre-bound in env"
     /// pattern: certain names are known to equal a specific integer
     /// before the solver runs (from `given` + literal-equality body
@@ -304,6 +322,17 @@ impl<'ctx> Var<'ctx> {
     {
         match self {
             Var::SetVar { set, elem, candidates } => Some((set, *elem, candidates)),
+            _ => None,
+        }
+    }
+    pub(super) fn as_datatype_set(&self) -> Option<(&Set<'ctx>, &str,
+                                         &'static DatatypeSort<'static>,
+                                         &[FieldKind],
+                                         &std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>)>
+    {
+        match self {
+            Var::DatatypeSetVar { set, type_name, dt, fields, candidates } =>
+                Some((set, type_name.as_str(), *dt, fields.as_slice(), candidates)),
             _ => None,
         }
     }

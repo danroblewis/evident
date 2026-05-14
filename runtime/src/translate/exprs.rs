@@ -812,6 +812,10 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
         // `#seq` → the seq's length variable. Both primitive Seq and
         // composite-element Seq (DatatypeSeqVar) expose a length.
+        // For Sets (both flavors), Z3 has no native cardinality — we
+        // return the recorded candidates count if the Set was pinned
+        // via `S = {…}`; otherwise drop (silent, same as today for
+        // unpinned Set extraction).
         Expr::Cardinality(inner) => {
             if let Expr::Identifier(name) = inner.as_ref() {
                 if let Some(var) = env.get(name) {
@@ -820,6 +824,16 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                     }
                     if let Some((_, len, _, _, _)) = var.as_datatype_seq() {
                         return Some(len.clone());
+                    }
+                    if let Some((_, _, candidates)) = var.as_set_with_candidates() {
+                        if let Some(cands) = candidates.borrow().as_ref() {
+                            return Some(Int::from_i64(ctx, cands.len() as i64));
+                        }
+                    }
+                    if let Some((_, _, _, _, candidates)) = var.as_datatype_set() {
+                        if let Some(cands) = candidates.borrow().as_ref() {
+                            return Some(Int::from_i64(ctx, cands.len() as i64));
+                        }
                     }
                 }
             }
@@ -1547,6 +1561,29 @@ fn expr_to_const_value(e: &Expr, env: &HashMap<String, Var>) -> Option<Value> {
     }
 }
 
+/// Recognize `∀ x ∈ A : x ∈ B` — the subset pattern. Returns the
+/// Z3 Set handle for `B` (the superset) if `body` is `Expr::InExpr`
+/// whose LHS is exactly the bound name `var` and whose RHS is an
+/// Identifier resolving to a SetVar / DatatypeSetVar. Used by the
+/// quantifier translator to emit Z3 native `set_subset` instead of
+/// trying to unroll a free Set (which has no candidates to iterate).
+fn match_set_subset_body<'a, 'ctx>(
+    body: &Expr,
+    var: &str,
+    env: &'a HashMap<String, Var<'ctx>>,
+) -> Option<&'a z3::ast::Set<'ctx>> {
+    let Expr::InExpr(lhs, rhs) = body else { return None };
+    match lhs.as_ref() {
+        Expr::Identifier(n) if n == var => {}
+        _ => return None,
+    }
+    let Expr::Identifier(set_name) = rhs.as_ref() else { return None };
+    let v = env.get(set_name)?;
+    if let Some((set, _)) = v.as_set() { return Some(set); }
+    if let Some((set, _, _, _, _)) = v.as_datatype_set() { return Some(set); }
+    None
+}
+
 /// Translate `S = {a, b, c}` where S is a SetVar and the RHS is a
 /// SetLit. Builds a Z3 literal set by add'ing each element to
 /// `Set::empty`, then asserts set-equality against the variable —
@@ -1576,6 +1613,34 @@ fn translate_set_lit_eq<'ctx>(
         Expr::Identifier(n) => n,
         _ => return None,
     };
+
+    // Composite-element Set: items must be bare Identifiers referring
+    // to flat-expanded composites (same shape as composite SeqLit).
+    // Build each element as a Datatype Dynamic via `build_composite_dynamic`,
+    // assemble a literal Z3 Set, and assert set-equality against the var.
+    // We record one `Value::Composite{}` placeholder per literal item so
+    // `#s` (cardinality) can return the count; per-element field values
+    // are left empty in v1 — extracting Set(Composite) into a populated
+    // `Value` is deferred until there's a concrete consumer.
+    if let Some((set, _, dt, fields, candidates_cell)) =
+        env.get(name).and_then(|v| v.as_datatype_set())
+    {
+        let mut lit = Z3Set::empty(ctx, &dt.sort);
+        for item in items {
+            let ident = match item {
+                Expr::Identifier(s) => s.as_str(),
+                _ => return None,
+            };
+            let dyn_val = build_composite_dynamic(ident, dt, fields, ctx, env)?;
+            lit = lit.add(&dyn_val);
+        }
+        let placeholders: Vec<Value> = items.iter()
+            .map(|_| Value::Composite(HashMap::new()))
+            .collect();
+        *candidates_cell.borrow_mut() = Some(placeholders);
+        return Some(set._eq(&lit));
+    }
+
     let (set_var, elem, candidates_cell) = env.get(name)?.as_set_with_candidates()?;
 
     // Build the Z3 literal set by add'ing each translated item.
@@ -2023,6 +2088,18 @@ pub(super) fn translate_bool<'ctx>(
                         }
                     };
                 }
+                // Composite-element Set: LHS must be an Identifier whose
+                // flat-expanded fields exist in env (same shape as for
+                // `Seq(Composite)` element references). Build the
+                // composite Dynamic and use Z3 native set.member.
+                if let Some((set, _, dt, fields, _)) =
+                    env.get(name).and_then(|v| v.as_datatype_set())
+                {
+                    if let Expr::Identifier(ident) = lhs.as_ref() {
+                        let dyn_val = build_composite_dynamic(ident, dt, fields, ctx, env)?;
+                        return Some(set.member(&dyn_val));
+                    }
+                }
             }
             // Set-literal RHS: reduce to OR of equalities.
             let items = match rhs.as_ref() {
@@ -2225,6 +2302,34 @@ pub(super) fn translate_bool<'ctx>(
                             clauses.push(b);
                         }
                     }
+                } else if let Some((set, _elem)) = seq_var.as_set() {
+                    // Primitive-element Set: detect the subset pattern
+                    // `∀ x ∈ a : x ∈ b` and emit Z3 native set_subset.
+                    // Used for both pinned and free Sets — works without
+                    // iteration. Anything else over a primitive Set is
+                    // unsupported in v1.
+                    if let Some(other_set) = match_set_subset_body(body, var, env) {
+                        let b = set.set_subset(other_set);
+                        return Some(if matches!(e, Expr::Forall(..)) {
+                            b
+                        } else {
+                            b.not().not()    // ∃ x ∈ a : x ∈ b is "a ∩ b ≠ ∅"
+                                              // — different semantics; we don't
+                                              // model existence here.
+                        });
+                    }
+                    return None;
+                } else if let Some((set, _, _, _, _)) = seq_var.as_datatype_set() {
+                    // Composite-element Set: same subset pattern as the
+                    // primitive case. The pattern is `∀ e ∈ a : e ∈ b`
+                    // where the body's `e` was a flat-expanded composite;
+                    // both `a` and `b` must be DatatypeSetVars over the
+                    // same datatype.
+                    if let Some(other_set) = match_set_subset_body(body, var, env) {
+                        let b = set.set_subset(other_set);
+                        return Some(if matches!(e, Expr::Forall(..)) { b } else { b });
+                    }
+                    return None;
                 } else {
                     // Identifier in scope but not a seq — can't iterate.
                     return None;

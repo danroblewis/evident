@@ -29,7 +29,7 @@ fn run_toposort(
     let n = items.len() as i64;
     let mut given: HashMap<String, Value> = HashMap::new();
     given.insert("n".into(),     Value::Int(n));
-    given.insert("items".into(), Value::SeqInt(items));
+    given.insert("items".into(), Value::SetInt(items));
     given.insert("edges".into(), edges_given(edges));
     let r = rt.query("Toposort<Int>", &given)
         .map_err(|e| format!("{e}"))?;

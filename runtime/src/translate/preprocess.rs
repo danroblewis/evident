@@ -64,6 +64,18 @@ fn walk_for_quantifier_bounds(e: &Expr, out: &mut HashSet<String>) {
             walk_for_quantifier_bounds(lhs, out);
             walk_for_quantifier_bounds(rhs, out);
         }
+        // `#name` outside a quantifier range is still structural —
+        // its value drives seq-length / set-cardinality propagation
+        // (`#items = #sorted` chains a Set's cardinality into a Seq's
+        // length, which then unrolls a downstream quantifier). Without
+        // this, a top-level `#items` only fires for `items` if it ALSO
+        // appears in a quantifier range, which Toposort<T>'s body
+        // doesn't directly do.
+        Expr::Cardinality(inner) => {
+            if let Expr::Identifier(name) = inner.as_ref() {
+                out.insert(name.clone());
+            }
+        }
         _ => {}
     }
 }
@@ -256,7 +268,9 @@ pub(super) fn collect_seq_lengths_with_schemas(
     schemas: Option<&HashMap<String, SchemaDecl>>,
 ) -> HashMap<String, i64> {
     let mut out = HashMap::new();
-    // Seq lengths from `given` Seq values are exact.
+    // Seq lengths from `given` Seq values are exact. Set cardinalities
+    // are also "lengths" for the purpose of `#s` propagation — they
+    // feed `#s = #p` chains where one side is a Set and the other a Seq.
     for (k, v) in given {
         let len = match v {
             Value::SeqInt(v)       => v.len() as i64,
@@ -264,6 +278,9 @@ pub(super) fn collect_seq_lengths_with_schemas(
             Value::SeqStr(v)       => v.len() as i64,
             Value::SeqComposite(v) => v.len() as i64,
             Value::SeqEnum(v)      => v.len() as i64,
+            Value::SetInt(v)       => v.len() as i64,
+            Value::SetBool(v)      => v.len() as i64,
+            Value::SetStr(v)       => v.len() as i64,
             _ => continue,
         };
         out.insert(k.clone(), len);

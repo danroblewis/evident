@@ -6,12 +6,12 @@
 -- indices stay inside `position_of`, never at the interface.
 --
 -- Interface:
---   * `items ∈ Seq(T)`        — the nodes.
+--   * `items ∈ Set(T)`        — the nodes (unordered).
 --   * `edges ∈ Seq(Edge<T>)`  — directed dependencies. Endpoints are
 --                                MATCHED to items by Z3 value
 --                                equality, not by position.
 -- Output:
---   * `sorted ∈ Seq(T)`       — items reordered so every edge
+--   * `sorted ∈ Seq(T)`       — items ordered so every edge
 --                                from→to has from appearing earlier.
 --
 -- SAT iff the graph is acyclic; UNSAT iff a cycle exists.
@@ -38,8 +38,8 @@ type Edge<T>(from, to ∈ T)
 -- Domain types in, domain types out — indices live entirely
 -- inside `position_of` and never touch the interface.
 
-claim Toposort<T>(items ∈ Seq(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
-    -- Length pin surfaced here (not just inside Permutation) so
+claim Toposort<T>(items ∈ Set(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
+    -- Cardinality pin surfaced here (not just inside Permutation) so
     -- `collect_seq_lengths` resolves `#sorted = #items` for direct
     -- queries without a separate `#sorted = N` from the caller.
     #items = #sorted
@@ -49,10 +49,10 @@ claim Toposort<T>(items ∈ Seq(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
 -- ── Tests ────────────────────────────────────────────────────────
 
 claim sat_two_edges_4_nodes
-    items ∈ Seq(Int)
+    items ∈ Set(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    items = ⟨10, 20, 30, 40⟩
+    items = {10, 20, 30, 40}
     #sorted = 4
     #edges = 2
     edges[0] = Edge<Int>(10, 30)
@@ -60,10 +60,10 @@ claim sat_two_edges_4_nodes
     Toposort<Int>(items, edges, sorted)
 
 claim sat_linear_chain_forces_unique_order
-    items ∈ Seq(Int)
+    items ∈ Set(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    items = ⟨100, 200, 300⟩
+    items = {100, 200, 300}
     #sorted = 3
     #edges = 2
     edges[0] = Edge<Int>(100, 200)
@@ -72,10 +72,10 @@ claim sat_linear_chain_forces_unique_order
     sorted = ⟨100, 200, 300⟩
 
 claim unsat_three_cycle
-    items ∈ Seq(Int)
+    items ∈ Set(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    items = ⟨1, 2, 3⟩
+    items = {1, 2, 3}
     #sorted = 3
     #edges = 3
     edges[0] = Edge<Int>(1, 2)
@@ -84,10 +84,10 @@ claim unsat_three_cycle
     Toposort<Int>(items, edges, sorted)
 
 claim sat_empty_edges
-    items ∈ Seq(Int)
+    items ∈ Set(Int)
     edges ∈ Seq(Edge<Int>)
     sorted ∈ Seq(Int)
-    items = ⟨1, 2, 3⟩
+    items = {1, 2, 3}
     #sorted = 3
     #edges = 0
     Toposort<Int>(items, edges, sorted)

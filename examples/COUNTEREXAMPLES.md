@@ -342,38 +342,32 @@ names-match invocation already works. Once that's in, `⟸` (gap #13)
 plus this gap together unlock the dispatch-table pattern from
 CLAUDE.md.
 
-### 15. `Set` of composite/record types is unsupported
+### 15. `Set` of composite/record types — v1 supported (was a gap)
 
-**Where:** `tests/conformance/test_composite_elements.py::test_set_composite_simple`,
-`test_set_composite_forall_field_access`, `test_set_composite_forall_unsat` (deleted)
+`Set(UserType)` now declares to `Var::DatatypeSetVar`, a Z3 Set over the
+type's DatatypeSort. Supported operations:
 
-```evident
-type Item
-    id   ∈ Nat
-    kind ∈ Nat
+* `S = {a, b, c}` — literal set with composite elements (each element is
+  a bare identifier resolving to a flat-expanded composite).
+* `x ∈ S` — membership; LHS is an identifier resolving to a composite,
+  routes to Z3 `set.member`.
+* `∀ x ∈ A : x ∈ B` — subset pattern; emits Z3 native `set_subset`.
+  Works for both pinned and free Sets.
+* `#S` — cardinality; returns the literal-set element count when pinned
+  via `S = {…}`. Free Sets have no cardinality (Z3 sets are
+  characteristic functions over potentially infinite domains).
 
-claim sat_items
-    items ∈ Set(Item)        -- "warning: unsupported Set element type Item for items"
-    i     ∈ Item
-    i.id   = 42
-```
+v1 limitations:
 
-`runtime/src/translate/declare.rs` (~L184) only handles `Set(Int)`,
-`Set(Bool)`, and `Set(String)` — anything else prints "warning: unsupported
-Set element type" and the binding is silently dropped, so `∀ b ∈ items :
-b.field` constraints over the set are unenforceable. Bare `Set Type`
-(no parens) is also a parse error in the Rust grammar.
-
-There's no clear path to fix this with the current Z3-Set encoding because
-Z3 sets are over a single sort and composites are exploded into per-field
-leaves at declare time. The supported workaround is `Seq(Item)` with a
-pinned length — which the runtime translates correctly and supports forall
-over (see #16).
-
-Fix idea: encode `Set(Composite)` the way `Seq(Composite)` is already
-encoded (parallel arrays per field, indexed by membership), or restrict
-`Set` to scalar sorts and emit a real parse-time error for the composite
-case so the failure is loud instead of a silent drop.
+* **Model extraction is unsupported**: `check`/`all_solutions` will
+  produce SAT but won't print a value for `Set(Composite)` bindings.
+  Per-element field-accessor evaluation isn't wired yet; once a
+  concrete consumer needs it we'll lift the candidates from the
+  literal-set assignment through model-eval.
+* **Forall body must be the subset pattern** (`var ∈ other_set`) for
+  free Sets. More general bodies (`∀ x ∈ s : x.field > 0`) silently
+  drop today; pin `s` via `S = {…}` if you need general forall, but
+  the unrolling path for that isn't wired yet either.
 
 ### 16. `∀ x ∈ Seq(Composite) : ...` requires a pinned length
 
@@ -656,6 +650,46 @@ Same routing for `≠`. Element types: Int / Bool / String for
 `DatatypeSeqVar`. Length-mismatch / unknown-length / mixed-kind
 cases return None so the dispatch falls through (and the
 constraint visibly drops, as before).
+
+### 25. Higher-order containers — `Seq(Seq(T))` / `Set(Seq(T))` / `Set(Set(T))` aren't supported
+
+**Where this came up:** wanting an `AllPermutations<T>(s ∈ Set(T), perms ∈ Seq(Seq(T)))`
+or `AllCombinations<T>(s ∈ Set(T), combs ∈ Set(Set(T)))` claim in
+`stdlib/combinatorics.ev` — a single value holding every permutation /
+combination of `s`. There's no way to declare these container shapes
+today.
+
+`Seq(T)` and `Set(T)` work when `T` is a primitive (Int/Bool/String),
+an enum, or a user-defined record type. They don't work when `T` is
+itself a `Seq` or `Set`: the `FieldKind` enum (`runtime/src/translate/types.rs`)
+that drives `Seq(Composite)` element encoding only knows about
+`Primitive` and `Nested` (sub-records). A field whose type is `Seq(T)`
+isn't representable as a Z3 datatype accessor.
+
+The constraint-system workaround is to use a **one-at-a-time
+generator claim** plus runtime enumeration:
+
+```evident
+claim KPermutation<T>(s ∈ Set(T), k ∈ Nat, p ∈ Seq(T))
+    #p = k
+    distinct(p)
+    ∀ x ∈ p : x ∈ s
+```
+
+Calling `rt.all_solutions("KPermutation<Int>", given)` enumerates
+permutations via Z3's blocking-clause loop — same end result as a
+materialized `perms ∈ Seq(Seq(T))`, but the language doesn't have
+to express the higher-order shape.
+
+Fix idea: extend `FieldKind` with a `Seq` variant whose element
+sort is itself a `DatatypeSort`, encoded as a parallel
+Array(Int → DatatypeSort)+length pair stored on the outer record.
+Cardinality + indexing then chain through the outer accessor.
+Non-trivial — touches declare, eval, extract, the SeqLit
+translator, and all the field-resolution paths. Not blocking
+anything today since `KPermutation` covers the use case via
+enumeration, but worth doing eventually so combinatorics claims
+can return materialized container values.
 
 ## What works without caveat
 
