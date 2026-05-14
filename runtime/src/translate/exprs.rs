@@ -709,6 +709,44 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
 }
 
 pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
+    // Int-typed builtins: `min`, `max`, `abs`, `mod`, `clamp`.
+    // All lower to Z3 ITE compositions over translated args, so
+    // they share `translate_int`'s recursion and play with the
+    // rest of integer arithmetic transparently.
+    if let Expr::Call(name, args) = e {
+        match (name.as_str(), args.len()) {
+            ("min", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.le(&b).ite(&a, &b));
+            }
+            ("max", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.ge(&b).ite(&a, &b));
+            }
+            ("abs", 1) => {
+                let x = translate_int(&args[0], ctx, env)?;
+                let zero = Int::from_i64(ctx, 0);
+                let neg = Int::sub(ctx, &[&zero, &x]);
+                return Some(x.ge(&zero).ite(&x, &neg));
+            }
+            ("mod", 2) => {
+                let a = translate_int(&args[0], ctx, env)?;
+                let b = translate_int(&args[1], ctx, env)?;
+                return Some(a.modulo(&b));
+            }
+            ("clamp", 3) => {
+                let x  = translate_int(&args[0], ctx, env)?;
+                let lo = translate_int(&args[1], ctx, env)?;
+                let hi = translate_int(&args[2], ctx, env)?;
+                // max(lo, min(x, hi))
+                let inner = x.le(&hi).ite(&x, &hi);
+                return Some(inner.ge(&lo).ite(&inner, &lo));
+            }
+            _ => {}
+        }
+    }
     match e {
         Expr::Int(n) => Some(Int::from_i64(ctx, *n)),
         Expr::Identifier(name) => match env.get(name) {
@@ -1736,7 +1774,84 @@ pub(super) fn translate_bool<'ctx>(
     //     Unrolls to `distinct(seq[0], seq[1], …, seq[n-1])`
     //     and recurses through the variadic path.
     // 0 or 1 args is trivially true.
+    // `contains(seq, x)` — true if x ∈ seq. The `x ∈ seq` infix
+    // form is silently dropped today for element-in-Seq; this
+    // builtin makes the operation explicit and translates. For a
+    // pinned-length Seq, unrolls to a disjunction of element
+    // equalities `seq[0] = x ∨ seq[1] = x ∨ … ∨ seq[n-1] = x`.
     if let Expr::Call(name, args) = e {
+        if name == "contains" && args.len() == 2 {
+            let Expr::Identifier(seq_name) = &args[0] else { return None };
+            let var = env.get(seq_name)?;
+            // Primitive Seq path (SeqInt / SeqBool / SeqStr).
+            if let Some((arr, len, elem)) = var.as_seq() {
+                let n = len.simplify().as_i64()?;
+                let mut clauses: Vec<Bool> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    let eq = match elem {
+                        SeqElem::Int => {
+                            let v = translate_int(&args[1], ctx, env)?;
+                            cell.as_int()?._eq(&v)
+                        }
+                        SeqElem::Bool => {
+                            let v = translate_bool(&args[1], ctx, env, schemas)?;
+                            cell.as_bool()?._eq(&v)
+                        }
+                        SeqElem::Str => {
+                            let v = translate_str(&args[1], ctx, env)?;
+                            cell.as_string()?._eq(&v)
+                        }
+                    };
+                    clauses.push(eq);
+                }
+                let refs: Vec<&Bool> = clauses.iter().collect();
+                return Some(if refs.is_empty() {
+                    Bool::from_bool(ctx, false)
+                } else {
+                    Bool::or(ctx, &refs)
+                });
+            }
+            // Datatype Seq path (Seq(UserType) or Seq(EnumType)).
+            if let Some((arr, len, _, _, _)) = var.as_datatype_seq() {
+                let n = len.simplify().as_i64()?;
+                // Translate x as a Call/Identifier that resolves to a
+                // datatype value via the existing seq-element handling.
+                // For simplicity: build seq[i] = x for each i.
+                let mut clauses: Vec<Bool> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let idx = Int::from_i64(ctx, i);
+                    let cell = arr.select(&idx);
+                    // Compare via the cell's _eq against translated x.
+                    // For datatype types, we need translate_x_as_datatype;
+                    // best-effort via the existing translate_bool's Eq path
+                    // by constructing `cell_value = arg`.
+                    let arg = args[1].clone();
+                    let eq_expr = Expr::Binary(
+                        crate::ast::BinOp::Eq,
+                        Box::new(Expr::Index(
+                            Box::new(args[0].clone()),
+                            Box::new(Expr::Int(i)),
+                        )),
+                        Box::new(arg),
+                    );
+                    if let Some(b) = translate_bool(&eq_expr, ctx, env, schemas) {
+                        clauses.push(b);
+                    } else {
+                        let _ = cell; // silence unused
+                        return None;
+                    }
+                }
+                let refs: Vec<&Bool> = clauses.iter().collect();
+                return Some(if refs.is_empty() {
+                    Bool::from_bool(ctx, false)
+                } else {
+                    Bool::or(ctx, &refs)
+                });
+            }
+            return None;
+        }
         if name == "distinct" {
             if args.len() <= 1 {
                 // Check single-Seq form. If the one arg is a
