@@ -675,7 +675,7 @@ condition is the selector.
 | Iterate consecutive pairs of one sequence | `∀ (a, b) ∈ edges(seq) : …` |
 | Inline a claim only when a condition holds | `cond ⇒ ClaimName` (guarded invocation) |
 | Pin some fields of a record at declaration | `name ∈ Type (slot ↦ v)` or `name ∈ Type(v1, v2)` |
-| Choose between two values based on a condition | `(cond ? a : b)` — ternary; both branches same sort, lowers to Z3 `ite` |
+| Choose between two unrelated sources (use sparingly — see "Ternary is a fork" below) | `(cond ? a : b)` — ternary; both branches same sort, lowers to Z3 `ite`. For clamping prefer `lo ≤ x ≤ hi`; for dispatch prefer `subclaim` + `⟸`; for discrete-input → output, prefer a complete lookup table |
 | Pattern-match an enum-typed scrutinee | `match e \n   Ctor(b) ⇒ body \n   _ ⇒ fallback` — indented arms, lowers to nested ITE |
 | Test whether an enum value's variant is X (Bool result) | `e matches Ctor(_, _)` — recognizer; payload binds ignored. Use `match` to extract values, `e = Ctor(7)` for literal-payload comparison |
 | Build a `Cons/Nil`-shaped enum value (EffectList, ResultList, ArgList, user LinkedList) | `var = ⟨a, b, c⟩` — lowers to `Cons(a, Cons(b, Cons(c, Nil)))`. Empty `⟨⟩` = `Nil`. Works inline in `match` arms when the LHS hints the enum type |
@@ -875,6 +875,55 @@ nxt.pos.x = cur.pos.x + cur.vel.x * input.dt / 1000
 The code already says this. Comment when the WHY isn't obvious — a
 hidden invariant, a runtime caveat, an "I tried the obvious thing and
 it broke" note. Otherwise let the names speak.
+
+## Ternary is a fork, not a constraint
+
+`(cond ? a : b)` lowers to a Z3 `ite`. The solver sees two disjoint
+branches with no relation between them. A program built out of
+stacked ternaries is **imperative branching dressed as constraints**
+— the same shape an interpreter would walk, without the structural
+insight that justifies using a solver in the first place.
+
+The more ternaries that fork a single derived value, the more the
+constraint model has been replaced by hand-written control flow.
+Reach for it sparingly.
+
+**When ternary is OK**
+- One branch is a different *source*, not a different *value of
+  the same thing*. `is_first_tick ? initial : computed` is a fork
+  between "bootstrap" and "ongoing" — there's nothing relational
+  to factor out.
+- A single, exclusive, non-stacked split where the alternatives
+  (subclaim, lookup table) would be more noise than signal.
+
+**When ternary is a smell — reach past it**
+- **Clamping to a boundary.** `(x < lo ? lo : (x > hi ? hi : x))`
+  is `lo ≤ x ≤ hi` (chained comparison) — Evident lifts that
+  componentwise for records: `bounds.lo ≤ pos ≤ bounds.hi`.
+- **Discrete input → output.** A nested ternary over
+  `key_left` / `key_right` is a dispatch table. Build a complete
+  lookup: `(left, right, vx) ∈ walk_table`, with one row per
+  input combination (including the no-input row — see "complete
+  lookup pattern" under Program Structure).
+- **Entity-state dispatch.** Branching on "on the ground vs in
+  the air" reads better as `subclaim` + `⟸`:
+  ```evident
+  subclaim Grounded ⟸ pos.y = floor_y
+      next_vel.y = (jump_pressed ? -jump_strength : 0)
+  subclaim Airborne ⟸ pos.y < floor_y
+      next_vel.y = _vel.y + gravity
+  ```
+- **Hardcoded numeric boundaries.** `pos.y > 400 ? 400 : pos.y`
+  bakes the floor into the physics. Promote the boundary to a
+  record (`AABB`, `WorldBounds`, `StaticBody`) and let the
+  entity shapes drive the constraint. Adding a new platform
+  then means adding an entity, not editing every ternary that
+  hardcodes `400`.
+
+**Signal**: ≥ 2 ternaries in a row referencing the same hardcoded
+constant (window edge, floor `y`, sprite size) means you're
+inlining an entity system. Define the entities and the relations,
+and the ternaries dissolve.
 
 ## Program Structure
 
