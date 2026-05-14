@@ -1,27 +1,11 @@
--- Entity-based Mario. The level is a Seq(Body) of static
--- platforms and a Seq(Mover) of enemies; the player is a
--- single Mover. Physics is expressed as constraints over
--- the entity collection — no hardcoded floor or wall
--- coordinates appear in the FSM bodies.
-
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
 import "packages/sdl/render.ev"
-
--- ── Entity types ──────────────────────────────────────────────
 
 type AABB(pos ∈ IVec2, size ∈ IVec2)
 type Mover(pos ∈ IVec2, vel ∈ IVec2)
 type Body(aabb ∈ AABB, color ∈ Color)
 type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ Int)
-
--- ── Sprites: visual shape derived from position ──────────────
---
--- A sprite is a pure constraint model. Given a position, it derives
--- the Rects that make up its visual representation. No knowledge of
--- SDL, windows, or Effects — those concerns live in the `display`
--- fsm, which queries the sprite for its Rects and emits the
--- corresponding draw effects.
 
 type MarioSprite(pos ∈ IVec2)
     rects ∈ Seq(Rect)
@@ -36,18 +20,7 @@ type EnemySprite(pos ∈ IVec2)
     #rects = 1
     rects[0] = Rect(Color(200, 80, 220, 255), pos, IVec2(28, 28))
 
--- ── Level: the level VALUE (a noun) ───────────────────────────
---
--- A `Level` is a level value: physics constants, free placement
--- variables, materialized platforms derived locally from those
--- placements, and enemy spawn data. The body has only local
--- invariants (platforms[i] follows from plat_x[i] / plat_y[i]
--- and the level's own size constants) — there are no placement
--- constraints in here. Those are CLAIMS *about* a Level
--- (Jumpable, Level1, Level2 below).
-
 type Level
-    -- Physics / sizing constants.
     bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
     p_size        ∈ IVec2 = IVec2(32, 32)
     enemy_size    ∈ IVec2 = IVec2(28, 28)
@@ -56,25 +29,17 @@ type Level
     jump_strength ∈ Int   = 14
     enemy_speed   ∈ Int   = 2
 
-    -- Placement constants for the elevated platforms.
     PLAT_W         ∈ Int = 120
     PLAT_H         ∈ Int = 16
     GROUND_Y       ∈ Int = 432
-    -- Empirical max y the player can climb in one jump from the
-    -- ground (grav=2, jump_strength=14 → rise ≈ 196 px).
     MAX_JUMP_RISE  ∈ Int = 196
     MIN_GAP        ∈ Int = 40
 
-    -- Free placement vars. Constraints on these are claims
-    -- (Jumpable, Level1, Level2) applied externally.
     plat_x ∈ Seq(Int)
     plat_y ∈ Seq(Int)
     #plat_x = 3
     #plat_y = 3
 
-    -- Materialized platforms — local invariant: each platform's
-    -- AABB is determined by the level's own plat_x/plat_y and
-    -- size constants. Ground is the only hand-pinned platform.
     platforms ∈ Seq(Body)
     #platforms = 4
     platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(640, 48)),
@@ -94,17 +59,6 @@ type Level
     e_init[0] = EnemyInit(IVec2(40,  404), IVec2(2,     0), 40,  200)
     e_init[1] = EnemyInit(IVec2(560, 404), IVec2(0 - 2, 0), 440, 600)
 
--- ── Claims about a Level ──────────────────────────────────────
---
--- `Jumpable` is the generic well-formedness predicate: the
--- platforms fit in the world, don't overlap, and every elevated
--- platform is reachable by a single jump from the ground or
--- another platform. `Level1` / `Level2` are level-specific
--- claims: each composes Jumpable plus its own additional
--- constraints (spread, vertical layout, …). Names-match
--- composition flows the level's fields (plat_x, plat_y,
--- PLAT_W, …) into each claim transparently.
-
 claim Jumpable
     PLAT_W         ∈ Int
     PLAT_H         ∈ Int
@@ -116,23 +70,18 @@ claim Jumpable
     #plat_x = 3
     #plat_y = 3
 
-    -- In-bounds: every platform fits horizontally and sits in
-    -- a band the player can plausibly traverse.
     ∀ i ∈ {0..2} :
         0 ≤ plat_x[i] ∧ plat_x[i] ≤ 640 - PLAT_W
         GROUND_Y - MAX_JUMP_RISE ≤ plat_y[i] ∧ plat_y[i] ≤ GROUND_Y - PLAT_H - 24
 
-    -- Pairwise non-overlap with MIN_GAP separation on some axis.
     ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
         (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
          ∨ plat_x[j] + PLAT_W + MIN_GAP ≤ plat_x[i]
          ∨ plat_y[i] + PLAT_H + MIN_GAP ≤ plat_y[j]
          ∨ plat_y[j] + PLAT_H + MIN_GAP ≤ plat_y[i])
 
-    -- Reachability (cheap-arc approximation).
     ∀ i ∈ {0..2} : ((GROUND_Y - plat_y[i] ≤ MAX_JUMP_RISE) ∨ (∃ j ∈ {0..2} : i ≠ j ∧ plat_y[j] > plat_y[i] ∧ plat_y[j] - plat_y[i] ≤ MAX_JUMP_RISE ∧ ¬(plat_x[j] + PLAT_W < plat_x[i] ∨ plat_x[i] + PLAT_W < plat_x[j])))
 
--- Level 1: easy — platforms spread across the screen, one high.
 claim Level1
     PLAT_W ∈ Int
     PLAT_H ∈ Int
@@ -146,13 +95,11 @@ claim Level1
 
     Jumpable
 
-    -- One platform high, one near ground; one on each half.
     ∃ i ∈ {0..2} : plat_y[i] ≤ 280
     ∃ i ∈ {0..2} : plat_y[i] ≥ 350
     ∃ i ∈ {0..2} : plat_x[i] + PLAT_W ≤ 280
     ∃ i ∈ {0..2} : plat_x[i] ≥ 360
 
--- Level 2: harder — all platforms in the upper half (more jumping).
 claim Level2
     PLAT_W ∈ Int
     PLAT_H ∈ Int
@@ -167,31 +114,17 @@ claim Level2
     Jumpable
 
     ∀ i ∈ {0..2} : plat_y[i] ≤ 320
-    -- Vertical "staircase": lowest well below the highest.
     ∃ i ∈ {0..2} : plat_y[i] ≤ 250
     ∃ i ∈ {0..2} : plat_y[i] ≥ 290
-
--- ── Shared world (dynamic state) ──────────────────────────────
 
 type World
     player    ∈ Mover
     enemies   ∈ Seq(Mover)
-    keys      ∈ IVec2   -- x: right−left (-1/0/+1), y: up_pressed (0/1)
+    keys      ∈ IVec2
     tick      ∈ Int
-    -- Owned by level_gen — the active level's platform positions
-    -- and which level is currently active.
     plat_x    ∈ Seq(Int)
     plat_y    ∈ Seq(Int)
     level_idx ∈ Int
-
--- ── Level generator FSM ───────────────────────────────────────
---
--- Owns world.plat_x / world.plat_y / world.level_idx. On tick 0
--- and on every level-beat transition, dispatches to the active
--- LevelN claim — Z3 picks fresh plat_x/plat_y satisfying that
--- level's constraints. Between transitions, the freeze constraint
--- pins plat_x/plat_y to the previous tick's values, so the level
--- doesn't drift between frames.
 
 fsm level_gen(world ∈ World)
     ..Level
@@ -200,78 +133,38 @@ fsm level_gen(world ∈ World)
     #_world.plat_x = 3
     #_world.plat_y = 3
 
-    -- Anchor is_first_tick auto-injection.
     gen_clock ∈ Int = (is_first_tick ? 0 : _gen_clock + 1)
 
-    -- Beat condition: player walked off the right edge.
     beat ∈ Bool = (¬is_first_tick ∧ _world.player.pos.x ≥ 580)
 
-    -- Level transitions. Cap at 1 so we cycle between Level1 and
-    -- Level2 (mod 2). Adding more levels = bump the modulus.
     world.level_idx = (is_first_tick ? 0
                        : (beat ? (_world.level_idx + 1) - 2 * ((_world.level_idx + 1) / 2)
                           : _world.level_idx))
 
     level_changed ∈ Bool = (is_first_tick ∨ beat)
 
-    -- Dispatch the active level's constraints. When level_idx=N,
-    -- LevelN's constraints apply (others vacuous).
     world.level_idx = 0 ⇒ Level1
     world.level_idx = 1 ⇒ Level2
 
-    -- Freeze: when the level didn't change, hold plat_x/plat_y
-    -- at the previous tick's values. Z3 picks once per level.
     ¬level_changed ⇒ (plat_x = _world.plat_x ∧ plat_y = _world.plat_y)
 
-    -- Publish to world.
     world.plat_x = plat_x
     world.plat_y = plat_y
-
--- ── Game FSM: physics ─────────────────────────────────────────
 
 fsm game(world ∈ World)
     ..Level
     #_world.enemies = 2
     #world.enemies  = 2
 
-    -- Anchor the prev-tick mechanism: referencing `_game_clock`
-    -- triggers is_first_tick auto-injection (unify_world_syntax
-    -- has already rewritten away every `_world.X` reference, so
-    -- without this `_var` the scheduler wouldn't pin tick 0).
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
 
-    -- Subscribe game to `world.tick` so it wakes every frame, not
-    -- only when the player presses a key. Without this read, the
-    -- only things in game's read-set are `_world.keys` and
-    -- `_world.player` — both static when nothing happens —
-    -- so the scheduler never schedules game and Mario freezes
-    -- mid-air. `display` increments `world.tick` every frame and
-    -- the value change wakes anyone reading it.
     tick_anchor ∈ Int = _world.tick
 
-    -- Level platforms come from world (written by level_gen).
-    -- `..Level` brings `plat_x` / `plat_y` as free Seqs into our
-    -- scope and materializes `platforms[i]` from them; we pin
-    -- them to the world's values so the materialization matches
-    -- the active level.
     #_world.plat_x = 3
     #_world.plat_y = 3
     plat_x = _world.plat_x
     plat_y = _world.plat_y
 
-    -- ── Player: input intent ──────────────────────────────────
-    --
-    -- `on_ground` is the player's contact predicate: there
-    -- exists a platform whose top equals the player's foot AND
-    -- whose x-range overlaps the player's x-range. It's a
-    -- relation over the entity collection — adding a platform
-    -- automatically expands the predicate.
-
-    -- on_ground iff some platform supports the player. Expressed as
-    -- a Bool with bidirectional ∀-implications (the translator
-    -- accepts ∃ only as a top-level constraint, not as a value
-    -- expression, so we couple `on_ground` to the existential via
-    -- forward + contrapositive constraints).
     on_ground ∈ Bool
     ∀ i ∈ {0..#platforms - 1} :
         (((_world.player.pos.y + p_size.y = platforms[i].aabb.pos.y)
@@ -289,31 +182,12 @@ fsm game(world ∈ World)
     intent_vy ∈ Int = (will_jump ? 0 - jump_strength
                        : _world.player.vel.y + grav)
 
-    -- ── Tentative integration ─────────────────────────────────
-
     tent ∈ IVec2 = _world.player.pos + IVec2(intent_vx, intent_vy)
-
-    -- ── X resolution: clamp into world bounds ─────────────────
-    -- World walls are the only X obstacles in this level. The
-    -- clamp uses the bounds record, not literal 0/608.
 
     x_min ∈ Int = bounds.pos.x
     x_max ∈ Int = bounds.pos.x + bounds.size.x - p_size.x
     res_x ∈ Int = (tent.x < x_min ? x_min
                    : (tent.x > x_max ? x_max : tent.x))
-
-    -- ── Y resolution: per-platform landing detection ──────────
-    -- A platform "applies" to this tick if all four hold:
-    --   * res_x range overlaps platform x range
-    --   * player's previous foot was at or above platform top
-    --   * tent would put the foot at or below platform top
-    --
-    -- The components `new_py` / `new_vy` get pinned by the
-    -- per-platform ∀-clamp (forces top ≤ p_top for every
-    -- applicable p) plus the ∃-equality (realizes one of those
-    -- tops). Same pattern as `any_landing` — the translator
-    -- only accepts ∃ as a top-level constraint, never as a
-    -- value, so we couple via implications.
 
     new_py ∈ Int
     new_vy ∈ Int
@@ -348,12 +222,6 @@ fsm game(world ∈ World)
     any_landing  ⇒ (new_vy = 0)
     ¬any_landing ⇒ (new_vy = intent_vy)
 
-    -- ── Commit player next state ──────────────────────────────
-    -- Bootstrap fork is a genuine source-vs-source split (initial
-    -- vs computed), so ternary is the natural shape per CLAUDE.md.
-    -- The whole Mover is written at once because the translator
-    -- doesn't support 3-level nested writes (world.player.pos.x).
-
     new_px ∈ Int = (is_first_tick ? 304 : res_x)
     new_vx ∈ Int = (is_first_tick ? 0   : intent_vx)
     is_first_tick ⇒ (new_py = 100)
@@ -361,14 +229,6 @@ fsm game(world ∈ World)
 
     world.player = Mover(IVec2(new_px, new_py), IVec2(new_vx, new_vy))
 
-    -- ── Enemy physics ─────────────────────────────────────────
-    -- Each enemy is a uniform Mover. The patrol bounds and
-    -- initial state come from `e_init`. Reverse direction at
-    -- patrol edges; otherwise carry velocity.
-
-    -- Each implication writes the whole Mover record: writes through
-    -- a Seq index need to land on a top-level field of the element,
-    -- not on a nested sub-field (translator gap).
     ∀ (cur, nxt, init) ∈ coindexed(_world.enemies, world.enemies, e_init) :
         is_first_tick ⇒ (nxt = Mover(init.pos, init.vel))
         (¬is_first_tick ∧ cur.pos.x ≤ init.patrol_lo) ⇒
@@ -381,26 +241,11 @@ fsm game(world ∈ World)
             (nxt = Mover(IVec2(cur.pos.x + cur.vel.x, cur.pos.y),
                           IVec2(cur.vel.x, 0)))
 
--- ── Keyboard FSM: input poll, owns world.keys ────────────────
---
--- Owns `world.keys`. Pumps SDL events and reads three keys via
--- ReadByte. This fsm keeps the `effects` slot because it actually
--- needs `last_results` indexing — the three ReadByte results land
--- at known indices.
-
 fsm keyboard(world ∈ World)
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
-    -- Subscribe to `world.tick` so we wake every frame (same
-    -- pattern as game). Without this read, keyboard's read-set is
-    -- empty and the scheduler never wakes it after tick 0.
     tick_anchor ∈ Int = _world.tick
 
-    -- Local frame counter — its `_kb_frame` reference also drives
-    -- `is_first_tick` auto-injection (which the `world.keys.*`
-    -- bootstrap branches need). The `_world.X` reference above
-    -- gets rewritten by `unify_world_syntax` to `world.X` and
-    -- stops looking like a `_var` reference to the inject pass.
     kb_frame ∈ Int = (is_first_tick ? 0 : _kb_frame + 1)
 
     sdl_pump_events(pump_eff)
@@ -408,8 +253,6 @@ fsm keyboard(world ∈ World)
     key_right_eff = ReadByte(win.keyboard_state, 79)
     key_up_eff    = ReadByte(win.keyboard_state, 82)
 
-    -- last_results follows the `effects` Seq below in order:
-    -- [0]=pump, [1]=key_left, [2]=key_right, [3]=key_up.
     key_left_raw  ∈ Int = match last_results[1]
         IntResult(n) ⇒ n
         _           ⇒ 0
@@ -427,17 +270,10 @@ fsm keyboard(world ∈ World)
 
     effects = ⟨pump_eff, key_left_eff, key_right_eff, key_up_eff⟩
 
--- ── Display FSM: rendering ────────────────────────────────────
-
 fsm display(world ∈ World)
     ..Level
-    -- Only read-side length pin: `#world.enemies = 2` reads as a
-    -- write under unify_world_syntax and would clash with game's
-    -- ownership of enemies.
     #_world.enemies = 2
 
-    -- Pin the level's free placement vars to the world's values
-    -- (same pattern as game).
     #_world.plat_x = 3
     #_world.plat_y = 3
     plat_x = _world.plat_x
@@ -449,11 +285,6 @@ fsm display(world ∈ World)
     world.tick = frame
 
     sdl_delay(16, delay_eff)
-
-    -- ── Render: sky + platforms + player + enemies ────────────
-    -- The player figure is a stack of 4 small rects derived
-    -- from `_world.player.pos`. Platforms and enemies render
-    -- straight from their AABBs.
 
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
@@ -487,47 +318,21 @@ fsm display(world ∈ World)
 
     win.render_present(present_eff)
 
-    -- ── Effect ordering ───────────────────────────────────────
-    --
-    -- The runtime walks Effect-typed bindings + extracts ordering
-    -- edges from any `Seq(Effect)` literal in the body (a→b→c for
-    -- ⟨a, b, c⟩). Cross-Seq order with no declared edge is random
-    -- (so accidental-ordering bugs surface). Set
-    -- `EVIDENT_DISPATCH_SEED=N` to reproduce a specific run.
-    --
-    -- Each sub-Seq below declares its intra-group ordering. The
-    -- `phase_chain` Seq adds the cross-group edges so the render
-    -- order is sky → platforms → player → enemies → present →
-    -- delay each frame.
-
-    -- Each `*_effs` Seq is a 2-element bundle (color + fill) produced
-    -- by a single `win.draw_rect(...)` call; intra-bundle order (color
-    -- before fill) is automatic — the dispatcher emits an implicit
-    -- edge between adjacent Seq(Effect) elements.
-    --
-    -- `phase_chain` chains end-of-one-rect to start-of-next so the
-    -- render order is sky → plat0 → plat1 → plat2 → plat3 → hat →
-    -- face → shirt → pants → enemy 0 → enemy 1 → present → delay.
-    -- A future Seq(Seq(Effect)) sugar would let us collapse the four
-    -- platform pairs / four mario pairs into per-group bundles.
     sky_effs ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
     phase_chain ∈ Seq(Effect) = ⟨
-        clear_eff,         plat_0_effs[0],   -- sky end → plat 0 start
-        plat_0_effs[1],    plat_1_effs[0],   -- plat 0 → plat 1
-        plat_1_effs[1],    plat_2_effs[0],   -- plat 1 → plat 2
-        plat_2_effs[1],    plat_3_effs[0],   -- plat 2 → plat 3
-        plat_3_effs[1],    hat_effs[0],      -- plats end → mario start
-        hat_effs[1],       face_effs[0],     -- hat → face
-        face_effs[1],      shirt_effs[0],    -- face → shirt
-        shirt_effs[1],     pants_effs[0],    -- shirt → pants
-        pants_effs[1],     e0_effs[0],       -- mario end → enemy 0
-        e0_effs[1],        e1_effs[0],       -- enemy 0 → enemy 1
-        e1_effs[1],        present_eff,      -- enemies end → present
-        delay_eff                              -- (present_eff already in chain
-                                               --  above; flow continues to delay)
+        clear_eff,         plat_0_effs[0],
+        plat_0_effs[1],    plat_1_effs[0],
+        plat_1_effs[1],    plat_2_effs[0],
+        plat_2_effs[1],    plat_3_effs[0],
+        plat_3_effs[1],    hat_effs[0],
+        hat_effs[1],       face_effs[0],
+        face_effs[1],      shirt_effs[0],
+        shirt_effs[1],     pants_effs[0],
+        pants_effs[1],     e0_effs[0],
+        e0_effs[1],        e1_effs[0],
+        e1_effs[1],        present_eff,
+        delay_eff
     ⟩
 
-    -- Conditional exit at frame ≥ 240. NoEffect when not yet —
-    -- the dispatcher drops NoEffect cleanly.
     done_print ∈ Effect = (frame ≥ 240 ? Println("mario done") : NoEffect)
     done_exit  ∈ Effect = (frame ≥ 240 ? Exit(0) : NoEffect)
