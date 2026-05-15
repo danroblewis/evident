@@ -185,12 +185,20 @@ enum Effect =
     -- docs/design/ffi-os-evolution.md § Tier 4.
     RegisterCallback(String, String)
 
--- ── EffectBundle: one composite's worth of effects ─────────────
--- A small wrapper so users can declare `Seq(EffectBundle)` for
--- per-iteration effect outputs in a `∀ (item, b) ∈ coindexed(items,
--- bundles) : win.draw_rect(…, b.effs)` pattern. Each bundle's
--- `effs` is the inner Seq populated by one subclaim invocation.
-type EffectBundle(effs ∈ Seq(Effect))
+-- ── EffectPair: two effects produced by one draw call ──────────
+-- The standard output shape for two-step rendering primitives like
+-- SDL_Window's `draw_rect` (set_color + fill_rect). `Seq(EffectPair)`
+-- in the caller carries one pair per iteration of a ∀-render loop:
+--
+--   plat_effs ∈ Seq(EffectPair)
+--   #plat_effs = 4
+--   ∀ (p, b) ∈ coindexed(platforms, plat_effs) :
+--       win.draw_rect(…, b.effs)
+--
+-- The `#effs = 2` invariant fires on each element via the runtime's
+-- Seq(Composite) element-invariant-inheritance pass.
+type EffectPair(effs ∈ Seq(Effect))
+    #effs = 2
 
 -- ── Result: outcome of one performed effect ────────────────────
 -- Position-aligned with the previous step's effect list. Threaded

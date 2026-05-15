@@ -912,6 +912,68 @@ fn inline_body_items_guarded(
                         }
                     }
                 }
+
+                // Element-level invariant inheritance for `Seq(SomeType)`:
+                // when SomeType has body Constraints (e.g. `#effs = 2`),
+                // emit per-element substituted versions over the Seq's
+                // pinned indices. Without this, a user `plat_effs ∈
+                // Seq(EffectPair)` declaration wouldn't auto-pin each
+                // bundle's inner length — the user would have to write
+                // `∀ i ∈ {0..3} : #plat_effs[i].effs = 2` by hand.
+                //
+                // The substitution treats each Seq element as a record
+                // value reached by `Index(Identifier(name), Int(i))`,
+                // and the type's bare field references become
+                // `Field(Index(name, i), field_name)` per iteration.
+                if let Some(inner) = type_name.strip_prefix("Seq(")
+                    .and_then(|s| s.strip_suffix(')'))
+                {
+                    if let Some(inner_schema) = schemas.get(inner) {
+                        let len_opt = env.get(name).and_then(|v| {
+                            if let Some((_, len, _, _, _)) = v.as_datatype_seq() {
+                                len.simplify().as_i64()
+                            } else if let Some((_, len, _)) = v.as_seq() {
+                                len.simplify().as_i64()
+                            } else { None }
+                        });
+                        if let Some(n) = len_opt {
+                            let field_set: std::collections::HashSet<String> =
+                                inner_schema.body.iter()
+                                    .filter_map(|item| match item {
+                                        BodyItem::Membership { name: n, .. } => Some(n.clone()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                            for i in 0..n {
+                                for item in &inner_schema.body {
+                                    if let BodyItem::Constraint(e) = item {
+                                        // Build elem_expr = Index(Identifier(name), Int(i)).
+                                        // For each of the inner type's field
+                                        // names, substitute bare refs to
+                                        // `Field(elem_expr, field_name)`.
+                                        let mut substituted = e.clone();
+                                        for fname in &field_set {
+                                            let elem = Expr::Field(
+                                                Box::new(Expr::Index(
+                                                    Box::new(Expr::Identifier(name.clone())),
+                                                    Box::new(Expr::Int(i)),
+                                                )),
+                                                fname.clone(),
+                                            );
+                                            substituted = substitute_bound_var(
+                                                &substituted, fname, &elem);
+                                        }
+                                        if let Some(b) = translate_bool(
+                                            &substituted, ctx, env, schemas)
+                                        {
+                                            track_assert(solver, &guarded_bool(b, guard), tracker);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             // Bare-identifier-as-passthrough handling moved to the
             // self-hosted desugar pass (`stdlib/passes/desugar_passthrough.ev`

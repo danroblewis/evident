@@ -691,11 +691,13 @@ What's still pending:
   A future parser sugar could auto-generate the wrapper.
 * **Set(Seq(T))** and **Set(Set(T))** — same blocker as the wrapping
   workaround above; doable once we decide on a syntax.
-* **Element-level body-constraint inheritance for Seq(Composite)** — if
-  Group has `#items = 2` as a body invariant, that pin DOES fire for a
-  sub-schema instance (`g ∈ Group` → `#g.items = 2`), but NOT for
-  elements of `Seq(Group)` (`#groups[i].items` is symbolic). Users
-  must pin per-element explicitly when iterating.
+* **Element-level body-constraint inheritance for Seq(Composite)** —
+  fixed. When `name ∈ Seq(SomeType)` is declared and SomeType has body
+  Constraints, `inline_body_items_guarded` now emits per-element
+  substituted versions over the Seq's pinned indices. So
+  `type EffectPair(effs ∈ Seq(Effect)); #effs = 2` + `plat_effs ∈
+  Seq(EffectPair); #plat_effs = 4` auto-pins each `plat_effs[i].effs`
+  to length 2 — no explicit `∀ i : #plat_effs[i].effs = 2` needed.
 * **Round-tripping Seq-valued composite fields through `given`** —
   `composite_value_to_dyn` returns None for SeqField; needed for
   multi-step executor frames carrying composites with Seq fields.

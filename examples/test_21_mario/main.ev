@@ -284,22 +284,19 @@ fsm display(world ∈ World)
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
 
-    plat_effs ∈ Seq(EffectBundle)
+    plat_effs ∈ Seq(EffectPair)
     #plat_effs = 4
-    ∀ i ∈ {0..3} : #plat_effs[i].effs = 2
     ∀ (p, b) ∈ coindexed(platforms, plat_effs) :
         win.draw_rect(Rect(p.color, p.aabb.pos, p.aabb.size), b.effs)
 
     mario ∈ MarioSprite (pos ↦ _world.player.pos)
-    mario_effs ∈ Seq(EffectBundle)
+    mario_effs ∈ Seq(EffectPair)
     #mario_effs = 4
-    ∀ i ∈ {0..3} : #mario_effs[i].effs = 2
     ∀ (r, b) ∈ coindexed(mario.rects, mario_effs) :
         win.draw_rect(r, b.effs)
 
-    enemy_effs ∈ Seq(EffectBundle)
+    enemy_effs ∈ Seq(EffectPair)
     #enemy_effs = 2
-    ∀ i ∈ {0..1} : #enemy_effs[i].effs = 2
     ∀ (m, b) ∈ coindexed(_world.enemies, enemy_effs) :
         win.draw_rect(Rect(Color(200, 80, 220, 255), m.pos, IVec2(28, 28)), b.effs)
 
