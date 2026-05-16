@@ -1,0 +1,162 @@
+-- stdlib/ast.ev — the canonical Evident AST as Evident enums.
+--
+-- Stage 1 of self-hosting (see docs/design/self-hosting-compiler-passes.md).
+-- This file lets compiler passes — type inference, desugars, lints,
+-- optimizations — be written as Evident programs that take a Program
+-- value and produce another Program value (or a list of types per
+-- variable, or an error report, or whatever the pass yields). It's
+-- also the surface for general AST reflection: anything that wants
+-- to inspect, transform, or generate Evident source operates on
+-- these types.
+--
+-- The shape mirrors runtime/src/ast.rs. Vec<T>-typed fields use
+-- `Seq(T)` directly. (The runtime back-stops mutually-recursive
+-- Seq fields with a hidden Cons-shaped helper enum — internal
+-- detail; users never write or see those helpers.)
+--
+-- Single-variant "records" (Mapping, EnumField, etc.) are also
+-- enums with one variant. Convention: variant name is `MakeXxx`
+-- and field order is documented above the decl. Once Datatype
+-- fields can be user records directly, these can collapse to
+-- `type Foo { … }` declarations.
+--
+-- `TraceDecl` and `ShaderDecl` are out of scope here. They're
+-- runtime-loaded scaffolding, not part of the canonical AST a
+-- desugar/inference pass needs to consume. Add them later when
+-- a pass actually needs them.
+
+-- ── Operators ────────────────────────────────────────────────────
+
+-- Mirrors ast.rs:BinOp. Lower-case `op` prefix avoids collision
+-- with primitive Bool literals (true/false) and keeps variant
+-- names disambiguated from common identifier patterns.
+enum BinOp =
+    OpEq
+    OpNeq
+    OpLt
+    OpLe
+    OpGt
+    OpGe
+    OpAnd
+    OpOr
+    OpImplies
+    OpAdd
+    OpSub
+    OpMul
+    OpDiv
+    OpConcat
+
+-- Mirrors ast.rs:Keyword.
+enum Keyword =
+    KSchema
+    KClaim
+    KType
+    KSubclaim
+    KFsm
+
+-- ── Match patterns + arms ───────────────────────────────────────
+--
+-- A pattern is either a wildcard `_` (catches any value, no binds)
+-- or a constructor name with positional bindings. Each binding is
+-- either a name to bind the payload field to, or `BindWildcard`
+-- (the `_` placeholder discarding that field).
+enum MatchBind =
+    BindName(String)
+    BindWildcard
+
+enum MatchPattern =
+    PatWildcard
+    PatCtor(String, Seq(MatchBind))
+
+-- One arm: pattern + body expression.
+enum MatchArm =
+    MakeMatchArm(MatchPattern, Expr)
+
+-- ── Single-variant records (poor man's structs) ─────────────────
+
+-- A name → expression mapping. MakeMapping(slot, value).
+enum Mapping =
+    MakeMapping(String, Expr)
+
+-- One variant of an enum decl. MakeEnumVariant(name, fields).
+enum EnumVariant =
+    MakeEnumVariant(String, Seq(EnumField))
+
+-- One field of an enum variant payload. MakeEnumField(name, type_name).
+enum EnumField =
+    MakeEnumField(String, String)
+
+-- A top-level enum declaration. MakeEnumDecl(name, variants).
+enum EnumDecl =
+    MakeEnumDecl(String, Seq(EnumVariant))
+
+-- ── Pins (how a Membership annotates its type) ──────────────────
+
+-- Mirrors ast.rs:Pins. `x ∈ T` (None), `x ∈ T(slot ↦ v, …)` (Named),
+-- `x ∈ T(v1, v2)` (Positional).
+enum Pins =
+    PNone
+    PNamed(Seq(Mapping))
+    PPositional(Seq(Expr))
+
+-- ── Body items ──────────────────────────────────────────────────
+
+-- Mirrors ast.rs:BodyItem.
+--   BIMembership(name, type_name, pins)
+--   BIPassthrough(claim_name)
+--   BIClaimCall(name, mappings)
+--   BIConstraint(expr)
+--   BISubclaim(decl)
+enum BodyItem =
+    BIMembership(String, String, Pins)
+    BIPassthrough(String)
+    BIClaimCall(String, Seq(Mapping))
+    BIConstraint(Expr)
+    BISubclaim(SchemaDecl)
+
+-- ── Schema (the unit a `claim` / `type` declares) ───────────────
+
+-- MakeSchemaDecl(keyword, name, body).
+enum SchemaDecl =
+    MakeSchemaDecl(Keyword, String, Seq(BodyItem))
+
+-- ── Expressions ─────────────────────────────────────────────────
+
+-- Mirrors ast.rs:Expr. Variant name conventions:
+--   E* = expression
+--   Identifier holds dotted-collapsed names ("state.dots").
+--   Forall/Exists hold (vars, range, body).
+--   Range is `{lo..hi}`; only valid as a quantifier bound.
+--   SetLit is `{a, b, c}`; only valid as RHS of ∈.
+--   SeqLit is `⟨a, b, c⟩`.
+--   Call holds the function/constructor name + args.
+enum Expr =
+    EIdentifier(String)
+    EInt(Int)
+    EReal(Real)
+    EBool(Bool)
+    EStr(String)
+    ESetLit(Seq(Expr))
+    ESeqLit(Seq(Expr))
+    ETuple(Seq(Expr))
+    ERange(Expr, Expr)
+    EInExpr(Expr, Expr)
+    EForall(Seq(String), Expr, Expr)
+    EExists(Seq(String), Expr, Expr)
+    ECall(String, Seq(Expr))
+    ECardinality(Expr)
+    EIndex(Expr, Expr)
+    EField(Expr, String)
+    EBinary(BinOp, Expr, Expr)
+    ENot(Expr)
+    ETernary(Expr, Expr, Expr)
+    EMatch(Expr, Seq(MatchArm))
+    EMatches(Expr, MatchPattern)
+
+-- ── Top-level program ───────────────────────────────────────────
+
+-- A loaded program: schemas + enum declarations. Imports/traces/
+-- shaders are out of scope for v0.1.
+-- MakeProgram(schemas, enums).
+enum Program =
+    MakeProgram(Seq(SchemaDecl), Seq(EnumDecl))

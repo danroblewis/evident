@@ -1,0 +1,27 @@
+-- 08_exit_code — Effect::Exit(N) propagates to the process exit
+-- code.
+--
+-- Run:    evident effect-run examples/test_08_exit_code.ev
+-- Verify: echo $? — should print 42.
+
+import "stdlib/runtime.ev"
+
+enum XState = Init | Done
+
+fsm exit_demo(state ∈ XState)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("exiting with code 42"), Exit(42)⟩
+        Done ⇒ ⟨⟩
+
+claim sat_init_exits_42
+    state ∈ XState
+    state_next ∈ XState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Init
+    exit_demo
+    effects = ⟨Println("exiting with code 42"), Exit(42)⟩

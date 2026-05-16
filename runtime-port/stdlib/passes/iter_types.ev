@@ -1,0 +1,86 @@
+-- stdlib/passes/iter_types.ev — Stage 5.5 self-hosted pass.
+--
+-- Where literal_types.ev pattern-matches a fixed-shape program,
+-- the rules below iterate over a flat `body ∈ Seq(BodyItem)` that
+-- the runtime injects from the user's first claim's body. This
+-- lets the pass handle programs of ARBITRARY length — the main
+-- limitation of literal_types.ev's v0.1 rules.
+--
+-- Invocation pattern (from the Rust runtime):
+--
+--     rt.load_file("stdlib/ast.ev")
+--     rt.load_file("stdlib/passes/iter_types.ev")
+--     rt.mark_system_loads_complete()
+--     rt.load_file(user_path)
+--     let r = rt.query_with_program_and_body("RULE", "program", "body")
+--
+-- The runtime asserts:
+--   * `program = <encoded user Program>`
+--   * `#body = N` (the body length, also pinned via `body_len`)
+--   * `body[i] = <encoded user_first_claim.body[i]>` for each i
+--   * `body_len = N` as a `given` Int (so quantifier unrolling
+--     over `{0..body_len - 1}` works)
+--
+-- Conventions:
+--   * Every rule declares `body ∈ Seq(BodyItem)` and `body_len ∈ Nat`.
+--   * Rules use `∃ i ∈ {0..body_len - 1} : body[i] = …` for
+--     existential checks over the user's body.
+--   * Free output variables (`target_var`, `target_type`, etc.) get
+--     bound to whatever values satisfy the existential.
+
+import "stdlib/ast.ev"
+
+-- ── ∃ a Membership in the body ─────────────────────────────────
+
+claim has_membership_of_var
+    program       ∈ Program
+    body          ∈ Seq(BodyItem)
+    body_len      ∈ Nat
+    target_var    ∈ String
+    target_type   ∈ String
+    pins_part     ∈ Pins
+
+    ∃ i ∈ {0..body_len - 1} :
+        body[i] = BIMembership(target_var, target_type, pins_part)
+
+-- ── ∃ a string-literal assignment in the body ─────────────────
+
+claim has_string_assignment
+    program       ∈ Program
+    body          ∈ Seq(BodyItem)
+    body_len      ∈ Nat
+    target_var    ∈ String
+    string_lit    ∈ String
+
+    ∃ i ∈ {0..body_len - 1} :
+        body[i] = BIConstraint(EBinary(OpEq,
+                                       EIdentifier(target_var),
+                                       EStr(string_lit)))
+
+-- ── ∃ an int-literal assignment ────────────────────────────────
+
+claim has_int_assignment
+    program       ∈ Program
+    body          ∈ Seq(BodyItem)
+    body_len      ∈ Nat
+    target_var    ∈ String
+    int_lit       ∈ Int
+
+    ∃ i ∈ {0..body_len - 1} :
+        body[i] = BIConstraint(EBinary(OpEq,
+                                       EIdentifier(target_var),
+                                       EInt(int_lit)))
+
+-- ── ∃ a bool-literal assignment ────────────────────────────────
+
+claim has_bool_assignment
+    program       ∈ Program
+    body          ∈ Seq(BodyItem)
+    body_len      ∈ Nat
+    target_var    ∈ String
+    bool_lit      ∈ Bool
+
+    ∃ i ∈ {0..body_len - 1} :
+        body[i] = BIConstraint(EBinary(OpEq,
+                                       EIdentifier(target_var),
+                                       EBool(bool_lit)))

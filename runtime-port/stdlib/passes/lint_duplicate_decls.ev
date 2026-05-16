@@ -1,0 +1,39 @@
+-- stdlib/passes/lint_duplicate_decls.ev — Stage 11 self-hosted pass.
+--
+-- A LINT pass — a different use case from inference. Catches a
+-- specific bug class: declaring the same variable twice in one
+-- claim's body, e.g.
+--     claim t
+--         x ∈ Int
+--         y ∈ Bool
+--         x ∈ String   -- duplicate decl of x with a different type
+--
+-- Demonstrates that self-hosting isn't tied to type inference —
+-- the same machinery (encoded Program / body / iter rules) works
+-- for any pass shape that fits "find a body item / pair satisfying
+-- some structural property."
+--
+-- The rule is SAT precisely when the bug exists. Caller treats SAT
+-- as "found a problem" and surfaces it.
+
+import "stdlib/ast.ev"
+
+-- Two distinct body items declare the same variable name. The
+-- types may agree or differ — either way, declaring twice is
+-- almost certainly a mistake (and even if intentional, having
+-- the lint flag it is correct).
+claim duplicate_membership_in_body
+    program     ∈ Program
+    body        ∈ Seq(BodyItem)
+    body_len    ∈ Nat
+    dup_var     ∈ String       -- the offending name
+    type_a      ∈ String
+    type_b      ∈ String
+    pins_a      ∈ Pins
+    pins_b      ∈ Pins
+
+    ∃ i ∈ {0..body_len - 1} :
+        ∃ j ∈ {0..body_len - 1} :
+            i < j
+            body[i] = BIMembership(dup_var, type_a, pins_a)
+            body[j] = BIMembership(dup_var, type_b, pins_b)

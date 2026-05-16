@@ -1,0 +1,68 @@
+-- stdlib/posix.ev — foundational POSIX wrappers via FFI.
+--
+-- Phase 1.7 v1: effect *builders* only. This file declares helpers
+-- that construct the right Effect value given a previously-resolved
+-- libc symbol handle and arguments. Handle-extraction from
+-- last_results is NOT in this file — `last_results[0]` returns a
+-- `Result`, and pattern matching `HandleResult(h)` on that requires
+-- enum-typed pattern bindings (Phase 3.3's gap). Until then,
+-- programs use this library to BUILD effect values once they have
+-- handles via other means (state-carried Ints or future sugar).
+--
+-- Platform note: libc_path is hard-coded for v1. macOS uses
+-- libSystem; Linux uses libc.so.6. A future build-time platform
+-- detection could feed this dynamically.
+
+import "stdlib/runtime.ev"
+
+-- ── Library paths ─────────────────────────────────────────────
+
+claim libc_path_macos(p ∈ String)
+    p = "libSystem.dylib"
+
+claim libc_path_linux(p ∈ String)
+    p = "libc.so.6"
+
+-- ── Effect builders for FFI plumbing ─────────────────────────
+
+-- Build the FFIOpen effect for libc on macOS.
+external claim open_libc_macos(e ∈ Effect)
+    e = FFIOpen("libSystem.dylib")
+
+-- Build FFILookup for a libc symbol.
+external claim lookup_in_libc(libc ∈ Int, sym ∈ String, e ∈ Effect)
+    e = FFILookup(libc, sym)
+
+-- ── POSIX open(2) flag values ─────────────────────────────────
+
+claim flag_o_rdonly(n ∈ Int)
+    n = 0
+
+claim flag_o_wronly(n ∈ Int)
+    n = 1
+
+claim flag_o_rdwr(n ∈ Int)
+    n = 2
+
+claim flag_o_creat(n ∈ Int)
+    n = 64        -- 0o100 on Linux/Darwin
+
+claim flag_o_trunc(n ∈ Int)
+    n = 512       -- 0o1000
+
+-- ── Effect builders for common syscalls ───────────────────────
+
+external claim getpid_call(getpid_sym ∈ Int, e ∈ Effect)
+    e = FFICall(getpid_sym, "i()", ⟨⟩)
+
+external claim open_call(open_sym ∈ Int, path ∈ String, flags ∈ Int, e ∈ Effect)
+    e = FFICall(open_sym, "i(si)",
+                ⟨ArgStr(path), ArgInt(flags)⟩)
+
+external claim close_call(close_sym ∈ Int, fd ∈ Int, e ∈ Effect)
+    e = FFICall(close_sym, "i(i)",
+                ⟨ArgInt(fd)⟩)
+
+external claim write_call(write_sym ∈ Int, fd ∈ Int, buf ∈ String, len ∈ Int, e ∈ Effect)
+    e = FFICall(write_sym, "i(isi)",
+                ⟨ArgInt(fd), ArgStr(buf), ArgInt(len)⟩)

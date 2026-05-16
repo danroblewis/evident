@@ -1,0 +1,7 @@
+starting count
+tick 5
+tick 4
+tick 3
+tick 2
+tick 1
+bye
