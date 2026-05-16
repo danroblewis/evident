@@ -96,11 +96,56 @@ These are mechanical extensions — each adds one or two cases to
 the `mentions` walker and the `eval_expr` interpreter. Add them
 as needed, on demand.
 
-## Not yet wired
+## Wired into `rt.query`
 
-The bench manually invokes `classify_components` and
-`extract_chain` to demonstrate the speedup. Wiring this into
-`rt.query` so it transparently takes the native path when possible
-is the next concrete step — small in code (a cache, a try-native-
-first hook), but needs care around correctness (falling back to
-Z3 when extraction fails for any reason).
+`EVIDENT_FUNCTIONIZE=1` enables the fast path inside `rt.query`. On
+each call: gate the schema body (must be pure-assignment-only —
+see `is_pure_assignment_body`), classify components, extract +
+cache a chain, evaluate natively. Cache key is `(claim_name,
+sorted_given_keys)`. Cache miss → one-time classification cost
+(plus a Z3 call for the initial SAT check); cache hit → microsecond
+native eval. Falls through to Z3 transparently on any miss or
+extraction failure.
+
+Bench with the wired hook (10k iterations on Pair):
+
+```
+EVIDENT_FUNCTIONIZE=0:  rt.query  = 91.91 μs/call   (pure Z3 baseline)
+EVIDENT_FUNCTIONIZE=1:  rt.query  =  0.73 μs/call   (function-izer)
+                                       126× speedup on rt.query path
+
+Direct evaluate_chain (skips rt.query layer): 0.48 μs/call
+```
+
+The wired path costs ~50% more than direct `evaluate_chain` —
+that's `rt.query`'s overhead (schema lookup, env-var check, cache
+lookup, building the result map). Still 126× over Z3.
+
+## Correctness gate
+
+The gate `is_pure_assignment_body` enforces:
+
+- Every `BodyItem::Constraint` is a `BinOp::Eq` (definition).
+  Non-equality body items (filters like `n < 5`) cause the gate
+  to refuse — the native evaluator wouldn't enforce them, so Z3
+  must handle the claim.
+- Every `BodyItem::Membership` types vars as Int / Real / Bool /
+  String only. Nat, Pos, user-defined types have implicit
+  type-bound constraints (n ≥ 0 for Nat, field-level constraints
+  for user types) that the native path doesn't enforce.
+- No `BodyItem::Passthrough` or `BodyItem::ClaimCall` — those
+  reference bodies outside this schema; the v1 chain extractor
+  doesn't recurse into them.
+
+The full `./test.sh` suite (12 lints + 422 cargo tests + 119
+conformance) passes with `EVIDENT_FUNCTIONIZE=1`. Claims that the
+gate refuses get correctly UNSAT-handled by the Z3 fallback path
+(verified with the `given_violation_unsat` test:
+`schema S\n  n ∈ Nat\n  n < 5` with given n=10 correctly returns
+UNSAT because `Nat` typing fails the gate, falling through to Z3).
+
+The gate is conservative — it refuses many claims that ARE actually
+function-shaped (anything with a Nat or user-type binding, anything
+that uses ∀ over a Seq for iteration, anything with claim
+composition). Expanding the gate to handle more shapes is direct
+follow-on work; each expansion needs a soundness proof.

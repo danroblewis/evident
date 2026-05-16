@@ -740,14 +740,17 @@ pub fn classify_components(
     let assertions = solver.get_assertions();
     let components = crate::decompose::decompose(ctx, &assertions, &var_names);
 
-    // If the body is UNSAT under given, every component is vacuously
-    // "functional" (no two distinct models exist). Surface this as
-    // functional=true with an empty model — caller can detect via
-    // SAT-checking themselves if they need to disambiguate.
+    // If the body is UNSAT under given, mark every component as
+    // NON-functional. Don't say "vacuously functional" — that's
+    // technically true (no two distinct models exist when no model
+    // exists) but it lets downstream callers (the function-izer's
+    // rt.query hook) skip the solve entirely and produce SAT=true
+    // with wrong bindings. Force the caller to go through Z3 so it
+    // correctly returns UNSAT.
     let initial = solver.check();
     if !matches!(initial, SatResult::Sat) {
         return components.into_iter().map(|c|
-            ClassifiedComponent { component: c, functional: true }
+            ClassifiedComponent { component: c, functional: false }
         ).collect();
     }
     let model = match solver.get_model() {

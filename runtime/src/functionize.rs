@@ -48,7 +48,9 @@ pub struct SubstitutionChain {
 /// a single equality), we can't extract them this way — those need
 /// the `solve-eqs` diff approach.
 pub fn extract_chain(schema: &SchemaDecl, component: &Component) -> Option<SubstitutionChain> {
+    if !is_pure_assignment_body(schema) { return None; }
     let target: HashSet<&str> = component.vars.iter().map(|s| s.as_str()).collect();
+
     // Collect candidate substitutions: every `var = expr` or `expr = var`
     // where `var` is in our component and the other side doesn't
     // reference `var` itself.
@@ -127,6 +129,44 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
         BodyItem::Constraint(e) => Some(e),
         _ => None,
     })
+}
+
+/// Soundness gate: the v1 native evaluator only enforces equality
+/// definitions. If the body has ANY non-equality Constraint, the
+/// native path can return SAT for inputs that Z3 would reject (e.g.
+/// `n ∈ Nat ∧ n < 5` with given n=10 — `n < 5` is the filter that
+/// Z3 enforces but the native chain doesn't). Returns false in that
+/// case; callers should fall through to Z3.
+///
+/// Body Memberships (`x ∈ Type`) and Passthrough / ClaimCall items
+/// aren't constraints in the AST sense — they're declarations. Their
+/// type-bound effects (Nat → x ≥ 0) live in declare_and_assert at
+/// translation time, which the function-izer-cached path bypasses;
+/// for that reason the gate is conservative and prefers refusing.
+pub fn is_pure_assignment_body(schema: &SchemaDecl) -> bool {
+    if !matches!(schema.keyword,
+        crate::ast::Keyword::Claim | crate::ast::Keyword::Schema | crate::ast::Keyword::Type) {
+        return false;
+    }
+    for item in &schema.body {
+        match item {
+            BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
+            BodyItem::Constraint(_) => return false,  // filter — bail
+            BodyItem::Membership { type_name, .. } => {
+                // Only accept the "freely free" types — Int, Real, Bool,
+                // String. Nat / Pos / user-defined types have implicit
+                // constraints (n ≥ 0 etc.) that the native path
+                // wouldn't enforce.
+                if !matches!(type_name.as_str(), "Int" | "Real" | "Bool" | "String") {
+                    return false;
+                }
+            }
+            BodyItem::Passthrough(_) => return false,  // body lives elsewhere
+            BodyItem::ClaimCall { .. } => return false,  // ditto
+            BodyItem::SubclaimDecl(_) => {}  // no runtime effect on parent
+        }
+    }
+    true
 }
 
 /// Does `e` reference an identifier named `name`?

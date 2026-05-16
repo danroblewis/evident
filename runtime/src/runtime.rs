@@ -1756,6 +1756,15 @@ pub struct EvidentRuntime {
     /// value per-query and Z3 solves with the existing constraint
     /// shape.
     cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
+    /// Function-izer cache: maps (schema_name, sorted given-keys) to
+    /// either a native substitution chain (Some) or None (claim isn't
+    /// fully function-shaped under these inputs — fall through to Z3).
+    /// Keyed on given-KEYS, not values, since the chain is the same
+    /// shape across runs with different concrete inputs. Populated on
+    /// first query per (claim, given-shape) combo. Behind
+    /// `EVIDENT_FUNCTIONIZE=1` env var while we validate.
+    functionize_cache: RefCell<HashMap<(String, Vec<String>),
+                                       Option<crate::functionize::SubstitutionChain>>>,
     /// Counter incremented each time a cached entry is rebuilt due
     /// to a structural-signature mismatch. Useful for debugging
     /// performance issues (e.g. "every step is rebuilding — what
@@ -1961,6 +1970,7 @@ impl EvidentRuntime {
             schema_order: Vec::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
+            functionize_cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
@@ -2177,6 +2187,20 @@ impl EvidentRuntime {
     pub fn query(&self, name: &str, given: &HashMap<String, Value>) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+
+        // Function-izer fast path. When enabled, try to extract and
+        // evaluate a substitution chain instead of going through Z3.
+        // Falls through cleanly on any miss (claim not function-shaped,
+        // chain extraction failed, native eval failed). See
+        // `docs/bench/functionize.md` for the design + perf numbers.
+        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
+            .map(|s| s == "1").unwrap_or(false);
+        if functionize_on {
+            if let Some(result) = self.try_functionize(name, schema, given) {
+                return Ok(result);
+            }
+        }
+
         // One-shot query: don't auto-tune (no chance to learn over many
         // calls). Use the env override if set, default 2 (the value
         // that wins on Z3 4.8.12 for our typical workload).
@@ -2184,6 +2208,84 @@ impl EvidentRuntime {
             .and_then(|s| s.parse().ok()).unwrap_or(2);
         let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
+    }
+
+    /// Fast path: try native substitution-chain evaluation. Returns
+    /// `Some(result)` only when every non-given variable in the claim
+    /// can be evaluated natively; returns `None` to signal "fall
+    /// through to Z3."
+    ///
+    /// On first call per (claim, given-shape) the chain is extracted
+    /// and cached. Subsequent calls hit the cache and only do the
+    /// evaluation step (microseconds).
+    fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
+                       given: &HashMap<String, Value>) -> Option<QueryResult>
+    {
+        use crate::functionize::{evaluate_chain, extract_chain, is_pure_assignment_body,
+                                  SubstitutionChain};
+
+        // Gate FIRST — if the body has any non-equality constraints or
+        // any declarations the native path can't honor (Nat lower-bound,
+        // user-type field expansions, passthroughs), refuse outright.
+        // This catches the "all vars given, but body has filters that
+        // would reject the given values" case where classify_components
+        // returns zero free-var components yet the body is UNSAT.
+        if !is_pure_assignment_body(schema) {
+            return None;
+        }
+
+        let mut given_keys: Vec<String> = given.keys().cloned().collect();
+        given_keys.sort();
+        let cache_key = (name.to_string(), given_keys);
+
+        // Cache lookup.
+        {
+            let cache = self.functionize_cache.borrow();
+            if let Some(entry) = cache.get(&cache_key) {
+                let Some(chain) = entry.as_ref() else { return None; };
+                let bindings = evaluate_chain(chain, given)?;
+                let mut out = HashMap::new();
+                for (k, v) in bindings { out.insert(k, v); }
+                return Some(QueryResult { satisfied: true, bindings: out });
+            }
+        }
+
+        // Cache miss: try to build a chain. Classify components, extract
+        // a chain per functional one, merge. If ANY component is
+        // non-functional or extraction fails, give up — install None.
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        let comps = crate::translate::classify_components(
+            schema, given, &self.schemas, self.z3_ctx,
+            &self.datatypes, Some(&self.enums), arith);
+        if comps.iter().any(|c| !c.functional) {
+            self.functionize_cache.borrow_mut().insert(cache_key, None);
+            return None;
+        }
+        let mut steps = Vec::new();
+        for c in &comps {
+            match extract_chain(schema, &c.component) {
+                Some(ch) => steps.extend(ch.steps),
+                None => {
+                    self.functionize_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                }
+            }
+        }
+        let chain = SubstitutionChain { steps };
+        // Evaluate once to sanity-check; if eval fails we don't cache
+        // the chain (the eval failure mode is "unsupported Expr variant").
+        let bindings = match evaluate_chain(&chain, given) {
+            Some(b) => b,
+            None => {
+                self.functionize_cache.borrow_mut().insert(cache_key, None);
+                return None;
+            }
+        };
+        self.functionize_cache.borrow_mut().insert(cache_key, Some(chain));
+        let mut out = HashMap::new();
+        for (k, v) in bindings { out.insert(k, v); }
+        Some(QueryResult { satisfied: true, bindings: out })
     }
 
     /// Structural decomposition pass: re-separate the named claim into
