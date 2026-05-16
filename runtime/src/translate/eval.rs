@@ -91,6 +91,61 @@ fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     solver.set_params(&params);
 }
 
+/// Build a solver, optionally wrapping it with a Z3 tactic preprocessing
+/// chain. `EVIDENT_TACTICS` env var picks the chain:
+///
+///   - unset (default)  → "solve-eqs". Substitutes equality-defined
+///     variables before solving. 1.3-1.6× speedup across our workloads
+///     (`bench_tactics` example). Sound — never converts SAT to UNSAT.
+///   - "off"            → plain `Solver::new(ctx)`; no tactic. Baseline.
+///   - "simplify"       → `simplify` only.
+///   - "standard"       → `simplify` + `propagate-values` + `solve-eqs`.
+///   - "aggressive"     → standard + `elim-uncnstr` + `propagate-ineqs`.
+///   - comma-separated  → custom chain, e.g. "simplify,solve-eqs".
+///
+/// All chains have `smt` appended as the terminal solving tactic —
+/// preprocessors like `simplify` alone return `Unknown` without it.
+///
+/// Tactics run as preprocessing inside the solver; substitutions
+/// happen automatically. Model extraction goes through the original
+/// variable names because Z3's tactic-derived solver handles the
+/// model conversion under the hood.
+pub(super) fn make_tuned_solver<'ctx>(ctx: &'ctx Context, arith_solver: u32) -> Solver<'ctx> {
+    let chain = std::env::var("EVIDENT_TACTICS").ok();
+    // Default to "solve-eqs" — empirically best speedup with no
+    // soundness regression across our workloads.
+    let chain_spec = chain.as_deref().unwrap_or("solve-eqs");
+    let solver = match chain_spec {
+        "" | "off" => Solver::new(ctx),
+        spec => {
+            let mut names: Vec<&str> = match spec {
+                "simplify"   => vec!["simplify"],
+                "standard"   => vec!["simplify", "propagate-values", "solve-eqs"],
+                "aggressive" => vec!["simplify", "propagate-values", "solve-eqs",
+                                     "elim-uncnstr", "propagate-ineqs"],
+                custom => custom.split(',').map(|s| s.trim()).collect(),
+            };
+            // ALWAYS append a terminal solving tactic. Preprocessors like
+            // `simplify` produce a normalized formula but don't decide
+            // SAT/UNSAT — calling `check()` returns `Unknown`. The
+            // canonical terminal is `smt` (Z3's default SMT strategy).
+            // Tactics that already include solving (`solve-eqs`, `der`,
+            // etc.) cascade through to a decision; appending `smt`
+            // again is a no-op for those.
+            if !names.last().map(|n| *n == "smt").unwrap_or(false) {
+                names.push("smt");
+            }
+            let mut t = z3::Tactic::new(ctx, names[0]);
+            for n in &names[1..] {
+                t = t.and_then(&z3::Tactic::new(ctx, n));
+            }
+            t.solver()
+        }
+    };
+    apply_solver_tuning(ctx, &solver, arith_solver);
+    solver
+}
+
 /// For every enum in the registry, pre-populate `env` with one
 /// `Var::EnumValue` per variant name. Lets bare identifiers like
 /// `Mon`, `Tue`, … resolve via the existing env-lookup path in
@@ -171,8 +226,7 @@ pub fn build_cache(
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CachedSchema<'static> {
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
@@ -524,8 +578,7 @@ pub fn analyze_decomposition(
     arith_solver: u32,
 ) -> Vec<crate::decompose::Component> {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
@@ -603,8 +656,7 @@ pub fn evaluate(
     arith_solver: u32,
 ) -> EvalResult {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
@@ -787,8 +839,7 @@ pub fn evaluate_with_extra_assertion(
     extra_value: z3::ast::Datatype<'static>,
 ) -> EvalResult {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
@@ -861,8 +912,7 @@ pub fn evaluate_with_extra_assertions(
     pins: &[(&str, z3::ast::Datatype<'static>)],
 ) -> EvalResult {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
@@ -993,8 +1043,7 @@ pub fn evaluate_with_program_and_body(
     body_items: &[BodyItem],
 ) -> EvalResult {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(Some(enums));
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, Some(enums));
 
@@ -1086,8 +1135,7 @@ pub fn evaluate_with_core(
     arith_solver: u32,
 ) -> EvalResult {
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
-    let solver = Solver::new(ctx);
-    apply_solver_tuning(ctx, &solver, arith_solver);
+    let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
