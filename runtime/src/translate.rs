@@ -69,7 +69,8 @@ pub mod ast_encoder {
                                  EncodeError};
 }
 
-pub use eval::{analyze_decomposition, build_cache, evaluate, evaluate_with_core,
+pub use eval::{analyze_decomposition, build_cache, classify_components,
+                ClassifiedComponent, evaluate, evaluate_with_core,
                 evaluate_with_extra_assertion,
                 evaluate_with_extra_assertions,
                 evaluate_with_program_and_body,

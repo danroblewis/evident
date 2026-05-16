@@ -646,6 +646,174 @@ pub fn analyze_decomposition(
     crate::decompose::decompose(ctx, &assertions, &var_names)
 }
 
+/// A component plus a functionality verdict — whether the component's
+/// variables are uniquely determined by the inputs (given + already-
+/// determined components). UNSAT of the "another distinct model exists"
+/// check means functional; SAT or UNKNOWN means non-functional.
+#[derive(Debug, Clone)]
+pub struct ClassifiedComponent {
+    pub component: crate::decompose::Component,
+    /// `true` iff the 2-copy uniqueness check is UNSAT for this
+    /// component's variables — i.e., no two distinct satisfying models
+    /// disagree on this component's variables, holding `given` fixed.
+    /// `false` means non-functional OR Z3 returned Unknown.
+    pub functional: bool,
+}
+
+/// Same as `analyze_decomposition`, plus a per-component verdict:
+/// is this component function-shaped (outputs uniquely determined
+/// by inputs)?
+///
+/// The check is: solver.check() → if SAT, capture the model, then
+/// assert "at least one variable in the component differs from its
+/// model value" and check again. UNSAT means functional; SAT means
+/// another distinct model exists → non-functional.
+///
+/// Per-component cost: 1 push, 1 assert, 1 check, 1 pop. Cheap
+/// relative to a full solve.
+pub fn classify_components(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    arith_solver: u32,
+) -> Vec<ClassifiedComponent> {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
+    let solver = make_tuned_solver(ctx, arith_solver);
+    let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
+
+    // Mirror analyze_decomposition's build phase.
+    for item in &schema.body {
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name, .. } = sub {
+                            if !env.contains_key(name) {
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
+    let pinned = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
+    apply_set_candidates(&env, given);
+
+    let mut visited: HashMap<String, usize> = HashMap::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+
+    for (name, value) in given {
+        let Some(var) = env.get(name) else { continue };
+        match (var, value) {
+            (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
+            (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
+            (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
+            (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::PinnedInt(_), _) => {}
+            _ => {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
+                    solver.assert(&b);
+                } else if let Some(b) = assert_set_given(var, value, ctx) {
+                    solver.assert(&b);
+                }
+            }
+        }
+    }
+
+    let var_names: Vec<String> = env.keys()
+        .filter(|n| !given.contains_key(n.as_str()))
+        .cloned()
+        .collect();
+    let assertions = solver.get_assertions();
+    let components = crate::decompose::decompose(ctx, &assertions, &var_names);
+
+    // If the body is UNSAT under given, every component is vacuously
+    // "functional" (no two distinct models exist). Surface this as
+    // functional=true with an empty model — caller can detect via
+    // SAT-checking themselves if they need to disambiguate.
+    let initial = solver.check();
+    if !matches!(initial, SatResult::Sat) {
+        return components.into_iter().map(|c|
+            ClassifiedComponent { component: c, functional: true }
+        ).collect();
+    }
+    let model = match solver.get_model() {
+        Some(m) => m,
+        None => return components.into_iter().map(|c|
+            ClassifiedComponent { component: c, functional: false }
+        ).collect(),
+    };
+
+    // Per-component 2-copy check: assert that AT LEAST ONE variable
+    // in this component differs from its current model value. UNSAT
+    // means no such alternative model exists → functional.
+    let mut out = Vec::with_capacity(components.len());
+    for component in components {
+        // Build the "differs from model" disjunction. Skip variables
+        // whose types we can't easily compare against a Z3 value
+        // (Seq, Set, Datatype) for v1; treat presence of such vars
+        // as "couldn't classify, assume non-functional."
+        let mut disjuncts: Vec<Bool<'static>> = Vec::new();
+        let mut skip_due_to_unsupported_var = false;
+        for name in &component.vars {
+            let Some(var) = env.get(name) else { continue };
+            match var {
+                Var::IntVar(v) => {
+                    if let Some(val) = model.eval(v, true) {
+                        disjuncts.push(v._eq(&val).not());
+                    }
+                }
+                Var::BoolVar(v) => {
+                    if let Some(val) = model.eval(v, true) {
+                        disjuncts.push(v._eq(&val).not());
+                    }
+                }
+                Var::RealVar(v) => {
+                    if let Some(val) = model.eval(v, true) {
+                        disjuncts.push(v._eq(&val).not());
+                    }
+                }
+                Var::StrVar(v) => {
+                    if let Some(val) = model.eval(v, true) {
+                        disjuncts.push(v._eq(&val).not());
+                    }
+                }
+                Var::PinnedInt(_) => {} // Already a literal; can't differ.
+                _ => { skip_due_to_unsupported_var = true; }
+            }
+        }
+        let functional = if skip_due_to_unsupported_var {
+            false
+        } else if disjuncts.is_empty() {
+            // No differable vars (component is all pinned ints or only
+            // contains unsupported types we skipped). Treat as functional.
+            true
+        } else {
+            solver.push();
+            let disj_refs: Vec<&Bool<'static>> = disjuncts.iter().collect();
+            solver.assert(&Bool::or(ctx, &disj_refs));
+            let r = solver.check();
+            solver.pop(1);
+            matches!(r, SatResult::Unsat)
+        };
+        out.push(ClassifiedComponent { component, functional });
+    }
+    out
+}
+
 pub fn evaluate(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,

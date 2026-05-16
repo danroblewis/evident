@@ -2202,6 +2202,23 @@ impl EvidentRuntime {
             schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith))
     }
 
+    /// Decomposition + per-component functionality verdict via the
+    /// 2-copy uniqueness check. Returns a list of `ClassifiedComponent`s
+    /// flagging which components are function-shaped (outputs uniquely
+    /// determined by inputs) vs search-shaped. Cost: roughly 1+N Z3
+    /// calls (the initial solve plus one check per component); each
+    /// component-level check is small.
+    pub fn classify_components(&self, name: &str, given: &HashMap<String, Value>)
+        -> Result<Vec<crate::translate::ClassifiedComponent>, RuntimeError>
+    {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        Ok(crate::translate::classify_components(
+            schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith))
+    }
+
     /// Like `query`, but on UNSAT also returns the unsat-core: indices
     /// into the schema's `body` for the constraints Z3 identified as
     /// the conflicting subset. Used by `evident test` to highlight
