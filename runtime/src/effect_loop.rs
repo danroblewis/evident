@@ -333,7 +333,29 @@ pub(crate) fn collect_dispatchable_effects(
         }
     }
 
-    let sorted_names = topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng);
+    let timing = std::env::var("EVIDENT_DISPATCH_TIMING").is_ok();
+    let impl_choice = std::env::var("EVIDENT_TOPOSORT_IMPL").ok();
+    let use_evident = matches!(impl_choice.as_deref(), Some("evident"));
+
+    let t0 = std::time::Instant::now();
+    let sorted_names = if use_evident {
+        match evident_toposort(rt, &nodes, &edges) {
+            Some(v) => v,
+            None => {
+                eprintln!("warning: EVIDENT_TOPOSORT_IMPL=evident failed; \
+                           falling back to rust");
+                topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
+            }
+        }
+    } else {
+        topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
+    };
+    if timing {
+        eprintln!("toposort[{}]: {} nodes, {} edges, {:.3}ms",
+            if use_evident { "evident" } else { "rust" },
+            nodes.len(), edges.len(),
+            t0.elapsed().as_secs_f64() * 1000.0);
+    }
 
     if let Ok(mut guard) = DISPATCH_ORDER_CACHE.lock() {
         if let Some(map) = guard.as_mut() {
@@ -342,6 +364,36 @@ pub(crate) fn collect_dispatchable_effects(
     }
 
     resolve_synthetic_names_to_effects(&sorted_names, &node_values)
+}
+
+/// Self-hosted dispatch ordering: call the stdlib `Toposort<String>`
+/// claim via `rt.query`. The runtime's own constraint primitive
+/// solves its own dispatch ordering — the dogfood path.
+///
+/// Returns `None` on UNSAT or if the schema isn't loaded (caller
+/// falls back to the Rust path). Selected by
+/// `EVIDENT_TOPOSORT_IMPL=evident`.
+fn evident_toposort(
+    rt: &EvidentRuntime,
+    nodes: &[String],
+    edges: &[(String, String)],
+) -> Option<Vec<String>> {
+    let mut given: HashMap<String, Value> = HashMap::new();
+    given.insert("items".into(), Value::SetStr(nodes.to_vec()));
+    let edge_vals: Vec<HashMap<String, Value>> = edges.iter().map(|(f, t)| {
+        let mut m = HashMap::new();
+        m.insert("from".into(), Value::Str(f.clone()));
+        m.insert("to".into(),   Value::Str(t.clone()));
+        m
+    }).collect();
+    given.insert("edges".into(), Value::SeqComposite(edge_vals));
+
+    let r = rt.query("Toposort<String>", &given).ok()?;
+    if !r.satisfied { return None; }
+    match r.bindings.get("sorted") {
+        Some(Value::SeqStr(v)) => Some(v.clone()),
+        _ => None,
+    }
 }
 
 /// Map sorted node names (real binding names + `name[i]` synthetic

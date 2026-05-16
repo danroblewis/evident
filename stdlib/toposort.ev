@@ -91,3 +91,20 @@ claim sat_empty_edges
     #sorted = 3
     #edges = 0
     Toposort<Int>(items, edges, sorted)
+
+-- ── String monomorphization ─────────────────────────────────────
+-- Forces `Toposort<String>` (and its Edge<String> / Permutation<String>
+-- transitive monos) to materialize at load time. The dispatcher's
+-- self-hosted toposort path queries this schema by name; without
+-- this anchor the generic template never produces a String instance.
+
+claim sat_toposort_string_mono
+    items ∈ Set(String)
+    edges ∈ Seq(Edge<String>)
+    sorted ∈ Seq(String)
+    items = {"a", "b"}
+    #sorted = 2
+    #edges = 1
+    edges[0] = Edge<String>("a", "b")
+    Toposort<String>(items, edges, sorted)
+    sorted = ⟨"a", "b"⟩

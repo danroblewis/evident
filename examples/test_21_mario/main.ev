@@ -1,4 +1,5 @@
 import "stdlib/runtime.ev"
+import "stdlib/toposort.ev"
 import "packages/sdl/window.ev"
 import "packages/sdl/render.ev"
 
