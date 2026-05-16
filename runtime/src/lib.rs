@@ -5,6 +5,7 @@
 //! everything else as Evident libraries.
 
 pub mod ast;
+pub mod decompose;
 pub mod effect_dispatch;
 pub mod effect_loop;
 mod ffi;

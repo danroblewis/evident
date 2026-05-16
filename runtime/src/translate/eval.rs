@@ -503,6 +503,96 @@ pub fn run_cached<'ctx>(
 /// `Identifier(String)` so the parser must produce dotted names —
 /// currently it only sees bare idents, but the Membership case below
 /// expands them in the env regardless.
+/// Analysis-only entry: build the solver exactly the way `evaluate`
+/// does, then read out the asserted Bool constraints and free-variable
+/// names *without* calling `solver.check()`. Intended for compile-time
+/// structural passes — currently the decomposition pass that re-separates
+/// composed claims into independent sub-models. See
+/// `crate::decompose` for the union-find walker, and
+/// `docs/design/compile-claims-to-functions.md` ("Decomposition") for
+/// the architectural framing.
+///
+/// `given_keys` are treated as broadcast constants — they don't link
+/// components, so the returned `var_names` excludes them.
+pub fn analyze_decomposition(
+    schema: &SchemaDecl,
+    given: &HashMap<String, Value>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    arith_solver: u32,
+) -> Vec<crate::decompose::Component> {
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
+    let solver = Solver::new(ctx);
+    apply_solver_tuning(ctx, &solver, arith_solver);
+    let mut env: HashMap<String, Var<'static>> = HashMap::new();
+    populate_enum_variants(&mut env, enums);
+
+    // The setup phases below mirror `evaluate`'s build phase exactly —
+    // declare, pin, inline. We deliberately skip the final `solver.check()`
+    // and the model-extraction loop.
+    for item in &schema.body {
+        match item {
+            BodyItem::Membership { name, type_name, .. } => {
+                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+            }
+            BodyItem::Passthrough(claim_name) => {
+                if let Some(claim) = schemas.get(claim_name) {
+                    for sub in &claim.body {
+                        if let BodyItem::Membership { name, type_name, .. } = sub {
+                            if !env.contains_key(name) {
+                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+        &schema.body, given, Some(schemas));
+    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
+    apply_pinned_ints(&mut env, &pinned);
+    apply_seq_lengths(&mut env, &seq_lens, ctx);
+    apply_set_candidates(&env, given);
+
+    let mut visited: HashMap<String, usize> = HashMap::new();
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+
+    // Pin given values (same as evaluate's Pass 3) so given-keyed vars
+    // get assertions that we can then exclude from var_names.
+    for (name, value) in given {
+        let Some(var) = env.get(name) else { continue };
+        match (var, value) {
+            (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
+            (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
+            (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
+            (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::PinnedInt(_), _) => {}
+            _ => {
+                if let Some(b) = assert_seq_given(var, value, ctx, enums) {
+                    solver.assert(&b);
+                } else if let Some(b) = assert_set_given(var, value, ctx) {
+                    solver.assert(&b);
+                }
+            }
+        }
+    }
+
+    // Collect free-variable names: every entry in env, EXCLUDING the
+    // given-keyed names (those are broadcast constants).
+    let var_names: Vec<String> = env.keys()
+        .filter(|n| !given.contains_key(n.as_str()))
+        .cloned()
+        .collect();
+
+    let assertions = solver.get_assertions();
+    crate::decompose::decompose(ctx, &assertions, &var_names)
+}
+
 pub fn evaluate(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
