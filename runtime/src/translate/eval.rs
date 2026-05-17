@@ -478,7 +478,10 @@ pub fn run_cached<'ctx>(
             }
         }
     }
-    let satisfied = matches!(cached.solver.check(), SatResult::Sat);
+    let check_t0 = std::time::Instant::now();
+    let check_result = cached.solver.check();
+    crate::z3_profile::record_check_stats(&cached.solver, None, check_t0.elapsed());
+    let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
         if let Some(model) = cached.solver.get_model() {
@@ -979,7 +982,10 @@ pub fn evaluate(
         }
     }
 
-    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let check_t0 = std::time::Instant::now();
+    let check_result = solver.check();
+    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
+    let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
         if let Some(model) = solver.get_model() {
@@ -1119,7 +1125,10 @@ pub fn evaluate_with_extra_assertion(
                   extra_var, schema.name);
     }
 
-    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let check_t0 = std::time::Instant::now();
+    let check_result = solver.check();
+    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
+    let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
         if let Some(model) = solver.get_model() {
@@ -1241,7 +1250,10 @@ pub fn evaluate_with_extra_assertions(
         }
     }
 
-    let satisfied = matches!(solver.check(), SatResult::Sat);
+    let check_t0 = std::time::Instant::now();
+    let check_result = solver.check();
+    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
+    let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
         if let Some(model) = solver.get_model() {
