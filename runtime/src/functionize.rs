@@ -210,6 +210,83 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
     })
 }
 
+/// Pre-pass: rewrite `Constraint(Call(claim_name, args))` body items
+/// into the inlined body of the called claim, with the args
+/// positionally substituted for the claim's first-line Membership
+/// params. Mirrors the Z3 translator's positional-claim-call
+/// handling (`runtime/src/translate/inline.rs` :: positional
+/// ClaimCall) at AST level.
+///
+/// `claim_lookup(name) -> Option<SchemaDecl>` provides claim
+/// resolution; the runtime passes a closure that consults
+/// `self.schemas`. If `name` isn't a known claim (or has too few
+/// params for the args, or the body would loop forever), the call
+/// is left as-is and the gate will refuse it later.
+///
+/// Recursion is bounded: each rewrite call consumes one frame of
+/// the visiting set, which prevents `claim A: B()` ↔ `claim B:
+/// A()` cycles from blowing up.
+pub fn inline_positional_calls(
+    body: Vec<BodyItem>,
+    claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
+) -> Vec<BodyItem> {
+    let mut visiting = HashSet::new();
+    inline_positional_calls_rec(body, claim_lookup, &mut visiting)
+}
+
+fn inline_positional_calls_rec(
+    body: Vec<BodyItem>,
+    claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
+    visiting: &mut HashSet<String>,
+) -> Vec<BodyItem> {
+    let mut out = Vec::with_capacity(body.len());
+    for item in body {
+        let BodyItem::Constraint(Expr::Call(name, args)) = &item else {
+            out.push(item); continue;
+        };
+        if visiting.contains(name.as_str()) {
+            // Recursive claim — leave call as-is (gate refuses).
+            out.push(item); continue;
+        }
+        let Some(claim) = claim_lookup(name) else {
+            out.push(item); continue;
+        };
+        // First N Memberships are the params (matches the
+        // Z3-side translator's convention).
+        let params: Vec<(String, String)> = claim.body.iter()
+            .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                Some((name.clone(), type_name.clone()))
+            } else { None })
+            .take(args.len())
+            .collect();
+        if params.len() != args.len() {
+            // Arity mismatch — leave call as-is.
+            out.push(item); continue;
+        }
+        // Substitute each param name with the corresponding arg
+        // expression throughout the called claim's body.
+        visiting.insert(name.clone());
+        let mut sub_body: Vec<BodyItem> = claim.body.iter()
+            .skip(params.len())
+            .cloned()
+            .collect();
+        for ((param_name, _param_type), arg) in params.iter().zip(args.iter()) {
+            sub_body = sub_body.into_iter().map(|it| match it {
+                BodyItem::Constraint(e) =>
+                    BodyItem::Constraint(substitute(&e, param_name, arg)),
+                BodyItem::Membership { name, type_name, pins } =>
+                    BodyItem::Membership { name, type_name, pins },
+                other => other,
+            }).collect();
+        }
+        // Recursively inline calls inside the substituted body.
+        let sub_body = inline_positional_calls_rec(sub_body, claim_lookup, visiting);
+        visiting.remove(name.as_str());
+        out.extend(sub_body);
+    }
+    out
+}
+
 /// Pure-AST classification: build a single "everything" Component
 /// covering every variable declared in the schema body (after
 /// flattening Passthroughs) that isn't already in `given`. If

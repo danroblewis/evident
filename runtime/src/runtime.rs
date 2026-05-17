@@ -2335,6 +2335,21 @@ impl EvidentRuntime {
         let passthrough_body = |claim_name: &str| -> Option<Vec<crate::ast::BodyItem>> {
             self.schemas.get(claim_name).map(|s| s.body.clone())
         };
+        // Pre-pass: inline positional claim calls
+        // (`sdl_pump_events(pump_eff)` → `pump_eff = LibCall(...)`).
+        // The Z3 translator does this at the assert step; we do it
+        // up-front at the AST level so the gate sees the inlined
+        // body. Bounded recursion via visiting-set inside.
+        let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
+            self.schemas.get(name).cloned()
+        };
+        let inlined_body = crate::functionize::inline_positional_calls(
+            schema.body.clone(), &claim_lookup);
+        let inlined_schema = crate::ast::SchemaDecl {
+            body: inlined_body,
+            ..schema.clone()
+        };
+        let schema = &inlined_schema;
         if let Some(why) = crate::functionize::gate_diagnostics(
             schema, &is_enum, &is_simple_record, &is_pure_passthrough)
         {
