@@ -326,6 +326,18 @@ pub fn try_extract_one_chain(
     }
     let mut vars: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    // First pass: which names have a substituting Eq constraint?
+    // We use this to skip Memberships that are declared but never
+    // assigned in the body (e.g. world_next.X fields THIS fsm
+    // doesn't write — they're carry-through, the scheduler keeps
+    // the prior-tick value).
+    let mut has_substitution: HashSet<String> = HashSet::new();
+    for item in &all_body {
+        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
+            if let Expr::Identifier(n) = lhs.as_ref() { has_substitution.insert(n.clone()); }
+            if let Expr::Identifier(n) = rhs.as_ref() { has_substitution.insert(n.clone()); }
+        }
+    }
     for item in &all_body {
         if let BodyItem::Membership { name, type_name, .. } = item {
             // FTI-bridged externals (e.g. `win ∈ SDL_Window`) are
@@ -335,6 +347,15 @@ pub fn try_extract_one_chain(
             // the bare name; field-dotted Identifiers resolve from
             // env at eval time.
             if is_external_type(type_name) { continue; }
+            // FSM world-write carry-through: `world_next.X` Memberships
+            // come from auto-expansion of `world ∈ World`. The current
+            // FSM might not write every `world_next.X` (e.g. keyboard
+            // writes `world.keys` but not `world.player`). Unwritten
+            // ones are carry-through: the scheduler's world merger
+            // keeps the prior value. Don't add them to the chain.
+            if name.starts_with("world_next.") && !has_substitution.contains(name) {
+                continue;
+            }
             if !given_keys.contains(name.as_str()) && seen.insert(name.clone()) {
                 vars.push(name.clone());
             }
