@@ -1765,6 +1765,14 @@ pub struct EvidentRuntime {
     /// set `EVIDENT_FUNCTIONIZE=0` to disable.
     functionize_cache: RefCell<HashMap<(String, Vec<String>),
                                        Option<crate::functionize::SubstitutionChain>>>,
+    /// Per-claim gate-pass cache: name → Some(inlined_schema) if the
+    /// claim passes `gate_diagnostics`, None if it's rejected. The
+    /// gate result is given-INDEPENDENT (depends only on the body
+    /// shape), so it can be cached once per claim regardless of
+    /// which given_keys downstream callers use. Pre-populated at
+    /// load time so first-tick solves carry zero analysis overhead.
+    functionize_gate_cache: RefCell<HashMap<String,
+                                            Option<crate::ast::SchemaDecl>>>,
     /// Counter incremented each time a cached entry is rebuilt due
     /// to a structural-signature mismatch. Useful for debugging
     /// performance issues (e.g. "every step is rebuilding — what
@@ -1971,6 +1979,7 @@ impl EvidentRuntime {
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
             functionize_cache: RefCell::new(HashMap::new()),
+            functionize_gate_cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
@@ -2117,6 +2126,21 @@ impl EvidentRuntime {
         // schema body don't apply to the new one.
         self.cache.borrow_mut().clear();
         self.solve_history.borrow_mut().clear();
+        // The function-izer's per-claim gate verdicts depend on the
+        // currently-loaded schemas (gate's `is_pure_passthrough`
+        // walks transitive references). Flush both caches so a
+        // re-load doesn't inherit stale verdicts.
+        self.functionize_gate_cache.borrow_mut().clear();
+        self.functionize_cache.borrow_mut().clear();
+        // Pre-classify every loaded claim at load time: run inline
+        // + gate once per name so first-tick solves carry zero
+        // function-izer analysis cost. Rejections are recorded as
+        // `None`; passes store the inlined schema for later chain
+        // extraction. The chain itself (per given-shape) is still
+        // built lazily on first solve — the cost we hoist here is
+        // the gate + inlining pass, which is what was showing up
+        // in Mario's regression.
+        self.precompile_function_izer();
         // Datatype registry entries reference the previous schema body
         // shape (field order / types). A new load could redefine a type
         // with a different shape; flush so we rebuild on first reference.
@@ -2179,6 +2203,107 @@ impl EvidentRuntime {
         Err(RuntimeError::Io(format!(
             "import not found: {:?} (tried verbatim, relative to source file, cwd, and ancestors of the source file)",
             import_path)))
+    }
+
+    /// Pre-compute the function-izer's per-claim gate result for
+    /// every loaded schema. Runs at load time so per-tick solves
+    /// don't pay the inline + gate cost on the hot path.
+    ///
+    /// What this DOES populate:
+    ///   * `functionize_gate_cache`: name → Some(inlined_schema) if
+    ///     the claim passes the gate, None if rejected.
+    ///
+    /// What this does NOT populate:
+    ///   * `functionize_cache`: the per-given-shape chain. That
+    ///     still happens lazily because the chain depends on which
+    ///     variables are in `given`, which we don't know until the
+    ///     caller actually solves.
+    ///
+    /// Effectively this turns the "first-tick is slow because the
+    /// gate has to run" failure mode into a "load-time spends an
+    /// extra few ms walking every schema once" — which moves the
+    /// cost off the steady-state hot path.
+    fn precompile_function_izer(&self) {
+        // Build the gate predicates the same way `try_functionize` does.
+        let is_enum = |type_name: &str| -> bool {
+            self.enums.by_name.borrow().contains_key(type_name)
+        };
+        fn is_simple_record_rec(
+            schemas: &HashMap<String, crate::ast::SchemaDecl>,
+            type_name: &str,
+            visiting: &mut std::collections::HashSet<String>,
+        ) -> bool {
+            if matches!(type_name, "Int" | "Real" | "Bool" | "String" | "Nat") { return true; }
+            for prefix in &["Seq(", "Set("] {
+                if let Some(inner) = type_name.strip_prefix(prefix).and_then(|s| s.strip_suffix(")")) {
+                    let inner = inner.trim();
+                    if is_simple_record_rec(schemas, inner, visiting) { return true; }
+                    if let Some(decl) = schemas.get(inner) {
+                        if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
+                    }
+                    return true;
+                }
+            }
+            let Some(decl) = schemas.get(type_name) else { return false };
+            if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
+            if decl.external { return true; }
+            if !visiting.insert(type_name.to_string()) { return false; }
+            let ok = decl.body.iter().all(|item| match item {
+                crate::ast::BodyItem::Membership { type_name: ft, .. } =>
+                    is_simple_record_rec(schemas, ft, visiting),
+                crate::ast::BodyItem::Constraint(_) => false,
+                crate::ast::BodyItem::Passthrough(_)
+                    | crate::ast::BodyItem::ClaimCall { .. } => false,
+                crate::ast::BodyItem::SubclaimDecl(_) => true,
+            });
+            visiting.remove(type_name);
+            ok
+        }
+        let is_simple_record = |type_name: &str| -> bool {
+            let mut visiting = std::collections::HashSet::new();
+            is_simple_record_rec(&self.schemas, type_name, &mut visiting)
+        };
+        fn is_pure_pt(
+            schemas: &HashMap<String, crate::ast::SchemaDecl>,
+            enums: &crate::translate::EnumRegistry,
+            claim_name: &str,
+            depth: usize,
+        ) -> bool {
+            if depth == 0 { return false; }
+            let Some(decl) = schemas.get(claim_name) else { return false };
+            let is_e = |n: &str| -> bool { enums.by_name.borrow().contains_key(n) };
+            let is_r = |n: &str| -> bool {
+                let mut v = std::collections::HashSet::new();
+                is_simple_record_rec(schemas, n, &mut v)
+            };
+            let is_p = |n: &str| -> bool { is_pure_pt(schemas, enums, n, depth - 1) };
+            crate::functionize::is_pure_assignment_body_xl(decl, &is_e, &is_r, &is_p)
+        }
+        let is_pure_passthrough = |claim_name: &str| -> bool {
+            is_pure_pt(&self.schemas, &self.enums, claim_name, 8)
+        };
+        let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
+            self.schemas.get(name).cloned()
+        };
+        let mut gate_cache = self.functionize_gate_cache.borrow_mut();
+        for (name, schema) in &self.schemas {
+            // Skip claims we've already analyzed (lazy path may have
+            // run first if some pre-load query happened).
+            if gate_cache.contains_key(name) { continue; }
+            let inlined_body = crate::functionize::inline_positional_calls(
+                schema.body.clone(), &claim_lookup);
+            let candidate = crate::ast::SchemaDecl {
+                body: inlined_body,
+                ..schema.clone()
+            };
+            if crate::functionize::gate_diagnostics(
+                &candidate, &is_enum, &is_simple_record, &is_pure_passthrough).is_none()
+            {
+                gate_cache.insert(name.clone(), Some(candidate));
+            } else {
+                gate_cache.insert(name.clone(), None);
+            }
+        }
     }
 
     /// Evaluate the named schema and return whether it's satisfiable
@@ -2393,32 +2518,52 @@ impl EvidentRuntime {
         let passthrough_body = |claim_name: &str| -> Option<Vec<crate::ast::BodyItem>> {
             self.schemas.get(claim_name).map(|s| s.body.clone())
         };
-        // Pre-pass: inline positional claim calls
-        // (`sdl_pump_events(pump_eff)` → `pump_eff = LibCall(...)`).
-        // The Z3 translator does this at the assert step; we do it
-        // up-front at the AST level so the gate sees the inlined
-        // body. Bounded recursion via visiting-set inside.
-        let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
-            self.schemas.get(name).cloned()
+        // Per-claim gate cache. Inlining + gate are given-INDEPENDENT,
+        // so we only do them once per claim lifetime. After this
+        // block, `schema` points to either:
+        //   * the inlined schema (gate passed → continue chain build), or
+        //   * `return None` (gate rejected; per-claim and per-shape
+        //     caches both record None so future calls skip work).
+        let inlined_schema_owned = {
+            let gate_cache = self.functionize_gate_cache.borrow();
+            gate_cache.get(name).cloned()
         };
-        let inlined_body = crate::functionize::inline_positional_calls(
-            schema.body.clone(), &claim_lookup);
-        let inlined_schema = crate::ast::SchemaDecl {
-            body: inlined_body,
-            ..schema.clone()
+        let inlined_schema = match inlined_schema_owned {
+            Some(Some(s)) => s,
+            Some(None) => {
+                // Previously rejected — also remember per-shape so
+                // the top-of-function cache check short-circuits.
+                self.functionize_cache.borrow_mut().insert(cache_key, None);
+                return None;
+            }
+            None => {
+                // First time we've seen this claim. Inline + gate.
+                let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
+                    self.schemas.get(name).cloned()
+                };
+                let inlined_body = crate::functionize::inline_positional_calls(
+                    schema.body.clone(), &claim_lookup);
+                let candidate = crate::ast::SchemaDecl {
+                    body: inlined_body,
+                    ..schema.clone()
+                };
+                if let Some(why) = crate::functionize::gate_diagnostics(
+                    &candidate, &is_enum, &is_simple_record, &is_pure_passthrough)
+                {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz] {}: rejected by gate ({})", name, why);
+                    }
+                    self.functionize_gate_cache.borrow_mut()
+                        .insert(name.to_string(), None);
+                    self.functionize_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                }
+                self.functionize_gate_cache.borrow_mut()
+                    .insert(name.to_string(), Some(candidate.clone()));
+                candidate
+            }
         };
         let schema = &inlined_schema;
-        if let Some(why) = crate::functionize::gate_diagnostics(
-            schema, &is_enum, &is_simple_record, &is_pure_passthrough)
-        {
-            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                eprintln!("[fz] {}: rejected by gate ({})", name, why);
-            }
-            // Cache the rejection so we don't re-run the gate
-            // every tick for claims that will never function-ize.
-            self.functionize_cache.borrow_mut().insert(cache_key, None);
-            return None;
-        }
 
         // Resolver: bare identifiers that aren't in env or given are
         // potentially enum-variant names (`Init`, `Done`, etc.). Look
