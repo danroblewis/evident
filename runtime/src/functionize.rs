@@ -114,6 +114,10 @@ pub fn extract_chain_xl(
         }
         all_body.extend(body);
     }
+    // Unroll ∀-over-Range constraints into flat copies. This must
+    // happen AFTER Passthrough flattening (so we catch ∀s in
+    // inlined bodies too) but BEFORE substitution extraction.
+    all_body = expand_foralls(all_body);
     let target: HashSet<&str> = component.vars.iter().map(|s| s.as_str()).collect();
 
     // Collect candidate substitutions: every `var = expr` or `expr = var`
@@ -204,6 +208,141 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
         BodyItem::Constraint(e) => Some(e),
         _ => None,
     })
+}
+
+/// Classify a non-Eq Constraint expression. Returns None when the
+/// constraint is acceptable (after unrolling), or Some(reason) when
+/// it's a hard refusal.
+fn constraint_kind(e: &Expr) -> Option<String> {
+    match e {
+        Expr::Binary(BinOp::Eq, _, _) => None,  // pure equality — fine
+        Expr::Forall(_, _, _)  => Some("Forall (non-static bounds)".into()),
+        Expr::Exists(_, _, _)  => Some("Exists".into()),
+        Expr::Binary(op, _, _) => Some(format!("non-Eq Binary op {:?}", op)),
+        Expr::Ternary(_, _, _) => Some("top-level Ternary".into()),
+        Expr::Match(_, _)      => Some("top-level Match".into()),
+        Expr::Identifier(_)    => Some("bare-identifier constraint".into()),
+        Expr::Call(name, _)    => Some(format!("body Call {}", name)),
+        _                      => Some("non-Eq Constraint".into()),
+    }
+}
+
+/// Substitute every `Expr::Identifier(name)` in `e` with `value`.
+/// Returns a new Expr. Used to unroll ∀-bound variables.
+pub fn substitute(e: &Expr, name: &str, value: &Expr) -> Expr {
+    match e {
+        Expr::Identifier(s) if s == name => value.clone(),
+        Expr::Identifier(_) | Expr::Int(_) | Expr::Real(_)
+            | Expr::Bool(_) | Expr::Str(_) => e.clone(),
+        Expr::Binary(op, l, r) => Expr::Binary(op.clone(),
+            Box::new(substitute(l, name, value)),
+            Box::new(substitute(r, name, value))),
+        Expr::Not(x) => Expr::Not(Box::new(substitute(x, name, value))),
+        Expr::Ternary(c, a, b) => Expr::Ternary(
+            Box::new(substitute(c, name, value)),
+            Box::new(substitute(a, name, value)),
+            Box::new(substitute(b, name, value))),
+        Expr::Call(n, args) => Expr::Call(n.clone(),
+            args.iter().map(|a| substitute(a, name, value)).collect()),
+        Expr::Field(x, f) => Expr::Field(Box::new(substitute(x, name, value)), f.clone()),
+        Expr::Index(s, i) => Expr::Index(
+            Box::new(substitute(s, name, value)),
+            Box::new(substitute(i, name, value))),
+        Expr::Cardinality(x) => Expr::Cardinality(Box::new(substitute(x, name, value))),
+        Expr::SeqLit(items) => Expr::SeqLit(items.iter()
+            .map(|a| substitute(a, name, value)).collect()),
+        Expr::SetLit(items) => Expr::SetLit(items.iter()
+            .map(|a| substitute(a, name, value)).collect()),
+        Expr::Tuple(items) => Expr::Tuple(items.iter()
+            .map(|a| substitute(a, name, value)).collect()),
+        Expr::InExpr(a, b) => Expr::InExpr(
+            Box::new(substitute(a, name, value)),
+            Box::new(substitute(b, name, value))),
+        Expr::Range(a, b) => Expr::Range(
+            Box::new(substitute(a, name, value)),
+            Box::new(substitute(b, name, value))),
+        Expr::Forall(vars, range, body) => {
+            // Don't substitute through a binder that shadows the name.
+            if vars.iter().any(|v| v == name) { e.clone() }
+            else {
+                Expr::Forall(vars.clone(),
+                    Box::new(substitute(range, name, value)),
+                    Box::new(substitute(body, name, value)))
+            }
+        }
+        Expr::Exists(vars, range, body) => {
+            if vars.iter().any(|v| v == name) { e.clone() }
+            else {
+                Expr::Exists(vars.clone(),
+                    Box::new(substitute(range, name, value)),
+                    Box::new(substitute(body, name, value)))
+            }
+        }
+        Expr::Match(scrut, arms) => Expr::Match(
+            Box::new(substitute(scrut, name, value)),
+            arms.iter().map(|arm| crate::ast::MatchArm {
+                pattern: arm.pattern.clone(),
+                body: Box::new(substitute(&arm.body, name, value)),
+            }).collect()),
+        Expr::Matches(scrut, pat) => Expr::Matches(
+            Box::new(substitute(scrut, name, value)),
+            pat.clone()),
+    }
+}
+
+/// Try to evaluate an `Expr::Int` literal or simple arithmetic on
+/// literals to a concrete i64. Used to resolve `∀ i ∈ {lo..hi}` bounds.
+fn try_eval_const_int(e: &Expr) -> Option<i64> {
+    match e {
+        Expr::Int(n) => Some(*n),
+        Expr::Binary(BinOp::Add, l, r) =>
+            Some(try_eval_const_int(l)? + try_eval_const_int(r)?),
+        Expr::Binary(BinOp::Sub, l, r) =>
+            Some(try_eval_const_int(l)? - try_eval_const_int(r)?),
+        Expr::Binary(BinOp::Mul, l, r) =>
+            Some(try_eval_const_int(l)? * try_eval_const_int(r)?),
+        _ => None,
+    }
+}
+
+/// Unroll a body item that is `∀ var ∈ {lo..hi} : inner_body` into
+/// N copies of `inner_body[var/i]` as fresh `BodyItem::Constraint`s.
+/// Returns None if the Forall isn't of that shape or bounds aren't
+/// statically resolvable.
+fn try_unroll_forall_range(e: &Expr) -> Option<Vec<BodyItem>> {
+    let Expr::Forall(vars, range, body) = e else { return None; };
+    if vars.len() != 1 { return None; }
+    let Expr::Range(lo, hi) = range.as_ref() else { return None; };
+    let lo_v = try_eval_const_int(lo)?;
+    let hi_v = try_eval_const_int(hi)?;
+    let var = &vars[0];
+    let mut out = Vec::with_capacity((hi_v - lo_v + 1).max(0) as usize);
+    for i in lo_v..=hi_v {
+        let inst = substitute(body, var, &Expr::Int(i));
+        out.push(BodyItem::Constraint(inst));
+    }
+    Some(out)
+}
+
+/// Expand a body by unrolling any `∀ i ∈ {lo..hi}` constraints into
+/// N copies of their inner body. Returns a new vector with the
+/// Forall items replaced by their unrolled instances. Other items
+/// pass through.
+fn expand_foralls(body: Vec<BodyItem>) -> Vec<BodyItem> {
+    let mut out = Vec::with_capacity(body.len());
+    for item in body {
+        match &item {
+            BodyItem::Constraint(e) => {
+                if let Some(unrolled) = try_unroll_forall_range(e) {
+                    out.extend(expand_foralls(unrolled));
+                    continue;
+                }
+                out.push(item);
+            }
+            _ => out.push(item),
+        }
+    }
+    out
 }
 
 /// Schema-wide checks: every equality in the schema body (plus
@@ -319,17 +458,23 @@ pub fn gate_diagnostics(
         match item {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
             BodyItem::Constraint(other) => {
-                let kind = match other {
-                    Expr::Forall(_, _, _)  => "Forall",
-                    Expr::Exists(_, _, _)  => "Exists",
-                    Expr::Binary(op, _, _) => return Some(format!("non-Eq Binary op {:?}", op)),
-                    Expr::Ternary(_, _, _) => "top-level Ternary",
-                    Expr::Match(_, _)      => "top-level Match",
-                    Expr::Identifier(_)    => "bare-identifier constraint (claim ref)",
-                    Expr::Call(name, _)    => return Some(format!("body Call {}", name)),
-                    _ => "non-Eq Constraint",
-                };
-                return Some(kind.to_string());
+                // Forall over a static Range with literal bounds is
+                // OK — it unrolls at extract time. Check that the
+                // unrolled body is itself only equalities.
+                if let Some(unrolled) = try_unroll_forall_range(other) {
+                    for sub in &unrolled {
+                        if let BodyItem::Constraint(e) = sub {
+                            if let Some(why) = constraint_kind(e) {
+                                return Some(format!("Forall body: {}", why));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if let Some(why) = constraint_kind(other) {
+                    return Some(why);
+                }
+                continue;
             }
             BodyItem::Membership { name, type_name, .. } => {
                 let primitive = matches!(type_name.as_str(),
