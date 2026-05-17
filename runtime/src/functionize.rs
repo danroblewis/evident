@@ -217,25 +217,28 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
 /// handling (`runtime/src/translate/inline.rs` :: positional
 /// ClaimCall) at AST level.
 ///
-/// `claim_lookup(name) -> Option<SchemaDecl>` provides claim
-/// resolution; the runtime passes a closure that consults
-/// `self.schemas`. If `name` isn't a known claim (or has too few
-/// params for the args, or the body would loop forever), the call
-/// is left as-is and the gate will refuse it later.
+/// Two dispatch shapes are handled:
+/// 1. Plain claim call: `claim_name(args)` — args substitute for
+///    the claim's first N Memberships, body is inlined.
+/// 2. Subschema dispatch: `recv.method(args)` — `recv` is a
+///    Membership of some user type T, `method` is a SubclaimDecl
+///    inside T's body. Args substitute for method's params; bare
+///    identifiers in method's body that match T's top-level
+///    Memberships get prefixed with `recv.` (field-rebinding).
 ///
-/// Recursion is bounded: each rewrite call consumes one frame of
-/// the visiting set, which prevents `claim A: B()` ↔ `claim B:
-/// A()` cycles from blowing up.
+/// `claim_lookup(name) -> Option<SchemaDecl>` provides claim
+/// resolution. Recursion is bounded via the visiting set.
 pub fn inline_positional_calls(
     body: Vec<BodyItem>,
     claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
 ) -> Vec<BodyItem> {
     let mut visiting = HashSet::new();
-    inline_positional_calls_rec(body, claim_lookup, &mut visiting)
+    inline_positional_calls_rec(body.clone(), &body, claim_lookup, &mut visiting)
 }
 
 fn inline_positional_calls_rec(
     body: Vec<BodyItem>,
+    outer_body: &[BodyItem],
     claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
     visiting: &mut HashSet<String>,
 ) -> Vec<BodyItem> {
@@ -248,11 +251,86 @@ fn inline_positional_calls_rec(
             // Recursive claim — leave call as-is (gate refuses).
             out.push(item); continue;
         }
+        // Method-style: `recv.method(args)` — receiver-prefixed.
+        if let Some(dot_idx) = name.find('.') {
+            let recv_name = &name[..dot_idx];
+            let method_name = &name[dot_idx + 1..];
+            // Find recv's declared type in the outer body.
+            let recv_type = outer_body.iter().find_map(|it| match it {
+                BodyItem::Membership { name: n, type_name, .. } if n == recv_name =>
+                    Some(type_name.clone()),
+                _ => None,
+            });
+            if let Some(rt) = recv_type {
+                if let Some(type_decl) = claim_lookup(&rt) {
+                    // Find the subclaim.
+                    let subclaim = type_decl.body.iter().find_map(|it| match it {
+                        BodyItem::SubclaimDecl(s) if s.name == method_name => Some(s),
+                        _ => None,
+                    });
+                    if let Some(sub) = subclaim {
+                        // Subclaim's first N Memberships are
+                        // positional params. Map args to them.
+                        let params: Vec<(String, String)> = sub.body.iter()
+                            .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
+                                Some((name.clone(), type_name.clone()))
+                            } else { None })
+                            .take(args.len())
+                            .collect();
+                        if params.len() == args.len() {
+                            // Field-rebinding: bare identifiers in the
+                            // subclaim body that match a top-level
+                            // Membership of `rt` get prefixed with
+                            // `recv_name.`. Skip names that are subclaim
+                            // params or auto-output (`out`) — those are
+                            // resolved by arg-substitution below.
+                            let parent_fields: Vec<String> = type_decl.body.iter()
+                                .filter_map(|i| match i {
+                                    BodyItem::Membership { name, .. } => Some(name.clone()),
+                                    _ => None,
+                                })
+                                .collect();
+                            let param_names: HashSet<&str> = params.iter()
+                                .map(|(n, _)| n.as_str()).collect();
+                            let mut sub_body: Vec<BodyItem> = sub.body.iter()
+                                .skip(params.len())
+                                .cloned()
+                                .collect();
+                            // Phase 1: field-rebind parent fields → recv.field.
+                            for f in &parent_fields {
+                                if param_names.contains(f.as_str()) { continue; }
+                                let target = Expr::Identifier(format!("{recv_name}.{f}"));
+                                sub_body = sub_body.into_iter().map(|it| match it {
+                                    BodyItem::Constraint(e) =>
+                                        BodyItem::Constraint(substitute(&e, f, &target)),
+                                    other => other,
+                                }).collect();
+                            }
+                            // Phase 2: substitute params for args.
+                            visiting.insert(name.clone());
+                            for ((param_name, _param_type), arg) in params.iter().zip(args.iter()) {
+                                sub_body = sub_body.into_iter().map(|it| match it {
+                                    BodyItem::Constraint(e) =>
+                                        BodyItem::Constraint(substitute(&e, param_name, arg)),
+                                    other => other,
+                                }).collect();
+                            }
+                            let sub_body = inline_positional_calls_rec(
+                                sub_body, outer_body, claim_lookup, visiting);
+                            visiting.remove(name.as_str());
+                            out.extend(sub_body);
+                            continue;
+                        }
+                    }
+                }
+            }
+            // Couldn't resolve — leave call as-is.
+            out.push(item); continue;
+        }
+        // Plain claim-name call.
         let Some(claim) = claim_lookup(name) else {
             out.push(item); continue;
         };
-        // First N Memberships are the params (matches the
-        // Z3-side translator's convention).
         let params: Vec<(String, String)> = claim.body.iter()
             .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
                 Some((name.clone(), type_name.clone()))
@@ -260,11 +338,8 @@ fn inline_positional_calls_rec(
             .take(args.len())
             .collect();
         if params.len() != args.len() {
-            // Arity mismatch — leave call as-is.
             out.push(item); continue;
         }
-        // Substitute each param name with the corresponding arg
-        // expression throughout the called claim's body.
         visiting.insert(name.clone());
         let mut sub_body: Vec<BodyItem> = claim.body.iter()
             .skip(params.len())
@@ -274,13 +349,11 @@ fn inline_positional_calls_rec(
             sub_body = sub_body.into_iter().map(|it| match it {
                 BodyItem::Constraint(e) =>
                     BodyItem::Constraint(substitute(&e, param_name, arg)),
-                BodyItem::Membership { name, type_name, pins } =>
-                    BodyItem::Membership { name, type_name, pins },
                 other => other,
             }).collect();
         }
-        // Recursively inline calls inside the substituted body.
-        let sub_body = inline_positional_calls_rec(sub_body, claim_lookup, visiting);
+        let sub_body = inline_positional_calls_rec(
+            sub_body, outer_body, claim_lookup, visiting);
         visiting.remove(name.as_str());
         out.extend(sub_body);
     }
