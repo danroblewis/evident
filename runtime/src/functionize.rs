@@ -232,8 +232,39 @@ pub fn inline_positional_calls(
     body: Vec<BodyItem>,
     claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
 ) -> Vec<BodyItem> {
+    // Phase 1: flatten Passthroughs. Each `..ClaimName` is replaced
+    // by the referenced claim's body items inline. This makes
+    // downstream gate / chain-extract passes see a flat body,
+    // including pinned seq lengths declared inside Level / Jumpable /
+    // etc. types that the FSM body composes via passthrough.
+    let body = flatten_passthroughs(body, claim_lookup);
     let mut visiting = HashSet::new();
     inline_positional_calls_rec(body.clone(), &body, claim_lookup, &mut visiting)
+}
+
+fn flatten_passthroughs(
+    body: Vec<BodyItem>,
+    claim_lookup: &dyn Fn(&str) -> Option<SchemaDecl>,
+) -> Vec<BodyItem> {
+    let mut walked: HashSet<String> = HashSet::new();
+    let mut out: Vec<BodyItem> = Vec::with_capacity(body.len());
+    let mut queue: Vec<BodyItem> = body;
+    while let Some(item) = queue.pop() {
+        match item {
+            BodyItem::Passthrough(name) => {
+                if !walked.insert(name.clone()) { continue; }
+                if let Some(decl) = claim_lookup(&name) {
+                    // Prepend so we keep declaration order intact.
+                    let mut sub = decl.body;
+                    sub.reverse();
+                    queue.extend(sub);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.reverse();
+    out
 }
 
 fn inline_positional_calls_rec(
@@ -583,17 +614,110 @@ fn try_unroll_forall_range(e: &Expr) -> Option<Vec<BodyItem>> {
     Some(out)
 }
 
+/// Try to unroll `∀ v ∈ seq` or `∀ (v1, v2, …) ∈ coindexed(s1, s2, …)`
+/// using statically-known seq lengths from `lengths`.
+///
+/// Range form (above) handles `∀ i ∈ {lo..hi}`. This handler covers:
+///   * `∀ x ∈ seq` — substitute `x` with `Index(seq, i)`.
+///   * `∀ (a, b, …) ∈ coindexed(sa, sb, …)` — substitute each
+///     binding with `Index(seqK, i)` for i in 0..N.
+fn try_unroll_forall_seq(
+    e: &Expr,
+    lengths: &HashMap<String, i64>,
+) -> Option<Vec<BodyItem>> {
+    let Expr::Forall(vars, range, body) = e else { return None; };
+    // Case 1: ∀ x ∈ seq_identifier.
+    if vars.len() == 1 {
+        if let Expr::Identifier(seq_name) = range.as_ref() {
+            let n = *lengths.get(seq_name)?;
+            let var = &vars[0];
+            let mut out = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let idx_expr = Expr::Index(
+                    Box::new(Expr::Identifier(seq_name.clone())),
+                    Box::new(Expr::Int(i)));
+                let inst = substitute(body, var, &idx_expr);
+                out.push(BodyItem::Constraint(inst));
+            }
+            return Some(out);
+        }
+    }
+    // Case 2: ∀ (a, b, …) ∈ coindexed(sa, sb, …).
+    if let Expr::Call(builtin, seqs) = range.as_ref() {
+        if builtin == "coindexed" && seqs.len() == vars.len() && !seqs.is_empty() {
+            // Resolve every operand seq to an Identifier with a known length.
+            let mut names: Vec<String> = Vec::with_capacity(seqs.len());
+            let mut n: Option<i64> = None;
+            for s in seqs {
+                let Expr::Identifier(nm) = s else { return None; };
+                let &this_n = lengths.get(nm)?;
+                match n {
+                    None => n = Some(this_n),
+                    Some(prev) if prev == this_n => {}
+                    _ => return None,  // length mismatch → punt to Z3.
+                }
+                names.push(nm.clone());
+            }
+            let n = n? as usize;
+            let mut out = Vec::with_capacity(n);
+            for i in 0..n {
+                let mut inst = (**body).clone();
+                for (var, seq_name) in vars.iter().zip(names.iter()) {
+                    let idx_expr = Expr::Index(
+                        Box::new(Expr::Identifier(seq_name.clone())),
+                        Box::new(Expr::Int(i as i64)));
+                    inst = substitute(&inst, var, &idx_expr);
+                }
+                out.push(BodyItem::Constraint(inst));
+            }
+            return Some(out);
+        }
+    }
+    None
+}
+
+/// Walk the body collecting statically-pinned seq lengths from
+/// `#seq = literal` or `literal = #seq` constraints. Used by the
+/// ∀-over-Seq / ∀-over-coindexed unroller.
+fn collect_seq_lengths(body: &[BodyItem]) -> HashMap<String, i64> {
+    let mut out = HashMap::new();
+    for item in body {
+        let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else { continue };
+        let try_pair = |a: &Expr, b: &Expr| -> Option<(String, i64)> {
+            let Expr::Cardinality(inner) = a else { return None; };
+            let Expr::Identifier(name) = inner.as_ref() else { return None; };
+            let n = try_eval_const_int(b)?;
+            Some((name.clone(), n))
+        };
+        if let Some((n, v)) = try_pair(lhs, rhs) { out.insert(n, v); continue; }
+        if let Some((n, v)) = try_pair(rhs, lhs) { out.insert(n, v); }
+    }
+    out
+}
+
 /// Expand a body by unrolling any `∀ i ∈ {lo..hi}` constraints into
 /// N copies of their inner body. Returns a new vector with the
 /// Forall items replaced by their unrolled instances. Other items
 /// pass through.
 fn expand_foralls(body: Vec<BodyItem>) -> Vec<BodyItem> {
+    let lengths = collect_seq_lengths(&body);
+    expand_foralls_with_lengths(body, &lengths)
+}
+
+fn expand_foralls_with_lengths(
+    body: Vec<BodyItem>,
+    lengths: &HashMap<String, i64>,
+) -> Vec<BodyItem> {
     let mut out = Vec::with_capacity(body.len());
     for item in body {
         match &item {
             BodyItem::Constraint(e) => {
                 if let Some(unrolled) = try_unroll_forall_range(e) {
-                    out.extend(expand_foralls(unrolled));
+                    out.extend(expand_foralls_with_lengths(unrolled, lengths));
+                    continue;
+                }
+                if let Some(unrolled) = try_unroll_forall_seq(e, lengths) {
+                    out.extend(expand_foralls_with_lengths(unrolled, lengths));
                     continue;
                 }
                 out.push(item);
@@ -713,14 +837,18 @@ pub fn gate_diagnostics(
         | crate::ast::Keyword::Type | crate::ast::Keyword::Fsm) {
         return Some(format!("keyword {:?}", schema.keyword));
     }
+    let lengths = collect_seq_lengths(&schema.body);
     for item in &schema.body {
         match item {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
             BodyItem::Constraint(other) => {
-                // Forall over a static Range with literal bounds is
-                // OK — it unrolls at extract time. Check that the
-                // unrolled body is itself only equalities.
-                if let Some(unrolled) = try_unroll_forall_range(other) {
+                // Forall over a static Range OR over a Seq/coindexed
+                // with statically-known lengths is OK — both unroll
+                // at extract time. Check that every unrolled body is
+                // itself only equalities.
+                let unrolled = try_unroll_forall_range(other)
+                    .or_else(|| try_unroll_forall_seq(other, &lengths));
+                if let Some(unrolled) = unrolled {
                     for sub in &unrolled {
                         if let BodyItem::Constraint(e) = sub {
                             if let Some(why) = constraint_kind(e) {
@@ -737,7 +865,7 @@ pub fn gate_diagnostics(
             }
             BodyItem::Membership { name, type_name, .. } => {
                 let primitive = matches!(type_name.as_str(),
-                    "Int" | "Real" | "Bool" | "String");
+                    "Int" | "Real" | "Bool" | "String" | "Nat");
                 if primitive { continue; }
                 if is_enum(type_name) { continue; }
                 if is_simple_record(type_name) { continue; }
