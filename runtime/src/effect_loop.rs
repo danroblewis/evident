@@ -1668,6 +1668,14 @@ fn run_multi_fsm(
                     );
                 }
             }
+            // Also expose state_var's CURRENT-TICK Value in fsm_view
+            // so the function-izer fast-path (which reads given, not
+            // pins) sees the state. Z3 ignores duplicate equality
+            // constraints, so this is safe to leave in alongside the
+            // existing Datatype pin.
+            if let (Some(state_name), Some(state_v)) = (&fsm.state_var, &fsm_rt[idx].current_state_v) {
+                fsm_view.insert(state_name.clone(), state_v.clone());
+            }
             let solve_input: &HashMap<String, Value> = &fsm_view;
 
             let solve_t0 = std::time::Instant::now();

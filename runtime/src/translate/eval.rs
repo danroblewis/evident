@@ -820,7 +820,37 @@ pub fn classify_components(
                     }
                 }
                 Var::EnumValue { .. } | Var::EnumCtor { .. } => {} // Enum constant; can't differ.
-                _ => { skip_due_to_unsupported_var = true; }
+                Var::SeqVar { arr, len, .. } | Var::DatatypeSeqVar { arr, len, .. } => {
+                    // A Seq's "value" is its length + array contents at
+                    // in-range indices. The array can have arbitrary
+                    // values outside [0, len), so naive `arr ≠ model_arr`
+                    // is trivially SAT (Z3 picks a different out-of-range
+                    // index). Encode the in-range existential explicitly:
+                    //   len ≠ model_len  ∨  ∃ k ∈ [0, len). arr[k] ≠ model_arr[k]
+                    let len_val = model.eval(len, true);
+                    let arr_val = model.eval(arr, true);
+                    if let Some(lv) = &len_val {
+                        disjuncts.push(len._eq(lv).not());
+                    }
+                    if let Some(av) = &arr_val {
+                        let k = z3::ast::Int::fresh_const(ctx, "fz_k");
+                        let zero = z3::ast::Int::from_i64(ctx, 0);
+                        let lo = zero.le(&k);
+                        let hi = k.lt(len);
+                        let in_range = z3::ast::Bool::and(ctx, &[&lo, &hi]);
+                        let elem_diff = arr.select(&k)._eq(&av.select(&k)).not();
+                        // Existential `∃k. P(k)` over Int is encoded as
+                        // a fresh `k` AST plus `P(k)` asserted; Z3 treats
+                        // free constants existentially in the assertion
+                        // context.
+                        disjuncts.push(z3::ast::Bool::and(ctx, &[&in_range, &elem_diff]));
+                    }
+                }
+                Var::SetVar { set, .. } | Var::DatatypeSetVar { set, .. } => {
+                    if let Some(val) = model.eval(set, true) {
+                        disjuncts.push(set._eq(&val).not());
+                    }
+                }
             }
         }
         let functional = if skip_due_to_unsupported_var {

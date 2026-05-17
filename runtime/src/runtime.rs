@@ -2231,7 +2231,7 @@ impl EvidentRuntime {
     fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
                        given: &HashMap<String, Value>) -> Option<QueryResult>
     {
-        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_xl,
+        use crate::functionize::{evaluate_chain_with_resolvers, extract_chain_xl,
                                  is_pure_assignment_body_xl,
                                  SubstitutionChain};
 
@@ -2362,6 +2362,23 @@ impl EvidentRuntime {
             })
         };
 
+        // Ctor resolver: `Println("hello")`, `Exit(0)` etc. The body
+        // produces `Expr::Call(name, args)`; we evaluate the args and
+        // build a `Value::Enum` with the payload.
+        let ctor_resolver = |ident: &str, args: &[Value]| -> Option<Value> {
+            let by_variant = self.enums.by_variant.borrow();
+            let (enum_name, _idx) = by_variant.get(ident)?;
+            let by_name = self.enums.by_name.borrow();
+            let (_, variants) = by_name.get(enum_name)?;
+            let variant = variants.iter().find(|v| v.name == ident)?;
+            if variant.fields.len() != args.len() { return None; }
+            Some(Value::Enum {
+                enum_name: enum_name.clone(),
+                variant: ident.to_string(),
+                fields: args.to_vec(),
+            })
+        };
+
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
         let cache_key = (name.to_string(), given_keys);
@@ -2371,7 +2388,7 @@ impl EvidentRuntime {
             let cache = self.functionize_cache.borrow();
             if let Some(entry) = cache.get(&cache_key) {
                 let Some(chain) = entry.as_ref() else { return None; };
-                let bindings = evaluate_chain_with_resolver(chain, given, &resolver)?;
+                let bindings = evaluate_chain_with_resolvers(chain, given, &resolver, &ctor_resolver)?;
                 let mut out = HashMap::new();
                 for (k, v) in bindings { out.insert(k, v); }
                 return Some(QueryResult { satisfied: true, bindings: out });
@@ -2424,7 +2441,7 @@ impl EvidentRuntime {
         }
         // Evaluate once to sanity-check; if eval fails we don't cache
         // the chain (the eval failure mode is "unsupported Expr variant").
-        let bindings = match evaluate_chain_with_resolver(&chain, given, &resolver) {
+        let bindings = match evaluate_chain_with_resolvers(&chain, given, &resolver, &ctor_resolver) {
             Some(b) => b,
             None => {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -2938,16 +2955,19 @@ impl EvidentRuntime {
         let schema = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         // Function-izer fast path on the SCHEDULER side. The
-        // scheduler already passes realistic per-tick given values
-        // (state, last_results, _world.X). When `pins` is empty
-        // (FSMs without enum-typed state pairs — e.g. Mario's
-        // world-only FSMs), we can route through the function-izer
-        // directly with the given as-is. When `pins` carries Z3
-        // Datatype state pinning, v1 falls through to Z3 (a Datatype
-        // → Value::Enum conversion is its own piece of work).
+        // scheduler passes realistic per-tick given values (state,
+        // last_results, _world.X). State-pair FSMs ALSO get a
+        // `pins` array with the state pinned as a Z3 Datatype —
+        // we used to bail in that case, but the scheduler now also
+        // surfaces the state's Value form in `given` (see
+        // `effect_loop.rs::run_with_ctx` around the
+        // `current_state_v` insertion). So the function-izer can
+        // fire even with non-empty pins; the pinned Datatype is
+        // simply redundant with the given Value. If function-izer
+        // rejects, fall through to Z3 with `pins` intact.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s == "1").unwrap_or(false);
-        if functionize_on && pins.is_empty() {
+        if functionize_on {
             if let Some(result) = self.try_functionize(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                     eprintln!("[fz] HIT (scheduler) {}", claim_name);

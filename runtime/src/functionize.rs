@@ -532,6 +532,15 @@ fn mentions(e: &Expr, name: &str) -> bool {
 /// no-op resolver (which behaves like the env-only lookup).
 pub type IdentResolver<'a> = dyn Fn(&str) -> Option<Value> + 'a;
 
+/// Resolves constructor calls — names with positional arg values —
+/// to `Value::Enum`. Used during native evaluation when the body
+/// contains a `Ctor(arg, ...)` call like `Println("hello")`. The
+/// resolver looks up the variant in the enum registry and builds a
+/// `Value::Enum` with the given fields.
+pub type CtorResolver<'a> = dyn Fn(&str, &[Value]) -> Option<Value> + 'a;
+
+fn no_ctor(_: &str, _: &[Value]) -> Option<Value> { None }
+
 /// Evaluate a substitution chain against a given binding map. Returns
 /// the bindings the chain produces (input bindings echoed + each
 /// substitution's computed value).
@@ -554,9 +563,21 @@ pub fn evaluate_chain_with_resolver(
     given: &HashMap<String, Value>,
     resolver: &IdentResolver<'_>,
 ) -> Option<HashMap<String, Value>> {
+    evaluate_chain_with_resolvers(chain, given, resolver, &no_ctor)
+}
+
+/// Full variant: accepts both an identifier resolver (for bare
+/// nullary enum variants) and a constructor resolver (for variant
+/// constructor calls with payload values).
+pub fn evaluate_chain_with_resolvers(
+    chain: &SubstitutionChain,
+    given: &HashMap<String, Value>,
+    resolver: &IdentResolver<'_>,
+    ctor: &CtorResolver<'_>,
+) -> Option<HashMap<String, Value>> {
     let mut env: HashMap<String, Value> = given.clone();
     for step in &chain.steps {
-        let value = eval_expr(&step.expr, &env, resolver)?;
+        let value = eval_expr(&step.expr, &env, resolver, ctor)?;
         if let Some(pinned) = given.get(&step.var) {
             if pinned != &value { return None; }   // UNSAT — body conflicts with pin.
         }
@@ -567,8 +588,8 @@ pub fn evaluate_chain_with_resolver(
     // constrains). Failure here means the body's constraint conflicts
     // with the given values → UNSAT.
     for (lhs, rhs) in &chain.checks {
-        let lv = eval_expr(lhs, &env, resolver)?;
-        let rv = eval_expr(rhs, &env, resolver)?;
+        let lv = eval_expr(lhs, &env, resolver, ctor)?;
+        let rv = eval_expr(rhs, &env, resolver, ctor)?;
         if lv != rv { return None; }
     }
     Some(env)
@@ -581,6 +602,7 @@ fn eval_expr(
     e: &Expr,
     env: &HashMap<String, Value>,
     resolver: &IdentResolver<'_>,
+    ctor: &CtorResolver<'_>,
 ) -> Option<Value> {
     match e {
         Expr::Int(n)  => Some(Value::Int(*n)),
@@ -591,21 +613,21 @@ fn eval_expr(
             env.get(name).cloned().or_else(|| resolver(name))
         }
         Expr::Binary(op, l, r) => {
-            let lv = eval_expr(l, env, resolver)?;
-            let rv = eval_expr(r, env, resolver)?;
+            let lv = eval_expr(l, env, resolver, ctor)?;
+            let rv = eval_expr(r, env, resolver, ctor)?;
             eval_binop(op.clone(), &lv, &rv)
         }
         Expr::Not(x) => {
-            let v = eval_expr(x, env, resolver)?;
+            let v = eval_expr(x, env, resolver, ctor)?;
             match v { Value::Bool(b) => Some(Value::Bool(!b)), _ => None }
         }
         Expr::Ternary(c, a, b) => {
-            let cv = eval_expr(c, env, resolver)?;
+            let cv = eval_expr(c, env, resolver, ctor)?;
             let Value::Bool(cb) = cv else { return None };
-            if cb { eval_expr(a, env, resolver) } else { eval_expr(b, env, resolver) }
+            if cb { eval_expr(a, env, resolver, ctor) } else { eval_expr(b, env, resolver, ctor) }
         }
         Expr::Match(scrut, arms) => {
-            let scrut_val = eval_expr(scrut, env, resolver)?;
+            let scrut_val = eval_expr(scrut, env, resolver, ctor)?;
             let Value::Enum { variant: scr_variant, fields: scr_fields, .. } = &scrut_val
                 else { return None };
             for arm in arms {
@@ -620,14 +642,130 @@ fn eval_expr(
                                 sub_env.insert(bind_name.clone(), field.clone());
                             }
                         }
-                        return eval_expr(&arm.body, &sub_env, resolver);
+                        return eval_expr(&arm.body, &sub_env, resolver, ctor);
                     }
                     crate::ast::MatchPattern::Wildcard => {
-                        return eval_expr(&arm.body, env, resolver);
+                        return eval_expr(&arm.body, env, resolver, ctor);
                     }
                 }
             }
             None  // no arm matched
+        }
+        Expr::SeqLit(items) => {
+            // Evaluate each item; classify the resulting Vec into the
+            // appropriate Value::Seq* variant by first-element type.
+            // Empty → SeqInt([]) (caller can coerce; SeqEnum vs SeqInt
+            // for an empty sequence is opaque at this layer — Z3
+            // equality only inspects len for empty seqs).
+            let mut vals = Vec::with_capacity(items.len());
+            for item in items {
+                vals.push(eval_expr(item, env, resolver, ctor)?);
+            }
+            match vals.first() {
+                None                  => {
+                    // Empty SeqLit: element type is determined by the
+                    // declared sort of the receiving variable, which
+                    // the value-level evaluator doesn't track. Fall
+                    // through to Z3 — only one extra call's worth of
+                    // overhead, and only for `s = ⟨⟩` shapes which
+                    // are rare in real programs.
+                    return None;
+                }
+                Some(Value::Int(_))   => {
+                    let mut out = Vec::with_capacity(vals.len());
+                    for v in vals {
+                        if let Value::Int(n) = v { out.push(n) } else { return None }
+                    }
+                    Some(Value::SeqInt(out))
+                }
+                Some(Value::Bool(_))  => {
+                    let mut out = Vec::with_capacity(vals.len());
+                    for v in vals {
+                        if let Value::Bool(b) = v { out.push(b) } else { return None }
+                    }
+                    Some(Value::SeqBool(out))
+                }
+                Some(Value::Str(_))   => {
+                    let mut out = Vec::with_capacity(vals.len());
+                    for v in vals {
+                        if let Value::Str(s) = v { out.push(s) } else { return None }
+                    }
+                    Some(Value::SeqStr(out))
+                }
+                Some(Value::Enum { .. }) => Some(Value::SeqEnum(vals)),
+                _ => None,
+            }
+        }
+        Expr::Call(name, args) => {
+            // Constructor call. Evaluate args, then ask the ctor
+            // resolver to build a `Value::Enum`. (`coindexed`/`edges`
+            // builtins don't appear in chain expression position.)
+            let mut arg_vals = Vec::with_capacity(args.len());
+            for a in args {
+                arg_vals.push(eval_expr(a, env, resolver, ctor)?);
+            }
+            ctor(name, &arg_vals)
+        }
+        Expr::Index(target, idx) => {
+            // Sequence indexing: `seq[i]`. Evaluate both, select
+            // out the element. Out-of-bounds returns None
+            // (eval falls through to Z3).
+            let target_val = eval_expr(target, env, resolver, ctor)?;
+            let Value::Int(i) = eval_expr(idx, env, resolver, ctor)? else { return None };
+            if i < 0 { return None; }
+            let i = i as usize;
+            match target_val {
+                Value::SeqInt(v)   => v.get(i).map(|n| Value::Int(*n)),
+                Value::SeqBool(v)  => v.get(i).map(|b| Value::Bool(*b)),
+                Value::SeqStr(v)   => v.get(i).map(|s| Value::Str(s.clone())),
+                Value::SeqEnum(v)  => v.get(i).cloned(),
+                _ => None,
+            }
+        }
+        Expr::Cardinality(target) => {
+            let v = eval_expr(target, env, resolver, ctor)?;
+            match v {
+                Value::SeqInt(v)   => Some(Value::Int(v.len() as i64)),
+                Value::SeqBool(v)  => Some(Value::Int(v.len() as i64)),
+                Value::SeqStr(v)   => Some(Value::Int(v.len() as i64)),
+                Value::SeqEnum(v)  => Some(Value::Int(v.len() as i64)),
+                Value::SeqComposite(v) => Some(Value::Int(v.len() as i64)),
+                Value::SetInt(v)   => Some(Value::Int(v.len() as i64)),
+                Value::SetBool(v)  => Some(Value::Int(v.len() as i64)),
+                Value::SetStr(v)   => Some(Value::Int(v.len() as i64)),
+                _ => None,
+            }
+        }
+        Expr::Field(target, name) => {
+            // Field access on an Index'd composite-element value, etc.
+            // Bare-identifier-prefixed fields fold into a dotted
+            // Identifier at parse time and resolve via env. This
+            // path handles `seq[i].field` style.
+            let target_val = eval_expr(target, env, resolver, ctor)?;
+            match target_val {
+                Value::Composite(map) => map.get(name).cloned(),
+                Value::Enum { variant: _, fields, enum_name: _ } => {
+                    // Indexing fields by name on an enum value isn't
+                    // directly supported — enum payload fields are
+                    // positional. Refuse.
+                    let _ = fields;
+                    None
+                }
+                _ => None,
+            }
+        }
+        Expr::Matches(scrut, pattern) => {
+            // Constructor-recognizer: does `e`'s variant equal Ctor?
+            // Payload bindings are ignored — pattern is just for the
+            // tag. We accept any binds shape and only check the name.
+            let scrut_val = eval_expr(scrut, env, resolver, ctor)?;
+            let Value::Enum { variant, .. } = scrut_val else { return None };
+            match pattern {
+                crate::ast::MatchPattern::Ctor { name, .. } => {
+                    Some(Value::Bool(&variant == name))
+                }
+                crate::ast::MatchPattern::Wildcard => Some(Value::Bool(true)),
+            }
         }
         _ => None,  // unsupported variant in v1
     }
