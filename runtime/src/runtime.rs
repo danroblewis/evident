@@ -2254,11 +2254,37 @@ impl EvidentRuntime {
             visiting: &mut std::collections::HashSet<String>,
         ) -> bool {
             if matches!(type_name, "Int" | "Real" | "Bool" | "String") { return true; }
+            // Seq(T) / Set(T) field types: accept when T is a primitive,
+            // a simple record, or any enum (the runtime stores those as
+            // Value::SeqEnum and the eval'd chain treats them opaquely
+            // when the body doesn't iterate over them).
+            for prefix in &["Seq(", "Set("] {
+                if let Some(inner) = type_name.strip_prefix(prefix).and_then(|s| s.strip_suffix(")")) {
+                    let inner = inner.trim();
+                    if is_simple_record_rec(schemas, inner, visiting) { return true; }
+                    // Enum element type: deferred to caller (we can't
+                    // see the registry from this static function).
+                    // Treat any schema whose keyword isn't Type as
+                    // potentially-enum (returning true is sound because
+                    // the native eval still has to handle the value;
+                    // if it can't, evaluate_chain returns None and
+                    // rt.query falls through to Z3).
+                    if let Some(decl) = schemas.get(inner) {
+                        // Non-Type schemas (claims, fsm, etc.) shouldn't
+                        // be Seq element types, but if encountered, refuse.
+                        if !matches!(decl.keyword, crate::ast::Keyword::Type) {
+                            return false;
+                        }
+                    }
+                    // Type we don't know — could be an enum. Accept
+                    // conservatively; eval will fail soundly if it can't
+                    // handle the value.
+                    return true;
+                }
+            }
             let Some(decl) = schemas.get(type_name) else { return false };
             if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
             if !visiting.insert(type_name.to_string()) {
-                // Cycle — recursive record type. Reject to keep
-                // bounded native eval.
                 return false;
             }
             let ok = decl.body.iter().all(|item| match item {
@@ -2303,9 +2329,11 @@ impl EvidentRuntime {
         let passthrough_body = |claim_name: &str| -> Option<Vec<crate::ast::BodyItem>> {
             self.schemas.get(claim_name).map(|s| s.body.clone())
         };
-        if !is_pure_assignment_body_xl(schema, &is_enum, &is_simple_record, &is_pure_passthrough) {
+        if let Some(why) = crate::functionize::gate_diagnostics(
+            schema, &is_enum, &is_simple_record, &is_pure_passthrough)
+        {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                eprintln!("[fz] {}: rejected by gate", name);
+                eprintln!("[fz] {}: rejected by gate ({})", name, why);
             }
             return None;
         }

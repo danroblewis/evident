@@ -298,31 +298,58 @@ pub fn is_pure_assignment_body_xl(
     is_simple_record: &dyn Fn(&str) -> bool,
     is_pure_passthrough: &dyn Fn(&str) -> bool,
 ) -> bool {
+    gate_diagnostics(schema, is_enum, is_simple_record, is_pure_passthrough).is_none()
+}
+
+/// Diagnostic variant: returns `None` if the gate accepts the schema,
+/// otherwise returns a short string explaining WHY it refused. Used
+/// by EVIDENT_FUNCTIONIZE_TRACE=1 to make gate-rejection actionable.
+pub fn gate_diagnostics(
+    schema: &SchemaDecl,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+    is_pure_passthrough: &dyn Fn(&str) -> bool,
+) -> Option<String> {
     if !matches!(schema.keyword,
         crate::ast::Keyword::Claim | crate::ast::Keyword::Schema
         | crate::ast::Keyword::Type | crate::ast::Keyword::Fsm) {
-        return false;
+        return Some(format!("keyword {:?}", schema.keyword));
     }
     for item in &schema.body {
         match item {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
-            BodyItem::Constraint(_) => return false,  // filter — bail
-            BodyItem::Membership { type_name, .. } => {
+            BodyItem::Constraint(other) => {
+                let kind = match other {
+                    Expr::Forall(_, _, _)  => "Forall",
+                    Expr::Exists(_, _, _)  => "Exists",
+                    Expr::Binary(op, _, _) => return Some(format!("non-Eq Binary op {:?}", op)),
+                    Expr::Ternary(_, _, _) => "top-level Ternary",
+                    Expr::Match(_, _)      => "top-level Match",
+                    Expr::Identifier(_)    => "bare-identifier constraint (claim ref)",
+                    Expr::Call(name, _)    => return Some(format!("body Call {}", name)),
+                    _ => "non-Eq Constraint",
+                };
+                return Some(kind.to_string());
+            }
+            BodyItem::Membership { name, type_name, .. } => {
                 let primitive = matches!(type_name.as_str(),
                     "Int" | "Real" | "Bool" | "String");
                 if primitive { continue; }
                 if is_enum(type_name) { continue; }
                 if is_simple_record(type_name) { continue; }
-                return false;
+                return Some(format!("Membership {}∈{}", name, type_name));
             }
             BodyItem::Passthrough(claim_name) => {
-                if !is_pure_passthrough(claim_name) { return false; }
+                if !is_pure_passthrough(claim_name) {
+                    return Some(format!("..{} not pure", claim_name));
+                }
             }
-            BodyItem::ClaimCall { .. } => return false,  // not yet
-            BodyItem::SubclaimDecl(_) => {}  // no runtime effect on parent
+            BodyItem::ClaimCall { name, .. } =>
+                return Some(format!("ClaimCall {}", name)),
+            BodyItem::SubclaimDecl(_) => {}
         }
     }
-    true
+    None
 }
 
 /// Does `e` reference an identifier named `name`?

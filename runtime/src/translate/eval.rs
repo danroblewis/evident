@@ -649,7 +649,7 @@ pub fn analyze_decomposition(
     //     values, not user-declared variables).
     let var_names: Vec<String> = env.iter()
         .filter(|(n, _)| !given.contains_key(n.as_str()))
-        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. }))
+        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. } | Var::EnumCtor { .. }))
         .map(|(n, _)| n.clone())
         .collect();
 
@@ -753,7 +753,7 @@ pub fn classify_components(
 
     let var_names: Vec<String> = env.iter()
         .filter(|(n, _)| !given.contains_key(n.as_str()))
-        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. }))
+        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. } | Var::EnumCtor { .. }))
         .map(|(n, _)| n.clone())
         .collect();
     let assertions = solver.get_assertions();
@@ -819,7 +819,7 @@ pub fn classify_components(
                         disjuncts.push(ast._eq(&val).not());
                     }
                 }
-                Var::EnumValue { .. } => {} // Enum literal; can't differ.
+                Var::EnumValue { .. } | Var::EnumCtor { .. } => {} // Enum constant; can't differ.
                 _ => { skip_due_to_unsupported_var = true; }
             }
         }
