@@ -114,6 +114,12 @@ pub fn extract_chain_xl(
         }
         all_body.extend(body);
     }
+    // Synthesize Constraint(Eq) items for Pinned Memberships.
+    // `v ∈ IVec2(-800, 540)` becomes `v.x = -800` and `v.y = 540`
+    // — same effect the Z3 translator achieves by emitting these
+    // constraints internally. Without this, the fast path's chain
+    // misses the dotted leaves.
+    all_body = expand_pinned_memberships(all_body, passthrough_body);
     // Unroll ∀-over-Range constraints into flat copies. This must
     // happen AFTER Passthrough flattening (so we catch ∀s in
     // inlined bodies too) but BEFORE substitution extraction.
@@ -451,16 +457,55 @@ pub fn try_extract_one_chain(
             // the bare name; field-dotted Identifiers resolve from
             // env at eval time.
             if is_external_type(type_name) { continue; }
-            // FSM world-write carry-through: `world_next.X` Memberships
-            // come from auto-expansion of `world ∈ World`. The current
-            // FSM might not write every `world_next.X` (e.g. keyboard
-            // writes `world.keys` but not `world.player`). Unwritten
-            // ones are carry-through: the scheduler's world merger
-            // keeps the prior value. Don't add them to the chain.
-            if name.starts_with("world_next.") && !has_substitution.contains(name) {
-                continue;
+            // Composite-type Memberships without a substitution
+            // (e.g. `world ∈ World`, `world_next ∈ World`,
+            // `world_next.player ∈ Player`) are "container" decls:
+            // their LEAF fields (world.player.pos.x, etc.) are the
+            // real substitution targets. The bare name itself has
+            // no defining equation. Skip it.
+            //
+            // Includes FSM world-write carry-through: `world_next.X`
+            // fields the current FSM doesn't write. The scheduler's
+            // world merger keeps the prior tick's value for those.
+            if !has_substitution.contains(name) {
+                let primitive = matches!(type_name.as_str(),
+                    "Int" | "Real" | "Bool" | "String" | "Nat");
+                let is_seq_like = type_name.starts_with("Seq(")
+                    || type_name.starts_with("Set(");
+                if !primitive && !is_enum(type_name) && !is_seq_like {
+                    continue;
+                }
             }
             if !given_keys.contains(name.as_str()) && seen.insert(name.clone()) {
+                vars.push(name.clone());
+            }
+        }
+    }
+    // Body Constraints may target DOTTED Identifiers whose root
+    // is a declared Membership (e.g. `world_next.keys.x = …`
+    // where `world_next ∈ World` is the only Membership; the
+    // dotted leaf arises from World expansion at translation
+    // time, but at AST level it's just an Identifier name).
+    //
+    // We only admit Identifiers whose root is in the declared
+    // Membership set — bare-name targets without a Membership
+    // would silently bypass strict-mode declaration checks.
+    let membership_roots: HashSet<String> = all_body.iter().filter_map(|i| match i {
+        BodyItem::Membership { name, .. } => Some(name.clone()),
+        _ => None,
+    }).collect();
+    for item in &all_body {
+        let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else {
+            continue;
+        };
+        for side in [lhs.as_ref(), rhs.as_ref()] {
+            let Expr::Identifier(name) = side else { continue };
+            if given_keys.contains(name.as_str()) { continue; }
+            // Require dotted name whose root (first segment) is
+            // a declared Membership in this scope.
+            let Some((root, _)) = name.split_once('.') else { continue };
+            if !membership_roots.contains(root) { continue; }
+            if seen.insert(name.clone()) {
                 vars.push(name.clone());
             }
         }
@@ -612,6 +657,64 @@ fn try_unroll_forall_range(e: &Expr) -> Option<Vec<BodyItem>> {
         out.push(BodyItem::Constraint(inst));
     }
     Some(out)
+}
+
+/// Lift Membership pins (`v ∈ IVec2(-800, 540)` or `v ∈ IVec2(x↦1, y↦2)`)
+/// into explicit `Constraint(Eq)` items. Without this, the fast path's
+/// chain extraction misses the dotted leaves (v.x, v.y) since they're
+/// encoded in the Pins variant of the Membership instead of as
+/// separate body constraints.
+///
+/// Looks up the receiving type's body via `claim_lookup` to resolve
+/// positional pins to field names by declaration order. Named pins
+/// don't need a lookup.
+fn expand_pinned_memberships(
+    body: Vec<BodyItem>,
+    claim_lookup: &dyn Fn(&str) -> Option<Vec<BodyItem>>,
+) -> Vec<BodyItem> {
+    let mut out = Vec::with_capacity(body.len());
+    for item in body {
+        match &item {
+            BodyItem::Membership { name, type_name, pins } => {
+                match pins {
+                    crate::ast::Pins::None => out.push(item),
+                    crate::ast::Pins::Named(maps) => {
+                        // Pass-through the Membership (declarations still
+                        // matter for type tracking), but ALSO add a
+                        // Constraint per mapping.
+                        for m in maps {
+                            out.push(BodyItem::Constraint(Expr::Binary(
+                                BinOp::Eq,
+                                Box::new(Expr::Identifier(format!("{name}.{}", m.slot))),
+                                Box::new(m.value.clone()),
+                            )));
+                        }
+                        out.push(item);
+                    }
+                    crate::ast::Pins::Positional(exprs) => {
+                        // Look up the type body to map positions to field names.
+                        if let Some(body) = claim_lookup(type_name) {
+                            let fields: Vec<String> = body.iter().filter_map(|i| match i {
+                                BodyItem::Membership { name, .. } => Some(name.clone()),
+                                _ => None,
+                            }).collect();
+                            for (i, expr) in exprs.iter().enumerate() {
+                                let Some(field) = fields.get(i) else { break };
+                                out.push(BodyItem::Constraint(Expr::Binary(
+                                    BinOp::Eq,
+                                    Box::new(Expr::Identifier(format!("{name}.{field}"))),
+                                    Box::new(expr.clone()),
+                                )));
+                            }
+                        }
+                        out.push(item);
+                    }
+                }
+            }
+            _ => out.push(item),
+        }
+    }
+    out
 }
 
 /// Try to unroll `∀ v ∈ seq` or `∀ (v1, v2, …) ∈ coindexed(s1, s2, …)`

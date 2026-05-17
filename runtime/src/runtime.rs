@@ -2488,19 +2488,24 @@ impl EvidentRuntime {
             eprintln!("[fz] {}: chain has {} steps: {:?}", name, chain.steps.len(),
                 chain.steps.iter().map(|s| &s.var).collect::<Vec<_>>());
         }
-        // Evaluate once to sanity-check; if eval fails we don't cache
-        // the chain (the eval failure mode is "unsupported Expr variant").
-        let bindings = match evaluate_chain_with_resolvers(&chain, given, &resolver, &ctor_resolver) {
+        // Evaluate once to populate bindings. If eval fails on
+        // THIS call (e.g. tick 0 has empty last_results so a
+        // `match last_results[i] …` returns None), still cache the
+        // chain so later ticks — with realistic last_results — can
+        // hit it. Only the data flow varies per tick; the chain
+        // structure is stable.
+        let bindings_opt = evaluate_chain_with_resolvers(
+            &chain, given, &resolver, &ctor_resolver);
+        self.functionize_cache.borrow_mut().insert(cache_key, Some(chain));
+        let bindings = match bindings_opt {
             Some(b) => b,
             None => {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz] {}: eval failed", name);
+                    eprintln!("[fz] {}: eval failed (chain cached for later ticks)", name);
                 }
-                self.functionize_cache.borrow_mut().insert(cache_key, None);
                 return None;
             }
         };
-        self.functionize_cache.borrow_mut().insert(cache_key, Some(chain));
         let mut out = HashMap::new();
         for (k, v) in bindings { out.insert(k, v); }
         Some(QueryResult { satisfied: true, bindings: out })
