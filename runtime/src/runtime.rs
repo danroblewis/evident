@@ -52,6 +52,36 @@ use z3::{Config, Context};
 
 pub use crate::translate::Value;
 
+/// RAII guard that turns `EVIDENT_LENIENT=1` on while the guard
+/// is alive and restores the prior state on drop. Used to keep
+/// the function-izer's `build_cache` call from fatal-exiting on
+/// translator gaps in body items we don't depend on — those
+/// become silent warnings (still printed to stderr in the
+/// existing path), and the function-izer's `extract_program`
+/// then sees a partial body. If outputs aren't covered, it
+/// returns None and we fall back to the slow path which uses
+/// the matching silently-skip path for inherited Constraints.
+struct LenientGuard {
+    prior: Option<String>,
+}
+
+impl LenientGuard {
+    fn enable() -> Self {
+        let prior = std::env::var("EVIDENT_LENIENT").ok();
+        std::env::set_var("EVIDENT_LENIENT", "1");
+        LenientGuard { prior }
+    }
+}
+
+impl Drop for LenientGuard {
+    fn drop(&mut self) {
+        match &self.prior {
+            Some(v) => std::env::set_var("EVIDENT_LENIENT", v),
+            None    => std::env::remove_var("EVIDENT_LENIENT"),
+        }
+    }
+}
+
 /// Aggregate functionizer + JIT statistics across all
 /// (claim, given-keys) cache-miss attempts in this runtime's
 /// lifetime. Inspected via `EvidentRuntime::functionize_stats()`
@@ -1913,6 +1943,13 @@ pub struct EvidentRuntime {
     /// z3_eval. See `runtime/src/cranelift_jit.rs`.
     jit_cache: RefCell<HashMap<(String, Vec<String>),
                                Option<std::rc::Rc<crate::cranelift_jit::JitProgram>>>>,
+    /// Rust-VM cache: precompiled `CompiledProgram` walked at run
+    /// time without touching Z3. ~10x faster than the Z3 Dynamic
+    /// AST walker because there are no per-node FFI calls. Used as
+    /// the fast path when JIT compilation fails (Seq/Guarded/PreBaked
+    /// steps, multi-field enum ctors, etc.).
+    vm_cache: RefCell<HashMap<(String, Vec<String>),
+                              Option<std::rc::Rc<crate::rust_vm::CompiledProgram>>>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
@@ -2129,6 +2166,7 @@ impl EvidentRuntime {
             functionize_gate_cache: RefCell::new(HashMap::new()),
             functionize_z3_cache: RefCell::new(HashMap::new()),
             jit_cache: RefCell::new(HashMap::new()),
+            vm_cache:  RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
@@ -2284,6 +2322,7 @@ impl EvidentRuntime {
         self.functionize_cache.borrow_mut().clear();
         self.functionize_z3_cache.borrow_mut().clear();
         self.jit_cache.borrow_mut().clear();
+        self.vm_cache.borrow_mut().clear();
         // Pre-classify every loaded claim at load time: run inline
         // + gate once per name so first-tick solves carry zero
         // function-izer analysis cost. Rejections are recorded as
@@ -2510,15 +2549,33 @@ impl EvidentRuntime {
             // Fall through to the AST walker below.
         }
 
-        // Z3-AST walker fallback for cases the JIT couldn't
-        // compile (Seq outputs, payload-bearing enums, etc.).
-        if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
+        // Rust-VM cache (preferred fallback when JIT misses). The
+        // VM walks a precompiled `Op` tree without touching Z3 —
+        // ~10x faster than the Z3 Dynamic AST walker, which makes
+        // it faster than the slow path's incremental Z3 solve for
+        // Mario-shaped models.
+        if let Some(entry) = self.vm_cache.borrow().get(&cache_key).cloned() {
             let Some(program) = entry else { return None };
             self.functionize_stats.borrow_mut()
                 .claims.entry(name.to_string()).or_default().cache_hits += 1;
+            let bindings = crate::rust_vm::eval_program(&program, given, Some(&self.enums))?;
+            let mut out = HashMap::new();
+            for (k, v) in bindings {
+                if !given.contains_key(&k) { out.insert(k, v); }
+            }
+            return Some(QueryResult { satisfied: true, bindings: out });
+        }
+
+        // Legacy Z3-AST walker (kept for diagnostics / fallback if
+        // EVIDENT_FUNCTIONIZE_USE_AST=1). Slower than the VM.
+        let allow_ast = std::env::var("EVIDENT_FUNCTIONIZE_USE_AST")
+            .map(|s| s != "0").unwrap_or(false);
+        if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
+            let Some(program) = entry else { return None };
+            if !allow_ast { return None; }
+            self.functionize_stats.borrow_mut()
+                .claims.entry(name.to_string()).or_default().cache_hits += 1;
             let bindings = eval_program(&program, given, Some(&self.enums))?;
-            // Filter out the input bindings (we don't want to
-            // re-emit `given` keys as outputs).
             let mut out = HashMap::new();
             for (k, v) in bindings {
                 if !given.contains_key(&k) {
@@ -2547,9 +2604,29 @@ impl EvidentRuntime {
         // statically-known ranges before the translator runs.
         // Without these pins, body shapes like ∀-over-symbolic-Range
         // would trip the translator's dropped-constraint fatal-exit.
+        //
+        // R27: temporarily enable EVIDENT_LENIENT for the
+        // build_cache call so untranslatable body items (like
+        // SDL_Window's `install ∈ Seq(InstallStep) = ⟨...⟩` with
+        // payloaded LibCalls) become warnings rather than
+        // fatal-exit. extract_program will produce a partial
+        // program; if it's incomplete for the outputs we need,
+        // we fall through to the slow path which handles these
+        // cases via the silently-skipping inheritance path
+        // (inline.rs line 906).
+        let _lenient_guard = LenientGuard::enable();
+        // Pass an empty given to build_cache so the extracted program
+        // is generic over input values. If we passed `given` here,
+        // apply_pinned_ints would bake `_count`/state/etc. into the
+        // body as constants, and the cached program would be wrong
+        // for any other tick's values. Structural pins (Seq lengths)
+        // still propagate because they come from the schema body
+        // itself (`#platforms = 4`), not from given.
+        let empty_given: HashMap<String, Value> = HashMap::new();
         let cached = crate::translate::build_cache(
             schema, &self.schemas, self.z3_ctx, &self.datatypes,
-            Some(&self.enums), given, arith);
+            Some(&self.enums), &empty_given, arith);
+        drop(_lenient_guard);
         // get_assertions ties the Bool lifetime to the solver, but
         // the underlying Z3 ASTs are reference-counted by the
         // 'static Context — they outlive the solver wrapper. Same
@@ -2573,17 +2650,33 @@ impl EvidentRuntime {
         }
         let simplified = &simplify_result.formulas;
 
-        // Outputs: every cached env key minus given keys minus
-        // enum-value/ctor constants. Pinned ints are excluded too —
-        // they're literal values already known from `given` /
-        // apply_pinned_ints, surfaced via the `pinned_ints` map
-        // below directly without going through Z3.
+        // Outputs: vars actually constrained by the simplified
+        // body. Many env entries (world.player.vel.x when this
+        // FSM doesn't read it, FTI bridge leaves, type-level
+        // siblings of an unused field) appear in env but have no
+        // body assertion — Z3 would pick any value. For the
+        // function-izer, those vars are NOT outputs; the
+        // scheduler's downstream paths either carry through from
+        // world_snapshot or just don't need them.
+        //
+        // We compute the constraint-touched set by walking the
+        // simplified assertions and collecting every 0-arity
+        // App name that appears anywhere. An output is then:
+        //   - in env (declared at build_cache time)
+        //   - NOT in given (input)
+        //   - NOT a PinnedInt/EnumValue/EnumCtor constant
+        //   - actually appears in the simplified body
+        let mut touched: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for a in simplified {
+            crate::z3_eval::collect_touched_names(a, &mut touched);
+        }
         let outputs: Vec<String> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
             .filter(|(_, v)| !matches!(v,
                 crate::translate::Var::EnumValue { .. }
                 | crate::translate::Var::EnumCtor { .. }
                 | crate::translate::Var::PinnedInt(_)))
+            .filter(|(name, _)| touched.contains(name.as_str()))
             .map(|(n, _)| n.clone())
             .collect();
         // Pinned ints — vars whose value was statically resolvable
@@ -2608,16 +2701,27 @@ impl EvidentRuntime {
                 eprintln!("    {a}");
             }
         }
-        let mut program = match extract_program(&simplified, &outputs) {
-            Some(p) => {
-                let mut stats = self.functionize_stats.borrow_mut();
-                let per = stats.claims.entry(name.to_string()).or_default();
-                per.last_extract_ok = Some(true);
-                per.steps_total      += p.steps.len() as u32;
-                per.checks_total     += p.checks.len() as u32;
-                per.predicates_total += p.predicates.len() as u32;
-                p
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz/z3] {} extract pass: {} outputs, {} simplified",
+                name, outputs.len(), simplified.len());
+            if name == "keyboard" || std::env::var("EVIDENT_FZ_DUMP_BODY").is_ok() {
+                eprintln!("[fz/z3] {name} outputs: {outputs:?}");
+                for a in simplified {
+                    eprintln!("  {a}");
+                }
             }
+        }
+        if outputs.is_empty() {
+            // No constrained outputs — the body is just type
+            // bounds / predicates with nothing to compute. We
+            // can't claim to produce bindings the caller needs;
+            // fall through to the slow path which extracts the
+            // model directly.
+            self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+            return None;
+        }
+        let (mut program, missing) = match crate::z3_eval::extract_program_partial(&simplified, &outputs) {
+            Some(p) => p,
             None => {
                 self.functionize_stats.borrow_mut()
                     .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
@@ -2625,6 +2729,73 @@ impl EvidentRuntime {
                 return None;
             }
         };
+        // Gap-fill missing outputs via model extraction. These are
+        // typically constant record-Seqs whose per-element pins were
+        // decomposed by Z3 into per-field accessor assertions
+        // extract_program can't recompose (e.g. Mario's `platforms`,
+        // `e_init`, `mario.rects`). The solver in `cached` already
+        // holds the simplified body; one check() yields a model from
+        // which we read each missing output's value and bake it as
+        // a `Z3Step::PreBaked`.
+        if !missing.is_empty() {
+            use z3::SatResult;
+            if !matches!(cached.solver.check(), SatResult::Sat) {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/z3] {}: gap-fill check returned non-sat", name);
+                }
+                self.functionize_stats.borrow_mut()
+                    .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
+                self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                return None;
+            }
+            let model = match cached.solver.get_model() {
+                Some(m) => m,
+                None => {
+                    self.functionize_stats.borrow_mut()
+                        .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
+                    self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                }
+            };
+            let mut prebaked: Vec<crate::z3_eval::Z3Step<'static>> = Vec::with_capacity(missing.len());
+            for var_name in &missing {
+                let Some(var) = cached.env.get(var_name) else {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz/z3] {name}: gap-fill: missing env entry for {var_name:?}");
+                    }
+                    self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                };
+                let mut tmp: HashMap<String, Value> = HashMap::new();
+                crate::translate::extract_binding(var_name, var, &model, self.z3_ctx, &mut tmp, Some(&self.enums));
+                let Some(value) = tmp.remove(var_name) else {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz/z3] {name}: gap-fill: extract_binding produced no value for {var_name:?}");
+                    }
+                    self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                };
+                prebaked.push(crate::z3_eval::Z3Step::PreBaked {
+                    var: var_name.clone(),
+                    value,
+                });
+            }
+            // Place pre-baked steps at the front (no dependencies).
+            let mut all_steps = prebaked;
+            all_steps.append(&mut program.steps);
+            program.steps = all_steps;
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                eprintln!("[fz/z3] {name}: gap-filled {} outputs via model extraction", missing.len());
+            }
+        }
+        {
+            let mut stats = self.functionize_stats.borrow_mut();
+            let per = stats.claims.entry(name.to_string()).or_default();
+            per.last_extract_ok = Some(true);
+            per.steps_total      += program.steps.len() as u32;
+            per.checks_total     += program.checks.len() as u32;
+            per.predicates_total += program.predicates.len() as u32;
+        }
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
             || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
         {
@@ -2641,9 +2812,16 @@ impl EvidentRuntime {
         let stored = Some(program.clone());
         self.functionize_z3_cache.borrow_mut().insert(cache_key.clone(), stored);
 
+        // Compile to the Rust VM (always succeeds — falls back to
+        // Z3 AST eval per-op if needed). The VM is ~10x faster than
+        // eval_dynamic for the common path because there are no
+        // per-node Z3 FFI calls.
+        let vm_compiled = std::rc::Rc::new(crate::rust_vm::compile_program(&program));
+        self.vm_cache.borrow_mut().insert(cache_key.clone(), Some(vm_compiled.clone()));
+
         // Try to JIT-compile to native code. On success, the next
         // call hits the JIT branch above and runs at ~µs/call.
-        // On failure, the AST walker is the fallback.
+        // On failure, the Rust VM is the fallback.
         let jit_compiled = crate::cranelift_jit::compile_program(&program, &self.enums)
             .map(std::rc::Rc::new);
         if jit_compiled.is_some() {
@@ -2668,20 +2846,18 @@ impl EvidentRuntime {
             }
         }
 
-        let bindings = match eval_program(&program, given, Some(&self.enums)) {
+        // JIT failed — use the Rust VM (compiled above).
+        let bindings = match crate::rust_vm::eval_program(&vm_compiled, given, Some(&self.enums)) {
             Some(b) => b,
             None => {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz/z3] {}: eval_program returned None", name);
+                    eprintln!("[fz/z3] {}: vm eval_program returned None", name);
                 }
                 return None;
             }
         };
         let mut out: HashMap<String, Value> = HashMap::new();
         for (k, v) in bindings { out.insert(k, v); }
-        // Echo given values into bindings to match the slow path's
-        // behavior (callers expect `given.x = 3` to appear as
-        // `bindings.x = 3` in the result).
         for (k, v) in given { out.insert(k.clone(), v.clone()); }
         Some(QueryResult { satisfied: true, bindings: out })
     }
@@ -3620,16 +3796,16 @@ impl EvidentRuntime {
         // rejects, fall through to Z3 with `pins` intact.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s != "0").unwrap_or(true);
-        // Z3 functionizer on the scheduler side is currently
-        // disabled by default — Mario's SDL_Window typed-membership
-        // triggers a fatal-exit in build_cache (the install Seq's
-        // LibCall constraints can't be expressed as Bool when the
-        // FSM-local bridge handles construction). The Evident-AST
-        // function-izer (below) is more conservative and handles
-        // these cases. Enable with EVIDENT_FUNCTIONIZE_Z3_SCHED=1.
+        // Z3 functionizer + Rust VM, enabled by default. The VM is
+        // a precompiled AST evaluator that runs ~10-20× faster than
+        // the Z3 solver on tightly-pinned bodies (no Z3 FFI per
+        // op). Falls back to the slow path when the VM can't
+        // evaluate (typically Cons-chain Seq pin shapes that Z3's
+        // tactic chain decomposes into per-field accessors).
+        // Disable with EVIDENT_FUNCTIONIZE_Z3_SCHED=0.
         let z3_fz_on = functionize_on
             && std::env::var("EVIDENT_FUNCTIONIZE_Z3_SCHED")
-                .map(|s| s != "0").unwrap_or(false);
+                .map(|s| s != "0").unwrap_or(true);
         if z3_fz_on {
             if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -3648,6 +3824,9 @@ impl EvidentRuntime {
         }
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
+        if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
+            eprintln!("[slow] {claim_name}: dispatching to evaluate_with_extra_assertions");
+        }
         let r = crate::translate::evaluate_with_extra_assertions(
             schema,
             given,

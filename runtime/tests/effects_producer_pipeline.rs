@@ -180,6 +180,8 @@ fn stage_3_extract_program_builds_seq_step() {
             }
             Z3Step::Guarded { var, branches } =>
                 eprintln!("  step {i}: Guarded {var} (with {} branches)", branches.len()),
+            Z3Step::PreBaked { var, value } =>
+                eprintln!("  step {i}: PreBaked {var} = {value:?}"),
         }
     }
 

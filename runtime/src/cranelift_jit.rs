@@ -230,6 +230,7 @@ pub fn compile_program<'ctx>(
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
             Z3Step::Guarded { .. } => return None,  // not in v1 codegen
+            Z3Step::PreBaked { .. } => return None, // value steps fall back to AST walker
         };
         output_kinds_local.push((var, kind));
         match step {
@@ -341,6 +342,7 @@ pub fn compile_program<'ctx>(
                     env.insert(var.clone(), EnvVal::OutSlot { ptr: out_slot });
                 }
                 Z3Step::Guarded { .. } => return None,
+                Z3Step::PreBaked { .. } => return None,
             }
         }
         bcx.ins().return_(&[]);
@@ -400,14 +402,24 @@ fn emit_write_value<'ctx>(
     variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
     string_pool: &mut Vec<Box<str>>,
 ) -> Option<()> {
-    // String literal short-circuit.
-    if let Some(zs) = expr.as_string() {
-        if let Some(s) = zs.as_string() {
-            let (p, l) = intern_str(string_pool, &s);
-            let pv = bcx.ins().iconst(types::I64, p);
-            let lv = bcx.ins().iconst(types::I64, l);
-            bcx.ins().call(helpers.set_str, &[out_slot, pv, lv]);
-            return Some(());
+    // String literal short-circuit — ONLY for genuine zero-child
+    // literals. `as_string()` collapses some non-literal ASTs
+    // (e.g. `(ite c "a" "b")`) to empty/garbage; require
+    // num_children=0 + non-UNINTERPRETED before trusting.
+    if expr.kind() == AstKind::App && expr.num_children() == 0 {
+        let is_free_var = expr.safe_decl().ok()
+            .map(|d| d.kind() == DeclKind::UNINTERPRETED)
+            .unwrap_or(false);
+        if !is_free_var {
+            if let Some(zs) = expr.as_string() {
+                if let Some(s) = zs.as_string() {
+                    let (p, l) = intern_str(string_pool, &s);
+                    let pv = bcx.ins().iconst(types::I64, p);
+                    let lv = bcx.ins().iconst(types::I64, l);
+                    bcx.ins().call(helpers.set_str, &[out_slot, pv, lv]);
+                    return Some(());
+                }
+            }
         }
     }
 

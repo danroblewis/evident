@@ -226,6 +226,11 @@ pub fn build_cache(
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CachedSchema<'static> {
+    // Mirror evaluate_with_extra_assertions: install the thread-local
+    // EnumRegistry so the translator can resolve enum constructors
+    // (e.g. `LibCall(..., ⟨⟩)`) appearing in body items. Without this,
+    // those constraints silently drop and outputs end up undefined.
+    let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
@@ -1478,7 +1483,7 @@ pub fn evaluate_with_core(
 /// Pull one variable's value out of the model into the bindings map.
 /// Mirrors the inline match in `evaluate`'s SAT branch — extracted so
 /// `evaluate_with_core` doesn't have to duplicate it.
-fn extract_binding(
+pub(crate) fn extract_binding(
     name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
     bindings: &mut HashMap<String, Value>,
     enums: Option<&EnumRegistry>,

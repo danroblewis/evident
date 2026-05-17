@@ -80,6 +80,13 @@ pub enum Z3Step<'ctx> {
     /// the first branch whose guard evaluates to true and use
     /// that branch's expression.
     Guarded { var: String, branches: Vec<GuardedBranch<'ctx>> },
+    /// Pre-baked constant Value, computed once at compile time
+    /// via model extraction. Used for outputs whose simplified
+    /// body decomposed into per-field accessor pins (record-Seq
+    /// constants like `platforms` / `e_init` in Mario) that
+    /// `extract_program` can't recompose. At eval time, just
+    /// insert the value into the env.
+    PreBaked { var: String, value: Value },
 }
 
 #[derive(Debug, Clone)]
@@ -97,9 +104,10 @@ pub enum GuardedBody<'ctx> {
 impl<'ctx> Z3Step<'ctx> {
     pub fn var(&self) -> &str {
         match self {
-            Z3Step::Scalar  { var, .. }
+            Z3Step::Scalar   { var, .. }
             | Z3Step::Seq      { var, .. }
-            | Z3Step::Guarded  { var, .. } => var,
+            | Z3Step::Guarded  { var, .. }
+            | Z3Step::PreBaked { var, .. } => var,
         }
     }
 }
@@ -315,9 +323,178 @@ pub fn extract_program<'ctx>(
             && !seq_assign.contains_key(v)
             && !guarded_assign.contains_key(v)
         {
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                eprintln!("[fz/z3] extract: output {v:?} has no substitution");
+            }
             return None;
         }
     }
+    extract_program_inner(outputs, scalar_assign, seq_assign, guarded_assign, checks, predicates)
+}
+
+/// Like `extract_program` but tolerates missing outputs — returns the
+/// partial `Z3Program` plus a Vec<String> naming the outputs that
+/// couldn't be substituted. Callers can fill in the gaps via model
+/// extraction (encoded as `Z3Step::PreBaked`) or fall through.
+pub fn extract_program_partial<'ctx>(
+    assertions: &[Bool<'ctx>],
+    outputs: &[String],
+) -> Option<(Z3Program<'ctx>, Vec<String>)> {
+    let output_set: std::collections::HashSet<&str> = outputs.iter()
+        .map(|s| s.as_str()).collect();
+
+    let mut scalar_assign: HashMap<String, Dynamic<'ctx>> = HashMap::new();
+    let mut seq_lengths:   HashMap<String, i64> = HashMap::new();
+    let mut seq_elements:  HashMap<String, HashMap<i64, Dynamic<'ctx>>> = HashMap::new();
+    let mut guarded: HashMap<String, Vec<GuardedBranch<'ctx>>> = HashMap::new();
+    let mut checks: Vec<(Dynamic<'ctx>, Dynamic<'ctx>)> = Vec::new();
+    let mut predicates: Vec<Bool<'ctx>> = Vec::new();
+
+    for a in assertions {
+        if let Some((guard, consequent)) = try_guarded(a) {
+            if classify_guarded_consequent(&consequent, &output_set,
+                &mut guarded, &guard).is_some()
+            {
+                continue;
+            }
+        }
+        // `(not (= X name))` / `(not (= name X))` → `name = ¬X`
+        // for Bool-typed outputs. Z3 emits this for `name = ¬X`
+        // after propagation flips polarity.
+        if let Some(inner) = try_negation(a) {
+            if let Some((lhs, rhs)) = split_equality(&inner) {
+                if let Some(name) = ast_app_name(&lhs) {
+                    if output_set.contains(name.as_str())
+                        && !scalar_assign.contains_key(&name)
+                        && !mentions_name(&rhs, &name)
+                    {
+                        let neg = rhs.as_bool().map(|b| b.not()).map(|b| z3::ast::Dynamic::from_ast(&b));
+                        if let Some(neg) = neg {
+                            scalar_assign.insert(name, neg);
+                            continue;
+                        }
+                    }
+                }
+                if let Some(name) = ast_app_name(&rhs) {
+                    if output_set.contains(name.as_str())
+                        && !scalar_assign.contains_key(&name)
+                        && !mentions_name(&lhs, &name)
+                    {
+                        let neg = lhs.as_bool().map(|b| b.not()).map(|b| z3::ast::Dynamic::from_ast(&b));
+                        if let Some(neg) = neg {
+                            scalar_assign.insert(name, neg);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        let Some((lhs, rhs)) = split_equality(a) else {
+            predicates.push(a.clone());
+            continue;
+        };
+        if let Some((name, n)) = match_len_pin(&lhs, &rhs)
+            .or_else(|| match_len_pin(&rhs, &lhs))
+        {
+            seq_lengths.insert(name, n);
+            continue;
+        }
+        if let Some((arr, idx, elem)) = match_select_pin(&lhs, &rhs)
+            .or_else(|| match_select_pin(&rhs, &lhs))
+        {
+            if output_set.contains(arr.as_str()) {
+                seq_elements.entry(arr).or_default().insert(idx, elem);
+                continue;
+            }
+        }
+        if let Some(name) = ast_app_name(&lhs) {
+            if output_set.contains(name.as_str())
+                && !scalar_assign.contains_key(&name)
+                && !mentions_name(&rhs, &name)
+            {
+                scalar_assign.insert(name, rhs);
+                continue;
+            }
+        }
+        if let Some(name) = ast_app_name(&rhs) {
+            if output_set.contains(name.as_str())
+                && !scalar_assign.contains_key(&name)
+                && !mentions_name(&lhs, &name)
+            {
+                scalar_assign.insert(name, lhs);
+                continue;
+            }
+        }
+        checks.push((lhs, rhs));
+    }
+
+    let mut seq_assign: HashMap<String, Vec<Dynamic<'ctx>>> = HashMap::new();
+    for arr in outputs {
+        if scalar_assign.contains_key(arr) { continue; }
+        let explicit = seq_lengths.get(arr).copied();
+        let inferred = seq_elements.get(arr).and_then(|m| {
+            let mut i = 0i64;
+            while m.contains_key(&i) { i += 1; }
+            if i == 0 { None } else { Some(i) }
+        });
+        let n = match (explicit, inferred) {
+            (Some(e), Some(i)) if e == i => e,
+            (Some(e), Some(i)) => e.max(i),
+            (Some(e), None)    => e,
+            (None,    Some(i)) => i,
+            (None,    None)    => continue,
+        };
+        let empty: HashMap<i64, Dynamic<'ctx>> = HashMap::new();
+        let elements = seq_elements.get(arr).unwrap_or(&empty);
+        let mut elems = Vec::with_capacity(n as usize);
+        let mut ok = true;
+        for i in 0..n {
+            if let Some(e) = elements.get(&i) {
+                elems.push(e.clone());
+            } else if n == 0 {
+            } else { ok = false; break; }
+        }
+        if ok { seq_assign.insert(arr.clone(), elems); }
+    }
+
+    let mut guarded_assign: HashMap<String, Vec<GuardedBranch<'ctx>>> = HashMap::new();
+    for arr in outputs {
+        if scalar_assign.contains_key(arr) || seq_assign.contains_key(arr) { continue; }
+        if let Some(branches) = guarded.remove(arr) {
+            if !branches.is_empty() {
+                guarded_assign.insert(arr.clone(), branches);
+            }
+        }
+    }
+
+    // Identify missing outputs.
+    let missing: Vec<String> = outputs.iter()
+        .filter(|v| !scalar_assign.contains_key(*v)
+            && !seq_assign.contains_key(*v)
+            && !guarded_assign.contains_key(*v))
+        .cloned()
+        .collect();
+
+    // Build a program over the covered outputs.
+    let covered: Vec<String> = outputs.iter()
+        .filter(|v| !missing.contains(v))
+        .cloned()
+        .collect();
+    let program = extract_program_inner(&covered, scalar_assign, seq_assign, guarded_assign, checks, predicates)?;
+    Some((program, missing))
+}
+
+fn extract_program_inner<'ctx>(
+    outputs: &[String],
+    scalar_assign: HashMap<String, Dynamic<'ctx>>,
+    seq_assign: HashMap<String, Vec<Dynamic<'ctx>>>,
+    guarded_assign: HashMap<String, Vec<GuardedBranch<'ctx>>>,
+    checks: Vec<(Dynamic<'ctx>, Dynamic<'ctx>)>,
+    predicates: Vec<Bool<'ctx>>,
+) -> Option<Z3Program<'ctx>> {
+    let mut scalar_assign = scalar_assign;
+    let mut seq_assign = seq_assign;
+    let mut guarded_assign = guarded_assign;
 
     // Topo-sort by dependency on other outputs.
     let mut in_deg: HashMap<&str, usize> = outputs.iter()
@@ -378,6 +555,16 @@ pub fn extract_program<'ctx>(
         }
     }).collect();
     Some(Z3Program { steps, checks, predicates })
+}
+
+/// Return the inner Bool if `a` is `(not X)`, else None.
+fn try_negation<'ctx>(a: &Bool<'ctx>) -> Option<Bool<'ctx>> {
+    if a.kind() != AstKind::App { return None; }
+    let decl = a.safe_decl().ok()?;
+    if decl.kind() != DeclKind::NOT { return None; }
+    let mut iter = a.children().into_iter();
+    let child = iter.next()?;
+    child.as_bool()
 }
 
 /// Recognize `(or (not P) Q)` patterns and return `(P, Q)`. This
@@ -445,6 +632,13 @@ fn classify_guarded_consequent<'ctx>(
                     });
                     return Some(());
                 }
+                // Mixed AND: `(and (= scalar_var expr) (= other_var__len N) ...)`
+                // — split into per-output guarded branches. Each child
+                // must either be a scalar-output assignment or contribute
+                // to a single Seq's per-element pinning.
+                if let Some(()) = classify_mixed_and(conseq, output_set, guarded, guard) {
+                    return Some(());
+                }
             }
         }
     }
@@ -468,6 +662,83 @@ fn classify_guarded_consequent<'ctx>(
         }
     }
     None
+}
+
+/// `(and (= scalar_var expr) (= other_seq__len N) (= (select other_seq 0) e0) ...)`
+/// — handle a guarded consequent that constrains MULTIPLE outputs.
+/// Each output gets its own branch added to `guarded`. Returns Some(())
+/// if at least one output was successfully recognized AND every AND child
+/// was classifiable; None otherwise.
+fn classify_mixed_and<'ctx>(
+    and_expr: &Bool<'ctx>,
+    output_set: &std::collections::HashSet<&str>,
+    guarded: &mut HashMap<String, Vec<GuardedBranch<'ctx>>>,
+    guard: &Dynamic<'ctx>,
+) -> Option<()> {
+    let mut scalar_assigns: Vec<(String, Dynamic<'ctx>)> = Vec::new();
+    // For each Seq output: declared length + per-index elements.
+    let mut seq_lens: HashMap<String, i64> = HashMap::new();
+    let mut seq_elems: HashMap<String, HashMap<i64, Dynamic<'ctx>>> = HashMap::new();
+    for c in and_expr.children() {
+        let Some(bool_child) = c.as_bool() else { return None };
+        let Some((lhs, rhs)) = split_equality(&bool_child) else { return None };
+        if let Some((name, n)) = match_len_pin(&lhs, &rhs)
+            .or_else(|| match_len_pin(&rhs, &lhs))
+        {
+            if !output_set.contains(name.as_str()) { return None; }
+            seq_lens.insert(name, n);
+            continue;
+        }
+        if let Some((name, idx, elem)) = match_select_pin(&lhs, &rhs)
+            .or_else(|| match_select_pin(&rhs, &lhs))
+        {
+            if !output_set.contains(name.as_str()) { return None; }
+            seq_elems.entry(name).or_default().insert(idx, elem);
+            continue;
+        }
+        // Scalar output assignment.
+        if let Some(name) = ast_app_name(&lhs) {
+            if output_set.contains(name.as_str()) {
+                scalar_assigns.push((name, rhs));
+                continue;
+            }
+        }
+        if let Some(name) = ast_app_name(&rhs) {
+            if output_set.contains(name.as_str()) {
+                scalar_assigns.push((name, lhs));
+                continue;
+            }
+        }
+        return None;  // unrecognized child
+    }
+    // Validate Seq covered: every name in seq_lens must have all elements.
+    let mut all_names: std::collections::HashSet<String> = seq_lens.keys().cloned().collect();
+    for k in seq_elems.keys() { all_names.insert(k.clone()); }
+    for name in &all_names {
+        let n = seq_lens.get(name).copied().unwrap_or_else(|| {
+            // No explicit length pin — infer from contiguous element pins.
+            let m = seq_elems.get(name).cloned().unwrap_or_default();
+            let mut i = 0i64;
+            while m.contains_key(&i) { i += 1; }
+            i
+        });
+        let elems = seq_elems.remove(name).unwrap_or_default();
+        let mut out = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            out.push(elems.get(&i)?.clone());
+        }
+        guarded.entry(name.clone()).or_default().push(GuardedBranch {
+            guard: guard.clone(),
+            body:  GuardedBody::Seq(out),
+        });
+    }
+    for (name, expr) in scalar_assigns {
+        guarded.entry(name).or_default().push(GuardedBranch {
+            guard: guard.clone(),
+            body:  GuardedBody::Scalar(expr),
+        });
+    }
+    Some(())
 }
 
 /// Same as `split_equality` but accepts a Dynamic (the consequent
@@ -614,6 +885,9 @@ pub fn eval_program<'ctx>(
                 }
                 env.insert(var.clone(), seq_value_from_elements(values));
             }
+            Z3Step::PreBaked { var, value } => {
+                env.insert(var.clone(), value.clone());
+            }
             Z3Step::Guarded { var, branches } => {
                 // Evaluate each guard in order; use the first
                 // branch whose guard is true.
@@ -693,12 +967,19 @@ pub fn eval_dynamic<'ctx>(
     // also have String sort but no constant value associated —
     // Z3's `as_string` returns an empty string rather than None
     // for those).
-    let is_free_var = a.kind() == AstKind::App
-        && a.num_children() == 0
-        && a.safe_decl().ok().map(|d| d.kind() == DeclKind::UNINTERPRETED).unwrap_or(false);
-    if !is_free_var {
-        if let Some(s) = a.as_string().and_then(|zs| zs.as_string()) {
-            return Some(Value::Str(s));
+    // String literal: ONLY for ASTs that are genuinely zero-child
+    // literals. as_string() returns Some("") for some non-literal
+    // ASTs (e.g. `(str.++ "x" free_var)`), so we require
+    // num_children=0 before trusting it. Free vars are filtered
+    // out by their UNINTERPRETED decl kind.
+    if a.kind() == AstKind::App && a.num_children() == 0 {
+        let is_free_var = a.safe_decl().ok()
+            .map(|d| d.kind() == DeclKind::UNINTERPRETED)
+            .unwrap_or(false);
+        if !is_free_var {
+            if let Some(s) = a.as_string().and_then(|zs| zs.as_string()) {
+                return Some(Value::Str(s));
+            }
         }
     }
     match a.kind() {
@@ -855,6 +1136,22 @@ pub fn eval_dynamic<'ctx>(
                         .and_then(|r| r.by_variant.borrow().get(&variant)
                             .map(|(en, _)| en.clone()))
                         .unwrap_or_default();
+                    // Cons-chain normalization. Seq(T) payloads inside
+                    // an enum ctor (e.g. `LibCall(..., args ∈ Seq(FFIArg))`)
+                    // are translated to `__SeqOf_T` Cons chains in Z3.
+                    // The runtime's Value model represents Seqs as
+                    // `Value::Seq*`, so after building a regular (non-
+                    // cell) enum value, walk its fields and flatten any
+                    // `__SeqOf_T` Cons-chain Value::Enum into
+                    // `Value::SeqEnum`. Cell ctors (`__Cell_T`,
+                    // `__Empty_T`) skip this — they are themselves the
+                    // chain links being assembled by an outer call.
+                    let is_cell = variant.starts_with("__Cell_") || variant.starts_with("__Empty_");
+                    if !is_cell {
+                        for f in fields.iter_mut() {
+                            if let Some(flat) = flatten_seq_of_chain(f) { *f = flat; }
+                        }
+                    }
                     Some(Value::Enum { enum_name, variant, fields })
                 }
                 DeclKind::DT_ACCESSOR => {
@@ -957,6 +1254,36 @@ fn expr_has_ctor_seqlit_payload(e: &crate::ast::Expr) -> bool {
     }
 }
 
+/// Walk a Bool AST and collect every 0-arity App name (i.e.,
+/// every UNINTERPRETED constant or DT recogniser referent) into
+/// `out`. The runtime uses this to identify which env vars
+/// actually appear in the simplified body — vars not touched
+/// can't be outputs of the function-izer.
+pub fn collect_touched_names<'ctx>(
+    a: &z3::ast::Bool<'ctx>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    let d = z3::ast::Dynamic::from_ast(a);
+    collect_touched_names_dyn(&d, out);
+}
+
+fn collect_touched_names_dyn<'ctx>(
+    a: &Dynamic<'ctx>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    if a.kind() == AstKind::App {
+        if let Ok(decl) = a.safe_decl() {
+            if decl.kind() == DeclKind::UNINTERPRETED && a.num_children() == 0 {
+                out.insert(decl.name());
+                return;
+            }
+        }
+        for c in a.children() {
+            collect_touched_names_dyn(&c, out);
+        }
+    }
+}
+
 /// Pull the variant name from a Z3 application formatted as
 /// `((_ is <Variant>) <arg>)`. Workaround for the Rust z3 0.12
 /// binding not exposing FuncDecl parameters.
@@ -970,6 +1297,48 @@ pub fn extract_is_variant_pub(s: &str) -> Option<String> {
     let rest = &s[idx + 6 ..];   // after "(_ is "
     let end = rest.find(|c: char| c.is_whitespace() || c == ')')?;
     Some(rest[..end].to_string())
+}
+
+/// Walk a `Value::Enum { enum_name = "__SeqOf_T", ... }` Cons chain
+/// and produce a flat `Value::SeqEnum` (or `Value::SeqInt` / etc.
+/// via `seq_value_from_elements`). Returns None if `v` isn't the
+/// head of a `__SeqOf_T` chain.
+///
+/// The chain shape (from the translator's Phase 6.2 work) is:
+///   `__SeqOf_T` enum with two variants — `__Empty_T()` (nil)
+///   and `__Cell_T(head: T, tail: __SeqOf_T)`. Walk via the
+///   `variant` field on each cell, recursing into `fields[1]`
+///   until we hit `__Empty_T`.
+fn flatten_seq_of_chain(v: &Value) -> Option<Value> {
+    let Value::Enum { enum_name, .. } = v else { return None };
+    if !enum_name.starts_with("__SeqOf_") { return None; }
+    let mut out: Vec<Value> = Vec::new();
+    let mut cur = v;
+    loop {
+        let Value::Enum { variant, fields, .. } = cur else { return None };
+        if variant.starts_with("__Empty_") { break; }
+        if !variant.starts_with("__Cell_") { return None; }
+        if fields.len() != 2 { return None; }
+        // Recurse into the head — payload itself may carry its own
+        // `__SeqOf_T` field that needs flattening.
+        let mut head = fields[0].clone();
+        if let Value::Enum { variant: hv, fields: hf, .. } = &mut head {
+            if !hv.starts_with("__Cell_") && !hv.starts_with("__Empty_") {
+                for f in hf.iter_mut() {
+                    if let Some(flat) = flatten_seq_of_chain(f) { *f = flat; }
+                }
+            }
+        }
+        out.push(head);
+        cur = &fields[1];
+    }
+    Some(seq_value_from_elements(out))
+}
+
+/// Public wrapper for `seq_value_from_elements` — used by the
+/// rust_vm module which mirrors the AST walker's Seq result shape.
+pub fn seq_value_from_elements_pub(values: Vec<Value>) -> Value {
+    seq_value_from_elements(values)
 }
 
 /// Classify a Vec<Value> into the appropriate Seq* Value variant

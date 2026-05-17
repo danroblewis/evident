@@ -75,6 +75,7 @@ pub use eval::{analyze_decomposition, build_cache, classify_components,
                 evaluate_with_extra_assertions,
                 evaluate_with_program_and_body,
                 run_cached, sample_cached_inner};
+pub(crate) use eval::extract_binding;
 pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
                      StructuralSignature};
 pub use types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
