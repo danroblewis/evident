@@ -2235,6 +2235,64 @@ impl EvidentRuntime {
                                  is_pure_assignment_body_xl,
                                  SubstitutionChain};
 
+        // Cache check FIRST — before any analysis (inlining,
+        // gate, decomposition). Both outcomes are one-shot per
+        // (claim, given-shape):
+        //
+        //   * Some(chain): try eval. Success → HIT. Failure →
+        //     fall through to Z3 this call, but keep the chain
+        //     cached for future ticks (data varies; chain shape
+        //     doesn't).
+        //   * None: cached rejection — gate refused or chain
+        //     extraction failed. Skip all analysis, fall through
+        //     to Z3.
+        //
+        // This is the key to keeping the function-izer cheap on
+        // claims that will never function-ize (Mario's display,
+        // game, level_gen, etc.) — we pay analysis cost once per
+        // (claim, given-shape) lifetime, not once per tick.
+        let mut given_keys: Vec<String> = given.keys().cloned().collect();
+        given_keys.sort();
+        let cache_key = (name.to_string(), given_keys);
+        {
+            let cache = self.functionize_cache.borrow();
+            if let Some(entry) = cache.get(&cache_key) {
+                let Some(chain) = entry.as_ref() else { return None; };
+                // Build the minimal resolvers needed to evaluate.
+                let resolver = |ident: &str| -> Option<Value> {
+                    let by_variant = self.enums.by_variant.borrow();
+                    let (enum_name, _idx) = by_variant.get(ident)?;
+                    let by_name = self.enums.by_name.borrow();
+                    let (_, variants) = by_name.get(enum_name)?;
+                    let variant = variants.iter().find(|v| v.name == ident)?;
+                    if !variant.fields.is_empty() { return None; }
+                    Some(Value::Enum {
+                        enum_name: enum_name.clone(),
+                        variant: ident.to_string(),
+                        fields: vec![],
+                    })
+                };
+                let ctor_resolver = |ident: &str, args: &[Value]| -> Option<Value> {
+                    let by_variant = self.enums.by_variant.borrow();
+                    let (enum_name, _idx) = by_variant.get(ident)?;
+                    let by_name = self.enums.by_name.borrow();
+                    let (_, variants) = by_name.get(enum_name)?;
+                    let variant = variants.iter().find(|v| v.name == ident)?;
+                    if variant.fields.len() != args.len() { return None; }
+                    Some(Value::Enum {
+                        enum_name: enum_name.clone(),
+                        variant: ident.to_string(),
+                        fields: args.to_vec(),
+                    })
+                };
+                let bindings = evaluate_chain_with_resolvers(
+                    chain, given, &resolver, &ctor_resolver)?;
+                let mut out = HashMap::new();
+                for (k, v) in bindings { out.insert(k, v); }
+                return Some(QueryResult { satisfied: true, bindings: out });
+            }
+        }
+
         // Enum-aware gate. The native evaluator handles enum-typed
         // memberships via Match dispatch + Value::Enum lookup, so we
         // allow types known to be enums in addition to primitives.
@@ -2356,6 +2414,9 @@ impl EvidentRuntime {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                 eprintln!("[fz] {}: rejected by gate ({})", name, why);
             }
+            // Cache the rejection so we don't re-run the gate
+            // every tick for claims that will never function-ize.
+            self.functionize_cache.borrow_mut().insert(cache_key, None);
             return None;
         }
 
@@ -2400,23 +2461,7 @@ impl EvidentRuntime {
             })
         };
 
-        let mut given_keys: Vec<String> = given.keys().cloned().collect();
-        given_keys.sort();
-        let cache_key = (name.to_string(), given_keys);
-
-        // Cache lookup.
-        {
-            let cache = self.functionize_cache.borrow();
-            if let Some(entry) = cache.get(&cache_key) {
-                let Some(chain) = entry.as_ref() else { return None; };
-                let bindings = evaluate_chain_with_resolvers(chain, given, &resolver, &ctor_resolver)?;
-                let mut out = HashMap::new();
-                for (k, v) in bindings { out.insert(k, v); }
-                return Some(QueryResult { satisfied: true, bindings: out });
-            }
-        }
-
-        // Cache miss: try to build a chain.
+        // Cache miss already established at function entry. Build the chain.
         //
         // Fast path (Round 12): the gate already vetted that every
         // body Constraint is a pure equality (no Forall, Exists,
