@@ -38,7 +38,7 @@ claim HelloStep
     });
 
     // Run via rt.query — try BOTH paths and check they agree.
-    std::env::remove_var("EVIDENT_FUNCTIONIZE");
+    std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
     let z3_r = rt.query("HelloStep", &given).unwrap();
     assert!(z3_r.satisfied, "Z3 baseline must be SAT");
     assert_eq!(z3_r.bindings.get("state_next"), Some(&Value::Enum {
@@ -118,14 +118,14 @@ claim HelloStep
 
     // Warm-up both paths.
     for _ in 0..50 {
-        std::env::remove_var("EVIDENT_FUNCTIONIZE");
+        std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
         let _ = rt.query("HelloStep", &given);
         std::env::set_var("EVIDENT_FUNCTIONIZE", "1");
         let _ = rt.query("HelloStep", &given);
     }
     const N: usize = 2_000;
 
-    std::env::remove_var("EVIDENT_FUNCTIONIZE");
+    std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
     let t0 = Instant::now();
     for _ in 0..N { let _ = rt.query("HelloStep", &given); }
     let z3_per = t0.elapsed().as_secs_f64() * 1_000_000.0 / N as f64;

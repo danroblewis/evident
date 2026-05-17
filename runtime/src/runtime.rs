@@ -1761,8 +1761,8 @@ pub struct EvidentRuntime {
     /// fully function-shaped under these inputs — fall through to Z3).
     /// Keyed on given-KEYS, not values, since the chain is the same
     /// shape across runs with different concrete inputs. Populated on
-    /// first query per (claim, given-shape) combo. Behind
-    /// `EVIDENT_FUNCTIONIZE=1` env var while we validate.
+    /// first query per (claim, given-shape) combo. Default ON;
+    /// set `EVIDENT_FUNCTIONIZE=0` to disable.
     functionize_cache: RefCell<HashMap<(String, Vec<String>),
                                        Option<crate::functionize::SubstitutionChain>>>,
     /// Counter incremented each time a cached entry is rebuilt due
@@ -2194,7 +2194,7 @@ impl EvidentRuntime {
         // chain extraction failed, native eval failed). See
         // `docs/bench/functionize.md` for the design + perf numbers.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s == "1").unwrap_or(false);
+            .map(|s| s != "0").unwrap_or(true);
         if functionize_on {
             match self.try_functionize(name, schema, given) {
                 Some(result) => {
@@ -2991,7 +2991,7 @@ impl EvidentRuntime {
         // simply redundant with the given Value. If function-izer
         // rejects, fall through to Z3 with `pins` intact.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s == "1").unwrap_or(false);
+            .map(|s| s != "0").unwrap_or(true);
         if functionize_on {
             if let Some(result) = self.try_functionize(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
