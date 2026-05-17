@@ -252,10 +252,33 @@ pub fn extract_program<'ctx>(
     }
 
     // Compose Seq steps where length + all N elements are pinned.
+    //
+    // Length sources, in priority order:
+    //   1. Explicit `(= var__len N)` pin from the body.
+    //   2. Inferred from consecutive `(select var 0..K)` per-element
+    //      pins — Z3 folds away the literal length pin via
+    //      apply_seq_lengths BEFORE body translation, so seq-of-
+    //      datatype assignments often arrive without an explicit
+    //      length clause. If we see (select var 0), (select var 1),
+    //      …, (select var K) and no (select var K+1), infer
+    //      length = K+1.
     let mut seq_assign: HashMap<String, Vec<Dynamic<'ctx>>> = HashMap::new();
     for arr in outputs {
-        let Some(&n) = seq_lengths.get(arr) else { continue };
         if scalar_assign.contains_key(arr) { continue; }
+        let explicit = seq_lengths.get(arr).copied();
+        let inferred = seq_elements.get(arr).and_then(|m| {
+            // Largest index i such that all of 0..=i are present.
+            let mut i = 0i64;
+            while m.contains_key(&i) { i += 1; }
+            if i == 0 { None } else { Some(i) }
+        });
+        let n = match (explicit, inferred) {
+            (Some(e), Some(i)) if e == i => e,
+            (Some(e), Some(i)) => e.max(i),  // explicit wins if elements gap
+            (Some(e), None)    => e,
+            (None,    Some(i)) => i,
+            (None,    None)    => continue,
+        };
         let empty: HashMap<i64, Dynamic<'ctx>> = HashMap::new();
         let elements = seq_elements.get(arr).unwrap_or(&empty);
         let mut elems = Vec::with_capacity(n as usize);
