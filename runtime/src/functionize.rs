@@ -210,6 +210,86 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
     })
 }
 
+/// Pure-AST classification: build a single "everything" Component
+/// covering every variable declared in the schema body (after
+/// flattening Passthroughs) that isn't already in `given`. If
+/// `extract_chain_xl` then produces a complete substitution chain
+/// for this component, the body is functional by construction —
+/// every output has a unique defining equation, and we skip the
+/// Z3-based 2-copy uniqueness check entirely.
+///
+/// The chain extraction is the safety net: if any output var lacks
+/// a substitution, extract returns None and the caller falls
+/// through to Z3. Eval-time failures (e.g. unpinned-var lookups
+/// inside a substitution's RHS) ALSO degrade gracefully to Z3.
+pub fn try_extract_one_chain(
+    schema: &SchemaDecl,
+    given_keys: &HashSet<&str>,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+    is_pure_passthrough: &dyn Fn(&str) -> bool,
+    passthrough_body: &dyn Fn(&str) -> Option<Vec<BodyItem>>,
+) -> Option<SubstitutionChain> {
+    // Walk the schema's body (and passthrough'd bodies) collecting
+    // every Membership-declared name that isn't already pinned by
+    // the caller. These become the substitution targets.
+    let mut all_body: Vec<BodyItem> = schema.body.clone();
+    let mut to_walk: Vec<String> = schema.body.iter().filter_map(|i| match i {
+        BodyItem::Passthrough(n) => Some(n.clone()), _ => None,
+    }).collect();
+    let mut walked: HashSet<String> = HashSet::new();
+    while let Some(name) = to_walk.pop() {
+        if !walked.insert(name.clone()) { continue; }
+        let Some(body) = passthrough_body(&name) else { continue };
+        for item in &body {
+            if let BodyItem::Passthrough(n) = item { to_walk.push(n.clone()); }
+        }
+        all_body.extend(body);
+    }
+    let mut vars: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for item in &all_body {
+        if let BodyItem::Membership { name, .. } = item {
+            if !given_keys.contains(name.as_str()) && seen.insert(name.clone()) {
+                vars.push(name.clone());
+            }
+        }
+    }
+    let component = Component { vars, constraint_indices: vec![] };
+    let chain = extract_chain_xl(schema, &component, is_enum, is_simple_record,
+                                 is_pure_passthrough, passthrough_body)?;
+    // Type-shape sanity check: the Z3 translator rejects bodies where
+    // LHS and RHS types are obviously incompatible (e.g.
+    // `v ∈ IVec2 = 5`) via a fatal "dropped constraint" exit. The
+    // fast path doesn't translate, so we'd silently accept the
+    // invalid body and produce a wrong SAT result. Add a narrow
+    // check here: if LHS's declared type is a non-primitive AND
+    // non-enum AND non-Seq/Set, the RHS can't be a scalar literal.
+    let var_types: HashMap<String, String> = all_body.iter().filter_map(|item| {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            Some((name.clone(), type_name.clone()))
+        } else { None }
+    }).collect();
+    for step in &chain.steps {
+        let Some(ty) = var_types.get(&step.var) else { continue };
+        let primitive = matches!(ty.as_str(),
+            "Int" | "Real" | "Bool" | "String" | "Nat");
+        if primitive { continue; }
+        if is_enum(ty) { continue; }
+        // Seq(T) / Set(T) accept SeqLit; primitives are checked above.
+        if ty.starts_with("Seq(") || ty.starts_with("Set(") { continue; }
+        // Non-primitive, non-enum, non-Seq/Set: LHS is a composite
+        // record. RHS must be a record-shaped expression — refuse
+        // bare scalar literals.
+        if matches!(step.expr,
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_))
+        {
+            return None;
+        }
+    }
+    Some(chain)
+}
+
 /// Classify a non-Eq Constraint expression. Returns None when the
 /// constraint is acceptable (after unrolling), or Some(reason) when
 /// it's a hard refusal.

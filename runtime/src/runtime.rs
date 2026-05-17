@@ -2395,46 +2395,71 @@ impl EvidentRuntime {
             }
         }
 
-        // Cache miss: try to build a chain. Classify components, extract
-        // a chain per functional one, merge. If ANY component is
-        // non-functional or extraction fails, give up — install None.
-        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-            .and_then(|s| s.parse().ok()).unwrap_or(2);
-        let comps = crate::translate::classify_components(
-            schema, given, &self.schemas, self.z3_ctx,
-            &self.datatypes, Some(&self.enums), arith);
-        if comps.iter().any(|c| !c.functional) {
-            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                let non: Vec<&str> = comps.iter().filter(|c| !c.functional)
-                    .flat_map(|c| c.component.vars.iter().map(|s| s.as_str())).collect();
-                eprintln!("[fz] {}: non-functional components: {:?}", name, non);
+        // Cache miss: try to build a chain.
+        //
+        // Fast path (Round 12): the gate already vetted that every
+        // body Constraint is a pure equality (no Forall, Exists,
+        // Implies, top-level Ternary, etc.). Under that constraint,
+        // a complete substitution chain (one defining equation per
+        // output var, all topo-sortable) is the functional witness
+        // — no Z3 2-copy uniqueness check needed. The chain itself
+        // PROVES uniqueness: each output gets exactly one expression,
+        // expressions only depend on earlier-defined vars and inputs.
+        //
+        // If `try_extract_one_chain` fails (some output has no
+        // defining equation, or there's a cycle), fall through to
+        // the Z3-based slow path below.
+        let given_keys_set: std::collections::HashSet<&str> = given.keys()
+            .map(|s| s.as_str()).collect();
+        let is_in_given = |n: &str| -> bool { given.contains_key(n) };
+        let chain = if let Some(mut ch) = crate::functionize::try_extract_one_chain(
+            schema, &given_keys_set, &is_enum, &is_simple_record,
+            &is_pure_passthrough, &passthrough_body)
+        {
+            // Schema-wide consistency checks attach to the chain
+            // alongside the merged steps.
+            let extra_checks = crate::functionize::extract_schema_wide_checks(
+                schema, &is_in_given, &passthrough_body);
+            ch.checks.extend(extra_checks);
+            ch
+        } else {
+            // Slow path: classify per-component (Z3), then merge
+            // component chains. Used when the one-big-chain extract
+            // failed because the body has independent sub-models
+            // that the merged-chain approach can't topo-sort.
+            let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+                .and_then(|s| s.parse().ok()).unwrap_or(2);
+            let comps = crate::translate::classify_components(
+                schema, given, &self.schemas, self.z3_ctx,
+                &self.datatypes, Some(&self.enums), arith);
+            if comps.iter().any(|c| !c.functional) {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    let non: Vec<&str> = comps.iter().filter(|c| !c.functional)
+                        .flat_map(|c| c.component.vars.iter().map(|s| s.as_str())).collect();
+                    eprintln!("[fz] {}: non-functional components: {:?}", name, non);
+                }
+                self.functionize_cache.borrow_mut().insert(cache_key, None);
+                return None;
             }
-            self.functionize_cache.borrow_mut().insert(cache_key, None);
-            return None;
-        }
-        let mut steps = Vec::new();
-        for c in &comps {
-            match extract_chain_xl(schema, &c.component, &is_enum, &is_simple_record,
-                                   &is_pure_passthrough, &passthrough_body) {
-                Some(ch) => steps.extend(ch.steps),
-                None => {
-                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                        eprintln!("[fz] {}: extract_chain failed for vars {:?}",
-                            name, c.component.vars);
+            let mut steps = Vec::new();
+            for c in &comps {
+                match extract_chain_xl(schema, &c.component, &is_enum, &is_simple_record,
+                                       &is_pure_passthrough, &passthrough_body) {
+                    Some(ch) => steps.extend(ch.steps),
+                    None => {
+                        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                            eprintln!("[fz] {}: extract_chain failed for vars {:?}",
+                                name, c.component.vars);
+                        }
+                        self.functionize_cache.borrow_mut().insert(cache_key, None);
+                        return None;
                     }
-                    self.functionize_cache.borrow_mut().insert(cache_key, None);
-                    return None;
                 }
             }
-        }
-        // Schema-wide consistency checks: equalities involving given
-        // variables that aren't substitution targets. The native eval
-        // must verify each one against the actual given values; a
-        // conflict means UNSAT.
-        let is_in_given = |n: &str| -> bool { given.contains_key(n) };
-        let checks = crate::functionize::extract_schema_wide_checks(
-            schema, &is_in_given, &passthrough_body);
-        let chain = SubstitutionChain { steps, checks };
+            let checks = crate::functionize::extract_schema_wide_checks(
+                schema, &is_in_given, &passthrough_body);
+            SubstitutionChain { steps, checks }
+        };
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
             eprintln!("[fz] {}: chain has {} steps: {:?}", name, chain.steps.len(),
                 chain.steps.iter().map(|s| &s.var).collect::<Vec<_>>());
