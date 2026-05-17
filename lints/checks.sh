@@ -409,7 +409,7 @@ check_pub_mod_has_external_use() {
     local mods
     mods=$(strip_rs_test_modules "$lib" \
            | grep -vE '^[[:space:]]*//' \
-           | grep -oE '^pub mod [a-z_]+' \
+           | grep -oE '^pub mod [a-z0-9_]+' \
            | awk '{print $3}')
     for m in $mods; do
         # Match either `evident_runtime::<m>` (path use, with `::`

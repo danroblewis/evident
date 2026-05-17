@@ -77,4 +77,5 @@ pub use eval::{analyze_decomposition, build_cache, classify_components,
                 run_cached, sample_cached_inner};
 pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
                      StructuralSignature};
-pub use types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value};
+pub use types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
+pub use encode_ast::value_enum_to_datatype;

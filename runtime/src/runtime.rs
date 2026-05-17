@@ -3251,6 +3251,17 @@ impl EvidentRuntime {
         self.z3_ctx
     }
 
+    /// Read-only access to the DatatypeRegistry. Used by the
+    /// Z3-AST functionizer pipeline to build cached schemas.
+    pub fn datatypes_registry(&self) -> &crate::translate::DatatypeRegistry {
+        &self.datatypes
+    }
+
+    /// Read-only access to the loaded schemas map.
+    pub fn schemas_map(&self) -> &HashMap<String, SchemaDecl> {
+        &self.schemas
+    }
+
     /// Build a `Value::SeqEnum` of `Result` enums. Used by the
     /// multi-FSM scheduler to pin `last_results ∈ Seq(Result)`
     /// via the `given` map (`assert_seq_given` handles the

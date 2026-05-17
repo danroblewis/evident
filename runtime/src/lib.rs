@@ -8,6 +8,7 @@ pub mod ast;
 pub mod decompose;
 pub mod effect_dispatch;
 pub mod functionize;
+pub mod z3_eval;
 pub mod effect_loop;
 mod ffi;
 mod lexer;

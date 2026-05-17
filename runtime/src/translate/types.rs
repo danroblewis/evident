@@ -258,7 +258,7 @@ impl FieldKind {
 /// Array has values at all indices, not just 0..len, but we just don't
 /// read past `len` during model extraction.
 #[derive(Clone)]
-pub(super) enum Var<'ctx> {
+pub enum Var<'ctx> {
     IntVar(Int<'ctx>),
     /// Real-valued Z3 const. Supports add/sub/mul/div via Z3 LRA;
     /// comparison via lt/le/gt/ge; equality via Ast::_eq.
@@ -409,8 +409,8 @@ impl<'ctx> Var<'ctx> {
 /// the bottom of the assertion stack) and the env mapping used to
 /// resolve given-bindings + extract the model.
 pub struct CachedSchema<'ctx> {
-    pub(super) env: HashMap<String, Var<'ctx>>,
-    pub(super) solver: Solver<'ctx>,
+    pub env: HashMap<String, Var<'ctx>>,
+    pub solver: Solver<'ctx>,
     /// The `smt.arith.solver` value this cache was built under (0
     /// means "no explicit setting, use Z3's default"). The runtime's
     /// auto-tuner consults this to decide whether the cache needs
