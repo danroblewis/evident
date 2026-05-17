@@ -243,24 +243,32 @@ fn stage_4_jit_compiles_effects_producer() {
     let program = extract_program(&result.formulas, &outputs).expect("extract");
 
     let jit = compile_program(&program, enums);
-    // TODO(round-25): make this Some. Requires:
-    //   1. Seq output codegen: allocate, fill elements, return.
-    //   2. Payload-bearing constructor codegen: build Value::Enum
-    //      with fields, either inline or via callback to Rust.
-    //   3. String literal handling (intern table or static refs).
-    //
-    // When 1+2+3 land, this assertion flips to `is_some()` and we
-    // assert on the SeqEnum content below.
-    assert!(jit.is_none(),
-        "JIT currently refuses Seq+payload programs — this is the gap we're closing in Round 25.");
-
-    // Stage 4 final assertion (target):
-    //
-    // let jit = jit.expect("JIT should compile effects-producer");
-    // let env: HashMap<String, Value> = HashMap::new();
-    // let bindings = jit.call(&env).expect("jit call");
-    // let effects = bindings.get("effects").expect("effects bound");
-    // let Value::SeqEnum(elems) = effects else { panic!("not SeqEnum: {effects:?}"); };
-    // assert_eq!(elems.len(), 3);
-    // // ... assert on each element's variant + fields ...
+    let jit = jit.expect("Round 26: JIT should compile Seq output + payload-bearing constructors");
+    let env: HashMap<String, Value> = HashMap::new();
+    let bindings = jit.call(&env).expect("jit call");
+    let effects = bindings.get("effects").expect("effects bound");
+    eprintln!("JIT output for effects = {effects:?}");
+    let Value::SeqEnum(elems) = effects else {
+        panic!("effects not SeqEnum: {effects:?}");
+    };
+    assert_eq!(elems.len(), 3, "three effect elements");
+    // Element 0: Println("hello")
+    assert!(matches!(&elems[0], Value::Enum { variant, fields, .. }
+        if variant == "Println"
+           && matches!(&fields[..], [Value::Str(s)] if s == "hello")),
+        "elem 0 should be Println(\"hello\"), got: {:?}", elems[0]);
+    // Element 1: Println("world")
+    assert!(matches!(&elems[1], Value::Enum { variant, fields, .. }
+        if variant == "Println"
+           && matches!(&fields[..], [Value::Str(s)] if s == "world")),
+        "elem 1 should be Println(\"world\"), got: {:?}", elems[1]);
+    // Element 2: Exit(0)
+    assert!(matches!(&elems[2], Value::Enum { variant, fields, .. }
+        if variant == "Exit"
+           && matches!(&fields[..], [Value::Int(0)])),
+        "elem 2 should be Exit(0), got: {:?}", elems[2]);
+    // state_next = Done
+    assert!(matches!(bindings.get("state_next"),
+        Some(Value::Enum { variant, .. }) if variant == "Done"),
+        "state_next should be Done, got: {:?}", bindings.get("state_next"));
 }

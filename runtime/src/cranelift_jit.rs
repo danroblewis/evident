@@ -1,63 +1,35 @@
 //! Cranelift JIT codegen for Z3-AST function-shaped components.
 //!
-//! This is the bridge from "interpret the canonical form" to
-//! "execute the canonical form as machine code". The input is the
-//! same `Z3Program` the AST walker uses; the output is a function
-//! pointer to JIT-compiled native code.
-//!
-//! ## Scope
-//!
-//! v1 compiles a focused subset of Z3 patterns into native:
-//!
-//!   * Int arithmetic (ADD, SUB, MUL, IDIV, MOD, UMINUS)
-//!   * Int comparisons (EQ, LT, LE, GT, GE) → Bool i8
-//!   * Bool ops (AND, OR, NOT)
-//!   * ITE (Int/Bool ternary)
-//!   * UNINTERPRETED 0-arity vars (load from input slot)
-//!   * DT_CONSTRUCTOR for 0-arity enum variants (encoded as i64
-//!     constructor index — the Datatype's variant index)
-//!   * DT_IS / DT_RECOGNISER on enum vars (compare against
-//!     constructor index)
-//!
-//! Out of scope for v1 (fall back to AST walker):
-//!
-//!   * String values (need interning / heap)
-//!   * Enum payloads with variable fields (Seq(Effect) with
-//!     nested LibCall args)
-//!   * Seq values in general (Z3 arrays + length)
-//!
-//! Even with this subset, claims that are pure Int/Bool/enum-tag
-//! dispatch — state machines, counters, simple gating — compile
-//! to native and run at machine speed.
+//! Round 26: Seq outputs + payload-bearing constructors. The JIT
+//! emits a sequence of `call_indirect` instructions to Rust-side
+//! helpers (see `value_builders.rs`) that construct `Value`
+//! enums and push them into `Value::SeqEnum` outputs.
 //!
 //! ## Calling convention
 //!
-//! Each compiled program is a function with signature:
-//!
 //! ```text
-//!   extern "C" fn(inputs: *const i64, outputs: *mut i64)
+//!   extern "C" fn(inputs: *const i64, outputs: *mut Value)
 //! ```
 //!
-//! Where `inputs` and `outputs` are flat i64 arrays whose offsets
-//! map to variable names via `JitProgram::input_offsets` and
-//! `JitProgram::output_offsets`. The Rust runtime packs/unpacks
-//! Value enums into i64 around the call:
+//! - `inputs`: flat array of i64 values packed by the Rust
+//!   wrapper from the caller's `given` map. Supports Int,
+//!   Bool, and 0-arity enum (variant tag) inputs.
+//! - `outputs`: pre-allocated `Vec<Value>` with one slot per
+//!   output. The JIT writes into each slot via `ev_*` helpers
+//!   (`ev_set_int`, `ev_set_enum_str`, `ev_seq_new`, etc.).
 //!
-//!   * Value::Int(n)              → n
-//!   * Value::Bool(b)             → if b { 1 } else { 0 }
-//!   * Value::Enum (0-arity)      → variant index (looked up in
-//!                                   the enum's variants list)
-//!
-//! Non-fitting types abort compilation; the runtime keeps the
-//! AST walker as a fallback for those.
+//! For Seq outputs, the JIT calls `ev_seq_new(slot, cap)` then
+//! builds each element into a stack-allocated temp `Value` slot
+//! and calls `ev_seq_push_clone(slot, temp)`. The runtime owns
+//! all heap allocations; the JIT just orchestrates the calls.
 
 use std::collections::HashMap;
 use cranelift::prelude::{AbiParam, FunctionBuilder, FunctionBuilderContext,
-    InstBuilder, IntCC, MemFlags, settings, types, EntityRef};
-use cranelift::prelude::settings::Configurable;
+    InstBuilder, MemFlags, settings, types, StackSlotData, StackSlotKind};
 use cranelift::prelude::Value as ClValue;
+use cranelift::prelude::settings::Configurable;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
 use z3::ast::{Ast, Dynamic};
 use z3::AstKind;
 use z3_sys::DeclKind;
@@ -65,77 +37,65 @@ use z3_sys::DeclKind;
 use crate::translate::{EnumRegistry, Value};
 use crate::z3_eval::{Z3Program, Z3Step, GuardedBody};
 
-/// One compiled program: a JIT'd native function plus the slot
-/// layout for inputs and outputs.
 pub struct JitProgram {
-    /// JIT module — must stay alive for the duration of any
-    /// function calls into it. Cranelift unloads the code when
-    /// the module drops.
     _module: JITModule,
-    /// Function pointer cast to an extern "C" closure.
-    func: unsafe extern "C" fn(*const i64, *mut i64),
-    /// `var_name → input slot index`. The caller packs i64 values
-    /// into a `Vec<i64>` at these indices before calling.
+    func: unsafe extern "C" fn(*const i64, *mut Value),
     pub input_offsets: HashMap<String, usize>,
-    /// `var_name → output slot index`. The caller reads i64 values
-    /// from these indices after calling.
+    pub input_kinds:   HashMap<String, OutputKind>,
     pub output_offsets: HashMap<String, usize>,
-    /// Per-output, the value kind needed to unpack the i64 back
-    /// into a `Value`. We need this because i64 == 1 could mean
-    /// `Int(1)`, `Bool(true)`, or `Enum{variant_idx: 1}`
-    /// depending on the var's source type.
-    pub output_kinds: HashMap<String, OutputKind>,
-    /// Per-input, the value kind needed to pack a `Value` into
-    /// i64 before calling. Mostly mirrors `output_kinds` for
-    /// outputs that loop back as inputs.
-    pub input_kinds: HashMap<String, OutputKind>,
-    /// Enum variant tables: `enum_name → variant_name → i64
-    /// tag`. Used to pack/unpack enum values across the boundary.
-    pub enum_tags: HashMap<String, HashMap<String, i64>>,
-    /// Reverse lookup: `enum_name → tag → variant_name`. Used to
-    /// rebuild Value::Enum from output i64.
+    pub output_kinds:   HashMap<String, OutputKind>,
+    pub enum_tags:     HashMap<String, HashMap<String, i64>>,
     pub enum_variants: HashMap<String, Vec<String>>,
+    /// Interned strings kept alive for the lifetime of the JIT
+    /// code (the compiled function holds raw pointers into them).
+    _string_pool: Vec<Box<str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OutputKind {
     Int,
     Bool,
-    Enum(String),  // enum_name
+    /// All-nullary enum: encoded as i64 variant tag for inputs.
+    /// Outputs use ev_set_enum_nullary.
+    Enum(String),
+    /// Payload-bearing enum: outputs use ev_set_enum_int/str.
+    EnumPayload(String),
+    /// Seq output: uses ev_seq_new + ev_seq_push_clone.
+    Seq,
+    /// String value (only as an output / intermediate; we don't
+    /// support String inputs through the i64 ABI in v1).
+    Str,
 }
 
 impl JitProgram {
-    /// Call the compiled function. Packs `given` into the input
-    /// buffer, calls the JIT'd code, and unpacks the output
-    /// buffer into a `HashMap<String, Value>`.
     pub fn call(&self, given: &HashMap<String, Value>) -> Option<HashMap<String, Value>> {
-        let n_in = self.input_offsets.len();
+        let n_in  = self.input_offsets.len();
         let n_out = self.output_offsets.len();
-        let mut inputs:  Vec<i64> = vec![0; n_in];
-        let mut outputs: Vec<i64> = vec![0; n_out];
+        let mut inputs: Vec<i64> = vec![0; n_in];
+        // Initialize each output slot to a default Value::Int(0).
+        // The JIT helpers do `*out = ...` which drops the prior
+        // value; the default ensures we have a valid Value
+        // pre-written before the JIT runs.
+        let mut outputs: Vec<Value> = (0..n_out).map(|_| Value::Int(0)).collect();
         for (name, &idx) in &self.input_offsets {
             let value = given.get(name)?;
             let kind  = self.input_kinds.get(name)?;
-            inputs[idx] = self.pack(value, kind)?;
+            inputs[idx] = self.pack_input(value, kind)?;
         }
-        // SAFETY: `func` was built against a JIT module that's
-        // alive for the lifetime of self. We pass valid pointers
-        // to in-bounds buffers of the declared lengths. The
-        // generated code only reads inputs[0..n_in] and writes
-        // outputs[0..n_out].
+        // SAFETY: compiled code is alive as long as `_module`;
+        // outputs is a properly-aligned `Vec<Value>` of n_out
+        // elements; helpers only access elements `0..n_out`.
         unsafe {
             (self.func)(inputs.as_ptr(), outputs.as_mut_ptr());
         }
         let mut out = HashMap::new();
         for (name, &idx) in &self.output_offsets {
-            let kind = self.output_kinds.get(name)?;
-            let v    = self.unpack(outputs[idx], kind)?;
-            out.insert(name.clone(), v);
+            out.insert(name.clone(), outputs[idx].clone());
         }
         Some(out)
     }
 
-    fn pack(&self, value: &Value, kind: &OutputKind) -> Option<i64> {
+    fn pack_input(&self, value: &Value, kind: &OutputKind) -> Option<i64> {
         match (kind, value) {
             (OutputKind::Int,  Value::Int(n))  => Some(*n),
             (OutputKind::Bool, Value::Bool(b)) => Some(if *b { 1 } else { 0 }),
@@ -145,141 +105,190 @@ impl JitProgram {
             _ => None,
         }
     }
+}
 
-    fn unpack(&self, raw: i64, kind: &OutputKind) -> Option<Value> {
-        match kind {
-            OutputKind::Int  => Some(Value::Int(raw)),
-            OutputKind::Bool => Some(Value::Bool(raw != 0)),
-            OutputKind::Enum(en) => {
-                let variants = self.enum_variants.get(en)?;
-                let idx = raw as usize;
-                let variant = variants.get(idx)?.clone();
-                Some(Value::Enum {
-                    enum_name: en.clone(),
-                    variant,
-                    fields: vec![],
-                })
-            }
-        }
+/// FuncIds for the runtime helpers — declared as Linkage::Import.
+#[derive(Clone, Copy)]
+struct HelperIds {
+    init_slot:         FuncId,
+    set_int:           FuncId,
+    set_bool:          FuncId,
+    set_str:           FuncId,
+    set_enum_nullary:  FuncId,
+    set_enum_int:      FuncId,
+    set_enum_str:      FuncId,
+    seq_new:           FuncId,
+    seq_push_clone:    FuncId,
+}
+
+/// FuncRefs after import into the current function's IR.
+#[derive(Clone, Copy)]
+struct HelperRefs {
+    init_slot:         cranelift::codegen::ir::FuncRef,
+    set_int:           cranelift::codegen::ir::FuncRef,
+    set_bool:          cranelift::codegen::ir::FuncRef,
+    set_str:           cranelift::codegen::ir::FuncRef,
+    set_enum_nullary:  cranelift::codegen::ir::FuncRef,
+    set_enum_int:      cranelift::codegen::ir::FuncRef,
+    set_enum_str:      cranelift::codegen::ir::FuncRef,
+    seq_new:           cranelift::codegen::ir::FuncRef,
+    seq_push_clone:    cranelift::codegen::ir::FuncRef,
+}
+
+fn declare_helpers(
+    module: &mut JITModule,
+    ptr_t: cranelift::prelude::Type,
+) -> Option<HelperIds> {
+    let i64t = types::I64;
+    let p = ptr_t;
+    let usz = ptr_t;
+    // Build all sigs first so we don't take `&mut module` twice
+    // in a single expression (Rust 2021 borrow rules).
+    let mk = |params: &[cranelift::prelude::Type], m: &mut JITModule|
+        -> cranelift::codegen::ir::Signature
+    {
+        let mut s = m.make_signature();
+        for &x in params { s.params.push(AbiParam::new(x)); }
+        s
+    };
+    let s_init     = mk(&[p], module);
+    let s_set_int  = mk(&[p, i64t], module);
+    let s_set_bool = mk(&[p, i64t], module);
+    let s_set_str  = mk(&[p, p, usz], module);
+    let s_nullary  = mk(&[p, p, usz, p, usz], module);
+    let s_enum_int = mk(&[p, p, usz, p, usz, i64t], module);
+    let s_enum_str = mk(&[p, p, usz, p, usz, p, usz], module);
+    let s_seq_new  = mk(&[p, usz], module);
+    let s_seq_push = mk(&[p, p], module);
+
+    Some(HelperIds {
+        init_slot:        module.declare_function("ev_init_slot",        Linkage::Import, &s_init).ok()?,
+        set_int:          module.declare_function("ev_set_int",          Linkage::Import, &s_set_int).ok()?,
+        set_bool:         module.declare_function("ev_set_bool",         Linkage::Import, &s_set_bool).ok()?,
+        set_str:          module.declare_function("ev_set_str",          Linkage::Import, &s_set_str).ok()?,
+        set_enum_nullary: module.declare_function("ev_set_enum_nullary", Linkage::Import, &s_nullary).ok()?,
+        set_enum_int:     module.declare_function("ev_set_enum_int",     Linkage::Import, &s_enum_int).ok()?,
+        set_enum_str:     module.declare_function("ev_set_enum_str",     Linkage::Import, &s_enum_str).ok()?,
+        seq_new:          module.declare_function("ev_seq_new",          Linkage::Import, &s_seq_new).ok()?,
+        seq_push_clone:   module.declare_function("ev_seq_push_clone",   Linkage::Import, &s_seq_push).ok()?,
+    })
+}
+
+fn import_helpers(
+    module: &mut JITModule,
+    ids: HelperIds,
+    func: &mut cranelift::codegen::ir::Function,
+) -> HelperRefs {
+    HelperRefs {
+        init_slot:        module.declare_func_in_func(ids.init_slot,        func),
+        set_int:          module.declare_func_in_func(ids.set_int,          func),
+        set_bool:         module.declare_func_in_func(ids.set_bool,         func),
+        set_str:          module.declare_func_in_func(ids.set_str,          func),
+        set_enum_nullary: module.declare_func_in_func(ids.set_enum_nullary, func),
+        set_enum_int:     module.declare_func_in_func(ids.set_enum_int,     func),
+        set_enum_str:     module.declare_func_in_func(ids.set_enum_str,     func),
+        seq_new:          module.declare_func_in_func(ids.seq_new,          func),
+        seq_push_clone:   module.declare_func_in_func(ids.seq_push_clone,   func),
     }
 }
 
-/// Try to compile a `Z3Program` into native code. Returns None
-/// when any step contains an operation v1 doesn't yet emit IR for
-/// — the caller falls back to the AST walker for those programs.
 pub fn compile_program<'ctx>(
     program: &Z3Program<'ctx>,
     enums: &EnumRegistry,
 ) -> Option<JitProgram> {
-    // Phase 1: determine input names + types from the program
-    // (every UNINTERPRETED var referenced by any expression) and
-    // output names + types from the steps.
-    let mut input_names_set: std::collections::BTreeSet<(String, OutputKind)> =
-        std::collections::BTreeSet::new();
-    let mut output_kinds_local: Vec<(String, OutputKind)> = Vec::new();
+    // ── Phase 1: enum tables ──────────────────────────────
     let mut enum_tags: HashMap<String, HashMap<String, i64>> = HashMap::new();
     let mut enum_variants: HashMap<String, Vec<String>> = HashMap::new();
-    // Pre-populate enum tables from the registry so we can pack
-    // any enum value the program might reference.
+    let mut variant_arity: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
     {
         let by_name = enums.by_name.borrow();
         for (enum_name, (_dt, variants)) in by_name.iter() {
-            // Skip enums that have ANY payload-bearing variant —
-            // the JIT can only handle 0-arity variants in v1.
-            // Programs that use them fall back to the AST walker.
-            if variants.iter().any(|v| !v.fields.is_empty()) { continue; }
-            let mut tags: HashMap<String, i64> = HashMap::new();
-            let mut names: Vec<String> = Vec::with_capacity(variants.len());
+            let mut tags = HashMap::new();
+            let mut names = Vec::with_capacity(variants.len());
+            let mut arities = HashMap::new();
             for (idx, v) in variants.iter().enumerate() {
                 tags.insert(v.name.clone(), idx as i64);
                 names.push(v.name.clone());
+                arities.insert(v.name.clone(),
+                    v.fields.iter().map(|f| f.type_name.clone()).collect());
             }
             enum_tags.insert(enum_name.clone(), tags);
             enum_variants.insert(enum_name.clone(), names);
+            variant_arity.insert(enum_name.clone(), arities);
         }
     }
 
+    // ── Phase 2: output kinds + input collection ──────────
+    let mut input_set: std::collections::BTreeSet<(String, OutputKind)> =
+        std::collections::BTreeSet::new();
+    let mut output_kinds_local: Vec<(String, OutputKind)> = Vec::new();
     for step in &program.steps {
-        let var = match step {
-            Z3Step::Scalar  { var, .. }
-            | Z3Step::Seq      { var, .. }
-            | Z3Step::Guarded  { var, .. } => var.clone(),
-        };
-        // For now only Scalar and Guarded scalar-bodied steps
-        // compile. Seq outputs aren't supported in v1.
-        let kind = match step {
-            Z3Step::Scalar { expr, .. } => kind_of_dynamic(expr, &enum_variants)?,
-            Z3Step::Seq { .. } => return None,
-            Z3Step::Guarded { branches, .. } => {
-                let mut bk: Option<OutputKind> = None;
-                for b in branches {
-                    let k = match &b.body {
-                        GuardedBody::Scalar(e) => kind_of_dynamic(e, &enum_variants)?,
-                        GuardedBody::Seq(_)    => return None,
-                    };
-                    bk = Some(k);
-                }
-                bk?
+        let (var, kind) = match step {
+            Z3Step::Scalar { var, expr } => {
+                let k = kind_of_dynamic(expr, &enum_variants, &variant_arity)?;
+                (var.clone(), k)
             }
+            Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
+            Z3Step::Guarded { .. } => return None,  // not in v1 codegen
         };
-        output_kinds_local.push((var.clone(), kind));
-        // Also collect Identifiers referenced by all steps as
-        // inputs.
+        output_kinds_local.push((var, kind));
         match step {
-            Z3Step::Scalar { expr, .. } => collect_inputs(expr, &mut input_names_set, &enum_variants),
-            Z3Step::Seq    { elem_exprs, .. } => {
-                for e in elem_exprs { collect_inputs(e, &mut input_names_set, &enum_variants); }
-            }
-            Z3Step::Guarded { branches, .. } => {
-                for b in branches {
-                    collect_inputs(&b.guard, &mut input_names_set, &enum_variants);
-                    match &b.body {
-                        GuardedBody::Scalar(e) => collect_inputs(e, &mut input_names_set, &enum_variants),
-                        GuardedBody::Seq(es)   =>
-                            for e in es { collect_inputs(e, &mut input_names_set, &enum_variants); },
-                    }
-                }
-            }
+            Z3Step::Scalar { expr, .. } =>
+                collect_inputs(expr, &mut input_set, &enum_variants, &variant_arity),
+            Z3Step::Seq { elem_exprs, .. } =>
+                for e in elem_exprs { collect_inputs(e, &mut input_set, &enum_variants, &variant_arity); },
+            _ => {}
         }
     }
-    // Filter inputs: anything that's ALSO an output is computed,
-    // not provided externally.
-    let output_set: std::collections::HashSet<String> = output_kinds_local.iter()
+    let output_names: std::collections::HashSet<String> = output_kinds_local.iter()
         .map(|(n, _)| n.clone()).collect();
-    let input_names: Vec<(String, OutputKind)> = input_names_set.into_iter()
-        .filter(|(n, _)| !output_set.contains(n)).collect();
+    let input_names: Vec<(String, OutputKind)> = input_set.into_iter()
+        .filter(|(n, _)| !output_names.contains(n))
+        .filter(|(_, k)| matches!(k,
+            OutputKind::Int | OutputKind::Bool | OutputKind::Enum(_)))
+        .collect();
 
-    // Phase 2: Cranelift IR generation.
+    // ── Phase 3: Cranelift IR generation ──────────────────
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").ok()?;
     flag_builder.set("is_pic", "false").ok()?;
     let isa_builder = cranelift_native::builder().ok()?;
     let isa = isa_builder.finish(settings::Flags::new(flag_builder)).ok()?;
-    let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    for (name, addr) in crate::value_builders::symbol_table() {
+        builder.symbol(name, addr);
+    }
     let mut module = JITModule::new(builder);
+    let ptr_t = module.target_config().pointer_type();
 
-    let pointer_type = module.target_config().pointer_type();
+    let helper_ids = declare_helpers(&mut module, ptr_t)?;
+
     let mut sig = module.make_signature();
-    sig.params.push(AbiParam::new(pointer_type));   // *const i64 (inputs)
-    sig.params.push(AbiParam::new(pointer_type));   // *mut i64  (outputs)
-
-    let func_id = module.declare_function("compiled_program", Linkage::Local, &sig).ok()?;
+    sig.params.push(AbiParam::new(ptr_t));   // *const i64 inputs
+    sig.params.push(AbiParam::new(ptr_t));   // *mut Value outputs
+    let func_id = module.declare_function("compiled_program",
+        Linkage::Local, &sig).ok()?;
     let mut ctx = module.make_context();
     ctx.func.signature = sig;
+    // Import helpers into this function's IR scope BEFORE we
+    // hand ctx.func to FunctionBuilder (since FunctionBuilder
+    // takes a mutable borrow of it).
+    let helpers = import_helpers(&mut module, helper_ids, &mut ctx.func);
 
-    // Precompute the output and input layouts so they survive
-    // the FunctionBuilder's borrow scope below.
     let input_offsets: HashMap<String, usize> = input_names.iter().enumerate()
         .map(|(i, (n, _))| (n.clone(), i)).collect();
+    let input_kinds: HashMap<String, OutputKind> = input_names.iter().cloned().collect();
     let mut output_offsets: HashMap<String, usize> = HashMap::new();
     let mut output_kinds: HashMap<String, OutputKind> = HashMap::new();
     for (i, (name, kind)) in output_kinds_local.iter().enumerate() {
         output_offsets.insert(name.clone(), i);
         output_kinds.insert(name.clone(), kind.clone());
     }
+    let size_of_value = std::mem::size_of::<Value>() as i64;
 
-    let mut func_ctx = FunctionBuilderContext::new();
+    let mut string_pool: Vec<Box<str>> = Vec::new();
     {
+        let mut func_ctx = FunctionBuilderContext::new();
         let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
         let entry = bcx.create_block();
         bcx.append_block_params_for_function_params(entry);
@@ -289,213 +298,208 @@ pub fn compile_program<'ctx>(
         let inputs_ptr  = bcx.block_params(entry)[0];
         let outputs_ptr = bcx.block_params(entry)[1];
 
-        // Pre-load inputs from the inputs_ptr buffer.
-        let mut env: HashMap<String, Value_> = HashMap::new();
+        // Temp slot for building Seq elements.
+        let temp_slot = bcx.create_sized_stack_slot(
+            StackSlotData::new(StackSlotKind::ExplicitSlot, size_of_value as u32));
+        let temp_ptr = bcx.ins().stack_addr(ptr_t, temp_slot, 0);
+        // The stack slot is uninitialized memory. We MUST use
+        // `ptr::write` (via ev_init_slot) for the first write so
+        // we don't try to drop garbage. Subsequent ev_set_* calls
+        // on this slot use normal `*out = ...` which drops the
+        // prior valid Value correctly.
+        bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+
+        // Native env: var name → its computed location.
+        let mut env: HashMap<String, EnvVal> = HashMap::new();
         for (name, idx) in &input_offsets {
             let v = bcx.ins().load(types::I64, MemFlags::new(),
                 inputs_ptr, (idx * 8) as i32);
-            env.insert(name.clone(), Value_ { v, kind: input_names.iter()
-                .find(|(n,_)| n == name).map(|(_,k)| k.clone()).unwrap_or(OutputKind::Int) });
+            let kind = input_kinds.get(name).cloned().unwrap_or(OutputKind::Int);
+            env.insert(name.clone(), EnvVal::I64 { v, kind });
         }
 
         for step in &program.steps {
+            let out_idx = output_offsets[step.var()];
+            let out_offset = (out_idx as i64) * size_of_value;
+            let off_v = bcx.ins().iconst(types::I64, out_offset);
+            let out_slot = bcx.ins().iadd(outputs_ptr, off_v);
+
             match step {
                 Z3Step::Scalar { var, expr } => {
-                    let v = emit_dynamic(&mut bcx, expr, &env, &enum_tags, &enum_variants)?;
-                    let idx = output_offsets[var];
-                    bcx.ins().store(MemFlags::new(), v.v, outputs_ptr, (idx * 8) as i32);
-                    env.insert(var.clone(), v);
+                    emit_write_value(&mut bcx, expr, out_slot, &env,
+                        &helpers, &variant_arity, &mut string_pool)?;
+                    env.insert(var.clone(), EnvVal::OutSlot { ptr: out_slot });
                 }
-                Z3Step::Guarded { var, branches } => {
-                    // Cascade: pick the first true guard.
-                    // Synthesize nested SELECTs. Default value
-                    // (when all guards false) is 0 — the caller's
-                    // eval would have returned None, but compiled
-                    // code can't gracefully fail mid-execution.
-                    let mut result = bcx.ins().iconst(types::I64, 0);
-                    for b in branches.iter().rev() {
-                        let guard = emit_dynamic(&mut bcx, &b.guard, &env, &enum_tags, &enum_variants)?;
-                        let body_v = match &b.body {
-                            GuardedBody::Scalar(e) =>
-                                emit_dynamic(&mut bcx, e, &env, &enum_tags, &enum_variants)?,
-                            GuardedBody::Seq(_) => return None,
-                        };
-                        result = bcx.ins().select(guard.v, body_v.v, result);
+                Z3Step::Seq { var, elem_exprs } => {
+                    let cap = bcx.ins().iconst(types::I64, elem_exprs.len() as i64);
+                    bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
+                    for elem in elem_exprs {
+                        emit_write_value(&mut bcx, elem, temp_ptr, &env,
+                            &helpers, &variant_arity, &mut string_pool)?;
+                        bcx.ins().call(helpers.seq_push_clone, &[out_slot, temp_ptr]);
                     }
-                    let idx = output_offsets[var];
-                    bcx.ins().store(MemFlags::new(), result, outputs_ptr, (idx * 8) as i32);
-                    // Synthetic kind from output_kinds_local for env.
-                    let kind = output_kinds.get(var).cloned().unwrap_or(OutputKind::Int);
-                    env.insert(var.clone(), Value_ { v: result, kind });
+                    env.insert(var.clone(), EnvVal::OutSlot { ptr: out_slot });
                 }
-                Z3Step::Seq { .. } => return None,
+                Z3Step::Guarded { .. } => return None,
             }
         }
-
         bcx.ins().return_(&[]);
         bcx.finalize();
     }
 
+    if std::env::var("EVIDENT_JIT_DUMP").is_ok() {
+        eprintln!("[jit] IR for compiled_program:\n{}", ctx.func.display());
+    }
     module.define_function(func_id, &mut ctx).ok()?;
     module.clear_context(&mut ctx);
     module.finalize_definitions().ok()?;
     let code_ptr = module.get_finalized_function(func_id);
-    let func: unsafe extern "C" fn(*const i64, *mut i64) = unsafe {
+    // SAFETY: code_ptr points to JIT'd machine code with the
+    // ABI we declared above.
+    let func: unsafe extern "C" fn(*const i64, *mut Value) = unsafe {
         std::mem::transmute(code_ptr)
     };
-    let input_kinds: HashMap<String, OutputKind> = input_names.into_iter().collect();
     Some(JitProgram {
         _module: module,
         func,
         input_offsets,
+        input_kinds,
         output_offsets,
         output_kinds,
-        input_kinds,
         enum_tags,
         enum_variants,
+        _string_pool: string_pool,
     })
 }
 
-/// IR-level temporary: the Cranelift Value plus its kind, so we
-/// can compare/branch correctly.
 #[derive(Clone)]
-struct Value_ {
-    v: ClValue,
-    kind: OutputKind,
+enum EnvVal {
+    /// Primitive (or enum tag) in a register.
+    I64 { v: ClValue, kind: OutputKind },
+    /// Pointer to an earlier output slot's Value.
+    OutSlot { ptr: ClValue },
 }
 
-fn emit_dynamic<'ctx>(
+fn intern_str(pool: &mut Vec<Box<str>>, s: &str) -> (i64, i64) {
+    let boxed: Box<str> = s.to_string().into_boxed_str();
+    let ptr = boxed.as_ptr() as usize as i64;
+    let len = boxed.len() as i64;
+    pool.push(boxed);
+    (ptr, len)
+}
+
+/// Emit IR that writes a Value derived from `expr` into the
+/// memory at `out_slot`. Returns None if the expr uses a
+/// pattern we don't yet emit code for.
+fn emit_write_value<'ctx>(
     bcx: &mut FunctionBuilder,
-    e: &Dynamic<'ctx>,
-    env: &HashMap<String, Value_>,
-    enum_tags: &HashMap<String, HashMap<String, i64>>,
-    enum_variants: &HashMap<String, Vec<String>>,
-) -> Option<Value_> {
-    match e.kind() {
+    expr: &Dynamic<'ctx>,
+    out_slot: ClValue,
+    env: &HashMap<String, EnvVal>,
+    helpers: &HelperRefs,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    string_pool: &mut Vec<Box<str>>,
+) -> Option<()> {
+    // String literal short-circuit.
+    if let Some(zs) = expr.as_string() {
+        if let Some(s) = zs.as_string() {
+            let (p, l) = intern_str(string_pool, &s);
+            let pv = bcx.ins().iconst(types::I64, p);
+            let lv = bcx.ins().iconst(types::I64, l);
+            bcx.ins().call(helpers.set_str, &[out_slot, pv, lv]);
+            return Some(());
+        }
+    }
+
+    match expr.kind() {
         AstKind::Numeral => {
-            let i = e.as_int().and_then(|x| x.as_i64())?;
-            Some(Value_ { v: bcx.ins().iconst(types::I64, i), kind: OutputKind::Int })
+            let i = expr.as_int().and_then(|x| x.as_i64())?;
+            let n = bcx.ins().iconst(types::I64, i);
+            bcx.ins().call(helpers.set_int, &[out_slot, n]);
+            Some(())
         }
         AstKind::App => {
-            let decl = e.safe_decl().ok()?;
+            let decl = expr.safe_decl().ok()?;
             let kind = decl.kind();
-            let children: Vec<Dynamic<'ctx>> = e.children();
+            let children: Vec<Dynamic<'ctx>> = expr.children();
             match kind {
-                DeclKind::TRUE  => Some(Value_ { v: bcx.ins().iconst(types::I64, 1), kind: OutputKind::Bool }),
-                DeclKind::FALSE => Some(Value_ { v: bcx.ins().iconst(types::I64, 0), kind: OutputKind::Bool }),
+                DeclKind::TRUE => {
+                    let n = bcx.ins().iconst(types::I64, 1);
+                    bcx.ins().call(helpers.set_bool, &[out_slot, n]);
+                    Some(())
+                }
+                DeclKind::FALSE => {
+                    let n = bcx.ins().iconst(types::I64, 0);
+                    bcx.ins().call(helpers.set_bool, &[out_slot, n]);
+                    Some(())
+                }
                 DeclKind::UNINTERPRETED => {
                     if !children.is_empty() { return None; }
                     let name = decl.name();
-                    env.get(&name).cloned()
-                }
-                DeclKind::ITE => {
-                    let c = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let a = emit_dynamic(bcx, &children[1], env, enum_tags, enum_variants)?;
-                    let b = emit_dynamic(bcx, &children[2], env, enum_tags, enum_variants)?;
-                    let r = bcx.ins().select(c.v, a.v, b.v);
-                    Some(Value_ { v: r, kind: a.kind })
-                }
-                DeclKind::EQ => {
-                    let a = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let b = emit_dynamic(bcx, &children[1], env, enum_tags, enum_variants)?;
-                    let r = bcx.ins().icmp(IntCC::Equal, a.v, b.v);
-                    let r = bcx.ins().uextend(types::I64, r);
-                    Some(Value_ { v: r, kind: OutputKind::Bool })
-                }
-                DeclKind::ADD => {
-                    let mut iter = children.iter();
-                    let first = emit_dynamic(bcx, iter.next()?, env, enum_tags, enum_variants)?;
-                    let mut acc = first.v;
-                    for c in iter {
-                        let x = emit_dynamic(bcx, c, env, enum_tags, enum_variants)?;
-                        acc = bcx.ins().iadd(acc, x.v);
-                    }
-                    Some(Value_ { v: acc, kind: OutputKind::Int })
-                }
-                DeclKind::SUB => {
-                    let mut iter = children.iter();
-                    let first = emit_dynamic(bcx, iter.next()?, env, enum_tags, enum_variants)?;
-                    let mut acc = first.v;
-                    for c in iter {
-                        let x = emit_dynamic(bcx, c, env, enum_tags, enum_variants)?;
-                        acc = bcx.ins().isub(acc, x.v);
-                    }
-                    Some(Value_ { v: acc, kind: OutputKind::Int })
-                }
-                DeclKind::UMINUS => {
-                    let x = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let neg = bcx.ins().ineg(x.v);
-                    Some(Value_ { v: neg, kind: OutputKind::Int })
-                }
-                DeclKind::MUL => {
-                    let mut iter = children.iter();
-                    let first = emit_dynamic(bcx, iter.next()?, env, enum_tags, enum_variants)?;
-                    let mut acc = first.v;
-                    for c in iter {
-                        let x = emit_dynamic(bcx, c, env, enum_tags, enum_variants)?;
-                        acc = bcx.ins().imul(acc, x.v);
-                    }
-                    Some(Value_ { v: acc, kind: OutputKind::Int })
-                }
-                DeclKind::IDIV | DeclKind::DIV => {
-                    let a = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let b = emit_dynamic(bcx, &children[1], env, enum_tags, enum_variants)?;
-                    Some(Value_ { v: bcx.ins().sdiv(a.v, b.v), kind: OutputKind::Int })
-                }
-                DeclKind::LT => emit_icmp(bcx, &children, env, enum_tags, enum_variants, IntCC::SignedLessThan),
-                DeclKind::LE => emit_icmp(bcx, &children, env, enum_tags, enum_variants, IntCC::SignedLessThanOrEqual),
-                DeclKind::GT => emit_icmp(bcx, &children, env, enum_tags, enum_variants, IntCC::SignedGreaterThan),
-                DeclKind::GE => emit_icmp(bcx, &children, env, enum_tags, enum_variants, IntCC::SignedGreaterThanOrEqual),
-                DeclKind::AND => {
-                    let mut iter = children.iter();
-                    let first = emit_dynamic(bcx, iter.next()?, env, enum_tags, enum_variants)?;
-                    let mut acc = first.v;
-                    for c in iter {
-                        let x = emit_dynamic(bcx, c, env, enum_tags, enum_variants)?;
-                        acc = bcx.ins().band(acc, x.v);
-                    }
-                    Some(Value_ { v: acc, kind: OutputKind::Bool })
-                }
-                DeclKind::OR => {
-                    let mut iter = children.iter();
-                    let first = emit_dynamic(bcx, iter.next()?, env, enum_tags, enum_variants)?;
-                    let mut acc = first.v;
-                    for c in iter {
-                        let x = emit_dynamic(bcx, c, env, enum_tags, enum_variants)?;
-                        acc = bcx.ins().bor(acc, x.v);
-                    }
-                    Some(Value_ { v: acc, kind: OutputKind::Bool })
-                }
-                DeclKind::NOT => {
-                    let x = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let one = bcx.ins().iconst(types::I64, 1);
-                    Some(Value_ { v: bcx.ins().bxor(x.v, one), kind: OutputKind::Bool })
-                }
-                DeclKind::DT_CONSTRUCTOR => {
-                    // 0-arity constructor → look up tag.
-                    if !children.is_empty() { return None; }
-                    let variant = decl.name();
-                    // Find the enum by scanning enum_tags.
-                    for (en, tags) in enum_tags {
-                        if let Some(&tag) = tags.get(&variant) {
-                            return Some(Value_ {
-                                v: bcx.ins().iconst(types::I64, tag),
-                                kind: OutputKind::Enum(en.clone()),
-                            });
+                    let ev = env.get(&name)?;
+                    match ev {
+                        EnvVal::I64 { v, kind } => match kind {
+                            OutputKind::Int => {
+                                bcx.ins().call(helpers.set_int, &[out_slot, *v]);
+                                Some(())
+                            }
+                            OutputKind::Bool => {
+                                bcx.ins().call(helpers.set_bool, &[out_slot, *v]);
+                                Some(())
+                            }
+                            _ => None,  // enum-tag inputs not codegen'd yet
+                        },
+                        EnvVal::OutSlot { ptr: _ } => {
+                            // Copy from another slot: not v1.
+                            None
                         }
                     }
-                    None
                 }
-                DeclKind::DT_RECOGNISER | DeclKind::DT_IS => {
-                    // ((_ is Variant) val) — compare tag.
-                    let val = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-                    let OutputKind::Enum(en) = &val.kind else { return None };
-                    let target = crate::z3_eval::extract_is_variant_pub(&format!("{e}"))?;
-                    let tag = enum_tags.get(en)?.get(&target).copied()?;
-                    let tag_v = bcx.ins().iconst(types::I64, tag);
-                    let r = bcx.ins().icmp(IntCC::Equal, val.v, tag_v);
-                    let r = bcx.ins().uextend(types::I64, r);
-                    Some(Value_ { v: r, kind: OutputKind::Bool })
+                DeclKind::DT_CONSTRUCTOR => {
+                    let variant = decl.name();
+                    let (enum_name, field_types) = lookup_variant(&variant, variant_arity)?;
+                    let (ep, el) = intern_str(string_pool, &enum_name);
+                    let (vp, vl) = intern_str(string_pool, &variant);
+                    let ep_v = bcx.ins().iconst(types::I64, ep);
+                    let el_v = bcx.ins().iconst(types::I64, el);
+                    let vp_v = bcx.ins().iconst(types::I64, vp);
+                    let vl_v = bcx.ins().iconst(types::I64, vl);
+                    if field_types.is_empty() {
+                        bcx.ins().call(helpers.set_enum_nullary,
+                            &[out_slot, ep_v, el_v, vp_v, vl_v]);
+                        return Some(());
+                    }
+                    if field_types.len() == 1 {
+                        let arg = &children[0];
+                        match field_types[0].as_str() {
+                            "Int" | "Nat" => {
+                                let n = arg.as_int().and_then(|x| x.as_i64())?;
+                                let n_v = bcx.ins().iconst(types::I64, n);
+                                bcx.ins().call(helpers.set_enum_int,
+                                    &[out_slot, ep_v, el_v, vp_v, vl_v, n_v]);
+                                Some(())
+                            }
+                            "String" => {
+                                let s = arg.as_string().and_then(|zs| zs.as_string())?;
+                                let (p, l) = intern_str(string_pool, &s);
+                                let p_v = bcx.ins().iconst(types::I64, p);
+                                let l_v = bcx.ins().iconst(types::I64, l);
+                                bcx.ins().call(helpers.set_enum_str,
+                                    &[out_slot, ep_v, el_v, vp_v, vl_v, p_v, l_v]);
+                                Some(())
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        // Multi-field payload (e.g. LibCall(String, String,
+                        // String, Seq(...))): would need
+                        // `ev_set_enum_multifield` with a payload-args
+                        // array. Defer to Round 27+ — Mario's display path
+                        // doesn't strictly require it because LibCall is
+                        // constructed via subschema-dispatch where each
+                        // subschema's body has a single-arg ctor pattern.
+                        None
+                    }
                 }
                 _ => None,
             }
@@ -504,37 +508,25 @@ fn emit_dynamic<'ctx>(
     }
 }
 
-fn emit_icmp<'ctx>(
-    bcx: &mut FunctionBuilder,
-    children: &[Dynamic<'ctx>],
-    env: &HashMap<String, Value_>,
-    enum_tags: &HashMap<String, HashMap<String, i64>>,
-    enum_variants: &HashMap<String, Vec<String>>,
-    cc: IntCC,
-) -> Option<Value_> {
-    let a = emit_dynamic(bcx, &children[0], env, enum_tags, enum_variants)?;
-    let b = emit_dynamic(bcx, &children[1], env, enum_tags, enum_variants)?;
-    let r = bcx.ins().icmp(cc, a.v, b.v);
-    let r = bcx.ins().uextend(types::I64, r);
-    Some(Value_ { v: r, kind: OutputKind::Bool })
-}
-
 fn kind_of_dynamic<'ctx>(
     e: &Dynamic<'ctx>,
     enum_variants: &HashMap<String, Vec<String>>,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
 ) -> Option<OutputKind> {
     let sort = e.get_sort();
     let sort_name = format!("{sort}");
-    if sort_name == "Int" || sort_name == "Real" {
-        return Some(OutputKind::Int);
-    }
-    if sort_name == "Bool" {
-        return Some(OutputKind::Bool);
-    }
-    // Datatype sort: name matches an enum.
+    if sort_name == "Int" || sort_name == "Real" { return Some(OutputKind::Int); }
+    if sort_name == "Bool"   { return Some(OutputKind::Bool); }
+    if sort_name == "String" { return Some(OutputKind::Str); }
     for (en, _) in enum_variants {
         if &sort_name == en {
-            return Some(OutputKind::Enum(en.clone()));
+            let all_nullary = variant_arity.get(en).map(|m|
+                m.values().all(|v| v.is_empty())).unwrap_or(true);
+            return Some(if all_nullary {
+                OutputKind::Enum(en.clone())
+            } else {
+                OutputKind::EnumPayload(en.clone())
+            });
         }
     }
     None
@@ -544,22 +536,32 @@ fn collect_inputs<'ctx>(
     e: &Dynamic<'ctx>,
     out: &mut std::collections::BTreeSet<(String, OutputKind)>,
     enum_variants: &HashMap<String, Vec<String>>,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
 ) {
-    match e.kind() {
-        AstKind::App => {
-            if let Ok(decl) = e.safe_decl() {
-                if decl.kind() == DeclKind::UNINTERPRETED && e.num_children() == 0 {
-                    let name = decl.name();
-                    if let Some(k) = kind_of_dynamic(e, enum_variants) {
-                        out.insert((name, k));
-                    }
-                    return;
+    if e.kind() == AstKind::App {
+        if let Ok(decl) = e.safe_decl() {
+            if decl.kind() == DeclKind::UNINTERPRETED && e.num_children() == 0 {
+                let name = decl.name();
+                if let Some(k) = kind_of_dynamic(e, enum_variants, variant_arity) {
+                    out.insert((name, k));
                 }
-            }
-            for c in e.children() {
-                collect_inputs(&c, out, enum_variants);
+                return;
             }
         }
-        _ => {}
+        for c in e.children() {
+            collect_inputs(&c, out, enum_variants, variant_arity);
+        }
     }
+}
+
+fn lookup_variant(
+    variant: &str,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+) -> Option<(String, Vec<String>)> {
+    for (en, vs) in variant_arity {
+        if let Some(fields) = vs.get(variant) {
+            return Some((en.clone(), fields.clone()));
+        }
+    }
+    None
 }
