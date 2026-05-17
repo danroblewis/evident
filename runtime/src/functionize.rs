@@ -59,7 +59,18 @@ pub fn extract_chain_with_enums(
     component: &Component,
     is_enum: &dyn Fn(&str) -> bool,
 ) -> Option<SubstitutionChain> {
-    if !is_pure_assignment_body_with_enums(schema, is_enum) { return None; }
+    extract_chain_full(schema, component, is_enum, &|_| false)
+}
+
+/// `extract_chain` with full predicate support — enums + user-record
+/// types. Matches the gate-side `is_pure_assignment_body_full`.
+pub fn extract_chain_full(
+    schema: &SchemaDecl,
+    component: &Component,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+) -> Option<SubstitutionChain> {
+    if !is_pure_assignment_body_full(schema, is_enum, is_simple_record) { return None; }
     let target: HashSet<&str> = component.vars.iter().map(|s| s.as_str()).collect();
 
     // Collect candidate substitutions: every `var = expr` or `expr = var`
@@ -167,6 +178,23 @@ pub fn is_pure_assignment_body_with_enums(
     schema: &SchemaDecl,
     is_enum: &dyn Fn(&str) -> bool,
 ) -> bool {
+    is_pure_assignment_body_full(schema, is_enum, &|_| false)
+}
+
+/// Most permissive form: accepts enum types AND user-record types
+/// (per the `is_simple_record` predicate). User records are accepted
+/// when all their fields are primitive types — recursive record
+/// composition (record of records, record of Seq) is not v1.
+///
+/// Memberships of user records expand to per-field Z3 consts in
+/// `declare_and_assert`. The native evaluator handles those because
+/// the AST sees them as dotted identifiers (`pos.x`, `pos.y`) — env
+/// lookup resolves them like any other named variable.
+pub fn is_pure_assignment_body_full(
+    schema: &SchemaDecl,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+) -> bool {
     if !matches!(schema.keyword,
         crate::ast::Keyword::Claim | crate::ast::Keyword::Schema
         | crate::ast::Keyword::Type | crate::ast::Keyword::Fsm) {
@@ -177,16 +205,12 @@ pub fn is_pure_assignment_body_with_enums(
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
             BodyItem::Constraint(_) => return false,  // filter — bail
             BodyItem::Membership { type_name, .. } => {
-                // Accept primitive types AND any enum type (enums have
-                // discrete, finite values — Z3 doesn't add implicit
-                // bounds beyond "must equal one of the variants",
-                // which the native evaluator handles correctly via
-                // Value::Enum + Match dispatch).
                 let primitive = matches!(type_name.as_str(),
                     "Int" | "Real" | "Bool" | "String");
-                if !primitive && !is_enum(type_name) {
-                    return false;
-                }
+                if primitive { continue; }
+                if is_enum(type_name) { continue; }
+                if is_simple_record(type_name) { continue; }
+                return false;
             }
             BodyItem::Passthrough(_) => return false,  // body lives elsewhere
             BodyItem::ClaimCall { .. } => return false,  // ditto

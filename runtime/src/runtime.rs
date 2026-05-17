@@ -2231,8 +2231,8 @@ impl EvidentRuntime {
     fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
                        given: &HashMap<String, Value>) -> Option<QueryResult>
     {
-        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_with_enums,
-                                 is_pure_assignment_body_with_enums,
+        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_full,
+                                 is_pure_assignment_body_full,
                                  SubstitutionChain};
 
         // Enum-aware gate. The native evaluator handles enum-typed
@@ -2241,7 +2241,28 @@ impl EvidentRuntime {
         let is_enum = |type_name: &str| -> bool {
             self.enums.by_name.borrow().contains_key(type_name)
         };
-        if !is_pure_assignment_body_with_enums(schema, &is_enum) {
+        // User-record type recognizer: a `type` declaration whose
+        // body has only primitive Memberships. Recursive record-of-
+        // record is v2; rejecting it keeps soundness simple.
+        let is_simple_record = |type_name: &str| -> bool {
+            let Some(decl) = self.schemas.get(type_name) else { return false };
+            if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
+            for item in &decl.body {
+                match item {
+                    crate::ast::BodyItem::Membership { type_name: ft, .. } => {
+                        if !matches!(ft.as_str(), "Int" | "Real" | "Bool" | "String") {
+                            return false;
+                        }
+                    }
+                    crate::ast::BodyItem::Constraint(_) => return false,
+                    crate::ast::BodyItem::Passthrough(_) | crate::ast::BodyItem::ClaimCall { .. }
+                        => return false,
+                    crate::ast::BodyItem::SubclaimDecl(_) => {}
+                }
+            }
+            true
+        };
+        if !is_pure_assignment_body_full(schema, &is_enum, &is_simple_record) {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                 eprintln!("[fz] {}: rejected by gate", name);
             }
@@ -2307,7 +2328,7 @@ impl EvidentRuntime {
         }
         let mut steps = Vec::new();
         for c in &comps {
-            match extract_chain_with_enums(schema, &c.component, &is_enum) {
+            match extract_chain_full(schema, &c.component, &is_enum, &is_simple_record) {
                 Some(ch) => steps.extend(ch.steps),
                 None => {
                     if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
