@@ -1773,6 +1773,13 @@ pub struct EvidentRuntime {
     /// load time so first-tick solves carry zero analysis overhead.
     functionize_gate_cache: RefCell<HashMap<String,
                                             Option<crate::ast::SchemaDecl>>>,
+    /// Z3-AST functionizer cache: per-(claim, given-keys), the
+    /// extracted Z3Program (or None if extraction failed) that
+    /// walks Z3 ASTs directly at runtime instead of the Evident
+    /// AST. See `runtime/src/z3_eval.rs` for the rationale —
+    /// Z3's tactic pipeline does the simplification work for us.
+    functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
+                                          Option<crate::z3_eval::Z3Program<'static>>>>,
     /// Counter incremented each time a cached entry is rebuilt due
     /// to a structural-signature mismatch. Useful for debugging
     /// performance issues (e.g. "every step is rebuilding — what
@@ -1980,6 +1987,7 @@ impl EvidentRuntime {
             cache: RefCell::new(HashMap::new()),
             functionize_cache: RefCell::new(HashMap::new()),
             functionize_gate_cache: RefCell::new(HashMap::new()),
+            functionize_z3_cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
@@ -2132,6 +2140,7 @@ impl EvidentRuntime {
         // re-load doesn't inherit stale verdicts.
         self.functionize_gate_cache.borrow_mut().clear();
         self.functionize_cache.borrow_mut().clear();
+        self.functionize_z3_cache.borrow_mut().clear();
         // Pre-classify every loaded claim at load time: run inline
         // + gate once per name so first-tick solves carry zero
         // function-izer analysis cost. Rejections are recorded as
@@ -2306,6 +2315,167 @@ impl EvidentRuntime {
         }
     }
 
+    /// Z3-AST functionizer. Runs Z3's tactic chain on the body
+    /// (simplify + propagate-values), extracts per-output
+    /// substitutions from the resulting Z3 ASTs, and evaluates
+    /// them natively. The architecture pivot from try_functionize:
+    /// instead of walking the Evident AST and re-implementing
+    /// Z3's preprocessing, we LET Z3 do its work and walk its
+    /// canonicalized output.
+    ///
+    /// Returns `Some(QueryResult)` on success, `None` to fall
+    /// through to the next path (try_functionize → Z3 full
+    /// solve).
+    ///
+    /// Per (claim, given-keys), the program is built once and
+    /// cached. Eval is per-call (microseconds for small programs).
+    fn try_functionize_z3(&self, name: &str, schema: &crate::ast::SchemaDecl,
+                          given: &HashMap<String, Value>) -> Option<QueryResult>
+    {
+        use crate::z3_eval::{simplify_assertions, extract_program, eval_program};
+        // Cache key: name + sorted given_keys. The program built
+        // is somewhat sensitive to given VALUES (Z3 may constant-
+        // fold them in), but for the common case where given_keys
+        // are stable per FSM, the cached program remains correct
+        // for any value of those inputs IF Z3 left the relevant
+        // dispatch intact (e.g., `match state` becomes a guarded
+        // program). When Z3 folded a given value into a constant,
+        // the program will be wrong for different values of that
+        // key — eval_program returns None in that case (predicate
+        // check fails) and we fall through to the slow path.
+        let mut given_keys: Vec<String> = given.keys().cloned().collect();
+        given_keys.sort();
+        let cache_key = (name.to_string(), given_keys.clone());
+
+        // Cache lookup.
+        if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
+            let Some(program) = entry else { return None };
+            let bindings = eval_program(&program, given, Some(&self.enums))?;
+            // Filter out the input bindings (we don't want to
+            // re-emit `given` keys as outputs).
+            let mut out = HashMap::new();
+            for (k, v) in bindings {
+                if !given.contains_key(&k) {
+                    out.insert(k, v);
+                }
+            }
+            return Some(QueryResult { satisfied: true, bindings: out });
+        }
+
+        // Cache miss: build a CachedSchema, capture the body
+        // assertions (without given values pinned so the
+        // extracted program is generic over input values), apply
+        // Z3's tactic chain, and extract per-output assignments.
+        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        // The Z3 translator fatal-exits on dropped constraints
+        // (constraints it can't express). For schemas with such
+        // gaps (e.g. enum ctors carrying Seq payloads), the slow
+        // path is the only correct option — fall through there.
+        if crate::z3_eval::has_known_translator_gap(&schema.body) {
+            self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+            return None;
+        }
+        // Pass the ACTUAL given to build_cache so apply_pinned_ints
+        // can resolve symbolic bounds (∀ i ∈ {0..n - 1}) into
+        // statically-known ranges before the translator runs.
+        // Without these pins, body shapes like ∀-over-symbolic-Range
+        // would trip the translator's dropped-constraint fatal-exit.
+        let cached = crate::translate::build_cache(
+            schema, &self.schemas, self.z3_ctx, &self.datatypes,
+            Some(&self.enums), given, arith);
+        // get_assertions ties the Bool lifetime to the solver, but
+        // the underlying Z3 ASTs are reference-counted by the
+        // 'static Context — they outlive the solver wrapper. Same
+        // pattern as `effect_loop.rs` uses for BodyItem slices.
+        let assertions_local = cached.solver.get_assertions();
+        let assertions: Vec<z3::ast::Bool<'static>> = unsafe {
+            std::mem::transmute::<Vec<z3::ast::Bool<'_>>, Vec<z3::ast::Bool<'static>>>(
+                assertions_local)
+        };
+        let simplify_result = simplify_assertions(self.z3_ctx, &assertions);
+        if simplify_result.unsat {
+            // Z3's preprocessing decided the body is UNSAT under
+            // the body's structural pins (literal-equality
+            // contradictions etc.). Return SAT=false directly —
+            // the slow path would arrive at the same answer.
+            // Don't cache: rare path, not worth a richer cache
+            // type just for this.
+            return Some(QueryResult { satisfied: false, bindings: HashMap::new() });
+        }
+        let simplified = &simplify_result.formulas;
+
+        // Outputs: every cached env key minus given keys minus
+        // enum-value/ctor constants. Pinned ints are excluded too —
+        // they're literal values already known from `given` /
+        // apply_pinned_ints, surfaced via the `pinned_ints` map
+        // below directly without going through Z3.
+        let outputs: Vec<String> = cached.env.iter()
+            .filter(|(name, _)| !given.contains_key(name.as_str()))
+            .filter(|(_, v)| !matches!(v,
+                crate::translate::Var::EnumValue { .. }
+                | crate::translate::Var::EnumCtor { .. }
+                | crate::translate::Var::PinnedInt(_)))
+            .map(|(n, _)| n.clone())
+            .collect();
+        // Pinned ints — vars whose value was statically resolvable
+        // at build_cache time. Synthesize Scalar steps for them so
+        // the cached program produces these bindings without any
+        // re-derivation needed at hit time.
+        let pinned_steps: Vec<crate::z3_eval::Z3Step<'static>> = cached.env.iter()
+            .filter(|(name, _)| !given.contains_key(name.as_str()))
+            .filter_map(|(n, v)| match v {
+                crate::translate::Var::PinnedInt(i) => Some(crate::z3_eval::Z3Step::Scalar {
+                    var:  n.clone(),
+                    expr: z3::ast::Dynamic::from_ast(&z3::ast::Int::from_i64(self.z3_ctx, *i)),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz/z3] {}: simplified body has {} assertions, outputs = {:?}",
+                name, simplified.len(), outputs);
+            for a in simplified {
+                eprintln!("    {a}");
+            }
+        }
+        let mut program = match extract_program(&simplified, &outputs) {
+            Some(p) => p,
+            None => {
+                self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                return None;
+            }
+        };
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz/z3] {}: program has {} steps, {} checks, {} predicates",
+                name, program.steps.len(), program.checks.len(), program.predicates.len());
+        }
+        // Prepend pinned-int steps (they have no dependencies; safe
+        // to place at the front of the chain).
+        let mut all_steps = pinned_steps;
+        all_steps.append(&mut program.steps);
+        program.steps = all_steps;
+        let stored = Some(program.clone());
+        self.functionize_z3_cache.borrow_mut().insert(cache_key, stored);
+        let bindings = match eval_program(&program, given, Some(&self.enums)) {
+            Some(b) => b,
+            None => {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/z3] {}: eval_program returned None", name);
+                }
+                return None;
+            }
+        };
+        let mut out: HashMap<String, Value> = HashMap::new();
+        for (k, v) in bindings { out.insert(k, v); }
+        // Echo given values into bindings to match the slow path's
+        // behavior (callers expect `given.x = 3` to appear as
+        // `bindings.x = 3` in the result).
+        for (k, v) in given { out.insert(k.clone(), v.clone()); }
+        Some(QueryResult { satisfied: true, bindings: out })
+    }
+
     /// Evaluate the named schema and return whether it's satisfiable
     /// plus a model. `given` pre-binds variables to concrete values
     /// (mirrors the Python `query(schema, given=...)` parameter).
@@ -2320,6 +2490,22 @@ impl EvidentRuntime {
         // `docs/bench/functionize.md` for the design + perf numbers.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s != "0").unwrap_or(true);
+        // Z3-AST path: benefits from Z3's tactic preprocessing
+        // (simplify, propagate-values, constant folding). Off by
+        // default while we widen the static gate to cover the
+        // body shapes that trip build_cache's translator on the
+        // hot path (encoded ASTs, FFI Seq pinning, etc.). Enable
+        // with EVIDENT_FUNCTIONIZE_Z3=1.
+        let z3_fz_on = functionize_on && std::env::var("EVIDENT_FUNCTIONIZE_Z3")
+            .map(|s| s != "0").unwrap_or(false);
+        if z3_fz_on {
+            if let Some(result) = self.try_functionize_z3(name, schema, given) {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/z3] HIT {}", name);
+                }
+                return Ok(result);
+            }
+        }
         if functionize_on {
             match self.try_functionize(name, schema, given) {
                 Some(result) => {
@@ -3211,6 +3397,24 @@ impl EvidentRuntime {
         // rejects, fall through to Z3 with `pins` intact.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s != "0").unwrap_or(true);
+        // Z3 functionizer on the scheduler side is currently
+        // disabled by default — Mario's SDL_Window typed-membership
+        // triggers a fatal-exit in build_cache (the install Seq's
+        // LibCall constraints can't be expressed as Bool when the
+        // FSM-local bridge handles construction). The Evident-AST
+        // function-izer (below) is more conservative and handles
+        // these cases. Enable with EVIDENT_FUNCTIONIZE_Z3_SCHED=1.
+        let z3_fz_on = functionize_on
+            && std::env::var("EVIDENT_FUNCTIONIZE_Z3_SCHED")
+                .map(|s| s != "0").unwrap_or(false);
+        if z3_fz_on {
+            if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/z3] HIT (scheduler) {}", claim_name);
+                }
+                return Ok(result);
+            }
+        }
         if functionize_on {
             if let Some(result) = self.try_functionize(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {

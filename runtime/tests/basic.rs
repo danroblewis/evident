@@ -687,6 +687,12 @@ fn cached_query_perf_smoke() {
     use std::collections::HashMap;
     use std::time::Instant;
 
+    // The Z3-AST function-izer (Round 22+) makes `rt.query` much
+    // faster than `rt.query_cached` because the latter goes through
+    // a Z3 solver per call. Disable the function-izer so this test
+    // exercises the actual Z3-cache-vs-uncached comparison it was
+    // written to measure.
+    std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
     let mut rt = EvidentRuntime::new();
     // Multi-claim composition with passthrough — translation is heavy
     // enough that the cache should win.
@@ -712,6 +718,7 @@ fn cached_query_perf_smoke() {
     // Cached should be at least 1.5× faster — generous bound to avoid
     // CI flakiness while still catching regressions.
     assert!(cached < uncached, "cached ({:?}) should be < uncached ({:?})", cached, uncached);
+    std::env::remove_var("EVIDENT_FUNCTIONIZE");
 }
 
 /// Subclaim defined inside a parent's body. Other claims (or the parent

@@ -87,7 +87,7 @@ claim hello
     let assertions = cached.solver.get_assertions();
     cached.solver.pop(1);
 
-    let simplified = simplify_assertions(ctx, &assertions);
+    let simplified = simplify_assertions(ctx, &assertions).formulas;
     eprintln!("Simplified assertions:");
     for a in &simplified {
         eprintln!("  {a}");
