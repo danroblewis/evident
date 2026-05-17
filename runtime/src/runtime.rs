@@ -1950,6 +1950,15 @@ pub struct EvidentRuntime {
     /// steps, multi-field enum ctors, etc.).
     vm_cache: RefCell<HashMap<(String, Vec<String>),
                               Option<std::rc::Rc<crate::rust_vm::CompiledProgram>>>>,
+    /// Slow-path schema cache. Populated by `try_functionize_z3`
+    /// when it refuses to produce a JIT/VM program but has already
+    /// built a `CachedSchema`. Reused by `query_with_pins_and_given`
+    /// to skip the per-tick body translation. Each tick is then just
+    /// push → assert given → check → extract → pop, instead of
+    /// rebuilding the body assertions from AST every call. For
+    /// display this cuts ~12ms off the 14.7ms slow-path cost.
+    slow_path_cache: RefCell<HashMap<(String, Vec<String>),
+                                     std::rc::Rc<crate::translate::CachedSchema<'static>>>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
@@ -2167,6 +2176,7 @@ impl EvidentRuntime {
             functionize_z3_cache: RefCell::new(HashMap::new()),
             jit_cache: RefCell::new(HashMap::new()),
             vm_cache:  RefCell::new(HashMap::new()),
+            slow_path_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
@@ -2323,6 +2333,7 @@ impl EvidentRuntime {
         self.functionize_z3_cache.borrow_mut().clear();
         self.jit_cache.borrow_mut().clear();
         self.vm_cache.borrow_mut().clear();
+        self.slow_path_cache.borrow_mut().clear();
         // Pre-classify every loaded claim at load time: run inline
         // + gate once per name so first-tick solves carry zero
         // function-izer analysis cost. Rejections are recorded as
@@ -2812,7 +2823,16 @@ impl EvidentRuntime {
                     }
                     self.functionize_stats.borrow_mut()
                         .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
-                    self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                    self.functionize_z3_cache.borrow_mut().insert(cache_key.clone(), None);
+                    // Stash the already-built CachedSchema for the
+                    // slow path to reuse — it's expensive to rebuild
+                    // the body's Z3 assertions from AST every tick.
+                    // The 'static-lifetime transmute is sound because
+                    // self.z3_ctx is 'static and lives for the runtime's
+                    // lifetime.
+                    let cached_static: crate::translate::CachedSchema<'static> = cached;
+                    self.slow_path_cache.borrow_mut().insert(
+                        cache_key, std::rc::Rc::new(cached_static));
                     return None;
                 }
             }
@@ -3882,6 +3902,49 @@ impl EvidentRuntime {
         }
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
+
+        // Slow-path cache: if the function-izer already built a
+        // CachedSchema and stored it (because it refused to produce
+        // a JIT/VM program), reuse it here instead of rebuilding
+        // the body. Each tick is push → assert pins/given → check
+        // → extract model → pop. For Mario's display this cuts the
+        // per-tick cost from ~14ms (fresh translation) to ~2-3ms
+        // (just the solve + extract).
+        let mut given_keys: Vec<String> = given.keys().cloned().collect();
+        given_keys.sort();
+        let cache_key = (claim_name.to_string(), given_keys);
+        if let Some(cached) = self.slow_path_cache.borrow().get(&cache_key).cloned() {
+            if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
+                eprintln!("[slow/cached] {claim_name}");
+            }
+            use z3::ast::Ast;
+            cached.solver.push();
+            // Apply the typed Datatype pins (state).
+            for (var_name, value) in pins {
+                if let Some(crate::translate::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
+                    cached.solver.assert(&ast._eq(value));
+                }
+            }
+            // Apply Value::Enum givens here (run_cached doesn't, to
+            // keep its lifetime parametric). We have 'static context
+            // so we can re-encode the enum value as a Datatype and
+            // assert equality on the EnumVar's ast.
+            for (name, value) in given {
+                if let (Some(crate::translate::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
+                    (cached.env.get(name), value)
+                {
+                    if let Some(dt) = crate::translate::value_enum_to_datatype(
+                        value, self.z3_ctx, &self.enums)
+                    {
+                        cached.solver.assert(&ast._eq(&dt));
+                    }
+                }
+            }
+            let r = crate::translate::run_cached(&cached, given, self.z3_ctx, Some(&self.enums));
+            cached.solver.pop(1);
+            return Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings });
+        }
+
         if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
             eprintln!("[slow] {claim_name}: dispatching to evaluate_with_extra_assertions");
         }

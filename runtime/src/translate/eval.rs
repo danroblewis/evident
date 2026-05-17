@@ -485,9 +485,11 @@ pub fn run_cached<'ctx>(
     }
     let check_t0 = std::time::Instant::now();
     let check_result = cached.solver.check();
-    crate::z3_profile::record_check_stats(&cached.solver, None, check_t0.elapsed());
+    let check_dt = check_t0.elapsed();
+    crate::z3_profile::record_check_stats(&cached.solver, None, check_dt);
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
+    let extract_t0 = std::time::Instant::now();
     if satisfied {
         if let Some(model) = cached.solver.get_model() {
             for (name, var) in cached.env.iter() {
@@ -547,6 +549,7 @@ pub fn run_cached<'ctx>(
             }
         }
     }
+    let _ = (check_dt, extract_t0);
     cached.solver.pop(1);
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
