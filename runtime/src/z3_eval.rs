@@ -576,7 +576,6 @@ fn try_guarded<'ctx>(a: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Bool<'ctx>)> {
     if decl.kind() != DeclKind::OR { return None; }
     let children = a.children();
     if children.len() != 2 { return None; }
-    // One child must be `(not pred)`, the other is the consequent.
     let try_pair = |neg: &Dynamic<'ctx>, conseq: &Dynamic<'ctx>|
         -> Option<(Dynamic<'ctx>, Bool<'ctx>)>
     {

@@ -103,6 +103,12 @@ impl JitProgram {
         for (name, &idx) in &self.output_offsets {
             out.insert(name.clone(), outputs[idx].clone());
         }
+        if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
+            eprintln!("[jit/call] result:");
+            for (k, v) in &out {
+                eprintln!("    {k} = {v:?}");
+            }
+        }
         Some(out)
     }
 }
@@ -279,8 +285,16 @@ pub fn compile_program<'ctx>(
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
             Z3Step::Guarded { var, .. } => {
+                // Guarded steps require correctness around "no branch
+                // matched" (currently the JIT writes a sentinel int,
+                // which propagates as a wrong result to the scheduler).
+                // The VM handles this correctly by returning None,
+                // letting the function-izer fall through to the slow
+                // path. Until the JIT can also produce a None-style
+                // bailout, refuse to JIT programs with Guarded steps.
                 if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                    eprintln!("[jit] bail: Guarded {var} (not yet supported)");
+                    eprintln!("[jit] bail: Guarded {var} (would JIT but \
+                              falls through to VM for correctness)");
                 }
                 return None;
             }
@@ -292,6 +306,19 @@ pub fn compile_program<'ctx>(
                 collect_inputs(expr, &mut input_set, &enum_variants, &variant_arity),
             Z3Step::Seq { elem_exprs, .. } =>
                 for e in elem_exprs { collect_inputs(e, &mut input_set, &enum_variants, &variant_arity); },
+            Z3Step::Guarded { branches, .. } => {
+                for b in branches {
+                    collect_inputs(&b.guard, &mut input_set, &enum_variants, &variant_arity);
+                    match &b.body {
+                        GuardedBody::Scalar(e) =>
+                            collect_inputs(e, &mut input_set, &enum_variants, &variant_arity),
+                        GuardedBody::Seq(es) =>
+                            for e in es {
+                                collect_inputs(e, &mut input_set, &enum_variants, &variant_arity);
+                            },
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -412,7 +439,82 @@ pub fn compile_program<'ctx>(
                     }
                     env.insert(var.clone(), out_slot);
                 }
-                Z3Step::Guarded { .. } => return None,
+                Z3Step::Guarded { var, branches } => {
+                    // Compile as a chain of conditional branches:
+                    // for each (guard, body) in order, brif on guard.
+                    // If guard fires, run body and jump to merge.
+                    // Otherwise fall through to the next branch.
+                    // If no branch matches, write Value::Int(0) as a
+                    // sentinel (matches the VM's behavior on None
+                    // body match, which returns None — but here we
+                    // need to produce SOMETHING, so use a default).
+                    let merge_block = bcx.create_block();
+                    for branch in branches {
+                        let body_block = bcx.create_block();
+                        let next_block = bcx.create_block();
+                        let cond_v = match emit_compute_i64(&mut bcx, &branch.guard, &env,
+                            &helpers, &variant_arity, &mut string_pool, ptr_t, size_of_value)
+                        {
+                            Some(v) => v,
+                            None => {
+                                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                    eprintln!("[jit] bail: Guarded {var} guard");
+                                }
+                                return None;
+                            }
+                        };
+                        bcx.ins().brif(cond_v, body_block, &[], next_block, &[]);
+                        bcx.switch_to_block(body_block);
+                        bcx.seal_block(body_block);
+                        match &branch.body {
+                            GuardedBody::Scalar(e) => {
+                                if emit_write_value(&mut bcx, e, out_slot, &env,
+                                    &helpers, &variant_arity, &mut string_pool,
+                                    ptr_t, size_of_value).is_none()
+                                {
+                                    if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                        eprintln!("[jit] bail: Guarded {var} scalar body");
+                                    }
+                                    return None;
+                                }
+                            }
+                            GuardedBody::Seq(es) => {
+                                let cap = bcx.ins().iconst(types::I64, es.len() as i64);
+                                bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
+                                let temp_slot = bcx.create_sized_stack_slot(
+                                    StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                                       size_of_value as u32));
+                                let temp_ptr = bcx.ins().stack_addr(ptr_t, temp_slot, 0);
+                                bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                                for e in es {
+                                    if emit_write_value(&mut bcx, e, temp_ptr, &env,
+                                        &helpers, &variant_arity, &mut string_pool,
+                                        ptr_t, size_of_value).is_none()
+                                    {
+                                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                            eprintln!("[jit] bail: Guarded {var} seq elem");
+                                        }
+                                        return None;
+                                    }
+                                    bcx.ins().call(helpers.seq_push_clone,
+                                        &[out_slot, temp_ptr]);
+                                }
+                            }
+                        }
+                        bcx.ins().jump(merge_block, &[]);
+                        bcx.switch_to_block(next_block);
+                        bcx.seal_block(next_block);
+                    }
+                    // Default fallthrough — set Value::Int(0). The
+                    // VM would return None here; we must produce a
+                    // valid Value because the slot is already alive.
+                    let zero = bcx.ins().iconst(types::I64, 0);
+                    bcx.ins().call(helpers.set_int, &[out_slot, zero]);
+                    bcx.ins().jump(merge_block, &[]);
+                    bcx.switch_to_block(merge_block);
+                    bcx.seal_block(merge_block);
+                    env.insert(var.clone(), out_slot);
+                }
                 Z3Step::PreBaked { var, value } => {
                     let idx = value_pool.len();
                     value_pool.push(value.clone());
