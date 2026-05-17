@@ -2909,6 +2909,24 @@ impl EvidentRuntime {
     ) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        // Function-izer fast path on the SCHEDULER side. The
+        // scheduler already passes realistic per-tick given values
+        // (state, last_results, _world.X). When `pins` is empty
+        // (FSMs without enum-typed state pairs — e.g. Mario's
+        // world-only FSMs), we can route through the function-izer
+        // directly with the given as-is. When `pins` carries Z3
+        // Datatype state pinning, v1 falls through to Z3 (a Datatype
+        // → Value::Enum conversion is its own piece of work).
+        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
+            .map(|s| s == "1").unwrap_or(false);
+        if functionize_on && pins.is_empty() {
+            if let Some(result) = self.try_functionize(claim_name, schema, given) {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz] HIT (scheduler) {}", claim_name);
+                }
+                return Ok(result);
+            }
+        }
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
         let r = crate::translate::evaluate_with_extra_assertions(
