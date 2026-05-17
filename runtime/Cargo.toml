@@ -19,6 +19,13 @@ signal-hook = "0.3"
 # orderings are randomized so accidental-ordering bugs surface;
 # EVIDENT_DISPATCH_SEED reproduces a specific run.
 rand = "0.8"
+# Cranelift JIT: compile Z3-AST function-shaped components into
+# native code. See `runtime/src/cranelift_jit.rs` and
+# `docs/plans/compile-constraints-to-programs/round-24-*.md`.
+cranelift          = "0.103"
+cranelift-jit      = "0.103"
+cranelift-module   = "0.103"
+cranelift-native   = "0.103"
 
 [lib]
 name = "evident_runtime"

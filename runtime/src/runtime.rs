@@ -1780,6 +1780,14 @@ pub struct EvidentRuntime {
     /// Z3's tactic pipeline does the simplification work for us.
     functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
                                           Option<crate::z3_eval::Z3Program<'static>>>>,
+    /// Cranelift JIT cache: per-(claim, given-keys), the compiled
+    /// native function (Some) or None when compilation failed
+    /// (program uses constructs the JIT doesn't yet emit — Seq
+    /// outputs, payload-bearing enums, strings). When the JIT
+    /// misses, the runtime falls back to the Z3-AST walker via
+    /// z3_eval. See `runtime/src/cranelift_jit.rs`.
+    jit_cache: RefCell<HashMap<(String, Vec<String>),
+                               Option<std::rc::Rc<crate::cranelift_jit::JitProgram>>>>,
     /// Counter incremented each time a cached entry is rebuilt due
     /// to a structural-signature mismatch. Useful for debugging
     /// performance issues (e.g. "every step is rebuilding — what
@@ -1988,6 +1996,7 @@ impl EvidentRuntime {
             functionize_cache: RefCell::new(HashMap::new()),
             functionize_gate_cache: RefCell::new(HashMap::new()),
             functionize_z3_cache: RefCell::new(HashMap::new()),
+            jit_cache: RefCell::new(HashMap::new()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
@@ -2141,6 +2150,7 @@ impl EvidentRuntime {
         self.functionize_gate_cache.borrow_mut().clear();
         self.functionize_cache.borrow_mut().clear();
         self.functionize_z3_cache.borrow_mut().clear();
+        self.jit_cache.borrow_mut().clear();
         // Pre-classify every loaded claim at load time: run inline
         // + gate once per name so first-tick solves carry zero
         // function-izer analysis cost. Rejections are recorded as
@@ -2347,7 +2357,26 @@ impl EvidentRuntime {
         given_keys.sort();
         let cache_key = (name.to_string(), given_keys.clone());
 
-        // Cache lookup.
+        // JIT cache lookup — preferred when available because
+        // it's native code (3-10x faster than the AST walker on
+        // arithmetic-heavy claims, more for state-machine
+        // dispatch).
+        if let Some(entry) = self.jit_cache.borrow().get(&cache_key).cloned() {
+            if let Some(jit) = entry {
+                if let Some(bindings) = jit.call(given) {
+                    let mut out = HashMap::new();
+                    for (k, v) in bindings {
+                        if !given.contains_key(&k) { out.insert(k, v); }
+                    }
+                    for (k, v) in given { out.insert(k.clone(), v.clone()); }
+                    return Some(QueryResult { satisfied: true, bindings: out });
+                }
+            }
+            // Fall through to the AST walker below.
+        }
+
+        // Z3-AST walker fallback for cases the JIT couldn't
+        // compile (Seq outputs, payload-bearing enums, etc.).
         if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
             let Some(program) = entry else { return None };
             let bindings = eval_program(&program, given, Some(&self.enums))?;
@@ -2457,7 +2486,29 @@ impl EvidentRuntime {
         all_steps.append(&mut program.steps);
         program.steps = all_steps;
         let stored = Some(program.clone());
-        self.functionize_z3_cache.borrow_mut().insert(cache_key, stored);
+        self.functionize_z3_cache.borrow_mut().insert(cache_key.clone(), stored);
+
+        // Try to JIT-compile to native code. On success, the next
+        // call hits the JIT branch above and runs at ~µs/call.
+        // On failure, the AST walker is the fallback.
+        let jit_compiled = crate::cranelift_jit::compile_program(&program, &self.enums)
+            .map(std::rc::Rc::new);
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz/jit] {}: compile = {}", name,
+                if jit_compiled.is_some() { "Some" } else { "None" });
+        }
+        self.jit_cache.borrow_mut().insert(cache_key, jit_compiled.clone());
+
+        // Use the JIT on the first call too if compilation succeeded.
+        if let Some(jit) = &jit_compiled {
+            if let Some(bindings) = jit.call(given) {
+                let mut out: HashMap<String, Value> = HashMap::new();
+                for (k, v) in bindings { out.insert(k, v); }
+                for (k, v) in given { out.insert(k.clone(), v.clone()); }
+                return Some(QueryResult { satisfied: true, bindings: out });
+            }
+        }
+
         let bindings = match eval_program(&program, given, Some(&self.enums)) {
             Some(b) => b,
             None => {

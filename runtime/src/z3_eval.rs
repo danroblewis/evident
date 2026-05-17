@@ -938,9 +938,13 @@ fn expr_has_ctor_seqlit_payload(e: &crate::ast::Expr) -> bool {
 /// `((_ is <Variant>) <arg>)`. Workaround for the Rust z3 0.12
 /// binding not exposing FuncDecl parameters.
 fn extract_is_variant(s: &str) -> Option<String> {
+    extract_is_variant_pub(s)
+}
+
+/// Public alias for the JIT codegen which needs the same parsing.
+pub fn extract_is_variant_pub(s: &str) -> Option<String> {
     let idx = s.find("(_ is ")?;
     let rest = &s[idx + 6 ..];   // after "(_ is "
-    // Variant name ends at whitespace or ')'.
     let end = rest.find(|c: char| c.is_whitespace() || c == ')')?;
     Some(rest[..end].to_string())
 }

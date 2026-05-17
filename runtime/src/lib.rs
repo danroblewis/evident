@@ -9,6 +9,7 @@ pub mod decompose;
 pub mod effect_dispatch;
 pub mod functionize;
 pub mod z3_eval;
+pub mod cranelift_jit;
 pub mod effect_loop;
 mod ffi;
 mod lexer;
