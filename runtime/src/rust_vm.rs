@@ -277,8 +277,18 @@ fn compile_dyn<'ctx>(a: &Dynamic<'ctx>) -> Op {
                 }
                 DeclKind::DT_ACCESSOR => {
                     if children.len() == 1 {
+                        // Strip Z3 internal suffixes (`__arr` for Seq
+                        // field arrays, `__len` for Seq lengths) — at
+                        // the Value-level the Seq field is stored under
+                        // its logical name (e.g. "effs"), not the
+                        // Z3-internal "effs__arr".
+                        let raw = decl.name();
+                        let logical = raw.strip_suffix("__arr")
+                            .or_else(|| raw.strip_suffix("__len"))
+                            .map(|s| s.to_string())
+                            .unwrap_or(raw);
                         Op::Accessor {
-                            field_name: decl.name(),
+                            field_name: logical,
                             inner: Box::new(compile_dyn(&children[0])),
                         }
                     } else {
@@ -354,13 +364,29 @@ pub fn eval_program(
     for step in &p.steps {
         match step {
             CompiledStep::Scalar { var, op } => {
-                let v = eval_op(op, &env, enums)?;
+                let v = match eval_op(op, &env, enums) {
+                    Some(v) => v,
+                    None => {
+                        if std::env::var("EVIDENT_VM_TRACE").is_ok() {
+                            eprintln!("[vm] Scalar {var}: op returned None: {:?}", op);
+                        }
+                        return None;
+                    }
+                };
                 env.insert(var.clone(), v);
             }
             CompiledStep::Seq { var, elems } => {
                 let mut values = Vec::with_capacity(elems.len());
-                for e in elems {
-                    values.push(eval_op(e, &env, enums)?);
+                for (i, e) in elems.iter().enumerate() {
+                    match eval_op(e, &env, enums) {
+                        Some(v) => values.push(v),
+                        None => {
+                            if std::env::var("EVIDENT_VM_TRACE").is_ok() {
+                                eprintln!("[vm] Seq {var}[{i}]: op returned None: {:?}", e);
+                            }
+                            return None;
+                        }
+                    }
                 }
                 env.insert(var.clone(), crate::z3_eval::seq_value_from_elements_pub(values));
             }
@@ -522,8 +548,12 @@ fn eval_op(op: &Op, env: &HashMap<String, Value>, enums: Option<&EnumRegistry>) 
         }
         Op::Accessor { field_name, inner } => {
             let v = eval_op(inner, env, enums)?;
+            // Composite (struct) value: lookup by field name directly.
+            if let Value::Composite(map) = v {
+                return map.get(field_name).cloned();
+            }
+            // Enum value: lookup field index in variant's field list.
             let Value::Enum { variant, fields, .. } = v else { return None };
-            // Look up the variant's field index by name from the registry.
             let reg = enums?;
             let by_v = reg.by_variant.borrow();
             let (en_name, vidx) = by_v.get(&variant).cloned()?;
@@ -590,6 +620,7 @@ fn select_at(v: &Value, idx: usize) -> Option<Value> {
         Value::SeqBool(xs) => xs.get(idx).map(|b| Value::Bool(*b)),
         Value::SeqStr(xs)  => xs.get(idx).map(|s| Value::Str(s.clone())),
         Value::SeqEnum(xs) => xs.get(idx).cloned(),
+        Value::SeqComposite(xs) => xs.get(idx).map(|m| Value::Composite(m.clone())),
         _ => None,
     }
 }

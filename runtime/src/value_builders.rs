@@ -140,6 +140,91 @@ pub unsafe extern "C" fn ev_seq_push_clone(seq: *mut Value, elem: *const Value) 
     }
 }
 
+/// Write `Value::Enum { enum_name, variant, fields }` where each
+/// field is read from a pre-built slot. `args_ptr` points to an
+/// array of `*const Value` slots; the helper clones each into the
+/// constructor's `fields` Vec. The JIT writes each field into its
+/// own stack slot (built via emit_write_value), then passes the
+/// array of pointers to this helper.
+#[no_mangle]
+pub unsafe extern "C" fn ev_set_enum_multifield(
+    out: *mut Value,
+    enum_ptr: *const u8, enum_len: usize,
+    variant_ptr: *const u8, variant_len: usize,
+    args_ptr: *const *const Value, args_len: usize,
+) {
+    let enum_name = str_from_raw(enum_ptr, enum_len).to_string();
+    let variant   = str_from_raw(variant_ptr, variant_len).to_string();
+    let slice = std::slice::from_raw_parts(args_ptr, args_len);
+    let mut fields: Vec<Value> = Vec::with_capacity(args_len);
+    for p in slice {
+        fields.push((**p).clone());
+    }
+    // Apply the same Cons-chain → SeqEnum normalization as
+    // z3_eval's DT_CONSTRUCTOR handler. Without this, LibCall's
+    // `args` field would be a Value::Enum (__SeqOf_FFIArg / __Cell)
+    // and downstream decode_arg_list would reject it.
+    let is_cell = variant.starts_with("__Cell_") || variant.starts_with("__Empty_");
+    if !is_cell {
+        for f in fields.iter_mut() {
+            if let Some(flat) = flatten_seq_of_chain(f) { *f = flat; }
+        }
+    }
+    *out = Value::Enum { enum_name, variant, fields };
+}
+
+/// Mirror of `z3_eval::flatten_seq_of_chain` — used by the
+/// multifield enum helper to flatten Cons chains in payload fields
+/// at construction time.
+fn flatten_seq_of_chain(v: &Value) -> Option<Value> {
+    let Value::Enum { enum_name, .. } = v else { return None };
+    if !enum_name.starts_with("__SeqOf_") { return None; }
+    let mut out: Vec<Value> = Vec::new();
+    let mut cur = v;
+    loop {
+        let Value::Enum { variant, fields, .. } = cur else { return None };
+        if variant.starts_with("__Empty_") { break; }
+        if !variant.starts_with("__Cell_") { return None; }
+        if fields.len() != 2 { return None; }
+        let mut head = fields[0].clone();
+        if let Value::Enum { variant: hv, fields: hf, .. } = &mut head {
+            if !hv.starts_with("__Cell_") && !hv.starts_with("__Empty_") {
+                for f in hf.iter_mut() {
+                    if let Some(flat) = flatten_seq_of_chain(f) { *f = flat; }
+                }
+            }
+        }
+        out.push(head);
+        cur = &fields[1];
+    }
+    // Classify like seq_value_from_elements: enum → SeqEnum;
+    // other primitives based on first element.
+    Some(match out.first() {
+        None => Value::SeqEnum(vec![]),
+        Some(Value::Int(_)) => Value::SeqInt(out.into_iter().filter_map(|v|
+            if let Value::Int(n) = v { Some(n) } else { None }).collect()),
+        Some(Value::Bool(_)) => Value::SeqBool(out.into_iter().filter_map(|v|
+            if let Value::Bool(b) = v { Some(b) } else { None }).collect()),
+        Some(Value::Str(_)) => Value::SeqStr(out.into_iter().filter_map(|v|
+            if let Value::Str(s) = v { Some(s) } else { None }).collect()),
+        _ => Value::SeqEnum(out),
+    })
+}
+
+/// Clone a Value from a static pool slot into the output slot.
+/// Used by PreBaked steps — at JIT compile time the value is
+/// stashed in `JitProgram::value_pool`, and the JIT emits a call
+/// to this helper with the pool index.
+#[no_mangle]
+pub unsafe extern "C" fn ev_clone_from_pool(
+    out: *mut Value,
+    pool_ptr: *const Value,
+    index: usize,
+) {
+    let src = &*pool_ptr.add(index);
+    *out = src.clone();
+}
+
 /// Read a Value::Int from a slot — used for chain steps that
 /// reference an earlier output. Returns 0 if the slot isn't
 /// Int-typed (shouldn't happen for well-typed programs).
@@ -165,5 +250,106 @@ pub fn symbol_table() -> Vec<(&'static str, *const u8)> {
         ("ev_seq_new",          ev_seq_new          as *const u8),
         ("ev_seq_push_clone",   ev_seq_push_clone   as *const u8),
         ("ev_load_int",         ev_load_int         as *const u8),
+        ("ev_set_enum_multifield", ev_set_enum_multifield as *const u8),
+        ("ev_clone_from_pool",  ev_clone_from_pool  as *const u8),
+        ("ev_seq_extract_field", ev_seq_extract_field as *const u8),
+        ("ev_extract_field",    ev_extract_field    as *const u8),
+        ("ev_seq_select",       ev_seq_select       as *const u8),
+        ("ev_load_bool",        ev_load_bool        as *const u8),
+        ("ev_str_concat",       ev_str_concat       as *const u8),
+        ("ev_is_variant",       ev_is_variant       as *const u8),
     ]
+}
+
+/// Read a Value::Bool from a slot — used for ITE conditions.
+#[no_mangle]
+pub unsafe extern "C" fn ev_load_bool(slot: *const Value) -> i64 {
+    match &*slot {
+        Value::Bool(b) => if *b { 1 } else { 0 },
+        _ => 0,
+    }
+}
+
+/// `*out = (*src_slot).<field_name>` where src_slot holds an
+/// enum value (Value::Enum). Looks up field index by name using
+/// a length-prefixed lookup table stored as compile-time constants.
+/// Simpler approach: use the EnumRegistry indirectly via a name
+/// stored in the JIT's value_pool... but that complicates ABI.
+/// Instead, we resolve the field index at compile time and pass
+/// it directly as a small integer.
+#[no_mangle]
+pub unsafe extern "C" fn ev_extract_field(
+    out: *mut Value,
+    src_slot: *const Value,
+    field_idx: usize,
+) {
+    if let Value::Enum { fields, .. } = &*src_slot {
+        if let Some(v) = fields.get(field_idx) {
+            *out = v.clone();
+            return;
+        }
+    }
+    *out = Value::Int(0);
+}
+
+/// `*out = (*src_slot).<field>` where field is a Seq-typed enum
+/// field whose Z3 representation is `<field>__arr`. The runtime
+/// Value model stores the Seq directly as a Value::Seq* in the
+/// field position, so this is equivalent to ev_extract_field.
+/// Kept separate for clarity in JIT codegen.
+#[no_mangle]
+pub unsafe extern "C" fn ev_seq_extract_field(
+    out: *mut Value,
+    src_slot: *const Value,
+    field_idx: usize,
+) {
+    ev_extract_field(out, src_slot, field_idx);
+}
+
+/// `*out = (*arr_slot)[idx]` — index into a SeqEnum/SeqInt/etc.
+#[no_mangle]
+pub unsafe extern "C" fn ev_seq_select(
+    out: *mut Value,
+    arr_slot: *const Value,
+    idx: i64,
+) {
+    let i = idx as usize;
+    let v = match &*arr_slot {
+        Value::SeqEnum(xs) => xs.get(i).cloned(),
+        Value::SeqInt(xs)  => xs.get(i).map(|n| Value::Int(*n)),
+        Value::SeqBool(xs) => xs.get(i).map(|b| Value::Bool(*b)),
+        Value::SeqStr(xs)  => xs.get(i).map(|s| Value::Str(s.clone())),
+        _ => None,
+    }.unwrap_or(Value::Int(0));
+    *out = v;
+}
+
+/// Concatenate N String slots into the output. `args_ptr` is an
+/// array of `*const Value` Str slots, `args_len` is the count.
+#[no_mangle]
+pub unsafe extern "C" fn ev_str_concat(
+    out: *mut Value,
+    args_ptr: *const *const Value, args_len: usize,
+) {
+    let slice = std::slice::from_raw_parts(args_ptr, args_len);
+    let mut s = String::new();
+    for p in slice {
+        if let Value::Str(t) = &**p {
+            s.push_str(t);
+        }
+    }
+    *out = Value::Str(s);
+}
+
+/// Test whether a Value::Enum's variant equals `target`. Returns
+/// 1 if so, 0 otherwise. Used by IsVariant recognizer ops.
+#[no_mangle]
+pub unsafe extern "C" fn ev_is_variant(
+    src_slot: *const Value,
+    target_ptr: *const u8, target_len: usize,
+) -> i64 {
+    let target = str_from_raw(target_ptr, target_len);
+    if let Value::Enum { variant, .. } = &*src_slot {
+        if variant == target { 1 } else { 0 }
+    } else { 0 }
 }
