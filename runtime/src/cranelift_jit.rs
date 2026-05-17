@@ -39,7 +39,7 @@ use crate::z3_eval::{Z3Program, Z3Step, GuardedBody};
 
 pub struct JitProgram {
     _module: JITModule,
-    func: unsafe extern "C" fn(*const i64, *mut Value),
+    func: unsafe extern "C" fn(*const Value, *mut Value, *const Value),
     pub input_offsets: HashMap<String, usize>,
     pub input_kinds:   HashMap<String, OutputKind>,
     pub output_offsets: HashMap<String, usize>,
@@ -49,6 +49,10 @@ pub struct JitProgram {
     /// Interned strings kept alive for the lifetime of the JIT
     /// code (the compiled function holds raw pointers into them).
     _string_pool: Vec<Box<str>>,
+    /// Compile-time constant Values for PreBaked steps + other
+    /// constant emissions. Kept alive for the JIT module's lifetime;
+    /// the JIT emits pointers into this pool.
+    value_pool: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -71,39 +75,35 @@ impl JitProgram {
     pub fn call(&self, given: &HashMap<String, Value>) -> Option<HashMap<String, Value>> {
         let n_in  = self.input_offsets.len();
         let n_out = self.output_offsets.len();
-        let mut inputs: Vec<i64> = vec![0; n_in];
-        // Initialize each output slot to a default Value::Int(0).
-        // The JIT helpers do `*out = ...` which drops the prior
-        // value; the default ensures we have a valid Value
-        // pre-written before the JIT runs.
-        let mut outputs: Vec<Value> = (0..n_out).map(|_| Value::Int(0)).collect();
+        // Build input Value array — one slot per input, populated
+        // from `given`. Missing inputs use Value::Int(0) sentinel;
+        // the JIT only loads inputs it knows about.
+        let mut inputs: Vec<Value> = (0..n_in).map(|_| Value::Int(0)).collect();
         for (name, &idx) in &self.input_offsets {
-            let value = given.get(name)?;
-            let kind  = self.input_kinds.get(name)?;
-            inputs[idx] = self.pack_input(value, kind)?;
+            if let Some(v) = given.get(name) {
+                inputs[idx] = v.clone();
+            }
         }
+        // Initialize each output slot to a default Value::Int(0)
+        // before the JIT runs (helpers do `*out = ...` which drops
+        // the prior valid value).
+        let mut outputs: Vec<Value> = (0..n_out).map(|_| Value::Int(0)).collect();
+        let pool_ptr = if self.value_pool.is_empty() {
+            std::ptr::null()
+        } else {
+            self.value_pool.as_ptr()
+        };
         // SAFETY: compiled code is alive as long as `_module`;
-        // outputs is a properly-aligned `Vec<Value>` of n_out
-        // elements; helpers only access elements `0..n_out`.
+        // both arrays are valid `Vec<Value>` of the declared size;
+        // value_pool outlives the JIT module (stored alongside).
         unsafe {
-            (self.func)(inputs.as_ptr(), outputs.as_mut_ptr());
+            (self.func)(inputs.as_ptr(), outputs.as_mut_ptr(), pool_ptr);
         }
         let mut out = HashMap::new();
         for (name, &idx) in &self.output_offsets {
             out.insert(name.clone(), outputs[idx].clone());
         }
         Some(out)
-    }
-
-    fn pack_input(&self, value: &Value, kind: &OutputKind) -> Option<i64> {
-        match (kind, value) {
-            (OutputKind::Int,  Value::Int(n))  => Some(*n),
-            (OutputKind::Bool, Value::Bool(b)) => Some(if *b { 1 } else { 0 }),
-            (OutputKind::Enum(en), Value::Enum { variant, .. }) => {
-                self.enum_tags.get(en)?.get(variant).copied()
-            }
-            _ => None,
-        }
     }
 }
 
@@ -187,7 +187,7 @@ fn declare_helpers(
     let s_seq_push = mk(&[p, p], module);
     let s_load_int = mk_ret(&[p], i64t, module);
     let s_load_bool = mk_ret(&[p], i64t, module);
-    let s_extract = mk(&[p, p, usz], module);
+    let s_extract = mk(&[p, p, p, usz], module);
     let s_seq_sel = mk(&[p, p, i64t], module);
     let s_str_cat = mk(&[p, p, usz], module);
     let s_is_var  = mk_ret(&[p, p, usz], i64t, module);
@@ -273,12 +273,18 @@ pub fn compile_program<'ctx>(
     for step in &program.steps {
         let (var, kind) = match step {
             Z3Step::Scalar { var, expr } => {
-                let k = kind_of_dynamic(expr, &enum_variants, &variant_arity)?;
+                let k = kind_of_dynamic(expr, &enum_variants, &variant_arity)
+                    .unwrap_or(OutputKind::Int);
                 (var.clone(), k)
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
-            Z3Step::Guarded { .. } => return None,  // not in v1 codegen
-            Z3Step::PreBaked { .. } => return None, // value steps fall back to AST walker
+            Z3Step::Guarded { var, .. } => {
+                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                    eprintln!("[jit] bail: Guarded {var} (not yet supported)");
+                }
+                return None;
+            }
+            Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq /* placeholder */),
         };
         output_kinds_local.push((var, kind));
         match step {
@@ -291,10 +297,10 @@ pub fn compile_program<'ctx>(
     }
     let output_names: std::collections::HashSet<String> = output_kinds_local.iter()
         .map(|(n, _)| n.clone()).collect();
+    // Allow ALL kinds as inputs now (Seq, Composite, etc. handled
+    // via ev_load_* / ev_extract_field / ev_seq_select helpers).
     let input_names: Vec<(String, OutputKind)> = input_set.into_iter()
         .filter(|(n, _)| !output_names.contains(n))
-        .filter(|(_, k)| matches!(k,
-            OutputKind::Int | OutputKind::Bool | OutputKind::Enum(_)))
         .collect();
 
     // ── Phase 3: Cranelift IR generation ──────────────────
@@ -313,8 +319,9 @@ pub fn compile_program<'ctx>(
     let helper_ids = declare_helpers(&mut module, ptr_t)?;
 
     let mut sig = module.make_signature();
-    sig.params.push(AbiParam::new(ptr_t));   // *const i64 inputs
+    sig.params.push(AbiParam::new(ptr_t));   // *const Value inputs
     sig.params.push(AbiParam::new(ptr_t));   // *mut Value outputs
+    sig.params.push(AbiParam::new(ptr_t));   // *const Value value_pool
     let func_id = module.declare_function("compiled_program",
         Linkage::Local, &sig).ok()?;
     let mut ctx = module.make_context();
@@ -336,6 +343,7 @@ pub fn compile_program<'ctx>(
     let size_of_value = std::mem::size_of::<Value>() as i64;
 
     let mut string_pool: Vec<Box<str>> = Vec::new();
+    let mut value_pool: Vec<Value> = Vec::new();
     {
         let mut func_ctx = FunctionBuilderContext::new();
         let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
@@ -346,25 +354,18 @@ pub fn compile_program<'ctx>(
 
         let inputs_ptr  = bcx.block_params(entry)[0];
         let outputs_ptr = bcx.block_params(entry)[1];
+        let pool_ptr    = bcx.block_params(entry)[2];
 
-        // Temp slot for building Seq elements.
-        let temp_slot = bcx.create_sized_stack_slot(
-            StackSlotData::new(StackSlotKind::ExplicitSlot, size_of_value as u32));
-        let temp_ptr = bcx.ins().stack_addr(ptr_t, temp_slot, 0);
-        // The stack slot is uninitialized memory. We MUST use
-        // `ptr::write` (via ev_init_slot) for the first write so
-        // we don't try to drop garbage. Subsequent ev_set_* calls
-        // on this slot use normal `*out = ...` which drops the
-        // prior valid Value correctly.
-        bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-
-        // Native env: var name → its computed location.
-        let mut env: HashMap<String, EnvVal> = HashMap::new();
+        // Env: var name → ptr-to-Value slot. Inputs are at
+        // (inputs_ptr + idx*sizeof(Value)). Outputs are at
+        // (outputs_ptr + idx*sizeof(Value)). We compute the slot
+        // address once and reuse.
+        let mut env: HashMap<String, ClValue> = HashMap::new();
         for (name, idx) in &input_offsets {
-            let v = bcx.ins().load(types::I64, MemFlags::new(),
-                inputs_ptr, (idx * 8) as i32);
-            let kind = input_kinds.get(name).cloned().unwrap_or(OutputKind::Int);
-            env.insert(name.clone(), EnvVal::I64 { v, kind });
+            let off = (*idx as i64) * size_of_value;
+            let off_v = bcx.ins().iconst(types::I64, off);
+            let slot = bcx.ins().iadd(inputs_ptr, off_v);
+            env.insert(name.clone(), slot);
         }
 
         for step in &program.steps {
@@ -375,22 +376,51 @@ pub fn compile_program<'ctx>(
 
             match step {
                 Z3Step::Scalar { var, expr } => {
-                    emit_write_value(&mut bcx, expr, out_slot, &env,
-                        &helpers, &variant_arity, &mut string_pool)?;
-                    env.insert(var.clone(), EnvVal::OutSlot { ptr: out_slot });
+                    if emit_write_value(&mut bcx, expr, out_slot, &env,
+                        &helpers, &variant_arity, &mut string_pool,
+                        ptr_t, size_of_value).is_none() {
+                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                            eprintln!("[jit] bail: Scalar {var} = {expr}");
+                        }
+                        return None;
+                    }
+                    env.insert(var.clone(), out_slot);
                 }
                 Z3Step::Seq { var, elem_exprs } => {
+                    // Detect if all elements are scalar literals or
+                    // env refs we can handle. Build via ev_seq_new +
+                    // ev_seq_push_clone over per-element temp slots.
                     let cap = bcx.ins().iconst(types::I64, elem_exprs.len() as i64);
                     bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
-                    for elem in elem_exprs {
-                        emit_write_value(&mut bcx, elem, temp_ptr, &env,
-                            &helpers, &variant_arity, &mut string_pool)?;
+                    // Use a fresh temp slot per element to be safe
+                    // about ev_seq_push_clone's read-and-clone semantics.
+                    let temp_slot = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp_slot, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    for (ei, elem) in elem_exprs.iter().enumerate() {
+                        if emit_write_value(&mut bcx, elem, temp_ptr, &env,
+                            &helpers, &variant_arity, &mut string_pool,
+                            ptr_t, size_of_value).is_none() {
+                            if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                eprintln!("[jit] bail: Seq {var}[{ei}] = {elem}");
+                            }
+                            return None;
+                        }
                         bcx.ins().call(helpers.seq_push_clone, &[out_slot, temp_ptr]);
                     }
-                    env.insert(var.clone(), EnvVal::OutSlot { ptr: out_slot });
+                    env.insert(var.clone(), out_slot);
                 }
                 Z3Step::Guarded { .. } => return None,
-                Z3Step::PreBaked { .. } => return None,
+                Z3Step::PreBaked { var, value } => {
+                    let idx = value_pool.len();
+                    value_pool.push(value.clone());
+                    let idx_v = bcx.ins().iconst(types::I64, idx as i64);
+                    bcx.ins().call(helpers.clone_from_pool,
+                        &[out_slot, pool_ptr, idx_v]);
+                    env.insert(var.clone(), out_slot);
+                }
             }
         }
         bcx.ins().return_(&[]);
@@ -406,7 +436,7 @@ pub fn compile_program<'ctx>(
     let code_ptr = module.get_finalized_function(func_id);
     // SAFETY: code_ptr points to JIT'd machine code with the
     // ABI we declared above.
-    let func: unsafe extern "C" fn(*const i64, *mut Value) = unsafe {
+    let func: unsafe extern "C" fn(*const Value, *mut Value, *const Value) = unsafe {
         std::mem::transmute(code_ptr)
     };
     Some(JitProgram {
@@ -419,15 +449,8 @@ pub fn compile_program<'ctx>(
         enum_tags,
         enum_variants,
         _string_pool: string_pool,
+        value_pool,
     })
-}
-
-#[derive(Clone)]
-enum EnvVal {
-    /// Primitive (or enum tag) in a register.
-    I64 { v: ClValue, kind: OutputKind },
-    /// Pointer to an earlier output slot's Value.
-    OutSlot { ptr: ClValue },
 }
 
 fn intern_str(pool: &mut Vec<Box<str>>, s: &str) -> (i64, i64) {
@@ -445,15 +468,14 @@ fn emit_write_value<'ctx>(
     bcx: &mut FunctionBuilder,
     expr: &Dynamic<'ctx>,
     out_slot: ClValue,
-    env: &HashMap<String, EnvVal>,
+    env: &HashMap<String, ClValue>,
     helpers: &HelperRefs,
     variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
     string_pool: &mut Vec<Box<str>>,
+    ptr_t: cranelift::prelude::Type,
+    size_of_value: i64,
 ) -> Option<()> {
-    // String literal short-circuit — ONLY for genuine zero-child
-    // literals. `as_string()` collapses some non-literal ASTs
-    // (e.g. `(ite c "a" "b")`) to empty/garbage; require
-    // num_children=0 + non-UNINTERPRETED before trusting.
+    // String literal short-circuit — only genuine zero-child literals.
     if expr.kind() == AstKind::App && expr.num_children() == 0 {
         let is_free_var = expr.safe_decl().ok()
             .map(|d| d.kind() == DeclKind::UNINTERPRETED)
@@ -494,29 +516,121 @@ fn emit_write_value<'ctx>(
                     Some(())
                 }
                 DeclKind::UNINTERPRETED => {
-                    if !children.is_empty() { return None; }
-                    let name = decl.name();
-                    let ev = env.get(&name)?;
-                    match ev {
-                        EnvVal::I64 { v, kind } => match kind {
-                            OutputKind::Int => {
-                                bcx.ins().call(helpers.set_int, &[out_slot, *v]);
-                                Some(())
-                            }
-                            OutputKind::Bool => {
-                                bcx.ins().call(helpers.set_bool, &[out_slot, *v]);
-                                Some(())
-                            }
-                            _ => None,  // enum-tag inputs not codegen'd yet
-                        },
-                        EnvVal::OutSlot { ptr: _ } => {
-                            // Copy from another slot: not v1.
-                            None
-                        }
+                    if children.is_empty() {
+                        // Variable lookup: copy from env slot via clone helper.
+                        let name = decl.name();
+                        let src_slot = *env.get(&name)?;
+                        let zero = bcx.ins().iconst(types::I64, 0);
+                        bcx.ins().call(helpers.clone_from_pool,
+                            &[out_slot, src_slot, zero]);
+                        Some(())
+                    } else if children.len() == 1 {
+                        // Z3 internal accessor: `<field>__arr` /
+                        // `<field>__len` — strip suffix to get logical
+                        // field name, then extract by name.
+                        let name = decl.name();
+                        let logical = if let Some(s) = name.strip_suffix("__arr") {
+                            s.to_string()
+                        } else if let Some(_s) = name.strip_suffix("__len") {
+                            return None;  // length extraction not emitted
+                        } else { return None; };
+                        let temp = bcx.create_sized_stack_slot(
+                            StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                               size_of_value as u32));
+                        let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                        bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                        emit_write_value(bcx, &children[0], temp_ptr, env,
+                            helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        let (np, nl) = intern_str(string_pool, &logical);
+                        let np_v = bcx.ins().iconst(types::I64, np);
+                        let nl_v = bcx.ins().iconst(types::I64, nl);
+                        bcx.ins().call(helpers.extract_field,
+                            &[out_slot, temp_ptr, np_v, nl_v]);
+                        Some(())
+                    } else {
+                        None
                     }
+                }
+                DeclKind::DT_ACCESSOR => {
+                    if children.len() != 1 { return None; }
+                    let accessor_name = decl.name();
+                    let temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let (np, nl) = intern_str(string_pool, &accessor_name);
+                    let np_v = bcx.ins().iconst(types::I64, np);
+                    let nl_v = bcx.ins().iconst(types::I64, nl);
+                    bcx.ins().call(helpers.extract_field,
+                        &[out_slot, temp_ptr, np_v, nl_v]);
+                    Some(())
+                }
+                DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
+                    if children.len() != 1 { return None; }
+                    // The variant being tested is encoded in the decl
+                    // name. Z3 0.12 doesn't expose the constructor
+                    // parameter directly; parse from app's text form.
+                    let app_text = format!("{expr}");
+                    let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
+                        .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
+                    let temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let (vp, vl) = intern_str(string_pool, &variant);
+                    let vp_v = bcx.ins().iconst(types::I64, vp);
+                    let vl_v = bcx.ins().iconst(types::I64, vl);
+                    let call = bcx.ins().call(helpers.is_variant,
+                        &[temp_ptr, vp_v, vl_v]);
+                    let r = bcx.inst_results(call)[0];
+                    bcx.ins().call(helpers.set_bool, &[out_slot, r]);
+                    Some(())
+                }
+                DeclKind::SELECT => {
+                    if children.len() != 2 {
+                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                            eprintln!("[jit] SELECT children != 2: {expr}");
+                        }
+                        return None;
+                    }
+                    let temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    if emit_write_value(bcx, &children[0], temp_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value).is_none()
+                    {
+                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                            eprintln!("[jit] SELECT arr bail: {}", &children[0]);
+                        }
+                        return None;
+                    }
+                    let idx_v = match emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)
+                    {
+                        Some(v) => v,
+                        None => {
+                            if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                eprintln!("[jit] SELECT idx bail: {}", &children[1]);
+                            }
+                            return None;
+                        }
+                    };
+                    bcx.ins().call(helpers.seq_select,
+                        &[out_slot, temp_ptr, idx_v]);
+                    Some(())
                 }
                 DeclKind::DT_CONSTRUCTOR => {
                     let variant = decl.name();
+                    // Check Cons-chain pattern at this level — handled
+                    // by the caller's Seq build, not here.
                     let (enum_name, field_types) = lookup_variant(&variant, variant_arity)?;
                     let (ep, el) = intern_str(string_pool, &enum_name);
                     let (vp, vl) = intern_str(string_pool, &variant);
@@ -533,33 +647,384 @@ fn emit_write_value<'ctx>(
                         let arg = &children[0];
                         match field_types[0].as_str() {
                             "Int" | "Nat" => {
-                                let n = arg.as_int().and_then(|x| x.as_i64())?;
-                                let n_v = bcx.ins().iconst(types::I64, n);
-                                bcx.ins().call(helpers.set_enum_int,
-                                    &[out_slot, ep_v, el_v, vp_v, vl_v, n_v]);
-                                Some(())
+                                if let Some(n) = arg.as_int().and_then(|x| x.as_i64()) {
+                                    let n_v = bcx.ins().iconst(types::I64, n);
+                                    bcx.ins().call(helpers.set_enum_int,
+                                        &[out_slot, ep_v, el_v, vp_v, vl_v, n_v]);
+                                    return Some(());
+                                }
+                                // Computed Int payload (e.g. enum(_frame + 1)):
+                                // build via multifield path.
                             }
                             "String" => {
-                                let s = arg.as_string().and_then(|zs| zs.as_string())?;
-                                let (p, l) = intern_str(string_pool, &s);
-                                let p_v = bcx.ins().iconst(types::I64, p);
-                                let l_v = bcx.ins().iconst(types::I64, l);
-                                bcx.ins().call(helpers.set_enum_str,
-                                    &[out_slot, ep_v, el_v, vp_v, vl_v, p_v, l_v]);
-                                Some(())
+                                // Only fast-path for literal strings —
+                                // free var as_string() returns Some("").
+                                let is_literal = arg.kind() == AstKind::App
+                                    && arg.num_children() == 0
+                                    && arg.safe_decl().ok()
+                                        .map(|d| d.kind() != DeclKind::UNINTERPRETED)
+                                        .unwrap_or(false);
+                                if is_literal {
+                                    if let Some(zs) = arg.as_string() {
+                                        if let Some(s) = zs.as_string() {
+                                            let (p, l) = intern_str(string_pool, &s);
+                                            let p_v = bcx.ins().iconst(types::I64, p);
+                                            let l_v = bcx.ins().iconst(types::I64, l);
+                                            bcx.ins().call(helpers.set_enum_str,
+                                                &[out_slot, ep_v, el_v, vp_v, vl_v, p_v, l_v]);
+                                            return Some(());
+                                        }
+                                    }
+                                }
+                                // Fall through to multifield path for
+                                // non-literal String fields.
                             }
-                            _ => None,
+                            _ => {}
                         }
-                    } else {
-                        // Multi-field payload (e.g. LibCall(String, String,
-                        // String, Seq(...))): would need
-                        // `ev_set_enum_multifield` with a payload-args
-                        // array. Defer to Round 27+ — Mario's display path
-                        // doesn't strictly require it because LibCall is
-                        // constructed via subschema-dispatch where each
-                        // subschema's body has a single-arg ctor pattern.
-                        None
                     }
+                    // Multi-field (or single computed-field) ctor:
+                    // build each field into a stack slot, then call
+                    // ev_set_enum_multifield with an array of slot ptrs.
+                    let n = children.len();
+                    // Allocate stack slots for each arg + an array of
+                    // pointers.
+                    let arg_slots: Vec<ClValue> = (0..n).map(|_| {
+                        let s = bcx.create_sized_stack_slot(
+                            StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                               size_of_value as u32));
+                        bcx.ins().stack_addr(ptr_t, s, 0)
+                    }).collect();
+                    for s in &arg_slots {
+                        bcx.ins().call(helpers.init_slot, &[*s]);
+                    }
+                    // Recursively emit each field.
+                    for (i, child) in children.iter().enumerate() {
+                        emit_write_value(bcx, child, arg_slots[i], env,
+                            helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    }
+                    // Build the pointer array on the stack.
+                    let array_slot = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           (n as u32) * 8));
+                    let array_ptr = bcx.ins().stack_addr(ptr_t, array_slot, 0);
+                    for (i, &s) in arg_slots.iter().enumerate() {
+                        bcx.ins().store(MemFlags::new(),
+                            s, array_ptr, (i as i32) * 8);
+                    }
+                    let n_v = bcx.ins().iconst(types::I64, n as i64);
+                    bcx.ins().call(helpers.set_enum_multifield,
+                        &[out_slot, ep_v, el_v, vp_v, vl_v, array_ptr, n_v]);
+                    Some(())
+                }
+                DeclKind::ITE => {
+                    // ITE: cond is Bool, then/else are Value.
+                    if children.len() != 3 { return None; }
+                    let cond_v = emit_compute_i64(bcx, &children[0], env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let then_block = bcx.create_block();
+                    let else_block = bcx.create_block();
+                    let merge_block = bcx.create_block();
+                    bcx.ins().brif(cond_v, then_block, &[], else_block, &[]);
+                    bcx.switch_to_block(then_block);
+                    bcx.seal_block(then_block);
+                    emit_write_value(bcx, &children[1], out_slot, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    bcx.ins().jump(merge_block, &[]);
+                    bcx.switch_to_block(else_block);
+                    bcx.seal_block(else_block);
+                    emit_write_value(bcx, &children[2], out_slot, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    bcx.ins().jump(merge_block, &[]);
+                    bcx.switch_to_block(merge_block);
+                    bcx.seal_block(merge_block);
+                    Some(())
+                }
+                DeclKind::ADD | DeclKind::SUB | DeclKind::MUL | DeclKind::UMINUS => {
+                    // Int arithmetic → set_int with computed i64.
+                    let v = emit_compute_i64(bcx, expr, env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    bcx.ins().call(helpers.set_int, &[out_slot, v]);
+                    Some(())
+                }
+                DeclKind::LT | DeclKind::LE | DeclKind::GT | DeclKind::GE
+                | DeclKind::EQ | DeclKind::AND | DeclKind::OR | DeclKind::NOT => {
+                    // Bool ops → set_bool with computed i64 (0/1).
+                    let v = emit_compute_i64(bcx, expr, env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    bcx.ins().call(helpers.set_bool, &[out_slot, v]);
+                    Some(())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Emit IR that computes an i64 value from `expr`. Used for Int
+/// arithmetic operands, Bool conditions, comparison operands.
+/// Returns None if the expr can't be reduced to a single i64.
+fn emit_compute_i64<'ctx>(
+    bcx: &mut FunctionBuilder,
+    expr: &Dynamic<'ctx>,
+    env: &HashMap<String, ClValue>,
+    helpers: &HelperRefs,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    string_pool: &mut Vec<Box<str>>,
+    ptr_t: cranelift::prelude::Type,
+    size_of_value: i64,
+) -> Option<ClValue> {
+    match expr.kind() {
+        AstKind::Numeral => {
+            let i = expr.as_int().and_then(|x| x.as_i64())?;
+            Some(bcx.ins().iconst(types::I64, i))
+        }
+        AstKind::App => {
+            let decl = expr.safe_decl().ok()?;
+            let kind = decl.kind();
+            let children: Vec<Dynamic<'ctx>> = expr.children();
+            match kind {
+                DeclKind::TRUE  => Some(bcx.ins().iconst(types::I64, 1)),
+                DeclKind::FALSE => Some(bcx.ins().iconst(types::I64, 0)),
+                DeclKind::UNINTERPRETED => {
+                    if !children.is_empty() { return None; }
+                    let name = decl.name();
+                    let src_slot = *env.get(&name)?;
+                    // Pick loader based on the sort: Bool → load_bool,
+                    // else load_int. Sort detection is via the Z3 sort
+                    // string on the expr.
+                    let sort_name = format!("{}", expr.get_sort());
+                    let loader = if sort_name == "Bool" {
+                        helpers.load_bool
+                    } else {
+                        helpers.load_int
+                    };
+                    let call = bcx.ins().call(loader, &[src_slot]);
+                    let result = bcx.inst_results(call)[0];
+                    Some(result)
+                }
+                DeclKind::ADD | DeclKind::SUB | DeclKind::MUL => {
+                    if children.is_empty() { return None; }
+                    let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    for c in &children[1..] {
+                        let v = emit_compute_i64(bcx, c, env, helpers,
+                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                        acc = match kind {
+                            DeclKind::ADD => bcx.ins().iadd(acc, v),
+                            DeclKind::SUB => bcx.ins().isub(acc, v),
+                            DeclKind::MUL => bcx.ins().imul(acc, v),
+                            _ => unreachable!(),
+                        };
+                    }
+                    Some(acc)
+                }
+                DeclKind::UMINUS => {
+                    if children.len() != 1 { return None; }
+                    let v = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    Some(bcx.ins().ineg(v))
+                }
+                DeclKind::IDIV | DeclKind::DIV => {
+                    if children.len() != 2 { return None; }
+                    let l = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let r = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    Some(bcx.ins().sdiv(l, r))
+                }
+                DeclKind::MOD | DeclKind::REM => {
+                    if children.len() != 2 { return None; }
+                    let l = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let r = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    Some(bcx.ins().srem(l, r))
+                }
+                DeclKind::LT | DeclKind::LE | DeclKind::GT | DeclKind::GE
+                | DeclKind::EQ => {
+                    if children.len() != 2 { return None; }
+                    // Special case: `(= X NullaryVariant)` — compile
+                    // as IsVariant test on X. Lets the JIT handle
+                    // enum equality without needing a full Value
+                    // equality helper.
+                    if matches!(kind, DeclKind::EQ) {
+                        let try_nullary_eq = |child: &Dynamic<'ctx>, other: &Dynamic<'ctx>|
+                            -> Option<ClValue>
+                        {
+                            if child.kind() == AstKind::App {
+                                let d = child.safe_decl().ok()?;
+                                if d.kind() == DeclKind::DT_CONSTRUCTOR
+                                    && child.num_children() == 0
+                                {
+                                    let variant = d.name();
+                                    // We need a mutable bcx + helpers here; this
+                                    // closure borrows mutably so we inline below.
+                                    let _ = variant;
+                                    return Some(ClValue::from_u32(0));  // sentinel
+                                }
+                            }
+                            None
+                        };
+                        if try_nullary_eq(&children[1], &children[0]).is_some() {
+                            // r is the nullary variant; test (is variant l).
+                            let variant = children[1].safe_decl().ok()?.name();
+                            let temp = bcx.create_sized_stack_slot(
+                                StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                                   size_of_value as u32));
+                            let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                            bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                            emit_write_value(bcx, &children[0], temp_ptr, env,
+                                helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                            let (vp, vl) = intern_str(string_pool, &variant);
+                            let vp_v = bcx.ins().iconst(types::I64, vp);
+                            let vl_v = bcx.ins().iconst(types::I64, vl);
+                            let call = bcx.ins().call(helpers.is_variant,
+                                &[temp_ptr, vp_v, vl_v]);
+                            return Some(bcx.inst_results(call)[0]);
+                        }
+                        if try_nullary_eq(&children[0], &children[1]).is_some() {
+                            let variant = children[0].safe_decl().ok()?.name();
+                            let temp = bcx.create_sized_stack_slot(
+                                StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                                   size_of_value as u32));
+                            let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                            bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                            emit_write_value(bcx, &children[1], temp_ptr, env,
+                                helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                            let (vp, vl) = intern_str(string_pool, &variant);
+                            let vp_v = bcx.ins().iconst(types::I64, vp);
+                            let vl_v = bcx.ins().iconst(types::I64, vl);
+                            let call = bcx.ins().call(helpers.is_variant,
+                                &[temp_ptr, vp_v, vl_v]);
+                            return Some(bcx.inst_results(call)[0]);
+                        }
+                    }
+                    let l = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let r = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    use cranelift::prelude::IntCC;
+                    let cc = match kind {
+                        DeclKind::LT => IntCC::SignedLessThan,
+                        DeclKind::LE => IntCC::SignedLessThanOrEqual,
+                        DeclKind::GT => IntCC::SignedGreaterThan,
+                        DeclKind::GE => IntCC::SignedGreaterThanOrEqual,
+                        DeclKind::EQ => IntCC::Equal,
+                        _ => unreachable!(),
+                    };
+                    let cmp = bcx.ins().icmp(cc, l, r);
+                    // icmp returns i8; widen to i64 for our ABI.
+                    Some(bcx.ins().uextend(types::I64, cmp))
+                }
+                DeclKind::AND => {
+                    if children.is_empty() { return Some(bcx.ins().iconst(types::I64, 1)); }
+                    let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    for c in &children[1..] {
+                        let v = emit_compute_i64(bcx, c, env, helpers,
+                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                        acc = bcx.ins().band(acc, v);
+                    }
+                    Some(acc)
+                }
+                DeclKind::OR => {
+                    if children.is_empty() { return Some(bcx.ins().iconst(types::I64, 0)); }
+                    let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    for c in &children[1..] {
+                        let v = emit_compute_i64(bcx, c, env, helpers,
+                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                        acc = bcx.ins().bor(acc, v);
+                    }
+                    Some(acc)
+                }
+                DeclKind::NOT => {
+                    if children.len() != 1 { return None; }
+                    let v = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let one = bcx.ins().iconst(types::I64, 1);
+                    Some(bcx.ins().bxor(v, one))
+                }
+                DeclKind::ITE => {
+                    if children.len() != 3 { return None; }
+                    let cond = emit_compute_i64(bcx, &children[0], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let t = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let e = emit_compute_i64(bcx, &children[2], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    Some(bcx.ins().select(cond, t, e))
+                }
+                DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
+                    if children.len() != 1 { return None; }
+                    let app_text = format!("{expr}");
+                    let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
+                        .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
+                    // Compile inner into a temp slot.
+                    let temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let (vp, vl) = intern_str(string_pool, &variant);
+                    let vp_v = bcx.ins().iconst(types::I64, vp);
+                    let vl_v = bcx.ins().iconst(types::I64, vl);
+                    let call = bcx.ins().call(helpers.is_variant,
+                        &[temp_ptr, vp_v, vl_v]);
+                    Some(bcx.inst_results(call)[0])
+                }
+                DeclKind::DT_ACCESSOR => {
+                    if children.len() != 1 { return None; }
+                    let accessor_name = decl.name();
+                    // Compile inner into a temp slot, then extract by name,
+                    // then load as i64. The inner value is presumably
+                    // an enum/composite whose field is Int-typed.
+                    let inner_temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let inner_ptr = bcx.ins().stack_addr(ptr_t, inner_temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[inner_ptr]);
+                    emit_write_value(bcx, &children[0], inner_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let field_temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let field_ptr = bcx.ins().stack_addr(ptr_t, field_temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[field_ptr]);
+                    let (np, nl) = intern_str(string_pool, &accessor_name);
+                    let np_v = bcx.ins().iconst(types::I64, np);
+                    let nl_v = bcx.ins().iconst(types::I64, nl);
+                    bcx.ins().call(helpers.extract_field,
+                        &[field_ptr, inner_ptr, np_v, nl_v]);
+                    // Load as int from the field slot.
+                    let call = bcx.ins().call(helpers.load_int, &[field_ptr]);
+                    Some(bcx.inst_results(call)[0])
+                }
+                DeclKind::SELECT => {
+                    if children.len() != 2 { return None; }
+                    // Compile arr into a temp, then seq_select to read elem,
+                    // then load_int from the elem slot.
+                    let arr_temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let arr_ptr = bcx.ins().stack_addr(ptr_t, arr_temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[arr_ptr]);
+                    emit_write_value(bcx, &children[0], arr_ptr, env,
+                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let idx_v = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                    let elem_temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let elem_ptr = bcx.ins().stack_addr(ptr_t, elem_temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[elem_ptr]);
+                    bcx.ins().call(helpers.seq_select,
+                        &[elem_ptr, arr_ptr, idx_v]);
+                    let call = bcx.ins().call(helpers.load_int, &[elem_ptr]);
+                    Some(bcx.inst_results(call)[0])
                 }
                 _ => None,
             }
@@ -602,9 +1067,13 @@ fn collect_inputs<'ctx>(
         if let Ok(decl) = e.safe_decl() {
             if decl.kind() == DeclKind::UNINTERPRETED && e.num_children() == 0 {
                 let name = decl.name();
-                if let Some(k) = kind_of_dynamic(e, enum_variants, variant_arity) {
-                    out.insert((name, k));
-                }
+                // Always register the input; kind is used for input
+                // packing (Int/Bool fast path) but Seq/composite
+                // inputs flow through clone_from_pool which doesn't
+                // need a kind.
+                let k = kind_of_dynamic(e, enum_variants, variant_arity)
+                    .unwrap_or(OutputKind::Seq);
+                out.insert((name, k));
                 return;
             }
         }

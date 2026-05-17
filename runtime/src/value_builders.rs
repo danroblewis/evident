@@ -270,40 +270,55 @@ pub unsafe extern "C" fn ev_load_bool(slot: *const Value) -> i64 {
     }
 }
 
-/// `*out = (*src_slot).<field_name>` where src_slot holds an
-/// enum value (Value::Enum). Looks up field index by name using
-/// a length-prefixed lookup table stored as compile-time constants.
-/// Simpler approach: use the EnumRegistry indirectly via a name
-/// stored in the JIT's value_pool... but that complicates ABI.
-/// Instead, we resolve the field index at compile time and pass
-/// it directly as a small integer.
+/// `*out = (*src_slot).<field_name>` — look up field by NAME on
+/// either a Value::Enum (variant payload) or Value::Composite
+/// (struct map). For enums, the accessor names are "f0", "f1", …
+/// or user-supplied field names. For composites, the names are
+/// the type's declared field names.
 #[no_mangle]
 pub unsafe extern "C" fn ev_extract_field(
     out: *mut Value,
     src_slot: *const Value,
-    field_idx: usize,
+    name_ptr: *const u8, name_len: usize,
 ) {
-    if let Value::Enum { fields, .. } = &*src_slot {
-        if let Some(v) = fields.get(field_idx) {
-            *out = v.clone();
-            return;
+    let name = str_from_raw(name_ptr, name_len);
+    match &*src_slot {
+        Value::Enum { fields, .. } => {
+            // Try numeric "fN" first.
+            if let Some(idx_str) = name.strip_prefix('f') {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    if let Some(v) = fields.get(idx) {
+                        *out = v.clone();
+                        return;
+                    }
+                }
+            }
+            // Otherwise no name match: enum field names aren't
+            // available at runtime without the EnumRegistry; the JIT
+            // should resolve named-enum accessors via the index.
+            *out = Value::Int(0);
         }
+        Value::Composite(map) => {
+            if let Some(v) = map.get(name) {
+                *out = v.clone();
+            } else {
+                *out = Value::Int(0);
+            }
+        }
+        _ => { *out = Value::Int(0); }
     }
-    *out = Value::Int(0);
 }
 
-/// `*out = (*src_slot).<field>` where field is a Seq-typed enum
-/// field whose Z3 representation is `<field>__arr`. The runtime
-/// Value model stores the Seq directly as a Value::Seq* in the
-/// field position, so this is equivalent to ev_extract_field.
-/// Kept separate for clarity in JIT codegen.
+/// Same as ev_extract_field but for Seq-typed fields (`<field>__arr`).
+/// Equivalent in implementation; kept distinct for clarity at
+/// JIT codegen sites.
 #[no_mangle]
 pub unsafe extern "C" fn ev_seq_extract_field(
     out: *mut Value,
     src_slot: *const Value,
-    field_idx: usize,
+    name_ptr: *const u8, name_len: usize,
 ) {
-    ev_extract_field(out, src_slot, field_idx);
+    ev_extract_field(out, src_slot, name_ptr, name_len);
 }
 
 /// `*out = (*arr_slot)[idx]` — index into a SeqEnum/SeqInt/etc.
