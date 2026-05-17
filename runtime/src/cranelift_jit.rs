@@ -655,7 +655,15 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::DT_ACCESSOR => {
                     if children.len() != 1 { return None; }
-                    let accessor_name = decl.name();
+                    let raw = decl.name();
+                    // Strip Z3 internal suffixes (`__arr` / `__len`)
+                    // — the Value-level field lookup uses the logical
+                    // name (e.g. "effs"), not the Z3-internal split
+                    // accessor name ("effs__arr").
+                    let accessor_name = raw.strip_suffix("__arr")
+                        .or_else(|| raw.strip_suffix("__len"))
+                        .map(|s| s.to_string())
+                        .unwrap_or(raw);
                     let temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1080,7 +1088,11 @@ fn emit_compute_i64<'ctx>(
                 }
                 DeclKind::DT_ACCESSOR => {
                     if children.len() != 1 { return None; }
-                    let accessor_name = decl.name();
+                    let raw = decl.name();
+                    let accessor_name = raw.strip_suffix("__arr")
+                        .or_else(|| raw.strip_suffix("__len"))
+                        .map(|s| s.to_string())
+                        .unwrap_or(raw);
                     // Compile inner into a temp slot, then extract by name,
                     // then load as i64. The inner value is presumably
                     // an enum/composite whose field is Int-typed.

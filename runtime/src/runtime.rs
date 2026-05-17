@@ -2758,6 +2758,64 @@ impl EvidentRuntime {
                 }
             };
             let mut prebaked: Vec<crate::z3_eval::Z3Step<'static>> = Vec::with_capacity(missing.len());
+            // Refuse to gap-fill if the body references free Z3
+            // variables that aren't in `given`. Gap-fill via model
+            // bakes Z3's free choices for those variables into the
+            // resulting PreBaked Value — but the runtime supplies
+            // different values per tick (e.g. win.renderer from the
+            // FTI bridge, world.X from neighboring FSMs). If we baked
+            // Z3's choice (say renderer=33) into a SeqComposite of
+            // plat_effs, the JIT-emitted SDL calls would target a
+            // bogus renderer handle and nothing would render.
+            //
+            // Heuristic: collect every 0-arity App in the simplified
+            // body. If any of them is in cached.env but NOT in given
+            // and NOT an output of the program (i.e. truly free, not
+            // computed), refuse gap-fill — the model's choice for
+            // that var would corrupt the baked values.
+            {
+                let mut all_touched: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                for a in simplified {
+                    crate::z3_eval::collect_touched_names(a, &mut all_touched);
+                }
+                let output_set: std::collections::HashSet<&str> = outputs.iter()
+                    .map(|s| s.as_str()).collect();
+                let missing_set: std::collections::HashSet<&str> = missing.iter()
+                    .map(|s| s.as_str()).collect();
+                let mut unsafe_free: Vec<String> = Vec::new();
+                for n in &all_touched {
+                    let in_given = given.contains_key(n);
+                    let is_covered_output =
+                        output_set.contains(n.as_str())
+                            && !missing_set.contains(n.as_str());
+                    let in_env = cached.env.contains_key(n);
+                    // PinnedInt / EnumValue / EnumCtor are constants —
+                    // not free in the Z3 sense.
+                    let is_const = cached.env.get(n).map(|v| matches!(v,
+                        crate::translate::Var::PinnedInt(_)
+                        | crate::translate::Var::EnumValue { .. }
+                        | crate::translate::Var::EnumCtor { .. })
+                    ).unwrap_or(false);
+                    if in_env && !in_given && !is_covered_output && !is_const {
+                        unsafe_free.push(n.clone());
+                    }
+                }
+                if !unsafe_free.is_empty() {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        let mut v = unsafe_free.clone();
+                        v.sort();
+                        eprintln!("[fz/z3] {name}: refusing gap-fill — body has {} \
+                                  free non-given vars whose model values would be baked: {:?}",
+                            unsafe_free.len(),
+                            &v[..v.len().min(8)]);
+                    }
+                    self.functionize_stats.borrow_mut()
+                        .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
+                    self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
+                    return None;
+                }
+            }
             for var_name in &missing {
                 let Some(var) = cached.env.get(var_name) else {
                     if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
