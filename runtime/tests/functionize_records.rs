@@ -48,6 +48,41 @@ claim MoveRight
 }
 
 #[test]
+fn recursive_record_compiles() {
+    // AABB has IVec2 fields. Recursive simple record.
+    let src = r#"type IVec2(x, y ∈ Int)
+type AABB(pos ∈ IVec2, size ∈ IVec2)
+
+claim Shift
+    box ∈ AABB
+    nbox ∈ AABB
+    nbox.pos.x = box.pos.x + 1
+    nbox.pos.y = box.pos.y
+    nbox.size.x = box.size.x
+    nbox.size.y = box.size.y
+"#;
+    let path = tmp("shift");
+    std::fs::write(&path, src).unwrap();
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(&path).unwrap();
+
+    let mut given = HashMap::new();
+    given.insert("box.pos.x".into(),  Value::Int(10));
+    given.insert("box.pos.y".into(),  Value::Int(20));
+    given.insert("box.size.x".into(), Value::Int(32));
+    given.insert("box.size.y".into(), Value::Int(48));
+
+    std::env::set_var("EVIDENT_FUNCTIONIZE", "1");
+    let r = rt.query("Shift", &given).unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("nbox.pos.x"),  Some(&Value::Int(11)));
+    assert_eq!(r.bindings.get("nbox.pos.y"),  Some(&Value::Int(20)));
+    assert_eq!(r.bindings.get("nbox.size.x"), Some(&Value::Int(32)));
+    assert_eq!(r.bindings.get("nbox.size.y"), Some(&Value::Int(48)));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
 fn record_typed_bench() {
     let src = r#"type IVec2(x, y ∈ Int)
 

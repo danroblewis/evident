@@ -2231,8 +2231,8 @@ impl EvidentRuntime {
     fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
                        given: &HashMap<String, Value>) -> Option<QueryResult>
     {
-        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_full,
-                                 is_pure_assignment_body_full,
+        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_xl,
+                                 is_pure_assignment_body_xl,
                                  SubstitutionChain};
 
         // Enum-aware gate. The native evaluator handles enum-typed
@@ -2242,27 +2242,68 @@ impl EvidentRuntime {
             self.enums.by_name.borrow().contains_key(type_name)
         };
         // User-record type recognizer: a `type` declaration whose
-        // body has only primitive Memberships. Recursive record-of-
-        // record is v2; rejecting it keeps soundness simple.
-        let is_simple_record = |type_name: &str| -> bool {
-            let Some(decl) = self.schemas.get(type_name) else { return false };
+        // body has only primitive Memberships OR Memberships of
+        // other simple records. Recursion is allowed with a cycle
+        // check via the `visiting` set. The native evaluator
+        // handles recursive records because their fields expand to
+        // dotted Z3 consts (`box.aabb.pos.x`) which our existing
+        // identifier-lookup path resolves.
+        fn is_simple_record_rec(
+            schemas: &HashMap<String, crate::ast::SchemaDecl>,
+            type_name: &str,
+            visiting: &mut std::collections::HashSet<String>,
+        ) -> bool {
+            if matches!(type_name, "Int" | "Real" | "Bool" | "String") { return true; }
+            let Some(decl) = schemas.get(type_name) else { return false };
             if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
-            for item in &decl.body {
-                match item {
-                    crate::ast::BodyItem::Membership { type_name: ft, .. } => {
-                        if !matches!(ft.as_str(), "Int" | "Real" | "Bool" | "String") {
-                            return false;
-                        }
-                    }
-                    crate::ast::BodyItem::Constraint(_) => return false,
-                    crate::ast::BodyItem::Passthrough(_) | crate::ast::BodyItem::ClaimCall { .. }
-                        => return false,
-                    crate::ast::BodyItem::SubclaimDecl(_) => {}
-                }
+            if !visiting.insert(type_name.to_string()) {
+                // Cycle — recursive record type. Reject to keep
+                // bounded native eval.
+                return false;
             }
-            true
+            let ok = decl.body.iter().all(|item| match item {
+                crate::ast::BodyItem::Membership { type_name: ft, .. } => {
+                    is_simple_record_rec(schemas, ft, visiting)
+                }
+                crate::ast::BodyItem::Constraint(_) => false,
+                crate::ast::BodyItem::Passthrough(_)
+                    | crate::ast::BodyItem::ClaimCall { .. } => false,
+                crate::ast::BodyItem::SubclaimDecl(_) => true,
+            });
+            visiting.remove(type_name);
+            ok
+        }
+        let is_simple_record = |type_name: &str| -> bool {
+            let mut visiting = std::collections::HashSet::new();
+            is_simple_record_rec(&self.schemas, type_name, &mut visiting)
         };
-        if !is_pure_assignment_body_full(schema, &is_enum, &is_simple_record) {
+        // Passthrough predicate: a `..ClaimName` reference is OK iff
+        // the referenced claim's body also passes the gate, recursively.
+        // We use a fixed depth cap to avoid pathological cycles (none
+        // expected in practice — passthroughs form a DAG).
+        fn is_pure_pt(
+            schemas: &HashMap<String, crate::ast::SchemaDecl>,
+            enums: &crate::translate::EnumRegistry,
+            claim_name: &str,
+            depth: usize,
+        ) -> bool {
+            if depth == 0 { return false; }
+            let Some(decl) = schemas.get(claim_name) else { return false };
+            let is_e = |n: &str| -> bool { enums.by_name.borrow().contains_key(n) };
+            let is_r = |n: &str| -> bool {
+                let mut v = std::collections::HashSet::new();
+                is_simple_record_rec(schemas, n, &mut v)
+            };
+            let is_p = |n: &str| -> bool { is_pure_pt(schemas, enums, n, depth - 1) };
+            crate::functionize::is_pure_assignment_body_xl(decl, &is_e, &is_r, &is_p)
+        }
+        let is_pure_passthrough = |claim_name: &str| -> bool {
+            is_pure_pt(&self.schemas, &self.enums, claim_name, 8)
+        };
+        let passthrough_body = |claim_name: &str| -> Option<Vec<crate::ast::BodyItem>> {
+            self.schemas.get(claim_name).map(|s| s.body.clone())
+        };
+        if !is_pure_assignment_body_xl(schema, &is_enum, &is_simple_record, &is_pure_passthrough) {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                 eprintln!("[fz] {}: rejected by gate", name);
             }
@@ -2328,7 +2369,8 @@ impl EvidentRuntime {
         }
         let mut steps = Vec::new();
         for c in &comps {
-            match extract_chain_full(schema, &c.component, &is_enum, &is_simple_record) {
+            match extract_chain_xl(schema, &c.component, &is_enum, &is_simple_record,
+                                   &is_pure_passthrough, &passthrough_body) {
                 Some(ch) => steps.extend(ch.steps),
                 None => {
                     if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -2340,7 +2382,14 @@ impl EvidentRuntime {
                 }
             }
         }
-        let chain = SubstitutionChain { steps };
+        // Schema-wide consistency checks: equalities involving given
+        // variables that aren't substitution targets. The native eval
+        // must verify each one against the actual given values; a
+        // conflict means UNSAT.
+        let is_in_given = |n: &str| -> bool { given.contains_key(n) };
+        let checks = crate::functionize::extract_schema_wide_checks(
+            schema, &is_in_given, &passthrough_body);
+        let chain = SubstitutionChain { steps, checks };
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
             eprintln!("[fz] {}: chain has {} steps: {:?}", name, chain.steps.len(),
                 chain.steps.iter().map(|s| &s.var).collect::<Vec<_>>());

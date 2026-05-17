@@ -60,7 +60,7 @@ fn main() {
             all_steps.extend(chain.steps);
         }
     }
-    let merged = evident_runtime::functionize::SubstitutionChain { steps: all_steps };
+    let merged = evident_runtime::functionize::SubstitutionChain { steps: all_steps, checks: vec![] };
     println!("Extracted {} substitution steps", merged.steps.len());
 
     let native_result = evaluate_chain(&merged, &given).unwrap();

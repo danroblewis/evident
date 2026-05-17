@@ -45,7 +45,7 @@ fn pair_native_evaluation_matches_z3() {
         }
     }
     assert!(!steps.is_empty(), "expected functional components for Pair");
-    let chain = SubstitutionChain { steps };
+    let chain = SubstitutionChain { steps, checks: vec![] };
     let native = evaluate_chain(&chain, &given).unwrap();
     let _ = std::fs::remove_file(&path);
 

@@ -33,9 +33,16 @@ pub struct Substitution {
 
 /// A chain of substitutions ordered so each `expr` only references
 /// variables defined earlier in the chain (or inputs).
-#[derive(Debug, Clone)]
+///
+/// `checks` are equalities that must hold but don't *define* a new
+/// variable — typically because both sides reference variables
+/// already in scope (e.g. given-pinned vars). The evaluator
+/// computes each check and confirms equality; if any fails the
+/// claim is UNSAT under these inputs.
+#[derive(Debug, Clone, Default)]
 pub struct SubstitutionChain {
-    pub steps: Vec<Substitution>,
+    pub steps:  Vec<Substitution>,
+    pub checks: Vec<(Expr, Expr)>,
 }
 
 /// Try to extract a substitution chain for the given component from
@@ -70,14 +77,56 @@ pub fn extract_chain_full(
     is_enum: &dyn Fn(&str) -> bool,
     is_simple_record: &dyn Fn(&str) -> bool,
 ) -> Option<SubstitutionChain> {
-    if !is_pure_assignment_body_full(schema, is_enum, is_simple_record) { return None; }
+    extract_chain_xl(schema, component, is_enum, is_simple_record,
+                     &|_| false, &|_| None)
+}
+
+/// `extract_chain_xl` — full predicate set including Passthrough.
+///
+/// `passthrough_body(claim_name)` returns the body items of the
+/// referenced claim if it should be inlined. The runtime resolver
+/// consults `self.schemas`. None means "don't inline this name."
+pub fn extract_chain_xl(
+    schema: &SchemaDecl,
+    component: &Component,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+    is_pure_passthrough: &dyn Fn(&str) -> bool,
+    passthrough_body: &dyn Fn(&str) -> Option<Vec<BodyItem>>,
+) -> Option<SubstitutionChain> {
+    if !is_pure_assignment_body_xl(schema, is_enum, is_simple_record, is_pure_passthrough) {
+        return None;
+    }
+    // Collect this schema's body + each Passthrough'd body. The
+    // referenced body's Memberships also count as declarations in
+    // the current frame; its equality Constraints are additional
+    // substitution candidates for our component.
+    let mut all_body: Vec<BodyItem> = schema.body.clone();
+    let mut to_walk: Vec<String> = schema.body.iter().filter_map(|i| match i {
+        BodyItem::Passthrough(n) => Some(n.clone()), _ => None,
+    }).collect();
+    let mut walked: HashSet<String> = HashSet::new();
+    while let Some(name) = to_walk.pop() {
+        if !walked.insert(name.clone()) { continue; }
+        let Some(body) = passthrough_body(&name) else { continue };
+        for item in &body {
+            if let BodyItem::Passthrough(n) = item { to_walk.push(n.clone()); }
+        }
+        all_body.extend(body);
+    }
     let target: HashSet<&str> = component.vars.iter().map(|s| s.as_str()).collect();
 
     // Collect candidate substitutions: every `var = expr` or `expr = var`
     // where `var` is in our component and the other side doesn't
     // reference `var` itself.
+    //
+    // Equalities that DON'T define a target var (e.g., both sides
+    // reference given-pinned vars) become consistency checks — the
+    // body says they must be equal, so the native evaluator must
+    // verify that at runtime against the given values.
     let mut candidates: HashMap<String, Expr> = HashMap::new();
-    for item in body_constraints(&schema.body) {
+    let mut checks: Vec<(Expr, Expr)> = Vec::new();
+    for item in body_constraints(&all_body) {
         let Expr::Binary(BinOp::Eq, lhs, rhs) = item else { continue };
         // Try LHS as the defined var.
         if let Expr::Identifier(name) = lhs.as_ref() {
@@ -96,8 +145,12 @@ pub fn extract_chain_full(
                 && !mentions(lhs.as_ref(), name)
             {
                 candidates.insert(name.clone(), (**lhs).clone());
+                continue;
             }
         }
+        // Neither side was a fresh substitution target. Record as a
+        // consistency check — evaluator verifies lhs == rhs at runtime.
+        checks.push(((**lhs).clone(), (**rhs).clone()));
     }
     // Every variable in the component must have a substitution.
     if component.vars.iter().any(|v| !candidates.contains_key(v)) {
@@ -140,7 +193,7 @@ pub fn extract_chain_full(
         var:  v.to_string(),
         expr: candidates.remove(v).unwrap(),
     }).collect();
-    Some(SubstitutionChain { steps })
+    Some(SubstitutionChain { steps, checks })
 }
 
 /// Walk all `BodyItem::Constraint` Exprs at the top level of the
@@ -151,6 +204,46 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
         BodyItem::Constraint(e) => Some(e),
         _ => None,
     })
+}
+
+/// Schema-wide checks: every equality in the schema body (plus
+/// transitively passthrough'd bodies) whose LHS or RHS is a known
+/// given variable (i.e., not a component-substitution target). The
+/// runtime emits these as consistency assertions for the native
+/// evaluator to verify against the pinned given values.
+///
+/// `is_in_given` answers "does the caller pin this name in given?"
+/// — typically `|n| given.contains_key(n)` from rt.query.
+pub fn extract_schema_wide_checks(
+    schema: &SchemaDecl,
+    is_in_given: &dyn Fn(&str) -> bool,
+    passthrough_body: &dyn Fn(&str) -> Option<Vec<BodyItem>>,
+) -> Vec<(Expr, Expr)> {
+    let mut all_body: Vec<BodyItem> = schema.body.clone();
+    let mut to_walk: Vec<String> = schema.body.iter().filter_map(|i| match i {
+        BodyItem::Passthrough(n) => Some(n.clone()), _ => None,
+    }).collect();
+    let mut walked: HashSet<String> = HashSet::new();
+    while let Some(name) = to_walk.pop() {
+        if !walked.insert(name.clone()) { continue; }
+        let Some(body) = passthrough_body(&name) else { continue };
+        for item in &body {
+            if let BodyItem::Passthrough(n) = item { to_walk.push(n.clone()); }
+        }
+        all_body.extend(body);
+    }
+    let mut out = Vec::new();
+    for item in body_constraints(&all_body) {
+        let Expr::Binary(BinOp::Eq, lhs, rhs) = item else { continue };
+        let lhs_given = matches!(lhs.as_ref(),
+            Expr::Identifier(n) if is_in_given(n));
+        let rhs_given = matches!(rhs.as_ref(),
+            Expr::Identifier(n) if is_in_given(n));
+        if lhs_given || rhs_given {
+            out.push(((**lhs).clone(), (**rhs).clone()));
+        }
+    }
+    out
 }
 
 /// Soundness gate: the v1 native evaluator only enforces equality
@@ -181,19 +274,29 @@ pub fn is_pure_assignment_body_with_enums(
     is_pure_assignment_body_full(schema, is_enum, &|_| false)
 }
 
-/// Most permissive form: accepts enum types AND user-record types
-/// (per the `is_simple_record` predicate). User records are accepted
-/// when all their fields are primitive types — recursive record
-/// composition (record of records, record of Seq) is not v1.
+/// Most permissive form: accepts enum types, user-record types,
+/// and Passthroughs to claims whose body also passes the gate.
 ///
-/// Memberships of user records expand to per-field Z3 consts in
-/// `declare_and_assert`. The native evaluator handles those because
-/// the AST sees them as dotted identifiers (`pos.x`, `pos.y`) — env
-/// lookup resolves them like any other named variable.
+/// `is_pure_passthrough(claim_name)` — for a `BodyItem::Passthrough`
+/// item, the runtime can recursively check the referenced claim
+/// passes the gate too. Cycle detection lives in the predicate
+/// implementation. Setting it to always-false keeps the v3 behavior
+/// (refuse Passthroughs).
 pub fn is_pure_assignment_body_full(
     schema: &SchemaDecl,
     is_enum: &dyn Fn(&str) -> bool,
     is_simple_record: &dyn Fn(&str) -> bool,
+) -> bool {
+    is_pure_assignment_body_xl(schema, is_enum, is_simple_record, &|_| false)
+}
+
+/// Extra-large gate: also accepts Passthrough(claim_name) when
+/// `is_pure_passthrough(claim_name)` is true.
+pub fn is_pure_assignment_body_xl(
+    schema: &SchemaDecl,
+    is_enum: &dyn Fn(&str) -> bool,
+    is_simple_record: &dyn Fn(&str) -> bool,
+    is_pure_passthrough: &dyn Fn(&str) -> bool,
 ) -> bool {
     if !matches!(schema.keyword,
         crate::ast::Keyword::Claim | crate::ast::Keyword::Schema
@@ -212,8 +315,10 @@ pub fn is_pure_assignment_body_full(
                 if is_simple_record(type_name) { continue; }
                 return false;
             }
-            BodyItem::Passthrough(_) => return false,  // body lives elsewhere
-            BodyItem::ClaimCall { .. } => return false,  // ditto
+            BodyItem::Passthrough(claim_name) => {
+                if !is_pure_passthrough(claim_name) { return false; }
+            }
+            BodyItem::ClaimCall { .. } => return false,  // not yet
             BodyItem::SubclaimDecl(_) => {}  // no runtime effect on parent
         }
     }
@@ -280,7 +385,19 @@ pub fn evaluate_chain_with_resolver(
     let mut env: HashMap<String, Value> = given.clone();
     for step in &chain.steps {
         let value = eval_expr(&step.expr, &env, resolver)?;
+        if let Some(pinned) = given.get(&step.var) {
+            if pinned != &value { return None; }   // UNSAT — body conflicts with pin.
+        }
         env.insert(step.var.clone(), value);
+    }
+    // Verify consistency constraints (equalities between two non-
+    // component vars — typically given vars that the body further
+    // constrains). Failure here means the body's constraint conflicts
+    // with the given values → UNSAT.
+    for (lhs, rhs) in &chain.checks {
+        let lv = eval_expr(lhs, &env, resolver)?;
+        let rv = eval_expr(rhs, &env, resolver)?;
+        if lv != rv { return None; }
     }
     Some(env)
 }
