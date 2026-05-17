@@ -53,6 +53,10 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
 
     match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
         Ok(r) => {
+            // Print Z3 functionizer + JIT stats summary if requested.
+            if std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok() {
+                rt.functionize_stats().print_summary();
+            }
             // Effect::Exit(code) propagates as the process exit code.
             // Other halt paths exit 0 on clean halt, 1 on max_steps.
             if let Some(code) = r.exit_code {

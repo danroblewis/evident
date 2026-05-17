@@ -52,6 +52,131 @@ use z3::{Config, Context};
 
 pub use crate::translate::Value;
 
+/// Aggregate functionizer + JIT statistics across all
+/// (claim, given-keys) cache-miss attempts in this runtime's
+/// lifetime. Inspected via `EvidentRuntime::functionize_stats()`
+/// and printed automatically by `effect-run`'s timing summary.
+#[derive(Default, Clone, Debug)]
+pub struct FunctionizeStats {
+    pub claims: HashMap<String, PerClaimStats>,
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct PerClaimStats {
+    /// AST functionizer (Round 11+): number of calls into the
+    /// older `try_functionize` path. Mirrors the `[fz] HIT` /
+    /// `[fz] MISS` lines from EVIDENT_FUNCTIONIZE_TRACE. Helps
+    /// see which schemas the AST functionizer covers vs which
+    /// fall through to Z3 (or the newer Z3 functionizer).
+    pub ast_fz_calls: u32,
+    pub ast_fz_hits:  u32,
+    pub ast_fz_rejected_at_gate: u32,
+    /// Number of cache-miss analyses we ran on this claim.
+    pub analyses: u32,
+    /// Cache-hit count (where the cached program was used).
+    pub cache_hits: u32,
+    /// Number of analyses where Z3's simplify decided the body
+    /// is UNSAT (short-circuit return).
+    pub decided_unsat: u32,
+    /// `simplified_assertions` from Z3's tactic pipeline,
+    /// summed across analyses. Divide by `analyses` for the
+    /// per-call average.
+    pub simplified_total: u32,
+    /// Steps in the extracted Z3Program, summed. A step is
+    /// either a scalar substitution, a Seq construction, or a
+    /// guarded equality chain. These are constraints we
+    /// "removed" from Z3 — the value is computed directly.
+    pub steps_total: u32,
+    /// Consistency checks in the program, summed. Equalities
+    /// between non-output vars (e.g. `state = Init` when state
+    /// is given) — we verify them at eval but they don't
+    /// drive output computation.
+    pub checks_total: u32,
+    /// Bool predicates in the program, summed. Non-equality
+    /// assertions like `n > 0` from Nat bounds. Verified at
+    /// eval; unevaluable ones are SKIPPED (trusting Z3's prior
+    /// validation).
+    pub predicates_total: u32,
+    /// `Some(true)` if extract_program succeeded for the
+    /// most recent analysis; `Some(false)` if not; None if
+    /// no analysis ran yet (claim only ever cache-hit, or
+    /// only ever rejected at the gate).
+    pub last_extract_ok: Option<bool>,
+    /// Number of analyses where the JIT successfully compiled
+    /// the program. Programs that contain Seq outputs,
+    /// payload-bearing enum ctors, or other unsupported
+    /// patterns fail and fall back to the AST walker.
+    pub jit_compiled: u32,
+}
+
+impl FunctionizeStats {
+    pub fn print_summary(&self) {
+        eprintln!("[fz/stats] ── summary ─────────────────────────────");
+        let mut names: Vec<&String> = self.claims.keys().collect();
+        names.sort();
+        let mut total_a = 0u32;
+        let mut total_h = 0u32;
+        let mut total_jit = 0u32;
+        let mut total_steps = 0u32;
+        let mut total_checks = 0u32;
+        let mut total_preds = 0u32;
+        let mut total_simplified = 0u32;
+        for n in &names {
+            let s = &self.claims[*n];
+            total_a += s.analyses;
+            total_h += s.cache_hits;
+            total_jit += s.jit_compiled;
+            total_steps += s.steps_total;
+            total_checks += s.checks_total;
+            total_preds += s.predicates_total;
+            total_simplified += s.simplified_total;
+        }
+        eprintln!("[fz/stats] {} claims analyzed; {} analyses; {} cache hits",
+            names.len(), total_a, total_h);
+        eprintln!("[fz/stats] z3 simplified assertions: {} total ({:.1}/analysis)",
+            total_simplified,
+            if total_a > 0 { total_simplified as f64 / total_a as f64 } else { 0.0 });
+        eprintln!("[fz/stats]   absorbed as steps:      {} ({:.1}%)",
+            total_steps,
+            if total_simplified > 0 { 100.0 * total_steps as f64 / total_simplified as f64 } else { 0.0 });
+        eprintln!("[fz/stats]   kept as checks:         {} ({:.1}%)",
+            total_checks,
+            if total_simplified > 0 { 100.0 * total_checks as f64 / total_simplified as f64 } else { 0.0 });
+        eprintln!("[fz/stats]   kept as predicates:     {} ({:.1}%)",
+            total_preds,
+            if total_simplified > 0 { 100.0 * total_preds as f64 / total_simplified as f64 } else { 0.0 });
+        eprintln!("[fz/stats] jit compiled: {} of {} analyses ({:.0}%)",
+            total_jit, total_a,
+            if total_a > 0 { 100.0 * total_jit as f64 / total_a as f64 } else { 0.0 });
+        eprintln!("[fz/stats] per-claim:");
+        for n in &names {
+            let s = &self.claims[*n];
+            let extract = match s.last_extract_ok {
+                Some(true)  => "z3-fz✓",
+                Some(false) => "z3-fz✗",
+                None        => "z3-fz·",  // didn't reach Z3 functionizer
+            };
+            let jit_mark = if s.jit_compiled > 0 { "jit✓" } else { "jit·" };
+            let ast_mark = if s.ast_fz_hits > 0 {
+                format!("ast-fz✓({}h/{}c)", s.ast_fz_hits, s.ast_fz_calls)
+            } else if s.ast_fz_rejected_at_gate > 0 {
+                format!("ast-fz✗gate({}c)", s.ast_fz_calls)
+            } else if s.ast_fz_calls > 0 {
+                format!("ast-fz·({}c)", s.ast_fz_calls)
+            } else {
+                "ast-fz–".to_string()
+            };
+            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3}  sim={:>2} stp={:>2} chk={:>2} pr={:>2}] {} {}  {}",
+                n, s.analyses, s.cache_hits, s.simplified_total, s.steps_total,
+                s.checks_total, s.predicates_total, extract, jit_mark, ast_mark);
+        }
+        eprintln!("[fz/stats] legend:  z3=[an=analyses h=hits sim=simplified-assertions stp=absorbed-as-steps chk=checks pr=predicates]");
+        eprintln!("[fz/stats]          z3-fz✓ = Z3 functionizer extracted a program | z3-fz✗ = extract failed | z3-fz· = never ran");
+        eprintln!("[fz/stats]          jit✓ = Cranelift compiled it to native       | jit· = AST-walker fallback");
+        eprintln!("[fz/stats]          ast-fz✓ = older Evident-AST functionizer hit | ast-fz✗gate = rejected at gate | ast-fz· = ran but didn't hit");
+    }
+}
+
 /// Parse "Edge<Rect>" into ("Edge", "Rect"). Returns None for
 /// type-name strings that aren't a generic instantiation (no `<`,
 /// or unbalanced angle brackets).
@@ -1788,6 +1913,13 @@ pub struct EvidentRuntime {
     /// z3_eval. See `runtime/src/cranelift_jit.rs`.
     jit_cache: RefCell<HashMap<(String, Vec<String>),
                                Option<std::rc::Rc<crate::cranelift_jit::JitProgram>>>>,
+    /// Aggregate stats for the Z3 functionizer + JIT pipeline.
+    /// Captures per (claim, given-keys) what was absorbed,
+    /// what fell back to Z3, what compiled to native, etc.
+    /// See `FunctionizeStats` for the fields. Enable per-call
+    /// trace via `EVIDENT_FUNCTIONIZE_STATS=1`; query the
+    /// aggregate via `EvidentRuntime::functionize_stats()`.
+    functionize_stats: RefCell<FunctionizeStats>,
     /// Counter incremented each time a cached entry is rebuilt due
     /// to a structural-signature mismatch. Useful for debugging
     /// performance issues (e.g. "every step is rebuilding — what
@@ -1997,6 +2129,7 @@ impl EvidentRuntime {
             functionize_gate_cache: RefCell::new(HashMap::new()),
             functionize_z3_cache: RefCell::new(HashMap::new()),
             jit_cache: RefCell::new(HashMap::new()),
+            functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::translate::EnumRegistry::new(),
@@ -2364,6 +2497,8 @@ impl EvidentRuntime {
         if let Some(entry) = self.jit_cache.borrow().get(&cache_key).cloned() {
             if let Some(jit) = entry {
                 if let Some(bindings) = jit.call(given) {
+                    self.functionize_stats.borrow_mut()
+                        .claims.entry(name.to_string()).or_default().cache_hits += 1;
                     let mut out = HashMap::new();
                     for (k, v) in bindings {
                         if !given.contains_key(&k) { out.insert(k, v); }
@@ -2379,6 +2514,8 @@ impl EvidentRuntime {
         // compile (Seq outputs, payload-bearing enums, etc.).
         if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
             let Some(program) = entry else { return None };
+            self.functionize_stats.borrow_mut()
+                .claims.entry(name.to_string()).or_default().cache_hits += 1;
             let bindings = eval_program(&program, given, Some(&self.enums))?;
             // Filter out the input bindings (we don't want to
             // re-emit `given` keys as outputs).
@@ -2423,13 +2560,15 @@ impl EvidentRuntime {
                 assertions_local)
         };
         let simplify_result = simplify_assertions(self.z3_ctx, &assertions);
+        {
+            let mut stats = self.functionize_stats.borrow_mut();
+            let per = stats.claims.entry(name.to_string()).or_default();
+            per.analyses += 1;
+            per.simplified_total += simplify_result.formulas.len() as u32;
+        }
         if simplify_result.unsat {
-            // Z3's preprocessing decided the body is UNSAT under
-            // the body's structural pins (literal-equality
-            // contradictions etc.). Return SAT=false directly —
-            // the slow path would arrive at the same answer.
-            // Don't cache: rare path, not worth a richer cache
-            // type just for this.
+            self.functionize_stats.borrow_mut()
+                .claims.entry(name.to_string()).or_default().decided_unsat += 1;
             return Some(QueryResult { satisfied: false, bindings: HashMap::new() });
         }
         let simplified = &simplify_result.formulas;
@@ -2470,15 +2609,29 @@ impl EvidentRuntime {
             }
         }
         let mut program = match extract_program(&simplified, &outputs) {
-            Some(p) => p,
+            Some(p) => {
+                let mut stats = self.functionize_stats.borrow_mut();
+                let per = stats.claims.entry(name.to_string()).or_default();
+                per.last_extract_ok = Some(true);
+                per.steps_total      += p.steps.len() as u32;
+                per.checks_total     += p.checks.len() as u32;
+                per.predicates_total += p.predicates.len() as u32;
+                p
+            }
             None => {
+                self.functionize_stats.borrow_mut()
+                    .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
                 self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
                 return None;
             }
         };
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-            eprintln!("[fz/z3] {}: program has {} steps, {} checks, {} predicates",
-                name, program.steps.len(), program.checks.len(), program.predicates.len());
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
+            || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
+        {
+            eprintln!("[fz/stats] {}: simplified={} steps={} checks={} preds={} outputs={}",
+                name, simplified.len(),
+                program.steps.len(), program.checks.len(), program.predicates.len(),
+                outputs.len());
         }
         // Prepend pinned-int steps (they have no dependencies; safe
         // to place at the front of the chain).
@@ -2493,9 +2646,15 @@ impl EvidentRuntime {
         // On failure, the AST walker is the fallback.
         let jit_compiled = crate::cranelift_jit::compile_program(&program, &self.enums)
             .map(std::rc::Rc::new);
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-            eprintln!("[fz/jit] {}: compile = {}", name,
-                if jit_compiled.is_some() { "Some" } else { "None" });
+        if jit_compiled.is_some() {
+            self.functionize_stats.borrow_mut()
+                .claims.entry(name.to_string()).or_default().jit_compiled += 1;
+        }
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
+            || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
+        {
+            eprintln!("[fz/stats] {}: jit={}", name,
+                if jit_compiled.is_some() { "yes" } else { "no" });
         }
         self.jit_cache.borrow_mut().insert(cache_key, jit_compiled.clone());
 
@@ -2596,6 +2755,8 @@ impl EvidentRuntime {
         use crate::functionize::{evaluate_chain_with_resolvers, extract_chain_xl,
                                  is_pure_assignment_body_xl,
                                  SubstitutionChain};
+        self.functionize_stats.borrow_mut()
+            .claims.entry(name.to_string()).or_default().ast_fz_calls += 1;
 
         // Cache check FIRST — before any analysis (inlining,
         // gate, decomposition). Both outcomes are one-shot per
@@ -2651,6 +2812,8 @@ impl EvidentRuntime {
                     chain, given, &resolver, &ctor_resolver)?;
                 let mut out = HashMap::new();
                 for (k, v) in bindings { out.insert(k, v); }
+                self.functionize_stats.borrow_mut()
+                    .claims.entry(name.to_string()).or_default().ast_fz_hits += 1;
                 return Some(QueryResult { satisfied: true, bindings: out });
             }
         }
@@ -2768,9 +2931,13 @@ impl EvidentRuntime {
         let inlined_schema = match inlined_schema_owned {
             Some(Some(s)) => s,
             Some(None) => {
-                // Previously rejected — also remember per-shape so
-                // the top-of-function cache check short-circuits.
+                // Previously rejected (often by precompile_function_izer
+                // at load time). Count it as a gate-rejection so the
+                // stats summary shows the path correctly.
                 self.functionize_cache.borrow_mut().insert(cache_key, None);
+                self.functionize_stats.borrow_mut()
+                    .claims.entry(name.to_string()).or_default()
+                    .ast_fz_rejected_at_gate += 1;
                 return None;
             }
             None => {
@@ -2793,6 +2960,9 @@ impl EvidentRuntime {
                     self.functionize_gate_cache.borrow_mut()
                         .insert(name.to_string(), None);
                     self.functionize_cache.borrow_mut().insert(cache_key, None);
+                    self.functionize_stats.borrow_mut()
+                        .claims.entry(name.to_string()).or_default()
+                        .ast_fz_rejected_at_gate += 1;
                     return None;
                 }
                 self.functionize_gate_cache.borrow_mut()
@@ -2935,6 +3105,8 @@ impl EvidentRuntime {
         };
         let mut out = HashMap::new();
         for (k, v) in bindings { out.insert(k, v); }
+        self.functionize_stats.borrow_mut()
+            .claims.entry(name.to_string()).or_default().ast_fz_hits += 1;
         Some(QueryResult { satisfied: true, bindings: out })
     }
 
@@ -3515,6 +3687,13 @@ impl EvidentRuntime {
     /// Read-only access to the loaded schemas map.
     pub fn schemas_map(&self) -> &HashMap<String, SchemaDecl> {
         &self.schemas
+    }
+
+    /// Snapshot of the Z3 functionizer + JIT statistics. Print
+    /// the summary with `stats.print_summary()` or inspect the
+    /// per-claim fields directly. See `FunctionizeStats`.
+    pub fn functionize_stats(&self) -> FunctionizeStats {
+        self.functionize_stats.borrow().clone()
     }
 
     /// Build a `Value::SeqEnum` of `Result` enums. Used by the
