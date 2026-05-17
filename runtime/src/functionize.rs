@@ -229,6 +229,7 @@ pub fn try_extract_one_chain(
     is_simple_record: &dyn Fn(&str) -> bool,
     is_pure_passthrough: &dyn Fn(&str) -> bool,
     passthrough_body: &dyn Fn(&str) -> Option<Vec<BodyItem>>,
+    is_external_type: &dyn Fn(&str) -> bool,
 ) -> Option<SubstitutionChain> {
     // Walk the schema's body (and passthrough'd bodies) collecting
     // every Membership-declared name that isn't already pinned by
@@ -249,7 +250,14 @@ pub fn try_extract_one_chain(
     let mut vars: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for item in &all_body {
-        if let BodyItem::Membership { name, .. } = item {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            // FTI-bridged externals (e.g. `win ∈ SDL_Window`) are
+            // opaque values: the bare name has no substitution, but
+            // its LEAF fields (`win.handle`, `win.renderer`, …) flow
+            // through `given` from the bridge's install pass. Skip
+            // the bare name; field-dotted Identifiers resolve from
+            // env at eval time.
+            if is_external_type(type_name) { continue; }
             if !given_keys.contains(name.as_str()) && seen.insert(name.clone()) {
                 vars.push(name.clone());
             }

@@ -2253,7 +2253,7 @@ impl EvidentRuntime {
             type_name: &str,
             visiting: &mut std::collections::HashSet<String>,
         ) -> bool {
-            if matches!(type_name, "Int" | "Real" | "Bool" | "String") { return true; }
+            if matches!(type_name, "Int" | "Real" | "Bool" | "String" | "Nat") { return true; }
             // Seq(T) / Set(T) field types: accept when T is a primitive,
             // a simple record, or any enum (the runtime stores those as
             // Value::SeqEnum and the eval'd chain treats them opaquely
@@ -2284,6 +2284,12 @@ impl EvidentRuntime {
             }
             let Some(decl) = schemas.get(type_name) else { return false };
             if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
+            // `external type X` — FTI-bridged record. Treat as opaque:
+            // its body holds the install Seq + render subclaims, none
+            // of which we want to translate. The function-izer only
+            // needs to know the leaf-field names; their values flow
+            // through `given` from the scheduler's FTI bridge.
+            if decl.external { return true; }
             if !visiting.insert(type_name.to_string()) {
                 return false;
             }
@@ -2412,9 +2418,12 @@ impl EvidentRuntime {
         let given_keys_set: std::collections::HashSet<&str> = given.keys()
             .map(|s| s.as_str()).collect();
         let is_in_given = |n: &str| -> bool { given.contains_key(n) };
+        let is_external_type = |type_name: &str| -> bool {
+            self.schemas.get(type_name).map_or(false, |s| s.external)
+        };
         let chain = if let Some(mut ch) = crate::functionize::try_extract_one_chain(
             schema, &given_keys_set, &is_enum, &is_simple_record,
-            &is_pure_passthrough, &passthrough_body)
+            &is_pure_passthrough, &passthrough_body, &is_external_type)
         {
             // Schema-wide consistency checks attach to the chain
             // alongside the merged steps.
