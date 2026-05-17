@@ -625,6 +625,13 @@ pub fn analyze_decomposition(
             (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
             (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
             (Var::PinnedInt(_), _) => {}
+            (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
+                if let Some(reg) = enums {
+                    if let Some(dt) = super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                        solver.assert(&ast._eq(&dt));
+                    }
+                }
+            }
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);
@@ -635,11 +642,15 @@ pub fn analyze_decomposition(
         }
     }
 
-    // Collect free-variable names: every entry in env, EXCLUDING the
-    // given-keyed names (those are broadcast constants).
-    let var_names: Vec<String> = env.keys()
-        .filter(|n| !given.contains_key(n.as_str()))
-        .cloned()
+    // Collect free-variable names: every entry in env EXCLUDING
+    //   - given-keyed names (those are broadcast constants), and
+    //   - enum variant constants like `Init`, `Done` populated by
+    //     `populate_enum_variants` (those are runtime-constant
+    //     values, not user-declared variables).
+    let var_names: Vec<String> = env.iter()
+        .filter(|(n, _)| !given.contains_key(n.as_str()))
+        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. }))
+        .map(|(n, _)| n.clone())
         .collect();
 
     let assertions = solver.get_assertions();
@@ -723,6 +734,13 @@ pub fn classify_components(
             (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
             (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
             (Var::PinnedInt(_), _) => {}
+            (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
+                if let Some(reg) = enums {
+                    if let Some(dt) = super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                        solver.assert(&ast._eq(&dt));
+                    }
+                }
+            }
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);
@@ -733,9 +751,10 @@ pub fn classify_components(
         }
     }
 
-    let var_names: Vec<String> = env.keys()
-        .filter(|n| !given.contains_key(n.as_str()))
-        .cloned()
+    let var_names: Vec<String> = env.iter()
+        .filter(|(n, _)| !given.contains_key(n.as_str()))
+        .filter(|(_, v)| !matches!(v, Var::EnumValue { .. }))
+        .map(|(n, _)| n.clone())
         .collect();
     let assertions = solver.get_assertions();
     let components = crate::decompose::decompose(ctx, &assertions, &var_names);
@@ -795,6 +814,12 @@ pub fn classify_components(
                     }
                 }
                 Var::PinnedInt(_) => {} // Already a literal; can't differ.
+                Var::EnumVar { ast, .. } => {
+                    if let Some(val) = model.eval(ast, true) {
+                        disjuncts.push(ast._eq(&val).not());
+                    }
+                }
+                Var::EnumValue { .. } => {} // Enum literal; can't differ.
                 _ => { skip_due_to_unsupported_var = true; }
             }
         }
@@ -905,6 +930,13 @@ pub fn evaluate(
             // disagree, force UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
+            (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
+                if let Some(reg) = enums {
+                    if let Some(dt) = super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                        solver.assert(&ast._eq(&dt));
+                    }
+                }
+            }
             _ => {
                 if let Some(b) = assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);

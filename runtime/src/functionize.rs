@@ -48,7 +48,18 @@ pub struct SubstitutionChain {
 /// a single equality), we can't extract them this way — those need
 /// the `solve-eqs` diff approach.
 pub fn extract_chain(schema: &SchemaDecl, component: &Component) -> Option<SubstitutionChain> {
-    if !is_pure_assignment_body(schema) { return None; }
+    extract_chain_with_enums(schema, component, &|_| false)
+}
+
+/// `extract_chain` variant that takes an enum-type predicate, used
+/// when the caller knows about enum types and wants to allow
+/// enum-typed Memberships through the gate.
+pub fn extract_chain_with_enums(
+    schema: &SchemaDecl,
+    component: &Component,
+    is_enum: &dyn Fn(&str) -> bool,
+) -> Option<SubstitutionChain> {
+    if !is_pure_assignment_body_with_enums(schema, is_enum) { return None; }
     let target: HashSet<&str> = component.vars.iter().map(|s| s.as_str()).collect();
 
     // Collect candidate substitutions: every `var = expr` or `expr = var`
@@ -144,8 +155,21 @@ fn body_constraints(body: &[BodyItem]) -> impl Iterator<Item = &Expr> {
 /// translation time, which the function-izer-cached path bypasses;
 /// for that reason the gate is conservative and prefers refusing.
 pub fn is_pure_assignment_body(schema: &SchemaDecl) -> bool {
+    is_pure_assignment_body_with_enums(schema, &|_| false)
+}
+
+/// `is_pure_assignment_body` variant that also accepts a "is this type
+/// name an enum?" predicate. When called from the runtime, callers
+/// pass an enum-registry-backed predicate; this lets the gate accept
+/// claims with enum-typed memberships (state machines, etc.) without
+/// hard-coding type names.
+pub fn is_pure_assignment_body_with_enums(
+    schema: &SchemaDecl,
+    is_enum: &dyn Fn(&str) -> bool,
+) -> bool {
     if !matches!(schema.keyword,
-        crate::ast::Keyword::Claim | crate::ast::Keyword::Schema | crate::ast::Keyword::Type) {
+        crate::ast::Keyword::Claim | crate::ast::Keyword::Schema
+        | crate::ast::Keyword::Type | crate::ast::Keyword::Fsm) {
         return false;
     }
     for item in &schema.body {
@@ -153,11 +177,14 @@ pub fn is_pure_assignment_body(schema: &SchemaDecl) -> bool {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, _)) => {}  // OK
             BodyItem::Constraint(_) => return false,  // filter — bail
             BodyItem::Membership { type_name, .. } => {
-                // Only accept the "freely free" types — Int, Real, Bool,
-                // String. Nat / Pos / user-defined types have implicit
-                // constraints (n ≥ 0 etc.) that the native path
-                // wouldn't enforce.
-                if !matches!(type_name.as_str(), "Int" | "Real" | "Bool" | "String") {
+                // Accept primitive types AND any enum type (enums have
+                // discrete, finite values — Z3 doesn't add implicit
+                // bounds beyond "must equal one of the variants",
+                // which the native evaluator handles correctly via
+                // Value::Enum + Match dispatch).
+                let primitive = matches!(type_name.as_str(),
+                    "Int" | "Real" | "Bool" | "String");
+                if !primitive && !is_enum(type_name) {
                     return false;
                 }
             }
@@ -195,6 +222,15 @@ fn mentions(e: &Expr, name: &str) -> bool {
     }
 }
 
+/// Resolves identifiers to values. Used during native evaluation when
+/// the environment doesn't have a binding — typically to resolve bare
+/// enum-variant names (`Init`, `Done`, `North`) to `Value::Enum`.
+///
+/// Callers from `rt.query`'s function-izer hook construct a resolver
+/// that consults the runtime's `EnumRegistry`. Tests can pass a
+/// no-op resolver (which behaves like the env-only lookup).
+pub type IdentResolver<'a> = dyn Fn(&str) -> Option<Value> + 'a;
+
 /// Evaluate a substitution chain against a given binding map. Returns
 /// the bindings the chain produces (input bindings echoed + each
 /// substitution's computed value).
@@ -206,9 +242,20 @@ pub fn evaluate_chain(
     chain: &SubstitutionChain,
     given: &HashMap<String, Value>,
 ) -> Option<HashMap<String, Value>> {
+    evaluate_chain_with_resolver(chain, given, &|_| None)
+}
+
+/// `evaluate_chain` variant that also accepts a fallback identifier
+/// resolver (used for enum-variant names not in env). When the env
+/// lookup fails, we consult this resolver before giving up.
+pub fn evaluate_chain_with_resolver(
+    chain: &SubstitutionChain,
+    given: &HashMap<String, Value>,
+    resolver: &IdentResolver<'_>,
+) -> Option<HashMap<String, Value>> {
     let mut env: HashMap<String, Value> = given.clone();
     for step in &chain.steps {
-        let value = eval_expr(&step.expr, &env)?;
+        let value = eval_expr(&step.expr, &env, resolver)?;
         env.insert(step.var.clone(), value);
     }
     Some(env)
@@ -217,26 +264,57 @@ pub fn evaluate_chain(
 /// Pure Rust interpreter for Evident expressions. v1: arithmetic,
 /// comparisons, logical ops, literals, identifiers, ternary, match.
 /// More exotic constructs (∀, sequences, sets, claim calls) are TODOs.
-fn eval_expr(e: &Expr, env: &HashMap<String, Value>) -> Option<Value> {
+fn eval_expr(
+    e: &Expr,
+    env: &HashMap<String, Value>,
+    resolver: &IdentResolver<'_>,
+) -> Option<Value> {
     match e {
         Expr::Int(n)  => Some(Value::Int(*n)),
         Expr::Real(r) => Some(Value::Real(*r)),
         Expr::Bool(b) => Some(Value::Bool(*b)),
         Expr::Str(s)  => Some(Value::Str(s.clone())),
-        Expr::Identifier(name) => env.get(name).cloned(),
+        Expr::Identifier(name) => {
+            env.get(name).cloned().or_else(|| resolver(name))
+        }
         Expr::Binary(op, l, r) => {
-            let lv = eval_expr(l, env)?;
-            let rv = eval_expr(r, env)?;
+            let lv = eval_expr(l, env, resolver)?;
+            let rv = eval_expr(r, env, resolver)?;
             eval_binop(op.clone(), &lv, &rv)
         }
         Expr::Not(x) => {
-            let v = eval_expr(x, env)?;
+            let v = eval_expr(x, env, resolver)?;
             match v { Value::Bool(b) => Some(Value::Bool(!b)), _ => None }
         }
         Expr::Ternary(c, a, b) => {
-            let cv = eval_expr(c, env)?;
+            let cv = eval_expr(c, env, resolver)?;
             let Value::Bool(cb) = cv else { return None };
-            if cb { eval_expr(a, env) } else { eval_expr(b, env) }
+            if cb { eval_expr(a, env, resolver) } else { eval_expr(b, env, resolver) }
+        }
+        Expr::Match(scrut, arms) => {
+            let scrut_val = eval_expr(scrut, env, resolver)?;
+            let Value::Enum { variant: scr_variant, fields: scr_fields, .. } = &scrut_val
+                else { return None };
+            for arm in arms {
+                match &arm.pattern {
+                    crate::ast::MatchPattern::Ctor { name, binds } => {
+                        if name != scr_variant { continue; }
+                        if binds.len() != scr_fields.len() { continue; }
+                        // Bind named payload fields (None = wildcard, skip).
+                        let mut sub_env = env.clone();
+                        for (bind, field) in binds.iter().zip(scr_fields.iter()) {
+                            if let Some(bind_name) = bind {
+                                sub_env.insert(bind_name.clone(), field.clone());
+                            }
+                        }
+                        return eval_expr(&arm.body, &sub_env, resolver);
+                    }
+                    crate::ast::MatchPattern::Wildcard => {
+                        return eval_expr(&arm.body, env, resolver);
+                    }
+                }
+            }
+            None  // no arm matched
         }
         _ => None,  // unsupported variant in v1
     }

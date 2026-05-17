@@ -2196,8 +2196,18 @@ impl EvidentRuntime {
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s == "1").unwrap_or(false);
         if functionize_on {
-            if let Some(result) = self.try_functionize(name, schema, given) {
-                return Ok(result);
+            match self.try_functionize(name, schema, given) {
+                Some(result) => {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz] HIT {}", name);
+                    }
+                    return Ok(result);
+                }
+                None => {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz] MISS {}", name);
+                    }
+                }
             }
         }
 
@@ -2221,18 +2231,46 @@ impl EvidentRuntime {
     fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
                        given: &HashMap<String, Value>) -> Option<QueryResult>
     {
-        use crate::functionize::{evaluate_chain, extract_chain, is_pure_assignment_body,
-                                  SubstitutionChain};
+        use crate::functionize::{evaluate_chain_with_resolver, extract_chain_with_enums,
+                                 is_pure_assignment_body_with_enums,
+                                 SubstitutionChain};
 
-        // Gate FIRST — if the body has any non-equality constraints or
-        // any declarations the native path can't honor (Nat lower-bound,
-        // user-type field expansions, passthroughs), refuse outright.
-        // This catches the "all vars given, but body has filters that
-        // would reject the given values" case where classify_components
-        // returns zero free-var components yet the body is UNSAT.
-        if !is_pure_assignment_body(schema) {
+        // Enum-aware gate. The native evaluator handles enum-typed
+        // memberships via Match dispatch + Value::Enum lookup, so we
+        // allow types known to be enums in addition to primitives.
+        let is_enum = |type_name: &str| -> bool {
+            self.enums.by_name.borrow().contains_key(type_name)
+        };
+        if !is_pure_assignment_body_with_enums(schema, &is_enum) {
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                eprintln!("[fz] {}: rejected by gate", name);
+            }
             return None;
         }
+
+        // Resolver: bare identifiers that aren't in env or given are
+        // potentially enum-variant names (`Init`, `Done`, etc.). Look
+        // them up in the enum registry and construct nullary
+        // Value::Enum on the fly.
+        let resolver = |ident: &str| -> Option<Value> {
+            let by_variant = self.enums.by_variant.borrow();
+            let (enum_name, _idx) = by_variant.get(ident)?;
+            // v1: only nullary variants. For variants with payloads,
+            // a bare identifier wouldn't be a constructor call anyway
+            // — those need `Ctor(args)` syntax which becomes Expr::Call
+            // or a different parse, so we wouldn't see them as bare
+            // Identifier here. Confirm zero-arity by looking up the
+            // variant in by_name.
+            let by_name = self.enums.by_name.borrow();
+            let (_, variants) = by_name.get(enum_name)?;
+            let variant = variants.iter().find(|v| v.name == ident)?;
+            if !variant.fields.is_empty() { return None; }
+            Some(Value::Enum {
+                enum_name: enum_name.clone(),
+                variant: ident.to_string(),
+                fields: vec![],
+            })
+        };
 
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
@@ -2243,7 +2281,7 @@ impl EvidentRuntime {
             let cache = self.functionize_cache.borrow();
             if let Some(entry) = cache.get(&cache_key) {
                 let Some(chain) = entry.as_ref() else { return None; };
-                let bindings = evaluate_chain(chain, given)?;
+                let bindings = evaluate_chain_with_resolver(chain, given, &resolver)?;
                 let mut out = HashMap::new();
                 for (k, v) in bindings { out.insert(k, v); }
                 return Some(QueryResult { satisfied: true, bindings: out });
@@ -2259,25 +2297,41 @@ impl EvidentRuntime {
             schema, given, &self.schemas, self.z3_ctx,
             &self.datatypes, Some(&self.enums), arith);
         if comps.iter().any(|c| !c.functional) {
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                let non: Vec<&str> = comps.iter().filter(|c| !c.functional)
+                    .flat_map(|c| c.component.vars.iter().map(|s| s.as_str())).collect();
+                eprintln!("[fz] {}: non-functional components: {:?}", name, non);
+            }
             self.functionize_cache.borrow_mut().insert(cache_key, None);
             return None;
         }
         let mut steps = Vec::new();
         for c in &comps {
-            match extract_chain(schema, &c.component) {
+            match extract_chain_with_enums(schema, &c.component, &is_enum) {
                 Some(ch) => steps.extend(ch.steps),
                 None => {
+                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                        eprintln!("[fz] {}: extract_chain failed for vars {:?}",
+                            name, c.component.vars);
+                    }
                     self.functionize_cache.borrow_mut().insert(cache_key, None);
                     return None;
                 }
             }
         }
         let chain = SubstitutionChain { steps };
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz] {}: chain has {} steps: {:?}", name, chain.steps.len(),
+                chain.steps.iter().map(|s| &s.var).collect::<Vec<_>>());
+        }
         // Evaluate once to sanity-check; if eval fails we don't cache
         // the chain (the eval failure mode is "unsupported Expr variant").
-        let bindings = match evaluate_chain(&chain, given) {
+        let bindings = match evaluate_chain_with_resolver(&chain, given, &resolver) {
             Some(b) => b,
             None => {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz] {}: eval failed", name);
+                }
                 self.functionize_cache.borrow_mut().insert(cache_key, None);
                 return None;
             }
