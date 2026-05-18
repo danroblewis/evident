@@ -1,3 +1,15 @@
+-- Mario demo — Super Mario Bros. inspired side-scroller.
+--
+-- World is 1920 px wide (3 screens @ 640). Camera follows Mario,
+-- clamped to [0, level_width - 640]. Platforms in world coordinates;
+-- display projects to screen via `world.x - camera_x`.
+--
+-- Features:
+--   * side-scrolling camera (this phase)
+--   * 1920-px wide level with platforms across the span
+--   * 3 patrolling enemies
+--   * Mario controls: left/right (arrow keys), up = jump
+
 import "stdlib/runtime.ev"
 import "stdlib/toposort.ev"
 import "packages/sdl/window.ev"
@@ -17,149 +29,63 @@ type MarioSprite(pos ∈ IVec2)
     rects[3] = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
 
 type Level
-    bounds        ∈ AABB  = AABB(IVec2(0, 0), IVec2(640, 480))
-    p_size        ∈ IVec2 = IVec2(32, 32)
-    enemy_size    ∈ IVec2 = IVec2(28, 28)
-    grav          ∈ Int   = 2
-    walk_speed    ∈ Int   = 5
-    jump_strength ∈ Int   = 14
-    enemy_speed   ∈ Int   = 2
+    bounds         ∈ AABB  = AABB(IVec2(0, 0), IVec2(1920, 480))
+    screen_w       ∈ Int   = 640
+    screen_h       ∈ Int   = 480
+    p_size         ∈ IVec2 = IVec2(32, 32)
+    enemy_size     ∈ IVec2 = IVec2(28, 28)
+    grav           ∈ Int   = 2
+    walk_speed     ∈ Int   = 5
+    jump_strength  ∈ Int   = 14
+    enemy_speed    ∈ Int   = 2
 
     PLAT_W         ∈ Int = 120
     PLAT_H         ∈ Int = 16
     GROUND_Y       ∈ Int = 432
-    MAX_JUMP_RISE  ∈ Int = 196
-    MIN_GAP        ∈ Int = 40
+    LEVEL_W        ∈ Int = 1920
 
-    plat_x ∈ Seq(Int)
-    plat_y ∈ Seq(Int)
-    #plat_x = 3
-    #plat_y = 3
-
+    -- 6 floating platforms across the 1920-px level.
     platforms ∈ Seq(Body)
-    #platforms = 4
-    platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(640, 48)),
+    #platforms = 7
+    -- Ground (full width)
+    platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(LEVEL_W, 48)),
                          Color(60,  140, 60, 255))
-    platforms[1] = Body(AABB(IVec2(plat_x[0], plat_y[0]),
-                              IVec2(PLAT_W, PLAT_H)),
+    -- Floating platforms (brown)
+    platforms[1] = Body(AABB(IVec2(280, 360), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
-    platforms[2] = Body(AABB(IVec2(plat_x[1], plat_y[1]),
-                              IVec2(PLAT_W, PLAT_H)),
+    platforms[2] = Body(AABB(IVec2(540, 280), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
-    platforms[3] = Body(AABB(IVec2(plat_x[2], plat_y[2]),
-                              IVec2(PLAT_W, PLAT_H)),
+    platforms[3] = Body(AABB(IVec2(820, 360), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
+    platforms[4] = Body(AABB(IVec2(1080, 280), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
+    platforms[5] = Body(AABB(IVec2(1340, 360), IVec2(PLAT_W, PLAT_H)),
+                         Color(150, 100, 60, 255))
+    platforms[6] = Body(AABB(IVec2(1600, 280), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
 
+    -- 3 enemies patrolling across the level.
     e_init ∈ Seq(EnemyInit)
-    #e_init = 2
-    e_init[0] = EnemyInit(IVec2(40,  404), IVec2(2,     0), 40,  200)
-    e_init[1] = EnemyInit(IVec2(560, 404), IVec2(0 - 2, 0), 440, 600)
-
-claim Jumpable
-    PLAT_W         ∈ Int
-    PLAT_H         ∈ Int
-    GROUND_Y       ∈ Int
-    MAX_JUMP_RISE  ∈ Int
-    MIN_GAP        ∈ Int
-    plat_x ∈ Seq(Int)
-    plat_y ∈ Seq(Int)
-    #plat_x = 3
-    #plat_y = 3
-
-    ∀ (x, y) ∈ coindexed(plat_x, plat_y) :
-        0 ≤ x ∧ x ≤ 640 - PLAT_W
-        GROUND_Y - MAX_JUMP_RISE ≤ y ∧ y ≤ GROUND_Y - PLAT_H - 24
-
-    ∀ i ∈ {0..2} : ∀ j ∈ {0..2} : i < j ⇒
-        (plat_x[i] + PLAT_W + MIN_GAP ≤ plat_x[j]
-         ∨ plat_x[j] + PLAT_W + MIN_GAP ≤ plat_x[i]
-         ∨ plat_y[i] + PLAT_H + MIN_GAP ≤ plat_y[j]
-         ∨ plat_y[j] + PLAT_H + MIN_GAP ≤ plat_y[i])
-
-    ∀ i ∈ {0..2} : ((GROUND_Y - plat_y[i] ≤ MAX_JUMP_RISE) ∨ (∃ j ∈ {0..2} : i ≠ j ∧ plat_y[j] > plat_y[i] ∧ plat_y[j] - plat_y[i] ≤ MAX_JUMP_RISE ∧ ¬(plat_x[j] + PLAT_W < plat_x[i] ∨ plat_x[i] + PLAT_W < plat_x[j])))
-
-claim Level1
-    PLAT_W ∈ Int
-    PLAT_H ∈ Int
-    GROUND_Y ∈ Int
-    MAX_JUMP_RISE ∈ Int
-    MIN_GAP ∈ Int
-    plat_x ∈ Seq(Int)
-    plat_y ∈ Seq(Int)
-    #plat_x = 3
-    #plat_y = 3
-
-    Jumpable
-
-    ∃ y ∈ plat_y : y ≤ 280
-    ∃ y ∈ plat_y : y ≥ 350
-    ∃ x ∈ plat_x : x + PLAT_W ≤ 280
-    ∃ x ∈ plat_x : x ≥ 360
-
-claim Level2
-    PLAT_W ∈ Int
-    PLAT_H ∈ Int
-    GROUND_Y ∈ Int
-    MAX_JUMP_RISE ∈ Int
-    MIN_GAP ∈ Int
-    plat_x ∈ Seq(Int)
-    plat_y ∈ Seq(Int)
-    #plat_x = 3
-    #plat_y = 3
-
-    Jumpable
-
-    ∀ y ∈ plat_y : y ≤ 320
-    ∃ y ∈ plat_y : y ≤ 250
-    ∃ y ∈ plat_y : y ≥ 290
+    #e_init = 3
+    e_init[0] = EnemyInit(IVec2(400,  404), IVec2(2,     0), 350,  650)
+    e_init[1] = EnemyInit(IVec2(900,  404), IVec2(0 - 2, 0), 850,  1150)
+    e_init[2] = EnemyInit(IVec2(1500, 404), IVec2(2,     0), 1400, 1750)
 
 type World
     player    ∈ Mover
     enemies   ∈ Seq(Mover)
     keys      ∈ IVec2
     tick      ∈ Int
-    plat_x    ∈ Seq(Int)
-    plat_y    ∈ Seq(Int)
-    level_idx ∈ Int
-
-fsm level_gen(world ∈ World)
-    ..Level
-    #world.plat_x  = 3
-    #world.plat_y  = 3
-    #_world.plat_x = 3
-    #_world.plat_y = 3
-
-    gen_clock ∈ Int = (is_first_tick ? 0 : _gen_clock + 1)
-
-    beat ∈ Bool = (¬is_first_tick ∧ _world.player.pos.x ≥ 580)
-
-    world.level_idx = (is_first_tick ? 0
-                       : (beat ? (_world.level_idx + 1) - 2 * ((_world.level_idx + 1) / 2)
-                          : _world.level_idx))
-
-    level_changed ∈ Bool = (is_first_tick ∨ beat)
-
-    world.level_idx = 0 ⇒ Level1
-    world.level_idx = 1 ⇒ Level2
-
-    ¬level_changed ⇒ (plat_x = _world.plat_x ∧ plat_y = _world.plat_y)
-
-    world.plat_x = plat_x
-    world.plat_y = plat_y
+    camera_x  ∈ Int
 
 fsm game(world ∈ World)
     ..Level
-    #_world.enemies = 2
-    #world.enemies  = 2
+    #_world.enemies = 3
+    #world.enemies  = 3
 
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
 
     tick_anchor ∈ Int = _world.tick
-
-    #_world.plat_x = 3
-    #_world.plat_y = 3
-    plat_x = _world.plat_x
-    plat_y = _world.plat_y
 
     on_ground ∈ Bool
     ∀ p ∈ platforms :
@@ -180,8 +106,8 @@ fsm game(world ∈ World)
 
     tent ∈ IVec2 = _world.player.pos + IVec2(intent_vx, intent_vy)
 
-    x_min ∈ Int = bounds.pos.x
-    x_max ∈ Int = bounds.pos.x + bounds.size.x - p_size.x
+    x_min ∈ Int = 0
+    x_max ∈ Int = LEVEL_W - p_size.x
     res_x ∈ Int = (tent.x < x_min ? x_min
                    : (tent.x > x_max ? x_max : tent.x))
 
@@ -218,12 +144,19 @@ fsm game(world ∈ World)
     any_landing  ⇒ (new_vy = 0)
     ¬any_landing ⇒ (new_vy = intent_vy)
 
-    new_px ∈ Int = (is_first_tick ? 304 : res_x)
+    new_px ∈ Int = (is_first_tick ? 100 : res_x)
     new_vx ∈ Int = (is_first_tick ? 0   : intent_vx)
     is_first_tick ⇒ (new_py = 100)
     is_first_tick ⇒ (new_vy = 0)
 
     world.player = Mover(IVec2(new_px, new_py), IVec2(new_vx, new_vy))
+
+    -- Camera follows Mario, kept centered around him but clamped.
+    cam_tent ∈ Int = new_px - 304
+    cam_min  ∈ Int = 0
+    cam_max  ∈ Int = LEVEL_W - screen_w
+    world.camera_x = (cam_tent < cam_min ? cam_min
+                      : (cam_tent > cam_max ? cam_max : cam_tent))
 
     ∀ (cur, nxt, init) ∈ coindexed(_world.enemies, world.enemies, e_init) :
         is_first_tick ⇒ (nxt = Mover(init.pos, init.vel))
@@ -268,12 +201,9 @@ fsm keyboard(world ∈ World)
 
 fsm display(world ∈ World)
     ..Level
-    #_world.enemies = 2
+    #_world.enemies = 3
 
-    #_world.plat_x = 3
-    #_world.plat_y = 3
-    plat_x = _world.plat_x
-    plat_y = _world.plat_y
+    cam_x ∈ Int = _world.camera_x
 
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
@@ -285,39 +215,51 @@ fsm display(world ∈ World)
     win.set_draw_color((80, 160, 220, 255), sky_eff)
     win.render_clear(clear_eff)
 
+    -- Platforms: project from world to screen by subtracting camera.
     plat_effs ∈ Seq(EffectPair)
-    #plat_effs = 4
+    #plat_effs = 7
     ∀ (p, b) ∈ coindexed(platforms, plat_effs) :
-        win.draw_rect(Rect(p.color, p.aabb.pos, p.aabb.size), b.effs)
+        win.draw_rect(Rect(p.color,
+                            IVec2(p.aabb.pos.x - cam_x, p.aabb.pos.y),
+                            p.aabb.size), b.effs)
 
-    mario ∈ MarioSprite (pos ↦ _world.player.pos)
+    -- Mario sprite (projected)
+    mario_screen_pos ∈ IVec2 = IVec2(_world.player.pos.x - cam_x,
+                                       _world.player.pos.y)
+    mario ∈ MarioSprite (pos ↦ mario_screen_pos)
     mario_effs ∈ Seq(EffectPair)
     #mario_effs = 4
     ∀ (r, b) ∈ coindexed(mario.rects, mario_effs) :
         win.draw_rect(r, b.effs)
 
+    -- Enemies (projected). Use 3 enemies now.
     enemy_effs ∈ Seq(EffectPair)
-    #enemy_effs = 2
+    #enemy_effs = 3
     ∀ (m, b) ∈ coindexed(_world.enemies, enemy_effs) :
-        win.draw_rect(Rect(Color(200, 80, 220, 255), m.pos, IVec2(28, 28)), b.effs)
+        win.draw_rect(Rect(Color(200, 80, 220, 255),
+                            IVec2(m.pos.x - cam_x, m.pos.y),
+                            IVec2(28, 28)), b.effs)
 
     win.render_present(present_eff)
 
-    sky_effs ∈ Seq(Effect) = ⟨sky_eff, clear_eff⟩
     phase_chain ∈ Seq(Effect) = ⟨
-        clear_eff,              plat_effs[0].effs[0],
-        plat_effs[0].effs[1],   plat_effs[1].effs[0],
-        plat_effs[1].effs[1],   plat_effs[2].effs[0],
-        plat_effs[2].effs[1],   plat_effs[3].effs[0],
-        plat_effs[3].effs[1],   mario_effs[0].effs[0],
-        mario_effs[0].effs[1],  mario_effs[1].effs[0],
-        mario_effs[1].effs[1],  mario_effs[2].effs[0],
-        mario_effs[2].effs[1],  mario_effs[3].effs[0],
-        mario_effs[3].effs[1],  enemy_effs[0].effs[0],
-        enemy_effs[0].effs[1],  enemy_effs[1].effs[0],
-        enemy_effs[1].effs[1],  present_eff,
-        delay_eff
+        sky_eff,                clear_eff,
+        plat_effs[0].effs[0],   plat_effs[0].effs[1],
+        plat_effs[1].effs[0],   plat_effs[1].effs[1],
+        plat_effs[2].effs[0],   plat_effs[2].effs[1],
+        plat_effs[3].effs[0],   plat_effs[3].effs[1],
+        plat_effs[4].effs[0],   plat_effs[4].effs[1],
+        plat_effs[5].effs[0],   plat_effs[5].effs[1],
+        plat_effs[6].effs[0],   plat_effs[6].effs[1],
+        mario_effs[0].effs[0],  mario_effs[0].effs[1],
+        mario_effs[1].effs[0],  mario_effs[1].effs[1],
+        mario_effs[2].effs[0],  mario_effs[2].effs[1],
+        mario_effs[3].effs[0],  mario_effs[3].effs[1],
+        enemy_effs[0].effs[0],  enemy_effs[0].effs[1],
+        enemy_effs[1].effs[0],  enemy_effs[1].effs[1],
+        enemy_effs[2].effs[0],  enemy_effs[2].effs[1],
+        present_eff,            delay_eff
     ⟩
 
-    done_print ∈ Effect = (frame ≥ 240 ? Println("mario done") : NoEffect)
-    done_exit  ∈ Effect = (frame ≥ 240 ? Exit(0) : NoEffect)
+    done_print ∈ Effect = (frame ≥ 600 ? Println("mario done") : NoEffect)
+    done_exit  ∈ Effect = (frame ≥ 600 ? Exit(0) : NoEffect)
