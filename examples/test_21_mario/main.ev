@@ -44,15 +44,20 @@ type Level
     GROUND_Y       ∈ Int = 432
     LEVEL_W        ∈ Int = 1920
 
+    -- Pit gap at world.x ∈ [700, 800] — Mario falls in and dies.
+    -- Split ground into two sections to make the pit.
+    PIT_X1 ∈ Int = 700
+    PIT_X2 ∈ Int = 800
     platforms ∈ Seq(Body)
     #platforms = 7
-    platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(LEVEL_W, 48)),
+    platforms[0] = Body(AABB(IVec2(0, GROUND_Y), IVec2(PIT_X1, 48)),
                          Color(60,  140, 60, 255))
-    platforms[1] = Body(AABB(IVec2(280, 360), IVec2(PLAT_W, PLAT_H)),
+    platforms[1] = Body(AABB(IVec2(PIT_X2, GROUND_Y),
+                              IVec2(LEVEL_W - PIT_X2, 48)),
+                         Color(60,  140, 60, 255))
+    platforms[2] = Body(AABB(IVec2(280, 360), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
-    platforms[2] = Body(AABB(IVec2(540, 280), IVec2(PLAT_W, PLAT_H)),
-                         Color(150, 100, 60, 255))
-    platforms[3] = Body(AABB(IVec2(820, 360), IVec2(PLAT_W, PLAT_H)),
+    platforms[3] = Body(AABB(IVec2(540, 280), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
     platforms[4] = Body(AABB(IVec2(1080, 280), IVec2(PLAT_W, PLAT_H)),
                          Color(150, 100, 60, 255))
@@ -191,7 +196,9 @@ fsm game(world ∈ World)
 
     any_stomp ∈ Bool = (s0 ∨ s1 ∨ s2)
     side_hit  ∈ Bool = (h0 ∨ h1 ∨ h2)
-    just_died ∈ Bool = ((¬is_first_tick) ∧ (¬prev_dead) ∧ side_hit)
+    -- Fall death: Mario's y exceeds the screen.
+    fell_off  ∈ Bool = (tent.y > screen_h)
+    just_died ∈ Bool = ((¬is_first_tick) ∧ (¬prev_dead) ∧ (side_hit ∨ fell_off))
     game_over ∈ Bool = (prev_lives ≤ 0)
 
     world.dead = just_died
