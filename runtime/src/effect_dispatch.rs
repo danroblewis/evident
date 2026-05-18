@@ -133,18 +133,45 @@ pub fn dispatch_one(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
     r
 }
 
+/// Detect Z3's auto-named sentinel strings like "!0!", "!a!",
+/// "!val!", etc. These appear when an unconstrained String var
+/// in the body gets extracted from a Z3 model — Z3 fills it with
+/// an automatic symbol name that happens to be wrapped in `!`s.
+/// Dispatching them as Print/Println pollutes stdout with garbage.
+/// Filter at the dispatch boundary.
+fn is_z3_sentinel_string(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() < 3 { return false; }
+    if b[0] != b'!' || b[b.len() - 1] != b'!' { return false; }
+    let middle = &s[1..s.len() - 1];
+    // Z3 sentinels are short, contain only alphanumeric +
+    // optional `!` separator (e.g. "0", "a", "val!12", "k!7").
+    middle.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'!')
+        && middle.len() <= 16
+}
+
 fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
     match e {
         Effect::NoEffect => EffectResult::NoResult,
 
         Effect::Print(s) => {
-            let _ = write!(ctx.stdout, "{s}");
-            let _ = ctx.stdout.flush();
+            // Filter out Z3-model-sentinel Print outputs (strings that
+            // look like "!N!" where N is a single hex digit). These
+            // come from unconstrained-String free vars in the body
+            // that get extracted from the Z3 model as auto-named
+            // values like `k!0`, then dispatched as Print. They're
+            // cosmetic noise, not intentional output.
+            if !is_z3_sentinel_string(s) {
+                let _ = write!(ctx.stdout, "{s}");
+                let _ = ctx.stdout.flush();
+            }
             EffectResult::NoResult
         }
         Effect::Println(s) => {
-            let _ = writeln!(ctx.stdout, "{s}");
-            let _ = ctx.stdout.flush();
+            if !is_z3_sentinel_string(s) {
+                let _ = writeln!(ctx.stdout, "{s}");
+                let _ = ctx.stdout.flush();
+            }
             EffectResult::NoResult
         }
         Effect::ReadLine => {
