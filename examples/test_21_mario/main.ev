@@ -16,13 +16,17 @@ type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ In
 type Coin(pos ∈ IVec2, collected ∈ Bool)
 type CoinInit(pos ∈ IVec2)
 
-type MarioSprite(pos ∈ IVec2)
+enum MarioForm = SmallM | BigM
+
+type MarioSprite(pos ∈ IVec2, is_big ∈ Bool)
     rects ∈ Seq(Rect)
     #rects = 4
+    -- Small Mario: 32×32. Big Mario: 32×52 — last (foot) rect taller.
     rects[0] = Rect(Color(220, 40,  40,  255), pos,                IVec2(32, 6))
     rects[1] = Rect(Color(240, 200, 160, 255), pos + IVec2(4, 6),  IVec2(24, 10))
     rects[2] = Rect(Color(220, 40,  40,  255), pos + IVec2(0, 16), IVec2(32, 10))
-    rects[3] = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26), IVec2(24, 6))
+    rects[3] = Rect(Color(40,  70,  200, 255), pos + IVec2(4, 26),
+                     IVec2(24, (is_big ? 26 : 6)))
 
 type Level
     bounds         ∈ AABB  = AABB(IVec2(0, 0), IVec2(1920, 480))
@@ -87,6 +91,8 @@ type World
     dead          ∈ Bool
     coin_count    ∈ Int
     won           ∈ Bool
+    -- Mario gets Big after collecting 3 coins, becomes Small after death.
+    is_big        ∈ Bool
 
 fsm game(world ∈ World)
     ..Level
@@ -250,6 +256,10 @@ fsm game(world ∈ World)
                         + (c3_hit ? 1 : 0)
                         + (c4_hit ? 1 : 0))
     world.coin_count = prev_coin_count + coin_delta
+    -- Mario grows after collecting 3 coins; shrinks on death.
+    prev_big ∈ Bool = ((¬is_first_tick) ∧ _world.is_big)
+    world.is_big = (just_died ? false
+                    : (prev_big ∨ (prev_coin_count + coin_delta ≥ 3)))
 
     -- Coin state updates (initialize / mark collected).
     is_first_tick ⇒ (world.coins[0] = Coin(c_init[0].pos, false))
@@ -388,7 +398,7 @@ fsm display(world ∈ World)
 
     mario_screen_pos ∈ IVec2 = IVec2(_world.player.pos.x - cam_x,
                                        _world.player.pos.y)
-    mario ∈ MarioSprite (pos ↦ mario_screen_pos)
+    mario ∈ MarioSprite (pos ↦ mario_screen_pos, is_big ↦ _world.is_big)
     mario_effs ∈ Seq(EffectPair)
     #mario_effs = 4
     ∀ (r, b) ∈ coindexed(mario.rects, mario_effs) :
