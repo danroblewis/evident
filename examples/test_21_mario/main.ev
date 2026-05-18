@@ -106,9 +106,8 @@ fsm game(world ∈ World)
     #_world.coins   = 5
     #world.coins    = 5
 
-    -- No effects from game (rendering is in display).
-    effects ∈ Seq(Effect)
-    #effects = 0
+    -- Empty effects so the scheduler dispatches nothing for game.
+    effects = ⟨⟩
 
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
     tick_anchor ∈ Int = _world.tick
