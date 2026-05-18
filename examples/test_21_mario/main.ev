@@ -13,6 +13,8 @@ type AABB(pos ∈ IVec2, size ∈ IVec2)
 type Mover(pos ∈ IVec2, vel ∈ IVec2)
 type Body(aabb ∈ AABB, color ∈ Color)
 type EnemyInit(pos ∈ IVec2, vel ∈ IVec2, patrol_lo ∈ Int, patrol_hi ∈ Int)
+type Coin(pos ∈ IVec2, collected ∈ Bool)
+type CoinInit(pos ∈ IVec2)
 
 type MarioSprite(pos ∈ IVec2)
     rects ∈ Seq(Rect)
@@ -61,19 +63,37 @@ type Level
     e_init[1] = EnemyInit(IVec2(900,  404), IVec2(0 - 2, 0), 850,  1150)
     e_init[2] = EnemyInit(IVec2(1500, 404), IVec2(2,     0), 1400, 1750)
 
+    -- 5 coins scattered across the level, mostly above platforms.
+    c_init ∈ Seq(CoinInit)
+    #c_init = 5
+    c_init[0] = CoinInit(IVec2(320, 320))
+    c_init[1] = CoinInit(IVec2(580, 240))
+    c_init[2] = CoinInit(IVec2(860, 320))
+    c_init[3] = CoinInit(IVec2(1120, 240))
+    c_init[4] = CoinInit(IVec2(1380, 320))
+
+    -- End-of-level flag.
+    FLAG_X ∈ Int = 1800
+    FLAG_Y ∈ Int = 240
+
 type World
-    player    ∈ Mover
-    enemies   ∈ Seq(Mover)
-    keys      ∈ IVec2
-    tick      ∈ Int
-    camera_x  ∈ Int
-    lives     ∈ Int
-    dead      ∈ Bool
+    player        ∈ Mover
+    enemies       ∈ Seq(Mover)
+    coins         ∈ Seq(Coin)
+    keys          ∈ IVec2
+    tick          ∈ Int
+    camera_x      ∈ Int
+    lives         ∈ Int
+    dead          ∈ Bool
+    coin_count    ∈ Int
+    won           ∈ Bool
 
 fsm game(world ∈ World)
     ..Level
     #_world.enemies = 3
     #world.enemies  = 3
+    #_world.coins   = 5
+    #world.coins    = 5
 
     -- No effects from game (rendering is in display).
     effects ∈ Seq(Effect)
@@ -191,6 +211,81 @@ fsm game(world ∈ World)
     world.camera_x = (cam_tent < cam_min ? cam_min
                       : (cam_tent > cam_max ? cam_max : cam_tent))
 
+    -- Per-coin pickup detection.
+    c0 ∈ Coin = _world.coins[0]
+    c0_hit ∈ Bool = ((¬c0.collected)
+                     ∧ ((new_px + 32) > c0.pos.x)
+                     ∧ (new_px < (c0.pos.x + 16))
+                     ∧ ((final_py + 32) > c0.pos.y)
+                     ∧ (final_py < (c0.pos.y + 16)))
+    c1 ∈ Coin = _world.coins[1]
+    c1_hit ∈ Bool = ((¬c1.collected)
+                     ∧ ((new_px + 32) > c1.pos.x)
+                     ∧ (new_px < (c1.pos.x + 16))
+                     ∧ ((final_py + 32) > c1.pos.y)
+                     ∧ (final_py < (c1.pos.y + 16)))
+    c2 ∈ Coin = _world.coins[2]
+    c2_hit ∈ Bool = ((¬c2.collected)
+                     ∧ ((new_px + 32) > c2.pos.x)
+                     ∧ (new_px < (c2.pos.x + 16))
+                     ∧ ((final_py + 32) > c2.pos.y)
+                     ∧ (final_py < (c2.pos.y + 16)))
+    c3 ∈ Coin = _world.coins[3]
+    c3_hit ∈ Bool = ((¬c3.collected)
+                     ∧ ((new_px + 32) > c3.pos.x)
+                     ∧ (new_px < (c3.pos.x + 16))
+                     ∧ ((final_py + 32) > c3.pos.y)
+                     ∧ (final_py < (c3.pos.y + 16)))
+    c4 ∈ Coin = _world.coins[4]
+    c4_hit ∈ Bool = ((¬c4.collected)
+                     ∧ ((new_px + 32) > c4.pos.x)
+                     ∧ (new_px < (c4.pos.x + 16))
+                     ∧ ((final_py + 32) > c4.pos.y)
+                     ∧ (final_py < (c4.pos.y + 16)))
+
+    prev_coin_count ∈ Int = (is_first_tick ? 0 : _world.coin_count)
+    coin_delta ∈ Int = ((c0_hit ? 1 : 0)
+                        + (c1_hit ? 1 : 0)
+                        + (c2_hit ? 1 : 0)
+                        + (c3_hit ? 1 : 0)
+                        + (c4_hit ? 1 : 0))
+    world.coin_count = prev_coin_count + coin_delta
+
+    -- Coin state updates (initialize / mark collected).
+    is_first_tick ⇒ (world.coins[0] = Coin(c_init[0].pos, false))
+    (¬is_first_tick ∧ (_world.coins[0].collected ∨ c0_hit)) ⇒
+        (world.coins[0] = Coin(c_init[0].pos, true))
+    (¬is_first_tick ∧ (¬_world.coins[0].collected) ∧ (¬c0_hit)) ⇒
+        (world.coins[0] = Coin(c_init[0].pos, false))
+    is_first_tick ⇒ (world.coins[1] = Coin(c_init[1].pos, false))
+    (¬is_first_tick ∧ (_world.coins[1].collected ∨ c1_hit)) ⇒
+        (world.coins[1] = Coin(c_init[1].pos, true))
+    (¬is_first_tick ∧ (¬_world.coins[1].collected) ∧ (¬c1_hit)) ⇒
+        (world.coins[1] = Coin(c_init[1].pos, false))
+    is_first_tick ⇒ (world.coins[2] = Coin(c_init[2].pos, false))
+    (¬is_first_tick ∧ (_world.coins[2].collected ∨ c2_hit)) ⇒
+        (world.coins[2] = Coin(c_init[2].pos, true))
+    (¬is_first_tick ∧ (¬_world.coins[2].collected) ∧ (¬c2_hit)) ⇒
+        (world.coins[2] = Coin(c_init[2].pos, false))
+    is_first_tick ⇒ (world.coins[3] = Coin(c_init[3].pos, false))
+    (¬is_first_tick ∧ (_world.coins[3].collected ∨ c3_hit)) ⇒
+        (world.coins[3] = Coin(c_init[3].pos, true))
+    (¬is_first_tick ∧ (¬_world.coins[3].collected) ∧ (¬c3_hit)) ⇒
+        (world.coins[3] = Coin(c_init[3].pos, false))
+    is_first_tick ⇒ (world.coins[4] = Coin(c_init[4].pos, false))
+    (¬is_first_tick ∧ (_world.coins[4].collected ∨ c4_hit)) ⇒
+        (world.coins[4] = Coin(c_init[4].pos, true))
+    (¬is_first_tick ∧ (¬_world.coins[4].collected) ∧ (¬c4_hit)) ⇒
+        (world.coins[4] = Coin(c_init[4].pos, false))
+
+    -- End-of-level flag detection.
+    prev_won ∈ Bool = ((¬is_first_tick) ∧ _world.won)
+    flag_touch ∈ Bool = (((new_px + 32) > FLAG_X)
+                         ∧ (new_px < (FLAG_X + 16))
+                         ∧ ((final_py + 32) > FLAG_Y)
+                         ∧ (final_py < (GROUND_Y + 16)))
+    world.won = (prev_won ∨ flag_touch)
+
     -- Enemy 0
     is_first_tick ⇒ (world.enemies[0] = Mover(e_init[0].pos, e_init[0].vel))
     (¬is_first_tick ∧ s0) ⇒
@@ -271,6 +366,7 @@ fsm keyboard(world ∈ World)
 fsm display(world ∈ World)
     ..Level
     #_world.enemies = 3
+    #_world.coins   = 5
 
     cam_x ∈ Int = _world.camera_x
 
@@ -305,6 +401,53 @@ fsm display(world ∈ World)
                             IVec2(m.pos.x - cam_x, m.pos.y),
                             IVec2(28, 28)), b.effs)
 
+    -- Coins (gold rects). Collected coins are stored with their
+    -- original pos but rendered off-screen via game FSM marking
+    -- — see coin_screen_x_N below.
+    coin_effs ∈ Seq(EffectPair)
+    #coin_effs = 5
+    coin_sx_0 ∈ Int = (_world.coins[0].collected ? 0 - 1000
+                       : _world.coins[0].pos.x - cam_x)
+    coin_sx_1 ∈ Int = (_world.coins[1].collected ? 0 - 1000
+                       : _world.coins[1].pos.x - cam_x)
+    coin_sx_2 ∈ Int = (_world.coins[2].collected ? 0 - 1000
+                       : _world.coins[2].pos.x - cam_x)
+    coin_sx_3 ∈ Int = (_world.coins[3].collected ? 0 - 1000
+                       : _world.coins[3].pos.x - cam_x)
+    coin_sx_4 ∈ Int = (_world.coins[4].collected ? 0 - 1000
+                       : _world.coins[4].pos.x - cam_x)
+    win.draw_rect(Rect(Color(240, 200, 60, 255),
+                        IVec2(coin_sx_0, _world.coins[0].pos.y),
+                        IVec2(16, 16)), coin_effs[0].effs)
+    win.draw_rect(Rect(Color(240, 200, 60, 255),
+                        IVec2(coin_sx_1, _world.coins[1].pos.y),
+                        IVec2(16, 16)), coin_effs[1].effs)
+    win.draw_rect(Rect(Color(240, 200, 60, 255),
+                        IVec2(coin_sx_2, _world.coins[2].pos.y),
+                        IVec2(16, 16)), coin_effs[2].effs)
+    win.draw_rect(Rect(Color(240, 200, 60, 255),
+                        IVec2(coin_sx_3, _world.coins[3].pos.y),
+                        IVec2(16, 16)), coin_effs[3].effs)
+    win.draw_rect(Rect(Color(240, 200, 60, 255),
+                        IVec2(coin_sx_4, _world.coins[4].pos.y),
+                        IVec2(16, 16)), coin_effs[4].effs)
+
+    -- Flag pole (white vertical bar) + flag triangle (red rect).
+    win.set_draw_color((240, 240, 240, 255), flag_pole_color_eff)
+    win.render_fill_rect(IVec2(FLAG_X - cam_x, FLAG_Y),
+                         IVec2(4, GROUND_Y - FLAG_Y), flag_pole_fill_eff)
+    win.set_draw_color((220, 40, 40, 255), flag_color_eff)
+    win.render_fill_rect(IVec2(FLAG_X - cam_x + 4, FLAG_Y),
+                         IVec2(28, 16), flag_fill_eff)
+
+    -- Castle: grey rectangle with battlements at end of level.
+    win.set_draw_color((140, 140, 140, 255), castle_color_eff)
+    win.render_fill_rect(IVec2(FLAG_X - cam_x + 60, GROUND_Y - 80),
+                         IVec2(96, 80), castle_fill_eff)
+    win.set_draw_color((80, 80, 80, 255), castle_door_color_eff)
+    win.render_fill_rect(IVec2(FLAG_X - cam_x + 96, GROUND_Y - 40),
+                         IVec2(24, 40), castle_door_fill_eff)
+
     -- HUD: lives indicator (top-left, one square per life).
     hud_effs ∈ Seq(EffectPair)
     #hud_effs = 3
@@ -315,7 +458,28 @@ fsm display(world ∈ World)
             IVec2(8 + i * 24, 8),
             IVec2(16, 16)), hud_effs[i].effs)
 
+    -- Coin counter HUD: row of small gold squares (one per coin collected).
+    coin_hud_effs ∈ Seq(EffectPair)
+    #coin_hud_effs = 5
+    ∀ i ∈ {0..4} :
+        win.draw_rect(Rect(
+            (_world.coin_count > i ? Color(240, 200, 60, 255)
+                                   : Color(60, 60, 60, 255)),
+            IVec2(120 + i * 18, 10),
+            IVec2(12, 12)), coin_hud_effs[i].effs)
+
+    -- Won banner: green rectangle drawn off-screen when not yet won.
+    win.set_draw_color((60, 200, 80, 255), win_color_eff)
+    win_banner_x ∈ Int = (_world.won ? 240 : 0 - 1000)
+    win.render_fill_rect(IVec2(win_banner_x, 4), IVec2(160, 28), win_fill_eff)
+
     win.render_present(present_eff)
+
+    done_print ∈ Effect = (_world.lives ≤ 0 ? Println("GAME OVER")
+                          : (_world.won ? Println("LEVEL CLEAR")
+                             : NoEffect))
+    done_exit  ∈ Effect = ((_world.lives ≤ 0 ∨ _world.won)
+                          ? Exit(0) : NoEffect)
 
     phase_chain ∈ Seq(Effect) = ⟨
         sky_eff,                clear_eff,
@@ -326,6 +490,15 @@ fsm display(world ∈ World)
         plat_effs[4].effs[0],   plat_effs[4].effs[1],
         plat_effs[5].effs[0],   plat_effs[5].effs[1],
         plat_effs[6].effs[0],   plat_effs[6].effs[1],
+        coin_effs[0].effs[0],   coin_effs[0].effs[1],
+        coin_effs[1].effs[0],   coin_effs[1].effs[1],
+        coin_effs[2].effs[0],   coin_effs[2].effs[1],
+        coin_effs[3].effs[0],   coin_effs[3].effs[1],
+        coin_effs[4].effs[0],   coin_effs[4].effs[1],
+        flag_pole_color_eff,    flag_pole_fill_eff,
+        flag_color_eff,         flag_fill_eff,
+        castle_color_eff,       castle_fill_eff,
+        castle_door_color_eff,  castle_door_fill_eff,
         enemy_effs[0].effs[0],  enemy_effs[0].effs[1],
         enemy_effs[1].effs[0],  enemy_effs[1].effs[1],
         enemy_effs[2].effs[0],  enemy_effs[2].effs[1],
@@ -336,8 +509,12 @@ fsm display(world ∈ World)
         hud_effs[0].effs[0],    hud_effs[0].effs[1],
         hud_effs[1].effs[0],    hud_effs[1].effs[1],
         hud_effs[2].effs[0],    hud_effs[2].effs[1],
-        present_eff,            delay_eff
+        coin_hud_effs[0].effs[0], coin_hud_effs[0].effs[1],
+        coin_hud_effs[1].effs[0], coin_hud_effs[1].effs[1],
+        coin_hud_effs[2].effs[0], coin_hud_effs[2].effs[1],
+        coin_hud_effs[3].effs[0], coin_hud_effs[3].effs[1],
+        coin_hud_effs[4].effs[0], coin_hud_effs[4].effs[1],
+        win_color_eff,          win_fill_eff,
+        present_eff,            delay_eff,
+        done_print,             done_exit
     ⟩
-
-    done_print ∈ Effect = (_world.lives ≤ 0 ? Println("GAME OVER") : NoEffect)
-    done_exit  ∈ Effect = (_world.lives ≤ 0 ? Exit(0) : NoEffect)
