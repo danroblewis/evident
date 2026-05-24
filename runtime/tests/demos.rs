@@ -218,6 +218,22 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Cross-tick value cache showcase (session C). A trivial
+        // `driver` rotates world.signal through 4 values in 8-tick
+        // windows; the `expensive` consumer reads only world.signal
+        // and runs a heavy nonlinear Z3 solve (three coupled integer
+        // square roots), so when signal is unchanged the value cache
+        // returns the prior bindings and skips the solve. Run with
+        // EVIDENT_FUNCTIONIZE_STATS=1 to see vh climb (45 of 49 ticks)
+        // and EVIDENT_VALUE_CACHE=0 for the ~12x-slower baseline.
+        // Here we just gate the window markers + clean exit; the
+        // cache win is documented in the demo's docstring.
+        name: "test_26_value_cache", exit: 0,
+        must_lines: &["signal=10 (window 0)", "signal=40 (window 3)", "driver done"],
+        forbid_exact_lines: &[],
+        max_steps: 60, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
