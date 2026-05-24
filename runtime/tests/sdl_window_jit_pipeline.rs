@@ -20,7 +20,7 @@
 //!   extract_program(simplified, outputs)    — Z3Program
 //!     │
 //!     ▼
-//!   cranelift_jit::compile_program(prog)    — native function
+//!   functionize::cranelift::compile_program(prog) — native function
 //!     │
 //!     ▼
 //!   jit.call(env)                            — emit Seq(Effect)
@@ -46,7 +46,7 @@ use std::path::Path;
 
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program};
-use evident_runtime::cranelift_jit::compile_program;
+use evident_runtime::functionize::cranelift::compile_program;
 
 /// Minimal SDL window display FSM. Uses the SDL_Window FTI bridge
 /// to install the window + renderer, then per-tick emits a

@@ -46,8 +46,6 @@ fn print_help() {
     eprintln!();
     eprintln!("Functionizer / Cranelift JIT:");
     eprintln!("  --no-functionizer        disable functionize entirely (EVIDENT_FUNCTIONIZE=0)");
-    eprintln!("  --z3-functionizer        enable Z3-AST functionizer (EVIDENT_FUNCTIONIZE_Z3=1)");
-    eprintln!("  --z3-functionizer-sched  enable Z3 fz on the scheduler path too");
     eprintln!();
     eprintln!("Z3 tuning:");
     eprintln!("  --lenient                demote dropped-constraint errors to warnings");
@@ -115,13 +113,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             }
             "--no-functionizer" => {
                 std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
-            }
-            "--z3-functionizer" => {
-                std::env::set_var("EVIDENT_FUNCTIONIZE_Z3", "1");
-            }
-            "--z3-functionizer-sched" => {
-                std::env::set_var("EVIDENT_FUNCTIONIZE_Z3_SCHED", "1");
-                std::env::set_var("EVIDENT_FUNCTIONIZE_Z3", "1");
             }
             "--lenient" => {
                 std::env::set_var("EVIDENT_LENIENT", "1");

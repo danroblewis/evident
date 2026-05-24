@@ -7,11 +7,9 @@
 pub mod ast;
 pub mod decompose;
 pub mod effect_dispatch;
-pub mod functionize;
 pub mod z3_eval;
 pub mod z3_profile;
-pub mod cranelift_jit;
-mod rust_vm;
+pub mod functionize;
 mod value_builders;
 pub mod effect_loop;
 mod ffi;

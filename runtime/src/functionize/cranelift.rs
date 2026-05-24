@@ -101,7 +101,8 @@ impl JitProgram {
         }
         let mut out = HashMap::new();
         for (name, &idx) in &self.output_offsets {
-            out.insert(name.clone(), outputs[idx].clone());
+            let v = outputs[idx].clone();
+            out.insert(name.clone(), classify_seq(v));
         }
         if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
             eprintln!("[jit/call] result:");
@@ -110,6 +111,28 @@ impl JitProgram {
             }
         }
         Some(out)
+    }
+}
+
+/// Reclassify a `Value::SeqEnum` of homogeneous primitives into the
+/// matching typed `SeqInt` / `SeqBool` / `SeqStr` variant. The JIT
+/// always builds Seq outputs as `SeqEnum` (no static type info on
+/// the IR side); callers compare against typed variants per the
+/// declared Seq element type.
+fn classify_seq(v: Value) -> Value {
+    let Value::SeqEnum(xs) = v else { return v };
+    match xs.first() {
+        None                  => Value::SeqEnum(vec![]),
+        Some(Value::Int(_))   => Value::SeqInt(
+            xs.into_iter().filter_map(|e|
+                if let Value::Int(n) = e { Some(n) } else { None }).collect()),
+        Some(Value::Bool(_))  => Value::SeqBool(
+            xs.into_iter().filter_map(|e|
+                if let Value::Bool(b) = e { Some(b) } else { None }).collect()),
+        Some(Value::Str(_))   => Value::SeqStr(
+            xs.into_iter().filter_map(|e|
+                if let Value::Str(s) = e { Some(s) } else { None }).collect()),
+        _ => Value::SeqEnum(xs),
     }
 }
 
@@ -1207,4 +1230,36 @@ fn lookup_variant(
         }
     }
     None
+}
+
+// ── Functionizer trait wiring ────────────────────────────────────
+//
+// Zero-sized strategy struct that adapts `compile_program` to the
+// `Functionizer` trait, and a `CompiledFunction` impl that wraps
+// `JitProgram::call`. The runtime talks to these traits exclusively
+// — `JitProgram` and `compile_program` stay private to this module.
+
+/// Cranelift JIT functionizer strategy. Compiles a `Z3Program` to
+/// native machine code via Cranelift.
+pub struct CraneliftFunctionizer;
+
+impl super::Functionizer for CraneliftFunctionizer {
+    fn name(&self) -> &'static str { "cranelift" }
+
+    fn compile(&self,
+               program: &Z3Program,
+               enums:   &EnumRegistry)
+        -> Option<std::rc::Rc<dyn super::CompiledFunction>>
+    {
+        let jit = compile_program(program, enums)?;
+        Some(std::rc::Rc::new(jit))
+    }
+}
+
+impl super::CompiledFunction for JitProgram {
+    fn call(&self, given: &HashMap<String, Value>)
+        -> Option<HashMap<String, Value>>
+    {
+        JitProgram::call(self, given)
+    }
 }

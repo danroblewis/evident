@@ -1334,12 +1334,6 @@ fn flatten_seq_of_chain(v: &Value) -> Option<Value> {
     Some(seq_value_from_elements(out))
 }
 
-/// Public wrapper for `seq_value_from_elements` — used by the
-/// rust_vm module which mirrors the AST walker's Seq result shape.
-pub fn seq_value_from_elements_pub(values: Vec<Value>) -> Value {
-    seq_value_from_elements(values)
-}
-
 /// Classify a Vec<Value> into the appropriate Seq* Value variant
 /// by inspecting the first element. Empty → SeqEnum([]) since
 /// we don't have declared-type info at this layer.

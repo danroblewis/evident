@@ -52,7 +52,7 @@
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program, Z3Step, GuardedBody};
-use evident_runtime::cranelift_jit::compile_program;
+use evident_runtime::functionize::cranelift::compile_program;
 
 // Minimal effects-producer test fixture. We use only enum
 // variants WITHOUT Seq-of-enum payloads to avoid the translator's

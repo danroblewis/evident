@@ -93,17 +93,9 @@ pub struct FunctionizeStats {
 
 #[derive(Default, Clone, Debug)]
 pub struct PerClaimStats {
-    /// AST functionizer (Round 11+): number of calls into the
-    /// older `try_functionize` path. Mirrors the `[fz] HIT` /
-    /// `[fz] MISS` lines from EVIDENT_FUNCTIONIZE_TRACE. Helps
-    /// see which schemas the AST functionizer covers vs which
-    /// fall through to Z3 (or the newer Z3 functionizer).
-    pub ast_fz_calls: u32,
-    pub ast_fz_hits:  u32,
-    pub ast_fz_rejected_at_gate: u32,
     /// Number of cache-miss analyses we ran on this claim.
     pub analyses: u32,
-    /// Cache-hit count (where the cached program was used).
+    /// Cache-hit count (where the cached JIT program was used).
     pub cache_hits: u32,
     /// Number of analyses where Z3's simplify decided the body
     /// is UNSAT (short-circuit return).
@@ -129,14 +121,11 @@ pub struct PerClaimStats {
     pub predicates_total: u32,
     /// `Some(true)` if extract_program succeeded for the
     /// most recent analysis; `Some(false)` if not; None if
-    /// no analysis ran yet (claim only ever cache-hit, or
-    /// only ever rejected at the gate).
+    /// no analysis ran yet.
     pub last_extract_ok: Option<bool>,
-    /// Number of analyses where the JIT successfully compiled
-    /// the program. Programs that contain Seq outputs,
-    /// payload-bearing enum ctors, or other unsupported
-    /// patterns fail and fall back to the AST walker.
-    pub jit_compiled: u32,
+    /// Number of analyses where the functionizer successfully
+    /// compiled the extracted program. Miss → slow-path Z3.
+    pub compiled: u32,
 }
 
 impl FunctionizeStats {
@@ -146,7 +135,7 @@ impl FunctionizeStats {
         names.sort();
         let mut total_a = 0u32;
         let mut total_h = 0u32;
-        let mut total_jit = 0u32;
+        let mut total_compiled = 0u32;
         let mut total_steps = 0u32;
         let mut total_checks = 0u32;
         let mut total_preds = 0u32;
@@ -155,7 +144,7 @@ impl FunctionizeStats {
             let s = &self.claims[*n];
             total_a += s.analyses;
             total_h += s.cache_hits;
-            total_jit += s.jit_compiled;
+            total_compiled += s.compiled;
             total_steps += s.steps_total;
             total_checks += s.checks_total;
             total_preds += s.predicates_total;
@@ -175,9 +164,9 @@ impl FunctionizeStats {
         eprintln!("[fz/stats]   kept as predicates:     {} ({:.1}%)",
             total_preds,
             if total_simplified > 0 { 100.0 * total_preds as f64 / total_simplified as f64 } else { 0.0 });
-        eprintln!("[fz/stats] jit compiled: {} of {} analyses ({:.0}%)",
-            total_jit, total_a,
-            if total_a > 0 { 100.0 * total_jit as f64 / total_a as f64 } else { 0.0 });
+        eprintln!("[fz/stats] functionizer compiled: {} of {} analyses ({:.0}%)",
+            total_compiled, total_a,
+            if total_a > 0 { 100.0 * total_compiled as f64 / total_a as f64 } else { 0.0 });
         eprintln!("[fz/stats] per-claim:");
         for n in &names {
             let s = &self.claims[*n];
@@ -186,24 +175,14 @@ impl FunctionizeStats {
                 Some(false) => "z3-fz✗",
                 None        => "z3-fz·",  // didn't reach Z3 functionizer
             };
-            let jit_mark = if s.jit_compiled > 0 { "jit✓" } else { "jit·" };
-            let ast_mark = if s.ast_fz_hits > 0 {
-                format!("ast-fz✓({}h/{}c)", s.ast_fz_hits, s.ast_fz_calls)
-            } else if s.ast_fz_rejected_at_gate > 0 {
-                format!("ast-fz✗gate({}c)", s.ast_fz_calls)
-            } else if s.ast_fz_calls > 0 {
-                format!("ast-fz·({}c)", s.ast_fz_calls)
-            } else {
-                "ast-fz–".to_string()
-            };
-            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3}  sim={:>2} stp={:>2} chk={:>2} pr={:>2}] {} {}  {}",
+            let compiled_mark = if s.compiled > 0 { "fn✓" } else { "fn·" };
+            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3}  sim={:>2} stp={:>2} chk={:>2} pr={:>2}] {} {}",
                 n, s.analyses, s.cache_hits, s.simplified_total, s.steps_total,
-                s.checks_total, s.predicates_total, extract, jit_mark, ast_mark);
+                s.checks_total, s.predicates_total, extract, compiled_mark);
         }
         eprintln!("[fz/stats] legend:  z3=[an=analyses h=hits sim=simplified-assertions stp=absorbed-as-steps chk=checks pr=predicates]");
-        eprintln!("[fz/stats]          z3-fz✓ = Z3 functionizer extracted a program | z3-fz✗ = extract failed | z3-fz· = never ran");
-        eprintln!("[fz/stats]          jit✓ = Cranelift compiled it to native       | jit· = AST-walker fallback");
-        eprintln!("[fz/stats]          ast-fz✓ = older Evident-AST functionizer hit | ast-fz✗gate = rejected at gate | ast-fz· = ran but didn't hit");
+        eprintln!("[fz/stats]          z3-fz✓ = extracted a Z3Program | z3-fz✗ = extract failed | z3-fz· = never ran");
+        eprintln!("[fz/stats]          fn✓ = functionizer compiled it | fn· = slow-path Z3 fallback");
     }
 }
 
@@ -1911,52 +1890,29 @@ pub struct EvidentRuntime {
     /// value per-query and Z3 solves with the existing constraint
     /// shape.
     cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
-    /// Function-izer cache: maps (schema_name, sorted given-keys) to
-    /// either a native substitution chain (Some) or None (claim isn't
-    /// fully function-shaped under these inputs — fall through to Z3).
-    /// Keyed on given-KEYS, not values, since the chain is the same
-    /// shape across runs with different concrete inputs. Populated on
-    /// first query per (claim, given-shape) combo. Default ON;
-    /// set `EVIDENT_FUNCTIONIZE=0` to disable.
-    functionize_cache: RefCell<HashMap<(String, Vec<String>),
-                                       Option<crate::functionize::SubstitutionChain>>>,
-    /// Per-claim gate-pass cache: name → Some(inlined_schema) if the
-    /// claim passes `gate_diagnostics`, None if it's rejected. The
-    /// gate result is given-INDEPENDENT (depends only on the body
-    /// shape), so it can be cached once per claim regardless of
-    /// which given_keys downstream callers use. Pre-populated at
-    /// load time so first-tick solves carry zero analysis overhead.
-    functionize_gate_cache: RefCell<HashMap<String,
-                                            Option<crate::ast::SchemaDecl>>>,
     /// Z3-AST functionizer cache: per-(claim, given-keys), the
-    /// extracted Z3Program (or None if extraction failed) that
-    /// walks Z3 ASTs directly at runtime instead of the Evident
-    /// AST. See `runtime/src/z3_eval.rs` for the rationale —
-    /// Z3's tactic pipeline does the simplification work for us.
+    /// extracted Z3Program (or None if extraction failed). The
+    /// extracted program is the input to the Cranelift JIT — when
+    /// JIT compilation succeeds, the cached program is what the
+    /// JIT ran on (kept here for inspection / re-compile).
     functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
                                           Option<crate::z3_eval::Z3Program<'static>>>>,
-    /// Cranelift JIT cache: per-(claim, given-keys), the compiled
-    /// native function (Some) or None when compilation failed
-    /// (program uses constructs the JIT doesn't yet emit — Seq
-    /// outputs, payload-bearing enums, strings). When the JIT
-    /// misses, the runtime falls back to the Z3-AST walker via
-    /// z3_eval. See `runtime/src/cranelift_jit.rs`.
-    jit_cache: RefCell<HashMap<(String, Vec<String>),
-                               Option<std::rc::Rc<crate::cranelift_jit::JitProgram>>>>,
-    /// Rust-VM cache: precompiled `CompiledProgram` walked at run
-    /// time without touching Z3. ~10x faster than the Z3 Dynamic
-    /// AST walker because there are no per-node FFI calls. Used as
-    /// the fast path when JIT compilation fails (Seq/Guarded/PreBaked
-    /// steps, multi-field enum ctors, etc.).
-    vm_cache: RefCell<HashMap<(String, Vec<String>),
-                              Option<std::rc::Rc<crate::rust_vm::CompiledProgram>>>>,
+    /// Functionizer strategy. Compiles extracted `Z3Program`s into
+    /// callable artifacts. Default is Cranelift JIT; swap via
+    /// `EvidentRuntime::with_functionizer`. See `runtime/src/functionize/`.
+    functionizer: Box<dyn crate::functionize::Functionizer>,
+    /// Compiled-function cache: per-(claim, given-keys), the
+    /// strategy-produced artifact (Some) or None when the strategy
+    /// refused (program uses constructs it can't compile). On miss
+    /// the runtime falls through to slow-path Z3.
+    fn_cache: RefCell<HashMap<(String, Vec<String>),
+                              Option<std::rc::Rc<dyn crate::functionize::CompiledFunction>>>>,
     /// Slow-path schema cache. Populated by `try_functionize_z3`
-    /// when it refuses to produce a JIT/VM program but has already
-    /// built a `CachedSchema`. Reused by `query_with_pins_and_given`
-    /// to skip the per-tick body translation. Each tick is then just
+    /// when extraction or JIT compilation refuses but a CachedSchema
+    /// has already been built. Reused by `query_with_pins_and_given`
+    /// to skip per-tick body translation. Each tick is then just
     /// push → assert given → check → extract → pop, instead of
-    /// rebuilding the body assertions from AST every call. For
-    /// display this cuts ~12ms off the 14.7ms slow-path cost.
+    /// rebuilding the body assertions from AST every call.
     slow_path_cache: RefCell<HashMap<(String, Vec<String>),
                                      std::rc::Rc<crate::translate::CachedSchema<'static>>>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
@@ -2162,7 +2118,15 @@ impl std::error::Error for RuntimeError {}
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
 
 impl EvidentRuntime {
+    /// Create a runtime with the default functionizer (Cranelift JIT).
     pub fn new() -> Self {
+        Self::with_functionizer(crate::functionize::default())
+    }
+
+    /// Create a runtime with a specific functionizer strategy.
+    /// See `crate::functionize` for the trait and the bundled
+    /// `CraneliftFunctionizer` implementation.
+    pub fn with_functionizer(functionizer: Box<dyn crate::functionize::Functionizer>) -> Self {
         let cfg = Config::new();
         let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
         EvidentRuntime {
@@ -2171,11 +2135,9 @@ impl EvidentRuntime {
             schema_order: Vec::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
-            functionize_cache: RefCell::new(HashMap::new()),
-            functionize_gate_cache: RefCell::new(HashMap::new()),
             functionize_z3_cache: RefCell::new(HashMap::new()),
-            jit_cache: RefCell::new(HashMap::new()),
-            vm_cache:  RefCell::new(HashMap::new()),
+            functionizer,
+            fn_cache: RefCell::new(HashMap::new()),
             slow_path_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
@@ -2324,25 +2286,9 @@ impl EvidentRuntime {
         // schema body don't apply to the new one.
         self.cache.borrow_mut().clear();
         self.solve_history.borrow_mut().clear();
-        // The function-izer's per-claim gate verdicts depend on the
-        // currently-loaded schemas (gate's `is_pure_passthrough`
-        // walks transitive references). Flush both caches so a
-        // re-load doesn't inherit stale verdicts.
-        self.functionize_gate_cache.borrow_mut().clear();
-        self.functionize_cache.borrow_mut().clear();
         self.functionize_z3_cache.borrow_mut().clear();
-        self.jit_cache.borrow_mut().clear();
-        self.vm_cache.borrow_mut().clear();
+        self.fn_cache.borrow_mut().clear();
         self.slow_path_cache.borrow_mut().clear();
-        // Pre-classify every loaded claim at load time: run inline
-        // + gate once per name so first-tick solves carry zero
-        // function-izer analysis cost. Rejections are recorded as
-        // `None`; passes store the inlined schema for later chain
-        // extraction. The chain itself (per given-shape) is still
-        // built lazily on first solve — the cost we hoist here is
-        // the gate + inlining pass, which is what was showing up
-        // in Mario's regression.
-        self.precompile_function_izer();
         // Datatype registry entries reference the previous schema body
         // shape (field order / types). A new load could redefine a type
         // with a different shape; flush so we rebuild on first reference.
@@ -2407,125 +2353,20 @@ impl EvidentRuntime {
             import_path)))
     }
 
-    /// Pre-compute the function-izer's per-claim gate result for
-    /// every loaded schema. Runs at load time so per-tick solves
-    /// don't pay the inline + gate cost on the hot path.
-    ///
-    /// What this DOES populate:
-    ///   * `functionize_gate_cache`: name → Some(inlined_schema) if
-    ///     the claim passes the gate, None if rejected.
-    ///
-    /// What this does NOT populate:
-    ///   * `functionize_cache`: the per-given-shape chain. That
-    ///     still happens lazily because the chain depends on which
-    ///     variables are in `given`, which we don't know until the
-    ///     caller actually solves.
-    ///
-    /// Effectively this turns the "first-tick is slow because the
-    /// gate has to run" failure mode into a "load-time spends an
-    /// extra few ms walking every schema once" — which moves the
-    /// cost off the steady-state hot path.
-    fn precompile_function_izer(&self) {
-        // Build the gate predicates the same way `try_functionize` does.
-        let is_enum = |type_name: &str| -> bool {
-            self.enums.by_name.borrow().contains_key(type_name)
-        };
-        fn is_simple_record_rec(
-            schemas: &HashMap<String, crate::ast::SchemaDecl>,
-            type_name: &str,
-            visiting: &mut std::collections::HashSet<String>,
-        ) -> bool {
-            if matches!(type_name, "Int" | "Real" | "Bool" | "String" | "Nat") { return true; }
-            for prefix in &["Seq(", "Set("] {
-                if let Some(inner) = type_name.strip_prefix(prefix).and_then(|s| s.strip_suffix(")")) {
-                    let inner = inner.trim();
-                    if is_simple_record_rec(schemas, inner, visiting) { return true; }
-                    if let Some(decl) = schemas.get(inner) {
-                        if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
-                    }
-                    return true;
-                }
-            }
-            let Some(decl) = schemas.get(type_name) else { return false };
-            if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
-            if decl.external { return true; }
-            if !visiting.insert(type_name.to_string()) { return false; }
-            let ok = decl.body.iter().all(|item| match item {
-                crate::ast::BodyItem::Membership { type_name: ft, .. } =>
-                    is_simple_record_rec(schemas, ft, visiting),
-                crate::ast::BodyItem::Constraint(_) => false,
-                crate::ast::BodyItem::Passthrough(_)
-                    | crate::ast::BodyItem::ClaimCall { .. } => false,
-                crate::ast::BodyItem::SubclaimDecl(_) => true,
-            });
-            visiting.remove(type_name);
-            ok
-        }
-        let is_simple_record = |type_name: &str| -> bool {
-            let mut visiting = std::collections::HashSet::new();
-            is_simple_record_rec(&self.schemas, type_name, &mut visiting)
-        };
-        fn is_pure_pt(
-            schemas: &HashMap<String, crate::ast::SchemaDecl>,
-            enums: &crate::translate::EnumRegistry,
-            claim_name: &str,
-            depth: usize,
-        ) -> bool {
-            if depth == 0 { return false; }
-            let Some(decl) = schemas.get(claim_name) else { return false };
-            let is_e = |n: &str| -> bool { enums.by_name.borrow().contains_key(n) };
-            let is_r = |n: &str| -> bool {
-                let mut v = std::collections::HashSet::new();
-                is_simple_record_rec(schemas, n, &mut v)
-            };
-            let is_p = |n: &str| -> bool { is_pure_pt(schemas, enums, n, depth - 1) };
-            crate::functionize::is_pure_assignment_body_xl(decl, &is_e, &is_r, &is_p)
-        }
-        let is_pure_passthrough = |claim_name: &str| -> bool {
-            is_pure_pt(&self.schemas, &self.enums, claim_name, 8)
-        };
-        let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
-            self.schemas.get(name).cloned()
-        };
-        let mut gate_cache = self.functionize_gate_cache.borrow_mut();
-        for (name, schema) in &self.schemas {
-            // Skip claims we've already analyzed (lazy path may have
-            // run first if some pre-load query happened).
-            if gate_cache.contains_key(name) { continue; }
-            let inlined_body = crate::functionize::inline_positional_calls(
-                schema.body.clone(), &claim_lookup);
-            let candidate = crate::ast::SchemaDecl {
-                body: inlined_body,
-                ..schema.clone()
-            };
-            if crate::functionize::gate_diagnostics(
-                &candidate, &is_enum, &is_simple_record, &is_pure_passthrough).is_none()
-            {
-                gate_cache.insert(name.clone(), Some(candidate));
-            } else {
-                gate_cache.insert(name.clone(), None);
-            }
-        }
-    }
-
     /// Z3-AST functionizer. Runs Z3's tactic chain on the body
     /// (simplify + propagate-values), extracts per-output
-    /// substitutions from the resulting Z3 ASTs, and evaluates
-    /// them natively. The architecture pivot from try_functionize:
-    /// instead of walking the Evident AST and re-implementing
-    /// Z3's preprocessing, we LET Z3 do its work and walk its
-    /// canonicalized output.
+    /// substitutions from the resulting Z3 ASTs, and JIT-compiles
+    /// them to native code via Cranelift.
     ///
-    /// Returns `Some(QueryResult)` on success, `None` to fall
-    /// through to the next path (try_functionize → Z3 full
-    /// solve).
+    /// Returns `Some(QueryResult)` on JIT-compile success + call
+    /// success, `None` to fall through to a full Z3 solve.
     ///
-    /// Per (claim, given-keys), the program is built once and
-    /// cached. Eval is per-call (microseconds for small programs).
+    /// Per (claim, given-keys), the Z3Program is built once and
+    /// cached. JIT-compiled code is also cached and runs at ~µs/call.
     fn try_functionize_z3(&self, name: &str, schema: &crate::ast::SchemaDecl,
                           given: &HashMap<String, Value>) -> Option<QueryResult>
     {
-        use crate::z3_eval::{simplify_assertions, extract_program, eval_program};
+        use crate::z3_eval::{simplify_assertions, extract_program};
         // Cache key: name + sorted given_keys. The program built
         // is somewhat sensitive to given VALUES (Z3 may constant-
         // fold them in), but for the common case where given_keys
@@ -2540,59 +2381,20 @@ impl EvidentRuntime {
         given_keys.sort();
         let cache_key = (name.to_string(), given_keys.clone());
 
-        // JIT cache lookup — preferred when available because
-        // it's native code (3-10x faster than the AST walker on
-        // arithmetic-heavy claims, more for state-machine
-        // dispatch).
-        if let Some(entry) = self.jit_cache.borrow().get(&cache_key).cloned() {
-            if let Some(jit) = entry {
-                if let Some(bindings) = jit.call(given) {
-                    self.functionize_stats.borrow_mut()
-                        .claims.entry(name.to_string()).or_default().cache_hits += 1;
-                    let mut out = HashMap::new();
-                    for (k, v) in bindings {
-                        if !given.contains_key(&k) { out.insert(k, v); }
-                    }
-                    for (k, v) in given { out.insert(k.clone(), v.clone()); }
-                    return Some(QueryResult { satisfied: true, bindings: out });
-                }
-            }
-            // Fall through to the AST walker below.
-        }
-
-        // Rust-VM cache (preferred fallback when JIT misses). The
-        // VM walks a precompiled `Op` tree without touching Z3 —
-        // ~10x faster than the Z3 Dynamic AST walker, which makes
-        // it faster than the slow path's incremental Z3 solve for
-        // Mario-shaped models.
-        if let Some(entry) = self.vm_cache.borrow().get(&cache_key).cloned() {
-            let Some(program) = entry else { return None };
+        // Functionizer cache lookup — compiled function is the only
+        // fast path. Cache miss falls through to extract + compile
+        // below. Compile failure caches None and falls through to
+        // slow-path Z3.
+        if let Some(entry) = self.fn_cache.borrow().get(&cache_key).cloned() {
+            let Some(compiled) = entry else { return None };
+            let Some(bindings) = compiled.call(given) else { return None };
             self.functionize_stats.borrow_mut()
                 .claims.entry(name.to_string()).or_default().cache_hits += 1;
-            let bindings = crate::rust_vm::eval_program(&program, given, Some(&self.enums))?;
             let mut out = HashMap::new();
             for (k, v) in bindings {
                 if !given.contains_key(&k) { out.insert(k, v); }
             }
-            return Some(QueryResult { satisfied: true, bindings: out });
-        }
-
-        // Legacy Z3-AST walker (kept for diagnostics / fallback if
-        // EVIDENT_FUNCTIONIZE_USE_AST=1). Slower than the VM.
-        let allow_ast = std::env::var("EVIDENT_FUNCTIONIZE_USE_AST")
-            .map(|s| s != "0").unwrap_or(false);
-        if let Some(entry) = self.functionize_z3_cache.borrow().get(&cache_key).cloned() {
-            let Some(program) = entry else { return None };
-            if !allow_ast { return None; }
-            self.functionize_stats.borrow_mut()
-                .claims.entry(name.to_string()).or_default().cache_hits += 1;
-            let bindings = eval_program(&program, given, Some(&self.enums))?;
-            let mut out = HashMap::new();
-            for (k, v) in bindings {
-                if !given.contains_key(&k) {
-                    out.insert(k, v);
-                }
-            }
+            for (k, v) in given { out.insert(k.clone(), v.clone()); }
             return Some(QueryResult { satisfied: true, bindings: out });
         }
 
@@ -2890,50 +2692,26 @@ impl EvidentRuntime {
         let stored = Some(program.clone());
         self.functionize_z3_cache.borrow_mut().insert(cache_key.clone(), stored);
 
-        // Compile to the Rust VM (always succeeds — falls back to
-        // Z3 AST eval per-op if needed). The VM is ~10x faster than
-        // eval_dynamic for the common path because there are no
-        // per-node Z3 FFI calls.
-        let vm_compiled = std::rc::Rc::new(crate::rust_vm::compile_program(&program));
-        self.vm_cache.borrow_mut().insert(cache_key.clone(), Some(vm_compiled.clone()));
-
-        // Try to JIT-compile to native code. On success, the next
-        // call hits the JIT branch above and runs at ~µs/call.
-        // On failure, the Rust VM is the fallback.
-        let jit_compiled = crate::cranelift_jit::compile_program(&program, &self.enums)
-            .map(std::rc::Rc::new);
-        if jit_compiled.is_some() {
+        // Hand the extracted program to the configured functionizer.
+        // On success, the next call hits the fast-path cache above
+        // and runs at the strategy's per-call cost. On failure, cache
+        // None so subsequent calls skip straight to slow-path Z3.
+        let compiled = self.functionizer.compile(&program, &self.enums);
+        if compiled.is_some() {
             self.functionize_stats.borrow_mut()
-                .claims.entry(name.to_string()).or_default().jit_compiled += 1;
+                .claims.entry(name.to_string()).or_default().compiled += 1;
         }
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
             || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
         {
-            eprintln!("[fz/stats] {}: jit={}", name,
-                if jit_compiled.is_some() { "yes" } else { "no" });
+            eprintln!("[fz/stats] {}: {}={}", name, self.functionizer.name(),
+                if compiled.is_some() { "yes" } else { "no" });
         }
-        self.jit_cache.borrow_mut().insert(cache_key, jit_compiled.clone());
+        self.fn_cache.borrow_mut().insert(cache_key, compiled.clone());
 
-        // Use the JIT on the first call too if compilation succeeded.
-        if let Some(jit) = &jit_compiled {
-            if let Some(bindings) = jit.call(given) {
-                let mut out: HashMap<String, Value> = HashMap::new();
-                for (k, v) in bindings { out.insert(k, v); }
-                for (k, v) in given { out.insert(k.clone(), v.clone()); }
-                return Some(QueryResult { satisfied: true, bindings: out });
-            }
-        }
-
-        // JIT failed — use the Rust VM (compiled above).
-        let bindings = match crate::rust_vm::eval_program(&vm_compiled, given, Some(&self.enums)) {
-            Some(b) => b,
-            None => {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz/z3] {}: vm eval_program returned None", name);
-                }
-                return None;
-            }
-        };
+        // Use the compiled function on the first call too if it succeeded.
+        let compiled = compiled?;
+        let bindings = compiled.call(given)?;
         let mut out: HashMap<String, Value> = HashMap::new();
         for (k, v) in bindings { out.insert(k, v); }
         for (k, v) in given { out.insert(k.clone(), v.clone()); }
@@ -2947,42 +2725,17 @@ impl EvidentRuntime {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
 
-        // Function-izer fast path. When enabled, try to extract and
-        // evaluate a substitution chain instead of going through Z3.
-        // Falls through cleanly on any miss (claim not function-shaped,
-        // chain extraction failed, native eval failed). See
-        // `docs/bench/functionize.md` for the design + perf numbers.
+        // Functionizer fast path: extract a Z3Program from the body
+        // and JIT-compile to native code. On miss (extract refused
+        // or JIT codegen refused) we fall through to a full Z3 solve.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s != "0").unwrap_or(true);
-        // Z3-AST path: benefits from Z3's tactic preprocessing
-        // (simplify, propagate-values, constant folding). Off by
-        // default while we widen the static gate to cover the
-        // body shapes that trip build_cache's translator on the
-        // hot path (encoded ASTs, FFI Seq pinning, etc.). Enable
-        // with EVIDENT_FUNCTIONIZE_Z3=1.
-        let z3_fz_on = functionize_on && std::env::var("EVIDENT_FUNCTIONIZE_Z3")
-            .map(|s| s != "0").unwrap_or(false);
-        if z3_fz_on {
+        if functionize_on {
             if let Some(result) = self.try_functionize_z3(name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                     eprintln!("[fz/z3] HIT {}", name);
                 }
                 return Ok(result);
-            }
-        }
-        if functionize_on {
-            match self.try_functionize(name, schema, given) {
-                Some(result) => {
-                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                        eprintln!("[fz] HIT {}", name);
-                    }
-                    return Ok(result);
-                }
-                None => {
-                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                        eprintln!("[fz] MISS {}", name);
-                    }
-                }
             }
         }
 
@@ -2995,374 +2748,6 @@ impl EvidentRuntime {
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
-    /// Fast path: try native substitution-chain evaluation. Returns
-    /// `Some(result)` only when every non-given variable in the claim
-    /// can be evaluated natively; returns `None` to signal "fall
-    /// through to Z3."
-    ///
-    /// On first call per (claim, given-shape) the chain is extracted
-    /// and cached. Subsequent calls hit the cache and only do the
-    /// evaluation step (microseconds).
-    fn try_functionize(&self, name: &str, schema: &crate::ast::SchemaDecl,
-                       given: &HashMap<String, Value>) -> Option<QueryResult>
-    {
-        use crate::functionize::{evaluate_chain_with_resolvers, extract_chain_xl,
-                                 is_pure_assignment_body_xl,
-                                 SubstitutionChain};
-        self.functionize_stats.borrow_mut()
-            .claims.entry(name.to_string()).or_default().ast_fz_calls += 1;
-
-        // Cache check FIRST — before any analysis (inlining,
-        // gate, decomposition). Both outcomes are one-shot per
-        // (claim, given-shape):
-        //
-        //   * Some(chain): try eval. Success → HIT. Failure →
-        //     fall through to Z3 this call, but keep the chain
-        //     cached for future ticks (data varies; chain shape
-        //     doesn't).
-        //   * None: cached rejection — gate refused or chain
-        //     extraction failed. Skip all analysis, fall through
-        //     to Z3.
-        //
-        // This is the key to keeping the function-izer cheap on
-        // claims that will never function-ize (Mario's display,
-        // game, level_gen, etc.) — we pay analysis cost once per
-        // (claim, given-shape) lifetime, not once per tick.
-        let mut given_keys: Vec<String> = given.keys().cloned().collect();
-        given_keys.sort();
-        let cache_key = (name.to_string(), given_keys);
-        {
-            let cache = self.functionize_cache.borrow();
-            if let Some(entry) = cache.get(&cache_key) {
-                let Some(chain) = entry.as_ref() else { return None; };
-                // Build the minimal resolvers needed to evaluate.
-                let resolver = |ident: &str| -> Option<Value> {
-                    let by_variant = self.enums.by_variant.borrow();
-                    let (enum_name, _idx) = by_variant.get(ident)?;
-                    let by_name = self.enums.by_name.borrow();
-                    let (_, variants) = by_name.get(enum_name)?;
-                    let variant = variants.iter().find(|v| v.name == ident)?;
-                    if !variant.fields.is_empty() { return None; }
-                    Some(Value::Enum {
-                        enum_name: enum_name.clone(),
-                        variant: ident.to_string(),
-                        fields: vec![],
-                    })
-                };
-                let ctor_resolver = |ident: &str, args: &[Value]| -> Option<Value> {
-                    let by_variant = self.enums.by_variant.borrow();
-                    let (enum_name, _idx) = by_variant.get(ident)?;
-                    let by_name = self.enums.by_name.borrow();
-                    let (_, variants) = by_name.get(enum_name)?;
-                    let variant = variants.iter().find(|v| v.name == ident)?;
-                    if variant.fields.len() != args.len() { return None; }
-                    Some(Value::Enum {
-                        enum_name: enum_name.clone(),
-                        variant: ident.to_string(),
-                        fields: args.to_vec(),
-                    })
-                };
-                let bindings = evaluate_chain_with_resolvers(
-                    chain, given, &resolver, &ctor_resolver)?;
-                let mut out = HashMap::new();
-                for (k, v) in bindings { out.insert(k, v); }
-                self.functionize_stats.borrow_mut()
-                    .claims.entry(name.to_string()).or_default().ast_fz_hits += 1;
-                return Some(QueryResult { satisfied: true, bindings: out });
-            }
-        }
-
-        // Enum-aware gate. The native evaluator handles enum-typed
-        // memberships via Match dispatch + Value::Enum lookup, so we
-        // allow types known to be enums in addition to primitives.
-        let is_enum = |type_name: &str| -> bool {
-            self.enums.by_name.borrow().contains_key(type_name)
-        };
-        // User-record type recognizer: a `type` declaration whose
-        // body has only primitive Memberships OR Memberships of
-        // other simple records. Recursion is allowed with a cycle
-        // check via the `visiting` set. The native evaluator
-        // handles recursive records because their fields expand to
-        // dotted Z3 consts (`box.aabb.pos.x`) which our existing
-        // identifier-lookup path resolves.
-        fn is_simple_record_rec(
-            schemas: &HashMap<String, crate::ast::SchemaDecl>,
-            type_name: &str,
-            visiting: &mut std::collections::HashSet<String>,
-        ) -> bool {
-            if matches!(type_name, "Int" | "Real" | "Bool" | "String" | "Nat") { return true; }
-            // Seq(T) / Set(T) field types: accept when T is a primitive,
-            // a simple record, or any enum (the runtime stores those as
-            // Value::SeqEnum and the eval'd chain treats them opaquely
-            // when the body doesn't iterate over them).
-            for prefix in &["Seq(", "Set("] {
-                if let Some(inner) = type_name.strip_prefix(prefix).and_then(|s| s.strip_suffix(")")) {
-                    let inner = inner.trim();
-                    if is_simple_record_rec(schemas, inner, visiting) { return true; }
-                    // Enum element type: deferred to caller (we can't
-                    // see the registry from this static function).
-                    // Treat any schema whose keyword isn't Type as
-                    // potentially-enum (returning true is sound because
-                    // the native eval still has to handle the value;
-                    // if it can't, evaluate_chain returns None and
-                    // rt.query falls through to Z3).
-                    if let Some(decl) = schemas.get(inner) {
-                        // Non-Type schemas (claims, fsm, etc.) shouldn't
-                        // be Seq element types, but if encountered, refuse.
-                        if !matches!(decl.keyword, crate::ast::Keyword::Type) {
-                            return false;
-                        }
-                    }
-                    // Type we don't know — could be an enum. Accept
-                    // conservatively; eval will fail soundly if it can't
-                    // handle the value.
-                    return true;
-                }
-            }
-            let Some(decl) = schemas.get(type_name) else { return false };
-            if !matches!(decl.keyword, crate::ast::Keyword::Type) { return false; }
-            // `external type X` — FTI-bridged record. Treat as opaque:
-            // its body holds the install Seq + render subclaims, none
-            // of which we want to translate. The function-izer only
-            // needs to know the leaf-field names; their values flow
-            // through `given` from the scheduler's FTI bridge.
-            if decl.external { return true; }
-            if !visiting.insert(type_name.to_string()) {
-                return false;
-            }
-            let ok = decl.body.iter().all(|item| match item {
-                crate::ast::BodyItem::Membership { type_name: ft, .. } => {
-                    is_simple_record_rec(schemas, ft, visiting)
-                }
-                crate::ast::BodyItem::Constraint(_) => false,
-                crate::ast::BodyItem::Passthrough(_)
-                    | crate::ast::BodyItem::ClaimCall { .. } => false,
-                crate::ast::BodyItem::SubclaimDecl(_) => true,
-            });
-            visiting.remove(type_name);
-            ok
-        }
-        let is_simple_record = |type_name: &str| -> bool {
-            let mut visiting = std::collections::HashSet::new();
-            is_simple_record_rec(&self.schemas, type_name, &mut visiting)
-        };
-        // Passthrough predicate: a `..ClaimName` reference is OK iff
-        // the referenced claim's body also passes the gate, recursively.
-        // We use a fixed depth cap to avoid pathological cycles (none
-        // expected in practice — passthroughs form a DAG).
-        fn is_pure_pt(
-            schemas: &HashMap<String, crate::ast::SchemaDecl>,
-            enums: &crate::translate::EnumRegistry,
-            claim_name: &str,
-            depth: usize,
-        ) -> bool {
-            if depth == 0 { return false; }
-            let Some(decl) = schemas.get(claim_name) else { return false };
-            let is_e = |n: &str| -> bool { enums.by_name.borrow().contains_key(n) };
-            let is_r = |n: &str| -> bool {
-                let mut v = std::collections::HashSet::new();
-                is_simple_record_rec(schemas, n, &mut v)
-            };
-            let is_p = |n: &str| -> bool { is_pure_pt(schemas, enums, n, depth - 1) };
-            crate::functionize::is_pure_assignment_body_xl(decl, &is_e, &is_r, &is_p)
-        }
-        let is_pure_passthrough = |claim_name: &str| -> bool {
-            is_pure_pt(&self.schemas, &self.enums, claim_name, 8)
-        };
-        let passthrough_body = |claim_name: &str| -> Option<Vec<crate::ast::BodyItem>> {
-            self.schemas.get(claim_name).map(|s| s.body.clone())
-        };
-        // Per-claim gate cache. Inlining + gate are given-INDEPENDENT,
-        // so we only do them once per claim lifetime. After this
-        // block, `schema` points to either:
-        //   * the inlined schema (gate passed → continue chain build), or
-        //   * `return None` (gate rejected; per-claim and per-shape
-        //     caches both record None so future calls skip work).
-        let inlined_schema_owned = {
-            let gate_cache = self.functionize_gate_cache.borrow();
-            gate_cache.get(name).cloned()
-        };
-        let inlined_schema = match inlined_schema_owned {
-            Some(Some(s)) => s,
-            Some(None) => {
-                // Previously rejected (often by precompile_function_izer
-                // at load time). Count it as a gate-rejection so the
-                // stats summary shows the path correctly.
-                self.functionize_cache.borrow_mut().insert(cache_key, None);
-                self.functionize_stats.borrow_mut()
-                    .claims.entry(name.to_string()).or_default()
-                    .ast_fz_rejected_at_gate += 1;
-                return None;
-            }
-            None => {
-                // First time we've seen this claim. Inline + gate.
-                let claim_lookup = |name: &str| -> Option<crate::ast::SchemaDecl> {
-                    self.schemas.get(name).cloned()
-                };
-                let inlined_body = crate::functionize::inline_positional_calls(
-                    schema.body.clone(), &claim_lookup);
-                let candidate = crate::ast::SchemaDecl {
-                    body: inlined_body,
-                    ..schema.clone()
-                };
-                if let Some(why) = crate::functionize::gate_diagnostics(
-                    &candidate, &is_enum, &is_simple_record, &is_pure_passthrough)
-                {
-                    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                        eprintln!("[fz] {}: rejected by gate ({})", name, why);
-                    }
-                    self.functionize_gate_cache.borrow_mut()
-                        .insert(name.to_string(), None);
-                    self.functionize_cache.borrow_mut().insert(cache_key, None);
-                    self.functionize_stats.borrow_mut()
-                        .claims.entry(name.to_string()).or_default()
-                        .ast_fz_rejected_at_gate += 1;
-                    return None;
-                }
-                self.functionize_gate_cache.borrow_mut()
-                    .insert(name.to_string(), Some(candidate.clone()));
-                candidate
-            }
-        };
-        let schema = &inlined_schema;
-
-        // Resolver: bare identifiers that aren't in env or given are
-        // potentially enum-variant names (`Init`, `Done`, etc.). Look
-        // them up in the enum registry and construct nullary
-        // Value::Enum on the fly.
-        let resolver = |ident: &str| -> Option<Value> {
-            let by_variant = self.enums.by_variant.borrow();
-            let (enum_name, _idx) = by_variant.get(ident)?;
-            // v1: only nullary variants. For variants with payloads,
-            // a bare identifier wouldn't be a constructor call anyway
-            // — those need `Ctor(args)` syntax which becomes Expr::Call
-            // or a different parse, so we wouldn't see them as bare
-            // Identifier here. Confirm zero-arity by looking up the
-            // variant in by_name.
-            let by_name = self.enums.by_name.borrow();
-            let (_, variants) = by_name.get(enum_name)?;
-            let variant = variants.iter().find(|v| v.name == ident)?;
-            if !variant.fields.is_empty() { return None; }
-            Some(Value::Enum {
-                enum_name: enum_name.clone(),
-                variant: ident.to_string(),
-                fields: vec![],
-            })
-        };
-
-        // Ctor resolver: `Println("hello")`, `Exit(0)` etc. The body
-        // produces `Expr::Call(name, args)`; we evaluate the args and
-        // build a `Value::Enum` with the payload.
-        let ctor_resolver = |ident: &str, args: &[Value]| -> Option<Value> {
-            let by_variant = self.enums.by_variant.borrow();
-            let (enum_name, _idx) = by_variant.get(ident)?;
-            let by_name = self.enums.by_name.borrow();
-            let (_, variants) = by_name.get(enum_name)?;
-            let variant = variants.iter().find(|v| v.name == ident)?;
-            if variant.fields.len() != args.len() { return None; }
-            Some(Value::Enum {
-                enum_name: enum_name.clone(),
-                variant: ident.to_string(),
-                fields: args.to_vec(),
-            })
-        };
-
-        // Cache miss already established at function entry. Build the chain.
-        //
-        // Fast path (Round 12): the gate already vetted that every
-        // body Constraint is a pure equality (no Forall, Exists,
-        // Implies, top-level Ternary, etc.). Under that constraint,
-        // a complete substitution chain (one defining equation per
-        // output var, all topo-sortable) is the functional witness
-        // — no Z3 2-copy uniqueness check needed. The chain itself
-        // PROVES uniqueness: each output gets exactly one expression,
-        // expressions only depend on earlier-defined vars and inputs.
-        //
-        // If `try_extract_one_chain` fails (some output has no
-        // defining equation, or there's a cycle), fall through to
-        // the Z3-based slow path below.
-        let given_keys_set: std::collections::HashSet<&str> = given.keys()
-            .map(|s| s.as_str()).collect();
-        let is_in_given = |n: &str| -> bool { given.contains_key(n) };
-        let is_external_type = |type_name: &str| -> bool {
-            self.schemas.get(type_name).map_or(false, |s| s.external)
-        };
-        let chain = if let Some(mut ch) = crate::functionize::try_extract_one_chain(
-            schema, &given_keys_set, &is_enum, &is_simple_record,
-            &is_pure_passthrough, &passthrough_body, &is_external_type)
-        {
-            // Schema-wide consistency checks attach to the chain
-            // alongside the merged steps.
-            let extra_checks = crate::functionize::extract_schema_wide_checks(
-                schema, &is_in_given, &passthrough_body);
-            ch.checks.extend(extra_checks);
-            ch
-        } else {
-            // Slow path: classify per-component (Z3), then merge
-            // component chains. Used when the one-big-chain extract
-            // failed because the body has independent sub-models
-            // that the merged-chain approach can't topo-sort.
-            let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-                .and_then(|s| s.parse().ok()).unwrap_or(2);
-            let comps = crate::translate::classify_components(
-                schema, given, &self.schemas, self.z3_ctx,
-                &self.datatypes, Some(&self.enums), arith);
-            if comps.iter().any(|c| !c.functional) {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    let non: Vec<&str> = comps.iter().filter(|c| !c.functional)
-                        .flat_map(|c| c.component.vars.iter().map(|s| s.as_str())).collect();
-                    eprintln!("[fz] {}: non-functional components: {:?}", name, non);
-                }
-                self.functionize_cache.borrow_mut().insert(cache_key, None);
-                return None;
-            }
-            let mut steps = Vec::new();
-            for c in &comps {
-                match extract_chain_xl(schema, &c.component, &is_enum, &is_simple_record,
-                                       &is_pure_passthrough, &passthrough_body) {
-                    Some(ch) => steps.extend(ch.steps),
-                    None => {
-                        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                            eprintln!("[fz] {}: extract_chain failed for vars {:?}",
-                                name, c.component.vars);
-                        }
-                        self.functionize_cache.borrow_mut().insert(cache_key, None);
-                        return None;
-                    }
-                }
-            }
-            let checks = crate::functionize::extract_schema_wide_checks(
-                schema, &is_in_given, &passthrough_body);
-            SubstitutionChain { steps, checks }
-        };
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-            eprintln!("[fz] {}: chain has {} steps: {:?}", name, chain.steps.len(),
-                chain.steps.iter().map(|s| &s.var).collect::<Vec<_>>());
-        }
-        // Evaluate once to populate bindings. If eval fails on
-        // THIS call (e.g. tick 0 has empty last_results so a
-        // `match last_results[i] …` returns None), still cache the
-        // chain so later ticks — with realistic last_results — can
-        // hit it. Only the data flow varies per tick; the chain
-        // structure is stable.
-        let bindings_opt = evaluate_chain_with_resolvers(
-            &chain, given, &resolver, &ctor_resolver);
-        self.functionize_cache.borrow_mut().insert(cache_key, Some(chain));
-        let bindings = match bindings_opt {
-            Some(b) => b,
-            None => {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz] {}: eval failed (chain cached for later ticks)", name);
-                }
-                return None;
-            }
-        };
-        let mut out = HashMap::new();
-        for (k, v) in bindings { out.insert(k, v); }
-        self.functionize_stats.borrow_mut()
-            .claims.entry(name.to_string()).or_default().ast_fz_hits += 1;
-        Some(QueryResult { satisfied: true, bindings: out })
-    }
 
     /// Structural decomposition pass: re-separate the named claim into
     /// the independent sub-models it was composed from. Returns a list
@@ -3872,30 +3257,16 @@ impl EvidentRuntime {
         // fire even with non-empty pins; the pinned Datatype is
         // simply redundant with the given Value. If function-izer
         // rejects, fall through to Z3 with `pins` intact.
+        // Z3 functionizer + Cranelift JIT, enabled by default. JIT
+        // compiles the extracted Z3Program to native code; on miss
+        // (extract or codegen refused) falls through to the slow
+        // path below. Disable with EVIDENT_FUNCTIONIZE=0.
         let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
             .map(|s| s != "0").unwrap_or(true);
-        // Z3 functionizer + Rust VM, enabled by default. The VM is
-        // a precompiled AST evaluator that runs ~10-20× faster than
-        // the Z3 solver on tightly-pinned bodies (no Z3 FFI per
-        // op). Falls back to the slow path when the VM can't
-        // evaluate (typically Cons-chain Seq pin shapes that Z3's
-        // tactic chain decomposes into per-field accessors).
-        // Disable with EVIDENT_FUNCTIONIZE_Z3_SCHED=0.
-        let z3_fz_on = functionize_on
-            && std::env::var("EVIDENT_FUNCTIONIZE_Z3_SCHED")
-                .map(|s| s != "0").unwrap_or(true);
-        if z3_fz_on {
+        if functionize_on {
             if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                     eprintln!("[fz/z3] HIT (scheduler) {}", claim_name);
-                }
-                return Ok(result);
-            }
-        }
-        if functionize_on {
-            if let Some(result) = self.try_functionize(claim_name, schema, given) {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz] HIT (scheduler) {}", claim_name);
                 }
                 return Ok(result);
             }
@@ -3905,7 +3276,7 @@ impl EvidentRuntime {
 
         // Slow-path cache: if the function-izer already built a
         // CachedSchema and stored it (because it refused to produce
-        // a JIT/VM program), reuse it here instead of rebuilding
+        // a JIT program), reuse it here instead of rebuilding
         // the body. Each tick is push → assert pins/given → check
         // → extract model → pop. For Mario's display this cuts the
         // per-tick cost from ~14ms (fresh translation) to ~2-3ms
