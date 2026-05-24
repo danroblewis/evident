@@ -268,6 +268,37 @@ infinite self-loop. The rule for Phase 2 is:
 Equivalently: subtract the FSM's own write-set from the changed-set
 before intersecting with its read-set.
 
+**Passthrough resolution (the write-sets must be transitive)**:
+`subscriptions::world_access_sets` is deliberately *local* — it
+treats `..ClaimName` passthroughs as opaque. That's fine for an FSM
+whose `world.X` / `world_next.X` accesses sit in its own body, but an
+FSM that does its world I/O *through* a passthrough —
+
+```evident
+claim WritesScore
+    world, world_next ∈ World
+    world_next.score = world.score + 1
+
+fsm a(world, world_next ∈ World, state ∈ AS)
+    ..WritesScore        -- the actual write lives here
+```
+
+— would get an *empty* locally-inferred write-set. Two such writers
+of `score` then slip past the single-owner disjoint check (each
+"writes nothing"), AND the scheduler's per-writer `my_writes` scoping
+drops every `world_next.score` binding it produces, so the write
+silently never lands. Both the load-time disjoint check (in
+`effect_loop/mod.rs`) and the scheduler's per-FSM access sets (in
+`effect_loop/scheduler.rs`) therefore go through
+`effect_loop::fsm::full_world_access`, which unions
+`world_access_sets` over the FSM's body plus every `..Passthrough`
+claim it pulls in (cycle-guarded). `resolve_fsm` already recurses
+passthroughs to find the `world_next` *membership*; this closes the
+matching gap for the *field-level* sets the checks depend on.
+Regression coverage: `tests/lang_tests/multi_fsm/{22,23}_*` +
+`runtime/tests/multi_fsm.rs::{multiwriter_conflict_passthrough_rejected,
+passthrough_writer_takes_effect}`.
+
 ### Phase 2: World-delta scheduler
 
 Replace the unconditional per-FSM iteration with delta-driven

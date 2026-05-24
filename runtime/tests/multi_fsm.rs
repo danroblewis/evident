@@ -400,3 +400,70 @@ fn halt_cascade() {
     assert!(r.halted_clean, "program should halt cleanly when all FSMs halt");
     assert!(r.steps < 20, "should halt before max_steps, got {} steps", r.steps);
 }
+
+// ── Multi-writer single-owner enforcement ─────────────────────
+//
+// Two FSMs writing the SAME world field is a silent data race
+// (second write wins non-deterministically). The runtime rejects
+// it at load time. These tests pin both the direct form and the
+// `..Passthrough` form — the latter was previously undetected
+// because write-set inference treated passthroughs as opaque,
+// letting the conflict slip past the check AND making the
+// scheduler silently drop the writes (program hung). The fix:
+// `fsm::full_world_access` resolves passthroughs transitively.
+
+/// Like `run_program` but returns the loop Result instead of
+/// panicking, so a load-time rejection can be asserted on.
+fn try_run_program(path: &str, max_steps: usize) -> Result<effect_loop::LoopResult, String> {
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
+    rt.load_file(Path::new(path))
+        .unwrap_or_else(|e| panic!("failed to load {path}: {e}"));
+    let mut ctx = DispatchContext::with_streams(
+        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
+        Box::new(Vec::<u8>::new()),
+    );
+    effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps }, &mut ctx)
+}
+
+#[test]
+fn multiwriter_conflict_direct_rejected() {
+    let err = try_run_program(
+        "../tests/lang_tests/multi_fsm/21_multiwriter_conflict_direct.ev", 20)
+        .expect_err("two writers of `score` must be rejected at load");
+    assert!(err.contains("both write") && err.contains("score")
+            && err.contains("single-owner"),
+        "expected single-owner-rule rejection naming `score`; got: {err}");
+}
+
+#[test]
+fn multiwriter_conflict_passthrough_rejected() {
+    // Regression: both writers write `score` only inside a
+    // `..WritesScore` passthrough. Before the transitive write-set
+    // fix this was NOT caught (and the program hung). It must now
+    // be rejected exactly like the direct form.
+    let err = try_run_program(
+        "../tests/lang_tests/multi_fsm/22_multiwriter_conflict_passthrough.ev", 20)
+        .expect_err("passthrough writers of `score` must be rejected at load");
+    assert!(err.contains("both write") && err.contains("score")
+            && err.contains("single-owner"),
+        "expected single-owner-rule rejection naming `score`; got: {err}");
+}
+
+#[test]
+fn passthrough_writer_takes_effect() {
+    // Positive companion: a writer whose `world_next.count` write
+    // lives in a `..WritesCount` passthrough, observed by a reader.
+    // On tick 0 the writer sets count = 0 + 1 = 1; the reader sees
+    // it the same tick → "write took effect", Exit(0). Before the
+    // transitive write-set fix the scheduler dropped the passthrough
+    // write and the reader saw count = 0 → "write dropped", Exit(1).
+    let (out, r) = run_program(
+        "../tests/lang_tests/multi_fsm/23_passthrough_writer_ok.ev", 30);
+    assert!(out.lines().any(|l| l == "write took effect"),
+        "passthrough writer's world write must take effect; out:\n{}", out);
+    assert!(!out.lines().any(|l| l == "write dropped"),
+        "passthrough write was dropped (the bug); out:\n{}", out);
+    assert!(r.halted_clean, "should halt cleanly via Exit; got {r:?}");
+    assert_eq!(r.exit_code, Some(0));
+}

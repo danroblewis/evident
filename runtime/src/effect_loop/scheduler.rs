@@ -154,10 +154,14 @@ pub(super) fn run_scheduler(
     // (wake on read-set delta) and multi-writer snapshot scoping (each
     // writer's snapshot updates are limited to its own write-set so
     // disjoint writers don't clobber each other).
+    // Transitive (passthrough-resolving) access sets — see
+    // `fsm::full_world_access`. Using the local-only
+    // `world_access_sets` here would drop the writes of any FSM
+    // that writes world through a `..Passthrough` claim, since
+    // `my_writes` scoping below filters world_next bindings against
+    // this set.
     let mut access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
-        rt.get_schema(&fsm.claim_name)
-          .map(|s| crate::subscriptions::world_access_sets(s))
-          .unwrap_or_default()
+        super::fsm::full_world_access(rt, &fsm.claim_name)
     }).collect();
     // Per-FSM "world fields that changed since I was last scheduled."
     // When the FSM is scheduled, this is consumed (cleared). Writers
