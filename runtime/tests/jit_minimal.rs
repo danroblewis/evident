@@ -35,7 +35,7 @@ claim display
     for step in &program.steps {
         eprintln!("  {step:?}");
     }
-    let jit = compile_program(&program, enums).expect("compile");
+    let jit = compile_program(&program, enums, datatypes).expect("compile");
     eprintln!("jit compiled. outputs = {:?}", jit.output_offsets);
     let bindings = jit.call(&HashMap::new()).expect("call");
     eprintln!("result: {:?}", bindings);

@@ -22,10 +22,12 @@
 //! a `Z3Program` to native code; this module's job is only to
 //! produce the canonical program shape from Z3's simplified ASTs.
 
-use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Dynamic};
-use z3::{AstKind, Context, Goal, Tactic};
+use std::collections::{BTreeMap, HashMap};
+use z3::ast::{Array, Ast, Bool, Dynamic, Int};
+use z3::{AstKind, Context, Goal, Sort, Tactic};
 use z3_sys::DeclKind;
+
+use crate::core::{DatatypeRegistry, FieldKind};
 
 // Re-export the program shape so existing `crate::core::Z3Program`,
 // `Z3Step`, `GuardedBody`, `GuardedBranch` paths continue to resolve.
@@ -402,6 +404,352 @@ pub fn extract_program_partial<'ctx>(
         .collect();
     let program = extract_program_inner(&covered, scalar_assign, seq_assign, guarded_assign, checks, predicates)?;
     Some((program, missing))
+}
+
+// ── Record-element Seq recomposition ─────────────────────────────
+//
+// Z3's `simplify` tactic rewrites a whole-element record-constructor
+// pin `(= (select arr i) (mk_T …))` into per-field accessor pins:
+//
+//   (= (x (select pts 0)) (+ 1 base))          -- IVec2 leaf field
+//   (= (b (color (select rects 0))) 40)         -- nested record field
+//   (= (effs__len (select plat_effs 0)) 2)      -- Seq(T) field length
+//   (= (select (effs__arr (select plat_effs 0)) 0) eff0)  -- Seq(T) elem
+//
+// The bare-`(select arr idx)` matcher in `extract_program*` doesn't
+// recognize these, so every `Seq(Record)` output lands in `missing`.
+// `recompose_record_seqs` groups the accessor pins by element index,
+// rebuilds each element's constructor application from the record's
+// field shape (`DatatypeRegistry`), and appends a `Z3Step::Seq` so
+// the functionizer can emit a `Value::SeqComposite`.
+
+/// One pin LHS rooted at `(select var idx)`, classified by what it
+/// constrains. Paths are field-accessor names from the element
+/// outward, with Z3's `__arr` / `__len` suffixes stripped.
+enum PinKind {
+    /// Leaf primitive / nested-record field: `element.path = value`.
+    Scalar(Vec<String>),
+    /// `Seq(T)` field length: `#element.path = N`.
+    SeqLen(Vec<String>),
+    /// `Seq(T)` field element j: `element.path[j] = value`.
+    SeqElem(Vec<String>, i64),
+}
+
+#[derive(Default)]
+struct ElemPins {
+    scalars:   HashMap<Vec<String>, Dynamic<'static>>,
+    seq_lens:  HashMap<Vec<String>, i64>,
+    seq_elems: HashMap<Vec<String>, BTreeMap<i64, Dynamic<'static>>>,
+}
+
+enum RawSeg { Acc(String), Index(i64) }
+
+/// Peel a chain of `DT_ACCESSOR` / seq-element `SELECT` ops down to
+/// the base `(select var idx)`. Returns the base term plus the
+/// segments in element→outer order (with raw accessor names).
+fn peel_chain(term: &Dynamic<'static>, var: &str)
+    -> Option<(Dynamic<'static>, Vec<RawSeg>)>
+{
+    if term.kind() != AstKind::App { return None; }
+    let decl = term.safe_decl().ok()?;
+    match decl.kind() {
+        DeclKind::SELECT => {
+            let ch = term.children();
+            if ch.len() != 2 { return None; }
+            // Base: `(select <var> <idx>)`.
+            if ast_app_name(&ch[0]).as_deref() == Some(var) {
+                numeral_to_i64(&ch[1])?;  // ensure literal index
+                return Some((term.clone(), vec![]));
+            }
+            // Seq-element select: inner is an accessor chain ending in
+            // a `__arr` accessor; `ch[1]` is the element index.
+            let j = numeral_to_i64(&ch[1])?;
+            let (base, mut segs) = peel_chain(&ch[0], var)?;
+            segs.push(RawSeg::Index(j));
+            Some((base, segs))
+        }
+        DeclKind::DT_ACCESSOR => {
+            let ch = term.children();
+            if ch.len() != 1 { return None; }
+            let (base, mut segs) = peel_chain(&ch[0], var)?;
+            segs.push(RawSeg::Acc(decl.name()));
+            Some((base, segs))
+        }
+        _ => None,
+    }
+}
+
+/// Parse a pin LHS into `(base_select_term, element_idx, PinKind)`.
+fn parse_pin(term: &Dynamic<'static>, var: &str)
+    -> Option<(Dynamic<'static>, i64, PinKind)>
+{
+    let (base, segs) = peel_chain(term, var)?;
+    let idx = numeral_to_i64(&base.children()[1])?;
+    if segs.is_empty() { return None; }  // whole-element pin: not handled here
+    match segs.last()? {
+        RawSeg::Index(j) => {
+            let j = *j;
+            // Path = accessor names; the second-to-last is the
+            // `<field>__arr` accessor (strip the suffix).
+            let mut path = Vec::new();
+            let last_acc = segs.len() - 2;
+            for (k, s) in segs.iter().enumerate() {
+                if let RawSeg::Acc(name) = s {
+                    if k == last_acc {
+                        path.push(name.strip_suffix("__arr")?.to_string());
+                    } else {
+                        path.push(name.clone());
+                    }
+                }
+            }
+            Some((base, idx, PinKind::SeqElem(path, j)))
+        }
+        RawSeg::Acc(name) => {
+            if let Some(field) = name.strip_suffix("__len") {
+                let mut path: Vec<String> = segs[..segs.len() - 1].iter()
+                    .filter_map(|s| match s { RawSeg::Acc(n) => Some(n.clone()), _ => None })
+                    .collect();
+                path.push(field.to_string());
+                Some((base, idx, PinKind::SeqLen(path)))
+            } else if name.ends_with("__arr") {
+                None  // array accessor with no trailing index — unexpected
+            } else {
+                let path: Vec<String> = segs.iter()
+                    .filter_map(|s| match s { RawSeg::Acc(n) => Some(n.clone()), _ => None })
+                    .collect();
+                Some((base, idx, PinKind::Scalar(path)))
+            }
+        }
+    }
+}
+
+/// Is `v` a reference *into another structured output* — a `select`
+/// or datatype accessor — rather than a genuine value definition?
+/// One Z3 equality `(= (select phase_chain 2) (select (effs__arr …) 0))`
+/// links two outputs and parses from both sides; when rebuilding
+/// `plat_effs` we must take the side that *defines* its content (the
+/// per-draw effect var / constructor / literal), not the cross-link
+/// back into `phase_chain` — otherwise the two outputs cycle.
+fn is_crosslink(v: &Dynamic<'static>) -> bool {
+    if v.kind() != AstKind::App { return false; }
+    matches!(v.safe_decl().map(|d| d.kind()),
+        Ok(DeclKind::SELECT) | Ok(DeclKind::DT_ACCESSOR))
+}
+
+/// Insert `val` for `key`, preferring a non-cross-link value: replace
+/// an existing entry only when it's a cross-link and `val` isn't.
+fn prefer_insert<K: std::hash::Hash + Eq + Ord>(
+    map: &mut impl PinMap<K>, key: K, val: Dynamic<'static>,
+) {
+    let replace = match map.pin_get(&key) {
+        None => true,
+        Some(ex) => is_crosslink(ex) && !is_crosslink(&val),
+    };
+    if replace { map.pin_insert(key, val); }
+}
+
+/// Tiny abstraction so `prefer_insert` works over both the scalar
+/// `HashMap` and the per-Seq-field `BTreeMap`.
+trait PinMap<K> {
+    fn pin_get(&self, k: &K) -> Option<&Dynamic<'static>>;
+    fn pin_insert(&mut self, k: K, v: Dynamic<'static>);
+}
+impl PinMap<Vec<String>> for HashMap<Vec<String>, Dynamic<'static>> {
+    fn pin_get(&self, k: &Vec<String>) -> Option<&Dynamic<'static>> { self.get(k) }
+    fn pin_insert(&mut self, k: Vec<String>, v: Dynamic<'static>) { self.insert(k, v); }
+}
+impl PinMap<i64> for BTreeMap<i64, Dynamic<'static>> {
+    fn pin_get(&self, k: &i64) -> Option<&Dynamic<'static>> { self.get(k) }
+    fn pin_insert(&mut self, k: i64, v: Dynamic<'static>) { self.insert(k, v); }
+}
+
+/// Build the constructor application for one record value from its
+/// collected pins. `prefix` is the accessor path of this (possibly
+/// nested) record relative to the element root.
+fn build_record(
+    prefix: &[String],
+    fields: &[FieldKind],
+    dt: &z3::DatatypeSort<'static>,
+    pins: &ElemPins,
+    ctx: &'static Context,
+) -> Option<Dynamic<'static>> {
+    let mut args: Vec<Dynamic<'static>> = Vec::new();
+    for fk in fields {
+        let mut path = prefix.to_vec();
+        path.push(fk.name().to_string());
+        match fk {
+            FieldKind::Primitive { .. } => {
+                args.push(pins.scalars.get(&path)?.clone());
+            }
+            FieldKind::Nested { dt: ndt, sub_fields, .. } => {
+                args.push(build_record(&path, sub_fields, ndt, pins, ctx)?);
+            }
+            FieldKind::SeqField { .. } => {
+                // A Seq(T) field maps to two constructor args (the
+                // Array(Int→T) and the Int length).
+                let elems = pins.seq_elems.get(&path)?;
+                if elems.is_empty() { return None; }
+                let len = pins.seq_lens.get(&path).copied()
+                    .unwrap_or(elems.len() as i64);
+                let int_sort = Sort::int(ctx);
+                let default = elems.values().next()?;
+                let mut arr = Array::const_array(ctx, &int_sort, default);
+                for (&j, v) in elems {
+                    arr = arr.store(&Int::from_i64(ctx, j), v);
+                }
+                args.push(Dynamic::from_ast(&arr));
+                args.push(Dynamic::from_ast(&Int::from_i64(ctx, len)));
+            }
+        }
+    }
+    let arg_refs: Vec<&dyn Ast<'static>> =
+        args.iter().map(|a| a as &dyn Ast<'static>).collect();
+    Some(dt.variants.first()?.constructor.apply(&arg_refs))
+}
+
+/// Try to rebuild element constructor applications for one missing
+/// record-Seq output `var`. Returns the per-element `Dynamic`s, or
+/// `None` if the pins don't form a complete record-Seq (caller
+/// leaves `var` in `missing` and falls through to gap-fill / slow).
+fn try_recompose_one(
+    assertions: &[Bool<'static>],
+    var: &str,
+    datatypes: &DatatypeRegistry,
+    ctx: &'static Context,
+) -> Option<Vec<Dynamic<'static>>> {
+    let mut per_idx: HashMap<i64, ElemPins> = HashMap::new();
+    let mut base_term: Option<Dynamic<'static>> = None;
+    let mut max_idx: i64 = -1;
+
+    for a in assertions {
+        let Some((lhs, rhs)) = split_equality(a) else { continue };
+        let parsed = parse_pin(&lhs, var).map(|(b, i, k)| (b, i, k, rhs.clone()))
+            .or_else(|| parse_pin(&rhs, var).map(|(b, i, k)| (b, i, k, lhs.clone())));
+        let Some((base, idx, kind, value)) = parsed else { continue };
+        if base_term.is_none() { base_term = Some(base); }
+        if idx > max_idx { max_idx = idx; }
+        let e = per_idx.entry(idx).or_default();
+        match kind {
+            PinKind::Scalar(path) => { prefer_insert(&mut e.scalars, path, value); }
+            PinKind::SeqLen(path) => {
+                if let Some(n) = numeral_to_i64(&value) { e.seq_lens.insert(path, n); }
+            }
+            PinKind::SeqElem(path, j) => {
+                prefer_insert(e.seq_elems.entry(path).or_default(), j, value);
+            }
+        }
+    }
+
+    let base = base_term?;
+    if max_idx < 0 { return None; }
+    let n = max_idx + 1;
+
+    // Element type: the sort of `(select var idx)` is the element
+    // datatype; its name keys the DatatypeRegistry.
+    let sort_name = format!("{}", base.get_sort());
+    let dts = datatypes.borrow();
+    let (dt, fields) = dts.get(&sort_name)?;
+
+    let mut elems = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let pins = per_idx.get(&i)?;  // every element must be pinned
+        elems.push(build_record(&[], fields, dt, pins, ctx)?);
+    }
+    Some(elems)
+}
+
+/// Recompose `Seq(Record)` outputs that `extract_program*` left in
+/// `missing` into `Z3Step::Seq` steps, removing the recomposed names
+/// from `missing`. See the module note above for why this is needed.
+pub fn recompose_record_seqs(
+    assertions: &[Bool<'static>],
+    missing: &mut Vec<String>,
+    program: &mut Z3Program<'static>,
+    datatypes: &DatatypeRegistry,
+    ctx: &'static Context,
+) {
+    let targets: Vec<String> = missing.clone();
+    let mut added = false;
+    for var in targets {
+        if let Some(elem_exprs) = try_recompose_one(assertions, &var, datatypes, ctx) {
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                eprintln!("[fz/z3] recomposed record-Seq {var:?} \
+                          ({} elements)", elem_exprs.len());
+            }
+            program.steps.push(Z3Step::Seq { var: var.clone(), elem_exprs });
+            missing.retain(|m| m != &var);
+            added = true;
+        }
+    }
+    // The recomposed Seq steps were appended at the end, but other
+    // outputs (e.g. an `effects` / `phase_chain` Seq that indexes
+    // `plat_effs[i].effs[j]`) reference them, and the recomposed
+    // elements in turn reference earlier scalar outputs (the per-draw
+    // effect vars). Re-topo-sort the whole step list by name
+    // reference so each step follows the outputs it consumes.
+    if added {
+        let steps = std::mem::take(&mut program.steps);
+        program.steps = topo_sort_steps(steps);
+    }
+}
+
+/// The Z3 sub-expressions a step evaluates (for dependency analysis).
+fn step_exprs<'a>(step: &'a Z3Step<'static>) -> Vec<&'a Dynamic<'static>> {
+    match step {
+        Z3Step::Scalar { expr, .. } => vec![expr],
+        Z3Step::Seq { elem_exprs, .. } => elem_exprs.iter().collect(),
+        Z3Step::Guarded { branches, .. } => {
+            let mut v = Vec::new();
+            for b in branches {
+                v.push(&b.guard);
+                match &b.body {
+                    GuardedBody::Scalar(e) => v.push(e),
+                    GuardedBody::Seq(es)   => v.extend(es.iter()),
+                }
+            }
+            v
+        }
+        Z3Step::PreBaked { .. } => vec![],
+    }
+}
+
+/// Topologically order steps so each step follows every other step
+/// whose output variable it references. Kahn's algorithm; on a cycle
+/// (shouldn't happen for function-shaped bodies) the original order
+/// is preserved.
+fn topo_sort_steps(steps: Vec<Z3Step<'static>>) -> Vec<Z3Step<'static>> {
+    let n = steps.len();
+    let names: Vec<String> = steps.iter().map(|s| s.var().to_string()).collect();
+    let mut indeg = vec![0usize; n];
+    let mut succ: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for i in 0..n {
+        let exprs = step_exprs(&steps[i]);
+        for j in 0..n {
+            if i == j { continue; }
+            if exprs.iter().any(|e| mentions_name(e, &names[j])) {
+                succ[j].push(i);
+                indeg[i] += 1;
+            }
+        }
+    }
+    let mut ready: Vec<usize> = (0..n).filter(|&i| indeg[i] == 0).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    while let Some(i) = ready.pop() {
+        order.push(i);
+        for &j in &succ[i] {
+            indeg[j] -= 1;
+            if indeg[j] == 0 { ready.push(j); }
+        }
+    }
+    if order.len() != n {
+        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+            eprintln!("[fz/z3] topo_sort_steps: cycle ({}/{} ordered) — order unchanged",
+                order.len(), n);
+        }
+        return steps;  // cycle: leave as-is
+    }
+    let mut slots: Vec<Option<Z3Step<'static>>> = steps.into_iter().map(Some).collect();
+    order.into_iter().map(|i| slots[i].take().unwrap()).collect()
 }
 
 fn extract_program_inner<'ctx>(

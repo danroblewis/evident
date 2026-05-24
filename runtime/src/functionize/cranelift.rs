@@ -132,6 +132,14 @@ fn classify_seq(v: Value) -> Value {
         Some(Value::Str(_))   => Value::SeqStr(
             xs.into_iter().filter_map(|e|
                 if let Value::Str(s) = e { Some(s) } else { None }).collect()),
+        // Record-element Seq — each element is a Value::Composite the
+        // JIT built via ev_set_composite. Reclassify to SeqComposite
+        // so it matches the slow-path extractor's shape (extract.rs
+        // `extract_seq_composite`) and downstream consumers
+        // (effect_loop/collect.rs's Seq(Composite) handling).
+        Some(Value::Composite(_)) => Value::SeqComposite(
+            xs.into_iter().filter_map(|e|
+                if let Value::Composite(m) = e { Some(m) } else { None }).collect()),
         _ => Value::SeqEnum(xs),
     }
 }
@@ -147,8 +155,10 @@ struct HelperIds {
     set_enum_int:      FuncId,
     set_enum_str:      FuncId,
     set_enum_multifield: FuncId,
+    set_composite:     FuncId,
     seq_new:           FuncId,
     seq_push_clone:    FuncId,
+    seq_set:           FuncId,
     load_int:          FuncId,
     load_bool:         FuncId,
     extract_field:     FuncId,
@@ -169,8 +179,10 @@ struct HelperRefs {
     set_enum_int:      cranelift::codegen::ir::FuncRef,
     set_enum_str:      cranelift::codegen::ir::FuncRef,
     set_enum_multifield: cranelift::codegen::ir::FuncRef,
+    set_composite:     cranelift::codegen::ir::FuncRef,
     seq_new:           cranelift::codegen::ir::FuncRef,
     seq_push_clone:    cranelift::codegen::ir::FuncRef,
+    seq_set:           cranelift::codegen::ir::FuncRef,
     load_int:          cranelift::codegen::ir::FuncRef,
     load_bool:         cranelift::codegen::ir::FuncRef,
     extract_field:     cranelift::codegen::ir::FuncRef,
@@ -212,8 +224,10 @@ fn declare_helpers(
     let s_enum_int = mk(&[p, p, usz, p, usz, i64t], module);
     let s_enum_str = mk(&[p, p, usz, p, usz, p, usz], module);
     let s_enum_mf  = mk(&[p, p, usz, p, usz, p, usz], module);
+    let s_composite = mk(&[p, p, p, p, usz], module);
     let s_seq_new  = mk(&[p, usz], module);
     let s_seq_push = mk(&[p, p], module);
+    let s_seq_set  = mk(&[p, i64t, p], module);
     let s_load_int = mk_ret(&[p], i64t, module);
     let s_load_bool = mk_ret(&[p], i64t, module);
     let s_extract = mk(&[p, p, p, usz], module);
@@ -231,8 +245,10 @@ fn declare_helpers(
         set_enum_int:     module.declare_function("ev_set_enum_int",     Linkage::Import, &s_enum_int).ok()?,
         set_enum_str:     module.declare_function("ev_set_enum_str",     Linkage::Import, &s_enum_str).ok()?,
         set_enum_multifield: module.declare_function("ev_set_enum_multifield", Linkage::Import, &s_enum_mf).ok()?,
+        set_composite:    module.declare_function("ev_set_composite",    Linkage::Import, &s_composite).ok()?,
         seq_new:          module.declare_function("ev_seq_new",          Linkage::Import, &s_seq_new).ok()?,
         seq_push_clone:   module.declare_function("ev_seq_push_clone",   Linkage::Import, &s_seq_push).ok()?,
+        seq_set:          module.declare_function("ev_seq_set",          Linkage::Import, &s_seq_set).ok()?,
         load_int:         module.declare_function("ev_load_int",         Linkage::Import, &s_load_int).ok()?,
         load_bool:        module.declare_function("ev_load_bool",        Linkage::Import, &s_load_bool).ok()?,
         extract_field:    module.declare_function("ev_extract_field",    Linkage::Import, &s_extract).ok()?,
@@ -257,8 +273,10 @@ fn import_helpers(
         set_enum_int:     module.declare_func_in_func(ids.set_enum_int,     func),
         set_enum_str:     module.declare_func_in_func(ids.set_enum_str,     func),
         set_enum_multifield: module.declare_func_in_func(ids.set_enum_multifield, func),
+        set_composite:    module.declare_func_in_func(ids.set_composite,    func),
         seq_new:          module.declare_func_in_func(ids.seq_new,          func),
         seq_push_clone:   module.declare_func_in_func(ids.seq_push_clone,   func),
+        seq_set:          module.declare_func_in_func(ids.seq_set,          func),
         load_int:         module.declare_func_in_func(ids.load_int,         func),
         load_bool:        module.declare_func_in_func(ids.load_bool,        func),
         extract_field:    module.declare_func_in_func(ids.extract_field,    func),
@@ -272,7 +290,20 @@ fn import_helpers(
 pub fn compile_program<'ctx>(
     program: &Z3Program<'ctx>,
     enums: &EnumRegistry,
+    datatypes: &crate::core::DatatypeRegistry,
 ) -> Option<JitProgram> {
+    // Record (user-type) info, keyed by Z3 constructor name (e.g.
+    // "mk_IVec2", "mk_EffectPair"). Records aren't in `enums`; their
+    // constructor name + field shape (`FieldKind`) come from the
+    // DatatypeRegistry. Used by the DT_CONSTRUCTOR codegen path to
+    // build `Value::Composite` (vs `Value::Enum` for true enums).
+    let record_info: HashMap<String, Vec<crate::core::FieldKind>> = {
+        let dts = datatypes.borrow();
+        dts.iter().filter_map(|(_type_name, (dt, fields))| {
+            let ctor = dt.variants.first()?.constructor.name();
+            Some((ctor, fields.clone()))
+        }).collect()
+    };
     // ── Phase 1: enum tables ──────────────────────────────
     let mut enum_tags: HashMap<String, HashMap<String, i64>> = HashMap::new();
     let mut enum_variants: HashMap<String, Vec<String>> = HashMap::new();
@@ -427,7 +458,7 @@ pub fn compile_program<'ctx>(
             match step {
                 Z3Step::Scalar { var, expr } => {
                     if emit_write_value(&mut bcx, expr, out_slot, &env,
-                        &helpers, &variant_arity, &mut string_pool,
+                        &helpers, &variant_arity, &record_info, &mut string_pool,
                         ptr_t, size_of_value).is_none() {
                         if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
                             eprintln!("[jit] bail: Scalar {var} = {expr}");
@@ -451,7 +482,7 @@ pub fn compile_program<'ctx>(
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                     for (ei, elem) in elem_exprs.iter().enumerate() {
                         if emit_write_value(&mut bcx, elem, temp_ptr, &env,
-                            &helpers, &variant_arity, &mut string_pool,
+                            &helpers, &variant_arity, &record_info, &mut string_pool,
                             ptr_t, size_of_value).is_none() {
                             if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
                                 eprintln!("[jit] bail: Seq {var}[{ei}] = {elem}");
@@ -476,7 +507,7 @@ pub fn compile_program<'ctx>(
                         let body_block = bcx.create_block();
                         let next_block = bcx.create_block();
                         let cond_v = match emit_compute_i64(&mut bcx, &branch.guard, &env,
-                            &helpers, &variant_arity, &mut string_pool, ptr_t, size_of_value)
+                            &helpers, &variant_arity, &record_info, &mut string_pool, ptr_t, size_of_value)
                         {
                             Some(v) => v,
                             None => {
@@ -492,7 +523,7 @@ pub fn compile_program<'ctx>(
                         match &branch.body {
                             GuardedBody::Scalar(e) => {
                                 if emit_write_value(&mut bcx, e, out_slot, &env,
-                                    &helpers, &variant_arity, &mut string_pool,
+                                    &helpers, &variant_arity, &record_info, &mut string_pool,
                                     ptr_t, size_of_value).is_none()
                                 {
                                     if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
@@ -511,7 +542,7 @@ pub fn compile_program<'ctx>(
                                 bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                                 for e in es {
                                     if emit_write_value(&mut bcx, e, temp_ptr, &env,
-                                        &helpers, &variant_arity, &mut string_pool,
+                                        &helpers, &variant_arity, &record_info, &mut string_pool,
                                         ptr_t, size_of_value).is_none()
                                     {
                                         if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
@@ -596,6 +627,7 @@ fn emit_write_value<'ctx>(
     env: &HashMap<String, ClValue>,
     helpers: &HelperRefs,
     variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    record_info: &HashMap<String, Vec<crate::core::FieldKind>>,
     string_pool: &mut Vec<Box<str>>,
     ptr_t: cranelift::prelude::Type,
     size_of_value: i64,
@@ -665,7 +697,7 @@ fn emit_write_value<'ctx>(
                         let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                         bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                         emit_write_value(bcx, &children[0], temp_ptr, env,
-                            helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                            helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                         let (np, nl) = intern_str(string_pool, &logical);
                         let np_v = bcx.ins().iconst(types::I64, np);
                         let nl_v = bcx.ins().iconst(types::I64, nl);
@@ -693,7 +725,7 @@ fn emit_write_value<'ctx>(
                     let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                     emit_write_value(bcx, &children[0], temp_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (np, nl) = intern_str(string_pool, &accessor_name);
                     let np_v = bcx.ins().iconst(types::I64, np);
                     let nl_v = bcx.ins().iconst(types::I64, nl);
@@ -715,7 +747,7 @@ fn emit_write_value<'ctx>(
                     let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                     emit_write_value(bcx, &children[0], temp_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (vp, vl) = intern_str(string_pool, &variant);
                     let vp_v = bcx.ins().iconst(types::I64, vp);
                     let vl_v = bcx.ins().iconst(types::I64, vl);
@@ -723,6 +755,40 @@ fn emit_write_value<'ctx>(
                         &[temp_ptr, vp_v, vl_v]);
                     let r = bcx.inst_results(call)[0];
                     bcx.ins().call(helpers.set_bool, &[out_slot, r]);
+                    Some(())
+                }
+                DeclKind::CONST_ARRAY => {
+                    // `(const-array <default>)` — the base of a Z3
+                    // array store-chain. We materialize Seq-typed
+                    // record fields as a `SeqEnum`, starting empty;
+                    // the wrapping STORE chain fills exactly the
+                    // indices `0..len`, so the const default (which
+                    // would notionally fill all indices) is unused.
+                    let cap = bcx.ins().iconst(types::I64, 0);
+                    bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
+                    Some(())
+                }
+                DeclKind::STORE => {
+                    // `(store <arr> <idx> <val>)` — materialize the
+                    // inner array into out_slot (a SeqEnum), then set
+                    // element `idx` to `val`. Walking the chain
+                    // inner-to-outer (innermost store = lowest index)
+                    // builds the Seq(T)-valued field of a record.
+                    if children.len() != 3 { return None; }
+                    emit_write_value(bcx, &children[0], out_slot, env,
+                        helpers, variant_arity, record_info, string_pool,
+                        ptr_t, size_of_value)?;
+                    let idx_v = emit_compute_i64(bcx, &children[1], env, helpers,
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
+                    let temp = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           size_of_value as u32));
+                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+                    emit_write_value(bcx, &children[2], temp_ptr, env,
+                        helpers, variant_arity, record_info, string_pool,
+                        ptr_t, size_of_value)?;
+                    bcx.ins().call(helpers.seq_set, &[out_slot, idx_v, temp_ptr]);
                     Some(())
                 }
                 DeclKind::SELECT => {
@@ -738,7 +804,7 @@ fn emit_write_value<'ctx>(
                     let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                     if emit_write_value(bcx, &children[0], temp_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value).is_none()
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value).is_none()
                     {
                         if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
                             eprintln!("[jit] SELECT arr bail: {}", &children[0]);
@@ -746,7 +812,7 @@ fn emit_write_value<'ctx>(
                         return None;
                     }
                     let idx_v = match emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)
                     {
                         Some(v) => v,
                         None => {
@@ -762,6 +828,18 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::DT_CONSTRUCTOR => {
                     let variant = decl.name();
+                    // Record (user-type) constructor → build a
+                    // Value::Composite{field → value} rather than a
+                    // Value::Enum. Records aren't in the enum
+                    // `variant_arity`; they're keyed in `record_info`
+                    // by their Z3 ctor name (e.g. "mk_IVec2"). A
+                    // Seq(Record) of these becomes Value::SeqComposite
+                    // after classify_seq.
+                    if let Some(fields) = record_info.get(&variant) {
+                        return emit_write_record(bcx, &children, fields, out_slot,
+                            env, helpers, variant_arity, record_info,
+                            string_pool, ptr_t, size_of_value);
+                    }
                     // Check Cons-chain pattern at this level — handled
                     // by the caller's Seq build, not here.
                     let (enum_name, field_types) = lookup_variant(&variant, variant_arity)?;
@@ -833,7 +911,7 @@ fn emit_write_value<'ctx>(
                     // Recursively emit each field.
                     for (i, child) in children.iter().enumerate() {
                         emit_write_value(bcx, child, arg_slots[i], env,
-                            helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                            helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     }
                     // Build the pointer array on the stack.
                     let array_slot = bcx.create_sized_stack_slot(
@@ -853,7 +931,7 @@ fn emit_write_value<'ctx>(
                     // ITE: cond is Bool, then/else are Value.
                     if children.len() != 3 { return None; }
                     let cond_v = emit_compute_i64(bcx, &children[0], env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let then_block = bcx.create_block();
                     let else_block = bcx.create_block();
                     let merge_block = bcx.create_block();
@@ -861,12 +939,12 @@ fn emit_write_value<'ctx>(
                     bcx.switch_to_block(then_block);
                     bcx.seal_block(then_block);
                     emit_write_value(bcx, &children[1], out_slot, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().jump(merge_block, &[]);
                     bcx.switch_to_block(else_block);
                     bcx.seal_block(else_block);
                     emit_write_value(bcx, &children[2], out_slot, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().jump(merge_block, &[]);
                     bcx.switch_to_block(merge_block);
                     bcx.seal_block(merge_block);
@@ -875,7 +953,7 @@ fn emit_write_value<'ctx>(
                 DeclKind::ADD | DeclKind::SUB | DeclKind::MUL | DeclKind::UMINUS => {
                     // Int arithmetic → set_int with computed i64.
                     let v = emit_compute_i64(bcx, expr, env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_int, &[out_slot, v]);
                     Some(())
                 }
@@ -883,7 +961,7 @@ fn emit_write_value<'ctx>(
                 | DeclKind::EQ | DeclKind::AND | DeclKind::OR | DeclKind::NOT => {
                     // Bool ops → set_bool with computed i64 (0/1).
                     let v = emit_compute_i64(bcx, expr, env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_bool, &[out_slot, v]);
                     Some(())
                 }
@@ -892,6 +970,93 @@ fn emit_write_value<'ctx>(
         }
         _ => None,
     }
+}
+
+/// Emit IR that writes a `Value::Composite{field → value}` for a
+/// record (user-type) constructor application into `out_slot`.
+///
+/// `children` are the Z3 constructor args (one per accessor, in
+/// declaration order); `fields` is the record's `FieldKind` list
+/// (same order). A `Primitive`/`Nested` field consumes one arg; a
+/// `SeqField` consumes two (the `Array(Int→T)` and its `Int` length,
+/// collapsed into one `SeqEnum` field — the length arg is implicit
+/// in the materialized Vec, so it's skipped). Nested record fields
+/// recurse back through `emit_write_value` (their arg is itself a
+/// record constructor).
+#[allow(clippy::too_many_arguments)]
+fn emit_write_record<'ctx>(
+    bcx: &mut FunctionBuilder,
+    children: &[Dynamic<'ctx>],
+    fields: &[crate::core::FieldKind],
+    out_slot: ClValue,
+    env: &HashMap<String, ClValue>,
+    helpers: &HelperRefs,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    record_info: &HashMap<String, Vec<crate::core::FieldKind>>,
+    string_pool: &mut Vec<Box<str>>,
+    ptr_t: cranelift::prelude::Type,
+    size_of_value: i64,
+) -> Option<()> {
+    use crate::core::FieldKind;
+    let n = fields.len();
+    // One value slot per logical field.
+    let val_slots: Vec<ClValue> = (0..n).map(|_| {
+        let s = bcx.create_sized_stack_slot(
+            StackSlotData::new(StackSlotKind::ExplicitSlot, size_of_value as u32));
+        let p = bcx.ins().stack_addr(ptr_t, s, 0);
+        bcx.ins().call(helpers.init_slot, &[p]);
+        p
+    }).collect();
+
+    let mut name_pl: Vec<(i64, i64)> = Vec::with_capacity(n);
+    let mut arg_idx = 0usize;
+    for (fi, fk) in fields.iter().enumerate() {
+        name_pl.push(intern_str(string_pool, fk.name()));
+        match fk {
+            // Seq(T) field: ctor arg `arg_idx` is the Array(Int→T),
+            // `arg_idx + 1` is the Int length. The array arg is a Z3
+            // const-array/store chain that the CONST_ARRAY/STORE
+            // handlers materialize into a SeqEnum.
+            FieldKind::SeqField { .. } => {
+                let arr_child = children.get(arg_idx)?;
+                emit_write_value(bcx, arr_child, val_slots[fi], env,
+                    helpers, variant_arity, record_info, string_pool,
+                    ptr_t, size_of_value)?;
+                arg_idx += 2;
+            }
+            // Primitive leaf or nested record: one ctor arg.
+            _ => {
+                let child = children.get(arg_idx)?;
+                emit_write_value(bcx, child, val_slots[fi], env,
+                    helpers, variant_arity, record_info, string_pool,
+                    ptr_t, size_of_value)?;
+                arg_idx += 1;
+            }
+        }
+    }
+
+    // Parallel stack arrays: field-name ptrs, field-name lens, value ptrs.
+    let mk_arr = |bcx: &mut FunctionBuilder| {
+        let slot = bcx.create_sized_stack_slot(
+            StackSlotData::new(StackSlotKind::ExplicitSlot, (n.max(1) as u32) * 8));
+        bcx.ins().stack_addr(ptr_t, slot, 0)
+    };
+    let name_ptr_base = mk_arr(bcx);
+    let name_len_base = mk_arr(bcx);
+    let val_ptr_base  = mk_arr(bcx);
+    for (i, (p, l)) in name_pl.iter().enumerate() {
+        let pv = bcx.ins().iconst(types::I64, *p);
+        bcx.ins().store(MemFlags::new(), pv, name_ptr_base, (i as i32) * 8);
+        let lv = bcx.ins().iconst(types::I64, *l);
+        bcx.ins().store(MemFlags::new(), lv, name_len_base, (i as i32) * 8);
+    }
+    for (i, &s) in val_slots.iter().enumerate() {
+        bcx.ins().store(MemFlags::new(), s, val_ptr_base, (i as i32) * 8);
+    }
+    let n_v = bcx.ins().iconst(types::I64, n as i64);
+    bcx.ins().call(helpers.set_composite,
+        &[out_slot, name_ptr_base, name_len_base, val_ptr_base, n_v]);
+    Some(())
 }
 
 /// Emit IR that computes an i64 value from `expr`. Used for Int
@@ -903,6 +1068,7 @@ fn emit_compute_i64<'ctx>(
     env: &HashMap<String, ClValue>,
     helpers: &HelperRefs,
     variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    record_info: &HashMap<String, Vec<crate::core::FieldKind>>,
     string_pool: &mut Vec<Box<str>>,
     ptr_t: cranelift::prelude::Type,
     size_of_value: i64,
@@ -939,10 +1105,10 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::ADD | DeclKind::SUB | DeclKind::MUL => {
                     if children.is_empty() { return None; }
                     let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     for c in &children[1..] {
                         let v = emit_compute_i64(bcx, c, env, helpers,
-                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                            variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                         acc = match kind {
                             DeclKind::ADD => bcx.ins().iadd(acc, v),
                             DeclKind::SUB => bcx.ins().isub(acc, v),
@@ -955,23 +1121,23 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::UMINUS => {
                     if children.len() != 1 { return None; }
                     let v = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     Some(bcx.ins().ineg(v))
                 }
                 DeclKind::IDIV | DeclKind::DIV => {
                     if children.len() != 2 { return None; }
                     let l = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let r = emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     Some(bcx.ins().sdiv(l, r))
                 }
                 DeclKind::MOD | DeclKind::REM => {
                     if children.len() != 2 { return None; }
                     let l = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let r = emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     Some(bcx.ins().srem(l, r))
                 }
                 DeclKind::LT | DeclKind::LE | DeclKind::GT | DeclKind::GE
@@ -1008,7 +1174,7 @@ fn emit_compute_i64<'ctx>(
                             let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                             bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                             emit_write_value(bcx, &children[0], temp_ptr, env,
-                                helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                                helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                             let (vp, vl) = intern_str(string_pool, &variant);
                             let vp_v = bcx.ins().iconst(types::I64, vp);
                             let vl_v = bcx.ins().iconst(types::I64, vl);
@@ -1024,7 +1190,7 @@ fn emit_compute_i64<'ctx>(
                             let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                             bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                             emit_write_value(bcx, &children[1], temp_ptr, env,
-                                helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                                helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                             let (vp, vl) = intern_str(string_pool, &variant);
                             let vp_v = bcx.ins().iconst(types::I64, vp);
                             let vl_v = bcx.ins().iconst(types::I64, vl);
@@ -1034,9 +1200,9 @@ fn emit_compute_i64<'ctx>(
                         }
                     }
                     let l = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let r = emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     use cranelift::prelude::IntCC;
                     let cc = match kind {
                         DeclKind::LT => IntCC::SignedLessThan,
@@ -1053,10 +1219,10 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::AND => {
                     if children.is_empty() { return Some(bcx.ins().iconst(types::I64, 1)); }
                     let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     for c in &children[1..] {
                         let v = emit_compute_i64(bcx, c, env, helpers,
-                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                            variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                         acc = bcx.ins().band(acc, v);
                     }
                     Some(acc)
@@ -1064,10 +1230,10 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::OR => {
                     if children.is_empty() { return Some(bcx.ins().iconst(types::I64, 0)); }
                     let mut acc = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     for c in &children[1..] {
                         let v = emit_compute_i64(bcx, c, env, helpers,
-                            variant_arity, string_pool, ptr_t, size_of_value)?;
+                            variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                         acc = bcx.ins().bor(acc, v);
                     }
                     Some(acc)
@@ -1075,18 +1241,18 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::NOT => {
                     if children.len() != 1 { return None; }
                     let v = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let one = bcx.ins().iconst(types::I64, 1);
                     Some(bcx.ins().bxor(v, one))
                 }
                 DeclKind::ITE => {
                     if children.len() != 3 { return None; }
                     let cond = emit_compute_i64(bcx, &children[0], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let t = emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let e = emit_compute_i64(bcx, &children[2], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     Some(bcx.ins().select(cond, t, e))
                 }
                 DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
@@ -1101,7 +1267,7 @@ fn emit_compute_i64<'ctx>(
                     let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
                     emit_write_value(bcx, &children[0], temp_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (vp, vl) = intern_str(string_pool, &variant);
                     let vp_v = bcx.ins().iconst(types::I64, vp);
                     let vl_v = bcx.ins().iconst(types::I64, vl);
@@ -1125,7 +1291,7 @@ fn emit_compute_i64<'ctx>(
                     let inner_ptr = bcx.ins().stack_addr(ptr_t, inner_temp, 0);
                     bcx.ins().call(helpers.init_slot, &[inner_ptr]);
                     emit_write_value(bcx, &children[0], inner_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let field_temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1150,9 +1316,9 @@ fn emit_compute_i64<'ctx>(
                     let arr_ptr = bcx.ins().stack_addr(ptr_t, arr_temp, 0);
                     bcx.ins().call(helpers.init_slot, &[arr_ptr]);
                     emit_write_value(bcx, &children[0], arr_ptr, env,
-                        helpers, variant_arity, string_pool, ptr_t, size_of_value)?;
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let idx_v = emit_compute_i64(bcx, &children[1], env, helpers,
-                        variant_arity, string_pool, ptr_t, size_of_value)?;
+                        variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let elem_temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1247,11 +1413,12 @@ impl super::Functionizer for CraneliftFunctionizer {
     fn name(&self) -> &'static str { "cranelift" }
 
     fn compile(&self,
-               program: &Z3Program,
-               enums:   &EnumRegistry)
+               program:   &Z3Program,
+               enums:     &EnumRegistry,
+               datatypes: &crate::core::DatatypeRegistry)
         -> Option<std::rc::Rc<dyn super::CompiledFunction>>
     {
-        let jit = compile_program(program, enums)?;
+        let jit = compile_program(program, enums, datatypes)?;
         Some(std::rc::Rc::new(jit))
     }
 }

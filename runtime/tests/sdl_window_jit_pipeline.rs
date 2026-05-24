@@ -231,7 +231,7 @@ fn stage_4_compile_program_soft_check() {
     let program = extract_program(&result.formulas, &outputs)
         .expect("extract_program should succeed");
 
-    match compile_program(&program, enums) {
+    match compile_program(&program, enums, datatypes) {
         Some(_jit) => eprintln!(
             "JIT codegen succeeded for SDL display FSM — \
              flip stage_5_jit_call_opens_window to non-ignored."),
@@ -295,7 +295,7 @@ fn stage_5_jit_call_opens_window() {
     let program = extract_program(&result.formulas, &outputs)
         .expect("extract_program should succeed");
 
-    let jit = compile_program(&program, enums)
+    let jit = compile_program(&program, enums, datatypes)
         .expect("JIT compile_program must return Some for the success path");
 
     // Initial env: state = Render. The JIT-emitted function reads

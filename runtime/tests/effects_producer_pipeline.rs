@@ -244,7 +244,7 @@ fn stage_4_jit_compiles_effects_producer() {
     ];
     let program = extract_program(&result.formulas, &outputs).expect("extract");
 
-    let jit = compile_program(&program, enums);
+    let jit = compile_program(&program, enums, datatypes);
     let jit = jit.expect("Round 26: JIT should compile Seq output + payload-bearing constructors");
     let env: HashMap<String, Value> = HashMap::new();
     let bindings = jit.call(&env).expect("jit call");

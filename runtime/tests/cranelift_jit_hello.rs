@@ -43,7 +43,7 @@ claim hello
     eprintln!("program has {} steps, {} predicates", program.steps.len(), program.predicates.len());
 
     // Compile to native.
-    let jit = compile_program(&program, enums).expect("compile_program");
+    let jit = compile_program(&program, enums, datatypes).expect("compile_program");
     eprintln!("inputs: {:?}", jit.input_offsets.keys().collect::<Vec<_>>());
     eprintln!("outputs: {:?}", jit.output_offsets.keys().collect::<Vec<_>>());
 
