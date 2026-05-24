@@ -26,6 +26,18 @@ cranelift          = "0.103"
 cranelift-jit      = "0.103"
 cranelift-module   = "0.103"
 cranelift-native   = "0.103"
+# LLM functionizer (opt-in, `functionize/llm.rs`): sync HTTP client +
+# JSON for the Anthropic Messages API. Only the AnthropicGenerator
+# code path touches the network, and only when ANTHROPIC_API_KEY is
+# set; the default Cranelift functionizer never reaches these.
+ureq       = { version = "2", features = ["json"] }
+serde_json = "1"
+
+[dev-dependencies]
+# Integration tests for the LLM functionizer hand-build a Z3Program
+# to exercise `Functionizer::compile` directly. Same z3 version as
+# the lib so the `Dynamic`/`Context` types unify.
+z3 = "0.12"
 
 [lib]
 name = "evident_runtime"
