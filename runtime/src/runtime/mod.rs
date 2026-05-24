@@ -131,6 +131,16 @@ pub struct EvidentRuntime {
     /// rebuilding the body assertions from AST every call.
     pub(super) slow_path_cache: RefCell<HashMap<(String, Vec<String>),
                                      std::rc::Rc<crate::core::CachedSchema<'static>>>>,
+    /// Cross-tick value cache: per claim, a bounded map from
+    /// `hash(given-values)` to the bindings `try_functionize_z3`
+    /// produced for those exact inputs. Where `fn_cache` is keyed on
+    /// the given KEYS (the compiled plan is generic over input values),
+    /// this is keyed on the given VALUES — so an FSM fed byte-identical
+    /// inputs across ticks (an idle Mario player) skips the
+    /// compiled-function call entirely and returns the prior result.
+    /// Cleared on reload alongside the other caches. See
+    /// `query::ClaimValueCache`.
+    pub(super) value_cache: RefCell<HashMap<String, query::ClaimValueCache>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
@@ -208,6 +218,7 @@ impl EvidentRuntime {
             functionizer,
             fn_cache: RefCell::new(HashMap::new()),
             slow_path_cache: RefCell::new(HashMap::new()),
+            value_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
