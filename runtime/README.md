@@ -153,14 +153,13 @@ each imports `core::Value` and nothing else interesting. `commands/` is
 similar: each file is a CLI subcommand calling `EvidentRuntime` and
 `effect_loop`. For those, the directory IS the right unit.
 
-#### `effect_loop/` — two drivers + shared substrate
+#### `effect_loop/` — scheduler + shared substrate
 
 ```mermaid
 graph TD
     modrs[mod.rs<br/>run · run_with_ctx<br/>LoopOpts · LoopResult · LoopEnv]
 
-    single[single_fsm.rs<br/>single-FSM driver]
-    multi[multi_fsm.rs<br/>multi-FSM driver]
+    sched[scheduler.rs<br/>subscription-driven tick loop<br/>run_scheduler]
 
     collect[collect.rs<br/>collect_dispatchable_effects]
     fsm[fsm.rs<br/>MainShape · detect/resolve FSMs]
@@ -170,27 +169,21 @@ graph TD
     toposort[toposort.rs<br/>Kahn + randomized tiebreak]
     seqchains[seq_chains.rs<br/>body Seq·Effect edge extraction]
 
-    modrs --> single
-    modrs --> multi
+    modrs --> sched
 
-    single --> collect
-    single --> fsm
-    single --> state
-    single --> timing
-
-    multi --> collect
-    multi --> fsm
-    multi --> state
-    multi --> timing
+    sched --> collect
+    sched --> fsm
+    sched --> state
+    sched --> timing
 
     state --> fsm
     collect --> toposort
     collect --> seqchains
 ```
 
-The two driver files (`single_fsm`, `multi_fsm`) are alternates selected
-at runtime via `EVIDENT_SCHEDULER`. Both consume the same substrate
-(collect, fsm, state, timing). `collect` has its own sub-substrate
+`scheduler.rs` is the single tick loop — it handles any N ≥ 1 FSMs
+under one subscription-driven model. It consumes a substrate of
+collect, fsm, state, and timing. `collect` has its own sub-substrate
 (toposort, seq_chains) — effect ordering is a sub-problem with its own
 internal modules.
 
@@ -396,7 +389,6 @@ intermediate fallback layers.
 | `EVIDENT_TACTICS=…`            | Override Z3 tactic chain (`solve-eqs`, `simplify`, `standard`, `aggressive`, …) |
 | `EVIDENT_Z3_ARITH_SOLVER=N`    | Force `smt.arith.solver=N` (skips autotuner) |
 | `EVIDENT_Z3_AUTOTUNE=0`        | Disable per-claim autotuner pricing |
-| `EVIDENT_SCHEDULER=legacy`     | Use the pre-subscription "tick every FSM" scheduler |
 | `EVIDENT_TICK_MS=N`            | FrameTimer rate (multi-FSM scheduler wake interval) |
 | `EVIDENT_JIT_TRACE=1`          | Per-AST-node trace from the Cranelift codegen |
 | `EVIDENT_JIT_CALL_TRACE=1`     | Print every JIT call result |

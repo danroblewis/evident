@@ -273,8 +273,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 |---|---|
 | Change how FSMs are discovered | `effect_loop/fsm.rs` |
 | Change effect ordering / toposort | `effect_loop/toposort.rs`, `collect.rs` |
-| Touch the per-tick multi-FSM scheduler loop | `effect_loop/multi_fsm.rs` |
-| Touch the single-FSM legacy scheduler | `effect_loop/single_fsm.rs` |
+| Touch the per-tick scheduler loop | `effect_loop/scheduler.rs` |
 | Adjust halt detection or state seeding | `effect_loop/state.rs` |
 | Change timing output | `effect_loop/timing.rs` |
 
@@ -328,9 +327,6 @@ dispatch context. The runtime dispatches all of the current tick's
 effects first (so co-scheduled FSMs' cleanup writes / final logs run),
 then halts at end-of-tick with the requested code. `LoopResult::exit_code`
 propagates to the CLI as the process exit code.
-
-**Opt out** with `EVIDENT_SCHEDULER=legacy` for the older "tick every FSM
-every iteration" behavior with name/fixpoint halt.
 
 **Async event sources.** When no FSM is ready to tick (all subscriptions
 silent), the scheduler blocks on a channel of `SchedulerEvent`s instead
