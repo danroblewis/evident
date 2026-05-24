@@ -287,6 +287,24 @@ fn import_helpers(
     }
 }
 
+// NOTE (session I): the un-JIT'd Mario components (display 64/66, etc.)
+// are NOT codegen-shape gaps — the codegen here handles every shape they
+// use (incl. nested SELECT-through-record-Seq-field). They are correctly
+// routed to the scoped slow solve *upstream* of this function, for reasons
+// that cannot be fixed inside `functionize/`:
+//   * A component may reference an intermediate var (e.g. Mario's
+//     `draw_rect__color_eff__callN` libcall) whose *defining* assertion
+//     touches no claim output, so `decompose_simplified` files it as a
+//     GLOBAL assertion handed to the slow part — `compile_program` never
+//     sees it. Forcing such a component to compile reads that var as an
+//     absent input (`Value::Int(0)`), silently dropping draws. The fix is
+//     in `runtime/runtime/query.rs` (carry a component's intermediate
+//     globals into its extracted program).
+//   * Content-free crosslink cycles (`phase_chain[k] == hud_effs[i].effs[j]`
+//     with the HUD's ground draws dropped in translation) have no value to
+//     compute; the topo-bail in `z3_eval` correctly sends them to the slow
+//     solve. The fix is in `translate/` (don't drop the `world.lives` read).
+// See examples/COUNTEREXAMPLES.md #12 for the full investigation.
 pub fn compile_program<'ctx>(
     program: &Z3Program<'ctx>,
     enums: &EnumRegistry,
