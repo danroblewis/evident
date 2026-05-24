@@ -261,6 +261,73 @@ multi-writer enforcement work (single-owner check now resolves
 `..Passthrough` write-sets transitively — `effect_loop/fsm.rs:
 full_world_access`) was the durable win from that session instead.
 
+## 12. Mario's remaining un-JIT'd components are not Cranelift codegen gaps
+
+**Where:** `examples/test_21_mario/main.ev` (investigated May 2026,
+session I)
+
+After per-component JIT (session B), Mario sits at **144/150
+components compiled** (display 64/66, game 60/63, keyboard 19/20).
+The natural read — "6 Z3Step shapes the Cranelift codegen refuses" —
+is wrong. Tracing every component that reaches `compile_program`
+(via a `[jit/compile] START` step-count probe) shows the **largest
+program reaching codegen is 24 steps**; the 88-step `game` transition
+never arrives. So only ONE gap component is a codegen question, and
+it is not a *shape* gap:
+
+**display `phase_chain` (the 24-step component).** `phase_chain` is
+the flat `Seq(Effect)` assembling the frame's ~70 draw effects. Its
+elements index record-Seqs: `(select (effs__arr (select plat_effs 0))
+0)` = `plat_effs[0].effs[0]`. The nested-SELECT codegen *itself works*
+(traceable through `emit_write_value`'s SELECT → DT_ACCESSOR → SELECT
+when the base is in env). Two real blockers, both upstream of
+codegen:
+
+1. **A topo cycle from content-free crosslinks.** `extract` +
+   `recompose_record_seqs` leave `phase_chain` ordered before its
+   dependencies. The `∀ i ∈ {0..N}` HUD seqs (`hud_effs`,
+   `coin_hud_effs`) have NO ground value in the simplified body — only
+   a length pin and the equality `phase_chain[k] == hud_effs[i].effs[j]`.
+   `try_recompose_one` matches that equality from the `hud_effs` side
+   too, giving `hud_effs[i].effs[j] := (select phase_chain k)` — a
+   back-edge → a 2-cycle that `topo_sort_steps` can't order, so it
+   leaves `phase_chain` first and the SELECT codegen bails ("var not
+   in env"). The HUD's ground (`world.lives > i ? red : grey` draws)
+   is absent because the display body has **no `world.lives` /
+   `coin_count` reference at all** — that read was dropped/optimized in
+   translation, leaving the HUD effects genuinely unconstrained (the
+   slow path picks an arbitrary valid Effect).
+
+2. **Intermediate libcall defs live in *global* assertions.** Even
+   ignoring the HUD, `plat_effs[i].effs[j] = draw_rect__color_eff__callN`
+   where `draw_rect__color_eff__callN = SDL_SetRenderDrawColor(...)` is
+   a separate assertion that touches no claim output, so
+   `decompose_simplified` files it under `global_idx` — handed to the
+   **slow part**, never to `compile_one_component`. The component's
+   extracted program treats `draw_rect__*__callN` as a free input;
+   at call time it isn't in `given`, defaults to `Value::Int(0)`, and
+   the platform/coin/enemy/mario draws silently vanish. Verified: a
+   patch that pre-registered output slots + best-effort-topo'd the
+   steps DID make `phase_chain` "compile" (display → 65/66) and passed
+   `./test.sh` (exit code + "mario done" unaffected), but an FFI-trace
+   diff against `EVIDENT_FUNCTIONIZE=0` showed the world draws dropped
+   (brown platforms 1205→5, gold coins 1205→5, purple enemies 723→3).
+   A green test with a black world — exactly the visual-regression
+   class `./test.sh --examples` exists to catch. Reverted.
+
+**game / keyboard gaps** are world-dependent, guarded transition
+components (the 88-step `game` FSM, the `is_first_tick` keyboard
+branch) routed to the scoped slow solve by query.rs's unsafe-free
+gate before ever reaching codegen.
+
+Takeaway: closing these needs `translate/` (don't drop the HUD
+`world.lives` read) and `runtime/runtime/query.rs` (carry a
+component's intermediate-defining globals into its extracted program,
+or refuse-to-bake instead of defaulting a missing input to `Int(0)`),
+not `functionize/`. The codegen is not the limiting factor. See
+[Records-as-vectors] note in CLAUDE.md and the
+`project_mario_jit_phase_chain_intractable` agent memory.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)
