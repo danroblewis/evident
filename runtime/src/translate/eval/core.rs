@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult};
 
-use crate::ast::*;
-use super::super::types::{DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
+use crate::core::ast::*;
+use crate::core::{DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::super::declare::apply_seq_lengths;
 use super::super::extract::assert_seq_given;
 use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};

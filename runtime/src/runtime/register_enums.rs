@@ -1,6 +1,6 @@
 //! Z3 datatype registration for `enum` declarations.
 
-use super::errors::RuntimeError;
+use crate::core::RuntimeError;
 use z3::Context;
 
 /// Batched build of Z3 DatatypeSorts for every enum declared in
@@ -24,9 +24,9 @@ use z3::Context;
 /// on collision, both within `decls` and against previously-loaded
 /// enums in the registry.
 pub(super) fn register_enums(
-    decls: &[crate::ast::EnumDecl],
+    decls: &[crate::core::ast::EnumDecl],
     ctx: &'static Context,
-    registry: &crate::translate::EnumRegistry,
+    registry: &crate::core::EnumRegistry,
 ) -> Result<(), RuntimeError> {
     use z3::{DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
     if decls.is_empty() { return Ok(()); }
@@ -98,9 +98,9 @@ pub(super) fn register_enums(
     // already handles Cons/Nil-shaped enums). The helper enum
     // names start with `__` and are not visible in error
     // messages or self-hosted-pass code.
-    let decls_owned: Vec<crate::ast::EnumDecl>;
+    let decls_owned: Vec<crate::core::ast::EnumDecl>;
     let internal_cons_set: std::collections::HashSet<String>;
-    let decls: &[crate::ast::EnumDecl] = {
+    let decls: &[crate::core::ast::EnumDecl] = {
         let (rewritten, set) = generate_internal_cons_helpers(decls);
         if set.is_empty() {
             internal_cons_set = set;
@@ -279,9 +279,9 @@ pub(crate) fn internal_cons_helper_name(t: &str) -> String {
 /// When no Seq-of-batch-local fields exist, returns (empty vec,
 /// empty set) and the caller uses the original `decls` unchanged.
 fn generate_internal_cons_helpers(
-    decls: &[crate::ast::EnumDecl],
-) -> (Vec<crate::ast::EnumDecl>, std::collections::HashSet<String>) {
-    use crate::ast::{EnumDecl, EnumField, EnumVariant};
+    decls: &[crate::core::ast::EnumDecl],
+) -> (Vec<crate::core::ast::EnumDecl>, std::collections::HashSet<String>) {
+    use crate::core::ast::{EnumDecl, EnumField, EnumVariant};
     let batch_names: std::collections::HashSet<&str> =
         decls.iter().map(|d| d.name.as_str()).collect();
     let mut needs_helper: std::collections::HashSet<String> =
@@ -337,7 +337,7 @@ fn resolve_concrete_sort<'ctx>(
     type_name: &str,
     ctx: &'ctx z3::Context,
     stage_names: &std::collections::HashSet<&str>,
-    registry: &crate::translate::EnumRegistry,
+    registry: &crate::core::EnumRegistry,
     enclosing_enum: &str,
     enclosing_variant: &str,
 ) -> Result<Option<z3::Sort<'ctx>>, RuntimeError> {
@@ -378,7 +378,7 @@ fn resolve_concrete_sort<'ctx>(
 /// Errors if Seq-in-payload references form a cycle across hard-edge
 /// groups (a single group requiring Seq into itself).
 fn topo_stage_enums(
-    decls: &[crate::ast::EnumDecl],
+    decls: &[crate::core::ast::EnumDecl],
     _batch_names: &std::collections::HashSet<&str>,
     internal_cons_set: &std::collections::HashSet<String>,
 ) -> Result<Vec<Vec<usize>>, RuntimeError> {

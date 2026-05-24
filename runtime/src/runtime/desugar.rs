@@ -1,8 +1,8 @@
 //! Source-level desugarings: Seq concat flattening, unified-world syntax,
 //! and the user-vs-system boundary snapshot.
 
-use super::errors::RuntimeError;
-use crate::ast::SchemaDecl;
+use crate::core::RuntimeError;
+use crate::core::ast::SchemaDecl;
 use std::collections::{HashMap, HashSet};
 
 /// Snapshot of "everything loaded so far is the system layer."
@@ -36,7 +36,7 @@ pub struct SystemBoundary {
 /// is left alone and the translator will fail with the usual
 /// "couldn't translate to Bool" error pointing at it.
 pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
-    use crate::ast::{BinOp, BodyItem, Expr};
+    use crate::core::ast::{BinOp, BodyItem, Expr};
     if s.external { return; }
 
     // Pass 1: gather SeqLit bindings.
@@ -148,7 +148,7 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
 ///
 /// External fsms are skipped (they don't carry user logic).
 pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Expr, Keyword, Pins};
+    use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
 

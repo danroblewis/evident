@@ -11,9 +11,9 @@
 //! identical every frame, so tick 0 pays the toposort and every
 //! subsequent tick hits the cache.
 
-use crate::ast::Effect;
+use crate::core::ast::Effect;
 use crate::runtime::EvidentRuntime;
-use crate::translate::Value;
+use crate::core::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 

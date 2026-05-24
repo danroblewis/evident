@@ -1,7 +1,7 @@
 //! `query`, `query_cached`, and the Z3-AST functionizer fast path.
 
 use super::autotune::SolveHistory;
-use super::errors::{QueryResult, RuntimeError};
+use crate::core::{QueryResult, RuntimeError};
 use super::lenient::LenientGuard;
 use super::{EvidentRuntime, Value};
 use crate::translate::{build_cache, run_cached, structural_signature};
@@ -19,7 +19,7 @@ impl EvidentRuntime {
     ///
     /// Per (claim, given-keys), the Z3Program is built once and
     /// cached. JIT-compiled code is also cached and runs at ~µs/call.
-    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::ast::SchemaDecl,
+    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
                           given: &HashMap<String, Value>) -> Option<QueryResult>
     {
         use crate::z3_eval::{simplify_assertions, extract_program};
@@ -152,10 +152,10 @@ impl EvidentRuntime {
         // at build_cache time. Synthesize Scalar steps for them so
         // the cached program produces these bindings without any
         // re-derivation needed at hit time.
-        let pinned_steps: Vec<crate::z3_eval::Z3Step<'static>> = cached.env.iter()
+        let pinned_steps: Vec<crate::core::Z3Step<'static>> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
             .filter_map(|(n, v)| match v {
-                crate::translate::Var::PinnedInt(i) => Some(crate::z3_eval::Z3Step::Scalar {
+                crate::translate::Var::PinnedInt(i) => Some(crate::core::Z3Step::Scalar {
                     var:  n.clone(),
                     expr: z3::ast::Dynamic::from_ast(&z3::ast::Int::from_i64(self.z3_ctx, *i)),
                 }),
@@ -226,7 +226,7 @@ impl EvidentRuntime {
                     return None;
                 }
             };
-            let mut prebaked: Vec<crate::z3_eval::Z3Step<'static>> = Vec::with_capacity(missing.len());
+            let mut prebaked: Vec<crate::core::Z3Step<'static>> = Vec::with_capacity(missing.len());
             // Refuse to gap-fill if the body references free Z3
             // variables that aren't in `given`. Gap-fill via model
             // bakes Z3's free choices for those variables into the
@@ -288,7 +288,7 @@ impl EvidentRuntime {
                     // The 'static-lifetime transmute is sound because
                     // self.z3_ctx is 'static and lives for the runtime's
                     // lifetime.
-                    let cached_static: crate::translate::CachedSchema<'static> = cached;
+                    let cached_static: crate::core::CachedSchema<'static> = cached;
                     self.slow_path_cache.borrow_mut().insert(
                         cache_key, std::rc::Rc::new(cached_static));
                     return None;
@@ -311,7 +311,7 @@ impl EvidentRuntime {
                     self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
                     return None;
                 };
-                prebaked.push(crate::z3_eval::Z3Step::PreBaked {
+                prebaked.push(crate::core::Z3Step::PreBaked {
                     var: var_name.clone(),
                     value,
                 });

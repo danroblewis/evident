@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use z3::ast::{Bool, Real};
 use z3::{Context, Params, Solver};
 
-use crate::ast::*;
-use super::super::types::{DatatypeRegistry, EnumRegistry, Var};
+use crate::core::ast::*;
+use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use super::super::declare::declare_var;
 
 /// Build a Z3 Real literal from an f64 source value.

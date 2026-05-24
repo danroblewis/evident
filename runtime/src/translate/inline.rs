@@ -16,9 +16,9 @@ use std::collections::{HashMap, HashSet};
 use z3::{Context, SatResult, Solver};
 use z3::ast::{Ast, Bool};
 
-use crate::ast::*;
+use crate::core::ast::*;
 use crate::pretty;
-use super::types::{DatatypeRegistry, EnumRegistry, Var};
+use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
 use super::exprs::{resolve_mapping, translate_bool};
 
@@ -686,7 +686,7 @@ fn inline_subschema_call(
         return;
     }
     // Tuple-as-record-literal coercion (same as positional Call arm).
-    let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
+    let mappings: Vec<crate::core::ast::Mapping> = slot_info.iter()
         .zip(args.iter())
         .map(|((slot, slot_type), value)| {
             let coerced = match value {
@@ -694,7 +694,7 @@ fn inline_subschema_call(
                     Expr::Call(slot_type.clone(), items.clone()),
                 _ => value.clone(),
             };
-            crate::ast::Mapping { slot: slot.clone(), value: coerced }
+            crate::core::ast::Mapping { slot: slot.clone(), value: coerced }
         })
         .collect();
 
@@ -793,10 +793,10 @@ fn inline_body_items_guarded(
                 // pairs. Named is direct; Positional looks up the type's
                 // body Membership order to map positions to field names.
                 let resolved_pins: Vec<(String, Expr)> = match pins {
-                    crate::ast::Pins::None => Vec::new(),
-                    crate::ast::Pins::Named(maps) => maps.iter()
+                    crate::core::ast::Pins::None => Vec::new(),
+                    crate::core::ast::Pins::Named(maps) => maps.iter()
                         .map(|m| (m.slot.clone(), m.value.clone())).collect(),
-                    crate::ast::Pins::Positional(args) => {
+                    crate::core::ast::Pins::Positional(args) => {
                         // Look up the type's field order from its
                         // SchemaDecl. Strict count match required.
                         let Some(schema) = schemas.get(type_name) else {
@@ -837,7 +837,7 @@ fn inline_body_items_guarded(
                 for (slot, value) in resolved_pins {
                     let lhs = Expr::Identifier(format!("{}.{}", name, slot));
                     let eq = Expr::Binary(
-                        crate::ast::BinOp::Eq,
+                        crate::core::ast::BinOp::Eq,
                         Box::new(lhs),
                         Box::new(value.clone()),
                     );
@@ -1065,7 +1065,7 @@ fn inline_body_items_guarded(
                 // Tuple-as-record-literal coercion (same rule as the
                 // positional-Call arm above) for nested `(a, b, c)`
                 // args whose slot is a known record type.
-                let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
+                let mappings: Vec<crate::core::ast::Mapping> = slot_info.iter()
                     .zip(args.iter())
                     .map(|((slot, slot_type), value)| {
                         let coerced = match value {
@@ -1073,7 +1073,7 @@ fn inline_body_items_guarded(
                                 Expr::Call(slot_type.clone(), items.clone()),
                             _ => value.clone(),
                         };
-                        crate::ast::Mapping { slot: slot.clone(), value: coerced }
+                        crate::core::ast::Mapping { slot: slot.clone(), value: coerced }
                     })
                     .collect();
                 let _ = depth;
@@ -1166,7 +1166,7 @@ fn inline_body_items_guarded(
                 // path. Lets the user write
                 //   set_draw_color((220, 40, 40, 255), out)
                 // instead of `Color(220, 40, 40, 255)`.
-                let mappings: Vec<crate::ast::Mapping> = slot_info.iter()
+                let mappings: Vec<crate::core::ast::Mapping> = slot_info.iter()
                     .zip(args.iter())
                     .map(|((slot, slot_type), value)| {
                         let coerced = match value {
@@ -1174,7 +1174,7 @@ fn inline_body_items_guarded(
                                 Expr::Call(slot_type.clone(), items.clone()),
                             _ => value.clone(),
                         };
-                        crate::ast::Mapping { slot: slot.clone(), value: coerced }
+                        crate::core::ast::Mapping { slot: slot.clone(), value: coerced }
                     })
                     .collect();
 
@@ -1228,7 +1228,7 @@ fn inline_body_items_guarded(
             // Declarations from the claim fire unconditionally; the
             // guard only narrows what the constraints assert. Composes
             // with an outer guard if we're already inside one.
-            BodyItem::Constraint(Expr::Binary(crate::ast::BinOp::Implies, ant, cons))
+            BodyItem::Constraint(Expr::Binary(crate::core::ast::BinOp::Implies, ant, cons))
                 if matches!(cons.as_ref(),
                     Expr::Identifier(n) if schemas.contains_key(n)) =>
             {
@@ -1364,12 +1364,12 @@ fn inline_body_items_guarded(
             }
             BodyItem::Constraint(e) => {
                 // Recognized runtime markers (declared in
-                // `crate::ast::BODY_MARKERS`) are bare identifiers
+                // `crate::core::ast::BODY_MARKERS`) are bare identifiers
                 // that carry metadata for some other runtime layer
                 // — they have no Bool translation. Skip silently
                 // so they don't trip the dropped-constraint diagnostic.
-                if let crate::ast::Expr::Identifier(s) = e {
-                    if crate::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
+                if let crate::core::ast::Expr::Identifier(s) = e {
+                    if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
                 }
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     track_assert(solver, &guarded_bool(b, guard), tracker);

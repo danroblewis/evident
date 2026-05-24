@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult};
 
-use crate::ast::*;
-use super::super::types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
+use crate::core::ast::*;
+use crate::core::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::super::declare::{apply_seq_lengths, apply_set_candidates};
 use super::super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::super::inline::inline_body_items;

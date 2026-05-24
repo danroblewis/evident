@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Datatype, Int, Real, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
-use crate::ast::*;
-use super::types::EnumRegistry;
+use crate::core::ast::*;
+use crate::core::EnumRegistry;
 
 #[derive(Debug)]
 pub enum EncodeError {
@@ -526,7 +526,7 @@ pub fn encode_expr<'ctx>(
 }
 
 fn encode_match_arm_list<'ctx>(
-    arms: &[crate::ast::MatchArm],
+    arms: &[crate::core::ast::MatchArm],
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
@@ -534,7 +534,7 @@ fn encode_match_arm_list<'ctx>(
 }
 
 fn encode_match_arm<'ctx>(
-    arm: &crate::ast::MatchArm,
+    arm: &crate::core::ast::MatchArm,
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
@@ -544,11 +544,11 @@ fn encode_match_arm<'ctx>(
 }
 
 fn encode_match_pattern<'ctx>(
-    pat: &crate::ast::MatchPattern,
+    pat: &crate::core::ast::MatchPattern,
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    use crate::ast::MatchPattern;
+    use crate::core::ast::MatchPattern;
     match pat {
         MatchPattern::Wildcard => apply(enums, "MatchPattern", "PatWildcard", &[]),
         MatchPattern::Ctor { name, binds } => {
@@ -632,11 +632,11 @@ pub fn encode_body_items_into_seq<'ctx>(
 // ── stdlib/runtime.ev: Effect / Result encoders ────────────────
 
 pub fn encode_effect_result<'ctx>(
-    r: &crate::ast::EffectResult,
+    r: &crate::core::ast::EffectResult,
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    use crate::ast::EffectResult;
+    use crate::core::ast::EffectResult;
     match r {
         EffectResult::NoResult    => apply(enums, "Result", "NoResult", &[]),
         EffectResult::Int(n)      => {
@@ -671,20 +671,20 @@ pub fn encode_effect_result<'ctx>(
 /// `last_results ∈ Seq(Result)` via the `given` map; the
 /// `(DatatypeSeqVar, SeqEnum)` case in `assert_seq_given` does
 /// the per-index Z3 assertions.
-pub fn effect_results_to_value(items: &[crate::ast::EffectResult]) -> Value {
+pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Value {
     let mk = |n: &str, fields: Vec<Value>| Value::Enum {
         enum_name: "Result".into(),
         variant: n.into(),
         fields,
     };
     let elems: Vec<Value> = items.iter().map(|r| match r {
-        crate::ast::EffectResult::NoResult     => mk("NoResult", vec![]),
-        crate::ast::EffectResult::Int(n)       => mk("IntResult", vec![Value::Int(*n)]),
-        crate::ast::EffectResult::Str(s)       => mk("StringResult", vec![Value::Str(s.clone())]),
-        crate::ast::EffectResult::Bool(b)      => mk("BoolResult", vec![Value::Bool(*b)]),
-        crate::ast::EffectResult::Real(f)      => mk("RealResult", vec![Value::Real(*f)]),
-        crate::ast::EffectResult::Handle(h)    => mk("HandleResult", vec![Value::Int(*h as i64)]),
-        crate::ast::EffectResult::Error(s)     => mk("ErrorResult", vec![Value::Str(s.clone())]),
+        crate::core::ast::EffectResult::NoResult     => mk("NoResult", vec![]),
+        crate::core::ast::EffectResult::Int(n)       => mk("IntResult", vec![Value::Int(*n)]),
+        crate::core::ast::EffectResult::Str(s)       => mk("StringResult", vec![Value::Str(s.clone())]),
+        crate::core::ast::EffectResult::Bool(b)      => mk("BoolResult", vec![Value::Bool(*b)]),
+        crate::core::ast::EffectResult::Real(f)      => mk("RealResult", vec![Value::Real(*f)]),
+        crate::core::ast::EffectResult::Handle(h)    => mk("HandleResult", vec![Value::Int(*h as i64)]),
+        crate::core::ast::EffectResult::Error(s)     => mk("ErrorResult", vec![Value::Str(s.clone())]),
     }).collect();
     Value::SeqEnum(elems)
 }
@@ -705,7 +705,7 @@ pub fn effect_results_to_value(items: &[crate::ast::EffectResult]) -> Value {
 // stdlib/ast.ev's enum decl must be kept in sync (same as the
 // existing encoders).
 
-use super::types::Value;
+use crate::core::Value;
 
 /// Re-encode a `Value::Enum` tree as a Z3 `Datatype` value, looking
 /// up constructors against the supplied `EnumRegistry`. Returns
@@ -961,7 +961,7 @@ fn expr_to_value(e: &Expr) -> Value {
     }
 }
 
-fn match_arm_list_to_value(arms: &[crate::ast::MatchArm]) -> Value {
+fn match_arm_list_to_value(arms: &[crate::core::ast::MatchArm]) -> Value {
     let mut acc = ev("MatchArmList", "MALNil", vec![]);
     for a in arms.iter().rev() {
         acc = ev("MatchArmList", "MALCons",
@@ -970,13 +970,13 @@ fn match_arm_list_to_value(arms: &[crate::ast::MatchArm]) -> Value {
     acc
 }
 
-fn match_arm_to_value(a: &crate::ast::MatchArm) -> Value {
+fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
     ev("MatchArm", "MakeMatchArm",
        vec![match_pattern_to_value(&a.pattern), expr_to_value(&a.body)])
 }
 
-fn match_pattern_to_value(p: &crate::ast::MatchPattern) -> Value {
-    use crate::ast::MatchPattern;
+fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
+    use crate::core::ast::MatchPattern;
     match p {
         MatchPattern::Wildcard => ev("MatchPattern", "PatWildcard", vec![]),
         MatchPattern::Ctor { name, binds } => {

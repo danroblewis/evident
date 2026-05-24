@@ -18,7 +18,7 @@
 
 use crate::effect_dispatch::DispatchContext;
 use crate::runtime::EvidentRuntime;
-use crate::translate::Value;
+use crate::core::Value;
 
 mod collect;
 mod fsm;
@@ -176,7 +176,7 @@ pub fn run_with_ctx(
             .and_then(|wt| rt.get_schema(wt))
             .map(|w| {
                 w.body.iter().filter_map(|item| {
-                    if let crate::ast::BodyItem::Membership { name, type_name, .. } = item {
+                    if let crate::core::ast::BodyItem::Membership { name, type_name, .. } = item {
                         Some((name.clone(), type_name.clone()))
                     } else { None }
                 }).collect()
@@ -264,7 +264,7 @@ pub fn run_with_ctx(
                 // expressed as a one-shot Seq).
                 let has_declarative = rt.get_schema(type_name).map(|s|
                     s.body.iter().any(|i| matches!(i,
-                        crate::ast::BodyItem::Membership { name, type_name: ty, .. }
+                        crate::core::ast::BodyItem::Membership { name, type_name: ty, .. }
                         if name == "install" && ty == "Seq(InstallStep)"))
                 ).unwrap_or(false);
                 if has_declarative {
@@ -280,7 +280,7 @@ pub fn run_with_ctx(
                     // applies them to world_snapshot below.
                     if let Some(type_decl) = rt.get_schema(type_name) {
                         for item in &type_decl.body {
-                            if let crate::ast::BodyItem::Membership { name, type_name: _, .. } = item {
+                            if let crate::core::ast::BodyItem::Membership { name, type_name: _, .. } = item {
                                 if name == "install" { continue; }
                                 let key = format!("{}.{}.{}",
                                     fsm.claim_name, param_name, name);

@@ -4,8 +4,8 @@
 //!   * `inject_claim_arg_types` — fresh output names in positional calls
 //!   * `inject_lhs_eq_types` — Identifier = Expr chained-membership inference
 
-use super::errors::RuntimeError;
-use crate::ast::SchemaDecl;
+use crate::core::RuntimeError;
+use crate::core::ast::SchemaDecl;
 use std::collections::HashMap;
 
 /// Smart-inject implicit fsm machinery. For each canonical slot
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 /// `external fsm` declarations are CONTRACTS for runtime-side
 /// bridge FSMs; they get no injection at all.
 pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Expr, Keyword, Pins};
+    use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) {
         return Ok(());
     }
@@ -137,7 +137,7 @@ pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
 /// External fsm declarations are CONTRACTS for runtime-side bridges
 /// and don't get this treatment — their slots are written by Rust.
 pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Keyword, Pins, Expr};
+    use crate::core::ast::{BodyItem, Keyword, Pins, Expr};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
 
@@ -266,7 +266,7 @@ pub(super) fn inject_claim_arg_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Expr, Keyword, Pins};
+    use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if s.external { return Ok(()); }
     // Apply to fsm bodies and ordinary claim bodies alike — the
     // pattern is the same wherever a positional claim call has a
@@ -435,9 +435,9 @@ pub(super) fn inject_claim_arg_types(
 pub(super) fn inject_lhs_eq_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
-    enums: &crate::translate::EnumRegistry,
+    enums: &crate::core::EnumRegistry,
 ) {
-    use crate::ast::{BinOp, BodyItem, Expr, Pins};
+    use crate::core::ast::{BinOp, BodyItem, Expr, Pins};
 
     // Collect names already declared in this body, with their types
     // (for field-access inference via dotted identifiers).
@@ -489,7 +489,7 @@ pub(super) fn inject_lhs_eq_types(
         e: &Expr,
         declared_types: &HashMap<String, String>,
         schemas: &HashMap<String, SchemaDecl>,
-        enums: &crate::translate::EnumRegistry,
+        enums: &crate::core::EnumRegistry,
     ) -> Option<String> {
         match e {
             Expr::Int(_)  => Some("Int".to_string()),
@@ -548,7 +548,7 @@ pub(super) fn inject_lhs_eq_types(
         e: &Expr,
         declared_types: &HashMap<String, String>,
         schemas: &HashMap<String, SchemaDecl>,
-        enums: &crate::translate::EnumRegistry,
+        enums: &crate::core::EnumRegistry,
     ) -> Option<String> {
         if matches!(e, Expr::Int(_) | Expr::Bool(_) | Expr::Str(_) | Expr::Real(_)) {
             return None;

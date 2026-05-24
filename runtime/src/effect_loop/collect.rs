@@ -13,7 +13,7 @@
 //!     value equality (the same Effect across two Seqs runs once,
 //!     in its first-encountered position).
 
-use crate::ast::{Effect, BodyItem, Expr, BinOp};
+use crate::core::ast::{Effect, BodyItem, Expr, BinOp};
 use crate::runtime::EvidentRuntime;
 use crate::translate::{Value, ast_decoder};
 use std::collections::{HashMap, HashSet};

@@ -1,6 +1,6 @@
 //! Runtime-level error and query-result types.
 
-use super::Value;
+use crate::core::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

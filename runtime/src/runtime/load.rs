@@ -1,8 +1,8 @@
 //! Source loading: parse + run all pre-translation passes + cache flush.
 
-use super::errors::RuntimeError;
+use crate::core::RuntimeError;
 use super::EvidentRuntime;
-use crate::ast::BodyItem;
+use crate::core::ast::BodyItem;
 use crate::parser;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

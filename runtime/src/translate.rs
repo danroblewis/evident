@@ -44,7 +44,6 @@ mod exprs;
 mod extract;
 mod inline;
 mod preprocess;
-mod types;
 
 pub mod ast_decoder {
     //! Public surface of the Z3-model → Rust-AST decoder. Mirrors
@@ -78,5 +77,5 @@ pub use eval::{analyze_decomposition, build_cache, classify_components,
 pub(crate) use eval::extract_binding;
 pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
                      StructuralSignature};
-pub use types::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
+pub use crate::core::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
 pub use encode_ast::value_enum_to_datatype;

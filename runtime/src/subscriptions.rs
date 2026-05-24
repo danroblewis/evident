@@ -20,7 +20,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{BodyItem, Expr, Mapping, MatchPattern, Pins, SchemaDecl};
+use crate::core::ast::{BodyItem, Expr, Mapping, MatchPattern, Pins, SchemaDecl};
 
 /// Read-set + write-set for one FSM claim.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

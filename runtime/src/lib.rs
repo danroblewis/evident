@@ -4,7 +4,7 @@
 //! the architectural goals: ~11K Rust lines, side-effects via FFI,
 //! everything else as Evident libraries.
 
-pub mod ast;
+mod core;
 pub mod decompose;
 pub mod effect_dispatch;
 pub mod z3_eval;
@@ -22,4 +22,8 @@ pub mod subscriptions;
 mod event_sources;
 mod fti;
 
-pub use runtime::{EvidentRuntime, QueryResult, Value};
+pub use runtime::EvidentRuntime;
+pub use core::{QueryResult, RuntimeError, Value};
+
+// Preserve `evident_runtime::ast::*` for external callers.
+pub use core::ast;

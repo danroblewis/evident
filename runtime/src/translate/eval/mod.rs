@@ -31,8 +31,8 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult};
 
-use crate::ast::*;
-use super::types::{DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
+use crate::core::ast::*;
+use crate::core::{DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::declare::{apply_seq_lengths, apply_set_candidates};
 use super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;

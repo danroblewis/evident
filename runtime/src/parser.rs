@@ -1,6 +1,6 @@
 //! Tokens → AST. Hand-rolled recursive-descent for the v0.1 subset.
 
-use crate::ast::*;
+use crate::core::ast::*;
 use crate::lexer::Token;
 
 #[derive(Debug)]
@@ -105,7 +105,7 @@ impl Parser {
     /// Whitespace and newlines around `|` are tolerated; the body lives
     /// on a single logical line by default but parens/brackets aren't
     /// required to span multiple lines because Pipe doesn't open a group.
-    fn parse_enum_decl(&mut self) -> Result<crate::ast::EnumDecl> {
+    fn parse_enum_decl(&mut self) -> Result<crate::core::ast::EnumDecl> {
         self.bump(); // enum
         let name = match self.bump() {
             Token::Ident(s) => s,
@@ -154,7 +154,7 @@ impl Parser {
             // translator dispatches on the leading prefix at
             // enum-load time. Field names are auto-generated `f0`,
             // `f1`, …; named fields are a future extension.
-            let mut fields: Vec<crate::ast::EnumField> = Vec::new();
+            let mut fields: Vec<crate::core::ast::EnumField> = Vec::new();
             if matches!(self.peek(), Token::LParen) {
                 self.bump();   // (
                 if matches!(self.peek(), Token::RParen) {
@@ -165,7 +165,7 @@ impl Parser {
                 let mut idx = 0usize;
                 loop {
                     let field_type = self.parse_enum_field_type(&v_name)?;
-                    fields.push(crate::ast::EnumField {
+                    fields.push(crate::core::ast::EnumField {
                         name: format!("f{}", idx),
                         type_name: field_type,
                     });
@@ -182,7 +182,7 @@ impl Parser {
                         "expected ')' after variant payload, got {:?}", other))),
                 }
             }
-            variants.push(crate::ast::EnumVariant {
+            variants.push(crate::core::ast::EnumVariant {
                 name: v_name,
                 fields,
             });
@@ -225,7 +225,7 @@ impl Parser {
             return Err(ParseError(
                 "enum must have at least one variant".to_string()));
         }
-        Ok(crate::ast::EnumDecl { name, variants })
+        Ok(crate::core::ast::EnumDecl { name, variants })
     }
 
     /// Parse one enum-variant payload field type. Accepts bare idents
@@ -445,7 +445,7 @@ impl Parser {
                 items.push(BodyItem::Membership {
                     name: n,
                     type_name: type_name.clone(),
-                    pins: crate::ast::Pins::None,
+                    pins: crate::core::ast::Pins::None,
                 });
             }
             match self.peek() {
@@ -635,7 +635,7 @@ impl Parser {
         let mut items: Vec<BodyItem> = names.iter().map(|n| BodyItem::Membership {
             name: n.clone(),
             type_name: type_name.clone(),
-            pins: crate::ast::Pins::None,
+            pins: crate::core::ast::Pins::None,
         }).collect();
         for name in &names {
             let var_expr = Expr::Identifier(name.clone());
@@ -696,7 +696,7 @@ impl Parser {
     ///   - generic type:             `Edge<Rect>`, `Pair<A, B>`,
     ///     and combinations like `Seq(Edge<Rect>)`.
     fn try_parse_type_and_pins(&mut self, head: &str)
-        -> Result<Option<(String, crate::ast::Pins)>>
+        -> Result<Option<(String, crate::core::ast::Pins)>>
     {
         // Generic-args suffix: `Edge<Rect>` produces head="Edge<Rect>".
         // We need to peek-and-temporarily-bump because the rest of
@@ -721,13 +721,13 @@ impl Parser {
                 Some(Token::Newline) | Some(Token::Eof)
                 | Some(Token::Indent(_)) | None);
             if plain_terminated {
-                return Ok(Some((composite, crate::ast::Pins::None)));
+                return Ok(Some((composite, crate::core::ast::Pins::None)));
             }
             // No pin/compound forms supported on generic instantiations
             // at the use-site for v1 (e.g. no `Edge<Rect>(a ↦ x, …)`).
             // Caller's chain detection or expression parsing handles
             // anything else.
-            return Ok(Some((composite, crate::ast::Pins::None)));
+            return Ok(Some((composite, crate::core::ast::Pins::None)));
         }
 
         let after_head = self.toks.get(self.pos + 1);
@@ -736,7 +736,7 @@ impl Parser {
         let has_paren = matches!(after_head, Some(Token::LParen));
         if plain_terminated {
             self.bump();
-            return Ok(Some((head.to_string(), crate::ast::Pins::None)));
+            return Ok(Some((head.to_string(), crate::core::ast::Pins::None)));
         }
         if has_paren {
             let inside_first = self.toks.get(self.pos + 2);
@@ -763,12 +763,12 @@ impl Parser {
                     };
                     self.eat(&Token::MapsTo)?;
                     let value = self.parse_expr()?;
-                    pins.push(crate::ast::Mapping { slot, value });
+                    pins.push(crate::core::ast::Mapping { slot, value });
                     if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
                     break;
                 }
                 self.eat(&Token::RParen)?;
-                return Ok(Some((head.to_string(), crate::ast::Pins::Named(pins))));
+                return Ok(Some((head.to_string(), crate::core::ast::Pins::Named(pins))));
             } else if is_known_compound_head && looks_like_compound {
                 self.bump();           // outer ident
                 self.bump();           // (
@@ -788,7 +788,7 @@ impl Parser {
                     Some(Token::Newline) | Some(Token::Eof)
                     | Some(Token::Indent(_)) | None);
                 if line_end {
-                    return Ok(Some((format!("{}({})", head, inner), crate::ast::Pins::None)));
+                    return Ok(Some((format!("{}({})", head, inner), crate::core::ast::Pins::None)));
                 }
                 return Ok(None);
             } else {
@@ -806,7 +806,7 @@ impl Parser {
                     }
                 }
                 self.eat(&Token::RParen)?;
-                return Ok(Some((head.to_string(), crate::ast::Pins::Positional(args))));
+                return Ok(Some((head.to_string(), crate::core::ast::Pins::Positional(args))));
             }
         }
         Ok(None)
@@ -907,7 +907,7 @@ impl Parser {
                                 };
                                 self.eat(&Token::MapsTo)?;
                                 let value = self.parse_expr()?;
-                                mappings.push(crate::ast::Mapping { slot, value });
+                                mappings.push(crate::core::ast::Mapping { slot, value });
                                 if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
                                 break;
                             }
@@ -1395,7 +1395,7 @@ impl Parser {
                     "expected `⇒` after pattern, got {:?}", other))),
             }
             let body = self.parse_or()?;
-            arms.push(crate::ast::MatchArm {
+            arms.push(crate::core::ast::MatchArm {
                 pattern, body: Box::new(body),
             });
             // Optional Newline between arms.
@@ -1409,17 +1409,17 @@ impl Parser {
 
     /// One pattern: bare `_` (wildcard), or `Ctor(b1, b2, ...)` where
     /// each binding is an identifier or `_`.
-    fn parse_match_pattern(&mut self) -> Result<crate::ast::MatchPattern> {
+    fn parse_match_pattern(&mut self) -> Result<crate::core::ast::MatchPattern> {
         // Bare `_` at the top level.
         if let Token::Ident(s) = self.peek().clone() {
             if s == "_" {
                 self.bump();
-                return Ok(crate::ast::MatchPattern::Wildcard);
+                return Ok(crate::core::ast::MatchPattern::Wildcard);
             }
             // Either bare nullary variant `Ctor` or `Ctor(b1, ...)`.
             self.bump();
             if !matches!(self.peek(), Token::LParen) {
-                return Ok(crate::ast::MatchPattern::Ctor {
+                return Ok(crate::core::ast::MatchPattern::Ctor {
                     name: s, binds: Vec::new(),
                 });
             }
@@ -1442,7 +1442,7 @@ impl Parser {
                 }
             }
             self.eat(&Token::RParen)?;
-            return Ok(crate::ast::MatchPattern::Ctor { name: s, binds });
+            return Ok(crate::core::ast::MatchPattern::Ctor { name: s, binds });
         }
         Err(ParseError(format!(
             "expected pattern (Ctor or `_`), got {:?}", self.peek())))

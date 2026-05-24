@@ -10,7 +10,7 @@
 use std::io::{BufRead, Write};
 use std::time::Instant;
 
-use crate::ast::{Effect, EffectFfiArg, EffectResult};
+use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
 
 /// One recorded FFI call for replay mode. When DispatchMode::Replay

@@ -7,7 +7,7 @@
 //! last_results, effects, world, FTI params), all of which are Option
 //! because the unified state model lets authors opt out.
 
-use crate::ast::BodyItem;
+use crate::core::ast::BodyItem;
 use crate::runtime::EvidentRuntime;
 
 /// Resolved param info for one `fsm`-keyword'd schema. The set
@@ -53,7 +53,7 @@ pub struct MainShape {
     /// configuration. The runtime auto-installs a bridge plugin
     /// per entry that writes the type's fields via per-FSM
     /// `<fsm>.<param>.<field>` pin keys.
-    pub fti_params: Vec<(String, String, crate::ast::Pins)>,
+    pub fti_params: Vec<(String, String, crate::core::ast::Pins)>,
 }
 
 impl MainShape {
@@ -73,7 +73,7 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
 /// That decision is purely the parse-time keyword tag.
 pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let claim = rt.get_schema(claim_name)?;
-    if !matches!(claim.keyword, crate::ast::Keyword::Fsm) {
+    if !matches!(claim.keyword, crate::core::ast::Keyword::Fsm) {
         return None;
     }
     // `external fsm` declarations are CONTRACTS for runtime-side
@@ -92,7 +92,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let mut world_next_var: Option<String> = None;
     let mut world_type:     Option<String> = None;
     let mut event_subs:     std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut fti_params:     Vec<(String, String, crate::ast::Pins)> = Vec::new();
+    let mut fti_params:     Vec<(String, String, crate::core::ast::Pins)> = Vec::new();
     // Walk this claim's body PLUS the bodies of any
     // `..PassthroughClaim` so a declarative library (e.g.
     // packages/sdl/scene.ev's `..SDLScene`) contributes its
@@ -229,13 +229,13 @@ pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     for name in names {
         if let Some(shape) = resolve_fsm(rt, &name) {
             // Skip claims that carry the `spawnable_only` body marker
-            // (one of `crate::ast::BODY_MARKERS`) — they should only
+            // (one of `crate::core::ast::BODY_MARKERS`) — they should only
             // run when explicitly spawned via Effect::SpawnFsm, not
             // auto-instantiated at startup.
             if let Some(claim) = rt.get_schema(&name) {
                 let is_spawn_only = claim.body.iter().any(|item| {
                     matches!(item,
-                        crate::ast::BodyItem::Constraint(crate::ast::Expr::Identifier(s))
+                        crate::core::ast::BodyItem::Constraint(crate::core::ast::Expr::Identifier(s))
                         if s == "spawnable_only")
                 });
                 if is_spawn_only { continue; }

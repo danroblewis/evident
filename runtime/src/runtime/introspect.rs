@@ -1,7 +1,7 @@
 //! User-claim introspection + body-item rewrites used by the
 //! `--infer-types` and desugar pipelines.
 
-use super::errors::RuntimeError;
+use crate::core::RuntimeError;
 use super::EvidentRuntime;
 use std::path::Path;
 
@@ -28,7 +28,7 @@ impl EvidentRuntime {
         var_name: &str,
         type_name: &str,
     ) -> Result<bool, RuntimeError> {
-        use crate::ast::{BodyItem, Pins};
+        use crate::core::ast::{BodyItem, Pins};
         let already_declared = |body: &[BodyItem]| -> bool {
             body.iter().any(|i| matches!(
                 i, BodyItem::Membership { name, .. } if name == var_name
@@ -65,7 +65,7 @@ impl EvidentRuntime {
         &mut self,
         claim_name: &str,
         body_idx: usize,
-        new_item: crate::ast::BodyItem,
+        new_item: crate::core::ast::BodyItem,
     ) -> Result<bool, RuntimeError> {
         let schema = self.schemas.get_mut(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;

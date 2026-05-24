@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use z3::ast::{Array, Ast, Bool, Int, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
-use super::types::{EnumRegistry, FieldKind, SeqElem, Value, Var};
+use crate::core::{EnumRegistry, FieldKind, SeqElem, Value, Var};
 
 /// Decode Z3's `as_string()` output back to a Rust string. Z3
 /// represents non-printable characters (and a few others) using
@@ -177,7 +177,7 @@ pub(super) fn extract_composite_value<'ctx>(
                 Value::Composite(nested_map)
             }
             FieldKind::SeqField { name, arr_idx, len_idx, elem: seq_elem, .. } => {
-                use super::types::SeqFieldElem;
+                use crate::core::SeqFieldElem;
                 if *len_idx >= dt.variants[0].accessors.len() { break; }
                 let arr_dyn = dt.variants[0].accessors[*arr_idx].apply(&[elem]);
                 let len_dyn = dt.variants[0].accessors[*len_idx].apply(&[elem]);
@@ -189,7 +189,7 @@ pub(super) fn extract_composite_value<'ctx>(
                 let extracted = match seq_elem {
                     SeqFieldElem::Primitive(prim) => {
                         match prim {
-                            super::types::SeqElem::Int => {
+                            crate::core::SeqElem::Int => {
                                 let mut out: Vec<i64> = Vec::with_capacity(len as usize);
                                 for k in 0..len {
                                     let idx = Int::from_i64(ctx, k);
@@ -198,7 +198,7 @@ pub(super) fn extract_composite_value<'ctx>(
                                 }
                                 Value::SeqInt(out)
                             }
-                            super::types::SeqElem::Bool => {
+                            crate::core::SeqElem::Bool => {
                                 let mut out: Vec<bool> = Vec::with_capacity(len as usize);
                                 for k in 0..len {
                                     let idx = Int::from_i64(ctx, k);
@@ -207,7 +207,7 @@ pub(super) fn extract_composite_value<'ctx>(
                                 }
                                 Value::SeqBool(out)
                             }
-                            super::types::SeqElem::Str => {
+                            crate::core::SeqElem::Str => {
                                 let mut out: Vec<String> = Vec::with_capacity(len as usize);
                                 for k in 0..len {
                                     let idx = Int::from_i64(ctx, k);
@@ -288,7 +288,7 @@ pub(super) fn assert_seq_given<'ctx>(
     var: &Var<'ctx>,
     value: &Value,
     ctx: &'ctx Context,
-    enums: Option<&super::types::EnumRegistry>,
+    enums: Option<&crate::core::EnumRegistry>,
 ) -> Option<Bool<'ctx>> {
     if let (Var::DatatypeSeqVar { arr, len, dt, fields, .. }, Value::SeqEnum(items)) =
         (var, value)

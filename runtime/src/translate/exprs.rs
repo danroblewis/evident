@@ -28,8 +28,8 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, DatatypeSort};
 
-use crate::ast::*;
-use super::types::{env_clone, EnumRegistry, FieldKind, SeqElem, Value, Var};
+use crate::core::ast::*;
+use crate::core::{EnumRegistry, FieldKind, SeqElem, Value, Var};
 
 // ── Section 1: Thread-local context (active enums + target hint) ─────
 
@@ -308,7 +308,7 @@ fn resolve_field_chain_to_bindings<'ctx>(
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
 ) -> Option<Vec<(String, Var<'ctx>)>> {
-    use super::types::SeqFieldElem;
+    use crate::core::SeqFieldElem;
     let var = env.get(seq_name)?;
     let (arr, _, _, root_dt, root_fields) = var.as_datatype_seq()?;
     let i = translate_int(idx_expr, ctx, env)?;
@@ -785,7 +785,7 @@ pub(super) fn resolve_seq_handle<'ctx>(
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
 ) -> Option<SeqHandleRef<'ctx>> {
-    use super::types::SeqFieldElem;
+    use crate::core::SeqFieldElem;
     // Shape 1: bare Identifier — env lookup.
     if let Expr::Identifier(name) = expr {
         if let Some(var) = env.get(name) {
@@ -2081,7 +2081,7 @@ fn bind_composite_fields<'ctx>(
     dt: &DatatypeSort<'ctx>,
     prefix: &str,
 ) -> bool {
-    use super::types::SeqFieldElem;
+    use crate::core::SeqFieldElem;
     let Some(elem) = elem_dyn.as_datatype() else { return false };
     // Track linear accessor position for Primitive / Nested fields.
     // SeqField uses its own arr_idx / len_idx, not the loop counter,
@@ -2270,7 +2270,7 @@ pub(super) fn translate_bool<'ctx>(
                     // by constructing `cell_value = arg`.
                     let arg = args[1].clone();
                     let eq_expr = Expr::Binary(
-                        crate::ast::BinOp::Eq,
+                        crate::core::ast::BinOp::Eq,
                         Box::new(Expr::Index(
                             Box::new(args[0].clone()),
                             Box::new(Expr::Int(i)),
@@ -2360,7 +2360,7 @@ pub(super) fn translate_bool<'ctx>(
         // Payload binds in the pattern are IGNORED (use `match` to
         // bind, or `e = Ctor(literal)` to compare payload values).
         Expr::Matches(e, pattern) => {
-            use crate::ast::MatchPattern;
+            use crate::core::ast::MatchPattern;
             match pattern {
                 MatchPattern::Wildcard => Some(Bool::from_bool(ctx, true)),
                 MatchPattern::Ctor { name, .. } => {
@@ -2491,7 +2491,7 @@ pub(super) fn translate_bool<'ctx>(
                         }
                         let n = *seq_lens.iter().min()?;
                         for i in 0..n {
-                            let mut env2 = env_clone(env);
+                            let mut env2 = env.clone();
                             for (var, arg) in vars.iter().zip(args.iter()) {
                                 let Expr::Identifier(seq_name) = arg else { return None };
                                 let seq_var = env.get(seq_name)?;
@@ -2563,7 +2563,7 @@ pub(super) fn translate_bool<'ctx>(
                                 return None;
                             };
                         for i in 0..(n - 1) {
-                            let mut env2 = env_clone(env);
+                            let mut env2 = env.clone();
                             if !bind(&mut env2, i,     &vars[0]) { return None; }
                             if !bind(&mut env2, i + 1, &vars[1]) { return None; }
                             if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
@@ -2590,7 +2590,7 @@ pub(super) fn translate_bool<'ctx>(
             // Form 1: integer range.
             if let Some((lo, hi)) = literal_range(range, ctx, env) {
                 for i in lo..=hi {
-                    let mut env2 = env_clone(env);
+                    let mut env2 = env.clone();
                     env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
                     if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
                         clauses.push(b);
@@ -2610,7 +2610,7 @@ pub(super) fn translate_bool<'ctx>(
                 match &handle {
                     SeqHandleRef::Composite { arr, dt, fields, .. } => {
                         for i in 0..n {
-                            let mut env2 = env_clone(env);
+                            let mut env2 = env.clone();
                             let idx = Int::from_i64(ctx, i);
                             let elem_dyn = arr.select(&idx);
                             if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
@@ -2623,7 +2623,7 @@ pub(super) fn translate_bool<'ctx>(
                     }
                     SeqHandleRef::Primitive { arr, elem, .. } => {
                         for i in 0..n {
-                            let mut env2 = env_clone(env);
+                            let mut env2 = env.clone();
                             let idx = Int::from_i64(ctx, i);
                             let cell = arr.select(&idx);
                             let v = match elem {
@@ -2646,7 +2646,7 @@ pub(super) fn translate_bool<'ctx>(
                     // for each declared field in env on each iteration.
                     let n = len.simplify().as_i64()?;
                     for i in 0..n {
-                        let mut env2 = env_clone(env);
+                        let mut env2 = env.clone();
                         let idx = Int::from_i64(ctx, i);
                         let elem_dyn = arr.select(&idx);
                         if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
@@ -2660,7 +2660,7 @@ pub(super) fn translate_bool<'ctx>(
                     // Primitive seq: bind `var` to the element directly.
                     let n = len.simplify().as_i64()?;
                     for i in 0..n {
-                        let mut env2 = env_clone(env);
+                        let mut env2 = env.clone();
                         let idx = Int::from_i64(ctx, i);
                         let cell = arr.select(&idx);
                         let v = match elem {
@@ -2957,12 +2957,12 @@ type CompiledArm<'ctx, T> = (Option<Bool<'ctx>>, T);
 /// machinery serves Int / Bool / Str / Real / Enum match results.
 fn translate_match_arms<'ctx, T>(
     scr: &Expr,
-    arms: &[crate::ast::MatchArm],
+    arms: &[crate::core::ast::MatchArm],
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
     body_translator: impl Fn(&Expr, &HashMap<String, Var<'ctx>>) -> Option<T>,
 ) -> Option<Vec<CompiledArm<'ctx, T>>> {
-    use crate::ast::MatchPattern;
+    use crate::core::ast::MatchPattern;
     // Scrutinee shapes supported:
     //   * Bare Identifier resolving to Var::EnumVar.
     //   * Index(Identifier(seq), idx) where `seq` is a Var::DatatypeSeqVar
@@ -3006,9 +3006,9 @@ fn translate_match_arms<'ctx, T>(
                 let z3_var = &dt.variants[var_idx];
                 if binds.len() != z3_var.accessors.len() { return None; }
                 let tester = z3_var.tester.apply(&[&scr_dt]).as_bool()?;
-                let mut env2 = env_clone(env);
+                let mut env2 = env.clone();
                 let scr_enum_name = scr_enum_name.clone();
-                let field_decls: Vec<crate::ast::EnumField> = with_active_enums(|enums| {
+                let field_decls: Vec<crate::core::ast::EnumField> = with_active_enums(|enums| {
                     enums.and_then(|er| {
                         er.by_name.borrow().get(&scr_enum_name)
                             .and_then(|(_, variants)| {

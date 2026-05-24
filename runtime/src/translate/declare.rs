@@ -17,8 +17,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
 use z3::{Context, Sort};
 
-use crate::ast::*;
-use super::types::{DatatypeRegistry, EnumRegistry, SeqElem, Var};
+use crate::core::ast::*;
+use crate::core::{DatatypeRegistry, EnumRegistry, SeqElem, Var};
 use super::datatypes::get_or_build_datatype;
 
 /// Monotonic counter used by `inline_body_items` to give each
@@ -328,9 +328,9 @@ pub(super) fn apply_seq_lengths<'ctx>(
 /// — this pass only fills in the count.
 pub(super) fn apply_set_candidates<'ctx>(
     env: &HashMap<String, Var<'ctx>>,
-    given: &HashMap<String, super::types::Value>,
+    given: &HashMap<String, crate::core::Value>,
 ) {
-    use super::types::Value;
+    use crate::core::Value;
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         if let Var::SetVar { candidates, .. } = var {

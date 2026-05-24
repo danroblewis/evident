@@ -65,7 +65,7 @@ pub enum FfiArg {
     /// buffer at natural widths; pass pointer (`p` slot). The
     /// stdlib wrapper picks the field sequence to match the target
     /// C struct's layout.
-    PackedBuf(Vec<crate::ast::PackedField>),
+    PackedBuf(Vec<crate::core::ast::PackedField>),
 }
 
 /// One returned value from a libffi call. Maps back to an Evident

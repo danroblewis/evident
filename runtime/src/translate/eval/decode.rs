@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use z3::ast::Int;
 use z3::Context;
 
-use super::super::types::{EnumRegistry, Value, Var};
+use crate::core::{EnumRegistry, Value, Var};
 use super::super::extract::{extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::solver::real_value_to_f64;
 
@@ -226,7 +226,7 @@ fn extract_seq_payload<'ctx>(
     ctx: &'ctx Context,
     enums: Option<&EnumRegistry>,
 ) -> Option<Value> {
-    use super::super::types::SeqElem;
+    use crate::core::SeqElem;
     let len = len_dyn.as_int()?;
     match inner_type {
         "Int" | "Nat" | "Pos" => {

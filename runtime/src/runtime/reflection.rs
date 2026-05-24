@@ -2,9 +2,9 @@
 //! and run pass-style queries with the program / per-claim body injected.
 
 use super::desugar::SystemBoundary;
-use super::errors::{QueryResult, RuntimeError};
+use crate::core::{QueryResult, RuntimeError};
 use super::{EvidentRuntime, Value};
-use crate::ast::Program;
+use crate::core::ast::Program;
 use std::collections::{HashMap, HashSet};
 
 impl EvidentRuntime {
@@ -235,7 +235,7 @@ impl EvidentRuntime {
         let prog_value = crate::translate::ast_encoder::encode_program(
             &user, self.z3_ctx, &self.enums,
         ).map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
-        let body_items: Vec<crate::ast::BodyItem> = user.schemas.first()
+        let body_items: Vec<crate::core::ast::BodyItem> = user.schemas.first()
             .map(|s| s.body.clone())
             .unwrap_or_default();
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()

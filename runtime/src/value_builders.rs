@@ -22,7 +22,7 @@
 //! The JIT registers these with `JITBuilder::symbol(name, addr)`
 //! and declares them as `Linkage::Import` to call them.
 
-use crate::translate::Value;
+use crate::core::Value;
 
 /// Reconstruct a `&str` from a JIT-passed (ptr, len) pair.
 ///

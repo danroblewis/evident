@@ -12,7 +12,7 @@
 
 use std::sync::mpsc::Sender;
 
-use crate::ast::Pins;
+use crate::core::ast::Pins;
 use crate::event_sources::{
     EventSource, FrameTimer, SchedulerEvent,
 };
@@ -82,7 +82,7 @@ pub fn is_shimmed_stdlib(import_path: &str) -> bool {
 // ── Pin readers ────────────────────────────────────────────────
 
 fn pin_int(pins: &Pins, field: &str) -> Option<i64> {
-    use crate::ast::{Expr, Mapping};
+    use crate::core::ast::{Expr, Mapping};
     let Pins::Named(ms) = pins else { return None };
     ms.iter().find_map(|Mapping { slot, value }|
         (slot == field).then(|| match value {
@@ -92,7 +92,7 @@ fn pin_int(pins: &Pins, field: &str) -> Option<i64> {
 }
 
 fn pin_str(pins: &Pins, field: &str) -> Option<String> {
-    use crate::ast::{Expr, Mapping};
+    use crate::core::ast::{Expr, Mapping};
     let Pins::Named(ms) = pins else { return None };
     ms.iter().find_map(|Mapping { slot, value }|
         (slot == field).then(|| match value {

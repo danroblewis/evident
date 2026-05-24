@@ -5,7 +5,7 @@
 //! its resolved node names. The toposort downstream consumes these
 //! to derive a dispatch ordering.
 
-use crate::ast::{BodyItem, Expr, BinOp, Effect};
+use crate::core::ast::{BodyItem, Expr, BinOp, Effect};
 use crate::translate::{Value, ast_decoder};
 use std::collections::{HashMap, HashSet};
 

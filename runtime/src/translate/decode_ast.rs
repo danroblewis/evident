@@ -10,8 +10,8 @@
 //! Program in the model; the runtime decodes it back to Rust AST and
 //! replaces the loaded Program with the transformed one.
 
-use crate::ast::*;
-use super::types::Value;
+use crate::core::ast::*;
+use crate::core::Value;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -202,11 +202,11 @@ pub fn decode_body_item_list(v: &Value) -> Result<Vec<BodyItem>> {
     decode_seq_enum(v, "body item list", decode_body_item)
 }
 
-pub fn decode_match_arm_list(v: &Value) -> Result<Vec<crate::ast::MatchArm>> {
+pub fn decode_match_arm_list(v: &Value) -> Result<Vec<crate::core::ast::MatchArm>> {
     decode_seq_enum(v, "match arm list", decode_match_arm)
 }
 
-pub fn decode_match_arm(v: &Value) -> Result<crate::ast::MatchArm> {
+pub fn decode_match_arm(v: &Value) -> Result<crate::core::ast::MatchArm> {
     let (variant, fields) = check_enum(v, "MatchArm")?;
     if variant != "MakeMatchArm" {
         return Err(DecodeError::UnknownVariant {
@@ -216,11 +216,11 @@ pub fn decode_match_arm(v: &Value) -> Result<crate::ast::MatchArm> {
     need_arity(variant, fields, 2)?;
     let pattern = decode_match_pattern(&fields[0])?;
     let body    = decode_expr(&fields[1])?;
-    Ok(crate::ast::MatchArm { pattern, body: Box::new(body) })
+    Ok(crate::core::ast::MatchArm { pattern, body: Box::new(body) })
 }
 
-pub fn decode_match_pattern(v: &Value) -> Result<crate::ast::MatchPattern> {
-    use crate::ast::MatchPattern;
+pub fn decode_match_pattern(v: &Value) -> Result<crate::core::ast::MatchPattern> {
+    use crate::core::ast::MatchPattern;
     let (variant, fields) = check_enum(v, "MatchPattern")?;
     Ok(match variant {
         "PatWildcard" => {
@@ -576,8 +576,8 @@ fn _use_variant_name(v: &Value) -> &str { variant_name(v) }
 
 // ── stdlib/runtime.ev: Effect / Result / FFIArg ────────────────
 
-pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
-    use crate::ast::Effect;
+pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
+    use crate::core::ast::Effect;
     let (variant, fields) = check_enum(v, "Effect")?;
     Ok(match variant {
         "NoEffect"     => { need_arity(variant, fields, 0)?; Effect::NoEffect }
@@ -706,7 +706,7 @@ pub fn decode_effect(v: &Value) -> Result<crate::ast::Effect> {
 /// Decode `effects ∈ Seq(Effect)` from the model — a `Value::SeqEnum`
 /// of Effect enums (since Phase 6.4 retired the `EffectList` Cons
 /// shape). Maps each element through `decode_effect`.
-pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::ast::Effect>> {
+pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_effect).collect();
     }
@@ -724,7 +724,7 @@ pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::ast::Effect>> {
 #[derive(Debug, Clone)]
 pub struct InstallStep {
     pub field:  Option<String>,
-    pub effect: crate::ast::Effect,
+    pub effect: crate::core::ast::Effect,
 }
 
 pub fn decode_install_step(v: &Value) -> Result<InstallStep> {
@@ -758,8 +758,8 @@ pub fn decode_install_step_list(v: &Value) -> Result<Vec<InstallStep>> {
     })
 }
 
-pub fn decode_ffi_arg(v: &Value) -> Result<crate::ast::EffectFfiArg> {
-    use crate::ast::EffectFfiArg;
+pub fn decode_ffi_arg(v: &Value) -> Result<crate::core::ast::EffectFfiArg> {
+    use crate::core::ast::EffectFfiArg;
     let (variant, fields) = check_enum(v, "FFIArg")?;
     Ok(match variant {
         "ArgInt"    => { need_arity(variant, fields, 1)?; EffectFfiArg::Int(decode_int(&fields[0])?) }
@@ -823,15 +823,15 @@ pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
 /// matching Rust enum variant. The field's natural-width Evident type
 /// (Int / Real) is narrowed to the storage width here; callers
 /// should ensure values fit before this runs.
-pub fn decode_packed_field(v: &Value) -> Result<crate::ast::PackedField> {
+pub fn decode_packed_field(v: &Value) -> Result<crate::core::ast::PackedField> {
     let (variant, fields) = check_enum(v, "PackedField")?;
     Ok(match variant {
         "PfU8"  => { need_arity(variant, fields, 1)?;
-                     crate::ast::PackedField::U8(decode_int(&fields[0])? as u8) }
+                     crate::core::ast::PackedField::U8(decode_int(&fields[0])? as u8) }
         "PfI32" => { need_arity(variant, fields, 1)?;
-                     crate::ast::PackedField::I32(decode_int(&fields[0])? as i32) }
+                     crate::core::ast::PackedField::I32(decode_int(&fields[0])? as i32) }
         "PfF32" => { need_arity(variant, fields, 1)?;
-                     crate::ast::PackedField::F32(decode_real(&fields[0])? as f32) }
+                     crate::core::ast::PackedField::F32(decode_real(&fields[0])? as f32) }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "PackedField".into(), variant: other.into(),
         }),
@@ -839,7 +839,7 @@ pub fn decode_packed_field(v: &Value) -> Result<crate::ast::PackedField> {
 }
 
 /// Cons/Nil-shaped `PackedFieldList` decoder.
-pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::ast::PackedField>> {
+pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::core::ast::PackedField>> {
     decode_list(v, "PackedFieldList", "PfNil", "PfCons", decode_packed_field)
 }
 
@@ -847,7 +847,7 @@ pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::ast::PackedField
 /// `Seq(FFIArg)` since Phase 6.2.c. Extract path produces
 /// `Value::SeqEnum`; we map each enum element through
 /// `decode_ffi_arg`.
-pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {
+pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::core::ast::EffectFfiArg>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_ffi_arg).collect();
     }
@@ -858,8 +858,8 @@ pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::ast::EffectFfiArg>> {
     })
 }
 
-pub fn decode_result(v: &Value) -> Result<crate::ast::EffectResult> {
-    use crate::ast::EffectResult;
+pub fn decode_result(v: &Value) -> Result<crate::core::ast::EffectResult> {
+    use crate::core::ast::EffectResult;
     let (variant, fields) = check_enum(v, "Result")?;
     Ok(match variant {
         "NoResult"     => { need_arity(variant, fields, 0)?; EffectResult::NoResult }
@@ -878,7 +878,7 @@ pub fn decode_result(v: &Value) -> Result<crate::ast::EffectResult> {
 #[cfg(test)]
 mod effect_decoder_tests {
     use super::*;
-    use crate::ast::{Effect, EffectFfiArg, EffectResult};
+    use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 
     /// Helper: construct a `Value::Enum`.
     fn e(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {

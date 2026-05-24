@@ -1,6 +1,6 @@
 //! Per-tick query entry points for the multi-FSM scheduler.
 
-use super::errors::{QueryResult, RuntimeError};
+use crate::core::{QueryResult, RuntimeError};
 use super::{EvidentRuntime, Value};
 use std::collections::HashMap;
 

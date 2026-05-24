@@ -1,6 +1,6 @@
 //! Distinct-model enumeration via the `sample` API.
 
-use super::errors::RuntimeError;
+use crate::core::RuntimeError;
 use super::{EvidentRuntime, Value};
 use crate::translate::{build_cache, sample_cached_inner};
 use std::collections::HashMap;

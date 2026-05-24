@@ -2,8 +2,8 @@
 //!   * `enforce_external_only` — non-external schemas can't construct FFI effects
 //!   * `register_subclaims` — lift nested subclaim decls to the top-level schemas map
 
-use super::errors::RuntimeError;
-use crate::ast::{BodyItem, SchemaDecl};
+use crate::core::RuntimeError;
+use crate::core::ast::{BodyItem, SchemaDecl};
 use std::collections::HashMap;
 
 /// Reject non-`external` schemas that try to construct FFI effects
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 /// The check walks every `Constraint` body item's expression tree.
 /// SubclaimDecl bodies are skipped — their own load pass handles them.
 pub(super) fn enforce_external_only(s: &SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::ast::{BodyItem, Expr};
+    use crate::core::ast::{BodyItem, Expr};
     if s.external { return Ok(()); }
     fn find_ffi_call(e: &Expr) -> Option<&'static str> {
         match e {
@@ -55,11 +55,11 @@ pub(super) fn enforce_external_only(s: &SchemaDecl) -> Result<(), RuntimeError> 
         if let BodyItem::Constraint(e) = item {
             if let Some(call) = find_ffi_call(e) {
                 let kind = match s.keyword {
-                    crate::ast::Keyword::Fsm => "fsm",
-                    crate::ast::Keyword::Type => "type",
-                    crate::ast::Keyword::Claim => "claim",
-                    crate::ast::Keyword::Schema => "schema",
-                    crate::ast::Keyword::Subclaim => "subclaim",
+                    crate::core::ast::Keyword::Fsm => "fsm",
+                    crate::core::ast::Keyword::Type => "type",
+                    crate::core::ast::Keyword::Claim => "claim",
+                    crate::core::ast::Keyword::Schema => "schema",
+                    crate::core::ast::Keyword::Subclaim => "subclaim",
                 };
                 return Err(RuntimeError::Parse(format!(
                     "{kind} `{}` constructs `{call}(...)` but isn't \

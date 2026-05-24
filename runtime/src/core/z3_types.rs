@@ -1,17 +1,19 @@
-//! Core types for the translate pipeline: `Var` (typed Z3 binding),
-//! `Value` (extracted model output), `FieldKind` (composite field
-//! metadata), `DatatypeRegistry`, `CachedSchema`, `EvalResult`.
+//! Z3-typed bindings + per-claim cached state.
 //!
-//! Visibility note: items used by other `translate/*.rs` siblings are
-//! `pub(super)` — visible inside `translate::` only. The handful that
-//! cross the module boundary (`Value`, `EvalResult`, `FieldKind`,
-//! `DatatypeRegistry`, `CachedSchema`) are `pub` and re-exported from
-//! `translate.rs`.
+//! `Var` is the typed handle the translator stores in env so it knows
+//! which AST builder to dispatch into when an expression references a
+//! name. `FieldKind` / `SeqFieldElem` describe composite-field shapes
+//! so model extraction can walk a `Seq(UserType)` element back to a
+//! flat `Value::Composite`. `DatatypeRegistry` and `EnumRegistry` are
+//! the long-lived caches the runtime threads through every solve.
+//! `CachedSchema` is the per-schema cache `query_cached` populates.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
 use z3::{DatatypeSort, Solver};
+
+use crate::core::Value;
 
 /// Cache of Z3 Datatype sorts built for user types referenced as the
 /// element of `Seq(UserType)`. Built lazily on first reference. The
@@ -48,7 +50,7 @@ pub type DatatypeRegistry =
 /// runtime.rs enforces this).
 pub struct EnumRegistry {
     pub by_name: RefCell<HashMap<String,
-        (&'static DatatypeSort<'static>, Vec<crate::ast::EnumVariant>)>>,
+        (&'static DatatypeSort<'static>, Vec<crate::core::ast::EnumVariant>)>>,
     pub by_variant: RefCell<HashMap<String, (String, usize)>>,
 }
 
@@ -65,81 +67,10 @@ impl Default for EnumRegistry {
     fn default() -> Self { Self::new() }
 }
 
-/// Result of running one query.
-#[derive(Debug, Clone)]
-pub struct EvalResult {
-    pub satisfied: bool,
-    pub bindings: HashMap<String, Value>,
-    /// On UNSAT, optionally populated when `evaluate_with_core` was
-    /// used: indices into the schema's top-level body that Z3
-    /// identified as the conflicting subset (via `assert_and_track`
-    /// + `get_unsat_core`). `None` when the caller didn't request
-    /// it; `Some(empty)` when Z3 returned an empty core (rare —
-    /// usually means the conflict is encoded entirely outside the
-    /// tracked top-level constraints, e.g. in given values).
-    pub unsat_core_items: Option<Vec<usize>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-    Int(i64),
-    /// Real-valued binding. Extracted from Z3 via `as_real()` →
-    /// `(num: i64, den: i64)` → `num as f64 / den as f64`. Z3
-    /// internally stores Real as exact rationals; we lossily project
-    /// to f64 at the boundary because that's what consumers use.
-    /// For "did the model satisfy x ≈ 3.14" tests, compare with a
-    /// tolerance — Z3 gives an exact rational, f64 may round.
-    Real(f64),
-    Bool(bool),
-    Str(String),
-    /// Sequence values returned in the model. The variant tracks which
-    /// element type was declared so callers don't have to. Length is
-    /// implicit in the Vec's len().
-    SeqInt(Vec<i64>),
-    SeqBool(Vec<bool>),
-    SeqStr(Vec<String>),
-    /// A single struct value — one entry per declared field, mapping
-    /// field name to its primitive Value. Used as the element of
-    /// `SeqComposite`. Not currently produced as a top-level binding
-    /// (sub-schema field expansion still creates one leaf per field).
-    Composite(HashMap<String, Value>),
-    /// `Seq(UserType)` — one map per element. Each map keys a flat
-    /// field name to the field's primitive Value.
-    SeqComposite(Vec<HashMap<String, Value>>),
-    /// `Seq(EnumType)` — one Value::Enum per element. Distinct from
-    /// SeqComposite because enum elements have a variant tag + payload,
-    /// not a flat field map. Populated by `extract_seq_enum` when the
-    /// DatatypeSeqVar has empty `fields` (enum case).
-    SeqEnum(Vec<Value>),
-    /// `Set(Int|Bool|String)` extracted as a Vec for deterministic
-    /// iteration. The runtime picks an order at extract time
-    /// (currently the order of the SetLit RHS that pinned the Set);
-    /// programs must not depend on which order — that's what Set
-    /// is for. Future general-extraction work may sort/canonicalize.
-    /// Only populated when the Set was constructed via a `S = {…}`
-    /// literal assignment; free Sets extract as missing bindings.
-    SetInt(Vec<i64>),
-    SetBool(Vec<bool>),
-    SetStr(Vec<String>),
-    /// An enum variant: the enum's name, the chosen variant, and any
-    /// payload field values extracted from the Z3 model. Field order
-    /// matches the variant's declaration order. For nullary variants
-    /// `fields` is empty.
-    ///
-    /// Recursive payload values nest naturally — a `Cons(5, Cons(7, Nil))`
-    /// is `Enum { variant: "Cons", fields: [Int(5),
-    /// Enum { variant: "Cons", fields: [Int(7), Enum { variant: "Nil", fields: [] }] }] }`.
-    Enum {
-        enum_name: String,
-        variant: String,
-        fields: Vec<Value>,
-    },
-}
-
 /// What primitive a Seq holds. Lets `SeqVar` stay homogeneous while
 /// still letting model extraction pick the right path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SeqElem { Int, Bool, Str }
+pub enum SeqElem { Int, Bool, Str }
 
 /// One field of a user type stored as the element of `Seq(UserType)`.
 /// Two flavors: leaf primitives (Int/Nat/Pos/Bool/String), and nested
@@ -237,7 +168,7 @@ pub enum SeqFieldElem {
 }
 
 impl FieldKind {
-    pub(super) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         match self {
             FieldKind::Primitive { name, .. } => name,
             FieldKind::Nested { name, .. } => name,
@@ -358,23 +289,23 @@ pub enum Var<'ctx> {
 }
 
 impl<'ctx> Var<'ctx> {
-    pub(super) fn as_bool(&self) -> Option<&Bool<'ctx>> {
+    pub fn as_bool(&self) -> Option<&Bool<'ctx>> {
         match self { Var::BoolVar(b) => Some(b), _ => None }
     }
-    pub(super) fn as_str(&self) -> Option<&Z3Str<'ctx>> {
+    pub fn as_str(&self) -> Option<&Z3Str<'ctx>> {
         match self { Var::StrVar(s) => Some(s), _ => None }
     }
     #[allow(dead_code)]   // symmetry with as_bool/as_str; reserved for future use
-    pub(super) fn as_real(&self) -> Option<&Real<'ctx>> {
+    pub fn as_real(&self) -> Option<&Real<'ctx>> {
         match self { Var::RealVar(r) => Some(r), _ => None }
     }
-    pub(super) fn as_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, SeqElem)> {
+    pub fn as_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, SeqElem)> {
         match self { Var::SeqVar { arr, len, elem } => Some((arr, len, *elem)), _ => None }
     }
-    pub(super) fn as_set(&self) -> Option<(&Set<'ctx>, SeqElem)> {
+    pub fn as_set(&self) -> Option<(&Set<'ctx>, SeqElem)> {
         match self { Var::SetVar { set, elem, .. } => Some((set, *elem)), _ => None }
     }
-    pub(super) fn as_set_with_candidates(&self) -> Option<(&Set<'ctx>, SeqElem,
+    pub fn as_set_with_candidates(&self) -> Option<(&Set<'ctx>, SeqElem,
         &std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>)>
     {
         match self {
@@ -382,7 +313,7 @@ impl<'ctx> Var<'ctx> {
             _ => None,
         }
     }
-    pub(super) fn as_datatype_set(&self) -> Option<(&Set<'ctx>, &str,
+    pub fn as_datatype_set(&self) -> Option<(&Set<'ctx>, &str,
                                          &'static DatatypeSort<'static>,
                                          &[FieldKind],
                                          &std::rc::Rc<std::cell::RefCell<Option<Vec<Value>>>>)>
@@ -393,7 +324,7 @@ impl<'ctx> Var<'ctx> {
             _ => None,
         }
     }
-    pub(super) fn as_datatype_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, &str,
+    pub fn as_datatype_seq(&self) -> Option<(&Array<'ctx>, &Int<'ctx>, &str,
                                          &'static DatatypeSort<'static>,
                                          &[FieldKind])> {
         match self {
@@ -416,17 +347,4 @@ pub struct CachedSchema<'ctx> {
     /// auto-tuner consults this to decide whether the cache needs
     /// rebuilding under a different config.
     pub arith_solver: u32,
-}
-
-/// Clone an env. `Var` derives `Clone` (Z3 ast types are reference-
-/// counted), so this is a shallow copy — both envs continue to refer
-/// to the same Z3 constants. Used by quantifier unrollers that need
-/// to shadow the bound variable per iteration without disturbing the
-/// outer env.
-///
-/// Lives here because it's a pure data utility — no Z3 expression
-/// building, no Solver use — and other translate siblings need it
-/// from the leaf layer to keep the dependency graph acyclic.
-pub(super) fn env_clone<'ctx>(env: &HashMap<String, Var<'ctx>>) -> HashMap<String, Var<'ctx>> {
-    env.clone()
 }

@@ -40,77 +40,12 @@ use z3::ast::{Ast, Bool, Dynamic, Int as Z3Int};
 use z3::{AstKind, Context, Goal, Tactic};
 use z3_sys::DeclKind;
 
-use crate::translate::Value;
+use crate::core::Value;
 
-/// A claim's body, simplified by Z3 tactics and indexed by output
-/// variable name. Each entry maps `output_var → Z3 expression AST`.
-/// The AST may reference other output variables (which appear
-/// earlier in the topo-sort order) or input variables (in `given`).
-///
-/// `consistency_checks` records assertions that don't define an
-/// output variable — typically equalities between two `given` vars
-/// that the body further constrains. The evaluator verifies these
-/// against the given values; failure = UNSAT.
-#[derive(Debug, Clone)]
-pub struct Z3Program<'ctx> {
-    /// Topologically-ordered: each step's expression only references
-    /// inputs (`given`) or earlier steps' outputs.
-    pub steps: Vec<Z3Step<'ctx>>,
-    /// `(lhs, rhs)` pairs — assertions of form `(= a b)` where
-    /// neither side defines a fresh output.
-    pub checks: Vec<(Dynamic<'ctx>, Dynamic<'ctx>)>,
-    /// Non-equality Bool assertions that must evaluate to true
-    /// under the given values + computed outputs. e.g. `x < 5`
-    /// from `schema S; x ∈ Nat; x < 5` when `x` is in given.
-    pub predicates: Vec<Bool<'ctx>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Z3Step<'ctx> {
-    /// Scalar output: `var = expr`. Eval expr.
-    Scalar { var: String, expr: Dynamic<'ctx> },
-    /// Sequence output: built from `len = N` and per-index
-    /// `(select var i) = elem` assertions Z3 emits when a Seq
-    /// gets pinned by `seq = ⟨a, b, c⟩`. Eval each elem, build
-    /// a `Value::SeqEnum` (or appropriate Seq* variant).
-    Seq    { var: String, elem_exprs: Vec<Dynamic<'ctx>> },
-    /// Guarded output (from `match`/`ITE`/`Implies` patterns).
-    /// Z3 emits these as `(or (not P) Q)` assertions where Q
-    /// constrains `var` under guard P. At eval time we find
-    /// the first branch whose guard evaluates to true and use
-    /// that branch's expression.
-    Guarded { var: String, branches: Vec<GuardedBranch<'ctx>> },
-    /// Pre-baked constant Value, computed once at compile time
-    /// via model extraction. Used for outputs whose simplified
-    /// body decomposed into per-field accessor pins (record-Seq
-    /// constants like `platforms` / `e_init` in Mario) that
-    /// `extract_program` can't recompose. At eval time, just
-    /// insert the value into the env.
-    PreBaked { var: String, value: Value },
-}
-
-#[derive(Debug, Clone)]
-pub struct GuardedBranch<'ctx> {
-    pub guard: Dynamic<'ctx>,
-    pub body:  GuardedBody<'ctx>,
-}
-
-#[derive(Debug, Clone)]
-pub enum GuardedBody<'ctx> {
-    Scalar(Dynamic<'ctx>),
-    Seq(Vec<Dynamic<'ctx>>),
-}
-
-impl<'ctx> Z3Step<'ctx> {
-    pub fn var(&self) -> &str {
-        match self {
-            Z3Step::Scalar   { var, .. }
-            | Z3Step::Seq      { var, .. }
-            | Z3Step::Guarded  { var, .. }
-            | Z3Step::PreBaked { var, .. } => var,
-        }
-    }
-}
+// Re-export the program shape so existing `crate::core::Z3Program`,
+// `Z3Step`, `GuardedBody`, `GuardedBranch` paths continue to resolve.
+// The types themselves live in `crate::core::z3_program`.
+pub use crate::core::{GuardedBody, GuardedBranch, Z3Program, Z3Step};
 
 /// Apply Z3's preprocessing tactic chain to the given Bool
 /// assertions. Returns the simplified assertions (the residual
@@ -868,7 +803,7 @@ fn mentions_name<'ctx>(a: &Dynamic<'ctx>, name: &str) -> bool {
 pub fn eval_program<'ctx>(
     program: &Z3Program<'ctx>,
     given: &HashMap<String, Value>,
-    enums: Option<&crate::translate::EnumRegistry>,
+    enums: Option<&crate::core::EnumRegistry>,
 ) -> Option<HashMap<String, Value>> {
     let mut env: HashMap<String, Value> = given.clone();
     for step in &program.steps {
@@ -958,7 +893,7 @@ pub fn eval_program<'ctx>(
 pub fn eval_dynamic<'ctx>(
     a: &Dynamic<'ctx>,
     env: &HashMap<String, Value>,
-    enums: Option<&crate::translate::EnumRegistry>,
+    enums: Option<&crate::core::EnumRegistry>,
 ) -> Option<Value> {
     // Z3 string literals show up as Apps with a String sort and
     // some internal decl that varies by version. Detect via the
@@ -1201,7 +1136,7 @@ pub fn eval_dynamic<'ctx>(
 fn num_cmp<'ctx>(
     children: &[Dynamic<'ctx>],
     env: &HashMap<String, Value>,
-    enums: Option<&crate::translate::EnumRegistry>,
+    enums: Option<&crate::core::EnumRegistry>,
     op: impl Fn(i64, i64) -> bool,
 ) -> Option<Value> {
     let l = eval_dynamic(&children[0], env, enums)?;
@@ -1222,15 +1157,15 @@ fn _force_int_import<'ctx>(_: &Z3Int<'ctx>) {}
 /// Known gap: `Ctor(SeqLit(...))` — enum constructor whose payload
 /// is a sequence literal (e.g. `Many(⟨Red, Green, Blue⟩)`). The Z3
 /// translator can't currently express this assertion.
-pub fn has_known_translator_gap(body: &[crate::ast::BodyItem]) -> bool {
+pub fn has_known_translator_gap(body: &[crate::core::ast::BodyItem]) -> bool {
     body.iter().any(|item| {
-        let crate::ast::BodyItem::Constraint(e) = item else { return false };
+        let crate::core::ast::BodyItem::Constraint(e) = item else { return false };
         expr_has_ctor_seqlit_payload(e)
     })
 }
 
-fn expr_has_ctor_seqlit_payload(e: &crate::ast::Expr) -> bool {
-    use crate::ast::Expr;
+fn expr_has_ctor_seqlit_payload(e: &crate::core::ast::Expr) -> bool {
+    use crate::core::ast::Expr;
     match e {
         Expr::Call(_, args) => {
             args.iter().any(|a| matches!(a, Expr::SeqLit(_)))

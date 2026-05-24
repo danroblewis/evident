@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
 
-use crate::ast::*;
-use super::types::{DatatypeRegistry, EnumRegistry, FieldKind, SeqElem, SeqFieldElem};
+use crate::core::ast::*;
+use crate::core::{DatatypeRegistry, EnumRegistry, FieldKind, SeqElem, SeqFieldElem};
 
 /// Get or build a Z3 `DatatypeSort` for a user type referenced as the
 /// element of `Seq(UserType)`. Walks the type's body for `Membership`

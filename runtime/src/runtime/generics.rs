@@ -1,8 +1,8 @@
 //! Generic monomorphization: expand `type Edge<T>` / `claim Toposort<T>`
 //! references into concrete copies before translation.
 
-use super::errors::RuntimeError;
-use crate::ast::{BodyItem, SchemaDecl};
+use crate::core::RuntimeError;
+use crate::core::ast::{BodyItem, SchemaDecl};
 use std::collections::{HashMap, HashSet};
 
 /// Parse "Edge<Rect>" into ("Edge", "Rect"). Returns None for
@@ -90,7 +90,7 @@ pub(super) fn substitute_idents(s: &str, subst: &HashMap<String, String>) -> Str
 /// Apply a type-param substitution to every `type_name` in a
 /// SchemaDecl's body. Recurses into subclaim bodies.
 pub(super) fn substitute_type_params_in_body(body: &mut Vec<BodyItem>, subst: &HashMap<String, String>) {
-    use crate::ast::BodyItem;
+    use crate::core::ast::BodyItem;
     for item in body.iter_mut() {
         match item {
             BodyItem::Membership { type_name, .. } => {
@@ -108,11 +108,11 @@ pub(super) fn substitute_type_params_in_body(body: &mut Vec<BodyItem>, subst: &H
 /// referenced anywhere in the schemas map. Used by
 /// `monomorphize_generics` to find work to do.
 pub(super) fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, String, String)> {
-    use crate::ast::BodyItem;
+    use crate::core::ast::BodyItem;
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    fn walk_expr(e: &crate::ast::Expr, out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
-        use crate::ast::Expr;
+    fn walk_expr(e: &crate::core::ast::Expr, out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
+        use crate::core::ast::Expr;
         match e {
             // `Foo<Bar>(args, …)` — positional generic invocation
             // (e.g. `Permutation<Int>(a, b)` as a body constraint).

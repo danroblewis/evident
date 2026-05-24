@@ -38,7 +38,6 @@
 //! facade or whether your concern belongs in the execution
 //! layer alongside `effect_loop.rs`.
 
-mod errors;
 mod stats;
 mod lenient;
 mod autotune;
@@ -55,8 +54,9 @@ mod reflection;
 mod analysis;
 mod introspect;
 
-pub use crate::translate::Value;
-pub use errors::{QueryResult, RuntimeError};
+pub use crate::core::Value;
+#[allow(unused_imports)]
+pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 pub use desugar::SystemBoundary;
 
@@ -67,7 +67,7 @@ pub use desugar::SystemBoundary;
 // unchanged.
 pub(crate) use register_enums::{internal_cons_helper_name, parse_seq_type};
 
-use crate::ast::{Program, SchemaDecl};
+use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -114,17 +114,17 @@ pub struct EvidentRuntime {
     /// JIT compilation succeeds, the cached program is what the
     /// JIT ran on (kept here for inspection / re-compile).
     pub(super) functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
-                                          Option<crate::z3_eval::Z3Program<'static>>>>,
+                                          Option<crate::core::Z3Program<'static>>>>,
     /// Functionizer strategy. Compiles extracted `Z3Program`s into
     /// callable artifacts. Default is Cranelift JIT; swap via
     /// `EvidentRuntime::with_functionizer`. See `runtime/src/functionize/`.
-    pub(super) functionizer: Box<dyn crate::functionize::Functionizer>,
+    pub(super) functionizer: Box<dyn crate::core::Functionizer>,
     /// Compiled-function cache: per-(claim, given-keys), the
     /// strategy-produced artifact (Some) or None when the strategy
     /// refused (program uses constructs it can't compile). On miss
     /// the runtime falls through to slow-path Z3.
     pub(super) fn_cache: RefCell<HashMap<(String, Vec<String>),
-                              Option<std::rc::Rc<dyn crate::functionize::CompiledFunction>>>>,
+                              Option<std::rc::Rc<dyn crate::core::CompiledFunction>>>>,
     /// Slow-path schema cache. Populated by `try_functionize_z3`
     /// when extraction or JIT compilation refuses but a CachedSchema
     /// has already been built. Reused by `query_with_pins_and_given`
@@ -132,7 +132,7 @@ pub struct EvidentRuntime {
     /// push → assert given → check → extract → pop, instead of
     /// rebuilding the body assertions from AST every call.
     pub(super) slow_path_cache: RefCell<HashMap<(String, Vec<String>),
-                                     std::rc::Rc<crate::translate::CachedSchema<'static>>>>,
+                                     std::rc::Rc<crate::core::CachedSchema<'static>>>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
@@ -158,7 +158,7 @@ pub struct EvidentRuntime {
     /// source. Built eagerly at `load_source_with_base` time (one Z3
     /// `DatatypeBuilder` call per enum, with N nullary variants).
     /// Threaded into the translator alongside `datatypes`.
-    pub(super) enums: crate::translate::EnumRegistry,
+    pub(super) enums: crate::core::EnumRegistry,
     /// Stage 3: schemas + enums loaded BEFORE
     /// `mark_system_loads_complete()` was called. Used by the AST
     /// encoder to filter so a self-hosted pass receives only the
@@ -197,7 +197,7 @@ impl EvidentRuntime {
     /// Create a runtime with a specific functionizer strategy.
     /// See `crate::functionize` for the trait and the bundled
     /// `CraneliftFunctionizer` implementation.
-    pub fn with_functionizer(functionizer: Box<dyn crate::functionize::Functionizer>) -> Self {
+    pub fn with_functionizer(functionizer: Box<dyn crate::core::Functionizer>) -> Self {
         let cfg = Config::new();
         let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
         EvidentRuntime {
@@ -213,7 +213,7 @@ impl EvidentRuntime {
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
-            enums: crate::translate::EnumRegistry::new(),
+            enums: crate::core::EnumRegistry::new(),
             system_boundary: RefCell::new(None),
             schema_origins: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
@@ -246,7 +246,7 @@ impl EvidentRuntime {
     /// callers use this to look up DatatypeSorts when re-encoding
     /// values for subsequent solves — see the "execution-layer
     /// extension surface" section in the module docs.
-    pub fn enums_registry(&self) -> &crate::translate::EnumRegistry {
+    pub fn enums_registry(&self) -> &crate::core::EnumRegistry {
         &self.enums
     }
 
@@ -261,7 +261,7 @@ impl EvidentRuntime {
 
     /// Read-only access to the DatatypeRegistry. Used by the
     /// Z3-AST functionizer pipeline to build cached schemas.
-    pub fn datatypes_registry(&self) -> &crate::translate::DatatypeRegistry {
+    pub fn datatypes_registry(&self) -> &crate::core::DatatypeRegistry {
         &self.datatypes
     }
 
@@ -283,8 +283,8 @@ impl EvidentRuntime {
     /// `(DatatypeSeqVar, SeqEnum)` pair).
     pub fn effect_results_to_value(
         &self,
-        items: &[crate::ast::EffectResult],
-    ) -> crate::translate::Value {
+        items: &[crate::core::ast::EffectResult],
+    ) -> crate::core::Value {
         crate::translate::ast_encoder::effect_results_to_value(items)
     }
 }

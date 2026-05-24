@@ -29,7 +29,7 @@
 
 use std::sync::mpsc::Sender;
 
-use crate::ast::Pins;
+use crate::core::ast::Pins;
 use crate::effect_dispatch::{dispatch_all, DispatchContext};
 use crate::fti::FtiContext;
 use crate::translate::{Value};
@@ -75,7 +75,7 @@ impl DeclarativeInstallSource {
             std::collections::HashMap::new();
         if let Pins::Named(ms) = pins {
             for m in ms {
-                use crate::ast::Expr;
+                use crate::core::ast::Expr;
                 let v = match &m.value {
                     Expr::Int(n)  => Value::Int(*n),
                     Expr::Bool(b) => Value::Bool(*b),
@@ -110,16 +110,16 @@ impl DeclarativeInstallSource {
             let Some(field) = &step.field else { continue };
             let key = format!("{}.{}.{}", ctx.claim_name, ctx.param_name, field);
             let value = match res {
-                crate::ast::EffectResult::Int(n)    => Value::Int(*n),
-                crate::ast::EffectResult::Handle(h) => Value::Int(*h as i64),
-                crate::ast::EffectResult::Str(s)    => Value::Str(s.clone()),
-                crate::ast::EffectResult::Bool(b)   => Value::Bool(*b),
-                crate::ast::EffectResult::Real(r)   => Value::Real(*r),
-                crate::ast::EffectResult::Error(e)  => {
+                crate::core::ast::EffectResult::Int(n)    => Value::Int(*n),
+                crate::core::ast::EffectResult::Handle(h) => Value::Int(*h as i64),
+                crate::core::ast::EffectResult::Str(s)    => Value::Str(s.clone()),
+                crate::core::ast::EffectResult::Bool(b)   => Value::Bool(*b),
+                crate::core::ast::EffectResult::Real(r)   => Value::Real(*r),
+                crate::core::ast::EffectResult::Error(e)  => {
                     return Err(format!(
                         "declarative install: step `Bind({field}, …)` returned Error: {e}"));
                 }
-                crate::ast::EffectResult::NoResult  => continue,
+                crate::core::ast::EffectResult::NoResult  => continue,
             };
             q.push_back((key, value));
         }

@@ -14,8 +14,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::*;
-use super::types::{Value, Var};
+use crate::core::ast::*;
+use crate::core::{Value, Var};
 
 /// Walk the schema body to find every name that appears in a
 /// quantifier bound (the `range` of a `∀` / `∃`). Those names are

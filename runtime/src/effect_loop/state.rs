@@ -8,7 +8,7 @@
 //! state enum's first variant takes a single Int payload.
 
 use crate::runtime::EvidentRuntime;
-use crate::translate::Value;
+use crate::core::Value;
 use super::fsm::MainShape;
 
 /// Check whether a model `Value` corresponds to a halt sentinel —

@@ -8,7 +8,7 @@
 //! nothing here is parsed back. If a future feature needs accurate
 //! re-parse, write a separate one.
 
-use crate::ast::{BinOp, BodyItem, Expr, Mapping, MatchPattern};
+use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchPattern};
 
 /// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
 fn fmt_binding(vs: &[String]) -> String {

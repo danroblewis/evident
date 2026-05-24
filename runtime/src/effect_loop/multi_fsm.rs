@@ -9,10 +9,10 @@
 //!   5. Drop halted FSMs from the active set.
 //! Program halts when no active FSMs remain.
 
-use crate::ast::EffectResult;
+use crate::core::ast::EffectResult;
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
 use crate::runtime::EvidentRuntime;
-use crate::translate::Value;
+use crate::core::Value;
 
 use super::collect::collect_dispatchable_effects;
 use super::fsm::{MainShape, resolve_fsm};
@@ -119,7 +119,7 @@ pub(super) fn run_multi_fsm(
             if let Some(wt) = &fsm.world_type {
                 if let Some(world_schema) = rt.get_schema(wt) {
                     for item in &world_schema.body {
-                        if let crate::ast::BodyItem::Membership { name, type_name, .. } = item {
+                        if let crate::core::ast::BodyItem::Membership { name, type_name, .. } = item {
                             let key = format!("world.{name}");
                             if world_snapshot.contains_key(&key) { continue; }
                             let default = match type_name.as_str() {
@@ -299,7 +299,7 @@ pub(super) fn run_multi_fsm(
         // ── Phase 3b: per-FSM solve ───────────────────────────
         // Per-tick effect ordering: writer first, then readers in
         // declaration order (which is the order in `fsms`).
-        let mut all_effects: Vec<(usize, Vec<crate::ast::Effect>)> = Vec::new();
+        let mut all_effects: Vec<(usize, Vec<crate::core::ast::Effect>)> = Vec::new();
         // Track which FSMs we actually scheduled this tick — used
         // for clearing self-feedback flags at the end.
         let mut scheduled_this_tick: Vec<bool> = vec![false; fsms.len()];
@@ -371,7 +371,7 @@ pub(super) fn run_multi_fsm(
                 let is_first = fsm_rt[idx].prev_values.is_empty();
                 let mut sees_underscore = false;
                 for item in &claim.body {
-                    if let crate::ast::BodyItem::Membership { name, .. } = item {
+                    if let crate::core::ast::BodyItem::Membership { name, .. } = item {
                         if let Some(stripped) = name.strip_prefix('_') {
                             sees_underscore = true;
                             // Primitive case: prev_values has a direct

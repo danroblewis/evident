@@ -6,10 +6,10 @@
 //! selected). State pinning + effect collection + halt detection
 //! happen in a flat loop over `opts.max_steps`.
 
-use crate::ast::EffectResult;
+use crate::core::ast::EffectResult;
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
 use crate::runtime::EvidentRuntime;
-use crate::translate::Value;
+use crate::core::Value;
 
 use super::collect::collect_dispatchable_effects;
 use super::fsm::MainShape;
