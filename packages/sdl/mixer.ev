@@ -1,0 +1,138 @@
+-- packages/sdl/mixer.ev — SDL2_mixer audio via FFI.
+--
+-- Minimal v1 surface: Mix_OpenAudio / Mix_LoadWAV / Mix_PlayChannel /
+-- Mix_LoadMUS / Mix_PlayMusic / Mix_HaltChannel / Mix_CloseAudio.
+--
+-- Two ways to reach SDL_mixer:
+--   * The `SDL_Mixer` FTI typed resource (below) — declare it as an
+--     fsm body member and the runtime opens the audio device + loads
+--     the configured WAV at install time, threading the Mix_Chunk*
+--     handle into `chunk` for the lifetime of the program. This is
+--     the cross-tick path: a loaded sample handle can't survive a
+--     tick boundary without an FTI bridge (same constraint as
+--     SDL_Window's renderer — COUNTEREXAMPLES.md #8).
+--   * The `mix_*` one-shot claim wrappers — same shape as
+--     window.ev's `sdl_*` helpers. Use these inside a single-tick
+--     Seq where the chunk handle comes from a prior result.
+--
+-- SDL_INIT_AUDIO  = 0x10  (16)
+-- AUDIO_S16SYS    = 0x8010 (32784) on little-endian hosts (Apple ARM)
+--
+-- Mix_LoadWAV / Mix_PlayChannel are macros in some headers but are
+-- also exported as real symbols by libSDL2_mixer (2.x), so we bind
+-- them directly. A failed Mix_LoadWAV returns NULL → handle 0; the
+-- runtime tolerates that (ArgHandle(0) = null pointer), so a missing
+-- audio device degrades to silence rather than a hard error.
+
+import "stdlib/runtime.ev"
+
+-- ── FTI type contract ─────────────────────────────────────────
+-- Declarative bridge: the `install` Seq below opens the SDL audio
+-- subsystem, opens the mixer, and loads the configured sample,
+-- binding the resulting Mix_Chunk* into `chunk`. Declare it on an
+-- fsm and reference `mixer.chunk` / call `mixer.play(...)`:
+--
+--     fsm tone(state ∈ AState)
+--         mixer ∈ SDL_Mixer (sample_path ↦ "examples/assets/tone.wav")
+--         play_eff ∈ Effect
+--         mixer.play(0, play_eff)        -- play the sample once
+--
+-- The runtime rebinds SDL_Mixer's `chunk` field onto the bare name
+-- when a subclaim body is inlined, so `ArgHandle(chunk)` resolves to
+-- the receiver's `mixer.chunk` Int leaf at the call site.
+external type SDL_Mixer
+    -- Path to the WAV the bridge loads at install (pinned by caller).
+    sample_path ∈ String
+    -- Mix_Chunk* handle from Mix_LoadWAV, captured at install.
+    chunk       ∈ Int
+
+    install ∈ Seq(InstallStep) = ⟨
+        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
+                    "i(i)", ⟨ArgInt(16)⟩)),
+        Run(LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_OpenAudio",
+                    "i(iiii)",
+                    ⟨ArgInt(22050), ArgInt(32784), ArgInt(2), ArgInt(2048)⟩)),
+        Bind("chunk", LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_LoadWAV",
+                              "p(s)", ⟨ArgStr(sample_path)⟩))
+    ⟩
+
+    -- Mix_PlayChannel(channel, chunk, loops) → channel the sample is
+    -- playing on (or -1 on error). channel -1 = first free channel;
+    -- loops 0 = play once, -1 = loop forever.
+    subclaim play(loops ∈ Int)
+        out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_PlayChannel",
+                      "i(ipi)",
+                      ⟨ArgInt(0 - 1), ArgHandle(chunk), ArgInt(loops)⟩)
+
+    -- Mix_HaltChannel(-1) → 0. Stops playback on every channel —
+    -- the resource-level "stop this mixer". For halting one specific
+    -- channel, use the standalone `mix_halt_channel(channel, out)`.
+    subclaim halt
+        out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_HaltChannel",
+                      "i(i)", ⟨ArgInt(0 - 1)⟩)
+
+-- ── Library path ──────────────────────────────────────────────
+
+claim mixer_lib_path_macos(p ∈ String)
+    p = "/opt/homebrew/lib/libSDL2_mixer.dylib"
+
+-- ── Constants ─────────────────────────────────────────────────
+
+-- SDL_INIT_AUDIO — pass to sdl_init before opening the mixer.
+external claim sdl_init_audio(n ∈ Int)
+    n = 16      -- 0x10
+
+-- AUDIO_S16SYS — signed 16-bit native-endian sample format. On the
+-- little-endian hosts we target this is AUDIO_S16LSB = 0x8010.
+external claim mix_format_s16sys(n ∈ Int)
+    n = 32784   -- 0x8010
+
+-- ── One-shot LibCall wrappers ────────────────────────────────
+-- Same convention as window.ev's `sdl_*` helpers: the SDL_mixer
+-- resource is owned elsewhere (the SDL_Mixer FTI bridge, or a prior
+-- Seq step), so there's no `sym` handle to thread — each wrapper is
+-- a self-contained cached LibCall.
+
+-- Mix_OpenAudio(frequency, format, channels, chunksize) → int
+-- (0 on success, -1 on error). 22050/44100 Hz, format=AUDIO_S16SYS,
+-- channels 1 (mono) or 2 (stereo), chunksize a power of two (2048).
+external claim mix_open_audio(frequency ∈ Int, format ∈ Int,
+                              channels ∈ Int, chunksize ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_OpenAudio",
+                  "i(iiii)",
+                  ⟨ArgInt(frequency), ArgInt(format), ArgInt(channels), ArgInt(chunksize)⟩)
+
+-- Mix_LoadWAV(path) → Mix_Chunk* (handle; 0/NULL on failure).
+external claim mix_load_wav(path ∈ String, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_LoadWAV",
+                  "p(s)", ⟨ArgStr(path)⟩)
+
+-- Mix_PlayChannel(channel, chunk, loops) → channel (or -1 on error).
+-- channel -1 = first free; loops 0 = once, -1 = forever.
+external claim mix_play_channel(channel ∈ Int, chunk ∈ Int, loops ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_PlayChannel",
+                  "i(ipi)",
+                  ⟨ArgInt(channel), ArgHandle(chunk), ArgInt(loops)⟩)
+
+-- Mix_LoadMUS(path) → Mix_Music* (handle; 0/NULL on failure). For
+-- streamed music (OGG/MP3/MOD/...) as opposed to a decoded WAV chunk.
+external claim mix_load_mus(path ∈ String, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_LoadMUS",
+                  "p(s)", ⟨ArgStr(path)⟩)
+
+-- Mix_PlayMusic(music, loops) → int (0 on success, -1 on error).
+-- loops 0 = play once, -1 = loop forever.
+external claim mix_play_music(music ∈ Int, loops ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_PlayMusic",
+                  "i(pi)",
+                  ⟨ArgHandle(music), ArgInt(loops)⟩)
+
+-- Mix_HaltChannel(channel) → 0. channel -1 = halt all channels.
+external claim mix_halt_channel(channel ∈ Int, out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_HaltChannel",
+                  "i(i)", ⟨ArgInt(channel)⟩)
+
+-- Mix_CloseAudio() — close the mixer / audio device.
+external claim mix_close_audio(out ∈ Effect)
+    out = LibCall("/opt/homebrew/lib/libSDL2_mixer.dylib", "Mix_CloseAudio",
+                  "v()", ⟨⟩)
