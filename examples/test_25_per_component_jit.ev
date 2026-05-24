@@ -1,0 +1,164 @@
+-- 25_per_component_jit — a focused showcase of the per-component JIT.
+--
+-- ─────────────────────────────────────────────────────────────────
+-- WHAT TO LOOK AT
+-- ─────────────────────────────────────────────────────────────────
+-- Run with the functionizer stats turned on:
+--
+--   EVIDENT_FUNCTIONIZE_STATS=1 \
+--     ./runtime/target/release/evident effect-run \
+--     examples/test_25_per_component_jit.ev 2>&1 | grep comp=
+--
+-- and you'll see this per-claim line:
+--
+--   sim   z3=[…] comp=3/6 z3-fz✓ fn✓
+--
+-- `comp=3/6` is the whole point. The `sim` FSM's body decomposes into
+-- SIX independent components (groups of variables that share no
+-- constraints). THREE of them JIT-compile to native code; the other
+-- THREE fall to the scoped Z3 solver — each for a different, documented
+-- reason. That's the per-component JIT: a claim isn't all-or-nothing.
+-- The pieces the codegen can emit run as native code; only the pieces
+-- it can't are left to Z3.
+--
+-- ─────────────────────────────────────────────────────────────────
+-- THE SIX COMPONENTS
+-- ─────────────────────────────────────────────────────────────────
+-- Each `world_next.X = …` write is its own component because the
+-- writes share no variables — `frame` doesn't depend on `score`, etc.
+--
+--   COMPILES (pure integer arithmetic — the JIT's home turf):
+--     • frame     = world.frame + 1
+--     • score     = world.score + 10
+--     • distance  = world.distance + 7
+--
+--   SLOW PATH (three distinct codegen boundaries):
+--     • seen   ∈ Set(Int)  — a Z3 Set is a characteristic function
+--                            (Array elem→Bool), not a value the JIT
+--                            can lay out, so any Set-bearing component
+--                            is sent to the scoped Z3 solve.
+--     • trail  ∈ String    — built by concatenating a String INPUT
+--                            (`"." ++ world.trail`). The JIT's i64 ABI
+--                            doesn't carry String inputs in v1, so the
+--                            concat can't be lowered. (String OUTPUTS
+--                            built from int→str work; reading a String
+--                            input does not.)
+--     • effects            — a ternary SELECTS between two Seq(Effect)
+--                            literals (the running case vs. the Exit
+--                            case). The codegen declines a branch-
+--                            selected Effect list; Z3 picks the branch.
+--
+-- ─────────────────────────────────────────────────────────────────
+-- BEFORE / AFTER
+-- ─────────────────────────────────────────────────────────────────
+-- Default (functionizer on):
+--   comp=3/6 — 3 components run as native code, 3 via scoped Z3.
+--
+-- With EVIDENT_FUNCTIONIZE=0 the functionizer never runs at all:
+--   [fz/stats] functionizer compiled: 0 of 0 analyses
+--   [fz/stats] components compiled:  0 of 0
+-- — every tick is one whole-claim Z3 solve. Same output, no native
+-- code. That contrast is the demo: partial compilation turns the
+-- arithmetic majority of this FSM into native code while leaving the
+-- genuinely-hard pieces to the solver, instead of falling back to Z3
+-- for the entire claim the moment one piece doesn't compile.
+--
+-- The numbers above (comp=3/6) are reproducible verbatim from the
+-- command at the top. The inline sat_* claims below pin the arithmetic,
+-- the Set, and the String components and assert their outputs.
+
+import "stdlib/runtime.ev"
+
+type World
+    frame    ∈ Int        -- frame counter         (compiles)
+    score    ∈ Int        -- running score         (compiles)
+    distance ∈ Int        -- distance accumulator   (compiles)
+    seen     ∈ Set(Int)   -- distinct gauge values  (slow: Set output)
+    trail    ∈ String     -- a growing progress bar (slow: String input)
+
+fsm sim(world, world_next ∈ World)
+    -- Three pure-integer components — each JIT-compiles on its own.
+    world_next.frame    = world.frame + 1
+    world_next.score    = world.score + 10
+    world_next.distance = world.distance + 7
+
+    -- Set output → scoped Z3 solve. A Z3 Set is a characteristic
+    -- function, not a value the codegen can emit.
+    world_next.seen = {world.frame, world.score, world.distance}
+
+    -- String built from a String INPUT → scoped Z3 solve. The JIT's
+    -- i64 ABI doesn't carry String inputs in v1.
+    world_next.trail = "." ++ world.trail
+
+    -- Branch-selected Seq(Effect) → scoped Z3 solve. The dot-trail
+    -- grows one character per tick, so stdout shows the String
+    -- component working end-to-end; we halt once frame reaches 4.
+    effects = (world.frame ≥ 4
+        ? ⟨Println("per-component demo: done" ++ world.trail), Exit(0)⟩
+        : ⟨Println("frame" ++ world.trail)⟩)
+
+-- ── Static tests ─────────────────────────────────────────────────
+-- Each pins one component's input and asserts its output, proving the
+-- three slow components and three compiled components are all correct.
+
+-- COMPILED component: integer arithmetic.
+claim sat_frame_increments
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.frame = 5
+    sim
+    world_next.frame = 6
+
+claim sat_score_accumulates
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.score = 100
+    sim
+    world_next.score = 110
+
+claim sat_distance_accumulates
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.distance = 14
+    sim
+    world_next.distance = 21
+
+-- SLOW component: Set output. The next-tick set holds this tick's
+-- three gauge values.
+claim sat_seen_collects_gauges
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.frame = 1
+    world.score = 2
+    world.distance = 3
+    sim
+    2 ∈ world_next.seen
+
+-- SLOW component: String concatenation prepends a "." each tick.
+claim sat_trail_grows
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.trail = "ab"
+    sim
+    world_next.trail = ".ab"
+
+-- SLOW component: branch-selected effects halts once frame ≥ 4.
+claim sat_halts_at_frame_4
+    world ∈ World
+    world_next ∈ World
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.frame = 4
+    world.trail = ""
+    sim
+    effects = ⟨Println("per-component demo: done"), Exit(0)⟩
