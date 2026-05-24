@@ -205,6 +205,19 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["pos.x+pos.y = ?"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // SDL2_mixer audio: the SDL_Mixer FTI bridge opens the audio
+        // device + loads examples/assets/tone.wav at install, then
+        // plays it once and idles ~1s before halting/closing/exiting.
+        // Audio output isn't asserted (a headless box may lack a
+        // device); the gate is the clean exit + "done" — a missing
+        // device degrades to silence (Mix_LoadWAV → NULL handle),
+        // not an error.
+        name: "test_24_sdl_mixer", exit: 0,
+        must_lines: &["done"],
+        forbid_exact_lines: &[],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
