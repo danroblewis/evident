@@ -228,6 +228,39 @@ phantom value `prior_at(N)` that the call-site translator
 recognizes), or move toward FTI bridges so most C resources
 have known typed handles instead of needing in-Seq chaining.
 
+## 11. SDL render-call batching is not a real FPS win (profiled, rejected)
+
+**Where:** `examples/test_21_mario/main.ev` (profiled May 2026)
+
+A tempting optimization: a Mario frame emits ~70 effects, most of
+them `SDL_RenderFillRect` LibCalls, so batch consecutive fill-rects
+into `SDL_RenderFillRects` to cut FFI overhead. Profiling says don't
+bother — FFI dispatch is not the bottleneck. Per-effect dispatch
+time at `EVIDENT_TICK_MS=1`:
+
+| Effect | µs/call | calls/frame |
+|---|---|---|
+| `SDL_Delay(16)` | **16,935** | 1 (deliberate frame cap) |
+| `SDL_PumpEvents` | ~800 | 1 |
+| `SDL_RenderPresent` | ~90 | 1 |
+| `SDL_SetRenderDrawColor` | **0.5** | ~30 |
+| `SDL_RenderFillRect` | **0.5** | ~24 |
+
+All ~24 fill-rects total **~12 µs/frame**. Against a ~101 ms frame
+(`EVIDENT_LOOP_TIMING`: 67 ms display *solve* + 17 ms dispatch,
+of which the intentional 16.9 ms `SDL_Delay` is nearly all),
+batching fill-rects saves ~12 µs — unmeasurable. The frame is
+gated by the Z3 solve, not by FFI. libffi already amortizes
+dlopen/dlsym (cached lib + sym handles), so each marshalled call
+is sub-microsecond.
+
+Takeaway: the lever for Mario FPS is the **display-FSM solve**
+(JIT / functionizer work — see the constraint-model →
+native-compilation plan), not effect-dispatch batching. The
+multi-writer enforcement work (single-owner check now resolves
+`..Passthrough` write-sets transitively — `effect_loop/fsm.rs:
+full_world_access`) was the durable win from that session instead.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

@@ -247,3 +247,53 @@ pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     all.extend(readers);
     all
 }
+
+/// Full world read/write sets for an FSM, resolving `..Passthrough`
+/// claims transitively.
+///
+/// `subscriptions::world_access_sets` is intentionally LOCAL — it
+/// treats `..ClaimName` passthroughs as opaque (see its module doc,
+/// "Phase 5 will lift this"). But an FSM that does its world
+/// writes/reads *through* a passthrough claim (e.g. `..WritesScore`,
+/// where the actual `world_next.score = …` lives) then gets an
+/// EMPTY inferred write-set. That silently (a) bypasses the
+/// single-owner disjoint check in `mod.rs` — two such writers can
+/// both claim the same field undetected — and (b) makes the
+/// scheduler's per-writer `my_writes` scoping drop every one of
+/// that writer's world writes, so the program hangs or produces
+/// wrong state with no error. This walks the passthrough graph
+/// (cycle-guarded) and unions each included claim's access sets, so
+/// the inferred sets match what the translator actually inlines.
+///
+/// Note: `resolve_fsm` above already recurses passthroughs to find
+/// the `world_next` *membership* (so `is_writer()` is correct for
+/// passthrough-writers); this closes the matching gap for the
+/// *field-level* read/write sets those checks rely on.
+pub fn full_world_access(
+    rt: &EvidentRuntime,
+    claim_name: &str,
+) -> crate::subscriptions::AccessSets {
+    fn rec(
+        rt: &EvidentRuntime,
+        name: &str,
+        acc: &mut crate::subscriptions::AccessSets,
+        visited: &mut std::collections::HashSet<String>,
+    ) {
+        if !visited.insert(name.to_string()) {
+            return;
+        }
+        let Some(s) = rt.get_schema(name) else { return };
+        let local = crate::subscriptions::world_access_sets(s);
+        acc.reads.extend(local.reads);
+        acc.writes.extend(local.writes);
+        for item in &s.body {
+            if let BodyItem::Passthrough(p) = item {
+                rec(rt, p, acc, visited);
+            }
+        }
+    }
+    let mut acc = crate::subscriptions::AccessSets::default();
+    let mut visited = std::collections::HashSet::new();
+    rec(rt, claim_name, &mut acc, &mut visited);
+    acc
+}

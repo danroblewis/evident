@@ -305,12 +305,15 @@ pub fn run_with_ctx(
     // must have a disjoint write-set. A field has at most one
     // writer (single-owner).
     {
+        // Write-sets are computed transitively (resolving `..Passthrough`
+        // claims) via `fsm::full_world_access` — a writer that does its
+        // `world_next.X = …` inside a passthrough claim must still be
+        // caught here, otherwise the conflict slips through undetected
+        // and the scheduler silently drops its writes.
         let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
             .filter(|f| f.is_writer())
             .map(|f| {
-                let aset = rt.get_schema(&f.claim_name)
-                    .map(|s| crate::subscriptions::world_access_sets(s))
-                    .unwrap_or_default();
+                let aset = fsm::full_world_access(rt, &f.claim_name);
                 (f.claim_name.clone(), aset.writes)
             })
             .collect();
@@ -330,7 +333,11 @@ pub fn run_with_ctx(
                     return Err(format!(
                         "multi-FSM: writers `{a_name}` and `{b_name}` both write \
                          to world fields {overlap:?}. Each world field must have \
-                         at most one writer (single-owner rule)."
+                         at most one writer (single-owner rule). Fix by either: \
+                         (1) merging the two FSMs into one writer for that field, \
+                         (2) splitting the field so each writer owns a distinct \
+                         one, or (3) making one FSM a reader (drop its \
+                         `world_next` membership and read the field via `world.X`)."
                     ));
                 }
             }

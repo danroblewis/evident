@@ -1,0 +1,37 @@
+-- Multi-writer conflict (passthrough form) — the regression case.
+--
+-- Both writer FSMs do their world write INSIDE a `..WritesScore`
+-- passthrough claim, not in their own body. The single-owner check
+-- infers write-sets via `fsm::full_world_access`, which resolves
+-- `..Passthrough` claims transitively — so this conflict is caught
+-- at load time exactly like the direct form (file 21).
+--
+-- Before the transitive fix: `subscriptions::world_access_sets`
+-- treated passthroughs as opaque, so both writers had an EMPTY
+-- inferred write-set. The conflict slipped past the check AND the
+-- scheduler's per-writer `my_writes` scoping then dropped both
+-- writers' world writes — the program hung forever with no error.
+--
+-- Asserted by `runtime/tests/multi_fsm.rs::multiwriter_conflict_*`.
+
+import "stdlib/runtime.ev"
+
+type World
+    score ∈ Int
+
+enum AS = AGo
+enum BS = BGo
+
+claim WritesScore
+    world, world_next ∈ World
+    world_next.score = world.score + 1
+
+fsm alpha(world, world_next ∈ World, state ∈ AS)
+    ..WritesScore
+    state_next = AGo
+    effects = ⟨⟩
+
+fsm beta(world, world_next ∈ World, state ∈ BS)
+    ..WritesScore
+    state_next = BGo
+    effects = ⟨⟩
