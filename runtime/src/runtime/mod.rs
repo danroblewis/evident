@@ -53,12 +53,14 @@ mod scheduler_api;
 mod reflection;
 mod analysis;
 mod introspect;
+mod profile;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]
 pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 pub use desugar::SystemBoundary;
+pub use profile::BottleneckEntry;
 
 use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};

@@ -13,7 +13,8 @@ What ships:
 - FFI / FTI bridges (`ffi.rs`, `fti.rs`, `event_sources/`) so programs can
   reach SDL, stdin, signals, frame timers, the wall clock, etc.
 - A CLI binary (`main.rs` + `commands/`) exposing `query`, `sample`,
-  `check`, `test`, `effect-run`, `lint`, `desugar`, `infer-types`.
+  `check`, `test`, `effect-run`, `lint`, `profile`, `desugar`,
+  `infer-types`.
 
 ## Quick start
 
@@ -404,6 +405,7 @@ evident check       <files…>
 evident test        [path]            # walks for test_*.ev, runs sat_/unsat_ claims
 evident effect-run  <file>            # run an effect-driven program
 evident lint        <file>
+evident profile     <files…> <schema> [--given k=v …] [--top N]
 evident desugar     <file>            # report self-hosted desugar rewrites
 evident infer-types <file>            # report self-hosted type inferences
 ```
@@ -415,6 +417,12 @@ Output:
 - `check` → `SAT|UNSAT|ERROR  <name>` per schema; exit 1 if any UNSAT
 - `test` → `PASS|FAIL  <name>` per claim, plus a final summary
 - `effect-run` → process exit code from `Effect::Exit(N)`, else 0 on clean halt, 1 on max-steps
+- `profile` → the claim's given vs solved-for variable lists, plus a
+  ranked bottleneck table — for each solved-for scalar leaf, the solve
+  time with that variable pinned to its model value vs unpinned,
+  sorted by savings. Tells you which variables, if supplied by the
+  caller (or another FSM), would most reduce the Z3 solve cost. Exit 1
+  if the claim is UNSAT under the given bindings.
 
 ## Where to read first
 
