@@ -14,6 +14,7 @@
 //! ```
 
 pub mod cranelift;
+pub mod llm;
 
 // Re-export the traits so existing `crate::core::Functionizer`
 // / `crate::core::CompiledFunction` paths keep resolving.
