@@ -22,6 +22,7 @@ pub fn usage() {
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
     eprintln!("  evident lint         <file>");
+    eprintln!("  evident profile      <files…> <schema> [--given k=v …] [--top N]");
     eprintln!("  evident desugar      <file>           # report self-hosted desugar rewrites");
     eprintln!("  evident infer-types  <file>           # report self-hosted type inferences");
 }

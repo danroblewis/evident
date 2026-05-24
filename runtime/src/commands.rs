@@ -8,6 +8,7 @@ pub mod desugar;
 pub mod effect_run;
 pub mod infer_types;
 pub mod lint;
+pub mod profile;
 pub mod query;
 pub mod sample;
 pub mod test;

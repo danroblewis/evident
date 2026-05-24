@@ -7,6 +7,7 @@
 //!   test         [path]
 //!   effect-run   <file>           — run an effect-driven program
 //!   lint         <file>
+//!   profile      <files…> <schema> [--given k=v …] [--top N]
 //!   desugar      <file>           — report self-hosted desugar rewrites
 //!   infer-types  <file>           — report self-hosted type inferences
 
@@ -29,6 +30,7 @@ fn main() -> ExitCode {
         "test"        => commands::test::cmd_test(&args[1..]),
         "effect-run"  => commands::effect_run::cmd_effect_run(&args[1..]),
         "lint"        => commands::lint::cmd_lint(&args[1..]),
+        "profile"     => commands::profile::cmd_profile(&args[1..]),
         "desugar"     => commands::desugar::cmd_desugar(&args[1..]),
         "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
