@@ -192,10 +192,11 @@ source text
   → lexer.rs              Unicode operators + word-keywords → tokens
   → parser.rs             Recursive-descent parser → AST (ast.rs)
   → translate/            AST → Z3 sorts + constraints; per-claim inline
-  → runtime.rs            EvidentRuntime: top-level API (load_file, query)
-  → effect_loop.rs        Multi-FSM scheduler (the executor)
+  → runtime/              EvidentRuntime: top-level API (load_file, query)
+  → functionize/          Z3Program → callable function (Cranelift JIT)
+  → effect_loop/          Multi-FSM scheduler (the executor)
   → effect_dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
-  → event_sources.rs      FTI bridge implementations (one struct per
+  → event_sources/        FTI bridge implementations (one struct per
                           typed C resource)
   → fti.rs                FTI registry: type-name → install fn
 ```
@@ -204,7 +205,85 @@ Supporting modules:
 - `subscriptions.rs` — static read/write-set inference per claim
 - `ffi.rs` — libffi marshaling, handle registry
 - `pretty.rs` — AST printer for diagnostics
+- `z3_eval.rs` — extract a `Z3Program` from a simplified Z3 AST
 - `commands/` — per-CLI-subcommand entry points
+
+## Source layout: which file owns what
+
+Files under `runtime/src/` are organized by single-concern modules,
+typically ≤ 500 lines per file. When you need to change a thing,
+here's where to start.
+
+### Top-level modules
+
+| Module | What lives here |
+|---|---|
+| `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
+| `effect_loop/` | Multi-FSM scheduler — `run` and `run_with_ctx` |
+| `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
+| `functionize/` | `Functionizer` trait + Cranelift JIT impl |
+| `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
+| `commands/` | Per-CLI-subcommand entry points |
+| `effect_dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
+| `subscriptions.rs` | Static read/write-set inference per claim |
+| `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
+| `ffi.rs`, `fti.rs` | libffi marshaling + typed-resource bridges |
+| `parser.rs`, `lexer.rs`, `ast.rs`, `pretty.rs` | Front end |
+
+### Inside `runtime/`
+
+| Want to … | Edit |
+|---|---|
+| Add a new public query method | `runtime/query.rs` (or `analysis.rs` for diagnostic-shaped ones) |
+| Change how a schema gets parsed/loaded | `runtime/load.rs` |
+| Add a new schema desugaring | `runtime/desugar.rs` |
+| Change FSM auto-injection (`state_next`, `_prev`, …) | `runtime/inject.rs` |
+| Add a new generic-type instantiation rule | `runtime/generics.rs` |
+| Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
+| Add a per-claim stat | `runtime/stats.rs` |
+| Tune solver / change pricing strategy | `runtime/autotune.rs` |
+| Inject AST values into self-hosted queries | `runtime/reflection.rs` |
+| Wire a per-tick scheduler call | `runtime/scheduler_api.rs` |
+| Enforce a load-time validation rule | `runtime/validate.rs` |
+| Touch user-claim introspection / body replacement | `runtime/introspect.rs` |
+| Lenient-mode RAII | `runtime/lenient.rs` |
+
+### Inside `effect_loop/`
+
+| Want to … | Edit |
+|---|---|
+| Change how FSMs are discovered | `effect_loop/fsm.rs` |
+| Change effect ordering / toposort | `effect_loop/toposort.rs`, `collect.rs` |
+| Touch the per-tick multi-FSM scheduler loop | `effect_loop/multi_fsm.rs` |
+| Touch the single-FSM legacy scheduler | `effect_loop/single_fsm.rs` |
+| Adjust halt detection or state seeding | `effect_loop/state.rs` |
+| Change timing output | `effect_loop/timing.rs` |
+
+### Inside `translate/eval/`
+
+| Want to … | Edit |
+|---|---|
+| Change the default tactic chain or solver tuning | `translate/eval/solver.rs` |
+| Add a new `evaluate_with_*` variant | `translate/eval/extra.rs` |
+| Touch the cached-solver path | `translate/eval/cached.rs` |
+| Decode a new enum/composite shape from a Z3 model | `translate/eval/decode.rs` |
+| Change UNSAT-core extraction | `translate/eval/core.rs` |
+| Touch decomposition or component classification | `translate/eval/decompose.rs` |
+
+### Inside `functionize/`
+
+| Want to … | Edit |
+|---|---|
+| Plug in a new functionizer strategy | implement `Functionizer` + `CompiledFunction` traits from `functionize/mod.rs` in a new file under `functionize/` |
+| Change Cranelift codegen | `functionize/cranelift.rs` |
+
+### Rules of thumb
+
+- **One file = one concern.** If you're adding > ~200 lines to a file in this layout, ask whether it's actually a new concern.
+- **Public re-exports from `mod.rs`.** `crate::runtime::EvidentRuntime` works whether the type is defined in `runtime/mod.rs` or somewhere under it.
+- **Sibling visibility: `pub(super)`** for cross-file helpers inside a directory module.
+- **Tests next to the code.** `#[cfg(test)] mod tests { … }` at the bottom of the file under test.
+- **`scripts/rust-size.py`** lists files by length — run it when you suspect a file is overdue for a split.
 
 ## Multi-FSM Runtime
 
