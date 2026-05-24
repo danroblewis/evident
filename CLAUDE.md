@@ -173,11 +173,13 @@ ship with it.
 |---|---|
 | Lexer (Unicode operators → tokens) | `runtime/src/lexer.rs` |
 | Parser (recursive-descent) | `runtime/src/parser.rs` |
-| AST node types | `runtime/src/ast.rs` |
+| AST node types | `runtime/src/core/ast.rs` |
+| Shared types + traits (Value, Z3Program, Functionizer, …) | `runtime/src/core/` |
 | AST → Z3 translator | `runtime/src/translate/` |
+| Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/z3_eval.rs` (extractor) |
 | Effect dispatch | `runtime/src/effect_dispatch.rs` |
-| Multi-FSM scheduler | `runtime/src/effect_loop.rs` |
-| FTI bridges | `runtime/src/event_sources.rs`, `runtime/src/fti.rs` |
+| Subscription-driven scheduler | `runtime/src/effect_loop/` |
+| FTI bridges | `runtime/src/event_sources/`, `runtime/src/fti.rs` |
 | Stdlib (Evident) | `stdlib/` |
 | Design docs | `docs/design/` |
 | Worked examples + integration tests | `examples/` |
@@ -190,11 +192,12 @@ The runtime is a pipeline. Each stage is a separate module under
 ```
 source text
   → lexer.rs              Unicode operators + word-keywords → tokens
-  → parser.rs             Recursive-descent parser → AST (ast.rs)
+  → parser.rs             Recursive-descent parser → AST (core/ast.rs)
   → translate/            AST → Z3 sorts + constraints; per-claim inline
-  → runtime/              EvidentRuntime: top-level API (load_file, query)
+  → z3_eval.rs            Simplified Z3 AST → Z3Program (the IR)
   → functionize/          Z3Program → callable function (Cranelift JIT)
-  → effect_loop/          Multi-FSM scheduler (the executor)
+  → runtime/              EvidentRuntime: top-level API (load_file, query)
+  → effect_loop/          Subscription-driven scheduler (the executor)
   → effect_dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
   → event_sources/        FTI bridge implementations (one struct per
                           typed C resource)
@@ -220,7 +223,7 @@ here's where to start.
 |---|---|
 | `core/`        | Shared data types + traits. No orchestration logic. Imported by everything else. |
 | `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
-| `effect_loop/` | Multi-FSM scheduler — `run` and `run_with_ctx` |
+| `effect_loop/` | Subscription-driven scheduler — `run` and `run_with_ctx` |
 | `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
@@ -244,6 +247,7 @@ not a core thing — it belongs in `runtime/` or higher.
 | `core/value.rs`        | `Value` (the runtime value type returned in `QueryResult.bindings`), `EvalResult` |
 | `core/z3_types.rs`     | `EnumRegistry`, `CachedSchema`, `Var`, `FieldKind`, `SeqFieldElem`, `DatatypeRegistry` |
 | `core/z3_program.rs`   | `Z3Program`, `Z3Step`, `GuardedBranch`, `GuardedBody` — the IR the functionizer consumes |
+| `core/seq_helpers.rs`  | `parse_seq_type`, `internal_cons_helper_name` — pure type-name string utilities used by translate/ and runtime/ |
 | `core/api.rs`          | `QueryResult`, `RuntimeError` — the public-facing query result + error |
 | `core/functionizer.rs` | `Functionizer` + `CompiledFunction` traits |
 

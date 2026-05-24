@@ -39,7 +39,7 @@ Top-level summary:
 |---|---|
 | `core/`          | Shared data types + traits (Evident AST, `Value`, `Z3Program`, `Functionizer` trait, `QueryResult`, …). Imported by everything. No orchestration logic. |
 | `runtime/`       | `EvidentRuntime`: load, query, sample, scheduler-facing API |
-| `effect_loop/`   | Multi-FSM scheduler — `run` and `run_with_ctx` |
+| `effect_loop/`   | Subscription-driven scheduler — `run` and `run_with_ctx` |
 | `translate/`     | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/`   | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, FileWatcher, …) |
@@ -72,6 +72,7 @@ graph LR
         value[value.rs<br/>Value · EvalResult]
         z3t[z3_types.rs<br/>EnumRegistry · CachedSchema<br/>Var · FieldKind · DatatypeRegistry]
         z3p[z3_program.rs<br/>Z3Program · Z3Step · GuardedBody]
+        seqh[seq_helpers.rs<br/>parse_seq_type<br/>internal_cons_helper_name]
         api[api.rs<br/>QueryResult · RuntimeError]
         fzt[functionizer.rs<br/>Functionizer · CompiledFunction]
     end
@@ -352,7 +353,7 @@ Key files for each step (so you can read the code in order):
 | Load + import resolution | `runtime/src/runtime/load.rs` |
 | FSM detection | `runtime/src/effect_loop/fsm.rs:all_fsms` |
 | Scheduler entry | `runtime/src/effect_loop/mod.rs:run_with_ctx` |
-| Multi-FSM tick loop | `runtime/src/effect_loop/multi_fsm.rs:run_multi_fsm` |
+| Tick loop | `runtime/src/effect_loop/scheduler.rs:run_scheduler` |
 | Subscription wake set | `runtime/src/subscriptions.rs:world_access_sets` |
 | Per-FSM query | `runtime/src/runtime/scheduler_api.rs:query_with_pins_and_given` |
 | Functionize / JIT path | `runtime/src/runtime/query.rs:try_functionize_z3` |
@@ -364,7 +365,7 @@ Key files for each step (so you can read the code in order):
 
 ## Functionizer strategy
 
-The runtime calls a `Functionizer` trait (`functionize/mod.rs`); the
+The runtime calls a `Functionizer` trait (`core/functionizer.rs`); the
 default impl is `CraneliftFunctionizer` (`functionize/cranelift.rs`).
 To swap in a different strategy:
 
