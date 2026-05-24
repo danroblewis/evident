@@ -386,6 +386,8 @@ intermediate fallback layers.
 | `EVIDENT_FUNCTIONIZE_STATS=1`  | Print `[fz/stats]` summary on exit |
 | `EVIDENT_FUNCTIONIZE_TRACE=1`  | Per-call trace of fz hits/misses |
 | `EVIDENT_VALUE_CACHE=0`        | Disable the cross-tick value cache (memoizes `(claim, given-values)` → bindings; on by default) |
+| `EVIDENT_PARALLEL_SLOW=0`      | Disable parallel solving of a claim's independent slow components (≥2 un-JIT-able components → each on its own Z3 context + thread; on by default) |
+| `EVIDENT_PLAN_TIMING=1`        | Per-component-plan trace: slow-part count + per-part solve time (`‖` marks a parallel part) |
 | `EVIDENT_LOOP_TIMING=1`        | Per-FSM timing breakdown |
 | `EVIDENT_DISPATCH_TIMING=1`    | Per-effect dispatch timing |
 | `EVIDENT_LENIENT=1`            | Demote dropped-constraint errors to warnings |

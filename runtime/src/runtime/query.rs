@@ -53,27 +53,78 @@ pub(crate) struct ClaimPlan {
     /// One callable artifact per JIT-able component. Each produces a
     /// disjoint slice of the claim's outputs from `given`.
     pub(super) compiled: Vec<Rc<dyn CompiledFunction>>,
-    /// Combined slow path: a cached solver holding only the assertions
-    /// of the components that didn't compile (plus given-only
-    /// consistency assertions), and the names of the outputs it
-    /// produces. `None` when every component compiled.
-    pub(super) slow: Option<SlowPart>,
+    /// Slow path, one entry per uncompiled component. Each holds a
+    /// cached solver carrying that component's assertions (plus the
+    /// given-only consistency assertions, replicated into every part)
+    /// and the names of the outputs it produces. Decomposition
+    /// guarantees the components have disjoint variable sets, so the
+    /// parts are independent and their result bindings union cleanly —
+    /// which is exactly what lets them solve in parallel threads (see
+    /// `execute_plan` / `solve_slow_parts`). Empty when every component
+    /// compiled.
+    pub(super) slow: Vec<SlowPart>,
+    /// When true, every `slow` part owns a private Z3 context and may be
+    /// solved on its own thread; `solve_slow_parts` fans them out. When
+    /// false, all parts share the runtime's main context and must be
+    /// solved sequentially (the safe fallback for claims whose slow
+    /// vars don't cleanly translate to a fresh context, and the trivial
+    /// path for a single-component claim like every Mario FSM). See
+    /// `build_parallel_slow` / `build_sequential_slow`.
+    pub(super) slow_parallel: bool,
     /// Statically-resolved integer vars (Z3 `PinnedInt`s), which sit in
     /// no component. Injected into every result so the bindings match
     /// the monolithic path, which emitted them as constant steps.
     pub(super) pinned_ints: Vec<(String, Value)>,
 }
 
-/// The cached scoped Z3 solve for the uncompiled components.
+/// One uncompiled component's scoped Z3 solve. In the parallel case
+/// (`build_parallel_slow`) each part owns its own private Z3 `Context`,
+/// built by translating the component's assertions + the env it needs
+/// out of the runtime's main context via `Ast::translate` — so distinct
+/// parts can `check()` concurrently (a Z3 context is single-threaded,
+/// but separate contexts are independent). In the sequential fallback
+/// (`build_sequential_slow`) `ctx` is the runtime's main context and the
+/// parts are solved one at a time.
 pub(crate) struct SlowPart {
-    /// Full env (for given-pinning + model extraction) paired with a
-    /// solver carrying *only* the uncompiled components' assertions.
+    /// Env (for given-pinning + model extraction) paired with a solver
+    /// carrying *only* this component's assertions. Both live in `ctx`.
     cached: CachedSchema<'static>,
-    /// Output var names this solve is responsible for — the union of
-    /// the uncompiled components' variables. Other env entries the
-    /// solver happens to model are ignored.
+    /// The context every Z3 object in this part belongs to: a private
+    /// leaked `'static` context in the parallel case, or the runtime's
+    /// main context in the sequential case. Kept here so a private
+    /// context stays alive as long as the plan (the solver + env borrow
+    /// from it). One private context per part is what makes parallel
+    /// `check()` sound.
+    ctx: &'static Context,
+    /// Output var names this solve is responsible for — this component's
+    /// variables. Other env entries the solver happens to model are
+    /// ignored.
     outputs: Vec<String>,
 }
+
+// SAFETY: `SlowPart` holds Z3 handles (`Context`, `Solver`, `Var` ASTs)
+// that the z3 crate marks neither `Send` nor `Sync` (they wrap raw
+// `Z3_context` / `Z3_ast` pointers). Sharing a `&SlowPart` with a worker
+// thread (what `std::thread::scope` does) is sound *only* under the
+// access discipline this module enforces:
+//
+//   * A `SlowPart` is sent to a worker thread only when the plan was
+//     built parallel (`slow_parallel == true`), in which case the part
+//     owns a *private* leaked context (`ctx`) that no other part, no
+//     other thread, and not the main runtime ever references. Every Z3
+//     object reachable from the part (solver, env `Var` ASTs) lives in
+//     that private context.
+//   * `solve_slow_parts` gives each part to exactly one worker thread —
+//     parts and threads are paired 1:1 — so a single Z3 context is never
+//     touched by two threads concurrently, even though `solve_one_part`
+//     mutates the solver (push/assert/check/pop) through a shared `&`.
+//   * Parts sharing the main context (`slow_parallel == false`) are
+//     never sent to a thread; they run on the calling thread only.
+//
+// Under that discipline neither auto-trait would be derived, but the
+// concurrency it would forbid never happens, so the impls are sound.
+unsafe impl Send for SlowPart {}
+unsafe impl Sync for SlowPart {}
 
 /// Max distinct `(given-values → result)` entries kept per claim in the
 /// cross-tick value cache. An idle FSM repeats one input set, so even a
@@ -336,6 +387,112 @@ fn build_tuned_solver(ctx: &'static Context, arith_solver: u32) -> Solver<'stati
     solver
 }
 
+/// Solve one slow part with `given` pinned and return its output
+/// bindings (or `None` if UNSAT). All Z3 work happens in the part's own
+/// context (`part.ctx`); the part's solver + env Vars + enum datatypes
+/// all live there. Enum-typed givens are pinned in an outer push frame
+/// (run_cached only handles scalar/seq/set givens); the frame is popped
+/// before return so the cached solver is reusable next tick.
+fn solve_one_part(
+    part: &SlowPart,
+    given: &HashMap<String, Value>,
+    enums: Option<&crate::core::EnumRegistry>,
+) -> Option<HashMap<String, Value>> {
+    let ctx = part.ctx;
+    part.cached.solver.push();
+    let mut scalar_given: HashMap<String, Value> = HashMap::with_capacity(given.len());
+    for (n, v) in given {
+        match (part.cached.env.get(n), v) {
+            (Some(Var::EnumVar { ast, .. }), Value::Enum { .. }) => {
+                // Only reachable on the sequential (main-context) path,
+                // where `enums` is `Some`; parallel parts carry no enum
+                // vars (the translatable check excludes them).
+                if let Some(dt) = enums.and_then(|e|
+                    crate::translate::value_enum_to_datatype(v, ctx, e))
+                {
+                    part.cached.solver.assert(&ast._eq(&dt));
+                }
+            }
+            _ => { scalar_given.insert(n.clone(), v.clone()); }
+        }
+    }
+    let r = run_cached(&part.cached, &scalar_given, ctx, enums);
+    part.cached.solver.pop(1);
+    if !r.satisfied { return None; }
+    let mut out: HashMap<String, Value> = HashMap::with_capacity(part.outputs.len());
+    for vn in &part.outputs {
+        if let Some(v) = r.bindings.get(vn) {
+            out.insert(vn.clone(), v.clone());
+        }
+    }
+    Some(out)
+}
+
+/// Mint a fresh leaked `'static` Z3 context for a parallel slow part.
+///
+/// Two reasons this is serialized behind a mutex: Z3's context
+/// construction touches process-global state (the memory manager /
+/// symbol tables), which has historically raced when several threads
+/// call `Z3_mk_context` at once; and plan-building (where this is
+/// called) is off the per-tick hot path anyway (cached per claim), so
+/// the lock costs nothing measurable. The context is leaked to `'static`
+/// — same trade as the runtime's main context — so the part's solver +
+/// translated env vars can borrow it without lifetime gymnastics. One
+/// context per parallel slow part per cached plan; bounded, not per-tick.
+fn new_leaked_context() -> &'static Context {
+    use std::sync::Mutex;
+    static CREATE_LOCK: Mutex<()> = Mutex::new(());
+    let _guard = CREATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let cfg = z3::Config::new();
+    Box::leak(Box::new(Context::new(&cfg)))
+}
+
+/// Can the env entries this part needs (its `outputs`, plus any `given`
+/// keys it pins) be translated into a private context? True only when
+/// every such entry is a primitive/seq/set scalar var whose sort carries
+/// no datatype handle. Enum / user-record vars hold a `&'static
+/// DatatypeSort` bound to the source context; reproducing that sort in a
+/// fresh context means re-running enum/datatype registration there, which
+/// we don't do — so those parts stay on the sequential main-context path.
+fn env_subset_translatable(
+    env: &HashMap<String, Var<'static>>,
+    outputs: &[String],
+    given: &HashMap<String, Value>,
+) -> bool {
+    outputs.iter().chain(given.keys()).all(|name| {
+        match env.get(name) {
+            None => true,   // not in env → nothing to translate
+            Some(var) => matches!(var,
+                Var::IntVar(_) | Var::RealVar(_) | Var::BoolVar(_)
+                | Var::StrVar(_) | Var::SeqVar { .. } | Var::SetVar { .. }
+                | Var::PinnedInt(_)),
+        }
+    })
+}
+
+/// Translate a primitive `Var` into `dst`. Returns `None` for any
+/// datatype-bearing variant (enum / user-record / their seq+set forms),
+/// whose `&'static DatatypeSort` can't be moved across contexts here.
+/// `env_subset_translatable` gates callers so the `None` arms are never
+/// hit on the parallel path; the match stays exhaustive for safety.
+fn translate_var(var: &Var<'static>, dst: &'static Context) -> Option<Var<'static>> {
+    Some(match var {
+        Var::IntVar(i)  => Var::IntVar(i.translate(dst)),
+        Var::RealVar(r) => Var::RealVar(r.translate(dst)),
+        Var::BoolVar(b) => Var::BoolVar(b.translate(dst)),
+        Var::StrVar(s)  => Var::StrVar(s.translate(dst)),
+        Var::PinnedInt(v) => Var::PinnedInt(*v),
+        Var::SeqVar { arr, len, elem } => Var::SeqVar {
+            arr: arr.translate(dst), len: len.translate(dst), elem: *elem,
+        },
+        Var::SetVar { set, elem, candidates } => Var::SetVar {
+            set: set.translate(dst), elem: *elem, candidates: candidates.clone(),
+        },
+        Var::DatatypeSeqVar { .. } | Var::DatatypeSetVar { .. }
+        | Var::EnumVar { .. } | Var::EnumValue { .. } | Var::EnumCtor { .. } => return None,
+    })
+}
+
 impl EvidentRuntime {
     /// Functionizer fast path with a cross-tick value cache wrapped
     /// around it. The result of [`functionize_z3_uncached`] is a pure
@@ -593,8 +750,10 @@ impl EvidentRuntime {
         let n_components = comp_vars.len();
 
         let mut compiled: Vec<Rc<dyn CompiledFunction>> = Vec::new();
-        let mut uncompiled_outputs: Vec<String> = Vec::new();
-        let mut uncompiled_assert_idx: Vec<usize> = Vec::new();
+        // Per uncompiled component: its outputs + the assertion indices
+        // it owns. Kept separate (not merged) so each becomes its own
+        // independently-solvable `SlowPart`.
+        let mut slow_components: Vec<(Vec<String>, Vec<usize>)> = Vec::new();
         let mut n_compiled = 0u32;
         let mut bail = false;
         for (ci, cvars) in comp_vars.iter().enumerate() {
@@ -603,8 +762,7 @@ impl EvidentRuntime {
             match self.compile_one_component(name, cvars, &casserts, &cached, given, &pinned_steps) {
                 ComponentOutcome::Compiled(c) => { compiled.push(c); n_compiled += 1; }
                 ComponentOutcome::Slow => {
-                    uncompiled_outputs.extend(cvars.iter().cloned());
-                    uncompiled_assert_idx.extend(comp_assert_idx[ci].iter().copied());
+                    slow_components.push((cvars.clone(), comp_assert_idx[ci].clone()));
                 }
                 ComponentOutcome::Bail => { bail = true; break; }
             }
@@ -635,36 +793,56 @@ impl EvidentRuntime {
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
             || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
         {
-            eprintln!("[fz/stats] {}: components={} compiled={} slow_outputs={} simplified={}",
-                name, n_components, n_compiled, uncompiled_outputs.len(), simplified.len());
+            eprintln!("[fz/stats] {}: components={} compiled={} slow_components={} simplified={}",
+                name, n_components, n_compiled, slow_components.len(), simplified.len());
         }
 
-        // Build the combined slow part for the components that didn't
-        // compile (plus given-only consistency assertions). Only the
-        // uncompiled components' constraints go in — the compiled ones
-        // are handled natively — so this solve is strictly smaller than
-        // the full claim, and it's cached: each tick is push → assert
-        // given → check → extract → pop, no re-translation. When every
-        // component compiled there's no slow part and the plan is a
-        // pure JIT call.
-        let slow = if uncompiled_outputs.is_empty() {
-            None
+        // Build one slow part per uncompiled component. Each carries
+        // that component's assertions plus the given-only consistency
+        // assertions (`global_idx`, replicated into every part so each
+        // independently rejects an inconsistent `given`). The components
+        // have disjoint variable sets — solving them separately is
+        // equivalent to one combined solve.
+        //
+        // Parallel vs sequential: a claim whose slow work is one
+        // connected component (every Mario FSM) has a single part, so
+        // there is nothing to fan out — keep it on the main context.
+        // With ≥2 parts we *can* fan out, but only if each part's vars
+        // translate cleanly into a private context (primitive/seq/set
+        // scalars — no enum/user-datatype handles, whose sorts would
+        // have to be re-registered per context). When all that holds,
+        // each part gets its own context and `solve_slow_parts` runs
+        // them on separate threads; otherwise we fall back to sequential
+        // solving on the main context (correct, just not parallel).
+        let global_assertions: Vec<Bool<'static>> =
+            global_idx.iter().map(|&i| simplified[i].clone()).collect();
+        let component_assertions: Vec<Vec<Bool<'static>>> = slow_components.iter()
+            .map(|(_, comp_idx)| comp_idx.iter().map(|&i| simplified[i].clone()).collect())
+            .collect();
+        let can_parallel = self.slow_parallel_enabled.get()
+            && slow_components.len() >= 2
+            && slow_components.iter().all(|(outs, _)|
+                env_subset_translatable(&cached.env, outs, given));
+        let (slow, slow_parallel) = if can_parallel {
+            let parts = self.build_parallel_slow(
+                &cached.env, &slow_components, &component_assertions,
+                &global_assertions, given, arith);
+            (parts, true)
         } else {
-            let mut slow_assertions: Vec<Bool<'static>> = uncompiled_assert_idx.iter()
-                .map(|&i| simplified[i].clone()).collect();
-            for &i in &global_idx { slow_assertions.push(simplified[i].clone()); }
-            let slow_solver = build_tuned_solver(self.z3_ctx, arith);
-            for a in &slow_assertions { slow_solver.assert(a); }
-            // Move the env out of the full cache; the full-body solver
-            // is dropped (we only needed it for gap-fill models above).
-            let CachedSchema { env, .. } = cached;
-            Some(SlowPart {
-                cached: CachedSchema { env, solver: slow_solver, arith_solver: arith },
-                outputs: uncompiled_outputs,
-            })
+            let parts = self.build_sequential_slow(
+                &cached.env, &slow_components, &component_assertions,
+                &global_assertions, arith);
+            (parts, false)
         };
+        if (std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
+            || std::env::var("EVIDENT_PLAN_TIMING").is_ok())
+            && !slow.is_empty()
+        {
+            eprintln!("[plan] {} slow part(s) for {} (parallel={})",
+                slow.len(), name, slow_parallel);
+        }
 
-        let plan = Rc::new(ClaimPlan { compiled, slow, pinned_ints });
+        let plan = Rc::new(ClaimPlan { compiled, slow, slow_parallel, pinned_ints });
         self.fn_cache.borrow_mut().insert(cache_key, Some(plan.clone()));
         self.execute_plan(&plan, given)
     }
@@ -804,10 +982,19 @@ impl EvidentRuntime {
         }
     }
 
-    /// Run a cached `ClaimPlan`: call each compiled component, then
-    /// solve the combined slow part (if any) with `given` pinned, and
-    /// merge. Returns `None` (→ caller falls through to a full Z3
-    /// solve) if a compiled component bails or the slow part is UNSAT.
+    /// Run a cached `ClaimPlan`: call each compiled component, solve
+    /// every slow part (fanned across threads when the plan was built
+    /// parallel and has ≥2 parts), and merge. Returns `None` (→ caller
+    /// falls through to a full Z3 solve) if a compiled component bails or
+    /// any slow part is UNSAT.
+    ///
+    /// No finer work-threshold gates the fan-out: a slow part is, by
+    /// construction, a component the JIT *couldn't* absorb, i.e. the
+    /// heavy work — so the per-part thread spawn (tens of µs) is
+    /// dominated by even a sub-millisecond Z3 solve, and the solve time
+    /// can't be known before solving anyway. The compiled components
+    /// (µs of native code, and holding `!Send` `Rc`s) stay on the
+    /// calling thread.
     fn execute_plan(&self, plan: &ClaimPlan, given: &HashMap<String, Value>)
         -> Option<QueryResult>
     {
@@ -823,37 +1010,150 @@ impl EvidentRuntime {
                 if !given.contains_key(&k) { out.insert(k, v); }
             }
         }
-        if let Some(slow) = &plan.slow {
-            // Enum-typed givens (e.g. an FSM's `state`) aren't pinned by
-            // run_cached's scalar/seq/set arms — pin them in an outer
-            // frame and keep them out of the map run_cached sees (else
-            // it would log a spurious "type mismatch" per tick).
-            slow.cached.solver.push();
-            let mut scalar_given: HashMap<String, Value> =
-                HashMap::with_capacity(given.len());
-            for (n, v) in given {
-                match (slow.cached.env.get(n), v) {
-                    (Some(Var::EnumVar { ast, .. }), Value::Enum { .. }) => {
-                        if let Some(dt) = crate::translate::value_enum_to_datatype(
-                            v, self.z3_ctx, &self.enums)
-                        {
-                            slow.cached.solver.assert(&ast._eq(&dt));
-                        }
-                    }
-                    _ => { scalar_given.insert(n.clone(), v.clone()); }
-                }
-            }
-            let r = run_cached(&slow.cached, &scalar_given, self.z3_ctx, Some(&self.enums));
-            slow.cached.solver.pop(1);
-            if !r.satisfied { return None; }
-            for vn in &slow.outputs {
-                if let Some(v) = r.bindings.get(vn) {
-                    out.insert(vn.clone(), v.clone());
-                }
-            }
+        // Slow parts: independent components. Fanned across threads when
+        // the plan was built parallel (each part on its own context).
+        let slow_bindings = self.solve_slow_parts(&plan.slow, plan.slow_parallel, given)?;
+        for (k, v) in slow_bindings {
+            if !given.contains_key(&k) { out.insert(k, v); }
         }
         for (k, v) in given { out.insert(k.clone(), v.clone()); }
         Some(QueryResult { satisfied: true, bindings: out })
+    }
+
+    /// Solve every slow part and merge their output bindings. Returns
+    /// `None` if any part is UNSAT (→ fall through to a full Z3 solve).
+    ///
+    /// When `parallel` and there are ≥2 parts, each part is solved on its
+    /// own scoped thread; each part owns a private Z3 context, so the
+    /// `check()`s run truly concurrently (a Z3 context is single-threaded,
+    /// but distinct contexts are independent). Otherwise the parts solve
+    /// sequentially on the calling thread. Output var sets are disjoint
+    /// across parts (decomposition guarantees it), so the merge is a
+    /// clean union regardless of completion order.
+    fn solve_slow_parts(&self, parts: &[SlowPart], parallel: bool,
+                        given: &HashMap<String, Value>)
+        -> Option<HashMap<String, Value>>
+    {
+        if parts.is_empty() { return Some(HashMap::new()); }
+        let timing = std::env::var("EVIDENT_PLAN_TIMING").is_ok();
+
+        if parallel && parts.len() >= 2 {
+            // Each part has a private context — pass `None` for the enum
+            // registry so the worker closures don't capture `&self.enums`
+            // (a `RefCell`, hence `!Sync`); parallel parts hold only
+            // primitive vars, so run_cached never needs the registry.
+            let results: Vec<Option<HashMap<String, Value>>> =
+                std::thread::scope(|scope| {
+                    let handles: Vec<_> = parts.iter().map(|part| {
+                        scope.spawn(move || {
+                            let t0 = Instant::now();
+                            let r = solve_one_part(part, given, None);
+                            if timing {
+                                eprintln!("[plan] ‖ slow part outputs={} in {:.2}ms",
+                                    part.outputs.len(),
+                                    t0.elapsed().as_secs_f64() * 1000.0);
+                            }
+                            r
+                        })
+                    }).collect();
+                    // A worker panic would poison the result; propagate it
+                    // as "UNSAT" (None) so the caller falls back to the
+                    // full Z3 solve rather than tearing down the process.
+                    handles.into_iter()
+                        .map(|h| h.join().unwrap_or(None))
+                        .collect()
+                });
+            let mut merged: HashMap<String, Value> = HashMap::new();
+            for r in results {
+                merged.extend(r?);
+            }
+            return Some(merged);
+        }
+
+        let mut merged: HashMap<String, Value> = HashMap::new();
+        for part in parts {
+            let t0 = Instant::now();
+            let part_out = solve_one_part(part, given, Some(&self.enums))?;
+            if timing {
+                eprintln!("[plan] slow part outputs={} in {:.2}ms",
+                    part.outputs.len(), t0.elapsed().as_secs_f64() * 1000.0);
+            }
+            merged.extend(part_out);
+        }
+        Some(merged)
+    }
+
+    /// Build slow parts that all share the runtime's main context.
+    /// Sound only because `solve_slow_parts` runs same-context parts
+    /// sequentially. Used when there's a single component (nothing to
+    /// fan out) or when a component's vars can't translate to a private
+    /// context. Each part carries the full env clone (cheap — Z3 AST
+    /// handles are refcounted) so `run_cached` extraction is uniform.
+    fn build_sequential_slow(
+        &self,
+        env: &HashMap<String, Var<'static>>,
+        components: &[(Vec<String>, Vec<usize>)],
+        component_assertions: &[Vec<Bool<'static>>],
+        global_assertions: &[Bool<'static>],
+        arith: u32,
+    ) -> Vec<SlowPart> {
+        let ctx = self.z3_ctx;
+        components.iter().enumerate().map(|(ci, (outputs, _))| {
+            let solver = build_tuned_solver(ctx, arith);
+            for a in &component_assertions[ci] { solver.assert(a); }
+            for a in global_assertions { solver.assert(a); }
+            SlowPart {
+                cached: CachedSchema { env: env.clone(), solver, arith_solver: arith },
+                ctx,
+                outputs: outputs.clone(),
+            }
+        }).collect()
+    }
+
+    /// Build slow parts that each own a private leaked Z3 context, so
+    /// they can `check()` concurrently. Each part's assertions and the
+    /// (restricted) env it needs for given-pinning + extraction are
+    /// translated out of the runtime's main context via `Ast::translate`
+    /// — Z3 interns const decls by name+sort within a context, so a
+    /// translated assertion and a separately-translated env var resolve
+    /// to the same decl, and `model.eval` reads the right value.
+    ///
+    /// Precondition: every component's `env_subset_translatable` is true
+    /// (checked by the caller), so `translate_var` never bails here.
+    fn build_parallel_slow(
+        &self,
+        env: &HashMap<String, Var<'static>>,
+        components: &[(Vec<String>, Vec<usize>)],
+        component_assertions: &[Vec<Bool<'static>>],
+        global_assertions: &[Bool<'static>],
+        given: &HashMap<String, Value>,
+        arith: u32,
+    ) -> Vec<SlowPart> {
+        components.iter().enumerate().map(|(ci, (outputs, _))| {
+            let ctx = new_leaked_context();
+            let solver = build_tuned_solver(ctx, arith);
+            for a in &component_assertions[ci] { solver.assert(&a.translate(ctx)); }
+            for a in global_assertions { solver.assert(&a.translate(ctx)); }
+            // Restricted env: the outputs (for extraction) + any given
+            // keys (for pinning). Other env entries aren't reachable by
+            // this part's solver, so translating them would be wasted —
+            // and run_cached only extracts what's in the env it's given.
+            let mut part_env: HashMap<String, Var<'static>> = HashMap::new();
+            for name in outputs.iter().chain(given.keys()) {
+                if part_env.contains_key(name) { continue; }
+                if let Some(var) = env.get(name) {
+                    // translatable precondition guarantees Some(_).
+                    if let Some(tv) = translate_var(var, ctx) {
+                        part_env.insert(name.clone(), tv);
+                    }
+                }
+            }
+            SlowPart {
+                cached: CachedSchema { env: part_env, solver, arith_solver: arith },
+                ctx,
+                outputs: outputs.clone(),
+            }
+        }).collect()
     }
 
     /// Evaluate the named schema and return whether it's satisfiable

@@ -192,6 +192,15 @@ pub struct EvidentRuntime {
     /// dynamic `smt.arith.solver` selection. See `SolveHistory` and
     /// `EvidentRuntime::query_cached` for the pricing protocol.
     pub(super) solve_history: RefCell<HashMap<String, autotune::SolveHistory>>,
+    /// Whether a claim that decomposes into ≥2 independent slow
+    /// (un-JIT-able) components may have those components solved on
+    /// parallel threads, each on its own Z3 context. On by default;
+    /// `EVIDENT_PARALLEL_SLOW=0` (read at construction) or
+    /// `set_slow_parallel(false)` forces the sequential single-context
+    /// path (used by tests to A/B the speedup, and as a safety valve).
+    /// `Cell` because the per-query plan-build path reads it behind
+    /// `&self`. See `query::functionize_z3_uncached`.
+    pub(super) slow_parallel_enabled: std::cell::Cell<bool>,
 }
 
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
@@ -227,7 +236,16 @@ impl EvidentRuntime {
             schema_origins: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
             solve_history: RefCell::new(HashMap::new()),
+            slow_parallel_enabled: std::cell::Cell::new(
+                std::env::var("EVIDENT_PARALLEL_SLOW").map(|s| s != "0").unwrap_or(true)),
         }
+    }
+
+    /// Enable/disable parallel solving of independent slow components.
+    /// Defaults to on (or `EVIDENT_PARALLEL_SLOW` at construction).
+    /// Mainly for tests that A/B the parallel vs sequential slow path.
+    pub fn set_slow_parallel(&self, on: bool) {
+        self.slow_parallel_enabled.set(on);
     }
 
     /// Number of cache rebuilds triggered by structural-signature
