@@ -218,17 +218,36 @@ here's where to start.
 
 | Module | What lives here |
 |---|---|
+| `core/`        | Shared data types + traits. No orchestration logic. Imported by everything else. |
 | `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
 | `effect_loop/` | Multi-FSM scheduler — `run` and `run_with_ctx` |
 | `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
-| `functionize/` | `Functionizer` trait + Cranelift JIT impl |
+| `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
 | `commands/` | Per-CLI-subcommand entry points |
 | `effect_dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
 | `subscriptions.rs` | Static read/write-set inference per claim |
 | `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`, `fti.rs` | libffi marshaling + typed-resource bridges |
-| `parser.rs`, `lexer.rs`, `ast.rs`, `pretty.rs` | Front end |
+| `parser.rs`, `lexer.rs`, `pretty.rs` | Front end |
+
+### Inside `core/`
+
+The vocabulary of the codebase. When you reach for a shared data type
+or trait, it lives here. **Don't put orchestration logic in `core/`.**
+If you find yourself adding a function that calls `rt.query(…)`, that's
+not a core thing — it belongs in `runtime/` or higher.
+
+| File | What's in it |
+|---|---|
+| `core/ast.rs`          | Evident AST — `Expr`, `BodyItem`, `SchemaDecl`, `Effect`, `EffectResult`, `Pins`, `BinOp`, `Program`, `Keyword` |
+| `core/value.rs`        | `Value` (the runtime value type returned in `QueryResult.bindings`), `EvalResult` |
+| `core/z3_types.rs`     | `EnumRegistry`, `CachedSchema`, `Var`, `FieldKind`, `SeqFieldElem`, `DatatypeRegistry` |
+| `core/z3_program.rs`   | `Z3Program`, `Z3Step`, `GuardedBranch`, `GuardedBody` — the IR the functionizer consumes |
+| `core/api.rs`          | `QueryResult`, `RuntimeError` — the public-facing query result + error |
+| `core/functionizer.rs` | `Functionizer` + `CompiledFunction` traits |
+
+External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, ast}` (re-exported from `core` at `lib.rs`). Internal code imports from `crate::core::*` directly.
 
 ### Inside `runtime/`
 
