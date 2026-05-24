@@ -114,12 +114,15 @@ pub struct EvidentRuntime {
     /// callable artifacts. Default is Cranelift JIT; swap via
     /// `EvidentRuntime::with_functionizer`. See `runtime/src/functionize/`.
     pub(super) functionizer: Box<dyn crate::core::Functionizer>,
-    /// Compiled-function cache: per-(claim, given-keys), the
-    /// strategy-produced artifact (Some) or None when the strategy
-    /// refused (program uses constructs it can't compile). On miss
-    /// the runtime falls through to slow-path Z3.
+    /// Compiled-plan cache: per-(claim, given-keys), the per-component
+    /// execution plan (`Some`) or `None` when the claim can't be
+    /// functionized at all (translator gap / no constrained outputs).
+    /// A plan holds one compiled artifact per JIT-able component plus a
+    /// single cached Z3 solver covering the components that refused to
+    /// compile — so a single problematic sub-expression no longer
+    /// blocks the whole claim. See `query::ClaimPlan`.
     pub(super) fn_cache: RefCell<HashMap<(String, Vec<String>),
-                              Option<std::rc::Rc<dyn crate::core::CompiledFunction>>>>,
+                              Option<std::rc::Rc<query::ClaimPlan>>>>,
     /// Slow-path schema cache. Populated by `try_functionize_z3`
     /// when extraction or JIT compilation refuses but a CachedSchema
     /// has already been built. Reused by `query_with_pins_and_given`
