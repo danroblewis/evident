@@ -138,6 +138,175 @@ Reading order if you're new: `core/` (the vocabulary) → `parser.rs` →
 extraction) → `functionize/` (program → native code) → `runtime/` (the
 façade) → `effect_loop/` (how the scheduler drives it).
 
+### Inside the major directories
+
+The application-stack diagram lumps each directory into a single node.
+Some directories are interface-uniform (every file inside has the same
+external dependency profile — exploding adds no information). Others
+have real internal structure that the lumped view hides. The three
+non-uniform ones are below.
+
+A directory is **interface-uniform** when its files all implement the
+same trait or call pattern and share a common dep profile. `event_sources/`
+is the canonical example — nine files, each implements `EventSource`,
+each imports `core::Value` and nothing else interesting. `commands/` is
+similar: each file is a CLI subcommand calling `EvidentRuntime` and
+`effect_loop`. For those, the directory IS the right unit.
+
+#### `effect_loop/` — two drivers + shared substrate
+
+```mermaid
+graph TD
+    modrs[mod.rs<br/>run · run_with_ctx<br/>LoopOpts · LoopResult · LoopEnv]
+
+    single[single_fsm.rs<br/>single-FSM driver]
+    multi[multi_fsm.rs<br/>multi-FSM driver]
+
+    collect[collect.rs<br/>collect_dispatchable_effects]
+    fsm[fsm.rs<br/>MainShape · detect/resolve FSMs]
+    state[state.rs<br/>halt detection · state encoding]
+    timing[timing.rs<br/>summary printers]
+
+    toposort[toposort.rs<br/>Kahn + randomized tiebreak]
+    seqchains[seq_chains.rs<br/>body Seq·Effect edge extraction]
+
+    modrs --> single
+    modrs --> multi
+
+    single --> collect
+    single --> fsm
+    single --> state
+    single --> timing
+
+    multi --> collect
+    multi --> fsm
+    multi --> state
+    multi --> timing
+
+    state --> fsm
+    collect --> toposort
+    collect --> seqchains
+```
+
+The two driver files (`single_fsm`, `multi_fsm`) are alternates selected
+at runtime via `EVIDENT_SCHEDULER`. Both consume the same substrate
+(collect, fsm, state, timing). `collect` has its own sub-substrate
+(toposort, seq_chains) — effect ordering is a sub-problem with its own
+internal modules.
+
+#### `runtime/` — struct + load passes + helpers + API methods
+
+```mermaid
+graph TD
+    modrs[mod.rs<br/>EvidentRuntime + ctors + accessors]
+
+    load[load.rs]
+    query[query.rs]
+    sample[sample.rs]
+    schedapi[scheduler_api.rs]
+    refl[reflection.rs]
+    analysis[analysis.rs]
+    intro[introspect.rs]
+
+    desugar[desugar.rs]
+    generics[generics.rs]
+    inject[inject.rs]
+    validate[validate.rs]
+    regenums[register_enums.rs]
+
+    autotune[autotune.rs<br/>SolveHistory]
+    lenient[lenient.rs<br/>LenientGuard]
+    stats[stats.rs<br/>FunctionizeStats]
+
+    load --> desugar
+    load --> generics
+    load --> inject
+    load --> regenums
+    load --> validate
+
+    query --> autotune
+    query --> lenient
+
+    refl --> desugar
+```
+
+Three tiers:
+- **`mod.rs`**: the `EvidentRuntime` struct + fields (every API file
+  hangs `impl EvidentRuntime` blocks off it; those edges aren't drawn).
+- **Load passes** (`desugar`, `generics`, `inject`, `register_enums`,
+  `validate`): pure functions, each one operates on a `SchemaDecl`.
+  No sibling deps. `load.rs` calls all of them in sequence.
+- **Helpers** (`autotune`, `lenient`, `stats`): standalone types used
+  by specific API methods.
+- **API methods** (`load`, `query`, `sample`, `scheduler_api`,
+  `reflection`, `analysis`, `introspect`): each file is one slice of
+  the `EvidentRuntime` public API. Most don't talk to each other.
+
+#### `translate/` — translation pipeline + `eval/` evaluator
+
+Outer translate/ (the AST → Z3 pipeline):
+
+```mermaid
+graph TD
+    datatypes[datatypes.rs<br/>type → Z3 Datatype]
+    declare[declare.rs<br/>declare Z3 consts]
+    exprs[exprs.rs<br/>translate constraints]
+    inline[inline.rs<br/>per-claim inlining]
+    extract[extract.rs<br/>Z3 model → Value]
+    preprocess[preprocess.rs<br/>literal pinning, seq lengths]
+    decode_ast[decode_ast.rs<br/>AST decoder]
+    encode_ast[encode_ast.rs<br/>AST encoder]
+
+    eval[eval/<br/>solver build + evaluate]
+
+    declare --> datatypes
+    inline --> declare
+    inline --> exprs
+
+    eval --> declare
+    eval --> inline
+    eval --> extract
+    eval --> preprocess
+    eval --> encode_ast
+
+    extract -.calls back into.- eval
+```
+
+The `extract → eval` dotted edge is a genuine cycle: `extract.rs` calls
+into `eval/decode.rs` for composite-value extraction. Not pretty, but
+intentional — both are decoding Z3 models.
+
+Inside `eval/`:
+
+```mermaid
+graph TD
+    modrs[mod.rs<br/>evaluate · re-exports]
+    solver[solver.rs<br/>tactic chain · enum priming]
+    decode[decode.rs<br/>composite/enum extraction]
+
+    cached[cached.rs<br/>build_cache · run_cached · sample_cached_inner]
+    extra[extra.rs<br/>evaluate_with_*]
+    coremod[core.rs<br/>evaluate_with_core · UNSAT core variant]
+    decompose[decompose.rs<br/>analyze_decomposition · classify_components]
+
+    modrs --> solver
+    cached --> solver
+    extra --> solver
+    coremod --> solver
+    decompose --> solver
+
+    cached --> decode
+    extra --> decode
+    coremod --> decode
+    decode --> solver
+```
+
+`solver.rs` is the leaf — every `evaluate_*` variant starts by calling
+`make_tuned_solver`. `decode.rs` decodes composite values from Z3
+models and is shared by the variants that return rich bindings. The
+four "variants" (`cached`, `extra`, `core`, `decompose`) are each one
+evaluate-style API with a different extra-assertion or output shape.
+
 ## `evident effect-run` flow
 
 What happens when you type `evident effect-run examples/test_21_mario/main.ev`:
