@@ -218,6 +218,22 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Per-component JIT showcase: the `sim` FSM decomposes into
+        // SIX components; 3 (integer arithmetic) JIT-compile, 3 (Set
+        // output, String-input concat, branch-selected effects) fall
+        // to the scoped Z3 solve → `comp=3/6` under
+        // EVIDENT_FUNCTIONIZE_STATS=1. The dot-trail grows one char
+        // per tick (proving the String component runs end-to-end);
+        // halts at frame 4. The growing trail (frame./frame../frame...)
+        // is the visible proof; "frame" alone would mean the String
+        // component never advanced.
+        name: "test_25_per_component_jit", exit: 0,
+        must_lines: &["frame.", "frame..", "frame...",
+                      "per-component demo: done"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
