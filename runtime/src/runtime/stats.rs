@@ -17,6 +17,12 @@ pub struct PerClaimStats {
     pub analyses: u32,
     /// Cache-hit count (where the cached JIT program was used).
     pub cache_hits: u32,
+    /// Cross-tick value-cache hits: calls where the `(claim,
+    /// given-values)` result was already memoized, so we skipped the
+    /// compiled-function call entirely and returned the prior bindings.
+    /// Climbs on idle frames (identical inputs tick after tick); stays
+    /// flat on active frames (each tick's input differs → cache miss).
+    pub value_cache_hits: u32,
     /// Number of analyses where Z3's simplify decided the body
     /// is UNSAT (short-circuit return).
     pub decided_unsat: u32,
@@ -63,6 +69,7 @@ impl FunctionizeStats {
         names.sort();
         let mut total_a = 0u32;
         let mut total_h = 0u32;
+        let mut total_vh = 0u32;
         let mut total_compiled = 0u32;
         let mut total_components = 0u32;
         let mut total_components_compiled = 0u32;
@@ -74,6 +81,7 @@ impl FunctionizeStats {
             let s = &self.claims[*n];
             total_a += s.analyses;
             total_h += s.cache_hits;
+            total_vh += s.value_cache_hits;
             total_compiled += s.compiled;
             total_components += s.components;
             total_components_compiled += s.components_compiled;
@@ -82,8 +90,8 @@ impl FunctionizeStats {
             total_preds += s.predicates_total;
             total_simplified += s.simplified_total;
         }
-        eprintln!("[fz/stats] {} claims analyzed; {} analyses; {} cache hits",
-            names.len(), total_a, total_h);
+        eprintln!("[fz/stats] {} claims analyzed; {} analyses; {} cache hits; {} value-cache hits",
+            names.len(), total_a, total_h, total_vh);
         eprintln!("[fz/stats] z3 simplified assertions: {} total ({:.1}/analysis)",
             total_simplified,
             if total_a > 0 { total_simplified as f64 / total_a as f64 } else { 0.0 });
@@ -113,12 +121,12 @@ impl FunctionizeStats {
                 None        => "z3-fz·",  // didn't reach Z3 functionizer
             };
             let compiled_mark = if s.compiled > 0 { "fn✓" } else { "fn·" };
-            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3}  sim={:>2} stp={:>2} chk={:>2} pr={:>2}] comp={}/{} {} {}",
-                n, s.analyses, s.cache_hits, s.simplified_total, s.steps_total,
+            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3} vh={:>4} sim={:>2} stp={:>2} chk={:>2} pr={:>2}] comp={}/{} {} {}",
+                n, s.analyses, s.cache_hits, s.value_cache_hits, s.simplified_total, s.steps_total,
                 s.checks_total, s.predicates_total,
                 s.components_compiled, s.components, extract, compiled_mark);
         }
-        eprintln!("[fz/stats] legend:  z3=[an=analyses h=hits sim=simplified-assertions stp=absorbed-as-steps chk=checks pr=predicates]");
+        eprintln!("[fz/stats] legend:  z3=[an=analyses h=plan-hits vh=value-cache-hits sim=simplified-assertions stp=absorbed-as-steps chk=checks pr=predicates]");
         eprintln!("[fz/stats]          z3-fz✓ = extracted a Z3Program | z3-fz✗ = extract failed | z3-fz· = never ran");
         eprintln!("[fz/stats]          comp=C/N = C of N decomposed components compiled (rest → cached scoped Z3 solve)");
         eprintln!("[fz/stats]          fn✓ = ≥1 component compiled | fn· = no component compiled (full slow-path Z3)");

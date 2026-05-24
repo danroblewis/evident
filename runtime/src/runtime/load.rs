@@ -139,6 +139,10 @@ impl EvidentRuntime {
         self.functionize_z3_cache.borrow_mut().clear();
         self.fn_cache.borrow_mut().clear();
         self.slow_path_cache.borrow_mut().clear();
+        // Cross-tick value cache memoizes results keyed by given VALUES;
+        // a reload can change a schema body or the functionizer, so any
+        // memoized bindings are now potentially stale. Drop them all.
+        self.value_cache.borrow_mut().clear();
         // Datatype registry entries reference the previous schema body
         // shape (field order / types). A new load could redefine a type
         // with a different shape; flush so we rebuild on first reference.

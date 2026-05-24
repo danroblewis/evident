@@ -20,7 +20,9 @@ use super::{EvidentRuntime, Value};
 use crate::translate::{build_cache, run_cached, structural_signature};
 use crate::z3_eval::{collect_touched_names, extract_program_partial,
                      recompose_record_seqs, simplify_assertions};
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Instant;
 use z3::ast::{Ast, Bool};
@@ -71,6 +73,112 @@ pub(crate) struct SlowPart {
     /// the uncompiled components' variables. Other env entries the
     /// solver happens to model are ignored.
     outputs: Vec<String>,
+}
+
+/// Max distinct `(given-values → result)` entries kept per claim in the
+/// cross-tick value cache. An idle FSM repeats one input set, so even a
+/// handful suffices; 100 leaves room for a few alternating idle states
+/// (e.g. a blinking cursor) before FIFO eviction kicks in.
+const VALUE_CACHE_CAP: usize = 100;
+
+/// One cached `(input, result)` association in the cross-tick value
+/// cache. `input` is kept so a hash collision (different given, same
+/// `u64`) is caught on hit and falls through to a recompute rather than
+/// silently returning the wrong bindings.
+pub(crate) struct ValueCacheSlot {
+    input: HashMap<String, Value>,
+    satisfied: bool,
+    bindings: HashMap<String, Value>,
+}
+
+/// Per-claim cross-tick value cache: maps `hash(given-values)` to the
+/// `try_functionize_z3` result it produced. Capped at `VALUE_CACHE_CAP`
+/// entries with FIFO eviction. Keyed by the value hash (O(1) lookup),
+/// not the values themselves, so the stored `input` is re-checked on
+/// every hit for collision safety.
+#[derive(Default)]
+pub(crate) struct ClaimValueCache {
+    entries: HashMap<u64, ValueCacheSlot>,
+    /// Insertion order of live hashes, for FIFO eviction.
+    order: VecDeque<u64>,
+}
+
+/// Whether the cross-tick value cache is enabled. On by default;
+/// `EVIDENT_VALUE_CACHE=0` disables it (for A/B measurement or as a
+/// safety valve). Read once and memoized — this sits on the per-tick
+/// hot path.
+fn value_cache_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("EVIDENT_VALUE_CACHE").map(|s| s != "0").unwrap_or(true)
+    })
+}
+
+/// Hash a `given` map deterministically. HashMap iteration order is
+/// nondeterministic, so the keys are sorted before hashing; the per-key
+/// `Value` is fed through `hash_value`. SipHash (`DefaultHasher`) keeps
+/// the collision rate low, and a verified-input check on hit backstops
+/// the rest.
+fn hash_given_values(given: &HashMap<String, Value>) -> u64 {
+    let mut keys: Vec<&String> = given.keys().collect();
+    keys.sort_unstable();
+    let mut h = DefaultHasher::new();
+    keys.len().hash(&mut h);
+    for k in keys {
+        k.hash(&mut h);
+        hash_value(&given[k], &mut h);
+    }
+    h.finish()
+}
+
+/// Feed a `Value` into a hasher. `Value` deliberately has no derived
+/// `Hash` (it lives in `core/`, which this session must not touch, and a
+/// raw `f64` field blocks the derive anyway). Each variant writes a
+/// distinct discriminant tag first so structurally different values with
+/// the same payload bytes don't collide. Reals hash their bit pattern
+/// (not the float value) so `NaN`/`-0.0` are handled deterministically.
+fn hash_value<H: Hasher>(v: &Value, h: &mut H) {
+    match v {
+        Value::Int(i)   => { 0u8.hash(h); i.hash(h); }
+        Value::Real(f)  => { 1u8.hash(h); f.to_bits().hash(h); }
+        Value::Bool(b)  => { 2u8.hash(h); b.hash(h); }
+        Value::Str(s)   => { 3u8.hash(h); s.hash(h); }
+        Value::SeqInt(xs)  => { 4u8.hash(h); xs.hash(h); }
+        Value::SeqBool(xs) => { 5u8.hash(h); xs.hash(h); }
+        Value::SeqStr(xs)  => { 6u8.hash(h); xs.hash(h); }
+        Value::Composite(m) => { 7u8.hash(h); hash_value_map(m, h); }
+        Value::SeqComposite(ms) => {
+            8u8.hash(h); ms.len().hash(h);
+            for m in ms { hash_value_map(m, h); }
+        }
+        Value::SeqEnum(es) => {
+            9u8.hash(h); es.len().hash(h);
+            for e in es { hash_value(e, h); }
+        }
+        Value::SetInt(xs)  => { 10u8.hash(h); xs.hash(h); }
+        Value::SetBool(xs) => { 11u8.hash(h); xs.hash(h); }
+        Value::SetStr(xs)  => { 12u8.hash(h); xs.hash(h); }
+        Value::Enum { enum_name, variant, fields } => {
+            13u8.hash(h);
+            enum_name.hash(h);
+            variant.hash(h);
+            fields.len().hash(h);
+            for f in fields { hash_value(f, h); }
+        }
+    }
+}
+
+/// Hash a `HashMap<String, Value>` (a `Composite`/`SeqComposite` element)
+/// with keys sorted, same as `hash_given_values`.
+fn hash_value_map<H: Hasher>(m: &HashMap<String, Value>, h: &mut H) {
+    let mut keys: Vec<&String> = m.keys().collect();
+    keys.sort_unstable();
+    keys.len().hash(h);
+    for k in keys {
+        k.hash(h);
+        hash_value(&m[k], h);
+    }
 }
 
 /// What `compile_one_component` decided for a component.
@@ -229,6 +337,77 @@ fn build_tuned_solver(ctx: &'static Context, arith_solver: u32) -> Solver<'stati
 }
 
 impl EvidentRuntime {
+    /// Functionizer fast path with a cross-tick value cache wrapped
+    /// around it. The result of [`functionize_z3_uncached`] is a pure
+    /// function of `(name, schema, given)` — pins aren't even a
+    /// parameter — so the same `given` values always reproduce the same
+    /// bindings while the program is loaded. An idle FSM (Mario with no
+    /// input) feeds `display` byte-identical inputs frame after frame,
+    /// so we memoize the last results keyed by `hash(given-values)` and
+    /// skip the compiled-function call entirely on a hit.
+    ///
+    /// The cache is invalidated wholesale on reload (`load.rs` clears it
+    /// alongside `fn_cache`), so a schema or functionizer change can
+    /// never serve a stale value.
+    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
+                          given: &HashMap<String, Value>) -> Option<QueryResult>
+    {
+        let vhash = if value_cache_enabled() { Some(hash_given_values(given)) } else { None };
+        if let Some(h) = vhash {
+            if let Some(result) = self.value_cache_get(name, h, given) {
+                self.functionize_stats.borrow_mut()
+                    .claims.entry(name.to_string()).or_default().value_cache_hits += 1;
+                return Some(result);
+            }
+        }
+        let result = self.functionize_z3_uncached(name, schema, given);
+        // Only memoize when the fast path actually produced a result.
+        // `None` means "fall through to slow-path Z3" — caching that
+        // would short-circuit a path we never took.
+        if let (Some(h), Some(r)) = (vhash, &result) {
+            self.value_cache_put(name, h, given, r);
+        }
+        result
+    }
+
+    /// Read a memoized result from the cross-tick value cache. On a hash
+    /// hit the stored input is compared against `given`: an exact match
+    /// returns the cached bindings; a mismatch (hash collision) returns
+    /// `None` so the caller recomputes.
+    fn value_cache_get(&self, name: &str, hash: u64, given: &HashMap<String, Value>)
+        -> Option<QueryResult>
+    {
+        let cache = self.value_cache.borrow();
+        let slot = cache.get(name)?.entries.get(&hash)?;
+        if slot.input == *given {
+            Some(QueryResult { satisfied: slot.satisfied, bindings: slot.bindings.clone() })
+        } else {
+            None
+        }
+    }
+
+    /// Store a `(given, result)` association in the cross-tick value
+    /// cache, evicting the oldest entry for this claim once the per-claim
+    /// cap is exceeded (FIFO).
+    fn value_cache_put(&self, name: &str, hash: u64, given: &HashMap<String, Value>,
+                       result: &QueryResult) {
+        let mut cache = self.value_cache.borrow_mut();
+        let claim = cache.entry(name.to_string()).or_default();
+        if !claim.entries.contains_key(&hash) {
+            claim.order.push_back(hash);
+            while claim.order.len() > VALUE_CACHE_CAP {
+                if let Some(old) = claim.order.pop_front() {
+                    claim.entries.remove(&old);
+                }
+            }
+        }
+        claim.entries.insert(hash, ValueCacheSlot {
+            input: given.clone(),
+            satisfied: result.satisfied,
+            bindings: result.bindings.clone(),
+        });
+    }
+
     /// Per-component Z3-AST functionizer. Decomposes the claim's
     /// simplified body into independent sub-models, compiles each one
     /// it can to native code, and gathers the rest into a single
@@ -238,7 +417,7 @@ impl EvidentRuntime {
     ///
     /// Cached per `(claim, given-keys)` as a `ClaimPlan`; subsequent
     /// calls just re-run the plan (JIT calls at ~µs + one scoped solve).
-    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
+    fn functionize_z3_uncached(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
                           given: &HashMap<String, Value>) -> Option<QueryResult>
     {
         // Cache key: name + sorted given_keys. The plan is generic
@@ -779,5 +958,70 @@ impl EvidentRuntime {
             self.cache.borrow_mut().remove(name);
         }
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
+    }
+}
+
+#[cfg(test)]
+mod value_hash_tests {
+    use super::*;
+
+    fn map(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    #[test]
+    fn equal_maps_hash_equal_regardless_of_insertion_order() {
+        // HashMap iteration order is nondeterministic; the hash must not
+        // depend on it. Build the same logical map two different ways.
+        let a = map(&[("x", Value::Int(1)), ("y", Value::Str("hi".into()))]);
+        let mut b: HashMap<String, Value> = HashMap::new();
+        b.insert("y".into(), Value::Str("hi".into()));
+        b.insert("x".into(), Value::Int(1));
+        assert_eq!(hash_given_values(&a), hash_given_values(&b));
+    }
+
+    #[test]
+    fn distinct_values_hash_distinct() {
+        let a = map(&[("x", Value::Int(1))]);
+        let b = map(&[("x", Value::Int(2))]);
+        assert_ne!(hash_given_values(&a), hash_given_values(&b));
+    }
+
+    #[test]
+    fn enum_and_seq_values_hash_deterministically() {
+        // Exercises the SeqEnum / Enum arms (Mario's `last_results`,
+        // `state`): the hash is stable across calls for the same value
+        // and changes when the payload changes.
+        let state = Value::Enum {
+            enum_name: "GameState".into(),
+            variant: "Playing".into(),
+            fields: vec![Value::Int(7), Value::Bool(true)],
+        };
+        let results = Value::SeqEnum(vec![
+            Value::Enum { enum_name: "Result".into(), variant: "IntResult".into(),
+                          fields: vec![Value::Int(3)] },
+        ]);
+        let g = map(&[("state", state.clone()), ("last_results", results.clone())]);
+        assert_eq!(hash_given_values(&g), hash_given_values(&g.clone()));
+
+        // Flip one nested field — the hash must move.
+        let state2 = Value::Enum {
+            enum_name: "GameState".into(),
+            variant: "Playing".into(),
+            fields: vec![Value::Int(8), Value::Bool(true)],
+        };
+        let g2 = map(&[("state", state2), ("last_results", results)]);
+        assert_ne!(hash_given_values(&g), hash_given_values(&g2));
+    }
+
+    #[test]
+    fn variant_tag_distinguishes_same_payload() {
+        // Two enums with identical payload but different variant must
+        // not collide (the discriminant + variant name guard this).
+        let a = map(&[("e", Value::Enum {
+            enum_name: "E".into(), variant: "A".into(), fields: vec![Value::Int(0)] })]);
+        let b = map(&[("e", Value::Enum {
+            enum_name: "E".into(), variant: "B".into(), fields: vec![Value::Int(0)] })]);
+        assert_ne!(hash_given_values(&a), hash_given_values(&b));
     }
 }
