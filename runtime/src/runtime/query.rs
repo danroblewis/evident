@@ -189,7 +189,7 @@ impl EvidentRuntime {
             self.functionize_z3_cache.borrow_mut().insert(cache_key, None);
             return None;
         }
-        let (mut program, missing) = match crate::z3_eval::extract_program_partial(&simplified, &outputs) {
+        let (mut program, mut missing) = match crate::z3_eval::extract_program_partial(&simplified, &outputs) {
             Some(p) => p,
             None => {
                 self.functionize_stats.borrow_mut()
@@ -198,6 +198,17 @@ impl EvidentRuntime {
                 return None;
             }
         };
+        // Recompose record-element Seq outputs (Seq(IVec2),
+        // Seq(EffectPair), …). Z3's simplify decomposes their
+        // per-element constructor pins into per-field accessor pins
+        // that extract_program* can't reassemble; rebuild them here
+        // from the DatatypeRegistry's field shape so they leave
+        // `missing` (and the JIT emits a Value::SeqComposite) rather
+        // than tripping the gap-fill refusal below.
+        if !missing.is_empty() {
+            crate::z3_eval::recompose_record_seqs(
+                &simplified, &mut missing, &mut program, &self.datatypes, self.z3_ctx);
+        }
         // Gap-fill missing outputs via model extraction. These are
         // typically constant record-Seqs whose per-element pins were
         // decomposed by Z3 into per-field accessor assertions
@@ -352,7 +363,7 @@ impl EvidentRuntime {
         // On success, the next call hits the fast-path cache above
         // and runs at the strategy's per-call cost. On failure, cache
         // None so subsequent calls skip straight to slow-path Z3.
-        let compiled = self.functionizer.compile(&program, &self.enums);
+        let compiled = self.functionizer.compile(&program, &self.enums, &self.datatypes);
         if compiled.is_some() {
             self.functionize_stats.borrow_mut()
                 .claims.entry(name.to_string()).or_default().compiled += 1;

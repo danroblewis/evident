@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::core::{EnumRegistry, Value, Z3Program};
+use crate::core::{DatatypeRegistry, EnumRegistry, Value, Z3Program};
 
 /// A strategy for compiling an extracted `Z3Program` into a
 /// callable artifact. Implementations decide what "compile" means
@@ -29,9 +29,14 @@ pub trait Functionizer {
     /// Compile a `Z3Program` into a callable function. `enums` is
     /// the runtime's enum registry — strategies that need to encode
     /// enum-typed inputs / outputs read variant tags from it.
+    /// `datatypes` is the runtime's record (user-type) registry —
+    /// strategies that build `Seq(Record)` / composite outputs read
+    /// constructor names + field shapes (`FieldKind`) from it, since
+    /// records aren't carried in `EnumRegistry`.
     fn compile(&self,
-               program: &Z3Program,
-               enums:   &EnumRegistry)
+               program:   &Z3Program,
+               enums:     &EnumRegistry,
+               datatypes: &DatatypeRegistry)
         -> Option<Rc<dyn CompiledFunction>>;
 }
 

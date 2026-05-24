@@ -22,6 +22,8 @@
 //! The JIT registers these with `JITBuilder::symbol(name, addr)`
 //! and declares them as `Linkage::Import` to call them.
 
+use std::collections::HashMap;
+
 use crate::core::Value;
 
 /// Reconstruct a `&str` from a JIT-passed (ptr, len) pair.
@@ -127,6 +129,52 @@ pub unsafe extern "C" fn ev_set_enum_str(
 #[no_mangle]
 pub unsafe extern "C" fn ev_seq_new(out: *mut Value, cap: usize) {
     *out = Value::SeqEnum(Vec::with_capacity(cap));
+}
+
+/// Set element `idx` of the SeqEnum at `seq` to a clone of `*elem`,
+/// growing the Vec (padding with `Value::Int(0)`) if `idx` is past
+/// the end. Used to materialize a Z3 `(store arr idx val)` chain —
+/// the JIT walks the chain inner-to-outer, building a `SeqEnum` from
+/// an initially-empty `ev_seq_new(0)` (the `const-array` base) and
+/// setting each stored index. The pad slots are never read: the
+/// chain covers exactly the indices `0..len` that the consumer
+/// indexes into.
+#[no_mangle]
+pub unsafe extern "C" fn ev_seq_set(seq: *mut Value, idx: i64, elem: *const Value) {
+    let elem = (*elem).clone();
+    if let Value::SeqEnum(v) = &mut *seq {
+        let i = idx.max(0) as usize;
+        if i >= v.len() { v.resize(i + 1, Value::Int(0)); }
+        v[i] = elem;
+    } else {
+        eprintln!("ev_seq_set: target is not a SeqEnum: {:?}", *seq);
+    }
+}
+
+/// Write `Value::Composite{field_name → field_value}` for a record
+/// (user-type) constructor. `names_ptr` / `name_lens_ptr` are
+/// parallel arrays of `n` UTF-8 (ptr, len) field-name pairs;
+/// `vals_ptr` is an array of `n` `*const Value` field-value slots.
+/// The JIT builds each field value into its own stack slot (one per
+/// declared field — a `Seq(T)` field collapses its Array+length
+/// constructor args into a single `SeqEnum`), then calls this helper.
+/// `Seq(Record)` outputs built from these become `Value::SeqComposite`
+/// after `classify_seq`.
+#[no_mangle]
+pub unsafe extern "C" fn ev_set_composite(
+    out: *mut Value,
+    names_ptr: *const *const u8, name_lens_ptr: *const usize,
+    vals_ptr: *const *const Value, n: usize,
+) {
+    let name_ptrs = std::slice::from_raw_parts(names_ptr, n);
+    let name_lens = std::slice::from_raw_parts(name_lens_ptr, n);
+    let val_ptrs  = std::slice::from_raw_parts(vals_ptr, n);
+    let mut map: HashMap<String, Value> = HashMap::with_capacity(n);
+    for i in 0..n {
+        let name = str_from_raw(name_ptrs[i], name_lens[i]).to_string();
+        map.insert(name, (*val_ptrs[i]).clone());
+    }
+    *out = Value::Composite(map);
 }
 
 /// Append a clone of `*elem` to the SeqEnum at `seq`.
@@ -249,6 +297,8 @@ pub fn symbol_table() -> Vec<(&'static str, *const u8)> {
         ("ev_set_enum_str",     ev_set_enum_str     as *const u8),
         ("ev_seq_new",          ev_seq_new          as *const u8),
         ("ev_seq_push_clone",   ev_seq_push_clone   as *const u8),
+        ("ev_seq_set",          ev_seq_set          as *const u8),
+        ("ev_set_composite",    ev_set_composite    as *const u8),
         ("ev_load_int",         ev_load_int         as *const u8),
         ("ev_set_enum_multifield", ev_set_enum_multifield as *const u8),
         ("ev_clone_from_pool",  ev_clone_from_pool  as *const u8),
