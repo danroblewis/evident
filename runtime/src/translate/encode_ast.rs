@@ -205,7 +205,7 @@ fn encode_cons_list<'ctx, T>(
     enums: &EnumRegistry,
     encode_head: impl Fn(&T, &'ctx Context, &EnumRegistry) -> Result<Datatype<'ctx>>,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let helper = crate::runtime::internal_cons_helper_name(elem_type_name);
+    let helper = crate::core::internal_cons_helper_name(elem_type_name);
     let empty  = format!("__Empty_{}", elem_type_name);
     let cell   = format!("__Cell_{}", elem_type_name);
     let mut acc = apply(enums, &helper, &empty, &[])?;
@@ -564,7 +564,7 @@ fn encode_bind_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let helper = crate::runtime::internal_cons_helper_name("MatchBind");
+    let helper = crate::core::internal_cons_helper_name("MatchBind");
     let empty  = "__Empty_MatchBind";
     let cell   = "__Cell_MatchBind";
     let mut acc = apply(enums, &helper, empty, &[])?;

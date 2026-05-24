@@ -60,13 +60,6 @@ pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 pub use desugar::SystemBoundary;
 
-// `parse_seq_type` and `internal_cons_helper_name` are used by the
-// `crate::translate::*` modules through the `crate::runtime::*` path
-// (see `translate/exprs.rs`, `translate/eval.rs`, `translate/encode_ast.rs`).
-// Re-export at the module level so those call sites keep working
-// unchanged.
-pub(crate) use register_enums::{internal_cons_helper_name, parse_seq_type};
-
 use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
 use std::cell::RefCell;

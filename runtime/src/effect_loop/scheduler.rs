@@ -1,13 +1,13 @@
-//! Multi-FSM subscription-driven scheduler.
+//! Subscription-driven scheduler.
 //!
 //! Per tick:
-//!   1. Solve writer (if any), capture world_next.* values.
+//!   1. Solve writer(s) (if any), capture world_next.* values.
 //!   2. Solve each reader with world.* pinned to writer's new values
-//!      (or the previous tick's snapshot if no writer / writer halted).
-//!   3. Dispatch all FSMs' effects (writer first, readers in order).
-//!   4. Per-FSM halt detection (state_next == state ∧ effects empty).
-//!   5. Drop halted FSMs from the active set.
-//! Program halts when no active FSMs remain.
+//!      (or the previous tick's snapshot if no writer).
+//!   3. Dispatch all FSMs' effects (writers first, readers in order).
+//!   4. FSMs not woken by subscriptions are skipped this tick.
+//! Program halts implicitly when no FSM is scheduled in a tick (and
+//! no async event source can wake one), or when an FSM emits Exit.
 
 use crate::core::ast::EffectResult;
 use crate::effect_dispatch::{DispatchContext, dispatch_all};
@@ -20,7 +20,7 @@ use super::state::{encode_state_value, seed_state_with_arg};
 use super::timing::print_timing_summary_full;
 use super::{LoopEnv, LoopOpts, LoopResult};
 
-pub(super) fn run_multi_fsm(
+pub(super) fn run_scheduler(
     rt: &EvidentRuntime,
     fsms: &[MainShape],
     opts: &LoopOpts,
@@ -148,19 +148,12 @@ pub(super) fn run_multi_fsm(
     let mut per_fsm_solve: Vec<std::time::Duration> = vec![std::time::Duration::ZERO; fsms.len()];
     let mut per_fsm_ticks: Vec<usize> = vec![0; fsms.len()];
 
-    // ── Phase 2: subscription scheduling state ────────────────
-    // Phase 2: subscription-driven scheduling. Opt-in via env flag
-    // until we trust it enough to flip the default. See
-    // docs/design/fsm-subscriptions.md for the full model.
-    // Default scheduler: delta (subscription-driven). Opt out via
-    // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
-    // every iteration" behavior with name/fixpoint-based halt.
-    let delta_mode = env.delta_mode;
-    // Access sets are needed in BOTH modes now: delta mode uses
-    // them for scheduling decisions; multi-writer support uses
-    // them to scope each writer's snapshot updates to its own
-    // write-set (so two writers with disjoint fields don't clobber
-    // each other).
+    // ── Subscription scheduling state ─────────────────────────
+    // Subscription-driven scheduling: see docs/design/fsm-subscriptions.md
+    // for the full model. Access sets feed both scheduling decisions
+    // (wake on read-set delta) and multi-writer snapshot scoping (each
+    // writer's snapshot updates are limited to its own write-set so
+    // disjoint writers don't clobber each other).
     let mut access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
         rt.get_schema(&fsm.claim_name)
           .map(|s| crate::subscriptions::world_access_sets(s))
@@ -168,8 +161,7 @@ pub(super) fn run_multi_fsm(
     }).collect();
     // Per-FSM "world fields that changed since I was last scheduled."
     // When the FSM is scheduled, this is consumed (cleared). Writers
-    // populate it on other FSMs after their solve. NOT used in legacy
-    // mode (every FSM ticks unconditionally).
+    // populate it on other FSMs after their solve.
     let mut pending_changes: Vec<std::collections::HashSet<String>> =
         vec![std::collections::HashSet::new(); fsms.len()];
     // Self-feedback: did this FSM emit effects last tick? If so, it
@@ -224,73 +216,71 @@ pub(super) fn run_multi_fsm(
         // wake). Sources may produce writes faster than ticks can
         // consume them; we move source-side queues into a local
         // FIFO so nothing is lost.
-        if delta_mode {
-            for src in event_sources.iter_mut() {
-                let writes = src.drain_writes();
-                pending_world_writes.append(&mut writes.into_iter().collect());
+        for src in event_sources.iter_mut() {
+            let writes = src.drain_writes();
+            pending_world_writes.append(&mut writes.into_iter().collect());
+        }
+        // Dual policy: STATE writes (dotted keys, FTI) apply
+        // ALL queued values immediately — only the latest
+        // matters; intermediate values would be invisible
+        // anyway because the FSM only solves once per tick.
+        // EVENT writes (bare keys, world reserved fields)
+        // apply ONE per tick — each individual value matters
+        // (e.g. each stdin line is a discrete event).
+        //
+        // For FTI: a bridge writing 5 values between ticks
+        // collapses to "the latest count," consistent with
+        // the field's role as continuous state.
+        let mut event_writes: std::collections::VecDeque<(String, Value)> =
+            std::collections::VecDeque::new();
+        let mut state_writes: Vec<(String, Value)> = Vec::new();
+        while let Some((field, val)) = pending_world_writes.pop_front() {
+            if field.contains('.') {
+                state_writes.push((field, val));
+            } else {
+                event_writes.push_back((field, val));
             }
-            // Dual policy: STATE writes (dotted keys, FTI) apply
-            // ALL queued values immediately — only the latest
-            // matters; intermediate values would be invisible
-            // anyway because the FSM only solves once per tick.
-            // EVENT writes (bare keys, world reserved fields)
-            // apply ONE per tick — each individual value matters
-            // (e.g. each stdin line is a discrete event).
-            //
-            // For FTI: a bridge writing 5 values between ticks
-            // collapses to "the latest count," consistent with
-            // the field's role as continuous state.
-            let mut event_writes: std::collections::VecDeque<(String, Value)> =
-                std::collections::VecDeque::new();
-            let mut state_writes: Vec<(String, Value)> = Vec::new();
-            while let Some((field, val)) = pending_world_writes.pop_front() {
-                if field.contains('.') {
-                    state_writes.push((field, val));
-                } else {
-                    event_writes.push_back((field, val));
-                }
-            }
-            // Re-queue event writes for the one-per-tick draining.
-            pending_world_writes = event_writes;
+        }
+        // Re-queue event writes for the one-per-tick draining.
+        pending_world_writes = event_writes;
 
-            // Apply all state writes (last value wins per key).
-            // For FTI keys (`<fsm>.<param>.<field>`), wake the
-            // matching FSM if its access_sets include the
-            // stripped `<param>.<field>` (or its first segment,
-            // <param>, since access_sets stores top-level field
-            // names from `world.X` reads but FTI param-field
-            // reads land directly in env without expansion).
-            for (field, val) in state_writes {
-                let key = field.clone();  // dotted, used as-is
-                let changed = world_snapshot.get(&key) != Some(&val);
-                if changed {
-                    world_snapshot.insert(key.clone(), val);
-                    // FTI wake distribution: if the key matches
-                    // `<claim>.<rest>` for some FSM's claim_name,
-                    // wake that FSM.
-                    for (j, fsm) in fsms.iter().enumerate() {
-                        let prefix = format!("{}.", fsm.claim_name);
-                        if let Some(rest) = key.strip_prefix(&prefix) {
-                            // Top-level segment of `rest` is the param name.
-                            let param = rest.split('.').next().unwrap_or(rest);
-                            if fsm.fti_params.iter().any(|(p, _, _)| p == param) {
-                                pending_changes[j].insert(rest.to_string());
-                            }
+        // Apply all state writes (last value wins per key).
+        // For FTI keys (`<fsm>.<param>.<field>`), wake the
+        // matching FSM if its access_sets include the
+        // stripped `<param>.<field>` (or its first segment,
+        // <param>, since access_sets stores top-level field
+        // names from `world.X` reads but FTI param-field
+        // reads land directly in env without expansion).
+        for (field, val) in state_writes {
+            let key = field.clone();  // dotted, used as-is
+            let changed = world_snapshot.get(&key) != Some(&val);
+            if changed {
+                world_snapshot.insert(key.clone(), val);
+                // FTI wake distribution: if the key matches
+                // `<claim>.<rest>` for some FSM's claim_name,
+                // wake that FSM.
+                for (j, fsm) in fsms.iter().enumerate() {
+                    let prefix = format!("{}.", fsm.claim_name);
+                    if let Some(rest) = key.strip_prefix(&prefix) {
+                        // Top-level segment of `rest` is the param name.
+                        let param = rest.split('.').next().unwrap_or(rest);
+                        if fsm.fti_params.iter().any(|(p, _, _)| p == param) {
+                            pending_changes[j].insert(rest.to_string());
                         }
                     }
                 }
             }
+        }
 
-            if let Some((field, val)) = pending_world_writes.pop_front() {
-                // Bare field name → world.X pin.
-                let key = format!("world.{field}");
-                let changed = world_snapshot.get(&key) != Some(&val);
-                if changed {
-                    world_snapshot.insert(key, val);
-                    for (j, _f) in fsms.iter().enumerate() {
-                        if access_sets[j].reads.contains(&field) {
-                            pending_changes[j].insert(field.clone());
-                        }
+        if let Some((field, val)) = pending_world_writes.pop_front() {
+            // Bare field name → world.X pin.
+            let key = format!("world.{field}");
+            let changed = world_snapshot.get(&key) != Some(&val);
+            if changed {
+                world_snapshot.insert(key, val);
+                for (j, _f) in fsms.iter().enumerate() {
+                    if access_sets[j].reads.contains(&field) {
+                        pending_changes[j].insert(field.clone());
                     }
                 }
             }
@@ -307,15 +297,16 @@ pub(super) fn run_multi_fsm(
         for (idx, fsm) in fsms.iter().enumerate() {
             if fsm_rt[idx].halted { continue; }
 
-            // Phase 2 scheduling decision. Three triggers wake an FSM:
+            // Scheduling decision. Four triggers wake an FSM:
             //   1. Bootstrap (tick 0)
             //   2. Self-feedback: emitted effects last tick → fresh
             //      last_results to consume.
             //   3. World delta: a field in the FSM's read-set was
             //      written since this FSM was last scheduled.
+            //   4. State change: transitioned to a new state value.
             // All others stay asleep this tick. `pending_changes` is
             // cleared on schedule (events consumed).
-            if delta_mode && step_count > 0 {
+            if step_count > 0 {
                 let woken = had_effects_last[idx]
                     || !pending_changes[idx].is_empty()
                     || state_changed_last[idx]
@@ -454,18 +445,10 @@ pub(super) fn run_multi_fsm(
             let effects = collect_dispatchable_effects(rt, &fsm.claim_name,
                 &r.bindings, fsm.effects_var.as_deref());
 
-            // Legacy halt-check: state_next == state (value equality,
-            // true fixpoint) AND effects empty AND we're past tick 0.
-            // Skipped in delta mode — under subscription scheduling,
-            // FSMs that fixpoint just stop being scheduled (no inputs
-            // to wake them); the program halts when no FSM is
-            // scheduled at all in a tick.
-            let will_halt = !delta_mode
-                && step_count > 0
-                && effects.is_empty()
-                && state_next_val.is_some()
-                && fsm_rt[idx].current_state_v.as_ref()
-                    .map(|cv| Some(cv) == state_next_val).unwrap_or(false);
+            // Halt is implicit under subscription scheduling: FSMs that
+            // fixpoint just stop being scheduled (no inputs to wake
+            // them); the program halts when no FSM is scheduled at all
+            // in a tick.
 
             // Writer? Capture world_next.* for snapshot. The snapshot
             // becomes the `world.*` given for subsequent FSM solves
@@ -504,13 +487,11 @@ pub(super) fn run_multi_fsm(
                         world_snapshot.insert(key, v.clone());
                     }
                 }
-                if delta_mode {
-                    for j in 0..fsms.len() {
-                        if j == idx { continue; }
-                        for f in &just_changed {
-                            if access_sets[j].reads.contains(f) {
-                                pending_changes[j].insert(f.clone());
-                            }
+                for j in 0..fsms.len() {
+                    if j == idx { continue; }
+                    for f in &just_changed {
+                        if access_sets[j].reads.contains(f) {
+                            pending_changes[j].insert(f.clone());
                         }
                     }
                 }
@@ -551,11 +532,6 @@ pub(super) fn run_multi_fsm(
             }
 
             all_effects.push((idx, effects));
-
-            // Mark halt — drops on next tick's iteration.
-            if will_halt {
-                fsm_rt[idx].halted = true;
-            }
         }
 
         // ── Phase 3c: dispatch all effects ────────────────────
@@ -650,14 +626,14 @@ pub(super) fn run_multi_fsm(
             });
         }
 
-        // Phase 3 halt criterion (delta mode only): if no FSM was
-        // scheduled this tick, no work happened — and since
-        // scheduling decisions are deterministic from world deltas
-        // + self-feedback + state-feedback, no work would happen
-        // next tick either. Halt cleanly UNLESS an async event
-        // source can wake us (Phase 4 v3): block on the channel,
-        // then continue the loop on the next event.
-        if delta_mode && scheduled_this_tick.iter().all(|s| !s) && pending_world_writes.is_empty() {
+        // Halt criterion: if no FSM was scheduled this tick, no
+        // work happened — and since scheduling decisions are
+        // deterministic from world deltas + self-feedback +
+        // state-feedback, no work would happen next tick either.
+        // Halt cleanly UNLESS an async event source can wake us:
+        // block on the channel, then continue the loop on the
+        // next event.
+        if scheduled_this_tick.iter().all(|s| !s) && pending_world_writes.is_empty() {
             if let Some(rx) = event_rx {
                 // Per-FSM event subscription matching. If ANY FSM
                 // declared an explicit subscription, only wake FSMs

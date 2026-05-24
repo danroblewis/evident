@@ -30,9 +30,9 @@ impl EvidentRuntime {
         // for any value of those inputs IF Z3 left the relevant
         // dispatch intact (e.g., `match state` becomes a guarded
         // program). When Z3 folded a given value into a constant,
-        // the program will be wrong for different values of that
-        // key — eval_program returns None in that case (predicate
-        // check fails) and we fall through to the slow path.
+        // the compiled function returns None for different values
+        // of that key (predicate check fails) and we fall through
+        // to the slow path.
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
         let cache_key = (name.to_string(), given_keys.clone());

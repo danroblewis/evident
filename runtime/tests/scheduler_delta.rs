@@ -1,9 +1,6 @@
-//! Integration tests for the Phase 2 delta scheduler
-//! (EVIDENT_SCHEDULER=delta). Verifies that an FSM with no live
-//! inputs is skipped — its body doesn't re-solve, observable side
-//! effects don't fire.
-//!
-//! Counterpart in legacy mode: the same FSM ticks every iteration.
+//! Integration tests for the subscription-driven scheduler.
+//! Verifies that an FSM with no live inputs is skipped — its body
+//! doesn't re-solve, observable side effects don't fire.
 
 use std::io::{BufReader, Cursor};
 use std::path::Path;
@@ -12,10 +9,10 @@ use std::sync::{Arc, Mutex};
 use evident_runtime::{EvidentRuntime, effect_loop};
 use evident_runtime::effect_dispatch::DispatchContext;
 
-// Serialize: each test mutates EVIDENT_SCHEDULER on the process
-// env, which is shared across cargo's default-parallel test runner.
-// Without this, a test reading the var mid-flight could see a value
-// set by another test.
+// Serialize: tests mutate EVIDENT_TICK_MS on the process env, which
+// is shared across cargo's default-parallel test runner. Without
+// this, a test reading the var mid-flight could see a value set by
+// another test.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 struct SharedWrite(Arc<Mutex<Vec<u8>>>);
@@ -64,34 +61,8 @@ fsm reader(world ∈ World,
 ";
 
 #[test]
-fn legacy_mode_writer_ticks_every_iteration() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "legacy");
-
-    let mut rt = EvidentRuntime::new();
-    rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
-    rt.load_source(SETUP_THEN_QUIET_PROGRAM).unwrap();
-    let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut ctx = DispatchContext::with_streams(
-        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
-        Box::new(SharedWrite(Arc::clone(&captured))),
-    );
-    let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
-    std::env::remove_var("EVIDENT_SCHEDULER");
-
-    let bytes = captured.lock().unwrap().clone();
-    let out = String::from_utf8(bytes).unwrap();
-    let writer_count = out.lines().filter(|l| *l == "writer-tick").count();
-    let reader_count = out.lines().filter(|l| l.starts_with("reader:")).count();
-    // Legacy: writer ticks every iteration → 5 writer prints.
-    assert_eq!(writer_count, 5, "legacy: writer should tick every iteration; out:\n{}", out);
-    assert_eq!(reader_count, 5, "reader prints every iteration");
-}
-
-#[test]
 fn delta_mode_writer_goes_quiet() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
     rt.load_source(SETUP_THEN_QUIET_PROGRAM).unwrap();
@@ -101,7 +72,6 @@ fn delta_mode_writer_goes_quiet() {
         Box::new(SharedWrite(Arc::clone(&captured))),
     );
     let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 8 }, &mut ctx);
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let out = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
     let writer_count = out.lines().filter(|l| *l == "writer-tick").count();
@@ -207,7 +177,6 @@ fsm observer(world ∈ World,
 #[test]
 fn delta_mode_halts_cleanly_without_done_variant() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -219,7 +188,6 @@ fn delta_mode_halts_cleanly_without_done_variant() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let bytes = captured.lock().unwrap().clone();
     let out = String::from_utf8(bytes).unwrap();
@@ -283,7 +251,6 @@ fsm main(state ∈ S)
 #[test]
 fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -297,7 +264,6 @@ fn delta_mode_single_fsm_stdin_reader_halts_on_eof() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let bytes = captured.lock().unwrap().clone();
     let out = String::from_utf8(bytes).unwrap();
@@ -321,7 +287,6 @@ fn delta_graceful_shutdown_lang_test_05() {
     // cleanup + Exit(0) when counter ≥ 3. Effect::Exit is graceful
     // — producer's same-tick "produced" prints alongside cleanup.
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");  // default = delta
     std::env::remove_var("EVIDENT_TICK_MS");
 
     let mut rt = EvidentRuntime::new();
@@ -375,7 +340,6 @@ fsm main(world, world_next ∈ World,
 #[test]
 fn user_fsm_writing_plugin_owned_field_rejected_at_load() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -412,7 +376,6 @@ fsm main(world ∈ World,
 #[test]
 fn stdin_plugin_plus_readline_rejected_at_load() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -449,7 +412,6 @@ fsm main(state ∈ CountState)
 #[test]
 fn payload_first_variant_does_not_crash_at_startup() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
     std::env::remove_var("EVIDENT_TICK_MS");
 
     let mut rt = EvidentRuntime::new();
@@ -493,7 +455,6 @@ fsm writer(world, world_next ∈ World,
 #[test]
 fn plugin_as_writer_timer_writes_world_field() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
     std::env::set_var("EVIDENT_TICK_MS", "20");
 
     let mut rt = EvidentRuntime::new();
@@ -566,7 +527,6 @@ fsm reader(world ∈ World,
 #[test]
 fn delta_mode_multi_writer_disjoint_fields() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
     std::env::set_var("EVIDENT_TICK_MS", "20");
 
     let mut rt = EvidentRuntime::new();
@@ -615,7 +575,6 @@ fsm writer_b(world, world_next ∈ World,
 #[test]
 fn multi_writer_overlap_is_rejected_at_load_time() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -665,7 +624,6 @@ fsm silent(world ∈ World,
 #[test]
 fn delta_mode_per_fsm_subscription_matches_only_subscribed() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
     std::env::set_var("EVIDENT_TICK_MS", "20");
 
     let mut rt = EvidentRuntime::new();
@@ -678,7 +636,6 @@ fn delta_mode_per_fsm_subscription_matches_only_subscribed() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
     std::env::remove_var("EVIDENT_TICK_MS");
 
     // Subscriber gets woken by each tick → world.pulse climbs →
@@ -723,7 +680,6 @@ fsm reader(world ∈ World,
 #[test]
 fn delta_mode_without_timer_halts_when_silent() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
     std::env::remove_var("EVIDENT_TICK_MS");
 
     let mut rt = EvidentRuntime::new();
@@ -736,7 +692,6 @@ fn delta_mode_without_timer_halts_when_silent() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let bytes = captured.lock().unwrap().clone();
     let out = String::from_utf8(bytes).unwrap();
@@ -754,7 +709,6 @@ fn delta_mode_without_timer_halts_when_silent() {
 #[test]
 fn delta_mode_with_timer_drives_silent_program_to_completion() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
     std::env::set_var("EVIDENT_TICK_MS", "20");
 
     let mut rt = EvidentRuntime::new();
@@ -767,7 +721,6 @@ fn delta_mode_with_timer_drives_silent_program_to_completion() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 50 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
     std::env::remove_var("EVIDENT_TICK_MS");
 
     let bytes = captured.lock().unwrap().clone();
@@ -818,7 +771,6 @@ fsm logger(world ∈ World,
 #[test]
 fn delta_mode_exit_is_graceful_other_fsms_complete_tick() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
 
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
@@ -830,7 +782,6 @@ fn delta_mode_exit_is_graceful_other_fsms_complete_tick() {
     );
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 20 }, &mut ctx)
         .unwrap();
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let bytes = captured.lock().unwrap().clone();
     let out = String::from_utf8(bytes).unwrap();
@@ -857,7 +808,6 @@ fn delta_mode_exit_is_graceful_other_fsms_complete_tick() {
 #[test]
 fn delta_mode_writer_truly_goes_quiet_after_init() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    std::env::set_var("EVIDENT_SCHEDULER", "delta");
     let mut rt = EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/runtime.ev")).unwrap();
     rt.load_source(QUIET_AFTER_INIT_PROGRAM).unwrap();
@@ -867,7 +817,6 @@ fn delta_mode_writer_truly_goes_quiet_after_init() {
         Box::new(SharedWrite(Arc::clone(&captured))),
     );
     let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 10 }, &mut ctx);
-    std::env::remove_var("EVIDENT_SCHEDULER");
 
     let out = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
     let writer_inits = out.lines().filter(|l| *l == "writer-init").count();

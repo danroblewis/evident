@@ -1,6 +1,6 @@
 //! Z3 datatype registration for `enum` declarations.
 
-use crate::core::RuntimeError;
+use crate::core::{RuntimeError, internal_cons_helper_name, parse_seq_type};
 use z3::Context;
 
 /// Batched build of Z3 DatatypeSorts for every enum declared in
@@ -242,24 +242,6 @@ pub(super) fn register_enums(
         }
     }
     Ok(())
-}
-
-/// Parse `Seq(T)` → `Some(T)`; otherwise `None`. Used by the enum
-/// loader to detect Seq-typed payload fields.
-pub(crate) fn parse_seq_type(s: &str) -> Option<&str> {
-    if s.starts_with("Seq(") && s.ends_with(')') {
-        Some(&s[4..s.len() - 1])
-    } else {
-        None
-    }
-}
-
-/// Helper enum name for internal-Cons backing of `Seq(T)`.
-/// Convention: `__SeqOf_T`. The underscores prefix marks it as
-/// runtime-internal — never written by users, never appears in
-/// error messages outside debug contexts.
-pub(crate) fn internal_cons_helper_name(t: &str) -> String {
-    format!("__SeqOf_{}", t)
 }
 
 /// Walk `decls` for `Seq(T)` enum-variant fields where T is also in

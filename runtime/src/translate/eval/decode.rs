@@ -135,11 +135,11 @@ pub(super) fn extract_enum_value<'ctx>(
             if let Some(decl_variant) = decl_variants.get(idx) {
                 let mut acc_idx: usize = 0;
                 for decl_field in decl_variant.fields.iter() {
-                    if let Some(inner) = crate::runtime::parse_seq_type(&decl_field.type_name) {
+                    if let Some(inner) = crate::core::parse_seq_type(&decl_field.type_name) {
                         // Internal-Cons backing: single Datatype
                         // accessor; walk the __SeqOf_T chain to
                         // recover the elements.
-                        let helper_name = crate::runtime::internal_cons_helper_name(inner);
+                        let helper_name = crate::core::internal_cons_helper_name(inner);
                         let has_helper = reg.by_name.borrow().contains_key(&helper_name);
                         if has_helper {
                             let acc = &variant.accessors[acc_idx];

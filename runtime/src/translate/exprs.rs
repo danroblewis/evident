@@ -467,13 +467,13 @@ pub(super) fn resolve_enum_ast<'ctx>(
             // sees the right physical arg count.
             let mut owned_args: Vec<Box<dyn z3::ast::Ast<'ctx>>> = Vec::new();
             for (arg_expr, field_type) in args.iter().zip(field_types.iter()) {
-                if let Some(inner) = crate::runtime::parse_seq_type(field_type) {
+                if let Some(inner) = crate::core::parse_seq_type(field_type) {
                     // Internal-Cons backing? Look up the helper enum
                     // in the registry; if it exists, the field is a
                     // single Datatype slot, not (arr, len). Build the
                     // Cons chain via build_cons_chain targeted at
                     // __SeqOf_<inner>.
-                    let helper_name = crate::runtime::internal_cons_helper_name(inner);
+                    let helper_name = crate::core::internal_cons_helper_name(inner);
                     let helper_dt: Option<&'static DatatypeSort<'static>> =
                         with_active_enums(|opt| opt.and_then(|er|
                             er.by_name.borrow().get(&helper_name).map(|(d, _)| *d)));

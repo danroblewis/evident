@@ -22,9 +22,8 @@ use crate::core::Value;
 
 mod collect;
 mod fsm;
-mod multi_fsm;
+mod scheduler;
 mod seq_chains;
-mod single_fsm;
 mod state;
 mod timing;
 mod toposort;
@@ -36,7 +35,6 @@ mod toposort;
 // `crate::effect_loop::X` / `evident_runtime::effect_loop::X` —
 // `lib.rs` does `pub mod effect_loop;` and downstream crates
 // (commands/, tests/) name these symbols directly.
-pub(crate) use collect::collect_dispatchable_effects;
 pub use fsm::{MainShape, all_fsms, detect_main_shape, resolve_fsm};
 
 /// Tunables for the effect loop.
@@ -58,10 +56,6 @@ impl Default for LoopOpts {
 /// nobody is reading.
 #[derive(Debug, Clone)]
 pub(crate) struct LoopEnv {
-    /// `EVIDENT_SCHEDULER` — `false` for the legacy "tick every
-    /// FSM every iteration" mode; `true` for the default
-    /// subscription-driven scheduler.
-    pub(crate) delta_mode:     bool,
     /// `EVIDENT_LOOP_TRACE` — gate per-tick scheduling diagnostics.
     /// Hot — checked inside per-FSM body.
     pub(crate) trace:          bool,
@@ -86,7 +80,6 @@ pub(crate) struct LoopEnv {
 impl LoopEnv {
     fn from_process_env() -> Self {
         Self {
-            delta_mode:    std::env::var("EVIDENT_SCHEDULER").as_deref() != Ok("legacy"),
             trace:         std::env::var("EVIDENT_LOOP_TRACE").is_ok(),
             timing:        std::env::var("EVIDENT_LOOP_TIMING").is_ok(),
             tick_ms:       std::env::var("EVIDENT_TICK_MS").ok()
@@ -140,10 +133,6 @@ pub fn run_with_ctx(
     // Avoids syscall-per-tick overhead on hot diagnostic gates
     // and keeps env-read sites discoverable in one place.
     let env = LoopEnv::from_process_env();
-    // Default scheduler: delta (subscription-driven). Opt out via
-    // EVIDENT_SCHEDULER=legacy to get the older "tick every FSM
-    // every iteration" behavior with name/fixpoint-based halt.
-    let delta_mode = env.delta_mode;
 
     // Set up async event sources. Two trigger paths (transitional):
     //
@@ -167,136 +156,134 @@ pub fn run_with_ctx(
     let mut event_sources: Vec<Box<dyn crate::event_sources::EventSource>> = Vec::new();
     let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::event_sources::SchedulerEvent>();
     let mut plugin_writes: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if delta_mode {
-        // Build the read-only context the world-plugin installers
-        // consult. The registry walk below is generic over which
-        // bridges exist; the scheduler doesn't enumerate them.
-        let world_fields: std::collections::HashMap<String, String> = fsms.iter()
-            .find_map(|f| f.world_type.as_ref())
-            .and_then(|wt| rt.get_schema(wt))
-            .map(|w| {
-                w.body.iter().filter_map(|item| {
-                    if let crate::core::ast::BodyItem::Membership { name, type_name, .. } = item {
-                        Some((name.clone(), type_name.clone()))
-                    } else { None }
-                }).collect()
-            })
-            .unwrap_or_default();
-        let fsm_event_subscriptions: std::collections::HashSet<String> = fsms.iter()
-            .flat_map(|f| f.event_subscriptions.iter().cloned())
-            .collect();
-        let fsm_using_identifier = |ident: &str| -> Option<String> {
-            for fsm in &fsms {
-                if let Some(claim) = rt.get_schema(&fsm.claim_name) {
-                    if crate::subscriptions::body_references_identifier(claim, ident) {
-                        return Some(fsm.claim_name.clone());
-                    }
+    // Build the read-only context the world-plugin installers
+    // consult. The registry walk below is generic over which
+    // bridges exist; the scheduler doesn't enumerate them.
+    let world_fields: std::collections::HashMap<String, String> = fsms.iter()
+        .find_map(|f| f.world_type.as_ref())
+        .and_then(|wt| rt.get_schema(wt))
+        .map(|w| {
+            w.body.iter().filter_map(|item| {
+                if let crate::core::ast::BodyItem::Membership { name, type_name, .. } = item {
+                    Some((name.clone(), type_name.clone()))
+                } else { None }
+            }).collect()
+        })
+        .unwrap_or_default();
+    let fsm_event_subscriptions: std::collections::HashSet<String> = fsms.iter()
+        .flat_map(|f| f.event_subscriptions.iter().cloned())
+        .collect();
+    let fsm_using_identifier = |ident: &str| -> Option<String> {
+        for fsm in &fsms {
+            if let Some(claim) = rt.get_schema(&fsm.claim_name) {
+                if crate::subscriptions::body_references_identifier(claim, ident) {
+                    return Some(fsm.claim_name.clone());
                 }
-            }
-            None
-        };
-        // Encoder closure for plugins that need the loaded program
-        // as a `Value::Enum` tree (reflection plugin et al.). Pure-
-        // Rust mirror of `encode_program` — no Z3 needed because
-        // the closure produces `Value`, not `Datatype`. Plugins that
-        // don't reflect ignore this field.
-        let encode_program = || -> Result<crate::Value, String> {
-            // Detect missing stdlib/ast.ev with a clear message
-            // before encoding (otherwise the user gets a much later,
-            // less obvious "Program enum unknown" failure when the
-            // FSM tries to pin the value).
-            let by_name = rt.enums_registry().by_name.borrow();
-            if !by_name.contains_key("Program") {
-                return Err(
-                    "reflection plugin: world declares a `Program` field, \
-                     but `stdlib/ast.ev` isn't imported — add \
-                     `import \"stdlib/ast.ev\"` to make the AST schema \
-                     available".to_string());
-            }
-            drop(by_name);
-            Ok(crate::translate::ast_encoder::program_to_value(
-                &rt.program_ast(),
-            ))
-        };
-        let plugin_ctx = crate::event_sources::WorldPluginCtx {
-            world_fields:            &world_fields,
-            fsm_event_subscriptions: &fsm_event_subscriptions,
-            env_tick_ms:             env.tick_ms,
-            env_clock_ms:            env.clock_ms,
-            env_file_watch:          env.file_watch.as_deref(),
-            env_file_watch_ms:       env.file_watch_ms,
-            env_file_input:          env.file_input.as_deref(),
-            fsm_using_identifier:    &fsm_using_identifier,
-            encode_program:          &encode_program,
-        };
-
-        // World-plugin auto-install (Phase 4 v3.7, unified model).
-        // Each registry entry decides for itself whether to install,
-        // based on world fields and a few env knobs. The scheduler
-        // is unaware of which specific bridges exist.
-        for installer in crate::event_sources::WORLD_PLUGIN_INSTALLERS {
-            if let Some(install) = installer(&plugin_ctx, &event_tx)? {
-                for k in install.plugin_writes { plugin_writes.insert(k); }
-                if install.owns_stdin { ctx.stdin_owned_by_plugin = true; }
-                event_sources.push(install.source);
             }
         }
+        None
+    };
+    // Encoder closure for plugins that need the loaded program
+    // as a `Value::Enum` tree (reflection plugin et al.). Pure-
+    // Rust mirror of `encode_program` — no Z3 needed because
+    // the closure produces `Value`, not `Datatype`. Plugins that
+    // don't reflect ignore this field.
+    let encode_program = || -> Result<crate::Value, String> {
+        // Detect missing stdlib/ast.ev with a clear message
+        // before encoding (otherwise the user gets a much later,
+        // less obvious "Program enum unknown" failure when the
+        // FSM tries to pin the value).
+        let by_name = rt.enums_registry().by_name.borrow();
+        if !by_name.contains_key("Program") {
+            return Err(
+                "reflection plugin: world declares a `Program` field, \
+                 but `stdlib/ast.ev` isn't imported — add \
+                 `import \"stdlib/ast.ev\"` to make the AST schema \
+                 available".to_string());
+        }
+        drop(by_name);
+        Ok(crate::translate::ast_encoder::program_to_value(
+            &rt.program_ast(),
+        ))
+    };
+    let plugin_ctx = crate::event_sources::WorldPluginCtx {
+        world_fields:            &world_fields,
+        fsm_event_subscriptions: &fsm_event_subscriptions,
+        env_tick_ms:             env.tick_ms,
+        env_clock_ms:            env.clock_ms,
+        env_file_watch:          env.file_watch.as_deref(),
+        env_file_watch_ms:       env.file_watch_ms,
+        env_file_input:          env.file_input.as_deref(),
+        fsm_using_identifier:    &fsm_using_identifier,
+        encode_program:          &encode_program,
+    };
 
-        // FTI v1 — typed-resource bridges declared as FSM
-        // parameters (e.g. `t ∈ Timer (interval_ms ↦ 50)`).
-        // Independent of world plugins: each FTI instance is
-        // per-FSM-per-param, with FSM-prefixed write keys
-        // ("<fsm>.<param>.<field>") so two FSMs declaring the
-        // same param type get distinct bridges.
-        for fsm in &fsms {
-            for (param_name, type_name, pins) in &fsm.fti_params {
-                let fti_ctx = crate::fti::FtiContext {
-                    claim_name:  fsm.claim_name.clone(),
-                    param_name:  param_name.clone(),
-                    env_tick_ms: env.tick_ms,
-                };
-                // Declarative install (preferred): if the type's
-                // body has an `install ∈ Seq(InstallStep)` member,
-                // dispatch it via the generic mechanism and skip
-                // any specific Rust bridge. Only falls back to
-                // INSTALLERS for thread-driven bridges (FrameTimer,
-                // Timer — long-running event sources that can't be
-                // expressed as a one-shot Seq).
-                let has_declarative = rt.get_schema(type_name).map(|s|
-                    s.body.iter().any(|i| matches!(i,
-                        crate::core::ast::BodyItem::Membership { name, type_name: ty, .. }
-                        if name == "install" && ty == "Seq(InstallStep)"))
-                ).unwrap_or(false);
-                if has_declarative {
-                    let mut src = crate::event_sources::DeclarativeInstallSource::new();
-                    // CRITICAL: pass the scheduler's DispatchContext so the
-                    // HandleRegistry IDs assigned at install (window ptr,
-                    // renderer ptr, …) are visible to per-tick effect
-                    // dispatch — otherwise ArgHandle lookups go to a
-                    // different (empty) registry.
-                    src.run_install(rt, type_name, &fti_ctx, pins, &event_tx, ctx)?;
-                    // Captured keys = leading Memberships of the type
-                    // that aren't first-line input pins. The drain pass
-                    // applies them to world_snapshot below.
-                    if let Some(type_decl) = rt.get_schema(type_name) {
-                        for item in &type_decl.body {
-                            if let crate::core::ast::BodyItem::Membership { name, type_name: _, .. } = item {
-                                if name == "install" { continue; }
-                                let key = format!("{}.{}.{}",
-                                    fsm.claim_name, param_name, name);
-                                plugin_writes.insert(key);
-                            }
+    // World-plugin auto-install (Phase 4 v3.7, unified model).
+    // Each registry entry decides for itself whether to install,
+    // based on world fields and a few env knobs. The scheduler
+    // is unaware of which specific bridges exist.
+    for installer in crate::event_sources::WORLD_PLUGIN_INSTALLERS {
+        if let Some(install) = installer(&plugin_ctx, &event_tx)? {
+            for k in install.plugin_writes { plugin_writes.insert(k); }
+            if install.owns_stdin { ctx.stdin_owned_by_plugin = true; }
+            event_sources.push(install.source);
+        }
+    }
+
+    // FTI v1 — typed-resource bridges declared as FSM
+    // parameters (e.g. `t ∈ Timer (interval_ms ↦ 50)`).
+    // Independent of world plugins: each FTI instance is
+    // per-FSM-per-param, with FSM-prefixed write keys
+    // ("<fsm>.<param>.<field>") so two FSMs declaring the
+    // same param type get distinct bridges.
+    for fsm in &fsms {
+        for (param_name, type_name, pins) in &fsm.fti_params {
+            let fti_ctx = crate::fti::FtiContext {
+                claim_name:  fsm.claim_name.clone(),
+                param_name:  param_name.clone(),
+                env_tick_ms: env.tick_ms,
+            };
+            // Declarative install (preferred): if the type's
+            // body has an `install ∈ Seq(InstallStep)` member,
+            // dispatch it via the generic mechanism and skip
+            // any specific Rust bridge. Only falls back to
+            // INSTALLERS for thread-driven bridges (FrameTimer,
+            // Timer — long-running event sources that can't be
+            // expressed as a one-shot Seq).
+            let has_declarative = rt.get_schema(type_name).map(|s|
+                s.body.iter().any(|i| matches!(i,
+                    crate::core::ast::BodyItem::Membership { name, type_name: ty, .. }
+                    if name == "install" && ty == "Seq(InstallStep)"))
+            ).unwrap_or(false);
+            if has_declarative {
+                let mut src = crate::event_sources::DeclarativeInstallSource::new();
+                // CRITICAL: pass the scheduler's DispatchContext so the
+                // HandleRegistry IDs assigned at install (window ptr,
+                // renderer ptr, …) are visible to per-tick effect
+                // dispatch — otherwise ArgHandle lookups go to a
+                // different (empty) registry.
+                src.run_install(rt, type_name, &fti_ctx, pins, &event_tx, ctx)?;
+                // Captured keys = leading Memberships of the type
+                // that aren't first-line input pins. The drain pass
+                // applies them to world_snapshot below.
+                if let Some(type_decl) = rt.get_schema(type_name) {
+                    for item in &type_decl.body {
+                        if let crate::core::ast::BodyItem::Membership { name, type_name: _, .. } = item {
+                            if name == "install" { continue; }
+                            let key = format!("{}.{}.{}",
+                                fsm.claim_name, param_name, name);
+                            plugin_writes.insert(key);
                         }
                     }
-                    event_sources.push(Box::new(src));
-                    continue;
                 }
-                let Some(install_fn) = crate::fti::fti_install_fn(type_name)
-                    else { continue };
-                let install = install_fn(&fti_ctx, pins, event_tx.clone())?;
-                event_sources.push(install.source);
-                for k in install.keys { plugin_writes.insert(k); }
+                event_sources.push(Box::new(src));
+                continue;
             }
+            let Some(install_fn) = crate::fti::fti_install_fn(type_name)
+                else { continue };
+            let install = install_fn(&fti_ctx, pins, event_tx.clone())?;
+            event_sources.push(install.source);
+            for k in install.keys { plugin_writes.insert(k); }
         }
     }
     // Drop our own clone of the sender now that all sources have
@@ -307,7 +294,7 @@ pub fn run_with_ctx(
     let event_rx = if event_sources.is_empty() { None } else { Some(event_rx) };
 
     if env.trace {
-        eprintln!("[loop] startup: delta_mode={delta_mode} fsms=[{}] plugin_writes=[{}]",
+        eprintln!("[loop] startup: fsms=[{}] plugin_writes=[{}]",
             fsms.iter().map(|f| f.claim_name.as_str()).collect::<Vec<_>>().join(","),
             plugin_writes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(","),
         );
@@ -316,9 +303,8 @@ pub fn run_with_ctx(
     // Multi-writer disjoint-fields rule (Phase 4 v3.7+ unified
     // model): every writer FSM PLUS every plugin-write claim
     // must have a disjoint write-set. A field has at most one
-    // writer (single-owner). Hoisted out of the per-arity match
-    // so it runs for single-FSM-with-plugin too.
-    if delta_mode {
+    // writer (single-owner).
+    {
         let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
             .filter(|f| f.is_writer())
             .map(|f| {
@@ -351,11 +337,10 @@ pub fn run_with_ctx(
         }
     }
 
-    let result = match fsms.len() {
-        0 => Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string()),
-        1 if !delta_mode => single_fsm::run_with_shape(rt, &fsms[0], opts, ctx, &env),
-        1 => multi_fsm::run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
-        _ => multi_fsm::run_multi_fsm(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env),
+    let result = if fsms.is_empty() {
+        Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string())
+    } else {
+        scheduler::run_scheduler(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env)
     };
     // Stop all event sources cleanly. Each source's stop signals
     // its background thread and joins. Drop also calls stop, but

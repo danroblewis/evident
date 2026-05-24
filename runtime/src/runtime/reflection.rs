@@ -104,9 +104,7 @@ impl EvidentRuntime {
     ) -> Result<Option<QueryResult>, RuntimeError> {
         let prog_value = self.encode_program_value()
             .map_err(|e| RuntimeError::Parse(format!("encode failed: {e}")))?;
-        self.query_with_program_and_nth_claim_body_value(
-            claim_name, program_var, body_var, claim_idx, prog_value,
-        )
+        self.evaluate_with_body(claim_name, program_var, body_var, claim_idx, prog_value)
     }
 
     /// Variant of `query_with_program_and_nth_claim_body` that skips
@@ -134,13 +132,10 @@ impl EvidentRuntime {
         // references it.
         let empty_prog = self.encode_empty_program_value()
             .map_err(|e| RuntimeError::Parse(format!("encode empty program: {e}")))?;
-        // Reuse the existing implementation with the cheap value.
         // The "program_var" name doesn't have to match a declared var —
         // if it does, it gets bound to empty; if not, the runtime
         // warns and continues.
-        self.query_with_program_and_nth_claim_body_value(
-            claim_name, "program", body_var, claim_idx, empty_prog,
-        )
+        self.evaluate_with_body(claim_name, "program", body_var, claim_idx, empty_prog)
     }
 
     /// Build a trivial `MakeProgram(SchLNil, EDLNil)` Z3 Datatype
@@ -157,11 +152,10 @@ impl EvidentRuntime {
         )
     }
 
-    /// Same as `query_with_program_and_nth_claim_body` but takes the
-    /// encoded `Program` value directly. Pair with
-    /// `query_with_program_value` for the inference-pipeline use case
-    /// where one encoded value feeds many rule queries.
-    pub fn query_with_program_and_nth_claim_body_value(
+    /// Shared helper: evaluate a pass schema with an encoded Program
+    /// + the Nth user claim's body injected as a Seq(BodyItem).
+    /// Returns `Ok(None)` when `claim_idx` is out of range.
+    fn evaluate_with_body(
         &self,
         claim_name: &str,
         program_var: &str,

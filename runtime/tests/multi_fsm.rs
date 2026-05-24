@@ -100,26 +100,13 @@ fn sibling_no_world() {
 }
 
 // graceful_shutdown_via_world_and_exit lives in
-// runtime/tests/scheduler_delta.rs because it depends on
-// delta-mode polling semantics — under legacy mode the fixpoint
-// halt heuristic mistakes the consumer's polling for "done" and
-// drops it before counter reaches the threshold.
+// runtime/tests/scheduler_delta.rs.
 
 #[test]
 fn request_response_lang_test_11() {
     // Two user FSMs (client + server) coordinating via shared
     // world fields. Client requests; server doubles; client
     // exits after 3 requests done.
-    //
-    // Skip under legacy mode — the demo's gating semantics rely
-    // on delta-driven scheduling (state-feedback waking the
-    // client after each transition); legacy mode ticks every FSM
-    // every iteration, racing the client's state machine through
-    // Done before the gating produces the expected output.
-    if std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("legacy") {
-        eprintln!("skipping under EVIDENT_SCHEDULER=legacy");
-        return;
-    }
     let (out, r) = run_program("../tests/lang_tests/multi_fsm/11_request_response.ev", 30);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"client done"),
@@ -135,15 +122,6 @@ fn spawnable_only_lang_test_14() {
     // auto-detected. Parent spawns 2 workers; output has
     // EXACTLY worker A + worker B (no "worker ?" from auto-
     // instance).
-    //
-    // Legacy mode: with worker spawnable_only, parent is the
-    // only FSM → run_with_shape (single-FSM path) → spawn isn't
-    // supported. Skip in legacy.
-    if std::env::var("EVIDENT_SCHEDULER").as_deref() == Ok("legacy") {
-        eprintln!("skipping spawnable_only test under legacy (single-FSM \
-                   path doesn't support SpawnFsm)");
-        return;
-    }
     let (out, r) = run_program("../tests/lang_tests/multi_fsm/14_spawnable_only.ev", 10);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines.contains(&"worker A"), "missing worker A; out:\n{}", out);
@@ -178,7 +156,6 @@ fn fti_configurable_timer_lang_test_17() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/17_fti_configurable_timer.ev",
                "--max-steps", "1000"])
@@ -202,7 +179,6 @@ fn fti_per_instance_lang_test_16() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "20")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/16_fti_per_instance.ev",
@@ -227,7 +203,6 @@ fn fti_frameclock_lang_test_15() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "30")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/15_fti_frameclock.ev",
@@ -251,7 +226,6 @@ fn wallclock_lang_test_12() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_CLOCK_MS", "30")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/12_wallclock.ev",
@@ -277,7 +251,6 @@ fn timer_and_stdin_lang_test_09_multi_plugin() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "30")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/09_timer_and_stdin.ev",
@@ -311,7 +284,6 @@ fn timer_lang_test_07_plugin_as_writer() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .env("EVIDENT_TICK_MS", "20")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/07_timer_demo.ev",
@@ -343,7 +315,6 @@ fn word_counter_lang_test_08_payload_state() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/08_word_counter.ev",
                "--max-steps", "30"])
@@ -385,7 +356,6 @@ fn echo_lang_test_06_plugin_as_writer() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_evident"))
         .current_dir(repo_root)
-        .env_remove("EVIDENT_SCHEDULER")  // force default (delta)
         .args(["effect-run",
                "tests/lang_tests/multi_fsm/06_echo.ev",
                "--max-steps", "50"])
