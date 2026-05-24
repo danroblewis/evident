@@ -1,0 +1,101 @@
+-- 27_parallel_solving — session E's threaded solving of a claim's
+-- independent slow components, shown as a measurable wall-clock win.
+--
+-- The workload: six DISJOINT 16-queens boards (q0..q5), each a Seq(Int)
+-- of length 16 with the standard column + diagonal distinctness
+-- constraints. No board shares a variable with any other, so the
+-- runtime decomposes `psolve` into six independent slow components
+-- (genuine Z3 search — not JIT-able). Session E gives each component
+-- its own Z3 context + thread and solves them in parallel.
+--
+-- Verify the decomposition:
+--     EVIDENT_FUNCTIONIZE_STATS=1 evident effect-run examples/test_27_parallel_solving.ev
+--     → [fz/stats] psolve: components=7 compiled=1 slow_components=6 ...
+--   (six slow components ≥ the four the showcase calls for; the one
+--    compiled component is the constant effect list below.)
+--
+-- A/B the speedup (--timing reports per-claim wall time; the value
+-- cache is disabled so the solve actually re-runs):
+--     # threaded (default)
+--     EVIDENT_VALUE_CACHE=0 evident effect-run …test_27… --timing
+--     # single-threaded baseline
+--     EVIDENT_PARALLEL_SLOW=0 EVIDENT_VALUE_CACHE=0 evident effect-run …test_27… --timing
+--
+-- Measured (Apple M4, 10 cores; `EVIDENT_PARALLEL_SLOW` toggles it):
+--     threaded ~64 ms   vs   single-threaded ~160 ms   ≈ 2.5× faster.
+-- Each board solves in ~25 ms whether threaded or not (confirm with
+-- EVIDENT_PLAN_TIMING=1) — the win is purely that six of them overlap
+-- instead of running back-to-back. Amdahl caps it: parallel wall ≈ one
+-- board's solve + the one-time plan-build/extract overhead shared by
+-- both paths, so it can't beat the slowest single component, and the
+-- ratio is well under 6× (let alone the 10 cores). Z3 is
+-- single-threaded per context; E's win is per-thread contexts, not a
+-- parallelized single solve.
+--
+-- Difficulty knobs: raise the board size (the `16`s — bigger boards
+-- cost more per solve; queens time is erratic across n, but the tens
+-- of n in the teens land in the tens-of-ms range), or add/remove a
+-- `q` board (declaration + length + Queens line) to change the
+-- component count.
+
+import "stdlib/runtime.ev"
+
+-- N-queens as a reusable constraint: n queens on an n×n board, one per
+-- row, no two sharing a column or a diagonal. Generic over the Seq's
+-- element type — the body is pure Int arithmetic on q[i].
+claim Queens(q ∈ Seq, n ∈ Nat)
+    ∀ i ∈ {0..n-1} : (0 ≤ q[i] ∧ q[i] < n)
+    ∀ i ∈ {0..n-1} : ∀ j ∈ {0..n-1} : i < j ⇒
+        (q[i] ≠ q[j] ∧ q[i] + i ≠ q[j] + j ∧ q[i] - i ≠ q[j] - j)
+
+fsm psolve
+    q0 ∈ Seq(Int)
+    q1 ∈ Seq(Int)
+    q2 ∈ Seq(Int)
+    q3 ∈ Seq(Int)
+    q4 ∈ Seq(Int)
+    q5 ∈ Seq(Int)
+    #q0 = 16
+    #q1 = 16
+    #q2 = 16
+    #q3 = 16
+    #q4 = 16
+    #q5 = 16
+    Queens(q0, 16)
+    Queens(q1, 16)
+    Queens(q2, 16)
+    Queens(q3, 16)
+    Queens(q4, 16)
+    Queens(q5, 16)
+
+    -- Constant effect list: references no board variable, so it stays
+    -- its own (JIT-compiled) component and never couples the boards
+    -- into one Z3 solve. The decomposition — and the parallelism — hangs
+    -- on the boards being independent; coupling effects to a q would
+    -- merge that board's component with this one.
+    effects = ⟨Println("solved 6 independent 16-queens boards"), Exit(0)⟩
+
+-- ── Static correctness tests ─────────────────────────────────────────
+-- The FSM only proves "some assignment exists"; these pin known
+-- placements so the Queens constraint is checked against ground truth.
+
+-- [1,3,0,2] is the canonical 4-queens solution (columns per row).
+claim sat_four_queens_known
+    q ∈ Seq(Int)
+    #q = 4
+    q = ⟨1, 3, 0, 2⟩
+    Queens(q, 4)
+
+-- A column-clash placement (two queens in column 0) must be rejected.
+claim unsat_four_queens_column_clash
+    q ∈ Seq(Int)
+    #q = 4
+    q = ⟨0, 3, 0, 2⟩
+    Queens(q, 4)
+
+-- 3-queens has no solution (nor does 2-queens): the constraint is
+-- unsatisfiable for n=3 regardless of placement.
+claim unsat_three_queens
+    q ∈ Seq(Int)
+    #q = 3
+    Queens(q, 3)
