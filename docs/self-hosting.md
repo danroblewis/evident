@@ -26,8 +26,8 @@ gaps currently bound what a pass can do.
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
+| `subscriptions` (313 LOC) | `portable/subscriptions.rs::RustSubscriptions` | `stdlib/passes/subscriptions.ev` | **full** | Pass owns the prefix-test semantics (`world.X` → read, `world_next.X` → write); Rust shim drives the AST walk because the recursion gap blocks a whole-claim pass. Equivalent on every FSM-shaped claim in `examples/` including Mario — see `runtime/tests/subscriptions_equivalence.rs` |
 | `validate` (95 LOC) | — | ⌛ | — | next candidate |
-| `subscriptions` (176 LOC) | — | ⌛ | — | |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
 | `inject` (588 LOC) | — | ⌛ | — | biggest |
@@ -188,3 +188,66 @@ Faithful (byte-identical to `pretty.rs`):
 Everything else renders to an ASCII sentinel (`<unsupported-…>`); the
 equivalence test treats only the faithful shapes as authoritative and
 pins the rest as known divergences.
+
+## What `stdlib/passes/subscriptions.ev` reproduces today
+
+Faithful (byte-identical `(reads, writes)` sets to
+`subscriptions::world_access_sets`) — every FSM-shaped claim in
+`examples/` including the Mario demo (three FSMs, ~30 fields across
+read/write sets combined).
+
+The pass exposes two SAT-shaped match claims (`world_read_match`,
+`world_next_write_match`) that bind a `suffix_*` free string via an
+equation `ident = "world." ++ suffix`. SAT = prefix matched; UNSAT =
+didn't. The Rust shim (`portable/subscriptions.rs`):
+
+1. Walks the AST in Rust (same logic as `subscriptions::walk_body` /
+   `walk_expr` — kept structurally identical so both impls visit the
+   same leaves in the same order).
+2. For each `Expr::Identifier(s)` it encounters, runs the two match
+   claims (cached per identifier string).
+3. Takes the first dotted segment of the matched `suffix` to recover
+   the top-level field name (mirroring `first_segment`).
+4. Accumulates into HashSets.
+
+### Why SAT-shaped instead of a Bool output
+
+A `is_read ∈ Bool` output that BINDS to "prefix matches" would need
+`is_read ⇔ ∃ suffix : ident = "world." ++ suffix` — but `∃ s ∈ String`
+doesn't translate in the runtime today (the string-quantifier support
+is limited). Without the existential, a `suffix` free variable lets Z3
+pick ANY value, including one that makes the equation false even when
+the prefix matches — so a Bool output isn't uniquely determined by the
+model. SAT/UNSAT sidesteps that: assert the equation directly; the
+query is SAT iff a satisfying `suffix` exists.
+
+### Why a leaf-level classifier and not a whole-claim pass
+
+A whole-claim subscriptions pass would need to RECURSE through the
+body's `Expr` tree (Binary, Ternary, Match, Forall, …) to find every
+`EIdentifier(_)` reference. The runtime's recursion gap (see "Recursive
+claims don't constrain their outputs" above) blocks that. The pass
+owns the classification — the prefix-test — and the Rust shim owns the
+tree walk. The shim's walk logic mirrors `subscriptions::walk_body` /
+`walk_expr` so both impls visit identical leaf sets.
+
+### Equivalence test corpus
+
+`runtime/tests/subscriptions_equivalence.rs` runs both impls against
+every top-level claim in:
+
+```
+examples/test_09_two_fsms.ev          examples/test_25_per_component_jit.ev
+examples/test_14_stdin.ev             examples/test_26_value_cache.ev
+examples/test_15_signal.ev            examples/test_30_jit_gap_closures.ev
+examples/test_18_reflection.ev        examples/test_31_symbolic_regression.ev
+                                      examples/test_32_llm_functionizer.ev
+                                      examples/test_21_mario/main.ev
+```
+
+(Surveyed by `grep -l 'world\.\|world_next\.' examples/test_*.ev`.) For
+every claim — including non-FSM helper claims that don't reach the
+scheduler — the two impls produce byte-identical `AccessSets`. The
+Mario test additionally asserts the `game` FSM is a major writer and
+`display` reads multiple fields, codifying the demo's shape so a
+behavioural regression surfaces here.
