@@ -54,6 +54,10 @@ fn walk_body(body: &[BodyItem], sets: &mut AccessSets) {
                 for m in mappings { walk_expr(&m.value, sets); }
             }
             BodyItem::Constraint(e) => walk_expr(e, sets),
+            // halts_within is a static verification directive — it
+            // references the named FSM's body, not the world. No
+            // world access to contribute.
+            BodyItem::HaltsWithin { .. } => {}
         }
     }
 }
@@ -138,6 +142,8 @@ pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
                 BodyItem::Constraint(e) => {
                     if walk_expr(e, ident) { return true; }
                 }
+                // No effect constructors live in a halts_within directive.
+                BodyItem::HaltsWithin { .. } => {}
             }
         }
         false

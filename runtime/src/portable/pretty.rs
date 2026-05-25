@@ -145,6 +145,7 @@ pub(crate) fn render_body_item(item: &BodyItem) -> String {
             }
         }
         BodyItem::Constraint(e) => render_expr(e),
+        BodyItem::HaltsWithin { fsm_name, n } => format!("halts_within({fsm_name}, {n})"),
     }
 }
 
@@ -243,6 +244,9 @@ pub(crate) fn encode_body_item(bi: &BodyItem) -> Value {
             ev("BodyItem", "BIConstraint", vec![encode_expr(e)]),
         BodyItem::SubclaimDecl(s) =>
             ev("BodyItem", "BISubclaim", vec![encode_schema_decl(s)]),
+        BodyItem::HaltsWithin { fsm_name, n } =>
+            ev("BodyItem", "BIHaltsWithin",
+               vec![Value::Str(fsm_name.clone()), Value::Int(*n)]),
     }
 }
 

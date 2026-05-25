@@ -282,6 +282,33 @@ pub(super) fn inline_body_items_guarded(
                     env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                 );
             }
+            BodyItem::HaltsWithin { fsm_name, n } => {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                // The unroll lowers F to a `halt_aggregate = true` Bool
+                // and asserts it directly on the outer solver. We pass
+                // env so the lowering can bind the FSM's input state
+                // vars to outer-scope values by names-match (e.g. an
+                // outer `count = 50` becomes tick-0's count).
+                //
+                // The unroll can fail (unknown FSM, branching body,
+                // non-function shape). On any error we emit a stderr
+                // diagnostic and assert `false` so the enclosing claim
+                // resolves UNSAT — an honest "couldn't prove this"
+                // rather than a silent wrong answer. The guarded form
+                // (`cond ⇒ halts_within(...)`) wraps the final `false`
+                // with the guard so we don't fail outside the
+                // condition's reach.
+                match crate::fsm_unroll::assert_halts_within(
+                    fsm_name, *n, ctx, solver, env, schemas, registry, enums,
+                ) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!("[halts_within] {}", e);
+                        let false_bool = Bool::from_bool(ctx, false);
+                        track_assert(solver, &guarded_bool(false_bool, guard), tracker);
+                    }
+                }
+            }
             BodyItem::SubclaimDecl(_) => {}
         }
     }

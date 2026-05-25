@@ -412,6 +412,11 @@ pub fn encode_body_item<'ctx>(
             let sd = encode_schema_decl(s, ctx, enums)?;
             apply(enums, "BodyItem", "BISubclaim", &[&sd])
         }
+        BodyItem::HaltsWithin { fsm_name, n } => {
+            let nm = z3_str(ctx, fsm_name);
+            let nn = z3_int(ctx, *n);
+            apply(enums, "BodyItem", "BIHaltsWithin", &[&nm, &nn])
+        }
     }
 }
 
@@ -842,6 +847,10 @@ fn body_item_to_value(bi: &BodyItem) -> Value {
         }
         BodyItem::SubclaimDecl(s) => {
             ev("BodyItem", "BISubclaim", vec![schema_decl_to_value(s)])
+        }
+        BodyItem::HaltsWithin { fsm_name, n } => {
+            ev("BodyItem", "BIHaltsWithin",
+               vec![Value::Str(fsm_name.clone()), Value::Int(*n)])
         }
     }
 }

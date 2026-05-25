@@ -117,6 +117,26 @@ pub enum BodyItem {
 
     /// Any other constraint (comparison, arithmetic equality, etc.).
     Constraint(Expr),
+
+    /// `halts_within(F, N)` — assert that the FSM body named `fsm_name`
+    /// halts within `n` ticks. Lowered by the `fsm_unroll` module to a
+    /// disjunction of `halt = true` over a log-spaced set of cumulative
+    /// halt witnesses, built via exponentiation-by-squaring composition
+    /// of the FSM body with itself.
+    ///
+    /// Lives as a BodyItem variant (not an Expr) because it produces a
+    /// set of solver assertions, not a single Bool: the lowering
+    /// declares per-tick state vars, asserts the composed transition,
+    /// and assert-disjoins the per-power halt witnesses — it isn't a
+    /// pure expression you can drop into `a ∨ b`. Keeping it at the
+    /// body-item level makes the surface read as a directive
+    /// ("assert halts within N") rather than a value-producing
+    /// expression, and gives the inline walker direct access to the
+    /// solver / env / schemas / registry it needs.
+    ///
+    /// See [`docs/design/fsm-halts-within.md`] for the halt convention,
+    /// composition strategy, and affine-step gating.
+    HaltsWithin { fsm_name: String, n: i64 },
 }
 
 #[derive(Debug, Clone)]

@@ -212,6 +212,42 @@ impl Parser {
         // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
         // as an expression and ends up as a Constraint.
 
+        // halts_within(F, N) — surface syntax for an FSM-halt assertion.
+        // Recognized at the body-item level so the parser can lift it
+        // straight to BodyItem::HaltsWithin (no Expr wrapping). The
+        // inline walker dispatches to the fsm_unroll module which
+        // looks up F's body and lowers via exponentiation-by-squaring
+        // composition. F must be a bare identifier (claim name) and N
+        // a non-negative integer literal; anything else falls through
+        // to the regular Call parse and surfaces as a translator gap.
+        if let Token::Ident(name) = self.peek().clone() {
+            if name == "halts_within"
+                && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
+            {
+                let saved = self.pos;
+                self.bump(); // halts_within
+                self.bump(); // (
+                if let (Token::Ident(fsm_name), Token::Comma, Token::Int(n), Token::RParen) = (
+                    self.toks.get(self.pos).cloned().unwrap_or(Token::Eof),
+                    self.toks.get(self.pos + 1).cloned().unwrap_or(Token::Eof),
+                    self.toks.get(self.pos + 2).cloned().unwrap_or(Token::Eof),
+                    self.toks.get(self.pos + 3).cloned().unwrap_or(Token::Eof),
+                ) {
+                    self.pos += 4;
+                    if n < 0 {
+                        return Err(ParseError(format!(
+                            "halts_within: N must be non-negative, got {n}"
+                        )));
+                    }
+                    return Ok(vec![BodyItem::HaltsWithin { fsm_name, n }]);
+                }
+                // Didn't match the strict (Ident, Int) shape — back up
+                // and let the regular Call parser handle it (will surface
+                // as a dropped constraint at translate time).
+                self.pos = saved;
+            }
+        }
+
         // Passthrough: `..ClaimName` at body-item start.
         if matches!(self.peek(), Token::DotDot) {
             self.bump();

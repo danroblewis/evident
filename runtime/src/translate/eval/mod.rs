@@ -121,6 +121,10 @@ pub fn evaluate(
             // (Bare-identifier-as-passthrough desugared upstream — see
             // the matching note in build_cache above.)
             BodyItem::Constraint(_) => {}
+            // halts_within declares no parent-visible var; its lowering
+            // (state-var threading + halt disjunction) runs in pass 2
+            // via the inline walker.
+            BodyItem::HaltsWithin { .. } => {}
         }
     }
 
