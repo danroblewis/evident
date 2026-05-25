@@ -507,6 +507,152 @@ an identity-shortcircuit). Once closed, the pass can drop the
 shim-side extraction and pin `e ∈ Expr` directly — the pattern that
 matches the canonical Rust walker shape.
 
+## 19. Stack-FSM tree-walk under tier-3 `run()` — four constraints
+
+**Where:** `examples/test_36_sum_tree.ev` (session MM); the stack-of-FSMs
+pattern from `docs/design/loop-functionizer.md` §4, proven under the
+tier-3 `run(F, init)` that landed in session LL.
+
+**Bottom line:** the pattern *works* — a recursive tree-walk whose
+work-stack lives in FSM state, popped/dispatched/pushed per tick, with
+the accumulator threaded across ticks, driven to halt by `run`. But it
+does **not** work in the shape `loop-functionizer.md` §4 sketched
+(`stack ∈ Seq(Tree)`, `run(sum_tree, ⟨t⟩)`). Four runtime facts force a
+different encoding. All four are worth fixing; none is a blocker once
+you know the workaround the demo uses.
+
+### 19a. `Seq(T)` has no in-step pop / tail / cons (the anticipated gap)
+
+This is exactly the weak point §4/§8 suspected. A constraint body cannot
+read a `Seq`'s head **and** bind a new `Seq` equal to its tail, nor
+prepend an element to a non-literal `Seq`.
+
+Minimal repro (dropped constraint, "couldn't translate to Bool"):
+```evident
+claim pop(s ∈ Seq(Int), head ∈ Int, tail ∈ Seq(Int))
+    head = s[0]
+    tail = s[1..]          -- no slice syntax; Index is single-index only
+```
+```evident
+claim push(s ∈ Seq(Int), s2 ∈ Seq(Int), x ∈ Int)
+    s2 = ⟨x⟩ ++ s          -- ++ with a non-literal operand is left untranslated
+```
+
+**Where it breaks:** `runtime/src/runtime/desugar.rs::desugar_seq_concat`
+flattens `++` only when *every* operand resolves to a static `SeqLit`
+(load-time); an opaque `Seq` var is left as an untranslatable `Concat`.
+`runtime/src/translate/exprs/seq_eq.rs` only handles `seq = ⟨literal⟩`,
+ternary/match over literal arms, and whole-Seq equality between
+*pinned-length* Seqs. `core/ast.rs`'s `Index(seq, i)` takes a single
+index — there is no tail/slice node.
+
+**Workaround (the demo):** don't use `Seq(T)` as the stack substrate.
+Use a recursive enum cons-list — `enum Stack = Empty | Push(Tree, Stack)`
+— where **pop** is `match stk | Push(top, rest) ⇒ …` (head + tail fall
+out of the destructure) and **push** is `Push(l, Push(r, rest))` (a
+constructor call). Both lower fine. The stack still lives in the FSM
+state, marshaled whole through the per-tick solve — tier 3's realization
+of §4's option A ("stack is state"), just on an enum spine, not a `Seq`.
+
+**Fix idea:** add an in-step `Seq` tail node (`Index`-range, or a
+`seq_tail`/`seq_cons` builtin) lowered in `translate/exprs/seq_eq.rs`
+against an unpinned-length Seq. Until then the recursive-enum spine is
+the supported way to carry a dynamic stack in a constraint body.
+
+### 19b. Nested constructor patterns aren't deep-matched (semantic)
+
+Distinct from #2 (which is a *parse* error for nested ctor patterns):
+`Step(Empty, _)` *parses*, but the match tester only checks the **outer**
+constructor, so it matches any `Step(_, _)` regardless of the inner
+`Empty`. Silent wrong dispatch, not an error.
+
+Repro (halt fires immediately — the inner `Empty` is ignored):
+```evident
+halt = match state
+    Step(Empty, _) ⇒ true      -- matches ANY Step(_, _)
+    _              ⇒ false
+```
+
+**Where it breaks:** `runtime/src/translate/exprs/match_expr.rs` —
+`translate_match_arms` builds a recognizer tester from the top-level
+constructor only; inner sub-patterns aren't conjoined into the guard.
+
+**Workaround (the demo):** test emptiness with a *second* match on the
+extracted field — `match state | Step(stk, _) ⇒ match stk | Empty ⇒ …`.
+Each match dispatches on one constructor level, which is supported.
+
+**Fix idea:** when an arm pattern has nested constructor sub-patterns,
+conjoin a recognizer + field-extraction test per level into the guard.
+
+### 19c. Enum equality against a literal with a nested enum field is dropped
+
+`final = Step(Empty, 6)` — comparing an enum var to a constructor literal
+whose payload contains *another* enum value — doesn't translate. The
+flat single-payload case (`final = Done(6)`, `final = Acc(5)`) works.
+
+Repro:
+```evident
+final ∈ Walk = run(sum_tree, 1)
+final = Step(Empty, 6)         -- dropped: "couldn't translate to Bool"
+final = Done(6)                -- fine (single Int payload)
+```
+
+**Where it breaks:** the enum-literal equality path in
+`runtime/src/translate/exprs/enums.rs` / `seq_eq.rs` builds a comparator
+constructor application but doesn't recurse to build a nested
+enum-typed argument (only primitive payloads are constructed). The
+nested `Empty()` arg has no built Z3 datatype, so the `_eq` is dropped.
+
+**Workaround (the demo):** drain into a *flat* terminal variant
+(`Done(Int)`) and have `run` return that single-Int value, instead of
+returning the structured `Step(Empty, sum)` state. This is the same
+single-Int-payload shape `test_35`'s `Acc(5)` uses.
+
+**Fix idea:** make the enum-literal-equality builder recurse to
+construct nested enum-typed constructor args (reuse the per-tick state
+encoder `effect_loop/state.rs::encode_state_value`, which already does
+this recursion for the *pin* side).
+
+### 19d. `run`'s `init` can't be a composite (tree / Seq / enum literal)
+
+`run(F, ⟨t⟩)` / `run(F, Node(Leaf(1), Leaf(2)))` is rejected before the
+solve: `init` must be a literal scalar, a given, or integer arithmetic
+over those. So the tree can't be *passed through* `init` — it must be
+built inside the FSM.
+
+**Where it breaks:** `runtime/src/runtime/nested.rs::eval_const_init`
+matches only `Int/Real/Bool/Str/Identifier/Binary(arith)/RunFsm`;
+`Expr::Call` (enum ctor) and `Expr::SeqLit` fall to the `other => Err`
+arm. Even if `init` evaluated to an enum value, `effect_loop/
+nested.rs::coerce_init` only seeds from a matching primitive, an
+already-built `Enum`, or a bare Int → first-single-Int-payload variant.
+(Both files are the landed tier-3 surface, out of scope to edit here.)
+
+**Workaround (the demo):** the bare-Int seed *selects* one of three
+hardcoded tree shapes (`Seed(n)` → built on the first tick). The seed
+flows in; the tree structure is FSM-resident.
+
+**Fix idea:** extend `eval_const_init` to evaluate constructor / SeqLit
+init exprs to `Value`s (it already has the enum registry via `rt`), and
+let `coerce_init` accept a pre-built composite. This is the single most
+important fix for the `walk_expr` self-host (below).
+
+### What this means for the `walk_expr` self-host
+
+`subscriptions::walk_expr` seeds the stack with `⟨root_expr⟩` (composite
+init — 19d) and accumulates a `Set(String)` returned as the final state
+(composite final state — `value_to_literal_expr` rejects non-scalars,
+the same family as 19c). Both blockers live in the **off-limits tier-3
+surface** (`runtime/src/runtime/nested.rs`, `effect_loop/nested.rs`). So
+tier 3 proves the *pattern's logic* is sound (this demo) but cannot host
+the real walk until those two extensions land — **or** until tier 2's
+native-`Vec` loop wrapper (`loop-functionizer.md` §4 option B) holds the
+stack and accumulator natively, sidestepping the literal-injection
+round-trip (composite init *and* composite return) entirely. Tier 2 is
+therefore the cleaner prerequisite for the port; tier 3's contribution
+is the de-risking proof that the pop/dispatch/push/fold/thread logic is
+correct. See `docs/design/loop-functionizer.md` §4.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)
