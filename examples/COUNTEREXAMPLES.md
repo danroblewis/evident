@@ -732,6 +732,61 @@ needs structural sharing in `Value` or variant-2 whole-loop compilation
 (`docs/design/loop-functionizer.md` §4 option B). This is the perf gate
 on the held session-XX subscriptions cutover.
 
+## 20. Self-hosting an AST-rewrite pass — CUT OVER, with two residuals kept in Rust (sessions PORT-desugar → REVIVE-desugar)
+
+`subscriptions` proved a pass that FOLDS the AST to a value (name-sets) can
+self-host as a stack-FSM and become the sole impl. `desugar_seq_concat` (the
+`++`-flattening half of `desugar`) tested the next rung — a pass that
+**rewrites the AST**. PORT-desugar self-hosted the recursive kernels
+(`desugar_gather` body → bindings, `desugar_flatten` `Concat` spine → chunk
+stream) but kept Rust as the production path behind three limits. Session
+REVIVE-desugar **cut it over** once two of the three were closed: the
+canonical Rust gather/flatten/rewrite walk is deleted and the load path
+flattens through `EvidentDesugar` (`portable/desugar.rs`), pinned by
+`runtime/tests/desugar_correctness.rs`.
+
+The three original limits, and their status now:
+
+  * **(a) No substring / prefix / string-construction operator — STILL
+    OPEN, and why `unify_world_syntax` stays Rust.** The *other* desugar
+    pass rewrites identifier strings by prefix-strip (`_world.X → world.X`,
+    `world.X → world_next.X`) — a per-leaf string REWRITE. GAPC added
+    `str.*` lowering for *translate-time* use, but not a marshaler-driven
+    pass rewrite, so `unify_world_syntax` stays canonical Rust. It is a
+    *separate* rewrite from `desugar_seq_concat`; per honest-fallback, only
+    the latter cut over.
+
+  * **(b) Whole-`SchemaDecl` marshaler round-trip — `param_count` FIXED
+    (GAPB), `MatchPattern` still lossy.** `MakeSchemaDecl` now carries
+    `param_count` (4-field), so a subclaim-bearing body seeds faithfully.
+    But nested-ctor / top-level bind `MatchPattern`s still collapse to
+    `BindWildcard` (the marshaler carries one `MatchBind` level). So a
+    *whole-body-return* design is still byte-lossy in general — which is why
+    the pre-order `rewrite` walk stays in the Rust shim: it mutates
+    `Concat → SeqLit` IN PLACE and never round-trips an untouched node (e.g.
+    a `match` arm pattern). Closing the `MatchPattern` half would let the
+    walk itself move into Evident.
+
+  * **(c) Enum-payload String equality (#18) — FIXED, but the in-solve
+    lookup is a perf wall.** #18 is closed, so an in-FSM `seq_lits.get(name)`
+    is now *correct*. But doing the `name = key` comparison inside the
+    per-tick Z3 solve, on a flatten state carrying effect-list `EStr`
+    literals, hits the same Z3 string-theory blowup `validate` measured
+    (the in-solve cousin of #18). So `desugar_flatten` still emits an
+    `FRef(name)` marker and the Rust shim does the `HashMap` lookup out of
+    the solve — a performance call, not a faithfulness one.
+
+**Outcome:** cut over to Evident-only; the Rust gather/flatten/rewrite walk
+is deleted. Two pieces stay in the Rust shim for the documented reasons (the
+`rewrite` tree-walk — `MatchPattern` lossiness; the `FRef` lookup — in-solve
+string perf), the same "Evident owns the recursion, Rust owns the leaf"
+split `validate`/`subscriptions` ship. `desugar` is a **load-time** pass
+(never on the per-tick scheduler path), so this is setup-only: a Rust
+"contains `Concat`?" guard short-circuits Concat-free schemas (byte-identical
+no-op), so the delta is ~28 ms one-time engine build + ~1 ms/concat-schema,
+zero for Concat-free programs (e.g. Mario). Full writeup:
+`docs/self-hosting.md` "What `stdlib/passes/desugar.ev` reproduces today".
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

@@ -34,3 +34,11 @@ pub use core::{QueryResult, RuntimeError, Value};
 
 // Preserve `evident_runtime::ast::*` for external callers.
 pub use core::ast;
+
+/// Parse Evident source into a raw `Program` — the AST *before* any
+/// load-time pass (desugar, inject, …) runs. Exposed for correctness
+/// tests (e.g. `runtime/tests/desugar_correctness.rs`) that need the
+/// pre-desugar schemas to feed a pass implementation and pin its output.
+pub fn parse_program(src: &str) -> Result<ast::Program, String> {
+    parser::parse(src).map_err(|e| e.to_string())
+}
