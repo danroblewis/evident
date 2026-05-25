@@ -328,6 +328,58 @@ not `functionize/`. The codegen is not the limiting factor. See
 [Records-as-vectors] note in CLAUDE.md and the
 `project_mario_jit_phase_chain_intractable` agent memory.
 
+## 13. Parallel slow-solve covers enums but not `Seq(UserRecord)`
+
+**Where:** `runtime/src/runtime/query.rs` (`env_subset_translatable`,
+`translate_var`); investigated + extended May 2026, session S.
+
+Session E parallelized a claim's independent slow components onto
+per-thread Z3 contexts, but only when every component variable was a
+primitive scalar/seq/set; any enum- or record-typed var forced the
+whole claim back to the sequential single-context path. Session S lifts
+that for **enums** — both bare `EnumVar` and enum-element `Seq`
+(`DatatypeSeqVar` with empty `fields`). The mechanism: Z3's
+`Ast::translate` already recreates a datatype sort in the destination
+context (verified — a translated `c == Red ∧ c == Green` is correctly
+UNSAT in a fresh context, so the distinctness axioms travel), and
+`replay_enums_into` re-runs `register_enums` against each worker context
+so the registry's tester/accessor `FuncDecl`s used for extraction live
+in the *same* context as the model. (`test_27_parallel_solving.ev`'s
+`Half` enum exercises this end-to-end, ~3× wall-clock vs the sequential
+baseline.)
+
+**Still NOT parallelized: record-element `Seq` (`Seq(UserRecord)`,
+e.g. Mario's `world.enemies : Seq(Enemy)`).** Its `Var::DatatypeSeqVar`
+carries a `fields: Vec<FieldKind>`, and each `FieldKind::Nested` holds
+its OWN `&'static DatatypeSort` bound to the main context. Translating
+the var rebinds the *top-level* element sort to the worker context, but
+the nested-field sorts inside `fields` stay main-context. Extraction
+(`extract_seq_composite`) then applies a main-context accessor
+`FuncDecl` to a worker-context value, which Z3 rejects:
+
+```
+thread '<unnamed>' panicked at z3-0.12.1/src/func_decl.rs:63:
+assertion failed: args.iter().all(|s| s.get_ctx().z3_ctx == self.ctx.z3_ctx)
+```
+
+The panic is caught (`solve_slow_parts` joins a panicked worker as
+`None` → graceful fall-through to the full Z3 solve), but it is wasted
+work, so `env_subset_translatable` excludes record-element `Seq`
+up front: a claim with any such component stays fully sequential.
+This is why Mario's per-FSM solves (game/display/keyboard all read
+`world.{enemies,coins,player,...}`) remain on the sequential path — no
+regression, and correct, just not parallelized.
+
+**To close it:** `translate_var` would need to recursively rebuild the
+whole `Vec<FieldKind>` tree, rebinding every `FieldKind::Nested.dt` (and
+its `sub_fields`) to the worker context's replayed user-record registry
+(`get_or_build_datatype` against the worker ctx — the hook for which was
+prototyped and reverted to keep this session's surface minimal). The
+enum path needs none of that because enum elements have empty `fields`.
+Bare record vars (`p : Point`, not in a `Seq`) are already fine: they
+expand to primitive `IntVar`/`BoolVar` leaves at declaration, carrying
+no datatype handle.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

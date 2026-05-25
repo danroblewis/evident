@@ -100,6 +100,16 @@ pub(crate) struct SlowPart {
     /// variables. Other env entries the solver happens to model are
     /// ignored.
     outputs: Vec<String>,
+    /// Per-worker enum registry, populated only on the parallel path when
+    /// the component carries an enum-typed var. Holds DatatypeSorts built
+    /// in *this part's* private context (via `replay_enums_into`) so
+    /// `run_cached` can pin enum givens and decode enum-typed model
+    /// values without touching the runtime's main-context registry — which
+    /// would be both a cross-context error and a `!Sync` `RefCell` shared
+    /// across threads. `None` on the sequential path (where
+    /// `solve_one_part` is handed the runtime's own `&self.enums`) and on
+    /// parallel parts whose vars are all primitive.
+    enums: Option<crate::core::EnumRegistry>,
 }
 
 // SAFETY: `SlowPart` holds Z3 handles (`Context`, `Solver`, `Var` ASTs)
@@ -120,6 +130,11 @@ pub(crate) struct SlowPart {
 //     mutates the solver (push/assert/check/pop) through a shared `&`.
 //   * Parts sharing the main context (`slow_parallel == false`) are
 //     never sent to a thread; they run on the calling thread only.
+//   * A parallel part's `enums: Option<EnumRegistry>` holds a `RefCell`
+//     (hence `!Sync`) and `&'static DatatypeSort`s built in the part's
+//     OWN private context. Because the part is touched by exactly one
+//     thread, that `RefCell` is never borrowed concurrently, and the
+//     sorts are only ever applied to that same private context's model.
 //
 // Under that discipline neither auto-trait would be derived, but the
 // concurrency it would forbid never happens, so the impls are sound.
@@ -404,9 +419,12 @@ fn solve_one_part(
     for (n, v) in given {
         match (part.cached.env.get(n), v) {
             (Some(Var::EnumVar { ast, .. }), Value::Enum { .. }) => {
-                // Only reachable on the sequential (main-context) path,
-                // where `enums` is `Some`; parallel parts carry no enum
-                // vars (the translatable check excludes them).
+                // Pin an enum-typed given. `enums` is the right registry
+                // for `ctx`: the runtime's `&self.enums` on the sequential
+                // (main-context) path, or the part's replayed worker
+                // registry on the parallel path — both built against the
+                // same context as `ast`, so `value_enum_to_datatype` builds
+                // a sort-compatible Datatype value.
                 if let Some(dt) = enums.and_then(|e|
                     crate::translate::value_enum_to_datatype(v, ctx, e))
                 {
@@ -428,32 +446,58 @@ fn solve_one_part(
     Some(out)
 }
 
+/// Process-global lock serializing Z3 setup that touches global state.
+/// Held across both context creation (`Z3_mk_context`, which has
+/// historically raced on the memory manager / symbol tables) and the
+/// per-context datatype replay (`create_datatypes` /
+/// `get_or_build_datatype`), so no two threads run Z3 type/context
+/// construction concurrently. Plan-building is off the per-tick hot path
+/// (cached per claim), so the lock costs nothing measurable.
+fn z3_setup_lock() -> std::sync::MutexGuard<'static, ()> {
+    use std::sync::Mutex;
+    static SETUP_LOCK: Mutex<()> = Mutex::new(());
+    SETUP_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Mint a fresh leaked `'static` Z3 context for a parallel slow part.
-///
-/// Two reasons this is serialized behind a mutex: Z3's context
-/// construction touches process-global state (the memory manager /
-/// symbol tables), which has historically raced when several threads
-/// call `Z3_mk_context` at once; and plan-building (where this is
-/// called) is off the per-tick hot path anyway (cached per claim), so
-/// the lock costs nothing measurable. The context is leaked to `'static`
+/// Serialized via [`z3_setup_lock`]. The context is leaked to `'static`
 /// — same trade as the runtime's main context — so the part's solver +
 /// translated env vars can borrow it without lifetime gymnastics. One
 /// context per parallel slow part per cached plan; bounded, not per-tick.
 fn new_leaked_context() -> &'static Context {
-    use std::sync::Mutex;
-    static CREATE_LOCK: Mutex<()> = Mutex::new(());
-    let _guard = CREATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = z3_setup_lock();
     let cfg = z3::Config::new();
     Box::leak(Box::new(Context::new(&cfg)))
 }
 
 /// Can the env entries this part needs (its `outputs`, plus any `given`
-/// keys it pins) be translated into a private context? True only when
-/// every such entry is a primitive/seq/set scalar var whose sort carries
-/// no datatype handle. Enum / user-record vars hold a `&'static
-/// DatatypeSort` bound to the source context; reproducing that sort in a
-/// fresh context means re-running enum/datatype registration there, which
-/// we don't do — so those parts stay on the sequential main-context path.
+/// keys it pins) be reproduced in a private worker context?
+///
+/// Primitive/seq/set scalar vars translate directly (`Ast::translate`).
+/// Enum (`EnumVar`) and enum-element `Seq` (`DatatypeSeqVar` with empty
+/// `fields`) vars carry a `&'static DatatypeSort` bound to the source
+/// context, but the sort itself is *rebuildable*: `replay_enums_into`
+/// re-runs enum registration against the worker context (Z3 interns
+/// datatypes by name + variant structure, so the replayed sort coincides
+/// with the one `Ast::translate` recreates for the translated assertions),
+/// and `translate_var` rebinds the var's AST + the worker-context sort.
+///
+/// Still excluded — fall back to the sequential main-context path:
+///   * **Record-element `DatatypeSeqVar`** (`Seq(UserRecord)`, non-empty
+///     `fields`). Its per-field `FieldKind::Nested` entries each hold
+///     their OWN `&'static DatatypeSort` bound to the main context;
+///     extraction (`extract_seq_composite`) applies those accessors to
+///     worker-context values, which is a cross-context func-decl
+///     application Z3 rejects (panic). Rebinding the whole nested-field
+///     sort tree per worker is doable but out of scope here — Mario's
+///     `world.enemies : Seq(Enemy)` is the case this guards. (Bare record
+///     vars like `p : Point` are already fine: they expand to primitive
+///     `IntVar`/`BoolVar` leaves, no datatype handle.)
+///   * `DatatypeSetVar` — model extraction is unsupported in v1
+///     (`decode.rs` `Var::DatatypeSetVar => {/* unsupported */}`).
+///   * `EnumValue` / `EnumCtor` — enum literals / un-applied constructors;
+///     never `outputs` (the output filter drops them) and never `given`
+///     values, so they shouldn't appear — conservative choice is sequential.
 fn env_subset_translatable(
     env: &HashMap<String, Var<'static>>,
     outputs: &[String],
@@ -462,20 +506,34 @@ fn env_subset_translatable(
     outputs.iter().chain(given.keys()).all(|name| {
         match env.get(name) {
             None => true,   // not in env → nothing to translate
-            Some(var) => matches!(var,
-                Var::IntVar(_) | Var::RealVar(_) | Var::BoolVar(_)
-                | Var::StrVar(_) | Var::SeqVar { .. } | Var::SetVar { .. }
-                | Var::PinnedInt(_)),
+            Some(Var::IntVar(_)) | Some(Var::RealVar(_)) | Some(Var::BoolVar(_))
+            | Some(Var::StrVar(_)) | Some(Var::SeqVar { .. }) | Some(Var::SetVar { .. })
+            | Some(Var::PinnedInt(_)) | Some(Var::EnumVar { .. }) => true,
+            // Enum-element Seq (no nested record sorts) is translatable;
+            // record-element Seq is not (see doc comment).
+            Some(Var::DatatypeSeqVar { fields, .. }) => fields.is_empty(),
+            Some(Var::DatatypeSetVar { .. }) | Some(Var::EnumValue { .. })
+            | Some(Var::EnumCtor { .. }) => false,
         }
     })
 }
 
-/// Translate a primitive `Var` into `dst`. Returns `None` for any
-/// datatype-bearing variant (enum / user-record / their seq+set forms),
-/// whose `&'static DatatypeSort` can't be moved across contexts here.
-/// `env_subset_translatable` gates callers so the `None` arms are never
-/// hit on the parallel path; the match stays exhaustive for safety.
-fn translate_var(var: &Var<'static>, dst: &'static Context) -> Option<Var<'static>> {
+/// Translate a `Var` into `dst`. Primitive variants translate their AST
+/// handle(s) directly. The supported datatype-bearing variants (`EnumVar`
+/// and enum-element `DatatypeSeqVar`) translate their AST handle(s) AND
+/// rebind the `&'static DatatypeSort` to the worker context's replayed
+/// enum registry (`worker_enums`, built by `replay_enums_into`); the
+/// worker sort coincides with the one `Ast::translate` recreates for the
+/// translated assertions because Z3 interns datatypes by name + variant
+/// structure. Returns `None` for the unsupported variants (record-element
+/// `DatatypeSeqVar`, `DatatypeSetVar`, `EnumValue`, `EnumCtor`);
+/// `env_subset_translatable` gates callers so those arms aren't hit on the
+/// parallel path, but the match stays exhaustive for safety.
+fn translate_var(
+    var: &Var<'static>,
+    dst: &'static Context,
+    worker_enums: Option<&crate::core::EnumRegistry>,
+) -> Option<Var<'static>> {
     Some(match var {
         Var::IntVar(i)  => Var::IntVar(i.translate(dst)),
         Var::RealVar(r) => Var::RealVar(r.translate(dst)),
@@ -488,8 +546,35 @@ fn translate_var(var: &Var<'static>, dst: &'static Context) -> Option<Var<'stati
         Var::SetVar { set, elem, candidates } => Var::SetVar {
             set: set.translate(dst), elem: *elem, candidates: candidates.clone(),
         },
+        Var::EnumVar { ast, enum_name, .. } => {
+            // Worker-context DatatypeSort for this enum (rebuilt by the
+            // registry replay). The translated `ast` resolves against the
+            // same sort, so model.eval + the registry's tester/accessor
+            // FuncDecls all live in `dst`.
+            let dt = worker_enums?.by_name.borrow().get(enum_name).map(|(d, _)| *d)?;
+            Var::EnumVar {
+                ast: ast.translate(dst),
+                enum_name: enum_name.clone(),
+                dt,
+            }
+        }
+        // Enum-element Seq only (fields empty → no nested record sorts to
+        // rebind). `dt` is the element enum's sort; look it up in the
+        // worker enum registry. Record-element Seq (non-empty fields)
+        // returns None — its `FieldKind::Nested` sorts are main-context
+        // bound (see `env_subset_translatable`), so it stays sequential.
+        Var::DatatypeSeqVar { arr, len, type_name, fields, .. } if fields.is_empty() => {
+            let dt = worker_enums?.by_name.borrow().get(type_name).map(|(d, _)| *d)?;
+            Var::DatatypeSeqVar {
+                arr: arr.translate(dst),
+                len: len.translate(dst),
+                type_name: type_name.clone(),
+                dt,
+                fields: Vec::new(),
+            }
+        }
         Var::DatatypeSeqVar { .. } | Var::DatatypeSetVar { .. }
-        | Var::EnumVar { .. } | Var::EnumValue { .. } | Var::EnumCtor { .. } => return None,
+        | Var::EnumValue { .. } | Var::EnumCtor { .. } => return None,
     })
 }
 
@@ -1038,16 +1123,18 @@ impl EvidentRuntime {
         let timing = std::env::var("EVIDENT_PLAN_TIMING").is_ok();
 
         if parallel && parts.len() >= 2 {
-            // Each part has a private context — pass `None` for the enum
-            // registry so the worker closures don't capture `&self.enums`
-            // (a `RefCell`, hence `!Sync`); parallel parts hold only
-            // primitive vars, so run_cached never needs the registry.
+            // Each part has a private context. A part that carries enum /
+            // record vars also owns its OWN replayed `EnumRegistry`
+            // (`part.enums`), built in that private context — so we pass
+            // `part.enums.as_ref()` rather than the runtime's `&self.enums`
+            // (a `RefCell`, hence `!Sync`, and bound to the wrong context).
+            // Primitive-only parts have `enums: None` and never need it.
             let results: Vec<Option<HashMap<String, Value>>> =
                 std::thread::scope(|scope| {
                     let handles: Vec<_> = parts.iter().map(|part| {
                         scope.spawn(move || {
                             let t0 = Instant::now();
-                            let r = solve_one_part(part, given, None);
+                            let r = solve_one_part(part, given, part.enums.as_ref());
                             if timing {
                                 eprintln!("[plan] ‖ slow part outputs={} in {:.2}ms",
                                     part.outputs.len(),
@@ -1106,6 +1193,10 @@ impl EvidentRuntime {
                 cached: CachedSchema { env: env.clone(), solver, arith_solver: arith },
                 ctx,
                 outputs: outputs.clone(),
+                // Sequential parts run on the main context, where
+                // `solve_slow_parts` hands `solve_one_part` the runtime's
+                // own `&self.enums` — no per-part registry needed.
+                enums: None,
             }
         }).collect()
     }
@@ -1117,6 +1208,15 @@ impl EvidentRuntime {
     /// — Z3 interns const decls by name+sort within a context, so a
     /// translated assertion and a separately-translated env var resolve
     /// to the same decl, and `model.eval` reads the right value.
+    ///
+    /// **Enum components.** When a component carries an enum-typed var
+    /// (`EnumVar` or enum-element `DatatypeSeqVar`), the worker context
+    /// first gets an enum replay (`replay_enums_into`) *before* assertion
+    /// translation, so the datatype sort the translated assertions
+    /// reference unifies with the replayed one (Z3 interns datatypes by
+    /// name + variant structure). The part keeps the replayed
+    /// `EnumRegistry` so `run_cached` can pin enum givens and decode
+    /// enum-typed outputs in the worker context.
     ///
     /// Precondition: every component's `env_subset_translatable` is true
     /// (checked by the caller), so `translate_var` never bails here.
@@ -1130,7 +1230,24 @@ impl EvidentRuntime {
         arith: u32,
     ) -> Vec<SlowPart> {
         components.iter().enumerate().map(|(ci, (outputs, _))| {
-            let ctx = new_leaked_context();
+            // Does this component reference any enum-typed var? If so, the
+            // worker context needs the enum datatypes replayed before its
+            // assertions are translated in. (`env_subset_translatable` has
+            // already excluded record-element Seq / Set / etc., so the only
+            // datatype handles reachable here are enum sorts.)
+            let needs_enums = outputs.iter().chain(given.keys()).any(|name|
+                matches!(env.get(name),
+                    Some(Var::EnumVar { .. }) | Some(Var::DatatypeSeqVar { .. })));
+            // Context creation + (optional) enum replay share one lock
+            // (`z3_setup_lock`) so concurrent plan-builds across runtimes
+            // never run Z3 context/type construction at the same time.
+            let (ctx, wenums) = {
+                let _guard = z3_setup_lock();
+                let cfg = z3::Config::new();
+                let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
+                let wenums = if needs_enums { Some(self.replay_enums_into(ctx)) } else { None };
+                (ctx, wenums)
+            };
             let solver = build_tuned_solver(ctx, arith);
             for a in &component_assertions[ci] { solver.assert(&a.translate(ctx)); }
             for a in global_assertions { solver.assert(&a.translate(ctx)); }
@@ -1143,7 +1260,7 @@ impl EvidentRuntime {
                 if part_env.contains_key(name) { continue; }
                 if let Some(var) = env.get(name) {
                     // translatable precondition guarantees Some(_).
-                    if let Some(tv) = translate_var(var, ctx) {
+                    if let Some(tv) = translate_var(var, ctx, wenums.as_ref()) {
                         part_env.insert(name.clone(), tv);
                     }
                 }
@@ -1152,8 +1269,38 @@ impl EvidentRuntime {
                 cached: CachedSchema { env: part_env, solver, arith_solver: arith },
                 ctx,
                 outputs: outputs.clone(),
+                // The worker enum registry travels with the part (one part
+                // ↔ one thread) so extraction/pinning runs in this ctx.
+                // `None` for primitive-only parts (no enum vars).
+                enums: wenums,
             }
         }).collect()
+    }
+
+    /// Replay every `enum` definition into `ctx`, returning a fresh
+    /// `EnumRegistry` whose `DatatypeSort`s live in `ctx`. Z3 interns
+    /// datatypes by name + variant structure, so the sorts built here
+    /// coincide with the ones `Ast::translate` recreates for translated
+    /// assertions — which is what lets a worker context solve AND extract
+    /// enum values exactly as the main context would. Called from
+    /// `build_parallel_slow` while holding `z3_setup_lock`.
+    ///
+    /// User-record datatypes (`Seq(UserRecord)`) are NOT replayed: those
+    /// vars are excluded from the parallel path by `env_subset_translatable`
+    /// (their `FieldKind::Nested` sorts are main-context bound), so a worker
+    /// context never needs them.
+    fn replay_enums_into(&self, ctx: &'static Context) -> crate::core::EnumRegistry {
+        let wenums = crate::core::EnumRegistry::new();
+        // `self.program.enums` is the ORIGINAL decl list (internal
+        // Cons-helpers are regenerated inside register_enums, not stored
+        // back) — replaying it against a fresh registry reproduces exactly
+        // what the main context got at load. Any error would already have
+        // fired at load against the main context; if one somehow surfaces
+        // here, leave the registry partial — extraction then yields no
+        // enum bindings and the caller's `None`-fallback re-solves on the
+        // full main-context path.
+        let _ = super::register_enums::register_enums(&self.program.enums, ctx, &wenums);
+        wenums
     }
 
     /// Evaluate the named schema and return whether it's satisfiable
