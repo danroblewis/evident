@@ -12,9 +12,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, effect_loop};
-
-const STDLIB_RUNTIME: &str = "stdlib/runtime.ev";
+use evident_runtime::{EvidentRuntime, effect_loop, stdlib_path};
 
 /// Print the supported flags. Kept close to the parser so the
 /// help text and the parser don't drift apart.
@@ -282,8 +280,16 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
-        eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
+    let stdlib = match stdlib_path::stdlib_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("effect-run: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let runtime_ev = stdlib.join("runtime.ev");
+    if let Err(e) = rt.load_file(&runtime_ev) {
+        eprintln!("effect-run: load {}: {e}", runtime_ev.display());
         return ExitCode::from(1);
     }
     if let Err(e) = rt.load_file(Path::new(&path)) {

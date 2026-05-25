@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn detect_main_shape_finds_state_and_lists() {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+        rt.load_file(&crate::stdlib_path::stdlib_dir().unwrap().join("runtime.ev")).unwrap();
         // Body references all three implicit slots (state_next,
         // effects, last_results) so smart-inject fires for each.
         rt.load_source("\
@@ -402,7 +402,7 @@ fsm main
     #[test]
     fn smart_inject_skips_unreferenced_slots() {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+        rt.load_file(&crate::stdlib_path::stdlib_dir().unwrap().join("runtime.ev")).unwrap();
         rt.load_source("\
 enum S = Init | Done
 
@@ -422,7 +422,7 @@ fsm main
     #[test]
     fn halt_after_one_step_when_state_reaches_done() {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+        rt.load_file(&crate::stdlib_path::stdlib_dir().unwrap().join("runtime.ev")).unwrap();
         rt.load_source("\
 enum S = Init | Done
 

@@ -41,7 +41,9 @@ use evident_runtime::ast::{BodyItem, Expr};
 
 use super::common::load_runtime_with_passes;
 
-const DESUGAR_PASSTHROUGH: &str = "stdlib/passes/desugar_passthrough.ev";
+// Relative to the resolved stdlib directory (see
+// `common::load_runtime_with_passes`).
+const DESUGAR_PASSTHROUGH: &str = "passes/desugar_passthrough.ev";
 const RULE_NAME:           &str = "is_passthrough_at_index";
 
 /// One detected rewrite: in `claim_name`, replace `body[body_idx]`

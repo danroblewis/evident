@@ -369,12 +369,14 @@ fn encode_bind_list(binds: &[MatchPattern]) -> Value {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Pick an impl by `EVIDENT_PRETTY_IMPL` (`rust` | `evident`), defaulting
-/// to the Rust impl. `evident` requires `EVIDENT_STDLIB_DIR` to point at
-/// the repo `stdlib/`; if loading fails it falls back to Rust.
+/// to the Rust impl. `evident` locates `stdlib/` via the one
+/// [`crate::stdlib_path::stdlib_dir`] resolver (honoring `EVIDENT_STDLIB`
+/// / `EVIDENT_STDLIB_DIR`); if locating or loading fails it falls back to
+/// Rust.
 pub fn default_impl() -> Box<dyn PrettyImpl> {
     if std::env::var("EVIDENT_PRETTY_IMPL").as_deref() == Ok("evident") {
-        if let Ok(dir) = std::env::var("EVIDENT_STDLIB_DIR") {
-            if let Ok(ev) = EvidentPretty::new(Path::new(&dir)) {
+        if let Ok(dir) = crate::stdlib_path::stdlib_dir() {
+            if let Ok(ev) = EvidentPretty::new(&dir) {
                 return Box::new(ev);
             }
         }

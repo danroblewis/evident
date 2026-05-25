@@ -8,11 +8,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
 
-use evident_runtime::{EvidentRuntime, Value};
-
-/// Path to the AST schema file every self-hosted pass loads first.
-/// Single source of truth for the lint / desugar / infer-types pipelines.
-pub const STDLIB_AST: &str = "stdlib/ast.ev";
+use evident_runtime::{EvidentRuntime, Value, stdlib_path};
 
 pub fn usage() {
     eprintln!("usage:");
@@ -105,19 +101,26 @@ pub fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
     Ok(rt)
 }
 
-/// Load a fresh runtime pre-seeded with `STDLIB_AST` + the given pass
+/// Load a fresh runtime pre-seeded with `stdlib/ast.ev` + the given pass
 /// files (marked as system loads), then load the user's files. Used
 /// by every self-hosted pass driver (lint, desugar, infer-types).
+///
+/// `pass_files` are paths **relative to the stdlib directory** (e.g.
+/// `"passes/desugar_passthrough.ev"`); they're resolved against the one
+/// [`stdlib_path::stdlib_dir`] location, so the drivers work from any CWD.
 pub fn load_runtime_with_passes(
     pass_files: &[&str],
     user_files: &[String],
 ) -> Result<EvidentRuntime, String> {
+    let stdlib = stdlib_path::stdlib_dir()?;
     let mut rt = EvidentRuntime::new();
-    rt.load_file(Path::new(STDLIB_AST))
-        .map_err(|e| format!("load {STDLIB_AST}: {e}"))?;
+    let ast = stdlib.join("ast.ev");
+    rt.load_file(&ast)
+        .map_err(|e| format!("load {}: {e}", ast.display()))?;
     for f in pass_files {
-        rt.load_file(Path::new(f))
-            .map_err(|e| format!("load {f}: {e}"))?;
+        let p = stdlib.join(f);
+        rt.load_file(&p)
+            .map_err(|e| format!("load {}: {e}", p.display()))?;
     }
     rt.mark_system_loads_complete();
     for path in user_files {

@@ -21,7 +21,9 @@ use evident_runtime::Value;
 
 use super::common::load_runtime_with_passes;
 
-const LINT_DUPS: &str = "stdlib/passes/lint_duplicate_decls.ev";
+// Relative to the resolved stdlib directory (see
+// `common::load_runtime_with_passes`).
+const LINT_DUPS: &str = "passes/lint_duplicate_decls.ev";
 
 const LINT_RULES: &[&str] = &[
     "duplicate_membership_in_body",
