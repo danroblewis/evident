@@ -246,6 +246,30 @@ pub enum Expr {
     /// act as wildcards). For payload-aware extraction, use a `match`
     /// expression. For literal-payload comparison, use `e = Ctor(7)`.
     Matches(Box<Expr>, MatchPattern),
+
+    /// `run(F, init)` — nested-FSM run-to-halt as a value (tier 3,
+    /// blocking-interpret). `fsm` names a registered FSM-shaped schema
+    /// (a `name, name_next ∈ T` state pair + `halt ∈ Bool`, resolved by
+    /// name like `halts_within`'s first argument), `init` seeds its
+    /// initial state. The expression evaluates to `F`'s final state
+    /// Value — the state at the first tick whose `halt` is true.
+    ///
+    /// Unlike most `Expr` variants, this never reaches the Z3
+    /// translator: a pre-solve pass (`EvidentRuntime::resolve_runs`)
+    /// drives the nested FSM on the existing `effect_loop` scheduler's
+    /// per-tick solve, gets the concrete final state, and rewrites this
+    /// node to a literal expression before the outer model is built —
+    /// the same "compute a value, pin it as a constant" discipline a
+    /// `given` follows. `init` must therefore be computable from values
+    /// already known at that point (literals / givens); a `run` whose
+    /// `init` depends on an undetermined outer variable is an error,
+    /// never a silent wrong answer.
+    ///
+    /// v1 restrictions: the nested FSM must be effect-free (§5 of
+    /// `docs/design/nested-fsm-strategies.md`) and have a single state
+    /// pair. A non-FSM-shaped or effect-emitting `F` is rejected at
+    /// load time.
+    RunFsm { fsm: String, init: Box<Expr> },
 }
 
 /// One arm of a `match` expression — a pattern + the body that fires

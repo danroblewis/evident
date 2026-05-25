@@ -261,6 +261,7 @@ fn encode_expr(e: &Expr) -> Value {
         Expr::Ternary(c, a, b)   => ev("Expr", "ETernary", vec![encode_expr(c), encode_expr(a), encode_expr(b)]),
         Expr::Match(scr, arms)   => ev("Expr", "EMatch", vec![encode_expr(scr), encode_match_arm_list(arms)]),
         Expr::Matches(e, pat)    => ev("Expr", "EMatches", vec![encode_expr(e), encode_match_pattern(pat)]),
+        Expr::RunFsm { fsm, init } => ev("Expr", "ERunFsm", vec![Value::Str(fsm.clone()), encode_expr(init)]),
     }
 }
 

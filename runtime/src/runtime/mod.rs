@@ -54,6 +54,7 @@ mod reflection;
 mod analysis;
 mod introspect;
 mod profile;
+mod nested;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]

@@ -109,6 +109,10 @@ fn walk_expr(e: &Expr, sets: &mut AccessSets) {
             let _ = MatchPattern::Wildcard; // anchor for future changes
         }
         Expr::Matches(e, _) => walk_expr(e, sets),
+        // `run(F, init)` is resolved to a literal before the solve, so
+        // the only world dependency is through `init` (which v1 requires
+        // to be pre-known anyway). Walk it for completeness.
+        Expr::RunFsm { init, .. } => walk_expr(init, sets),
     }
     // Mapping appears only inside Pins/ClaimCall, handled above.
     let _ = std::any::type_name::<Mapping>();
@@ -174,6 +178,7 @@ pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
             Expr::Match(scrut, arms) =>
                 walk_expr(scrut, ident) || arms.iter().any(|a| walk_expr(&a.body, ident)),
             Expr::Matches(e, _) => walk_expr(e, ident),
+            Expr::RunFsm { init, .. } => walk_expr(init, ident),
         }
     }
     walk(&claim.body, ident)

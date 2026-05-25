@@ -582,15 +582,76 @@ Build smallest-and-most-foundational first. The ordering is forced by
 the oracle relationship (§ 4): the baseline must exist before anything
 can be validated against it.
 
-### 1. Tier 3 — blocking-interpret (the baseline + oracle)
+### 1. Tier 3 — blocking-interpret (the baseline + oracle) — **LANDED (session LL)**
 
-**Build first.** The `run(F, init)` parser hook (expression position,
-§ 1), a `run_nested(rt, F, init) -> Value` adapter onto
-`effect_loop::run_with_ctx` over a one-element FSM vec seeded from
-`init`, world + `DispatchContext` isolation (§ 2), and the final-state
-read + marshal-back. Add the `EVIDENT_NESTED_STRATEGY` gate (defaulting,
-at this stage, to `blocking` — it is the only tier). The effect-free
-load-time check (§ 5).
+**Built first**, as planned. Shipped:
+
+- **Parser + AST.** `run(F, init)` is `Expr::RunFsm { fsm, init }`
+  (`core/ast.rs`), intercepted in expression position by the atom
+  parser (`parser/atoms.rs`) — the value-producing sibling of
+  body-item-level `halts_within`. `run(IDENT, …)` is the trigger;
+  anything else named `run` falls through to a normal call.
+- **Execution** — `effect_loop/nested.rs::run_nested(rt, F, init,
+  max_steps) -> Value`. It drives `F` with the **same per-tick solve the
+  scheduler uses** (`query_with_pins_and_given`) to halt, reusing the
+  scheduler's state-encode (`state::encode_state_value`) and the
+  `LoopOpts.max_steps` cap as its **max-iteration guard** (overrun =
+  loud error, never a hang).
+  - *Why a dedicated loop, not `run_with_ctx` verbatim:* the prescribed
+    baseline FSM (`decrement`) is the `halts_within` shape — a `claim`
+    with a primitive `count, count_next ∈ Int` state pair + `halt ∈
+    Bool` — which the scheduler's enum-state/`fsm`-keyword resolution
+    (`resolve_fsm`, `MainShape`) doesn't recognise, and `run_scheduler`
+    reports a *best-effort `Done`-variant* final state (losing the
+    carried value), whereas `run` needs the **full** final state value.
+    So tier 3 reuses the scheduler's *primitives* (per-tick solve, state
+    encode, step cap) rather than `run_scheduler` wholesale. Halt is the
+    explicit `halt ∈ Bool` (read on each tick's input state), so the run
+    returns the state at the first halting tick.
+- **Evaluation timing (the crux), resolved.** `run(F, init)` is
+  evaluated to a concrete `Value` **before the outer solve** and the
+  `RunFsm` node is **rewritten to a literal expression** — the same
+  "compute a value, pin it as a constant" discipline a `given` follows.
+  The hook is `runtime/nested.rs::resolve_runs`, called at the top of
+  every query entry point (`query`, `query_with_core`, `query_cached`,
+  `query_with_pins_and_given`); a body with no `run` skips it (no clone).
+  - **v1 restriction (stated):** `init` must be computable from values
+    known at that point — literals, the query's givens, or integer
+    arithmetic over those (`eval_const_init`). An `init` depending on an
+    undetermined outer variable is a **loud error**, never a silent
+    wrong value. (No solve→run→solve cycle in v1.)
+  - Run-containing bodies bypass the functionizer/value caches in v1
+    (those key on given-*keys*, but a `run`'s literal depends on given-
+    *values*), keeping them on the always-fresh Z3 path.
+- **Seeding** mirrors the scheduler: a bare `Int` seeds a primitive Int
+  state directly, or the state enum's first single-Int-payload variant
+  (the `seed_state_with_arg` convention); an enum/record value seeds the
+  matching state type.
+- **`EVIDENT_NESTED_STRATEGY`** gate (`auto` | `blocking` | `loop` |
+  `unroll`, default `auto` → `blocking`). Forcing `loop`/`unroll` errors
+  clearly — those tiers land later.
+- **v1 restrictions enforced at load** (`runtime/nested.rs::
+  validate_run_targets` + `effect_loop::validate_run_target`): a non-FSM
+  -shaped `F` (no state pair / no `halt ∈ Bool`) or an **effect-emitting**
+  `F` (§ 5) is rejected at load with a clear message; a non-halting `F`
+  hits the max-iteration guard at run time.
+
+**Proof + tests.**
+- `examples/test_35_run_fsm.ev` — the counter (`run(decrement, 50)` → 0)
+  as a value, an enum-state seeding variant (`run(accumulate, 0)` →
+  `Acc(5)`), `sat_*` claims asserting each, and a runnable `fsm main`
+  that computes the run and exits (one row in `runtime/tests/demos.rs`).
+- `runtime/tests/run_fsm.rs` — the equivalence-oracle harness: the
+  counter's final state, Int + enum seeding, end-to-end pinning into an
+  outer query, load-time rejection of a non-FSM / effect-emitting `F`,
+  and the max-iteration guard. Structured so a later session adds
+  "tier 2/1 result == tier 3 result" against the same `oracle(...)`.
+
+**Not yet `run_with_ctx`-based.** Driving an enum-state, `fsm`-keyword'd
+`F` through the *real* `run_scheduler` (returning its full final state)
+is the natural extension once the value-return contract is reconciled
+with the scheduler's implicit-halt model; tier 3 v1 deliberately reuses
+the per-tick primitives instead.
 
 *Size:* small–medium. *Risk:* low — it is orchestration over the existing
 scheduler; the scheduler's correctness is inherited. The two real pieces

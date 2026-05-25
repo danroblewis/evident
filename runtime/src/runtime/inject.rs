@@ -72,6 +72,7 @@ pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
                 for arm in arms { walk(&arm.body, targets); }
             }
             Expr::Matches(e, _) => walk(e, targets),
+            Expr::RunFsm { init, .. } => walk(init, targets),
         }
     }
     let mut ref_state_next = false;
@@ -201,6 +202,7 @@ pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
                 for arm in arms { walk(&arm.body, declared, prev_refs); }
             }
             Expr::Matches(e, _) => walk(e, declared, prev_refs),
+            Expr::RunFsm { init, .. } => walk(init, declared, prev_refs),
         }
     }
     for item in &s.body {
@@ -304,6 +306,7 @@ pub(super) fn inject_claim_arg_types(
                 for arm in arms { walk(&arm.body, uses); }
             }
             Expr::Matches(e, _) => walk(e, uses),
+            Expr::RunFsm { init, .. } => walk(init, uses),
         }
     }
     for item in &s.body {

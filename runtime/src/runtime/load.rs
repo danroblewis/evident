@@ -130,6 +130,10 @@ impl EvidentRuntime {
         // with `T → Rect` substituted throughout its body. Iterates to
         // a fixed point — nested generics resolve in passes.
         super::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
+        // Reject `run(F, ..)` whose F is loaded but isn't FSM-shaped
+        // (state pair + `halt ∈ Bool`) or emits effects. Runs after the
+        // whole batch + its imports are registered so F is resolvable.
+        self.validate_run_targets()?;
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones. Also
         // reset the auto-tuner — measurements taken under the old

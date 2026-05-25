@@ -1370,14 +1370,25 @@ impl EvidentRuntime {
     /// plus a model. `given` pre-binds variables to concrete values
     /// (mirrors the Python `query(schema, given=...)` parameter).
     pub fn query(&self, name: &str, given: &HashMap<String, Value>) -> Result<QueryResult, RuntimeError> {
-        let schema = self.schemas.get(name)
+        let base = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        // Tier-3 nested-FSM resolution: drive any `run(F, init)` in the
+        // body to its final-state value and pin it as a literal BEFORE
+        // the solve (see runtime/nested.rs). No `run` → no clone.
+        let resolved = self.resolve_runs(base, given)?;
+        let schema = resolved.as_ref().unwrap_or(base);
 
         // Functionizer fast path: extract a Z3Program from the body
         // and JIT-compile to native code. On miss (extract refused
         // or JIT codegen refused) we fall through to a full Z3 solve.
-        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s != "0").unwrap_or(true);
+        //
+        // Skip the JIT + value cache for `run`-containing bodies: both
+        // key on given-KEYS, but a `run`'s resolved literal depends on
+        // given-VALUES, so a cached plan could replay a stale value.
+        // v1 keeps run-containing bodies on the always-fresh Z3 path
+        // (they're rare; tiers 1/2 accelerate nested runs later).
+        let functionize_on = resolved.is_none()
+            && std::env::var("EVIDENT_FUNCTIONIZE").map(|s| s != "0").unwrap_or(true);
         if functionize_on {
             if let Some(result) = self.try_functionize_z3(name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -1417,9 +1428,15 @@ impl EvidentRuntime {
     pub fn query_cached(&self, name: &str, given: &HashMap<String, Value>)
         -> Result<QueryResult, RuntimeError>
     {
-        let schema = self.schemas.get(name)
-            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
-            .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
+        let base = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        // Tier-3 nested-FSM resolution before caching: a body with
+        // `run(F, init)` is rewritten to its literal final state, so the
+        // cache keys on the resolved body (see runtime/nested.rs).
+        let schema = match self.resolve_runs(base, given)? {
+            Some(rewritten) => rewritten,
+            None => base.clone(), // cheap: SchemaDecl is small + Arc-friendly clones
+        };
         let cur_sig = structural_signature(&schema.body, given);
 
         // Auto-tuner: which arith.solver should the cache use right now?

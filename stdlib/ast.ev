@@ -154,6 +154,7 @@ enum Expr =
     ETernary(Expr, Expr, Expr)
     EMatch(Expr, Seq(MatchArm))
     EMatches(Expr, MatchPattern)
+    ERunFsm(String, Expr)
 
 -- ── Top-level program ───────────────────────────────────────────
 

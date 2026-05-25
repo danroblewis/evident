@@ -15,6 +15,30 @@ impl Parser {
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
+                // `run(F, init)` — nested-FSM run-to-halt as a value
+                // (tier 3, blocking-interpret). Recognized in expression
+                // position, the value-producing sibling of body-item-level
+                // `halts_within(F, N)`. The signature is exact: the keyword
+                // `run`, `(`, a bare-identifier FSM name, a comma. Anything
+                // else named `run` (`run(x)`, `run(a ↦ b)`) falls through to
+                // the normal call/claim-call parse, so the hook is local and
+                // never silently reinterprets an ordinary call.
+                if s == "run"
+                    && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
+                    && matches!(self.toks.get(self.pos + 2), Some(Token::Ident(_)))
+                    && matches!(self.toks.get(self.pos + 3), Some(Token::Comma))
+                {
+                    self.bump();                 // run
+                    self.bump();                 // (
+                    let fsm = match self.bump() {
+                        Token::Ident(f) => f,
+                        _ => unreachable!(),     // guarded by the matches! above
+                    };
+                    self.eat(&Token::Comma)?;    // ,
+                    let init = self.parse_expr()?;
+                    self.eat(&Token::RParen)?;
+                    return Ok(Expr::RunFsm { fsm, init: Box::new(init) });
+                }
                 self.bump();
                 // Greedily consume `.ident` chains (sub-schema field access)
                 // and collapse into a single dotted Identifier. Done
