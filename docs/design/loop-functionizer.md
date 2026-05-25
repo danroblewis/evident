@@ -12,7 +12,10 @@
 > constraint language, and **without** the symbolic unrolling that Z
 > proved fails on branching bodies.
 >
-> Companion reading: [`fsm-halts-within.md`](fsm-halts-within.md) (CC's
+> Companion reading: [`fsms-as-functions.md`](fsms-as-functions.md) (the
+> **capstone** — this loop-functionizer is tier 2 of one idea, `result =
+> F(init)`; the stack-of-FSMs of § 4 is that idea applied to a recursive
+> work-stack), [`fsm-halts-within.md`](fsm-halts-within.md) (CC's
 > symbolic unroll — the sibling strategy), [`cegar-scaffolding.md`](cegar-scaffolding.md)
 > (the abstraction/oracle framing this slots into),
 > [`nested-fsm-strategies.md`](nested-fsm-strategies.md) (the run-to-halt
