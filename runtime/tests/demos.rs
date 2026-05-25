@@ -287,6 +287,23 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // JIT codegen-gap showcase (session Y1): one FSM exercising all
+        // three gaps session T closed — integer div/mod, string concat,
+        // and Seq-bodied guarded effects — plus a deep branch-dependent
+        // div/mod chain. Every component compiles (comp=7/7) and the
+        // chain runs as native code, so steady per-tick ≈ 0.01 ms with
+        // JIT vs ≈ 0.70 ms with FUNCTIONIZE=0 (~70×; numbers in the
+        // demo's docstring). The growing dot-trail ("tick....." etc.)
+        // proves the string-concat component runs end-to-end; the demo
+        // halts at tick 20 via the Halting arm's Exit(0). The exact-line
+        // forbid catches the trail failing to accumulate (final line
+        // would then be bare "jit-gap demo: done").
+        name: "test_30_jit_gap_closures", exit: 0,
+        must_lines: &["tick", "tick.....", "jit-gap demo: done"],
+        forbid_exact_lines: &["jit-gap demo: done"],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
