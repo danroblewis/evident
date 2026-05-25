@@ -10,8 +10,9 @@
 //!
 //! Each successful rule prints a one-line summary of the inferred
 //! variable + type. Order goes most-specific → most-general:
-//! literal_types.ev's extract first, then membership+assignment,
-//! then single-assignment, then iter_types.ev's existentials.
+//! literal_types.ev's membership+assignment first, then
+//! single-assignment, then iter_types.ev / propagation.ev's
+//! existentials.
 //!
 //! Exit codes:
 //!   0 — at least one rule produced bindings
@@ -31,11 +32,9 @@ use super::common::load_runtime_with_passes;
 const LITERAL_TYPES: &str = "passes/literal_types.ev";
 const ITER_TYPES:    &str = "passes/iter_types.ev";
 const PROPAGATION:   &str = "passes/propagation.ev";
-const CONSISTENCY:   &str = "passes/consistency.ev";
 
 /// Rules invoked via `query_with_program` (no body Seq needed).
 const PROGRAM_RULES: &[&str] = &[
-    "extract_first_membership",
     "infer_string_from_membership_plus_assignment",
     "infer_int_from_membership_plus_assignment",
     "infer_bool_from_membership_plus_assignment",
@@ -84,7 +83,7 @@ pub fn collect_inferences(user_files: &[String])
     -> Result<Vec<Inference>, String>
 {
     let rt = load_runtime_with_passes(
-        &[LITERAL_TYPES, ITER_TYPES, PROPAGATION, CONSISTENCY],
+        &[LITERAL_TYPES, ITER_TYPES, PROPAGATION],
         user_files,
     )?;
 
