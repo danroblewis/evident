@@ -17,6 +17,10 @@ files):
 
 Progress tracker: [`PROGRESS.md`](PROGRESS.md).
 
+Adjacent design docs (not phased, but on deck):
+
+- [`../design/cegar-scaffolding.md`](../design/cegar-scaffolding.md) — layer CEGAR on the Functionizer trait (oracle + refiner) so FSM verification can route around log-unroll's branching wall.
+
 ## Working on a task
 
 1. Read the task's plan file end-to-end.

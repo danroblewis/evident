@@ -19,6 +19,12 @@
 > they write world fields and other FSMs subscribe via standard
 > read-set inference.
 
+> See also [`cegar-scaffolding.md`](cegar-scaffolding.md) for how to
+> verify properties of multi-FSM programs (e.g. `halts_within(F, N)`)
+> when the per-tick body branches on state and naive Z3 unroll blows
+> up. CEGAR uses the Functionizer trait as its abstraction interface
+> and the Z3 solver as its oracle.
+
 ## Motivation
 
 The current effect-driven runtime has a strict 1:1:1 model:
