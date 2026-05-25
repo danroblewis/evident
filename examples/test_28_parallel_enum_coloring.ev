@@ -20,18 +20,32 @@
 -- A/B and you should see wall-clock drop ~3-4× under the default
 -- vs `EVIDENT_PARALLEL_SLOW=0`.
 --
--- BENCHMARK (Apple M4, scripts/bench-demo.sh, medians):
---   Mode                          | wall    | tick0  | steady/tick
---   ------------------------------+---------+--------+------------
---   Pre-S, default                | 5.71 ms | 3.71ms |  1.76 ms
---   Pre-S, EVIDENT_PARALLEL_SLOW=0| 5.21 ms | 3.48ms |  1.59 ms
---   Post-S, default               | ?       | ?      |  ?
---   Post-S, EVIDENT_PARALLEL_SLOW=0| ?      | ?      |  ?
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, medians):
+--   Mode                           | wall    | tick0   | wall_post | steady/tick
+--   -------------------------------+---------+---------+-----------+------------
+--   Pre-S,  default                |  5.71ms |  3.71ms |   2.01ms  |  1.76 ms
+--   Pre-S,  EVIDENT_PARALLEL_SLOW=0|  5.21ms |  3.48ms |   1.73ms  |  1.59 ms
+--   Post-S, default                | 12.48ms | 11.56ms |   0.90ms  |  0.78 ms
+--   Post-S, EVIDENT_PARALLEL_SLOW=0|  5.65ms |  3.52ms |   1.89ms  |  1.78 ms
 --
--- → 5-10% delta today = noise; parallel path bypassed for enum vars,
--- confirmed. Update the post-S rows when session S merges (target:
--- ~3× faster on default vs PARALLEL_SLOW=0 once cross-context
--- datatype replay lands).
+-- Reading the post-S numbers:
+--   * The parallel path now ENGAGES for these enum-typed components
+--     (steady 0.78 vs 1.78 ms = 2.3× faster per tick after warmup).
+--   * BUT tick 0 jumped from 3.5 ms to 11.6 ms — the cost of replaying
+--     enums into per-worker contexts + thread spawn. For this tiny
+--     2-tick demo, the one-shot setup dominates and total wall is
+--     2.2× SLOWER (12.5 vs 5.7 ms) than the sequential baseline.
+--
+-- The S capability works, but this demo's per-graph solve (~0.3 ms)
+-- is way too small to amortize parallel setup. For a workload where
+-- parallel really wins on enum-typed components, see
+-- examples/test_27_parallel_solving.ev (six 16-queens boards with
+-- enum-typed half-classifiers, 5.5× faster wall under default vs
+-- EVIDENT_PARALLEL_SLOW=0 because each board solves in tens of ms).
+--
+-- To make THIS demo's wall win post-S, bump graph size (8→16+ nodes
+-- per graph) so each per-graph solve takes several ms; then the
+-- 6-way parallel solve dominates the one-shot setup.
 --
 -- The graphs themselves: each is a Petersen-graph-style ~8-node 3-
 -- coloring (15+ edge constraints) — heavy enough that single-thread
