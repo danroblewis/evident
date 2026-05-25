@@ -8,29 +8,49 @@
 --
 -- The classifier is a single pure constraint:
 --
---     is_safe ∈ Bool = (world.stdin_line = "GET"  ∨ world.stdin_line = "HEAD"
---                       ∨ world.stdin_line = "OPTIONS" ∨ world.stdin_line = "TRACE")
+--     world_next.classified_line = (world.stdin_line = "GET" ∨ … ?
+--                                   world.stdin_line ++ " safe"
+--                                 : world.stdin_line ++ " unsafe")
 --
--- This is a *String → Bool* function whose body is string equality. The
--- Cranelift JIT REFUSES to compile string equality (it can't reduce a
--- String operand to an i64 in its comparison codegen — see
--- docs/jit-codegen-gaps.md, deferred gap D2). So with the default
+-- This is a *String → String* function whose body is string equality +
+-- concatenation. The Cranelift JIT REFUSES to compile string equality
+-- (it can't reduce a String operand to an i64 in its comparison codegen
+-- — see docs/jit-codegen-gaps.md, deferred gap D2). So with the default
 -- functionizer this component falls through to a full Z3 solve every
 -- call. It is exactly the class of shape the LLM functionizer exists for:
 -- something the native JIT can't emit code for, but that an LLM can write
 -- a fast, idiomatic Rust function for (`matches!(m, "GET"|"HEAD"|…)`).
 --
+-- WHY TWO FSMs (the decomposition reason)
+-- ---------------------------------------
+-- The runtime's `decompose_simplified` unions any two outputs touched by
+-- the same assertion. Putting the classifier in the SAME body as the
+-- printer would merge `is_safe` with `effects` (the Println references
+-- it), and `Plan::from_program` rejects any component containing a Seq
+-- step. So `classifier` does NOTHING but compute the classified string
+-- and publish it through world. The LLM-targeted output —
+-- `world_next.classified_line` — is referenced by no other assertion in
+-- the classifier's body, so it decomposes into its own single-Scalar-
+-- step component, exactly the shape `Plan::from_program` accepts.
+--
+-- `printer` reads `world.classified_line` (written by `classifier` in
+-- the same tick — writer-first scheduling on the disjoint write field)
+-- and just emits the right Println. It owns the banner, the sequencing,
+-- and the Exit(0). Neither FSM references the classifier's logic — only
+-- the published string crosses the wire between them.
+--
 -- HOW THE LLM PATH WORKS (and its validation gate)
 -- ------------------------------------------------
--- With `EVIDENT_FUNCTIONIZER=llm` AND a valid `ANTHROPIC_API_KEY`, the
--- runtime (functionize/llm.rs):
+-- With `--functionizer llm` AND a valid `ANTHROPIC_API_KEY`, the runtime
+-- (functionize/llm.rs) for the `classifier` FSM's classified_line
+-- component:
 --   1. Samples input→output pairs by solving this constraint with Z3 —
---      Z3 is the ground-truth ORACLE (e.g. ("GET", true), ("POST", false),
---      ("zzz", false), …).
+--      Z3 is the ground-truth ORACLE (e.g. ("GET", "GET safe"),
+--      ("POST", "POST unsafe"), ("zzz", "zzz unsafe"), …).
 --   2. Splits them into a training set (shown to the LLM in the prompt)
 --      and a HELD-OUT validation set (never shown).
---   3. Asks the LLM to write `fn compute(world_stdin_line: &str) -> bool`,
---      compiles it with `rustc` into a cdylib, and `dlopen`s it.
+--   3. Asks the LLM to write `fn compute(world_stdin_line: &str) ->
+--      String`, compiles it with `rustc` into a cdylib, and `dlopen`s it.
 --   4. Accepts the function ONLY if it reproduces Z3 on EVERY held-out
 --      pair. Any miss → reject → fall through to Z3. This validation gate
 --      is the sole guard against a hallucinated function: wrong logic
@@ -53,8 +73,8 @@
 -- returns None, and the runtime falls through to its normal path — the
 -- Cranelift JIT for the arithmetic components and a Z3 solve for the
 -- string classifier. The program runs identically and exits 0; only the
--- *how* of the classifier changes. Selecting `EVIDENT_FUNCTIONIZER=llm`
--- with no key prints a clear "LLM functionizer requires ANTHROPIC_API_KEY,
+-- *how* of the classifier changes. Selecting `--functionizer llm` with
+-- no key prints a clear "LLM functionizer requires ANTHROPIC_API_KEY,
 -- skipping" message and uses the fallback. This file's CI row exercises
 -- exactly that fallback path.
 --
@@ -62,140 +82,155 @@
 --   printf 'GET\nPOST\nPUT\nHEAD\nDELETE\nOPTIONS\nTRACE\nPATCH\n\n' \
 --     | evident effect-run examples/test_32_llm_functionizer.ev
 --   # compile the classifier via the LLM (needs a key + rustc on PATH):
---   ANTHROPIC_API_KEY=… EVIDENT_FUNCTIONIZER=llm evident effect-run \
+--   ANTHROPIC_API_KEY=… evident effect-run --functionizer llm \
 --     examples/test_32_llm_functionizer.ev   < methods.txt
 
 import "stdlib/runtime.ev"
 
 -- StdinSource auto-installs on this World shape: it writes one line per
 -- Enter (or piped newline) to `stdin_line` and bumps `stdin_seq`.
+-- `classified_line` is written by the `classifier` FSM below — the
+-- multi-writer disjoint check accepts this because each field has
+-- exactly one writer (StdinSource owns stdin_*, classifier owns
+-- classified_*).
 type World
     stdin_line ∈ String
     stdin_seq  ∈ Int
+    classified_line ∈ String
+
+-- Classifier is intentionally stateless beyond the FSM scaffolding —
+-- one variant suffices. The first variant must be nullary (seed tick 0).
+enum CState = Active
+
+-- ⭐ THE LLM-TARGETED FSM ⭐
+--
+-- This FSM exists ONLY so the classifier can live in a body where
+-- nothing else references `classified_line`. With this isolation,
+-- `decompose_simplified` carves `{world.classified_line}` out as its own
+-- single-output component; `Plan::from_program` sees ONE Scalar step
+-- (String → String) and accepts it; the LLM gets prompted, the
+-- candidate is validated against held-out Z3 samples, and on a match
+-- the runtime mounts the cdylib in place of the slow solve.
+fsm classifier(world, world_next ∈ World, state ∈ CState)
+    -- Pure String → String: append " safe" iff the line is one of the
+    -- four safe HTTP methods (GET / HEAD / OPTIONS / TRACE), otherwise
+    -- " unsafe". The boundary case of "" → " unsafe" is harmless: the
+    -- printer never emits the empty-line classification (it gates on
+    -- `world.stdin_line ≠ ""`).
+    world_next.classified_line = (world.stdin_line = "GET" ∨ world.stdin_line = "HEAD"
+                                  ∨ world.stdin_line = "OPTIONS" ∨ world.stdin_line = "TRACE"
+                                  ? world.stdin_line ++ " safe"
+                                  : world.stdin_line ++ " unsafe")
+
+    state_next = Active
+    effects = ⟨⟩
 
 -- Start: nullary first variant so the runtime can seed tick 0.
--- Listening(Int): carries the last-classified line's seq.
-enum CState = Start | Listening(Int) | Done
+-- Listening(Int): carries the last-printed line's seq.
+enum PState = PStart | PListening(Int) | PDone
 
-fsm classify(world ∈ World, state ∈ CState)
+-- The printer reads `world.classified_line` (written by `classifier`
+-- earlier in the same tick — writer-first scheduling) and emits it.
+-- It owns the banner, the per-line print, and the graceful Exit on
+-- end-of-input. None of its body references the classifier's logic,
+-- only the published `classified_line` string.
+fsm printer(world ∈ World, state ∈ PState)
     last_seq ∈ Int
     last_seq = match state
-        Start        ⇒ 0
-        Listening(s) ⇒ s
-        Done         ⇒ 0
+        PStart        ⇒ 0
+        PListening(s) ⇒ s
+        PDone         ⇒ 0
 
-    -- A new line arrived iff the source bumped the seq past what we last saw.
-    fresh ∈ Bool
-    fresh = (world.stdin_seq > last_seq)
+    -- A new line arrived iff the source bumped the seq past what we last printed.
+    fresh ∈ Bool = (world.stdin_seq > last_seq)
 
     -- A blank line (or piped trailing newline) is the end-of-input sentinel.
-    at_end ∈ Bool
-    at_end = (fresh ∧ (world.stdin_line = ""))
-
-    has_method ∈ Bool
-    has_method = (fresh ∧ world.stdin_line ≠ "")
-
-    -- ⭐ THE LLM-TARGETED COMPONENT — a pure String → Bool classifier.
-    -- Its only free input is the given `world.stdin_line`; no other body
-    -- variable reads `is_safe`, so it decomposes into its own component.
-    -- Cranelift bails (string equality, gap D2); Z3 solves it (the
-    -- sampling oracle); with a key the LLM compiles it to native code.
-    is_safe ∈ Bool = (world.stdin_line = "GET" ∨ world.stdin_line = "HEAD"
-                      ∨ world.stdin_line = "OPTIONS" ∨ world.stdin_line = "TRACE")
+    at_end ∈ Bool = (fresh ∧ world.stdin_line = "")
+    has_method ∈ Bool = (fresh ∧ world.stdin_line ≠ "")
 
     state_next = match state
-        Start        ⇒ Listening(0)
-        Listening(_) ⇒ (at_end ? Done : Listening(world.stdin_seq))
-        Done         ⇒ Done
+        PStart        ⇒ PListening(0)
+        PListening(_) ⇒ (at_end ? PDone : PListening(world.stdin_seq))
+        PDone         ⇒ PDone
 
     effects = match state
-        Start        ⇒ ⟨Println("HTTP method safety classifier — LLM functionizer demo"),
+        PStart        ⇒ ⟨Println("HTTP method safety classifier — LLM functionizer demo"),
                         Println("(no ANTHROPIC_API_KEY → Z3 solves the string classifier;"),
-                        Println(" set ANTHROPIC_API_KEY + EVIDENT_FUNCTIONIZER=llm to compile it via the LLM)")⟩
-        Listening(_) ⇒ (at_end ? ⟨Println("done — classified every method"), Exit(0)⟩
-                         : (has_method ? ⟨Println(world.stdin_line ++ (is_safe ? " safe" : " unsafe"))⟩
+                        Println(" set ANTHROPIC_API_KEY + --functionizer llm to compile it via the LLM)")⟩
+        PListening(_) ⇒ (at_end ? ⟨Println("done — classified every method"), Exit(0)⟩
+                         : (has_method ? ⟨Println(world.classified_line)⟩
                                        : ⟨⟩))
-        Done         ⇒ ⟨⟩
+        PDone         ⇒ ⟨⟩
 
 -- ── Static tests ─────────────────────────────────────────────
 
--- A safe method classifies as safe …
-claim sat_get_is_safe
+-- A safe method classifies as " safe" …
+claim sat_classifier_get_is_safe
     world ∈ World
+    world_next ∈ World
     state ∈ CState
     state_next ∈ CState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    is_safe ∈ Bool
     world.stdin_line = "GET"
     world.stdin_seq = 1
-    state = Listening(0)
-    classify
-    is_safe = true
+    state = Active
+    classifier
+    world_next.classified_line = "GET safe"
 
--- … and prints with the " safe" suffix.
-claim sat_get_prints_safe
+-- An unsafe method classifies as " unsafe" …
+claim sat_classifier_post_is_unsafe
     world ∈ World
+    world_next ∈ World
     state ∈ CState
     state_next ∈ CState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
+    world.stdin_line = "POST"
+    world.stdin_seq = 1
+    state = Active
+    classifier
+    world_next.classified_line = "POST unsafe"
+
+-- TRACE is one of the four safe methods (not just GET) — guards against a
+-- classifier that only recognizes the first listed method.
+claim sat_classifier_trace_is_safe
+    world ∈ World
+    world_next ∈ World
+    state ∈ CState
+    state_next ∈ CState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    world.stdin_line = "TRACE"
+    world.stdin_seq = 1
+    state = Active
+    classifier
+    world_next.classified_line = "TRACE safe"
+
+-- The printer prints the classified line when a fresh method arrived.
+claim sat_printer_emits_classified
+    world ∈ World
+    state ∈ PState
+    state_next ∈ PState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
     world.stdin_line = "GET"
     world.stdin_seq = 1
-    state = Listening(0)
-    classify
+    world.classified_line = "GET safe"
+    state = PListening(0)
+    printer
     effects = ⟨Println("GET safe")⟩
 
--- An unsafe method classifies as unsafe and prints the " unsafe" suffix.
-claim sat_post_is_unsafe
+-- A blank line ends input: transition to PDone and emit Exit(0).
+claim sat_printer_blank_line_exits
     world ∈ World
-    state ∈ CState
-    state_next ∈ CState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    is_safe ∈ Bool
-    world.stdin_line = "POST"
-    world.stdin_seq = 1
-    state = Listening(0)
-    classify
-    is_safe = false
-
-claim sat_post_prints_unsafe
-    world ∈ World
-    state ∈ CState
-    state_next ∈ CState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    world.stdin_line = "POST"
-    world.stdin_seq = 1
-    state = Listening(0)
-    classify
-    effects = ⟨Println("POST unsafe")⟩
-
--- A blank line ends input: transition to Done and emit Exit(0).
-claim sat_blank_line_exits
-    world ∈ World
-    state ∈ CState
-    state_next ∈ CState
+    state ∈ PState
+    state_next ∈ PState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
     world.stdin_line = ""
     world.stdin_seq = 9
-    state = Listening(3)
-    classify
-    state_next = Done
-
--- TRACE is one of the four safe methods (not just GET) — guards against a
--- classifier that only recognizes the first listed method.
-claim sat_trace_is_safe
-    world ∈ World
-    state ∈ CState
-    state_next ∈ CState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    is_safe ∈ Bool
-    world.stdin_line = "TRACE"
-    world.stdin_seq = 1
-    state = Listening(0)
-    classify
-    is_safe = true
+    world.classified_line = " unsafe"
+    state = PListening(3)
+    printer
+    state_next = PDone
