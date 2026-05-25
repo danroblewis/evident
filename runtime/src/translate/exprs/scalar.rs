@@ -15,6 +15,14 @@ use super::match_expr::{fold_arms_to_ite, translate_match_arms};
 use super::seq_field::{resolve_seq_field, resolve_seq_handle, SeqHandleRef};
 
 pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
+    // String-producing builtins (`substr` / `replace` / `char_at`),
+    // lowered to Z3 seq-theory primitives. Checked first so a Call to one
+    // of these names resolves before the generic `match e` paths.
+    if let Expr::Call(name, args) = e {
+        if let Some(s) = super::string_ops::translate_str_call(name, args, ctx, env) {
+            return Some(s);
+        }
+    }
     match e {
         Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
@@ -65,6 +73,11 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
     // they share `translate_int`'s recursion and play with the
     // rest of integer arithmetic transparently.
     if let Expr::Call(name, args) = e {
+        // Int-producing string builtins (`str_len` / `index_of`), lowered
+        // to Z3 `str.len` / `str.indexof`.
+        if let Some(i) = super::string_ops::translate_str_int_call(name, args, ctx, env) {
+            return Some(i);
+        }
         match (name.as_str(), args.len()) {
             ("min", 2) => {
                 let a = translate_int(&args[0], ctx, env)?;
@@ -188,6 +201,11 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                         }
                     }
                 }
+            }
+            // `#text` where `text` is a String → `str.len`. Tried last so
+            // Seq/Set cardinality (above) still wins for those sorts.
+            if let Some(s) = translate_str(inner, ctx, env) {
+                return Some(super::string_ops::str_length(ctx, &s));
             }
             None
         }

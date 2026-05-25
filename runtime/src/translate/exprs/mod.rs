@@ -41,6 +41,7 @@ mod bool;
 mod quant;
 mod match_expr;
 mod range;
+mod string_ops;
 
 // Public surface consumed by sibling `translate/` modules. `inline.rs`
 // imports `resolve_mapping` + `translate_bool`; the `eval/*` modules use

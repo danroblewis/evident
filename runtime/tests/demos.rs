@@ -402,6 +402,13 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["BUG: child run did not reach zero"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // String ops: split "Edge<Rect>" + substitute "Seq(T)" → "Seq(Rect)".
+        name: "test_39_string_ops", exit: 0,
+        must_lines: &["Edge / Rect / Seq(Rect)"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

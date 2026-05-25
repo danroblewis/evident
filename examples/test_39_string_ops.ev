@@ -1,0 +1,58 @@
+-- 39_string_ops — string-manipulation builtins lowered to Z3 string theory.
+--
+-- Session GAPC added substring/index-of/replace/length/prefix-suffix ops,
+-- each lowered to a Z3 string-theory primitive (str.substr, str.indexof,
+-- str.replace, str.len, str.contains, str.prefixof/suffixof). This demo
+-- exercises the two operations that unblock the generics self-host:
+--
+--   * split_generic_head("Edge<Rect>") → ("Edge", "Rect")
+--     — index_of to find `<` / `>`, substr to slice out head + arg.
+--   * substitute_idents("Seq(T)", {T → "Rect"}) → "Seq(Rect)"
+--     — replace "T" with the arg.
+--
+-- It prints `Edge / Rect / Seq(Rect)` then exits 0. These are load-time
+-- string manipulations; Z3's string solver only runs here because the
+-- FSM body references them.
+
+import "stdlib/runtime.ev"
+
+enum StrDemoState = StrDemoRun | StrDemoHalt
+
+fsm string_demo(state ∈ StrDemoState)
+    state_next = match state
+        StrDemoRun ⇒ StrDemoHalt
+        StrDemoHalt ⇒ StrDemoHalt
+
+    g ∈ String = "Edge<Rect>"
+    lt ∈ Int = index_of(g, "<")
+    gt ∈ Int = index_of(g, ">")
+    head ∈ String = substr(g, 0, lt)
+    arg ∈ String = substr(g, lt + 1, gt - lt - 1)
+    mono ∈ String = replace("Seq(T)", "T", arg)
+
+    effects = match state
+        StrDemoRun ⇒ ⟨Println(head ++ " / " ++ arg ++ " / " ++ mono), Exit(0)⟩
+        StrDemoHalt ⇒ ⟨⟩
+
+-- Static assertions: pin inputs, assert on the derived string values.
+
+claim sat_split_head
+    g ∈ String = "Edge<Rect>"
+    head ∈ String = substr(g, 0, index_of(g, "<"))
+    head = "Edge"
+
+claim sat_substitute
+    mono ∈ String = replace("Seq(T)", "T", "Rect")
+    mono = "Seq(Rect)"
+
+claim sat_prefix_and_len
+    g ∈ String = "Edge<Rect>"
+    starts_with(g, "Edge")
+    #g = 10
+
+claim unsat_wrong_arg
+    g ∈ String = "Edge<Rect>"
+    lt ∈ Int = index_of(g, "<")
+    gt ∈ Int = index_of(g, ">")
+    arg ∈ String = substr(g, lt + 1, gt - lt - 1)
+    arg = "Wrong"
