@@ -1,58 +1,53 @@
-//! `subscriptions` — static world-access-set inference for the
-//! multi-FSM scheduler, ported into the [`super`] swap interface.
+//! `subscriptions` — static world-access-set inference for the multi-FSM
+//! scheduler. **Sole implementation: the self-hosted Evident pass.**
 //!
-//! See [`crate::subscriptions`] for what the analysis computes (read/write
-//! sets per claim) and where its output drives the runtime
-//! ([`crate::effect_loop`] scheduler subscriptions). Two impls:
-//!   * [`RustSubscriptions`] — wraps the canonical
-//!     [`crate::subscriptions::world_access_sets`] directly. The default,
-//!     the oracle.
-//!   * [`EvidentSubscriptions`] — owns an [`EvidentRuntime`] with
-//!     `stdlib/passes/subscriptions.ev` loaded. The WHOLE walk runs in
-//!     Evident as an FSM-with-stack (`subscriptions_walk`): this shim only
-//!     marshals the claim body into a `Value` via the SHARED marshaler,
-//!     drives the FSM to a drained-stack halt via
-//!     [`crate::effect_loop::run_nested`], and classifies the reachable
-//!     identifiers. **No Rust-side tree walk, no bespoke encoder** — the
-//!     recursion and accumulation live in the pass.
+//! Session XX cut subscriptions over to Evident-only: the canonical Rust
+//! walk (`crate::subscriptions::world_access_sets` + its `walk_*`
+//! traversal) is **deleted**, and the multi-FSM scheduler now computes
+//! every claim's `(reads, writes)` through [`EvidentSubscriptions`]. There
+//! is no Rust-walk fallback.
 //!
-//! ## Session UU: the shared marshaler retrofit
+//! [`EvidentSubscriptions`] owns an [`EvidentRuntime`] with
+//! `stdlib/passes/subscriptions.ev` loaded. The WHOLE walk runs in Evident
+//! as an FSM-with-stack (`subscriptions_walk`): this shim only marshals the
+//! claim body into a `Value` via the SHARED marshaler
+//! ([`crate::translate::ast_encoder::body_item_to_value`]), drives the FSM
+//! to a drained-stack halt via [`crate::effect_loop::run_nested`], and
+//! classifies the reachable identifiers. **No Rust-side tree walk, no
+//! bespoke encoder** — the recursion and accumulation live in the pass.
 //!
-//! QQ proved that self-hosting the walk did NOT shrink the runtime,
-//! because this shim hand-rolled a bespoke `AST → WNode` encoder — itself
-//! a recursive AST traversal isomorphic to the walk it replaced, so the
-//! marshaling tax was re-paid per port. UU deletes that encoder. The shim
-//! now feeds the FSM the output of the ONE shared marshaler
-//! ([`crate::translate::ast_encoder::body_item_to_value`], the `*_to_value`
-//! family): the FSM walks the FULL canonical AST directly (the same
-//! `Expr`/`BodyItem`/`Pins`/… shapes `stdlib/ast.ev` defines, list fields
-//! as poppable Cons enums). A future port reuses the same marshaler — no
-//! new encoder — so the *marginal* port is `+Evident pass, −Rust walk,
-//! +~3 lines` (encode → [`run_nested`] → decode).
-//!
-//! ### What stays in Rust, and why
+//! ## What stays in Rust, and why
 //!
 //! The FSM owns the traversal and the accumulation, but NOT the
 //! `world.`/`world_next.` classification: that needs `strip_prefix` /
 //! `first_segment`, and Evident has no substring/prefix operator. So the
-//! FSM emits the RAW dotted identifier strings it reaches and
-//! [`classify`] does the prefix split here — a few unavoidable lines,
-//! mirroring the canonical [`crate::subscriptions`] `walk_expr` leaf
-//! logic 1:1. (QQ kept classification in the FSM only because its bespoke
-//! encoder pre-split identifiers into segments — exactly the per-pass
-//! encoder UU removes.)
+//! FSM emits the RAW dotted identifier strings it reaches and [`classify`]
+//! does the prefix split here — a few unavoidable lines.
 //!
-//! ## Faithful equivalence
+//! ## The scheduler entry point
 //!
-//! Both impls produce byte-identical `AccessSets` (HashSet<String>
-//! equality) on every FSM-shaped claim across the demo corpus including
-//! Mario — see `runtime/tests/subscriptions_equivalence.rs`. The Evident
-//! walk visits the same identifier leaves as the canonical Rust walk
-//! (same AST structure → same leaves) and the shim classifies them with
-//! the identical prefix rule; the name lists it returns are deduped into
-//! the `HashSet`s here, so element order is irrelevant.
+//! Production code calls the free [`access_sets`] function, which holds a
+//! per-thread lazily-built [`EvidentSubscriptions`] engine: the pass is
+//! loaded and JIT-cached once per thread, then reused for every claim. The
+//! engine locates `stdlib/` via the one [`crate::stdlib_path::stdlib_dir`]
+//! resolver (session WW), so a relocated/installed binary finds the pass
+//! without a CWD assumption.
+//!
+//! ## No bootstrap cycle
+//!
+//! Computing subscriptions for the user's FSMs runs `subscriptions_walk`
+//! via [`crate::effect_loop::run_nested`] — the tier-3 blocking
+//! interpreter. `run_nested` drives a single FSM with per-tick Z3 solves
+//! (`query_with_pins_and_given`); it **never** calls `access_sets` or any
+//! scheduler-level subscription inference. And `subscriptions_walk` itself
+//! reads no `world.X` (its state is `SW`, a plain stack machine), so even
+//! its own access-set is empty. The recursion therefore terminates: the
+//! pass that computes subscriptions does not itself need subscriptions.
+//! See `runtime/tests/subscriptions_correctness.rs::bootstrap_*`.
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::core::ast::SchemaDecl;
 use crate::core::Value;
@@ -67,27 +62,11 @@ use super::Portable;
 // ─────────────────────────────────────────────────────────────────────
 
 /// `subscriptions`' Rust-level signature, independent of which impl backs
-/// it. Mirrors the public function the original `subscriptions.rs` exposes.
+/// it. Kept for uniformity with the rest of the [`super`] swap-interface
+/// family (`pretty`, `validate`); subscriptions now has a single impl.
 pub trait SubscriptionsImpl: Portable {
     /// Walk one claim and collect its world access sets.
     fn access_sets(&self, claim: &SchemaDecl) -> AccessSets;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Rust impl — the canonical analysis
-// ─────────────────────────────────────────────────────────────────────
-
-/// The native analysis. Total, fast, always correct — the default.
-pub struct RustSubscriptions;
-
-impl Portable for RustSubscriptions {
-    fn impl_name(&self) -> &'static str { "rust" }
-}
-
-impl SubscriptionsImpl for RustSubscriptions {
-    fn access_sets(&self, claim: &SchemaDecl) -> AccessSets {
-        crate::subscriptions::world_access_sets(claim)
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -177,11 +156,66 @@ impl EvidentSubscriptions {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Production entry point — a per-thread cached engine
+// ─────────────────────────────────────────────────────────────────────
+
+thread_local! {
+    /// One [`EvidentSubscriptions`] engine per thread, built lazily on the
+    /// first [`access_sets`] call. `EvidentRuntime` is `!Send`/`!Sync`
+    /// (Z3 context, Cranelift module, `Rc`/`RefCell` interior), so a
+    /// thread-local — not a global — is the right cache: the scheduler runs
+    /// single-threaded, so it pays the pass-load + JIT-compile cost exactly
+    /// once.
+    static ENGINE: RefCell<Option<Rc<EvidentSubscriptions>>> = const { RefCell::new(None) };
+}
+
+/// World access sets for one claim, computed by the self-hosted Evident
+/// `subscriptions_walk` pass. **This is the runtime's sole subscriptions
+/// entry point** — the scheduler ([`crate::effect_loop`]) calls it to wake
+/// FSMs on read-set deltas and to scope multi-writer snapshots.
+///
+/// Builds and caches a per-thread [`EvidentSubscriptions`] engine on first
+/// use (see [`ENGINE`]). The engine locates `stdlib/` via the one
+/// [`crate::stdlib_path::stdlib_dir`] resolver.
+///
+/// # Panics
+///
+/// If `stdlib/passes/subscriptions.ev` cannot be located or loaded. There
+/// is no Rust-walk fallback (session XX), so an unloadable pass is a hard
+/// error — the same robust resolution the rest of the runtime relies on
+/// (session WW). The error names every checked path and the
+/// `EVIDENT_STDLIB` override.
+pub fn access_sets(claim: &SchemaDecl) -> AccessSets {
+    let engine = ENGINE.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(Rc::new(build_engine()));
+        }
+        // Clone the Rc out so the thread-local borrow is released before
+        // we run the walk (`access_sets` → `run_nested` does not re-enter
+        // this thread-local, but releasing keeps the invariant obvious).
+        slot.as_ref().unwrap().clone()
+    });
+    engine.access_sets(claim)
+}
+
+/// Locate `stdlib/` and load the subscriptions pass into a fresh engine.
+/// Panics with the resolver's path-list diagnostic on failure — see
+/// [`access_sets`].
+fn build_engine() -> EvidentSubscriptions {
+    let dir = crate::stdlib_path::stdlib_dir().unwrap_or_else(|e| panic!(
+        "subscriptions: cannot locate stdlib to load the subscriptions \
+         pass (the sole impl since session XX): {e}"));
+    EvidentSubscriptions::new(&dir).unwrap_or_else(|e| panic!(
+        "subscriptions: failed to load passes/subscriptions.ev from {}: {e}",
+        dir.display()))
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Classification — the one piece Evident can't express (no substring op)
 // ─────────────────────────────────────────────────────────────────────
 
-/// Classify one raw dotted identifier into the read/write sets, mirroring
-/// `crate::subscriptions::walk_expr`'s `Identifier` arm 1:1: a
+/// Classify one raw dotted identifier into the read/write sets: a
 /// `world_next.X…` access writes the top-level field `X`, a `world.X…`
 /// access reads it, anything else (a bare local, a non-world name)
 /// contributes nothing. Duplicates collapse into the `HashSet`s.
@@ -194,7 +228,7 @@ fn classify(name: &str, sets: &mut AccessSets) {
 }
 
 /// First dotted segment of `s` (`player.pos.x` → `player`). Conservative
-/// top-level-field attribution, matching the canonical analysis.
+/// top-level-field attribution.
 fn first_segment(s: &str) -> &str {
     s.split('.').next().unwrap_or(s)
 }
@@ -206,24 +240,4 @@ fn work_node(variant: &str, inner: Value) -> Value {
         variant: variant.to_string(),
         fields: vec![inner],
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Selection
-// ─────────────────────────────────────────────────────────────────────
-
-/// Pick an impl by `EVIDENT_SUBSCRIPTIONS_IMPL` (`rust` | `evident`),
-/// defaulting to the Rust impl. `evident` locates `stdlib/` via the one
-/// [`crate::stdlib_path::stdlib_dir`] resolver (honoring `EVIDENT_STDLIB`
-/// / `EVIDENT_STDLIB_DIR`); if locating or loading fails it falls back to
-/// Rust.
-pub fn default_impl() -> Box<dyn SubscriptionsImpl> {
-    if std::env::var("EVIDENT_SUBSCRIPTIONS_IMPL").as_deref() == Ok("evident") {
-        if let Ok(dir) = crate::stdlib_path::stdlib_dir() {
-            if let Ok(ev) = EvidentSubscriptions::new(&dir) {
-                return Box::new(ev);
-            }
-        }
-    }
-    Box::new(RustSubscriptions)
 }

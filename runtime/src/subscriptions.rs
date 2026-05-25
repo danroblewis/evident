@@ -1,26 +1,31 @@
-//! Static subscription / read-set inference for the multi-FSM
+//! Static subscription / read-set inference types for the multi-FSM
 //! scheduler. See `docs/design/fsm-subscriptions.md` for the full
 //! design.
 //!
-//! Phase 1 (this module): walk a `SchemaDecl`'s body and collect
-//! the set of `world.X` reads (read-set) and `world_next.X` writes
-//! (write-set). Pure analysis — no behavior change in the runtime.
-//! Phase 2 will use these sets to drive delta scheduling.
+//! ## Session XX — the walk lives in Evident now
 //!
-//! Limitations of this first cut:
-//!   * `..ClaimName` passthrough and `ClaimCall` are NOT recursively
-//!     resolved here — we treat them as opaque. Callers that need
-//!     the fully-resolved set must walk transitively themselves.
-//!     For the v1 multi-FSM scheduler, top-level FSM claims don't
-//!     compose this way, so the local read-set matches the runtime
-//!     behavior. We'll lift this restriction in Phase 5.
-//!   * Subclaim bodies ARE walked (subclaims are in the parent's
-//!     scope and inline at translate time, so their world reads are
-//!     the parent's).
+//! The canonical Rust walk (`world_access_sets` + its `walk_body` /
+//! `walk_pins` / `walk_expr` / `first_segment` traversal) was **deleted**
+//! in session XX. The whole walk is now the self-hosted stack-FSM
+//! `stdlib/passes/subscriptions.ev`, driven through
+//! [`crate::portable::subscriptions`] — the runtime's SOLE subscriptions
+//! implementation. The scheduler computes a claim's `(reads, writes)` via
+//! [`crate::portable::subscriptions::access_sets`], which marshals the
+//! claim body into a `Value`, runs the `subscriptions_walk` FSM to a
+//! drained-stack halt (`effect_loop::run_nested`), and classifies the
+//! reachable identifiers by their `world.` / `world_next.` prefix.
+//!
+//! This module keeps only the two pieces that did NOT move:
+//!   * [`AccessSets`] — the read/write-set value type the scheduler and
+//!     the Evident shim both produce and consume.
+//!   * [`body_references_identifier`] — a *different* analysis (does a
+//!     body reference a named effect constructor, e.g. `ReadLine`?), used
+//!     at load time to detect fd-resource conflicts. It is not a
+//!     world-access walk and has no Evident twin.
 
 use std::collections::HashSet;
 
-use crate::core::ast::{BodyItem, Expr, Mapping, MatchPattern, Pins, SchemaDecl};
+use crate::core::ast::{BodyItem, Expr, Pins, SchemaDecl};
 
 /// Read-set + write-set for one FSM claim.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -37,96 +42,16 @@ pub struct AccessSets {
     pub writes: HashSet<String>,
 }
 
-/// Walk one claim and collect its world access sets.
-pub fn world_access_sets(claim: &SchemaDecl) -> AccessSets {
-    let mut sets = AccessSets::default();
-    walk_body(&claim.body, &mut sets);
-    sets
-}
-
-fn walk_body(body: &[BodyItem], sets: &mut AccessSets) {
-    for item in body {
-        match item {
-            BodyItem::Membership { pins, .. } => walk_pins(pins, sets),
-            BodyItem::Passthrough(_) => {}  // see module doc
-            BodyItem::SubclaimDecl(s) => walk_body(&s.body, sets),
-            BodyItem::ClaimCall { mappings, .. } => {
-                for m in mappings { walk_expr(&m.value, sets); }
-            }
-            BodyItem::Constraint(e) => walk_expr(e, sets),
-            // halts_within is a static verification directive — it
-            // references the named FSM's body, not the world. No
-            // world access to contribute.
-            BodyItem::HaltsWithin { .. } => {}
-        }
-    }
-}
-
-fn walk_pins(pins: &Pins, sets: &mut AccessSets) {
-    match pins {
-        Pins::None => {}
-        Pins::Named(ms) => for m in ms { walk_expr(&m.value, sets); },
-        Pins::Positional(es) => for e in es { walk_expr(e, sets); },
-    }
-}
-
-fn walk_expr(e: &Expr, sets: &mut AccessSets) {
-    match e {
-        Expr::Identifier(name) => {
-            if let Some(field) = name.strip_prefix("world_next.") {
-                // Take only the first dotted segment after world_next.
-                // (`world_next.player.pos.x` writes the `player`
-                // top-level field, conservatively.)
-                let first = first_segment(field);
-                sets.writes.insert(first.to_string());
-            } else if let Some(field) = name.strip_prefix("world.") {
-                let first = first_segment(field);
-                sets.reads.insert(first.to_string());
-            }
-        }
-        Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-        Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-            for x in es { walk_expr(x, sets); },
-        Expr::Range(a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
-        Expr::InExpr(a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
-        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
-            walk_expr(range, sets); walk_expr(body, sets);
-        }
-        Expr::Call(_, args) => for a in args { walk_expr(a, sets); },
-        Expr::Cardinality(inner) | Expr::Not(inner) => walk_expr(inner, sets),
-        Expr::Index(a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
-        Expr::Field(recv, _) => walk_expr(recv, sets),
-        Expr::Binary(_, a, b) => { walk_expr(a, sets); walk_expr(b, sets); }
-        Expr::Ternary(c, t, f) => {
-            walk_expr(c, sets); walk_expr(t, sets); walk_expr(f, sets);
-        }
-        Expr::Match(scrut, arms) => {
-            walk_expr(scrut, sets);
-            for arm in arms { walk_expr(&arm.body, sets); }
-            // Patterns can't reference world directly — they're
-            // structural matches over the scrutinee — so no walk
-            // needed for arm.pattern.
-            let _ = MatchPattern::Wildcard; // anchor for future changes
-        }
-        Expr::Matches(e, _) => walk_expr(e, sets),
-        // `run(F, init)` is resolved to a literal before the solve, so
-        // the only world dependency is through `init` (which v1 requires
-        // to be pre-known anyway). Walk it for completeness.
-        Expr::RunFsm { init, .. } => walk_expr(init, sets),
-    }
-    // Mapping appears only inside Pins/ClaimCall, handled above.
-    let _ = std::any::type_name::<Mapping>();
-}
-
-fn first_segment(s: &str) -> &str {
-    s.split('.').next().unwrap_or(s)
-}
-
 /// Returns true iff the claim's body references the named
 /// effect constructor (e.g. "ReadLine", "Exit"). Used at load
 /// time to detect conflicts — e.g. a program that has a stdin
 /// plugin auto-installed AND emits Effect::ReadLine would race
 /// for fd 0; the runtime rejects that combination.
+///
+/// This is a plain identifier-presence check, NOT the world-access
+/// walk (that moved to `stdlib/passes/subscriptions.ev` — see the
+/// module doc). It stays in Rust because it answers a different
+/// question (does name N appear anywhere) and has no Evident port.
 pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
     fn walk(items: &[BodyItem], ident: &str) -> bool {
         for item in items {
@@ -189,136 +114,26 @@ mod tests {
     use super::*;
     use crate::parser::parse;
 
-    fn claim_named<'a>(src: &'a str, name: &str) -> SchemaDecl {
+    fn claim_named(src: &str, name: &str) -> SchemaDecl {
         let prog = parse(src).expect("parse");
         prog.schemas.iter().find(|s| s.name == name)
             .unwrap_or_else(|| panic!("claim `{name}` not found"))
             .clone()
     }
 
-    fn set(items: &[&str]) -> HashSet<String> {
-        items.iter().map(|s| s.to_string()).collect()
-    }
-
     #[test]
-    fn writer_only_has_no_reads() {
+    fn references_effect_constructor() {
         let src = "\
 type World
     a ∈ Int
-    b ∈ Bool
 
-claim setup
+claim emitter
     world, world_next ∈ World
-    world_next.a = 42
-    world_next.b = true
+    effects ∈ Seq(Effect)
+    effects = ⟨ReadLine⟩
 ";
-        let c = claim_named(src, "setup");
-        let s = world_access_sets(&c);
-        assert_eq!(s.reads, HashSet::<String>::new());
-        assert_eq!(s.writes, set(&["a", "b"]));
-    }
-
-    #[test]
-    fn reader_collects_read_set() {
-        let src = "\
-type World
-    a ∈ Int
-    b ∈ Bool
-    c ∈ Int
-
-claim render
-    world ∈ World
-    msg ∈ Int
-    msg = (world.b ? world.a : 0)
-";
-        let c = claim_named(src, "render");
-        let s = world_access_sets(&c);
-        assert_eq!(s.reads,  set(&["a", "b"]));  // c not referenced
-        assert_eq!(s.writes, HashSet::<String>::new());
-    }
-
-    #[test]
-    fn nested_field_path_reads_top_level() {
-        // world.player.pos.x conservatively counts as a read of `player`.
-        let src = "\
-type World
-    player ∈ Int
-    score  ∈ Int
-
-claim render
-    world ∈ World
-    out ∈ Int
-    out = world.player + world.score
-";
-        let c = claim_named(src, "render");
-        let s = world_access_sets(&c);
-        assert_eq!(s.reads, set(&["player", "score"]));
-    }
-
-    #[test]
-    fn reads_inside_match_arms_and_quantifiers() {
-        let src = "\
-type World
-    a ∈ Int
-    b ∈ Bool
-
-enum S = One | Two
-
-claim handler
-    world ∈ World
-    state ∈ S
-    out ∈ Int
-    out = match state
-        One ⇒ world.a
-        Two ⇒ (world.b ? 1 : 0)
-";
-        let c = claim_named(src, "handler");
-        let s = world_access_sets(&c);
-        assert_eq!(s.reads,  set(&["a", "b"]));
-        assert_eq!(s.writes, HashSet::<String>::new());
-    }
-
-    #[test]
-    fn writer_with_match_writes_one_field() {
-        let src = "\
-type World
-    a ∈ Int
-
-enum S = X | Y
-
-claim w
-    world, world_next ∈ World
-    state ∈ S
-    world_next.a = match state
-        X ⇒ 1
-        Y ⇒ 2
-";
-        let c = claim_named(src, "w");
-        let s = world_access_sets(&c);
-        assert_eq!(s.writes, set(&["a"]));
-        assert_eq!(s.reads,  HashSet::<String>::new());
-    }
-
-    #[test]
-    fn passthrough_writer_passes_through_field() {
-        // `world_next.a = world.a` is the read+write idiom for
-        // passthrough on a non-Done branch. Both should be tracked.
-        let src = "\
-type World
-    a ∈ Int
-    b ∈ Int
-
-enum S = X | Y
-
-claim w
-    world, world_next ∈ World
-    state ∈ S
-    world_next.a = (state matches X ? 99 : world.a)
-    world_next.b = world.b
-";
-        let c = claim_named(src, "w");
-        let s = world_access_sets(&c);
-        assert_eq!(s.reads,  set(&["a", "b"]));
-        assert_eq!(s.writes, set(&["a", "b"]));
+        let c = claim_named(src, "emitter");
+        assert!(body_references_identifier(&c, "ReadLine"));
+        assert!(!body_references_identifier(&c, "Exit"));
     }
 }

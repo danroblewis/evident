@@ -27,7 +27,7 @@ gaps currently bound what a pass can do.
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
 | `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
-| `subscriptions` (228 LOC shim) | `portable/subscriptions.rs::RustSubscriptions` | `stdlib/passes/subscriptions.ev` | **full** | Whole walk is a stack-FSM fed by the SHARED marshaler (UU) — no bespoke encoder. Only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Equivalent on every FSM-shaped claim in `examples/` including Mario — see `runtime/tests/subscriptions_equivalence.rs` |
+| `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
 | `inject` (588 LOC) | — | ⌛ | — | biggest |
@@ -263,10 +263,13 @@ pins the rest as known divergences.
 
 ## What `stdlib/passes/subscriptions.ev` reproduces today
 
-Faithful (byte-identical `(reads, writes)` sets to
-`subscriptions::world_access_sets`) — every FSM-shaped claim in
-`examples/` including the Mario demo (three FSMs, ~30 fields across
-read/write sets combined).
+**This is now the SOLE subscriptions implementation** (session XX cut over
+to Evident-only; the canonical Rust `subscriptions::world_access_sets` walk
+is deleted). The scheduler computes every FSM-shaped claim's `(reads,
+writes)` through this pass — including the Mario demo (three FSMs, ~30
+fields across read/write sets combined). The pinned per-claim expectations
+in `runtime/tests/subscriptions_correctness.rs` were captured from the Rust
+walk before its deletion and now stand on their own.
 
 The WHOLE walk runs in Evident, not just a leaf classifier.
 `subscriptions.ev` is a stack-FSM, `subscriptions_walk`, whose state
@@ -321,14 +324,29 @@ re-paid that marshaling tax. UU pays it once — the `*_to_value` family is
 shared — so the shim dropped **333 → 228 LOC** (the ~149-line bespoke
 `WNode` encoder + cons-list decoder block deleted, replaced by a 3-line
 marshaler call + a ~10-line prefix classifier). The *marginal* next port
-is now `+Evident pass, −Rust walk, +~3 lines of glue` — net-negative
-Rust. The canonical `subscriptions::world_access_sets` stays untouched as
-the default and the equivalence oracle.
+is now `+Evident pass, −Rust walk, +~3 lines of glue`. Session XX took the
+final step: it **deleted** the canonical `subscriptions::world_access_sets`
+walk and routed the scheduler through `EvidentSubscriptions`, so the port
+is net-negative on real logic, not just test code (the equivalence test
+went away too). The scheduler's production entry is now the free
+`portable::subscriptions::access_sets`, backed by a per-thread cached
+engine that loads the pass via the WW stdlib resolver.
 
-### Equivalence test corpus
+### No bootstrap cycle
 
-`runtime/tests/subscriptions_equivalence.rs` runs both impls against
-every top-level claim in:
+Computing subscriptions for the user's FSMs runs `subscriptions_walk` via
+`effect_loop::run_nested` — the tier-3 blocking interpreter, which drives a
+single FSM with per-tick Z3 solves and **never** calls `access_sets` or any
+scheduler-level subscription inference. And `subscriptions_walk` reads no
+`world.X` (its state is the plain `SW` stack machine), so its own
+access-set is empty. The pass that computes subscriptions does not itself
+need subscriptions — the recursion terminates. See
+`subscriptions_correctness.rs::bootstrap_*`.
+
+### Correctness test corpus
+
+`runtime/tests/subscriptions_correctness.rs` pins the expected `(reads,
+writes)` for every FSM-shaped, world-touching claim in:
 
 ```
 examples/test_09_two_fsms.ev          examples/test_25_per_component_jit.ev
@@ -339,12 +357,10 @@ examples/test_18_reflection.ev        examples/test_31_symbolic_regression.ev
                                       examples/test_21_mario/main.ev
 ```
 
-(Surveyed by `grep -l 'world\.\|world_next\.' examples/test_*.ev`.) For
-every claim — including non-FSM helper claims that don't reach the
-scheduler — the two impls produce byte-identical `AccessSets`. The
-Mario test additionally asserts the `game` FSM is a major writer and
-`display` reads multiple fields, codifying the demo's shape so a
-behavioural regression surfaces here.
+(Surveyed by `grep -l 'world\.\|world_next\.' examples/test_*.ev`.) These
+are direct expectations, not a comparison against a deleted oracle. The
+Mario claims (`game` major writer, `keyboard` input writer, `display`
+reader) codify the demo's shape so a behavioural regression surfaces here.
 
 ## What `stdlib/passes/validate.ev` reproduces today
 

@@ -23,6 +23,11 @@ use super::{LoopEnv, LoopOpts, LoopResult};
 pub(super) fn run_scheduler(
     rt: &EvidentRuntime,
     fsms: &[MainShape],
+    // Transitive access sets for the initial `fsms`, parallel-indexed.
+    // Computed once in `run_with_ctx` (and reused for the multi-writer
+    // check) so the costly self-hosted subscriptions walk runs at most
+    // once per FSM at load — not twice. Spawned FSMs get a fresh walk.
+    initial_access: &[crate::subscriptions::AccessSets],
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
     event_rx: Option<&std::sync::mpsc::Receiver<crate::event_sources::SchedulerEvent>>,
@@ -155,14 +160,14 @@ pub(super) fn run_scheduler(
     // writer's snapshot updates are limited to its own write-set so
     // disjoint writers don't clobber each other).
     // Transitive (passthrough-resolving) access sets — see
-    // `fsm::full_world_access`. Using the local-only
-    // `world_access_sets` here would drop the writes of any FSM
-    // that writes world through a `..Passthrough` claim, since
-    // `my_writes` scoping below filters world_next bindings against
-    // this set.
-    let mut access_sets: Vec<crate::subscriptions::AccessSets> = fsms.iter().map(|fsm| {
-        super::fsm::full_world_access(rt, &fsm.claim_name)
-    }).collect();
+    // `fsm::full_world_access`. Using the local-only per-claim walk
+    // (`portable::subscriptions::access_sets`) here would drop the
+    // writes of any FSM that writes world through a `..Passthrough`
+    // claim, since `my_writes` scoping below filters world_next
+    // bindings against this set.
+    // Reuse the sets computed once in `run_with_ctx` (see `initial_access`
+    // doc on the signature). Owned so spawned FSMs can push their own.
+    let mut access_sets: Vec<crate::subscriptions::AccessSets> = initial_access.to_vec();
     // Per-FSM "world fields that changed since I was last scheduled."
     // When the FSM is scheduled, this is consumed (cleared). Writers
     // populate it on other FSMs after their solve.
@@ -609,9 +614,16 @@ pub(super) fn run_scheduler(
                     eprintln!("[loop] tick {step_count}: spawned `{claim_name}` \
                                as FSM #{} with arg={spawn_arg}", fsms.len());
                 }
-                let aset = rt.get_schema(&shape.claim_name)
-                    .map(|s| crate::subscriptions::world_access_sets(s))
-                    .unwrap_or_default();
+                // World-less FSMs have provably-empty access sets — skip
+                // the (costly) self-hosted walk, mirroring the load-time
+                // guard in `run_with_ctx`.
+                let aset = if shape.world_type.is_none() {
+                    crate::subscriptions::AccessSets::default()
+                } else {
+                    rt.get_schema(&shape.claim_name)
+                        .map(crate::portable::subscriptions::access_sets)
+                        .unwrap_or_default()
+                };
                 // Spawn-arg seeding: pin the new FSM's state to
                 // `FirstVariant(spawn_arg)` if the first variant
                 // takes a single Int payload. Otherwise fall back

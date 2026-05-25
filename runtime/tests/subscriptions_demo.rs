@@ -7,7 +7,9 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use evident_runtime::EvidentRuntime;
-use evident_runtime::subscriptions::world_access_sets;
+// Session XX: the canonical Rust walk is gone; the sole impl is the
+// self-hosted Evident pass behind the scheduler's production entry point.
+use evident_runtime::portable::subscriptions::access_sets as world_access_sets;
 
 fn set(items: &[&str]) -> HashSet<String> {
     items.iter().map(|s| s.to_string()).collect()
