@@ -261,6 +261,18 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Six disjoint graph-3-coloring problems with enum-typed
+        // cells. Session E's parallel solving silently bypasses
+        // enum/record-typed components (DatatypeSort is bound to the
+        // source context), so this runs sequentially today. After
+        // session S lands cross-context datatype replay, this same
+        // demo should fan out across worker threads.
+        name: "test_28_parallel_enum_coloring", exit: 0,
+        must_lines: &["solved 6 independent graph 3-colorings"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

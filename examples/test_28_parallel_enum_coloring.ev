@@ -1,0 +1,175 @@
+-- 28_parallel_enum_coloring — six independent graph-3-coloring
+-- problems in one claim, each using enum-typed variables.
+--
+-- Six independent searches over `enum Color`:
+--   * No variable is shared across the six sub-problems → the body
+--     decomposes into 6 independent components (visible as
+--     `comp=…/6` in EVIDENT_FUNCTIONIZE_STATS=1).
+--   * Each component is a small CSP that Z3 must search — slow-path
+--     work, not Cranelift-compilable.
+--
+-- Today (until session S lands): every component has enum-typed
+-- variables. Session E's parallel solving bypasses enum/record vars
+-- because `DatatypeSort` is bound to the source Z3 context. So all
+-- six components run sequentially on one thread. Run with
+-- `EVIDENT_PARALLEL_SLOW=0` and the default — the wall times should
+-- be nearly identical, proving the parallel path isn't engaging.
+--
+-- After session S lands: cross-context datatype replay should let
+-- the six components fan out across worker threads. Re-run the same
+-- A/B and you should see wall-clock drop ~3-4× under the default
+-- vs `EVIDENT_PARALLEL_SLOW=0`.
+--
+-- Numbers (to be replaced when S lands):
+--   Pre-S, default              : ~XXms (sequential because enum-typed)
+--   Pre-S, PARALLEL_SLOW=0      : ~XXms (~identical → parallel path bypassed)
+--   Post-S, default             : ?
+--   Post-S, PARALLEL_SLOW=0     : ?
+--
+-- The graphs themselves: each is a Petersen-graph-style ~8-node 3-
+-- coloring (15+ edge constraints) — heavy enough that single-thread
+-- solve is well above thread-spawn overhead.
+
+import "stdlib/runtime.ev"
+
+enum Color = Red | Green | Blue
+
+enum DemoState = Searching | Done
+
+fsm coloring(state ∈ DemoState)
+    state_next = match state
+        Searching ⇒ Done
+        Done      ⇒ Done
+
+    -- ── graph 1 ───────────────────────────────────────────────
+    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7 ∈ Color
+    g1_0 ≠ g1_1
+    g1_0 ≠ g1_2
+    g1_1 ≠ g1_3
+    g1_2 ≠ g1_4
+    g1_3 ≠ g1_5
+    g1_4 ≠ g1_6
+    g1_5 ≠ g1_7
+    g1_6 ≠ g1_7
+    g1_0 ≠ g1_4
+    g1_1 ≠ g1_5
+    g1_2 ≠ g1_6
+    g1_3 ≠ g1_7
+    g1_0 ≠ g1_7
+    g1_1 ≠ g1_6
+    g1_2 ≠ g1_5
+
+    -- ── graph 2 ───────────────────────────────────────────────
+    g2_0, g2_1, g2_2, g2_3, g2_4, g2_5, g2_6, g2_7 ∈ Color
+    g2_0 ≠ g2_1
+    g2_0 ≠ g2_2
+    g2_1 ≠ g2_3
+    g2_2 ≠ g2_4
+    g2_3 ≠ g2_5
+    g2_4 ≠ g2_6
+    g2_5 ≠ g2_7
+    g2_6 ≠ g2_7
+    g2_0 ≠ g2_4
+    g2_1 ≠ g2_5
+    g2_2 ≠ g2_6
+    g2_3 ≠ g2_7
+    g2_0 ≠ g2_7
+    g2_1 ≠ g2_6
+    g2_2 ≠ g2_5
+
+    -- ── graph 3 ───────────────────────────────────────────────
+    g3_0, g3_1, g3_2, g3_3, g3_4, g3_5, g3_6, g3_7 ∈ Color
+    g3_0 ≠ g3_1
+    g3_0 ≠ g3_2
+    g3_1 ≠ g3_3
+    g3_2 ≠ g3_4
+    g3_3 ≠ g3_5
+    g3_4 ≠ g3_6
+    g3_5 ≠ g3_7
+    g3_6 ≠ g3_7
+    g3_0 ≠ g3_4
+    g3_1 ≠ g3_5
+    g3_2 ≠ g3_6
+    g3_3 ≠ g3_7
+    g3_0 ≠ g3_7
+    g3_1 ≠ g3_6
+    g3_2 ≠ g3_5
+
+    -- ── graph 4 ───────────────────────────────────────────────
+    g4_0, g4_1, g4_2, g4_3, g4_4, g4_5, g4_6, g4_7 ∈ Color
+    g4_0 ≠ g4_1
+    g4_0 ≠ g4_2
+    g4_1 ≠ g4_3
+    g4_2 ≠ g4_4
+    g4_3 ≠ g4_5
+    g4_4 ≠ g4_6
+    g4_5 ≠ g4_7
+    g4_6 ≠ g4_7
+    g4_0 ≠ g4_4
+    g4_1 ≠ g4_5
+    g4_2 ≠ g4_6
+    g4_3 ≠ g4_7
+    g4_0 ≠ g4_7
+    g4_1 ≠ g4_6
+    g4_2 ≠ g4_5
+
+    -- ── graph 5 ───────────────────────────────────────────────
+    g5_0, g5_1, g5_2, g5_3, g5_4, g5_5, g5_6, g5_7 ∈ Color
+    g5_0 ≠ g5_1
+    g5_0 ≠ g5_2
+    g5_1 ≠ g5_3
+    g5_2 ≠ g5_4
+    g5_3 ≠ g5_5
+    g5_4 ≠ g5_6
+    g5_5 ≠ g5_7
+    g5_6 ≠ g5_7
+    g5_0 ≠ g5_4
+    g5_1 ≠ g5_5
+    g5_2 ≠ g5_6
+    g5_3 ≠ g5_7
+    g5_0 ≠ g5_7
+    g5_1 ≠ g5_6
+    g5_2 ≠ g5_5
+
+    -- ── graph 6 ───────────────────────────────────────────────
+    g6_0, g6_1, g6_2, g6_3, g6_4, g6_5, g6_6, g6_7 ∈ Color
+    g6_0 ≠ g6_1
+    g6_0 ≠ g6_2
+    g6_1 ≠ g6_3
+    g6_2 ≠ g6_4
+    g6_3 ≠ g6_5
+    g6_4 ≠ g6_6
+    g6_5 ≠ g6_7
+    g6_6 ≠ g6_7
+    g6_0 ≠ g6_4
+    g6_1 ≠ g6_5
+    g6_2 ≠ g6_6
+    g6_3 ≠ g6_7
+    g6_0 ≠ g6_7
+    g6_1 ≠ g6_6
+    g6_2 ≠ g6_5
+
+    effects = match state
+        Searching ⇒ ⟨Println("solved 6 independent graph 3-colorings")⟩
+        Done      ⇒ ⟨Exit(0)⟩
+
+claim sat_each_graph_is_3_colorable
+    -- Each graph (8 nodes, 15 edges) is small enough that a
+    -- 3-coloring exists. We verify graph 1; the others have the
+    -- same shape.
+    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7 ∈ Color
+    g1_0 ≠ g1_1
+    g1_0 ≠ g1_2
+    g1_1 ≠ g1_3
+    g1_2 ≠ g1_4
+    g1_3 ≠ g1_5
+    g1_4 ≠ g1_6
+    g1_5 ≠ g1_7
+    g1_6 ≠ g1_7
+    g1_0 ≠ g1_4
+    g1_1 ≠ g1_5
+    g1_2 ≠ g1_6
+    g1_3 ≠ g1_7
+    g1_0 ≠ g1_7
+    g1_1 ≠ g1_6
+    g1_2 ≠ g1_5
