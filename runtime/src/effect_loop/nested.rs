@@ -33,20 +33,34 @@
 //! synchronous-blocking and isolated: the nested run shares no world
 //! with the parent (it is a pure function of `init`, §2/§5).
 //!
-//! ### v1 restrictions
+//! ### Effects: captured, not dispatched (session RR)
 //!
-//!   * **Effect-free.** A nested run that dispatched effects wouldn't be
-//!     referentially transparent (§5). An `F` declaring `effects` is
-//!     rejected (here and at load).
+//! An `F` *may* declare and solve `effects`. During the nested run those
+//! effects are **captured, not dispatched** — `run_nested_capturing`
+//! accumulates each advancing tick's effects (in child-tick order) and
+//! **returns them to the parent** alongside the final state. The parent
+//! (the FSM whose body called `run(F, init)`) dispatches them once, in
+//! its own tick — see `runtime/nested.rs`'s percolation thread-local and
+//! the scheduler's drain point. This keeps `run(F, init)` a **pure
+//! function of `init`**: same `init` → same `(state, effects)`, with no
+//! side effects during the child run (§5). It replaces LL's v1
+//! reject-effectful-child restriction.
+//!
+//! ### Remaining v1 restrictions
+//!
+//!   * **No external natives.** An `external fsm` (a Rust-side bridge /
+//!     event source) has no solvable per-tick body to drive as a value;
+//!     it is rejected (here and at load).
 //!   * **Single state pair.** Multi-pair FSMs are a clean extension but
 //!     out of scope for v1.
 
 use std::collections::HashMap;
 
-use crate::core::ast::{BodyItem, SchemaDecl};
+use crate::core::ast::{BodyItem, Effect, SchemaDecl};
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;
 
+use super::collect::collect_dispatchable_effects;
 use super::state::encode_state_value;
 
 /// Why a `run(F, init)` couldn't be evaluated. Surfaced to the caller
@@ -63,8 +77,11 @@ pub enum RunError {
     MultipleStatePairs(String, usize),
     /// `F` has no `halt ∈ Bool` declaration.
     NoHaltVar(String),
-    /// `F` can emit effects — not permitted for a value-returning run.
-    EmitsEffects(String),
+    /// `F` is an `external fsm` — its body is implemented in Rust (a
+    /// bridge / event source), so there's nothing to drive as a value.
+    /// (Effect-*emitting* bodies are now permitted — their effects are
+    /// captured and percolated to the parent, session RR.)
+    ExternalNative(String),
     /// `init` couldn't be coerced to `F`'s state type.
     BadInit { fsm: String, type_name: String, got: String },
     /// A per-tick solve came back UNSAT — the FSM body has no model for
@@ -98,10 +115,11 @@ impl std::fmt::Display for RunError {
                 write!(f, "run({n}, ..): `run`'s first argument must name an \
                           FSM-shaped schema (state pair + `halt ∈ Bool`); `{n}` \
                           declares no `halt ∈ Bool`"),
-            RunError::EmitsEffects(n) =>
-                write!(f, "run({n}, ..): `run`'s target must be effect-free; `{n}` \
-                          emits effects — run it as a top-level or spawned FSM \
-                          instead"),
+            RunError::ExternalNative(n) =>
+                write!(f, "run({n}, ..): `run`'s target can't be an `external fsm` \
+                          (`{n}`) — its body is implemented in Rust, so there's no \
+                          per-tick body to drive as a value. Run it as a top-level \
+                          or spawned FSM instead"),
             RunError::BadInit { fsm, type_name, got } =>
                 write!(f, "run({fsm}, ..): can't seed state of type `{type_name}` \
                           from init value {got}"),
@@ -162,12 +180,17 @@ fn has_halt_bool(schema: &SchemaDecl) -> bool {
             if name == "halt" && type_name == "Bool"))
 }
 
-/// Does the body declare an effect channel (`effects ∈ Seq(Effect)`)?
-/// A value-returning run must be effect-free (§5).
-fn emits_effects(schema: &SchemaDecl) -> bool {
-    schema.external || schema.body.iter().any(|item| matches!(item,
+/// The name of the body's effect channel (`effects ∈ Seq(Effect)`), if
+/// any. Used as the `primary_var` for per-tick effect capture — only the
+/// elements of THIS Seq dispatch (the legacy ordered shape), mirroring
+/// the scheduler's `effects` slot. `None` for an effect-free body, in
+/// which case the run captures nothing.
+fn effects_var_name(schema: &SchemaDecl) -> Option<String> {
+    schema.body.iter().find_map(|item| match item {
         BodyItem::Membership { name, type_name, .. }
-            if name == "effects" || type_name == "Seq(Effect)"))
+            if name == "effects" || type_name == "Seq(Effect)" => Some(name.clone()),
+        _ => None,
+    })
 }
 
 /// Validate that `fsm_name` names an FSM the `run` machinery can drive:
@@ -183,8 +206,12 @@ pub fn validate_run_target(rt: &EvidentRuntime, fsm_name: &str) -> Result<(), Ru
 /// Shared shape check used by both `validate_run_target` and
 /// `run_nested`. Returns the single detected state pair on success.
 fn check_shape(schema: &SchemaDecl, fsm_name: &str) -> Result<StatePair, RunError> {
-    if emits_effects(schema) {
-        return Err(RunError::EmitsEffects(fsm_name.to_string()));
+    // An `external fsm` has no solvable per-tick body — reject. (A body
+    // that *declares* `effects` is now fine: its effects are captured and
+    // percolated to the parent, not dispatched during the run — see
+    // run_nested_capturing and the module doc.)
+    if schema.external {
+        return Err(RunError::ExternalNative(fsm_name.to_string()));
     }
     let mut pairs = detect_state_pairs(schema);
     match pairs.len() {
@@ -300,25 +327,58 @@ fn value_matches_field_type(v: &Value, field_type: &str) -> bool {
 
 /// Run `F` from `init` to halt, returning its final state `Value`.
 ///
-/// `max_steps` is the max-iteration guard: a `halt` that never fires
-/// fails loudly at the cap rather than hanging. Pass
-/// `LoopOpts::default().max_steps` (10 000) unless the caller has a
-/// reason to bound it tighter.
+/// Thin wrapper over [`run_nested_capturing`] that discards the captured
+/// effects — the value-only contract the oracle / equivalence harness
+/// uses (`runtime/tests/run_fsm.rs`, `tier1_jit.rs`,
+/// `composite_tree_walk.rs`).
 pub fn run_nested(
     rt: &EvidentRuntime,
     fsm_name: &str,
     init: Value,
     max_steps: usize,
 ) -> Result<Value, RunError> {
+    run_nested_capturing(rt, fsm_name, init, max_steps).map(|(state, _effects)| state)
+}
+
+/// Run `F` from `init` to halt, returning `(final_state, captured_effects)`.
+///
+/// The effects an effect-emitting `F` solves for are **captured, not
+/// dispatched** — accumulated across each *advancing* (non-halting) tick
+/// in child-tick order and handed back for the parent to dispatch (no
+/// side effects during the run). This is what keeps `run(F, init)` a pure
+/// function of `init` (§5): the run produces only data. An effect-free
+/// `F` returns an empty effect vec.
+///
+/// The halting tick's body still solves (the per-tick query is whole),
+/// but its effects are NOT captured — the run returns the *input* state
+/// at the first halting tick (the state before any halting-tick work), so
+/// the captured effects are exactly those emitted while advancing toward
+/// halt. This mirrors the state semantics: `count` returned is the input
+/// at the halting tick, not the post-decrement value.
+///
+/// `max_steps` is the max-iteration guard: a `halt` that never fires
+/// fails loudly at the cap rather than hanging. Pass
+/// `LoopOpts::default().max_steps` (10 000) unless the caller has a
+/// reason to bound it tighter.
+pub fn run_nested_capturing(
+    rt: &EvidentRuntime,
+    fsm_name: &str,
+    init: Value,
+    max_steps: usize,
+) -> Result<(Value, Vec<Effect>), RunError> {
     let schema = rt.get_schema(fsm_name)
         .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
     let pair = check_shape(schema, fsm_name)?;
     let StatePair { input, output, type_name } = pair;
     let primitive = is_primitive(&type_name);
+    // The body's effect channel, if any. `None` → effect-free F → the
+    // run captures nothing.
+    let effects_var = effects_var_name(schema);
 
     let trace = std::env::var("EVIDENT_NESTED_TRACE").is_ok();
 
     let mut current = coerce_init(rt, fsm_name, &type_name, &init)?;
+    let mut captured: Vec<Effect> = Vec::new();
     if trace {
         eprintln!("[run {fsm_name}] seed {input}={current:?} (type {type_name})");
     }
@@ -359,7 +419,22 @@ pub fn run_nested(
             eprintln!("[run {fsm_name}]  step {step}: {input}={current:?} halt={halt}");
         }
         if halt {
-            return Ok(current);
+            return Ok((current, captured));
+        }
+
+        // Advancing (non-halting) tick: capture this tick's effects in
+        // child-tick order. Captured, NOT dispatched — they percolate to
+        // the parent (session RR). Effect-free F has no `effects` var, so
+        // this is skipped. `Some(ev)` selects the legacy ordered-Seq
+        // shape (only `effects`'s elements, in their literal order).
+        if let Some(ev) = &effects_var {
+            let tick_effects =
+                collect_dispatchable_effects(rt, fsm_name, &r.bindings, Some(ev));
+            if trace && !tick_effects.is_empty() {
+                eprintln!("[run {fsm_name}]  step {step}: captured {} effect(s)",
+                    tick_effects.len());
+            }
+            captured.extend(tick_effects);
         }
 
         let next = r.bindings.get(&output).cloned().ok_or_else(|| {

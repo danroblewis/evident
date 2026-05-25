@@ -1,0 +1,71 @@
+-- 38_nested_effects — a CHILD fsm's effects percolate up to the PARENT.
+--
+-- Run:   evident effect-run examples/test_38_nested_effects.ev
+-- Test:  evident test examples/test_38_nested_effects.ev
+--
+-- Session RR turns the v1 "a run() target must be effect-free" rule into
+-- the real semantics: a child run MAY solve for effects, but during the
+-- run they are CAPTURED, not dispatched — they percolate to the parent,
+-- which dispatches them once, in child-tick order, in its own tick. The
+-- child stays a pure function of its init: same init → same final state
+-- AND same captured effects. The parent is the sole dispatch authority
+-- (it could even discard them if its own constraints rejected the run).
+--
+-- Here `countdown` emits one Println per advancing tick (three → two →
+-- one) and halts at 0. `run(countdown, 3)` drives it to 0 WITHOUT
+-- printing anything during the run; the three Printlns are handed back
+-- to `main`, which dispatches them (so they appear in order) and then
+-- prints its own summary line before exiting.
+
+import "stdlib/runtime.ev"
+
+-- ── The effect-emitting child under execution ────────────────────
+-- A pure state→state countdown that ALSO solves for an effect each tick.
+-- Declared a `claim` (not `fsm`) so the scheduler never instantiates it;
+-- `run` resolves it by name and drives it, capturing the effects. The
+-- msg lookup is complete (a sentinel row for any other count) so the
+-- per-tick solve always pins msg — no Z3 free-var noise.
+claim countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
+    count_next = count - 1
+    halt = (count ≤ 0)
+    msg ∈ String
+    (count = 3) ⇒ (msg = "  child: three")
+    (count = 2) ⇒ (msg = "  child: two")
+    (count = 1) ⇒ (msg = "  child: one")
+    (count ≠ 3 ∧ count ≠ 2 ∧ count ≠ 1) ⇒ (msg = "  child: tick")
+    effects = ⟨Println(msg)⟩
+
+-- ── Static verification: the run is a pure value, no dispatch ────
+-- run(countdown, 3) ticks 3 → 0 and evaluates to 0. The child's
+-- Printlns are CAPTURED during this solve, not dispatched (a static
+-- claim isn't a tick — nothing is emitted). The claim only asserts on
+-- the final state value — proving an effect-emitting child now RUNS as a
+-- value (no load-time rejection) yet stays side-effect-free here.
+claim sat_countdown_halts
+    final ∈ Int = run(countdown, 3)
+    final = 0
+
+-- An init that already satisfies halt returns immediately, with zero
+-- advancing ticks (so nothing would percolate).
+claim sat_countdown_already_halted
+    final ∈ Int = run(countdown, 0)
+    final = 0
+
+-- The run result slots into ordinary outer constraints like any value.
+claim sat_countdown_feeds_outer
+    final ∈ Int = run(countdown, 3)
+    doubled ∈ Int = final + 42
+    doubled = 42
+
+-- ── Runnable form: the child's effects percolate to the parent ───
+-- `main` computes run(countdown, 3) on its first tick. The three child
+-- Printlns are captured and percolate up; `main` dispatches them (in
+-- order) alongside its own summary + Exit. Nothing is printed DURING the
+-- nested run — only the parent's dispatch emits them, exactly once each.
+fsm main
+    result ∈ Int = run(countdown, 3)
+    reached_zero ∈ Bool = (result ≤ 0)
+
+    effects = (reached_zero
+        ? ⟨Println("parent: child run halted at 0"), Exit(0)⟩
+        : ⟨Println("BUG: child run did not reach zero"), Exit(1)⟩)

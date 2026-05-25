@@ -498,27 +498,52 @@ the same `init` would poison that cache and break replay.
   `FrameTimer` / stdin source is *not* a pure function of `init` and must
   not be `run` as a value (it is a top-level / spawned FSM instead).
 
-### Interaction with effects
+### Interaction with effects — capture, not dispatch (LANDED, session RR)
 
 If the nested FSM *emits effects* (`Println`, `LibCall`, …), is
-`run(F, init)` still a pure function? **No** — effects are observable; a
-run that printed once per call is not referentially transparent, and the
-value cache would suppress the second print. Therefore:
+`run(F, init)` still a pure function? **Yes — as long as the run does not
+*dispatch* them.** A run that *printed* once per call would not be
+referentially transparent (the value cache would suppress the second
+print). But a run that **captures the effects as data and returns them**
+is pure: it produces only a `(final_state, effect_list)` value. That is
+the model now implemented:
 
-> **v1 restriction: `run(F, init)` is permitted only for effect-free
-> FSMs.** `F` must declare no `effects` membership, or its `effects` must
-> be provably always `⟨⟩`. Checked at load — an `F` that can emit a
-> non-empty effect list is rejected ("`run`'s target must be
-> effect-free; `F` emits effects — run it as a top-level or spawned FSM
-> instead").
+> **Effects percolate to the parent.** `F` may declare and solve
+> `effects`. During the nested run those effects are **captured, not
+> dispatched** — accumulated across each *advancing* tick in child-tick
+> order and handed back to the parent. The parent (the FSM whose body
+> called `run(F, init)`) dispatches them **once, in its own tick**, in
+> child-tick order. The parent is the sole dispatch authority — it can
+> even discard them if its own constraints reject the solution. No effect
+> fires during the child run.
 
-This is not a permanent limit, just the honest v1 line. A future
-**effect-collecting** nested run could return *both* the final state and
-the *accumulated effect Seq* as a value (effects-as-data: the nested run
-**does not dispatch**, it hands the effect list back for the parent to
-dispatch in its own tick). That preserves purity — the nested run
-produces only data — and is a clean extension, but it widens `run`'s
-return type and is out of scope here. Noted in § 8.
+This replaces LL's v1 reject-effectful-child restriction. It preserves
+purity (same `init` → same `(state, effects)`) and keeps the child a
+closed computation over `init`.
+
+**Realization.** `effect_loop/nested.rs::run_nested_capturing(rt, F,
+init, max_steps) -> (Value, Vec<Effect>)` drives `F` to halt, capturing
+each advancing tick's effects via the scheduler's
+`collect_dispatchable_effects` (the same ordered-`effects`-slot decode the
+top-level path uses). The halting tick's body still solves, but its
+effects are NOT captured — the run returns the *input* state at the first
+halting tick, so the captured effects are exactly those emitted while
+advancing toward halt. `runtime/nested.rs::eval_run` appends the captured
+effects to a thread-local accumulator (`PERCOLATED_EFFECTS`); the
+multi-FSM scheduler drains it right after solving the parent FSM and
+dispatches the drained effects, child-first, as part of the parent's
+batch (single dispatch, no double-dispatch). `run_nested` (value-only) is
+a thin wrapper that discards the effects, for the equivalence oracle.
+
+**Remaining honest line.** Only the per-tick *ordered `effects` slot* is
+captured (mode 1 of `collect_dispatchable_effects`); the no-slot
+"dispatch every Effect-typed binding" mode is not used inside a run.
+Multi-level nesting (a `run` inside a `run`) percolates grandchild
+effects through, but the cross-level ordering guarantee is only as strong
+as the single-level one — deep-nesting ordering is the § 8 open question.
+The value-side still returns only the final state as the literal pinned
+into the outer model; the effects ride the percolation channel, not the
+`run(...)` expression's value.
 
 ### Execute vs verify
 
@@ -650,9 +675,11 @@ can be validated against it.
   clearly — those tiers land later.
 - **v1 restrictions enforced at load** (`runtime/nested.rs::
   validate_run_targets` + `effect_loop::validate_run_target`): a non-FSM
-  -shaped `F` (no state pair / no `halt ∈ Bool`) or an **effect-emitting**
-  `F` (§ 5) is rejected at load with a clear message; a non-halting `F`
-  hits the max-iteration guard at run time.
+  -shaped `F` (no state pair / no `halt ∈ Bool`) or an **`external fsm`**
+  (a Rust-side bridge with no solvable body) is rejected at load with a
+  clear message; a non-halting `F` hits the max-iteration guard at run
+  time. (Effect-*emitting* bodies are no longer rejected — their effects
+  are captured and percolated to the parent, § 5, session RR.)
 
 **Proof + tests.**
 - `examples/test_35_run_fsm.ev` — the counter (`run(decrement, 50)` → 0)
@@ -786,11 +813,17 @@ Honest unknowns, roughly in order of how much they bite:
   tier 3; the open question is whether the per-body strategy choice is
   enough, or whether a hot-`run` site needs its own caching policy.
 
-- **Effects in nested FSMs.** v1 forbids them (§ 5). The effect-collecting
-  extension (return the accumulated effect Seq as data, parent dispatches)
-  is the natural next step but widens `run`'s return type from "final
-  state" to "(final state, effects)" and needs a decoding story for the
-  effect list as a value.
+- **Effects in nested FSMs — LANDED (session RR).** Effects are captured
+  during the run and percolated to the parent, which dispatches them once
+  (§ 5). `run_nested_capturing` returns `(final_state, Vec<Effect>)`; the
+  effects ride a thread-local percolation channel drained by the
+  scheduler, so the `run(...)` *expression's* value is still just the
+  final state (no return-type widening at the surface). Open edges:
+  multi-level-nesting ordering (grandchild effects percolate, but the
+  cross-level order guarantee is single-level-strong), and whether a
+  static (non-scheduler) caller should ever observe the captured effects
+  — today they're dropped, which is correct for a claim but means a
+  `run` in a non-FSM context silently discards effects.
 
 - **Nested-FSM recursion depth.** An `F` whose body itself contains
   `run(G, …)`, whose `G` contains `run(H, …)`. The sub-scheduler is

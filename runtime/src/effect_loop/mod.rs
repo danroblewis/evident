@@ -37,7 +37,7 @@ mod toposort;
 // `lib.rs` does `pub mod effect_loop;` and downstream crates
 // (commands/, tests/) name these symbols directly.
 pub use fsm::{MainShape, all_fsms, detect_main_shape, resolve_fsm};
-pub use nested::{run_nested, validate_run_target, RunError};
+pub use nested::{run_nested, run_nested_capturing, validate_run_target, RunError};
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]

@@ -36,12 +36,48 @@
 //! (`blocking`) exists this session; `auto` resolves to it. Forcing
 //! `loop`/`unroll` errors clearly — those tiers land in later sessions.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, Pins, SchemaDecl};
+use crate::core::ast::{BinOp, BodyItem, Effect, Expr, Mapping, Pins, SchemaDecl};
 use crate::core::{RuntimeError, Value};
 
 use super::EvidentRuntime;
+
+thread_local! {
+    /// Effects captured during nested `run(F, init)` resolution that
+    /// have NOT been dispatched (the child is a pure function — its
+    /// effects percolate to the parent; session RR). `eval_run` appends
+    /// to this as it drives each `run` in a body; the multi-FSM scheduler
+    /// drains it right after solving the FSM whose body called `run`, and
+    /// dispatches the drained effects as part of THAT (the parent's)
+    /// tick — single dispatch, in child-tick order, by the parent.
+    ///
+    /// A thread-local rather than a runtime field: the nested run is
+    /// synchronous-blocking on the same thread as the parent's solve, so
+    /// the accumulator's lifetime is exactly "between the parent's
+    /// `resolve_runs` and the scheduler's drain." Non-scheduler query
+    /// paths (static `sat_*`/`unsat_*` claims) also append here, but
+    /// nobody drains — those captured effects are simply dropped, which
+    /// is correct: a claim isn't an FSM tick and dispatches nothing.
+    static PERCOLATED_EFFECTS: RefCell<Vec<Effect>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Take (drain) the effects captured by nested `run(...)` resolution
+/// since the last drain, leaving the accumulator empty. Called by the
+/// multi-FSM scheduler after each FSM's per-tick solve so the drained
+/// effects are dispatched as part of that FSM's batch. Returns an empty
+/// vec when the FSM's body had no effect-emitting `run`.
+pub fn take_percolated_effects() -> Vec<Effect> {
+    PERCOLATED_EFFECTS.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
+/// Append child-run-captured effects to the percolation accumulator, in
+/// resolution (body-traversal) order.
+fn append_percolated_effects(effects: Vec<Effect>) {
+    if effects.is_empty() { return; }
+    PERCOLATED_EFFECTS.with(|c| c.borrow_mut().extend(effects));
+}
 
 /// Default max-iteration guard for a nested run. Matches the scheduler's
 /// `LoopOpts` default; override with `EVIDENT_NESTED_MAX_STEPS`.
@@ -231,8 +267,19 @@ impl EvidentRuntime {
             _ => {} // blocking | auto | unset → tier 3
         }
         let init_val = self.eval_const_init(fsm, init, given)?;
-        crate::effect_loop::run_nested(self, fsm, init_val, nested_max_steps())
-            .map_err(|e| RuntimeError::Parse(e.to_string()))
+        // Drive F to halt, CAPTURING (not dispatching) any effects it
+        // solves for. The final state is rewritten into the outer model
+        // as a literal (the run's value); the captured effects percolate
+        // to the parent via the thread-local accumulator, dispatched once
+        // by the parent's tick (session RR). Append AFTER the run returns:
+        // F's own per-tick solves re-enter the query path, but F has no
+        // `run` so they don't touch the accumulator — only this top-level
+        // append lands F's captured effects in body-traversal order.
+        let (value, effects) =
+            crate::effect_loop::run_nested_capturing(self, fsm, init_val, nested_max_steps())
+                .map_err(|e| RuntimeError::Parse(e.to_string()))?;
+        append_percolated_effects(effects);
+        Ok(value)
     }
 
     /// Evaluate a `run`'s `init` expression to a concrete `Value` using
