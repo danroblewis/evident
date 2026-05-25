@@ -17,6 +17,10 @@
 > baseline.
 >
 > Companion reading:
+> [`fsms-as-functions.md`](fsms-as-functions.md) (the **capstone** — this
+> doc's execute-side strategy selector is one realization of `result =
+> F(init)`; the capstone places all three tiers on the
+> condensability→guarantee spectrum),
 > [`loop-functionizer.md`](loop-functionizer.md) (tier 2 — the native
 > run-to-halt loop; this selector's middle tier),
 > [`fsm-halts-within.md`](fsm-halts-within.md) (tier 1's verification

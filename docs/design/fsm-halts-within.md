@@ -29,7 +29,11 @@ this initial state; what is its final state?" — is
 [`nested-fsm-strategies.md`](nested-fsm-strategies.md), whose tier-1
 strategy reuses this doc's exponentiation-by-squaring composer
 (`fsm_unroll/compose.rs`) to extract the composed final-state *value*
-rather than the halt witness.
+rather than the halt witness. Both are faces of one idea — `result =
+F(init)` — unified in [`fsms-as-functions.md`](fsms-as-functions.md) (the
+capstone): `halts_within` is its **verify** face (the step-relation
+composed symbolically), `run` its **execute** face (the
+run-to-completion function).
 
 ## The halt convention
 
