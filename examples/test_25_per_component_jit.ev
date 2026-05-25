@@ -1,28 +1,32 @@
 -- 25_per_component_jit — a focused showcase of the per-component JIT.
 --
 -- ─────────────────────────────────────────────────────────────────
--- BENCHMARK (Apple M4, scripts/bench-demo.sh, medians)
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, medians)
 -- ─────────────────────────────────────────────────────────────────
---   Mode            | wall   | tick0  | steady/tick
---   ----------------+--------+--------+------------
---   JIT default     | 3.15ms | 1.14ms |  0.39 ms
---   FUNCTIONIZE=0   | 2.38ms | 0.44ms |  0.36 ms
+--   Mode          | wall   | tick0  | wall_post | steady/tick
+--   --------------+--------+--------+-----------+------------
+--   JIT default   | 3.09ms | 1.13ms |  1.96ms   |  0.39 ms
+--   FUNCTIONIZE=0 | 2.31ms | 0.44ms |  1.88ms   |  0.37 ms
 --
--- Steady-state per-tick cost is basically TIED (0.39 vs 0.36 ms,
--- ~8% delta = within noise on a 5-tick workload). The wall-time
--- "JIT loses by 32%" appearance is entirely the tick-0 compile
--- cost (1.14 ms vs 0.44 ms) spread over only 5 ticks. The
--- decomposition + Cranelift codegen runs once; subsequent calls
--- pay only the fixed input-pack / native-call / output-unpack
--- boilerplate, which here equals what Z3's simplify costs on this
--- trivial body.
+-- `wall_post` is wall total minus the warmup tick's solve cost
+-- ("if we started recording at tick 1, total cost ≈ X"). Steady
+-- per-tick is the median of ticks 1..N.
 --
--- The win shows up on workloads where (a) the body is heavier so
--- Z3's per-tick cost climbs while the JIT stays flat, or (b) the
--- run is long enough to amortize the compile. Mario hits both —
--- per-component JIT delivered ~35% end-to-end FPS gain there
--- (commit 18f64af). This demo's purpose is the capability
--- (`comp=3/6` partial compile), not a microbench win.
+-- Both views agree: JIT and Z3 are basically TIED on this trivial
+-- body — 4% delta in wall_post (1.96 vs 1.88), 5% delta in steady
+-- per-tick (0.39 vs 0.37). The big-looking 30% raw-wall gap was
+-- entirely the tick-0 compile cost (1.13 vs 0.44 ms) spread over
+-- only 5 ticks.
+--
+-- The JIT's per-call boilerplate (pack inputs → native call →
+-- unpack outputs) costs about what Z3's simplify costs on a body
+-- this small, so they break even. The JIT win shows up on workloads
+-- where (a) the body is heavier so Z3's per-tick cost climbs while
+-- the JIT stays flat, or (b) the run is long enough to amortize
+-- the compile. Mario hits both — per-component JIT delivered ~35%
+-- end-to-end FPS gain there (commit 18f64af). This demo's purpose
+-- is the capability (`comp=3/6` partial compile), not a microbench
+-- win.
 --
 -- ─────────────────────────────────────────────────────────────────
 -- WHAT TO LOOK AT

@@ -1,33 +1,40 @@
 #!/usr/bin/env bash
-# bench-demo — measure a demo's wall time + steady-state per-tick cost.
+# bench-demo — measure a demo's wall + steady-state per-tick cost.
 #
 # Usage:
-#   scripts/bench-demo.sh <demo-path> [-n RUNS] [-w WARMUP_TICKS] [env=val...]
+#   scripts/bench-demo.sh <demo-path> [-n RUNS] [-s START_TICK] [env=val...]
+#
+# `-s N` means "start recording at tick N" — ticks 0..N-1 are treated as
+# warmup. Default: N=1 (skip tick 0, which carries one-shot setup +
+# JIT compile cost).
 #
 # Each run is invoked with `EVIDENT_TICK_MS=1 --timing` and the per-tick
 # solve lines are parsed. Reports:
-#   * wall_total      — total wall time (includes tick 0 compile cost)
-#   * tick0           — cost of the first tick (one-shot setup + first call)
-#   * steady_median   — median per-tick cost after dropping the first
-#                       WARMUP_TICKS (default 1)
-#   * num_ticks       — total ticks observed
+#   * wall           — full wall-clock as reported by --timing
+#   * tick0          — solve time of the very first tick (one-shot setup)
+#   * wall_post      — wall minus the warmup ticks' solve time:
+#                      "if we'd started at tick N, total cost would be ~X"
+#   * steady_median  — median per-tick solve cost from tick N onwards
+#   * num_ticks      — total ticks observed
 #
 # Examples:
 #   scripts/bench-demo.sh examples/test_25_per_component_jit.ev
 #   scripts/bench-demo.sh examples/test_26_value_cache.ev -n 5 EVIDENT_VALUE_CACHE=0
+#   scripts/bench-demo.sh examples/test_21_mario/main.ev -s 30
+#       # exclude first 30 ticks (Mario's setup) from steady-state numbers
 
 EVIDENT=${EVIDENT:-./runtime/target/release/evident}
 RUNS=3
-WARMUP=1
+START=1
 
 # ── parse args ────────────────────────────────────────────────
 DEMO=""
 EXTRA_ENV=""   # space-separated KEY=VAL list
 while [ $# -gt 0 ]; do
     case "$1" in
-        -n) RUNS=$2; shift 2 ;;
-        -w) WARMUP=$2; shift 2 ;;
-        *=*) EXTRA_ENV="$EXTRA_ENV $1"; shift ;;
+        -n)         RUNS=$2; shift 2 ;;
+        -s|-w)      START=$2; shift 2 ;;
+        *=*)        EXTRA_ENV="$EXTRA_ENV $1"; shift ;;
         *)
             if [ -z "$DEMO" ]; then DEMO=$1; shift
             else echo "unexpected arg: $1" >&2; exit 2
@@ -42,7 +49,7 @@ if [ -z "$DEMO" ] || [ ! -f "$DEMO" ]; then
 fi
 
 # ── one bench run ─────────────────────────────────────────────
-# Echoes one line: <wall_ms>|<tick0_ms>|<median_ms>|<num_ticks>
+# Echoes one line: <wall_ms>|<tick0_ms>|<wall_post_ms>|<median_ms>|<num_ticks>
 one_run() {
     local out tmp
     tmp=$(mktemp)
@@ -68,9 +75,17 @@ one_run() {
     tick0=$(head -1 "$ticks_file")
     [ -z "$tick0" ] && tick0="0"
 
-    # Drop first WARMUP, sort numerically, pick middle.
+    # Sum of the warmup ticks' solve cost — what `wall_post` subtracts.
+    local warmup_solve_sum
+    warmup_solve_sum=$(head -$START "$ticks_file" | awk '{s+=$1} END{printf "%.2f", s+0}')
+
+    # wall_post = wall - warmup_solve_sum  ("if we'd started at tick N").
+    local wall_post
+    wall_post=$(awk -v w="${wall:-0}" -v s="$warmup_solve_sum" 'BEGIN{printf "%.2f", w - s}')
+
+    # Drop first START ticks, sort numerically, pick middle.
     local median
-    median=$(tail -n +$((WARMUP + 1)) "$ticks_file" | sort -n)
+    median=$(tail -n +$((START + 1)) "$ticks_file" | sort -n)
     if [ -z "$median" ]; then
         median="-"
     else
@@ -81,27 +96,31 @@ one_run() {
     fi
 
     rm -f "$tmp" "$ticks_file"
-    echo "${wall:-0}|${tick0}|${median}|${n}"
+    echo "${wall:-0}|${tick0}|${wall_post}|${median}|${n}"
 }
 
 # ── run RUNS times, aggregate ─────────────────────────────────
 echo "demo:    $DEMO"
-echo "runs:    $RUNS   (warmup ticks skipped: $WARMUP)"
+echo "runs:    $RUNS   (start recording from tick: $START)"
 [ -n "$EXTRA_ENV" ] && echo "env:    $EXTRA_ENV"
 echo ""
-printf "%-6s %12s %12s %16s %6s\n" "run" "wall(ms)" "tick0(ms)" "steady-median" "ticks"
+printf "%-5s %10s %10s %12s %14s %6s\n" \
+    "run" "wall(ms)" "tick0(ms)" "wall_post" "steady-median" "ticks"
 
-wall_file=$(mktemp); tick0_file=$(mktemp); med_file=$(mktemp)
+wall_file=$(mktemp); tick0_file=$(mktemp); post_file=$(mktemp); med_file=$(mktemp)
 for i in $(seq 1 $RUNS); do
     line=$(one_run)
-    wall=$(echo "$line" | cut -d'|' -f1)
+    wall=$(echo  "$line" | cut -d'|' -f1)
     tick0=$(echo "$line" | cut -d'|' -f2)
-    med=$(echo "$line" | cut -d'|' -f3)
-    nt=$(echo "$line" | cut -d'|' -f4)
+    post=$(echo  "$line" | cut -d'|' -f3)
+    med=$(echo   "$line" | cut -d'|' -f4)
+    nt=$(echo    "$line" | cut -d'|' -f5)
 
-    printf "%-6d %12s %12s %16s %6s\n" "$i" "$wall" "$tick0" "$med" "$nt"
+    printf "%-5d %10s %10s %12s %14s %6s\n" \
+        "$i" "$wall" "$tick0" "$post" "$med" "$nt"
     echo "$wall"  >> "$wall_file"
     echo "$tick0" >> "$tick0_file"
+    echo "$post"  >> "$post_file"
     [ "$med" != "-" ] && echo "$med" >> "$med_file"
 done
 
@@ -115,8 +134,9 @@ pick_median() {
     sort -n "$f" | sed -n "${mid}p"
 }
 echo ""
-printf "medians: wall=%sms  tick0=%sms  steady=%sms/tick\n" \
+printf "medians: wall=%sms  tick0=%sms  wall_post=%sms  steady=%sms/tick\n" \
     "$(pick_median "$wall_file")" \
     "$(pick_median "$tick0_file")" \
+    "$(pick_median "$post_file")" \
     "$(pick_median "$med_file")"
-rm -f "$wall_file" "$tick0_file" "$med_file"
+rm -f "$wall_file" "$tick0_file" "$post_file" "$med_file"

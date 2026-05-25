@@ -19,17 +19,18 @@
 -- nonlinear Z3 solve (three coupled integer square roots), so a cache
 -- hit skips real work.
 --
--- BENCHMARK (Apple M4, scripts/bench-demo.sh, medians over the demo's
--- 98 ticks; "steady" excludes tick 0):
---   Mode               | wall     | tick0  | steady/tick
---   -------------------+----------+--------+------------
---   Cache default      |  34.15ms | 0.90ms |  0.18 ms
---   EVIDENT_VALUE_CACHE=0|240.34ms | 0.90ms |  3.64 ms
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, medians over the
+-- demo's 98 ticks; `wall_post` excludes tick 0's solve, `steady` is
+-- the median per-tick from tick 1 onwards):
+--   Mode                  | wall     | tick0  | wall_post | steady/tick
+--   ----------------------+----------+--------+-----------+------------
+--   Cache default         |  34.27ms | 0.92ms |  33.35ms  |  0.18 ms
+--   EVIDENT_VALUE_CACHE=0 | 242.25ms | 0.94ms | 241.31ms  |  3.63 ms
 --
--- → 20× faster per tick steady-state, 7× faster wall.
+-- → 7.2× faster wall_post, 20× faster per-tick steady-state.
 --
--- tick 0 is identical (~0.9 ms) — the very first tick has to solve
--- regardless. After that the cache returns prior bindings whenever
+-- tick 0 is identical (~0.93 ms) — the very first tick has to solve
+-- either way. After that the cache returns prior bindings whenever
 -- the signal hasn't changed. Per the stats output:
 --   expensive  vh=45  an=1  h=3   → 45 of 49 ticks (92%) are cache hits
 -- (Z3's nlsat timing varies several percent run-to-run; the steady
