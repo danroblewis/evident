@@ -1366,6 +1366,76 @@ impl EvidentRuntime {
         wenums
     }
 
+    /// Tier-1 nested-run accelerator: JIT the symbolic-unroll
+    /// **collapsed** closed form for `run(fsm, init)` and call it.
+    ///
+    /// This is the JIT-wiring half of tier 1 — the affine unroll +
+    /// affine-step detector already landed in `fsm_unroll/`; here we
+    /// read its collapsed halted-state program out
+    /// (`fsm_unroll::collapse_run`) and hand it to the **existing
+    /// Cranelift functionizer** (`self.functionizer.compile`) instead
+    /// of only asserting it as a verification constraint. The result
+    /// is the same value tier 3 (`effect_loop::run_nested`, the oracle)
+    /// computes — see `docs/design/nested-fsm-strategies.md` §4 / §7.
+    ///
+    /// Returns `Ok(Some(final_state))` only when the affine detector
+    /// **accepts** `fsm` AND the functionizer compiles the collapsed
+    /// program; `Ok(None)` on any refusal — a branching body (detector
+    /// refuses), a non-Int / multi-pair state, an `init` that doesn't
+    /// provably halt within the unroll cap, or a functionizer codegen
+    /// refusal. A refusal is a clean fall-through to tier 2/3, never a
+    /// wrong value or a hang.
+    ///
+    /// The selector that routes `run(F, init)` through this on
+    /// `EVIDENT_NESTED_STRATEGY=unroll`/`auto` lives on the nested-FSM
+    /// side (`runtime/nested.rs`'s `eval_run`); this method is the
+    /// functionize-path entry it calls into. It is independently
+    /// validated against the tier-3 oracle in `runtime/tests/tier1_jit.rs`.
+    pub fn tier1_run(&self, fsm: &str, init: &Value)
+        -> Result<Option<Value>, RuntimeError>
+    {
+        // v1: Int state only — the affine-counter class the detector
+        // accepts. Enum/record state is tiers 2/3 → fall through.
+        let Value::Int(init_i) = init else { return Ok(None) };
+        let max_unroll = std::env::var("EVIDENT_TIER1_MAX_UNROLL").ok()
+            .and_then(|s| s.parse::<u64>().ok());
+        let tier1 = crate::fsm_unroll::collapse_run(
+            fsm, *init_i, self.z3_ctx, &self.schemas, &self.datatypes,
+            Some(&self.enums), max_unroll)
+            .map_err(|e| RuntimeError::Parse(e.to_string()))?;
+        // Detector / cap refused (branching, non-affine, non-halting):
+        // fall through cleanly.
+        let Some(t1) = tier1 else { return Ok(None) };
+
+        let trace = std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
+            || std::env::var("EVIDENT_FSM_UNROLL_TRACE").is_ok();
+
+        // Hand the collapsed program to the existing Cranelift
+        // functionizer. A codegen refusal is the second safety net the
+        // SESSION asks for — fall through, don't error.
+        let Some(compiled) =
+            self.functionizer.compile(&t1.program, &self.enums, &self.datatypes)
+        else {
+            if trace {
+                eprintln!("[tier1] {fsm}: functionizer refused the collapsed \
+                           program — falling through to tier 3");
+            }
+            return Ok(None);
+        };
+        if trace {
+            eprintln!("[tier1] {fsm}: comp=1/1 fn✓ — collapsed F^{} program \
+                       ({} nodes) JIT'd via {}",
+                       t1.k, t1.nodes, self.functionizer.name());
+        }
+
+        let mut given: HashMap<String, Value> = HashMap::new();
+        given.insert(t1.input_name.clone(), Value::Int(*init_i));
+        // A `call` → None is a runtime guard bail (no branch matched);
+        // treat it as a fall-through too.
+        let Some(bindings) = compiled.call(&given) else { return Ok(None) };
+        Ok(bindings.get(&t1.output_name).cloned())
+    }
+
     /// Evaluate the named schema and return whether it's satisfiable
     /// plus a model. `given` pre-binds variables to concrete values
     /// (mirrors the Python `query(schema, given=...)` parameter).
