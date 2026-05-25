@@ -1,4 +1,5 @@
--- stdlib/passes/validate.ev — self-hosted external-only check.
+-- stdlib/passes/validate.ev — self-hosted external-only check,
+-- as a WHOLE-WALK stack-FSM over the SHARED AST↔Value marshaler.
 --
 -- The Evident-side twin of runtime/src/runtime/validate.rs's
 -- `enforce_external_only`: the load-time rule that rejects
@@ -8,44 +9,216 @@
 -- in `packages/` and `stdlib/posix.ev`; the runtime refuses to
 -- compile a non-`external` claim that does so itself.
 --
--- This pass owns the decision logic — what counts as a banned
--- call name. The Rust shim in runtime/src/portable/validate.rs
--- owns the walk: it iterates a schema's body items, recurses into
--- each Constraint's Expr tree, and queries `ValidateExpr` with the
--- call name at every Call node. Per-Call classification lives in
--- Evident; structural recursion stays in Rust because the language
--- can't recurse over nested Expr trees yet (see
--- `docs/self-hosting.md`). The shim's walk mirrors `find_ffi_call`
--- in `runtime/src/runtime/validate.rs` exactly, so both impls emit
--- byte-identical diagnostics.
+-- ── What changed (VALIDATE-recursive) vs the leaf-only stub ──
+-- The earlier `validate.ev` did only the LEAF decision — classify ONE
+-- already-extracted call name. The recursive `Expr`-tree WALK
+-- (`find_ffi_call`) stayed in Rust on both impls, so the port never
+-- shrank the runtime (VV's break-even). This file folds the WHOLE walk
+-- into Evident as an FSM-with-stack (the `subscriptions_walk` recipe):
+-- the Rust shim now only marshals each `Constraint`'s `Expr` via the
+-- ONE SHARED marshaler (`translate/encode_ast.rs`'s `expr_to_value`)
+-- and drives this FSM to a drained-stack halt. No Rust `find_ffi_call`.
 --
--- ── Why `nm ∈ String` and not `e ∈ Expr` ──────────────────────
--- The natural shape — match the whole Expr, destructure ECall, pin
--- and compare its name field — runs into a runtime gap: a String
--- payload extracted from a given-pinned enum value doesn't preserve
--- byte equality with a source-literal string. `match e { ECall(nm,
--- _) ⇒ (nm = "FFICall" ? ...) }` evaluates the comparison to false
--- on both JIT and slow paths even when the bytes match. Pinning
--- `nm` directly side-steps the gap: the runtime threads the
--- given-bound String to the comparison without going through the
--- enum-extractor. The pattern is still genuinely self-hosted (the
--- "banned ⇔ name ∈ {...}" decision lives here), and the shim's
--- Rust walker decides WHEN to ask. See
--- `examples/COUNTEREXAMPLES.md` for the gap entry.
+-- ── Walk vs decision (the no-in-solve-string-compare split) ──
+-- The FSM owns the TRAVERSAL: pop a node, dispatch on its shape, push
+-- its sub-`Expr` children, and fold every `ECall`'s NAME into an
+-- accumulator. This visits exactly the `Expr` nodes the canonical
+-- `find_ffi_call` recursion descends into, in the same pre-order
+-- (node before children, children left-to-right), so the collected
+-- call-name list, read back in pre-order, has the banned names in the
+-- exact order `find_ffi_call` would have returned them.
+--
+-- It does NOT decide which names are banned: that is a 4-element
+-- string-set membership, and doing the equality `nm = "FFICall"`
+-- INSIDE the per-tick Z3 solve is catastrophic — on a walk state whose
+-- stack carries unrelated string literals (e.g. a `msg = (… ? "a" :
+-- "b" : …)` ternary), Z3's string theory blows up (minutes + GBs;
+-- measured on `test_26_value_cache.ev::driver`). This is the in-solve
+-- cousin of gap #18: extracting/carrying a string is fine, *comparing*
+-- a state-carried string to a literal during the solve is not. So the
+-- FSM emits the RAW call-name strings and the Rust shim does the tiny
+-- banned-set check outside the solve — exactly the split
+-- `subscriptions` uses for its `world.`/`world_next.` prefix decision.
 --
 -- ── Faithful subset ───────────────────────────────────────────
--- Byte-identical to `enforce_external_only` for every input shape.
--- The Rust shim drives the recursion, so every expression tree the
--- canonical walker visits, this pass classifies. The pass is total
--- (banned names map to themselves, everything else to "").
+-- The shim seeds only `Constraint` body items (subclaim bodies get
+-- their own load-pass check) and reports the first banned call name in
+-- pre-order — byte-identical to `find_ffi_call`. `ETuple` / `ERunFsm`
+-- are NOT descended into (the canonical walk's `_ => None` arm), so the
+-- two agree even on those shapes.
 
-import "stdlib/ast.ev"
+-- ── The canonical AST, cons-list mirror shape ─────────────────────────
+-- These enums match the shared marshaler's `expr_to_value` output
+-- EXACTLY (enum + variant names, field order) for the `Expr` subtree.
+-- List fields are explicit Cons enums (not Seq) so the stack-FSM can
+-- pop a head and recurse on the tail. Self-contained: the shim drives
+-- this in a runtime that loads ONLY this pass, so there is no clash
+-- with stdlib/ast.ev's Seq-shaped twin. Only the `Expr`-reachable
+-- enums are declared (the walk is seeded with a `Constraint`'s Expr,
+-- so it never reaches BodyItem / Pins / SchemaDecl).
 
--- Classify a call name. Returns `nm` itself when it's one of the
--- four banned FFI-construction primitives; empty string otherwise.
--- The shim treats a non-empty return as a found-violation signal
--- and uses the returned name in the diagnostic.
-claim ValidateExpr
-    nm ∈ String
-    out ∈ String
-    out = ((nm = "FFICall" ∨ nm = "FFIOpen" ∨ nm = "FFILookup" ∨ nm = "LibCall") ? nm : "")
+enum BinOp =
+    OpEq | OpNeq | OpLt | OpLe | OpGt | OpGe | OpAnd | OpOr | OpImplies
+    OpAdd | OpSub | OpMul | OpDiv | OpConcat
+
+enum StringList = SLNil | SLCons(String, StringList)
+
+enum MatchBind = BindName(String) | BindWildcard
+enum BindList = BLNil | BLCons(MatchBind, BindList)
+enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchArm = MakeMatchArm(MatchPattern, Expr)
+enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
+
+enum Expr =
+    EIdentifier(String)
+    EInt(Int)
+    EReal(Real)
+    EBool(Bool)
+    EStr(String)
+    ESetLit(ExprList)
+    ESeqLit(ExprList)
+    ETuple(ExprList)
+    ERange(Expr, Expr)
+    EInExpr(Expr, Expr)
+    EForall(StringList, Expr, Expr)
+    EExists(StringList, Expr, Expr)
+    ECall(String, ExprList)
+    ECardinality(Expr)
+    EIndex(Expr, Expr)
+    EField(Expr, String)
+    EBinary(BinOp, Expr, Expr)
+    ENot(Expr)
+    ETernary(Expr, Expr, Expr)
+    EMatch(Expr, MatchArmList)
+    EMatches(Expr, MatchPattern)
+    ERunFsm(String, Expr)
+
+enum ExprList = ELNil | ELCons(Expr, ExprList)
+
+-- ── Walk state ────────────────────────────────────────────────────────
+
+-- Collected `ECall` names, head-first (the shim reverses to pre-order
+-- and finds the first banned one). Strings are only CARRIED here, never
+-- compared in-solve — that is what keeps the per-tick solve cheap.
+enum NameList = NameNil | NameCons(String, NameList)
+
+-- A unified walk node: wraps any node type the Expr walk touches so a
+-- single typed `match` can carry a heterogeneous agenda. Only the
+-- Expr-walk node types are needed (no body items / pins): the shim
+-- seeds `WExpr` for each Constraint expression.
+enum Work =
+    WExpr(Expr)
+    WExprList(ExprList)
+    WArm(MatchArm)
+    WArmList(MatchArmList)
+
+-- The work stack: pop the top, push children. test_37 stack-FSM shape.
+enum WorkStack = WSNil | WSCons(Work, WorkStack)
+
+-- SVSeed MUST be first — run()'s coerce_init wraps the seeded `Work`
+-- into the state enum's first single-payload variant (SVSeed(Work)).
+enum SV =
+    SVSeed(Work)
+    SVStep(WorkStack, NameList)
+    SVDone(NameList)
+
+-- ── The transition under execution ────────────────────────────────────
+-- SVSeed → push the seed as the sole stack entry. Each SVStep pops the
+-- top Work, dispatches on its node shape, and either folds an `ECall`
+-- name into the accumulator (and keeps walking its args), pushes its
+-- children, or drops a leaf / non-descended node. An empty stack →
+-- SVDone. Labeled `fsm` (the keyword is the sole FSM signal); as a
+-- `run(...)` target it is embedded-only, so the scheduler never
+-- auto-instantiates it; `run` resolves it by name. The push order
+-- mirrors find_ffi_call's left-to-right child visit (head pushed last is
+-- popped first → leftmost child popped first), and `ECall`'s name is
+-- folded BEFORE its args are pushed (node-before-children pre-order).
+fsm validate_walk(state ∈ SV, state_next ∈ SV, halt ∈ Bool)
+    state_next = match state
+        SVSeed(w) ⇒ SVStep(WSCons(w, WSNil), NameNil)
+        SVStep(WSNil, names) ⇒ SVDone(names)
+        SVStep(WSCons(top, rest), names) ⇒ match top
+            -- ── lists: pop head, keep walking the tail ──
+            WExprList(el) ⇒ match el
+                ELNil ⇒ SVStep(rest, names)
+                ELCons(e, more) ⇒ SVStep(WSCons(WExpr(e), WSCons(WExprList(more), rest)), names)
+            WArmList(al) ⇒ match al
+                MALNil ⇒ SVStep(rest, names)
+                MALCons(arm, more) ⇒ SVStep(WSCons(WArm(arm), WSCons(WArmList(more), rest)), names)
+            -- ── match arm: walk its body expr (pattern dropped) ──
+            WArm(a) ⇒ match a
+                MakeMatchArm(_, body) ⇒ SVStep(WSCons(WExpr(body), rest), names)
+            -- ── expressions (find_ffi_call) ──
+            WExpr(e) ⇒ match e
+                -- fold the call NAME (the shim decides if it's banned),
+                -- then walk the args. No in-solve string comparison.
+                ECall(nm, args)   ⇒ SVStep(WSCons(WExprList(args), rest), NameCons(nm, names))
+                EBinary(_, a, b)  ⇒ SVStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                ENot(i)           ⇒ SVStep(WSCons(WExpr(i), rest), names)
+                ECardinality(i)   ⇒ SVStep(WSCons(WExpr(i), rest), names)
+                ETernary(c, t, f) ⇒ SVStep(WSCons(WExpr(c), WSCons(WExpr(t), WSCons(WExpr(f), rest))), names)
+                EIndex(a, b)      ⇒ SVStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                ERange(a, b)      ⇒ SVStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                EInExpr(a, b)     ⇒ SVStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                EField(b, _)      ⇒ SVStep(WSCons(WExpr(b), rest), names)
+                EMatches(e2, _)   ⇒ SVStep(WSCons(WExpr(e2), rest), names)
+                ESetLit(es)       ⇒ SVStep(WSCons(WExprList(es), rest), names)
+                ESeqLit(es)       ⇒ SVStep(WSCons(WExprList(es), rest), names)
+                EMatch(scr, arms) ⇒ SVStep(WSCons(WExpr(scr), WSCons(WArmList(arms), rest)), names)
+                EForall(_, r, b)  ⇒ SVStep(WSCons(WExpr(r), WSCons(WExpr(b), rest)), names)
+                EExists(_, r, b)  ⇒ SVStep(WSCons(WExpr(r), WSCons(WExpr(b), rest)), names)
+                -- leaves + non-descended (the canonical walk's `_ => None`).
+                -- ETuple / ERunFsm are deliberately NOT descended into, to
+                -- stay byte-identical to find_ffi_call.
+                EIdentifier(_)    ⇒ SVStep(rest, names)
+                EInt(_)           ⇒ SVStep(rest, names)
+                EReal(_)          ⇒ SVStep(rest, names)
+                EBool(_)          ⇒ SVStep(rest, names)
+                EStr(_)           ⇒ SVStep(rest, names)
+                ETuple(_)         ⇒ SVStep(rest, names)
+                ERunFsm(_, _)     ⇒ SVStep(rest, names)
+        SVDone(n) ⇒ SVDone(n)
+    halt = match state
+        SVDone(_) ⇒ true
+        _         ⇒ false
+
+-- ── Static verification: walk in, collected call names out ────────────
+-- The FSM emits RAW call names (the banned-set decision is the shim's
+-- job), so these assert the collected name list, not a banned verdict.
+-- The shim's `validate_correctness.rs` is the cross-language check.
+
+-- A single call's name reaches the accumulator.
+claim sat_one_call
+    final ∈ SV = run(validate_walk, WExpr(ECall("LibCall", ELNil)))
+    final = SVDone(NameCons("LibCall", NameNil))
+
+-- A literal contributes no name.
+claim sat_literal_no_name
+    final ∈ SV = run(validate_walk, WExpr(EInt(5)))
+    final = SVDone(NameNil)
+
+-- A call nested in a binary RHS is collected (the realistic
+-- `eff = FFICall(...)` shape).
+claim sat_call_in_binary
+    final ∈ SV = run(validate_walk,
+        WExpr(EBinary(OpEq, EIdentifier("eff"), ECall("FFICall", ELNil))))
+    final = SVDone(NameCons("FFICall", NameNil))
+
+-- Two calls, outer then inner arg: pre-order visits the outer first,
+-- so with head-first prepend the list head is the LAST-visited (inner).
+-- The shim reverses to recover pre-order [helper, LibCall].
+claim sat_nested_calls_order
+    final ∈ SV = run(validate_walk,
+        WExpr(ECall("helper", ELCons(ECall("LibCall", ELNil), ELNil))))
+    final = SVDone(NameCons("LibCall", NameCons("helper", NameNil)))
+
+-- A call hidden in a tuple is NOT collected (the canonical walk's
+-- `_ => None` for ETuple). Faithful, not a missed case to "fix".
+claim sat_tuple_not_walked
+    final ∈ SV = run(validate_walk, WExpr(ETuple(ELCons(ECall("LibCall", ELNil), ELNil))))
+    final = SVDone(NameNil)
+
+-- The accumulator is threaded, not free: a literal can't conjure a name.
+claim unsat_literal_is_not_a_name
+    final ∈ SV = run(validate_walk, WExpr(EInt(5)))
+    final = SVDone(NameCons("LibCall", NameNil))

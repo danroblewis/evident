@@ -1,35 +1,63 @@
-//! `validate` — second port driven by the [`super`] swap interface.
+//! `validate` — load-time external-only check. **Sole implementation: the
+//! self-hosted Evident stack-FSM walk.**
 //!
-//! Load-time external-only check (`enforce_external_only`): reject
-//! non-`external` schemas that construct FFI effects (`FFICall`,
-//! `FFIOpen`, `FFILookup`, `LibCall`). The canonical Rust impl lives at
-//! `runtime/src/runtime/validate.rs` (called from the load path in
-//! `runtime/src/runtime/load.rs`); this module exposes the same rule
-//! through the [`ValidateImpl`] trait with two interchangeable backings:
+//! Load-time rule (`enforce_external_only`): reject non-`external` schemas
+//! that construct FFI effects (`FFICall`, `FFIOpen`, `FFILookup`,
+//! `LibCall`). Session VALIDATE-recursive cut validate over to
+//! Evident-only: the canonical Rust `find_ffi_call` Expr-tree walk (in
+//! `runtime/src/runtime/validate.rs`) is **deleted**, and the production
+//! load path computes the verdict through [`EvidentValidate`]. There is no
+//! Rust-walk fallback.
 //!
-//!   * [`RustValidate`] — a native re-implementation, kept here so the
-//!     portable seam doesn't have to widen `runtime::validate`'s
-//!     `pub(super)` surface. Mirrors `find_ffi_call` in the canonical
-//!     module line-for-line.
-//!   * [`EvidentValidate`] — owns an [`EvidentRuntime`] with
-//!     `stdlib/passes/validate.ev` loaded. Walks the schema body in
-//!     Rust and queries `ValidateExpr` at each Call node for the
-//!     banned-name decision. Structural recursion lives on the Rust
-//!     side (Evident can't recurse over Expr trees yet — see
-//!     `docs/self-hosting.md`); the decision logic — "what counts as a
-//!     banned call" — lives in Evident.
+//! [`EvidentValidate`] owns an [`EvidentRuntime`] with
+//! `stdlib/passes/validate.ev` loaded. The WHOLE walk runs in Evident as an
+//! FSM-with-stack (`validate_walk`): this shim only marshals each
+//! `Constraint`'s `Expr` into a `Value` via the SHARED marshaler
+//! ([`crate::translate::ast_encoder::expr_to_value`]), drives the FSM to a
+//! drained-stack halt via [`crate::effect_loop::run_nested`], and collects
+//! the `ECall` names it reached. **No Rust-side tree walk, no bespoke
+//! encoder** — the recursion lives in the pass.
 //!
-//! Because the two impls share the walker and differ only in the
-//! per-Call predicate, `EvidentValidate` is fully faithful to
-//! `RustValidate` (byte-identical diagnostics on every input). That's
-//! what the equivalence test pins.
+//! ## What stays in Rust, and why
+//!
+//! The FSM owns the traversal and the name collection, but NOT the
+//! banned-set decision: deciding `nm ∈ {FFICall, …}` means a string
+//! equality, and doing that equality INSIDE the per-tick Z3 solve blows up
+//! Z3's string theory on a walk state that carries unrelated string
+//! literals (measured: minutes + GBs on `test_26_value_cache.ev::driver`'s
+//! string-ternary — the in-solve cousin of gap #18). So the FSM emits the
+//! RAW call names and [`is_banned`] does the 4-element membership check
+//! here — the exact analogue of `subscriptions`' `world.`/`world_next.`
+//! prefix split.
+//!
+//! ## The load entry point
+//!
+//! `runtime/src/runtime/validate.rs::enforce_external_only` (called from
+//! the load path) delegates to the free [`enforce_external_only`] here,
+//! which holds a per-thread lazily-built [`EvidentValidate`] engine: the
+//! pass is loaded and JIT-cached once per thread, then reused for every
+//! schema. The engine locates `stdlib/` via the one
+//! [`crate::stdlib_path::stdlib_dir`] resolver (session WW).
+//!
+//! ## No bootstrap cycle
+//!
+//! Building the engine loads `validate.ev`, and that load itself runs the
+//! production validate hook over `validate.ev`'s own schemas — a re-entry.
+//! A thread-local guard ([`BOOTSTRAPPING`]) short-circuits the re-entrant
+//! call to `Ok(())`: the pass file constructs `Expr` enum *values* named
+//! `"ECall"` etc., it never *calls* a banned FFI primitive, so it
+//! trivially passes. Once built, the guard is clear and user schemas get
+//! the full walk.
 
-use std::collections::HashMap;
+use std::cell::Cell;
 use std::path::Path;
+use std::rc::Rc;
 
-use crate::core::ast::{BinOp, BodyItem, Expr, Keyword, MatchArm, MatchPattern, SchemaDecl};
+use crate::core::ast::{BodyItem, Expr, Keyword, SchemaDecl};
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;
+use crate::translate::ast_decoder::{decode_list, decode_str};
+use crate::translate::ast_encoder::expr_to_value;
 use super::Portable;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -61,7 +89,7 @@ fn keyword_label(kw: &Keyword) -> &'static str {
 /// Format the diagnostic. The exact wording matches
 /// `runtime/src/runtime/validate.rs` so both impls' error strings are
 /// byte-identical.
-fn error_msg(kind: &str, name: &str, call: &str) -> String {
+pub(crate) fn error_msg(kind: &str, name: &str, call: &str) -> String {
     format!(
         "{kind} `{name}` constructs `{call}(...)` but isn't \
          declared `external`. Either mark this declaration \
@@ -72,140 +100,80 @@ fn error_msg(kind: &str, name: &str, call: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Shared walk — used by both impls, parameterised by the per-Call
-// classifier. Mirrors the recursion in `runtime/src/runtime/validate.rs`
-// `find_ffi_call` exactly. Keeping the walker shared guarantees the two
-// impls only differ on the decision predicate, which is what makes the
-// port byte-identical-faithful.
-// ─────────────────────────────────────────────────────────────────────
-
-fn find_ffi_call(e: &Expr, classify: &dyn Fn(&str) -> Option<String>) -> Option<String> {
-    match e {
-        Expr::Call(name, args) => {
-            if let Some(b) = classify(name) { return Some(b); }
-            args.iter().find_map(|a| find_ffi_call(a, classify))
-        }
-        Expr::Binary(_, l, r) =>
-            find_ffi_call(l, classify).or_else(|| find_ffi_call(r, classify)),
-        Expr::Not(i) | Expr::Cardinality(i) => find_ffi_call(i, classify),
-        Expr::Ternary(c, a, b) =>
-            find_ffi_call(c, classify)
-                .or_else(|| find_ffi_call(a, classify))
-                .or_else(|| find_ffi_call(b, classify)),
-        Expr::Index(s, i) | Expr::Range(s, i) | Expr::InExpr(s, i) =>
-            find_ffi_call(s, classify).or_else(|| find_ffi_call(i, classify)),
-        Expr::Field(b, _) => find_ffi_call(b, classify),
-        Expr::Matches(e, _) => find_ffi_call(e, classify),
-        Expr::SeqLit(items) | Expr::SetLit(items) =>
-            items.iter().find_map(|a| find_ffi_call(a, classify)),
-        Expr::Match(scr, arms) =>
-            find_ffi_call(scr, classify).or_else(|| arms.iter()
-                .find_map(|a| find_ffi_call(&a.body, classify))),
-        Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-            find_ffi_call(r, classify).or_else(|| find_ffi_call(b, classify)),
-        _ => None,
-    }
-}
-
-fn enforce_with<F: Fn(&str) -> Option<String>>(
-    s: &SchemaDecl,
-    classify: F,
-) -> Result<(), String> {
-    if s.external { return Ok(()); }
-    for item in &s.body {
-        if let BodyItem::Constraint(e) = item {
-            if let Some(call) = find_ffi_call(e, &classify) {
-                return Err(error_msg(keyword_label(&s.keyword), &s.name, &call));
-            }
-        }
-    }
-    Ok(())
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Rust impl — the canonical predicate, inlined here so the portable
-// module doesn't need a wider surface on `runtime::validate`. Behaviour
-// matches `runtime/src/runtime/validate.rs::enforce_external_only` 1:1.
-// ─────────────────────────────────────────────────────────────────────
-
-/// Native validator. Total, fast, always correct — the default.
-pub struct RustValidate;
-
-impl Portable for RustValidate {
-    fn impl_name(&self) -> &'static str { "rust" }
-}
-
-impl ValidateImpl for RustValidate {
-    fn enforce_external_only(&self, s: &SchemaDecl) -> Result<(), String> {
-        enforce_with(s, classify_native)
-    }
-}
-
-fn classify_native(name: &str) -> Option<String> {
-    match name {
-        "FFICall"   => Some("FFICall".to_string()),
-        "FFIOpen"   => Some("FFIOpen".to_string()),
-        "FFILookup" => Some("FFILookup".to_string()),
-        "LibCall"   => Some("LibCall".to_string()),
-        _ => None,
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Evident impl — calls stdlib/passes/validate.ev for each Call name
+// Evident impl — runs stdlib/passes/validate.ev as a stack-FSM
 // ─────────────────────────────────────────────────────────────────────
 
 /// Pass-driven validator. Holds an [`EvidentRuntime`] with
-/// `stdlib/ast.ev` + `stdlib/passes/validate.ev` loaded. `ValidateExpr`
-/// JIT-caches after the first query, so per-Call classification is a
-/// JIT function call plus marshaling — not a full Z3 solve. Build once
-/// and reuse across schemas to amortise the load cost.
+/// `stdlib/passes/validate.ev` loaded — a self-contained pass (it
+/// declares its own cons-list copy of the `Expr`-reachable AST enums
+/// matching the shared marshaler), so no other stdlib file is needed.
+/// Build once and reuse across schemas so the FSM's per-tick solve is
+/// JIT-cached.
 pub struct EvidentValidate {
     rt: EvidentRuntime,
 }
 
 impl EvidentValidate {
-    /// Pass-claim name that classifies a single Expr node.
-    const CLAIM: &'static str = "ValidateExpr";
+    /// The whole-walk FSM in `stdlib/passes/validate.ev`.
+    const WALK_FSM: &'static str = "validate_walk";
 
-    /// Load `ast.ev` + `passes/validate.ev` from `stdlib_dir` into a
-    /// fresh runtime. `stdlib_dir` is the repo's `stdlib/` directory.
+    /// Max-iteration guard for the nested walk. One AST node costs a
+    /// small constant number of FSM ticks, and the walk halts the moment
+    /// a banned call is found, so a clean Expr of N nodes halts in O(N)
+    /// ticks; the cap sits far above any realistic constraint so a
+    /// legitimate walk never hits it (a non-terminating walk would be a
+    /// pass bug, surfaced as a loud `MaxItersExceeded`).
+    const MAX_STEPS: usize = 5_000_000;
+
+    /// Load `passes/validate.ev` from `stdlib_dir` into a fresh runtime.
+    /// `stdlib_dir` is the repo's `stdlib/` directory.
     pub fn new(stdlib_dir: &Path) -> Result<Self, String> {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(&stdlib_dir.join("ast.ev"))
-            .map_err(|e| format!("load ast.ev: {e}"))?;
         rt.load_file(&stdlib_dir.join("passes").join("validate.ev"))
             .map_err(|e| format!("load passes/validate.ev: {e}"))?;
         Ok(Self { rt })
     }
 
-    /// Ask the pass whether `name` is a banned FFI primitive. Pins
-    /// `nm ∈ String` directly, runs `ValidateExpr`, and reads the
-    /// `out` String binding back. Returns `Some(name)` when the pass
-    /// classifies it as banned, `None` otherwise.
-    ///
-    /// Why `nm ∈ String` rather than the natural-feeling
-    /// `e ∈ Expr` with `match e { ECall(nm, _) ⇒ … }`: the runtime's
-    /// match-destructure on a given-pinned enum's String payload
-    /// doesn't preserve byte equality with a source-literal string —
-    /// `nm = "FFICall"` evaluates to false on both JIT and slow paths
-    /// even when the bytes match. Pinning the name directly side-steps
-    /// that gap and keeps the rule's decision logic in Evident (see
-    /// `stdlib/passes/validate.ev` and gap #18 in
-    /// `examples/COUNTEREXAMPLES.md`). When the gap is closed we can
-    /// flip back to pinning `e ∈ Expr` with no shim change beyond
-    /// rebuilding the given.
-    fn classify_via_pass(&self, name: &str) -> Option<String> {
-        let mut given: HashMap<String, Value> = HashMap::new();
-        given.insert("nm".to_string(), Value::Str(name.to_string()));
-        match self.rt.query(Self::CLAIM, &given) {
-            Ok(qr) if qr.satisfied => match qr.bindings.get("out") {
-                Some(Value::Str(s)) if !s.is_empty() => Some(s.clone()),
-                _ => None,
-            },
-            _ => None,
+    /// Drive `validate_walk` over one `Constraint`'s `Expr` and return the
+    /// first banned FFI call name it reaches (in pre-order), or `None` if
+    /// the expression constructs no banned FFI primitive. The FSM returns
+    /// `SVDone(NameList)` — the `ECall` names it collected, head-first
+    /// (i.e. reverse pre-order); reversing recovers pre-order so the first
+    /// banned name matches what `find_ffi_call` would have returned.
+    fn find_banned(&self, e: &Expr) -> Option<String> {
+        let seed = work_expr(expr_to_value(e));
+        match crate::effect_loop::run_nested(&self.rt, Self::WALK_FSM, seed, Self::MAX_STEPS) {
+            Ok(Value::Enum { variant, fields, .. }) if variant == "SVDone" && fields.len() == 1 => {
+                // Shared cons-list decoder: NameList → Vec<String>.
+                match decode_list(&fields[0], "NameList", "NameNil", "NameCons", decode_str) {
+                    Ok(names) => names.iter().rev().find(|n| is_banned(n)).cloned(),
+                    Err(e) => {
+                        eprintln!("[validate/evident] decode of collected names failed: {e}");
+                        None
+                    }
+                }
+            }
+            Ok(other) => {
+                eprintln!("[validate/evident] walk returned a non-SVDone state: {other:?}");
+                None
+            }
+            Err(e) => {
+                eprintln!("[validate/evident] walk failed: {e}");
+                None
+            }
         }
     }
+}
+
+/// The leaf decision the FSM defers to Rust: is `name` one of the four
+/// banned FFI-construction primitives? A 4-element string-set membership,
+/// kept out of the per-tick Z3 solve (where state-carried-string vs
+/// literal equality blows up — the in-solve cousin of gap #18). This is
+/// the validate analogue of `subscriptions`' `world.`/`world_next.`
+/// prefix split: the recursive WALK self-hosts; only this tiny string
+/// decision stays in Rust.
+fn is_banned(name: &str) -> bool {
+    matches!(name, "FFICall" | "FFIOpen" | "FFILookup" | "LibCall")
 }
 
 impl Portable for EvidentValidate {
@@ -214,125 +182,102 @@ impl Portable for EvidentValidate {
 
 impl ValidateImpl for EvidentValidate {
     fn enforce_external_only(&self, s: &SchemaDecl) -> Result<(), String> {
-        enforce_with(s, |name| self.classify_via_pass(name))
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Marshaling: Rust Expr → Value::Enum tree (matches stdlib/ast.ev)
-// ─────────────────────────────────────────────────────────────────────
-//
-// A self-contained mirror of the private `*_to_value` family in
-// translate/encode_ast.rs — same shape `portable/pretty.rs` uses, kept
-// local so this port owns its marshaling. Unify with `encode_ast.rs`
-// once that surface is public (the existing TODO in pretty.rs).
-
-fn ev(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
-    Value::Enum {
-        enum_name: enum_name.to_string(),
-        variant: variant.to_string(),
-        fields,
-    }
-}
-
-fn encode_expr(e: &Expr) -> Value {
-    match e {
-        Expr::Identifier(s) => ev("Expr", "EIdentifier", vec![Value::Str(s.clone())]),
-        Expr::Int(n)        => ev("Expr", "EInt",        vec![Value::Int(*n)]),
-        Expr::Real(f)       => ev("Expr", "EReal",       vec![Value::Real(*f)]),
-        Expr::Bool(b)       => ev("Expr", "EBool",       vec![Value::Bool(*b)]),
-        Expr::Str(s)        => ev("Expr", "EStr",        vec![Value::Str(s.clone())]),
-        Expr::SetLit(items) => ev("Expr", "ESetLit",     vec![encode_expr_list(items)]),
-        Expr::SeqLit(items) => ev("Expr", "ESeqLit",     vec![encode_expr_list(items)]),
-        Expr::Tuple(items)  => ev("Expr", "ETuple",      vec![encode_expr_list(items)]),
-        Expr::Range(lo, hi) => ev("Expr", "ERange",      vec![encode_expr(lo), encode_expr(hi)]),
-        Expr::InExpr(l, r)  => ev("Expr", "EInExpr",     vec![encode_expr(l), encode_expr(r)]),
-        Expr::Forall(vs, range, body) =>
-            ev("Expr", "EForall", vec![encode_string_list(vs), encode_expr(range), encode_expr(body)]),
-        Expr::Exists(vs, range, body) =>
-            ev("Expr", "EExists", vec![encode_string_list(vs), encode_expr(range), encode_expr(body)]),
-        Expr::Call(name, args) =>
-            ev("Expr", "ECall", vec![Value::Str(name.clone()), encode_expr_list(args)]),
-        Expr::Cardinality(inner) => ev("Expr", "ECardinality", vec![encode_expr(inner)]),
-        Expr::Index(seq, idx)    => ev("Expr", "EIndex", vec![encode_expr(seq), encode_expr(idx)]),
-        Expr::Field(base, name)  => ev("Expr", "EField", vec![encode_expr(base), Value::Str(name.clone())]),
-        Expr::Binary(op, l, r)   => ev("Expr", "EBinary", vec![encode_binop(op), encode_expr(l), encode_expr(r)]),
-        Expr::Not(inner)         => ev("Expr", "ENot", vec![encode_expr(inner)]),
-        Expr::Ternary(c, a, b)   => ev("Expr", "ETernary", vec![encode_expr(c), encode_expr(a), encode_expr(b)]),
-        Expr::Match(scr, arms)   => ev("Expr", "EMatch", vec![encode_expr(scr), encode_match_arm_list(arms)]),
-        Expr::Matches(e, pat)    => ev("Expr", "EMatches", vec![encode_expr(e), encode_match_pattern(pat)]),
-        Expr::RunFsm { fsm, init } => ev("Expr", "ERunFsm", vec![Value::Str(fsm.clone()), encode_expr(init)]),
-    }
-}
-
-fn encode_binop(op: &BinOp) -> Value {
-    let v = match op {
-        BinOp::Eq => "OpEq", BinOp::Neq => "OpNeq", BinOp::Lt => "OpLt", BinOp::Le => "OpLe",
-        BinOp::Gt => "OpGt", BinOp::Ge => "OpGe", BinOp::And => "OpAnd", BinOp::Or => "OpOr",
-        BinOp::Implies => "OpImplies", BinOp::Add => "OpAdd", BinOp::Sub => "OpSub",
-        BinOp::Mul => "OpMul", BinOp::Div => "OpDiv", BinOp::Concat => "OpConcat",
-    };
-    ev("BinOp", v, vec![])
-}
-
-fn encode_match_arm(a: &MatchArm) -> Value {
-    ev("MatchArm", "MakeMatchArm", vec![encode_match_pattern(&a.pattern), encode_expr(&a.body)])
-}
-
-fn encode_match_pattern(p: &MatchPattern) -> Value {
-    match p {
-        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
-            ev("MatchPattern", "PatWildcard", vec![]),
-        MatchPattern::Ctor { name, binds } =>
-            ev("MatchPattern", "PatCtor", vec![Value::Str(name.clone()), encode_bind_list(binds)]),
-    }
-}
-
-fn cons_list(
-    enum_name: &str,
-    cons: &str,
-    nil: &str,
-    items: impl DoubleEndedIterator<Item = Value>,
-) -> Value {
-    let mut acc = ev(enum_name, nil, vec![]);
-    for head in items.rev() {
-        acc = ev(enum_name, cons, vec![head, acc]);
-    }
-    acc
-}
-
-fn encode_expr_list(items: &[Expr]) -> Value {
-    cons_list("ExprList", "ELCons", "ELNil", items.iter().map(encode_expr))
-}
-fn encode_string_list(items: &[String]) -> Value {
-    cons_list("StringList", "SLCons", "SLNil", items.iter().map(|s| Value::Str(s.clone())))
-}
-fn encode_match_arm_list(items: &[MatchArm]) -> Value {
-    cons_list("MatchArmList", "MALCons", "MALNil", items.iter().map(encode_match_arm))
-}
-fn encode_bind_list(binds: &[MatchPattern]) -> Value {
-    cons_list("BindList", "BLCons", "BLNil", binds.iter().map(|b| match b {
-        MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
-        _ => ev("MatchBind", "BindWildcard", vec![]),
-    }))
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Selection
-// ─────────────────────────────────────────────────────────────────────
-
-/// Pick an impl by `EVIDENT_VALIDATE_IMPL` (`rust` | `evident`),
-/// defaulting to the Rust impl. `evident` locates `stdlib/` via the one
-/// [`crate::stdlib_path::stdlib_dir`] resolver (honoring `EVIDENT_STDLIB`
-/// / `EVIDENT_STDLIB_DIR`); if locating or loading fails it falls back to
-/// Rust.
-pub fn default_impl() -> Box<dyn ValidateImpl> {
-    if std::env::var("EVIDENT_VALIDATE_IMPL").as_deref() == Ok("evident") {
-        if let Ok(dir) = crate::stdlib_path::stdlib_dir() {
-            if let Ok(ev) = EvidentValidate::new(&dir) {
-                return Box::new(ev);
+        // Mirror the canonical caller: `external` schemas may construct
+        // FFI; otherwise check each `Constraint` body item's Expr (and
+        // ONLY those — subclaim bodies get their own load-pass check).
+        // The Expr-tree recursion is the FSM's job.
+        if s.external { return Ok(()); }
+        for item in &s.body {
+            if let BodyItem::Constraint(e) = item {
+                if let Some(call) = self.find_banned(e) {
+                    return Err(error_msg(keyword_label(&s.keyword), &s.name, &call));
+                }
             }
         }
+        Ok(())
     }
-    Box::new(RustValidate)
+}
+
+/// Wrap an already-marshaled `Expr` `Value` as the FSM's unified `Work`
+/// node `WExpr(Expr)`. `run_nested`'s coerce seeds it into `SVSeed(Work)`.
+fn work_expr(inner: Value) -> Value {
+    Value::Enum {
+        enum_name: "Work".to_string(),
+        variant: "WExpr".to_string(),
+        fields: vec![inner],
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Production entry point — a per-thread cached engine + bootstrap guard
+// ─────────────────────────────────────────────────────────────────────
+
+thread_local! {
+    /// One [`EvidentValidate`] engine per thread, built lazily on the
+    /// first [`enforce_external_only`] call. `EvidentRuntime` is
+    /// `!Send`/`!Sync` (Z3 context, Cranelift module, `Rc`/`RefCell`
+    /// interior), so a thread-local — not a global — is the right cache:
+    /// load + JIT-compile the pass once per thread, reuse for every
+    /// schema.
+    static ENGINE: std::cell::RefCell<Option<Rc<EvidentValidate>>> =
+        const { std::cell::RefCell::new(None) };
+
+    /// Re-entrancy guard. Set while the engine's private runtime is
+    /// loading `validate.ev`: that load runs the production validate hook
+    /// over the pass's own schemas, which would re-enter here mid-build
+    /// (and re-borrow [`ENGINE`]). While set, [`enforce_external_only`]
+    /// returns `Ok(())` — the pass file is trusted, hand-verified stdlib
+    /// that constructs `Expr` enum *values* (named `"ECall"` etc.), never
+    /// *calls* a banned FFI primitive, so it trivially passes.
+    static BOOTSTRAPPING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Enforce the external-only rule on one schema via the self-hosted Evident
+/// `validate_walk` pass. **This is the runtime's sole validate entry
+/// point** — `runtime::validate::enforce_external_only` (on the load path)
+/// delegates here.
+///
+/// Builds and caches a per-thread [`EvidentValidate`] engine on first use
+/// (see [`ENGINE`]). The engine locates `stdlib/` via the one
+/// [`crate::stdlib_path::stdlib_dir`] resolver.
+///
+/// # Panics
+///
+/// If `stdlib/passes/validate.ev` cannot be located or loaded. There is no
+/// Rust-walk fallback (this session), so an unloadable pass is a hard error
+/// — the same robust resolution the rest of the runtime relies on (session
+/// WW). The error names every checked path and the `EVIDENT_STDLIB`
+/// override.
+pub fn enforce_external_only(s: &SchemaDecl) -> Result<(), String> {
+    // Re-entrancy break: while building the engine (loading the trusted
+    // validate pass), skip validation — see [`BOOTSTRAPPING`].
+    if BOOTSTRAPPING.with(|b| b.get()) {
+        return Ok(());
+    }
+    let engine = ENGINE.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            // The build loads validate.ev; that load re-enters this
+            // function for each pass schema. Guard the window so the
+            // re-entry short-circuits before touching `ENGINE` again.
+            BOOTSTRAPPING.with(|b| b.set(true));
+            let built = build_engine();
+            BOOTSTRAPPING.with(|b| b.set(false));
+            *slot = Some(Rc::new(built));
+        }
+        slot.as_ref().unwrap().clone()
+    });
+    engine.enforce_external_only(s)
+}
+
+/// Locate `stdlib/` and load the validate pass into a fresh engine.
+/// Panics with the resolver's path-list diagnostic on failure — see
+/// [`enforce_external_only`].
+fn build_engine() -> EvidentValidate {
+    let dir = crate::stdlib_path::stdlib_dir().unwrap_or_else(|e| panic!(
+        "validate: cannot locate stdlib to load the validate pass \
+         (the sole impl since session VALIDATE-recursive): {e}"));
+    EvidentValidate::new(&dir).unwrap_or_else(|e| panic!(
+        "validate: failed to load passes/validate.ev from {}: {e}",
+        dir.display()))
 }

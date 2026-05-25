@@ -13,66 +13,18 @@ use std::collections::HashMap;
 /// ordinary library code reach C through the `external claim`
 /// wrappers in `packages/` and `stdlib/posix.ev`.
 ///
-/// The check walks every `Constraint` body item's expression tree.
-/// SubclaimDecl bodies are skipped — their own load pass handles them.
+/// **Self-hosted (session VALIDATE-recursive).** The recursive Expr-tree
+/// walk that used to live here (`find_ffi_call`) is deleted; the whole
+/// walk now runs in Evident as the `validate_walk` stack-FSM in
+/// `stdlib/passes/validate.ev`. This is a thin adapter that delegates to
+/// the cached per-thread engine in
+/// [`crate::portable::validate::enforce_external_only`] (which checks only
+/// `Constraint` body items — subclaim bodies get their own load-pass
+/// check, unchanged) and wraps its `String` diagnostic in the load path's
+/// `RuntimeError::Parse`. The wording is byte-identical to the old walk,
+/// pinned by `runtime/tests/validate_correctness.rs`.
 pub(super) fn enforce_external_only(s: &SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::core::ast::{BodyItem, Expr};
-    if s.external { return Ok(()); }
-    fn find_ffi_call(e: &Expr) -> Option<&'static str> {
-        match e {
-            Expr::Call(name, args) => {
-                let banned = match name.as_str() {
-                    "FFICall"   => Some("FFICall"),
-                    "FFIOpen"   => Some("FFIOpen"),
-                    "FFILookup" => Some("FFILookup"),
-                    "LibCall"   => Some("LibCall"),
-                    _ => None,
-                };
-                if banned.is_some() { return banned; }
-                args.iter().filter_map(find_ffi_call).next()
-            }
-            Expr::Binary(_, l, r) =>
-                find_ffi_call(l).or_else(|| find_ffi_call(r)),
-            Expr::Not(i) | Expr::Cardinality(i) => find_ffi_call(i),
-            Expr::Ternary(c, a, b) =>
-                find_ffi_call(c).or_else(|| find_ffi_call(a))
-                                .or_else(|| find_ffi_call(b)),
-            Expr::Index(s, i) | Expr::Range(s, i) | Expr::InExpr(s, i) =>
-                find_ffi_call(s).or_else(|| find_ffi_call(i)),
-            Expr::Field(b, _) => find_ffi_call(b),
-            Expr::Matches(e, _) => find_ffi_call(e),
-            Expr::SeqLit(items) | Expr::SetLit(items) =>
-                items.iter().filter_map(find_ffi_call).next(),
-            Expr::Match(scr, arms) =>
-                find_ffi_call(scr).or_else(|| arms.iter()
-                    .filter_map(|a| find_ffi_call(&a.body)).next()),
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                find_ffi_call(r).or_else(|| find_ffi_call(b)),
-            _ => None,
-        }
-    }
-    for item in &s.body {
-        if let BodyItem::Constraint(e) = item {
-            if let Some(call) = find_ffi_call(e) {
-                let kind = match s.keyword {
-                    crate::core::ast::Keyword::Fsm => "fsm",
-                    crate::core::ast::Keyword::Type => "type",
-                    crate::core::ast::Keyword::Claim => "claim",
-                    crate::core::ast::Keyword::Schema => "schema",
-                    crate::core::ast::Keyword::Subclaim => "subclaim",
-                };
-                return Err(RuntimeError::Parse(format!(
-                    "{kind} `{}` constructs `{call}(...)` but isn't \
-                     declared `external`. Either mark this declaration \
-                     `external claim` / `external type`, or move the \
-                     FFI into an `external claim` helper and call it \
-                     from here.",
-                    s.name
-                )));
-            }
-        }
-    }
-    Ok(())
+    crate::portable::validate::enforce_external_only(s).map_err(RuntimeError::Parse)
 }
 
 /// Walk a schema body and register any nested `subclaim` declarations

@@ -489,23 +489,45 @@ from different provenances aren't recognised as equal — likely a
 character-sort / Z3 string-internalisation mismatch between the pinned
 enum's payload and the comparator literal.
 
-**Workaround used in `stdlib/passes/validate.ev`:** the Rust shim
-extracts the call name on the Rust side and pins `nm ∈ String`
-directly. The Evident pass still owns the decision (`nm ∈ {FFICall,
-FFIOpen, FFILookup, LibCall}`); only the recognizer-vs-comparison
-choice changes. Byte-equality on a top-level `Value::Str` given works
-correctly — the gap is specifically about Strings extracted from a
-pinned enum value.
+**UPDATE (session VALIDATE-recursive): the leaf-pin workaround is GONE —
+`validate` is now a full stack-FSM walk.** `stdlib/passes/validate.ev`
+no longer pins `nm ∈ String` for a leaf classifier; it is a whole-walk
+stack-FSM (`validate_walk`, the `subscriptions_walk` recipe) that walks
+the marshaled `Expr` tree as its FSM *state* and collects `ECall` names.
+Matching the AST structurally as state sidesteps the original #18 (no
+`given`-pinned `Expr` is ever destructured-and-compared). The Rust
+`find_ffi_call` walk is deleted; `EvidentValidate` is the sole impl on
+the load path.
 
-Fix idea: trace where the destructured String diverges from the
-literal in the JIT-emitted comparison. Plausible suspects: the
-extractor function path (enum-accessor returning a Z3 String sort that
-isn't byte-comparable with a constant-built String literal), or the
-Cranelift-side handle convention (extracted-from-enum vs.
-constructed-from-literal use different opaque handles that don't share
-an identity-shortcircuit). Once closed, the pass can drop the
-shim-side extraction and pin `e ∈ Expr` directly — the pattern that
-matches the canonical Rust walker shape.
+**But the upgrade surfaced an in-solve cousin of this gap.** The natural
+next step — fold the banned decision into the FSM with an in-arm
+`ECall(nm,_) ⇒ nm = "FFICall" ? …` — *translates and is faithful on
+small inputs*, but the string equality `nm = "literal"` is evaluated
+INSIDE the per-tick Z3 solve. On a walk state whose stack carries
+unrelated string literals (e.g. `test_26_value_cache.ev::driver`'s
+`msg = (a ? "signal=10 (window 0)" : (b ? "signal=20 (window 1)" : …))`
+ternary), Z3's string theory blows up: ~0.5 ms/constraint → **minutes +
+multi-GB**, SIGSEGV on the corpus. So #18 has two faces: (a) *extraction*
+of a given-pinned enum's String payload loses byte-equality (the
+original); (b) *comparison* of any state-carried String to a literal
+inside the solve is catastrophic on string-heavy states (the in-solve
+cousin). Carrying/returning a String is cheap on both; comparing is the
+problem.
+
+**Workaround now used:** the FSM emits the raw `ECall` name strings
+(carried, never compared in-solve), and the Rust shim's `is_banned` does
+the 4-element set-membership check OUTSIDE the solve — the exact analogue
+of `subscriptions`' `world.`/`world_next.` prefix split staying in Rust.
+The recursive walk fully self-hosts; only the tiny string decision is
+Rust, for this measured performance reason.
+
+Fix idea (to ever do the decision in-FSM): trace where the
+destructured/compared String diverges in the JIT/Z3 path — plausibly an
+enum-accessor String sort vs constant-built literal that aren't
+byte-comparable, or a Cranelift handle-convention mismatch, *and* the
+string-theory cost when the solve state carries many string literals.
+Until then, "collect strings in-FSM, decide in Rust" is the faithful,
+fast pattern for any pass whose decision is a string compare.
 
 ## 19. Stack-FSM tree-walk under tier-3 `run()` — composite-state gaps CLOSED (session NN)
 
