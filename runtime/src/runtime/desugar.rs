@@ -35,7 +35,7 @@ pub struct SystemBoundary {
 /// var coming from a claim invocation, for example), that subtree
 /// is left alone and the translator will fail with the usual
 /// "couldn't translate to Bool" error pointing at it.
-pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
+pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     use crate::core::ast::{BinOp, BodyItem, Expr};
     if s.external { return; }
 

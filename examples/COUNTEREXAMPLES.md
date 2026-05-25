@@ -664,6 +664,51 @@ needs structural sharing in `Value` or variant-2 whole-loop compilation
 (`docs/design/loop-functionizer.md` §4 option B). This is the perf gate
 on the held session-XX subscriptions cutover.
 
+## 20. Self-hosting an AST-RETURNING rewrite pass — what blocks a cutover (session PORT-desugar)
+
+`subscriptions` proved a pass that FOLDS the AST to a value (name-sets) can
+self-host as a stack-FSM and even become the sole impl. Porting
+`desugar_seq_concat` (the `++`-flattening half of `desugar`) tested the next
+rung: a pass that **returns a rewritten AST**. The recursive kernels DO
+self-host — `desugar_gather` (body → bindings) and `desugar_flatten`
+(`Concat` spine → chunk stream) run as stack-FSMs over the shared marshaler,
+byte-identical to the canonical pass on the corpus + a synthetic battery
+(`runtime/tests/desugar_equivalence.rs`). But a faithful **cutover** is
+blocked by three distinct limits, all worth recording:
+
+  * **(a) No substring / prefix / string-construction operator.** The
+    *other* desugar pass, `unify_world_syntax`, rewrites identifier strings
+    by prefix-strip (`_world.X → world.X`, `world.X → world_next.X`). That
+    is a per-leaf string REWRITE, not a yes/no test, and Evident can't
+    express it at all (the harder cousin of the `world.`-prefix classify
+    `subscriptions` punts to Rust — see #18's neighbourhood). It stays in
+    Rust in full.
+
+  * **(b) The shared marshaler can't round-trip a whole `SchemaDecl`
+    losslessly.** `MakeSchemaDecl` carries `(Keyword, String,
+    BodyItemList)` only — `param_count` / `external` / `type_params` have no
+    slot, so `decode_schema_decl` reconstructs `param_count: 0`. A
+    whole-body-return design would zero every subclaim's `param_count`.
+    (`EvidentDesugar` avoids this by holding subclaims in Rust and recursing,
+    never round-tripping them — but that's exactly why the *walk* stays in
+    Rust.) Plus nested `MatchPattern` ctor binds collapse to `BindWildcard`
+    (the corpus has none, so it round-trips today — but not in general).
+
+  * **(c) Enum-payload String equality (#18) blocks the in-FSM keyed
+    lookup.** `flatten` resolves a bound identifier by `seq_lits.get(name)`.
+    Doing that in the FSM needs string equality between two enum-extracted
+    payloads, which mis-fires (#18) — it silently resolved every identifier
+    to the first binding. So `desugar_flatten` emits an `FRef(name)` marker
+    and the Rust shim does the lookup.
+
+**Outcome:** self-hosted + equivalence-proven, Rust kept as the production
+path (`runtime/src/runtime/load.rs` unchanged). `desugar` is a **load-time**
+pass, so this is setup-only either way — steady-state per-tick runtime is
+untouched. Closing #18 unblocks (c); a substring primitive unblocks (a); a
+`param_count` marshaler slot + deep `MatchPattern` binds unblock (b). Full
+writeup: `docs/self-hosting.md` "Runtime gaps that bound an AST-returning
+pass".
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

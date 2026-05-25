@@ -1,0 +1,277 @@
+-- stdlib/passes/desugar.ev — self-hosted Seq-concat desugaring, as two
+-- stack-FSMs over the SHARED AST↔Value marshaler (session UU), following
+-- the recipe `subscriptions` proved (QQ→YY→ZZ).
+--
+-- The Evident-side twin of `desugar_seq_concat` in
+-- runtime/src/runtime/desugar.rs. That pass flattens a `Seq(T)`
+-- concatenation
+--     effects = sky_effs ++ rect_effs ++ ⟨present_eff⟩ ++ input_effs
+-- into one flat `SeqLit` when every operand resolves to a literal
+-- sequence (a `⟨…⟩` or an identifier bound to one). It is a two-pass
+-- transform:
+--   1. GATHER  — collect every `name = ⟨items⟩` binding in the body into
+--                a name→items map (last-wins on duplicates).
+--   2. REWRITE — walk the body's expressions; at each `Concat` subtree,
+--                attempt `flatten`; if every operand resolves, replace the
+--                whole subtree with a single `SeqLit` of the flattened
+--                items; otherwise leave it (the translator handles the rest).
+--
+-- ── What self-hosts here, and what stays in Rust ──────────────────────
+-- The two RECURSIVE, value-carrying kernels run in Evident as stack-FSMs
+-- driven by `run()` (tier-3 blocking-interpret), each consuming + producing
+-- AST through the shared marshaler:
+--   * `desugar_gather`  — folds a BodyItemList → an `Assoc` cons-list of
+--                         (name, items) bindings.  (Rust pass-1.)
+--   * `desugar_flatten` — given `(Expr, Assoc)`, resolves a `Concat` spine
+--                         to a flat `ExprList`, or fails.  (Rust `flatten`,
+--                         FAITHFULLY: `SeqLit` / identifier operands
+--                         contribute their items VERBATIM — no recursion
+--                         into them — exactly as the canonical `flatten`'s
+--                         `items.clone()` / `seq_lits.get(name).cloned()`.)
+--
+-- The structural pre-order `rewrite` tree-walk (which Expr nodes to visit,
+-- where to splice the `SeqLit`, recursion into subclaims) stays in the Rust
+-- shim — the SAME division `portable/validate.rs` uses (shared walk in
+-- Rust, decision logic in Evident).  Two reasons it is the honest fallback,
+-- not a shortcut:
+--   1. Returning the WHOLE rebuilt body through the shared marshaler is
+--      byte-LOSSY in general — `SchemaDecl.param_count` has no marshaler
+--      slot (subclaims round-trip to `param_count: 0`) and nested
+--      constructor sub-patterns collapse to `BindWildcard`.  So an
+--      all-Evident rewrite-and-return could not be the production path.
+--   2. The walk is mechanical plumbing; the transform's *logic* is gather +
+--      flatten, and those self-host cleanly.
+-- See docs/self-hosting.md and examples/COUNTEREXAMPLES.md for the full gap
+-- writeup (and why `unify_world_syntax` — the other desugar — can't be
+-- ported at all: it rewrites identifier strings via prefix-strip, and
+-- Evident has no substring/prefix operator).
+
+-- ── The canonical AST, cons-list mirror shape ─────────────────────────
+-- These enums match the shared marshaler's `*_to_value` output EXACTLY
+-- (enum + variant names, field order). List fields are explicit Cons enums
+-- (not Seq) so a stack-FSM can pop a head and recurse on the tail. This
+-- file is self-contained: the shim drives it in a runtime that loads ONLY
+-- this pass, so there is no clash with stdlib/ast.ev's Seq-shaped twin.
+
+enum BinOp =
+    OpEq | OpNeq | OpLt | OpLe | OpGt | OpGe | OpAnd | OpOr | OpImplies
+    OpAdd | OpSub | OpMul | OpDiv | OpConcat
+
+enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
+
+enum MatchBind = BindName(String) | BindWildcard
+enum BindList = BLNil | BLCons(MatchBind, BindList)
+enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchArm = MakeMatchArm(MatchPattern, Expr)
+enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
+
+enum Mapping = MakeMapping(String, Expr)
+enum MappingList = MLNil | MLCons(Mapping, MappingList)
+enum StringList = SLNil | SLCons(String, StringList)
+
+enum Pins = PNone | PNamed(MappingList) | PPositional(ExprList)
+
+enum Expr =
+    EIdentifier(String)
+    EInt(Int)
+    EReal(Real)
+    EBool(Bool)
+    EStr(String)
+    ESetLit(ExprList)
+    ESeqLit(ExprList)
+    ETuple(ExprList)
+    ERange(Expr, Expr)
+    EInExpr(Expr, Expr)
+    EForall(StringList, Expr, Expr)
+    EExists(StringList, Expr, Expr)
+    ECall(String, ExprList)
+    ECardinality(Expr)
+    EIndex(Expr, Expr)
+    EField(Expr, String)
+    EBinary(BinOp, Expr, Expr)
+    ENot(Expr)
+    ETernary(Expr, Expr, Expr)
+    EMatch(Expr, MatchArmList)
+    EMatches(Expr, MatchPattern)
+    ERunFsm(String, Expr)
+
+enum ExprList = ELNil | ELCons(Expr, ExprList)
+
+enum BodyItem =
+    BIMembership(String, String, Pins)
+    BIPassthrough(String)
+    BIClaimCall(String, MappingList)
+    BIConstraint(Expr)
+    BISubclaim(SchemaDecl)
+    BIHaltsWithin(String, Int)
+
+enum BodyItemList = BILNil | BILCons(BodyItem, BodyItemList)
+
+enum SchemaDecl = MakeSchemaDecl(Keyword, String, BodyItemList)
+
+-- ── GATHER state ──────────────────────────────────────────────────────
+-- A name→items binding and the cons-list of them. Prepend on match, so a
+-- later binding for the same name sits closer to the head — the flatten
+-- lookup finds it first, reproducing the canonical pass's HashMap
+-- "last insert wins".
+enum AEntry = MakeAEntry(String, ExprList)
+enum Assoc  = ANil | ACons(AEntry, Assoc)
+
+-- GStart MUST be first + single-payload — run()'s coerce_init wraps the
+-- seeded BodyItemList into it.
+enum GState =
+    GStart(BodyItemList)
+    GStep(BodyItemList, Assoc)
+    GDone(Assoc)
+
+-- ── The gather transition ─────────────────────────────────────────────
+-- Fold the body left-to-right. A `BIConstraint(EBinary(OpEq,
+-- EIdentifier(nm), ESeqLit(items)))` contributes `(nm, items)`; everything
+-- else is inert. Drained list → GDone(assoc). Nested single-level matches
+-- (not one deep pattern) keep within the proven match-dispatch shape.
+fsm desugar_gather(state ∈ GState, state_next ∈ GState, halt ∈ Bool)
+    state_next = match state
+        GStart(b) ⇒ GStep(b, ANil)
+        GStep(items, acc) ⇒ match items
+            BILNil ⇒ GDone(acc)
+            BILCons(item, more) ⇒ match item
+                BIConstraint(e) ⇒ match e
+                    EBinary(op, lhs, rhs) ⇒ match op
+                        OpEq ⇒ match lhs
+                            EIdentifier(nm) ⇒ match rhs
+                                ESeqLit(its) ⇒ GStep(more, ACons(MakeAEntry(nm, its), acc))
+                                _            ⇒ GStep(more, acc)
+                            _ ⇒ GStep(more, acc)
+                        _ ⇒ GStep(more, acc)
+                    _ ⇒ GStep(more, acc)
+                _ ⇒ GStep(more, acc)
+        GDone(d) ⇒ GDone(d)
+    halt = match state
+        GDone(_) ⇒ true
+        _        ⇒ false
+
+-- ── FLATTEN state ─────────────────────────────────────────────────────
+-- Resolve one Concat spine to an ordered stream of CHUNKS. Work tasks:
+--   FRes(e)      — resolve an Expr operand.
+--   FEmit(items) — drain a SeqLit's items into the chunk stream, VERBATIM
+--                  (no recursion into them — matches Rust `flatten`'s
+--                  `SeqLit(items) => Some(items.clone())`).
+-- Chunks are either a literal item or an identifier REFERENCE:
+--   FLitItem(e)  — one verbatim item from a SeqLit operand.
+--   FRef(nm)     — an `EIdentifier(nm)` operand, left for the Rust shim to
+--                  resolve against the gathered map.
+--
+-- ── Why FRef instead of an in-FSM lookup ──
+-- The canonical `flatten` resolves a bound identifier by `seq_lits
+-- .get(name)` — a string-keyed HashMap lookup. Doing that in the FSM needs
+-- string EQUALITY between two enum-extracted payloads (the binding's key
+-- and the identifier's name), and that is unreliable under the runtime
+-- today (COUNTEREXAMPLES #18 / jit-codegen-gaps D2: a String extracted from
+-- a given-pinned enum doesn't compare byte-equal). So the FSM owns the
+-- recursive Concat spine + the VERBATIM ordering (the genuine fold), and
+-- emits `FRef(nm)`; the Rust shim does the string-keyed lookup — the same
+-- "Evident owns the recursion, Rust owns the string leaf" split
+-- `subscriptions` uses (FSM walk → Rust prefix-classify) and `validate`
+-- uses (Rust walk → Evident decision). A non-Concat / non-SeqLit /
+-- non-identifier operand fails the whole resolution (Rust `flatten`'s
+-- `_ => None`), signalled by `FFail`.
+enum FTask = FRes(Expr) | FEmit(ExprList)
+enum FStk  = FKNil | FKCons(FTask, FStk)
+
+enum FChunk  = FLitItem(Expr) | FRef(String)
+enum FChunks = FCNil | FCCons(FChunk, FChunks)
+
+-- FStart MUST be first + single-payload — coerce wraps the seeded Expr.
+enum FState =
+    FStart(Expr)
+    FStep(FStk, FChunks)   -- work stack, REVERSED chunk stream
+    FFail                  -- a non-resolvable operand shape
+    FDone(FChunks)         -- chunk stream, head-first (shim reverses + resolves)
+
+-- ── The flatten transition ────────────────────────────────────────────
+-- A Concat pushes its two operands (left popped first → left chunks land
+-- first under the head-prepend + final-reverse). A SeqLit contributes its
+-- items verbatim; an identifier contributes one `FRef`. Any other shape
+-- fails.
+fsm desugar_flatten(state ∈ FState, state_next ∈ FState, halt ∈ Bool)
+    state_next = match state
+        FStart(e) ⇒ FStep(FKCons(FRes(e), FKNil), FCNil)
+        FStep(stk, chunks) ⇒ match stk
+            FKNil ⇒ FDone(chunks)
+            FKCons(task, rest) ⇒ match task
+                FRes(e) ⇒ match e
+                    EBinary(op, l, r) ⇒ match op
+                        OpConcat ⇒ FStep(FKCons(FRes(l), FKCons(FRes(r), rest)), chunks)
+                        _        ⇒ FFail
+                    ESeqLit(items)  ⇒ FStep(FKCons(FEmit(items), rest), chunks)
+                    EIdentifier(nm) ⇒ FStep(rest, FCCons(FRef(nm), chunks))
+                    _ ⇒ FFail
+                FEmit(items) ⇒ match items
+                    ELNil            ⇒ FStep(rest, chunks)
+                    ELCons(it, more) ⇒ FStep(FKCons(FEmit(more), rest), FCCons(FLitItem(it), chunks))
+        FFail ⇒ FFail
+        FDone(d) ⇒ FDone(d)
+    halt = match state
+        FFail    ⇒ true
+        FDone(_) ⇒ true
+        _        ⇒ false
+
+-- ── Static verification ───────────────────────────────────────────────
+-- Composite in, composite out. The Rust shim's `desugar_equivalence.rs`
+-- is the byte-identical-vs-canonical check on the corpus + a synthetic
+-- battery; these pin the kernels' behavior directly.
+
+-- ⟨1, 2⟩ ++ ⟨3⟩ flattens to a 3-chunk stream (returned head-first,
+-- reversed), all literal items.
+claim sat_flatten_two_seqlits
+    final ∈ FState = run(desugar_flatten,
+        EBinary(OpConcat,
+            ESeqLit(ELCons(EInt(1), ELCons(EInt(2), ELNil))),
+            ESeqLit(ELCons(EInt(3), ELNil))))
+    final = FDone(FCCons(FLitItem(EInt(3)),
+              FCCons(FLitItem(EInt(2)), FCCons(FLitItem(EInt(1)), FCNil))))
+
+-- An identifier operand emits an `FRef` chunk (the Rust shim resolves it
+-- against the gathered map). `xs ++ ⟨9⟩` → ⟨FLitItem 9, FRef xs⟩ reversed.
+claim sat_flatten_identifier_ref
+    final ∈ FState = run(desugar_flatten,
+        EBinary(OpConcat, EIdentifier("xs"), ESeqLit(ELCons(EInt(9), ELNil))))
+    final = FDone(FCCons(FLitItem(EInt(9)), FCCons(FRef("xs"), FCNil)))
+
+-- A string concat (EStr operand) does NOT resolve — Rust flatten returns
+-- None here, so the walk leaves the Concat and recurses. Signalled by FFail.
+claim sat_flatten_string_concat_fails
+    final ∈ FState = run(desugar_flatten,
+        EBinary(OpConcat, EStr("."), EIdentifier("trail")))
+    final = FFail
+
+-- A bare identifier emits a single FRef — resolution (bound? unbound?) is
+-- the Rust shim's job; an unbound ref there fails the whole flatten.
+claim sat_flatten_bare_identifier_ref
+    final ∈ FState = run(desugar_flatten, EIdentifier("nope"))
+    final = FDone(FCCons(FRef("nope"), FCNil))
+
+-- A literal scalar can't begin a flatten — Rust `flatten(_) = None`.
+claim sat_flatten_scalar_fails
+    final ∈ FState = run(desugar_flatten, EInt(5))
+    final = FFail
+
+-- Gather picks up one `name = ⟨items⟩` binding and ignores the rest.
+claim sat_gather_one_binding
+    final ∈ GState = run(desugar_gather,
+        BILCons(BIConstraint(EBinary(OpEq, EIdentifier("xs"),
+                ESeqLit(ELCons(EInt(7), ELNil)))),
+            BILCons(BIConstraint(EIdentifier("ignored")), BILNil)))
+    final = GDone(ACons(MakeAEntry("xs", ELCons(EInt(7), ELNil)), ANil))
+
+-- A body with no `name = ⟨…⟩` binding yields the empty assoc.
+claim sat_gather_no_bindings
+    final ∈ GState = run(desugar_gather,
+        BILCons(BIConstraint(EInt(5)), BILNil))
+    final = GDone(ANil)
+
+-- The chunk stream is threaded, not free: a bare identifier yields exactly
+-- one FRef, never a conjured literal item.
+claim unsat_flatten_not_free
+    final ∈ FState = run(desugar_flatten, EIdentifier("nope"))
+    final = FDone(FCCons(FLitItem(EInt(1)), FCNil))

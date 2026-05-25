@@ -58,7 +58,7 @@ pub mod ast_decoder {
                                   decode_ffi_arg, decode_arg_list,
                                   decode_result,
                                   decode_install_step, decode_install_step_list,
-                                  decode_list, decode_str,
+                                  decode_list, decode_str, decode_expr,
                                   InstallStep,
                                   DecodeError};
 }

@@ -29,6 +29,7 @@ gaps currently bound what a pass can do.
 | `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
+| `desugar_seq_concat` (the `++` flattening half of `desugar`) | `portable/desugar.rs::RustDesugar` (wraps the canonical, the production path) | `stdlib/passes/desugar.ev` (`desugar_gather` + `desugar_flatten` stack-FSMs) | **faithful, NOT cut over** | Session PORT-desugar. The recursive kernels self-host as stack-FSMs over the SHARED marshaler (UU) via `run_nested`: `desugar_gather` folds the body → `name ↦ ⟨items⟩` bindings; `desugar_flatten` resolves a `Concat` spine → a chunk stream (`FLitItem` verbatim items + `FRef` identifier refs). The structural pre-order `rewrite` walk stays in Rust, and the string-keyed `FRef` lookup stays in Rust (Evident's enum-payload String equality is unreliable — #18). Byte-identical to the canonical on the corpus + a synthetic battery (`runtime/tests/desugar_equivalence.rs`). **Kept Rust as the production path** — two gaps block cutover: (1) the other desugar pass `unify_world_syntax` rewrites identifier strings by prefix-strip, which Evident can't express at all (no substring op); (2) returning the whole rebuilt body through the marshaler is byte-lossy in general (`SchemaDecl.param_count`, nested `MatchPattern` binds). See [Gaps](#runtime-gaps-that-bound-an-ast-returning-pass). |
 | `generics` (256 LOC) | — | ⌛ | — | |
 | `inject` (588 LOC) | — | ⌛ | — | biggest |
 
@@ -386,3 +387,108 @@ that piece keeps the seam useful even before the recursion gap is
 closed, and the equivalence test pins the behaviour byte-for-byte
 so a future gap fix can promote the walk into Evident without
 silently changing the diagnostic surface.
+
+## What `stdlib/passes/desugar.ev` reproduces today
+
+`desugar_seq_concat` — the `++` (Seq concat) flattening half of the
+canonical `desugar` pass (`runtime/src/runtime/desugar.rs`). Unlike
+`subscriptions` (which FOLDS a body to name-sets) this pass **returns a
+rewritten AST**, which is what makes it the interesting case: it's the
+first port that consumes AND produces composite AST through the shared
+marshaler.
+
+Two recursive kernels self-host as stack-FSMs driven by `run_nested`
+(tier-3), over the SHARED marshaler (UU):
+
+  * `desugar_gather` — folds a `BodyItemList` into an `Assoc` cons-list of
+    `name ↦ ⟨items⟩` bindings (the canonical pass-1). No string equality
+    (it matches `BIConstraint(EBinary(OpEq, EIdentifier, ESeqLit))`
+    structurally), so it self-hosts cleanly.
+  * `desugar_flatten` — resolves a `Concat` spine into an ordered CHUNK
+    stream: `FLitItem(e)` for a `⟨…⟩` operand's items (verbatim, matching
+    `flatten`'s `items.clone()`), `FRef(name)` for an identifier operand,
+    `FFail` for any other shape (matching `flatten`'s `_ => None`). This is
+    the genuine recursive fold — the Concat tree walk + the left-to-right
+    item ordering live in the FSM.
+
+`EvidentDesugar` (`portable/desugar.rs`) drives them, and is byte-identical
+to `RustDesugar` (which wraps the canonical pass verbatim) on the corpus +
+a synthetic battery (`runtime/tests/desugar_equivalence.rs`).
+
+### What stays in Rust, and why (the honest split)
+
+The shim keeps two pieces in Rust:
+
+  1. **The structural pre-order `rewrite` walk** — which `Expr` nodes to
+     visit, where to splice the flattened `SeqLit`, recursion into
+     subclaims. Mechanical plumbing, a faithful copy of the canonical
+     `rewrite` (the same shared-walk discipline `validate` uses).
+  2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
+     `⟨items⟩` against the gathered map. This is Rust because Evident's
+     **String equality on enum-extracted payloads is unreliable** (Gap #4 /
+     `COUNTEREXAMPLES.md` #18): two strings both destructured from a
+     given-pinned enum don't compare byte-equal, so an in-FSM
+     `seq_lits.get(name)` mis-fires (it silently resolves every identifier
+     to the first binding). The FSM therefore emits `FRef(name)` without
+     comparing, and the shim does the lookup — the same "Evident owns the
+     recursion, Rust owns the string leaf" split as `subscriptions`
+     (FSM walk → Rust prefix-classify).
+
+## Runtime gaps that bound an AST-returning pass
+
+Porting `desugar_seq_concat` surfaced the limits of self-hosting a pass
+that *returns* rewritten AST (not just a fold). These are why
+`desugar` is **self-hosted + equivalence-proven but NOT cut over** — the
+canonical Rust pass stays the production load path:
+
+### A. `unify_world_syntax` can't be self-hosted at all (no substring op)
+
+The canonical `desugar` runs **two** rewrites. The second,
+`unify_world_syntax`, rewrites identifier strings by prefix manipulation:
+`"_world.X" → "world.X"` and `"world.X" → "world_next.X"` (via Rust
+`strip_prefix` + `format!`). Evident has **no substring / prefix / runtime
+string-construction operator** — the same wall `subscriptions` hit for its
+`world.`-prefix classification, except there it was a leaf decision punted
+to a few Rust lines, whereas here it is the *entire* transform (a per-leaf
+string REWRITE, not a yes/no test). There is no honest way to express it in
+Evident today, so it stays in Rust in full.
+
+### B. Returning the whole rebuilt body through the marshaler is byte-lossy
+
+A full all-Evident rewrite would have the FSM return the entire rewritten
+body, decoded back via the shared marshaler. That round-trip is **not
+byte-identical in general**, by two documented marshaler limitations:
+
+  * **`SchemaDecl.param_count` has no marshaler slot.** `MakeSchemaDecl`
+    carries `(Keyword, String, BodyItemList)` only; `decode_schema_decl`
+    reconstructs `param_count: 0` (and `external: false`, `type_params:
+    []`). So any subclaim (a `BISubclaim(SchemaDecl)` in the body) that has
+    first-line params round-trips to `param_count = 0` — a silent change to
+    a field later passes rely on. (`EvidentDesugar` sidesteps this by
+    holding subclaims as Rust `SchemaDecl`s and recursing into them, never
+    round-tripping them — but a *whole-body-return* design couldn't.)
+  * **Nested `MatchPattern` constructor sub-patterns collapse.** A bind
+    list can only carry `BindName` / `BindWildcard`, so a nested-ctor
+    pattern (`Cons(Cons(x), y)`) reflects lossily as `BindWildcard`
+    (`encode_ast.rs` / `decode_ast.rs`). The current corpus uses only flat
+    patterns so the corpus round-trips losslessly, but the general case
+    doesn't.
+
+Because of A and B, a faithful *cutover* (delete the Rust rewrite, route
+`load.rs` through Evident) isn't possible. The right outcome — per the
+honest-fallback policy — is to self-host the faithfully-expressible kernels,
+equivalence-prove them, and keep the Rust pass. Closing Gap #4 (enum-payload
+String equality) would let `desugar_flatten` do its own `FRef` lookup;
+closing A (a substring/prefix primitive) + B (a `param_count` marshaler slot
++ deep `MatchPattern` binds) would together unblock a real cutover.
+
+### C. Runtime is unaffected either way (load-time pass)
+
+`desugar` runs once per schema at **load**, never on the per-tick scheduler
+hot path (it isn't called from `effect_loop`). So even the Evident-backed
+impl moves only one-time load cost — steady-state per-tick runtime is
+untouched. Production stays on the Rust pass regardless, so there is no
+runtime delta at all; the Evident impl is reachable only via
+`EVIDENT_DESUGAR_IMPL=evident` and the equivalence test. (Per the
+runtime-over-setup priority, even a cutover here would have been a
+setup-only cost — but the faithfulness gaps above block it independently.)
