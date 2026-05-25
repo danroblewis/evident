@@ -184,7 +184,12 @@ pub(crate) fn translate_bool<'ctx>(
         Expr::Matches(e, pattern) => {
             use crate::core::ast::MatchPattern;
             match pattern {
-                MatchPattern::Wildcard => Some(Bool::from_bool(ctx, true)),
+                // A wildcard or a bare binding matches any value.
+                MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+                    Some(Bool::from_bool(ctx, true)),
+                // `e matches Ctor(...)` tests only the outer variant tag;
+                // nested sub-patterns are ignored here (use `match` to
+                // deep-test/extract). Same shallow contract as before.
                 MatchPattern::Ctor { name, .. } => {
                     let scr_name = match e.as_ref() {
                         Expr::Identifier(n) if !n.contains('.') => n,

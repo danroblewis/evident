@@ -96,12 +96,8 @@ pub(super) fn rewrite_idents_with_prefix(
         Expr::Match(scr, arms) => {
             let new_arms: Vec<MatchArm> = arms.iter().map(|arm| {
                 // Pattern-bound names shadow field names within this arm.
-                let shadowed: HashSet<String> = match &arm.pattern {
-                    MatchPattern::Ctor { binds, .. } => binds.iter()
-                        .filter_map(|b| b.clone())
-                        .collect(),
-                    MatchPattern::Wildcard => HashSet::new(),
-                };
+                let mut shadowed: HashSet<String> = HashSet::new();
+                collect_pattern_binds(&arm.pattern, &mut shadowed);
                 let inner: HashSet<String> = field_set.iter()
                     .filter(|n| !shadowed.contains(*n))
                     .cloned()
@@ -119,6 +115,18 @@ pub(super) fn rewrite_idents_with_prefix(
         // (In practice `run` is resolved to a literal before inlining,
         // so this arm rarely fires.)
         Expr::RunFsm { fsm, init } => Expr::RunFsm { fsm: fsm.clone(), init: r(init) },
+    }
+}
+
+/// Collect every name a match pattern binds, recursing into nested
+/// constructor sub-patterns (`Node(Leaf(n), r)` binds `n` and `r`).
+/// Used to compute which field names an arm shadows.
+fn collect_pattern_binds(pat: &MatchPattern, out: &mut HashSet<String>) {
+    match pat {
+        MatchPattern::Wildcard => {}
+        MatchPattern::Bind(name) => { out.insert(name.clone()); }
+        MatchPattern::Ctor { binds, .. } =>
+            for sub in binds { collect_pattern_binds(sub, out); }
     }
 }
 

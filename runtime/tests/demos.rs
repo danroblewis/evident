@@ -380,6 +380,16 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["BUG: stack-FSM tree-walk produced a wrong sum"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Composite-state tree-walk (COUNTEREXAMPLES #19 closed): a
+        // variable-arity rose tree walked under tier-3 run(), SEEDED with
+        // a composite value and RETURNING a composite label-list — with
+        // nested-constructor deep-matching in the agenda transition.
+        name: "test_37_tree_walk", exit: 0,
+        must_lines: &["tree-walk via stack-FSM: flat=[b,a,r] deep=[b,y,x,a,r]"],
+        forbid_exact_lines: &["BUG: stack-FSM tree-walk produced wrong labels"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

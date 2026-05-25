@@ -41,7 +41,6 @@ pub(super) fn translate_match_arms<'ctx, T>(
     env: &HashMap<String, Var<'ctx>>,
     body_translator: impl Fn(&Expr, &HashMap<String, Var<'ctx>>) -> Option<T>,
 ) -> Option<Vec<CompiledArm<'ctx, T>>> {
-    use crate::core::ast::MatchPattern;
     // Scrutinee shapes supported:
     //   * Bare Identifier resolving to Var::EnumVar.
     //   * Index(Identifier(seq), idx) where `seq` is a Var::DatatypeSeqVar
@@ -74,69 +73,144 @@ pub(super) fn translate_match_arms<'ctx, T>(
     };
     let mut compiled: Vec<CompiledArm<T>> = Vec::new();
     for arm in arms {
-        match &arm.pattern {
-            MatchPattern::Wildcard => {
-                let body = body_translator(&arm.body, env)?;
-                compiled.push((None, body));
+        let mut env2 = env.clone();
+        let mut testers: Vec<Bool<'ctx>> = Vec::new();
+        compile_pattern(&arm.pattern, &scr_dt, dt, &scr_enum_name,
+                        &mut env2, &mut testers)?;
+        // The arm's guard is the conjunction of every recognizer tester
+        // collected while walking the (possibly nested) pattern. A
+        // pattern that contributes no testers (`Wildcard` or a top-level
+        // `Bind`) is a catch-all — its guard is `None`, which
+        // `fold_arms_to_ite` treats as the trailing else.
+        let combined: Option<Bool<'ctx>> = match testers.len() {
+            0 => None,
+            1 => Some(testers.pop().unwrap()),
+            _ => {
+                let refs: Vec<&Bool<'ctx>> = testers.iter().collect();
+                Some(Bool::and(ctx, &refs))
             }
-            MatchPattern::Ctor { name, binds } => {
-                let var_idx = dt.variants.iter()
-                    .position(|v| v.constructor.name() == *name)?;
-                let z3_var = &dt.variants[var_idx];
-                if binds.len() != z3_var.accessors.len() { return None; }
-                let tester = z3_var.tester.apply(&[&scr_dt]).as_bool()?;
-                let mut env2 = env.clone();
-                let scr_enum_name = scr_enum_name.clone();
-                let field_decls: Vec<crate::core::ast::EnumField> = with_active_enums(|enums| {
-                    enums.and_then(|er| {
-                        er.by_name.borrow().get(&scr_enum_name)
-                            .and_then(|(_, variants)| {
-                                variants.iter()
-                                    .find(|v| v.name == *name)
-                                    .map(|v| v.fields.clone())
-                            })
-                    }).unwrap_or_default()
-                });
-                for (j, bind_opt) in binds.iter().enumerate() {
-                    let Some(bind_name) = bind_opt else { continue };
-                    let acc = &z3_var.accessors[j];
-                    let raw = acc.apply(&[&scr_dt]);
-                    // Try each primitive sort first.
-                    let var = if let Some(i) = raw.as_int() { Var::IntVar(i) }
-                        else if let Some(b) = raw.as_bool() { Var::BoolVar(b) }
-                        else if let Some(s) = raw.as_string() { Var::StrVar(s) }
-                        else if let Some(r) = raw.as_real() { Var::RealVar(r) }
-                        else if let Some(payload_dt) = raw.as_datatype() {
-                            // Enum-typed payload. The field's type name
-                            // comes from the EnumField list we looked up
-                            // above. For self-recursion the type matches
-                            // the scrutinee; for cross-enum we look up
-                            // the field's type in the EnumRegistry.
-                            let field_type = field_decls.get(j)
-                                .map(|f| f.type_name.clone())
-                                .unwrap_or_else(|| scr_enum_name.clone());
-                            let payload_dt_sort: &'static DatatypeSort<'static> =
-                                with_active_enums(|enums| {
-                                    enums.and_then(|er| {
-                                        er.by_name.borrow().get(&field_type)
-                                            .map(|(d, _)| *d)
-                                    })
-                                }).unwrap_or(dt);  // fall back to scrutinee's dt
-                            Var::EnumVar {
-                                ast: payload_dt,
-                                enum_name: field_type,
-                                dt: payload_dt_sort,
-                            }
-                        }
-                        else { return None; };
-                    env2.insert(bind_name.clone(), var);
-                }
-                let body = body_translator(&arm.body, &env2)?;
-                compiled.push((Some(tester), body));
-            }
-        }
+        };
+        let body = body_translator(&arm.body, &env2)?;
+        compiled.push((combined, body));
     }
     Some(compiled)
+}
+
+/// Recursively match `pat` against the Z3 datatype value `scr_dt` (of
+/// sort `dt`, enum `enum_name`). Appends a recognizer tester per
+/// constructor level to `testers` (their conjunction is the arm's
+/// guard) and inserts payload bindings into `env`. A nested constructor
+/// sub-pattern recurses, conjoining its own tester — so
+/// `Node(Leaf(n), r)` matches only when the outer value is a `Node` AND
+/// its first field is a `Leaf`, binding `n` and `r`.
+///
+/// Returns `None` on a shape mismatch (unknown variant, arity mismatch
+/// against the constructor's physical accessors, or an unsupported
+/// payload kind such as a `Seq`-typed field) — the whole `match` then
+/// drops as untranslatable, the same loud failure as before.
+fn compile_pattern<'ctx>(
+    pat: &MatchPattern,
+    scr_dt: &z3::ast::Datatype<'ctx>,
+    dt: &'static DatatypeSort<'static>,
+    enum_name: &str,
+    env: &mut HashMap<String, Var<'ctx>>,
+    testers: &mut Vec<Bool<'ctx>>,
+) -> Option<()> {
+    match pat {
+        MatchPattern::Wildcard => Some(()),
+        MatchPattern::Bind(name) => {
+            // Bind the whole value (catch-all). Carry the enum sort so
+            // the bound name can itself be `match`ed downstream.
+            env.insert(name.clone(), Var::EnumVar {
+                ast: scr_dt.clone(),
+                enum_name: enum_name.to_string(),
+                dt,
+            });
+            Some(())
+        }
+        MatchPattern::Ctor { name, binds } => {
+            let var_idx = dt.variants.iter()
+                .position(|v| v.constructor.name() == *name)?;
+            let z3_var = &dt.variants[var_idx];
+            // One bind per physical accessor. Seq-typed fields expand to
+            // two accessors (arr, len) / one __SeqOf_T cons accessor, so
+            // this guard refuses Seq-payload patterns (unchanged from the
+            // prior behavior — Seq-in-match isn't supported yet).
+            if binds.len() != z3_var.accessors.len() { return None; }
+            testers.push(z3_var.tester.apply(&[scr_dt]).as_bool()?);
+            let field_decls: Vec<crate::core::ast::EnumField> = with_active_enums(|enums| {
+                enums.and_then(|er| {
+                    er.by_name.borrow().get(enum_name)
+                        .and_then(|(_, variants)| variants.iter()
+                            .find(|v| v.name == *name)
+                            .map(|v| v.fields.clone()))
+                })
+            }).unwrap_or_default();
+            for (j, sub) in binds.iter().enumerate() {
+                let raw = z3_var.accessors[j].apply(&[scr_dt]);
+                compile_field(sub, &raw, field_decls.get(j), enum_name, dt,
+                              env, testers)?;
+            }
+            Some(())
+        }
+    }
+}
+
+/// Match a sub-pattern against one payload field's raw Z3 value.
+/// Primitive fields bind to their scalar Var; enum fields either bind
+/// (as `EnumVar`, carrying the field's enum sort) or recurse into a
+/// nested constructor pattern.
+fn compile_field<'ctx>(
+    sub: &MatchPattern,
+    raw: &z3::ast::Dynamic<'ctx>,
+    field_decl: Option<&crate::core::ast::EnumField>,
+    parent_enum: &str,
+    parent_dt: &'static DatatypeSort<'static>,
+    env: &mut HashMap<String, Var<'ctx>>,
+    testers: &mut Vec<Bool<'ctx>>,
+) -> Option<()> {
+    match sub {
+        MatchPattern::Wildcard => Some(()),
+        MatchPattern::Bind(name) => {
+            let var = if let Some(i) = raw.as_int() { Var::IntVar(i) }
+                else if let Some(b) = raw.as_bool() { Var::BoolVar(b) }
+                else if let Some(s) = raw.as_string() { Var::StrVar(s) }
+                else if let Some(r) = raw.as_real() { Var::RealVar(r) }
+                else if let Some(payload_dt) = raw.as_datatype() {
+                    let (ftype, fsort) =
+                        field_enum_sort(field_decl, parent_enum, parent_dt);
+                    Var::EnumVar { ast: payload_dt, enum_name: ftype, dt: fsort }
+                }
+                else { return None; };
+            env.insert(name.clone(), var);
+            Some(())
+        }
+        MatchPattern::Ctor { .. } => {
+            // A nested constructor sub-pattern only matches an enum field.
+            let payload_dt = raw.as_datatype()?;
+            let (ftype, fsort) =
+                field_enum_sort(field_decl, parent_enum, parent_dt);
+            compile_pattern(sub, &payload_dt, fsort, &ftype, env, testers)
+        }
+    }
+}
+
+/// Resolve a payload field's enum type name + sort. For self-recursion
+/// (a field whose type is the parent enum itself) this is the parent's
+/// own sort; for a cross-enum field we look the type up in the active
+/// `EnumRegistry`, falling back to the parent's sort if unknown.
+fn field_enum_sort(
+    field_decl: Option<&crate::core::ast::EnumField>,
+    parent_enum: &str,
+    parent_dt: &'static DatatypeSort<'static>,
+) -> (String, &'static DatatypeSort<'static>) {
+    let ftype = field_decl
+        .map(|f| f.type_name.clone())
+        .unwrap_or_else(|| parent_enum.to_string());
+    let fsort = with_active_enums(|enums| {
+        enums.and_then(|er| er.by_name.borrow().get(&ftype).map(|(d, _)| *d))
+    }).unwrap_or(parent_dt);
+    (ftype, fsort)
 }
 
 /// Fold compiled arms bottom-up into a nested ITE. Last arm's body

@@ -239,15 +239,19 @@ pub fn decode_match_pattern(v: &Value) -> Result<crate::core::ast::MatchPattern>
     })
 }
 
-pub fn decode_bind_list(v: &Value) -> Result<Vec<Option<String>>> {
+pub fn decode_bind_list(v: &Value) -> Result<Vec<MatchPattern>> {
     decode_seq_enum(v, "bind list", decode_match_bind)
 }
 
-pub fn decode_match_bind(v: &Value) -> Result<Option<String>> {
+/// A `MatchBind` (BindWildcard | BindName) decodes to a constructor
+/// sub-pattern: `BindWildcard → Wildcard`, `BindName(n) → Bind(n)`.
+/// (stdlib/ast.ev's flat `MatchBind` can't express a nested constructor
+/// sub-pattern, so the decoder never produces a `Ctor` here.)
+pub fn decode_match_bind(v: &Value) -> Result<MatchPattern> {
     let (variant, fields) = check_enum(v, "MatchBind")?;
     Ok(match variant {
-        "BindWildcard" => { need_arity(variant, fields, 0)?; None }
-        "BindName"     => { need_arity(variant, fields, 1)?; Some(decode_str(&fields[0])?) }
+        "BindWildcard" => { need_arity(variant, fields, 0)?; MatchPattern::Wildcard }
+        "BindName"     => { need_arity(variant, fields, 1)?; MatchPattern::Bind(decode_str(&fields[0])?) }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "MatchBind".into(), variant: other.into(),
         }),

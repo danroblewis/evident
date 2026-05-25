@@ -421,17 +421,29 @@ the implementer should pick the efficient one:
 > toy/AST scale.
 >
 > So: **tier 3 can host a stack-FSM (option A) on a recursive-enum
-> stack.** The `walk_step` self-host, however, needs two more things tier
-> 3 lacks today — composite `init` seeding (`run(F, ⟨root⟩)`) and a
-> composite *final-state return* (a `Set`/`Seq` accumulator), both in the
-> off-limits tier-3 surface (COUNTEREXAMPLES #19c/#19d). That makes
-> **tier 2's native-`Vec` wrapper (option B) the cleaner prerequisite for
-> the actual port**: holding the stack and accumulator natively
-> sidesteps the literal-injection round-trip (composite in, composite
-> out) entirely. Tier 3's contribution is the de-risking proof that the
-> pop/dispatch/push/fold/thread *logic* is correct; tier 2 is how the
-> real `walk_expr` gets carried through. Full write-up + the four
-> discovered runtime constraints: `examples/COUNTEREXAMPLES.md` #19.
+> stack.**
+>
+> **Update (session NN): tier 3 now hosts a *real* composite-state
+> tree-walk — the cons-list workaround for composite I/O is no longer
+> required.** The composite-`init` seeding (`run(F, Node(...))`,
+> `run(F, ⟨root⟩)`) and composite *final-state return* (a nested-enum /
+> `Seq` accumulator) the `walk_step` self-host needs **landed in the
+> tier-3 surface** (`runtime/nested.rs` / `effect_loop/nested.rs`), along
+> with nested-constructor deep-matching — COUNTEREXAMPLES #19b/#19c/#19d
+> are struck. `examples/test_37_tree_walk.ev` is the proof: a
+> variable-arity rose-tree walked under `run()`, **seeded with a composite
+> tree and returning a composite label-list**, the agenda transition
+> deep-matching `ACons(NLCons(node, more), rest)`. So tier 3 no longer has
+> to drain into a flat `Done(Int)` or rebuild the tree from a bare-Int
+> selector (what `test_36` did) — it round-trips real composite state. The
+> one fact still standing is #19a (`Seq(T)` has no in-step pop/tail/cons,
+> and a `Seq` payload can't be bound from a `match`), so the work-stack
+> rides a recursive-enum cons-list spine rather than a `Seq`. **Tier 2's
+> native-`Vec` wrapper (option B) remains the path that would hold a
+> literal `Seq` stack natively** and skip the marshaling round-trip — but
+> it is now an *optimization* of a working tier-3 walk, not a prerequisite
+> for composite I/O. Full write-up + the runtime constraints:
+> `examples/COUNTEREXAMPLES.md` #19.
 
 ### Worked example: `subscriptions::walk_expr`, end to end
 

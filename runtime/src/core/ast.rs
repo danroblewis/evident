@@ -280,15 +280,28 @@ pub struct MatchArm {
     pub body:    Box<Expr>,
 }
 
-/// Match pattern. Either a constructor with positional bindings
-/// (`Ctor(name, _, name2)`) or a wildcard `_` that catches any value.
-/// A binding of `_` discards the corresponding payload field.
+/// Match pattern — recursive, so constructors can be matched to any
+/// depth (`Node(Leaf(n), r)`). Three shapes:
+///   * `Wildcard` — `_`, matches anything, binds nothing.
+///   * `Bind(name)` — a bare lowercase identifier, matches anything and
+///     binds it to `name`.
+///   * `Ctor { name, binds }` — matches when the scrutinee's variant tag
+///     is `name` AND each sub-pattern in `binds` matches the
+///     corresponding payload field. A nullary constructor has
+///     `binds == []`. Sub-patterns are themselves `MatchPattern`s, so
+///     `Node(Leaf(n), r)` nests a `Ctor` sub-pattern (deep match).
+///
+/// Capitalization disambiguates a bare identifier at parse time: an
+/// uppercase-initial name (`Empty`, `Leaf`) is a constructor; a
+/// lowercase-initial name (`n`, `rest`) is a binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchPattern {
-    /// `Ctor(b0, b1, ...)`. `binds[i]` is the variable name to bind
-    /// the i-th payload field to, or `None` if the binding was `_`
-    /// (discard). Length must match the constructor's arity.
-    Ctor { name: String, binds: Vec<Option<String>> },
+    /// `Ctor(p0, p1, ...)` — `binds[i]` is the sub-pattern matched
+    /// against the i-th payload field. Length must match the
+    /// constructor's arity.
+    Ctor { name: String, binds: Vec<MatchPattern> },
+    /// A bare lowercase identifier — binds the matched value to `name`.
+    Bind(String),
     /// `_` — matches any value, no bindings.
     Wildcard,
 }

@@ -560,7 +560,13 @@ fn encode_match_pattern<'ctx>(
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
     use crate::core::ast::MatchPattern;
     match pat {
-        MatchPattern::Wildcard => apply(enums, "MatchPattern", "PatWildcard", &[]),
+        // stdlib/ast.ev's `MatchPattern` has no top-level `PatBind`; a
+        // top-level bind reflects (lossily) as a wildcard. This is the
+        // same documented-lossy v0.1 contract as the dropped
+        // `param_count` / skipped `TraceDecl` (no self-hosted pass reads
+        // a top-level bind today).
+        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+            apply(enums, "MatchPattern", "PatWildcard", &[]),
         MatchPattern::Ctor { name, binds } => {
             let n = z3_str(ctx, name);
             let binds_list = encode_bind_list(binds, ctx, enums)?;
@@ -570,21 +576,27 @@ fn encode_match_pattern<'ctx>(
 }
 
 fn encode_bind_list<'ctx>(
-    binds: &[Option<String>],
+    binds: &[crate::core::ast::MatchPattern],
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    use crate::core::ast::MatchPattern;
     let helper = crate::core::internal_cons_helper_name("MatchBind");
     let empty  = "__Empty_MatchBind";
     let cell   = "__Cell_MatchBind";
     let mut acc = apply(enums, &helper, empty, &[])?;
     for b in binds.iter().rev() {
         let head = match b {
-            None => apply(enums, "MatchBind", "BindWildcard", &[])?,
-            Some(name) => {
+            MatchPattern::Bind(name) => {
                 let n = z3_str(ctx, name);
                 apply(enums, "MatchBind", "BindName", &[&n])?
             }
+            // `BindWildcard` for a wildcard, and (lossily) for a nested
+            // constructor sub-pattern — stdlib/ast.ev's flat `MatchBind`
+            // can't carry the nesting yet. Deep self-hosted-pass support
+            // is a future stdlib extension; this keeps the reflected AST
+            // round-trippable (as a wildcard) instead of failing to encode.
+            _ => apply(enums, "MatchBind", "BindWildcard", &[])?,
         };
         acc = apply(enums, &helper, cell, &[&head, &acc])?;
     }
@@ -995,7 +1007,10 @@ fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
 fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     use crate::core::ast::MatchPattern;
     match p {
-        MatchPattern::Wildcard => ev("MatchPattern", "PatWildcard", vec![]),
+        // No `PatBind` in stdlib/ast.ev; a top-level bind isn't produced
+        // by the self-hosting corpus. Mirror as wildcard.
+        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+            ev("MatchPattern", "PatWildcard", vec![]),
         MatchPattern::Ctor { name, binds } => {
             ev("MatchPattern", "PatCtor",
                vec![Value::Str(name.clone()), bind_list_to_value(binds)])
@@ -1003,12 +1018,14 @@ fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     }
 }
 
-fn bind_list_to_value(binds: &[Option<String>]) -> Value {
+fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
+    use crate::core::ast::MatchPattern;
     let mut acc = ev("BindList", "BLNil", vec![]);
     for b in binds.iter().rev() {
         let head = match b {
-            None => ev("MatchBind", "BindWildcard", vec![]),
-            Some(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
+            MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
+            // Wildcard, and (lossily) any nested constructor sub-pattern.
+            _ => ev("MatchBind", "BindWildcard", vec![]),
         };
         acc = ev("BindList", "BLCons", vec![head, acc]);
     }

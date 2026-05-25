@@ -103,11 +103,11 @@ pub(crate) fn render_expr(e: &Expr) -> String {
 fn fmt_pattern(pat: &MatchPattern) -> String {
     match pat {
         MatchPattern::Wildcard => "_".to_string(),
+        MatchPattern::Bind(n) => n.clone(),
         MatchPattern::Ctor { name, binds } => {
             if binds.is_empty() { name.clone() }
             else {
-                let bs: Vec<String> = binds.iter().map(|b|
-                    b.clone().unwrap_or_else(|| "_".into())).collect();
+                let bs: Vec<String> = binds.iter().map(fmt_pattern).collect();
                 format!("{}({})", name, bs.join(", "))
             }
         }
@@ -320,7 +320,10 @@ fn encode_match_arm(a: &MatchArm) -> Value {
 
 fn encode_match_pattern(p: &MatchPattern) -> Value {
     match p {
-        MatchPattern::Wildcard => ev("MatchPattern", "PatWildcard", vec![]),
+        // A top-level bind has no `PatBind` in stdlib/ast.ev; the
+        // self-hosting corpus never produces one. Treat as wildcard.
+        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+            ev("MatchPattern", "PatWildcard", vec![]),
         MatchPattern::Ctor { name, binds } =>
             ev("MatchPattern", "PatCtor", vec![Value::Str(name.clone()), encode_bind_list(binds)]),
     }
@@ -351,10 +354,13 @@ fn encode_string_list(items: &[String]) -> Value {
 fn encode_match_arm_list(items: &[MatchArm]) -> Value {
     cons_list("MatchArmList", "MALCons", "MALNil", items.iter().map(encode_match_arm))
 }
-fn encode_bind_list(binds: &[Option<String>]) -> Value {
+fn encode_bind_list(binds: &[MatchPattern]) -> Value {
     cons_list("BindList", "BLCons", "BLNil", binds.iter().map(|b| match b {
-        None => ev("MatchBind", "BindWildcard", vec![]),
-        Some(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
+        MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
+        // Wildcard, and (lossily) any nested constructor sub-pattern,
+        // which the flat `MatchBind` can't represent — never hit by the
+        // self-hosting corpus.
+        _ => ev("MatchBind", "BindWildcard", vec![]),
     }))
 }
 

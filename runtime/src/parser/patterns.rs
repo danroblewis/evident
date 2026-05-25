@@ -52,33 +52,35 @@ impl Parser {
         Ok(Expr::Match(Box::new(scrutinee), arms))
     }
 
-    /// One pattern: bare `_` (wildcard), or `Ctor(b1, b2, ...)` where
-    /// each binding is an identifier or `_`.
+    /// One pattern, parsed recursively so constructor sub-patterns nest
+    /// to any depth (`Node(Leaf(n), r)`):
+    ///   * `_`                       → `Wildcard`
+    ///   * lowercase ident `n`       → `Bind("n")`
+    ///   * uppercase ident `Empty`   → `Ctor { "Empty", [] }` (nullary)
+    ///   * `Ctor(p1, p2, …)`         → `Ctor { name, [parse_pattern…] }`
+    ///
+    /// Capitalization is the disambiguator (same rule as type params /
+    /// enum variants elsewhere): an uppercase-initial bare identifier is
+    /// a nullary constructor pattern; a lowercase-initial one binds. A
+    /// name followed by `(` is always a constructor, and its arguments
+    /// recurse through this same parser.
     pub(super) fn parse_match_pattern(&mut self) -> Result<crate::core::ast::MatchPattern> {
-        // Bare `_` at the top level.
-        if let Token::Ident(s) = self.peek().clone() {
-            if s == "_" {
-                self.bump();
-                return Ok(crate::core::ast::MatchPattern::Wildcard);
-            }
-            // Either bare nullary variant `Ctor` or `Ctor(b1, ...)`.
-            self.bump();
-            if !matches!(self.peek(), Token::LParen) {
-                return Ok(crate::core::ast::MatchPattern::Ctor {
-                    name: s, binds: Vec::new(),
-                });
-            }
+        use crate::core::ast::MatchPattern;
+        let Token::Ident(s) = self.peek().clone() else {
+            return Err(ParseError(format!(
+                "expected pattern (Ctor, binding, or `_`), got {:?}", self.peek())));
+        };
+        self.bump();
+        if s == "_" {
+            return Ok(MatchPattern::Wildcard);
+        }
+        // `Ctor(args…)` — recurse into each argument as a sub-pattern.
+        if matches!(self.peek(), Token::LParen) {
             self.bump(); // (
             let mut binds = Vec::new();
             if !matches!(self.peek(), Token::RParen) {
                 loop {
-                    let bind = match self.bump() {
-                        Token::Ident(b) if b == "_" => None,
-                        Token::Ident(b) => Some(b),
-                        other => return Err(ParseError(format!(
-                            "expected identifier or `_` in pattern, got {:?}", other))),
-                    };
-                    binds.push(bind);
+                    binds.push(self.parse_match_pattern()?);
                     if matches!(self.peek(), Token::Comma) {
                         self.bump();
                         continue;
@@ -87,9 +89,15 @@ impl Parser {
                 }
             }
             self.eat(&Token::RParen)?;
-            return Ok(crate::core::ast::MatchPattern::Ctor { name: s, binds });
+            return Ok(MatchPattern::Ctor { name: s, binds });
         }
-        Err(ParseError(format!(
-            "expected pattern (Ctor or `_`), got {:?}", self.peek())))
+        // Bare identifier, no parens: uppercase = nullary constructor,
+        // lowercase = binding.
+        let is_ctor = s.chars().next().is_some_and(|c| c.is_uppercase());
+        Ok(if is_ctor {
+            MatchPattern::Ctor { name: s, binds: Vec::new() }
+        } else {
+            MatchPattern::Bind(s)
+        })
     }
 }
