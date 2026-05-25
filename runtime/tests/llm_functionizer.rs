@@ -46,6 +46,7 @@ fn greet_program(ctx: &Context) -> Z3Program<'_> {
         }],
         checks: vec![],
         predicates: vec![],
+        label: None,
     }
 }
 

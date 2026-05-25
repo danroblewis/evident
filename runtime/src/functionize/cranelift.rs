@@ -323,6 +323,17 @@ pub fn compile_program<'ctx>(
     enums: &EnumRegistry,
     datatypes: &crate::core::DatatypeRegistry,
 ) -> Option<JitProgram> {
+    // Dump the IR before codegen if requested. This sits between
+    // EVIDENT_FZ_DUMP_BODY (raw simplified Z3 assertions, the
+    // extractor input) and EVIDENT_JIT_DUMP (Cranelift CLIF, the
+    // codegen output). Fires before any early-return so a refusal
+    // can be diagnosed against the exact shape the JIT was handed.
+    if std::env::var("EVIDENT_FZ_DUMP_PROGRAM").is_ok() {
+        let label = program.label.as_deref().unwrap_or("<anonymous>");
+        eprintln!("[fz/program] === claim {} ({} steps, {} checks, {} predicates) ===",
+            label, program.steps.len(), program.checks.len(), program.predicates.len());
+        eprint!("{program}");
+    }
     // Record (user-type) info, keyed by Z3 constructor name (e.g.
     // "mk_IVec2", "mk_EffectPair"). Records aren't in `enums`; their
     // constructor name + field shape (`FieldKind`) come from the

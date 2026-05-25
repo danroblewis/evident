@@ -1119,6 +1119,9 @@ impl EvidentRuntime {
         let mut all = pinned_steps.to_vec();
         all.append(&mut program.steps);
         program.steps = all;
+        // Tag the program with its claim name so the
+        // EVIDENT_FZ_DUMP_PROGRAM diagnostic header can identify it.
+        program.label = Some(name.to_string());
         match self.functionizer.compile(&program, &self.enums, &self.datatypes) {
             // Codegen refused (e.g. a `Guarded` step) — the scoped slow
             // solve produces the right value, so this is not a Bail.
