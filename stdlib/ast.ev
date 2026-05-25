@@ -118,9 +118,12 @@ enum BodyItem =
 
 -- ── Schema (the unit a `claim` / `type` declares) ───────────────
 
--- MakeSchemaDecl(keyword, name, body).
+-- MakeSchemaDecl(keyword, name, param_count, body).
+-- `param_count` is how many leading body items are first-line
+-- interface params (the `claim X(a, b)` signature) — the insertion
+-- index inject/desugar splice after. Round-trips losslessly.
 enum SchemaDecl =
-    MakeSchemaDecl(Keyword, String, Seq(BodyItem))
+    MakeSchemaDecl(Keyword, String, Nat, Seq(BodyItem))
 
 -- ── Expressions ─────────────────────────────────────────────────
 

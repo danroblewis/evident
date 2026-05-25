@@ -68,7 +68,7 @@ claim infer_string_from_single_assignment
     -- user enums. The pass shouldn't be sensitive to that list.
     enums_part ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),
                                   EStr(string_lit)))⟩)⟩,
@@ -85,7 +85,7 @@ claim infer_int_from_single_assignment
     int_lit ∈ Int
     enums_part_int ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),
                                   EInt(int_lit)))⟩)⟩,
@@ -102,7 +102,7 @@ claim infer_bool_from_single_assignment
     bool_lit ∈ Bool
     enums_part_bool ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),
                                   EBool(bool_lit)))⟩)⟩,
@@ -122,7 +122,7 @@ claim infer_int_from_membership_plus_assignment
     pins2         ∈ Pins
     enums_2       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIMembership(inferred_var, inferred_type, pins2),
              BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),
@@ -139,7 +139,7 @@ claim infer_string_from_membership_plus_assignment
     pins_s        ∈ Pins
     enums_s       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIMembership(inferred_var, inferred_type, pins_s),
              BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),
@@ -156,7 +156,7 @@ claim infer_bool_from_membership_plus_assignment
     pins_b        ∈ Pins
     enums_b       ∈ Seq(EnumDecl)
     program = MakeProgram(
-        ⟨MakeSchemaDecl(KClaim, claim_name,
+        ⟨MakeSchemaDecl(KClaim, claim_name, 0,
             ⟨BIMembership(inferred_var, inferred_type, pins_b),
              BIConstraint(EBinary(OpEq,
                                   EIdentifier(inferred_var),

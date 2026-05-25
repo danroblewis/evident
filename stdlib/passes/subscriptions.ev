@@ -98,7 +98,7 @@ enum BodyItem =
 
 enum BodyItemList = BILNil | BILCons(BodyItem, BodyItemList)
 
-enum SchemaDecl = MakeSchemaDecl(Keyword, String, BodyItemList)
+enum SchemaDecl = MakeSchemaDecl(Keyword, String, Nat, BodyItemList)
 
 -- ── Walk state ────────────────────────────────────────────────────────
 
@@ -177,7 +177,7 @@ fsm subscriptions_walk(state ∈ SW, state_next ∈ SW, halt ∈ Bool)
                 MakeMapping(_, v) ⇒ SWStep(WSCons(WExpr(v), rest), names)
             -- ── subclaim body (walk_body of s.body) ──
             WSchema(s) ⇒ match s
-                MakeSchemaDecl(_, _, body) ⇒ SWStep(WSCons(WBodyList(body), rest), names)
+                MakeSchemaDecl(_, _, _, body) ⇒ SWStep(WSCons(WBodyList(body), rest), names)
             -- ── match arm: walk its body expr (pattern dropped) ──
             WArm(a) ⇒ match a
                 MakeMatchArm(_, body) ⇒ SWStep(WSCons(WExpr(body), rest), names)

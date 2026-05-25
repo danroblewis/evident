@@ -399,18 +399,18 @@ pub fn decode_schema_decl(v: &Value) -> Result<SchemaDecl> {
             enum_name: "SchemaDecl".into(), variant: variant.into(),
         });
     }
-    need_arity(variant, fields, 3)?;
+    need_arity(variant, fields, 4)?;
     Ok(SchemaDecl {
-        keyword: decode_keyword(&fields[0])?,
-        name:    decode_str(&fields[1])?,
-        body:    decode_body_item_list(&fields[2])?,
-        // The encoded AST shape (stdlib/ast.ev) doesn't yet carry
-        // first-line params or the external flag separately;
-        // conservatively treat 0/false. Self-hosted passes can still
-        // observe the body items.
+        keyword:     decode_keyword(&fields[0])?,
+        name:        decode_str(&fields[1])?,
+        // Third slot: param_count (the first-line-param insertion
+        // index), now round-tripped losslessly. See `encode_schema_decl`.
+        param_count: decode_int(&fields[2])?.max(0) as usize,
+        body:        decode_body_item_list(&fields[3])?,
+        // type_params / external aren't in the encoded AST shape
+        // (stdlib/ast.ev); conservatively empty/false.
         type_params: vec![],
-        param_count: 0,
-        external: false,
+        external:    false,
     })
 }
 
