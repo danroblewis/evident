@@ -26,10 +26,12 @@ use evident_runtime::{EvidentRuntime, Value};
 
 use super::common::load_runtime_with_passes;
 
-const LITERAL_TYPES: &str = "stdlib/passes/literal_types.ev";
-const ITER_TYPES:    &str = "stdlib/passes/iter_types.ev";
-const PROPAGATION:   &str = "stdlib/passes/propagation.ev";
-const CONSISTENCY:   &str = "stdlib/passes/consistency.ev";
+// Pass-file paths, relative to the resolved stdlib directory
+// (see `common::load_runtime_with_passes`).
+const LITERAL_TYPES: &str = "passes/literal_types.ev";
+const ITER_TYPES:    &str = "passes/iter_types.ev";
+const PROPAGATION:   &str = "passes/propagation.ev";
+const CONSISTENCY:   &str = "passes/consistency.ev";
 
 /// Rules invoked via `query_with_program` (no body Seq needed).
 const PROGRAM_RULES: &[&str] = &[

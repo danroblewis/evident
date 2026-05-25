@@ -66,6 +66,14 @@ pass needs to be the *production* default — but until a pass is fully
 faithful, the Rust impl stays the default and the Evident impl is
 exercised by tests and opt-in env var.
 
+When `default_impl()` selects the Evident backing, it locates the pass
+file's `stdlib/` via the one resolver `stdlib_path::stdlib_dir()` (see
+[`docs/design/stdlib-resolution.md`](design/stdlib-resolution.md)) — set
+`EVIDENT_STDLIB` to override, otherwise the dev tree resolves with no
+config. This is the robust stdlib location that session VV flagged as the
+prerequisite for any production Evident-pass cutover (an installed binary
+with no source tree must still find its stdlib).
+
 ### Marshaling: Rust value → `Value::Enum` → pass → `Value`
 
 The pass pattern-matches on an Evident-side mirror of the AST defined in
