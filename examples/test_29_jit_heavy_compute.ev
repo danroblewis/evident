@@ -19,32 +19,42 @@
 -- whole thing is JIT-compilable. No Seqs, no records, no enums.
 --
 -- ─────────────────────────────────────────────────────────────────
--- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, 21 ticks total)
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1 -n 5, 21 ticks total)
 -- ─────────────────────────────────────────────────────────────────
 --   Mode          | wall    | tick0  | wall_post | steady/tick
 --   --------------+---------+--------+-----------+------------
---   JIT default   | 21.52ms | 6.14ms |  15.40ms  |  0.28 ms
---   FUNCTIONIZE=0 | 20.31ms | 1.40ms |  18.91ms  |  0.89 ms
+--   JIT default   | 16.14ms | 6.35ms |   9.79ms  |  0.01 ms
+--   FUNCTIONIZE=0 | 20.93ms | 1.44ms |  19.50ms  |  0.93 ms
 --
--- → 3.2× faster per-tick steady-state with JIT (0.28 vs 0.89 ms).
--- → 1.2× faster wall_post (15.40 vs 18.91) — limited by dispatch
---   cost (20 `Println` effects × N ticks).
+-- → ~90× faster per-tick steady-state with JIT (0.01 vs 0.93 ms):
+--   in steady state both decomposed components (the arithmetic chains
+--   AND the `match state` effects) are native code, so Z3 does ~no
+--   per-tick work.
+-- → 2.0× faster wall_post (9.79 vs 19.50) — the remaining wall is now
+--   dispatch cost (Println effects × N ticks), not solving.
+-- → tick0 is higher under JIT (6.35 vs 1.44 ms): that's the one-shot
+--   Cranelift compile, amortized over every later tick.
 --
--- Why JIT wins here but not in test_25: this body has ~98 simplified
--- assertions (vs 8 in test_25) of branch-dependent state, which Z3's
+-- Why JIT wins here but not in test_25: this body has ~196 simplified
+-- assertions (vs 16 in test_25) of branch-dependent state, which Z3's
 -- simplify can't fold into a polynomial. The JIT compiles each step
 -- to a few cmp/branch/arith instructions and the per-tick steady
 -- cost is dominated by per-call boilerplate, NOT the body — which
 -- is exactly what we want from a JIT.
 --
--- Note: `comp=1/4` — only 1 of 4 decomposed components compiles
--- today; the others trip a JIT codegen gap in deep nested ITE
--- chains. Even so, the one compiled component dominates the steady
--- per-tick cost so the win is clear. Closing the remaining gap
--- would push the win further (potentially 5-10×).
+-- Note: `comp=3/4` (session T, was 1/4). Two analyses (tick 0 +
+-- steady) × two components = 4 compile attempts. The `effects` step
+-- (`match state ⇒ ⟨…⟩`) is a Seq-bodied `Guarded` step that the JIT
+-- now compiles (a runtime bail flag covers the no-branch-matched case
+-- — see runtime/src/functionize/cranelift.rs + docs/jit-codegen-gaps.md).
+-- The deep nested-ITE chains were NEVER the gap — they compile fine.
+-- The one component that still doesn't compile is the tick-0 bootstrap
+-- chains (its `_tick` prev-value is absent at tick 0, so the unsafe-
+-- free check in query.rs routes it to the scoped slow solve); in
+-- steady state it compiles, which is why steady cost ≈ 0.
 --
--- (Run with EVIDENT_FUNCTIONIZE_STATS=1 to see comp=1/4 and confirm
--- which component the JIT picked up.)
+-- (Run with EVIDENT_FUNCTIONIZE_STATS=1 to see comp=3/4 and confirm
+-- which components the JIT picked up.)
 
 import "stdlib/runtime.ev"
 
