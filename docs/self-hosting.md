@@ -20,7 +20,7 @@ gaps currently bound what a pass can do.
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
-| `validate` (95 LOC) | — | ⌛ | — | next candidate |
+| `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
 | `subscriptions` (176 LOC) | — | ⌛ | — | |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
@@ -169,6 +169,27 @@ isn't threaded through the functionizer's match→ternary codegen. Bool
 rendering is therefore excluded from the faithful subset rather than
 shipped as a JIT-incorrect arm.
 
+### 4. String payload extracted from a given-pinned enum loses equality
+
+Surfaced by porting `validate`. The natural shape — pin an `e ∈ Expr`,
+destructure `ECall(nm, _)`, compare `nm = "FFICall"` — evaluates the
+equality to `false` on both JIT and slow paths, even when the bytes
+match. The destructured `nm` doesn't byte-compare against a source
+literal of the same value when `e` was pinned via `given` from a Rust
+`Value::Enum { fields: [Value::Str("FFICall"), …] }`.
+
+Workaround used in `stdlib/passes/validate.ev`: have the shim
+extract the call name on the Rust side and pin `nm ∈ String` directly.
+The pass still owns the decision (`nm ∈ {FFICall, FFIOpen, FFILookup,
+LibCall}`); only the recognizer-vs-comparison choice changes. Logged
+in `examples/COUNTEREXAMPLES.md` (gap class: "given-pinned-enum
+String-equality").
+
+The constructed-in-source form works correctly — `e = ECall("LibCall",
+⟨⟩) ; ValidateExpr (e ↦ e, …)` from an `.ev` file produces the
+expected `out = "LibCall"`. So this is specifically a `given` ⇄ match
+extraction failure, not a fundamental string-comparison issue.
+
 ## What `stdlib/passes/pretty.ev` reproduces today
 
 Faithful (byte-identical to `pretty.rs`):
@@ -182,3 +203,28 @@ Faithful (byte-identical to `pretty.rs`):
 Everything else renders to an ASCII sentinel (`<unsupported-…>`); the
 equivalence test treats only the faithful shapes as authoritative and
 pins the rest as known divergences.
+
+## What `stdlib/passes/validate.ev` reproduces today
+
+Fully faithful — `EvidentValidate` and `RustValidate` produce
+byte-identical diagnostics for every `SchemaDecl` in the corpus
+(every example in `examples/test_*.ev`, plus the synthetic
+violations the equivalence test constructs across kind labels,
+banned call names, and nesting positions).
+
+The trick is that the body walk lives in Rust on **both** impls
+(`portable/validate.rs::find_ffi_call` mirrors the canonical
+`runtime/src/runtime/validate.rs::find_ffi_call` 1:1); the impls
+only differ in the per-Call classifier. `RustValidate` uses a
+native `match name { "FFICall" => ... }`; `EvidentValidate` calls
+`ValidateExpr(nm)` in the pass. The decision logic — what counts
+as a banned name — lives in the Evident pass, which is the only
+piece that moves between impls.
+
+This split is intentional: the recursion gap (Gap #1) blocks an
+Evident pass from walking the Expr tree itself, but it doesn't
+block the much smaller "is this name banned?" decision. Porting
+that piece keeps the seam useful even before the recursion gap is
+closed, and the equivalence test pins the behaviour byte-for-byte
+so a future gap fix can promote the walk into Evident without
+silently changing the diagnostic surface.
