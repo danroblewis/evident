@@ -35,3 +35,11 @@ mod detector;
 // caller (the inline walker prints `eprintln!("[halts_within] {e}")`),
 // so the type itself doesn't need re-exporting.
 pub use compose::assert_halts_within;
+
+// Tier-1 nested-run wiring: `collapse_run` reads the composer's
+// *halted-state* expression (rather than the halt Bool) into a
+// function-shaped `Z3Program`, which `runtime/src/runtime/query.rs`
+// JITs via the Cranelift functionizer. Gated by the same affine
+// detector that gates `halts_within`. See
+// `docs/design/nested-fsm-strategies.md` §7 (step 3).
+pub use compose::{collapse_run, TierOneRun};

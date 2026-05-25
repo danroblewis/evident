@@ -669,18 +669,72 @@ landable steps (the `LoopFn`/`LoopContract` mechanism on the counter; the
 step-JIT compiling the body shapes; refusals fall through to tier 3, so
 correctness holds even where speed doesn't.
 
-### 3. Tier 1 — symbolic-unroll → JIT wiring
+### 3. Tier 1 — symbolic-unroll → JIT wiring — **LANDED (session OO)**
 
-The unroll *landed* (`fsm_unroll/`); the remaining work is wiring it to
-**return the final-state value** rather than the halt witness (§ 3):
-solve for the halt step `k` from `init`, read `F^k`'s composed
-state expression, substitute `init`, and JIT via the existing Cranelift
-functionizer. Validate against tier 3 on the affine fixtures (the
-counter).
+The unroll *landed* earlier (`fsm_unroll/`); this session wired its
+collapsed output to the **existing Cranelift functionizer** so an affine
+nested run compiles to native code instead of only being asserted as a
+halt constraint. Shipped:
 
-*Size:* medium. *Risk:* medium, but *narrow* — affine bodies only, so the
-applicability is small and the failure mode is "detector refuses, fall to
-tier 2/3," never a wrong value.
+- **Halted-state carry.** `compose.rs`'s `Power` now tracks, alongside
+  `state_exprs` (the ongoing "ran-k-full-ticks" state) and
+  `halt_aggregate`, a **`halted_state`** expression per state var — the
+  value at the *first halting tick*, composed by the same
+  exponentiation-by-squaring doublings under a `first-halt-wins` rule:
+  `v_2k = ite(halt_first, v_first, v_second∘e_first)`. This mirrors
+  `run_nested`'s semantics exactly (halt read on each tick's *input*
+  state; return the input at the first halting tick), so the value it
+  computes is the tier-3 result by construction.
+- **`fsm_unroll::collapse_run`** reads `halted_state` out into a
+  function-shaped one-step `Z3Program` (`out := <closed form in the
+  input-state const>`), ready for `Functionizer::compile`. It runs the
+  affine-step detector at F^8 first and **refuses (returns `Ok(None)`)**
+  on a branching body, a non-single / non-`Int` state pair, an `init`
+  that doesn't provably halt within the unroll cap, or a non-collapsing
+  carry — every refusal is a clean fall-through, never a wrong value.
+- **`query.rs::EvidentRuntime::tier1_run`** is the functionize-path
+  entry: it calls `collapse_run`, hands the program to
+  `self.functionizer.compile`, and calls the JIT'd function with `init`.
+  A functionizer codegen refusal is a second safety net — `None`, not an
+  error. `EVIDENT_FSM_UNROLL_TRACE=1` / `EVIDENT_FUNCTIONIZE_STATS=1`
+  print the `comp=1/1 fn✓` compile line.
+
+**What it accelerates.** The affine-counter class the detector accepts:
+a single `Int` state pair whose transition composes to closed form
+(`count_next = count - 1`, `count - 2`, …) with a threshold `halt`. The
+symbolic doublings absorb the loop *at compile time* — the JIT'd function
+is loop-free native code (tier 1's defining property, § 6). Tree-walks
+and game steps are branching → the detector refuses → they live at
+tiers 2/3.
+
+**Gating.** Exactly the affine-step detector that gates `halts_within`
+(`fsm_unroll/detector.rs`: probe to F^8, last-doubling state-node ratio
+< 1.5). Branching bodies never reach the JIT.
+
+**Validation.** `runtime/tests/tier1_jit.rs` asserts the JIT result
+equals the **tier-3 oracle** (`effect_loop::run_nested`) across an init
+sweep (incl. the already-halted boundary and a −2 step that lands on −1
+vs 0 by parity), and that branching / enum-state / unknown FSMs fall
+through (or error) rather than producing a value.
+
+**Known limit (the § 8 "halt-step determination" open question, now
+measured).** The `halted_state` carry is an `ite`-tree whose node count
+is **K-bounded** (~`init`-proportional: 39 nodes at F^8, 347 at F^64 for
+the counter) rather than a true `init`-independent O(1) closed form like
+`min(count, 0)` — Z3's `simplify` doesn't fold the K-way piecewise into
+the affine-arithmetic closed form. So very large inits exceed the node
+cap and fall through to tier 3, and the plan isn't yet reusable across
+inits (no per-`F` plan cache; § 3's caching is future work). The
+refinement is the doc's original sketch — **solve for the halt step `k`
+as a closed form** (`x_next = a·x + b`, `halt = x ≥ T` ⇒ `k =
+closed-form(init)`), then read `e_k`'s affine state expression — which
+collapses to O(1) and is `init`-independent. The current realization is
+the robust, general-over-the-detector's-accept-set version; the
+closed-form-`k` synthesis narrows to recognizable linear recurrences but
+buys true O(1).
+
+*Size:* medium. *Risk:* narrow — affine bodies only; every refusal falls
+through to tier 2/3, never a wrong value.
 
 ### 4. The selector
 
