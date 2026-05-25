@@ -26,7 +26,7 @@ gaps currently bound what a pass can do.
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
-| `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
+| `validate` | **Evident-only — Rust deleted** (session VV) | `stdlib/passes/validate.ev` | **sole impl** | The canonical `runtime/validate.rs::enforce_external_only` and the parallel `RustValidate` are gone; the load path routes every schema through `EvidentValidate`. Rust still owns the `Expr` walk (`portable/validate.rs::find_ffi_call`); Evident owns the banned-name decision. Pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`). See [cutover notes](#validate-cutover-evident-as-the-sole-impl) below. |
 | `subscriptions` (313 LOC) | `portable/subscriptions.rs::RustSubscriptions` | `stdlib/passes/subscriptions.ev` | **full** | Pass owns the prefix-test semantics (`world.X` → read, `world_next.X` → write); Rust shim drives the AST walk because the recursion gap blocks a whole-claim pass. Equivalent on every FSM-shaped claim in `examples/` including Mario — see `runtime/tests/subscriptions_equivalence.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
@@ -298,27 +298,55 @@ Mario test additionally asserts the `game` FSM is a major writer and
 `display` reads multiple fields, codifying the demo's shape so a
 behavioural regression surfaces here.
 
-## What `stdlib/passes/validate.ev` reproduces today
+## Validate cutover: Evident as the sole impl
 
-Fully faithful — `EvidentValidate` and `RustValidate` produce
-byte-identical diagnostics for every `SchemaDecl` in the corpus
-(every example in `examples/test_*.ev`, plus the synthetic
-violations the equivalence test constructs across kind labels,
-banned call names, and nesting positions).
+As of session VV, `validate` is **fully self-hosted**: the canonical
+Rust `runtime/src/runtime/validate.rs::enforce_external_only` and the
+parallel `RustValidate` impl are deleted, and the runtime's load path
+(`runtime/src/runtime/load.rs`) routes every schema's external-only
+check through `EvidentValidate`. This is the first Evident pass promoted
+to a *production* default rather than an opt-in test fixture.
 
-The trick is that the body walk lives in Rust on **both** impls
-(`portable/validate.rs::find_ffi_call` mirrors the canonical
-`runtime/src/runtime/validate.rs::find_ffi_call` 1:1); the impls
-only differ in the per-Call classifier. `RustValidate` uses a
-native `match name { "FFICall" => ... }`; `EvidentValidate` calls
-`ValidateExpr(nm)` in the pass. The decision logic — what counts
-as a banned name — lives in the Evident pass, which is the only
-piece that moves between impls.
+What still lives in Rust, and why:
 
-This split is intentional: the recursion gap (Gap #1) blocks an
-Evident pass from walking the Expr tree itself, but it doesn't
-block the much smaller "is this name banned?" decision. Porting
-that piece keeps the seam useful even before the recursion gap is
-closed, and the equivalence test pins the behaviour byte-for-byte
-so a future gap fix can promote the walk into Evident without
-silently changing the diagnostic surface.
+- **The `Expr` walk** (`portable/validate.rs::find_ffi_call`). The
+  recursion gap (Gap #1) blocks an Evident pass from walking the tree
+  itself, so the structural recursion stays native. Only the per-Call
+  "is this name banned?" decision is in Evident (`ValidateExpr`).
+- **Wiring on `EvidentRuntime`** — a lazily-built, cached validator
+  (`validator` field), a `validate_bootstrap` flag, and a `stdlib/`
+  locator (`locate_stdlib`). These are the cost of making an Evident
+  pass the load-time default: the runtime must find `stdlib/`, build a
+  nested runtime with `validate.ev` loaded, and break the bootstrap
+  recursion (building the validator loads `validate.ev`, whose own load
+  must not try to build another validator — the flag terminates it).
+
+Things to know about the cutover:
+
+- **`validate.ev` no longer imports `stdlib/ast.ev`.** `ValidateExpr` is
+  a pure `String → String` claim, so the validator builds from a single
+  1-claim file with no enum registration — its construction is a
+  handful of ms.
+- **The per-Call decision is memoized per name.** A call-heavy file has
+  far fewer distinct call names than call sites; `EvidentValidate`
+  caches the verdict per name so the underlying query runs once per
+  distinct name, not once per call.
+- **`stdlib/` must be locatable at runtime.** Tried in order:
+  `EVIDENT_STDLIB_DIR`, the `import`-resolution machinery (cwd / source
+  file / ancestors), then a compile-time `CARGO_MANIFEST_DIR/../stdlib`
+  fallback. The fallback covers in-tree binaries and `cargo test`
+  (cwd = `runtime/`) but **not a relocated binary whose source tree is
+  gone** — that is the one deployment context this cutover does not
+  cover. A shipped runtime would need stdlib embedded or installed
+  alongside.
+
+### Correctness coverage
+
+The old `validate_equivalence.rs` cross-checked against `RustValidate`;
+with one impl there is no oracle. `runtime/tests/validate_correctness.rs`
+replaces it, pinning expected behaviour directly: accept (`external` +
+FFI, non-external without FFI), reject (banned calls nested in every
+position the walker visits, with the exact diagnostic across all kind
+labels and banned names), first-violation ordering, and a corpus check
+that loading every `examples/test_*.ev` through the real runtime never
+trips an external-only false positive.

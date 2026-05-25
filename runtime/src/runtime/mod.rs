@@ -45,7 +45,6 @@ mod load;
 mod generics;
 mod desugar;
 mod inject;
-mod validate;
 mod register_enums;
 mod query;
 mod sample;
@@ -203,6 +202,22 @@ pub struct EvidentRuntime {
     /// `Cell` because the per-query plan-build path reads it behind
     /// `&self`. See `query::functionize_z3_uncached`.
     pub(super) slow_parallel_enabled: std::cell::Cell<bool>,
+    /// The self-hosted external-only validator, built lazily on the
+    /// first schema load and reused across every file the runtime
+    /// loads. Holds its own nested `EvidentRuntime` with
+    /// `stdlib/passes/validate.ev` loaded (see
+    /// `crate::portable::validate::EvidentValidate`). Boxed because the
+    /// validator owns an `EvidentRuntime`, so storing it inline would
+    /// make `EvidentRuntime` an infinitely-sized recursive type.
+    pub(super) validator: RefCell<Option<Box<crate::portable::validate::EvidentValidate>>>,
+    /// True only for the nested runtime *inside* the validator. The
+    /// load path skips the self-hosted external-only check when this is
+    /// set, which is how the bootstrap recursion terminates: building
+    /// the validator loads `validate.ev`, and that load must not try to
+    /// build another validator. `validate.ev` constructs no FFI, so
+    /// skipping the check on it is sound. See `enforce_external_only`
+    /// in `runtime/load.rs`.
+    pub(super) validate_bootstrap: std::cell::Cell<bool>,
 }
 
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
@@ -240,7 +255,19 @@ impl EvidentRuntime {
             solve_history: RefCell::new(HashMap::new()),
             slow_parallel_enabled: std::cell::Cell::new(
                 std::env::var("EVIDENT_PARALLEL_SLOW").map(|s| s != "0").unwrap_or(true)),
+            validator: RefCell::new(None),
+            validate_bootstrap: std::cell::Cell::new(false),
         }
+    }
+
+    /// Mark this runtime as the validator's bootstrap runtime so its
+    /// load path skips the self-hosted external-only check. Called by
+    /// `crate::portable::validate::EvidentValidate::new` on its nested
+    /// runtime *before* it loads `validate.ev`, breaking the otherwise
+    /// infinite "validate → build validator → load validate.ev →
+    /// validate" recursion.
+    pub(crate) fn set_validate_bootstrap(&self, on: bool) {
+        self.validate_bootstrap.set(on);
     }
 
     /// Enable/disable parallel solving of independent slow components.

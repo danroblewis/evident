@@ -2,7 +2,7 @@
 
 use crate::core::RuntimeError;
 use super::EvidentRuntime;
-use crate::core::ast::BodyItem;
+use crate::core::ast::{BodyItem, SchemaDecl};
 use crate::parser;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -87,12 +87,12 @@ impl EvidentRuntime {
             // registered below. Self-reference works because we look
             // up the called claim's signature, not the current claim's.
             super::inject::inject_claim_arg_types(&mut s, &self.schemas)?;
-            super::validate::enforce_external_only(&s)?;
+            self.enforce_external_only(&s, base)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());
             }
             self.schemas.insert(s.name.clone(), s.clone());
-            super::validate::register_subclaims(&s.body, &mut self.schemas);
+            register_subclaims(&s.body, &mut self.schemas);
             // Record source file for this schema (and its subclaims).
             // Used by the inference pipeline to skip claims from
             // imported helper files.
@@ -209,5 +209,80 @@ impl EvidentRuntime {
         Err(RuntimeError::Io(format!(
             "import not found: {:?} (tried verbatim, relative to source file, cwd, and ancestors of the source file)",
             import_path)))
+    }
+
+    /// The load-time external-only check, routed through the sole
+    /// (Evident) validator. Rejects non-`external` schemas that
+    /// construct FFI effects (`FFICall` / `FFIOpen` / `FFILookup` /
+    /// `LibCall`); see `crate::portable::validate`.
+    ///
+    /// The validator is built lazily on the first schema that needs
+    /// checking and cached on the runtime, so the one-time cost of
+    /// loading `validate.ev` is paid once per runtime, not per schema.
+    pub(super) fn enforce_external_only(
+        &self,
+        s: &SchemaDecl,
+        base: Option<&Path>,
+    ) -> Result<(), RuntimeError> {
+        use crate::portable::validate::ValidateImpl;
+        // The validator's own bootstrap runtime skips the check: it
+        // loads `validate.ev`, which constructs no FFI, and re-entering
+        // here would recurse forever (validate → build validator → load
+        // validate.ev → validate). This is where that recursion ends.
+        if self.validate_bootstrap.get() {
+            return Ok(());
+        }
+        if self.validator.borrow().is_none() {
+            let dir = self.locate_stdlib(base).ok_or_else(|| RuntimeError::Io(
+                "external-only validation needs stdlib/passes/validate.ev, but \
+                 stdlib/ could not be located (set EVIDENT_STDLIB_DIR)".to_string()))?;
+            let v = crate::portable::validate::EvidentValidate::new(&dir)
+                .map_err(RuntimeError::Io)?;
+            *self.validator.borrow_mut() = Some(Box::new(v));
+        }
+        let guard = self.validator.borrow();
+        guard.as_ref().unwrap()
+            .enforce_external_only(s)
+            .map_err(RuntimeError::Parse)
+    }
+
+    /// Locate the repo's `stdlib/` directory so the validator can load
+    /// `passes/validate.ev`. Tries, in order:
+    ///   1. `EVIDENT_STDLIB_DIR` (explicit override).
+    ///   2. The import-resolution machinery (`resolve_import`) — the
+    ///      same verbatim / cwd / source-relative / ancestor walk that
+    ///      every `import "stdlib/…"` already relies on.
+    ///   3. A compile-time source-tree fallback: `CARGO_MANIFEST_DIR`
+    ///      is the `runtime/` crate dir, so its sibling `stdlib/` is the
+    ///      repo's stdlib. This lets cargo tests (cwd = `runtime/`) and
+    ///      any in-tree binary find stdlib regardless of cwd. A
+    ///      relocated binary whose source tree is gone won't — that is
+    ///      the one deployment context the validate cutover does not
+    ///      cover (see `docs/self-hosting.md`).
+    fn locate_stdlib(&self, base: Option<&Path>) -> Option<PathBuf> {
+        if let Ok(d) = std::env::var("EVIDENT_STDLIB_DIR") {
+            let p = PathBuf::from(d);
+            if p.is_dir() { return Some(p); }
+        }
+        if let Ok(p) = self.resolve_import("stdlib", base) {
+            if p.is_dir() { return Some(p); }
+        }
+        let p = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../stdlib"));
+        if p.is_dir() { return Some(p); }
+        None
+    }
+}
+
+/// Walk a schema body and register any nested `subclaim` declarations
+/// into `schemas` (recursively, so a subclaim of a subclaim is also
+/// reachable). Moved here from the deleted `runtime/validate.rs`: it is
+/// unrelated to the external-only check and is only called from this
+/// load path.
+fn register_subclaims(body: &[BodyItem], schemas: &mut HashMap<String, SchemaDecl>) {
+    for item in body {
+        if let BodyItem::SubclaimDecl(s) = item {
+            schemas.insert(s.name.clone(), s.clone());
+            register_subclaims(&s.body, schemas);
+        }
     }
 }

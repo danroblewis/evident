@@ -1,23 +1,25 @@
--- stdlib/passes/validate.ev — self-hosted external-only check.
+-- stdlib/passes/validate.ev — the SOLE external-only check.
 --
--- The Evident-side twin of runtime/src/runtime/validate.rs's
--- `enforce_external_only`: the load-time rule that rejects
--- non-`external` schemas which directly construct FFI effects
--- (`FFICall` / `FFIOpen` / `FFILookup` / `LibCall`). Demos and
--- ordinary library code reach C through `external claim` wrappers
--- in `packages/` and `stdlib/posix.ev`; the runtime refuses to
--- compile a non-`external` claim that does so itself.
+-- The load-time rule that rejects non-`external` schemas which
+-- directly construct FFI effects (`FFICall` / `FFIOpen` /
+-- `FFILookup` / `LibCall`). Demos and ordinary library code reach C
+-- through `external claim` wrappers in `packages/` and
+-- `stdlib/posix.ev`; the runtime refuses to compile a non-`external`
+-- claim that does so itself.
 --
--- This pass owns the decision logic — what counts as a banned
--- call name. The Rust shim in runtime/src/portable/validate.rs
--- owns the walk: it iterates a schema's body items, recurses into
--- each Constraint's Expr tree, and queries `ValidateExpr` with the
--- call name at every Call node. Per-Call classification lives in
--- Evident; structural recursion stays in Rust because the language
--- can't recurse over nested Expr trees yet (see
--- `docs/self-hosting.md`). The shim's walk mirrors `find_ffi_call`
--- in `runtime/src/runtime/validate.rs` exactly, so both impls emit
--- byte-identical diagnostics.
+-- As of the validate cutover (session VV) this pass IS the
+-- implementation — the canonical Rust `enforce_external_only` is
+-- deleted. The runtime's load path (runtime/src/runtime/load.rs)
+-- builds one validator per runtime and routes every schema through
+-- it via `EvidentValidate` in runtime/src/portable/validate.rs.
+--
+-- This pass owns the decision logic — what counts as a banned call
+-- name. The Rust shim owns the walk: it iterates a schema's body
+-- items, recurses into each Constraint's Expr tree, and queries
+-- `ValidateExpr` with the call name at every Call node. Per-Call
+-- classification lives in Evident; structural recursion stays in
+-- Rust because the language can't recurse over nested Expr trees
+-- yet (see `docs/self-hosting.md`).
 --
 -- ── Why `nm ∈ String` and not `e ∈ Expr` ──────────────────────
 -- The natural shape — match the whole Expr, destructure ECall, pin
@@ -33,13 +35,13 @@
 -- Rust walker decides WHEN to ask. See
 -- `examples/COUNTEREXAMPLES.md` for the gap entry.
 --
--- ── Faithful subset ───────────────────────────────────────────
--- Byte-identical to `enforce_external_only` for every input shape.
--- The Rust shim drives the recursion, so every expression tree the
--- canonical walker visits, this pass classifies. The pass is total
--- (banned names map to themselves, everything else to "").
-
-import "stdlib/ast.ev"
+-- ── No AST import ──────────────────────────────────────────────
+-- `ValidateExpr` is a pure `String → String` claim and references no
+-- AST type, so this file does NOT `import "stdlib/ast.ev"`. That
+-- keeps the validator a single 1-claim load with no enum
+-- registration — cheap enough to build on every runtime that loads a
+-- file. (When the given-pinned-enum gap above is closed and the pass
+-- can take `e ∈ Expr`, the import comes back with it.)
 
 -- Classify a call name. Returns `nm` itself when it's one of the
 -- four banned FFI-construction primitives; empty string otherwise.

@@ -148,7 +148,7 @@ targets); files that touch wall-clock / env / IO are Tier 4.
 | `runtime/analysis.rs` | 62 | 0 | Decomposition + component classification (calls Z3) | n/a |
 | `runtime/reflection.rs` | 303 | 0 | Encode user-program as Z3 datatype for self-hosted passes — IS the seam | n/a |
 | `runtime/introspect.rs` | 134 | **1** | Mutate loaded claims (replace body items). Pure AST mutation. | Cranelift |
-| `runtime/validate.rs` | 88 | **1** | `enforce_external_only` + `register_subclaims`. Pure AST walks. **Ported by DD.** | Cranelift |
+| ~~`runtime/validate.rs`~~ | — | — | **Deleted (session VV).** `enforce_external_only` is now Evident-only via `EvidentValidate` (the canonical Rust + `RustValidate` are gone); `register_subclaims` moved to `runtime/load.rs`. See `docs/self-hosting.md` "Validate cutover". | n/a |
 | `runtime/subscriptions.rs` (top-level) | 313 | **1** | `world_access_sets` + `body_references_identifier`. Pure AST walks. **Ported by EE.** | Cranelift |
 | `runtime/desugar.rs` | 273 | **1** | Seq concat flatten + unified-world syntax + system boundary. Pure AST. | Cranelift |
 | `runtime/inject.rs` | 588 | **1** | Smart-inject `state_next`/`last_results`/`effects`, `_var` time-shift, claim-arg types, LHS-eq types. Pure AST. **Biggest pure-pass target.** | Cranelift |
