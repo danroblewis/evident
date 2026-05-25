@@ -15,6 +15,9 @@
 > Companion reading: [`fsm-halts-within.md`](fsm-halts-within.md) (CC's
 > symbolic unroll — the sibling strategy), [`cegar-scaffolding.md`](cegar-scaffolding.md)
 > (the abstraction/oracle framing this slots into),
+> [`nested-fsm-strategies.md`](nested-fsm-strategies.md) (the run-to-halt
+> strategy selector — this loop-functionizer **is** its tier 2, sitting
+> between symbolic-unroll and the blocking-interpret baseline),
 > [`../perf/log-unroll-feasibility.md`](../perf/log-unroll-feasibility.md)
 > (Z's branching-wall measurement), and [`../self-hosting.md`](../self-hosting.md)
 > (the blocked ports this unlocks).

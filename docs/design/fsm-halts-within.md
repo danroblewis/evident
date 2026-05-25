@@ -22,6 +22,15 @@ This is the surface that Z's log-unroll feasibility measurement
 measurement established *when* the technique works; this is the feature
 that exploits it, gated so it refuses cleanly when it doesn't.
 
+`halts_within` is the **verify**-side sibling of running an FSM for a
+*value*: it asks "does `F` halt within `N`?" and answers SAT/UNSAT,
+without ever ticking `F`. The **execute**-side question — "run `F` from
+this initial state; what is its final state?" — is
+[`nested-fsm-strategies.md`](nested-fsm-strategies.md), whose tier-1
+strategy reuses this doc's exponentiation-by-squaring composer
+(`fsm_unroll/compose.rs`) to extract the composed final-state *value*
+rather than the halt witness.
+
 ## The halt convention
 
 `F` must be a `claim` (not an `fsm` — see below) that declares:

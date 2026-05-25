@@ -16,7 +16,13 @@
 > the function-izer pipeline and the allegoric "factor a relation into a
 > map + a residual" framing this doc operationalizes;
 > [`cegar-scaffolding.md`](cegar-scaffolding.md) — the audit/refine loop
-> that the same `Functionizer` trait supports.
+> that the same `Functionizer` trait supports;
+> [`nested-fsm-strategies.md`](nested-fsm-strategies.md) — the **sibling
+> chooser one level up**: where this doc's selection-policy axis governs
+> *which function a functionizer selects from a relation*, that doc's
+> strategy selector governs *which execution strategy runs a nested FSM*
+> — and it mirrors the same try-fast-fall-through-to-an-always-correct-
+> baseline shape (`query.rs`) this axis lives inside.
 
 ---
 
