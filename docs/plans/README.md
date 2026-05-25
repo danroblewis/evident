@@ -17,6 +17,8 @@ files):
 
 Progress tracker: [`PROGRESS.md`](PROGRESS.md).
 
+Cross-cutting inventory: [`../design/self-hosting-inventory.md`](../design/self-hosting-inventory.md) — every `runtime/src/**/*.rs` file classified by tier + prioritized port order.
+
 ## Working on a task
 
 1. Read the task's plan file end-to-end.
