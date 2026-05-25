@@ -20,6 +20,13 @@
 > > nesting checks the implementation against the spec, recovering the
 > > whole-output correctness guarantee that flat FSMs gave up.
 >
+> **Building this?** [`fsms-as-functions-impl.md`](fsms-as-functions-impl.md)
+> is the turnkey implementation spec — it pins the four edges § 9 leaves
+> open (the `run()` alias, the terse→internal-pair rewrite, the embed-call
+> disambiguation, the `state_next` ban), scopes universal `_state` as the
+> first mergeable step, and lays out the corpus migration + session
+> sequence.
+>
 > Companion reading — this doc is the roof over all of them:
 > [`fsm-halts-within.md`](fsm-halts-within.md) (the **verify** face of
 > `result = F(init)`), [`nested-fsm-strategies.md`](nested-fsm-strategies.md)
