@@ -888,43 +888,54 @@ Fix idea: add `Value::SeqComposite(items)` and `Value::Composite(map)`
 arms to `value_as_json` that emit a real JSON array / object — fields
 recursively formatted via the same fn.
 
-### 18. String substring membership (`text ∋ "!"`) doesn't translate
+### 18. ~~String substring membership (`text ∋ "!"`) doesn't translate~~ — FIXED (session GAPC)
 
-**Where:** `tests/conformance/test_claim_composition.py` (rewritten to
-use string equality instead of substring containment)
+**Where:** `runtime/src/translate/exprs/string_ops.rs` (new),
+`runtime/tests/string_ops.rs`, `tests/conformance/test_string_ops.py`.
+
+Originally, the only string operations were concat (`++`) and equality;
+`"!" ∈ text` and `#text` (string length) both dropped silently:
 
 ```evident
 claim ContainsBang
     text ∈ String
-    text ∋ "!"        -- parses as `"!" ∈ text`
+    text ∋ "!"        -- parses as `"!" ∈ text` — used to drop
 ```
 
-`evident check` reports:
+Session GAPC added a string-op surface lowered to Z3's string (seq)
+theory. All of these now translate:
 
-```
-error: dropped constraint (couldn't translate to Bool):
-       "!" ∈ text
-```
+| Evident surface                    | Z3 primitive          | result |
+|------------------------------------|-----------------------|--------|
+| `#text` / `str_len(text)`          | `str.len`             | Int    |
+| `index_of(text, sub[, off])`       | `str.indexof`         | Int    |
+| `substr(text, off, len)`           | `str.substr`          | String |
+| `replace(text, src, dst)`          | `str.replace`         | String |
+| `char_at(text, i)`                 | `str.at`              | String |
+| `str_contains(t, sub)` / `sub ∈ t` | `str.contains`        | Bool   |
+| `starts_with(t, pre)`              | `str.prefixof`        | Bool   |
+| `ends_with(t, suf)`                | `str.suffixof`        | Bool   |
 
-The `Expr::InExpr` arm in `runtime/src/translate/exprs.rs` only handles
-two RHS shapes: a `SetVar` identifier and a literal `SetLit`. There is
-no String/SeqStr arm that maps `lhs ∈ rhs` to `Z3Str::contains` (or
-`prefix_of` / `suffix_of` for the analogous keywords).
+`contains` / `prefixof` / `suffixof` use the z3 crate's safe wrappers;
+`len` / `substr` / `indexof` / `replace` / `at` aren't wrapped by z3 0.12,
+so `string_ops.rs` calls the raw `z3-sys` builders. The `InExpr` arm in
+`exprs/bool.rs` now maps `needle ∈ haystack` (both String) to
+`str.contains`; the `Cardinality` arm in `exprs/scalar.rs` maps `#text`
+to `str.len`.
 
-This made every claim-composition test that relied on the original
-`ContainsBang` example "pass" spuriously: parse/translate failure
-yielded exit 1, the test helper interpreted that as `{satisfied: False}`,
-and `assert_unsat` was happy. The SAT variants were XFAIL-listed; the
-UNSAT variants passed for the wrong reason. The rewrite uses
-`text = "hi"` instead — equally exercises the composition shape, no
-translator gap.
+**This unblocks the generics self-host's parse/substitute half** (the
+part PORT-generics couldn't express, recorded in
+`project_generics_selfhost_result`): `split_generic_head("Edge<Rect>")`
+→ `("Edge", "Rect")` is `index_of` + `substr`, and
+`substitute_idents("Seq(T)", {T → "Rect"})` → `"Seq(Rect)"` is `replace`.
+See `test_generics_split_and_substitute` in both test files for the
+worked snippet. (This session adds the *capability*; the generics-pass
+cutover is a later session.)
 
-Same gap for related ops (`#text > N` for length doesn't translate either).
-
-Fix idea: extend `InExpr` translation with a `Z3Str::contains` arm when
-both operands are String-typed; add explicit translations for `text
-starts_with "..."`, `text ends_with "..."`, and `#text` (string length)
-in the appropriate translator dispatchers.
+**Honest note on cost:** Z3 string solving can be solve-expensive, but
+these ops are for LOAD/setup-time passes (generics monomorphizes at
+load). Z3's string solver is only invoked when one of these appears in a
+*queried* constraint; per-tick runtime is unaffected.
 
 ### 19. `cond ⇒ ClaimName(slot mapsto value)` doesn't parse inside `⇒`
 

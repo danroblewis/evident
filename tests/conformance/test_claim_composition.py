@@ -14,8 +14,10 @@ Notes on what is intentionally NOT covered here:
   * `verb ∈ Verb` (enum) `--given` from the CLI — the CLI infers `Add` as
     a string, and `run_cached` rejects `(Var::EnumVar, Value::Str)`. The
     dispatch test below uses Bool dispatch instead. Same COUNTEREXAMPLES file.
-  * `text ∋ "!"` — Rust runtime translator does not yet implement string
-    substring membership. Tests use string equality instead.
+  * `text ∋ "!"` — string substring membership now translates (session
+    GAPC lowered it to Z3 `str.contains`); see `test_string_ops.py`.
+    The string-equality claim below is kept as-is since it still
+    exercises the composition shape these tests target.
 """
 
 import pytest
@@ -46,8 +48,10 @@ claim InRange
     n ≤ hi
 """
 
-# String-equality claim used in place of the old substring-contains
-# claim — the Rust runtime translator doesn't yet handle `text ∋ "!"`.
+# String-equality claim exercising the composition shape. (`text ∋ "!"`
+# substring membership now translates — see test_string_ops.py — but this
+# string-equality form is what these composition tests were rewritten to,
+# and it still covers the shape under test.)
 GREETS_HI = """
 claim GreetsHi
     text ∈ String

@@ -43,6 +43,13 @@ pub(crate) fn translate_bool<'ctx>(
     // pinned-length Seq, unrolls to a disjunction of element
     // equalities `seq[0] = x ∨ seq[1] = x ∨ … ∨ seq[n-1] = x`.
     if let Expr::Call(name, args) = e {
+        // Bool-producing string builtins (`str_contains` / `starts_with`
+        // / `ends_with`), lowered to Z3 `str.contains` / `prefixof` /
+        // `suffixof`. Checked before the seq-element `contains` below so
+        // the dedicated `str_contains` name never collides with it.
+        if let Some(b) = super::string_ops::translate_str_bool(name, args, ctx, env) {
+            return Some(b);
+        }
         if name == "contains" && args.len() == 2 {
             let Expr::Identifier(seq_name) = &args[0] else { return None };
             let var = env.get(seq_name)?;
@@ -257,6 +264,14 @@ pub(crate) fn translate_bool<'ctx>(
                         return Some(set.member(&dyn_val));
                     }
                 }
+            }
+            // String containment: `needle ∈ haystack` where both sides are
+            // String-typed → `str.contains`. Placed after the Set paths so
+            // set membership still wins for Set-typed RHS.
+            if let (Some(needle), Some(hay)) =
+                (translate_str(lhs, ctx, env), translate_str(rhs, ctx, env))
+            {
+                return Some(hay.contains(&needle));
             }
             // Set-literal RHS: reduce to OR of equalities.
             let items = match rhs.as_ref() {
