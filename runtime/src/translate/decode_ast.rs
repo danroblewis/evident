@@ -93,7 +93,7 @@ fn need_arity(variant: &str, fields: &[Value], expected: usize) -> Result<()> {
     Ok(())
 }
 
-fn decode_str(v: &Value) -> Result<String> {
+pub fn decode_str(v: &Value) -> Result<String> {
     match v {
         Value::Str(s) => Ok(s.clone()),
         other => Err(DecodeError::NotPrimitive {
@@ -153,10 +153,16 @@ fn decode_seq_enum<T>(
     })
 }
 
-/// `PackedFieldList` is still a Cons-shaped user-declared enum
-/// (gates on Seq concatenation; see plans/06-cons-removal). Keep
-/// the Cons-walker for it.
-fn decode_list<T>(
+/// Generic Cons-list decoder — THE shared cons-list reader (session UU).
+///
+/// Walks a named `Nil`/`Cons` enum spine, mapping `decode_head` over each
+/// head. This is the read-side twin of the `*_to_value` marshaler's
+/// cons-list encoders (`body_item_list_to_value`, `expr_list_to_value`,
+/// …): any pass that drives a stack-FSM over the shared marshaler's
+/// output and gets back a cons-list accumulator decodes it through here
+/// rather than hand-rolling its own walker. `PackedFieldList` and the
+/// self-hosted `subscriptions` name-list both use it.
+pub fn decode_list<T>(
     v: &Value,
     list_enum: &'static str,
     nil_variant: &str,

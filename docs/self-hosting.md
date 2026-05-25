@@ -27,7 +27,7 @@ gaps currently bound what a pass can do.
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
 | `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
-| `subscriptions` (313 LOC) | `portable/subscriptions.rs::RustSubscriptions` | `stdlib/passes/subscriptions.ev` | **full** | Pass owns the prefix-test semantics (`world.X` → read, `world_next.X` → write); Rust shim drives the AST walk because the recursion gap blocks a whole-claim pass. Equivalent on every FSM-shaped claim in `examples/` including Mario — see `runtime/tests/subscriptions_equivalence.rs` |
+| `subscriptions` (228 LOC shim) | `portable/subscriptions.rs::RustSubscriptions` | `stdlib/passes/subscriptions.ev` | **full** | Whole walk is a stack-FSM fed by the SHARED marshaler (UU) — no bespoke encoder. Only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Equivalent on every FSM-shaped claim in `examples/` including Mario — see `runtime/tests/subscriptions_equivalence.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
 | `inject` (588 LOC) | — | ⌛ | — | biggest |
@@ -92,13 +92,47 @@ claim Pretty
     out = match item …
 ```
 
-v1 uses a **per-port hand-written marshaler** (`portable/pretty.rs`'s
-`encode_*` functions). It mirrors the private `*_to_value` family in
-`translate/encode_ast.rs`; that surface is private (and `translate/` was
-off-limits for this session), so the marshaler is duplicated locally,
-which also keeps the port self-contained. A future cleanup can make the
-`encode_ast.rs` mirror public and have every port share it (or add a
-derive macro).
+**One shared marshaler (session UU).** The `*_to_value` family in
+`translate/encode_ast.rs` is `pub` and is THE marshaler every port reuses
+— re-exported as `translate::ast_encoder::{program_to_value,
+schema_decl_to_value, body_item_to_value, expr_to_value, …}`. Its read
+twin is `translate::ast_decoder::{decode_list, decode_str, decode_program,
+…}`. A port no longer hand-rolls an `encode_*`: it calls the shared one.
+
+Why this matters: QQ measured that a per-port hand-written encoder is a
+recursive AST traversal *isomorphic to the walk it deletes*, so each port
+re-paid that "marshaling tax" and net Rust never went down (you traded
+"walk in Rust" for "encode-to-Value in Rust"). Sharing the encoder pays
+the tax **once**. After UU the *marginal* port is:
+
+```
++ stdlib/passes/<name>.ev   (the Evident pass — the analysis/transform)
+− the Rust walk it replaces  (deleted)
++ ~3 lines of Rust glue:     encode → run → decode
+```
+
+The 3-line glue, concretely (subscriptions' shim):
+
+```rust
+// encode: shared marshaler, ast.rs → Value::Enum (cons-list shape)
+let seed = work_node("WBody", body_item_to_value(item));
+// run:    drive the pass FSM to halt as a value
+let final_state = run_nested(&self.rt, "subscriptions_walk", seed, MAX)?;
+// decode: shared cons-list reader, Value → Vec<String>
+let names = decode_list(&fields[0], "NameList", "NameNil", "NameCons", decode_str)?;
+```
+
+**List shape**: `*_to_value` encodes list fields as poppable Cons enums
+(`BodyItemList`, `ExprList`, …), not `Seq(T)` — a `Seq` has no in-step
+pop (COUNTEREXAMPLES #19a), so the Cons shape is what a stack-FSM walk
+consumes directly. A pass that pins the AST as a `given` over
+`stdlib/ast.ev`'s `Seq`-shaped enums uses the `encode_*` Datatype family
+instead (reflection, `literal_types.ev`).
+
+**FUTURE WORK** (durable follow-up, NOT built in UU): generate the
+`*_to_value` / `decode_*` family from the `ast.rs` types with a **derive
+macro**, so the marshaler can never drift from the AST shape by hand. UU
+made the surface shared; the derive macro makes it un-droppable.
 
 ### Cost
 
@@ -226,56 +260,62 @@ Faithful (byte-identical `(reads, writes)` sets to
 `examples/` including the Mario demo (three FSMs, ~30 fields across
 read/write sets combined).
 
-As of session QQ the WHOLE walk runs in Evident, not just a leaf
-classifier. `subscriptions.ev` is a stack-FSM, `subscriptions_walk`,
-whose state carries an **agenda** (a stack of frames, each a cons-list
-of AST nodes still to visit) plus the **(reads, writes) accumulators**.
-Each tick pops the top frame's head node, dispatches on it, and either
-classifies it (an identifier), drops it (a leaf), or pushes its children
-as a new frame — exactly the test_37 stack-FSM shape, driven to a
-drained-agenda halt by `run(...)`. The traversal control, the
-`world.`/`world_next.` prefix classification, AND the read/write
-accumulation all live in the pass.
+The WHOLE walk runs in Evident, not just a leaf classifier.
+`subscriptions.ev` is a stack-FSM, `subscriptions_walk`, whose state
+carries a **work stack** (poppable `Work`-wrapped AST nodes still to
+visit) plus a **reachable-identifier accumulator**. Each tick pops the
+top node, dispatches on its shape, and either folds it (an
+`EIdentifier`), drops it (a literal/inert node), or pushes its children —
+exactly the test_37 stack-FSM shape, driven to a drained-stack halt by
+`run(...)`. The traversal control and the accumulation live in the pass.
 
-The Rust shim (`portable/subscriptions.rs`) no longer walks anything. It:
+As of session UU the FSM walks the **full canonical AST** — the same
+`Expr`/`BodyItem`/`Pins`/… shapes `stdlib/ast.ev` defines (list fields as
+poppable Cons enums) — because it is fed the output of the ONE SHARED
+marshaler. There is **no bespoke `WNode` encoder anymore**.
 
-1. Encodes each top-level body item as a composite `WNode` `Value`
-   tree — a structural transcription that maps every ast.rs Expr /
-   BodyItem / Pins to a behavioral class, mirroring how
-   `subscriptions::{walk_body, walk_pins, walk_expr}` group variants by
-   traversal shape (their `|`-patterns). Dotted identifiers are split
-   into their path segments; everything else is just shape. The encoder
-   makes no read/write decision.
+The Rust shim (`portable/subscriptions.rs`) does no tree walk and no
+hand-rolled encoding. It:
+
+1. Encodes each top-level body item with the SHARED marshaler
+   `ast_encoder::body_item_to_value` (ast.rs → `Value::Enum`), wrapped as
+   the FSM's unified `Work::WBody(BodyItem)` node. No per-pass encoder.
 2. Drives `subscriptions_walk` over each encoded item via
    `effect_loop::run_nested`, one item at a time so the per-tick state
    stays shallow (a whole-body seed makes the per-tick datatype
    marshaling O(N²); per-item keeps it O(N) — the difference between a
    sub-second and a multi-minute walk of Mario's `game`).
-3. Decodes the final `SWDone(reads, writes)` name cons-lists into
-   HashSets (dedup makes element order irrelevant; reads/writes is a set
-   union over items, so per-item-then-union is identical to a single
-   whole-body walk).
+3. Decodes the final `SWDone(NameList)` cons-list with the SHARED reader
+   `ast_decoder::decode_list`, then classifies each raw identifier (see
+   below). Dedup into HashSets makes element order irrelevant; reads/writes
+   is a set union over items, so per-item-then-union is identical to a
+   single whole-body walk.
 
-### Classification without a substring op
+### Classification stays in Rust (no substring op)
 
-The pass classifies an identifier from its path segments using only
-string EQUALITY (Evident has no prefix/substring builtin): `NIdent`
-matches the nested pattern `SegCons(s0, SegCons(s1, _))` and reads s0 —
-`s0 = "world_next"` ⇒ s1 is a written field, `s0 = "world"` ⇒ s1 is a
-read field, otherwise neither. This is exactly `walk_expr`'s
-`strip_prefix` + `first_segment`, done over segments instead of bytes.
-The shim's split-on-`.` produces the segments; the *decision* is the
-FSM's.
+The FSM owns the traversal but NOT the `world.`/`world_next.`
+classification: that needs `strip_prefix` + `first_segment`, and Evident
+has no substring/prefix builtin. So the FSM emits the RAW dotted
+identifier strings it reaches and the shim's `classify` does the prefix
+split — a few lines, mirroring the canonical `walk_expr` `Identifier` arm
+1:1. (QQ kept classification in the FSM only by pre-splitting identifiers
+into segments inside its bespoke encoder — exactly the per-pass encoder
+UU removes. Sharing the marshaler means the encoder no longer pre-splits,
+so the unavoidable string op moves back to the ~10-line Rust classifier.
+A future `split`/`prefix` operator in the language would let it move back
+into the pass.)
 
-### What stays in Rust, and why there is no net Rust deletion
+### What this port now costs (the LOC inversion, finally)
 
-A faithful AST→`Value` encoder is itself a recursive AST traversal of
-roughly the same size as the walk it replaces — that marshaling is
-inherent to feeding input across the swap interface. So the portable
-shim's code count is ≈flat; what genuinely left Rust is the *analysis*
-(traversal control + classification + accumulation), now a stack-FSM in
-`subscriptions.ev`. The canonical `subscriptions::world_access_sets`
-stays untouched as the default and the equivalence oracle.
+QQ measured this port as net-flat Rust: a faithful AST→`Value` encoder is
+a recursive traversal isomorphic to the walk it deletes, so each port
+re-paid that marshaling tax. UU pays it once — the `*_to_value` family is
+shared — so the shim dropped **333 → 228 LOC** (the ~149-line bespoke
+`WNode` encoder + cons-list decoder block deleted, replaced by a 3-line
+marshaler call + a ~10-line prefix classifier). The *marginal* next port
+is now `+Evident pass, −Rust walk, +~3 lines of glue` — net-negative
+Rust. The canonical `subscriptions::world_access_sets` stays untouched as
+the default and the equivalence oracle.
 
 ### Equivalence test corpus
 
