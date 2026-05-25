@@ -35,6 +35,58 @@ gaps currently bound what a pass can do.
 "Faithful" = the Evident impl produces byte-identical output to the Rust
 impl on the test fixtures.
 
+## Legacy `stdlib/passes/` rationalization (session CLEANUP)
+
+`stdlib/passes/` accumulated self-hosted passes across the staged
+self-hosting roadmap. A naive "delete the inference passes" attempt was
+reverted because two pieces are load-bearing in ways the file names
+don't advertise. This is the per-piece verdict after auditing every
+caller and test:
+
+| Pass file | Verdict | Why |
+|---|---|---|
+| `desugar_passthrough.ev` | **KEEP** | On the real run path. `effect-run` → `auto_apply_desugar` → `collect_passthrough_rewrites` loads it to rewrite `..Type` passthrough composition at run time. Not a report-only verb. |
+| `subscriptions.ev` | **KEEP** | Sole impl of the scheduler's `(reads, writes)` access-set inference (Rust walk deleted in session XX). |
+| `pretty.ev` / `validate.ev` | **KEEP** | Live swap-interface backings (`portable/`). |
+| `literal_types.ev` | **KEEP** | The query-time inference layer. Backs `runtime/tests/self_hosted_pass.rs` (the Stage-3 self-hosting bridge tests) and the PROGRAM_RULES path of `infer_types::collect_inferences`. |
+| `iter_types.ev` | **KEEP** | Backs `runtime/tests/iter_pass.rs` AND the `cli_query_infer_types_*` capability: `has_string/int/bool_assignment` infer types for undeclared vars from bare-literal assignments (`msg = "hello"` → `msg ∈ String`). The Rust load path (`inject::inject_lhs_eq_types`) *deliberately skips bare primitive literals* to preserve the `--strict` contract (`cli_query_without_infer_types_fails_for_undeclared_vars`), so this is a real capability the Rust path does not provide. |
+| `propagation.ev` | **KEEP** | Backs `runtime/tests/propagation_pass.rs`; `propagate_*` (in `ITER_RULES`) infers types through `x = y; y = literal` chains — also not done by the Rust path. |
+| `lint_duplicate_decls.ev` | **KEEP** | `evident lint` is a standalone, non-redundant linter. The Rust load/validate path dedups enum *variants* (`register_enums.rs`) but never variable memberships within a claim body — dropping `lint` would lose the only `x ∈ Int; x ∈ String` check. Tested by `cli_lint_*`. |
+| `consistency.ev` | **REMOVED** | The one genuinely-dead file. Its `conflict_*` rules were loaded (in `collect_inferences`'s pass list) but **never queried** by any command, and had **zero test coverage** (no `consistency_pass.rs`; the "Stage 10: --strict + consistency checks" `cli.rs` header sits over an empty section). The Stage-10 conflict-detection idea was never wired to a verb. |
+
+### Inference: kept, not ported
+
+The session's open question was whether to keep the Evident inference
+layer or port its capability into Rust (`inject.rs`) and delete the
+passes. **Kept.** Three reasons:
+
+1. Each surviving inference pass is exercised by a dedicated Rust
+   integration-test file (`self_hosted_pass.rs`, `iter_pass.rs`,
+   `propagation_pass.rs`, ~850 LOC total) that tests the self-hosting
+   *machinery* (`query_with_program` / `query_with_program_and_body`),
+   not just the inference result. Removing the passes would destroy a
+   whole tier of self-hosting coverage.
+2. The unique capability — type inference for undeclared vars from bare
+   literals and `=` chains, gated by `--strict` — is small but real and
+   genuinely absent from the Rust path by design.
+3. It is the dogfooding direction the project favors; porting back to
+   Rust would invert it.
+
+### What was removed
+
+- `stdlib/passes/consistency.ev` (83 LOC Evident).
+- The `CONSISTENCY` const + its entry in `collect_inferences`'s pass
+  list (`runtime/src/commands/infer_types.rs`).
+- The dead `"extract_first_membership"` entry in `PROGRAM_RULES` — that
+  claim was dropped from `literal_types.ev` (pending Seq head/tail
+  pattern support) but the rule name lingered; the query silently
+  errored as `UnknownSchema` every run.
+
+No capability proven by a test was dropped: `consistency.ev` had none.
+Net: −83 Evident LOC + a handful of dead Rust lines; query/check/sample/
+profile inference and the `lint` checks all still pass via their
+existing paths.
+
 ## The pattern
 
 Each swappable function gets one module under `runtime/src/portable/`.

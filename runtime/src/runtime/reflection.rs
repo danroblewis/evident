@@ -109,7 +109,7 @@ impl EvidentRuntime {
 
     /// Variant of `query_with_program_and_nth_claim_body` that skips
     /// the encoded-Program injection. Most iter-style rules
-    /// (`iter_types.ev`, `propagation.ev`, `consistency.ev`,
+    /// (`iter_types.ev`, `propagation.ev`,
     /// `lint_duplicate_decls.ev`) declare `program ∈ Program` but
     /// never reference it — they only iterate over `body`. Skipping
     /// the encoded-Program assertion eliminates the dominant Z3 cost
