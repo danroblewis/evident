@@ -301,69 +301,119 @@ impl UnionFind {
 }
 
 /// Decompose the (already-simplified) assertions into independent
-/// components over `outputs`. Two outputs join the same component when
-/// some assertion mentions both. Returns, per component, the output
-/// names it owns and the indices of `simplified` assertions touching
-/// it; plus the indices of assertions that touch no output at all
-/// (given-only consistency constraints).
+/// components over the claim's *non-broadcast* variables — outputs AND
+/// intermediates (the internal temps a body introduces, e.g. an FFI
+/// argument buffer `draw_rect__rect_buf__callN` or a `*_eff` LibCall
+/// result). Two variables join the same component when some assertion
+/// mentions both; each assertion is then owned by the component holding
+/// its variables. Returns, per component, the OUTPUT names it owns and
+/// the indices of `simplified` assertions in it; plus the indices of
+/// assertions that touch no component variable at all (given-only
+/// consistency constraints) as `global`.
+///
+/// **Why intermediates must be connectivity nodes (the Mario fix).** An
+/// earlier version unioned only over `outputs`, so an intermediate that
+/// bridges two components went unnoticed. In Mario's `display`,
+/// `draw_rect__rect_buf__callN` (the `⟨pos.x, pos.y, size.x, size.y⟩`
+/// buffer) has its position elements *defined* in the component holding
+/// `mario.rects`, but its value is *consumed* by the `SDL_RenderFillRect`
+/// `LibCall` that the `mario_effs` component carries. With only outputs
+/// as nodes, those landed in two components: `mario.rects`' component
+/// compiled, `mario_effs`' went to the scoped slow solve — and that slow
+/// solve never saw the buffer's position constraint, so Z3 left Mario's
+/// rect x/y free and the sprite drew at garbage coordinates (invisible).
+/// Treating every non-broadcast variable as a node keeps a temp and all
+/// of its mentions in one component, so whichever solver owns the
+/// component sees the complete definition. (Inline-built rects —
+/// platforms, enemies, coins — survived the bug because their buffer
+/// coordinates anchored in *given* world data, pinned into every part.)
+///
+/// **`broadcast` = givens ∪ statically-known constants** (`PinnedInt` /
+/// enum literals). These carry values pinned into every part, so they
+/// are *not* connectivity nodes: two components both reading the same
+/// given — or the same `LEVEL_W` constant — are still independent.
+/// Making them nodes would collapse everything that references a shared
+/// constant into one component. (Substituted-away temps like test_29's
+/// `tick`/`seed_*` don't appear in `simplified` at all — `solve-eqs`
+/// inlined them — so the independent chains stay independent.)
 ///
 /// Operating on `simplified` directly (rather than
 /// `analyze_decomposition`, which rebuilds the solver and re-runs
-/// `simplify`) keeps the component partition and the assertion
-/// buckets derived from the *same* formula set, so every assertion's
-/// output-touch-set lands in exactly one component.
+/// `simplify`) keeps the component partition and the assertion buckets
+/// derived from the *same* formula set, so every assertion lands in
+/// exactly one component.
 fn decompose_simplified(
     simplified: &[Bool<'static>],
     outputs: &[String],
+    broadcast: &HashSet<String>,
 ) -> (Vec<Vec<String>>, Vec<Vec<usize>>, Vec<usize>) {
-    let index_of: HashMap<&str, usize> = outputs.iter().enumerate()
-        .map(|(i, n)| (n.as_str(), i)).collect();
-    let mut uf = UnionFind::new(outputs.len());
-    // For each assertion, the sorted/deduped output-var indices it touches.
+    // Connectivity nodes: outputs interned first (indices 0..n, so
+    // component ordering follows output declaration order), then
+    // intermediates as they're discovered. Givens/constants are skipped.
+    let mut node_of: HashMap<String, usize> = HashMap::with_capacity(outputs.len());
+    for o in outputs {
+        let n = node_of.len();
+        node_of.entry(o.clone()).or_insert(n);
+    }
+    // For each assertion, the sorted/deduped node indices it touches.
+    // A Seq var `s` splits into Z3-internal `s__arr` / `s__len` consts;
+    // fold those back to the base name so a length pin (`#s = 4` →
+    // `s__len = 4`) joins the SAME component as the element pins (`s[0]
+    // = …` → `select s …`).
     let mut per_assert: Vec<Vec<usize>> = Vec::with_capacity(simplified.len());
     for a in simplified {
         let mut touched: HashSet<String> = HashSet::new();
         collect_touched_names(a, &mut touched);
-        // A Seq output `s` splits into Z3-internal `s__arr` / `s__len`
-        // consts; map those back to the base name so a length pin
-        // (`#s = 4` → `s__len = 4`) joins the SAME component as the
-        // element pins (`s[0] = …` → `select s …`). Otherwise the seq
-        // loses its length and the component infers it from the pinned
-        // elements alone.
-        let mut idxs: Vec<usize> = touched.iter()
-            .filter_map(|n| {
-                let base = n.strip_suffix("__len")
-                    .or_else(|| n.strip_suffix("__arr"))
-                    .unwrap_or(n.as_str());
-                index_of.get(base).copied()
-            })
-            .collect();
+        let mut idxs: Vec<usize> = Vec::with_capacity(touched.len());
+        for raw in &touched {
+            let base = raw.strip_suffix("__len")
+                .or_else(|| raw.strip_suffix("__arr"))
+                .unwrap_or(raw.as_str());
+            if broadcast.contains(base) { continue; }
+            let id = match node_of.get(base) {
+                Some(&i) => i,
+                None => {
+                    let i = node_of.len();
+                    node_of.insert(base.to_string(), i);
+                    i
+                }
+            };
+            idxs.push(id);
+        }
         idxs.sort_unstable();
         idxs.dedup();
-        for w in idxs.windows(2) { uf.union(w[0], w[1]); }
         per_assert.push(idxs);
     }
-    // Bucket output indices by root, in first-appearance order for
-    // deterministic component ordering.
+    // Union every node touched together within each assertion.
+    let mut uf = UnionFind::new(node_of.len());
+    for idxs in &per_assert {
+        for w in idxs.windows(2) { uf.union(w[0], w[1]); }
+    }
+    // Bucket output nodes (indices 0..outputs.len()) by root, in
+    // first-appearance order for deterministic component ordering.
     let mut root_to_comp: HashMap<usize, usize> = HashMap::new();
     let mut comp_vars: Vec<Vec<String>> = Vec::new();
-    for i in 0..outputs.len() {
+    for (i, o) in outputs.iter().enumerate() {
         let r = uf.find(i);
         let comp = *root_to_comp.entry(r).or_insert_with(|| {
             comp_vars.push(Vec::new());
             comp_vars.len() - 1
         });
-        comp_vars[comp].push(outputs[i].clone());
+        comp_vars[comp].push(o.clone());
     }
+    // Assign each assertion to the component of its variables (they all
+    // share a root by construction). An assertion with no node (only
+    // broadcast vars) is a given-only consistency constraint → global.
+    // An assertion whose component has no output (a pure intermediate
+    // island nothing observes) also goes to global, harmlessly.
     let mut comp_assertions: Vec<Vec<usize>> = vec![Vec::new(); comp_vars.len()];
     let mut global: Vec<usize> = Vec::new();
     for (ai, idxs) in per_assert.iter().enumerate() {
         match idxs.first() {
-            Some(&first_out) => {
-                let r = uf.find(first_out);
-                let comp = root_to_comp[&r];
-                comp_assertions[comp].push(ai);
-            }
+            Some(&first) => match root_to_comp.get(&uf.find(first)) {
+                Some(&comp) => comp_assertions[comp].push(ai),
+                None => global.push(ai),
+            },
             None => global.push(ai),
         }
     }
@@ -830,8 +880,18 @@ impl EvidentRuntime {
         // compile each one we can, and gather the rest into one cached
         // scoped slow solve. A construct one component can't emit no
         // longer blocks the others.
+        // Broadcast names: givens + statically-known constants
+        // (`PinnedInt` / enum literals). These are pinned into every
+        // part, so they are NOT connectivity nodes in the decomposition
+        // — see `decompose_simplified`.
+        let mut broadcast: HashSet<String> = given.keys().cloned().collect();
+        for (n, v) in &cached.env {
+            if matches!(v, Var::PinnedInt(_) | Var::EnumValue { .. } | Var::EnumCtor { .. }) {
+                broadcast.insert(n.clone());
+            }
+        }
         let (comp_vars, comp_assert_idx, global_idx) =
-            decompose_simplified(simplified, &outputs);
+            decompose_simplified(simplified, &outputs, &broadcast);
         let n_components = comp_vars.len();
 
         let mut compiled: Vec<Rc<dyn CompiledFunction>> = Vec::new();
@@ -1470,5 +1530,84 @@ mod value_hash_tests {
         let b = map(&[("e", Value::Enum {
             enum_name: "E".into(), variant: "B".into(), fields: vec![Value::Int(0)] })]);
         assert_ne!(hash_given_values(&a), hash_given_values(&b));
+    }
+}
+
+#[cfg(test)]
+mod decompose_tests {
+    use super::*;
+    use z3::ast::Int;
+
+    fn leaked_ctx() -> &'static Context {
+        let cfg = z3::Config::new();
+        Box::leak(Box::new(Context::new(&cfg)))
+    }
+
+    fn name_set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The Mario regression. An intermediate `t` is *defined* from
+    /// output `a` (`t = a`) and *consumed* to produce output `b`
+    /// (`b = t`) — no single assertion mentions both `a` and `b`. The
+    /// old outputs-only union-find split them into two components, so
+    /// the component that owned `b` (and went to the scoped slow solve)
+    /// never saw `t`'s definition — exactly how Mario's rect-buffer
+    /// position (`draw_rect__rect_buf__callN` defined from `mario.rects`,
+    /// consumed by the `mario_effs` LibCall) was left free → invisible.
+    /// With intermediates as connectivity nodes, `a`, `t`, `b` stay in
+    /// one component.
+    #[test]
+    fn intermediate_bridges_outputs_into_one_component() {
+        let ctx = leaked_ctx();
+        let a = Int::new_const(ctx, "a");
+        let b = Int::new_const(ctx, "b");
+        let t = Int::new_const(ctx, "t"); // intermediate: not an output
+        let asserts: Vec<Bool<'static>> = vec![t._eq(&a), b._eq(&t)];
+        let outputs = vec!["a".to_string(), "b".to_string()];
+        let (comp_vars, _, global) =
+            decompose_simplified(&asserts, &outputs, &HashSet::new());
+        assert_eq!(comp_vars.len(), 1,
+            "a and b must share one component (bridged by intermediate t)");
+        let comp: HashSet<&str> = comp_vars[0].iter().map(|s| s.as_str()).collect();
+        assert!(comp.contains("a") && comp.contains("b"));
+        assert!(global.is_empty());
+    }
+
+    /// The test_29 perf protection. A *broadcast* variable (given or
+    /// statically-known constant) is pinned into every part, so it must
+    /// NOT be a connectivity node. Two outputs that share only a
+    /// broadcast var stay in SEPARATE components — otherwise every
+    /// independent chain reading a shared given / constant (test_29's
+    /// `tick`, a `LEVEL_W`) would collapse into one slow solve.
+    #[test]
+    fn broadcast_var_does_not_bridge_components() {
+        let ctx = leaked_ctx();
+        let a = Int::new_const(ctx, "a");
+        let b = Int::new_const(ctx, "b");
+        let g = Int::new_const(ctx, "g"); // broadcast (given / constant)
+        let asserts: Vec<Bool<'static>> = vec![a._eq(&g), b._eq(&g)];
+        let outputs = vec!["a".to_string(), "b".to_string()];
+        let (comp_vars, _, _) =
+            decompose_simplified(&asserts, &outputs, &name_set(&["g"]));
+        assert_eq!(comp_vars.len(), 2,
+            "a and b must stay independent — g is broadcast, not a node");
+    }
+
+    /// Genuinely-independent outputs (distinct intermediates, no shared
+    /// var) stay in separate components — the fix only merges what is
+    /// actually connected.
+    #[test]
+    fn distinct_intermediates_stay_separate() {
+        let ctx = leaked_ctx();
+        let x = Int::new_const(ctx, "x");
+        let y = Int::new_const(ctx, "y");
+        let p = Int::new_const(ctx, "p");
+        let q = Int::new_const(ctx, "q");
+        let asserts: Vec<Bool<'static>> = vec![x._eq(&p), y._eq(&q)];
+        let outputs = vec!["x".to_string(), "y".to_string()];
+        let (comp_vars, _, _) =
+            decompose_simplified(&asserts, &outputs, &HashSet::new());
+        assert_eq!(comp_vars.len(), 2);
     }
 }
