@@ -527,6 +527,11 @@ pub fn encode_expr<'ctx>(
             let p = encode_match_pattern(pat, ctx, enums)?;
             apply(enums, "Expr", "EMatches", &[&e, &p])
         }
+        Expr::RunFsm { fsm, init } => {
+            let f = z3_str(ctx, fsm);
+            let i = encode_expr(init, ctx, enums)?;
+            apply(enums, "Expr", "ERunFsm", &[&f, &i])
+        }
     }
 }
 
@@ -967,6 +972,9 @@ fn expr_to_value(e: &Expr) -> Value {
         Expr::Matches(e, pat) =>
             ev("Expr", "EMatches",
                vec![expr_to_value(e), match_pattern_to_value(pat)]),
+        Expr::RunFsm { fsm, init } =>
+            ev("Expr", "ERunFsm",
+               vec![Value::Str(fsm.clone()), expr_to_value(init)]),
     }
 }
 

@@ -1,0 +1,339 @@
+//! Tier 3 — blocking-interpret: `run(F, init)` runs a nested FSM to
+//! halt and hands its final state back as a `Value`.
+//!
+//! This is the correctness baseline (and, later, the equivalence
+//! oracle — see `docs/design/nested-fsm-strategies.md` §4) of the
+//! nested-FSM execution model. It compiles nothing: it drives `F`
+//! using the *same per-tick solve* the multi-FSM scheduler uses
+//! (`EvidentRuntime::query_with_pins_and_given`), with the scheduler's
+//! `LoopOpts.max_steps` cap as its max-iteration guard.
+//!
+//! ### FSM shape (same as `halts_within`)
+//!
+//! `F` must declare a single `name, name_next ∈ T` state pair and a
+//! `halt ∈ Bool` — the convention CC's `halts_within` reads (see
+//! `runtime/src/fsm_unroll/compose.rs`). `halt` is evaluated on each
+//! tick's *input* state; the run returns the state at the first tick
+//! whose `halt` is true (so `run(decrement, 50)` with
+//! `halt = count ≤ 0` returns `0`, the input count at the halting
+//! tick).
+//!
+//! ### Why a dedicated loop instead of `run_scheduler`
+//!
+//! `run_scheduler` is built for the *enum-state, world-coordinating,
+//! effect-emitting* multi-FSM model: it halts implicitly (no FSM
+//! scheduled in a tick) and reports a best-effort final state — for a
+//! `Done`-variant FSM that final state is the `Done` *variant*, losing
+//! the carried value. A value-returning `run(F, init)` needs the exact
+//! opposite: a primitive/record/enum state, an explicit `halt` signal,
+//! and the *full* final state value (`count = 0`, not "halted"). So
+//! tier 3 reuses the scheduler's *primitives* — the per-tick solve, the
+//! state encode (`state::encode_state_value`), and the `max_steps` cap
+//! — rather than `run_scheduler` wholesale. The execution is
+//! synchronous-blocking and isolated: the nested run shares no world
+//! with the parent (it is a pure function of `init`, §2/§5).
+//!
+//! ### v1 restrictions
+//!
+//!   * **Effect-free.** A nested run that dispatched effects wouldn't be
+//!     referentially transparent (§5). An `F` declaring `effects` is
+//!     rejected (here and at load).
+//!   * **Single state pair.** Multi-pair FSMs are a clean extension but
+//!     out of scope for v1.
+
+use std::collections::HashMap;
+
+use crate::core::ast::{BodyItem, SchemaDecl};
+use crate::core::Value;
+use crate::runtime::EvidentRuntime;
+
+use super::state::encode_state_value;
+
+/// Why a `run(F, init)` couldn't be evaluated. Surfaced to the caller
+/// (`EvidentRuntime::resolve_runs`) which turns it into a load-time or
+/// query-time error string. Every variant is a *loud failure*, never a
+/// silent wrong value.
+#[derive(Debug, Clone)]
+pub enum RunError {
+    /// `run(F, ..)` named a schema that doesn't exist.
+    UnknownFsm(String),
+    /// `F` has no `name, name_next ∈ T` state pair.
+    NoStatePair(String),
+    /// `F` declares more than one state pair (v1 supports exactly one).
+    MultipleStatePairs(String, usize),
+    /// `F` has no `halt ∈ Bool` declaration.
+    NoHaltVar(String),
+    /// `F` can emit effects — not permitted for a value-returning run.
+    EmitsEffects(String),
+    /// `init` couldn't be coerced to `F`'s state type.
+    BadInit { fsm: String, type_name: String, got: String },
+    /// A per-tick solve came back UNSAT — the FSM body has no model for
+    /// the pinned input state (a translator gap or an over-constrained
+    /// body).
+    Unsat { fsm: String, step: usize },
+    /// A per-tick solve's model didn't bind the expected output/`halt`.
+    MissingBinding { fsm: String, name: String, step: usize },
+    /// `halt` never fired within `max_steps` ticks — a non-terminating
+    /// (or too-slow) FSM. The scheduler-level analogue of the
+    /// loop-functionizer's native `max_iters` overflow.
+    MaxItersExceeded { fsm: String, max_steps: usize },
+    /// Catch-all for runtime invariant violations (unexpected binding
+    /// shape, etc.). Shouldn't fire on well-formed bodies.
+    Internal(String),
+}
+
+impl std::fmt::Display for RunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunError::UnknownFsm(n) =>
+                write!(f, "run: first argument `{n}` doesn't name a known schema"),
+            RunError::NoStatePair(n) =>
+                write!(f, "run({n}, ..): `run`'s first argument must name an \
+                          FSM-shaped schema (a `name, name_next ∈ T` state pair \
+                          + `halt ∈ Bool`); `{n}` has no state pair"),
+            RunError::MultipleStatePairs(n, k) =>
+                write!(f, "run({n}, ..): FSM has {k} state pairs; v1 supports \
+                          exactly one"),
+            RunError::NoHaltVar(n) =>
+                write!(f, "run({n}, ..): `run`'s first argument must name an \
+                          FSM-shaped schema (state pair + `halt ∈ Bool`); `{n}` \
+                          declares no `halt ∈ Bool`"),
+            RunError::EmitsEffects(n) =>
+                write!(f, "run({n}, ..): `run`'s target must be effect-free; `{n}` \
+                          emits effects — run it as a top-level or spawned FSM \
+                          instead"),
+            RunError::BadInit { fsm, type_name, got } =>
+                write!(f, "run({fsm}, ..): can't seed state of type `{type_name}` \
+                          from init value {got}"),
+            RunError::Unsat { fsm, step } =>
+                write!(f, "run({fsm}, ..): FSM body returned UNSAT at step {step} \
+                          (no model for the pinned input state)"),
+            RunError::MissingBinding { fsm, name, step } =>
+                write!(f, "run({fsm}, ..): step {step} model has no `{name}` binding"),
+            RunError::MaxItersExceeded { fsm, max_steps } =>
+                write!(f, "run({fsm}, ..): exceeded the {max_steps}-step max-iteration \
+                          guard without `halt` ever firing — non-terminating (or \
+                          too-slow) FSM. Raise the guard via LoopOpts.max_steps if \
+                          this is a legitimately long run."),
+            RunError::Internal(s) =>
+                write!(f, "run: internal: {s}"),
+        }
+    }
+}
+
+/// `(input_name, output_name, type_name)` for a detected state pair.
+struct StatePair {
+    input:     String,
+    output:    String,
+    type_name: String,
+}
+
+/// Detect `name, name_next ∈ T` pairs in a schema body — the same
+/// shape `fsm_unroll`'s composer uses, reimplemented here (that module
+/// is off-limits, and the logic is small). Both halves must share the
+/// type name.
+fn detect_state_pairs(schema: &SchemaDecl) -> Vec<StatePair> {
+    let mut decls: HashMap<String, String> = HashMap::new();
+    for item in &schema.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            decls.insert(name.clone(), type_name.clone());
+        }
+    }
+    let mut pairs = Vec::new();
+    for (name, type_name) in &decls {
+        if name.ends_with("_next") { continue; }
+        let next_name = format!("{name}_next");
+        if decls.get(&next_name) == Some(type_name) {
+            pairs.push(StatePair {
+                input:     name.clone(),
+                output:    next_name,
+                type_name: type_name.clone(),
+            });
+        }
+    }
+    pairs.sort_by(|a, b| a.input.cmp(&b.input));
+    pairs
+}
+
+/// Does the body declare a `halt ∈ Bool`?
+fn has_halt_bool(schema: &SchemaDecl) -> bool {
+    schema.body.iter().any(|item| matches!(item,
+        BodyItem::Membership { name, type_name, .. }
+            if name == "halt" && type_name == "Bool"))
+}
+
+/// Does the body declare an effect channel (`effects ∈ Seq(Effect)`)?
+/// A value-returning run must be effect-free (§5).
+fn emits_effects(schema: &SchemaDecl) -> bool {
+    schema.external || schema.body.iter().any(|item| matches!(item,
+        BodyItem::Membership { name, type_name, .. }
+            if name == "effects" || type_name == "Seq(Effect)"))
+}
+
+/// Validate that `fsm_name` names an FSM the `run` machinery can drive:
+/// a single state pair + `halt ∈ Bool`, effect-free. Used both at load
+/// time (so a non-FSM `F` is rejected up front) and as the front of
+/// `run_nested`. Returns the state pair on success.
+pub fn validate_run_target(rt: &EvidentRuntime, fsm_name: &str) -> Result<(), RunError> {
+    let schema = rt.get_schema(fsm_name)
+        .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
+    check_shape(schema, fsm_name).map(|_| ())
+}
+
+/// Shared shape check used by both `validate_run_target` and
+/// `run_nested`. Returns the single detected state pair on success.
+fn check_shape(schema: &SchemaDecl, fsm_name: &str) -> Result<StatePair, RunError> {
+    if emits_effects(schema) {
+        return Err(RunError::EmitsEffects(fsm_name.to_string()));
+    }
+    let mut pairs = detect_state_pairs(schema);
+    match pairs.len() {
+        0 => return Err(RunError::NoStatePair(fsm_name.to_string())),
+        1 => {}
+        k => return Err(RunError::MultipleStatePairs(fsm_name.to_string(), k)),
+    }
+    if !has_halt_bool(schema) {
+        return Err(RunError::NoHaltVar(fsm_name.to_string()));
+    }
+    Ok(pairs.remove(0))
+}
+
+/// Is `type_name` a primitive scalar (state held directly, no Datatype
+/// pin)?
+fn is_primitive(type_name: &str) -> bool {
+    matches!(type_name, "Int" | "Bool" | "Real" | "String")
+}
+
+/// Coerce the `init` Value to `F`'s state type, seeding enum state from
+/// a bare Int into the first-variant-with-single-Int-payload
+/// (mirroring `state::seed_state_with_arg`).
+fn coerce_init(
+    rt: &EvidentRuntime,
+    fsm_name: &str,
+    type_name: &str,
+    init: &Value,
+) -> Result<Value, RunError> {
+    if is_primitive(type_name) {
+        let ok = matches!(
+            (type_name, init),
+            ("Int", Value::Int(_)) | ("Bool", Value::Bool(_))
+                | ("Real", Value::Real(_)) | ("String", Value::Str(_))
+        );
+        if ok {
+            return Ok(init.clone());
+        }
+        return Err(RunError::BadInit {
+            fsm: fsm_name.to_string(),
+            type_name: type_name.to_string(),
+            got: format!("{init:?}"),
+        });
+    }
+    // Enum state. An already-built enum value seeds directly.
+    if let Value::Enum { .. } = init {
+        return Ok(init.clone());
+    }
+    // A bare Int seeds the first variant if it takes a single Int
+    // payload — the `seed_state_with_arg` convention.
+    if let Value::Int(n) = init {
+        let enums = rt.enums_registry();
+        let by_name = enums.by_name.borrow();
+        if let Some((sort, decl_variants)) = by_name.get(type_name) {
+            if let (Some(first_sort), Some(first_decl)) =
+                (sort.variants.first(), decl_variants.first())
+            {
+                if first_sort.constructor.arity() == 1
+                    && first_decl.fields.len() == 1
+                    && first_decl.fields[0].type_name == "Int"
+                {
+                    return Ok(Value::Enum {
+                        enum_name: type_name.to_string(),
+                        variant:   first_decl.name.clone(),
+                        fields:    vec![Value::Int(*n)],
+                    });
+                }
+            }
+        }
+    }
+    Err(RunError::BadInit {
+        fsm: fsm_name.to_string(),
+        type_name: type_name.to_string(),
+        got: format!("{init:?}"),
+    })
+}
+
+/// Run `F` from `init` to halt, returning its final state `Value`.
+///
+/// `max_steps` is the max-iteration guard: a `halt` that never fires
+/// fails loudly at the cap rather than hanging. Pass
+/// `LoopOpts::default().max_steps` (10 000) unless the caller has a
+/// reason to bound it tighter.
+pub fn run_nested(
+    rt: &EvidentRuntime,
+    fsm_name: &str,
+    init: Value,
+    max_steps: usize,
+) -> Result<Value, RunError> {
+    let schema = rt.get_schema(fsm_name)
+        .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
+    let pair = check_shape(schema, fsm_name)?;
+    let StatePair { input, output, type_name } = pair;
+    let primitive = is_primitive(&type_name);
+
+    let trace = std::env::var("EVIDENT_NESTED_TRACE").is_ok();
+
+    let mut current = coerce_init(rt, fsm_name, &type_name, &init)?;
+    if trace {
+        eprintln!("[run {fsm_name}] seed {input}={current:?} (type {type_name})");
+    }
+
+    for step in 0..max_steps {
+        // Build the per-tick solve inputs. Primitive state pins via the
+        // `given` map only; enum state additionally pins the Datatype
+        // (the functionizer reads `given`, the Z3 slow path reads
+        // `pins`).
+        let mut given: HashMap<String, Value> = HashMap::new();
+        given.insert(input.clone(), current.clone());
+        let pins: Vec<(&str, z3::ast::Datatype<'static>)> = if primitive {
+            Vec::new()
+        } else {
+            match encode_state_value(rt, &current) {
+                Some(dt) => vec![(input.as_str(), dt)],
+                None => return Err(RunError::Internal(format!(
+                    "run({fsm_name}, ..): couldn't encode state value {current:?} \
+                     for the next-tick pin"))),
+            }
+        };
+
+        let r = rt.query_with_pins_and_given(fsm_name, &pins, &given)
+            .map_err(|e| RunError::Internal(format!(
+                "run({fsm_name}, ..) step {step}: {e}")))?;
+        if !r.satisfied {
+            return Err(RunError::Unsat { fsm: fsm_name.to_string(), step });
+        }
+
+        let halt = match r.bindings.get("halt") {
+            Some(Value::Bool(b)) => *b,
+            Some(other) => return Err(RunError::Internal(format!(
+                "run({fsm_name}, ..) step {step}: `halt` bound to non-Bool {other:?}"))),
+            None => return Err(RunError::MissingBinding {
+                fsm: fsm_name.to_string(), name: "halt".to_string(), step }),
+        };
+        if trace {
+            eprintln!("[run {fsm_name}]  step {step}: {input}={current:?} halt={halt}");
+        }
+        if halt {
+            return Ok(current);
+        }
+
+        let next = r.bindings.get(&output).cloned().ok_or_else(|| {
+            RunError::MissingBinding {
+                fsm: fsm_name.to_string(), name: output.clone(), step }
+        })?;
+        current = next;
+    }
+
+    Err(RunError::MaxItersExceeded {
+        fsm: fsm_name.to_string(),
+        max_steps,
+    })
+}

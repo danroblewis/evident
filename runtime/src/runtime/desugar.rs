@@ -194,6 +194,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
                 uses_underscore_world(scr)
                     || arms.iter().any(|a| uses_underscore_world(&a.body)),
             Expr::Matches(e, _) => uses_underscore_world(e),
+            Expr::RunFsm { init, .. } => uses_underscore_world(init),
         }
     }
     let uses_new_syntax = s.body.iter().any(|item| match item {
@@ -239,6 +240,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
                 for arm in arms { walk(arm.body.as_mut()); }
             }
             Expr::Matches(e, _) => walk(e),
+            Expr::RunFsm { init, .. } => walk(init),
         }
     }
     for item in s.body.iter_mut() {

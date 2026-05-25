@@ -243,6 +243,7 @@ fn walk_expr(ev: &EvidentSubscriptions, e: &Expr, sets: &mut AccessSets) {
             for arm in arms { walk_expr(ev, &arm.body, sets); }
         }
         Expr::Matches(inner, _) => walk_expr(ev, inner, sets),
+        Expr::RunFsm { init, .. } => walk_expr(ev, init, sets),
     }
     let _ = std::any::type_name::<Mapping>(); // anchor: subscriptions.rs parity
 }

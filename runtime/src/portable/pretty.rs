@@ -80,6 +80,7 @@ pub(crate) fn render_expr(e: &Expr) -> String {
         Expr::Not(inner)         => format!("¬({})", render_expr(inner)),
         Expr::Ternary(c, a, b)   => format!("({} ? {} : {})", render_expr(c), render_expr(a), render_expr(b)),
         Expr::Matches(e, pat) => format!("({} matches {})", render_expr(e), fmt_pattern(pat)),
+        Expr::RunFsm { fsm, init } => format!("run({}, {})", fsm, render_expr(init)),
         Expr::Match(scr, arms)   => {
             let arms_s: Vec<String> = arms.iter().map(|a: &MatchArm| {
                 format!("{} ⇒ {}", fmt_pattern(&a.pattern), render_expr(&a.body))
@@ -299,6 +300,7 @@ pub(crate) fn encode_expr(e: &Expr) -> Value {
         Expr::Ternary(c, a, b)   => ev("Expr", "ETernary", vec![encode_expr(c), encode_expr(a), encode_expr(b)]),
         Expr::Match(scr, arms)   => ev("Expr", "EMatch", vec![encode_expr(scr), encode_match_arm_list(arms)]),
         Expr::Matches(e, pat)    => ev("Expr", "EMatches", vec![encode_expr(e), encode_match_pattern(pat)]),
+        Expr::RunFsm { fsm, init } => ev("Expr", "ERunFsm", vec![Value::Str(fsm.clone()), encode_expr(init)]),
     }
 }
 

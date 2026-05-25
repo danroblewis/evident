@@ -30,8 +30,15 @@ impl EvidentRuntime {
         pins: &[(&str, z3::ast::Datatype<'static>)],
         given: &HashMap<String, Value>,
     ) -> Result<QueryResult, RuntimeError> {
-        let schema = self.schemas.get(claim_name)
+        let base = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
+        // Tier-3 nested-FSM resolution: if this FSM's body calls
+        // `run(F, init)`, drive it to its final value and pin it as a
+        // literal before solving (see runtime/nested.rs). The inner
+        // `run_nested` re-enters this method for `F`, which has no
+        // `run`, so resolve_runs returns None there — no recursion.
+        let resolved = self.resolve_runs(base, given)?;
+        let schema = resolved.as_ref().unwrap_or(base);
         // Function-izer fast path on the SCHEDULER side. The
         // scheduler passes realistic per-tick given values (state,
         // last_results, _world.X). State-pair FSMs ALSO get a
@@ -47,8 +54,13 @@ impl EvidentRuntime {
         // compiles the extracted Z3Program to native code; on miss
         // (extract or codegen refused) falls through to the slow
         // path below. Disable with EVIDENT_FUNCTIONIZE=0.
-        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s != "0").unwrap_or(true);
+        // Skip the JIT + slow-path cache for `run`-containing bodies —
+        // both key on given-KEYS, but a `run`'s resolved literal depends
+        // on given-VALUES. v1 keeps such bodies on the always-fresh Z3
+        // path (see query()'s matching note).
+        let had_run = resolved.is_some();
+        let functionize_on = !had_run
+            && std::env::var("EVIDENT_FUNCTIONIZE").map(|s| s != "0").unwrap_or(true);
         if functionize_on {
             if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
                 if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -70,7 +82,9 @@ impl EvidentRuntime {
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
         let cache_key = (claim_name.to_string(), given_keys);
-        if let Some(cached) = self.slow_path_cache.borrow().get(&cache_key).cloned() {
+        let cached_lookup = if had_run { None }
+            else { self.slow_path_cache.borrow().get(&cache_key).cloned() };
+        if let Some(cached) = cached_lookup {
             if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
                 eprintln!("[slow/cached] {claim_name}");
             }

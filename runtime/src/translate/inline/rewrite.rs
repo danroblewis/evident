@@ -114,6 +114,11 @@ pub(super) fn rewrite_idents_with_prefix(
             Expr::Match(r(scr), new_arms)
         }
         Expr::Matches(x, p) => Expr::Matches(r(x), p.clone()),
+        // The FSM name is a schema reference, not an identifier to
+        // prefix; only the init expression can carry rebindable names.
+        // (In practice `run` is resolved to a literal before inlining,
+        // so this arm rarely fires.)
+        Expr::RunFsm { fsm, init } => Expr::RunFsm { fsm: fsm.clone(), init: r(init) },
     }
 }
 
@@ -181,5 +186,6 @@ pub(super) fn substitute_bound_var(e: &Expr, bound: &str, elem: &Expr) -> Expr {
             Expr::Match(r(scr), new_arms)
         }
         Expr::Matches(x, p) => Expr::Matches(r(x), p.clone()),
+        Expr::RunFsm { fsm, init } => Expr::RunFsm { fsm: fsm.clone(), init: r(init) },
     }
 }

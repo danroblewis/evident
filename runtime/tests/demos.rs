@@ -363,6 +363,14 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Tier-3 blocking-interpret: run(decrement, 50) is driven to
+        // halt and pinned as a value the fsm reads before printing.
+        name: "test_35_run_fsm", exit: 0,
+        must_lines: &["run(decrement, 50) halted at 0"],
+        forbid_exact_lines: &["BUG: run(decrement, 50) did not reach zero"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

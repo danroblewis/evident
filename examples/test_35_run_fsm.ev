@@ -1,0 +1,89 @@
+-- 35_run_fsm — a nested FSM run to completion, AS A VALUE
+-- (tier 3, blocking-interpret).
+--
+-- Run:   evident effect-run examples/test_35_run_fsm.ev
+-- Test:  evident test examples/test_35_run_fsm.ev
+-- Trace: EVIDENT_NESTED_TRACE=1 evident test examples/test_35_run_fsm.ev
+--
+-- Where `halts_within(F, N)` *verifies* a halt (a ∀/∃ property, no
+-- ticking — see test_34), `run(F, init)` *executes* one trajectory and
+-- returns F's final state as a value the outer model then uses. It is
+-- the value-producing sibling: `halts_within` asks "does F halt?",
+-- `run` asks "run F — what is its final state?".
+--
+-- Tier 3 (blocking-interpret) compiles nothing: it drives F using the
+-- same per-tick solve the multi-FSM scheduler uses, to halt, with a
+-- max-iteration guard. It is the correctness baseline and the
+-- equivalence oracle the faster tiers (loop-functionizer,
+-- symbolic-unroll→JIT) are later validated against.
+-- See docs/design/nested-fsm-strategies.md.
+--
+-- HALT CONVENTION (same as halts_within): F declares a
+-- `name, name_next ∈ T` state pair and a `halt ∈ Bool`. `halt` is read
+-- on each tick's INPUT state, so the run returns the state at the first
+-- tick whose halt is true — `run(decrement, 50)` with `halt = count ≤ 0`
+-- returns 0, the input count at the halting tick.
+
+import "stdlib/runtime.ev"
+
+-- ── The transition under execution ───────────────────────────────
+-- A pure state→state counter. Declared a `claim` (not `fsm`) so the
+-- scheduler never instantiates it; `run` resolves it by name and drives
+-- it. count_next/halt are clean equalities — the FSM shape `run` reads.
+claim decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
+    count_next = count - 1
+    halt = (count ≤ 0)
+
+-- ── Static verification: run produces the final state value ──────
+-- run(decrement, 50) ticks 50 → 0 and evaluates to 0.
+claim sat_run_to_zero
+    final ∈ Int = run(decrement, 50)
+    final = 0
+
+-- Pure function of init — a smaller seed, same terminal state.
+claim sat_run_from_three
+    final ∈ Int = run(decrement, 3)
+    final = 0
+
+-- An init that already satisfies halt returns immediately (the input
+-- state at tick 0), with zero advancement.
+claim sat_run_already_halted
+    final ∈ Int = run(decrement, -5)
+    final = -5
+
+-- The result slots into ordinary outer constraints like any value.
+claim sat_run_feeds_outer
+    final ∈ Int = run(decrement, 10)
+    doubled ∈ Int = final + 100
+    doubled = 100
+
+-- ── Enum-state seeding variant (Int / record, criterion 5b) ──────
+-- A bare Int seeds the state enum's first single-Int-payload variant —
+-- the same `seed_state_with_arg` convention spawned FSMs use. The state
+-- is carried as a record-shaped enum value, ticked to halt, returned.
+enum Acc = Acc(Int)
+
+claim accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
+    n ∈ Int = match state
+        Acc(v) ⇒ v
+    state_next = Acc(n + 1)
+    halt = (n ≥ 5)
+
+-- run(accumulate, 0) seeds Acc(0), ticks Acc(0) → … → Acc(5), and
+-- returns the final enum-state value Acc(5).
+claim sat_run_enum_state
+    final ∈ Acc = run(accumulate, 0)
+    final = Acc(5)
+
+-- ── Runnable form: run as a value inside a live fsm ──────────────
+-- The operational demo: an fsm computes run(decrement, 50) on its first
+-- tick, confirms the nested run reached zero, prints, and exits. This
+-- exercises `run` on the scheduler path; the static claims above cover
+-- the value semantics.
+fsm main
+    result ∈ Int = run(decrement, 50)
+    reached_zero ∈ Bool = (result ≤ 0)
+
+    effects = (reached_zero
+        ? ⟨Println("run(decrement, 50) halted at 0"), Exit(0)⟩
+        : ⟨Println("BUG: run(decrement, 50) did not reach zero"), Exit(1)⟩)
