@@ -10,6 +10,10 @@ pub mod effect_dispatch;
 pub mod z3_eval;
 pub mod z3_profile;
 pub mod functionize;
+// Internal: consumed by the translate pass via `crate::fsm_unroll`.
+// Not part of the public API — exercised end-to-end through
+// `EvidentRuntime` (see runtime/tests/fsm_unroll.rs).
+mod fsm_unroll;
 mod value_builders;
 pub mod effect_loop;
 mod ffi;

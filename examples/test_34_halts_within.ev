@@ -1,0 +1,84 @@
+-- 34_halts_within — FSM halt as a *constraint*, proved without
+-- running the FSM, via log-spaced (exponentiation-by-squaring)
+-- composition of the transition with itself.
+--
+-- Run:   evident effect-run examples/test_34_halts_within.ev
+-- Test:  evident test examples/test_34_halts_within.ev
+-- Trace: EVIDENT_FSM_UNROLL_TRACE=1 evident test examples/test_34_halts_within.ev
+--
+-- `halts_within(F, N)` asserts that the FSM body named `F` reaches a
+-- halt state within N ticks. The lowering builds F^N — F composed with
+-- itself N times — by exponentiation-by-squaring (cache F^1, F^2, F^4,
+-- …, F^512, simplify after each doubling) and asserts the cumulative
+-- halt witness `∃ k ∈ [1,N] : halt_k`. For an *affine* body (the state
+-- update is linear in the carried state) the composed transition
+-- collapses to closed form, so F^1000 is as cheap to build as F^4 —
+-- a counter at N = 16,000 is still just `count − 16000`.
+--
+-- An affine-step detector gates the technique: it probes 3 doublings
+-- and, if the state-transition node count is still growing > 1.5× per
+-- doubling, declines cleanly (branching / data-dependent bodies — game
+-- physics, multi-state dispatch — don't collapse; log-unroll buys
+-- nothing there). See docs/design/fsm-halts-within.md.
+--
+-- HALT CONVENTION: the FSM body must declare a `count, count_next ∈ T`
+-- state pair and a `halt ∈ Bool`. `halt` is read on each tick's INPUT
+-- state, so `halts_within(F, N)` holds iff `halt` is true at the start
+-- of some tick in 1..=N. A counter starting at 50 with `halt = count ≤
+-- 0` thus first halts at tick 51 (the tick whose input count is 0).
+
+import "stdlib/runtime.ev"
+
+-- ── The transition under verification ────────────────────────────
+-- The pure state→state function. Declared as a `claim` (not `fsm`) so
+-- the scheduler never instantiates it; `halts_within` looks it up by
+-- name and composes its body. count_next/halt are clean equalities —
+-- that's the "function shape" the closed-form composer extracts.
+claim decrement
+    count, count_next ∈ Int
+    halt ∈ Bool
+    count_next = count - 1
+    halt = (count ≤ 0)
+
+-- ── Static verification: halts_within over the affine counter ────
+-- F^N halt-witness for this body is `count ≤ N-1` (after Z3 folds the
+-- per-tick disjunction once the initial count is pinned). Starting at
+-- count = 50, the FSM halts within N iff N ≥ 51.
+
+-- Reaches zero well within 1000 ticks.
+claim sat_decrement_halts_by_1000
+    count ∈ Int = 50
+    halts_within(decrement, 1000)
+
+-- And within 100.
+claim sat_decrement_halts_by_100
+    count ∈ Int = 50
+    halts_within(decrement, 100)
+
+-- Boundary: 50 down to 0 reaches halt exactly at tick 51.
+claim sat_decrement_halts_at_51
+    count ∈ Int = 50
+    halts_within(decrement, 51)
+
+-- One tick short of the boundary — has NOT halted yet.
+claim unsat_decrement_halts_by_50
+    count ∈ Int = 50
+    halts_within(decrement, 50)
+
+-- Far short: 50 can't reach 0 in 5 ticks.
+claim unsat_decrement_halts_by_5
+    count ∈ Int = 50
+    halts_within(decrement, 5)
+
+-- ── Runnable form: the same transition, with effects ─────────────
+-- The operational version of `decrement`: a pure-counter fsm using the
+-- `_var` time-shift (`count = is_first_tick ? START : _count - 1`),
+-- which the runtime rewrites to the same count/count_next pair the
+-- static claims verify. It counts 5 → 0 and exits, demonstrating the
+-- halt that `halts_within` proves statically.
+fsm countdown
+    count ∈ Int = (is_first_tick ? 5 : _count - 1)
+    halt  ∈ Bool = (count ≤ 0)
+
+    effects = (halt ? ⟨Println("countdown reached zero: halting"), Exit(0)⟩
+                    : ⟨Println("counting down")⟩)

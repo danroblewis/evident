@@ -434,6 +434,13 @@ pub fn decode_body_item(v: &Value) -> Result<BodyItem> {
             need_arity(variant, fields, 1)?;
             BodyItem::SubclaimDecl(decode_schema_decl(&fields[0])?)
         }
+        "BIHaltsWithin" => {
+            need_arity(variant, fields, 2)?;
+            BodyItem::HaltsWithin {
+                fsm_name: decode_str(&fields[0])?,
+                n:        decode_int(&fields[1])?,
+            }
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "BodyItem".into(), variant: other.into(),
         }),

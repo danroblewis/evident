@@ -199,6 +199,7 @@ fn walk_body(ev: &EvidentSubscriptions, body: &[BodyItem], sets: &mut AccessSets
                 for m in mappings { walk_expr(ev, &m.value, sets); }
             }
             BodyItem::Constraint(e) => walk_expr(ev, e, sets),
+            BodyItem::HaltsWithin { .. } => {}  // mirrors canonical subscriptions.rs
         }
     }
 }

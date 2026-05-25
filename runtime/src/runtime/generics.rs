@@ -163,6 +163,9 @@ pub(super) fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec
                 // Body constraints can contain `Foo<Bar>(args)` positional
                 // invocations or `Foo<Bar>` constructor calls inline.
                 BodyItem::Constraint(e) => walk_expr(e, out, seen),
+                // halts_within names a non-generic FSM claim; no generic
+                // type args to monomorphize.
+                BodyItem::HaltsWithin { .. } => {}
             }
         }
     }

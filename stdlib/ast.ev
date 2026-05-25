@@ -107,12 +107,14 @@ enum Pins =
 --   BIClaimCall(name, mappings)
 --   BIConstraint(expr)
 --   BISubclaim(decl)
+--   BIHaltsWithin(fsm_name, n)
 enum BodyItem =
     BIMembership(String, String, Pins)
     BIPassthrough(String)
     BIClaimCall(String, Seq(Mapping))
     BIConstraint(Expr)
     BISubclaim(SchemaDecl)
+    BIHaltsWithin(String, Int)
 
 -- ── Schema (the unit a `claim` / `type` declares) ───────────────
 

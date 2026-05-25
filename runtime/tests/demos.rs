@@ -357,6 +357,12 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        name: "test_34_halts_within", exit: 0,
+        must_lines: &["counting down", "countdown reached zero: halting"],
+        forbid_exact_lines: &[],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
