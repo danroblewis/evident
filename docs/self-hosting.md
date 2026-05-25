@@ -25,7 +25,7 @@ gaps currently bound what a pass can do.
 
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
-| `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **partial** | ASCII, non-recursive subset only — see [Gaps](#runtime-gaps-that-bound-a-string-pass) |
+| `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **faithful on the ASCII subset, recursively** | Now an ordered Emit/Expand **stack-FSM** (`pretty_walk`) — routes around the recursion gap (#15) exactly as `subscriptions_walk` does, so it renders recursive sub-`Expr`s (calls, nested binaries, field/index, ternaries, `matches`), not just leaves. Two residuals still diverge and are pinned in the equivalence test: Unicode operator glyphs (#16) and numbers/Bool (no int→string in a pass; JIT bool bug #17). See [Gaps](#runtime-gaps-that-bound-a-string-pass) |
 | `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
@@ -225,36 +225,48 @@ hot path, so this is comfortable; for passes that run at every file load
 
 ## Runtime gaps that bound a string pass
 
-Porting `pretty` (a pure `AST → String` recursion) surfaced two
-fundamental limits. Both must be fixed in `translate/` + `functionize/`
-before an AST→String (or AST→AST) pass can be *fully* faithful. Until
-then, a pass is faithful only on the **ASCII, non-recursive subset**.
-(Also logged in `examples/COUNTEREXAMPLES.md`.)
+Porting `pretty` (a pure `AST → String` recursion) surfaced three limits.
+The **recursion gap (#1) no longer bounds `pretty`**: the pass is now an
+ordered Emit/Expand stack-FSM that routes around it (see Gap #1 below),
+so it renders recursive sub-`Expr`s. The remaining bounds on full
+fidelity are #2 (Unicode glyphs) and the no-int→string limit (numbers),
+both fixed in `translate/` + `functionize/`. Until then a string pass is
+faithful on the **recursive ASCII subset** — every shape whose rendering
+is pure-ASCII at every level. (Also logged in `examples/COUNTEREXAMPLES.md`.)
 
 > **See also:** [`design/loop-functionizer.md`](design/loop-functionizer.md)
-> is the unlock for the blocked tree-walk ports below. It routes around
-> the recursion gap (Gap #1) *without* adding recursion to the constraint
-> language — the walk becomes a loop-functionized FSM over an explicit
-> work-stack, which finally lets `subscriptions` / `validate` / `pretty`
-> move their *walk* (not just the leaf classifier) into Evident and
-> delete the Rust walk + its `portable/` duplicate. That's the port shape
-> that makes net Rust LOC go *down*.
+> is the design that motivated routing around the recursion gap for the
+> tree-walk ports. The walk becomes a stack-FSM over an explicit
+> work-stack — which `subscriptions` (`subscriptions_walk`) and now
+> `pretty` (`pretty_walk`) both realize under tier-3 `run()` — so the
+> *walk*, not just the leaf classifier, lives in Evident and the Rust walk
+> + its `portable/` duplicate can go. That's the port shape that makes net
+> Rust LOC go *down* (the `pretty` shim dropped its ~130-line bespoke
+> `encode_*` marshaling block by reusing the shared marshaler).
 
-### 1. Recursive claims don't constrain their outputs
+### 1. Recursive claims don't constrain their outputs — ROUTED via stack-FSM
 
-A claim cannot recurse over a nested `Expr` tree of unknown depth.
-There is a bounded-inlining mechanism (`translate/inline/recursion.rs`,
-depth-capped at `EVIDENT_MAX_INLINE_DEPTH=64`), but the inlined frames'
-outputs are left **unconstrained** — Z3 fills free values, so the result
-comes back as garbage (both correct and wrong outputs are SAT).
-Additionally, a claim call nested inside an expression
-(`out = pretty(l) ++ …`) is **silently dropped** (`translate/inline/walk.rs`).
-There is no `define-fun-rec`, no fold/catamorphism, no string-fold.
+A claim cannot recurse over a nested `Expr` tree of unknown depth via
+*functional* recursion: bounded inlining (`translate/inline/recursion.rs`,
+depth-capped at `EVIDENT_MAX_INLINE_DEPTH=64`) leaves the inlined frames'
+outputs **unconstrained** — Z3 fills free values, so the result comes back
+as garbage (both correct and wrong outputs are SAT). A claim call nested
+inside an expression (`out = pretty(l) ++ …`) is **silently dropped**
+(`translate/inline/walk.rs`). There is still no `define-fun-rec`, no
+fold/catamorphism, no string-fold — so this gap is **open for the
+inline-a-recursive-claim shape** and other passes may still cite it.
 
-Consequence: only leaf / flat shapes render. Anything with sub-`Expr`s
-(`EBinary`, `ECall`, `ESetLit`, quantifiers, mapping lists) cannot.
-See the unchecked acceptance criteria in
-`docs/plans/03-language-prereqs/01-recursive-claims.md`.
+But `pretty` and `subscriptions` no longer hit it: the **stack-FSM**
+routes around it. Recursion becomes *iteration* over an explicit
+work-stack carried in the FSM's state, driven to halt by `run()`. Each
+step is the non-recursive question "given this node + this accumulator,
+what are the children and the next accumulator?" — a finite, fully
+constrained, JIT-able function; the output is threaded through state
+across ticks, never left free for Z3 to fill. So `pretty.ev`'s
+`pretty_walk` renders `EBinary`, `ECall`, nested `EField`/`EIndex`,
+`ETernary`, `EMatches`, etc. — their sub-`Expr`s are walked. See
+`docs/design/loop-functionizer.md` §4 and `examples/COUNTEREXAMPLES.md`
+#19 (the composite-state stack-FSM capabilities this relies on).
 
 ### 2. Non-ASCII string literals mangle through Z3
 
@@ -301,17 +313,48 @@ extraction failure, not a fundamental string-comparison issue.
 
 ## What `stdlib/passes/pretty.ev` reproduces today
 
-Faithful (byte-identical to `pretty.rs`):
+`pretty.ev` is now an **ordered Emit/Expand stack-FSM** (`pretty_walk`),
+the string-output sibling of `subscriptions_walk`. Its state carries a
+**work-stack** of `PWork` items plus a **String accumulator**. Each tick
+pops the top item: a `WEmit(tok)` appends the literal fragment to the
+accumulator; everything else dispatches on the node's shape and pushes its
+rendered pieces **in reverse**, so they pop in render order (`EBinary(op,
+l, r)` → `⟨WExprParen(l), WBinOp(op), WExprParen(r)⟩`). An empty stack →
+`PDone(out)`. The Rust shim marshals the input with the ONE SHARED
+marshaler (`ast_encoder::{expr_to_value, body_item_to_value}`), wraps it as
+the FSM's `PWork` seed, drives it to halt via `effect_loop::run_nested`,
+and reads `out`. No Rust tree walk, no per-pass encoder — the recursion
+and the ordered string assembly both live in the pass.
 
-- `PrettyExpr`: `EIdentifier(n)` → `n`
-- `Pretty`: `BIPassthrough(c)` → `..c`; `BIClaimCall(name, ⟨⟩)` → `name`
-  (empty mappings); `BIConstraint(EIdentifier)` → delegated to
-  `PrettyExpr` by the Rust shim (mirrors `pretty.rs`, whose `body_item`
-  Constraint arm calls `expr`).
+**Faithful (byte-identical to `pretty.rs`), recursively** — every shape
+whose rendering is pure-ASCII at every level:
 
-Everything else renders to an ASCII sentinel (`<unsupported-…>`); the
-equivalence test treats only the faithful shapes as authoritative and
-pins the rest as known divergences.
+- `EIdentifier`, `EStr` (payload free of `\` / `"` — no string-replace in
+  Evident), `ECall(name, args)` + its argument list, `ESetLit`, `ETuple`,
+  `ERange` (non-numeric bounds), `ECardinality`, `EIndex`, `EField`,
+  `ETernary`, `EMatches` (incl. its pattern), `ERunFsm`, and `EBinary`
+  with an ASCII operator (`= < > + - * / ++`) — with the same
+  Binary-operand parenthesization `pretty.rs` applies.
+- `BodyItem`: `BIPassthrough` → `..c`; empty-mapping `BIClaimCall` → the
+  name; `BIConstraint(e)` → the Expr walk (the pass owns this delegation
+  now — its `WBody(BIConstraint(e)) ⇒ WExpr(e)` arm mirrors `pretty.rs`).
+
+**Documented residuals** (the pass still RENDERS these, total + ASCII-clean
+where it can; the equivalence test pins them as known boundaries so a
+future gap-fix promotes them):
+
+- **Unicode glyphs (#16)** — any shape needing an operator glyph
+  (`EBinary` with `≠ ≤ ≥ ∧ ∨ ⇒`, `ESeqLit` ⟨⟩, `EInExpr`/`EForall`/`EExists`
+  ∈ ∀ ∃, `ENot` ¬, `EMatch` arms' ⇒; `BIMembership` ∈, `BISubclaim` …,
+  non-empty `BIClaimCall` ↦). The sub-exprs are walked (recursion routed) —
+  only the glyph bytes mangle through Z3's byte-string handling, so the
+  pass emits the real glyph and the moment #16 is fixed these promote with
+  no pass change.
+- **Numbers / Bool** — `EInt` / `EReal` / `EBool` / `BIHaltsWithin`'s count
+  render to an ASCII sentinel (`<int>` / `<real>` / `<bool>`): there is no
+  int→string in a pass (`IntToStr` is an Effect, unavailable under
+  `run()`), and the JIT mishandles a Bool payload nested in an enum given
+  (#17).
 
 ## What `stdlib/passes/subscriptions.ev` reproduces today
 

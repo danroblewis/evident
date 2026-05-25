@@ -5,21 +5,46 @@
 //!     logic that used to live in `runtime/src/pretty.rs` lives here now;
 //!     `pretty.rs` is a thin re-export so existing callers
 //!     (`crate::pretty::expr` / `body_item`) are unchanged.
-//!   * [`EvidentPretty`] — calls `stdlib/passes/pretty.ev` through an
-//!     owned [`EvidentRuntime`].
+//!   * [`EvidentPretty`] — drives the `pretty_walk` stack-FSM in
+//!     `stdlib/passes/pretty.ev` through an owned [`EvidentRuntime`].
 //!
-//! `EvidentPretty` is faithful (byte-identical to `RustPretty`) only on
-//! the ASCII, non-recursive subset — see the pass file and
-//! `docs/self-hosting.md`. Unsupported shapes return ASCII sentinels;
-//! the equivalence test (`runtime/tests/pretty_equivalence.rs`) asserts
-//! identity on exactly the faithful shapes.
+//! ## `EvidentPretty` routes around the recursion gap (#15)
+//!
+//! Session X's port could render only flat/leaf shapes because a recursive
+//! claim leaves its output unconstrained (COUNTEREXAMPLES #15). This shim
+//! now drives `pretty.ev`'s **ordered stack-FSM** (`pretty_walk`) exactly
+//! as `portable::subscriptions` drives `subscriptions_walk`: marshal the
+//! input with the ONE SHARED marshaler (`translate::ast_encoder::{expr_to_value,
+//! body_item_to_value}`), wrap it as the FSM's `PWork` seed, run it to a
+//! drained-stack halt via [`crate::effect_loop::run_nested`], and read the
+//! rendered String out of the `PDone(out)` final state. The recursion and
+//! the string assembly both live in the pass — **no Rust tree walk, no
+//! per-pass encoder**.
+//!
+//! ## What is byte-identical to `RustPretty`
+//!
+//! Every shape whose rendering is pure-ASCII, **recursively** — identifiers,
+//! string literals, calls + their argument lists, set/tuple literals,
+//! nested field/index, `#`, ternaries, `matches` (incl. its pattern),
+//! `run(...)`, and binary operators with an ASCII symbol (`= < > + - * /
+//! ++`) with the same Binary-operand parenthesization. The equivalence
+//! test (`runtime/tests/pretty_equivalence.rs`) asserts identity on these.
+//!
+//! Two residuals still diverge and are pinned in the test as known
+//! boundaries (see the pass file + `docs/self-hosting.md`):
+//!   * **Unicode operator glyphs (#16)** — `∈ ↦ ∀ ⇒ ∧ ¬ ≤ ⟨⟩ …` mangle
+//!     through Z3 byte-string handling, so glyph-bearing shapes diverge in
+//!     exactly those bytes (the pass still walks their sub-exprs).
+//!   * **Numbers / Bool (no int→string in a pass; JIT bool bug #17)** —
+//!     `EInt` / `EReal` / `EBool` / `BIHaltsWithin`'s count render to an
+//!     ASCII sentinel.
 
-use std::collections::HashMap;
 use std::path::Path;
 
-use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchArm, MatchPattern, Pins};
+use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchArm, MatchPattern};
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;
+use crate::translate::ast_encoder::{body_item_to_value, expr_to_value};
 use super::Portable;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -155,44 +180,52 @@ fn mapping(m: &Mapping) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Evident impl — calls stdlib/passes/pretty.ev
+// Evident impl — drives stdlib/passes/pretty.ev's pretty_walk stack-FSM
 // ─────────────────────────────────────────────────────────────────────
 
-/// Renders via `stdlib/passes/pretty.ev`. Holds its own runtime with the
-/// pass loaded; build once and reuse so the pass is compiled/cached
-/// across calls.
+/// Renders via the `pretty_walk` stack-FSM in `stdlib/passes/pretty.ev`.
+/// Holds its own runtime with the pass loaded; build once and reuse so
+/// the FSM's per-tick solve is JIT-cached across calls.
 pub struct EvidentPretty {
     rt: EvidentRuntime,
 }
 
 impl EvidentPretty {
-    /// Pass-claim name for a `BodyItem`.
-    const BODY_ITEM_CLAIM: &'static str = "Pretty";
-    /// Pass-claim name for an `Expr`.
-    const EXPR_CLAIM: &'static str = "PrettyExpr";
+    /// The ordered AST→String stack-FSM in `stdlib/passes/pretty.ev`.
+    const WALK_FSM: &'static str = "pretty_walk";
 
-    /// Load `ast.ev` + `passes/pretty.ev` from `stdlib_dir` into a fresh
-    /// runtime. `stdlib_dir` is the repo's `stdlib/` directory.
+    /// Max-iteration guard for the nested walk. Each AST node costs a
+    /// small constant number of FSM ticks (one per pushed work-item), so a
+    /// tree of N nodes halts in O(N) ticks; the cap sits far above any
+    /// realistic diagnostic so a legitimate render never hits it (overrun
+    /// would be a pass bug, surfaced as a loud `MaxItersExceeded`).
+    const MAX_STEPS: usize = 5_000_000;
+
+    /// Load `passes/pretty.ev` from `stdlib_dir` into a fresh runtime.
+    /// `stdlib_dir` is the repo's `stdlib/` directory. The pass is
+    /// self-contained (it declares its own cons-list copy of the AST enums
+    /// matching the shared marshaler), so no other stdlib file is needed —
+    /// and loading `ast.ev` too would clash (duplicate enum decls).
     pub fn new(stdlib_dir: &Path) -> Result<Self, String> {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(&stdlib_dir.join("ast.ev"))
-            .map_err(|e| format!("load ast.ev: {e}"))?;
         rt.load_file(&stdlib_dir.join("passes").join("pretty.ev"))
             .map_err(|e| format!("load passes/pretty.ev: {e}"))?;
         Ok(Self { rt })
     }
 
-    /// Run a single-output pass claim with `var` pinned to `val`, return
-    /// the `out` String binding.
-    fn render(&self, claim: &str, var: &str, val: Value) -> String {
-        let mut given: HashMap<String, Value> = HashMap::new();
-        given.insert(var.to_string(), val);
-        match self.rt.query(claim, &given) {
-            Ok(qr) if qr.satisfied => match qr.bindings.get("out") {
-                Some(Value::Str(s)) => s.clone(),
-                other => format!("<pretty-bad-out: {other:?}>"),
-            },
-            Ok(_)  => "<pretty-unsat>".to_string(),
+    /// Drive `pretty_walk` over a seeded `PWork` node and return the
+    /// rendered String from the `PDone(out)` final state.
+    fn render(&self, seed: Value) -> String {
+        match crate::effect_loop::run_nested(&self.rt, Self::WALK_FSM, seed, Self::MAX_STEPS) {
+            Ok(Value::Enum { variant, fields, .. })
+                if variant == "PDone" && fields.len() == 1 =>
+            {
+                match &fields[0] {
+                    Value::Str(s) => s.clone(),
+                    other => format!("<pretty-bad-out: {other:?}>"),
+                }
+            }
+            Ok(other) => format!("<pretty-not-done: {other:?}>"),
             Err(e) => format!("<pretty-error: {e}>"),
         }
     }
@@ -204,164 +237,26 @@ impl Portable for EvidentPretty {
 
 impl PrettyImpl for EvidentPretty {
     fn expr(&self, e: &Expr) -> String {
-        self.render(Self::EXPR_CLAIM, "e", encode_expr(e))
+        // Shared marshaler: ast.rs Expr → Value::Enum (cons-list shape),
+        // wrapped as the FSM's unified work node `PWork::WExpr(Expr)`.
+        self.render(work_node("WExpr", expr_to_value(e)))
     }
 
     fn body_item(&self, item: &BodyItem) -> String {
-        // Mirror pretty.rs: a Constraint body item renders exactly as its
-        // inner expression. The pass can't call PrettyExpr inline, so the
-        // shim does the delegation (keeps each Evident claim flat).
-        match item {
-            BodyItem::Constraint(e) => self.expr(e),
-            _ => self.render(Self::BODY_ITEM_CLAIM, "item", encode_body_item(item)),
-        }
+        // The pass owns the Constraint → Expr delegation now (its
+        // `WBody(BIConstraint(e)) ⇒ WExpr(e)` arm mirrors pretty.rs), so
+        // unlike the pre-recursion shim there is no Rust-side special case.
+        self.render(work_node("WBody", body_item_to_value(item)))
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Marshaling: Rust AST → Value::Enum tree (matches stdlib/ast.ev)
-// ─────────────────────────────────────────────────────────────────────
-//
-// A self-contained mirror of the private `*_to_value` family in
-// translate/encode_ast.rs. Each list field becomes a named Cons/Nil
-// enum, exactly as that module emits. Kept local so the port owns its
-// marshaling; unify with encode_ast.rs once its surface is public.
-
-fn ev(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
-    Value::Enum { enum_name: enum_name.to_string(), variant: variant.to_string(), fields }
-}
-
-pub(crate) fn encode_body_item(bi: &BodyItem) -> Value {
-    match bi {
-        BodyItem::Membership { name, type_name, pins } =>
-            ev("BodyItem", "BIMembership",
-               vec![Value::Str(name.clone()), Value::Str(type_name.clone()), encode_pins(pins)]),
-        BodyItem::Passthrough(name) =>
-            ev("BodyItem", "BIPassthrough", vec![Value::Str(name.clone())]),
-        BodyItem::ClaimCall { name, mappings } =>
-            ev("BodyItem", "BIClaimCall",
-               vec![Value::Str(name.clone()), encode_mapping_list(mappings)]),
-        BodyItem::Constraint(e) =>
-            ev("BodyItem", "BIConstraint", vec![encode_expr(e)]),
-        BodyItem::SubclaimDecl(s) =>
-            ev("BodyItem", "BISubclaim", vec![encode_schema_decl(s)]),
-        BodyItem::HaltsWithin { fsm_name, n } =>
-            ev("BodyItem", "BIHaltsWithin",
-               vec![Value::Str(fsm_name.clone()), Value::Int(*n)]),
+/// Wrap an already-marshaled AST `Value` as the FSM's unified `PWork` seed.
+fn work_node(variant: &str, inner: Value) -> Value {
+    Value::Enum {
+        enum_name: "PWork".to_string(),
+        variant: variant.to_string(),
+        fields: vec![inner],
     }
-}
-
-fn encode_schema_decl(s: &crate::core::ast::SchemaDecl) -> Value {
-    ev("SchemaDecl", "MakeSchemaDecl",
-       vec![encode_keyword(&s.keyword), Value::Str(s.name.clone()), encode_body_item_list(&s.body)])
-}
-
-fn encode_keyword(kw: &crate::core::ast::Keyword) -> Value {
-    use crate::core::ast::Keyword::*;
-    let v = match kw { Schema => "KSchema", Claim => "KClaim", Type => "KType", Subclaim => "KSubclaim", Fsm => "KFsm" };
-    ev("Keyword", v, vec![])
-}
-
-fn encode_pins(p: &Pins) -> Value {
-    match p {
-        Pins::None => ev("Pins", "PNone", vec![]),
-        Pins::Named(maps) => ev("Pins", "PNamed", vec![encode_mapping_list(maps)]),
-        Pins::Positional(args) => ev("Pins", "PPositional", vec![encode_expr_list(args)]),
-    }
-}
-
-fn encode_mapping(m: &Mapping) -> Value {
-    ev("Mapping", "MakeMapping", vec![Value::Str(m.slot.clone()), encode_expr(&m.value)])
-}
-
-pub(crate) fn encode_expr(e: &Expr) -> Value {
-    match e {
-        Expr::Identifier(s) => ev("Expr", "EIdentifier", vec![Value::Str(s.clone())]),
-        Expr::Int(n)        => ev("Expr", "EInt",        vec![Value::Int(*n)]),
-        Expr::Real(f)       => ev("Expr", "EReal",       vec![Value::Real(*f)]),
-        Expr::Bool(b)       => ev("Expr", "EBool",       vec![Value::Bool(*b)]),
-        Expr::Str(s)        => ev("Expr", "EStr",        vec![Value::Str(s.clone())]),
-        Expr::SetLit(items) => ev("Expr", "ESetLit",     vec![encode_expr_list(items)]),
-        Expr::SeqLit(items) => ev("Expr", "ESeqLit",     vec![encode_expr_list(items)]),
-        Expr::Tuple(items)  => ev("Expr", "ETuple",      vec![encode_expr_list(items)]),
-        Expr::Range(lo, hi) => ev("Expr", "ERange",      vec![encode_expr(lo), encode_expr(hi)]),
-        Expr::InExpr(l, r)  => ev("Expr", "EInExpr",     vec![encode_expr(l), encode_expr(r)]),
-        Expr::Forall(vs, range, body) =>
-            ev("Expr", "EForall", vec![encode_string_list(vs), encode_expr(range), encode_expr(body)]),
-        Expr::Exists(vs, range, body) =>
-            ev("Expr", "EExists", vec![encode_string_list(vs), encode_expr(range), encode_expr(body)]),
-        Expr::Call(name, args) =>
-            ev("Expr", "ECall", vec![Value::Str(name.clone()), encode_expr_list(args)]),
-        Expr::Cardinality(inner) => ev("Expr", "ECardinality", vec![encode_expr(inner)]),
-        Expr::Index(seq, idx)    => ev("Expr", "EIndex", vec![encode_expr(seq), encode_expr(idx)]),
-        Expr::Field(base, name)  => ev("Expr", "EField", vec![encode_expr(base), Value::Str(name.clone())]),
-        Expr::Binary(op, l, r)   => ev("Expr", "EBinary", vec![encode_binop(op), encode_expr(l), encode_expr(r)]),
-        Expr::Not(inner)         => ev("Expr", "ENot", vec![encode_expr(inner)]),
-        Expr::Ternary(c, a, b)   => ev("Expr", "ETernary", vec![encode_expr(c), encode_expr(a), encode_expr(b)]),
-        Expr::Match(scr, arms)   => ev("Expr", "EMatch", vec![encode_expr(scr), encode_match_arm_list(arms)]),
-        Expr::Matches(e, pat)    => ev("Expr", "EMatches", vec![encode_expr(e), encode_match_pattern(pat)]),
-        Expr::RunFsm { fsm, init } => ev("Expr", "ERunFsm", vec![Value::Str(fsm.clone()), encode_expr(init)]),
-    }
-}
-
-fn encode_binop(op: &BinOp) -> Value {
-    let v = match op {
-        BinOp::Eq => "OpEq", BinOp::Neq => "OpNeq", BinOp::Lt => "OpLt", BinOp::Le => "OpLe",
-        BinOp::Gt => "OpGt", BinOp::Ge => "OpGe", BinOp::And => "OpAnd", BinOp::Or => "OpOr",
-        BinOp::Implies => "OpImplies", BinOp::Add => "OpAdd", BinOp::Sub => "OpSub",
-        BinOp::Mul => "OpMul", BinOp::Div => "OpDiv", BinOp::Concat => "OpConcat",
-    };
-    ev("BinOp", v, vec![])
-}
-
-fn encode_match_arm(a: &MatchArm) -> Value {
-    ev("MatchArm", "MakeMatchArm", vec![encode_match_pattern(&a.pattern), encode_expr(&a.body)])
-}
-
-fn encode_match_pattern(p: &MatchPattern) -> Value {
-    match p {
-        // A top-level bind has no `PatBind` in stdlib/ast.ev; the
-        // self-hosting corpus never produces one. Treat as wildcard.
-        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
-            ev("MatchPattern", "PatWildcard", vec![]),
-        MatchPattern::Ctor { name, binds } =>
-            ev("MatchPattern", "PatCtor", vec![Value::Str(name.clone()), encode_bind_list(binds)]),
-    }
-}
-
-// ── list builders → named Cons/Nil enums ──
-
-fn cons_list(enum_name: &str, cons: &str, nil: &str, items: impl DoubleEndedIterator<Item = Value>) -> Value {
-    let mut acc = ev(enum_name, nil, vec![]);
-    for head in items.rev() {
-        acc = ev(enum_name, cons, vec![head, acc]);
-    }
-    acc
-}
-
-fn encode_body_item_list(items: &[BodyItem]) -> Value {
-    cons_list("BodyItemList", "BILCons", "BILNil", items.iter().map(encode_body_item))
-}
-fn encode_mapping_list(items: &[Mapping]) -> Value {
-    cons_list("MappingList", "MLCons", "MLNil", items.iter().map(encode_mapping))
-}
-fn encode_expr_list(items: &[Expr]) -> Value {
-    cons_list("ExprList", "ELCons", "ELNil", items.iter().map(encode_expr))
-}
-fn encode_string_list(items: &[String]) -> Value {
-    cons_list("StringList", "SLCons", "SLNil", items.iter().map(|s| Value::Str(s.clone())))
-}
-fn encode_match_arm_list(items: &[MatchArm]) -> Value {
-    cons_list("MatchArmList", "MALCons", "MALNil", items.iter().map(encode_match_arm))
-}
-fn encode_bind_list(binds: &[MatchPattern]) -> Value {
-    cons_list("BindList", "BLCons", "BLNil", binds.iter().map(|b| match b {
-        MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
-        // Wildcard, and (lossily) any nested constructor sub-pattern,
-        // which the flat `MatchBind` can't represent — never hit by the
-        // self-hosting corpus.
-        _ => ev("MatchBind", "BindWildcard", vec![]),
-    }))
 }
 
 // ─────────────────────────────────────────────────────────────────────
