@@ -191,6 +191,50 @@ impl SExpr {
     }
 }
 
+/// Pretty-print a discovered tree, naming each `Var(i)` after the
+/// program's i-th input rather than the positional `x{i}`. Used by the
+/// `EVIDENT_SYMBOLIC_ANNOUNCE` stdout line so the rediscovered form
+/// reads in the program's own variables (`3 * world.x + 5`, not
+/// `3 * x0 + 5`).
+fn render_named(e: &SExpr, inputs: &[(String, NumKind)]) -> String {
+    match e {
+        SExpr::Var(i) => inputs
+            .get(*i)
+            .map(|(n, _)| n.clone())
+            .unwrap_or_else(|| format!("x{i}")),
+        SExpr::Const(c) => c.to_string(),
+        SExpr::Unary(Un::Neg, a) => format!("(-{})", render_named(a, inputs)),
+        SExpr::Unary(Un::Not, a) => format!("(!{})", render_named(a, inputs)),
+        SExpr::Binary(op, a, b) => {
+            let s = bin_symbol(*op);
+            format!("({} {} {})", render_named(a, inputs), s, render_named(b, inputs))
+        }
+        SExpr::Ite(c, t, e) => format!(
+            "(if {} then {} else {})",
+            render_named(c, inputs),
+            render_named(t, inputs),
+            render_named(e, inputs)
+        ),
+    }
+}
+
+fn bin_symbol(op: Bin) -> &'static str {
+    match op {
+        Bin::Add => "+",
+        Bin::Sub => "-",
+        Bin::Mul => "*",
+        Bin::Div => "/",
+        Bin::Mod => "%",
+        Bin::Lt => "<",
+        Bin::Le => "<=",
+        Bin::Gt => ">",
+        Bin::Ge => ">=",
+        Bin::Eq => "==",
+        Bin::And => "&&",
+        Bin::Or => "||",
+    }
+}
+
 /// Pretty-print for the compile trace (`EVIDENT_SYMBOLIC_TRACE`).
 fn render(e: &SExpr) -> String {
     match e {
@@ -199,21 +243,7 @@ fn render(e: &SExpr) -> String {
         SExpr::Unary(Un::Neg, a) => format!("(-{})", render(a)),
         SExpr::Unary(Un::Not, a) => format!("(!{})", render(a)),
         SExpr::Binary(op, a, b) => {
-            let s = match op {
-                Bin::Add => "+",
-                Bin::Sub => "-",
-                Bin::Mul => "*",
-                Bin::Div => "/",
-                Bin::Mod => "%",
-                Bin::Lt => "<",
-                Bin::Le => "<=",
-                Bin::Gt => ">",
-                Bin::Ge => ">=",
-                Bin::Eq => "==",
-                Bin::And => "&&",
-                Bin::Or => "||",
-            };
-            format!("({} {} {})", render(a), s, render(b))
+            format!("({} {} {})", render(a), bin_symbol(*op), render(b))
         }
         SExpr::Ite(c, t, e) => format!("(if {} then {} else {})", render(c), render(t), render(e)),
     }
@@ -331,6 +361,11 @@ impl super::Functionizer for SymbolicFunctionizer {
         _datatypes: &crate::core::DatatypeRegistry,
     ) -> Option<Rc<dyn super::CompiledFunction>> {
         let trace = std::env::var("EVIDENT_SYMBOLIC_TRACE").is_ok();
+        // Opt-in stdout announcement of each rediscovered closed form
+        // (proof the symbolic strategy ran, not the runtime's default).
+        // Off by default so library / unit-test uses stay quiet; the
+        // `effect-run --functionizer symbolic` path turns it on.
+        let announce = std::env::var("EVIDENT_SYMBOLIC_ANNOUNCE").is_ok();
 
         // ── Refuse anything outside the supported shape ──────────
         if !program.checks.is_empty() || !program.predicates.is_empty() {
@@ -444,6 +479,10 @@ impl super::Functionizer for SymbolicFunctionizer {
             let expr = fit_one(&self.cfg, &mut rng, n_vars, &sample_inputs, &targets)?;
             if trace {
                 eprintln!("[symbolic] {name} = {}", render(&expr));
+            }
+            if announce {
+                println!("symbolic functionizer: rediscovered {name} = {}",
+                    render_named(&expr, &inputs));
             }
             fitted.push((name.clone(), *kind, expr));
         }

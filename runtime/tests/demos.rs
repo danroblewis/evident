@@ -287,6 +287,27 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // SymbolicFunctionizer showcase (session Y2). The demo carries a
+        // `-- functionizer: symbolic` marker, so `effect-run` mounts the
+        // genetic-programming functionizer instead of Cranelift. It
+        // rediscovers the closed form `y = 3·x + 5` for the
+        // `world_next.y` component from sampled IO and announces it to
+        // stdout — the "rediscovered" line is the proof the symbolic
+        // strategy ran (Cranelift, which just translates the AST, prints
+        // nothing). The exact-form assertion (`((3 * world.x) + 5)`) is
+        // deterministic: symbolic's analytic affine fast path nails a
+        // single-input linear map. comp=2/3 under
+        // EVIDENT_FUNCTIONIZE_STATS=1 (the x+1 and 3x+5 world updates
+        // compile; the effects/halting component falls to the scoped Z3
+        // solve). Honest caveat in the demo docstring: symbolic is slower
+        // than Cranelift here — the point is the clean strategy swap.
+        name: "test_31_symbolic_regression", exit: 0,
+        must_lines: &["rediscovered world_next.y = ((3 * world.x) + 5)",
+                      "regression step", "regression done"],
+        forbid_exact_lines: &[],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

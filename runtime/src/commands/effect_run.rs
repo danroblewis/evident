@@ -46,6 +46,12 @@ fn print_help() {
     eprintln!();
     eprintln!("Functionizer / Cranelift JIT:");
     eprintln!("  --no-functionizer        disable functionize entirely (EVIDENT_FUNCTIONIZE=0)");
+    eprintln!("  --functionizer NAME      choose the functionize strategy:");
+    eprintln!("                             cranelift (default) — translate the Z3 AST to native code");
+    eprintln!("                             symbolic            — genetic-programming search for a");
+    eprintln!("                                                   closed-form closure matching the IO");
+    eprintln!("                           (also via EVIDENT_FUNCTIONIZER=NAME, or a");
+    eprintln!("                            `-- functionizer: NAME` marker line in the program)");
     eprintln!();
     eprintln!("Z3 tuning:");
     eprintln!("  --lenient                demote dropped-constraint errors to warnings");
@@ -54,6 +60,38 @@ fn print_help() {
     eprintln!();
     eprintln!("Misc:");
     eprintln!("  -h, --help               this message");
+}
+
+/// Resolve the functionize strategy name from (in priority order) the
+/// `--functionizer` flag, `EVIDENT_FUNCTIONIZER`, or a
+/// `-- functionizer: NAME` marker line in the program source. Returns
+/// `None` when nothing selects a strategy (caller uses the default).
+fn resolve_functionizer(flag: &Option<String>, path: &str) -> Option<String> {
+    if let Some(f) = flag {
+        return Some(f.trim().to_lowercase());
+    }
+    if let Ok(env) = std::env::var("EVIDENT_FUNCTIONIZER") {
+        if !env.trim().is_empty() {
+            return Some(env.trim().to_lowercase());
+        }
+    }
+    // Scan the source for a marker comment: a `--` comment line whose
+    // payload is `functionizer: NAME`. Kept deliberately simple — first
+    // match wins. Unreadable file → no marker (load_file reports the
+    // real error later).
+    let src = std::fs::read_to_string(path).ok()?;
+    for line in src.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("--") {
+            if let Some(name) = rest.trim().strip_prefix("functionizer:") {
+                let name = name.trim().to_lowercase();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn cmd_effect_run(args: &[String]) -> ExitCode {
@@ -67,6 +105,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
     }
     let mut path: Option<String> = None;
     let mut max_steps = 10_000usize;
+    let mut functionizer_flag: Option<String> = None;
     let mut profile_z3 = false;
     let mut profile_z3_trace_file: Option<String> = None;
     let mut profile_z3_unsat_cores = false;
@@ -114,6 +153,16 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             "--no-functionizer" => {
                 std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
             }
+            "--functionizer" => {
+                i += 1;
+                match args.get(i) {
+                    Some(v) => functionizer_flag = Some(v.clone()),
+                    None => {
+                        eprintln!("effect-run: --functionizer needs a NAME (cranelift | symbolic)");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
             "--lenient" => {
                 std::env::set_var("EVIDENT_LENIENT", "1");
             }
@@ -160,16 +209,45 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
     }
 
-    let mut rt = EvidentRuntime::new();
-    if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
-        eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
-        return ExitCode::from(1);
-    }
     let Some(path) = path else {
         eprintln!("effect-run: need a program path");
         eprintln!("Run `evident effect-run --help` for the flag list.");
         return ExitCode::from(2);
     };
+
+    // Resolve which functionize strategy to mount. Precedence:
+    //   1. --functionizer NAME flag
+    //   2. EVIDENT_FUNCTIONIZER env var
+    //   3. a `-- functionizer: NAME` marker line in the program source
+    //   4. default (cranelift)
+    // The marker lets an opt-in-functionizer demo (test_31) select its
+    // strategy with no CLI flag — needed because the demo test harness
+    // runs `effect-run <file>` with a fixed command line. The flag/env
+    // override the marker so the same file can be A/B'd against
+    // cranelift (`--functionizer cranelift`).
+    let functionizer_name = resolve_functionizer(&functionizer_flag, &path);
+    let mut rt = match functionizer_name.as_deref() {
+        Some("symbolic") => {
+            use evident_runtime::functionize::symbolic::SymbolicFunctionizer;
+            // The symbolic strategy announces each closed form it
+            // rediscovers to stdout (proof it ran, vs the cranelift
+            // fallback) — opt-in so library/unit-test uses stay quiet.
+            if std::env::var("EVIDENT_SYMBOLIC_ANNOUNCE").is_err() {
+                std::env::set_var("EVIDENT_SYMBOLIC_ANNOUNCE", "1");
+            }
+            EvidentRuntime::with_functionizer(Box::new(SymbolicFunctionizer::new()))
+        }
+        Some("cranelift") | None => EvidentRuntime::new(),
+        Some(other) => {
+            eprintln!("effect-run: unknown functionizer {other:?} \
+                       (expected: cranelift | symbolic)");
+            return ExitCode::from(2);
+        }
+    };
+    if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
+        eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
+        return ExitCode::from(1);
+    }
     if let Err(e) = rt.load_file(Path::new(&path)) {
         eprintln!("effect-run: load {path}: {e}");
         return ExitCode::from(1);
