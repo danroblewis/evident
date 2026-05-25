@@ -1,0 +1,59 @@
+-- stdlib/passes/subscriptions.ev — self-hosted subscriptions inference.
+--
+-- The Evident-side twin of runtime/src/subscriptions.rs. Inference job:
+-- given a claim's body, return the set of `world.X` field names it READS
+-- and the set of `world_next.X` field names it WRITES. The multi-FSM
+-- scheduler in runtime/src/effect_loop/ uses these sets to wake an FSM
+-- only when its inputs change (read-set ∩ peer write-sets).
+--
+-- ── What this pass owns ──
+-- The subscriptions semantics — "identifiers starting with `world.` are
+-- reads, identifiers starting with `world_next.` are writes" — lives
+-- here. The Rust shim (runtime/src/portable/subscriptions.rs) drives an
+-- AST walk and calls into the pass once per leaf identifier.
+--
+-- ── Why a leaf-level classifier and not a whole-claim pass ──
+-- A whole-claim subscriptions pass would need to RECURSE through the
+-- body's Expr tree (Binary, Ternary, Match, Forall, …) to find every
+-- `EIdentifier(_)` reference. The runtime can't yet self-host that
+-- recursion (see docs/self-hosting.md "Recursive claims don't constrain
+-- their outputs"; also examples/COUNTEREXAMPLES.md). So this pass owns
+-- the classification — the prefix-test semantics — and the Rust shim
+-- drives the tree walk and first-segment extraction.
+--
+-- ── Why SAT/UNSAT-shaped instead of a Bool output ──
+-- A `is_read ∈ Bool` output that BINDS to "prefix matches" would need
+-- `is_read ⇔ ∃ suffix : ident = "world." ++ suffix` — and `∃ s ∈ String`
+-- doesn't translate (the runtime's string-quantifier support is too
+-- limited). Without the existential, a `suffix` free variable lets Z3
+-- pick ANY value, including one that makes the equation false even when
+-- the prefix matches — so a Bool output isn't uniquely determined by
+-- the model.
+--
+-- The SAT-shaped form sidesteps that: assert the equation directly. The
+-- query is SAT iff the prefix matches (Z3 finds a `suffix` that solves
+-- it) and UNSAT iff it doesn't (no `suffix` works). The shim runs each
+-- of the two matchers per identifier and reads SAT-ness as the
+-- classification.
+
+import "stdlib/ast.ev"
+
+-- SAT iff `ident` begins with the literal `"world_next."`. On SAT,
+-- `suffix_w` is bound to everything after that prefix. The Rust shim
+-- takes the first dotted segment of `suffix_w` to recover the top-level
+-- field name (matching subscriptions::first_segment).
+--
+-- Checked BEFORE world_read_match — the prefixes diverge at index 5
+-- (`.` vs `_`), so a `world_next.X` identifier cannot also match
+-- `world.X`; this ordering is for clarity, not correctness.
+claim world_next_write_match
+    ident    ∈ String
+    suffix_w ∈ String
+    ident = "world_next." ++ suffix_w
+
+-- SAT iff `ident` begins with the literal `"world."`. On SAT,
+-- `suffix_r` is bound to everything after that prefix.
+claim world_read_match
+    ident    ∈ String
+    suffix_r ∈ String
+    ident = "world." ++ suffix_r
