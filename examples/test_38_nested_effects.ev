@@ -21,11 +21,13 @@ import "stdlib/runtime.ev"
 
 -- ── The effect-emitting child under execution ────────────────────
 -- A pure state→state countdown that ALSO solves for an effect each tick.
--- Declared a `claim` (not `fsm`) so the scheduler never instantiates it;
+-- Labeled `fsm` (the keyword is the sole FSM signal); because it is a
+-- `run(...)` target it is embedded-only — the scheduler never auto-
+-- instantiates a referenced FSM, so its Printlns never fire at top level.
 -- `run` resolves it by name and drives it, capturing the effects. The
 -- msg lookup is complete (a sentinel row for any other count) so the
 -- per-tick solve always pins msg — no Z3 free-var noise.
-claim countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
+fsm countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
     count_next = count - 1
     halt = (count ≤ 0)
     msg ∈ String

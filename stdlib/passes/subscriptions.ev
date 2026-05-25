@@ -100,9 +100,11 @@ enum SubWalk =
 -- frame: an empty frame is dropped; a non-empty frame yields its head
 -- node — classify it (NIdent), drop it (NLeaf), or push its children as
 -- a new frame (NOne/NTwo/NThree/NList) keeping the frame's tail (`more`)
--- underneath. Drained agenda → SWDone. A `claim` (not `fsm`) so the
--- scheduler never instantiates it; `run` resolves it by name.
-claim subscriptions_walk(state ∈ SubWalk, state_next ∈ SubWalk, halt ∈ Bool)
+-- underneath. Drained agenda → SWDone. Labeled `fsm` (the keyword is the
+-- sole FSM signal); because it is a `run(...)` target it is embedded-only
+-- — the scheduler never auto-instantiates a referenced FSM. `run`
+-- resolves it by name.
+fsm subscriptions_walk(state ∈ SubWalk, state_next ∈ SubWalk, halt ∈ Bool)
     state_next = match state
         SWSeed(body) ⇒ SWStep(AgCons(body, AgNil), NameNil, NameNil)
         SWStep(agenda, reads, writes) ⇒ match agenda

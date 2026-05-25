@@ -29,7 +29,7 @@ use evident_runtime::{EvidentRuntime, Value};
 /// first input ≤ 0, which is `0`. This is the shape the affine-step
 /// detector accepts (state composes to closed form: `count - k`).
 const DECREMENT: &str = "\
-claim decrement
+fsm decrement
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = count - 1
@@ -41,7 +41,7 @@ claim decrement
 /// per doubling and never collapses — the affine-step detector must
 /// refuse it, so tier 1 falls through.
 const COND_DECREMENT: &str = "\
-claim cond_decrement
+fsm cond_decrement
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = (count > 0 ? count - 1 : count)
@@ -51,7 +51,7 @@ claim cond_decrement
 /// A second affine shape: step by −2, halt at/under zero. Confirms the
 /// closed form tracks the actual recurrence, not a hard-coded `0`.
 const STEP_TWO: &str = "\
-claim step2
+fsm step2
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = count - 2
@@ -149,7 +149,7 @@ fn enum_state_falls_through() {
     // Int recurrences). tier1_run must decline, not crash.
     let rt = rt_with(
         "enum Acc = Acc(Int)\n\
-         claim accumulate\n    state, state_next ∈ Acc\n    halt ∈ Bool\n\
+         fsm accumulate\n    state, state_next ∈ Acc\n    halt ∈ Bool\n\
          \u{20}\u{20}\u{20}\u{20}n ∈ Int = match state\n        Acc(v) ⇒ v\n\
          \u{20}\u{20}\u{20}\u{20}state_next = Acc(n + 1)\n\
          \u{20}\u{20}\u{20}\u{20}halt = (n ≥ 5)\n",

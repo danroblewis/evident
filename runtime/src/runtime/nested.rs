@@ -89,30 +89,71 @@ fn nested_max_steps() -> usize {
 }
 
 impl EvidentRuntime {
-    /// Load-time validation of every `run(F, ..)` target across all
-    /// loaded schemas. For each `run` whose `F` is already known, check
-    /// `F` is FSM-shaped (single state pair + `halt ∈ Bool`) and
-    /// effect-free; reject at load otherwise. A `run` whose `F` isn't
-    /// yet loaded is left for query-time resolution to surface as an
-    /// unknown-FSM error (avoids false positives on cross-file forward
-    /// references). See `docs/design/nested-fsm-strategies.md` §1.
+    /// Load-time validation of every `run(F, ..)` and `halts_within(F, ..)`
+    /// target across all loaded schemas. For each `run` whose `F` is
+    /// already known, check `F` is declared `fsm` (the sole FSM signal)
+    /// and FSM-shaped (single state pair + `halt ∈ Bool`); reject at load
+    /// otherwise. For each `halts_within` target, check the `fsm` keyword
+    /// (its full shape is verified at query time by the unroll composer,
+    /// which needs a Z3 context). A target that isn't yet loaded is left
+    /// for query-time resolution to surface as an unknown-FSM error
+    /// (avoids false positives on cross-file forward references). See
+    /// `docs/design/nested-fsm-strategies.md` §1 and
+    /// `docs/design/fsms-as-functions.md` §2.
     pub(super) fn validate_run_targets(&self) -> Result<(), RuntimeError> {
         let names: Vec<String> = self.schema_names().map(|s| s.to_string()).collect();
         for claim_name in &names {
             let Some(schema) = self.get_schema(claim_name) else { continue };
-            if !body_has_run(&schema.body) { continue; }
-            let mut targets: Vec<String> = Vec::new();
-            collect_run_targets(&schema.body, &mut targets);
-            for fsm in targets {
-                // Unknown F → defer to query time (forward ref across files).
-                if self.get_schema(&fsm).is_none() { continue; }
-                if let Err(e) = crate::effect_loop::validate_run_target(self, &fsm) {
+            // `run(F, ..)` targets — keyword + shape, via the shared
+            // `check_shape` (which now gates on `Keyword::Fsm`).
+            if body_has_run(&schema.body) {
+                let mut targets: Vec<String> = Vec::new();
+                collect_run_targets(&schema.body, &mut targets);
+                for fsm in targets {
+                    // Unknown F → defer to query time (forward ref across files).
+                    if self.get_schema(&fsm).is_none() { continue; }
+                    if let Err(e) = crate::effect_loop::validate_run_target(self, &fsm) {
+                        return Err(RuntimeError::Parse(format!(
+                            "in `{claim_name}`: {e}")));
+                    }
+                }
+            }
+            // `halts_within(F, ..)` targets — keyword check at load.
+            let mut hw_targets: Vec<String> = Vec::new();
+            collect_halts_within_targets(&schema.body, &mut hw_targets);
+            for fsm in hw_targets {
+                let Some(target) = self.get_schema(&fsm) else { continue };
+                if !matches!(target.keyword, crate::core::ast::Keyword::Fsm) {
                     return Err(RuntimeError::Parse(format!(
-                        "in `{claim_name}`: {e}")));
+                        "in `{claim_name}`: halts_within's target `{fsm}` must be \
+                         declared `fsm`, not `{}` — the `fsm` keyword is the sole \
+                         signal that a schema is an FSM (no shape-detection). \
+                         Relabel `{} {fsm}` to `fsm {fsm}`.",
+                        keyword_word(&target.keyword), keyword_word(&target.keyword))));
                 }
             }
         }
         Ok(())
+    }
+
+    /// The set of schema names referenced as a `run(...)` or
+    /// `halts_within(...)` target anywhere in the loaded program. These
+    /// are **embedded-only** FSMs (`docs/design/fsms-as-functions.md` §9):
+    /// a function applied to completion by an enclosing model, NOT a
+    /// top-level FSM the scheduler should auto-instantiate. The multi-FSM
+    /// scheduler (`effect_loop::all_fsms`) skips them so relabeling an
+    /// embedded transition `claim`→`fsm` doesn't make it run as a
+    /// standalone FSM.
+    pub(crate) fn embedded_fsm_targets(&self) -> std::collections::HashSet<String> {
+        let mut out = std::collections::HashSet::new();
+        for name in self.schema_names() {
+            let Some(schema) = self.get_schema(name) else { continue };
+            let mut targets: Vec<String> = Vec::new();
+            collect_run_targets(&schema.body, &mut targets);
+            collect_halts_within_targets(&schema.body, &mut targets);
+            out.extend(targets);
+        }
+        out
     }
 
     /// If `schema`'s body contains any `run(F, init)` expression, return
@@ -428,6 +469,31 @@ fn body_has_run(body: &[BodyItem]) -> bool {
         BodyItem::SubclaimDecl(s) => body_has_run(&s.body),
         BodyItem::Passthrough(_) | BodyItem::HaltsWithin { .. } => false,
     })
+}
+
+/// The surface word for a `Keyword`, for load-time diagnostics.
+fn keyword_word(kw: &crate::core::ast::Keyword) -> &'static str {
+    use crate::core::ast::Keyword;
+    match kw {
+        Keyword::Schema   => "schema",
+        Keyword::Claim    => "claim",
+        Keyword::Type     => "type",
+        Keyword::Subclaim => "subclaim",
+        Keyword::Fsm      => "fsm",
+    }
+}
+
+/// Collect every `halts_within(F, ..)` target FSM name reachable from
+/// `body` (including inside subclaims). `HaltsWithin` is a body item, not
+/// an expression, so this only descends into subclaim bodies.
+fn collect_halts_within_targets(body: &[BodyItem], out: &mut Vec<String>) {
+    for item in body {
+        match item {
+            BodyItem::HaltsWithin { fsm_name, .. } => out.push(fsm_name.clone()),
+            BodyItem::SubclaimDecl(s) => collect_halts_within_targets(&s.body, out),
+            _ => {}
+        }
+    }
 }
 
 /// Collect every `run(F, ..)` target FSM name reachable from `body`

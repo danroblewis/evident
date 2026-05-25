@@ -33,11 +33,11 @@ use evident_runtime::{EvidentRuntime, Value};
 
 const COUNTER: &str = r#"
 import "stdlib/runtime.ev"
-claim decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
+fsm decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
     count_next = count - 1
     halt = (count ≤ 0)
 enum Acc = Acc(Int)
-claim accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
+fsm accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
     n ∈ Int = match state
         Acc(v) ⇒ v
     state_next = Acc(n + 1)
@@ -148,19 +148,58 @@ fn run_result_unsat_when_outer_contradicts() {
     assert!(!qr.satisfied, "final is pinned to 0; `final = 99` must be UNSAT");
 }
 
-// ── (c) a non-FSM F is rejected at load ────────────────────────────
+// ── (c) a non-FSM-shaped F is rejected at load ─────────────────────
 
 #[test]
-fn non_fsm_target_rejected_at_load() {
+fn non_fsm_shaped_target_rejected_at_load() {
+    // `notfsm` IS declared `fsm` (so it clears the keyword gate) but has
+    // no state pair — the shape check rejects it at load.
     let mut rt = EvidentRuntime::new();
     rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
     let err = rt.load_source(
-        "claim notfsm(x ∈ Int, y ∈ Int)\n    y = x + 1\n\
+        "fsm notfsm(x ∈ Int, y ∈ Int)\n    y = x + 1\n\
          claim sat_bad\n    z ∈ Int = run(notfsm, 5)\n    z = 0\n",
     ).expect_err("a non-FSM-shaped run target must be a load error");
     let msg = err.to_string();
     assert!(msg.contains("FSM-shaped") && msg.contains("notfsm"),
         "load error should name the target and the shape requirement, got: {msg}");
+}
+
+// ── (c′) a `claim`-keyworded F is rejected at load (the keyword IS the
+// rule: a shape-perfect transition declared `claim` is not an FSM) ──
+
+#[test]
+fn claim_keyword_run_target_rejected_at_load() {
+    // `decr` is a textbook FSM-shaped transition — but declared `claim`,
+    // not `fsm`. The keyword is the sole FSM signal, so `run(decr, ..)`
+    // is a load error naming the fix.
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+    let err = rt.load_source(
+        "claim decr(count ∈ Int, count_next ∈ Int, halt ∈ Bool)\n\
+         \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
+         \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
+         claim sat_bad\n    z ∈ Int = run(decr, 5)\n    z = 0\n",
+    ).expect_err("a `claim`-keyworded run target must be a load error");
+    let msg = err.to_string();
+    assert!(msg.contains("must be declared `fsm`") && msg.contains("decr")
+            && msg.contains("not `claim`"),
+        "load error should say the target must be `fsm`, not `claim`, got: {msg}");
+}
+
+#[test]
+fn claim_keyword_halts_within_target_rejected_at_load() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+    let err = rt.load_source(
+        "claim decr2\n    count, count_next ∈ Int\n    halt ∈ Bool\n\
+         \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
+         \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
+         claim sat_bad2\n    count ∈ Int = 50\n    halts_within(decr2, 100)\n",
+    ).expect_err("a `claim`-keyworded halts_within target must be a load error");
+    let msg = err.to_string();
+    assert!(msg.contains("must be declared `fsm`") && msg.contains("decr2"),
+        "load error should say the halts_within target must be `fsm`, got: {msg}");
 }
 
 #[test]
@@ -175,7 +214,7 @@ fn effect_emitting_target_is_accepted_and_captured() {
     let mut rt = EvidentRuntime::new();
     rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
     rt.load_source(
-        "claim noisy(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))\n\
+        "fsm noisy(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))\n\
          \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
          \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
          \u{20}\u{20}\u{20}\u{20}effects = ⟨Println(\"tick\")⟩\n\
@@ -192,7 +231,7 @@ fn effect_emitting_target_is_accepted_and_captured() {
 #[test]
 fn non_halting_fsm_hits_max_iter_guard() {
     let rt = rt_with(
-        "claim forever(count ∈ Int, count_next ∈ Int, halt ∈ Bool)\n\
+        "fsm forever(count ∈ Int, count_next ∈ Int, halt ∈ Bool)\n\
          \u{20}\u{20}\u{20}\u{20}count_next = count + 1\n\
          \u{20}\u{20}\u{20}\u{20}halt = false\n",
     );

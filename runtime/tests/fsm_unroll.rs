@@ -26,7 +26,7 @@ use evident_runtime::EvidentRuntime;
 /// closed-form composer extracts. `halt` reads the tick's INPUT state,
 /// so starting at 50 the body first halts at tick 51.
 const DECREMENT: &str = "\
-claim decrement
+fsm decrement
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = count - 1
@@ -38,7 +38,7 @@ claim decrement
 /// grows ~2× per doubling and never collapses — the affine-step
 /// detector must refuse it.
 const COND_DECREMENT: &str = "\
-claim cond_decrement
+fsm cond_decrement
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = (count > 0 ? count - 1 : count)

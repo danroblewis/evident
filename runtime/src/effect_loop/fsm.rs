@@ -224,9 +224,18 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
 /// order. Multi-FSM execution dispatches in this order.
 pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
+    // An fsm referenced by `run(...)` / `halts_within(...)` is
+    // EMBEDDED-ONLY — a function the enclosing model applies to
+    // completion, not a top-level FSM (docs/design/fsms-as-functions.md
+    // §9). Skip it so relabeling an embedded transition `claim`→`fsm`
+    // (this session) doesn't make the scheduler run it standalone — which
+    // for an effect-emitting child (test_38's `countdown`) would dispatch
+    // its captured-only effects at top level.
+    let embedded = rt.embedded_fsm_targets();
     let mut writers: Vec<MainShape> = Vec::new();
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
+        if embedded.contains(&name) { continue; }
         if let Some(shape) = resolve_fsm(rt, &name) {
             // Skip claims that carry the `spawnable_only` body marker
             // (one of `crate::core::ast::BODY_MARKERS`) — they should only

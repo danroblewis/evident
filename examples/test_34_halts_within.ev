@@ -30,11 +30,13 @@
 import "stdlib/runtime.ev"
 
 -- ── The transition under verification ────────────────────────────
--- The pure state→state function. Declared as a `claim` (not `fsm`) so
--- the scheduler never instantiates it; `halts_within` looks it up by
--- name and composes its body. count_next/halt are clean equalities —
--- that's the "function shape" the closed-form composer extracts.
-claim decrement
+-- The pure state→state function. Labeled `fsm` (the keyword is the sole
+-- FSM signal); because it is the target of `halts_within(...)` it is
+-- embedded-only — the scheduler never auto-instantiates a referenced
+-- FSM. `halts_within` looks it up by name and composes its body.
+-- count_next/halt are clean equalities — that's the "function shape"
+-- the closed-form composer extracts.
+fsm decrement
     count, count_next ∈ Int
     halt ∈ Bool
     count_next = count - 1

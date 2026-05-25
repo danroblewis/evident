@@ -122,7 +122,7 @@ claim sat_nullary_nested
 const SUM1: &str = r#"
 enum Tree = Leaf(Int) | Node(Tree, Tree)
 enum W = WSeed(Tree) | WDone(Int)
-claim sum1(state ∈ W, state_next ∈ W, halt ∈ Bool)
+fsm sum1(state ∈ W, state_next ∈ W, halt ∈ Bool)
     state_next = match state
         WSeed(t) ⇒ match t
             Leaf(v)    ⇒ WDone(v)
@@ -163,7 +163,7 @@ fn composite_init_through_outer_query() {
 const BUILD_STACK: &str = r#"
 enum Stack = Empty | Push(Int, Stack)
 enum W1 = S1(Int) | D1(Stack)
-claim build_stack(state ∈ W1, state_next ∈ W1, halt ∈ Bool)
+fsm build_stack(state ∈ W1, state_next ∈ W1, halt ∈ Bool)
     state_next = match state
         S1(n) ⇒ D1(Push(n, Push(n + 1, Empty)))
         D1(s) ⇒ D1(s)
