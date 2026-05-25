@@ -17,6 +17,16 @@
 //! plan (translate + per-context setup, a one-time cost), and the timed
 //! queries just re-run `execute_plan`. The cross-tick value cache is
 //! disabled so each query actually re-solves.
+//!
+//! Session S extends this with `enum_parallel_speedup_and_correctness`
+//! (called from the single `#[test]` so it never times concurrently with
+//! the primitive case): the same disjoint-board decomposition, but each
+//! component additionally carries an `EnumVar` (`Half = LeftHalf |
+//! RightHalf`). Before session S an enum-typed component fell back to the
+//! sequential single-context path; now the parallel path replays the
+//! enum's datatype into each worker context. The enum test asserts the
+//! boards are valid, the enum tags decode correctly (only possible if the
+//! replay worked), and the same ≥1.8× speedup holds.
 
 use evident_runtime::{EvidentRuntime, Value};
 use std::collections::HashMap;
@@ -53,11 +63,60 @@ fn nqueens_claim(n: usize, k: usize) -> String {
     s
 }
 
+/// Build the same `k` disjoint N-queens boards as `nqueens_claim`, but
+/// give each board an ENUM-typed companion var `h{c} ∈ Half` classifying
+/// which half its first queen occupies (a complete dispatch, so `h{c}` is
+/// fully determined by — and joins the connected component of — board
+/// `c`). The enum var is what used to push the whole claim onto the
+/// sequential single-context path; session S replays the `Half` datatype
+/// into each worker context so these components parallelize too.
+fn nqueens_enum_claim(n: usize, k: usize) -> String {
+    let last = n - 1;
+    let mut s = String::from("enum Half = LeftHalf | RightHalf\n");
+    s.push_str("claim parallel_search_enum\n");
+    for c in 0..k {
+        s.push_str(&format!("    q{c} ∈ Seq(Int)\n"));
+    }
+    for c in 0..k {
+        s.push_str(&format!("    h{c} ∈ Half\n"));
+    }
+    for c in 0..k {
+        s.push_str(&format!("    #q{c} = {n}\n"));
+    }
+    for c in 0..k {
+        s.push_str(&format!(
+            "    ∀ i ∈ {{0..{last}}} : (0 ≤ q{c}[i] ∧ q{c}[i] < {n})\n"));
+        s.push_str(&format!(
+            "    ∀ i ∈ {{0..{last}}} : ∀ j ∈ {{0..{last}}} : i < j ⇒ \
+             (q{c}[i] ≠ q{c}[j] ∧ q{c}[i] + i ≠ q{c}[j] + j ∧ q{c}[i] - i ≠ q{c}[j] - j)\n"));
+        // Couple the enum var to the board: a complete LeftHalf/RightHalf
+        // dispatch on the first queen's column.
+        s.push_str(&format!("    (q{c}[0] * 2 < {n}) ⇒ h{c} = LeftHalf\n"));
+        s.push_str(&format!("    (q{c}[0] * 2 ≥ {n}) ⇒ h{c} = RightHalf\n"));
+    }
+    s
+}
+
 /// Extract board `c` from a result's bindings as a `Vec<i64>`.
 fn board(bindings: &HashMap<String, Value>, c: usize) -> Vec<i64> {
     match bindings.get(&format!("q{c}")) {
         Some(Value::SeqInt(xs)) => xs.clone(),
         other => panic!("q{c} missing or wrong type: {other:?}"),
+    }
+}
+
+/// Extract the `Half` enum tag for board `c` as its variant name. Panics
+/// if it's missing or not a `Value::Enum` of the `Half` type — which is
+/// exactly the regression this test guards: on the parallel path the
+/// worker context must replay the `Half` datatype so the model value
+/// decodes to a real enum, not an empty/garbage value.
+fn half_tag(bindings: &HashMap<String, Value>, c: usize) -> String {
+    match bindings.get(&format!("h{c}")) {
+        Some(Value::Enum { enum_name, variant, .. }) => {
+            assert_eq!(enum_name, "Half", "h{c} has wrong enum type");
+            variant.clone()
+        }
+        other => panic!("h{c} missing or not an enum: {other:?}"),
     }
 }
 
@@ -76,12 +135,13 @@ fn assert_valid_queens(cols: &[i64], n: usize) {
     }
 }
 
-/// Median wall-clock of `iters` re-queries of the (already-built) plan.
-fn time_queries(rt: &EvidentRuntime, iters: usize) -> Duration {
+/// Median wall-clock of `iters` re-queries of the (already-built) plan
+/// for schema `name`.
+fn time_queries(rt: &EvidentRuntime, name: &str, iters: usize) -> Duration {
     let mut samples: Vec<Duration> = Vec::with_capacity(iters);
     for _ in 0..iters {
         let t0 = Instant::now();
-        let r = rt.query("parallel_search", &HashMap::new()).unwrap();
+        let r = rt.query(name, &HashMap::new()).unwrap();
         assert!(r.satisfied, "query went UNSAT");
         samples.push(t0.elapsed());
     }
@@ -122,8 +182,8 @@ fn parallel_slow_components_speedup_and_correctness() {
 
     // ── Timing on the cached plans ────────────────────────────────
     let iters = 7;
-    let t_par = time_queries(&rt_par, iters);
-    let t_seq = time_queries(&rt_seq, iters);
+    let t_par = time_queries(&rt_par, "parallel_search", iters);
+    let t_seq = time_queries(&rt_seq, "parallel_search", iters);
     let ratio = t_seq.as_secs_f64() / t_par.as_secs_f64();
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     println!(
@@ -156,6 +216,102 @@ fn parallel_slow_components_speedup_and_correctness() {
             assert!(r.satisfied, "stress query UNSAT");
             for c in 0..COMPONENTS {
                 assert_valid_queens(&board(&r.bindings, c), 8);
+            }
+        }
+    }
+
+    // ── Session S: enum-typed components ──────────────────────────────
+    // Run AFTER the primitive case (same test fn, so it's sequential —
+    // never concurrent with the timing above).
+    enum_parallel_speedup_and_correctness();
+}
+
+/// Session S: a decomposition whose components each carry an ENUM-typed
+/// variable. Before session S these silently fell back to the sequential
+/// single-context path (the var's `&'static DatatypeSort` was bound to
+/// the runtime's main context). Now the parallel path replays the enum's
+/// datatype into each worker context, so they parallelize. Asserts:
+///
+///   1. **Correctness** — every board is a valid N-queens placement AND
+///      its `Half` enum tag decodes to the right variant (which only
+///      works if the worker context replayed the `Half` datatype). Both
+///      paths agree.
+///   2. **Speedup** — re-solving the cached plan in parallel is ≥1.8×
+///      faster than the forced-sequential path (cores ≥ 4).
+///   3. **Thread safety** — a stress loop minting many fresh enum plans
+///      (each replays the datatype into 4 private contexts under the
+///      setup lock) + re-solving them, to catch any datatype-replay race.
+fn enum_parallel_speedup_and_correctness() {
+    let src = nqueens_enum_claim(N, COMPONENTS);
+
+    // Expected `Half` tag for a board: LeftHalf iff its first queen sits
+    // in the left half (column·2 < N).
+    let expect_tag = |cols: &[i64]| -> &'static str {
+        if cols[0] * 2 < N as i64 { "LeftHalf" } else { "RightHalf" }
+    };
+
+    // ── Parallel runtime ──────────────────────────────────────────
+    let mut rt_par = EvidentRuntime::new();
+    rt_par.set_slow_parallel(true);
+    rt_par.load_source(&src).expect("load parallel enum");
+    let r_par = rt_par.query("parallel_search_enum", &HashMap::new()).unwrap();
+    assert!(r_par.satisfied, "parallel enum query UNSAT");
+    for c in 0..COMPONENTS {
+        let b = board(&r_par.bindings, c);
+        assert_valid_queens(&b, N);
+        assert_eq!(half_tag(&r_par.bindings, c), expect_tag(&b),
+            "parallel: board {c} enum tag disagrees with its first queen");
+    }
+
+    // ── Sequential runtime (same claim, parallel disabled) ────────
+    let mut rt_seq = EvidentRuntime::new();
+    rt_seq.set_slow_parallel(false);
+    rt_seq.load_source(&src).expect("load sequential enum");
+    let r_seq = rt_seq.query("parallel_search_enum", &HashMap::new()).unwrap();
+    assert!(r_seq.satisfied, "sequential enum query UNSAT");
+    for c in 0..COMPONENTS {
+        let b = board(&r_seq.bindings, c);
+        assert_valid_queens(&b, N);
+        assert_eq!(half_tag(&r_seq.bindings, c), expect_tag(&b),
+            "sequential: board {c} enum tag disagrees with its first queen");
+    }
+
+    // ── Timing on the cached plans ────────────────────────────────
+    let iters = 7;
+    let t_par = time_queries(&rt_par, "parallel_search_enum", iters);
+    let t_seq = time_queries(&rt_seq, "parallel_search_enum", iters);
+    let ratio = t_seq.as_secs_f64() / t_par.as_secs_f64();
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    println!(
+        "[parallel_slow/enum] {COMPONENTS} components × {N}-queens + Half enum | \
+         parallel={:.1}ms sequential={:.1}ms speedup={ratio:.2}x ({cores} cores)",
+        t_par.as_secs_f64() * 1000.0, t_seq.as_secs_f64() * 1000.0);
+
+    if cores >= 4 {
+        assert!(ratio >= 1.8,
+            "expected ≥1.8× speedup from parallel ENUM-typed slow components, got {ratio:.2}× \
+             (parallel {:.1}ms vs sequential {:.1}ms)",
+            t_par.as_secs_f64() * 1000.0, t_seq.as_secs_f64() * 1000.0);
+    }
+
+    // ── Thread-safety stress (datatype replay under concurrency) ──
+    // Each fresh plan replays the `Half` datatype into COMPONENTS private
+    // contexts (under the setup lock) then `check()`s them concurrently.
+    // A datatype-replay race or a cross-context sort mixup would surface
+    // as a segfault, an UNSAT, or a board/tag that fails validation.
+    for _ in 0..12 {
+        let mut rt = EvidentRuntime::new();
+        rt.set_slow_parallel(true);
+        rt.load_source(&nqueens_enum_claim(8, COMPONENTS)).unwrap();
+        for _ in 0..6 {
+            let r = rt.query("parallel_search_enum", &HashMap::new()).unwrap();
+            assert!(r.satisfied, "stress enum query UNSAT");
+            for c in 0..COMPONENTS {
+                let b = board(&r.bindings, c);
+                assert_valid_queens(&b, 8);
+                let expect = if b[0] * 2 < 8 { "LeftHalf" } else { "RightHalf" };
+                assert_eq!(half_tag(&r.bindings, c), expect,
+                    "stress: board {c} enum tag wrong");
             }
         }
     }

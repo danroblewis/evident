@@ -252,12 +252,14 @@ const EXPECTATIONS: &[DemoExpect] = &[
     },
     DemoExpect {
         // Six disjoint 16-queens boards → six independent slow
-        // components → solved on parallel Z3 contexts/threads (session E).
-        // We assert only the clean exit + the solved line; the speedup
-        // is a wall-clock property documented in the demo's docstring,
-        // not pinned here (timing isn't deterministic enough for CI).
+        // enum-typed components → solved on parallel Z3 contexts/threads
+        // (session E's threading, extended in session S to replay enum /
+        // record datatypes into each worker context). We assert only the
+        // clean exit + the solved line; the speedup is a wall-clock
+        // property documented in the demo's docstring, not pinned here
+        // (timing isn't deterministic enough for CI).
         name: "test_27_parallel_solving", exit: 0,
-        must_lines: &["solved 6 independent 16-queens boards"],
+        must_lines: &["solved 6 independent enum-tagged 16-queens boards in parallel"],
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
