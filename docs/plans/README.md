@@ -20,6 +20,7 @@ Progress tracker: [`PROGRESS.md`](PROGRESS.md).
 Adjacent design docs (not phased, but on deck):
 
 - [`../design/cegar-scaffolding.md`](../design/cegar-scaffolding.md) — layer CEGAR on the Functionizer trait (oracle + refiner) so FSM verification can route around log-unroll's branching wall.
+- [`../design/selection-policy.md`](../design/selection-policy.md) — the selection-policy axis (determine / witness / defer) that unifies the functionizers, plus the design for the missing **defer** strategy: the residual (partial) functionizer.
 
 Cross-cutting inventory: [`../design/self-hosting-inventory.md`](../design/self-hosting-inventory.md) — every `runtime/src/**/*.rs` file classified by tier + prioritized port order.
 

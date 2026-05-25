@@ -1,5 +1,10 @@
 # The SatisfierFunctionizer — sampling partially-constrained variables
 
+> See also: [`design/selection-policy.md`](design/selection-policy.md) —
+> the satisfier is the **witness** policy on the selection-policy axis
+> (determine / witness / defer); that doc names the axis and designs the
+> missing **defer** (residual) policy.
+
 The Cranelift JIT functionizer compiles a claim only when every output
 is *defined* by an equation (`y = expr`). A claim with an
 unbound-but-bounded variable —
