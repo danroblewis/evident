@@ -16,6 +16,11 @@ world goes through it.
 This document defines what stays in Rust, what moves to Evident, and
 what the resulting runtime looks like.
 
+> See also [`minimal-runtime-implementor-contract.md`](minimal-runtime-implementor-contract.md)
+> — the *conformance* framing: the irreducible kernel an implementor must
+> write, and why everything else is either self-hosted Evident stdlib or
+> an optional accelerator that falls back to the kernel.
+
 ## What the runtime IS
 
 A program that:
