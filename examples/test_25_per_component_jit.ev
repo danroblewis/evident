@@ -1,6 +1,26 @@
 -- 25_per_component_jit — a focused showcase of the per-component JIT.
 --
 -- ─────────────────────────────────────────────────────────────────
+-- BENCHMARK (Apple M4, median of 5 runs, this commit)
+-- ─────────────────────────────────────────────────────────────────
+--   Default (per-component JIT):    3.02 ms
+--   EVIDENT_FUNCTIONIZE=0:          2.17 ms
+--   → JIT is ~40% SLOWER here.
+--
+-- This is intentional and honest. The demo's whole-claim work is
+-- tiny (six trivial components, ~3 ms total) so the decompose +
+-- compile overhead dominates the per-component savings. The
+-- *capability* demonstrated — partial compilation when some
+-- components refuse — pays off on real workloads where the
+-- components do meaningful work. On Mario, the same per-component
+-- JIT delivered ~35% end-to-end FPS gain (see commit 18f64af).
+--
+-- The point of this demo is `comp=3/6` (six components, three
+-- compile, three slow-path), NOT a speed win. The numbers above
+-- confirm the capability runs; the win is realized on workloads
+-- where component compile cost is amortized over many ticks.
+--
+-- ─────────────────────────────────────────────────────────────────
 -- WHAT TO LOOK AT
 -- ─────────────────────────────────────────────────────────────────
 -- Run with the functionizer stats turned on:

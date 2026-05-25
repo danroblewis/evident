@@ -21,8 +21,10 @@
 --     # single-threaded baseline
 --     EVIDENT_PARALLEL_SLOW=0 EVIDENT_VALUE_CACHE=0 evident effect-run …test_27… --timing
 --
--- Measured (Apple M4, 10 cores; `EVIDENT_PARALLEL_SLOW` toggles it):
---     threaded ~64 ms   vs   single-threaded ~160 ms   ≈ 2.5× faster.
+-- BENCHMARK (Apple M4, 10 cores, median of 3 runs):
+--     Default (parallel):       67.33 ms wall
+--     EVIDENT_PARALLEL_SLOW=0: 166.84 ms wall
+--     → 2.5× faster end-to-end with parallel solving.
 -- Each board solves in ~25 ms whether threaded or not (confirm with
 -- EVIDENT_PLAN_TIMING=1) — the win is purely that six of them overlap
 -- instead of running back-to-back. Amdahl caps it: parallel wall ≈ one

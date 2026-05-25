@@ -19,15 +19,19 @@
 -- nonlinear Z3 solve (three coupled integer square roots), so a cache
 -- hit skips real work.
 --
--- MEASURED (EVIDENT_FUNCTIONIZE_STATS=1, --timing, 49 ticks):
+-- BENCHMARK (Apple M4, median of 5 runs of the full 49-tick demo):
+--   Default (cache on):       34.60 ms wall
+--   EVIDENT_VALUE_CACHE=0:   245.77 ms wall
+--   → ≈ 7× faster end-to-end with the cache on.
+--
+-- Per-tick view (EVIDENT_FUNCTIONIZE_STATS=1):
 --   expensive  vh=45  an=1  h=3   → 45 of 49 ticks (92%) are cache hits
 --   cache ON :  expensive ≈ 0.4 ms/tick  (only tick 0 + 3 new signal
 --               values actually solve; the other 45 ticks are free)
---   cache OFF:  expensive ≈ 5.6 ms/tick  (every tick re-runs the
+--   cache OFF:  expensive ≈ 4.5 ms/tick  (every tick re-runs the
 --               nonlinear scoped Z3 solve)
---   → ≈ 12× faster per tick with the cache on.
--- (Z3's nlsat timing varies a few percent run to run; the ratio is
--- consistently ≳ 10×.)
+-- (Z3's nlsat timing varies several percent run to run; the wall
+-- ratio is consistently 6-12×.)
 --
 -- Reproduce:
 --   EVIDENT_FUNCTIONIZE_STATS=1 ./.../evident effect-run \
