@@ -26,7 +26,7 @@ gaps currently bound what a pass can do.
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
 | `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **faithful on the ASCII subset, recursively** | Now an ordered Emit/Expand **stack-FSM** (`pretty_walk`) — routes around the recursion gap (#15) exactly as `subscriptions_walk` does, so it renders recursive sub-`Expr`s (calls, nested binaries, field/index, ternaries, `matches`), not just leaves. Two residuals still diverge and are pinned in the equivalence test: Unicode operator glyphs (#16) and numbers/Bool (no int→string in a pass; JIT bool bug #17). See [Gaps](#runtime-gaps-that-bound-a-string-pass) |
-| `validate` (88 LOC) | `portable/validate.rs::RustValidate` | `stdlib/passes/validate.ev` | **faithful** | shared Rust walker + Evident-side classifier; pins `nm ∈ String` not `e ∈ Expr` to side-step the given-pinned-enum String-equality gap (see [Gaps](#runtime-gaps-that-bound-a-string-pass) and `examples/COUNTEREXAMPLES.md`) |
+| `validate` | **Evident-only** (`portable/validate.rs::EvidentValidate`) — Rust `find_ffi_call` walk DELETED (session VALIDATE-recursive) | `stdlib/passes/validate.ev` | **full, sole impl** | Cut over: the canonical Rust Expr-tree walk is gone; the load path enforces external-only through the `validate_walk` stack-FSM via `portable::validate::enforce_external_only` (per-thread cached engine, WW resolver, bootstrap guard). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); the FSM collects `ECall` names and the Rust shim does the 4-element banned-set check (an in-solve `nm = "FFICall"` equality blows up Z3 string theory on string-heavy walk states — the in-solve cousin of #18; see [Gaps](#runtime-gaps-that-bound-a-string-pass)). Verdicts + byte-exact diagnostics pinned in `runtime/tests/validate_correctness.rs` |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
@@ -299,17 +299,21 @@ match. The destructured `nm` doesn't byte-compare against a source
 literal of the same value when `e` was pinned via `given` from a Rust
 `Value::Enum { fields: [Value::Str("FFICall"), …] }`.
 
-Workaround used in `stdlib/passes/validate.ev`: have the shim
-extract the call name on the Rust side and pin `nm ∈ String` directly.
-The pass still owns the decision (`nm ∈ {FFICall, FFIOpen, FFILookup,
-LibCall}`); only the recognizer-vs-comparison choice changes. Logged
-in `examples/COUNTEREXAMPLES.md` (gap class: "given-pinned-enum
-String-equality").
-
-The constructed-in-source form works correctly — `e = ECall("LibCall",
-⟨⟩) ; ValidateExpr (e ↦ e, …)` from an `.ev` file produces the
-expected `out = "LibCall"`. So this is specifically a `given` ⇄ match
-extraction failure, not a fundamental string-comparison issue.
+**Superseded (session VALIDATE-recursive):** `validate` no longer pins
+`nm ∈ String` for a leaf classifier — it's now a whole-walk stack-FSM
+that matches the marshaled AST as FSM *state*, sidestepping this gap.
+But the upgrade surfaced an **in-solve cousin**: folding the decision
+into the FSM (`ECall(nm,_) ⇒ nm = "FFICall" ? …`) translates and is
+faithful on small inputs, yet the equality `nm = "literal"` is evaluated
+INSIDE the per-tick Z3 solve, and on a walk state carrying unrelated
+string literals (a `msg = (… ? "a" : "b" : …)` ternary) Z3's string
+theory blows up — ~0.5 ms/constraint → minutes + multi-GB, SIGSEGV on
+`test_26_value_cache.ev::driver`. So: *carrying/returning* a String is
+cheap; *comparing* a state-carried String to a literal in-solve is
+catastrophic. The fix mirrors `subscriptions`: the FSM collects raw
+`ECall` names and the Rust shim does the 4-element banned-set check
+outside the solve. Logged in `examples/COUNTEREXAMPLES.md` #18 (both
+faces).
 
 ## What `stdlib/passes/pretty.ev` reproduces today
 
@@ -459,25 +463,41 @@ reader) codify the demo's shape so a behavioural regression surfaces here.
 
 ## What `stdlib/passes/validate.ev` reproduces today
 
-Fully faithful — `EvidentValidate` and `RustValidate` produce
-byte-identical diagnostics for every `SchemaDecl` in the corpus
-(every example in `examples/test_*.ev`, plus the synthetic
-violations the equivalence test constructs across kind labels,
-banned call names, and nesting positions).
+**Evident-only since session VALIDATE-recursive.** The canonical Rust
+`find_ffi_call` Expr-tree walk is deleted; the WHOLE walk runs in Evident
+as the `validate_walk` stack-FSM, and the load path enforces external-only
+through it (`portable::validate::enforce_external_only`, a per-thread
+cached engine). This supersedes the held VV branch, which was break-even
+*because* the walk stayed in Rust — here the walk itself moves, so the
+delta is net-negative (the recursive `find_ffi_call` is gone from both the
+canonical module and the portable seam).
 
-The trick is that the body walk lives in Rust on **both** impls
-(`portable/validate.rs::find_ffi_call` mirrors the canonical
-`runtime/src/runtime/validate.rs::find_ffi_call` 1:1); the impls
-only differ in the per-Call classifier. `RustValidate` uses a
-native `match name { "FFICall" => ... }`; `EvidentValidate` calls
-`ValidateExpr(nm)` in the pass. The decision logic — what counts
-as a banned name — lives in the Evident pass, which is the only
-piece that moves between impls.
+The FSM is the `subscriptions_walk` recipe applied to FFI detection: the
+Rust shim marshals each `Constraint`'s `Expr` with the SHARED marshaler
+(`expr_to_value`) into the FSM's `WExpr` seed, drives it to a drained-stack
+halt via `run_nested`, and reads back the `ECall` names it collected. The
+FSM visits exactly the nodes `find_ffi_call` descended into, in the same
+pre-order, so the first banned name (read back in pre-order) is
+byte-identical to what the Rust walk returned — pinned across kind labels,
+banned names, and nesting positions in `runtime/tests/validate_correctness.rs`.
 
-This split is intentional: the recursion gap (Gap #1) blocks an
-Evident pass from walking the Expr tree itself, but it doesn't
-block the much smaller "is this name banned?" decision. Porting
-that piece keeps the seam useful even before the recursion gap is
-closed, and the equivalence test pins the behaviour byte-for-byte
-so a future gap fix can promote the walk into Evident without
-silently changing the diagnostic surface.
+**Why the banned-set check stays in Rust (and why this is NOT the #18
+workaround it replaces).** The leaf-only stub side-stepped #18 by pinning
+`nm ∈ String` and comparing in a query. The natural stack-FSM upgrade would
+fold the decision into the FSM (`ECall(nm,_) ⇒ nm = "FFICall" ? …`). That
+*translates and is faithful on small inputs* — but the in-FSM string
+equality `nm = "FFICall"` is evaluated INSIDE the per-tick Z3 solve, and on
+a walk state whose stack carries unrelated string literals (e.g. a
+`msg = (… ? "signal=10" : "signal=20" : …)` ternary), Z3's string theory
+blows up: `test_26_value_cache.ev::driver` went from ~0.5 ms/constraint to
+**minutes + multi-GB** on that one schema, SIGSEGV on the corpus. This is
+the in-solve cousin of #18 — *carrying* a state string is cheap, *comparing*
+one to a literal during the solve is not.
+
+The fix mirrors `subscriptions` exactly: the FSM collects the raw `ECall`
+name strings (no in-solve comparison) and the Rust shim's `is_banned` does
+the 4-element set-membership check outside the solve — the precise analogue
+of subscriptions' `world.`/`world_next.` prefix split. The recursive WALK
+(the thing VV couldn't move) is fully self-hosted; only the tiny string
+decision stays in Rust, for a measured performance reason, not a
+faithfulness one.
