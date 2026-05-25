@@ -1,4 +1,5 @@
--- stdlib/passes/subscriptions.ev — self-hosted subscriptions inference.
+-- stdlib/passes/subscriptions.ev — self-hosted subscriptions inference,
+-- as a WHOLE-WALK stack-FSM (session QQ).
 --
 -- The Evident-side twin of runtime/src/subscriptions.rs. Inference job:
 -- given a claim's body, return the set of `world.X` field names it READS
@@ -6,54 +7,169 @@
 -- scheduler in runtime/src/effect_loop/ uses these sets to wake an FSM
 -- only when its inputs change (read-set ∩ peer write-sets).
 --
--- ── What this pass owns ──
--- The subscriptions semantics — "identifiers starting with `world.` are
--- reads, identifiers starting with `world_next.` are writes" — lives
--- here. The Rust shim (runtime/src/portable/subscriptions.rs) drives an
--- AST walk and calls into the pass once per leaf identifier.
+-- ── What changed (QQ) ──
+-- Previously this file owned only the leaf classifier (two SAT-shaped
+-- prefix-match claims) and the Rust shim in portable/subscriptions.rs
+-- drove the AST tree-walk. Now the WHOLE walk lives here: an
+-- FSM-with-stack (`subscriptions_walk`) carries a work-agenda of AST
+-- nodes + the (reads, writes) accumulators in its state, popping /
+-- dispatching-on-node / pushing-children / folding, driven to a
+-- drained-agenda halt by `run(...)`. The Rust shim only marshals the
+-- claim body into a `WList` value, calls `run`, and decodes the result —
+-- no Rust-side tree walk. This is the first port that REMOVES Rust.
 --
--- ── Why a leaf-level classifier and not a whole-claim pass ──
--- A whole-claim subscriptions pass would need to RECURSE through the
--- body's Expr tree (Binary, Ternary, Match, Forall, …) to find every
--- `EIdentifier(_)` reference. The runtime can't yet self-host that
--- recursion (see docs/self-hosting.md "Recursive claims don't constrain
--- their outputs"; also examples/COUNTEREXAMPLES.md). So this pass owns
--- the classification — the prefix-test semantics — and the Rust shim
--- drives the tree walk and first-segment extraction.
+-- ── The node encoding (mirrors walk_expr's arm grouping) ──
+-- The Rust shim maps every ast.rs Expr / BodyItem / Pins to one of the
+-- WNode behavioral classes below. The mapping mirrors how the canonical
+-- `walk_expr`/`walk_body`/`walk_pins` GROUP variants by traversal shape
+-- (it uses `|`-patterns to merge variants that recurse identically):
 --
--- ── Why SAT/UNSAT-shaped instead of a Bool output ──
--- A `is_read ∈ Bool` output that BINDS to "prefix matches" would need
--- `is_read ⇔ ∃ suffix : ident = "world." ++ suffix` — and `∃ s ∈ String`
--- doesn't translate (the runtime's string-quantifier support is too
--- limited). Without the existential, a `suffix` free variable lets Z3
--- pick ANY value, including one that makes the equation false even when
--- the prefix matches — so a Bool output isn't uniquely determined by
--- the model.
+--   ast.rs node                                   → WNode
+--   ───────────────────────────────────────────────────────────────
+--   Expr::Identifier(name)                        → NIdent(segments)
+--   Expr::{Int,Real,Bool,Str}                     → NLeaf
+--   Expr::{SetLit,SeqLit,Tuple,Call}, Match arms  → NList(children)
+--   Expr::{Range,InExpr,Index,Binary,Forall,Exists}→ NTwo(a, b)
+--   Expr::{Cardinality,Not,Field,Matches,RunFsm}  → NOne(child)
+--   Expr::Ternary                                 → NThree(c, t, f)
+--   Expr::Match(scrut, arms)                      → NList(scrut :: arm-bodies)
+--   BodyItem::Membership{pins}                    → NList(pin value-exprs)  (or NLeaf if Pins::None)
+--   BodyItem::ClaimCall{mappings}                 → NList(mapping value-exprs)
+--   BodyItem::Constraint(e)                       → NOne(e)
+--   BodyItem::SubclaimDecl(s)                     → NList(s.body items)
+--   BodyItem::{Passthrough,HaltsWithin}           → NLeaf
 --
--- The SAT-shaped form sidesteps that: assert the equation directly. The
--- query is SAT iff the prefix matches (Z3 finds a `suffix` that solves
--- it) and UNSAT iff it doesn't (no `suffix` works). The shim runs each
--- of the two matchers per identifier and reads SAT-ness as the
--- classification.
+-- Scalar fields the canonical walk never reads (BinOp, call/field/fsm
+-- names, match patterns, ∀-vars, mapping slots) are dropped at encode
+-- time — faithful to walk_expr, which binds them with `_`. The TRAVERSAL
+-- (pop / push-children / recurse-to-fixpoint), the ACCUMULATION (thread
+-- reads/writes through state), and the CLASSIFICATION (segment prefix →
+-- read/write field) all live in the FSM below.
+--
+-- ── Identifiers as path segments ──
+-- ast.rs stores dotted accesses as a single dotted-collapsed identifier
+-- ("world.player.pos"). The shim splits it on '.' into its path segments
+-- and the FSM classifies: first segment "world_next" ⇒ the second
+-- segment is a WRITTEN field; "world" ⇒ a READ field; anything else ⇒
+-- neither. This is exactly walk_expr's `strip_prefix` + `first_segment`,
+-- done over segments instead of bytes — only string EQUALITY is needed
+-- (Evident has no substring/prefix op). The shim dedups the resulting
+-- name cons-lists into HashSets, so element order / duplicates are
+-- irrelevant.
 
-import "stdlib/ast.ev"
+-- ── Data carried in walk state ──────────────────────────────────────
 
--- SAT iff `ident` begins with the literal `"world_next."`. On SAT,
--- `suffix_w` is bound to everything after that prefix. The Rust shim
--- takes the first dotted segment of `suffix_w` to recover the top-level
--- field name (matching subscriptions::first_segment).
---
--- Checked BEFORE world_read_match — the prefixes diverge at index 5
--- (`.` vs `_`), so a `world_next.X` identifier cannot also match
--- `world.X`; this ordering is for clarity, not correctness.
-claim world_next_write_match
-    ident    ∈ String
-    suffix_w ∈ String
-    ident = "world_next." ++ suffix_w
+-- A dotted identifier as its path segments, head-first.
+-- "world_next.player.pos" → SegCons("world_next", SegCons("player", SegCons("pos", SegNil)))
+enum Segs = SegNil | SegCons(String, Segs)
 
--- SAT iff `ident` begins with the literal `"world."`. On SAT,
--- `suffix_r` is bound to everything after that prefix.
-claim world_read_match
-    ident    ∈ String
-    suffix_r ∈ String
-    ident = "world." ++ suffix_r
+-- Field-name accumulators (the shim dedups into a HashSet).
+enum NameList = NameNil | NameCons(String, NameList)
+
+-- A walk node — one variant per traversal shape the canonical walk
+-- distinguishes (see header table). Variable-arity children ride a
+-- cons-list (WList) because Seq(T) has no in-step pop (COUNTEREXAMPLES
+-- #19a); the work-stack is an enum spine, the supported substrate.
+enum WNode =
+    NIdent(Segs)                 -- Identifier: classify by first/second segment
+    NLeaf                        -- literal / inert body item: contributes nothing
+    NOne(WNode)                  -- one relevant child
+    NTwo(WNode, WNode)           -- two relevant children
+    NThree(WNode, WNode, WNode)  -- three (Ternary)
+    NList(WList)                 -- a list of children (SetLit/Call/Match/pins/…)
+
+enum WList = WLNil | WLCons(WNode, WList)
+
+-- The agenda is a stack of FRAMES; each frame is the remaining children
+-- (a WList) of some node. "Advance within a frame" is the frame's tail;
+-- "descend" pushes a child's children as a new frame on top. No integer
+-- cursor, no list concatenation — the test_37 stack-FSM shape.
+enum Agenda = AgNil | AgCons(WList, Agenda)
+
+-- Walk state: SWSeed carries the body (one frame's worth of items);
+-- SWStep carries (agenda, reads, writes); SWDone the final accumulators.
+-- SWSeed MUST be first — run()'s coerce_init wraps the encoded body
+-- (a WList) into the state enum's first single-payload variant.
+enum SubWalk =
+    SWSeed(WList)
+    SWStep(Agenda, NameList, NameList)
+    SWDone(NameList, NameList)
+
+-- ── The transition under execution ──────────────────────────────────
+-- SWSeed → push the body as the bottom frame. Each SWStep pops the top
+-- frame: an empty frame is dropped; a non-empty frame yields its head
+-- node — classify it (NIdent), drop it (NLeaf), or push its children as
+-- a new frame (NOne/NTwo/NThree/NList) keeping the frame's tail (`more`)
+-- underneath. Drained agenda → SWDone. A `claim` (not `fsm`) so the
+-- scheduler never instantiates it; `run` resolves it by name.
+claim subscriptions_walk(state ∈ SubWalk, state_next ∈ SubWalk, halt ∈ Bool)
+    state_next = match state
+        SWSeed(body) ⇒ SWStep(AgCons(body, AgNil), NameNil, NameNil)
+        SWStep(agenda, reads, writes) ⇒ match agenda
+            AgNil ⇒ SWDone(reads, writes)
+            AgCons(WLNil, rest) ⇒ SWStep(rest, reads, writes)
+            AgCons(WLCons(node, more), rest) ⇒ match node
+                NIdent(SegCons(s0, SegCons(s1, _))) ⇒ SWStep(AgCons(more, rest), (s0 = "world" ? NameCons(s1, reads) : reads), (s0 = "world_next" ? NameCons(s1, writes) : writes))
+                NIdent(_)       ⇒ SWStep(AgCons(more, rest), reads, writes)
+                NLeaf           ⇒ SWStep(AgCons(more, rest), reads, writes)
+                NOne(a)         ⇒ SWStep(AgCons(WLCons(a, WLNil), AgCons(more, rest)), reads, writes)
+                NTwo(a, b)      ⇒ SWStep(AgCons(WLCons(a, WLCons(b, WLNil)), AgCons(more, rest)), reads, writes)
+                NThree(a, b, c) ⇒ SWStep(AgCons(WLCons(a, WLCons(b, WLCons(c, WLNil))), AgCons(more, rest)), reads, writes)
+                NList(kids)     ⇒ SWStep(AgCons(kids, AgCons(more, rest)), reads, writes)
+        SWDone(r, w) ⇒ SWDone(r, w)
+    halt = match state
+        SWDone(_, _) ⇒ true
+        _            ⇒ false
+
+-- ── Static verification: walk in, (reads, writes) out ────────────────
+
+-- A single `world.a` read.
+claim sat_read_one
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))), WLNil))
+    final = SWDone(NameCons("a", NameNil), NameNil)
+
+-- A single `world_next.b` write.
+claim sat_write_one
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NIdent(SegCons("world_next", SegCons("b", SegNil))), WLNil))
+    final = SWDone(NameNil, NameCons("b", NameNil))
+
+-- A bare local var (one segment) and a literal contribute nothing.
+claim sat_neither
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NIdent(SegCons("counter", SegNil)), WLCons(NLeaf, WLNil)))
+    final = SWDone(NameNil, NameNil)
+
+-- A nested node: NOne wrapping a `world.a` read (e.g. a Constraint /
+-- Cardinality / Field). The walk descends into the child.
+claim sat_nested_one
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NOne(NIdent(SegCons("world", SegCons("a", SegNil)))), WLNil))
+    final = SWDone(NameCons("a", NameNil), NameNil)
+
+-- The passthrough idiom `world_next.a = (… ? … : world.a)` — same field
+-- read AND written. An NTwo (Binary `=`) over the two idents. Reads
+-- prepend, so the accumulators each hold the one field.
+claim sat_read_and_write
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NTwo(NIdent(SegCons("world_next", SegCons("a", SegNil))),
+                    NIdent(SegCons("world", SegCons("a", SegNil)))), WLNil))
+    final = SWDone(NameCons("a", NameNil), NameCons("a", NameNil))
+
+-- A deeper tree: NList of [world.a (read), NThree over world.b/world_next.c/leaf].
+-- Visit order prepends, so reads read [b, a], writes [c].
+claim sat_list_and_three
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))),
+        WLCons(NThree(NIdent(SegCons("world", SegCons("b", SegNil))),
+                      NIdent(SegCons("world_next", SegCons("c", SegNil))),
+                      NLeaf), WLNil)))
+    final = SWDone(NameCons("b", NameCons("a", NameNil)), NameCons("c", NameNil))
+
+-- The accumulator is threaded, not free: a `world.a` read cannot come
+-- back as a write.
+claim unsat_read_is_not_write
+    final ∈ SubWalk = run(subscriptions_walk,
+        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))), WLNil))
+    final = SWDone(NameNil, NameCons("a", NameNil))
