@@ -380,6 +380,29 @@ Bare record vars (`p : Point`, not in a `Seq`) are already fine: they
 expand to primitive `IntVar`/`BoolVar` leaves at declaration, carrying
 no datatype handle.
 
+## 14. JIT codegen gaps — audited and partly closed (session T)
+
+**Where:** `runtime/src/functionize/cranelift.rs`; full writeup in
+[`docs/jit-codegen-gaps.md`](../docs/jit-codegen-gaps.md).
+
+Some Z3 expression shapes make the Cranelift JIT return `None`, so the
+component falls through to a (correct, slower) full Z3 solve. Session T
+audited every bail. **Closed**: top-level integer `div`/`mod` (was only
+handled as an operand, not as a Scalar's outermost decl); Seq-bodied
+`Guarded` steps — the `effects = match state ⇒ ⟨…⟩` shape that was
+refused wholesale, hitting 24/27 demos (now compiled, with a runtime
+bail flag for the no-branch-matched case); `str.++` concatenation; and a
+**silent miscompile** of `#seq` on an unpinned Seq (the `<seq>__len`
+length symbol isn't in `given`, so the JIT read length 0 — now refused).
+
+**Still falling back** (perf, not correctness; see the doc for fix
+paths): String equality `(= s1 s2)` in a guard (test_12, test_14);
+scalar-bodied `match` → scalar (e.g. `match last_results[1] {
+StringResult(s) ⇒ s }`); `#seq` computed from the paired Seq value
+(deferred upgrade of the refusal above); SDL packed-float vertex lists
+and `LibCall`-as-scalar (test_17); test_29's tick-0 bootstrap component
+(a `runtime/query.rs` unsafe-free decision, not a codegen shape).
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)
