@@ -137,6 +137,15 @@ before an AST→String (or AST→AST) pass can be *fully* faithful. Until
 then, a pass is faithful only on the **ASCII, non-recursive subset**.
 (Also logged in `examples/COUNTEREXAMPLES.md`.)
 
+> **See also:** [`design/loop-functionizer.md`](design/loop-functionizer.md)
+> is the unlock for the blocked tree-walk ports below. It routes around
+> the recursion gap (Gap #1) *without* adding recursion to the constraint
+> language — the walk becomes a loop-functionized FSM over an explicit
+> work-stack, which finally lets `subscriptions` / `validate` / `pretty`
+> move their *walk* (not just the leaf classifier) into Evident and
+> delete the Rust walk + its `portable/` duplicate. That's the port shape
+> that makes net Rust LOC go *down*.
+
 ### 1. Recursive claims don't constrain their outputs
 
 A claim cannot recurse over a nested `Expr` tree of unknown depth.
