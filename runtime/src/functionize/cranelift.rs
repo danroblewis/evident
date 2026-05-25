@@ -393,6 +393,19 @@ pub fn compile_program<'ctx>(
                 (var.clone(), OutputKind::Seq)
             }
             Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq /* placeholder */),
+            // Sampler steps are the SatisfierFunctionizer's job, not
+            // Cranelift's. Refuse the whole program so it either routes
+            // to the satisfier (which strips these before delegating
+            // back to us) or to the slow Z3 solve.
+            Z3Step::SampleRange { .. }
+            | Z3Step::SampleEnum { .. }
+            | Z3Step::SampleSet { .. } => {
+                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                    eprintln!("[jit] bail: sampler step {} — handled by SatisfierFunctionizer",
+                        step.var());
+                }
+                return None;
+            }
         };
         output_kinds_local.push((var, kind));
         match step {
@@ -641,6 +654,11 @@ pub fn compile_program<'ctx>(
                         &[out_slot, pool_ptr, idx_v]);
                     env.insert(var.clone(), out_slot);
                 }
+                // Unreachable: the Phase 2 walk above already returned
+                // None on any sampler step. Kept exhaustive + defensive.
+                Z3Step::SampleRange { .. }
+                | Z3Step::SampleEnum { .. }
+                | Z3Step::SampleSet { .. } => return None,
             }
         }
         bcx.ins().return_(&[]);

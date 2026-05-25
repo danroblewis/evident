@@ -55,6 +55,28 @@ pub enum Z3Step<'ctx> {
     /// `extract_program` can't recompose. At eval time, just
     /// insert the value into the env.
     PreBaked { var: String, value: Value },
+
+    // ── Sampler steps (probabilistic-programming style) ──────────
+    //
+    // These describe an output variable that is NOT defined by an
+    // equation but IS bounded by a range / enum / finite set. A
+    // satisfying assignment is *drawn* (deterministically, per the
+    // SatisfierFunctionizer's seeded PRNG) rather than computed. The
+    // Cranelift functionizer refuses them (returns `None`); only the
+    // `SatisfierFunctionizer` consumes them. The extractor emits them
+    // only when sampling is opted-in (see `z3_eval::recover_samplers`).
+
+    /// Scalar `Int`/`Nat`/`Pos` output bounded by `lo ≤ var ≤ hi`
+    /// (inclusive on both ends). Sampled to a value in `[lo, hi]`.
+    SampleRange { var: String, lo: i64, hi: i64 },
+    /// Enum output with no other constraint. `type_name` keys the
+    /// `EnumRegistry`; the variant set (and thus the count) is
+    /// resolved at compile time. Sampled to one of the nullary
+    /// variants.
+    SampleEnum  { var: String, type_name: String },
+    /// Output drawn from a concrete finite set of candidate values
+    /// (from `var ∈ {a, b, c}`). Sampled to one of `candidates`.
+    SampleSet   { var: String, candidates: Vec<Value> },
 }
 
 #[derive(Debug, Clone)]
@@ -72,10 +94,13 @@ pub enum GuardedBody<'ctx> {
 impl<'ctx> Z3Step<'ctx> {
     pub fn var(&self) -> &str {
         match self {
-            Z3Step::Scalar   { var, .. }
-            | Z3Step::Seq      { var, .. }
-            | Z3Step::Guarded  { var, .. }
-            | Z3Step::PreBaked { var, .. } => var,
+            Z3Step::Scalar      { var, .. }
+            | Z3Step::Seq         { var, .. }
+            | Z3Step::Guarded     { var, .. }
+            | Z3Step::PreBaked    { var, .. }
+            | Z3Step::SampleRange { var, .. }
+            | Z3Step::SampleEnum  { var, .. }
+            | Z3Step::SampleSet   { var, .. } => var,
         }
     }
 }

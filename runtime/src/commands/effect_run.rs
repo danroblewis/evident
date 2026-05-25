@@ -160,7 +160,17 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
     }
 
-    let mut rt = EvidentRuntime::new();
+    // EVIDENT_SATISFIER selects the SatisfierFunctionizer (samples
+    // partially-constrained vars; delegates the rest to Cranelift).
+    // Unset → the default Cranelift JIT, behavior unchanged. The same
+    // env var gates sampler emission in the extractor
+    // (`z3_eval::samplers_enabled`), so the two stay in lockstep.
+    let mut rt = if std::env::var("EVIDENT_SATISFIER").is_ok() {
+        EvidentRuntime::with_functionizer(Box::new(
+            evident_runtime::functionize::satisfier::SatisfierFunctionizer::new()))
+    } else {
+        EvidentRuntime::new()
+    };
     if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
         eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
         return ExitCode::from(1);
