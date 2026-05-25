@@ -68,6 +68,7 @@ pub trait Portable {
     fn impl_name(&self) -> &'static str;
 }
 
+pub mod inject;
 pub mod pretty;
 pub mod subscriptions;
 pub mod validate;

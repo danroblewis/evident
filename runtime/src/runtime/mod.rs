@@ -44,7 +44,13 @@ mod autotune;
 mod load;
 mod generics;
 mod desugar;
-mod inject;
+// `pub(crate)` so the portable swap-interface (`portable::inject`) can
+// reuse the canonical `inject_lhs_eq_types` / `inject_claim_arg_types`
+// (the two whole-program-table sub-passes that stay in Rust) instead of
+// re-implementing 300 lines that could silently drift. The two
+// self-contained sub-passes (`inject_fsm_params` / `inject_prev_tick_decls`)
+// are re-implemented there with the self-hosted walk swapped in.
+pub(crate) mod inject;
 mod validate;
 mod register_enums;
 mod query;

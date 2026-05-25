@@ -30,7 +30,7 @@ gaps currently bound what a pass can do.
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
 | `generics` (256 LOC) | — | ⌛ | — | |
-| `inject` (588 LOC) | — | ⌛ | — | biggest |
+| `inject` (~590 LOC, 4 sub-passes) | `portable/inject.rs::RustInject` (= production: calls the canonical `inject_*`) | `stdlib/passes/inject.ev` (`inject_collect` walk + `ast_return_demo`) | **walk: faithful; full cutover: BLOCKED** | `EvidentInject` self-hosts the recursive reference WALK shared by `inject_fsm_params` + `inject_prev_tick_decls` (byte/multiset-identical to production on the corpus — `portable/inject.rs` `equivalence_on_corpus`); construction/insertion + the `_`-split stay Rust. The other two sub-passes (`inject_claim_arg_types`, `inject_lhs_eq_types`) need whole-program schema-table + enum-registry INPUT, kept Rust. **Not cut over** (production load path unchanged ⇒ runtime untouched). Three gaps block a full AST-returning cutover — see [Gaps](#gaps-that-block-a-full-ast-returning-inject-cutover). Notably composite AST RETURN itself is **faithful** (`ast_return_is_faithful`). |
 
 "Faithful" = the Evident impl produces byte-identical output to the Rust
 impl on the test fixtures.
@@ -386,3 +386,77 @@ that piece keeps the seam useful even before the recursion gap is
 closed, and the equivalence test pins the behaviour byte-for-byte
 so a future gap fix can promote the walk into Evident without
 silently changing the diagnostic surface.
+
+## What `stdlib/passes/inject.ev` reproduces today (session PORT-inject)
+
+`inject` is the runtime's biggest pure pass (~590 LOC,
+`runtime/src/runtime/inject.rs`) and the first whose natural output is a
+**rewritten AST**, not a name-set. It has four sub-passes:
+
+| Sub-pass | Needs | Self-hosted? |
+|---|---|---|
+| `inject_fsm_params` (inject `state_next`/`last_results`/`effects`) | one body | **walk: yes** |
+| `inject_prev_tick_decls` (inject `_var` slots + `is_first_tick`) | one body | **walk: yes** |
+| `inject_claim_arg_types` (type a fresh positional arg) | whole-program schema table | no (Rust) |
+| `inject_lhs_eq_types` (`lhs = expr` type inference) | schema table + enum registry | no (Rust) |
+
+`EvidentInject` (`portable/inject.rs`) self-hosts the recursive reference
+WALK that the first two sub-passes share: `inject_collect` is a stack-FSM
+fed by the SHARED marshaler (`expr_to_value`) that returns every referenced
+identifier as a cons-list of raw strings (decoded by the shared
+`decode_list`/`decode_str`). The membership *construction*, the insertion at
+`param_count`, and the `_`-strip / first-segment split stay in Rust — the
+same honest emit-raw-data / Rust-decide split `subscriptions` uses (Evident
+has no substring operator). The other two sub-passes are delegated to the
+canonical Rust impl (see the table). `RustInject` calls the canonical
+`inject_*` verbatim, so it **is** the production pipeline; the
+`equivalence_on_corpus` test pins `EvidentInject == RustInject` byte/multiset-
+identical across the corpus (incl. Mario's three FSMs).
+
+**Not cut over.** The production load path (`runtime/src/runtime/load.rs`) is
+unchanged — it calls the canonical `inject_*` directly, and nothing on any
+runtime path references `portable::inject`. So both one-time load and
+steady-state per-tick are untouched by construction (`inject` is a load-time
+pass regardless).
+
+### Gaps that block a full AST-returning inject cutover
+
+SESSION asked whether the proven subscriptions recipe extends to a pass that
+RETURNS a rewritten AST. The surprising headline: **composite AST return
+itself is faithful.** `ast_return_demo` constructs a non-empty `BodyItemList`
+of string-bearing `BIMembership` nodes and returns it through `run()`; the
+Rust decode path recovers it with intact strings and structure
+(`portable/inject.rs::ast_return_is_faithful`). Returning a rewritten-AST
+fragment is NOT the blocker. Three other things are:
+
+1. **The shared marshaler drops `SchemaDecl::param_count`.** `inject` inserts
+   its memberships at `param_count`, but `encode_ast`/`decode_ast`'s
+   `MakeSchemaDecl` intentionally has no slot for it (`decode_schema_decl`
+   reconstructs `param_count: 0`). A whole-`SchemaDecl` round-trip therefore
+   cannot carry the one number inject's insertion depends on. Fixable by
+   adding a `Nat` slot to `MakeSchemaDecl` + `stdlib/ast.ev` + the
+   encode/decode pair — a shared-marshaler change coordinated with the other
+   AST ports, out of scope here.
+
+2. **Gap #18's family on in-FSM DECISIONS.** Making the FSM *decide* what to
+   inject means reading marshaled-in `Bool`/`String` inputs and branching on
+   them. A match-destructured enum PRIMITIVE payload reads as the wrong value
+   when USED in logic: a destructured `Bool` in `(rsn ∧ ¬hsn)` reads false (so
+   the decision collapses to "inject nothing"); a destructured `String` in
+   `nm = "FFICall"` reads not-equal (the `validate` port's documented gap).
+   Embedding a destructured payload into a NEW node works (the strings in
+   `ast_return_demo` survive) — *computing on* one does not. So the inject
+   DECISION must stay in Rust; only the WALK self-hosts.
+
+3. **Two sub-passes need whole-program INPUT.** `inject_claim_arg_types` and
+   `inject_lhs_eq_types` resolve a name's type against every loaded claim's
+   signature + every enum variant — not one body. Marshaling that whole
+   context into the FSM per claim is a composite-INPUT blow-up the
+   `run()`/marshaler recipe doesn't faithfully support yet (the dual of the
+   composite-return question, and the actually-hard one).
+
+**Recommendation: keep Rust.** The walk self-hosts faithfully and composite
+AST return works, but the decision logic can't move (gap #18), two of four
+sub-passes need whole-program input, and the marshaler drops the insertion
+index. This is the SESSION's sanctioned honest-fallback: self-hosted +
+equivalence-proven up to the gaps, production untouched, Rust retained.

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 ///
 /// `external fsm` declarations are CONTRACTS for runtime-side
 /// bridge FSMs; they get no injection at all.
-pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) {
         return Ok(());
@@ -137,7 +137,7 @@ pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
 ///
 /// External fsm declarations are CONTRACTS for runtime-side bridges
 /// and don't get this treatment — their slots are written by Rust.
-pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Keyword, Pins, Expr};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
@@ -264,7 +264,7 @@ pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
 ///
 /// Handles method-style `recv.claim(args)` too: the receiver counts
 /// as a positional arg, shifting the arg-to-param mapping by 1.
-pub(super) fn inject_claim_arg_types(
+pub(crate) fn inject_claim_arg_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Result<(), RuntimeError> {
@@ -435,7 +435,7 @@ pub(super) fn inject_claim_arg_types(
 ///
 /// Recursive: also processes SubclaimDecls inside the body, so the
 /// inference fires inside types' rendering subclaims.
-pub(super) fn inject_lhs_eq_types(
+pub(crate) fn inject_lhs_eq_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
     enums: &crate::core::EnumRegistry,

@@ -1176,6 +1176,50 @@ last bullet). The user has to pin `#plat_effs[i].effs = 2` explicitly
 before the `∀` for the per-iteration subclaim length-pinning to be
 load-bearing. Mario uses this form.
 
+### 27. Self-hosting `inject` (AST-rewriting pass): three gaps, NOT composite return (session PORT-inject)
+
+**Where:** porting the `inject` pass (`runtime/src/runtime/inject.rs`,
+~590 LOC) to Evident via the subscriptions recipe —
+`stdlib/passes/inject.ev` + `portable/inject.rs`. `inject` is the first
+ported pass whose natural output is a *rewritten AST*, so it was the test
+of whether the recipe extends to AST-returning passes.
+
+**The pleasant surprise — composite AST RETURN is faithful.** A stack-FSM
+that CONSTRUCTS a non-empty `BodyItemList` of string-bearing `BIMembership`
+nodes and returns it through `run()` round-trips correctly: the Rust decode
+path (`decode_list` over the returned cons-list) recovers intact strings +
+structure. Demonstrated by `ast_return_demo` (the pass) +
+`portable/inject.rs::ast_return_is_faithful`. Returning a rewritten-AST
+fragment is **not** a gap.
+
+**What actually blocks a full AST-returning inject cutover (kept Rust):**
+
+1. **The shared marshaler drops `SchemaDecl::param_count`.** `inject`
+   inserts memberships at `param_count`; `encode_ast`/`decode_ast`'s
+   `MakeSchemaDecl` has no slot for it (`decode_schema_decl` reconstructs
+   `param_count: 0`). A whole-`SchemaDecl` round-trip can't carry the one
+   number the insertion depends on.
+2. **Gap #18's family, applied to in-FSM DECISIONS.** A match-destructured
+   enum PRIMITIVE payload reads as the wrong value when *used* in logic: a
+   destructured `Bool` in `(rsn ∧ ¬hsn)` reads false (so an in-FSM "decide
+   what to inject" collapses to inject-nothing). Embedding a destructured
+   payload into a new node works; *computing on* one does not. So the
+   inject DECISION stays in Rust — only the recursive reference WALK
+   self-hosts.
+3. **Two of four sub-passes need whole-program INPUT.**
+   `inject_claim_arg_types` + `inject_lhs_eq_types` resolve a name's type
+   against every loaded claim's signature + every enum variant. Marshaling
+   that whole context into the FSM per claim is a composite-INPUT blow-up
+   the recipe doesn't faithfully support yet (the dual of the
+   composite-return question — and the genuinely hard one).
+
+**Outcome:** the reference WALK shared by `inject_fsm_params` +
+`inject_prev_tick_decls` self-hosts byte/multiset-identically to production
+(`portable/inject.rs::equivalence_on_corpus`); construction + insertion +
+the `_`-split + the two table-driven sub-passes stay Rust. Not cut over;
+production load path untouched ⇒ runtime unaffected. See
+`docs/self-hosting.md` "Gaps that block a full AST-returning inject cutover".
+
 ## What works without caveat
 
 Every demo ships in green:
