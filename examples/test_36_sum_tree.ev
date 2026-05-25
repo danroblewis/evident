@@ -1,0 +1,108 @@
+-- 36_sum_tree — the STACK-OF-FSMs pattern, proven under tier-3 run().
+--
+-- Run:   evident effect-run examples/test_36_sum_tree.ev
+-- Test:  evident test examples/test_36_sum_tree.ev
+-- Trace: EVIDENT_NESTED_TRACE=1 evident test examples/test_36_sum_tree.ev
+--
+-- A recursive tree-walk (sum every leaf of a binary tree) expressed as
+-- an FSM whose STATE carries an explicit work-stack. Recursion becomes
+-- iteration over the stack; the accumulator threads through the state
+-- across ticks; `run(sum_tree, seed)` drives it to a stack-empty halt
+-- and returns the final state as a value. This is the toy that de-risks
+-- the stack-of-FSMs pattern (docs/design/loop-functionizer.md §4) before
+-- layering it onto the real self-hosting target, subscriptions::walk_expr.
+--
+-- ── The four essential properties (all demonstrated) ─────────────────
+--   1. The work-stack lives in FSM state, not in Rust.
+--   2. One step does pop → dispatch-on-variant → push-children / fold-leaf.
+--   3. The accumulator threads through state across ticks — never a free
+--      Z3 variable. This is the property that dodges the recursion gap:
+--      each tick's output is a total function of its input, never guessed.
+--   4. `run(sum_tree, …)` drives it to halt and returns the right sum.
+--
+-- ── What the runtime DID and DID NOT support (the discovery) ─────────
+-- §4 of loop-functionizer.md suspected the weak point is an in-step
+-- `Seq` tail/drop (pop). That suspicion is CONFIRMED — `Seq(T)` has no
+-- in-step pop/tail/cons (it only flattens *static* literals at load
+-- time). So the stack here is NOT a `Seq(Tree)`; it is a recursive enum
+-- cons-list (`Stack = Empty | Push(Tree, Stack)`). On that substrate:
+--   * POP  = `match stk | Push(top, rest) ⇒ …`  (destructure head+tail)
+--   * PUSH = `Push(l, Push(r, rest))`            (constructor call)
+-- both of which the constraint translator lowers fine. The stack still
+-- lives in the FSM state (option A of §4), marshaled whole through the
+-- per-tick solve — exactly tier 3's realization of "stack is state".
+--
+-- Three more runtime facts shaped the encoding (see COUNTEREXAMPLES #19):
+--   * Nested constructor patterns aren't deep-matched (`Step(Empty, _)`
+--     matches any `Step(_, _)`), so emptiness is tested with a *second*
+--     match on the extracted stack, not a nested pattern.
+--   * Enum equality against a literal with a NESTED enum field doesn't
+--     translate (`final = Step(Empty, 6)` is a dropped constraint), so
+--     the FSM drains into a flat `Done(Int)` terminal and `run` returns
+--     that single-Int-payload value (the working test_35 `Acc(5)` shape).
+--   * `run`'s `init` can't be a composite (`eval_const_init` takes only
+--     literals/givens/arithmetic), so the tree can't be passed through
+--     `init`. The seed is a bare Int *selecting* one of three hardcoded
+--     tree shapes; the tree is built inside the FSM on the first tick.
+
+import "stdlib/runtime.ev"
+
+enum Tree  = Leaf(Int) | Node(Tree, Tree)
+enum Stack = Empty | Push(Tree, Stack)
+-- FSM state: Seed(selector) → Step(work-stack, running sum) → Done(sum).
+enum Walk  = Seed(Int) | Step(Stack, Int) | Done(Int)
+
+-- ── The transition under execution ───────────────────────────────────
+-- One step: pop the top subtree, dispatch on its variant, push children
+-- (Node) or fold the leaf into the accumulator (Leaf). When the stack
+-- drains, move to the flat `Done(sum)` terminal so `run` returns a clean
+-- single-Int value. Declared a `claim` (not `fsm`) so the scheduler never
+-- instantiates it; `run` resolves it by name and drives it to halt.
+claim sum_tree(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
+    state_next = match state
+        -- Seed selects the tree shape (init can't carry a composite).
+        Seed(n) ⇒ (n = 0 ? Step(Push(Leaf(7), Empty), 0)
+                  : n = 1 ? Step(Push(Node(Node(Leaf(1), Leaf(2)), Leaf(3)), Empty), 0)
+                  : Step(Push(Node(Leaf(10), Node(Leaf(20), Node(Leaf(30), Leaf(40)))), Empty), 0))
+        Step(stk, acc) ⇒ match stk
+            Empty ⇒ Done(acc)                                  -- drained → terminal
+            Push(top, rest) ⇒ match top
+                Leaf(v)    ⇒ Step(rest, acc + v)               -- fold leaf
+                Node(l, r) ⇒ Step(Push(l, Push(r, rest)), acc) -- push children
+        Done(d) ⇒ Done(d)
+    -- Two-level match: nested constructor patterns aren't deep-matched.
+    halt = match state
+        Done(_) ⇒ true
+        _       ⇒ false
+
+-- ── Static verification: three tree shapes, three sums ───────────────
+-- Single leaf.
+claim sat_single_leaf
+    final ∈ Walk = run(sum_tree, 0)
+    final = Done(7)
+
+-- Balanced-ish: Node(Node(Leaf 1, Leaf 2), Leaf 3) → 1+2+3.
+claim sat_balanced
+    final ∈ Walk = run(sum_tree, 1)
+    final = Done(6)
+
+-- Unbalanced right spine: 10+20+30+40.
+claim sat_unbalanced
+    final ∈ Walk = run(sum_tree, 2)
+    final = Done(100)
+
+-- The accumulator is threaded, not free: the balanced tree sums to 6,
+-- never anything else (a free Z3 var would let this be SAT).
+claim unsat_balanced_wrong
+    final ∈ Walk = run(sum_tree, 1)
+    final = Done(5)
+
+-- ── Runnable form: the walk as a value inside a live fsm ─────────────
+fsm main
+    leaf ∈ Walk = run(sum_tree, 0)
+    bal  ∈ Walk = run(sum_tree, 1)
+    unb  ∈ Walk = run(sum_tree, 2)
+    ok ∈ Bool = ((leaf = Done(7)) ∧ (bal = Done(6)) ∧ (unb = Done(100)))
+    effects = (ok
+        ? ⟨Println("sum-a-tree via stack-FSM: leaf=7 balanced=6 unbalanced=100"), Exit(0)⟩
+        : ⟨Println("BUG: stack-FSM tree-walk produced a wrong sum"), Exit(1)⟩)

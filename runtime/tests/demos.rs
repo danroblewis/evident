@@ -371,6 +371,15 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["BUG: run(decrement, 50) did not reach zero"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Stack-of-FSMs (loop-functionizer §4) under tier-3 run(): a
+        // recursive tree-walk whose work-stack lives in FSM state (a
+        // recursive-enum cons-list), driven to a stack-empty halt.
+        name: "test_36_sum_tree", exit: 0,
+        must_lines: &["sum-a-tree via stack-FSM: leaf=7 balanced=6 unbalanced=100"],
+        forbid_exact_lines: &["BUG: stack-FSM tree-walk produced a wrong sum"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

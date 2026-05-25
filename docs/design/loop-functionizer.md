@@ -396,6 +396,43 @@ the implementer should pick the efficient one:
 
 (B) is the design the rest of this section uses.
 
+### Resolved under tier 3 (session MM): option A works, on an enum spine
+
+> **The (A)-vs-(B) question, answered for tier 3.** Tier 3
+> (blocking-interpret, `nested-fsm-strategies.md` §2) *is* the scheduler:
+> there is no native loop wrapper to hold a `Vec`, so a tier-3 stack-FSM
+> has no choice but option **A** — the stack lives in the FSM state and
+> is marshaled whole through the per-tick solve. Session MM built the
+> toy this section's plan calls for (`examples/test_36_sum_tree.ev`,
+> sum-a-tree under `run(sum_tree, init)`) and the result is:
+>
+> **Option A works under tier 3 — but not on a `Seq(T)` stack.** The
+> in-step `Seq` tail/drop this section (and §8) flagged as the suspected
+> weak point is *confirmed missing*: `Seq(T)` only flattens static
+> literals at load time; a constraint body cannot pop a `Seq`'s tail or
+> cons onto an opaque `Seq` (`examples/COUNTEREXAMPLES.md` #19a). The fix
+> is **not** a Seq op — it is to encode the work-stack as a **recursive
+> enum cons-list** (`enum Stack = Empty | Push(Tree, Stack)`), where
+> **pop** is a `match`-destructure (head + tail fall out together) and
+> **push** is a constructor call (`Push(l, Push(r, rest))`). Both lower
+> cleanly. The stack is still explicit FSM state, drained tick-by-tick;
+> only the substrate changes from `Seq` to enum spine. The O(n²)
+> whole-state marshaling §8 predicted for option A is real but fine at
+> toy/AST scale.
+>
+> So: **tier 3 can host a stack-FSM (option A) on a recursive-enum
+> stack.** The `walk_step` self-host, however, needs two more things tier
+> 3 lacks today — composite `init` seeding (`run(F, ⟨root⟩)`) and a
+> composite *final-state return* (a `Set`/`Seq` accumulator), both in the
+> off-limits tier-3 surface (COUNTEREXAMPLES #19c/#19d). That makes
+> **tier 2's native-`Vec` wrapper (option B) the cleaner prerequisite for
+> the actual port**: holding the stack and accumulator natively
+> sidesteps the literal-injection round-trip (composite in, composite
+> out) entirely. Tier 3's contribution is the de-risking proof that the
+> pop/dispatch/push/fold/thread *logic* is correct; tier 2 is how the
+> real `walk_expr` gets carried through. Full write-up + the four
+> discovered runtime constraints: `examples/COUNTEREXAMPLES.md` #19.
+
 ### Worked example: `subscriptions::walk_expr`, end to end
 
 `subscriptions::walk_expr` (`runtime/src/subscriptions.rs`) is the
