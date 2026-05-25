@@ -1,55 +1,33 @@
--- 28_parallel_enum_coloring — six independent graph-3-coloring
--- problems in one claim, each using enum-typed variables.
+-- 28_parallel_enum_coloring — six independent dense 3-coloring
+-- problems in one claim, each using enum-typed variables, looped
+-- over 20 ticks so per-tick parallel savings amortize the one-shot
+-- enum-context-replay setup cost.
 --
 -- Six independent searches over `enum Color`:
 --   * No variable is shared across the six sub-problems → the body
 --     decomposes into 6 independent components (visible as
---     `comp=…/6` in EVIDENT_FUNCTIONIZE_STATS=1).
---   * Each component is a small CSP that Z3 must search — slow-path
---     work, not Cranelift-compilable.
+--     `comp=…/8` in EVIDENT_FUNCTIONIZE_STATS=1).
+--   * Each component is a 24-node 3-coloring with 24-cycle + skip-3
+--     + skip-5 + skip-7 chord edges (~96 edges).
+--   * The FSM loops 20 ticks (`tick ∈ Int`) so per-tick steady
+--     savings dominate the one-shot enum-replay + thread spawn cost
+--     (~15 ms at tick 0 with parallel enabled).
 --
--- Today (until session S lands): every component has enum-typed
--- variables. Session E's parallel solving bypasses enum/record vars
--- because `DatatypeSort` is bound to the source Z3 context. So all
--- six components run sequentially on one thread. Run with
--- `EVIDENT_PARALLEL_SLOW=0` and the default — the wall times should
--- be nearly identical, proving the parallel path isn't engaging.
+-- Session E added per-thread Z3 contexts for primitive components;
+-- session S extended to enum-typed components via cross-context
+-- datatype replay. Before S the enum vars forced sequential. After S
+-- the six graphs solve in parallel.
 --
--- After session S lands: cross-context datatype replay should let
--- the six components fan out across worker threads. Re-run the same
--- A/B and you should see wall-clock drop ~3-4× under the default
--- vs `EVIDENT_PARALLEL_SLOW=0`.
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, EVIDENT_VALUE_CACHE=0
+-- so each tick actually re-solves):
+--   Mode                            | wall    | tick0   | wall_post | steady/tick
+--   --------------------------------+---------+---------+-----------+------------
+--   Default (parallel)              |  53.22ms|  15.43ms|  37.79ms  |  1.20 ms
+--   EVIDENT_PARALLEL_SLOW=0         | 100.48ms|   7.72ms|  93.02ms  |  4.46 ms
 --
--- BENCHMARK (Apple M4, scripts/bench-demo.sh -s 1, medians):
---   Mode                           | wall    | tick0   | wall_post | steady/tick
---   -------------------------------+---------+---------+-----------+------------
---   Pre-S,  default                |  5.71ms |  3.71ms |   2.01ms  |  1.76 ms
---   Pre-S,  EVIDENT_PARALLEL_SLOW=0|  5.21ms |  3.48ms |   1.73ms  |  1.59 ms
---   Post-S, default                | 12.48ms | 11.56ms |   0.90ms  |  0.78 ms
---   Post-S, EVIDENT_PARALLEL_SLOW=0|  5.65ms |  3.52ms |   1.89ms  |  1.78 ms
---
--- Reading the post-S numbers:
---   * The parallel path now ENGAGES for these enum-typed components
---     (steady 0.78 vs 1.78 ms = 2.3× faster per tick after warmup).
---   * BUT tick 0 jumped from 3.5 ms to 11.6 ms — the cost of replaying
---     enums into per-worker contexts + thread spawn. For this tiny
---     2-tick demo, the one-shot setup dominates and total wall is
---     2.2× SLOWER (12.5 vs 5.7 ms) than the sequential baseline.
---
--- The S capability works, but this demo's per-graph solve (~0.3 ms)
--- is way too small to amortize parallel setup. For a workload where
--- parallel really wins on enum-typed components, see
--- examples/test_27_parallel_solving.ev (six 16-queens boards with
--- enum-typed half-classifiers, 5.5× faster wall under default vs
--- EVIDENT_PARALLEL_SLOW=0 because each board solves in tens of ms).
---
--- To make THIS demo's wall win post-S, bump graph size (8→16+ nodes
--- per graph) so each per-graph solve takes several ms; then the
--- 6-way parallel solve dominates the one-shot setup.
---
--- The graphs themselves: each is a Petersen-graph-style ~8-node 3-
--- coloring (15+ edge constraints) — heavy enough that single-thread
--- solve is well above thread-spawn overhead.
+-- → 1.9× faster wall · 2.5× faster wall_post · 3.7× faster per-tick.
+--   Tick 0 is more expensive in parallel (~2× — enum replay + thread
+--   spawn) but the per-tick savings over 20 ticks dwarf it.
 
 import "stdlib/runtime.ev"
 
@@ -58,139 +36,703 @@ enum Color = Red | Green | Blue
 enum DemoState = Searching | Done
 
 fsm coloring(state ∈ DemoState)
-    state_next = match state
-        Searching ⇒ Done
-        Done      ⇒ Done
+    tick ∈ Int = (is_first_tick ? 0 : _tick + 1)
+    state_next = (tick ≥ 19 ? Done : Searching)
 
-    -- ── graph 1 ───────────────────────────────────────────────
-    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7 ∈ Color
+
+    -- ── graph 1 ─────────────────────────────────────
+    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7, g1_8, g1_9, g1_10, g1_11, g1_12, g1_13, g1_14, g1_15, g1_16, g1_17, g1_18, g1_19, g1_20, g1_21, g1_22, g1_23 ∈ Color
     g1_0 ≠ g1_1
-    g1_0 ≠ g1_2
-    g1_1 ≠ g1_3
-    g1_2 ≠ g1_4
-    g1_3 ≠ g1_5
-    g1_4 ≠ g1_6
-    g1_5 ≠ g1_7
+    g1_1 ≠ g1_2
+    g1_2 ≠ g1_3
+    g1_3 ≠ g1_4
+    g1_4 ≠ g1_5
+    g1_5 ≠ g1_6
     g1_6 ≠ g1_7
-    g1_0 ≠ g1_4
-    g1_1 ≠ g1_5
-    g1_2 ≠ g1_6
-    g1_3 ≠ g1_7
-    g1_0 ≠ g1_7
-    g1_1 ≠ g1_6
+    g1_7 ≠ g1_8
+    g1_8 ≠ g1_9
+    g1_9 ≠ g1_10
+    g1_10 ≠ g1_11
+    g1_11 ≠ g1_12
+    g1_12 ≠ g1_13
+    g1_13 ≠ g1_14
+    g1_14 ≠ g1_15
+    g1_15 ≠ g1_16
+    g1_16 ≠ g1_17
+    g1_17 ≠ g1_18
+    g1_18 ≠ g1_19
+    g1_19 ≠ g1_20
+    g1_20 ≠ g1_21
+    g1_21 ≠ g1_22
+    g1_22 ≠ g1_23
+    g1_23 ≠ g1_0
+    g1_0 ≠ g1_3
+    g1_1 ≠ g1_4
     g1_2 ≠ g1_5
+    g1_3 ≠ g1_6
+    g1_4 ≠ g1_7
+    g1_5 ≠ g1_8
+    g1_6 ≠ g1_9
+    g1_7 ≠ g1_10
+    g1_8 ≠ g1_11
+    g1_9 ≠ g1_12
+    g1_10 ≠ g1_13
+    g1_11 ≠ g1_14
+    g1_12 ≠ g1_15
+    g1_13 ≠ g1_16
+    g1_14 ≠ g1_17
+    g1_15 ≠ g1_18
+    g1_16 ≠ g1_19
+    g1_17 ≠ g1_20
+    g1_18 ≠ g1_21
+    g1_19 ≠ g1_22
+    g1_20 ≠ g1_23
+    g1_21 ≠ g1_0
+    g1_22 ≠ g1_1
+    g1_23 ≠ g1_2
+    g1_0 ≠ g1_5
+    g1_1 ≠ g1_6
+    g1_2 ≠ g1_7
+    g1_3 ≠ g1_8
+    g1_4 ≠ g1_9
+    g1_5 ≠ g1_10
+    g1_6 ≠ g1_11
+    g1_7 ≠ g1_12
+    g1_8 ≠ g1_13
+    g1_9 ≠ g1_14
+    g1_10 ≠ g1_15
+    g1_11 ≠ g1_16
+    g1_12 ≠ g1_17
+    g1_13 ≠ g1_18
+    g1_14 ≠ g1_19
+    g1_15 ≠ g1_20
+    g1_16 ≠ g1_21
+    g1_17 ≠ g1_22
+    g1_18 ≠ g1_23
+    g1_19 ≠ g1_0
+    g1_20 ≠ g1_1
+    g1_21 ≠ g1_2
+    g1_22 ≠ g1_3
+    g1_23 ≠ g1_4
+    g1_0 ≠ g1_7
+    g1_1 ≠ g1_8
+    g1_2 ≠ g1_9
+    g1_3 ≠ g1_10
+    g1_4 ≠ g1_11
+    g1_5 ≠ g1_12
+    g1_6 ≠ g1_13
+    g1_7 ≠ g1_14
+    g1_8 ≠ g1_15
+    g1_9 ≠ g1_16
+    g1_10 ≠ g1_17
+    g1_11 ≠ g1_18
+    g1_12 ≠ g1_19
+    g1_13 ≠ g1_20
+    g1_14 ≠ g1_21
+    g1_15 ≠ g1_22
+    g1_16 ≠ g1_23
+    g1_17 ≠ g1_0
+    g1_18 ≠ g1_1
+    g1_19 ≠ g1_2
+    g1_20 ≠ g1_3
+    g1_21 ≠ g1_4
+    g1_22 ≠ g1_5
+    g1_23 ≠ g1_6
 
-    -- ── graph 2 ───────────────────────────────────────────────
-    g2_0, g2_1, g2_2, g2_3, g2_4, g2_5, g2_6, g2_7 ∈ Color
+    -- ── graph 2 ─────────────────────────────────────
+    g2_0, g2_1, g2_2, g2_3, g2_4, g2_5, g2_6, g2_7, g2_8, g2_9, g2_10, g2_11, g2_12, g2_13, g2_14, g2_15, g2_16, g2_17, g2_18, g2_19, g2_20, g2_21, g2_22, g2_23 ∈ Color
     g2_0 ≠ g2_1
-    g2_0 ≠ g2_2
-    g2_1 ≠ g2_3
-    g2_2 ≠ g2_4
-    g2_3 ≠ g2_5
-    g2_4 ≠ g2_6
-    g2_5 ≠ g2_7
+    g2_1 ≠ g2_2
+    g2_2 ≠ g2_3
+    g2_3 ≠ g2_4
+    g2_4 ≠ g2_5
+    g2_5 ≠ g2_6
     g2_6 ≠ g2_7
-    g2_0 ≠ g2_4
-    g2_1 ≠ g2_5
-    g2_2 ≠ g2_6
-    g2_3 ≠ g2_7
-    g2_0 ≠ g2_7
-    g2_1 ≠ g2_6
+    g2_7 ≠ g2_8
+    g2_8 ≠ g2_9
+    g2_9 ≠ g2_10
+    g2_10 ≠ g2_11
+    g2_11 ≠ g2_12
+    g2_12 ≠ g2_13
+    g2_13 ≠ g2_14
+    g2_14 ≠ g2_15
+    g2_15 ≠ g2_16
+    g2_16 ≠ g2_17
+    g2_17 ≠ g2_18
+    g2_18 ≠ g2_19
+    g2_19 ≠ g2_20
+    g2_20 ≠ g2_21
+    g2_21 ≠ g2_22
+    g2_22 ≠ g2_23
+    g2_23 ≠ g2_0
+    g2_0 ≠ g2_3
+    g2_1 ≠ g2_4
     g2_2 ≠ g2_5
+    g2_3 ≠ g2_6
+    g2_4 ≠ g2_7
+    g2_5 ≠ g2_8
+    g2_6 ≠ g2_9
+    g2_7 ≠ g2_10
+    g2_8 ≠ g2_11
+    g2_9 ≠ g2_12
+    g2_10 ≠ g2_13
+    g2_11 ≠ g2_14
+    g2_12 ≠ g2_15
+    g2_13 ≠ g2_16
+    g2_14 ≠ g2_17
+    g2_15 ≠ g2_18
+    g2_16 ≠ g2_19
+    g2_17 ≠ g2_20
+    g2_18 ≠ g2_21
+    g2_19 ≠ g2_22
+    g2_20 ≠ g2_23
+    g2_21 ≠ g2_0
+    g2_22 ≠ g2_1
+    g2_23 ≠ g2_2
+    g2_0 ≠ g2_5
+    g2_1 ≠ g2_6
+    g2_2 ≠ g2_7
+    g2_3 ≠ g2_8
+    g2_4 ≠ g2_9
+    g2_5 ≠ g2_10
+    g2_6 ≠ g2_11
+    g2_7 ≠ g2_12
+    g2_8 ≠ g2_13
+    g2_9 ≠ g2_14
+    g2_10 ≠ g2_15
+    g2_11 ≠ g2_16
+    g2_12 ≠ g2_17
+    g2_13 ≠ g2_18
+    g2_14 ≠ g2_19
+    g2_15 ≠ g2_20
+    g2_16 ≠ g2_21
+    g2_17 ≠ g2_22
+    g2_18 ≠ g2_23
+    g2_19 ≠ g2_0
+    g2_20 ≠ g2_1
+    g2_21 ≠ g2_2
+    g2_22 ≠ g2_3
+    g2_23 ≠ g2_4
+    g2_0 ≠ g2_7
+    g2_1 ≠ g2_8
+    g2_2 ≠ g2_9
+    g2_3 ≠ g2_10
+    g2_4 ≠ g2_11
+    g2_5 ≠ g2_12
+    g2_6 ≠ g2_13
+    g2_7 ≠ g2_14
+    g2_8 ≠ g2_15
+    g2_9 ≠ g2_16
+    g2_10 ≠ g2_17
+    g2_11 ≠ g2_18
+    g2_12 ≠ g2_19
+    g2_13 ≠ g2_20
+    g2_14 ≠ g2_21
+    g2_15 ≠ g2_22
+    g2_16 ≠ g2_23
+    g2_17 ≠ g2_0
+    g2_18 ≠ g2_1
+    g2_19 ≠ g2_2
+    g2_20 ≠ g2_3
+    g2_21 ≠ g2_4
+    g2_22 ≠ g2_5
+    g2_23 ≠ g2_6
 
-    -- ── graph 3 ───────────────────────────────────────────────
-    g3_0, g3_1, g3_2, g3_3, g3_4, g3_5, g3_6, g3_7 ∈ Color
+    -- ── graph 3 ─────────────────────────────────────
+    g3_0, g3_1, g3_2, g3_3, g3_4, g3_5, g3_6, g3_7, g3_8, g3_9, g3_10, g3_11, g3_12, g3_13, g3_14, g3_15, g3_16, g3_17, g3_18, g3_19, g3_20, g3_21, g3_22, g3_23 ∈ Color
     g3_0 ≠ g3_1
-    g3_0 ≠ g3_2
-    g3_1 ≠ g3_3
-    g3_2 ≠ g3_4
-    g3_3 ≠ g3_5
-    g3_4 ≠ g3_6
-    g3_5 ≠ g3_7
+    g3_1 ≠ g3_2
+    g3_2 ≠ g3_3
+    g3_3 ≠ g3_4
+    g3_4 ≠ g3_5
+    g3_5 ≠ g3_6
     g3_6 ≠ g3_7
-    g3_0 ≠ g3_4
-    g3_1 ≠ g3_5
-    g3_2 ≠ g3_6
-    g3_3 ≠ g3_7
-    g3_0 ≠ g3_7
-    g3_1 ≠ g3_6
+    g3_7 ≠ g3_8
+    g3_8 ≠ g3_9
+    g3_9 ≠ g3_10
+    g3_10 ≠ g3_11
+    g3_11 ≠ g3_12
+    g3_12 ≠ g3_13
+    g3_13 ≠ g3_14
+    g3_14 ≠ g3_15
+    g3_15 ≠ g3_16
+    g3_16 ≠ g3_17
+    g3_17 ≠ g3_18
+    g3_18 ≠ g3_19
+    g3_19 ≠ g3_20
+    g3_20 ≠ g3_21
+    g3_21 ≠ g3_22
+    g3_22 ≠ g3_23
+    g3_23 ≠ g3_0
+    g3_0 ≠ g3_3
+    g3_1 ≠ g3_4
     g3_2 ≠ g3_5
+    g3_3 ≠ g3_6
+    g3_4 ≠ g3_7
+    g3_5 ≠ g3_8
+    g3_6 ≠ g3_9
+    g3_7 ≠ g3_10
+    g3_8 ≠ g3_11
+    g3_9 ≠ g3_12
+    g3_10 ≠ g3_13
+    g3_11 ≠ g3_14
+    g3_12 ≠ g3_15
+    g3_13 ≠ g3_16
+    g3_14 ≠ g3_17
+    g3_15 ≠ g3_18
+    g3_16 ≠ g3_19
+    g3_17 ≠ g3_20
+    g3_18 ≠ g3_21
+    g3_19 ≠ g3_22
+    g3_20 ≠ g3_23
+    g3_21 ≠ g3_0
+    g3_22 ≠ g3_1
+    g3_23 ≠ g3_2
+    g3_0 ≠ g3_5
+    g3_1 ≠ g3_6
+    g3_2 ≠ g3_7
+    g3_3 ≠ g3_8
+    g3_4 ≠ g3_9
+    g3_5 ≠ g3_10
+    g3_6 ≠ g3_11
+    g3_7 ≠ g3_12
+    g3_8 ≠ g3_13
+    g3_9 ≠ g3_14
+    g3_10 ≠ g3_15
+    g3_11 ≠ g3_16
+    g3_12 ≠ g3_17
+    g3_13 ≠ g3_18
+    g3_14 ≠ g3_19
+    g3_15 ≠ g3_20
+    g3_16 ≠ g3_21
+    g3_17 ≠ g3_22
+    g3_18 ≠ g3_23
+    g3_19 ≠ g3_0
+    g3_20 ≠ g3_1
+    g3_21 ≠ g3_2
+    g3_22 ≠ g3_3
+    g3_23 ≠ g3_4
+    g3_0 ≠ g3_7
+    g3_1 ≠ g3_8
+    g3_2 ≠ g3_9
+    g3_3 ≠ g3_10
+    g3_4 ≠ g3_11
+    g3_5 ≠ g3_12
+    g3_6 ≠ g3_13
+    g3_7 ≠ g3_14
+    g3_8 ≠ g3_15
+    g3_9 ≠ g3_16
+    g3_10 ≠ g3_17
+    g3_11 ≠ g3_18
+    g3_12 ≠ g3_19
+    g3_13 ≠ g3_20
+    g3_14 ≠ g3_21
+    g3_15 ≠ g3_22
+    g3_16 ≠ g3_23
+    g3_17 ≠ g3_0
+    g3_18 ≠ g3_1
+    g3_19 ≠ g3_2
+    g3_20 ≠ g3_3
+    g3_21 ≠ g3_4
+    g3_22 ≠ g3_5
+    g3_23 ≠ g3_6
 
-    -- ── graph 4 ───────────────────────────────────────────────
-    g4_0, g4_1, g4_2, g4_3, g4_4, g4_5, g4_6, g4_7 ∈ Color
+    -- ── graph 4 ─────────────────────────────────────
+    g4_0, g4_1, g4_2, g4_3, g4_4, g4_5, g4_6, g4_7, g4_8, g4_9, g4_10, g4_11, g4_12, g4_13, g4_14, g4_15, g4_16, g4_17, g4_18, g4_19, g4_20, g4_21, g4_22, g4_23 ∈ Color
     g4_0 ≠ g4_1
-    g4_0 ≠ g4_2
-    g4_1 ≠ g4_3
-    g4_2 ≠ g4_4
-    g4_3 ≠ g4_5
-    g4_4 ≠ g4_6
-    g4_5 ≠ g4_7
+    g4_1 ≠ g4_2
+    g4_2 ≠ g4_3
+    g4_3 ≠ g4_4
+    g4_4 ≠ g4_5
+    g4_5 ≠ g4_6
     g4_6 ≠ g4_7
-    g4_0 ≠ g4_4
-    g4_1 ≠ g4_5
-    g4_2 ≠ g4_6
-    g4_3 ≠ g4_7
-    g4_0 ≠ g4_7
-    g4_1 ≠ g4_6
+    g4_7 ≠ g4_8
+    g4_8 ≠ g4_9
+    g4_9 ≠ g4_10
+    g4_10 ≠ g4_11
+    g4_11 ≠ g4_12
+    g4_12 ≠ g4_13
+    g4_13 ≠ g4_14
+    g4_14 ≠ g4_15
+    g4_15 ≠ g4_16
+    g4_16 ≠ g4_17
+    g4_17 ≠ g4_18
+    g4_18 ≠ g4_19
+    g4_19 ≠ g4_20
+    g4_20 ≠ g4_21
+    g4_21 ≠ g4_22
+    g4_22 ≠ g4_23
+    g4_23 ≠ g4_0
+    g4_0 ≠ g4_3
+    g4_1 ≠ g4_4
     g4_2 ≠ g4_5
+    g4_3 ≠ g4_6
+    g4_4 ≠ g4_7
+    g4_5 ≠ g4_8
+    g4_6 ≠ g4_9
+    g4_7 ≠ g4_10
+    g4_8 ≠ g4_11
+    g4_9 ≠ g4_12
+    g4_10 ≠ g4_13
+    g4_11 ≠ g4_14
+    g4_12 ≠ g4_15
+    g4_13 ≠ g4_16
+    g4_14 ≠ g4_17
+    g4_15 ≠ g4_18
+    g4_16 ≠ g4_19
+    g4_17 ≠ g4_20
+    g4_18 ≠ g4_21
+    g4_19 ≠ g4_22
+    g4_20 ≠ g4_23
+    g4_21 ≠ g4_0
+    g4_22 ≠ g4_1
+    g4_23 ≠ g4_2
+    g4_0 ≠ g4_5
+    g4_1 ≠ g4_6
+    g4_2 ≠ g4_7
+    g4_3 ≠ g4_8
+    g4_4 ≠ g4_9
+    g4_5 ≠ g4_10
+    g4_6 ≠ g4_11
+    g4_7 ≠ g4_12
+    g4_8 ≠ g4_13
+    g4_9 ≠ g4_14
+    g4_10 ≠ g4_15
+    g4_11 ≠ g4_16
+    g4_12 ≠ g4_17
+    g4_13 ≠ g4_18
+    g4_14 ≠ g4_19
+    g4_15 ≠ g4_20
+    g4_16 ≠ g4_21
+    g4_17 ≠ g4_22
+    g4_18 ≠ g4_23
+    g4_19 ≠ g4_0
+    g4_20 ≠ g4_1
+    g4_21 ≠ g4_2
+    g4_22 ≠ g4_3
+    g4_23 ≠ g4_4
+    g4_0 ≠ g4_7
+    g4_1 ≠ g4_8
+    g4_2 ≠ g4_9
+    g4_3 ≠ g4_10
+    g4_4 ≠ g4_11
+    g4_5 ≠ g4_12
+    g4_6 ≠ g4_13
+    g4_7 ≠ g4_14
+    g4_8 ≠ g4_15
+    g4_9 ≠ g4_16
+    g4_10 ≠ g4_17
+    g4_11 ≠ g4_18
+    g4_12 ≠ g4_19
+    g4_13 ≠ g4_20
+    g4_14 ≠ g4_21
+    g4_15 ≠ g4_22
+    g4_16 ≠ g4_23
+    g4_17 ≠ g4_0
+    g4_18 ≠ g4_1
+    g4_19 ≠ g4_2
+    g4_20 ≠ g4_3
+    g4_21 ≠ g4_4
+    g4_22 ≠ g4_5
+    g4_23 ≠ g4_6
 
-    -- ── graph 5 ───────────────────────────────────────────────
-    g5_0, g5_1, g5_2, g5_3, g5_4, g5_5, g5_6, g5_7 ∈ Color
+    -- ── graph 5 ─────────────────────────────────────
+    g5_0, g5_1, g5_2, g5_3, g5_4, g5_5, g5_6, g5_7, g5_8, g5_9, g5_10, g5_11, g5_12, g5_13, g5_14, g5_15, g5_16, g5_17, g5_18, g5_19, g5_20, g5_21, g5_22, g5_23 ∈ Color
     g5_0 ≠ g5_1
-    g5_0 ≠ g5_2
-    g5_1 ≠ g5_3
-    g5_2 ≠ g5_4
-    g5_3 ≠ g5_5
-    g5_4 ≠ g5_6
-    g5_5 ≠ g5_7
+    g5_1 ≠ g5_2
+    g5_2 ≠ g5_3
+    g5_3 ≠ g5_4
+    g5_4 ≠ g5_5
+    g5_5 ≠ g5_6
     g5_6 ≠ g5_7
-    g5_0 ≠ g5_4
-    g5_1 ≠ g5_5
-    g5_2 ≠ g5_6
-    g5_3 ≠ g5_7
-    g5_0 ≠ g5_7
-    g5_1 ≠ g5_6
+    g5_7 ≠ g5_8
+    g5_8 ≠ g5_9
+    g5_9 ≠ g5_10
+    g5_10 ≠ g5_11
+    g5_11 ≠ g5_12
+    g5_12 ≠ g5_13
+    g5_13 ≠ g5_14
+    g5_14 ≠ g5_15
+    g5_15 ≠ g5_16
+    g5_16 ≠ g5_17
+    g5_17 ≠ g5_18
+    g5_18 ≠ g5_19
+    g5_19 ≠ g5_20
+    g5_20 ≠ g5_21
+    g5_21 ≠ g5_22
+    g5_22 ≠ g5_23
+    g5_23 ≠ g5_0
+    g5_0 ≠ g5_3
+    g5_1 ≠ g5_4
     g5_2 ≠ g5_5
+    g5_3 ≠ g5_6
+    g5_4 ≠ g5_7
+    g5_5 ≠ g5_8
+    g5_6 ≠ g5_9
+    g5_7 ≠ g5_10
+    g5_8 ≠ g5_11
+    g5_9 ≠ g5_12
+    g5_10 ≠ g5_13
+    g5_11 ≠ g5_14
+    g5_12 ≠ g5_15
+    g5_13 ≠ g5_16
+    g5_14 ≠ g5_17
+    g5_15 ≠ g5_18
+    g5_16 ≠ g5_19
+    g5_17 ≠ g5_20
+    g5_18 ≠ g5_21
+    g5_19 ≠ g5_22
+    g5_20 ≠ g5_23
+    g5_21 ≠ g5_0
+    g5_22 ≠ g5_1
+    g5_23 ≠ g5_2
+    g5_0 ≠ g5_5
+    g5_1 ≠ g5_6
+    g5_2 ≠ g5_7
+    g5_3 ≠ g5_8
+    g5_4 ≠ g5_9
+    g5_5 ≠ g5_10
+    g5_6 ≠ g5_11
+    g5_7 ≠ g5_12
+    g5_8 ≠ g5_13
+    g5_9 ≠ g5_14
+    g5_10 ≠ g5_15
+    g5_11 ≠ g5_16
+    g5_12 ≠ g5_17
+    g5_13 ≠ g5_18
+    g5_14 ≠ g5_19
+    g5_15 ≠ g5_20
+    g5_16 ≠ g5_21
+    g5_17 ≠ g5_22
+    g5_18 ≠ g5_23
+    g5_19 ≠ g5_0
+    g5_20 ≠ g5_1
+    g5_21 ≠ g5_2
+    g5_22 ≠ g5_3
+    g5_23 ≠ g5_4
+    g5_0 ≠ g5_7
+    g5_1 ≠ g5_8
+    g5_2 ≠ g5_9
+    g5_3 ≠ g5_10
+    g5_4 ≠ g5_11
+    g5_5 ≠ g5_12
+    g5_6 ≠ g5_13
+    g5_7 ≠ g5_14
+    g5_8 ≠ g5_15
+    g5_9 ≠ g5_16
+    g5_10 ≠ g5_17
+    g5_11 ≠ g5_18
+    g5_12 ≠ g5_19
+    g5_13 ≠ g5_20
+    g5_14 ≠ g5_21
+    g5_15 ≠ g5_22
+    g5_16 ≠ g5_23
+    g5_17 ≠ g5_0
+    g5_18 ≠ g5_1
+    g5_19 ≠ g5_2
+    g5_20 ≠ g5_3
+    g5_21 ≠ g5_4
+    g5_22 ≠ g5_5
+    g5_23 ≠ g5_6
 
-    -- ── graph 6 ───────────────────────────────────────────────
-    g6_0, g6_1, g6_2, g6_3, g6_4, g6_5, g6_6, g6_7 ∈ Color
+    -- ── graph 6 ─────────────────────────────────────
+    g6_0, g6_1, g6_2, g6_3, g6_4, g6_5, g6_6, g6_7, g6_8, g6_9, g6_10, g6_11, g6_12, g6_13, g6_14, g6_15, g6_16, g6_17, g6_18, g6_19, g6_20, g6_21, g6_22, g6_23 ∈ Color
     g6_0 ≠ g6_1
-    g6_0 ≠ g6_2
-    g6_1 ≠ g6_3
-    g6_2 ≠ g6_4
-    g6_3 ≠ g6_5
-    g6_4 ≠ g6_6
-    g6_5 ≠ g6_7
+    g6_1 ≠ g6_2
+    g6_2 ≠ g6_3
+    g6_3 ≠ g6_4
+    g6_4 ≠ g6_5
+    g6_5 ≠ g6_6
     g6_6 ≠ g6_7
-    g6_0 ≠ g6_4
-    g6_1 ≠ g6_5
-    g6_2 ≠ g6_6
-    g6_3 ≠ g6_7
-    g6_0 ≠ g6_7
-    g6_1 ≠ g6_6
+    g6_7 ≠ g6_8
+    g6_8 ≠ g6_9
+    g6_9 ≠ g6_10
+    g6_10 ≠ g6_11
+    g6_11 ≠ g6_12
+    g6_12 ≠ g6_13
+    g6_13 ≠ g6_14
+    g6_14 ≠ g6_15
+    g6_15 ≠ g6_16
+    g6_16 ≠ g6_17
+    g6_17 ≠ g6_18
+    g6_18 ≠ g6_19
+    g6_19 ≠ g6_20
+    g6_20 ≠ g6_21
+    g6_21 ≠ g6_22
+    g6_22 ≠ g6_23
+    g6_23 ≠ g6_0
+    g6_0 ≠ g6_3
+    g6_1 ≠ g6_4
     g6_2 ≠ g6_5
+    g6_3 ≠ g6_6
+    g6_4 ≠ g6_7
+    g6_5 ≠ g6_8
+    g6_6 ≠ g6_9
+    g6_7 ≠ g6_10
+    g6_8 ≠ g6_11
+    g6_9 ≠ g6_12
+    g6_10 ≠ g6_13
+    g6_11 ≠ g6_14
+    g6_12 ≠ g6_15
+    g6_13 ≠ g6_16
+    g6_14 ≠ g6_17
+    g6_15 ≠ g6_18
+    g6_16 ≠ g6_19
+    g6_17 ≠ g6_20
+    g6_18 ≠ g6_21
+    g6_19 ≠ g6_22
+    g6_20 ≠ g6_23
+    g6_21 ≠ g6_0
+    g6_22 ≠ g6_1
+    g6_23 ≠ g6_2
+    g6_0 ≠ g6_5
+    g6_1 ≠ g6_6
+    g6_2 ≠ g6_7
+    g6_3 ≠ g6_8
+    g6_4 ≠ g6_9
+    g6_5 ≠ g6_10
+    g6_6 ≠ g6_11
+    g6_7 ≠ g6_12
+    g6_8 ≠ g6_13
+    g6_9 ≠ g6_14
+    g6_10 ≠ g6_15
+    g6_11 ≠ g6_16
+    g6_12 ≠ g6_17
+    g6_13 ≠ g6_18
+    g6_14 ≠ g6_19
+    g6_15 ≠ g6_20
+    g6_16 ≠ g6_21
+    g6_17 ≠ g6_22
+    g6_18 ≠ g6_23
+    g6_19 ≠ g6_0
+    g6_20 ≠ g6_1
+    g6_21 ≠ g6_2
+    g6_22 ≠ g6_3
+    g6_23 ≠ g6_4
+    g6_0 ≠ g6_7
+    g6_1 ≠ g6_8
+    g6_2 ≠ g6_9
+    g6_3 ≠ g6_10
+    g6_4 ≠ g6_11
+    g6_5 ≠ g6_12
+    g6_6 ≠ g6_13
+    g6_7 ≠ g6_14
+    g6_8 ≠ g6_15
+    g6_9 ≠ g6_16
+    g6_10 ≠ g6_17
+    g6_11 ≠ g6_18
+    g6_12 ≠ g6_19
+    g6_13 ≠ g6_20
+    g6_14 ≠ g6_21
+    g6_15 ≠ g6_22
+    g6_16 ≠ g6_23
+    g6_17 ≠ g6_0
+    g6_18 ≠ g6_1
+    g6_19 ≠ g6_2
+    g6_20 ≠ g6_3
+    g6_21 ≠ g6_4
+    g6_22 ≠ g6_5
+    g6_23 ≠ g6_6
 
     effects = match state
-        Searching ⇒ ⟨Println("solved 6 independent graph 3-colorings")⟩
-        Done      ⇒ ⟨Exit(0)⟩
+        Searching ⇒ ⟨Println("step")⟩
+        Done      ⇒ ⟨Println("solved 6 independent graph 3-colorings"), Exit(0)⟩
 
-claim sat_each_graph_is_3_colorable
-    -- Each graph (8 nodes, 15 edges) is small enough that a
-    -- 3-coloring exists. We verify graph 1; the others have the
-    -- same shape.
-    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7 ∈ Color
+claim sat_one_graph_is_3_colorable
+    g1_0, g1_1, g1_2, g1_3, g1_4, g1_5, g1_6, g1_7, g1_8, g1_9, g1_10, g1_11, g1_12, g1_13, g1_14, g1_15, g1_16, g1_17, g1_18, g1_19, g1_20, g1_21, g1_22, g1_23 ∈ Color
     g1_0 ≠ g1_1
-    g1_0 ≠ g1_2
-    g1_1 ≠ g1_3
-    g1_2 ≠ g1_4
-    g1_3 ≠ g1_5
-    g1_4 ≠ g1_6
-    g1_5 ≠ g1_7
+    g1_1 ≠ g1_2
+    g1_2 ≠ g1_3
+    g1_3 ≠ g1_4
+    g1_4 ≠ g1_5
+    g1_5 ≠ g1_6
     g1_6 ≠ g1_7
-    g1_0 ≠ g1_4
-    g1_1 ≠ g1_5
-    g1_2 ≠ g1_6
-    g1_3 ≠ g1_7
-    g1_0 ≠ g1_7
-    g1_1 ≠ g1_6
+    g1_7 ≠ g1_8
+    g1_8 ≠ g1_9
+    g1_9 ≠ g1_10
+    g1_10 ≠ g1_11
+    g1_11 ≠ g1_12
+    g1_12 ≠ g1_13
+    g1_13 ≠ g1_14
+    g1_14 ≠ g1_15
+    g1_15 ≠ g1_16
+    g1_16 ≠ g1_17
+    g1_17 ≠ g1_18
+    g1_18 ≠ g1_19
+    g1_19 ≠ g1_20
+    g1_20 ≠ g1_21
+    g1_21 ≠ g1_22
+    g1_22 ≠ g1_23
+    g1_23 ≠ g1_0
+    g1_0 ≠ g1_3
+    g1_1 ≠ g1_4
     g1_2 ≠ g1_5
+    g1_3 ≠ g1_6
+    g1_4 ≠ g1_7
+    g1_5 ≠ g1_8
+    g1_6 ≠ g1_9
+    g1_7 ≠ g1_10
+    g1_8 ≠ g1_11
+    g1_9 ≠ g1_12
+    g1_10 ≠ g1_13
+    g1_11 ≠ g1_14
+    g1_12 ≠ g1_15
+    g1_13 ≠ g1_16
+    g1_14 ≠ g1_17
+    g1_15 ≠ g1_18
+    g1_16 ≠ g1_19
+    g1_17 ≠ g1_20
+    g1_18 ≠ g1_21
+    g1_19 ≠ g1_22
+    g1_20 ≠ g1_23
+    g1_21 ≠ g1_0
+    g1_22 ≠ g1_1
+    g1_23 ≠ g1_2
+    g1_0 ≠ g1_5
+    g1_1 ≠ g1_6
+    g1_2 ≠ g1_7
+    g1_3 ≠ g1_8
+    g1_4 ≠ g1_9
+    g1_5 ≠ g1_10
+    g1_6 ≠ g1_11
+    g1_7 ≠ g1_12
+    g1_8 ≠ g1_13
+    g1_9 ≠ g1_14
+    g1_10 ≠ g1_15
+    g1_11 ≠ g1_16
+    g1_12 ≠ g1_17
+    g1_13 ≠ g1_18
+    g1_14 ≠ g1_19
+    g1_15 ≠ g1_20
+    g1_16 ≠ g1_21
+    g1_17 ≠ g1_22
+    g1_18 ≠ g1_23
+    g1_19 ≠ g1_0
+    g1_20 ≠ g1_1
+    g1_21 ≠ g1_2
+    g1_22 ≠ g1_3
+    g1_23 ≠ g1_4
+    g1_0 ≠ g1_7
+    g1_1 ≠ g1_8
+    g1_2 ≠ g1_9
+    g1_3 ≠ g1_10
+    g1_4 ≠ g1_11
+    g1_5 ≠ g1_12
+    g1_6 ≠ g1_13
+    g1_7 ≠ g1_14
+    g1_8 ≠ g1_15
+    g1_9 ≠ g1_16
+    g1_10 ≠ g1_17
+    g1_11 ≠ g1_18
+    g1_12 ≠ g1_19
+    g1_13 ≠ g1_20
+    g1_14 ≠ g1_21
+    g1_15 ≠ g1_22
+    g1_16 ≠ g1_23
+    g1_17 ≠ g1_0
+    g1_18 ≠ g1_1
+    g1_19 ≠ g1_2
+    g1_20 ≠ g1_3
+    g1_21 ≠ g1_4
+    g1_22 ≠ g1_5
+    g1_23 ≠ g1_6

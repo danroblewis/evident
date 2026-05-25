@@ -264,16 +264,16 @@ const EXPECTATIONS: &[DemoExpect] = &[
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // Six disjoint graph-3-coloring problems with enum-typed
-        // cells. Session E's parallel solving silently bypasses
-        // enum/record-typed components (DatatypeSort is bound to the
-        // source context), so this runs sequentially today. After
-        // session S lands cross-context datatype replay, this same
-        // demo should fan out across worker threads.
+        // Six disjoint dense 24-node 3-colorings (~96 edges each) with
+        // enum-typed cells. Post-session-S, the enum components
+        // parallelize: 1.9× wall / 3.7× per-tick steady vs PARALLEL_SLOW=0
+        // (numbers in the demo's docstring). The FSM loops 20 ticks so
+        // per-tick parallel savings amortize the one-shot enum-context
+        // replay cost (~15 ms at tick 0).
         name: "test_28_parallel_enum_coloring", exit: 0,
-        must_lines: &["solved 6 independent graph 3-colorings"],
+        must_lines: &["step", "solved 6 independent graph 3-colorings"],
         forbid_exact_lines: &[],
-        max_steps: 10, tick_ms: 0, stdin: None,
+        max_steps: 30, tick_ms: 0, stdin: None,
     },
     DemoExpect {
         // Heavy-compute JIT showcase: 90 layers of branch-dependent
