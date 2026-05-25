@@ -50,6 +50,8 @@ fn print_help() {
     eprintln!("                             cranelift (default) — translate the Z3 AST to native code");
     eprintln!("                             symbolic            — genetic-programming search for a");
     eprintln!("                                                   closed-form closure matching the IO");
+    eprintln!("                             llm                 — LLM code-gen (needs ANTHROPIC_API_KEY;");
+    eprintln!("                                                   silently falls back without one)");
     eprintln!("                           (also via EVIDENT_FUNCTIONIZER=NAME, or a");
     eprintln!("                            `-- functionizer: NAME` marker line in the program)");
     eprintln!();
@@ -158,7 +160,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 match args.get(i) {
                     Some(v) => functionizer_flag = Some(v.clone()),
                     None => {
-                        eprintln!("effect-run: --functionizer needs a NAME (cranelift | symbolic)");
+                        eprintln!("effect-run: --functionizer needs a NAME (cranelift | symbolic | llm)");
                         return ExitCode::from(2);
                     }
                 }
@@ -237,10 +239,30 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             }
             EvidentRuntime::with_functionizer(Box::new(SymbolicFunctionizer::new()))
         }
+        Some("llm") => {
+            // LLM code-gen needs ANTHROPIC_API_KEY. Without one, the
+            // generator would decline on every component (no network
+            // call), so we print a notice and use the default
+            // Cranelift strategy — JIT for what it can compile, Z3
+            // slow path for what it can't.
+            let have_key = std::env::var("ANTHROPIC_API_KEY").ok()
+                .filter(|k| !k.is_empty()).is_some();
+            if have_key {
+                eprintln!("[fz] llm functionizer active (ANTHROPIC_API_KEY found); \
+                           components Cranelift can't compile are sent to the LLM, \
+                           validated against Z3, and cached.");
+                EvidentRuntime::with_functionizer(Box::new(
+                    evident_runtime::functionize::llm::LlmFunctionizer::new()))
+            } else {
+                eprintln!("[fz] llm functionizer requires ANTHROPIC_API_KEY, skipping — \
+                           falling back to the Cranelift JIT + Z3 slow path.");
+                EvidentRuntime::new()
+            }
+        }
         Some("cranelift") | None => EvidentRuntime::new(),
         Some(other) => {
             eprintln!("effect-run: unknown functionizer {other:?} \
-                       (expected: cranelift | symbolic)");
+                       (expected: cranelift | symbolic | llm)");
             return ExitCode::from(2);
         }
     };
