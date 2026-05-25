@@ -24,10 +24,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 use z3::ast::{Array, Ast, Bool, Dynamic, Int};
-use z3::{AstKind, Context, Goal, Sort, Tactic};
+use z3::{AstKind, Context, Goal, Sort, SortKind, Tactic};
 use z3_sys::DeclKind;
 
-use crate::core::{DatatypeRegistry, FieldKind};
+use crate::core::{DatatypeRegistry, FieldKind, Value};
 
 // Re-export the program shape so existing `crate::core::Z3Program`,
 // `Z3Step`, `GuardedBody`, `GuardedBranch` paths continue to resolve.
@@ -402,8 +402,267 @@ pub fn extract_program_partial<'ctx>(
         .filter(|v| !missing.contains(v))
         .cloned()
         .collect();
-    let program = extract_program_inner(&covered, scalar_assign, seq_assign, guarded_assign, checks, predicates)?;
+    let mut program = extract_program_inner(&covered, scalar_assign, seq_assign, guarded_assign, checks, predicates)?;
+    let mut missing = missing;
+    // Opt-in sampler recovery (EVIDENT_SATISFIER): turn range / enum /
+    // finite-set–bounded *missing* outputs into `Sample*` steps so the
+    // SatisfierFunctionizer can draw a satisfying value. Gated on the
+    // env var so the default (Cranelift) path is byte-identical to
+    // before — a `Sample*` step would make Cranelift refuse, and the
+    // var would route to the slow Z3 solve exactly as it does today.
+    if samplers_enabled() {
+        recover_samplers(&mut program, &mut missing, assertions);
+    }
     Some((program, missing))
+}
+
+/// Whether sampler recovery is opted-in (the SatisfierFunctionizer is
+/// the active strategy). Keyed on the same env var that
+/// `functionize::default` / `commands::effect_run` consult to select
+/// the SatisfierFunctionizer, so the extractor and the functionizer
+/// always agree.
+fn samplers_enabled() -> bool {
+    std::env::var("EVIDENT_SATISFIER").is_ok()
+}
+
+// ── Sampler recovery ─────────────────────────────────────────────
+//
+// A "sampler-shaped" output is one with no defining equation but a
+// finite domain implied by its constraints: a closed integer range,
+// an enum type, or a literal finite set. The whole-claim Z3 solve
+// would *pick* such a value; the SatisfierFunctionizer instead draws
+// it deterministically (seeded PRNG). `recover_samplers` recognizes
+// these shapes and replaces the "unbound output → refuse" outcome
+// with a `Sample*` step.
+
+/// One side of an integer bound predicate, normalized so the bound
+/// always reads `var <relation> literal`.
+enum Bound { Ge(i64), Gt(i64), Le(i64), Lt(i64) }
+
+/// For each var still in `missing`, try to recognize a sampler shape
+/// (range / enum / finite set) and emit a `Sample*` step covering it.
+/// Recognized vars are removed from `missing`; any predicate the
+/// sampler subsumes (the range bounds, the set's `or`-of-equalities)
+/// is removed from `program.predicates` so a downstream functionizer
+/// sees no leftover constraint on the sampled var.
+///
+/// Conservative by construction: a var whose constraints don't form
+/// EXACTLY one recognized shape (e.g. a half-open range, a free
+/// inequality `var < y`, a `distinct`, or a mix) is left in `missing`
+/// — the claim then falls through to the slow Z3 solve. This is the
+/// "mixed with a deferred pattern → refuse" rule from the v1 scope.
+pub fn recover_samplers<'ctx>(
+    program: &mut Z3Program<'ctx>,
+    missing: &mut Vec<String>,
+    assertions: &[Bool<'ctx>],
+) {
+    let trace = std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok();
+    let mut sample_steps: Vec<Z3Step<'ctx>> = Vec::new();
+    let mut consumed_pred: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+    for var in missing.clone() {
+        // Predicate indices that mention `var` anywhere.
+        let mentioning: Vec<usize> = program.predicates.iter().enumerate()
+            .filter(|(_, p)| mentions_name(&Dynamic::from_ast(*p), &var))
+            .map(|(i, _)| i)
+            .collect();
+        // A `var` that appears in a consistency check is part of an
+        // equality relation, not a clean sampler — refuse.
+        let in_check = program.checks.iter()
+            .any(|(l, r)| mentions_name(l, &var) || mentions_name(r, &var));
+        if in_check { continue; }
+
+        // ── Set: a lone `(or (= var c0) (= var c1) …)` predicate ──
+        if mentioning.len() == 1 {
+            if let Some(candidates) = match_set_or(&program.predicates[mentioning[0]], &var) {
+                if !candidates.is_empty() {
+                    if trace {
+                        eprintln!("[fz/z3] sampler: {var:?} ∈ finite set \
+                                  ({} candidates)", candidates.len());
+                    }
+                    sample_steps.push(Z3Step::SampleSet { var: var.clone(), candidates });
+                    consumed_pred.insert(mentioning[0]);
+                    missing.retain(|m| m != &var);
+                    continue;
+                }
+            }
+        }
+
+        // ── Range: every mentioning predicate is an integer bound ──
+        if !mentioning.is_empty() {
+            let mut lo: Option<i64> = None;
+            let mut hi: Option<i64> = None;
+            let mut all_bounds = true;
+            for &i in &mentioning {
+                match match_bound(&program.predicates[i], &var) {
+                    Some(Bound::Ge(v)) => lo = Some(lo.map_or(v, |c| c.max(v))),
+                    Some(Bound::Gt(v)) => lo = Some(lo.map_or(v + 1, |c| c.max(v + 1))),
+                    Some(Bound::Le(v)) => hi = Some(hi.map_or(v, |c| c.min(v))),
+                    Some(Bound::Lt(v)) => hi = Some(hi.map_or(v - 1, |c| c.min(v - 1))),
+                    None => { all_bounds = false; break; }
+                }
+            }
+            if all_bounds {
+                if let (Some(lo), Some(hi)) = (lo, hi) {
+                    if lo <= hi {
+                        if trace { eprintln!("[fz/z3] sampler: {var:?} ∈ [{lo}, {hi}]"); }
+                        sample_steps.push(Z3Step::SampleRange { var: var.clone(), lo, hi });
+                        for &i in &mentioning { consumed_pred.insert(i); }
+                        missing.retain(|m| m != &var);
+                        continue;
+                    }
+                }
+            }
+            // Has predicates but not a closed integer range → refuse.
+            continue;
+        }
+
+        // ── Enum: no predicate/check touches var; datatype sort ────
+        if let Some(type_name) = enum_sort_of(assertions, &var) {
+            if trace { eprintln!("[fz/z3] sampler: {var:?} ∈ enum {type_name}"); }
+            sample_steps.push(Z3Step::SampleEnum { var: var.clone(), type_name });
+            missing.retain(|m| m != &var);
+            continue;
+        }
+    }
+
+    if sample_steps.is_empty() { return; }
+    // Drop subsumed predicates.
+    let kept: Vec<Bool<'ctx>> = std::mem::take(&mut program.predicates)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, p)| if consumed_pred.contains(&i) { None } else { Some(p) })
+        .collect();
+    program.predicates = kept;
+    // Sample steps have no inputs → they sort to the front; the
+    // existing (already topo-ordered) steps that consume the sampled
+    // var as an input follow.
+    let mut rest = std::mem::take(&mut program.steps);
+    sample_steps.append(&mut rest);
+    program.steps = sample_steps;
+}
+
+/// Like `extract_program` but always runs sampler recovery (no env
+/// gate) and requires every output to end up covered (by a normal
+/// step OR a `Sample*` step). Returns `None` if any output is still
+/// unbound after recovery. This is the direct entry point used by
+/// tests + any caller that has already decided to sample.
+pub fn extract_program_with_samplers<'ctx>(
+    assertions: &[Bool<'ctx>],
+    outputs: &[String],
+) -> Option<Z3Program<'ctx>> {
+    let (mut program, mut missing) = extract_program_partial(assertions, outputs)?;
+    // `extract_program_partial` already recovered if EVIDENT_SATISFIER
+    // is set; calling again is a safe no-op (recovered vars are no
+    // longer in `missing`). When the env is unset, this is where the
+    // recovery actually happens.
+    recover_samplers(&mut program, &mut missing, assertions);
+    if !missing.is_empty() {
+        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+            eprintln!("[fz/z3] extract_with_samplers: outputs still unbound: {missing:?}");
+        }
+        return None;
+    }
+    Some(program)
+}
+
+/// Match an integer bound predicate mentioning `var` as a direct
+/// operand: `(op var lit)` or `(op lit var)`, where `op ∈ {≥,>,≤,<}`.
+/// Returns the bound normalized to `var <relation> literal`. Anything
+/// where `var` is nested (e.g. `(>= (+ var 1) 0)`) returns `None`.
+fn match_bound<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Bound> {
+    if pred.kind() != AstKind::App { return None; }
+    let decl = pred.safe_decl().ok()?;
+    let kind = decl.kind();
+    let children = pred.children();
+    if children.len() != 2 { return None; }
+    // var on the left:  (op var lit)
+    if ast_app_name(&children[0]).as_deref() == Some(var) {
+        let lit = numeral_to_i64(&children[1])?;
+        return match kind {
+            DeclKind::GE => Some(Bound::Ge(lit)),
+            DeclKind::GT => Some(Bound::Gt(lit)),
+            DeclKind::LE => Some(Bound::Le(lit)),
+            DeclKind::LT => Some(Bound::Lt(lit)),
+            _ => None,
+        };
+    }
+    // var on the right:  (op lit var)  → flip the relation
+    if ast_app_name(&children[1]).as_deref() == Some(var) {
+        let lit = numeral_to_i64(&children[0])?;
+        return match kind {
+            DeclKind::GE => Some(Bound::Le(lit)),  // lit ≥ var ⇔ var ≤ lit
+            DeclKind::GT => Some(Bound::Lt(lit)),  // lit > var ⇔ var < lit
+            DeclKind::LE => Some(Bound::Ge(lit)),  // lit ≤ var ⇔ var ≥ lit
+            DeclKind::LT => Some(Bound::Gt(lit)),  // lit < var ⇔ var > lit
+            _ => None,
+        };
+    }
+    None
+}
+
+/// Match a finite-set membership predicate `(or (= var c0) (= var c1)
+/// …)` and return the candidate literal values. Every disjunct must
+/// equate `var` to an Int / Bool literal; otherwise `None`.
+fn match_set_or<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Vec<Value>> {
+    if pred.kind() != AstKind::App { return None; }
+    let decl = pred.safe_decl().ok()?;
+    if decl.kind() != DeclKind::OR { return None; }
+    let children = pred.children();
+    if children.is_empty() { return None; }
+    let mut candidates = Vec::with_capacity(children.len());
+    for c in &children {
+        let cb = c.as_bool()?;
+        let (l, r) = split_equality(&cb)?;
+        let lit = if ast_app_name(&l).as_deref() == Some(var) {
+            &r
+        } else if ast_app_name(&r).as_deref() == Some(var) {
+            &l
+        } else {
+            return None;
+        };
+        candidates.push(literal_to_value(lit)?);
+    }
+    Some(candidates)
+}
+
+/// Convert a Z3 literal Dynamic to a `Value` (Int / Bool). Returns
+/// `None` for non-literals or unsupported sorts.
+fn literal_to_value<'ctx>(d: &Dynamic<'ctx>) -> Option<Value> {
+    if let Some(i) = numeral_to_i64(d) { return Some(Value::Int(i)); }
+    if let Some(b) = d.as_bool() {
+        if let Some(bv) = b.as_bool() { return Some(Value::Bool(bv)); }
+    }
+    None
+}
+
+/// If `var` appears in `assertions` and its Z3 sort is a Datatype
+/// (an enum), return the sort's name. `None` for primitive-sorted
+/// vars or vars that don't appear at all.
+fn enum_sort_of<'ctx>(assertions: &[Bool<'ctx>], var: &str) -> Option<String> {
+    for a in assertions {
+        if let Some(node) = find_var_node(&Dynamic::from_ast(a), var) {
+            let sort = node.get_sort();
+            if sort.kind() == SortKind::Datatype {
+                return Some(format!("{sort}"));
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Find a 0-arity App named `var` anywhere in `d`.
+fn find_var_node<'ctx>(d: &Dynamic<'ctx>, var: &str) -> Option<Dynamic<'ctx>> {
+    if d.kind() == AstKind::App && d.num_children() == 0 {
+        if let Ok(decl) = d.safe_decl() {
+            if decl.name() == var { return Some(d.clone()); }
+        }
+    }
+    for c in d.children() {
+        if let Some(n) = find_var_node(&c, var) { return Some(n); }
+    }
+    None
 }
 
 // ── Record-element Seq recomposition ─────────────────────────────
@@ -710,6 +969,11 @@ fn step_exprs<'a>(step: &'a Z3Step<'static>) -> Vec<&'a Dynamic<'static>> {
             v
         }
         Z3Step::PreBaked { .. } => vec![],
+        // Sampler steps draw a value from nothing — no sub-exprs to
+        // depend on. They have no inputs, so they sort to the front.
+        Z3Step::SampleRange { .. }
+        | Z3Step::SampleEnum { .. }
+        | Z3Step::SampleSet { .. } => vec![],
     }
 }
 

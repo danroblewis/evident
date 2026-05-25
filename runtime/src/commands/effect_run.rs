@@ -52,6 +52,8 @@ fn print_help() {
     eprintln!("                                                   closed-form closure matching the IO");
     eprintln!("                             llm                 — LLM code-gen (needs ANTHROPIC_API_KEY;");
     eprintln!("                                                   silently falls back without one)");
+    eprintln!("                             satisfier           — sample partially-constrained vars");
+    eprintln!("                                                   (sets EVIDENT_SATISFIER=1)");
     eprintln!("                           (also via EVIDENT_FUNCTIONIZER=NAME, or a");
     eprintln!("                            `-- functionizer: NAME` marker line in the program)");
     eprintln!();
@@ -160,7 +162,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 match args.get(i) {
                     Some(v) => functionizer_flag = Some(v.clone()),
                     None => {
-                        eprintln!("effect-run: --functionizer needs a NAME (cranelift | symbolic | llm)");
+                        eprintln!("effect-run: --functionizer needs a NAME (cranelift | symbolic | llm | satisfier)");
                         return ExitCode::from(2);
                     }
                 }
@@ -259,10 +261,19 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 EvidentRuntime::new()
             }
         }
+        Some("satisfier") => {
+            // SatisfierFunctionizer samples values for vars that are
+            // bounded but not fully defined. Sampler emission in the
+            // extractor is gated by EVIDENT_SATISFIER — set it here
+            // so the two stay in lockstep.
+            std::env::set_var("EVIDENT_SATISFIER", "1");
+            EvidentRuntime::with_functionizer(Box::new(
+                evident_runtime::functionize::satisfier::SatisfierFunctionizer::new()))
+        }
         Some("cranelift") | None => EvidentRuntime::new(),
         Some(other) => {
             eprintln!("effect-run: unknown functionizer {other:?} \
-                       (expected: cranelift | symbolic | llm)");
+                       (expected: cranelift | symbolic | llm | satisfier)");
             return ExitCode::from(2);
         }
     };

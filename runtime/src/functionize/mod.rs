@@ -16,6 +16,7 @@
 pub mod cranelift;
 pub mod symbolic;
 pub mod llm;
+pub mod satisfier;
 // GLSL fragment-shader functionizer — macOS only (headless CGL context).
 // Opt-in; the default factory below never returns it.
 #[cfg(target_os = "macos")]

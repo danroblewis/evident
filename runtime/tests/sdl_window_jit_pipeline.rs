@@ -189,6 +189,8 @@ fn stage_3_extract_program() {
                 eprintln!("  step {i}: Guarded {var} ({} branches)", branches.len()),
             Z3Step::PreBaked { var, value } =>
                 eprintln!("  step {i}: PreBaked {var} = {value:?}"),
+            other =>
+                eprintln!("  step {i}: Sample  {}", other.var()),
         }
     }
 }
