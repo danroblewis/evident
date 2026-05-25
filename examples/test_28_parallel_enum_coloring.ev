@@ -20,13 +20,18 @@
 -- A/B and you should see wall-clock drop ~3-4× under the default
 -- vs `EVIDENT_PARALLEL_SLOW=0`.
 --
--- BENCHMARK (Apple M4, median of 5 runs):
---   Pre-S, default              : 5.40 ms (sequential because enum-typed)
---   Pre-S, PARALLEL_SLOW=0      : 5.65 ms (~5% delta = noise → parallel
---                                 path bypassed for enum vars, confirmed)
---   Post-S, default             : ? (target: ~1.5-2 ms ≈ 3× faster)
---   Post-S, PARALLEL_SLOW=0     : ? (unchanged, ~5.6 ms)
--- Update the post-S row when session S merges.
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh, medians):
+--   Mode                          | wall    | tick0  | steady/tick
+--   ------------------------------+---------+--------+------------
+--   Pre-S, default                | 5.71 ms | 3.71ms |  1.76 ms
+--   Pre-S, EVIDENT_PARALLEL_SLOW=0| 5.21 ms | 3.48ms |  1.59 ms
+--   Post-S, default               | ?       | ?      |  ?
+--   Post-S, EVIDENT_PARALLEL_SLOW=0| ?      | ?      |  ?
+--
+-- → 5-10% delta today = noise; parallel path bypassed for enum vars,
+-- confirmed. Update the post-S rows when session S merges (target:
+-- ~3× faster on default vs PARALLEL_SLOW=0 once cross-context
+-- datatype replay lands).
 --
 -- The graphs themselves: each is a Petersen-graph-style ~8-node 3-
 -- coloring (15+ edge constraints) — heavy enough that single-thread

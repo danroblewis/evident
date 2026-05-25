@@ -1,24 +1,28 @@
 -- 25_per_component_jit — a focused showcase of the per-component JIT.
 --
 -- ─────────────────────────────────────────────────────────────────
--- BENCHMARK (Apple M4, median of 5 runs, this commit)
+-- BENCHMARK (Apple M4, scripts/bench-demo.sh, medians)
 -- ─────────────────────────────────────────────────────────────────
---   Default (per-component JIT):    3.02 ms
---   EVIDENT_FUNCTIONIZE=0:          2.17 ms
---   → JIT is ~40% SLOWER here.
+--   Mode            | wall   | tick0  | steady/tick
+--   ----------------+--------+--------+------------
+--   JIT default     | 3.15ms | 1.14ms |  0.39 ms
+--   FUNCTIONIZE=0   | 2.38ms | 0.44ms |  0.36 ms
 --
--- This is intentional and honest. The demo's whole-claim work is
--- tiny (six trivial components, ~3 ms total) so the decompose +
--- compile overhead dominates the per-component savings. The
--- *capability* demonstrated — partial compilation when some
--- components refuse — pays off on real workloads where the
--- components do meaningful work. On Mario, the same per-component
--- JIT delivered ~35% end-to-end FPS gain (see commit 18f64af).
+-- Steady-state per-tick cost is basically TIED (0.39 vs 0.36 ms,
+-- ~8% delta = within noise on a 5-tick workload). The wall-time
+-- "JIT loses by 32%" appearance is entirely the tick-0 compile
+-- cost (1.14 ms vs 0.44 ms) spread over only 5 ticks. The
+-- decomposition + Cranelift codegen runs once; subsequent calls
+-- pay only the fixed input-pack / native-call / output-unpack
+-- boilerplate, which here equals what Z3's simplify costs on this
+-- trivial body.
 --
--- The point of this demo is `comp=3/6` (six components, three
--- compile, three slow-path), NOT a speed win. The numbers above
--- confirm the capability runs; the win is realized on workloads
--- where component compile cost is amortized over many ticks.
+-- The win shows up on workloads where (a) the body is heavier so
+-- Z3's per-tick cost climbs while the JIT stays flat, or (b) the
+-- run is long enough to amortize the compile. Mario hits both —
+-- per-component JIT delivered ~35% end-to-end FPS gain there
+-- (commit 18f64af). This demo's purpose is the capability
+-- (`comp=3/6` partial compile), not a microbench win.
 --
 -- ─────────────────────────────────────────────────────────────────
 -- WHAT TO LOOK AT
