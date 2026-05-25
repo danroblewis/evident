@@ -260,9 +260,9 @@ pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
 /// Full world read/write sets for an FSM, resolving `..Passthrough`
 /// claims transitively.
 ///
-/// `subscriptions::world_access_sets` is intentionally LOCAL — it
-/// treats `..ClaimName` passthroughs as opaque (see its module doc,
-/// "Phase 5 will lift this"). But an FSM that does its world
+/// The per-claim walk (`portable::subscriptions::access_sets`, the
+/// self-hosted Evident pass) is intentionally LOCAL — it treats
+/// `..ClaimName` passthroughs as opaque. But an FSM that does its world
 /// writes/reads *through* a passthrough claim (e.g. `..WritesScore`,
 /// where the actual `world_next.score = …` lives) then gets an
 /// EMPTY inferred write-set. That silently (a) bypasses the
@@ -292,7 +292,7 @@ pub fn full_world_access(
             return;
         }
         let Some(s) = rt.get_schema(name) else { return };
-        let local = crate::subscriptions::world_access_sets(s);
+        let local = crate::portable::subscriptions::access_sets(s);
         acc.reads.extend(local.reads);
         acc.writes.extend(local.writes);
         for item in &s.body {

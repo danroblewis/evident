@@ -302,22 +302,41 @@ pub fn run_with_ctx(
         );
     }
 
+    // Transitive (passthrough-resolving) access sets, computed ONCE per
+    // FSM here and reused for both the multi-writer check below AND the
+    // scheduler's subscription state (passed into `run_scheduler`). Since
+    // session XX routes each walk through the self-hosted Evident pass —
+    // ~100s of ms for a large claim like Mario's `display` — computing it
+    // twice (once here, once in the scheduler) doubled the load-time cost.
+    // One walk per FSM, shared.
+    // An FSM with no `world`/`world_next` membership (transitively, through
+    // passthroughs — `world_type` is resolved over the same graph) cannot
+    // reference `world.X`/`world_next.X`, so its access sets are provably
+    // empty. Skip the walk entirely for those — which also means a program
+    // with NO world-coordinating FSM never builds the subscriptions engine.
+    // This keeps the self-hosted walk's cost proportional to the FSMs that
+    // actually coordinate through world.
+    let initial_access: Vec<crate::subscriptions::AccessSets> = fsms.iter()
+        .map(|f| if f.world_type.is_none() {
+            crate::subscriptions::AccessSets::default()
+        } else {
+            fsm::full_world_access(rt, &f.claim_name)
+        })
+        .collect();
+
     // Multi-writer disjoint-fields rule (Phase 4 v3.7+ unified
     // model): every writer FSM PLUS every plugin-write claim
     // must have a disjoint write-set. A field has at most one
     // writer (single-owner).
     {
-        // Write-sets are computed transitively (resolving `..Passthrough`
-        // claims) via `fsm::full_world_access` — a writer that does its
-        // `world_next.X = …` inside a passthrough claim must still be
-        // caught here, otherwise the conflict slips through undetected
-        // and the scheduler silently drops its writes.
+        // Write-sets are transitive (resolving `..Passthrough` claims) —
+        // a writer that does its `world_next.X = …` inside a passthrough
+        // claim must still be caught here, otherwise the conflict slips
+        // through undetected and the scheduler silently drops its writes.
         let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
-            .filter(|f| f.is_writer())
-            .map(|f| {
-                let aset = fsm::full_world_access(rt, &f.claim_name);
-                (f.claim_name.clone(), aset.writes)
-            })
+            .zip(&initial_access)
+            .filter(|(f, _)| f.is_writer())
+            .map(|(f, aset)| (f.claim_name.clone(), aset.writes.clone()))
             .collect();
         for pf in &plugin_writes {
             let mut s = std::collections::HashSet::new();
@@ -349,7 +368,7 @@ pub fn run_with_ctx(
     let result = if fsms.is_empty() {
         Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string())
     } else {
-        scheduler::run_scheduler(rt, &fsms, opts, ctx, event_rx.as_ref(), &mut event_sources, &env)
+        scheduler::run_scheduler(rt, &fsms, &initial_access, opts, ctx, event_rx.as_ref(), &mut event_sources, &env)
     };
     // Stop all event sources cleanly. Each source's stop signals
     // its background thread and joins. Drop also calls stop, but

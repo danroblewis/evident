@@ -355,7 +355,7 @@ Key files for each step (so you can read the code in order):
 | FSM detection | `runtime/src/effect_loop/fsm.rs:all_fsms` |
 | Scheduler entry | `runtime/src/effect_loop/mod.rs:run_with_ctx` |
 | Tick loop | `runtime/src/effect_loop/scheduler.rs:run_scheduler` |
-| Subscription wake set | `runtime/src/subscriptions.rs:world_access_sets` |
+| Subscription wake set | `runtime/src/portable/subscriptions.rs:access_sets` (self-hosted Evident pass; sole impl since session XX) |
 | Per-FSM query | `runtime/src/runtime/scheduler_api.rs:query_with_pins_and_given` |
 | Functionize / JIT path | `runtime/src/runtime/query.rs:try_functionize_z3` |
 | JIT codegen | `runtime/src/functionize/cranelift.rs:compile_program` |
