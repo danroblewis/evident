@@ -1,0 +1,130 @@
+-- 31_symbolic_regression — showcase the SymbolicFunctionizer.
+--
+-- The runtime turns a claim's body into a callable function via a
+-- `Functionizer` strategy (core/functionizer.rs). The DEFAULT strategy
+-- is Cranelift (functionize/cranelift.rs): it *translates* the body's
+-- Z3 AST node-for-node into native machine code. Session G added a
+-- second strategy — `SymbolicFunctionizer` (functionize/symbolic.rs) —
+-- that does something completely different:
+--
+--   * It treats the compiled body as a BLACK BOX.
+--   * It samples input→output pairs by solving the body for random
+--     inputs.
+--   * It runs symbolic regression (genetic programming over arithmetic
+--     expression trees) to DISCOVER a closed-form formula that
+--     reproduces every sample exactly — including a wide-range held-out
+--     block, so an overfit high-degree polynomial is rejected.
+--   * The discovered tree IS the compiled artifact; at call time it's a
+--     tiny tree walk.
+--
+-- WHAT THIS DEMO COMPUTES. A single writer FSM with a two-field world:
+--
+--      world_next.x = x + 1          -- the input, walked 0,1,2,…
+--      world_next.y = 3 * x + 5      -- the function under test
+--
+-- `world_next.y` reads `world.x` (the previous tick's published input,
+-- a GIVEN), so the runtime's per-component decomposition isolates it in
+-- its own sub-model with a single Int input. The symbolic functionizer
+-- rediscovers the closed form **y = 3·x + 5** from sampled (x → y) pairs
+-- and compiles it — never looking at how the source spelled `3 * x + 5`.
+-- (The trivial `x + 1` input-advance is rediscovered the same way.)
+--
+-- HOW IT'S MOUNTED. The functionizer is opt-in. The `-- functionizer:
+-- symbolic` marker below tells `evident effect-run` to mount it; you can
+-- also pass `--functionizer symbolic` or set `EVIDENT_FUNCTIONIZER=
+-- symbolic`. When symbolic is active it prints each closed form it
+-- rediscovers to stdout:
+--
+--      symbolic functionizer: rediscovered world_next.y = ((3 * world.x) + 5)
+--
+-- That line is the proof it actually ran via symbolic regression rather
+-- than the cranelift fallback. Compare against the default by running
+-- with `--functionizer cranelift`: same answers (verified by the sat_
+-- claims below), but cranelift translates the AST directly and prints
+-- no such line.
+--
+-- HONEST NOTE (the point is the strategy swap, not a perf win).
+-- Symbolic regression is SLOWER than Cranelift for a simple polynomial:
+-- discovering `3·x + 5` means sampling the body dozens of times and
+-- searching an expression space, where Cranelift just walks the AST
+-- once. This demo is a PROOF OF CONCEPT — it shows that an alternate
+-- `Functionizer` strategy plugs into the runtime cleanly and runs an
+-- FSM end-to-end through the multi-FSM scheduler. It is not a claim that
+-- symbolic search beats translation on polynomials; it doesn't.
+
+import "stdlib/runtime.ev"
+
+-- functionizer: symbolic
+
+type World
+    x ∈ Int     -- the input, advanced one step per tick
+    y ∈ Int     -- 3·x + 5, computed by the symbolically-rediscovered closed form
+
+fsm regressor(world, world_next ∈ World)
+    -- Advance the input. world.x is the previous tick's value (snapshot
+    -- default 0 on tick 0), world_next.x is this tick's write, so x walks
+    -- 0, 1, 2, 3, 4, 5. Its own clean component → symbolic discovers x+1.
+    world_next.x = world.x + 1
+
+    -- The function under test. Reads world.x (a GIVEN), so this lands in
+    -- its own single-input component the symbolic functionizer can fit:
+    -- it rediscovers y = 3·x + 5 from sampled IO.
+    world_next.y = 3 * world.x + 5
+
+    -- Stop after six inputs have been processed.
+    halting ∈ Bool = (world.x ≥ 5)
+
+    effects = (halting ? ⟨Println("regression done"), Exit(0)⟩
+                       : ⟨Println("regression step")⟩)
+
+-- ── Static correctness checks (run by `evident test`) ────────────
+-- These pin the input and assert the rediscovered relation y = 3·x + 5.
+-- They run under the default functionizer; the math is strategy-
+-- independent, so they double as the spec the symbolic search must match.
+
+claim sat_f_of_0
+    world ∈ World
+    world_next ∈ World
+    effects ∈ Seq(Effect)
+    halting ∈ Bool
+    world.x = 0
+    regressor
+    world_next.y = 5
+
+claim sat_f_of_4
+    world ∈ World
+    world_next ∈ World
+    effects ∈ Seq(Effect)
+    halting ∈ Bool
+    world.x = 4
+    regressor
+    world_next.y = 17
+
+claim sat_f_of_10
+    world ∈ World
+    world_next ∈ World
+    effects ∈ Seq(Effect)
+    halting ∈ Bool
+    world.x = 10
+    regressor
+    world_next.y = 35
+
+-- The input also advances by one each step.
+claim sat_input_advances
+    world ∈ World
+    world_next ∈ World
+    effects ∈ Seq(Effect)
+    halting ∈ Bool
+    world.x = 7
+    regressor
+    world_next.x = 8
+
+-- A wrong coefficient must NOT satisfy the relation.
+claim unsat_f_is_not_4x
+    world ∈ World
+    world_next ∈ World
+    effects ∈ Seq(Effect)
+    halting ∈ Bool
+    world.x = 4
+    regressor
+    world_next.y = 21
