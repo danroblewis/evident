@@ -34,6 +34,88 @@ compiled call's result + helper calls.
 
 ---
 
+## Session YY — the self-hosted walk's "cliff" was *per-tick clone cost*, not a refusal
+
+The `subscriptions_walk` step (`stdlib/passes/subscriptions.ev`) — a
+`match`-on-`Expr`/`Work` dispatch that constructs a new recursive-enum /
+cons-list next-state (`SWStep(WSCons(…), NameCons(…))`) — was *believed*
+to be refused by the functionizer (the supposed cause of session-XX's
+~191 ms/walk cliff). **It is not.** `EVIDENT_FUNCTIONIZE_STATS=1` shows
+`comp=2/2 fn✓` for it (the `state_next` constructor compiles as a nested
+`ite` over `DT_CONSTRUCTOR`s with recursive payloads; `halt` as a
+recognizer), and `EVIDENT_JIT_CALL_TRACE=1` shows **0 runtime bails**.
+The codegen already emits the recursive-enum-construction-under-`match`
+shape this session was scoped to add.
+
+The cliff was a **per-tick `Value`-clone cost**, in three places — all
+fixed this session:
+
+1. **Wholesale clone to read one field/variant (the dominant cost).**
+   To compute an accessor `(f0 state)` or recognizer `(is SWStep state)`,
+   `emit_write_value` / `emit_compute_i64` first cloned the *entire*
+   source `Value` into a temp, then read one field / the tag. For a
+   deeply-nested `match` over a big cons-list state that meant *dozens of
+   full-state clones per tick* (every guard in the `ite` chain), an
+   ~8 GB memory blow-up, and a per-walk time that *grew without bound* as
+   the allocator's free-block search degraded (the "warm == hot, never
+   improves" signature). **Fix:** read-only accessor/recognizer sources
+   now pass the source slot **by reference** (`emit_value_ref` +
+   `ev_field_ref`, returning a borrowed `*const Value` into the source
+   that null-propagates through a chain). Recognizers become O(1) tag
+   reads; an accessor chain `(head (f0 state))` is a pointer walk; only
+   the final extracted field is cloned.
+
+2. **Cloning the built output then dropping it.** `JitProgram::call`
+   `clone()`d each output `Value` out of its `outputs` buffer, which was
+   dropped immediately after — now `std::mem::replace`d (moved), saving a
+   whole-tree deep copy of `state_next` per call.
+
+3. **A redundant per-tick Z3 Datatype pin.** `effect_loop::run_nested`
+   built `encode_state_value(state)` every tick to pass as an explicit
+   `pins` entry — but the functionizer reads the state from `given`
+   (where `run_nested` already puts it), and *both* Z3 slow paths
+   re-encode a `Value::Enum` given to a Datatype themselves
+   (`evaluate_with_extra_assertions`, the cached path). So the pin was
+   pure waste — ~37 % of the per-tick cost on the JIT path, and it leaked
+   AST into the long-lived Z3 context every tick. `run_nested` now passes
+   no explicit pins.
+
+**Effect (Mario claim walks, one machine):** `game` 184 ms → ~85 ms,
+`display` 617 ms → ~185 ms, peak RSS ~8.6 GB → ~1 GB, and per-walk time
+is now **flat** across repeated walks (the unbounded growth is gone).
+`subscriptions_equivalence` stays byte-identical and its wall time drops
+sharply (it drives these walks). To re-measure per-walk numbers, time
+`EvidentSubscriptions::access_sets` on Mario's `game`/`display` schemas
+(the equivalence test's `mario_writer_reader_separation` is the driver).
+
+### Residual (YY1) — the per-tick `Value` marshaling floor
+
+The walk is still ~85 ms (`game`) / ~185 ms (`display`), not the
+single-digit ms a native loop would cost. The residual is **inherent to
+the variant-1 architecture** (per-tick `query` + `Value` marshaling),
+not a codegen shape gap:
+
+* Each tick the JIT *constructs* the next state, which must **own** its
+  fields — so building `SWStep(WSCons(top, rest), names)` clones the
+  stack tail `rest` (O(stack depth)) and the name accumulator `names`
+  (which grows over the walk → O(N²) total). `Value` has no structural
+  sharing (no `Rc`), so these clones are unavoidable at the codegen
+  layer.
+* `execute_plan` echoes every `given` back into the result bindings
+  (one more whole-state clone/tick); the cross-tick value cache hashes +
+  stores the whole state per tick at a ~0 hit rate for a `run_nested`
+  walk (states don't repeat). Both are general `query.rs` mechanisms
+  that help other workloads, so they're left in place.
+
+Collapsing this fully needs either **structural sharing in `Value`**
+(an `Rc` payload — a `core/` change with broad blast radius) or
+**whole-loop compilation** (variant 2: compile the entire `run_nested`
+loop into one native function with the state kept in registers/native
+memory, no per-tick `query`/marshaling). Variant 2 is the intended next
+step; this session closed the codegen + per-tick-waste half.
+
+---
+
 ## Closed by this session
 
 ### 1. Integer division / modulo as a top-level Scalar value — FIXED

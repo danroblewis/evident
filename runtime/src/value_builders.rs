@@ -304,6 +304,7 @@ pub fn symbol_table() -> Vec<(&'static str, *const u8)> {
         ("ev_clone_from_pool",  ev_clone_from_pool  as *const u8),
         ("ev_seq_extract_field", ev_seq_extract_field as *const u8),
         ("ev_extract_field",    ev_extract_field    as *const u8),
+        ("ev_field_ref",        ev_field_ref        as *const u8),
         ("ev_seq_select",       ev_seq_select       as *const u8),
         ("ev_load_bool",        ev_load_bool        as *const u8),
         ("ev_str_concat",       ev_str_concat       as *const u8),
@@ -331,6 +332,7 @@ pub unsafe extern "C" fn ev_extract_field(
     src_slot: *const Value,
     name_ptr: *const u8, name_len: usize,
 ) {
+    if src_slot.is_null() { *out = Value::Int(0); return; }
     let name = str_from_raw(name_ptr, name_len);
     if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
         eprintln!("[jit/extract_field] name={name:?} src={:?}", &*src_slot);
@@ -362,6 +364,47 @@ pub unsafe extern "C" fn ev_extract_field(
     }
 }
 
+/// Return a **borrowed pointer** to the field named `name` inside
+/// `*src_slot`, WITHOUT cloning it. Returns null when `src_slot` is
+/// null (a failed earlier link of an accessor chain) or the field
+/// doesn't exist on the current variant (e.g. an accessor applied
+/// under an eagerly-evaluated `and`-guard whose recognizer is
+/// false). Null propagates: `ev_is_variant`/`ev_extract_field` /
+/// `ev_seq_select` treat a null source as "not that variant" / a
+/// sentinel `Int(0)`, matching the clone-into-temp path's behavior.
+///
+/// The returned pointer aliases into `*src_slot`'s heap storage
+/// (an enum payload `Vec` or composite map). The JIT only uses it
+/// in read-only positions during a single call while the source is
+/// live and unmutated, so the borrow is sound. This lets accessor
+/// chains in guards (`(is WBody (head (f0 state)))`) walk by
+/// reference instead of cloning each intermediate subtree — the
+/// dominant per-tick cost of the self-hosted walk (session YY).
+#[no_mangle]
+pub unsafe extern "C" fn ev_field_ref(
+    src_slot: *const Value,
+    name_ptr: *const u8, name_len: usize,
+) -> *const Value {
+    if src_slot.is_null() { return std::ptr::null(); }
+    let name = str_from_raw(name_ptr, name_len);
+    match &*src_slot {
+        Value::Enum { fields, .. } => {
+            if let Some(idx_str) = name.strip_prefix('f') {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    if let Some(v) = fields.get(idx) {
+                        return v as *const Value;
+                    }
+                }
+            }
+            std::ptr::null()
+        }
+        Value::Composite(map) => map.get(name)
+            .map(|v| v as *const Value)
+            .unwrap_or(std::ptr::null()),
+        _ => std::ptr::null(),
+    }
+}
+
 /// Same as ev_extract_field but for Seq-typed fields (`<field>__arr`).
 /// Equivalent in implementation; kept distinct for clarity at
 /// JIT codegen sites.
@@ -383,6 +426,7 @@ pub unsafe extern "C" fn ev_seq_select(
     arr_slot: *const Value,
     idx: i64,
 ) {
+    if arr_slot.is_null() { *out = Value::Int(0); return; }
     let i = idx as usize;
     let v = match &*arr_slot {
         Value::SeqEnum(xs) => xs.get(i).cloned(),
@@ -424,6 +468,7 @@ pub unsafe extern "C" fn ev_is_variant(
     src_slot: *const Value,
     target_ptr: *const u8, target_len: usize,
 ) -> i64 {
+    if src_slot.is_null() { return 0; }
     let target = str_from_raw(target_ptr, target_len);
     if let Value::Enum { variant, .. } = &*src_slot {
         if variant == target { 1 } else { 0 }
