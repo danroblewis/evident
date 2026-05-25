@@ -21,6 +21,8 @@ Adjacent design docs (not phased, but on deck):
 
 - [`../design/cegar-scaffolding.md`](../design/cegar-scaffolding.md) — layer CEGAR on the Functionizer trait (oracle + refiner) so FSM verification can route around log-unroll's branching wall.
 
+Cross-cutting inventory: [`../design/self-hosting-inventory.md`](../design/self-hosting-inventory.md) — every `runtime/src/**/*.rs` file classified by tier + prioritized port order.
+
 ## Working on a task
 
 1. Read the task's plan file end-to-end.

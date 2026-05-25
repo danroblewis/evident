@@ -14,6 +14,12 @@ gaps currently bound what a pass can do.
 > **swap pattern** any pure Rust transform can adopt. The two compose:
 > a ported pass uses the reflection encoders; the swap interface is how
 > a caller chooses the Rust or the Evident backing.
+>
+> See also: [`design/self-hosting-inventory.md`](design/self-hosting-inventory.md)
+> — every `runtime/src/**/*.rs` file classified into a 5-tier ladder
+> (kernel / pure / tree-recursion / bounded-loop / unbounded), with
+> the next ten ports named in order and a direct answer to "do we
+> wait for FSM-with-loops?".
 
 ## Status — which transforms have been ported
 
