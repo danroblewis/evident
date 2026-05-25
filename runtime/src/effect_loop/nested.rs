@@ -61,7 +61,6 @@ use crate::core::Value;
 use crate::runtime::EvidentRuntime;
 
 use super::collect::collect_dispatchable_effects;
-use super::state::encode_state_value;
 
 /// Why a `run(F, init)` couldn't be evaluated. Surfaced to the caller
 /// (`EvidentRuntime::resolve_runs`) which turns it into a load-time or
@@ -403,7 +402,6 @@ pub fn run_nested_capturing(
         .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
     let pair = check_shape(schema, fsm_name)?;
     let StatePair { input, output, type_name } = pair;
-    let primitive = is_primitive(&type_name);
     // The body's effect channel, if any. `None` → effect-free F → the
     // run captures nothing.
     let effects_var = effects_var_name(schema);
@@ -417,22 +415,22 @@ pub fn run_nested_capturing(
     }
 
     for step in 0..max_steps {
-        // Build the per-tick solve inputs. Primitive state pins via the
-        // `given` map only; enum state additionally pins the Datatype
-        // (the functionizer reads `given`, the Z3 slow path reads
-        // `pins`).
+        // Per-tick solve input: the current state, passed in `given` as a
+        // `Value` (an `Int` for primitive state, a `Value::Enum` for
+        // record/enum state). We pass **no explicit Datatype `pins`**:
+        // every consumer of `query_with_pins_and_given` already pins the
+        // state from this `given` entry — the functionizer reads `given`
+        // directly, and both Z3 slow paths re-encode a `Value::Enum`
+        // given to a Datatype and assert it (`evaluate_with_extra_assertions`
+        // and the cached path, via `value_enum_to_datatype`). Building the
+        // pin here with `encode_state_value` was therefore pure per-tick
+        // waste — and for a deep recursive-enum state (the self-hosted
+        // walk's `SW` stack) that wasteful Z3-Datatype construction was
+        // ~37% of the per-tick cost AND leaked AST into the long-lived Z3
+        // context every tick (session YY).
         let mut given: HashMap<String, Value> = HashMap::new();
         given.insert(input.clone(), current.clone());
-        let pins: Vec<(&str, z3::ast::Datatype<'static>)> = if primitive {
-            Vec::new()
-        } else {
-            match encode_state_value(rt, &current) {
-                Some(dt) => vec![(input.as_str(), dt)],
-                None => return Err(RunError::Internal(format!(
-                    "run({fsm_name}, ..): couldn't encode state value {current:?} \
-                     for the next-tick pin"))),
-            }
-        };
+        let pins: [(&str, z3::ast::Datatype<'static>); 0] = [];
 
         let r = rt.query_with_pins_and_given(fsm_name, &pins, &given)
             .map_err(|e| RunError::Internal(format!(

@@ -114,7 +114,13 @@ impl JitProgram {
         }
         let mut out = HashMap::new();
         for (name, &idx) in &self.output_offsets {
-            let v = outputs[idx].clone();
+            // Move the built value out of `outputs` (it's dropped right
+            // after) instead of cloning — saves an O(value) deep copy of
+            // every output per call, which for a recursive-enum state
+            // (the self-hosted walk's `state_next`) is the whole tree
+            // (session YY). Offsets are unique per output, so the take
+            // leaves a valid sentinel in each slot for the Vec's drop.
+            let v = std::mem::replace(&mut outputs[idx], Value::Int(0));
             out.insert(name.clone(), classify_seq(v));
         }
         if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
@@ -175,6 +181,7 @@ struct HelperIds {
     load_int:          FuncId,
     load_bool:         FuncId,
     extract_field:     FuncId,
+    field_ref:         FuncId,
     seq_select:        FuncId,
     str_concat:        FuncId,
     is_variant:        FuncId,
@@ -199,6 +206,7 @@ struct HelperRefs {
     load_int:          cranelift::codegen::ir::FuncRef,
     load_bool:         cranelift::codegen::ir::FuncRef,
     extract_field:     cranelift::codegen::ir::FuncRef,
+    field_ref:         cranelift::codegen::ir::FuncRef,
     seq_select:        cranelift::codegen::ir::FuncRef,
     str_concat:        cranelift::codegen::ir::FuncRef,
     is_variant:        cranelift::codegen::ir::FuncRef,
@@ -244,6 +252,7 @@ fn declare_helpers(
     let s_load_int = mk_ret(&[p], i64t, module);
     let s_load_bool = mk_ret(&[p], i64t, module);
     let s_extract = mk(&[p, p, p, usz], module);
+    let s_field_ref = mk_ret(&[p, p, usz], p, module);
     let s_seq_sel = mk(&[p, p, i64t], module);
     let s_str_cat = mk(&[p, p, usz], module);
     let s_is_var  = mk_ret(&[p, p, usz], i64t, module);
@@ -265,6 +274,7 @@ fn declare_helpers(
         load_int:         module.declare_function("ev_load_int",         Linkage::Import, &s_load_int).ok()?,
         load_bool:        module.declare_function("ev_load_bool",        Linkage::Import, &s_load_bool).ok()?,
         extract_field:    module.declare_function("ev_extract_field",    Linkage::Import, &s_extract).ok()?,
+        field_ref:        module.declare_function("ev_field_ref",        Linkage::Import, &s_field_ref).ok()?,
         seq_select:       module.declare_function("ev_seq_select",       Linkage::Import, &s_seq_sel).ok()?,
         str_concat:       module.declare_function("ev_str_concat",       Linkage::Import, &s_str_cat).ok()?,
         is_variant:       module.declare_function("ev_is_variant",       Linkage::Import, &s_is_var).ok()?,
@@ -293,6 +303,7 @@ fn import_helpers(
         load_int:         module.declare_func_in_func(ids.load_int,         func),
         load_bool:        module.declare_func_in_func(ids.load_bool,        func),
         extract_field:    module.declare_func_in_func(ids.extract_field,    func),
+        field_ref:        module.declare_func_in_func(ids.field_ref,        func),
         seq_select:       module.declare_func_in_func(ids.seq_select,       func),
         str_concat:       module.declare_func_in_func(ids.str_concat,       func),
         is_variant:       module.declare_func_in_func(ids.is_variant,       func),
@@ -710,6 +721,95 @@ fn intern_str(pool: &mut Vec<Box<str>>, s: &str) -> (i64, i64) {
     (ptr, len)
 }
 
+/// Return a pointer to a readable `Value` for `expr`, **without
+/// cloning** when `expr` is a bare env variable — in that case the
+/// env slot is returned directly. Otherwise the value is
+/// materialized into a fresh stack temp (which clones) and that
+/// temp's pointer is returned.
+///
+/// Used for *read-only source* positions — the receiver of a
+/// recognizer (`(is V x)`) or accessor (`(field x)`). The old code
+/// always cloned the whole source into a temp before reading one
+/// field / the variant tag; for a deeply-nested `match` over a big
+/// cons-list state that meant cloning the entire state per guard and
+/// per accessor (the dominant per-tick cost of the self-hosted walk
+/// — session YY). Reading the variant tag is O(1) and extracting one
+/// field clones only that field, so passing the env slot by
+/// reference avoids the wholesale copy. Safe because the helpers
+/// (`ev_is_variant`, `ev_extract_field`) only *read* through the
+/// pointer (and `ev_extract_field` clones the field before any
+/// write, so even out==src would be sound).
+fn emit_value_ref<'ctx>(
+    bcx: &mut FunctionBuilder,
+    expr: &Dynamic<'ctx>,
+    env: &HashMap<String, ClValue>,
+    helpers: &HelperRefs,
+    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
+    record_info: &HashMap<String, Vec<crate::core::FieldKind>>,
+    string_pool: &mut Vec<Box<str>>,
+    ptr_t: cranelift::prelude::Type,
+    size_of_value: i64,
+) -> Option<ClValue> {
+    if expr.kind() == AstKind::App {
+        if let Ok(decl) = expr.safe_decl() {
+            let children = expr.children();
+            match decl.kind() {
+                // Bare env variable → borrow its slot, no clone.
+                DeclKind::UNINTERPRETED if children.is_empty() => {
+                    if let Some(slot) = env.get(&decl.name()) {
+                        return Some(*slot);
+                    }
+                }
+                // Datatype field accessor → walk by reference: get a
+                // pointer to the source (recursively, also by ref), then
+                // `ev_field_ref` to a pointer INTO it. No clone per link,
+                // so a chain like `(head (f0 state))` is a pointer walk.
+                // A `__len` accessor isn't a Value field — fall through
+                // to materialize.
+                DeclKind::DT_ACCESSOR if children.len() == 1 => {
+                    let raw = decl.name();
+                    if raw.ends_with("__len") {
+                        // length: not a borrowable field; materialize below.
+                    } else {
+                        let fname = raw.strip_suffix("__arr").map(|s| s.to_string()).unwrap_or(raw);
+                        let src_ptr = emit_value_ref(bcx, &children[0], env, helpers,
+                            variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
+                        let (np, nl) = intern_str(string_pool, &fname);
+                        let np_v = bcx.ins().iconst(types::I64, np);
+                        let nl_v = bcx.ins().iconst(types::I64, nl);
+                        let call = bcx.ins().call(helpers.field_ref, &[src_ptr, np_v, nl_v]);
+                        return Some(bcx.inst_results(call)[0]);
+                    }
+                }
+                // Z3-internal single-child accessor `<field>__arr`.
+                DeclKind::UNINTERPRETED if children.len() == 1 => {
+                    let raw = decl.name();
+                    if let Some(fname) = raw.strip_suffix("__arr") {
+                        let fname = fname.to_string();
+                        let src_ptr = emit_value_ref(bcx, &children[0], env, helpers,
+                            variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
+                        let (np, nl) = intern_str(string_pool, &fname);
+                        let np_v = bcx.ins().iconst(types::I64, np);
+                        let nl_v = bcx.ins().iconst(types::I64, nl);
+                        let call = bcx.ins().call(helpers.field_ref, &[src_ptr, np_v, nl_v]);
+                        return Some(bcx.inst_results(call)[0]);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // Otherwise materialize into a temp (this clones, but only the
+    // sub-value `expr` denotes — not necessarily the whole state).
+    let temp = bcx.create_sized_stack_slot(
+        StackSlotData::new(StackSlotKind::ExplicitSlot, size_of_value as u32));
+    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
+    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
+    emit_write_value(bcx, expr, temp_ptr, env, helpers, variant_arity,
+        record_info, string_pool, ptr_t, size_of_value)?;
+    Some(temp_ptr)
+}
+
 /// Emit IR that writes a Value derived from `expr` into the
 /// memory at `out_slot`. Returns None if the expr uses a
 /// pattern we don't yet emit code for.
@@ -784,18 +884,13 @@ fn emit_write_value<'ctx>(
                         } else if let Some(_s) = name.strip_suffix("__len") {
                             return None;  // length extraction not emitted
                         } else { return None; };
-                        let temp = bcx.create_sized_stack_slot(
-                            StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                               size_of_value as u32));
-                        let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                        bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                        emit_write_value(bcx, &children[0], temp_ptr, env,
+                        let src_ptr = emit_value_ref(bcx, &children[0], env,
                             helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                         let (np, nl) = intern_str(string_pool, &logical);
                         let np_v = bcx.ins().iconst(types::I64, np);
                         let nl_v = bcx.ins().iconst(types::I64, nl);
                         bcx.ins().call(helpers.extract_field,
-                            &[out_slot, temp_ptr, np_v, nl_v]);
+                            &[out_slot, src_ptr, np_v, nl_v]);
                         Some(())
                     } else {
                         None
@@ -812,18 +907,16 @@ fn emit_write_value<'ctx>(
                         .or_else(|| raw.strip_suffix("__len"))
                         .map(|s| s.to_string())
                         .unwrap_or(raw);
-                    let temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                    // Read the field straight off the source value — pass
+                    // its slot by reference when it's a bare variable
+                    // (no wholesale clone; session YY).
+                    let src_ptr = emit_value_ref(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (np, nl) = intern_str(string_pool, &accessor_name);
                     let np_v = bcx.ins().iconst(types::I64, np);
                     let nl_v = bcx.ins().iconst(types::I64, nl);
                     bcx.ins().call(helpers.extract_field,
-                        &[out_slot, temp_ptr, np_v, nl_v]);
+                        &[out_slot, src_ptr, np_v, nl_v]);
                     Some(())
                 }
                 DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
@@ -834,18 +927,13 @@ fn emit_write_value<'ctx>(
                     let app_text = format!("{expr}");
                     let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
-                    let temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                    let src_ptr = emit_value_ref(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (vp, vl) = intern_str(string_pool, &variant);
                     let vp_v = bcx.ins().iconst(types::I64, vp);
                     let vl_v = bcx.ins().iconst(types::I64, vl);
                     let call = bcx.ins().call(helpers.is_variant,
-                        &[temp_ptr, vp_v, vl_v]);
+                        &[src_ptr, vp_v, vl_v]);
                     let r = bcx.inst_results(call)[0];
                     bcx.ins().call(helpers.set_bool, &[out_slot, r]);
                     Some(())
@@ -891,19 +979,17 @@ fn emit_write_value<'ctx>(
                         }
                         return None;
                     }
-                    let temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                    if emit_write_value(bcx, &children[0], temp_ptr, env,
-                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value).is_none()
+                    let arr_ptr = match emit_value_ref(bcx, &children[0], env,
+                        helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)
                     {
-                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                            eprintln!("[jit] SELECT arr bail: {}", &children[0]);
+                        Some(p) => p,
+                        None => {
+                            if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                                eprintln!("[jit] SELECT arr bail: {}", &children[0]);
+                            }
+                            return None;
                         }
-                        return None;
-                    }
+                    };
                     let idx_v = match emit_compute_i64(bcx, &children[1], env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)
                     {
@@ -916,7 +1002,7 @@ fn emit_write_value<'ctx>(
                         }
                     };
                     bcx.ins().call(helpers.seq_select,
-                        &[out_slot, temp_ptr, idx_v]);
+                        &[out_slot, arr_ptr, idx_v]);
                     Some(())
                 }
                 DeclKind::DT_CONSTRUCTOR => {
@@ -1301,34 +1387,24 @@ fn emit_compute_i64<'ctx>(
                         if try_nullary_eq(&children[1], &children[0]).is_some() {
                             // r is the nullary variant; test (is variant l).
                             let variant = children[1].safe_decl().ok()?.name();
-                            let temp = bcx.create_sized_stack_slot(
-                                StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                                   size_of_value as u32));
-                            let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                            bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                            emit_write_value(bcx, &children[0], temp_ptr, env,
+                            let src_ptr = emit_value_ref(bcx, &children[0], env,
                                 helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                             let (vp, vl) = intern_str(string_pool, &variant);
                             let vp_v = bcx.ins().iconst(types::I64, vp);
                             let vl_v = bcx.ins().iconst(types::I64, vl);
                             let call = bcx.ins().call(helpers.is_variant,
-                                &[temp_ptr, vp_v, vl_v]);
+                                &[src_ptr, vp_v, vl_v]);
                             return Some(bcx.inst_results(call)[0]);
                         }
                         if try_nullary_eq(&children[0], &children[1]).is_some() {
                             let variant = children[0].safe_decl().ok()?.name();
-                            let temp = bcx.create_sized_stack_slot(
-                                StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                                   size_of_value as u32));
-                            let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                            bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                            emit_write_value(bcx, &children[1], temp_ptr, env,
+                            let src_ptr = emit_value_ref(bcx, &children[1], env,
                                 helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                             let (vp, vl) = intern_str(string_pool, &variant);
                             let vp_v = bcx.ins().iconst(types::I64, vp);
                             let vl_v = bcx.ins().iconst(types::I64, vl);
                             let call = bcx.ins().call(helpers.is_variant,
-                                &[temp_ptr, vp_v, vl_v]);
+                                &[src_ptr, vp_v, vl_v]);
                             return Some(bcx.inst_results(call)[0]);
                         }
                     }
@@ -1393,19 +1469,15 @@ fn emit_compute_i64<'ctx>(
                     let app_text = format!("{expr}");
                     let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
-                    // Compile inner into a temp slot.
-                    let temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let temp_ptr = bcx.ins().stack_addr(ptr_t, temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                    emit_write_value(bcx, &children[0], temp_ptr, env,
+                    // Read the variant tag straight off the source (no
+                    // wholesale clone when it's a bare variable; session YY).
+                    let src_ptr = emit_value_ref(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let (vp, vl) = intern_str(string_pool, &variant);
                     let vp_v = bcx.ins().iconst(types::I64, vp);
                     let vl_v = bcx.ins().iconst(types::I64, vl);
                     let call = bcx.ins().call(helpers.is_variant,
-                        &[temp_ptr, vp_v, vl_v]);
+                        &[src_ptr, vp_v, vl_v]);
                     Some(bcx.inst_results(call)[0])
                 }
                 DeclKind::DT_ACCESSOR => {
@@ -1415,15 +1487,11 @@ fn emit_compute_i64<'ctx>(
                         .or_else(|| raw.strip_suffix("__len"))
                         .map(|s| s.to_string())
                         .unwrap_or(raw);
-                    // Compile inner into a temp slot, then extract by name,
-                    // then load as i64. The inner value is presumably
-                    // an enum/composite whose field is Int-typed.
-                    let inner_temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let inner_ptr = bcx.ins().stack_addr(ptr_t, inner_temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[inner_ptr]);
-                    emit_write_value(bcx, &children[0], inner_ptr, env,
+                    // Read the field straight off the source (no wholesale
+                    // clone when it's a bare variable; session YY), then
+                    // load as i64. The source is an enum/composite whose
+                    // field is Int-typed.
+                    let inner_ptr = emit_value_ref(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let field_temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
@@ -1441,14 +1509,10 @@ fn emit_compute_i64<'ctx>(
                 }
                 DeclKind::SELECT => {
                     if children.len() != 2 { return None; }
-                    // Compile arr into a temp, then seq_select to read elem,
-                    // then load_int from the elem slot.
-                    let arr_temp = bcx.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot,
-                                           size_of_value as u32));
-                    let arr_ptr = bcx.ins().stack_addr(ptr_t, arr_temp, 0);
-                    bcx.ins().call(helpers.init_slot, &[arr_ptr]);
-                    emit_write_value(bcx, &children[0], arr_ptr, env,
+                    // Read the array straight off the source (no wholesale
+                    // clone when it's a bare variable; session YY), then
+                    // seq_select to read elem, then load_int.
+                    let arr_ptr = emit_value_ref(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     let idx_v = emit_compute_i64(bcx, &children[1], env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)?;

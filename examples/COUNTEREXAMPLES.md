@@ -645,6 +645,25 @@ proves both the pop/dispatch/push/fold/thread *logic* AND the
 composite-state round-trip are correct. See
 `docs/design/loop-functionizer.md` §4.
 
+### #19c. The tier-3 recursive-enum walk's per-tick cost is `Value`-clone-bound (session YY)
+
+The stack-FSM walk above (and the self-hosted `subscriptions_walk` it
+underpins) **does** functionize — its `match`-dispatch-constructs-a-
+recursive-enum-next-state step compiles to native code (`comp=2/2`,
+0 runtime bails). What made it ~10 000× slower than the Rust oracle was
+*not* a codegen refusal but the per-tick `Value` marshaling around the
+native call. Session YY closed the worst of it (read accessors/recognizers
+by reference instead of cloning the whole state; move built outputs;
+drop the redundant per-tick Z3 pin), giving ~3× on Mario's walks and
+fixing an ~8 GB memory blow-up + unbounded per-walk slowdown — see
+`docs/jit-codegen-gaps.md` "Session YY". The **residual** floor (still
+tens-to-hundreds of ms) is inherent to variant 1: each tick reconstructs
+the cons-list state, cloning the stack tail + the growing accumulator
+(`Value` has no structural sharing). Collapsing it to native-loop speed
+needs structural sharing in `Value` or variant-2 whole-loop compilation
+(`docs/design/loop-functionizer.md` §4 option B). This is the perf gate
+on the held session-XX subscriptions cutover.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)
