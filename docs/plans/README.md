@@ -20,6 +20,7 @@ Progress tracker: [`PROGRESS.md`](PROGRESS.md).
 Adjacent design docs (not phased, but on deck):
 
 - [`../design/cegar-scaffolding.md`](../design/cegar-scaffolding.md) — layer CEGAR on the Functionizer trait (oracle + refiner) so FSM verification can route around log-unroll's branching wall.
+- [`../design/loop-functionizer.md`](../design/loop-functionizer.md) — wrap the step-functionizer in a native run-to-halt loop over an explicit work-stack; self-hosts the tree-walk passes (`subscriptions`/`validate`/`pretty`) without adding recursion to the language — the port shape that finally inverts the self-hosting LOC count.
 
 Cross-cutting inventory: [`../design/self-hosting-inventory.md`](../design/self-hosting-inventory.md) — every `runtime/src/**/*.rs` file classified by tier + prioritized port order.
 

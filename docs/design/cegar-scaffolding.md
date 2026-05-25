@@ -448,5 +448,11 @@ can carry the verification weight.
 - [`../perf/log-unroll-feasibility.md`](../perf/log-unroll-feasibility.md)
   — measurement showing log-unroll fails on branching FSMs; the
   literal motivation for CEGAR.
+- [`loop-functionizer.md`](loop-functionizer.md) — sibling strategy: a
+  `CompiledFunction` that wraps the step-functionizer in a native
+  run-to-halt loop. In CEGAR's terms it is an *abstraction* built on a
+  cheaper abstraction; its `max_iters` guard is where the oracle (Z3)
+  takes over — except for the recursive tree-walk class, where Z3 is
+  *not* a sound oracle and the guard guards bugs, not solver gaps.
 - [`smt-languages-research.md`](smt-languages-research.md) — CEGIS
   background from the Sketch line.
