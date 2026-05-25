@@ -403,27 +403,40 @@ StringResult(s) ⇒ s }`); `#seq` computed from the paired Seq value
 and `LibCall`-as-scalar (test_17); test_29's tick-0 bootstrap component
 (a `runtime/query.rs` unsafe-free decision, not a codegen shape).
 
-## 15. Recursive claims don't constrain their outputs (blocks AST→X passes)
+## 15. Recursive claims don't constrain their outputs — ROUTED for tree-walks
 
 **Where:** `runtime/src/translate/inline/recursion.rs`,
-`translate/inline/walk.rs`; surfaced porting `pretty.rs` to
+`translate/inline/walk.rs`; originally surfaced porting `pretty.rs` to
 `stdlib/passes/pretty.ev` (session X). Full writeup:
 [`docs/self-hosting.md`](../docs/self-hosting.md).
 
-A claim cannot recursively process a recursive datatype of unknown
-depth. Bounded inlining exists (depth-capped at
+A claim cannot recursively process a recursive datatype of unknown depth
+**via functional recursion**. Bounded inlining exists (depth-capped at
 `EVIDENT_MAX_INLINE_DEPTH=64`) but the inlined frames' outputs are left
 **unconstrained** — Z3 fills free values, so the result is garbage (both
 correct and wrong outputs come back SAT). And a claim call nested inside
 an expression (`out = pretty(l) ++ …`) is **silently dropped**
-(`walk.rs`). No `define-fun-rec`, no fold/catamorphism.
+(`walk.rs`). No `define-fun-rec`, no fold/catamorphism. **This gap is
+still open for the inline-a-recursive-claim shape** — other passes may
+still cite it.
 
-Consequence: a pass can render only leaf / flat AST shapes; anything
-with sub-`Expr`s can't be self-hosted yet. Fix path: compile recursive
-claims to Z3 recursive functions (or thread the inductive output
-constraint through the unrolling) — see
-`docs/plans/03-language-prereqs/01-recursive-claims.md` (acceptance
-criteria all unchecked).
+**`pretty` no longer demonstrates this** (as of the `pretty_walk`
+rewrite), and neither does `subscriptions`. Both route around the gap the
+same way #19 documents: the recursive tree-walk becomes a **stack-FSM** —
+iteration over an explicit work-stack carried in FSM state, driven to halt
+by `run()`. The recursion's output is threaded through state across ticks,
+never left free for Z3 to fill, so a recursive AST→String (`pretty_walk`)
+or AST→set (`subscriptions_walk`) pass renders/visits its full sub-tree.
+So the old consequence — "a pass can render only leaf / flat AST shapes" —
+**no longer holds**: anything with sub-`Expr`s self-hosts via the
+stack-FSM. What still bounds a string pass's *byte-fidelity* is #16
+(Unicode glyphs) and the no-int→string limit, not recursion.
+
+Eventual full fix for the inline shape: compile recursive claims to Z3
+recursive functions (or thread the inductive output constraint through the
+unrolling) — see `docs/plans/03-language-prereqs/01-recursive-claims.md`
+(acceptance criteria all unchecked). But the stack-FSM means that fix is
+no longer on the critical path for the self-hosted tree-walk ports.
 
 ## 16. Non-ASCII string literals mangle through Z3
 
