@@ -39,7 +39,7 @@ use crate::z3_eval::{Z3Program, Z3Step, GuardedBody};
 
 pub struct JitProgram {
     _module: JITModule,
-    func: unsafe extern "C" fn(*const Value, *mut Value, *const Value),
+    func: unsafe extern "C" fn(*const Value, *mut Value, *const Value, *mut i64),
     pub input_offsets: HashMap<String, usize>,
     pub input_kinds:   HashMap<String, OutputKind>,
     pub output_offsets: HashMap<String, usize>,
@@ -93,11 +93,24 @@ impl JitProgram {
         } else {
             self.value_pool.as_ptr()
         };
+        // Runtime bail flag: a Guarded step whose guards all evaluate
+        // false at runtime (no branch matched) sets this to 1. We then
+        // return None so the caller falls through to the slow Z3 solve
+        // — exactly the None-style bailout the VM did. For an exhaustive
+        // match/dispatch this fallthrough is dead code; the flag stays 0.
+        let mut bail: i64 = 0;
         // SAFETY: compiled code is alive as long as `_module`;
         // both arrays are valid `Vec<Value>` of the declared size;
-        // value_pool outlives the JIT module (stored alongside).
+        // value_pool outlives the JIT module (stored alongside);
+        // `&mut bail` is a valid i64 slot for the call's duration.
         unsafe {
-            (self.func)(inputs.as_ptr(), outputs.as_mut_ptr(), pool_ptr);
+            (self.func)(inputs.as_ptr(), outputs.as_mut_ptr(), pool_ptr, &mut bail);
+        }
+        if bail != 0 {
+            if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
+                eprintln!("[jit/call] guarded no-match bail → slow path");
+            }
+            return None;
         }
         let mut out = HashMap::new();
         for (name, &idx) in &self.output_offsets {
@@ -356,19 +369,28 @@ pub fn compile_program<'ctx>(
                 (var.clone(), k)
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
-            Z3Step::Guarded { var, .. } => {
-                // Guarded steps require correctness around "no branch
-                // matched" (currently the JIT writes a sentinel int,
-                // which propagates as a wrong result to the scheduler).
-                // The VM handles this correctly by returning None,
-                // letting the function-izer fall through to the slow
-                // path. Until the JIT can also produce a None-style
-                // bailout, refuse to JIT programs with Guarded steps.
-                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                    eprintln!("[jit] bail: Guarded {var} (would JIT but \
-                              falls through to VM for correctness)");
+            Z3Step::Guarded { var, branches } => {
+                // We only compile Seq-bodied Guarded steps — the common
+                // `effects = match state ⇒ ⟨…⟩` shape (24/27 demos). The
+                // "no branch matched" case is handled at runtime via the
+                // bail flag (see JitProgram::call): the codegen stores 1
+                // in the flag in the fallthrough block and the caller
+                // returns None, matching the old slow-path bailout.
+                //
+                // Scalar-bodied Guarded steps (an enum/String `match`
+                // producing a scalar — e.g. extracting `StringResult(s)`
+                // from `last_results[1]`) are NOT yet compiled: the
+                // payload-extraction codegen miscomputes for some shapes,
+                // so we refuse the whole program (→ slow Z3 solve, which
+                // is correct). See docs/jit-codegen-gaps.md.
+                if branches.iter().any(|b| matches!(b.body, GuardedBody::Scalar(_))) {
+                    if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+                        eprintln!("[jit] bail: Guarded {var} (scalar body \
+                                  — match-to-scalar not yet compiled)");
+                    }
+                    return None;
                 }
-                return None;
+                (var.clone(), OutputKind::Seq)
             }
             Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq /* placeholder */),
         };
@@ -402,6 +424,22 @@ pub fn compile_program<'ctx>(
         .filter(|(n, _)| !output_names.contains(n))
         .collect();
 
+    // A `<seq>__len` input is the symbolic length of an unpinned Seq
+    // (`#seq`, see translate/declare.rs). The runtime supplies the Seq
+    // *value* in `given` but never its `__len` symbol, so the JIT would
+    // pack it as the `Int(0)` sentinel and silently compute length 0 —
+    // wrong (e.g. `#last_results > 0` → false). We can't derive it from
+    // the paired Seq value because the symbol is disconnected from it at
+    // the ABI, so refuse the whole program (→ correct slow Z3 solve).
+    // (Pinned-length seqs fold `#seq` to a numeral and never reach here.)
+    if let Some((bad, _)) = input_names.iter().find(|(n, _)| n.ends_with("__len")) {
+        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
+            eprintln!("[jit] bail: input {bad} is a Seq-length symbol \
+                      (#seq of an unpinned Seq — not supplied in given)");
+        }
+        return None;
+    }
+
     // ── Phase 3: Cranelift IR generation ──────────────────
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").ok()?;
@@ -421,6 +459,7 @@ pub fn compile_program<'ctx>(
     sig.params.push(AbiParam::new(ptr_t));   // *const Value inputs
     sig.params.push(AbiParam::new(ptr_t));   // *mut Value outputs
     sig.params.push(AbiParam::new(ptr_t));   // *const Value value_pool
+    sig.params.push(AbiParam::new(ptr_t));   // *mut i64 bail flag
     let func_id = module.declare_function("compiled_program",
         Linkage::Local, &sig).ok()?;
     let mut ctx = module.make_context();
@@ -454,6 +493,7 @@ pub fn compile_program<'ctx>(
         let inputs_ptr  = bcx.block_params(entry)[0];
         let outputs_ptr = bcx.block_params(entry)[1];
         let pool_ptr    = bcx.block_params(entry)[2];
+        let bail_ptr    = bcx.block_params(entry)[3];
 
         // Env: var name → ptr-to-Value slot. Inputs are at
         // (inputs_ptr + idx*sizeof(Value)). Outputs are at
@@ -577,9 +617,15 @@ pub fn compile_program<'ctx>(
                         bcx.switch_to_block(next_block);
                         bcx.seal_block(next_block);
                     }
-                    // Default fallthrough — set Value::Int(0). The
-                    // VM would return None here; we must produce a
-                    // valid Value because the slot is already alive.
+                    // Default fallthrough — no guard matched. Set the
+                    // runtime bail flag so JitProgram::call returns None
+                    // and the caller falls through to the slow Z3 solve
+                    // (the correct value comes from the scoped re-solve).
+                    // Still write a valid sentinel Int(0) so the slot
+                    // stays a well-formed Value for any subsequent step
+                    // that reads it before the call unwinds.
+                    let one = bcx.ins().iconst(types::I64, 1);
+                    bcx.ins().store(MemFlags::new(), one, bail_ptr, 0);
                     let zero = bcx.ins().iconst(types::I64, 0);
                     bcx.ins().call(helpers.set_int, &[out_slot, zero]);
                     bcx.ins().jump(merge_block, &[]);
@@ -610,7 +656,7 @@ pub fn compile_program<'ctx>(
     let code_ptr = module.get_finalized_function(func_id);
     // SAFETY: code_ptr points to JIT'd machine code with the
     // ABI we declared above.
-    let func: unsafe extern "C" fn(*const Value, *mut Value, *const Value) = unsafe {
+    let func: unsafe extern "C" fn(*const Value, *mut Value, *const Value, *mut i64) = unsafe {
         std::mem::transmute(code_ptr)
     };
     Some(JitProgram {
@@ -968,8 +1014,14 @@ fn emit_write_value<'ctx>(
                     bcx.seal_block(merge_block);
                     Some(())
                 }
-                DeclKind::ADD | DeclKind::SUB | DeclKind::MUL | DeclKind::UMINUS => {
+                DeclKind::ADD | DeclKind::SUB | DeclKind::MUL | DeclKind::UMINUS
+                | DeclKind::IDIV | DeclKind::DIV | DeclKind::MOD | DeclKind::REM => {
                     // Int arithmetic → set_int with computed i64.
+                    // div/mod were already handled as *operands* by
+                    // emit_compute_i64 (sdiv/srem); listing them here lets
+                    // a div/mod sit as the top-level expr of a Scalar write
+                    // (e.g. `q = seed / 2`) or an ITE branch instead of
+                    // falling through to `_ => None`.
                     let v = emit_compute_i64(bcx, expr, env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_int, &[out_slot, v]);
@@ -981,6 +1033,40 @@ fn emit_write_value<'ctx>(
                     let v = emit_compute_i64(bcx, expr, env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_bool, &[out_slot, v]);
+                    Some(())
+                }
+                DeclKind::SEQ_CONCAT => {
+                    // String concatenation `(str.++ a b …)`. Each operand
+                    // is itself a String value (literal or env var); build
+                    // each into a temp slot, then call ev_str_concat with an
+                    // array of slot pointers (mirrors the multifield ctor
+                    // path). String operands reach this via the literal
+                    // short-circuit / UNINTERPRETED clone-from-env at the
+                    // top of emit_write_value, so nested concats work too.
+                    let n = children.len();
+                    let arg_slots: Vec<ClValue> = (0..n).map(|_| {
+                        let s = bcx.create_sized_stack_slot(
+                            StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                               size_of_value as u32));
+                        bcx.ins().stack_addr(ptr_t, s, 0)
+                    }).collect();
+                    for s in &arg_slots {
+                        bcx.ins().call(helpers.init_slot, &[*s]);
+                    }
+                    for (i, child) in children.iter().enumerate() {
+                        emit_write_value(bcx, child, arg_slots[i], env,
+                            helpers, variant_arity, record_info, string_pool,
+                            ptr_t, size_of_value)?;
+                    }
+                    let array_slot = bcx.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot,
+                                           (n.max(1) as u32) * 8));
+                    let array_ptr = bcx.ins().stack_addr(ptr_t, array_slot, 0);
+                    for (i, &s) in arg_slots.iter().enumerate() {
+                        bcx.ins().store(MemFlags::new(), s, array_ptr, (i as i32) * 8);
+                    }
+                    let n_v = bcx.ins().iconst(types::I64, n as i64);
+                    bcx.ins().call(helpers.str_concat, &[out_slot, array_ptr, n_v]);
                     Some(())
                 }
                 _ => None,
