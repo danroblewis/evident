@@ -23,6 +23,11 @@ A bail is in **codegen** (cranelift returns `None` / miscompiles) or in
 topo-bails). Codegen bails are fixable inside `cranelift.rs`; extraction
 bails need `translate/` or `z3_eval` changes.
 
+> **Other functionizer strategies.** Cranelift is the default, but the
+> `Functionizer` trait is strategy-agnostic. For the GLSL fragment-shader
+> backend (a GPU transpile of the same `Z3Program`, opt-in, macOS-only)
+> and *its* scope limits, see [`glsl-functionizer.md`](glsl-functionizer.md).
+
 Tracing: `EVIDENT_JIT_TRACE=1` prints `[jit] bail: …`. `EVIDENT_FUNCTIONIZE_STATS=1`
 prints the per-claim `comp=C/N`. `EVIDENT_JIT_CALL_TRACE=1` prints each
 compiled call's result + helper calls.
