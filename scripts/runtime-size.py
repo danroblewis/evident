@@ -291,7 +291,7 @@ def print_histogram(totals: list[int]) -> None:
     counts = [sum(1 for n in totals if lo <= n < hi) for _, lo, hi in BUCKETS]
     peak = max(counts) or 1
     width = 30
-    print("  File length distribution")
+    print("  File size distribution (code lines)")
     for (label, _, _), c in zip(BUCKETS, counts):
         bar = "█" * round(c / peak * width)
         print(f"  {label:>9} │ {bar} {c}")
@@ -300,9 +300,9 @@ def print_histogram(totals: list[int]) -> None:
 def print_longest(rows: list[tuple], k: int = 6) -> None:
     by_len = sorted(rows, key=lambda r: r[1], reverse=True)
     k = min(k, len(rows))
-    print(f"  Longest {k} files")
-    for name, total, *_ in by_len[:k]:
-        print(f"    {total:>6,}  {name}")
+    print(f"  Longest {k} files (code lines)")
+    for name, code, *_ in by_len[:k]:
+        print(f"    {code:>6,}  {name}")
 
 
 def gather(root: str, ext: str) -> list[str]:
@@ -319,8 +319,7 @@ def gather(root: str, ext: str) -> list[str]:
 def collect(root: str, ext: str, classify, strip_tests: bool) -> tuple[dict, list]:
     """Aggregate counts + per-file rows for one source body. Rows carry the
     repo-relative path so combined listings are unambiguous."""
-    agg = {"files": 0, "total": 0, "code": 0,
-           "words": 0, "lex_tokens": 0, "approx_llm": 0}
+    agg = {"files": 0, "code": 0, "words": 0, "lex_tokens": 0, "approx_llm": 0}
     rows = []
     for path in gather(root, ext):
         with open(path, encoding="utf-8") as fh:
@@ -331,23 +330,20 @@ def collect(root: str, ext: str, classify, strip_tests: bool) -> tuple[dict, lis
         lc = count_lines(text, classify)
         tc = count_tokens(code_only)
         agg["files"] += 1
-        for key in ("total", "code"):
-            agg[key] += lc[key]
+        agg["code"] += lc["code"]
         for key in ("words", "lex_tokens", "approx_llm"):
             agg[key] += tc[key]
-        rows.append((os.path.relpath(path, REPO_ROOT), lc["total"], lc["code"],
-                     tc["approx_llm"]))
+        rows.append((os.path.relpath(path, REPO_ROOT), lc["code"], tc["approx_llm"]))
     return agg, rows
 
 
 def print_summary(rust: dict, ev: dict) -> None:
     total = {k: rust[k] + ev[k] for k in rust}
-    fields = [("files", "files"), ("lines", "total"), ("  code", "code"),
-              ("LLM tokens", "approx_llm"), ("  lexical", "lex_tokens"),
-              ("  words", "words")]
-    print(f"  {'':<12}{'Rust':>11}{'Evident':>11}{'Total':>11}")
-    for label, key in fields:
-        print(f"  {label:<12}{rust[key]:>11,}{ev[key]:>11,}{total[key]:>11,}")
+    cols = [("files", "files"), ("code", "code"), ("LLM tokens", "approx_llm"),
+            ("lexical", "lex_tokens"), ("words", "words")]
+    print("  " + f"{'':<9}" + "".join(f"{label:>11}" for label, _ in cols))
+    for name, agg in (("Rust", rust), ("Evident", ev), ("Total", total)):
+        print("  " + f"{name:<9}" + "".join(f"{agg[key]:>11,}" for _, key in cols))
 
 
 def main() -> int:
@@ -370,10 +366,10 @@ def main() -> int:
 
     if args.per_file:
         rows.sort(key=lambda r: r[1], reverse=True)
-        print(f"\n{'file':<48}{'lines':>8}{'code':>8}{'~tokens':>10}")
-        print("-" * 74)
-        for name, total, code, tok in rows:
-            print(f"{name:<48}{total:>8}{code:>8}{tok:>10}")
+        print(f"\n{'file':<48}{'code':>8}{'~tokens':>10}")
+        print("-" * 66)
+        for name, code, tok in rows:
+            print(f"{name:<48}{code:>8}{tok:>10}")
     return 0
 
 
