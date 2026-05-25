@@ -56,7 +56,7 @@
 
 use std::collections::HashMap;
 
-use crate::core::ast::{BodyItem, Effect, SchemaDecl};
+use crate::core::ast::{BodyItem, Effect, Keyword, SchemaDecl};
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;
 
@@ -71,6 +71,11 @@ use super::state::encode_state_value;
 pub enum RunError {
     /// `run(F, ..)` named a schema that doesn't exist.
     UnknownFsm(String),
+    /// `F` exists but isn't declared with the `fsm` keyword. The keyword
+    /// is the sole signal that a schema is an FSM — a `claim`/`type`/
+    /// `schema` target is rejected (no shape-detection fallback). Carries
+    /// the keyword `F` *was* declared with, for the diagnostic.
+    NotFsm { fsm: String, keyword: String },
     /// `F` has no `name, name_next ∈ T` state pair.
     NoStatePair(String),
     /// `F` declares more than one state pair (v1 supports exactly one).
@@ -104,6 +109,11 @@ impl std::fmt::Display for RunError {
         match self {
             RunError::UnknownFsm(n) =>
                 write!(f, "run: first argument `{n}` doesn't name a known schema"),
+            RunError::NotFsm { fsm, keyword } =>
+                write!(f, "run's target `{fsm}` must be declared `fsm`, not `{keyword}` \
+                          — the `fsm` keyword is the sole signal that a schema is an \
+                          FSM (no shape-detection). Relabel `{keyword} {fsm}` to \
+                          `fsm {fsm}`."),
             RunError::NoStatePair(n) =>
                 write!(f, "run({n}, ..): `run`'s first argument must name an \
                           FSM-shaped schema (a `name, name_next ∈ T` state pair \
@@ -173,6 +183,17 @@ fn detect_state_pairs(schema: &SchemaDecl) -> Vec<StatePair> {
     pairs
 }
 
+/// The surface word for a `Keyword`, for diagnostics ("not `claim`").
+fn keyword_word(kw: &Keyword) -> &'static str {
+    match kw {
+        Keyword::Schema   => "schema",
+        Keyword::Claim    => "claim",
+        Keyword::Type     => "type",
+        Keyword::Subclaim => "subclaim",
+        Keyword::Fsm      => "fsm",
+    }
+}
+
 /// Does the body declare a `halt ∈ Bool`?
 fn has_halt_bool(schema: &SchemaDecl) -> bool {
     schema.body.iter().any(|item| matches!(item,
@@ -206,6 +227,18 @@ pub fn validate_run_target(rt: &EvidentRuntime, fsm_name: &str) -> Result<(), Ru
 /// Shared shape check used by both `validate_run_target` and
 /// `run_nested`. Returns the single detected state pair on success.
 fn check_shape(schema: &SchemaDecl, fsm_name: &str) -> Result<StatePair, RunError> {
+    // The `fsm` keyword is the sole signal that a schema is an FSM. A
+    // `run(...)` / `halts_within(...)` target declared `claim`/`type`/
+    // `schema` is rejected here — intent declared beats intent inferred,
+    // and the old shape-based resolution is gone. This fires at load time
+    // (via `validate_run_target`) and defensively at run time (via
+    // `run_nested_capturing`).
+    if !matches!(schema.keyword, Keyword::Fsm) {
+        return Err(RunError::NotFsm {
+            fsm: fsm_name.to_string(),
+            keyword: keyword_word(&schema.keyword).to_string(),
+        });
+    }
     // An `external fsm` has no solvable per-tick body — reject. (A body
     // that *declares* `effects` is now fine: its effects are captured and
     // percolated to the parent, not dispatched during the run — see

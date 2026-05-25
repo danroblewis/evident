@@ -56,9 +56,11 @@ enum Walk  = Seed(Int) | Step(Stack, Int) | Done(Int)
 -- One step: pop the top subtree, dispatch on its variant, push children
 -- (Node) or fold the leaf into the accumulator (Leaf). When the stack
 -- drains, move to the flat `Done(sum)` terminal so `run` returns a clean
--- single-Int value. Declared a `claim` (not `fsm`) so the scheduler never
--- instantiates it; `run` resolves it by name and drives it to halt.
-claim sum_tree(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
+-- single-Int value. Labeled `fsm` (the keyword is the sole FSM signal);
+-- because it is a `run(...)` target it is embedded-only — the scheduler
+-- never auto-instantiates a referenced FSM. `run` resolves it by name
+-- and drives it to halt.
+fsm sum_tree(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
     state_next = match state
         -- Seed selects the tree shape (init can't carry a composite).
         Seed(n) ⇒ (n = 0 ? Step(Push(Leaf(7), Empty), 0)

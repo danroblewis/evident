@@ -26,7 +26,7 @@ use evident_runtime::{EvidentRuntime, Value};
 /// exits. The msg lookup is complete (a sentinel row for any other
 /// count) so every per-tick solve pins msg — no Z3 free-var noise.
 const SRC: &str = r#"
-claim countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
+fsm countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
     count_next = count - 1
     halt = (count ≤ 0)
     msg ∈ String

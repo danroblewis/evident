@@ -41,7 +41,7 @@ use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{AstKind, Context, Solver};
 use z3_sys::DeclKind;
 
-use crate::core::ast::{BodyItem, SchemaDecl};
+use crate::core::ast::{BodyItem, Keyword, SchemaDecl};
 use crate::core::{DatatypeRegistry, EnumRegistry, Value, Var, Z3Program, Z3Step};
 use crate::z3_eval::simplify_assertions;
 
@@ -64,6 +64,12 @@ fn largest_power_le(n: u64) -> u64 {
 pub enum HaltsWithinError {
     /// `halts_within(F, N)` named a claim that doesn't exist.
     UnknownFsm(String),
+    /// `F` exists but isn't declared with the `fsm` keyword. The keyword
+    /// is the sole signal that a schema is an FSM — a `claim`/`type`/
+    /// `schema` target is rejected (no shape-detection fallback). Carries
+    /// the keyword `F` was declared with, for the diagnostic. Also the
+    /// gate for tier-1 `run` (`collapse_run` shares `build_f1`).
+    NotFsm { fsm: String, keyword: String },
     /// F has no `name, name_next ∈ T` state pair. Required for
     /// composition.
     NoStatePair(String),
@@ -91,6 +97,11 @@ impl std::fmt::Display for HaltsWithinError {
         match self {
             HaltsWithinError::UnknownFsm(name) =>
                 write!(f, "halts_within: unknown FSM claim {name:?}"),
+            HaltsWithinError::NotFsm { fsm, keyword } =>
+                write!(f, "halts_within's target `{fsm}` must be declared `fsm`, not \
+                          `{keyword}` — the `fsm` keyword is the sole signal that a \
+                          schema is an FSM (no shape-detection). Relabel `{keyword} \
+                          {fsm}` to `fsm {fsm}`."),
             HaltsWithinError::NoStatePair(name) =>
                 write!(f, "halts_within({name}, ..): FSM body must declare a `name, name_next ∈ T` state pair"),
             HaltsWithinError::NoHaltVar(name) =>
@@ -114,6 +125,17 @@ struct StatePair {
     output: String,
     #[allow(dead_code)]
     type_name: String,
+}
+
+/// The surface word for a `Keyword`, for diagnostics ("not `claim`").
+fn keyword_word(kw: &Keyword) -> &'static str {
+    match kw {
+        Keyword::Schema   => "schema",
+        Keyword::Claim    => "claim",
+        Keyword::Type     => "type",
+        Keyword::Subclaim => "subclaim",
+        Keyword::Fsm      => "fsm",
+    }
 }
 
 fn trace_enabled() -> bool {
@@ -222,6 +244,18 @@ fn build_f1<'ctx>(
 ) -> Result<(Power<'static>, HashMap<String, Dynamic<'static>>, Vec<StatePair>), HaltsWithinError>
 where 'ctx: 'static
 {
+    // The `fsm` keyword is the sole signal that a schema is an FSM. A
+    // `halts_within(...)` / tier-1 `run(...)` target declared
+    // `claim`/`type`/`schema` is rejected here — `build_f1` is the shared
+    // resolution point for both `assert_halts_within` and `collapse_run`,
+    // so gating it covers both composition surfaces. The old shape-based
+    // resolution (state pair + `halt`) is no longer enough on its own.
+    if !matches!(schema.keyword, Keyword::Fsm) {
+        return Err(HaltsWithinError::NotFsm {
+            fsm: fsm_name.to_string(),
+            keyword: keyword_word(&schema.keyword).to_string(),
+        });
+    }
     let pairs = detect_state_pairs(schema);
     if pairs.is_empty() {
         return Err(HaltsWithinError::NoStatePair(fsm_name.to_string()));

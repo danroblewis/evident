@@ -27,10 +27,12 @@
 import "stdlib/runtime.ev"
 
 -- ── The transition under execution ───────────────────────────────
--- A pure state→state counter. Declared a `claim` (not `fsm`) so the
--- scheduler never instantiates it; `run` resolves it by name and drives
--- it. count_next/halt are clean equalities — the FSM shape `run` reads.
-claim decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
+-- A pure state→state counter. Labeled `fsm` (the keyword is the sole
+-- FSM signal); because it is a `run(...)` target it is embedded-only —
+-- the scheduler never auto-instantiates a referenced FSM. `run`
+-- resolves it by name and drives it. count_next/halt are clean
+-- equalities — the FSM shape `run` reads.
+fsm decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
     count_next = count - 1
     halt = (count ≤ 0)
 
@@ -63,7 +65,7 @@ claim sat_run_feeds_outer
 -- is carried as a record-shaped enum value, ticked to halt, returned.
 enum Acc = Acc(Int)
 
-claim accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
+fsm accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
     n ∈ Int = match state
         Acc(v) ⇒ v
     state_next = Acc(n + 1)

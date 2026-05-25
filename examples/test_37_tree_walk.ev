@@ -62,9 +62,11 @@ enum Walk   = WSeed(Node) | WStep(Agenda, Labels) | WDone(Labels)
 -- frame; an empty frame is dropped, a non-empty one yields its head
 -- node — push that node's children as a new frame, keep the frame's
 -- tail (`more`) underneath, fold the node's label into the accumulator.
--- Drained agenda → WDone(labels). A `claim` (not `fsm`) so the scheduler
--- never instantiates it; `run` resolves it by name and drives it to halt.
-claim collect_labels(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
+-- Drained agenda → WDone(labels). Labeled `fsm` (the keyword is the sole
+-- FSM signal); because it is a `run(...)` target it is embedded-only —
+-- the scheduler never auto-instantiates a referenced FSM. `run` resolves
+-- it by name and drives it to halt.
+fsm collect_labels(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
     state_next = match state
         WSeed(root) ⇒ WStep(ACons(NLCons(root, NLNil), ANil), LNil)
         WStep(ag, labels) ⇒ match ag
