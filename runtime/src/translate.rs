@@ -54,7 +54,8 @@ pub mod ast_decoder {
     //! (session UU): the read-side twin of `ast_encoder`'s `*_to_value`
     //! marshaler, used by any port that drives a stack-FSM over the
     //! marshaler's output and decodes a cons-list accumulator back.
-    pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
+    pub use super::decode_ast::{decode_program, decode_schema_decl,
+                                  decode_effect, decode_effect_list,
                                   decode_ffi_arg, decode_arg_list,
                                   decode_result,
                                   decode_install_step, decode_install_step_list,

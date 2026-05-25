@@ -1503,8 +1503,20 @@ fn emit_compute_i64<'ctx>(
                     let nl_v = bcx.ins().iconst(types::I64, nl);
                     bcx.ins().call(helpers.extract_field,
                         &[field_ptr, inner_ptr, np_v, nl_v]);
-                    // Load as int from the field slot.
-                    let call = bcx.ins().call(helpers.load_int, &[field_ptr]);
+                    // Load from the field slot using the loader that
+                    // matches the accessor's RESULT sort. A Bool-typed
+                    // payload field must read via `load_bool` —
+                    // `load_int` returns 0 for a `Value::Bool`, so a
+                    // destructured Bool used in a comparison / boolean op
+                    // (`Decide(rsn,_) ⇒ rsn ∧ …`) would read false even
+                    // when it's true (COUNTEREXAMPLES #18 / #17 keystone).
+                    let sort_name = format!("{}", expr.get_sort());
+                    let loader = if sort_name == "Bool" {
+                        helpers.load_bool
+                    } else {
+                        helpers.load_int
+                    };
+                    let call = bcx.ins().call(loader, &[field_ptr]);
                     Some(bcx.inst_results(call)[0])
                 }
                 DeclKind::SELECT => {
@@ -1523,7 +1535,15 @@ fn emit_compute_i64<'ctx>(
                     bcx.ins().call(helpers.init_slot, &[elem_ptr]);
                     bcx.ins().call(helpers.seq_select,
                         &[elem_ptr, arr_ptr, idx_v]);
-                    let call = bcx.ins().call(helpers.load_int, &[elem_ptr]);
+                    // Same sort-driven loader choice as DT_ACCESSOR: a
+                    // Bool element read via `load_int` would read 0.
+                    let sort_name = format!("{}", expr.get_sort());
+                    let loader = if sort_name == "Bool" {
+                        helpers.load_bool
+                    } else {
+                        helpers.load_int
+                    };
+                    let call = bcx.ins().call(loader, &[elem_ptr]);
                     Some(bcx.inst_results(call)[0])
                 }
                 _ => None,

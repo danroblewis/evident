@@ -89,7 +89,7 @@ claim expected_program
     expected ∈ Program
     expected = MakeProgram(
         __Cell_SchemaDecl(
-            MakeSchemaDecl(KClaim, \"t\",
+            MakeSchemaDecl(KClaim, \"t\", 0,
                 __Cell_BodyItem(BIMembership(\"x\", \"Int\", PNone), __Empty_BodyItem)),
             __Empty_SchemaDecl),
         __Empty_EnumDecl)

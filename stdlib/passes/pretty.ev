@@ -125,7 +125,7 @@ enum BodyItem =
 
 enum BodyItemList = BILNil | BILCons(BodyItem, BodyItemList)
 
-enum SchemaDecl = MakeSchemaDecl(Keyword, String, BodyItemList)
+enum SchemaDecl = MakeSchemaDecl(Keyword, String, Nat, BodyItemList)
 
 -- ── Work-stack items (the Emit/Expand split) ──────────────────────────
 -- A heterogeneous agenda: each item is either a literal fragment to
@@ -235,7 +235,7 @@ fsm pretty_walk(state ∈ PS, state_next ∈ PS, halt ∈ Bool)
                 BIMembership(nm, ty, _) ⇒ PStep(PSCons(WEmit(nm ++ " ∈ " ++ ty), rest), out)
                 BIHaltsWithin(nm, _)    ⇒ PStep(PSCons(WEmit("halts_within(" ++ nm ++ ", <int>)"), rest), out)
                 BISubclaim(s)           ⇒ match s
-                    MakeSchemaDecl(_, nm, _) ⇒ PStep(PSCons(WEmit("subclaim " ++ nm ++ " (…)"), rest), out)
+                    MakeSchemaDecl(_, nm, _, _) ⇒ PStep(PSCons(WEmit("subclaim " ++ nm ++ " (…)"), rest), out)
                 BIClaimCall(nm, ms)     ⇒ match ms
                     MLNil       ⇒ PStep(PSCons(WEmit(nm), rest), out)
                     MLCons(_,_) ⇒ PStep(PSCons(WEmit(nm ++ " ("), PSCons(WMapList(ms), PSCons(WEmit(")"), rest))), out)

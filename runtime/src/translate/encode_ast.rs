@@ -356,20 +356,15 @@ pub fn encode_enum_decl<'ctx>(
 }
 
 /// Encode a SchemaDecl into the `MakeSchemaDecl(Keyword, String,
-/// BodyItemList)` shape declared in stdlib/ast.ev.
+/// Nat, BodyItemList)` shape declared in stdlib/ast.ev.
 ///
-/// **Intentional drop**: the Rust `SchemaDecl::param_count` field
-/// (which tracks how many of the body's leading Memberships are
-/// first-line interface params, vs. helper-locals) has no slot in
-/// `MakeSchemaDecl`. No current self-hosted pass uses interface-vs-
-/// helper distinction — every pass walks the body items uniformly —
-/// so encoding `param_count` would add a constructor slot every
-/// `decode_schema_decl` consumer must round-trip without observable
-/// benefit. The decoder reconstructs `param_count: 0`. If a future
-/// pass needs the distinction: add a fourth `Nat` slot to
-/// `MakeSchemaDecl` here and in stdlib/ast.ev; update
-/// `decode_schema_decl`; the cross-language contract is then carried
-/// explicitly.
+/// The third slot carries `SchemaDecl::param_count` — how many of the
+/// body's leading Memberships are first-line interface params (the
+/// insertion index that `inject` / `desugar` need to splice
+/// `state_next` & co. after the signature). It round-trips losslessly
+/// through `decode_schema_decl`; keep this slot in sync with the
+/// `*_to_value` mirror (`schema_decl_to_value`) and stdlib/ast.ev's
+/// `MakeSchemaDecl`.
 pub fn encode_schema_decl<'ctx>(
     s: &SchemaDecl,
     ctx: &'ctx Context,
@@ -377,8 +372,9 @@ pub fn encode_schema_decl<'ctx>(
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
     let kw = encode_keyword(&s.keyword, enums)?;
     let name = z3_str(ctx, &s.name);
+    let param_count = z3_int(ctx, s.param_count as i64);
     let body = encode_body_item_list(&s.body, ctx, enums)?;
-    apply(enums, "SchemaDecl", "MakeSchemaDecl", &[&kw, &name, &body])
+    apply(enums, "SchemaDecl", "MakeSchemaDecl", &[&kw, &name, &param_count, &body])
 }
 
 // ── BodyItem ────────────────────────────────────────────────────
@@ -845,8 +841,12 @@ pub fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
 pub fn schema_decl_to_value(s: &SchemaDecl) -> Value {
     let kw = keyword_to_value(&s.keyword);
     let body = body_item_list_to_value(&s.body);
+    // param_count: the first-line-param insertion index (see
+    // `encode_schema_decl`). Carried so a whole-SchemaDecl round-trips
+    // losslessly through `decode_schema_decl`.
     ev("SchemaDecl", "MakeSchemaDecl",
-       vec![kw, Value::Str(s.name.clone()), body])
+       vec![kw, Value::Str(s.name.clone()),
+            Value::Int(s.param_count as i64), body])
 }
 
 pub fn keyword_to_value(kw: &Keyword) -> Value {
