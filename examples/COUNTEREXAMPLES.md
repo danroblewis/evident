@@ -978,14 +978,19 @@ so `string_ops.rs` calls the raw `z3-sys` builders. The `InExpr` arm in
 `str.contains`; the `Cardinality` arm in `exprs/scalar.rs` maps `#text`
 to `str.len`.
 
-**This unblocks the generics self-host's parse/substitute half** (the
+**This unblocked the generics self-host's parse/substitute half** (the
 part PORT-generics couldn't express, recorded in
 `project_generics_selfhost_result`): `split_generic_head("Edge<Rect>")`
 → `("Edge", "Rect")` is `index_of` + `substr`, and
 `substitute_idents("Seq(T)", {T → "Rect"})` → `"Seq(Rect)"` is `replace`.
-See `test_generics_split_and_substitute` in both test files for the
-worked snippet. (This session adds the *capability*; the generics-pass
-cutover is a later session.)
+**Cut over in session REVIVE-generics:** the canonical Rust
+`monomorphize_generics` is DELETED; the load path now monomorphizes
+through `stdlib/passes/generics.ev` (WALK `generics_walk` + PARSE
+`split_head` + SUBSTITUTE `subst_one`) via
+`portable::generics::EvidentGenerics`. The fixed-point + schema-map
+lookup orchestration stays in the Rust shim (it needs the whole-program
+schema table, not string ops). Pinned in
+`runtime/tests/generics_correctness.rs`.
 
 **Honest note on cost:** Z3 string solving can be solve-expensive, but
 these ops are for LOAD/setup-time passes (generics monomorphizes at
