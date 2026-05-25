@@ -46,6 +46,10 @@ fn print_help() {
     eprintln!();
     eprintln!("Functionizer / Cranelift JIT:");
     eprintln!("  --no-functionizer        disable functionize entirely (EVIDENT_FUNCTIONIZE=0)");
+    eprintln!("  --functionizer NAME      pick the functionizer strategy (default: cranelift)");
+    eprintln!("                           cranelift = native JIT; llm = LLM code-gen (needs");
+    eprintln!("                           ANTHROPIC_API_KEY; falls back to cranelift without one)");
+    eprintln!("                           (env: EVIDENT_FUNCTIONIZER=llm)");
     eprintln!();
     eprintln!("Z3 tuning:");
     eprintln!("  --lenient                demote dropped-constraint errors to warnings");
@@ -54,6 +58,41 @@ fn print_help() {
     eprintln!();
     eprintln!("Misc:");
     eprintln!("  -h, --help               this message");
+}
+
+/// Build the runtime for the selected functionizer strategy.
+///
+/// `cranelift` (or `None`) → the default native JIT. `llm` → the
+/// LLM code-gen strategy, but only when `ANTHROPIC_API_KEY` is present:
+/// without a key the LLM generator would decline on every component
+/// (no network call), so we print a clear notice and use the default
+/// strategy instead — the Cranelift JIT for what it can compile, a Z3
+/// solve for what it can't. Unknown names fall back to the default with
+/// a warning rather than failing the run.
+fn build_runtime(functionizer: Option<&str>) -> EvidentRuntime {
+    match functionizer {
+        None | Some("cranelift") => EvidentRuntime::new(),
+        Some("llm") => {
+            let have_key = std::env::var("ANTHROPIC_API_KEY").ok()
+                .filter(|k| !k.is_empty()).is_some();
+            if have_key {
+                eprintln!("[fz] llm functionizer active (ANTHROPIC_API_KEY found); \
+                           components Cranelift can't compile are sent to the LLM, \
+                           validated against Z3, and cached.");
+                EvidentRuntime::with_functionizer(
+                    Box::new(evident_runtime::functionize::llm::LlmFunctionizer::new()))
+            } else {
+                eprintln!("[fz] llm functionizer requires ANTHROPIC_API_KEY, skipping — \
+                           falling back to the Cranelift JIT + Z3 slow path.");
+                EvidentRuntime::new()
+            }
+        }
+        Some(other) => {
+            eprintln!("[fz] unknown functionizer {other:?}; using the default (cranelift). \
+                       Known: cranelift, llm.");
+            EvidentRuntime::new()
+        }
+    }
 }
 
 pub fn cmd_effect_run(args: &[String]) -> ExitCode {
@@ -67,6 +106,10 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
     }
     let mut path: Option<String> = None;
     let mut max_steps = 10_000usize;
+    // Functionizer choice: flag wins over env, env wins over the
+    // cranelift default. Only "llm" diverges from the default today.
+    let mut functionizer: Option<String> = std::env::var("EVIDENT_FUNCTIONIZER").ok()
+        .filter(|s| !s.is_empty());
     let mut profile_z3 = false;
     let mut profile_z3_trace_file: Option<String> = None;
     let mut profile_z3_unsat_cores = false;
@@ -114,6 +157,16 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             "--no-functionizer" => {
                 std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
             }
+            "--functionizer" => {
+                i += 1;
+                match args.get(i) {
+                    Some(v) => functionizer = Some(v.clone()),
+                    None => {
+                        eprintln!("effect-run: --functionizer needs a name (cranelift|llm)");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
             "--lenient" => {
                 std::env::set_var("EVIDENT_LENIENT", "1");
             }
@@ -160,7 +213,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
     }
 
-    let mut rt = EvidentRuntime::new();
+    let mut rt = build_runtime(functionizer.as_deref());
     if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
         eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
         return ExitCode::from(1);

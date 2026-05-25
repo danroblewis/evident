@@ -287,6 +287,26 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // LLM-functionizer showcase: classifies HTTP methods piped on
+        // stdin as safe/unsafe via a String→Bool string-equality
+        // classifier. That component is JIT gap D2 (Cranelift refuses
+        // string equality), so the default run solves it with Z3 — the
+        // exact shape the `llm` functionizer compiles when given a key.
+        // This row is the NO-KEY path (CI never has a key, and the
+        // with-key path is non-deterministic + costs API quota): it
+        // gates the banner, every classification in order, and the
+        // clean exit. forbid_exact_lines catches a classifier that
+        // inverts the safe/unsafe verdict.
+        name: "test_32_llm_functionizer", exit: 0,
+        must_lines: &["HTTP method safety classifier",
+                      "GET safe", "POST unsafe", "PUT unsafe", "HEAD safe",
+                      "DELETE unsafe", "OPTIONS safe", "TRACE safe", "PATCH unsafe",
+                      "classified every method"],
+        forbid_exact_lines: &["GET unsafe", "POST safe", "TRACE unsafe"],
+        max_steps: 100, tick_ms: 0,
+        stdin: Some("GET\nPOST\nPUT\nHEAD\nDELETE\nOPTIONS\nTRACE\nPATCH\n\n"),
+    },
 ];
 
 #[test]
