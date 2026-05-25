@@ -273,6 +273,18 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Heavy-compute JIT showcase: 90 layers of branch-dependent
+        // arithmetic that Z3's simplify can't fold to a polynomial.
+        // Steady per-tick ≈ 0.28 ms with JIT vs ≈ 0.89 ms with
+        // FUNCTIONIZE=0 → 3.2× steady-state speedup. Test gates the
+        // clean run + the "heavy compute: done" line; speed is in
+        // the docstring.
+        name: "test_29_jit_heavy_compute", exit: 0,
+        must_lines: &["step", "heavy compute: done"],
+        forbid_exact_lines: &[],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
