@@ -711,7 +711,7 @@ pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Valu
     Value::SeqEnum(elems)
 }
 
-// ── Pure-Rust mirror: Program → Value::Enum tree ───────────────
+// ── Pure-Rust mirror: Program → Value::Enum tree (THE shared marshaler) ──
 //
 // The encoders above produce Z3 `Datatype<'static>` values for use
 // as solver assertions. The reflection world-plugin (and other
@@ -726,6 +726,32 @@ pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Valu
 // argument order. Adding a variant here means the Z3 path AND
 // stdlib/ast.ev's enum decl must be kept in sync (same as the
 // existing encoders).
+//
+// ── This `*_to_value` family is THE shared marshaler (session UU) ──
+//
+// It is a `pub` surface so EVERY self-hosted port reuses it rather
+// than hand-rolling its own AST→`Value` encoder. QQ measured that a
+// per-pass encoder is a recursive AST traversal isomorphic to the
+// walk it deletes, so per-pass self-hosting never shrank the runtime
+// (the marshaling tax was re-paid each port). Sharing this one
+// marshaler amortizes that tax to zero: a new port is now
+// `+Evident pass, −Rust walk, +~3 lines` (encode→run→decode).
+//
+// IMPORTANT — list shape: the list-typed AST fields are encoded as
+// named Cons enums (`BodyItemList(BILCons|BILNil)`, `ExprList`,
+// `MappingList`, `MatchArmList`, `BindList`, `SchemaList`, …), NOT as
+// `Seq(T)`. This is deliberate and is what makes the output directly
+// consumable by a STACK-FSM walk: a cons-list is poppable in-step
+// (`match`-destructure the head, recurse on the tail) whereas a
+// `Seq(T)` has no in-step pop (COUNTEREXAMPLES #19a). A pass that
+// walks this shape declares the matching cons enums (see
+// `stdlib/passes/subscriptions.ev`); a pass that pins it as a Z3
+// `given` over `stdlib/ast.ev`'s `Seq`-shaped enums uses the
+// `encode_*` Datatype family above instead.
+//
+// FUTURE WORK (durable follow-up, noted not built): generate this
+// whole family from the `ast.rs` types with a derive macro, so the
+// marshaler can never drift from the AST shape by hand.
 
 use crate::core::Value;
 
@@ -798,7 +824,7 @@ pub fn program_to_value(prog: &Program) -> Value {
     ev("Program", "MakeProgram", vec![schemas, enums])
 }
 
-fn schema_list_to_value(items: &[SchemaDecl]) -> Value {
+pub fn schema_list_to_value(items: &[SchemaDecl]) -> Value {
     let mut acc = ev("SchemaList", "SchLNil", vec![]);
     for s in items.iter().rev() {
         acc = ev("SchemaList", "SchLCons",
@@ -807,7 +833,7 @@ fn schema_list_to_value(items: &[SchemaDecl]) -> Value {
     acc
 }
 
-fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
+pub fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
     let mut acc = ev("EnumDeclList", "EDLNil", vec![]);
     for e in items.iter().rev() {
         acc = ev("EnumDeclList", "EDLCons",
@@ -816,14 +842,14 @@ fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
     acc
 }
 
-fn schema_decl_to_value(s: &SchemaDecl) -> Value {
+pub fn schema_decl_to_value(s: &SchemaDecl) -> Value {
     let kw = keyword_to_value(&s.keyword);
     let body = body_item_list_to_value(&s.body);
     ev("SchemaDecl", "MakeSchemaDecl",
        vec![kw, Value::Str(s.name.clone()), body])
 }
 
-fn keyword_to_value(kw: &Keyword) -> Value {
+pub fn keyword_to_value(kw: &Keyword) -> Value {
     let v = match kw {
         Keyword::Schema   => "KSchema",
         Keyword::Claim    => "KClaim",
@@ -834,7 +860,7 @@ fn keyword_to_value(kw: &Keyword) -> Value {
     ev("Keyword", v, vec![])
 }
 
-fn body_item_list_to_value(items: &[BodyItem]) -> Value {
+pub fn body_item_list_to_value(items: &[BodyItem]) -> Value {
     let mut acc = ev("BodyItemList", "BILNil", vec![]);
     for it in items.iter().rev() {
         acc = ev("BodyItemList", "BILCons",
@@ -843,7 +869,7 @@ fn body_item_list_to_value(items: &[BodyItem]) -> Value {
     acc
 }
 
-fn body_item_to_value(bi: &BodyItem) -> Value {
+pub fn body_item_to_value(bi: &BodyItem) -> Value {
     match bi {
         BodyItem::Membership { name, type_name, pins } => {
             ev("BodyItem", "BIMembership",
@@ -872,7 +898,7 @@ fn body_item_to_value(bi: &BodyItem) -> Value {
     }
 }
 
-fn pins_to_value(p: &Pins) -> Value {
+pub fn pins_to_value(p: &Pins) -> Value {
     match p {
         Pins::None => ev("Pins", "PNone", vec![]),
         Pins::Named(maps) => {
@@ -884,12 +910,12 @@ fn pins_to_value(p: &Pins) -> Value {
     }
 }
 
-fn mapping_to_value(m: &Mapping) -> Value {
+pub fn mapping_to_value(m: &Mapping) -> Value {
     ev("Mapping", "MakeMapping",
        vec![Value::Str(m.slot.clone()), expr_to_value(&m.value)])
 }
 
-fn mapping_list_to_value(items: &[Mapping]) -> Value {
+pub fn mapping_list_to_value(items: &[Mapping]) -> Value {
     let mut acc = ev("MappingList", "MLNil", vec![]);
     for m in items.iter().rev() {
         acc = ev("MappingList", "MLCons",
@@ -898,7 +924,7 @@ fn mapping_list_to_value(items: &[Mapping]) -> Value {
     acc
 }
 
-fn string_list_to_value(items: &[String]) -> Value {
+pub fn string_list_to_value(items: &[String]) -> Value {
     let mut acc = ev("StringList", "SLNil", vec![]);
     for s in items.iter().rev() {
         acc = ev("StringList", "SLCons",
@@ -907,7 +933,7 @@ fn string_list_to_value(items: &[String]) -> Value {
     acc
 }
 
-fn expr_list_to_value(items: &[Expr]) -> Value {
+pub fn expr_list_to_value(items: &[Expr]) -> Value {
     let mut acc = ev("ExprList", "ELNil", vec![]);
     for e in items.iter().rev() {
         acc = ev("ExprList", "ELCons",
@@ -916,7 +942,7 @@ fn expr_list_to_value(items: &[Expr]) -> Value {
     acc
 }
 
-fn binop_to_value(op: &BinOp) -> Value {
+pub fn binop_to_value(op: &BinOp) -> Value {
     let v = match op {
         BinOp::Eq      => "OpEq",
         BinOp::Neq     => "OpNeq",
@@ -936,7 +962,7 @@ fn binop_to_value(op: &BinOp) -> Value {
     ev("BinOp", v, vec![])
 }
 
-fn expr_to_value(e: &Expr) -> Value {
+pub fn expr_to_value(e: &Expr) -> Value {
     match e {
         Expr::Identifier(s) => ev("Expr", "EIdentifier", vec![Value::Str(s.clone())]),
         Expr::Int(n)        => ev("Expr", "EInt",        vec![Value::Int(*n)]),
@@ -990,7 +1016,7 @@ fn expr_to_value(e: &Expr) -> Value {
     }
 }
 
-fn match_arm_list_to_value(arms: &[crate::core::ast::MatchArm]) -> Value {
+pub fn match_arm_list_to_value(arms: &[crate::core::ast::MatchArm]) -> Value {
     let mut acc = ev("MatchArmList", "MALNil", vec![]);
     for a in arms.iter().rev() {
         acc = ev("MatchArmList", "MALCons",
@@ -999,12 +1025,12 @@ fn match_arm_list_to_value(arms: &[crate::core::ast::MatchArm]) -> Value {
     acc
 }
 
-fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
+pub fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
     ev("MatchArm", "MakeMatchArm",
        vec![match_pattern_to_value(&a.pattern), expr_to_value(&a.body)])
 }
 
-fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
+pub fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     use crate::core::ast::MatchPattern;
     match p {
         // No `PatBind` in stdlib/ast.ev; a top-level bind isn't produced
@@ -1018,7 +1044,7 @@ fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     }
 }
 
-fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
+pub fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
     use crate::core::ast::MatchPattern;
     let mut acc = ev("BindList", "BLNil", vec![]);
     for b in binds.iter().rev() {
@@ -1032,13 +1058,13 @@ fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
     acc
 }
 
-fn enum_decl_to_value(e: &EnumDecl) -> Value {
+pub fn enum_decl_to_value(e: &EnumDecl) -> Value {
     ev("EnumDecl", "MakeEnumDecl",
        vec![Value::Str(e.name.clone()),
             enum_variant_list_to_value(&e.variants)])
 }
 
-fn enum_variant_list_to_value(items: &[EnumVariant]) -> Value {
+pub fn enum_variant_list_to_value(items: &[EnumVariant]) -> Value {
     let mut acc = ev("EnumVariantList", "EVLNil", vec![]);
     for v in items.iter().rev() {
         acc = ev("EnumVariantList", "EVLCons",
@@ -1047,13 +1073,13 @@ fn enum_variant_list_to_value(items: &[EnumVariant]) -> Value {
     acc
 }
 
-fn enum_variant_to_value(v: &EnumVariant) -> Value {
+pub fn enum_variant_to_value(v: &EnumVariant) -> Value {
     ev("EnumVariant", "MakeEnumVariant",
        vec![Value::Str(v.name.clone()),
             enum_field_list_to_value(&v.fields)])
 }
 
-fn enum_field_list_to_value(items: &[EnumField]) -> Value {
+pub fn enum_field_list_to_value(items: &[EnumField]) -> Value {
     let mut acc = ev("EnumFieldList", "EFLNil", vec![]);
     for f in items.iter().rev() {
         acc = ev("EnumFieldList", "EFLCons",
@@ -1062,7 +1088,7 @@ fn enum_field_list_to_value(items: &[EnumField]) -> Value {
     acc
 }
 
-fn enum_field_to_value(f: &EnumField) -> Value {
+pub fn enum_field_to_value(f: &EnumField) -> Value {
     ev("EnumField", "MakeEnumField",
        vec![Value::Str(f.name.clone()), Value::Str(f.type_name.clone())])
 }

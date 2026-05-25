@@ -1,5 +1,5 @@
 -- stdlib/passes/subscriptions.ev — self-hosted subscriptions inference,
--- as a WHOLE-WALK stack-FSM (session QQ).
+-- as a WHOLE-WALK stack-FSM over the SHARED AST↔Value marshaler (session UU).
 --
 -- The Evident-side twin of runtime/src/subscriptions.rs. Inference job:
 -- given a claim's body, return the set of `world.X` field names it READS
@@ -7,171 +7,243 @@
 -- scheduler in runtime/src/effect_loop/ uses these sets to wake an FSM
 -- only when its inputs change (read-set ∩ peer write-sets).
 --
--- ── What changed (QQ) ──
--- Previously this file owned only the leaf classifier (two SAT-shaped
--- prefix-match claims) and the Rust shim in portable/subscriptions.rs
--- drove the AST tree-walk. Now the WHOLE walk lives here: an
--- FSM-with-stack (`subscriptions_walk`) carries a work-agenda of AST
--- nodes + the (reads, writes) accumulators in its state, popping /
--- dispatching-on-node / pushing-children / folding, driven to a
--- drained-agenda halt by `run(...)`. The Rust shim only marshals the
--- claim body into a `WList` value, calls `run`, and decodes the result —
--- no Rust-side tree walk. This is the first port that REMOVES Rust.
+-- ── What changed (UU) vs (QQ) ──
+-- QQ ran the walk as a stack-FSM too, but over a BESPOKE `WNode`
+-- behavioral-class encoding hand-rolled in portable/subscriptions.rs —
+-- a recursive AST traversal isomorphic to the walk it replaced, so the
+-- port never shrank the runtime (the marshaling tax was re-paid here).
 --
--- ── The node encoding (mirrors walk_expr's arm grouping) ──
--- The Rust shim maps every ast.rs Expr / BodyItem / Pins to one of the
--- WNode behavioral classes below. The mapping mirrors how the canonical
--- `walk_expr`/`walk_body`/`walk_pins` GROUP variants by traversal shape
--- (it uses `|`-patterns to merge variants that recurse identically):
+-- UU deletes that bespoke encoder. The Rust shim now feeds this FSM the
+-- output of the ONE SHARED marshaler (`translate/encode_ast.rs`'s
+-- `*_to_value` family, `body_item_to_value`), so the FSM walks the FULL,
+-- canonical AST directly — the same `Expr`/`BodyItem`/`Pins`/… shapes
+-- `stdlib/ast.ev` defines, with list fields as poppable Cons enums
+-- (`BodyItemList`, `ExprList`, …; a `Seq(T)` has no in-step pop). No new
+-- per-pass encoder: a future port reuses the same marshaler.
 --
---   ast.rs node                                   → WNode
---   ───────────────────────────────────────────────────────────────
---   Expr::Identifier(name)                        → NIdent(segments)
---   Expr::{Int,Real,Bool,Str}                     → NLeaf
---   Expr::{SetLit,SeqLit,Tuple,Call}, Match arms  → NList(children)
---   Expr::{Range,InExpr,Index,Binary,Forall,Exists}→ NTwo(a, b)
---   Expr::{Cardinality,Not,Field,Matches,RunFsm}  → NOne(child)
---   Expr::Ternary                                 → NThree(c, t, f)
---   Expr::Match(scrut, arms)                      → NList(scrut :: arm-bodies)
---   BodyItem::Membership{pins}                    → NList(pin value-exprs)  (or NLeaf if Pins::None)
---   BodyItem::ClaimCall{mappings}                 → NList(mapping value-exprs)
---   BodyItem::Constraint(e)                       → NOne(e)
---   BodyItem::SubclaimDecl(s)                     → NList(s.body items)
---   BodyItem::{Passthrough,HaltsWithin}           → NLeaf
+-- ── Walk vs classification (the no-substring split) ──
+-- The FSM owns the TRAVERSAL: pop a node, dispatch on its shape, push its
+-- identifier-bearing children, fold reachable `EIdentifier` strings into
+-- an accumulator. This visits exactly the identifier leaves the canonical
+-- `walk_body`/`walk_pins`/`walk_expr` reach (same structure → same leaves).
 --
--- Scalar fields the canonical walk never reads (BinOp, call/field/fsm
--- names, match patterns, ∀-vars, mapping slots) are dropped at encode
--- time — faithful to walk_expr, which binds them with `_`. The TRAVERSAL
--- (pop / push-children / recurse-to-fixpoint), the ACCUMULATION (thread
--- reads/writes through state), and the CLASSIFICATION (segment prefix →
--- read/write field) all live in the FSM below.
---
--- ── Identifiers as path segments ──
--- ast.rs stores dotted accesses as a single dotted-collapsed identifier
--- ("world.player.pos"). The shim splits it on '.' into its path segments
--- and the FSM classifies: first segment "world_next" ⇒ the second
--- segment is a WRITTEN field; "world" ⇒ a READ field; anything else ⇒
--- neither. This is exactly walk_expr's `strip_prefix` + `first_segment`,
--- done over segments instead of bytes — only string EQUALITY is needed
--- (Evident has no substring/prefix op). The shim dedups the resulting
--- name cons-lists into HashSets, so element order / duplicates are
--- irrelevant.
+-- It does NOT classify them: classification needs `strip_prefix("world.")`
+-- / `first_segment`, and Evident has no substring/prefix operator. So the
+-- FSM emits the RAW dotted identifier strings ("world.player.pos") and the
+-- Rust shim does the (tiny, unavoidable) prefix split. This is the honest
+-- shared-marshaler trade: the bulk recursive walk self-hosts; only the
+-- string-prefix decision stays in Rust because the language can't express
+-- it. (QQ kept classification in the FSM only because its bespoke encoder
+-- pre-split identifiers into segments — exactly the per-pass encoder UU
+-- removes.)
 
--- ── Data carried in walk state ──────────────────────────────────────
+-- ── The canonical AST, cons-list mirror shape ─────────────────────────
+-- These enums match the shared marshaler's `*_to_value` output EXACTLY
+-- (enum + variant names, field order). List fields are explicit Cons
+-- enums (not Seq) so the stack-FSM can pop a head and recurse on the tail.
+-- This file is self-contained: the shim drives it in a runtime that loads
+-- ONLY this pass, so there is no clash with stdlib/ast.ev's Seq-shaped twin.
 
--- A dotted identifier as its path segments, head-first.
--- "world_next.player.pos" → SegCons("world_next", SegCons("player", SegCons("pos", SegNil)))
-enum Segs = SegNil | SegCons(String, Segs)
+enum BinOp =
+    OpEq | OpNeq | OpLt | OpLe | OpGt | OpGe | OpAnd | OpOr | OpImplies
+    OpAdd | OpSub | OpMul | OpDiv | OpConcat
 
--- Field-name accumulators (the shim dedups into a HashSet).
+enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
+
+enum MatchBind = BindName(String) | BindWildcard
+enum BindList = BLNil | BLCons(MatchBind, BindList)
+enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchArm = MakeMatchArm(MatchPattern, Expr)
+enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
+
+enum Mapping = MakeMapping(String, Expr)
+enum MappingList = MLNil | MLCons(Mapping, MappingList)
+enum StringList = SLNil | SLCons(String, StringList)
+
+enum Pins = PNone | PNamed(MappingList) | PPositional(ExprList)
+
+enum Expr =
+    EIdentifier(String)
+    EInt(Int)
+    EReal(Real)
+    EBool(Bool)
+    EStr(String)
+    ESetLit(ExprList)
+    ESeqLit(ExprList)
+    ETuple(ExprList)
+    ERange(Expr, Expr)
+    EInExpr(Expr, Expr)
+    EForall(StringList, Expr, Expr)
+    EExists(StringList, Expr, Expr)
+    ECall(String, ExprList)
+    ECardinality(Expr)
+    EIndex(Expr, Expr)
+    EField(Expr, String)
+    EBinary(BinOp, Expr, Expr)
+    ENot(Expr)
+    ETernary(Expr, Expr, Expr)
+    EMatch(Expr, MatchArmList)
+    EMatches(Expr, MatchPattern)
+    ERunFsm(String, Expr)
+
+enum ExprList = ELNil | ELCons(Expr, ExprList)
+
+enum BodyItem =
+    BIMembership(String, String, Pins)
+    BIPassthrough(String)
+    BIClaimCall(String, MappingList)
+    BIConstraint(Expr)
+    BISubclaim(SchemaDecl)
+    BIHaltsWithin(String, Int)
+
+enum BodyItemList = BILNil | BILCons(BodyItem, BodyItemList)
+
+enum SchemaDecl = MakeSchemaDecl(Keyword, String, BodyItemList)
+
+-- ── Walk state ────────────────────────────────────────────────────────
+
+-- Reachable identifier strings, head-first (the shim dedups + classifies).
 enum NameList = NameNil | NameCons(String, NameList)
 
--- A walk node — one variant per traversal shape the canonical walk
--- distinguishes (see header table). Variable-arity children ride a
--- cons-list (WList) because Seq(T) has no in-step pop (COUNTEREXAMPLES
--- #19a); the work-stack is an enum spine, the supported substrate.
-enum WNode =
-    NIdent(Segs)                 -- Identifier: classify by first/second segment
-    NLeaf                        -- literal / inert body item: contributes nothing
-    NOne(WNode)                  -- one relevant child
-    NTwo(WNode, WNode)           -- two relevant children
-    NThree(WNode, WNode, WNode)  -- three (Ternary)
-    NList(WList)                 -- a list of children (SetLit/Call/Match/pins/…)
+-- A unified walk node: wraps any AST node type so a single typed `match`
+-- can carry a heterogeneous agenda. The full AST has separate node types
+-- (BodyItem / Expr / Pins / …) that one `match` can't mix in a frame; this
+-- wrapper unifies them. The Rust shim wraps only the OUTERMOST node
+-- (`WBody`); every descent re-wraps its children in-FSM via constructor.
+enum Work =
+    WBodyList(BodyItemList)
+    WBody(BodyItem)
+    WPins(Pins)
+    WMapList(MappingList)
+    WMap(Mapping)
+    WSchema(SchemaDecl)
+    WExprList(ExprList)
+    WExpr(Expr)
+    WArmList(MatchArmList)
+    WArm(MatchArm)
 
-enum WList = WLNil | WLCons(WNode, WList)
+-- The work stack: pop the top, push children. test_37 stack-FSM shape.
+enum WorkStack = WSNil | WSCons(Work, WorkStack)
 
--- The agenda is a stack of FRAMES; each frame is the remaining children
--- (a WList) of some node. "Advance within a frame" is the frame's tail;
--- "descend" pushes a child's children as a new frame on top. No integer
--- cursor, no list concatenation — the test_37 stack-FSM shape.
-enum Agenda = AgNil | AgCons(WList, Agenda)
+-- SWSeed MUST be first — run()'s coerce_init wraps the seeded `Work` into
+-- the state enum's first single-payload variant (SWSeed(Work)).
+enum SW =
+    SWSeed(Work)
+    SWStep(WorkStack, NameList)
+    SWDone(NameList)
 
--- Walk state: SWSeed carries the body (one frame's worth of items);
--- SWStep carries (agenda, reads, writes); SWDone the final accumulators.
--- SWSeed MUST be first — run()'s coerce_init wraps the encoded body
--- (a WList) into the state enum's first single-payload variant.
-enum SubWalk =
-    SWSeed(WList)
-    SWStep(Agenda, NameList, NameList)
-    SWDone(NameList, NameList)
-
--- ── The transition under execution ──────────────────────────────────
--- SWSeed → push the body as the bottom frame. Each SWStep pops the top
--- frame: an empty frame is dropped; a non-empty frame yields its head
--- node — classify it (NIdent), drop it (NLeaf), or push its children as
--- a new frame (NOne/NTwo/NThree/NList) keeping the frame's tail (`more`)
--- underneath. Drained agenda → SWDone. Labeled `fsm` (the keyword is the
--- sole FSM signal); because it is a `run(...)` target it is embedded-only
--- — the scheduler never auto-instantiates a referenced FSM. `run`
--- resolves it by name.
-fsm subscriptions_walk(state ∈ SubWalk, state_next ∈ SubWalk, halt ∈ Bool)
+-- ── The transition under execution ────────────────────────────────────
+-- SWSeed → push the seed as the sole stack entry. Each SWStep pops the top
+-- Work, dispatches on its node shape, and either folds an identifier
+-- (EIdentifier), drops a literal/inert node, or pushes its children. An
+-- empty stack → SWDone. Labeled `fsm` (the keyword is the sole FSM
+-- signal); as a `run(...)` target it is embedded-only, so the scheduler
+-- never auto-instantiates it; `run` resolves it by name. The push order
+-- mirrors walk_expr's left-to-right child visit (head pushed last is
+-- popped first).
+fsm subscriptions_walk(state ∈ SW, state_next ∈ SW, halt ∈ Bool)
     state_next = match state
-        SWSeed(body) ⇒ SWStep(AgCons(body, AgNil), NameNil, NameNil)
-        SWStep(agenda, reads, writes) ⇒ match agenda
-            AgNil ⇒ SWDone(reads, writes)
-            AgCons(WLNil, rest) ⇒ SWStep(rest, reads, writes)
-            AgCons(WLCons(node, more), rest) ⇒ match node
-                NIdent(SegCons(s0, SegCons(s1, _))) ⇒ SWStep(AgCons(more, rest), (s0 = "world" ? NameCons(s1, reads) : reads), (s0 = "world_next" ? NameCons(s1, writes) : writes))
-                NIdent(_)       ⇒ SWStep(AgCons(more, rest), reads, writes)
-                NLeaf           ⇒ SWStep(AgCons(more, rest), reads, writes)
-                NOne(a)         ⇒ SWStep(AgCons(WLCons(a, WLNil), AgCons(more, rest)), reads, writes)
-                NTwo(a, b)      ⇒ SWStep(AgCons(WLCons(a, WLCons(b, WLNil)), AgCons(more, rest)), reads, writes)
-                NThree(a, b, c) ⇒ SWStep(AgCons(WLCons(a, WLCons(b, WLCons(c, WLNil))), AgCons(more, rest)), reads, writes)
-                NList(kids)     ⇒ SWStep(AgCons(kids, AgCons(more, rest)), reads, writes)
-        SWDone(r, w) ⇒ SWDone(r, w)
+        SWSeed(w) ⇒ SWStep(WSCons(w, WSNil), NameNil)
+        SWStep(WSNil, names) ⇒ SWDone(names)
+        SWStep(WSCons(top, rest), names) ⇒ match top
+            -- ── lists: pop head, keep walking the tail ──
+            WBodyList(bl) ⇒ match bl
+                BILNil ⇒ SWStep(rest, names)
+                BILCons(item, more) ⇒ SWStep(WSCons(WBody(item), WSCons(WBodyList(more), rest)), names)
+            WMapList(ml) ⇒ match ml
+                MLNil ⇒ SWStep(rest, names)
+                MLCons(m, more) ⇒ SWStep(WSCons(WMap(m), WSCons(WMapList(more), rest)), names)
+            WExprList(el) ⇒ match el
+                ELNil ⇒ SWStep(rest, names)
+                ELCons(e, more) ⇒ SWStep(WSCons(WExpr(e), WSCons(WExprList(more), rest)), names)
+            WArmList(al) ⇒ match al
+                MALNil ⇒ SWStep(rest, names)
+                MALCons(arm, more) ⇒ SWStep(WSCons(WArm(arm), WSCons(WArmList(more), rest)), names)
+            -- ── body items (walk_body) ──
+            WBody(bi) ⇒ match bi
+                BIMembership(_, _, pins) ⇒ SWStep(WSCons(WPins(pins), rest), names)
+                BIPassthrough(_)         ⇒ SWStep(rest, names)
+                BIClaimCall(_, maps)     ⇒ SWStep(WSCons(WMapList(maps), rest), names)
+                BIConstraint(e)          ⇒ SWStep(WSCons(WExpr(e), rest), names)
+                BISubclaim(s)            ⇒ SWStep(WSCons(WSchema(s), rest), names)
+                BIHaltsWithin(_, _)      ⇒ SWStep(rest, names)
+            -- ── pins (walk_pins) ──
+            WPins(p) ⇒ match p
+                PNone           ⇒ SWStep(rest, names)
+                PNamed(maps)    ⇒ SWStep(WSCons(WMapList(maps), rest), names)
+                PPositional(es) ⇒ SWStep(WSCons(WExprList(es), rest), names)
+            -- ── mapping: walk its value expr (slot dropped) ──
+            WMap(m) ⇒ match m
+                MakeMapping(_, v) ⇒ SWStep(WSCons(WExpr(v), rest), names)
+            -- ── subclaim body (walk_body of s.body) ──
+            WSchema(s) ⇒ match s
+                MakeSchemaDecl(_, _, body) ⇒ SWStep(WSCons(WBodyList(body), rest), names)
+            -- ── match arm: walk its body expr (pattern dropped) ──
+            WArm(a) ⇒ match a
+                MakeMatchArm(_, body) ⇒ SWStep(WSCons(WExpr(body), rest), names)
+            -- ── expressions (walk_expr) ──
+            WExpr(e) ⇒ match e
+                EIdentifier(s)    ⇒ SWStep(rest, NameCons(s, names))
+                EInt(_)           ⇒ SWStep(rest, names)
+                EReal(_)          ⇒ SWStep(rest, names)
+                EBool(_)          ⇒ SWStep(rest, names)
+                EStr(_)           ⇒ SWStep(rest, names)
+                ESetLit(es)       ⇒ SWStep(WSCons(WExprList(es), rest), names)
+                ESeqLit(es)       ⇒ SWStep(WSCons(WExprList(es), rest), names)
+                ETuple(es)        ⇒ SWStep(WSCons(WExprList(es), rest), names)
+                ERange(a, b)      ⇒ SWStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                EInExpr(a, b)     ⇒ SWStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                EForall(_, r, b)  ⇒ SWStep(WSCons(WExpr(r), WSCons(WExpr(b), rest)), names)
+                EExists(_, r, b)  ⇒ SWStep(WSCons(WExpr(r), WSCons(WExpr(b), rest)), names)
+                ECall(_, args)    ⇒ SWStep(WSCons(WExprList(args), rest), names)
+                ECardinality(i)   ⇒ SWStep(WSCons(WExpr(i), rest), names)
+                EIndex(a, b)      ⇒ SWStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                EField(b, _)      ⇒ SWStep(WSCons(WExpr(b), rest), names)
+                EBinary(_, a, b)  ⇒ SWStep(WSCons(WExpr(a), WSCons(WExpr(b), rest)), names)
+                ENot(i)           ⇒ SWStep(WSCons(WExpr(i), rest), names)
+                ETernary(c, t, f) ⇒ SWStep(WSCons(WExpr(c), WSCons(WExpr(t), WSCons(WExpr(f), rest))), names)
+                EMatch(scr, arms) ⇒ SWStep(WSCons(WExpr(scr), WSCons(WArmList(arms), rest)), names)
+                EMatches(e2, _)   ⇒ SWStep(WSCons(WExpr(e2), rest), names)
+                ERunFsm(_, init)  ⇒ SWStep(WSCons(WExpr(init), rest), names)
+        SWDone(n) ⇒ SWDone(n)
     halt = match state
-        SWDone(_, _) ⇒ true
-        _            ⇒ false
+        SWDone(_) ⇒ true
+        _         ⇒ false
 
--- ── Static verification: walk in, (reads, writes) out ────────────────
+-- ── Static verification: walk in, reachable identifiers out ───────────
+-- The FSM emits RAW identifiers (classification is the shim's job), so
+-- these assert the collected name set, not read/write splits. The shim's
+-- `subscriptions_equivalence.rs` is the byte-identical-vs-oracle check.
 
--- A single `world.a` read.
-claim sat_read_one
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))), WLNil))
-    final = SWDone(NameCons("a", NameNil), NameNil)
+-- A single identifier in a constraint reaches the accumulator.
+claim sat_one_ident
+    final ∈ SW = run(subscriptions_walk, WBody(BIConstraint(EIdentifier("world.a"))))
+    final = SWDone(NameCons("world.a", NameNil))
 
--- A single `world_next.b` write.
-claim sat_write_one
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NIdent(SegCons("world_next", SegCons("b", SegNil))), WLNil))
-    final = SWDone(NameNil, NameCons("b", NameNil))
+-- A literal contributes nothing.
+claim sat_literal_neither
+    final ∈ SW = run(subscriptions_walk, WBody(BIConstraint(EInt(5))))
+    final = SWDone(NameNil)
 
--- A bare local var (one segment) and a literal contribute nothing.
-claim sat_neither
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NIdent(SegCons("counter", SegNil)), WLCons(NLeaf, WLNil)))
-    final = SWDone(NameNil, NameNil)
+-- A binary over two idents: pushed a-then-b, popped a first, so the
+-- accumulator prepends to [b, a] (head is the last-visited).
+claim sat_binary_two_idents
+    final ∈ SW = run(subscriptions_walk,
+        WBody(BIConstraint(EBinary(OpEq, EIdentifier("world_next.a"), EIdentifier("world.a")))))
+    final = SWDone(NameCons("world.a", NameCons("world_next.a", NameNil)))
 
--- A nested node: NOne wrapping a `world.a` read (e.g. a Constraint /
--- Cardinality / Field). The walk descends into the child.
-claim sat_nested_one
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NOne(NIdent(SegCons("world", SegCons("a", SegNil)))), WLNil))
-    final = SWDone(NameCons("a", NameNil), NameNil)
+-- A passthrough body item has no sub-expressions: nothing collected.
+claim sat_passthrough_neither
+    final ∈ SW = run(subscriptions_walk, WBody(BIPassthrough("helper")))
+    final = SWDone(NameNil)
 
--- The passthrough idiom `world_next.a = (… ? … : world.a)` — same field
--- read AND written. An NTwo (Binary `=`) over the two idents. Reads
--- prepend, so the accumulators each hold the one field.
-claim sat_read_and_write
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NTwo(NIdent(SegCons("world_next", SegCons("a", SegNil))),
-                    NIdent(SegCons("world", SegCons("a", SegNil)))), WLNil))
-    final = SWDone(NameCons("a", NameNil), NameCons("a", NameNil))
+-- Pins on a membership are walked (the `Set(Int)` decl in `s ∈ T (lo)`
+-- form would contribute its expr). A None-pinned membership is inert.
+claim sat_membership_none_neither
+    final ∈ SW = run(subscriptions_walk, WBody(BIMembership("x", "Int", PNone)))
+    final = SWDone(NameNil)
 
--- A deeper tree: NList of [world.a (read), NThree over world.b/world_next.c/leaf].
--- Visit order prepends, so reads read [b, a], writes [c].
-claim sat_list_and_three
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))),
-        WLCons(NThree(NIdent(SegCons("world", SegCons("b", SegNil))),
-                      NIdent(SegCons("world_next", SegCons("c", SegNil))),
-                      NLeaf), WLNil)))
-    final = SWDone(NameCons("b", NameCons("a", NameNil)), NameCons("c", NameNil))
-
--- The accumulator is threaded, not free: a `world.a` read cannot come
--- back as a write.
-claim unsat_read_is_not_write
-    final ∈ SubWalk = run(subscriptions_walk,
-        WLCons(NIdent(SegCons("world", SegCons("a", SegNil))), WLNil))
-    final = SWDone(NameNil, NameCons("a", NameNil))
+-- The accumulator is threaded, not free: a literal can't conjure a name.
+claim unsat_literal_is_not_a_name
+    final ∈ SW = run(subscriptions_walk, WBody(BIConstraint(EInt(5))))
+    final = SWDone(NameCons("a", NameNil))

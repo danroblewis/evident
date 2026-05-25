@@ -49,23 +49,52 @@ pub mod ast_decoder {
     //! Public surface of the Z3-model → Rust-AST decoder. Mirrors
     //! the encoder's shape; used by self-hosted desugar passes
     //! that need to read back a transformed Program.
+    //!
+    //! `decode_list` + `decode_str` are THE shared cons-list reader
+    //! (session UU): the read-side twin of `ast_encoder`'s `*_to_value`
+    //! marshaler, used by any port that drives a stack-FSM over the
+    //! marshaler's output and decodes a cons-list accumulator back.
     pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
                                   decode_ffi_arg, decode_arg_list,
                                   decode_result,
                                   decode_install_step, decode_install_step_list,
+                                  decode_list, decode_str,
                                   InstallStep,
                                   DecodeError};
 }
 
 pub mod ast_encoder {
-    //! Public surface of the AST → Z3 datatype encoder. Used by
-    //! `EvidentRuntime::encode_program_value` and the
-    //! `evident dump-ast` CLI.
+    //! Public surface of the AST → `Value`/Z3-datatype marshaler.
+    //!
+    //! Two families share this namespace:
+    //!   * `encode_*` — AST → Z3 `Datatype` (the `given`-pinning path
+    //!     used by `EvidentRuntime::encode_program_value`, `dump-ast`,
+    //!     and reflection's Z3 assertions).
+    //!   * `*_to_value` — AST → `Value::Enum` tree (THE shared marshaler,
+    //!     session UU). A `pub` family so every self-hosted port reuses
+    //!     one encoder instead of hand-rolling its own (which QQ showed
+    //!     re-pays the marshaling tax per pass). Its list-typed fields are
+    //!     poppable Cons enums (`BodyItemList`, `ExprList`, …), directly
+    //!     consumable by a stack-FSM walk; pair with `ast_decoder`'s
+    //!     `decode_list` to read accumulators back.
     pub use super::encode_ast::{encode_program, encode_body_items_into_seq,
                                  encode_effect_result,
                                  effect_results_to_value,
-                                 program_to_value, value_enum_to_datatype,
-                                 EncodeError};
+                                 value_enum_to_datatype,
+                                 EncodeError,
+                                 // ── the shared AST → Value marshaler ──
+                                 program_to_value, schema_decl_to_value,
+                                 schema_list_to_value, body_item_to_value,
+                                 body_item_list_to_value, pins_to_value,
+                                 mapping_to_value, mapping_list_to_value,
+                                 expr_to_value, expr_list_to_value,
+                                 string_list_to_value, binop_to_value,
+                                 keyword_to_value, match_arm_to_value,
+                                 match_arm_list_to_value, match_pattern_to_value,
+                                 bind_list_to_value, enum_decl_to_value,
+                                 enum_decl_list_to_value, enum_variant_to_value,
+                                 enum_variant_list_to_value, enum_field_to_value,
+                                 enum_field_list_to_value};
 }
 
 pub use eval::{analyze_decomposition, build_cache, classify_components,
