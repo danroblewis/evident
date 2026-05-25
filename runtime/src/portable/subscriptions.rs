@@ -5,36 +5,42 @@
 //! sets per claim) and where its output drives the runtime
 //! ([`crate::effect_loop`] scheduler subscriptions). Two impls:
 //!   * [`RustSubscriptions`] — wraps the canonical
-//!     [`crate::subscriptions::world_access_sets`] directly.
+//!     [`crate::subscriptions::world_access_sets`] directly. The default,
+//!     the oracle.
 //!   * [`EvidentSubscriptions`] — owns an [`EvidentRuntime`] with
-//!     `stdlib/passes/subscriptions.ev` loaded; walks the AST in Rust
-//!     and delegates each leaf identifier's classification (`world.X` →
-//!     read, `world_next.X` → write) to the Evident pass via
-//!     [`EvidentRuntime::query`].
+//!     `stdlib/passes/subscriptions.ev` loaded. The WHOLE walk runs in
+//!     Evident as an FSM-with-stack (`subscriptions_walk`): this shim only
+//!     marshals the claim body into a `WList` value, drives the FSM to a
+//!     drained-agenda halt via [`crate::effect_loop::run_nested`], and
+//!     decodes the `(reads, writes)` accumulators. **No Rust-side tree
+//!     walk** — the recursion, accumulation, and `world.`/`world_next.`
+//!     classification all live in the pass.
 //!
-//! ## Why the shim drives the walk
+//! ## Session QQ: the LOC inversion
 //!
-//! A whole-claim-as-input pass would need to recurse through the body's
-//! `Expr` tree to find every `EIdentifier(_)` leaf. The runtime can't
-//! self-host that recursion yet (see `docs/self-hosting.md` "Recursive
-//! claims don't constrain their outputs"; `examples/COUNTEREXAMPLES.md`).
-//! So the Evident pass owns the *classification semantics* — what makes
-//! an identifier a read or a write — and the shim owns the tree walk.
-//! The shim's walk logic mirrors [`crate::subscriptions::walk_body`] /
-//! `walk_expr` so the two impls visit identical leaf sets.
+//! This is the first port that REMOVES Rust rather than adding it. The
+//! previous shim duplicated `crate::subscriptions::{walk_body, walk_pins,
+//! walk_expr}` in Rust and called a leaf-only Evident classifier per
+//! identifier. Those Rust walk functions are gone; what remains is a
+//! structural encoder (`encode_body`/`encode_expr`/…) that maps each
+//! ast.rs node to a `WNode` behavioral class — mirroring how the
+//! canonical `walk_expr` GROUPS variants by traversal shape (its
+//! `|`-patterns) — plus a cons-list decoder. The traversal logic itself
+//! is the FSM in `stdlib/passes/subscriptions.ev`.
 //!
 //! ## Faithful equivalence
 //!
 //! Both impls produce byte-identical `AccessSets` (HashSet<String>
-//! equality) on every FSM-shaped claim across the demo corpus — see
-//! `runtime/tests/subscriptions_equivalence.rs`. This is full
-//! faithfulness on the analysis's actual semantic surface; no
-//! "unsupported-shape" sentinel as in [`super::pretty`].
+//! equality) on every FSM-shaped claim across the demo corpus including
+//! Mario — see `runtime/tests/subscriptions_equivalence.rs`. The Evident
+//! walk visits the same identifier leaves as the canonical Rust walk and
+//! classifies them identically; the name cons-lists it returns are
+//! deduped into the `HashSet`s here, so element order is irrelevant.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
-use crate::core::ast::{BodyItem, Expr, Mapping, Pins, SchemaDecl};
+use crate::core::ast::{BodyItem, Expr, Pins, SchemaDecl};
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;
 use crate::subscriptions::AccessSets;
@@ -69,102 +75,37 @@ impl SubscriptionsImpl for RustSubscriptions {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Evident impl — calls stdlib/passes/subscriptions.ev
+// Evident impl — runs stdlib/passes/subscriptions.ev as a stack-FSM
 // ─────────────────────────────────────────────────────────────────────
 
-/// Runs the analysis by delegating each leaf-identifier classification
-/// to `stdlib/passes/subscriptions.ev::classify_world_ident`. Holds its
-/// own runtime with the pass loaded; build once and reuse so the pass
-/// is compiled/cached across calls.
-///
-/// Internally also caches the (`is_read`, `is_write`, `suffix`) result
-/// per identifier string. Mario's `game` claim alone references the same
-/// `world.X` strings dozens of times across guard arms; without caching
-/// each call is a Z3 query.
+/// Runs the analysis by encoding the claim body as a composite `Value`
+/// and driving the `subscriptions_walk` FSM to halt. Holds its own
+/// runtime with the pass loaded; build once and reuse so the FSM's
+/// per-tick solve is JIT-cached across calls.
 pub struct EvidentSubscriptions {
     rt: EvidentRuntime,
-    cache: std::cell::RefCell<HashMap<String, ClassResult>>,
-}
-
-#[derive(Clone, Debug)]
-struct ClassResult {
-    is_read:  bool,
-    is_write: bool,
-    /// Identifier with the matching prefix stripped — for a read,
-    /// `ident.strip_prefix("world.")`; for a write,
-    /// `ident.strip_prefix("world_next.")`. The shim takes the first
-    /// dotted segment to recover the top-level field name (matching
-    /// `subscriptions::first_segment`).
-    suffix:   String,
 }
 
 impl EvidentSubscriptions {
-    /// SAT iff `ident` begins with the literal `"world_next."`; on SAT
-    /// the model binds `suffix_w` to the rest.
-    const WRITE_MATCH_CLAIM: &'static str = "world_next_write_match";
-    /// SAT iff `ident` begins with the literal `"world."`; on SAT the
-    /// model binds `suffix_r` to the rest.
-    const READ_MATCH_CLAIM: &'static str = "world_read_match";
+    /// The whole-walk FSM in `stdlib/passes/subscriptions.ev`.
+    const WALK_FSM: &'static str = "subscriptions_walk";
 
-    /// Load `ast.ev` + `passes/subscriptions.ev` from `stdlib_dir` into
-    /// a fresh runtime. `stdlib_dir` is the repo's `stdlib/` directory.
+    /// Max-iteration guard for the nested walk. One AST node costs a
+    /// small constant number of FSM ticks, so a body of N nodes halts in
+    /// O(N) ticks; the cap is set far above any realistic claim so a
+    /// legitimate walk never hits it (a non-terminating walk would be a
+    /// pass bug, surfaced as a loud `MaxItersExceeded`).
+    const MAX_STEPS: usize = 5_000_000;
+
+    /// Load `passes/subscriptions.ev` from `stdlib_dir` into a fresh
+    /// runtime. `stdlib_dir` is the repo's `stdlib/` directory. The pass
+    /// is self-contained (it walks its own `WNode` encoding, not the
+    /// `ast.ev` enums), so no other stdlib file is needed.
     pub fn new(stdlib_dir: &Path) -> Result<Self, String> {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(&stdlib_dir.join("ast.ev"))
-            .map_err(|e| format!("load ast.ev: {e}"))?;
         rt.load_file(&stdlib_dir.join("passes").join("subscriptions.ev"))
             .map_err(|e| format!("load passes/subscriptions.ev: {e}"))?;
-        Ok(Self { rt, cache: std::cell::RefCell::new(HashMap::new()) })
-    }
-
-    /// Classify one identifier string by running the Evident pass. On
-    /// cache hit returns the prior result; on miss runs the two
-    /// match-claims (SAT = prefix matched) and memoizes.
-    ///
-    /// The two prefixes are mutually exclusive (`world.` has '.' at
-    /// index 5; `world_next.` has '_'). Checking the write claim first
-    /// gives the same result either way, but the order matches the
-    /// pass file's stated ordering.
-    fn classify(&self, ident: &str) -> ClassResult {
-        if let Some(hit) = self.cache.borrow().get(ident) {
-            return hit.clone();
-        }
-        let mut given: HashMap<String, Value> = HashMap::new();
-        given.insert("ident".to_string(), Value::Str(ident.to_string()));
-
-        let r = if let Ok(qr) = self.rt.query(Self::WRITE_MATCH_CLAIM, &given) {
-            if qr.satisfied {
-                ClassResult {
-                    is_read:  false,
-                    is_write: true,
-                    suffix:   take_string(qr.bindings.get("suffix_w")),
-                }
-            } else if let Ok(qr) = self.rt.query(Self::READ_MATCH_CLAIM, &given) {
-                if qr.satisfied {
-                    ClassResult {
-                        is_read:  true,
-                        is_write: false,
-                        suffix:   take_string(qr.bindings.get("suffix_r")),
-                    }
-                } else {
-                    ClassResult { is_read: false, is_write: false, suffix: String::new() }
-                }
-            } else {
-                ClassResult { is_read: false, is_write: false, suffix: String::new() }
-            }
-        } else {
-            ClassResult { is_read: false, is_write: false, suffix: String::new() }
-        };
-
-        self.cache.borrow_mut().insert(ident.to_string(), r.clone());
-        r
-    }
-}
-
-fn take_string(v: Option<&Value>) -> String {
-    match v {
-        Some(Value::Str(s)) => s.clone(),
-        _ => String::new(),
+        Ok(Self { rt })
     }
 }
 
@@ -175,81 +116,201 @@ impl Portable for EvidentSubscriptions {
 impl SubscriptionsImpl for EvidentSubscriptions {
     fn access_sets(&self, claim: &SchemaDecl) -> AccessSets {
         let mut sets = AccessSets::default();
-        walk_body(self, &claim.body, &mut sets);
+        // Drive the walk-FSM once per top-level body item. Each run's
+        // agenda is one shallow subtree, so the per-tick state marshaled
+        // through `run_nested` stays small — the difference between an
+        // O(N) and an O(N²) total marshaling cost on a big claim like
+        // Mario's `game`. This is a flat driver over the top-level items
+        // (NOT a tree walk): every recursion — into sub-expressions AND
+        // into subclaim bodies — happens inside the FSM. reads/writes is
+        // a set union over items, so per-item-then-union is byte-identical
+        // to walking the whole body in one pass.
+        for item in &claim.body {
+            if let Some(node) = encode_body_item(item) {
+                self.walk_node(&node, &claim.name, &mut sets);
+            }
+        }
         sets
     }
 }
 
+impl EvidentSubscriptions {
+    /// Drive `subscriptions_walk` over one encoded node (seeded as a
+    /// single-item agenda frame) and fold its `(reads, writes)` into
+    /// `sets`. `run_nested` coerces the `WList` seed into the state
+    /// enum's first single-payload variant (`SWSeed(WList)`).
+    fn walk_node(&self, node: &Value, claim_name: &str, sets: &mut AccessSets) {
+        let seed = wlist(vec![node.clone()]);
+        match crate::effect_loop::run_nested(&self.rt, Self::WALK_FSM, seed, Self::MAX_STEPS) {
+            Ok(Value::Enum { variant, fields, .. }) if variant == "SWDone" && fields.len() == 2 => {
+                decode_name_list(&fields[0], &mut sets.reads);
+                decode_name_list(&fields[1], &mut sets.writes);
+            }
+            Ok(other) => eprintln!("[subscriptions/evident] walk of `{claim_name}` \
+                returned a non-SWDone state: {other:?}"),
+            Err(e) => eprintln!("[subscriptions/evident] walk of `{claim_name}` failed: {e}"),
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────
-// AST walk — mirrors crate::subscriptions::walk_body / walk_expr
+// Structural marshaling: ast.rs node → WNode `Value` tree
 // ─────────────────────────────────────────────────────────────────────
 //
-// Kept structurally identical to subscriptions.rs so the two visit the
-// same leaf identifiers in the same order. The only difference is where
-// classification happens: Rust calls a `first_segment` helper inline,
-// Evident defers to the pass via `EvidentSubscriptions::classify`.
+// Each ast.rs Expr / BodyItem / Pins maps to one `WNode`, mirroring how
+// `crate::subscriptions::{walk_body, walk_pins, walk_expr}` group
+// variants by traversal shape (their `|`-patterns). Scalar fields those
+// walks never read (BinOp, call/field/fsm names, match patterns, ∀-vars,
+// mapping slots) are dropped — faithful to the canonical walk, which
+// binds them `_`. This encoder makes NO read/write decision and NO
+// recursion-to-fixpoint: it serializes one node's shape; the FSM walks it.
+//
+// Two leaf-set-preserving simplifications keep the encoded tree (and so
+// the per-tick agenda) small:
+//   * a node that can hold no identifier is dropped (`None`): literals,
+//     `Passthrough`/`HaltsWithin`, a pins-free `Membership`;
+//   * a node with a single identifier-bearing child collapses to that
+//     child — a pass-through (`Field`/`Cardinality`/`Not`/`Matches`/
+//     `RunFsm`/`Constraint`) adds nothing of its own, and an N-ary node
+//     with one surviving child needs no list wrapper.
+// Both preserve the exact set of identifier leaves the canonical walk
+// reaches; only empty/pass-through scaffolding disappears. The FSM still
+// carries the general `NLeaf`/`NOne`/`NThree` arms (exercised by the
+// pass's inline tests); the encoder simply never needs to emit them.
 
-fn walk_body(ev: &EvidentSubscriptions, body: &[BodyItem], sets: &mut AccessSets) {
-    for item in body {
-        match item {
-            BodyItem::Membership { pins, .. } => walk_pins(ev, pins, sets),
-            BodyItem::Passthrough(_) => {}  // see subscriptions.rs module doc
-            BodyItem::SubclaimDecl(s) => walk_body(ev, &s.body, sets),
-            BodyItem::ClaimCall { mappings, .. } => {
-                for m in mappings { walk_expr(ev, &m.value, sets); }
-            }
-            BodyItem::Constraint(e) => walk_expr(ev, e, sets),
-            BodyItem::HaltsWithin { .. } => {}  // mirrors canonical subscriptions.rs
-        }
+fn ev(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
+    Value::Enum { enum_name: enum_name.to_string(), variant: variant.to_string(), fields }
+}
+
+fn nident(segs: Value) -> Value { ev("WNode", "NIdent", vec![segs]) }
+fn n_two(a: Value, b: Value) -> Value { ev("WNode", "NTwo", vec![a, b]) }
+fn n_list(items: Vec<Value>) -> Value { ev("WNode", "NList", vec![wlist(items)]) }
+
+/// Build a `WList` cons-list (`WLCons`/`WLNil`) from already-encoded WNodes.
+fn wlist(items: Vec<Value>) -> Value {
+    let mut acc = ev("WList", "WLNil", vec![]);
+    for head in items.into_iter().rev() {
+        acc = ev("WList", "WLCons", vec![head, acc]);
+    }
+    acc
+}
+
+/// Split a dotted-collapsed identifier into a `Segs` cons-list, head-first.
+/// "world.player.pos" → SegCons("world", SegCons("player", SegCons("pos", SegNil))).
+fn encode_segments(name: &str) -> Value {
+    let mut acc = ev("Segs", "SegNil", vec![]);
+    for seg in name.split('.').collect::<Vec<_>>().into_iter().rev() {
+        acc = ev("Segs", "SegCons", vec![Value::Str(seg.to_string()), acc]);
+    }
+    acc
+}
+
+/// Wrap surviving children, collapsing the trivial cases: none → `None`
+/// (contributes nothing); exactly one → that child directly; otherwise an
+/// `NList`.
+fn list_node(children: Vec<Value>) -> Option<Value> {
+    match children.len() {
+        0 => None,
+        1 => children.into_iter().next(),
+        _ => Some(n_list(children)),
     }
 }
 
-fn walk_pins(ev: &EvidentSubscriptions, pins: &Pins, sets: &mut AccessSets) {
+/// Combine the two children of a binary-shaped node, collapsing to the
+/// single survivor (or `None`) when one/both are empty.
+fn two_node(a: Option<Value>, b: Option<Value>) -> Option<Value> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        (Some(x), Some(y)) => Some(n_two(x, y)),
+    }
+}
+
+fn encode_body_item(item: &BodyItem) -> Option<Value> {
+    match item {
+        // walk_body: Membership { pins } => walk_pins(pins).
+        BodyItem::Membership { pins, .. } => encode_pins(pins),
+        // walk_body: Passthrough / HaltsWithin contribute no world access.
+        BodyItem::Passthrough(_) | BodyItem::HaltsWithin { .. } => None,
+        // walk_body: SubclaimDecl(s) => walk_body(s.body).
+        BodyItem::SubclaimDecl(s) =>
+            list_node(s.body.iter().filter_map(encode_body_item).collect()),
+        // walk_body: ClaimCall { mappings } => walk each m.value.
+        BodyItem::ClaimCall { mappings, .. } =>
+            list_node(mappings.iter().filter_map(|m| encode_expr(&m.value)).collect()),
+        // walk_body: Constraint(e) => walk_expr(e).
+        BodyItem::Constraint(e) => encode_expr(e),
+    }
+}
+
+fn encode_pins(pins: &Pins) -> Option<Value> {
     match pins {
-        Pins::None => {}
-        Pins::Named(ms) => for m in ms { walk_expr(ev, &m.value, sets); },
-        Pins::Positional(es) => for e in es { walk_expr(ev, e, sets); },
+        // walk_pins: None => nothing.
+        Pins::None => None,
+        // walk_pins: Named(ms) => walk each m.value.
+        Pins::Named(ms) => list_node(ms.iter().filter_map(|m| encode_expr(&m.value)).collect()),
+        // walk_pins: Positional(es) => walk each e.
+        Pins::Positional(es) => list_node(es.iter().filter_map(encode_expr).collect()),
     }
 }
 
-fn walk_expr(ev: &EvidentSubscriptions, e: &Expr, sets: &mut AccessSets) {
+fn encode_expr(e: &Expr) -> Option<Value> {
     match e {
-        Expr::Identifier(name) => {
-            let r = ev.classify(name);
-            if r.is_write {
-                sets.writes.insert(first_segment(&r.suffix).to_string());
-            } else if r.is_read {
-                sets.reads.insert(first_segment(&r.suffix).to_string());
-            }
-        }
-        Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
+        // The only classifying leaf — split the dotted name into segments.
+        Expr::Identifier(name) => Some(nident(encode_segments(name))),
+        // walk_expr: Int | Real | Bool | Str => {}.
+        Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => None,
+        // walk_expr: SetLit | SeqLit | Tuple => walk each element.
         Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-            for x in es { walk_expr(ev, x, sets); },
-        Expr::Range(a, b) => { walk_expr(ev, a, sets); walk_expr(ev, b, sets); }
-        Expr::InExpr(a, b) => { walk_expr(ev, a, sets); walk_expr(ev, b, sets); }
-        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) => {
-            walk_expr(ev, range, sets); walk_expr(ev, body, sets);
-        }
-        Expr::Call(_, args) => for a in args { walk_expr(ev, a, sets); },
-        Expr::Cardinality(inner) | Expr::Not(inner) => walk_expr(ev, inner, sets),
-        Expr::Index(a, b) => { walk_expr(ev, a, sets); walk_expr(ev, b, sets); }
-        Expr::Field(recv, _) => walk_expr(ev, recv, sets),
-        Expr::Binary(_, a, b) => { walk_expr(ev, a, sets); walk_expr(ev, b, sets); }
-        Expr::Ternary(c, t, f) => {
-            walk_expr(ev, c, sets); walk_expr(ev, t, sets); walk_expr(ev, f, sets);
-        }
+            list_node(es.iter().filter_map(encode_expr).collect()),
+        // walk_expr: Range / InExpr / Index / Binary => walk a, b.
+        Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
+            two_node(encode_expr(a), encode_expr(b)),
+        Expr::Binary(_, a, b) => two_node(encode_expr(a), encode_expr(b)),
+        // walk_expr: Forall / Exists => walk range, body (vars dropped).
+        Expr::Forall(_, range, body) | Expr::Exists(_, range, body) =>
+            two_node(encode_expr(range), encode_expr(body)),
+        // walk_expr: Call(_, args) => walk each arg (name dropped).
+        Expr::Call(_, args) => list_node(args.iter().filter_map(encode_expr).collect()),
+        // walk_expr: Cardinality / Not => walk inner.
+        Expr::Cardinality(inner) | Expr::Not(inner) => encode_expr(inner),
+        // walk_expr: Field(recv, _) => walk recv (field name dropped).
+        Expr::Field(recv, _) => encode_expr(recv),
+        // walk_expr: Ternary(c, t, f) => walk all three.
+        Expr::Ternary(c, t, f) =>
+            list_node([c.as_ref(), t.as_ref(), f.as_ref()]
+                .into_iter().filter_map(encode_expr).collect()),
+        // walk_expr: Match(scrut, arms) => walk scrut + each arm body
+        // (patterns dropped). Order-insensitive — flattened into one list.
         Expr::Match(scrut, arms) => {
-            walk_expr(ev, scrut, sets);
-            for arm in arms { walk_expr(ev, &arm.body, sets); }
+            let mut items: Vec<Value> = Vec::new();
+            items.extend(encode_expr(scrut));
+            for arm in arms { items.extend(encode_expr(&arm.body)); }
+            list_node(items)
         }
-        Expr::Matches(inner, _) => walk_expr(ev, inner, sets),
-        Expr::RunFsm { init, .. } => walk_expr(ev, init, sets),
+        // walk_expr: Matches(inner, _) => walk inner (pattern dropped).
+        Expr::Matches(inner, _) => encode_expr(inner),
+        // walk_expr: RunFsm { init, .. } => walk init (fsm name dropped).
+        Expr::RunFsm { init, .. } => encode_expr(init),
     }
-    let _ = std::any::type_name::<Mapping>(); // anchor: subscriptions.rs parity
+    // Mapping is reached only inside Pins / ClaimCall, handled above.
 }
 
-fn first_segment(s: &str) -> &str {
-    s.split('.').next().unwrap_or(s)
+/// Decode a `NameList` (`NameCons`/`NameNil`) cons-list into a set of
+/// field names. Duplicates collapse — the canonical analysis returns a
+/// HashSet too, so order and repeats are irrelevant.
+fn decode_name_list(v: &Value, out: &mut HashSet<String>) {
+    let mut cur = v;
+    while let Value::Enum { variant, fields, .. } = cur {
+        if variant != "NameCons" { break; } // NameNil terminates
+        match fields.as_slice() {
+            [Value::Str(name), tail] => {
+                out.insert(name.clone());
+                cur = tail;
+            }
+            _ => break,
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────

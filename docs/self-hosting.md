@@ -226,40 +226,56 @@ Faithful (byte-identical `(reads, writes)` sets to
 `examples/` including the Mario demo (three FSMs, ~30 fields across
 read/write sets combined).
 
-The pass exposes two SAT-shaped match claims (`world_read_match`,
-`world_next_write_match`) that bind a `suffix_*` free string via an
-equation `ident = "world." ++ suffix`. SAT = prefix matched; UNSAT =
-didn't. The Rust shim (`portable/subscriptions.rs`):
+As of session QQ the WHOLE walk runs in Evident, not just a leaf
+classifier. `subscriptions.ev` is a stack-FSM, `subscriptions_walk`,
+whose state carries an **agenda** (a stack of frames, each a cons-list
+of AST nodes still to visit) plus the **(reads, writes) accumulators**.
+Each tick pops the top frame's head node, dispatches on it, and either
+classifies it (an identifier), drops it (a leaf), or pushes its children
+as a new frame — exactly the test_37 stack-FSM shape, driven to a
+drained-agenda halt by `run(...)`. The traversal control, the
+`world.`/`world_next.` prefix classification, AND the read/write
+accumulation all live in the pass.
 
-1. Walks the AST in Rust (same logic as `subscriptions::walk_body` /
-   `walk_expr` — kept structurally identical so both impls visit the
-   same leaves in the same order).
-2. For each `Expr::Identifier(s)` it encounters, runs the two match
-   claims (cached per identifier string).
-3. Takes the first dotted segment of the matched `suffix` to recover
-   the top-level field name (mirroring `first_segment`).
-4. Accumulates into HashSets.
+The Rust shim (`portable/subscriptions.rs`) no longer walks anything. It:
 
-### Why SAT-shaped instead of a Bool output
+1. Encodes each top-level body item as a composite `WNode` `Value`
+   tree — a structural transcription that maps every ast.rs Expr /
+   BodyItem / Pins to a behavioral class, mirroring how
+   `subscriptions::{walk_body, walk_pins, walk_expr}` group variants by
+   traversal shape (their `|`-patterns). Dotted identifiers are split
+   into their path segments; everything else is just shape. The encoder
+   makes no read/write decision.
+2. Drives `subscriptions_walk` over each encoded item via
+   `effect_loop::run_nested`, one item at a time so the per-tick state
+   stays shallow (a whole-body seed makes the per-tick datatype
+   marshaling O(N²); per-item keeps it O(N) — the difference between a
+   sub-second and a multi-minute walk of Mario's `game`).
+3. Decodes the final `SWDone(reads, writes)` name cons-lists into
+   HashSets (dedup makes element order irrelevant; reads/writes is a set
+   union over items, so per-item-then-union is identical to a single
+   whole-body walk).
 
-A `is_read ∈ Bool` output that BINDS to "prefix matches" would need
-`is_read ⇔ ∃ suffix : ident = "world." ++ suffix` — but `∃ s ∈ String`
-doesn't translate in the runtime today (the string-quantifier support
-is limited). Without the existential, a `suffix` free variable lets Z3
-pick ANY value, including one that makes the equation false even when
-the prefix matches — so a Bool output isn't uniquely determined by the
-model. SAT/UNSAT sidesteps that: assert the equation directly; the
-query is SAT iff a satisfying `suffix` exists.
+### Classification without a substring op
 
-### Why a leaf-level classifier and not a whole-claim pass
+The pass classifies an identifier from its path segments using only
+string EQUALITY (Evident has no prefix/substring builtin): `NIdent`
+matches the nested pattern `SegCons(s0, SegCons(s1, _))` and reads s0 —
+`s0 = "world_next"` ⇒ s1 is a written field, `s0 = "world"` ⇒ s1 is a
+read field, otherwise neither. This is exactly `walk_expr`'s
+`strip_prefix` + `first_segment`, done over segments instead of bytes.
+The shim's split-on-`.` produces the segments; the *decision* is the
+FSM's.
 
-A whole-claim subscriptions pass would need to RECURSE through the
-body's `Expr` tree (Binary, Ternary, Match, Forall, …) to find every
-`EIdentifier(_)` reference. The runtime's recursion gap (see "Recursive
-claims don't constrain their outputs" above) blocks that. The pass
-owns the classification — the prefix-test — and the Rust shim owns the
-tree walk. The shim's walk logic mirrors `subscriptions::walk_body` /
-`walk_expr` so both impls visit identical leaf sets.
+### What stays in Rust, and why there is no net Rust deletion
+
+A faithful AST→`Value` encoder is itself a recursive AST traversal of
+roughly the same size as the walk it replaces — that marshaling is
+inherent to feeding input across the swap interface. So the portable
+shim's code count is ≈flat; what genuinely left Rust is the *analysis*
+(traversal control + classification + accumulation), now a stack-FSM in
+`subscriptions.ev`. The canonical `subscriptions::world_access_sets`
+stays untouched as the default and the equivalence oracle.
 
 ### Equivalence test corpus
 
