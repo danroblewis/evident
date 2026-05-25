@@ -32,6 +32,12 @@ cranelift-native   = "0.103"
 # set; the default Cranelift functionizer never reaches these.
 ureq       = { version = "2", features = ["json"] }
 serde_json = "1"
+# GLSL functionizer (opt-in, macOS-only, `functionize/glsl.rs`): the
+# `gl` crate is pure-Rust GL function-pointer loading (no native build).
+# Only the GlslFunctionizer path touches it; it loads GL symbols from the
+# OpenGL.framework via dlsym + a headless CGL context. The default
+# Cranelift functionizer never reaches it.
+gl = "0.14"
 
 [dev-dependencies]
 # Integration tests for the LLM functionizer hand-build a Z3Program

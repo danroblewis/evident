@@ -16,6 +16,10 @@
 pub mod cranelift;
 pub mod symbolic;
 pub mod llm;
+// GLSL fragment-shader functionizer — macOS only (headless CGL context).
+// Opt-in; the default factory below never returns it.
+#[cfg(target_os = "macos")]
+pub mod glsl;
 
 // Re-export the traits so existing `crate::core::Functionizer`
 // / `crate::core::CompiledFunction` paths keep resolving.
