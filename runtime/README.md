@@ -51,7 +51,7 @@ Top-level summary:
 | `ffi.rs`, `fti.rs`   | libffi marshaling + typed-resource bridges |
 | `parser.rs`, `lexer.rs`, `pretty.rs` | Front end |
 
-Run `scripts/rust-size.py --per-file` for the current line-count table.
+Run `scripts/runtime-size.py --per-file` for the current line-count table.
 Target: ≤ 500 lines per file.
 
 ## Architecture

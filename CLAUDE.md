@@ -307,7 +307,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 - **Public re-exports from `mod.rs`.** `crate::runtime::EvidentRuntime` works whether the type is defined in `runtime/mod.rs` or somewhere under it.
 - **Sibling visibility: `pub(super)`** for cross-file helpers inside a directory module.
 - **Tests next to the code.** `#[cfg(test)] mod tests { … }` at the bottom of the file under test.
-- **`scripts/rust-size.py`** lists files by length — run it when you suspect a file is overdue for a split.
+- **`scripts/runtime-size.py`** lists files by length (Rust under `runtime/src` + Evident passes under `stdlib/passes`) — run it when you suspect a file is overdue for a split.
 
 ## Multi-FSM Runtime
 

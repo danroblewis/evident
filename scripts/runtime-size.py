@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
-"""Measure the size of the Rust *implementation* under runtime/src.
+"""Measure the size of the runtime implementation.
 
-What counts as "implementation":
-  - All `*.rs` under the scan root (default: runtime/src), which by
-    construction excludes runtime/tests/ and runtime/examples/ (they are
-    siblings of src/, not children).
-  - With every embedded `#[cfg(test)]` block stripped out — the unit tests
-    that live at the bottom (or middle) of implementation files.
+One combined report over two bodies of source:
+  - Rust under runtime/src — every `*.rs` with embedded `#[cfg(test)]`
+    blocks stripped out. The stripper is string-/comment-/char-literal-aware
+    so braces inside string literals or comments don't fool it.
+  - Evident under stdlib/passes — every `*.ev` self-hosted pass. Evident
+    comments are `--` to end of line; the classifier strips those (and is
+    string-literal-aware) before counting code lines and tokens.
 
-The `#[cfg(test)]` stripper is string-/comment-/char-literal-aware: it will
-not be fooled by braces that appear inside string literals (e.g. the
-`"\\u{a}"` escapes in translate/extract.rs) or comments, and it handles
-`#[cfg(test)]` blocks that are followed by more implementation code rather
-than sitting at end-of-file.
-
-Reports line count and token count for the stripped implementation. The line
-breakdown keeps comments (so the comment-line tally survives), but the token
-counts are measured on comment-stripped code — // and /* */ are removed first,
-while string and char literals (which are code) are kept.
+A single summary table (Rust / Evident / Total columns), one combined
+file-length histogram, and one combined longest-files list — sized to fit
+on a screen. Comment lines, blank lines, and raw char counts are
+deliberately not reported.
 
 Usage:
-    scripts/rust-size.py                 # scan runtime/src, print summary
-    scripts/rust-size.py --per-file      # also print a per-file table
-    scripts/rust-size.py path/to/src     # scan a different root
+    scripts/runtime-size.py                 # summary, fits on a page
+    scripts/runtime-size.py --per-file      # also dump a per-file table
 """
 
 import argparse
@@ -31,6 +25,10 @@ import os
 import re
 import sys
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RUST_ROOT = os.path.join(REPO_ROOT, "runtime/src")
+EVIDENT_ROOT = os.path.join(REPO_ROOT, "stdlib/passes")
+
 CFG_TEST = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]")
 WORD = re.compile(r"\S+")
 # A "code token" approximation: identifiers/numbers, or runs of operator
@@ -38,7 +36,7 @@ WORD = re.compile(r"\S+")
 LEX_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9][0-9_.]*|[^\sA-Za-z0-9_]")
 
 
-def classify_code(text: str) -> tuple[list[bool], list[bool]]:
+def classify_rust(text: str) -> tuple[list[bool], list[bool]]:
     """Return two per-char masks: (in_code, is_comment).
 
     in_code[i] is True where the char is in normal code state (not inside a
@@ -140,19 +138,62 @@ def classify_code(text: str) -> tuple[list[bool], list[bool]]:
     return in_code, is_comment
 
 
-def strip_comments(text: str) -> str:
-    """Remove every // and /* */ comment, preserving string/char literals.
+def classify_evident(text: str) -> tuple[list[bool], list[bool]]:
+    """Return (in_code, is_comment) masks for Evident source.
+
+    Evident comments run from `--` to end of line; strings are "..." with
+    backslash escapes. in_code is False inside comments and string literals;
+    is_comment is True only inside `--` comments."""
+    n = len(text)
+    in_code = [True] * n
+    is_comment = [False] * n
+    i = 0
+    while i < n:
+        c = text[i]
+
+        # line comment: -- to end of line
+        if c == "-" and i + 1 < n and text[i + 1] == "-":
+            while i < n and text[i] != "\n":
+                in_code[i] = False
+                is_comment[i] = True
+                i += 1
+            continue
+
+        # string literal "..."
+        if c == '"':
+            in_code[i] = False
+            j = i + 1
+            while j < n:
+                in_code[j] = False
+                if text[j] == "\\":
+                    if j + 1 < n:
+                        in_code[j + 1] = False
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    j += 1
+                    break
+                j += 1
+            i = j
+            continue
+
+        i += 1
+
+    return in_code, is_comment
+
+
+def strip_comments(text: str, classify) -> str:
+    """Remove every comment, preserving string/char literals.
 
     Comment chars (including any newlines inside a block comment) are dropped;
-    line-comment newlines survive since the // scan stops at '\\n'. Used so the
-    token counts reflect code only, not doc/explanatory prose."""
-    _, is_comment = classify_code(text)
+    line-comment newlines survive. Used so token counts reflect code only."""
+    _, is_comment = classify(text)
     return "".join(ch for ch, drop in zip(text, is_comment) if not drop)
 
 
 def strip_cfg_test(text: str) -> tuple[str, int]:
     """Remove every in-code `#[cfg(test)]` item. Returns (stripped, lines_removed)."""
-    in_code, _ = classify_code(text)
+    in_code, _ = classify_rust(text)
     n = len(text)
     spans: list[tuple[int, int]] = []
 
@@ -204,22 +245,18 @@ def strip_cfg_test(text: str) -> tuple[str, int]:
     return out, lines_removed
 
 
-def count_lines(text: str) -> dict:
-    in_code, _ = classify_code(text)
+def count_lines(text: str, classify) -> dict:
+    in_code, _ = classify(text)
     lines = text.split("\n")
     # drop a single trailing empty element from a final newline
     if lines and lines[-1] == "":
         lines.pop()
 
     total = len(lines)
-    blank = 0
     code = 0
     offset = 0
     for ln in lines:
-        stripped = ln.strip()
-        if not stripped:
-            blank += 1
-        else:
+        if ln.strip():
             # a "code line" has at least one non-whitespace char in code state
             has_code = any(
                 in_code[offset + k] and not ch.isspace()
@@ -229,17 +266,14 @@ def count_lines(text: str) -> dict:
                 code += 1
         offset += len(ln) + 1  # +1 for the newline we split on
 
-    comment = total - blank - code
-    return {"total": total, "blank": blank, "comment": comment, "code": code}
+    return {"total": total, "code": code}
 
 
 def count_tokens(text: str) -> dict:
-    chars = len(text)
     return {
-        "chars": chars,
         "words": len(WORD.findall(text)),
         "lex_tokens": len(LEX_TOKEN.findall(text)),
-        "approx_llm": math.ceil(chars / 4),
+        "approx_llm": math.ceil(len(text) / 4),
     }
 
 
@@ -256,106 +290,90 @@ BUCKETS = [
 def print_histogram(totals: list[int]) -> None:
     counts = [sum(1 for n in totals if lo <= n < hi) for _, lo, hi in BUCKETS]
     peak = max(counts) or 1
-    width = 36
-    print("  File length (lines)   distribution")
+    width = 30
+    print("  File length distribution")
     for (label, _, _), c in zip(BUCKETS, counts):
         bar = "█" * round(c / peak * width)
         print(f"  {label:>9} │ {bar} {c}")
 
 
-def print_extremes(rows: list[tuple], k: int = 5) -> None:
-    by_len = sorted(rows, key=lambda r: r[1])
+def print_longest(rows: list[tuple], k: int = 6) -> None:
+    by_len = sorted(rows, key=lambda r: r[1], reverse=True)
+    k = min(k, len(rows))
     print(f"  Longest {k} files")
-    for name, total, *_ in reversed(by_len[-k:]):
-        print(f"    {total:>6,}  {name}")
-    print(f"\n  Shortest {k} files")
     for name, total, *_ in by_len[:k]:
         print(f"    {total:>6,}  {name}")
 
 
-def gather(root: str) -> list[str]:
+def gather(root: str, ext: str) -> list[str]:
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         if "target" in dirnames:
             dirnames.remove("target")
         for f in filenames:
-            if f.endswith(".rs"):
+            if f.endswith(ext):
                 files.append(os.path.join(dirpath, f))
     return sorted(files)
+
+
+def collect(root: str, ext: str, classify, strip_tests: bool) -> tuple[dict, list]:
+    """Aggregate counts + per-file rows for one source body. Rows carry the
+    repo-relative path so combined listings are unambiguous."""
+    agg = {"files": 0, "total": 0, "code": 0,
+           "words": 0, "lex_tokens": 0, "approx_llm": 0}
+    rows = []
+    for path in gather(root, ext):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        if strip_tests:
+            text, _ = strip_cfg_test(text)
+        code_only = strip_comments(text, classify)
+        lc = count_lines(text, classify)
+        tc = count_tokens(code_only)
+        agg["files"] += 1
+        for key in ("total", "code"):
+            agg[key] += lc[key]
+        for key in ("words", "lex_tokens", "approx_llm"):
+            agg[key] += tc[key]
+        rows.append((os.path.relpath(path, REPO_ROOT), lc["total"], lc["code"],
+                     tc["approx_llm"]))
+    return agg, rows
+
+
+def print_summary(rust: dict, ev: dict) -> None:
+    total = {k: rust[k] + ev[k] for k in rust}
+    fields = [("files", "files"), ("lines", "total"), ("  code", "code"),
+              ("LLM tokens", "approx_llm"), ("  lexical", "lex_tokens"),
+              ("  words", "words")]
+    print(f"  {'':<12}{'Rust':>11}{'Evident':>11}{'Total':>11}")
+    for label, key in fields:
+        print(f"  {label:<12}{rust[key]:>11,}{ev[key]:>11,}{total[key]:>11,}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("root", nargs="?", default="runtime/src",
-                    help="directory to scan (default: runtime/src)")
     ap.add_argument("--per-file", action="store_true",
-                    help="print a per-file breakdown table")
+                    help="print a combined per-file breakdown table")
     args = ap.parse_args()
 
-    if not os.path.isdir(args.root):
-        print(f"error: not a directory: {args.root}", file=sys.stderr)
-        return 2
+    rust_agg, rust_rows = collect(RUST_ROOT, ".rs", classify_rust, strip_tests=True)
+    ev_agg, ev_rows = collect(EVIDENT_ROOT, ".ev", classify_evident, strip_tests=False)
+    rows = rust_rows + ev_rows
 
-    files = gather(args.root)
-    if not files:
-        print(f"error: no .rs files under {args.root}", file=sys.stderr)
-        return 2
-
-    agg = {"total": 0, "blank": 0, "comment": 0, "code": 0,
-           "chars": 0, "words": 0, "lex_tokens": 0, "approx_llm": 0,
-           "test_lines_stripped": 0, "comment_chars_stripped": 0}
-    rows = []
-
-    for path in files:
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read()
-        impl, test_lines = strip_cfg_test(text)
-        # Line breakdown keeps comments (so the comment-line stat survives);
-        # token counts run on the comment-stripped code only.
-        code_only = strip_comments(impl)
-        lc = count_lines(impl)
-        tc = count_tokens(code_only)
-        agg["comment_chars_stripped"] += len(impl) - len(code_only)
-        agg["total"] += lc["total"]
-        agg["blank"] += lc["blank"]
-        agg["comment"] += lc["comment"]
-        agg["code"] += lc["code"]
-        agg["chars"] += tc["chars"]
-        agg["words"] += tc["words"]
-        agg["lex_tokens"] += tc["lex_tokens"]
-        agg["approx_llm"] += tc["approx_llm"]
-        agg["test_lines_stripped"] += test_lines
-        rows.append((os.path.relpath(path, args.root), lc["total"], lc["code"],
-                     tc["approx_llm"], test_lines))
-
-    if args.per_file:
-        rows.sort(key=lambda r: r[1], reverse=True)
-        print(f"{'file':<44}{'lines':>8}{'code':>8}{'~tokens':>10}{'test-':>8}")
-        print(f"{'':<44}{'':>8}{'':>8}{'':>10}{'strip':>8}")
-        print("-" * 78)
-        for name, total, code, tok, ts in rows:
-            print(f"{name:<44}{total:>8}{code:>8}{tok:>10}{ts:>8}")
-        print("-" * 78)
-
-    print(f"\nRust implementation under {args.root}/  ({len(files)} files, "
-          f"embedded #[cfg(test)] stripped)\n")
-    print(f"  Lines (total)        {agg['total']:>10,}")
-    print(f"    code               {agg['code']:>10,}")
-    print(f"    comment            {agg['comment']:>10,}")
-    print(f"    blank              {agg['blank']:>10,}")
-    print()
-    print(f"  Tokens (~LLM, chars/4) {agg['approx_llm']:>8,}   (comments stripped)")
-    print(f"    lexical tokens     {agg['lex_tokens']:>10,}")
-    print(f"    words              {agg['words']:>10,}")
-    print(f"    chars              {agg['chars']:>10,}")
-    print()
-    print(f"  (test lines stripped from impl files: {agg['test_lines_stripped']:,})")
-    print(f"  (comment chars stripped from token counts: {agg['comment_chars_stripped']:,})")
+    print("Runtime size — Rust runtime/src + Evident stdlib/passes\n")
+    print_summary(rust_agg, ev_agg)
     print()
     print_histogram([r[1] for r in rows])
     print()
-    print_extremes(rows)
+    print_longest(rows)
+
+    if args.per_file:
+        rows.sort(key=lambda r: r[1], reverse=True)
+        print(f"\n{'file':<48}{'lines':>8}{'code':>8}{'~tokens':>10}")
+        print("-" * 74)
+        for name, total, code, tok in rows:
+            print(f"{name:<48}{total:>8}{code:>8}{tok:>10}")
     return 0
 
 
