@@ -287,6 +287,17 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Sampler demo. Runs under the DEFAULT (Cranelift) functionizer
+        // here — the sampler vars route to a full Z3 solve each tick.
+        // Output is structural (depends on state/tick, not the drawn
+        // values), so it's identical whether the satisfier or Z3 drew
+        // them. The benchmark vs FUNCTIONIZE=0 lives in the docstring.
+        name: "test_30_satisfier", exit: 0,
+        must_lines: &["spawned batch", "simulation complete"],
+        forbid_exact_lines: &[],
+        max_steps: 30, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

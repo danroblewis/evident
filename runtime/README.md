@@ -383,6 +383,7 @@ intermediate fallback layers.
 | Var | Effect |
 |---|---|
 | `EVIDENT_FUNCTIONIZE=0`        | Disable functionizer (force slow-path Z3) |
+| `EVIDENT_SATISFIER=1`          | Use the SatisfierFunctionizer: draw range/enum/finite-set–bounded vars with a seeded PRNG instead of solving (delegates the rest to Cranelift). Also opts the extractor into emitting `Sample*` steps. See [`docs/satisfier-functionizer.md`](../docs/satisfier-functionizer.md) |
 | `EVIDENT_FUNCTIONIZE_STATS=1`  | Print `[fz/stats]` summary on exit |
 | `EVIDENT_FUNCTIONIZE_TRACE=1`  | Per-call trace of fz hits/misses |
 | `EVIDENT_VALUE_CACHE=0`        | Disable the cross-tick value cache (memoizes `(claim, given-values)` → bindings; on by default) |
