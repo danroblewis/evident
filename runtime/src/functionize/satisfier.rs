@@ -170,6 +170,7 @@ impl super::Functionizer for SatisfierFunctionizer {
                 steps: stripped_steps,
                 checks: Vec::new(),
                 predicates: Vec::new(),
+                label: program.label.clone(),
             };
             match CraneliftFunctionizer.compile(&stripped, enums, datatypes) {
                 Some(c) => Some(c),

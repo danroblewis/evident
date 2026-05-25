@@ -57,6 +57,11 @@ fn print_help() {
     eprintln!("                           (also via EVIDENT_FUNCTIONIZER=NAME, or a");
     eprintln!("                            `-- functionizer: NAME` marker line in the program)");
     eprintln!();
+    eprintln!("Diagnostic IR dumps (env vars):");
+    eprintln!("  EVIDENT_FZ_DUMP_BODY=1     raw simplified Z3 assertions (extractor input)");
+    eprintln!("  EVIDENT_FZ_DUMP_PROGRAM=1  per-claim Z3Program IR, just before JIT codegen");
+    eprintln!("  EVIDENT_JIT_DUMP=1         Cranelift CLIF (codegen output)");
+    eprintln!();
     eprintln!("Z3 tuning:");
     eprintln!("  --lenient                demote dropped-constraint errors to warnings");
     eprintln!("                           (sets EVIDENT_LENIENT=1)");

@@ -1086,7 +1086,7 @@ fn extract_program_inner<'ctx>(
             Z3Step::Guarded { var: v.to_string(), branches }
         }
     }).collect();
-    Some(Z3Program { steps, checks, predicates })
+    Some(Z3Program { steps, checks, predicates, label: None })
 }
 
 /// Return the inner Bool if `a` is `(not X)`, else None.

@@ -95,6 +95,7 @@ fn program(steps: Vec<Z3Step>) -> Z3Program {
         steps,
         checks: vec![],
         predicates: vec![],
+        label: None,
     }
 }
 
