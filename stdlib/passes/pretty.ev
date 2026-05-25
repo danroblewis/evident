@@ -1,0 +1,58 @@
+-- stdlib/passes/pretty.ev — self-hosted AST renderer.
+--
+-- The Evident-side twin of runtime/src/pretty.rs (AST → readable
+-- string, for UNSAT diagnostics). It is the first port driven by the
+-- runtime/src/portable/ swap-interface (see docs/self-hosting.md):
+-- the Rust caller marshals an Expr / BodyItem into a Value::Enum tree
+-- matching stdlib/ast.ev, queries one of these claims, and reads the
+-- `out` String binding back.
+--
+-- ── What is FAITHFUL today (byte-identical to pretty.rs) ──
+--   PrettyExpr:
+--     * EIdentifier(n)            → "n"
+--   Pretty:
+--     * BIPassthrough(c)          → "..c"
+--     * BIClaimCall(name, ⟨⟩)     → "name"     (empty mappings only)
+--     * BIConstraint(EIdentifier) → delegated to PrettyExpr by the
+--                                   Rust shim (mirrors pretty.rs, whose
+--                                   body_item Constraint arm calls expr)
+--
+-- ── What is NOT faithful — blocked on two runtime gaps ──
+-- (documented in docs/self-hosting.md and examples/COUNTEREXAMPLES.md):
+--   1. Recursion. A claim cannot recurse over a nested Expr tree:
+--      recursive claims inline but leave their output unconstrained,
+--      and a claim call inside an expression is silently dropped. So
+--      EBinary / ECall / ESetLit / quantifiers (anything with sub-Exprs)
+--      cannot be rendered. They fall to the sentinel below.
+--   2. Unicode string literals. Z3's byte-level string handling mangles
+--      any non-ASCII char in a source string literal, so the operator
+--      glyphs pretty.rs emits (∈ ↦ … ∀ ⇒ ∧ ¬ ≤ ⟨⟩ …) cannot be
+--      produced from here. Every shape whose rendering needs one of
+--      them (BIMembership, BISubclaim, all binops) is sentinelled.
+--
+-- Unsupported shapes render to an ASCII sentinel so the claim stays
+-- total; the Rust shim only treats the faithful shapes as authoritative
+-- and the equivalence test asserts identity on exactly those.
+
+import "stdlib/ast.ev"
+
+-- Render an Expr. Faithful subset = ASCII, non-recursive leaves.
+claim PrettyExpr
+    e ∈ Expr
+    out ∈ String
+    out = match e
+        EIdentifier(n) ⇒ n
+        _              ⇒ "<unsupported-expr>"
+
+-- Render a BodyItem. Constraints are delegated to PrettyExpr by the
+-- Rust shim (Evident has no inline sibling-claim call), so the
+-- BIConstraint arm here is never the authoritative path.
+claim Pretty
+    item ∈ BodyItem
+    out ∈ String
+    out = match item
+        BIPassthrough(c)        ⇒ ".." ++ c
+        BIClaimCall(nm, ms)     ⇒ nm
+        BIConstraint(e)         ⇒ "<delegated-to-PrettyExpr>"
+        BIMembership(nm, ty, p) ⇒ "<unsupported-membership>"
+        BISubclaim(s)           ⇒ "<unsupported-subclaim>"

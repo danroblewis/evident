@@ -7,116 +7,24 @@
 //! source style and Unicode operators (∈, ∀, ⇒, …) are restored, but
 //! nothing here is parsed back. If a future feature needs accurate
 //! re-parse, write a separate one.
+//!
+//! This module is now a **thin wrapper** over the swap interface in
+//! `runtime/src/portable/pretty.rs` — `pretty` is the first transform
+//! ported to the portable Rust⇄Evident pattern (see
+//! `docs/self-hosting.md`). The native rendering logic lives in
+//! `portable::pretty::RustPretty`; these free functions keep the
+//! original call sites (`crate::pretty::expr` / `body_item`) working
+//! against the default (Rust) impl.
 
-use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchPattern};
+use crate::core::ast::{BodyItem, Expr};
+use crate::portable::pretty::{PrettyImpl, RustPretty};
 
-/// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
-fn fmt_binding(vs: &[String]) -> String {
-    if vs.len() == 1 { vs[0].clone() } else { format!("({})", vs.join(", ")) }
-}
-
+/// Render an expression to its readable infix form (Rust impl).
 pub fn expr(e: &Expr) -> String {
-    match e {
-        Expr::Identifier(n) => n.clone(),
-        Expr::Int(n)        => n.to_string(),
-        Expr::Real(f)       => f.to_string(),
-        Expr::Bool(b)       => b.to_string(),
-        Expr::Str(s)        => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
-        Expr::SetLit(items) => format!("{{{}}}", items.iter().map(expr).collect::<Vec<_>>().join(", ")),
-        Expr::SeqLit(items) => format!("⟨{}⟩",   items.iter().map(expr).collect::<Vec<_>>().join(", ")),
-        Expr::Tuple(items)  => format!("({})",   items.iter().map(expr).collect::<Vec<_>>().join(", ")),
-        Expr::Range(lo, hi) => format!("{{{}..{}}}", expr(lo), expr(hi)),
-        Expr::InExpr(lhs, rhs) => format!("{} ∈ {}", expr(lhs), expr(rhs)),
-        Expr::Forall(vs, range, body) =>
-            format!("∀ {} ∈ {} : {}", fmt_binding(vs), expr(range), expr(body)),
-        Expr::Exists(vs, range, body) =>
-            format!("∃ {} ∈ {} : {}", fmt_binding(vs), expr(range), expr(body)),
-        Expr::Call(name, args) =>
-            format!("{}({})", name, args.iter().map(expr).collect::<Vec<_>>().join(", ")),
-        Expr::Cardinality(inner) => format!("#{}", expr(inner)),
-        Expr::Index(seq, idx)    => format!("{}[{}]", expr(seq), expr(idx)),
-        Expr::Field(receiver, f) => format!("{}.{}", expr(receiver), f),
-        Expr::Not(inner)         => format!("¬({})", expr(inner)),
-        Expr::Ternary(c, a, b)   => format!("({} ? {} : {})", expr(c), expr(a), expr(b)),
-        Expr::Matches(e, pat) => {
-            let p = match pat {
-                MatchPattern::Wildcard => "_".to_string(),
-                MatchPattern::Ctor { name, binds } => {
-                    if binds.is_empty() { name.clone() }
-                    else {
-                        let bs: Vec<String> = binds.iter().map(|b|
-                            b.clone().unwrap_or_else(|| "_".into())).collect();
-                        format!("{}({})", name, bs.join(", "))
-                    }
-                }
-            };
-            format!("({} matches {})", expr(e), p)
-        }
-        Expr::Match(scr, arms)   => {
-            let arms_s: Vec<String> = arms.iter().map(|a| {
-                let p = match &a.pattern {
-                    MatchPattern::Wildcard => "_".to_string(),
-                    MatchPattern::Ctor { name, binds } => {
-                        if binds.is_empty() { name.clone() }
-                        else {
-                            let bs: Vec<String> = binds.iter().map(|b|
-                                b.clone().unwrap_or_else(|| "_".into())).collect();
-                            format!("{}({})", name, bs.join(", "))
-                        }
-                    }
-                };
-                format!("{} ⇒ {}", p, expr(&a.body))
-            }).collect();
-            format!("match {} {{ {} }}", expr(scr), arms_s.join(" | "))
-        }
-        Expr::Binary(op, lhs, rhs) => {
-            let l = expr(lhs);
-            let r = expr(rhs);
-            // Wrap any Binary operand in parens — cheap, slightly noisy,
-            // never wrong. A precedence-aware printer is overkill for
-            // diagnostics.
-            let l = if matches!(lhs.as_ref(), Expr::Binary(..)) { format!("({})", l) } else { l };
-            let r = if matches!(rhs.as_ref(), Expr::Binary(..)) { format!("({})", r) } else { r };
-            format!("{} {} {}", l, binop_sym(op), r)
-        }
-    }
+    RustPretty.expr(e)
 }
 
-fn binop_sym(op: &BinOp) -> &'static str {
-    match op {
-        BinOp::Eq      => "=",
-        BinOp::Neq     => "≠",
-        BinOp::Lt      => "<",
-        BinOp::Le      => "≤",
-        BinOp::Gt      => ">",
-        BinOp::Ge      => "≥",
-        BinOp::And     => "∧",
-        BinOp::Or      => "∨",
-        BinOp::Implies => "⇒",
-        BinOp::Add     => "+",
-        BinOp::Sub     => "-",
-        BinOp::Mul     => "*",
-        BinOp::Div     => "/",
-        BinOp::Concat  => "++",
-    }
-}
-
+/// Render a single schema body item (Rust impl).
 pub fn body_item(item: &BodyItem) -> String {
-    match item {
-        BodyItem::Membership { name, type_name, .. } => format!("{} ∈ {}", name, type_name),
-        BodyItem::Passthrough(c) => format!("..{}", c),
-        BodyItem::SubclaimDecl(s) => format!("subclaim {} (…)", s.name),
-        BodyItem::ClaimCall { name, mappings } => {
-            if mappings.is_empty() {
-                name.clone()
-            } else {
-                format!("{} ({})", name, mappings.iter().map(mapping).collect::<Vec<_>>().join(", "))
-            }
-        }
-        BodyItem::Constraint(e) => expr(e),
-    }
-}
-
-fn mapping(m: &Mapping) -> String {
-    format!("{} ↦ {}", m.slot, expr(&m.value))
+    RustPretty.body_item(item)
 }

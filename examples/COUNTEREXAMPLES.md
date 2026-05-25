@@ -403,6 +403,49 @@ StringResult(s) ⇒ s }`); `#seq` computed from the paired Seq value
 and `LibCall`-as-scalar (test_17); test_29's tick-0 bootstrap component
 (a `runtime/query.rs` unsafe-free decision, not a codegen shape).
 
+## 15. Recursive claims don't constrain their outputs (blocks AST→X passes)
+
+**Where:** `runtime/src/translate/inline/recursion.rs`,
+`translate/inline/walk.rs`; surfaced porting `pretty.rs` to
+`stdlib/passes/pretty.ev` (session X). Full writeup:
+[`docs/self-hosting.md`](../docs/self-hosting.md).
+
+A claim cannot recursively process a recursive datatype of unknown
+depth. Bounded inlining exists (depth-capped at
+`EVIDENT_MAX_INLINE_DEPTH=64`) but the inlined frames' outputs are left
+**unconstrained** — Z3 fills free values, so the result is garbage (both
+correct and wrong outputs come back SAT). And a claim call nested inside
+an expression (`out = pretty(l) ++ …`) is **silently dropped**
+(`walk.rs`). No `define-fun-rec`, no fold/catamorphism.
+
+Consequence: a pass can render only leaf / flat AST shapes; anything
+with sub-`Expr`s can't be self-hosted yet. Fix path: compile recursive
+claims to Z3 recursive functions (or thread the inductive output
+constraint through the unrolling) — see
+`docs/plans/03-language-prereqs/01-recursive-claims.md` (acceptance
+criteria all unchecked).
+
+## 16. Non-ASCII string literals mangle through Z3
+
+**Where:** `Z3Str::from_str` usage across `translate/eval/*` and the JIT;
+surfaced in session X. `Z3Str::from_str` treats a Rust `&str`'s UTF-8
+bytes as a byte-sequence of Z3 characters. A source literal `" ∈ "`
+comes back as `\u{e2}\u{88}\u{88}` (JIT path) or `â\u{88}\u{88}` (slow
+path) — neither recovers `∈`. So an Evident string pass can faithfully
+emit **only ASCII**; every operator glyph (`∈ ∀ ⇒ ∧ ¬ ≤ ↦ ⟨⟩ …`) is
+lost. (A `Value::Str(" ∈ ")` *given* round-trips only because the JIT
+identity-short-circuits, not via real Z3 Unicode support.)
+
+## 17. JIT mishandles a `Bool` payload nested in an enum `given`
+
+**Where:** `runtime/src/functionize/`; surfaced in session X.
+`match e { EBool(b) ⇒ (b ? "true" : "false") }` returns `"false"` for
+both `true` and `false` under the JIT, but is correct on the slow path
+(`EVIDENT_FUNCTIONIZE=0`). A nested `Bool` payload in an enum `given`
+isn't threaded through the functionizer's match→ternary codegen. (The
+faithful pretty subset avoids bool rendering rather than ship a
+JIT-incorrect arm.)
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)
