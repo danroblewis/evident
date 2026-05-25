@@ -446,6 +446,67 @@ isn't threaded through the functionizer's match→ternary codegen. (The
 faithful pretty subset avoids bool rendering rather than ship a
 JIT-incorrect arm.)
 
+## 18. String payload extracted from a given-pinned enum loses equality
+
+**Where:** `runtime/src/translate/` + `runtime/src/functionize/`;
+surfaced in session DD while porting `runtime/src/runtime/validate.rs`
+to `stdlib/passes/validate.ev`.
+
+The natural shape for an AST inspector — pin an `e ∈ Expr` via `given`,
+destructure `ECall(nm, _)` in a `match`, compare `nm = "FFICall"` —
+evaluates the comparison to `false` on both the JIT and slow paths,
+even when the bytes of `nm` and the literal match exactly.
+
+Reproduction:
+
+```evident
+import "stdlib/ast.ev"
+
+claim ValidateExpr
+    e ∈ Expr
+    out ∈ String
+    out = match e
+        ECall(nm, _) ⇒ (nm = "LibCall" ? nm : "")
+        _            ⇒ ""
+```
+
+Rust shim pins `e` to `Value::Enum { enum_name: "Expr", variant: "ECall",
+fields: [Value::Str("LibCall"), Value::Enum { ELNil }] }` and queries.
+Result: `out = ""`. The destructured `nm` round-trips correctly as a
+String (return it bare and `out = "LibCall"` comes back fine), but
+`nm = "LibCall"` doesn't fire.
+
+The constructed-in-source form works correctly:
+```evident
+e = ECall("LibCall", ⟨⟩)
+ValidateExpr (e ↦ e, out ↦ out)
+-- ⇒ out = "LibCall"
+```
+
+So this is specifically a `given` ⇄ match-extraction failure, not a
+general string-equality issue. Two strings of the same bytes coming
+from different provenances aren't recognised as equal — likely a
+character-sort / Z3 string-internalisation mismatch between the pinned
+enum's payload and the comparator literal.
+
+**Workaround used in `stdlib/passes/validate.ev`:** the Rust shim
+extracts the call name on the Rust side and pins `nm ∈ String`
+directly. The Evident pass still owns the decision (`nm ∈ {FFICall,
+FFIOpen, FFILookup, LibCall}`); only the recognizer-vs-comparison
+choice changes. Byte-equality on a top-level `Value::Str` given works
+correctly — the gap is specifically about Strings extracted from a
+pinned enum value.
+
+Fix idea: trace where the destructured String diverges from the
+literal in the JIT-emitted comparison. Plausible suspects: the
+extractor function path (enum-accessor returning a Z3 String sort that
+isn't byte-comparable with a constant-built String literal), or the
+Cranelift-side handle convention (extracted-from-enum vs.
+constructed-from-literal use different opaque handles that don't share
+an identity-shortcircuit). Once closed, the pass can drop the
+shim-side extraction and pin `e ∈ Expr` directly — the pattern that
+matches the canonical Rust walker shape.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

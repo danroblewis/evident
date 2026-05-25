@@ -1,0 +1,51 @@
+-- stdlib/passes/validate.ev — self-hosted external-only check.
+--
+-- The Evident-side twin of runtime/src/runtime/validate.rs's
+-- `enforce_external_only`: the load-time rule that rejects
+-- non-`external` schemas which directly construct FFI effects
+-- (`FFICall` / `FFIOpen` / `FFILookup` / `LibCall`). Demos and
+-- ordinary library code reach C through `external claim` wrappers
+-- in `packages/` and `stdlib/posix.ev`; the runtime refuses to
+-- compile a non-`external` claim that does so itself.
+--
+-- This pass owns the decision logic — what counts as a banned
+-- call name. The Rust shim in runtime/src/portable/validate.rs
+-- owns the walk: it iterates a schema's body items, recurses into
+-- each Constraint's Expr tree, and queries `ValidateExpr` with the
+-- call name at every Call node. Per-Call classification lives in
+-- Evident; structural recursion stays in Rust because the language
+-- can't recurse over nested Expr trees yet (see
+-- `docs/self-hosting.md`). The shim's walk mirrors `find_ffi_call`
+-- in `runtime/src/runtime/validate.rs` exactly, so both impls emit
+-- byte-identical diagnostics.
+--
+-- ── Why `nm ∈ String` and not `e ∈ Expr` ──────────────────────
+-- The natural shape — match the whole Expr, destructure ECall, pin
+-- and compare its name field — runs into a runtime gap: a String
+-- payload extracted from a given-pinned enum value doesn't preserve
+-- byte equality with a source-literal string. `match e { ECall(nm,
+-- _) ⇒ (nm = "FFICall" ? ...) }` evaluates the comparison to false
+-- on both JIT and slow paths even when the bytes match. Pinning
+-- `nm` directly side-steps the gap: the runtime threads the
+-- given-bound String to the comparison without going through the
+-- enum-extractor. The pattern is still genuinely self-hosted (the
+-- "banned ⇔ name ∈ {...}" decision lives here), and the shim's
+-- Rust walker decides WHEN to ask. See
+-- `examples/COUNTEREXAMPLES.md` for the gap entry.
+--
+-- ── Faithful subset ───────────────────────────────────────────
+-- Byte-identical to `enforce_external_only` for every input shape.
+-- The Rust shim drives the recursion, so every expression tree the
+-- canonical walker visits, this pass classifies. The pass is total
+-- (banned names map to themselves, everything else to "").
+
+import "stdlib/ast.ev"
+
+-- Classify a call name. Returns `nm` itself when it's one of the
+-- four banned FFI-construction primitives; empty string otherwise.
+-- The shim treats a non-empty return as a found-violation signal
+-- and uses the returned name in the diagnostic.
+claim ValidateExpr
+    nm ∈ String
+    out ∈ String
+    out = ((nm = "FFICall" ∨ nm = "FFIOpen" ∨ nm = "FFILookup" ∨ nm = "LibCall") ? nm : "")
