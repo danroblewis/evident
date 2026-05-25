@@ -42,7 +42,11 @@ mod stats;
 mod lenient;
 mod autotune;
 mod load;
-mod generics;
+// `pub(crate)` so the `portable::generics` swap-interface seam can reach
+// the canonical `collect_generic_uses` / `collect_from_type_name` /
+// `monomorphize_generics_with` it wraps. Production callers still go
+// through `super::generics::monomorphize_generics` from `load.rs`.
+pub(crate) mod generics;
 mod desugar;
 mod inject;
 mod validate;

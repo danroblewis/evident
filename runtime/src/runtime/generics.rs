@@ -104,10 +104,47 @@ pub(super) fn substitute_type_params_in_body(body: &mut Vec<BodyItem>, subst: &H
     }
 }
 
+/// Parse one type-position string into the generic-use tuples it
+/// contributes, appending to `out` and recursing through nested args
+/// and `Seq(...)` wrappers. Deduplicates against `seen` (keyed on the
+/// full composite type-name string), so the same `Edge<Rect>` reached
+/// from two places is collected once.
+///
+/// This is the per-string *parse* half of `collect_generic_uses`,
+/// extracted to a module-level `pub(crate)` fn so the self-hosting
+/// `portable::generics` seam can reuse the EXACT same parse over the
+/// raw type-position strings its Evident walk emits — guaranteeing both
+/// impls' parse is identical and only the *walk* (Rust tree-walk vs
+/// Evident stack-FSM) differs. Parsing `Edge<Rect>` needs substring /
+/// angle-bracket scanning, which Evident can't express, so it stays in
+/// Rust regardless of which impl does the walk (see
+/// `docs/self-hosting.md` and `examples/COUNTEREXAMPLES.md`).
+pub(crate) fn collect_from_type_name(
+    t: &str,
+    out: &mut Vec<(String, String, String)>,
+    seen: &mut HashSet<String>,
+) {
+    // Handle the simple generic form "Edge<Rect>".
+    if let Some((head, args)) = split_generic_head(t) {
+        if seen.insert(t.to_string()) {
+            out.push((t.to_string(), head.clone(), args.clone()));
+        }
+        // Each top-level arg may itself be a generic.
+        for arg in split_top_level_args(&args) {
+            collect_from_type_name(&arg, out, seen);
+        }
+        return;
+    }
+    // Handle "Seq(Edge<Rect>)" — recurse into the inner.
+    if let Some(inner) = strip_seq_wrapper(t) {
+        collect_from_type_name(inner, out, seen);
+    }
+}
+
 /// Collect every (composite_name, generic_head, args_str) tuple
 /// referenced anywhere in the schemas map. Used by
 /// `monomorphize_generics` to find work to do.
-pub(super) fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, String, String)> {
+pub(crate) fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec<(String, String, String)> {
     use crate::core::ast::BodyItem;
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -169,23 +206,6 @@ pub(super) fn collect_generic_uses(schemas: &HashMap<String, SchemaDecl>) -> Vec
             }
         }
     }
-    fn collect_from_type_name(t: &str, out: &mut Vec<(String, String, String)>, seen: &mut HashSet<String>) {
-        // Handle the simple generic form "Edge<Rect>".
-        if let Some((head, args)) = split_generic_head(t) {
-            if seen.insert(t.to_string()) {
-                out.push((t.to_string(), head.clone(), args.clone()));
-            }
-            // Each top-level arg may itself be a generic.
-            for arg in split_top_level_args(&args) {
-                collect_from_type_name(&arg, out, seen);
-            }
-            return;
-        }
-        // Handle "Seq(Edge<Rect>)" — recurse into the inner.
-        if let Some(inner) = strip_seq_wrapper(t) {
-            collect_from_type_name(inner, out, seen);
-        }
-    }
     for s in schemas.values() {
         walk(&s.body, &mut out, &mut seen);
     }
@@ -217,8 +237,28 @@ pub(super) fn monomorphize_generics(
     schemas: &mut HashMap<String, SchemaDecl>,
     schema_order: &mut Vec<String>,
 ) -> Result<(), RuntimeError> {
+    monomorphize_generics_with(schemas, schema_order, collect_generic_uses)
+}
+
+/// `monomorphize_generics` parameterized on the generic-use *collector*.
+///
+/// The fixed-point loop, type-param substitution, copy construction, and
+/// every error case are identical regardless of who finds the work to do
+/// — only the AST *walk* that locates generic uses is swappable. The
+/// canonical production path passes [`collect_generic_uses`] (a Rust
+/// tree-walk); the self-hosting [`crate::portable::generics`] seam passes
+/// a closure backed by the `generics_walk` Evident stack-FSM. Sharing
+/// this body is what makes the two impls byte-identical when their
+/// collectors agree (the only thing the equivalence test has to pin) —
+/// the same "shared transform, swappable sub-step" shape `portable/
+/// validate.rs` uses for its walker.
+pub(crate) fn monomorphize_generics_with(
+    schemas: &mut HashMap<String, SchemaDecl>,
+    schema_order: &mut Vec<String>,
+    collect: impl Fn(&HashMap<String, SchemaDecl>) -> Vec<(String, String, String)>,
+) -> Result<(), RuntimeError> {
     for _iteration in 0..50 {
-        let needed = collect_generic_uses(schemas);
+        let needed = collect(schemas);
         let mut produced = 0;
         for (composite_name, generic_head, args_str) in needed {
             if schemas.contains_key(&composite_name) { continue; }

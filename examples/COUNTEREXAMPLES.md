@@ -664,6 +664,61 @@ needs structural sharing in `Value` or variant-2 whole-loop compilation
 (`docs/design/loop-functionizer.md` §4 option B). This is the perf gate
 on the held session-XX subscriptions cutover.
 
+## 20. Generics monomorphization's string-substitution core can't be self-hosted (session PORT-generics)
+
+**Status: WALK self-hosted + equivalence-proven; PARSE/SUBSTITUTE kept in
+Rust (no cutover). Documented gap, suite green.**
+
+`monomorphize_generics` (`runtime/src/runtime/generics.rs`) expands
+`type Edge<T>` / `claim Toposort<T>` references into concrete copies. It
+decomposes into two halves:
+
+* **WALK** — locate every type-position string that could name a generic
+  instantiation (a `Membership`'s type_name; a `ClaimCall`'s /
+  `Passthrough`'s name; every `Call` name in a constraint expr). This is a
+  pure AST traversal.
+* **PARSE + SUBSTITUTE + CONSTRUCT** — `split_generic_head("Edge<Rect>")`
+  scans for `<` / `>`; `substitute_idents("Seq(T)", T↦Rect)` tokenizes the
+  string into identifier runs and rebuilds `"Seq(Rect)"`; then build the
+  concrete copy and iterate to a fixed point.
+
+The **WALK self-hosts cleanly** — `stdlib/passes/generics.ev` is a
+stack-FSM over the shared marshaler (the recipe `subscriptions` proved),
+and `runtime/tests/generics_equivalence.rs` pins it byte-identical to the
+Rust walk on fixtures + the full corpus + the generic-heavy stdlib, AND
+proves driving the shared substitution with the Evident collector yields
+byte-identical concrete schema copies.
+
+The **PARSE + SUBSTITUTE half cannot be expressed in Evident.** Both
+`split_generic_head` and `substitute_idents` are substring / character-
+level string operations, and Evident's only string ops are `=`, `≠`, and
+`++` (concat) — there is **no substring, char-access, split, strip, or
+tokenize**. A type_name like `"Seq(Edge<T>)"` is an opaque atom to the
+language: it can't be told apart from `"SeqEdgeT"` except by whole-string
+equality. This is the SAME "no substring operator" limit `subscriptions`
+documented for its one-line `world.`-prefix classifier (#18-family) —
+except for generics it is the WHOLE transformation, not a leaf decision.
+
+**Why no cutover (honest-fallback).** Because the rewrite half can't move,
+routing the load path through Evident would delete nothing — the parse +
+substitution + copy construction + fixed point all stay in Rust — while
+adding a per-load FSM cost (the collector runs up to 50× in the fixed
+point, on every load including the common no-generics case). Net Rust LOC
+would not fall, unlike the `subscriptions` cutover whose whole walk was
+deletable. So the canonical Rust `monomorphize_generics` stays the
+production load path; the Evident pass + equivalence test prove the walk
+half is self-hostable and stand ready if a substring/tokenize primitive is
+ever added to the language. **Runtime is unaffected** — generics is a
+load-time pass, not on the per-tick path, and the production path is the
+unchanged Rust pass (the refactor that added the swappable collector is
+behavior-preserving). See `runtime/src/portable/generics.rs` and
+`docs/self-hosting.md`.
+
+**The unlock**: a string-decomposition primitive in `translate/` (substr /
+split / a structured `TypeName` AST node that pre-parses `<...>` at lex
+time). With that, `substitute_idents` and `split_generic_head` become
+expressible and the full pass could self-host + cut over.
+
 ## Conformance gaps surfaced by triage
 
 These are bugs found while triaging the conformance suite (`tests/conformance/`)

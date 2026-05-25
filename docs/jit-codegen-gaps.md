@@ -116,6 +116,28 @@ step; this session closed the codegen + per-tick-waste half.
 
 ---
 
+## Session PORT-generics — generics is NOT a codegen gap; it's a *language* gap
+
+Filed here because the self-hosting recipe routes through the functionizer
+(the `generics_walk` stack-FSM's per-tick step JIT-compiles exactly like
+`subscriptions_walk` — `comp` clean, no bail), but the blocker is **not**
+codegen. Generics monomorphization's WALK half self-hosts faithfully
+(`stdlib/passes/generics.ev`, byte-identical to the Rust walk on the
+corpus — `runtime/tests/generics_equivalence.rs`). Its PARSE/SUBSTITUTE
+half (`split_generic_head` scans for `<`/`>`; `substitute_idents`
+tokenizes `Seq(T)`→`Seq(Rect)`) is **substring / character-level string
+work that the language can't express** — Evident's only string ops are
+`=`, `≠`, `++`. No functionizer change can close this; it needs a
+string-decomposition primitive in `translate/` (substr/split, or a
+pre-parsed `TypeName` AST node). So generics is **not** cut over: the
+canonical Rust pass stays the production load path, and runtime is
+unaffected (load-time pass). Full write-up: `examples/COUNTEREXAMPLES.md`
+#20 and `docs/self-hosting.md`. The lesson echoes Session YY's: measure
+*where* the gap actually is before attributing it to the JIT — here it's
+neither codegen nor per-tick cost but the surface language.
+
+---
+
 ## Closed by this session
 
 ### 1. Integer division / modulo as a top-level Scalar value — FIXED
