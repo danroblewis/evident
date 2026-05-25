@@ -265,7 +265,7 @@ claim t
                     evident_runtime::ast::Expr::Identifier(n) if n == "s"));
                 if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = pat {
                     assert_eq!(name, "B");
-                    assert_eq!(binds, &vec![None]);
+                    assert_eq!(binds, &vec![evident_runtime::ast::MatchPattern::Wildcard]);
                 } else {
                     panic!("expected Ctor pattern, got {pat:?}");
                 }
@@ -300,11 +300,11 @@ claim t
                 assert_eq!(arms.len(), 2);
                 if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = &arms[0].pattern {
                     assert_eq!(name, "Ok");
-                    assert_eq!(binds, &vec![Some("n".to_string())]);
+                    assert_eq!(binds, &vec![evident_runtime::ast::MatchPattern::Bind("n".to_string())]);
                 } else { panic!("expected Ok pattern, got {:?}", arms[0].pattern); }
                 if let evident_runtime::ast::MatchPattern::Ctor { name, binds } = &arms[1].pattern {
                     assert_eq!(name, "Err");
-                    assert_eq!(binds, &vec![None]);
+                    assert_eq!(binds, &vec![evident_runtime::ast::MatchPattern::Wildcard]);
                 } else { panic!("expected Err pattern, got {:?}", arms[1].pattern); }
             }
             other => panic!("expected Match, got {other:?}"),

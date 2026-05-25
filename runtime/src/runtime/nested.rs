@@ -251,13 +251,21 @@ impl EvidentRuntime {
             Expr::Real(r) => Ok(Value::Real(*r)),
             Expr::Bool(b) => Ok(Value::Bool(*b)),
             Expr::Str(s)  => Ok(Value::Str(s.clone())),
-            Expr::Identifier(name) => given.get(name).cloned().ok_or_else(|| {
-                RuntimeError::Parse(format!(
+            Expr::Identifier(name) => {
+                if let Some(v) = given.get(name) {
+                    return Ok(v.clone());
+                }
+                // A bare nullary enum-variant literal (`Empty`, `NLNil`)
+                // — part of a composite init like `Node("a", NLNil)`.
+                if let Some(v) = self.nullary_variant_value(name) {
+                    return Ok(v);
+                }
+                Err(RuntimeError::Parse(format!(
                     "run({fsm}, ..): init references `{name}`, which has no known \
                      value before the solve. v1 requires `run`'s init to be \
-                     computable from literals or givens — pin `{name}` as a given, \
-                     or pass a literal."))
-            }),
+                     computable from literals, givens, or enum literals — pin \
+                     `{name}` as a given, or pass a literal.")))
+            }
             Expr::Binary(op @ (BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div), l, r) => {
                 let lv = self.eval_const_init(fsm, l, given)?;
                 let rv = self.eval_const_init(fsm, r, given)?;
@@ -276,6 +284,34 @@ impl EvidentRuntime {
                          integers in v1"))),
                 }
             }
+            // A composite enum-constructor literal — `Leaf(7)`,
+            // `Node(Leaf(1), Leaf(2))`, `WSeed(...)`. Look the variant up
+            // to recover its enum name, then recursively evaluate each
+            // payload arg. This is the composite seed (#19d): a tree /
+            // recursive-enum value passed straight through `init`.
+            Expr::Call(ctor, args) => {
+                let enum_name = self.enums_registry().by_variant
+                    .borrow().get(ctor).map(|(n, _)| n.clone());
+                let Some(enum_name) = enum_name else {
+                    return Err(RuntimeError::Parse(format!(
+                        "run({fsm}, ..): init constructor `{ctor}` isn't a known \
+                         enum variant")));
+                };
+                let fields = args.iter()
+                    .map(|a| self.eval_const_init(fsm, a, given))
+                    .collect::<Result<Vec<Value>, _>>()?;
+                Ok(Value::Enum { enum_name, variant: ctor.clone(), fields })
+            }
+            // A sequence-literal seed — `⟨root⟩`, `⟨"a", "b"⟩`, or an
+            // empty `⟨⟩` children list inside a composite. Evaluate each
+            // element and pick the Seq Value variant from the element
+            // kinds (#19d composite seed, Seq case).
+            Expr::SeqLit(items) => {
+                let vals = items.iter()
+                    .map(|x| self.eval_const_init(fsm, x, given))
+                    .collect::<Result<Vec<Value>, _>>()?;
+                seq_value_from_elems(fsm, vals)
+            }
             // A run nested in an init expression: recurse.
             Expr::RunFsm { fsm: inner, init } => self.eval_run(inner, init, given),
             other => Err(RuntimeError::Parse(format!(
@@ -283,6 +319,51 @@ impl EvidentRuntime {
                  before the solve (literal, given, or integer arithmetic over \
                  those); got {}", crate::pretty::expr(other)))),
         }
+    }
+
+    /// If `name` is a registered nullary enum variant (`Empty`, `NLNil`,
+    /// `Nil`), build its `Value::Enum`. Used by `eval_const_init` so a
+    /// composite init literal can carry bare nullary variants
+    /// (`Node("a", NLNil)`). Returns `None` for unknown names or
+    /// payload-bearing variants.
+    fn nullary_variant_value(&self, name: &str) -> Option<Value> {
+        let enums = self.enums_registry();
+        let (enum_name, idx) = enums.by_variant.borrow().get(name)?.clone();
+        let by_name = enums.by_name.borrow();
+        let (_, variants) = by_name.get(&enum_name)?;
+        if variants.get(idx)?.fields.is_empty() {
+            Some(Value::Enum { enum_name, variant: name.to_string(), fields: vec![] })
+        } else {
+            None
+        }
+    }
+}
+
+/// Build a `Seq` `Value` from already-evaluated element values, picking
+/// the variant from the (homogeneous) element kinds. An empty literal
+/// defaults to `SeqEnum([])` — the common shape for an empty
+/// recursive-enum children list. A mixed-kind literal is an error.
+fn seq_value_from_elems(fsm: &str, vals: Vec<Value>) -> Result<Value, RuntimeError> {
+    let mismatch = || RuntimeError::Parse(format!(
+        "run({fsm}, ..): sequence-literal init must have homogeneous element \
+         types (all Int, all String, all enum, …)"));
+    match vals.first() {
+        None => Ok(Value::SeqEnum(vec![])),
+        Some(Value::Int(_)) => vals.iter().map(|v| match v {
+            Value::Int(n) => Some(*n), _ => None }).collect::<Option<Vec<_>>>()
+            .map(Value::SeqInt).ok_or_else(mismatch),
+        Some(Value::Bool(_)) => vals.iter().map(|v| match v {
+            Value::Bool(b) => Some(*b), _ => None }).collect::<Option<Vec<_>>>()
+            .map(Value::SeqBool).ok_or_else(mismatch),
+        Some(Value::Str(_)) => vals.iter().map(|v| match v {
+            Value::Str(s) => Some(s.clone()), _ => None }).collect::<Option<Vec<_>>>()
+            .map(Value::SeqStr).ok_or_else(mismatch),
+        Some(Value::Enum { .. }) => {
+            if vals.iter().all(|v| matches!(v, Value::Enum { .. })) {
+                Ok(Value::SeqEnum(vals))
+            } else { Err(mismatch()) }
+        }
+        _ => Err(mismatch()),
     }
 }
 
@@ -369,20 +450,49 @@ fn expr_has_run(e: &Expr) -> bool {
 }
 
 /// Convert a nested-run final-state `Value` to the literal `Expr` that
-/// pins it into the outer model. Primitive values map to their literal;
-/// an enum value maps to a constructor call (`Acc(5)` → `Call("Acc",
-/// [Int(5)])`). Composite/Seq results aren't supported in v1.
+/// pins it into the outer model. The outer translator's existing
+/// equality paths then lower that literal:
+///   * Primitive → its literal (`Int`/`Bool`/`Real`/`Str`).
+///   * Nullary enum variant → a bare `Identifier` (`Empty` → `Empty`),
+///     NOT a zero-arg `Call`: `resolve_enum_ast`'s Identifier path
+///     resolves the `EnumValue`, whereas a `Call("Empty", [])` would
+///     look for an `EnumCtor` and the equality would silently drop.
+///   * Payload enum variant → a constructor `Call`, recursing into each
+///     field (so a nested-enum payload like `Done(Push(Leaf(7), Empty))`
+///     round-trips).
+///   * Seq value → a `SeqLit` of element literals; the outer
+///     `translate_seq_lit_eq` / `translate_seq_arg_for_ctor` paths pin
+///     length + per-element values. This is the composite final-state
+///     return — a `Seq`/`Set`-accumulator FSM can now hand its result
+///     back as a value.
 fn value_to_literal_expr(v: &Value) -> Option<Expr> {
+    let seq_lit = |items: Vec<Expr>| Some(Expr::SeqLit(items));
     match v {
         Value::Int(n)  => Some(Expr::Int(*n)),
         Value::Bool(b) => Some(Expr::Bool(*b)),
         Value::Real(r) => Some(Expr::Real(*r)),
         Value::Str(s)  => Some(Expr::Str(s.clone())),
         Value::Enum { variant, fields, .. } => {
-            let args: Option<Vec<Expr>> =
-                fields.iter().map(value_to_literal_expr).collect();
-            Some(Expr::Call(variant.clone(), args?))
+            if fields.is_empty() {
+                Some(Expr::Identifier(variant.clone()))
+            } else {
+                let args: Option<Vec<Expr>> =
+                    fields.iter().map(value_to_literal_expr).collect();
+                Some(Expr::Call(variant.clone(), args?))
+            }
         }
+        Value::SeqInt(xs)  => seq_lit(xs.iter().map(|n| Expr::Int(*n)).collect()),
+        Value::SeqBool(xs) => seq_lit(xs.iter().map(|b| Expr::Bool(*b)).collect()),
+        Value::SeqStr(xs)  => seq_lit(xs.iter().map(|s| Expr::Str(s.clone())).collect()),
+        Value::SeqEnum(xs) => {
+            let items: Option<Vec<Expr>> =
+                xs.iter().map(value_to_literal_expr).collect();
+            seq_lit(items?)
+        }
+        // Set values and flat composite records aren't expressible as a
+        // single outer literal yet (a `Set`-accumulator return is the
+        // honest remaining gap — Set literals need bare-identifier
+        // elements, not nested literals).
         _ => None,
     }
 }

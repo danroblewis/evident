@@ -204,61 +204,98 @@ fn is_primitive(type_name: &str) -> bool {
     matches!(type_name, "Int" | "Bool" | "Real" | "String")
 }
 
-/// Coerce the `init` Value to `F`'s state type, seeding enum state from
-/// a bare Int into the first-variant-with-single-Int-payload
-/// (mirroring `state::seed_state_with_arg`).
+/// Coerce the `init` Value to `F`'s state type.
+///
+/// Three cases:
+///   1. **Primitive state** (`Int`/`Bool`/`Real`/`String`) — the init
+///      value's kind must match.
+///   2. **Enum state, init already of that enum** — seeds directly
+///      (`run(accumulate, Acc(0))`, `run(walk, WSeed(...))`).
+///   3. **Enum state, init is the *payload*** — seed the state enum's
+///      first single-payload variant when the init value's type matches
+///      that payload's field type. This generalizes the bare-Int →
+///      first-Int-variant convention (`seed_state_with_arg`) to ANY
+///      composite: a tree / recursive-enum / Seq passed straight through
+///      `init` (`run(walk, Node(Leaf(1), Leaf(2)))` seeds
+///      `WSeed(Node(Leaf(1), Leaf(2)))`). This is the composite-seed
+///      half of #19d.
 fn coerce_init(
     rt: &EvidentRuntime,
     fsm_name: &str,
     type_name: &str,
     init: &Value,
 ) -> Result<Value, RunError> {
+    let bad = || RunError::BadInit {
+        fsm: fsm_name.to_string(),
+        type_name: type_name.to_string(),
+        got: format!("{init:?}"),
+    };
     if is_primitive(type_name) {
         let ok = matches!(
             (type_name, init),
             ("Int", Value::Int(_)) | ("Bool", Value::Bool(_))
                 | ("Real", Value::Real(_)) | ("String", Value::Str(_))
         );
-        if ok {
+        return if ok { Ok(init.clone()) } else { Err(bad()) };
+    }
+    // Enum state: an init value already of this enum type seeds directly.
+    if let Value::Enum { enum_name, .. } = init {
+        if enum_name == type_name {
             return Ok(init.clone());
         }
-        return Err(RunError::BadInit {
-            fsm: fsm_name.to_string(),
-            type_name: type_name.to_string(),
-            got: format!("{init:?}"),
-        });
     }
-    // Enum state. An already-built enum value seeds directly.
-    if let Value::Enum { .. } = init {
-        return Ok(init.clone());
+    // Otherwise, wrap the init value into the state enum's first
+    // single-payload variant when the kinds match.
+    if let Some(seeded) = seed_first_variant(rt, type_name, init) {
+        return Ok(seeded);
     }
-    // A bare Int seeds the first variant if it takes a single Int
-    // payload — the `seed_state_with_arg` convention.
-    if let Value::Int(n) = init {
-        let enums = rt.enums_registry();
-        let by_name = enums.by_name.borrow();
-        if let Some((sort, decl_variants)) = by_name.get(type_name) {
-            if let (Some(first_sort), Some(first_decl)) =
-                (sort.variants.first(), decl_variants.first())
-            {
-                if first_sort.constructor.arity() == 1
-                    && first_decl.fields.len() == 1
-                    && first_decl.fields[0].type_name == "Int"
-                {
-                    return Ok(Value::Enum {
-                        enum_name: type_name.to_string(),
-                        variant:   first_decl.name.clone(),
-                        fields:    vec![Value::Int(*n)],
-                    });
-                }
-            }
-        }
-    }
-    Err(RunError::BadInit {
-        fsm: fsm_name.to_string(),
-        type_name: type_name.to_string(),
-        got: format!("{init:?}"),
+    Err(bad())
+}
+
+/// Seed the state enum's first variant when it takes a single payload
+/// whose declared type matches `init`'s kind. Returns the wrapped
+/// `Value::Enum`, or `None` if the first variant isn't single-payload or
+/// the types don't line up.
+fn seed_first_variant(
+    rt: &EvidentRuntime,
+    type_name: &str,
+    init: &Value,
+) -> Option<Value> {
+    let enums = rt.enums_registry();
+    let by_name = enums.by_name.borrow();
+    let (_sort, decl_variants) = by_name.get(type_name)?;
+    let first = decl_variants.first()?;
+    if first.fields.len() != 1 { return None; }
+    if !value_matches_field_type(init, &first.fields[0].type_name) { return None; }
+    Some(Value::Enum {
+        enum_name: type_name.to_string(),
+        variant:   first.name.clone(),
+        fields:    vec![init.clone()],
     })
+}
+
+/// Does `v`'s runtime kind match a payload field's declared type name?
+/// Used to decide whether a composite init can seed a state enum's first
+/// variant. For `Seq(...)` fields the element type is checked against the
+/// first element's enum name (empty seqs match any `Seq(enum)`).
+fn value_matches_field_type(v: &Value, field_type: &str) -> bool {
+    use crate::core::parse_seq_type;
+    match v {
+        Value::Int(_)  => matches!(field_type, "Int" | "Nat" | "Pos"),
+        Value::Bool(_) => field_type == "Bool",
+        Value::Real(_) => field_type == "Real",
+        Value::Str(_)  => field_type == "String",
+        Value::Enum { enum_name, .. } => field_type == enum_name,
+        Value::SeqInt(_)  => matches!(parse_seq_type(field_type), Some("Int" | "Nat" | "Pos")),
+        Value::SeqBool(_) => parse_seq_type(field_type) == Some("Bool"),
+        Value::SeqStr(_)  => parse_seq_type(field_type) == Some("String"),
+        Value::SeqEnum(elems) => match (parse_seq_type(field_type), elems.first()) {
+            (Some(inner), Some(Value::Enum { enum_name, .. })) => enum_name == inner,
+            (Some(_), None) => true,   // empty seq → any Seq(enum) accepted
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// Run `F` from `init` to halt, returning its final state `Value`.

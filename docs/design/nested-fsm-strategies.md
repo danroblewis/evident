@@ -130,7 +130,25 @@ inline?" — and (a) is the only candidate that answers it cleanly:
 same way the scheduler already seeds spawned FSMs (`effect_loop/state.rs`
 `seed_state_with_arg`): a bare `Int` seeds a single-Int-payload first
 variant (`run(decrement, 50)` → state `count = 50`); a record/enum value
-seeds the matching state type (`run(walk, ⟨root⟩)` → `stack = ⟨root⟩`).
+seeds the matching state type.
+
+> **Composite seeding + return — LANDED (session NN).** `init` may now be
+> a **composite** value: a recursive-enum literal (`run(walk,
+> Node(Leaf(1), Leaf(2)))`) or a sequence literal (`run(walk, ⟨root⟩)`).
+> `eval_const_init` (`runtime/nested.rs`) evaluates constructor / nullary
+> / `SeqLit` init expressions to concrete `Value`s, and `coerce_init`
+> (`effect_loop/nested.rs`) either seeds it directly (when its type IS the
+> state type) or wraps it into the state enum's first single-payload
+> variant (`WSeed(Node)`) — generalizing the bare-Int convention to any
+> tree / enum / Seq. The dual also landed: `run` can **return a composite
+> final state** (a nested-enum / Seq accumulator), via
+> `value_to_literal_expr`, which the outer model pins like any value.
+> Worked end-to-end in `examples/test_37_tree_walk.ev` (a rose-tree
+> label-walk: composite in, composite out). The one shape still pending is
+> a `Seq(T)`-substrate work-stack (COUNTEREXAMPLES #19a — no in-step
+> `Seq` pop/tail/cons, no `Seq`-payload binding in a `match`); carry the
+> stack on a recursive-enum cons-list spine instead, as `test_37` does.
+
 Whatever the scheduler can seed, `run` can seed — by construction,
 because tier 3 *is* the scheduler (§ 2).
 

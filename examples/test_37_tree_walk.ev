@@ -1,0 +1,123 @@
+-- 37_tree_walk — a label-collecting walk over a VARIABLE-ARITY
+-- recursive enum, under tier-3 run(), seeded with a COMPOSITE value and
+-- returning a COMPOSITE accumulator.
+--
+-- Run:   evident effect-run examples/test_37_tree_walk.ev
+-- Test:  evident test examples/test_37_tree_walk.ev
+-- Trace: EVIDENT_NESTED_TRACE=1 evident test examples/test_37_tree_walk.ev
+--
+-- This is the proof that the kernel scheduler can tree-walk ANY
+-- recursive enum (nothing AST-specific) — the four COUNTEREXAMPLES #19
+-- composite-state gaps are now closed:
+--
+--   19b  Nested constructor patterns deep-match. The agenda transition
+--        matches `ACons(NLCons(node, more), rest)` — a constructor
+--        sub-pattern inside a constructor pattern — and only fires when
+--        the frame is genuinely non-empty. (Previously `ACons(NLNil, _)`
+--        and `ACons(NLCons(_,_), _)` couldn't be distinguished in one
+--        match; emptiness needed a second match on the extracted frame.)
+--   19c  Enum equality vs a literal carrying nested enum fields holds:
+--        every `final = WDone(LCons("b", … LNil))` below compares against
+--        a deeply-nested constructor literal.
+--   19d  run()'s init is a COMPOSITE: `run(collect_labels, Node("r", …))`
+--        seeds the FSM with a whole rose-tree value (wrapped into the
+--        state's first variant `WSeed(Node)`), not a bare-Int selector.
+--   (ret) run() returns a COMPOSITE final state: a `Labels` cons-list of
+--        the visited labels, handed back as a value the outer model pins.
+--
+-- ── Why a cons-list, not Seq(Node), for the children ────────────────
+-- The walk pushes a node's WHOLE children collection onto the agenda as
+-- ONE frame (`ACons(kids, …)`) — the thing test_36 had to work around
+-- (it pushed binary children one at a time). The children are a
+-- recursive-enum cons-list (`NodeList`), the supported substrate for a
+-- dynamic collection in a constraint body (Seq(T) still has no in-step
+-- pop/tail/cons — COUNTEREXAMPLES #19a). The agenda is a stack of frames,
+-- each frame the remaining children-list to visit; "advance within a
+-- frame" is just the cons tail (`more`), so no integer cursor is needed.
+-- A `Seq(Node)`-children tree would walk identically once Seq payloads
+-- can be bound from a `match` (the remaining piece, tracked under #19a).
+--
+-- ── The four essential stack-FSM properties (all demonstrated) ──────
+--   1. The agenda (work-stack) + accumulator both live in FSM state.
+--   2. One step pops a frame, dispatches on its variant, pushes a whole
+--      children-list as a new frame, folds the node's label in.
+--   3. The accumulator threads through state — never a free Z3 variable.
+--   4. run(collect_labels, tree) drives it to a drained-agenda halt and
+--      returns the right label list.
+
+import "stdlib/runtime.ev"
+
+-- A rose tree: a label + a cons-list of children (variable arity).
+enum Node     = Node(String, NodeList)
+enum NodeList = NLNil | NLCons(Node, NodeList)
+
+-- Walk state: an agenda (stack of remaining-children frames) and a
+-- label accumulator (prepended → reverse-of-visit order).
+enum Labels = LNil | LCons(String, Labels)
+enum Agenda = ANil | ACons(NodeList, Agenda)
+enum Walk   = WSeed(Node) | WStep(Agenda, Labels) | WDone(Labels)
+
+-- ── The transition under execution ──────────────────────────────────
+-- WSeed → push the root's singleton frame. Each WStep pops the top
+-- frame; an empty frame is dropped, a non-empty one yields its head
+-- node — push that node's children as a new frame, keep the frame's
+-- tail (`more`) underneath, fold the node's label into the accumulator.
+-- Drained agenda → WDone(labels). A `claim` (not `fsm`) so the scheduler
+-- never instantiates it; `run` resolves it by name and drives it to halt.
+claim collect_labels(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
+    state_next = match state
+        WSeed(root) ⇒ WStep(ACons(NLCons(root, NLNil), ANil), LNil)
+        WStep(ag, labels) ⇒ match ag
+            ANil                            ⇒ WDone(labels)
+            ACons(NLNil, rest)              ⇒ WStep(rest, labels)
+            ACons(NLCons(node, more), rest) ⇒ match node
+                Node(lbl, kids) ⇒ WStep(ACons(kids, ACons(more, rest)), LCons(lbl, labels))
+        WDone(d) ⇒ WDone(d)
+    -- Two-level emptiness is now ONE nested pattern above; halt stays a
+    -- one-level match on the terminal variant.
+    halt = match state
+        WDone(_) ⇒ true
+        _        ⇒ false
+
+-- ── Static verification: composite in, composite out ─────────────────
+-- A flat tree: r with children a, b. Preorder visit r, a, b; the
+-- accumulator prepends, so the returned list reads b, a, r.
+claim sat_walk_flat
+    final ∈ Walk = run(collect_labels,
+        Node("r", NLCons(Node("a", NLNil), NLCons(Node("b", NLNil), NLNil))))
+    final = WDone(LCons("b", LCons("a", LCons("r", LNil))))
+
+-- A 3-level tree: r → [a → [x, y], b]. Preorder r, a, x, y, b; returned
+-- reversed: b, y, x, a, r. Exercises pushing nested children frames.
+claim sat_walk_deep
+    final ∈ Walk = run(collect_labels,
+        Node("r", NLCons(
+            Node("a", NLCons(Node("x", NLNil), NLCons(Node("y", NLNil), NLNil))),
+            NLCons(Node("b", NLNil), NLNil))))
+    final = WDone(LCons("b", LCons("y", LCons("x", LCons("a", LCons("r", LNil))))))
+
+-- A leaf: a single node with no children.
+claim sat_walk_leaf
+    final ∈ Walk = run(collect_labels, Node("solo", NLNil))
+    final = WDone(LCons("solo", LNil))
+
+-- The accumulator is threaded, not free: the flat tree yields exactly
+-- [b, a, r], never a permutation a free Z3 var could pick.
+claim unsat_walk_wrong_order
+    final ∈ Walk = run(collect_labels,
+        Node("r", NLCons(Node("a", NLNil), NLCons(Node("b", NLNil), NLNil))))
+    final = WDone(LCons("a", LCons("b", LCons("r", LNil))))
+
+-- ── Runnable form: the walk as a value inside a live fsm ─────────────
+fsm main
+    flat ∈ Walk = run(collect_labels,
+        Node("r", NLCons(Node("a", NLNil), NLCons(Node("b", NLNil), NLNil))))
+    deep ∈ Walk = run(collect_labels,
+        Node("r", NLCons(
+            Node("a", NLCons(Node("x", NLNil), NLCons(Node("y", NLNil), NLNil))),
+            NLCons(Node("b", NLNil), NLNil))))
+    ok ∈ Bool = ((flat = WDone(LCons("b", LCons("a", LCons("r", LNil)))))
+        ∧ (deep = WDone(LCons("b", LCons("y", LCons("x", LCons("a", LCons("r", LNil))))))))
+    effects = (ok
+        ? ⟨Println("tree-walk via stack-FSM: flat=[b,a,r] deep=[b,y,x,a,r]"), Exit(0)⟩
+        : ⟨Println("BUG: stack-FSM tree-walk produced wrong labels"), Exit(1)⟩)

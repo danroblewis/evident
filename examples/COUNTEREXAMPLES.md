@@ -507,19 +507,27 @@ an identity-shortcircuit). Once closed, the pass can drop the
 shim-side extraction and pin `e ∈ Expr` directly — the pattern that
 matches the canonical Rust walker shape.
 
-## 19. Stack-FSM tree-walk under tier-3 `run()` — four constraints
+## 19. Stack-FSM tree-walk under tier-3 `run()` — composite-state gaps CLOSED (session NN)
 
-**Where:** `examples/test_36_sum_tree.ev` (session MM); the stack-of-FSMs
-pattern from `docs/design/loop-functionizer.md` §4, proven under the
-tier-3 `run(F, init)` that landed in session LL.
+**Where:** `examples/test_36_sum_tree.ev` (session MM) +
+`examples/test_37_tree_walk.ev` (session NN); the stack-of-FSMs pattern
+from `docs/design/loop-functionizer.md` §4, proven under the tier-3
+`run(F, init)` that landed in session LL.
 
 **Bottom line:** the pattern *works* — a recursive tree-walk whose
 work-stack lives in FSM state, popped/dispatched/pushed per tick, with
-the accumulator threaded across ticks, driven to halt by `run`. But it
-does **not** work in the shape `loop-functionizer.md` §4 sketched
-(`stack ∈ Seq(Tree)`, `run(sum_tree, ⟨t⟩)`). Four runtime facts force a
-different encoding. All four are worth fixing; none is a blocker once
-you know the workaround the demo uses.
+the accumulator threaded across ticks, driven to halt by `run`. Session
+MM proved the *logic* but had to work around four runtime facts.
+**Session NN closed three of those four at the kernel/slow-path level**
+(nested-constructor deep-matching #19b, enum-equality-vs-nested-literal
+#19c, and composite `run` init/return #19d), so an FSM-with-stack can
+now be **seeded with a composite value and return a composite
+accumulator** over ANY recursive enum — see `test_37_tree_walk.ev`
+(a variable-arity rose-tree label-walk: composite in, composite out,
+nested deep-match in the agenda transition). The one remaining fact is
+#19a (`Seq(T)` has no in-step pop/tail/cons), so the work-stack is still
+carried on a **recursive-enum cons-list** spine, not a `Seq` — the
+supported substrate for a dynamic collection in a constraint body.
 
 ### 19a. `Seq(T)` has no in-step pop / tail / cons (the anticipated gap)
 
@@ -559,99 +567,83 @@ of §4's option A ("stack is state"), just on an enum spine, not a `Seq`.
 against an unpinned-length Seq. Until then the recursive-enum spine is
 the supported way to carry a dynamic stack in a constraint body.
 
-### 19b. Nested constructor patterns aren't deep-matched (semantic)
+### 19b. ~~Nested constructor patterns aren't deep-matched~~ — FIXED (session NN)
 
-Distinct from #2 (which is a *parse* error for nested ctor patterns):
-`Step(Empty, _)` *parses*, but the match tester only checks the **outer**
-constructor, so it matches any `Step(_, _)` regardless of the inner
-`Empty`. Silent wrong dispatch, not an error.
+**Was:** `Step(Empty, _)` parsed, but the match tester only checked the
+**outer** constructor, so it matched any `Step(_, _)` regardless of the
+inner `Empty` — silent wrong dispatch. Nested patterns with parens
+(`Node(Leaf(n), r)`) didn't even parse (#2).
 
-Repro (halt fires immediately — the inner `Empty` is ignored):
-```evident
-halt = match state
-    Step(Empty, _) ⇒ true      -- matches ANY Step(_, _)
-    _              ⇒ false
-```
+**Fix:** `MatchPattern` is now recursive
+(`Ctor { name, binds: Vec<MatchPattern> } | Bind(String) | Wildcard`).
+The parser (`parser/patterns.rs`) parses sub-patterns recursively, using
+the capitalization rule to tell a nullary-constructor sub-pattern
+(`Empty`) from a binding (`rest`). `translate_match_arms`
+(`translate/exprs/match_expr.rs`) walks the pattern via `compile_pattern`
+/ `compile_field`, **conjoining a recognizer tester per constructor
+level** into the arm's guard and binding payloads (including nested enum
+payloads) — so `Node(Leaf(n), r)` fires only when the outer is a `Node`
+AND its first field is a `Leaf`. (Seq-typed payload fields still aren't
+bindable from a pattern — that's the open part of #19a.) Tests:
+`runtime/tests/composite_tree_walk.rs`,
+`examples/test_37_tree_walk.ev`'s agenda transition.
 
-**Where it breaks:** `runtime/src/translate/exprs/match_expr.rs` —
-`translate_match_arms` builds a recognizer tester from the top-level
-constructor only; inner sub-patterns aren't conjoined into the guard.
+### 19c. ~~Enum equality against a literal with a nested enum field is dropped~~ — FIXED (session NN)
 
-**Workaround (the demo):** test emptiness with a *second* match on the
-extracted field — `match state | Step(stk, _) ⇒ match stk | Empty ⇒ …`.
-Each match dispatches on one constructor level, which is supported.
+**Was:** `final = Step(Empty, 6)` — comparing an enum var to a
+constructor literal whose payload contains another enum value (notably a
+*nullary* one like `Empty`) — was reported as dropped.
 
-**Fix idea:** when an arm pattern has nested constructor sub-patterns,
-conjoin a recognizer + field-extraction test per level into the guard.
+**Fix:** the enum-literal equality path (`resolve_enum_ast`'s `Call`
+arm in `translate/exprs/enums.rs`) already recurses to build nested
+enum-typed args, so the in-source form works directly. The remaining
+break was specific to `run` *returning* such a value:
+`value_to_literal_expr` (`runtime/nested.rs`) emitted a nullary variant
+as a zero-arg `Call("Empty", [])`, which the translator can't resolve
+(nullary variants are `EnumValue`, not `EnumCtor`) → silent drop. Now it
+emits nullary variants as a bare `Identifier`, so
+`final = D1(Push(5, Push(6, Empty)))` round-trips. Tests:
+`composite_tree_walk.rs::{enum_eq_against_nested_literal,
+enum_eq_with_nullary_nested_field,
+composite_return_nested_enum_with_nullary_terminator}`.
 
-### 19c. Enum equality against a literal with a nested enum field is dropped
+### 19d. ~~`run`'s `init` can't be a composite~~ — FIXED (session NN)
 
-`final = Step(Empty, 6)` — comparing an enum var to a constructor literal
-whose payload contains *another* enum value — doesn't translate. The
-flat single-payload case (`final = Done(6)`, `final = Acc(5)`) works.
+**Was:** `run(F, Node(Leaf(1), Leaf(2)))` / `run(F, ⟨t⟩)` was rejected
+before the solve — `eval_const_init` matched only
+`Int/Real/Bool/Str/Identifier/Binary/RunFsm`, and `coerce_init` couldn't
+wrap a composite into the state's first variant.
 
-Repro:
-```evident
-final ∈ Walk = run(sum_tree, 1)
-final = Step(Empty, 6)         -- dropped: "couldn't translate to Bool"
-final = Done(6)                -- fine (single Int payload)
-```
-
-**Where it breaks:** the enum-literal equality path in
-`runtime/src/translate/exprs/enums.rs` / `seq_eq.rs` builds a comparator
-constructor application but doesn't recurse to build a nested
-enum-typed argument (only primitive payloads are constructed). The
-nested `Empty()` arg has no built Z3 datatype, so the `_eq` is dropped.
-
-**Workaround (the demo):** drain into a *flat* terminal variant
-(`Done(Int)`) and have `run` return that single-Int value, instead of
-returning the structured `Step(Empty, sum)` state. This is the same
-single-Int-payload shape `test_35`'s `Acc(5)` uses.
-
-**Fix idea:** make the enum-literal-equality builder recurse to
-construct nested enum-typed constructor args (reuse the per-tick state
-encoder `effect_loop/state.rs::encode_state_value`, which already does
-this recursion for the *pin* side).
-
-### 19d. `run`'s `init` can't be a composite (tree / Seq / enum literal)
-
-`run(F, ⟨t⟩)` / `run(F, Node(Leaf(1), Leaf(2)))` is rejected before the
-solve: `init` must be a literal scalar, a given, or integer arithmetic
-over those. So the tree can't be *passed through* `init` — it must be
-built inside the FSM.
-
-**Where it breaks:** `runtime/src/runtime/nested.rs::eval_const_init`
-matches only `Int/Real/Bool/Str/Identifier/Binary(arith)/RunFsm`;
-`Expr::Call` (enum ctor) and `Expr::SeqLit` fall to the `other => Err`
-arm. Even if `init` evaluated to an enum value, `effect_loop/
-nested.rs::coerce_init` only seeds from a matching primitive, an
-already-built `Enum`, or a bare Int → first-single-Int-payload variant.
-(Both files are the landed tier-3 surface, out of scope to edit here.)
-
-**Workaround (the demo):** the bare-Int seed *selects* one of three
-hardcoded tree shapes (`Seed(n)` → built on the first tick). The seed
-flows in; the tree structure is FSM-resident.
-
-**Fix idea:** extend `eval_const_init` to evaluate constructor / SeqLit
-init exprs to `Value`s (it already has the enum registry via `rt`), and
-let `coerce_init` accept a pre-built composite. This is the single most
-important fix for the `walk_expr` self-host (below).
+**Fix:** `eval_const_init` (`runtime/nested.rs`) now evaluates
+`Expr::Call` (enum constructor → `Value::Enum`, recursively), bare
+nullary-variant identifiers (`NLNil`), and `Expr::SeqLit`
+(→ `Value::Seq*`) to concrete `Value`s using the enum registry.
+`coerce_init` (`effect_loop/nested.rs`) seeds a composite either directly
+(when its enum type IS the state type) or by wrapping it into the state
+enum's first single-payload variant when the kinds match (generalizing
+the bare-Int → first-Int-variant convention to any tree / enum / Seq).
+**Composite return** is the dual: `value_to_literal_expr` now lowers
+`Value::Enum` (incl. nullary → bare identifier) and `Value::Seq*`
+(→ `SeqLit`) back to a literal the outer model pins. Tests:
+`composite_tree_walk.rs::{composite_init_enum_literal_seeds_first_variant,
+composite_init_through_outer_query}`; end-to-end in `test_37_tree_walk.ev`.
 
 ### What this means for the `walk_expr` self-host
 
-`subscriptions::walk_expr` seeds the stack with `⟨root_expr⟩` (composite
-init — 19d) and accumulates a `Set(String)` returned as the final state
-(composite final state — `value_to_literal_expr` rejects non-scalars,
-the same family as 19c). Both blockers live in the **off-limits tier-3
-surface** (`runtime/src/runtime/nested.rs`, `effect_loop/nested.rs`). So
-tier 3 proves the *pattern's logic* is sound (this demo) but cannot host
-the real walk until those two extensions land — **or** until tier 2's
-native-`Vec` loop wrapper (`loop-functionizer.md` §4 option B) holds the
-stack and accumulator natively, sidestepping the literal-injection
-round-trip (composite init *and* composite return) entirely. Tier 2 is
-therefore the cleaner prerequisite for the port; tier 3's contribution
-is the de-risking proof that the pop/dispatch/push/fold/thread logic is
-correct. See `docs/design/loop-functionizer.md` §4.
+The composite `run` init/return + nested-match capabilities the
+`walk_expr` self-host needs **now land in tier 3**: an FSM-with-stack can
+be seeded with a composite (`run(walk, root)`) and return a composite
+accumulator over any recursive enum (`test_37` does exactly this with a
+rose-tree → label cons-list). The remaining gap for the *literal*
+`Seq(Node)`-children shape from `loop-functionizer.md` §4 is **#19a**
+(no in-step `Seq` pop/tail/cons, and no `Seq`-payload binding in a
+`match`): `test_37` carries its work-stack and accumulator on
+recursive-enum cons-list spines instead of `Seq`s, which is the
+supported substrate. Tier 2's native-`Vec` loop wrapper (§4 option B)
+remains the path that would hold a real `Seq` stack natively; tier 3 now
+proves both the pop/dispatch/push/fold/thread *logic* AND the
+composite-state round-trip are correct. See
+`docs/design/loop-functionizer.md` §4.
 
 ## Conformance gaps surfaced by triage
 
