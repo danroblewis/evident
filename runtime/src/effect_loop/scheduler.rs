@@ -191,6 +191,12 @@ pub(super) fn run_scheduler(
     let mut pending_world_writes: std::collections::VecDeque<(String, Value)> =
         std::collections::VecDeque::new();
 
+    // Clear any percolated-effect residue left by load-time / pre-loop
+    // queries (e.g. an FTI install that resolved a `run`). From here on
+    // the accumulator is drained per-FSM-per-tick (Phase 3b), so it stays
+    // scoped to the FSM whose body solved the `run`.
+    let _ = crate::runtime::take_percolated_effects();
+
     // ── Phase 3: tick loop ────────────────────────────────────
     while step_count < opts.max_steps {
         // Any active FSMs left? If not, program halted.
@@ -448,6 +454,28 @@ pub(super) fn run_scheduler(
             // then other Effect-typed bindings dedup'd by value.
             let effects = collect_dispatchable_effects(rt, &fsm.claim_name,
                 &r.bindings, fsm.effects_var.as_deref());
+
+            // Child-FSM effects percolation (session RR). If this FSM's
+            // body called `run(F, init)` and F emitted effects, those
+            // were CAPTURED, not dispatched, during the resolve (the
+            // child is a pure function — runtime/nested.rs). Drain them
+            // here and dispatch them as part of THIS (the parent's) tick,
+            // child effects first (the run produced the value before the
+            // parent decided its own effects), then the parent's own.
+            // Single dispatch, in child-tick order, by the parent. The
+            // drain also empties the accumulator for the next FSM.
+            let percolated = crate::runtime::take_percolated_effects();
+            let effects = if percolated.is_empty() {
+                effects
+            } else {
+                if env.trace {
+                    eprintln!("[loop] tick {step_count} fsm={}: {} percolated child effect(s)",
+                        fsm.claim_name, percolated.len());
+                }
+                let mut combined = percolated;
+                combined.extend(effects);
+                combined
+            };
 
             // Halt is implicit under subscription scheduling: FSMs that
             // fixpoint just stop being scheduled (no inputs to wake

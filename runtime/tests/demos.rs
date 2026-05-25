@@ -390,6 +390,18 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["BUG: stack-FSM tree-walk produced wrong labels"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Child-FSM effects percolate to the parent (session RR): an
+        // effect-emitting `run(countdown, 3)` is driven to halt with its
+        // three Printlns CAPTURED (not dispatched during the run), then
+        // dispatched in child-tick order by `main` before its own
+        // summary. must_lines pins the order three→two→one→parent.
+        name: "test_38_nested_effects", exit: 0,
+        must_lines: &["child: three", "child: two", "child: one",
+                      "parent: child run halted at 0"],
+        forbid_exact_lines: &["BUG: child run did not reach zero"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

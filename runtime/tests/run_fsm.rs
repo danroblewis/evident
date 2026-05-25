@@ -164,18 +164,27 @@ fn non_fsm_target_rejected_at_load() {
 }
 
 #[test]
-fn effect_emitting_target_rejected_at_load() {
+fn effect_emitting_target_is_accepted_and_captured() {
+    // Session RR: an effect-emitting child is NO LONGER rejected at load.
+    // It runs as a value (final state pins into the outer model), and its
+    // per-tick effects are CAPTURED, not dispatched. Here we prove (a) it
+    // loads + solves to the right final state, and (b) `run_nested_capturing`
+    // hands back the captured effects in child-tick order — see the
+    // dedicated `nested_effects.rs` for the full capture/percolation/purity
+    // matrix.
     let mut rt = EvidentRuntime::new();
     rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
-    let err = rt.load_source(
+    rt.load_source(
         "claim noisy(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))\n\
          \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
          \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
          \u{20}\u{20}\u{20}\u{20}effects = ⟨Println(\"tick\")⟩\n\
-         claim sat_eff\n    final ∈ Int = run(noisy, 5)\n    final = 0\n",
-    ).expect_err("an effect-emitting run target must be a load error");
-    assert!(err.to_string().contains("effect-free"),
-        "load error should cite the effect-free restriction, got: {err}");
+         claim sat_eff\n    final ∈ Int = run(noisy, 3)\n    final = 0\n",
+    ).expect("an effect-emitting run target must now LOAD (no rejection)");
+    // The static claim resolves the run, captures (drops) the effects,
+    // and asserts final = 0.
+    let qr = rt.query("sat_eff", &HashMap::new()).expect("query");
+    assert!(qr.satisfied, "run(noisy, 3) should still pin final = 0");
 }
 
 // ── (d) a non-halting FSM hits the max-iteration guard ─────────────

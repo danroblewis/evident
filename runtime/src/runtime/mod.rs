@@ -62,6 +62,7 @@ pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 pub use desugar::SystemBoundary;
 pub use profile::BottleneckEntry;
+pub use nested::take_percolated_effects;
 
 use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
