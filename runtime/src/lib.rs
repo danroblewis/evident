@@ -1,6 +1,7 @@
 //! Evident runtime — minimal Rust core (~11K lines target, side-effects via FFI).
 
 mod core;
+pub mod chc;
 pub mod decompose;
 pub mod effect_dispatch;
 pub mod z3_eval;
