@@ -10,6 +10,10 @@ mod exprs;
 mod extract;
 mod inline;
 mod preprocess;
+/// PROTOTYPE (north-star slice): Evident claim → SMT-LIB text → Z3 parse → solve.
+/// Additive + gated; nothing on the default translate/query path calls into it.
+/// See `docs/perf/smtlib-prototype-findings.md`.
+pub mod smtlib;
 
 pub mod ast_decoder {
     //! Z3-model → Rust-AST decoder; `decode_list`/`decode_str` are the shared cons-list reader.
