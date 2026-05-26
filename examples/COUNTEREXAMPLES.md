@@ -438,16 +438,37 @@ unrolling) — see `docs/plans/03-language-prereqs/01-recursive-claims.md`
 (acceptance criteria all unchecked). But the stack-FSM means that fix is
 no longer on the critical path for the self-hosted tree-walk ports.
 
-## 16. Non-ASCII string literals mangle through Z3
+## 16. ~~Non-ASCII string literals mangle through Z3~~ — FIXED (session pretty-evident)
 
-**Where:** `Z3Str::from_str` usage across `translate/eval/*` and the JIT;
-surfaced in session X. `Z3Str::from_str` treats a Rust `&str`'s UTF-8
-bytes as a byte-sequence of Z3 characters. A source literal `" ∈ "`
-comes back as `\u{e2}\u{88}\u{88}` (JIT path) or `â\u{88}\u{88}` (slow
-path) — neither recovers `∈`. So an Evident string pass can faithfully
-emit **only ASCII**; every operator glyph (`∈ ∀ ⇒ ∧ ¬ ≤ ↦ ⟨⟩ …`) is
-lost. (A `Value::Str(" ∈ ")` *given* round-trips only because the JIT
-identity-short-circuits, not via real Z3 Unicode support.)
+**Was:** `Z3Str::from_str` treats a Rust `&str`'s UTF-8 bytes as a
+byte-sequence of Z3 characters, so a source literal `" ∈ "` came back
+as `\u{e2}\u{88}\u{88}` (JIT path) or `â\u{88}\u{88}` (slow path) —
+neither recovered `∈`. An Evident string pass could faithfully emit
+only ASCII; every operator glyph (`∈ ∀ ⇒ ∧ ¬ ≤ ↦ ⟨⟩ …`) was lost.
+
+**Root cause:** Z3's `Z3_mk_string` interprets the C string's bytes
+directly (each UTF-8 byte → one Z3 character), but it ALSO decodes
+`\u{..}` escapes. So `∈` (U+2208, UTF-8 `e2 88 88`) became three Z3
+chars, while the escape `\u{2208}` becomes the one correct codepoint.
+
+**Fix:** the encode side (`translate::z3_string`, routed through from
+every `Z3Str::from_str` call site) now escapes non-ASCII codepoints to
+`\u{hex}` before `Z3_mk_string`; the decode side's existing
+`unescape_z3_string` recovers them. The two JIT string-intern sites in
+`functionize/cranelift.rs` gained the same `unescape_z3_string` on the
+`as_string()` they intern. A non-ASCII literal now round-trips
+byte-identically on both paths (repro:
+`runtime/tests/string_ops.rs::non_ascii_literal_round_trips`).
+
+This unblocked making `pretty` Evident-only: `stdlib/passes/pretty.ev`
+is now the sole AST→String renderer (the native `RustPretty` was
+deleted) — operator glyphs round-trip and `str_from_int`
+(`Z3_mk_int_to_str`) renders `EInt`. **One residual:** `EReal` has no
+faithful render — Z3 has no real→string op matching Rust's
+shortest-round-trip f64 Display (`Z3_mk_int_to_str` is integers only;
+an exact Z3 rational can't reproduce `"3.14"`). `EReal` renders to the
+`<real>` sentinel; harmless, since no `.ev` source uses a real literal.
+Lands the int→string capability would close it.
 
 ## 17. ~~JIT mishandles a `Bool` payload nested in an enum `given`~~ — FIXED (session GAPB)
 

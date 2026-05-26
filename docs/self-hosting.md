@@ -25,7 +25,7 @@ gaps currently bound what a pass can do.
 
 | Transform | Rust | Evident pass | Faithful? | Notes |
 |---|---|---|---|---|
-| `pretty` (AST → String) | `portable/pretty.rs::RustPretty` | `stdlib/passes/pretty.ev` | **faithful on the ASCII subset, recursively** | Now an ordered Emit/Expand **stack-FSM** (`pretty_walk`) — routes around the recursion gap (#15) exactly as `subscriptions_walk` does, so it renders recursive sub-`Expr`s (calls, nested binaries, field/index, ternaries, `matches`), not just leaves. Two residuals still diverge and are pinned in the equivalence test: Unicode operator glyphs (#16) and numbers/Bool (no int→string in a pass; JIT bool bug #17). See [Gaps](#runtime-gaps-that-bound-a-string-pass) |
+| `pretty` (AST → String) | **Evident-only** (`portable/pretty.rs::EvidentPretty`) — native `RustPretty` walk DELETED (session pretty-evident) | `stdlib/passes/pretty.ev` | **full, sole impl** (one residual: `EReal`) | Cut over: the ordered Emit/Expand **stack-FSM** (`pretty_walk`) is the sole AST→String renderer; `crate::pretty::expr`/`body_item` (UNSAT diagnostics) drive it through a per-thread cached `EvidentPretty` (re-entrancy-guarded). The two gaps that bounded byte-fidelity are CLOSED: Unicode operator glyphs (#16 — encode now escapes non-ASCII to `\u{..}`) and int→string (`str_from_int` → Z3 `Z3_mk_int_to_str`); `EBool` renders via a ternary. Lone residual: `EReal` → `<real>` sentinel (no Z3 real→string matches Rust f64 Display; no `.ev` source uses reals). Pinned in `runtime/tests/pretty_correctness.rs` |
 | `validate` | **Evident-only** (`portable/validate.rs::EvidentValidate`) — Rust `find_ffi_call` walk DELETED (session VALIDATE-recursive) | `stdlib/passes/validate.ev` | **full, sole impl** | Cut over: the canonical Rust Expr-tree walk is gone; the load path enforces external-only through the `validate_walk` stack-FSM via `portable::validate::enforce_external_only` (per-thread cached engine, WW resolver, bootstrap guard). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); the FSM collects `ECall` names and the Rust shim does the 4-element banned-set check (an in-solve `nm = "FFICall"` equality blows up Z3 string theory on string-heavy walk states — the in-solve cousin of #18; see [Gaps](#runtime-gaps-that-bound-a-string-pass)). Verdicts + byte-exact diagnostics pinned in `runtime/tests/validate_correctness.rs` |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
@@ -96,16 +96,23 @@ existing paths.
 ## The pattern
 
 Each swappable function gets one module under `runtime/src/portable/`.
-It owns three things:
+> **Note (session pretty-evident):** `pretty` has since been **cut over
+> to Evident-only** — `RustPretty` and `default_impl()` are gone, and
+> `crate::pretty::expr`/`body_item` drive `EvidentPretty` directly. The
+> two-impl description below is the historical swap-interface shape that
+> `pretty` passed through on its way to a full cutover (the same path
+> `validate` and `subscriptions` took). See the status table above.
+
+It owned three things:
 
 1. **A typed trait** — the function's Rust-level signature, independent
    of which impl backs it. (`PrettyImpl { fn expr(&self, &Expr) -> String;
    fn body_item(&self, &BodyItem) -> String; }`.)
 2. **The Rust impl** — the original native code, the default. Fast,
-   total, always correct. (`RustPretty`.)
+   total, always correct. (`RustPretty` — now deleted.)
 3. **The Evident impl** — owns an `EvidentRuntime` with the stdlib pass
    loaded; marshals the Rust input into a `Value`, runs `rt.query`,
-   decodes the output binding. (`EvidentPretty`.)
+   decodes the output binding. (`EvidentPretty` — now the sole impl.)
 
 Every impl is also `Portable` (an `impl_name()` for tracing).
 

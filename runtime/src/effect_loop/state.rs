@@ -35,7 +35,7 @@ pub(super) fn seed_state_with_arg(
 }
 
 pub(super) fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatype<'static>> {
-    use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Dynamic, Ast};
+    use z3::ast::{Int as Z3Int, Bool as Z3Bool, Dynamic, Ast};
     let Value::Enum { enum_name, variant, fields } = v else { return None };
     let enums = rt.enums_registry();
     let by_name = enums.by_name.borrow();
@@ -51,7 +51,7 @@ pub(super) fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::a
         let dyn_v: Dynamic<'static> = match f {
             Value::Int(n)  => Dynamic::from_ast(&Z3Int::from_i64(ctx, *n)),
             Value::Bool(b) => Dynamic::from_ast(&Z3Bool::from_bool(ctx, *b)),
-            Value::Str(s)  => Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?),
+            Value::Str(s)  => Dynamic::from_ast(&crate::translate::z3_string(ctx, s).ok()?),
             Value::Real(r) => {
                 let i = (*r * 1_000_000.0) as i64;
                 Dynamic::from_ast(&z3::ast::Real::from_real(ctx, i as i32, 1_000_000))

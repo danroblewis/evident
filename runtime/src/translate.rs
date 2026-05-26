@@ -52,6 +52,7 @@ pub use eval::{analyze_decomposition, build_cache, classify_components,
                 evaluate_with_program_and_body,
                 run_cached, sample_cached_inner};
 pub(crate) use eval::extract_binding;
+pub(crate) use extract::{unescape_z3_string, z3_string};
 pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
                      StructuralSignature};
 pub use crate::core::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};

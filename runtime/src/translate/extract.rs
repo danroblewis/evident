@@ -7,9 +7,33 @@ use z3::{Context, DatatypeSort};
 
 use crate::core::{EnumRegistry, FieldKind, SeqElem, Value, Var};
 
+/// Escape non-ASCII codepoints as `\u{hex}` before handing a Rust string to
+/// `Z3_mk_string`, which otherwise treats each UTF-8 *byte* as its own Z3
+/// character (so `∈` → 3 chars, mangled). With escaping Z3 stores the real
+/// codepoint and `unescape_z3_string` recovers it on the way out (#16).
+/// ASCII (incl. control chars / backslash) passes through unchanged — Z3
+/// already escapes those on output and the decode side handles them.
+pub(crate) fn escape_non_ascii(s: &str) -> String {
+    if s.is_ascii() { return s.to_string(); }
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii() { out.push(c); } else { out.push_str(&format!("\\u{{{:x}}}", c as u32)); }
+    }
+    out
+}
+
+/// Encode a Rust string into a Z3 string with non-ASCII escaping (#16).
+/// Drop-in for `Z3Str::from_str`; same `NulError` failure mode.
+pub(crate) fn z3_string<'ctx>(
+    ctx: &'ctx Context,
+    s: &str,
+) -> Result<Z3Str<'ctx>, std::ffi::NulError> {
+    Z3Str::from_str(ctx, &escape_non_ascii(s))
+}
+
 /// Decode Z3's `\u{xxxx}` escape sequences back to real Unicode. Without
 /// this, strings like `"abc\n"` survive the round-trip as `"abc\u{a}"`.
-pub(super) fn unescape_z3_string(s: &str) -> String {
+pub(crate) fn unescape_z3_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -303,7 +327,7 @@ pub(super) fn assert_seq_given<'ctx>(
             for (i, s) in items.iter().enumerate() {
                 let idx = Int::from_i64(ctx, i as i64);
                 let cell = arr.select(&idx).as_string()?;
-                let want = Z3Str::from_str(ctx, s).ok()?;
+                let want = z3_string(ctx, s).ok()?;
                 conjuncts.push(cell._eq(&want));
             }
             let refs: Vec<&Bool> = conjuncts.iter().collect();
@@ -346,7 +370,7 @@ fn value_enum_to_dyn_with_dt<'ctx>(
             Value::Bool(b) =>
                 Some(z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b))),
             Value::Str(s) =>
-                Some(z3::ast::Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?)),
+                Some(z3::ast::Dynamic::from_ast(&z3_string(ctx, s).ok()?)),
             Value::Real(r) => {
                 let i = (*r * 1_000_000.0) as i64;
                 Some(z3::ast::Dynamic::from_ast(
@@ -404,7 +428,7 @@ pub(super) fn extract_set<'ctx>(
             let mut out: Vec<String> = Vec::new();
             for v in cands {
                 let Value::Str(s) = v else { continue };
-                let z = Z3Str::from_str(ctx, s).ok()?;
+                let z = z3_string(ctx, s).ok()?;
                 let member_bool = set.member(&z);
                 let evaluated = model.eval(&member_bool, true).and_then(|b| b.as_bool());
                 if evaluated == Some(true) && seen.insert(s.clone()) {
@@ -441,7 +465,7 @@ pub(super) fn assert_set_given<'ctx>(
         (Var::SetVar { set, elem: SeqElem::Str, candidates }, Value::SetStr(items)) => {
             let mut lit = Z3Set::empty(ctx, &Sort::string(ctx));
             for s in items {
-                let z = Z3Str::from_str(ctx, s).ok()?;
+                let z = z3_string(ctx, s).ok()?;
                 lit = lit.add(&z);
             }
             *candidates.borrow_mut() = Some(items.iter().map(|s| Value::Str(s.clone())).collect());
@@ -471,7 +495,7 @@ fn composite_value_to_dyn<'ctx>(
                     ("Bool", Value::Bool(b)) =>
                         z3::ast::Dynamic::from_ast(&Bool::from_bool(ctx, *b)),
                     ("String", Value::Str(s)) => {
-                        let z = Z3Str::from_str(ctx, s).ok()?;
+                        let z = z3_string(ctx, s).ok()?;
                         z3::ast::Dynamic::from_ast(&z)
                     }
                     _ => return None,

@@ -83,6 +83,61 @@ fn index_of_with_offset() {
     assert_eq!(r.bindings.get("second"), Some(&Value::Int(3)));
 }
 
+/// Non-ASCII string literals round-trip byte-identically (COUNTEREXAMPLES #16
+/// closed). The encode side escapes non-ASCII codepoints to `\u{..}` before
+/// `Z3_mk_string` (which otherwise splits a glyph's UTF-8 bytes into separate
+/// chars); the decode side's `unescape_z3_string` recovers them. Operator
+/// glyphs survive both a bare literal and a `++` concat.
+#[test]
+fn non_ascii_literal_round_trips() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim S\n    s ∈ String = \"a ∈ b ∧ ¬c\"\n    \
+         out ∈ String = s ++ \" ≤ ⟨d⟩ ⇒ ∀\"\n",
+    )
+    .unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::Str("a ∈ b ∧ ¬c".into())));
+    assert_eq!(
+        r.bindings.get("out"),
+        Some(&Value::Str("a ∈ b ∧ ¬c ≤ ⟨d⟩ ⇒ ∀".into()))
+    );
+}
+
+/// `str_from_int(n)` → `str.from_int` (`Z3_mk_int_to_str`), with the sign
+/// reattached so it matches Rust's `i64::to_string`. This is the int→string
+/// op `pretty.ev` needs to render `Expr::Int` faithfully (session pretty).
+#[test]
+fn str_from_int_renders_decimal() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim S\n    n ∈ Int = 5\n    s ∈ String = str_from_int(n)\n    \
+         big ∈ String = str_from_int(10042)\n    \
+         zero ∈ String = str_from_int(0)\n",
+    )
+    .unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::Str("5".into())));
+    assert_eq!(r.bindings.get("big"), Some(&Value::Str("10042".into())));
+    assert_eq!(r.bindings.get("zero"), Some(&Value::Str("0".into())));
+}
+
+/// Negatives reattach the `-` sign (`Z3_mk_int_to_str` alone returns "" for
+/// negative inputs), matching `i64::to_string`.
+#[test]
+fn str_from_int_handles_negative() {
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(
+        "claim S\n    s ∈ String = str_from_int(0 - 42)\n",
+    )
+    .unwrap();
+    let r = rt.query_free("S").unwrap();
+    assert!(r.satisfied);
+    assert_eq!(r.bindings.get("s"), Some(&Value::Str("-42".into())));
+}
+
 /// `char_at(text, i)` → `str.at` (length-1 substring).
 #[test]
 fn char_at_index() {

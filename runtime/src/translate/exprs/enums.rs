@@ -108,7 +108,7 @@ fn translate_seq_arg_for_ctor<'ctx>(
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<(Box<dyn z3::ast::Ast<'ctx> + 'ctx>, Box<dyn z3::ast::Ast<'ctx> + 'ctx>)> {
     use z3::Sort;
-    use z3::ast::{Array, Bool, Int, String as Z3Str};
+    use z3::ast::{Array, Bool, Int};
 
     if let Expr::Identifier(name) = arg_expr {
         if let Some(var) = env.get(name) {
@@ -156,7 +156,7 @@ fn translate_seq_arg_for_ctor<'ctx>(
                 ));
             }
             "String" => {
-                let default = Z3Str::from_str(ctx, "").ok()?;
+                let default = crate::translate::z3_string(ctx, "").ok()?;
                 let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
                 for (i, item) in items.iter().enumerate() {
                     let v = translate_str(item, ctx, env)?;

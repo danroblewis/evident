@@ -2,7 +2,7 @@
 //! `_with_program_and_body`, `_with_core`. Cached: `build_cache`/`run_cached`/`sample_cached_inner`.
 
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int, String as Z3Str};
+use z3::ast::{Ast, Bool, Int};
 use z3::{Context, SatResult};
 
 use crate::core::ast::*;
@@ -92,7 +92,7 @@ pub fn evaluate(
             (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
-            (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&crate::translate::z3_string(ctx, s).expect("nul in str"))),
             // PinnedInt already folded in; if values disagree, force UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),

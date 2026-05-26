@@ -19,7 +19,7 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
     }
     match e {
-        Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
+        Expr::Str(s) => crate::translate::z3_string(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
         Expr::Binary(BinOp::Concat, lhs, rhs) => {
             let l = translate_str(lhs, ctx, env)?;

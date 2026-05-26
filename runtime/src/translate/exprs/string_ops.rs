@@ -84,6 +84,24 @@ pub(super) fn str_char_at<'ctx>(ctx: &'ctx Context, s: &Z3Str<'ctx>, i: &Int<'ct
     unsafe { Z3Str::wrap(ctx, z3_sys::Z3_mk_seq_at(raw_ctx(ctx), s.get_z3_ast(), i.get_z3_ast())) }
 }
 
+/// `str.from_int n` — SMT-LIB semantics: decimal string for non-negative `n`,
+/// `""` for negative. (`Z3_mk_int_to_str`; the safe `z3` crate doesn't wrap it.)
+fn z3_int_to_str<'ctx>(ctx: &'ctx Context, n: &Int<'ctx>) -> Z3Str<'ctx> {
+    unsafe { Z3Str::wrap(ctx, z3_sys::Z3_mk_int_to_str(raw_ctx(ctx), n.get_z3_ast())) }
+}
+
+/// `str_from_int n` → decimal string, matching Rust's `i64::to_string`:
+/// `Z3_mk_int_to_str` only handles naturals (negatives → ""), so the sign
+/// is reattached via `n < 0 ? "-" ++ from_int(-n) : from_int(n)`.
+pub(super) fn str_from_int<'ctx>(ctx: &'ctx Context, n: &Int<'ctx>) -> Z3Str<'ctx> {
+    let zero = Int::from_i64(ctx, 0);
+    let neg_n = Int::sub(ctx, &[&zero, n]);
+    let pos = z3_int_to_str(ctx, n);
+    let dash = Z3Str::from_str(ctx, "-").expect("ascii literal");
+    let neg = Z3Str::concat(ctx, &[&dash, &z3_int_to_str(ctx, &neg_n)]);
+    n.ge(&zero).ite(&pos, &neg)
+}
+
 /// String-producing builtins: `substr`, `replace`, `char_at`.
 /// Returns None if name/arity doesn't match (caller falls through).
 pub(super) fn translate_str_call<'ctx>(
@@ -109,6 +127,10 @@ pub(super) fn translate_str_call<'ctx>(
             let s = translate_str(&args[0], ctx, env)?;
             let i = translate_int(&args[1], ctx, env)?;
             Some(str_char_at(ctx, &s, &i))
+        }
+        ("str_from_int", 1) => {
+            let n = translate_int(&args[0], ctx, env)?;
+            Some(str_from_int(ctx, &n))
         }
         _ => None,
     }

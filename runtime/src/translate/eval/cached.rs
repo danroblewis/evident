@@ -2,7 +2,7 @@
 //! per tick via push/assert-givens/check/pop (`run_cached`) or for n-models sampling.
 
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int, String as Z3Str};
+use z3::ast::{Ast, Bool, Int};
 use z3::{Context, SatResult};
 
 use crate::core::ast::*;
@@ -81,7 +81,7 @@ pub fn sample_cached_inner<'ctx>(
             (Var::IntVar(v),  Value::Int(n))  => cached.solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => cached.solver.assert(&v._eq(&real_from_f64(ctx, *f))),
-            (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&crate::translate::z3_string(ctx, s).expect("nul in str"))),
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
@@ -131,7 +131,7 @@ pub fn sample_cached_inner<'ctx>(
                     if let Some(v) = model.eval(s, true).and_then(|x| x.as_string()) {
                         let v = unescape_z3_string(&v);
                         bindings.insert(name.clone(), Value::Str(v.clone()));
-                        if let Ok(lit) = Z3Str::from_str(ctx, &v) {
+                        if let Ok(lit) = crate::translate::z3_string(ctx, &v) {
                             block_terms.push(s._eq(&lit));
                         }
                     }
@@ -211,7 +211,7 @@ pub fn run_cached<'ctx>(
             (Var::IntVar(v),  Value::Int(n))  => cached.solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => cached.solver.assert(&v._eq(&real_from_f64(ctx, *f))),
-            (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
+            (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&crate::translate::z3_string(ctx, s).expect("nul in str"))),
             // PinnedInt: already folded at cache build; mismatching value forces UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
