@@ -74,18 +74,25 @@ impl EvidentRuntime {
             // sequences. The existing `translate_seq_lit_eq` path
             // handles the result. Recurses into subclaims.
             super::desugar::desugar_seq_concat(&mut s);
-            super::inject::inject_fsm_params(&mut s)?;
+            // fsm_params + prev_tick self-host in Evident (session
+            // REVIVE-inject): `stdlib/passes/inject.ev` drives the walk +
+            // the #18-keystone decision/construction; the Rust glue (string-
+            // set checks + splice at param_count) lives in
+            // `crate::portable::inject`. The interleave order is unchanged.
+            crate::portable::inject::fsm_params(&mut s);
             // lhs-eq inference runs BEFORE prev-tick injection so
             // that inferred memberships (e.g., `frame ∈ Int` from
             // `frame = ternary`) are visible when the prev-tick
             // walker resolves `_frame`'s type. Otherwise `_frame`
             // refers to an undeclared name and never gets injected.
+            // (This sub-pass stays in Rust — Gap D, #27.)
             super::inject::inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);
-            super::inject::inject_prev_tick_decls(&mut s)?;
+            crate::portable::inject::prev_tick(&mut s);
             // Needs the schemas table — runs against already-loaded
             // claims AND siblings in this same prog batch as they get
             // registered below. Self-reference works because we look
             // up the called claim's signature, not the current claim's.
+            // (This sub-pass stays in Rust — Gap D, #27.)
             super::inject::inject_claim_arg_types(&mut s, &self.schemas)?;
             super::validate::enforce_external_only(&s)?;
             if !self.schemas.contains_key(&s.name) {

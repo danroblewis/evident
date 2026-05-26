@@ -1,248 +1,21 @@
-//! FSM-aware membership injectors:
-//!   * `inject_fsm_params` — implicit `state_next` / `last_results` / `effects`
-//!   * `inject_prev_tick_decls` — `_var` time-shift slots + `is_first_tick`
+//! FSM-aware membership injectors (the two whole-program-table sub-passes):
 //!   * `inject_claim_arg_types` — fresh output names in positional calls
 //!   * `inject_lhs_eq_types` — Identifier = Expr chained-membership inference
+//!
+//! The other two sub-passes — `inject_fsm_params` (implicit `state_next` /
+//! `last_results` / `effects`) and `inject_prev_tick_decls` (`_var`
+//! time-shift slots + `is_first_tick`) — were self-contained (they decide
+//! from one body alone), and as of session REVIVE-inject they self-host in
+//! Evident: see `stdlib/passes/inject.ev` + `crate::portable::inject`.
+//! `runtime/src/runtime/load.rs` calls the Evident `fsm_params` / `prev_tick`
+//! free functions for those, and the two functions here directly. The two
+//! kept here resolve a name's type against the whole-program schema table +
+//! enum registry, which the marshaler can't yet thread into the FSM per
+//! claim (Gap D, `examples/COUNTEREXAMPLES.md` #27).
 
 use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
 use std::collections::HashMap;
-
-/// Smart-inject implicit fsm machinery. For each canonical slot
-/// (`state_next`, `last_results`, `effects`), inject the membership
-/// only when (a) the body actually references the name AND (b) the
-/// user didn't already declare it. A "pure" fsm that just maintains
-/// internal state via `_var` time-shift gets nothing injected.
-///
-/// `state_next` additionally requires `state ∈ <Type>` to be
-/// declared (it mirrors that type). If `state` isn't declared, we
-/// skip — the fsm is free to have no state-pair.
-///
-/// `external fsm` declarations are CONTRACTS for runtime-side
-/// bridge FSMs; they get no injection at all.
-pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
-    if !matches!(s.keyword, Keyword::Fsm) {
-        return Ok(());
-    }
-    if s.external {
-        return Ok(());
-    }
-    // Scan declared names + find the state type (for state_next mirror).
-    let mut state_type: Option<String> = None;
-    let mut have_state_next = false;
-    let mut have_last_results = false;
-    let mut have_effects = false;
-    for item in &s.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            match name.as_str() {
-                "state" if state_type.is_none() => state_type = Some(type_name.clone()),
-                "state_next"   => have_state_next   = true,
-                "last_results" => have_last_results = true,
-                "effects"      => have_effects      = true,
-                _ => {}
-            }
-        }
-    }
-
-    // Scan body expressions for references to the canonical slots.
-    fn walk(e: &Expr, targets: &mut [(&str, &mut bool)]) {
-        match e {
-            Expr::Identifier(n) => {
-                for (name, hit) in targets.iter_mut() {
-                    if n == *name { **hit = true; }
-                }
-            }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x, targets); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a, targets); walk(b, targets); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r, targets); walk(b, targets); }
-            Expr::Call(_, args) =>
-                for a in args { walk(a, targets); },
-            Expr::Cardinality(i) | Expr::Not(i) => walk(i, targets),
-            Expr::Field(recv, _) => walk(recv, targets),
-            Expr::Binary(_, l, r) => { walk(l, targets); walk(r, targets); }
-            Expr::Ternary(c, a, b) =>
-                { walk(c, targets); walk(a, targets); walk(b, targets); }
-            Expr::Match(scr, arms) => {
-                walk(scr, targets);
-                for arm in arms { walk(&arm.body, targets); }
-            }
-            Expr::Matches(e, _) => walk(e, targets),
-            Expr::RunFsm { init, .. } => walk(init, targets),
-        }
-    }
-    let mut ref_state_next = false;
-    let mut ref_last_results = false;
-    let mut ref_effects = false;
-    {
-        let mut targets: Vec<(&str, &mut bool)> = vec![
-            ("state_next",   &mut ref_state_next),
-            ("last_results", &mut ref_last_results),
-            ("effects",      &mut ref_effects),
-        ];
-        for item in &s.body {
-            match item {
-                BodyItem::Constraint(e) => walk(e, &mut targets),
-                BodyItem::ClaimCall { mappings, .. } =>
-                    for m in mappings { walk(&m.value, &mut targets); },
-                _ => {}
-            }
-        }
-    }
-
-    let mut injected: Vec<BodyItem> = Vec::new();
-    if !have_state_next && ref_state_next {
-        if let Some(st) = &state_type {
-            injected.push(BodyItem::Membership {
-                name: "state_next".to_string(),
-                type_name: st.clone(),
-                pins: Pins::None,
-            });
-        }
-    }
-    if !have_last_results && ref_last_results {
-        injected.push(BodyItem::Membership {
-            name: "last_results".to_string(),
-            type_name: "Seq(Result)".to_string(),
-            pins: Pins::None,
-        });
-    }
-    if !have_effects && ref_effects {
-        injected.push(BodyItem::Membership {
-            name: "effects".to_string(),
-            type_name: "Seq(Effect)".to_string(),
-            pins: Pins::None,
-        });
-    }
-    let insert_pos = s.param_count;
-    for (i, item) in injected.into_iter().enumerate() {
-        s.body.insert(insert_pos + i, item);
-    }
-    Ok(())
-}
-
-/// Auto-declare `_name` memberships for any underscore-prefix
-/// identifier referenced in an `fsm` body where the corresponding
-/// `name` is declared. Adds `is_first_tick ∈ Bool` once if any
-/// `_name` was referenced.
-///
-/// This is the syntactic half of the time-shift convention: in an
-/// fsm body, writing `_count` reads the previous tick's `count`.
-/// The runtime half (pinning `_count = prev_values["count"]` per
-/// tick) lives in the scheduler — see `effect_loop.rs`.
-///
-/// External fsm declarations are CONTRACTS for runtime-side bridges
-/// and don't get this treatment — their slots are written by Rust.
-pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::core::ast::{BodyItem, Keyword, Pins, Expr};
-    if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
-    if s.external { return Ok(()); }
-
-    // Step 1: Collect every name → type from this body's
-    // memberships. Determines whether a `_name` reference has a
-    // matching `name` to mirror.
-    let mut declared: HashMap<String, String> = HashMap::new();
-    for item in &s.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            declared.insert(name.clone(), type_name.clone());
-        }
-    }
-
-    // Step 2: Walk the body's expressions for any
-    // `Identifier(_name)` where `name` (without the underscore) is
-    // declared. Collect their target types.
-    let mut prev_refs: HashMap<String, String> = HashMap::new();
-    fn walk(e: &Expr, declared: &HashMap<String, String>,
-            prev_refs: &mut HashMap<String, String>) {
-        match e {
-            Expr::Identifier(n) => {
-                // Two shapes:
-                //   * `_count`         → strip → `count`
-                //   * `_pos.x`         → strip first segment → `pos`
-                // The parser collapses dotted chains in `parse_atom`,
-                // so `_pos.x` arrives as Identifier("_pos.x"); we
-                // only want to register the prev-tick parent (`pos`).
-                let Some(after_underscore) = n.strip_prefix('_') else { return; };
-                let first_seg = after_underscore
-                    .split('.').next().unwrap_or(after_underscore);
-                if let Some(ty) = declared.get(first_seg) {
-                    // Key by the bare `_first_seg`, value is its type.
-                    // We inject `_first_seg ∈ ty` once; per-field
-                    // expansion (`_pos.x`, `_pos.y`) happens at
-                    // translation via declare_var_named.
-                    let key = format!("_{first_seg}");
-                    prev_refs.insert(key, ty.clone());
-                }
-            }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x, declared, prev_refs); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a, declared, prev_refs); walk(b, declared, prev_refs); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r, declared, prev_refs); walk(b, declared, prev_refs); }
-            Expr::Call(_, args) =>
-                for a in args { walk(a, declared, prev_refs); },
-            Expr::Cardinality(i) | Expr::Not(i) =>
-                walk(i, declared, prev_refs),
-            Expr::Field(recv, _) => walk(recv, declared, prev_refs),
-            Expr::Binary(_, l, r) =>
-                { walk(l, declared, prev_refs); walk(r, declared, prev_refs); }
-            Expr::Ternary(c, a, b) => {
-                walk(c, declared, prev_refs);
-                walk(a, declared, prev_refs);
-                walk(b, declared, prev_refs);
-            }
-            Expr::Match(scr, arms) => {
-                walk(scr, declared, prev_refs);
-                for arm in arms { walk(&arm.body, declared, prev_refs); }
-            }
-            Expr::Matches(e, _) => walk(e, declared, prev_refs),
-            Expr::RunFsm { init, .. } => walk(init, declared, prev_refs),
-        }
-    }
-    for item in &s.body {
-        match item {
-            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs),
-            BodyItem::ClaimCall { mappings, .. } =>
-                for m in mappings { walk(&m.value, &declared, &mut prev_refs); },
-            _ => {}
-        }
-    }
-
-    if prev_refs.is_empty() { return Ok(()); }
-
-    // Step 3: For each `_name` referenced, add a Membership for
-    // it (typed to match `name`) unless the user already declared
-    // it themselves. Also add `is_first_tick ∈ Bool` for tick-0
-    // dispatch.
-    let mut to_inject: Vec<BodyItem> = Vec::new();
-    for (prev_name, ty) in &prev_refs {
-        if !declared.contains_key(prev_name) {
-            to_inject.push(BodyItem::Membership {
-                name: prev_name.clone(),
-                type_name: ty.clone(),
-                pins: Pins::None,
-            });
-        }
-    }
-    if !declared.contains_key("is_first_tick") {
-        to_inject.push(BodyItem::Membership {
-            name: "is_first_tick".to_string(),
-            type_name: "Bool".to_string(),
-            pins: Pins::None,
-        });
-    }
-    let insert_pos = s.param_count;
-    for (i, item) in to_inject.into_iter().enumerate() {
-        s.body.insert(insert_pos + i, item);
-    }
-    Ok(())
-}
 
 /// Infer types for fresh names used as positional args in claim
 /// calls. When the user writes
@@ -264,7 +37,7 @@ pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
 ///
 /// Handles method-style `recv.claim(args)` too: the receiver counts
 /// as a positional arg, shifting the arg-to-param mapping by 1.
-pub(super) fn inject_claim_arg_types(
+pub(crate) fn inject_claim_arg_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Result<(), RuntimeError> {
@@ -435,7 +208,7 @@ pub(super) fn inject_claim_arg_types(
 ///
 /// Recursive: also processes SubclaimDecls inside the body, so the
 /// inference fires inside types' rendering subclaims.
-pub(super) fn inject_lhs_eq_types(
+pub(crate) fn inject_lhs_eq_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
     enums: &crate::core::EnumRegistry,
