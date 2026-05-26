@@ -39,13 +39,15 @@
 -- `subscriptions` ship:
 --   1. The pre-order `rewrite` tree-walk (which Expr nodes to visit, where
 --      to splice the `SeqLit`, recursion into subclaims). It mutates
---      `Concat → SeqLit` IN PLACE so an untouched node is never round-
---      tripped through the marshaler — which matters because nested-ctor /
---      bind `MatchPattern`s still reflect lossily as `BindWildcard`
---      (param_count round-trips now, the MatchPattern half does not; the
---      marshaler was out of scope this session). `SchemaDecl` below carries
---      the 4-field `MakeSchemaDecl(Keyword, String, Int, BodyItemList)` so a
---      subclaim-bearing body seeds faithfully.
+--      `Concat → SeqLit` IN PLACE — historically this also sidestepped the
+--      seed marshaler's lossy `MatchPattern` collapse, but as of session
+--      SEED-marshal the marshaler IS faithful (the `MatchBind`/`MatchPattern`
+--      enums below grew `BindCtor`/`PatBind` in lockstep, so nested-ctor and
+--      top-level-bind patterns round-trip byte-identically). The in-place
+--      walk now stays for the OTHER reason `validate`/`subscriptions` keep
+--      theirs — string leaves stay out of the per-tick solve. `SchemaDecl`
+--      below carries the 4-field `MakeSchemaDecl(Keyword, String, Int,
+--      BodyItemList)` so a subclaim-bearing body seeds faithfully.
 --   2. The string-keyed `FRef` lookup (resolve `FRef(nm)` → its `⟨items⟩`).
 --      #18 is fixed so an in-FSM lookup is now correct, but an in-solve
 --      `nm = key` comparison hits the Z3 string-theory blowup `validate`
@@ -69,9 +71,9 @@ enum BinOp =
 
 enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
 
-enum MatchBind = BindName(String) | BindWildcard
+enum MatchBind = BindName(String) | BindWildcard | BindCtor(String, BindList)
 enum BindList = BLNil | BLCons(MatchBind, BindList)
-enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchPattern = PatWildcard | PatBind(String) | PatCtor(String, BindList)
 enum MatchArm = MakeMatchArm(MatchPattern, Expr)
 enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
 

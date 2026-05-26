@@ -1048,14 +1048,13 @@ pub fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
 pub fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     use crate::core::ast::MatchPattern;
     match p {
-        // stdlib/ast.ev DOES have `PatBind` since GAP-marshal, but this
-        // SEED marshaler stays flat on purpose (see `bind_list_to_value`'s
-        // note): the consuming passes declare only `PatWildcard`/`PatCtor`,
-        // so a top-level bind mirrors as a wildcard to keep the seed
-        // encodable on every path. (A top-level bind doesn't occur in the
-        // self-hosting corpus anyway.)
-        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+        MatchPattern::Wildcard =>
             ev("MatchPattern", "PatWildcard", vec![]),
+        // Top-level bind → `PatBind(name)` (session SEED-marshal; was
+        // lossily folded into `PatWildcard`). Mirrors the Z3-path fix in
+        // `encode_match_pattern` and `decode_match_pattern`'s `PatBind` arm.
+        MatchPattern::Bind(name) =>
+            ev("MatchPattern", "PatBind", vec![Value::Str(name.clone())]),
         MatchPattern::Ctor { name, binds } => {
             ev("MatchPattern", "PatCtor",
                vec![Value::Str(name.clone()), bind_list_to_value(binds)])
@@ -1069,24 +1068,25 @@ pub fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
     for b in binds.iter().rev() {
         let head = match b {
             MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
-            // Wildcard, and — DELIBERATELY — any nested constructor
-            // sub-pattern, collapse to `BindWildcard`. stdlib/ast.ev grew
-            // `BindCtor`/`PatBind` in session GAP-marshal so the Z3
-            // encode/decode path (`encode_ast::encode_match_pattern` ↔
-            // `decode_ast::decode_match_bind`) round-trips nested-ctor and
-            // top-level-bind patterns faithfully. This *_to_value SEED
-            // marshaler stays FLAT on purpose: the stack-FSM passes that
-            // consume it (validate/subscriptions/desugar/inject/generics)
-            // declare only `MatchBind = BindName | BindWildcard`, so a
-            // `BindCtor` in a seed value can't `value_enum_to_datatype`
-            // against their registry — on the Z3 slow-path that silently
-            // drops the WHOLE seed (the JIT path tolerates it only because
-            // the passes never destructure the pattern). Emitting the flat
-            // shape keeps the seed encodable on every path. Making it
-            // recursive is coupled to teaching those passes the new
-            // variants — the follow-up cutover's job (it touches the
-            // passes; out of scope here). See docs/self-hosting.md.
-            _ => ev("MatchBind", "BindWildcard", vec![]),
+            MatchPattern::Wildcard => ev("MatchBind", "BindWildcard", vec![]),
+            // A NESTED constructor sub-pattern → `BindCtor(name, sub-binds)`,
+            // recursing through `bind_list_to_value` so it round-trips to any
+            // depth (`Node(Leaf(n), r)`). Session SEED-marshal made this SEED
+            // marshaler recursive, mirroring GAP-marshal's Z3-path fix
+            // (`encode_match_bind` ↔ `decode_match_bind`'s `BindCtor` arm).
+            //
+            // This is COUPLED to the consuming passes' enum decls: every
+            // `stdlib/passes/*.ev` that declares `MatchBind`/`MatchPattern`
+            // was grown in lockstep to the same `BindName | BindWildcard |
+            // BindCtor(String, BindList)` + `PatWildcard | PatBind(String) |
+            // PatCtor(String, BindList)` shape as `stdlib/ast.ev`. Without
+            // that, a `BindCtor` seed would fail `value_enum_to_datatype`
+            // against their 2-variant registry and silently drop the WHOLE
+            // seed on the Z3 slow path. The two must move together — see
+            // docs/self-hosting.md and runtime/tests/seed_roundtrip.rs.
+            MatchPattern::Ctor { name, binds } =>
+                ev("MatchBind", "BindCtor",
+                   vec![Value::Str(name.clone()), bind_list_to_value(binds)]),
         };
         acc = ev("BindList", "BLCons", vec![head, acc]);
     }

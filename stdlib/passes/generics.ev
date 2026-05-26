@@ -49,9 +49,9 @@ enum BinOp =
 
 enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
 
-enum MatchBind = BindName(String) | BindWildcard
+enum MatchBind = BindName(String) | BindWildcard | BindCtor(String, BindList)
 enum BindList = BLNil | BLCons(MatchBind, BindList)
-enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchPattern = PatWildcard | PatBind(String) | PatCtor(String, BindList)
 enum MatchArm = MakeMatchArm(MatchPattern, Expr)
 enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
 

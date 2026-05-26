@@ -548,33 +548,42 @@ Rust owns the leaf" division `validate` / `subscriptions` ship:
   1. **The structural pre-order `rewrite` walk** — which `Expr` nodes to
      visit, where to splice the flattened `SeqLit`, recursion into
      subclaims. It stays in Rust this session (the cutover that deletes it
-     is a follow-up). Two facts about the marshaler shape:
+     is a follow-up). BOTH marshaler paths now round-trip `match` patterns
+     faithfully, so the AST *shape* is no longer the blocker:
      - The **Z3 encode/decode path** (`encode_ast::encode_match_pattern` ↔
-       `decode_ast::decode_match_bind`, through `stdlib/ast.ev`) now
+       `decode_ast::decode_match_bind`, through `stdlib/ast.ev`)
        round-trips nested-ctor and top-level-bind `MatchPattern`s
        **byte-identically as of GAP-marshal** — `stdlib/ast.ev` grew
-       `BindCtor(String, Seq(MatchBind))` + `PatBind(String)`, so the AST
-       *shape* is no longer the blocker. Proven by
+       `BindCtor(String, Seq(MatchBind))` + `PatBind(String)`. Proven by
        `runtime/tests/marshal_roundtrip.rs`.
      - The **`*_to_value` SEED marshaler** that `run_nested` uses
-       (`expr_to_value` etc.) **deliberately stays flat** — a nested ctor
-       still collapses to `BindWildcard`. The passes that consume the seed
-       (`validate`/`subscriptions`/`desugar`/`inject`/`generics`) declare
-       only `MatchBind = BindName | BindWildcard`, so emitting `BindCtor`
-       in a seed value would fail `value_enum_to_datatype` against their
-       registry and **silently drop the whole seed on the Z3 slow path**
-       (the JIT path tolerates it only because the FSMs never destructure
-       the pattern — measured: validate misses a banned call behind a
-       shape-B pattern under `EVIDENT_FUNCTIONIZE=0`). Making the seed
-       marshaler recursive is therefore coupled to teaching those passes
-       the new variants — the same follow-up that deletes this walk.
+       (`expr_to_value` etc.) is **faithful too as of SEED-marshal** —
+       `match_pattern_to_value` / `bind_list_to_value` emit
+       `PatBind(name)` and `BindCtor(name, sub-binds)` to full depth,
+       mirroring the Z3-path fix. The coupling that previously forced it
+       flat is discharged: every consuming pass
+       (`validate`/`subscriptions`/`desugar`/`inject`/`generics`/`pretty`)
+       grew its `MatchBind`/`MatchPattern` enums to the SAME
+       `BindName | BindWildcard | BindCtor(String, BindList)` +
+       `PatWildcard | PatBind(String) | PatCtor(String, BindList)` shape,
+       so `value_enum_to_datatype` encodes the rich seed instead of
+       silently dropping it on the Z3 slow path. (Before, a `BindCtor`
+       seed against a 2-variant registry dropped the whole seed —
+       measured: validate missed a banned call behind a shape-B pattern
+       under `EVIDENT_FUNCTIONIZE=0`. Now pinned green by
+       `runtime/tests/seed_roundtrip.rs` and the
+       `ffi_inside_nested_ctor_match_arm_violates` case in
+       `validate_correctness.rs`.)
 
-     So the rewrite-walk staying in Rust still sidesteps the seed-path
-     lossiness (it mutates `Concat → SeqLit` IN PLACE and never round-trips
-     an untouched `match` pattern). `param_count` *does* round-trip
-     (GAPB + confirmed by `marshal_roundtrip.rs`), so the `desugar.ev`
-     `SchemaDecl` enum carries it (4-field `MakeSchemaDecl`) to seed
-     subclaim-bearing bodies faithfully.
+     So the rewrite-walk no longer stays in Rust for *faithfulness* — the
+     seed round-trip is faithful now. It stays for the same reason the
+     `FRef` lookup does (below): keeping the structural traversal as an
+     in-place Rust mutation avoids paying an FSM solve per node, and the
+     Evident `desugar_rewrite` cutover that deletes it is the first
+     beneficiary of the now-symmetric marshaler. `param_count` round-trips
+     (GAPB + `marshal_roundtrip.rs`), so the `desugar.ev` `SchemaDecl` enum
+     carries it (4-field `MakeSchemaDecl`) to seed subclaim-bearing bodies
+     faithfully.
   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
      `⟨items⟩` against the gathered map. #18 (enum-payload String equality)
      is fixed, so an in-FSM lookup is now *correct* — but doing the
