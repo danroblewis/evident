@@ -46,6 +46,37 @@ claim Toposort<T>(items ∈ Set(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
     Permutation<T>(items, sorted)
     ∀ e ∈ edges : position_of(sorted, e.from) < position_of(sorted, e.to)
 
+-- ── Integer-rank fast path (runtime effect dispatcher) ───────────
+--
+-- The generic `Toposort<T>` above is the clean domain-typed API, but its
+-- `position_of(sorted, x)` is a depth-n chained ITE evaluated twice per
+-- edge — O(n·#edges) Z3 terms — which blows up at the runtime effect
+-- dispatcher's scale (a Mario frame is ~70 nodes / ~96 edges → tens of
+-- thousands of ITE terms, tens of seconds to solve).
+--
+-- `ToposortRanks` is the dispatcher's internal encoding. Nodes are the
+-- contiguous integers `0..n-1` (the dispatcher maps its node names to
+-- these), and `pos[k]` is the OUTPUT RANK of node k. An edge then indexes
+-- `pos` DIRECTLY — `pos[e.from] < pos[e.to]` — a single array select per
+-- endpoint, O(1) per edge, no ITE chain. Identity is still by value
+-- (distinct node ids), and `pos` is a permutation of `0..n-1`, so sorting
+-- the node ids by ascending `pos` recovers a valid topological order.
+--
+-- This is NOT a public interface: the integers here are opaque node
+-- identities the runtime assigns during marshaling, never surfaced to a
+-- user program (see CLAUDE.md "Indices in interfaces are a leak" — that
+-- rule governs public claims; this is runtime-internal). SAT iff acyclic.
+
+-- `n` is given as a concrete Nat by the dispatcher, so `#pos = n` resolves
+-- `pos`'s length up front and `distinct` / the range ∀ unroll. (Correctness
+-- is pinned in `runtime/tests/toposort_correctness.rs`, which drives this
+-- exactly as the dispatcher does — `rt.query("ToposortRanks", {n, edges})`.)
+claim ToposortRanks(n ∈ Nat, edges ∈ Seq(Edge<Int>), pos ∈ Seq(Int))
+    #pos = n
+    ∀ i ∈ {0..n-1} : 0 ≤ pos[i] < n
+    distinct(pos)
+    ∀ e ∈ edges : pos[e.from] < pos[e.to]
+
 -- ── Tests ────────────────────────────────────────────────────────
 
 claim sat_two_edges_4_nodes
