@@ -79,7 +79,6 @@ your task:
 |---|---|
 | Writing a new program (any program) | [`examples/`](examples/) — copy the closest existing demo's shape |
 | Looking for the punch list of known runtime gaps | [`examples/COUNTEREXAMPLES.md`](examples/COUNTEREXAMPLES.md) |
-| Trying to find where a claim's Z3 solve cost actually is | run `evident profile <file> <schema> [--given …] [--top N]` — lists given vs solved-for vars and ranks which variables, if pinned, most reduce the solve time |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |

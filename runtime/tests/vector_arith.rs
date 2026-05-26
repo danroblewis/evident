@@ -84,7 +84,7 @@ fn vec_scalar_broadcast_is_rejected() {
     let src = format!("{VEC2}schema S\n    v ∈ IVec2\n    v = 5\n");
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "scalar broadcast must drop");
     let stderr = String::from_utf8_lossy(&out.stderr);

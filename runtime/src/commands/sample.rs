@@ -89,7 +89,7 @@ fn cmd_sample_all(args: &[String]) -> ExitCode {
         Ok(r) => r,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
-    super::desugar::auto_apply_desugar(&mut rt, &files);
+    super::common::auto_apply_desugar(&mut rt, &files);
 
     let mut names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
     names.sort();
@@ -143,10 +143,8 @@ fn is_generic_template(rt: &EvidentRuntime, name: &str) -> bool {
     !decl.type_params.is_empty()
 }
 
-/// JSON serializer for `Value`. Pub so `query::print_query_result` can
-/// reuse it for its `--json` output; private helper `json_str` stays
-/// local.
-pub fn value_as_json(v: &Value) -> String {
+/// JSON serializer for `Value`, used by `sample`'s `--json` output.
+fn value_as_json(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),
         Value::Real(f) => f.to_string(),

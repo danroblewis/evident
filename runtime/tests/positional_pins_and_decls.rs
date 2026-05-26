@@ -63,7 +63,7 @@ fn positional_pins_too_many_is_an_error() {
     let src = "type IVec2(x, y ∈ Int)\nschema S\n    v ∈ IVec2(1, 2, 3)\n";
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "too many positional args must error");
     let stderr = String::from_utf8_lossy(&out.stderr);

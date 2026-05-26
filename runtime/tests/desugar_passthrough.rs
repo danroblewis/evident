@@ -123,7 +123,7 @@ claim t
 mod evident_runtime_internals {
     use evident_runtime::EvidentRuntime;
 
-    // Mirror the behavior of `commands::desugar::auto_apply_desugar`
+    // Mirror the behavior of `commands::common::auto_apply_desugar`
     // by reusing the public crate root we have. We can't access
     // commands/ directly (binary-only), so we re-implement the
     // handful of lines needed here.

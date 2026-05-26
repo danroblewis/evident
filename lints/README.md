@@ -60,14 +60,9 @@ graph TD
     %% CLI
     subgraph CLI [CLI commands]
         cmd_common[commands/common.rs]
-        cmd_check[commands/check.rs]
-        cmd_query[commands/query.rs]
         cmd_sample[commands/sample.rs]
         cmd_test[commands/test.rs]
         cmd_effect_run[commands/effect_run.rs]
-        cmd_lint[commands/lint.rs]
-        cmd_desugar[commands/desugar.rs]
-        cmd_infer_types[commands/infer_types.rs]
     end
 
     %% Top-level
@@ -140,28 +135,17 @@ graph TD
     fti --> event_sources
 
     %% CLI — every cmd_* uses common; main dispatches to each
-    cmd_check --> cmd_common
-    cmd_query --> cmd_common
     cmd_sample --> cmd_common
     cmd_test --> cmd_common
-    cmd_check --> runtime
-    cmd_query --> runtime
     cmd_sample --> runtime
     cmd_test --> runtime
     cmd_effect_run --> runtime
     cmd_effect_run --> effect_loop
-    cmd_lint --> runtime
-    cmd_desugar --> runtime
-    cmd_desugar --> ast
-    cmd_infer_types --> runtime
-    cmd_infer_types --> ast
+    cmd_common --> ast
     cmd_test --> pretty
-    main --> cmd_check
-    main --> cmd_query
     main --> cmd_sample
     main --> cmd_test
     main --> cmd_effect_run
-    main --> cmd_lint
 
     %% Highlight the known cycle (preprocess ↔ exprs)
     classDef cycle fill:#ffe0e0,stroke:#c00,stroke-width:2px

@@ -146,7 +146,7 @@ fn record_lift_shape_mismatch_is_an_error() {
     let src = format!("{VEC2}{VEC3}schema S\n    a ∈ Vec2\n    b ∈ Vec3\n    a = b\n");
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "shape mismatch should be fatal");
     let stderr = String::from_utf8_lossy(&out.stderr);
