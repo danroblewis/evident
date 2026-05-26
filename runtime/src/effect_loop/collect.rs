@@ -18,7 +18,7 @@ use crate::runtime::EvidentRuntime;
 use crate::translate::{Value, ast_decoder};
 use std::collections::{HashMap, HashSet};
 
-use super::seq_chains::extract_seq_effect_chains;
+use crate::portable::seq_chains::extract_seq_effect_chains;
 use super::toposort::{
     DISPATCH_ORDER_CACHE, DispatchKey,
     cycle_recovery, evident_toposort, resolve_synthetic_names_to_effects,

@@ -24,7 +24,6 @@ mod collect;
 mod fsm;
 mod nested;
 mod scheduler;
-mod seq_chains;
 mod state;
 mod timing;
 mod toposort;
