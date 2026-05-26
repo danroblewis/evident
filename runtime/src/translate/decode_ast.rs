@@ -233,6 +233,11 @@ pub fn decode_match_pattern(v: &Value) -> Result<crate::core::ast::MatchPattern>
             need_arity(variant, fields, 0)?;
             MatchPattern::Wildcard
         }
+        // Top-level bind (session GAP-marshal; was folded into Wildcard).
+        "PatBind" => {
+            need_arity(variant, fields, 1)?;
+            MatchPattern::Bind(decode_str(&fields[0])?)
+        }
         "PatCtor" => {
             need_arity(variant, fields, 2)?;
             let name = decode_str(&fields[0])?;
@@ -249,15 +254,22 @@ pub fn decode_bind_list(v: &Value) -> Result<Vec<MatchPattern>> {
     decode_seq_enum(v, "bind list", decode_match_bind)
 }
 
-/// A `MatchBind` (BindWildcard | BindName) decodes to a constructor
-/// sub-pattern: `BindWildcard → Wildcard`, `BindName(n) → Bind(n)`.
-/// (stdlib/ast.ev's flat `MatchBind` can't express a nested constructor
-/// sub-pattern, so the decoder never produces a `Ctor` here.)
+/// A `MatchBind` decodes to the sub-pattern it carries:
+/// `BindWildcard → Wildcard`, `BindName(n) → Bind(n)`, and
+/// `BindCtor(name, binds) → Ctor { name, binds }` — the last recursing
+/// through `decode_bind_list` so nested constructor sub-patterns
+/// (`Node(Leaf(n), r)`) round-trip to any depth (session GAP-marshal).
 pub fn decode_match_bind(v: &Value) -> Result<MatchPattern> {
     let (variant, fields) = check_enum(v, "MatchBind")?;
     Ok(match variant {
         "BindWildcard" => { need_arity(variant, fields, 0)?; MatchPattern::Wildcard }
         "BindName"     => { need_arity(variant, fields, 1)?; MatchPattern::Bind(decode_str(&fields[0])?) }
+        "BindCtor"     => {
+            need_arity(variant, fields, 2)?;
+            let name  = decode_str(&fields[0])?;
+            let binds = decode_bind_list(&fields[1])?;
+            MatchPattern::Ctor { name, binds }
+        }
         other => return Err(DecodeError::UnknownVariant {
             enum_name: "MatchBind".into(), variant: other.into(),
         }),

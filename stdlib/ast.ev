@@ -56,16 +56,31 @@ enum Keyword =
 
 -- ── Match patterns + arms ───────────────────────────────────────
 --
--- A pattern is either a wildcard `_` (catches any value, no binds)
--- or a constructor name with positional bindings. Each binding is
--- either a name to bind the payload field to, or `BindWildcard`
--- (the `_` placeholder discarding that field).
+-- A pattern (`MatchPattern`) is one of three shapes, mirroring
+-- ast.rs:MatchPattern exactly:
+--   * `PatWildcard`     — `_`, matches anything, binds nothing.
+--   * `PatBind(name)`   — a bare lowercase identifier, binds the value.
+--   * `PatCtor(name, binds)` — a constructor with positional
+--     sub-patterns. Each sub-pattern is a `MatchBind`.
+--
+-- A `MatchBind` is the SAME three shapes one level down — so deep
+-- patterns (`Node(Leaf(n), r)`) nest faithfully:
+--   * `BindName(name)`  — bind the payload field to `name`.
+--   * `BindWildcard`    — `_`, discard the field.
+--   * `BindCtor(name, binds)` — a NESTED constructor sub-pattern.
+--
+-- `BindCtor` + `PatBind` were added in session GAP-marshal so the
+-- AST encoder/decoder round-trips nested-ctor and top-level-bind
+-- patterns byte-identically (previously both collapsed to a
+-- wildcard). `PatCtor`/`BindCtor` recurse through `Seq(MatchBind)`.
 enum MatchBind =
     BindName(String)
     BindWildcard
+    BindCtor(String, Seq(MatchBind))
 
 enum MatchPattern =
     PatWildcard
+    PatBind(String)
     PatCtor(String, Seq(MatchBind))
 
 -- One arm: pattern + body expression.

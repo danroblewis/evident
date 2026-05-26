@@ -556,13 +556,14 @@ fn encode_match_pattern<'ctx>(
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
     use crate::core::ast::MatchPattern;
     match pat {
-        // stdlib/ast.ev's `MatchPattern` has no top-level `PatBind`; a
-        // top-level bind reflects (lossily) as a wildcard. This is the
-        // same documented-lossy v0.1 contract as the dropped
-        // `param_count` / skipped `TraceDecl` (no self-hosted pass reads
-        // a top-level bind today).
-        MatchPattern::Wildcard | MatchPattern::Bind(_) =>
+        MatchPattern::Wildcard =>
             apply(enums, "MatchPattern", "PatWildcard", &[]),
+        // Top-level bind → `PatBind(name)` (session GAP-marshal; was
+        // lossily folded into `PatWildcard`).
+        MatchPattern::Bind(name) => {
+            let n = z3_str(ctx, name);
+            apply(enums, "MatchPattern", "PatBind", &[&n])
+        }
         MatchPattern::Ctor { name, binds } => {
             let n = z3_str(ctx, name);
             let binds_list = encode_bind_list(binds, ctx, enums)?;
@@ -582,21 +583,35 @@ fn encode_bind_list<'ctx>(
     let cell   = "__Cell_MatchBind";
     let mut acc = apply(enums, &helper, empty, &[])?;
     for b in binds.iter().rev() {
-        let head = match b {
-            MatchPattern::Bind(name) => {
-                let n = z3_str(ctx, name);
-                apply(enums, "MatchBind", "BindName", &[&n])?
-            }
-            // `BindWildcard` for a wildcard, and (lossily) for a nested
-            // constructor sub-pattern — stdlib/ast.ev's flat `MatchBind`
-            // can't carry the nesting yet. Deep self-hosted-pass support
-            // is a future stdlib extension; this keeps the reflected AST
-            // round-trippable (as a wildcard) instead of failing to encode.
-            _ => apply(enums, "MatchBind", "BindWildcard", &[])?,
-        };
+        let head = encode_match_bind(b, ctx, enums)?;
         acc = apply(enums, &helper, cell, &[&head, &acc])?;
     }
     Ok(acc)
+}
+
+/// Encode one sub-pattern of a `PatCtor`'s payload as a `MatchBind`.
+/// `BindCtor` recurses through `encode_bind_list`, so a nested
+/// constructor sub-pattern (`Node(Leaf(n), r)`) round-trips to any
+/// depth (session GAP-marshal; previously collapsed to `BindWildcard`).
+fn encode_match_bind<'ctx>(
+    b: &crate::core::ast::MatchPattern,
+    ctx: &'ctx Context,
+    enums: &EnumRegistry,
+) -> Result<Datatype<'ctx>> where 'ctx: 'static {
+    use crate::core::ast::MatchPattern;
+    match b {
+        MatchPattern::Bind(name) => {
+            let n = z3_str(ctx, name);
+            apply(enums, "MatchBind", "BindName", &[&n])
+        }
+        MatchPattern::Wildcard =>
+            apply(enums, "MatchBind", "BindWildcard", &[]),
+        MatchPattern::Ctor { name, binds } => {
+            let n = z3_str(ctx, name);
+            let inner = encode_bind_list(binds, ctx, enums)?;
+            apply(enums, "MatchBind", "BindCtor", &[&n, &inner])
+        }
+    }
 }
 
 // ── Top-level Program ──────────────────────────────────────────
@@ -1033,8 +1048,12 @@ pub fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
 pub fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     use crate::core::ast::MatchPattern;
     match p {
-        // No `PatBind` in stdlib/ast.ev; a top-level bind isn't produced
-        // by the self-hosting corpus. Mirror as wildcard.
+        // stdlib/ast.ev DOES have `PatBind` since GAP-marshal, but this
+        // SEED marshaler stays flat on purpose (see `bind_list_to_value`'s
+        // note): the consuming passes declare only `PatWildcard`/`PatCtor`,
+        // so a top-level bind mirrors as a wildcard to keep the seed
+        // encodable on every path. (A top-level bind doesn't occur in the
+        // self-hosting corpus anyway.)
         MatchPattern::Wildcard | MatchPattern::Bind(_) =>
             ev("MatchPattern", "PatWildcard", vec![]),
         MatchPattern::Ctor { name, binds } => {
@@ -1050,7 +1069,23 @@ pub fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
     for b in binds.iter().rev() {
         let head = match b {
             MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
-            // Wildcard, and (lossily) any nested constructor sub-pattern.
+            // Wildcard, and — DELIBERATELY — any nested constructor
+            // sub-pattern, collapse to `BindWildcard`. stdlib/ast.ev grew
+            // `BindCtor`/`PatBind` in session GAP-marshal so the Z3
+            // encode/decode path (`encode_ast::encode_match_pattern` ↔
+            // `decode_ast::decode_match_bind`) round-trips nested-ctor and
+            // top-level-bind patterns faithfully. This *_to_value SEED
+            // marshaler stays FLAT on purpose: the stack-FSM passes that
+            // consume it (validate/subscriptions/desugar/inject/generics)
+            // declare only `MatchBind = BindName | BindWildcard`, so a
+            // `BindCtor` in a seed value can't `value_enum_to_datatype`
+            // against their registry — on the Z3 slow-path that silently
+            // drops the WHOLE seed (the JIT path tolerates it only because
+            // the passes never destructure the pattern). Emitting the flat
+            // shape keeps the seed encodable on every path. Making it
+            // recursive is coupled to teaching those passes the new
+            // variants — the follow-up cutover's job (it touches the
+            // passes; out of scope here). See docs/self-hosting.md.
             _ => ev("MatchBind", "BindWildcard", vec![]),
         };
         acc = ev("BindList", "BLCons", vec![head, acc]);
