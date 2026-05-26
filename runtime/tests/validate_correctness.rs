@@ -182,6 +182,46 @@ fn ffi_inside_match_arm_violates() {
 }
 
 #[test]
+fn ffi_inside_nested_ctor_match_arm_violates() {
+    // Session SEED-marshal: the arm carries a NESTED-ctor pattern
+    // `Node(Leaf(a), b)` (→ `BindCtor` in the seed) and the fallthrough is
+    // a TOP-LEVEL bind `other` (→ `PatBind`). The seed marshaler is now
+    // recursive, and `validate.ev`'s `MatchBind`/`MatchPattern` enums grew
+    // to match, so `value_enum_to_datatype` encodes this seed instead of
+    // dropping it. The banned `FFILookup` hiding in the nested-ctor arm's
+    // body must still be detected — under `EVIDENT_FUNCTIONIZE=0` (the Z3
+    // slow path) this is exactly the silent-drop the marshaler/enum coupling
+    // would otherwise reintroduce.
+    let ev = evident();
+    let s = schema(Keyword::Type, "bad_nested_match", false, vec![
+        assign("eff", Expr::Match(
+            Box::new(ident("state")),
+            vec![
+                MatchArm {
+                    pattern: MatchPattern::Ctor {
+                        name: "Node".into(),
+                        binds: vec![
+                            MatchPattern::Ctor {
+                                name: "Leaf".into(),
+                                binds: vec![MatchPattern::Bind("a".into())],
+                            },
+                            MatchPattern::Bind("b".into()),
+                        ],
+                    },
+                    body: Box::new(call("FFILookup", vec![])),
+                },
+                MatchArm {
+                    pattern: MatchPattern::Bind("other".into()),
+                    body: Box::new(ident("noop")),
+                },
+            ],
+        )),
+    ]);
+    assert_eq!(ev.enforce_external_only(&s),
+               Err(expected_msg("type", "bad_nested_match", "FFILookup")));
+}
+
+#[test]
 fn ffi_inside_call_args_violates() {
     let ev = evident();
     // `helper(LibCall(...))` — the banned call is an arg of a safe call.

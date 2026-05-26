@@ -26,15 +26,22 @@
 //!
 //!   1. **The pre-order `rewrite` tree-walk** — which `Expr` nodes to visit,
 //!      where to splice the flattened `SeqLit`, recursion into subclaims.
-//!      It stays in Rust **for faithfulness, not convenience**: a
-//!      whole-body return through the shared marshaler is byte-LOSSY in
-//!      general because nested-ctor / bind `MatchPattern`s collapse to
-//!      `BindWildcard` (`encode_ast.rs` only carries one `MatchBind` level).
-//!      `param_count` now round-trips (session GAPB), but the `MatchPattern`
-//!      half does not, and the marshaler is out of scope this session — so
-//!      the walk mutates `Concat → SeqLit` IN PLACE and never round-trips an
-//!      untouched node (e.g. a `match` arm's pattern), which sidesteps the
-//!      gap entirely.
+//!      It stays in Rust this session, but **no longer for faithfulness**:
+//!      as of session SEED-marshal the shared `*_to_value` SEED marshaler
+//!      round-trips nested-ctor / bind `MatchPattern`s byte-identically
+//!      (`bind_list_to_value` / `match_pattern_to_value` emit `BindCtor` /
+//!      `PatBind` to depth, and `desugar.ev`'s `MatchBind`/`MatchPattern`
+//!      enums grew to match — see `runtime/tests/seed_roundtrip.rs`). So a
+//!      whole-body return is no longer byte-LOSSY. The walk stays for the
+//!      same reason the `FRef` lookup does (below): each `Concat`'s splice
+//!      value depends on `FRef` resolution, and that string-keyed lookup
+//!      stays in Rust (in-solve string equality blows up Z3 on string-heavy
+//!      flatten states). A `desugar_rewrite` FSM returning the rebuilt body
+//!      would have to either resolve `FRef`s in-FSM (the blowup) or emit
+//!      markers for Rust to expand via a body-walk (still a Rust walk) — so
+//!      SEED-marshal evaluated and DEFERRED that cutover. The in-place
+//!      mutation (`Concat → SeqLit`, never round-tripping an untouched
+//!      `match` arm) is now belt-and-suspenders, no longer load-bearing.
 //!   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
 //!      `⟨items⟩` against the gathered map. #18 (enum-payload String
 //!      equality) is fixed, so this is now *correct* in an FSM — but doing

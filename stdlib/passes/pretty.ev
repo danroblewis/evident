@@ -77,9 +77,9 @@ enum BinOp =
 
 enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
 
-enum MatchBind = BindName(String) | BindWildcard
+enum MatchBind = BindName(String) | BindWildcard | BindCtor(String, BindList)
 enum BindList = BLNil | BLCons(MatchBind, BindList)
-enum MatchPattern = PatWildcard | PatCtor(String, BindList)
+enum MatchPattern = PatWildcard | PatBind(String) | PatCtor(String, BindList)
 enum MatchArm = MakeMatchArm(MatchPattern, Expr)
 enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
 
@@ -260,6 +260,7 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
             -- ── match patterns (all ASCII → faithful) ──
             WPattern(p) ⇒ match p
                 PatWildcard        ⇒ PStep(PSCons(WEmit("_"), rest), out)
+                PatBind(nm)        ⇒ PStep(PSCons(WEmit(nm), rest), out)
                 PatCtor(nm, binds) ⇒ match binds
                     BLNil       ⇒ PStep(PSCons(WEmit(nm), rest), out)
                     BLCons(_,_) ⇒ PStep(PSCons(WEmit(nm ++ "("), PSCons(WBindList(binds), PSCons(WEmit(")"), rest))), out)
@@ -272,6 +273,9 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
             WBind(mb) ⇒ match mb
                 BindName(n)  ⇒ PStep(PSCons(WEmit(n), rest), out)
                 BindWildcard ⇒ PStep(PSCons(WEmit("_"), rest), out)
+                BindCtor(nm, binds) ⇒ match binds
+                    BLNil       ⇒ PStep(PSCons(WEmit(nm), rest), out)
+                    BLCons(_,_) ⇒ PStep(PSCons(WEmit(nm ++ "("), PSCons(WBindList(binds), PSCons(WEmit(")"), rest))), out)
             -- ── quantifier binding: `x` (single) or `(a, b, c)` (multi) ──
             WBinding(sl) ⇒ match sl
                 SLNil         ⇒ PStep(rest, out)
@@ -332,6 +336,25 @@ claim sat_matches_pattern
     final ∈ PS = run(pretty_walk,
         WExpr(EMatches(EIdentifier("e"), PatCtor("ECall", BLCons(BindName("nm"), BLCons(BindWildcard, BLNil))))))
     final = PDone("(e matches ECall(nm, _))")
+
+-- A NESTED constructor sub-pattern (`BindCtor`, session SEED-marshal):
+-- `Node(Leaf(a), b)` must render its inner ctor, not a `_`.
+claim sat_matches_nested_ctor
+    final ∈ PS = run(pretty_walk,
+        WExpr(EMatches(EIdentifier("e"),
+            PatCtor("Node",
+                BLCons(BindCtor("Leaf", BLCons(BindName("a"), BLNil)),
+                    BLCons(BindName("b"), BLNil))))))
+    final = PDone("(e matches Node(Leaf(a), b))")
+
+-- A TOP-LEVEL bind arm (`PatBind`, session SEED-marshal): `other ⇒ …`
+-- renders the bound name, not `_`.
+claim sat_match_top_level_bind
+    final ∈ PS = run(pretty_walk,
+        WExpr(EMatch(EIdentifier("x"),
+            MALCons(MakeMatchArm(PatCtor("Leaf", BLCons(BindName("n"), BLNil)), EIdentifier("n")),
+                MALCons(MakeMatchArm(PatBind("other"), EIdentifier("z")), MALNil)))))
+    final = PDone("match x { Leaf(n) ⇒ n | other ⇒ z }")
 
 -- A constraint body item delegates to the Expr walk.
 claim sat_constraint_delegates
