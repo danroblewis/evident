@@ -82,7 +82,7 @@ and what is (eventually) self-hosted.
 | **M3** — end-to-end + cross-check | ✅ done | `evidentc <file> <claim>`; `crosscheck.sh` — verdicts + forced models agree with the Rust runtime |
 | **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
-| **M4c** — records | ⏳ roadmap | single-constructor datatypes (see roadmap) |
+| **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts; `records.ev` cross-checks. Arithmetic broadcast + local invariants are next. |
 | **M4d** — Seq | ⏳ roadmap | Z3 seq theory (see roadmap) |
 | **M5** — push one transform to Evident | ⏳ roadmap | the self-hosting half |
 
@@ -102,6 +102,7 @@ Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 | Chained membership | `0 < x ∈ Int < 5` | declare + per-pair bound (parser desugar) |
 | Enums (M4a) | `enum`, payload + recursive variants, `match`, `matches` | `declare-datatypes`; `match` → nested `ite` over `(_ is Ctor)`; `matches` → recognizer |
 | Quantifiers (M4b) | `∀ v ∈ {lo..hi} : body`, `∃ v ∈ {lo..hi} : body` | unroll → `and`/`or` over the constant range; bound var substituted per iteration |
+| Records (M4c) | `type IVec2(x, y ∈ Int)`, field access `v.x`, pins, `IVec2(a, b)` literals, `a = b` / `lo ≤ p ≤ hi` | per-field leaf consts (`v.x`); comparison/equality lift componentwise (`and` of per-axis; `≠` → `or` of per-axis `not =`) |
 
 The quantifier bounds must **fold to integer constants at emit time** (literals +
 literal arithmetic, mirroring the Rust path's `literal_range` simplify). A symbolic
@@ -174,9 +175,18 @@ Ordered by value and independence. Each is additive to the seed.
    (`exprs/quant.rs` `literal_range` branch). Bounds must fold to integer
    constants at emit time (`eval_const_int`); symbolic bounds, tuple binding,
    and Seq/Set ranges are reported out of subset. Cross-checks via `quantifiers.ev`.
-3. **M4c — records.** Single-constructor datatypes; field access via accessors;
-   positional/named pins; the record-as-vector lifts (componentwise `=`/`≤`,
-   arithmetic broadcast). Larger; depends on M4a's datatype machinery.
+3. **M4c — records. ◑ PARTIAL.** Represented as **per-field Z3 leaves** (`v.x`,
+   `p.pos.y`) rather than datatypes — the same dotted-leaf shape the Rust runtime
+   uses, so model values cross-check exactly (a record-as-datatype would print
+   `IVec2(3, 4)` where Rust prints `v.x=3`/`v.y=4`). Done: field access (dotted
+   identifiers resolve to leaf consts), named/positional pins, record literals in
+   expression position, and the componentwise comparison/equality + bounding-box
+   lifts. A `type`/`schema` qualifies as a record only if its body is all field
+   memberships; one with a local-invariant constraint stays out of subset (the
+   invariant would otherwise be silently dropped). Still TODO: **arithmetic
+   broadcast** (`c = a + b`, `v * scalar`) and **local invariants** (instantiate
+   the record decl's constraints per instance with field-rebinding). Cross-checks
+   via `records.ev`.
 4. **M4d — Seq.** Z3 seq theory (`declare-const xs (Seq Int)`), `#` → `seq.len`,
    indexing → `seq.nth`, `++` → `seq.++`. Independent of M4a–c.
 5. **Imports.** Resolve `import "..."` relative to the file (currently ignored

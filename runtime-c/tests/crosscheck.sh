@@ -69,6 +69,13 @@ check_forced enums.ev forced_matches_recognizer b true
 # Quantifiers (M4b): finite range unroll forces a unique model.
 check_forced quantifiers.ev forced_forall_singleton n 3
 check_forced quantifiers.ev forced_forall_block     n 3
+# Records (M4c): per-field leaves; field access, pins, literals, comparison lifts.
+check_forced records.ev forced_vec_sum            s 7
+check_forced records.ev forced_vec_eq             bx 5
+check_forced records.ev forced_color_named_pin    rr 110
+check_forced records.ev forced_vec_positional_pin sx 100
+check_forced records.ev forced_vec_literal_eq     s 33
+check_forced records.ev forced_nested_field       s 33
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

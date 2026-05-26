@@ -176,6 +176,59 @@ static void test_forall_symbolic_bound_rejected() {
     CHECK(threw, "forall: symbolic bound rejected as out of subset");
 }
 
+static void test_record_field_access() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    v ∈ IVec2\n    v.x = 3\n    v.y = 4\n"
+                 "    s ∈ Int\n    s = v.x + v.y\n", "T");
+    CHECK(r.satisfied, "record: field access sat");
+    for (auto &[k, v] : r.bindings) {
+        if (k == "v.x") CHECK(v.i == 3, "record: v.x=3");
+        if (k == "s")   CHECK(v.i == 7, "record: s=7");
+    }
+}
+
+static void test_record_eq_lift() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    a ∈ IVec2\n    b ∈ IVec2\n    a = b\n"
+                 "    a.x = 5\n    bx ∈ Int\n    bx = b.x\n", "T");
+    CHECK(r.satisfied, "record: eq lift sat");
+    for (auto &[k, v] : r.bindings) if (k == "bx") CHECK(v.i == 5, "record: a=b propagates a.x to b.x");
+}
+
+static void test_record_eq_conflict_unsat() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    a ∈ IVec2\n    b ∈ IVec2\n    a = b\n"
+                 "    a.x = 1\n    b.x = 2\n", "T");
+    CHECK(!r.satisfied, "record: eq with conflicting field unsat");
+}
+
+static void test_record_bounding_box() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    p ∈ IVec2\n    lo ∈ IVec2(0, 0)\n"
+                 "    hi ∈ IVec2(10, 10)\n    lo ≤ p ≤ hi\n    p.y = 20\n", "T");
+    CHECK(!r.satisfied, "record: out-of-box unsat (chain lift)");
+}
+
+static void test_record_literal() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    p ∈ IVec2\n    p = IVec2(11, 22)\n"
+                 "    s ∈ Int\n    s = p.x + p.y\n", "T");
+    CHECK(r.satisfied, "record: literal eq sat");
+    for (auto &[k, v] : r.bindings) if (k == "s") CHECK(v.i == 33, "record: literal s=33");
+}
+
+static void test_record_nested() {
+    auto r = run("type IVec2(x, y ∈ Int)\ntype Player(pos ∈ IVec2)\nclaim T\n    pl ∈ Player\n"
+                 "    pl.pos.x = 11\n    pl.pos.y = 22\n    s ∈ Int\n    s = pl.pos.x + pl.pos.y\n", "T");
+    CHECK(r.satisfied, "record: nested sat");
+    for (auto &[k, v] : r.bindings) if (k == "s") CHECK(v.i == 33, "record: nested s=33");
+}
+
+static void test_record_with_constraint_rejected() {
+    // A type with a local-invariant constraint is NOT a plain record — using it as
+    // a membership must fail loudly (the invariant would otherwise be dropped).
+    bool threw = false;
+    try {
+        run("type Rng(lo, hi ∈ Int)\n    lo ≤ hi\nclaim T\n    d ∈ Rng\n    d.lo = 1\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "record: type-with-invariant rejected as out of subset");
+}
+
 static void test_out_of_subset_reported() {
     bool threw = false;
     try {
@@ -207,6 +260,13 @@ int main() {
         test_exists_unroll();
         test_exists_empty_unsat();
         test_forall_symbolic_bound_rejected();
+        test_record_field_access();
+        test_record_eq_lift();
+        test_record_eq_conflict_unsat();
+        test_record_bounding_box();
+        test_record_literal();
+        test_record_nested();
+        test_record_with_constraint_rejected();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {
         std::printf("EXCEPTION: %s\n", e.what());

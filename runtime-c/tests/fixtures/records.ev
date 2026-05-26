@@ -1,0 +1,88 @@
+-- Cross-check fixture: records as per-field Z3 leaves (M4c). A `type`/`schema`
+-- whose body is all field memberships becomes per-field consts (`v.x`, `p.pos.y`),
+-- the same dotted-leaf shape the Rust runtime uses — so model values cross-check
+-- exactly. Covers field access, named/positional pins, record literals, and the
+-- componentwise comparison / equality / bounding-box lifts. Every claim is in the
+-- seed subset and solvable by the Rust runtime.
+
+type IVec2(x, y ∈ Int)
+type Color(r, g, b ∈ Nat)
+type Player(pos ∈ IVec2)
+
+-- SAT, forced: field access + scalar derivation. v.x=3, v.y=4, s=7.
+claim forced_vec_sum
+    v ∈ IVec2
+    v.x = 3
+    v.y = 4
+    s ∈ Int
+    s = v.x + v.y
+
+-- SAT, forced: structural equality lifts componentwise; a=b ∧ a.x=5 → b.x=5.
+claim forced_vec_eq
+    a ∈ IVec2
+    b ∈ IVec2
+    a = b
+    a.x = 5
+    a.y = 9
+    bx ∈ Int
+    bx = b.x
+
+-- UNSAT: a=b can't hold when a field is forced to differ.
+claim unsat_vec_eq_conflict
+    a ∈ IVec2
+    b ∈ IVec2
+    a = b
+    a.x = 1
+    b.x = 2
+
+-- SAT: bounding-box chain lo ≤ p ≤ hi lifts per-axis.
+claim sat_vec_in_box
+    p ∈ IVec2
+    lo ∈ IVec2(0, 0)
+    hi ∈ IVec2(10, 10)
+    lo ≤ p ≤ hi
+    p.x = 7
+
+-- UNSAT: p forced outside the box on the y axis.
+claim unsat_vec_out_of_box
+    p ∈ IVec2
+    lo ∈ IVec2(0, 0)
+    hi ∈ IVec2(10, 10)
+    lo ≤ p ≤ hi
+    p.y = 20
+
+-- SAT, forced: named pin (order-independent, partial). Color r=30, g=80, b free.
+claim forced_color_named_pin
+    c ∈ Color (g ↦ 80, r ↦ 30)
+    rr ∈ Int
+    rr = c.r + c.g
+
+-- SAT, forced: positional pin leads the fields. IVec2(380, 280).
+claim forced_vec_positional_pin
+    pos ∈ IVec2(380, 280)
+    sx ∈ Int
+    sx = pos.x - pos.y
+
+-- SAT, forced: record literal in expression position; p = IVec2(11, 22).
+claim forced_vec_literal_eq
+    p ∈ IVec2
+    p = IVec2(11, 22)
+    s ∈ Int
+    s = p.x + p.y
+
+-- SAT, forced: nested record field access. Player.pos.{x,y}.
+claim forced_nested_field
+    pl ∈ Player
+    pl.pos.x = 11
+    pl.pos.y = 22
+    s ∈ Int
+    s = pl.pos.x + pl.pos.y
+
+-- SAT: ≠ on records is disjunctive (some axis differs); pin x equal, y free → SAT.
+claim sat_vec_neq
+    a ∈ IVec2
+    b ∈ IVec2
+    a ≠ b
+    a.x = 4
+    b.x = 4
+    a.y = 1

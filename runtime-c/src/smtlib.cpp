@@ -1,5 +1,6 @@
 #include "smtlib.h"
 
+#include <algorithm>
 #include <optional>
 #include <sstream>
 
@@ -64,7 +65,7 @@ std::string str_lit(const std::string &s) {
 // ---------------------------------------------------------------------------
 class Emitter {
 public:
-    explicit Emitter(const Program &prog) : prog_(prog) { index_enums(); }
+    explicit Emitter(const Program &prog) : prog_(prog) { index_enums(); index_types(); }
 
     EmitResult emit(const SchemaDecl &schema);
 
@@ -83,13 +84,31 @@ private:
     std::unordered_map<std::string, const EnumDecl *> enum_by_name_;
     std::unordered_map<std::string, VariantInfo> variant_;  // variant name -> info
 
+    // record registries (M4c): record types are expanded to per-field Z3 leaves
+    // (`v.x`, `v.pos.y`, …) — the same dotted-leaf shape the Rust runtime uses, so
+    // model values cross-check exactly. `type/schema` decls whose body is all field
+    // memberships of scalar/record types qualify; constraints/subclaims do not.
+    std::unordered_map<std::string, const SchemaDecl *> type_decls_;  // type/schema name -> decl
+    std::unordered_map<std::string, std::string> record_vars_;        // var path -> record type
+
     // active substitutions for match-arm binds (name -> already-emitted term)
     std::unordered_map<std::string, std::string> subst_;
 
     void index_enums();
+    void index_types();
     std::vector<std::string> reachable_enums(const SchemaDecl &schema);
     void emit_datatypes(const SchemaDecl &schema);
     std::string field_sort_name(const std::string &type_name);
+
+    // records
+    bool is_record_type(const std::string &name);
+    std::vector<const BodyItem *> record_fields(const std::string &type_name);
+    void declare_record(const std::string &var, const std::string &type_name);
+    void apply_record_pins(const std::string &var, const std::string &type_name, const Pins &pins);
+    void emit_pin_eq(const std::string &leaf, const std::string &field_type, const Expr &value);
+    std::optional<std::string> record_type_of_expr(const Expr &e);
+    std::vector<std::pair<std::string, Sort>> record_leaves(const Expr &e, const std::string &type_name);
+    std::string record_compare(BinOp op, const Expr &a, const Expr &b);
 
     std::optional<Sort> sort_of(const Expr &e);
     std::string expr(const Expr &e);
@@ -116,6 +135,174 @@ void Emitter::index_enums() {
             variant_[v.name] = std::move(info);
         }
     }
+}
+
+void Emitter::index_types() {
+    for (const auto &s : prog_.enums) (void)s;  // enums indexed separately
+    for (const auto &s : prog_.schemas)
+        if (s.keyword == Keyword::Type || s.keyword == Keyword::Schema)
+            type_decls_[s.name] = &s;
+}
+
+// A record type is a `type`/`schema` decl whose body is ALL field memberships,
+// each field scalar or itself a record (recursively, cycle-guarded). A decl with
+// constraints / subclaims / passthroughs is NOT a record — classifying it as one
+// would silently drop those, so it stays out of subset (membership fails loudly).
+bool Emitter::is_record_type(const std::string &name) {
+    static thread_local std::vector<std::string> visiting;
+    auto it = type_decls_.find(name);
+    if (it == type_decls_.end()) return false;
+    const SchemaDecl *d = it->second;
+    if (!d->type_params.empty()) return false;
+    if (std::find(visiting.begin(), visiting.end(), name) != visiting.end()) return false;
+    bool any_field = false;
+    visiting.push_back(name);
+    bool ok = true;
+    for (const auto &b : d->body) {
+        if (b.kind != BodyItem::Kind::Membership) { ok = false; break; }
+        any_field = true;
+        const std::string &ft = b.type_name;
+        if (scalar_sort(ft)) continue;
+        if (!is_record_type(ft)) { ok = false; break; }  // nested record only (enum fields: later)
+    }
+    visiting.pop_back();
+    return ok && any_field;
+}
+
+std::vector<const BodyItem *> Emitter::record_fields(const std::string &type_name) {
+    std::vector<const BodyItem *> fields;
+    const SchemaDecl *d = type_decls_[type_name];
+    for (const auto &b : d->body)
+        if (b.kind == BodyItem::Kind::Membership) fields.push_back(&b);
+    return fields;
+}
+
+// `v ∈ Rec` -> per-field leaf consts (`v.f`), recursing into nested-record fields
+// (`v.pos.x`). Registers record_vars_ for v and every nested-record path so field
+// access and the comparison lift can find the structure.
+void Emitter::declare_record(const std::string &var, const std::string &type_name) {
+    record_vars_[var] = type_name;
+    for (const BodyItem *f : record_fields(type_name)) {
+        std::string leaf = var + "." + f->name;
+        const std::string &ft = f->type_name;
+        if (auto s = scalar_sort(ft)) {
+            if (env_.count(leaf)) continue;
+            env_[leaf] = *s;
+            declared_.push_back({leaf, *s});
+            out_ += "(declare-const " + leaf + " " + s->smt() + ")\n";
+            if (ft == "Nat") out_ += "(assert (>= " + leaf + " 0))\n";
+            else if (ft == "Pos") out_ += "(assert (> " + leaf + " 0))\n";
+        } else {
+            declare_record(leaf, ft);  // nested record
+        }
+    }
+}
+
+void Emitter::emit_pin_eq(const std::string &leaf, const std::string &ft, const Expr &value) {
+    if (scalar_sort(ft)) {
+        out_ += "(assert (= " + leaf + " " + expr(value) + "))\n";
+    } else {
+        // nested-record field pinned to a record value: lift componentwise.
+        Expr lhs(Expr::Kind::Ident);
+        lhs.str = leaf;
+        out_ += "(assert " + record_compare(BinOp::Eq, lhs, value) + ")\n";
+    }
+}
+
+void Emitter::apply_record_pins(const std::string &var, const std::string &type_name, const Pins &pins) {
+    if (pins.kind == Pins::Kind::None) return;
+    auto fields = record_fields(type_name);
+    if (pins.kind == Pins::Kind::Named) {
+        for (const auto &m : pins.named) {
+            const BodyItem *f = nullptr;
+            for (const BodyItem *ff : fields)
+                if (ff->name == m.slot) { f = ff; break; }
+            if (!f) fail("unknown pin slot `" + m.slot + "` on record `" + type_name + "`");
+            emit_pin_eq(var + "." + f->name, f->type_name, *m.value);
+        }
+    } else {  // positional: pin leading fields, args <= field count
+        if (pins.positional.size() > fields.size())
+            fail("too many positional pins for record `" + type_name + "`");
+        for (size_t i = 0; i < pins.positional.size(); i++)
+            emit_pin_eq(var + "." + fields[i]->name, fields[i]->type_name, *pins.positional[i]);
+    }
+}
+
+std::optional<std::string> Emitter::record_type_of_expr(const Expr &e) {
+    if (e.kind == Expr::Kind::Ident) {
+        auto it = record_vars_.find(e.str);
+        if (it != record_vars_.end()) return it->second;
+    }
+    if (e.kind == Expr::Kind::Call && is_record_type(e.str)) return e.str;
+    return std::nullopt;
+}
+
+// Flatten a record-valued expression into its ordered scalar leaf terms (the
+// emitted SMT term + sort per leaf). Identifier -> dotted leaf names; record
+// literal `Rec(a, b)` -> the args' emitted terms; nested records flatten.
+std::vector<std::pair<std::string, Sort>> Emitter::record_leaves(const Expr &e, const std::string &type_name) {
+    std::vector<std::pair<std::string, Sort>> out;
+    auto fields = record_fields(type_name);
+
+    if (e.kind == Expr::Kind::Ident) {
+        for (const BodyItem *f : fields) {
+            std::string leaf = e.str + "." + f->name;
+            if (auto s = scalar_sort(f->type_name)) out.push_back({leaf, *s});
+            else {
+                Expr sub(Expr::Kind::Ident);
+                sub.str = leaf;
+                for (auto &n : record_leaves(sub, f->type_name)) out.push_back(n);
+            }
+        }
+    } else if (e.kind == Expr::Kind::Call) {
+        if (e.str != type_name)
+            fail("record literal `" + e.str + "` does not match expected `" + type_name + "`");
+        if (e.children.size() != fields.size())
+            fail("record literal `" + e.str + "` arity mismatch (expected " +
+                 std::to_string(fields.size()) + ", got " + std::to_string(e.children.size()) + ")");
+        for (size_t i = 0; i < fields.size(); i++) {
+            if (auto s = scalar_sort(fields[i]->type_name)) out.push_back({expr(*e.children[i]), *s});
+            else for (auto &n : record_leaves(*e.children[i], fields[i]->type_name)) out.push_back(n);
+        }
+    } else {
+        fail("expected a record value (identifier or `" + type_name + "(...)` literal)");
+    }
+    return out;
+}
+
+// Componentwise comparison/equality lift. `=`,`<`,`≤`,`>`,`≥` -> `and` of the
+// per-field op (every axis); `≠` -> `or` of per-field `not =` (some axis differs).
+std::string Emitter::record_compare(BinOp op, const Expr &a, const Expr &b) {
+    auto ta = record_type_of_expr(a);
+    auto tb = record_type_of_expr(b);
+    if (!ta || !tb) fail("record compared with a non-record value");
+    auto la = record_leaves(a, *ta);
+    auto lb = record_leaves(b, *tb);
+    if (la.size() != lb.size())
+        fail("record comparison shape mismatch (" + *ta + " vs " + *tb + ")");
+    std::string sym;
+    switch (op) {
+        case BinOp::Eq:  sym = "="; break;
+        case BinOp::Neq: sym = "="; break;  // wrapped in (not ...) + or-combined below
+        case BinOp::Lt:  sym = "<"; break;
+        case BinOp::Le:  sym = "<="; break;
+        case BinOp::Gt:  sym = ">"; break;
+        case BinOp::Ge:  sym = ">="; break;
+        default: fail("non-comparison op on records");
+    }
+    std::vector<std::string> parts;
+    for (size_t i = 0; i < la.size(); i++) {
+        std::string pair = "(" + sym + " " + la[i].first + " " + lb[i].first + ")";
+        if (op == BinOp::Neq) pair = "(not " + pair + ")";
+        parts.push_back(pair);
+    }
+    if (parts.empty()) return op == BinOp::Neq ? "false" : "true";
+    if (parts.size() == 1) return parts[0];
+    std::string combiner = (op == BinOp::Neq) ? "or" : "and";
+    std::string s = "(" + combiner;
+    for (auto &p : parts) s += " " + p;
+    s += ")";
+    return s;
 }
 
 // SMT sort name for an enum payload field type: scalar -> its SMT name; enum
@@ -190,6 +377,14 @@ EmitResult Emitter::emit(const SchemaDecl &schema) {
         if (item.kind != BodyItem::Kind::Membership) continue;
         const std::string &name = item.name;
         const std::string &tn = item.type_name;
+
+        // Record type: expand to per-field leaves, then apply pins. Checked before
+        // the scalar/enum path so a record-typed field never falls through.
+        if (is_record_type(tn)) {
+            if (!record_vars_.count(name)) declare_record(name, tn);
+            apply_record_pins(name, tn, item.pins);
+            continue;
+        }
 
         std::optional<Sort> sort = scalar_sort(tn);
         if (!sort) {
@@ -319,6 +514,14 @@ std::string Emitter::expr(const Expr &e) {
 }
 
 std::string Emitter::binary(BinOp op, const Expr &a, const Expr &b) {
+    // Record comparison/equality lift (M4c): if either side denotes a record,
+    // compare componentwise. Catches `a = b`, `a ≤ b`, `lo ≤ p ≤ hi` (the chain
+    // desugars to per-pair Binary), record literals, and pins.
+    bool is_cmp = (op == BinOp::Eq || op == BinOp::Neq || op == BinOp::Lt ||
+                   op == BinOp::Le || op == BinOp::Gt || op == BinOp::Ge);
+    if (is_cmp && (record_type_of_expr(a) || record_type_of_expr(b)))
+        return record_compare(op, a, b);
+
     if (op == BinOp::Neq)
         return "(not (= " + expr(a) + " " + expr(b) + "))";
     std::string sym;
