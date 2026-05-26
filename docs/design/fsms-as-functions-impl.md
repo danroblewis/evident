@@ -417,6 +417,21 @@ ban has a precise domain rather than a loophole.
 
 ## § 6 — Universal `_state` for non-scheduler FSMs (fires first)
 
+> **LANDED — session STATE-terse.** `unify_state_syntax` ships in
+> `runtime/src/runtime/desugar.rs` (wired at `load.rs:71`, right after
+> `unify_world_syntax`). All six `run()`/`halts_within`-driven passes
+> (`validate`, `subscriptions`, `generics`, `desugar` ×2, `pretty`,
+> `inject` ×3) plus `examples/test_34`–`38` are written terse. The
+> `*_correctness.rs` / `*_equivalence.rs` harnesses + `run_fsm.rs`'s new
+> terse≡explicit-pair twin test prove byte-identical behavior. Steps § 4
+> (embed surface) and § 5 (the `state_next` ban) remain for later sessions
+> — the explicit pair still works (the rewrite is inert when `X_next` is
+> declared). The implementation refines the § 3 trigger with one extra
+> safety gate: only **param-position** memberships (`index < param_count`)
+> are candidates, so a scheduler primitive `_var` self-feedback var written
+> as a *body* item (`test_20`'s `count ∈ Int = (is_first_tick ? 0 :
+> _count + 1)`) is untouched even when the schema also declares `halt`.
+
 **This is the highest-priority sub-implementation** — the piece the user
 wants most, and the first mergeable step. It is § 3's rewrite, scoped to
 ship and prove on the `run()`-driven enum-state passes, **before** the
@@ -592,10 +607,11 @@ The ordered session plan. **All of it depends on the REVIVE-inject /
 REVIVE-desugar sessions landing first** (they own `inject.rs` /
 `desugar.rs` mid-cutover).
 
-1. **Universal `_state` (§ 6).** Generalize `unify_world_syntax` →
-   `unify_state_syntax`; migrate the 3 `run()`-driven passes to terse.
-   Smallest, highest-priority, self-contained. Validated by the three
-   `*_equivalence.rs` harnesses. *Fires after REVIVE.*
+1. **Universal `_state` (§ 6).** ✅ **DONE (session STATE-terse).**
+   Generalized `unify_world_syntax` → `unify_state_syntax`; migrated all
+   six `run()`/`halts_within`-driven passes + `test_34`–`38` to terse.
+   Validated by the `*_correctness.rs` / `*_equivalence.rs` harnesses and a
+   terse≡explicit-pair twin test in `run_fsm.rs`. Fired after REVIVE.
 
 2. **Embed surface (§ 2, § 4).** Add `lower_fsm_application` (load-batch
    `F(init)` → `RunFsm`); add the `inject_claim_arg_types` fsm-skip

@@ -66,8 +66,8 @@ enum Walk   = WSeed(Node) | WStep(Agenda, Labels) | WDone(Labels)
 -- FSM signal); because it is a `run(...)` target it is embedded-only —
 -- the scheduler never auto-instantiates a referenced FSM. `run` resolves
 -- it by name and drives it to halt.
-fsm collect_labels(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
-    state_next = match state
+fsm collect_labels(state ∈ Walk, halt ∈ Bool)
+    state = match _state
         WSeed(root) ⇒ WStep(ACons(NLCons(root, NLNil), ANil), LNil)
         WStep(ag, labels) ⇒ match ag
             ANil                            ⇒ WDone(labels)
@@ -77,7 +77,7 @@ fsm collect_labels(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
         WDone(d) ⇒ WDone(d)
     -- Two-level emptiness is now ONE nested pattern above; halt stays a
     -- one-level match on the terminal variant.
-    halt = match state
+    halt = match _state
         WDone(_) ⇒ true
         _        ⇒ false
 

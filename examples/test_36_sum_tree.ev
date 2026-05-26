@@ -60,8 +60,8 @@ enum Walk  = Seed(Int) | Step(Stack, Int) | Done(Int)
 -- because it is a `run(...)` target it is embedded-only — the scheduler
 -- never auto-instantiates a referenced FSM. `run` resolves it by name
 -- and drives it to halt.
-fsm sum_tree(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
-    state_next = match state
+fsm sum_tree(state ∈ Walk, halt ∈ Bool)
+    state = match _state
         -- Seed selects the tree shape (init can't carry a composite).
         Seed(n) ⇒ (n = 0 ? Step(Push(Leaf(7), Empty), 0)
                   : n = 1 ? Step(Push(Node(Node(Leaf(1), Leaf(2)), Leaf(3)), Empty), 0)
@@ -73,7 +73,7 @@ fsm sum_tree(state ∈ Walk, state_next ∈ Walk, halt ∈ Bool)
                 Node(l, r) ⇒ Step(Push(l, Push(r, rest)), acc) -- push children
         Done(d) ⇒ Done(d)
     -- Two-level match: nested constructor patterns aren't deep-matched.
-    halt = match state
+    halt = match _state
         Done(_) ⇒ true
         _       ⇒ false
 

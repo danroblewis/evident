@@ -522,6 +522,33 @@ fsm counter
     count ∈ Int = (is_first_tick ? 0 : _count + 1)
 ```
 
+**Terse `_state` for non-scheduler (`run`/`halts_within`) FSMs.** An
+embedded FSM — one driven by `run(F, init)` / `halts_within(F, N)` rather
+than auto-instantiated by the scheduler — is written the **same terse way**:
+declare the state var as a first-line param `X ∈ T` plus `halt ∈ Bool`, read
+the previous tick with `_X`, write this tick with bare `X`. Do **not** write
+the explicit `X, X_next ∈ T` pair.
+
+```evident
+-- Don't (explicit pair):
+fsm decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
+    count_next = count - 1
+    halt = (count ≤ 0)
+
+-- Do (terse):
+fsm decrement(count ∈ Int, halt ∈ Bool)
+    count = _count - 1
+    halt  = (_count ≤ 0)
+```
+
+`unify_state_syntax` (`runtime/src/runtime/desugar.rs`) rewrites the terse
+form to the `count, count_next ∈ Int` pair the run machinery
+(`fsm_unroll/compose.rs`, `effect_loop/nested.rs`) consumes — so `halt`
+reads the input tick (`_count`) and the worked examples
+(`examples/test_34`–`38`, the `stdlib/passes/*.ev` walk FSMs) all use the
+terse form. The explicit pair still loads (back-compat) but is discouraged.
+See [`docs/design/fsms-as-functions-impl.md`](docs/design/fsms-as-functions-impl.md) § 6.
+
 ## Keyword Conventions
 
 All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes
