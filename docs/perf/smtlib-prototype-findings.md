@@ -1,9 +1,28 @@
 # Evident → SMT-LIB → Z3 prototype — findings
 
-> **Status:** prototype / research slice (session SMTLIB-proto, 2026-05). The
-> first concrete evidence for the north star in
+> **Status:** real, exercised path (session smtlib-frontend, 2026-05), built on
+> the original prototype (session SMTLIB-proto). The first concrete evidence for
+> the north star in
 > [`docs/design/smtlib-as-compile-target.md`](../design/smtlib-as-compile-target.md).
 > Additive and flag-gated — the default translate/query path is untouched.
+
+> **What changed this session (smtlib-frontend):** the prototype that "proved
+> the round-trip in memory but emitted no files and replaced nothing" is now a
+> real, inspectable path:
+> 1. **`evident dump-smtlib <file> <claim> [--given k=v …] [-o out.smt2]
+>    [--solve]`** emits a runnable `.smt2` artifact (and, with `--solve`, runs it
+>    back through Z3 and prints sat/unsat + model). See
+>    [`runtime/src/commands/dump_smtlib.rs`](../../runtime/src/commands/dump_smtlib.rs).
+> 2. **Committed `.smt2` snapshots** for the covered corpus under
+>    [`runtime/tests/fixtures/smtlib/`](../../runtime/tests/fixtures/smtlib/),
+>    regenerated + diffed + **cross-checked vs the C-API path** by
+>    [`runtime/tests/smtlib_snapshots.rs`](../../runtime/tests/smtlib_snapshots.rs).
+>    Every fixture also parses + solves under the standalone `z3` binary.
+> 3. **Subset grown to string builtins** (`substr`, `index_of`, `replace`,
+>    `char_at`, `str_from_int`, `str_len`/`#`, `starts_with`, `ends_with`,
+>    `str_contains`, infix `sub ∈ text`) → Z3 `str.*` — which makes the four
+>    string claims of the real example file `examples/test_39_string_ops.ev`
+>    transpile and solve identically to the C-API path.
 
 ## What this is
 
@@ -42,6 +61,11 @@ wants to wire it elsewhere. `./test.sh` exercises the default path unchanged.
 | Membership (as constraint) | `x ∈ {a,b,c}`, `x ∈ {lo..hi}` | `(or (= x a) …)`, `(and (>= x lo) (<= x hi))` |
 | Conditional | `(c ? a : b)` | `(ite c a b)` |
 | String concat | `++` | `str.++` |
+| String slice / search | `substr`, `index_of`, `char_at`, `replace` | `str.substr`, `str.indexof`, `str.at`, `str.replace` |
+| String length | `str_len(s)`, `#s` | `str.len` |
+| String predicates | `starts_with`, `ends_with`, `str_contains`, infix `sub ∈ text` | `str.prefixof`, `str.suffixof`, `str.contains` |
+| Int → String | `str_from_int(n)` | `str.from_int` + sign reattach (matches C-API) |
+| Pinned input | `--given k=v` (CLI) | `(assert (= k <lit>))` |
 
 `int_lit` wraps negatives as `(- n)`; `real_lit` guarantees a decimal point;
 `str_lit` double-quotes and doubles internal `"`. Sort inference (`sort_of`)
@@ -65,18 +89,55 @@ The boundary is enforced positively: the emitter returns an error the moment it
 sees something out of subset, so a partial transpile can never silently drop a
 constraint (the Evident "missing constraint is a silent bug" failure mode).
 
+## Corpus coverage (which `examples/*.ev` the path handles end-to-end)
+
+The SMT-LIB path now solves, matching the C-API path, **every claim in the
+covered subset** — verified both ways (`smtlib::solve` ⟷ `EvidentRuntime::query`)
+by `runtime/tests/smtlib_snapshots.rs`.
+
+| Source | Claims solved via SMT-LIB == C-API |
+|---|---|
+| `examples/test_39_string_ops.ev` | `sat_split_head`, `sat_substitute`, `sat_prefix_and_len`, `unsat_wrong_arg` — **all 4 static claims**, via the string-builtin lowering. The fsm `string_demo` is out of subset (enum-typed state + `match` + `Seq(Effect)`). |
+| Inline scalar/string corpus | 19 snapshot fixtures (scalar arithmetic/logic, set/range membership, ternary, `--given` pins, the full string-op family). |
+
+**The rest of `examples/` (test_01–test_38) is out of subset and reported as
+such** — every one is an FSM/effect demo whose static claims pin enum-typed
+state, `Seq(Result)` / `Seq(Effect)` records, `match` arms, or embed-call
+(`ClaimCall`) bodies. None of those constructs transpile yet, so the emitter
+errors on them (it never mis-emits). `test_39` is the lone example whose static
+claims live entirely in the scalar/string fragment, and it is fully covered.
+
+To grow example coverage further the subset needs **enums + `match`** (→
+`declare-datatypes` + tester/accessor `ite`), which would unlock the
+state-machine claims of `test_02`/`test_20`/etc. — but those *also* use
+`Seq(Effect)` and `ClaimCall`, so enums alone are necessary-not-sufficient.
+The independent, single-construct wins (each unlocking simple inline claims)
+remain: enums, records-as-flattened-leaves, finite-range `∀` unrolling, Seq.
+
 ## The round-trip proof
 
-`runtime/tests/smtlib_roundtrip.rs` runs a corpus of simple claims through
-**both** paths and asserts sat/unsat parity (and, where the model is forced,
-model equality):
+Two test files exercise the path:
+
+- **`runtime/tests/smtlib_roundtrip.rs`** — the original in-memory parity +
+  cost harness, now extended with the string-builtin family.
+- **`runtime/tests/smtlib_snapshots.rs`** — emits the runnable `.smt2`
+  artifacts, diffs them against committed fixtures, AND cross-checks each
+  against the C-API path (including real `examples/test_39` claims and a
+  `--given`-pinned case).
+
+Both assert sat/unsat parity (and, where the model is forced, model equality):
 
 - SAT: `n > 5`; `a+b=10 ∧ a,b>0`; `p=true ∧ p⇒q` (q forced true); `name="hello"`;
   `k=7`; `x=-5`; `x+x=3.0` (x=1.5); `q=17 ∧ r=q/5` (r=3, confirms `div`);
   `m ∈ {2,4,6} ∧ m>3`.
-- UNSAT: `n>10 ∧ n<3`; `a=3 ∧ b=3 ∧ a≠b`; `m ∈ {2,4,6} ∧ m>10`.
-- Boundary: `Seq(Int)`, a `∀`, and an enum-typed var each assert the emitter
-  errors (out of subset).
+- SAT (strings): `substr("Edge<Rect>", 0, indexof "<") = "Edge"`;
+  `replace("Seq(T)","T","Rect") = "Seq(Rect)"`; `#"Edge<Rect>" = 10`;
+  `str_from_int(-42) = "-42"`; `char_at("abc",1) = "b"`;
+  prefix/suffix/contains predicates.
+- UNSAT: `n>10 ∧ n<3`; `a=3 ∧ b=3 ∧ a≠b`; `m ∈ {2,4,6} ∧ m>10`;
+  `starts_with("world.pos","local.")`; `"xyz" ∈ "abc"`; `n>5` pinned `n=3`.
+- Boundary: `Seq(Int)`, a `∀`, an enum-typed var, and an out-of-subset
+  `dump-smtlib` claim each assert the emitter errors (out of subset).
 
 **All parity cases pass** — the SMT-LIB-authored Z3 AST solves identically to
 the C-API-authored one. This is the "it really works" evidence for gate #3's
@@ -152,21 +213,34 @@ parse/solve); the *shape* is stable. Two representative runs:
 
 ## What this proves, and what it doesn't
 
-**Proves:** Evident claims in a scalar quantifier-free subset *do* round-trip
-through SMT-LIB text into Z3 and solve identically to the C-API path. The
-authoring route is swappable. Emit cost is negligible.
+**Proves:** Evident claims in a scalar/string quantifier-free subset *do*
+round-trip through SMT-LIB **text** into Z3 and solve identically to the C-API
+path — now with **real `.smt2` artifacts** (`evident dump-smtlib`), committed
+snapshots, and a verified-equal cross-check that includes a real example file
+(`examples/test_39_string_ops.ev`). The authoring route is swappable; emit cost
+is negligible (~1 µs); every artifact is independently runnable under the
+standalone `z3` binary.
 
 **Doesn't prove:** that the *whole* translator is expressible as SMT-LIB
-(containers, quantifiers, datatypes, FSM lowering all remain), nor that the
-self-hosting bootstrap (gate #2) closes — that needs the AOT functionizer on a
-translator-sized program. It also surfaced that the tuning/tactic layer lives
-*outside* the AST, so a faithful cutover must carry that over, not just the
-constraints.
+(containers, quantifiers, datatypes, FSM lowering all remain — only `test_39`'s
+static claims of the example corpus transpile so far), nor that this should be
+the *default* translate path (the per-solve serialize+parse cost is 14–50× the
+warm C-API path, so it stays gated — a compile-once/AOT step, not per-tick), nor
+that the self-hosting bootstrap (gate #2) closes — that needs the AOT
+functionizer on a translator-sized program. It also surfaced that the
+tuning/tactic layer lives *outside* the AST, so a faithful cutover must carry
+that over, not just the constraints.
 
 ## Repro
 
 ```sh
 cd runtime
-cargo test --release --test smtlib_roundtrip                 # parity + boundary
+cargo test --release --test smtlib_roundtrip                 # parity + boundary + strings
+cargo test --release --test smtlib_snapshots                 # .smt2 snapshots + C-API cross-check
 cargo test --release --test smtlib_roundtrip cost_comparison -- --nocapture   # cost breakdown
+
+# Emit a real artifact + solve it back through Z3:
+./target/release/evident dump-smtlib ../examples/test_39_string_ops.ev sat_split_head --solve
+# Regenerate snapshots after an intentional emitter change:
+EVIDENT_UPDATE_SNAPSHOTS=1 cargo test --release --test smtlib_snapshots
 ```
