@@ -1,5 +1,5 @@
 //! Correctness of the self-hosted Seq-concat desugar
-//! (`portable::desugar::EvidentDesugar`) — the runtime's SOLE
+//! (`portable::desugar::desugar_seq_concat`) — the runtime's SOLE
 //! `desugar_seq_concat` implementation since session REVIVE-desugar.
 //!
 //! This replaces `desugar_equivalence.rs`, which compared the Evident pass
@@ -32,14 +32,8 @@ use evident_runtime::ast::{
     BinOp, BodyItem, Expr, Keyword, Mapping, MatchArm, MatchPattern, SchemaDecl,
 };
 use evident_runtime::parse_program;
-use evident_runtime::portable::desugar::{self, DesugarImpl, EvidentDesugar};
+use evident_runtime::portable::desugar;
 use evident_runtime::translate::ast_encoder::schema_decl_to_value;
-
-const STDLIB: &str = "../stdlib";
-
-fn evident() -> EvidentDesugar {
-    EvidentDesugar::new(Path::new(STDLIB)).expect("load stdlib/passes/desugar.ev")
-}
 
 // ── tiny AST builders ───────────────────────────────────────────────
 
@@ -70,9 +64,9 @@ fn bind(name: &str, e: Expr) -> BodyItem { constraint(eq(ident(name), e)) }
 
 /// Desugar `input` with the Evident pass and assert the result is
 /// byte-identical (via the shared marshaler) to `expected`.
-fn assert_desugars_to(ev: &EvidentDesugar, input: SchemaDecl, expected: SchemaDecl, what: &str) {
+fn assert_desugars_to(input: SchemaDecl, expected: SchemaDecl, what: &str) {
     let mut got = input;
-    ev.desugar_seq_concat(&mut got);
+    desugar::desugar_seq_concat(&mut got);
     assert_eq!(
         schema_decl_to_value(&got),
         schema_decl_to_value(&expected),
@@ -85,16 +79,15 @@ fn assert_desugars_to(ev: &EvidentDesugar, input: SchemaDecl, expected: SchemaDe
 
 #[test]
 fn synthetic_battery() {
-    let ev = evident();
 
     // A. ⟨a⟩ ++ ⟨b⟩  →  ⟨a, b⟩
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("A", vec![bind("effects", concat(seq(vec![ident("a")]), seq(vec![ident("b")])))]),
         schema("A", vec![bind("effects", seq(vec![ident("a"), ident("b")]))]),
         "literal-concat");
 
     // B. identifier lookup: xs = ⟨a⟩ ; effects = xs ++ ⟨b⟩  →  effects = ⟨a, b⟩
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("B", vec![
             bind("xs", seq(vec![ident("a")])),
             bind("effects", concat(ident("xs"), seq(vec![ident("b")]))),
@@ -106,19 +99,19 @@ fn synthetic_battery() {
         "identifier-lookup");
 
     // C. string concat: "." ++ trail  →  UNCHANGED (operands don't resolve)
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("C", vec![bind("msg", concat(str_("."), ident("trail")))]),
         schema("C", vec![bind("msg", concat(str_("."), ident("trail")))]),
         "string-concat-noop");
 
     // D. unbound identifier: ys ++ ⟨b⟩  →  UNCHANGED (ys not gathered)
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("D", vec![bind("effects", concat(ident("ys"), seq(vec![ident("b")])))]),
         schema("D", vec![bind("effects", concat(ident("ys"), seq(vec![ident("b")])))]),
         "unbound-identifier-noop");
 
     // E. concat nested in a ternary then-arm.
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("E", vec![bind("effects", Expr::Ternary(
             Box::new(ident("c")),
             Box::new(concat(seq(vec![ident("a")]), seq(vec![ident("b")]))),
@@ -132,7 +125,7 @@ fn synthetic_battery() {
         "ternary-arm");
 
     // F. concat in a ClaimCall mapping value.
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("F", vec![BodyItem::ClaimCall {
             name: "foo".into(),
             mappings: vec![Mapping { slot: "x".into(), value: concat(seq(vec![int(1)]), seq(vec![int(2)])) }],
@@ -158,20 +151,20 @@ fn synthetic_battery() {
             },
         ],
     ))]);
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         match_in(concat(seq(vec![int(1)]), seq(vec![int(2)]))),
         match_in(seq(vec![int(1), int(2)])),
         "match-arm");
 
     // H. three-operand chain: ⟨a⟩ ++ ⟨b⟩ ++ ⟨c⟩  →  ⟨a, b, c⟩
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("H", vec![bind("effects",
             concat(concat(seq(vec![ident("a")]), seq(vec![ident("b")])), seq(vec![ident("c")])))]),
         schema("H", vec![bind("effects", seq(vec![ident("a"), ident("b"), ident("c")]))]),
         "three-operand-chain");
 
     // I. subclaim recursion: a concat inside a nested subclaim flattens too.
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("I", vec![
             BodyItem::SubclaimDecl(schema("Sub", vec![
                 bind("effects", concat(seq(vec![int(1)]), seq(vec![int(2)]))),
@@ -186,7 +179,7 @@ fn synthetic_battery() {
 
     // J. CLAUDE.md-style named chunks: xs = ⟨a,b⟩ ; ys = ⟨c⟩ ;
     //    eff = xs ++ ys ++ ⟨d⟩  →  ⟨a, b, c, d⟩
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("J", vec![
             bind("xs", seq(vec![ident("a"), ident("b")])),
             bind("ys", seq(vec![ident("c")])),
@@ -201,7 +194,7 @@ fn synthetic_battery() {
 
     // K. last-wins on duplicate bindings (mirrors the HashMap insert):
     //    xs = ⟨a⟩ ; xs = ⟨z⟩ ; effects = xs ++ ⟨b⟩  →  ⟨z, b⟩
-    assert_desugars_to(&ev,
+    assert_desugars_to(
         schema("K", vec![
             bind("xs", seq(vec![ident("a")])),
             bind("xs", seq(vec![ident("z")])),
@@ -317,7 +310,6 @@ fn ev_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
 
 #[test]
 fn corpus_no_corruption() {
-    let ev = evident();
     let mut files = Vec::new();
     ev_files(Path::new("../examples"), &mut files);
     ev_files(Path::new("../stdlib"), &mut files);
@@ -332,7 +324,7 @@ fn corpus_no_corruption() {
         let Ok(prog) = parse_program(&src) else { continue };
         for s in &prog.schemas {
             let mut got = s.clone();
-            ev.desugar_seq_concat(&mut got);
+            desugar::desugar_seq_concat(&mut got);
             let mut want = s.clone();
             reference::desugar_seq_concat(&mut want);
             assert_eq!(
@@ -350,30 +342,18 @@ fn corpus_no_corruption() {
 
 // ── 3. Production entry point + bootstrap ──
 
+/// The real load entry — the cached per-thread runner + WW resolver +
+/// bootstrap guard — actually flattens a `xs ++ ⟨c⟩` chain.
 #[test]
-fn impl_name_is_evident() {
-    use evident_runtime::portable::Portable;
-    assert_eq!(evident().impl_name(), "evident");
-}
-
-/// The real load entry — the cached per-thread engine + WW resolver +
-/// bootstrap guard — flattens exactly like an explicitly-built engine.
-#[test]
-fn production_entry_matches_explicit_engine() {
-    let ev = evident();
+fn production_entry_flattens() {
     let input = schema("P", vec![
         bind("xs", seq(vec![ident("a"), ident("b")])),
         bind("effects", concat(ident("xs"), seq(vec![ident("c")]))),
     ]);
 
-    let mut via_engine = input.clone();
-    ev.desugar_seq_concat(&mut via_engine);
-
     let mut via_production = input.clone();
     desugar::desugar_seq_concat(&mut via_production);   // cached free fn
 
-    assert_eq!(schema_decl_to_value(&via_engine), schema_decl_to_value(&via_production));
-    // And it actually flattened.
     assert!(matches!(via_production.body.last().unwrap(),
         BodyItem::Constraint(Expr::Binary(BinOp::Eq, _, rhs))
             if matches!(rhs.as_ref(), Expr::SeqLit(items) if items.len() == 3)),

@@ -20,17 +20,9 @@
 //! demos` run, both of which load through this same production path.
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use evident_runtime::ast::{BodyItem, Expr, Keyword, Pins, SchemaDecl};
-use evident_runtime::portable::generics::EvidentGenerics;
-use evident_runtime::portable::Portable;
-
-const STDLIB: &str = "../stdlib";
-
-fn engine() -> EvidentGenerics {
-    EvidentGenerics::new(Path::new(STDLIB)).expect("load stdlib/passes/generics.ev")
-}
+use evident_runtime::portable::generics::monomorphize_generics;
 
 // ── AST builders ──────────────────────────────────────────────────────
 
@@ -59,7 +51,7 @@ fn mono(decls: Vec<SchemaDecl>) -> (HashMap<String, SchemaDecl>, Vec<String>) {
         order.push(d.name.clone());
         schemas.insert(d.name.clone(), d);
     }
-    engine().monomorphize(&mut schemas, &mut order).expect("monomorphize");
+    monomorphize_generics(&mut schemas, &mut order).expect("monomorphize");
     (schemas, order)
 }
 
@@ -69,13 +61,6 @@ fn member_types(s: &SchemaDecl) -> Vec<String> {
         BodyItem::Membership { type_name, .. } => Some(type_name.clone()),
         _ => None,
     }).collect()
-}
-
-// ── Identity ──────────────────────────────────────────────────────────
-
-#[test]
-fn impl_name_is_evident() {
-    assert_eq!(engine().impl_name(), "evident");
 }
 
 // ── A single direct generic use: `Edge<Int>` ─────────────────────────
@@ -177,7 +162,7 @@ fn type_args_on_non_generic_is_error() {
     let mut schemas: HashMap<String, SchemaDecl> = HashMap::new();
     let mut order = Vec::new();
     for d in [foo, user] { order.push(d.name.clone()); schemas.insert(d.name.clone(), d); }
-    let err = engine().monomorphize(&mut schemas, &mut order).unwrap_err();
+    let err = monomorphize_generics(&mut schemas, &mut order).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("isn't declared as generic"), "got: {msg}");
 }
@@ -194,7 +179,7 @@ fn wrong_arg_count_is_error() {
     let mut schemas: HashMap<String, SchemaDecl> = HashMap::new();
     let mut order = Vec::new();
     for d in [pair, user] { order.push(d.name.clone()); schemas.insert(d.name.clone(), d); }
-    let err = engine().monomorphize(&mut schemas, &mut order).unwrap_err();
+    let err = monomorphize_generics(&mut schemas, &mut order).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("expects 2 type argument(s), got 1"), "got: {msg}");
 }

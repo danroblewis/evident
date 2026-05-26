@@ -21,13 +21,7 @@ use std::path::Path;
 use evident_runtime::ast::{
     BinOp, BodyItem, Expr, Keyword, MatchArm, MatchPattern, Pins, SchemaDecl,
 };
-use evident_runtime::portable::validate::{self, EvidentValidate, ValidateImpl};
-
-const STDLIB: &str = "../stdlib";
-
-fn evident() -> EvidentValidate {
-    EvidentValidate::new(Path::new(STDLIB)).expect("load stdlib/passes/validate.ev")
-}
+use evident_runtime::portable::validate;
 
 // ── AST builders ──────────────────────────────────────────────────────
 
@@ -62,78 +56,64 @@ fn expected_msg(kind: &str, name: &str, call: &str) -> String {
     )
 }
 
-// ── Identity ──────────────────────────────────────────────────────────
-
-#[test]
-fn impl_name_is_evident() {
-    use evident_runtime::portable::Portable;
-    assert_eq!(evident().impl_name(), "evident");
-}
-
 // ── Valid programs: Ok ────────────────────────────────────────────────
 
 #[test]
 fn external_with_ffi_is_ok() {
-    let ev = evident();
     // `external claim` may construct any of the four FFI primitives.
     for &nm in &["FFICall", "FFIOpen", "FFILookup", "LibCall"] {
         let s = schema(Keyword::Claim, "boundary_helper", true, vec![
             assign("eff", call(nm, vec![Expr::Str("libc.dylib".into())])),
         ]);
-        assert_eq!(ev.enforce_external_only(&s), Ok(()), "external + {nm} must pass");
+        assert_eq!(validate::enforce_external_only(&s), Ok(()), "external + {nm} must pass");
     }
 }
 
 #[test]
 fn non_external_no_ffi_is_ok() {
-    let ev = evident();
     let s = schema(Keyword::Claim, "harmless", false, vec![
         BodyItem::Membership { name: "x".into(), type_name: "Int".into(), pins: Pins::None },
         constraint(Expr::Binary(BinOp::Lt, Box::new(ident("x")), Box::new(Expr::Int(10)))),
         assign("y", Expr::Int(5)),
         constraint(call("some_user_claim", vec![ident("x"), ident("y")])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s), Ok(()));
+    assert_eq!(validate::enforce_external_only(&s), Ok(()));
 }
 
 #[test]
 fn non_external_with_safe_calls_is_ok() {
-    let ev = evident();
     // Calls that aren't on the banned list (built-ins, user claims) pass.
     let s = schema(Keyword::Type, "ok_calls", false, vec![
         assign("c", call("coindexed", vec![ident("a"), ident("b")])),
         assign("e", call("edges", vec![ident("xs")])),
         assign("z", call("Color", vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s), Ok(()));
+    assert_eq!(validate::enforce_external_only(&s), Ok(()));
 }
 
 // ── Violations: Err with the exact diagnostic ────────────────────────
 
 #[test]
 fn direct_libcall_in_constraint_violates() {
-    let ev = evident();
     let s = schema(Keyword::Claim, "bad_direct", false, vec![
         constraint(call("LibCall", vec![])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "bad_direct", "LibCall")));
 }
 
 #[test]
 fn libcall_in_assignment_violates() {
-    let ev = evident();
     // `eff = LibCall(...)` — the FFI call sits under EBinary(OpEq, …, ECall).
     let s = schema(Keyword::Fsm, "bad_assignment", false, vec![
         assign("eff", call("LibCall", vec![Expr::Str("libc".into())])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("fsm", "bad_assignment", "LibCall")));
 }
 
 #[test]
 fn ffi_inside_ternary_violates() {
-    let ev = evident();
     let s = schema(Keyword::Claim, "bad_ternary", false, vec![
         assign("eff", Expr::Ternary(
             Box::new(ident("cond")),
@@ -141,13 +121,12 @@ fn ffi_inside_ternary_violates() {
             Box::new(ident("other_eff")),
         )),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "bad_ternary", "FFICall")));
 }
 
 #[test]
 fn ffi_inside_forall_violates() {
-    let ev = evident();
     let s = schema(Keyword::Claim, "bad_forall", false, vec![
         constraint(Expr::Forall(
             vec!["i".into()],
@@ -155,13 +134,12 @@ fn ffi_inside_forall_violates() {
             Box::new(call("FFIOpen", vec![Expr::Str("lib".into())])),
         )),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "bad_forall", "FFIOpen")));
 }
 
 #[test]
 fn ffi_inside_match_arm_violates() {
-    let ev = evident();
     let s = schema(Keyword::Type, "bad_match", false, vec![
         assign("eff", Expr::Match(
             Box::new(ident("state")),
@@ -177,7 +155,7 @@ fn ffi_inside_match_arm_violates() {
             ],
         )),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("type", "bad_match", "FFILookup")));
 }
 
@@ -192,7 +170,6 @@ fn ffi_inside_nested_ctor_match_arm_violates() {
     // body must still be detected — under `EVIDENT_FUNCTIONIZE=0` (the Z3
     // slow path) this is exactly the silent-drop the marshaler/enum coupling
     // would otherwise reintroduce.
-    let ev = evident();
     let s = schema(Keyword::Type, "bad_nested_match", false, vec![
         assign("eff", Expr::Match(
             Box::new(ident("state")),
@@ -217,24 +194,22 @@ fn ffi_inside_nested_ctor_match_arm_violates() {
             ],
         )),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("type", "bad_nested_match", "FFILookup")));
 }
 
 #[test]
 fn ffi_inside_call_args_violates() {
-    let ev = evident();
     // `helper(LibCall(...))` — the banned call is an arg of a safe call.
     let s = schema(Keyword::Claim, "bad_nested_call", false, vec![
         assign("out", call("helper", vec![call("LibCall", vec![])])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "bad_nested_call", "LibCall")));
 }
 
 #[test]
 fn ffi_inside_seqlit_violates() {
-    let ev = evident();
     // `effects = ⟨other_eff, LibCall(...), more⟩`
     let s = schema(Keyword::Fsm, "bad_seqlit", false, vec![
         assign("effects", Expr::SeqLit(vec![
@@ -243,17 +218,16 @@ fn ffi_inside_seqlit_violates() {
             ident("more"),
         ])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("fsm", "bad_seqlit", "LibCall")));
 }
 
 #[test]
 fn ffi_inside_not_violates() {
-    let ev = evident();
     let s = schema(Keyword::Claim, "bad_not", false, vec![
         constraint(Expr::Not(Box::new(call("LibCall", vec![])))),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "bad_not", "LibCall")));
 }
 
@@ -261,7 +235,6 @@ fn ffi_inside_not_violates() {
 
 #[test]
 fn diagnostic_message_exact_for_every_combination() {
-    let ev = evident();
     let combinations: &[(Keyword, &str, &str, &str)] = &[
         (Keyword::Fsm,      "f",  "FFICall",   "fsm"),
         (Keyword::Type,     "t",  "FFIOpen",   "type"),
@@ -273,7 +246,7 @@ fn diagnostic_message_exact_for_every_combination() {
         let s = schema(kw.clone(), name, false, vec![
             assign("x", call(banned, vec![])),
         ]);
-        assert_eq!(ev.enforce_external_only(&s),
+        assert_eq!(validate::enforce_external_only(&s),
                    Err(expected_msg(label, name, banned)),
                    "diagnostic mismatch for ({kw:?}, {name}, {banned})");
     }
@@ -283,20 +256,18 @@ fn diagnostic_message_exact_for_every_combination() {
 
 #[test]
 fn first_violation_wins() {
-    let ev = evident();
     // Two banned calls in separate body items; the earlier one wins (the
     // per-constraint loop returns on the first violating Constraint).
     let s = schema(Keyword::Claim, "two_violations", false, vec![
         assign("a", call("FFICall", vec![])),
         assign("b", call("LibCall", vec![])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "two_violations", "FFICall")));
 }
 
 #[test]
 fn first_violation_wins_within_one_expr() {
-    let ev = evident();
     // Both banned calls in ONE expr: `helper(FFIOpen(...), LibCall(...))`.
     // Pre-order visits FFIOpen (first arg) before LibCall (second), so the
     // pass reports FFIOpen — byte-identical to the old find_ffi_call.
@@ -306,7 +277,7 @@ fn first_violation_wins_within_one_expr() {
             call("LibCall", vec![]),
         ])),
     ]);
-    assert_eq!(ev.enforce_external_only(&s),
+    assert_eq!(validate::enforce_external_only(&s),
                Err(expected_msg("claim", "two_in_one", "FFIOpen")));
 }
 
@@ -315,7 +286,6 @@ fn first_violation_wins_within_one_expr() {
 #[test]
 fn string_heavy_ternary_is_fast_and_correct() {
     use std::time::Instant;
-    let ev = evident();
     // The `test_26::driver` shape: a deeply nested ternary whose arms are
     // distinct STRING literals. The earlier in-solve string-equality design
     // hung here (Z3 string-theory blowup, minutes + GBs). The collect-and-
@@ -336,7 +306,7 @@ fn string_heavy_ternary_is_fast_and_correct() {
     // Clean (no banned call) → Ok, fast.
     let clean = schema(Keyword::Fsm, "driver_like", false, vec![assign("msg", msg.clone())]);
     let t = Instant::now();
-    assert_eq!(ev.enforce_external_only(&clean), Ok(()));
+    assert_eq!(validate::enforce_external_only(&clean), Ok(()));
     assert!(t.elapsed().as_secs() < 5, "string-heavy walk too slow: {:?}", t.elapsed());
 
     // Same shape but with a LibCall buried in the deepest arm → detected.
@@ -348,7 +318,7 @@ fn string_heavy_ternary_is_fast_and_correct() {
         )),
     );
     let bad = schema(Keyword::Fsm, "driver_like_bad", false, vec![assign("msg", with_ffi)]);
-    assert_eq!(ev.enforce_external_only(&bad),
+    assert_eq!(validate::enforce_external_only(&bad),
                Err(expected_msg("fsm", "driver_like_bad", "LibCall")));
 }
 
@@ -360,11 +330,10 @@ fn bootstrap_walk_fsm_passes() {
     // (named "ECall" etc.) but calls no banned FFI primitive, so it passes.
     // Loading the pass into a runtime and validating its own declaration
     // exercises the same shape the bootstrap guard short-circuits at build.
-    let ev = evident();
     let mut rt = evident_runtime::EvidentRuntime::new();
     rt.load_file(Path::new("../stdlib/passes/validate.ev")).expect("load the pass");
     let walk = rt.get_schema("validate_walk").expect("validate_walk declared");
-    assert_eq!(ev.enforce_external_only(walk), Ok(()),
+    assert_eq!(validate::enforce_external_only(walk), Ok(()),
         "validate_walk constructs Expr values, never calls FFI — must pass");
 }
 
@@ -384,16 +353,16 @@ fn production_entry_loads_real_program() {
 }
 
 #[test]
-fn production_entry_agrees_with_direct_engine() {
-    // The production free fn and an explicitly-constructed engine must
-    // agree on a violating and a clean schema.
+fn production_entry_verdicts() {
+    // The production free fn (cached per-thread runner + WW resolver +
+    // bootstrap guard) gives the right verdict on a violating and a clean
+    // schema, and is stable across repeated calls (reuses the cached engine).
     let bad = schema(Keyword::Claim, "p_bad", false, vec![assign("e", call("LibCall", vec![]))]);
     let ok  = schema(Keyword::Claim, "p_ok",  false, vec![assign("e", call("safe", vec![]))]);
-    let ev = evident();
-    assert_eq!(validate::enforce_external_only(&bad), ev.enforce_external_only(&bad));
-    assert_eq!(validate::enforce_external_only(&ok),  ev.enforce_external_only(&ok));
     assert!(validate::enforce_external_only(&bad).is_err());
     assert_eq!(validate::enforce_external_only(&ok), Ok(()));
+    // Idempotent across calls (cached runner reused).
+    assert_eq!(validate::enforce_external_only(&bad), validate::enforce_external_only(&bad));
 }
 
 // ── A curated slice of the real corpus: every schema passes ──────────
@@ -405,7 +374,6 @@ fn corpus_slice_all_pass() {
     // wouldn't load). NOT every file (that volume belongs to the demo
     // runner / conformance, which load all examples through the binary);
     // this is a focused unit-level check across varied shapes.
-    let ev = evident();
     let files = [
         "../examples/test_09_two_fsms.ev",
         "../examples/test_19_prev_tick.ev",
@@ -423,7 +391,7 @@ fn corpus_slice_all_pass() {
             // them) — assert only on non-external schemas, which is what
             // the load path actually gates.
             if !s.external {
-                assert_eq!(ev.enforce_external_only(s), Ok(()),
+                assert_eq!(validate::enforce_external_only(s), Ok(()),
                     "{f} schema `{}` should pass", s.name);
                 checked += 1;
             }
