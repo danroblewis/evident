@@ -138,6 +138,71 @@ fn cli_sample_seq_literal() {
 }
 
 // ---------------------------------------------------------------------------
+// dump-smtlib — emit .smt2 artifacts (north-star step 1)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cli_dump_smtlib_to_stdout() {
+    let path = write_tmp("dump",
+        "claim T\n    n ∈ Nat\n    n > 5\n");
+    let out = Command::new(bin())
+        .args(["dump-smtlib", path.to_str().unwrap(), "T"])
+        .output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("(declare-const n Int)"), "stdout: {s}");
+    assert!(s.contains("(assert (>= n 0))"), "Nat bound missing: {s}");
+    assert!(s.contains("(assert (> n 5))"), "stdout: {s}");
+    assert!(s.contains("(check-sat)"), "runnable artifact needs check-sat: {s}");
+}
+
+#[test]
+fn cli_dump_smtlib_writes_file_and_solves() {
+    let path = write_tmp("dumpfile",
+        "claim T\n    n ∈ Nat\n    n > 5\n");
+    let out_path = std::env::temp_dir()
+        .join(format!("evident-dump-{}.smt2", std::process::id()));
+    let out = Command::new(bin())
+        .args(["dump-smtlib", path.to_str().unwrap(), "T",
+               "-o", out_path.to_str().unwrap(), "--solve"])
+        .output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let file = std::fs::read_to_string(&out_path).unwrap();
+    assert!(file.contains("(declare-const n Int)"), "file: {file}");
+    // `--solve` reports the SMT-LIB-route result on stderr.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("smtlib-solve: sat"), "stderr: {stderr}");
+    let _ = std::fs::remove_file(&out_path);
+}
+
+#[test]
+fn cli_dump_smtlib_given_pins_unsat() {
+    let path = write_tmp("dumpgiven",
+        "claim T\n    n ∈ Nat\n    n > 5\n");
+    let out = Command::new(bin())
+        .args(["dump-smtlib", path.to_str().unwrap(), "T", "--given", "n=3", "--solve"])
+        .output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("(assert (= n 3))"), "given assertion missing: {s}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("smtlib-solve: unsat"), "stderr: {stderr}");
+}
+
+#[test]
+fn cli_dump_smtlib_out_of_subset_errors() {
+    // A Seq-typed var is out of the scalar/string subset → exit !=0, reported.
+    let path = write_tmp("dumpseq",
+        "claim T\n    xs ∈ Seq(Int)\n    #xs = 3\n");
+    let out = Command::new(bin())
+        .args(["dump-smtlib", path.to_str().unwrap(), "T"])
+        .output().unwrap();
+    assert!(!out.status.success(), "expected non-zero exit on out-of-subset claim");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("out of the SMT-LIB subset"), "stderr: {stderr}");
+}
+
+// ---------------------------------------------------------------------------
 // import "path"
 // ---------------------------------------------------------------------------
 

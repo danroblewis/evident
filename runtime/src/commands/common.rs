@@ -14,6 +14,8 @@ pub fn usage() {
     eprintln!("  evident sample       <files…> --all [--json]   # sat-check every schema");
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
+    eprintln!("  evident dump-smtlib  <files…> <claim> [--given k=v …] [-o out.smt2] [--solve]");
+    eprintln!("                                        # emit SMT-LIB text for a claim (QF scalar/string subset)");
 }
 
 /// Split positional file paths (before first `-…` flag) from flag args.

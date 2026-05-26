@@ -16,6 +16,7 @@ fn main() -> ExitCode {
         "sample"      => commands::sample::cmd_sample(&args[1..]),
         "test"        => commands::test::cmd_test(&args[1..]),
         "effect-run"  => commands::effect_run::cmd_effect_run(&args[1..]),
+        "dump-smtlib" => commands::dump_smtlib::cmd_dump_smtlib(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
