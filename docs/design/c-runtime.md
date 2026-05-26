@@ -87,7 +87,7 @@ and what is (eventually) self-hosted.
 | **M3** — end-to-end + cross-check | ✅ done | `evidentc <file> <claim>`; `crosscheck.sh` — verdicts + forced models agree with the Rust runtime |
 | **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
-| **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`); `records.ev` cross-checks. Local invariants are next; record-valued ternary is out of subset (oracle-boundary). |
+| **M4c** — records | ✅ done | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`), **local invariants** (refined records, rebound per instance); `records.ev` cross-checks. Record-valued ternary is out of subset (oracle-boundary). |
 | **M4d** — Seq | ◑ partial | Z3 sequence theory (SMT-LIB text): `Seq(Int)`/`Seq(Bool)` decl, `#` → `seq.len`, `xs[i]` → `seq.nth`, equality, model extracts as `[e0, …]`; `seqs.ev` cross-checks (incl. whole-seq value parity). `++` runtime concat + `Seq(Real)` out of subset (oracle drops both); `Seq(String)` emits but Z3 returns `unknown` (documented divergence). |
 | **M5** — push one transform to Evident | ✅ proof-of-concept | the seed RUNS an Evident transform pass: AST-as-`enum`, pass-as-`claim`, seed reflects input → solves → reifies `output`. The same `passes.ev` runs on the Rust runtime with the identical output AST. `passes.ev` cross-checks. |
 
@@ -235,7 +235,7 @@ Ordered by value and independence. Each is additive to the seed.
    (`exprs/quant.rs` `literal_range` branch). Bounds must fold to integer
    constants at emit time (`eval_const_int`); symbolic bounds, tuple binding,
    and Seq/Set ranges are reported out of subset. Cross-checks via `quantifiers.ev`.
-3. **M4c — records. ◑ PARTIAL.** Represented as **per-field Z3 leaves** (`v.x`,
+3. **M4c — records. ✅ DONE.** Represented as **per-field Z3 leaves** (`v.x`,
    `p.pos.y`) rather than datatypes — the same dotted-leaf shape the Rust runtime
    uses, so model values cross-check exactly (a record-as-datatype would print
    `IVec2(3, 4)` where Rust prints `v.x=3`/`v.y=4`). Done: field access (dotted
@@ -246,12 +246,14 @@ Ordered by value and independence. Each is additive to the seed.
    invariant would otherwise be silently dropped). **Arithmetic broadcast** lands
    too: `c = a + b` zips record leaves, `v * dt / 1000` broadcasts scalars across
    axes (integer `div` on Int fields), nested forms compose — all cross-check
-   exactly vs the oracle. **Record-valued ternary** (`c = (flag ? a : b)`) is
-   deliberately out of subset: the Rust oracle drops it ("couldn't translate to
+   exactly vs the oracle. **Local invariants** land too: a refined record
+   (`type DateRange(lo, hi ∈ Int)` with `lo ≤ hi`) has its constraints
+   instantiated per instance, each field's bare name rebound to its leaf
+   (`lo` → `d.lo`) via the same scoped-bind trick `match` uses — so `d ∈ DateRange`
+   with an inverted range is UNSAT. **Record-valued ternary** (`c = (flag ? a : b)`)
+   is deliberately out of subset: the Rust oracle drops it ("couldn't translate to
    Bool"), so the seed reports the boundary rather than silently exceeding the
-   oracle and diverging on the model. Still TODO: **local invariants** (instantiate
-   the record decl's constraints per instance with field-rebinding). Cross-checks
-   via `records.ev`.
+   oracle and diverging on the model. Cross-checks via `records.ev`.
 4. **M4d — Seq. ◑ PARTIAL.** Z3 sequence theory, lowered as SMT-LIB text:
    `declare-const xs (Seq Int)`, `#` → `seq.len`, `xs[i]` → `seq.nth`, `a = b` →
    seq equality. The model value is walked from its `seq.++`/`seq.unit` AST (no

@@ -9,6 +9,10 @@ type IVec2(x, y ∈ Int)
 type Color(r, g, b ∈ Nat)
 type Player(pos ∈ IVec2)
 
+-- A refined record: a local invariant on its own fields, enforced per instance.
+type DateRange(lo, hi ∈ Int)
+    lo ≤ hi
+
 -- SAT, forced: field access + scalar derivation. v.x=3, v.y=4, s=7.
 claim forced_vec_sum
     v ∈ IVec2
@@ -112,3 +116,16 @@ claim forced_vec_physics
     nxt = pos + vel * 1000 / 1000
     nx ∈ Int
     nx = nxt.x
+
+-- SAT: a refined record's local invariant (lo ≤ hi) holds for a valid instance.
+claim sat_valid_range
+    d ∈ DateRange
+    d.lo = 3
+    d.hi = 5
+
+-- UNSAT: the same invariant rejects an inverted range — the per-instance
+-- rebinding (lo→d.lo, hi→d.hi) actually constrains the leaves.
+claim unsat_invalid_range
+    d ∈ DateRange
+    d.lo = 5
+    d.hi = 3

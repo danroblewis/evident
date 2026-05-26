@@ -250,14 +250,14 @@ static void test_record_ternary_rejected() {
     CHECK(threw, "record: record-valued ternary rejected as out of subset");
 }
 
-static void test_record_with_constraint_rejected() {
-    // A type with a local-invariant constraint is NOT a plain record — using it as
-    // a membership must fail loudly (the invariant would otherwise be dropped).
-    bool threw = false;
-    try {
-        run("type Rng(lo, hi ∈ Int)\n    lo ≤ hi\nclaim T\n    d ∈ Rng\n    d.lo = 1\n", "T");
-    } catch (const SmtError &) { threw = true; }
-    CHECK(threw, "record: type-with-invariant rejected as out of subset");
+static void test_record_local_invariant() {
+    // A refined record's local invariant (lo ≤ hi) is instantiated per instance,
+    // rebound to the instance's leaves. Valid range → SAT.
+    auto ok = run("type Rng(lo, hi ∈ Int)\n    lo ≤ hi\nclaim T\n    d ∈ Rng\n    d.lo = 3\n    d.hi = 5\n", "T");
+    CHECK(ok.satisfied, "record: refined type valid range sat");
+    // Violating the invariant → UNSAT (the rebinding actually constrains d).
+    auto bad = run("type Rng(lo, hi ∈ Int)\n    lo ≤ hi\nclaim T\n    d ∈ Rng\n    d.lo = 5\n    d.hi = 3\n", "T");
+    CHECK(!bad.satisfied, "record: refined type violated invariant unsat");
 }
 
 static void test_seq_elems() {
@@ -387,7 +387,7 @@ int main() {
         test_record_arith_broadcast();
         test_record_scalar_broadcast_intdiv();
         test_record_ternary_rejected();
-        test_record_with_constraint_rejected();
+        test_record_local_invariant();
         test_seq_elems();
         test_seq_len();
         test_seq_len_conflict_unsat();

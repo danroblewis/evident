@@ -137,6 +137,7 @@ private:
     bool is_record_type(const std::string &name);
     std::vector<const BodyItem *> record_fields(const std::string &type_name);
     void declare_record(const std::string &var, const std::string &type_name);
+    void instantiate_invariants(const std::string &var, const std::string &type_name);
     void apply_record_pins(const std::string &var, const std::string &type_name, const Pins &pins);
     void emit_pin_eq(const std::string &leaf, const std::string &field_type, const Expr &value);
     std::optional<std::string> record_type_of_expr(const Expr &e);
@@ -192,7 +193,8 @@ bool Emitter::is_record_type(const std::string &name) {
     visiting.push_back(name);
     bool ok = true;
     for (const auto &b : d->body) {
-        if (b.kind != BodyItem::Kind::Membership) { ok = false; break; }
+        if (b.kind == BodyItem::Kind::Constraint) continue;  // local invariant (refined record)
+        if (b.kind != BodyItem::Kind::Membership) { ok = false; break; }  // subclaim/passthrough/call -> not a record
         any_field = true;
         const std::string &ft = b.type_name;
         if (scalar_sort(ft)) continue;
@@ -226,9 +228,40 @@ void Emitter::declare_record(const std::string &var, const std::string &type_nam
             if (ft == "Nat") out_ += "(assert (>= " + leaf + " 0))\n";
             else if (ft == "Pos") out_ += "(assert (> " + leaf + " 0))\n";
         } else {
-            declare_record(leaf, ft);  // nested record
+            declare_record(leaf, ft);  // nested record (declares its leaves + its invariants)
         }
     }
+    instantiate_invariants(var, type_name);  // this type's local invariants, rebound to `var`
+}
+
+// Emit a refined record's local-invariant constraints (`lo ≤ hi`) for instance
+// `var`, rebinding each scalar field's bare name to its leaf (`lo` -> `var.lo`)
+// via subst_ + env_ — the same scoped-bind trick emit_match uses. Scalar-field
+// invariants only; an invariant over record-typed fields would not lift here and
+// fails loudly.
+void Emitter::instantiate_invariants(const std::string &var, const std::string &type_name) {
+    const SchemaDecl *d = type_decls_[type_name];
+    bool has_invariant = false;
+    for (const auto &b : d->body)
+        if (b.kind == BodyItem::Kind::Constraint) { has_invariant = true; break; }
+    if (!has_invariant) return;
+
+    // Bind every scalar field name -> its leaf, saving any shadowed outer binding.
+    std::vector<std::pair<std::string, std::optional<std::string>>> saved_subst;
+    std::vector<std::pair<std::string, std::optional<Sort>>> saved_env;
+    for (const BodyItem *f : record_fields(type_name)) {
+        if (auto s = scalar_sort(f->type_name)) {
+            saved_subst.push_back({f->name, subst_.count(f->name) ? std::optional<std::string>(subst_[f->name]) : std::nullopt});
+            saved_env.push_back({f->name, env_.count(f->name) ? std::optional<Sort>(env_[f->name]) : std::nullopt});
+            subst_[f->name] = var + "." + f->name;
+            env_[f->name] = *s;
+        }
+    }
+    for (const auto &b : d->body)
+        if (b.kind == BodyItem::Kind::Constraint)
+            out_ += "(assert " + expr(*b.expr) + ")\n";
+    for (auto &p : saved_subst) { if (p.second) subst_[p.first] = *p.second; else subst_.erase(p.first); }
+    for (auto &p : saved_env)   { if (p.second) env_[p.first] = *p.second;   else env_.erase(p.first); }
 }
 
 void Emitter::emit_pin_eq(const std::string &leaf, const std::string &ft, const Expr &value) {
