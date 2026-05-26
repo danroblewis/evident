@@ -29,7 +29,7 @@ gaps currently bound what a pass can do.
 | `validate` | **Evident-only** (`portable/validate.rs::EvidentValidate`) — Rust `find_ffi_call` walk DELETED (session VALIDATE-recursive) | `stdlib/passes/validate.ev` | **full, sole impl** | Cut over: the canonical Rust Expr-tree walk is gone; the load path enforces external-only through the `validate_walk` stack-FSM via `portable::validate::enforce_external_only` (per-thread cached engine, WW resolver, bootstrap guard). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); the FSM collects `ECall` names and the Rust shim does the 4-element banned-set check (an in-solve `nm = "FFICall"` equality blows up Z3 string theory on string-heavy walk states — the in-solve cousin of #18; see [Gaps](#runtime-gaps-that-bound-a-string-pass)). Verdicts + byte-exact diagnostics pinned in `runtime/tests/validate_correctness.rs` |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
-| `desugar_seq_concat` (the `++` flattening half of `desugar`) | **Evident-only** (`portable/desugar.rs::EvidentDesugar`) — Rust gather/flatten/rewrite walk DELETED (session REVIVE-desugar) | `stdlib/passes/desugar.ev` (`desugar_gather` + `desugar_flatten` stack-FSMs) | **full, sole impl** | Cut over: the canonical Rust `desugar_seq_concat` is gone; the load path flattens `Seq` concats through the recursive kernels in Evident (over the SHARED marshaler, UU, via `run_nested`): `desugar_gather` folds the body → `name ↦ ⟨items⟩` bindings; `desugar_flatten` resolves a `Concat` spine → a chunk stream (`FLitItem` verbatim items + `FRef` identifier refs). Two pieces stay in Rust, same "Evident owns the recursion, Rust owns the leaf" split as `validate`/`subscriptions`: the pre-order `rewrite` tree-walk (so untouched `match` patterns are never round-tripped through the marshaler — the `MatchPattern` round-trip is still lossy), and the string-keyed `FRef` lookup (#18 is fixed, but an in-solve `name = key` comparison hits the same Z3 string-theory blowup `validate` measured). A cheap Rust "contains `Concat`?" guard short-circuits the engine for Concat-free schemas (a byte-identical no-op), so load cost is ~28 ms one-time engine build + ~1 ms/concat-schema, zero for Concat-free programs. Pinned outputs in `runtime/tests/desugar_correctness.rs`. `unify_world_syntax` (the *other* desugar pass) stays canonical Rust — prefix-strip string rewrite, no Evident operator. |
+| `desugar_seq_concat` (the `++` flattening half of `desugar`) | **Evident-only** (`portable/desugar.rs::EvidentDesugar`) — Rust gather/flatten/rewrite walk DELETED (session REVIVE-desugar) | `stdlib/passes/desugar.ev` (`desugar_gather` + `desugar_flatten` stack-FSMs) | **full, sole impl** | Cut over: the canonical Rust `desugar_seq_concat` is gone; the load path flattens `Seq` concats through the recursive kernels in Evident (over the SHARED marshaler, UU, via `run_nested`): `desugar_gather` folds the body → `name ↦ ⟨items⟩` bindings; `desugar_flatten` resolves a `Concat` spine → a chunk stream (`FLitItem` verbatim items + `FRef` identifier refs). Two pieces stay in Rust, same "Evident owns the recursion, Rust owns the leaf" split as `validate`/`subscriptions`: the pre-order `rewrite` tree-walk (so untouched `match` patterns are never round-tripped through the `*_to_value` SEED marshaler, which deliberately stays flat — the Z3 `encode`/`decode` path round-trips `MatchPattern` faithfully as of GAP-marshal, but the seed marshaler must stay flat until the passes adopt `BindCtor`/`PatBind`; see [What stays in Rust](#what-stays-in-rust-and-why-the-honest-split)), and the string-keyed `FRef` lookup (#18 is fixed, but an in-solve `name = key` comparison hits the same Z3 string-theory blowup `validate` measured). A cheap Rust "contains `Concat`?" guard short-circuits the engine for Concat-free schemas (a byte-identical no-op), so load cost is ~28 ms one-time engine build + ~1 ms/concat-schema, zero for Concat-free programs. Pinned outputs in `runtime/tests/desugar_correctness.rs`. `unify_world_syntax` (the *other* desugar pass) stays canonical Rust — prefix-strip string rewrite, no Evident operator. |
 | `generics` | **Evident-only** (`portable/generics.rs::EvidentGenerics`) — Rust `monomorphize_generics` DELETED (session REVIVE-generics) | `stdlib/passes/generics.ev` | **full, sole impl** | Cut over: the canonical Rust monomorphization pass is gone; the load path expands generics through the self-hosted pass via `portable::generics::monomorphize_generics` (per-thread cached engine, WW resolver, bootstrap guard). The WALK is the `generics_walk` stack-FSM; PARSE (`split_head`) and SUBSTITUTE (`subst_one`) are claims over GAPC's `index_of`/`substr`/`replace` (the string surgery PORT-generics couldn't express); GAPB's `param_count` round-trips so a copy preserves its first-line-param index. The CONSTRUCT/fixed-point/schema-lookup orchestration stays in the Rust shim (it needs the whole-program schema map, not string ops — the same boundary `subscriptions`/`validate` keep). Corpus output pinned in `runtime/tests/generics_correctness.rs`. Residual: `subst_one`'s first-occurrence `replace` is faithful to token-aware substitution only for the corpus surface (single capitalised params, one occurrence per type-name); `split_top_level_args` (multi-arg) stays Rust |
 | `inject` (4 sub-passes) | **2 of 4 Evident-only** (`portable/inject.rs::EvidentInject`); 2 stay Rust (`runtime/inject.rs`) | `stdlib/passes/inject.ev` | **full on the 2 cut-over sub-passes** | **Partial cutover (session REVIVE-inject).** `inject_fsm_params` + `inject_prev_tick_decls` cut over: their Rust is DELETED (inject.rs 591→364 LOC), the load path routes them through the Evident engine (`portable::inject::{fsm_params, prev_tick}`, per-thread cached, WW resolver, bootstrap guard). The recursive reference WALK (`inject_collect`) AND the inject DECISION + construction (`fsm_params_build` / `prev_tick_build`) self-host — the decision reads its `Bool` inputs and COMPUTES `(reff ∧ ¬heff)` / `(rsn ∧ ¬hsn ∧ hst)` on destructured payloads, which only became faithful once GAPB fixed #18 (the keystone). String-set checks (`"state_next"` reachable? declared?) + the `_`-strip stay in Rust off the walk output (dodging the in-solve string blow-up, #18's cousin); the splice at `param_count` stays in Rust (index in hand). `inject_claim_arg_types` + `inject_lhs_eq_types` stay Rust pending **Gap D** (whole-program-table composite INPUT, COUNTEREXAMPLES #27). Pinned in `portable::inject::tests::matches_golden_on_corpus` (exact diff vs Rust golden) + `runtime/tests/inject_correctness.rs` (production load path). |
 
@@ -544,15 +544,34 @@ Rust owns the leaf" division `validate` / `subscriptions` ship:
 
   1. **The structural pre-order `rewrite` walk** — which `Expr` nodes to
      visit, where to splice the flattened `SeqLit`, recursion into
-     subclaims. It stays in Rust **for faithfulness**: a whole-body return
-     through the marshaler is byte-lossy because nested-ctor / top-level
-     bind `MatchPattern`s collapse to `BindWildcard` (the marshaler carries
-     only one `MatchBind` level — `encode_ast.rs`, out of scope this
-     session). Keeping the walk in Rust mutates `Concat → SeqLit` IN PLACE
-     and never round-trips an untouched node (e.g. a `match` arm's
-     pattern), sidestepping the gap. `param_count` *does* round-trip now
-     (GAPB), so the `desugar.ev` `SchemaDecl` enum carries it (4-field
-     `MakeSchemaDecl`) to seed subclaim-bearing bodies faithfully.
+     subclaims. It stays in Rust this session (the cutover that deletes it
+     is a follow-up). Two facts about the marshaler shape:
+     - The **Z3 encode/decode path** (`encode_ast::encode_match_pattern` ↔
+       `decode_ast::decode_match_bind`, through `stdlib/ast.ev`) now
+       round-trips nested-ctor and top-level-bind `MatchPattern`s
+       **byte-identically as of GAP-marshal** — `stdlib/ast.ev` grew
+       `BindCtor(String, Seq(MatchBind))` + `PatBind(String)`, so the AST
+       *shape* is no longer the blocker. Proven by
+       `runtime/tests/marshal_roundtrip.rs`.
+     - The **`*_to_value` SEED marshaler** that `run_nested` uses
+       (`expr_to_value` etc.) **deliberately stays flat** — a nested ctor
+       still collapses to `BindWildcard`. The passes that consume the seed
+       (`validate`/`subscriptions`/`desugar`/`inject`/`generics`) declare
+       only `MatchBind = BindName | BindWildcard`, so emitting `BindCtor`
+       in a seed value would fail `value_enum_to_datatype` against their
+       registry and **silently drop the whole seed on the Z3 slow path**
+       (the JIT path tolerates it only because the FSMs never destructure
+       the pattern — measured: validate misses a banned call behind a
+       shape-B pattern under `EVIDENT_FUNCTIONIZE=0`). Making the seed
+       marshaler recursive is therefore coupled to teaching those passes
+       the new variants — the same follow-up that deletes this walk.
+
+     So the rewrite-walk staying in Rust still sidesteps the seed-path
+     lossiness (it mutates `Concat → SeqLit` IN PLACE and never round-trips
+     an untouched `match` pattern). `param_count` *does* round-trip
+     (GAPB + confirmed by `marshal_roundtrip.rs`), so the `desugar.ev`
+     `SchemaDecl` enum carries it (4-field `MakeSchemaDecl`) to seed
+     subclaim-bearing bodies faithfully.
   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
      `⟨items⟩` against the gathered map. #18 (enum-payload String equality)
      is fixed, so an in-FSM lookup is now *correct* — but doing the

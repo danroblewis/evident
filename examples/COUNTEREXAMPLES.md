@@ -757,15 +757,27 @@ The three original limits, and their status now:
     the latter cut over.
 
   * **(b) Whole-`SchemaDecl` marshaler round-trip — `param_count` FIXED
-    (GAPB), `MatchPattern` still lossy.** `MakeSchemaDecl` now carries
-    `param_count` (4-field), so a subclaim-bearing body seeds faithfully.
-    But nested-ctor / top-level bind `MatchPattern`s still collapse to
-    `BindWildcard` (the marshaler carries one `MatchBind` level). So a
-    *whole-body-return* design is still byte-lossy in general — which is why
-    the pre-order `rewrite` walk stays in the Rust shim: it mutates
-    `Concat → SeqLit` IN PLACE and never round-trips an untouched node (e.g.
-    a `match` arm pattern). Closing the `MatchPattern` half would let the
-    walk itself move into Evident.
+    (GAPB), `MatchPattern` Z3-path FIXED (GAP-marshal), seed-path stays
+    flat.** `MakeSchemaDecl` carries `param_count` (4-field), so a
+    subclaim-bearing body seeds faithfully. And the **Z3 `encode`/`decode`
+    path** (`encode_ast::encode_match_pattern` ↔
+    `decode_ast::decode_match_bind`, through `stdlib/ast.ev`) now
+    round-trips nested-ctor + top-level-bind `MatchPattern`s
+    byte-identically — `stdlib/ast.ev` grew `BindCtor(String, Seq(MatchBind))`
+    + `PatBind(String)` (proven by `runtime/tests/marshal_roundtrip.rs`). So
+    the AST *shape* is no longer the blocker. What remains: the **`*_to_value`
+    SEED marshaler** (`run_nested`'s input) deliberately keeps collapsing
+    nested ctors to `BindWildcard`, because the consuming passes declare only
+    `MatchBind = BindName | BindWildcard` — a `BindCtor` in a seed fails
+    `value_enum_to_datatype` against their registry and silently drops the
+    whole seed on the Z3 slow path (the JIT path masks it; measured: validate
+    misses a banned call behind a shape-B pattern under
+    `EVIDENT_FUNCTIONIZE=0`). So a *whole-body-return* design over the seed
+    marshaler is still lossy until the passes adopt the new variants — which
+    is why the pre-order `rewrite` walk stays in the Rust shim (it mutates
+    `Concat → SeqLit` IN PLACE and never round-trips an untouched node). The
+    follow-up cutover teaches the passes `BindCtor`/`PatBind` and moves the
+    walk into Evident.
 
   * **(c) Enum-payload String equality (#18) — FIXED, but the in-solve
     lookup is a perf wall.** #18 is closed, so an in-FSM `seq_lits.get(name)`
