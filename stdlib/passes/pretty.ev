@@ -32,36 +32,26 @@
 -- order, so `out` is assembled in render order. Mirrors RustPretty's
 -- exact spacing / parenthesization.
 --
--- ── What is FAITHFUL today (byte-identical to RustPretty) ─────────────
--- Every shape whose rendering is pure-ASCII, RECURSIVELY:
---   EIdentifier, EStr (no \\ / " in the payload — no string-replace in
---   Evident), ECall(name, args), ESetLit, ETuple, ERange (non-numeric
---   bounds), ECardinality, EIndex, EField, ETernary, EMatches (incl. its
---   pattern), ERunFsm, EBinary with an ASCII operator (= < > + - * / ++),
---   with the same Binary-operand parenthesization RustPretty applies.
---   BodyItem: BIPassthrough, empty-mapping BIClaimCall, BIConstraint
---   (delegated to the Expr walk).
+-- ── What is FAITHFUL today (byte-identical to the prior RustPretty) ────
+-- Every shape, RECURSIVELY. The two gaps that once bounded this — Unicode
+-- glyphs (#16) and int→string — are CLOSED (session pretty-evident):
+--   * #16: `Z3_mk_string` split a glyph's UTF-8 bytes into per-byte chars;
+--     the encode side (`translate::z3_string`) now escapes non-ASCII to
+--     `\u{..}` and the decode side recovers it. So every operator glyph
+--     (∈ ∀ ∃ ∧ ∨ ⇒ ≠ ≤ ≥ ¬ ⟨⟩ ↦ …) round-trips byte-identically.
+--   * int→string: `str_from_int` (Z3 `Z3_mk_int_to_str`, sign reattached)
+--     renders EInt and BIHaltsWithin's count. EBool renders via the
+--     `b ? "true" : "false"` ternary (the JIT #17 bool-payload bug is fixed).
+-- The pass is now the SOLE renderer (no Rust reference impl).
 --
--- ── What still DIVERGES — two runtime gaps, documented residuals ──────
--- (examples/COUNTEREXAMPLES.md #16 / #17 + the no-int→string limit):
---   1. Unicode glyphs (#16). Z3 byte-string handling mangles a non-ASCII
---      source literal (`∧` → `â§`), so any shape whose rendering needs an
---      operator glyph diverges in exactly those bytes: EBinary with a
---      Unicode op (≠ ≤ ≥ ∧ ∨ ⇒), ESeqLit (⟨⟩), EInExpr / EForall /
---      EExists (∈ ∀ ∃), ENot (¬), EMatch (arms use ⇒); BIMembership (∈),
---      BISubclaim (…), non-empty BIClaimCall (↦). The pass still RENDERS
---      these — recursion routed, sub-exprs walked — emitting the real
---      glyph, so the moment #16 is fixed they promote to faithful with no
---      pass change. The equivalence test pins them as known divergences.
---   2. No number → string in a pass (`IntToStr` is an Effect, not
---      available under run()) and the JIT Bool-payload bug (#17). EInt,
---      EReal, EBool, and BIHaltsWithin's count render to an ASCII
---      sentinel (`<int>` / `<real>` / `<bool>`); any expr containing one
---      diverges there.
+-- ── The one residual: EReal ───────────────────────────────────────────
+-- Z3 has no real→string op matching Rust's shortest-round-trip f64
+-- Display (`Z3_mk_int_to_str` is integers only; an exact Z3 rational
+-- can't reproduce "3.14"). EReal therefore renders to the `<real>`
+-- sentinel. This is harmless in practice — no `.ev` source in the repo
+-- uses a real literal — and is documented in COUNTEREXAMPLES.md #16.
 --
--- The pass stays TOTAL (every shape produces a string); the Rust shim
--- treats only the faithful shapes as authoritative and the equivalence
--- test asserts identity on exactly those.
+-- The pass stays TOTAL (every shape produces a string).
 
 -- ── The canonical AST, cons-list mirror shape ─────────────────────────
 -- These enums match the shared marshaler's `*_to_value` output EXACTLY
@@ -200,9 +190,9 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
             -- ── expressions (walk_expr) ──
             WExpr(e) ⇒ match e
                 EIdentifier(n)    ⇒ PStep(PSCons(WEmit(n), rest), out)
-                EInt(_)           ⇒ PStep(PSCons(WEmit("<int>"), rest), out)
+                EInt(n)           ⇒ PStep(PSCons(WEmit(str_from_int(n)), rest), out)
                 EReal(_)          ⇒ PStep(PSCons(WEmit("<real>"), rest), out)
-                EBool(_)          ⇒ PStep(PSCons(WEmit("<bool>"), rest), out)
+                EBool(b)          ⇒ PStep(PSCons(WEmit(b ? "true" : "false"), rest), out)
                 EStr(s)           ⇒ PStep(PSCons(WEmit("\"" ++ s ++ "\""), rest), out)
                 ESetLit(es)       ⇒ PStep(PSCons(WEmit("{"), PSCons(WExprList(es), PSCons(WEmit("}"), rest))), out)
                 ESeqLit(es)       ⇒ PStep(PSCons(WEmit("⟨"), PSCons(WExprList(es), PSCons(WEmit("⟩"), rest))), out)
@@ -233,7 +223,7 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
                 BIPassthrough(c)        ⇒ PStep(PSCons(WEmit(".." ++ c), rest), out)
                 BIConstraint(e)         ⇒ PStep(PSCons(WExpr(e), rest), out)
                 BIMembership(nm, ty, _) ⇒ PStep(PSCons(WEmit(nm ++ " ∈ " ++ ty), rest), out)
-                BIHaltsWithin(nm, _)    ⇒ PStep(PSCons(WEmit("halts_within(" ++ nm ++ ", <int>)"), rest), out)
+                BIHaltsWithin(nm, n)    ⇒ PStep(PSCons(WEmit("halts_within(" ++ nm ++ ", " ++ str_from_int(n) ++ ")"), rest), out)
                 BISubclaim(s)           ⇒ match s
                     MakeSchemaDecl(_, nm, _, _) ⇒ PStep(PSCons(WEmit("subclaim " ++ nm ++ " (…)"), rest), out)
                 BIClaimCall(nm, ms)     ⇒ match ms
@@ -291,15 +281,40 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
         _        ⇒ false
 
 -- ── Static verification: AST in, rendered String out ──────────────────
--- These pin the FAITHFUL (pure-ASCII, recursive) renders end-to-end so a
--- regression surfaces here, not just in the Rust equivalence harness.
--- (Divergent Unicode/number shapes are asserted in pretty_equivalence.rs
--- as known boundaries, since their bytes mangle through Z3.)
+-- These pin renders end-to-end so a regression surfaces here too, not just
+-- in the Rust harness (runtime/tests/pretty_correctness.rs, the SOLE-impl
+-- correctness pins). Numbers, Bools, and Unicode glyphs are now FAITHFUL —
+-- the int→string and #16 gaps are closed.
 
 -- A bare identifier.
 claim sat_ident
     final ∈ PS = run(pretty_walk, WExpr(EIdentifier("counter")))
     final = PDone("counter")
+
+-- A number renders via str_from_int (int→string gap closed).
+claim sat_int
+    final ∈ PS = run(pretty_walk, WExpr(EInt(42)))
+    final = PDone("42")
+
+-- A negative number reattaches the sign.
+claim sat_int_negative
+    final ∈ PS = run(pretty_walk, WExpr(EInt(0 - 7)))
+    final = PDone("-7")
+
+-- A Bool renders via the `b ? "true" : "false"` ternary.
+claim sat_bool
+    final ∈ PS = run(pretty_walk, WExpr(EBool(true)))
+    final = PDone("true")
+
+-- A Unicode operator glyph survives the round-trip (#16 closed).
+claim sat_binary_unicode
+    final ∈ PS = run(pretty_walk, WExpr(EBinary(OpAnd, EIdentifier("p"), EIdentifier("q"))))
+    final = PDone("p ∧ q")
+
+-- A membership body item renders the `∈` glyph faithfully.
+claim sat_membership_unicode
+    final ∈ PS = run(pretty_walk, WBody(BIMembership("x", "Int", PNone)))
+    final = PDone("x ∈ Int")
 
 -- Recursion routed: a binary with an ASCII operator renders BOTH operands.
 claim sat_binary_ascii

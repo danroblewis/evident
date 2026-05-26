@@ -66,7 +66,7 @@ fn z3_int<'ctx>(ctx: &'ctx Context, n: i64) -> Int<'ctx> {
 }
 
 fn z3_str<'ctx>(ctx: &'ctx Context, s: &str) -> Z3Str<'ctx> {
-    Z3Str::from_str(ctx, s).expect("nul byte in source string")
+    crate::translate::z3_string(ctx, s).expect("nul byte in source string")
 }
 
 fn z3_bool<'ctx>(ctx: &'ctx Context, b: bool) -> Bool<'ctx> {
@@ -641,7 +641,7 @@ pub fn value_enum_to_datatype<'ctx>(
 ) -> Option<Datatype<'ctx>>
 where 'ctx: 'static
 {
-    use z3::ast::{Bool as Z3Bool, Dynamic, Int as Z3Int, String as Z3Str};
+    use z3::ast::{Bool as Z3Bool, Dynamic, Int as Z3Int};
     let Value::Enum { enum_name, variant, fields } = v else { return None };
     let by_name = enums.by_name.borrow();
     let (sort, _decl) = by_name.get(enum_name)?;
@@ -656,7 +656,7 @@ where 'ctx: 'static
         let dyn_v: Dynamic<'static> = match f {
             Value::Int(n)  => Dynamic::from_ast(&Z3Int::from_i64(ctx, *n)),
             Value::Bool(b) => Dynamic::from_ast(&Z3Bool::from_bool(ctx, *b)),
-            Value::Str(s)  => Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?),
+            Value::Str(s)  => Dynamic::from_ast(&crate::translate::z3_string(ctx, s).ok()?),
             Value::Real(r) => {
                 let i = (*r * 1_000_000.0) as i64;
                 Dynamic::from_ast(&Real::from_real(ctx, i as i32, 1_000_000))

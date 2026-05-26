@@ -435,9 +435,9 @@ any divergence is a bug in the faster tier, never a "known difference."
 Mirror the self-hosting cross-validation tests already in the tree —
 `runtime/tests/subscriptions_equivalence.rs`,
 `runtime/tests/validate_equivalence.rs`,
-`runtime/tests/pretty_equivalence.rs`. Those run a corpus through two
-implementations and assert byte-identical output, with the Rust impl
-canonical. Here:
+`runtime/tests/pretty_correctness.rs`. Those run a corpus through the
+self-hosted impl and pin its output (the Rust twins, where they once
+existed, are now retired). Here:
 
 - **Corpus**: a set of nested-FSM fixtures, smallest-first — the counter
   (`run(decrement, 50)` → `0`), a sum-a-tree (`enum Tree = Leaf(Int) |
@@ -448,10 +448,11 @@ canonical. Here:
   strategy** — forced via `EVIDENT_NESTED_STRATEGY={blocking,loop,unroll}`
   (§ 3) — and assert the returned Values are identical, with the
   **`blocking` result canonical**.
-- **No known-divergence tier.** Unlike `pretty_equivalence` (which has a
-  sentinel tier for shapes the Evident impl can't yet render), the three
-  nested strategies compute the *same function by definition*. A
-  divergence is always a bug — there is nothing to whitelist.
+- **No sentinel tier.** Unlike `pretty_correctness` (which pins a
+  `<real>` sentinel for the one shape the renderer can't render — `EReal`,
+  no Z3 real→string), the three nested strategies compute the *same
+  function by definition*. A divergence is always a bug — there is
+  nothing to whitelist.
 
 ```text
 for fixture in CORPUS:
