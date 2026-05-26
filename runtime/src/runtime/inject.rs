@@ -1,54 +1,20 @@
-//! FSM-aware membership injectors (the two whole-program-table sub-passes):
-//!   * `inject_claim_arg_types` — fresh output names in positional calls
-//!   * `inject_lhs_eq_types` — Identifier = Expr chained-membership inference
-//!
-//! The other two sub-passes — `inject_fsm_params` (implicit `state_next` /
-//! `last_results` / `effects`) and `inject_prev_tick_decls` (`_var`
-//! time-shift slots + `is_first_tick`) — were self-contained (they decide
-//! from one body alone), and as of session REVIVE-inject they self-host in
-//! Evident: see `stdlib/passes/inject.ev` + `crate::portable::inject`.
-//! `runtime/src/runtime/load.rs` calls the Evident `fsm_params` / `prev_tick`
-//! free functions for those, and the two functions here directly. The two
-//! kept here resolve a name's type against the whole-program schema table +
-//! enum registry, which the marshaler can't yet thread into the FSM per
-//! claim (Gap D, `examples/COUNTEREXAMPLES.md` #27).
+//! Two whole-program-table inject passes: `inject_claim_arg_types` and `inject_lhs_eq_types`.
+//! Others (`inject_fsm_params`, `inject_prev_tick_decls`) self-host in `stdlib/passes/inject.ev`.
 
 use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
 use std::collections::HashMap;
 
-/// Infer types for fresh names used as positional args in claim
-/// calls. When the user writes
-///
-///   set_draw_color(win.renderer, Color(...), sky_eff)
-///   effects = ⟨sky_eff, ...⟩
-///
-/// `sky_eff` is not declared as a Membership but its type is recoverable
-/// from `set_draw_color`'s third param (`out ∈ Effect`). This pass
-/// auto-injects `sky_eff ∈ Effect` so the user can drop the manual
-/// decl line.
-///
-/// **Typo defense**: we only infer when the name appears in ≥ 2
-/// expression positions across the body. If a name shows up exactly
-/// once (just the call site), it might be a typo of an intended
-/// reference — leave it alone so translation fails loudly. The common
-/// case (claim-call output threaded into the effects list) hits ≥ 2
-/// uses naturally.
-///
-/// Handles method-style `recv.claim(args)` too: the receiver counts
-/// as a positional arg, shifting the arg-to-param mapping by 1.
+/// Inject `X ∈ T` for undeclared fresh positional-arg names whose type is recoverable from
+/// the called claim's params. Typo defense: ≥ 2 uses. Handles `recv.claim` (offset 1).
 pub(crate) fn inject_claim_arg_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if s.external { return Ok(()); }
-    // Apply to fsm bodies and ordinary claim bodies alike — the
-    // pattern is the same wherever a positional claim call has a
-    // fresh output arg.
     let _ = Keyword::Fsm;
 
-    // Step 1: declared names (memberships).
     let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
     for item in &s.body {
         if let BodyItem::Membership { name, .. } = item {
@@ -56,7 +22,6 @@ pub(crate) fn inject_claim_arg_types(
         }
     }
 
-    // Step 2: count Identifier references across body expressions.
     let mut uses: HashMap<String, usize> = HashMap::new();
     fn walk(e: &Expr, uses: &mut HashMap<String, usize>) {
         match e {
@@ -91,29 +56,15 @@ pub(crate) fn inject_claim_arg_types(
         }
     }
 
-    // Step 3: scan body for positional claim calls. For each
-    // Identifier arg that's fresh + multi-use, look up the
-    // corresponding param's type from the called claim and queue
-    // a Membership injection.
     let mut to_inject_map: HashMap<String, String> = HashMap::new();
 
-    // Dispatch resolver, subschema-aware. Three flavors:
-    //   * Subschema: `recv.subclaim` where recv is a body Membership
-    //     of record T AND T's body has SubclaimDecl `subclaim`.
-    //     Args bind to subclaim's leading Memberships starting at
-    //     position 0 (the receiver is NOT a positional arg — it
-    //     provides the parent-type field scope at invocation time).
-    //   * Receiver-prefix: `recv.claim` where claim is just a plain
-    //     known schema. Receiver becomes the first positional arg,
-    //     so args bind starting at slot 1.
-    //   * Plain: bare `claim(args)`. Args bind from slot 0.
+    // Resolve a call name to (claim_name, arg_offset): subschema (offset 0),
+    // receiver-prefix (offset 1, receiver counts as first arg), or plain (offset 0).
     let resolve = |name: &str| -> Option<(String, /*arg_offset:*/ usize)> {
         if schemas.contains_key(name) {
             return Some((name.to_string(), 0));
         }
         let (prefix, suffix) = name.rsplit_once('.')?;
-        // Subschema check: prefix is a single-segment Membership of
-        // a record type with `suffix` as a SubclaimDecl.
         if !prefix.contains('.') {
             for item in &s.body {
                 if let BodyItem::Membership { name: mname, type_name, .. } = item {
@@ -129,7 +80,6 @@ pub(crate) fn inject_claim_arg_types(
                 }
             }
         }
-        // Receiver-prefix fallback.
         if schemas.contains_key(suffix) {
             return Some((suffix.to_string(), 1));
         }
@@ -150,13 +100,12 @@ pub(crate) fn inject_claim_arg_types(
             .collect();
         for (i, arg) in args.iter().enumerate() {
             let Expr::Identifier(arg_name) = arg else { continue; };
-            if arg_name.contains('.') { continue; }   // field-access, not fresh
+            if arg_name.contains('.') { continue; }
             if declared.contains(arg_name) { continue; }
-            if schemas.contains_key(arg_name) { continue; }   // claim/type name
+            if schemas.contains_key(arg_name) { continue; }
             let Some((_, param_type)) = claim_params.get(i + arg_offset) else { continue; };
             let count = uses.get(arg_name).copied().unwrap_or(0);
-            if count < 2 { continue; }                // typo defense
-            // First call wins if multiple sites disagree on type.
+            if count < 2 { continue; }
             to_inject_map.entry(arg_name.clone()).or_insert_with(|| param_type.clone());
         }
     };
@@ -183,7 +132,6 @@ pub(crate) fn inject_claim_arg_types(
 
     if to_inject_map.is_empty() { return Ok(()); }
     let insert_pos = s.param_count;
-    // Stable order for diagnostics.
     let mut entries: Vec<(String, String)> = to_inject_map.into_iter().collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     for (i, (name, type_name)) in entries.into_iter().enumerate() {
@@ -194,20 +142,8 @@ pub(crate) fn inject_claim_arg_types(
     Ok(())
 }
 
-/// Infer Memberships for body-level `Identifier = Expr` constraints
-/// whose LHS is undeclared and whose RHS has a recoverable type.
-///
-/// Lets a subclaim or fsm body write
-///
-///   out = LibCall("...", "...", "...", ⟨…⟩)
-///
-/// without first declaring `out ∈ Effect` — the RHS's `LibCall` is
-/// an Effect-constructor variant, so we inject `out ∈ Effect` at
-/// the head of the body. Same idea for record constructors
-/// (`pos = IVec2(3, 4)` infers `pos ∈ IVec2`).
-///
-/// Recursive: also processes SubclaimDecls inside the body, so the
-/// inference fires inside types' rendering subclaims.
+/// Inject `X ∈ T` for undeclared `X = Expr` body constraints when `T` is recoverable from
+/// the RHS (enum variant, record ctor, field type). Recurses into SubclaimDecls.
 pub(crate) fn inject_lhs_eq_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
@@ -215,8 +151,6 @@ pub(crate) fn inject_lhs_eq_types(
 ) {
     use crate::core::ast::{BinOp, BodyItem, Expr, Pins};
 
-    // Collect names already declared in this body, with their types
-    // (for field-access inference via dotted identifiers).
     let mut declared_types: HashMap<String, String> = HashMap::new();
     for item in &s.body {
         if let BodyItem::Membership { name, type_name, .. } = item {
@@ -226,10 +160,7 @@ pub(crate) fn inject_lhs_eq_types(
     let declared: std::collections::HashSet<String> =
         declared_types.keys().cloned().collect();
 
-    // Walk a dotted identifier path (`world.tick`, `win.pos.x`) and
-    // return the leaf field's declared type. Looks up `head` in the
-    // current body's memberships, then chains through schema bodies
-    // for each subsequent segment.
+    // Walk a dotted path (e.g. `world.tick`) and return the leaf field's type.
     fn lookup_field_type(
         dotted: &str,
         declared_types: &HashMap<String, String>,
@@ -251,16 +182,7 @@ pub(crate) fn inject_lhs_eq_types(
         Some(current_type)
     }
 
-    // Top-level inference: looks at an Expr and returns its type if
-    // determinable. Leaves bare primitive literals (`Int(_)`, etc.)
-    // to query-time inference. Recursive helpers DO match literals
-    // because they're inside compound shapes (ternary arms, binary
-    // operands) where the chained-membership inference is the only
-    // way to know the result type.
-    //
-    // Recursive: ternaries / matches descend into arms; binary ops
-    // either yield Bool (comparisons / logical) or recurse into
-    // operands (arithmetic).
+    // Infer a type from an Expr recursively (ternary arms, match arms, binary ops).
     fn infer_recursive(
         e: &Expr,
         declared_types: &HashMap<String, String>,
@@ -280,7 +202,6 @@ pub(crate) fn inject_lhs_eq_types(
                 None
             }
             Expr::Field(recv, field) => {
-                // Compose the dotted path from receiver if it's an Identifier.
                 if let Expr::Identifier(head) = recv.as_ref() {
                     return lookup_field_type(
                         &format!("{head}.{field}"), declared_types, schemas);
@@ -317,9 +238,7 @@ pub(crate) fn inject_lhs_eq_types(
         }
     }
 
-    // Top-level wrapper: skip bare primitive literals. Top-level
-    // untyped primitives (`x = 5`) are intentionally left untyped —
-    // declare them explicitly (`x ∈ Int = 5`).
+    // Top-level: skip bare primitive literals — declare them explicitly (`x ∈ Int = 5`).
     fn infer_type(
         e: &Expr,
         declared_types: &HashMap<String, String>,
@@ -332,22 +251,20 @@ pub(crate) fn inject_lhs_eq_types(
         infer_recursive(e, declared_types, schemas, enums)
     }
 
-    // Walk body constraints; queue inferrable Memberships.
     let mut to_inject: Vec<(String, String)> = Vec::new();
     let mut already_queued: std::collections::HashSet<String> = std::collections::HashSet::new();
     for item in &s.body {
         let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else { continue };
         let Expr::Identifier(name) = lhs.as_ref() else { continue };
-        if name.contains('.') { continue; }                  // field access on existing record
-        if declared.contains(name) { continue; }              // already declared
-        if already_queued.contains(name) { continue; }        // first eq wins
-        if schemas.contains_key(name) { continue; }           // not a fresh local — claim/type name
+        if name.contains('.') { continue; }
+        if declared.contains(name) { continue; }
+        if already_queued.contains(name) { continue; }
+        if schemas.contains_key(name) { continue; }
         let Some(ty) = infer_type(rhs, &declared_types, schemas, enums) else { continue };
         to_inject.push((name.clone(), ty));
         already_queued.insert(name.clone());
     }
 
-    // Inject at body head (after first-line params).
     let insert_pos = s.param_count;
     for (i, (name, type_name)) in to_inject.into_iter().enumerate() {
         s.body.insert(insert_pos + i, BodyItem::Membership {
@@ -355,7 +272,6 @@ pub(crate) fn inject_lhs_eq_types(
         });
     }
 
-    // Recurse into nested subclaims.
     for item in s.body.iter_mut() {
         if let BodyItem::SubclaimDecl(sub) = item {
             inject_lhs_eq_types(sub, schemas, enums);

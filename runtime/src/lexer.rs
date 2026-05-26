@@ -1,11 +1,5 @@
-//! Tokenize Evident source. Handles the Unicode operators directly
-//! (no separate normalization pass).
-//!
-//! Indentation is significant — every newline emits a `Newline` token,
-//! and the parser tracks indent level by counting leading whitespace
-//! on the next non-blank line. We don't emit explicit Indent/Dedent
-//! tokens here; the parser handles indentation as part of statement
-//! recognition.
+//! Tokenize Evident source. Handles Unicode operators directly.
+//! Indentation-significant: newlines → `Newline`; leading spaces → `Indent(n)`.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -71,9 +65,7 @@ pub enum Token {
 
     // Layout
     Newline,
-    /// Number of leading-space columns on a new logical line. Emitted
-    /// after a Newline (and at the start of input) so the parser can
-    /// derive Indent/Dedent.
+    /// Leading-space column count on a new logical line; emitted after `Newline`.
     Indent(usize),
 
     // Marker for end-of-input
@@ -100,19 +92,10 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
     let mut chars = src.chars().peekable();
     let mut line = 1usize;
     let mut col = 1usize;
-    // Lexer state: at_line_start=true causes the next non-blank stretch
-    // to count leading whitespace and emit an Indent(n). The initial
-    // value is true so the very first line gets an Indent.
+    // at_line_start=true: next non-blank content emits Indent(n). True initially for line 1.
     let mut at_line_start = true;
     let mut current_indent;
-    // Bracket-nesting depth: incremented on `(`, `[`, `{`, `⟨`,
-    // decremented on the matching closers. While > 0, newlines are
-    // consumed silently and Indent tracking is suspended — so a long
-    // expression can be split across multiple lines inside any group
-    // without the parser seeing intervening Newline / Indent tokens.
-    // Mirrors Lark's default "newlines inside parens are ignored"
-    // behavior, which the Python parser inherits for free. See
-    // `parser/src/grammar.lark` line 33 for the corresponding note.
+    // paren_depth > 0: newlines are silently consumed so expressions can span lines inside groups.
     let mut paren_depth: usize = 0;
 
     while let Some(&c) = chars.peek() {
@@ -126,7 +109,6 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     _    => break,
                 }
             }
-            // Skip blank lines and comment-only lines without emitting an Indent.
             if let Some(&ch) = chars.peek() {
                 if ch == '\n' {
                     chars.next(); line += 1; col = 1;
@@ -134,7 +116,6 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     continue;
                 }
                 if ch == '-' {
-                    // Look ahead for second '-'
                     let mut clone = chars.clone();
                     clone.next();
                     if clone.peek() == Some(&'-') {
@@ -147,8 +128,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     }
                 }
             } else {
-                // EOF after some indent.
-                break;
+                break; // EOF after indent
             }
             tokens.push(Token::Indent(current_indent));
             at_line_start = false;
@@ -164,14 +144,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     tokens.push(Token::Newline);
                     at_line_start = true;
                 }
-                // Else: silently consume — we're mid-expression inside
-                // a (..)/[..]/{..}/⟨..⟩ group. Don't emit Newline;
-                // don't trigger the at_line_start indent-counting block
-                // on the next iteration. Leading whitespace on the
-                // continuation line falls through to the ' ' / '\t' arm.
+                // else: inside a group — consume silently, no Indent tracking
             }
             '-' => {
-                // `--` comment, or unary/binary minus. Look at second char.
                 let mut clone = chars.clone();
                 clone.next();
                 if clone.peek() == Some(&'-') {
@@ -186,9 +161,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 }
             }
             '"' => {
-                // Double-quoted string. Supports \" and \\ escapes; everything
-                // else is literal. Single-line only — newlines inside are an
-                // error (matches the Python grammar).
+                // Double-quoted string; `\"` and `\\` escapes; no embedded newlines.
                 chars.next(); col += 1;
                 let mut s = String::new();
                 loop {
@@ -224,9 +197,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                         chars.next(); col += 1;
                     } else { break; }
                 }
-                // Real literal: `<digits>.<digits>`. Only consume the dot
-                // if it's followed by a digit — otherwise it's the field-
-                // access operator (`3.foo` stays Int(3) Dot Ident(foo)).
+                // Real: `<digits>.<digits>`. Only consume dot if next char is digit
+                // (otherwise it's field-access: `3.foo` → Int(3) Dot Ident(foo)).
                 if chars.peek() == Some(&'.') {
                     let mut clone = chars.clone();
                     clone.next();
@@ -294,8 +266,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             }
             '=' => {
                 chars.next(); col += 1;
-                // ASCII `=>` → Implies (matches Unicode ⇒). Used in
-                // implies-blocks and trace-step assertions.
+                // `=>` → Implies (same as Unicode ⇒).
                 if chars.peek() == Some(&'>') {
                     chars.next(); col += 1;
                     tokens.push(Token::Implies);

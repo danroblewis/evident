@@ -1,34 +1,5 @@
-//! `desugar` — the source-level `Seq(T)`-concat flattening
-//! (`desugar_seq_concat`). **Sole implementation: the self-hosted Evident
-//! pass** (`stdlib/passes/desugar.ev`). The canonical Rust gather/flatten/
-//! rewrite walk (in `runtime/src/runtime/desugar.rs`) is deleted; the
-//! production load path flattens through here.
-//!
-//! Two RECURSIVE, value-carrying kernels run as stack-FSMs over the SHARED
-//! marshaler ([`crate::translate::ast_encoder`]):
-//!   - `desugar_gather`  — body → `Assoc` cons-list of `name ↦ ⟨items⟩`
-//!     bindings (pass-1). Structural match, no string equality, so it
-//!     self-hosts cleanly.
-//!   - `desugar_flatten` — an `Expr` Concat spine → an ordered chunk stream
-//!     (literal items + identifier `FRef` markers), or `FFail`.
-//!
-//! ## What stays in Rust, and why
-//!
-//!   1. **The pre-order `rewrite` tree-walk** ([`rewrite`]) — which `Expr`
-//!      nodes to visit and where to splice the flattened `SeqLit`. Each
-//!      `Concat`'s splice value depends on `FRef` resolution, and that
-//!      string-keyed lookup stays in Rust (in-solve string equality blows up
-//!      Z3 on string-heavy flatten states — the validate/#18 cousin), so the
-//!      walk stays with it. A whole-body-return `desugar_rewrite` FSM was
-//!      evaluated and deferred (SEED-marshal).
-//!   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` against
-//!      the gathered map ([`flatten`]): the `name = key` compare is a
-//!      `HashMap` lookup here, out of the per-tick solve.
-//!
-//! `unify_world_syntax`, the other desugar pass, stays canonical Rust (it
-//! rewrites identifier strings by prefix-strip + format — no Evident
-//! string-construction operator yet). `desugar` is a load-time pass; per-tick
-//! runtime is untouched.
+//! `desugar_seq_concat` via `stdlib/passes/desugar.ev`; `rewrite` + `FRef`
+//! lookup stay in Rust (in-solve string-eq blows up Z3 — #18 cousin).
 
 use std::collections::HashMap;
 
@@ -40,18 +11,8 @@ use crate::translate::ast_encoder::{body_item_list_to_value, expr_to_value};
 
 guarded_runner!(runner, "passes/desugar.ev", "desugar_gather");
 
-// ─────────────────────────────────────────────────────────────────────
-// The two stack-FSM kernels (Evident) + the FRef lookup (Rust)
-// ─────────────────────────────────────────────────────────────────────
-
-/// Pass-1: gather `name = ⟨items⟩` bindings via `desugar_gather`, then decode
-/// the `Assoc` cons-list into a Rust `name → items` map. The string-keyed map
-/// lives in Rust (string equality is unreliable in-solve — #18 / the validate
-/// blow-up — so `flatten` does the lookup here). Empty on any failure.
-///
-/// Last-wins on duplicate names mirrors the canonical HashMap: `desugar_gather`
-/// prepends, so the last binding sits at the cons head and `or_insert`
-/// (first-seen-wins on the head-first walk) keeps it.
+/// Drive `desugar_gather` → `name → items` map (string-keyed lookup in Rust,
+/// not in-solve). Empty on any failure.
 fn gather(runner: &EvidentRunner, body: &[BodyItem]) -> HashMap<String, Vec<Expr>> {
     let seed = body_item_list_to_value(body);
     let Some(assoc) = run_done_payload(runner, "desugar_gather", seed, "GDone", "desugar/evident")
@@ -60,8 +21,6 @@ fn gather(runner: &EvidentRunner, body: &[BodyItem]) -> HashMap<String, Vec<Expr
     };
     let mut map = HashMap::new();
     let mut cur = &assoc;
-    // Walk the `Assoc` spine (ANil | ACons(AEntry, Assoc)); each entry is
-    // MakeAEntry(name, ExprList).
     while let Value::Enum { variant, fields, .. } = cur {
         match (variant.as_str(), fields.as_slice()) {
             ("ANil", _) => break,
@@ -85,15 +44,8 @@ fn gather(runner: &EvidentRunner, body: &[BodyItem]) -> HashMap<String, Vec<Expr
     map
 }
 
-/// Resolve a `Concat` subtree `e` against the gathered `bindings`. Mirrors the
-/// canonical `flatten`: `Some(items)` when every operand resolves (a literal
-/// `⟨…⟩` or a bound identifier), `None` otherwise.
-///
-/// The FSM returns a head-first chunk stream (`FDone(FChunks)`) — each chunk a
-/// literal item (`FLitItem`) or an unresolved identifier ref (`FRef`); `FFail`
-/// for a non-resolvable operand shape. We reverse to source order, then
-/// expand: `FLitItem` contributes itself; `FRef(n)` contributes `bindings[n]`
-/// (VERBATIM) or fails the whole flatten if `n` is unbound.
+/// Drive `desugar_flatten` over `e`; reverse the head-first chunk stream and
+/// expand: `FLitItem` → itself, `FRef(n)` → `bindings[n]` or `None`.
 fn flatten(runner: &EvidentRunner, e: &Expr, bindings: &HashMap<String, Vec<Expr>>) -> Option<Vec<Expr>> {
     let chunks = match runner.run_fsm("desugar_flatten", expr_to_value(e)) {
         Ok(Value::Enum { variant, fields, .. }) if variant == "FDone" && fields.len() == 1 => {
@@ -105,7 +57,6 @@ fn flatten(runner: &EvidentRunner, e: &Expr, bindings: &HashMap<String, Vec<Expr
             return None;
         }
     };
-    // Walk the head-first `FChunks` spine into source order.
     let mut rev: Vec<&Value> = Vec::new();
     let mut cur = &chunks;
     while let Value::Enum { variant, fields, .. } = cur {
@@ -130,11 +81,8 @@ fn flatten(runner: &EvidentRunner, e: &Expr, bindings: &HashMap<String, Vec<Expr
     Some(out)
 }
 
-/// Pre-order rewrite of one Expr — a faithful copy of the canonical
-/// `rewrite`, with `flatten` delegated to the Evident FSM (+ Rust
-/// ref-resolution). A `Concat` that fully flattens is replaced by a single
-/// `SeqLit` (no further recursion into it); everything else recurses into
-/// children, in the same order.
+/// Pre-order rewrite: replace flattened `Concat` with `SeqLit`; recurse into
+/// all other expr children.
 fn rewrite(runner: &EvidentRunner, e: &mut Expr, bindings: &HashMap<String, Vec<Expr>>) {
     if let Expr::Binary(BinOp::Concat, ..) = e {
         if let Some(items) = flatten(runner, e, bindings) {
@@ -176,11 +124,7 @@ fn rewrite(runner: &EvidentRunner, e: &mut Expr, bindings: &HashMap<String, Vec<
     }
 }
 
-/// Gather + rewrite one schema (and recurse into subclaims). Subclaims are
-/// held as Rust `SchemaDecl`s (never round-tripped through the marshaler), so
-/// their `external` flag and nested-ctor `MatchPattern`s survive intact — the
-/// in-place, never-round-trip-an-untouched-node discipline that keeps the
-/// rewrite lossless despite the marshaler's `MatchPattern` history.
+/// Gather + rewrite one schema's body in place, then recurse into subclaims.
 fn rewrite_schema(runner: &EvidentRunner, s: &mut SchemaDecl) {
     if s.external {
         return;
@@ -204,20 +148,8 @@ fn rewrite_schema(runner: &EvidentRunner, s: &mut SchemaDecl) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Production entry point
-// ─────────────────────────────────────────────────────────────────────
-
-/// Flatten `Seq(T)` concatenations in `s` (in place) via the self-hosted
-/// `desugar_gather` / `desugar_flatten` pass. **The runtime's sole
-/// `desugar_seq_concat` entry point** — `runtime::desugar::desugar_seq_concat`
-/// (on the load path) delegates here.
-///
-/// A schema with no `++` Concat ANYWHERE is a byte-identical no-op, so
-/// [`schema_has_seq_concat`] short-circuits it (most `++` is String concat,
-/// left alone) — keeping `desugar` near-free on the common case and skipping
-/// the engine build entirely. The guarded runner short-circuits the bootstrap
-/// re-entry (the trusted pass file has no Seq concat anyway).
+/// Flatten `Seq(T)` concatenations in `s` in place. No-op (and no engine
+/// build) when the schema contains no `++` Concat.
 pub fn desugar_seq_concat(s: &mut SchemaDecl) {
     if !schema_has_seq_concat(s) {
         return;
@@ -226,14 +158,8 @@ pub fn desugar_seq_concat(s: &mut SchemaDecl) {
     rewrite_schema(&runner, s);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Concat-free fast path
-// ─────────────────────────────────────────────────────────────────────
-
-/// Does `s` contain a `Seq`-concat (`Expr::Binary(Concat, …)`) ANYWHERE the
-/// pass would rewrite it — a `Constraint` expr, a `ClaimCall` mapping value,
-/// or a nested subclaim's body? A cheap, pure-Rust structural scan; `false`
-/// means [`desugar_seq_concat`] short-circuits.
+/// True if `s` contains a `Concat` anywhere the pass would rewrite it;
+/// `false` lets `desugar_seq_concat` short-circuit cheaply.
 fn schema_has_seq_concat(s: &SchemaDecl) -> bool {
     s.body.iter().any(|item| match item {
         BodyItem::Constraint(e) => expr_has_concat(e),
@@ -243,9 +169,7 @@ fn schema_has_seq_concat(s: &SchemaDecl) -> bool {
     })
 }
 
-/// True if `e` contains a `Concat` binary anywhere in its tree. Visits the
-/// same nodes as [`rewrite`] so the guard and the rewrite agree on
-/// reachability.
+/// True if `e` contains a `Concat` anywhere. Visits same nodes as `rewrite`.
 fn expr_has_concat(e: &Expr) -> bool {
     match e {
         Expr::Binary(BinOp::Concat, ..) => true,

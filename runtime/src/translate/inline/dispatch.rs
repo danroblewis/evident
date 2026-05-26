@@ -1,8 +1,5 @@
-//! Call-name resolution for the inline walker: turn a (possibly
-//! dotted) call name into a `CallDispatch` flavor, plus the static
-//! `∀`-unroll analysis that decides whether a quantifier body needs
-//! AST-level expansion so method-style subclaim calls reach the
-//! solver-aware inline pass.
+//! Call-name resolution: dotted names → `CallDispatch` flavors, plus `∀`-unroll
+//! analysis for method-style subclaim calls in quantifier bodies.
 
 use std::collections::HashMap;
 
@@ -11,34 +8,16 @@ use z3::ast::Ast;
 use crate::core::ast::*;
 use crate::core::Var;
 
-/// Resolution result for a (possibly dotted) call name like
-/// `recv.subclaim_name`. Three flavors, tried in priority order:
-///
-///   * `Subschema { recv, type, subclaim }` — `recv` is a body
-///     Membership of record type T and `subclaim` is declared as
-///     `subclaim … ` inside T. Dispatch rebinds T's fields onto
-///     `recv.field` so the subclaim body's bare references resolve
-///     to the receiver's leaves.
-///
-///   * `ReceiverPrefix { claim_name, recv }` — `recv` is anything
-///     (an Int, a dotted field) and the SUFFIX is a known claim.
-///     The receiver becomes the first positional arg. Fallback when
-///     the subschema path doesn't apply.
-///
-///   * `Plain { claim_name }` — the whole name is a known schema;
-///     no receiver involved.
+/// Dotted call resolved to: `Subschema` (recv has the subclaim on its type),
+/// `ReceiverPrefix` (suffix is a known claim), or `Plain` (whole name is known).
 pub(super) enum CallDispatch {
     Subschema { recv: String, type_name: String, claim_name: String },
     ReceiverPrefix { claim_name: String, recv: String },
     Plain { claim_name: String },
 }
 
-/// True if `e` contains a subexpression that's a method-style
-/// subclaim call (`recv.subclaim(args)` resolving to a SubschemaDecl
-/// on `recv`'s type). Used to decide whether a `∀` body needs to
-/// be AST-expanded into per-iteration body items so each subclaim
-/// invocation reaches the inline pass (which has solver access)
-/// instead of going through translate_bool (which doesn't).
+/// True if `e` has a method-style subclaim call, meaning the `∀` body needs
+/// AST-expansion to reach the inline pass (translate_bool lacks solver access).
 pub(super) fn body_contains_subschema_call(
     e: &Expr,
     body_items: &[BodyItem],
@@ -74,22 +53,13 @@ pub(super) fn body_contains_subschema_call(
     }
 }
 
-/// Resolve the per-iteration element exprs for each bound variable
-/// in a `∀ … : body`. Returns `Some(Vec<(bound_var, element_expr_for_iter_i)>)`
-/// per iteration, OR None if the range shape isn't statically
-/// unrollable (length unknown / unsupported range form).
-///
-/// Supported ranges:
-///   * `coindexed(seq1, seq2, …)` with tuple binding `(a, b, …)` —
-///     element_i for bound k is `Index(Identifier(seq_k), Int(i))`.
-///   * Bare `Identifier(seq_name)` with single binding `a` —
-///     element_i is `Index(Identifier(seq_name), Int(i))`.
+/// Per-iteration element bindings for `∀` unrolling; None when not statically
+/// unrollable. Supports `coindexed(seqs…)` and bare `Identifier(seq)`.
 pub(super) fn resolve_forall_unroll(
     vars: &[String],
     range: &Expr,
     env: &HashMap<String, Var<'static>>,
 ) -> Option<Vec<Vec<(String, Expr)>>> {
-    // coindexed(seq1, …) — tuple binding.
     if let Expr::Call(name, args) = range {
         if name == "coindexed" && args.len() == vars.len() && !args.is_empty() {
             // Collect each seq's pinned length.
@@ -124,7 +94,6 @@ pub(super) fn resolve_forall_unroll(
             return Some(iters);
         }
     }
-    // Bare Identifier(seq_name) — single-name binding.
     if let Expr::Identifier(seq_name) = range {
         if vars.len() != 1 { return None; }
         let var = env.get(seq_name)?;
@@ -148,9 +117,7 @@ pub(super) fn resolve_forall_unroll(
     None
 }
 
-/// Walk the current body slice for a Membership matching `name`,
-/// return its declared type_name. Used to find a receiver's type
-/// when dispatching `recv.subclaim(args)`.
+/// Find the declared type of a body Membership by name.
 fn find_membership_type(items: &[BodyItem], name: &str) -> Option<String> {
     for item in items {
         if let BodyItem::Membership { name: n, type_name, .. } = item {
@@ -160,21 +127,18 @@ fn find_membership_type(items: &[BodyItem], name: &str) -> Option<String> {
     None
 }
 
-/// Walk a type's body for a SubclaimDecl matching `name`.
 fn type_has_subclaim(type_decl: &SchemaDecl, name: &str) -> bool {
     type_decl.body.iter().any(|item| matches!(item,
         BodyItem::SubclaimDecl(s) if s.name == name))
 }
 
-/// Resolve a call name with full receiver awareness. `body_items`
-/// is the surrounding body slice (used to look up the receiver's
-/// declared type).
+/// Resolve a call name to a `CallDispatch` flavor; `body_items` provides
+/// receiver type context.
 pub(super) fn resolve_call(
     name: &str,
     body_items: &[BodyItem],
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<CallDispatch> {
-    // No dots → plain claim invocation.
     if !name.contains('.') {
         if schemas.contains_key(name) {
             return Some(CallDispatch::Plain { claim_name: name.to_string() });
@@ -182,9 +146,7 @@ pub(super) fn resolve_call(
         return None;
     }
     let (prefix, suffix) = name.rsplit_once('.')?;
-    // (1) Subschema path: prefix is a bare body var of a record type
-    //     T, and T has a SubclaimDecl `suffix`. This is the
-    //     "use a field of a schema as a subschema" form.
+    // Subschema path: prefix is a body var of record type T with SubclaimDecl `suffix`.
     if !prefix.contains('.') {
         if let Some(type_name) = find_membership_type(body_items, prefix) {
             if let Some(type_decl) = schemas.get(&type_name) {
@@ -198,9 +160,7 @@ pub(super) fn resolve_call(
             }
         }
     }
-    // (2) Receiver-prefix fallback: suffix is a known claim and the
-    //     prefix gets prepended as the first positional arg. Works
-    //     even with multi-segment prefixes (`win.renderer.foo`).
+    // Receiver-prefix fallback: suffix is a known claim; prefix becomes first arg.
     if schemas.contains_key(suffix) {
         return Some(CallDispatch::ReceiverPrefix {
             claim_name: suffix.to_string(),
@@ -210,7 +170,7 @@ pub(super) fn resolve_call(
     None
 }
 
-/// Resolve for the `(args) ∈ rhs` form where rhs is an Identifier.
+/// Resolve `(args) ∈ rhs` where rhs is an Identifier.
 pub(super) fn resolve_call_name(
     rhs: &Expr,
     body_items: &[BodyItem],
@@ -220,11 +180,8 @@ pub(super) fn resolve_call_name(
     resolve_call(n, body_items, schemas)
 }
 
-/// Back-compat wrappers — the existing Plain / ReceiverPrefix
-/// dispatch arms below want the old `(claim_name, Option<recv>)`
-/// shape. These collapse Subschema cases out so those arms only
-/// see Plain / ReceiverPrefix (the Subschema arm above catches
-/// the rest first).
+/// Back-compat: collapse to `(claim_name, Option<recv>)`; Subschema → None
+/// (handled by a dedicated arm before these are reached).
 pub(super) fn method_dispatch_call_compat(
     name: &str,
     body_items: &[BodyItem],

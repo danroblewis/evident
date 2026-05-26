@@ -1,21 +1,5 @@
-//! One-shot evaluate variants that inject extra value bindings into
-//! a fresh solver beyond the schema's body and the user's `given` map.
-//!
-//!   * `evaluate_with_extra_assertion`     — pin a single enum-typed
-//!                                            variable to a Z3 Datatype
-//!                                            value. Used by
-//!                                            `query_with_program`.
-//!   * `evaluate_with_extra_assertions`    — same as above, but for
-//!                                            multiple pins in one
-//!                                            solve. Used by the
-//!                                            multi-FSM scheduler to
-//!                                            pin `state` +
-//!                                            `last_results` per tick.
-//!   * `evaluate_with_program_and_body`    — like `_with_extra_assertion`
-//!                                            but injects both a
-//!                                            `Program` enum value AND
-//!                                            a flat `Seq(BodyItem)` for
-//!                                            self-hosted desugar passes.
+//! One-shot evaluate variants: `_with_extra_assertion` (one enum pin), `_assertions` (multiple),
+//! `_with_program_and_body` (also injects Seq(BodyItem) for self-hosted passes).
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -29,17 +13,8 @@ use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64};
 use super::decode::extract_binding;
 
-/// Stage 3 helper: like `evaluate`, but additionally asserts that
-/// the variable named `extra_var` (which must have been declared in
-/// the schema body as an enum-typed Membership) equals `extra_value`.
-/// Used by `EvidentRuntime::query_with_program` to inject an
-/// encoded `Program` value into a self-hosted pass.
-///
-/// Implementation: copy of `evaluate` with one extra `solver.assert`
-/// after pass 2 and before the satisfiability check. Cleaner than
-/// extending `evaluate` with an Option<extra_assertion> closure
-/// because the AST-value injection is a niche operation that
-/// shouldn't pollute the main entry point's signature.
+/// Like `evaluate` but asserts `extra_var = extra_value` (enum-typed) before check.
+/// Used by `query_with_program` to inject an encoded `Program` into a self-hosted pass.
 pub fn evaluate_with_extra_assertion(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -56,7 +31,6 @@ pub fn evaluate_with_extra_assertion(
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Pass 1: declare. (Same as evaluate.)
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -82,16 +56,12 @@ pub fn evaluate_with_extra_assertion(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
-    // Populate Set var candidates from given Value::Set* — needed before
-    // body translation so `#s` cardinality folds to a literal count.
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
-    // Inject the extra value. Look up the variable, must be EnumVar
-    // (i.e. enum-typed Membership). Anything else gets a warning;
-    // assertion is silently skipped to avoid forcing UNSAT.
+    // Inject extra value; skip (with warning) if not EnumVar to avoid forcing UNSAT.
     if let Some(Var::EnumVar { ast, .. }) = env.get(extra_var) {
         solver.assert(&ast._eq(&extra_value));
     } else {
@@ -114,9 +84,7 @@ pub fn evaluate_with_extra_assertion(
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
 
-/// Like `evaluate_with_extra_assertion` but pins multiple enum-typed
-/// variables in one solve. Used by the effect loop to pin both
-/// `state` and `last_results` per step.
+/// Like `evaluate_with_extra_assertion` but pins multiple enum-typed vars in one solve.
 pub fn evaluate_with_extra_assertions(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -138,10 +106,6 @@ pub fn evaluate_with_extra_assertions(
                 declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
             BodyItem::Passthrough(claim_name) => {
-                // Same as `evaluate` — pull in the passthrough'd
-                // claim's Memberships so Pass 1.5's seq-length /
-                // pinned-int collection can apply to them before
-                // any `∀` over the inherited Seq tries to unroll.
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
@@ -163,8 +127,6 @@ pub fn evaluate_with_extra_assertions(
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
-    // Populate Set var candidates from given Value::Set* — needed before
-    // body translation so `#s` cardinality folds to a literal count.
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
@@ -179,19 +141,7 @@ pub fn evaluate_with_extra_assertions(
         }
     }
 
-    // Apply scalar `given` values (Int/Bool/String/Real). Same loop
-    // as `evaluate`'s pass 3 — needed for the multi-FSM scheduler to
-    // pin world.* fields each tick. Without this, callers using
-    // query_with_pins_and_given for sub-field pins silently get free
-    // (model-picked) values for the supposedly-given fields.
-    //
-    // `Value::Enum` values are also accepted here, so plugins that
-    // write enum-typed world fields (currently the reflection
-    // bridge's `world.program`) flow through the same path. The
-    // value is re-encoded as a Z3 Datatype against the registry,
-    // then asserted equal to the EnumVar's ast — same shape as the
-    // explicit `pins` list above, just discovered through the
-    // `given` map instead.
+    // Apply scalar given values; also accepts Value::Enum so enum-typed world fields flow through.
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         match (var, value) {
@@ -213,10 +163,7 @@ pub fn evaluate_with_extra_assertions(
                 }
             }
             _ => {
-                // Seq pin: (DatatypeSeqVar, SeqEnum) / (SeqVar, SeqInt) etc.
-                // The multi-FSM scheduler routes `last_results ∈ Seq(Result)`
-                // through here; without this the pin is silently dropped and
-                // the FSM solves with an unconstrained Seq.
+                // Seq pin: without this, last_results Seq pins are silently dropped.
                 if let Some(b) = super::super::extract::assert_seq_given(var, value, ctx, enums) {
                     solver.assert(&b);
                 }
@@ -239,15 +186,8 @@ pub fn evaluate_with_extra_assertions(
     EvalResult { satisfied, bindings, unsat_core_items: None }
 }
 
-/// Stage 5.5: like `evaluate_with_extra_assertion` but injects two
-/// related values — the encoded `Program` datatype AND a flat
-/// `Seq(BodyItem)` for the user's first claim's body. Lets a
-/// self-hosted pass iterate over arbitrary-length user programs
-/// via `∀ i ∈ {0..#body-1} : …`.
-///
-/// The seq-injection asserts both `#body = items.len()` and
-/// `body[i] = encoded(items[i])` for each i, so the variable's
-/// model is fully pinned to the user's source.
+/// Like `evaluate_with_extra_assertion` but also injects a `Seq(BodyItem)` for
+/// self-hosted passes; asserts `#body = items.len()` and each `body[i]`.
 pub fn evaluate_with_program_and_body(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -295,14 +235,12 @@ pub fn evaluate_with_program_and_body(
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited);
 
-    // Program injection.
     if let Some(Var::EnumVar { ast, .. }) = env.get(program_var) {
         solver.assert(&ast._eq(&program_value));
     } else {
         eprintln!("warning: program var `{}` is not enum-typed in `{}`",
                   program_var, schema.name);
     }
-    // Body Seq injection.
     if let Some(Var::DatatypeSeqVar { arr, len, fields, .. }) = env.get(body_var) {
         if !fields.is_empty() {
             eprintln!("warning: body var `{}` is record-typed seq, not enum-typed; skipping",

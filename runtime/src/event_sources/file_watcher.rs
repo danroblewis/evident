@@ -1,5 +1,4 @@
-//! File mtime watcher bridge. See `event_sources/mod.rs` for trait
-//! and shared helpers.
+//! File mtime watcher bridge.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,17 +12,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// File modification watcher. Polls the file's mtime at the
-/// configured interval; when it changes, increments the
-/// configured counter field. Subscribers see the delta and
-/// react. The path is set via the constructor; if the file
-/// doesn't exist, the source still polls (it'll fire when the
-/// file appears).
-///
-/// This is the simplest "external state changes" plugin —
-/// useful for watching config files, build outputs, etc. More
-/// efficient kernel-level mechanisms (inotify on Linux,
-/// FSEvents on macOS, kqueue on BSD) are deferred.
+/// Polls a file's mtime at the configured interval; increments the
+/// counter field when it changes. Still polls even if the file doesn't yet exist.
 pub struct FileWatcherSource {
     interval:    Duration,
     path:        std::path::PathBuf,
@@ -107,10 +97,8 @@ impl Drop for FileWatcherSource {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for FileWatcherSource. Installs iff
-/// the user's World declares `file_changed: Int` AND
-/// `EVIDENT_FILE_WATCH` names a path to watch. Poll interval
-/// comes from `EVIDENT_FILE_WATCH_MS` (default 200).
+/// Installs if World has `file_changed: Int` and `EVIDENT_FILE_WATCH` is set.
+/// Poll interval from `EVIDENT_FILE_WATCH_MS` (default 200ms).
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,

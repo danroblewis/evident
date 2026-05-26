@@ -1,42 +1,11 @@
-//! Body-item parsing: the four body-item shapes (passthrough, subclaim,
-//! claim-call, membership, expression-constraint) and the
-//! chained-membership desugaring (`0 < x ∈ Int < 5` → Membership +
-//! per-pair Constraints).
+//! Body-item parsing: passthrough, subclaim, claim-call, membership,
+//! constraint; chained-membership desugaring (`0 < x ∈ Int < 5`).
 
 use super::*;
 
 impl Parser {
-    /// Parse a Membership's type name and optional pin clause, given
-    /// `head` is the type-name ident currently at `self.peek()`.
-    /// Returns `Ok(Some(...))` on success, `Ok(None)` if the input
-    /// doesn't look like a recognized Membership shape (caller backs
-    /// up and tries to parse as an expression instead).
-    ///
-    /// Type-name shapes accepted:
-    ///   - bare ident:               `Nat`
-    ///   - named pins:               `IVec2 (x ↦ 0, y ↦ 0)`
-    /// Body-item-level recognition of a chained-comparison expression
-    /// with an embedded `∈ TypeName` step. Splits into a Membership
-    /// declaration plus one Constraint per comparison pair.
-    ///
-    ///   `pos_x ∈ Int = 5`         →  `pos_x ∈ Int` ; `pos_x = 5`
-    ///   `pos_x ∈ Int < 5`         →  `pos_x ∈ Int` ; `pos_x < 5`
-    ///   `0 < pos_x ∈ Int`         →  `pos_x ∈ Int` ; `0 < pos_x`
-    ///   `0 < pos_x ∈ Int < 5`     →  `pos_x ∈ Int` ; `0 < pos_x` ; `pos_x < 5`
-    ///   `pos_x ∈ Seq(Int)`        →  same single-Membership case
-    ///
-    /// The variable being declared is the operand immediately to the
-    /// left of `∈`. It must be a bare Identifier (no field access,
-    /// expression). Multi-name shorthand is supported when the comma
-    /// list sits at the operand position immediately to the left of
-    /// `∈`: `x, y, z ∈ Int < 5` and `0 < x, y, z ∈ Int < 5` both
-    /// expand to one Membership per name plus per-name copies of
-    /// every comparison-pair constraint.
-    ///
-    /// Returns `None` (and rewinds the cursor) if the line doesn't fit
-    /// this pattern. Carefully avoids consuming a regular set-membership
-    /// expression like `x ∈ pts ∧ …` — the chain-end check requires
-    /// a Newline / Eof / Indent immediately after the chain.
+    /// Try `[lhs cmp]* name ∈ TypeName [cmp rhs]*` → Membership + Constraints.
+    /// Returns None (rewinds) for anything that doesn't fit, including `x ∈ pts ∧ …`.
     pub(super) fn try_parse_chained_membership(&mut self) -> Result<Option<Vec<BodyItem>>> {
         let saved = self.pos;
 
@@ -46,15 +15,11 @@ impl Parser {
         };
         let mut operands: Vec<Expr> = vec![first];
         let mut ops: Vec<BinOp> = Vec::new();
-        // (var_idx, type_name, all names — 1 element for single-name,
-        //  2+ for `x, y, z ∈ Type` shorthand)
         let mut membership_at: Option<(usize, String, Vec<String>)> = None;
 
         loop {
-            // Multi-name shorthand: if the most recent operand is a
-            // bare Ident and the next tokens look like `, IDENT (, IDENT)* ∈`,
-            // consume the extra names. Only valid at the operand position
-            // immediately to the left of `∈`.
+            // Multi-name shorthand: `x, y, z ∈ Type`. Only consume extra names
+            // when each ident is followed by `,` or `∈` (guards against tuples).
             let mut extra_names: Vec<String> = Vec::new();
             if matches!(self.peek(), Token::Comma) {
                 let last_is_bare = matches!(operands.last(),
@@ -66,11 +31,6 @@ impl Parser {
                         let inner_save = self.pos;
                         self.bump();   // ,
                         if let Token::Ident(s) = self.peek().clone() {
-                            // Same protective lookahead as the existing
-                            // multi-name body-item path: only consume if
-                            // the next token after the new ident is itself
-                            // a `,` or `∈`. Avoids eating `x, y` from a
-                            // tuple-like expression.
                             let next_after = self.toks.get(self.pos + 1);
                             if matches!(next_after, Some(Token::Comma) | Some(Token::In)) {
                                 self.bump();
@@ -84,7 +44,6 @@ impl Parser {
                     if matches!(self.peek(), Token::In) && !names.is_empty() {
                         extra_names = names;
                     } else {
-                        // Not a multi-name shorthand; rewind comma consumption.
                         self.pos = mn_save;
                     }
                 }
@@ -92,17 +51,12 @@ impl Parser {
 
             if matches!(self.peek(), Token::In) {
                 if membership_at.is_some() {
-                    // Two ∈ in one chain — not a recognized form.
                     self.pos = saved;
                     return Ok(None);
                 }
                 self.bump();
-                // The RHS of ∈ in a chained membership must be a
-                // simple type name: a bare Ident, or a recognized
-                // compound `Ident(Ident)` for Seq/Set/Bag/Map.
-                // Followed by either a Newline-class token or
-                // another comparison op. Anything else (function call,
-                // pin form, expression) → bail.
+                // RHS must be bare Ident or `Ident(Ident)` (Seq/Set/etc),
+                // followed by a comparison op or line-end; anything else → bail.
                 let head = match self.peek().clone() {
                     Token::Ident(s) => s,
                     _ => { self.pos = saved; return Ok(None); }
@@ -167,9 +121,7 @@ impl Parser {
             return Ok(None);
         };
 
-        // The chain must end at a body-item boundary; otherwise the
-        // user wrote something like `pos_x ∈ Int = 5 ∧ …` and we
-        // should let the regular expression parser handle it.
+        // Must end at a body-item boundary; `pos_x ∈ Int = 5 ∧ …` falls through.
         if !matches!(self.peek(),
             Token::Newline | Token::Eof | Token::Indent(_)
         ) {
@@ -177,9 +129,6 @@ impl Parser {
             return Ok(None);
         }
 
-        // Desugar: emit one Membership per name first, then per-name
-        // copies of each comparison-pair constraint with the variable
-        // position substituted to the current name.
         let mut items: Vec<BodyItem> = names.iter().map(|n| BodyItem::Membership {
             name: n.clone(),
             type_name: type_name.clone(),
@@ -199,27 +148,8 @@ impl Parser {
     }
 
     pub(super) fn parse_body_item(&mut self) -> Result<Vec<BodyItem>> {
-        // Four shapes:
-        //   ..IDENT                                 → Passthrough composition
-        //   IDENT IN IDENT (followed by line-end)   → Membership declaration
-        //   <chain with ∈ TypeName embedded>        → Membership + Constraint(s)
-        //         e.g. `pos_x ∈ Int = 5`, `0 < pos_x ∈ Int < 5`,
-        //              `pos_x ∈ Int < 5`. Desugars to a Membership for
-        //              the var to the left of ∈, plus per-pair Constraints
-        //              for each comparison op in the chain. Single-name
-        //              only; multi-name + chain not supported yet.
-        //   <expr>                                  → Constraint
-        // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
-        // as an expression and ends up as a Constraint.
-
-        // halts_within(F, N) — surface syntax for an FSM-halt assertion.
-        // Recognized at the body-item level so the parser can lift it
-        // straight to BodyItem::HaltsWithin (no Expr wrapping). The
-        // inline walker dispatches to the fsm_unroll module which
-        // looks up F's body and lowers via exponentiation-by-squaring
-        // composition. F must be a bare identifier (claim name) and N
-        // a non-negative integer literal; anything else falls through
-        // to the regular Call parse and surfaces as a translator gap.
+        // `halts_within(F, N)` lifted directly to BodyItem::HaltsWithin;
+        // any other `halts_within(...)` shape falls through to Call parse.
         if let Token::Ident(name) = self.peek().clone() {
             if name == "halts_within"
                 && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
@@ -241,14 +171,11 @@ impl Parser {
                     }
                     return Ok(vec![BodyItem::HaltsWithin { fsm_name, n }]);
                 }
-                // Didn't match the strict (Ident, Int) shape — back up
-                // and let the regular Call parser handle it (will surface
-                // as a dropped constraint at translate time).
+                // Strict shape not matched — fall through to normal Call parse.
                 self.pos = saved;
             }
         }
 
-        // Passthrough: `..ClaimName` at body-item start.
         if matches!(self.peek(), Token::DotDot) {
             self.bump();
             match self.bump() {
@@ -258,31 +185,18 @@ impl Parser {
             }
         }
 
-        // Subclaim: `subclaim Name` followed by an indented body. Same
-        // shape as a top-level schema decl. The runtime-loader pulls
-        // the inner SchemaDecl out and registers it under its name so
-        // ClaimCall / passthrough can reference it.
         if matches!(self.peek(), Token::Subclaim) {
             return Ok(vec![self.parse_subclaim()?]);
         }
 
-        // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
-        // Also accepts `IDENT<T>(slot mapsto value, …)` — generic claim
-        // invocation. Distinguished from a parenthesized expression by
-        // the IDENT (optionally followed by `<...>`) immediately
-        // followed by `(`. Disambiguated from a generic function-call
-        // expression (record literal like `IVec2(0, 0)`) by checking
-        // that the second token inside the parens is `MapsTo` —
-        // specific to ClaimCall syntax.
+        // ClaimCall: `IDENT(slot ↦ value, …)`; distinguished from record literals
+        // by `MapsTo` as the second token inside the parens.
         if let Token::Ident(_) = self.peek() {
-            // Peek past optional `<...>` to find the `(` that opens
-            // the mappings list.
             let lparen_offset: Option<usize> = {
                 let after = self.toks.get(self.pos + 1);
                 if matches!(after, Some(Token::LParen)) {
                     Some(1)
                 } else if matches!(after, Some(Token::Lt)) {
-                    // Scan forward past balanced angle brackets.
                     let mut depth = 0i32;
                     let mut i = self.pos + 1;
                     loop {
@@ -312,7 +226,6 @@ impl Parser {
                             Token::Ident(s) => s,
                             _ => unreachable!(),
                         };
-                        // Consume optional `<args>` and append to name.
                         if matches!(self.peek(), Token::Lt) {
                             if let Some(args) = self.try_parse_generic_args_suffix()? {
                                 name.push_str(&args);
@@ -338,14 +251,8 @@ impl Parser {
                         return Ok(vec![BodyItem::ClaimCall { name, mappings }]);
                     }
                 }
-                // Otherwise fall through to expr-as-Constraint parsing,
-                // which handles record literals like `IVec2(0, 0)`.
             }
         }
-        // Chained-membership: try to parse `[lhs comp]* IDENT ∈ TypeName [comp rhs]*`
-        // and split into a Membership + a Constraint per comparison pair.
-        // Returns None (and rewinds) for anything that doesn't fit; the
-        // existing Membership and expression branches below handle the rest.
         if let Some(items) = self.try_parse_chained_membership()? {
             return Ok(items);
         }
@@ -356,10 +263,7 @@ impl Parser {
                 Token::Ident(s) => vec![s],
                 _ => unreachable!(),
             };
-            // Multi-name shorthand: `x, y, z ∈ Type …`. Each comma must
-            // be followed by an Ident that's itself followed by a Comma
-            // or `In` — protects against confusing `(a, b)` tuple
-            // bindings or comma-in-expr from being eaten here.
+            // Multi-name shorthand: each comma must be followed by Ident then `,`/`∈`.
             while matches!(self.peek(), Token::Comma) {
                 let inner_save = self.pos;
                 self.bump();   // ,
@@ -385,7 +289,6 @@ impl Parser {
                         }).collect());
                     }
                 }
-                // Not a recognized Membership shape — back up.
                 self.pos = saved;
             } else {
                 self.pos = saved;

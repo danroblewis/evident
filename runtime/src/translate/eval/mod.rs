@@ -1,31 +1,5 @@
-//! Public orchestrator entry points, in two families:
-//!
-//!   * **One-shot query** — `evaluate`, `evaluate_with_extra_assertion`,
-//!     `evaluate_with_extra_assertions`, `evaluate_with_program_and_body`,
-//!     `evaluate_with_core`. Each builds a fresh Solver, asserts the
-//!     schema's body (plus any caller extras), runs `check`, returns
-//!     a `QueryResult`. Variants exist for the different shapes of
-//!     "extra constraints" callers want to layer on (CLI `--given`,
-//!     test scaffolding, multi-FSM coordinator).
-//!
-//!   * **Per-step cached query** — `build_cache` (compile once) +
-//!     `run_cached` (step many times re-using the compiled solver) +
-//!     `sample_cached_inner` (n-distinct-models for `sample`). Used
-//!     by the effect loop to amortize translate cost across ticks.
-//!
-//! Submodule layout (each depends only on those above it):
-//!   * `solver`     — solver tuning, numeric helpers, env priming,
-//!                    declare-and-assert convenience.
-//!   * `decode`     — model → `Value` extractors (`extract_binding`,
-//!                    enum + seq decoders).
-//!   * `cached`     — `build_cache`, `run_cached`, `sample_cached_inner`.
-//!   * `extra`      — `evaluate_with_extra_assertion(s)`,
-//!                    `evaluate_with_program_and_body`.
-//!   * `core`       — `evaluate_with_core` (UNSAT-core variant).
-//!   * `decompose`  — `analyze_decomposition`, `classify_components`.
-//!
-//! `evaluate` itself lives in this file — it's THE entry point and
-//! the shape every other variant is a copy of.
+//! Public evaluate entry points. One-shot: `evaluate` (canonical), `_with_extra_assertion(s)`,
+//! `_with_program_and_body`, `_with_core`. Cached: `build_cache`/`run_cached`/`sample_cached_inner`.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -54,24 +28,11 @@ pub use self::core::evaluate_with_core;
 pub use decompose::{analyze_decomposition, classify_components, ClassifiedComponent};
 pub(crate) use decode::extract_binding;
 
-// Re-export to sibling translate modules. `extract_seq_enum` is
-// called by `super::eval::extract_seq_enum(...)` from
-// `translate::extract`'s composite-Seq path; preserve the
-// pre-split `pub(super)` visibility.
+// Preserve pub(super) visibility for translate::extract's composite-Seq path.
 pub(super) use decode::extract_seq_enum;
 
-/// Evaluate a single schema with optional pre-bound values, using the
-/// `schemas` table to resolve user-defined types referenced inside the
-/// schema body.
-///
-/// Sub-schema expansion: `task ∈ Task` doesn't create a Z3 const named
-/// `task`. It recursively declares one Z3 const per leaf field of Task,
-/// keyed under the dotted prefix `task.field` in the env. Field access
-/// (parsed as `Identifier("task.field")` once we hit FieldAccess support)
-/// resolves through the env directly. For v0.1 we have a flat
-/// `Identifier(String)` so the parser must produce dotted names —
-/// currently it only sees bare idents, but the Membership case below
-/// expands them in the env regardless.
+/// Evaluate a schema: declare leaf Z3 vars (dotted prefix per field), pin given
+/// values, assert body constraints, return SAT/bindings. THE canonical entry point.
 pub fn evaluate(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -86,11 +47,7 @@ pub fn evaluate(
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Pass 1: declare variables and add per-type constraints. User-defined
-    // schema types expand into their leaf fields under a dotted prefix.
-    // ..Passthrough imports declarations from the named claim too — any
-    // variable name not already in env gets a fresh Z3 const, names that
-    // collide with the parent are reused (names-match composition).
+    // Pass 1: declare vars; passthroughs import leaves; collisions reuse (names-match).
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -109,49 +66,26 @@ pub fn evaluate(
                     eprintln!("warning: ..{} references unknown claim", claim_name);
                 }
             }
-            BodyItem::ClaimCall { .. } => {
-                // Declarations from the claim's body are added in pass 2
-                // (where we have the inner env to bind into); no work here.
-            }
-            BodyItem::SubclaimDecl(_) => {
-                // Subclaims contribute no constraints to the parent —
-                // they're registered into the runtime's schemas table at
-                // load time so other items can reference them.
-            }
-            // (Bare-identifier-as-passthrough desugared upstream — see
-            // the matching note in build_cache above.)
+            BodyItem::ClaimCall { .. } => {} // declarations added in pass 2
+            BodyItem::SubclaimDecl(_) => {} // registered at load; no parent constraints
             BodyItem::Constraint(_) => {}
-            // halts_within declares no parent-visible var; its lowering
-            // (state-var threading + halt disjunction) runs in pass 2
-            // via the inline walker.
-            BodyItem::HaltsWithin { .. } => {}
+            BodyItem::HaltsWithin { .. } => {} // lowered in pass 2 via inline walker
         }
     }
 
-    // Pass 1.5: pin literal-int vars from `given` + body equalities +
-    // #seq length propagation. Quantifier ranges over those names then
-    // unroll because translate_int yields literal IntVals.
+    // Pass 1.5: pin ints + propagate seq lengths so quantifier ranges unroll.
     let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
-    // Populate Set candidates from given Value::Set* before body
-    // translation — `#s` reads `candidates.len()`.
     apply_set_candidates(&env, given);
 
-    // Pass 2: translate body constraints and assert. Passthrough items
-    // also contribute their included claim's constraints under the
-    // current env. ClaimCall items translate their claim's body in a
-    // fresh env where each mapping slot is pre-bound. Both passthrough
-    // and ClaimCall recurse into nested claim composition (one helper
-    // unifies all four entry shapes).
+    // Pass 2: translate and assert body constraints.
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
-    // Pass 3: assert ground facts for each given binding. Names that
-    // aren't declared in the schema are silently ignored (matches the
-    // Python runtime's behavior).
+    // Pass 3: assert given ground facts; undeclared names ignored.
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         match (var, value) {
@@ -159,9 +93,7 @@ pub fn evaluate(
             (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => solver.assert(&v._eq(&real_from_f64(ctx, *f))),
             (Var::StrVar(v),  Value::Str(s))  => solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
-            // PinnedInt was already folded in via apply_pinned_ints from
-            // this same given value — assertion is redundant. If values
-            // disagree, force UNSAT.
+            // PinnedInt already folded in; if values disagree, force UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {

@@ -1,43 +1,5 @@
-//! `pretty` — the first port driven by the [`super`] swap interface.
-//!
-//! AST → readable-infix string (for UNSAT diagnostics). Two impls:
-//!   * [`RustPretty`] — the canonical native renderer. The rendering
-//!     logic that used to live in `runtime/src/pretty.rs` lives here now;
-//!     `pretty.rs` is a thin re-export so existing callers
-//!     (`crate::pretty::expr` / `body_item`) are unchanged.
-//!   * [`EvidentPretty`] — drives the `pretty_walk` stack-FSM in
-//!     `stdlib/passes/pretty.ev` through an owned [`EvidentRuntime`].
-//!
-//! ## `EvidentPretty` routes around the recursion gap (#15)
-//!
-//! Session X's port could render only flat/leaf shapes because a recursive
-//! claim leaves its output unconstrained (COUNTEREXAMPLES #15). This shim
-//! now drives `pretty.ev`'s **ordered stack-FSM** (`pretty_walk`) exactly
-//! as `portable::subscriptions` drives `subscriptions_walk`: marshal the
-//! input with the ONE SHARED marshaler (`translate::ast_encoder::{expr_to_value,
-//! body_item_to_value}`), wrap it as the FSM's `PWork` seed, run it to a
-//! drained-stack halt via [`crate::effect_loop::run_nested`], and read the
-//! rendered String out of the `PDone(out)` final state. The recursion and
-//! the string assembly both live in the pass — **no Rust tree walk, no
-//! per-pass encoder**.
-//!
-//! ## What is byte-identical to `RustPretty`
-//!
-//! Every shape whose rendering is pure-ASCII, **recursively** — identifiers,
-//! string literals, calls + their argument lists, set/tuple literals,
-//! nested field/index, `#`, ternaries, `matches` (incl. its pattern),
-//! `run(...)`, and binary operators with an ASCII symbol (`= < > + - * /
-//! ++`) with the same Binary-operand parenthesization. The equivalence
-//! test (`runtime/tests/pretty_equivalence.rs`) asserts identity on these.
-//!
-//! Two residuals still diverge and are pinned in the test as known
-//! boundaries (see the pass file + `docs/self-hosting.md`):
-//!   * **Unicode operator glyphs (#16)** — `∈ ↦ ∀ ⇒ ∧ ¬ ≤ ⟨⟩ …` mangle
-//!     through Z3 byte-string handling, so glyph-bearing shapes diverge in
-//!     exactly those bytes (the pass still walks their sub-exprs).
-//!   * **Numbers / Bool (no int→string in a pass; JIT bool bug #17)** —
-//!     `EInt` / `EReal` / `EBool` / `BIHaltsWithin`'s count render to an
-//!     ASCII sentinel.
+//! AST → readable-infix string (UNSAT diagnostics). Impls: [`RustPretty`] (canonical) and
+//! [`EvidentPretty`] (drives `pretty_walk` FSM in `stdlib/passes/pretty.ev`).
 
 use std::path::Path;
 
@@ -46,12 +8,7 @@ use crate::core::Value;
 use crate::translate::ast_encoder::{body_item_to_value, expr_to_value};
 use super::{work_node, EvidentRunner, Portable};
 
-// ─────────────────────────────────────────────────────────────────────
-// The trait
-// ─────────────────────────────────────────────────────────────────────
-
-/// `pretty`'s Rust-level signature, independent of which impl backs it.
-/// Mirrors the two public functions the original `pretty.rs` exposed.
+/// `pretty`'s Rust-level signature, mirrors the two public functions `pretty.rs` exposed.
 pub trait PrettyImpl: Portable {
     /// Render an expression to its readable infix form.
     fn expr(&self, e: &Expr) -> String;
@@ -59,11 +16,7 @@ pub trait PrettyImpl: Portable {
     fn body_item(&self, item: &BodyItem) -> String;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Rust impl — the canonical renderer
-// ─────────────────────────────────────────────────────────────────────
-
-/// The native renderer. Total, fast, always correct — the default.
+/// The native renderer — total, fast, always correct; the default.
 pub struct RustPretty;
 
 impl Portable for RustPretty {
@@ -75,7 +28,7 @@ impl PrettyImpl for RustPretty {
     fn body_item(&self, item: &BodyItem) -> String { render_body_item(item) }
 }
 
-/// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
+/// Format a quantifier binding: single name → `x`, tuple → `(a, b, c)`.
 fn fmt_binding(vs: &[String]) -> String {
     if vs.len() == 1 { vs[0].clone() } else { format!("({})", vs.join(", ")) }
 }
@@ -114,9 +67,7 @@ pub(crate) fn render_expr(e: &Expr) -> String {
         Expr::Binary(op, lhs, rhs) => {
             let l = render_expr(lhs);
             let r = render_expr(rhs);
-            // Wrap any Binary operand in parens — cheap, slightly noisy,
-            // never wrong. A precedence-aware printer is overkill for
-            // diagnostics.
+            // Wrap Binary operands in parens — cheap, slightly noisy, never wrong.
             let l = if matches!(lhs.as_ref(), Expr::Binary(..)) { format!("({})", l) } else { l };
             let r = if matches!(rhs.as_ref(), Expr::Binary(..)) { format!("({})", r) } else { r };
             format!("{} {} {}", l, binop_sym(op), r)
@@ -178,29 +129,19 @@ fn mapping(m: &Mapping) -> String {
     format!("{} ↦ {}", m.slot, render_expr(&m.value))
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Evident impl — drives stdlib/passes/pretty.ev's pretty_walk stack-FSM
-// ─────────────────────────────────────────────────────────────────────
-
-/// Renders via the `pretty_walk` stack-FSM in `stdlib/passes/pretty.ev`,
-/// driven through the shared [`EvidentRunner`]. Build once and reuse so the
-/// FSM's per-tick solve is JIT-cached across calls.
+/// Renders via the `pretty_walk` stack-FSM in `stdlib/passes/pretty.ev`.
+/// Build once and reuse — per-tick solve is JIT-cached across calls.
 pub struct EvidentPretty {
     runner: EvidentRunner,
 }
 
 impl EvidentPretty {
-    /// Load `passes/pretty.ev` from `stdlib_dir` into a fresh runner with
-    /// `pretty_walk` as its primary FSM. The pass is self-contained (it
-    /// declares its own cons-list copy of the AST enums matching the shared
-    /// marshaler), so no other stdlib file is needed — and loading `ast.ev`
-    /// too would clash (duplicate enum decls).
+    /// Load `passes/pretty.ev`; do NOT also load `ast.ev` — duplicate enum decls would clash.
     pub fn new(stdlib_dir: &Path) -> Result<Self, String> {
         Ok(Self { runner: EvidentRunner::load_from(stdlib_dir, "passes/pretty.ev", "pretty_walk")? })
     }
 
-    /// Drive `pretty_walk` over a seeded `PWork` node and return the rendered
-    /// String from the `PDone(out)` final state.
+    /// Drive `pretty_walk` with a `PWork` seed; extract the String from `PDone(out)`.
     fn render(&self, seed: Value) -> String {
         match self.runner.run(seed) {
             Ok(Value::Enum { variant, fields, .. }) if variant == "PDone" && fields.len() == 1 => {
@@ -221,28 +162,15 @@ impl Portable for EvidentPretty {
 
 impl PrettyImpl for EvidentPretty {
     fn expr(&self, e: &Expr) -> String {
-        // Shared marshaler: ast.rs Expr → Value::Enum (cons-list shape),
-        // wrapped as the FSM's unified work node `PWork::WExpr(Expr)`.
         self.render(work_node("PWork", "WExpr", expr_to_value(e)))
     }
 
     fn body_item(&self, item: &BodyItem) -> String {
-        // The pass owns the Constraint → Expr delegation now (its
-        // `WBody(BIConstraint(e)) ⇒ WExpr(e)` arm mirrors pretty.rs), so
-        // unlike the pre-recursion shim there is no Rust-side special case.
         self.render(work_node("PWork", "WBody", body_item_to_value(item)))
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Selection
-// ─────────────────────────────────────────────────────────────────────
-
-/// Pick an impl by `EVIDENT_PRETTY_IMPL` (`rust` | `evident`), defaulting
-/// to the Rust impl. `evident` locates `stdlib/` via the one
-/// [`crate::stdlib_path::stdlib_dir`] resolver (honoring `EVIDENT_STDLIB`
-/// / `EVIDENT_STDLIB_DIR`); if locating or loading fails it falls back to
-/// Rust.
+/// Select impl via `EVIDENT_PRETTY_IMPL` (`rust` | `evident`); falls back to Rust on error.
 pub fn default_impl() -> Box<dyn PrettyImpl> {
     if std::env::var("EVIDENT_PRETTY_IMPL").as_deref() == Ok("evident") {
         if let Ok(dir) = crate::stdlib_path::stdlib_dir() {

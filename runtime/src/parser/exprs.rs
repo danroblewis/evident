@@ -1,24 +1,10 @@
-//! Expression parsing via precedence climbing, from the top-level
-//! `parse_expr` (quantifiers + implication) down through ternary,
-//! boolean, comparison, arithmetic, unary, and the postfix
-//! `[…]` / `.ident` suffix chain. Atom-level parsing lives in `atoms`.
+//! Expression parsing via precedence climbing: quantifiers, implication,
+//! ternary, boolean, comparison, arithmetic, unary, postfix. Atoms in `atoms`.
 
 use super::*;
 
 impl Parser {
-    // Operator precedence (low → high):
-    //   implies        : right-assoc
-    //   or             : left
-    //   and            : left
-    //   compare        : non-assoc (=, ≠, <, ≤, >, ≥)
-    //   add/sub        : left
-    //   mul/div        : left
-    //   unary not / -
-    //   atoms          : ident, int, paren
-
     pub(super) fn parse_expr(&mut self) -> Result<Expr> {
-        // Quantifier expressions are right at the top so the colon-separated
-        // body picks up everything to the right.
         if matches!(self.peek(), Token::ForAll | Token::Exists) {
             return self.parse_quantifier();
         }
@@ -28,10 +14,7 @@ impl Parser {
     pub(super) fn parse_quantifier(&mut self) -> Result<Expr> {
         let is_forall = matches!(self.peek(), Token::ForAll);
         self.bump();
-        // Binding shapes:
-        //   `∀ x ∈ …`               — single-var (1-element Vec)
-        //   `∀ (a, b, c) ∈ …`       — tuple binding for pair/N-tuple
-        //                            iteration (`coindexed`, `edges`)
+        // `∀ x ∈ …` (single) or `∀ (a, b, c) ∈ …` (tuple for coindexed/edges).
         let vars: Vec<String> = if matches!(self.peek(), Token::LParen) {
             self.bump();   // (
             let mut names = Vec::new();
@@ -59,26 +42,9 @@ impl Parser {
             }
         };
         self.eat(&Token::In)?;
-        // The range can be:
-        //   - `{lo..hi}` or `{a, b, c}` — set / range literal (parsed
-        //     by parse_atom's `{` branch).
-        //   - `coindexed(A, B)` / `edges(seq)` — builtin call.
-        //   - A Seq expression: a bare Identifier OR a Field/Index
-        //     chain like `groups[0].items` reaching a Seq via a
-        //     SeqField on a composite element. parse_postfix is the
-        //     entry that consumes the postfix `[…]` / `.field` chain.
         let range = self.parse_postfix()?;
         self.eat(&Token::Colon)?;
-        // Quantifier-block form: `∀ var ∈ range :` followed by Newline +
-        // Indent at a deeper level. Parse a stack of body items at that
-        // indent and AND-combine them as the quantifier body. Mirrors
-        // the implies-block pattern in parse_implies. Lets users write
-        //
-        //   ∀ i ∈ {0..3} :
-        //       state.dots[i].pos_x ≥ 20
-        //       state.dots[i].pos_x ≤ 740
-        //
-        // instead of repeating `∀ i ∈ {0..3} : …` per constraint.
+        // Block form: `∀ var ∈ range :\n    body…` AND-combines indented lines.
         if matches!(self.peek(), Token::Newline) {
             let saved = self.pos;
             self.bump();
@@ -125,24 +91,17 @@ impl Parser {
     }
 
     pub(super) fn parse_implies(&mut self) -> Result<Expr> {
-        // Quantifiers are valid wherever an `⇒` operand is — they live
-        // at the same precedence as `⇒`. Without this, `A ⇒ ∀ i : B`
-        // and the implies-block form `A ⇒\n    ∀ i : B` both fail
-        // (the body iteration recurses through parse_implies).
+        // Quantifiers share `⇒` precedence; without this, `A ⇒ ∀ i : B` fails.
         if matches!(self.peek(), Token::ForAll | Token::Exists) {
             return self.parse_quantifier();
         }
         let lhs = self.parse_ternary()?;
         if matches!(self.peek(), Token::Implies) {
             self.bump();
-            // Implies-block form: `A ⇒` followed by Newline + Indent at a
-            // deeper level than the line `A ⇒` started on. Parse a stack
-            // of body items at that indent and AND them as the consequent.
-            // Mirrors the Python `implies_block` grammar rule.
+            // Block form: `A ⇒\n    body…` AND-combines indented consequents.
             if matches!(self.peek(), Token::Newline) {
                 let saved = self.pos;
                 self.bump();
-                // Skip blank newlines.
                 while matches!(self.peek(), Token::Newline) { self.bump(); }
                 if let Token::Indent(n) = self.peek().clone() {
                     let block_indent = n;
@@ -162,11 +121,8 @@ impl Parser {
                         }
                     }
                     if conjuncts.is_empty() {
-                        // No body — restore and fall through to the
-                        // expression-RHS branch below (will likely error).
                         self.pos = saved;
                     } else {
-                        // Combine into a left-associative AND chain.
                         let mut acc = conjuncts.remove(0);
                         for c in conjuncts {
                             acc = Expr::Binary(BinOp::And, Box::new(acc), Box::new(c));
@@ -183,13 +139,7 @@ impl Parser {
         Ok(lhs)
     }
 
-    /// `cond ? then : else` — C-style ternary. Sits between `⇒` and
-    /// `∨` in precedence so:
-    ///   `a ⇒ b ? c : d`  parses as `a ⇒ (b ? c : d)`
-    ///   `a ∨ b ? c : d`  parses as `(a ∨ b) ? c : d`
-    /// Right-associative (`a ? b : c ? d : e` is `a ? b : (c ? d : e)`).
-    /// Both branches recursively call `parse_ternary` so nested
-    /// ternaries on either side work without parens.
+    /// `cond ? then : else` — right-associative, between `⇒` and `∨` in precedence.
     pub(super) fn parse_ternary(&mut self) -> Result<Expr> {
         let cond = self.parse_or()?;
         if !matches!(self.peek(), Token::Question) {
@@ -233,27 +183,23 @@ impl Parser {
 
     pub(super) fn parse_compare(&mut self) -> Result<Expr> {
         let lhs = self.parse_addsub()?;
-        // `e matches Pattern` — constructor recognizer. Sits at
-        // comparison level so `e matches A ∨ e matches B` parses as
-        // `(matches A) ∨ (matches B)`.
+        // `e matches Pattern` at comparison precedence.
         if matches!(self.peek(), Token::Matches) {
             self.bump();
             let pattern = self.parse_match_pattern()?;
             return Ok(Expr::Matches(Box::new(lhs), pattern));
         }
-        // ∈ binds at the same level as =, <, etc.
         if matches!(self.peek(), Token::In) {
             self.bump();
             let rhs = self.parse_addsub()?;
             return Ok(Expr::InExpr(Box::new(lhs), Box::new(rhs)));
         }
-        // ∉ — desugar `lhs ∉ rhs` to `¬(lhs ∈ rhs)`.
         if matches!(self.peek(), Token::NotIn) {
             self.bump();
             let rhs = self.parse_addsub()?;
             return Ok(Expr::Not(Box::new(Expr::InExpr(Box::new(lhs), Box::new(rhs)))));
         }
-        // ∋ — reverse membership: `lhs ∋ rhs` means `rhs ∈ lhs`.
+        // `lhs ∋ rhs` desugars to `rhs ∈ lhs`.
         if matches!(self.peek(), Token::ContainsRev) {
             self.bump();
             let rhs = self.parse_addsub()?;
@@ -271,15 +217,8 @@ impl Parser {
         if let Some(op) = op {
             self.bump();
             let rhs = self.parse_addsub()?;
-            // Chained comparison: if another comparison op follows
-            // (`20 ≤ x ≤ 740`, `a < b ≤ c`, etc.), collect the rest
-            // and AND-combine pairwise. Standard math notation;
-            // matches the Python parser's `arith_chain` rule. The
-            // inner operands are shared between adjacent
-            // comparisons (the `x` in `20 ≤ x ≤ 740` appears in both
-            // (20 ≤ x) AND (x ≤ 740)) — semantics match Python and
-            // mainstream math; differs from C/Rust's left-fold which
-            // would type-error here.
+            // Chained comparisons `20 ≤ x ≤ 740`: AND-combine pairwise,
+            // sharing inner operands (differs from C/Rust left-fold).
             if peek_compare_op(self.peek()).is_some() {
                 let mut operands: Vec<Expr> = vec![lhs, rhs];
                 let mut ops: Vec<BinOp> = vec![op];
@@ -288,7 +227,6 @@ impl Parser {
                     operands.push(self.parse_addsub()?);
                     ops.push(next_op);
                 }
-                // Build (operands[0] op[0] operands[1]) ∧ (operands[1] op[1] operands[2]) ∧ …
                 let mut acc: Option<Expr> = None;
                 for (i, op_i) in ops.into_iter().enumerate() {
                     let pair = Expr::Binary(
@@ -348,7 +286,6 @@ impl Parser {
         if matches!(self.peek(), Token::Minus) {
             self.bump();
             let e = self.parse_unary()?;
-            // Treat -x as 0 - x.
             return Ok(Expr::Binary(BinOp::Sub, Box::new(Expr::Int(0)), Box::new(e)));
         }
         if matches!(self.peek(), Token::Hash) {
@@ -359,14 +296,8 @@ impl Parser {
         self.parse_postfix()
     }
 
-    /// Atom followed by zero or more `[expr]` indexing suffixes and/or
-    /// `.ident` field-access suffixes. Both bind tighter than any binary
-    /// op. The `.ident` chain on a bare Identifier is already collapsed
-    /// into a dotted name at the atom level (see `parse_atom`), so this
-    /// loop only sees `.ident` after a non-Ident receiver — typically
-    /// after an Index suffix like `pts[0].x`. We wrap it in `Field`,
-    /// which the runtime resolves through Datatype accessors instead of
-    /// env-key lookup.
+    /// `[expr]` and `.ident` postfix chain. `.ident` after an Index (e.g. `pts[0].x`)
+    /// wraps in `Field`; dotted idents on bare Identifiers are already collapsed in atoms.
     pub(super) fn parse_postfix(&mut self) -> Result<Expr> {
         let mut e = self.parse_atom()?;
         loop {

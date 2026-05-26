@@ -1,21 +1,5 @@
-//! `inline_body_items` — the recursive constraint-translation walker.
-//! Handles `Membership` (declare-if-new), `Constraint` (translate +
-//! assert), `Passthrough` (`..ClaimName`), and `ClaimCall` (with
-//! mappings + per-call fresh Z3 names for the claim's unmapped
-//! internals).
-//!
-//! Bare-identifier-as-passthrough (`Constraint(Identifier(name))`
-//! where `name` is a known claim) is handled BEFORE this walker
-//! runs by a self-hosted desugar pass —
-//! `stdlib/passes/desugar_passthrough.ev` paired with
-//! `commands/desugar.rs::auto_apply_desugar`, wired into every CLI
-//! subcommand. By the time the AST arrives here, the rewrite has
-//! already turned the bare form into an explicit `Passthrough` node.
-//!
-//! The dispatch loop below classifies each body item and delegates
-//! the heavy arms to sibling modules: `membership::inline_membership`
-//! for `Membership`, and the `calls::*` functions for the various
-//! claim/subclaim invocation shapes.
+//! Body-item dispatch loop: Membership → declare, Constraint → assert, Passthrough / ClaimCall → recurse.
+//! Bare-identifier passthroughs are rewritten to `Passthrough` nodes by the desugar pass before this runs.
 
 use std::collections::HashMap;
 
@@ -35,17 +19,8 @@ use super::membership::inline_membership;
 use super::recursion::{exit_frame, try_enter};
 use super::subschema;
 
-/// Recursively translate a list of body items into the solver. Used by
-/// the constraint-translation pass of both `evaluate` and `build_cache`,
-/// and also called recursively when a `Passthrough`, bare-identifier
-/// passthrough, or `ClaimCall` references another claim's body.
-///
-/// Without this, passthroughs only inlined `Constraint` items — any
-/// `ClaimCall` (e.g. `PlayerPhysics(state mapsto state.player, …)`)
-/// inside a passthrough was silently dropped. Same problem inside a
-/// `ClaimCall`: nested claim calls in the called claim's body were
-/// dropped. That broke `..DotCollectGameEngine` (no player, no physics,
-/// no background — black screen).
+/// Translate body items into the solver. Recurses through Passthrough and ClaimCall bodies
+/// so nested claims are not silently dropped.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::translate) fn inline_body_items(
     items: &[BodyItem],
@@ -60,14 +35,8 @@ pub(in crate::translate) fn inline_body_items(
     inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, None)
 }
 
-/// Translate `items` and assert each derived constraint into the
-/// solver, additionally tagging every assertion with one of `trackers`
-/// so a later `solver.get_unsat_core()` can name the offending
-/// top-level body item. `trackers[i]` corresponds to `items[i]` —
-/// passing fewer trackers than items means tail items go untracked.
-/// Used by `evaluate_with_core` to surface unsat-cores back to the
-/// test runner; the regular `evaluate` path passes `None` for
-/// zero overhead.
+/// Like `inline_body_items` but tags each assertion with a tracker for `get_unsat_core`.
+/// `trackers[i]` → `items[i]`; tail items are untracked if fewer trackers are supplied.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::translate) fn inline_body_items_tracked(
     items: &[BodyItem],
@@ -110,41 +79,7 @@ pub(super) fn inline_body_items_guarded(
                     env, solver, schemas, ctx, registry, enums, guard, tracker,
                 );
             }
-            // Bare-identifier-as-passthrough handling moved to the
-            // self-hosted desugar pass (`stdlib/passes/desugar_passthrough.ev`
-            // + `commands/desugar.rs::auto_apply_desugar`). By the time
-            // any constraint arrives here, the rewrite has already turned
-            // `Constraint(Identifier(name))` (when `name` is a known
-            // claim) into `Passthrough(name)`. Bare-identifier
-            // constraints whose name does NOT match a claim fall through
-            // to the regular Constraint arm below, same as before.
-
-            // Positional claim invocation: `Constraint(Call(name, args))`
-            // whose `name` matches a known claim is treated as a
-            // ClaimCall with positional args bound by index to the
-            // claim's first-line params (or first N Memberships in
-            // declaration order). Encourages the
-            //   claim Foo(items ∈ Seq, keys ∈ Seq, asc ∈ Bool)
-            //       …body using items/keys/asc…
-            //   ⋮
-            //   Foo(my_items, my_keys, true)
-            // pattern over the longer mapsto form.
-            // Tuple-in-claim invocation: `(a, b, c) ∈ claim_name` is
-            // the relational reading of a positional claim call —
-            // "this tuple is in the set of satisfying assignments."
-            // Desugars to the same positional ClaimCall path as
-            // `claim_name(a, b, c)`. The dispatch is here (not in
-            // exprs.rs's InExpr handler) because it has to fire at
-            // BodyItem position, not as a value-producing
-            // expression — a claim invocation contributes constraints,
-            // not a Bool.
-            // Subschema dispatch (priority over receiver-prefix):
-            // `(args) ∈ recv.subclaim_name` where `recv` is a body
-            // Membership of a record type T AND `subclaim_name` is
-            // declared as `subclaim …` inside T. The receiver's
-            // fields get rebound onto T's bare-name fields so the
-            // subclaim body's references (`renderer`, etc.) resolve
-            // to the leaves of `recv`.
+            // Subschema dispatch (priority): `(args) ∈ recv.subclaim_name` — receiver fields rebound.
             BodyItem::Constraint(Expr::InExpr(lhs, rhs))
                 if matches!(resolve_call_name(rhs.as_ref(), items, schemas),
                     Some(CallDispatch::Subschema { .. }))
@@ -171,12 +106,7 @@ pub(super) fn inline_body_items_guarded(
                     env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                 );
             }
-            // Subschema dispatch (priority): `recv.subclaim_name(args)`
-            // where `recv` is a body Membership of a record type T
-            // AND `subclaim_name` is a SubclaimDecl inside T's body.
-            // Field-rebinds T's leaves onto bare names so the
-            // subclaim body's references (`renderer`, …) resolve
-            // to the receiver's leaves.
+            // Subschema dispatch (priority): `recv.subclaim_name(args)` — same rebind logic.
             BodyItem::Constraint(Expr::Call(name, args))
                 if matches!(resolve_call(name, items, schemas),
                     Some(CallDispatch::Subschema { .. })) =>
@@ -197,11 +127,7 @@ pub(super) fn inline_body_items_guarded(
                     env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                 );
             }
-            // Guarded claim invocation: `cond ⇒ ClaimName` inlines the
-            // claim's body but wraps each constraint in `cond ⇒ …`.
-            // Declarations from the claim fire unconditionally; the
-            // guard only narrows what the constraints assert. Composes
-            // with an outer guard if we're already inside one.
+            // Guarded claim: `cond ⇒ ClaimName` — constraints wrapped in guard; declarations unconditional.
             BodyItem::Constraint(Expr::Binary(BinOp::Implies, ant, cons))
                 if matches!(cons.as_ref(),
                     Expr::Identifier(n) if schemas.contains_key(n)) =>
@@ -211,20 +137,7 @@ pub(super) fn inline_body_items_guarded(
                     env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                 );
             }
-            // `∀ vars ∈ range : body` where `body` contains a method-
-            // style subclaim invocation (`recv.subclaim(args)`).
-            //
-            // translate_bool's ∀ translator runs the body through
-            // translate_bool, which has no solver access and can't
-            // fire the subclaim's per-iteration assertions (the
-            // `out = ⟨…⟩` pin inside the subclaim body never lands,
-            // leaving outputs free; see COUNTEREXAMPLES #26).
-            //
-            // Fix: expand the ∀ at AST level for known-length ranges
-            // (coindexed of pinned-length Seqs, or a bare pinned Seq).
-            // Each iteration becomes a regular BodyItem the inline
-            // pass can dispatch — subclaim calls get full solver
-            // access via inline_subschema_call as usual.
+            // `∀` over subclaim call: expand statically (translate_bool has no solver access; COUNTEREXAMPLES #26).
             BodyItem::Constraint(Expr::Forall(vars, range, body))
                 if body_contains_subschema_call(body, items, schemas) =>
             {
@@ -234,11 +147,7 @@ pub(super) fn inline_body_items_guarded(
                 );
             }
             BodyItem::Constraint(e) => {
-                // Recognized runtime markers (declared in
-                // `crate::core::ast::BODY_MARKERS`) are bare identifiers
-                // that carry metadata for some other runtime layer
-                // — they have no Bool translation. Skip silently
-                // so they don't trip the dropped-constraint diagnostic.
+                // BODY_MARKERS are metadata identifiers with no Bool translation; skip silently.
                 if let crate::core::ast::Expr::Identifier(s) = e {
                     if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
                 }
@@ -284,20 +193,7 @@ pub(super) fn inline_body_items_guarded(
             }
             BodyItem::HaltsWithin { fsm_name, n } => {
                 if !guard_is_satisfiable(solver, guard) { continue; }
-                // The unroll lowers F to a `halt_aggregate = true` Bool
-                // and asserts it directly on the outer solver. We pass
-                // env so the lowering can bind the FSM's input state
-                // vars to outer-scope values by names-match (e.g. an
-                // outer `count = 50` becomes tick-0's count).
-                //
-                // The unroll can fail (unknown FSM, branching body,
-                // non-function shape). On any error we emit a stderr
-                // diagnostic and assert `false` so the enclosing claim
-                // resolves UNSAT — an honest "couldn't prove this"
-                // rather than a silent wrong answer. The guarded form
-                // (`cond ⇒ halts_within(...)`) wraps the final `false`
-                // with the guard so we don't fail outside the
-                // condition's reach.
+                // On unroll failure (unknown FSM, branching body), assert false → UNSAT rather than silent wrong answer.
                 match crate::fsm_unroll::assert_halts_within(
                     fsm_name, *n, ctx, solver, env, schemas, registry, enums,
                 ) {

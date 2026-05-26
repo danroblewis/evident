@@ -15,8 +15,6 @@ fn parse_simple_nat() {
 
 #[test]
 fn parse_cardinality_and_index() {
-    // Even though the translator doesn't run these yet, the AST
-    // shape should be settled.
     let p = parse("schema S\n    s ∈ Seq(Int)\n    #s = 3\n    s[0] > 0\n").unwrap();
     let s = &p.schemas[0];
     assert_eq!(s.body.len(), 3);
@@ -62,10 +60,7 @@ fn parse_arithmetic_constraint() {
 
 #[test]
 fn parse_chained_membership_two_sided() {
-    // `0 < pos_x ∈ Int < 5` desugars to:
-    //   - Membership(pos_x, Int)
-    //   - Constraint(0 < pos_x)
-    //   - Constraint(pos_x < 5)
+    // `0 < pos_x ∈ Int < 5` → Membership + Constraint(0 < pos_x) + Constraint(pos_x < 5).
     let p = parse("claim t\n    0 < pos_x ∈ Int < 5\n").unwrap();
     let s = &p.schemas[0];
     assert_eq!(s.body.len(), 3, "expected 3 body items, got {}", s.body.len());
@@ -88,13 +83,8 @@ fn parse_chained_membership_pin_form() {
 
 #[test]
 fn parse_chained_membership_compound_type() {
-    // Compound type like `Seq(Int)` allowed on the RHS of ∈.
-    // Tail comparison only — leading comparison would need to chain
-    // against a Seq, which isn't meaningful.
+    // No comparison after type, so chained-membership doesn't trigger; regular path.
     let p = parse("claim t\n    s ∈ Seq(Int)\n    #s = 3\n").unwrap();
-    // This particular form doesn't trigger chained-membership (no
-    // comparison op follows the type) — confirms the regular path
-    // still parses.
     let s = &p.schemas[0];
     assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
         if name == "s" && type_name == "Seq(Int)"));
@@ -102,13 +92,10 @@ fn parse_chained_membership_compound_type() {
 
 #[test]
 fn parse_chained_membership_does_not_eat_set_membership() {
-    // `x ∈ pts ∧ x > 0` must NOT be split into a Membership +
-    // Constraint — the `∧` after the Ident isn't a comparison op,
-    // so the chain detector bails and the regular expression
-    // parser handles it as `(x ∈ pts) ∧ (x > 0)`.
+    // `x ∈ pts ∧ x > 0` — `∧` after Ident isn't a comparison op;
+    // chain detector bails and parses it as `(x ∈ pts) ∧ (x > 0)`.
     let p = parse("claim t\n    pts ∈ Set(Int)\n    x ∈ Int\n    x ∈ pts ∧ x > 0\n").unwrap();
     let s = &p.schemas[0];
-    // Last body item should be a single Constraint with a Binary(And) at top.
     match s.body.last().unwrap() {
         BodyItem::Constraint(Expr::Binary(BinOp::And, _, _)) => {}
         other => panic!("expected `(x ∈ pts) ∧ (x > 0)` constraint, got {:?}", other),
@@ -117,9 +104,7 @@ fn parse_chained_membership_does_not_eat_set_membership() {
 
 #[test]
 fn parse_chained_membership_multi_name() {
-    // `x, y, z ∈ Int < 5` desugars to:
-    //   - Membership(x, Int), Membership(y, Int), Membership(z, Int)
-    //   - Constraint(x < 5), Constraint(y < 5), Constraint(z < 5)
+    // `x, y, z ∈ Int < 5` → 3 Memberships + 3 Constraints.
     let p = parse("claim t\n    x, y, z ∈ Int < 5\n").unwrap();
     let s = &p.schemas[0];
     assert_eq!(s.body.len(), 6, "expected 3 Memberships + 3 Constraints");
@@ -230,10 +215,8 @@ fn parse_enum_decl_multiline_with_leading_pipe() {
 
 #[test]
 fn parse_enum_decl_forward_reference_parses() {
-    // `Expr` declared first, references `BinOp` declared later.
-    // The parser doesn't validate types — that's runtime — so this
-    // just confirms the AST shape: 2 enum decls, the first
-    // references the second by name in a payload field.
+    // Parser doesn't validate types; confirms AST shape: 2 enum decls,
+    // first references second by name in a payload field.
     let p = parse(
         "enum Expr = Lit(Int) | Op(BinOp, Expr, Expr)\nenum BinOp = Add | Sub\n"
     ).unwrap();
@@ -273,8 +256,6 @@ fn parse_enum_decl_no_variants_errors() {
 
 #[test]
 fn parse_chained_membership_rejects_dotted_lhs() {
-    // `state.x ∈ Int < 5` would try to declare a dotted name —
-    // not allowed. Falls through and errors at the schema-parse
-    // level (the trailing `< 5` is unexpected).
+    // Dotted LHS not allowed in chained-membership; errors on trailing `< 5`.
     assert!(parse("claim t\n    state.x ∈ Int < 5\n").is_err());
 }

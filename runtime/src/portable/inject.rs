@@ -1,49 +1,5 @@
-//! `inject` — FSM-aware membership injection. **Partial cutover (session
-//! REVIVE-inject):** two of inject's four sub-passes self-host in Evident;
-//! the other two stay in Rust pending Gap D.
-//!
-//! ## The four sub-passes, and the split
-//!
-//!   * `inject_fsm_params`      — `state_next` / `last_results` / `effects`
-//!                                when referenced + undeclared.    ← Evident
-//!   * `inject_prev_tick_decls` — `_var` time-shift slots +
-//!                                `is_first_tick`.                  ← Evident
-//!   * `inject_claim_arg_types` — type a fresh positional arg from the
-//!                                *called claim's* signature.       ← Rust
-//!   * `inject_lhs_eq_types`    — infer an `lhs = expr` type via field
-//!                                chains + enum-variant lookup.     ← Rust
-//!
-//! The first two decide what to inject from **one claim's body alone** and cut
-//! over here. The last two resolve a name's type against the **whole-program
-//! schema table + enum registry** — a composite-INPUT blow-up the marshaler
-//! recipe doesn't faithfully support yet (Gap D, COUNTEREXAMPLES #27). They
-//! keep their canonical Rust impl (`crate::runtime::inject::*`), called
-//! directly from the load path; this shim never touches them.
-//!
-//! ## What runs where, for the two cut-over sub-passes
-//!
-//! `stdlib/passes/inject.ev` self-hosts THREE FSMs:
-//!   * `inject_collect`    — the recursive reference-collection WALK.
-//!   * `fsm_params_build`  — reads the six inject DECISIONS as marshaled-in
-//!                           `Bool`s, COMPUTES `(reff ∧ ¬heff)` etc. on the
-//!                           destructured payloads (the #18 keystone), and
-//!                           CONSTRUCTS the `BodyItemList` to inject.
-//!   * `prev_tick_build`   — maps the `(_var, type)` pairs to memberships +
-//!                           conditionally prepends `is_first_tick`.
-//!
-//! This shim does only the parts Evident can't / shouldn't express:
-//!   1. **String-set membership stays in Rust.** "Is `state_next` reachable?
-//!      already declared?" and the `_`-strip / first-segment split for `_var`s
-//!      are string comparisons, done over the walk's output here — never in
-//!      the FSM (the in-solve string-theory blow-up). The FSM gets BOOLEANS.
-//!   2. **The splice happens here, at `s.param_count`.** The `*_build` FSMs
-//!      return only the *new* memberships; this shim inserts them at
-//!      `s.param_count` (in hand from the `SchemaDecl`), so existing body items
-//!      never round-trip the marshaler.
-//!
-//! Production calls the free [`fsm_params`] / [`prev_tick`], which drive the
-//! shared per-thread [`EvidentRunner`]. `inject` is a load-time pass —
-//! per-tick runtime is untouched.
+//! FSM membership injection; `inject_fsm_params` / `inject_prev_tick_decls`
+//! self-host in Evident. String-set membership stays in Rust (#18 cousin).
 
 use std::collections::HashMap;
 
@@ -54,13 +10,7 @@ use crate::translate::ast_encoder::expr_to_value;
 
 guarded_runner!(runner, "passes/inject.ev", "inject_collect");
 
-// ─────────────────────────────────────────────────────────────────────
-// The walk: collect every referenced identifier in a body
-// ─────────────────────────────────────────────────────────────────────
-
-/// Visit constraint exprs and claim-call mapping VALUES (the exact set the
-/// canonical walk reached); each expr is marshaled and driven through
-/// `inject_collect` to a drained-stack `IWDone(NameList)`.
+/// Collect all referenced identifiers in body constraints and claim-call values.
 fn collect_refs(runner: &EvidentRunner, body: &[BodyItem]) -> Vec<String> {
     let mut out = Vec::new();
     for item in body {
@@ -82,15 +32,6 @@ fn walk_expr(runner: &EvidentRunner, e: &Expr, out: &mut Vec<String>) {
     out.extend(run_name_list(runner, "inject_collect", seed, "IWDone", "inject/evident"));
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// inject_fsm_params — walk (Evident) + string-eq (Rust) +
-//   decision/construction (Evident fsm_params_build) + splice (Rust)
-// ─────────────────────────────────────────────────────────────────────
-
-/// Mirrors the deleted `runtime::inject::inject_fsm_params`: the referenced-
-/// name set comes from the FSM walk, and the referenced/undeclared booleans
-/// drive the `fsm_params_build` construction FSM instead of an inline Rust
-/// `if` chain.
 fn fsm_params_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
     // Declared-membership scan (state type + which canonical slots exist).
     let mut state_type: Option<String> = None;
@@ -109,16 +50,11 @@ fn fsm_params_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
         }
     }
 
-    // String-set membership: which slots are reachable (in Rust, off the
-    // walk's output — never compared inside the solve).
     let refs = collect_refs(runner, &s.body);
     let ref_state_next = refs.iter().any(|n| n == "state_next");
     let ref_last_results = refs.iter().any(|n| n == "last_results");
     let ref_effects = refs.iter().any(|n| n == "effects");
 
-    // Hand the six decisions + the state type to the construction FSM, which
-    // computes `(r ∧ ¬h …)` on the destructured Bools and returns the
-    // memberships to inject.
     let seed = fpb_input(
         ref_state_next, have_state_next,
         ref_last_results, have_last_results,
@@ -129,15 +65,8 @@ fn fsm_params_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
     splice_at(s, injected);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// inject_prev_tick_decls — walk (Evident) + `_`-strip/lookup (Rust) +
-//   construction (Evident prev_tick_build) + splice (Rust)
-// ─────────────────────────────────────────────────────────────────────
-
-/// Mirrors the deleted `runtime::inject::inject_prev_tick_decls`. The
-/// `_`-strip + first-segment split + declared-name lookup stays in Rust
-/// (substring ops Evident lacks); the resulting `(_var, type)` pairs +
-/// is_first_tick flag drive the `prev_tick_build` FSM.
+/// `_`-strip, first-segment split, and declared-name lookup stay in Rust
+/// (no substring ops in Evident); pairs + is_first_tick flag feed `prev_tick_build`.
 fn prev_tick_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
     let mut declared: HashMap<String, String> = HashMap::new();
     for item in &s.body {
@@ -156,13 +85,10 @@ fn prev_tick_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
             prev_refs.insert(format!("_{first_seg}"), ty.clone());
         }
     }
-    // No `_var` reference at all → inject nothing (not even is_first_tick).
     if prev_refs.is_empty() {
         return;
     }
 
-    // Pairs to inject = referenced prev-vars not already declared;
-    // is_first_tick added once unless the user declared it.
     let pairs: Vec<(String, String)> = prev_refs.into_iter()
         .filter(|(name, _)| !declared.contains_key(name))
         .collect();
@@ -173,26 +99,15 @@ fn prev_tick_impl(runner: &EvidentRunner, s: &mut SchemaDecl) {
     splice_at(s, injected);
 }
 
-/// Drive a `*_build` FSM to its `<done>(BodyItemList)` halt and decode the
-/// returned cons-list into `BodyItem::Membership`s. Empty on any failure.
+/// Drive a `*_build` FSM to `<done>(BodyItemList)` and decode into memberships.
 fn run_build(runner: &EvidentRunner, fsm: &str, seed: Value, done_variant: &str) -> Vec<BodyItem> {
     run_done_payload(runner, fsm, seed, done_variant, "inject/evident")
         .map(|p| decode_membership_list(&p))
         .unwrap_or_default()
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Production entry points
-// ─────────────────────────────────────────────────────────────────────
-
-/// The runtime's own self-hosted-pass FSMs. They live in `stdlib/passes/`,
-/// are written in the terse `_state` form that `unify_state_syntax` rewrites
-/// before these hooks run, and reference no implicit slot, so injection is a
-/// guaranteed no-op for them. Skipping them by name is the cheap correct
-/// answer AND breaks a per-load cross-engine cascade: every load runs
-/// validate's hook, which loads `validate.ev` (declaring `fsm validate_walk`);
-/// without this skip, processing `validate_walk` would build the heavier
-/// inject engine on every load, even for programs with no FSM of their own.
+/// Skip inject for the runtime's own pass FSMs — they reference no implicit
+/// slot, and skipping breaks the cross-engine cascade on every load.
 fn is_self_hosted_pass_fsm(name: &str) -> bool {
     matches!(
         name,
@@ -201,13 +116,8 @@ fn is_self_hosted_pass_fsm(name: &str) -> bool {
     )
 }
 
-/// `inject_fsm_params`, self-hosted. The load path's sole entry point for the
-/// `state_next` / `last_results` / `effects` injection.
-///
-/// No-op for non-`fsm` / `external` schemas and for the runtime's own pass
-/// FSMs, checked HERE before the runner is built — a program with no (user)
-/// FSM never pays the one-time inject-engine build, and the cross-engine
-/// cascade is avoided.
+/// Inject `state_next` / `last_results` / `effects` when referenced + undeclared.
+/// No-op for non-fsm, external, or runtime-internal schemas.
 pub fn fsm_params(s: &mut SchemaDecl) {
     if !matches!(s.keyword, Keyword::Fsm) || s.external {
         return;
@@ -219,8 +129,7 @@ pub fn fsm_params(s: &mut SchemaDecl) {
     fsm_params_impl(&runner, s);
 }
 
-/// `inject_prev_tick_decls`, self-hosted. The load path's sole entry point for
-/// the `_var` time-shift + `is_first_tick` injection.
+/// Inject `_var` time-shift slots and `is_first_tick` when referenced.
 pub fn prev_tick(s: &mut SchemaDecl) {
     if !matches!(s.keyword, Keyword::Fsm) || s.external {
         return;
@@ -232,13 +141,7 @@ pub fn prev_tick(s: &mut SchemaDecl) {
     prev_tick_impl(&runner, s);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Small helpers — seeds in, memberships out, splice
-// ─────────────────────────────────────────────────────────────────────
-
-/// Splice `items` into `s.body` at `s.param_count` (the first-line-param
-/// insertion index). Kept in Rust because the index is right here in the
-/// `SchemaDecl`; the existing body never round-trips.
+/// Splice `items` into `s.body` at `s.param_count` (first-line-param index).
 fn splice_at(s: &mut SchemaDecl, items: Vec<BodyItem>) {
     let insert_pos = s.param_count;
     for (i, item) in items.into_iter().enumerate() {
@@ -246,8 +149,6 @@ fn splice_at(s: &mut SchemaDecl, items: Vec<BodyItem>) {
     }
 }
 
-/// Pack the six fsm-params decisions + state type into `MakeFPBInput(...)` —
-/// `run_nested`'s coerce wraps it into `FPBInit(FPBInput)`.
 #[allow(clippy::too_many_arguments)]
 fn fpb_input(
     rsn: bool, hsn: bool, rlr: bool, hlr: bool, reff: bool, heff: bool,
@@ -265,8 +166,6 @@ fn fpb_input(
     }
 }
 
-/// Pack the `(_var, type)` pairs + is_first_tick flag into
-/// `MakePTBInput(StrPairList, Bool)` — wrapped into `PTBInit(PTBInput)`.
 fn ptb_input(pairs: &[(String, String)], add_first_tick: bool) -> Value {
     let mut list = Value::Enum {
         enum_name: "StrPairList".to_string(),
@@ -292,9 +191,7 @@ fn ptb_input(pairs: &[(String, String)], add_first_tick: bool) -> Value {
     }
 }
 
-/// Walk a returned `BodyItemList` cons-list `Value` (`BILNil` / `BILCons`) and
-/// rebuild each `BIMembership(name, type, _)` as a `BodyItem::Membership`. The
-/// `*_build` FSMs only ever emit `BIMembership` with `PNone` pins.
+/// Decode a `BodyItemList` cons-list into `BodyItem::Membership`s.
 fn decode_membership_list(v: &Value) -> Vec<BodyItem> {
     let mut out = Vec::new();
     let mut cur = v;
@@ -322,17 +219,11 @@ fn decode_membership_list(v: &Value) -> Vec<BodyItem> {
     out
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Tests — correctness against a golden snapshot of the corpus
-// ─────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    /// Run both cut-over sub-passes through the production free functions (the
-    /// per-thread cached runner, resolved via stdlib_dir()) in the load path's
-    /// order, and return the set of membership names the body gained.
     fn injected_names(raw: &SchemaDecl) -> Vec<String> {
         let before: HashSet<String> = raw.body.iter().filter_map(|i| match i {
             BodyItem::Membership { name, .. } => Some(name.clone()),
@@ -350,9 +241,6 @@ mod tests {
         added
     }
 
-    /// Golden: the membership set each corpus FSM gains from the two cut-over
-    /// sub-passes, captured from the canonical Rust impl BEFORE its deletion.
-    /// The self-hosted pipeline must reproduce it byte-for-byte.
     const GOLDEN: &[(&str, &str, &str)] = &[
         ("../examples/test_09_two_fsms.ev", "consumer", "effects \u{2208} Seq(Effect) | last_results \u{2208} Seq(Result) | state_next \u{2208} CState"),
         ("../examples/test_09_two_fsms.ev", "producer", "effects \u{2208} Seq(Effect) | state_next \u{2208} PState"),
@@ -371,10 +259,6 @@ mod tests {
         ("../examples/test_32_llm_functionizer.ev", "printer", "effects \u{2208} Seq(Effect) | state_next \u{2208} PState"),
     ];
 
-    /// The self-hosted fsm_params + prev_tick reproduce the canonical Rust
-    /// injection set on every FSM in the corpus. (Order within a body is not
-    /// part of the contract — prev_tick is HashMap-order-nondeterministic — so
-    /// this compares the gained-membership set as a sorted multiset.)
     #[test]
     fn matches_golden_on_corpus() {
         let mut by_file: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
@@ -399,8 +283,6 @@ mod tests {
         assert_eq!(checked, GOLDEN.len());
     }
 
-    /// Every FSM the golden does NOT list gains nothing (the two sub-passes are
-    /// conservative). Guards against over-injection.
     #[test]
     fn non_golden_fsms_untouched() {
         let golden_keys: HashSet<(&str, &str)> =
@@ -419,13 +301,9 @@ mod tests {
         }
     }
 
-    /// The self-hosted walk reaches exactly the identifiers the canonical walk
-    /// reached: a hand-built FSM body referencing `state_next` / `_count` gets
-    /// the same memberships.
     #[test]
     fn walk_reaches_canonical_identifiers() {
         use crate::core::ast::BinOp;
-        // fsm f(state ∈ S) :  state_next = state ;  out = _count + 1
         let body = vec![
             mem("state", "S"),
             mem("count", "Int"),
@@ -443,16 +321,12 @@ mod tests {
             body, param_count: 1, external: false,
         };
         let got = injected_names(&raw);
-        // state_next ∈ S, _count ∈ Int, is_first_tick ∈ Bool.
         for want in ["state_next \u{2208} S", "_count \u{2208} Int", "is_first_tick \u{2208} Bool"] {
             assert!(got.iter().any(|g| g == want), "expected `{want}` injected; got {got:?}");
         }
         assert_eq!(got.len(), 3, "exactly three injected; got {got:?}");
     }
 
-    /// The `fsm_params_build` FSM constructs + returns a `BodyItemList` whose
-    /// strings the Rust decode path recovers intact — the composite-AST-return
-    /// half.
     #[test]
     fn fsm_params_build_decodes_faithfully() {
         let runner = runner().expect("inject engine");

@@ -1,42 +1,5 @@
-//! SatisfierFunctionizer — sample partially-constrained variables.
-//!
-//! The JIT counterpart to what Z3 does when it picks a satisfying
-//! assignment for an *unbound but bounded* variable. Where the
-//! Cranelift functionizer requires every output to be defined by an
-//! equation (`x = expr`), the satisfier additionally handles outputs
-//! whose only constraint is a finite domain:
-//!
-//!   * `lo ≤ x ≤ hi`  (scalar `Int`/`Nat`/`Pos`)  → `SampleRange`
-//!   * `c ∈ EnumType` (no other constraint)        → `SampleEnum`
-//!   * `x ∈ {a, b, c}` (concrete finite set)        → `SampleSet`
-//!
-//! The architectural frame is **probabilistic programming**: an
-//! unbound-but-bounded variable is a distribution; a query draws one
-//! satisfying sample. The draw is a seeded SplitMix64 PRNG (≈ 5 native
-//! instructions) rather than a full Z3 solve cycle (≈ ms).
-//!
-//! ## Reuse, not reimplementation
-//!
-//! The satisfier does NOT reimplement integer arithmetic. At compile
-//! time it partitions the program's steps:
-//!   * `Sample*` steps → recorded as `Sampler`s, stripped out.
-//!   * everything else → handed to a real `CraneliftFunctionizer`.
-//! At call time it draws the sampled values, injects them into a clone
-//! of `given` (where the inner Cranelift function reads them by name as
-//! ordinary inputs — see `cranelift::JitProgram::call`), runs the inner
-//! function, then merges the sampled values back into the result.
-//!
-//! A program with NO sampler steps is delegated to Cranelift verbatim,
-//! so the satisfier is a strict superset of Cranelift: enabling it
-//! never regresses the deterministic path.
-//!
-//! ## Determinism (non-negotiable)
-//!
-//! The value cache keys on `(claim, given-keys, given-values)`. If the
-//! sampler weren't deterministic, repeated queries would return
-//! inconsistent assignments and the cache would be poisoned. The seed
-//! is derived from `(EVIDENT_DISPATCH_SEED, program-identity salt,
-//! given-values hash)`, so the same inputs always draw the same sample.
+//! SatisfierFunctionizer: draws bounded-but-unconstrained variables via seeded SplitMix64 PRNG;
+//! delegates the computed remainder to Cranelift. Seed = `EVIDENT_DISPATCH_SEED` + program salt + given.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -44,13 +7,9 @@ use std::rc::Rc;
 use crate::core::{DatatypeRegistry, EnumRegistry, Value, Z3Program, Z3Step};
 use crate::functionize::cranelift::CraneliftFunctionizer;
 
-/// A single sampler-shaped output, resolved from a `Z3Step::Sample*`.
 enum Sampler {
-    /// Draw an integer uniformly from the inclusive range `[lo, hi]`.
     Range { var: String, lo: i64, hi: i64 },
-    /// Draw one of an enum's nullary variants.
     Enum  { var: String, type_name: String, variants: Vec<String> },
-    /// Draw one of a finite list of candidate values.
     Set   { var: String, candidates: Vec<Value> },
 }
 
@@ -64,13 +23,9 @@ impl Sampler {
     }
 }
 
-/// A `Functionizer` that compiles `Sample`-augmented `Z3Program`s by
-/// drawing the sampled variables and delegating the deterministic
-/// remainder to Cranelift. See the module docs.
+/// Compiles `Sample`-augmented `Z3Program`s by drawing samplers, delegating the rest to Cranelift.
 pub struct SatisfierFunctionizer {
-    /// Base seed, from `EVIDENT_DISPATCH_SEED` (default fixed). Folded
-    /// with the program salt + given-values hash per call.
-    base_seed: u64,
+    base_seed: u64,  // from EVIDENT_DISPATCH_SEED; folded with program salt + given-values per call
 }
 
 impl SatisfierFunctionizer {
@@ -98,7 +53,6 @@ impl super::Functionizer for SatisfierFunctionizer {
     ) -> Option<Rc<dyn super::CompiledFunction>> {
         let trace = std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok();
 
-        // ── Partition steps into samplers + the computed remainder ──
         let mut samplers: Vec<Sampler> = Vec::new();
         let mut stripped_steps: Vec<Z3Step> = Vec::new();
         for step in &program.steps {
@@ -111,8 +65,7 @@ impl super::Functionizer for SatisfierFunctionizer {
                     let by_name = enums.by_name.borrow();
                     let (_, variants) = by_name.get(type_name)?;
                     if variants.is_empty() { return None; }
-                    // v1: nullary variants only — sampling a payload-bearing
-                    // variant would need to also sample its fields (deferred).
+                    // Payload-bearing variants deferred: sampling fields needs extra steps.
                     if variants.iter().any(|v| !v.fields.is_empty()) {
                         if trace {
                             eprintln!("[satisfier] bail: enum {type_name} has \
@@ -135,20 +88,12 @@ impl super::Functionizer for SatisfierFunctionizer {
             }
         }
 
-        // No sampler steps → behave exactly like Cranelift. This makes
-        // the satisfier a strict superset: every program Cranelift
-        // compiles, we compile identically by delegation.
+        // No sampler steps → delegate entirely to Cranelift (strict superset).
         if samplers.is_empty() {
             return CraneliftFunctionizer.compile(program, enums, datatypes);
         }
 
-        // Residual checks/predicates would be silently ignored by the
-        // Cranelift delegate, and we don't validate them here. The
-        // extractor (`recover_samplers`) already removed the bounds it
-        // turned into Sample steps, so a non-empty residue is a *real*
-        // extra constraint (a relation on a derived var, a free
-        // inequality, …) — refuse to the slow Z3 solve, which validates
-        // everything. (Mirrors `symbolic.rs`'s conservative refusal.)
+        // Residual checks/predicates indicate a real extra constraint; refuse to the Z3 slow path.
         if !program.checks.is_empty() || !program.predicates.is_empty() {
             if trace {
                 eprintln!("[satisfier] bail: {} checks + {} predicates remain after sampling",
@@ -157,12 +102,9 @@ impl super::Functionizer for SatisfierFunctionizer {
             return None;
         }
 
-        // Deterministic draw order, independent of step/HashMap order.
-        samplers.sort_by(|a, b| a.var().cmp(b.var()));
+        samplers.sort_by(|a, b| a.var().cmp(b.var())); // deterministic draw order
 
-        // Delegate the computed remainder to Cranelift. The sampled
-        // vars appear there as referenced-but-undefined names → inputs,
-        // read by name from the augmented `given` at call time.
+        // Sampled vars appear in Cranelift as free inputs, read from the augmented `given`.
         let inner: Option<Rc<dyn super::CompiledFunction>> = if stripped_steps.is_empty() {
             None
         } else {
@@ -192,8 +134,6 @@ impl super::Functionizer for SatisfierFunctionizer {
     }
 }
 
-/// The compiled artifact: the inner Cranelift function (for the
-/// computed remainder) plus the resolved samplers.
 struct SatisfierFn {
     inner: Option<Rc<dyn super::CompiledFunction>>,
     samplers: Vec<Sampler>,
@@ -203,17 +143,13 @@ struct SatisfierFn {
 
 impl super::CompiledFunction for SatisfierFn {
     fn call(&self, given: &HashMap<String, Value>) -> Option<HashMap<String, Value>> {
-        // Seed deterministically from (base seed, program salt, given).
         let mut state = seed_state(given, self.salt, self.base_seed);
-
-        // Draw each sampler, in the fixed (sorted) order.
         let mut augmented = given.clone();
         let mut sampled: Vec<(String, Value)> = Vec::with_capacity(self.samplers.len());
         for sm in &self.samplers {
             let v = match sm {
                 Sampler::Range { lo, hi, .. } => {
-                    // Inclusive span, computed in i128 to avoid overflow
-                    // on wide ranges; `lo ≤ hi` is enforced at compile.
+                    // i128 to avoid overflow on wide ranges; lo ≤ hi enforced at compile.
                     let span = (*hi as i128) - (*lo as i128) + 1;
                     let off = (splitmix64(&mut state) as u128 % span as u128) as i128;
                     Value::Int((*lo as i128 + off) as i64)
@@ -235,13 +171,11 @@ impl super::CompiledFunction for SatisfierFn {
             sampled.push((sm.var().to_string(), v));
         }
 
-        // Compute the remainder from the augmented inputs.
         let mut out = match &self.inner {
             Some(inner) => inner.call(&augmented)?,
             None => HashMap::new(),
         };
-        // The inner function treats sampled vars as inputs and doesn't
-        // return them — surface them as part of the assignment.
+        // Inner function treats sampled vars as inputs and doesn't return them; add them back.
         for (k, v) in sampled {
             out.insert(k, v);
         }
@@ -249,11 +183,7 @@ impl super::CompiledFunction for SatisfierFn {
     }
 }
 
-// ── Deterministic PRNG (SplitMix64) ──────────────────────────────
-
-/// One SplitMix64 step: advances `state` and returns a well-mixed
-/// 64-bit value. Deterministic, no dependencies, bit-stable across
-/// platforms.
+/// SplitMix64: advance `state` and return a well-mixed 64-bit value.
 fn splitmix64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = *state;
@@ -262,7 +192,6 @@ fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// FNV-1a over bytes — a stable, dependency-free string hash.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325_u64;
     for &b in bytes {
@@ -272,9 +201,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     h
 }
 
-/// Per-program salt: a stable hash of the sampler shapes (names +
-/// bounds / type / arity). Ensures two different sampler programs draw
-/// different sequences even for an identical `given`.
+/// Stable hash of sampler shapes so two programs with the same `given` draw different sequences.
 fn program_salt(samplers: &[Sampler]) -> u64 {
     let mut s = String::new();
     for sm in samplers {
@@ -290,9 +217,7 @@ fn program_salt(samplers: &[Sampler]) -> u64 {
     fnv1a64(s.as_bytes())
 }
 
-/// Deterministic initial PRNG state from `(base seed, program salt,
-/// given values)`. The given map is folded in a key-sorted, stable
-/// order so iteration order can't perturb the result.
+/// Initial PRNG state from (base seed, program salt, given values); key-sorted for stability.
 fn seed_state(given: &HashMap<String, Value>, salt: u64, base: u64) -> u64 {
     let mut pairs: Vec<(&String, String)> = given.iter()
         .map(|(k, v)| (k, format!("{v:?}")))

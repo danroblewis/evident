@@ -1,8 +1,4 @@
-//! Single- and multi-FSM timing summaries.
-//!
-//! Gated by `EVIDENT_LOOP_TIMING`; both schedulers call into the
-//! same `print_timing_summary_full`. The single-FSM wrapper drops
-//! the per-FSM rows.
+//! Timing summaries gated by `EVIDENT_LOOP_TIMING`.
 
 pub(super) fn print_timing_summary(
     loop_t0: std::time::Instant,
@@ -13,8 +9,7 @@ pub(super) fn print_timing_summary(
     print_timing_summary_full(loop_t0, steps, total_solve, total_dispatch, &[]);
 }
 
-/// Per-FSM rows: `(claim_name, solve_total, ticks_solved)`.
-/// Empty slice = single-FSM mode → omit the breakdown.
+/// Full summary; empty `per_fsm` slice omits the per-FSM breakdown.
 pub(super) fn print_timing_summary_full(
     loop_t0: std::time::Instant,
     steps: usize,

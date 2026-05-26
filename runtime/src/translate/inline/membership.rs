@@ -1,7 +1,5 @@
-//! The `Membership` body-item arm: declare the variable (if pass 1
-//! didn't already), fire any type-use pins, and inherit the type's
-//! body Constraints onto the instance — including element-level
-//! invariants for `Seq(SomeType)` declarations.
+//! `Membership` body-item handler: declare, fire type-use pins, and inherit
+//! the type's body Constraints (including per-element for `Seq(SomeType)`).
 
 use std::collections::HashMap;
 
@@ -30,24 +28,17 @@ pub(super) fn inline_membership(
     guard: &Option<Bool<'static>>,
     tracker: Option<&Bool<'static>>,
 ) {
-    // Top-level Memberships are pre-declared by pass 1, so the
-    // declare_var call is a no-op there. Useful when the helper
-    // recurses into a passthrough's body that introduces
-    // variables not yet in env (e.g. a nested claim's locals).
+    // Pass-1 pre-declares top-level Memberships; this no-ops there, but
+    // is needed for passthrough bodies with vars not yet in env.
     if !env.contains_key(name) {
         let post = declare_var(ctx, env, name, type_name, schemas, Some(registry), enums);
         for c in &post { track_assert(solver, c, tracker); }
     }
-    // Resolve `pins` to a list of (field-name, value-expr)
-    // pairs. Named is direct; Positional looks up the type's
-    // body Membership order to map positions to field names.
     let resolved_pins: Vec<(String, Expr)> = match pins {
         crate::core::ast::Pins::None => Vec::new(),
         crate::core::ast::Pins::Named(maps) => maps.iter()
             .map(|m| (m.slot.clone(), m.value.clone())).collect(),
         crate::core::ast::Pins::Positional(args) => {
-            // Look up the type's field order from its
-            // SchemaDecl. Strict count match required.
             let Some(schema) = schemas.get(type_name) else {
                 eprintln!(
                     "error: positional pin on unknown type `{}`",
@@ -61,10 +52,7 @@ pub(super) fn inline_membership(
                     _ => None,
                 })
                 .collect();
-            // Partial allowed: too few args pin the leading
-            // fields and leave the rest free. Too many is
-            // a real error — the user is asking to pin
-            // fields that don't exist.
+            // Partial ok (leading fields); too many args is an error.
             if args.len() > field_order.len() {
                 eprintln!(
                     "error: too many positional pins on `{}`: \
@@ -78,11 +66,6 @@ pub(super) fn inline_membership(
                 .collect()
         }
     };
-    // Fire each pin as `name.field = value`. Same machinery
-    // and same dropped-constraint policy as a regular
-    // Constraint — a pin to a non-existent field is the
-    // same kind of silent error as a generic dropped
-    // translation, so it shares the hard-fail behavior.
     for (slot, value) in resolved_pins {
         let lhs = Expr::Identifier(format!("{}.{}", name, slot));
         let eq = Expr::Binary(
@@ -123,20 +106,8 @@ pub(super) fn inline_membership(
         }
     }
 
-    // Inherit the type's body Constraints onto this instance.
-    // For each `Constraint(e)` in the type's body, rewrite any
-    // identifier whose leading dotted segment names one of the
-    // type's own fields by prefixing `name.`. Skip if the type
-    // is not a user-defined schema (built-ins like Int / Nat /
-    // Seq(...) etc. — they have no body to inherit).
-    //
-    // This is what makes `mario ∈ MarioSprite (pos ↦ p)` mean
-    // "mario satisfies MarioSprite's invariants" rather than
-    // "mario has MarioSprite's leaf fields but no constraints
-    // between them." Without it, body equalities like
-    // `hat = Rect(Color(220, …), pos, …)` in the type body
-    // produce no constraint on `mario.hat`, and the instance
-    // ends up free.
+    // Inherit type body Constraints onto this instance (prefix field refs with
+    // `name.`). Skips builtins (Int/Nat/Seq/…) which have no body.
     if let Some(type_schema) = schemas.get(type_name) {
         let field_set: std::collections::HashSet<String> = type_schema
             .body
@@ -152,28 +123,14 @@ pub(super) fn inline_membership(
                 if let Some(b) = translate_bool(&rewritten, ctx, env, schemas) {
                     track_assert(solver, &guarded_bool(b, guard), tracker);
                 }
-                // Silently skip on translation failure — the
-                // type body might contain shapes that only
-                // apply when used with a passthrough (e.g.,
-                // bare claim names that match-by-name). The
-                // hard-fail policy stays on direct body items
-                // of the calling schema.
+                // Silently skip on translation failure (passthrough shapes etc);
+                // hard-fail applies only to direct body items of the calling schema.
             }
         }
     }
 
-    // Element-level invariant inheritance for `Seq(SomeType)`:
-    // when SomeType has body Constraints (e.g. `#effs = 2`),
-    // emit per-element substituted versions over the Seq's
-    // pinned indices. Without this, a user `plat_effs ∈
-    // Seq(EffectPair)` declaration wouldn't auto-pin each
-    // bundle's inner length — the user would have to write
-    // `∀ i ∈ {0..3} : #plat_effs[i].effs = 2` by hand.
-    //
-    // The substitution treats each Seq element as a record
-    // value reached by `Index(Identifier(name), Int(i))`,
-    // and the type's bare field references become
-    // `Field(Index(name, i), field_name)` per iteration.
+    // Inherit SomeType's body Constraints per element of `Seq(SomeType)`,
+    // substituting bare field refs → `Field(Index(name, i), field_name)`.
     if let Some(inner) = type_name.strip_prefix("Seq(")
         .and_then(|s| s.strip_suffix(')'))
     {
@@ -196,10 +153,6 @@ pub(super) fn inline_membership(
                 for i in 0..n {
                     for item in &inner_schema.body {
                         if let BodyItem::Constraint(e) = item {
-                            // Build elem_expr = Index(Identifier(name), Int(i)).
-                            // For each of the inner type's field
-                            // names, substitute bare refs to
-                            // `Field(elem_expr, field_name)`.
                             let mut substituted = e.clone();
                             for fname in &field_set {
                                 let elem = Expr::Field(

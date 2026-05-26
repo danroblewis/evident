@@ -1,10 +1,4 @@
-//! `evident` — CLI for the Evident runtime.
-//!
-//! Subcommands:
-//!   sample       <files…> <schema> [-n N] [--given k=v …] [--json]
-//!   sample       <files…> --all [--json]   — sat-check every schema
-//!   test         [path]
-//!   effect-run   <file>           — run an effect-driven program
+//! `evident` CLI — subcommands: sample, test, effect-run.
 
 use std::process::ExitCode;
 

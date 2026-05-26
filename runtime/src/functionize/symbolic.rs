@@ -1,54 +1,5 @@
-//! Symbolic-regression functionizer.
-//!
-//! Where the Cranelift functionizer (`functionize/cranelift.rs`)
-//! *translates* a `Z3Program`'s ASTs into native code, this strategy
-//! treats the program as a **black box**: it samples input→output
-//! pairs by solving the program for random inputs, then runs genetic
-//! programming to discover a closed-form arithmetic expression that
-//! reproduces every sample exactly. The discovered expression is the
-//! compiled artifact — at call time it's a tiny tree walk.
-//!
-//! The win, when it lands, is that a program whose body is a long
-//! chain of constraints can distill to a short polynomial: e.g. a
-//! claim that pins `output ∈ Int = 3 * input + 5` through several
-//! intermediate constraints collapses to the tree `3·x + 5`,
-//! independent of how the source spelled it.
-//!
-//! ## Scope (deliberately narrow)
-//!
-//! Symbolic regression's reliability falls off a cliff as the
-//! function space grows, so this strategy only attempts programs it
-//! has a real chance of fitting and falls back (`compile` → `None`)
-//! on everything else:
-//!
-//!   * Every step must be `Z3Step::Scalar` (no Seq / Guarded /
-//!     PreBaked outputs).
-//!   * Every output and every input must be `Int`- or `Bool`-sorted.
-//!   * No residual `checks` or `predicates` — those mean the body is
-//!     conditional / partial, which a total closed-form can't honor.
-//!   * Small arity (≤ 4 inputs, ≤ 6 outputs).
-//!
-//! A `None` from `compile` is not a failure — the runtime simply
-//! falls through to a full Z3 solve. The acceptance gate is strict:
-//! a candidate is accepted only when its squared error is exactly 0
-//! across the *entire* sample set, which includes a wide-range
-//! held-out block specifically to reject overfit polynomials.
-//!
-//! ## Function space
-//!
-//! Trees over: integer constants, input variables, `+ - * / mod`,
-//! comparisons (`< ≤ > ≥ =`), `∧ ∨ ¬`, unary negation, and a 3-ary
-//! `ite`. Bool values are carried as `0`/`1` so the whole tree is
-//! `i128`-valued; a Bool output is just a tree whose samples are all
-//! `0`/`1`. This keeps the GP type-monomorphic and the search small.
-//!
-//! ## Determinism
-//!
-//! The GP RNG is seeded from `EVIDENT_SYMBOLIC_SEED` (default fixed),
-//! so a given program compiles to the same artifact every run — a
-//! non-deterministic functionizer would be a debugging nightmare. In
-//! practice the analytic + seed-bank fast paths nail common shapes
-//! (constants, affine, `x²`) before the stochastic search even runs.
+//! Symbolic-regression functionizer: GP search for a closed-form tree over Z3-sampled I/O pairs.
+//! Scalar Int/Bool only; ≤4 inputs, ≤6 outputs; seeded from `EVIDENT_SYMBOLIC_SEED`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -62,19 +13,14 @@ use z3_sys::DeclKind;
 
 use crate::core::{EnumRegistry, Value, Z3Program, Z3Step};
 
-// ── Tuning knobs ────────────────────────────────────────────────
-
-/// Magnitude past which an intermediate result saturates, keeping
-/// every evaluation finite (and i128-safe) without aborting.
+/// Clamp magnitude so eval stays i128-finite without aborting.
 const CLAMP: i128 = 1 << 100;
-/// Per-sample error diff is clamped to this before squaring so the
-/// summed squared error can't overflow i128 across the sample set.
+/// Clamp error diff before squaring to prevent SSE overflow across the sample set.
 const DIFF_CLAMP: i128 = 1 << 40;
 
 const MAX_INPUTS: usize = 4;
 const MAX_OUTPUTS: usize = 6;
 
-/// A primitive sort the regressor can carry as an `i128`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NumKind {
     Int,
@@ -91,7 +37,7 @@ impl NumKind {
     }
 }
 
-// ── The discovered expression tree ──────────────────────────────
+// Expression tree
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Bin {
@@ -118,8 +64,7 @@ enum Un {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SExpr {
     Const(i64),
-    /// Index into the program's ordered input vector.
-    Var(usize),
+    Var(usize),   // index into the ordered input vector
     Unary(Un, Box<SExpr>),
     Binary(Bin, Box<SExpr>, Box<SExpr>),
     Ite(Box<SExpr>, Box<SExpr>, Box<SExpr>),
@@ -135,9 +80,7 @@ fn apply_bin(op: Bin, a: i128, b: i128) -> i128 {
         Bin::Add => a.checked_add(b).map(clamp).unwrap_or(CLAMP),
         Bin::Sub => a.checked_sub(b).map(clamp).unwrap_or(CLAMP),
         Bin::Mul => a.checked_mul(b).map(clamp).unwrap_or(CLAMP),
-        // Z3 integer division is total (div-by-0 yields an
-        // unconstrained value); we define it as 0, which is the
-        // common interpreter convention and keeps the function total.
+        // Z3 div-by-zero yields unconstrained; we use 0 to keep the function total.
         Bin::Div => {
             if b == 0 {
                 0
@@ -191,11 +134,7 @@ impl SExpr {
     }
 }
 
-/// Pretty-print a discovered tree, naming each `Var(i)` after the
-/// program's i-th input rather than the positional `x{i}`. Used by the
-/// `EVIDENT_SYMBOLIC_ANNOUNCE` stdout line so the rediscovered form
-/// reads in the program's own variables (`3 * world.x + 5`, not
-/// `3 * x0 + 5`).
+/// Render a tree with program variable names (for `EVIDENT_SYMBOLIC_ANNOUNCE`).
 fn render_named(e: &SExpr, inputs: &[(String, NumKind)]) -> String {
     match e {
         SExpr::Var(i) => inputs
@@ -235,7 +174,6 @@ fn bin_symbol(op: Bin) -> &'static str {
     }
 }
 
-/// Pretty-print for the compile trace (`EVIDENT_SYMBOLIC_TRACE`).
 fn render(e: &SExpr) -> String {
     match e {
         SExpr::Const(c) => c.to_string(),
@@ -249,24 +187,15 @@ fn render(e: &SExpr) -> String {
     }
 }
 
-// ── The compiled artifact ───────────────────────────────────────
-
-/// A program whose every output is a closed-form `SExpr` over the
-/// ordered input vector. Holds no Z3 ASTs — pure owned data, so it
-/// satisfies the `'static` `Rc<dyn CompiledFunction>` the runtime
-/// caches.
+/// Compiled artifact: one closed-form `SExpr` per output. No Z3 ASTs; pure owned data.
 struct SymbolicProgram {
-    /// Ordered inputs; position is the `Var` index used by every tree.
-    inputs: Vec<(String, NumKind)>,
-    /// One discovered tree per output, with the output's name + kind.
+    inputs: Vec<(String, NumKind)>,   // position = Var index in every tree
     outputs: Vec<(String, NumKind, SExpr)>,
 }
 
 impl super::CompiledFunction for SymbolicProgram {
     fn call(&self, given: &HashMap<String, Value>) -> Option<HashMap<String, Value>> {
-        // Pack the input vector in declared order. A missing or
-        // mistyped input means this artifact can't answer for these
-        // givens — return None and let the runtime fall through to Z3.
+        // Missing or mistyped input → None; runtime falls through to Z3.
         let mut vars: Vec<i128> = Vec::with_capacity(self.inputs.len());
         for (name, kind) in &self.inputs {
             let v = given.get(name)?;
@@ -294,10 +223,7 @@ fn saturate_i64(v: i128) -> i64 {
     v.clamp(i64::MIN as i128, i64::MAX as i128) as i64
 }
 
-// ── The strategy ────────────────────────────────────────────────
-
-/// Symbolic-regression functionizer. Opt-in via
-/// `EvidentRuntime::with_functionizer(Box::new(SymbolicFunctionizer::new()))`.
+/// Symbolic-regression functionizer. Opt-in via `EvidentRuntime::with_functionizer`.
 pub struct SymbolicFunctionizer {
     cfg: GpConfig,
 }
@@ -308,13 +234,9 @@ struct GpConfig {
     population: usize,
     generations: usize,
     tournament: usize,
-    /// How many narrow-range training samples to draw.
     train_samples: usize,
-    /// How many wide-range held-out samples to draw (acceptance is
-    /// gated on exactness over these too).
-    valid_samples: usize,
-    /// Wall-clock ceiling for fitting one output.
-    budget: Duration,
+    valid_samples: usize,   // wide-range; acceptance gated on exactness here too
+    budget: Duration,       // wall-clock ceiling per output
 }
 
 impl Default for GpConfig {
@@ -361,13 +283,9 @@ impl super::Functionizer for SymbolicFunctionizer {
         _datatypes: &crate::core::DatatypeRegistry,
     ) -> Option<Rc<dyn super::CompiledFunction>> {
         let trace = std::env::var("EVIDENT_SYMBOLIC_TRACE").is_ok();
-        // Opt-in stdout announcement of each rediscovered closed form
-        // (proof the symbolic strategy ran, not the runtime's default).
-        // Off by default so library / unit-test uses stay quiet; the
-        // `effect-run --functionizer symbolic` path turns it on.
+        // Announce on stdout when `EVIDENT_SYMBOLIC_ANNOUNCE` is set; off by default.
         let announce = std::env::var("EVIDENT_SYMBOLIC_ANNOUNCE").is_ok();
 
-        // ── Refuse anything outside the supported shape ──────────
         if !program.checks.is_empty() || !program.predicates.is_empty() {
             if trace {
                 eprintln!("[symbolic] bail: program has checks/predicates (conditional body)");
@@ -378,7 +296,6 @@ impl super::Functionizer for SymbolicFunctionizer {
             return None;
         }
 
-        // Output specs (name + kind), and the defining expr per output.
         let mut outputs: Vec<(String, NumKind)> = Vec::with_capacity(program.steps.len());
         let mut step_exprs: Vec<(String, NumKind, &Dynamic)> = Vec::new();
         let mut output_names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -404,8 +321,6 @@ impl super::Functionizer for SymbolicFunctionizer {
             step_exprs.push((var.clone(), kind, expr));
         }
 
-        // Inputs = free 0-arity consts referenced by any step expr,
-        // minus the output vars. Determine each one's sort.
         let mut free: BTreeMap<String, String> = BTreeMap::new();
         for (_, _, expr) in &step_exprs {
             collect_free_consts(expr, &mut free);
@@ -430,11 +345,8 @@ impl super::Functionizer for SymbolicFunctionizer {
             return None;
         }
 
-        // Need a Z3 context to drive sampling — borrow it from any
-        // step's AST (they all live in the runtime's 'static context).
         let ctx: &Context = step_exprs[0].2.get_ctx();
 
-        // ── Sample input→output pairs ────────────────────────────
         let mut rng = StdRng::seed_from_u64(self.cfg.seed);
         let inputs_for_sampling: Vec<(String, NumKind)> = inputs.clone();
         let outputs_for_sampling: Vec<(String, NumKind)> = outputs.clone();
@@ -445,9 +357,7 @@ impl super::Functionizer for SymbolicFunctionizer {
         let mut attempts = 0usize;
         while sample_inputs.len() < total && attempts < total * 4 {
             attempts += 1;
-            // Narrow range for the first block, wide for the held-out
-            // block — a spurious high-degree fit that matches the
-            // narrow block diverges on the wide one.
+            // Narrow range for training; wide for held-out (spurious overfits diverge on wide).
             let wide = sample_inputs.len() >= self.cfg.train_samples;
             let input_vals = random_input_vec(&mut rng, &inputs_for_sampling, wide);
             let Some(out_vals) = solve_program_at(
@@ -457,8 +367,6 @@ impl super::Functionizer for SymbolicFunctionizer {
                 &outputs_for_sampling,
                 &input_vals,
             ) else {
-                // A total function should always solve; if it doesn't,
-                // the program isn't actually function-shaped here.
                 if trace {
                     eprintln!("[symbolic] bail: program did not solve for a sampled input");
                 }
@@ -471,7 +379,6 @@ impl super::Functionizer for SymbolicFunctionizer {
             return None;
         }
 
-        // ── Fit each output independently ────────────────────────
         let n_vars = inputs.len();
         let mut fitted: Vec<(String, NumKind, SExpr)> = Vec::with_capacity(outputs.len());
         for (oi, (name, kind)) in outputs.iter().enumerate() {
@@ -494,11 +401,6 @@ impl super::Functionizer for SymbolicFunctionizer {
     }
 }
 
-// ── Z3 sampling ─────────────────────────────────────────────────
-
-/// Draw one random input assignment. Ints come from a narrow band
-/// for training samples and a wide band for validation; Bools are
-/// uniform over `{0, 1}`.
 fn random_input_vec(rng: &mut StdRng, inputs: &[(String, NumKind)], wide: bool) -> Vec<i128> {
     inputs
         .iter()
@@ -515,11 +417,7 @@ fn random_input_vec(rng: &mut StdRng, inputs: &[(String, NumKind)], wide: bool) 
         .collect()
 }
 
-/// Solve the program for one concrete input assignment: bind each
-/// input to its value and each output to its defining expression,
-/// then read the outputs from the model. Returns the output values
-/// in `outputs` order, or `None` if the system isn't SAT (which a
-/// genuine total function never is).
+/// Bind inputs to concrete values, solve, return output values in `outputs` order.
 fn solve_program_at(
     program: &Z3Program,
     ctx: &Context,
@@ -542,8 +440,6 @@ fn solve_program_at(
         }
     }
 
-    // Bind every scalar output to its expression so the model is
-    // forced to the program's actual output for these inputs.
     let out_kind: HashMap<&str, NumKind> = outputs.iter().map(|(n, k)| (n.as_str(), *k)).collect();
     for step in &program.steps {
         if let Z3Step::Scalar { var, expr } = step {
@@ -584,9 +480,6 @@ fn out_const<'ctx>(ctx: &'ctx Context, name: &str, kind: NumKind) -> Dynamic<'ct
     }
 }
 
-/// Collect every free 0-arity uninterpreted constant in `d` into
-/// `out` (name → sort string). Mirrors `z3_eval::collect_touched_names`
-/// but keeps the sort so we can type each input.
 fn collect_free_consts(d: &Dynamic, out: &mut BTreeMap<String, String>) {
     if d.kind() == AstKind::App {
         if let Ok(decl) = d.safe_decl() {
@@ -601,10 +494,7 @@ fn collect_free_consts(d: &Dynamic, out: &mut BTreeMap<String, String>) {
     }
 }
 
-// ── Fitness ─────────────────────────────────────────────────────
-
-/// Summed squared error of `expr` over all samples. `0` means the
-/// expression reproduces every sampled point exactly.
+/// Summed squared error; 0 means exact reproduction.
 fn sse(expr: &SExpr, samples: &[Vec<i128>], targets: &[i128]) -> i128 {
     let mut total: i128 = 0;
     for (vars, &t) in samples.iter().zip(targets) {
@@ -614,14 +504,12 @@ fn sse(expr: &SExpr, samples: &[Vec<i128>], targets: &[i128]) -> i128 {
     total
 }
 
-/// GP fitness: error dominates, tree size is a tiebreak so among
-/// equally-accurate candidates the simplest wins (Occam pressure).
+/// Fitness: error dominates; tree size is a tiebreak (Occam pressure).
 fn score(expr: &SExpr, samples: &[Vec<i128>], targets: &[i128]) -> i128 {
     let e = sse(expr, samples, targets);
     e.saturating_mul(1000).saturating_add(expr.size() as i128)
 }
 
-/// Return `expr` iff it is exact over every sample, else `None`.
 fn accept_if_exact(expr: SExpr, samples: &[Vec<i128>], targets: &[i128]) -> Option<SExpr> {
     if sse(&expr, samples, targets) == 0 {
         Some(expr)
@@ -630,8 +518,6 @@ fn accept_if_exact(expr: SExpr, samples: &[Vec<i128>], targets: &[i128]) -> Opti
     }
 }
 
-// ── Fitting one output ──────────────────────────────────────────
-
 fn fit_one(
     cfg: &GpConfig,
     rng: &mut StdRng,
@@ -639,20 +525,15 @@ fn fit_one(
     samples: &[Vec<i128>],
     targets: &[i128],
 ) -> Option<SExpr> {
-    // 1. Analytic fast paths — deterministic, exact, instant.
     if let Some(e) = try_analytic(n_vars, samples, targets) {
         return Some(e);
     }
-
-    // 2. Seed bank — structured candidates covering common shapes.
     let bank = seed_bank(n_vars, targets);
     for cand in &bank {
         if sse(cand, samples, targets) == 0 {
             return Some(cand.clone());
         }
     }
-
-    // 3. Genetic programming over the function space.
     let start = Instant::now();
     let mut population: Vec<SExpr> = bank;
     while population.len() < cfg.population {
@@ -671,7 +552,6 @@ fn fit_one(
             break;
         }
 
-        // Elitism: carry the best few unchanged.
         let elite = (cfg.population / 20).max(2);
         let mut next: Vec<SExpr> = population.iter().take(elite).cloned().collect();
         while next.len() < cfg.population {
@@ -685,9 +565,7 @@ fn fit_one(
             if rng.gen_bool(0.25) {
                 child = mutate(rng, &child, n_vars);
             }
-            // Bound bloat: oversized trees are discarded in favor of a
-            // fresh small one.
-            if child.size() > 60 {
+            if child.size() > 60 {  // discard bloated trees
                 child = random_tree(rng, 3, n_vars);
             }
             next.push(child);
@@ -699,10 +577,8 @@ fn fit_one(
     accept_if_exact(population.into_iter().next()?, samples, targets)
 }
 
-/// Closed-form fits that don't need search: a constant, or an affine
-/// function `a·x + b` of a single input with integer coefficients.
+/// Fast analytic paths: constant, or single-variable affine `a·x + b`.
 fn try_analytic(n_vars: usize, samples: &[Vec<i128>], targets: &[i128]) -> Option<SExpr> {
-    // Constant: all targets equal.
     if let Some(&first) = targets.first() {
         if targets.iter().all(|&t| t == first) {
             if let Ok(c) = i64::try_from(first) {
@@ -711,10 +587,7 @@ fn try_analytic(n_vars: usize, samples: &[Vec<i128>], targets: &[i128]) -> Optio
         }
     }
 
-    // Single-variable integer affine: solve a, b from two samples
-    // with distinct x, then verify exactness over all samples.
     if n_vars == 1 {
-        // Find two samples with different x values.
         let mut pair: Option<(usize, usize)> = None;
         'outer: for i in 0..samples.len() {
             for j in (i + 1)..samples.len() {
@@ -748,9 +621,7 @@ fn try_analytic(n_vars: usize, samples: &[Vec<i128>], targets: &[i128]) -> Optio
     None
 }
 
-/// Structured candidate expressions seeded into the initial
-/// population — covers constants, per-variable affine forms, simple
-/// products, and comparison forms (for Bool outputs).
+/// Seed the initial population with structured candidates: constants, affine, products, comparisons.
 fn seed_bank(n_vars: usize, targets: &[i128]) -> Vec<SExpr> {
     let mut bank: Vec<SExpr> = Vec::new();
     let median = {
@@ -783,7 +654,6 @@ fn seed_bank(n_vars: usize, targets: &[i128]) -> Vec<SExpr> {
                 ));
             }
         }
-        // Comparison + equality forms, useful for Bool outputs.
         for c in -2i64..=5 {
             for op in [Bin::Lt, Bin::Le, Bin::Gt, Bin::Ge, Bin::Eq] {
                 bank.push(SExpr::Binary(
@@ -806,7 +676,7 @@ fn seed_bank(n_vars: usize, targets: &[i128]) -> Vec<SExpr> {
     bank
 }
 
-// ── GP operators ────────────────────────────────────────────────
+// GP operators
 
 fn random_terminal(rng: &mut StdRng, n_vars: usize) -> SExpr {
     if n_vars > 0 && rng.gen_bool(0.6) {
@@ -876,7 +746,6 @@ fn tournament<'a>(
     best
 }
 
-/// Return a clone of the `n`-th node in pre-order.
 fn subtree_at(e: &SExpr, n: usize, counter: &mut usize) -> Option<SExpr> {
     let here = *counter;
     *counter += 1;
@@ -895,7 +764,6 @@ fn subtree_at(e: &SExpr, n: usize, counter: &mut usize) -> Option<SExpr> {
     }
 }
 
-/// Rebuild `e` with the `n`-th node (pre-order) replaced by `repl`.
 fn replace_at(e: &SExpr, n: usize, repl: &SExpr, counter: &mut usize) -> SExpr {
     let here = *counter;
     *counter += 1;
@@ -946,8 +814,6 @@ mod tests {
     use crate::EvidentRuntime;
     use std::collections::HashMap;
 
-    /// Build a runtime whose functionizer is the symbolic-regression
-    /// strategy, then load `src`.
     fn rt_with_symbolic(src: &str) -> EvidentRuntime {
         let mut rt = EvidentRuntime::with_functionizer(Box::new(SymbolicFunctionizer::new()));
         rt.load_source(src).expect("load");
@@ -960,11 +826,7 @@ mod tests {
         g
     }
 
-    /// Acceptance criterion #4: a claim mapping Int→Int via a simple
-    /// polynomial. The symbolic functionizer discovers `3·x + 5` from
-    /// sampled IO and produces a callable that matches — and the
-    /// per-claim `compiled` stat proves the symbolic strategy (not the
-    /// Z3 fallback) produced the answer.
+    /// Discovers `3·x + 5`; `compiled` stat confirms symbolic ran (not Z3 fallback).
     #[test]
     fn discovers_linear_polynomial() {
         let rt = rt_with_symbolic(
@@ -990,8 +852,6 @@ mod tests {
         );
     }
 
-    /// Nonlinear discovery: `output = input * input`. Exercises the
-    /// seed bank's product term + the exactness-on-wide-range gate.
     #[test]
     fn discovers_quadratic() {
         let rt = rt_with_symbolic("claim sq\n    input ∈ Int\n    output ∈ Int = input * input\n");
@@ -1004,9 +864,6 @@ mod tests {
         assert!(stats.claims.get("sq").map(|s| s.compiled).unwrap_or(0) >= 1);
     }
 
-    /// Multi-output, two-input affine: both outputs distilled
-    /// independently. Confirms the per-output fit + ordered input
-    /// packing work together.
     #[test]
     fn discovers_multi_output() {
         let rt = rt_with_symbolic(
@@ -1021,10 +878,7 @@ mod tests {
         assert_eq!(r.bindings.get("diff"), Some(&Value::Int(7)));
     }
 
-    /// Acceptance criterion #5: graceful fallback. A String-valued
-    /// output is outside the regressor's Int/Bool space, so `compile`
-    /// returns `None` and the runtime falls through to a full Z3
-    /// solve — which still answers correctly.
+    /// String output triggers `compile → None`; runtime falls through to Z3 and still answers.
     #[test]
     fn falls_back_on_unsupported_output() {
         let rt = rt_with_symbolic(
@@ -1032,12 +886,10 @@ mod tests {
         );
         let r = rt.query("greet", &given_int("n", 21)).expect("query");
         assert!(r.satisfied);
-        // Fallback path still produces the right answer.
         assert_eq!(r.bindings.get("doubled"), Some(&Value::Int(42)));
         assert_eq!(r.bindings.get("msg"), Some(&Value::Str("hi".to_string())));
     }
 
-    /// The discovered tree evaluator handles the supported operators.
     #[test]
     fn sexpr_eval_basics() {
         // 3*x + 5
@@ -1052,8 +904,8 @@ mod tests {
         );
         assert_eq!(e.eval(&[7]), 26);
         assert_eq!(e.eval(&[0]), 5);
-        // safe division by zero
         let d = SExpr::Binary(Bin::Div, Box::new(SExpr::Const(4)), Box::new(SExpr::Const(0)));
+        // div-by-zero returns 0
         assert_eq!(d.eval(&[]), 0);
     }
 }

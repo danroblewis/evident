@@ -1,26 +1,5 @@
-//! Z3 program extraction.
-//!
-//! Pipeline:
-//!
-//! ```text
-//!   Evident AST  ──translate──▶  Z3 ASTs (raw)
-//!                                     │
-//!                                     ▼
-//!                              simplify + propagate-values
-//!                                     │
-//!                                     ▼
-//!                              Z3 ASTs (canonical)
-//!                                     │
-//!                                     ▼
-//!                            per-output assignment extraction
-//!                                     │
-//!                                     ▼
-//!                              Z3Program (steps + checks)
-//! ```
-//!
-//! Downstream consumers (the JIT in `core::functionizer`) compile
-//! a `Z3Program` to native code; this module's job is only to
-//! produce the canonical program shape from Z3's simplified ASTs.
+//! Z3 program extraction: simplify Z3 ASTs → `Z3Program` (ordered steps + checks).
+//! The JIT in `core::functionizer` compiles the result to native code.
 
 use std::collections::{BTreeMap, HashMap};
 use z3::ast::{Array, Ast, Bool, Dynamic, Int};
@@ -29,29 +8,11 @@ use z3_sys::DeclKind;
 
 use crate::core::{DatatypeRegistry, FieldKind, Value};
 
-// Re-export the program shape so existing `crate::core::Z3Program`,
-// `Z3Step`, `GuardedBody`, `GuardedBranch` paths continue to resolve.
-// The types themselves live in `crate::core::z3_program`.
+// Re-export so `crate::core::Z3Program` / `Z3Step` / etc. paths continue to resolve.
 pub use crate::core::{GuardedBody, GuardedBranch, Z3Program, Z3Step};
 
-/// Apply Z3's preprocessing tactic chain to the given Bool
-/// assertions. Returns the simplified assertions (the residual
-/// constraints after `simplify` + `propagate-values`).
-///
-/// We deliberately exclude `solve-eqs` here — that tactic
-/// substitutes equality-defined variables AWAY, destroying the
-/// `(= var expr)` shape we need for per-output extraction. Z3
-/// would record the substitutions in a "model converter" that the
-/// Rust z3 0.12 bindings don't expose, so we'd lose the
-/// information.
-///
-/// What `simplify` + `propagate-values` give us:
-///   * constant folding (1 + 2 → 3)
-///   * algebraic identities (x + 0 → x, x * 1 → x)
-///   * boolean simplification (a ∧ ¬a → false)
-///   * ITE simplification when both branches equal
-///   * datatype simplification (recognizer/accessor of known ctor folded)
-///   * propagation of known constants through the formula
+/// Apply `simplify` + `propagate-values`. Excludes `solve-eqs`: it destroys the
+/// `(= var expr)` shape needed for extraction via a model-converter z3 0.12 doesn't expose.
 pub fn simplify_assertions<'ctx>(
     ctx: &'ctx Context,
     assertions: &[Bool<'ctx>],
@@ -70,9 +31,7 @@ pub fn simplify_assertions<'ctx>(
         if sub.is_decided_unsat() { unsat = true; }
         formulas.extend(sub.get_formulas::<Bool>());
     }
-    // Conservative UNSAT detection: any assertion folded to `false`
-    // by the tactics. This catches contradictions like `x = 3 ∧
-    // x = 4` (after pinning x = 3, the second becomes `false`).
+    // Any assertion folded to `false` by the tactics → UNSAT.
     for f in &formulas {
         if let Some(false) = f.as_bool() {
             unsat = true;
@@ -87,19 +46,8 @@ pub struct SimplifyResult<'ctx> {
     pub unsat:    bool,
 }
 
-/// Given a list of simplified Bool assertions and the set of
-/// output variable names, partition the assertions into
-/// per-output substitutions plus consistency checks.
-///
-/// For each assertion of form `(= a b)`:
-///   * If LHS is a 0-arity App with name in `outputs` AND RHS
-///     doesn't mention that name → `outputs[name] = RHS`.
-///   * Symmetric for RHS as the output.
-///   * Otherwise → check (must hold under given values).
-///
-/// Returns None if any output lacks a defining assignment after
-/// simplification — that means the body isn't fully function-shaped
-/// under these inputs, and the caller should fall through to Z3.
+/// Partition simplified assertions into per-output assignments + consistency checks.
+/// Returns `None` if any output lacks a defining assignment (body not function-shaped).
 pub fn extract_program<'ctx>(
     assertions: &[Bool<'ctx>],
     outputs: &[String],
@@ -107,22 +55,16 @@ pub fn extract_program<'ctx>(
     let output_set: std::collections::HashSet<&str> = outputs.iter()
         .map(|s| s.as_str()).collect();
 
-    // Buckets for unconditional assignments:
     let mut scalar_assign: HashMap<String, Dynamic<'ctx>> = HashMap::new();
     let mut seq_lengths:   HashMap<String, i64> = HashMap::new();
     let mut seq_elements:  HashMap<String, HashMap<i64, Dynamic<'ctx>>> = HashMap::new();
-    // Guarded assignments — `(or (not P) Q)` style. Per output var,
-    // a list of (guard, body) candidates that the eval walks at
-    // runtime.
+    // Guarded assignments: `(or (not P) Q)` → per-output (guard, body) list.
     let mut guarded: HashMap<String, Vec<GuardedBranch<'ctx>>> = HashMap::new();
     let mut checks: Vec<(Dynamic<'ctx>, Dynamic<'ctx>)> = Vec::new();
-    // Non-equality predicates (`x < 5`, `flag = true` after
-    // simplify folded both sides to Bool, etc.) that must hold
-    // at runtime.
+    // Non-equality predicates (`x < 5`, Nat bounds, etc.) that must hold at runtime.
     let mut predicates: Vec<Bool<'ctx>> = Vec::new();
 
     for a in assertions {
-        // (or (not P) Q) pattern — guarded assertion `P ⇒ Q`.
         if let Some((guard, consequent)) = try_guarded(a) {
             if classify_guarded_consequent(&consequent, &output_set,
                 &mut guarded, &guard).is_some()
@@ -132,15 +74,10 @@ pub fn extract_program<'ctx>(
         }
 
         let Some((lhs, rhs)) = split_equality(a) else {
-            // Non-equality assertion: record it as a predicate
-            // that must evaluate to true at runtime. Catches
-            // type-bound constraints like `(>= x 0)` from Nat and
-            // user inequalities like `x < 5`.
             predicates.push(a.clone());
             continue;
         };
 
-        // Length pin: `(= var__len N)` or symmetric.
         if let Some((name, n)) = match_len_pin(&lhs, &rhs)
             .or_else(|| match_len_pin(&rhs, &lhs))
         {
@@ -148,7 +85,6 @@ pub fn extract_program<'ctx>(
             continue;
         }
 
-        // Per-element pin: `(= (select arr idx_lit) elem)`.
         if let Some((arr, idx, elem)) = match_select_pin(&lhs, &rhs)
             .or_else(|| match_select_pin(&rhs, &lhs))
         {
@@ -158,7 +94,6 @@ pub fn extract_program<'ctx>(
             }
         }
 
-        // Plain output assignment: `(= output_var expr)`.
         if let Some(name) = ast_app_name(&lhs) {
             if output_set.contains(name.as_str())
                 && !scalar_assign.contains_key(&name)
@@ -177,21 +112,11 @@ pub fn extract_program<'ctx>(
                 continue;
             }
         }
-        // Falls through as a consistency check.
         checks.push((lhs, rhs));
     }
 
-    // Compose Seq steps where length + all N elements are pinned.
-    //
-    // Length sources, in priority order:
-    //   1. Explicit `(= var__len N)` pin from the body.
-    //   2. Inferred from consecutive `(select var 0..K)` per-element
-    //      pins — Z3 folds away the literal length pin via
-    //      apply_seq_lengths BEFORE body translation, so seq-of-
-    //      datatype assignments often arrive without an explicit
-    //      length clause. If we see (select var 0), (select var 1),
-    //      …, (select var K) and no (select var K+1), infer
-    //      length = K+1.
+    // Build Seq steps: prefer explicit `var__len` pin; fall back to inferring length
+    // from contiguous per-element select pins (Z3 sometimes folds away the len pin).
     let mut seq_assign: HashMap<String, Vec<Dynamic<'ctx>>> = HashMap::new();
     for arr in outputs {
         if scalar_assign.contains_key(arr) { continue; }
@@ -204,7 +129,7 @@ pub fn extract_program<'ctx>(
         });
         let n = match (explicit, inferred) {
             (Some(e), Some(i)) if e == i => e,
-            (Some(e), Some(i)) => e.max(i),  // explicit wins if elements gap
+            (Some(e), Some(i)) => e.max(i),
             (Some(e), None)    => e,
             (None,    Some(i)) => i,
             (None,    None)    => continue,
@@ -228,7 +153,6 @@ pub fn extract_program<'ctx>(
         }
     }
 
-    // Build Guarded steps for outputs covered by `guarded` map.
     let mut guarded_assign: HashMap<String, Vec<GuardedBranch<'ctx>>> = HashMap::new();
     for arr in outputs {
         if scalar_assign.contains_key(arr) || seq_assign.contains_key(arr) { continue; }
@@ -239,7 +163,6 @@ pub fn extract_program<'ctx>(
         }
     }
 
-    // Every output must be covered by some assignment.
     for v in outputs {
         if !scalar_assign.contains_key(v)
             && !seq_assign.contains_key(v)
@@ -254,10 +177,8 @@ pub fn extract_program<'ctx>(
     extract_program_inner(outputs, scalar_assign, seq_assign, guarded_assign, checks, predicates)
 }
 
-/// Like `extract_program` but tolerates missing outputs — returns the
-/// partial `Z3Program` plus a Vec<String> naming the outputs that
-/// couldn't be substituted. Callers can fill in the gaps via model
-/// extraction (encoded as `Z3Step::PreBaked`) or fall through.
+/// Like `extract_program` but tolerates missing outputs; returns the partial program
+/// plus the names that couldn't be substituted (caller fills gaps or falls through).
 pub fn extract_program_partial<'ctx>(
     assertions: &[Bool<'ctx>],
     outputs: &[String],
@@ -280,9 +201,7 @@ pub fn extract_program_partial<'ctx>(
                 continue;
             }
         }
-        // `(not (= X name))` / `(not (= name X))` → `name = ¬X`
-        // for Bool-typed outputs. Z3 emits this for `name = ¬X`
-        // after propagation flips polarity.
+        // `(not (= X name))` → `name = ¬X`: Z3 emits this for Bool outputs after propagation.
         if let Some(inner) = try_negation(a) {
             if let Some((lhs, rhs)) = split_equality(&inner) {
                 if let Some(name) = ast_app_name(&lhs) {
@@ -389,7 +308,6 @@ pub fn extract_program_partial<'ctx>(
         }
     }
 
-    // Identify missing outputs.
     let missing: Vec<String> = outputs.iter()
         .filter(|v| !scalar_assign.contains_key(*v)
             && !seq_assign.contains_key(*v)
@@ -397,60 +315,33 @@ pub fn extract_program_partial<'ctx>(
         .cloned()
         .collect();
 
-    // Build a program over the covered outputs.
     let covered: Vec<String> = outputs.iter()
         .filter(|v| !missing.contains(v))
         .cloned()
         .collect();
     let mut program = extract_program_inner(&covered, scalar_assign, seq_assign, guarded_assign, checks, predicates)?;
     let mut missing = missing;
-    // Opt-in sampler recovery (EVIDENT_SATISFIER): turn range / enum /
-    // finite-set–bounded *missing* outputs into `Sample*` steps so the
-    // SatisfierFunctionizer can draw a satisfying value. Gated on the
-    // env var so the default (Cranelift) path is byte-identical to
-    // before — a `Sample*` step would make Cranelift refuse, and the
-    // var would route to the slow Z3 solve exactly as it does today.
+    // Sampler recovery: gated on EVIDENT_SATISFIER so Cranelift path is unchanged.
     if samplers_enabled() {
         recover_samplers(&mut program, &mut missing, assertions);
     }
     Some((program, missing))
 }
 
-/// Whether sampler recovery is opted-in (the SatisfierFunctionizer is
-/// the active strategy). Keyed on the same env var that
-/// `functionize::default` / `commands::effect_run` consult to select
-/// the SatisfierFunctionizer, so the extractor and the functionizer
-/// always agree.
+/// True when EVIDENT_SATISFIER is set — gates sampler recovery; must agree with the
+/// functionizer strategy selector in `functionize::default` / `commands::effect_run`.
 fn samplers_enabled() -> bool {
     std::env::var("EVIDENT_SATISFIER").is_ok()
 }
 
 // ── Sampler recovery ─────────────────────────────────────────────
-//
-// A "sampler-shaped" output is one with no defining equation but a
-// finite domain implied by its constraints: a closed integer range,
-// an enum type, or a literal finite set. The whole-claim Z3 solve
-// would *pick* such a value; the SatisfierFunctionizer instead draws
-// it deterministically (seeded PRNG). `recover_samplers` recognizes
-// these shapes and replaces the "unbound output → refuse" outcome
-// with a `Sample*` step.
+// Finite-domain missing outputs (range/enum/set) become `Sample*` steps for deterministic draw.
 
-/// One side of an integer bound predicate, normalized so the bound
-/// always reads `var <relation> literal`.
+/// One side of an integer bound predicate, normalized to `var <relation> literal`.
 enum Bound { Ge(i64), Gt(i64), Le(i64), Lt(i64) }
 
-/// For each var still in `missing`, try to recognize a sampler shape
-/// (range / enum / finite set) and emit a `Sample*` step covering it.
-/// Recognized vars are removed from `missing`; any predicate the
-/// sampler subsumes (the range bounds, the set's `or`-of-equalities)
-/// is removed from `program.predicates` so a downstream functionizer
-/// sees no leftover constraint on the sampled var.
-///
-/// Conservative by construction: a var whose constraints don't form
-/// EXACTLY one recognized shape (e.g. a half-open range, a free
-/// inequality `var < y`, a `distinct`, or a mix) is left in `missing`
-/// — the claim then falls through to the slow Z3 solve. This is the
-/// "mixed with a deferred pattern → refuse" rule from the v1 scope.
+/// For each var still in `missing`, emit a `Sample*` step if the constraints form a
+/// recognized finite domain (range/enum/set). Conservative: partial shapes stay missing.
 pub fn recover_samplers<'ctx>(
     program: &mut Z3Program<'ctx>,
     missing: &mut Vec<String>,
@@ -461,18 +352,15 @@ pub fn recover_samplers<'ctx>(
     let mut consumed_pred: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
     for var in missing.clone() {
-        // Predicate indices that mention `var` anywhere.
         let mentioning: Vec<usize> = program.predicates.iter().enumerate()
             .filter(|(_, p)| mentions_name(&Dynamic::from_ast(*p), &var))
             .map(|(i, _)| i)
             .collect();
-        // A `var` that appears in a consistency check is part of an
-        // equality relation, not a clean sampler — refuse.
+        // A var in a consistency check is equality-constrained, not a clean sampler.
         let in_check = program.checks.iter()
             .any(|(l, r)| mentions_name(l, &var) || mentions_name(r, &var));
         if in_check { continue; }
 
-        // ── Set: a lone `(or (= var c0) (= var c1) …)` predicate ──
         if mentioning.len() == 1 {
             if let Some(candidates) = match_set_or(&program.predicates[mentioning[0]], &var) {
                 if !candidates.is_empty() {
@@ -488,7 +376,6 @@ pub fn recover_samplers<'ctx>(
             }
         }
 
-        // ── Range: every mentioning predicate is an integer bound ──
         if !mentioning.is_empty() {
             let mut lo: Option<i64> = None;
             let mut hi: Option<i64> = None;
@@ -513,11 +400,9 @@ pub fn recover_samplers<'ctx>(
                     }
                 }
             }
-            // Has predicates but not a closed integer range → refuse.
-            continue;
+            continue; // predicates present but not a closed range → refuse
         }
 
-        // ── Enum: no predicate/check touches var; datatype sort ────
         if let Some(type_name) = enum_sort_of(assertions, &var) {
             if trace { eprintln!("[fz/z3] sampler: {var:?} ∈ enum {type_name}"); }
             sample_steps.push(Z3Step::SampleEnum { var: var.clone(), type_name });
@@ -527,35 +412,26 @@ pub fn recover_samplers<'ctx>(
     }
 
     if sample_steps.is_empty() { return; }
-    // Drop subsumed predicates.
     let kept: Vec<Bool<'ctx>> = std::mem::take(&mut program.predicates)
         .into_iter()
         .enumerate()
         .filter_map(|(i, p)| if consumed_pred.contains(&i) { None } else { Some(p) })
         .collect();
     program.predicates = kept;
-    // Sample steps have no inputs → they sort to the front; the
-    // existing (already topo-ordered) steps that consume the sampled
-    // var as an input follow.
+    // Sample steps have no inputs → prepend so downstream steps that consume them follow.
     let mut rest = std::mem::take(&mut program.steps);
     sample_steps.append(&mut rest);
     program.steps = sample_steps;
 }
 
-/// Like `extract_program` but always runs sampler recovery (no env
-/// gate) and requires every output to end up covered (by a normal
-/// step OR a `Sample*` step). Returns `None` if any output is still
-/// unbound after recovery. This is the direct entry point used by
-/// tests + any caller that has already decided to sample.
+/// Like `extract_program` but always runs sampler recovery (no env gate). Returns
+/// `None` if any output remains unbound after recovery.
 pub fn extract_program_with_samplers<'ctx>(
     assertions: &[Bool<'ctx>],
     outputs: &[String],
 ) -> Option<Z3Program<'ctx>> {
     let (mut program, mut missing) = extract_program_partial(assertions, outputs)?;
-    // `extract_program_partial` already recovered if EVIDENT_SATISFIER
-    // is set; calling again is a safe no-op (recovered vars are no
-    // longer in `missing`). When the env is unset, this is where the
-    // recovery actually happens.
+    // No-op if partial already recovered (env set); actual recovery when env unset.
     recover_samplers(&mut program, &mut missing, assertions);
     if !missing.is_empty() {
         if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
@@ -566,17 +442,14 @@ pub fn extract_program_with_samplers<'ctx>(
     Some(program)
 }
 
-/// Match an integer bound predicate mentioning `var` as a direct
-/// operand: `(op var lit)` or `(op lit var)`, where `op ∈ {≥,>,≤,<}`.
-/// Returns the bound normalized to `var <relation> literal`. Anything
-/// where `var` is nested (e.g. `(>= (+ var 1) 0)`) returns `None`.
+/// Match `(op var lit)` or `(op lit var)` where op ∈ {≥,>,≤,<}, returning
+/// the bound normalized to `var <relation> literal`. Nested `var` → `None`.
 fn match_bound<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Bound> {
     if pred.kind() != AstKind::App { return None; }
     let decl = pred.safe_decl().ok()?;
     let kind = decl.kind();
     let children = pred.children();
     if children.len() != 2 { return None; }
-    // var on the left:  (op var lit)
     if ast_app_name(&children[0]).as_deref() == Some(var) {
         let lit = numeral_to_i64(&children[1])?;
         return match kind {
@@ -587,23 +460,22 @@ fn match_bound<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Bound> {
             _ => None,
         };
     }
-    // var on the right:  (op lit var)  → flip the relation
+    // var on the right: flip the relation (lit ≥ var ⇔ var ≤ lit, etc.)
     if ast_app_name(&children[1]).as_deref() == Some(var) {
         let lit = numeral_to_i64(&children[0])?;
         return match kind {
-            DeclKind::GE => Some(Bound::Le(lit)),  // lit ≥ var ⇔ var ≤ lit
-            DeclKind::GT => Some(Bound::Lt(lit)),  // lit > var ⇔ var < lit
-            DeclKind::LE => Some(Bound::Ge(lit)),  // lit ≤ var ⇔ var ≥ lit
-            DeclKind::LT => Some(Bound::Gt(lit)),  // lit < var ⇔ var > lit
+            DeclKind::GE => Some(Bound::Le(lit)),
+            DeclKind::GT => Some(Bound::Lt(lit)),
+            DeclKind::LE => Some(Bound::Ge(lit)),
+            DeclKind::LT => Some(Bound::Gt(lit)),
             _ => None,
         };
     }
     None
 }
 
-/// Match a finite-set membership predicate `(or (= var c0) (= var c1)
-/// …)` and return the candidate literal values. Every disjunct must
-/// equate `var` to an Int / Bool literal; otherwise `None`.
+/// Match `(or (= var c0) (= var c1) …)` and return literal candidates.
+/// Every disjunct must equate `var` to an Int/Bool literal; otherwise `None`.
 fn match_set_or<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Vec<Value>> {
     if pred.kind() != AstKind::App { return None; }
     let decl = pred.safe_decl().ok()?;
@@ -626,8 +498,7 @@ fn match_set_or<'ctx>(pred: &Bool<'ctx>, var: &str) -> Option<Vec<Value>> {
     Some(candidates)
 }
 
-/// Convert a Z3 literal Dynamic to a `Value` (Int / Bool). Returns
-/// `None` for non-literals or unsupported sorts.
+/// Convert a Z3 literal to `Value` (Int/Bool); `None` for non-literals.
 fn literal_to_value<'ctx>(d: &Dynamic<'ctx>) -> Option<Value> {
     if let Some(i) = numeral_to_i64(d) { return Some(Value::Int(i)); }
     if let Some(b) = d.as_bool() {
@@ -636,9 +507,7 @@ fn literal_to_value<'ctx>(d: &Dynamic<'ctx>) -> Option<Value> {
     None
 }
 
-/// If `var` appears in `assertions` and its Z3 sort is a Datatype
-/// (an enum), return the sort's name. `None` for primitive-sorted
-/// vars or vars that don't appear at all.
+/// Return the Datatype sort name for `var` in `assertions`, or `None` for non-enum vars.
 fn enum_sort_of<'ctx>(assertions: &[Bool<'ctx>], var: &str) -> Option<String> {
     for a in assertions {
         if let Some(node) = find_var_node(&Dynamic::from_ast(a), var) {
@@ -652,7 +521,7 @@ fn enum_sort_of<'ctx>(assertions: &[Bool<'ctx>], var: &str) -> Option<String> {
     None
 }
 
-/// Find a 0-arity App named `var` anywhere in `d`.
+/// Find the first 0-arity App named `var` in `d`.
 fn find_var_node<'ctx>(d: &Dynamic<'ctx>, var: &str) -> Option<Dynamic<'ctx>> {
     if d.kind() == AstKind::App && d.num_children() == 0 {
         if let Ok(decl) = d.safe_decl() {
@@ -665,26 +534,10 @@ fn find_var_node<'ctx>(d: &Dynamic<'ctx>, var: &str) -> Option<Dynamic<'ctx>> {
     None
 }
 
-// ── Record-element Seq recomposition ─────────────────────────────
-//
-// Z3's `simplify` tactic rewrites a whole-element record-constructor
-// pin `(= (select arr i) (mk_T …))` into per-field accessor pins:
-//
-//   (= (x (select pts 0)) (+ 1 base))          -- IVec2 leaf field
-//   (= (b (color (select rects 0))) 40)         -- nested record field
-//   (= (effs__len (select plat_effs 0)) 2)      -- Seq(T) field length
-//   (= (select (effs__arr (select plat_effs 0)) 0) eff0)  -- Seq(T) elem
-//
-// The bare-`(select arr idx)` matcher in `extract_program*` doesn't
-// recognize these, so every `Seq(Record)` output lands in `missing`.
-// `recompose_record_seqs` groups the accessor pins by element index,
-// rebuilds each element's constructor application from the record's
-// field shape (`DatatypeRegistry`), and appends a `Z3Step::Seq` so
-// the functionizer can emit a `Value::SeqComposite`.
+// Record-element Seq recomposition: Z3 `simplify` explodes record-element pins into per-field
+// accessors; `recompose_record_seqs` groups by index → `Z3Step::Seq` / `Value::SeqComposite`.
 
-/// One pin LHS rooted at `(select var idx)`, classified by what it
-/// constrains. Paths are field-accessor names from the element
-/// outward, with Z3's `__arr` / `__len` suffixes stripped.
+/// One pin LHS rooted at `(select var idx)`. Path = field-accessor names, `__arr`/`__len` stripped.
 enum PinKind {
     /// Leaf primitive / nested-record field: `element.path = value`.
     Scalar(Vec<String>),
@@ -703,9 +556,8 @@ struct ElemPins {
 
 enum RawSeg { Acc(String), Index(i64) }
 
-/// Peel a chain of `DT_ACCESSOR` / seq-element `SELECT` ops down to
-/// the base `(select var idx)`. Returns the base term plus the
-/// segments in element→outer order (with raw accessor names).
+/// Peel a chain of `DT_ACCESSOR`/`SELECT` ops to the base `(select var idx)`.
+/// Returns the base plus segments in element→outer order.
 fn peel_chain(term: &Dynamic<'static>, var: &str)
     -> Option<(Dynamic<'static>, Vec<RawSeg>)>
 {
@@ -715,13 +567,11 @@ fn peel_chain(term: &Dynamic<'static>, var: &str)
         DeclKind::SELECT => {
             let ch = term.children();
             if ch.len() != 2 { return None; }
-            // Base: `(select <var> <idx>)`.
             if ast_app_name(&ch[0]).as_deref() == Some(var) {
                 numeral_to_i64(&ch[1])?;  // ensure literal index
                 return Some((term.clone(), vec![]));
             }
-            // Seq-element select: inner is an accessor chain ending in
-            // a `__arr` accessor; `ch[1]` is the element index.
+            // Seq-element select: inner is an accessor chain; ch[1] is the element index.
             let j = numeral_to_i64(&ch[1])?;
             let (base, mut segs) = peel_chain(&ch[0], var)?;
             segs.push(RawSeg::Index(j));
@@ -744,12 +594,11 @@ fn parse_pin(term: &Dynamic<'static>, var: &str)
 {
     let (base, segs) = peel_chain(term, var)?;
     let idx = numeral_to_i64(&base.children()[1])?;
-    if segs.is_empty() { return None; }  // whole-element pin: not handled here
+    if segs.is_empty() { return None; }  // whole-element pin not handled here
     match segs.last()? {
         RawSeg::Index(j) => {
             let j = *j;
-            // Path = accessor names; the second-to-last is the
-            // `<field>__arr` accessor (strip the suffix).
+            // second-to-last seg is the `<field>__arr` accessor; strip suffix for path.
             let mut path = Vec::new();
             let last_acc = segs.len() - 2;
             for (k, s) in segs.iter().enumerate() {
@@ -771,7 +620,7 @@ fn parse_pin(term: &Dynamic<'static>, var: &str)
                 path.push(field.to_string());
                 Some((base, idx, PinKind::SeqLen(path)))
             } else if name.ends_with("__arr") {
-                None  // array accessor with no trailing index — unexpected
+                None  // array accessor without trailing index — unexpected
             } else {
                 let path: Vec<String> = segs.iter()
                     .filter_map(|s| match s { RawSeg::Acc(n) => Some(n.clone()), _ => None })
@@ -782,21 +631,15 @@ fn parse_pin(term: &Dynamic<'static>, var: &str)
     }
 }
 
-/// Is `v` a reference *into another structured output* — a `select`
-/// or datatype accessor — rather than a genuine value definition?
-/// One Z3 equality `(= (select phase_chain 2) (select (effs__arr …) 0))`
-/// links two outputs and parses from both sides; when rebuilding
-/// `plat_effs` we must take the side that *defines* its content (the
-/// per-draw effect var / constructor / literal), not the cross-link
-/// back into `phase_chain` — otherwise the two outputs cycle.
+/// True when `v` is a `select`/accessor into another output (a cross-link, not a value).
+/// Prefer the defining side (constructor/literal) when the same equality parses both ways.
 fn is_crosslink(v: &Dynamic<'static>) -> bool {
     if v.kind() != AstKind::App { return false; }
     matches!(v.safe_decl().map(|d| d.kind()),
         Ok(DeclKind::SELECT) | Ok(DeclKind::DT_ACCESSOR))
 }
 
-/// Insert `val` for `key`, preferring a non-cross-link value: replace
-/// an existing entry only when it's a cross-link and `val` isn't.
+/// Insert `val` for `key`, replacing an existing entry only if it's a cross-link and `val` isn't.
 fn prefer_insert<K: std::hash::Hash + Eq + Ord>(
     map: &mut impl PinMap<K>, key: K, val: Dynamic<'static>,
 ) {
@@ -807,8 +650,7 @@ fn prefer_insert<K: std::hash::Hash + Eq + Ord>(
     if replace { map.pin_insert(key, val); }
 }
 
-/// Tiny abstraction so `prefer_insert` works over both the scalar
-/// `HashMap` and the per-Seq-field `BTreeMap`.
+/// Allows `prefer_insert` to work over both `HashMap` and `BTreeMap`.
 trait PinMap<K> {
     fn pin_get(&self, k: &K) -> Option<&Dynamic<'static>>;
     fn pin_insert(&mut self, k: K, v: Dynamic<'static>);
@@ -822,9 +664,8 @@ impl PinMap<i64> for BTreeMap<i64, Dynamic<'static>> {
     fn pin_insert(&mut self, k: i64, v: Dynamic<'static>) { self.insert(k, v); }
 }
 
-/// Build the constructor application for one record value from its
-/// collected pins. `prefix` is the accessor path of this (possibly
-/// nested) record relative to the element root.
+/// Build the constructor application for one record element from its collected pins.
+/// `prefix` = accessor path of this (possibly nested) record relative to element root.
 fn build_record(
     prefix: &[String],
     fields: &[FieldKind],
@@ -844,8 +685,7 @@ fn build_record(
                 args.push(build_record(&path, sub_fields, ndt, pins, ctx)?);
             }
             FieldKind::SeqField { .. } => {
-                // A Seq(T) field maps to two constructor args (the
-                // Array(Int→T) and the Int length).
+                // Seq(T) field: two constructor args (Array(Int→T) + Int length).
                 let elems = pins.seq_elems.get(&path)?;
                 if elems.is_empty() { return None; }
                 let len = pins.seq_lens.get(&path).copied()
@@ -866,10 +706,8 @@ fn build_record(
     Some(dt.variants.first()?.constructor.apply(&arg_refs))
 }
 
-/// Try to rebuild element constructor applications for one missing
-/// record-Seq output `var`. Returns the per-element `Dynamic`s, or
-/// `None` if the pins don't form a complete record-Seq (caller
-/// leaves `var` in `missing` and falls through to gap-fill / slow).
+/// Try to rebuild element constructors for one missing record-Seq output.
+/// Returns per-element `Dynamic`s, or `None` if pins are incomplete.
 fn try_recompose_one(
     assertions: &[Bool<'static>],
     var: &str,
@@ -903,23 +741,19 @@ fn try_recompose_one(
     if max_idx < 0 { return None; }
     let n = max_idx + 1;
 
-    // Element type: the sort of `(select var idx)` is the element
-    // datatype; its name keys the DatatypeRegistry.
-    let sort_name = format!("{}", base.get_sort());
+    let sort_name = format!("{}", base.get_sort());  // element sort name keys DatatypeRegistry
     let dts = datatypes.borrow();
     let (dt, fields) = dts.get(&sort_name)?;
 
     let mut elems = Vec::with_capacity(n as usize);
     for i in 0..n {
-        let pins = per_idx.get(&i)?;  // every element must be pinned
+        let pins = per_idx.get(&i)?;
         elems.push(build_record(&[], fields, dt, pins, ctx)?);
     }
     Some(elems)
 }
 
-/// Recompose `Seq(Record)` outputs that `extract_program*` left in
-/// `missing` into `Z3Step::Seq` steps, removing the recomposed names
-/// from `missing`. See the module note above for why this is needed.
+/// Recompose `Seq(Record)` outputs left in `missing` into `Z3Step::Seq` steps.
 pub fn recompose_record_seqs(
     assertions: &[Bool<'static>],
     missing: &mut Vec<String>,
@@ -940,19 +774,14 @@ pub fn recompose_record_seqs(
             added = true;
         }
     }
-    // The recomposed Seq steps were appended at the end, but other
-    // outputs (e.g. an `effects` / `phase_chain` Seq that indexes
-    // `plat_effs[i].effs[j]`) reference them, and the recomposed
-    // elements in turn reference earlier scalar outputs (the per-draw
-    // effect vars). Re-topo-sort the whole step list by name
-    // reference so each step follows the outputs it consumes.
+    // Re-topo-sort so recomposed Seq steps follow their scalar dependencies.
     if added {
         let steps = std::mem::take(&mut program.steps);
         program.steps = topo_sort_steps(steps);
     }
 }
 
-/// The Z3 sub-expressions a step evaluates (for dependency analysis).
+/// Sub-expressions a step evaluates, for dependency analysis.
 fn step_exprs<'a>(step: &'a Z3Step<'static>) -> Vec<&'a Dynamic<'static>> {
     match step {
         Z3Step::Scalar { expr, .. } => vec![expr],
@@ -969,18 +798,14 @@ fn step_exprs<'a>(step: &'a Z3Step<'static>) -> Vec<&'a Dynamic<'static>> {
             v
         }
         Z3Step::PreBaked { .. } => vec![],
-        // Sampler steps draw a value from nothing — no sub-exprs to
-        // depend on. They have no inputs, so they sort to the front.
         Z3Step::SampleRange { .. }
         | Z3Step::SampleEnum { .. }
         | Z3Step::SampleSet { .. } => vec![],
     }
 }
 
-/// Topologically order steps so each step follows every other step
-/// whose output variable it references. Kahn's algorithm; on a cycle
-/// (shouldn't happen for function-shaped bodies) the original order
-/// is preserved.
+/// Topologically order steps by output-variable dependency (Kahn's algorithm).
+/// On a cycle (shouldn't happen for function-shaped bodies) returns original order.
 fn topo_sort_steps(steps: Vec<Z3Step<'static>>) -> Vec<Z3Step<'static>> {
     let n = steps.len();
     let names: Vec<String> = steps.iter().map(|s| s.var().to_string()).collect();
@@ -1010,7 +835,7 @@ fn topo_sort_steps(steps: Vec<Z3Step<'static>>) -> Vec<Z3Step<'static>> {
             eprintln!("[fz/z3] topo_sort_steps: cycle ({}/{} ordered) — order unchanged",
                 order.len(), n);
         }
-        return steps;  // cycle: leave as-is
+        return steps;
     }
     let mut slots: Vec<Option<Z3Step<'static>>> = steps.into_iter().map(Some).collect();
     order.into_iter().map(|i| slots[i].take().unwrap()).collect()
@@ -1028,7 +853,6 @@ fn extract_program_inner<'ctx>(
     let mut seq_assign = seq_assign;
     let mut guarded_assign = guarded_assign;
 
-    // Topo-sort by dependency on other outputs.
     let mut in_deg: HashMap<&str, usize> = outputs.iter()
         .map(|v| (v.as_str(), 0)).collect();
     let mut reverse: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -1073,9 +897,7 @@ fn extract_program_inner<'ctx>(
         }
         ready.sort_unstable();
     }
-    if order.len() != outputs.len() {
-        return None;  // cycle
-    }
+    if order.len() != outputs.len() { return None; }  // cycle
     let steps: Vec<Z3Step> = order.into_iter().map(|v| {
         if let Some(expr) = scalar_assign.remove(v) {
             Z3Step::Scalar { var: v.to_string(), expr }
@@ -1089,7 +911,7 @@ fn extract_program_inner<'ctx>(
     Some(Z3Program { steps, checks, predicates, label: None })
 }
 
-/// Return the inner Bool if `a` is `(not X)`, else None.
+/// Return the inner Bool of `(not X)`, or `None`.
 fn try_negation<'ctx>(a: &Bool<'ctx>) -> Option<Bool<'ctx>> {
     if a.kind() != AstKind::App { return None; }
     let decl = a.safe_decl().ok()?;
@@ -1099,9 +921,7 @@ fn try_negation<'ctx>(a: &Bool<'ctx>) -> Option<Bool<'ctx>> {
     child.as_bool()
 }
 
-/// Recognize `(or (not P) Q)` patterns and return `(P, Q)`. This
-/// is the canonical form Z3's tactic chain emits for material
-/// implications `P ⇒ Q`. Returns None for any other shape.
+/// Recognize `(or (not P) Q)` — Z3's canonical form for `P ⇒ Q`. Returns `(P, Q)` or `None`.
 fn try_guarded<'ctx>(a: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Bool<'ctx>)> {
     if a.kind() != AstKind::App { return None; }
     let decl = a.safe_decl().ok()?;
@@ -1122,16 +942,14 @@ fn try_guarded<'ctx>(a: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Bool<'ctx>)> {
         .or_else(|| try_pair(&children[1], &children[0]))
 }
 
-/// Inspect the consequent of a guarded assertion. If it
-/// constrains an output variable (either directly or via Seq
-/// pinning), record a branch in `guarded`.
+/// If the guarded consequent constrains an output variable (scalar or Seq),
+/// record a branch in `guarded`.
 fn classify_guarded_consequent<'ctx>(
     conseq: &Bool<'ctx>,
     output_set: &std::collections::HashSet<&str>,
     guarded: &mut HashMap<String, Vec<GuardedBranch<'ctx>>>,
     guard: &Dynamic<'ctx>,
 ) -> Option<()> {
-    // Direct `(= var expr)` — scalar guarded equality.
     if let Some((lhs, rhs)) = split_equality_dyn(conseq) {
         if let Some(name) = ast_app_name(&lhs) {
             if output_set.contains(name.as_str()) {
@@ -1152,7 +970,6 @@ fn classify_guarded_consequent<'ctx>(
             }
         }
     }
-    // `(and (= var__len N) (= (select var 0) x) ...)` — seq guarded.
     if conseq.kind() == AstKind::App {
         if let Ok(decl) = conseq.safe_decl() {
             if decl.kind() == DeclKind::AND {
@@ -1163,17 +980,14 @@ fn classify_guarded_consequent<'ctx>(
                     });
                     return Some(());
                 }
-                // Mixed AND: `(and (= scalar_var expr) (= other_var__len N) ...)`
-                // — split into per-output guarded branches. Each child
-                // must either be a scalar-output assignment or contribute
-                // to a single Seq's per-element pinning.
+                // Mixed AND: split per-output; each child must be a scalar or Seq pin.
                 if let Some(()) = classify_mixed_and(conseq, output_set, guarded, guard) {
                     return Some(());
                 }
             }
         }
     }
-    // `(= var__len 0)` alone — empty seq case.
+    // `(= var__len 0)` alone — empty Seq guarded branch.
     if let Some((lhs, rhs)) = split_equality_dyn(conseq) {
         let try_empty = |a: &Dynamic<'ctx>, b: &Dynamic<'ctx>| -> Option<String> {
             let name = ast_app_name(a)?;
@@ -1195,11 +1009,8 @@ fn classify_guarded_consequent<'ctx>(
     None
 }
 
-/// `(and (= scalar_var expr) (= other_seq__len N) (= (select other_seq 0) e0) ...)`
-/// — handle a guarded consequent that constrains MULTIPLE outputs.
-/// Each output gets its own branch added to `guarded`. Returns Some(())
-/// if at least one output was successfully recognized AND every AND child
-/// was classifiable; None otherwise.
+/// Handle a guarded AND consequent that constrains multiple outputs. Each gets its own
+/// branch in `guarded`. Returns `Some(())` iff every AND child is classifiable.
 fn classify_mixed_and<'ctx>(
     and_expr: &Bool<'ctx>,
     output_set: &std::collections::HashSet<&str>,
@@ -1207,7 +1018,6 @@ fn classify_mixed_and<'ctx>(
     guard: &Dynamic<'ctx>,
 ) -> Option<()> {
     let mut scalar_assigns: Vec<(String, Dynamic<'ctx>)> = Vec::new();
-    // For each Seq output: declared length + per-index elements.
     let mut seq_lens: HashMap<String, i64> = HashMap::new();
     let mut seq_elems: HashMap<String, HashMap<i64, Dynamic<'ctx>>> = HashMap::new();
     for c in and_expr.children() {
@@ -1227,8 +1037,7 @@ fn classify_mixed_and<'ctx>(
             seq_elems.entry(name).or_default().insert(idx, elem);
             continue;
         }
-        // Scalar output assignment.
-        if let Some(name) = ast_app_name(&lhs) {
+            if let Some(name) = ast_app_name(&lhs) {
             if output_set.contains(name.as_str()) {
                 scalar_assigns.push((name, rhs));
                 continue;
@@ -1242,12 +1051,10 @@ fn classify_mixed_and<'ctx>(
         }
         return None;  // unrecognized child
     }
-    // Validate Seq covered: every name in seq_lens must have all elements.
     let mut all_names: std::collections::HashSet<String> = seq_lens.keys().cloned().collect();
     for k in seq_elems.keys() { all_names.insert(k.clone()); }
     for name in &all_names {
         let n = seq_lens.get(name).copied().unwrap_or_else(|| {
-            // No explicit length pin — infer from contiguous element pins.
             let m = seq_elems.get(name).cloned().unwrap_or_default();
             let mut i = 0i64;
             while m.contains_key(&i) { i += 1; }
@@ -1272,16 +1079,12 @@ fn classify_mixed_and<'ctx>(
     Some(())
 }
 
-/// Same as `split_equality` but accepts a Dynamic (the consequent
-/// of a guarded assertion may be typed as Bool but coming in via
-/// `try_guarded`'s `as_bool()` round-trip).
+/// `split_equality` on a `Bool` obtained via `try_guarded`'s `as_bool()` round-trip.
 fn split_equality_dyn<'ctx>(b: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Dynamic<'ctx>)> {
     split_equality(b)
 }
 
-/// If `and_expr` is `(and (= arr__len N) (= (select arr 0) e0)
-/// (= (select arr 1) e1) ...)` returning the arr name (must be in
-/// `output_set`) plus the ordered elements.
+/// Match `(and (= arr__len N) (= (select arr 0) e0) …)` and return the arr name + elements.
 fn collect_seq_in_and<'ctx>(
     and_expr: &Bool<'ctx>,
     output_set: &std::collections::HashSet<&str>,
@@ -1294,7 +1097,6 @@ fn collect_seq_in_and<'ctx>(
         let Some(bool_child) = c.as_bool() else { return None; };
         let Some((lhs, rhs)) = split_equality(&bool_child) else { return None; };
 
-        // Try len pin.
         if let Some((name, n)) = match_len_pin(&lhs, &rhs)
             .or_else(|| match_len_pin(&rhs, &lhs))
         {
@@ -1305,7 +1107,6 @@ fn collect_seq_in_and<'ctx>(
             declared_len = Some(n);
             continue;
         }
-        // Try select pin.
         let pin = match_select_pin(&lhs, &rhs)
             .or_else(|| match_select_pin(&rhs, &lhs));
         if let Some((name, idx, elem)) = pin {
@@ -1316,7 +1117,7 @@ fn collect_seq_in_and<'ctx>(
             indexed.insert(idx, elem);
             continue;
         }
-        return None;  // unrecognized child in the `and`.
+        return None;
     }
 
     let arr = arr_name?;
@@ -1328,8 +1129,7 @@ fn collect_seq_in_and<'ctx>(
     Some((arr, out))
 }
 
-/// Match `(= var__len N)` patterns. Returns the seq's base name
-/// and length.
+/// Match `(= var__len N)`, returning the seq base name and length.
 fn match_len_pin<'ctx>(a: &Dynamic<'ctx>, b: &Dynamic<'ctx>) -> Option<(String, i64)> {
     let name = ast_app_name(a)?;
     let arr = name.strip_suffix("__len")?;
@@ -1337,7 +1137,7 @@ fn match_len_pin<'ctx>(a: &Dynamic<'ctx>, b: &Dynamic<'ctx>) -> Option<(String, 
     Some((arr.to_string(), n))
 }
 
-/// Match `(= (select arr idx_literal) elem)` patterns.
+/// Match `(= (select arr idx_literal) elem)`.
 fn match_select_pin<'ctx>(
     a: &Dynamic<'ctx>,
     b: &Dynamic<'ctx>,
@@ -1352,13 +1152,13 @@ fn match_select_pin<'ctx>(
     Some((arr, idx, b.clone()))
 }
 
-/// Extract a literal i64 from a Numeral Dynamic.
+/// Extract a literal i64 from a Z3 Numeral node.
 fn numeral_to_i64<'ctx>(d: &Dynamic<'ctx>) -> Option<i64> {
     if d.kind() != AstKind::Numeral { return None; }
     d.as_int().and_then(|i| i.as_i64())
 }
 
-/// Helper: if `b` is `(= lhs rhs)`, return `(lhs, rhs)` as Dynamics.
+/// Return `(lhs, rhs)` if `b` is `(= lhs rhs)`, else `None`.
 fn split_equality<'ctx>(b: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Dynamic<'ctx>)> {
     if b.kind() != AstKind::App { return None; }
     let decl = b.safe_decl().ok()?;
@@ -1368,8 +1168,7 @@ fn split_equality<'ctx>(b: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Dynamic<'ctx>)
     Some((children[0].clone(), children[1].clone()))
 }
 
-/// Helper: if `a` is a 0-arity App (a "constant"/variable in Z3
-/// parlance), return its name.
+/// Return the name of a 0-arity App (Z3 constant/variable), or `None`.
 fn ast_app_name<'ctx>(a: &Dynamic<'ctx>) -> Option<String> {
     if a.kind() != AstKind::App { return None; }
     if a.num_children() != 0 { return None; }
@@ -1377,8 +1176,7 @@ fn ast_app_name<'ctx>(a: &Dynamic<'ctx>) -> Option<String> {
     Some(decl.name())
 }
 
-/// Helper: does `a`'s tree mention a 0-arity App with the given
-/// name? Used both for cycle detection and topo-sort dependency.
+/// True if `a`'s AST tree contains a 0-arity App with the given name.
 fn mentions_name<'ctx>(a: &Dynamic<'ctx>, name: &str) -> bool {
     if a.kind() == AstKind::App && a.num_children() == 0 {
         if let Ok(decl) = a.safe_decl() {
@@ -1392,13 +1190,8 @@ fn mentions_name<'ctx>(a: &Dynamic<'ctx>, name: &str) -> bool {
 }
 
 
-/// Scan a body for known translator-gap shapes that would fatal-
-/// exit `build_cache` via the dropped-constraint path. We refuse
-/// to function-ize these and let the slow path handle them.
-///
-/// Known gap: `Ctor(SeqLit(...))` — enum constructor whose payload
-/// is a sequence literal (e.g. `Many(⟨Red, Green, Blue⟩)`). The Z3
-/// translator can't currently express this assertion.
+/// True when the body contains a known translator gap that blocks functionization.
+/// Current gap: `Ctor(SeqLit(…))` — enum constructor with a sequence-literal payload.
 pub fn has_known_translator_gap(body: &[crate::core::ast::BodyItem]) -> bool {
     body.iter().any(|item| {
         let crate::core::ast::BodyItem::Constraint(e) = item else { return false };
@@ -1430,11 +1223,8 @@ fn expr_has_ctor_seqlit_payload(e: &crate::core::ast::Expr) -> bool {
     }
 }
 
-/// Walk a Bool AST and collect every 0-arity App name (i.e.,
-/// every UNINTERPRETED constant or DT recogniser referent) into
-/// `out`. The runtime uses this to identify which env vars
-/// actually appear in the simplified body — vars not touched
-/// can't be outputs of the function-izer.
+/// Collect every uninterpreted 0-arity App name in `a` into `out`.
+/// Vars not appearing in the simplified body can't be functionizer outputs.
 pub fn collect_touched_names<'ctx>(
     a: &z3::ast::Bool<'ctx>,
     out: &mut std::collections::HashSet<String>,
@@ -1460,10 +1250,8 @@ fn collect_touched_names_dyn<'ctx>(
     }
 }
 
-/// Pull the variant name from a Z3 application formatted as
-/// `((_ is <Variant>) <arg>)`. Workaround for the Rust z3 0.12
-/// binding not exposing FuncDecl parameters. Used by the JIT
-/// codegen to parse recognizer applications.
+/// Extract variant name from `((_ is <Variant>) <arg>)`.
+/// Workaround: z3 0.12 bindings don't expose FuncDecl params.
 pub fn extract_is_variant_pub(s: &str) -> Option<String> {
     let idx = s.find("(_ is ")?;
     let rest = &s[idx + 6 ..];   // after "(_ is "

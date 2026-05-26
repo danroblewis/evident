@@ -1,23 +1,5 @@
-//! Stage 2 of self-hosting: encode a parsed `Program` (Rust AST) as
-//! a Z3 `Datatype` value matching the shape of `stdlib/ast.ev`.
-//!
-//! This is the bridge that lets self-hosted compiler passes consume
-//! real source. Pass writers will write Evident programs that take a
-//! `Program` value as a `given` and produce constraints over it; the
-//! Rust runtime parses the user's source, calls into here to encode
-//! it, then injects the encoded value as a `given` to the pass.
-//!
-//! Per-type encoders are mostly mechanical: look up the constructor
-//! by name in the `EnumRegistry`, translate each field, apply. The
-//! recursion follows the AST structure; lists become a Cons-chain
-//! through the relevant `*List` enum.
-//!
-//! Limitations:
-//!   - `TraceDecl` and `ShaderDecl` are not in `stdlib/ast.ev` v0.1
-//!     and are silently skipped during program encoding.
-//!   - Self-hosted passes that don't load `stdlib/ast.ev` will see
-//!     `EncodeError::EnumNotRegistered` for every constructor — load
-//!     the file first.
+//! Encode a Rust `Program` AST as a Z3 `Datatype` matching `stdlib/ast.ev`.
+//! Lists → Cons-chains; TraceDecl/ShaderDecl silently skipped.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Datatype, Int, Real, String as Z3Str};
@@ -28,17 +10,11 @@ use crate::core::EnumRegistry;
 
 #[derive(Debug)]
 pub enum EncodeError {
-    /// `stdlib/ast.ev` isn't loaded — the named enum is missing
-    /// from the registry. Tell the user to import the stdlib.
+    /// `stdlib/ast.ev` not loaded — the named enum is missing from the registry.
     EnumNotRegistered(String),
-    /// The named variant doesn't exist on its enum. Means
-    /// `stdlib/ast.ev` drifted from the Rust AST shape — fix the
-    /// stdlib file to add the variant.
+    /// The variant doesn't exist on its enum — `stdlib/ast.ev` drifted from the Rust AST.
     VariantNotFound { enum_name: String, variant: String },
-    /// Something we can't encode in v0.1 (TraceDecl, ShaderDecl,
-    /// etc.). Skipped silently for whole-program encoding; caller
-    /// can still hit this for individual encoder calls on those
-    /// types.
+    /// Unsupported construct (TraceDecl, ShaderDecl, etc.); skipped silently for whole-program encoding.
     Unsupported(&'static str),
 }
 
@@ -60,9 +36,7 @@ impl std::error::Error for EncodeError {}
 
 pub type Result<T> = std::result::Result<T, EncodeError>;
 
-/// Helper: find a variant by name on the given enum and apply its
-/// constructor with `args`. The args' Z3 types must already match
-/// the variant's declared payload field types — caller's job.
+/// Find a variant by name on the enum and apply its constructor with `args`.
 fn apply<'ctx>(
     enums: &EnumRegistry,
     enum_name: &str,
@@ -87,8 +61,6 @@ fn apply<'ctx>(
     })
 }
 
-// ── Primitives ──────────────────────────────────────────────────
-
 fn z3_int<'ctx>(ctx: &'ctx Context, n: i64) -> Int<'ctx> {
     Int::from_i64(ctx, n)
 }
@@ -101,8 +73,6 @@ fn z3_bool<'ctx>(ctx: &'ctx Context, b: bool) -> Bool<'ctx> {
     Bool::from_bool(ctx, b)
 }
 
-/// Encode an f64 as a Z3 Real literal. Mirrors the runtime's existing
-/// real-from-f64 logic; copy lives here to avoid a cross-module dep.
 fn z3_real<'ctx>(ctx: &'ctx Context, f: f64) -> Real<'ctx> {
     if f.is_nan() || f.is_infinite() {
         return Real::from_real(ctx, 0, 1);
@@ -120,8 +90,6 @@ fn z3_real<'ctx>(ctx: &'ctx Context, f: f64) -> Real<'ctx> {
             .unwrap_or_else(|| Real::from_real(ctx, 0, 1))
     }
 }
-
-// ── Operators / Keyword / Pins ─────────────────────────────────
 
 pub fn encode_binop(
     op: &BinOp,
@@ -188,16 +156,8 @@ pub fn encode_pins<'ctx>(
     }
 }
 
-// ── Lists (Vec<T> → internal-Cons helper datatype) ─────────────
-//
-// Each `Seq(T)` field in stdlib/ast.ev is backed by a runtime-
-// generated `__SeqOf_T` helper enum (see runtime::generate_internal_
-// cons_helpers). Building one of these list values means walking
-// the items, applying `__Cell_T(head, tail)` from right to left
-// over a terminating `__Empty_T`. From the .ev user's perspective
-// they wrote `Seq(T)` and `⟨a, b, c⟩` — these encoders are the
-// Rust-side bridge that puts the same shape into Z3.
-
+// Each Seq(T) field in stdlib/ast.ev is backed by a `__SeqOf_T` helper enum;
+// build via __Cell_T(head, tail) from right to left over a __Empty_T terminator.
 fn encode_cons_list<'ctx, T>(
     items: &[T],
     elem_type_name: &str,
@@ -221,18 +181,8 @@ pub fn encode_string_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    // Special case: Seq(String) at the top level still uses the
-    // two-accessor Array+Int representation (Strings aren't part of
-    // any recursive enum group). But when used as a stdlib/ast.ev
-    // enum field (e.g. EForall(Seq(String), …)), the field is
-    // batch-local and would need __SeqOf_String. String is a
-    // primitive though — so `generate_internal_cons_helpers` only
-    // fires for enum elements in the same batch, not primitives.
-    //
-    // So this encoder handles the "top-level Seq(String)" case
-    // (Array+Int) — but no current caller actually goes through it
-    // for AST encoding (EForall etc. is encoded via the field-aware
-    // path below). Kept for completeness / future use.
+    // Top-level Seq(String) uses Array+Int (String is not in a recursive enum batch).
+    // No current caller uses this for AST encoding; EForall etc. go via the field-aware path.
     use z3::ast::Array;
     use z3::Sort;
     let default = z3_str(ctx, "");
@@ -241,11 +191,7 @@ pub fn encode_string_list<'ctx>(
         arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
     }
     let _ = enums;
-    // Return a freshly-built (arr, len) wrapped as a one-variant
-    // Datatype — but no consumer actually uses this return.
-    // Encode helpers prefer the per-T encoders below.
-    Err(EncodeError::Unsupported("encode_string_list (top-level Array+Int) — \
-                                  use the field-aware encoder path"))
+    Err(EncodeError::Unsupported("encode_string_list (top-level Array+Int) — use the field-aware encoder path"))
 }
 
 pub fn encode_expr_list<'ctx>(
@@ -304,11 +250,8 @@ pub fn encode_enum_field_list<'ctx>(
     encode_cons_list(items, "EnumField", ctx, enums, encode_enum_field)
 }
 
-/// Encode `Vec<String>` for an EForall/EExists vars slot. After
-/// Phase 6.5 the Seq(String) field is two-accessor Array+Int
-/// (String is primitive), but the constructor expects a single
-/// arg-list — we caller-pin both via translate_seq_arg_for_ctor's
-/// equivalent here. Helper for encode_expr's Forall/Exists arms.
+/// Encode `Vec<String>` as (Array+Int) for EForall/EExists vars — the two-accessor
+/// representation for Seq(String) fields (String is a primitive, not a Cons-list element).
 pub fn encode_string_seq_pair<'ctx>(
     items: &[String],
     ctx: &'ctx Context,
@@ -322,8 +265,6 @@ pub fn encode_string_seq_pair<'ctx>(
     }
     (arr, Int::from_i64(ctx, items.len() as i64))
 }
-
-// ── Schema-shape singletons (single-variant enums in stdlib/ast.ev) ──
 
 pub fn encode_enum_field<'ctx>(
     f: &EnumField,
@@ -355,16 +296,8 @@ pub fn encode_enum_decl<'ctx>(
     apply(enums, "EnumDecl", "MakeEnumDecl", &[&name, &variants])
 }
 
-/// Encode a SchemaDecl into the `MakeSchemaDecl(Keyword, String,
-/// Nat, BodyItemList)` shape declared in stdlib/ast.ev.
-///
-/// The third slot carries `SchemaDecl::param_count` — how many of the
-/// body's leading Memberships are first-line interface params (the
-/// insertion index that `inject` / `desugar` need to splice
-/// `state_next` & co. after the signature). It round-trips losslessly
-/// through `decode_schema_decl`; keep this slot in sync with the
-/// `*_to_value` mirror (`schema_decl_to_value`) and stdlib/ast.ev's
-/// `MakeSchemaDecl`.
+/// Encode a SchemaDecl; third slot carries `param_count` (first-line-param insertion index).
+/// Keep in sync with `schema_decl_to_value` and stdlib/ast.ev's `MakeSchemaDecl`.
 pub fn encode_schema_decl<'ctx>(
     s: &SchemaDecl,
     ctx: &'ctx Context,
@@ -376,8 +309,6 @@ pub fn encode_schema_decl<'ctx>(
     let body = encode_body_item_list(&s.body, ctx, enums)?;
     apply(enums, "SchemaDecl", "MakeSchemaDecl", &[&kw, &name, &param_count, &body])
 }
-
-// ── BodyItem ────────────────────────────────────────────────────
 
 pub fn encode_body_item<'ctx>(
     bi: &BodyItem,
@@ -415,8 +346,6 @@ pub fn encode_body_item<'ctx>(
         }
     }
 }
-
-// ── Expr (recursive) ────────────────────────────────────────────
 
 pub fn encode_expr<'ctx>(
     e: &Expr,
@@ -558,8 +487,6 @@ fn encode_match_pattern<'ctx>(
     match pat {
         MatchPattern::Wildcard =>
             apply(enums, "MatchPattern", "PatWildcard", &[]),
-        // Top-level bind → `PatBind(name)` (session GAP-marshal; was
-        // lossily folded into `PatWildcard`).
         MatchPattern::Bind(name) => {
             let n = z3_str(ctx, name);
             apply(enums, "MatchPattern", "PatBind", &[&n])
@@ -589,10 +516,8 @@ fn encode_bind_list<'ctx>(
     Ok(acc)
 }
 
-/// Encode one sub-pattern of a `PatCtor`'s payload as a `MatchBind`.
-/// `BindCtor` recurses through `encode_bind_list`, so a nested
-/// constructor sub-pattern (`Node(Leaf(n), r)`) round-trips to any
-/// depth (session GAP-marshal; previously collapsed to `BindWildcard`).
+/// Encode one sub-pattern as a `MatchBind`. `BindCtor` recurses through
+/// `encode_bind_list` so nested constructor sub-patterns round-trip to any depth.
 fn encode_match_bind<'ctx>(
     b: &crate::core::ast::MatchPattern,
     ctx: &'ctx Context,
@@ -614,35 +539,22 @@ fn encode_match_bind<'ctx>(
     }
 }
 
-// ── Top-level Program ──────────────────────────────────────────
-
 pub fn encode_program<'ctx>(
     prog: &Program,
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    // TraceDecl/ShaderDecl are intentionally omitted from
-    // stdlib/ast.ev's Program — they're runtime-loaded scaffolding,
-    // not part of what passes need to consume. Skip silently.
+    // TraceDecl/ShaderDecl omitted from stdlib/ast.ev's Program; skip silently.
     let schemas = encode_schema_list(&prog.schemas, ctx, enums)?;
     let enums_v = encode_enum_decl_list(&prog.enums, ctx, enums)?;
     apply(enums, "Program", "MakeProgram", &[&schemas, &enums_v])
 }
 
-// `use _ as _` to keep imports tidy at the module top while still
-// avoiding unused-import warnings if someone strips a helper.
 #[allow(unused_imports)]
 use std::collections::HashMap as _Sentinel;
 
-/// Stage 5.5: encode a `Vec<BodyItem>` as a list of per-index Z3
-/// Bool assertions for an enum-typed Seq variable. The caller has
-/// declared something like `body ∈ Seq(BodyItem)`; this function
-/// returns:
-///   * `len_assertion`: the seq's length must equal `items.len()`
-///   * `elem_assertions`: one `seq[i] = <encoded item>` per item
-/// Caller asserts each into the solver before the satisfiability
-/// check. The seq variable must be in env as `Var::DatatypeSeqVar`
-/// with empty `fields` (the enum-seq marker from declare.rs).
+/// Encode `Vec<BodyItem>` as per-index Z3 Bool assertions for an enum-typed `Seq(BodyItem)`.
+/// Returns a len assertion + one `seq[i] = encoded` per item; caller asserts all before check.
 pub fn encode_body_items_into_seq<'ctx>(
     items: &[BodyItem],
     seq_arr: &z3::ast::Array<'ctx>,
@@ -661,8 +573,6 @@ pub fn encode_body_items_into_seq<'ctx>(
     }
     Ok(asserts)
 }
-
-// ── stdlib/runtime.ev: Effect / Result encoders ────────────────
 
 pub fn encode_effect_result<'ctx>(
     r: &crate::core::ast::EffectResult,
@@ -699,11 +609,7 @@ pub fn encode_effect_result<'ctx>(
     }
 }
 
-/// Build a `Value::SeqEnum` of `Result` enums from a slice of
-/// `EffectResult`s. Used by the multi-FSM scheduler to pin
-/// `last_results ∈ Seq(Result)` via the `given` map; the
-/// `(DatatypeSeqVar, SeqEnum)` case in `assert_seq_given` does
-/// the per-index Z3 assertions.
+/// Build a `Value::SeqEnum` of `Result` enums for pinning `last_results ∈ Seq(Result)`.
 pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Value {
     let mk = |n: &str, fields: Vec<Value>| Value::Enum {
         enum_name: "Result".into(),
@@ -722,65 +628,12 @@ pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Valu
     Value::SeqEnum(elems)
 }
 
-// ── Pure-Rust mirror: Program → Value::Enum tree (THE shared marshaler) ──
-//
-// The encoders above produce Z3 `Datatype<'static>` values for use
-// as solver assertions. The reflection world-plugin (and other
-// future consumers) need the SAME information shaped as a
-// `Value::Enum` tree — the runtime's neutral value currency that
-// flows through `world_snapshot` and the `given` map.
-//
-// These helpers mirror `encode_program` / `encode_schema_decl` /
-// etc. but produce `Value` directly, never touching Z3. The shape
-// is identical to what `encode_program` would emit and what
-// `decode_ast`'s round-trip expects — same constructor names, same
-// argument order. Adding a variant here means the Z3 path AND
-// stdlib/ast.ev's enum decl must be kept in sync (same as the
-// existing encoders).
-//
-// ── This `*_to_value` family is THE shared marshaler (session UU) ──
-//
-// It is a `pub` surface so EVERY self-hosted port reuses it rather
-// than hand-rolling its own AST→`Value` encoder. QQ measured that a
-// per-pass encoder is a recursive AST traversal isomorphic to the
-// walk it deletes, so per-pass self-hosting never shrank the runtime
-// (the marshaling tax was re-paid each port). Sharing this one
-// marshaler amortizes that tax to zero: a new port is now
-// `+Evident pass, −Rust walk, +~3 lines` (encode→run→decode).
-//
-// IMPORTANT — list shape: the list-typed AST fields are encoded as
-// named Cons enums (`BodyItemList(BILCons|BILNil)`, `ExprList`,
-// `MappingList`, `MatchArmList`, `BindList`, `SchemaList`, …), NOT as
-// `Seq(T)`. This is deliberate and is what makes the output directly
-// consumable by a STACK-FSM walk: a cons-list is poppable in-step
-// (`match`-destructure the head, recurse on the tail) whereas a
-// `Seq(T)` has no in-step pop (COUNTEREXAMPLES #19a). A pass that
-// walks this shape declares the matching cons enums (see
-// `stdlib/passes/subscriptions.ev`); a pass that pins it as a Z3
-// `given` over `stdlib/ast.ev`'s `Seq`-shaped enums uses the
-// `encode_*` Datatype family above instead.
-//
-// FUTURE WORK (durable follow-up, noted not built): generate this
-// whole family from the `ast.rs` types with a derive macro, so the
-// marshaler can never drift from the AST shape by hand.
-
+// THE shared marshaler: produces `Value::Enum` trees (no Z3). Lists are named Cons enums,
+// NOT Seq(T) — so stack-FSM passes can pop in-step.
 use crate::core::Value;
 
-/// Re-encode a `Value::Enum` tree as a Z3 `Datatype` value, looking
-/// up constructors against the supplied `EnumRegistry`. Returns
-/// `None` if the value isn't an Enum, the enum/variant isn't
-/// registered, or any payload field has a type that doesn't match
-/// what the constructor expects.
-///
-/// Used by:
-///   * The `given` loop in `evaluate_with_extra_assertions` to pin
-///     enum-typed world fields produced by plugin writes (notably
-///     the reflection plugin's `world.program` value).
-///   * Any future caller that needs a `Datatype` from a `Value::Enum`
-///     once the registry is loaded — same logic
-///     `effect_loop::encode_state_value` performs against
-///     `&EvidentRuntime`, but available without crossing back to
-///     the public facade.
+/// Re-encode a `Value::Enum` tree as a Z3 `Datatype` by looking up constructors in
+/// the `EnumRegistry`. Used by `evaluate_with_extra_assertions` to pin enum-typed world fields.
 pub fn value_enum_to_datatype<'ctx>(
     v:     &Value,
     ctx:   &'ctx Context,
@@ -856,9 +709,7 @@ pub fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
 pub fn schema_decl_to_value(s: &SchemaDecl) -> Value {
     let kw = keyword_to_value(&s.keyword);
     let body = body_item_list_to_value(&s.body);
-    // param_count: the first-line-param insertion index (see
-    // `encode_schema_decl`). Carried so a whole-SchemaDecl round-trips
-    // losslessly through `decode_schema_decl`.
+    // param_count round-trips losslessly; keep in sync with encode_schema_decl and stdlib/ast.ev.
     ev("SchemaDecl", "MakeSchemaDecl",
        vec![kw, Value::Str(s.name.clone()),
             Value::Int(s.param_count as i64), body])
@@ -1050,9 +901,6 @@ pub fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
     match p {
         MatchPattern::Wildcard =>
             ev("MatchPattern", "PatWildcard", vec![]),
-        // Top-level bind → `PatBind(name)` (session SEED-marshal; was
-        // lossily folded into `PatWildcard`). Mirrors the Z3-path fix in
-        // `encode_match_pattern` and `decode_match_pattern`'s `PatBind` arm.
         MatchPattern::Bind(name) =>
             ev("MatchPattern", "PatBind", vec![Value::Str(name.clone())]),
         MatchPattern::Ctor { name, binds } => {
@@ -1069,21 +917,8 @@ pub fn bind_list_to_value(binds: &[crate::core::ast::MatchPattern]) -> Value {
         let head = match b {
             MatchPattern::Bind(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
             MatchPattern::Wildcard => ev("MatchBind", "BindWildcard", vec![]),
-            // A NESTED constructor sub-pattern → `BindCtor(name, sub-binds)`,
-            // recursing through `bind_list_to_value` so it round-trips to any
-            // depth (`Node(Leaf(n), r)`). Session SEED-marshal made this SEED
-            // marshaler recursive, mirroring GAP-marshal's Z3-path fix
-            // (`encode_match_bind` ↔ `decode_match_bind`'s `BindCtor` arm).
-            //
-            // This is COUPLED to the consuming passes' enum decls: every
-            // `stdlib/passes/*.ev` that declares `MatchBind`/`MatchPattern`
-            // was grown in lockstep to the same `BindName | BindWildcard |
-            // BindCtor(String, BindList)` + `PatWildcard | PatBind(String) |
-            // PatCtor(String, BindList)` shape as `stdlib/ast.ev`. Without
-            // that, a `BindCtor` seed would fail `value_enum_to_datatype`
-            // against their 2-variant registry and silently drop the WHOLE
-            // seed on the Z3 slow path. The two must move together — see
-            // docs/self-hosting.md and runtime/tests/seed_roundtrip.rs.
+            // BindCtor recurses so nested sub-patterns round-trip. COUPLED to consuming
+            // passes' enum decls — MatchBind/MatchPattern shapes must move together.
             MatchPattern::Ctor { name, binds } =>
                 ev("MatchBind", "BindCtor",
                    vec![Value::Str(name.clone()), bind_list_to_value(binds)]),

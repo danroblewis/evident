@@ -1,6 +1,5 @@
-//! UNSAT-core variant of `evaluate`. Tracks per-body-item trackers
-//! so that on UNSAT we can map Z3's `get_unsat_core` back to source
-//! body-item indices for diagnostics.
+//! UNSAT-core variant of `evaluate`: tags body-item assertions with tracker bools so an
+//! UNSAT result maps back to source body-item indices via `get_unsat_core`.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -14,18 +13,8 @@ use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64};
 use super::decode::extract_binding;
 
-/// Same as `evaluate`, but tags every Z3 assertion derived from a
-/// top-level body item with a unique tracker bool so an UNSAT result
-/// produces a usable `unsat_core_items` (indices into `schema.body`).
-///
-/// Givens are NOT tracked — the user's `given` values are external
-/// inputs, not constraints we can ask the user to fix. The core
-/// reflects the conflict among the schema's own body items only.
-///
-/// On SAT, behaves exactly like `evaluate` (the trackers are still
-/// asserted but Z3 ignores them); the cost is one extra implication
-/// per assertion. On UNSAT, the core is mapped from tracker name
-/// (`__core_<i>__`) back to body item index.
+/// Like `evaluate`, but tags body-item assertions with trackers; UNSAT maps core back to
+/// body-item indices. Givens are not tracked — core reflects schema-own conflicts only.
 pub fn evaluate_with_core(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -40,7 +29,6 @@ pub fn evaluate_with_core(
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Pass 1: declarations (same as evaluate).
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -57,8 +45,6 @@ pub fn evaluate_with_core(
                     }
                 }
             }
-            // (Bare-identifier-as-passthrough desugared upstream — see
-            // build_cache notes.)
             _ => {}
         }
     }
@@ -69,8 +55,6 @@ pub fn evaluate_with_core(
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
-    // Allocate one tracker bool per top-level body item, with a name
-    // that encodes the index so we can map the core back to source.
     let trackers: Vec<Bool<'static>> = (0..schema.body.len())
         .map(|i| Bool::new_const(ctx, format!("__core_{i}__")))
         .collect();
@@ -80,7 +64,6 @@ pub fn evaluate_with_core(
         &schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, &trackers,
     );
 
-    // Givens — same as evaluate, NOT tracked.
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         match (var, value) {
@@ -98,9 +81,6 @@ pub fn evaluate_with_core(
         }
     }
 
-    // check_assumptions activates the trackers and asks Z3 to find a
-    // satisfying assignment under them. On UNSAT, get_unsat_core
-    // returns the subset that's actually needed for the conflict.
     let result = solver.check_assumptions(&trackers);
     let satisfied = matches!(result, SatResult::Sat);
     let mut bindings = HashMap::new();

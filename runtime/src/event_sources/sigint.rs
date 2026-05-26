@@ -1,5 +1,4 @@
-//! SIGINT handler bridge. See `event_sources/mod.rs` for trait
-//! and shared helpers.
+//! SIGINT handler bridge.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,16 +11,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// SIGINT (Ctrl-C) event source. Installs a signal-hook iterator
-/// for SIGINT; on each signal, sends a `Tick { name: "signal" }`
-/// event. After the first signal, the source's thread exits and
-/// drops its sender — the scheduler sees no more events from this
-/// source. (Two consecutive Ctrl-Cs while the runtime is mid-tick
-/// will not double-fire; signal-hook deduplicates per iterator
-/// `forever()` step.)
-///
-/// Naming the event "signal" lets FSMs subscribe via `_ ∈ Signal`
-/// in their parameter list (see `stdlib/runtime.ev`).
+/// SIGINT (Ctrl-C) source. Sends `Tick { name: "signal" }` per signal;
+/// exits after the first (signal-hook deduplicates). FSMs subscribe via `_ ∈ Signal`.
 pub struct SigintSource {
     name:        String,
     handle:      Option<JoinHandle<()>>,
@@ -43,9 +34,7 @@ impl SigintSource {
         }
     }
 
-    /// Configure to write the SIGINT count into the named world
-    /// field (Int) on each fire. User FSMs subscribe via
-    /// `world.<count_field>` deltas.
+    /// Write SIGINT count into the named World Int field on each fire.
     pub fn with_count_field(mut self, field: impl Into<String>) -> Self {
         self.count_field = Some(field.into());
         self
@@ -61,10 +50,6 @@ impl EventSource for SigintSource {
         if self.handle.is_some() {
             return Err("SigintSource already started".to_string());
         }
-        // signal-hook's `Signals` iterator wraps a sigaction handler
-        // that writes to a self-pipe. Iteration blocks until a
-        // signal arrives. The thread exits cleanly when the
-        // iterator is dropped (which happens on stop).
         use signal_hook::iterator::Signals;
         let mut signals = Signals::new([signal_hook::consts::SIGINT])
             .map_err(|e| format!("install SIGINT handler: {e}"))?;
@@ -97,8 +82,7 @@ impl EventSource for SigintSource {
 
     fn stop(&mut self) {
         self.stop_flag.store(true, Ordering::Relaxed);
-        // Closing the signal-hook handle wakes the iterator's
-        // forever() loop so the thread can exit.
+        // Closing the handle wakes forever() so the thread exits.
         if let Some(h) = self.sig_handle.take() {
             h.close();
         }
@@ -120,11 +104,8 @@ impl Drop for SigintSource {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for SigintSource. Installs if either:
-///   * the user's World declares `signal_received: Int`
-///   * any FSM has `_ ∈ Signal` parameter
-/// Otherwise we'd globally hijack Ctrl-C from programs that
-/// never opted in.
+/// Installs if World has `signal_received: Int` or any FSM has `_ ∈ Signal`.
+/// Without an opt-in, Ctrl-C is not hijacked globally.
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,

@@ -1,5 +1,4 @@
-//! Stdin line-reader bridge. See `event_sources/mod.rs` for trait
-//! and shared helpers.
+//! Stdin line-reader bridge.
 
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
@@ -10,15 +9,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// Stdin line reader. Spawns a thread that does blocking
-/// `read_line` on stdin; each line is queued as TWO world writes:
-///   * `(line_field, Str(line))` — the line text
-///   * `(seq_field, Int(seq))`   — incrementing counter (1, 2, 3, …)
-/// User FSMs can compare the seq against a value held in their
-/// own state to decide "is this a new line I haven't processed?"
-/// Without the seq, an FSM whose body emits unconditionally on
-/// non-empty `line` would loop forever via effect-feedback after
-/// EOF.
+/// Stdin line reader. Each line queues `(line_field, text)` and `(seq_field, count)`.
+/// The seq counter lets FSMs detect "new line not yet processed" without looping at EOF.
 pub struct StdinSource {
     name:        String,
     line_field:  String,
@@ -28,8 +20,6 @@ pub struct StdinSource {
 }
 
 impl StdinSource {
-    /// `line_field` is the world field name to write each received
-    /// line into. Must be a String field in the user's World type.
     pub fn new(line_field: impl Into<String>) -> Self {
         StdinSource {
             name:        "stdin".to_string(),
@@ -40,8 +30,7 @@ impl StdinSource {
         }
     }
 
-    /// Configure to also write an incrementing sequence number
-    /// into the named Int field on each line.
+    /// Also write an incrementing seq number into the named Int field on each line.
     pub fn with_seq_field(mut self, field: impl Into<String>) -> Self {
         self.seq_field = Some(field.into());
         self
@@ -67,9 +56,8 @@ impl EventSource for StdinSource {
                 loop {
                     let mut line = String::new();
                     match reader.read_line(&mut line) {
-                        Ok(0) => break,  // EOF
+                        Ok(0) => break,
                         Ok(_) => {
-                            // Strip trailing newline(s).
                             if line.ends_with('\n') { line.pop(); }
                             if line.ends_with('\r') { line.pop(); }
                             seq += 1;
@@ -87,7 +75,6 @@ impl EventSource for StdinSource {
                         Err(_) => break,
                     }
                 }
-                // EOF / error → close the channel by dropping tx.
             })
             .map_err(|e| format!("StdinSource spawn: {e}"))?;
         self.handle = Some(handle);
@@ -95,11 +82,7 @@ impl EventSource for StdinSource {
     }
 
     fn stop(&mut self) {
-        // Stdin's blocking read can't be interrupted portably from
-        // another thread. We can't join here without potentially
-        // hanging — drop the JoinHandle (the thread will exit on
-        // its own when EOF arrives or when the channel closes).
-        // The OS reaps the thread at process exit.
+        // Blocking read can't be interrupted; drop handle and let thread exit on EOF.
         let _ = self.handle.take();
     }
 
@@ -120,11 +103,8 @@ impl Drop for StdinSource {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for StdinSource. Installs iff the
-/// user's World declares `stdin_line: String`. Single-owner: the
-/// source owns fd 0; user FSMs cannot also use Effect::ReadLine
-/// (they'd race for bytes). When `stdin_seq: Int` is also
-/// declared, the source increments it on each line.
+/// Installs if World has `stdin_line: String`. Owns fd 0; rejects concurrent
+/// `Effect::ReadLine` use. Also increments `stdin_seq: Int` if declared.
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,
@@ -132,8 +112,7 @@ pub(super) fn install_world_plugin(
     if !ctx.has_world_field("stdin_line", "String") {
         return Ok(None);
     }
-    // Reject programs that auto-install StdinSource AND use
-    // Effect::ReadLine — both want fd 0 and would race for bytes.
+    // StdinSource + Effect::ReadLine both want fd 0 — reject the conflict.
     if let Some(claim_name) = (ctx.fsm_using_identifier)("ReadLine") {
         return Err(format!(
             "FSM `{claim_name}` emits Effect::ReadLine, but the program also \

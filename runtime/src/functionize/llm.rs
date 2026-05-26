@@ -1,50 +1,5 @@
-//! LLM-driven `Functionizer` strategy (opt-in, proof of concept).
-//!
-//! Instead of compiling a `Z3Program`'s ASTs directly (the Cranelift
-//! path), this strategy asks an LLM to *write the Rust function* that
-//! reproduces the program's input→output behavior, compiles that with
-//! `rustc`, and accepts it ONLY if it matches the program on a
-//! held-out validation set.
-//!
-//! Pipeline (`compile`):
-//!   1. Classify the program's inputs / outputs (scalar Int/Bool/Str
-//!      only — anything else → `None`, fall through to the next
-//!      strategy / slow path).
-//!   2. Sample N distinct input→output pairs by solving the program
-//!      with a fresh Z3 solver in the program's own context. Z3 is the
-//!      ground-truth oracle here.
-//!   3. Build a prompt: the exact `fn compute(..)` signature plus the
-//!      sampled examples. Ask the LLM for that one function.
-//!   4. Wrap the LLM's `compute` in a host-generated `extern "C"` shim
-//!      (the LLM never writes FFI), compile to a cdylib via `rustc`,
-//!      and `dlopen` it.
-//!   5. Validate against held-out pairs. Require a 100% match; any
-//!      miss → `None` (fall through). This is the only safeguard
-//!      against hallucinated logic, so it is not optional.
-//!
-//! ## Selection
-//!
-//! ```ignore
-//! let rt = EvidentRuntime::with_functionizer(
-//!     Box::new(LlmFunctionizer::new()));
-//! ```
-//!
-//! `LlmFunctionizer::new()` uses [`AnthropicGenerator`], which reads
-//! `ANTHROPIC_API_KEY`. With no key, the generator returns `None` and
-//! `compile` falls through — there is **no default behavior change**
-//! and no network call. Tests inject a deterministic generator via
-//! [`LlmFunctionizer::with_generator`].
-//!
-//! ## Requirements / caveats
-//!
-//! - **`rustc` must be on `PATH`** — codegen shells out to it.
-//! - **The compiled code runs as native code in this process.** Use
-//!   only with trusted Z3 programs; a prompt-injected program could
-//!   steer the LLM toward hostile code. Validation guards *correctness*,
-//!   not *safety*.
-//! - **Scope**: scalar Int/Bool/String I/O, single or tuple outputs.
-//!   Seq/composite/enum I/O bail to `None`. This is a proof of concept;
-//!   see the module's tests and `examples/COUNTEREXAMPLES.md`.
+//! LLM functionizer: generate → compile via `rustc` → validate against held-out Z3 pairs.
+//! Scalar I/O only; compiled code runs native (validation guards correctness, not safety).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
@@ -56,16 +11,10 @@ use z3_sys::DeclKind;
 use crate::core::{EnumRegistry, Value, Z3Program, Z3Step};
 use super::{CompiledFunction, Functionizer};
 
-/// Total samples to draw from the program; split into a prompt
-/// (training) set and a held-out validation set.
 const N_SAMPLES: usize = 24;
-/// Anthropic model used for code generation.
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 
-// ───────────────────────── scalar type lattice ─────────────────────
-
-/// The only value shapes this strategy marshals across the FFI
-/// boundary in v1. Classified from a Z3 sort's display name.
+/// Value shapes marshaled across the FFI boundary. Classified from Z3 sort name.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ScalarTy { Int, Bool, Str }
 
@@ -75,47 +24,36 @@ impl ScalarTy {
             "Int" => Some(ScalarTy::Int),
             "Bool" => Some(ScalarTy::Bool),
             "String" => Some(ScalarTy::Str),
-            _ => None,   // Real, Seq, Datatype, … unsupported in v1
+            _ => None,
         }
     }
-    /// Rust type for a `compute` parameter (borrowed where natural).
     fn rust_param(&self) -> &'static str {
         match self { ScalarTy::Int => "i64", ScalarTy::Bool => "bool", ScalarTy::Str => "&str" }
     }
-    /// Rust type for a `compute` return position (owned).
     fn rust_ret(&self) -> &'static str {
         match self { ScalarTy::Int => "i64", ScalarTy::Bool => "bool", ScalarTy::Str => "String" }
     }
 }
 
-// ───────────────────────── code generator ──────────────────────────
-
-/// A source of Rust source code for a described function. The
-/// `LlmFunctionizer` is generic over this so tests can inject a
-/// deterministic generator instead of calling a live API.
+/// Produces Rust source for a function. Generic so tests can inject a deterministic mock.
 pub trait CodeGenerator {
-    /// Produce Rust source containing a `fn compute(..)` matching the
-    /// prompt, or `None` to refuse (no key, network error, etc.).
+    /// Return Rust source containing `fn compute(..)`, or `None` to refuse.
     fn generate(&self, prompt: &str) -> Option<String>;
 }
 
-/// Calls the Anthropic Messages API. The key is read from
-/// `ANTHROPIC_API_KEY` (via [`AnthropicGenerator::from_env`]) and is
-/// never logged. With no key, `generate` returns `None` without
-/// touching the network.
+/// Calls the Anthropic Messages API. Key from `ANTHROPIC_API_KEY`; never logged.
+/// With no key, `generate` returns `None` without a network call.
 pub struct AnthropicGenerator {
     api_key: Option<String>,
     model:   String,
 }
 
 impl AnthropicGenerator {
-    /// Read the key from `ANTHROPIC_API_KEY` (absent → `None`).
     pub fn from_env() -> Self {
         let key = std::env::var("ANTHROPIC_API_KEY").ok()
             .filter(|k| !k.is_empty());
         AnthropicGenerator { api_key: key, model: DEFAULT_MODEL.to_string() }
     }
-    /// Explicit key (used by tests; `None` ⇒ always refuse).
     pub fn new(api_key: Option<String>) -> Self {
         AnthropicGenerator { api_key, model: DEFAULT_MODEL.to_string() }
     }
@@ -126,7 +64,7 @@ impl AnthropicGenerator {
 
 impl CodeGenerator for AnthropicGenerator {
     fn generate(&self, prompt: &str) -> Option<String> {
-        let key = self.api_key.as_ref()?;   // no key → refuse, no call
+        let key = self.api_key.as_ref()?;
         let body = serde_json::json!({
             "model": self.model,
             "max_tokens": 1024,
@@ -140,7 +78,6 @@ impl CodeGenerator for AnthropicGenerator {
         let resp = match resp {
             Ok(r) => r,
             Err(e) => {
-                // Never include the key; ureq's Display omits headers.
                 if trace() { eprintln!("[fz/llm] API request failed: {e}"); }
                 return None;
             }
@@ -151,12 +88,10 @@ impl CodeGenerator for AnthropicGenerator {
     }
 }
 
-/// Pull the first fenced code block out of an LLM response. Falls
-/// back to the whole string when there are no fences.
+/// Extract the first fenced code block, or the whole string if no fences.
 fn extract_code_block(text: &str) -> String {
     if let Some(start) = text.find("```") {
         let after = &text[start + 3..];
-        // Skip an optional language tag on the fence line.
         let after = match after.find('\n') { Some(nl) => &after[nl + 1..], None => after };
         if let Some(end) = after.find("```") {
             return after[..end].trim().to_string();
@@ -165,19 +100,15 @@ fn extract_code_block(text: &str) -> String {
     text.trim().to_string()
 }
 
-// ───────────────────────── the functionizer ────────────────────────
-
-/// LLM-generated-function strategy. See module docs.
+/// LLM-generated-function functionizer strategy. See module docs.
 pub struct LlmFunctionizer {
     generator: Box<dyn CodeGenerator>,
 }
 
 impl LlmFunctionizer {
-    /// Default: the live Anthropic generator (opt-in via env key).
     pub fn new() -> Self {
         LlmFunctionizer { generator: Box::new(AnthropicGenerator::from_env()) }
     }
-    /// Inject a generator (tests use a deterministic mock).
     pub fn with_generator(generator: Box<dyn CodeGenerator>) -> Self {
         LlmFunctionizer { generator }
     }
@@ -204,8 +135,7 @@ impl Functionizer for LlmFunctionizer {
         let source = plan.assemble_source(&user_code);
         let compiled = compile_cdylib(&plan, &source)?;
 
-        // Validation gate — the only safeguard against hallucinated
-        // logic. Any miss on the held-out set rejects the function.
+        // Validation gate: 100% match required on held-out pairs; any miss → reject.
         for (inputs, expected) in holdout {
             let Some(got) = compiled.call(inputs) else {
                 if trace() { eprintln!("[fz/llm] validation: call returned None"); }
@@ -229,35 +159,24 @@ impl Functionizer for LlmFunctionizer {
     }
 }
 
-// ───────────────────────── compile plan ────────────────────────────
-
-/// Everything derived from a `Z3Program` up front: the typed input /
-/// output signature (in a stable, sorted order) plus the Z3 const
-/// handles needed to sample. Inputs/outputs use the *original* Evident
-/// names for the wire order; `rust_inputs` / `rust_outputs` hold
-/// collision-free Rust identifiers for codegen.
+/// Typed I/O signature (stable sorted order) plus Z3 const handles for sampling.
+/// `rust_inputs`/`rust_outputs` are collision-free Rust identifiers for codegen.
 struct Plan<'ctx> {
-    /// (original name, type) sorted by name — defines wire order.
     inputs:  Vec<(String, ScalarTy)>,
     outputs: Vec<(String, ScalarTy)>,
-    /// Rust identifiers parallel to `inputs` / `outputs`.
     rust_inputs:  Vec<String>,
     rust_outputs: Vec<String>,
-    /// Z3 const handle per input (the actual sub-AST node).
     input_consts:  Vec<Dynamic<'ctx>>,
-    /// Reconstructed Z3 const per output (by name + sort).
     output_consts: Vec<Dynamic<'ctx>>,
 }
 
 impl<'ctx> Plan<'ctx> {
     fn from_program(program: &Z3Program<'ctx>) -> Option<Plan<'ctx>> {
-        // Outputs: every step must be a plain Scalar of a supported
-        // sort. Seq / Guarded / PreBaked → bail (fall through).
         let mut out_pairs: Vec<(String, ScalarTy, Dynamic<'ctx>)> = Vec::new();
         let mut output_names: HashSet<String> = HashSet::new();
         let ctx: &'ctx Context = match program.steps.first() {
             Some(Z3Step::Scalar { expr, .. }) => expr.get_ctx(),
-            _ => return None,   // no scalar steps to learn from
+            _ => return None,
         };
         for step in &program.steps {
             let Z3Step::Scalar { var, expr } = step else { return None };
@@ -266,8 +185,6 @@ impl<'ctx> Plan<'ctx> {
             output_names.insert(var.clone());
         }
 
-        // Inputs: free 0-arity consts in any step expr / check /
-        // predicate that are not outputs.
         let mut free: BTreeMap<String, Dynamic<'ctx>> = BTreeMap::new();
         for (_, _, expr) in &out_pairs {
             collect_free_consts(expr, &output_names, &mut free);
@@ -288,8 +205,7 @@ impl<'ctx> Plan<'ctx> {
             input_consts.push(dyn_const.clone());
         }
 
-        // Outputs sorted by name for a stable wire order.
-        out_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        out_pairs.sort_by(|a, b| a.0.cmp(&b.0)); // stable wire order
         let outputs: Vec<(String, ScalarTy)> =
             out_pairs.iter().map(|(n, t, _)| (n.clone(), *t)).collect();
         let output_consts: Vec<Dynamic<'ctx>> = out_pairs.iter()
@@ -301,16 +217,13 @@ impl<'ctx> Plan<'ctx> {
         Some(Plan { inputs, outputs, rust_inputs, rust_outputs, input_consts, output_consts })
     }
 
-    /// Draw up to `N_SAMPLES` distinct input→output pairs by repeatedly
-    /// solving the program with the inputs left free. Z3 is the oracle.
+    /// Draw up to `N_SAMPLES` distinct input→output pairs; Z3 is the oracle.
     fn sample(&self, program: &Z3Program<'ctx>) -> Option<Vec<Sample>> {
         let ctx = self.output_consts.first()
             .or_else(|| self.input_consts.first())
             .map(|d| d.get_ctx())?;
         let solver = z3::Solver::new(ctx);
-        // Pin each output to its defining expression. `output_consts`
-        // is sorted by name; map each step's var to its slot so the
-        // const we assert is the one the program actually defines.
+        // Map each step's var to its sorted output slot, then assert output = defining expr.
         let out_slot: HashMap<&str, usize> = self.outputs.iter()
             .enumerate().map(|(i, (n, _))| (n.as_str(), i)).collect();
         for step in &program.steps {
@@ -318,7 +231,6 @@ impl<'ctx> Plan<'ctx> {
             let slot = *out_slot.get(var.as_str())?;
             solver.assert(&self.output_consts[slot]._eq(expr));
         }
-        // Preconditions: checks + predicates constrain the input domain.
         for (l, r) in &program.checks { solver.assert(&l._eq(r)); }
         for p in &program.predicates { solver.assert(p); }
 
@@ -349,8 +261,7 @@ impl<'ctx> Plan<'ctx> {
 
             samples.push((inputs, outputs));
 
-            // Force the next model to differ in at least one input.
-            // No inputs ⇒ a constant function ⇒ one sample suffices.
+            // Force the next model to differ in ≥1 input; no inputs = constant fn.
             if neqs.is_empty() { break; }
             let refs: Vec<&Bool<'ctx>> = neqs.iter().collect();
             solver.assert(&Bool::or(ctx, &refs));
@@ -389,7 +300,6 @@ impl<'ctx> Plan<'ctx> {
         p
     }
 
-    /// `compute(a, "b") == result` for the prompt.
     fn example_call(&self, inputs: &HashMap<String, Value>, outputs: &HashMap<String, Value>) -> String {
         let args: Vec<String> = self.inputs.iter()
             .map(|(n, ty)| value_literal(inputs.get(n), *ty))
@@ -403,8 +313,6 @@ impl<'ctx> Plan<'ctx> {
         format!("compute({}) == {rhs}", args.join(", "))
     }
 
-    /// Concatenate the LLM's `compute` with the host FFI shim. The LLM
-    /// never sees the shim or the wire format.
     fn assemble_source(&self, user_code: &str) -> String {
         let mut s = String::new();
         s.push_str("#![allow(warnings)]\n\n");
@@ -412,7 +320,6 @@ impl<'ctx> Plan<'ctx> {
         s.push_str("\n\n// ---- host-generated FFI shim (not from the LLM) ----\n");
         s.push_str(SHIM_HELPERS);
 
-        // Decode inputs in wire order, call compute, encode outputs.
         let mut call = String::new();
         call.push_str("#[no_mangle]\npub extern \"C\" fn ev_llm_call(\
             in_ptr: *const u8, in_len: usize, out_len: *mut usize) -> *mut u8 {\n");
@@ -420,7 +327,8 @@ impl<'ctx> Plan<'ctx> {
             else { unsafe { std::slice::from_raw_parts(in_ptr, in_len) } };\n");
         call.push_str("    let mut __p = 0usize;\n");
         for ((_, ty), id) in self.inputs.iter().zip(&self.rust_inputs) {
-            let rd = match ty { ScalarTy::Int => "__ev_rd_i64", ScalarTy::Bool => "__ev_rd_bool", ScalarTy::Str => "__ev_rd_str" };
+            let rd = match ty { ScalarTy::Int => "__ev_rd_i64", ScalarTy::Bool => "__ev_rd_bool",
+                                ScalarTy::Str => "__ev_rd_str" };
             call.push_str(&format!("    let {id} = {rd}(__in, &mut __p);\n"));
         }
         let arg_exprs: Vec<String> = self.inputs.iter().zip(&self.rust_inputs)
@@ -453,7 +361,6 @@ impl<'ctx> Plan<'ctx> {
 
 type Sample = (HashMap<String, Value>, HashMap<String, Value>);
 
-/// Split into (training, validation). One sample ⇒ used for both.
 fn split_samples(samples: &[Sample]) -> (&[Sample], &[Sample]) {
     let total = samples.len();
     if total == 1 { return (samples, samples); }
@@ -463,13 +370,10 @@ fn split_samples(samples: &[Sample]) -> (&[Sample], &[Sample]) {
     (&samples[..split], &samples[split..])
 }
 
-// ───────────────────────── compiled artifact ───────────────────────
-
 type CallFn = unsafe extern "C" fn(*const u8, usize, *mut usize) -> *mut u8;
 type FreeFn = unsafe extern "C" fn(*mut u8, usize);
 
-/// A `dlopen`ed cdylib produced from LLM source. Holds the library
-/// alive and the two raw entry points; marshals via the wire format.
+/// `dlopen`ed cdylib from LLM source; holds the library alive and marshals via the wire format.
 struct LlmCompiled {
     _lib:    libloading::Library,
     call_fn: CallFn,
@@ -481,7 +385,6 @@ struct LlmCompiled {
 
 impl Drop for LlmCompiled {
     fn drop(&mut self) {
-        // Best-effort cleanup of the temp build dir.
         let _ = std::fs::remove_dir_all(&self.tmp_dir);
     }
 }
@@ -494,7 +397,7 @@ impl CompiledFunction for LlmCompiled {
         }
         let mut out_len: usize = 0;
         let ptr = unsafe { (self.call_fn)(buf.as_ptr(), buf.len(), &mut out_len) };
-        if ptr.is_null() { return None; }   // compute panicked → fall through
+        if ptr.is_null() { return None; }   // compute panicked
         let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len) }.to_vec();
         unsafe { (self.free_fn)(ptr, out_len); }
 
@@ -507,7 +410,6 @@ impl CompiledFunction for LlmCompiled {
     }
 }
 
-/// Write `source` to a temp dir, `rustc --crate-type cdylib`, dlopen.
 fn compile_cdylib(plan: &Plan, source: &str) -> Option<LlmCompiled> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -536,8 +438,7 @@ fn compile_cdylib(plan: &Plan, source: &str) -> Option<LlmCompiled> {
         return None;
     }
 
-    // SAFETY: we just produced this cdylib from source we generated;
-    // the two symbols have the declared C ABI.
+    // SAFETY: cdylib produced from host-generated source; symbols have the declared C ABI.
     let lib = unsafe { libloading::Library::new(&lib_path) }.ok()?;
     let call_fn: CallFn = unsafe {
         *lib.get::<CallFn>(b"ev_llm_call\0").ok()?
@@ -553,12 +454,8 @@ fn compile_cdylib(plan: &Plan, source: &str) -> Option<LlmCompiled> {
     })
 }
 
-// ───────────────────────── wire format ─────────────────────────────
-//
-// Flat little-endian buffer, fields in declared order, no tags (both
-// ends know the types statically). Int: 8 bytes. Bool: 1 byte. Str:
-// u32 length + UTF-8 bytes. The host encodes/decodes here; the shim
-// (SHIM_HELPERS) mirrors it.
+// Wire format: flat little-endian, no tags. Int=8B, Bool=1B, Str=u32len+UTF-8.
+// Host side here; shim (SHIM_HELPERS) mirrors it.
 
 fn encode_value(buf: &mut Vec<u8>, ty: ScalarTy, v: &Value) -> Option<()> {
     match (ty, v) {
@@ -599,9 +496,7 @@ fn decode_value(b: &[u8], p: &mut usize, ty: ScalarTy) -> Option<Value> {
     }
 }
 
-/// std-only decode/encode helpers + the `ev_llm_free` export, shared
-/// by every generated shim. Names are `__ev_`-prefixed to avoid
-/// colliding with the LLM's `compute`.
+/// Decode/encode helpers + `ev_llm_free` export; `__ev_`-prefixed to avoid colliding with `compute`.
 const SHIM_HELPERS: &str = r#"
 fn __ev_rd_i64(b: &[u8], p: &mut usize) -> i64 {
     let mut a = [0u8; 8]; a.copy_from_slice(&b[*p..*p + 8]); *p += 8; i64::from_le_bytes(a)
@@ -624,10 +519,7 @@ pub extern "C" fn ev_llm_free(ptr: *mut u8, len: usize) {
 }
 "#;
 
-// ───────────────────────── z3 / value helpers ──────────────────────
-
-/// Recursively collect 0-arity uninterpreted consts (not in
-/// `outputs`) into `acc`, keyed by name (first occurrence wins).
+/// Collect 0-arity uninterpreted consts not in `outputs` into `acc` (first occurrence wins).
 fn collect_free_consts<'ctx>(
     e: &Dynamic<'ctx>,
     outputs: &HashSet<String>,
@@ -649,8 +541,6 @@ fn collect_free_consts<'ctx>(
     }
 }
 
-/// Build a Z3 const of the given scalar sort by name. Interns to the
-/// same node the body used (Z3 keys consts on name + sort).
 fn make_const<'ctx>(ctx: &'ctx Context, name: &str, ty: ScalarTy) -> Dynamic<'ctx> {
     match ty {
         ScalarTy::Int  => Dynamic::from_ast(&z3::ast::Int::new_const(ctx, name)),
@@ -659,7 +549,6 @@ fn make_const<'ctx>(ctx: &'ctx Context, name: &str, ty: ScalarTy) -> Dynamic<'ct
     }
 }
 
-/// Decode a Z3 model value (already model-completed) into a `Value`.
 fn dyn_to_value(d: &Dynamic, ty: ScalarTy) -> Option<Value> {
     match ty {
         ScalarTy::Int  => d.as_int().and_then(|i| i.as_i64()).map(Value::Int),
@@ -668,21 +557,18 @@ fn dyn_to_value(d: &Dynamic, ty: ScalarTy) -> Option<Value> {
     }
 }
 
-/// Render a sampled `Value` as a Rust literal for the prompt.
 fn value_literal(v: Option<&Value>, ty: ScalarTy) -> String {
     match (ty, v) {
         (ScalarTy::Int,  Some(Value::Int(n)))  => n.to_string(),
         (ScalarTy::Bool, Some(Value::Bool(b))) => b.to_string(),
         (ScalarTy::Bool, Some(Value::Int(n)))  => (*n != 0).to_string(),
         (ScalarTy::Str,  Some(Value::Str(s)))  => format!("{s:?}"),
-        // Defensive defaults (shouldn't happen — sampler types match).
         (ScalarTy::Int, _)  => "0".to_string(),
         (ScalarTy::Bool, _) => "false".to_string(),
         (ScalarTy::Str, _)  => "\"\"".to_string(),
     }
 }
 
-/// Produce collision-free Rust identifiers parallel to a name list.
 fn unique_idents<'a>(names: impl Iterator<Item = &'a str>, prefix: char) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<String> = Vec::new();

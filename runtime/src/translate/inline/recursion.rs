@@ -1,26 +1,12 @@
-//! Inlining-recursion bookkeeping: a per-claim depth counter that
-//! bounds how deep self-passthrough / recursive-claim expansion goes,
+//! Inlining-recursion bookkeeping: per-claim depth counter bounding self-passthrough expansion,
 //! plus helper-local Z3-const isolation when entering a ClaimCall.
-//!
-//! `visited` is a per-claim depth counter that bounds inlining
-//! recursion. Each entry maps a claim name to how many frames of
-//! it are currently on the inlining stack. A frame can re-enter the
-//! same claim up to `MAX_INLINE_DEPTH` times — enough to walk a
-//! recursive AST (transpilers, list emitters, etc.) but bounded so
-//! pathological self-passthrough cycles don't OOM. Without unrolling
-//! at all, the transpiler-as-recursive-claims pattern doesn't work
-//! (Z3 invents arbitrary string values for un-asserted `tail_out`
-//! bindings). The depth bound is overridable via
-//! `EVIDENT_MAX_INLINE_DEPTH` for ASTs deeper than the default.
 
 use std::collections::HashMap;
 
 use crate::core::ast::*;
 use crate::core::Var;
 
-/// Default cap — large enough for any realistic shader/transpiler AST,
-/// small enough that a self-passthrough loop trips it before the
-/// translation context blows out.
+/// Depth cap: large enough for recursive AST walks, small enough to trip on runaway self-passthrough loops.
 const DEFAULT_MAX_INLINE_DEPTH: usize = 64;
 
 fn max_inline_depth() -> usize {
@@ -30,14 +16,8 @@ fn max_inline_depth() -> usize {
         .unwrap_or(DEFAULT_MAX_INLINE_DEPTH)
 }
 
-/// Try to enter a frame of `name` on the inlining stack. Returns
-/// `Some(depth)` (the post-increment count) on success, `None` if
-/// we'd exceed the depth cap. `depth > 1` ⇒ this is a recursive
-/// frame; callers use that to force fresh per-call declarations
-/// for body-internal Memberships, otherwise the env-clone would
-/// shadow them with outer-scope vars and recursive claims would
-/// self-reference (e.g. `out = "x " ++ tail_out` where `tail_out`
-/// is the SAME Z3 const as the outer call's `tail_out`).
+/// Enter a frame for `name`; returns `Some(depth)` or `None` if cap exceeded.
+/// `depth > 1` means recursive — callers must force fresh Z3 consts to avoid self-reference.
 pub(super) fn try_enter(visited: &mut HashMap<String, usize>, name: &str) -> Option<usize> {
     let max = max_inline_depth();
     let cnt = visited.entry(name.to_string()).or_insert(0);
@@ -49,9 +29,7 @@ pub(super) fn try_enter(visited: &mut HashMap<String, usize>, name: &str) -> Opt
     }
 }
 
-/// Counterpart to `try_enter` — call after the inlined body has been
-/// translated. Removes the entry entirely when its count hits zero
-/// so subsequent same-name lookups don't see stale state.
+/// Pop a `try_enter` frame; removes the entry when count hits zero.
 pub(super) fn exit_frame(visited: &mut HashMap<String, usize>, name: &str) {
     if let Some(cnt) = visited.get_mut(name) {
         *cnt -= 1;
@@ -59,31 +37,14 @@ pub(super) fn exit_frame(visited: &mut HashMap<String, usize>, name: &str) {
     }
 }
 
-/// Pre-isolate helper-local Z3 consts: when entering a ClaimCall, any
-/// caller-scope vars whose names match the called claim's body
-/// Memberships PAST `param_count` (i.e. the helper's internal locals,
-/// not its first-line input/output slots) are removed from the cloned
-/// inner env. This prevents recursive helper invocations from
-/// accidentally sharing locals via the env-clone chain — without it,
-/// nested `emit_ternary(...)` would reuse the OUTER `emit_ternary`'s
-/// `cnd`/`thn`/`els` Z3 consts, collapsing distinct AST values to one
-/// const and going UNSAT.
-///
-/// Slot params (the leading body Memberships up to `param_count`) are
-/// PRESERVED in the clone so the helper's body can reach the
-/// outer-supplied values via names-match composition.
+/// Strip helper-internal locals from the cloned env on ClaimCall entry.
+/// Prevents recursive invocations from sharing locals (e.g. `emit_ternary`'s `cnd`/`thn`/`els`), which collapses distinct AST values and causes UNSAT.
 pub(super) fn isolate_helper_locals(
     body: &[BodyItem],
     inner: &mut HashMap<String, Var<'static>>,
     param_count: usize,
 ) {
-    // When the claim has no first-line params (param_count == 0), we
-    // can't tell input slots from helper-locals — fall back to the
-    // legacy names-match behavior: keep everything in the cloned env
-    // so body Memberships that match outer scope re-use those Z3
-    // consts. Helpers that NEED isolation (transpiler-style recursive
-    // claims) must use first-line params to declare which body
-    // Memberships are inputs.
+    // param_count == 0: can't distinguish input slots from locals; fall back to names-match (keep all).
     if param_count == 0 { return; }
     for (i, item) in body.iter().enumerate() {
         if i < param_count { continue; } // input/output slot — keep.

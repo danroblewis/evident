@@ -1,27 +1,5 @@
-//! Static subscription / read-set inference types for the multi-FSM
-//! scheduler. See `docs/design/fsm-subscriptions.md` for the full
-//! design.
-//!
-//! ## Session XX — the walk lives in Evident now
-//!
-//! The canonical Rust walk (`world_access_sets` + its `walk_body` /
-//! `walk_pins` / `walk_expr` / `first_segment` traversal) was **deleted**
-//! in session XX. The whole walk is now the self-hosted stack-FSM
-//! `stdlib/passes/subscriptions.ev`, driven through
-//! [`crate::portable::subscriptions`] — the runtime's SOLE subscriptions
-//! implementation. The scheduler computes a claim's `(reads, writes)` via
-//! [`crate::portable::subscriptions::access_sets`], which marshals the
-//! claim body into a `Value`, runs the `subscriptions_walk` FSM to a
-//! drained-stack halt (`effect_loop::run_nested`), and classifies the
-//! reachable identifiers by their `world.` / `world_next.` prefix.
-//!
-//! This module keeps only the two pieces that did NOT move:
-//!   * [`AccessSets`] — the read/write-set value type the scheduler and
-//!     the Evident shim both produce and consume.
-//!   * [`body_references_identifier`] — a *different* analysis (does a
-//!     body reference a named effect constructor, e.g. `ReadLine`?), used
-//!     at load time to detect fd-resource conflicts. It is not a
-//!     world-access walk and has no Evident twin.
+//! Read/write-set types for the multi-FSM scheduler. World-access walk lives in
+//! `stdlib/passes/subscriptions.ev`; this module keeps only `AccessSets` + `body_references_identifier`.
 
 use std::collections::HashSet;
 
@@ -30,28 +8,14 @@ use crate::core::ast::{BodyItem, Expr, Pins, SchemaDecl};
 /// Read-set + write-set for one FSM claim.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AccessSets {
-    /// Field names X such that `world.X` appears anywhere in the
-    /// claim body. NOT including `world` itself bare (which would
-    /// indicate a whole-record read — currently the language always
-    /// dot-accesses individual fields).
+    /// Field names X where `world.X` appears in the body.
     pub reads:  HashSet<String>,
-    /// Field names X such that `world_next.X` appears as the LHS of
-    /// any constraint. Right now we conservatively count any
-    /// reference to `world_next.X` as a write — refinement to
-    /// "only LHS of equality" can come later if needed.
+    /// Field names X where `world_next.X` appears; conservatively counts any reference as a write.
     pub writes: HashSet<String>,
 }
 
-/// Returns true iff the claim's body references the named
-/// effect constructor (e.g. "ReadLine", "Exit"). Used at load
-/// time to detect conflicts — e.g. a program that has a stdin
-/// plugin auto-installed AND emits Effect::ReadLine would race
-/// for fd 0; the runtime rejects that combination.
-///
-/// This is a plain identifier-presence check, NOT the world-access
-/// walk (that moved to `stdlib/passes/subscriptions.ev` — see the
-/// module doc). It stays in Rust because it answers a different
-/// question (does name N appear anywhere) and has no Evident port.
+/// Returns true iff the claim body references `ident` (e.g. "ReadLine").
+/// Used at load time to detect fd-resource conflicts (stdin plugin + ReadLine emitter → reject).
 pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
     fn walk(items: &[BodyItem], ident: &str) -> bool {
         for item in items {
@@ -71,8 +35,7 @@ pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
                 BodyItem::Constraint(e) => {
                     if walk_expr(e, ident) { return true; }
                 }
-                // No effect constructors live in a halts_within directive.
-                BodyItem::HaltsWithin { .. } => {}
+                BodyItem::HaltsWithin { .. } => {} // no effect constructors here
             }
         }
         false
