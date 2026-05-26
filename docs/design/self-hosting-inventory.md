@@ -126,7 +126,7 @@ that *could* port (Tier 1/2); those are called out.
 | `translate/inline/calls.rs` | 387 | 0 | Top-level claim invocation inlining | n/a |
 | `translate/inline/recursion.rs` | 98 | 0 | Inlining depth counter (cap 64), per-call fresh consts | n/a |
 | `translate/inline/dispatch.rs` | 247 | **1**/0 | Call-name resolution + static `∀`-unroll analysis. Resolution part is AST→AST. **Split.** | Cranelift |
-| `translate/inline/rewrite.rs` | 185 | **1** | Pure AST rewrites: prefix-injection, bound-var substitution | Cranelift |
+| `translate/inline/rewrite.rs` | 185 | **1**, but ⛔ **per-solve-hot** | Pure AST rewrites: prefix-injection, bound-var substitution. Pure in isolation, but reached only via `inline_body_items` ← `translate/eval/*` (every solve). **Do not port** — circular + per-solve-hot (see port-queue #10). | Cranelift |
 | `translate/inline/guards.rs` | 81 | 0 | `track_assert`, guard sat-check (calls Z3) | n/a |
 | `translate/inline/membership.rs` | 226 | 0 | Membership body-item arm — fires type pins, declares Z3 consts | n/a |
 | `translate/inline/subschema.rs` | 233 | 0 | Subclaim-of-type inlining + ∀-unrolled subschema | n/a |
@@ -404,7 +404,7 @@ are the next ten in order. The ordering optimizes for:
 | 7 | `runtime/generics.rs` | 256 | 1 | `<T>` monomorphization: string parsing + textual substitution + clone. The string-parsing half is non-trivial in Evident; ports as a stress-test for `stdlib`'s string ops. |
 | 8 | `runtime/desugar.rs` | 273 | 1 | Seq concat flatten + unified-world syntax. **The Seq-concat flatten especially: it's a fan-out rewrite that exercises Seq operations.** |
 | 9 | `runtime/inject.rs` (in three pieces) | 588 | 1 | Biggest pure-pass surface. Land one rule at a time: `inject_fsm_params` (~200 LOC), then `inject_prev_tick_decls` (~150), then `inject_claim_arg_types` / `inject_lhs_eq_types` (~200). |
-| 10 | `translate/inline/rewrite.rs` | 185 | 1 | Pure AST rewrites — prefix-injection, bound-var substitution. **First port that touches `translate/`.** |
+| 10 | ~~`translate/inline/rewrite.rs`~~ — **DISQUALIFIED, do not port** | 185 | — | **NOT a candidate (session safe-port).** It is pure AST→AST in isolation (hence the Tier-1 label), but its only callers are `translate/inline/membership.rs` + `subschema.rs`, reached *exclusively* through `inline_body_items` ← `translate/eval/{core,cached,decompose,extra,mod}.rs` — i.e. the **per-solve / eval-core path** that runs on every `query` and every scheduler tick. Self-hosting it is the same trap that disqualified `preprocess`'s collect functions: (a) **circular** — a rewrite pass would itself need to translate→inline→rewrite to run; (b) **per-solve-hot** — sessions YY/ZZ measured the self-hosted walk ~10⁴× slower *per invocation*, tolerable once at load but lethal on the per-solve path. Tier 1 measures "is it a pure pass," not "is it on the hot path"; rewrite.rs is both, and the second kills it. Leave in Rust. |
 
 ### After #10 — what's gated on what
 
@@ -475,6 +475,38 @@ and is on the critical path between "Tier 1 is exhausted" and
 "Tier 3 becomes interesting." See
 [`docs/plans/03-language-prereqs/01-recursive-claims.md`](../plans/03-language-prereqs/01-recursive-claims.md)
 (which already exists with unchecked acceptance criteria).
+
+## § Mode-2 candidates — function → constraint
+
+Everything above is **mode-1** self-hosting: replace a Rust *algorithm*
+with an Evident *walk* that computes the same answer (pretty, validate,
+subscriptions, toposort, …). The SMT-LIB north star
+([`docs/design/smtlib-as-compile-target.md`](smtlib-as-compile-target.md))
+names a second mode: a Rust function whose job is really to *decide a
+property* is more honestly written as the **constraint it checks**, not
+as the procedure that checks it. The win is legibility — the invariant
+becomes the spec — not LOC.
+
+Not every mode-2 candidate should *route through a Z3 solve*, though.
+The test is: does a solve buy anything over stating the constraint
+plainly in Rust? When the property is a cheap set/relation check on a
+handful of items, a solve is a strictly slower way to compute the same
+thing, and a bare SAT/UNSAT answer often can't even produce the witness
+the caller needs (e.g. an error message naming the offending pair). For
+those, the right move is to **write the Rust so it reads as the
+constraint** and record it here as a mode-2 candidate, rather than force
+a solve.
+
+| Site | The constraint it really is | Routed through Z3? | Why |
+|---|---|---|---|
+| `effect_loop/mod.rs::check_single_owner` (multi-writer disjoint check) | The relation world-field → writer is a (partial) **function**: every field has at most one writer. A disjointness / all-different property. | **No — kept Rust (session safe-port).** | Load-time-but-on-every-`effect-run`; a solve here is a slower set-intersection, and SAT/UNSAT can't name the conflicting writer pair the error reports. The Rust is now a field→owner map — the constraint *is* the code. |
+
+`check_single_owner` is the worked reference for "express the invariant
+declaratively, keep it in Rust": the function-doc states the property
+first and the map second; the prior O(writers²) pairwise-overlap scan is
+gone. If a future seam makes a witnessed all-different solve cheap and
+faithful (model extraction naming the violating pair), this is the first
+candidate to actually route through it.
 
 ## § Risks
 

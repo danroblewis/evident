@@ -220,8 +220,8 @@ pub fn run_with_ctx(
         })
         .collect();
 
-    // Multi-writer disjoint check: every writer FSM + plugin must own disjoint fields.
-    // Write-sets are transitive so passthrough-delegated writes are caught.
+    // Single-owner invariant: every writer FSM + plugin must own disjoint world
+    // fields. Write-sets are transitive so passthrough-delegated writes are caught.
     {
         let mut writer_sets: Vec<(String, std::collections::HashSet<String>)> = fsms.iter()
             .zip(&initial_access)
@@ -233,24 +233,9 @@ pub fn run_with_ctx(
             s.insert(pf.clone());
             writer_sets.push((format!("<plugin>:{pf}"), s));
         }
-        for i in 0..writer_sets.len() {
-            for j in (i + 1)..writer_sets.len() {
-                let (a_name, a_writes) = &writer_sets[i];
-                let (b_name, b_writes) = &writer_sets[j];
-                let overlap: Vec<&String> = a_writes.intersection(b_writes).collect();
-                if !overlap.is_empty() {
-                    for source in &mut event_sources { source.stop(); }
-                    return Err(format!(
-                        "multi-FSM: writers `{a_name}` and `{b_name}` both write \
-                         to world fields {overlap:?}. Each world field must have \
-                         at most one writer (single-owner rule). Fix by either: \
-                         (1) merging the two FSMs into one writer for that field, \
-                         (2) splitting the field so each writer owns a distinct \
-                         one, or (3) making one FSM a reader (drop its \
-                         `world_next` membership and read the field via `world.X`)."
-                    ));
-                }
-            }
+        if let Err(msg) = check_single_owner(&writer_sets) {
+            for source in &mut event_sources { source.stop(); }
+            return Err(msg);
         }
     }
 
@@ -266,10 +251,104 @@ pub fn run_with_ctx(
     result
 }
 
+/// Enforce the single-owner invariant: **the relation world-field → writer must
+/// be a (partial) function — every field has at most one writer.** That is the
+/// whole rule, stated as the constraint it is rather than as an algorithm. The
+/// imperative shape it replaced was an O(writers²) pairwise set-overlap scan;
+/// this expresses the same property as a field→owner map, so the *first field
+/// that acquires a second owner* is the witnessed violation, found in one pass
+/// over the ownership pairs.
+///
+/// **Mode-2 self-host candidate (kept in Rust deliberately).** "No two writers
+/// share a world field" is a disjointness / all-different property — the
+/// function→constraint shape the SMT-LIB north star calls mode-2. We do NOT
+/// route it through a Z3 solve: at this load-time-but-on-every-`effect-run`
+/// seam a solve would be a strictly *slower* set-intersection, and a SAT/UNSAT
+/// answer cannot name the conflicting pair the error message reports. The map
+/// below IS the constraint; see `docs/design/self-hosting-inventory.md`
+/// (§ mode-2 candidates) for why this stays Rust.
+///
+/// `writers` is `(name, write-set)` in resolution order (FSM writers in
+/// declaration order, then plugin writers). The error names the conflicting
+/// pair and the fields they both write — identical to the prior pairwise form
+/// for the ≤2-writer cases that occur in practice, and deterministic (sorted)
+/// where the old HashSet-intersection ordering was not.
+fn check_single_owner(
+    writers: &[(String, std::collections::HashSet<String>)],
+) -> Result<(), String> {
+    use std::collections::HashMap;
+    let mut owner: HashMap<&str, &str> = HashMap::new();
+    for (name, writes) in writers {
+        // Sorted so the witnessed field (and thus the reported conflict) is stable.
+        let mut fields: Vec<&String> = writes.iter().collect();
+        fields.sort();
+        for field in fields {
+            if let Some(prev) = owner.insert(field.as_str(), name.as_str()) {
+                if prev == name {
+                    continue; // same writer listing a field twice is not a conflict
+                }
+                let prev_writes = &writers.iter()
+                    .find(|(n, _)| n == prev)
+                    .expect("a recorded owner is always present in `writers`")
+                    .1;
+                let mut shared: Vec<&String> = prev_writes.intersection(writes).collect();
+                shared.sort();
+                return Err(format!(
+                    "multi-FSM: writers `{prev}` and `{name}` both write \
+                     to world fields {shared:?}. Each world field must have \
+                     at most one writer (single-owner rule). Fix by either: \
+                     (1) merging the two FSMs into one writer for that field, \
+                     (2) splitting the field so each writer owns a distinct \
+                     one, or (3) making one FSM a reader (drop its \
+                     `world_next` membership and read the field via `world.X`)."
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::collections::HashSet;
+
+    fn wset(name: &str, fields: &[&str]) -> (String, HashSet<String>) {
+        (name.to_string(), fields.iter().map(|s| s.to_string()).collect())
+    }
+
+    #[test]
+    fn single_owner_accepts_disjoint_writers() {
+        let writers = [wset("a", &["x", "y"]), wset("b", &["z"]),
+                       wset("<plugin>:tick_count", &["tick_count"])];
+        assert!(check_single_owner(&writers).is_ok());
+    }
+
+    #[test]
+    fn single_owner_rejects_shared_field_naming_both_writers() {
+        let writers = [wset("writer_a", &["shared", "a_only"]),
+                       wset("writer_b", &["shared", "b_only"])];
+        let err = check_single_owner(&writers).expect_err("overlap on `shared` must reject");
+        assert!(err.contains("both write") && err.contains("shared")
+                && err.contains("single-owner")
+                && err.contains("writer_a") && err.contains("writer_b"),
+            "error must name both writers + the shared field; got: {err}");
+        // The witnessed field set is deterministic (sorted), independent of
+        // HashSet iteration order — re-running yields the byte-identical message.
+        assert_eq!(check_single_owner(&writers).unwrap_err(), err);
+        assert!(err.contains("[\"shared\"]"), "reports only the shared field; got: {err}");
+    }
+
+    #[test]
+    fn single_owner_rejects_plugin_vs_fsm_writer() {
+        let writers = [wset("game", &["tick_count"]),
+                       wset("<plugin>:tick_count", &["tick_count"])];
+        let err = check_single_owner(&writers).expect_err("user FSM writing a plugin field must reject");
+        assert!(err.contains("game") && err.contains("<plugin>:tick_count")
+                && err.contains("tick_count"),
+            "error must name the FSM, the plugin, and the field; got: {err}");
+    }
 
     fn ctx_silent() -> DispatchContext {
         DispatchContext::with_streams(
