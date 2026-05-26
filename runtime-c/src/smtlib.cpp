@@ -49,6 +49,22 @@ std::string real_lit(double r) {
     return s;
 }
 
+bool is_arith(BinOp op) {
+    return op == BinOp::Add || op == BinOp::Sub || op == BinOp::Mul || op == BinOp::Div;
+}
+
+// Per-field arithmetic operator symbol: `/` only when the leaf is Real, else
+// integer `div` — mirrors the scalar binary() Div sort-inference.
+std::string arith_sym(BinOp op, const Sort &leaf) {
+    switch (op) {
+        case BinOp::Add: return "+";
+        case BinOp::Sub: return "-";
+        case BinOp::Mul: return "*";
+        case BinOp::Div: return leaf.tag == Sort::Tag::Real ? "/" : "div";
+        default: return "?";
+    }
+}
+
 std::string str_lit(const std::string &s) {
     std::string out = "\"";
     for (char c : s) {
@@ -234,6 +250,13 @@ std::optional<std::string> Emitter::record_type_of_expr(const Expr &e) {
         if (it != record_vars_.end()) return it->second;
     }
     if (e.kind == Expr::Kind::Call && is_record_type(e.str)) return e.str;
+    // Arithmetic broadcast (M4c): a record op anything (or anything op a record)
+    // is record-valued; ternary is record-valued if either branch is.
+    if (e.kind == Expr::Kind::Binary && is_arith(e.op)) {
+        if (auto l = record_type_of_expr(*e.children[0])) return l;
+        if (auto r = record_type_of_expr(*e.children[1])) return r;
+    }
+    // NB: record-valued ternary deliberately not recognized — see record_leaves.
     return std::nullopt;
 }
 
@@ -264,8 +287,37 @@ std::vector<std::pair<std::string, Sort>> Emitter::record_leaves(const Expr &e, 
             if (auto s = scalar_sort(fields[i]->type_name)) out.push_back({expr(*e.children[i]), *s});
             else for (auto &n : record_leaves(*e.children[i], fields[i]->type_name)) out.push_back(n);
         }
+    } else if (e.kind == Expr::Kind::Binary && is_arith(e.op)) {
+        // Arithmetic broadcast: record op record (zip), or record op scalar / scalar
+        // op record (broadcast the scalar across every leaf). `c = a + b`,
+        // `nxt.pos = cur.pos + cur.vel * dt / 1000`.
+        const Expr &lhs = *e.children[0];
+        const Expr &rhs = *e.children[1];
+        auto lt = record_type_of_expr(lhs);
+        auto rt = record_type_of_expr(rhs);
+        if (lt && rt) {
+            auto la = record_leaves(lhs, *lt);
+            auto lb = record_leaves(rhs, *rt);
+            if (la.size() != lb.size()) fail("record arithmetic shape mismatch (" + *lt + " vs " + *rt + ")");
+            for (size_t i = 0; i < la.size(); i++)
+                out.push_back({"(" + arith_sym(e.op, la[i].second) + " " + la[i].first + " " + lb[i].first + ")", la[i].second});
+        } else if (lt) {
+            std::string scalar = expr(rhs);
+            for (auto &leaf : record_leaves(lhs, *lt))
+                out.push_back({"(" + arith_sym(e.op, leaf.second) + " " + leaf.first + " " + scalar + ")", leaf.second});
+        } else if (rt) {
+            std::string scalar = expr(lhs);
+            for (auto &leaf : record_leaves(rhs, *rt))
+                out.push_back({"(" + arith_sym(e.op, leaf.second) + " " + scalar + " " + leaf.first + ")", leaf.second});
+        } else {
+            fail("record arithmetic with no record operand");
+        }
     } else {
-        fail("expected a record value (identifier or `" + type_name + "(...)` literal)");
+        // Record-valued ternary is intentionally out of subset: the Rust oracle
+        // does NOT broadcast records through `ite` (it drops `c = (flag ? a : b)`
+        // as "couldn't translate to Bool"), so the seed reports the boundary
+        // rather than silently exceeding the oracle and diverging on the model.
+        fail("expected a record value (identifier, literal, or record arithmetic)");
     }
     return out;
 }

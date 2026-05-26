@@ -76,6 +76,9 @@ check_forced records.ev forced_color_named_pin    rr 110
 check_forced records.ev forced_vec_positional_pin sx 100
 check_forced records.ev forced_vec_literal_eq     s 33
 check_forced records.ev forced_nested_field       s 33
+check_forced records.ev forced_vec_add            sx 13
+check_forced records.ev forced_vec_scale          sy 20
+check_forced records.ev forced_vec_physics        nx 103
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

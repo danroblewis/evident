@@ -82,7 +82,7 @@ and what is (eventually) self-hosted.
 | **M3** — end-to-end + cross-check | ✅ done | `evidentc <file> <claim>`; `crosscheck.sh` — verdicts + forced models agree with the Rust runtime |
 | **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
-| **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts; `records.ev` cross-checks. Arithmetic broadcast + local invariants are next. |
+| **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`); `records.ev` cross-checks. Local invariants are next; record-valued ternary is out of subset (oracle-boundary). |
 | **M4d** — Seq | ⏳ roadmap | Z3 seq theory (see roadmap) |
 | **M5** — push one transform to Evident | ⏳ roadmap | the self-hosting half |
 
@@ -102,7 +102,7 @@ Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 | Chained membership | `0 < x ∈ Int < 5` | declare + per-pair bound (parser desugar) |
 | Enums (M4a) | `enum`, payload + recursive variants, `match`, `matches` | `declare-datatypes`; `match` → nested `ite` over `(_ is Ctor)`; `matches` → recognizer |
 | Quantifiers (M4b) | `∀ v ∈ {lo..hi} : body`, `∃ v ∈ {lo..hi} : body` | unroll → `and`/`or` over the constant range; bound var substituted per iteration |
-| Records (M4c) | `type IVec2(x, y ∈ Int)`, field access `v.x`, pins, `IVec2(a, b)` literals, `a = b` / `lo ≤ p ≤ hi` | per-field leaf consts (`v.x`); comparison/equality lift componentwise (`and` of per-axis; `≠` → `or` of per-axis `not =`) |
+| Records (M4c) | `type IVec2(x, y ∈ Int)`, field access `v.x`, pins, `IVec2(a, b)` literals, `a = b` / `lo ≤ p ≤ hi`, `c = a + b` / `v * dt / 1000` | per-field leaf consts (`v.x`); comparison/equality lift componentwise (`and` of per-axis; `≠` → `or` of per-axis `not =`); arithmetic broadcasts per-axis (zip records, broadcast scalars) |
 
 The quantifier bounds must **fold to integer constants at emit time** (literals +
 literal arithmetic, mirroring the Rust path's `literal_range` simplify). A symbolic
@@ -183,8 +183,13 @@ Ordered by value and independence. Each is additive to the seed.
    expression position, and the componentwise comparison/equality + bounding-box
    lifts. A `type`/`schema` qualifies as a record only if its body is all field
    memberships; one with a local-invariant constraint stays out of subset (the
-   invariant would otherwise be silently dropped). Still TODO: **arithmetic
-   broadcast** (`c = a + b`, `v * scalar`) and **local invariants** (instantiate
+   invariant would otherwise be silently dropped). **Arithmetic broadcast** lands
+   too: `c = a + b` zips record leaves, `v * dt / 1000` broadcasts scalars across
+   axes (integer `div` on Int fields), nested forms compose — all cross-check
+   exactly vs the oracle. **Record-valued ternary** (`c = (flag ? a : b)`) is
+   deliberately out of subset: the Rust oracle drops it ("couldn't translate to
+   Bool"), so the seed reports the boundary rather than silently exceeding the
+   oracle and diverging on the model. Still TODO: **local invariants** (instantiate
    the record decl's constraints per instance with field-rebinding). Cross-checks
    via `records.ev`.
 4. **M4d — Seq.** Z3 seq theory (`declare-const xs (Seq Int)`), `#` → `seq.len`,

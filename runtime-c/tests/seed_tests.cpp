@@ -219,6 +219,37 @@ static void test_record_nested() {
     for (auto &[k, v] : r.bindings) if (k == "s") CHECK(v.i == 33, "record: nested s=33");
 }
 
+static void test_record_arith_broadcast() {
+    // c = a + b lifts per-axis; c = a * 5 / 2 broadcasts the scalar.
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    a ∈ IVec2(3, 4)\n    b ∈ IVec2(10, 20)\n"
+                 "    c ∈ IVec2\n    c = a + b\n    sx ∈ Int\n    sx = c.x\n    sy ∈ Int\n    sy = c.y\n", "T");
+    CHECK(r.satisfied, "record: arith broadcast sat");
+    for (auto &[k, v] : r.bindings) {
+        if (k == "sx") CHECK(v.i == 13, "record: c.x = 13");
+        if (k == "sy") CHECK(v.i == 24, "record: c.y = 24");
+    }
+}
+
+static void test_record_scalar_broadcast_intdiv() {
+    auto r = run("type IVec2(x, y ∈ Int)\nclaim T\n    a ∈ IVec2(6, 8)\n    c ∈ IVec2\n"
+                 "    c = a * 5 / 2\n    sx ∈ Int\n    sx = c.x\n    sy ∈ Int\n    sy = c.y\n", "T");
+    CHECK(r.satisfied, "record: scalar broadcast sat");
+    for (auto &[k, v] : r.bindings) {
+        if (k == "sx") CHECK(v.i == 15, "record: 6*5/2 = 15");  // (6*5) div 2
+        if (k == "sy") CHECK(v.i == 20, "record: 8*5/2 = 20");
+    }
+}
+
+static void test_record_ternary_rejected() {
+    // Record-valued ternary is out of subset (the Rust oracle drops it).
+    bool threw = false;
+    try {
+        run("type IVec2(x, y ∈ Int)\nclaim T\n    a ∈ IVec2(1, 2)\n    b ∈ IVec2(9, 9)\n"
+            "    f ∈ Bool\n    f = true\n    c ∈ IVec2\n    c = (f ? a : b)\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "record: record-valued ternary rejected as out of subset");
+}
+
 static void test_record_with_constraint_rejected() {
     // A type with a local-invariant constraint is NOT a plain record — using it as
     // a membership must fail loudly (the invariant would otherwise be dropped).
@@ -266,6 +297,9 @@ int main() {
         test_record_bounding_box();
         test_record_literal();
         test_record_nested();
+        test_record_arith_broadcast();
+        test_record_scalar_broadcast_intdiv();
+        test_record_ternary_rejected();
         test_record_with_constraint_rejected();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {

@@ -86,3 +86,29 @@ claim sat_vec_neq
     a.x = 4
     b.x = 4
     a.y = 1
+
+-- SAT, forced: arithmetic broadcast `c = a + b` lifts per-axis. c = (13, 24).
+claim forced_vec_add
+    a ∈ IVec2(3, 4)
+    b ∈ IVec2(10, 20)
+    c ∈ IVec2
+    c = a + b
+    sx ∈ Int
+    sx = c.x
+
+-- SAT, forced: scalar broadcast `c = a * 5 / 2` (integer div per-axis). c = (15, 20).
+claim forced_vec_scale
+    a ∈ IVec2(6, 8)
+    c ∈ IVec2
+    c = a * 5 / 2
+    sy ∈ Int
+    sy = c.y
+
+-- SAT, forced: nested physics broadcast `nxt = pos + vel * 1000 / 1000`. nxt.x = 103.
+claim forced_vec_physics
+    pos ∈ IVec2(100, 200)
+    vel ∈ IVec2(3, 5)
+    nxt ∈ IVec2
+    nxt = pos + vel * 1000 / 1000
+    nx ∈ Int
+    nx = nxt.x
