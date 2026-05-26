@@ -189,36 +189,40 @@ fsm validate_walk(state ∈ SV, halt ∈ Bool)
 
 -- A single call's name reaches the accumulator.
 claim sat_one_call
-    final ∈ SV = run(validate_walk, WExpr(ECall("LibCall", ELNil)))
+    final ∈ SV
+    validate_walk(WExpr(ECall("LibCall", ELNil)), final)
     final = SVDone(NameCons("LibCall", NameNil))
 
 -- A literal contributes no name.
 claim sat_literal_no_name
-    final ∈ SV = run(validate_walk, WExpr(EInt(5)))
+    final ∈ SV
+    validate_walk(WExpr(EInt(5)), final)
     final = SVDone(NameNil)
 
 -- A call nested in a binary RHS is collected (the realistic
 -- `eff = FFICall(...)` shape).
 claim sat_call_in_binary
-    final ∈ SV = run(validate_walk,
-        WExpr(EBinary(OpEq, EIdentifier("eff"), ECall("FFICall", ELNil))))
+    final ∈ SV
+    validate_walk(WExpr(EBinary(OpEq, EIdentifier("eff"), ECall("FFICall", ELNil))), final)
     final = SVDone(NameCons("FFICall", NameNil))
 
 -- Two calls, outer then inner arg: pre-order visits the outer first,
 -- so with head-first prepend the list head is the LAST-visited (inner).
 -- The shim reverses to recover pre-order [helper, LibCall].
 claim sat_nested_calls_order
-    final ∈ SV = run(validate_walk,
-        WExpr(ECall("helper", ELCons(ECall("LibCall", ELNil), ELNil))))
+    final ∈ SV
+    validate_walk(WExpr(ECall("helper", ELCons(ECall("LibCall", ELNil), ELNil))), final)
     final = SVDone(NameCons("LibCall", NameCons("helper", NameNil)))
 
 -- A call hidden in a tuple is NOT collected (the canonical walk's
 -- `_ => None` for ETuple). Faithful, not a missed case to "fix".
 claim sat_tuple_not_walked
-    final ∈ SV = run(validate_walk, WExpr(ETuple(ELCons(ECall("LibCall", ELNil), ELNil))))
+    final ∈ SV
+    validate_walk(WExpr(ETuple(ELCons(ECall("LibCall", ELNil), ELNil))), final)
     final = SVDone(NameNil)
 
 -- The accumulator is threaded, not free: a literal can't conjure a name.
 claim unsat_literal_is_not_a_name
-    final ∈ SV = run(validate_walk, WExpr(EInt(5)))
+    final ∈ SV
+    validate_walk(WExpr(EInt(5)), final)
     final = SVDone(NameCons("LibCall", NameNil))

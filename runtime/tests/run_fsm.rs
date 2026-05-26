@@ -1,5 +1,8 @@
-//! Equivalence-oracle harness for `run(F, init)` — tier 3,
-//! blocking-interpret (docs/design/nested-fsm-strategies.md §4).
+//! Equivalence-oracle harness for the embed surface `F(seed, fsm_state)`
+//! (the constraint `lower_fsm_application` lowers to `fsm_state = RunFsm{F,
+//! seed}`) — tier 3, blocking-interpret (docs/design/nested-fsm-strategies.md
+//! §4). `run()` and `halts_within` are removed; the 2-arg embed call replaces
+//! `run(F, init)` and the parent may further-constrain `fsm_state` (§1.3).
 //!
 //! Tier 3 is the *oracle*: the faster tiers (loop-functionizer,
 //! symbolic-unroll→JIT) must compute the SAME value as tier 3 on the
@@ -124,16 +127,47 @@ fn seed_enum_state_from_enum_value() {
     });
 }
 
+// ── §1.3: the parent further-constrains the child's settled state ──
+//
+// The load-bearing capability of the embed surface: because `fsm_state` is
+// an ordinary parent variable, the parent may add a postcondition over it.
+// A *consistent* postcondition (the settled state IS ≤ 0) is SAT; an
+// *inconsistent* one (the settled state can't be positive) is UNSAT. This
+// is the same `F(seed, fsm_state)` constraint the value-pinning tests use,
+// now with the parent reasoning about the settled state — verification.
+
+#[test]
+fn parent_postcondition_on_settled_state_consistent_is_sat() {
+    let mut rt = rt_with(COUNTER);
+    rt.load_source(
+        "claim sat_post\n    final ∈ Int\n    decrement(50, final)\n    final ≤ 0\n",
+    ).expect("load outer claim");
+    let qr = rt.query("sat_post", &HashMap::new()).expect("query");
+    assert!(qr.satisfied,
+        "decrement settles at 0; the parent postcondition `final ≤ 0` holds → SAT");
+}
+
+#[test]
+fn parent_postcondition_on_settled_state_inconsistent_is_unsat() {
+    let mut rt = rt_with(COUNTER);
+    rt.load_source(
+        "claim unsat_post\n    final ∈ Int\n    decrement(50, final)\n    final > 0\n",
+    ).expect("load outer claim");
+    let qr = rt.query("unsat_post", &HashMap::new()).expect("query");
+    assert!(!qr.satisfied,
+        "decrement settles at 0; the parent postcondition `final > 0` is violated → UNSAT");
+}
+
 // ── End-to-end: the rewrite pins the run result into the outer model ──
 
 #[test]
 fn run_result_pins_into_outer_query() {
     let mut rt = rt_with(COUNTER);
     rt.load_source(
-        "claim sat_outer\n    final ∈ Int = run(decrement, 50)\n    final = 0\n",
+        "claim sat_outer\n    final ∈ Int\n    decrement(50, final)\n    final = 0\n",
     ).expect("load outer claim");
     let qr = rt.query("sat_outer", &HashMap::new()).expect("query");
-    assert!(qr.satisfied, "run(decrement, 50) should pin final = 0, making sat_outer SAT");
+    assert!(qr.satisfied, "decrement(50, final) should pin final = 0, making sat_outer SAT");
 }
 
 #[test]
@@ -142,7 +176,7 @@ fn run_result_unsat_when_outer_contradicts() {
     // is UNSAT — proving the value really is pinned, not free.
     let mut rt = rt_with(COUNTER);
     rt.load_source(
-        "claim unsat_outer\n    final ∈ Int = run(decrement, 50)\n    final = 99\n",
+        "claim unsat_outer\n    final ∈ Int\n    decrement(50, final)\n    final = 99\n",
     ).expect("load outer claim");
     let qr = rt.query("unsat_outer", &HashMap::new()).expect("query");
     assert!(!qr.satisfied, "final is pinned to 0; `final = 99` must be UNSAT");
@@ -204,10 +238,10 @@ fn terse_state_pins_into_outer_query_like_pair() {
     // The terse form's run() result pins into an outer claim identically.
     let mut rt = rt_with(TWINS);
     rt.load_source(
-        "claim sat_terse\n    final ∈ Int = run(decrement_terse, 50)\n    final = 0\n",
+        "claim sat_terse\n    final ∈ Int\n    decrement_terse(50, final)\n    final = 0\n",
     ).expect("load outer claim");
     let qr = rt.query("sat_terse", &HashMap::new()).expect("query");
-    assert!(qr.satisfied, "run(decrement_terse, 50) should pin final = 0");
+    assert!(qr.satisfied, "decrement_terse(50, final) should pin final = 0");
 }
 
 // ── (c) a non-FSM-shaped F is rejected at load ─────────────────────
@@ -220,48 +254,34 @@ fn non_fsm_shaped_target_rejected_at_load() {
     rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
     let err = rt.load_source(
         "fsm notfsm(x ∈ Int, y ∈ Int)\n    y = x + 1\n\
-         claim sat_bad\n    z ∈ Int = run(notfsm, 5)\n    z = 0\n",
-    ).expect_err("a non-FSM-shaped run target must be a load error");
+         claim sat_bad\n    z ∈ Int\n    notfsm(5, z)\n    z = 0\n",
+    ).expect_err("a non-FSM-shaped embed target must be a load error");
     let msg = err.to_string();
     assert!(msg.contains("FSM-shaped") && msg.contains("notfsm"),
         "load error should name the target and the shape requirement, got: {msg}");
 }
 
-// ── (c′) a `claim`-keyworded F is rejected at load (the keyword IS the
-// rule: a shape-perfect transition declared `claim` is not an FSM) ──
-
+// ── (c′) a `claim`-keyworded F is NOT an embed: the keyword disambiguates,
+// so a 2-arg call to a `claim` inlines (conjunction) instead of embedding ──
+//
+// In the embed model there is no "wrong run target" error for a claim:
+// `F(a, b)` where F is a `claim` is an ordinary claim call (names-match /
+// positional inline), never a settled-state constraint. Only `fsm`-keyword
+// F is lowered to `RunFsm`. So a textbook FSM-shaped transition declared
+// `claim` simply inlines — it is not rejected, and never embedded.
 #[test]
-fn claim_keyword_run_target_rejected_at_load() {
-    // `decr` is a textbook FSM-shaped transition — but declared `claim`,
-    // not `fsm`. The keyword is the sole FSM signal, so `run(decr, ..)`
-    // is a load error naming the fix.
+fn claim_keyword_two_arg_call_inlines_not_embeds() {
+    // `mirror` is declared `claim`; `mirror(5, out)` must inline as a plain
+    // claim call (binding y = x + 1 ⇒ out = 6), NOT embed as an FSM run.
     let mut rt = EvidentRuntime::new();
     rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
-    let err = rt.load_source(
-        "claim decr(count ∈ Int, count_next ∈ Int, halt ∈ Bool)\n\
-         \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
-         \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
-         claim sat_bad\n    z ∈ Int = run(decr, 5)\n    z = 0\n",
-    ).expect_err("a `claim`-keyworded run target must be a load error");
-    let msg = err.to_string();
-    assert!(msg.contains("must be declared `fsm`") && msg.contains("decr")
-            && msg.contains("not `claim`"),
-        "load error should say the target must be `fsm`, not `claim`, got: {msg}");
-}
-
-#[test]
-fn claim_keyword_halts_within_target_rejected_at_load() {
-    let mut rt = EvidentRuntime::new();
-    rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
-    let err = rt.load_source(
-        "claim decr2\n    count, count_next ∈ Int\n    halt ∈ Bool\n\
-         \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
-         \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
-         claim sat_bad2\n    count ∈ Int = 50\n    halts_within(decr2, 100)\n",
-    ).expect_err("a `claim`-keyworded halts_within target must be a load error");
-    let msg = err.to_string();
-    assert!(msg.contains("must be declared `fsm`") && msg.contains("decr2"),
-        "load error should say the halts_within target must be `fsm`, got: {msg}");
+    rt.load_source(
+        "claim mirror(x ∈ Int, y ∈ Int)\n\
+         \u{20}\u{20}\u{20}\u{20}y = x + 1\n\
+         claim sat_inline\n    out ∈ Int\n    mirror(5, out)\n    out = 6\n",
+    ).expect("a 2-arg call to a `claim` must inline, not be rejected as a run target");
+    let qr = rt.query("sat_inline", &HashMap::new()).expect("query");
+    assert!(qr.satisfied, "mirror(5, out) should inline and bind out = 6");
 }
 
 #[test]
@@ -280,12 +300,12 @@ fn effect_emitting_target_is_accepted_and_captured() {
          \u{20}\u{20}\u{20}\u{20}count_next = count - 1\n\
          \u{20}\u{20}\u{20}\u{20}halt = (count ≤ 0)\n\
          \u{20}\u{20}\u{20}\u{20}effects = ⟨Println(\"tick\")⟩\n\
-         claim sat_eff\n    final ∈ Int = run(noisy, 3)\n    final = 0\n",
-    ).expect("an effect-emitting run target must now LOAD (no rejection)");
+         claim sat_eff\n    final ∈ Int\n    noisy(3, final)\n    final = 0\n",
+    ).expect("an effect-emitting embed target must now LOAD (no rejection)");
     // The static claim resolves the run, captures (drops) the effects,
     // and asserts final = 0.
     let qr = rt.query("sat_eff", &HashMap::new()).expect("query");
-    assert!(qr.satisfied, "run(noisy, 3) should still pin final = 0");
+    assert!(qr.satisfied, "noisy(3, final) should still pin final = 0");
 }
 
 // ── (d) a non-halting FSM hits the max-iteration guard ─────────────

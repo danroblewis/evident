@@ -192,18 +192,16 @@ pub(super) fn inline_body_items_guarded(
                 );
             }
             BodyItem::HaltsWithin { fsm_name, n } => {
+                // The `halts_within` surface was removed (halting is implicit in the
+                // embed constraint `F(seed, fsm_state)`). The parser no longer
+                // produces this variant; reaching it means a removed surface was
+                // somehow reconstituted (e.g. a decoded self-hosted AST). Refuse
+                // loudly to UNSAT rather than silently drop the constraint.
                 if !guard_is_satisfiable(solver, guard) { continue; }
-                // On unroll failure (unknown FSM, branching body), assert false → UNSAT rather than silent wrong answer.
-                match crate::fsm_unroll::assert_halts_within(
-                    fsm_name, *n, ctx, solver, env, schemas, registry, enums,
-                ) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        eprintln!("[halts_within] {}", e);
-                        let false_bool = Bool::from_bool(ctx, false);
-                        track_assert(solver, &guarded_bool(false_bool, guard), tracker);
-                    }
-                }
+                eprintln!("[halts_within] the `halts_within({fsm_name}, {n})` surface \
+                           was removed; embed `{fsm_name}(seed, fsm_state)` instead");
+                let false_bool = Bool::from_bool(ctx, false);
+                track_assert(solver, &guarded_bool(false_bool, guard), tracker);
             }
             BodyItem::SubclaimDecl(_) => {}
         }

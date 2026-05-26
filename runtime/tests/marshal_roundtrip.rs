@@ -355,23 +355,7 @@ claim t
     assert_eq!(sub.body.len(), 2, "q ∈ Int; q = p");
 }
 
-#[test]
-fn roundtrip_halts_within_body_item() {
-    // `halts_within(f, 10)` → BodyItem::HaltsWithin { fsm_name, n }.
-    let src = "\
-fsm decrement(count ∈ Int, halt ∈ Bool)
-    count = _count - 1
-    halt  = (_count ≤ 0)
-
-claim t
-    halts_within(decrement, 10)
-";
-    let decoded = round_trip(src);
-    let t = schema(&decoded, "t");
-    let hw = t.body.iter().find_map(|i| match i {
-        ast::BodyItem::HaltsWithin { fsm_name, n } => Some((fsm_name, *n)),
-        _ => None,
-    }).expect("expected a HaltsWithin body item");
-    assert_eq!(hw.0, "decrement");
-    assert_eq!(hw.1, 10);
-}
+// The `halts_within` round-trip test was removed with the `halts_within`
+// surface (the parser no longer produces `BodyItem::HaltsWithin`). The
+// AST variant remains in `core/ast.rs` (vestigial) for the encode/decode
+// mirror; nothing constructs it from source.

@@ -148,33 +148,10 @@ impl Parser {
     }
 
     pub(super) fn parse_body_item(&mut self) -> Result<Vec<BodyItem>> {
-        // `halts_within(F, N)` lifted directly to BodyItem::HaltsWithin;
-        // any other `halts_within(...)` shape falls through to Call parse.
-        if let Token::Ident(name) = self.peek().clone() {
-            if name == "halts_within"
-                && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
-            {
-                let saved = self.pos;
-                self.bump(); // halts_within
-                self.bump(); // (
-                if let (Token::Ident(fsm_name), Token::Comma, Token::Int(n), Token::RParen) = (
-                    self.toks.get(self.pos).cloned().unwrap_or(Token::Eof),
-                    self.toks.get(self.pos + 1).cloned().unwrap_or(Token::Eof),
-                    self.toks.get(self.pos + 2).cloned().unwrap_or(Token::Eof),
-                    self.toks.get(self.pos + 3).cloned().unwrap_or(Token::Eof),
-                ) {
-                    self.pos += 4;
-                    if n < 0 {
-                        return Err(ParseError(format!(
-                            "halts_within: N must be non-negative, got {n}"
-                        )));
-                    }
-                    return Ok(vec![BodyItem::HaltsWithin { fsm_name, n }]);
-                }
-                // Strict shape not matched — fall through to normal Call parse.
-                self.pos = saved;
-            }
-        }
+        // `halts_within(F, N)` is removed: halting is implicit in the embed
+        // constraint `F(seed, fsm_state)` (an unsatisfiable settled-state IS
+        // non-halting). A bare `halts_within(...)` now parses as an ordinary
+        // call and fails downstream like any unknown name.
 
         if matches!(self.peek(), Token::DotDot) {
             self.bump();

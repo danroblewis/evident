@@ -145,50 +145,50 @@ fsm seq_chains_walk(state ∈ SC, halt ∈ Bool)
 
 -- A `xs = ⟨a, b⟩` constraint (SeqLit on rhs) contributes one chain [a, b].
 claim sat_seqlit_rhs
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EBinary(OpEq, EIdentifier("xs"),
-            ESeqLit(ELCons(EIdentifier("a"), ELCons(EIdentifier("b"), ELNil))))), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EBinary(OpEq, EIdentifier("xs"),
+            ESeqLit(ELCons(EIdentifier("a"), ELCons(EIdentifier("b"), ELNil))))), BILNil), final)
     final = SCDone(ChCons(ELCons(EIdentifier("a"), ELCons(EIdentifier("b"), ELNil)), ChNil))
 
 -- A `⟨a⟩ = xs` constraint (SeqLit on lhs) contributes the same chain.
 claim sat_seqlit_lhs
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EBinary(OpEq,
-            ESeqLit(ELCons(EIdentifier("a"), ELNil)), EIdentifier("xs"))), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EBinary(OpEq,
+            ESeqLit(ELCons(EIdentifier("a"), ELNil)), EIdentifier("xs"))), BILNil), final)
     final = SCDone(ChCons(ELCons(EIdentifier("a"), ELNil), ChNil))
 
 -- A non-SeqLit equality contributes nothing.
 claim sat_no_seqlit
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EBinary(OpEq, EIdentifier("x"), EInt(5))), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EBinary(OpEq, EIdentifier("x"), EInt(5))), BILNil), final)
     final = SCDone(ChNil)
 
 -- A non-Eq binary over a SeqLit contributes nothing (only `=` is recognized).
 claim sat_non_eq_neither
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EBinary(OpLt, EIdentifier("x"),
-            ESeqLit(ELCons(EIdentifier("a"), ELNil)))), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EBinary(OpLt, EIdentifier("x"),
+            ESeqLit(ELCons(EIdentifier("a"), ELNil)))), BILNil), final)
     final = SCDone(ChNil)
 
 -- A membership body item is inert.
 claim sat_membership_neither
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIMembership("x", "Int", PNone), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIMembership("x", "Int", PNone), BILNil), final)
     final = SCDone(ChNil)
 
 -- Two chains across two items come out newest-first (the shim reverses to body
 -- order); within each chain the element order is preserved.
 claim sat_two_chains_newest_first
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EBinary(OpEq, EIdentifier("p"),
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EBinary(OpEq, EIdentifier("p"),
             ESeqLit(ELCons(EIdentifier("a"), ELNil)))),
         BILCons(BIConstraint(EBinary(OpEq, EIdentifier("q"),
-            ESeqLit(ELCons(EIdentifier("b"), ELNil)))), BILNil)))
+            ESeqLit(ELCons(EIdentifier("b"), ELNil)))), BILNil)), final)
     final = SCDone(ChCons(ELCons(EIdentifier("b"), ELNil),
                    ChCons(ELCons(EIdentifier("a"), ELNil), ChNil)))
 
 -- The accumulator is threaded, not free: a literal can't conjure a chain.
 claim unsat_literal_is_not_a_chain
-    final ∈ SC = run(seq_chains_walk,
-        BILCons(BIConstraint(EInt(5)), BILNil))
+    final ∈ SC
+    seq_chains_walk(BILCons(BIConstraint(EInt(5)), BILNil), final)
     final = SCDone(ChCons(ELNil, ChNil))

@@ -80,30 +80,37 @@ fsm sum_tree(state ∈ Walk, halt ∈ Bool)
 -- ── Static verification: three tree shapes, three sums ───────────────
 -- Single leaf.
 claim sat_single_leaf
-    final ∈ Walk = run(sum_tree, 0)
+    final ∈ Walk
+    sum_tree(0, final)
     final = Done(7)
 
 -- Balanced-ish: Node(Node(Leaf 1, Leaf 2), Leaf 3) → 1+2+3.
 claim sat_balanced
-    final ∈ Walk = run(sum_tree, 1)
+    final ∈ Walk
+    sum_tree(1, final)
     final = Done(6)
 
 -- Unbalanced right spine: 10+20+30+40.
 claim sat_unbalanced
-    final ∈ Walk = run(sum_tree, 2)
+    final ∈ Walk
+    sum_tree(2, final)
     final = Done(100)
 
 -- The accumulator is threaded, not free: the balanced tree sums to 6,
 -- never anything else (a free Z3 var would let this be SAT).
 claim unsat_balanced_wrong
-    final ∈ Walk = run(sum_tree, 1)
+    final ∈ Walk
+    sum_tree(1, final)
     final = Done(5)
 
 -- ── Runnable form: the walk as a value inside a live fsm ─────────────
 fsm main
-    leaf ∈ Walk = run(sum_tree, 0)
-    bal  ∈ Walk = run(sum_tree, 1)
-    unb  ∈ Walk = run(sum_tree, 2)
+    leaf ∈ Walk
+    sum_tree(0, leaf)
+    bal  ∈ Walk
+    sum_tree(1, bal)
+    unb  ∈ Walk
+    sum_tree(2, unb)
     ok ∈ Bool = ((leaf = Done(7)) ∧ (bal = Done(6)) ∧ (unb = Done(100)))
     effects = (ok
         ? ⟨Println("sum-a-tree via stack-FSM: leaf=7 balanced=6 unbalanced=100"), Exit(0)⟩

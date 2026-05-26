@@ -242,54 +242,57 @@ fsm desugar_flatten(state ∈ FState, halt ∈ Bool)
 -- ⟨1, 2⟩ ++ ⟨3⟩ flattens to a 3-chunk stream (returned head-first,
 -- reversed), all literal items.
 claim sat_flatten_two_seqlits
-    final ∈ FState = run(desugar_flatten,
-        EBinary(OpConcat,
+    final ∈ FState
+    desugar_flatten(EBinary(OpConcat,
             ESeqLit(ELCons(EInt(1), ELCons(EInt(2), ELNil))),
-            ESeqLit(ELCons(EInt(3), ELNil))))
+            ESeqLit(ELCons(EInt(3), ELNil))), final)
     final = FDone(FCCons(FLitItem(EInt(3)),
               FCCons(FLitItem(EInt(2)), FCCons(FLitItem(EInt(1)), FCNil))))
 
 -- An identifier operand emits an `FRef` chunk (the Rust shim resolves it
 -- against the gathered map). `xs ++ ⟨9⟩` → ⟨FLitItem 9, FRef xs⟩ reversed.
 claim sat_flatten_identifier_ref
-    final ∈ FState = run(desugar_flatten,
-        EBinary(OpConcat, EIdentifier("xs"), ESeqLit(ELCons(EInt(9), ELNil))))
+    final ∈ FState
+    desugar_flatten(EBinary(OpConcat, EIdentifier("xs"), ESeqLit(ELCons(EInt(9), ELNil))), final)
     final = FDone(FCCons(FLitItem(EInt(9)), FCCons(FRef("xs"), FCNil)))
 
 -- A string concat (EStr operand) does NOT resolve — Rust flatten returns
 -- None here, so the walk leaves the Concat and recurses. Signalled by FFail.
 claim sat_flatten_string_concat_fails
-    final ∈ FState = run(desugar_flatten,
-        EBinary(OpConcat, EStr("."), EIdentifier("trail")))
+    final ∈ FState
+    desugar_flatten(EBinary(OpConcat, EStr("."), EIdentifier("trail")), final)
     final = FFail
 
 -- A bare identifier emits a single FRef — resolution (bound? unbound?) is
 -- the Rust shim's job; an unbound ref there fails the whole flatten.
 claim sat_flatten_bare_identifier_ref
-    final ∈ FState = run(desugar_flatten, EIdentifier("nope"))
+    final ∈ FState
+    desugar_flatten(EIdentifier("nope"), final)
     final = FDone(FCCons(FRef("nope"), FCNil))
 
 -- A literal scalar can't begin a flatten — Rust `flatten(_) = None`.
 claim sat_flatten_scalar_fails
-    final ∈ FState = run(desugar_flatten, EInt(5))
+    final ∈ FState
+    desugar_flatten(EInt(5), final)
     final = FFail
 
 -- Gather picks up one `name = ⟨items⟩` binding and ignores the rest.
 claim sat_gather_one_binding
-    final ∈ GState = run(desugar_gather,
-        BILCons(BIConstraint(EBinary(OpEq, EIdentifier("xs"),
+    final ∈ GState
+    desugar_gather(BILCons(BIConstraint(EBinary(OpEq, EIdentifier("xs"),
                 ESeqLit(ELCons(EInt(7), ELNil)))),
-            BILCons(BIConstraint(EIdentifier("ignored")), BILNil)))
+            BILCons(BIConstraint(EIdentifier("ignored")), BILNil)), final)
     final = GDone(ACons(MakeAEntry("xs", ELCons(EInt(7), ELNil)), ANil))
 
 -- A body with no `name = ⟨…⟩` binding yields the empty assoc.
 claim sat_gather_no_bindings
-    final ∈ GState = run(desugar_gather,
-        BILCons(BIConstraint(EInt(5)), BILNil))
+    final ∈ GState
+    desugar_gather(BILCons(BIConstraint(EInt(5)), BILNil), final)
     final = GDone(ANil)
 
 -- The chunk stream is threaded, not free: a bare identifier yields exactly
 -- one FRef, never a conjured literal item.
 claim unsat_flatten_not_free
-    final ∈ FState = run(desugar_flatten, EIdentifier("nope"))
+    final ∈ FState
+    desugar_flatten(EIdentifier("nope"), final)
     final = FDone(FCCons(FLitItem(EInt(1)), FCNil))
