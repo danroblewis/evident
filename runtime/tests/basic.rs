@@ -987,7 +987,7 @@ fn nested_composite_shared_across_siblings() {
 /// `..ClaimName` (explicit passthrough) composes a claim's body into
 /// the parent. This used to be testable as a bare `ClaimName` constraint
 /// too, but bare-ident → passthrough is now a CLI-level desugar pass
-/// (`stdlib/passes/desugar_passthrough.ev` + `commands/desugar.rs`)
+/// (`stdlib/passes/desugar_passthrough.ev` + `commands/common.rs`)
 /// that doesn't run on direct `load_source`. The bare-name case is
 /// covered end-to-end in `tests/desugar_passthrough.rs`; this test keeps
 /// the explicit-form coverage.

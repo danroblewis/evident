@@ -317,9 +317,9 @@ pub(crate) fn inject_lhs_eq_types(
         }
     }
 
-    // Top-level wrapper: skip bare primitive literals so the
-    // query-time pass picks them up (preserves the `--strict`
-    // contract — see `cli_query_without_infer_types_fails…`).
+    // Top-level wrapper: skip bare primitive literals. Top-level
+    // untyped primitives (`x = 5`) are intentionally left untyped —
+    // declare them explicitly (`x ∈ Int = 5`).
     fn infer_type(
         e: &Expr,
         declared_types: &HashMap<String, String>,

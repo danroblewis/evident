@@ -165,7 +165,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
             continue;
         }
 
-        super::desugar::auto_apply_desugar(&mut rt, &[f.to_string_lossy().to_string()]);
+        super::common::auto_apply_desugar(&mut rt, &[f.to_string_lossy().to_string()]);
 
         let mut names: Vec<String> = rt.schema_names()
             .filter(|n| n.starts_with("sat_") || n.starts_with("unsat_"))

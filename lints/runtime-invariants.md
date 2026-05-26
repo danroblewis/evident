@@ -835,7 +835,7 @@ formatters" file every multi-command CLI grows — `git`'s
 `parse-options.c`, the helpers in `cargo/src/bin/cargo/cli.rs`,
 the common table in `pip`.
 
-### `runtime/src/commands/check.rs`, `query.rs`, `sample.rs`, `effect_run.rs`, `lint.rs`
+### `runtime/src/commands/sample.rs` and `effect_run.rs`
 
 **Purpose (each).** One CLI subcommand verb. Each file declares
 exactly one `pub fn cmd_<name>(args: &[String]) -> ExitCode` —
@@ -906,49 +906,36 @@ plugin, `go test`'s standard output. The pattern is universal:
 discover → run → report. Color, JSON output, and timing
 formatting are the variations.
 
-### `runtime/src/commands/infer_types.rs` and `desugar.rs`
+### Self-hosted desugar pass in `commands/common.rs`
 
-**Purpose.** Two CLI subcommands that double as libraries used
-by other parts of the CLI. `infer_types.rs` runs the
-self-hosted type-inference passes (`stdlib/passes/{literal_types,
-iter_types,propagation,consistency}.ev`) over user source and
-either prints inferences (`evident infer-types`) or applies
-them automatically (called as a library from `cmd_query` /
-`cmd_check` / `cmd_test`). `desugar.rs` runs the self-hosted
-desugar pipeline (`stdlib/passes/desugar_passthrough.ev`) and
-either reports rewrites or applies them.
+**Purpose.** The bare-identifier → passthrough desugar runs as a
+self-hosted Evident pass (`stdlib/passes/desugar_passthrough.ev`),
+driven from Rust by `common::auto_apply_desugar` (with
+`collect_passthrough_rewrites` + the `Rewrite` type). It is a
+library hook, not a subcommand — the surviving `cmd_*` files
+(`sample` via `setup_query_or_sample`, `test`, `effect_run`) call
+it before they run so the user's source has its canonical AST.
 
-The dual role is the file's defining property: each exposes
-both a `pub fn cmd_<name>` for the user-facing subcommand AND
-a `pub fn auto_apply_*` (plus supporting types like `Inference`
-or `Rewrite`) for use as a library from sibling `cmd_*` files.
+(History: this lived in a standalone `commands/desugar.rs` with an
+`evident desugar` report verb, alongside an `commands/infer_types.rs`
+running self-hosted type-inference passes. Both report-only verbs
+were removed; the type-inference passes — `literal_types.ev` /
+`iter_types.ev` / `propagation.ev` — were deleted, and the desugar
+driver was relocated into `common.rs`.)
 
-**What they must NEVER do.** Build the inference / desugar logic
-in Rust — every actual rule lives in `stdlib/passes/*.ev` as
-self-hosted Evident passes. The Rust files only orchestrate:
-load the pass file, run a query against the user's source, decode
-the resulting `Program` value back to Rust AST, apply.
-Special-case any specific rule — if a rule needs special
-handling, that's a sign the rule should be expressed differently
-in its `.ev` file.
+**What it must NEVER do.** Build the desugar logic in Rust — the
+actual rule lives in `desugar_passthrough.ev`. The Rust side only
+orchestrates: load the pass, run a query against the user's source,
+decode the resulting `Program` value back to Rust AST, apply.
 
-**Cross-language contract.** These files are coupled to the
-specific pass `.ev` files they load. The pass files' structure
-(claim names, expected query shape, output Datatype shape) is
-part of the contract — if either side changes, both must change.
+**Cross-language contract.** `auto_apply_desugar` is coupled to
+`desugar_passthrough.ev`'s structure (claim name
+`is_passthrough_at_index`, expected query shape) — if either side
+changes, both must change.
 
 **Dependencies.** `evident_runtime::{EvidentRuntime, Value}`,
-`evident_runtime::ast::*` (for AST types they receive back from
-decoded passes). Importers: each other (`desugar` is called by
-`infer_types`'s pipeline, or vice versa, depending on
-ordering), and the `cmd_*` siblings that auto-apply.
-
-**Generic-runtime analogue.** Self-hosted compiler passes
-exposed both as standalone tools and as library hooks —
-`gofmt` / `go fmt`, `rustfmt` / `cargo fmt`, the way `clippy`
-is both a binary and a Cargo subcommand library. The pattern is
-"a pass that the toolchain can run on its own AND that other
-toolchain stages can invoke."
+`evident_runtime::ast::{BodyItem, Expr}`. Importers: the surviving
+`cmd_*` siblings that auto-apply.
 
 ## Group 7 — Top-level
 

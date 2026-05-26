@@ -296,7 +296,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         eprintln!("effect-run: load {path}: {e}");
         return ExitCode::from(1);
     }
-    super::desugar::auto_apply_desugar(&mut rt, &[path.clone()]);
+    super::common::auto_apply_desugar(&mut rt, &[path.clone()]);
 
     match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
         Ok(r) => {

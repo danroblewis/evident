@@ -127,7 +127,7 @@ fn pin_unknown_field_is_an_error() {
     let src = format!("{VEC2}schema S\n    v ∈ IVec2 (z ↦ 0)\n");
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "unknown-field pin must error");
 }

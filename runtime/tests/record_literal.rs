@@ -95,7 +95,7 @@ fn record_literal_arity_mismatch_is_an_error() {
     let src = format!("{COLOR}schema S\n    c ∈ Color\n    c = Color(30, 80)\n");
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "arity mismatch must error");
 }

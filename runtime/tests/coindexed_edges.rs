@@ -118,7 +118,7 @@ fn coindexed_arity_mismatch_is_an_error() {
     let src = "schema S\n    a ∈ Seq(Int)\n    b ∈ Seq(Int)\n    c ∈ Seq(Int)\n    #a = 2\n    #b = 2\n    #c = 2\n    ∀ (x, y) ∈ coindexed(a, b, c) : x = y\n";
     f.write_all(src.as_bytes()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
+        .args(["sample", path.to_str().unwrap(), "S", "-n", "1"])
         .output().unwrap();
     assert!(!out.status.success(), "arity mismatch must error");
 }

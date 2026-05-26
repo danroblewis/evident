@@ -8,19 +8,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
 
+use evident_runtime::ast::{BodyItem, Expr};
 use evident_runtime::{EvidentRuntime, Value, stdlib_path};
 
 pub fn usage() {
     eprintln!("usage:");
-    eprintln!("  evident query        <files…> <schema> [--given k=v …] [--json]");
-    eprintln!("  evident check        <files…>");
     eprintln!("  evident sample       <files…> <schema> [-n N] [--given k=v …] [--json]");
+    eprintln!("  evident sample       <files…> --all [--json]   # sat-check every schema");
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
-    eprintln!("  evident lint         <file>");
-    eprintln!("  evident profile      <files…> <schema> [--given k=v …] [--top N]");
-    eprintln!("  evident desugar      <file>           # report self-hosted desugar rewrites");
-    eprintln!("  evident infer-types  <file>           # report self-hosted type inferences");
 }
 
 /// Split positional file paths from flag arguments. Files are everything
@@ -137,18 +133,18 @@ pub struct CmdSetup {
     pub flags: Flags,
 }
 
-/// Shared prologue for `evident query` and `evident sample`:
-///   1. strip `--strict` (skip auto-applied desugar / inference passes),
+/// Shared prologue for `evident sample`:
+///   1. strip `--strict` (skip the auto-applied desugar pass),
 ///   2. split positional files + schema from flag args,
 ///   3. parse flags,
 ///   4. construct an `EvidentRuntime` from the file list,
-///   5. unless `--strict`, run `desugar::auto_apply_desugar` then
-///      `infer_types::auto_apply_inferences` so the user's source has
-///      its canonical AST + inferred Memberships before the verb runs.
+///   5. unless `--strict`, run `auto_apply_desugar` so the user's source
+///      has its canonical AST (bare-identifier → passthrough) before the
+///      verb runs.
 ///
-/// `cmd_name` is the verb word (`"query"` / `"sample"`) used in error
-/// messages. Returns `Err(ExitCode)` for a clean caller-bubbled exit
-/// on usage / load errors.
+/// `cmd_name` is the verb word (`"sample"`) used in error messages.
+/// Returns `Err(ExitCode)` for a clean caller-bubbled exit on usage /
+/// load errors.
 pub fn setup_query_or_sample(cmd_name: &str, args: &[String]) -> Result<CmdSetup, ExitCode> {
     let strict = args.iter().any(|a| a == "--strict");
     let stripped: Vec<String> = args.iter()
@@ -170,11 +166,100 @@ pub fn setup_query_or_sample(cmd_name: &str, args: &[String]) -> Result<CmdSetup
         Err(e) => { eprintln!("{e}"); return Err(ExitCode::from(1)); }
     };
     if !strict {
-        // Desugar runs first so inference sees the canonical AST.
-        super::desugar::auto_apply_desugar(&mut rt, &files);
-        super::infer_types::auto_apply_inferences(&mut rt, &files);
+        auto_apply_desugar(&mut rt, &files);
     }
     Ok(CmdSetup { rt, schema, flags })
+}
+
+// ── Self-hosted desugar pass (bare-identifier → passthrough) ──────
+//
+// Relocated here from the former `commands/desugar.rs` (the `evident
+// desugar` report-only command was removed). The pass itself is still
+// applied automatically by `sample` (via `setup_query_or_sample`),
+// `test`, and `effect-run` before they run — it's load-bearing, not a
+// command. The Evident-side rule lives in
+// `stdlib/passes/desugar_passthrough.ev`.
+
+// Relative to the resolved stdlib directory (see `load_runtime_with_passes`).
+const DESUGAR_PASSTHROUGH: &str = "passes/desugar_passthrough.ev";
+const PASSTHROUGH_RULE:    &str = "is_passthrough_at_index";
+
+/// One detected rewrite: in `claim_name`, replace `body[body_idx]` with
+/// `BodyItem::Passthrough(target_name)`.
+#[derive(Debug, Clone)]
+pub struct Rewrite {
+    pub claim_name:  String,
+    pub body_idx:    usize,
+    pub target_name: String,
+}
+
+/// Find every (claim, body_idx, name) triple where the body item is a
+/// bare-identifier constraint AND the identifier names a known schema.
+/// Spins up its own runtime so the caller's state isn't touched.
+pub fn collect_passthrough_rewrites(user_files: &[String])
+    -> Result<Vec<Rewrite>, String>
+{
+    let rt = load_runtime_with_passes(&[DESUGAR_PASSTHROUGH], user_files)?;
+
+    // Set of every claim name the user (transitively) loaded — the
+    // filter for "is target_name a known schema".
+    let known: std::collections::HashSet<String> =
+        rt.schema_names().map(|s| s.to_string()).collect();
+
+    let mut out: Vec<Rewrite> = Vec::new();
+    let mut indices: std::collections::BTreeSet<usize> =
+        std::collections::BTreeSet::new();
+    for f in user_files {
+        for i in rt.user_claim_indices_in_file(Path::new(f)) {
+            indices.insert(i);
+        }
+    }
+    for claim_idx in indices {
+        let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
+        let body_len = rt.user_claim_body_len(claim_idx).unwrap_or(0);
+        for body_idx in 0..body_len {
+            let mut given = HashMap::new();
+            given.insert("target_idx".to_string(), Value::Int(body_idx as i64));
+            let r = rt.query_with_nth_claim_body_only_given(
+                PASSTHROUGH_RULE, "body", claim_idx, given,
+            );
+            let Ok(Some(qr)) = r else { continue };
+            if !qr.satisfied { continue; }
+            let Some(Value::Str(name)) = qr.bindings.get("target_name") else { continue };
+            if !known.contains(name) { continue; }
+            out.push(Rewrite { claim_name: claim_name.clone(), body_idx, target_name: name.clone() });
+        }
+    }
+    Ok(out)
+}
+
+/// Apply every detected rewrite to `rt`. Quiet on success; prints one
+/// stderr warning if the pipeline fails (non-fatal — caller continues
+/// without rewrites). Returns the number of body items rewritten.
+pub fn auto_apply_desugar(rt: &mut EvidentRuntime, user_files: &[String]) -> usize {
+    let rewrites = match collect_passthrough_rewrites(user_files) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("warning: desugar pipeline failed: {e}");
+            return 0;
+        }
+    };
+    let mut applied = 0usize;
+    for r in &rewrites {
+        let new_item = BodyItem::Passthrough(r.target_name.clone());
+        // Sanity check: only rewrite if the body item still matches the
+        // expected shape (defends against running twice).
+        let still_matches = rt.get_schema(&r.claim_name)
+            .and_then(|s| s.body.get(r.body_idx))
+            .map(|item| matches!(item,
+                BodyItem::Constraint(Expr::Identifier(n)) if n == &r.target_name))
+            .unwrap_or(false);
+        if !still_matches { continue; }
+        if let Ok(true) = rt.replace_body_item_in_claim(&r.claim_name, r.body_idx, new_item) {
+            applied += 1;
+        }
+    }
+    applied
 }
 
 pub fn format_value(v: &Value) -> String {

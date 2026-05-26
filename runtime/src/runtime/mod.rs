@@ -59,7 +59,6 @@ mod scheduler_api;
 mod reflection;
 mod analysis;
 mod introspect;
-mod profile;
 mod nested;
 
 pub use crate::core::Value;
@@ -67,7 +66,6 @@ pub use crate::core::Value;
 pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 pub use desugar::SystemBoundary;
-pub use profile::BottleneckEntry;
 pub use nested::take_percolated_effects;
 
 use crate::core::ast::{Program, SchemaDecl};
