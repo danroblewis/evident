@@ -175,6 +175,7 @@ pub(crate) fn run_name_list(runner: &EvidentRunner, fsm: &str, seed: Value, done
 pub mod desugar;
 pub mod generics;
 pub mod inject;
+pub mod introspect;
 pub mod pretty;
 
 /// `validate` — reject non-external FFI-constructing schemas; banned-name
