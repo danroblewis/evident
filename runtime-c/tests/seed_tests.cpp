@@ -302,6 +302,23 @@ static void test_seq_concat_rejected() {
     CHECK(threw, "seq: ++ runtime concat rejected as out of subset");
 }
 
+static void test_seq_forall() {
+    // ∀ x ∈ xs : x > 0 unrolls over the pinned length; pinning xs[0]=-1 → UNSAT.
+    auto ok = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 3\n    ∀ x ∈ xs : x > 0\n    xs[0] = 5\n", "T");
+    CHECK(ok.satisfied, "seq forall: all-positive sat");
+    auto bad = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 2\n    ∀ x ∈ xs : x > 0\n    xs[0] = -1\n", "T");
+    CHECK(!bad.satisfied, "seq forall: pinned negative unsat");
+}
+
+static void test_seq_forall_unpinned_rejected() {
+    // ∀ x ∈ xs without a pinned length can't unroll — out of subset.
+    bool threw = false;
+    try {
+        run("claim T\n    xs ∈ Seq(Int)\n    ∀ x ∈ xs : x > 0\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "seq forall: unpinned length rejected as out of subset");
+}
+
 static void test_seq_real_rejected() {
     // Seq(Real) isn't in the oracle's element set — out of subset.
     bool threw = false;
@@ -393,6 +410,8 @@ int main() {
         test_seq_len_conflict_unsat();
         test_seq_elem_conflict_unsat();
         test_bool_seq();
+        test_seq_forall();
+        test_seq_forall_unpinned_rejected();
         test_seq_concat_rejected();
         test_seq_real_rejected();
         test_pass_identity();

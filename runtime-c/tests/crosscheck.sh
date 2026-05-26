@@ -82,9 +82,10 @@ check_forced records.ev forced_vec_physics        nx 103
 # Seq (M4d): scalar derivations from seq.len / seq.nth (whole-seq value parity —
 # xs=[10, 20, 30] etc. — is asserted exactly in seed_tests; awk-splitting on
 # whitespace can't capture a bracketed list here).
-check_forced seqs.ev forced_seq_elems  s 60
-check_forced seqs.ev forced_seq_len    n 5
-check_forced seqs.ev sat_seq_partial   m 99
+check_forced seqs.ev forced_seq_elems      s 60
+check_forced seqs.ev forced_seq_len        n 5
+check_forced seqs.ev sat_seq_partial       m 99
+check_forced seqs.ev forced_seq_forall_pos s 5
 
 # Self-hosted-pass cross-check (M5): run an Evident *transform* pass on both
 # engines and assert they reify the SAME output AST. The output value is a nested

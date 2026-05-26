@@ -124,6 +124,11 @@ private:
     std::unordered_map<std::string, const SchemaDecl *> type_decls_;  // type/schema name -> decl
     std::unordered_map<std::string, std::string> record_vars_;        // var path -> record type
 
+    // pinned Seq lengths (`#xs = N`), collected per-schema so `∀ x ∈ xs` can
+    // unroll over the elements (M4d element iteration) — mirrors the Rust
+    // collect_seq_lengths preprocessor.
+    std::unordered_map<std::string, int64_t> seq_lengths_;
+
     // active substitutions for match-arm binds (name -> already-emitted term)
     std::unordered_map<std::string, std::string> subst_;
 
@@ -149,6 +154,7 @@ private:
     std::string binary(BinOp op, const Expr &a, const Expr &b);
     std::string in_expr(const Expr &lhs, const Expr &rhs);
     std::optional<int64_t> eval_const_int(const Expr &e);
+    void collect_seq_lengths(const SchemaDecl &schema);
     std::string emit_quantifier(const Expr &e);
     std::string emit_match(const Expr &e);
     std::string emit_matches(const Expr &e);
@@ -473,6 +479,7 @@ void Emitter::emit_datatypes(const SchemaDecl &schema) {
 
 EmitResult Emitter::emit(const SchemaDecl &schema) {
     emit_datatypes(schema);
+    collect_seq_lengths(schema);  // pinned Seq lengths for `∀ x ∈ xs` unrolling
 
     // Pass 1: declarations.
     for (const auto &item : schema.body) {
@@ -735,10 +742,29 @@ std::optional<int64_t> Emitter::eval_const_int(const Expr &e) {
     }
 }
 
+// Scan a schema body for `#xs = N` (or `N = #xs`) constraints, recording the
+// pinned length so `∀ x ∈ xs` can unroll over the elements. Mirrors the Rust
+// collect_seq_lengths preprocessor (entry-schema body only).
+void Emitter::collect_seq_lengths(const SchemaDecl &schema) {
+    auto try_pin = [&](const Expr &card, const Expr &val) {
+        if (card.kind == Expr::Kind::Card && !card.children.empty() &&
+            card.children[0]->kind == Expr::Kind::Ident)
+            if (auto n = eval_const_int(val)) seq_lengths_[card.children[0]->str] = *n;
+    };
+    for (const auto &item : schema.body) {
+        if (item.kind != BodyItem::Kind::Constraint || !item.expr) continue;
+        const Expr &e = *item.expr;
+        if (e.kind != Expr::Kind::Binary || e.op != BinOp::Eq) continue;
+        try_pin(*e.children[0], *e.children[1]);
+        try_pin(*e.children[1], *e.children[0]);
+    }
+}
+
 // `∀ v ∈ {lo..hi} : body` → conjunction over the constant range (∃ → disjunction),
-// substituting the bound var with each integer literal — exactly the Rust
-// translator's unroll (quant.rs `literal_range` branch). Requires constant
-// integer bounds at emit time; symbolic bounds / Seq / coindexed are out of subset.
+// substituting the bound var per iteration — the Rust translator's unroll
+// (quant.rs `literal_range` branch). Also `∀ v ∈ xs : body` over a Seq with a
+// pinned length, binding v = (seq.nth xs i) — the element-iteration branch.
+// Symbolic bounds / unpinned Seqs / coindexed are out of subset.
 std::string Emitter::emit_quantifier(const Expr &e) {
     bool is_forall = (e.kind == Expr::Kind::Forall);
     const char *q = is_forall ? "∀" : "∃";
@@ -748,25 +774,43 @@ std::string Emitter::emit_quantifier(const Expr &e) {
     const Expr &range = *e.children[0];
     const Expr &body = *e.children[1];
 
-    if (range.kind != Expr::Kind::Range)
-        fail(std::string(q) + " range must be a constant integer range {lo..hi} (out of subset)");
-    auto lo = eval_const_int(*range.children[0]);
-    auto hi = eval_const_int(*range.children[1]);
-    if (!lo || !hi)
-        fail(std::string(q) + " range bounds must fold to integer constants (out of subset)");
+    // Compute the per-iteration substitution terms for the bound var + its sort.
+    std::vector<std::string> terms;
+    Sort var_sort(Sort::Tag::Int);
+    if (range.kind == Expr::Kind::Range) {
+        auto lo = eval_const_int(*range.children[0]);
+        auto hi = eval_const_int(*range.children[1]);
+        if (!lo || !hi)
+            fail(std::string(q) + " range bounds must fold to integer constants (out of subset)");
+        for (int64_t i = *lo; i <= *hi; i++) terms.push_back(int_lit_safe(i));
+    } else if (range.kind == Expr::Kind::Ident) {
+        // Seq element iteration: ∀ x ∈ xs over a pinned-length Seq.
+        auto it = env_.find(range.str);
+        if (it == env_.end() || it->second.tag != Sort::Tag::Seq || !it->second.elem)
+            fail(std::string(q) + " range must be a {lo..hi} range or a declared Seq (out of subset)");
+        auto len = seq_lengths_.find(range.str);
+        if (len == seq_lengths_.end())
+            fail(std::string(q) + " over Seq `" + range.str + "` needs its length pinned (#" +
+                 range.str + " = N) at emit time");
+        var_sort = *it->second.elem;
+        for (int64_t i = 0; i < len->second; i++)
+            terms.push_back("(seq.nth " + range.str + " " + int_lit_safe(i) + ")");
+    } else {
+        fail(std::string(q) + " range must be a {lo..hi} range or a declared Seq (out of subset)");
+    }
 
-    // Bind the loop var: subst_ gives expr() the literal term, env_ gives sort_of
-    // its Int sort. Save/restore so nested or sibling quantifiers reusing the name
+    // Bind the loop var: subst_ gives expr() the iteration term, env_ gives sort_of
+    // its sort. Save/restore so nested or sibling quantifiers reusing the name
     // don't leak (mirrors emit_match's scoped binds).
     bool had_env = env_.count(var);
     Sort saved_env = had_env ? env_[var] : Sort{};
     bool had_subst = subst_.count(var);
     std::string saved_subst = had_subst ? subst_[var] : std::string{};
-    env_[var] = Sort{Sort::Tag::Int, {}};
+    env_[var] = var_sort;
 
     std::vector<std::string> clauses;
-    for (int64_t i = *lo; i <= *hi; i++) {
-        subst_[var] = int_lit_safe(i);
+    for (const auto &t : terms) {
+        subst_[var] = t;
         clauses.push_back(expr(body));
     }
 

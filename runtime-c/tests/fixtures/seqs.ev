@@ -53,3 +53,19 @@ claim sat_seq_partial
     xs[2] = 99
     m ∈ Int
     m = xs[2]
+
+-- SAT, forced scalar: `∀ x ∈ xs : x > 0` unrolls over the pinned length (M4b+M4d).
+claim forced_seq_forall_pos
+    xs ∈ Seq(Int)
+    #xs = 3
+    ∀ x ∈ xs : x > 0
+    xs[0] = 5
+    s ∈ Int
+    s = xs[0]
+
+-- UNSAT: the unrolled `∀ x ∈ xs : x > 0` rejects a pinned negative element.
+claim unsat_seq_forall_pos
+    xs ∈ Seq(Int)
+    #xs = 2
+    ∀ x ∈ xs : x > 0
+    xs[0] = -1

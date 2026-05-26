@@ -88,7 +88,7 @@ and what is (eventually) self-hosted.
 | **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
 | **M4c** — records | ✅ done | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`), **local invariants** (refined records, rebound per instance); `records.ev` cross-checks. Record-valued ternary is out of subset (oracle-boundary). |
-| **M4d** — Seq | ◑ partial | Z3 sequence theory (SMT-LIB text): `Seq(Int)`/`Seq(Bool)` decl, `#` → `seq.len`, `xs[i]` → `seq.nth`, equality, model extracts as `[e0, …]`; `seqs.ev` cross-checks (incl. whole-seq value parity). `++` runtime concat + `Seq(Real)` out of subset (oracle drops both); `Seq(String)` emits but Z3 returns `unknown` (documented divergence). |
+| **M4d** — Seq | ✅ done | Z3 sequence theory (SMT-LIB text): `Seq(Int)`/`Seq(Bool)` decl, `#` → `seq.len`, `xs[i]` → `seq.nth`, equality, **`∀/∃ x ∈ xs` element iteration** (unrolled over the pinned length), model extracts as `[e0, …]`; `seqs.ev` cross-checks (incl. whole-seq value parity). `++` runtime concat + `Seq(Real)` out of subset (oracle drops both); `Seq(String)` emits but Z3 returns `unknown` (documented divergence). |
 | **M5** — push one transform to Evident | ✅ proof-of-concept | the seed RUNS an Evident transform pass: AST-as-`enum`, pass-as-`claim`, seed reflects input → solves → reifies `output`. The same `passes.ev` runs on the Rust runtime with the identical output AST. `passes.ev` cross-checks. |
 
 ### The subset that transpiles today (M3 + M4a + M4b)
@@ -106,7 +106,7 @@ Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 | String concat | `++` | `str.++` |
 | Chained membership | `0 < x ∈ Int < 5` | declare + per-pair bound (parser desugar) |
 | Enums (M4a) | `enum`, payload + recursive variants, `match`, `matches` | `declare-datatypes`; `match` → nested `ite` over `(_ is Ctor)`; `matches` → recognizer |
-| Quantifiers (M4b) | `∀ v ∈ {lo..hi} : body`, `∃ v ∈ {lo..hi} : body` | unroll → `and`/`or` over the constant range; bound var substituted per iteration |
+| Quantifiers (M4b/d) | `∀ v ∈ {lo..hi} : body`, `∃ …`, and `∀ x ∈ xs : body` over a pinned-length Seq | unroll → `and`/`or`; bound var substituted per iteration (`i` literal for ranges, `(seq.nth xs i)` for Seqs) |
 | Records (M4c) | `type IVec2(x, y ∈ Int)`, field access `v.x`, pins, `IVec2(a, b)` literals, `a = b` / `lo ≤ p ≤ hi`, `c = a + b` / `v * dt / 1000` | per-field leaf consts (`v.x`); comparison/equality lift componentwise (`and` of per-axis; `≠` → `or` of per-axis `not =`); arithmetic broadcasts per-axis (zip records, broadcast scalars) |
 | Seq (M4d) | `xs ∈ Seq(Int)` / `Seq(Bool)`, `#xs`, `xs[i]`, `a = b` | `(declare-const xs (Seq Elem))`; `#` → `seq.len`, `[]` → `seq.nth`; model walked from `seq.++`/`seq.unit` → `[e0, …]` |
 
@@ -254,18 +254,21 @@ Ordered by value and independence. Each is additive to the seed.
    is deliberately out of subset: the Rust oracle drops it ("couldn't translate to
    Bool"), so the seed reports the boundary rather than silently exceeding the
    oracle and diverging on the model. Cross-checks via `records.ev`.
-4. **M4d — Seq. ◑ PARTIAL.** Z3 sequence theory, lowered as SMT-LIB text:
+4. **M4d — Seq. ✅ DONE.** Z3 sequence theory, lowered as SMT-LIB text:
    `declare-const xs (Seq Int)`, `#` → `seq.len`, `xs[i]` → `seq.nth`, `a = b` →
-   seq equality. The model value is walked from its `seq.++`/`seq.unit` AST (no
-   seq-specific C API — the homebrew `z3.h` exposes none) and formatted `[e0, …]`,
-   matching the Rust CLI exactly. Element types match the oracle's `SeqElem` set
-   (`Int`, `Bool`, `String`). Boundaries: `++` runtime concat of opaque Seq vars
-   is out of subset (the oracle drops it — only `⟨…⟩` literal flattening, a
-   load-time desugar, is supported), `Seq(Real)` is out of subset (the oracle
-   drops it), and `Seq(String)` emits correct SMT-LIB but Z3's seq theory returns
-   `unknown` on the plain solver (the oracle's array representation decides it —
-   see the divergence note). Still TODO: element-iteration quantifiers
-   (`∀ x ∈ xs`) over a pinned length. Cross-checks via `seqs.ev`.
+   seq equality, and `∀/∃ x ∈ xs : body` element iteration unrolled over the
+   pinned length (binding `x = (seq.nth xs i)`; the length comes from a `#xs = N`
+   pin gathered by `collect_seq_lengths`, mirroring the Rust preprocessor). The
+   model value is walked from its `seq.++`/`seq.unit` AST (no seq-specific C API —
+   the homebrew `z3.h` exposes none) and formatted `[e0, …]`, matching the Rust
+   CLI exactly. Element types match the oracle's `SeqElem` set (`Int`, `Bool`,
+   `String`). Boundaries: `++` runtime concat of opaque Seq vars is out of subset
+   (the oracle drops it — only `⟨…⟩` literal flattening, a load-time desugar, is
+   supported), `Seq(Real)` is out of subset (the oracle drops it), `Seq(String)`
+   emits correct SMT-LIB but Z3's seq theory returns `unknown` on the plain solver
+   (the oracle's array representation decides it — see the divergence note), and
+   `∀ x ∈ xs` with an unpinned length is out of subset (can't unroll). Cross-checks
+   via `seqs.ev`.
 5. **Imports.** Resolve `import "..."` relative to the file (currently ignored
    with a note). Needed to run anything that pulls in stdlib.
 6. **Tactic parity.** Decide whether to replicate the Rust tuned tactic chain
