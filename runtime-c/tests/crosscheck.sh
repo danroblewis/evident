@@ -79,6 +79,12 @@ check_forced records.ev forced_nested_field       s 33
 check_forced records.ev forced_vec_add            sx 13
 check_forced records.ev forced_vec_scale          sy 20
 check_forced records.ev forced_vec_physics        nx 103
+# Seq (M4d): scalar derivations from seq.len / seq.nth (whole-seq value parity —
+# xs=[10, 20, 30] etc. — is asserted exactly in seed_tests; awk-splitting on
+# whitespace can't capture a bracketed list here).
+check_forced seqs.ev forced_seq_elems  s 60
+check_forced seqs.ev forced_seq_len    n 5
+check_forced seqs.ev sat_seq_partial   m 99
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

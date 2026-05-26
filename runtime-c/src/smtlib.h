@@ -8,6 +8,7 @@
 // constraint (Evident's "missing constraint is a silent bug" failure mode).
 #pragma once
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -21,13 +22,28 @@ struct SmtError : std::runtime_error {
     explicit SmtError(const std::string &msg) : std::runtime_error("smtlib: " + msg) {}
 };
 
-// SMT sort the seed handles. `Enum` names a declared Z3 datatype.
+// SMT sort the seed handles. `Enum` names a declared Z3 datatype; `Seq` carries
+// its element sort (Z3 sequence theory, lowered as SMT-LIB text).
 struct Sort {
-    enum class Tag { Int, Bool, Real, Str, Enum } tag = Tag::Int;
-    std::string enum_name;  // when tag == Enum
+    enum class Tag { Int, Bool, Real, Str, Enum, Seq } tag = Tag::Int;
+    std::string enum_name;        // when tag == Enum
+    std::shared_ptr<Sort> elem;   // when tag == Seq
+
+    Sort() = default;
+    Sort(Tag t) : tag(t) {}
+    Sort(Tag t, std::string en) : tag(t), enum_name(std::move(en)) {}
+    static Sort seq(Sort element) {
+        Sort s;
+        s.tag = Tag::Seq;
+        s.elem = std::make_shared<Sort>(std::move(element));
+        return s;
+    }
 
     bool operator==(const Sort &o) const {
-        return tag == o.tag && (tag != Tag::Enum || enum_name == o.enum_name);
+        if (tag != o.tag) return false;
+        if (tag == Tag::Enum) return enum_name == o.enum_name;
+        if (tag == Tag::Seq) return elem && o.elem && *elem == *o.elem;
+        return true;
     }
     bool operator!=(const Sort &o) const { return !(*this == o); }
     std::string smt() const;  // SMT-LIB sort name

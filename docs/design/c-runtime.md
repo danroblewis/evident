@@ -83,7 +83,7 @@ and what is (eventually) self-hosted.
 | **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
 | **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`); `records.ev` cross-checks. Local invariants are next; record-valued ternary is out of subset (oracle-boundary). |
-| **M4d** — Seq | ⏳ roadmap | Z3 seq theory (see roadmap) |
+| **M4d** — Seq | ◑ partial | Z3 sequence theory (SMT-LIB text): `Seq(Int)`/`Seq(Bool)` decl, `#` → `seq.len`, `xs[i]` → `seq.nth`, equality, model extracts as `[e0, …]`; `seqs.ev` cross-checks (incl. whole-seq value parity). `++` runtime concat + `Seq(Real)` out of subset (oracle drops both); `Seq(String)` emits but Z3 returns `unknown` (documented divergence). |
 | **M5** — push one transform to Evident | ⏳ roadmap | the self-hosting half |
 
 ### The subset that transpiles today (M3 + M4a + M4b)
@@ -103,6 +103,7 @@ Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 | Enums (M4a) | `enum`, payload + recursive variants, `match`, `matches` | `declare-datatypes`; `match` → nested `ite` over `(_ is Ctor)`; `matches` → recognizer |
 | Quantifiers (M4b) | `∀ v ∈ {lo..hi} : body`, `∃ v ∈ {lo..hi} : body` | unroll → `and`/`or` over the constant range; bound var substituted per iteration |
 | Records (M4c) | `type IVec2(x, y ∈ Int)`, field access `v.x`, pins, `IVec2(a, b)` literals, `a = b` / `lo ≤ p ≤ hi`, `c = a + b` / `v * dt / 1000` | per-field leaf consts (`v.x`); comparison/equality lift componentwise (`and` of per-axis; `≠` → `or` of per-axis `not =`); arithmetic broadcasts per-axis (zip records, broadcast scalars) |
+| Seq (M4d) | `xs ∈ Seq(Int)` / `Seq(Bool)`, `#xs`, `xs[i]`, `a = b` | `(declare-const xs (Seq Elem))`; `#` → `seq.len`, `[]` → `seq.nth`; model walked from `seq.++`/`seq.unit` → `[e0, …]` |
 
 The quantifier bounds must **fold to integer constants at emit time** (literals +
 literal arithmetic, mirroring the Rust path's `literal_range` simplify). A symbolic
@@ -139,14 +140,25 @@ The Rust runtime is the oracle. `runtime-c/tests/crosscheck.sh`:
 Both halves pass. This is the "it's a real runtime" evidence: the SMT-LIB-authored
 Z3 solve agrees with the C-API-authored one, exactly as the prototype found.
 
-### A known, documented divergence (inherited from the prototype)
+### Known, documented divergences (representation/tactic, outside the AST)
 
-The prototype found that nonlinear real arithmetic (`x>0 ∧ x*x=2`) is SAT on a
-plain `Solver` (Z3 routes it to `nlsat`) but "not satisfied" on the Rust runtime's
-*tuned tactic chain* (which returns `Unknown`). This seed uses a plain solver, so
-it would also say SAT — the tuning/tactic layer lives **outside** the AST and is
-not carried over. The fixtures here stay within the linear fragment to avoid the
-divergence; it is noted for honesty, not worked around.
+Two places where the seed and the Rust oracle differ — both because the *solver
+configuration / value representation* lives **outside** the AST and isn't carried
+over the SMT-LIB seam. Noted for honesty, not worked around; the cross-check
+fixtures stay clear of them.
+
+1. **Nonlinear real arithmetic.** `x>0 ∧ x*x=2` is SAT on a plain `Solver` (Z3
+   routes it to `nlsat`) but "not satisfied" on the Rust runtime's *tuned tactic
+   chain* (which returns `Unknown`). This seed uses a plain solver, so it would
+   say SAT. The fixtures stay within the linear fragment.
+2. **`Seq(String)`.** The seed lowers it to Z3 sequence theory
+   (`(Seq String)` + `seq.nth`), which Z3 returns **`unknown`** for on the plain
+   solver — confirmed identical on the standalone `z3` CLI, so it's a genuine
+   seq-theory incompleteness, not a seed bug. The Rust oracle decides it because
+   it represents Seqs as **arrays + a pinned length** (not Z3 seq theory), a
+   representation choice that lives outside the AST. `Seq(Int)`/`Seq(Bool)` are
+   decidable under both and cross-check exactly (whole-seq value parity included);
+   `seqs.ev` therefore omits `Seq(String)`.
 
 ## Z3 dependency
 
@@ -192,8 +204,18 @@ Ordered by value and independence. Each is additive to the seed.
    oracle and diverging on the model. Still TODO: **local invariants** (instantiate
    the record decl's constraints per instance with field-rebinding). Cross-checks
    via `records.ev`.
-4. **M4d — Seq.** Z3 seq theory (`declare-const xs (Seq Int)`), `#` → `seq.len`,
-   indexing → `seq.nth`, `++` → `seq.++`. Independent of M4a–c.
+4. **M4d — Seq. ◑ PARTIAL.** Z3 sequence theory, lowered as SMT-LIB text:
+   `declare-const xs (Seq Int)`, `#` → `seq.len`, `xs[i]` → `seq.nth`, `a = b` →
+   seq equality. The model value is walked from its `seq.++`/`seq.unit` AST (no
+   seq-specific C API — the homebrew `z3.h` exposes none) and formatted `[e0, …]`,
+   matching the Rust CLI exactly. Element types match the oracle's `SeqElem` set
+   (`Int`, `Bool`, `String`). Boundaries: `++` runtime concat of opaque Seq vars
+   is out of subset (the oracle drops it — only `⟨…⟩` literal flattening, a
+   load-time desugar, is supported), `Seq(Real)` is out of subset (the oracle
+   drops it), and `Seq(String)` emits correct SMT-LIB but Z3's seq theory returns
+   `unknown` on the plain solver (the oracle's array representation decides it —
+   see the divergence note). Still TODO: element-iteration quantifiers
+   (`∀ x ∈ xs`) over a pinned length. Cross-checks via `seqs.ev`.
 5. **Imports.** Resolve `import "..."` relative to the file (currently ignored
    with a note). Needed to run anything that pulls in stdlib.
 6. **Tactic parity.** Decide whether to replicate the Rust tuned tactic chain

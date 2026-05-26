@@ -260,13 +260,65 @@ static void test_record_with_constraint_rejected() {
     CHECK(threw, "record: type-with-invariant rejected as out of subset");
 }
 
-static void test_out_of_subset_reported() {
+static void test_seq_elems() {
+    auto r = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 3\n    xs[0] = 10\n    xs[1] = 20\n    xs[2] = 30\n"
+                 "    s ∈ Int\n    s = xs[0] + xs[1] + xs[2]\n", "T");
+    CHECK(r.satisfied, "seq: elems sat");
+    for (auto &[k, v] : r.bindings) {
+        if (k == "s")  CHECK(v.i == 60, "seq: s = 60");
+        if (k == "xs") CHECK(v.tag == Value::Tag::Seq && v.s == "[10, 20, 30]", "seq: xs = [10, 20, 30]");
+    }
+}
+
+static void test_seq_len() {
+    auto r = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 5\n    n ∈ Int\n    n = #xs\n", "T");
+    CHECK(r.satisfied, "seq: len sat");
+    for (auto &[k, v] : r.bindings) if (k == "n") CHECK(v.i == 5, "seq: #xs = 5");
+}
+
+static void test_seq_len_conflict_unsat() {
+    auto r = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 3\n    #xs = 4\n", "T");
+    CHECK(!r.satisfied, "seq: conflicting lengths unsat");
+}
+
+static void test_seq_elem_conflict_unsat() {
+    auto r = run("claim T\n    xs ∈ Seq(Int)\n    #xs = 2\n    xs[0] = 1\n    xs[0] = 2\n", "T");
+    CHECK(!r.satisfied, "seq: one index two values unsat");
+}
+
+static void test_bool_seq() {
+    auto r = run("claim T\n    bs ∈ Seq(Bool)\n    #bs = 2\n    bs[0] = true\n    bs[1] = false\n", "T");
+    CHECK(r.satisfied, "seq: bool seq sat");
+    for (auto &[k, v] : r.bindings) if (k == "bs")
+        CHECK(v.tag == Value::Tag::Seq && v.s == "[true, false]", "seq: bs = [true, false]");
+}
+
+static void test_seq_concat_rejected() {
+    // Runtime concat of opaque Seq vars is out of subset (the oracle drops it).
     bool threw = false;
     try {
-        Program p = parse("claim T\n    xs ∈ Seq(Int)\n");
+        run("claim T\n    a ∈ Seq(Int)\n    b ∈ Seq(Int)\n    c ∈ Seq(Int)\n    c = a ++ b\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "seq: ++ runtime concat rejected as out of subset");
+}
+
+static void test_seq_real_rejected() {
+    // Seq(Real) isn't in the oracle's element set — out of subset.
+    bool threw = false;
+    try {
+        run("claim T\n    rs ∈ Seq(Real)\n    #rs = 1\n    rs[0] = 1.5\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "seq: Seq(Real) rejected as out of subset");
+}
+
+static void test_out_of_subset_reported() {
+    // Set(Int) has no lowering in the seed yet — must be reported, not mis-emitted.
+    bool threw = false;
+    try {
+        Program p = parse("claim T\n    xs ∈ Set(Int)\n");
         schema_to_smtlib(p.schemas[0], p);
     } catch (const SmtError &) { threw = true; }
-    CHECK(threw, "emit: Seq(Int) rejected as out of subset");
+    CHECK(threw, "emit: Set(Int) rejected as out of subset");
 }
 
 int main() {
@@ -301,6 +353,13 @@ int main() {
         test_record_scalar_broadcast_intdiv();
         test_record_ternary_rejected();
         test_record_with_constraint_rejected();
+        test_seq_elems();
+        test_seq_len();
+        test_seq_len_conflict_unsat();
+        test_seq_elem_conflict_unsat();
+        test_bool_seq();
+        test_seq_concat_rejected();
+        test_seq_real_rejected();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {
         std::printf("EXCEPTION: %s\n", e.what());

@@ -13,6 +13,7 @@ std::string Sort::smt() const {
         case Tag::Real: return "Real";
         case Tag::Str:  return "String";
         case Tag::Enum: return enum_name;
+        case Tag::Seq:  return "(Seq " + (elem ? elem->smt() : std::string("Int")) + ")";
     }
     return "Int";
 }
@@ -26,6 +27,22 @@ std::optional<Sort> scalar_sort(const std::string &type_name) {
     if (type_name == "Bool") return Sort{Sort::Tag::Bool, {}};
     if (type_name == "Real") return Sort{Sort::Tag::Real, {}};
     if (type_name == "String") return Sort{Sort::Tag::Str, {}};
+    return std::nullopt;
+}
+
+// `Seq(Elem)` -> a Seq sort. The element types match the Rust oracle's `SeqElem`
+// set (Int, Bool, String) so the seed doesn't claim a capability the spec lacks;
+// Real/Nat/Pos/enum/record/nested-Seq elements return nullopt (-> out of subset,
+// matching the oracle, which drops them). NB: Seq(String) emits correct SMT-LIB
+// but Z3's seq theory returns `unknown` on the plain solver (a documented
+// divergence — the oracle's array representation decides it; see c-runtime.md).
+std::optional<Sort> seq_sort(const std::string &type_name) {
+    if (type_name.size() < 5 || type_name.compare(0, 4, "Seq(") != 0 || type_name.back() != ')')
+        return std::nullopt;
+    std::string inner = type_name.substr(4, type_name.size() - 5);
+    if (inner == "Int")    return Sort::seq(Sort(Sort::Tag::Int));
+    if (inner == "Bool")   return Sort::seq(Sort(Sort::Tag::Bool));
+    if (inner == "String") return Sort::seq(Sort(Sort::Tag::Str));
     return std::nullopt;
 }
 
@@ -438,6 +455,20 @@ EmitResult Emitter::emit(const SchemaDecl &schema) {
             continue;
         }
 
+        // Seq (M4d): Z3 sequence theory, emitted as SMT-LIB text.
+        if (auto ss = seq_sort(tn)) {
+            if (item.pins.kind != Pins::Kind::None) fail("pins on Seq `" + name + "` not supported");
+            if (env_.count(name)) continue;
+            env_[name] = *ss;
+            declared_.push_back({name, *ss});
+            out_ += "(declare-const " + name + " " + ss->smt() + ")\n";
+            continue;
+        }
+        // A Seq with an out-of-subset element type reaches here and fails loudly.
+        if (tn.compare(0, 4, "Seq(") == 0)
+            fail("Seq element type unsupported for `" + name +
+                 "` (only Int/Bool/String — the Rust oracle's set; it drops the rest)");
+
         std::optional<Sort> sort = scalar_sort(tn);
         if (!sort) {
             // enum type?
@@ -491,6 +522,12 @@ std::optional<Sort> Emitter::sort_of(const Expr &e) {
         case K::Not: return Sort{Sort::Tag::Bool, {}};
         case K::In: case K::Matches: return Sort{Sort::Tag::Bool, {}};
         case K::Forall: case K::Exists: return Sort{Sort::Tag::Bool, {}};
+        case K::Card: return Sort{Sort::Tag::Int, {}};
+        case K::Index: {
+            auto bs = sort_of(*e.children[0]);
+            if (bs && bs->tag == Sort::Tag::Seq && bs->elem) return *bs->elem;
+            return std::nullopt;
+        }
         case K::Match: {
             for (const auto &arm : e.arms)
                 if (auto s = sort_of(*arm.body)) return s;
@@ -553,13 +590,22 @@ std::string Emitter::expr(const Expr &e) {
         case K::Matches: return emit_matches(e);
         case K::Forall:  case K::Exists: return emit_quantifier(e);
 
+        case K::Card: {
+            auto bs = sort_of(*e.children[0]);
+            if (!bs || bs->tag != Sort::Tag::Seq) fail("`#` cardinality only on Seq (out of subset)");
+            return "(seq.len " + expr(*e.children[0]) + ")";
+        }
+        case K::Index: {
+            auto bs = sort_of(*e.children[0]);
+            if (!bs || bs->tag != Sort::Tag::Seq) fail("indexing `[]` only on Seq (out of subset)");
+            return "(seq.nth " + expr(*e.children[0]) + " " + expr(*e.children[1]) + ")";
+        }
+
         // Out of subset (reported, never mis-emitted).
         case K::SetLit:  fail("set literal (not as ∈ RHS) unsupported");
         case K::SeqLit:  fail("sequence literal unsupported");
         case K::Range:   fail("bare range unsupported (only as ∈ RHS)");
         case K::Tuple:   fail("tuple unsupported");
-        case K::Card:    fail("cardinality `#` unsupported");
-        case K::Index:   fail("indexing `[]` unsupported");
         case K::Field:   fail("field access unsupported (records out of subset)");
     }
     fail("unreachable expr kind");
@@ -589,7 +635,15 @@ std::string Emitter::binary(BinOp op, const Expr &a, const Expr &b) {
         case BinOp::Add: sym = "+"; break;
         case BinOp::Sub: sym = "-"; break;
         case BinOp::Mul: sym = "*"; break;
-        case BinOp::Concat: sym = "str.++"; break;
+        case BinOp::Concat: {
+            auto sa = sort_of(a);
+            auto sb = sort_of(b);
+            if ((sa && sa->tag == Sort::Tag::Seq) || (sb && sb->tag == Sort::Tag::Seq))
+                fail("Seq `++` (runtime concat of opaque Seq vars) is out of subset — "
+                     "the Rust oracle drops it (only `⟨…⟩` literal flattening is supported)");
+            sym = "str.++";
+            break;
+        }
         case BinOp::Div: {
             // Int division -> div; Real -> /. Infer from operand sorts.
             auto sa = sort_of(a);
