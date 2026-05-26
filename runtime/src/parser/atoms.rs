@@ -13,24 +13,10 @@ impl Parser {
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
-                // `run(F, init)` — nested-FSM run-to-halt; strict 4-token check
-                // so other `run(...)` calls fall through to normal parsing.
-                if s == "run"
-                    && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
-                    && matches!(self.toks.get(self.pos + 2), Some(Token::Ident(_)))
-                    && matches!(self.toks.get(self.pos + 3), Some(Token::Comma))
-                {
-                    self.bump();                 // run
-                    self.bump();                 // (
-                    let fsm = match self.bump() {
-                        Token::Ident(f) => f,
-                        _ => unreachable!(),     // guarded by the matches! above
-                    };
-                    self.eat(&Token::Comma)?;    // ,
-                    let init = self.parse_expr()?;
-                    self.eat(&Token::RParen)?;
-                    return Ok(Expr::RunFsm { fsm, init: Box::new(init) });
-                }
+                // `run(...)` is no longer a parser hook: `Expr::RunFsm` is produced
+                // ONLY by `lower_fsm_application` from a 2-arg call to an `fsm`-keyword
+                // schema (`F(seed, fsm_state)`). A bare `run(...)` now parses as an
+                // ordinary call and fails downstream like any unknown name.
                 self.bump();
                 // Greedily consume `.ident` chains BEFORE the call check so
                 // `win.renderer.set_draw_color(args)` becomes a single dotted Call.

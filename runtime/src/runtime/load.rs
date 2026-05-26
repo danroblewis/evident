@@ -90,7 +90,11 @@ impl EvidentRuntime {
 
         // Expand `Edge<Rect>` → concrete schema with `T→Rect`; iterates to fixpoint.
         crate::portable::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
-        // Validate `run(F,..)` targets after the full batch is registered.
+        // §4 embed surface: rewrite 2-arg `F(seed, out)` on an `fsm`-keyword schema
+        // into `out = RunFsm{F, seed}`. Runs after monomorphize (full table known)
+        // and before validate_run_targets (so the new RunFsm nodes get validated).
+        self.lower_fsm_application()?;
+        // Validate embedded-FSM (`RunFsm`) targets after the full batch is registered.
         self.validate_run_targets()?;
         // A reload can change schema bodies or the functionizer; flush all caches.
         self.cache.borrow_mut().clear();

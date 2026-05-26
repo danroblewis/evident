@@ -70,7 +70,35 @@ impl EvidentRuntime {
         Ok(())
     }
 
-    /// FSM names used as `run(...)` or `halts_within(...)` targets; the scheduler skips
+    /// §4 embed surface: rewrite a two-argument call to an `fsm`-keyword schema
+    /// `F(seed, out)` into the settled-state constraint `out = RunFsm{F, seed}`.
+    ///
+    /// Runs as a load-batch pass *after* monomorphization (so the full schema
+    /// table — keywords + monomorphic copies — is known) and *before*
+    /// `validate_run_targets` (so the new `RunFsm` nodes get the same FSM-shape
+    /// validation `run(...)` got). A call to a `claim`/`type` schema is untouched
+    /// (those still inline as a conjunction); the disambiguator is `F`'s keyword.
+    /// Arity ≠ 2 on an `fsm` target is a load error.
+    pub(super) fn lower_fsm_application(&mut self) -> Result<(), RuntimeError> {
+        use crate::core::ast::Keyword;
+        let fsm_names: std::collections::HashSet<String> = self.schemas.iter()
+            .filter(|(_, s)| matches!(s.keyword, Keyword::Fsm))
+            .map(|(n, _)| n.clone())
+            .collect();
+        if fsm_names.is_empty() { return Ok(()); }
+        let names: Vec<String> = self.schemas.keys().cloned().collect();
+        for name in names {
+            let Some(mut schema) = self.schemas.get(&name).cloned() else { continue };
+            let mut changed = false;
+            lower_fsm_in_body(&mut schema.body, &fsm_names, &name, &mut changed)?;
+            if changed {
+                self.schemas.insert(name, schema);
+            }
+        }
+        Ok(())
+    }
+
+    /// FSM names used as embedded `RunFsm` targets; the scheduler skips
     /// these so an embedded FSM can be declared `fsm` without becoming a standalone FSM.
     pub(crate) fn embedded_fsm_targets(&self) -> std::collections::HashSet<String> {
         let mut out = std::collections::HashSet::new();
@@ -341,6 +369,43 @@ fn seq_value_from_elems(fsm: &str, vals: Vec<Value>) -> Result<Value, RuntimeErr
         }
         _ => Err(mismatch()),
     }
+}
+
+/// Rewrite, in place, every `BodyItem::Constraint(Call(F, [seed, out]))` whose
+/// `F` names an `fsm`-keyword schema into `Constraint(out = RunFsm{F, seed})`.
+/// Recurses into subclaim bodies. Arity ≠ 2 on an fsm target is a load error.
+fn lower_fsm_in_body(
+    body: &mut [BodyItem],
+    fsm_names: &std::collections::HashSet<String>,
+    schema_name: &str,
+    changed: &mut bool,
+) -> Result<(), RuntimeError> {
+    for item in body.iter_mut() {
+        match item {
+            BodyItem::Constraint(Expr::Call(name, args)) if fsm_names.contains(name) => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::Parse(format!(
+                        "`{name}` is an `fsm`; embed it as a constraint with a seed \
+                         and a state variable: `{name}(seed, fsm_state)`. \
+                         Got {name}({} args) in `{schema_name}`.", args.len())));
+                }
+                let seed = args[0].clone();
+                let out  = args[1].clone();
+                *item = BodyItem::Constraint(Expr::Binary(
+                    BinOp::Eq,
+                    Box::new(out),
+                    Box::new(Expr::RunFsm { fsm: name.clone(), init: Box::new(seed) }),
+                ));
+                *changed = true;
+            }
+            BodyItem::SubclaimDecl(s) => {
+                let sub_name = s.name.clone();
+                lower_fsm_in_body(&mut s.body, fsm_names, &sub_name, changed)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn body_has_run(body: &[BodyItem]) -> bool {

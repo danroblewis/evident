@@ -44,18 +44,21 @@ fsm countdown(count ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
 -- the final state value — proving an effect-emitting child now RUNS as a
 -- value (no load-time rejection) yet stays side-effect-free here.
 claim sat_countdown_halts
-    final ∈ Int = run(countdown, 3)
+    final ∈ Int
+    countdown(3, final)
     final = 0
 
 -- An init that already satisfies halt returns immediately, with zero
 -- advancing ticks (so nothing would percolate).
 claim sat_countdown_already_halted
-    final ∈ Int = run(countdown, 0)
+    final ∈ Int
+    countdown(0, final)
     final = 0
 
 -- The run result slots into ordinary outer constraints like any value.
 claim sat_countdown_feeds_outer
-    final ∈ Int = run(countdown, 3)
+    final ∈ Int
+    countdown(3, final)
     doubled ∈ Int = final + 42
     doubled = 42
 
@@ -65,7 +68,8 @@ claim sat_countdown_feeds_outer
 -- order) alongside its own summary + Exit. Nothing is printed DURING the
 -- nested run — only the parent's dispatch emits them, exactly once each.
 fsm main
-    result ∈ Int = run(countdown, 3)
+    result ∈ Int
+    countdown(3, result)
     reached_zero ∈ Bool = (result ≤ 0)
 
     effects = (reached_zero

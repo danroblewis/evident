@@ -253,33 +253,37 @@ claim subst_one(t ∈ String, param ∈ String, arg ∈ String, out ∈ String)
 -- A Call name in a constraint reaches the accumulator (positional
 -- generic invocation `Edge<Int>(…)` parses as a Call).
 claim sat_call_name_collected
-    final ∈ GW = run(generics_walk, WBody(BIConstraint(ECall("Edge<Int>", ELNil))))
+    final ∈ GW
+    generics_walk(WBody(BIConstraint(ECall("Edge<Int>", ELNil))), final)
     final = GWDone(NameCons("Edge<Int>", NameNil))
 
 -- A membership's type_name reaches the accumulator; its pins do not even
 -- exist here (PNone) — confirms the type_name is what's collected.
 claim sat_membership_type_collected
-    final ∈ GW = run(generics_walk, WBody(BIMembership("e", "Edge<Rect>", PNone)))
+    final ∈ GW
+    generics_walk(WBody(BIMembership("e", "Edge<Rect>", PNone)), final)
     final = GWDone(NameCons("Edge<Rect>", NameNil))
 
 -- A passthrough name reaches the accumulator.
 claim sat_passthrough_name_collected
-    final ∈ GW = run(generics_walk, WBody(BIPassthrough("Toposort<Int>")))
+    final ∈ GW
+    generics_walk(WBody(BIPassthrough("Toposort<Int>")), final)
     final = GWDone(NameCons("Toposort<Int>", NameNil))
 
 -- THE key divergence from subscriptions: a bare identifier collects
 -- NOTHING — even one spelled like a generic. Only the four type-position
 -- kinds are folded.
 claim sat_identifier_collects_nothing
-    final ∈ GW = run(generics_walk, WBody(BIConstraint(EIdentifier("Edge<Int>"))))
+    final ∈ GW
+    generics_walk(WBody(BIConstraint(EIdentifier("Edge<Int>"))), final)
     final = GWDone(NameNil)
 
 -- A subclaim body is descended (the 4-field SchemaDecl arm): a membership
 -- inside a subclaim reaches the accumulator.
 claim sat_subclaim_body_walked
-    final ∈ GW = run(generics_walk,
-        WBody(BISubclaim(MakeSchemaDecl(KClaim, "inner", 0,
-            BILCons(BIMembership("e", "Edge<Rect>", PNone), BILNil)))))
+    final ∈ GW
+    generics_walk(WBody(BISubclaim(MakeSchemaDecl(KClaim, "inner", 0,
+            BILCons(BIMembership("e", "Edge<Rect>", PNone), BILNil)))), final)
     final = GWDone(NameCons("Edge<Rect>", NameNil))
 
 -- PARSE: head + arg of a single-level generic-use string.
@@ -300,5 +304,6 @@ claim sat_subst_no_match
 -- The accumulator is threaded, not free: an identifier can't conjure a
 -- collected name (the divergence above, asserted as UNSAT).
 claim unsat_identifier_is_not_collected
-    final ∈ GW = run(generics_walk, WBody(BIConstraint(EIdentifier("Edge<Int>"))))
+    final ∈ GW
+    generics_walk(WBody(BIConstraint(EIdentifier("Edge<Int>"))), final)
     final = GWDone(NameCons("Edge<Int>", NameNil))

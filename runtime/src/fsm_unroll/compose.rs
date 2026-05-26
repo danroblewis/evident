@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use z3::ast::{Ast, Bool, Dynamic, Int};
-use z3::{AstKind, Context, Solver};
+use z3::{AstKind, Context};
 use z3_sys::DeclKind;
 
 use crate::core::ast::{BodyItem, Keyword, SchemaDecl};
@@ -14,6 +14,7 @@ use crate::z3_eval::simplify_assertions;
 
 use super::detector::{classify, count_nodes, Verdict, PROBE_POWER};
 
+#[allow(dead_code)] // retained for the §6.2 BMC discharge of F(seed, fsm_state)
 fn largest_power_le(n: u64) -> u64 {
     if n == 0 { return 1; }
     let mut p = 1u64;
@@ -357,6 +358,7 @@ where 'ctx: 'static
 }
 
 /// Series composition of two arbitrary powers; used for binary-expansion assembly.
+#[allow(dead_code)] // retained for the §6.2 BMC discharge of F(seed, fsm_state)
 fn series<'ctx>(
     first: &Power<'ctx>,
     second: &Power<'ctx>,
@@ -420,12 +422,13 @@ fn mentions_dynamic<'ctx>(haystack: &Dynamic<'ctx>, needle: &Dynamic<'ctx>) -> b
     haystack.children().iter().any(|c| mentions_dynamic(c, needle))
 }
 
+#[allow(dead_code)] // retained for the §6.2 BMC discharge of F(seed, fsm_state)
 struct UnrollResult<'ctx> {
-    #[allow(dead_code)]
     max_power: u64,
     final_power: Power<'ctx>,
 }
 
+#[allow(dead_code)] // retained for the §6.2 BMC discharge of F(seed, fsm_state)
 fn build_unrolled<'ctx>(
     fsm_name: &str,
     n: u64,
@@ -530,65 +533,11 @@ fn power_node_count<'ctx>(p: &Power<'ctx>) -> usize {
     seen.len()
 }
 
-/// Lower `halts_within(fsm_name, n)` into outer-solver assertions via names-match binding.
-pub fn assert_halts_within(
-    fsm_name: &str,
-    n: i64,
-    ctx: &'static Context,
-    solver: &Solver<'static>,
-    outer_env: &mut HashMap<String, Var<'static>>,
-    schemas: &HashMap<String, SchemaDecl>,
-    registry: &DatatypeRegistry,
-    enums: Option<&EnumRegistry>,
-) -> Result<(), HaltsWithinError> {
-    if n < 0 {
-        return Err(HaltsWithinError::Internal(format!(
-            "halts_within({fsm_name}, {n}): N must be non-negative"
-        )));
-    }
-    let schema = schemas.get(fsm_name).ok_or_else(||
-        HaltsWithinError::UnknownFsm(fsm_name.to_string()))?;
-    if n == 0 {
-        solver.assert(&Bool::from_bool(ctx, false)); // cannot halt in zero ticks
-        return Ok(());
-    }
-
-    let (f1, input_consts, _pairs) = build_f1(
-        fsm_name, schema, schemas, ctx, registry, enums,
-    )?;
-
-    let result = build_unrolled(fsm_name, n as u64, f1, &input_consts)?;
-
-    // Bind F^N input consts to outer env by name; unmatched consts stay free (existential).
-    let mut from: Vec<Dynamic<'static>> = Vec::new();
-    let mut to: Vec<Dynamic<'static>> = Vec::new();
-    for (name, in_const) in &input_consts {
-        if let Some(outer_var) = outer_env.get(name) {
-            let outer_dyn = match outer_var {
-                Var::IntVar(i)  => Dynamic::from_ast(i),
-                Var::BoolVar(b) => Dynamic::from_ast(b),
-                Var::RealVar(r) => Dynamic::from_ast(r),
-                Var::EnumVar { ast, .. } => Dynamic::from_ast(ast),
-                Var::PinnedInt(v) => {
-                    Dynamic::from_ast(&Int::from_i64(ctx, *v))
-                }
-                _ => continue,
-            };
-            from.push(in_const.clone());
-            to.push(outer_dyn);
-        }
-    }
-    let pairs: Vec<(&Dynamic<'static>, &Dynamic<'static>)> =
-        from.iter().zip(to.iter()).collect();
-    let halt_bound_dyn = Dynamic::from_ast(&result.final_power.halt_aggregate)
-        .substitute(&pairs);
-    let halt_bound = halt_bound_dyn.as_bool()
-        .expect("halt remains Bool after input substitution");
-    let halt_bound = halt_bound.simplify();
-
-    solver.assert(&halt_bound);
-    Ok(())
-}
+// The `halts_within(F, N)` surface (and its `assert_halts_within` lowering)
+// was removed: halting is implicit in the embed constraint `F(seed, fsm_state)`.
+// The closed-form unroller below (`build_f1`/`double`/`series`/`build_unrolled`)
+// is retained — `collapse_run` (tier-1 JIT) uses `build_f1`/`double`, and the
+// N-fold halt-aggregate assembly is reused by the §6.2 BMC discharge path.
 
 // Tier-1 nested-run: reads halted-state expression (not halt Bool) into a Z3Program
 // for JIT. See `docs/design/nested-fsm-strategies.md` §7 step 3.

@@ -1,84 +1,85 @@
--- 34_halts_within — FSM halt as a *constraint*, proved without
--- running the FSM, via log-spaced (exponentiation-by-squaring)
--- composition of the transition with itself.
+-- 34_embed_settles — FSM halt as a *constraint*, via the embed surface
+-- `F(seed, fsm_state)` (no `run()`, no `halts_within` — both removed).
 --
 -- Run:   evident effect-run examples/test_34_halts_within.ev
 -- Test:  evident test examples/test_34_halts_within.ev
--- Trace: EVIDENT_FSM_UNROLL_TRACE=1 evident test examples/test_34_halts_within.ev
 --
--- `halts_within(F, N)` asserts that the FSM body named `F` reaches a
--- halt state within N ticks. The lowering builds F^N — F composed with
--- itself N times — by exponentiation-by-squaring (cache F^1, F^2, F^4,
--- …, F^512, simplify after each doubling) and asserts the cumulative
--- halt witness `∃ k ∈ [1,N] : halt_k`. For an *affine* body (the state
--- update is linear in the carried state) the composed transition
--- collapses to closed form, so F^1000 is as cheap to build as F^4 —
--- a counter at N = 16,000 is still just `count − 16000`.
+-- An `fsm` embedded in another schema is a CONSTRAINT: `F(seed, fsm_state)`
+-- binds `fsm_state` to F's settled (halted) state reachable from `seed`.
+-- There is no return value and no explicit "within N" bound — halting is
+-- IMPLICIT: if F cannot settle, no such `fsm_state` exists and the
+-- constraint is UNSAT. The old `halts_within(F, N)` Bool question ("does F
+-- reach halt within N ticks?") is subsumed by the SAT/UNSAT of the embed.
 --
--- An affine-step detector gates the technique: it probes 3 doublings
--- and, if the state-transition node count is still growing > 1.5× per
--- doubling, declines cleanly (branching / data-dependent bodies — game
--- physics, multi-state dispatch — don't collapse; log-unroll buys
--- nothing there). See docs/design/fsm-halts-within.md.
+-- The load-bearing capability (§1.3): because `fsm_state` is an ordinary
+-- parent-scope variable, the parent may *further constrain* it — a
+-- postcondition over the settled state. The solver must satisfy the
+-- child's whole run AND the parent's property.
 --
 -- HALT CONVENTION: the FSM is written terse — the state var is a
 -- first-line param `count ∈ Int` plus a `halt ∈ Bool`; `count` is this
 -- tick's value, `_count` the previous tick's. `halt` reads the input
--- (`_count`), so `halts_within(F, N)` holds iff `halt` is true at the
--- start of some tick in 1..=N. A counter starting at 50 with
--- `halt = (_count ≤ 0)` thus first halts at tick 51 (the tick whose
--- input count is 0). (`unify_state_syntax` rewrites this to the
--- `count, count_next ∈ Int` pair the unroll composer consumes.)
+-- (`_count`), so a counter starting at 50 with `halt = (_count ≤ 0)`
+-- first halts at the tick whose input count is 0, settling at 0.
+-- (`unify_state_syntax` rewrites this to the `count, count_next ∈ Int`
+-- pair the embed machinery consumes.)
 
 import "stdlib/runtime.ev"
 
 -- ── The transition under verification ────────────────────────────
 -- The pure state→state function, terse form. Labeled `fsm` (the keyword
--- is the sole FSM signal); because it is the target of `halts_within(...)`
--- it is embedded-only — the scheduler never auto-instantiates a
--- referenced FSM. `halts_within` looks it up by name and composes its
--- body. `count`/`halt` are clean equalities — that's the "function
--- shape" the closed-form composer extracts after the terse→pair rewrite.
+-- is the sole FSM signal); because it appears as the head of a 2-arg
+-- embed call `decrement(seed, fsm_state)` it is embedded-only — the
+-- scheduler never auto-instantiates a referenced FSM. `count`/`halt` are
+-- clean equalities — the FSM shape the embed reads after the terse→pair
+-- rewrite.
 fsm decrement(count ∈ Int, halt ∈ Bool)
     count = _count - 1
     halt  = (_count ≤ 0)
 
--- ── Static verification: halts_within over the affine counter ────
--- F^N halt-witness for this body is `count ≤ N-1` (after Z3 folds the
--- per-tick disjunction once the initial count is pinned). Starting at
--- count = 50, the FSM halts within N iff N ≥ 51.
+-- ── Static verification: the embed settles, and the parent constrains it ──
+-- `decrement(50, final)` runs the FSM to halt and binds `final` to the
+-- settled state (0). The further constraint on `final` is the parent
+-- postcondition the solver must also satisfy.
 
--- Reaches zero well within 1000 ticks.
-claim sat_decrement_halts_by_1000
-    count ∈ Int = 50
-    halts_within(decrement, 1000)
+-- The settled state is exactly 0.
+claim sat_decrement_settles_to_zero
+    final ∈ Int
+    decrement(50, final)
+    final = 0
 
--- And within 100.
-claim sat_decrement_halts_by_100
-    count ∈ Int = 50
-    halts_within(decrement, 100)
+-- Parent postcondition: the settled state is non-positive (it halts).
+claim sat_decrement_settles_nonpositive
+    final ∈ Int
+    decrement(50, final)
+    final ≤ 0
 
--- Boundary: 50 down to 0 reaches halt exactly at tick 51.
-claim sat_decrement_halts_at_51
-    count ∈ Int = 50
-    halts_within(decrement, 51)
+-- A smaller seed settles to the same terminal state.
+claim sat_decrement_from_three
+    final ∈ Int
+    decrement(3, final)
+    final = 0
 
--- One tick short of the boundary — has NOT halted yet.
-claim unsat_decrement_halts_by_50
-    count ∈ Int = 50
-    halts_within(decrement, 50)
+-- The settled state is pinned, not free: an inconsistent parent
+-- postcondition makes the embed UNSAT.
+claim unsat_decrement_not_99
+    final ∈ Int
+    decrement(50, final)
+    final = 99
 
--- Far short: 50 can't reach 0 in 5 ticks.
-claim unsat_decrement_halts_by_5
-    count ∈ Int = 50
-    halts_within(decrement, 5)
+-- A seed already at/below the halt boundary settles to itself (zero
+-- advancement) — so it can never be positive.
+claim unsat_decrement_already_halted_positive
+    final ∈ Int
+    decrement(-5, final)
+    final = 7
 
 -- ── Runnable form: the same transition, with effects ─────────────
 -- The operational version of `decrement`: a pure-counter fsm using the
 -- `_var` time-shift (`count = is_first_tick ? START : _count - 1`),
 -- which the runtime rewrites to the same count/count_next pair the
 -- static claims verify. It counts 5 → 0 and exits, demonstrating the
--- halt that `halts_within` proves statically.
+-- halt that the embed constraint proves statically.
 fsm countdown
     count ∈ Int = (is_first_tick ? 5 : _count - 1)
     halt  ∈ Bool = (count ≤ 0)

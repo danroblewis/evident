@@ -278,24 +278,27 @@ fsm prev_tick_build(state ∈ PTB, halt ∈ Bool)
 
 -- A single identifier in a constraint reaches the accumulator.
 claim sat_one_ident
-    final ∈ IW = run(inject_collect, WExpr(EIdentifier("state_next")))
+    final ∈ IW
+    inject_collect(WExpr(EIdentifier("state_next")), final)
     final = IWDone(NameCons("state_next", NameNil))
 
 -- A literal contributes nothing.
 claim sat_literal_none
-    final ∈ IW = run(inject_collect, WExpr(EInt(5)))
+    final ∈ IW
+    inject_collect(WExpr(EInt(5)), final)
     final = IWDone(NameNil)
 
 -- A binary over two idents: pushed a-then-b, popped a first, so the
 -- accumulator prepends to [b, a] (head is the last-visited).
 claim sat_binary_two_idents
-    final ∈ IW = run(inject_collect,
-        WExpr(EBinary(OpEq, EIdentifier("state_next"), EIdentifier("effects"))))
+    final ∈ IW
+    inject_collect(WExpr(EBinary(OpEq, EIdentifier("state_next"), EIdentifier("effects"))), final)
     final = IWDone(NameCons("effects", NameCons("state_next", NameNil)))
 
 -- The accumulator is threaded, not free: a literal can't conjure a name.
 claim unsat_literal_is_not_a_name
-    final ∈ IW = run(inject_collect, WExpr(EInt(5)))
+    final ∈ IW
+    inject_collect(WExpr(EInt(5)), final)
     final = IWDone(NameCons("a", NameNil))
 
 -- ── Static verification: the DECISION logic (#18 keystone) ────────────
@@ -307,8 +310,8 @@ claim unsat_literal_is_not_a_name
 -- All three slots referenced, none declared, a state type present →
 -- state_next, last_results, effects all injected (in that order).
 claim sat_build_all_three
-    out ∈ FPB = run(fsm_params_build,
-        MakeFPBInput(true, false, true, false, true, false, "GameState", true))
+    out ∈ FPB
+    fsm_params_build(MakeFPBInput(true, false, true, false, true, false, "GameState", true), out)
     out = FPBDone(BILCons(BIMembership("state_next", "GameState", PNone),
             BILCons(BIMembership("last_results", "Seq(Result)", PNone),
               BILCons(BIMembership("effects", "Seq(Effect)", PNone), BILNil))))
@@ -317,27 +320,27 @@ claim sat_build_all_three
 -- `(r ∧ ¬h)` decision computes false for each → empty list. (Pre-GAPB the
 -- destructured `¬have_*` read wrong and this would have mis-injected.)
 claim sat_build_all_declared
-    out ∈ FPB = run(fsm_params_build,
-        MakeFPBInput(true, true, true, true, true, true, "GameState", true))
+    out ∈ FPB
+    fsm_params_build(MakeFPBInput(true, true, true, true, true, true, "GameState", true), out)
     out = FPBDone(BILNil)
 
 -- state_next referenced + undeclared but NO state type (hst = false) →
 -- the `… ∧ hst` guard suppresses state_next; effects still injected.
 claim sat_build_no_state_type
-    out ∈ FPB = run(fsm_params_build,
-        MakeFPBInput(true, false, false, false, true, false, "", false))
+    out ∈ FPB
+    fsm_params_build(MakeFPBInput(true, false, false, false, true, false, "", false), out)
     out = FPBDone(BILCons(BIMembership("effects", "Seq(Effect)", PNone), BILNil))
 
 -- prev_tick_build: one `_var` pair + is_first_tick requested.
 claim sat_prev_one_var
-    out ∈ PTB = run(prev_tick_build,
-        MakePTBInput(SPLCons(MakeStrPair("_count", "Int"), SPLNil), true))
+    out ∈ PTB
+    prev_tick_build(MakePTBInput(SPLCons(MakeStrPair("_count", "Int"), SPLNil), true), out)
     out = PTBDone(BILCons(BIMembership("is_first_tick", "Bool", PNone),
             BILCons(BIMembership("_count", "Int", PNone), BILNil)))
 
 -- prev_tick_build: is_first_tick NOT requested (aft = false, the
 -- Bool-as-ITE-cond #18 read) → only the `_var` membership.
 claim sat_prev_no_first_tick
-    out ∈ PTB = run(prev_tick_build,
-        MakePTBInput(SPLCons(MakeStrPair("_pos", "IVec2"), SPLNil), false))
+    out ∈ PTB
+    prev_tick_build(MakePTBInput(SPLCons(MakeStrPair("_pos", "IVec2"), SPLNil), false), out)
     out = PTBDone(BILCons(BIMembership("_pos", "IVec2", PNone), BILNil))

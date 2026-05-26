@@ -53,8 +53,9 @@ pub enum BodyItem {
     /// Any other constraint (comparison, arithmetic equality, etc.).
     Constraint(Expr),
 
-    /// `halts_within(F, N)` — log-spaced exponentiation-by-squaring halt assertion.
-    /// Body-item (not Expr): lowering emits a set of solver assertions, not a single Bool.
+    /// `halts_within(F, N)` — REMOVED surface (halting is implicit in the embed
+    /// constraint `F(seed, fsm_state)`). The parser no longer produces this; the
+    /// variant is retained vestigially for the encode/decode AST mirror only.
     HaltsWithin { fsm_name: String, n: i64 },
 }
 
@@ -113,8 +114,12 @@ pub enum Expr {
     /// Use `match` to extract payload; use `e = Ctor(7)` for literal-payload comparison.
     Matches(Box<Expr>, MatchPattern),
 
-    /// `run(F, init)` — nested-FSM run-to-halt, rewritten to a literal before outer solve.
-    /// v1: FSM must be effect-free, single state pair; checked at load time.
+    /// Settled-state of an embedded FSM. Produced ONLY by `lower_fsm_application`
+    /// (`runtime/nested.rs`) from a 2-arg call to an `fsm`-keyword schema
+    /// `F(seed, fsm_state)` → `fsm_state = RunFsm{ fsm: F, init: seed }`. No longer
+    /// a parser hook (`run(...)` was removed). Resolved to a literal before the
+    /// outer solve in the forward regime; FSM must be a single state pair (validated
+    /// at load via `validate_run_targets`).
     RunFsm { fsm: String, init: Box<Expr> },
 }
 

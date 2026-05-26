@@ -37,7 +37,8 @@ fsm countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(
     effects = ⟨Println(msg)⟩
 
 fsm main
-    result ∈ Int = run(countdown, 3)
+    result ∈ Int
+    countdown(3, result)
     reached_zero ∈ Bool = (result ≤ 0)
     effects = (reached_zero
         ? ⟨Println("PARENT-DONE"), Exit(0)⟩
@@ -155,8 +156,8 @@ fn run_result_still_pins_into_outer_query() {
     // state still pins into the outer model as before.
     let mut rt = rt_with(SRC);
     rt.load_source(
-        "claim sat_outer\n    final ∈ Int = run(countdown, 3)\n    final = 0\n",
+        "claim sat_outer\n    final ∈ Int\n    countdown(3, final)\n    final = 0\n",
     ).expect("load outer claim");
     let qr = rt.query("sat_outer", &HashMap::new()).expect("query");
-    assert!(qr.satisfied, "run(countdown, 3) must pin final = 0");
+    assert!(qr.satisfied, "countdown(3, final) must pin final = 0");
 }

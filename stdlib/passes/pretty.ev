@@ -288,102 +288,111 @@ fsm pretty_walk(state ∈ PS, halt ∈ Bool)
 
 -- A bare identifier.
 claim sat_ident
-    final ∈ PS = run(pretty_walk, WExpr(EIdentifier("counter")))
+    final ∈ PS
+    pretty_walk(WExpr(EIdentifier("counter")), final)
     final = PDone("counter")
 
 -- A number renders via str_from_int (int→string gap closed).
 claim sat_int
-    final ∈ PS = run(pretty_walk, WExpr(EInt(42)))
+    final ∈ PS
+    pretty_walk(WExpr(EInt(42)), final)
     final = PDone("42")
 
 -- A negative number reattaches the sign.
 claim sat_int_negative
-    final ∈ PS = run(pretty_walk, WExpr(EInt(0 - 7)))
+    final ∈ PS
+    pretty_walk(WExpr(EInt(0 - 7)), final)
     final = PDone("-7")
 
 -- A Bool renders via the `b ? "true" : "false"` ternary.
 claim sat_bool
-    final ∈ PS = run(pretty_walk, WExpr(EBool(true)))
+    final ∈ PS
+    pretty_walk(WExpr(EBool(true)), final)
     final = PDone("true")
 
 -- A Unicode operator glyph survives the round-trip (#16 closed).
 claim sat_binary_unicode
-    final ∈ PS = run(pretty_walk, WExpr(EBinary(OpAnd, EIdentifier("p"), EIdentifier("q"))))
+    final ∈ PS
+    pretty_walk(WExpr(EBinary(OpAnd, EIdentifier("p"), EIdentifier("q"))), final)
     final = PDone("p ∧ q")
 
 -- A membership body item renders the `∈` glyph faithfully.
 claim sat_membership_unicode
-    final ∈ PS = run(pretty_walk, WBody(BIMembership("x", "Int", PNone)))
+    final ∈ PS
+    pretty_walk(WBody(BIMembership("x", "Int", PNone)), final)
     final = PDone("x ∈ Int")
 
 -- Recursion routed: a binary with an ASCII operator renders BOTH operands.
 claim sat_binary_ascii
-    final ∈ PS = run(pretty_walk, WExpr(EBinary(OpLt, EIdentifier("counter"), EIdentifier("limit"))))
+    final ∈ PS
+    pretty_walk(WExpr(EBinary(OpLt, EIdentifier("counter"), EIdentifier("limit"))), final)
     final = PDone("counter < limit")
 
 -- Nested binary: the inner Binary operand is parenthesized, exactly like
 -- RustPretty (`a + b` inside `* c` → `(a + b) * c`).
 claim sat_binary_nested_parens
-    final ∈ PS = run(pretty_walk,
-        WExpr(EBinary(OpMul, EBinary(OpAdd, EIdentifier("a"), EIdentifier("b")), EIdentifier("c"))))
+    final ∈ PS
+    pretty_walk(WExpr(EBinary(OpMul, EBinary(OpAdd, EIdentifier("a"), EIdentifier("b")), EIdentifier("c"))), final)
     final = PDone("(a + b) * c")
 
 -- A call recurses into its argument list (comma-separated).
 claim sat_call_args
-    final ∈ PS = run(pretty_walk,
-        WExpr(ECall("f", ELCons(EIdentifier("x"), ELCons(EIdentifier("y"), ELNil)))))
+    final ∈ PS
+    pretty_walk(WExpr(ECall("f", ELCons(EIdentifier("x"), ELCons(EIdentifier("y"), ELNil)))), final)
     final = PDone("f(x, y)")
 
 -- Nested field + index, fully recursive.
 claim sat_field_index
-    final ∈ PS = run(pretty_walk,
-        WExpr(EIndex(EField(EIdentifier("state"), "dots"), EIdentifier("i"))))
+    final ∈ PS
+    pretty_walk(WExpr(EIndex(EField(EIdentifier("state"), "dots"), EIdentifier("i"))), final)
     final = PDone("state.dots[i]")
 
 -- Ternary, recursive.
 claim sat_ternary
-    final ∈ PS = run(pretty_walk,
-        WExpr(ETernary(EIdentifier("c"), EIdentifier("a"), EIdentifier("b"))))
+    final ∈ PS
+    pretty_walk(WExpr(ETernary(EIdentifier("c"), EIdentifier("a"), EIdentifier("b"))), final)
     final = PDone("(c ? a : b)")
 
 -- `matches` with a constructor pattern carrying binds (all ASCII).
 claim sat_matches_pattern
-    final ∈ PS = run(pretty_walk,
-        WExpr(EMatches(EIdentifier("e"), PatCtor("ECall", BLCons(BindName("nm"), BLCons(BindWildcard, BLNil))))))
+    final ∈ PS
+    pretty_walk(WExpr(EMatches(EIdentifier("e"), PatCtor("ECall", BLCons(BindName("nm"), BLCons(BindWildcard, BLNil))))), final)
     final = PDone("(e matches ECall(nm, _))")
 
 -- A NESTED constructor sub-pattern (`BindCtor`, session SEED-marshal):
 -- `Node(Leaf(a), b)` must render its inner ctor, not a `_`.
 claim sat_matches_nested_ctor
-    final ∈ PS = run(pretty_walk,
-        WExpr(EMatches(EIdentifier("e"),
+    final ∈ PS
+    pretty_walk(WExpr(EMatches(EIdentifier("e"),
             PatCtor("Node",
                 BLCons(BindCtor("Leaf", BLCons(BindName("a"), BLNil)),
-                    BLCons(BindName("b"), BLNil))))))
+                    BLCons(BindName("b"), BLNil))))), final)
     final = PDone("(e matches Node(Leaf(a), b))")
 
 -- A TOP-LEVEL bind arm (`PatBind`, session SEED-marshal): `other ⇒ …`
 -- renders the bound name, not `_`.
 claim sat_match_top_level_bind
-    final ∈ PS = run(pretty_walk,
-        WExpr(EMatch(EIdentifier("x"),
+    final ∈ PS
+    pretty_walk(WExpr(EMatch(EIdentifier("x"),
             MALCons(MakeMatchArm(PatCtor("Leaf", BLCons(BindName("n"), BLNil)), EIdentifier("n")),
-                MALCons(MakeMatchArm(PatBind("other"), EIdentifier("z")), MALNil)))))
+                MALCons(MakeMatchArm(PatBind("other"), EIdentifier("z")), MALNil)))), final)
     final = PDone("match x { Leaf(n) ⇒ n | other ⇒ z }")
 
 -- A constraint body item delegates to the Expr walk.
 claim sat_constraint_delegates
-    final ∈ PS = run(pretty_walk, WBody(BIConstraint(EIdentifier("on_ground"))))
+    final ∈ PS
+    pretty_walk(WBody(BIConstraint(EIdentifier("on_ground"))), final)
     final = PDone("on_ground")
 
 -- A passthrough body item.
 claim sat_passthrough
-    final ∈ PS = run(pretty_walk, WBody(BIPassthrough("LineReader")))
+    final ∈ PS
+    pretty_walk(WBody(BIPassthrough("LineReader")), final)
     final = PDone("..LineReader")
 
 -- The accumulator is threaded, not free: the call renders in argument
 -- order, never a permutation a free Z3 var could pick.
 claim unsat_call_wrong_order
-    final ∈ PS = run(pretty_walk,
-        WExpr(ECall("f", ELCons(EIdentifier("x"), ELCons(EIdentifier("y"), ELNil)))))
+    final ∈ PS
+    pretty_walk(WExpr(ECall("f", ELCons(EIdentifier("x"), ELCons(EIdentifier("y"), ELNil)))), final)
     final = PDone("f(y, x)")

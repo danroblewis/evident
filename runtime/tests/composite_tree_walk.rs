@@ -153,9 +153,9 @@ fn composite_init_through_outer_query() {
     // pins the outer constraint.
     let mut rt = rt_with(SUM1);
     rt.load_source(
-        "claim sat_init\n    final ∈ W = run(sum1, Leaf(42))\n    final = WDone(42)\n",
+        "claim sat_init\n    final ∈ W\n    sum1(Leaf(42), final)\n    final = WDone(42)\n",
     ).expect("load outer claim");
-    assert!(sat(&rt, "sat_init"), "run(sum1, Leaf(42)) should pin final = WDone(42)");
+    assert!(sat(&rt, "sat_init"), "sum1(Leaf(42), final) should pin final = WDone(42)");
 }
 
 // ── composite final-state return ────────────────────────────────────
@@ -179,11 +179,11 @@ fn composite_return_nested_enum_with_nullary_terminator() {
     // identifier (not a zero-arg call) so the outer equality translates.
     let mut rt = rt_with(BUILD_STACK);
     rt.load_source(
-        "claim sat_ret\n    final ∈ W1 = run(build_stack, 5)\n    \
+        "claim sat_ret\n    final ∈ W1\n    build_stack(5, final)\n    \
          final = D1(Push(5, Push(6, Empty)))\n",
     ).expect("load outer claim");
     assert!(sat(&rt, "sat_ret"),
-        "run should return D1(Push(5, Push(6, Empty))) and pin it");
+        "build_stack(5, final) should return D1(Push(5, Push(6, Empty))) and pin it");
 
     // And the run_nested value itself is the structured composite.
     let v = run_nested(&rt, "build_stack", Value::Int(5), 10_000).expect("run");

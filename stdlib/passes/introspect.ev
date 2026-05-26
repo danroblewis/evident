@@ -170,13 +170,13 @@ fsm introspect_prepend(state ∈ PState, halt ∈ Bool)
 
 -- Replace the MIDDLE item: [a, b, c] @ idx 1 → [a, X, c].
 claim sat_replace_middle
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KClaim, "f", 0,
                 BILCons(BIConstraint(EIdentifier("a")),
                   BILCons(BIConstraint(EIdentifier("b")),
                     BILCons(BIConstraint(EIdentifier("c")), BILNil)))),
-            1, BIPassthrough("X")))
+            1, BIPassthrough("X")), final)
     final = RDone(MakeSchemaDecl(KClaim, "f", 0,
         BILCons(BIConstraint(EIdentifier("a")),
           BILCons(BIPassthrough("X"),
@@ -184,24 +184,24 @@ claim sat_replace_middle
 
 -- Replace the HEAD item: [a, b] @ idx 0 → [X, b].
 claim sat_replace_head
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KFsm, "g", 1,
                 BILCons(BIConstraint(EIdentifier("a")),
                   BILCons(BIConstraint(EIdentifier("b")), BILNil))),
-            0, BIPassthrough("X")))
+            0, BIPassthrough("X")), final)
     final = RDone(MakeSchemaDecl(KFsm, "g", 1,
         BILCons(BIPassthrough("X"),
           BILCons(BIConstraint(EIdentifier("b")), BILNil))))
 
 -- Replace the LAST item: [a, b] @ idx 1 → [a, X].
 claim sat_replace_last
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KType, "h", 0,
                 BILCons(BIConstraint(EIdentifier("a")),
                   BILCons(BIConstraint(EIdentifier("b")), BILNil))),
-            1, BIPassthrough("X")))
+            1, BIPassthrough("X")), final)
     final = RDone(MakeSchemaDecl(KType, "h", 0,
         BILCons(BIConstraint(EIdentifier("a")),
           BILCons(BIPassthrough("X"), BILNil))))
@@ -209,12 +209,12 @@ claim sat_replace_last
 -- Out-of-bounds index (idx 5 ≥ len 2) → body returned UNCHANGED. (The Rust
 -- shim guards this case anyway; the FSM is defensively a no-op.)
 claim sat_replace_out_of_bounds
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KClaim, "f", 0,
                 BILCons(BIConstraint(EIdentifier("a")),
                   BILCons(BIConstraint(EIdentifier("b")), BILNil))),
-            5, BIPassthrough("X")))
+            5, BIPassthrough("X")), final)
     final = RDone(MakeSchemaDecl(KClaim, "f", 0,
         BILCons(BIConstraint(EIdentifier("a")),
           BILCons(BIConstraint(EIdentifier("b")), BILNil))))
@@ -222,40 +222,40 @@ claim sat_replace_out_of_bounds
 -- Replace preserves keyword / name / param_count: only the body changes.
 -- (A wrong param_count here would surface the marshaler-drop finding.)
 claim sat_replace_preserves_header
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KFsm, "game", 2,
                 BILCons(BIConstraint(EIdentifier("only")), BILNil)),
-            0, BIMembership("x", "Int", PNone)))
+            0, BIMembership("x", "Int", PNone)), final)
     final = RDone(MakeSchemaDecl(KFsm, "game", 2,
         BILCons(BIMembership("x", "Int", PNone), BILNil)))
 
 -- Prepend a membership at the head: [a] → [x ∈ Int, a].
 claim sat_prepend_membership
-    final ∈ PState = run(introspect_prepend,
-        MakePrependReq(
+    final ∈ PState
+    introspect_prepend(MakePrependReq(
             MakeSchemaDecl(KClaim, "c", 0,
                 BILCons(BIConstraint(EIdentifier("a")), BILNil)),
-            BIMembership("x", "Int", PNone)))
+            BIMembership("x", "Int", PNone)), final)
     final = PDone(MakeSchemaDecl(KClaim, "c", 0,
         BILCons(BIMembership("x", "Int", PNone),
           BILCons(BIConstraint(EIdentifier("a")), BILNil))))
 
 -- Prepend onto an empty body: [] → [x ∈ Int].
 claim sat_prepend_empty
-    final ∈ PState = run(introspect_prepend,
-        MakePrependReq(MakeSchemaDecl(KClaim, "c", 0, BILNil),
-            BIMembership("x", "Int", PNone)))
+    final ∈ PState
+    introspect_prepend(MakePrependReq(MakeSchemaDecl(KClaim, "c", 0, BILNil),
+            BIMembership("x", "Int", PNone)), final)
     final = PDone(MakeSchemaDecl(KClaim, "c", 0,
         BILCons(BIMembership("x", "Int", PNone), BILNil)))
 
 -- The rebuild is threaded, not free: replacing index 0 can't leave the old
 -- head in place.
 claim unsat_replace_not_free
-    final ∈ RState = run(introspect_replace,
-        MakeReplaceReq(
+    final ∈ RState
+    introspect_replace(MakeReplaceReq(
             MakeSchemaDecl(KClaim, "f", 0,
                 BILCons(BIConstraint(EIdentifier("a")), BILNil)),
-            0, BIPassthrough("X")))
+            0, BIPassthrough("X")), final)
     final = RDone(MakeSchemaDecl(KClaim, "f", 0,
         BILCons(BIConstraint(EIdentifier("a")), BILNil)))
