@@ -69,23 +69,37 @@ public:
     EmitResult emit(const SchemaDecl &schema);
 
 private:
+    struct VariantInfo {
+        std::string enum_name;
+        std::vector<std::string> field_types;  // payload field type names ("Int", "LL", …)
+    };
+
     const Program &prog_;
     std::unordered_map<std::string, Sort> env_;
     std::vector<std::pair<std::string, Sort>> declared_;
     std::string out_;
 
-    // enum registries (built in M4; scalar subset leaves them empty)
+    // enum registries
     std::unordered_map<std::string, const EnumDecl *> enum_by_name_;
-    // variant name -> (enum name, field count)
-    std::unordered_map<std::string, std::pair<std::string, size_t>> variant_;
+    std::unordered_map<std::string, VariantInfo> variant_;  // variant name -> info
+
+    // active substitutions for match-arm binds (name -> already-emitted term)
+    std::unordered_map<std::string, std::string> subst_;
 
     void index_enums();
-    void emit_datatypes();
+    std::vector<std::string> reachable_enums(const SchemaDecl &schema);
+    void emit_datatypes(const SchemaDecl &schema);
+    std::string field_sort_name(const std::string &type_name);
 
     std::optional<Sort> sort_of(const Expr &e);
     std::string expr(const Expr &e);
     std::string binary(BinOp op, const Expr &a, const Expr &b);
     std::string in_expr(const Expr &lhs, const Expr &rhs);
+    std::string emit_match(const Expr &e);
+    std::string emit_matches(const Expr &e);
+    std::string emit_ctor_call(const Expr &e);
+    std::string recognizer(const std::string &ctor, const std::string &term);
+    std::string accessor(const std::string &ctor, size_t field_idx, const std::string &term);
 
     [[noreturn]] void fail(const std::string &m) { throw SmtError(m); }
 };
@@ -93,18 +107,81 @@ private:
 void Emitter::index_enums() {
     for (const auto &e : prog_.enums) {
         enum_by_name_[e.name] = &e;
-        for (const auto &v : e.variants)
-            variant_[v.name] = {e.name, v.fields.size()};
+        for (const auto &v : e.variants) {
+            VariantInfo info;
+            info.enum_name = e.name;
+            for (const auto &f : v.fields) info.field_types.push_back(f.type_name);
+            variant_[v.name] = std::move(info);
+        }
     }
 }
 
-void Emitter::emit_datatypes() {
-    // M4: emit declare-datatypes for enums. Scalar subset: nothing.
-    // (Implemented when enums are wired; left as a no-op preamble for now.)
+// SMT sort name for an enum payload field type: scalar -> its SMT name; enum
+// name -> itself (for recursion/refs); anything else is out of subset.
+std::string Emitter::field_sort_name(const std::string &tn) {
+    if (auto s = scalar_sort(tn)) return s->smt();
+    if (enum_by_name_.count(tn)) return tn;
+    fail("enum payload type `" + tn + "` unsupported (out of subset)");
+}
+
+// Which enums must be declared for `schema`: those named by a membership, plus
+// any enum reachable through payload fields (recursive / mutually-recursive).
+std::vector<std::string> Emitter::reachable_enums(const SchemaDecl &schema) {
+    std::vector<std::string> order;       // declaration order, deduped
+    std::unordered_map<std::string, bool> seen;
+    std::vector<std::string> work;
+
+    auto add = [&](const std::string &name) {
+        if (enum_by_name_.count(name) && !seen.count(name)) {
+            seen[name] = true;
+            order.push_back(name);
+            work.push_back(name);
+        }
+    };
+    for (const auto &item : schema.body)
+        if (item.kind == BodyItem::Kind::Membership) add(item.type_name);
+
+    while (!work.empty()) {
+        std::string e = work.back(); work.pop_back();
+        for (const auto &v : enum_by_name_[e]->variants)
+            for (const auto &f : v.fields)
+                if (enum_by_name_.count(f.type_name)) add(f.type_name);
+    }
+    // Emit in program declaration order for determinism.
+    std::vector<std::string> ordered;
+    for (const auto &e : prog_.enums)
+        if (seen.count(e.name)) ordered.push_back(e.name);
+    return ordered;
+}
+
+void Emitter::emit_datatypes(const SchemaDecl &schema) {
+    auto names = reachable_enums(schema);
+    if (names.empty()) return;
+
+    std::string sorts, bodies;
+    for (const auto &name : names) {
+        sorts += "(" + name + " 0)";
+        const EnumDecl *e = enum_by_name_[name];
+        std::string ctors;
+        for (const auto &v : e->variants) {
+            if (v.fields.empty()) {
+                ctors += "(" + v.name + ")";
+            } else {
+                std::string fields;
+                for (size_t i = 0; i < v.fields.size(); i++)
+                    fields += " (" + v.name + "_f" + std::to_string(i) + " " +
+                              field_sort_name(v.fields[i].type_name) + ")";
+                ctors += "(" + v.name + fields + ")";
+            }
+            ctors += " ";
+        }
+        bodies += "(" + ctors + ")";
+    }
+    out_ += "(declare-datatypes (" + sorts + ") (" + bodies + "))\n";
 }
 
 EmitResult Emitter::emit(const SchemaDecl &schema) {
-    emit_datatypes();
+    emit_datatypes(schema);
 
     // Pass 1: declarations.
     for (const auto &item : schema.body) {
@@ -159,11 +236,16 @@ std::optional<Sort> Emitter::sort_of(const Expr &e) {
             auto it = env_.find(e.str);
             if (it != env_.end()) return it->second;
             auto v = variant_.find(e.str);
-            if (v != variant_.end()) return Sort{Sort::Tag::Enum, v->second.first};
+            if (v != variant_.end()) return Sort{Sort::Tag::Enum, v->second.enum_name};
             return std::nullopt;
         }
         case K::Not: return Sort{Sort::Tag::Bool, {}};
         case K::In: case K::Matches: return Sort{Sort::Tag::Bool, {}};
+        case K::Match: {
+            for (const auto &arm : e.arms)
+                if (auto s = sort_of(*arm.body)) return s;
+            return std::nullopt;
+        }
         case K::Binary:
             switch (e.op) {
                 case BinOp::Eq: case BinOp::Neq: case BinOp::Lt: case BinOp::Le:
@@ -188,7 +270,7 @@ std::optional<Sort> Emitter::sort_of(const Expr &e) {
         }
         case K::Call: {
             auto v = variant_.find(e.str);
-            if (v != variant_.end()) return Sort{Sort::Tag::Enum, v->second.first};
+            if (v != variant_.end()) return Sort{Sort::Tag::Enum, v->second.enum_name};
             return std::nullopt;
         }
         default: return std::nullopt;
@@ -199,10 +281,12 @@ std::string Emitter::expr(const Expr &e) {
     using K = Expr::Kind;
     switch (e.kind) {
         case K::Ident: {
+            auto sub = subst_.find(e.str);
+            if (sub != subst_.end()) return sub->second;  // match-arm bind
             if (env_.count(e.str)) return e.str;
             auto v = variant_.find(e.str);
-            if (v != variant_.end() && v->second.second == 0) return e.str;  // nullary ctor
-            fail("undeclared identifier `" + e.str + "` (out of scalar subset)");
+            if (v != variant_.end() && v->second.field_types.empty()) return e.str;  // nullary ctor
+            fail("undeclared identifier `" + e.str + "` (out of subset)");
         }
         case K::Int:  return int_lit_safe(e.ival);
         case K::Real: return real_lit(e.rval);
@@ -214,20 +298,20 @@ std::string Emitter::expr(const Expr &e) {
             return "(ite " + expr(*e.children[0]) + " " + expr(*e.children[1]) +
                    " " + expr(*e.children[2]) + ")";
         case K::In: return in_expr(*e.children[0], *e.children[1]);
+        case K::Call:    return emit_ctor_call(e);
+        case K::Match:   return emit_match(e);
+        case K::Matches: return emit_matches(e);
 
-        // Out of scalar subset (some wired in M4).
+        // Out of subset (reported, never mis-emitted).
         case K::SetLit:  fail("set literal (not as ∈ RHS) unsupported");
         case K::SeqLit:  fail("sequence literal unsupported");
         case K::Range:   fail("bare range unsupported (only as ∈ RHS)");
         case K::Tuple:   fail("tuple unsupported");
         case K::Forall:  fail("∀ quantifier unsupported (quantifier-free subset)");
         case K::Exists:  fail("∃ quantifier unsupported (quantifier-free subset)");
-        case K::Call:    fail("call `" + e.str + "` unsupported");
         case K::Card:    fail("cardinality `#` unsupported");
         case K::Index:   fail("indexing `[]` unsupported");
         case K::Field:   fail("field access unsupported (records out of subset)");
-        case K::Match:   fail("match unsupported");
-        case K::Matches: fail("matches recognizer unsupported");
     }
     fail("unreachable expr kind");
 }
@@ -281,6 +365,100 @@ std::string Emitter::in_expr(const Expr &lhs, const Expr &rhs) {
         return s;
     }
     fail("∈ RHS must be a set literal or range in the scalar subset");
+}
+
+std::string Emitter::recognizer(const std::string &ctor, const std::string &term) {
+    return "((_ is " + ctor + ") " + term + ")";
+}
+
+std::string Emitter::accessor(const std::string &ctor, size_t field_idx, const std::string &term) {
+    return "(" + ctor + "_f" + std::to_string(field_idx) + " " + term + ")";
+}
+
+// `Ctor(arg, …)` -> `(Ctor arg …)`; nullary handled in expr() Ident path.
+std::string Emitter::emit_ctor_call(const Expr &e) {
+    auto v = variant_.find(e.str);
+    if (v == variant_.end()) fail("call `" + e.str + "` unsupported (not an enum constructor)");
+    const VariantInfo &info = v->second;
+    if (e.children.size() != info.field_types.size())
+        fail("constructor `" + e.str + "` arity mismatch (expected " +
+             std::to_string(info.field_types.size()) + ", got " +
+             std::to_string(e.children.size()) + ")");
+    if (info.field_types.empty()) return e.str;
+    std::string s = "(" + e.str;
+    for (const auto &arg : e.children) s += " " + expr(*arg);
+    s += ")";
+    return s;
+}
+
+// `e matches Ctor(_, …)` -> recognizer; payload binds ignored.
+std::string Emitter::emit_matches(const Expr &e) {
+    const Expr &scrut = *e.children[0];
+    auto ss = sort_of(scrut);
+    if (!ss || ss->tag != Sort::Tag::Enum)
+        fail("`matches` scrutinee must be enum-typed");
+    if (e.pattern.kind != MatchPattern::Kind::Ctor)
+        fail("`matches` requires a constructor pattern");
+    if (!variant_.count(e.pattern.name))
+        fail("`matches` unknown constructor `" + e.pattern.name + "`");
+    return recognizer(e.pattern.name, expr(scrut));
+}
+
+// match scrut \n  Ctor(binds) => body  ...  -> nested ite over recognizers, with
+// payload binds substituted (one level: Bind / Wildcard sub-patterns).
+std::string Emitter::emit_match(const Expr &e) {
+    const Expr &scrut = *e.children[0];
+    auto ss = sort_of(scrut);
+    if (!ss || ss->tag != Sort::Tag::Enum)
+        fail("match scrutinee must be enum-typed");
+    std::string S = expr(scrut);
+
+    // Emit one arm's body with its binds in scope (subst + temp env), restoring after.
+    auto emit_arm = [&](const MatchArm &arm) -> std::string {
+        std::vector<std::string> added_subst;
+        std::vector<std::string> added_env;
+        const MatchPattern &p = arm.pattern;
+        if (p.kind == MatchPattern::Kind::Ctor) {
+            auto v = variant_.find(p.name);
+            if (v == variant_.end()) fail("match: unknown constructor `" + p.name + "`");
+            const VariantInfo &info = v->second;
+            for (size_t i = 0; i < p.binds.size() && i < info.field_types.size(); i++) {
+                const MatchPattern &b = p.binds[i];
+                if (b.kind == MatchPattern::Kind::Bind) {
+                    subst_[b.name] = accessor(p.name, i, S);
+                    added_subst.push_back(b.name);
+                    if (auto fs = scalar_sort(info.field_types[i])) { env_[b.name] = *fs; added_env.push_back(b.name); }
+                    else if (enum_by_name_.count(info.field_types[i])) { env_[b.name] = Sort{Sort::Tag::Enum, info.field_types[i]}; added_env.push_back(b.name); }
+                } else if (b.kind == MatchPattern::Kind::Ctor) {
+                    fail("nested constructor patterns in match unsupported (one level only)");
+                }
+            }
+        } else if (p.kind == MatchPattern::Kind::Bind) {
+            subst_[p.name] = S;
+            added_subst.push_back(p.name);
+            env_[p.name] = *ss;
+            added_env.push_back(p.name);
+        }
+        std::string body = expr(*arm.body);
+        for (auto &n : added_subst) subst_.erase(n);
+        for (auto &n : added_env) env_.erase(n);
+        return body;
+    };
+
+    if (e.arms.empty()) fail("match has no arms");
+    // Last arm is the base else value (assumed to match by exhaustiveness).
+    std::string acc = emit_arm(e.arms.back());
+    for (size_t k = e.arms.size(); k-- > 1;) {
+        const MatchArm &arm = e.arms[k - 1];
+        std::string body = emit_arm(arm);
+        std::string cond;
+        if (arm.pattern.kind == MatchPattern::Kind::Ctor)
+            cond = recognizer(arm.pattern.name, S);
+        else
+            cond = "true";  // catch-all
+        acc = "(ite " + cond + " " + body + " " + acc + ")";
+    }
+    return acc;
 }
 
 }  // namespace

@@ -60,6 +60,12 @@ check_forced forced.ev forced_real_half x 1.5
 check_forced forced.ev forced_bool     q true
 check_forced forced.ev forced_negative x -5
 check_forced forced.ev forced_string   s '"hello"'
+# Enums (M4a): nullary, payload ctor, match extraction, matches recognizer.
+check_forced enums.ev forced_color             c Green
+check_forced enums.ev forced_color_by_elim     c Green
+check_forced enums.ev forced_result_ok         r 'Ok(7)'
+check_forced enums.ev forced_match_extract     n 42
+check_forced enums.ev forced_matches_recognizer b true
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

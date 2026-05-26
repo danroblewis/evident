@@ -99,6 +99,39 @@ static void test_chained_membership() {
     for (auto &[k, v] : r.bindings) if (k == "x") CHECK(v.i > 0 && v.i < 5, "solve: 0<x<5");
 }
 
+static void test_enum_nullary() {
+    auto r = run("enum Color = Red | Green | Blue\nclaim T\n    c ∈ Color\n    c = Green\n", "T");
+    CHECK(r.satisfied, "enum: nullary sat");
+    for (auto &[k, v] : r.bindings) if (k == "c")
+        CHECK(v.tag == Value::Tag::Enum && v.s == "Green", "enum: c=Green");
+}
+
+static void test_enum_payload_ctor() {
+    auto r = run("enum Result = Ok(Int) | Err(String)\nclaim T\n    r ∈ Result\n    r = Ok(7)\n", "T");
+    CHECK(r.satisfied, "enum: payload ctor sat");
+    for (auto &[k, v] : r.bindings) if (k == "r")
+        CHECK(v.tag == Value::Tag::Enum && v.s == "Ok(7)", "enum: r=Ok(7)");
+}
+
+static void test_enum_match_extract() {
+    auto r = run("enum Result = Ok(Int) | Err(String)\nclaim T\n    r ∈ Result\n    n ∈ Int\n"
+                 "    r = Ok(42)\n    n = match r\n        Ok(v) ⇒ v\n        Err(s) ⇒ 0\n", "T");
+    CHECK(r.satisfied, "enum: match sat");
+    for (auto &[k, v] : r.bindings) if (k == "n") CHECK(v.i == 42, "enum: match extracts 42");
+}
+
+static void test_enum_matches_recognizer() {
+    auto r = run("enum Result = Ok(Int) | Err(String)\nclaim T\n    r ∈ Result\n    b ∈ Bool\n"
+                 "    r = Ok(1)\n    b = (r matches Ok(_))\n", "T");
+    CHECK(r.satisfied, "enum: matches sat");
+    for (auto &[k, v] : r.bindings) if (k == "b") CHECK(v.b == true, "enum: matches true");
+}
+
+static void test_enum_unsat() {
+    auto r = run("enum Color = Red | Green | Blue\nclaim T\n    c ∈ Color\n    c = Red\n    c = Blue\n", "T");
+    CHECK(!r.satisfied, "enum: two distinct nullary unsat");
+}
+
 static void test_out_of_subset_reported() {
     bool threw = false;
     try {
@@ -119,6 +152,11 @@ int main() {
         test_solve_set_membership();
         test_solve_real();
         test_chained_membership();
+        test_enum_nullary();
+        test_enum_payload_ctor();
+        test_enum_match_extract();
+        test_enum_matches_recognizer();
+        test_enum_unsat();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {
         std::printf("EXCEPTION: %s\n", e.what());
