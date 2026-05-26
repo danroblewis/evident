@@ -49,44 +49,36 @@ def _evident(*args: str, stdin: str | None = None, timeout: int = 30) -> subproc
 def query(source: str, schema: str, given: dict[str, Any] | None = None,
           timeout: int = 30) -> dict:
     """
-    Query a schema and return a normalised result dict.
+    Sample a single model of a schema and return a normalised result.
 
     Returns: {"satisfied": bool, "bindings": {name: value, ...}}
 
-    The evident CLI uses two different JSON formats:
-      SAT:   exit 0, stdout = {binding: value, ...}  (just the bindings)
-      UNSAT: exit 1, stdout = {"satisfied": false}
-    This helper normalises both into a single consistent structure.
+    Backed by `evident sample <file> <schema> -n 1 --json`, which prints
+    a JSON array of models (the `query` subcommand was removed):
+      SAT:   stdout = `[{binding: value, ...}]`  → first model = bindings
+      UNSAT: stdout = `[]` (or empty / load error) → no model
+    A single-model sample is exactly a SAT/UNSAT decision plus one
+    witnessing assignment, which is what the old `query` returned.
     """
     with tempfile.NamedTemporaryFile(suffix='.ev', mode='w',
                                     delete=False, dir='/tmp') as f:
         f.write(source)
         tmp = f.name
     try:
-        args = ['query', tmp, schema, '--json']
+        args = ['sample', tmp, schema, '-n', '1', '--json']
         if given:
-            # Pass all given values in one --given flag (space-separated)
-            # Multiple --given flags only keeps the last one (argparse limitation)
+            # Pass all given values in one --given flag (space-separated).
             args += ['--given'] + [f'{k}={v}' for k, v in given.items()]
         result = _evident(*args, timeout=timeout)
         raw = result.stdout.strip()
-        if result.returncode == 0 and raw:
-            parsed = json.loads(raw)
-            # Two SAT shapes are accepted so the same suite runs against
-            # either the Python reference or the Rust port:
-            #   Python: `{<binding>: <value>, ...}` (just the bindings)
-            #   Rust:   `{"satisfied": true, "bindings": {<binding>: <value>}}`
-            if isinstance(parsed, dict) and 'satisfied' in parsed and 'bindings' in parsed:
-                return {'satisfied': bool(parsed['satisfied']),
-                        'bindings': parsed.get('bindings') or {}}
-            return {'satisfied': True, 'bindings': parsed}
-        elif raw:
-            parsed = json.loads(raw)
-            if 'satisfied' in parsed:
-                return {'satisfied': parsed['satisfied'],
-                        'bindings': parsed.get('bindings') or {}}
+        try:
+            models = json.loads(raw) if raw else []
+        except json.JSONDecodeError:
+            models = []
+        if isinstance(models, list) and models:
+            return {'satisfied': True, 'bindings': models[0] or {}}
         return {'satisfied': False, 'bindings': {}}
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         return {'satisfied': False, 'bindings': {}, '_error': str(e)}
     finally:
         os.unlink(tmp)
@@ -94,50 +86,40 @@ def query(source: str, schema: str, given: dict[str, Any] | None = None,
 
 def check(source: str, timeout: int = 30) -> dict[str, bool]:
     """
-    Run evident check and return {schema_name: satisfied} for all schemas.
-    Parses the text output (✓ / ✗ prefix lines).
+    Sat-check every schema in the file; return {schema_name: satisfied}.
+
+    Backed by `evident sample <file> --all --json` (the `check`
+    subcommand was removed — `sample --all` subsumes it). `--all --json`
+    emits a single JSON object `{"<schema>": <bool>, ...}`.
     """
     with tempfile.NamedTemporaryFile(suffix='.ev', mode='w',
                                     delete=False, dir='/tmp') as f:
         f.write(source)
         tmp = f.name
     try:
-        result = _evident('check', tmp, timeout=timeout)
-        results = {}
-        for line in (result.stdout + result.stderr).splitlines():
-            line = line.strip()
-            if line.startswith('✓') or line.startswith('✗'):
-                satisfied = line.startswith('✓')
-                name = line[1:].strip()
-                results[name] = satisfied
-        return results
+        result = _evident('sample', tmp, '--all', '--json', timeout=timeout)
+        raw = result.stdout.strip()
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            return {}
+        return {k: bool(v) for k, v in parsed.items()} if isinstance(parsed, dict) else {}
     finally:
         os.unlink(tmp)
 
 
-def execute(program_path: str, stdin_text: str = '',
-            timeout: int = 30) -> str:
-    """
-    Run a program via `evident execute` and return its stdout.
-    """
-    result = _evident('execute', program_path, stdin=stdin_text, timeout=timeout)
-    assert result.returncode == 0, (
-        f"evident execute failed:\nstderr: {result.stderr}"
-    )
-    return result.stdout
-
-
 def parse_errors(source: str, timeout: int = 10) -> list[dict]:
     """
-    Run evident check and return parse errors (expecting failure).
-    Returns list of error dicts or empty list if no errors.
+    Load a (possibly malformed) source and return parse/load errors.
+    Backed by `evident sample <file> --all --json`; a non-zero exit
+    means the file failed to load, surfacing the error on stderr.
     """
     with tempfile.NamedTemporaryFile(suffix='.ev', mode='w',
                                     delete=False, dir='/tmp') as f:
         f.write(source)
         tmp = f.name
     try:
-        result = _evident('check', tmp, '--json', timeout=timeout)
+        result = _evident('sample', tmp, '--all', '--json', timeout=timeout)
         if result.returncode != 0:
             # Try to extract structured errors from stderr
             return [{'message': result.stderr.strip()}]
