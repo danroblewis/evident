@@ -459,10 +459,13 @@ complex (see below).
 
 ### 8. Multi-FSM scheduler
 
-When the loaded program has more than one claim matching the FSM
-shape (state pair + `last_results ∈ Seq(Result)` + `effects ∈
-Seq(Effect)`), the runtime instantiates each as an independent FSM
-and coordinates them.
+When the loaded program has more than one schema **declared with the
+`fsm` keyword**, the runtime instantiates each as an independent FSM
+and coordinates them. The `fsm` keyword is the sole signal — there is
+no shape detection; `resolve_fsm` returns `None` for any non-`fsm`
+schema and the body walk only resolves *which slots* an already-`fsm`
+schema uses (state pair, `last_results ∈ Seq(Result)`, `effects ∈
+Seq(Effect)`, world, FTI).
 
 **Shared state via `world`**: if any FSM declares a `world ∈ World`
 parameter where `World` is a record type, that record acts as shared

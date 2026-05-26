@@ -111,13 +111,15 @@ test, so we hold them to a strict shape.
 Each file in `examples/` is named `test_NN_<name>.ev`
 and contains both:
 
-  * The multi-FSM program (one or more `claim`s with state
-    pair + `last_results ∈ ResultList` + `effects ∈ EffectList`).
+  * The multi-FSM program (one or more schemas declared with
+    the `fsm` keyword). An `fsm` may carry `state` / `_state`,
+    `last_results ∈ ResultList`, `effects ∈ EffectList` — but the
+    `fsm` keyword, NOT any body shape, is what makes it an FSM.
     Single-FSM demos are written as multi-FSM programs with
-    one FSM — the multi-FSM scheduler is the only execution
+    one `fsm` — the multi-FSM scheduler is the only execution
     path.
   * Inline `claim sat_*` / `claim unsat_*` static tests that
-    pin state/inputs and assert on the FSM's response.
+    pin state/inputs and assert on the fsm's response.
 
 Two test runners cover both halves:
 
@@ -131,11 +133,12 @@ Two test runners cover both halves:
 When adding a demo: drop the file in `examples/`, add a
 row to `EXPECTATIONS`. Both runners stay green.
 
-(The multi-FSM scheduler skips claims named `sat_*` / `unsat_*`
-from auto-instantiation runtime-wide — they have the FSM
-shape because they pin `state` / `effects` to assert
-properties, but they should never run as FSMs. This applies
-everywhere, not just to demo files.)
+(The `sat_*` / `unsat_*` static tests are declared `claim`, not
+`fsm`, so the scheduler never auto-instantiates them — the
+`fsm`-keyword gate excludes them. They pin `state` / inputs to
+assert properties and have FSM-like bodies, but FSM-ness is the
+keyword alone, never the body shape. This applies everywhere,
+not just to demo files.)
 
 ### 2. Demo files MUST NOT contain raw FFI calls
 
@@ -312,9 +315,13 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 ## Multi-FSM Runtime
 
 For programs run via `evident effect-run`, the multi-FSM scheduler
-in `runtime/src/effect_loop.rs` runs each top-level claim matching
-the FSM shape (state pair + EffectList + ResultList) as an
-independent FSM.
+in `runtime/src/effect_loop.rs` runs each top-level schema declared
+with the `fsm` keyword as an independent FSM. **The `fsm` keyword is
+the SOLE signal that a schema is an FSM — there is no shape
+detection** (no walking the body for a state pair / EffectList /
+ResultList to decide FSM-ness). `resolve_fsm` returns `None` for any
+non-`fsm` schema; the body walk only *resolves which slots* an
+already-`fsm` schema uses (session TT killed shape-detection).
 
 **Scheduler: subscription-driven (default).** An FSM ticks only when one of
 its inputs changes:
@@ -551,9 +558,12 @@ See [`docs/design/fsms-as-functions-impl.md`](docs/design/fsms-as-functions-impl
 
 ## Keyword Conventions
 
-All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes
-(`SchemaDecl`) and are interchangeable at the runtime level.  The distinction is
-a reading contract described in `docs/design/what-we-learned.md`:
+Four keywords — `type`, `claim`, `schema`, and `fsm` — all produce the same AST
+node (`SchemaDecl`).  `type`, `claim`, and `schema` are **interchangeable at the
+runtime level** — their distinction is a reading contract (below).  **`fsm` is
+NOT interchangeable**: it is the load-bearing, semantic signal that a schema is a
+finite state machine (see `fsm`, below).  The reading contract is described in
+`docs/design/what-we-learned.md`:
 
 **`type`** — Use for things that define the structure of a single record value.
 A type is a noun: something you instantiate and hold.  The constraints inside it
@@ -598,6 +608,29 @@ varies by context → `claim`.
 Prefer `type` when the thing is a noun (has a shape); prefer `claim` when it is a
 predicate (defines a relation or property).  The word `schema` does not appear in
 human-written Evident source files.
+
+**`fsm`** — The **sole** signal that a schema is a finite state machine.  A schema
+is run as an FSM (by the multi-FSM scheduler, by `run`/`halts_within`, and by every
+nested-FSM path) **if and only if it is declared `fsm`** — never because its body
+"looks like" an FSM.  There is **no shape detection** anywhere in the runtime:
+`effect_loop/fsm.rs::resolve_fsm` returns `None` for any non-`fsm` schema, and the
+body walk inside it only *resolves which slots* an already-`fsm` schema uses (state
+pair, `effects`, `last_results`, world, FTI) — it does not decide FSM-ness.  This is
+deliberate and load-bearing (session TT killed the old shape-detector):
+
+  * A `claim`/`type` that happens to carry a `state`/`effects` shape is **not** an
+    FSM — it is a plain constraint.  This is why `sat_*` / `unsat_*` static tests are
+    written as `claim` (they pin `state` to assert properties but must never be
+    scheduled).
+  * **Never describe, frame, port, or build anything as "detect an FSM by shape" /
+    "FSM-shaped schema."**  Say "a schema declared `fsm`."  When porting runtime
+    passes, the slot-*resolution* in `fsm.rs` is keyword-gated and stays in Rust;
+    do not self-host it as an "is-this-an-FSM classification" (that re-introduces
+    the rejected detect-by-shape model).
+  * Authoring: an `fsm` is written in the terse form — `fsm F(state ∈ T, …)` with
+    `_state` for the previous tick (see "Multi-FSM shared state" + the `_var`
+    sections).  The `state, state_next` source pair is the legacy form and is being
+    retired.
 
 **`..TypeName` (passthrough / trait composition)** — Brings another type's or
 claim's fields and constraints directly into the current scope without a dotted

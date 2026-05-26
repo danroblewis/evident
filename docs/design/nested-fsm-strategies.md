@@ -84,14 +84,15 @@ Three candidates were weighed.
 
 **(a) An explicit run-to-halt call: `result = run(F, initial)`.** `run`
 is a runtime-recognized builtin in expression position; `F` names a
-registered FSM-shaped schema (the same way `halts_within`'s first
-argument does), `initial` seeds its state, and the expression evaluates
-to `F`'s final state.
+registered schema **declared `fsm`** (the same keyword gate
+`halts_within`'s first argument uses — there is no shape detection),
+`initial` seeds its state, and the expression evaluates to `F`'s final
+state.
 
-**(b) A claim-call the runtime recognizes as FSM-shaped and runs.**
+**(b) A call the runtime recognizes as targeting an `fsm` and runs.**
 Write `result = F(initial)` and have the runtime notice that `F` is
-FSM-shaped (state pair + `halt`) and run it to completion instead of
-inlining one step.
+**declared `fsm`** (by keyword, not by a state-pair/`halt` shape) and
+run it to completion instead of inlining one step.
 
 **(c) Reuse the subclaim machinery with a "this one loops" marker** —
 e.g. `subclaim Loop ⟲ …`, a decorated subclaim the runtime drains.
@@ -109,14 +110,18 @@ inline?" — and (a) is the only candidate that answers it cleanly:
   because it is value-producing — it lives in expression position, not
   just at body-item level — but the recognition rule is the same one
   keyword.
-- **(b) is dangerous.** It silently overloads ordinary claim-call syntax:
-  the same `F(x)` means "inline one step" for most claims and "run to
-  halt" for FSM-shaped ones. A claim that *becomes* FSM-shaped (someone
-  adds a `halt`) would silently flip from a single inline to an unbounded
-  run — a footgun in the family of the `True`/`true` and `⇒`-precedence
-  traps the project already documents. Worse, the cost model inverts
-  invisibly: a one-step inline and a full run-to-halt should not share
-  surface syntax, because their costs differ by orders of magnitude.
+- **(b)'s disambiguator is the keyword, not shape.** `F(x)` means "inline
+  one step" when `F` is a `claim`, and "run to completion" when `F` is
+  declared `fsm` — the keyword on `F`'s declaration decides. There is **no
+  silent shape-flip**: adding a `halt` to a `claim` does NOT make it an fsm
+  (only the `fsm` keyword does), so the original "a claim that *becomes*
+  FSM-shaped flips to an unbounded run" footgun does not exist under the
+  keyword-only rule. The remaining real concern is **cost visibility**: a
+  one-step inline and a full run-to-halt share surface syntax, and their
+  costs differ by orders of magnitude. (The FAF impl-spec adopts exactly
+  this keyword-disambiguated surface — but as a *constraint*
+  `F(seed, fsm_state)`, not a return value; see
+  [`fsms-as-functions-impl.md`](fsms-as-functions-impl.md).)
 - **(a) makes the cost visible.** `run(...)` reads as "this is an
   execution, possibly an expensive one" — the reader sees that a whole
   FSM is driven here, the way a programmer sees a loop. Cost that is
@@ -158,10 +163,10 @@ because tier 3 *is* the scheduler (§ 2).
 
 **Detection summary.** `run(F, init)` ⇒ nested-FSM run; any other
 `G(args)` ⇒ ordinary claim inline (unchanged). The runtime then resolves
-`F` via `resolve_fsm` / the `halt`-convention check and routes it through
-the selector (§ 3). An ordinary claim that is *not* FSM-shaped passed to
-`run` is a load-time error ("`run`'s first argument must name an
-FSM-shaped schema — a state pair + `halt ∈ Bool`").
+`F` via `resolve_fsm` (the keyword gate: `F` must be declared `fsm`) and
+routes it through the selector (§ 3). A schema that is **not declared
+`fsm`** passed to `run` is a load-time error ("`run`'s first argument must
+name a schema declared `fsm`").
 
 ## § 2 — Strategy 3: blocking-interpret (the correctness baseline)
 

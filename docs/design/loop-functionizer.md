@@ -532,8 +532,8 @@ the stack drains, `reads`/`writes` hold exactly the union the recursion
 would have produced — every `EIdentifier` is popped exactly once, and
 set-union is order-insensitive, so LIFO drain = recursive descent for
 this accumulator. Equivalence is already pinned byte-for-byte by
-`runtime/tests/subscriptions_equivalence.rs` against every FSM-shaped
-claim in `examples/` (including Mario's three FSMs); the loop-functionized
+`runtime/tests/subscriptions_equivalence.rs` against every `fsm`
+schema in `examples/` (including Mario's three FSMs); the loop-functionized
 walk must match it.
 
 > **`EMatch` note.** Its children are the arm *bodies*

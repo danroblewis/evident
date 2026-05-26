@@ -72,9 +72,13 @@ claim my_fsm(world, world_next ∈ World,    -- writer
     -- can read world.X AND write world_next.X
 ```
 
-Each top-level claim matching this shape is detected at load time
-and run as an FSM. They run in declaration order; writer FSMs run
-first within each tick (so readers see writes within the same tick).
+Each top-level schema **declared with the `fsm` keyword** is run as
+an FSM — the keyword is the sole signal; the runtime does **not**
+detect FSMs by body shape. (The blocks above use `claim` + the legacy
+`state, state_next` / `world, world_next` pairs; the current idiom is
+`fsm my_fsm(...)` with terse `_state` / `_world` reads — see CLAUDE.md
+"Multi-FSM shared state".) FSMs run in declaration order; writer FSMs
+run first within each tick (so readers see writes within the same tick).
 
 ## Runtime-managed plugins
 
