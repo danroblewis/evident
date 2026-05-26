@@ -1,5 +1,22 @@
 # Dispatcher Toposort: Rust vs. Evident — 2026-05-16
 
+> **UPDATE (session PORT-toposort, 2026-05-25): cut over to Evident-only.**
+> The Rust `topo_sort_with_random_tiebreak` and the `EVIDENT_TOPOSORT_IMPL`
+> env gate described below are **deleted**. Effect ordering now routes solely
+> through the Evident toposort on a dedicated runtime (`portable/toposort.rs`).
+>
+> The "~52,000× slowdown" below was for the *domain-typed* `Toposort<String>`,
+> whose `position_of` is a depth-n chained ITE evaluated twice per edge. The
+> cutover took this benchmark's own **Option A** ("explicit positions ∈ Seq(Int)
+> parallel to items, O(n)→O(1) per edge"): the dispatcher maps node names to
+> contiguous integers and queries `ToposortRanks(n, edges, pos)`, where an edge
+> indexes the rank array directly (`pos[e.from] < pos[e.to]`). No string theory,
+> no ITE chains. **Mario's 70-node/96-edge frame: 13–42s → ~19ms in isolation,
+> ~51ms tick-0 in the dispatcher.** The result is cached by graph shape
+> (`DISPATCH_ORDER_CACHE`), so per-tick steady state is a HashMap lookup —
+> unchanged by the cutover. The numbers below are the pre-cutover measurement,
+> kept for the record.
+
 ## The actual graph
 
 The Rust-side `topo_sort_with_random_tiebreak` in

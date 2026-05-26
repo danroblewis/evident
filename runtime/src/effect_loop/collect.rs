@@ -21,8 +21,7 @@ use std::collections::{HashMap, HashSet};
 use super::seq_chains::extract_seq_effect_chains;
 use super::toposort::{
     DISPATCH_ORDER_CACHE, DispatchKey,
-    evident_toposort, resolve_synthetic_names_to_effects,
-    topo_sort_with_random_tiebreak,
+    cycle_recovery, evident_toposort, resolve_synthetic_names_to_effects,
 };
 
 /// Collect the dispatchable Effects from a satisfying model.
@@ -84,13 +83,14 @@ pub(crate) fn collect_dispatchable_effects(
     // Mode 2: collect Effect-typed nodes + Seq-literal edges, toposort,
     // dispatch in resulting order.
     //
-    // Toposort is in Rust for now. The structurally-equivalent dogfood
-    // call site — `rt.query("Toposort<String>", given)` — was tested
-    // and works correctly but hits an unexplained 30× slowdown when
-    // run alongside a complex user-FSM solve in the same Z3 context
-    // (12–16s vs 0.4s in isolation; see commit log). When the
-    // "compile the model" infrastructure (project memory entry of the
-    // same name) lands, this is the natural call site for it.
+    // Ordering is self-hosted: the order comes from the Evident
+    // `Toposort<String>` claim, run on a dedicated runtime via
+    // `portable::toposort` (session PORT-toposort). The dedicated runtime
+    // is what makes it viable — the same dogfood call on the *user's*
+    // runtime shared a Z3 context with the user FSM's solve and ran 12–16s;
+    // in isolation it's ~0.2–0.4s, paid once per unique shape and then
+    // cached below (`DISPATCH_ORDER_CACHE`), so per-tick steady state is a
+    // HashMap lookup.
     // Nodes come from two sources:
     //   * Bare `Effect`-typed bindings — node name = binding name.
     //   * `Seq(Effect)`-typed bindings — one synthetic node per element,
@@ -325,26 +325,17 @@ pub(crate) fn collect_dispatchable_effects(
         }
     }
 
+    // Ordering is self-hosted (session PORT-toposort): the Evident
+    // `Toposort<String>` claim, on a dedicated isolated runtime. A cyclic
+    // graph is UNSAT → `None` → keep the program running via input-order
+    // recovery (see `toposort::cycle_recovery`). This solve runs at most
+    // once per unique shape; the cache above serves every later tick.
     let timing = std::env::var("EVIDENT_DISPATCH_TIMING").is_ok();
-    let impl_choice = std::env::var("EVIDENT_TOPOSORT_IMPL").ok();
-    let use_evident = matches!(impl_choice.as_deref(), Some("evident"));
-
     let t0 = std::time::Instant::now();
-    let sorted_names = if use_evident {
-        match evident_toposort(rt, &nodes, &edges) {
-            Some(v) => v,
-            None => {
-                eprintln!("warning: EVIDENT_TOPOSORT_IMPL=evident failed; \
-                           falling back to rust");
-                topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
-            }
-        }
-    } else {
-        topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
-    };
+    let sorted_names = evident_toposort(&nodes, &edges)
+        .unwrap_or_else(|| cycle_recovery(&nodes));
     if timing {
-        eprintln!("toposort[{}]: {} nodes, {} edges, {:.3}ms",
-            if use_evident { "evident" } else { "rust" },
+        eprintln!("toposort[evident]: {} nodes, {} edges, {:.3}ms",
             nodes.len(), edges.len(),
             t0.elapsed().as_secs_f64() * 1000.0);
     }

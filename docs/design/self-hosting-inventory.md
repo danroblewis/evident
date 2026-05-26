@@ -179,7 +179,7 @@ shape resolution, state encoding — are pure passes.
 | `effect_loop/fsm.rs` | 299 | **1** | `MainShape` resolution from `SchemaDecl`. Pure pattern match. | Cranelift |
 | `effect_loop/state.rs` | 97 | **1** | Encode/decode FSM state values (Value ↔ Z3 datatype). Pure. | Cranelift |
 | `effect_loop/seq_chains.rs` | 95 | **1** | Extract a Seq-effect chain. Pure structural walk. | Cranelift |
-| `effect_loop/toposort.rs` | 140 | **1** | Kahn's algorithm + cache. **Already partially self-hosted** via `EVIDENT_TOPOSORT_IMPL=evident` and `stdlib/toposort.ev`. | Cranelift |
+| `effect_loop/toposort.rs` | 76 | — | **Evident-only (session PORT-toposort).** The Rust Kahn's algorithm + the `EVIDENT_TOPOSORT_IMPL` env gate are DELETED; ordering routes through `portable/toposort.rs` (the `ToposortRanks` integer-rank claim in `stdlib/toposort.ev`). What's left here is the per-tick shape cache, node→Effect marshaling, and cycle recovery. | n/a |
 | `effect_loop/timing.rs` | 47 | **4** | Per-tick timing summaries (IO + clock) | n/a |
 
 ### `commands/` — CLI subcommands (Tier 4)
@@ -396,7 +396,7 @@ are the next ten in order. The ordering optimizes for:
 | # | File | LOC | Tier | Why this next |
 |---|---|---|---|---|
 | 1 | `runtime/stats.rs` | 134 | 1 | Pure aggregator struct — accumulators only. **Smallest possible second port.** Sets a precedent for "stat-collection passes" (next: `z3_profile.rs` stats). |
-| 2 | `effect_loop/toposort.rs` | 140 | 1 | Already partially self-hosted (`EVIDENT_TOPOSORT_IMPL=evident`). The leftover work is making the Evident path the production default. Lowest-risk migration. |
+| 2 | `effect_loop/toposort.rs` | 140 | ✅ **DONE** | Cut over to Evident-only (session PORT-toposort): Rust Kahn's algorithm + `EVIDENT_TOPOSORT_IMPL` gate DELETED, ordering routes through `portable/toposort.rs` (`ToposortRanks` integer-rank claim). Setup-only (per-tick cache), Mario tick-0 ~51ms. |
 | 3 | `effect_loop/fsm.rs` (`MainShape` resolution only) | 299 | 1 | One pattern match over a `SchemaDecl` — the "is this an FSM, and which slots does it use?" question. No solver dependency. |
 | 4 | `effect_loop/state.rs` | 97 | 1 | Pure Value ↔ Z3-datatype encoding — the field-by-field walk is mechanical and would mirror what `portable/pretty.rs` already does for AST encode. |
 | 5 | `effect_loop/seq_chains.rs` | 95 | 1 | Pure structural walk — extracts a Seq-effect chain. Small. |
