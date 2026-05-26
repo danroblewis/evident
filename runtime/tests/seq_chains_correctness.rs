@@ -224,13 +224,12 @@ fn impl_name_is_evident() {
     assert_eq!(eng.impl_name(), "evident");
 }
 
+// A Mario-phase_chain-shaped body: a 40-element ordering chain over
+// synthetic field-index nodes + 30 inert items, mimicking a real claim —
+// confirms the stack-FSM walk handles a long chain + a cache re-query.
 #[test]
-#[ignore]
-fn bench_cold_vs_warm() {
-    use std::time::Instant;
+fn walks_large_chain_and_caches() {
     seq_chains::reset_cache();
-    // A Mario-phase_chain-shaped body: a 40-element ordering chain over
-    // synthetic field-index nodes + 30 inert items, to mimic a real claim.
     let mut chain_elems = Vec::new();
     let mut nodes = Vec::new();
     for i in 0..40 {
@@ -241,22 +240,9 @@ fn bench_cold_vs_warm() {
     for k in 0..30 { body.push(membership(&format!("v{k}"), "Int")); }
     let s = set(&nodes);
 
-    // Warm the lazy engine (pass load + JIT) on a throwaway body so the cold
-    // number below is the per-claim WALK, not the one-time engine build.
-    let warmup = vec![eq(ident("z"), seqlit(vec![ident("z0")]))];
-    let _ = seq_chains::extract_seq_effect_chains(&warmup, &set(&names(&["z0"])));
-
-    let t0 = Instant::now();
-    let cold = seq_chains::extract_seq_effect_chains(&body, &s);  // runs Evident walk
-    let cold_us = t0.elapsed().as_micros();
+    let cold = seq_chains::extract_seq_effect_chains(&body, &s);
     assert_eq!(cold.len(), 1);
     assert_eq!(cold[0].len(), 40);
-
-    let n = 10_000u32;
-    let t1 = Instant::now();
-    for _ in 0..n { let _ = seq_chains::extract_seq_effect_chains(&body, &s); }
-    let warm_us = t1.elapsed().as_micros() as f64 / n as f64;
-
-    eprintln!("[seq_chains bench] cold (Evident walk, once per claim) = {cold_us} us; \
-               warm per-tick (cache hit + node_name x40) = {warm_us:.3} us/call");
+    // A re-query (warm cache hit) returns the identical chain.
+    assert_eq!(seq_chains::extract_seq_effect_chains(&body, &s), cold);
 }
