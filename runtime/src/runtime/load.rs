@@ -69,6 +69,18 @@ impl EvidentRuntime {
             // works without changes. No-op for fsms that already
             // declared `world_next` (legacy pattern stays as is).
             super::desugar::unify_world_syntax(&mut s)?;
+            // Generalized terse `_state`: the same `_world`/`world`
+            // time-shift, for ANY first-line fsm state var `X ∈ T`. When
+            // the body references `_X` and no explicit `X_next` is
+            // declared, rewrite `_X`→`X` (prev read) / `X`→`X_next`
+            // (current write) and inject `X_next ∈ T`, so the embedding
+            // detectors (`fsm_unroll/compose.rs`, `effect_loop/nested.rs`)
+            // and the scheduler see the literal pair they consume. INERT
+            // on the explicit-pair corpus (skips when `X_next` is already
+            // declared); runs BEFORE the inject passes so `_X` refs are
+            // consumed before `prev_tick` injection. `world` stays owned
+            // by `unify_world_syntax` above.
+            super::desugar::unify_state_syntax(&mut s)?;
             // Flatten Seq concatenations (`a ++ b ++ ⟨…⟩`) into a
             // single SeqLit when all operands resolve to literal
             // sequences. The existing `translate_seq_lit_eq` path
