@@ -1,5 +1,29 @@
 # FSMs as functions — the unified composition model
 
+> **⚠️ Surface superseded — read this first.** This doc's *conceptual
+> core* still stands: nesting an `fsm` lets the parent constrain the
+> child's whole run; the condensability→guarantee gradient; the
+> execute/verify faces; the three tiers. But its *surface syntax is
+> rejected and replaced.* The user has ruled that an fsm has **no return
+> value** ("anathema to the project"), so the functional spelling
+> `result = F(init)` used throughout below is **wrong**. The corrected
+> surface is a **constraint with no return value**:
+>
+> > `F(seed, fsm_state)` — `fsm_state` is a plain parent variable the
+> > constraint binds to F's settled state, and which the parent may
+> > *further constrain* (`fsm_state.count = 0`). `run(F, init)` and
+> > `halts_within(F, N)` are **removed outright** (not aliased) — the
+> > former is the disowned return-value form, the latter is subsumed
+> > (an unsatisfiable settled-state constraint *is* "does not halt").
+>
+> Read every `result = F(init)` below as `F(seed, fsm_state)` + a parent
+> constraint on `fsm_state`; read "the result value" as "the settled
+> state variable." The authoritative, corrected surface +
+> implementation plan is
+> [`fsms-as-functions-impl.md`](fsms-as-functions-impl.md). This doc is
+> retained for the conceptual narrative (the gradient, the tiers, the
+> CHC/Spacer engine decision) only.
+>
 > **The capstone.** Five things the project built or designed — `run(F,
 > init)`, `halts_within(F, N)`, the three-tier nested-FSM selector, the
 > loop-functionizer's stack-of-FSMs, CEGAR — are not five features. They
