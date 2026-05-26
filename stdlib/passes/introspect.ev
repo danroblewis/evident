@@ -1,0 +1,261 @@
+-- stdlib/passes/introspect.ev — self-hosted schema mutation, as stack-FSMs
+-- over the SHARED AST↔Value marshaler. The FIRST AST-*rebuild* port: an
+-- Evident FSM takes a whole `SchemaDecl` + a mutation request and RETURNS
+-- the rebuilt `SchemaDecl`. (Sessions QQ→ZZ self-hosted reference WALKS that
+-- returned a value-list; SEED-marshal made the seed marshaler round-trip
+-- `MatchPattern`/`BISubclaim` faithfully, so a composite SchemaDecl can now
+-- flow IN through the seed and OUT through `run()`.)
+--
+-- The Evident-side twin of the body-item rewrites in
+-- runtime/src/runtime/introspect.rs:
+--
+--   * `replace_body_item_in_claim(name, idx, new_item)` → the schema with
+--     body item `idx` replaced.  (`introspect_replace` below.)
+--   * `add_membership_to_claim(name, var, type)` → the schema with a
+--     `var ∈ type` membership inserted at the head.  (`introspect_prepend`.)
+--
+-- ── What self-hosts here, and what stays in the Rust shim ─────────────
+-- The genuine work — destructure a `SchemaDecl`, walk its body to the
+-- target index, splice/prepend, and REBUILD the `SchemaDecl` — runs here as
+-- a stack-FSM driven by `run()` (tier-3 blocking-interpret). The shim
+-- (portable/introspect.rs) keeps only the SAME leaves the other ports keep
+-- in Rust:
+--   1. The idempotency / bounds DECISIONS that key on a STRING or a length
+--      (`is var already declared?`, `is idx in range?`) — string-set
+--      membership in the per-tick solve is the Z3 string-theory blow-up the
+--      validate port measured (#18's in-solve cousin), and a bare `vec.len()`
+--      compare is a Rust leaf, not a solve. So the shim decides WHETHER to
+--      mutate; the FSM does the rebuild.
+--   2. The dual-update bookkeeping (mirror into `program.schemas`, flush the
+--      query cache) — pure runtime state, not an AST transform.
+--
+-- ── A documented marshaler finding (the SESSION's audit point) ────────
+-- The shared marshaler's `SchemaDecl` is 4-field —
+-- `MakeSchemaDecl(Keyword, String, Int, BodyItemList)` — and carries NO
+-- `type_params` / `external`.  So a whole-SchemaDecl round-trip DROPS those
+-- two.  This is harmless here because (a) the parser builds every subclaim
+-- with `type_params=[]` / `external=false` (so body items round-trip
+-- losslessly), and (b) the shim copies only the rebuilt `.body` back onto
+-- the original `SchemaDecl`, preserving its own `type_params`/`external`.
+-- A naive "replace the whole stored schema with the decoded one" WOULD lose
+-- them — the same lossy-whole-SchemaDecl limitation PORT-desugar flagged.
+
+-- ── The canonical AST, cons-list mirror shape ─────────────────────────
+-- These enums match the shared marshaler's `*_to_value` output EXACTLY
+-- (enum + variant names, field order). List fields are explicit Cons enums
+-- (not Seq) so the stack-FSM can pop a head and recurse on the tail. This
+-- file is self-contained: the shim drives it in a runtime that loads ONLY
+-- this pass, so there is no clash with stdlib/ast.ev's Seq-shaped twin.
+
+enum BinOp =
+    OpEq | OpNeq | OpLt | OpLe | OpGt | OpGe | OpAnd | OpOr | OpImplies
+    OpAdd | OpSub | OpMul | OpDiv | OpConcat
+
+enum Keyword = KSchema | KClaim | KType | KSubclaim | KFsm
+
+enum MatchBind = BindName(String) | BindWildcard | BindCtor(String, BindList)
+enum BindList = BLNil | BLCons(MatchBind, BindList)
+enum MatchPattern = PatWildcard | PatBind(String) | PatCtor(String, BindList)
+enum MatchArm = MakeMatchArm(MatchPattern, Expr)
+enum MatchArmList = MALNil | MALCons(MatchArm, MatchArmList)
+
+enum Mapping = MakeMapping(String, Expr)
+enum MappingList = MLNil | MLCons(Mapping, MappingList)
+enum StringList = SLNil | SLCons(String, StringList)
+
+enum Pins = PNone | PNamed(MappingList) | PPositional(ExprList)
+
+enum Expr =
+    EIdentifier(String)
+    EInt(Int)
+    EReal(Real)
+    EBool(Bool)
+    EStr(String)
+    ESetLit(ExprList)
+    ESeqLit(ExprList)
+    ETuple(ExprList)
+    ERange(Expr, Expr)
+    EInExpr(Expr, Expr)
+    EForall(StringList, Expr, Expr)
+    EExists(StringList, Expr, Expr)
+    ECall(String, ExprList)
+    ECardinality(Expr)
+    EIndex(Expr, Expr)
+    EField(Expr, String)
+    EBinary(BinOp, Expr, Expr)
+    ENot(Expr)
+    ETernary(Expr, Expr, Expr)
+    EMatch(Expr, MatchArmList)
+    EMatches(Expr, MatchPattern)
+    ERunFsm(String, Expr)
+
+enum ExprList = ELNil | ELCons(Expr, ExprList)
+
+enum BodyItem =
+    BIMembership(String, String, Pins)
+    BIPassthrough(String)
+    BIClaimCall(String, MappingList)
+    BIConstraint(Expr)
+    BISubclaim(SchemaDecl)
+    BIHaltsWithin(String, Int)
+
+enum BodyItemList = BILNil | BILCons(BodyItem, BodyItemList)
+
+-- 4-field shape: the 3rd slot is `param_count`. Mirrors `schema_decl_to_value`
+-- (no type_params/external — see the finding above). The FSMs destructure it
+-- to get at the body and reconstruct it on the way out.
+enum SchemaDecl = MakeSchemaDecl(Keyword, String, Int, BodyItemList)
+
+-- ── REPLACE: walk body to index `idx`, replace with `new_item` ────────
+-- The request packs the whole schema + the target index + the replacement.
+-- MakeReplaceReq MUST be the seed shape — run()'s coerce_init wraps the
+-- seeded ReplaceReq into RInit(ReplaceReq).
+enum ReplaceReq = MakeReplaceReq(SchemaDecl, Int, BodyItem)
+
+-- The walk is a descend-then-rebuild over the cons-list body. RStep carries
+-- the schema's other fields (kw/name/param_count) + the replacement + the
+-- countdown index + a REVERSED prefix of already-passed items + the
+-- remaining tail. When the countdown hits 0 we splice `new_item` for the
+-- head and switch to RRev, which reverses the prefix back onto the new tail
+-- to recover forward order. Running off the end (idx ≥ len) reverses the
+-- whole prefix with an empty tail → the original body, unchanged (the
+-- out-of-bounds case the Rust shim guards anyway).
+enum RState =
+    RInit(ReplaceReq)
+    RStep(Keyword, String, Int, BodyItem, Int, BodyItemList, BodyItemList)
+    RRev(Keyword, String, Int, BodyItemList, BodyItemList)
+    RDone(SchemaDecl)
+
+fsm introspect_replace(state ∈ RState, halt ∈ Bool)
+    state = match _state
+        RInit(req) ⇒ match req
+            MakeReplaceReq(sd, idx, ni) ⇒ match sd
+                MakeSchemaDecl(kw, nm, pc, body) ⇒ RStep(kw, nm, pc, ni, idx, BILNil, body)
+        RStep(kw, nm, pc, ni, idx, prefix, rem) ⇒ match rem
+            BILNil ⇒ RRev(kw, nm, pc, prefix, BILNil)
+            BILCons(h, t) ⇒ ((idx = 0) ? RRev(kw, nm, pc, prefix, BILCons(ni, t)) : RStep(kw, nm, pc, ni, idx - 1, BILCons(h, prefix), t))
+        RRev(kw, nm, pc, prefix, acc) ⇒ match prefix
+            BILNil ⇒ RDone(MakeSchemaDecl(kw, nm, pc, acc))
+            BILCons(h, t) ⇒ RRev(kw, nm, pc, t, BILCons(h, acc))
+        RDone(d) ⇒ RDone(d)
+    halt = match _state
+        RDone(_) ⇒ true
+        _        ⇒ false
+
+-- ── PREPEND: cons a membership onto the head of the body ──────────────
+-- The shim does the string-keyed idempotency check (already declared?) in
+-- Rust; this FSM just destructures the schema and cons-es the new item at
+-- the head, reconstructing the SchemaDecl. Trivial rebuild, but it proves
+-- the destructure→reconstruct round-trip of a whole SchemaDecl node.
+enum PrependReq = MakePrependReq(SchemaDecl, BodyItem)
+enum PState =
+    PInit(PrependReq)
+    PDone(SchemaDecl)
+
+fsm introspect_prepend(state ∈ PState, halt ∈ Bool)
+    state = match _state
+        PInit(req) ⇒ match req
+            MakePrependReq(sd, ni) ⇒ match sd
+                MakeSchemaDecl(kw, nm, pc, body) ⇒ PDone(MakeSchemaDecl(kw, nm, pc, BILCons(ni, body)))
+        PDone(d) ⇒ PDone(d)
+    halt = match _state
+        PDone(_) ⇒ true
+        _        ⇒ false
+
+-- ── Static verification: composite in, composite out ──────────────────
+-- The Rust shim's `introspect_correctness.rs` pins the kernels against
+-- hardcoded expected ASTs (synthetic battery) and a test-local copy of the
+-- canonical Rust mutation over the corpus; these claims pin behaviour
+-- directly with structural `=` on the returned SchemaDecl.
+
+-- Replace the MIDDLE item: [a, b, c] @ idx 1 → [a, X, c].
+claim sat_replace_middle
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KClaim, "f", 0,
+                BILCons(BIConstraint(EIdentifier("a")),
+                  BILCons(BIConstraint(EIdentifier("b")),
+                    BILCons(BIConstraint(EIdentifier("c")), BILNil)))),
+            1, BIPassthrough("X")))
+    final = RDone(MakeSchemaDecl(KClaim, "f", 0,
+        BILCons(BIConstraint(EIdentifier("a")),
+          BILCons(BIPassthrough("X"),
+            BILCons(BIConstraint(EIdentifier("c")), BILNil)))))
+
+-- Replace the HEAD item: [a, b] @ idx 0 → [X, b].
+claim sat_replace_head
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KFsm, "g", 1,
+                BILCons(BIConstraint(EIdentifier("a")),
+                  BILCons(BIConstraint(EIdentifier("b")), BILNil))),
+            0, BIPassthrough("X")))
+    final = RDone(MakeSchemaDecl(KFsm, "g", 1,
+        BILCons(BIPassthrough("X"),
+          BILCons(BIConstraint(EIdentifier("b")), BILNil))))
+
+-- Replace the LAST item: [a, b] @ idx 1 → [a, X].
+claim sat_replace_last
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KType, "h", 0,
+                BILCons(BIConstraint(EIdentifier("a")),
+                  BILCons(BIConstraint(EIdentifier("b")), BILNil))),
+            1, BIPassthrough("X")))
+    final = RDone(MakeSchemaDecl(KType, "h", 0,
+        BILCons(BIConstraint(EIdentifier("a")),
+          BILCons(BIPassthrough("X"), BILNil))))
+
+-- Out-of-bounds index (idx 5 ≥ len 2) → body returned UNCHANGED. (The Rust
+-- shim guards this case anyway; the FSM is defensively a no-op.)
+claim sat_replace_out_of_bounds
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KClaim, "f", 0,
+                BILCons(BIConstraint(EIdentifier("a")),
+                  BILCons(BIConstraint(EIdentifier("b")), BILNil))),
+            5, BIPassthrough("X")))
+    final = RDone(MakeSchemaDecl(KClaim, "f", 0,
+        BILCons(BIConstraint(EIdentifier("a")),
+          BILCons(BIConstraint(EIdentifier("b")), BILNil))))
+
+-- Replace preserves keyword / name / param_count: only the body changes.
+-- (A wrong param_count here would surface the marshaler-drop finding.)
+claim sat_replace_preserves_header
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KFsm, "game", 2,
+                BILCons(BIConstraint(EIdentifier("only")), BILNil)),
+            0, BIMembership("x", "Int", PNone)))
+    final = RDone(MakeSchemaDecl(KFsm, "game", 2,
+        BILCons(BIMembership("x", "Int", PNone), BILNil)))
+
+-- Prepend a membership at the head: [a] → [x ∈ Int, a].
+claim sat_prepend_membership
+    final ∈ PState = run(introspect_prepend,
+        MakePrependReq(
+            MakeSchemaDecl(KClaim, "c", 0,
+                BILCons(BIConstraint(EIdentifier("a")), BILNil)),
+            BIMembership("x", "Int", PNone)))
+    final = PDone(MakeSchemaDecl(KClaim, "c", 0,
+        BILCons(BIMembership("x", "Int", PNone),
+          BILCons(BIConstraint(EIdentifier("a")), BILNil))))
+
+-- Prepend onto an empty body: [] → [x ∈ Int].
+claim sat_prepend_empty
+    final ∈ PState = run(introspect_prepend,
+        MakePrependReq(MakeSchemaDecl(KClaim, "c", 0, BILNil),
+            BIMembership("x", "Int", PNone)))
+    final = PDone(MakeSchemaDecl(KClaim, "c", 0,
+        BILCons(BIMembership("x", "Int", PNone), BILNil)))
+
+-- The rebuild is threaded, not free: replacing index 0 can't leave the old
+-- head in place.
+claim unsat_replace_not_free
+    final ∈ RState = run(introspect_replace,
+        MakeReplaceReq(
+            MakeSchemaDecl(KClaim, "f", 0,
+                BILCons(BIConstraint(EIdentifier("a")), BILNil)),
+            0, BIPassthrough("X")))
+    final = RDone(MakeSchemaDecl(KClaim, "f", 0,
+        BILCons(BIConstraint(EIdentifier("a")), BILNil)))
