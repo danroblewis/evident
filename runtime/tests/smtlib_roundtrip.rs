@@ -152,6 +152,76 @@ fn set_membership_can_be_unsat() {
 }
 
 // --------------------------------------------------------------------------
+// String builtins → Z3 `str.*`. The subset grown this session; each must
+// match the C-API path on sat/unsat AND on the forced model value.
+// --------------------------------------------------------------------------
+
+#[test]
+fn str_substr_and_index_of_model() {
+    // head = substr("Edge<Rect>", 0, indexof "<") = "Edge".
+    let r = assert_sat_parity(
+        "claim T\n    g ∈ String = \"Edge<Rect>\"\n    \
+         head ∈ String = substr(g, 0, index_of(g, \"<\"))\n",
+        "T",
+    );
+    assert_eq!(r.bindings.get("head"), Some(&Value::Str("Edge".into())));
+}
+
+#[test]
+fn str_replace_model() {
+    let r = assert_sat_parity(
+        "claim T\n    mono ∈ String = replace(\"Seq(T)\", \"T\", \"Rect\")\n",
+        "T",
+    );
+    assert_eq!(r.bindings.get("mono"), Some(&Value::Str("Seq(Rect)".into())));
+}
+
+#[test]
+fn str_len_via_cardinality_model() {
+    let r = assert_sat_parity(
+        "claim T\n    g ∈ String = \"Edge<Rect>\"\n    n ∈ Int = #g\n",
+        "T",
+    );
+    assert_eq!(r.bindings.get("n"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn str_from_int_negative_model() {
+    let r = assert_sat_parity("claim T\n    s ∈ String = str_from_int(0 - 42)\n", "T");
+    assert_eq!(r.bindings.get("s"), Some(&Value::Str("-42".into())));
+}
+
+#[test]
+fn str_char_at_model() {
+    let r = assert_sat_parity(
+        "claim T\n    s ∈ String = \"abc\"\n    c ∈ String = char_at(s, 1)\n",
+        "T",
+    );
+    assert_eq!(r.bindings.get("c"), Some(&Value::Str("b".into())));
+}
+
+#[test]
+fn str_prefix_suffix_contains_sat_and_unsat() {
+    // All three predicates hold for "world.pos".
+    assert_sat_parity(
+        "claim T\n    s ∈ String = \"world.pos\"\n    starts_with(s, \"world.\")\n    \
+         ends_with(s, \".pos\")\n    str_contains(s, \"d.p\")\n",
+        "T",
+    );
+    // A wrong prefix is unsat — proves the predicate really fires.
+    assert_sat_parity(
+        "claim T\n    s ∈ String = \"world.pos\"\n    starts_with(s, \"local.\")\n",
+        "T",
+    );
+}
+
+#[test]
+fn str_contains_infix_unsat() {
+    // `"xyz" ∈ s` (infix) → str.contains; absent → unsat, matching the C-API.
+    assert_sat_parity("claim T\n    s ∈ String = \"abc\"\n    \"xyz\" ∈ s\n", "T");
+}
+
+// --------------------------------------------------------------------------
 // Out-of-subset boundary: must be reported, not silently mistranslated.
 // --------------------------------------------------------------------------
 
