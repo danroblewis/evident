@@ -1,0 +1,52 @@
+-- Cross-check fixture: scalar quantifier-free claims. Every claim here is in the
+-- seed runtime's subset and is also solvable by the Rust runtime, so
+-- `evidentc <f> --all` and `evident sample <f> --all` must agree on every verdict.
+
+-- SAT: a Nat strictly above 5.
+claim sat_nat_above_5
+    n ∈ Nat
+    n > 5
+
+-- UNSAT: no integer is both > 10 and < 3.
+claim unsat_empty_range
+    n ∈ Int
+    n > 10
+    n < 3
+
+-- SAT: two positives summing to 10.
+claim sat_two_positives
+    a ∈ Pos
+    b ∈ Pos
+    a + b = 10
+
+-- UNSAT: equal values can't be unequal.
+claim unsat_eq_and_neq
+    a ∈ Int
+    b ∈ Int
+    a = 3
+    b = 3
+    a ≠ b
+
+-- SAT: implication forces q = true when p is true.
+claim sat_bool_implies
+    p ∈ Bool
+    q ∈ Bool
+    p = true
+    p ⇒ q
+
+-- SAT: chained-membership range, declares + bounds in one line.
+claim sat_chained_range
+    0 < x ∈ Int < 5
+
+-- SAT: integer division by 5 of 17 is 3 (confirms `div`, not `/`).
+claim sat_int_div
+    q ∈ Int
+    r ∈ Int
+    q = 17
+    r = q / 5
+
+-- UNSAT: set membership with a contradictory bound.
+claim unsat_set_over
+    m ∈ Int
+    m ∈ {2, 4, 6}
+    m > 10
