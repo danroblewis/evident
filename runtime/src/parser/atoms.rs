@@ -1,7 +1,5 @@
-//! Atom-level parsing: the leaf of the expression grammar. Literals
-//! (int/real/string/bool), `match`, dotted identifiers, function-call
-//! and typed-constructor expressions, parenthesized groups / tuples,
-//! set / range literals (`{…}`), and sequence literals (`⟨…⟩`).
+//! Atom-level parsing: literals, `match`, dotted idents, calls/constructors,
+//! parens/tuples, set/range literals, sequence literals.
 
 use super::*;
 
@@ -15,14 +13,8 @@ impl Parser {
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
-                // `run(F, init)` — nested-FSM run-to-halt as a value
-                // (tier 3, blocking-interpret). Recognized in expression
-                // position, the value-producing sibling of body-item-level
-                // `halts_within(F, N)`. The signature is exact: the keyword
-                // `run`, `(`, a bare-identifier FSM name, a comma. Anything
-                // else named `run` (`run(x)`, `run(a ↦ b)`) falls through to
-                // the normal call/claim-call parse, so the hook is local and
-                // never silently reinterprets an ordinary call.
+                // `run(F, init)` — nested-FSM run-to-halt; strict 4-token check
+                // so other `run(...)` calls fall through to normal parsing.
                 if s == "run"
                     && matches!(self.toks.get(self.pos + 1), Some(Token::LParen))
                     && matches!(self.toks.get(self.pos + 2), Some(Token::Ident(_)))
@@ -40,14 +32,8 @@ impl Parser {
                     return Ok(Expr::RunFsm { fsm, init: Box::new(init) });
                 }
                 self.bump();
-                // Greedily consume `.ident` chains (sub-schema field access)
-                // and collapse into a single dotted Identifier. Done
-                // BEFORE the call check so `win.renderer.set_draw_color(args)`
-                // parses as `Call("win.renderer.set_draw_color", args)` —
-                // method-style invocation. The inline-translator splits
-                // the name on the last dot and treats the prefix as the
-                // receiver (prepended to args) when the suffix is a
-                // known schema.
+                // Greedily consume `.ident` chains BEFORE the call check so
+                // `win.renderer.set_draw_color(args)` becomes a single dotted Call.
                 let mut name = s;
                 while matches!(self.peek(), Token::Dot) {
                     self.bump();
@@ -57,14 +43,8 @@ impl Parser {
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
-                // Optional type-args suffix: `Edge<Rect>(args)` —
-                // typed constructor for a monomorphic instance of a
-                // generic type. Only accepted when immediately
-                // followed by `(` (a call); anything else means
-                // `<` is comparison and we rewind. Catches errors
-                // from the suffix parser too — they'd mean the `<`
-                // wasn't actually opening a type-args list (e.g.
-                // `n < 5 + 1`).
+                // Optional `<T>` suffix for generic constructors like `Edge<Rect>(args)`.
+                // Only consumed when immediately followed by `(`; otherwise rewind.
                 if matches!(self.peek(), Token::Lt) {
                     let saved = self.pos;
                     let parsed = self.try_parse_generic_args_suffix();
@@ -75,11 +55,7 @@ impl Parser {
                         _ => { self.pos = saved; }
                     }
                 }
-                // Function-call expression: `name(arg, …)`. Recognized
-                // for builtins like `coindexed(A, B)` / `edges(seq)`,
-                // record literals like `IVec2(0, 0)`, claim invocations
-                // like `set_draw_color(ren, c, out)`, and method-style
-                // `recv.claim(args)` (dispatched in inline.rs).
+                // `name(arg, …)` — covers builtins, record literals, claim calls.
                 if matches!(self.peek(), Token::LParen) {
                     self.bump();   // (
                     let mut args = Vec::new();
@@ -101,11 +77,7 @@ impl Parser {
             Token::LParen   => {
                 self.bump();
                 let first = self.parse_expr()?;
-                // Tuple form: `(e1, e2, …)`. Used as the LHS of
-                // `∈ claim_name` (the relational invocation form). A
-                // single expression in parens (`(e)`) is just a
-                // grouped expression — no Tuple wrapper, to preserve
-                // the natural reading of `(a + b) * c`.
+                // Tuple `(e1, e2, …)` for relational LHS; single `(e)` is just grouping.
                 if matches!(self.peek(), Token::Comma) {
                     let mut items = vec![first];
                     while matches!(self.peek(), Token::Comma) {
@@ -120,13 +92,11 @@ impl Parser {
             }
             Token::LBrace => {
                 self.bump();
-                // Empty `{}` is a (vacuous) set literal.
                 if matches!(self.peek(), Token::RBrace) {
                     self.bump();
                     return Ok(Expr::SetLit(vec![]));
                 }
                 let first = self.parse_expr()?;
-                // Decide between range `{lo..hi}` and set `{a, b, c}`.
                 if matches!(self.peek(), Token::DotDot) {
                     self.bump();
                     let hi = self.parse_expr()?;
@@ -142,8 +112,7 @@ impl Parser {
                 Ok(Expr::SetLit(items))
             }
             Token::LSeq => {
-                // `⟨e1, e2, …⟩` sequence literal. Distinct from `{…}` set
-                // literal — pinned by element index, not membership-only.
+                // `⟨e1, e2, …⟩` sequence literal (index-pinned, unlike set `{…}`).
                 self.bump();
                 if matches!(self.peek(), Token::RSeq) {
                     self.bump();

@@ -1,14 +1,5 @@
-//! Decoder: Z3 model `Value` (specifically `Value::Enum` trees
-//! matching `stdlib/ast.ev`'s `Program` shape) → Rust `ast::Program`.
-//!
-//! Mirrors `encode_ast.rs` in reverse. Walks a `Value::Enum` tree
-//! and reconstructs the corresponding Rust AST nodes by
-//! pattern-matching on `(enum_name, variant)` and decoding each
-//! field recursively.
-//!
-//! Used by self-hosted desugar passes: a pass produces a transformed
-//! Program in the model; the runtime decodes it back to Rust AST and
-//! replaces the loaded Program with the transformed one.
+//! Decode a `Value::Enum` tree (matching `stdlib/ast.ev`'s `Program` shape) back to
+//! Rust `ast::Program`. Mirrors `encode_ast.rs` in reverse; used by self-hosted passes.
 
 use crate::core::ast::*;
 use crate::core::Value;
@@ -19,19 +10,15 @@ pub enum DecodeError {
     NotEnum { got: String },
     /// Expected an `Enum` of `expected_enum` but got a different one.
     WrongEnum { expected: &'static str, got: String },
-    /// `(enum_name, variant)` doesn't match anything we know how to
-    /// decode for the requested AST type. Means stdlib/ast.ev has
-    /// drifted from the Rust AST shape, OR the pass produced an
-    /// invalid value.
+    /// No decoder for this `(enum_name, variant)` — stdlib/ast.ev drifted or pass produced
+    /// an invalid value.
     UnknownVariant { enum_name: String, variant: String },
     /// Field count doesn't match the expected variant arity.
     WrongArity { variant: String, expected: usize, got: usize },
     /// Expected a primitive (`Int` / `Bool` / `Str` / `Real`) but
     /// got something else.
     NotPrimitive { expected: &'static str, got: String },
-    /// A field had the wrong runtime kind (e.g. expected
-    /// `Value::SeqStr` but got something else). Distinct from
-    /// `NotPrimitive` because the expected kind isn't a primitive.
+    /// A field had the wrong runtime kind (distinct from `NotPrimitive` — expected kind is not a primitive).
     FieldKind { what: String, want: String, got: String },
 }
 
@@ -57,8 +44,6 @@ impl std::fmt::Display for DecodeError {
 impl std::error::Error for DecodeError {}
 
 pub type Result<T> = std::result::Result<T, DecodeError>;
-
-// ── Helpers ────────────────────────────────────────────────────
 
 fn variant_name(v: &Value) -> &str {
     if let Value::Enum { variant, .. } = v { variant } else { "<not enum>" }
@@ -130,14 +115,6 @@ fn decode_real(v: &Value) -> Result<f64> {
     }
 }
 
-// ── Seq decoders ───────────────────────────────────────────────
-//
-// Post-Phase-6.5 the AST's list-typed fields are `Seq(T)`, backed
-// by an internal Cons helper for mutually-recursive cases. The
-// extract path walks the helper and produces a `Value::SeqEnum`
-// (or `Value::SeqStr` for Seq(String)). These decoders take that
-// SeqEnum/SeqStr and map per-element decoders over its contents.
-
 fn decode_seq_enum<T>(
     v: &Value,
     what: &'static str,
@@ -153,15 +130,8 @@ fn decode_seq_enum<T>(
     })
 }
 
-/// Generic Cons-list decoder — THE shared cons-list reader (session UU).
-///
-/// Walks a named `Nil`/`Cons` enum spine, mapping `decode_head` over each
-/// head. This is the read-side twin of the `*_to_value` marshaler's
-/// cons-list encoders (`body_item_list_to_value`, `expr_list_to_value`,
-/// …): any pass that drives a stack-FSM over the shared marshaler's
-/// output and gets back a cons-list accumulator decodes it through here
-/// rather than hand-rolling its own walker. `PackedFieldList` and the
-/// self-hosted `subscriptions` name-list both use it.
+/// Walk a named `Nil`/`Cons` enum spine, mapping `decode_head` over each head.
+/// Read-side twin of the `*_to_value` cons-list encoders; shared by all self-hosted passes.
 pub fn decode_list<T>(
     v: &Value,
     list_enum: &'static str,
@@ -233,7 +203,6 @@ pub fn decode_match_pattern(v: &Value) -> Result<crate::core::ast::MatchPattern>
             need_arity(variant, fields, 0)?;
             MatchPattern::Wildcard
         }
-        // Top-level bind (session GAP-marshal; was folded into Wildcard).
         "PatBind" => {
             need_arity(variant, fields, 1)?;
             MatchPattern::Bind(decode_str(&fields[0])?)
@@ -254,11 +223,8 @@ pub fn decode_bind_list(v: &Value) -> Result<Vec<MatchPattern>> {
     decode_seq_enum(v, "bind list", decode_match_bind)
 }
 
-/// A `MatchBind` decodes to the sub-pattern it carries:
-/// `BindWildcard → Wildcard`, `BindName(n) → Bind(n)`, and
-/// `BindCtor(name, binds) → Ctor { name, binds }` — the last recursing
-/// through `decode_bind_list` so nested constructor sub-patterns
-/// (`Node(Leaf(n), r)`) round-trip to any depth (session GAP-marshal).
+/// Decode a `MatchBind` to its sub-pattern. `BindCtor` recurses through
+/// `decode_bind_list` so nested constructor sub-patterns round-trip to any depth.
 pub fn decode_match_bind(v: &Value) -> Result<MatchPattern> {
     let (variant, fields) = check_enum(v, "MatchBind")?;
     Ok(match variant {
@@ -291,8 +257,6 @@ pub fn decode_enum_variant_list(v: &Value) -> Result<Vec<EnumVariant>> {
 pub fn decode_enum_field_list(v: &Value) -> Result<Vec<EnumField>> {
     decode_seq_enum(v, "enum field list", decode_enum_field)
 }
-
-// ── Per-AST-type decoders ──────────────────────────────────────
 
 pub fn decode_binop(v: &Value) -> Result<BinOp> {
     let (variant, _) = check_enum(v, "BinOp")?;
@@ -415,12 +379,9 @@ pub fn decode_schema_decl(v: &Value) -> Result<SchemaDecl> {
     Ok(SchemaDecl {
         keyword:     decode_keyword(&fields[0])?,
         name:        decode_str(&fields[1])?,
-        // Third slot: param_count (the first-line-param insertion
-        // index), now round-tripped losslessly. See `encode_schema_decl`.
         param_count: decode_int(&fields[2])?.max(0) as usize,
         body:        decode_body_item_list(&fields[3])?,
-        // type_params / external aren't in the encoded AST shape
-        // (stdlib/ast.ev); conservatively empty/false.
+        // type_params / external not in stdlib/ast.ev; conservatively empty/false.
         type_params: vec![],
         external:    false,
     })
@@ -597,20 +558,13 @@ pub fn decode_program(v: &Value) -> Result<Program> {
     Ok(Program {
         schemas: decode_schema_list(&fields[0])?,
         enums:   decode_enum_decl_list(&fields[1])?,
-        // TraceDecl / ShaderDecl aren't in stdlib/ast.ev's Program;
-        // decoded form has them empty (consistent with what the
-        // encoder skips).
+        // TraceDecl / ShaderDecl not in stdlib/ast.ev; consistent with what the encoder skips.
         imports: Vec::new(),
     })
 }
 
-// `variant_name` is exposed for diagnostic use (e.g. error
-// messages on round-trip mismatches); silence unused-import
-// warning when the only callers are inside this file.
 #[allow(dead_code)]
 fn _use_variant_name(v: &Value) -> &str { variant_name(v) }
-
-// ── stdlib/runtime.ev: Effect / Result / FFIArg ────────────────
 
 pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
     use crate::core::ast::Effect;
@@ -739,9 +693,7 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
     })
 }
 
-/// Decode `effects ∈ Seq(Effect)` from the model — a `Value::SeqEnum`
-/// of Effect enums (since Phase 6.4 retired the `EffectList` Cons
-/// shape). Maps each element through `decode_effect`.
+/// Decode `effects ∈ Seq(Effect)` — a `Value::SeqEnum` of Effect enums.
 pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_effect).collect();
@@ -753,10 +705,8 @@ pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
     })
 }
 
-/// Decoded `InstallStep`: an Effect to dispatch + an optional field
-/// name to capture the result into. `None` = `Run(Effect)` (discard
-/// result), `Some(field)` = `Bind(field, Effect)`. Used by the
-/// declarative install path in `event_sources/declarative_install.rs`.
+/// An Effect to dispatch plus an optional field to capture the result into.
+/// `None` = `Run(Effect)` (discard); `Some(field)` = `Bind(field, Effect)`.
 #[derive(Debug, Clone)]
 pub struct InstallStep {
     pub field:  Option<String>,
@@ -830,8 +780,7 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::core::ast::EffectFfiArg> {
     })
 }
 
-/// `ArgStrArr`'s payload — `Seq(String)` since Phase 6.2.b.
-/// Extract path produces Value::SeqStr; we just clone the Vec.
+/// `ArgStrArr`'s `Seq(String)` payload — extract produces `Value::SeqStr`.
 pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
     if let Value::SeqStr(items) = v {
         return Ok(items.clone());
@@ -843,7 +792,7 @@ pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
     })
 }
 
-/// `ArgI32Buf`'s payload — `Seq(Int)` since Phase 6.2.b.
+/// `ArgI32Buf`'s `Seq(Int)` payload.
 pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     if let Value::SeqInt(items) = v {
         return Ok(items.clone());
@@ -855,10 +804,7 @@ pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     })
 }
 
-/// Decode a single `PackedField` (PfU8 / PfI32 / PfF32) into the
-/// matching Rust enum variant. The field's natural-width Evident type
-/// (Int / Real) is narrowed to the storage width here; callers
-/// should ensure values fit before this runs.
+/// Decode a `PackedField`; narrows Int/Real to storage width (caller must ensure values fit).
 pub fn decode_packed_field(v: &Value) -> Result<crate::core::ast::PackedField> {
     let (variant, fields) = check_enum(v, "PackedField")?;
     Ok(match variant {
@@ -874,15 +820,11 @@ pub fn decode_packed_field(v: &Value) -> Result<crate::core::ast::PackedField> {
     })
 }
 
-/// Cons/Nil-shaped `PackedFieldList` decoder.
 pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::core::ast::PackedField>> {
     decode_list(v, "PackedFieldList", "PfNil", "PfCons", decode_packed_field)
 }
 
-/// `Effect::FFICall` / `Effect::LibCall`'s args payload —
-/// `Seq(FFIArg)` since Phase 6.2.c. Extract path produces
-/// `Value::SeqEnum`; we map each enum element through
-/// `decode_ffi_arg`.
+/// Decode `Seq(FFIArg)` args for `FFICall`/`LibCall` from `Value::SeqEnum`.
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::core::ast::EffectFfiArg>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_ffi_arg).collect();
@@ -942,8 +884,6 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_ffi_call_with_args() {
-        // Phase 6.2.c: args are now Seq(FFIArg), extracted as
-        // Value::SeqEnum of FFIArg Value::Enum elements.
         let arglist = Value::SeqEnum(vec![
             e("FFIArg", "ArgStr", vec![Value::Str("hi".into())]),
             e("FFIArg", "ArgInt", vec![Value::Int(42)]),
@@ -967,7 +907,6 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_effect_list_three_items() {
-        // Post-6.4: effects come back as Value::SeqEnum of Effect.
         let list = Value::SeqEnum(vec![
             e("Effect", "Println", vec![Value::Str("a".into())]),
             e("Effect", "Time", vec![]),

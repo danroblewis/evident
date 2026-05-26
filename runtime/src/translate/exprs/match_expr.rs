@@ -1,20 +1,5 @@
-//! Match-expression translator.
-//!
-//! `match scrutinee
-//!      Ctor(b1, ...) ⇒ body
-//!      _             ⇒ fallback`
-//!
-//! translates to a nested Z3 `Bool::ite(...)` chain over the
-//! constructor-recognizer (tester) booleans. Each non-wildcard arm's
-//! body is translated with payload bindings extended into a cloned env.
-//!
-//! v1 limitations:
-//!   - Scrutinee must be a bare Identifier (Var::EnumVar in env).
-//!   - Payload bindings are restricted to Int / Bool / String / Real
-//!     fields. Enum-typed payloads can use `_` to discard but not bind.
-//!   - Exhaustiveness isn't enforced — if no arm matches at runtime,
-//!     the last arm's body is used as the trailing else (which may
-//!     fire incorrectly if the user omitted variants).
+//! Match-expression translator: `match scrutinee / Ctor(b) ⇒ body / _ ⇒ fallback`
+//! lowers to nested Z3 `ite` chains over constructor-recognizer booleans.
 
 use std::collections::HashMap;
 use z3::ast::Bool;
@@ -26,14 +11,10 @@ use crate::core::Var;
 use super::scalar::translate_int;
 use super::with_active_enums;
 
-/// One compiled arm: an optional tester boolean (None = wildcard) and
-/// the translated body in a per-arm extended env. Type T is the body's
-/// Z3 sort (Int / Bool / Z3Str / Real / Datatype).
+/// `(tester, body)` per arm; `None` tester = wildcard/catch-all.
 pub(super) type CompiledArm<'ctx, T> = (Option<Bool<'ctx>>, T);
 
-/// Resolve the scrutinee + walk arms, returning a Vec of (tester, body).
-/// Body translation is delegated to `body_translator` so the same
-/// machinery serves Int / Bool / Str / Real / Enum match results.
+/// Resolve the scrutinee, walk arms, and return compiled (tester, body) pairs.
 pub(super) fn translate_match_arms<'ctx, T>(
     scr: &Expr,
     arms: &[crate::core::ast::MatchArm],
@@ -41,12 +22,6 @@ pub(super) fn translate_match_arms<'ctx, T>(
     env: &HashMap<String, Var<'ctx>>,
     body_translator: impl Fn(&Expr, &HashMap<String, Var<'ctx>>) -> Option<T>,
 ) -> Option<Vec<CompiledArm<'ctx, T>>> {
-    // Scrutinee shapes supported:
-    //   * Bare Identifier resolving to Var::EnumVar.
-    //   * Index(Identifier(seq), idx) where `seq` is a Var::DatatypeSeqVar
-    //     with empty fields (i.e. Seq(EnumType)) — element pulled via
-    //     arr.select(idx). Lets `match last_results[0]` reach the same
-    //     arm machinery as bare-identifier matches.
     let (scr_dt, dt, scr_enum_name) = match scr {
         Expr::Identifier(n) if !n.contains('.') => {
             match env.get(n)? {
@@ -77,11 +52,7 @@ pub(super) fn translate_match_arms<'ctx, T>(
         let mut testers: Vec<Bool<'ctx>> = Vec::new();
         compile_pattern(&arm.pattern, &scr_dt, dt, &scr_enum_name,
                         &mut env2, &mut testers)?;
-        // The arm's guard is the conjunction of every recognizer tester
-        // collected while walking the (possibly nested) pattern. A
-        // pattern that contributes no testers (`Wildcard` or a top-level
-        // `Bind`) is a catch-all — its guard is `None`, which
-        // `fold_arms_to_ite` treats as the trailing else.
+        // Guard = AND of all recognizer testers; None = wildcard/catch-all.
         let combined: Option<Bool<'ctx>> = match testers.len() {
             0 => None,
             1 => Some(testers.pop().unwrap()),
@@ -96,18 +67,8 @@ pub(super) fn translate_match_arms<'ctx, T>(
     Some(compiled)
 }
 
-/// Recursively match `pat` against the Z3 datatype value `scr_dt` (of
-/// sort `dt`, enum `enum_name`). Appends a recognizer tester per
-/// constructor level to `testers` (their conjunction is the arm's
-/// guard) and inserts payload bindings into `env`. A nested constructor
-/// sub-pattern recurses, conjoining its own tester — so
-/// `Node(Leaf(n), r)` matches only when the outer value is a `Node` AND
-/// its first field is a `Leaf`, binding `n` and `r`.
-///
-/// Returns `None` on a shape mismatch (unknown variant, arity mismatch
-/// against the constructor's physical accessors, or an unsupported
-/// payload kind such as a `Seq`-typed field) — the whole `match` then
-/// drops as untranslatable, the same loud failure as before.
+/// Match `pat` against Z3 datatype `scr_dt`; append recognizer testers and
+/// payload bindings into `env`. Recurses for nested constructor patterns.
 fn compile_pattern<'ctx>(
     pat: &MatchPattern,
     scr_dt: &z3::ast::Datatype<'ctx>,
@@ -119,8 +80,7 @@ fn compile_pattern<'ctx>(
     match pat {
         MatchPattern::Wildcard => Some(()),
         MatchPattern::Bind(name) => {
-            // Bind the whole value (catch-all). Carry the enum sort so
-            // the bound name can itself be `match`ed downstream.
+            // Carry the enum sort so the bound name can itself be matched downstream.
             env.insert(name.clone(), Var::EnumVar {
                 ast: scr_dt.clone(),
                 enum_name: enum_name.to_string(),
@@ -132,10 +92,7 @@ fn compile_pattern<'ctx>(
             let var_idx = dt.variants.iter()
                 .position(|v| v.constructor.name() == *name)?;
             let z3_var = &dt.variants[var_idx];
-            // One bind per physical accessor. Seq-typed fields expand to
-            // two accessors (arr, len) / one __SeqOf_T cons accessor, so
-            // this guard refuses Seq-payload patterns (unchanged from the
-            // prior behavior — Seq-in-match isn't supported yet).
+            // Seq-payload patterns not supported: Seq fields use 2 accessors; arity check rejects them.
             if binds.len() != z3_var.accessors.len() { return None; }
             testers.push(z3_var.tester.apply(&[scr_dt]).as_bool()?);
             let field_decls: Vec<crate::core::ast::EnumField> = with_active_enums(|enums| {
@@ -156,10 +113,7 @@ fn compile_pattern<'ctx>(
     }
 }
 
-/// Match a sub-pattern against one payload field's raw Z3 value.
-/// Primitive fields bind to their scalar Var; enum fields either bind
-/// (as `EnumVar`, carrying the field's enum sort) or recurse into a
-/// nested constructor pattern.
+/// Match a sub-pattern against one payload field; bind scalars or recurse into nested enums.
 fn compile_field<'ctx>(
     sub: &MatchPattern,
     raw: &z3::ast::Dynamic<'ctx>,
@@ -186,7 +140,6 @@ fn compile_field<'ctx>(
             Some(())
         }
         MatchPattern::Ctor { .. } => {
-            // A nested constructor sub-pattern only matches an enum field.
             let payload_dt = raw.as_datatype()?;
             let (ftype, fsort) =
                 field_enum_sort(field_decl, parent_enum, parent_dt);
@@ -195,10 +148,7 @@ fn compile_field<'ctx>(
     }
 }
 
-/// Resolve a payload field's enum type name + sort. For self-recursion
-/// (a field whose type is the parent enum itself) this is the parent's
-/// own sort; for a cross-enum field we look the type up in the active
-/// `EnumRegistry`, falling back to the parent's sort if unknown.
+/// Resolve a payload field's enum type name + sort; falls back to parent's sort for self-recursion.
 fn field_enum_sort(
     field_decl: Option<&crate::core::ast::EnumField>,
     parent_enum: &str,
@@ -213,9 +163,7 @@ fn field_enum_sort(
     (ftype, fsort)
 }
 
-/// Fold compiled arms bottom-up into a nested ITE. Last arm's body
-/// becomes the trailing else; any earlier wildcard arm short-circuits
-/// (its body becomes the new accumulator).
+/// Fold arms bottom-up into nested ITE; last arm is the trailing else.
 pub(super) fn fold_arms_to_ite<'ctx, T>(
     mut compiled: Vec<CompiledArm<'ctx, T>>,
 ) -> Option<T>

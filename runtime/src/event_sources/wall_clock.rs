@@ -1,5 +1,4 @@
-//! Wall-clock event source. See `event_sources/mod.rs` for trait
-//! and shared helpers.
+//! Wall-clock event source; see `event_sources/mod.rs` for the trait.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,15 +12,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// Wall-clock time source. Spawns a thread that updates the
-/// configured world field with current Unix time (ms) at the
-/// configured interval. Default interval is 100ms; configurable
-/// via constructor. The first write is immediate (don't wait
-/// the interval before exposing the initial time).
-///
-/// Auto-install when World declares `now_ms: Int`. Useful for
-/// programs that want to read "what time is it now" without
-/// emitting Effect::Time on every tick.
+/// Spawns a thread that writes Unix-time-ms to a world field on each tick.
+/// Auto-installed when World declares `now_ms: Int`; first write is immediate.
 pub struct WallClockSource {
     interval:    Duration,
     field:       String,
@@ -59,8 +51,6 @@ impl EventSource for WallClockSource {
                     SystemTime::now().duration_since(UNIX_EPOCH)
                         .map(|d| d.as_millis() as i64).unwrap_or(0)
                 };
-                // Initial write — make the time visible without
-                // waiting the first interval.
                 {
                     let mut q = write_queue.lock().unwrap();
                     q.push_back((field.clone(), Value::Int(now())));
@@ -102,9 +92,7 @@ impl Drop for WallClockSource {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for WallClockSource. Installs iff
-/// the user's World declares `now_ms: Int`. Interval comes from
-/// `EVIDENT_CLOCK_MS` (default 100).
+/// Install WallClockSource iff World declares `now_ms: Int`; interval from `EVIDENT_CLOCK_MS`.
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,

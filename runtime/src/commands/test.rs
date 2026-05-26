@@ -1,8 +1,5 @@
-//! `evident test [path]` — discover and run `claim sat_*` /
-//! `claim unsat_*` claims in `test_*.ev` files. Exits 1 on any failure.
-//!
-//! Color: auto-on when stdout is a TTY; disable with `--no-color` or
-//! the `NO_COLOR` env var (per <https://no-color.org/>).
+//! `evident test [path]` — discover and run `sat_*`/`unsat_*` claims in `test_*.ev` files.
+//! Color: auto when TTY; disable with `--no-color` or `NO_COLOR` (per no-color.org).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,15 +7,10 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use evident_runtime::ast::BodyItem;
-// Trace tests removed in Phase 2 plugin removal — they relied on
-// the now-deleted trace_runner crate which depended on plugins.
-// Effect-driven trace testing is the future replacement; tracked in
-// docs/plans/01-ffi-effects/08-trace-shim.md (replay mode landed).
+// Trace tests removed (trace_runner crate deleted in Phase 2 plugin removal).
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::translate::collect_referenced_names;
 use evident_runtime::pretty;
-
-// ── CLI options ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 struct Opts {
@@ -50,15 +42,13 @@ fn parse_opts(args: &[String]) -> Result<Opts, String> {
     Ok(Opts { path: path.unwrap_or_else(|| PathBuf::from(".")), verbose, use_color })
 }
 
-/// Honor `NO_COLOR` (any non-empty value disables, per the spec) and
-/// only enable colors when stdout is a TTY. Machine formats override
-/// this in `parse_opts`.
+/// `NO_COLOR` (any non-empty value) disables color; also requires stdout TTY.
 fn stdout_supports_color() -> bool {
     if std::env::var("NO_COLOR").map(|v| !v.is_empty()).unwrap_or(false) {
         return false;
     }
     use std::os::fd::AsRawFd;
-    // SAFETY: 1 is stdout; isatty() is read-only and thread-safe.
+    // SAFETY: fd 1 is stdout; isatty() is read-only and thread-safe.
     unsafe { libc_isatty(std::io::stdout().as_raw_fd()) != 0 }
 }
 
@@ -66,8 +56,6 @@ extern "C" {
     #[link_name = "isatty"]
     fn libc_isatty(fd: i32) -> i32;
 }
-
-// ── Color helpers ────────────────────────────────────────────────────────────
 
 const RESET:   &str = "\x1b[0m";
 const BOLD:    &str = "\x1b[1m";
@@ -89,8 +77,6 @@ fn blue(on: bool, t: &str)   -> String { paint(on, BLUE, t) }
 fn dim(on: bool, t: &str)    -> String { paint(on, DIM, t) }
 fn bold(on: bool, t: &str)   -> String { paint(on, BOLD, t) }
 
-// ── Result types ─────────────────────────────────────────────────────────────
-
 #[derive(Debug)]
 enum TestKind {
     Schema { expected_sat: bool },
@@ -98,9 +84,7 @@ enum TestKind {
 
 #[derive(Debug)]
 enum FailDetail {
-    /// Schema sat_* test came back UNSAT.
     UnsatCore { core_indices: Vec<usize> },
-    /// Schema unsat_* test came back SAT. Bindings = counterexample.
     SatCounterexample(HashMap<String, Value>),
 }
 
@@ -115,8 +99,6 @@ struct TestRun {
     outcome:    Outcome,
     elapsed_ms: u32,
 }
-
-// ── Driver ───────────────────────────────────────────────────────────────────
 
 pub fn cmd_test(args: &[String]) -> ExitCode {
     let opts = match parse_opts(args) {
@@ -145,13 +127,9 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
     let mut runs: Vec<TestRun> = Vec::new();
     let mut prev_file: Option<PathBuf> = None;
 
-    // Precompute expected total so the human header can show "running N".
-    // We do this by loading + counting each file once before running. The
-    // load result is reused for the actual run (skips re-parsing).
     for f in &files {
         let mut rt = EvidentRuntime::new();
         if let Err(e) = rt.load_file(f) {
-            // Whole-file load error becomes a single E result.
             runs.push(TestRun {
                 file: f.clone(), name: f.display().to_string(),
                 kind: TestKind::Schema { expected_sat: true },
@@ -176,9 +154,7 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
         for name in &names {
             let expected_sat = name.starts_with("sat_");
             let t0 = Instant::now();
-            // For sat_* tests we use query_with_core so the failure
-            // path can show the conflicting body items. For unsat_*
-            // tests the standard query is enough — we want bindings.
+            // sat_* uses query_with_core (shows conflict); unsat_* uses standard query (shows bindings).
             let outcome = if expected_sat {
                 match rt.query_with_core(name, &empty) {
                     Ok((r, _)) if r.satisfied => Outcome::Pass,
@@ -229,10 +205,7 @@ fn collect_test_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-// ── Human format ─────────────────────────────────────────────────────────────
-
-/// In verbose mode, print a file header before the first test in
-/// each file (compact mode shows only dots and skips this).
+/// Print file header before first test in verbose mode (compact mode shows dots only).
 fn live_file_header(opts: &Opts, prev: &mut Option<PathBuf>, f: &Path) {
     if !opts.verbose { return; }
     if prev.as_deref() == Some(f) { return; }
@@ -240,8 +213,7 @@ fn live_file_header(opts: &Opts, prev: &mut Option<PathBuf>, f: &Path) {
     println!("{}:", dim(opts.use_color, &f.display().to_string()));
 }
 
-/// Per-test live emission: dots in the default mode, full PASS/FAIL line
-/// with `-v`. The FAILURES section runs at the end regardless.
+/// Emit per-test: dot in compact mode, PASS/FAIL line in verbose mode.
 fn live_emit(opts: &Opts, run: &TestRun) {
     use std::io::Write;
     if opts.verbose {
@@ -322,11 +294,8 @@ fn print_failure(run: &TestRun, opts: &Opts) {
     }
 }
 
-/// UNSAT-when-expected-SAT: print the body items Z3 named as the
-/// conflicting subset. Empty `core_indices` means Z3 returned no core
-/// (the conflict isn't pinpointable to a tracked body item — usually
-/// means the conflict involves Z3's built-in axioms or one of the
-/// items can't be split apart further).
+/// Print conflicting body items from UNSAT core. Empty core = Z3 couldn't
+/// pinpoint the conflict (built-in axiom or non-splittable item).
 fn print_unsat_core(run: &TestRun, core_indices: &[usize], opts: &Opts) {
     let oc = opts.use_color;
     if core_indices.is_empty() {
@@ -346,14 +315,8 @@ fn print_unsat_core(run: &TestRun, core_indices: &[usize], opts: &Opts) {
     }
 }
 
-/// SAT-when-expected-UNSAT: the counterexample. Walk the schema body,
-/// pretty-print each constraint, and underneath show the binding
-/// values for variables it references. SeqComposite and Composite
-/// values get flattened first so `coins[0].collected` shows up as a
-/// scalar instead of `coins = Seq(struct)[N]`. Mirrors the Python
-/// runner's failure-trace style, which is much more useful than a
-/// raw bindings dump for narrowing down "which constraint allowed
-/// this?".
+/// Print SAT counterexample: each body constraint + its referenced binding values.
+/// Flattens SeqComposite/Composite so `coins[0].collected` shows as a scalar.
 fn print_counterexample(
     run: &TestRun, bindings: &HashMap<String, Value>, opts: &Opts,
 ) {
@@ -362,22 +325,15 @@ fn print_counterexample(
         red(oc, "UNSAT"), green(oc, "SAT"),
         dim(oc, "counterexample:"));
 
-    // Load the schema fresh — `print_failure` doesn't have a runtime
-    // handle (the test loop drops them after each file). Re-loading
-    // is cheap for a single file.
+    // Re-load the file (print_failure doesn't hold a runtime handle; re-loading is cheap).
     let mut rt = EvidentRuntime::new();
     if rt.load_file(&run.file).is_err() {
-        // Fall back to the raw bindings dump if the file no longer
-        // parses (could happen if it was edited mid-run).
-        return dump_raw_bindings(bindings, opts);
+        return dump_raw_bindings(bindings, opts); // fallback if file was edited mid-run
     }
     let Some(schema) = rt.get_schema(&run.name) else {
         return dump_raw_bindings(bindings, opts);
     };
 
-    // Flat lookup map: scalar bindings plus per-element expansions of
-    // SeqComposite / Composite. `coins[0].collected = false` becomes a
-    // top-level entry alongside the original `coins` Composite.
     let flat = flatten_bindings(bindings);
 
     let mut shown = false;
@@ -388,9 +344,7 @@ fn print_counterexample(
                 pretty::body_item(item)
             }
             BodyItem::ClaimCall { .. } => pretty::body_item(item),
-            // Skip declarations, passthroughs, and subclaim decls
-            // (they're scaffolding, not assertions).
-            _ => continue,
+                _ => continue, // declarations, passthroughs, subclaim decls — not assertions
         };
         shown = true;
         println!("      {}", highlight_constraint(&constraint_text, oc));
@@ -410,9 +364,7 @@ fn print_counterexample(
         }
     }
     if !shown {
-        // No constraint-shaped body items (rare — schema is all
-        // declarations). Fall back to a sorted dump so the user gets
-        // something instead of a blank section.
+        // No constraint-shaped items (schema is all declarations); fall back to raw dump.
         dump_raw_bindings(bindings, opts);
     }
 }
@@ -429,16 +381,12 @@ fn dump_raw_bindings(bindings: &HashMap<String, Value>, opts: &Opts) {
     }
 }
 
-/// Whether a binding `Value` is a scalar worth printing on its own.
-/// Composites and SeqComposites are containers; their leaves carry
-/// the information, so showing the parent just adds `Seq(struct)[N]`
-/// noise to the report.
+/// True for leaf values; Composite/SeqComposite are containers whose leaves carry the info.
 fn is_leaf_value(v: &Value) -> bool {
     !matches!(v, Value::Composite(_) | Value::SeqComposite(_))
 }
 
-/// Body items like `#cur = 1` are length pins — load-bearing for the
-/// solver but uninteresting in a counterexample report. Skip them.
+/// `#cur = 1` style length pins: load-bearing for the solver but uninteresting in reports.
 fn is_cardinality_pin(e: &evident_runtime::ast::Expr) -> bool {
     use evident_runtime::ast::{BinOp, Expr};
     matches!(e,
@@ -446,10 +394,7 @@ fn is_cardinality_pin(e: &evident_runtime::ast::Expr) -> bool {
     )
 }
 
-/// Whether a binding key (`coins[0].collected`, `hero.pos.x`) belongs
-/// to a constraint that referenced `r` (`coins`, `hero`). Matches
-/// the bare key, dotted children (`r.…`), and indexed children
-/// (`r[…]`).
+/// Whether binding key matches ref `r`: exact, dotted child (`r.…`), or indexed child (`r[…]`).
 fn matches_ref(key: &str, r: &str) -> bool {
     if key == r { return true; }
     if let Some(rest) = key.strip_prefix(r) {
@@ -458,10 +403,7 @@ fn matches_ref(key: &str, r: &str) -> bool {
     false
 }
 
-/// Flatten Composite + SeqComposite values into per-leaf flat keys
-/// alongside the originals, so `print_counterexample` can match
-/// constraint-referenced names against scalars rather than seeing
-/// `cur = Seq(struct)[N]`.
+/// Expand Composite/SeqComposite into per-leaf keys alongside originals for scalar matching.
 fn flatten_bindings(b: &HashMap<String, Value>) -> HashMap<String, Value> {
     let mut out = HashMap::new();
     for (k, v) in b {
@@ -491,10 +433,8 @@ fn flatten_value(prefix: &str, v: &Value, out: &mut HashMap<String, Value>) {
     }
 }
 
-/// Walk a single body item and collect the env-key names it
-/// references. Constraint expressions delegate to the existing
-/// translator walker; ClaimCall captures the names referenced by each
-/// mapping value (the slot side is internal to the called claim).
+/// Collect env-key names referenced by a body item. ClaimCall captures mapping values;
+/// slot names are internal to the called claim.
 fn referenced_names_in(item: &BodyItem) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     match item {
@@ -507,10 +447,8 @@ fn referenced_names_in(item: &BodyItem) -> std::collections::HashSet<String> {
     out
 }
 
-/// Lightweight ANSI highlighter for a pretty-printed constraint.
-/// Unicode operators get bold-white; quoted strings yellow; bare
-/// identifiers blue (variables) or cyan (capital-first → types/sets).
-/// Matches the spirit of the Python runner; it's not a full lexer.
+/// ANSI highlighter: Unicode operators → bold-white; strings → yellow;
+/// lowercase identifiers → blue; uppercase-initial → cyan. Not a full lexer.
 fn highlight_constraint(text: &str, on: bool) -> String {
     if !on { return text.to_string(); }
     let ops = [
@@ -568,9 +506,7 @@ fn highlight_constraint(text: &str, on: bool) -> String {
     out
 }
 
-/// Compact value rendering for counterexample output. Long Seq values
-/// truncate to `Seq[N]` to keep the screen readable; expand-on-demand
-/// could be a future flag.
+/// Compact value for counterexample output; Seq/Composite types show `Type[N]` only.
 fn display_value_compact(v: &Value) -> String {
     match v {
         Value::Int(n)  => n.to_string(),

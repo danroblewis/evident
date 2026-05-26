@@ -1,18 +1,5 @@
-//! Compile-time structural analysis. Builds a solver the same way
-//! `evaluate` does, then reads back the asserted Bool constraints +
-//! free-variable names *without* calling `check()`.
-//!
-//!   * `analyze_decomposition`   — returns a list of independent
-//!                                  `Component`s (groups of variables
-//!                                  that share at least one constraint).
-//!   * `classify_components`     — same as above, plus a per-component
-//!                                  functional-vs-non-functional verdict
-//!                                  derived from a 2-copy uniqueness
-//!                                  check.
-//!
-//! Both feed `compile-claims-to-functions.md` — they exist to let the
-//! function-izer split a composed claim into independent sub-models
-//! before native-compiling each piece.
+//! Compile-time structural analysis: `analyze_decomposition` returns independent `Component`s;
+//! `classify_components` adds a per-component functional verdict via 2-copy uniqueness check.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -26,17 +13,8 @@ use super::super::inline::inline_body_items;
 use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64};
 
-/// Analysis-only entry: build the solver exactly the way `evaluate`
-/// does, then read out the asserted Bool constraints and free-variable
-/// names *without* calling `solver.check()`. Intended for compile-time
-/// structural passes — currently the decomposition pass that re-separates
-/// composed claims into independent sub-models. See
-/// `crate::decompose` for the union-find walker, and
-/// `docs/design/compile-claims-to-functions.md` ("Decomposition") for
-/// the architectural framing.
-///
-/// `given_keys` are treated as broadcast constants — they don't link
-/// components, so the returned `var_names` excludes them.
+/// Build solver like `evaluate`, read constraints + free var names without check().
+/// `given` keys are broadcast constants excluded from `var_names`.
 pub fn analyze_decomposition(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -51,9 +29,7 @@ pub fn analyze_decomposition(
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // The setup phases below mirror `evaluate`'s build phase exactly —
-    // declare, pin, inline. We deliberately skip the final `solver.check()`
-    // and the model-extraction loop.
+    // Mirrors evaluate's build phase (declare, pin, inline); skips check() and model extraction.
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -84,8 +60,7 @@ pub fn analyze_decomposition(
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
-    // Pin given values (same as evaluate's Pass 3) so given-keyed vars
-    // get assertions that we can then exclude from var_names.
+    // Pin given values (same as evaluate's Pass 3).
     for (name, value) in given {
         let Some(var) = env.get(name) else { continue };
         match (var, value) {
@@ -111,11 +86,7 @@ pub fn analyze_decomposition(
         }
     }
 
-    // Collect free-variable names: every entry in env EXCLUDING
-    //   - given-keyed names (those are broadcast constants), and
-    //   - enum variant constants like `Init`, `Done` populated by
-    //     `populate_enum_variants` (those are runtime-constant
-    //     values, not user-declared variables).
+    // Collect free-var names: exclude given keys (broadcast constants) and enum variants.
     let var_names: Vec<String> = env.iter()
         .filter(|(n, _)| !given.contains_key(n.as_str()))
         .filter(|(_, v)| !matches!(v, Var::EnumValue { .. } | Var::EnumCtor { .. }))
@@ -126,31 +97,16 @@ pub fn analyze_decomposition(
     crate::decompose::decompose(ctx, &assertions, &var_names)
 }
 
-/// A component plus a functionality verdict — whether the component's
-/// variables are uniquely determined by the inputs (given + already-
-/// determined components). UNSAT of the "another distinct model exists"
-/// check means functional; SAT or UNKNOWN means non-functional.
+/// A component plus a functional verdict: UNSAT on the 2-copy check = functional;
+/// SAT or Unknown = non-functional.
 #[derive(Debug, Clone)]
 pub struct ClassifiedComponent {
     pub component: crate::decompose::Component,
-    /// `true` iff the 2-copy uniqueness check is UNSAT for this
-    /// component's variables — i.e., no two distinct satisfying models
-    /// disagree on this component's variables, holding `given` fixed.
-    /// `false` means non-functional OR Z3 returned Unknown.
     pub functional: bool,
 }
 
-/// Same as `analyze_decomposition`, plus a per-component verdict:
-/// is this component function-shaped (outputs uniquely determined
-/// by inputs)?
-///
-/// The check is: solver.check() → if SAT, capture the model, then
-/// assert "at least one variable in the component differs from its
-/// model value" and check again. UNSAT means functional; SAT means
-/// another distinct model exists → non-functional.
-///
-/// Per-component cost: 1 push, 1 assert, 1 check, 1 pop. Cheap
-/// relative to a full solve.
+/// Like `analyze_decomposition` plus a per-component functional verdict: SAT +
+/// assert-a-different-model + UNSAT = functional. Cost: 1 push/assert/check/pop per component.
 pub fn classify_components(
     schema: &SchemaDecl,
     given: &HashMap<String, Value>,
@@ -165,7 +121,7 @@ pub fn classify_components(
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Mirror analyze_decomposition's build phase.
+    // Mirrors analyze_decomposition's build phase.
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -228,13 +184,8 @@ pub fn classify_components(
     let assertions = solver.get_assertions();
     let components = crate::decompose::decompose(ctx, &assertions, &var_names);
 
-    // If the body is UNSAT under given, mark every component as
-    // NON-functional. Don't say "vacuously functional" — that's
-    // technically true (no two distinct models exist when no model
-    // exists) but it lets downstream callers (the function-izer's
-    // rt.query hook) skip the solve entirely and produce SAT=true
-    // with wrong bindings. Force the caller to go through Z3 so it
-    // correctly returns UNSAT.
+    // If UNSAT under given, mark all components non-functional — "vacuously functional"
+    // would let callers skip Z3 and return wrong bindings.
     let initial = solver.check();
     if !matches!(initial, SatResult::Sat) {
         return components.into_iter().map(|c|
@@ -248,15 +199,10 @@ pub fn classify_components(
         ).collect(),
     };
 
-    // Per-component 2-copy check: assert that AT LEAST ONE variable
-    // in this component differs from its current model value. UNSAT
-    // means no such alternative model exists → functional.
+    // Per-component 2-copy check: assert ≥1 var differs from model; UNSAT → functional.
     let mut out = Vec::with_capacity(components.len());
     for component in components {
-        // Build the "differs from model" disjunction. Skip variables
-        // whose types we can't easily compare against a Z3 value
-        // (Seq, Set, Datatype) for v1; treat presence of such vars
-        // as "couldn't classify, assume non-functional."
+        // Build differs-from-model disjunction; Seq/Set/Datatype are unsupported → non-functional.
         let mut disjuncts: Vec<Bool<'static>> = Vec::new();
         let mut skip_due_to_unsupported_var = false;
         for name in &component.vars {
@@ -290,12 +236,8 @@ pub fn classify_components(
                 }
                 Var::EnumValue { .. } | Var::EnumCtor { .. } => {} // Enum constant; can't differ.
                 Var::SeqVar { arr, len, .. } | Var::DatatypeSeqVar { arr, len, .. } => {
-                    // A Seq's "value" is its length + array contents at
-                    // in-range indices. The array can have arbitrary
-                    // values outside [0, len), so naive `arr ≠ model_arr`
-                    // is trivially SAT (Z3 picks a different out-of-range
-                    // index). Encode the in-range existential explicitly:
-                    //   len ≠ model_len  ∨  ∃ k ∈ [0, len). arr[k] ≠ model_arr[k]
+                    // Naive arr ≠ model_arr is trivially SAT (Z3 picks an out-of-range index).
+                    // Encode: len ≠ model_len ∨ ∃ k ∈ [0,len). arr[k] ≠ model_arr[k].
                     let len_val = model.eval(len, true);
                     let arr_val = model.eval(arr, true);
                     if let Some(lv) = &len_val {
@@ -304,14 +246,9 @@ pub fn classify_components(
                     if let Some(av) = &arr_val {
                         let k = z3::ast::Int::fresh_const(ctx, "fz_k");
                         let zero = z3::ast::Int::from_i64(ctx, 0);
-                        let lo = zero.le(&k);
-                        let hi = k.lt(len);
-                        let in_range = z3::ast::Bool::and(ctx, &[&lo, &hi]);
+                        let in_range = z3::ast::Bool::and(ctx, &[&zero.le(&k), &k.lt(len)]);
                         let elem_diff = arr.select(&k)._eq(&av.select(&k)).not();
-                        // Existential `∃k. P(k)` over Int is encoded as
-                        // a fresh `k` AST plus `P(k)` asserted; Z3 treats
-                        // free constants existentially in the assertion
-                        // context.
+                        // Z3 treats a fresh free constant existentially in assertion context.
                         disjuncts.push(z3::ast::Bool::and(ctx, &[&in_range, &elem_diff]));
                     }
                 }
@@ -325,8 +262,7 @@ pub fn classify_components(
         let functional = if skip_due_to_unsupported_var {
             false
         } else if disjuncts.is_empty() {
-            // No differable vars (component is all pinned ints or only
-            // contains unsupported types we skipped). Treat as functional.
+            // All pinned ints or unsupported types; treat as functional.
             true
         } else {
             solver.push();

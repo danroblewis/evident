@@ -1,8 +1,5 @@
-//! Shared helpers used by multiple `cmd_*` subcommands: usage banner,
-//! generic flag parsing, runtime loading, and shared value formatting.
-//!
-//! Single-use helpers (e.g. JSON formatting, the SAT/UNSAT printer)
-//! live in their owning command file, not here.
+//! Shared helpers for `cmd_*` subcommands: flag parsing, runtime loading, value formatting.
+//! Single-use helpers live in their owning command file.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,8 +16,7 @@ pub fn usage() {
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
 }
 
-/// Split positional file paths from flag arguments. Files are everything
-/// before the first `--…` flag. Returns `(files, flags)`.
+/// Split positional file paths (before first `-…` flag) from flag args.
 pub fn split_files_and_flags(args: &[String]) -> (Vec<String>, Vec<String>) {
     let mut files = Vec::new();
     let mut i = 0;
@@ -31,14 +27,11 @@ pub fn split_files_and_flags(args: &[String]) -> (Vec<String>, Vec<String>) {
     (files, args[i..].to_vec())
 }
 
-/// Parse `--given k=v k2=v2 …` (consecutive k=v args after `--given`)
-/// and `--json`. Unknown flags trigger an error.
 pub struct Flags {
     pub given: HashMap<String, Value>,
     pub json: bool,
     pub n_samples: usize,
-    /// `--explain`: when a query returns UNSAT, run a per-constraint
-    /// retry to identify which body items make the schema unsatisfiable.
+    /// When UNSAT, retry per-constraint to identify conflicting body items.
     pub explain: bool,
 }
 
@@ -90,20 +83,14 @@ pub fn infer_value(v: &str) -> Value {
 pub fn load_runtime(files: &[String]) -> Result<EvidentRuntime, String> {
     let mut rt = EvidentRuntime::new();
     for f in files {
-        // Use load_file so any `import "..."` statements inside the
-        // file resolve relative to the file itself.
+        // load_file resolves `import "..."` relative to the file itself.
         rt.load_file(Path::new(f)).map_err(|e| format!("{f}: {e}"))?;
     }
     Ok(rt)
 }
 
-/// Load a fresh runtime pre-seeded with `stdlib/ast.ev` + the given pass
-/// files (marked as system loads), then load the user's files. Used
-/// by every self-hosted pass driver (lint, desugar, infer-types).
-///
-/// `pass_files` are paths **relative to the stdlib directory** (e.g.
-/// `"passes/desugar_passthrough.ev"`); they're resolved against the one
-/// [`stdlib_path::stdlib_dir`] location, so the drivers work from any CWD.
+/// Load a fresh runtime with `stdlib/ast.ev` + `pass_files` (system loads), then the user files.
+/// `pass_files` are relative to the stdlib directory.
 pub fn load_runtime_with_passes(
     pass_files: &[&str],
     user_files: &[String],
@@ -133,18 +120,8 @@ pub struct CmdSetup {
     pub flags: Flags,
 }
 
-/// Shared prologue for `evident sample`:
-///   1. strip `--strict` (skip the auto-applied desugar pass),
-///   2. split positional files + schema from flag args,
-///   3. parse flags,
-///   4. construct an `EvidentRuntime` from the file list,
-///   5. unless `--strict`, run `auto_apply_desugar` so the user's source
-///      has its canonical AST (bare-identifier → passthrough) before the
-///      verb runs.
-///
-/// `cmd_name` is the verb word (`"sample"`) used in error messages.
-/// Returns `Err(ExitCode)` for a clean caller-bubbled exit on usage /
-/// load errors.
+/// Shared prologue for query commands: strips `--strict`, parses flags, loads runtime,
+/// and runs `auto_apply_desugar` unless `--strict`. Returns `Err(ExitCode)` on usage/load errors.
 pub fn setup_query_or_sample(cmd_name: &str, args: &[String]) -> Result<CmdSetup, ExitCode> {
     let strict = args.iter().any(|a| a == "--strict");
     let stripped: Vec<String> = args.iter()
@@ -171,21 +148,12 @@ pub fn setup_query_or_sample(cmd_name: &str, args: &[String]) -> Result<CmdSetup
     Ok(CmdSetup { rt, schema, flags })
 }
 
-// ── Self-hosted desugar pass (bare-identifier → passthrough) ──────
-//
-// Relocated here from the former `commands/desugar.rs` (the `evident
-// desugar` report-only command was removed). The pass itself is still
-// applied automatically by `sample` (via `setup_query_or_sample`),
-// `test`, and `effect-run` before they run — it's load-bearing, not a
-// command. The Evident-side rule lives in
-// `stdlib/passes/desugar_passthrough.ev`.
-
-// Relative to the resolved stdlib directory (see `load_runtime_with_passes`).
+// Self-hosted desugar pass (bare-identifier → passthrough). Auto-applied by
+// sample/test/effect-run. Rule lives in `stdlib/passes/desugar_passthrough.ev`.
 const DESUGAR_PASSTHROUGH: &str = "passes/desugar_passthrough.ev";
 const PASSTHROUGH_RULE:    &str = "is_passthrough_at_index";
 
-/// One detected rewrite: in `claim_name`, replace `body[body_idx]` with
-/// `BodyItem::Passthrough(target_name)`.
+/// One detected passthrough rewrite: replace `body[body_idx]` with `Passthrough(target_name)`.
 #[derive(Debug, Clone)]
 pub struct Rewrite {
     pub claim_name:  String,
@@ -193,16 +161,13 @@ pub struct Rewrite {
     pub target_name: String,
 }
 
-/// Find every (claim, body_idx, name) triple where the body item is a
-/// bare-identifier constraint AND the identifier names a known schema.
-/// Spins up its own runtime so the caller's state isn't touched.
+/// Find every (claim, body_idx, name) triple where the body item is a bare-identifier
+/// naming a known schema. Uses its own runtime to avoid touching the caller's state.
 pub fn collect_passthrough_rewrites(user_files: &[String])
     -> Result<Vec<Rewrite>, String>
 {
     let rt = load_runtime_with_passes(&[DESUGAR_PASSTHROUGH], user_files)?;
 
-    // Set of every claim name the user (transitively) loaded — the
-    // filter for "is target_name a known schema".
     let known: std::collections::HashSet<String> =
         rt.schema_names().map(|s| s.to_string()).collect();
 
@@ -233,9 +198,7 @@ pub fn collect_passthrough_rewrites(user_files: &[String])
     Ok(out)
 }
 
-/// Apply every detected rewrite to `rt`. Quiet on success; prints one
-/// stderr warning if the pipeline fails (non-fatal — caller continues
-/// without rewrites). Returns the number of body items rewritten.
+/// Apply detected rewrites to `rt`. Warns on pipeline failure (non-fatal). Returns rewrite count.
 pub fn auto_apply_desugar(rt: &mut EvidentRuntime, user_files: &[String]) -> usize {
     let rewrites = match collect_passthrough_rewrites(user_files) {
         Ok(v) => v,
@@ -247,8 +210,7 @@ pub fn auto_apply_desugar(rt: &mut EvidentRuntime, user_files: &[String]) -> usi
     let mut applied = 0usize;
     for r in &rewrites {
         let new_item = BodyItem::Passthrough(r.target_name.clone());
-        // Sanity check: only rewrite if the body item still matches the
-        // expected shape (defends against running twice).
+        // Only rewrite if item still matches — defends against running twice.
         let still_matches = rt.get_schema(&r.claim_name)
             .and_then(|s| s.body.get(r.body_idx))
             .map(|item| matches!(item,
@@ -279,10 +241,7 @@ pub fn format_value(v: &Value) -> String {
                 format!("{}({})", variant, parts.join(", "))
             }
         }
-        // Composite / SeqComposite are placeholder Value variants that
-        // aren't currently produced by the translator (sub-schema
-        // expansion still emits one leaf per field). Render with Debug
-        // until first-class formatting lands.
+        // Composite/SeqComposite not yet produced by translator; Debug until first-class formatting.
         other => format!("{:?}", other),
     }
 }

@@ -5,68 +5,27 @@ use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
 use std::collections::HashSet;
 
-/// Snapshot of "everything loaded so far is the system layer."
-/// Schemas / enums loaded after a `mark_system_loads_complete()` call
-/// are treated as the user's program for the purposes of AST encoding.
+/// Marks the system/user boundary: schemas loaded after `mark_system_loads_complete()`
+/// are the user's program for AST encoding purposes.
 #[derive(Default, Clone)]
 pub struct SystemBoundary {
     pub schemas: HashSet<String>,
     pub enums:   HashSet<String>,
 }
 
-/// Desugar `Seq(T)` concatenation. The user writes
-///
-/// ```text
-/// effects = sky_effs ++ rect_effs ++ ⟨present_eff⟩ ++ input_effs
-/// ```
-///
-/// flattening each `Concat` subtree into a single `SeqLit` when every
-/// operand resolves to a literal sequence (a `⟨…⟩` or an identifier bound to
-/// one), recursing into subclaims.
-///
-/// **Self-hosted (session REVIVE-desugar).** The two-pass gather/flatten/
-/// rewrite walk that used to live here is **deleted**; the transform's
-/// recursive kernels (`desugar_gather` + `desugar_flatten`) now run in
-/// Evident as stack-FSMs in `stdlib/passes/desugar.ev`. This is a thin
-/// adapter that delegates to the cached per-thread engine in
-/// [`crate::portable::desugar::desugar_seq_concat`] (which keeps the
-/// pre-order `rewrite` tree-walk and the string-keyed `FRef` lookup in Rust
-/// — see that module for the faithfulness/perf split). Behavior is pinned
-/// byte-for-byte by `runtime/tests/desugar_correctness.rs`.
-///
-/// `unify_world_syntax` (below) is the *other* desugar pass and stays
-/// canonical Rust — it rewrites identifier strings by prefix-strip, which
-/// Evident has no operator for.
+/// Flatten `++` Seq concat chains into a single `SeqLit`. Self-hosted
+/// (REVIVE-desugar): delegates to `portable::desugar::desugar_seq_concat`.
 pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     crate::portable::desugar::desugar_seq_concat(s);
 }
 
-/// Unified-state world syntax. When an fsm declares
-/// `world ∈ World` but NOT `world_next ∈ World`, the user is
-/// using the `_var` time-shift convention for shared state:
-///   * `world.X` reads/writes the current tick's value.
-///   * `_world.X` reads the previous tick's value.
-///
-/// The multi-FSM scheduler still expects the legacy writer
-/// pattern (`world` read-only + `world_next` write-only), so
-/// this pass rewrites the body in-place to that shape:
-///   * Every `world.X` reference (read or write) → `world_next.X`.
-///     That makes it one Z3 var that's both constrained and
-///     read within the same body — same semantics as the new
-///     model's "this-tick value."
-///   * Every `_world.X` reference → `world.X`. That's the
-///     scheduler's "read of previous snapshot" path.
-///   * Auto-inject `world_next ∈ World` so downstream
-///     translation sees the legacy shape.
-///
-/// External fsms are skipped (they don't carry user logic).
+/// Rewrite `world.X` / `_world.X` unified syntax to the legacy `world` / `world_next`
+/// pair the scheduler expects; injects `world_next ∈ World`. Skips external fsms.
 pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
 
-    // Find `world` membership type (if any) and whether
-    // `world_next` is already declared.
     let mut world_type: Option<String> = None;
     let mut has_world_next = false;
     for item in &s.body {
@@ -78,13 +37,8 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     let Some(world_ty) = world_type else { return Ok(()); };
     if has_world_next { return Ok(()); }   // legacy pattern; leave alone.
 
-    // Only trigger the rewrite when the body actually uses
-    // `_world.X` references — that's the unambiguous signal that
-    // the user is in the unified-syntax world. Without this check,
-    // legacy read-only fsms (declare `world ∈ World`, no `world_next`,
-    // never write to world) would have their reads of `world.X`
-    // wrongly promoted to writes, and the scheduler's single-owner-
-    // per-field check would reject the program.
+    // Only rewrite when the body uses `_world.X`. Without this, legacy read-only fsms
+    // (no `world_next`) would have `world.X` reads wrongly promoted, failing single-owner.
     fn uses_underscore_world(e: &Expr) -> bool {
         match e {
             Expr::Identifier(n) => n.starts_with("_world."),
@@ -118,10 +72,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     });
     if !uses_new_syntax { return Ok(()); }
 
-    // Rewrite Identifier strings in the body.
-    //   "_world.X" → "world.X"
-    //   "world.X"  → "world_next.X"
-    // Same walk so both happen in one pass without re-matching.
+    // One-pass rewrite: `_world.X` → `world.X`, `world.X` → `world_next.X`.
     fn rewrite_ident(name: &str) -> Option<String> {
         if let Some(rest) = name.strip_prefix("_world.") {
             return Some(format!("world.{rest}"));
@@ -161,12 +112,8 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
             BodyItem::Constraint(e) => walk(e),
             BodyItem::ClaimCall { mappings, .. } =>
                 for m in mappings { walk(&mut m.value); },
-            // Pin values inside type-use Memberships also need
-            // rewriting — `mario ∈ MarioSprite (pos ↦ _world.player.pos)`
-            // desugars at translate time to `mario.pos =
-            // _world.player.pos`, which only resolves if the RHS has
-            // been promoted to `world.player.pos` like the rest of the
-            // body's `_world` reads.
+            // Pin values in Memberships also need rewriting: `pos ↦ _world.player.pos`
+            // must be promoted to `world.player.pos` like other `_world` reads.
             BodyItem::Membership { pins, .. } => match pins {
                 Pins::Named(named) => for m in named { walk(&mut m.value); },
                 Pins::Positional(vals) => for v in vals { walk(v); },
@@ -176,8 +123,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         }
     }
 
-    // Inject `world_next ∈ World` so the scheduler's writer-shape
-    // detection finds it.
+    // Inject `world_next ∈ World` so the scheduler's writer-shape detection finds it.
     let insert_pos = s.param_count;
     s.body.insert(insert_pos, BodyItem::Membership {
         name: "world_next".to_string(),
@@ -187,72 +133,28 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     Ok(())
 }
 
-/// Generalized terse `_state` syntax — `unify_world_syntax` with the
-/// hardcoded `world`/`World` names replaced by *any FSM state var*. When an
-/// `fsm` declares a first-line param `X ∈ T` but NOT an explicit `X_next`,
-/// and the body references `_X` (the previous-tick form), the author is
-/// using the terse time-shift for that state var:
-///   * `X` / `X.…`  (a bare write, not under `_`) is this tick's value.
-///   * `_X` / `_X.…`                              reads the previous tick.
-///
-/// The non-scheduler embedding machinery (`fsm_unroll/compose.rs`,
-/// `effect_loop/nested.rs`) and the scheduler's writer detection all expect
-/// the literal `X, X_next ∈ T` pair, so this rewrites the body in-place to
-/// that shape — exactly as `unify_world_syntax` does for `world`:
-///   * Every bare `X` / `X.…` reference → `X_next` / `X_next.…`
-///     (this-tick value: one var that's both written and read in the body).
-///   * Every `_X` / `_X.…` reference → `X` / `X.…` (the prev-tick read,
-///     the detectors' input const).
-///   * Auto-inject `X_next ∈ T` so downstream pair detection sees it.
-///
-/// Generalizes over BOTH state shapes: a record state (`_X.field` accesses)
-/// AND a bare enum/primitive state (`X = Push(...)` whole-value writes,
-/// `_X` whole-value reads) — the prefix-or-bare rewrite covers both.
-///
-/// **Scope / safety gates** (matches `docs/design/fsms-as-functions-impl.md`
-/// § 3, § 6):
-///   * Only `Keyword::Fsm`, non-`external` schemas (a `claim` that happens
-///     to reference `_foo` is not an FSM and is left alone).
-///   * Only **param-position** memberships (index `< param_count`). A
-///     scheduler primitive `_var` self-feedback var (`test_20`'s
-///     `count ∈ Int = (is_first_tick ? 0 : _count + 1)`) is a *body* item,
-///     not a param, so it stays on the `_var` machinery (`prev_tick`),
-///     untouched.
-///   * Only when the body actually references `_X` — the unambiguous terse
-///     signal, mirroring `unify_world_syntax`'s `_world.` trigger.
-///   * Skip if `X_next` is already declared (the explicit pair — back-compat;
-///     this is what makes the pass INERT on the un-migrated corpus).
-///   * Skip a primitive (`Int`/`Bool`/`Real`/`String`) state var when the
-///     schema declares no `halt ∈ Bool` — a scheduler primitive
-///     self-feedback var, which the `_var` machinery owns. (Enum/record
-///     vars rewrite regardless; embedded-`Int` vars like `decrement`'s
-///     `count` rewrite because they declare `halt`.)
-///   * `world`/`world_next` are owned by `unify_world_syntax` above; this
-///     pass never touches them. The two should merge later — kept separate
-///     here so `world`'s well-tested pin-rewriting stays byte-identical.
+/// Like `unify_world_syntax` but for any FSM state param `X`: rewrites `_X`/`X` to the
+/// `X`/`X_next` pair. Skips: non-fsm, external, non-param vars, primitives without `halt`.
 pub(super) fn unify_state_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
 
-    // `halt ∈ Bool` present? — the embedded-target signal that lets a
-    // primitive state var (e.g. `decrement`'s `count ∈ Int`) be paired.
+    // `halt ∈ Bool` present? Allows pairing a primitive state var (e.g. `count ∈ Int`).
     let has_halt = s.body.iter().any(|item| matches!(item,
         BodyItem::Membership { name, type_name, .. }
             if name == "halt" && type_name == "Bool"));
 
-    // Every membership name declared at SOURCE level (before the inject
-    // passes run — they fire later in `load.rs`). Used to detect an
-    // already-declared explicit `X_next` pair.
+    // Source-level membership names (before inject passes run); detect explicit `X_next` pair.
     let declared: HashSet<String> = s.body.iter().filter_map(|item| match item {
         BodyItem::Membership { name, .. } => Some(name.clone()),
         _ => None,
     }).collect();
 
     // Candidate terse state vars: param-position memberships `X ∈ T`.
-    let mut candidates: Vec<(String, String)> = Vec::new();   // (name, type)
+    let mut candidates: Vec<(String, String)> = Vec::new();
     for (i, item) in s.body.iter().enumerate() {
-        if i >= s.param_count { break; }   // params are the first `param_count` items
+        if i >= s.param_count { break; }
         let BodyItem::Membership { name, type_name, .. } = item else { continue };
         if name == "world" || name == "world_next" { continue; } // owned by unify_world_syntax
         if name.ends_with("_next") { continue; }
@@ -264,8 +166,7 @@ pub(super) fn unify_state_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     }
     if candidates.is_empty() { return Ok(()); }
 
-    // Keep only candidates the body actually references as `_X` (the terse
-    // signal). `_X` means an Identifier equal to `_X` or starting `_X.`.
+    // Keep only candidates the body references as `_X` (the terse signal).
     fn uses_underscore(e: &Expr, var: &str) -> bool {
         fn is_underscore_ref(n: &str, var: &str) -> bool {
             match n.strip_prefix('_') {
@@ -316,13 +217,9 @@ pub(super) fn unify_state_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         .collect();
     if targets.is_empty() { return Ok(()); }
 
-    // Rewrite an identifier string against the target set:
-    //   "_X" / "_X.rest"  → "X" / "X.rest"        (read previous tick)
-    //   "X"  / "X.rest"   → "X_next" / "X_next.rest" (write current tick)
-    // One pass, one rewrite per identifier — same discipline as
-    // `unify_world_syntax`'s `rewrite_ident`.
+    // One-pass rewrite: `_X`/`_X.rest` → `X`/`X.rest` (read prev); `X`/`X.rest` → `X_next`/`X_next.rest`.
+    // Read-prev branch first so `_X` doesn't fall through to the write branch.
     let rewrite_ident = |name: &str| -> Option<String> {
-        // Read-prev branch first (so `_X` doesn't fall through to write).
         if let Some(rest) = name.strip_prefix('_') {
             let head = rest.split('.').next().unwrap_or(rest);
             if targets.contains(head) {
@@ -377,9 +274,7 @@ pub(super) fn unify_state_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         }
     }
 
-    // Inject `X_next ∈ T` for each target so pair detection finds it.
-    // Insert at `param_count` (the first non-param slot), preserving the
-    // declared order of the source's state vars.
+    // Inject `X_next ∈ T` at param_count (first non-param slot), preserving source order.
     let mut insert_pos = s.param_count;
     for (name, type_name) in s.body.iter()
         .take(s.param_count)
@@ -420,7 +315,7 @@ mod state_syntax_tests {
         }
     }
 
-    /// Names of all `X ∈ T` memberships, sorted, as `"X ∈ T"`.
+    /// All memberships sorted as `"X ∈ T"` strings.
     fn memberships(s: &SchemaDecl) -> Vec<String> {
         let mut v: Vec<String> = s.body.iter().filter_map(|i| match i {
             BodyItem::Membership { name, type_name, .. } => Some(format!("{name} ∈ {type_name}")),
@@ -430,7 +325,6 @@ mod state_syntax_tests {
         v
     }
 
-    /// Bare enum/Int state var: `_state` read + `state` write → pair.
     #[test]
     fn rewrites_enum_state_to_pair() {
         // fsm f(state ∈ SV, halt ∈ Bool) :  state = _state ;  halt = _state
@@ -440,7 +334,7 @@ mod state_syntax_tests {
             eq(id("halt"), id("_state")),
         ], 2);
         unify_state_syntax(&mut s).unwrap();
-        // state_next ∈ SV injected; `state`(write)→state_next, `_state`(read)→state.
+        // state_next ∈ SV should be injected.
         assert!(memberships(&s).contains(&"state_next ∈ SV".to_string()),
             "expected injected state_next ∈ SV, got {:?}", memberships(&s));
         // First constraint (shifted to index 3 after state_next injected at 2):
@@ -449,7 +343,6 @@ mod state_syntax_tests {
         assert_eq!(c0, "state_next = state");
     }
 
-    /// Primitive state var WITH `halt` (embedded `decrement` shape) → paired.
     #[test]
     fn rewrites_primitive_with_halt() {
         // fsm decrement(count ∈ Int, halt ∈ Bool): count = _count ; halt = _count
@@ -463,9 +356,6 @@ mod state_syntax_tests {
             "expected count_next ∈ Int, got {:?}", memberships(&s));
     }
 
-    /// Primitive state var WITHOUT `halt` (scheduler self-feedback) → left
-    /// alone (the `_var` machinery owns it). Note this is the param-position
-    /// case; the corpus uses the body-item form which is also excluded.
     #[test]
     fn skips_primitive_without_halt() {
         let mut s = fsm("counter", vec![
@@ -477,7 +367,6 @@ mod state_syntax_tests {
             "primitive self-feedback var must not be paired: {:?}", memberships(&s));
     }
 
-    /// Explicit pair (X and X_next both declared) → inert (back-compat).
     #[test]
     fn inert_on_explicit_pair() {
         let mut s = fsm("f", vec![
@@ -489,7 +378,6 @@ mod state_syntax_tests {
         assert_eq!(s.body.len(), before, "explicit-pair fsm must be untouched");
     }
 
-    /// Body var referenced as `_X` but NOT a param → not a state var.
     #[test]
     fn skips_non_param_body_var() {
         // fsm f(state ∈ S) :  count ∈ Int(body) ;  count = _count
@@ -505,7 +393,6 @@ mod state_syntax_tests {
         assert!(!memberships(&s).contains(&"state_next ∈ S".to_string()));
     }
 
-    /// `world` is owned by `unify_world_syntax`; this pass never pairs it.
     #[test]
     fn never_touches_world() {
         let mut s = fsm("g", vec![
@@ -518,7 +405,6 @@ mod state_syntax_tests {
             "world must be left to unify_world_syntax: {:?}", memberships(&s));
     }
 
-    /// Non-`fsm` keyword referencing `_foo` is not an FSM → untouched.
     #[test]
     fn skips_non_fsm_keyword() {
         let mut s = fsm("c", vec![
@@ -530,7 +416,6 @@ mod state_syntax_tests {
         assert!(!memberships(&s).contains(&"state_next ∈ SV".to_string()));
     }
 
-    /// Record state via `.field` accesses (`_state.x` read, `state.x` write).
     #[test]
     fn rewrites_record_field_accesses() {
         // fsm f(state ∈ Vec, halt ∈ Bool):  state.x = _state.x ; halt = _state.done

@@ -1,31 +1,5 @@
-//! Generic FTI install path driven by the type's `install ∈ Seq(InstallStep)`
-//! body member.
-//!
-//! Replaces the per-type bridge files (sdl_window.rs, gl_program.rs,
-//! oneshot_shell.rs) with one mechanism. The type author declares
-//! the bridge in Evident:
-//!
-//! ```evident
-//! external type SDL_Window
-//!     handle ∈ Int
-//!     renderer ∈ Int
-//!     install ∈ Seq(InstallStep) = ⟨
-//!         Run(LibCall("...", "SDL_Init", "i(i)", ⟨ArgInt(32)⟩)),
-//!         Bind("handle", LibCall("...", "SDL_CreateWindow", "p(siiiii)", ⟨…⟩)),
-//!         Bind("renderer", LibCall("...", "SDL_CreateRenderer", "p(pii)",
-//!                                    ⟨ArgPriorResult(1), ArgInt(-1), ArgInt(0)⟩))
-//!     ⟩
-//! ```
-//!
-//! At FTI install time the runtime:
-//!   1. Queries the type body with the user's pins, extracts the
-//!      `install` Seq value.
-//!   2. Decodes it into `Vec<InstallStep>`.
-//!   3. Dispatches the contained effects atomically via
-//!      `effect_dispatch::dispatch_all` (so `ArgPriorResult(N)`
-//!      threading works in-batch).
-//!   4. For each `Bind`'d step, writes the result Int/String/Handle
-//!      to the world snapshot key `<fsm>.<param>.<field>`.
+//! Generic FTI install driven by `install ∈ Seq(InstallStep)`: query body → decode Seq →
+//! dispatch atomically → write `Bind`'d results to `<fsm>.<param>.<field>`.
 
 use std::sync::mpsc::Sender;
 
@@ -36,9 +10,7 @@ use crate::translate::{Value};
 use crate::translate::ast_decoder::decode_install_step_list;
 use super::{drain, new_write_queue, EventSource, SchedulerEvent, WriteQueue};
 
-/// One-shot install source: dispatches the install Seq at install
-/// time, then sits idle (no per-tick wake events). The captured
-/// write queue is drained by the scheduler once, at startup.
+/// One-shot install source: dispatches the install Seq at startup then sits idle.
 pub struct DeclarativeInstallSource {
     write_queue: WriteQueue,
 }
@@ -48,18 +20,8 @@ impl DeclarativeInstallSource {
         DeclarativeInstallSource { write_queue: new_write_queue() }
     }
 
-    /// Resolve the install Seq for `type_name` with `pins` applied,
-    /// dispatch each step, and queue captured results onto the write
-    /// queue under `<fsm>.<param>.<field>`.
-    ///
-    /// `dispatch_ctx` MUST be the same context the scheduler will use
-    /// for per-tick effect dispatch. The HandleRegistry it holds is
-    /// where libffi stores pointer-return IDs; per-tick code passes
-    /// `ArgHandle(id)` and the same registry resolves the id back to
-    /// the pointer. Using a fresh context here would orphan the IDs
-    /// (this was the "renders black" failure mode — the renderer
-    /// pointer was registered in a context that got dropped after
-    /// install, leaving the per-tick lookups pointing at nothing).
+    /// Dispatch the install Seq for `type_name` under `pins`, queue results to write queue.
+    /// `dispatch_ctx` MUST be the scheduler's context — a fresh context orphans HandleRegistry IDs.
     pub fn run_install(
         &mut self,
         rt:   &crate::runtime::EvidentRuntime,
@@ -69,8 +31,6 @@ impl DeclarativeInstallSource {
         tx:   &Sender<SchedulerEvent>,
         dispatch_ctx: &mut DispatchContext,
     ) -> Result<(), String> {
-        // Build given map from pin values. pin_int / pin_str helpers
-        // are private to fti.rs, so duplicate the shape here.
         let mut given: std::collections::HashMap<String, Value> =
             std::collections::HashMap::new();
         if let Pins::Named(ms) = pins {
@@ -86,7 +46,6 @@ impl DeclarativeInstallSource {
             }
         }
 
-        // Query the type body to get `install`'s Seq value.
         let result = rt.query_with_pins_and_given(type_name, &[], &given)
             .map_err(|e| format!("declarative install: query {type_name}: {e}"))?;
         if !result.satisfied {
@@ -97,14 +56,10 @@ impl DeclarativeInstallSource {
         let steps = decode_install_step_list(install_val)
             .map_err(|e| format!("declarative install: decode `install`: {e:?}"))?;
 
-        // Dispatch the install Seq atomically. dispatch_all resolves
-        // ArgPriorResult(N) against the running prior vector, so handles
-        // created earlier in the Seq feed forward to later steps without
-        // any explicit threading from the user.
+        // Dispatch atomically: ArgPriorResult(N) threads earlier handles forward automatically.
         let effects: Vec<_> = steps.iter().map(|s| s.effect.clone()).collect();
         let results = dispatch_all(dispatch_ctx, &effects);
 
-        // Capture Bind'd results into the per-instance world keys.
         let mut q = self.write_queue.lock().unwrap();
         for (step, res) in steps.iter().zip(results.iter()) {
             let Some(field) = &step.field else { continue };
@@ -130,20 +85,14 @@ impl DeclarativeInstallSource {
 
 impl EventSource for DeclarativeInstallSource {
     fn start(&mut self, _tx: Sender<SchedulerEvent>) -> Result<(), String> {
-        // Install is one-shot, invoked via `run_install` synchronously
-        // before the scheduler starts. The standard `start` hook is a
-        // no-op; we're just here to be drained.
-        Ok(())
+        Ok(()) // one-shot; install runs before the scheduler starts
     }
     fn stop(&mut self) {}
     fn drain_writes(&mut self) -> Vec<(String, Value)> {
         drain(&self.write_queue)
     }
     fn write_fields(&self) -> Vec<String> {
-        // The fields written depend on the type's install Seq. Caller
-        // (the FTI install glue) reports those — `write_fields` on the
-        // source itself is empty.
-        Vec::new()
+        Vec::new() // caller (FTI glue) reports the written fields; source itself is empty
     }
 }
 

@@ -5,11 +5,8 @@ use super::{EvidentRuntime, Value};
 use std::collections::HashMap;
 
 impl EvidentRuntime {
-    /// Pin one or more enum-typed (Datatype) variables across a
-    /// single query. Each entry of `pins` is `(var_name, value)`.
-    /// Used by the multi-FSM scheduler to fix `state` and
-    /// `last_results` per tick — see the "execution-layer
-    /// extension surface" section in the module docs.
+    /// Pin enum-typed (Datatype) variables for one query; used by the scheduler
+    /// to fix `state` and `last_results` per tick.
     pub fn query_with_pinned_datatypes(
         &self,
         claim_name: &str,
@@ -18,12 +15,8 @@ impl EvidentRuntime {
         self.query_with_pins_and_given(claim_name, pins, &HashMap::new())
     }
 
-    /// Like `query_with_pinned_datatypes` but also accepts a
-    /// `given` map for scalar pins (Int/Bool/String/Real values).
-    /// Used by the multi-FSM scheduler to thread `world_next.*`
-    /// writer values into reader `world.*` slots within the same
-    /// tick — see the "execution-layer extension surface"
-    /// section in the module docs.
+    /// Like `query_with_pinned_datatypes` but also accepts scalar givens;
+    /// threads `world_next.*` writer values into reader `world.*` slots within the same tick.
     pub fn query_with_pins_and_given(
         &self,
         claim_name: &str,
@@ -32,32 +25,12 @@ impl EvidentRuntime {
     ) -> Result<QueryResult, RuntimeError> {
         let base = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
-        // Tier-3 nested-FSM resolution: if this FSM's body calls
-        // `run(F, init)`, drive it to its final value and pin it as a
-        // literal before solving (see runtime/nested.rs). The inner
-        // `run_nested` re-enters this method for `F`, which has no
-        // `run`, so resolve_runs returns None there — no recursion.
+        // Tier-3: if the body has `run(F, init)`, drive it to a final value before solving.
+        // resolve_runs returns None for F itself (no `run`) so there's no mutual recursion.
         let resolved = self.resolve_runs(base, given)?;
         let schema = resolved.as_ref().unwrap_or(base);
-        // Function-izer fast path on the SCHEDULER side. The
-        // scheduler passes realistic per-tick given values (state,
-        // last_results, _world.X). State-pair FSMs ALSO get a
-        // `pins` array with the state pinned as a Z3 Datatype —
-        // we used to bail in that case, but the scheduler now also
-        // surfaces the state's Value form in `given` (see
-        // `effect_loop.rs::run_with_ctx` around the
-        // `current_state_v` insertion). So the function-izer can
-        // fire even with non-empty pins; the pinned Datatype is
-        // simply redundant with the given Value. If function-izer
-        // rejects, fall through to Z3 with `pins` intact.
-        // Z3 functionizer + Cranelift JIT, enabled by default. JIT
-        // compiles the extracted Z3Program to native code; on miss
-        // (extract or codegen refused) falls through to the slow
-        // path below. Disable with EVIDENT_FUNCTIONIZE=0.
-        // Skip the JIT + slow-path cache for `run`-containing bodies —
-        // both key on given-KEYS, but a `run`'s resolved literal depends
-        // on given-VALUES. v1 keeps such bodies on the always-fresh Z3
-        // path (see query()'s matching note).
+        // JIT fires even with non-empty pins: Datatype pin is redundant with `current_state_v` in given.
+        // Skip for `run`-containing bodies: cache keys on given-KEYS, but `run` output depends on VALUES.
         let had_run = resolved.is_some();
         let functionize_on = !had_run
             && std::env::var("EVIDENT_FUNCTIONIZE").map(|s| s != "0").unwrap_or(true);
@@ -72,13 +45,8 @@ impl EvidentRuntime {
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
 
-        // Slow-path cache: if the function-izer already built a
-        // CachedSchema and stored it (because it refused to produce
-        // a JIT program), reuse it here instead of rebuilding
-        // the body. Each tick is push → assert pins/given → check
-        // → extract model → pop. For Mario's display this cuts the
-        // per-tick cost from ~14ms (fresh translation) to ~2-3ms
-        // (just the solve + extract).
+        // Slow-path cache: reuse CachedSchema when JIT refused; push→assert→check→pop per tick.
+        // Cuts per-tick cost from ~14ms (fresh translation) to ~2-3ms.
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
         let cache_key = (claim_name.to_string(), given_keys);
@@ -90,16 +58,14 @@ impl EvidentRuntime {
             }
             use z3::ast::Ast;
             cached.solver.push();
-            // Apply the typed Datatype pins (state).
+            // Assert typed Datatype pins (state).
             for (var_name, value) in pins {
                 if let Some(crate::translate::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
                     cached.solver.assert(&ast._eq(value));
                 }
             }
-            // Apply Value::Enum givens here (run_cached doesn't, to
-            // keep its lifetime parametric). We have 'static context
-            // so we can re-encode the enum value as a Datatype and
-            // assert equality on the EnumVar's ast.
+            // Assert Value::Enum givens: run_cached skips these (lifetime-parametric);
+            // we have 'static context so we can re-encode and assert here.
             for (name, value) in given {
                 if let (Some(crate::translate::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
                     (cached.env.get(name), value)

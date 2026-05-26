@@ -1,5 +1,4 @@
-//! Periodic-tick event source. See `event_sources/mod.rs` for
-//! the EventSource trait + queue helpers this file builds on.
+//! Periodic-tick event source.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,12 +12,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// Periodic-tick event source. Spawns a thread that sleeps for the
-/// configured interval and sends a `Tick` event, repeatedly, until
-/// `stop` is called. If a `count_field` is configured, also queues
-/// a world write incrementing the named Int field on each fire —
-/// this lets user FSMs subscribe via `world.<count_field>` deltas
-/// rather than the marker-type wake mechanism.
+/// Periodic-tick source. Sleeps for the configured interval then sends `Tick`
+/// until `stop`. With `count_field` set, also queues a world write per fire.
 pub struct FrameTimer {
     interval:    Duration,
     name:        String,
@@ -40,9 +35,7 @@ impl FrameTimer {
         }
     }
 
-    /// Configure the timer to write its current tick count into
-    /// the named world field on each fire. The field must be of
-    /// type Int in the user's World type.
+    /// Write tick count into the named World Int field on each fire.
     pub fn with_count_field(mut self, field: impl Into<String>) -> Self {
         self.count_field = Some(field.into());
         self
@@ -71,8 +64,6 @@ impl EventSource for FrameTimer {
                         let mut q = write_queue.lock().unwrap();
                         q.push_back((field.clone(), Value::Int(count)));
                     }
-                    // Send-error means the receiver was dropped —
-                    // scheduler exited. Exit the thread cleanly.
                     if tx.send(SchedulerEvent::Tick { name: name.clone() }).is_err() {
                         break;
                     }
@@ -103,13 +94,8 @@ impl Drop for FrameTimer {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for FrameTimer. Installs if any of:
-///   * `EVIDENT_TICK_MS` env var is set (back-compat: explicit
-///     opt-in via env even without a world field)
-///   * the user's World declares `tick_count: Int` (new
-///     world-write auto-install path)
-///   * any FSM has `_ ∈ FrameTimer` parameter (back-compat
-///     marker-subscription)
+/// Installs if `EVIDENT_TICK_MS` is set, World has `tick_count: Int`,
+/// or any FSM has `_ ∈ FrameTimer` parameter.
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,

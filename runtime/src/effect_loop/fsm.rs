@@ -1,25 +1,10 @@
-//! `MainShape` + the param-resolution walk that turns a `fsm`-keyword'd
-//! schema into the slot-resolved record the schedulers consume.
-//!
-//! The set of FSMs is determined by the `fsm` parse-time keyword, NOT
-//! by walking the body looking for "fsm-shaped" structure. The body
-//! walk here is for *resolving* which slots an fsm uses (state pair,
-//! last_results, effects, world, FTI params), all of which are Option
-//! because the unified state model lets authors opt out.
+//! `MainShape` + param-resolution walk: `fsm`-keyword schemas → slot-resolved scheduler records.
+//! FSM identity comes from the parse-time keyword, not body-shape detection.
 
 use crate::core::ast::BodyItem;
 use crate::runtime::EvidentRuntime;
 
-/// Resolved param info for one `fsm`-keyword'd schema. The set
-/// of FSMs is determined by the `fsm` keyword, NOT by walking
-/// the body looking for "fsm-shaped" structure — there's no
-/// shape check anywhere; we just read the parse-time tag. The
-/// body walk here is for *resolving* which slots an fsm uses
-/// (state pair, last_results, effects, world, FTI params), all
-/// of which are Option because the unified state model lets
-/// authors opt out — a pure-counter fsm has no state pair, no
-/// effects, no last_results, just plain variables coordinated
-/// via `_var` time-shift.
+/// Resolved param info for one `fsm` schema. All slots are Option — authors can opt out.
 #[derive(Clone)]
 pub struct MainShape {
     pub claim_name:       String,
@@ -30,29 +15,14 @@ pub struct MainShape {
     pub effects_var:      Option<String>,
     /// Name of the `world` membership, if this FSM reads world.
     pub world_var:        Option<String>,
-    /// Name of the `world_next` membership; presence makes this FSM
-    /// the world WRITER. v1: at most one writer per program.
+    /// Presence makes this FSM the world WRITER. At most one writer per program.
     pub world_next_var:   Option<String>,
-    /// Type name of the world record, if `world_var` or
-    /// `world_next_var` is set.
     pub world_type:       Option<String>,
-    /// Async event source names this FSM subscribes to. Inferred
-    /// from FSM parameters of marker types in `stdlib/runtime.ev`:
-    ///   * `_ ∈ FrameTimer` → "tick"
-    ///   * `_ ∈ Signal`     → "signal"
-    /// If empty AND no other FSM in the program declares any
-    /// subscription, the runtime coarsely wakes every FSM on every
-    /// event (back-compat for v3-era programs).
+    /// Inferred from marker-type params (`FrameTimer`→"tick", `Signal`→"signal").
+    /// Empty + no other FSM subscribed → coarse wake for back-compat.
     pub event_subscriptions: std::collections::HashSet<String>,
-    /// FTI v1+ — typed resource parameters: `(param_name,
-    /// type_name, pins)` where `type_name` is a registered FTI
-    /// type (currently: `FrameClock`, `Hostname`, `Timer`).
-    /// `pins` carries any `(field ↦ value)` configuration the
-    /// user supplied (e.g. `t ∈ Timer (interval_ms ↦ 50)`); the
-    /// bridge install reads pins at startup for type-specific
-    /// configuration. The runtime auto-installs a bridge plugin
-    /// per entry that writes the type's fields via per-FSM
-    /// `<fsm>.<param>.<field>` pin keys.
+    /// FTI typed resource params: `(param_name, type_name, pins)`.
+    /// Runtime auto-installs a bridge plugin per entry; pins configure it at startup.
     pub fti_params: Vec<(String, String, crate::core::ast::Pins)>,
 }
 
@@ -64,24 +34,13 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     resolve_fsm(rt, "main")
 }
 
-/// Resolve a single schema's FSM param info. Returns Some only
-/// when the schema is declared with the `fsm` keyword (and isn't
-/// `external` — those are Rust-side bridge contracts, not user
-/// FSMs). The body walk inside resolves which slots the FSM
-/// actually uses (state pair, last_results, effects, world, FTI
-/// params); it does NOT decide whether the schema is an FSM.
-/// That decision is purely the parse-time keyword tag.
+/// Resolve FSM param info for `claim_name`. Returns None if not `fsm`-tagged or is `external`.
 pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let claim = rt.get_schema(claim_name)?;
     if !matches!(claim.keyword, crate::core::ast::Keyword::Fsm) {
         return None;
     }
-    // `external fsm` declarations are CONTRACTS for runtime-side
-    // bridge FSMs (StdinSource, FrameTimer, EffectDispatcher, …).
-    // Their body is implemented in Rust; the Evident declaration
-    // names the shared-state slots they read/write so user FSMs
-    // can name-match against them. Do NOT auto-instantiate them
-    // as user FSMs — the Rust bridges run them.
+    // `external fsm` = Rust-side bridge contract (StdinSource, FrameTimer, …). Don't instantiate.
     if claim.external {
         return None;
     }
@@ -93,10 +52,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let mut world_type:     Option<String> = None;
     let mut event_subs:     std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut fti_params:     Vec<(String, String, crate::core::ast::Pins)> = Vec::new();
-    // Walk this claim's body PLUS the bodies of any
-    // `..PassthroughClaim` so a declarative library (e.g.
-    // packages/sdl/scene.ev's `..SDLScene`) contributes its
-    // state-machine vars to the outer claim.
+    // Walk body + transitive `..Passthrough` bodies so library claims contribute their slots.
     let mut all_items: Vec<&BodyItem> = Vec::new();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     fn collect<'a>(
@@ -110,31 +66,8 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
             if let BodyItem::Passthrough(name) = item {
                 if visited.insert(name.clone()) {
                     if let Some(sub) = rt.get_schema(name) {
-                        // SAFETY: lifetime laundering — borrow checker
-                        // can't prove the elided lifetime on `sub.body`
-                        // is `'a` across the recursive closure call.
-                        //
-                        // Invariant being upheld: `sub.body` is owned by
-                        // `rt.schemas` (a HashMap<String, SchemaDecl>),
-                        // and `rt: &'a EvidentRuntime` borrows the
-                        // runtime for `'a`. The HashMap is not mutated
-                        // through interior mutability anywhere in the
-                        // call graph below `resolve_fsm`, so every
-                        // `&SchemaDecl` we obtain via `get_schema` lives
-                        // exactly as long as `rt` itself — which is `'a`.
-                        // The borrow checker can't see that across the
-                        // closure-recursion boundary because `get_schema`'s
-                        // returned lifetime is elided and tied to its
-                        // `&self`, which the inner call site re-borrows.
-                        //
-                        // What would break this: any future change that
-                        // makes `EvidentRuntime::schemas` interior-mutable
-                        // (e.g. `RefCell<HashMap>`) so a passthrough
-                        // resolution could invalidate previously-handed-out
-                        // `&SchemaDecl`s. The fix in that world is a
-                        // restructure (clone bodies into an owned Vec,
-                        // or take a `&mut` borrow once at the top), not
-                        // another transmute.
+                        // SAFETY: `sub.body` lives for `'a` but borrow checker loses it across
+                        // the closure boundary. Breaks if `schemas` becomes interior-mutable.
                         let body: &'a [BodyItem] = unsafe {
                             std::mem::transmute::<&[BodyItem], &'a [BodyItem]>(&sub.body)
                         };
@@ -177,9 +110,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
                    && !type_name.starts_with("Seq(")
                    && !type_name.starts_with("Set(")
             {
-                // State-pair detection (same type, two vars, one
-                // ending in `_next`). Excludes world/world_next which
-                // matched above.
+                // State-pair: same type, two vars, one ending in `_next`. world/world_next excluded above.
                 if name.ends_with("_next") {
                     let base = &name[..name.len() - 5];
                     if let Some((b, _, _)) = &state_pair {
@@ -219,28 +150,18 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     })
 }
 
-/// Collect every `fsm`-keyword'd schema's resolved param info.
-/// Returns the writer FIRST (if any), then readers in declaration
-/// order. Multi-FSM execution dispatches in this order.
+/// All `fsm` schemas resolved: writer first, then readers in declaration order.
 pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     let names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
-    // An fsm referenced by `run(...)` / `halts_within(...)` is
-    // EMBEDDED-ONLY — a function the enclosing model applies to
-    // completion, not a top-level FSM (docs/design/fsms-as-functions.md
-    // §9). Skip it so relabeling an embedded transition `claim`→`fsm`
-    // (this session) doesn't make the scheduler run it standalone — which
-    // for an effect-emitting child (test_38's `countdown`) would dispatch
-    // its captured-only effects at top level.
+    // FSMs referenced by `run(...)`/`halts_within(...)` are embedded-only — skip them
+    // so `claim`→`fsm` relabeling doesn't accidentally add them as top-level FSMs.
     let embedded = rt.embedded_fsm_targets();
     let mut writers: Vec<MainShape> = Vec::new();
     let mut readers: Vec<MainShape> = Vec::new();
     for name in names {
         if embedded.contains(&name) { continue; }
         if let Some(shape) = resolve_fsm(rt, &name) {
-            // Skip claims that carry the `spawnable_only` body marker
-            // (one of `crate::core::ast::BODY_MARKERS`) — they should only
-            // run when explicitly spawned via Effect::SpawnFsm, not
-            // auto-instantiated at startup.
+            // Skip `spawnable_only` FSMs — run only when explicitly spawned via Effect::SpawnFsm.
             if let Some(claim) = rt.get_schema(&name) {
                 let is_spawn_only = claim.body.iter().any(|item| {
                     matches!(item,
@@ -257,27 +178,8 @@ pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
     all
 }
 
-/// Full world read/write sets for an FSM, resolving `..Passthrough`
-/// claims transitively.
-///
-/// The per-claim walk (`portable::subscriptions::access_sets`, the
-/// self-hosted Evident pass) is intentionally LOCAL — it treats
-/// `..ClaimName` passthroughs as opaque. But an FSM that does its world
-/// writes/reads *through* a passthrough claim (e.g. `..WritesScore`,
-/// where the actual `world_next.score = …` lives) then gets an
-/// EMPTY inferred write-set. That silently (a) bypasses the
-/// single-owner disjoint check in `mod.rs` — two such writers can
-/// both claim the same field undetected — and (b) makes the
-/// scheduler's per-writer `my_writes` scoping drop every one of
-/// that writer's world writes, so the program hangs or produces
-/// wrong state with no error. This walks the passthrough graph
-/// (cycle-guarded) and unions each included claim's access sets, so
-/// the inferred sets match what the translator actually inlines.
-///
-/// Note: `resolve_fsm` above already recurses passthroughs to find
-/// the `world_next` *membership* (so `is_writer()` is correct for
-/// passthrough-writers); this closes the matching gap for the
-/// *field-level* read/write sets those checks rely on.
+/// World read/write sets, resolving `..Passthrough` transitively. Without this, passthrough-writers
+/// get empty sets, silently bypassing the disjoint-owner check and scheduler scoping.
 pub fn full_world_access(
     rt: &EvidentRuntime,
     claim_name: &str,

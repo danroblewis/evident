@@ -1,37 +1,11 @@
-//! Pure AST→AST identifier rewriters used by the inline walker.
-//!
-//!   * `rewrite_idents_with_prefix` — inherit a type body's Constraint
-//!     items onto a sub-schema instance by prefixing field references.
-//!   * `substitute_bound_var` — replace a `∀`-bound variable (and its
-//!     dotted suffixes) with a per-iteration element expression.
+//! Pure AST→AST identifier rewriters: prefix-injection for type-body inheritance and bound-var substitution.
 
 use std::collections::HashSet;
 
 use crate::core::ast::*;
 
-/// Rewrite identifiers in `e` so any leading-segment match against the
-/// type's `field_set` becomes `<prefix>.<original>`. Used to inherit a
-/// type body's Constraint items onto a sub-schema instance:
-///
-/// ```text
-/// type Foo(p ∈ Int)
-///     d ∈ Int = p + 1   -- inside Foo's body, `p` and `d` are bare
-///
-/// claim caller
-///     f ∈ Foo (p ↦ 5)
-///     -- The body constraint `d = p + 1`, when inherited onto `f`,
-///     -- becomes `f.d = f.p + 1`. This function does that rewrite.
-/// ```
-///
-/// Identifiers whose leading segment is NOT a field of the type are
-/// left untouched — they're external references (other schemas,
-/// quantifier-bound names, constants like `is_first_tick`).
-///
-/// Both `Identifier("foo")` and `Identifier("foo.bar")` are recognized
-/// — the parser folds source-level `foo.bar` into a single dotted
-/// `Identifier` (see ast.rs::Field comment). Receiver-side recursion
-/// also covers the explicit `Field(receiver, …)` shape used when the
-/// receiver is itself an expression (e.g. `seq[i].x`).
+/// Prefix any identifier whose leading segment is in `field_set` with `prefix.`.
+/// Used to inherit a type body's constraints onto an instance: bare `p` → `f.p`.
 pub(super) fn rewrite_idents_with_prefix(
     e: &Expr,
     prefix: &str,
@@ -57,12 +31,7 @@ pub(super) fn rewrite_idents_with_prefix(
         Expr::Range(a, b) => Expr::Range(r(a), r(b)),
         Expr::InExpr(a, b) => Expr::InExpr(r(a), r(b)),
         Expr::Forall(vars, range, body) => {
-            // Quantifier bound names shadow field names within the body.
-            // If a quantifier introduces `pos` (say) and the type also
-            // has a field `pos`, body uses of `pos` inside this forall
-            // should NOT get prefixed — they're the bound var, not the
-            // field. Build a temporary field_set that excludes the
-            // shadowed names.
+            // Bound vars shadow fields inside the body — exclude them from the field_set.
             let inner_set: HashSet<String> = field_set.iter()
                 .filter(|f| !vars.contains(f))
                 .cloned()
@@ -84,8 +53,7 @@ pub(super) fn rewrite_idents_with_prefix(
                 Box::new(rewrite_idents_with_prefix(body,  prefix, &inner_set)),
             )
         }
-        // Call's first arg is the function/type/constructor NAME — don't
-        // touch. Only its args might contain field refs.
+        // Call name is a schema/ctor reference, not a prefixable field.
         Expr::Call(name, args) => Expr::Call(name.clone(), rv(args)),
         Expr::Cardinality(x) => Expr::Cardinality(r(x)),
         Expr::Index(a, b)    => Expr::Index(r(a), r(b)),
@@ -95,7 +63,7 @@ pub(super) fn rewrite_idents_with_prefix(
         Expr::Ternary(c, a, b) => Expr::Ternary(r(c), r(a), r(b)),
         Expr::Match(scr, arms) => {
             let new_arms: Vec<MatchArm> = arms.iter().map(|arm| {
-                // Pattern-bound names shadow field names within this arm.
+                // Pattern-bound names shadow fields within this arm.
                 let mut shadowed: HashSet<String> = HashSet::new();
                 collect_pattern_binds(&arm.pattern, &mut shadowed);
                 let inner: HashSet<String> = field_set.iter()
@@ -110,17 +78,12 @@ pub(super) fn rewrite_idents_with_prefix(
             Expr::Match(r(scr), new_arms)
         }
         Expr::Matches(x, p) => Expr::Matches(r(x), p.clone()),
-        // The FSM name is a schema reference, not an identifier to
-        // prefix; only the init expression can carry rebindable names.
-        // (In practice `run` is resolved to a literal before inlining,
-        // so this arm rarely fires.)
+        // FSM name is a schema ref; only init expression carries prefixable identifiers.
         Expr::RunFsm { fsm, init } => Expr::RunFsm { fsm: fsm.clone(), init: r(init) },
     }
 }
 
-/// Collect every name a match pattern binds, recursing into nested
-/// constructor sub-patterns (`Node(Leaf(n), r)` binds `n` and `r`).
-/// Used to compute which field names an arm shadows.
+/// Collect all names bound by a match pattern (recursing into constructor sub-patterns).
 fn collect_pattern_binds(pat: &MatchPattern, out: &mut HashSet<String>) {
     match pat {
         MatchPattern::Wildcard => {}
@@ -130,14 +93,8 @@ fn collect_pattern_binds(pat: &MatchPattern, out: &mut HashSet<String>) {
     }
 }
 
-/// Recursively replace identifier paths that start with `bound_var`
-/// with the per-iteration element expression. Handles bare matches
-/// (`p`) and dotted suffixes (`p.color`, `p.aabb.pos.x`).
-///
-/// `elem_expr` is the expression that the bound variable refers to
-/// at this iteration (e.g. `Index(Identifier("platforms"), Int(i))`).
-/// A dotted suffix like `p.color` becomes
-/// `Field(elem_expr, "color")`; deeper paths chain `Field`s.
+/// Replace `bound_var` (and dotted suffixes like `bound_var.color`) with `elem` throughout `e`.
+/// Deeper paths (`p.aabb.pos.x`) chain `Field` nodes.
 pub(super) fn substitute_bound_var(e: &Expr, bound: &str, elem: &Expr) -> Expr {
     let r = |x: &Expr| Box::new(substitute_bound_var(x, bound, elem));
     let rv = |xs: &Vec<Expr>| xs.iter()
@@ -164,8 +121,7 @@ pub(super) fn substitute_bound_var(e: &Expr, bound: &str, elem: &Expr) -> Expr {
         Expr::Range(a, b) => Expr::Range(r(a), r(b)),
         Expr::InExpr(a, b) => Expr::InExpr(r(a), r(b)),
         Expr::Forall(vars, range, body) => {
-            // Inner quantifier shadows the substitution if it rebinds
-            // the same name.
+            // Inner quantifier rebinding same name shadows the substitution.
             if vars.iter().any(|v| v == bound) {
                 Expr::Forall(vars.clone(), r(range), body.clone())
             } else {

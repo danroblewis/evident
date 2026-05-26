@@ -1,21 +1,11 @@
-//! `evident effect-run <file>` — load + run an effect-driven program
-//! via the new effect loop. Skips the plugin-based executor entirely.
-//!
-//! Programs eligible for this runner declare a main claim with:
-//!   state, state_next ∈ <enum>
-//!   last_results      ∈ Seq(Result)
-//!   effects           ∈ EffectList
-//!
-//! and import "stdlib/runtime.ev" for the Effect/Result/EffectList
-//! types.
+//! `evident effect-run <file>` — load + run an effect-driven multi-FSM program.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, effect_loop, stdlib_path};
 
-/// Print the supported flags. Kept close to the parser so the
-/// help text and the parser don't drift apart.
+/// Print supported flags (kept adjacent to the parser to prevent drift).
 fn print_help() {
     eprintln!("Usage: evident effect-run <file> [flags]");
     eprintln!();
@@ -69,10 +59,8 @@ fn print_help() {
     eprintln!("  -h, --help               this message");
 }
 
-/// Resolve the functionize strategy name from (in priority order) the
-/// `--functionizer` flag, `EVIDENT_FUNCTIONIZER`, or a
-/// `-- functionizer: NAME` marker line in the program source. Returns
-/// `None` when nothing selects a strategy (caller uses the default).
+/// Resolve functionizer strategy: `--functionizer` flag → `EVIDENT_FUNCTIONIZER` env →
+/// `-- functionizer: NAME` source marker → `None` (caller uses default).
 fn resolve_functionizer(flag: &Option<String>, path: &str) -> Option<String> {
     if let Some(f) = flag {
         return Some(f.trim().to_lowercase());
@@ -82,10 +70,7 @@ fn resolve_functionizer(flag: &Option<String>, path: &str) -> Option<String> {
             return Some(env.trim().to_lowercase());
         }
     }
-    // Scan the source for a marker comment: a `--` comment line whose
-    // payload is `functionizer: NAME`. Kept deliberately simple — first
-    // match wins. Unreadable file → no marker (load_file reports the
-    // real error later).
+    // First `-- functionizer: NAME` comment wins. Unreadable file → no marker.
     let src = std::fs::read_to_string(path).ok()?;
     for line in src.lines() {
         let t = line.trim();
@@ -189,8 +174,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 return ExitCode::from(2);
             }
             other => {
-                // Non-flag arg = the program path. First one wins;
-                // subsequent positionals are an error.
+                // First non-flag arg is the program path; subsequent positionals are an error.
                 if path.is_some() {
                     eprintln!("effect-run: multiple program paths given: {:?}, {:?}",
                               path.unwrap(), other);
@@ -202,17 +186,11 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         i += 1;
     }
 
-    // Configure Z3 profiling BEFORE any Z3 context is created.
-    // Global params are read at context construction.
+    // Configure Z3 profiling before any Z3 context is created (global params read at construction).
     if let Some(file) = &profile_z3_trace_file {
-        // Set global Z3 params for axiom-profiler-compatible
-        // trace logging. Must run before any Solver is created.
         evident_runtime::z3_profile::enable_trace(file);
     }
     if profile_z3_unsat_cores {
-        // Solver-level `unsat_core` parameter — applied per-solver
-        // by the runtime's `make_tuned_solver` (see translate/eval.rs).
-        // The env var is the signal there.
         std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
     }
 
@@ -222,34 +200,18 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
 
-    // Resolve which functionize strategy to mount. Precedence:
-    //   1. --functionizer NAME flag
-    //   2. EVIDENT_FUNCTIONIZER env var
-    //   3. a `-- functionizer: NAME` marker line in the program source
-    //   4. default (cranelift)
-    // The marker lets an opt-in-functionizer demo (test_31) select its
-    // strategy with no CLI flag — needed because the demo test harness
-    // runs `effect-run <file>` with a fixed command line. The flag/env
-    // override the marker so the same file can be A/B'd against
-    // cranelift (`--functionizer cranelift`).
     let functionizer_name = resolve_functionizer(&functionizer_flag, &path);
     let mut rt = match functionizer_name.as_deref() {
         Some("symbolic") => {
             use evident_runtime::functionize::symbolic::SymbolicFunctionizer;
-            // The symbolic strategy announces each closed form it
-            // rediscovers to stdout (proof it ran, vs the cranelift
-            // fallback) — opt-in so library/unit-test uses stay quiet.
+            // Announce closed forms to stdout (opt-in so library/test uses stay quiet).
             if std::env::var("EVIDENT_SYMBOLIC_ANNOUNCE").is_err() {
                 std::env::set_var("EVIDENT_SYMBOLIC_ANNOUNCE", "1");
             }
             EvidentRuntime::with_functionizer(Box::new(SymbolicFunctionizer::new()))
         }
         Some("llm") => {
-            // LLM code-gen needs ANTHROPIC_API_KEY. Without one, the
-            // generator would decline on every component (no network
-            // call), so we print a notice and use the default
-            // Cranelift strategy — JIT for what it can compile, Z3
-            // slow path for what it can't.
+            // Without ANTHROPIC_API_KEY the generator declines on every component; fall back to Cranelift.
             let have_key = std::env::var("ANTHROPIC_API_KEY").ok()
                 .filter(|k| !k.is_empty()).is_some();
             if have_key {
@@ -265,10 +227,7 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
             }
         }
         Some("satisfier") => {
-            // SatisfierFunctionizer samples values for vars that are
-            // bounded but not fully defined. Sampler emission in the
-            // extractor is gated by EVIDENT_SATISFIER — set it here
-            // so the two stay in lockstep.
+            // Must set EVIDENT_SATISFIER to enable sampler emission in the extractor.
             std::env::set_var("EVIDENT_SATISFIER", "1");
             EvidentRuntime::with_functionizer(Box::new(
                 evident_runtime::functionize::satisfier::SatisfierFunctionizer::new()))
@@ -300,7 +259,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
 
     match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
         Ok(r) => {
-            // Print profiling summaries if requested.
             if std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok() {
                 rt.functionize_stats().print_summary();
             }
@@ -312,8 +270,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 eprintln!("[profile-z3] post-process via Z3's axiom_profiler tool:");
                 eprintln!("[profile-z3]   python3 -m z3.axiom_profiler {file}");
             }
-            // Effect::Exit(code) propagates as the process exit code.
-            // Other halt paths exit 0 on clean halt, 1 on max_steps.
             if let Some(code) = r.exit_code {
                 let clamped = code.clamp(0, 255) as u8;
                 return ExitCode::from(clamped);

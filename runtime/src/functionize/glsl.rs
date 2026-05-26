@@ -1,63 +1,5 @@
-//! GLSL fragment-shader functionizer (macOS, headless CGL context).
-//!
-//! Where the Cranelift functionizer (`functionize/cranelift.rs`)
-//! *translates* a `Z3Program`'s ASTs into native machine code, this
-//! strategy *transpiles* them into a GLSL fragment shader, uploads it
-//! to a headless OpenGL context, and at `call` time runs a 1-row draw
-//! whose pixels carry the output values back via `glReadPixels`.
-//!
-//! ## Why
-//!
-//! A `Z3Program` is a pure function from inputs to outputs. Cranelift
-//! wins on single-shot latency (no GPU dispatch). The architectural
-//! point of the GLSL backend is **throughput**: the same shader can
-//! evaluate the function for thousands of inputs in parallel (one per
-//! pixel) for a downstream batch / per-pixel-effect workload. This v1
-//! establishes the call site; the batch payoff is for later consumers.
-//!
-//! ## Scope (deliberately narrow — a v1 PoC)
-//!
-//! Only **pure scalar `Int` / `Bool` arithmetic** programs compile.
-//! `compile` returns `None` (→ runtime falls through to a Z3 solve) on:
-//!
-//!   * any non-`Scalar` step (`Seq` / `Guarded` / `PreBaked`),
-//!   * any output or input whose Z3 sort isn't `Int` or `Bool`
-//!     (strings, enums, records, `Seq`s, `Real`),
-//!   * any residual `checks` / `predicates` (a conditional / partial
-//!     body, not a total function),
-//!   * any AST node outside the supported `DeclKind` set (see
-//!     `emit_glsl` — arithmetic, comparisons, logic, ITE),
-//!   * integer literals outside the `i32` range (GLSL `int` is 32-bit).
-//!
-//! ## Representation
-//!
-//!   * Evident `Int` → GLSL `int` (32-bit). Exact for values in the
-//!     `i32` range; the readback buffer is `RGBA32I`, so there is no
-//!     8-bit quantization. Larger magnitudes overflow silently (same
-//!     class of limit as Cranelift's `i64`, but 32 bits sooner).
-//!   * Evident `Bool` → GLSL `int` 0/1 (comparisons emit `(a<b?1:0)`;
-//!     logic uses bitwise `& | ^` on those 0/1 values, matching the
-//!     Cranelift `band`/`bor`/`bxor` encoding).
-//!   * Integer `/` and `%` use GLSL's native operators, which truncate
-//!     toward zero — matching Cranelift's `sdiv`/`srem`. (Both differ
-//!     from Z3's Euclidean division for negative operands; a shared
-//!     limitation, not GLSL-specific.)
-//!
-//! ## Output readback
-//!
-//! Outputs are laid out one-per-pixel in a `1×N` `RGBA32I` texture.
-//! The fragment shader computes every output into a local, then selects
-//! by `int(gl_FragCoord.x)` which one this pixel emits (`.r` channel).
-//! One `glDrawArrays` + one `glReadPixels` extracts all N values.
-//!
-//! ## Threading / context
-//!
-//! A single process-wide CGL core-profile context lives behind a
-//! `Mutex` (`gl_session`). CGL contexts are current per-thread, so
-//! every `compile` / `call` locks the mutex, makes the context current
-//! on the locking thread, does its GL work, then detaches on drop.
-//! This keeps the backend correct under `cargo test`'s multithreaded
-//! runner without sharing GL objects across contexts.
+//! GLSL functionizer (macOS, headless CGL): transpiles pure scalar Int/Bool `Z3Program`s to GLSL;
+//! runs a 1×N draw pass, reads back results via `RGBA32I` texture + `glReadPixels`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{c_void, CStr, CString};
@@ -72,7 +14,7 @@ use z3_sys::DeclKind;
 
 use crate::core::{DatatypeRegistry, EnumRegistry, Value, Z3Program, Z3Step};
 
-// ── CGL FFI (headless GL context on macOS) ───────────────────────────
+// CGL FFI (headless GL context on macOS)
 
 type CGLPixelFormatObj = *mut c_void;
 type CGLContextObj = *mut c_void;
@@ -83,9 +25,7 @@ const KCGL_PFA_OPENGL_PROFILE: CGLPixelFormatAttribute = 99;
 const KCGL_PFA_COLOR_SIZE: CGLPixelFormatAttribute = 8;
 const KCGL_PFA_DEPTH_SIZE: CGLPixelFormatAttribute = 12;
 const KCGL_PFA_ACCELERATED: CGLPixelFormatAttribute = 73;
-/// 3.2-core is the CGL selector that yields a forward-compatible core
-/// context (the driver reports GL 4.1 / GLSL 4.10 on Apple Silicon).
-/// There is no distinct 3.3 selector; `#version 330 core` shaders run.
+/// 3.2-core CGL selector; driver reports GL 4.1 / GLSL 4.10 on Apple Silicon.
 const KCGL_OGL_PROFILE_3_2_CORE: c_int = 0x3200;
 
 #[link(name = "OpenGL", kind = "framework")]
@@ -123,11 +63,10 @@ fn cgl_err(e: CGLError) -> String {
     }
 }
 
-// ── Process-wide GL context (mutex-serialized) ───────────────────────
+// Process-wide GL context (mutex-serialized)
 
-/// Wraps the raw CGL context. The pointer is only ever dereferenced by
-/// GL while the owning `Mutex` is held and the context is current on
-/// the locking thread, so the `Send` impl is sound for our use.
+/// Wraps raw CGL context; `Send` is sound because it's only dereferenced
+/// while the owning `Mutex` is held and the context is current on that thread.
 struct GlState {
     ctx: CGLContextObj,
 }
@@ -166,8 +105,6 @@ fn init_gl() -> Result<Mutex<GlState>, String> {
         if e != 0 {
             return Err(format!("CGLSetCurrentContext failed: {}", cgl_err(e)));
         }
-        // Load GL function pointers from the OpenGL framework. dlsym
-        // doesn't need a current context, but we've set one anyway.
         let path = CString::new("/System/Library/Frameworks/OpenGL.framework/OpenGL").unwrap();
         let handle = dlopen(path.as_ptr(), 0x1 /* RTLD_LAZY */);
         gl::load_with(|name| {
@@ -182,9 +119,8 @@ fn init_gl() -> Result<Mutex<GlState>, String> {
     }
 }
 
-/// RAII handle: holds the GL mutex and keeps the context current for
-/// the lifetime of the guard. On drop, detaches the context from the
-/// thread so a later `gl_session` on a different thread can re-attach.
+/// Holds the GL mutex and keeps the context current; detaches on drop so
+/// a later `gl_session` on a different thread can re-attach.
 struct GlSession {
     _guard: MutexGuard<'static, GlState>,
 }
@@ -197,9 +133,8 @@ impl Drop for GlSession {
     }
 }
 
-/// Acquire the process-wide GL context (initializing it on first use).
-/// Returns `Err` with a clear message if no context can be created —
-/// the headless-gate the runtime surfaces at `GlslFunctionizer::new`.
+/// Acquire the process-wide GL context (initializing on first use), or `Err`
+/// if no headless context is available.
 fn gl_session() -> Result<GlSession, String> {
     let cell = GL.get_or_init(init_gl);
     match cell {
@@ -214,7 +149,7 @@ fn gl_session() -> Result<GlSession, String> {
     }
 }
 
-// ── Scalar kind ──────────────────────────────────────────────────────
+// Scalar kind
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ScalarKind {
@@ -230,12 +165,10 @@ fn scalar_kind(sort_name: &str) -> Option<ScalarKind> {
     }
 }
 
-// ── Z3 AST → GLSL expression string ──────────────────────────────────
+// Z3 AST → GLSL expression string
 
-/// Emit a GLSL `int`-valued expression for `expr`. `env` maps each
-/// referenced Z3 variable name to its GLSL identifier (`inN` for an
-/// input uniform, `vN` for an earlier output local). Returns `None` on
-/// any unsupported node — the caller refuses the whole program.
+/// Emit a GLSL `int` expression for `expr`. `env` maps Z3 variable names to
+/// GLSL identifiers (`inN` = input uniform, `vN` = earlier output local).
 fn emit_glsl(expr: &Dynamic, env: &HashMap<String, String>) -> Option<String> {
     match expr.kind() {
         AstKind::Numeral => {
@@ -253,7 +186,7 @@ fn emit_glsl(expr: &Dynamic, env: &HashMap<String, String>) -> Option<String> {
                 DeclKind::FALSE => Some("0".to_string()),
                 DeclKind::UNINTERPRETED => {
                     if !ch.is_empty() {
-                        return None; // only 0-arity variable refs
+                        return None; // only 0-arity refs supported
                     }
                     env.get(&decl.name()).cloned()
                 }
@@ -272,7 +205,7 @@ fn emit_glsl(expr: &Dynamic, env: &HashMap<String, String>) -> Option<String> {
                     if ch.len() != 1 {
                         return None;
                     }
-                    // Bool is 0/1; XOR with 1 flips it (matches Cranelift bxor).
+                    // Bool is 0/1; XOR with 1 flips it (matches Cranelift `bxor`).
                     Some(format!("({} ^ 1)", emit_glsl(&ch[0], env)?))
                 }
                 DeclKind::IDIV | DeclKind::DIV => binop(&ch, env, "/"),
@@ -298,7 +231,6 @@ fn emit_glsl(expr: &Dynamic, env: &HashMap<String, String>) -> Option<String> {
     }
 }
 
-/// Fold an n-ary op (`ADD`/`SUB`/`MUL`/`AND`/`OR`) left-to-right.
 fn fold(ch: &[Dynamic], env: &HashMap<String, String>, sep: &str, empty: &str) -> Option<String> {
     if ch.is_empty() {
         return Some(empty.to_string());
@@ -318,8 +250,7 @@ fn binop(ch: &[Dynamic], env: &HashMap<String, String>, op: &str) -> Option<Stri
     ))
 }
 
-/// A comparison yields an `int` 0/1 so it composes with bitwise logic
-/// and ITE conditions exactly like the Cranelift encoding.
+/// Comparison yields `int` 0/1 to compose with bitwise logic and ITE, like Cranelift.
 fn cmp(ch: &[Dynamic], env: &HashMap<String, String>, op: &str) -> Option<String> {
     if ch.len() != 2 {
         return None;
@@ -331,7 +262,6 @@ fn cmp(ch: &[Dynamic], env: &HashMap<String, String>, op: &str) -> Option<String
     ))
 }
 
-/// Collect free 0-arity uninterpreted constants in `d` (name → sort).
 fn collect_free_consts(d: &Dynamic, out: &mut BTreeMap<String, String>) {
     if d.kind() == AstKind::App {
         if let Ok(decl) = d.safe_decl() {
@@ -346,7 +276,7 @@ fn collect_free_consts(d: &Dynamic, out: &mut BTreeMap<String, String>) {
     }
 }
 
-// ── GL helpers ───────────────────────────────────────────────────────
+// GL helpers
 
 unsafe fn compile_shader(src: &str, kind: c_uint) -> Result<c_uint, String> {
     let s = gl::CreateShader(kind);
@@ -383,14 +313,14 @@ unsafe fn link_program(vs: c_uint, fs: c_uint) -> Result<c_uint, String> {
     Ok(p)
 }
 
-/// Fullscreen triangle from `gl_VertexID` — no vertex buffer needed.
+/// Fullscreen triangle generated from `gl_VertexID` — no vertex buffer needed.
 const VERTEX_SRC: &str = "#version 330 core\n\
     void main() {\n\
       vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n\
       gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n\
     }\n";
 
-// ── The compiled artifact ────────────────────────────────────────────
+// The compiled artifact
 
 struct CompiledShader {
     program: c_uint,
@@ -413,9 +343,7 @@ impl super::CompiledFunction for CompiledShader {
             gl::Viewport(0, 0, n, 1);
 
             for (name, loc, kind) in &self.inputs {
-                // Missing input → 0 sentinel (matches Cranelift). A
-                // mistyped value means this artifact can't answer →
-                // None, runtime falls through to Z3.
+                // Missing input → 0 sentinel; mistyped → None (falls through to Z3).
                 let v: i32 = match given.get(name) {
                     Some(Value::Int(i)) => *i as i32,
                     Some(Value::Bool(b)) => *b as i32,
@@ -459,8 +387,7 @@ impl super::CompiledFunction for CompiledShader {
 
 impl Drop for CompiledShader {
     fn drop(&mut self) {
-        // Best-effort GL resource cleanup. If the context is gone or
-        // the mutex is poisoned, leak — the process is tearing down.
+        // Best-effort cleanup; leak on poisoned mutex (process tearing down).
         if let Ok(_sess) = gl_session() {
             unsafe {
                 gl::DeleteProgram(self.program);
@@ -472,22 +399,16 @@ impl Drop for CompiledShader {
     }
 }
 
-// ── The strategy ─────────────────────────────────────────────────────
+// The strategy
 
-/// GLSL fragment-shader functionizer. Opt-in via
-/// `EvidentRuntime::with_functionizer(Box::new(GlslFunctionizer::new()?))`.
+/// GLSL functionizer. Opt-in via `EvidentRuntime::with_functionizer(Box::new(GlslFunctionizer::new()?))`.
 pub struct GlslFunctionizer {
     _private: (),
 }
 
 impl GlslFunctionizer {
-    /// Construct the functionizer, initializing the headless GL context.
-    /// Returns `Err` with a clear message if no context can be created
-    /// (e.g. non-macOS, or a sandbox with no GL) — the caller decides
-    /// whether to fall back to another strategy.
+    /// Initialize the headless GL context; `Err` if unavailable (no GL sandbox, non-macOS).
     pub fn new() -> Result<Self, String> {
-        // Force context init now so failures surface at construction,
-        // not on the first query.
         let _sess = gl_session()?;
         Ok(GlslFunctionizer { _private: () })
     }
@@ -517,7 +438,6 @@ impl super::Functionizer for GlslFunctionizer {
             return None;
         }
 
-        // Output specs (name + kind), and the defining expr per output.
         let mut outputs: Vec<(String, ScalarKind)> = Vec::with_capacity(program.steps.len());
         let mut output_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut step_exprs: Vec<(String, &Dynamic)> = Vec::new();
@@ -542,8 +462,7 @@ impl super::Functionizer for GlslFunctionizer {
             step_exprs.push((var.clone(), expr));
         }
 
-        // Inputs = free 0-arity consts referenced by any step, minus the
-        // output vars. Each must be Int- or Bool-sorted.
+        // Inputs = free 0-arity consts (minus outputs), must be Int- or Bool-sorted.
         let mut free: BTreeMap<String, String> = BTreeMap::new();
         for (_, expr) in &step_exprs {
             collect_free_consts(expr, &mut free);
@@ -562,9 +481,7 @@ impl super::Functionizer for GlslFunctionizer {
             inputs.push((name.clone(), kind));
         }
 
-        // ── Build the GLSL env + per-output expression strings ──────
-        // inputs → `inN` uniforms; outputs → `vN` locals (a later
-        // output may reference an earlier one, which is already bound).
+        // inputs → `inN` uniforms; outputs → `vN` locals (later outputs may ref earlier ones).
         let mut env: HashMap<String, String> = HashMap::new();
         for (i, (name, _)) in inputs.iter().enumerate() {
             env.insert(name.clone(), format!("in{i}"));
@@ -581,7 +498,6 @@ impl super::Functionizer for GlslFunctionizer {
             env.insert((*var).clone(), format!("v{i}"));
         }
 
-        // ── Assemble the fragment shader ────────────────────────────
         let mut frag = String::from("#version 330 core\n");
         for i in 0..inputs.len() {
             frag.push_str(&format!("uniform int in{i};\n"));
@@ -602,7 +518,6 @@ impl super::Functionizer for GlslFunctionizer {
             eprintln!("[glsl] fragment shader:\n{frag}");
         }
 
-        // ── Compile + link + set up render target ───────────────────
         let _sess = gl_session().ok()?;
         let n = outputs.len() as c_int;
         unsafe {
@@ -636,8 +551,7 @@ impl super::Functionizer for GlslFunctionizer {
             gl::DeleteShader(vs);
             gl::DeleteShader(fs);
 
-            // 1×N RGBA32I texture as the color attachment — exact i32
-            // readback, one output per pixel column.
+            // 1×N RGBA32I texture: exact i32 readback, one output per pixel column.
             let mut tex = 0;
             gl::GenTextures(1, &mut tex);
             gl::BindTexture(gl::TEXTURE_2D, tex);
@@ -678,7 +592,6 @@ impl super::Functionizer for GlslFunctionizer {
             let mut vao = 0;
             gl::GenVertexArrays(1, &mut vao);
 
-            // Resolve uniform locations.
             let mut input_locs: Vec<(String, c_int, ScalarKind)> = Vec::with_capacity(inputs.len());
             for (i, (name, kind)) in inputs.iter().enumerate() {
                 let uname = CString::new(format!("in{i}")).unwrap();

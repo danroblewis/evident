@@ -1,40 +1,6 @@
-//! Pre-solve resolution of `run(F, init)` expressions (tier 3,
-//! blocking-interpret).
-//!
-//! ## The evaluation-timing rule (the crux)
-//!
-//! `run(F, init)` produces a concrete value the *outer* model then uses
-//! in its constraints. So the nested FSM must be **evaluated to a
-//! concrete `Value` before the outer solve**, and that value injected
-//! as a pinned constant — exactly how a pre-computed `given` enters a
-//! model. `resolve_runs` is that hook: before any query translates a
-//! schema body, it walks the body, drives each `run(F, init)` to halt
-//! via [`crate::effect_loop::run_nested`], and **rewrites the `RunFsm`
-//! node to the literal final-state value** (an `Expr::Int` /
-//! `Expr::Call(ctor, …)` / …). The translator never sees a `RunFsm`;
-//! it sees `final = 0`.
-//!
-//! Every general query entry point calls `resolve_runs` first:
-//! [`EvidentRuntime::query`], `query_with_core`, `query_cached`, and the
-//! scheduler's `query_with_pins_and_given`. When the body has no
-//! `run(...)` (the overwhelming common case) `resolve_runs` returns
-//! `None` and the original schema is used with zero overhead.
-//!
-//! ## v1 restriction: `init` must be pre-known
-//!
-//! `init` is evaluated by [`EvidentRuntime::eval_const_init`] from
-//! literals + the query's `given` (plus integer arithmetic over those).
-//! If `init` names a variable the outer solve hasn't determined yet,
-//! that's a **loud error**, not a silent wrong value — there is no
-//! "solve, then run" cycle in v1. (`run(decrement, 50)` has a literal
-//! init; `run(decrement, seed)` works iff `seed` is a given.)
-//!
-//! ## Strategy gate
-//!
-//! `EVIDENT_NESTED_STRATEGY` (`auto` | `blocking` | `loop` | `unroll`,
-//! default `auto`) mirrors `EVIDENT_FUNCTIONIZE` et al. Only tier 3
-//! (`blocking`) exists this session; `auto` resolves to it. Forcing
-//! `loop`/`unroll` errors clearly — those tiers land in later sessions.
+//! Pre-solve resolution of `run(F, init)` expressions (tier 3: blocking-interpret).
+//! `resolve_runs` drives each `RunFsm` to halt before the outer solve, replacing it
+//! with a literal final-state value. `init` must be computable from literals + givens.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -45,42 +11,22 @@ use crate::core::{RuntimeError, Value};
 use super::EvidentRuntime;
 
 thread_local! {
-    /// Effects captured during nested `run(F, init)` resolution that
-    /// have NOT been dispatched (the child is a pure function — its
-    /// effects percolate to the parent; session RR). `eval_run` appends
-    /// to this as it drives each `run` in a body; the multi-FSM scheduler
-    /// drains it right after solving the FSM whose body called `run`, and
-    /// dispatches the drained effects as part of THAT (the parent's)
-    /// tick — single dispatch, in child-tick order, by the parent.
-    ///
-    /// A thread-local rather than a runtime field: the nested run is
-    /// synchronous-blocking on the same thread as the parent's solve, so
-    /// the accumulator's lifetime is exactly "between the parent's
-    /// `resolve_runs` and the scheduler's drain." Non-scheduler query
-    /// paths (static `sat_*`/`unsat_*` claims) also append here, but
-    /// nobody drains — those captured effects are simply dropped, which
-    /// is correct: a claim isn't an FSM tick and dispatches nothing.
+    /// Effects from nested `run(F, init)` not yet dispatched; percolate to the parent FSM's
+    /// tick. Non-scheduler query paths (sat_*/unsat_*) append but nobody drains — dropped, correct.
     static PERCOLATED_EFFECTS: RefCell<Vec<Effect>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Take (drain) the effects captured by nested `run(...)` resolution
-/// since the last drain, leaving the accumulator empty. Called by the
-/// multi-FSM scheduler after each FSM's per-tick solve so the drained
-/// effects are dispatched as part of that FSM's batch. Returns an empty
-/// vec when the FSM's body had no effect-emitting `run`.
+/// Drain effects captured by nested `run(...)` since the last drain; called by the scheduler.
 pub fn take_percolated_effects() -> Vec<Effect> {
     PERCOLATED_EFFECTS.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
-/// Append child-run-captured effects to the percolation accumulator, in
-/// resolution (body-traversal) order.
 fn append_percolated_effects(effects: Vec<Effect>) {
     if effects.is_empty() { return; }
     PERCOLATED_EFFECTS.with(|c| c.borrow_mut().extend(effects));
 }
 
-/// Default max-iteration guard for a nested run. Matches the scheduler's
-/// `LoopOpts` default; override with `EVIDENT_NESTED_MAX_STEPS`.
+/// Max steps for a nested run; override with `EVIDENT_NESTED_MAX_STEPS`.
 fn nested_max_steps() -> usize {
     std::env::var("EVIDENT_NESTED_MAX_STEPS").ok()
         .and_then(|s| s.parse().ok())
@@ -89,29 +35,17 @@ fn nested_max_steps() -> usize {
 }
 
 impl EvidentRuntime {
-    /// Load-time validation of every `run(F, ..)` and `halts_within(F, ..)`
-    /// target across all loaded schemas. For each `run` whose `F` is
-    /// already known, check `F` is declared `fsm` (the sole FSM signal)
-    /// and FSM-shaped (single state pair + `halt ∈ Bool`); reject at load
-    /// otherwise. For each `halts_within` target, check the `fsm` keyword
-    /// (its full shape is verified at query time by the unroll composer,
-    /// which needs a Z3 context). A target that isn't yet loaded is left
-    /// for query-time resolution to surface as an unknown-FSM error
-    /// (avoids false positives on cross-file forward references). See
-    /// `docs/design/nested-fsm-strategies.md` §1 and
-    /// `docs/design/fsms-as-functions.md` §2.
+    /// Validate `run(F,..)` and `halts_within(F,..)` targets at load time.
+    /// Unknown F deferred to query time (forward refs). Checks `fsm` keyword + FSM shape.
     pub(super) fn validate_run_targets(&self) -> Result<(), RuntimeError> {
         let names: Vec<String> = self.schema_names().map(|s| s.to_string()).collect();
         for claim_name in &names {
             let Some(schema) = self.get_schema(claim_name) else { continue };
-            // `run(F, ..)` targets — keyword + shape, via the shared
-            // `check_shape` (which now gates on `Keyword::Fsm`).
             if body_has_run(&schema.body) {
                 let mut targets: Vec<String> = Vec::new();
                 collect_run_targets(&schema.body, &mut targets);
                 for fsm in targets {
-                    // Unknown F → defer to query time (forward ref across files).
-                    if self.get_schema(&fsm).is_none() { continue; }
+                    if self.get_schema(&fsm).is_none() { continue; } // forward ref → defer
                     if let Err(e) = crate::effect_loop::validate_run_target(self, &fsm) {
                         return Err(RuntimeError::Parse(format!(
                             "in `{claim_name}`: {e}")));
@@ -136,14 +70,8 @@ impl EvidentRuntime {
         Ok(())
     }
 
-    /// The set of schema names referenced as a `run(...)` or
-    /// `halts_within(...)` target anywhere in the loaded program. These
-    /// are **embedded-only** FSMs (`docs/design/fsms-as-functions.md` §9):
-    /// a function applied to completion by an enclosing model, NOT a
-    /// top-level FSM the scheduler should auto-instantiate. The multi-FSM
-    /// scheduler (`effect_loop::all_fsms`) skips them so relabeling an
-    /// embedded transition `claim`→`fsm` doesn't make it run as a
-    /// standalone FSM.
+    /// FSM names used as `run(...)` or `halts_within(...)` targets; the scheduler skips
+    /// these so an embedded FSM can be declared `fsm` without becoming a standalone FSM.
     pub(crate) fn embedded_fsm_targets(&self) -> std::collections::HashSet<String> {
         let mut out = std::collections::HashSet::new();
         for name in self.schema_names() {
@@ -156,13 +84,8 @@ impl EvidentRuntime {
         out
     }
 
-    /// If `schema`'s body contains any `run(F, init)` expression, return
-    /// a rewritten copy with every `run` driven to its final-state value
-    /// and replaced by that value's literal expression. Returns `None`
-    /// (no clone) when the body has no `run`.
-    ///
-    /// Called at the top of every query entry point — see the module
-    /// doc for the evaluation-timing rationale.
+    /// Rewrite all `run(F, init)` nodes to their literal final-state values.
+    /// Returns `None` (no clone) when the body has no `run`.
     pub(super) fn resolve_runs(
         &self,
         schema: &SchemaDecl,
@@ -237,8 +160,6 @@ impl EvidentRuntime {
         })
     }
 
-    /// Recursively rewrite every `RunFsm` node in `e` to its literal
-    /// final-state value. Non-`run` subtrees are reconstructed as-is.
     fn rewrite_expr(
         &self,
         e: &Expr,
@@ -257,10 +178,8 @@ impl EvidentRuntime {
                     "run({fsm}, ..): final state value {value:?} can't be expressed \
                      as a literal (v1 supports primitive + enum final states)")))?
             }
-            // Leaves — no embedded expressions.
             Expr::Identifier(_) | Expr::Int(_) | Expr::Real(_)
             | Expr::Bool(_) | Expr::Str(_) => e.clone(),
-            // Recurse structurally everywhere a sub-expression can hide.
             Expr::SetLit(items)  => Expr::SetLit(rv(items)?),
             Expr::SeqLit(items)  => Expr::SeqLit(rv(items)?),
             Expr::Tuple(items)   => Expr::Tuple(rv(items)?),
@@ -295,8 +214,6 @@ impl EvidentRuntime {
         init: &Expr,
         given: &HashMap<String, Value>,
     ) -> Result<Value, RuntimeError> {
-        // Strategy gate. Only tier 3 (`blocking`) exists this session;
-        // `auto` resolves to it. Forcing an unbuilt tier errors clearly.
         match std::env::var("EVIDENT_NESTED_STRATEGY").as_deref() {
             Ok("loop") | Ok("unroll") => {
                 let tier = std::env::var("EVIDENT_NESTED_STRATEGY").unwrap();
@@ -308,14 +225,6 @@ impl EvidentRuntime {
             _ => {} // blocking | auto | unset → tier 3
         }
         let init_val = self.eval_const_init(fsm, init, given)?;
-        // Drive F to halt, CAPTURING (not dispatching) any effects it
-        // solves for. The final state is rewritten into the outer model
-        // as a literal (the run's value); the captured effects percolate
-        // to the parent via the thread-local accumulator, dispatched once
-        // by the parent's tick (session RR). Append AFTER the run returns:
-        // F's own per-tick solves re-enter the query path, but F has no
-        // `run` so they don't touch the accumulator — only this top-level
-        // append lands F's captured effects in body-traversal order.
         let (value, effects) =
             crate::effect_loop::run_nested_capturing(self, fsm, init_val, nested_max_steps())
                 .map_err(|e| RuntimeError::Parse(e.to_string()))?;
@@ -323,11 +232,8 @@ impl EvidentRuntime {
         Ok(value)
     }
 
-    /// Evaluate a `run`'s `init` expression to a concrete `Value` using
-    /// only values known before the outer solve: literals, the query's
-    /// `given`, integer arithmetic over those, and (recursively) nested
-    /// `run`s. Anything else is the "init depends on an undetermined
-    /// variable" error — loud, never silent.
+    /// Evaluate `init` to a concrete Value using only literals, givens, and arithmetic.
+    /// Any undetermined variable is a loud error — no silent wrong values.
     fn eval_const_init(
         &self,
         fsm: &str,
@@ -343,8 +249,6 @@ impl EvidentRuntime {
                 if let Some(v) = given.get(name) {
                     return Ok(v.clone());
                 }
-                // A bare nullary enum-variant literal (`Empty`, `NLNil`)
-                // — part of a composite init like `Node("a", NLNil)`.
                 if let Some(v) = self.nullary_variant_value(name) {
                     return Ok(v);
                 }
@@ -372,11 +276,7 @@ impl EvidentRuntime {
                          integers in v1"))),
                 }
             }
-            // A composite enum-constructor literal — `Leaf(7)`,
-            // `Node(Leaf(1), Leaf(2))`, `WSeed(...)`. Look the variant up
-            // to recover its enum name, then recursively evaluate each
-            // payload arg. This is the composite seed (#19d): a tree /
-            // recursive-enum value passed straight through `init`.
+            // Enum constructor literal: look up variant, evaluate payload args recursively.
             Expr::Call(ctor, args) => {
                 let enum_name = self.enums_registry().by_variant
                     .borrow().get(ctor).map(|(n, _)| n.clone());
@@ -390,17 +290,12 @@ impl EvidentRuntime {
                     .collect::<Result<Vec<Value>, _>>()?;
                 Ok(Value::Enum { enum_name, variant: ctor.clone(), fields })
             }
-            // A sequence-literal seed — `⟨root⟩`, `⟨"a", "b"⟩`, or an
-            // empty `⟨⟩` children list inside a composite. Evaluate each
-            // element and pick the Seq Value variant from the element
-            // kinds (#19d composite seed, Seq case).
             Expr::SeqLit(items) => {
                 let vals = items.iter()
                     .map(|x| self.eval_const_init(fsm, x, given))
                     .collect::<Result<Vec<Value>, _>>()?;
                 seq_value_from_elems(fsm, vals)
             }
-            // A run nested in an init expression: recurse.
             Expr::RunFsm { fsm: inner, init } => self.eval_run(inner, init, given),
             other => Err(RuntimeError::Parse(format!(
                 "run({fsm}, ..): init must be a constant expression computable \
@@ -409,11 +304,7 @@ impl EvidentRuntime {
         }
     }
 
-    /// If `name` is a registered nullary enum variant (`Empty`, `NLNil`,
-    /// `Nil`), build its `Value::Enum`. Used by `eval_const_init` so a
-    /// composite init literal can carry bare nullary variants
-    /// (`Node("a", NLNil)`). Returns `None` for unknown names or
-    /// payload-bearing variants.
+    /// Build `Value::Enum` for a nullary variant, or `None` for unknowns / payload variants.
     fn nullary_variant_value(&self, name: &str) -> Option<Value> {
         let enums = self.enums_registry();
         let (enum_name, idx) = enums.by_variant.borrow().get(name)?.clone();
@@ -427,10 +318,7 @@ impl EvidentRuntime {
     }
 }
 
-/// Build a `Seq` `Value` from already-evaluated element values, picking
-/// the variant from the (homogeneous) element kinds. An empty literal
-/// defaults to `SeqEnum([])` — the common shape for an empty
-/// recursive-enum children list. A mixed-kind literal is an error.
+/// Build a Seq Value from homogeneous element values; empty defaults to `SeqEnum([])`.
 fn seq_value_from_elems(fsm: &str, vals: Vec<Value>) -> Result<Value, RuntimeError> {
     let mismatch = || RuntimeError::Parse(format!(
         "run({fsm}, ..): sequence-literal init must have homogeneous element \
@@ -455,7 +343,6 @@ fn seq_value_from_elems(fsm: &str, vals: Vec<Value>) -> Result<Value, RuntimeErr
     }
 }
 
-/// Does any body item carry a `run(...)` expression?
 fn body_has_run(body: &[BodyItem]) -> bool {
     body.iter().any(|item| match item {
         BodyItem::Constraint(e) => expr_has_run(e),
@@ -471,7 +358,6 @@ fn body_has_run(body: &[BodyItem]) -> bool {
     })
 }
 
-/// The surface word for a `Keyword`, for load-time diagnostics.
 fn keyword_word(kw: &crate::core::ast::Keyword) -> &'static str {
     use crate::core::ast::Keyword;
     match kw {
@@ -483,9 +369,6 @@ fn keyword_word(kw: &crate::core::ast::Keyword) -> &'static str {
     }
 }
 
-/// Collect every `halts_within(F, ..)` target FSM name reachable from
-/// `body` (including inside subclaims). `HaltsWithin` is a body item, not
-/// an expression, so this only descends into subclaim bodies.
 fn collect_halts_within_targets(body: &[BodyItem], out: &mut Vec<String>) {
     for item in body {
         match item {
@@ -496,8 +379,6 @@ fn collect_halts_within_targets(body: &[BodyItem], out: &mut Vec<String>) {
     }
 }
 
-/// Collect every `run(F, ..)` target FSM name reachable from `body`
-/// (including inside subclaims).
 fn collect_run_targets(body: &[BodyItem], out: &mut Vec<String>) {
     for item in body {
         match item {
@@ -562,22 +443,8 @@ fn expr_has_run(e: &Expr) -> bool {
     }
 }
 
-/// Convert a nested-run final-state `Value` to the literal `Expr` that
-/// pins it into the outer model. The outer translator's existing
-/// equality paths then lower that literal:
-///   * Primitive → its literal (`Int`/`Bool`/`Real`/`Str`).
-///   * Nullary enum variant → a bare `Identifier` (`Empty` → `Empty`),
-///     NOT a zero-arg `Call`: `resolve_enum_ast`'s Identifier path
-///     resolves the `EnumValue`, whereas a `Call("Empty", [])` would
-///     look for an `EnumCtor` and the equality would silently drop.
-///   * Payload enum variant → a constructor `Call`, recursing into each
-///     field (so a nested-enum payload like `Done(Push(Leaf(7), Empty))`
-///     round-trips).
-///   * Seq value → a `SeqLit` of element literals; the outer
-///     `translate_seq_lit_eq` / `translate_seq_arg_for_ctor` paths pin
-///     length + per-element values. This is the composite final-state
-///     return — a `Seq`/`Set`-accumulator FSM can now hand its result
-///     back as a value.
+/// Convert a final-state Value to the literal Expr pinned into the outer model.
+/// Nullary enum variants → bare Identifier (NOT zero-arg Call; the latter silently drops).
 fn value_to_literal_expr(v: &Value) -> Option<Expr> {
     let seq_lit = |items: Vec<Expr>| Some(Expr::SeqLit(items));
     match v {
@@ -602,10 +469,6 @@ fn value_to_literal_expr(v: &Value) -> Option<Expr> {
                 xs.iter().map(value_to_literal_expr).collect();
             seq_lit(items?)
         }
-        // Set values and flat composite records aren't expressible as a
-        // single outer literal yet (a `Set`-accumulator return is the
-        // honest remaining gap — Set literals need bare-identifier
-        // elements, not nested literals).
-        _ => None,
+        _ => None, // Set / composite records not yet expressible as outer literal
     }
 }

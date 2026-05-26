@@ -1,50 +1,20 @@
-//! Pre-translation passes: pin literal-int variables, propagate
-//! sequence lengths, fold quantifier bounds. All of these run before
-//! constraint translation so the translator sees concrete integers
-//! where possible (and can then unroll quantifiers, fold Cardinality,
-//! etc.).
-//!
-//! Pure data-shape passes — input AST + small `Value` map → updated
-//! `Value` / env map. No Z3 expression building, no `&Context`,
-//! no Solver. The two pieces that DID need a Context (`literal_range`,
-//! which evaluates `Range(lo, hi)` bounds, and `apply_seq_lengths`,
-//! which substitutes a literal Int into typed Seq bindings) live in
-//! their proper homes — `exprs::literal_range` and
-//! `declare::apply_seq_lengths`.
+//! Pre-translation: pin literal-int vars, propagate Seq lengths, fold quantifier bounds.
+//! Pure AST + Value map → updated env; no Z3 Context or Solver involved.
 
 use std::collections::{HashMap, HashSet};
 
 use crate::core::ast::*;
 use crate::core::{Value, Var};
 
-/// Walk the schema body to find every name that appears in a
-/// quantifier bound (the `range` of a `∀` / `∃`). Those names are
-/// "structural" — changing their value changes how many iterations
-/// the quantifier unrolls into, which means the cached constraint
-/// set built from the previous value is wrong. Used by the runtime's
-/// cache-invalidation logic: when a `given` value for a structural
-/// name changes between steps, rebuild the cache; otherwise reuse it.
-///
-/// Names appear in bounds via either:
-///   - Direct: `∀ i ∈ {0..n - 1}` → `n` is structural.
-///   - Cardinality: `∀ i ∈ {0..#s - 1}` → `s` is structural (changing
-///     `#s`'s pinned value via a `Seq` given changes the unroll).
-///
-/// Pure value-only givens (e.g. player position used in body
-/// arithmetic but never as a quantifier bound) are NOT structural —
-/// the constraint structure is the same regardless of their value,
-/// and `run_cached` asserts them per-query without rebuilding.
+/// Names that appear in a quantifier bound (∀/∃ `range`). Changing these invalidates the cached
+/// constraint set; pure value givens (never in a bound) are NOT structural.
 pub fn structural_names(body: &[BodyItem]) -> HashSet<String> {
     let mut out = HashSet::new();
     for item in body {
         if let BodyItem::Constraint(e) = item {
             walk_for_quantifier_bounds(e, &mut out);
         }
-        // ClaimCall / Passthrough / SubclaimDecl bodies aren't walked
-        // — they live in other schemas and their bounds typically only
-        // reference the claim's own internal vars, not top-level
-        // givens. If a real cross-claim case shows up, walk
-        // schemas[claim_name].body here too.
+        // ClaimCall/Passthrough/SubclaimDecl bodies not walked — they rarely reference top-level givens as bounds.
     }
     out
 }
@@ -64,13 +34,7 @@ fn walk_for_quantifier_bounds(e: &Expr, out: &mut HashSet<String>) {
             walk_for_quantifier_bounds(lhs, out);
             walk_for_quantifier_bounds(rhs, out);
         }
-        // `#name` outside a quantifier range is still structural —
-        // its value drives seq-length / set-cardinality propagation
-        // (`#items = #sorted` chains a Set's cardinality into a Seq's
-        // length, which then unrolls a downstream quantifier). Without
-        // this, a top-level `#items` only fires for `items` if it ALSO
-        // appears in a quantifier range, which Toposort<T>'s body
-        // doesn't directly do.
+        // `#name` outside a quantifier range is still structural: drives cardinality-chain propagation.
         Expr::Cardinality(inner) => {
             if let Expr::Identifier(name) = inner.as_ref() {
                 out.insert(name.clone());
@@ -123,22 +87,8 @@ pub fn collect_referenced_names(e: &Expr, out: &mut HashSet<String>) {
     }
 }
 
-/// Structural signature for cache invalidation. Two queries with
-/// equal signatures share the same cached, unrolled constraint set.
-///
-/// Captured as `(filtered_pinned, filtered_seq_lens)` — the literal
-/// integer values that, after pre-translation, drive quantifier
-/// unrolling. Filtered to names that actually appear in some
-/// quantifier bound (`structural_names`); a non-structural Int
-/// given like `pos = 42` lands in `pinned` but is filtered out so
-/// it doesn't force a rebuild every step.
-///
-/// Why this isn't just "the structural subset of given":
-///   - A `Seq` given changing values but keeping the same length
-///     must NOT rebuild (constraint shape unchanged) — using length
-///     instead of the whole seq value gets this right.
-///   - A pinned-int derived via `n = #s` (chain) becomes part of
-///     `pinned` and is also filtered against structural names.
+/// Cache-invalidation key: `(filtered_pinned, filtered_seq_lens)` restricted to structural names.
+/// Seq length (not value) matters — equal-length Seqs share the same constraint shape.
 pub type StructuralSignature = (HashMap<String, i64>, HashMap<String, i64>);
 
 pub fn structural_signature(
@@ -157,21 +107,8 @@ pub fn structural_signature(
     (pinned_filtered, seq_lens_filtered)
 }
 
-/// Pre-scan the schema body and `given` for variables that can be
-/// pinned to a literal int *before* the solver runs:
-///
-///   - any `given` entry of value `Value::Int(n)` → `name → n`
-///   - any body constraint of shape `name = literal_int_expr` (or
-///     reverse) where the literal side resolves to a constant under
-///     the names already pinned → `name → value`
-///   - any body constraint of shape `name = #seq` where `#seq`'s
-///     length itself reduces (e.g. via a sibling `#seq = N` constraint)
-///     → `name → length` (length-propagation, mirrors Python's Pass 3)
-///
-/// Iterates to a fixed point so chains like `n = #s ∧ #s = 4 ∧ k = n - 1`
-/// all resolve. The result is fed into `apply_pinned_ints` to upgrade
-/// env entries to `Var::PinnedInt`, which lets `literal_range` unroll
-/// quantifiers like `∀ i ∈ {0..n - 1}` even when `n` is symbolic.
+/// Collect literal-int pins from `given` and body constraints (`name = expr`, `name = #seq`).
+/// Fixed-point so chains like `n = #s ∧ #s = 4 ∧ k = n - 1` fully resolve.
 pub(super) fn collect_pinned_ints(
     body: &[BodyItem],
     given: &HashMap<String, Value>,
@@ -189,8 +126,6 @@ pub(super) fn collect_pinned_ints(
                 for (a, b) in [(lhs, rhs), (rhs, lhs)] {
                     if let Expr::Identifier(name) = a.as_ref() {
                         if !pinned.contains_key(name) {
-                            // Try as a pure-int expression over already-pinned
-                            // names + literal Ints + #seq lengths.
                             if let Some(v) = eval_pure_int(b, &pinned, seq_lengths) {
                                 pinned.insert(name.clone(), v);
                                 changed = true;
@@ -204,9 +139,7 @@ pub(super) fn collect_pinned_ints(
     pinned
 }
 
-/// Pure constant-folding evaluator over Int expressions. Honors PinnedInt
-/// names, literal Ints, arithmetic, and `#seq` references whose lengths
-/// are concrete in `seq_lengths`.
+/// Constant-fold an Int expression over pinned names, literals, and `#seq` lengths.
 fn eval_pure_int(
     e: &Expr,
     pinned: &HashMap<String, i64>,
@@ -234,24 +167,8 @@ fn eval_pure_int(
     }
 }
 
-/// Pre-scan body for sequence-length pins. Three pin shapes:
-///
-///   - `given` value with a `Value::Seq*` payload — length comes from
-///     the Vec.
-///   - `seq = ⟨e1, e2, …⟩` — pins `#seq` to the literal's arity.
-///   - `#seq = expr` (or `expr = #seq`) where `expr` reduces to a
-///     literal int via `eval_pure_int`. This includes the simple case
-///     `#seq = 5` AND chains like `#b = #a` and `#b = #a + 1`. Iterates
-///     to a fixed point so a chain of N cardinality references resolves
-///     in N passes.
-///
-/// The chained form is what makes `#state_next.cells = #state.cells`
-/// work — the natural state-forwarding shape for stateful programs.
-/// Without it, only `#state.cells` would be pinned and any quantifier
-/// over `#state_next.cells` would silently drop.
-///
-/// Result is consumed by `collect_pinned_ints` so e.g. `n = #s` resolves
-/// through it via `eval_pure_int`'s `seq_lengths` lookup.
+/// Collect Seq lengths from `given` values, `seq = ⟨…⟩` literals, and `#seq = expr` constraints.
+/// Fixed-point so chains like `#state_next.cells = #state.cells` propagate fully.
 pub(super) fn collect_seq_lengths(
     body: &[BodyItem],
     given: &HashMap<String, Value>,
@@ -259,18 +176,14 @@ pub(super) fn collect_seq_lengths(
     collect_seq_lengths_with_schemas(body, given, None)
 }
 
-/// `collect_seq_lengths` variant that follows `..Passthrough` body items
-/// into the named claim's body. Lets a fsm with `..Level; ∀ i : … platforms[i] …`
-/// see `#platforms = N` even when the pin lives in `Level`'s body.
+/// Like `collect_seq_lengths` but recurses into `..Passthrough` bodies via `schemas`.
 pub(super) fn collect_seq_lengths_with_schemas(
     body: &[BodyItem],
     given: &HashMap<String, Value>,
     schemas: Option<&HashMap<String, SchemaDecl>>,
 ) -> HashMap<String, i64> {
     let mut out = HashMap::new();
-    // Seq lengths from `given` Seq values are exact. Set cardinalities
-    // are also "lengths" for the purpose of `#s` propagation — they
-    // feed `#s = #p` chains where one side is a Set and the other a Seq.
+    // Seed lengths from `given` Seq/Set values (Set cardinalities feed `#s = #p` chains too).
     for (k, v) in given {
         let len = match v {
             Value::SeqInt(v)       => v.len() as i64,
@@ -285,20 +198,11 @@ pub(super) fn collect_seq_lengths_with_schemas(
         };
         out.insert(k.clone(), len);
     }
-    // `given` Int values seed `pinned` for the fixed-point walk so
-    // chains like `#position = n` resolve when the caller pinned
-    // `n` via given (e.g. invoking `Toposort` from Rust). Without
-    // this, only seq-length pins propagate; an int-named length
-    // bound stays symbolic and the ∀-unroll bails.
+    // Seed pinned ints from `given` so `#position = n` chains resolve.
     let mut pinned: HashMap<String, i64> = HashMap::new();
     for (k, v) in given {
         if let Value::Int(n) = v { pinned.insert(k.clone(), *n); }
     }
-    // Fixed-point. Two kinds of discoveries can extend `pinned`
-    // (Int values) and `out` (Seq lengths) each pass:
-    //   * `#seq = N` pins `out["seq"] = N`.
-    //   * `n = N` (Int = literal) seeds `pinned["n"] = N`, so a
-    //     later `#seq = n` resolves.
     let mut changed = true;
     while changed {
         changed = false;
@@ -310,11 +214,8 @@ pub(super) fn collect_seq_lengths_with_schemas(
     out
 }
 
-/// Walk body Eq constraints for `name = literal_int_expr` patterns
-/// (where the RHS reduces to a concrete Int via `eval_pure_int`)
-/// and add them to `pinned`. Lets `collect_seq_lengths` resolve
-/// chains like `n = 3 ; #position = n` where the `n` pin only
-/// appears in body, not in `given`. Recurses into passthroughs.
+/// Find `name = literal_int_expr` body constraints and add to `pinned`.
+/// Recurses into passthroughs so chains like `n = 3; #position = n` resolve.
 fn scan_int_pins(
     body: &[BodyItem],
     schemas: Option<&HashMap<String, SchemaDecl>>,
@@ -348,9 +249,7 @@ fn scan_int_pins(
     }
 }
 
-/// Walk a body's Eq constraints for cardinality pins, recursing into
-/// `..Passthrough` body items via `schemas` (when supplied). Marks
-/// `changed = true` whenever a new pin is discovered.
+/// Walk body Eq constraints for cardinality pins, recursing into `..Passthrough` bodies.
 fn walk_constraints(
     body: &[BodyItem],
     schemas: Option<&HashMap<String, SchemaDecl>>,
@@ -362,7 +261,6 @@ fn walk_constraints(
         match item {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) => {
                 for (a, b) in [(lhs, rhs), (rhs, lhs)] {
-                    // `#name = pure-int-expr` (including `#name = #other`).
                     if let Expr::Cardinality(inner) = a.as_ref() {
                         if let Expr::Identifier(name) = inner.as_ref() {
                             if !out.contains_key(name) {
@@ -373,7 +271,6 @@ fn walk_constraints(
                             }
                         }
                     }
-                    // `seq_var = ⟨e1, e2, …⟩` pins #seq_var to items.len().
                     if let (Expr::Identifier(name), Expr::SeqLit(items)) =
                         (a.as_ref(), b.as_ref())
                     {
@@ -391,11 +288,7 @@ fn walk_constraints(
                     }
                 }
             }
-            // Sub-schema usage: `m ∈ MarioSprite (...)`. The type's body
-            // constraints fire on the instance (see inline.rs constraint
-            // inheritance). Mirror that here: walk the type's body for
-            // length pins, prefixing identifiers with the instance name
-            // and matching only on identifiers naming the type's fields.
+            // Sub-schema Membership: walk the type's body for length pins with `inst_name.` prefix.
             BodyItem::Membership { name: inst_name, type_name, .. } => {
                 if let Some(schemas) = schemas {
                     if let Some(ty) = schemas.get(type_name) {
@@ -416,9 +309,7 @@ fn walk_constraints(
     }
 }
 
-/// Like `walk_constraints` but rewrites identifiers naming `field_set`
-/// entries with the `prefix.` qualifier. Used to harvest length pins
-/// from a sub-schema's body when the instance binds it.
+/// Like `walk_constraints` but prefixes field identifiers with `prefix.` for sub-schema instances.
 fn walk_constraints_with_prefix(
     body: &[BodyItem],
     schemas: Option<&HashMap<String, SchemaDecl>>,
@@ -431,7 +322,6 @@ fn walk_constraints_with_prefix(
     for item in body {
         if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
             for (a, b) in [(lhs, rhs), (rhs, lhs)] {
-                // `#name = literal-int` — prefix the name if it's a field.
                 if let Expr::Cardinality(inner) = a.as_ref() {
                     if let Expr::Identifier(name) = inner.as_ref() {
                         let first_seg = name.split('.').next().unwrap_or("");
@@ -446,7 +336,6 @@ fn walk_constraints_with_prefix(
                         }
                     }
                 }
-                // `seq_var = ⟨e1, e2, …⟩` — same field-prefix rewrite.
                 if let (Expr::Identifier(name), Expr::SeqLit(items)) =
                     (a.as_ref(), b.as_ref())
                 {
@@ -462,16 +351,11 @@ fn walk_constraints_with_prefix(
             }
         }
     }
-    // Don't recurse further — the type's own Passthrough / nested
-    // Membership decls are flat-expanded by declare_var, not by this
-    // length-collection pass. Adding nested recursion would need to
-    // re-prefix at each level and isn't load-bearing for v1.
+    // No further recursion: nested Memberships are flat-expanded by declare_var, not here.
     let _ = schemas;
 }
 
-/// Replace env entries for pinned names with `Var::PinnedInt(value)`.
-/// The replacement is a no-op for names not in env (e.g. a `n = 5`
-/// constraint where `n` was never declared with `n ∈ ...`).
+/// Upgrade env entries for pinned names to `Var::PinnedInt`. No-op if the name is not in env.
 pub(super) fn apply_pinned_ints<'ctx>(
     env: &mut HashMap<String, Var<'ctx>>,
     pinned: &HashMap<String, i64>,

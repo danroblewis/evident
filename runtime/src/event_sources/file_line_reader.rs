@@ -1,5 +1,4 @@
-//! File line-reader bridge. See `event_sources/mod.rs` for trait
-//! and shared helpers.
+//! File line-reader bridge.
 
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
@@ -10,18 +9,8 @@ use super::{
     WorldPluginInstall, WriteQueue,
 };
 
-/// File line reader. Like StdinSource but reads from a path
-/// instead of fd 0. Spawns a thread that opens the file at
-/// startup, streams lines until EOF, queues each line as a
-/// world write. EOF closes the channel sender (signalling
-/// "source dead" to the scheduler).
-///
-/// This is the smallest concrete step toward Foreign Type
-/// Interface — it demonstrates resource lifecycle (open at
-/// start, close at EOF/drop) for a non-stdin file descriptor.
-/// Configuration is via constructor parameter (the path); a
-/// future FTI version would let users declare per-instance
-/// resources via type-with-fields.
+/// Like StdinSource but reads from a path instead of fd 0.
+/// EOF closes the channel sender ("source dead" to the scheduler).
 pub struct FileLineReader {
     name:        String,
     path:        std::path::PathBuf,
@@ -87,7 +76,7 @@ impl EventSource for FileLineReader {
                 loop {
                     let mut line = String::new();
                     match reader.read_line(&mut line) {
-                        Ok(0) => break,  // EOF
+                        Ok(0) => break,
                         Ok(_) => {
                             if line.ends_with('\n') { line.pop(); }
                             if line.ends_with('\r') { line.pop(); }
@@ -106,13 +95,12 @@ impl EventSource for FileLineReader {
                         Err(_) => break,
                     }
                 }
-                // EOF — set eof flag and send a final wake.
+                // EOF — set eof flag and send a final wake; sender drops here.
                 if let Some(ef) = &eof_field {
                     let mut q = write_queue.lock().unwrap();
                     q.push_back((ef.clone(), Value::Bool(true)));
                 }
                 let _ = tx.send(SchedulerEvent::Tick { name: name.clone() });
-                // Sender drops here when thread exits → channel closed.
             })
             .map_err(|e| format!("FileLineReader spawn: {e}"))?;
         self.handle = Some(handle);
@@ -120,9 +108,7 @@ impl EventSource for FileLineReader {
     }
 
     fn stop(&mut self) {
-        // Like StdinSource: blocking read can't be portably interrupted.
-        // Drop the JoinHandle and let the thread finish on its own
-        // (it'll exit on EOF or when the sender drops).
+        // Blocking read can't be interrupted portably; drop handle and let thread finish.
         let _ = self.handle.take();
     }
 
@@ -142,11 +128,8 @@ impl Drop for FileLineReader {
     fn drop(&mut self) { self.stop(); }
 }
 
-/// World-plugin install fn for FileLineReader. Installs iff the
-/// user's World declares `file_line: String` AND
-/// `EVIDENT_FILE_INPUT` names a path. Optional companion fields:
-/// `file_seq: Int` (sequence counter), `file_eof: Bool` (set
-/// true when EOF reached).
+/// Installs if World has `file_line: String` and `EVIDENT_FILE_INPUT` is set.
+/// Optional: `file_seq: Int` (sequence counter), `file_eof: Bool` (set at EOF).
 pub(super) fn install_world_plugin(
     ctx:      &WorldPluginCtx,
     event_tx: &std::sync::mpsc::Sender<SchedulerEvent>,

@@ -1,15 +1,5 @@
-//! Per-step cached query path. Used by the multi-FSM scheduler to
-//! amortize the translate cost across ticks.
-//!
-//!   * `build_cache`             — translate the schema's body once
-//!                                  into a fresh solver; returns a
-//!                                  `CachedSchema` callers reuse.
-//!   * `run_cached`              — per-tick: push, assert givens,
-//!                                  check, extract model, pop. Reuses
-//!                                  all cached constraint translation.
-//!   * `sample_cached_inner`     — n-distinct-models sampling on top
-//!                                  of a cache; one outer push +
-//!                                  per-iteration blocking clauses.
+//! Per-step cached query path: translate the schema body once (`build_cache`), then reuse it
+//! per tick via push/assert-givens/check/pop (`run_cached`) or for n-models sampling.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -24,18 +14,8 @@ use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use super::decode::{extract_enum_value, extract_seq_enum};
 
-/// Translate the schema's body once into a fresh solver and return a
-/// `CachedSchema` that subsequent queries can reuse via push/pop.
-///
-/// `given` is the set of values that should be folded into the cache
-/// at build time — typically the structural subset (names appearing
-/// in quantifier bounds), so the cache contains the right unrolled
-/// shape. Non-structural givens can be left in or out; they won't
-/// change the cache's correctness, but if included they're folded as
-/// `Var::PinnedInt` and any subsequent `run_cached` with a different
-/// value for that name will hit the PinnedInt-mismatch UNSAT path.
-/// The runtime's cache layer takes care of this by passing only the
-/// structural subset and rebuilding on signature change.
+/// Translate the schema body once into a fresh solver; returns a `CachedSchema` for reuse.
+/// Pass only the structural-subset of `given` (quantifier-bound values) to bake correct unrolling.
 pub fn build_cache(
     schema: &SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
@@ -45,17 +25,13 @@ pub fn build_cache(
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CachedSchema<'static> {
-    // Mirror evaluate_with_extra_assertions: install the thread-local
-    // EnumRegistry so the translator can resolve enum constructors
-    // (e.g. `LibCall(..., ⟨⟩)`) appearing in body items. Without this,
-    // those constraints silently drop and outputs end up undefined.
+    // Install the thread-local EnumRegistry so enum constructors in body items resolve.
+    // Without this those constraints silently drop and outputs end up undefined.
     let _enum_guard = super::super::exprs::EnumRegistryGuard::new(enums);
     let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Same two passes as evaluate(), but writing into the cache's
-    // solver instead of a fresh one each time.
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -72,26 +48,15 @@ pub fn build_cache(
                     }
                 }
             }
-            // (Bare-identifier-as-passthrough is desugared upstream by
-            // stdlib/passes/desugar_passthrough.ev; by the time we
-            // walk body items here, those constraints are already
-            // BodyItem::Passthrough nodes handled above.)
             _ => {}
         }
     }
 
-    // Pass 1.5: pin literal-int vars + propagate seq lengths. `given`
-    // contributes both Int values (for pinned) and Seq* lengths (for
-    // seq_lens), so a structural value the runtime decided to bake into
-    // the cache (e.g. `cells_count = 80` from a config menu) makes
-    // every `∀ i ∈ {0..cells_count - 1}` unroll correctly.
     let seq_lens = super::super::preprocess::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
-    // Populate Set var candidates from given Value::Set* — needed before
-    // body translation so `#s` cardinality folds to a literal count.
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
@@ -100,20 +65,8 @@ pub fn build_cache(
     CachedSchema { env, solver, arith_solver }
 }
 
-/// Sample up to `n` distinct models from the cached schema's solver.
-///
-/// Strategy: one outer push for the per-query givens. Inside the outer
-/// frame, loop:
-///   1. solver.check(); if UNSAT, break.
-///   2. Extract model into bindings; push onto result vec.
-///   3. Build a blocking clause: ¬(AND of `binding == value` for every
-///      *scalar* binding) — Bool, Int, Str. Sequence/set/composite
-///      values are skipped from the clause for v1; schemas whose only
-///      bindings are Seq* will return duplicates (documented limitation).
-///   4. Assert the blocking clause inside the outer frame, so it
-///      persists across iterations but is discarded by the outer pop.
-///
-/// Final pop restores the cached solver to exactly its build-time state.
+/// Sample up to `n` distinct models via blocking clauses (one outer push + per-iteration
+/// ¬(scalar assignment)). Seq/Set/composite vars excluded from blocking (v1 limitation).
 pub fn sample_cached_inner<'ctx>(
     cached: &CachedSchema<'ctx>,
     given: &HashMap<String, Value>,
@@ -122,8 +75,6 @@ pub fn sample_cached_inner<'ctx>(
     enums: Option<&EnumRegistry>,
 ) -> Vec<HashMap<String, Value>> {
     cached.solver.push();
-
-    // Apply per-query givens (mirrors run_cached).
     for (name, value) in given {
         let Some(var) = cached.env.get(name) else { continue };
         match (var, value) {
@@ -153,8 +104,6 @@ pub fn sample_cached_inner<'ctx>(
         let Some(model) = cached.solver.get_model() else { break };
 
         let mut bindings: HashMap<String, Value> = HashMap::new();
-        // Collect scalar `(z3 expr, value)` pairs as we extract; we'll
-        // turn them into a blocking clause at the end.
         let mut block_terms: Vec<Bool<'ctx>> = Vec::new();
 
         for (name, var) in cached.env.iter() {
@@ -191,28 +140,21 @@ pub fn sample_cached_inner<'ctx>(
                     if let Some(v) = extract_seq(arr, len, *elem, &model, ctx) {
                         bindings.insert(name.clone(), v);
                     }
-                    // Seq blocking is non-trivial (would need ¬(arr[0]=v0
-                    // ∧ … ∧ len=n)) — skipped for v1. Documented limitation.
+                    // Seq blocking non-trivial; skipped for v1 (documented limitation).
                 }
                 Var::PinnedInt(v) => {
                     bindings.insert(name.clone(), Value::Int(*v));
-                    // PinnedInts are constants, not solver vars — no
-                    // useful blocking term to add.
+                    // PinnedInts are constants — no blocking term.
                 }
                 Var::SetVar { set, elem, candidates } => {
                     if let Some(v) = extract_set(set, *elem, candidates, &model, ctx) {
                         bindings.insert(name.clone(), v);
                     }
-                    // Set blocking is non-trivial (would need to negate
-                    // membership for each candidate ∧ cardinality); skipped
-                    // for v1.
+                    // Set blocking non-trivial; skipped for v1.
                 }
                 Var::DatatypeSetVar { .. } => {
-                    // Composite-element Set extraction is unsupported in v1
-                    // — we'd need per-field model-eval over each candidate's
-                    // accessor application. The constraint side (∈, =, ⊆,
-                    // #) all work; check/all_solutions just omits the
-                    // binding from the output.
+                    // Composite Set extraction unsupported in v1; constraint side works but
+                    // check/all_solutions omits the binding.
                 }
                 Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
                     let extracted = if fields.is_empty() {
@@ -223,38 +165,26 @@ pub fn sample_cached_inner<'ctx>(
                     if let Some(v) = extracted {
                         bindings.insert(name.clone(), v);
                     }
-                    // Blocking on composite/enum seq elements is non-trivial
-                    // (same shape as primitive seqs); skipped for v1.
+                    // Blocking on composite/enum seq elements skipped for v1.
                 }
                 Var::EnumVar { ast, enum_name, dt } => {
                     if let Some(v) = extract_enum_value(ast, enum_name, dt, &model, ctx, enums) {
                         bindings.insert(name.clone(), v.clone());
-                        // Push a positive `var = chosen` term — the
-                        // outer code AND-s the term list and asserts
-                        // NOT (this iteration's complete assignment).
-                        // Use the model-evaluated value directly so
-                        // payload variants block correctly (their
-                        // constructors take arguments; can't call
-                        // ctor.apply(&[]) the way nullary variants can).
+                        // Use model-evaluated value so payload-variant constructors block
+                        // correctly (they take args; nullary ctor.apply(&[]) won't work).
                         if let Some(chosen) = model.eval(ast, true) {
                             block_terms.push(ast._eq(&chosen));
                         }
                     }
                 }
-                Var::EnumValue { .. } => {
-                    // Variant literals have no model-side state; they're
-                    // constants pre-populated into env at evaluate time.
-                }
-                Var::EnumCtor { .. } => {
-                    // Constructor reference; no per-model state.
-                }
+                Var::EnumValue { .. } => { /* literal constant, no model state */ }
+                Var::EnumCtor { .. }  => { /* constructor reference, no model state */ }
             }
         }
 
         out.push(bindings);
 
-        // If we have no scalar terms to block on at all, we'd loop
-        // forever returning the same model. Bail.
+        // No scalar blocking terms → same model forever; bail.
         if block_terms.is_empty() {
             break;
         }
@@ -267,16 +197,13 @@ pub fn sample_cached_inner<'ctx>(
     out
 }
 
-/// Per-query work: push, assert givens against the cached env, check,
-/// extract model, pop. Reuses all the constraint translation already
-/// in the cache.
+/// Push, assert per-tick givens, check, extract model, pop. Reuses all cached translation.
 pub fn run_cached<'ctx>(
     cached: &CachedSchema<'ctx>,
     given: &HashMap<String, Value>,
     ctx: &'ctx Context,
     enums: Option<&EnumRegistry>,
 ) -> EvalResult {
-    // Solver params were set once in build_cache; no per-call tuning here.
     cached.solver.push();
     for (name, value) in given {
         let Some(var) = cached.env.get(name) else { continue };
@@ -285,10 +212,7 @@ pub fn run_cached<'ctx>(
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => cached.solver.assert(&v._eq(&real_from_f64(ctx, *f))),
             (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
-            // PinnedInt was already folded in via apply_pinned_ints from
-            // this same given value, so the assertion is redundant. If
-            // the values disagree (caller passes a different int after a
-            // body equality pinned the var), force UNSAT.
+            // PinnedInt: already folded at cache build; mismatching value forces UNSAT.
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {

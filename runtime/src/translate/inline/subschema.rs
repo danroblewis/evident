@@ -1,12 +1,5 @@
-//! Subclaim-of-type ("use a field of a schema as a subschema")
-//! invocation inlining:
-//!
-//!   * `inline_subschema_call`   — `recv.subclaim(args)` / `(args) ∈ recv.subclaim`
-//!   * `inline_forall_subschema` — `∀ … : recv.subclaim(args)` (AST unroll)
-//!
-//! Both rebind the receiver's record fields onto the subclaim's
-//! bare-name fields so the subclaim body's references resolve to the
-//! receiver's leaves, then recurse into `walk::inline_body_items_guarded`.
+//! Subclaim-of-type invocation: `recv.subclaim(args)` and `∀ … : recv.subclaim(args)`.
+//! Rebinds receiver fields onto bare-name fields so the subclaim body resolves correctly.
 
 use std::collections::HashMap;
 
@@ -23,14 +16,7 @@ use super::recursion::{exit_frame, isolate_helper_locals, try_enter};
 use super::rewrite::substitute_bound_var;
 use super::walk::inline_body_items_guarded;
 
-/// Inline a subclaim-of-type invocation `recv.subclaim(args)`.
-///
-/// The "use a field of a schema as a subschema" form: the
-/// receiver's record fields get rebound onto T's bare-name
-/// fields so the subclaim body's references resolve to the
-/// receiver's leaves. Caller has already confirmed that `recv`
-/// is a body Membership of `type_name` and that `claim_name`
-/// is a subclaim inside `type_name`'s body.
+/// Inline `recv.subclaim(args)`: mirrors receiver's fields into bare names so the subclaim body resolves.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn inline_subschema_call(
     recv: &str,
@@ -57,18 +43,11 @@ pub(super) fn inline_subschema_call(
     }
     let Some(subclaim) = subclaim else { return; };
 
-    // Recursion guard via the standard visited map.
     let qualified = format!("{}.{}", type_name, claim_name);
     let Some(_depth) = try_enter(visited, &qualified) else { return; };
 
-    // Build inner env starting from outer. The Z3 vars themselves
-    // are shared (same constants); we just add bare-name aliases
-    // for each parent-type field so the subclaim's body sees
-    // `renderer` and resolves to `recv.renderer`.
+    // Clone env, then mirror `recv.*` keys as bare names so the subclaim body sees `renderer` not `recv.renderer`.
     let mut inner = env.clone();
-    // Parent-type fields = top-level Memberships inside the type's
-    // body (NOT subclaim decls or constraints). For each leaf key
-    // in env starting with `recv.`, mirror it without the prefix.
     let prefix = format!("{recv}.");
     let outer_keys: Vec<(String, String)> = env.keys()
         .filter_map(|k| k.strip_prefix(&prefix).map(|rest|
@@ -80,10 +59,7 @@ pub(super) fn inline_subschema_call(
         }
     }
 
-    // Slot info: the subclaim's first-line params (its leading
-    // body Memberships up to `args.len()` if needed). Subclaims
-    // don't have first-line params today, so this is just the
-    // leading body Memberships.
+    // Subclaims have no first-line params today; use leading body Memberships as slots.
     let slot_info: Vec<(String, String)> = subclaim.body.iter()
         .filter_map(|i| if let BodyItem::Membership { name, type_name, .. } = i {
             Some((name.clone(), type_name.clone()))
@@ -99,7 +75,7 @@ pub(super) fn inline_subschema_call(
         exit_frame(visited, &qualified);
         return;
     }
-    // Tuple-as-record-literal coercion (same as positional Call arm).
+    // Coerce Tuple args to record literals for matching slot types.
     let mappings: Vec<crate::core::ast::Mapping> = slot_info.iter()
         .zip(args.iter())
         .map(|((slot, slot_type), value)| {
@@ -139,20 +115,8 @@ pub(super) fn inline_subschema_call(
     exit_frame(visited, &qualified);
 }
 
-/// `∀ vars ∈ range : body` where `body` contains a method-style
-/// subclaim invocation (`recv.subclaim(args)`).
-///
-/// translate_bool's ∀ translator runs the body through
-/// translate_bool, which has no solver access and can't
-/// fire the subclaim's per-iteration assertions (the
-/// `out = ⟨…⟩` pin inside the subclaim body never lands,
-/// leaving outputs free; see COUNTEREXAMPLES #26).
-///
-/// Fix: expand the ∀ at AST level for known-length ranges
-/// (coindexed of pinned-length Seqs, or a bare pinned Seq).
-/// Each iteration becomes a regular BodyItem the inline
-/// pass can dispatch — subclaim calls get full solver
-/// access via inline_subschema_call as usual.
+/// `∀ vars ∈ range : body` where body contains a subclaim call.
+/// translate_bool has no solver access so subclaim assertions drop (COUNTEREXAMPLES #26); expand statically instead.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn inline_forall_subschema(
     vars: &[String],
@@ -173,11 +137,7 @@ pub(super) fn inline_forall_subschema(
     let Some(iterations) =
         resolve_forall_unroll(vars, range, env)
     else {
-        // Range shape not statically unrollable —
-        // fall through to the regular Constraint
-        // translation path. The subclaim assertions
-        // will drop, but the user gets the same
-        // behavior as before this fix.
+        // Range not statically unrollable; fall through. Subclaim assertions will drop.
         let e = Expr::Forall(
             vars.to_vec(), Box::new(range.clone()), Box::new(body.clone()));
         if let Some(b) = translate_bool(&e, ctx, env, schemas) {
@@ -190,25 +150,11 @@ pub(super) fn inline_forall_subschema(
         for (bound, elem) in &binds {
             item_body = substitute_bound_var(&item_body, bound, elem);
         }
-        // Append the substituted body as the next item of
-        // the OUTER `items` slice and dispatch through
-        // inline_body_items_guarded again. Keeping the
-        // outer items in scope is important: `resolve_call`
-        // walks `items` to find the receiver's type (e.g.
-        // `win ∈ SDL_Window`) for method-style subclaim
-        // dispatch. Passing only the substituted item
-        // would lose those Memberships.
+        // Append to outer `items` so resolve_call can find the receiver's type Membership.
         let item = BodyItem::Constraint(item_body);
         let mut expanded = items.to_vec();
         expanded.push(item);
-        let single_slice = &expanded[expanded.len() - 1 ..];
-        // ↑ a slice of just the new item, but its
-        // `items` siblings (passed via the outer `items`
-        // arg below) include all of the surrounding body.
-        let _ = single_slice;
-        // We can't easily slice the merged vec without
-        // hitting borrow-checker issues; instead, dispatch
-        // the single item directly here without recursion.
+        // Dispatch just the new item; can't slice without borrow-checker issues.
         if let BodyItem::Constraint(ref e) = expanded[expanded.len() - 1] {
             if let Expr::Call(name, args) = e {
                 if let Some(CallDispatch::Subschema { recv, type_name, claim_name }) =
@@ -223,7 +169,7 @@ pub(super) fn inline_forall_subschema(
                 }
             }
         }
-        // Fall back: regular Constraint translation.
+        // Fall back to regular Constraint translation.
         if let BodyItem::Constraint(e) = &expanded[expanded.len() - 1] {
             if let Some(b) = translate_bool(e, ctx, env, schemas) {
                 track_assert(solver, &guarded_bool(b, guard), tracker);

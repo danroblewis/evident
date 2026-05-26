@@ -1,24 +1,5 @@
-//! `generics` — generic-type monomorphization. **Sole implementation: the
-//! self-hosted Evident pass** (`stdlib/passes/generics.ev`). The canonical
-//! Rust pass is deleted (session REVIVE-generics); the production load path
-//! computes monomorphization through here.
-//!
-//! Monomorphization expands every `type Edge<T>` / `claim Toposort<T>`
-//! reference into a concrete copy before translation, in four halves:
-//!   * **WALK** — find every type-position string that could name a generic
-//!     instantiation. Runs as the `generics_walk` stack-FSM.
-//!   * **PARSE** — split `"Edge<Rect>"` into head + arg. The `split_head`
-//!     claim (GAPC `index_of` / `substr`).
-//!   * **SUBSTITUTE** — rewrite a generic body's type_name strings. The
-//!     `subst_one` claim (GAPC `replace`).
-//!   * **CONSTRUCT + fixed-point + schema-map lookup** — orchestration that
-//!     needs the WHOLE-PROGRAM schema table (look a head up by name, dedup
-//!     built composites, splice substituted bodies onto clones, iterate to a
-//!     fixed point). Stays in Rust — a structural traversal over a mutable
-//!     `HashMap` an FSM has no handle on, needing no string surgery.
-//!
-//! These are load-time string solves over short type-name strings; per-tick
-//! runtime is unaffected (monomorphization runs once, at load).
+//! Generic-type monomorphization via `stdlib/passes/generics.ev`. WALK/PARSE/
+//! SUBSTITUTE run in Evident; fixed-point `HashMap` orchestration stays in Rust.
 
 use std::collections::{HashMap, HashSet};
 
@@ -29,14 +10,8 @@ use crate::translate::ast_encoder::body_item_to_value;
 
 guarded_runner!(runner, "passes/generics.ev", "generics_walk");
 
-// ─────────────────────────────────────────────────────────────────────
-// Pure string helpers (the schema-map-independent orchestration that frames
-// the Evident string ops — moved from the deleted Rust pass).
-// ─────────────────────────────────────────────────────────────────────
-
-/// The Some-condition of the canonical `split_generic_head`: `t` contains `<`,
-/// ends with `>`, and the angle brackets are balanced. The cheap Rust guard;
-/// the head/arg EXTRACTION is the Evident `split_head` claim.
+/// True if `t` looks like a generic instantiation (`<` present, ends `>`,
+/// brackets balanced). Guard only — head/arg extraction is in `split_head_ev`.
 fn is_generic_head(t: &str) -> bool {
     let bytes = t.as_bytes();
     if !bytes.iter().any(|&b| b == b'<') {
@@ -61,9 +36,7 @@ fn is_generic_head(t: &str) -> bool {
     depth == 0
 }
 
-/// Split a comma-separated arg list at the TOP level — commas inside nested
-/// `<...>` / `(...)` are not splits. `"Pair<Int, String>, Bool"` →
-/// `["Pair<Int, String>", "Bool"]`.
+/// Split comma-separated args at top level (commas inside `<>` / `()` skipped).
 fn split_top_level_args(args: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0;
@@ -87,10 +60,8 @@ fn split_top_level_args(args: &str) -> Vec<String> {
     out
 }
 
-/// Cheap presence gate: does any type-position string in the program name a
-/// generic instantiation (contain `<`)? If not, monomorphization is a
-/// guaranteed no-op, so the load path skips building the engine — keeping
-/// non-generic loads (≈ every program) at the Rust baseline.
+/// True if any type-position string in the program contains `<`; skips engine
+/// build for non-generic programs.
 fn program_has_generic_use(schemas: &HashMap<String, SchemaDecl>) -> bool {
     schemas.values().any(|s| body_mentions_generic(&s.body))
 }
@@ -108,8 +79,7 @@ fn body_mentions_generic(body: &[BodyItem]) -> bool {
     })
 }
 
-/// `<` can hide in a positional generic invocation (`Edge<Int>(a, b)`) that
-/// parses as an `Expr::Call`, so the gate recurses every expression.
+/// `<` can hide in `Expr::Call` (positional generic invocation); recurse all exprs.
 fn expr_mentions_generic(e: &Expr) -> bool {
     match e {
         Expr::Call(name, args) => name.contains('<') || args.iter().any(expr_mentions_generic),
@@ -133,9 +103,7 @@ fn expr_mentions_generic(e: &Expr) -> bool {
     }
 }
 
-/// If `t` is `"Seq(X)"`, `"Set(X)"`, `"Bag(X)"`, or `"Map(X)"`, return
-/// `Some(X)`. Lets `collect_from_type_name` reach the generic inside a
-/// container (`Seq(Edge<T>)` → `Edge<T>`).
+/// Strip a `Seq/Set/Bag/Map(X)` wrapper, exposing the inner type name.
 fn strip_seq_wrapper(t: &str) -> Option<&str> {
     for prefix in &["Seq(", "Set(", "Bag(", "Map("] {
         if let Some(rest) = t.strip_prefix(prefix) {
@@ -147,8 +115,7 @@ fn strip_seq_wrapper(t: &str) -> Option<&str> {
     None
 }
 
-/// Pure-Rust head/arg slice, the fallback if the Evident `split_head` query
-/// fails. Equivalent extraction to the claim.
+/// Fallback head/arg split used when the Evident `split_head` query fails.
 fn rust_split_head(t: &str) -> (String, String) {
     match t.find('<') {
         Some(lt) if t.ends_with('>') => (t[..lt].to_string(), t[lt + 1..t.len() - 1].to_string()),
@@ -156,22 +123,14 @@ fn rust_split_head(t: &str) -> (String, String) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// WALK / PARSE / SUBSTITUTE (Evident) + CONSTRUCT (Rust orchestration)
-// ─────────────────────────────────────────────────────────────────────
-
 /// Collect every `(composite_name, generic_head, args_str)` tuple referenced
-/// anywhere in the schema map. The WALK runs in Evident (`generics_walk`, per
-/// top-level body item — every recursion happens inside the FSM); each raw
-/// string is parsed through [`collect_from_type_name`] with one shared `seen`.
+/// in the schema map via the `generics_walk` FSM (per body item).
 fn collect_uses(
     runner: &EvidentRunner,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Vec<(String, String, String)> {
     let mut out: Vec<(String, String, String)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    // Sorted keys for run-to-run reproducibility (the result SET is
-    // order-independent).
     let mut keys: Vec<&String> = schemas.keys().collect();
     keys.sort();
     for k in keys {
@@ -188,10 +147,8 @@ fn collect_uses(
     out
 }
 
-/// Parse one raw type-position string, recording it (and any generic nested
-/// inside a `Seq(...)` wrapper or a top-level arg) into `out`. The head/arg
-/// split is the Evident `split_head` claim; the Seq-wrapper recursion and the
-/// top-level arg split are pure Rust string orchestration.
+/// Parse one raw type-position string into `out`, recursing into wrappers and
+/// top-level args. Head/arg split via `split_head_ev`; wrapping/splitting in Rust.
 fn collect_from_type_name(
     runner: &EvidentRunner,
     t: &str,
@@ -213,9 +170,8 @@ fn collect_from_type_name(
     }
 }
 
-/// PARSE `"Edge<Rect>"` → `("Edge", "Rect")` via the Evident `split_head`
-/// claim. Only called for strings [`is_generic_head`] accepts. Falls back to
-/// pure-Rust slicing on a query failure so a transient error can't drop a use.
+/// Split `"Edge<Rect>"` → `("Edge", "Rect")` via Evident `split_head`; falls
+/// back to pure-Rust slicing on query failure.
 fn split_head_ev(runner: &EvidentRunner, t: &str) -> (String, String) {
     let mut given: HashMap<String, Value> = HashMap::new();
     given.insert("g".to_string(), Value::Str(t.to_string()));
@@ -243,11 +199,8 @@ fn split_head_ev(runner: &EvidentRunner, t: &str) -> (String, String) {
     }
 }
 
-/// Apply the type-param substitution to every `type_name` in a body, recursing
-/// into subclaim bodies. Mirrors the canonical
-/// `substitute_type_params_in_body`: ONLY `Membership` type_names are
-/// rewritten (and subclaims recursed). The per-string rewrite is the Evident
-/// `subst_one` claim; this traversal is the structural splice.
+/// Rewrite `Membership` type_names in a body via `subst_one_ev`; recurse into
+/// subclaims. Only membership type names are touched.
 fn apply_substitution_to_body(
     runner: &EvidentRunner,
     body: &mut [BodyItem],
@@ -267,7 +220,6 @@ fn apply_substitution_to_body(
     }
 }
 
-/// Thread every `(param ↦ arg)` substitution through one type-name string.
 fn subst_type_name(runner: &EvidentRunner, t: &str, params: &[String], args: &[String]) -> String {
     let mut cur = t.to_string();
     for (p, a) in params.iter().zip(args.iter()) {
@@ -276,8 +228,8 @@ fn subst_type_name(runner: &EvidentRunner, t: &str, params: &[String], args: &[S
     cur
 }
 
-/// SUBSTITUTE one param in a type-name string via the Evident `subst_one`
-/// claim (GAPC `replace`). Falls back to pure-Rust replace on a query failure.
+/// Substitute one param in a type-name string via Evident `subst_one`;
+/// falls back to `str::replacen` on query failure.
 fn subst_one_ev(runner: &EvidentRunner, t: &str, param: &str, arg: &str) -> String {
     let mut given: HashMap<String, Value> = HashMap::new();
     given.insert("t".to_string(), Value::Str(t.to_string()));
@@ -297,11 +249,8 @@ fn subst_one_ev(runner: &EvidentRunner, t: &str, param: &str, arg: &str) -> Stri
     }
 }
 
-/// Monomorphize to a fixed point: produce concrete `SchemaDecl`s for every
-/// generic instantiation referenced in the program. Iterates because
-/// monomorphized schemas can themselves reference generics. Byte-for-byte the
-/// canonical fixed-point loop (same error wording), with the collector and the
-/// body substitution backed by Evident.
+/// Fixed-point monomorphization: produce concrete schemas for every generic
+/// instantiation; iterate because new schemas may reference further generics.
 fn monomorphize(
     runner: &EvidentRunner,
     schemas: &mut HashMap<String, SchemaDecl>,
@@ -316,7 +265,7 @@ fn monomorphize(
             }
             let generic = match schemas.get(&generic_head) {
                 Some(g) => g,
-                None => continue, // not a generic we know about; leave it
+                None => continue, // not a known generic; leave it
             };
             if generic.type_params.is_empty() {
                 return Err(RuntimeError::Parse(format!(
@@ -350,17 +299,8 @@ fn monomorphize(
     ))
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Production entry point
-// ─────────────────────────────────────────────────────────────────────
-
-/// Monomorphize generic instantiations via the self-hosted `generics.ev` pass.
-/// **The runtime's sole monomorphization entry point** —
-/// `runtime/src/runtime/load.rs` calls it after each schema batch.
-///
-/// The presence gate skips the engine build for non-generic programs; the
-/// guarded runner short-circuits the bootstrap re-entry (the pass file uses no
-/// `<…>` generics, so leaving its schema map unchanged is correct).
+/// The runtime's sole monomorphization entry point; no-op for non-generic
+/// programs (presence gate skips engine build).
 pub fn monomorphize_generics(
     schemas: &mut HashMap<String, SchemaDecl>,
     schema_order: &mut Vec<String>,
@@ -372,9 +312,6 @@ pub fn monomorphize_generics(
     monomorphize(&runner, schemas, schema_order)
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Tests
-// ─────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,8 +331,6 @@ mod tests {
         BodyItem::Membership { name: name.to_string(), type_name: type_name.to_string(), pins: Pins::None }
     }
 
-    /// The pure-Rust orchestration helpers behave as the canonical pass did —
-    /// the part that does NOT need the Evident engine, pinned directly.
     #[test]
     fn string_helpers_match_canonical() {
         assert!(is_generic_head("Edge<Int>"));

@@ -1,28 +1,5 @@
-//! String-manipulation builtins lowered to Z3's string (seq) theory.
-//!
-//! Evident already had string concat (`++`) and equality, but no way to
-//! *slice* or *tokenize* a string — so any load-time pass that has to
-//! pick a string apart (generics' `split_generic_head` / `substitute_idents`,
-//! subscriptions' `world.`-prefix test) kept its logic in Rust. This module
-//! adds the missing operations:
-//!
-//! | Evident surface            | Z3 primitive          | result |
-//! |----------------------------|-----------------------|--------|
-//! | `#text` / `str_len(text)`  | `str.len`             | Int    |
-//! | `index_of(text, sub[, k])` | `str.indexof`         | Int    |
-//! | `substr(text, off, len)`   | `str.substr` (extract)| String |
-//! | `replace(text, src, dst)`  | `str.replace`         | String |
-//! | `char_at(text, i)`         | `str.at`              | String |
-//! | `str_contains(t, sub)` / `sub ∈ t` | `str.contains` | Bool  |
-//! | `starts_with(t, pre)`      | `str.prefixof`        | Bool   |
-//! | `ends_with(t, suf)`        | `str.suffixof`        | Bool   |
-//!
-//! `contains` / `prefixof` / `suffixof` are wrapped by the safe z3 crate
-//! (`Z3Str::contains` / `prefix` / `suffix`); the rest are not, so we reach
-//! the raw C builders via `z3-sys`. These ops are intended for LOAD/setup-time
-//! passes (generics monomorphizes at load); Z3's string solver is only invoked
-//! when one of these appears in a queried constraint, so per-tick runtime is
-//! unaffected.
+//! String builtins lowered to Z3 seq theory: `str_len`, `index_of`, `substr`,
+//! `replace`, `char_at`, `str_contains`, `starts_with`, `ends_with`.
 
 use std::collections::HashMap;
 
@@ -34,16 +11,8 @@ use crate::core::Var;
 
 use super::scalar::{translate_int, translate_str};
 
-// ── Raw context access ───────────────────────────────────────────────
-//
-// The z3 0.12 crate keeps `Context.z3_ctx` private and exposes no
-// accessor, yet only wraps four of the seq builders (concat / contains /
-// prefix / suffix). `str.len` / `extract` / `indexof` / `replace` / `at`
-// are unwrapped, so we call the raw `z3-sys` builders, which need the raw
-// `Z3_context`. `z3::Context` is a single-field newtype `{ z3_ctx:
-// Z3_context }`, so the struct's address coincides with the field's. The
-// const assertion below fails the build if the crate ever changes that
-// layout (e.g. adds a field), so this never silently reads garbage.
+// `z3::Context` is a single-field newtype around `Z3_context`; we reach the
+// raw pointer for unwrapped seq builders. The const_assert guards the layout.
 const _: () = {
     assert!(
         std::mem::size_of::<Context>() == std::mem::size_of::<z3_sys::Z3_context>(),
@@ -53,23 +22,18 @@ const _: () = {
 
 #[inline]
 fn raw_ctx(ctx: &Context) -> z3_sys::Z3_context {
-    // SAFETY: see the module note above — `Context` is a single-field
-    // newtype around `Z3_context` (a raw pointer), verified by the
-    // `size_of` assertion, so reading offset 0 yields the field.
+    // SAFETY: `Context` is a single-field newtype around `Z3_context`; the
+    // `size_of` assertion above verifies the layout hasn't changed.
     unsafe { *(ctx as *const Context as *const z3_sys::Z3_context) }
 }
-
-// ── Raw seq-theory builders (str.len / extract / indexof / replace / at) ──
 
 /// `str.len text` — length of `text` as a non-negative Int.
 pub(super) fn str_length<'ctx>(ctx: &'ctx Context, s: &Z3Str<'ctx>) -> Int<'ctx> {
     unsafe { Int::wrap(ctx, z3_sys::Z3_mk_seq_length(raw_ctx(ctx), s.get_z3_ast())) }
 }
 
-/// `str.substr text off len` — the substring of `text` starting at byte
-/// `off`, up to `len` characters. Z3 semantics: out-of-range offset or
-/// negative length yields the empty string; a `len` past the end is
-/// clamped. Mirrors SMT-LIB `str.substr`.
+/// `str.substr text off len` — SMT-LIB semantics: negative/OOB off or len
+/// yields ""; len past end is clamped.
 pub(super) fn str_substr<'ctx>(
     ctx: &'ctx Context,
     s: &Z3Str<'ctx>,
@@ -84,9 +48,8 @@ pub(super) fn str_substr<'ctx>(
     }
 }
 
-/// `str.replace text src dst` — replace the FIRST occurrence of `src` in
-/// `text` with `dst` (SMT-LIB `str.replace` semantics). If `src` does not
-/// occur, `text` is returned unchanged.
+/// `str.replace text src dst` — replace FIRST occurrence of `src` with `dst`;
+/// returns `text` unchanged if `src` is absent.
 pub(super) fn str_replace<'ctx>(
     ctx: &'ctx Context,
     s: &Z3Str<'ctx>,
@@ -101,8 +64,7 @@ pub(super) fn str_replace<'ctx>(
     }
 }
 
-/// `str.indexof text sub off` — the index of the first occurrence of
-/// `sub` in `text` at or after `off`, or `-1` if absent.
+/// `str.indexof text sub off` — first occurrence of `sub` at or after `off`, or -1.
 pub(super) fn str_index_of<'ctx>(
     ctx: &'ctx Context,
     s: &Z3Str<'ctx>,
@@ -117,17 +79,13 @@ pub(super) fn str_index_of<'ctx>(
     }
 }
 
-/// `str.at text i` — the length-1 string at index `i` (empty if out of
-/// range). SMT-LIB `str.at`.
+/// `str.at text i` — length-1 string at index `i`, or "" if out of range.
 pub(super) fn str_char_at<'ctx>(ctx: &'ctx Context, s: &Z3Str<'ctx>, i: &Int<'ctx>) -> Z3Str<'ctx> {
     unsafe { Z3Str::wrap(ctx, z3_sys::Z3_mk_seq_at(raw_ctx(ctx), s.get_z3_ast(), i.get_z3_ast())) }
 }
 
-// ── Builtin-call dispatchers (called from scalar.rs / bool.rs) ───────────
-
-/// String-producing builtins: `substr`, `replace`, `char_at`. Returns
-/// `None` if `name`/arity doesn't match a string builtin (so the caller
-/// falls through to its other translation paths).
+/// String-producing builtins: `substr`, `replace`, `char_at`.
+/// Returns None if name/arity doesn't match (caller falls through).
 pub(super) fn translate_str_call<'ctx>(
     name: &str,
     args: &[Expr],
@@ -156,7 +114,7 @@ pub(super) fn translate_str_call<'ctx>(
     }
 }
 
-/// Int-producing string builtins: `str_len`, `index_of` (2- or 3-arg).
+/// Int-producing string builtins: `str_len`, `index_of` (2- or 3-arg form).
 pub(super) fn translate_str_int_call<'ctx>(
     name: &str,
     args: &[Expr],
@@ -184,10 +142,8 @@ pub(super) fn translate_str_int_call<'ctx>(
     }
 }
 
-/// Bool-producing string builtins: `str_contains`, `starts_with`,
-/// `ends_with`. (The infix `sub ∈ text` form is handled in bool.rs's
-/// `InExpr` arm; `str_contains` is the explicit call form, distinct from
-/// the seq-element `contains` builtin.)
+/// Bool-producing string builtins: `str_contains`, `starts_with`, `ends_with`.
+/// `sub ∈ text` infix is handled in bool.rs; this is the explicit-call form.
 pub(super) fn translate_str_bool<'ctx>(
     name: &str,
     args: &[Expr],
@@ -200,8 +156,6 @@ pub(super) fn translate_str_bool<'ctx>(
             let needle = translate_str(&args[1], ctx, env)?;
             Some(hay.contains(&needle))
         }
-        // `starts_with(text, pre)` = "pre is a prefix of text". The z3
-        // `prefix` method reads `pre.prefix(&text)`.
         ("starts_with", 2) => {
             let text = translate_str(&args[0], ctx, env)?;
             let pre = translate_str(&args[1], ctx, env)?;

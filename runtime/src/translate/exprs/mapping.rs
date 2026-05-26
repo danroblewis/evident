@@ -1,8 +1,5 @@
-//! ClaimCall mapping resolution. `resolve_mapping` turns a mapping-value
-//! expression into one-or-more `(env-key, Var)` bindings to install when
-//! entering a ClaimCall; `expr_as_var` is its leaf case;
-//! `resolve_field_chain_to_bindings` drills into `Seq(Composite)`
-//! elements along a dotted field path.
+//! ClaimCall mapping resolution: `resolve_mapping` → `(env-key, Var)` bindings;
+//! `resolve_field_chain_to_bindings` drills into `Seq(Composite)` along a field path.
 
 use std::collections::HashMap;
 use z3::ast::{Bool, Int, String as Z3Str};
@@ -15,19 +12,8 @@ use super::bool::translate_bool;
 use super::scalar::{real_from_f64, translate_int, translate_real, translate_str};
 use super::seq_eq::bind_composite_fields;
 
-/// Resolve a mapping-value expression to one-or-more `(env-key, Var)`
-/// bindings to install in the inner env when entering a ClaimCall.
-///
-/// Three resolution paths, tried in order:
-///   1. Sub-schema mapping: the value is a dotted identifier (e.g.
-///      `state.player`) AND no env binding exists for that exact name,
-///      but multiple env keys share it as a prefix (`state.player.x`,
-///      `state.player.y`, …). Each matched leaf is bound under
-///      `slot.field`. This matches the Python translator's behavior
-///      for `state mapsto state.player`.
-///   2. Leaf identifier or literal: `expr_as_var` produces a single
-///      `Var`, bound to `slot` directly.
-///   3. Otherwise → empty (caller logs a warning).
+/// Resolve a mapping-value expr to `(env-key, Var)` bindings for a ClaimCall inner env.
+/// Tries sub-schema prefix, record literal, Seq-index, Field-chain, then scalar `expr_as_var`.
 pub(crate) fn resolve_mapping<'ctx>(
     slot: &str,
     value: &Expr,
@@ -36,12 +22,10 @@ pub(crate) fn resolve_mapping<'ctx>(
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Vec<(String, Var<'ctx>)> {
     if let Expr::Identifier(name) = value {
-        // If the exact name is in env, prefer leaf binding.
         if env.contains_key(name) {
             return vec![(slot.to_string(), env[name].clone())];
         }
-        // Otherwise try sub-schema expansion: gather every env key
-        // beginning with `name.` and re-key under `slot.field`.
+        // Sub-schema expansion: gather env keys with prefix `name.`, re-key under `slot.field`.
         let prefix = format!("{}.", name);
         let mut out = Vec::new();
         for (k, v) in env {
@@ -53,16 +37,7 @@ pub(crate) fn resolve_mapping<'ctx>(
             return out;
         }
     }
-    // Inline record literal: `Type(arg1, arg2, …)` where `Type` is a
-    // known schema (a record type). Expand per-field, binding each
-    // arg to `slot.field_name`. Unspecified fields stay free — same
-    // partial-pinning semantics as `name ∈ Type(args)` declarations.
-    //
-    // Without this branch, `set_draw_color(ren, Color(220, 40, 60), eff)`
-    // would warn "positional arg didn't resolve" and leave the claim's
-    // `color.*` fields unconstrained. Same fix applies whether the
-    // call site uses positional invocation or `mapsto` (`color ↦
-    // Color(220, 40, 60)`).
+    // Record literal: expand each arg to `slot.field_name`; unspecified fields stay free.
     if let Expr::Call(type_name, args) = value {
         if let Some(schema) = schemas.get(type_name) {
             let fields: Vec<(String, String)> = schema.body.iter()
@@ -75,16 +50,11 @@ pub(crate) fn resolve_mapping<'ctx>(
                 let mut ok = true;
                 for (arg, (field_name, field_type)) in args.iter().zip(fields.iter()) {
                     let key = format!("{}.{}", slot, field_name);
-                    // Tuple → sub-record coercion. When the arg is a
-                    // bare `(a, b, c)` and the field's type is a known
-                    // record schema, treat the tuple as positional
-                    // args for that schema. Same rule applies inside
-                    // record literals as for top-level claim args.
+                    // Tuple → sub-record coercion: bare `(a,b,c)` for a known schema type.
                     let coerced_storage: Expr;
                     let arg_ref: &Expr = match arg {
                         Expr::Tuple(items) if schemas.contains_key(field_type) => {
-                            coerced_storage = Expr::Call(
-                                field_type.clone(), items.clone());
+                            coerced_storage = Expr::Call(field_type.clone(), items.clone());
                             &coerced_storage
                         }
                         other => other,
@@ -99,16 +69,9 @@ pub(crate) fn resolve_mapping<'ctx>(
                         "Real" =>
                             translate_real(arg_ref, ctx, env).map(Var::RealVar),
                         _ => {
-                            // Composite field — recurse. Handles both
-                            // sub-record literals (`Foo(Bar(1, 2), 3)`)
-                            // and identifier passthrough by sub-schema
-                            // expansion (handled by the Identifier
-                            // branch above).
+                            // Composite field: recurse for sub-record literals and identifier passthrough.
                             let nested = resolve_mapping(&key, arg_ref, ctx, env, schemas);
-                            if !nested.is_empty() {
-                                out.extend(nested);
-                                continue;
-                            }
+                            if !nested.is_empty() { out.extend(nested); continue; }
                             None
                         }
                     };
@@ -125,21 +88,13 @@ pub(crate) fn resolve_mapping<'ctx>(
             }
         }
     }
-    // `seq[i]` where seq is a `Seq(Composite)` — select the i-th
-    // element's Datatype value and bind each of its fields under
-    // `slot.field_name`. Mirrors how a bare Identifier referencing a
-    // flat-expanded composite resolves. Without this branch, calls
-    // like `win.draw_rect(mario.rects[0], hat_effs)` couldn't pass
-    // `r` as the rect arg.
+    // seq[i] composite: bind element fields under `slot.field_name`.
     if let Expr::Index(seq_expr, idx_expr) = value {
         if let Expr::Identifier(seq_name) = seq_expr.as_ref() {
             if let Some(var) = env.get(seq_name) {
                 if let Some((arr, _, _, dt, fields)) = var.as_datatype_seq() {
                     if let Some(i) = translate_int(idx_expr, ctx, env) {
                         let elem_dyn = arr.select(&i);
-                        // Build a temporary env into which bind_composite_fields
-                        // writes leaves under `slot.field_name`. Then lift those
-                        // entries out into the (slot.X → Var) pairs.
                         let mut tmp: HashMap<String, Var<'ctx>> = HashMap::new();
                         if bind_composite_fields(&mut tmp, &elem_dyn, fields, dt, slot) {
                             return tmp.into_iter().collect();
@@ -150,16 +105,7 @@ pub(crate) fn resolve_mapping<'ctx>(
         }
     }
 
-    // `Field(Index(seq, i), field)` (possibly nested) — reaching a
-    // sub-field of a Seq element. Walk outward to find the Index root,
-    // then drill in along the field path applying composite accessors.
-    // At the leaf: bind either the primitive directly, the inner Seq
-    // (if SeqField), or all the composite's leaves under `slot`.
-    //
-    // Used by the ∀-expansion path: `∀ (p, b) ∈ coindexed(platforms,
-    // plat_effs) : win.draw_rect(Rect(p.color, …), b.effs)` expands
-    // each iteration's `b.effs` arg to `Field(Index(plat_effs, i),
-    // "effs")` and `p.color` to `Field(Index(platforms, i), "color")`.
+    // Field(Index(seq,i), field): walk outward to Index root, drill in via composite accessors.
     if matches!(value, Expr::Field(_, _)) {
         let mut path: Vec<String> = Vec::new();
         let mut cur = value;
@@ -191,17 +137,8 @@ pub(crate) fn resolve_mapping<'ctx>(
     Vec::new()
 }
 
-/// Drill into a `Seq(Composite)` element along a dotted field path and
-/// produce bindings under `slot`. Handles three terminating shapes:
-///
-///   * primitive leaf — single binding `slot → IntVar/BoolVar/StrVar`.
-///   * composite sub-field — `bind_composite_fields` with prefix `slot`.
-///   * `SeqField` — single binding `slot → SeqVar/DatatypeSeqVar` from
-///     the inner Seq's accessors.
-///
-/// Used by the ∀-expansion: per-iteration substituted args like
-/// `Field(Field(Index(platforms, 0), "aabb"), "pos")` reach a sub-record;
-/// `Field(Index(plat_effs, 0), "effs")` reaches a Seq.
+/// Drill into a `Seq(Composite)` element along a field path, producing bindings under `slot`.
+/// Terminates at primitive, nested composite (all leaves via `bind_composite_fields`), or SeqField.
 fn resolve_field_chain_to_bindings<'ctx>(
     seq_name: &str,
     idx_expr: &Expr,
@@ -216,8 +153,6 @@ fn resolve_field_chain_to_bindings<'ctx>(
     let i = translate_int(idx_expr, ctx, env)?;
     let elem_dyn = arr.select(&i);
 
-    // Walk inward along the path. At each step we have a current
-    // Dynamic (elem_dyn) + a current (dt, fields) describing it.
     let mut cur_dyn = elem_dyn;
     let mut cur_dt: &DatatypeSort = root_dt;
     let mut cur_fields: &[FieldKind] = root_fields;
@@ -244,8 +179,6 @@ fn resolve_field_chain_to_bindings<'ctx>(
                 let raw = cur_dt.variants[0].accessors[pos].apply(
                     &[&cur_dyn.as_datatype()?]);
                 if is_last {
-                    // Bind all of the nested composite's leaves under
-                    // `slot.X.Y…`.
                     let mut tmp: HashMap<String, Var<'ctx>> = HashMap::new();
                     if !bind_composite_fields(&mut tmp, &raw, sub_fields, nested_dt, slot) {
                         return None;
@@ -286,8 +219,7 @@ fn resolve_field_chain_to_bindings<'ctx>(
     None
 }
 
-/// Resolve a leaf expression to a single `Var`. Used both for ClaimCall
-/// scalar mappings and as the tail-case of `resolve_mapping`.
+/// Resolve a scalar expression to a single `Var` (leaf case of `resolve_mapping`).
 fn expr_as_var<'ctx>(
     e: &Expr,
     ctx: &'ctx Context,

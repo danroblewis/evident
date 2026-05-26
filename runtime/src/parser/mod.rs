@@ -1,17 +1,5 @@
-//! Tokens → AST. Hand-rolled recursive-descent for the v0.1 subset.
-//!
-//! The parser is split across files by grammar-production group:
-//!   - `program`   — file → schemas + enums + imports; enum declarations
-//!   - `schema`    — schema/claim/type/subclaim bodies; first-line params
-//!   - `body_item` — body-item dispatch; chained-membership desugaring
-//!   - `types`     — type-name parsing incl. generics (`Edge<T>`) + pins
-//!   - `exprs`     — expression precedence climbing (`⇒` … `parse_postfix`)
-//!   - `atoms`     — atom level: literals, calls, tuples, set/seq literals
-//!   - `patterns`  — `match` arms + constructor patterns
-//!
-//! `mod.rs` holds the `Parser` struct, the token-stream utilities every
-//! group shares (`peek`/`bump`/`eat`/`skip_blank_newlines`), the
-//! `peek_compare_op` helper, and the public `parse` entry point.
+//! Tokens → AST. Hand-rolled recursive-descent parser split by grammar group:
+//! program, schema, body_item, types, exprs, atoms, patterns.
 
 use crate::core::ast::*;
 use crate::lexer::Token;
@@ -65,7 +53,6 @@ impl Parser {
         }
     }
 
-    /// Skip Newline tokens that aren't followed by an indent change worth recording.
     fn skip_blank_newlines(&mut self) {
         loop {
             match self.peek() {
@@ -76,10 +63,7 @@ impl Parser {
     }
 }
 
-/// Recognize a comparison operator token. Used by `parse_compare` for
-/// chained-comparison detection (`20 ≤ x ≤ 740` etc.) — when the
-/// token after a `lhs op rhs` parse is another comparison op, we
-/// know we're in a chain and the desugaring kicks in.
+/// Returns the `BinOp` for a comparison token, or `None`; used for chained-comparison detection.
 fn peek_compare_op(tok: &Token) -> Option<BinOp> {
     match tok {
         Token::Eq  => Some(BinOp::Eq),

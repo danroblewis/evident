@@ -1,58 +1,5 @@
-//! Tier 3 — blocking-interpret: `run(F, init)` runs a nested FSM to
-//! halt and hands its final state back as a `Value`.
-//!
-//! This is the correctness baseline (and, later, the equivalence
-//! oracle — see `docs/design/nested-fsm-strategies.md` §4) of the
-//! nested-FSM execution model. It compiles nothing: it drives `F`
-//! using the *same per-tick solve* the multi-FSM scheduler uses
-//! (`EvidentRuntime::query_with_pins_and_given`), with the scheduler's
-//! `LoopOpts.max_steps` cap as its max-iteration guard.
-//!
-//! ### FSM shape (same as `halts_within`)
-//!
-//! `F` must declare a single `name, name_next ∈ T` state pair and a
-//! `halt ∈ Bool` — the convention CC's `halts_within` reads (see
-//! `runtime/src/fsm_unroll/compose.rs`). `halt` is evaluated on each
-//! tick's *input* state; the run returns the state at the first tick
-//! whose `halt` is true (so `run(decrement, 50)` with
-//! `halt = count ≤ 0` returns `0`, the input count at the halting
-//! tick).
-//!
-//! ### Why a dedicated loop instead of `run_scheduler`
-//!
-//! `run_scheduler` is built for the *enum-state, world-coordinating,
-//! effect-emitting* multi-FSM model: it halts implicitly (no FSM
-//! scheduled in a tick) and reports a best-effort final state — for a
-//! `Done`-variant FSM that final state is the `Done` *variant*, losing
-//! the carried value. A value-returning `run(F, init)` needs the exact
-//! opposite: a primitive/record/enum state, an explicit `halt` signal,
-//! and the *full* final state value (`count = 0`, not "halted"). So
-//! tier 3 reuses the scheduler's *primitives* — the per-tick solve, the
-//! state encode (`state::encode_state_value`), and the `max_steps` cap
-//! — rather than `run_scheduler` wholesale. The execution is
-//! synchronous-blocking and isolated: the nested run shares no world
-//! with the parent (it is a pure function of `init`, §2/§5).
-//!
-//! ### Effects: captured, not dispatched (session RR)
-//!
-//! An `F` *may* declare and solve `effects`. During the nested run those
-//! effects are **captured, not dispatched** — `run_nested_capturing`
-//! accumulates each advancing tick's effects (in child-tick order) and
-//! **returns them to the parent** alongside the final state. The parent
-//! (the FSM whose body called `run(F, init)`) dispatches them once, in
-//! its own tick — see `runtime/nested.rs`'s percolation thread-local and
-//! the scheduler's drain point. This keeps `run(F, init)` a **pure
-//! function of `init`**: same `init` → same `(state, effects)`, with no
-//! side effects during the child run (§5). It replaces LL's v1
-//! reject-effectful-child restriction.
-//!
-//! ### Remaining v1 restrictions
-//!
-//!   * **No external natives.** An `external fsm` (a Rust-side bridge /
-//!     event source) has no solvable per-tick body to drive as a value;
-//!     it is rejected (here and at load).
-//!   * **Single state pair.** Multi-pair FSMs are a clean extension but
-//!     out of scope for v1.
+//! Tier-3 blocking interpreter: `run(F, init)` drives a nested FSM to halt, returning the final
+//! state. `F` needs one state pair + `halt ∈ Bool`. Effects are captured, not dispatched.
 
 use std::collections::HashMap;
 
@@ -62,44 +9,30 @@ use crate::runtime::EvidentRuntime;
 
 use super::collect::collect_dispatchable_effects;
 
-/// Why a `run(F, init)` couldn't be evaluated. Surfaced to the caller
-/// (`EvidentRuntime::resolve_runs`) which turns it into a load-time or
-/// query-time error string. Every variant is a *loud failure*, never a
-/// silent wrong value.
+/// Why a `run(F, init)` couldn't be evaluated; every variant is a loud failure.
 #[derive(Debug, Clone)]
 pub enum RunError {
     /// `run(F, ..)` named a schema that doesn't exist.
     UnknownFsm(String),
-    /// `F` exists but isn't declared with the `fsm` keyword. The keyword
-    /// is the sole signal that a schema is an FSM — a `claim`/`type`/
-    /// `schema` target is rejected (no shape-detection fallback). Carries
-    /// the keyword `F` *was* declared with, for the diagnostic.
+    /// `F` isn't declared `fsm`; the keyword is the sole FSM signal (no shape-detection fallback).
     NotFsm { fsm: String, keyword: String },
     /// `F` has no `name, name_next ∈ T` state pair.
     NoStatePair(String),
-    /// `F` declares more than one state pair (v1 supports exactly one).
+    /// `F` declares more than one state pair (v1: exactly one required).
     MultipleStatePairs(String, usize),
     /// `F` has no `halt ∈ Bool` declaration.
     NoHaltVar(String),
-    /// `F` is an `external fsm` — its body is implemented in Rust (a
-    /// bridge / event source), so there's nothing to drive as a value.
-    /// (Effect-*emitting* bodies are now permitted — their effects are
-    /// captured and percolated to the parent, session RR.)
+    /// `F` is `external fsm` — Rust-side body, nothing to drive as a value.
     ExternalNative(String),
     /// `init` couldn't be coerced to `F`'s state type.
     BadInit { fsm: String, type_name: String, got: String },
-    /// A per-tick solve came back UNSAT — the FSM body has no model for
-    /// the pinned input state (a translator gap or an over-constrained
-    /// body).
+    /// Per-tick solve came back UNSAT (translator gap or over-constrained body).
     Unsat { fsm: String, step: usize },
-    /// A per-tick solve's model didn't bind the expected output/`halt`.
+    /// Per-tick solve model didn't bind the expected output or `halt`.
     MissingBinding { fsm: String, name: String, step: usize },
-    /// `halt` never fired within `max_steps` ticks — a non-terminating
-    /// (or too-slow) FSM. The scheduler-level analogue of the
-    /// loop-functionizer's native `max_iters` overflow.
+    /// `halt` never fired within `max_steps` ticks.
     MaxItersExceeded { fsm: String, max_steps: usize },
-    /// Catch-all for runtime invariant violations (unexpected binding
-    /// shape, etc.). Shouldn't fire on well-formed bodies.
+    /// Catch-all for runtime invariant violations.
     Internal(String),
 }
 
@@ -148,17 +81,14 @@ impl std::fmt::Display for RunError {
     }
 }
 
-/// `(input_name, output_name, type_name)` for a detected state pair.
+/// Detected state pair `(input_name, output_name, type_name)`.
 struct StatePair {
     input:     String,
     output:    String,
     type_name: String,
 }
 
-/// Detect `name, name_next ∈ T` pairs in a schema body — the same
-/// shape `fsm_unroll`'s composer uses, reimplemented here (that module
-/// is off-limits, and the logic is small). Both halves must share the
-/// type name.
+/// Detect `name, name_next ∈ T` pairs in a schema body. Both halves must share the type name.
 fn detect_state_pairs(schema: &SchemaDecl) -> Vec<StatePair> {
     let mut decls: HashMap<String, String> = HashMap::new();
     for item in &schema.body {
@@ -182,7 +112,7 @@ fn detect_state_pairs(schema: &SchemaDecl) -> Vec<StatePair> {
     pairs
 }
 
-/// The surface word for a `Keyword`, for diagnostics ("not `claim`").
+/// Surface word for a `Keyword`, for diagnostics.
 fn keyword_word(kw: &Keyword) -> &'static str {
     match kw {
         Keyword::Schema   => "schema",
@@ -193,18 +123,13 @@ fn keyword_word(kw: &Keyword) -> &'static str {
     }
 }
 
-/// Does the body declare a `halt ∈ Bool`?
 fn has_halt_bool(schema: &SchemaDecl) -> bool {
     schema.body.iter().any(|item| matches!(item,
         BodyItem::Membership { name, type_name, .. }
             if name == "halt" && type_name == "Bool"))
 }
 
-/// The name of the body's effect channel (`effects ∈ Seq(Effect)`), if
-/// any. Used as the `primary_var` for per-tick effect capture — only the
-/// elements of THIS Seq dispatch (the legacy ordered shape), mirroring
-/// the scheduler's `effects` slot. `None` for an effect-free body, in
-/// which case the run captures nothing.
+/// Returns the name of the `effects ∈ Seq(Effect)` channel if present; None = effect-free.
 fn effects_var_name(schema: &SchemaDecl) -> Option<String> {
     schema.body.iter().find_map(|item| match item {
         BodyItem::Membership { name, type_name, .. }
@@ -213,35 +138,24 @@ fn effects_var_name(schema: &SchemaDecl) -> Option<String> {
     })
 }
 
-/// Validate that `fsm_name` names an FSM the `run` machinery can drive:
-/// a single state pair + `halt ∈ Bool`, effect-free. Used both at load
-/// time (so a non-FSM `F` is rejected up front) and as the front of
-/// `run_nested`. Returns the state pair on success.
+/// Validate at load time that `fsm_name` is a drivable FSM (single state pair + `halt ∈ Bool`).
 pub fn validate_run_target(rt: &EvidentRuntime, fsm_name: &str) -> Result<(), RunError> {
     let schema = rt.get_schema(fsm_name)
         .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
     check_shape(schema, fsm_name).map(|_| ())
 }
 
-/// Shared shape check used by both `validate_run_target` and
-/// `run_nested`. Returns the single detected state pair on success.
+/// Shared shape check for both `validate_run_target` and `run_nested`.
 fn check_shape(schema: &SchemaDecl, fsm_name: &str) -> Result<StatePair, RunError> {
-    // The `fsm` keyword is the sole signal that a schema is an FSM. A
-    // `run(...)` / `halts_within(...)` target declared `claim`/`type`/
-    // `schema` is rejected here — intent declared beats intent inferred,
-    // and the old shape-based resolution is gone. This fires at load time
-    // (via `validate_run_target`) and defensively at run time (via
-    // `run_nested_capturing`).
+    // `fsm` keyword is the sole FSM signal; `claim`/`type`/`schema` targets rejected.
     if !matches!(schema.keyword, Keyword::Fsm) {
         return Err(RunError::NotFsm {
             fsm: fsm_name.to_string(),
             keyword: keyword_word(&schema.keyword).to_string(),
         });
     }
-    // An `external fsm` has no solvable per-tick body — reject. (A body
-    // that *declares* `effects` is now fine: its effects are captured and
-    // percolated to the parent, not dispatched during the run — see
-    // run_nested_capturing and the module doc.)
+    // `external fsm` has no solvable body; reject. Effect-declaring bodies are fine —
+    // their effects are captured/percolated, not dispatched during the run.
     if schema.external {
         return Err(RunError::ExternalNative(fsm_name.to_string()));
     }
@@ -257,27 +171,12 @@ fn check_shape(schema: &SchemaDecl, fsm_name: &str) -> Result<StatePair, RunErro
     Ok(pairs.remove(0))
 }
 
-/// Is `type_name` a primitive scalar (state held directly, no Datatype
-/// pin)?
 fn is_primitive(type_name: &str) -> bool {
     matches!(type_name, "Int" | "Bool" | "Real" | "String")
 }
 
-/// Coerce the `init` Value to `F`'s state type.
-///
-/// Three cases:
-///   1. **Primitive state** (`Int`/`Bool`/`Real`/`String`) — the init
-///      value's kind must match.
-///   2. **Enum state, init already of that enum** — seeds directly
-///      (`run(accumulate, Acc(0))`, `run(walk, WSeed(...))`).
-///   3. **Enum state, init is the *payload*** — seed the state enum's
-///      first single-payload variant when the init value's type matches
-///      that payload's field type. This generalizes the bare-Int →
-///      first-Int-variant convention (`seed_state_with_arg`) to ANY
-///      composite: a tree / recursive-enum / Seq passed straight through
-///      `init` (`run(walk, Node(Leaf(1), Leaf(2)))` seeds
-///      `WSeed(Node(Leaf(1), Leaf(2)))`). This is the composite-seed
-///      half of #19d.
+/// Coerce `init` to `F`'s state type. Accepts: matching primitive, same-enum value,
+/// or payload wrapped in the state enum's first single-payload variant.
 fn coerce_init(
     rt: &EvidentRuntime,
     fsm_name: &str,
@@ -297,24 +196,16 @@ fn coerce_init(
         );
         return if ok { Ok(init.clone()) } else { Err(bad()) };
     }
-    // Enum state: an init value already of this enum type seeds directly.
     if let Value::Enum { enum_name, .. } = init {
-        if enum_name == type_name {
-            return Ok(init.clone());
-        }
+        if enum_name == type_name { return Ok(init.clone()); }
     }
-    // Otherwise, wrap the init value into the state enum's first
-    // single-payload variant when the kinds match.
     if let Some(seeded) = seed_first_variant(rt, type_name, init) {
         return Ok(seeded);
     }
     Err(bad())
 }
 
-/// Seed the state enum's first variant when it takes a single payload
-/// whose declared type matches `init`'s kind. Returns the wrapped
-/// `Value::Enum`, or `None` if the first variant isn't single-payload or
-/// the types don't line up.
+/// Wrap `init` in the state enum's first single-payload variant if kinds match; else None.
 fn seed_first_variant(
     rt: &EvidentRuntime,
     type_name: &str,
@@ -333,10 +224,8 @@ fn seed_first_variant(
     })
 }
 
-/// Does `v`'s runtime kind match a payload field's declared type name?
-/// Used to decide whether a composite init can seed a state enum's first
-/// variant. For `Seq(...)` fields the element type is checked against the
-/// first element's enum name (empty seqs match any `Seq(enum)`).
+/// Does `v`'s runtime kind match a payload field's declared type?
+/// For `Seq(...)`, checks element type (empty seqs match any `Seq(enum)`).
 fn value_matches_field_type(v: &Value, field_type: &str) -> bool {
     use crate::core::parse_seq_type;
     match v {
@@ -350,19 +239,14 @@ fn value_matches_field_type(v: &Value, field_type: &str) -> bool {
         Value::SeqStr(_)  => parse_seq_type(field_type) == Some("String"),
         Value::SeqEnum(elems) => match (parse_seq_type(field_type), elems.first()) {
             (Some(inner), Some(Value::Enum { enum_name, .. })) => enum_name == inner,
-            (Some(_), None) => true,   // empty seq → any Seq(enum) accepted
+            (Some(_), None) => true, // empty seq → any Seq(enum) accepted
             _ => false,
         },
         _ => false,
     }
 }
 
-/// Run `F` from `init` to halt, returning its final state `Value`.
-///
-/// Thin wrapper over [`run_nested_capturing`] that discards the captured
-/// effects — the value-only contract the oracle / equivalence harness
-/// uses (`runtime/tests/run_fsm.rs`, `tier1_jit.rs`,
-/// `composite_tree_walk.rs`).
+/// Run `F` from `init` to halt, returning only the final state (discards effects).
 pub fn run_nested(
     rt: &EvidentRuntime,
     fsm_name: &str,
@@ -372,26 +256,8 @@ pub fn run_nested(
     run_nested_capturing(rt, fsm_name, init, max_steps).map(|(state, _effects)| state)
 }
 
-/// Run `F` from `init` to halt, returning `(final_state, captured_effects)`.
-///
-/// The effects an effect-emitting `F` solves for are **captured, not
-/// dispatched** — accumulated across each *advancing* (non-halting) tick
-/// in child-tick order and handed back for the parent to dispatch (no
-/// side effects during the run). This is what keeps `run(F, init)` a pure
-/// function of `init` (§5): the run produces only data. An effect-free
-/// `F` returns an empty effect vec.
-///
-/// The halting tick's body still solves (the per-tick query is whole),
-/// but its effects are NOT captured — the run returns the *input* state
-/// at the first halting tick (the state before any halting-tick work), so
-/// the captured effects are exactly those emitted while advancing toward
-/// halt. This mirrors the state semantics: `count` returned is the input
-/// at the halting tick, not the post-decrement value.
-///
-/// `max_steps` is the max-iteration guard: a `halt` that never fires
-/// fails loudly at the cap rather than hanging. Pass
-/// `LoopOpts::default().max_steps` (10 000) unless the caller has a
-/// reason to bound it tighter.
+/// Run `F` from `init` to halt; returns `(final_state, captured_effects)`.
+/// Halting tick's effects excluded; `max_steps` guards against non-termination.
 pub fn run_nested_capturing(
     rt: &EvidentRuntime,
     fsm_name: &str,
@@ -402,8 +268,6 @@ pub fn run_nested_capturing(
         .ok_or_else(|| RunError::UnknownFsm(fsm_name.to_string()))?;
     let pair = check_shape(schema, fsm_name)?;
     let StatePair { input, output, type_name } = pair;
-    // The body's effect channel, if any. `None` → effect-free F → the
-    // run captures nothing.
     let effects_var = effects_var_name(schema);
 
     let trace = std::env::var("EVIDENT_NESTED_TRACE").is_ok();
@@ -415,19 +279,8 @@ pub fn run_nested_capturing(
     }
 
     for step in 0..max_steps {
-        // Per-tick solve input: the current state, passed in `given` as a
-        // `Value` (an `Int` for primitive state, a `Value::Enum` for
-        // record/enum state). We pass **no explicit Datatype `pins`**:
-        // every consumer of `query_with_pins_and_given` already pins the
-        // state from this `given` entry — the functionizer reads `given`
-        // directly, and both Z3 slow paths re-encode a `Value::Enum`
-        // given to a Datatype and assert it (`evaluate_with_extra_assertions`
-        // and the cached path, via `value_enum_to_datatype`). Building the
-        // pin here with `encode_state_value` was therefore pure per-tick
-        // waste — and for a deep recursive-enum state (the self-hosted
-        // walk's `SW` stack) that wasteful Z3-Datatype construction was
-        // ~37% of the per-tick cost AND leaked AST into the long-lived Z3
-        // context every tick (session YY).
+        // No explicit Datatype pins: every Z3 path re-encodes Value::Enum given directly.
+        // Building a Datatype pin here was ~37% of per-tick cost and leaked AST per tick.
         let mut given: HashMap<String, Value> = HashMap::new();
         given.insert(input.clone(), current.clone());
         let pins: [(&str, z3::ast::Datatype<'static>); 0] = [];
@@ -453,11 +306,7 @@ pub fn run_nested_capturing(
             return Ok((current, captured));
         }
 
-        // Advancing (non-halting) tick: capture this tick's effects in
-        // child-tick order. Captured, NOT dispatched — they percolate to
-        // the parent (session RR). Effect-free F has no `effects` var, so
-        // this is skipped. `Some(ev)` selects the legacy ordered-Seq
-        // shape (only `effects`'s elements, in their literal order).
+        // Advancing tick: capture effects (not dispatched) to percolate to parent.
         if let Some(ev) = &effects_var {
             let tick_effects =
                 collect_dispatchable_effects(rt, fsm_name, &r.bindings, Some(ev));
