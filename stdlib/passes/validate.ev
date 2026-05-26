@@ -133,8 +133,8 @@ enum SV =
 -- mirrors find_ffi_call's left-to-right child visit (head pushed last is
 -- popped first → leftmost child popped first), and `ECall`'s name is
 -- folded BEFORE its args are pushed (node-before-children pre-order).
-fsm validate_walk(state ∈ SV, state_next ∈ SV, halt ∈ Bool)
-    state_next = match state
+fsm validate_walk(state ∈ SV, halt ∈ Bool)
+    state = match _state
         SVSeed(w) ⇒ SVStep(WSCons(w, WSNil), NameNil)
         SVStep(WSNil, names) ⇒ SVDone(names)
         SVStep(WSCons(top, rest), names) ⇒ match top
@@ -178,7 +178,7 @@ fsm validate_walk(state ∈ SV, state_next ∈ SV, halt ∈ Bool)
                 ETuple(_)         ⇒ SVStep(rest, names)
                 ERunFsm(_, _)     ⇒ SVStep(rest, names)
         SVDone(n) ⇒ SVDone(n)
-    halt = match state
+    halt = match _state
         SVDone(_) ⇒ true
         _         ⇒ false
 

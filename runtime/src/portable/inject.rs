@@ -298,10 +298,16 @@ thread_local! {
     /// ([`fsm_params`] / [`prev_tick`]) over the pass's own FSMs, which would
     /// re-enter here mid-build and re-borrow [`ENGINE`]. While set, the
     /// hooks no-op — every pass file (`inject.ev`, and the `validate.ev` /
-    /// `subscriptions.ev` engines that build transitively) is hand-written
-    /// with an explicit `state, state_next ∈ T` pair and references no
-    /// `effects` / `last_results` / `_var` slot, so it needs no injection
-    /// and the no-op is exactly what the canonical Rust pass produced too.
+    /// `subscriptions.ev` engines that build transitively) is now written in
+    /// the terse `_state` form (session STATE-terse). `unify_state_syntax`
+    /// runs FIRST on the load path (`load.rs:71`, before the inject hooks),
+    /// rewriting each `fsm X(state ∈ T, halt ∈ Bool)` to the `state,
+    /// state_next ∈ T` pair and CONSUMING the `_state` reads — so by the time
+    /// these hooks see the body there is no `_var` left for `prev_tick` to
+    /// inject and `state_next` is already declared (so `fsm_params` injects
+    /// nothing either). The no-op is exactly what the canonical Rust pass
+    /// produced too. (These FSMs are also short-circuited by
+    /// [`is_self_hosted_pass_fsm`] before [`engine`] runs — belt and braces.)
     static BOOTSTRAPPING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -334,9 +340,11 @@ fn build_engine() -> EvidentInject {
 }
 
 /// The runtime's own self-hosted-pass FSMs. They live in `stdlib/passes/`,
-/// are hand-written with an explicit `state, state_next ∈ T` pair, and
-/// reference no implicit slot, so injection is a guaranteed no-op for them.
-/// Skipping them by name does two things: (1) it's the cheap correct answer,
+/// are written in the terse `_state` form (session STATE-terse) which
+/// `unify_state_syntax` rewrites to the `state, state_next ∈ T` pair before
+/// these hooks run, and reference no implicit slot, so injection is a
+/// guaranteed no-op for them. Skipping them by name does two things: (1)
+/// it's the cheap correct answer,
 /// and (2) — crucially — it breaks a per-load cross-engine cascade. Every
 /// load runs `validate`'s hook, which builds the *validate* engine, which
 /// loads `validate.ev` — and that file declares `fsm validate_walk`. Without
