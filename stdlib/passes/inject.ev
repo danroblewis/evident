@@ -133,8 +133,8 @@ enum IW =
 -- empty stack → IWDone. The push order mirrors inject.rs's left-to-right
 -- child visit (head pushed last is popped first); order is irrelevant
 -- because the shim only tests set-membership / a `_` prefix, never order.
-fsm inject_collect(state ∈ IW, state_next ∈ IW, halt ∈ Bool)
-    state_next = match state
+fsm inject_collect(state ∈ IW, halt ∈ Bool)
+    state = match _state
         IWSeed(w) ⇒ IWStep(WSCons(w, WSNil), NameNil)
         IWStep(WSNil, names) ⇒ IWDone(names)
         IWStep(WSCons(top, rest), names) ⇒ match top
@@ -173,7 +173,7 @@ fsm inject_collect(state ∈ IW, state_next ∈ IW, halt ∈ Bool)
                 EMatches(e2, _)   ⇒ IWStep(WSCons(WExpr(e2), rest), names)
                 ERunFsm(_, init)  ⇒ IWStep(WSCons(WExpr(init), rest), names)
         IWDone(n) ⇒ IWDone(n)
-    halt = match state
+    halt = match _state
         IWDone(_) ⇒ true
         _         ⇒ false
 
@@ -210,23 +210,25 @@ enum FPB =
 -- last_results, then effects — Rust's deterministic order), return it. The
 -- per-tick intermediate bindings are computed from `state` each tick; only
 -- the FPBInit tick's values flow into the returned list.
-fsm fsm_params_build(state ∈ FPB, state_next ∈ FPB, halt ∈ Bool)
+fsm fsm_params_build(state ∈ FPB, halt ∈ Bool)
     -- inject conditions: referenced AND not already declared (and, for
     -- state_next, a state type to mirror). The destructured Bools below are
     -- exactly the #18-keystone reads — `¬hsn`, `rsn ∧ ¬hsn ∧ hst`, …
-    inject_sn ∈ Bool = match state
+    -- (`_state` reads the input tick; `state` writes this tick's value —
+    -- the terse form `unify_state_syntax` pairs.)
+    inject_sn ∈ Bool = match _state
         FPBInit(inp) ⇒ match inp
             MakeFPBInput(rsn, hsn, rlr, hlr, reff, heff, st, hst) ⇒ (rsn ∧ ¬hsn ∧ hst)
         _ ⇒ false
-    inject_lr ∈ Bool = match state
+    inject_lr ∈ Bool = match _state
         FPBInit(inp) ⇒ match inp
             MakeFPBInput(rsn, hsn, rlr, hlr, reff, heff, st, hst) ⇒ (rlr ∧ ¬hlr)
         _ ⇒ false
-    inject_eff ∈ Bool = match state
+    inject_eff ∈ Bool = match _state
         FPBInit(inp) ⇒ match inp
             MakeFPBInput(rsn, hsn, rlr, hlr, reff, heff, st, hst) ⇒ (reff ∧ ¬heff)
         _ ⇒ false
-    state_ty ∈ String = match state
+    state_ty ∈ String = match _state
         FPBInit(inp) ⇒ match inp
             MakeFPBInput(rsn, hsn, rlr, hlr, reff, heff, st, hst) ⇒ st
         _ ⇒ ""
@@ -235,10 +237,10 @@ fsm fsm_params_build(state ∈ FPB, state_next ∈ FPB, halt ∈ Bool)
     list_e  ∈ BodyItemList = (inject_eff ? BILCons(BIMembership("effects", "Seq(Effect)", PNone), BILNil) : BILNil)
     list_le ∈ BodyItemList = (inject_lr ? BILCons(BIMembership("last_results", "Seq(Result)", PNone), list_e) : list_e)
     list_sle ∈ BodyItemList = (inject_sn ? BILCons(BIMembership("state_next", state_ty, PNone), list_le) : list_le)
-    state_next = match state
+    state = match _state
         FPBInit(_) ⇒ FPBDone(list_sle)
         FPBDone(l) ⇒ FPBDone(l)
-    halt = match state
+    halt = match _state
         FPBDone(_) ⇒ true
         _          ⇒ false
 
@@ -260,15 +262,15 @@ enum PTB =
     PTBStep(StrPairList, Bool, BodyItemList)
     PTBDone(BodyItemList)
 
-fsm prev_tick_build(state ∈ PTB, state_next ∈ PTB, halt ∈ Bool)
-    state_next = match state
+fsm prev_tick_build(state ∈ PTB, halt ∈ Bool)
+    state = match _state
         PTBInit(inp) ⇒ match inp
             MakePTBInput(pairs, aft) ⇒ PTBStep(pairs, aft, BILNil)
         PTBStep(SPLNil, aft, acc) ⇒ PTBDone((aft ? BILCons(BIMembership("is_first_tick", "Bool", PNone), acc) : acc))
         PTBStep(SPLCons(p, rest), aft, acc) ⇒ match p
             MakeStrPair(nm, ty) ⇒ PTBStep(rest, aft, BILCons(BIMembership(nm, ty, PNone), acc))
         PTBDone(l) ⇒ PTBDone(l)
-    halt = match state
+    halt = match _state
         PTBDone(_) ⇒ true
         _          ⇒ false
 

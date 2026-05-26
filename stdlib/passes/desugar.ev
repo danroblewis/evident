@@ -144,8 +144,8 @@ enum GState =
 -- EIdentifier(nm), ESeqLit(items)))` contributes `(nm, items)`; everything
 -- else is inert. Drained list → GDone(assoc). Nested single-level matches
 -- (not one deep pattern) keep within the proven match-dispatch shape.
-fsm desugar_gather(state ∈ GState, state_next ∈ GState, halt ∈ Bool)
-    state_next = match state
+fsm desugar_gather(state ∈ GState, halt ∈ Bool)
+    state = match _state
         GStart(b) ⇒ GStep(b, ANil)
         GStep(items, acc) ⇒ match items
             BILNil ⇒ GDone(acc)
@@ -161,7 +161,7 @@ fsm desugar_gather(state ∈ GState, state_next ∈ GState, halt ∈ Bool)
                     _ ⇒ GStep(more, acc)
                 _ ⇒ GStep(more, acc)
         GDone(d) ⇒ GDone(d)
-    halt = match state
+    halt = match _state
         GDone(_) ⇒ true
         _        ⇒ false
 
@@ -208,8 +208,8 @@ enum FState =
 -- first under the head-prepend + final-reverse). A SeqLit contributes its
 -- items verbatim; an identifier contributes one `FRef`. Any other shape
 -- fails.
-fsm desugar_flatten(state ∈ FState, state_next ∈ FState, halt ∈ Bool)
-    state_next = match state
+fsm desugar_flatten(state ∈ FState, halt ∈ Bool)
+    state = match _state
         FStart(e) ⇒ FStep(FKCons(FRes(e), FKNil), FCNil)
         FStep(stk, chunks) ⇒ match stk
             FKNil ⇒ FDone(chunks)
@@ -226,7 +226,7 @@ fsm desugar_flatten(state ∈ FState, state_next ∈ FState, halt ∈ Bool)
                     ELCons(it, more) ⇒ FStep(FKCons(FEmit(more), rest), FCCons(FLitItem(it), chunks))
         FFail ⇒ FFail
         FDone(d) ⇒ FDone(d)
-    halt = match state
+    halt = match _state
         FFail    ⇒ true
         FDone(_) ⇒ true
         _        ⇒ false

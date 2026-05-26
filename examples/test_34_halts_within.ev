@@ -21,26 +21,27 @@
 -- physics, multi-state dispatch — don't collapse; log-unroll buys
 -- nothing there). See docs/design/fsm-halts-within.md.
 --
--- HALT CONVENTION: the FSM body must declare a `count, count_next ∈ T`
--- state pair and a `halt ∈ Bool`. `halt` is read on each tick's INPUT
--- state, so `halts_within(F, N)` holds iff `halt` is true at the start
--- of some tick in 1..=N. A counter starting at 50 with `halt = count ≤
--- 0` thus first halts at tick 51 (the tick whose input count is 0).
+-- HALT CONVENTION: the FSM is written terse — the state var is a
+-- first-line param `count ∈ Int` plus a `halt ∈ Bool`; `count` is this
+-- tick's value, `_count` the previous tick's. `halt` reads the input
+-- (`_count`), so `halts_within(F, N)` holds iff `halt` is true at the
+-- start of some tick in 1..=N. A counter starting at 50 with
+-- `halt = (_count ≤ 0)` thus first halts at tick 51 (the tick whose
+-- input count is 0). (`unify_state_syntax` rewrites this to the
+-- `count, count_next ∈ Int` pair the unroll composer consumes.)
 
 import "stdlib/runtime.ev"
 
 -- ── The transition under verification ────────────────────────────
--- The pure state→state function. Labeled `fsm` (the keyword is the sole
--- FSM signal); because it is the target of `halts_within(...)` it is
--- embedded-only — the scheduler never auto-instantiates a referenced
--- FSM. `halts_within` looks it up by name and composes its body.
--- count_next/halt are clean equalities — that's the "function shape"
--- the closed-form composer extracts.
-fsm decrement
-    count, count_next ∈ Int
-    halt ∈ Bool
-    count_next = count - 1
-    halt = (count ≤ 0)
+-- The pure state→state function, terse form. Labeled `fsm` (the keyword
+-- is the sole FSM signal); because it is the target of `halts_within(...)`
+-- it is embedded-only — the scheduler never auto-instantiates a
+-- referenced FSM. `halts_within` looks it up by name and composes its
+-- body. `count`/`halt` are clean equalities — that's the "function
+-- shape" the closed-form composer extracts after the terse→pair rewrite.
+fsm decrement(count ∈ Int, halt ∈ Bool)
+    count = _count - 1
+    halt  = (_count ≤ 0)
 
 -- ── Static verification: halts_within over the affine counter ────
 -- F^N halt-witness for this body is `count ≤ N-1` (after Z3 folds the

@@ -18,23 +18,26 @@
 -- symbolic-unroll→JIT) are later validated against.
 -- See docs/design/nested-fsm-strategies.md.
 --
--- HALT CONVENTION (same as halts_within): F declares a
--- `name, name_next ∈ T` state pair and a `halt ∈ Bool`. `halt` is read
--- on each tick's INPUT state, so the run returns the state at the first
--- tick whose halt is true — `run(decrement, 50)` with `halt = count ≤ 0`
--- returns 0, the input count at the halting tick.
+-- HALT CONVENTION (same as halts_within): F is written in the terse
+-- `_state` form — the state var is a first-line param `X ∈ T` plus a
+-- `halt ∈ Bool`; `X` is this tick's value, `_X` the previous tick's.
+-- `halt` reads the input (`_X`), so the run returns the state at the
+-- first tick whose halt is true — `run(decrement, 50)` with
+-- `halt = (_count ≤ 0)` returns 0, the input count at the halting tick.
+-- (`unify_state_syntax` rewrites this to the `count, count_next ∈ Int`
+-- pair the run machinery consumes — see the design doc § 6.)
 
 import "stdlib/runtime.ev"
 
 -- ── The transition under execution ───────────────────────────────
--- A pure state→state counter. Labeled `fsm` (the keyword is the sole
--- FSM signal); because it is a `run(...)` target it is embedded-only —
--- the scheduler never auto-instantiates a referenced FSM. `run`
--- resolves it by name and drives it. count_next/halt are clean
--- equalities — the FSM shape `run` reads.
-fsm decrement(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
-    count_next = count - 1
-    halt = (count ≤ 0)
+-- A pure state→state counter, terse form. Labeled `fsm` (the keyword is
+-- the sole FSM signal); because it is a `run(...)` target it is
+-- embedded-only — the scheduler never auto-instantiates a referenced
+-- FSM. `run` resolves it by name and drives it. `count`/`halt` are clean
+-- equalities — the FSM shape `run` reads after the terse→pair rewrite.
+fsm decrement(count ∈ Int, halt ∈ Bool)
+    count = _count - 1
+    halt  = (_count ≤ 0)
 
 -- ── Static verification: run produces the final state value ──────
 -- run(decrement, 50) ticks 50 → 0 and evaluates to 0.
@@ -65,11 +68,11 @@ claim sat_run_feeds_outer
 -- is carried as a record-shaped enum value, ticked to halt, returned.
 enum Acc = Acc(Int)
 
-fsm accumulate(state ∈ Acc, state_next ∈ Acc, halt ∈ Bool)
-    n ∈ Int = match state
+fsm accumulate(state ∈ Acc, halt ∈ Bool)
+    n ∈ Int = match _state
         Acc(v) ⇒ v
-    state_next = Acc(n + 1)
-    halt = (n ≥ 5)
+    state = Acc(n + 1)
+    halt  = (n ≥ 5)
 
 -- run(accumulate, 0) seeds Acc(0), ticks Acc(0) → … → Acc(5), and
 -- returns the final enum-state value Acc(5).

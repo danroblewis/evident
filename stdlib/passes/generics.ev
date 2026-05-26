@@ -150,8 +150,8 @@ enum GW =
 --   * `ERunFsm` and a membership's `Pins` are NOT descended (the
 --     canonical `walk_expr` has no `RunFsm` arm → `_ => {}`, and `walk`
 --     reads only a membership's type_name).
-fsm generics_walk(state ∈ GW, state_next ∈ GW, halt ∈ Bool)
-    state_next = match state
+fsm generics_walk(state ∈ GW, halt ∈ Bool)
+    state = match _state
         GWSeed(w) ⇒ GWStep(WSCons(w, WSNil), NameNil)
         GWStep(WSNil, names) ⇒ GWDone(names)
         GWStep(WSCons(top, rest), names) ⇒ match top
@@ -210,7 +210,7 @@ fsm generics_walk(state ∈ GW, state_next ∈ GW, halt ∈ Bool)
                 EMatches(e2, _)   ⇒ GWStep(WSCons(WExpr(e2), rest), names)
                 ERunFsm(_, _)     ⇒ GWStep(rest, names)                                          -- NOT descended (≠ subscriptions)
         GWDone(n) ⇒ GWDone(n)
-    halt = match state
+    halt = match _state
         GWDone(_) ⇒ true
         _         ⇒ false
 

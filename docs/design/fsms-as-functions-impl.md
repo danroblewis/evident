@@ -382,17 +382,31 @@ constraints (§ 7) because that is strictly better, but the ban does not
 
 ---
 
-## § 6 — Universal `_state` (in flight) + discharging `F(seed, fsm_state)`
+## § 6 — Universal `_state` (LANDED) + discharging `F(seed, fsm_state)`
 
 ### 6.1 Universal `_state` — the STATE-terse session
 
-The first mergeable step is § 3's rewrite, scoped to the `run()`-driven
-enum-state passes (`stdlib/passes/{pretty,subscriptions,validate,generics,
-desugar,inject}.ev`) and `examples/test_34/35`. It generalizes
-`unify_world_syntax` → `unify_state_syntax` and converts those FSMs to
-terse, validated byte-for-byte by the `*_correctness.rs` harnesses. **This
-is being implemented now** by the STATE-terse session — this spec's § 3 is
-its design. The embed surface (§ 4) and ban (§ 5) fire after it lands.
+> **LANDED — session STATE-terse.** `unify_state_syntax` ships in
+> `runtime/src/runtime/desugar.rs` (wired at `load.rs:71`, right after
+> `unify_world_syntax`). All six `run()`/`halts_within`-driven passes
+> (`validate`, `subscriptions`, `generics`, `desugar` ×2, `pretty`,
+> `inject` ×3) plus `examples/test_34`–`38` are written terse. The
+> `*_correctness.rs` / `*_equivalence.rs` harnesses + `run_fsm.rs`'s new
+> terse≡explicit-pair twin test prove byte-identical behavior. Steps § 4
+> (embed surface) and § 5 (the `state_next` ban) remain for later sessions
+> — the explicit pair still works (the rewrite is inert when `X_next` is
+> declared). The implementation refines the § 3 trigger with one extra
+> safety gate: only **param-position** memberships (`index < param_count`)
+> are candidates, so a scheduler primitive `_var` self-feedback var written
+> as a *body* item (`test_20`'s `count ∈ Int = (is_first_tick ? 0 :
+> _count + 1)`) is untouched even when the schema also declares `halt`.
+
+It was § 3's rewrite, scoped to the `run()`-driven enum-state passes
+(`stdlib/passes/{pretty,subscriptions,validate,generics,desugar,inject}.ev`)
+and `examples/test_34/35`. It generalized `unify_world_syntax` →
+`unify_state_syntax` and converted those FSMs to terse, validated
+byte-for-byte by the `*_correctness.rs` harnesses. **This is § 3's design,
+now shipped.** The embed surface (§ 4) and ban (§ 5) build on it next.
 
 ### 6.2 Discharging the constraint — the strategy selector
 
@@ -561,13 +575,13 @@ ban skips them (§ 5). No migration.
 
 ## § 8 — Implementation sequence + CLAUDE.md
 
-All of it builds on the STATE-terse session landing first (it owns
-`desugar.rs` / `inject.rs`).
+Step 1 has landed (STATE-terse); the rest build on it.
 
-1. **Universal `_state` (§ 3, § 6.1).** *In flight (STATE-terse).*
-   Generalize `unify_world_syntax` → `unify_state_syntax`; migrate the
-   `run()`-driven passes to terse. Validated by the `*_correctness.rs`
-   harnesses.
+1. **Universal `_state` (§ 6).** ✅ **DONE (session STATE-terse).**
+   Generalized `unify_world_syntax` → `unify_state_syntax`; migrated all
+   six `run()`/`halts_within`-driven passes + `test_34`–`38` to terse.
+   Validated by the `*_correctness.rs` / `*_equivalence.rs` harnesses and a
+   terse≡explicit-pair twin test in `run_fsm.rs`. Fired after REVIVE.
 
 2. **Embed surface (§ 2, § 4).** Add `lower_fsm_application` (load-batch
    2-arg `F(seed, out)` → `out = RunFsm{F, seed}`); add the

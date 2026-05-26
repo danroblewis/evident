@@ -170,8 +170,8 @@ enum PS =
 -- (the keyword is the sole FSM signal); as a `run(...)` target it is
 -- embedded-only, so the scheduler never auto-instantiates it; `run`
 -- resolves it by name.
-fsm pretty_walk(state ∈ PS, state_next ∈ PS, halt ∈ Bool)
-    state_next = match state
+fsm pretty_walk(state ∈ PS, halt ∈ Bool)
+    state = match _state
         PSeed(w) ⇒ PStep(PSCons(w, PSNil), "")
         PStep(PSNil, out) ⇒ PDone(out)
         PStep(PSCons(top, rest), out) ⇒ match top
@@ -282,7 +282,7 @@ fsm pretty_walk(state ∈ PS, state_next ∈ PS, halt ∈ Bool)
                 SLNil         ⇒ PStep(rest, out)
                 SLCons(v, tl) ⇒ PStep(PSCons(WEmit(", " ++ v), PSCons(WStrTail(tl), rest)), out)
         PDone(d) ⇒ PDone(d)
-    halt = match state
+    halt = match _state
         PDone(_) ⇒ true
         _        ⇒ false
 

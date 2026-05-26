@@ -562,17 +562,21 @@ Rust owns the leaf" division `validate` / `subscriptions` ship:
      emits `FRef(name)` and the shim does the `HashMap` lookup out of the
      solve — a performance call, the analogue of `validate`'s `is_banned`.
 
-### `unify_world_syntax` stays canonical Rust (no substring op)
+### `unify_world_syntax` / `unify_state_syntax` stay canonical Rust (no substring op)
 
-The canonical `desugar` runs **two** rewrites. The second,
+The canonical `desugar` runs **three** rewrites now. The second,
 `unify_world_syntax`, rewrites identifier strings by prefix manipulation:
 `"_world.X" → "world.X"` and `"world.X" → "world_next.X"` (via Rust
-`strip_prefix` + `format!`). Evident still has no runtime
+`strip_prefix` + `format!`). The third, `unify_state_syntax` (session
+STATE-terse), is its generalization to any first-line fsm state var:
+`"_X" → "X"` (prev read) and `"X" → "X_next"` (current write), for both
+bare enum/primitive and `.field` record state. Evident still has no runtime
 string-construction operator for a per-leaf string REWRITE (GAPC added
 `str.*` lowering for translate-time use, but not a marshaler-driven pass
-rewrite). It is a *separate* rewrite from `desugar_seq_concat`; only the
-latter cut over (per the honest-fallback policy — cut over what's faithful,
-keep the rest in Rust). It stays in `runtime/src/runtime/desugar.rs`.
+rewrite), so both stay in Rust. They are *separate* rewrites from
+`desugar_seq_concat`; only the latter cut over (per the honest-fallback
+policy — cut over what's faithful, keep the rest in Rust). All three live in
+`runtime/src/runtime/desugar.rs`.
 
 ### Runtime is unaffected (load-time pass); setup delta is small
 

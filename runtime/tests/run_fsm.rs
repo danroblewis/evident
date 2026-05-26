@@ -148,6 +148,68 @@ fn run_result_unsat_when_outer_contradicts() {
     assert!(!qr.satisfied, "final is pinned to 0; `final = 99` must be UNSAT");
 }
 
+// ── Terse `_state` ≡ explicit-pair twin (SESSION criterion 2) ──────
+//
+// A non-scheduler fsm written in the terse `_state` form (state var as a
+// first-line param, `_state` reads, bare-`state` writes, NO explicit
+// `state_next`) must produce the SAME run() result as its hand-written
+// explicit-pair twin. `unify_state_syntax` desugars the terse form to the
+// literal `state, state_next ∈ T` pair the run machinery consumes, so the
+// two are byte-identical at the value level.
+
+const TWINS: &str = r#"
+fsm decrement_terse(count ∈ Int, halt ∈ Bool)
+    count = _count - 1
+    halt  = (_count ≤ 0)
+fsm decrement_pair(count ∈ Int, count_next ∈ Int, halt ∈ Bool)
+    count_next = count - 1
+    halt = (count ≤ 0)
+enum AccT = AccT(Int)
+fsm accumulate_terse(state ∈ AccT, halt ∈ Bool)
+    n ∈ Int = match _state
+        AccT(v) ⇒ v
+    state = AccT(n + 1)
+    halt  = (n ≥ 5)
+fsm accumulate_pair(state ∈ AccT, state_next ∈ AccT, halt ∈ Bool)
+    n ∈ Int = match state
+        AccT(v) ⇒ v
+    state_next = AccT(n + 1)
+    halt = (n ≥ 5)
+"#;
+
+#[test]
+fn terse_state_equals_explicit_pair_twin() {
+    let rt = rt_with(TWINS);
+    // Primitive Int state: terse and explicit reach the same final value
+    // across the seeding edge cases (already-halted, exact, far).
+    for init in [50, 7, 3, 1, 0, -5] {
+        let terse = oracle(&rt, "decrement_terse", Value::Int(init));
+        let pair  = oracle(&rt, "decrement_pair",  Value::Int(init));
+        assert_eq!(terse, pair,
+            "terse vs explicit `decrement` diverged at init={init}: {terse:?} vs {pair:?}");
+        assert_eq!(terse, Value::Int(init.min(0)),
+            "decrement halts at the first count ≤ 0");
+    }
+    // Enum state (the pass-FSM shape): same final enum value.
+    for init in [0, 2, 5, 6] {
+        let terse = oracle(&rt, "accumulate_terse", Value::Int(init));
+        let pair  = oracle(&rt, "accumulate_pair",  Value::Int(init));
+        assert_eq!(terse, pair,
+            "terse vs explicit `accumulate` diverged at init={init}: {terse:?} vs {pair:?}");
+    }
+}
+
+#[test]
+fn terse_state_pins_into_outer_query_like_pair() {
+    // The terse form's run() result pins into an outer claim identically.
+    let mut rt = rt_with(TWINS);
+    rt.load_source(
+        "claim sat_terse\n    final ∈ Int = run(decrement_terse, 50)\n    final = 0\n",
+    ).expect("load outer claim");
+    let qr = rt.query("sat_terse", &HashMap::new()).expect("query");
+    assert!(qr.satisfied, "run(decrement_terse, 50) should pin final = 0");
+}
+
 // ── (c) a non-FSM-shaped F is rejected at load ─────────────────────
 
 #[test]

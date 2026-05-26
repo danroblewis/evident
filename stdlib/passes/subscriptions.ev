@@ -141,8 +141,8 @@ enum SW =
 -- never auto-instantiates it; `run` resolves it by name. The push order
 -- mirrors walk_expr's left-to-right child visit (head pushed last is
 -- popped first).
-fsm subscriptions_walk(state ∈ SW, state_next ∈ SW, halt ∈ Bool)
-    state_next = match state
+fsm subscriptions_walk(state ∈ SW, halt ∈ Bool)
+    state = match _state
         SWSeed(w) ⇒ SWStep(WSCons(w, WSNil), NameNil)
         SWStep(WSNil, names) ⇒ SWDone(names)
         SWStep(WSCons(top, rest), names) ⇒ match top
@@ -206,7 +206,7 @@ fsm subscriptions_walk(state ∈ SW, state_next ∈ SW, halt ∈ Bool)
                 EMatches(e2, _)   ⇒ SWStep(WSCons(WExpr(e2), rest), names)
                 ERunFsm(_, init)  ⇒ SWStep(WSCons(WExpr(init), rest), names)
         SWDone(n) ⇒ SWDone(n)
-    halt = match state
+    halt = match _state
         SWDone(_) ⇒ true
         _         ⇒ false
 

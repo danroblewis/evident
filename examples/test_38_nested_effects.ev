@@ -27,14 +27,14 @@ import "stdlib/runtime.ev"
 -- `run` resolves it by name and drives it, capturing the effects. The
 -- msg lookup is complete (a sentinel row for any other count) so the
 -- per-tick solve always pins msg — no Z3 free-var noise.
-fsm countdown(count ∈ Int, count_next ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
-    count_next = count - 1
-    halt = (count ≤ 0)
+fsm countdown(count ∈ Int, halt ∈ Bool, effects ∈ Seq(Effect))
+    count = _count - 1
+    halt = (_count ≤ 0)
     msg ∈ String
-    (count = 3) ⇒ (msg = "  child: three")
-    (count = 2) ⇒ (msg = "  child: two")
-    (count = 1) ⇒ (msg = "  child: one")
-    (count ≠ 3 ∧ count ≠ 2 ∧ count ≠ 1) ⇒ (msg = "  child: tick")
+    (_count = 3) ⇒ (msg = "  child: three")
+    (_count = 2) ⇒ (msg = "  child: two")
+    (_count = 1) ⇒ (msg = "  child: one")
+    (_count ≠ 3 ∧ _count ≠ 2 ∧ _count ≠ 1) ⇒ (msg = "  child: tick")
     effects = ⟨Println(msg)⟩
 
 -- ── Static verification: the run is a pure value, no dispatch ────
