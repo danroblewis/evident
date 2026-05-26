@@ -1,0 +1,7 @@
+# runtime/src/translate/preprocess.rs — Z3-replaceability
+**What it does:** Pure AST+Value analysis passes that run before translation: (1) `collect_seq_lengths` — fixed-point propagation of Seq length constraints from `given` values and body `#seq = n` equalities; (2) `collect_pinned_ints` — constant-folds literal Int pins from `given` and body equalities; (3) `structural_names` / `structural_signature` — identifies which `given` names appear in quantifier bounds to compute a cache-invalidation key; (4) `apply_pinned_ints` — upgrades env entries to `Var::PinnedInt`. No Z3 Context or Solver is touched.
+**Criticality:** critical (load-time, runs on every query before translation)
+**Verdict:** replaceable-alone
+**Confidence:** medium
+**How (if replaceable):** The `collect_seq_lengths` and `collect_pinned_ints` fixed-point passes are purely constraint-propagation over an integer equality graph — the kind of thing Z3 handles natively. They could be expressed as an Evident claim: "given these body constraints and these given values, what are the resolved Seq lengths and pinned ints?" The caveat is that this runs as a pre-translate preprocessing step, so replacing it with a Z3 solve would add a solve-per-query overhead at load time. The `structural_signature` logic (deciding which names are structurally significant for caching) is a graph-reachability property that could also be a claim. In practice these are simple fixed-point loops that are fast and trivial to maintain in Rust; self-hosting them buys little.
+**Change made:** none

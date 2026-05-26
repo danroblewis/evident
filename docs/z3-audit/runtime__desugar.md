@@ -1,0 +1,7 @@
+# runtime/src/runtime/desugar.rs — Z3-replaceability
+**What it does:** Three AST-to-AST transforms run at load time: (1) `desugar_seq_concat` — flattens `++` Seq concat chains into single `SeqLit`s (self-hosted; delegates to `portable::desugar`); (2) `unify_world_syntax` — rewrites `_world.X`/`world.X` unified syntax to the `world`/`world_next` legacy pair; (3) `unify_state_syntax` — rewrites terse `_X`/`X` time-shift for FSM state params to the `X`/`X_next` pair the scheduler expects.
+**Criticality:** critical (load-time; all three transforms run on every schema load and are prerequisites for translation)
+**Verdict:** replaceable-as-group(runtime/src/runtime/desugar.rs, runtime/src/portable/desugar.rs, stdlib/passes/desugar.ev)
+**Confidence:** medium
+**How (if replaceable):** `desugar_seq_concat` is already self-hosted (REVIVE-desugar session). `unify_world_syntax` and `unify_state_syntax` are AST-rewrite passes that decide a structural property (does this FSM use unified syntax?) and produce a transformed AST. Both are in principle expressible as Evident FSM walk+rewrite passes as done for `desugar_seq_concat`, but are blocked by the same recurring walls: `unify_world_syntax` needs string-construction ops (format! equivalents) for generating `world_next.{field}` names, and both are whole-SchemaDecl rebuilds that require the marshaler to be faithful for MatchPattern/Membership round-trips. The group would be this file + portable/desugar.rs + an extended stdlib/passes/desugar.ev.
+**Change made:** none

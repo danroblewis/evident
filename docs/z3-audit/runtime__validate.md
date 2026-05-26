@@ -1,0 +1,7 @@
+# runtime/src/runtime/validate.rs — Z3-replaceability
+**What it does:** Load-time schema validation: `enforce_external_only` (rejects non-`external` schemas that contain raw FFI effect calls like `LibCall`/`FFICall`) and `register_subclaims` (recursively hoists nested `subclaim` declarations into the top-level schema table). `enforce_external_only` is a thin adapter that delegates to `crate::portable::validate::enforce_external_only`, which in turn drives the self-hosted Evident walk `stdlib/passes/validate.ev`.
+**Criticality:** critical (load-time; blocks unsafe programs from loading)
+**Verdict:** replaceable-as-group(runtime/src/runtime/validate.rs, runtime/src/portable/mod.rs, stdlib/passes/validate.ev)
+**Confidence:** high
+**How (if replaceable):** The `enforce_external_only` logic was already cut over to an Evident-only walk (`validate_walk` in `stdlib/passes/validate.ev`) in a prior session (VALIDATE-recursive). The Rust file in `runtime/src/runtime/validate.rs` is now a 22-line adapter — it just calls through to `portable::validate`. The group (`runtime/validate.rs` + `portable/mod.rs validate module` + `stdlib/passes/validate.ev`) is already substantially self-hosted; the Rust shim exists only for the bootstrapping guard and the Rust-side banned-name check that avoids Z3 string-theory blowup in the in-solve path. `register_subclaims` is a pure tree walk that could be expressed as an Evident FSM pass but is so small that the self-hosting cost would not be net-positive.
+**Change made:** none
