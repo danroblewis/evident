@@ -20,13 +20,9 @@
 //!      by body, not shared across distinct bodies.
 
 use std::collections::HashSet;
-use std::path::Path;
 
 use evident_runtime::ast::{BinOp, BodyItem, Expr, Pins};
-use evident_runtime::portable::seq_chains::{self, EvidentSeqChains, SeqChainsImpl};
-use evident_runtime::portable::Portable;
-
-const STDLIB: &str = "../stdlib";
+use evident_runtime::portable::seq_chains;
 
 // ── AST builders ──────────────────────────────────────────────────────
 
@@ -171,14 +167,12 @@ fn raw_chains_via_engine() {
     // `Expr` is not `PartialEq`; compare the Debug rendering. This pins that
     // the FSM emits chains in BODY order with element order preserved, BEFORE
     // any `node_name` resolution.
-    let eng = EvidentSeqChains::new(Path::new(STDLIB))
-        .expect("load stdlib/passes/seq_chains.ev");
     let body = vec![
         eq(ident("p"), seqlit(vec![ident("a"), ident("b")])),
         membership("x", "Int"),
         eq(seqlit(vec![ident("c")]), ident("q")),
     ];
-    let got = eng.raw_chains(&body);
+    let got = seq_chains::raw_chains(&body);
     let want = vec![
         vec![ident("a"), ident("b")],
         vec![ident("c")],
@@ -214,14 +208,6 @@ fn cache_distinguishes_distinct_bodies() {
     assert_eq!(c2, chains(&[&["x", "y"]]));
     // Re-querying body1 still returns body1's chains (not body2's).
     assert_eq!(seq_chains::extract_seq_effect_chains(&body1, &set(&n1)), chains(&[&["a"]]));
-}
-
-// ── 4. Trivial sanity — impl-name plumbing ──
-
-#[test]
-fn impl_name_is_evident() {
-    let eng = EvidentSeqChains::new(Path::new(STDLIB)).expect("load pass");
-    assert_eq!(eng.impl_name(), "evident");
 }
 
 // A Mario-phase_chain-shaped body: a 40-element ordering chain over

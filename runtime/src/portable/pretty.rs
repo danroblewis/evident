@@ -43,9 +43,8 @@ use std::path::Path;
 
 use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchArm, MatchPattern};
 use crate::core::Value;
-use crate::runtime::EvidentRuntime;
 use crate::translate::ast_encoder::{body_item_to_value, expr_to_value};
-use super::Portable;
+use super::{work_node, EvidentRunner, Portable};
 
 // ─────────────────────────────────────────────────────────────────────
 // The trait
@@ -183,43 +182,28 @@ fn mapping(m: &Mapping) -> String {
 // Evident impl — drives stdlib/passes/pretty.ev's pretty_walk stack-FSM
 // ─────────────────────────────────────────────────────────────────────
 
-/// Renders via the `pretty_walk` stack-FSM in `stdlib/passes/pretty.ev`.
-/// Holds its own runtime with the pass loaded; build once and reuse so
-/// the FSM's per-tick solve is JIT-cached across calls.
+/// Renders via the `pretty_walk` stack-FSM in `stdlib/passes/pretty.ev`,
+/// driven through the shared [`EvidentRunner`]. Build once and reuse so the
+/// FSM's per-tick solve is JIT-cached across calls.
 pub struct EvidentPretty {
-    rt: EvidentRuntime,
+    runner: EvidentRunner,
 }
 
 impl EvidentPretty {
-    /// The ordered AST→String stack-FSM in `stdlib/passes/pretty.ev`.
-    const WALK_FSM: &'static str = "pretty_walk";
-
-    /// Max-iteration guard for the nested walk. Each AST node costs a
-    /// small constant number of FSM ticks (one per pushed work-item), so a
-    /// tree of N nodes halts in O(N) ticks; the cap sits far above any
-    /// realistic diagnostic so a legitimate render never hits it (overrun
-    /// would be a pass bug, surfaced as a loud `MaxItersExceeded`).
-    const MAX_STEPS: usize = 5_000_000;
-
-    /// Load `passes/pretty.ev` from `stdlib_dir` into a fresh runtime.
-    /// `stdlib_dir` is the repo's `stdlib/` directory. The pass is
-    /// self-contained (it declares its own cons-list copy of the AST enums
-    /// matching the shared marshaler), so no other stdlib file is needed —
-    /// and loading `ast.ev` too would clash (duplicate enum decls).
+    /// Load `passes/pretty.ev` from `stdlib_dir` into a fresh runner with
+    /// `pretty_walk` as its primary FSM. The pass is self-contained (it
+    /// declares its own cons-list copy of the AST enums matching the shared
+    /// marshaler), so no other stdlib file is needed — and loading `ast.ev`
+    /// too would clash (duplicate enum decls).
     pub fn new(stdlib_dir: &Path) -> Result<Self, String> {
-        let mut rt = EvidentRuntime::new();
-        rt.load_file(&stdlib_dir.join("passes").join("pretty.ev"))
-            .map_err(|e| format!("load passes/pretty.ev: {e}"))?;
-        Ok(Self { rt })
+        Ok(Self { runner: EvidentRunner::load_from(stdlib_dir, "passes/pretty.ev", "pretty_walk")? })
     }
 
-    /// Drive `pretty_walk` over a seeded `PWork` node and return the
-    /// rendered String from the `PDone(out)` final state.
+    /// Drive `pretty_walk` over a seeded `PWork` node and return the rendered
+    /// String from the `PDone(out)` final state.
     fn render(&self, seed: Value) -> String {
-        match crate::effect_loop::run_nested(&self.rt, Self::WALK_FSM, seed, Self::MAX_STEPS) {
-            Ok(Value::Enum { variant, fields, .. })
-                if variant == "PDone" && fields.len() == 1 =>
-            {
+        match self.runner.run(seed) {
+            Ok(Value::Enum { variant, fields, .. }) if variant == "PDone" && fields.len() == 1 => {
                 match &fields[0] {
                     Value::Str(s) => s.clone(),
                     other => format!("<pretty-bad-out: {other:?}>"),
@@ -239,23 +223,14 @@ impl PrettyImpl for EvidentPretty {
     fn expr(&self, e: &Expr) -> String {
         // Shared marshaler: ast.rs Expr → Value::Enum (cons-list shape),
         // wrapped as the FSM's unified work node `PWork::WExpr(Expr)`.
-        self.render(work_node("WExpr", expr_to_value(e)))
+        self.render(work_node("PWork", "WExpr", expr_to_value(e)))
     }
 
     fn body_item(&self, item: &BodyItem) -> String {
         // The pass owns the Constraint → Expr delegation now (its
         // `WBody(BIConstraint(e)) ⇒ WExpr(e)` arm mirrors pretty.rs), so
         // unlike the pre-recursion shim there is no Rust-side special case.
-        self.render(work_node("WBody", body_item_to_value(item)))
-    }
-}
-
-/// Wrap an already-marshaled AST `Value` as the FSM's unified `PWork` seed.
-fn work_node(variant: &str, inner: Value) -> Value {
-    Value::Enum {
-        enum_name: "PWork".to_string(),
-        variant: variant.to_string(),
-        fields: vec![inner],
+        self.render(work_node("PWork", "WBody", body_item_to_value(item)))
     }
 }
 
