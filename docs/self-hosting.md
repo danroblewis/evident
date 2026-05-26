@@ -576,14 +576,23 @@ Rust owns the leaf" division `validate` / `subscriptions` ship:
        `validate_correctness.rs`.)
 
      So the rewrite-walk no longer stays in Rust for *faithfulness* — the
-     seed round-trip is faithful now. It stays for the same reason the
-     `FRef` lookup does (below): keeping the structural traversal as an
-     in-place Rust mutation avoids paying an FSM solve per node, and the
-     Evident `desugar_rewrite` cutover that deletes it is the first
-     beneficiary of the now-symmetric marshaler. `param_count` round-trips
-     (GAPB + `marshal_roundtrip.rs`), so the `desugar.ev` `SchemaDecl` enum
-     carries it (4-field `MakeSchemaDecl`) to seed subclaim-bearing bodies
-     faithfully.
+     seed round-trip is faithful now. **But the cutover that deletes it is
+     NOT unblocked by the marshaler alone** (SEED-marshal evaluated and
+     deferred phase 2): the walk's splice value at each `Concat` depends on
+     `FRef` resolution, and that resolution is a string-keyed lookup that
+     must stay in Rust (item 2 — the in-solve string-theory cost). A pure
+     `desugar_rewrite` FSM that *returns the rebuilt body* would have to
+     either resolve `FRef`s in-FSM (string equality on string-heavy flatten
+     states → the same Z3 blowup) or emit `FRef` markers for Rust to expand
+     via a body-walk (still a Rust walk, plus an added FSM solve per body).
+     Neither is a win, so the walk stays — for the *FRef-cost* reason, not
+     faithfulness. The marshaler symmetry IS the real unblock for the
+     rebuild-pass class generally (any pass whose rebuilt output carries a
+     `match` pattern but doesn't hinge on an in-solve string lookup —
+     `introspect`, `translate/inline/rewrite.rs`, finishing
+     `inject`/`generics`). `param_count` round-trips (GAPB +
+     `marshal_roundtrip.rs`), so the `desugar.ev` `SchemaDecl` enum carries
+     it (4-field `MakeSchemaDecl`) to seed subclaim-bearing bodies faithfully.
   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
      `⟨items⟩` against the gathered map. #18 (enum-payload String equality)
      is fixed, so an in-FSM lookup is now *correct* — but doing the

@@ -33,12 +33,15 @@
 //!      `PatBind` to depth, and `desugar.ev`'s `MatchBind`/`MatchPattern`
 //!      enums grew to match — see `runtime/tests/seed_roundtrip.rs`). So a
 //!      whole-body return is no longer byte-LOSSY. The walk stays for the
-//!      same reason the `FRef` lookup does (below) — keeping the structural
-//!      traversal as an in-place Rust mutation avoids an FSM solve per node;
-//!      the `desugar_rewrite` cutover that deletes it is the first
-//!      beneficiary of the now-symmetric marshaler. The in-place mutation
-//!      (`Concat → SeqLit`, never round-tripping an untouched `match` arm)
-//!      is belt-and-suspenders, no longer load-bearing.
+//!      same reason the `FRef` lookup does (below): each `Concat`'s splice
+//!      value depends on `FRef` resolution, and that string-keyed lookup
+//!      stays in Rust (in-solve string equality blows up Z3 on string-heavy
+//!      flatten states). A `desugar_rewrite` FSM returning the rebuilt body
+//!      would have to either resolve `FRef`s in-FSM (the blowup) or emit
+//!      markers for Rust to expand via a body-walk (still a Rust walk) — so
+//!      SEED-marshal evaluated and DEFERRED that cutover. The in-place
+//!      mutation (`Concat → SeqLit`, never round-tripping an untouched
+//!      `match` arm) is now belt-and-suspenders, no longer load-bearing.
 //!   2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
 //!      `⟨items⟩` against the gathered map. #18 (enum-payload String
 //!      equality) is fixed, so this is now *correct* in an FSM — but doing
