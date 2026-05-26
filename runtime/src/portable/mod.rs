@@ -70,6 +70,7 @@ pub trait Portable {
 
 pub mod desugar;
 pub mod generics;
+pub mod inject;
 pub mod pretty;
 pub mod subscriptions;
 pub mod validate;

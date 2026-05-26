@@ -1315,6 +1315,49 @@ last bullet). The user has to pin `#plat_effs[i].effs = 2` explicitly
 before the `∀` for the per-iteration subclaim length-pinning to be
 load-bearing. Mario uses this form.
 
+### 27. Self-hosting `inject`: 2 of 4 sub-passes CUT OVER; 2 wait on Gap D (composite INPUT)
+
+**Where:** porting the `inject` pass (`runtime/src/runtime/inject.rs`) to
+Evident via the subscriptions recipe — `stdlib/passes/inject.ev` +
+`portable/inject.rs`. `inject` is the first ported pass whose natural output
+is a *rewritten AST*, and it has FOUR sub-passes; this entry tracks which
+self-host.
+
+**Status (session REVIVE-inject): PARTIAL cutover done.** Session PORT-inject
+self-hosted only the reference WALK and kept all four sub-passes in Rust,
+blocked on three gaps. Two of those are now fixed (GAPB), so two sub-passes
+cut over:
+
+| # | sub-pass | status |
+|---|---|---|
+| — | composite AST RETURN (return a `BodyItemList` through `run()`) | ✅ never a gap — Rust decode recovers intact strings/structure; and since GAPB's #18 fix, even Evident-side structural `=` on the returned list is faithful (`inject.ev`'s `sat_build_*` claims) |
+| 1 | **#18 family on in-FSM DECISIONS** — a match-destructured `Bool` read its real value only when *embedded* into a node, not when *computed on* (`(rsn ∧ ¬hsn)` read false) | ✅ FIXED (GAPB). `fsm_params_build` now reads the marshaled-in `Bool` decisions and COMPUTES `(reff ∧ ¬heff)` / `(rsn ∧ ¬hsn ∧ hst)` to decide what to inject |
+| 2 | **marshaler dropped `SchemaDecl::param_count`** (the insertion index) | ✅ FIXED (GAPB) — round-trips now. (The cutover splices at `s.param_count` in Rust glue anyway, the index being already in hand; the round-trip would only be needed for a whole-`SchemaDecl`-return design, deferred as it adds decode risk for no correctness benefit.) |
+| 3 | **Gap D — whole-program composite INPUT** | ⛔ STILL OPEN |
+
+**Cut over (Evident-only):** `inject_fsm_params` + `inject_prev_tick_decls`.
+Their Rust is DELETED from `runtime/src/runtime/inject.rs` (591→364 LOC); the
+load path routes them through `portable::inject::{fsm_params, prev_tick}`
+(per-thread cached engine, WW resolver, bootstrap guard). What self-hosts:
+the recursive reference WALK (`inject_collect`) AND the DECISION +
+construction (`fsm_params_build` / `prev_tick_build`, returning the
+`BodyItemList` to inject). What stays in Rust glue (the same honest split
+`subscriptions`/`validate` use): the string-set checks (`"state_next"`
+reachable? declared?) and the `_`-strip — done off the walk output, NEVER
+inside the solve (an in-FSM `name = "state_next"` is #18's in-solve cousin
+that blows up Z3 string theory on string-heavy walk states) — plus the
+splice at `param_count`. Pinned in
+`portable::inject::tests::matches_golden_on_corpus` + `runtime/tests/inject_correctness.rs`.
+
+**Still Rust — Gap D (composite INPUT):** `inject_claim_arg_types` +
+`inject_lhs_eq_types` resolve a name's type against every loaded claim's
+signature + every enum variant. Marshaling that whole-program context into
+the FSM *per claim* is a composite-INPUT blow-up the `run()`/marshaler recipe
+doesn't faithfully support yet — the dual of the (now-answered) composite-
+RETURN question, and the genuinely hard one. These two keep their canonical
+Rust impl. Finishing inject = building Gap D's composite-input path; that's
+the clean remainder for a future Gap-D session.
+
 ## What works without caveat
 
 Every demo ships in green:
