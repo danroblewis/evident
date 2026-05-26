@@ -29,6 +29,7 @@ gaps currently bound what a pass can do.
 | `validate` | **Evident-only** (`portable/validate.rs::EvidentValidate`) — Rust `find_ffi_call` walk DELETED (session VALIDATE-recursive) | `stdlib/passes/validate.ev` | **full, sole impl** | Cut over: the canonical Rust Expr-tree walk is gone; the load path enforces external-only through the `validate_walk` stack-FSM via `portable::validate::enforce_external_only` (per-thread cached engine, WW resolver, bootstrap guard). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); the FSM collects `ECall` names and the Rust shim does the 4-element banned-set check (an in-solve `nm = "FFICall"` equality blows up Z3 string theory on string-heavy walk states — the in-solve cousin of #18; see [Gaps](#runtime-gaps-that-bound-a-string-pass)). Verdicts + byte-exact diagnostics pinned in `runtime/tests/validate_correctness.rs` |
 | `subscriptions` | **Evident-only** (`portable/subscriptions.rs::EvidentSubscriptions`) — Rust walk DELETED (session XX) | `stdlib/passes/subscriptions.ev` | **full, sole impl** | Cut over in session XX: the canonical `subscriptions::world_access_sets` Rust walk is gone; the scheduler computes every claim's `(reads, writes)` through the stack-FSM via `portable::subscriptions::access_sets` (cached engine, WW resolver). Whole walk is a stack-FSM fed by the SHARED marshaler (UU); only the `world.`/`world_next.` prefix split stays in Rust (no substring op in Evident). Pinned per-claim expectations on the corpus incl. Mario in `runtime/tests/subscriptions_correctness.rs` |
 | `desugar` (273 LOC) | partial (`commands/desugar.rs`) | `stdlib/passes/desugar_passthrough.ev` | partial | pre-dates this seam; uses reflection path |
+| `desugar_seq_concat` (the `++` flattening half of `desugar`) | **Evident-only** (`portable/desugar.rs::EvidentDesugar`) — Rust gather/flatten/rewrite walk DELETED (session REVIVE-desugar) | `stdlib/passes/desugar.ev` (`desugar_gather` + `desugar_flatten` stack-FSMs) | **full, sole impl** | Cut over: the canonical Rust `desugar_seq_concat` is gone; the load path flattens `Seq` concats through the recursive kernels in Evident (over the SHARED marshaler, UU, via `run_nested`): `desugar_gather` folds the body → `name ↦ ⟨items⟩` bindings; `desugar_flatten` resolves a `Concat` spine → a chunk stream (`FLitItem` verbatim items + `FRef` identifier refs). Two pieces stay in Rust, same "Evident owns the recursion, Rust owns the leaf" split as `validate`/`subscriptions`: the pre-order `rewrite` tree-walk (so untouched `match` patterns are never round-tripped through the marshaler — the `MatchPattern` round-trip is still lossy), and the string-keyed `FRef` lookup (#18 is fixed, but an in-solve `name = key` comparison hits the same Z3 string-theory blowup `validate` measured). A cheap Rust "contains `Concat`?" guard short-circuits the engine for Concat-free schemas (a byte-identical no-op), so load cost is ~28 ms one-time engine build + ~1 ms/concat-schema, zero for Concat-free programs. Pinned outputs in `runtime/tests/desugar_correctness.rs`. `unify_world_syntax` (the *other* desugar pass) stays canonical Rust — prefix-strip string rewrite, no Evident operator. |
 | `generics` (256 LOC) | — | ⌛ | — | |
 | `inject` (588 LOC) | — | ⌛ | — | biggest |
 
@@ -501,3 +502,86 @@ of subscriptions' `world.`/`world_next.` prefix split. The recursive WALK
 (the thing VV couldn't move) is fully self-hosted; only the tiny string
 decision stays in Rust, for a measured performance reason, not a
 faithfulness one.
+
+## What `stdlib/passes/desugar.ev` reproduces today (cut over — session REVIVE-desugar)
+
+`desugar_seq_concat` — the `++` (Seq concat) flattening half of the
+canonical `desugar` pass. **Cut over to Evident-only** in session
+REVIVE-desugar: the canonical Rust gather/flatten/rewrite walk in
+`runtime/src/runtime/desugar.rs` is **deleted**, and the load path
+(`load.rs:76` → `runtime::desugar::desugar_seq_concat`, a thin adapter)
+flattens through `portable::desugar::desugar_seq_concat` — a per-thread
+cached `EvidentDesugar` engine (WW resolver, bootstrap guard), exactly as
+`validate` (VALIDATE-recursive) and `subscriptions` (XX) did. PORT-desugar
+self-hosted the kernels but kept Rust behind two gaps; #18 + `param_count`
+(session GAPB) closed the cutover-blocking ones.
+
+Two recursive kernels self-host as stack-FSMs driven by `run_nested`
+(tier-3), over the SHARED marshaler (UU):
+
+  * `desugar_gather` — folds a `BodyItemList` into an `Assoc` cons-list of
+    `name ↦ ⟨items⟩` bindings (the canonical pass-1). No string equality
+    (it matches `BIConstraint(EBinary(OpEq, EIdentifier, ESeqLit))`
+    structurally), so it self-hosts cleanly.
+  * `desugar_flatten` — resolves a `Concat` spine into an ordered CHUNK
+    stream: `FLitItem(e)` for a `⟨…⟩` operand's items (verbatim, matching
+    `flatten`'s `items.clone()`), `FRef(name)` for an identifier operand,
+    `FFail` for any other shape (matching `flatten`'s `_ => None`). This is
+    the genuine recursive fold — the Concat tree walk + the left-to-right
+    item ordering live in the FSM.
+
+`EvidentDesugar` (`portable/desugar.rs`) drives them. Outputs are pinned in
+`runtime/tests/desugar_correctness.rs` — a synthetic battery (every flatten
+shape, hardcoded expected ASTs) plus a corpus check against a test-local
+copy of the canonical algorithm (the oracle, since the production Rust walk
+is gone).
+
+### What stays in Rust, and why (the honest split)
+
+The shim keeps two pieces in Rust — the same "Evident owns the recursion,
+Rust owns the leaf" division `validate` / `subscriptions` ship:
+
+  1. **The structural pre-order `rewrite` walk** — which `Expr` nodes to
+     visit, where to splice the flattened `SeqLit`, recursion into
+     subclaims. It stays in Rust **for faithfulness**: a whole-body return
+     through the marshaler is byte-lossy because nested-ctor / top-level
+     bind `MatchPattern`s collapse to `BindWildcard` (the marshaler carries
+     only one `MatchBind` level — `encode_ast.rs`, out of scope this
+     session). Keeping the walk in Rust mutates `Concat → SeqLit` IN PLACE
+     and never round-trips an untouched node (e.g. a `match` arm's
+     pattern), sidestepping the gap. `param_count` *does* round-trip now
+     (GAPB), so the `desugar.ev` `SchemaDecl` enum carries it (4-field
+     `MakeSchemaDecl`) to seed subclaim-bearing bodies faithfully.
+  2. **The string-keyed `FRef` lookup** — resolving `FRef(name)` to its
+     `⟨items⟩` against the gathered map. #18 (enum-payload String equality)
+     is fixed, so an in-FSM lookup is now *correct* — but doing the
+     `name = key` comparison INSIDE the per-tick Z3 solve, on a flatten
+     state carrying effect-list `EStr` literals, hits the same in-solve
+     string-theory blowup `validate` measured (minutes + GBs). So the FSM
+     emits `FRef(name)` and the shim does the `HashMap` lookup out of the
+     solve — a performance call, the analogue of `validate`'s `is_banned`.
+
+### `unify_world_syntax` stays canonical Rust (no substring op)
+
+The canonical `desugar` runs **two** rewrites. The second,
+`unify_world_syntax`, rewrites identifier strings by prefix manipulation:
+`"_world.X" → "world.X"` and `"world.X" → "world_next.X"` (via Rust
+`strip_prefix` + `format!`). Evident still has no runtime
+string-construction operator for a per-leaf string REWRITE (GAPC added
+`str.*` lowering for translate-time use, but not a marshaler-driven pass
+rewrite). It is a *separate* rewrite from `desugar_seq_concat`; only the
+latter cut over (per the honest-fallback policy — cut over what's faithful,
+keep the rest in Rust). It stays in `runtime/src/runtime/desugar.rs`.
+
+### Runtime is unaffected (load-time pass); setup delta is small
+
+`desugar` runs once per schema at **load**, never on the per-tick scheduler
+hot path (it isn't called from `effect_loop`) — so steady-state per-tick
+runtime is untouched, structurally. The cutover moves only one-time load
+cost: a cheap Rust "contains `Concat`?" guard short-circuits the engine for
+Concat-free schemas (a byte-identical no-op, since `gather`'s bindings are
+consumed only by `flatten` on a Concat), so Concat-free programs (e.g.
+Mario, whose import closure has no `++`) build no engine and pay nothing.
+For a program that *does* use `++`, the one-time engine build (load
+`desugar.ev` + JIT the two FSMs) is ~28 ms and each concat-bearing schema's
+`gather` is ~1 ms — measured on `test_02_counter.ev`.

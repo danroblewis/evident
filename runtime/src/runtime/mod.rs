@@ -43,7 +43,7 @@ mod lenient;
 mod autotune;
 mod load;
 mod generics;
-mod desugar;
+pub(crate) mod desugar;
 mod inject;
 mod validate;
 mod register_enums;
