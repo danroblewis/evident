@@ -132,6 +132,50 @@ static void test_enum_unsat() {
     CHECK(!r.satisfied, "enum: two distinct nullary unsat");
 }
 
+static void test_forall_unroll() {
+    // ∀ i ∈ {1..3} : n > i  forces n ≥ 4.
+    auto r = run("claim T\n    n ∈ Int\n    ∀ i ∈ {1..3} : n > i\n", "T");
+    CHECK(r.satisfied, "forall: unroll sat");
+    for (auto &[k, v] : r.bindings) if (k == "n") CHECK(v.i > 3, "forall: n>3");
+}
+
+static void test_forall_singleton_forced() {
+    auto r = run("claim T\n    n ∈ Int\n    ∀ i ∈ {3..3} : n = i\n", "T");
+    CHECK(r.satisfied, "forall: singleton sat");
+    for (auto &[k, v] : r.bindings) if (k == "n") CHECK(v.i == 3, "forall: n=3 forced");
+}
+
+static void test_forall_unsat() {
+    // i > 2 is false at i=0,1,2 → asserting ∀ is UNSAT.
+    auto r = run("claim T\n    ∀ i ∈ {0..4} : i > 2\n", "T");
+    CHECK(!r.satisfied, "forall: false-in-range unsat");
+}
+
+static void test_exists_unroll() {
+    auto r = run("claim T\n    n ∈ Int\n    ∃ i ∈ {0..5} : n = i * i\n", "T");
+    CHECK(r.satisfied, "exists: square sat");
+    for (auto &[k, v] : r.bindings) if (k == "n") {
+        bool sq = false;
+        for (int i = 0; i <= 5; i++) if (v.i == (int64_t)i * i) sq = true;
+        CHECK(sq, "exists: n is a square in [0,5]");
+    }
+}
+
+static void test_exists_empty_unsat() {
+    // {5..1} folds to an empty range → ∃ is false → UNSAT.
+    auto r = run("claim T\n    n ∈ Int\n    ∃ i ∈ {5..1} : n = i\n", "T");
+    CHECK(!r.satisfied, "exists: empty range unsat");
+}
+
+static void test_forall_symbolic_bound_rejected() {
+    // A bound that doesn't fold to a constant is out of subset.
+    bool threw = false;
+    try {
+        run("claim T\n    n ∈ Int\n    m ∈ Int\n    ∀ i ∈ {0..m} : n > i\n", "T");
+    } catch (const SmtError &) { threw = true; }
+    CHECK(threw, "forall: symbolic bound rejected as out of subset");
+}
+
 static void test_out_of_subset_reported() {
     bool threw = false;
     try {
@@ -157,6 +201,12 @@ int main() {
         test_enum_match_extract();
         test_enum_matches_recognizer();
         test_enum_unsat();
+        test_forall_unroll();
+        test_forall_singleton_forced();
+        test_forall_unsat();
+        test_exists_unroll();
+        test_exists_empty_unsat();
+        test_forall_symbolic_bound_rejected();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {
         std::printf("EXCEPTION: %s\n", e.what());

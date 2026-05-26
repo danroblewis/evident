@@ -95,6 +95,8 @@ private:
     std::string expr(const Expr &e);
     std::string binary(BinOp op, const Expr &a, const Expr &b);
     std::string in_expr(const Expr &lhs, const Expr &rhs);
+    std::optional<int64_t> eval_const_int(const Expr &e);
+    std::string emit_quantifier(const Expr &e);
     std::string emit_match(const Expr &e);
     std::string emit_matches(const Expr &e);
     std::string emit_ctor_call(const Expr &e);
@@ -241,6 +243,7 @@ std::optional<Sort> Emitter::sort_of(const Expr &e) {
         }
         case K::Not: return Sort{Sort::Tag::Bool, {}};
         case K::In: case K::Matches: return Sort{Sort::Tag::Bool, {}};
+        case K::Forall: case K::Exists: return Sort{Sort::Tag::Bool, {}};
         case K::Match: {
             for (const auto &arm : e.arms)
                 if (auto s = sort_of(*arm.body)) return s;
@@ -301,14 +304,13 @@ std::string Emitter::expr(const Expr &e) {
         case K::Call:    return emit_ctor_call(e);
         case K::Match:   return emit_match(e);
         case K::Matches: return emit_matches(e);
+        case K::Forall:  case K::Exists: return emit_quantifier(e);
 
         // Out of subset (reported, never mis-emitted).
         case K::SetLit:  fail("set literal (not as ∈ RHS) unsupported");
         case K::SeqLit:  fail("sequence literal unsupported");
         case K::Range:   fail("bare range unsupported (only as ∈ RHS)");
         case K::Tuple:   fail("tuple unsupported");
-        case K::Forall:  fail("∀ quantifier unsupported (quantifier-free subset)");
-        case K::Exists:  fail("∃ quantifier unsupported (quantifier-free subset)");
         case K::Card:    fail("cardinality `#` unsupported");
         case K::Index:   fail("indexing `[]` unsupported");
         case K::Field:   fail("field access unsupported (records out of subset)");
@@ -365,6 +367,77 @@ std::string Emitter::in_expr(const Expr &lhs, const Expr &rhs) {
         return s;
     }
     fail("∈ RHS must be a set literal or range in the scalar subset");
+}
+
+// Fold an expression to a compile-time integer constant, mirroring the Rust
+// path's `literal_range` (translate_int + Z3 simplify) restricted to literal
+// arithmetic. Returns nullopt for anything not constant-foldable — the caller
+// then fails honestly (a symbolic quantifier bound is out of subset).
+std::optional<int64_t> Emitter::eval_const_int(const Expr &e) {
+    using K = Expr::Kind;
+    switch (e.kind) {
+        case K::Int: return e.ival;
+        case K::Binary: {
+            auto a = eval_const_int(*e.children[0]);
+            auto b = eval_const_int(*e.children[1]);
+            if (!a || !b) return std::nullopt;
+            switch (e.op) {
+                case BinOp::Add: return *a + *b;
+                case BinOp::Sub: return *a - *b;
+                case BinOp::Mul: return *a * *b;
+                case BinOp::Div: return *b != 0 ? std::optional<int64_t>(*a / *b) : std::nullopt;
+                default: return std::nullopt;
+            }
+        }
+        default: return std::nullopt;
+    }
+}
+
+// `∀ v ∈ {lo..hi} : body` → conjunction over the constant range (∃ → disjunction),
+// substituting the bound var with each integer literal — exactly the Rust
+// translator's unroll (quant.rs `literal_range` branch). Requires constant
+// integer bounds at emit time; symbolic bounds / Seq / coindexed are out of subset.
+std::string Emitter::emit_quantifier(const Expr &e) {
+    bool is_forall = (e.kind == Expr::Kind::Forall);
+    const char *q = is_forall ? "∀" : "∃";
+    if (e.names.size() != 1)
+        fail(std::string(q) + " tuple binding (coindexed/edges) unsupported (single-var ranges only)");
+    const std::string &var = e.names[0];
+    const Expr &range = *e.children[0];
+    const Expr &body = *e.children[1];
+
+    if (range.kind != Expr::Kind::Range)
+        fail(std::string(q) + " range must be a constant integer range {lo..hi} (out of subset)");
+    auto lo = eval_const_int(*range.children[0]);
+    auto hi = eval_const_int(*range.children[1]);
+    if (!lo || !hi)
+        fail(std::string(q) + " range bounds must fold to integer constants (out of subset)");
+
+    // Bind the loop var: subst_ gives expr() the literal term, env_ gives sort_of
+    // its Int sort. Save/restore so nested or sibling quantifiers reusing the name
+    // don't leak (mirrors emit_match's scoped binds).
+    bool had_env = env_.count(var);
+    Sort saved_env = had_env ? env_[var] : Sort{};
+    bool had_subst = subst_.count(var);
+    std::string saved_subst = had_subst ? subst_[var] : std::string{};
+    env_[var] = Sort{Sort::Tag::Int, {}};
+
+    std::vector<std::string> clauses;
+    for (int64_t i = *lo; i <= *hi; i++) {
+        subst_[var] = int_lit_safe(i);
+        clauses.push_back(expr(body));
+    }
+
+    if (had_subst) subst_[var] = saved_subst; else subst_.erase(var);
+    if (had_env) env_[var] = saved_env; else env_.erase(var);
+
+    // and over empty = true; or over empty = false (Z3's identities, matched).
+    if (clauses.empty()) return is_forall ? "true" : "false";
+    if (clauses.size() == 1) return clauses[0];
+    std::string s = std::string("(") + (is_forall ? "and" : "or");
+    for (auto &c : clauses) s += " " + c;
+    s += ")";
+    return s;
 }
 
 std::string Emitter::recognizer(const std::string &ctor, const std::string &term) {

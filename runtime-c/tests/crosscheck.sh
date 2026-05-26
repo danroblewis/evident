@@ -66,6 +66,9 @@ check_forced enums.ev forced_color_by_elim     c Green
 check_forced enums.ev forced_result_ok         r 'Ok(7)'
 check_forced enums.ev forced_match_extract     n 42
 check_forced enums.ev forced_matches_recognizer b true
+# Quantifiers (M4b): finite range unroll forces a unique model.
+check_forced quantifiers.ev forced_forall_singleton n 3
+check_forced quantifiers.ev forced_forall_block     n 3
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

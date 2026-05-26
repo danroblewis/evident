@@ -79,11 +79,14 @@ and what is (eventually) self-hosted.
 | **M0** — Z3 link proof | ✅ done | `z3_link_proof` builds, links libz3, solves a hardcoded SMT-LIB string, prints `n = 6` |
 | **M1** — parser (subset) | ✅ done | `seed_tests` lexer+parser cases; parser mirrors the Rust grammar (see below) |
 | **M2** — AST → SMT-LIB | ✅ done | `schema_to_smtlib`; `--smtlib` flag dumps it; `seed_tests` emit cases |
-| **M3** — end-to-end + cross-check | ✅ done | `evidentc <file> <claim>`; `crosscheck.sh` — 13 verdicts + 5 forced models agree with the Rust runtime |
-| **M4** — grow the subset | ⏳ roadmap | enums, quantifiers, Seq, records (see roadmap) |
+| **M3** — end-to-end + cross-check | ✅ done | `evidentc <file> <claim>`; `crosscheck.sh` — verdicts + forced models agree with the Rust runtime |
+| **M4a** — enums (Z3 datatypes) | ✅ done | `declare-datatypes`; nullary + payload ctors, `match` → nested `ite`, `matches` recognizer, recursive enum model extraction; `enums.ev` cross-checks |
+| **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
+| **M4c** — records | ⏳ roadmap | single-constructor datatypes (see roadmap) |
+| **M4d** — Seq | ⏳ roadmap | Z3 seq theory (see roadmap) |
 | **M5** — push one transform to Evident | ⏳ roadmap | the self-hosting half |
 
-### The subset that transpiles today (M3)
+### The subset that transpiles today (M3 + M4a + M4b)
 
 Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 
@@ -97,6 +100,13 @@ Mirrors the Rust prototype's table (`docs/perf/smtlib-prototype-findings.md`):
 | Conditional | `(c ? a : b)` | `(ite c a b)` |
 | String concat | `++` | `str.++` |
 | Chained membership | `0 < x ∈ Int < 5` | declare + per-pair bound (parser desugar) |
+| Enums (M4a) | `enum`, payload + recursive variants, `match`, `matches` | `declare-datatypes`; `match` → nested `ite` over `(_ is Ctor)`; `matches` → recognizer |
+| Quantifiers (M4b) | `∀ v ∈ {lo..hi} : body`, `∃ v ∈ {lo..hi} : body` | unroll → `and`/`or` over the constant range; bound var substituted per iteration |
+
+The quantifier bounds must **fold to integer constants at emit time** (literals +
+literal arithmetic, mirroring the Rust path's `literal_range` simplify). A symbolic
+bound (`{0..m}` with `m` a free const), tuple binding (`coindexed`/`edges`), or a
+Seq/Set range is reported out of subset — never silently mis-unrolled.
 
 The parser additionally *accepts* the full grammar — enums, quantifiers, Seq/Set
 literals, records, match, claim composition, generics, FSMs — so the front end is
@@ -153,15 +163,17 @@ divergence; it is noted for honesty, not worked around.
 
 Ordered by value and independence. Each is additive to the seed.
 
-1. **M4a — enums (Z3 datatypes).** Emit `declare-datatypes` for `enum` decls;
-   lower nullary ctors to constants, payload ctors to applications, `match` to
+1. **M4a — enums (Z3 datatypes). ✅ DONE.** Emits `declare-datatypes` for `enum`
+   decls; nullary ctors → constants, payload ctors → applications, `match` →
    nested `ite` over `(_ is Ctor)` recognizers + accessor binds, `e matches Ctor`
-   to a recognizer, and add enum model extraction (reconstruct the datatype sort,
-   read the ctor name). High value, cross-checks cleanly (`enum`-heavy claims).
-2. **M4b — finite quantifier unrolling.** `∀ x ∈ {lo..hi} : body` →
+   → a recognizer, and recursive enum model extraction (read the datatype value
+   AST recursively). Cross-checks via `enums.ev`.
+2. **M4b — finite quantifier unrolling. ✅ DONE.** `∀ x ∈ {lo..hi} : body` →
    conjunction over the constant range (disjunction for `∃`), substituting the
-   bound var — exactly what the Rust translator does. Requires constant range
-   bounds at emit time. Unlocks a large slice of real claims.
+   bound var per iteration — exactly what the Rust translator does
+   (`exprs/quant.rs` `literal_range` branch). Bounds must fold to integer
+   constants at emit time (`eval_const_int`); symbolic bounds, tuple binding,
+   and Seq/Set ranges are reported out of subset. Cross-checks via `quantifiers.ev`.
 3. **M4c — records.** Single-constructor datatypes; field access via accessors;
    positional/named pins; the record-as-vector lifts (componentwise `=`/`≤`,
    arithmetic broadcast). Larger; depends on M4a's datatype machinery.
