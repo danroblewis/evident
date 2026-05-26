@@ -69,6 +69,7 @@ pub trait Portable {
 }
 
 pub mod desugar;
+pub mod generics;
 pub mod pretty;
 pub mod subscriptions;
 pub mod validate;

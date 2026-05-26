@@ -42,7 +42,6 @@ mod stats;
 mod lenient;
 mod autotune;
 mod load;
-mod generics;
 pub(crate) mod desugar;
 mod inject;
 mod validate;

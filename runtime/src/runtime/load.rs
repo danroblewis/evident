@@ -128,8 +128,12 @@ impl EvidentRuntime {
         // type / claim instantiations into monomorphic copies. Each
         // unique `Edge<Rect>` becomes a real schema named "Edge<Rect>"
         // with `T → Rect` substituted throughout its body. Iterates to
-        // a fixed point — nested generics resolve in passes.
-        super::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
+        // a fixed point — nested generics resolve in passes. Sole impl since
+        // session REVIVE-generics: the self-hosted `stdlib/passes/generics.ev`
+        // pass (WALK + PARSE + SUBSTITUTE via GAPC string ops), driven by the
+        // per-thread-cached engine in `crate::portable::generics`. The
+        // canonical Rust `monomorphize_generics` is deleted.
+        crate::portable::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
         // Reject `run(F, ..)` whose F is loaded but isn't FSM-shaped
         // (state pair + `halt ∈ Bool`) or emits effects. Runs after the
         // whole batch + its imports are registered so F is resolvable.
