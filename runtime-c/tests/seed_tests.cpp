@@ -311,6 +311,41 @@ static void test_seq_real_rejected() {
     CHECK(threw, "seq: Seq(Real) rejected as out of subset");
 }
 
+// M5 — the seed runs an Evident program that is itself a transform. The pass
+// logic lives in the .ev source (match + ctor construction); the seed reflects
+// the pinned input AST, solves, and reifies `output`. Asserting the output AST
+// proves the self-hosting round-trip end-to-end.
+static const char *PASS_PRELUDE = "enum Expr = Lit(Int) | Add(Expr, Expr) | Mul(Expr, Expr)\n";
+
+static std::string run_pass_output(const std::string &claim_src, const std::string &claim) {
+    auto r = run(std::string(PASS_PRELUDE) + claim_src, claim);
+    for (auto &[k, v] : r.bindings) if (k == "output") return v.s;
+    return "<no output>";
+}
+
+static void test_pass_identity() {
+    std::string out = run_pass_output(
+        "claim P\n    input ∈ Expr\n    output ∈ Expr\n"
+        "    input = Add(Lit(2), Mul(Lit(3), Lit(4)))\n    output = input\n", "P");
+    CHECK(out == "Add(Lit(2), Mul(Lit(3), Lit(4)))", "M5: identity reifies input round-trip");
+}
+
+static void test_pass_swap() {
+    std::string out = run_pass_output(
+        "claim P\n    input ∈ Expr\n    output ∈ Expr\n"
+        "    input = Add(Lit(1), Mul(Lit(7), Lit(8)))\n"
+        "    output = match input\n        Add(a, b) ⇒ Add(b, a)\n        _ ⇒ input\n", "P");
+    CHECK(out == "Add(Mul(Lit(7), Lit(8)), Lit(1))", "M5: swap rewrites top Add operands");
+}
+
+static void test_pass_mul_to_add() {
+    std::string out = run_pass_output(
+        "claim P\n    input ∈ Expr\n    output ∈ Expr\n"
+        "    input = Mul(Lit(5), Add(Lit(6), Lit(7)))\n"
+        "    output = match input\n        Mul(a, b) ⇒ Add(a, b)\n        _ ⇒ input\n", "P");
+    CHECK(out == "Add(Lit(5), Add(Lit(6), Lit(7)))", "M5: Mul lowered to Add");
+}
+
 static void test_out_of_subset_reported() {
     // Set(Int) has no lowering in the seed yet — must be reported, not mis-emitted.
     bool threw = false;
@@ -360,6 +395,9 @@ int main() {
         test_bool_seq();
         test_seq_concat_rejected();
         test_seq_real_rejected();
+        test_pass_identity();
+        test_pass_swap();
+        test_pass_mul_to_add();
         test_out_of_subset_reported();
     } catch (const std::exception &e) {
         std::printf("EXCEPTION: %s\n", e.what());

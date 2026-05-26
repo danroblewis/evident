@@ -86,6 +86,26 @@ check_forced seqs.ev forced_seq_elems  s 60
 check_forced seqs.ev forced_seq_len    n 5
 check_forced seqs.ev sat_seq_partial   m 99
 
+# Self-hosted-pass cross-check (M5): run an Evident *transform* pass on both
+# engines and assert they reify the SAME output AST. The output value is a nested
+# `Ctor(...)` string with spaces, so we extract the whole RHS (not an awk column).
+echo "== self-hosted pass cross-check (M5: one pass, two engines, one output AST) =="
+check_pass() {
+    local claim="$1" expect="$2" c r
+    c="$("$EVC" "$FIX/passes.ev" "$claim" 2>/dev/null | sed -n 's/^output = //p')"
+    r="$("$RUST" sample "$FIX/passes.ev" "$claim" -n 1 2>/dev/null | sed -n 's/^output=//p')"
+    if [[ "$c" == "$expect" && "$r" == "$expect" ]]; then
+        echo "  OK   $claim: output = $expect  (C and Rust agree)"
+    else
+        echo "  FAIL $claim: expected '$expect'  got C='$c' Rust='$r'"
+        fail=1
+    fi
+}
+check_pass identity_pass    "Add(Lit(2), Mul(Lit(3), Lit(4)))"
+check_pass swap_add_pass    "Add(Mul(Lit(7), Lit(8)), Lit(1))"
+check_pass mul_to_add_pass  "Add(Lit(5), Add(Lit(6), Lit(7)))"
+check_pass passthrough_pass "Lit(42)"
+
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi
 exit $fail

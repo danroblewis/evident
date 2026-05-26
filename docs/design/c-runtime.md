@@ -66,11 +66,16 @@ and what is (eventually) self-hosted.
   supported construct live here as emitted text — `declare-const`, `assert`,
   arithmetic, `ite`, datatype declarations, etc. Z3 ingests it via
   `Z3_solver_from_string`. This is the layer that outlives the solver choice.
-- **Evident (the self-hosting half — not yet reached here):** once the seed can
-  *run* an Evident program, AST transforms (desugar/inject/…) become Evident
-  programs the seed runs, as the Rust runtime does with `stdlib/passes/`. M5
-  (below) is the first proof-of-concept; the architecture is built to allow it
-  (the AST is data, the emitter is pure), but it is **not implemented yet**.
+- **Evident (the self-hosting half — first proof reached at M5):** an AST
+  transform can be expressed as an Evident program (the AST is a recursive
+  `enum`, the pass is a `claim` relating `input` to `output`) and the seed *runs*
+  it — reflecting the input AST, solving, and reifying the output AST — with no
+  pass-specific logic in the seed's C++. M5 (below) demonstrates this on identity,
+  operand-swap, and Mul→Add rewrites; the same `passes.ev` runs on the Rust
+  runtime and yields the identical output AST. What's still ahead: a C↔Evident
+  reflection bridge so the seed can parse an arbitrary program, reflect *its* AST
+  into the enum value (rather than pinning it in source), run the pass, and reify
+  back — the full `stdlib/passes/`-style loop.
 
 ## Milestones reached
 
@@ -84,7 +89,7 @@ and what is (eventually) self-hosted.
 | **M4b** — finite quantifier unrolling | ✅ done | `∀ v ∈ {lo..hi} : body` → `and` over the constant range (`∃` → `or`); constant-fold bounds, symbolic bounds rejected; `quantifiers.ev` cross-checks |
 | **M4c** — records | ◑ partial | per-field Z3 leaves (`v.x`, `p.pos.y`); field access, named/positional pins, record literals, componentwise `= ≠ < ≤ > ≥` + bounding-box lifts, **arithmetic broadcast** (`c = a + b`, scalar `v * dt / 1000`); `records.ev` cross-checks. Local invariants are next; record-valued ternary is out of subset (oracle-boundary). |
 | **M4d** — Seq | ◑ partial | Z3 sequence theory (SMT-LIB text): `Seq(Int)`/`Seq(Bool)` decl, `#` → `seq.len`, `xs[i]` → `seq.nth`, equality, model extracts as `[e0, …]`; `seqs.ev` cross-checks (incl. whole-seq value parity). `++` runtime concat + `Seq(Real)` out of subset (oracle drops both); `Seq(String)` emits but Z3 returns `unknown` (documented divergence). |
-| **M5** — push one transform to Evident | ⏳ roadmap | the self-hosting half |
+| **M5** — push one transform to Evident | ✅ proof-of-concept | the seed RUNS an Evident transform pass: AST-as-`enum`, pass-as-`claim`, seed reflects input → solves → reifies `output`. The same `passes.ev` runs on the Rust runtime with the identical output AST. `passes.ev` cross-checks. |
 
 ### The subset that transpiles today (M3 + M4a + M4b)
 
@@ -135,10 +140,15 @@ The Rust runtime is the oracle. `runtime-c/tests/crosscheck.sh`:
 1. runs each fixture through `evidentc --all` and `evident sample --all`, and
    asserts the sat/unsat verdict for every claim matches;
 2. for forced-model fixtures (unique solution), asserts both runtimes extract the
-   *same model value* (`x=7`, `x=1.5`, `q=true`, `x=-5`, `s="hello"`).
+   *same model value* — scalars (`x=7`, `s="hello"`), enums (`Ok(7)`), records
+   (`v.x=3`), quantifier results, whole sequences (`[10, 20, 30]`);
+3. for the M5 self-hosted passes, runs each transform on both engines and asserts
+   they reify the *same output AST* (`passes.ev`).
 
-Both halves pass. This is the "it's a real runtime" evidence: the SMT-LIB-authored
-Z3 solve agrees with the C-API-authored one, exactly as the prototype found.
+All three halves pass. This is the "it's a real runtime" evidence: the
+SMT-LIB-authored Z3 solve agrees with the C-API-authored one across enums,
+quantifiers, records, sequences — and the same Evident transform pass produces
+the same answer on both.
 
 ### Known, documented divergences (representation/tactic, outside the AST)
 
@@ -159,6 +169,44 @@ fixtures stay clear of them.
    representation choice that lives outside the AST. `Seq(Int)`/`Seq(Bool)` are
    decidable under both and cross-check exactly (whole-seq value parity included);
    `seqs.ev` therefore omits `Seq(String)`.
+
+## M5 — the self-hosting proof (the seed runs an Evident transform)
+
+The headline. `runtime-c/tests/fixtures/passes.ev` declares a miniature AST as a
+recursive Evident `enum` and a set of transform passes as `claim`s:
+
+```evident
+enum Expr = Lit(Int) | Add(Expr, Expr) | Mul(Expr, Expr)
+
+claim swap_add_pass
+    input ∈ Expr
+    output ∈ Expr
+    input = Add(Lit(1), Mul(Lit(7), Lit(8)))
+    output = match input
+        Add(a, b) ⇒ Add(b, a)        -- swap the operands of a top-level Add
+        _         ⇒ input
+```
+
+The seed is *only the engine*. It reflects the pinned `input` AST into the enum
+value (nested constructor calls, M4a), the solver computes `output` from the
+transform constraint, and the model extractor reifies the output AST
+(`read_ast_value` recursion) — printing `output = Add(Mul(Lit(7), Lit(8)),
+Lit(1))`. **No part of the swap lives in the seed's C++**; the transform is
+entirely the Evident `claim`. That is the architecture's "push logic into
+Evident" half: the same engine runs identity, operand-swap, and a Mul→Add
+lowering by changing only the `.ev` source.
+
+The proof is sealed by the cross-check: the *same* `passes.ev` runs on the Rust
+runtime and yields the *identical* output AST for every pass. One pass, two
+engines (an SMT-LIB-text seed in C++ and the C-API Rust runtime), one answer.
+
+What this is not, yet: the input AST is *pinned in the source*, not reflected
+from a parsed program. The full `stdlib/passes/`-style loop — parse an arbitrary
+program, reflect *its* C AST into the enum value, run the pass, reify back into a
+C AST — needs a C↔Evident reflection bridge. The seam already exists (the AST is
+data; the emitter is pure), so that bridge is the natural next step. Transforms
+that need nested patterns (e.g. constant folding `Add(Lit(a), Lit(b)) ⇒
+Lit(a + b)`) additionally need the one-level `match` restriction lifted.
 
 ## Z3 dependency
 
@@ -221,10 +269,23 @@ Ordered by value and independence. Each is additive to the seed.
 6. **Tactic parity.** Decide whether to replicate the Rust tuned tactic chain
    (see the divergence above) — it lives outside the AST and would need to be
    reapplied to the SMT-LIB-fed solver for bit-identical behavior.
-7. **M5 — self-host one transform.** Once the seed can run an Evident program
-   (needs enough of M4 to express a pass), port a trivial desugar/identity pass
-   to Evident and have the seed run it — the self-hosting half. The AST is data
-   and the emitter is pure, so the seam exists; this is the proof.
+7. **M5 — self-host one transform. ✅ PROOF-OF-CONCEPT.** The seed runs an Evident
+   program that is itself a *transform*: the AST is a recursive `enum`
+   (`Expr = Lit(Int) | Add(Expr, Expr) | Mul(Expr, Expr)`), the pass is a `claim`
+   relating `input` and `output` (`output = match input  Add(a, b) ⇒ Add(b, a)
+   …`), and the seed is the engine — it reflects the pinned input AST into the
+   enum value (nested ctor calls, M4a), the solver computes `output` from the
+   transform constraint, and the model extractor reifies the output AST
+   (`read_ast_value` recursion). **No pass-specific logic lives in the seed's
+   C++** — the transform is entirely in the `.ev` file. The same `passes.ev` runs
+   on the Rust runtime and produces the *identical* output AST (identity,
+   operand-swap, Mul→Add lowering, passthrough) — one pass, two engines, one
+   answer. This is the architecture's "push logic into Evident" half, proven on a
+   small subset. The next step is a C↔Evident reflection bridge (parse an
+   arbitrary program → reflect its AST → run the pass → reify), the full
+   `stdlib/passes/`-style loop; the seam already exists (the AST is data, the
+   emitter is pure). Nested patterns (`Add(Lit(a), Lit(b)) ⇒ Lit(a + b)` constant
+   folding) need the one-level `match` restriction lifted first.
 
 ### Non-goals for the seed (stay Rust / stay native)
 

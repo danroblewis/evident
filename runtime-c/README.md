@@ -51,7 +51,18 @@ runtime-c/build/evidentc runtime-c/tests/fixtures/scalars.ev --all
 
 # Dump the generated SMT-LIB to stderr alongside the solve.
 runtime-c/build/evidentc runtime-c/tests/fixtures/scalars.ev sat_int_div --smtlib
+
+# M5 — run an Evident transform pass: the seed reflects the input AST, the
+# solver applies the pass, the output AST is reified. The transform lives in
+# the .ev source, not in the seed's C++.
+runtime-c/build/evidentc runtime-c/tests/fixtures/passes.ev swap_add_pass
+#   sat
+#   input  = Add(Lit(1), Mul(Lit(7), Lit(8)))
+#   output = Add(Mul(Lit(7), Lit(8)), Lit(1))     ← operands swapped, by an Evident claim
 ```
+
+The fixtures grew with the runtime: `scalars.ev` (M3), `enums.ev` (M4a),
+`quantifiers.ev` (M4b), `records.ev` (M4c), `seqs.ev` (M4d), `passes.ev` (M5).
 
 ## Test + cross-check against the Rust runtime
 
