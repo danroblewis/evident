@@ -104,7 +104,17 @@ SMT-LIB uniqueness check (§5, Method B) on every checked output to prove this.
   },
 
   // ── solver hint ──────────────────────────────────────────────────
-  "effects_in_smt": false  // true → the effects Seq is encoded in problem.smt2 (pure-SMT-checkable)
+  "effects_in_smt": false, // true → the effects Seq is encoded in problem.smt2 (pure-SMT-checkable)
+
+  // ── dispatch mode (optional; default 1) ──────────────────────────
+  // 1 → the FSM declares an `effects` slot; dispatch is that Seq's literal
+  //     order, read from `effects_var`.
+  // 2 → no slot; effects are scraped from all Effect bindings and TOPOSORTED by
+  //     Seq(Effect) ordering-edge declarations. The CurrentRuntime gate witnesses
+  //     the real toposort via `EvidentRuntime::collect_tick_effects(.., None)`
+  //     rather than reading a single pre-ordered binding; the SMT capture encodes
+  //     the resulting order under `effects_var`. See `mode2_ordered_chain`.
+  "dispatch_mode": 1
 }
 ```
 
@@ -246,9 +256,12 @@ These are what Phase-3 self-consistency and the Phase-4 `SmtLibEngine` run.
 ## 6. `expected_effects.txt` — canonical effect text
 
 One effect per line, in the order the runtime dispatches them
-(`collect_dispatchable_effects`). For the mode-1 fixtures here (the FSM declares
-an `effects` slot), dispatch order = the source `Seq(Effect)` order, so it is
-deterministic.
+(`collect_dispatchable_effects`). For mode-1 fixtures (the FSM declares an
+`effects` slot), dispatch order = the source `Seq(Effect)` order. For the mode-2
+fixture (`mode2_ordered_chain`, `dispatch_mode:2`), the order is the toposort of
+the scraped Effect bindings over the `Seq(Effect)` ordering edges — a total order
+there, so it is deterministic and seed-independent. Either way the order is
+deterministic for the fixtures captured here.
 
 ```
 effect-line ::= Variant            -- nullary: NoEffect, ReadLine, Time

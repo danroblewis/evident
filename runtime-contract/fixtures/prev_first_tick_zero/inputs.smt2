@@ -1,3 +1,2 @@
-; prev_first_tick_zero — external input pins
-; last_results is empty (Seq(Result)); not encoded in SMT (effects_in_smt: false).
-; No world fields. No additional inputs beyond prev.smt2.
+; external input pins — last_results pinned empty so prev_str="?" is deterministic
+(assert (= last_results (as seq.empty (Seq Result))))

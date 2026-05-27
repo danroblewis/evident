@@ -5,3 +5,5 @@
 
 (assert (= count 8))
 (assert (= state_next Done))
+
+(assert (= effects (seq.++ (seq.unit (Println "count = ?")) (seq.unit (IntToStr 8)))))
