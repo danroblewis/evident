@@ -19,8 +19,10 @@ pub mod z3c;
 pub mod spec;
 
 pub mod assertion;
+pub mod cache;
 pub mod driver;
 pub mod effect;
+pub mod frontend;
 pub mod halt;
 pub mod meta;
 pub mod model;
@@ -29,8 +31,11 @@ pub mod scheduler;
 pub mod tick;
 pub mod world;
 
-pub use driver::{run, run_fsm, run_to_string, RunReport, DEFAULT_MAX_TICKS};
+pub use cache::TickCache;
+pub use driver::{run_fsm, RunReport, DEFAULT_MAX_TICKS};
 pub use effect::{dispatch_all, DispatchOutcome};
+pub use frontend::{transpile_claim, FrontendError};
+pub use scheduler::{run, run_cached, run_to_string};
 pub use halt::{decide as halt_decide, HaltReason};
 pub use tick::{solve_tick, TickError};
 pub use spec::{

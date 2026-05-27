@@ -51,5 +51,25 @@ for pair in "${PAIRS[@]}"; do
     fi
 done
 
+# --- N4b front-end cross-check: transpile a scalar claim, compare sat verdict ---
+# Pairs:  <scalar .ev>  <claim name>  (the front-end + oracle must agree on sat/unsat)
+FE_PAIRS=(
+    "runtime-smt/crosscheck/scalar.ev   sat_band"
+)
+for pair in "${FE_PAIRS[@]}"; do
+    set -- $pair
+    ev_fix="$1"; claim="$2"
+    [[ -f "$ROOT/$ev_fix" ]] || continue
+    fe_verdict="$("$SMT" transpile "$ev_fix" 2>/dev/null | head -1)"               # "sat" / "unsat"
+    or_verdict="$("$ORACLE" sample "$ev_fix" "$claim" 2>/dev/null | grep -qi . && echo sat || echo unsat)"
+    # `evident sample` prints model lines on sat, nothing on unsat → map to a verdict.
+    if [[ "$fe_verdict" == "$or_verdict" ]]; then
+        echo "  OK   $(basename "$ev_fix"):$claim  (front-end + oracle agree: $fe_verdict)"
+    else
+        echo "  FAIL $(basename "$ev_fix"):$claim  — front-end=$fe_verdict oracle=$or_verdict"
+        fail=1
+    fi
+done
+
 if [[ "$fail" == 0 ]]; then echo "cross-check: all paired fixtures agree"; else echo "cross-check: MISMATCH"; fi
 exit $fail

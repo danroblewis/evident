@@ -18,17 +18,47 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 
+use crate::cache::TickCache;
 use crate::driver::RunReport;
 use crate::effect::dispatch_all;
 use crate::halt::{decide, HaltReason};
 use crate::schedule::order;
-use crate::spec::Problem;
+use crate::spec::{FsmSpec, Problem, TickModel};
 use crate::tick::{solve_tick, TickError};
 use crate::world::{build_given, init_world, record_writes};
 use crate::z3c::Value;
 
 /// Run a (possibly multi-FSM) problem to halt, dispatching effects to `out`.
+/// Solves every tick freshly (no caching).
 pub fn run(problem: &Problem, out: &mut dyn Write, max_ticks: u64) -> Result<RunReport, TickError> {
+    run_with(problem, out, max_ticks, |fsm, prev, given| solve_tick(fsm, prev, given))
+}
+
+/// Like [`run`], but memoize tick solves through `cache` (N4a). Re-entering an
+/// already-seen (FSM, prev-state, given) returns the stored result without
+/// calling Z3 — useful for FSMs that cycle through a bounded set of states.
+/// The cache is the caller's, so its hit/miss stats survive the call.
+pub fn run_cached(
+    problem: &Problem,
+    out: &mut dyn Write,
+    max_ticks: u64,
+    cache: &mut TickCache,
+) -> Result<RunReport, TickError> {
+    run_with(problem, out, max_ticks, |fsm, prev, given| cache.solve(fsm, prev, given))
+}
+
+/// The shared multi-FSM loop, parameterized over how a single tick is solved
+/// (fresh vs cached). Keeps the two entry points byte-for-byte identical in
+/// behavior — caching is transparent.
+fn run_with<F>(
+    problem: &Problem,
+    out: &mut dyn Write,
+    max_ticks: u64,
+    mut solve: F,
+) -> Result<RunReport, TickError>
+where
+    F: FnMut(&FsmSpec, &BTreeMap<String, Value>, &BTreeMap<String, Value>) -> Result<TickModel, TickError>,
+{
     if problem.fsms.is_empty() {
         return Err(TickError::Z3("problem has no FSMs".into()));
     }
@@ -66,7 +96,7 @@ pub fn run(problem: &Problem, out: &mut dyn Write, max_ticks: u64) -> Result<Run
         for &idx in &order {
             let fsm = &problem.fsms[idx];
             let given = build_given(fsm, &world_current, &world_prev);
-            let model = solve_tick(fsm, &fsm_prev[idx], &given)?;
+            let model = solve(fsm, &fsm_prev[idx], &given)?;
 
             if let Some(c) = dispatch_all(&model.effects, out)
                 .map_err(|e| TickError::Z3(format!("effect IO failed: {e}")))?
@@ -124,6 +154,7 @@ mod tests {
 
     const TWO_FSMS: &str = include_str!("../fixtures/two_fsms.smt2");
     const COUNTDOWN: &str = include_str!("../fixtures/countdown.smt2");
+    const PINGPONG: &str = include_str!("../fixtures/pingpong.smt2");
 
     #[test]
     fn two_fsms_producer_consumer() {
@@ -136,6 +167,34 @@ mod tests {
         assert_eq!(report.reason, HaltReason::Exit(0));
         assert_eq!(report.exit_code, 0);
         assert_eq!(report.ticks, 4);
+    }
+
+    #[test]
+    fn cached_run_collapses_revisited_states() {
+        // pingpong revisits only 2 prev-state values; over a 10-tick capped run
+        // the cache solves Z3 twice and serves the other 8 ticks from cache.
+        use crate::cache::TickCache;
+        let problem = load_str(PINGPONG).expect("fixture loads");
+        let mut cache = TickCache::new();
+        let mut buf: Vec<u8> = Vec::new();
+        let report = run_cached(&problem, &mut buf, 10, &mut cache).unwrap();
+        assert_eq!(report.reason, HaltReason::MaxTicks);
+        assert_eq!(report.ticks, 10);
+        assert_eq!(cache.misses(), 2, "only 2 distinct prev states");
+        assert_eq!(cache.hits(), 8, "remaining ticks served from cache");
+    }
+
+    #[test]
+    fn cached_and_uncached_runs_agree() {
+        // Caching is transparent: same observable result either way.
+        use crate::cache::TickCache;
+        let problem = load_str(COUNTDOWN).expect("fixture loads");
+        let (plain, r1) = run_to_string(&problem, DEFAULT_MAX_TICKS).unwrap();
+        let mut cache = TickCache::new();
+        let mut buf: Vec<u8> = Vec::new();
+        let r2 = run_cached(&problem, &mut buf, DEFAULT_MAX_TICKS, &mut cache).unwrap();
+        assert_eq!(plain, String::from_utf8_lossy(&buf));
+        assert_eq!(r1, r2);
     }
 
     #[test]
