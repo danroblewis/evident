@@ -6,10 +6,26 @@
 //! threading, effect dispatch, halt, scheduling. Additive: never touches the
 //! legacy `runtime/`.
 //!
-//! Module map (built milestone by milestone):
-//!   * [`z3c`]   — N0: the Z3 floor. RAII context, solve, model decode.
-//!   * (further milestones add: metadata, tick, effects, driver, scheduler)
+//! Module map:
+//!   * [`z3c`]       — N0: the Z3 floor. RAII context, solve, model decode.
+//!   * [`spec`]      — the metadata model + typed tick result (frozen contract).
+//!   * [`meta`]      — N1: load a fixture (embedded metadata + transition).
+//!   * [`assertion`] — N1: build per-tick pin assertions (prev state + given).
+//!   * [`model`]     — N1: extract typed next-state + effects from a model.
+//!   * (further milestones add: tick, effects, driver, scheduler)
 
 pub mod z3c;
 
+pub mod spec;
+
+pub mod assertion;
+pub mod meta;
+pub mod model;
+pub mod tick;
+
+pub use tick::{solve_tick, TickError};
+pub use spec::{
+    EffectSpec, EffectValue, FsmSpec, GivenVar, HaltSpec, Lit, Problem, Sort, StateVar, TickModel,
+    WorldVar,
+};
 pub use z3c::{solve_smtlib, Model, SolveOutcome, Value, Z3Ctx, Z3Error};

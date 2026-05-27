@@ -26,11 +26,20 @@ pub enum Value {
     Bool(bool),
     Real(f64),
     Str(String),
-    /// A datatype (enum) value, formatted as `Ctor(arg, ...)` — matches the
-    /// legacy CLI's enum rendering. Nullary ctors are just `Ctor`.
-    Enum(String),
+    /// A datatype (enum) value, kept structurally as constructor + decoded
+    /// args so it round-trips back into SMT-LIB (needed to thread an enum
+    /// state value into the next tick). Displays as `Ctor` / `Ctor(a, b)` —
+    /// matches the legacy CLI's enum rendering.
+    Enum { ctor: String, args: Vec<Value> },
     /// A sequence value, rendered element-by-element.
     Seq(Vec<Value>),
+}
+
+impl Value {
+    /// Construct a nullary enum value (`Ctor`).
+    pub fn nullary(ctor: impl Into<String>) -> Value {
+        Value::Enum { ctor: ctor.into(), args: Vec::new() }
+    }
 }
 
 impl std::fmt::Display for Value {
@@ -40,7 +49,17 @@ impl std::fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Real(r) => write!(f, "{r}"),
             Value::Str(s) => write!(f, "{s}"),
-            Value::Enum(s) => write!(f, "{s}"),
+            Value::Enum { ctor, args } if args.is_empty() => write!(f, "{ctor}"),
+            Value::Enum { ctor, args } => {
+                write!(f, "{ctor}(")?;
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{a}")?;
+                }
+                write!(f, ")")
+            }
             Value::Seq(xs) => {
                 write!(f, "[")?;
                 for (i, x) in xs.iter().enumerate() {
@@ -290,18 +309,11 @@ unsafe fn read_datatype_value(ctx: Z3_context, ast: Z3_ast) -> Value {
     let decl = Z3_get_app_decl(ctx, app);
     let name = cstr(Z3_get_symbol_string(ctx, Z3_get_decl_name(ctx, decl)));
     let n = Z3_get_app_num_args(ctx, app);
-    if n == 0 {
-        return Value::Enum(name);
-    }
-    let mut s = format!("{name}(");
+    let mut args = Vec::with_capacity(n as usize);
     for i in 0..n {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        s.push_str(&read_ast_value(ctx, Z3_get_app_arg(ctx, app, i)).to_string());
+        args.push(read_ast_value(ctx, Z3_get_app_arg(ctx, app, i)));
     }
-    s.push(')');
-    Value::Enum(s)
+    Value::Enum { ctor: name, args }
 }
 
 /// Walk a Z3 sequence model value (`seq.++` / `seq.unit` / `seq.empty`) into its
@@ -389,7 +401,7 @@ mod tests {
         let smt = "(declare-datatypes ((C 0)) (((Red) (Green) (Blue))))\n\
                    (declare-const c C)\n(assert (= c Green))";
         match solve_smtlib(smt).unwrap() {
-            SolveOutcome::Sat(m) => assert_eq!(m.get("c"), Some(&Value::Enum("Green".into()))),
+            SolveOutcome::Sat(m) => assert_eq!(m.get("c"), Some(&Value::nullary("Green"))),
             other => panic!("expected Sat, got {other:?}"),
         }
     }
