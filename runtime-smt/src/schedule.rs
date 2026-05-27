@@ -96,6 +96,7 @@ mod tests {
             given: vec![],
             effects: None,
             halt: None,
+            last_results: None,
             world_writes: writes.iter().map(|s| s.to_string()).collect(),
             world_reads: reads.iter().map(|s| s.to_string()).collect(),
         }

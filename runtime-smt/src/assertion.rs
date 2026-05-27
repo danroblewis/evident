@@ -22,7 +22,12 @@ use crate::z3c::Value;
 ///   (SMT-LIB string escape convention).
 /// - `Enum { ctor, args }`: nullary → bare constructor name; applied →
 ///   `(ctor arg₀ arg₁ …)` with args recursively emitted.
-/// - `Seq(_)`: returns `Err` — sequences are outputs, not pin-able inputs.
+/// - `Seq(elems)`: a NON-EMPTY sequence emits the `seq.unit`/`seq.++` chain
+///   `(seq.++ (seq.unit e₀) (seq.unit e₁) …)` — the element sort is inferred by
+///   Z3 from the elements, so no sort annotation is needed. An EMPTY sequence
+///   cannot be emitted here (Z3 needs the element sort for `(as seq.empty …)`);
+///   it returns `Err`. Use [`value_to_smtlib_seq`] when you know the element
+///   sort (e.g. pinning `last_results` of a known element type).
 pub fn value_to_smtlib(v: &Value) -> Result<String, String> {
     match v {
         Value::Int(i) => {
@@ -77,10 +82,50 @@ pub fn value_to_smtlib(v: &Value) -> Result<String, String> {
             }
         }
 
-        Value::Seq(_) => Err(
-            "Seq values cannot be pinned as SMT-LIB assertions (sequences are outputs, not inputs)"
-                .to_string(),
-        ),
+        Value::Seq(elems) => {
+            if elems.is_empty() {
+                Err("empty Seq cannot be emitted without an element sort; use \
+                     value_to_smtlib_seq(v, elem_sort)"
+                    .to_string())
+            } else {
+                seq_chain(elems)
+            }
+        }
+    }
+}
+
+/// Emit a [`Value::Seq`] knowing its element sort name (e.g. `"Result"`).
+///
+/// A non-empty sequence is the `seq.unit`/`seq.++` chain (the sort annotation is
+/// redundant but harmless); an EMPTY sequence is `(as seq.empty (Seq <sort>))`,
+/// which Z3 requires to disambiguate the otherwise-untyped empty sequence.
+///
+/// `elem_sort` is the SMT-LIB sort *name* of the elements (e.g. `Result`,
+/// `Effect`, `Int`). For a `last_results` pin the elements are `Result`
+/// constructor values, so `elem_sort` is `"Result"`.
+///
+/// Non-`Seq` values fall through to [`value_to_smtlib`] (the sort is irrelevant).
+pub fn value_to_smtlib_seq(v: &Value, elem_sort: &str) -> Result<String, String> {
+    match v {
+        Value::Seq(elems) if elems.is_empty() => {
+            Ok(format!("(as seq.empty (Seq {elem_sort}))"))
+        }
+        Value::Seq(elems) => seq_chain(elems),
+        other => value_to_smtlib(other),
+    }
+}
+
+/// Build `(seq.++ (seq.unit e₀) (seq.unit e₁) …)` from a non-empty element list.
+/// A single element is just `(seq.unit e₀)` (no `seq.++` wrapper needed).
+fn seq_chain(elems: &[Value]) -> Result<String, String> {
+    let mut units = Vec::with_capacity(elems.len());
+    for e in elems {
+        units.push(format!("(seq.unit {})", value_to_smtlib(e)?));
+    }
+    if units.len() == 1 {
+        Ok(units.pop().unwrap())
+    } else {
+        Ok(format!("(seq.++ {})", units.join(" ")))
     }
 }
 
@@ -98,16 +143,35 @@ pub fn pin_assertions(
     prev: &BTreeMap<String, Value>,
     given: &BTreeMap<String, Value>,
 ) -> Result<String, String> {
+    pin_assertions_with_seq_sorts(prev, given, &BTreeMap::new())
+}
+
+/// Like [`pin_assertions`], but `seq_sorts` supplies the element sort name for
+/// any `Seq`-valued pin (keyed by var name). This is what lets `last_results`
+/// (a `(Seq Result)`) be pinned — including the empty-sequence case, which needs
+/// the element sort for the `(as seq.empty (Seq T))` form. A `Seq` var absent
+/// from `seq_sorts` falls back to [`value_to_smtlib`] (fine for non-empty seqs,
+/// errors for empty ones).
+pub fn pin_assertions_with_seq_sorts(
+    prev: &BTreeMap<String, Value>,
+    given: &BTreeMap<String, Value>,
+    seq_sorts: &BTreeMap<String, String>,
+) -> Result<String, String> {
     let mut lines: Vec<String> = Vec::with_capacity(prev.len() + given.len());
 
-    for (name, value) in prev {
-        let term = value_to_smtlib(value)?;
-        lines.push(format!("(assert (= {name} {term}))"));
-    }
+    let emit = |name: &str, value: &Value| -> Result<String, String> {
+        let term = match (value, seq_sorts.get(name)) {
+            (Value::Seq(_), Some(sort)) => value_to_smtlib_seq(value, sort)?,
+            _ => value_to_smtlib(value)?,
+        };
+        Ok(format!("(assert (= {name} {term}))"))
+    };
 
+    for (name, value) in prev {
+        lines.push(emit(name, value)?);
+    }
     for (name, value) in given {
-        let term = value_to_smtlib(value)?;
-        lines.push(format!("(assert (= {name} {term}))"));
+        lines.push(emit(name, value)?);
     }
 
     Ok(lines.join("\n"))
@@ -377,25 +441,78 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // value_to_smtlib — Seq returns Err
+    // value_to_smtlib / value_to_smtlib_seq — Seq
     // -----------------------------------------------------------------------
 
     #[test]
-    fn seq_returns_err() {
+    fn nonempty_seq_emits_unit_chain() {
+        // value_to_smtlib succeeds for a non-empty seq (element sort inferred).
         let v = Value::Seq(vec![Value::Int(1), Value::Int(2)]);
-        assert!(
-            value_to_smtlib(&v).is_err(),
-            "Seq should return Err from value_to_smtlib"
+        let term = value_to_smtlib(&v).unwrap();
+        assert_eq!(term, "(seq.++ (seq.unit 1) (seq.unit 2))");
+    }
+
+    #[test]
+    fn single_element_seq_is_bare_unit() {
+        let v = Value::Seq(vec![Value::Int(9)]);
+        assert_eq!(value_to_smtlib(&v).unwrap(), "(seq.unit 9)");
+    }
+
+    #[test]
+    fn empty_seq_needs_element_sort() {
+        // Bare value_to_smtlib can't emit an empty seq (no element sort).
+        assert!(value_to_smtlib(&Value::Seq(vec![])).is_err());
+        // value_to_smtlib_seq supplies the sort.
+        assert_eq!(
+            value_to_smtlib_seq(&Value::Seq(vec![]), "Result").unwrap(),
+            "(as seq.empty (Seq Result))"
         );
     }
 
     #[test]
-    fn seq_empty_also_returns_err() {
-        let v = Value::Seq(vec![]);
-        assert!(
-            value_to_smtlib(&v).is_err(),
-            "empty Seq should also return Err"
+    fn result_seq_roundtrips_through_z3() {
+        // Pin a (Seq Result) of two Result enum values, solve, read it back.
+        let v = Value::Seq(vec![
+            Value::Enum { ctor: "StringResult".into(), args: vec![Value::Str("7".into())] },
+            Value::nullary("NoResult"),
+        ]);
+        let term = value_to_smtlib_seq(&v, "Result").unwrap();
+        let smt = format!(
+            "(declare-datatypes ((Result 0)) \
+              (((NoResult) (IntResult (IntResult_0 Int)) \
+                (StringResult (StringResult_0 String)) \
+                (ErrorResult (ErrorResult_0 String)))))\n\
+             (declare-const lr (Seq Result))\n\
+             (assert (= lr {term}))"
         );
+        match sat_model(&smt).get("lr") {
+            Some(Value::Seq(elems)) => {
+                assert_eq!(elems.len(), 2);
+                assert_eq!(
+                    elems[0],
+                    Value::Enum {
+                        ctor: "StringResult".into(),
+                        args: vec![Value::Str("7".into())]
+                    }
+                );
+                assert_eq!(elems[1], Value::nullary("NoResult"));
+            }
+            other => panic!("expected Seq of 2 Results, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_result_seq_roundtrips_through_z3() {
+        let term = value_to_smtlib_seq(&Value::Seq(vec![]), "Result").unwrap();
+        let smt = format!(
+            "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult_0 Int)))))\n\
+             (declare-const lr (Seq Result))\n\
+             (assert (= lr {term}))"
+        );
+        match sat_model(&smt).get("lr") {
+            Some(Value::Seq(elems)) => assert!(elems.is_empty(), "expected empty seq, got {elems:?}"),
+            other => panic!("expected empty Seq, got {other:?}"),
+        }
     }
 
     // -----------------------------------------------------------------------

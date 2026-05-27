@@ -77,6 +77,7 @@ impl FsmEngine for GreenfieldEngine {
             given: vec![],
             effects,
             halt: None,
+            last_results: None,
             world_writes: vec![],
             world_reads: vec![],
         };

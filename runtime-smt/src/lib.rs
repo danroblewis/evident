@@ -34,14 +34,14 @@ pub mod world;
 
 pub use cache::TickCache;
 pub use driver::{run_fsm, RunReport, DEFAULT_MAX_TICKS};
-pub use effect::{dispatch_all, DispatchOutcome};
+pub use effect::{dispatch_all, dispatch_all_with_results, dispatch_one, DispatchOutcome};
 pub use frontend::{transpile_claim, FrontendError};
 pub use fsm_frontend::transpile_fsm;
 pub use scheduler::{run, run_cached, run_to_string};
 pub use halt::{decide as halt_decide, HaltReason};
 pub use tick::{solve_tick, TickError};
 pub use spec::{
-    EffectSpec, EffectValue, FsmSpec, GivenVar, HaltSpec, Lit, Problem, Sort, StateVar, TickModel,
-    WorldVar,
+    EffectSpec, EffectValue, FsmSpec, GivenVar, HaltSpec, LastResultsSpec, Lit, Problem, Sort,
+    StateVar, TickModel, WorldVar,
 };
 pub use z3c::{solve_smtlib, Model, SolveOutcome, Value, Z3Ctx, Z3Error};
