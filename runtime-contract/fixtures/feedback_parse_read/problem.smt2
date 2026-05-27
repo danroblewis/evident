@@ -6,7 +6,8 @@
 ; Then append:  (check-sat) / (get-model) / uniqueness assertions
 ; None of these files contain (check-sat).
 ;
-; effects_in_smt: false — effects not encoded here; see expected_effects.txt
+; effects_in_smt: true — the effects Seq is encoded below (the Read arm prints
+; good/bad, both read from last_results), so both SMT engines decode it.
 
 ; ── Datatype declarations ─────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@
 (declare-const state      PState)
 (declare-const state_next PState)
 (declare-const last_results (Seq Result))
+(declare-const effects    (Seq Effect))
 
 ; good: derived from last_results[0]
 (declare-const good String)
@@ -69,3 +71,15 @@
   (ite (is-Issue state) Read
   (ite (is-Read  state) Done
                         Done))))
+
+; effects = match state
+;   Issue => ⟨ParseInt("42"), ParseInt("not-a-number")⟩
+;   Read  => ⟨Println(good), Println(bad), Exit(0)⟩   ← good/bad read from last_results
+;   Done  => ⟨⟩
+(assert (= effects
+  (ite (is-Issue state)
+       (seq.++ (seq.unit (ParseInt "42")) (seq.unit (ParseInt "not-a-number")))
+  (ite (is-Read  state)
+       (seq.++ (seq.unit (Println good))
+               (seq.++ (seq.unit (Println bad)) (seq.unit (Exit 0))))
+       (as seq.empty (Seq Effect))))))

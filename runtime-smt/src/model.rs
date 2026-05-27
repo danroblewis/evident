@@ -177,6 +177,7 @@ mod tests {
             given: Vec::new(),
             effects,
             halt,
+            last_results: None,
             world_writes,
             world_reads: Vec::new(),
         }

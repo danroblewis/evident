@@ -1,0 +1,35 @@
+{
+  "format_version": 1,
+  "name": "ffi_shellrun_exit",
+  "fsm_claim": "shell_demo",
+  "source_ev": "runtime-contract/fixtures/ffi_shellrun_exit/source.ev",
+  "from_example": null,
+  "from_claim": "sat_runs_then_exits",
+  "how_built": "handwritten",
+  "notes": "Effect beyond Println/Exit: ShellRun (a synchronous shell command whose result is a StringResult) chained with Exit(0) in one tick. Proves a non-Println/Exit OS effect is emitted AND ordered correctly with a following Exit (mode-1 literal Seq order). ShellRun is not in the FFI-construction ban list, so no `external` needed. The shell command's C side effect is dispatch, not part of the transition relation; the contract unit is the emitted ordered effect list. Doubly-witnessed: CurrentRuntime probe sat_runs_then_exits + SmtLib Method A/B.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": null,
+  "world_fields": [],
+
+  "given": {
+    "state": {"enum": "SState", "variant": "SRun", "fields": []}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "state_next": {"enum": "SState", "variant": "SDone", "fields": []}
+    },
+    "effects": [
+      {"enum": "Effect", "variant": "ShellRun", "fields": [{"str": "echo hi"}]},
+      {"enum": "Effect", "variant": "Exit", "fields": [{"int": 0}]}
+    ],
+    "halt": true,
+    "exit_code": 0
+  },
+
+  "effects_in_smt": true
+}

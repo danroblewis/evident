@@ -59,6 +59,12 @@ struct Meta {
     expect_model: HashMap<String, Value>,
     /// Golden dispatched effects, in order (each an `Effect` enum value).
     expect_effects: Vec<Value>,
+    /// Effect-dispatch mode (FORMAT.md §6). 1 (default) → the FSM declares an
+    /// `effects` slot; dispatch is that `Seq`'s literal order (read from
+    /// `effects_var`). 2 → no slot; effects are scraped from all bindings and
+    /// toposorted by `Seq(Effect)` ordering edges (witnessed via the runtime's
+    /// `collect_tick_effects`, not a single pre-ordered binding).
+    dispatch_mode: u8,
 }
 
 /// What an engine produced for one fixture. Compared structurally against the golden.
@@ -147,8 +153,39 @@ fn parse_meta(path: &Path, name: &str) -> Meta {
         Some(Json::Array(a)) => a.iter().map(|v| json_to_value(v, name)).collect(),
         _ => Vec::new(),
     };
+    let dispatch_mode = j.get("dispatch_mode").and_then(|v| v.as_u64()).unwrap_or(1) as u8;
 
-    Meta { fsm_claim, source_ev, effects_var, given, expect_unsat, expect_forbidden, expect_model, expect_effects }
+    Meta { fsm_claim, source_ev, effects_var, given, expect_unsat, expect_forbidden, expect_model, expect_effects, dispatch_mode }
+}
+
+/// Encode an `ast::Effect` back to the golden `Value` shape — the inverse of the
+/// runtime's `decode_effect`, for the dispatchable scalar Effect variants a
+/// mode-2 ordering fixture emits. FFI/memory variants don't appear in an
+/// ordering fixture; they panic loudly if one ever does (extend then).
+fn effect_to_value(e: &evident_runtime::ast::Effect) -> Value {
+    use evident_runtime::ast::Effect::*;
+    let mk = |variant: &str, fields: Vec<Value>| Value::Enum {
+        enum_name: "Effect".to_string(),
+        variant: variant.to_string(),
+        fields,
+    };
+    match e {
+        NoEffect      => mk("NoEffect", vec![]),
+        Print(s)      => mk("Print", vec![Value::Str(s.clone())]),
+        Println(s)    => mk("Println", vec![Value::Str(s.clone())]),
+        ReadLine      => mk("ReadLine", vec![]),
+        Time          => mk("Time", vec![]),
+        Exit(n)       => mk("Exit", vec![Value::Int(*n)]),
+        ParseInt(s)   => mk("ParseInt", vec![Value::Str(s.clone())]),
+        ParseReal(s)  => mk("ParseReal", vec![Value::Str(s.clone())]),
+        IntToStr(n)   => mk("IntToStr", vec![Value::Int(*n)]),
+        RealToStr(r)  => mk("RealToStr", vec![Value::Real(*r)]),
+        ShellRun(s)   => mk("ShellRun", vec![Value::Str(s.clone())]),
+        MonotonicTime => mk("MonotonicTime", vec![]),
+        other => panic!(
+            "effect_to_value: {other:?} not supported in a mode-2 ordering fixture (extend if needed)"
+        ),
+    }
 }
 
 /// Tagged-JSON → `Value` (FORMAT.md §3). Panics on an unknown/malformed tag so a
@@ -249,12 +286,21 @@ impl FsmEngine for CurrentRuntimeEngine {
                 model.insert(k.clone(), v.clone());
             }
         }
-        let effects = match &fx.meta.effects_var {
-            Some(ev) => match r.bindings.get(ev) {
-                Some(Value::SeqEnum(es)) => es.clone(),
-                _ => Vec::new(),
-            },
-            None => Vec::new(),
+        let effects = if fx.meta.dispatch_mode == 2 {
+            // Mode 2: witness the runtime's actual toposort dispatch order
+            // (no `effects` slot → primary_var None), then encode back to Value.
+            rt.collect_tick_effects(&fx.meta.fsm_claim, &r.bindings, None)
+                .iter()
+                .map(effect_to_value)
+                .collect()
+        } else {
+            match &fx.meta.effects_var {
+                Some(ev) => match r.bindings.get(ev) {
+                    Some(Value::SeqEnum(es)) => es.clone(),
+                    _ => Vec::new(),
+                },
+                None => Vec::new(),
+            }
         };
         Outcome::Sat { model, effects }
     }

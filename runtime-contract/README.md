@@ -20,7 +20,7 @@ Two engines run every fixture (`runtime/tests/behavior_contract.rs`):
 - **`SmtLibEngine`** solves the portable `*.smt2` with Z3 alone (no Evident
   pipeline). Passing proves the SMT-LIB capture is faithful and engine-neutral.
 
-Both pass **15/15** today.
+Both pass **22/22** today.
 
 > **This directory is now also a Rust lib crate** (`runtime-contract`, see
 > `Cargo.toml` + `src/`). It owns the engine-neutral `FsmEngine` trait, the
@@ -45,7 +45,7 @@ runtime-contract/
   survey/              ← Phase-1 behavior survey + INDEX (the catalog)
     INDEX.md           ← the 7 behaviors → fixtures map + contract TODOs
     01-tick.md … 07-last-results.md
-  fixtures/<name>/     ← 15 captured fixtures (see below)
+  fixtures/<name>/     ← 22 captured fixtures (see below)
     meta.json            roles + typed pins (given) + typed golden (expect)
     problem.smt2         the transition RELATION (sorts + constraints)
     prev.smt2            pins the FSM's previous state
@@ -60,16 +60,23 @@ runtime/tests/behavior_contract.rs   ← the harness (trait + 2 engines + runner
 The harness lives under `runtime/tests/` so it runs as part of `./test.sh`
 (Phase 2, `cargo test`). It reads fixtures from `../runtime-contract/fixtures/`.
 
-## The 15 fixtures (6 clusters across 7 behaviors)
+## The 22 fixtures (9 clusters across the behaviors)
 
 | Cluster | Fixtures | Behavior |
 |---|---|---|
 | A | `tick_hello_init`, `tick_counter_start`, `tick_exit_42` | tick basics + `Exit` / halt encoding |
 | B | `effects_int_to_str`, `effects_chain_four`, `effects_empty_absorbing` | effect emission + ordering (mode-1) |
-| C | `prev_first_tick_zero`, `prev_increment`, `prev_record_fields` | state threading (`_var` time-shift) |
-| D | `feedback_format_tick`, `feedback_parse_read` | `last_results` / effect feedback |
+| C | `prev_first_tick_zero`, `prev_increment`, `prev_record_fields` | state threading (`_var` time-shift) — effects now encoded |
+| D | `feedback_format_tick`, `feedback_parse_read`, `feedback_int_payload` | `last_results` / effect feedback (string + Int-payload threading) |
 | E | `world_writer_producer`, `world_reader_consumer` | multi-FSM via shared world (single-tick slices) |
 | F | `unsat_bad_transition`, `unsat_hello_done_to_init` | negative / impossible transitions |
+| G | `ffi_libcall_emit`, `ffi_shellrun_exit` | FFI / OS effect emission beyond `Println`/`Exit` |
+| H | `async_signal_exit`, `async_tick_count_read`, `async_stdin_line_read` | async-source field **reads** (`signal_received` / `tick_count` / `stdin_line`) |
+| I | `mode2_ordered_chain` | mode-2 dispatch: toposort of scraped Effect bindings (`dispatch_mode:2`) |
+
+Clusters G–I and `feedback_int_payload`, plus encoding the Cluster-C effects,
+are the **gap-closing** additions — see [`MATRIX.md`](MATRIX.md) "The four
+boundaries — now closed".
 
 Each fixture's golden was **derived from the current engine** (its `source.ev`
 probe `sat_`/`unsat_` claim passes `evident test`) and **cross-checked against
@@ -160,6 +167,15 @@ pin as single-tick fixtures. They are recorded here so a new engine designs them
 deliberately rather than inheriting an accidental encoding. None are faked into a
 fixture.
 
+> **gap-closing status.** TODO #2 (mode-2 dispatch) is now captured for a **total**
+> ordering (`mode2_ordered_chain`); the partial-order random tie-break remains
+> open. TODO #4's **read** side (how an FSM reads an injected world field) is now
+> captured (`async_*`); the async **injection** (awaiter) is unchanged. TODOs #1
+> and #5 (multi-tick / `run` percolation) are unchanged. TODO #3 (negative under
+> the fast path) is unchanged. The `last_results` and FFI-effect captures (with
+> the Cluster-C effects now encoded) closed the formerly `✓ˢ` effect boundary —
+> both SMT engines are at 22 ✓ / 0 ✓ˢ. See [`MATRIX.md`](MATRIX.md).
+
 1. **Cross-FSM wake propagation / same-tick writer→reader visibility.** Cluster E
    captures a *writer's* tick and a *reader's* tick in isolation. The scheduler
    property "writer changes `world.X` → reader is woken next tick" and
@@ -197,8 +213,8 @@ fixture.
    here; it deserves its own fixture cluster once the multi-tick format exists.
 
 6. **Transpiler gap (`translate/smtlib.rs`).** The existing Evident→SMT-LIB
-   transpiler covers only a scalar QF subset (no enums / `match` / `Seq`), so 12
-   of 15 `problem.smt2` files are `handwritten`. Extending the transpiler to emit
+   transpiler covers only a scalar QF subset (no enums / `match` / `Seq`), so all
+   but the scalar-nucleus `problem.smt2` files are `handwritten`. Extending the transpiler to emit
    `declare-datatypes`, lower `Expr::Match`→nested `ite`, and `SeqLit`→`seq.++`
    would let most fixtures be regenerated as `transpiled` — a transpiler TODO, not
    a contract blocker. The scalar base (`runtime/tests/smtlib_roundtrip.rs`) stays

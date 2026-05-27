@@ -20,7 +20,7 @@ use std::io::Write;
 
 use crate::cache::TickCache;
 use crate::driver::RunReport;
-use crate::effect::dispatch_all;
+use crate::effect::dispatch_all_with_results;
 use crate::halt::{decide, HaltReason};
 use crate::schedule::order;
 use crate::spec::{FsmSpec, Problem, TickModel};
@@ -82,6 +82,16 @@ where
     // Shared world as of end of last tick (init before tick 0).
     let mut world_prev = init_world(&problem.world);
 
+    // Per-FSM `last_results` carry: the ordered `Result`-enum Seq produced by
+    // THIS FSM's effects last tick, threaded into next tick's given. Empty on
+    // tick 0 (no prior effects). Only FSMs that declare a `last_results` spec
+    // participate; the rest carry an unused empty Seq.
+    let mut fsm_last_results: Vec<Value> = problem
+        .fsms
+        .iter()
+        .map(|_| Value::Seq(Vec::new()))
+        .collect();
+
     let mut ticks: u64 = 0;
     loop {
         if ticks >= max_ticks {
@@ -95,16 +105,22 @@ where
 
         for &idx in &order {
             let fsm = &problem.fsms[idx];
-            let given = build_given(fsm, &world_current, &world_prev);
+            let mut given = build_given(fsm, &world_current, &world_prev);
+            // Pin the previous tick's effect results under the declared var.
+            if let Some(lr) = &fsm.last_results {
+                given.insert(lr.var.clone(), fsm_last_results[idx].clone());
+            }
             let model = solve(fsm, &fsm_prev[idx], &given)?;
 
-            if let Some(c) = dispatch_all(&model.effects, out)
-                .map_err(|e| TickError::Z3(format!("effect IO failed: {e}")))?
-            {
+            let (exit, results) = dispatch_all_with_results(&model.effects, out)
+                .map_err(|e| TickError::Z3(format!("effect IO failed: {e}")))?;
+            if let Some(c) = exit {
                 if exit_code.is_none() {
                     exit_code = Some(c);
                 }
             }
+            // Carry this tick's results forward as next tick's last_results.
+            fsm_last_results[idx] = Value::Seq(results);
 
             record_writes(&model, &mut world_current);
 
@@ -155,6 +171,7 @@ mod tests {
     const TWO_FSMS: &str = include_str!("../fixtures/two_fsms.smt2");
     const COUNTDOWN: &str = include_str!("../fixtures/countdown.smt2");
     const PINGPONG: &str = include_str!("../fixtures/pingpong.smt2");
+    const FEEDBACK: &str = include_str!("../fixtures/feedback_loop.smt2");
 
     #[test]
     fn two_fsms_producer_consumer() {
@@ -206,5 +223,22 @@ mod tests {
         assert_eq!(stdout, "tick\ntick\ntick\ndone\n");
         assert_eq!(report.reason, HaltReason::Exit(0));
         assert_eq!(report.ticks, 4);
+    }
+
+    #[test]
+    fn feedback_loop_threads_last_results_across_ticks() {
+        // The proof that effect RESULTS thread across ticks:
+        //   tick 0 emits IntToStr(42) -> dispatcher produces StringResult("42")
+        //   tick 1 reads last_results[0] = StringResult("42") -> Println("42")
+        //   tick 2 Println("bye") + Exit(0)
+        // If threading were broken, tick 1 would print "" (the StringResult
+        // payload would never reach it), so "42" on the first line is the
+        // load-bearing assertion.
+        let problem = load_str(FEEDBACK).expect("fixture loads");
+        let (stdout, report) = run_to_string(&problem, DEFAULT_MAX_TICKS).unwrap();
+        assert_eq!(stdout, "42\nbye\n", "stdout was:\n{stdout}");
+        assert_eq!(report.reason, HaltReason::Exit(0));
+        assert_eq!(report.exit_code, 0);
+        assert_eq!(report.ticks, 3);
     }
 }

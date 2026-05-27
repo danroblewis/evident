@@ -5,3 +5,5 @@
 
 (assert (= |pos.x| 8))
 (assert (= |pos.y| 13))
+
+(assert (= effects (seq.++ (seq.unit (Println "walker done at done")) (seq.unit (Exit 0)))))

@@ -182,9 +182,18 @@ runtimes are complementary: the legacy front-end *feeds* this execution model.
 
 This is a minimal engine; completeness was explicitly not a goal. Honest gaps:
 
-- **Effects beyond `Println` / `Exit`.** No FFI / `LibCall`, no `IntToStr` +
-  `last_results` threading, no FTI typed resources. `effect.rs` ignores unknown
-  effect constructors rather than dispatching them.
+- **Effects beyond `Println` / `Exit`.** No FFI / `LibCall`, no FTI typed
+  resources. `effect.rs` ignores unknown effect constructors rather than
+  dispatching them. **`last_results` threading IS supported** (see
+  `fixtures/feedback_loop.smt2`): the dispatcher maps each effect to a `Result`
+  value (`IntToStr`→`StringResult`, `ParseInt`→`IntResult`/`ErrorResult`,
+  `MonotonicTime`/`Time`→a deterministic `IntResult(0)` stub — no wall clock so
+  runs stay reproducible), and the scheduler pins the prior tick's ordered
+  `(Seq Result)` as the next tick's `last_results` given. No `.ev` cross-check
+  pair for this yet — the greenfield `transpile_fsm` front-end doesn't transpile
+  `match last_results[0]` / `IntToStr` FSM bodies (scalar subset only), so the
+  fixture is hand-authored SMT-LIB and the threaded stdout is asserted by a Rust
+  test (`scheduler::tests::feedback_loop_threads_last_results_across_ticks`).
 - **No async event sources** (FrameTimer / Stdin / Sigint). The loop is purely
   subscription-free: all FSMs tick every tick. There is no blocking wait on
   external events.

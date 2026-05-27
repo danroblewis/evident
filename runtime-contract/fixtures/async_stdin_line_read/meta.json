@@ -1,0 +1,35 @@
+{
+  "format_version": 1,
+  "name": "async_stdin_line_read",
+  "fsm_claim": "line_reader",
+  "source_ev": "runtime-contract/fixtures/async_stdin_line_read/source.ev",
+  "from_example": null,
+  "from_claim": "sat_echoes_stdin_line",
+  "how_built": "handwritten",
+  "notes": "Async event source READ-side: how a user FSM reads the injected world.stdin_line field (the StdinSource plugin-as-writer field). stdin_line=\"hello\" (≠\"quit\") → echo it, stays LWait. The deterministic transition (dispatch on the line value, string-concat into the echo) is captured here; the async INJECTION (the blocking read(2) on fd 0 / awaiter that publishes stdin_line) is external I/O and outside a deterministic fixture — the bigger awaiter sub-project. Doubly-witnessed: CurrentRuntime probe sat_echoes_stdin_line + SmtLib Method A/B.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": null,
+  "world_fields":     ["stdin_line"],
+
+  "given": {
+    "world.stdin_line": {"str": "hello"},
+    "state": {"enum": "LState", "variant": "LWait", "fields": []}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "state_next": {"enum": "LState", "variant": "LWait", "fields": []}
+    },
+    "effects": [
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "echo: hello"}]}
+    ],
+    "halt": false,
+    "exit_code": null
+  },
+
+  "effects_in_smt": true
+}

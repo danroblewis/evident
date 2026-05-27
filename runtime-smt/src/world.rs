@@ -66,6 +66,7 @@ mod tests {
             given: Vec::new(),
             effects: None,
             halt: None,
+            last_results: None,
             world_writes: Vec::new(),
             world_reads: world_reads.into_iter().map(|s| s.to_string()).collect(),
         }

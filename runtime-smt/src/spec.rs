@@ -140,6 +140,38 @@ pub struct HaltSpec {
     pub var: Option<String>,
 }
 
+/// Where the FSM reads the PREVIOUS tick's effect results. The engine dispatches
+/// tick K's effects, maps each to a `Result`-enum value (see `effect.rs`), and
+/// pins the ordered `(Seq Result)` of those as tick K+1's `given[var]`. On tick
+/// 0 the pin is the empty sequence. `elem_sort` is the SMT-LIB element sort name
+/// (default `"Result"`), needed to emit the empty-seq `(as seq.empty …)` form.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct LastResultsSpec {
+    /// SMT-LIB const the FSM reads as the prior tick's results (default
+    /// `"last_results"`).
+    #[serde(default = "default_last_results_var")]
+    pub var: String,
+    /// Element sort name of the `(Seq T)` (default `"Result"`).
+    #[serde(default = "default_result_sort")]
+    pub elem_sort: String,
+}
+
+fn default_last_results_var() -> String {
+    "last_results".to_string()
+}
+fn default_result_sort() -> String {
+    "Result".to_string()
+}
+
+impl Default for LastResultsSpec {
+    fn default() -> Self {
+        LastResultsSpec {
+            var: default_last_results_var(),
+            elem_sort: default_result_sort(),
+        }
+    }
+}
+
 /// One finite state machine: its transition relation plus the role assignments.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct FsmSpec {
@@ -156,6 +188,10 @@ pub struct FsmSpec {
     pub effects: Option<EffectSpec>,
     #[serde(default)]
     pub halt: Option<HaltSpec>,
+    /// Where this FSM reads the previous tick's effect results. When present,
+    /// the engine threads dispatched `Result`s into the next tick's `given`.
+    #[serde(default)]
+    pub last_results: Option<LastResultsSpec>,
     /// N3: world var names this FSM writes this tick (its model exposes a `next`
     /// const for each). Empty for single-FSM problems.
     #[serde(default)]

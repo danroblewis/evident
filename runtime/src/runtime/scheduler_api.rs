@@ -5,6 +5,22 @@ use super::{EvidentRuntime, Value};
 use std::collections::HashMap;
 
 impl EvidentRuntime {
+    /// Collect the effects this tick would DISPATCH, in dispatch order — exactly
+    /// the scheduler's `collect_dispatchable_effects`. `primary_var` is the FSM's
+    /// `effects` slot for **mode 1** (dispatch is the literal `Seq` order);
+    /// `None` selects **mode 2** (scrape every `Effect`-valued binding and
+    /// toposort by the `Seq(Effect)` ordering-edge declarations). Exposed so the
+    /// behavior-contract harness can witness mode-2 ordering against the real
+    /// runtime, rather than reading a single pre-ordered binding.
+    pub fn collect_tick_effects(
+        &self,
+        claim_name: &str,
+        bindings: &HashMap<String, Value>,
+        primary_var: Option<&str>,
+    ) -> Vec<crate::core::ast::Effect> {
+        crate::effect_loop::collect_dispatchable_effects(self, claim_name, bindings, primary_var)
+    }
+
     /// Pin enum-typed (Datatype) variables for one query; used by the scheduler
     /// to fix `state` and `last_results` per tick.
     pub fn query_with_pinned_datatypes(

@@ -1,0 +1,42 @@
+-- ffi_libcall_emit — one tick of `ffi_demo`, emitting an FFI effect.
+-- Proves an effect BEYOND Println/Exit (a LibCall carrying a Seq(FFIArg)
+-- payload) is emitted and reproduced. The per-tick contract unit is the EMITTED
+-- effect list (what the dispatcher would run); the actual libffi C call is
+-- dispatch, NOT part of the transition relation.
+--
+-- FFI construction lives in an `external claim` helper (the sanctioned pattern,
+-- per CLAUDE.md — raw LibCall is only allowed in `external` schemas); the FSM is
+-- an ordinary translatable schema that invokes the helper to obtain the effect.
+-- Probe claim: sat_emits_libcall
+
+import "stdlib/runtime.ev"
+
+enum FState = FStart | FDone
+
+-- The FFI effect, wrapped behind a typed external claim.
+external claim make_abs_call(out ∈ Effect)
+    out = LibCall("libc", "abs", "i(i)", ⟨ArgInt(-7)⟩)
+
+fsm ffi_demo(state ∈ FState)
+    state_next = match state
+        FStart ⇒ FDone
+        FDone  ⇒ FDone
+
+    -- obtain the LibCall effect from the external helper
+    abs_eff ∈ Effect
+    make_abs_call(abs_eff)
+
+    effects = match state
+        FStart ⇒ ⟨abs_eff⟩
+        FDone  ⇒ ⟨⟩
+
+claim sat_emits_libcall
+    state ∈ FState
+    state_next ∈ FState
+    effects ∈ Seq(Effect)
+    abs_eff ∈ Effect
+    state = FStart
+    make_abs_call(abs_eff)
+    ffi_demo
+    state_next = FDone
+    effects = ⟨abs_eff⟩

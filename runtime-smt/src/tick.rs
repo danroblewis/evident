@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::assertion::pin_assertions;
+use crate::assertion::pin_assertions_with_seq_sorts;
 use crate::model::extract;
 use crate::spec::{FsmSpec, TickModel};
 use crate::z3c::{SolveOutcome, Solver, Value, Z3Ctx};
@@ -61,7 +61,13 @@ pub fn solve_tick(
     prev: &BTreeMap<String, Value>,
     given: &BTreeMap<String, Value>,
 ) -> Result<TickModel, TickError> {
-    let pins = pin_assertions(prev, given).map_err(TickError::Pin)?;
+    // A `last_results` pin is a `(Seq <elem_sort>)`; give the emitter the element
+    // sort so the empty-tick-0 case lowers to `(as seq.empty (Seq T))`.
+    let mut seq_sorts: BTreeMap<String, String> = BTreeMap::new();
+    if let Some(lr) = &fsm.last_results {
+        seq_sorts.insert(lr.var.clone(), lr.elem_sort.clone());
+    }
+    let pins = pin_assertions_with_seq_sorts(prev, given, &seq_sorts).map_err(TickError::Pin)?;
 
     // Fresh context per tick — see the module-level isolation note.
     let ctx = Z3Ctx::new();

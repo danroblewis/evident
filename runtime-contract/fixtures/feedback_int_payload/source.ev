@@ -1,0 +1,37 @@
+-- feedback_int_payload — one tick of `accumulator` FSM.
+-- Proves the Int PAYLOAD of a prior result threads through last_results and is
+-- used numerically (not just variant-matched): n = IntResult(41) payload → 41,
+-- effects = ⟨IntToStr(n + 1)⟩ = ⟨IntToStr(42)⟩.
+-- Probe claim: sat_ready_increments
+
+import "stdlib/runtime.ev"
+
+enum AState = AStart | AReady | ADone
+
+fsm accumulator(state ∈ AState)
+    state_next = match state
+        AStart ⇒ AReady
+        AReady ⇒ ADone
+        ADone  ⇒ ADone
+
+    -- pull the Int payload from last_results[0] and use it numerically
+    n ∈ Int
+    n = match last_results[0]
+        IntResult(v) ⇒ v
+        _            ⇒ 0
+
+    effects = match state
+        AStart ⇒ ⟨ParseInt("41")⟩
+        AReady ⇒ ⟨IntToStr(n + 1)⟩
+        ADone  ⇒ ⟨⟩
+
+claim sat_ready_increments
+    state ∈ AState
+    state_next ∈ AState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = AReady
+    last_results = ⟨IntResult(41)⟩
+    accumulator
+    state_next = ADone
+    effects = ⟨IntToStr(42)⟩
