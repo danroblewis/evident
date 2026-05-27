@@ -44,6 +44,9 @@ gl = "0.14"
 # to exercise `Functionizer::compile` directly. Same z3 version as
 # the lib so the `Dynamic`/`Context` types unify.
 z3 = "0.12"
+# Portable behavior-contract harness: the FsmEngine trait + fixture loader
+# + matrix runner that `tests/contract_evolve.rs` (strategy 2) plugs into.
+runtime-contract = { path = "../runtime-contract" }
 
 [lib]
 name = "evident_runtime"
