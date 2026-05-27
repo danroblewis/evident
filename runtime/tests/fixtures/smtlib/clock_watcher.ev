@@ -1,0 +1,19 @@
+-- Evident oracle for clock_watcher.json — two FSMs coordinated through the
+-- shared `World`. `clock` (writer) increments world.tick each tick and prints
+-- "tick" (the Println keeps it self-scheduled). `watcher` (reader) wakes on the
+-- world.tick delta and Exits once it reaches 3. stdout must match
+-- `effect-run-smtlib clock_watcher.json`.
+
+import "stdlib/runtime.ev"
+
+type World
+    tick ∈ Int
+
+fsm clock(world ∈ World, world_next ∈ World)
+    n ∈ Int = (is_first_tick ? 1 : _n + 1)
+    world_next.tick = n
+    effects = ⟨Println("tick")⟩
+
+fsm watcher(world ∈ World)
+    done ∈ Bool = (world.tick ≥ 3)
+    effects = (done ? ⟨Println("done"), Exit(0)⟩ : ⟨⟩)

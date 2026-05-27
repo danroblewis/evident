@@ -1,0 +1,26 @@
+{
+  "//": "SMT-LIB countdown FSM. count = is_first_tick ? 3 : _count-1; prints",
+  "//2": "'tick' while >0, then 'liftoff' + Exit(0). Mirror of countdown.ev.",
+  "fsms": [
+    {
+      "meta": {
+        "fsm": "countdown",
+        "vars": [
+          { "name": "count", "sort": "Int" },
+          { "name": "_count", "sort": "Int" },
+          { "name": "is_first_tick", "sort": "Bool" },
+          { "name": "more", "sort": "Bool" },
+          { "name": "done", "sort": "Bool" }
+        ],
+        "outputs": ["count"],
+        "effects_var": "effects",
+        "effects": [
+          { "guard": "more", "variant": "Println", "args": [{ "lit_str": "tick" }] },
+          { "guard": "done", "variant": "Println", "args": [{ "lit_str": "liftoff" }] },
+          { "guard": "done", "variant": "Exit", "args": [{ "lit_int": 0 }] }
+        ]
+      },
+      "smtlib": "(declare-const count Int)\n(declare-const _count Int)\n(declare-const is_first_tick Bool)\n(declare-const more Bool)\n(declare-const done Bool)\n(assert (= count (ite is_first_tick 3 (- _count 1))))\n(assert (= more (> count 0)))\n(assert (= done (<= count 0)))\n"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+-- Evident oracle for decr_halt.json. Counts down from 3, prints "step" while
+-- counting, then emits NO effects — the scheduler halts cleanly because no FSM
+-- is scheduled (no effect self-feedback, no tracked state change). Tests the
+-- no-Exit halt path. stdout must match `effect-run-smtlib decr_halt.json`.
+
+import "stdlib/runtime.ev"
+
+fsm decr
+    count ∈ Int
+    count = (is_first_tick ? 3 : _count - 1)
+    effects = (count > 0 ? ⟨Println("step")⟩ : ⟨⟩)

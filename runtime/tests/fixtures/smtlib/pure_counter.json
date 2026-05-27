@@ -1,0 +1,46 @@
+{
+  "//": "Hand-transpiled from examples/test_20_pure_counter.ev — a REAL corpus",
+  "//2": "example run through the SMT-LIB path. count = is_first_tick ? 0 :",
+  "//3": "_count+1; the previous tick's IntToStr result is read back via the",
+  "//4": "`inputs` binding (last_results[0].StringResult) and concatenated into",
+  "//5": "the printed line with SMT-LIB str.++ . Must match `evident effect-run",
+  "//6": "examples/test_20_pure_counter.ev`: starting / count=0..3 / Exit(0).",
+  "fsms": [
+    {
+      "meta": {
+        "fsm": "counter",
+        "vars": [
+          { "name": "count", "sort": "Int" },
+          { "name": "_count", "sort": "Int" },
+          { "name": "is_first_tick", "sort": "Bool" },
+          { "name": "fmt_str", "sort": "Str" },
+          { "name": "line", "sort": "Str" },
+          { "name": "g_start", "sort": "Bool" },
+          { "name": "g_le3", "sort": "Bool" },
+          { "name": "g_mid", "sort": "Bool" },
+          { "name": "g_gt3", "sort": "Bool" }
+        ],
+        "outputs": ["count"],
+        "effects_var": "effects",
+        "last_results_var": "last_results",
+        "inputs": [
+          {
+            "var": "fmt_str",
+            "sort": "Str",
+            "index": 0,
+            "variant": "StringResult",
+            "default": { "lit_str": "?" }
+          }
+        ],
+        "effects": [
+          { "guard": "g_le3", "variant": "IntToStr", "args": [{ "var": "count" }] },
+          { "guard": "g_start", "variant": "Println", "args": [{ "lit_str": "starting" }] },
+          { "guard": "g_mid", "variant": "Println", "args": [{ "var": "line" }] },
+          { "guard": "g_gt3", "variant": "Println", "args": [{ "var": "line" }] },
+          { "guard": "g_gt3", "variant": "Exit", "args": [{ "lit_int": 0 }] }
+        ]
+      },
+      "smtlib": "(declare-const count Int)\n(declare-const _count Int)\n(declare-const is_first_tick Bool)\n(declare-const fmt_str String)\n(declare-const line String)\n(declare-const g_start Bool)\n(declare-const g_le3 Bool)\n(declare-const g_mid Bool)\n(declare-const g_gt3 Bool)\n(assert (= count (ite is_first_tick 0 (+ _count 1))))\n(assert (= line (str.++ \"count = \" fmt_str)))\n(assert (= g_start (= count 0)))\n(assert (= g_le3 (<= count 3)))\n(assert (= g_mid (and (>= count 1) (<= count 3))))\n(assert (= g_gt3 (> count 3)))\n"
+    }
+  ]
+}
