@@ -8,3 +8,6 @@
 ;    (see expected_effects.txt)
 
 (assert (= state_next Done))
+(assert (= effects
+  (seq.++ (seq.unit (Println "good: parsed an Int"))
+          (seq.++ (seq.unit (Println "bad: ERROR was correct")) (seq.unit (Exit 0))))))

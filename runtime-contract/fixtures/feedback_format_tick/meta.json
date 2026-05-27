@@ -33,5 +33,5 @@
     "exit_code": null
   },
 
-  "effects_in_smt": false
+  "effects_in_smt": true
 }

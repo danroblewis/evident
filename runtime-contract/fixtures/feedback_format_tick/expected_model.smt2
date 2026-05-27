@@ -7,3 +7,4 @@
 ;    effects = [Println("tick 5")]  (see expected_effects.txt)
 
 (assert (= state_next (Count 4)))
+(assert (= effects (seq.unit (Println "tick 5"))))
