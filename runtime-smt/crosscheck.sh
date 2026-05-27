@@ -71,5 +71,29 @@ for pair in "${FE_PAIRS[@]}"; do
     fi
 done
 
+# --- Convergence cross-check: transpile + run a real Evident FSM, compare to ---
+# --- the oracle's `evident effect-run` byte-for-byte (stdout AND exit code). ---
+# This is the full hybrid pipeline:  .ev → transpile_fsm → engine run.
+FSM_TARGETS=(
+    "runtime-smt/crosscheck/countdown.ev"
+    "examples/test_08_exit_code.ev"
+    "examples/test_03_seq_chain.ev"
+)
+for ev in "${FSM_TARGETS[@]}"; do
+    [[ -f "$ROOT/$ev" ]] || { continue; }
+
+    smt_out="$("$SMT" fsm "$ev" 2>/dev/null)"; smt_code=$?
+    ev_out="$("$ORACLE" effect-run "$ev" --max-steps 20 </dev/null 2>/dev/null)"; ev_code=$?
+
+    if [[ "$smt_out" == "$ev_out" && "$smt_code" == "$ev_code" ]]; then
+        echo "  OK   fsm $(basename "$ev")  (exit $smt_code, $(echo "$smt_out" | grep -c .) lines)"
+    else
+        echo "  FAIL fsm $(basename "$ev")  — hybrid vs oracle mismatch:"
+        echo "    exit: runtime-smt=$smt_code oracle=$ev_code"
+        diff <(echo "$smt_out") <(echo "$ev_out") | sed 's/^/      /'
+        fail=1
+    fi
+done
+
 if [[ "$fail" == 0 ]]; then echo "cross-check: all paired fixtures agree"; else echo "cross-check: MISMATCH"; fi
 exit $fail
