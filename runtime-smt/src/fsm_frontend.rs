@@ -148,6 +148,12 @@ enum Binding {
     /// as `(declare-const FIELD <sort>)` + `(assert (= FIELD <expr>))`, with the
     /// bare `FIELD` const as the write target the engine decodes.
     WorldWrite { field: String, value: Expr },
+    /// A bare two-var (in)equality constraint between body vars: `a ≠ b` →
+    /// `(assert (not (= a b)))`, `a = b` → `(assert (= a b))`. These constrain
+    /// fresh per-tick witness vars (e.g. the graph-coloring enum vars) so the
+    /// transition is SAT exactly as the oracle solves it. They don't define a
+    /// var (no decl) — both sides reference vars declared elsewhere.
+    Constraint { lhs: Expr, op: BinOp, rhs: Expr },
 }
 
 /// The RHS of an intermediate var binding.
@@ -223,6 +229,9 @@ struct FsmDef {
     /// World fields this FSM reads (`world.X` anywhere in its body). Ordered,
     /// deduplicated.
     world_reads: Vec<String>,
+    /// Fresh per-tick witness vars (multi-name decls like `a, b ∈ Color`):
+    /// (name, smt_sort). Declared as bare consts in the transition block.
+    fresh_vars: Vec<(String, String)>,
 }
 
 struct Program {
@@ -405,6 +414,10 @@ struct FsmBuilder {
     pending_scalar_decl: Option<String>,
     // Intermediate var declarations in flight: name → smt_sort, awaiting `name = …`.
     pending_intermediate: HashMap<String, String>,
+    /// Fresh per-tick witness vars from multi-name decls (`a, b, c ∈ Color`):
+    /// (name, smt_sort). NOT threaded state — declared as bare consts, the
+    /// solver finds values each tick subject to the body's constraints.
+    fresh_vars: Vec<(String, String)>,
 }
 
 impl FsmBuilder {
@@ -419,6 +432,7 @@ impl FsmBuilder {
             world_reads: Vec::new(),
             pending_scalar_decl: None,
             pending_intermediate: HashMap::new(),
+            fresh_vars: Vec::new(),
         }
     }
 
@@ -541,6 +555,45 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             continue;
         }
 
+        // Chained-membership intermediate var: `X ∈ T = expr` whose RHS is NOT
+        // the `is_first_tick` scalar-state idiom (e.g. `seed_a ∈ Int = tick * 7
+        // + 3`, `a01 ∈ Int = (seed_a > 50 ? … : …)`). A per-tick derived value,
+        // emitted as a declared const + defining assert with the scalar rename.
+        if let Some((name, smt_sort, rhs)) = try_parse_chained_intermediate(trimmed)? {
+            let rhs = rewrite_world_reads(&rhs, read_alias.as_deref(), b);
+            if rhs.contains("last_results") {
+                b.reads_last_results = true;
+            }
+            let toks = tokenize(&rhs)?;
+            let (e, used) = parse_expr(&toks, 0)?;
+            if used != toks.len() {
+                return fe(format!("trailing tokens in `{name}` definition: {rhs:?}"));
+            }
+            b.bindings.push(Binding::IntermediateVar {
+                name,
+                smt_sort,
+                value: BindingValue::Expr(e),
+            });
+            i += 1;
+            continue;
+        }
+
+        // Multi-name declaration: `a, b, c ∈ T` (no `=`). Each name becomes a
+        // fresh per-tick witness const of sort `T` (Color / Int / Bool). These
+        // are NOT threaded state — the solver picks values each tick subject to
+        // the body's constraints (`a ≠ b`, …).
+        if let Some((names, sort)) = try_parse_multiname_decl(trimmed)? {
+            let smt_sort = enum_or_scalar_sort(&sort, &enums)?;
+            for n in names {
+                if b.fresh_vars.iter().any(|(fv, _)| fv == &n) {
+                    return fe(format!("duplicate fresh var declaration `{n}`"));
+                }
+                b.fresh_vars.push((n, smt_sort.clone()));
+            }
+            i += 1;
+            continue;
+        }
+
         // A bare membership decl: `X ∈ T` (no `=` on this line). Could be a
         // two-line scalar state decl OR an intermediate var decl. Stash it.
         if let Some((name, sort)) = try_parse_bare_decl(trimmed)? {
@@ -603,6 +656,22 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             b.bindings.push(Binding::EffectsExpr { raw: raw_rhs });
             i += 1 + consumed;
             continue;
+        }
+
+        // A bare two-var (in)equality constraint: `a ≠ b` / `a = b` (no decl,
+        // no assignment). A `≠` line is unambiguously a constraint. An `=` line
+        // is a constraint only when its LHS is NOT a pending intermediate /
+        // scalar declaration (otherwise `split_assign` below claims it as an
+        // assignment). Both sides are renamed (scalar var → engine prev).
+        if let Some((lhs, op, rhs)) = try_parse_binary_constraint(trimmed)? {
+            let is_assignment = matches!(&lhs, Expr::Ident(n)
+                if b.pending_intermediate.contains_key(n)
+                    || b.pending_scalar_decl.as_deref() == Some(n.as_str()));
+            if op == BinOp::Neq || !is_assignment {
+                b.bindings.push(Binding::Constraint { lhs, op, rhs });
+                i += 1;
+                continue;
+            }
         }
 
         // An intermediate var definition: `X = match last_results[i]` (multi-line)
@@ -719,6 +788,7 @@ fn finish_fsm(b: FsmBuilder, enums: &HashMap<String, Vec<Variant>>) -> Result<Fs
         reads_last_results,
         world_writes,
         world_reads,
+        fresh_vars,
         ..
     } = b;
 
@@ -765,6 +835,7 @@ fn finish_fsm(b: FsmBuilder, enums: &HashMap<String, Vec<Variant>>) -> Result<Fs
         reads_last_results,
         world_writes,
         world_reads,
+        fresh_vars,
     })
 }
 
@@ -1175,7 +1246,12 @@ fn try_parse_bare_decl(line: &str) -> Result<Option<(String, String)>, FrontendE
     }
 }
 
-/// Recognize the single-line `X ∈ Int = (is_first_tick ? INIT : EXPR)`.
+/// Recognize the single-line scalar state `X ∈ Int = (is_first_tick ? INIT :
+/// EXPR)`. An `X ∈ Int = …` whose RHS does NOT use the `is_first_tick` idiom is
+/// NOT scalar state — it is an intermediate Int var (a per-tick derived value).
+/// We return `Ok(None)` for that case so the caller falls through to the
+/// chained-membership intermediate-var path; only a genuine `is_first_tick`
+/// shape produces a [`ScalarState`].
 fn try_parse_scalar_state(line: &str) -> Result<Option<ScalarState>, FrontendError> {
     let in_idx = match line.find('∈') {
         Some(x) => x,
@@ -1195,12 +1271,134 @@ fn try_parse_scalar_state(line: &str) -> Result<Option<ScalarState>, FrontendErr
         return Ok(None);
     }
     let rhs = after[eq + 1..].trim();
+    // Reject `==`, `<=`, `>=`, `!=` — only the membership `=` (a definition).
+    if rhs.starts_with('=') {
+        return Ok(None);
+    }
     if !rhs.contains("is_first_tick") {
-        return fe(format!(
-            "scalar state `{name}` must use the `is_first_tick ? INIT : EXPR` idiom: {rhs:?}"
-        ));
+        // An intermediate Int var (`seed_a ∈ Int = tick * 7 + 3`), NOT scalar
+        // state. Not our shape — let the caller handle it as a chained
+        // intermediate-var definition.
+        return Ok(None);
     }
     Ok(Some(parse_scalar_state_rhs(&name, rhs)?))
+}
+
+/// Recognize a chained-membership intermediate var: `X ∈ T = expr` where `T` is
+/// a scalar sort (Int/Nat/Pos/Bool/String) and the RHS is NOT the
+/// `is_first_tick` scalar-state idiom (that case is consumed by
+/// [`try_parse_scalar_state`] first). Returns `(name, smt_sort, rhs)`. None if
+/// the line is not this shape.
+fn try_parse_chained_intermediate(line: &str) -> Result<Option<(String, String, String)>, FrontendError> {
+    let in_idx = match line.find('∈') {
+        Some(x) => x,
+        None => return Ok(None),
+    };
+    let name = line[..in_idx].trim().to_string();
+    let after = line[in_idx + '∈'.len_utf8()..].trim_start();
+    let eq = match after.find('=') {
+        Some(x) => x,
+        None => return Ok(None),
+    };
+    let sort = after[..eq].trim();
+    // Only bare scalar sorts (no `Seq(...)`, no payload, no enum types here —
+    // enum-typed multi-name decls are handled separately).
+    if sort.contains('(') || sort.contains(char::is_whitespace) {
+        return Ok(None);
+    }
+    let smt_sort = match sort {
+        "Int" | "Nat" | "Pos" => "Int",
+        "Bool" => "Bool",
+        "String" | "Str" => "String",
+        _ => return Ok(None),
+    };
+    if name.is_empty() || name.contains(char::is_whitespace) {
+        return Ok(None);
+    }
+    let rhs = after[eq + 1..].trim();
+    // Reject comparison/eq operators glued to `∈ T =` (e.g. `X ∈ Int == …`).
+    if rhs.starts_with('=') {
+        return Ok(None);
+    }
+    Ok(Some((name, smt_sort.to_string(), rhs.to_string())))
+}
+
+/// Recognize a multi-name declaration: `a, b, c ∈ T` (no `=`). Returns
+/// `(names, type-name)`. None if the line isn't a comma-list of bare identifiers
+/// before `∈ <bare-type>`. (A single-name `X ∈ T` is left for
+/// [`try_parse_bare_decl`]; this fires only when there's ≥ 2 names.)
+fn try_parse_multiname_decl(line: &str) -> Result<Option<(Vec<String>, String)>, FrontendError> {
+    let in_idx = match line.find('∈') {
+        Some(x) => x,
+        None => return Ok(None),
+    };
+    let names_part = line[..in_idx].trim();
+    let after = line[in_idx + '∈'.len_utf8()..].trim();
+    // No `=` on this line — a bare decl (a `… ∈ T = expr` is a chained
+    // intermediate, handled earlier).
+    if after.contains('=') {
+        return Ok(None);
+    }
+    // Only bare type names (no `Seq(...)`, no payload, no whitespace).
+    if after.is_empty() || after.contains('(') || after.contains(char::is_whitespace) {
+        return Ok(None);
+    }
+    if !names_part.contains(',') {
+        return Ok(None); // single-name decl — not our shape
+    }
+    let names: Vec<String> = names_part
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if names.len() < 2 {
+        return Ok(None);
+    }
+    for n in &names {
+        if !n.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+            || !n.chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            return Ok(None);
+        }
+    }
+    Ok(Some((names, after.to_string())))
+}
+
+/// Resolve a type name (from a multi-name decl) to its SMT-LIB sort name. A
+/// scalar (`Int`/`Nat`/`Pos`/`Bool`/`String`) maps to its SMT sort; a declared
+/// enum maps to its own name (the datatype sort). Anything else is rejected.
+fn enum_or_scalar_sort(
+    sort: &str,
+    enums: &HashMap<String, Vec<Variant>>,
+) -> Result<String, FrontendError> {
+    match sort {
+        "Int" | "Nat" | "Pos" => Ok("Int".into()),
+        "Bool" => Ok("Bool".into()),
+        "String" | "Str" => Ok("String".into()),
+        other if enums.contains_key(other) => Ok(other.to_string()),
+        other => fe(format!(
+            "multi-name declaration type `{other}` is not a scalar sort or a declared enum"
+        )),
+    }
+}
+
+/// Recognize a bare two-operand (in)equality constraint line: `a ≠ b` or
+/// `a = b` (the operands may be any expressions, e.g. `g1_0 ≠ g1_1`). Returns
+/// `(lhs, op, rhs)` with op ∈ {Eq, Neq}. None if the line has no top-level
+/// `≠`/`=`, or if it parses as something other than a single comparison.
+fn try_parse_binary_constraint(line: &str) -> Result<Option<(Expr, BinOp, Expr)>, FrontendError> {
+    let toks = tokenize(line.trim())?;
+    let (e, used) = match parse_expr(&toks, 0) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+    if used != toks.len() {
+        return Ok(None);
+    }
+    match e {
+        Expr::Bin(op @ (BinOp::Eq | BinOp::Neq), a, b) => Ok(Some((*a, op, *b))),
+        _ => Ok(None),
+    }
 }
 
 /// Parse the `(is_first_tick ? INIT : EXPR)` RHS into a ScalarState.
@@ -2158,6 +2356,12 @@ fn emit_fsm_transition(out: &mut String, prog: &Program, fsm: &FsmDef) -> Result
         }
     }
 
+    // Fresh per-tick witness vars (multi-name decls like `g1_0, g1_1, … ∈
+    // Color`). Bare consts; the body's `≠`/`=` constraints constrain them.
+    for (name, smt_sort) in &fsm.fresh_vars {
+        let _ = writeln!(out, "(declare-const {name} {smt_sort})");
+    }
+
     // ---- asserts ----
     // Scalar transition (state).
     if let Some(sc) = &fsm.scalar_state {
@@ -2231,6 +2435,16 @@ fn emit_fsm_transition(out: &mut String, prog: &Program, fsm: &FsmDef) -> Result
                 let rhs = emit_expr_renamed(value, &rename)?;
                 let _ = writeln!(out, "(assert (= {field} {rhs}))");
             }
+            Binding::Constraint { lhs, op, rhs } => {
+                let l = emit_expr_renamed(lhs, &rename)?;
+                let r = emit_expr_renamed(rhs, &rename)?;
+                let assert = match op {
+                    BinOp::Eq => format!("(= {l} {r})"),
+                    BinOp::Neq => format!("(not (= {l} {r}))"),
+                    _ => unreachable!("constraint op is always Eq/Neq"),
+                };
+                let _ = writeln!(out, "(assert {assert})");
+            }
         }
     }
 
@@ -2251,24 +2465,46 @@ fn emit_datatypes(out: &mut String, prog: &Program, fsm: &FsmDef) {
     let effect_decl = "(Effect 0)";
     let effect_body =
         "((Println (Println_0 String)) (Exit (Exit_0 Int)) (IntToStr (IntToStr_0 Int)) (ParseInt (ParseInt_0 String)))";
-    match &fsm.enum_state {
-        Some(es) => {
-            let variants = prog.enums.get(&es.enum_name).cloned().unwrap_or_default();
+
+    // The set of enum datatypes this FSM's transition block needs, in a stable
+    // order: the state enum first (preserving the long-standing output shape),
+    // then any OTHER enum referenced by a fresh var (e.g. `Color` for the
+    // graph-coloring witnesses). Each enum is declared at most once.
+    let mut enum_names: Vec<String> = Vec::new();
+    if let Some(es) = &fsm.enum_state {
+        enum_names.push(es.enum_name.clone());
+    }
+    for (_, smt_sort) in &fsm.fresh_vars {
+        if prog.enums.contains_key(smt_sort) && !enum_names.iter().any(|n| n == smt_sort) {
+            enum_names.push(smt_sort.clone());
+        }
+    }
+
+    if enum_names.is_empty() {
+        let _ = writeln!(out, "(declare-datatypes ({effect_decl}) ({effect_body}))");
+        return;
+    }
+
+    let decl_heads: String = enum_names
+        .iter()
+        .map(|n| format!(" ({n} 0)"))
+        .collect::<String>();
+    let decl_bodies: String = enum_names
+        .iter()
+        .map(|n| {
+            let variants = prog.enums.get(n).cloned().unwrap_or_default();
             let body: String = variants
                 .iter()
                 .map(emit_variant_decl)
                 .collect::<Vec<_>>()
                 .join(" ");
-            let _ = writeln!(
-                out,
-                "(declare-datatypes ({effect_decl} ({} 0)) ({effect_body} ({body})))",
-                es.enum_name
-            );
-        }
-        None => {
-            let _ = writeln!(out, "(declare-datatypes ({effect_decl}) ({effect_body}))");
-        }
-    }
+            format!(" ({body})")
+        })
+        .collect::<String>();
+    let _ = writeln!(
+        out,
+        "(declare-datatypes ({effect_decl}{decl_heads}) ({effect_body}{decl_bodies}))"
+    );
 }
 
 /// Emit one variant's datatype declaration: `(Done)` for a nullary variant,
@@ -2759,5 +2995,108 @@ mod tests {
         assert!(!fix.contains("world_reads"), "no world_reads:\n{fix}");
         // The fsms array opens directly after `{` (no world line between them).
         assert!(fix.contains("; {\n;   \"fsms\": [\n"), "fsms opens immediately:\n{fix}");
+    }
+
+    // ---- intermediate-Int vs scalar-state classification (test_29) ----------
+
+    const TEST_29_SKEL: &str = "import \"stdlib/runtime.ev\"\n\nenum St = Looping | Done\n\nfsm heavy(state ∈ St)\n    tick ∈ Int = (is_first_tick ? 0 : _tick + 1)\n    state_next = (tick ≥ 19 ? Done : Looping)\n    seed_a ∈ Int = tick * 7 + 3\n    a01 ∈ Int = (seed_a > 50 ? seed_a - 7 : seed_a * 2 + 11)\n    a02 ∈ Int = (a01 > 100 ? a01 - 13 : a01 * 3 + 7)\n    effects = match state\n        Looping ⇒ ⟨Println(\"step\")⟩\n        Done    ⇒ ⟨Println(\"heavy compute: done\"), Exit(0)⟩\n";
+
+    #[test]
+    fn int_intermediate_is_not_scalar_state() {
+        // `tick ∈ Int = (is_first_tick ? …)` IS scalar state; `seed_a ∈ Int =
+        // tick * 7 + 3` (no is_first_tick) is an INTERMEDIATE var, not state.
+        // The old code greedily errored "must use the is_first_tick idiom".
+        let fix = transpile_fsm(TEST_29_SKEL).expect("transpile test_29 skeleton");
+        // Exactly one scalar state var (tick); seed_a/a01/a02 are NOT in state.
+        assert!(
+            fix.contains("\"prev\":\"_tick\",\"next\":\"tick\",\"sort\":\"Int\",\"init\":0"),
+            "tick is the scalar state:\n{fix}"
+        );
+        assert!(!fix.contains("\"next\":\"seed_a\""), "seed_a is not state:\n{fix}");
+        // The intermediates are declared consts + defining asserts, with the
+        // scalar rename (references to `tick` → engine prev `_tick`).
+        assert!(fix.contains("(declare-const seed_a Int)"), "seed_a decl:\n{fix}");
+        assert!(fix.contains("(assert (= seed_a (+ (* _tick 7) 3)))"), "seed_a uses _tick:\n{fix}");
+        // a01 references seed_a (an intermediate) — NOT renamed.
+        assert!(
+            fix.contains("(assert (= a01 (ite (> seed_a 50) (- seed_a 7) (+ (* seed_a 2) 11))))"),
+            "a01 chains seed_a:\n{fix}"
+        );
+        assert!(fix.contains("(assert (= a02 (ite (> a01 100)"), "a02 chains a01:\n{fix}");
+        // state_next branches on the renamed _tick.
+        assert!(
+            fix.contains("(assert (= state_next (ite (>= _tick 19) Done Looping)))"),
+            "state_next on _tick:\n{fix}"
+        );
+        let prob = load_str(&fix).expect("engine loads test_29 skeleton");
+        assert_eq!(prob.fsms[0].name, "heavy");
+        assert_eq!(prob.fsms[0].state.len(), 2, "enum + scalar state only");
+    }
+
+    #[test]
+    fn chained_intermediate_bool_and_string() {
+        // The chained-membership intermediate path also handles Bool/String.
+        let src = "fsm f\n    n ∈ Int = (is_first_tick ? 0 : _n + 1)\n    big ∈ Bool = n > 3\n    msg ∈ String = \"v=\" ++ \"x\"\n    effects = (big ? ⟨Println(msg)⟩ : ⟨Exit(0)⟩)\n";
+        let fix = transpile_fsm(src).expect("transpile chained intermediates");
+        assert!(fix.contains("(declare-const big Bool)"), "big bool decl:\n{fix}");
+        assert!(fix.contains("(assert (= big (> _n 3)))"), "big uses _n:\n{fix}");
+        assert!(fix.contains("(declare-const msg String)"), "msg string decl:\n{fix}");
+        assert!(fix.contains("(assert (= msg (str.++ \"v=\" \"x\")))"), "msg concat:\n{fix}");
+        load_str(&fix).expect("engine loads chained-intermediate fixture");
+    }
+
+    // ---- multi-name decls + ≠/= constraints (test_28) -----------------------
+
+    const TEST_28_SKEL: &str = "import \"stdlib/runtime.ev\"\n\nenum Color = Red | Green | Blue\n\nenum DemoState = Searching | Done\n\nfsm coloring(state ∈ DemoState)\n    tick ∈ Int = (is_first_tick ? 0 : _tick + 1)\n    state_next = (tick ≥ 19 ? Done : Searching)\n    g1_0, g1_1, g1_2 ∈ Color\n    g1_0 ≠ g1_1\n    g1_1 ≠ g1_2\n    g1_2 ≠ g1_0\n    effects = match state\n        Searching ⇒ ⟨Println(\"step\")⟩\n        Done      ⇒ ⟨Println(\"solved 6 independent graph 3-colorings\"), Exit(0)⟩\n";
+
+    #[test]
+    fn multiname_enum_decl_emits_one_const_per_name() {
+        let fix = transpile_fsm(TEST_28_SKEL).expect("transpile test_28 skeleton");
+        // One declare-const per name, sorted to the Color datatype.
+        assert!(fix.contains("(declare-const g1_0 Color)"), "g1_0 decl:\n{fix}");
+        assert!(fix.contains("(declare-const g1_1 Color)"), "g1_1 decl:\n{fix}");
+        assert!(fix.contains("(declare-const g1_2 Color)"), "g1_2 decl:\n{fix}");
+        // The non-state enum `Color` is batched into the block's declare-datatypes
+        // alongside Effect + the state enum DemoState.
+        assert!(
+            fix.contains("(declare-datatypes ((Effect 0) (DemoState 0) (Color 0))"),
+            "batched datatypes incl Color:\n{fix}"
+        );
+        assert!(fix.contains("((Red) (Green) (Blue))"), "Color variants:\n{fix}");
+    }
+
+    #[test]
+    fn neq_constraints_emit_not_eq() {
+        let fix = transpile_fsm(TEST_28_SKEL).expect("transpile test_28 skeleton");
+        assert!(fix.contains("(assert (not (= g1_0 g1_1)))"), "g1_0 ≠ g1_1:\n{fix}");
+        assert!(fix.contains("(assert (not (= g1_1 g1_2)))"), "g1_1 ≠ g1_2:\n{fix}");
+        assert!(fix.contains("(assert (not (= g1_2 g1_0)))"), "g1_2 ≠ g1_0:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_28 skeleton");
+        assert_eq!(prob.fsms[0].name, "coloring");
+        // Only the enum + scalar are threaded state; the g* are fresh witnesses.
+        assert_eq!(prob.fsms[0].state.len(), 2, "enum + scalar state only");
+    }
+
+    #[test]
+    fn eq_constraint_between_two_vars_emits_assert() {
+        // A bare `a = b` (neither a pending decl) is an `=` constraint, not an
+        // assignment. Two fresh Int witnesses pinned equal.
+        let src = "fsm f\n    n ∈ Int = (is_first_tick ? 0 : _n + 1)\n    a, b ∈ Int\n    a = b\n    a ≠ n\n    effects = ⟨Println(\"x\")⟩\n";
+        let fix = transpile_fsm(src).expect("transpile eq-constraint");
+        assert!(fix.contains("(declare-const a Int)"), "a decl:\n{fix}");
+        assert!(fix.contains("(declare-const b Int)"), "b decl:\n{fix}");
+        assert!(fix.contains("(assert (= a b))"), "a = b constraint:\n{fix}");
+        // `a ≠ n`: n is the scalar state, renamed to _n on the constraint RHS.
+        assert!(fix.contains("(assert (not (= a _n)))"), "a ≠ n renamed:\n{fix}");
+        load_str(&fix).expect("engine loads eq-constraint fixture");
+    }
+
+    #[test]
+    fn multiname_decl_unknown_type_is_err() {
+        // A multi-name decl over a type that is neither a scalar nor a declared
+        // enum is rejected (honest gap, not a silent free var).
+        let src = "fsm f\n    n ∈ Int = (is_first_tick ? 0 : _n + 1)\n    a, b ∈ Widget\n    effects = ⟨Println(\"x\")⟩\n";
+        let err = transpile_fsm(src).unwrap_err();
+        assert!(err.0.contains("Widget"), "err: {}", err.0);
     }
 }

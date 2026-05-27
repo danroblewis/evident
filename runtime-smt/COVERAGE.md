@@ -43,8 +43,8 @@
 | test_25_per_component_jit| GAP/OUT? | enum state + records; perf demo (triage: feasible w/ records) |
 | test_26_value_cache      | GAP | two auto-scheduled FSMs + shared world (Phase C-ish, multi-FSM) |
 | test_27_parallel_solving | GAP | single FSM, inline claims + enum + `≠` constraints |
-| test_28_parallel_enum_coloring | GAP | enum state via ternary + scalar `tick` + multi-name enum decls + `≠` (Phase D) |
-| test_29_jit_heavy_compute| GAP | enum state via ternary + scalar `tick` + arithmetic chain (Phase D) |
+| test_28_parallel_enum_coloring | HYBRID ✓ | enum state via ternary + scalar `tick` + multi-name enum decls + `≠` (Phase D) |
+| test_29_jit_heavy_compute| HYBRID ✓ | enum state via ternary + scalar `tick` + ~90-var arithmetic chain (Phase D) |
 | test_30_jit_gap_closures | GAP | records + String concat + div/mod (harder) |
 | test_31_symbolic_regression | OUT | output is the SymbolicFunctionizer's discovered formula — strategy-dependent |
 | test_32_llm_functionizer | OUT | LLM functionizer + stdin |

@@ -138,6 +138,35 @@ fn test_09_two_fsms_matches_oracle() {
 }
 
 #[test]
+fn test_29_jit_heavy_compute_matches_oracle() {
+    // 20 "step" lines (Looping) then "heavy compute: done" + Exit(0). The body's
+    // ~90 intermediate Int vars (seed_a/b/c chains a01..a30, b01.., c01..) are
+    // NOT scalar state — they're per-tick derived values. The only state is the
+    // enum `St` + the scalar `tick`. The chains never reach the effects, so the
+    // output is just step/done; but they're emitted faithfully so the per-tick
+    // solve is exactly the oracle's.
+    let (stdout, code) = hybrid_run("examples/test_29_jit_heavy_compute.ev");
+    let expected: String = "step\n".repeat(20) + "heavy compute: done\n";
+    assert_eq!(stdout, expected, "stdout mismatch");
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
+fn test_28_parallel_enum_coloring_matches_oracle() {
+    // 20 "step" lines (Searching) then "solved 6 independent graph 3-colorings"
+    // + Exit(0). The body declares 144 fresh `∈ Color` enum witness vars
+    // (24 nodes × 6 graphs) via multi-name decls and 576 `≠` constraints
+    // (96 edges × 6). The solver finds a valid 3-coloring each tick; the colors
+    // never reach the decoded output (just step/done) but must be SAT each tick
+    // exactly as the oracle solves it.
+    let (stdout, code) = hybrid_run("examples/test_28_parallel_enum_coloring.ev");
+    let expected: String =
+        "step\n".repeat(20) + "solved 6 independent graph 3-colorings\n";
+    assert_eq!(stdout, expected, "stdout mismatch");
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
 fn test_02_counter_matches_oracle() {
     // Payload-carrying enum state: CountState = Start | Count(Int) | Format(Int)
     // | Done. `match state` arms bind the payload (Count(n) → (Count_0 state)),
