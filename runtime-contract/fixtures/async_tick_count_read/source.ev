@@ -1,0 +1,29 @@
+-- async_tick_count_read — one tick of a user FSM reading the injected
+-- `world.tick_count` field (the FrameTimer plugin-as-writer field; rate via
+-- EVIDENT_TICK_MS). Proves a user FSM reads the timer-injected counter and uses
+-- it numerically (heartbeat: emit IntToStr(tick_count)). The async INJECTION
+-- (the wall-clock timer thread / awaiter) is non-deterministic and out of a
+-- deterministic fixture — see README async-sources note.
+-- Probe claim: sat_emits_tick_count
+
+import "stdlib/runtime.ev"
+
+type World
+    tick_count ∈ Int
+
+enum TState = TWatch | TStop
+
+fsm ticker(world ∈ World, state ∈ TState)
+    state_next = (world.tick_count ≥ 10 ? TStop : TWatch)
+    effects = (world.tick_count ≥ 10 ? ⟨Exit(0)⟩ : ⟨IntToStr(world.tick_count)⟩)
+
+claim sat_emits_tick_count
+    world ∈ World
+    state ∈ TState
+    state_next ∈ TState
+    effects ∈ Seq(Effect)
+    world.tick_count = 5
+    state = TWatch
+    ticker
+    state_next = TWatch
+    effects = ⟨IntToStr(5)⟩

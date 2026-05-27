@@ -1,0 +1,30 @@
+-- async_stdin_line_read — one tick of a user FSM reading the injected
+-- `world.stdin_line` field (the StdinSource plugin-as-writer field). Proves a
+-- user FSM reads the stdin-injected String line and dispatches on it (echo a
+-- normal line; "quit" → exit). The async INJECTION (the blocking read(2) on
+-- fd 0 / awaiter) is external and out of a deterministic fixture — see README
+-- async-sources note.
+-- Probe claim: sat_echoes_stdin_line
+
+import "stdlib/runtime.ev"
+
+type World
+    stdin_line ∈ String
+
+enum LState = LWait | LDone
+
+fsm line_reader(world ∈ World, state ∈ LState)
+    state_next = (world.stdin_line = "quit" ? LDone : LWait)
+    effects = (world.stdin_line = "quit" ? ⟨Println("bye"), Exit(0)⟩
+                                          : ⟨Println("echo: " ++ world.stdin_line)⟩)
+
+claim sat_echoes_stdin_line
+    world ∈ World
+    state ∈ LState
+    state_next ∈ LState
+    effects ∈ Seq(Effect)
+    world.stdin_line = "hello"
+    state = LWait
+    line_reader
+    state_next = LWait
+    effects = ⟨Println("echo: hello")⟩

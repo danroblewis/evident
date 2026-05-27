@@ -1,0 +1,29 @@
+-- async_signal_exit — one tick of a user FSM reading the injected
+-- `world.signal_received` field (the SigintSource plugin-as-writer field).
+-- Proves how a user FSM READS an async-source-injected world field as a
+-- deterministic transition: signal_received>0 → halt + Exit(130). The async
+-- INJECTION (the SIGINT handler / awaiter) is wall-clock/external and out of a
+-- deterministic transition fixture — see README async-sources note.
+-- Probe claim: sat_exits_on_signal
+
+import "stdlib/runtime.ev"
+
+type World
+    signal_received ∈ Int
+
+enum SigState = SRunning | SHalted
+
+fsm sig_watcher(world ∈ World, state ∈ SigState)
+    state_next = (world.signal_received > 0 ? SHalted : SRunning)
+    effects = (world.signal_received > 0 ? ⟨Println("interrupted, exiting"), Exit(130)⟩ : ⟨⟩)
+
+claim sat_exits_on_signal
+    world ∈ World
+    state ∈ SigState
+    state_next ∈ SigState
+    effects ∈ Seq(Effect)
+    world.signal_received = 1
+    state = SRunning
+    sig_watcher
+    state_next = SHalted
+    effects = ⟨Println("interrupted, exiting"), Exit(130)⟩
