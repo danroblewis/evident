@@ -33,6 +33,8 @@ Adjacent design docs (not phased, but on deck):
 
 Cross-cutting inventory: [`../design/self-hosting-inventory.md`](../design/self-hosting-inventory.md) — every `runtime/src/**/*.rs` file classified by tier + prioritized port order.
 
+Split-vs-rewrite decision: [`../design/runtime-split.md`](../design/runtime-split.md) — surveys the current runtime along the SMT-LIB seam (front-end / engine / entangled, in [`../design/split-survey/`](../design/split-survey/)), pins the SMT-LIB + metadata interface, lays out an additive `./test.sh`-green migration, and recommends **hybrid**: greenfield the orchestration engine on a scoped context (sheds the six leaked-context fragilities), reuse the front-end transpiler, and *port* (don't rewrite) the source-agnostic functionizer + IO kernel across the shared interface — not a literal cut of the legacy. Cross-references `new-runtime` (`runtime-smt/`) + `behavior-contract` (`runtime-contract/FORMAT.md`).
+
 ## Working on a task
 
 1. Read the task's plan file end-to-end.
