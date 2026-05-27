@@ -54,6 +54,41 @@ now per-thread.
 Measured: `toposort_correctness` 6/12 → 0/15 aborts under 6-core CPU
 saturation.
 
+## Hazard 3 — a functionizer miscompile, flakily exposed by concurrency
+
+`basic.rs::claim_call_unmapped_internal` occasionally returned a wrong answer
+(`got 1`, outside the asserted range). Root cause is a **pre-existing
+functionizer correctness bug**, not the concurrency itself — but concurrency
+is what surfaced it flakily.
+
+The Cranelift JIT compiles a component's per-output assignment *steps* but
+does **not** evaluate the component's `predicates` (bound/non-equality
+constraints). For a claim with an unmapped internal — `pick` declares
+`picked ∈ Nat`, `picked > 5`, `out = picked + 1`, and a caller maps `out ↦ n`
+— extraction emits `n := 1 + picked`, reading `picked` as an input. With
+`picked` neither given nor defined, the JIT defaults it to `0` → `n = 1`, and
+the predicate `picked > 5` is silently dropped → wrong answer.
+
+The existing safety net (`compile_one_component`'s membership-based
+`unsafe_free` check) only looks at `cached.env`, but a claim's internal lives
+in the inlined claim's *local* scope, so it slipped through. Worse, whether
+`S` even gets functionized (vs. sent to the correct slow Z3 path) is
+**non-deterministic**: it hinges on the global `CLAIM_CALL_COUNTER` baked into
+the var name `pick__picked__callN`, which under parallel test threads takes an
+unpredictable value — so the miscompile was a flaky, silently-wrong result.
+Run alone it failed every time; run in the full parallel suite it usually
+(but not always) passed.
+
+**Fix:** `compile_one_component` (`runtime/src/runtime/query.rs`) now, after
+extraction, diverts a component to the slow path when it **reads a free
+internal** (a var the program references but does not define, that isn't
+given or a baked constant) that also carries a **non-equality** constraint —
+exactly the constraint the JIT would drop. A free var feeding only
+output-defining equalities is still compiled (its value is unconstrained, so
+the JIT's default is a valid model — no JIT-coverage / perf regression;
+measured flat on `test_29_jit_heavy_compute` at 200 and 3000 steps).
+Regression-guarded by `tests/concurrency_stress.rs`.
+
 ## Reproducing / guarding against regressions
 
 The flakes are timing-sensitive; the reliable repro is CPU contention. To

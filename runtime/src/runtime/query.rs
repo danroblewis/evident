@@ -713,6 +713,60 @@ impl EvidentRuntime {
             all.append(&mut program.steps);
             program.steps = all;
         }
+        // Free-input safety: the JIT reads any var the program references but
+        // does NOT define (no step assigns it) from `given`, defaulting it
+        // (typically 0) when absent. For a true input that is fine. The hazard
+        // is a *free internal* — neither given, nor defined by a step, nor a
+        // baked constant — that ALSO carries a NON-equality constraint (a bound
+        // or predicate). The JIT computes via equalities but drops bounds /
+        // predicates on its inputs, so it would default that var (→ 0) and
+        // silently violate the constraint. The canonical case is a claim's
+        // unmapped internal: `pick` declares `picked ∈ Nat`, `picked > 5`,
+        // `out = picked + 1`; extraction reads `picked` as an input, the JIT
+        // defaults it to 0, and `picked > 5` is lost → `out = 1`, wrong.
+        //
+        // A free var that feeds ONLY output-defining equalities is safely
+        // defaulted: its value is otherwise unconstrained, so any choice
+        // (including 0) is a valid model — that's why this is gated on a
+        // non-equality constraint and does NOT divert ordinary JIT components.
+        // The var lives in the inlined claim's local scope (NOT `cached.env`),
+        // so the membership check above can't see it; we detect it from the
+        // program's own reads vs. definitions. (Whether such a query even gets
+        // functionized is non-deterministic — it hinges on the global claim-call
+        // id baked into var names — so the miscompile was a flaky, silently
+        // wrong result. See tests/concurrency_stress.rs and
+        // basic.rs::claim_call_unmapped_internal.)
+        {
+            let defined: HashSet<&str> = program.steps.iter().map(|s| s.var()).collect();
+            let outputs: HashSet<&str> = comp_out_vec.iter().map(|s| s.as_str()).collect();
+            let is_free = |n: &str| {
+                !given.contains_key(n)
+                    && !defined.contains(n)
+                    && !outputs.contains(n)
+                    && !cached.env.get(n).map(|v| matches!(v,
+                        Var::PinnedInt(_) | Var::EnumValue { .. } | Var::EnumCtor { .. }))
+                        .unwrap_or(false)
+            };
+            let mut unsafe_free = false;
+            for a in comp_assertions {
+                // Equalities define values (the JIT computes them); only
+                // non-equality assertions constrain a var the JIT can't enforce.
+                let is_equality = a.safe_decl().ok()
+                    .map(|d| matches!(d.kind(), DeclKind::EQ)).unwrap_or(false);
+                if is_equality { continue; }
+                let mut names: HashSet<String> = HashSet::new();
+                collect_touched_names(a, &mut names);
+                if names.iter().any(|n| is_free(n)) { unsafe_free = true; break; }
+            }
+            if unsafe_free {
+                // A defining constraint elsewhere → the slow solve recovers the
+                // free var correctly; only type bounds → nothing to solve, bail.
+                if component_has_defining_assertion(comp_assertions) {
+                    return ComponentOutcome::Slow;
+                }
+                return ComponentOutcome::Bail;
+            }
+        }
         {
             let mut stats = self.functionize_stats.borrow_mut();
             let per = stats.claims.entry(name.to_string()).or_default();
