@@ -32,7 +32,7 @@ use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use z3::{Config, Context};
+use z3::Context;
 
 pub struct EvidentRuntime {
     pub(super) program: Program,
@@ -97,8 +97,10 @@ impl EvidentRuntime {
 
     /// Create a runtime with a specific functionizer strategy.
     pub fn with_functionizer(functionizer: Box<dyn crate::core::Functionizer>) -> Self {
-        let cfg = Config::new();
-        let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
+        // Serialized through the global Z3-setup lock: concurrent first-context
+        // creation (libtest launching N runtime-building threads) races Z3's
+        // global init → abnormal aborts / silently-wrong answers. See z3_ctx.
+        let ctx: &'static Context = crate::z3_ctx::leaked_context();
         EvidentRuntime {
             program: Program::default(),
             schemas: HashMap::new(),

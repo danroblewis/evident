@@ -316,20 +316,6 @@ fn solve_one_part(
     Some(out)
 }
 
-/// Global mutex serializing Z3 context creation and datatype replay (historically racy).
-fn z3_setup_lock() -> std::sync::MutexGuard<'static, ()> {
-    use std::sync::Mutex;
-    static SETUP_LOCK: Mutex<()> = Mutex::new(());
-    SETUP_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// Mint a fresh `'static` Z3 context (leaked, same as main ctx); serialized via `z3_setup_lock`.
-fn new_leaked_context() -> &'static Context {
-    let _guard = z3_setup_lock();
-    let cfg = z3::Config::new();
-    Box::leak(Box::new(Context::new(&cfg)))
-}
-
 /// True when this part's env entries can be reproduced in a private worker context.
 /// Excluded (→ sequential): record-element `DatatypeSeqVar` (main-ctx `FieldKind::Nested`
 /// sorts cause cross-context panic), `DatatypeSetVar`, `EnumValue`, `EnumCtor`.
@@ -854,8 +840,11 @@ impl EvidentRuntime {
             let needs_enums = outputs.iter().chain(given.keys()).any(|name|
                 matches!(env.get(name),
                     Some(Var::EnumVar { .. }) | Some(Var::DatatypeSeqVar { .. })));
-            let (ctx, wenums) = { // z3_setup_lock prevents concurrent context/type construction
-                let _guard = z3_setup_lock();
+            let (ctx, wenums) = {
+                // Hold the global setup guard across creation AND datatype replay
+                // so the worker context is fully populated before another thread
+                // touches Z3 (see crate::z3_ctx).
+                let _guard = crate::z3_ctx::setup_guard();
                 let cfg = z3::Config::new();
                 let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
                 let wenums = if needs_enums { Some(self.replay_enums_into(ctx)) } else { None };
@@ -883,7 +872,7 @@ impl EvidentRuntime {
         }).collect()
     }
 
-    /// Replay enum definitions into `ctx`; called under `z3_setup_lock` by `build_parallel_slow`.
+    /// Replay enum definitions into `ctx`; called under the global setup guard by `build_parallel_slow`.
     /// Errors silently leave the registry partial → caller falls back to main-context solve.
     fn replay_enums_into(&self, ctx: &'static Context) -> crate::core::EnumRegistry {
         let wenums = crate::core::EnumRegistry::new();
@@ -1077,8 +1066,7 @@ mod decompose_tests {
     use z3::ast::Int;
 
     fn leaked_ctx() -> &'static Context {
-        let cfg = z3::Config::new();
-        Box::leak(Box::new(Context::new(&cfg)))
+        crate::z3_ctx::leaked_context()
     }
 
     fn name_set(names: &[&str]) -> HashSet<String> {

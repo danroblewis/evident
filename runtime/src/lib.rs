@@ -23,6 +23,8 @@ pub mod stdlib_path;
 pub mod subscriptions;
 mod event_sources;
 mod fti;
+// Single global serialization point for Z3 `Context` creation (thread-safety).
+mod z3_ctx;
 
 pub use runtime::EvidentRuntime;
 pub use core::{QueryResult, RuntimeError, Value};
