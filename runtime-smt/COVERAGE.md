@@ -26,7 +26,7 @@
 | test_06_shell_run        | OUT | `ShellRun "date"` → non-deterministic wall-clock output; no byte-identical |
 | test_07_time             | OUT | `Time`/`MonotonicTime` wall clock; engine stubs to a constant → differs from oracle |
 | test_08_exit_code        | HYBRID ✓ | enum state, Exit(42) |
-| test_09_two_fsms         | GAP | two FSMs over shared `world`, payload enum `PTick(Int)` (Phase C) |
+| test_09_two_fsms         | HYBRID ✓ | two FSMs over shared `world`, payload enum `PTick(Int)` (Phase C) |
 | test_10_spawn            | OUT | process spawn / payload enum + spawn effect; no spawn dispatch in engine |
 | test_11_frameclock       | OUT | async FrameClock event source — engine has no async sources |
 | test_12_hostname         | OUT | FTI hostname (FFI) → non-deterministic host-dependent output |

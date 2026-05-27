@@ -123,6 +123,21 @@ fn test_20_pure_counter_matches_oracle() {
 }
 
 #[test]
+fn test_09_two_fsms_matches_oracle() {
+    // N3 multi-FSM + shared world: `producer` writes world.n each tick (3,2,1,0
+    // via PTick countdown), `consumer` reads the SAME-tick n (writer-first
+    // scheduling), formats it via IntToStr → StringResult → Println one tick
+    // later. Producer prints "producer done" + Exit(0) when its state reaches
+    // PEnd. Byte-identical to `evident effect-run … --max-steps 30`.
+    let (stdout, code) = hybrid_run("examples/test_09_two_fsms.ev");
+    assert_eq!(
+        stdout, "consumer saw n = 3\nconsumer saw n = 2\nproducer done\n",
+        "stdout mismatch"
+    );
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
 fn test_02_counter_matches_oracle() {
     // Payload-carrying enum state: CountState = Start | Count(Int) | Format(Int)
     // | Done. `match state` arms bind the payload (Count(n) → (Count_0 state)),

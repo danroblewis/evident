@@ -8,9 +8,19 @@
 //!
 //! ## Supported subset (bounded to the convergence targets)
 //!
-//! A program with exactly one `fsm`. Recognized lines:
+//! A program with one OR MORE `fsm`s, optionally sharing a `type World`.
+//! Recognized lines:
 //!
 //! * `import "..."` — ignored.
+//! * `type World` with `field ∈ Int` lines → the shared `world` array in
+//!   `@meta` (one `{"name":…,"sort":"Int","init":0}` per field). World fields
+//!   are seeded `init:0` (the writer is scheduled first and writes tick 0, so
+//!   this matches the oracle).
+//! * `fsm NAME(world ∈ World, state ∈ EnumType)` — world-reading FSM. A param
+//!   `world ∈ World` (read-only) or `world, world_next ∈ World` (read+write)
+//!   declares the FSM touches the shared world. `world_next.X = expr` in the
+//!   body is a `world_writes` of `X`; `world.X` referenced anywhere is a
+//!   `world_reads` of `X`, lowered to the bare const name `X`.
 //! * `enum NAME = A | B | C` — enums with nullary and/or payload-carrying
 //!   variants (`Count(Int)`, `Format(Int)`). The FSM's state-enum's FIRST
 //!   variant is its tick-0 init and MUST be nullary (the engine seeds it as a
@@ -134,6 +144,10 @@ enum Binding {
     /// `effects = <seq-expression>` (a ⟨…⟩ literal or a possibly-nested
     /// `(cond ? <seq> : <seq>)` ternary). Stored as raw text, lowered at emit.
     EffectsExpr { raw: String },
+    /// `world_next.FIELD = expr` (N3): a write of the shared world field. Emitted
+    /// as `(declare-const FIELD <sort>)` + `(assert (= FIELD <expr>))`, with the
+    /// bare `FIELD` const as the write target the engine decodes.
+    WorldWrite { field: String, value: Expr },
 }
 
 /// The RHS of an intermediate var binding.
@@ -151,6 +165,11 @@ enum BindingValue {
         /// The `_` default body (required).
         default: Box<Expr>,
     },
+    /// `X = match state` — an intermediate var defined by a match over the FSM's
+    /// enum state. Each arm's body is a scalar expression (Int/String/Bool); the
+    /// payload binding (`PTick(k)`) resolves to the field accessor at emit time.
+    /// (e.g. the producer's `next_n = match state` selecting an Int per state.)
+    MatchEnumState { arms: Vec<EnumArm>, default: Option<String> },
 }
 
 /// One arm of a `match state` (state_next / effects). The pattern is a state
@@ -180,17 +199,40 @@ struct MatchArm {
     body: Expr,
 }
 
-struct Program {
+/// One shared-world field from `type World` (e.g. `n ∈ Int`). The hybrid only
+/// supports Int world fields for now; each is seeded `init:0`.
+struct WorldField {
+    name: String,
+    /// SMT-LIB sort name (currently always `"Int"`).
+    smt_sort: String,
+}
+
+/// One parsed `fsm` declaration — its own state, body bindings, and world I/O.
+struct FsmDef {
     fsm_name: String,
-    /// enum name → ordered variant list (each with payload arg sorts).
-    enums: HashMap<String, Vec<Variant>>,
     enum_state: Option<EnumState>,
     scalar_state: Option<ScalarState>,
     bindings: Vec<Binding>,
-    /// Whether the program references an `effects` var at all.
+    /// Whether this FSM references an `effects` var at all.
     has_effects: bool,
-    /// Whether the program reads `last_results` / `#last_results` anywhere.
+    /// Whether this FSM reads `last_results` / `#last_results` anywhere.
     reads_last_results: bool,
+    /// World fields this FSM writes (`world_next.X = …` in its body). Ordered,
+    /// deduplicated.
+    world_writes: Vec<String>,
+    /// World fields this FSM reads (`world.X` anywhere in its body). Ordered,
+    /// deduplicated.
+    world_reads: Vec<String>,
+}
+
+struct Program {
+    /// enum name → ordered variant list (each with payload arg sorts). Shared
+    /// across all FSMs (enum variant names are globally unique in Evident).
+    enums: HashMap<String, Vec<Variant>>,
+    /// The shared world fields (from `type World`), if any.
+    world: Vec<WorldField>,
+    /// One or more FSMs, in declaration order.
+    fsms: Vec<FsmDef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +388,52 @@ fn indent_of(line: &str) -> usize {
 // Program parser
 // ---------------------------------------------------------------------------
 
+/// The mutable per-FSM accumulators a body region builds up while it is the
+/// "current" FSM. Flushed into a [`FsmDef`] when the next `fsm` (or end of
+/// program) is reached.
+struct FsmBuilder {
+    header: FsmHeader,
+    scalar_state: Option<ScalarState>,
+    bindings: Vec<Binding>,
+    has_effects: bool,
+    reads_last_results: bool,
+    /// Ordered, deduplicated world fields written (`world_next.X = …`).
+    world_writes: Vec<String>,
+    /// Ordered, deduplicated world fields read (`world.X`).
+    world_reads: Vec<String>,
+    // Two-line scalar declaration in flight: a bare `X ∈ Int` awaiting `X = …`.
+    pending_scalar_decl: Option<String>,
+    // Intermediate var declarations in flight: name → smt_sort, awaiting `name = …`.
+    pending_intermediate: HashMap<String, String>,
+}
+
+impl FsmBuilder {
+    fn new(header: FsmHeader) -> FsmBuilder {
+        FsmBuilder {
+            header,
+            scalar_state: None,
+            bindings: Vec::new(),
+            has_effects: false,
+            reads_last_results: false,
+            world_writes: Vec::new(),
+            world_reads: Vec::new(),
+            pending_scalar_decl: None,
+            pending_intermediate: HashMap::new(),
+        }
+    }
+
+    fn note_read(&mut self, field: &str) {
+        if !self.world_reads.iter().any(|f| f == field) {
+            self.world_reads.push(field.to_string());
+        }
+    }
+    fn note_write(&mut self, field: &str) {
+        if !self.world_writes.iter().any(|f| f == field) {
+            self.world_writes.push(field.to_string());
+        }
+    }
+}
+
 fn parse_program(src: &str) -> Result<Program, FrontendError> {
     // Pre-pass: keep raw lines (with indentation) but strip comments + blanks.
     let raw: Vec<(usize, String)> = src
@@ -358,20 +446,13 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         .collect();
 
     let mut enums: HashMap<String, Vec<Variant>> = HashMap::new();
-    let mut fsm_header: Option<(String, Option<(String, String)>)> = None; // (name, Some((param, enumtype)))
-    let mut scalar_state: Option<ScalarState> = None;
-    // Two-line scalar declaration in flight: a bare `X ∈ Int` awaiting `X = …`.
-    let mut pending_scalar_decl: Option<String> = None;
-    // Intermediate var declarations in flight: name → smt_sort, awaiting `name = …`.
-    let mut pending_intermediate: HashMap<String, String> = HashMap::new();
-    // Track declaration order of pending intermediates so we can error helpfully.
-    let mut bindings: Vec<Binding> = Vec::new();
-    let mut has_effects = false;
-    let mut reads_last_results = false;
+    let mut world: Vec<WorldField> = Vec::new();
+    let mut fsms: Vec<FsmDef> = Vec::new();
+    let mut cur: Option<FsmBuilder> = None;
 
     let mut i = 0;
     while i < raw.len() {
-        let (indent, line) = (&raw[i].0, raw[i].1.clone());
+        let (indent, line) = (raw[i].0, raw[i].1.clone());
         let trimmed = line.trim();
 
         if trimmed.starts_with("import ") {
@@ -384,17 +465,32 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             i += 1;
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("fsm ") {
-            if fsm_header.is_some() {
-                return fe("only a single `fsm` is supported in this subset");
+        // `type World` (at indent 0) opens the shared-world declaration: parse
+        // the indented `field ∈ Int` lines. Any OTHER top-level `type` ends the
+        // FSM-body region (it's a static-test struct we ignore).
+        if indent == 0 && (trimmed == "type World" || trimmed.starts_with("type World ")) {
+            if cur.is_some() {
+                return fe("`type World` must precede the `fsm` declarations");
             }
-            fsm_header = Some(parse_fsm_header(rest)?);
-            i += 1;
+            let consumed = parse_world_fields(&raw, i + 1, indent, &mut world)?;
+            i += 1 + consumed;
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("fsm ") {
+            // Flush the previous FSM (if any) and start a fresh builder.
+            if let Some(b) = cur.take() {
+                fsms.push(finish_fsm(b, &enums)?);
+            }
+            // The header's param list may span continuation lines (open `(` not
+            // closed on the `fsm` line). Gather until parens balance.
+            let (header_text, consumed) = gather_fsm_header(&raw, i, rest);
+            cur = Some(FsmBuilder::new(parse_fsm_header(&header_text)?));
+            i += 1 + consumed;
             continue;
         }
         // A top-level `claim`/`type`/`schema` ends the fsm body region — the rest
         // are static-test blocks we ignore.
-        if *indent == 0
+        if indent == 0
             && (trimmed.starts_with("claim ")
                 || trimmed.starts_with("type ")
                 || trimmed.starts_with("schema ")
@@ -404,18 +500,43 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             break;
         }
 
-        if fsm_header.is_none() {
-            return fe(format!("unexpected top-level line before any `fsm`: {trimmed:?}"));
-        }
+        let b = cur.as_mut().ok_or_else(|| {
+            FrontendError(format!("unexpected top-level line before any `fsm`: {trimmed:?}"))
+        })?;
 
         // ---- body line classification ----
+        // World aliases for this FSM: `world.X` → bare `X` (a read); the
+        // `world_next.X = …` write target is recognized below before any other
+        // classification.
+        let read_alias = b.header.world_read.clone();
+        let write_alias = b.header.world_write.clone();
+
+        // `world_next.X = expr` — a world write. Recognize before generic assign.
+        if let Some(wa) = &write_alias {
+            if let Some((field, rhs)) = parse_world_write(trimmed, wa) {
+                b.note_write(&field);
+                // The RHS may reference `world.X` reads; rewrite those to bare names.
+                let rhs = rewrite_world_reads(&rhs, read_alias.as_deref(), b);
+                if rhs.contains("last_results") {
+                    b.reads_last_results = true;
+                }
+                let toks = tokenize(&rhs)?;
+                let (e, used) = parse_expr(&toks, 0)?;
+                if used != toks.len() {
+                    return fe(format!("trailing tokens in world write `{field}`: {rhs:?}"));
+                }
+                b.bindings.push(Binding::WorldWrite { field, value: e });
+                i += 1;
+                continue;
+            }
+        }
 
         // Single-line scalar state: `X ∈ Int = (is_first_tick ? INIT : EXPR)`.
         if let Some(sc) = try_parse_scalar_state(trimmed)? {
-            if scalar_state.is_some() {
+            if b.scalar_state.is_some() {
                 return fe("multiple scalar state declarations not supported");
             }
-            scalar_state = Some(sc);
+            b.scalar_state = Some(sc);
             i += 1;
             continue;
         }
@@ -426,41 +547,46 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             if sort == "Int" || sort == "Nat" || sort == "Pos" {
                 // Could be scalar state (next line `X = (is_first_tick ? …)`) or
                 // an intermediate Int. Decide when we see the `=` line.
-                pending_scalar_decl = Some(name.clone());
-                pending_intermediate.insert(name, smt_sort_of(&sort)?);
+                b.pending_scalar_decl = Some(name.clone());
+                b.pending_intermediate.insert(name, smt_sort_of(&sort)?);
             } else {
-                pending_intermediate.insert(name, smt_sort_of(&sort)?);
+                b.pending_intermediate.insert(name, smt_sort_of(&sort)?);
             }
             i += 1;
             continue;
         }
 
         // `state_next = match state`  (multi-line block of indented arms).
-        if let Some(_scrut) = match_head(trimmed, "state_next") {
-            let (arms, default, consumed) = parse_enum_state_match_arms(&raw, i + 1, *indent)?;
-            bindings.push(Binding::StateNextMatch { arms, default });
+        if match_head(trimmed, "state_next").is_some() {
+            let (arms, default, consumed) = parse_enum_state_match_arms_w(
+                &raw, i + 1, indent, read_alias.as_deref(), b,
+            )?;
+            b.bindings.push(Binding::StateNextMatch { arms, default });
             i += 1 + consumed;
             continue;
         }
 
         // `state_next = (cond ? VariantA : VariantB)`.
         if let Some(rhs) = assign_rhs(trimmed, "state_next") {
-            let b = parse_state_next_ternary(&rhs)?;
-            bindings.push(b);
+            let rhs = rewrite_world_reads(&rhs, read_alias.as_deref(), b);
+            let bind = parse_state_next_ternary(&rhs)?;
+            b.bindings.push(bind);
             i += 1;
             continue;
         }
 
         // `effects = match state`.
-        if let Some(_scrut) = match_head(trimmed, "effects") {
-            has_effects = true;
-            let (arms, default, consumed) = parse_enum_state_match_arms(&raw, i + 1, *indent)?;
+        if match_head(trimmed, "effects").is_some() {
+            b.has_effects = true;
+            let (arms, default, consumed) = parse_enum_state_match_arms_w(
+                &raw, i + 1, indent, read_alias.as_deref(), b,
+            )?;
             if arms.iter().any(|a| a.body.contains("last_results"))
                 || default.as_deref().map(|d| d.contains("last_results")).unwrap_or(false)
             {
-                reads_last_results = true;
+                b.reads_last_results = true;
             }
-            bindings.push(Binding::EffectsMatch { arms, default });
+            b.bindings.push(Binding::EffectsMatch { arms, default });
             i += 1 + consumed;
             continue;
         }
@@ -468,12 +594,13 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         // `effects = <seq-expr>` (may be a ⟨…⟩ literal or a possibly multi-line
         // nested ternary). Collect continuation lines (more-indented than head).
         if let Some(first) = assign_rhs(trimmed, "effects") {
-            has_effects = true;
-            let (raw_rhs, consumed) = gather_continuation(&raw, i, *indent, &first);
+            b.has_effects = true;
+            let (raw_rhs, consumed) = gather_continuation(&raw, i, indent, &first);
+            let raw_rhs = rewrite_world_reads(&raw_rhs, read_alias.as_deref(), b);
             if raw_rhs.contains("last_results") {
-                reads_last_results = true;
+                b.reads_last_results = true;
             }
-            bindings.push(Binding::EffectsExpr { raw: raw_rhs });
+            b.bindings.push(Binding::EffectsExpr { raw: raw_rhs });
             i += 1 + consumed;
             continue;
         }
@@ -482,41 +609,41 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         // or `X = <expr>` (single line). Also the two-line scalar state assign.
         if let Some((name, rhs)) = split_assign(trimmed) {
             // Two-line scalar state: `X = (is_first_tick ? INIT : EXPR)`.
-            if pending_scalar_decl.as_deref() == Some(name.as_str())
+            if b.pending_scalar_decl.as_deref() == Some(name.as_str())
                 && rhs.contains("is_first_tick")
             {
-                if scalar_state.is_some() {
+                if b.scalar_state.is_some() {
                     return fe("multiple scalar state declarations not supported");
                 }
                 let sc = parse_scalar_state_rhs(&name, &rhs)?;
-                scalar_state = Some(sc);
-                pending_scalar_decl = None;
-                pending_intermediate.remove(&name);
+                b.scalar_state = Some(sc);
+                b.pending_scalar_decl = None;
+                b.pending_intermediate.remove(&name);
                 i += 1;
                 continue;
             }
 
             // An intermediate var (must have been declared on a prior `X ∈ T` line).
-            let smt_sort = pending_intermediate.remove(&name).ok_or_else(|| {
+            let smt_sort = b.pending_intermediate.remove(&name).ok_or_else(|| {
                 FrontendError(format!(
                     "assignment to `{name}` without a preceding `{name} ∈ <Type>` declaration"
                 ))
             })?;
-            pending_scalar_decl = None;
+            b.pending_scalar_decl = None;
 
             // `X = match last_results[i]` — a multi-line indented match block.
             if let Some(inner) = rhs.strip_prefix("match ") {
                 let scrut = inner.trim();
                 if let Some((lr_var, index)) = parse_last_results_index(scrut) {
-                    reads_last_results = true;
+                    b.reads_last_results = true;
                     let (arms, default, consumed) =
-                        parse_last_results_match_arms(&raw, i + 1, *indent)?;
+                        parse_last_results_match_arms(&raw, i + 1, indent)?;
                     let default = default.ok_or_else(|| {
                         FrontendError(format!(
                             "`{name} = match last_results[{index}]` needs a `_` default arm"
                         ))
                     })?;
-                    bindings.push(Binding::IntermediateVar {
+                    b.bindings.push(Binding::IntermediateVar {
                         name,
                         smt_sort,
                         value: BindingValue::MatchLastResults {
@@ -529,19 +656,35 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
                     i += 1 + consumed;
                     continue;
                 }
+                // `X = match state` — match over the FSM's enum state. Each arm's
+                // body is a scalar expression of the var's sort.
+                let enum_param = b.header.enum_state.as_ref().map(|(p, _)| p.clone());
+                if enum_param.as_deref() == Some(scrut) {
+                    let (arms, default, consumed) = parse_enum_state_match_arms_w(
+                        &raw, i + 1, indent, read_alias.as_deref(), b,
+                    )?;
+                    b.bindings.push(Binding::IntermediateVar {
+                        name,
+                        smt_sort,
+                        value: BindingValue::MatchEnumState { arms, default },
+                    });
+                    i += 1 + consumed;
+                    continue;
+                }
                 return fe(format!("unsupported `match` scrutinee for `{name}`: {scrut:?}"));
             }
 
             // `X = <expr>` — a single-line expression binding.
+            let rhs = rewrite_world_reads(&rhs, read_alias.as_deref(), b);
             if rhs.contains("last_results") {
-                reads_last_results = true;
+                b.reads_last_results = true;
             }
             let toks = tokenize(&rhs)?;
             let (e, used) = parse_expr(&toks, 0)?;
             if used != toks.len() {
                 return fe(format!("trailing tokens in `{name}` definition: {rhs:?}"));
             }
-            bindings.push(Binding::IntermediateVar {
+            b.bindings.push(Binding::IntermediateVar {
                 name,
                 smt_sort,
                 value: BindingValue::Expr(e),
@@ -553,10 +696,33 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         return fe(format!("unsupported fsm body line: {trimmed:?}"));
     }
 
-    let (fsm_name, param) = fsm_header.ok_or_else(|| FrontendError("no `fsm` declaration found".into()))?;
+    // Flush the last FSM in flight.
+    if let Some(b) = cur.take() {
+        fsms.push(finish_fsm(b, &enums)?);
+    }
 
-    // Resolve the enum state (from the header param), if any.
-    let enum_state = match param {
+    if fsms.is_empty() {
+        return fe("no `fsm` declaration found");
+    }
+
+    Ok(Program { enums, world, fsms })
+}
+
+/// Finalize a [`FsmBuilder`] into a [`FsmDef`]: resolve its enum state from the
+/// header param (validating the enum is declared + its first variant nullary).
+fn finish_fsm(b: FsmBuilder, enums: &HashMap<String, Vec<Variant>>) -> Result<FsmDef, FrontendError> {
+    let FsmBuilder {
+        header,
+        scalar_state,
+        bindings,
+        has_effects,
+        reads_last_results,
+        world_writes,
+        world_reads,
+        ..
+    } = b;
+
+    let enum_state = match header.enum_state {
         Some((param_name, enum_type)) => {
             let variants = enums
                 .get(&enum_type)
@@ -584,18 +750,165 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
     };
 
     if enum_state.is_none() && scalar_state.is_none() {
-        return fe("fsm has no recognizable state (enum param or scalar body)");
+        return fe(format!(
+            "fsm `{}` has no recognizable state (enum param or scalar body)",
+            header.name
+        ));
     }
 
-    Ok(Program {
-        fsm_name,
-        enums,
+    Ok(FsmDef {
+        fsm_name: header.name,
         enum_state,
         scalar_state,
         bindings,
         has_effects,
         reads_last_results,
+        world_writes,
+        world_reads,
     })
+}
+
+/// Parse the indented `field ∈ Int` lines of a `type World` block into
+/// [`WorldField`]s, appending to `world`. Returns the number of lines consumed
+/// beyond the `type World` head. Only `Int`-sorted fields are supported today.
+fn parse_world_fields(
+    raw: &[(usize, String)],
+    start: usize,
+    head_indent: usize,
+    world: &mut Vec<WorldField>,
+) -> Result<usize, FrontendError> {
+    let mut consumed = 0;
+    let mut i = start;
+    while i < raw.len() {
+        let (indent, line) = (raw[i].0, raw[i].1.clone());
+        if indent <= head_indent {
+            break;
+        }
+        let trimmed = line.trim();
+        let in_idx = trimmed
+            .find('∈')
+            .ok_or_else(|| FrontendError(format!("`type World` field must be `name ∈ Int`: {trimmed:?}")))?;
+        let name = trimmed[..in_idx].trim().to_string();
+        let sort = trimmed[in_idx + '∈'.len_utf8()..].trim();
+        if name.is_empty() || name.contains(char::is_whitespace) {
+            return fe(format!("malformed `type World` field: {trimmed:?}"));
+        }
+        let smt_sort = smt_sort_of(sort)?;
+        if smt_sort != "Int" {
+            return fe(format!(
+                "`type World` field `{name}` has sort `{sort}`; only Int world fields are supported"
+            ));
+        }
+        // Reserved async-source plugin fields (CLAUDE.md "plugin-as-writer"):
+        // the legacy runtime auto-installs an event source (SigintSource,
+        // FrameTimer, StdinSource) to write these. The hybrid engine has no
+        // async event sources, so an FSM reading one would never see a non-init
+        // value, and its run is not comparable to the oracle's (which blocks on
+        // the source). Reject as an honest gap rather than silently diverging.
+        if matches!(name.as_str(), "signal_received" | "tick_count" | "stdin_seq") {
+            return fe(format!(
+                "`type World` field `{name}` is a reserved async-source plugin field \
+                 (no event source in the hybrid engine)"
+            ));
+        }
+        if world.iter().any(|w| w.name == name) {
+            return fe(format!("duplicate `type World` field `{name}`"));
+        }
+        world.push(WorldField { name, smt_sort });
+        consumed += 1;
+        i += 1;
+    }
+    if world.is_empty() {
+        return fe("`type World` has no fields");
+    }
+    Ok(consumed)
+}
+
+/// Recognize `<write_alias>.FIELD = RHS` → `Some((FIELD, RHS))`. The alias is
+/// the FSM's `world_next` param name. Returns None if the line is not a world
+/// write for this alias.
+fn parse_world_write(line: &str, write_alias: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    let prefix = format!("{write_alias}.");
+    let rest = line.strip_prefix(&prefix)?;
+    // `FIELD = RHS`.
+    let eq = rest.find('=')?;
+    let field = rest[..eq].trim();
+    let after = &rest[eq + 1..];
+    // Reject `<=`, `>=`, `!=`, `==`.
+    if after.starts_with('=') {
+        return None;
+    }
+    if let Some(prev) = rest[..eq].chars().last() {
+        if prev == '<' || prev == '>' || prev == '!' {
+            return None;
+        }
+    }
+    if field.is_empty()
+        || !field.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+        || !field.chars().all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return None;
+    }
+    Some((field.to_string(), after.trim().to_string()))
+}
+
+/// Rewrite every `<read_alias>.FIELD` occurrence in `text` to the bare `FIELD`
+/// const name, recording each FIELD as a world read on the builder. The alias
+/// match respects identifier boundaries so `world` doesn't match inside another
+/// identifier (`world_next.` never matches `world.`, since the char after
+/// `world` there is `_`). Returns the rewritten text.
+fn rewrite_world_reads(text: &str, read_alias: Option<&str>, b: &mut FsmBuilder) -> String {
+    let alias = match read_alias {
+        Some(a) => a,
+        None => return text.to_string(),
+    };
+    let needle = format!("{alias}.");
+    let chars: Vec<char> = text.chars().collect();
+    let needle_chars: Vec<char> = needle.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut idx = 0;
+    while idx < chars.len() {
+        // Try to match `alias.` at a word boundary (char before is not part of
+        // an identifier).
+        let boundary_ok = idx == 0 || !(chars[idx - 1].is_alphanumeric() || chars[idx - 1] == '_');
+        if boundary_ok && chars[idx..].starts_with(needle_chars.as_slice()) {
+            let mut j = idx + needle_chars.len();
+            let field_start = j;
+            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            if j > field_start {
+                let field: String = chars[field_start..j].iter().collect();
+                b.note_read(&field);
+                out.push_str(&field);
+                idx = j;
+                continue;
+            }
+        }
+        out.push(chars[idx]);
+        idx += 1;
+    }
+    out
+}
+
+/// Wrapper over [`parse_enum_state_match_arms`] that additionally rewrites any
+/// `<read_alias>.FIELD` in each arm body to the bare `FIELD` const, recording
+/// the world reads on the builder. Used for `state_next`/`effects` match blocks
+/// whose arms may read shared world (the consumer's `world.n > 0` ternary arm).
+fn parse_enum_state_match_arms_w(
+    raw: &[(usize, String)],
+    start: usize,
+    head_indent: usize,
+    read_alias: Option<&str>,
+    b: &mut FsmBuilder,
+) -> Result<(Vec<EnumArm>, Option<String>, usize), FrontendError> {
+    let (mut arms, default, consumed) = parse_enum_state_match_arms(raw, start, head_indent)?;
+    for arm in &mut arms {
+        arm.body = rewrite_world_reads(&arm.body, read_alias, b);
+    }
+    let default = default.map(|d| rewrite_world_reads(&d, read_alias, b));
+    Ok((arms, default, consumed))
 }
 
 /// Parse `NAME = A | B(Int) | C` into (name, [Variant{A}, Variant{B, [Int]}, …]).
@@ -664,31 +977,164 @@ fn parse_variant(v: &str) -> Result<Variant, FrontendError> {
     }
 }
 
-/// Parse `NAME` or `NAME(param ∈ EnumType)` after the `fsm ` keyword.
-fn parse_fsm_header(rest: &str) -> Result<(String, Option<(String, String)>), FrontendError> {
+/// A parsed `fsm` header: its name, optional enum-state `(param, EnumType)`, and
+/// the world-param names — `world_read` is the read alias (`world`), present
+/// when the FSM has a `... ∈ World` param; `world_write` is the write alias
+/// (`world_next`), present when the FSM has a second `... ∈ World` param.
+struct FsmHeader {
+    name: String,
+    enum_state: Option<(String, String)>,
+    /// The read alias for `world.X` (e.g. `"world"`), if any.
+    world_read: Option<String>,
+    /// The write alias for `world_next.X = …` (e.g. `"world_next"`), if any.
+    world_write: Option<String>,
+}
+
+/// Parse `NAME`, `NAME(param ∈ EnumType)`, or a richer header carrying world
+/// params, after the `fsm ` keyword. The full param list (already joined across
+/// continuation lines) is `rest`. Recognized params, in any order:
+///   * `state ∈ EnumType` — the FSM's enum state (at most one).
+///   * `world ∈ World` — read alias for the shared world.
+///   * `world, world_next ∈ World` — a multi-name group: the FIRST name is the
+///     read alias, the SECOND the write alias (both bind `World`).
+///   * `world_next ∈ World` (alone) — a write alias.
+fn parse_fsm_header(rest: &str) -> Result<FsmHeader, FrontendError> {
     let rest = rest.trim();
-    match rest.find('(') {
+    let lp = match rest.find('(') {
         None => {
             let name = rest.trim().to_string();
             if name.is_empty() || name.contains(char::is_whitespace) {
                 return fe(format!("malformed fsm header: {rest:?}"));
             }
-            Ok((name, None))
+            return Ok(FsmHeader { name, enum_state: None, world_read: None, world_write: None });
         }
-        Some(lp) => {
-            let name = rest[..lp].trim().to_string();
-            let close = rest.rfind(')').ok_or_else(|| FrontendError(format!("unclosed fsm params: {rest:?}")))?;
-            let params = rest[lp + 1..close].trim();
-            let in_idx = params.find('∈').ok_or_else(|| {
-                FrontendError(format!("fsm param must be `name ∈ EnumType`: {params:?}"))
-            })?;
-            let param_name = params[..in_idx].trim().to_string();
-            let enum_type = params[in_idx + '∈'.len_utf8()..].trim().to_string();
-            if param_name.is_empty() || enum_type.is_empty() || enum_type.contains(char::is_whitespace) {
-                return fe(format!("fsm param must be a single `name ∈ EnumType`: {params:?}"));
+        Some(lp) => lp,
+    };
+    let name = rest[..lp].trim().to_string();
+    let close = rest
+        .rfind(')')
+        .ok_or_else(|| FrontendError(format!("unclosed fsm params: {rest:?}")))?;
+    if close < lp {
+        return fe(format!("malformed fsm params: {rest:?}"));
+    }
+    let params = rest[lp + 1..close].trim();
+    if name.is_empty() || name.contains(char::is_whitespace) {
+        return fe(format!("malformed fsm header name: {rest:?}"));
+    }
+
+    let mut enum_state: Option<(String, String)> = None;
+    let mut world_read: Option<String> = None;
+    let mut world_write: Option<String> = None;
+
+    for group in split_top_level_commas(params) {
+        let group = group.trim();
+        if group.is_empty() {
+            continue;
+        }
+        // A param group is `names ∈ Type`, where `names` may be a comma-joined
+        // multi-name list (e.g. `world, world_next`). But our top-level comma
+        // split already broke those apart, so re-join: a group with `∈` carries
+        // the type; the preceding type-less groups are leading names of the same
+        // multi-name declaration. We instead handle the common shapes directly.
+        let in_idx = match group.find('∈') {
+            Some(x) => x,
+            None => {
+                // A bare name with no `∈` — part of a multi-name group whose
+                // `∈ Type` follows in the NEXT comma segment. Defer: we collect
+                // these by scanning the whole params string instead. Fall through
+                // to the structured scan below.
+                return parse_fsm_header_grouped(name, params);
             }
-            Ok((name, Some((param_name, enum_type))))
+        };
+        let names_part = group[..in_idx].trim();
+        let ty = group[in_idx + '∈'.len_utf8()..].trim();
+        if names_part.is_empty() || ty.is_empty() || ty.contains(char::is_whitespace) {
+            return fe(format!("malformed fsm param: {group:?}"));
         }
+        let names: Vec<String> = names_part
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        apply_param_group(&names, ty, &mut enum_state, &mut world_read, &mut world_write)?;
+    }
+
+    Ok(FsmHeader { name, enum_state, world_read, world_write })
+}
+
+/// Fallback header parse for the multi-name-spanning-commas case (e.g.
+/// `world, world_next ∈ World, state ∈ PState`). Rebuilds `(names, ty)` groups
+/// by scanning the comma-separated tokens and binding leading type-less names to
+/// the next `∈ Type`.
+fn parse_fsm_header_grouped(name: String, params: &str) -> Result<FsmHeader, FrontendError> {
+    let mut enum_state: Option<(String, String)> = None;
+    let mut world_read: Option<String> = None;
+    let mut world_write: Option<String> = None;
+
+    let mut pending_names: Vec<String> = Vec::new();
+    for seg in split_top_level_commas(params) {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
+        }
+        match seg.find('∈') {
+            None => {
+                // A leading name with no type yet — belongs to the next typed seg.
+                pending_names.push(seg.to_string());
+            }
+            Some(in_idx) => {
+                let last_name = seg[..in_idx].trim();
+                let ty = seg[in_idx + '∈'.len_utf8()..].trim();
+                if last_name.is_empty() || ty.is_empty() || ty.contains(char::is_whitespace) {
+                    return fe(format!("malformed fsm param segment: {seg:?}"));
+                }
+                let mut names = std::mem::take(&mut pending_names);
+                names.push(last_name.to_string());
+                apply_param_group(&names, ty, &mut enum_state, &mut world_read, &mut world_write)?;
+            }
+        }
+    }
+    if !pending_names.is_empty() {
+        return fe(format!("fsm param names without a type: {pending_names:?}"));
+    }
+    Ok(FsmHeader { name, enum_state, world_read, world_write })
+}
+
+/// Apply one `(names, ty)` param group to the header accumulators. `World`-typed
+/// groups set the read alias (first name) and write alias (second name);
+/// other (capitalized) types are treated as the enum state (single name).
+fn apply_param_group(
+    names: &[String],
+    ty: &str,
+    enum_state: &mut Option<(String, String)>,
+    world_read: &mut Option<String>,
+    world_write: &mut Option<String>,
+) -> Result<(), FrontendError> {
+    if ty == "World" {
+        // `world ∈ World` → read alias; `world, world_next ∈ World` → read+write.
+        if names.len() > 2 {
+            return fe(format!("World param group has too many names: {names:?}"));
+        }
+        if let Some(first) = names.first() {
+            if world_read.is_some() {
+                return fe("multiple World read params not supported".to_string());
+            }
+            *world_read = Some(first.clone());
+        }
+        if let Some(second) = names.get(1) {
+            *world_write = Some(second.clone());
+        }
+        Ok(())
+    } else {
+        // Treat as the enum-state param: `state ∈ EnumType`.
+        if names.len() != 1 {
+            return fe(format!("enum-state param must be a single name: {names:?}"));
+        }
+        if enum_state.is_some() {
+            return fe("multiple enum-state params not supported".to_string());
+        }
+        *enum_state = Some((names[0].clone(), ty.to_string()));
+        Ok(())
     }
 }
 
@@ -1049,6 +1495,37 @@ fn gather_continuation(
         }
         acc.push(' ');
         acc.push_str(line.trim());
+        consumed += 1;
+        i += 1;
+    }
+    (acc, consumed)
+}
+
+/// Gather a (possibly multi-line) `fsm` header param list. `first` is the text
+/// after the `fsm ` keyword on line `start`. If its parens are unbalanced (an
+/// open `(` with no matching `)`), append subsequent lines (whitespace-joined)
+/// until they balance. Returns (joined_header_text, lines_consumed_beyond_start).
+fn gather_fsm_header(raw: &[(usize, String)], start: usize, first: &str) -> (String, usize) {
+    let mut acc = first.to_string();
+    let mut consumed = 0;
+    // Count paren balance, ignoring string literals.
+    let balanced = |s: &str| -> bool {
+        let mut depth: i32 = 0;
+        let mut in_str = false;
+        for c in s.chars() {
+            match c {
+                '"' => in_str = !in_str,
+                '(' if !in_str => depth += 1,
+                ')' if !in_str => depth -= 1,
+                _ => {}
+            }
+        }
+        depth <= 0
+    };
+    let mut i = start + 1;
+    while !balanced(&acc) && i < raw.len() {
+        acc.push(' ');
+        acc.push_str(raw[i].1.trim());
         consumed += 1;
         i += 1;
     }
@@ -1544,29 +2021,57 @@ fn smt_str(s: &str) -> String {
 fn emit(prog: &Program) -> Result<String, FrontendError> {
     let mut out = String::new();
 
-    // The scalar var rename: the .ev's current `X` is the engine prev `_X`.
-    let mut rename: HashMap<String, String> = HashMap::new();
-    if let Some(sc) = &prog.scalar_state {
-        rename.insert(sc.name.clone(), sc.prev.clone());
-    }
-
     // ---- @meta JSON ----
     out.push_str("; @meta\n");
     out.push_str("; {\n");
+    // Shared world array, only when there are world fields (a single-FSM
+    // program with no `type World` emits exactly the same JSON it did before).
+    if !prog.world.is_empty() {
+        let entries: Vec<String> = prog
+            .world
+            .iter()
+            .map(|w| format!("{{\"name\":\"{}\",\"sort\":\"{}\",\"init\":0}}", w.name, w.smt_sort))
+            .collect();
+        let _ = writeln!(out, ";   \"world\": [{}],", entries.join(", "));
+    }
     out.push_str(";   \"fsms\": [\n");
+    for (k, fsm) in prog.fsms.iter().enumerate() {
+        emit_fsm_meta(&mut out, fsm);
+        // Comma between fsm entries, none after the last.
+        if k + 1 < prog.fsms.len() {
+            out.push_str(";     },\n");
+        } else {
+            out.push_str(";     }\n");
+        }
+    }
+    out.push_str(";   ]\n");
+    out.push_str("; }\n");
+    out.push_str("; @end\n");
+
+    // ---- one transition block per FSM ----
+    for fsm in &prog.fsms {
+        emit_fsm_transition(&mut out, prog, fsm)?;
+    }
+
+    Ok(out)
+}
+
+/// Emit one FSM's `@meta` JSON entry (no trailing `},` — the caller closes it so
+/// the inter-entry comma is placed correctly).
+fn emit_fsm_meta(out: &mut String, fsm: &FsmDef) {
     out.push_str(";     { \"name\": \"");
-    out.push_str(&prog.fsm_name);
+    out.push_str(&fsm.fsm_name);
     out.push_str("\",\n");
 
     // state array — enum state first (if any), then scalar (if any).
     let mut state_entries: Vec<String> = Vec::new();
-    if let Some(es) = &prog.enum_state {
+    if let Some(es) = &fsm.enum_state {
         state_entries.push(format!(
             "{{\"prev\":\"{}\",\"next\":\"{}\",\"sort\":\"{}\",\"init\":\"{}\"}}",
             es.prev, es.next, es.enum_name, es.init
         ));
     }
-    if let Some(sc) = &prog.scalar_state {
+    if let Some(sc) = &fsm.scalar_state {
         state_entries.push(format!(
             "{{\"prev\":\"{}\",\"next\":\"{}\",\"sort\":\"Int\",\"init\":{}}}",
             sc.prev, sc.name, sc.init
@@ -1574,24 +2079,39 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
     }
     let _ = write!(out, ";       \"state\": [{}]", state_entries.join(", "));
 
-    if prog.has_effects {
+    if !fsm.world_writes.is_empty() {
+        let names: Vec<String> = fsm.world_writes.iter().map(|w| format!("\"{w}\"")).collect();
+        let _ = write!(out, ",\n;       \"world_writes\": [{}]", names.join(", "));
+    }
+    if !fsm.world_reads.is_empty() {
+        let names: Vec<String> = fsm.world_reads.iter().map(|w| format!("\"{w}\"")).collect();
+        let _ = write!(out, ",\n;       \"world_reads\": [{}]", names.join(", "));
+    }
+    if fsm.has_effects {
         out.push_str(",\n;       \"effects\": {\"var\":\"effects\"}");
     }
-    if prog.reads_last_results {
+    if fsm.reads_last_results {
         out.push_str(",\n;       \"last_results\": {\"var\":\"last_results\",\"elem_sort\":\"Result\"}");
     }
     out.push('\n');
-    out.push_str(";     }\n");
-    out.push_str(";   ]\n");
-    out.push_str("; }\n");
-    out.push_str("; @end\n");
+}
 
-    // ---- transition block ----
-    let _ = writeln!(out, "; @transition {}", prog.fsm_name);
+/// Emit one FSM's `; @transition <name>` SMT-LIB block. Each block is
+/// self-contained: it re-declares the Effect datatype + this FSM's state enum,
+/// declares its prev/next state consts, world read/write consts, intermediate
+/// vars, and the per-binding asserts.
+fn emit_fsm_transition(out: &mut String, prog: &Program, fsm: &FsmDef) -> Result<(), FrontendError> {
+    // The scalar var rename: the .ev's current `X` is the engine prev `_X`.
+    let mut rename: HashMap<String, String> = HashMap::new();
+    if let Some(sc) = &fsm.scalar_state {
+        rename.insert(sc.name.clone(), sc.prev.clone());
+    }
+
+    let _ = writeln!(out, "; @transition {}", fsm.fsm_name);
 
     // Datatypes: fixed Effect + (for enum state) the state enum, batched.
-    emit_datatypes(&mut out, prog);
-    if prog.reads_last_results {
+    emit_datatypes(out, prog, fsm);
+    if fsm.reads_last_results {
         out.push_str(
             "(declare-datatypes ((Result 0))\n  \
              (((NoResult) (IntResult (IntResult_0 Int)) \
@@ -1601,24 +2121,38 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
     }
 
     // Const declarations.
-    if let Some(es) = &prog.enum_state {
+    if let Some(es) = &fsm.enum_state {
         let _ = writeln!(out, "(declare-const {} {})", es.prev, es.enum_name);
         let _ = writeln!(out, "(declare-const {} {})", es.next, es.enum_name);
     }
-    if let Some(sc) = &prog.scalar_state {
+    if let Some(sc) = &fsm.scalar_state {
         let _ = writeln!(out, "(declare-const {} Int)", sc.prev);
         let _ = writeln!(out, "(declare-const {} Int)", sc.name);
     }
-    if prog.reads_last_results {
+    // World reads + writes: each is a bare Int const. (test_09 never both reads
+    // and writes the same var, so a name appears in at most one of the two
+    // lists; declare each once.)
+    for field in &fsm.world_reads {
+        let sort = world_field_sort(prog, field);
+        let _ = writeln!(out, "(declare-const {field} {sort})");
+    }
+    for field in &fsm.world_writes {
+        if fsm.world_reads.iter().any(|r| r == field) {
+            continue; // already declared as a read
+        }
+        let sort = world_field_sort(prog, field);
+        let _ = writeln!(out, "(declare-const {field} {sort})");
+    }
+    if fsm.reads_last_results {
         out.push_str("(declare-const last_results (Seq Result))\n");
     }
-    if prog.has_effects {
+    if fsm.has_effects {
         out.push_str("(declare-const effects (Seq Effect))\n");
     }
 
     // Intermediate var declarations (forward declarations, all up front so a
     // later binding can reference an earlier one in any order).
-    for b in &prog.bindings {
+    for b in &fsm.bindings {
         if let Binding::IntermediateVar { name, smt_sort, .. } = b {
             let _ = writeln!(out, "(declare-const {name} {smt_sort})");
         }
@@ -1626,14 +2160,14 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
 
     // ---- asserts ----
     // Scalar transition (state).
-    if let Some(sc) = &prog.scalar_state {
+    if let Some(sc) = &fsm.scalar_state {
         let _ = writeln!(out, "(assert (= {} {}))", sc.name, sc.transition_rhs);
     }
 
     // The enum match scrutinee (.ev's current `state` = engine prev).
-    let enum_scrut = prog.enum_state.as_ref().map(|es| es.prev.clone());
+    let enum_scrut = fsm.enum_state.as_ref().map(|es| es.prev.clone());
 
-    for b in &prog.bindings {
+    for b in &fsm.bindings {
         match b {
             Binding::IntermediateVar { name, value, .. } => {
                 let rhs = match value {
@@ -1641,22 +2175,34 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
                     BindingValue::MatchLastResults { index, lr_var, arms, default } => {
                         emit_last_results_match(*index, lr_var, arms, default, &rename)?
                     }
+                    BindingValue::MatchEnumState { arms, default } => {
+                        let es = fsm.enum_state.as_ref().ok_or_else(|| {
+                            FrontendError(format!(
+                                "`{name} = match state` used without an enum state"
+                            ))
+                        })?;
+                        // Arm bodies are scalar expressions; lower each via the
+                        // arg-expr path (renaming + payload binding applied).
+                        emit_enum_match(prog, fsm, &es.prev, arms, default, &rename, |body, r| {
+                            emit_arg_expr(body, r)
+                        })?
+                    }
                 };
                 let _ = writeln!(out, "(assert (= {name} {rhs}))");
             }
             Binding::StateNextMatch { arms, default } => {
-                let es = prog.enum_state.as_ref().ok_or_else(|| {
+                let es = fsm.enum_state.as_ref().ok_or_else(|| {
                     FrontendError("`state_next = match` used without an enum state".into())
                 })?;
                 let scrut = enum_scrut.as_ref().unwrap();
                 // Arm bodies are enum values (bare/applied variant or ternary).
-                let ite = emit_enum_match(prog, scrut, arms, default, &rename, |body, r| {
+                let ite = emit_enum_match(prog, fsm, scrut, arms, default, &rename, |body, r| {
                     emit_enum_value(body, r)
                 })?;
                 let _ = writeln!(out, "(assert (= {} {ite}))", es.next);
             }
             Binding::StateNextTernary { cond_expr, then_variant, else_variant } => {
-                let es = prog.enum_state.as_ref().ok_or_else(|| {
+                let es = fsm.enum_state.as_ref().ok_or_else(|| {
                     FrontendError("`state_next = (cond ? A : B)` used without an enum state".into())
                 })?;
                 let cond = emit_expr_renamed(cond_expr, &rename)?;
@@ -1672,7 +2218,7 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
                 })?;
                 // Arm bodies are seq literals / ternaries; lowered at emit time
                 // so the scalar rename AND per-arm payload binding apply.
-                let ite = emit_enum_match(prog, scrut, arms, default, &rename, |body, r| {
+                let ite = emit_enum_match(prog, fsm, scrut, arms, default, &rename, |body, r| {
                     emit_effects_rhs(body, r)
                 })?;
                 let _ = writeln!(out, "(assert (= effects {ite}))");
@@ -1681,17 +2227,31 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
                 let term = emit_effects_rhs(raw, &rename)?;
                 let _ = writeln!(out, "(assert (= effects {term}))");
             }
+            Binding::WorldWrite { field, value } => {
+                let rhs = emit_expr_renamed(value, &rename)?;
+                let _ = writeln!(out, "(assert (= {field} {rhs}))");
+            }
         }
     }
 
-    Ok(out)
+    Ok(())
 }
 
-fn emit_datatypes(out: &mut String, prog: &Program) {
+/// SMT-LIB sort for a world field, looked up in the shared world. Defaults to
+/// `Int` if the field isn't found (it always should be for valid programs).
+fn world_field_sort(prog: &Program, field: &str) -> String {
+    prog.world
+        .iter()
+        .find(|w| w.name == field)
+        .map(|w| w.smt_sort.clone())
+        .unwrap_or_else(|| "Int".to_string())
+}
+
+fn emit_datatypes(out: &mut String, prog: &Program, fsm: &FsmDef) {
     let effect_decl = "(Effect 0)";
     let effect_body =
         "((Println (Println_0 String)) (Exit (Exit_0 Int)) (IntToStr (IntToStr_0 Int)) (ParseInt (ParseInt_0 String)))";
-    match &prog.enum_state {
+    match &fsm.enum_state {
         Some(es) => {
             let variants = prog.enums.get(&es.enum_name).cloned().unwrap_or_default();
             let body: String = variants
@@ -1736,6 +2296,7 @@ fn emit_variant_decl(v: &Variant) -> String {
 /// arm's raw body text given the rename map extended with the binding.
 fn emit_enum_match<F>(
     prog: &Program,
+    fsm: &FsmDef,
     scrut: &str,
     arms: &[EnumArm],
     default: &Option<String>,
@@ -1745,7 +2306,7 @@ fn emit_enum_match<F>(
 where
     F: Fn(&str, &HashMap<String, String>) -> Result<String, FrontendError>,
 {
-    let enum_variants: Option<&Vec<Variant>> = prog
+    let enum_variants: Option<&Vec<Variant>> = fsm
         .enum_state
         .as_ref()
         .and_then(|es| prog.enums.get(&es.enum_name));
@@ -1893,9 +2454,19 @@ mod tests {
     }
 
     #[test]
-    fn multiple_fsms_is_err() {
+    fn multiple_fsms_load_as_n() {
+        // Two independent scalar FSMs (no shared world) → two FSM entries, two
+        // transition blocks, no spurious `world` array.
         let src = "fsm a\n    x ∈ Int = (is_first_tick ? 0 : _x + 1)\nfsm b\n    y ∈ Int = (is_first_tick ? 0 : _y + 1)\n";
-        assert!(transpile_fsm(src).is_err());
+        let fix = transpile_fsm(src).expect("two independent fsms transpile");
+        assert!(!fix.contains("\"world\""), "no world array for world-less fsms:\n{fix}");
+        assert!(fix.contains("; @transition a"), "block a:\n{fix}");
+        assert!(fix.contains("; @transition b"), "block b:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads two-fsm fixture");
+        assert_eq!(prob.fsms.len(), 2);
+        assert_eq!(prob.fsms[0].name, "a");
+        assert_eq!(prob.fsms[1].name, "b");
+        assert!(prob.world.is_empty(), "no world vars");
     }
 
     #[test]
@@ -2083,5 +2654,110 @@ mod tests {
         // Binding a payload on a nullary variant is rejected.
         let src = "enum E = Idle | Run(Int)\nfsm f(state ∈ E)\n    state_next = match state\n        Idle(x) ⇒ Run(0)\n        Run(n)  ⇒ Idle\n";
         assert!(transpile_fsm(src).is_err());
+    }
+
+    // ---- N3 multi-FSM + shared world (test_09) ------------------------------
+
+    const TEST_09: &str = "import \"stdlib/runtime.ev\"\n\ntype World\n    n ∈ Int\n\nenum PState = PStart | PTick(Int) | PEnd\nenum CState = CWait | CFormat | CEnd\n\nfsm producer(world, world_next ∈ World,\n               state ∈ PState)\n    state_next = match state\n        PStart    ⇒ PTick(3)\n        PTick(k)  ⇒ (k ≤ 1 ? PEnd : PTick(k - 1))\n        PEnd      ⇒ PEnd\n\n    next_n ∈ Int\n    next_n = match state\n        PStart    ⇒ 3\n        PTick(k)  ⇒ k\n        PEnd      ⇒ 0\n    world_next.n = next_n\n\n    effects = match state\n        PEnd ⇒ ⟨Println(\"producer done\"), Exit(0)⟩\n        _    ⇒ ⟨⟩\n\nfsm consumer(world ∈ World,\n               state ∈ CState)\n    state_next = match state\n        CWait   ⇒ (world.n > 0 ? CFormat : CWait)\n        CFormat ⇒ CWait\n        CEnd    ⇒ CEnd\n\n    n_str ∈ String\n    n_str = match last_results[0]\n        StringResult(s) ⇒ s\n        _               ⇒ \"?\"\n\n    effects = match state\n        CWait   ⇒ (world.n > 0 ? ⟨IntToStr(world.n)⟩ : ⟨⟩)\n        CFormat ⇒ ⟨Println(\"consumer saw n = \" ++ n_str)⟩\n        CEnd    ⇒ ⟨⟩\n";
+
+    #[test]
+    fn test_09_world_meta_array() {
+        let fix = transpile_fsm(TEST_09).expect("transpile test_09");
+        // The shared world array — one Int field `n`, seeded init:0.
+        assert!(
+            fix.contains(";   \"world\": [{\"name\":\"n\",\"sort\":\"Int\",\"init\":0}],"),
+            "world meta array:\n{fix}"
+        );
+    }
+
+    #[test]
+    fn test_09_two_fsm_blocks_with_own_datatypes() {
+        let fix = transpile_fsm(TEST_09).expect("transpile test_09");
+        // One @transition block per FSM, each re-declaring its OWN state enum +
+        // the Effect datatype.
+        assert!(fix.contains("; @transition producer"), "producer block:\n{fix}");
+        assert!(fix.contains("; @transition consumer"), "consumer block:\n{fix}");
+        assert!(
+            fix.contains("(declare-datatypes ((Effect 0) (PState 0))"),
+            "producer's PState declared in its block:\n{fix}"
+        );
+        assert!(
+            fix.contains("(declare-datatypes ((Effect 0) (CState 0))"),
+            "consumer's CState declared in its block:\n{fix}"
+        );
+    }
+
+    #[test]
+    fn test_09_world_writes_and_reads_inferred() {
+        let fix = transpile_fsm(TEST_09).expect("transpile test_09");
+        // producer writes `n`; consumer reads `n`.
+        assert!(fix.contains("\"world_writes\": [\"n\"]"), "producer world_writes:\n{fix}");
+        assert!(fix.contains("\"world_reads\": [\"n\"]"), "consumer world_reads:\n{fix}");
+        // The write is `world_next.n = next_n` → bare const `n` is the target.
+        assert!(fix.contains("(declare-const n Int)"), "world const decl:\n{fix}");
+        assert!(fix.contains("(assert (= n next_n))"), "world write assert:\n{fix}");
+        // The producer's intermediate `next_n = match state` lowers to a nested ite.
+        assert!(fix.contains("(assert (= next_n (ite (is-PStart state) 3"), "next_n match:\n{fix}");
+        // The consumer's reads lower `world.n` → bare `n` in conditions + IntToStr.
+        assert!(fix.contains("(ite (> n 0) CFormat CWait)"), "state_next reads n:\n{fix}");
+        assert!(fix.contains("(seq.unit (IntToStr n))"), "effects reads n:\n{fix}");
+    }
+
+    #[test]
+    fn test_09_loads_as_two_fsms_with_world() {
+        let fix = transpile_fsm(TEST_09).expect("transpile test_09");
+        let prob = load_str(&fix).expect("engine loads test_09 fixture");
+        assert_eq!(prob.fsms.len(), 2, "two FSMs");
+        assert_eq!(prob.fsms[0].name, "producer");
+        assert_eq!(prob.fsms[1].name, "consumer");
+        // Shared world: one Int var `n` seeded init 0.
+        assert_eq!(prob.world.len(), 1);
+        assert_eq!(prob.world[0].name, "n");
+        assert_eq!(prob.world[0].sort, crate::spec::Sort::Int);
+        assert_eq!(prob.world[0].init, Some(crate::spec::Lit::Int(0)));
+        // Writer/reader role assignment threaded into the spec.
+        assert_eq!(prob.fsms[0].world_writes, vec!["n".to_string()]);
+        assert!(prob.fsms[0].world_reads.is_empty());
+        assert_eq!(prob.fsms[1].world_reads, vec!["n".to_string()]);
+        assert!(prob.fsms[1].world_writes.is_empty());
+        // Consumer reads last_results (n_str via StringResult).
+        assert!(prob.fsms[1].last_results.is_some());
+    }
+
+    #[test]
+    fn world_field_with_string_sort_is_err() {
+        // Only Int world fields supported today.
+        let src = "type World\n    s ∈ String\n\nfsm f(world ∈ World, state ∈ E)\nenum E = A | B\n";
+        assert!(transpile_fsm(src).is_err());
+    }
+
+    #[test]
+    fn reserved_async_world_field_is_gap() {
+        // signal_received / tick_count / stdin_seq are plugin-owned in the legacy
+        // runtime; the hybrid has no event source, so we reject (honest gap).
+        let src = "type World\n    signal_received ∈ Int\n\nenum S = Running | Done\nfsm g(world ∈ World, state ∈ S)\n    state_next = match state\n        Running ⇒ (world.signal_received > 0 ? Done : Running)\n        Done    ⇒ Done\n";
+        let err = transpile_fsm(src).unwrap_err();
+        assert!(err.0.contains("reserved async-source"), "err: {}", err.0);
+    }
+
+    #[test]
+    fn type_world_must_precede_fsms() {
+        // `type World` after an fsm is rejected: the shared world declaration
+        // must come before the FSMs that read/write it.
+        let src = "enum E = A | B\nfsm f(state ∈ E)\n    state_next = match state\n        A ⇒ B\n        B ⇒ B\ntype World\n    n ∈ Int\n";
+        let err = transpile_fsm(src).unwrap_err();
+        assert!(err.0.contains("must precede"), "err: {}", err.0);
+    }
+
+    #[test]
+    fn single_fsm_no_world_meta_unchanged() {
+        // Regression guard: a single-FSM program with no `type World` emits the
+        // exact `@meta` shape it always has — no `world` array, one fsm entry.
+        let fix = transpile_fsm(TEST_08).expect("transpile test_08");
+        assert!(!fix.contains("\"world\""), "no world array for single fsm:\n{fix}");
+        assert!(!fix.contains("world_writes"), "no world_writes:\n{fix}");
+        assert!(!fix.contains("world_reads"), "no world_reads:\n{fix}");
+        // The fsms array opens directly after `{` (no world line between them).
+        assert!(fix.contains("; {\n;   \"fsms\": [\n"), "fsms opens immediately:\n{fix}");
     }
 }
