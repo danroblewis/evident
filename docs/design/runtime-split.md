@@ -374,3 +374,94 @@ that the behavior-contract plan does not yet name: **solver configuration is par
 of the contract** (subtlety 1). When `FORMAT.md` lands, this section should be
 diffed against it and the union taken; the fixtures it produces are the
 conformance suite a split engine and the greenfield engine must both pass.
+
+---
+
+## Phase 3 — Migration
+
+A flag-day rewrite is off the table: the survey prices the full-language text
+emitter at ~3.2–3.5 KLOC and the engine re-architecture as genuinely new code.
+The migration must be **additive and `./test.sh`-green at every step** — grow a
+second (text) path beside the live one, gated by an `EVIDENT_*` env var (the
+existing `smtlib.rs::is_enabled` pattern; the codebase has **no Cargo features**,
+all gating is runtime env), and flip the default only after the replacement is
+proven on the full demo + conformance corpus.
+
+### The dependency reality that shapes the order
+
+Two structural facts (from the [crate-structure probe]) constrain the sequence:
+
+- **One crate, no workspace** (`runtime/`, `evident-runtime`). "Extract a crate"
+  means first proving a clean module cut; a literal crate split is optional and
+  comes last.
+- **The dependency DAG seam is *not* the semantic seam.** The
+  below-orchestrator cluster — `lexer`, `parser/`, `core/`, `translate/`,
+  `z3_eval`, `fsm_unroll/` — has **zero back-edges** into `runtime/`/`effect_loop/`,
+  so it is dependency-extractable today. But `translate/` is *semantically
+  engine-side* (it builds live handles), while the *semantically* front-end AST
+  passes — `desugar`/`inject`/`validate`/`generics` — live in `runtime/` +
+  `portable/` (the orchestrator cluster) **and re-enter the engine** through
+  `portable/`'s self-hosting back-edge (`portable/` imports
+  `runtime::EvidentRuntime` + `effect_loop::run_nested`; `runtime`/`effect_loop`
+  call `portable`). Self-hosting welded the front-end passes to the whole engine.
+  There is also a smaller back-edge: `translate/inline/walk.rs → pretty →
+  portable::pretty`.
+
+Consequence: "lift the front-end into a standalone transpiler" is **not free** —
+the front-end passes need a running Evident engine to execute. This is the
+north-star bootstrap circle ("the translator needs the translator"). The
+migration resolves it the same way the north star does: the transpiler keeps the
+**Rust pass implementations as the bootstrap seed** (parser already stays Rust
+for exactly this reason; `subscriptions` already has a Rust backup), with the
+self-hosted `.ev` passes an *optional accelerator*, not a load-bearing
+dependency.
+
+### The ordered, test-green sequence
+
+| Step | What | Additive? | Breaks which coupling | `./test.sh` gate |
+|---|---|---|---|---|
+| **0** (mostly done) | Land `dump-smtlib` + the 19 snapshot fixtures + sat-parity roundtrip test on trunk. The gated scalar/string text-emit slice. | Yes (gated, off default path) | — (establishes the seam exists) | Snapshots + roundtrip parity pass; default path untouched. |
+| **1** | Metadata sidecar + `FsmEngine` trait + `CurrentRuntimeEngine` adapter (shared with `behavior-contract`). `serde` on `MainShape`/`AccessSets`; adapter wraps today's `EvidentRuntime`. | Yes | — (bridges FE→engine without moving code) | Trait + adapter compile; behavior-contract fixtures pass against the adapter. |
+| **2** | Clarify the `core/` boundary in place: `core::frontend` (ast, value, api, seq_helpers) vs `core::engine` (z3_program, z3_types, functionizer) namespaces; keep the flat `crate::core::*` re-export for back-compat. | Yes (re-exports only) | Documents the type-level seam (`core/mod.rs` flat re-export) | Builds; no behavior change. |
+| **3** | Establish "the front-end runs without the engine": confirm/secure a Rust impl for each AST pass (`desugar`/`inject`/`validate`/`generics`) usable with `portable/`'s cache disabled; decouple `pretty` from `portable::pretty` for the transpiler. | Yes | The `portable ↔ runtime ↔ effect_loop` loop + the `pretty` back-edge | A test runs the AST passes with self-hosting disabled and matches the self-hosted output. |
+| **4** | Grow the text emitter to the **full language** behind the gate: records→datatype, enums→`declare-datatype`, Seq, ∀/∃ unrolling, `match`→`ite`, claim inlining, record lifting, string ops. Implement guard-satisfiability as **always-emit** (drop the prune-by-sat). | Yes (gated) | **`inline/guards.rs` mid-translation `solver.check()`** (always-emit on the text path; default path keeps the optimization) | Snapshot + roundtrip parity grows feature-by-feature; default path untouched. **The ~3.2–3.5 KLOC of real work.** |
+| **5** | The **re-ingest shim** (keystone): a path that takes (SMT-LIB text + sidecar), parses it into a **fresh, scoped `Context`** (not the leaked `&'static`), and runs the *unchanged* `simplify_assertions → extract_program_partial → functionize → eval` pipeline on the re-parsed handles. | Yes (gated, parallel engine) | **The leaked `&'static Context` + `unsafe transmute` + leaked worker contexts** (the fresh scoped context sheds fragilities #1/#3/#4 — *if* deliberately scoped) | behavior-contract fixtures pass against the text-engine (engine-over-text reproduces golden). |
+| **6** | Per-tick re-assertion: the text-engine holds each FSM's transition solver (parsed once) and layers prev-state + input pins each tick (Part C), instead of re-translating. | Yes (gated) | **The per-tick `query_with_pins_and_given` weld** (`scheduler.rs:277`, `nested.rs:288`) — for the text path only | Text-engine passes the full demo corpus (`cargo test --test demos`) + conformance behind the flag. |
+| **7** | **Flip the default** (gate now selects the *legacy* path as a one-release fallback). Then delete the ~8.4 KLOC C-API translate core (`exprs/`, `inline/`, `declare`/`datatypes`) + the leaked-context machinery. Functionizer, `z3_eval`, `eval/`, IO kernel survive unchanged. | **No** (the only non-additive step — comes last, after proof) | Retires the in-memory-AST path entirely | Text path passes demos + conformance + fixtures *alone*. |
+
+### The shims that bridge the transition
+
+1. **The metadata sidecar** (Step 1) — front-end → engine without moving any code.
+2. **The `EVIDENT_*` gate** (existing pattern) — both paths live simultaneously;
+   no flag-day. The default path is untouched through Step 6.
+3. **Re-ingest-text-into-fresh-`Context`** (Step 5) — *the keystone*. The
+   [functionize survey](split-survey/functionize-z3eval.md) verified `z3_eval` is
+   welded to the handle *type*, not the translate pipeline: re-parse the text into
+   a `Context` and the entire optimizer + solve stack runs **unmodified**. This is
+   what makes the engine a *reuse* rather than a rewrite.
+4. **Rust pass impls as bootstrap seed** (Step 3) — the transpiler runs its own
+   AST passes without standing up the full self-hosting engine.
+
+### Where the in-memory-AST coupling is broken (and the honest cost)
+
+The three couplings the survey identified, mapped to migration steps:
+
+- **Mid-translation solver query** (`inline/guards.rs`) → **Step 4**, by emitting
+  all guarded branches on the text path (correctness preserved; possibly more
+  assertions). Cheap and local.
+- **Per-tick translate weld** (`scheduler.rs:277`/`nested.rs:288`) → **Step 6**,
+  by holding a transition solver and re-asserting pins. Genuinely new
+  orchestration code.
+- **Leaked `&'static Context` + transmute + worker contexts** (`mod.rs:95`,
+  `query.rs:485,858`) → **Step 5**, *only if* the re-ingest path is deliberately
+  built on a scoped context. **This is the migration's pivotal choice**: reuse the
+  leaked pattern and the split inherits all six fragilities; build a scoped context
+  and Steps 5–6 become *the same scoped-context orchestration the greenfield
+  writes from scratch* — at which point the split is reusing the front-end + the
+  functionizer/eval stack, but **rebuilding the orchestration layer anyway**.
+
+That last point is the bridge to the recommendation: Steps 0–4 produce assets
+(the seam, the sidecar, the full-language text emitter) that are valuable
+*regardless* of whether the engine is split or greenfielded — but Steps 5–7, the
+part that actually "splits the engine," converge on the greenfield's work. Phase 4
+weighs exactly this.
