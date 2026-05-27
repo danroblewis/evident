@@ -66,6 +66,46 @@ check_forced enums.ev forced_color_by_elim     c Green
 check_forced enums.ev forced_result_ok         r 'Ok(7)'
 check_forced enums.ev forced_match_extract     n 42
 check_forced enums.ev forced_matches_recognizer b true
+# Quantifiers (M4b): finite range unroll forces a unique model.
+check_forced quantifiers.ev forced_forall_singleton n 3
+check_forced quantifiers.ev forced_forall_block     n 3
+# Records (M4c): per-field leaves; field access, pins, literals, comparison lifts.
+check_forced records.ev forced_vec_sum            s 7
+check_forced records.ev forced_vec_eq             bx 5
+check_forced records.ev forced_color_named_pin    rr 110
+check_forced records.ev forced_vec_positional_pin sx 100
+check_forced records.ev forced_vec_literal_eq     s 33
+check_forced records.ev forced_nested_field       s 33
+check_forced records.ev forced_vec_add            sx 13
+check_forced records.ev forced_vec_scale          sy 20
+check_forced records.ev forced_vec_physics        nx 103
+# Seq (M4d): scalar derivations from seq.len / seq.nth (whole-seq value parity —
+# xs=[10, 20, 30] etc. — is asserted exactly in seed_tests; awk-splitting on
+# whitespace can't capture a bracketed list here).
+check_forced seqs.ev forced_seq_elems      s 60
+check_forced seqs.ev forced_seq_len        n 5
+check_forced seqs.ev sat_seq_partial       m 99
+check_forced seqs.ev forced_seq_forall_pos s 5
+
+# Self-hosted-pass cross-check (M5): run an Evident *transform* pass on both
+# engines and assert they reify the SAME output AST. The output value is a nested
+# `Ctor(...)` string with spaces, so we extract the whole RHS (not an awk column).
+echo "== self-hosted pass cross-check (M5: one pass, two engines, one output AST) =="
+check_pass() {
+    local claim="$1" expect="$2" c r
+    c="$("$EVC" "$FIX/passes.ev" "$claim" 2>/dev/null | sed -n 's/^output = //p')"
+    r="$("$RUST" sample "$FIX/passes.ev" "$claim" -n 1 2>/dev/null | sed -n 's/^output=//p')"
+    if [[ "$c" == "$expect" && "$r" == "$expect" ]]; then
+        echo "  OK   $claim: output = $expect  (C and Rust agree)"
+    else
+        echo "  FAIL $claim: expected '$expect'  got C='$c' Rust='$r'"
+        fail=1
+    fi
+}
+check_pass identity_pass    "Add(Lit(2), Mul(Lit(3), Lit(4)))"
+check_pass swap_add_pass    "Add(Mul(Lit(7), Lit(8)), Lit(1))"
+check_pass mul_to_add_pass  "Add(Lit(5), Add(Lit(6), Lit(7)))"
+check_pass passthrough_pass "Lit(42)"
 
 echo
 if [[ $fail -eq 0 ]]; then echo "cross-check: PASS"; else echo "cross-check: FAIL"; fi

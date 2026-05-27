@@ -61,6 +61,40 @@ Value read_ast_value(Z3_context ctx, Z3_ast ast) {
     }
 }
 
+// Gather the elements of a Z3 sequence model value (built from `seq.++` /
+// `seq.unit` / `seq.empty`) into formatted element strings — walked generically
+// by app-decl name, no seq-specific C API needed (the homebrew z3.h doesn't
+// expose one). Mirrors how read_ast_value walks datatype values.
+void gather_seq_elems(Z3_context ctx, Z3_ast ast, std::vector<std::string> &out) {
+    Z3_app app = Z3_to_app(ctx, ast);
+    Z3_func_decl decl = Z3_get_app_decl(ctx, app);
+    std::string name = Z3_get_symbol_string(ctx, Z3_get_decl_name(ctx, decl));
+    unsigned n = Z3_get_app_num_args(ctx, app);
+    if (name == "seq.++") {
+        for (unsigned i = 0; i < n; i++) gather_seq_elems(ctx, Z3_get_app_arg(ctx, app, i), out);
+    } else if (name == "seq.unit") {
+        out.push_back(read_ast_value(ctx, Z3_get_app_arg(ctx, app, 0)).format());
+    } else if (name.find("empty") != std::string::npos || n == 0) {
+        // empty sequence — no elements
+    } else {
+        // Unknown shape (e.g. a string literal seq): fall back to one element.
+        out.push_back(read_ast_value(ctx, ast).format());
+    }
+}
+
+// Format a sequence model value as `[e0, e1, …]`, matching the Rust CLI.
+std::string read_seq_value(Z3_context ctx, Z3_ast ast) {
+    std::vector<std::string> elems;
+    gather_seq_elems(ctx, ast, elems);
+    std::string s = "[";
+    for (size_t i = 0; i < elems.size(); i++) {
+        if (i) s += ", ";
+        s += elems[i];
+    }
+    s += "]";
+    return s;
+}
+
 }  // namespace
 
 SolveResult solve(const EmitResult &emitted) {
@@ -116,6 +150,12 @@ SolveResult solve(const EmitResult &emitted) {
                     res.bindings.push_back({name, read_ast_value(ctx, it->second)});
                 continue;  // free (unconstrained) enum vars: any value, not reported
             }
+            if (sort.tag == Sort::Tag::Seq) {
+                auto it = by_name.find(name);
+                if (it != by_name.end())
+                    res.bindings.push_back({name, Value::Seq(read_seq_value(ctx, it->second))});
+                continue;
+            }
             Z3_sort z3sort;
             switch (sort.tag) {
                 case Sort::Tag::Int:  z3sort = Z3_mk_int_sort(ctx); break;
@@ -123,6 +163,7 @@ SolveResult solve(const EmitResult &emitted) {
                 case Sort::Tag::Real: z3sort = Z3_mk_real_sort(ctx); break;
                 case Sort::Tag::Str:  z3sort = Z3_mk_string_sort(ctx); break;
                 case Sort::Tag::Enum: continue;  // handled above
+                case Sort::Tag::Seq:  continue;  // handled above
             }
             Z3_ast c = Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, name.c_str()), z3sort);
             Z3_ast val = nullptr;
@@ -152,6 +193,7 @@ SolveResult solve(const EmitResult &emitted) {
                     break;
                 }
                 case Sort::Tag::Enum: break;
+                case Sort::Tag::Seq:  break;  // handled above
             }
         }
         Z3_model_dec_ref(ctx, m);
