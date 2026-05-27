@@ -137,12 +137,13 @@ impl<'ctx> std::fmt::Display for Z3Program<'ctx> {
 mod tests {
     use super::*;
     use z3::ast::{Ast, Bool, Dynamic, Int};
-    use z3::{Config, Context};
+    use z3::Context;
 
     fn ctx() -> &'static Context {
         // Leak a Context for 'static lifetime — same trick as runtime/decompose tests.
-        let cfg = Config::new();
-        Box::leak(Box::new(Context::new(&cfg)))
+        // Serialized through the global setup lock (see crate::z3_ctx) so the lib
+        // unit-test binary's parallel threads don't race Z3's global init.
+        crate::z3_ctx::leaked_context()
     }
 
     #[test]

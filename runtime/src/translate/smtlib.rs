@@ -363,7 +363,9 @@ pub fn solve(schema: &SchemaDecl) -> Result<SmtSolveResult, SmtLibError> {
 
     let mut cfg = Config::new();
     cfg.set_model_generation(true);
-    let ctx = Context::new(&cfg);
+    // Serialized through the global setup lock (see crate::z3_ctx) so concurrent
+    // creation never races Z3's global init.
+    let ctx = { let _g = crate::z3_ctx::setup_guard(); Context::new(&cfg) };
     let solver = Solver::new(&ctx);
 
     solver.from_string(text.clone());

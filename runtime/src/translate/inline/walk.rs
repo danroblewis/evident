@@ -154,9 +154,7 @@ pub(super) fn inline_body_items_guarded(
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     track_assert(solver, &guarded_bool(b, guard), tracker);
                 } else {
-                    let lenient = std::env::var("EVIDENT_LENIENT")
-                        .map(|v| !v.is_empty() && v != "0")
-                        .unwrap_or(false);
+                    let lenient = crate::runtime::lenient::lenient_enabled();
                     let pretty = pretty::expr(e);
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");

@@ -123,6 +123,14 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
 fi
 
 # ── Phase 2: cargo test ───────────────────────────────────────
+# Runs at FULL libtest parallelism on purpose: every test binary is a
+# concurrency stress of the multi-threaded runtime, which is what catches
+# the two process-global hazards documented in
+# docs/design/test-concurrency-hazards.md (Z3 context-creation race;
+# lenient-mode env-var race). Both are fixed at the root (runtime/src/z3_ctx.rs
+# and runtime/src/runtime/lenient.rs), so we do NOT cap RUST_TEST_THREADS —
+# capping would only hide a future regression of either. If toposort_correctness
+# or basic.rs ever "exits abnormally" / returns a wrong answer here, read that doc.
 if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 2: cargo test --release (runtime/)"
     if (cd runtime && cargo test --release 2>&1 | tee /tmp/evident-cargo-test.log) ; then

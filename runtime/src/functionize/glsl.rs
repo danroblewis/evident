@@ -620,7 +620,8 @@ mod tests {
     #[test]
     fn emits_affine_glsl() {
         let cfg = Config::new();
-        let ctx = Context::new(&cfg);
+        // Serialized through the global setup lock (see crate::z3_ctx).
+        let ctx = { let _g = crate::z3_ctx::setup_guard(); Context::new(&cfg) };
         let x = z3::ast::Int::new_const(&ctx, "input");
         let expr = z3::ast::Int::add(
             &ctx,

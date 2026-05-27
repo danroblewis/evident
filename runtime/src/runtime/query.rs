@@ -316,20 +316,6 @@ fn solve_one_part(
     Some(out)
 }
 
-/// Global mutex serializing Z3 context creation and datatype replay (historically racy).
-fn z3_setup_lock() -> std::sync::MutexGuard<'static, ()> {
-    use std::sync::Mutex;
-    static SETUP_LOCK: Mutex<()> = Mutex::new(());
-    SETUP_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// Mint a fresh `'static` Z3 context (leaked, same as main ctx); serialized via `z3_setup_lock`.
-fn new_leaked_context() -> &'static Context {
-    let _guard = z3_setup_lock();
-    let cfg = z3::Config::new();
-    Box::leak(Box::new(Context::new(&cfg)))
-}
-
 /// True when this part's env entries can be reproduced in a private worker context.
 /// Excluded (→ sequential): record-element `DatatypeSeqVar` (main-ctx `FieldKind::Nested`
 /// sorts cause cross-context panic), `DatatypeSetVar`, `EnumValue`, `EnumCtor`.
@@ -727,6 +713,60 @@ impl EvidentRuntime {
             all.append(&mut program.steps);
             program.steps = all;
         }
+        // Free-input safety: the JIT reads any var the program references but
+        // does NOT define (no step assigns it) from `given`, defaulting it
+        // (typically 0) when absent. For a true input that is fine. The hazard
+        // is a *free internal* — neither given, nor defined by a step, nor a
+        // baked constant — that ALSO carries a NON-equality constraint (a bound
+        // or predicate). The JIT computes via equalities but drops bounds /
+        // predicates on its inputs, so it would default that var (→ 0) and
+        // silently violate the constraint. The canonical case is a claim's
+        // unmapped internal: `pick` declares `picked ∈ Nat`, `picked > 5`,
+        // `out = picked + 1`; extraction reads `picked` as an input, the JIT
+        // defaults it to 0, and `picked > 5` is lost → `out = 1`, wrong.
+        //
+        // A free var that feeds ONLY output-defining equalities is safely
+        // defaulted: its value is otherwise unconstrained, so any choice
+        // (including 0) is a valid model — that's why this is gated on a
+        // non-equality constraint and does NOT divert ordinary JIT components.
+        // The var lives in the inlined claim's local scope (NOT `cached.env`),
+        // so the membership check above can't see it; we detect it from the
+        // program's own reads vs. definitions. (Whether such a query even gets
+        // functionized is non-deterministic — it hinges on the global claim-call
+        // id baked into var names — so the miscompile was a flaky, silently
+        // wrong result. See tests/concurrency_stress.rs and
+        // basic.rs::claim_call_unmapped_internal.)
+        {
+            let defined: HashSet<&str> = program.steps.iter().map(|s| s.var()).collect();
+            let outputs: HashSet<&str> = comp_out_vec.iter().map(|s| s.as_str()).collect();
+            let is_free = |n: &str| {
+                !given.contains_key(n)
+                    && !defined.contains(n)
+                    && !outputs.contains(n)
+                    && !cached.env.get(n).map(|v| matches!(v,
+                        Var::PinnedInt(_) | Var::EnumValue { .. } | Var::EnumCtor { .. }))
+                        .unwrap_or(false)
+            };
+            let mut unsafe_free = false;
+            for a in comp_assertions {
+                // Equalities define values (the JIT computes them); only
+                // non-equality assertions constrain a var the JIT can't enforce.
+                let is_equality = a.safe_decl().ok()
+                    .map(|d| matches!(d.kind(), DeclKind::EQ)).unwrap_or(false);
+                if is_equality { continue; }
+                let mut names: HashSet<String> = HashSet::new();
+                collect_touched_names(a, &mut names);
+                if names.iter().any(|n| is_free(n)) { unsafe_free = true; break; }
+            }
+            if unsafe_free {
+                // A defining constraint elsewhere → the slow solve recovers the
+                // free var correctly; only type bounds → nothing to solve, bail.
+                if component_has_defining_assertion(comp_assertions) {
+                    return ComponentOutcome::Slow;
+                }
+                return ComponentOutcome::Bail;
+            }
+        }
         {
             let mut stats = self.functionize_stats.borrow_mut();
             let per = stats.claims.entry(name.to_string()).or_default();
@@ -854,8 +894,11 @@ impl EvidentRuntime {
             let needs_enums = outputs.iter().chain(given.keys()).any(|name|
                 matches!(env.get(name),
                     Some(Var::EnumVar { .. }) | Some(Var::DatatypeSeqVar { .. })));
-            let (ctx, wenums) = { // z3_setup_lock prevents concurrent context/type construction
-                let _guard = z3_setup_lock();
+            let (ctx, wenums) = {
+                // Hold the global setup guard across creation AND datatype replay
+                // so the worker context is fully populated before another thread
+                // touches Z3 (see crate::z3_ctx).
+                let _guard = crate::z3_ctx::setup_guard();
                 let cfg = z3::Config::new();
                 let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
                 let wenums = if needs_enums { Some(self.replay_enums_into(ctx)) } else { None };
@@ -883,7 +926,7 @@ impl EvidentRuntime {
         }).collect()
     }
 
-    /// Replay enum definitions into `ctx`; called under `z3_setup_lock` by `build_parallel_slow`.
+    /// Replay enum definitions into `ctx`; called under the global setup guard by `build_parallel_slow`.
     /// Errors silently leave the registry partial → caller falls back to main-context solve.
     fn replay_enums_into(&self, ctx: &'static Context) -> crate::core::EnumRegistry {
         let wenums = crate::core::EnumRegistry::new();
@@ -1077,8 +1120,7 @@ mod decompose_tests {
     use z3::ast::Int;
 
     fn leaked_ctx() -> &'static Context {
-        let cfg = z3::Config::new();
-        Box::leak(Box::new(Context::new(&cfg)))
+        crate::z3_ctx::leaked_context()
     }
 
     fn name_set(names: &[&str]) -> HashSet<String> {

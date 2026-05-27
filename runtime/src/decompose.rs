@@ -155,11 +155,10 @@ fn components_from_uf(
 mod tests {
     use super::*;
     use z3::ast::Int;
-    use z3::Config;
 
     fn ctx() -> &'static Context {
-        let cfg = Config::new();
-        Box::leak(Box::new(Context::new(&cfg)))
+        // Serialized through the global setup lock (see crate::z3_ctx).
+        crate::z3_ctx::leaked_context()
     }
 
     #[test]
