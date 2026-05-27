@@ -1,0 +1,16 @@
+-- N2 cross-check artifact: the countdown loop expressed for the legacy runtime
+-- (the oracle). Must produce byte-identical stdout + exit code to runtime-smt
+-- running fixtures/countdown.smt2:
+--
+--   evident effect-run runtime-smt/crosscheck/countdown.ev
+--   => tick / tick / tick / done   (then exit 0)
+--
+-- State threads count -> _count. On tick 0 (is_first_tick) count = 3 and prints
+-- "tick"; each later tick decrements; when count reaches 0 it prints "done" and
+-- Exit(0). Same 4-tick schedule as the SMT-LIB fixture.
+
+import "stdlib/runtime.ev"
+
+fsm countdown
+    count ∈ Int = (is_first_tick ? 3 : _count - 1)
+    effects = (count > 0 ? ⟨Println("tick")⟩ : ⟨Println("done"), Exit(0)⟩)

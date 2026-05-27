@@ -1,0 +1,27 @@
+[package]
+name = "runtime-smt"
+version = "0.1.0"
+edition = "2021"
+description = "Greenfield SMT-LIB-input FSM execution engine (Evident new-runtime experiment)"
+
+# Additive sibling of `runtime/`. Builds against the same Homebrew Z3 the
+# legacy runtime uses; the repo-root `.cargo/config` supplies the header path
+# and the link-fixup wrapper, so build from the repo root (cwd = repo root):
+#   cargo build  --manifest-path runtime-smt/Cargo.toml
+#   cargo test   --manifest-path runtime-smt/Cargo.toml
+[dependencies]
+# We drive Z3 through the raw C API (z3-sys) rather than the high-level `z3`
+# crate. Reason: total control over Context lifecycle. Each engine instance
+# owns exactly one Context and frees it on Drop — no thread_local solvers, no
+# leaked contexts (the legacy runtime's flakiness came from exactly that).
+z3-sys = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "runtime_smt"
+path = "src/lib.rs"
+
+[[bin]]
+name = "runtime-smt"
+path = "src/main.rs"
