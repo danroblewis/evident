@@ -2010,6 +2010,10 @@ enum Expr {
     Concat(Box<Expr>, Box<Expr>),
     /// Ternary `(cond ? then : else)` → `(ite cond then else)`.
     Ite(Box<Expr>, Box<Expr>, Box<Expr>),
+    /// A function-call expression `f(a, b, …)`. The string-ops `index_of` /
+    /// `substr` / `replace` lower to Z3 string theory; everything else is an
+    /// honest error at emit time.
+    Call(String, Vec<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2129,7 +2133,17 @@ fn parse_atom(t: &[Tok], p: usize) -> ParseResult {
         Some(Tok::True) => Ok((Expr::Bool(true), p + 1)),
         Some(Tok::False) => Ok((Expr::Bool(false), p + 1)),
         Some(Tok::StrLit(s)) => Ok((Expr::Str(s.clone()), p + 1)),
-        Some(Tok::Ident(n)) => Ok((Expr::Ident(n.clone()), p + 1)),
+        Some(Tok::Ident(n)) => {
+            // `f(a, b, …)` — a function-call expression. Recognized when the
+            // identifier is immediately followed by `(`. A bare identifier (no
+            // `(`) stays an `Ident`, preserving the existing path.
+            if matches!(t.get(p + 1), Some(Tok::LParen)) {
+                let (args, p2) = parse_call_args(t, p + 2)?;
+                Ok((Expr::Call(n.clone(), args), p2))
+            } else {
+                Ok((Expr::Ident(n.clone()), p + 1))
+            }
+        }
         Some(Tok::LParen) => {
             let (e, p2) = parse_expr(t, p + 1)?;
             match t.get(p2) {
@@ -2138,6 +2152,28 @@ fn parse_atom(t: &[Tok], p: usize) -> ParseResult {
             }
         }
         other => fe(format!("unexpected token in expression: {other:?}")),
+    }
+}
+
+/// Parse a comma-separated argument list of full expressions, starting at the
+/// token AFTER the opening `(`, and consuming through the matching `)`. Returns
+/// the parsed args and the position just past the `)`. Each arg is a full
+/// expression, so arithmetic / nested calls / ternaries inside args work.
+fn parse_call_args(t: &[Tok], mut p: usize) -> Result<(Vec<Expr>, usize), FrontendError> {
+    let mut args = Vec::new();
+    // Empty arg list `f()`.
+    if matches!(t.get(p), Some(Tok::RParen)) {
+        return Ok((args, p + 1));
+    }
+    loop {
+        let (e, p2) = parse_expr(t, p)?;
+        args.push(e);
+        p = p2;
+        match t.get(p) {
+            Some(Tok::Comma) => { p += 1; }
+            Some(Tok::RParen) => return Ok((args, p + 1)),
+            other => return fe(format!("expected `,` or `)` in call args, got {other:?}")),
+        }
     }
 }
 
@@ -2173,6 +2209,7 @@ fn emit_expr_renamed(e: &Expr, rename: &HashMap<String, String>) -> Result<Strin
             emit_expr_renamed(then_e, rename)?,
             emit_expr_renamed(else_e, rename)?
         )),
+        Expr::Call(name, args) => emit_call(name, args, rename),
         Expr::Bin(BinOp::Neq, a, b) => Ok(format!(
             "(not (= {} {}))",
             emit_expr_renamed(a, rename)?,
@@ -2195,6 +2232,33 @@ fn emit_expr_renamed(e: &Expr, rename: &HashMap<String, String>) -> Result<Strin
             };
             Ok(format!("({sym} {} {})", emit_expr_renamed(a, rename)?, emit_expr_renamed(b, rename)?))
         }
+    }
+}
+
+/// Lower a function-call expression to SMT-LIB. The string-manipulation
+/// builtins map to Z3 string-theory operators (the engine runs the same Z3, so
+/// it decodes them natively — no engine change needed):
+///   * `index_of(s, sub)`     → `(str.indexof <s> <sub> 0)`  (Int; first match)
+///   * `substr(s, start, len)` → `(str.substr <s> <start> <len>)`
+///   * `replace(s, from, to)`  → `(str.replace <s> <from> <to>)`  (first occurrence)
+/// Args lower recursively through [`emit_expr_renamed`], so renames + arithmetic
+/// in the args (e.g. `substr(g, lt + 1, gt - lt - 1)`) carry through. Any other
+/// call name is an honest error — never a silent mis-handle.
+fn emit_call(name: &str, args: &[Expr], rename: &HashMap<String, String>) -> Result<String, FrontendError> {
+    let lowered: Result<Vec<String>, FrontendError> =
+        args.iter().map(|a| emit_expr_renamed(a, rename)).collect();
+    let a = lowered?;
+    match (name, a.len()) {
+        ("index_of", 2) => Ok(format!("(str.indexof {} {} 0)", a[0], a[1])),
+        ("substr", 3) => Ok(format!("(str.substr {} {} {})", a[0], a[1], a[2])),
+        ("replace", 3) => Ok(format!("(str.replace {} {} {})", a[0], a[1], a[2])),
+        ("index_of", n) => fe(format!("`index_of` takes 2 args, got {n}")),
+        ("substr", n) => fe(format!("`substr` takes 3 args, got {n}")),
+        ("replace", n) => fe(format!("`replace` takes 3 args, got {n}")),
+        (other, _) => fe(format!(
+            "unsupported function-call `{other}` in fsm body \
+             (string ops: index_of / substr / replace)"
+        )),
     }
 }
 
@@ -3098,5 +3162,127 @@ mod tests {
         let src = "fsm f\n    n ∈ Int = (is_first_tick ? 0 : _n + 1)\n    a, b ∈ Widget\n    effects = ⟨Println(\"x\")⟩\n";
         let err = transpile_fsm(src).unwrap_err();
         assert!(err.0.contains("Widget"), "err: {}", err.0);
+    }
+
+    // ---- string-op function-call expressions (test_39) ----------------------
+
+    /// Parse a single expression to its lowered SMT-LIB string (no renaming).
+    fn lower_expr(src: &str) -> Result<String, FrontendError> {
+        let toks = tokenize(src)?;
+        let (e, used) = parse_expr(&toks, 0)?;
+        assert_eq!(used, toks.len(), "did not consume all tokens of {src:?}");
+        emit_expr(&e)
+    }
+
+    #[test]
+    fn function_call_parses_as_call_node() {
+        // An identifier immediately followed by `(` parses as a call, with each
+        // arg a full expression.
+        let toks = tokenize("index_of(g, \"<\")").expect("tokenize");
+        let (e, used) = parse_expr(&toks, 0).expect("parse call");
+        assert_eq!(used, toks.len());
+        match e {
+            Expr::Call(name, args) => {
+                assert_eq!(name, "index_of");
+                assert_eq!(args.len(), 2);
+                assert!(matches!(args[0], Expr::Ident(ref n) if n == "g"));
+                assert!(matches!(args[1], Expr::Str(ref s) if s == "<"));
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bare_identifier_still_parses_as_ident() {
+        // Regression: a bare identifier with NO following `(` stays an Ident, and
+        // a parenthesized expression `(a)` is unaffected by the call path.
+        let toks = tokenize("g").expect("tokenize");
+        let (e, _) = parse_expr(&toks, 0).expect("parse");
+        assert!(matches!(e, Expr::Ident(ref n) if n == "g"), "{e:?}");
+        assert_eq!(lower_expr("(lt + 1)").expect("paren expr"), "(+ lt 1)");
+        // A bare ident feeding an effect arg (no call) still renders as-is.
+        assert_eq!(lower_expr("head").expect("ident"), "head");
+    }
+
+    #[test]
+    fn index_of_lowers_to_str_indexof() {
+        assert_eq!(
+            lower_expr("index_of(g, \"<\")").expect("index_of"),
+            "(str.indexof g \"<\" 0)"
+        );
+    }
+
+    #[test]
+    fn substr_lowers_to_str_substr_with_arithmetic_args() {
+        // Plain offsets.
+        assert_eq!(
+            lower_expr("substr(g, 0, lt)").expect("substr"),
+            "(str.substr g 0 lt)"
+        );
+        // Arithmetic inside the args lowers recursively (offset + length).
+        assert_eq!(
+            lower_expr("substr(g, lt + 1, gt - lt - 1)").expect("substr arith"),
+            "(str.substr g (+ lt 1) (- (- gt lt) 1))"
+        );
+    }
+
+    #[test]
+    fn replace_lowers_to_str_replace() {
+        assert_eq!(
+            lower_expr("replace(\"Seq(T)\", \"T\", arg)").expect("replace"),
+            "(str.replace \"Seq(T)\" \"T\" arg)"
+        );
+    }
+
+    #[test]
+    fn call_composes_inside_concat_and_arithmetic() {
+        // A call nested inside `++` and inside arithmetic lowers correctly.
+        assert_eq!(
+            lower_expr("substr(g, 0, lt) ++ \" / \"").expect("concat with call"),
+            "(str.++ (str.substr g 0 lt) \" / \")"
+        );
+        assert_eq!(
+            lower_expr("index_of(g, \"<\") + 1").expect("call in arith"),
+            "(+ (str.indexof g \"<\" 0) 1)"
+        );
+    }
+
+    #[test]
+    fn unknown_function_call_is_err() {
+        // An unsupported call name is an honest error, never a silent mis-handle.
+        let err = lower_expr("frobnicate(g, 1)").unwrap_err();
+        assert!(err.0.contains("frobnicate"), "err: {}", err.0);
+        // Wrong arity is also rejected.
+        let err = lower_expr("substr(g, 0)").unwrap_err();
+        assert!(err.0.contains("substr"), "err: {}", err.0);
+    }
+
+    const TEST_39: &str = "import \"stdlib/runtime.ev\"\n\nenum StrDemoState = StrDemoRun | StrDemoHalt\n\nfsm string_demo(state ∈ StrDemoState)\n    state_next = match state\n        StrDemoRun ⇒ StrDemoHalt\n        StrDemoHalt ⇒ StrDemoHalt\n\n    g ∈ String = \"Edge<Rect>\"\n    lt ∈ Int = index_of(g, \"<\")\n    gt ∈ Int = index_of(g, \">\")\n    head ∈ String = substr(g, 0, lt)\n    arg ∈ String = substr(g, lt + 1, gt - lt - 1)\n    mono ∈ String = replace(\"Seq(T)\", \"T\", arg)\n\n    effects = match state\n        StrDemoRun ⇒ ⟨Println(head ++ \" / \" ++ arg ++ \" / \" ++ mono), Exit(0)⟩\n        StrDemoHalt ⇒ ⟨⟩\n";
+
+    #[test]
+    fn test_39_string_ops_lowering() {
+        let fix = transpile_fsm(TEST_39).expect("transpile test_39");
+        // The three string ops lower to Z3 string theory in the intermediate-var
+        // defining asserts.
+        assert!(fix.contains("(assert (= g \"Edge<Rect>\"))"), "g literal:\n{fix}");
+        assert!(fix.contains("(assert (= lt (str.indexof g \"<\" 0)))"), "index_of <:\n{fix}");
+        assert!(fix.contains("(assert (= gt (str.indexof g \">\" 0)))"), "index_of >:\n{fix}");
+        assert!(fix.contains("(assert (= head (str.substr g 0 lt)))"), "substr head:\n{fix}");
+        assert!(
+            fix.contains("(assert (= arg (str.substr g (+ lt 1) (- (- gt lt) 1))))"),
+            "substr arg (arithmetic args):\n{fix}"
+        );
+        assert!(
+            fix.contains("(assert (= mono (str.replace \"Seq(T)\" \"T\" arg)))"),
+            "replace mono:\n{fix}"
+        );
+        // The effects arm concatenates the three derived strings (bare-ident refs).
+        assert!(
+            fix.contains("(str.++ (str.++ (str.++ (str.++ head \" / \") arg) \" / \") mono)"),
+            "effects concat:\n{fix}"
+        );
+        // The engine accepts the fixture (Z3 string theory decodes str.* natively).
+        let prob = load_str(&fix).expect("engine loads test_39 fixture");
+        assert_eq!(prob.fsms[0].name, "string_demo");
     }
 }

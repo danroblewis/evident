@@ -167,6 +167,18 @@ fn test_28_parallel_enum_coloring_matches_oracle() {
 }
 
 #[test]
+fn test_39_string_ops_matches_oracle() {
+    // String-manipulation builtins lowered to Z3 string theory: the fsm body
+    // does index_of("Edge<Rect>", "<")/">", substr to slice out "Edge"/"Rect",
+    // and replace("Seq(T)", "T", "Rect") → "Seq(Rect)". On StrDemoRun it prints
+    // the three derived strings joined by " / " then Exit(0). Byte-identical to
+    // `evident effect-run examples/test_39_string_ops.ev --max-steps 10`.
+    let (stdout, code) = hybrid_run("examples/test_39_string_ops.ev");
+    assert_eq!(stdout, "Edge / Rect / Seq(Rect)\n", "stdout mismatch");
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
 fn test_02_counter_matches_oracle() {
     // Payload-carrying enum state: CountState = Start | Count(Int) | Format(Int)
     // | Done. `match state` arms bind the payload (Count(n) → (Count_0 state)),
