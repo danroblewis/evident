@@ -121,3 +121,18 @@ fn test_20_pure_counter_matches_oracle() {
     );
     assert_eq!(code, 0, "exit code mismatch");
 }
+
+#[test]
+fn test_02_counter_matches_oracle() {
+    // Payload-carrying enum state: CountState = Start | Count(Int) | Format(Int)
+    // | Done. `match state` arms bind the payload (Count(n) → (Count_0 state)),
+    // construct payload values (Count(5), Count(n - 1)), and a ternary
+    // (n ≤ 1 ? Done : Count(n - 1)). The Format-state Println reads back the
+    // prior IntToStr StringResult via last_results[0].
+    let (stdout, code) = hybrid_run("examples/test_02_counter.ev");
+    assert_eq!(
+        stdout, "starting count\ntick 5\ntick 4\ntick 3\ntick 2\ntick 1\nbye\n",
+        "stdout mismatch"
+    );
+    assert_eq!(code, 0, "exit code mismatch");
+}

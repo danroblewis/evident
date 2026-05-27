@@ -11,8 +11,10 @@
 //! A program with exactly one `fsm`. Recognized lines:
 //!
 //! * `import "..."` — ignored.
-//! * `enum NAME = A | B | C` — nullary-variant enums. The FSM's state-enum's
-//!   FIRST variant is its tick-0 init.
+//! * `enum NAME = A | B | C` — enums with nullary and/or payload-carrying
+//!   variants (`Count(Int)`, `Format(Int)`). The FSM's state-enum's FIRST
+//!   variant is its tick-0 init and MUST be nullary (the engine seeds it as a
+//!   bare constructor). Payload arg sorts are scalar (Int / Bool / String).
 //! * `fsm NAME(state ∈ EnumType)` — enum state. Engine `prev = "state"`,
 //!   `next = "state_next"`, `init = <first variant>`.
 //! * Scalar Int state, either single-line
@@ -21,6 +23,10 @@
 //!   `prev = "_X"`, `next = "X"`, `init = INIT`, transition `(= X EXPR)`.
 //!   An fsm may carry BOTH an enum `state` and a scalar (e.g. test_19).
 //! * `state_next = match state` arms → nested ite over `(is-Variant state)`.
+//!   Arm patterns may bind a payload (`Count(n)`) — the binding resolves to the
+//!   field accessor `(Count_0 state)` inside the arm body. Arm bodies may be a
+//!   bare variant (`Done`), an applied constructor (`Count(5)`, `Format(n)`,
+//!   `Count(n - 1)`), or a ternary over those.
 //! * `state_next = (cond ? VariantA : VariantB)` → `(ite cond VariantA VariantB)`.
 //! * `effects = match state` / `effects = (cond ? ⟨…⟩ : ⟨…⟩)` (nestable).
 //! * Intermediate body vars: `X ∈ Bool|String|Int` then `X = expr`, or the
@@ -73,6 +79,16 @@ pub fn transpile_fsm(src: &str) -> Result<String, FrontendError> {
 // Parsed program model
 // ---------------------------------------------------------------------------
 
+/// One enum variant: its constructor name plus the SMT-LIB sorts of its
+/// payload args (empty for a nullary variant). Field accessors are named
+/// `<ctor>_<argindex>` (0-based), matching the fixture convention.
+#[derive(Debug, Clone)]
+struct Variant {
+    name: String,
+    /// SMT-LIB sort name per payload arg, in declaration order.
+    arg_sorts: Vec<String>,
+}
+
 /// Enum-typed state from `fsm F(state ∈ EnumType)`.
 struct EnumState {
     /// prev = the param name (the .ev's current `state`).
@@ -80,7 +96,7 @@ struct EnumState {
     /// next = `<param>_next`.
     next: String,
     enum_name: String,
-    /// First variant of the enum — tick-0 init.
+    /// First variant of the enum — tick-0 init (must be nullary).
     init: String,
 }
 
@@ -106,13 +122,15 @@ enum Binding {
         smt_sort: String,
         value: BindingValue,
     },
-    /// `state_next = match state` — arms over the state enum (raw variant bodies).
-    StateNextMatch { arms: Vec<(String, String)>, default: Option<String> },
+    /// `state_next = match state` — arms over the state enum. Each arm carries a
+    /// `ctor` + optional payload binding + a RAW body (a bare/applied variant or
+    /// ternary), lowered at emit time so payload bindings + variant sorts resolve.
+    StateNextMatch { arms: Vec<EnumArm>, default: Option<String> },
     /// `state_next = (cond ? VariantA : VariantB)`.
     StateNextTernary { cond_expr: Expr, then_variant: String, else_variant: String },
     /// `effects = match state` — arms whose bodies are seq literals (raw text,
-    /// lowered at emit time so rename applies).
-    EffectsMatch { arms: Vec<(String, String)>, default: Option<String> },
+    /// lowered at emit time so rename + payload bindings apply).
+    EffectsMatch { arms: Vec<EnumArm>, default: Option<String> },
     /// `effects = <seq-expression>` (a ⟨…⟩ literal or a possibly-nested
     /// `(cond ? <seq> : <seq>)` ternary). Stored as raw text, lowered at emit.
     EffectsExpr { raw: String },
@@ -135,6 +153,22 @@ enum BindingValue {
     },
 }
 
+/// One arm of a `match state` (state_next / effects). The pattern is a state
+/// enum variant, optionally binding its payload; the body is kept as raw text
+/// and lowered at emit time so the payload binding resolves to the field
+/// accessor `(Ctor_0 state)`.
+#[derive(Clone)]
+struct EnumArm {
+    /// The state enum variant matched (e.g. `Count`).
+    ctor: String,
+    /// The payload binding name, if any. `Count(n)` → `Some("n")`; `Format(_)`
+    /// and bare `Start` → `None`.
+    bind: Option<String>,
+    /// Raw arm body text — an enum constructor / ternary (state_next) or a
+    /// `⟨…⟩` seq literal / ternary (effects).
+    body: String,
+}
+
 /// One arm of a `match last_results[i]`.
 struct MatchArm {
     /// The Result constructor (e.g. `StringResult`).
@@ -148,8 +182,8 @@ struct MatchArm {
 
 struct Program {
     fsm_name: String,
-    /// enum name → ordered variant list.
-    enums: HashMap<String, Vec<String>>,
+    /// enum name → ordered variant list (each with payload arg sorts).
+    enums: HashMap<String, Vec<Variant>>,
     enum_state: Option<EnumState>,
     scalar_state: Option<ScalarState>,
     bindings: Vec<Binding>,
@@ -323,7 +357,7 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         .filter(|(_, s)| !s.trim().is_empty())
         .collect();
 
-    let mut enums: HashMap<String, Vec<String>> = HashMap::new();
+    let mut enums: HashMap<String, Vec<Variant>> = HashMap::new();
     let mut fsm_header: Option<(String, Option<(String, String)>)> = None; // (name, Some((param, enumtype)))
     let mut scalar_state: Option<ScalarState> = None;
     // Two-line scalar declaration in flight: a bare `X ∈ Int` awaiting `X = …`.
@@ -403,7 +437,7 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
 
         // `state_next = match state`  (multi-line block of indented arms).
         if let Some(_scrut) = match_head(trimmed, "state_next") {
-            let (arms, default, consumed) = parse_enum_match_arms(&raw, i + 1, *indent)?;
+            let (arms, default, consumed) = parse_enum_state_match_arms(&raw, i + 1, *indent)?;
             bindings.push(Binding::StateNextMatch { arms, default });
             i += 1 + consumed;
             continue;
@@ -420,7 +454,12 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
         // `effects = match state`.
         if let Some(_scrut) = match_head(trimmed, "effects") {
             has_effects = true;
-            let (arms, default, consumed) = parse_effects_match_arms(&raw, i + 1, *indent)?;
+            let (arms, default, consumed) = parse_enum_state_match_arms(&raw, i + 1, *indent)?;
+            if arms.iter().any(|a| a.body.contains("last_results"))
+                || default.as_deref().map(|d| d.contains("last_results")).unwrap_or(false)
+            {
+                reads_last_results = true;
+            }
             bindings.push(Binding::EffectsMatch { arms, default });
             i += 1 + consumed;
             continue;
@@ -522,15 +561,23 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             let variants = enums
                 .get(&enum_type)
                 .ok_or_else(|| FrontendError(format!("fsm state enum `{enum_type}` not declared")))?;
-            let init = variants
+            let first = variants
                 .first()
-                .ok_or_else(|| FrontendError(format!("enum `{enum_type}` has no variants")))?
-                .clone();
+                .ok_or_else(|| FrontendError(format!("enum `{enum_type}` has no variants")))?;
+            // The init variant is pinned to `prev` on tick 0 as a bare ctor, so
+            // it must be nullary — payload variants can't be seeded from a name.
+            if !first.arg_sorts.is_empty() {
+                return fe(format!(
+                    "fsm state enum `{enum_type}`'s first variant `{}` carries a payload; \
+                     the tick-0 init variant must be nullary",
+                    first.name
+                ));
+            }
             Some(EnumState {
                 prev: param_name.clone(),
                 next: format!("{param_name}_next"),
                 enum_name: enum_type,
-                init,
+                init: first.name.clone(),
             })
         }
         None => None,
@@ -551,27 +598,70 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
     })
 }
 
-/// Parse `NAME = A | B | C` into (name, [A, B, C]).
-fn parse_enum(rest: &str) -> Result<(String, Vec<String>), FrontendError> {
+/// Parse `NAME = A | B(Int) | C` into (name, [Variant{A}, Variant{B, [Int]}, …]).
+/// Nullary variants have an empty `arg_sorts`; payload variants carry the
+/// SMT-LIB sort of each arg (Int / Bool / String).
+fn parse_enum(rest: &str) -> Result<(String, Vec<Variant>), FrontendError> {
     let eq = rest.find('=').ok_or_else(|| FrontendError(format!("malformed enum: {rest:?}")))?;
     let name = rest[..eq].trim().to_string();
     if name.is_empty() {
         return fe(format!("enum missing a name: {rest:?}"));
     }
-    let variants: Vec<String> = rest[eq + 1..]
-        .split('|')
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .collect();
-    for v in &variants {
-        if v.contains('(') {
-            return fe(format!("enum variant with payload not supported in fsm subset: {v:?}"));
+    let mut variants: Vec<Variant> = Vec::new();
+    for raw in rest[eq + 1..].split('|') {
+        let v = raw.trim();
+        if v.is_empty() {
+            continue;
         }
+        variants.push(parse_variant(v)?);
     }
     if variants.is_empty() {
         return fe(format!("enum `{name}` has no variants"));
     }
     Ok((name, variants))
+}
+
+/// Parse one enum variant spelling: `Done` (nullary) or `Count(Int)` /
+/// `Pair(Int, String)` (payload). Arg sorts must be scalar.
+fn parse_variant(v: &str) -> Result<Variant, FrontendError> {
+    match v.find('(') {
+        None => {
+            if !v.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                || !v.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return fe(format!("malformed enum variant: {v:?}"));
+            }
+            Ok(Variant { name: v.to_string(), arg_sorts: Vec::new() })
+        }
+        Some(lp) => {
+            let name = v[..lp].trim().to_string();
+            let close = v.rfind(')').ok_or_else(|| {
+                FrontendError(format!("unclosed payload in enum variant: {v:?}"))
+            })?;
+            if close < lp {
+                return fe(format!("malformed enum variant payload: {v:?}"));
+            }
+            if name.is_empty()
+                || !name.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                || !name.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return fe(format!("malformed enum variant name: {v:?}"));
+            }
+            let inner = v[lp + 1..close].trim();
+            let mut arg_sorts = Vec::new();
+            for arg in split_top_level_commas(inner) {
+                let arg = arg.trim();
+                if arg.is_empty() {
+                    return fe(format!("empty payload arg in enum variant: {v:?}"));
+                }
+                arg_sorts.push(smt_sort_of(arg)?);
+            }
+            if arg_sorts.is_empty() {
+                return fe(format!("payload-style variant `{v}` has no args (use `{name}` for nullary)"));
+            }
+            Ok(Variant { name, arg_sorts })
+        }
+    }
 }
 
 /// Parse `NAME` or `NAME(param ∈ EnumType)` after the `fsm ` keyword.
@@ -776,13 +866,17 @@ fn parse_last_results_index(scrut: &str) -> Option<(String, usize)> {
     Some((var, index))
 }
 
-/// Parse indented enum-variant `Variant ⇒ Variant` arms (state_next match).
-fn parse_enum_match_arms(
+/// Parse indented `Pattern ⇒ body` arms of a `match state` block (used for both
+/// `state_next` and `effects`). The pattern is a state enum variant, optionally
+/// binding its payload (`Count(n)`), ignoring it (`Format(_)`), or nullary
+/// (`Start`); `_` is the catch-all default. Bodies are kept RAW and lowered at
+/// emit time so payload bindings + the scalar-var rename apply.
+fn parse_enum_state_match_arms(
     raw: &[(usize, String)],
     start: usize,
     head_indent: usize,
-) -> Result<(Vec<(String, String)>, Option<String>, usize), FrontendError> {
-    let mut arms: Vec<(String, String)> = Vec::new();
+) -> Result<(Vec<EnumArm>, Option<String>, usize), FrontendError> {
+    let mut arms: Vec<EnumArm> = Vec::new();
     let mut default: Option<String> = None;
     let mut consumed = 0;
     let mut i = start;
@@ -793,11 +887,11 @@ fn parse_enum_match_arms(
         }
         let trimmed = line.trim();
         let (pat, body) = split_arm(trimmed)?;
-        let body_smt = emit_enum_ctor(body)?;
         if pat == "_" {
-            default = Some(body_smt);
+            default = Some(body.to_string());
         } else {
-            arms.push((pat.to_string(), body_smt));
+            let (ctor, bind) = parse_enum_pattern(pat)?;
+            arms.push(EnumArm { ctor, bind, body: body.to_string() });
         }
         consumed += 1;
         i += 1;
@@ -808,37 +902,43 @@ fn parse_enum_match_arms(
     Ok((arms, default, consumed))
 }
 
-/// Parse indented `Variant ⇒ <seq-literal>` arms (effects match). Bodies are
-/// kept as RAW seq-literal text and lowered at emit time (so rename applies).
-fn parse_effects_match_arms(
-    raw: &[(usize, String)],
-    start: usize,
-    head_indent: usize,
-) -> Result<(Vec<(String, String)>, Option<String>, usize), FrontendError> {
-    let mut arms: Vec<(String, String)> = Vec::new();
-    let mut default: Option<String> = None;
-    let mut consumed = 0;
-    let mut i = start;
-    while i < raw.len() {
-        let (indent, line) = (&raw[i].0, raw[i].1.clone());
-        if *indent <= head_indent {
-            break;
+/// Parse a state-match pattern: `Start` → (`"Start"`, None); `Count(n)` →
+/// (`"Count"`, Some("n")); `Format(_)` → (`"Format"`, None).
+fn parse_enum_pattern(pat: &str) -> Result<(String, Option<String>), FrontendError> {
+    let pat = pat.trim();
+    match pat.find('(') {
+        None => {
+            if !pat.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                || !pat.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return fe(format!("malformed match pattern: {pat:?}"));
+            }
+            Ok((pat.to_string(), None))
         }
-        let trimmed = line.trim();
-        let (pat, body) = split_arm(trimmed)?;
-        let body_raw = body.to_string();
-        if pat == "_" {
-            default = Some(body_raw);
-        } else {
-            arms.push((pat.to_string(), body_raw));
+        Some(lp) => {
+            let ctor = pat[..lp].trim().to_string();
+            let rp = pat.rfind(')').ok_or_else(|| {
+                FrontendError(format!("unclosed pattern in match arm: {pat:?}"))
+            })?;
+            let bind_raw = pat[lp + 1..rp].trim();
+            let bind = if bind_raw == "_" || bind_raw.is_empty() {
+                None
+            } else {
+                if bind_raw.contains(',') {
+                    return fe(format!(
+                        "multi-arg payload binding not supported in match pattern: {pat:?}"
+                    ));
+                }
+                Some(bind_raw.to_string())
+            };
+            if ctor.is_empty()
+                || !ctor.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+            {
+                return fe(format!("malformed match pattern ctor: {pat:?}"));
+            }
+            Ok((ctor, bind))
         }
-        consumed += 1;
-        i += 1;
     }
-    if arms.is_empty() && default.is_none() {
-        return fe("match block has no arms");
-    }
-    Ok((arms, default, consumed))
 }
 
 /// Parse indented `Ctor(bind) ⇒ body` / `Ctor(_) ⇒ body` / `_ ⇒ body` arms for
@@ -925,8 +1025,8 @@ fn parse_state_next_ternary(rhs: &str) -> Result<Binding, FrontendError> {
     }
     Ok(Binding::StateNextTernary {
         cond_expr,
-        then_variant: emit_enum_ctor(then_v)?,
-        else_variant: emit_enum_ctor(else_v)?,
+        then_variant: emit_enum_value(then_v, &HashMap::new())?,
+        else_variant: emit_enum_value(else_v, &HashMap::new())?,
     })
 }
 
@@ -1158,14 +1258,59 @@ fn emit_arg_expr(arg: &str, rename: &HashMap<String, String>) -> Result<String, 
     emit_expr_renamed(&e, rename)
 }
 
-/// Lower a bare enum variant constructor (for state_next arms): `Done` → `Done`.
-fn emit_enum_ctor(e: &str) -> Result<String, FrontendError> {
-    let e = e.trim();
-    if e.contains('(') {
-        return fe(format!("enum constructor with payload not supported: {e:?}"));
+/// Lower a value-position enum expression (a `state_next` arm body or ternary
+/// branch): a bare nullary variant (`Done`), an applied constructor
+/// (`Count(5)`, `Format(n)`, `Count(n - 1)`), or a `(cond ? A : B)` ternary over
+/// those. Identifiers (payload bindings, scalar vars) are renamed per `rename`.
+fn emit_enum_value(e: &str, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
+    let e = strip_outer_parens(e).trim().to_string();
+
+    // Ternary over enum values: `cond ? A : B`.
+    if let Some(q) = find_top_level_question(&e) {
+        let cond = e[..q].trim();
+        let after_q = &e[q + 1..];
+        let colon = find_top_level_colon(after_q)
+            .ok_or_else(|| FrontendError(format!("enum-value ternary missing `:`: {e:?}")))?;
+        let then_str = after_q[..colon].trim();
+        let else_str = after_q[colon + 1..].trim();
+        let toks = tokenize(cond)?;
+        let (cond_expr, used) = parse_expr(&toks, 0)?;
+        if used != toks.len() {
+            return fe(format!("trailing tokens in enum-value ternary condition: {cond:?}"));
+        }
+        let cond_smt = emit_expr_renamed(&cond_expr, rename)?;
+        let then_smt = emit_enum_value(then_str, rename)?;
+        let else_smt = emit_enum_value(else_str, rename)?;
+        return Ok(format!("(ite {cond_smt} {then_smt} {else_smt})"));
     }
+
+    // Applied constructor `Ctor(arg, …)`.
+    if let Some(lp) = e.find('(') {
+        let ctor = e[..lp].trim().to_string();
+        let close = e
+            .rfind(')')
+            .ok_or_else(|| FrontendError(format!("unclosed enum constructor: {e:?}")))?;
+        if ctor.is_empty() || !ctor.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) {
+            return fe(format!("malformed enum constructor: {e:?}"));
+        }
+        let inner = e[lp + 1..close].trim();
+        let mut parts = Vec::new();
+        for arg in split_top_level_commas(inner) {
+            let arg = arg.trim();
+            if arg.is_empty() {
+                return fe(format!("empty arg in enum constructor: {e:?}"));
+            }
+            parts.push(emit_arg_expr(arg, rename)?);
+        }
+        if parts.is_empty() {
+            return fe(format!("applied constructor `{e}` has no args"));
+        }
+        return Ok(format!("({} {})", ctor, parts.join(" ")));
+    }
+
+    // Bare nullary variant.
     if e.is_empty() || !e.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) {
-        return fe(format!("expected a bare enum variant: {e:?}"));
+        return fe(format!("expected an enum variant: {e:?}"));
     }
     Ok(e.to_string())
 }
@@ -1504,7 +1649,10 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
                     FrontendError("`state_next = match` used without an enum state".into())
                 })?;
                 let scrut = enum_scrut.as_ref().unwrap();
-                let ite = emit_enum_match(prog, scrut, arms, default)?;
+                // Arm bodies are enum values (bare/applied variant or ternary).
+                let ite = emit_enum_match(prog, scrut, arms, default, &rename, |body, r| {
+                    emit_enum_value(body, r)
+                })?;
                 let _ = writeln!(out, "(assert (= {} {ite}))", es.next);
             }
             Binding::StateNextTernary { cond_expr, then_variant, else_variant } => {
@@ -1522,17 +1670,11 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
                 let scrut = enum_scrut.as_ref().ok_or_else(|| {
                     FrontendError("`effects = match state` used without an enum state".into())
                 })?;
-                // Lower each arm body (raw seq text) at emit time so rename applies.
-                let lowered_arms: Result<Vec<(String, String)>, FrontendError> = arms
-                    .iter()
-                    .map(|(p, body)| Ok((p.clone(), emit_effects_rhs(body, &rename)?)))
-                    .collect();
-                let lowered_arms = lowered_arms?;
-                let lowered_default = match default {
-                    Some(d) => Some(emit_effects_rhs(d, &rename)?),
-                    None => None,
-                };
-                let ite = emit_enum_match(prog, scrut, &lowered_arms, &lowered_default)?;
+                // Arm bodies are seq literals / ternaries; lowered at emit time
+                // so the scalar rename AND per-arm payload binding apply.
+                let ite = emit_enum_match(prog, scrut, arms, default, &rename, |body, r| {
+                    emit_effects_rhs(body, r)
+                })?;
                 let _ = writeln!(out, "(assert (= effects {ite}))");
             }
             Binding::EffectsExpr { raw } => {
@@ -1552,7 +1694,11 @@ fn emit_datatypes(out: &mut String, prog: &Program) {
     match &prog.enum_state {
         Some(es) => {
             let variants = prog.enums.get(&es.enum_name).cloned().unwrap_or_default();
-            let body: String = variants.iter().map(|v| format!("({v})")).collect::<Vec<_>>().join(" ");
+            let body: String = variants
+                .iter()
+                .map(emit_variant_decl)
+                .collect::<Vec<_>>()
+                .join(" ");
             let _ = writeln!(
                 out,
                 "(declare-datatypes ({effect_decl} ({} 0)) ({effect_body} ({body})))",
@@ -1565,41 +1711,89 @@ fn emit_datatypes(out: &mut String, prog: &Program) {
     }
 }
 
+/// Emit one variant's datatype declaration: `(Done)` for a nullary variant,
+/// `(Count (Count_0 Int))` for a payload variant. Field accessor = `<Ctor>_<i>`.
+fn emit_variant_decl(v: &Variant) -> String {
+    if v.arg_sorts.is_empty() {
+        format!("({})", v.name)
+    } else {
+        let fields: String = v
+            .arg_sorts
+            .iter()
+            .enumerate()
+            .map(|(i, sort)| format!("({}_{i} {sort})", v.name))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("({} {fields})", v.name)
+    }
+}
+
 /// Build a nested `(ite (is-Variant scrut) body rest)` over an enum scrutinee.
-fn emit_enum_match(
+///
+/// Each arm's payload binding (if any) is substituted by the field accessor
+/// `(Ctor_<argidx> scrut)` inside the arm body before `lower_body` runs. The
+/// last arm (or the `_` default) is the innermost else. `lower_body` lowers an
+/// arm's raw body text given the rename map extended with the binding.
+fn emit_enum_match<F>(
     prog: &Program,
     scrut: &str,
-    arms: &[(String, String)],
+    arms: &[EnumArm],
     default: &Option<String>,
-) -> Result<String, FrontendError> {
-    let enum_variants: Option<&Vec<String>> = prog
+    base_rename: &HashMap<String, String>,
+    lower_body: F,
+) -> Result<String, FrontendError>
+where
+    F: Fn(&str, &HashMap<String, String>) -> Result<String, FrontendError>,
+{
+    let enum_variants: Option<&Vec<Variant>> = prog
         .enum_state
         .as_ref()
         .and_then(|es| prog.enums.get(&es.enum_name));
 
+    // Validate every arm's ctor is a real variant, and resolve the per-arm
+    // rename map (payload binding → field accessor).
+    let resolve_arm = |arm: &EnumArm| -> Result<HashMap<String, String>, FrontendError> {
+        let variant = enum_variants
+            .and_then(|vs| vs.iter().find(|v| v.name == arm.ctor));
+        if enum_variants.is_some() && variant.is_none() {
+            return fe(format!(
+                "match pattern `{}` is not a variant of the state enum",
+                arm.ctor
+            ));
+        }
+        let mut r = base_rename.clone();
+        if let Some(bind) = &arm.bind {
+            // Bind the payload to the first field accessor `(Ctor_0 scrut)`. The
+            // variant must carry a payload to bind.
+            if let Some(v) = variant {
+                if v.arg_sorts.is_empty() {
+                    return fe(format!(
+                        "pattern `{}({bind})` binds a payload but `{}` is nullary",
+                        arm.ctor, arm.ctor
+                    ));
+                }
+            }
+            r.insert(bind.clone(), format!("({}_0 {scrut})", arm.ctor));
+        }
+        Ok(r)
+    };
+
     let mut elems = arms.to_vec();
     let base_else: String = if let Some(d) = default {
-        d.clone()
+        lower_body(d, base_rename)?
     } else {
         let last = elems
             .pop()
             .ok_or_else(|| FrontendError("match has no arms".into()))?;
-        if let Some(vs) = enum_variants {
-            if !vs.contains(&last.0) {
-                return fe(format!("match pattern `{}` is not a variant of the state enum", last.0));
-            }
-        }
-        last.1
+        let r = resolve_arm(&last)?;
+        lower_body(&last.body, &r)?
     };
 
     let mut acc = base_else;
-    for (pat, body) in elems.into_iter().rev() {
-        if let Some(vs) = enum_variants {
-            if !vs.contains(&pat) {
-                return fe(format!("match pattern `{pat}` is not a variant of the state enum"));
-            }
-        }
-        acc = format!("(ite (is-{pat} {scrut}) {body} {acc})");
+    for arm in elems.into_iter().rev() {
+        let r = resolve_arm(&arm)?;
+        let body = lower_body(&arm.body, &r)?;
+        acc = format!("(ite (is-{} {scrut}) {body} {acc})", arm.ctor);
     }
     Ok(acc)
 }
@@ -1691,8 +1885,10 @@ mod tests {
     }
 
     #[test]
-    fn out_of_subset_payload_enum_is_err() {
-        let src = "enum E = A(Int) | B\nfsm f(state ∈ E)\n    state_next = match state\n        A ⇒ B\n        B ⇒ B\n";
+    fn payload_first_variant_is_err() {
+        // The tick-0 init variant must be nullary (seeded as a bare ctor name);
+        // a payload-carrying first variant is rejected.
+        let src = "enum E = A(Int) | B\nfsm f(state ∈ E)\n    state_next = match state\n        A(n) ⇒ B\n        B    ⇒ B\n";
         assert!(transpile_fsm(src).is_err());
     }
 
@@ -1799,5 +1995,93 @@ mod tests {
         let prob = load_str(&fix).expect("engine loads test_20 fixture");
         assert_eq!(prob.fsms[0].state.len(), 1, "one scalar state var");
         assert!(prob.fsms[0].last_results.is_some());
+    }
+
+    // ---- payload-carrying enum state (test_02) ------------------------------
+
+    const TEST_02: &str = "import \"stdlib/runtime.ev\"\n\nenum CountState = Start | Count(Int) | Format(Int) | Done\n\nfsm counter(state ∈ CountState)\n    state_next = match state\n        Start     ⇒ Count(5)\n        Count(n)  ⇒ Format(n)\n        Format(n) ⇒ (n ≤ 1 ? Done : Count(n - 1))\n        Done      ⇒ Done\n\n    n_str ∈ String\n    n_str = match last_results[0]\n        StringResult(s) ⇒ s\n        _               ⇒ \"?\"\n\n    effects = match state\n        Start     ⇒ ⟨Println(\"starting count\")⟩\n        Count(n)  ⇒ ⟨IntToStr(n)⟩\n        Format(_) ⇒ ⟨Println(\"tick \" ++ n_str)⟩\n        Done      ⇒ ⟨Println(\"bye\"), Exit(0)⟩\n";
+
+    #[test]
+    fn payload_enum_parses_variant_arg_sorts() {
+        let (_name, variants) = parse_enum("CountState = Start | Count(Int) | Format(Int) | Done")
+            .expect("parses payload enum");
+        assert_eq!(variants.len(), 4);
+        assert_eq!(variants[0].name, "Start");
+        assert!(variants[0].arg_sorts.is_empty(), "Start nullary");
+        assert_eq!(variants[1].name, "Count");
+        assert_eq!(variants[1].arg_sorts, vec!["Int".to_string()]);
+        assert_eq!(variants[2].name, "Format");
+        assert_eq!(variants[2].arg_sorts, vec!["Int".to_string()]);
+        assert_eq!(variants[3].name, "Done");
+        assert!(variants[3].arg_sorts.is_empty(), "Done nullary");
+    }
+
+    #[test]
+    fn payload_enum_datatype_uses_field_naming() {
+        let fix = transpile_fsm(TEST_02).expect("transpile test_02");
+        // Field accessor naming = <Ctor>_<argidx> (0-based), matching the
+        // feedback_loop.smt2 convention. Nullary variants stay bare.
+        assert!(
+            fix.contains(
+                "(declare-datatypes ((Effect 0) (CountState 0)) \
+                 (((Println (Println_0 String)) (Exit (Exit_0 Int)) \
+                 (IntToStr (IntToStr_0 Int)) (ParseInt (ParseInt_0 String))) \
+                 ((Start) (Count (Count_0 Int)) (Format (Format_0 Int)) (Done))))"
+            ),
+            "datatypes:\n{fix}"
+        );
+    }
+
+    #[test]
+    fn state_next_match_binds_and_constructs_payload() {
+        let fix = transpile_fsm(TEST_02).expect("transpile test_02");
+        // The exact nested ite from the spec: payload binding `n` in Count(n) /
+        // Format(n) resolves to the field accessor (Count_0 state) /
+        // (Format_0 state); arm bodies construct payload values + a ternary.
+        assert!(
+            fix.contains(
+                "(assert (= state_next \
+                 (ite (is-Start state) (Count 5) \
+                 (ite (is-Count state) (Format (Count_0 state)) \
+                 (ite (is-Format state) \
+                 (ite (<= (Format_0 state) 1) Done (Count (- (Format_0 state) 1))) \
+                 Done)))))"
+            ),
+            "state_next:\n{fix}"
+        );
+    }
+
+    #[test]
+    fn effects_match_binds_and_ignores_payload() {
+        let fix = transpile_fsm(TEST_02).expect("transpile test_02");
+        // Count(n) ⇒ ⟨IntToStr(n)⟩ — payload bound into the effect arg.
+        assert!(fix.contains("(seq.unit (IntToStr (Count_0 state)))"), "IntToStr(n):\n{fix}");
+        // Format(_) ⇒ ⟨Println("tick " ++ n_str)⟩ — recognizer over (is-Format state),
+        // payload ignored, intermediate n_str (from last_results[0]) concatenated.
+        assert!(fix.contains("(is-Format state)"), "Format recognizer:\n{fix}");
+        assert!(fix.contains("(str.++ \"tick \" n_str)"), "concat:\n{fix}");
+        // n_str intermediate reads last_results[0].
+        assert!(fix.contains("(declare-const n_str String)"), "n_str decl:\n{fix}");
+        assert!(
+            fix.contains("(StringResult_0 (seq.nth last_results 0))"),
+            "n_str accessor:\n{fix}"
+        );
+        // Done ⇒ ⟨Println("bye"), Exit(0)⟩.
+        assert!(fix.contains("(Println \"bye\")") && fix.contains("(Exit 0)"), "done arm:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_02 fixture");
+        assert_eq!(prob.fsms[0].name, "counter");
+        assert_eq!(prob.fsms[0].state.len(), 1, "one (enum) state var");
+        assert_eq!(
+            prob.fsms[0].state[0].sort,
+            crate::spec::Sort::Datatype("CountState".into())
+        );
+        assert!(prob.fsms[0].last_results.is_some());
+    }
+
+    #[test]
+    fn payload_binding_on_nullary_variant_is_err() {
+        // Binding a payload on a nullary variant is rejected.
+        let src = "enum E = Idle | Run(Int)\nfsm f(state ∈ E)\n    state_next = match state\n        Idle(x) ⇒ Run(0)\n        Run(n)  ⇒ Idle\n";
+        assert!(transpile_fsm(src).is_err());
     }
 }

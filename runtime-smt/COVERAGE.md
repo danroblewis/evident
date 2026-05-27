@@ -19,7 +19,7 @@
 | Example | Verdict | Notes |
 |---|---|---|
 | test_01_hello            | HYBRID ✓ | scalar/enum, Println/Exit |
-| test_02_counter          | GAP | payload enum `Count(Int)` + `match` payload binding (Phase B) |
+| test_02_counter          | HYBRID ✓ | payload enum `Count(Int)` + `match` payload binding (Phase B) |
 | test_03_seq_chain        | HYBRID ✓ | enum state, seq-literal effects |
 | test_04_parse_int        | HYBRID ✓ | `ParseInt`, `last_results` match on `IntResult`/`ErrorResult` (Phase A) |
 | test_05_int_to_str       | HYBRID ✓ | `IntToStr`, `last_results` → `StringResult` (Phase A) |
