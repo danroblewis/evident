@@ -79,7 +79,8 @@ fixture (.smt2 + embedded metadata)
 | `world.rs`     | Shared-world plumbing: init, build-given, record-writes. |
 | `scheduler.rs` | The multi-FSM loop; `run` / `run_cached`. Subsumes the single-FSM case. |
 | `cache.rs`     | `TickCache`: memoize tick solves by (FSM, prev, given). |
-| `frontend.rs`  | A self-contained Evident-scalar-claim → SMT-LIB transpiler. |
+| `frontend.rs`  | A self-contained Evident-scalar-*claim* → SMT-LIB transpiler. |
+| `fsm_frontend.rs` | The Evident-*fsm* → fixture transpiler (the convergence/coverage front-end): enum + scalar state, payload enums, `match`, `last_results`, intermediate vars, ternaries, `++`/string ops, multi-FSM + shared world. See `COVERAGE.md` for the example-corpus coverage it drives. |
 
 ## Milestones reached
 
@@ -91,6 +92,7 @@ fixture (.smt2 + embedded metadata)
 | **N3** | Multi-FSM scheduling over shared world (writer/reader). | `two_fsms.smt2` producer/consumer; byte-identical to the oracle |
 | **N4a** | Transition cache. | `pingpong.smt2`: 100000 ticks → 2 Z3 solves |
 | **N4b** | Evident-scalar → SMT-LIB front-end. | scalar claim transpiles + solves; sat verdict == oracle |
+| **N5** | Evident-*fsm* front-end across the example corpus (`fsm_frontend.rs`). | **12** of `examples/test_*.ev` run end-to-end **byte-identical** to `evident effect-run` (scalars, nullary+payload enums, `match`, `last_results`, multi-FSM+world, constraint loops, string ops). Pinned by `tests/convergence.rs`; full ledger + honest boundaries in `COVERAGE.md`. |
 
 Every fixture in `fixtures/` has a paired `.ev` in `crosscheck/` that the legacy
 runtime executes; `crosscheck.sh` asserts the observable behavior (stdout + exit
@@ -197,11 +199,16 @@ This is a minimal engine; completeness was explicitly not a goal. Honest gaps:
 - **No async event sources** (FrameTimer / Stdin / Sigint). The loop is purely
   subscription-free: all FSMs tick every tick. There is no blocking wait on
   external events.
-- **The front-end is the scalar subset only.** `frontend.rs` transpiles scalar
-  Evident *claims* (Int/Nat/Pos/Bool/Real/String + arithmetic/Boolean/ternary/
-  set-range membership). It does **not** parse enums, records, sequences,
-  quantifiers, `match`, FSM bodies, or `import`. A full Evident → SMT-LIB
-  front-end (transitions, datatypes, effect lists) is the obvious next step.
+- **Two front-ends, two scopes.** `frontend.rs` is the scalar-*claim* one-shot
+  transpiler (Int/Nat/Pos/Bool/Real/String + arithmetic/Boolean/ternary/set-range
+  membership). `fsm_frontend.rs` is the *fsm* transpiler that drives the corpus
+  coverage (N5): enum (nullary + payload) and scalar state, `match` (with payload
+  binding), `last_results` threading, intermediate Bool/String/Int body vars,
+  ternaries, `++`/`index_of`/`substr`/`replace`, multi-FSM over a shared `world`,
+  and per-tick constraint solves. What neither front-end yet does — records as
+  FSM state, `Set`/recursive payload enums, inline `claim` composition, `_world`
+  previous-world reads, and the embedded `run(F,init)`/`halts_within` execution
+  tier — is itemized per example (feasible GAP vs genuine OUT) in `COVERAGE.md`.
 - **Effect lists must be a Z3 `(Seq Effect)` or a cons-list datatype** in the
   fixture; the model decoder walks those shapes.
 - **No per-tick external inputs** in the driver (givens come only from shared
