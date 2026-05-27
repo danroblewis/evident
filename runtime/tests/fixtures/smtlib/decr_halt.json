@@ -1,0 +1,25 @@
+{
+  "//": "Exercises the OTHER halt path: no Effect::Exit. The FSM emits 'step'",
+  "//2": "while count>0, then emits nothing — the scheduler halts because no",
+  "//3": "FSM is scheduled (no effects, no tracked state change). Mirror of",
+  "//4": "decr_halt.ev.",
+  "fsms": [
+    {
+      "meta": {
+        "fsm": "decr",
+        "vars": [
+          { "name": "count", "sort": "Int" },
+          { "name": "_count", "sort": "Int" },
+          { "name": "is_first_tick", "sort": "Bool" },
+          { "name": "more", "sort": "Bool" }
+        ],
+        "outputs": ["count"],
+        "effects_var": "effects",
+        "effects": [
+          { "guard": "more", "variant": "Println", "args": [{ "lit_str": "step" }] }
+        ]
+      },
+      "smtlib": "(declare-const count Int)\n(declare-const _count Int)\n(declare-const is_first_tick Bool)\n(declare-const more Bool)\n(assert (= count (ite is_first_tick 3 (- _count 1))))\n(assert (= more (> count 0)))\n"
+    }
+  ]
+}
