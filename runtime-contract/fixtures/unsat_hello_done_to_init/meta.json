@@ -1,0 +1,34 @@
+{
+  "format_version": 1,
+  "name": "unsat_hello_done_to_init",
+  "fsm_claim": "hello",
+  "source_ev": "runtime-contract/fixtures/unsat_hello_done_to_init/source.ev",
+  "from_example": "test_01_hello",
+  "from_claim": "unsat_done_returns_to_init",
+  "how_built": "handwritten",
+  "notes": "Negative fixture (absorbing-state violation), two faithful witnesses. (1) SMT: Done is absorbing (Init=>Done, Done=>Done); inputs.smt2 over-pins state_next=Init when state=Done; problem+prev+inputs is UNSAT. (2) Runtime: querying the fsm with state=Done forces state_next=Done, which DIFFERS from the forbidden Init. (Pinning state_next as a `given` can't trigger UNSAT under the functionizer fast-path — see unsat_bad_transition.) given holds only the true inputs; expect.forbidden holds the impossible output.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "state":        {"enum": "HelloState", "variant": "Done", "fields": []},
+    "last_results": {"seq_enum": "Result", "elems": []}
+  },
+
+  "expect": {
+    "unsat": true,
+    "forbidden": {
+      "state_next": {"enum": "HelloState", "variant": "Init", "fields": []}
+    },
+    "model": {},
+    "effects": [],
+    "halt": false,
+    "exit_code": null
+  },
+
+  "effects_in_smt": false
+}

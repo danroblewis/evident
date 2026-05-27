@@ -1,0 +1,43 @@
+-- feedback_parse_read — one tick of `parse_demo` FSM from test_04_parse_int.ev
+-- Pins state = Read and last_results = ⟨IntResult(42), ErrorResult("invalid digit")⟩
+-- to prove multi-position last_results[0]/[1] indexing without live dispatch.
+-- Probe claim: sat_read_feedback
+
+import "stdlib/runtime.ev"
+
+enum PState = Issue | Read | Done
+
+fsm parse_demo(state ∈ PState)
+    state_next = match state
+        Issue ⇒ Read
+        Read  ⇒ Done
+        Done  ⇒ Done
+
+    -- Pull the first two results from last_results (the two ParseInts).
+    good ∈ String
+    good = match last_results[0]
+        IntResult(n)    ⇒ "good: parsed an Int"
+        ErrorResult(_)  ⇒ "good: ERROR was expected to be success"
+        _               ⇒ "good: unknown result"
+
+    bad ∈ String
+    bad = match last_results[1]
+        IntResult(_)    ⇒ "bad: parsed but expected error"
+        ErrorResult(_)  ⇒ "bad: ERROR was correct"
+        _               ⇒ "bad: unknown"
+
+    effects = match state
+        Issue ⇒ ⟨ParseInt("42"), ParseInt("not-a-number")⟩
+        Read  ⇒ ⟨Println(good), Println(bad), Exit(0)⟩
+        Done  ⇒ ⟨⟩
+
+claim sat_read_feedback
+    state ∈ PState
+    state_next ∈ PState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Read
+    last_results = ⟨IntResult(42), ErrorResult("invalid digit")⟩
+    parse_demo
+    state_next = Done
+    effects = ⟨Println("good: parsed an Int"), Println("bad: ERROR was correct"), Exit(0)⟩

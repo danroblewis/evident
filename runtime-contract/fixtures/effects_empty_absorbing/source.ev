@@ -1,0 +1,32 @@
+-- effects_empty_absorbing fixture source
+-- Derived from test_01_hello, fsm hello, Done arm.
+-- Given state=Done, last_results=⟨⟩:
+--   state_next = Done
+--   effects    = ⟨⟩  (empty — Done is the absorbing steady state)
+--
+-- The scheduler halts when no FSM is scheduled (a cross-tick property).
+-- Here we capture the single-tick behavior: Done→Done with no effects.
+
+import "stdlib/runtime.ev"
+
+enum HelloState = Init | Done
+
+fsm hello(state ∈ HelloState)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("hello from evident"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+-- Probe claim: pins state=Done, asserts state_next=Done and effects=⟨⟩.
+claim sat_done_absorbs
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Done
+    hello
+    state_next = Done
+    effects = ⟨⟩

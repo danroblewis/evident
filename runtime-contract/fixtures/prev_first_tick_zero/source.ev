@@ -1,0 +1,44 @@
+-- prev_first_tick_zero — tick-0 of `counter` FSM from test_19_prev_tick.ev
+-- Probe claim: sat_first_tick_count_is_zero
+
+import "stdlib/runtime.ev"
+
+enum CounterState = Counting | Done
+
+fsm counter(state ∈ CounterState)
+    count ∈ Int
+    count = (is_first_tick ? 0 : _count + 1)
+
+    state_next = (count ≥ 3 ? Done : Counting)
+
+    has_result ∈ Bool
+    has_result = (#last_results > 0)
+
+    first_str ∈ String
+    first_str = match last_results[1]
+        StringResult(s) ⇒ s
+        _               ⇒ "?"
+
+    prev_str ∈ String
+    prev_str = (has_result ? first_str : "?")
+
+    effects = match state
+        Counting ⇒ ⟨Println("count = " ++ prev_str), IntToStr(count)⟩
+        Done     ⇒ ⟨Println("done"), Exit(0)⟩
+
+claim sat_first_tick_count_is_zero
+    state ∈ CounterState
+    state_next ∈ CounterState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    count ∈ Int
+    _count ∈ Int
+    is_first_tick ∈ Bool
+    has_result ∈ Bool
+    first_str ∈ String
+    prev_str ∈ String
+
+    is_first_tick = true
+    state = Counting
+    counter
+    count = 0

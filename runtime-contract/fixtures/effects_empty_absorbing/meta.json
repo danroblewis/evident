@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "name": "effects_empty_absorbing",
+  "fsm_claim": "hello",
+  "source_ev": "runtime-contract/fixtures/effects_empty_absorbing/source.ev",
+  "from_example": "test_01_hello",
+  "from_claim": "sat_done_absorbs",
+  "how_built": "handwritten",
+  "notes": "Done is the absorbing steady state; emitting ⟨⟩ is the basis of implicit halt — the scheduler halts when no FSM is scheduled (a cross-tick property, not in this single-tick fixture). See README contract TODOs.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "state":        {"enum": "HelloState", "variant": "Done", "fields": []},
+    "last_results": {"seq_enum": "Result", "elems": []}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "state_next": {"enum": "HelloState", "variant": "Done", "fields": []}
+    },
+    "effects": [],
+    "halt": false,
+    "exit_code": null
+  },
+
+  "effects_in_smt": true
+}

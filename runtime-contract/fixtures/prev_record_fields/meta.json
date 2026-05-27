@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "name": "prev_record_fields",
+  "fsm_claim": "walker",
+  "source_ev": "runtime-contract/fixtures/prev_record_fields/source.ev",
+  "from_example": "test_22_prev_record",
+  "from_claim": "sat_independent_field_pins",
+  "how_built": "transpiled",
+  "notes": "Per-field record time-shift: is_first_tick=false, _pos.x=7, _pos.y=11 → step=(8,13), pos=(8,13); halt=true (8≥3) → effects=Println+Exit. last_results is pinned to ⟨StringResult(\"done\")⟩ so the body's s=match last_results[0] is deterministic — an EMPTY last_results leaves last_results[0] free and Z3 picks an arbitrary StringResult (observed \"w\"), violating the determinism rule. Pinning a concrete StringResult fixes the printed string without changing the pos model (pos doesn't read last_results).",
+
+  "state_var":        null,
+  "state_next_var":   null,
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "is_first_tick": {"bool": false},
+    "_pos.x":        {"int": 7},
+    "_pos.y":        {"int": 11},
+    "last_results":  {"seq_enum": "Result", "elems": [
+      {"enum": "Result", "variant": "StringResult", "fields": [{"str": "done"}]}
+    ]}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "pos.x": {"int": 8},
+      "pos.y": {"int": 13}
+    },
+    "effects": [
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "walker done at done"}]},
+      {"enum": "Effect", "variant": "Exit",    "fields": [{"int": 0}]}
+    ],
+    "halt": true,
+    "exit_code": 0
+  },
+
+  "effects_in_smt": false
+}

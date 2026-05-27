@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "name": "feedback_parse_read",
+  "fsm_claim": "parse_demo",
+  "source_ev": "runtime-contract/fixtures/feedback_parse_read/source.ev",
+  "from_example": "test_04_parse_int",
+  "from_claim": "sat_read_feedback",
+  "how_built": "handwritten",
+  "notes": "Pins last_results to exercise the Read arm directly; proves multi-position last_results[0]/[1] indexing without a live ParseInt dispatch. The ErrorResult payload string is arbitrary — the body matches only the variant.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "state":        {"enum": "PState", "variant": "Read", "fields": []},
+    "last_results": {"seq_enum": "Result", "elems": [
+      {"enum": "Result", "variant": "IntResult",   "fields": [{"int": 42}]},
+      {"enum": "Result", "variant": "ErrorResult", "fields": [{"str": "invalid digit"}]}
+    ]}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "state_next": {"enum": "PState", "variant": "Done", "fields": []}
+    },
+    "effects": [
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "good: parsed an Int"}]},
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "bad: ERROR was correct"}]},
+      {"enum": "Effect", "variant": "Exit",    "fields": [{"int": 0}]}
+    ],
+    "halt": true,
+    "exit_code": 0
+  },
+
+  "effects_in_smt": false
+}
