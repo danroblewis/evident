@@ -9,12 +9,18 @@
 //!                                             and prints hit/miss stats to stderr.
 //!   runtime-smt transpile <claim.ev>        — N4b front-end: transpile a scalar
 //!                                             Evident claim to SMT-LIB and solve it.
+//!   runtime-smt fsm <file.ev> [--dump]       — convergence front-end: transpile an
+//!                                             Evident FSM to a fixture, then run it
+//!                                             (effects→stdout, exit with its code).
+//!                                             --dump prints the fixture instead.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use runtime_smt::driver::DEFAULT_MAX_TICKS;
 use runtime_smt::frontend::transpile_claim;
+use runtime_smt::fsm_frontend::transpile_fsm;
+use runtime_smt::meta::load_str;
 use runtime_smt::meta::load_file;
 use runtime_smt::scheduler::{run, run_cached};
 use runtime_smt::{solve_smtlib, SolveOutcome, TickCache};
@@ -25,9 +31,10 @@ fn main() -> ExitCode {
         Some("solve") if args.len() >= 3 => cmd_solve(&args[2]),
         Some("run") if args.len() >= 3 => cmd_run(&args[2], args.iter().any(|a| a == "--cache")),
         Some("transpile") if args.len() >= 3 => cmd_transpile(&args[2]),
+        Some("fsm") if args.len() >= 3 => cmd_fsm(&args[2], args.iter().any(|a| a == "--dump")),
         _ => {
             eprintln!(
-                "usage:\n  runtime-smt solve <file.smt2>\n  runtime-smt run <fixture.smt2> [--cache]\n  runtime-smt transpile <claim.ev>"
+                "usage:\n  runtime-smt solve <file.smt2>\n  runtime-smt run <fixture.smt2> [--cache]\n  runtime-smt transpile <claim.ev>\n  runtime-smt fsm <file.ev> [--dump]"
             );
             ExitCode::from(2)
         }
@@ -82,6 +89,42 @@ fn print_solve(r: Result<SolveOutcome, runtime_smt::Z3Error>) -> ExitCode {
         }
         Err(e) => {
             eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_fsm(path: &str, dump: bool) -> ExitCode {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("cannot read {path}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let fixture = match transpile_fsm(&text) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if dump {
+        print!("{fixture}");
+        return ExitCode::SUCCESS;
+    }
+    let problem = match load_str(&fixture) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("transpiled fixture failed to load: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut stdout = std::io::stdout().lock();
+    match run(&problem, &mut stdout, DEFAULT_MAX_TICKS) {
+        Ok(report) => ExitCode::from(report.exit_code.clamp(0, 255) as u8),
+        Err(e) => {
+            eprintln!("run failed: {e}");
             ExitCode::FAILURE
         }
     }

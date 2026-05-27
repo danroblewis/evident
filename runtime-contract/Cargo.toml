@@ -1,0 +1,20 @@
+[package]
+name = "runtime-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Portable behavior-oracle harness: the FsmEngine trait + fixture loader + matrix runner that ANY Evident FSM engine plugs into to prove it preserves the captured per-tick semantics."
+
+# Pure data + the fixture loader + the pass/fail-matrix runner. NO Z3, NO
+# evident-runtime dependency — it is the engine-neutral contract. Each engine
+# lives in its own crate's tests and implements `FsmEngine` against this lib:
+#   * runtime/tests/contract_evolve.rs   → strategy-2 (existing runtime, SMT-LIB mode)
+#   * runtime-smt/tests/contract.rs      → strategy-1 (greenfield engine)
+# (The original runtime/tests/behavior_contract.rs predates this crate and keeps
+# its own inline copy for the CurrentRuntime + pure-Z3 SmtLib engines; this crate
+# is what NEW engines plug into.)
+[dependencies]
+serde_json = "1"
+
+[lib]
+name = "runtime_contract"
+path = "src/lib.rs"

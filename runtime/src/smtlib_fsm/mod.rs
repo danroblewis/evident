@@ -37,6 +37,9 @@ pub use meta::{
     WorldDecl,
 };
 
+mod decode;
+pub use decode::{solve_smtlib_decode_all, DecodeOutcome};
+
 #[cfg(test)]
 mod tests;
 
