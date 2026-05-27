@@ -15,21 +15,36 @@
 //!   FIRST variant is its tick-0 init.
 //! * `fsm NAME(state ∈ EnumType)` — enum state. Engine `prev = "state"`,
 //!   `next = "state_next"`, `init = <first variant>`.
-//! * `fsm NAME` with body `X ∈ Int = (is_first_tick ? INIT : EXPR(_X,…))` —
-//!   scalar Int state. Engine `prev = "_X"`, `next = "X"`, `init = INIT`,
-//!   transition `(assert (= X <EXPR>))`. (The `is_first_tick` branch is
-//!   consumed by `init`; the engine provides no `is_first_tick` const.)
-//! * `state_next = match state` with `Variant ⇒ Expr` arms →
-//!   `(assert (= state_next <nested ite over (is-Variant state)>))`.
-//! * `effects = match state` with `⟨…⟩` arm bodies → `(assert (= effects …))`.
-//! * `effects = (cond ? ⟨…⟩ : ⟨…⟩)` → `(assert (= effects (ite …)))`.
-//! * Sequence literals: `⟨a, b⟩` → `(seq.++ (seq.unit a) (seq.unit b))`,
-//!   `⟨a⟩` → `(seq.unit a)`, `⟨⟩` → `(as seq.empty (Seq Effect))`.
-//! * Effect ctors in `⟨⟩`: `Println("s")` → `(Println "s")`, `Exit(n)` →
-//!   `(Exit n)`.
+//! * Scalar Int state, either single-line
+//!   `X ∈ Int = (is_first_tick ? INIT : EXPR(_X,…))` or two lines
+//!   `X ∈ Int` then `X = (is_first_tick ? INIT : EXPR(_X,…))`. Engine
+//!   `prev = "_X"`, `next = "X"`, `init = INIT`, transition `(= X EXPR)`.
+//!   An fsm may carry BOTH an enum `state` and a scalar (e.g. test_19).
+//! * `state_next = match state` arms → nested ite over `(is-Variant state)`.
+//! * `state_next = (cond ? VariantA : VariantB)` → `(ite cond VariantA VariantB)`.
+//! * `effects = match state` / `effects = (cond ? ⟨…⟩ : ⟨…⟩)` (nestable).
+//! * Intermediate body vars: `X ∈ Bool|String|Int` then `X = expr`, or the
+//!   chained `X ∈ T = expr` form. Emitted as a declared const + defining assert.
+//! * `match last_results[i]` bodies (payload-binding or `_`-ignoring arms) →
+//!   bounds-guarded nested ite over `((_ is Ctor) (seq.nth last_results i))`.
+//! * `#last_results` → `(seq.len last_results)`.
+//! * Effect ctors in `⟨⟩`: `Println(<str-expr>)`, `Exit(n)`, `IntToStr(<int-expr>)`,
+//!   `ParseInt(<str-expr>)`. `++` in an effect arg is string concat → `str.++`.
 //!
 //! The FSM body always emits a FIXED Effect datatype plus, for enum state, the
-//! state enum, batched into one `declare-datatypes`.
+//! state enum, batched into one `declare-datatypes`. If the program reads
+//! `last_results`, the `Result` datatype is also emitted.
+//!
+//! ## The prev-rename semantic
+//!
+//! The engine threads `next → prev` and runs the transition `next = f(prev)`
+//! every tick — it does NOT honor `is_first_tick` (that init branch is consumed
+//! into the StateVar `init`). So the engine's PREV var at tick K equals the
+//! oracle's *current-tick* value of that var. For a scalar `X`, the .ev's
+//! current `X` is therefore the engine prev `_X` in ALL other expressions
+//! (effects, state_next, intermediate vars): we rename `X → _X` everywhere
+//! outside the scalar transition itself. The enum `state` IS the engine prev,
+//! so it is never renamed.
 //!
 //! Anything outside this subset → [`FrontendError`], never silently mis-handled.
 
@@ -58,37 +73,90 @@ pub fn transpile_fsm(src: &str) -> Result<String, FrontendError> {
 // Parsed program model
 // ---------------------------------------------------------------------------
 
-/// What kind of state the single FSM threads.
-enum State {
-    /// Enum-typed state: `fsm F(state ∈ EnumType)`. prev = the param name,
-    /// next = `<param>_next`, init = first variant of the enum.
-    Enum { prev: String, next: String, enum_name: String, init: String },
-    /// Scalar Int state from `X ∈ Int = (is_first_tick ? INIT : EXPR(_X))`.
-    /// prev = `_X`, next = `X`, init = INIT, transition expr = EXPR (lowered).
-    Scalar { prev: String, next: String, init: i64, transition_rhs: String },
+/// Enum-typed state from `fsm F(state ∈ EnumType)`.
+struct EnumState {
+    /// prev = the param name (the .ev's current `state`).
+    prev: String,
+    /// next = `<param>_next`.
+    next: String,
+    enum_name: String,
+    /// First variant of the enum — tick-0 init.
+    init: String,
 }
 
-/// The body bindings that produce SMT-LIB asserts (beyond the scalar
-/// transition, which lives on the State).
+/// Scalar Int state from `X ∈ Int = (is_first_tick ? INIT : EXPR(_X))`.
+struct ScalarState {
+    /// The .ev variable name (e.g. `count`). Engine `next`.
+    name: String,
+    /// Engine `prev` (`_<name>`).
+    prev: String,
+    /// Tick-0 init.
+    init: i64,
+    /// Lowered transition RHS (the EXPR over `_X`).
+    transition_rhs: String,
+}
+
+/// A body binding that produces SMT-LIB asserts.
 enum Binding {
-    /// `state_next = match state` — arms over the state enum.
+    /// An intermediate body var: `X ∈ T` then `X = expr` (or chained). Emitted
+    /// as `(declare-const X <smt-sort>)` + `(assert (= X <expr>))`. The value
+    /// is either a plain expression or a `match last_results[i]`.
+    IntermediateVar {
+        name: String,
+        smt_sort: String,
+        value: BindingValue,
+    },
+    /// `state_next = match state` — arms over the state enum (raw variant bodies).
     StateNextMatch { arms: Vec<(String, String)>, default: Option<String> },
-    /// `effects = match state` — arms whose bodies are seq literals.
+    /// `state_next = (cond ? VariantA : VariantB)`.
+    StateNextTernary { cond_expr: Expr, then_variant: String, else_variant: String },
+    /// `effects = match state` — arms whose bodies are seq literals (raw text,
+    /// lowered at emit time so rename applies).
     EffectsMatch { arms: Vec<(String, String)>, default: Option<String> },
-    /// `effects = (cond ? thenSeq : elseSeq)`. `cond_expr` is the raw,
-    /// un-lowered condition AST — lowered at `emit` time so the scalar
-    /// state-var rename (current `X` → engine prev `_X`) can be applied.
-    EffectsTernary { cond_expr: Expr, then_seq: String, else_seq: String },
+    /// `effects = <seq-expression>` (a ⟨…⟩ literal or a possibly-nested
+    /// `(cond ? <seq> : <seq>)` ternary). Stored as raw text, lowered at emit.
+    EffectsExpr { raw: String },
+}
+
+/// The RHS of an intermediate var binding.
+enum BindingValue {
+    /// A plain (possibly renamed) expression.
+    Expr(Expr),
+    /// `match last_results[i]` with arms producing values of the var's sort.
+    MatchLastResults {
+        /// `last_results` index.
+        index: usize,
+        /// The `last_results` var name (default "last_results").
+        lr_var: String,
+        /// (ctor, payload-binding-or-None, body-expr) per arm.
+        arms: Vec<MatchArm>,
+        /// The `_` default body (required).
+        default: Box<Expr>,
+    },
+}
+
+/// One arm of a `match last_results[i]`.
+struct MatchArm {
+    /// The Result constructor (e.g. `StringResult`).
+    ctor: String,
+    /// The payload binding name, if the arm binds it (`StringResult(s)` → Some("s")).
+    /// `None` for `_`-payload arms (`ErrorResult(_)`).
+    bind: Option<String>,
+    /// The arm body expression.
+    body: Expr,
 }
 
 struct Program {
     fsm_name: String,
     /// enum name → ordered variant list.
     enums: HashMap<String, Vec<String>>,
-    state: State,
+    enum_state: Option<EnumState>,
+    scalar_state: Option<ScalarState>,
     bindings: Vec<Binding>,
     /// Whether the program references an `effects` var at all.
     has_effects: bool,
+    /// Whether the program reads `last_results` / `#last_results` anywhere.
+    reads_last_results: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +171,13 @@ enum Tok {
     Eq, Neq, Lt, Le, Gt, Ge,
     Plus, Minus, Star, Slash,
     And, Or, Not,
-    LParen, RParen, Comma,
+    LParen, RParen, LBracket, RBracket, Comma,
     Question, Colon,
     SeqOpen, SeqClose, // ⟨ ⟩
     Concat,            // ++
     Arrow,             // ⇒ / =>
     Pipe,              // |
+    Hash,              // #
     True, False,
 }
 
@@ -155,6 +224,7 @@ fn tokenize(line: &str) -> Result<Vec<Tok>, FrontendError> {
             '⟨' => { out.push(Tok::SeqOpen); pos += 1; continue; }
             '⟩' => { out.push(Tok::SeqClose); pos += 1; continue; }
             '|' => { out.push(Tok::Pipe); pos += 1; continue; }
+            '#' => { out.push(Tok::Hash); pos += 1; continue; }
             _ => {}
         }
         if pos + 1 < chars.len() {
@@ -178,6 +248,8 @@ fn tokenize(line: &str) -> Result<Vec<Tok>, FrontendError> {
             '/' => { out.push(Tok::Slash); pos += 1; continue; }
             '(' => { out.push(Tok::LParen); pos += 1; continue; }
             ')' => { out.push(Tok::RParen); pos += 1; continue; }
+            '[' => { out.push(Tok::LBracket); pos += 1; continue; }
+            ']' => { out.push(Tok::RBracket); pos += 1; continue; }
             ',' => { out.push(Tok::Comma); pos += 1; continue; }
             '?' => { out.push(Tok::Question); pos += 1; continue; }
             ':' => { out.push(Tok::Colon); pos += 1; continue; }
@@ -253,9 +325,15 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
 
     let mut enums: HashMap<String, Vec<String>> = HashMap::new();
     let mut fsm_header: Option<(String, Option<(String, String)>)> = None; // (name, Some((param, enumtype)))
-    let mut state_scalar: Option<State> = None;
+    let mut scalar_state: Option<ScalarState> = None;
+    // Two-line scalar declaration in flight: a bare `X ∈ Int` awaiting `X = …`.
+    let mut pending_scalar_decl: Option<String> = None;
+    // Intermediate var declarations in flight: name → smt_sort, awaiting `name = …`.
+    let mut pending_intermediate: HashMap<String, String> = HashMap::new();
+    // Track declaration order of pending intermediates so we can error helpfully.
     let mut bindings: Vec<Binding> = Vec::new();
     let mut has_effects = false;
+    let mut reads_last_results = false;
 
     let mut i = 0;
     while i < raw.len() {
@@ -267,7 +345,6 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("enum ") {
-            // enum NAME = A | B | C
             let (name, variants) = parse_enum(rest)?;
             enums.insert(name, variants);
             i += 1;
@@ -281,59 +358,155 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
             i += 1;
             continue;
         }
-        // Bail on other top-level decls we don't model (claim/type/schema/subclaim).
-        // These are the static-test blocks in example files — we ignore everything
-        // after we've captured the fsm, but a `claim`/`type` at top level ends the
-        // fsm body region.
+        // A top-level `claim`/`type`/`schema` ends the fsm body region — the rest
+        // are static-test blocks we ignore.
         if *indent == 0
             && (trimmed.starts_with("claim ")
                 || trimmed.starts_with("type ")
                 || trimmed.starts_with("schema ")
+                || trimmed.starts_with("subclaim ")
                 || trimmed == "claim")
         {
-            // Everything from here on is a static test / unrelated decl — ignore.
             break;
         }
 
-        // Otherwise this is an fsm body line (indented under the fsm). It only
-        // makes sense once we've seen the fsm header.
         if fsm_header.is_none() {
             return fe(format!("unexpected top-level line before any `fsm`: {trimmed:?}"));
         }
 
         // ---- body line classification ----
-        // `X ∈ Int = (is_first_tick ? INIT : EXPR)`  — scalar state
+
+        // Single-line scalar state: `X ∈ Int = (is_first_tick ? INIT : EXPR)`.
         if let Some(sc) = try_parse_scalar_state(trimmed)? {
-            if state_scalar.is_some() {
+            if scalar_state.is_some() {
                 return fe("multiple scalar state declarations not supported");
             }
-            state_scalar = Some(sc);
+            scalar_state = Some(sc);
             i += 1;
             continue;
         }
 
-        // `state_next = match state`  (multi-line block of indented arms)
-        if let Some(scrut) = match_head(trimmed, "state_next") {
-            let (arms, default, consumed) = parse_match_arms(&raw, i + 1, *indent, &scrut, false)?;
+        // A bare membership decl: `X ∈ T` (no `=` on this line). Could be a
+        // two-line scalar state decl OR an intermediate var decl. Stash it.
+        if let Some((name, sort)) = try_parse_bare_decl(trimmed)? {
+            if sort == "Int" || sort == "Nat" || sort == "Pos" {
+                // Could be scalar state (next line `X = (is_first_tick ? …)`) or
+                // an intermediate Int. Decide when we see the `=` line.
+                pending_scalar_decl = Some(name.clone());
+                pending_intermediate.insert(name, smt_sort_of(&sort)?);
+            } else {
+                pending_intermediate.insert(name, smt_sort_of(&sort)?);
+            }
+            i += 1;
+            continue;
+        }
+
+        // `state_next = match state`  (multi-line block of indented arms).
+        if let Some(_scrut) = match_head(trimmed, "state_next") {
+            let (arms, default, consumed) = parse_enum_match_arms(&raw, i + 1, *indent)?;
             bindings.push(Binding::StateNextMatch { arms, default });
             i += 1 + consumed;
             continue;
         }
 
-        // `effects = match state`
-        if let Some(scrut) = match_head(trimmed, "effects") {
+        // `state_next = (cond ? VariantA : VariantB)`.
+        if let Some(rhs) = assign_rhs(trimmed, "state_next") {
+            let b = parse_state_next_ternary(&rhs)?;
+            bindings.push(b);
+            i += 1;
+            continue;
+        }
+
+        // `effects = match state`.
+        if let Some(_scrut) = match_head(trimmed, "effects") {
             has_effects = true;
-            let (arms, default, consumed) = parse_match_arms(&raw, i + 1, *indent, &scrut, true)?;
+            let (arms, default, consumed) = parse_effects_match_arms(&raw, i + 1, *indent)?;
             bindings.push(Binding::EffectsMatch { arms, default });
             i += 1 + consumed;
             continue;
         }
 
-        // `effects = (cond ? ⟨...⟩ : ⟨...⟩)`
-        if let Some(rhs) = assign_rhs(trimmed, "effects") {
+        // `effects = <seq-expr>` (may be a ⟨…⟩ literal or a possibly multi-line
+        // nested ternary). Collect continuation lines (more-indented than head).
+        if let Some(first) = assign_rhs(trimmed, "effects") {
             has_effects = true;
-            let b = parse_effects_ternary(&rhs)?;
-            bindings.push(b);
+            let (raw_rhs, consumed) = gather_continuation(&raw, i, *indent, &first);
+            if raw_rhs.contains("last_results") {
+                reads_last_results = true;
+            }
+            bindings.push(Binding::EffectsExpr { raw: raw_rhs });
+            i += 1 + consumed;
+            continue;
+        }
+
+        // An intermediate var definition: `X = match last_results[i]` (multi-line)
+        // or `X = <expr>` (single line). Also the two-line scalar state assign.
+        if let Some((name, rhs)) = split_assign(trimmed) {
+            // Two-line scalar state: `X = (is_first_tick ? INIT : EXPR)`.
+            if pending_scalar_decl.as_deref() == Some(name.as_str())
+                && rhs.contains("is_first_tick")
+            {
+                if scalar_state.is_some() {
+                    return fe("multiple scalar state declarations not supported");
+                }
+                let sc = parse_scalar_state_rhs(&name, &rhs)?;
+                scalar_state = Some(sc);
+                pending_scalar_decl = None;
+                pending_intermediate.remove(&name);
+                i += 1;
+                continue;
+            }
+
+            // An intermediate var (must have been declared on a prior `X ∈ T` line).
+            let smt_sort = pending_intermediate.remove(&name).ok_or_else(|| {
+                FrontendError(format!(
+                    "assignment to `{name}` without a preceding `{name} ∈ <Type>` declaration"
+                ))
+            })?;
+            pending_scalar_decl = None;
+
+            // `X = match last_results[i]` — a multi-line indented match block.
+            if let Some(inner) = rhs.strip_prefix("match ") {
+                let scrut = inner.trim();
+                if let Some((lr_var, index)) = parse_last_results_index(scrut) {
+                    reads_last_results = true;
+                    let (arms, default, consumed) =
+                        parse_last_results_match_arms(&raw, i + 1, *indent)?;
+                    let default = default.ok_or_else(|| {
+                        FrontendError(format!(
+                            "`{name} = match last_results[{index}]` needs a `_` default arm"
+                        ))
+                    })?;
+                    bindings.push(Binding::IntermediateVar {
+                        name,
+                        smt_sort,
+                        value: BindingValue::MatchLastResults {
+                            index,
+                            lr_var,
+                            arms,
+                            default: Box::new(default),
+                        },
+                    });
+                    i += 1 + consumed;
+                    continue;
+                }
+                return fe(format!("unsupported `match` scrutinee for `{name}`: {scrut:?}"));
+            }
+
+            // `X = <expr>` — a single-line expression binding.
+            if rhs.contains("last_results") {
+                reads_last_results = true;
+            }
+            let toks = tokenize(&rhs)?;
+            let (e, used) = parse_expr(&toks, 0)?;
+            if used != toks.len() {
+                return fe(format!("trailing tokens in `{name}` definition: {rhs:?}"));
+            }
+            bindings.push(Binding::IntermediateVar {
+                name,
+                smt_sort,
+                value: BindingValue::Expr(e),
+            });
             i += 1;
             continue;
         }
@@ -343,9 +516,9 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
 
     let (fsm_name, param) = fsm_header.ok_or_else(|| FrontendError("no `fsm` declaration found".into()))?;
 
-    // Resolve the state: enum (from header param) XOR scalar (from body).
-    let state = match (param, state_scalar) {
-        (Some((param_name, enum_type)), None) => {
+    // Resolve the enum state (from the header param), if any.
+    let enum_state = match param {
+        Some((param_name, enum_type)) => {
             let variants = enums
                 .get(&enum_type)
                 .ok_or_else(|| FrontendError(format!("fsm state enum `{enum_type}` not declared")))?;
@@ -353,21 +526,29 @@ fn parse_program(src: &str) -> Result<Program, FrontendError> {
                 .first()
                 .ok_or_else(|| FrontendError(format!("enum `{enum_type}` has no variants")))?
                 .clone();
-            State::Enum {
+            Some(EnumState {
                 prev: param_name.clone(),
                 next: format!("{param_name}_next"),
                 enum_name: enum_type,
                 init,
-            }
+            })
         }
-        (None, Some(sc)) => sc,
-        (Some(_), Some(_)) => {
-            return fe("fsm has both an enum state param and a scalar state body line");
-        }
-        (None, None) => return fe("fsm has no recognizable state (enum param or scalar body)"),
+        None => None,
     };
 
-    Ok(Program { fsm_name, enums, state, bindings, has_effects })
+    if enum_state.is_none() && scalar_state.is_none() {
+        return fe("fsm has no recognizable state (enum param or scalar body)");
+    }
+
+    Ok(Program {
+        fsm_name,
+        enums,
+        enum_state,
+        scalar_state,
+        bindings,
+        has_effects,
+        reads_last_results,
+    })
 }
 
 /// Parse `NAME = A | B | C` into (name, [A, B, C]).
@@ -382,7 +563,6 @@ fn parse_enum(rest: &str) -> Result<(String, Vec<String>), FrontendError> {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .collect();
-    // Only nullary variants supported (no `(...)`).
     for v in &variants {
         if v.contains('(') {
             return fe(format!("enum variant with payload not supported in fsm subset: {v:?}"));
@@ -395,12 +575,10 @@ fn parse_enum(rest: &str) -> Result<(String, Vec<String>), FrontendError> {
 }
 
 /// Parse `NAME` or `NAME(param ∈ EnumType)` after the `fsm ` keyword.
-/// Returns (fsm_name, Some((param_name, enum_type)) | None).
 fn parse_fsm_header(rest: &str) -> Result<(String, Option<(String, String)>), FrontendError> {
     let rest = rest.trim();
     match rest.find('(') {
         None => {
-            // bare `fsm NAME`
             let name = rest.trim().to_string();
             if name.is_empty() || name.contains(char::is_whitespace) {
                 return fe(format!("malformed fsm header: {rest:?}"));
@@ -411,7 +589,6 @@ fn parse_fsm_header(rest: &str) -> Result<(String, Option<(String, String)>), Fr
             let name = rest[..lp].trim().to_string();
             let close = rest.rfind(')').ok_or_else(|| FrontendError(format!("unclosed fsm params: {rest:?}")))?;
             let params = rest[lp + 1..close].trim();
-            // Subset: a single `param ∈ EnumType` param.
             let in_idx = params.find('∈').ok_or_else(|| {
                 FrontendError(format!("fsm param must be `name ∈ EnumType`: {params:?}"))
             })?;
@@ -425,25 +602,57 @@ fn parse_fsm_header(rest: &str) -> Result<(String, Option<(String, String)>), Fr
     }
 }
 
-/// Recognize `X ∈ Int = (is_first_tick ? INIT : EXPR)`.
-/// Returns the Scalar state if it matches; `None` if the line isn't a scalar
-/// state decl; `Err` if it looks like one but is malformed / out of subset.
-fn try_parse_scalar_state(line: &str) -> Result<Option<State>, FrontendError> {
-    // Must contain ∈ Int and a `=` and the is_first_tick idiom.
+/// Map an Evident type name to an SMT-LIB sort name (for intermediate vars).
+fn smt_sort_of(sort: &str) -> Result<String, FrontendError> {
+    match sort {
+        "Int" | "Nat" | "Pos" => Ok("Int".into()),
+        "Bool" => Ok("Bool".into()),
+        "String" | "Str" => Ok("String".into()),
+        other => fe(format!("unsupported intermediate var sort `{other}`")),
+    }
+}
+
+/// Parse a bare `X ∈ T` declaration line (no `=`). Returns None if not this shape.
+fn try_parse_bare_decl(line: &str) -> Result<Option<(String, String)>, FrontendError> {
+    let in_idx = match line.find('∈') {
+        Some(x) => x,
+        None => return Ok(None),
+    };
+    let after = &line[in_idx + '∈'.len_utf8()..];
+    if after.contains('=') {
+        // Has an `=` — handled elsewhere (chained membership / scalar single-line).
+        return Ok(None);
+    }
+    let name = line[..in_idx].trim().to_string();
+    let sort = after.trim().to_string();
+    if name.is_empty() || name.contains(char::is_whitespace) {
+        return Ok(None);
+    }
+    // Only bare type names (no `Seq(...)`, no payload) here.
+    if sort.contains('(') || sort.contains(' ') {
+        return Ok(None);
+    }
+    // Recognized intermediate / scalar sorts only; otherwise leave for other paths.
+    match sort.as_str() {
+        "Int" | "Nat" | "Pos" | "Bool" | "String" | "Str" => Ok(Some((name, sort))),
+        _ => Ok(None),
+    }
+}
+
+/// Recognize the single-line `X ∈ Int = (is_first_tick ? INIT : EXPR)`.
+fn try_parse_scalar_state(line: &str) -> Result<Option<ScalarState>, FrontendError> {
     let in_idx = match line.find('∈') {
         Some(x) => x,
         None => return Ok(None),
     };
     let name = line[..in_idx].trim().to_string();
     let after = line[in_idx + '∈'.len_utf8()..].trim_start();
-    // after must start with the sort then `=`
     let eq = match after.find('=') {
         Some(x) => x,
         None => return Ok(None),
     };
     let sort = after[..eq].trim();
     if sort != "Int" && sort != "Nat" && sort != "Pos" {
-        // Not a scalar-Int state line.
         return Ok(None);
     }
     if name.is_empty() || name.contains(char::is_whitespace) {
@@ -455,7 +664,11 @@ fn try_parse_scalar_state(line: &str) -> Result<Option<State>, FrontendError> {
             "scalar state `{name}` must use the `is_first_tick ? INIT : EXPR` idiom: {rhs:?}"
         ));
     }
-    // Parse `(is_first_tick ? INIT : EXPR)`.
+    Ok(Some(parse_scalar_state_rhs(&name, rhs)?))
+}
+
+/// Parse the `(is_first_tick ? INIT : EXPR)` RHS into a ScalarState.
+fn parse_scalar_state_rhs(name: &str, rhs: &str) -> Result<ScalarState, FrontendError> {
     let inner = strip_outer_parens(rhs);
     let q = inner.find('?').ok_or_else(|| FrontendError(format!("missing `?` in scalar state: {rhs:?}")))?;
     let cond = inner[..q].trim();
@@ -470,19 +683,19 @@ fn try_parse_scalar_state(line: &str) -> Result<Option<State>, FrontendError> {
     let init: i64 = init_str
         .parse()
         .map_err(|_| FrontendError(format!("scalar state INIT must be an integer literal: {init_str:?}")))?;
-    // Lower EXPR (an arithmetic expr over `_X`) to SMT-LIB.
     let toks = tokenize(expr_str)?;
     let (e, used) = parse_expr(&toks, 0)?;
     if used != toks.len() {
         return fe(format!("trailing tokens in scalar transition expr: {expr_str:?}"));
     }
+    // The scalar transition is over the engine prev `_X` already (e.g. `_count + 1`).
     let transition_rhs = emit_expr(&e)?;
-    Ok(Some(State::Scalar {
+    Ok(ScalarState {
+        name: name.to_string(),
         prev: format!("_{name}"),
-        next: name,
         init,
         transition_rhs,
-    }))
+    })
 }
 
 /// `LHS = match SCRUT` → returns Some(scrut) if the line is `<lhs> = match <scrut>`.
@@ -498,21 +711,76 @@ fn match_head(line: &str, lhs: &str) -> Option<String> {
 fn assign_rhs(line: &str, lhs: &str) -> Option<String> {
     let line = line.trim();
     let rest = line.strip_prefix(lhs)?;
+    // Ensure we matched a whole identifier, not a prefix (`effects` vs `effects2`).
     let rest = rest.trim_start();
     let rest = rest.strip_prefix('=')?;
     Some(rest.trim().to_string())
 }
 
-/// Parse indented `Variant ⇒ body` arms starting at `raw[start]`, all more
-/// indented than `head_indent`. Returns (arms, default, lines_consumed).
-/// `seq_body` = true means arm bodies are seq literals (effects); false means
-/// they are enum-variant expressions (state_next).
-fn parse_match_arms(
+/// Generic `<name> = <rhs>` split (for intermediate vars). Returns (name, rhs).
+/// Only fires when the LHS is a bare identifier and the operator is `=` (not
+/// `==`, `≠`, etc.).
+fn split_assign(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    // Find the first top-level `=` that isn't part of `<=`, `>=`, `!=`.
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = 0;
+    let mut depth = 0i32;
+    let mut in_str = false;
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '"' => in_str = !in_str,
+            _ if in_str => {}
+            '(' | '⟨' | '[' => depth += 1,
+            ')' | '⟩' | ']' => depth -= 1,
+            '=' if depth == 0 => {
+                // Reject `<=`, `>=`, `!=`, `==`.
+                let prev = if i > 0 { chars[i - 1] } else { ' ' };
+                let next = if i + 1 < chars.len() { chars[i + 1] } else { ' ' };
+                if prev == '<' || prev == '>' || prev == '!' || next == '=' {
+                    i += 1;
+                    continue;
+                }
+                let lhs: String = chars[..i].iter().collect();
+                let rhs: String = chars[i + 1..].iter().collect();
+                let lhs = lhs.trim().to_string();
+                let rhs = rhs.trim().to_string();
+                // LHS must be a bare identifier.
+                if lhs.is_empty()
+                    || !lhs.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+                    || !lhs.chars().all(|c| c.is_alphanumeric() || c == '_')
+                {
+                    return None;
+                }
+                return Some((lhs, rhs));
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Parse `last_results[i]` → (var_name, index). None if not that shape.
+fn parse_last_results_index(scrut: &str) -> Option<(String, usize)> {
+    let scrut = scrut.trim();
+    let lb = scrut.find('[')?;
+    let rb = scrut.rfind(']')?;
+    if rb < lb {
+        return None;
+    }
+    let var = scrut[..lb].trim().to_string();
+    let idx_str = scrut[lb + 1..rb].trim();
+    let index: usize = idx_str.parse().ok()?;
+    Some((var, index))
+}
+
+/// Parse indented enum-variant `Variant ⇒ Variant` arms (state_next match).
+fn parse_enum_match_arms(
     raw: &[(usize, String)],
     start: usize,
     head_indent: usize,
-    _scrut: &str,
-    seq_body: bool,
 ) -> Result<(Vec<(String, String)>, Option<String>, usize), FrontendError> {
     let mut arms: Vec<(String, String)> = Vec::new();
     let mut default: Option<String> = None;
@@ -521,27 +789,11 @@ fn parse_match_arms(
     while i < raw.len() {
         let (indent, line) = (&raw[i].0, raw[i].1.clone());
         if *indent <= head_indent {
-            break; // dedent → end of match block
+            break;
         }
         let trimmed = line.trim();
-        // `PATTERN ⇒ body`
-        let toks = tokenize(trimmed)?;
-        let arrow_pos = trimmed
-            .find('⇒')
-            .or_else(|| trimmed.find("=>"))
-            .ok_or_else(|| FrontendError(format!("match arm missing `⇒`: {trimmed:?}")))?;
-        let pat = trimmed[..arrow_pos].trim();
-        let arrow_len = if trimmed[arrow_pos..].starts_with('⇒') { '⇒'.len_utf8() } else { 2 };
-        let body = trimmed[arrow_pos + arrow_len..].trim();
-        let _ = toks;
-
-        let body_smt = if seq_body {
-            emit_seq_literal_str(body)?
-        } else {
-            // state_next arm: a bare enum variant constructor.
-            emit_enum_ctor(body)?
-        };
-
+        let (pat, body) = split_arm(trimmed)?;
+        let body_smt = emit_enum_ctor(body)?;
         if pat == "_" {
             default = Some(body_smt);
         } else {
@@ -556,32 +808,151 @@ fn parse_match_arms(
     Ok((arms, default, consumed))
 }
 
-/// Parse `(cond ? ⟨...⟩ : ⟨...⟩)` for the effects ternary.
-fn parse_effects_ternary(rhs: &str) -> Result<Binding, FrontendError> {
+/// Parse indented `Variant ⇒ <seq-literal>` arms (effects match). Bodies are
+/// kept as RAW seq-literal text and lowered at emit time (so rename applies).
+fn parse_effects_match_arms(
+    raw: &[(usize, String)],
+    start: usize,
+    head_indent: usize,
+) -> Result<(Vec<(String, String)>, Option<String>, usize), FrontendError> {
+    let mut arms: Vec<(String, String)> = Vec::new();
+    let mut default: Option<String> = None;
+    let mut consumed = 0;
+    let mut i = start;
+    while i < raw.len() {
+        let (indent, line) = (&raw[i].0, raw[i].1.clone());
+        if *indent <= head_indent {
+            break;
+        }
+        let trimmed = line.trim();
+        let (pat, body) = split_arm(trimmed)?;
+        let body_raw = body.to_string();
+        if pat == "_" {
+            default = Some(body_raw);
+        } else {
+            arms.push((pat.to_string(), body_raw));
+        }
+        consumed += 1;
+        i += 1;
+    }
+    if arms.is_empty() && default.is_none() {
+        return fe("match block has no arms");
+    }
+    Ok((arms, default, consumed))
+}
+
+/// Parse indented `Ctor(bind) ⇒ body` / `Ctor(_) ⇒ body` / `_ ⇒ body` arms for
+/// a `match last_results[i]` block.
+fn parse_last_results_match_arms(
+    raw: &[(usize, String)],
+    start: usize,
+    head_indent: usize,
+) -> Result<(Vec<MatchArm>, Option<Expr>, usize), FrontendError> {
+    let mut arms: Vec<MatchArm> = Vec::new();
+    let mut default: Option<Expr> = None;
+    let mut consumed = 0;
+    let mut i = start;
+    while i < raw.len() {
+        let (indent, line) = (&raw[i].0, raw[i].1.clone());
+        if *indent <= head_indent {
+            break;
+        }
+        let trimmed = line.trim();
+        let (pat, body) = split_arm(trimmed)?;
+        // Parse the body expression.
+        let toks = tokenize(body)?;
+        let (body_expr, used) = parse_expr(&toks, 0)?;
+        if used != toks.len() {
+            return fe(format!("trailing tokens in match arm body: {body:?}"));
+        }
+        if pat == "_" {
+            default = Some(body_expr);
+        } else {
+            // `Ctor(bind)` or `Ctor(_)`.
+            let lp = pat.find('(').ok_or_else(|| {
+                FrontendError(format!("match arm pattern must be `Ctor(x)` or `_`: {pat:?}"))
+            })?;
+            let ctor = pat[..lp].trim().to_string();
+            let rp = pat.rfind(')').ok_or_else(|| {
+                FrontendError(format!("unclosed pattern in match arm: {pat:?}"))
+            })?;
+            let bind_raw = pat[lp + 1..rp].trim();
+            let bind = if bind_raw == "_" || bind_raw.is_empty() {
+                None
+            } else {
+                Some(bind_raw.to_string())
+            };
+            arms.push(MatchArm { ctor, bind, body: body_expr });
+        }
+        consumed += 1;
+        i += 1;
+    }
+    if arms.is_empty() && default.is_none() {
+        return fe("match block has no arms");
+    }
+    Ok((arms, default, consumed))
+}
+
+/// Split `PATTERN ⇒ body` into (pattern, body).
+fn split_arm(trimmed: &str) -> Result<(&str, &str), FrontendError> {
+    let arrow_pos = trimmed
+        .find('⇒')
+        .or_else(|| trimmed.find("=>"))
+        .ok_or_else(|| FrontendError(format!("match arm missing `⇒`: {trimmed:?}")))?;
+    let pat = trimmed[..arrow_pos].trim();
+    let arrow_len = if trimmed[arrow_pos..].starts_with('⇒') { '⇒'.len_utf8() } else { 2 };
+    let body = trimmed[arrow_pos + arrow_len..].trim();
+    Ok((pat, body))
+}
+
+/// Parse `(cond ? VariantA : VariantB)` for the state_next ternary.
+fn parse_state_next_ternary(rhs: &str) -> Result<Binding, FrontendError> {
     let inner = strip_outer_parens(rhs);
     let q = inner
         .find('?')
-        .ok_or_else(|| FrontendError(format!("effects ternary missing `?`: {rhs:?}")))?;
+        .ok_or_else(|| FrontendError(format!("state_next must be `match` or `(cond ? A : B)`: {rhs:?}")))?;
     let cond = inner[..q].trim();
     let after_q = &inner[q + 1..];
     let colon = find_top_level_colon(after_q)
-        .ok_or_else(|| FrontendError(format!("effects ternary missing `:`: {rhs:?}")))?;
-    let then_str = after_q[..colon].trim();
-    let else_str = after_q[colon + 1..].trim();
+        .ok_or_else(|| FrontendError(format!("state_next ternary missing `:`: {rhs:?}")))?;
+    let then_v = after_q[..colon].trim();
+    let else_v = after_q[colon + 1..].trim();
 
-    // Parse the condition expr; lowering is deferred to `emit` so the scalar
-    // state-var rename can apply.
     let toks = tokenize(cond)?;
     let (cond_expr, used) = parse_expr(&toks, 0)?;
     if used != toks.len() {
-        return fe(format!("trailing tokens in effects ternary condition: {cond:?}"));
+        return fe(format!("trailing tokens in state_next ternary condition: {cond:?}"));
     }
-
-    Ok(Binding::EffectsTernary {
+    Ok(Binding::StateNextTernary {
         cond_expr,
-        then_seq: emit_seq_literal_str(then_str)?,
-        else_seq: emit_seq_literal_str(else_str)?,
+        then_variant: emit_enum_ctor(then_v)?,
+        else_variant: emit_enum_ctor(else_v)?,
     })
+}
+
+/// Collect `raw[start]`'s assignment RHS plus any more-indented continuation
+/// lines into one whitespace-joined string. Returns (joined_rhs, lines_consumed
+/// beyond the head line).
+fn gather_continuation(
+    raw: &[(usize, String)],
+    start: usize,
+    head_indent: usize,
+    first: &str,
+) -> (String, usize) {
+    let mut acc = first.to_string();
+    let mut consumed = 0;
+    let mut i = start + 1;
+    while i < raw.len() {
+        let (indent, line) = (&raw[i].0, &raw[i].1);
+        if *indent <= head_indent {
+            break;
+        }
+        acc.push(' ');
+        acc.push_str(line.trim());
+        consumed += 1;
+        i += 1;
+    }
+    (acc, consumed)
 }
 
 // ---------------------------------------------------------------------------
@@ -595,7 +966,6 @@ fn strip_outer_parens(s: &str) -> &str {
     if chars.first() != Some(&'(') || chars.last() != Some(&')') {
         return s;
     }
-    // Verify the first '(' matches the last ')'.
     let mut depth = 0;
     for (idx, &c) in chars.iter().enumerate() {
         match c {
@@ -603,7 +973,6 @@ fn strip_outer_parens(s: &str) -> &str {
             ')' => {
                 depth -= 1;
                 if depth == 0 {
-                    // matched first paren at index idx; only strip if it's the last char.
                     return if idx == chars.len() - 1 {
                         let start = s.char_indices().nth(1).map(|(b, _)| b).unwrap_or(s.len());
                         let end = s.char_indices().last().map(|(b, _)| b).unwrap_or(s.len());
@@ -619,8 +988,7 @@ fn strip_outer_parens(s: &str) -> &str {
     s
 }
 
-/// Find the byte index of a `:` at paren/seq depth 0 (so we don't split inside
-/// `Color(1,2)` or a nested seq). Skips string literals.
+/// Find the byte index of a `:` at paren/seq/bracket depth 0. Skips strings.
 fn find_top_level_colon(s: &str) -> Option<usize> {
     let mut depth: i32 = 0;
     let mut in_str = false;
@@ -628,8 +996,8 @@ fn find_top_level_colon(s: &str) -> Option<usize> {
         match c {
             '"' => in_str = !in_str,
             _ if in_str => {}
-            '(' | '⟨' => depth += 1,
-            ')' | '⟩' => depth -= 1,
+            '(' | '⟨' | '[' => depth += 1,
+            ')' | '⟩' | ']' => depth -= 1,
             ':' if depth == 0 => return Some(b),
             _ => {}
         }
@@ -637,7 +1005,24 @@ fn find_top_level_colon(s: &str) -> Option<usize> {
     None
 }
 
-/// Split a string on top-level commas (paren/seq depth 0, skipping strings).
+/// Find the byte index of a `?` at paren/seq/bracket depth 0. Skips strings.
+fn find_top_level_question(s: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    for (b, c) in s.char_indices() {
+        match c {
+            '"' => in_str = !in_str,
+            _ if in_str => {}
+            '(' | '⟨' | '[' => depth += 1,
+            ')' | '⟩' | ']' => depth -= 1,
+            '?' if depth == 0 => return Some(b),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Split a string on top-level commas (paren/seq/bracket depth 0, skipping strings).
 fn split_top_level_commas(s: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut depth: i32 = 0;
@@ -647,8 +1032,8 @@ fn split_top_level_commas(s: &str) -> Vec<String> {
         match c {
             '"' => in_str = !in_str,
             _ if in_str => {}
-            '(' | '⟨' => depth += 1,
-            ')' | '⟩' => depth -= 1,
+            '(' | '⟨' | '[' => depth += 1,
+            ')' | '⟩' | ']' => depth -= 1,
             ',' if depth == 0 => {
                 parts.push(s[last..b].trim().to_string());
                 last = b + 1;
@@ -664,11 +1049,38 @@ fn split_top_level_commas(s: &str) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Effect / seq literal lowering
+// Effect / seq literal lowering (rename-aware, deferred to emit time)
 // ---------------------------------------------------------------------------
 
-/// Lower a `⟨a, b, ...⟩` sequence literal (as a raw string) to SMT-LIB.
-fn emit_seq_literal_str(body: &str) -> Result<String, FrontendError> {
+/// Lower an effects RHS expression to an SMT-LIB `(Seq Effect)` term. The RHS is
+/// either a `⟨…⟩` literal or a (possibly nested) `(cond ? <seq> : <seq>)`
+/// ternary. Identifiers are renamed per `rename` (scalar var → prev).
+fn emit_effects_rhs(rhs: &str, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
+    let s = strip_outer_parens(rhs).trim().to_string();
+    // Ternary? `cond ? then : else`.
+    if let Some(q) = find_top_level_question(&s) {
+        let cond = s[..q].trim();
+        let after_q = &s[q + 1..];
+        let colon = find_top_level_colon(after_q)
+            .ok_or_else(|| FrontendError(format!("effects ternary missing `:`: {rhs:?}")))?;
+        let then_str = after_q[..colon].trim();
+        let else_str = after_q[colon + 1..].trim();
+        let toks = tokenize(cond)?;
+        let (cond_expr, used) = parse_expr(&toks, 0)?;
+        if used != toks.len() {
+            return fe(format!("trailing tokens in effects ternary condition: {cond:?}"));
+        }
+        let cond_smt = emit_expr_renamed(&cond_expr, rename)?;
+        let then_smt = emit_effects_rhs(then_str, rename)?;
+        let else_smt = emit_effects_rhs(else_str, rename)?;
+        return Ok(format!("(ite {cond_smt} {then_smt} {else_smt})"));
+    }
+    // Otherwise a seq literal.
+    emit_seq_literal(&s, rename)
+}
+
+/// Lower a `⟨a, b, ...⟩` sequence literal to SMT-LIB, renaming identifiers.
+fn emit_seq_literal(body: &str, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
     let body = body.trim();
     let inner = body
         .strip_prefix('⟨')
@@ -683,13 +1095,12 @@ fn emit_seq_literal_str(body: &str) -> Result<String, FrontendError> {
     }
     let units: Result<Vec<String>, FrontendError> = elems
         .iter()
-        .map(|e| Ok(format!("(seq.unit {})", emit_effect_ctor(e)?)))
+        .map(|e| Ok(format!("(seq.unit {})", emit_effect_ctor(e, rename)?)))
         .collect();
     let units = units?;
     if units.len() == 1 {
         Ok(units.into_iter().next().unwrap())
     } else {
-        // (seq.++ a (seq.++ b c)) — right-associated nest of binary seq.++.
         let mut iter = units.into_iter().rev();
         let mut acc = iter.next().unwrap();
         for u in iter {
@@ -699,9 +1110,9 @@ fn emit_seq_literal_str(body: &str) -> Result<String, FrontendError> {
     }
 }
 
-/// Lower one effect constructor: `Println("s")` → `(Println "s")`,
-/// `Exit(42)` → `(Exit 42)`.
-fn emit_effect_ctor(e: &str) -> Result<String, FrontendError> {
+/// Lower one effect constructor: `Println(<str-expr>)`, `Exit(n)`,
+/// `IntToStr(<int-expr>)`, `ParseInt(<str-expr>)`. Identifiers are renamed.
+fn emit_effect_ctor(e: &str, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
     let e = e.trim();
     let lp = e.find('(').ok_or_else(|| FrontendError(format!("effect must be a constructor call: {e:?}")))?;
     let ctor = e[..lp].trim();
@@ -709,25 +1120,45 @@ fn emit_effect_ctor(e: &str) -> Result<String, FrontendError> {
     let arg = e[lp + 1..close].trim();
     match ctor {
         "Println" => {
-            let toks = tokenize(arg)?;
-            match toks.as_slice() {
-                [Tok::StrLit(s)] => Ok(format!("(Println {})", smt_str(s))),
-                _ => fe(format!("Println argument must be a string literal: {arg:?}")),
-            }
+            let arg_smt = emit_arg_expr(arg, rename)?;
+            Ok(format!("(Println {arg_smt})"))
         }
         "Exit" => {
             let toks = tokenize(arg)?;
             match toks.as_slice() {
                 [Tok::IntLit(n)] => Ok(format!("(Exit {})", smt_int(*n))),
-                _ => fe(format!("Exit argument must be an integer literal: {arg:?}")),
+                _ => {
+                    // Allow an expression (e.g. a renamed var) for the code.
+                    let arg_smt = emit_arg_expr(arg, rename)?;
+                    Ok(format!("(Exit {arg_smt})"))
+                }
             }
         }
-        other => fe(format!("unsupported effect constructor `{other}` (only Println / Exit)")),
+        "IntToStr" => {
+            let arg_smt = emit_arg_expr(arg, rename)?;
+            Ok(format!("(IntToStr {arg_smt})"))
+        }
+        "ParseInt" => {
+            let arg_smt = emit_arg_expr(arg, rename)?;
+            Ok(format!("(ParseInt {arg_smt})"))
+        }
+        other => fe(format!(
+            "unsupported effect constructor `{other}` (Println / Exit / IntToStr / ParseInt)"
+        )),
     }
 }
 
+/// Lower an effect-argument expression (a string-concat, a var, or a literal).
+fn emit_arg_expr(arg: &str, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
+    let toks = tokenize(arg)?;
+    let (e, used) = parse_expr(&toks, 0)?;
+    if used != toks.len() {
+        return fe(format!("trailing tokens in effect argument: {arg:?}"));
+    }
+    emit_expr_renamed(&e, rename)
+}
+
 /// Lower a bare enum variant constructor (for state_next arms): `Done` → `Done`.
-/// (Nullary variants only in this subset.)
 fn emit_enum_ctor(e: &str) -> Result<String, FrontendError> {
     let e = e.trim();
     if e.contains('(') {
@@ -740,7 +1171,8 @@ fn emit_enum_ctor(e: &str) -> Result<String, FrontendError> {
 }
 
 // ---------------------------------------------------------------------------
-// Expression AST + lowering (for scalar transitions and ternary conditions)
+// Expression AST + lowering (for scalar transitions, conditions, intermediate
+// var defs, and effect args)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
@@ -749,9 +1181,15 @@ enum Expr {
     Bool(bool),
     Str(String),
     Ident(String),
+    /// `#last_results` — sequence length.
+    SeqLen(String),
     Not(Box<Expr>),
     Neg(Box<Expr>),
     Bin(BinOp, Box<Expr>, Box<Expr>),
+    /// String concat (`++`).
+    Concat(Box<Expr>, Box<Expr>),
+    /// Ternary `(cond ? then : else)` → `(ite cond then else)`.
+    Ite(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -763,10 +1201,24 @@ enum BinOp {
 
 type ParseResult = Result<(Expr, usize), FrontendError>;
 
-// The bounded condition subset has no implication operator (conditions are
-// comparisons joined by ∧/∨); `BinOp::Implies` remains only so `emit_expr`'s
-// match is exhaustive and ready if the subset grows.
-fn parse_expr(t: &[Tok], p: usize) -> ParseResult { parse_or(t, p) }
+fn parse_expr(t: &[Tok], p: usize) -> ParseResult { parse_ternary(t, p) }
+
+/// Ternary `cond ? then : else` — lowest precedence, right-associative.
+fn parse_ternary(t: &[Tok], p: usize) -> ParseResult {
+    let (cond, p) = parse_or(t, p)?;
+    if matches!(t.get(p), Some(Tok::Question)) {
+        let (then_e, p2) = parse_ternary(t, p + 1)?;
+        match t.get(p2) {
+            Some(Tok::Colon) => {
+                let (else_e, p3) = parse_ternary(t, p2 + 1)?;
+                Ok((Expr::Ite(Box::new(cond), Box::new(then_e), Box::new(else_e)), p3))
+            }
+            other => fe(format!("ternary missing `:`, got {other:?}")),
+        }
+    } else {
+        Ok((cond, p))
+    }
+}
 
 fn parse_or(t: &[Tok], p: usize) -> ParseResult {
     let (mut left, mut p) = parse_and(t, p)?;
@@ -787,7 +1239,7 @@ fn parse_and(t: &[Tok], p: usize) -> ParseResult {
     Ok((left, p))
 }
 fn parse_cmp(t: &[Tok], p: usize) -> ParseResult {
-    let (left, p) = parse_add(t, p)?;
+    let (left, p) = parse_concat(t, p)?;
     let op = match t.get(p) {
         Some(Tok::Eq) => BinOp::Eq,
         Some(Tok::Neq) => BinOp::Neq,
@@ -797,8 +1249,17 @@ fn parse_cmp(t: &[Tok], p: usize) -> ParseResult {
         Some(Tok::Ge) => BinOp::Ge,
         _ => return Ok((left, p)),
     };
-    let (r, p2) = parse_add(t, p + 1)?;
+    let (r, p2) = parse_concat(t, p + 1)?;
     Ok((Expr::Bin(op, Box::new(left), Box::new(r)), p2))
+}
+fn parse_concat(t: &[Tok], p: usize) -> ParseResult {
+    let (mut left, mut p) = parse_add(t, p)?;
+    while matches!(t.get(p), Some(Tok::Concat)) {
+        let (r, p2) = parse_add(t, p + 1)?;
+        p = p2;
+        left = Expr::Concat(Box::new(left), Box::new(r));
+    }
+    Ok((left, p))
 }
 fn parse_add(t: &[Tok], p: usize) -> ParseResult {
     let (mut left, mut p) = parse_mul(t, p)?;
@@ -832,6 +1293,13 @@ fn parse_unary(t: &[Tok], p: usize) -> ParseResult {
     match t.get(p) {
         Some(Tok::Not) => { let (e, p2) = parse_unary(t, p + 1)?; Ok((Expr::Not(Box::new(e)), p2)) }
         Some(Tok::Minus) => { let (e, p2) = parse_unary(t, p + 1)?; Ok((Expr::Neg(Box::new(e)), p2)) }
+        Some(Tok::Hash) => {
+            // `#ident` — sequence length.
+            match t.get(p + 1) {
+                Some(Tok::Ident(n)) => Ok((Expr::SeqLen(n.clone()), p + 2)),
+                other => fe(format!("`#` must be followed by a sequence var: {other:?}")),
+            }
+        }
         _ => parse_atom(t, p),
     }
 }
@@ -859,20 +1327,37 @@ fn emit_expr(e: &Expr) -> Result<String, FrontendError> {
 }
 
 /// Lower an expr, rewriting any identifier found in `rename` to its target.
-/// Used for the scalar effects condition: the `.ev`'s current state var `X`
-/// equals the engine's prev `_X`, so `X → _X` there.
 fn emit_expr_renamed(e: &Expr, rename: &HashMap<String, String>) -> Result<String, FrontendError> {
     match e {
         Expr::Int(i) => Ok(smt_int(*i)),
         Expr::Bool(b) => Ok(if *b { "true".into() } else { "false".into() }),
         Expr::Str(s) => Ok(smt_str(s)),
         Expr::Ident(n) => Ok(rename.get(n).cloned().unwrap_or_else(|| n.clone())),
+        Expr::SeqLen(n) => {
+            let name = rename.get(n).cloned().unwrap_or_else(|| n.clone());
+            Ok(format!("(seq.len {name})"))
+        }
         Expr::Not(i) => Ok(format!("(not {})", emit_expr_renamed(i, rename)?)),
         Expr::Neg(i) => match i.as_ref() {
             Expr::Int(n) => Ok(smt_int(-n)),
             other => Ok(format!("(- {})", emit_expr_renamed(other, rename)?)),
         },
-        Expr::Bin(BinOp::Neq, a, b) => Ok(format!("(not (= {} {}))", emit_expr_renamed(a, rename)?, emit_expr_renamed(b, rename)?)),
+        Expr::Concat(a, b) => Ok(format!(
+            "(str.++ {} {})",
+            emit_expr_renamed(a, rename)?,
+            emit_expr_renamed(b, rename)?
+        )),
+        Expr::Ite(c, then_e, else_e) => Ok(format!(
+            "(ite {} {} {})",
+            emit_expr_renamed(c, rename)?,
+            emit_expr_renamed(then_e, rename)?,
+            emit_expr_renamed(else_e, rename)?
+        )),
+        Expr::Bin(BinOp::Neq, a, b) => Ok(format!(
+            "(not (= {} {}))",
+            emit_expr_renamed(a, rename)?,
+            emit_expr_renamed(b, rename)?
+        )),
         Expr::Bin(op, a, b) => {
             let sym = match op {
                 BinOp::Eq => "=",
@@ -914,6 +1399,12 @@ fn smt_str(s: &str) -> String {
 fn emit(prog: &Program) -> Result<String, FrontendError> {
     let mut out = String::new();
 
+    // The scalar var rename: the .ev's current `X` is the engine prev `_X`.
+    let mut rename: HashMap<String, String> = HashMap::new();
+    if let Some(sc) = &prog.scalar_state {
+        rename.insert(sc.name.clone(), sc.prev.clone());
+    }
+
     // ---- @meta JSON ----
     out.push_str("; @meta\n");
     out.push_str("; {\n");
@@ -922,25 +1413,29 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
     out.push_str(&prog.fsm_name);
     out.push_str("\",\n");
 
-    match &prog.state {
-        State::Enum { prev, next, enum_name, init } => {
-            let _ = write!(
-                out,
-                ";       \"state\": [{{\"prev\":\"{prev}\",\"next\":\"{next}\",\"sort\":\"{enum_name}\",\"init\":\"{init}\"}}]"
-            );
-        }
-        State::Scalar { prev, next, init, .. } => {
-            let _ = write!(
-                out,
-                ";       \"state\": [{{\"prev\":\"{prev}\",\"next\":\"{next}\",\"sort\":\"Int\",\"init\":{init}}}]"
-            );
-        }
+    // state array — enum state first (if any), then scalar (if any).
+    let mut state_entries: Vec<String> = Vec::new();
+    if let Some(es) = &prog.enum_state {
+        state_entries.push(format!(
+            "{{\"prev\":\"{}\",\"next\":\"{}\",\"sort\":\"{}\",\"init\":\"{}\"}}",
+            es.prev, es.next, es.enum_name, es.init
+        ));
     }
+    if let Some(sc) = &prog.scalar_state {
+        state_entries.push(format!(
+            "{{\"prev\":\"{}\",\"next\":\"{}\",\"sort\":\"Int\",\"init\":{}}}",
+            sc.prev, sc.name, sc.init
+        ));
+    }
+    let _ = write!(out, ";       \"state\": [{}]", state_entries.join(", "));
+
     if prog.has_effects {
-        out.push_str(",\n;       \"effects\": {\"var\":\"effects\"}\n");
-    } else {
-        out.push('\n');
+        out.push_str(",\n;       \"effects\": {\"var\":\"effects\"}");
     }
+    if prog.reads_last_results {
+        out.push_str(",\n;       \"last_results\": {\"var\":\"last_results\",\"elem_sort\":\"Result\"}");
+    }
+    out.push('\n');
     out.push_str(";     }\n");
     out.push_str(";   ]\n");
     out.push_str("; }\n");
@@ -951,61 +1446,98 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
 
     // Datatypes: fixed Effect + (for enum state) the state enum, batched.
     emit_datatypes(&mut out, prog);
+    if prog.reads_last_results {
+        out.push_str(
+            "(declare-datatypes ((Result 0))\n  \
+             (((NoResult) (IntResult (IntResult_0 Int)) \
+             (StringResult (StringResult_0 String)) \
+             (ErrorResult (ErrorResult_0 String)))))\n",
+        );
+    }
 
     // Const declarations.
-    match &prog.state {
-        State::Enum { prev, next, enum_name, .. } => {
-            let _ = writeln!(out, "(declare-const {prev} {enum_name})");
-            let _ = writeln!(out, "(declare-const {next} {enum_name})");
-        }
-        State::Scalar { prev, next, .. } => {
-            let _ = writeln!(out, "(declare-const {prev} Int)");
-            let _ = writeln!(out, "(declare-const {next} Int)");
-        }
+    if let Some(es) = &prog.enum_state {
+        let _ = writeln!(out, "(declare-const {} {})", es.prev, es.enum_name);
+        let _ = writeln!(out, "(declare-const {} {})", es.next, es.enum_name);
+    }
+    if let Some(sc) = &prog.scalar_state {
+        let _ = writeln!(out, "(declare-const {} Int)", sc.prev);
+        let _ = writeln!(out, "(declare-const {} Int)", sc.name);
+    }
+    if prog.reads_last_results {
+        out.push_str("(declare-const last_results (Seq Result))\n");
     }
     if prog.has_effects {
-        let _ = writeln!(out, "(declare-const effects (Seq Effect))");
+        out.push_str("(declare-const effects (Seq Effect))\n");
+    }
+
+    // Intermediate var declarations (forward declarations, all up front so a
+    // later binding can reference an earlier one in any order).
+    for b in &prog.bindings {
+        if let Binding::IntermediateVar { name, smt_sort, .. } = b {
+            let _ = writeln!(out, "(declare-const {name} {smt_sort})");
+        }
     }
 
     // ---- asserts ----
     // Scalar transition (state).
-    if let State::Scalar { next, transition_rhs, .. } = &prog.state {
-        let _ = writeln!(out, "(assert (= {next} {transition_rhs}))");
+    if let Some(sc) = &prog.scalar_state {
+        let _ = writeln!(out, "(assert (= {} {}))", sc.name, sc.transition_rhs);
     }
 
-    let scrut = match &prog.state {
-        State::Enum { prev, .. } => prev.clone(),     // .ev's `state` (current) = engine prev
-        State::Scalar { prev, .. } => prev.clone(),   // .ev's `count` (this tick) = engine prev
-    };
-
-    // For scalar state, the .ev's current state var `X` equals the engine's
-    // prev `_X` (the engine runs the transition each tick and threads next→prev,
-    // so prev at tick N holds the .ev's `X` at tick N — init pins tick 0).
-    // Rename `X → _X` in effects expressions so the branch reads the right value.
-    let mut rename: HashMap<String, String> = HashMap::new();
-    if let State::Scalar { prev, next, .. } = &prog.state {
-        rename.insert(next.clone(), prev.clone());
-    }
+    // The enum match scrutinee (.ev's current `state` = engine prev).
+    let enum_scrut = prog.enum_state.as_ref().map(|es| es.prev.clone());
 
     for b in &prog.bindings {
         match b {
-            Binding::StateNextMatch { arms, default } => {
-                let target = match &prog.state {
-                    State::Enum { next, .. } => next.clone(),
-                    State::Scalar { .. } => {
-                        return fe("`state_next = match` used with a scalar (non-enum) fsm");
+            Binding::IntermediateVar { name, value, .. } => {
+                let rhs = match value {
+                    BindingValue::Expr(e) => emit_expr_renamed(e, &rename)?,
+                    BindingValue::MatchLastResults { index, lr_var, arms, default } => {
+                        emit_last_results_match(*index, lr_var, arms, default, &rename)?
                     }
                 };
-                let ite = emit_state_match(prog, &scrut, arms, default)?;
-                let _ = writeln!(out, "(assert (= {target} {ite}))");
+                let _ = writeln!(out, "(assert (= {name} {rhs}))");
+            }
+            Binding::StateNextMatch { arms, default } => {
+                let es = prog.enum_state.as_ref().ok_or_else(|| {
+                    FrontendError("`state_next = match` used without an enum state".into())
+                })?;
+                let scrut = enum_scrut.as_ref().unwrap();
+                let ite = emit_enum_match(prog, scrut, arms, default)?;
+                let _ = writeln!(out, "(assert (= {} {ite}))", es.next);
+            }
+            Binding::StateNextTernary { cond_expr, then_variant, else_variant } => {
+                let es = prog.enum_state.as_ref().ok_or_else(|| {
+                    FrontendError("`state_next = (cond ? A : B)` used without an enum state".into())
+                })?;
+                let cond = emit_expr_renamed(cond_expr, &rename)?;
+                let _ = writeln!(
+                    out,
+                    "(assert (= {} (ite {cond} {then_variant} {else_variant})))",
+                    es.next
+                );
             }
             Binding::EffectsMatch { arms, default } => {
-                let ite = emit_effects_match(prog, &scrut, arms, default)?;
+                let scrut = enum_scrut.as_ref().ok_or_else(|| {
+                    FrontendError("`effects = match state` used without an enum state".into())
+                })?;
+                // Lower each arm body (raw seq text) at emit time so rename applies.
+                let lowered_arms: Result<Vec<(String, String)>, FrontendError> = arms
+                    .iter()
+                    .map(|(p, body)| Ok((p.clone(), emit_effects_rhs(body, &rename)?)))
+                    .collect();
+                let lowered_arms = lowered_arms?;
+                let lowered_default = match default {
+                    Some(d) => Some(emit_effects_rhs(d, &rename)?),
+                    None => None,
+                };
+                let ite = emit_enum_match(prog, scrut, &lowered_arms, &lowered_default)?;
                 let _ = writeln!(out, "(assert (= effects {ite}))");
             }
-            Binding::EffectsTernary { cond_expr, then_seq, else_seq } => {
-                let cond = emit_expr_renamed(cond_expr, &rename)?;
-                let _ = writeln!(out, "(assert (= effects (ite {cond} {then_seq} {else_seq})))");
+            Binding::EffectsExpr { raw } => {
+                let term = emit_effects_rhs(raw, &rename)?;
+                let _ = writeln!(out, "(assert (= effects {term}))");
             }
         }
     }
@@ -1015,58 +1547,36 @@ fn emit(prog: &Program) -> Result<String, FrontendError> {
 
 fn emit_datatypes(out: &mut String, prog: &Program) {
     let effect_decl = "(Effect 0)";
-    let effect_body = "((Println (msg String)) (Exit (code Int)))";
-    match &prog.state {
-        State::Enum { enum_name, .. } => {
-            let variants = prog.enums.get(enum_name).cloned().unwrap_or_default();
+    let effect_body =
+        "((Println (Println_0 String)) (Exit (Exit_0 Int)) (IntToStr (IntToStr_0 Int)) (ParseInt (ParseInt_0 String)))";
+    match &prog.enum_state {
+        Some(es) => {
+            let variants = prog.enums.get(&es.enum_name).cloned().unwrap_or_default();
             let body: String = variants.iter().map(|v| format!("({v})")).collect::<Vec<_>>().join(" ");
             let _ = writeln!(
                 out,
-                "(declare-datatypes ({effect_decl} ({enum_name} 0)) ({effect_body} ({body})))"
+                "(declare-datatypes ({effect_decl} ({} 0)) ({effect_body} ({body})))",
+                es.enum_name
             );
         }
-        State::Scalar { .. } => {
+        None => {
             let _ = writeln!(out, "(declare-datatypes ({effect_decl}) ({effect_body}))");
         }
     }
 }
 
-/// Build a nested ite for a `match state` whose arms produce enum constructors.
-fn emit_state_match(
+/// Build a nested `(ite (is-Variant scrut) body rest)` over an enum scrutinee.
+fn emit_enum_match(
     prog: &Program,
     scrut: &str,
     arms: &[(String, String)],
     default: &Option<String>,
 ) -> Result<String, FrontendError> {
-    emit_match(prog, scrut, arms, default)
-}
+    let enum_variants: Option<&Vec<String>> = prog
+        .enum_state
+        .as_ref()
+        .and_then(|es| prog.enums.get(&es.enum_name));
 
-fn emit_effects_match(
-    prog: &Program,
-    scrut: &str,
-    arms: &[(String, String)],
-    default: &Option<String>,
-) -> Result<String, FrontendError> {
-    emit_match(prog, scrut, arms, default)
-}
-
-/// Nested `(ite (is-Variant scrut) body rest)`. The final arm (or `_`/default)
-/// becomes the innermost else.
-fn emit_match(
-    prog: &Program,
-    scrut: &str,
-    arms: &[(String, String)],
-    default: &Option<String>,
-) -> Result<String, FrontendError> {
-    // Validate the scrutinee is the enum state and patterns are its variants.
-    let enum_variants: Option<&Vec<String>> = match &prog.state {
-        State::Enum { enum_name, .. } => prog.enums.get(enum_name),
-        State::Scalar { .. } => None,
-    };
-
-    // Build from the last arm backward.
-    // If a default exists, it's the base else. Otherwise the LAST arm's body is
-    // the base else (its guard is implied — total over the enum).
     let mut elems = arms.to_vec();
     let base_else: String = if let Some(d) = default {
         d.clone()
@@ -1074,7 +1584,6 @@ fn emit_match(
         let last = elems
             .pop()
             .ok_or_else(|| FrontendError("match has no arms".into()))?;
-        // Validate the popped arm's pattern is a known variant.
         if let Some(vs) = enum_variants {
             if !vs.contains(&last.0) {
                 return fe(format!("match pattern `{}` is not a variant of the state enum", last.0));
@@ -1091,6 +1600,39 @@ fn emit_match(
             }
         }
         acc = format!("(ite (is-{pat} {scrut}) {body} {acc})");
+    }
+    Ok(acc)
+}
+
+/// Build a bounds-guarded nested ite for `match last_results[i]`.
+///
+/// Each non-default arm becomes
+/// `(ite (and (> (seq.len LR) i) ((_ is Ctor) (seq.nth LR i))) BODY rest)`,
+/// with the payload binding (if any) substituted by the field accessor
+/// `(Ctor_0 (seq.nth LR i))`. The `_` default is the innermost else, so an
+/// out-of-bounds / unmatched element falls through to it (matching the oracle).
+fn emit_last_results_match(
+    index: usize,
+    lr_var: &str,
+    arms: &[MatchArm],
+    default: &Expr,
+    rename: &HashMap<String, String>,
+) -> Result<String, FrontendError> {
+    // The element accessor expression, e.g. `(seq.nth last_results 0)`.
+    let nth = format!("(seq.nth {lr_var} {index})");
+    let mut acc = emit_expr_renamed(default, rename)?;
+    for arm in arms.iter().rev() {
+        // Substitute the bound payload (if any) with the field accessor.
+        let mut arm_rename = rename.clone();
+        if let Some(bind) = &arm.bind {
+            arm_rename.insert(bind.clone(), format!("({}_0 {nth})", arm.ctor));
+        }
+        let body = emit_expr_renamed(&arm.body, &arm_rename)?;
+        let guard = format!(
+            "(and (> (seq.len {lr_var}) {index}) ((_ is {}) {nth}))",
+            arm.ctor
+        );
+        acc = format!("(ite {guard} {body} {acc})");
     }
     Ok(acc)
 }
@@ -1113,14 +1655,11 @@ mod tests {
     #[test]
     fn countdown_transpiles_and_loads() {
         let fix = transpile_fsm(COUNTDOWN).expect("should transpile");
-        // Scalar state with init 3, effect branches on the prev (`_count`) since
-        // the .ev's current `count` == engine prev.
         assert!(fix.contains("\"prev\":\"_count\",\"next\":\"count\",\"sort\":\"Int\",\"init\":3"), "meta:\n{fix}");
         assert!(fix.contains("(assert (= count (- _count 1)))"), "transition:\n{fix}");
         assert!(fix.contains("(ite (> _count 0)"), "effect branches on prev:\n{fix}");
         assert!(fix.contains("(Println \"tick\")"), "{fix}");
         assert!(fix.contains("(Println \"done\")") && fix.contains("(Exit 0)"), "{fix}");
-        // load_str must accept it.
         let prob = load_str(&fix).expect("engine loads the fixture");
         assert_eq!(prob.fsms.len(), 1);
         assert_eq!(prob.fsms[0].name, "countdown");
@@ -1146,7 +1685,6 @@ mod tests {
         assert!(fix.contains("(Println \"second\")"), "{fix}");
         assert!(fix.contains("(Println \"third\")"), "{fix}");
         assert!(fix.contains("(Exit 0)"), "{fix}");
-        // Four effects nested as seq.++ binary.
         assert!(fix.contains("(seq.++ (seq.unit (Println \"first\"))"), "seq nest:\n{fix}");
         let prob = load_str(&fix).expect("engine loads test_03 fixture");
         assert_eq!(prob.fsms[0].name, "seq_demo");
@@ -1168,5 +1706,98 @@ mod tests {
     fn no_fsm_is_err() {
         let src = "enum E = A | B\n";
         assert!(transpile_fsm(src).is_err());
+    }
+
+    // ---- new-lowering tests -------------------------------------------------
+
+    const TEST_05: &str = "import \"stdlib/runtime.ev\"\n\nenum FmtState = Issue | Show | Halt\n\nfsm fmt_demo(state ∈ FmtState)\n    state_next = match state\n        Issue ⇒ Show\n        Show ⇒ Halt\n        Halt  ⇒ Halt\n\n    formatted ∈ String\n    formatted = match last_results[0]\n        StringResult(s) ⇒ s\n        _               ⇒ \"<no string>\"\n\n    effects = match state\n        Issue ⇒ ⟨IntToStr(42)⟩\n        Show ⇒ ⟨Println(formatted), Exit(0)⟩\n        Halt  ⇒ ⟨⟩\n";
+
+    #[test]
+    fn test_05_int_to_str_lowering() {
+        let fix = transpile_fsm(TEST_05).expect("transpile test_05");
+        // last_results metadata + Result datatype + decl.
+        assert!(fix.contains("\"last_results\": {\"var\":\"last_results\",\"elem_sort\":\"Result\"}"), "meta:\n{fix}");
+        assert!(fix.contains("(declare-datatypes ((Result 0))"), "Result dt:\n{fix}");
+        assert!(fix.contains("(declare-const last_results (Seq Result))"), "lr decl:\n{fix}");
+        // IntToStr effect ctor + datatype.
+        assert!(fix.contains("(IntToStr (IntToStr_0 Int))"), "Effect dt has IntToStr:\n{fix}");
+        assert!(fix.contains("(IntToStr 42)"), "IntToStr ctor:\n{fix}");
+        // formatted intermediate var: bounds-guarded recognizer + accessor.
+        assert!(fix.contains("(declare-const formatted String)"), "formatted decl:\n{fix}");
+        assert!(
+            fix.contains("((_ is StringResult) (seq.nth last_results 0))"),
+            "recognizer:\n{fix}"
+        );
+        assert!(
+            fix.contains("(StringResult_0 (seq.nth last_results 0))"),
+            "accessor:\n{fix}"
+        );
+        assert!(fix.contains("(> (seq.len last_results) 0)"), "bounds guard:\n{fix}");
+        // Println(formatted) — a bare var arg.
+        assert!(fix.contains("(Println formatted)"), "println var arg:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_05 fixture");
+        assert_eq!(prob.fsms[0].name, "fmt_demo");
+        assert!(prob.fsms[0].last_results.is_some());
+    }
+
+    const TEST_04: &str = "import \"stdlib/runtime.ev\"\n\nenum PState = Issue | Read | Done\n\nfsm parse_demo(state ∈ PState)\n    state_next = match state\n        Issue ⇒ Read\n        Read  ⇒ Done\n        Done  ⇒ Done\n\n    good ∈ String\n    good = match last_results[0]\n        IntResult(n)    ⇒ \"good: parsed an Int\"\n        ErrorResult(_)  ⇒ \"good: ERROR was expected to be success\"\n        _               ⇒ \"good: unknown result\"\n\n    bad ∈ String\n    bad = match last_results[1]\n        IntResult(_)    ⇒ \"bad: parsed but expected error\"\n        ErrorResult(_)  ⇒ \"bad: ERROR was correct\"\n        _               ⇒ \"bad: unknown\"\n\n    effects = match state\n        Issue ⇒ ⟨ParseInt(\"42\"), ParseInt(\"not-a-number\")⟩\n        Read  ⇒ ⟨Println(good), Println(bad), Exit(0)⟩\n        Done  ⇒ ⟨⟩\n";
+
+    #[test]
+    fn test_04_parse_int_lowering() {
+        let fix = transpile_fsm(TEST_04).expect("transpile test_04");
+        assert!(fix.contains("(ParseInt (ParseInt_0 String))"), "Effect dt:\n{fix}");
+        assert!(fix.contains("(ParseInt \"42\")"), "ParseInt 42:\n{fix}");
+        assert!(fix.contains("(ParseInt \"not-a-number\")"), "ParseInt err:\n{fix}");
+        // two intermediate string vars indexing last_results[0] and [1].
+        assert!(fix.contains("(declare-const good String)"), "good decl:\n{fix}");
+        assert!(fix.contains("(declare-const bad String)"), "bad decl:\n{fix}");
+        assert!(fix.contains("(seq.nth last_results 0)"), "index 0:\n{fix}");
+        assert!(fix.contains("(seq.nth last_results 1)"), "index 1:\n{fix}");
+        // payload-ignoring arm (ErrorResult(_)) still emits the recognizer.
+        assert!(fix.contains("((_ is ErrorResult) (seq.nth last_results 1))"), "err recognizer:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_04 fixture");
+        assert_eq!(prob.fsms[0].name, "parse_demo");
+    }
+
+    const TEST_19: &str = "import \"stdlib/runtime.ev\"\n\nenum CounterState = Counting | Done\n\nfsm counter(state ∈ CounterState)\n    count ∈ Int\n    count = (is_first_tick ? 0 : _count + 1)\n\n    state_next = (count ≥ 3 ? Done : Counting)\n\n    has_result ∈ Bool\n    has_result = (#last_results > 0)\n\n    first_str ∈ String\n    first_str = match last_results[1]\n        StringResult(s) ⇒ s\n        _               ⇒ \"?\"\n\n    prev_str ∈ String\n    prev_str = (has_result ? first_str : \"?\")\n\n    effects = match state\n        Counting ⇒ ⟨Println(\"count = \" ++ prev_str), IntToStr(count)⟩\n        Done     ⇒ ⟨Println(\"done\"), Exit(0)⟩\n";
+
+    #[test]
+    fn test_19_prev_tick_lowering() {
+        let fix = transpile_fsm(TEST_19).expect("transpile test_19");
+        // BOTH state vars in the meta state array.
+        assert!(fix.contains("\"prev\":\"state\",\"next\":\"state_next\",\"sort\":\"CounterState\",\"init\":\"Counting\""), "enum state:\n{fix}");
+        assert!(fix.contains("\"prev\":\"_count\",\"next\":\"count\",\"sort\":\"Int\",\"init\":0"), "scalar state:\n{fix}");
+        // Two-line scalar transition.
+        assert!(fix.contains("(assert (= count (+ _count 1)))"), "scalar transition:\n{fix}");
+        // state_next ternary renames count → _count.
+        assert!(fix.contains("(assert (= state_next (ite (>= _count 3) Done Counting)))"), "state_next ternary:\n{fix}");
+        // #last_results → seq.len.
+        assert!(fix.contains("(> (seq.len last_results) 0)"), "seq.len:\n{fix}");
+        // prev_str references has_result and first_str (intermediate vars).
+        assert!(fix.contains("(assert (= prev_str (ite has_result first_str \"?\")))"), "prev_str ite:\n{fix}");
+        // Effects: string concat + IntToStr(count→_count).
+        assert!(fix.contains("(str.++ \"count = \" prev_str)"), "concat:\n{fix}");
+        assert!(fix.contains("(IntToStr _count)"), "IntToStr renamed:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_19 fixture");
+        assert_eq!(prob.fsms[0].state.len(), 2, "two state vars");
+    }
+
+    const TEST_20: &str = "import \"stdlib/runtime.ev\"\n\nfsm counter\n    count ∈ Int\n    count = (is_first_tick ? 0 : _count + 1)\n\n    fmt_str ∈ String\n    fmt_str = match last_results[0]\n        StringResult(s) ⇒ s\n        _               ⇒ \"?\"\n\n    effects = (count = 0   ? ⟨IntToStr(count), Println(\"starting\")⟩\n            : (count ≤ 3   ? ⟨IntToStr(count), Println(\"count = \" ++ fmt_str)⟩\n                           : ⟨Println(\"count = \" ++ fmt_str), Exit(0)⟩))\n";
+
+    #[test]
+    fn test_20_pure_counter_lowering() {
+        let fix = transpile_fsm(TEST_20).expect("transpile test_20");
+        // Pure scalar — no enum state in the meta state array.
+        assert!(fix.contains("\"prev\":\"_count\",\"next\":\"count\",\"sort\":\"Int\",\"init\":0"), "scalar state:\n{fix}");
+        assert!(!fix.contains("CounterState"), "no enum state:\n{fix}");
+        // Nested effects ternary, count→_count renamed in conditions and args.
+        assert!(fix.contains("(ite (= _count 0)"), "outer ternary:\n{fix}");
+        assert!(fix.contains("(ite (<= _count 3)"), "inner ternary:\n{fix}");
+        assert!(fix.contains("(IntToStr _count)"), "IntToStr renamed:\n{fix}");
+        assert!(fix.contains("(Println \"starting\")"), "starting:\n{fix}");
+        assert!(fix.contains("(str.++ \"count = \" fmt_str)"), "concat:\n{fix}");
+        let prob = load_str(&fix).expect("engine loads test_20 fixture");
+        assert_eq!(prob.fsms[0].state.len(), 1, "one scalar state var");
+        assert!(prob.fsms[0].last_results.is_some());
     }
 }

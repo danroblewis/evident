@@ -19,6 +19,16 @@
 //! | runtime-smt/crosscheck/countdown.ev   | tick\ntick\ntick\ndone\n        | 0    |
 //! | examples/test_08_exit_code.ev         | exiting with code 42\n          | 42   |
 //! | examples/test_03_seq_chain.ev         | first\nsecond\nthird\n          | 0    |
+//! | examples/test_05_int_to_str.ev        | 42\n                            | 0    |
+//! | examples/test_04_parse_int.ev         | good: parsed an Int\n           |      |
+//! |                                       |   bad: ERROR was correct\n      | 0    |
+//! | examples/test_19_prev_tick.ev         | count = ?\ncount = 0\n…\ndone\n  | 0    |
+//! | examples/test_20_pure_counter.ev      | starting\ncount = 0\n…count = 3 | 0    |
+//!
+//! Golden strings captured from `runtime/target/release/evident effect-run
+//! <file> --max-steps 30` (the EXPECTATIONS contract in
+//! `runtime/tests/demos.rs` uses --max-steps 10 for test_04/05 and 30 for
+//! test_19/20; the engine halts on Exit / no-progress well before any cap).
 
 use runtime_smt::driver::DEFAULT_MAX_TICKS;
 use runtime_smt::meta::load_str;
@@ -66,5 +76,48 @@ fn test_08_exit_code_matches_oracle() {
 fn test_03_seq_chain_matches_oracle() {
     let (stdout, code) = hybrid_run("examples/test_03_seq_chain.ev");
     assert_eq!(stdout, "first\nsecond\nthird\n", "stdout mismatch");
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
+fn test_05_int_to_str_matches_oracle() {
+    // IntToStr(42) on tick 0 → StringResult("42") threaded → Println("42") tick 1.
+    let (stdout, code) = hybrid_run("examples/test_05_int_to_str.ev");
+    assert_eq!(stdout, "42\n", "stdout mismatch");
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
+fn test_04_parse_int_matches_oracle() {
+    // ParseInt("42")→IntResult, ParseInt("not-a-number")→ErrorResult; read back
+    // on the next tick and Println'd.
+    let (stdout, code) = hybrid_run("examples/test_04_parse_int.ev");
+    assert_eq!(
+        stdout, "good: parsed an Int\nbad: ERROR was correct\n",
+        "stdout mismatch"
+    );
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
+fn test_19_prev_tick_matches_oracle() {
+    // Enum state + scalar count; `count = " ++ prev_str` where prev_str comes
+    // from last_results[1] (the prior tick's IntToStr StringResult).
+    let (stdout, code) = hybrid_run("examples/test_19_prev_tick.ev");
+    assert_eq!(
+        stdout, "count = ?\ncount = 0\ncount = 1\ncount = 2\ndone\n",
+        "stdout mismatch"
+    );
+    assert_eq!(code, 0, "exit code mismatch");
+}
+
+#[test]
+fn test_20_pure_counter_matches_oracle() {
+    // Pure scalar counter, no enum state; nested effects ternary on count.
+    let (stdout, code) = hybrid_run("examples/test_20_pure_counter.ev");
+    assert_eq!(
+        stdout, "starting\ncount = 0\ncount = 1\ncount = 2\ncount = 3\n",
+        "stdout mismatch"
+    );
     assert_eq!(code, 0, "exit code mismatch");
 }
