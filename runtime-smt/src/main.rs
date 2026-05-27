@@ -8,8 +8,9 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use runtime_smt::driver::{run, DEFAULT_MAX_TICKS};
+use runtime_smt::driver::DEFAULT_MAX_TICKS;
 use runtime_smt::meta::load_file;
+use runtime_smt::scheduler::run;
 use runtime_smt::{solve_smtlib, SolveOutcome};
 
 fn main() -> ExitCode {

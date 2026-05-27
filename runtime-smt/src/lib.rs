@@ -24,7 +24,10 @@ pub mod effect;
 pub mod halt;
 pub mod meta;
 pub mod model;
+pub mod schedule;
+pub mod scheduler;
 pub mod tick;
+pub mod world;
 
 pub use driver::{run, run_fsm, run_to_string, RunReport, DEFAULT_MAX_TICKS};
 pub use effect::{dispatch_all, DispatchOutcome};
