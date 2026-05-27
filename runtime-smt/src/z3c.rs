@@ -219,17 +219,6 @@ impl<'c> Solver<'c> {
         }
     }
 
-    /// Raw model handle for callers that want to `model_eval` a specific const
-    /// by reconstructed sort. Returns `None` if not currently sat.
-    pub(crate) fn raw_model(&self) -> Option<Z3_model> {
-        unsafe {
-            let r = Z3_solver_check(self.ctx.ctx, self.solver);
-            if r != Z3_L_TRUE {
-                return None;
-            }
-            Some(Z3_solver_get_model(self.ctx.ctx, self.solver))
-        }
-    }
 }
 
 impl Drop for Solver<'_> {

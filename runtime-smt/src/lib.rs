@@ -19,10 +19,16 @@ pub mod z3c;
 pub mod spec;
 
 pub mod assertion;
+pub mod driver;
+pub mod effect;
+pub mod halt;
 pub mod meta;
 pub mod model;
 pub mod tick;
 
+pub use driver::{run, run_fsm, run_to_string, RunReport, DEFAULT_MAX_TICKS};
+pub use effect::{dispatch_all, DispatchOutcome};
+pub use halt::{decide as halt_decide, HaltReason};
 pub use tick::{solve_tick, TickError};
 pub use spec::{
     EffectSpec, EffectValue, FsmSpec, GivenVar, HaltSpec, Lit, Problem, Sort, StateVar, TickModel,
