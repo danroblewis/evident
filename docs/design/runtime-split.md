@@ -366,14 +366,26 @@ the equivalence tests.
 
 ### Reconciliation with `runtime-contract/FORMAT.md`
 
-`behavior-contract` Phase 2 will choose the canonical metadata encoding; this doc
-recommends the **JSON sidecar above** (direct `MainShape`/`AccessSets`
-serialization) and asserts the same three-part split (transition-system text +
-sidecar + pin protocol). The one addition this survey forces onto `FORMAT.md`
-that the behavior-contract plan does not yet name: **solver configuration is part
-of the contract** (subtlety 1). When `FORMAT.md` lands, this section should be
-diffed against it and the union taken; the fixtures it produces are the
-conformance suite a split engine and the greenfield engine must both pass.
+`behavior-contract`'s `FORMAT.md` **has since landed** and independently
+converges on this design: JSON sidecar (explicitly chosen over naming-convention
+hints and `(set-info)` annotations, for the same reasons — typed, versionable,
+keeps `.smt2` purely relational); the same role fields
+(`state_var`/`state_next_var`/`effects_var`/`last_results_var`/`world_fields`); a
+tagged-`Value` JSON encoding mirroring `core/value.rs`; the transition relation
+split into `problem.smt2 ⧺ prev.smt2 ⧺ inputs.smt2` with **the consumer appending
+`check-sat`** (matching Part A's "no `(check-sat)`"); and the two-engine
+consumption (`CurrentRuntimeEngine` + `SmtLibEngine`) that is the
+`FsmEngine`-trait of Phase-3 Step 1. It also independently confirms two survey
+findings: most fixtures are `handwritten` not `transpiled` because
+`translate/smtlib.rs` emits only the scalar QF subset (the same ~3.5 KLOC
+text-emit gap), and a **determinism rule** (pin every input that drives a checked
+output, or assert only on uniquely-forced outputs) — its handling of subtlety 1.
+`FORMAT.md` pins inputs to force a unique model and adds a per-output uniqueness
+check (Method B), which sidesteps the tactic-chain divergence rather than fixing
+the tactic chain; this doc's point stands that **solver configuration is part of
+the contract** for any fixture not fully input-pinned. The two specs should be
+treated as one; `FORMAT.md`'s fixtures are the conformance suite a split engine
+and the greenfield engine must both pass.
 
 ---
 
@@ -465,3 +477,153 @@ That last point is the bridge to the recommendation: Steps 0–4 produce assets
 *regardless* of whether the engine is split or greenfielded — but Steps 5–7, the
 part that actually "splits the engine," converge on the greenfield's work. Phase 4
 weighs exactly this.
+
+---
+
+## Phase 4 — Comparison + recommendation
+
+This is the decisive section. It weighs the **split** (cut the existing runtime
+along the seam, Phase 3) against the **`new-runtime` greenfield** (`runtime-smt/`,
+a from-scratch SMT-LIB-input engine), grounded in the surveys *and* in what the
+sibling sessions have actually built.
+
+### The convergent evidence: three sessions, one interface
+
+The strongest single finding is that **three independent sessions arrived at the
+same seam**:
+
+- This doc's Phase 2: SMT-LIB transition relation (no `check-sat`) + JSON
+  metadata sidecar serialized from `MainShape`/`AccessSets` + per-tick pin
+  protocol + decoded-`Value` results.
+- `behavior-contract/runtime-contract/FORMAT.md`: identical role-based JSON
+  sidecar, `problem ⧺ prev ⧺ inputs` relation, consumer-appends-`check-sat`,
+  tagged-`Value` encoding, two-engine (`FsmEngine`) consumption.
+- `new-runtime/runtime-smt/src/spec.rs`: the same metadata as Rust types
+  (`FsmSpec`, `StateVar`, `WorldVar`, `GivenVar`, `HaltSpec`, `EffectSpec`) — a
+  working tick (`tick.rs`, N1) consuming exactly this contract.
+
+The interface is therefore **validated and durable** — it is the asset that
+survives regardless of which engine wins. That alone reframes the question: the
+decision is not "split vs greenfield" as rival monoliths, but **which side of the
+already-agreed interface each existing subsystem should live on, and which are
+worth lifting versus rebuilding.**
+
+### Scorecard
+
+| Axis | Split (cut the legacy) | Greenfield (`runtime-smt`) |
+|---|---|---|
+| **Front-end transpiler** | Reuses parser + AST passes; must still grow the ~3.5 KLOC full-language emitter (Step 4). | *Needs the same transpiler* for Evident input (its N4 stretch). **Shared cost, not a differentiator.** |
+| **Functionizer / JIT** (~4,500 LOC, `functionize/` + `z3_eval`) | **Kept for free** — source-agnostic, runs unchanged on re-parsed SMT-LIB (verified). | Absent (N4 stretch (a)); must be **ported**. Per-tick re-solve until then. |
+| **IO / FFI kernel** (~3,000 LOC) | Kept in place; clean engine-side already. | Absent; but value-level and un-entangled, so **ports cleanly** (not a rewrite). |
+| **Eval / solve stack** (`translate/eval/`, ~1,450 LOC) | Kept; engine-side, clean. | Re-implemented (small; `runtime-smt` already has the floor). |
+| **Orchestration** (tick/state/scheduler/halt) | Must be **rebuilt around a scoped context** to shed fragility (Step 5–6) — i.e. the greenfield's work, done inside an entangled `query.rs`. | **Built clean from line one** against the interface; N1 working in ~2,355 LOC total. |
+| **Context lifecycle / fragility** | Inherits all six leaked-`'static`/`transmute`/`thread_local` patterns unless Steps 5–6 redesign them. | **Avoided by construction**: raw `z3-sys`, one RAII `Context` per engine, freed on `Drop` — its Cargo.toml names this as the explicit fix for "the legacy runtime's flakiness." |
+| **Test isolation / multi-instance** | Blocked by the leaked context until redesigned. | Clean per-instance from the start. |
+| **Incrementality / risk** | **Each step `./test.sh`-green against the live demo corpus** — continuous proof. | Validated against fixtures (the oracle), not yet the full demo corpus — risk of late-surfacing unmodeled behavior. |
+| **Translate-core entanglement** | Dragged along (mid-translation solving, in-memory handles) until Step 7 deletion. | None — never inherited. |
+
+### The decisive synthesis
+
+The split decomposes into two halves with **opposite verdicts**, and that is the
+whole answer:
+
+1. **The below-`z3_eval` engine is clean and worth *reusing*.** The functionizer,
+   the eval/solve stack, and the IO/FFI kernel are source-agnostic and
+   un-entangled (the surveys verified each). Re-implementing them from scratch
+   would be a large, pointless waste — the functionizer alone is ~4,500 LOC of
+   hard-won Cranelift codegen the greenfield has not begun.
+
+2. **The orchestration layer is exactly where the legacy fragility lives, and
+   "splitting" it means rebuilding it.** `query.rs`'s straddle, the leaked
+   `&'static Context`, the per-tick translate weld, and the in-memory-handle
+   translate core are not subsystems you lift out intact — they are the
+   entanglement. Cutting them cleanly (Phase 3 Steps 5–6) *is* building a
+   scoped-context tick loop against the SMT-LIB interface, which is precisely what
+   `new-runtime` already did in 2.3 KLOC without the entanglement to fight.
+
+So the part that *should* be lifted is the part that is **already clean (and thus
+ports easily)**, and the part that *resists* the cut is the part you would
+**rebuild anyway**. A literal cut of the legacy buys nothing the greenfield
+doesn't get cleaner.
+
+### Recommendation — HYBRID: greenfield the orchestration, reuse the front-end, *port* (don't rewrite) the clean subsystems
+
+Decisively: **do not perform the literal split of the legacy orchestration.**
+Instead:
+
+1. **Treat the SMT-LIB + metadata interface as the keystone deliverable.** It is
+   already validated by three sessions; build everything to it. This is the
+   "split *interface* matters even if we don't cut the legacy" outcome the plan
+   anticipated — confirmed.
+2. **Greenfield the orchestration engine** (tick / state threading / scheduler /
+   halt / world-coordination) on a scoped RAII `Context` — i.e. continue
+   `new-runtime`. It avoids all six fragilities by construction and is the layer
+   that is genuinely *cleaner from scratch*.
+3. **Reuse the front-end transpiler** (parser + the Rust AST passes + the grown
+   full-language SMT-LIB emitter, Phase-3 Steps 0–4). This is shared work that
+   pays off for the greenfield's Evident input regardless — so the split's
+   Steps 0–4 are worth doing, redirected as *contributions to the shared
+   front-end*, not as a prelude to cutting the legacy.
+4. **Port — not re-implement — the clean engine subsystems** into the greenfield
+   behind the same interface: the functionizer + `z3_eval` (source-agnostic; they
+   attach to the greenfield's re-parsed Z3 AST exactly as the split's Step-5
+   re-ingest shim would) and the IO/FFI kernel (value-level; lifts cleanly). The
+   greenfield's re-ingest point and the split's Step-5 shim are *the same code* —
+   so the JIT/IO reuse the split would have gotten "for free" is available to the
+   greenfield too, as a deliberate port.
+
+The nuance that sharpens the plan's anticipated "greenfield the engine, reuse the
+front-end" answer: it is specifically the **orchestration** that should be
+greenfielded (not the whole engine), and the functionizer/IO subsystems should be
+**ported, not rewritten** — because they are already source-agnostic. Squandering
+that by re-implementing the JIT from scratch would forfeit the split's one real
+advantage.
+
+### What this means for each session
+
+- **`split-plan` (this doc):** Phase-3 Steps 0–4 (interface + sidecar +
+  full-language transpiler + the front-end/engine decoupling) are worth doing and
+  feed the greenfield. **Steps 5–7 (cut the legacy orchestration) — do not**;
+  redirect that effort into `new-runtime`. The deliverable of this session is the
+  decision itself plus the reusable interface + migration assets.
+- **`new-runtime`:** continue — it is the recommended engine. Next milestones,
+  in priority order: (a) a spike proving `z3_eval` + Cranelift attach to
+  `runtime-smt`'s re-parsed `Context` (de-risks the ~4,500 LOC JIT *port* — the
+  recommendation hinges on this being a port, not a rewrite); (b) port the
+  value-level IO/FFI kernel; (c) wire to the shared transpiler for Evident input;
+  (d) the multi-FSM scheduler (N3).
+- **`behavior-contract`:** the oracle both engines must pass; `FORMAT.md` is the
+  shared interface. Deepen fixture coverage on the behaviors the surveys flagged
+  as most entangled — **multi-FSM world threading, nested-FSM (`run`) re-entry,
+  and `SpawnFsm`** — since those are where a greenfield is most likely to diverge
+  from hard-won legacy semantics.
+
+### Honest risks to the recommendation
+
+1. **The JIT/IO reuse is a *port*, and ports can rot into rewrites.** The
+   recommendation's economics depend on `z3_eval` + functionizer attaching to the
+   greenfield's `Context` essentially unchanged. The functionize survey verified
+   this is *structurally* true (they walk Z3 AST by `kind()`/`children()`,
+   source-agnostic), but it is unproven against `runtime-smt`'s raw-`z3-sys`
+   context specifically. **Spike it early** (new-runtime milestone (a)); if it
+   fails, the split's "keep the JIT for free" advantage re-enters the calculus.
+2. **The full-language transpiler (~3.5 KLOC + the guard-sat decision) is on the
+   critical path for both** and is the single largest piece of work. It is
+   unavoidable for Evident-input either way; start it early and share it.
+3. **Behavior parity risk.** The greenfield validates against fixtures, not the
+   live demo corpus, until late. The most entangled legacy behaviors (nested
+   re-entry, world threading, spawn) must be in the fixture oracle *before* the
+   greenfield claims parity — otherwise a behavior the legacy got right surfaces
+   as a regression after the investment. This is the split's one durable
+   edge (continuous `./test.sh` against real demos); the mitigation is deep
+   `behavior-contract` coverage of exactly those behaviors.
+
+### One-line answer
+
+**Build the SMT-LIB + metadata interface (all three sessions already agree on
+it); greenfield the orchestration engine on a scoped context (it is cleaner from
+scratch and sheds the six leaked-context fragilities by construction); reuse the
+front-end transpiler and *port* the source-agnostic functionizer + IO kernel
+across the same interface — do not perform the literal cut of the legacy
+orchestration, because the part worth lifting is already clean and the part that
+resists the cut is the part the greenfield rebuilds better.**
