@@ -1,0 +1,1 @@
+LibCall("libc", "abs", "i(i)", [ArgInt(-7)])
