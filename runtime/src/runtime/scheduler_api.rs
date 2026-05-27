@@ -23,6 +23,15 @@ impl EvidentRuntime {
         pins: &[(&str, z3::ast::Datatype<'static>)],
         given: &HashMap<String, Value>,
     ) -> Result<QueryResult, RuntimeError> {
+        // SMT-LIB-driven FSM (strategy 2): route the per-tick solve to the
+        // SMT-LIB path instead of the Evident-AST evaluator. Empty registry by
+        // default, so the Evident-source path below is untouched.
+        {
+            let reg = self.smtlib_fsms.borrow();
+            if let Some(fsm) = reg.get(claim_name) {
+                return Ok(crate::smtlib_fsm::solve_tick(self, fsm, pins, given));
+            }
+        }
         let base = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
         // Tier-3: if the body has `run(F, init)`, drive it to a final value before solving.

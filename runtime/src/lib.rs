@@ -18,6 +18,7 @@ pub mod portable;
 pub mod pretty;
 pub mod translate;
 mod runtime;
+pub mod smtlib_fsm;
 pub mod stdlib_path;
 pub mod subscriptions;
 mod event_sources;

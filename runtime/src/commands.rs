@@ -4,5 +4,6 @@
 pub mod common;
 
 pub mod effect_run;
+pub mod effect_run_smtlib;
 pub mod sample;
 pub mod test;

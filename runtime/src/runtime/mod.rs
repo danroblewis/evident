@@ -14,6 +14,7 @@ mod register_enums;
 mod query;
 mod sample;
 mod scheduler_api;
+mod smtlib_reg;
 mod reflection;
 mod analysis;
 mod introspect;
@@ -79,6 +80,11 @@ pub struct EvidentRuntime {
     /// When true, independent slow components are solved on parallel threads.
     /// Off via `EVIDENT_PARALLEL_SLOW=0` or `set_slow_parallel(false)`.
     pub(super) slow_parallel_enabled: std::cell::Cell<bool>,
+    /// SMT-LIB-driven FSMs (strategy 2). When a scheduler per-tick solve targets
+    /// a claim in this map, `query_with_pins_and_given` routes to the SMT-LIB
+    /// path instead of the Evident-AST evaluator. Empty by default — the
+    /// Evident-source path is untouched. See `crate::smtlib_fsm`.
+    pub(super) smtlib_fsms: RefCell<HashMap<String, crate::smtlib_fsm::SmtLibFsm>>,
 }
 
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
@@ -114,6 +120,7 @@ impl EvidentRuntime {
             solve_history: RefCell::new(HashMap::new()),
             slow_parallel_enabled: std::cell::Cell::new(
                 std::env::var("EVIDENT_PARALLEL_SLOW").map(|s| s != "0").unwrap_or(true)),
+            smtlib_fsms: RefCell::new(HashMap::new()),
         }
     }
 
