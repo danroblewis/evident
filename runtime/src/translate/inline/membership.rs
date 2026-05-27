@@ -76,9 +76,7 @@ pub(super) fn inline_membership(
         if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
             track_assert(solver, &guarded_bool(b, guard), tracker);
         } else {
-            let lenient = std::env::var("EVIDENT_LENIENT")
-                .map(|v| !v.is_empty() && v != "0")
-                .unwrap_or(false);
+            let lenient = crate::runtime::lenient::lenient_enabled();
             let pretty = pretty::expr(&eq);
             if lenient {
                 eprintln!(

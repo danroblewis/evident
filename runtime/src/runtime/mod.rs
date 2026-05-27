@@ -2,7 +2,7 @@
 //! (`query_with_pins_and_given`, `enums_registry`, `z3_context`) for the multi-FSM scheduler.
 
 mod stats;
-mod lenient;
+pub(crate) mod lenient;
 mod autotune;
 mod load;
 pub(crate) mod desugar;
