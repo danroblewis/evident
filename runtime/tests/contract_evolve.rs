@@ -18,7 +18,9 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use evident_runtime::smtlib_fsm::{solve_tick, FsmMeta, SmtLibFsm, SmtSort, VarDecl};
+use evident_runtime::smtlib_fsm::{
+    solve_smtlib_decode_all, solve_tick, DecodeOutcome, FsmMeta, SmtLibFsm, SmtSort, VarDecl,
+};
 use evident_runtime::{EvidentRuntime, Value};
 
 use runtime_contract::{
@@ -91,6 +93,54 @@ impl FsmEngine for EvolveEngine {
     }
 }
 
+/// Strategy-2 **enum increment** engine: the existing runtime's SMT-LIB path
+/// extended to read enum-typed state output + effects directly from the model
+/// via the generic raw-z3-sys decoder (`solve_smtlib_decode_all`). This crosses
+/// the v1 entanglement boundary documented above WITHOUT the registered
+/// `DatatypeSort` — it walks the solved model generically (the same shape the
+/// greenfield engine uses). Additive: a new function on the SMT-LIB path; the
+/// scalar `solve_tick` / live `effect-run-smtlib` command are untouched.
+struct EvolveEnumEngine;
+
+impl FsmEngine for EvolveEnumEngine {
+    fn name(&self) -> &str {
+        "Existing+SMTLIB enum-increment (strategy 2)"
+    }
+
+    fn tick(&self, fx: &Fixture) -> Outcome {
+        let rt = EvidentRuntime::new();
+        match solve_smtlib_decode_all(rt.z3_context(), &fx.pinned_smtlib()) {
+            DecodeOutcome::Unsat => Outcome::Unsat,
+            DecodeOutcome::Err(e) => Outcome::Unsupported(format!("z3: {e}")),
+            DecodeOutcome::Sat(all) => {
+                // State outputs: every checked key, decoded as enum OR scalar.
+                let mut model = BTreeMap::new();
+                for k in fx
+                    .meta
+                    .expect_model
+                    .keys()
+                    .chain(fx.meta.expect_forbidden.keys())
+                {
+                    if let Some(v) = all.get(k) {
+                        model.insert(k.clone(), conv(v));
+                    }
+                }
+                // Effects: surface them only when genuinely encoded in the
+                // portable SMT (effects_in_smt) — decode the `effects` Seq const.
+                let effects = if fx.meta.effects_in_smt {
+                    fx.meta.effects_var.as_ref().map(|ev| match all.get(ev) {
+                        Some(Value::SeqEnum(xs)) => xs.iter().map(conv).collect::<Vec<_>>(),
+                        _ => Vec::new(),
+                    })
+                } else {
+                    None
+                };
+                Outcome::Sat { model, effects }
+            }
+        }
+    }
+}
+
 /// `evident_runtime::Value` -> engine-neutral `CVal`.
 fn conv(v: &Value) -> CVal {
     match v {
@@ -129,8 +179,12 @@ fn evolve_contract_matrix() {
         "expected ≥15 fixtures, found {}",
         fixtures.len()
     );
-    let eng = EvolveEngine;
-    let report = run_matrix(&[&eng], &fixtures);
+    // Two columns: the v1 scalar baseline (enum state = documented Gap) and the
+    // enum-increment (reads enum state + effects from the model). The matrix
+    // shows the progression across strategy 2's documented entanglement boundary.
+    let v1 = EvolveEngine;
+    let enum_inc = EvolveEnumEngine;
+    let report = run_matrix(&[&v1, &enum_inc], &fixtures);
     eprintln!("\n{}\n", report.to_text());
     assert!(
         !report.any_fail(),
