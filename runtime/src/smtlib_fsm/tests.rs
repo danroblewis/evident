@@ -180,6 +180,90 @@ fn malformed_smtlib_is_unsat_not_panic() {
 }
 
 #[test]
+fn last_results_input_binding_reads_payload_then_defaults() {
+    // fmt_str = last_results[0].StringResult.s, defaulting to "?" on a miss.
+    let json = r#"{
+        "fsm": "fmt",
+        "vars": [{"name": "fmt_str", "sort": "Str"}, {"name": "line", "sort": "Str"}],
+        "outputs": ["line"],
+        "effects_var": "effects",
+        "last_results_var": "last_results",
+        "inputs": [
+            {"var": "fmt_str", "sort": "Str", "index": 0, "variant": "StringResult",
+             "default": {"lit_str": "?"}}
+        ],
+        "effects": [{"variant": "Println", "args": [{"var": "line"}]}]
+    }"#;
+    let meta = parse_meta(&serde_json::from_str(json).unwrap()).unwrap();
+    let smtlib = "(declare-const fmt_str String)\n(declare-const line String)\n\
+                  (assert (= line (str.++ \"v=\" fmt_str)))\n"
+        .to_string();
+    let fsm = SmtLibFsm { meta, smtlib };
+    let rt = EvidentRuntime::new();
+
+    // Hit: last_results[0] = StringResult("9") -> line = "v=9".
+    let mut given: HashMap<String, Value> = HashMap::new();
+    given.insert(
+        "last_results".to_string(),
+        Value::SeqEnum(vec![Value::Enum {
+            enum_name: "Result".to_string(),
+            variant: "StringResult".to_string(),
+            fields: vec![Value::Str("9".to_string())],
+        }]),
+    );
+    let r = solve_tick(&rt, &fsm, &[], &given);
+    assert!(r.satisfied);
+    assert_eq!(
+        r.bindings.get("effects"),
+        Some(&Value::SeqEnum(vec![Value::Enum {
+            enum_name: "Effect".to_string(),
+            variant: "Println".to_string(),
+            fields: vec![Value::Str("v=9".to_string())],
+        }]))
+    );
+
+    // Miss (no last_results): default "?" -> line = "v=?".
+    let r2 = solve_tick(&rt, &fsm, &[], &HashMap::new());
+    assert!(r2.satisfied);
+    assert_eq!(
+        r2.bindings.get("effects"),
+        Some(&Value::SeqEnum(vec![Value::Enum {
+            enum_name: "Effect".to_string(),
+            variant: "Println".to_string(),
+            fields: vec![Value::Str("v=?".to_string())],
+        }]))
+    );
+}
+
+#[test]
+fn world_vars_become_access_markers_not_memberships() {
+    // A writer FSM: `world_next.tick` should classify as a WRITE in the
+    // access-set walk, and not appear as a record-leaf Membership.
+    let json = r#"{
+        "fsm": "clock",
+        "vars": [{"name": "world_next.tick", "sort": "Int"}, {"name": "n", "sort": "Int"}],
+        "outputs": ["n", "world_next.tick"],
+        "world_next_var": "world_next",
+        "world_type": "World"
+    }"#;
+    let meta = parse_meta(&serde_json::from_str(json).unwrap()).unwrap();
+    let fsm = SmtLibFsm { meta, smtlib: String::new() };
+    let schema = fsm.synthetic_schema();
+
+    // No Membership named `world_next.tick` (it's a marker constraint instead).
+    assert!(!schema.body.iter().any(|b| matches!(
+        b, BodyItem::Membership { name, .. } if name == "world_next.tick")));
+    // The world-access walk sees it as a write.
+    let sets = crate::portable::subscriptions::access_sets(&schema);
+    assert!(sets.writes.contains("tick"), "writes={:?}", sets.writes);
+
+    let mut rt = EvidentRuntime::new();
+    rt.register_smtlib_fsm(fsm);
+    let shape = crate::effect_loop::resolve_fsm(&rt, "clock").unwrap();
+    assert!(shape.is_writer(), "world_next membership makes it the writer");
+}
+
+#[test]
 fn register_injects_synthetic_schema() {
     let mut rt = EvidentRuntime::new();
     rt.register_smtlib_fsm(countdown_fsm());
