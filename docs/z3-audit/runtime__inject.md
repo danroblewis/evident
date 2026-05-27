@@ -1,0 +1,7 @@
+# runtime/src/runtime/inject.rs — Z3-replaceability
+**What it does:** Two whole-program-table inject passes: (1) `inject_claim_arg_types` — infers and injects `X ∈ T` declarations for undeclared fresh positional-arg names by looking up the called claim's param signature (typo defense: ≥2 uses required); (2) `inject_lhs_eq_types` — infers and injects `X ∈ T` for undeclared `X = Expr` body constraints when the type is recoverable from the RHS (enum variant, record ctor, field type). Both require the whole-program schema table as input.
+**Criticality:** critical (load-time; every schema load runs both passes; without them undeclared names fail translation)
+**Verdict:** replaceable-as-group(runtime/src/runtime/inject.rs, runtime/src/portable/inject.rs, stdlib/passes/inject.ev)
+**Confidence:** medium
+**How (if replaceable):** The PORT-inject session evaluated self-hosting and proved the reference walk is faithful but kept Rust due to three blockers: the marshaler dropped `param_count` (now fixed by SEED-marshal), gap-#18-family (in-FSM enum string equality causes Z3 string-theory blowup — since partially fixed by validate-recursive session), and the whole-program-table input requirement (both passes need `schemas` across all loaded files). The whole-program input is the remaining hard blocker for a clean Evident-only implementation; partial self-hosting (the walk portion) is in `portable/inject.rs` + `stdlib/passes/inject.ev`. Full cutover requires either passing the schema table as a seeded value or splitting into two phases.
+**Change made:** none
