@@ -59,6 +59,20 @@ pub enum ArgSource {
     Var(String),
 }
 
+/// An input bound from the previous tick's `last_results` into an SMT-LIB const.
+/// Models the canonical "read an effect result" pattern (e.g. `IntToStr` on tick
+/// K → `StringResult` read on tick K+1). When `last_results[index]` is an enum of
+/// the named `variant`, its first payload field is asserted as the const's value;
+/// otherwise `default` is used (e.g. tick 0, before any result exists).
+#[derive(Debug, Clone)]
+pub struct InputBinding {
+    pub var: String,
+    pub sort: SmtSort,
+    pub index: usize,
+    pub variant: String,
+    pub default: ArgSource,
+}
+
 /// One templated effect: variant name, optional guard Bool var, and args.
 #[derive(Debug, Clone)]
 pub struct EffectSpec {
@@ -79,6 +93,8 @@ pub struct FsmMeta {
     pub outputs: Vec<String>,
     pub effects_var: Option<String>,
     pub last_results_var: Option<String>,
+    /// Consts bound from the previous tick's `last_results` before the solve.
+    pub inputs: Vec<InputBinding>,
     pub effects: Vec<EffectSpec>,
     // Multi-FSM world coordination (Phase 4). `world.X` reads / `world_next.X`
     // writes flow through the engine's existing world plumbing.
@@ -144,6 +160,27 @@ fn parse_arg(v: &J, ctx: &str) -> Result<ArgSource, String> {
     Err(format!("{ctx}: arg must have one of lit_str / lit_int / lit_bool / var"))
 }
 
+fn parse_inputs(v: &J) -> Result<Vec<InputBinding>, String> {
+    let arr = v.as_array().ok_or("`inputs` must be an array")?;
+    let mut out = Vec::with_capacity(arr.len());
+    for (i, item) in arr.iter().enumerate() {
+        let var = require_str(item, "var").map_err(|e| format!("inputs[{i}]: {e}"))?;
+        let sort_s = require_str(item, "sort").map_err(|e| format!("inputs[{i}]: {e}"))?;
+        let sort = SmtSort::parse(&sort_s).map_err(|e| format!("inputs[{i}]: {e}"))?;
+        let index = item
+            .get("index")
+            .and_then(|x| x.as_u64())
+            .ok_or_else(|| format!("inputs[{i}]: missing integer `index`"))? as usize;
+        let variant = require_str(item, "variant").map_err(|e| format!("inputs[{i}]: {e}"))?;
+        let default = match item.get("default") {
+            Some(d) => parse_arg(d, &format!("inputs[{i}].default"))?,
+            None => return Err(format!("inputs[{i}]: missing `default`")),
+        };
+        out.push(InputBinding { var, sort, index, variant, default });
+    }
+    Ok(out)
+}
+
 fn parse_effects(v: &J) -> Result<Vec<EffectSpec>, String> {
     let arr = v.as_array().ok_or("`effects` must be an array")?;
     let mut out = Vec::with_capacity(arr.len());
@@ -187,12 +224,17 @@ pub fn parse_meta(v: &J) -> Result<FsmMeta, String> {
         Some(e) => parse_effects(e)?,
         None => Vec::new(),
     };
+    let inputs = match v.get("inputs") {
+        Some(ins) => parse_inputs(ins)?,
+        None => Vec::new(),
+    };
     Ok(FsmMeta {
         fsm,
         vars,
         outputs,
         effects_var: obj_str(v, "effects_var"),
         last_results_var: obj_str(v, "last_results_var"),
+        inputs,
         effects,
         world_var: obj_str(v, "world_var"),
         world_next_var: obj_str(v, "world_next_var"),

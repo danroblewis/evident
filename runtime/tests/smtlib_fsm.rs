@@ -70,3 +70,37 @@ fn decr_halt_stdout_is_three_steps_clean_exit() {
     assert_eq!(exit, 0, "clean halt (no Exit effect) is exit 0");
     assert_eq!(out, "step\nstep\nstep\n");
 }
+
+#[test]
+fn clock_watcher_multi_fsm_matches_evident_oracle() {
+    // Two SMT-LIB FSMs coordinated through the existing world plumbing: the
+    // writer's `world_next.tick` propagates to the reader's `world.tick`, and
+    // the world-access markers wake the reader. Must match the Evident oracle.
+    assert_paths_match("clock_watcher");
+}
+
+#[test]
+fn clock_watcher_stdout_is_three_ticks_then_done() {
+    let json = "runtime/tests/fixtures/smtlib/clock_watcher.json";
+    let (exit, out) = run(&["effect-run-smtlib", json, "--max-steps", "100"]);
+    assert_eq!(exit, 0);
+    assert_eq!(out, "tick\ntick\ntick\ndone\n");
+}
+
+#[test]
+fn transpiled_pure_counter_matches_real_example() {
+    // A REAL corpus example (examples/test_20_pure_counter.ev) hand-transpiled
+    // to SMT-LIB+metadata. Exercises the `last_results` input binding + SMT-LIB
+    // str.++ (the IntToStr -> StringResult format pattern). The SMT-LIB path must
+    // match `evident effect-run examples/test_20_pure_counter.ev` exactly.
+    let json = "runtime/tests/fixtures/smtlib/pure_counter.json";
+    let ev = "examples/test_20_pure_counter.ev";
+    let (smt_exit, smt_out) = run(&["effect-run-smtlib", json, "--max-steps", "15"]);
+    let (ev_exit, ev_out) = run(&["effect-run", ev, "--max-steps", "15"]);
+    assert_eq!(
+        smt_out, ev_out,
+        "transpiled test_20 stdout != original\nSMT-LIB:\n{smt_out}\nEvident:\n{ev_out}"
+    );
+    assert_eq!(smt_exit, ev_exit);
+    assert_eq!(smt_out, "starting\ncount = 0\ncount = 1\ncount = 2\ncount = 3\n");
+}

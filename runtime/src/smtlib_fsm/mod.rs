@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::{Context, SatResult, Solver};
 
-use crate::core::ast::{BodyItem, Keyword, Pins, SchemaDecl};
+use crate::core::ast::{BodyItem, Expr, Keyword, Pins, SchemaDecl};
 use crate::core::{QueryResult, Value};
 
 mod meta;
@@ -78,6 +78,16 @@ fn build_synthetic_schema(meta: &FsmMeta) -> SchemaDecl {
         // Skip the auto-injected `is_first_tick` (the engine provides it) — but
         // DO declare `_name` time-shift vars so the scan injects prev values.
         if v.name == "is_first_tick" {
+            continue;
+        }
+        // `world.X` / `world_next.X` vars are NOT record-leaf Memberships (the
+        // `world`/`world_next` record Memberships below cover them). Instead emit
+        // a dotted-Identifier marker constraint so the world-access-set walk
+        // (`portable::subscriptions::access_sets`) classifies the read/write —
+        // this is what wakes reader FSMs and scopes writer snapshots. The marker
+        // is never translated; the SMT-LIB path intercepts before evaluate().
+        if v.name.starts_with("world.") || v.name.starts_with("world_next.") {
+            body.push(BodyItem::Constraint(Expr::Identifier(v.name.clone())));
             continue;
         }
         body.push(membership(&v.name, v.sort.evident_type()));
@@ -176,6 +186,16 @@ pub fn solve_tick(
         }
     }
 
+    // Input bindings: pull a payload out of the previous tick's `last_results`
+    // into a declared const (the "read an effect result" pattern). On a miss
+    // (tick 0, wrong variant, out of range) the binding's default applies.
+    for binding in &fsm.meta.inputs {
+        let value = resolve_input_binding(binding, fsm, given);
+        if let Some(assertion) = scalar_eq(ctx, &binding.var, binding.sort, &value) {
+            solver.assert(&assertion);
+        }
+    }
+
     let satisfied = match solver.check() {
         SatResult::Sat => true,
         SatResult::Unsat => false,
@@ -205,6 +225,39 @@ pub fn solve_tick(
     }
 
     QueryResult { satisfied, bindings }
+}
+
+/// Resolve an input binding to the value to assert: the matching payload field
+/// from `last_results[index]`, or the binding's literal default on any miss.
+fn resolve_input_binding(
+    binding: &meta::InputBinding,
+    fsm: &SmtLibFsm,
+    given: &HashMap<String, Value>,
+) -> Value {
+    let lr_key = fsm.meta.last_results_var.as_deref().unwrap_or("last_results");
+    let extracted = match given.get(lr_key) {
+        Some(Value::SeqEnum(items)) => items.get(binding.index).and_then(|item| match item {
+            Value::Enum { variant, fields, .. }
+                if *variant == binding.variant && !fields.is_empty() =>
+            {
+                Some(fields[0].clone())
+            }
+            _ => None,
+        }),
+        _ => None,
+    };
+    extracted.unwrap_or_else(|| arg_literal_value(&binding.default))
+}
+
+/// A literal `ArgSource` as a `Value`; `ArgSource::Var` has no literal value
+/// (it requires a model) so it falls back to an empty string.
+fn arg_literal_value(arg: &ArgSource) -> Value {
+    match arg {
+        ArgSource::LitInt(n) => Value::Int(*n),
+        ArgSource::LitStr(s) => Value::Str(s.clone()),
+        ArgSource::LitBool(b) => Value::Bool(*b),
+        ArgSource::Var(_) => Value::Str(String::new()),
+    }
 }
 
 /// Build a `name == value` Z3 Bool for a scalar `given`, or `None` on a
