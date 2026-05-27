@@ -22,6 +22,20 @@ Two engines run every fixture (`runtime/tests/behavior_contract.rs`):
 
 Both pass **15/15** today.
 
+> **This directory is now also a Rust lib crate** (`runtime-contract`, see
+> `Cargo.toml` + `src/`). It owns the engine-neutral `FsmEngine` trait, the
+> fixture loader, and a pass/fail-**matrix** runner so *any* split/replacement
+> engine plugs in by implementing one trait. Two NEW engines do, proving both
+> runtime-split strategies reproduce the captured semantics:
+>   * **strategy 1** — the greenfield `runtime_smt` engine (`runtime-smt/tests/contract.rs`),
+>   * **strategy 2** — the existing runtime in SMT-LIB mode, incl. the
+>     enum-state increment (`runtime/tests/contract_evolve.rs`).
+>
+> See **[`MATRIX.md`](MATRIX.md)** for the full fixture × engine matrix and
+> `run-matrix.sh` to regenerate it. The two engines described just below
+> (`CurrentRuntimeEngine`, `SmtLibEngine`) predate the lib crate and keep their
+> own inline harness in `behavior_contract.rs`; new engines use the lib.
+
 ## Layout
 
 ```

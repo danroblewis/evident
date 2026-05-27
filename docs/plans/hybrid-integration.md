@@ -80,3 +80,54 @@ reproduce the captured semantics, and where each one's boundary lies.
   increment) so the enum-state `Gap`s become `Pass`es; re-run the matrix.
 - **P4** — `runtime-contract/MATRIX.md` + a `run-matrix.sh` runner; finalize
   this log with the result.
+
+### Results (all phases landed; `./test.sh` green throughout)
+
+**The dual-engine matrix** (`runtime-contract/MATRIX.md`, regenerate with
+`runtime-contract/run-matrix.sh`). Verdicts: `✓` full (state+effects), `✓ˢ`
+state-only (effects not in the portable SMT for that fixture — `effects_in_smt:
+false`), `—` documented gap, `✗` wrong answer.
+
+| Engine | ✓ | ✓ˢ | — | ✗ |
+|---|---|---|---|---|
+| CurrentRuntime (gate) | 15 | 0 | 0 | 0 |
+| SmtLib (pure Z3, Method A/B/UNSAT) | 15 | 0 | 0 | 0 |
+| **Strategy 1 — greenfield** (`runtime-smt`) | 10 | 5 | 0 | **0** |
+| **Strategy 2 — existing, SMT-LIB v1 scalar** | 2 | 1 | 12 | **0** |
+| **Strategy 2 — existing, enum-increment** | 10 | 5 | 0 | **0** |
+
+- **Strategy 1 reproduces all 15** captured ticks (the 5 `✓ˢ` are the
+  `effects_in_smt:false` positives whose effects the capture leaves to the
+  runtime engine; the 2 negatives are witnessed as genuine UNSAT).
+- **Strategy 2 shows the increment explicitly.** v1's 12 `—` are all one
+  documented boundary — enum-typed `state` via SMT-LIB `(declare-datatypes …)`.
+  P3 crossed it with **one additive function**, `smtlib_fsm::solve_smtlib_decode_all`
+  (generic raw-`z3-sys` model decode; no registered `DatatypeSort` needed), after
+  which strategy 2 **matches strategy 1 exactly (10 ✓ / 5 ✓ˢ / 0 ✗)**.
+- Net: **both split strategies reproduce the captured semantics by independent
+  code paths**, and where each one stops is documented, not faked.
+
+**Convergence** (P2). The full pipeline `Evident FSM → transpile_fsm →
+SMT-LIB+metadata → greenfield engine → run` is **byte-identical** to
+`evident effect-run` on `runtime-smt/crosscheck/countdown.ev` and the REAL
+examples `examples/test_08_exit_code.ev` (exit 42) + `examples/test_03_seq_chain.ev`
+(`runtime-smt/tests/convergence.rs` + `crosscheck.sh`).
+
+**What this feeds the architecture decision.** Engine 3 (greenfield) is the
+cleaner *execution* foundation (isolation-by-construction; one SMT-LIB-string
+boundary). Engine 5 proves the *existing* runtime can be evolved to the same
+behavior additively. The split-vs-rewrite read from `runtime-smt/README.md`
+holds: the productive path is the greenfield engine as the execution target +
+the legacy front-end feeding it — and `transpile_fsm` is the first real strand
+of that front-end. The remaining honest gaps (async event sources, `last_results`
+threading, FFI effects, mode-2 dispatch) are the next front-end/engine increments,
+recorded — none faked.
+
+### Files (additive; Evident-source path + the original behavior_contract.rs untouched)
+
+- `runtime-contract/` → a lib crate: `src/{lib,value,fixture,engine}.rs`
+  (`FsmEngine` + `CVal` + loader + matrix runner), `MATRIX.md`, `run-matrix.sh`.
+- `runtime/tests/contract_evolve.rs` (strategy 2, both columns; runs in `./test.sh`).
+- `runtime/src/smtlib_fsm/decode.rs` + `mod.rs` re-export (the enum increment).
+- `runtime-smt/tests/contract.rs` (strategy 1), `runtime-smt/src/fsm_frontend.rs`
+  + `main.rs fsm` subcommand + `tests/convergence.rs` + `crosscheck.sh` (convergence).
