@@ -1,0 +1,25 @@
+-- unsat_hello_done_to_init — negative fixture: Done is absorbing; state_next
+-- is forced to Done when state=Done. Pinning state_next=Init contradicts => UNSAT.
+-- Probe claim: unsat_done_returns_to_init (from test_01_hello)
+
+import "stdlib/runtime.ev"
+
+enum HelloState = Init | Done
+
+fsm hello(state ∈ HelloState)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("hello from evident"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+claim unsat_done_returns_to_init
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Done
+    hello
+    state_next = Init

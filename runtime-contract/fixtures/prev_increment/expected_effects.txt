@@ -1,0 +1,2 @@
+Println("count = ?")
+IntToStr(8)

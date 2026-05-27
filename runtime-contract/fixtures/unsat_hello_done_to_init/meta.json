@@ -1,0 +1,32 @@
+{
+  "format_version": 1,
+  "name": "unsat_hello_done_to_init",
+  "fsm_claim": "hello",
+  "source_ev": "runtime-contract/fixtures/unsat_hello_done_to_init/source.ev",
+  "from_example": "test_01_hello",
+  "from_claim": "unsat_done_returns_to_init",
+  "how_built": "handwritten",
+  "notes": "Done is absorbing: both Init=>Done and Done=>Done in the transition relation. Pinning state_next=Init in inputs.smt2 when state=Done contradicts the uniquely-forced state_next=Done => UNSAT.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "state":        {"enum": "HelloState", "variant": "Done", "fields": []},
+    "last_results": {"seq_enum": "Result", "elems": []},
+    "state_next":   {"enum": "HelloState", "variant": "Init", "fields": []}
+  },
+
+  "expect": {
+    "unsat": true,
+    "model": {},
+    "effects": [],
+    "halt": false,
+    "exit_code": null
+  },
+
+  "effects_in_smt": false
+}

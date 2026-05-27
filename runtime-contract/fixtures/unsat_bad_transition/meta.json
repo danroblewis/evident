@@ -1,0 +1,32 @@
+{
+  "format_version": 1,
+  "name": "unsat_bad_transition",
+  "fsm_claim": "counter",
+  "source_ev": "runtime-contract/fixtures/unsat_bad_transition/source.ev",
+  "from_example": "test_02_counter",
+  "from_claim": "unsat_count_increments",
+  "how_built": "handwritten",
+  "notes": "state=Format(3) forces state_next=Count(2) by the transition relation. Pinning state_next=Count(4) in inputs.smt2 contradicts this => UNSAT. The over-constraining pin is on state_next (an output treated here as a given input).",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "effects",
+  "last_results_var": "last_results",
+  "world_fields": [],
+
+  "given": {
+    "state":        {"enum": "CountState", "variant": "Format", "fields": [{"int": 3}]},
+    "last_results": {"seq_enum": "Result", "elems": []},
+    "state_next":   {"enum": "CountState", "variant": "Count",  "fields": [{"int": 4}]}
+  },
+
+  "expect": {
+    "unsat": true,
+    "model": {},
+    "effects": [],
+    "halt": false,
+    "exit_code": null
+  },
+
+  "effects_in_smt": false
+}

@@ -1,0 +1,4 @@
+Println("first")
+Println("second")
+Println("third")
+Exit(0)

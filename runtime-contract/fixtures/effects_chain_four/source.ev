@@ -1,0 +1,27 @@
+-- effects_chain_four fixture source
+-- Derived from test_03_seq_chain, fsm seq_demo.
+-- Given state=Init, last_results=⟨⟩:
+--   state_next = Done
+--   effects    = ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩
+
+import "stdlib/runtime.ev"
+
+enum SeqState = Init | Done
+
+fsm seq_demo(state ∈ SeqState)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+claim sat_init_emits_chain_then_exit
+    state ∈ SeqState
+    state_next ∈ SeqState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Init
+    seq_demo
+    effects = ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩

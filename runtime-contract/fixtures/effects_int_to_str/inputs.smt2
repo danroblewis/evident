@@ -1,0 +1,4 @@
+; inputs.smt2 — external input pins for effects_int_to_str
+; last_results = ⟨⟩ (empty)
+; No world.* fields (self-contained FSM).
+(assert (= last_results (as seq.empty (Seq Result))))

@@ -1,0 +1,24 @@
+-- tick_hello_init — one tick of `hello` FSM from test_01_hello.ev
+-- Probe claim: sat_init_advances_to_done
+
+import "stdlib/runtime.ev"
+
+enum HelloState = Init | Done
+
+fsm hello(state ∈ HelloState)
+    state_next = match state
+        Init ⇒ Done
+        Done ⇒ Done
+
+    effects = match state
+        Init ⇒ ⟨Println("hello from evident"), Exit(0)⟩
+        Done ⇒ ⟨⟩
+
+claim sat_init_advances_to_done
+    state ∈ HelloState
+    state_next ∈ HelloState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    state = Init
+    hello
+    state_next = Done
