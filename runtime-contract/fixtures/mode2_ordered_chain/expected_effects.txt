@@ -1,0 +1,3 @@
+Println("first")
+Println("second")
+Exit(0)

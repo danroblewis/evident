@@ -16,6 +16,9 @@ mod toposort;
 // Public re-exports: keep every symbol accessible as `crate::effect_loop::X`.
 pub use fsm::{MainShape, all_fsms, detect_main_shape, resolve_fsm};
 pub use nested::{run_nested, run_nested_capturing, validate_run_target, RunError};
+// Crate-internal: surfaced via `EvidentRuntime::collect_tick_effects` so the
+// behavior-contract harness can witness mode-2 (toposort) dispatch ordering.
+pub(crate) use collect::collect_dispatchable_effects;
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]

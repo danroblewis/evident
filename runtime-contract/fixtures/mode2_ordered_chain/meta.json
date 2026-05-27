@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "name": "mode2_ordered_chain",
+  "fsm_claim": "mode2_demo",
+  "source_ev": "runtime-contract/fixtures/mode2_ordered_chain/source.ev",
+  "from_example": null,
+  "from_claim": "sat_dispatches_in_order",
+  "how_built": "handwritten",
+  "notes": "Mode-2 effect dispatch (contract TODO #2). The FSM declares NO `effects` slot; the runtime scrapes its Effect bindings (a,b,c — declared out of order: c,a,b) and toposorts them by the `order = ⟨a,b,c⟩` ordering-edge declaration (edges a→b→c) before dispatching. Result is the TOTAL order [a,b,c] = [Println(\"first\"), Println(\"second\"), Exit(0)], which is seed-independent (the EVIDENT_DISPATCH_SEED random tie-break only matters for PARTIAL orders — the documented residual). dispatch_mode:2 → the CurrentRuntime gate witnesses the real toposort via collect_tick_effects(primary_var=None); confirmed independently by `evident effect-run` (stdout first/second, exit 0). The SMT capture encodes the resulting dispatch order under `order` (effects_var), which both SMT engines decode. Doubly-witnessed: CurrentRuntime toposort + SmtLib Method A/B.",
+
+  "state_var":        "state",
+  "state_next_var":   "state_next",
+  "effects_var":      "order",
+  "last_results_var": null,
+  "world_fields": [],
+  "dispatch_mode": 2,
+
+  "given": {
+    "state": {"enum": "MState", "variant": "MGo", "fields": []}
+  },
+
+  "expect": {
+    "unsat": false,
+    "model": {
+      "state_next": {"enum": "MState", "variant": "MDone", "fields": []}
+    },
+    "effects": [
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "first"}]},
+      {"enum": "Effect", "variant": "Println", "fields": [{"str": "second"}]},
+      {"enum": "Effect", "variant": "Exit", "fields": [{"int": 0}]}
+    ],
+    "halt": true,
+    "exit_code": 0
+  },
+
+  "effects_in_smt": true
+}
