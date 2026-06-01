@@ -121,14 +121,35 @@ them. The runtime ticks the FSM: each tick, `_x` is pinned to the
 prior tick's solved `x`, the body solves, the cycle repeats until a
 halt condition (state stable AND no effects emitted).
 
-**`fti` — an `fsm` that emits `libcall`.**
-Same state-pair semantics as `fsm`, plus the ability to emit
-`LibCall` effects bridging to external state machines. Stack, Queue,
-files, sockets, GPU buffers, any C-library-backed
-resource — all are FTIs. The Z3-side variables model the visible
-state; the libcalls keep external state synchronized. **External
-auxiliary memory — what bounded-per-tick FSMs need to act as PDAs,
-Mealy/Moore machines, parsers — is built as FTIs. FTI is part of v1.**
+**`fti` — Foreign Type Interface.**
+A specialized `type` whose instances bring state-pair variables
+(`_x` / `x`) into the scope of any `fsm` that declares a variable of
+the FTI's type. The FTI itself does not run as an FSM. It is invoked
+by being used.
+
+The state-pair variables of an FTI are *materialized* against an
+external system via libcall:
+
+- At the start of each tick, the FTI's libcalls read the current
+  external state and pin the `_x` values.
+- The composing FSM's constraints determine what the `x` values
+  should be.
+- Z3 solves the combined body (composing FSM + FTI constraints).
+- At the end of the tick, the FTI's libcalls write the solved `x`
+  values back to external storage.
+
+The composing FSM never "calls methods on" the FTI. It asserts
+relations over the FTI's variables — e.g.
+`q.contents = _q.contents ++ [42]` — and the FTI ensures the
+external system reflects the result. This is the relational way to
+express what other languages would write as `queue.push(42)`. There
+are no commands, no method calls, no message dispatch. Just
+constraints over variables whose values are tied to external state.
+
+Stack, Queue, File, Mutex, Socket, GPU buffers — all FTIs. **FTI is
+part of v1, not deferrable.** Without it, bounded-per-tick FSMs
+cannot act as PDAs, Mealy/Moore machines, or parsers, because they
+have no way to address unbounded external state.
 
 ## The architecture in one paragraph
 
