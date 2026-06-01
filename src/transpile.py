@@ -127,6 +127,13 @@ def transpile_expr(expr, hint_sort=None, declared_sorts=None):
         escaped = expr["value"].replace("\\", "\\\\").replace('"', '""')
         return f'"{escaped}"'
     if k == "ident": return expr["name"]
+    if k == "qualified":
+        # Dotted name `s.contents` → flat `s__contents` (double-underscore
+        # separator, chosen for unambiguity and grep-friendliness — SMT-LIB
+        # identifiers can't contain `.` without quoting). The leading-
+        # underscore convention `_s.contents` lowers to `_s__contents`
+        # because `_s` is the first part already.
+        return "__".join(expr["parts"])
 
     if k == "binop":
         op = BINOP_SMT.get(expr["op"])

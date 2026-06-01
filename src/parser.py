@@ -138,10 +138,30 @@ def lex(source):
             while j < len(source) and (source[j].isalnum() or source[j] == "_"):
                 j += 1
             word = source[i:j]
-            kind = "KEYWORD" if word in KEYWORDS else "IDENT"
-            tokens.append(Token(kind, word, line, start))
             col += j - i
             i = j
+            # Qualified-name lookahead. A `.` between two IDENT characters
+            # (NOT `..`, which is the range operator) extends the token
+            # into a qualified name `a.b.c`. The leading-underscore form
+            # `_s.contents` is naturally handled: `_s` is read as an IDENT
+            # above, and the `.contents` extension joins it. Emit a single
+            # QUALIFIED token whose value is the parts list.
+            parts = [word]
+            while (i + 1 < len(source) and source[i] == "."
+                   and source[i+1] != "."
+                   and (source[i+1].isalpha() or source[i+1] == "_")):
+                i += 1; col += 1  # consume `.`
+                k = i
+                while k < len(source) and (source[k].isalnum() or source[k] == "_"):
+                    k += 1
+                parts.append(source[i:k])
+                col += k - i
+                i = k
+            if len(parts) == 1:
+                kind = "KEYWORD" if word in KEYWORDS else "IDENT"
+                tokens.append(Token(kind, word, line, start))
+            else:
+                tokens.append(Token("QUALIFIED", parts, line, start))
             continue
 
         # Multi-char symbols.
@@ -391,6 +411,13 @@ class Parser:
             return self.parse_seq_literal()
         if t.kind == "IDENT":
             return self.parse_ident_or_call()
+        if t.kind == "QUALIFIED":
+            # A dotted name like `s.contents` or `_s.contents`. It is a
+            # value expression denoting a namespaced variable; the
+            # transpiler flattens it to `s__contents` / `_s__contents`.
+            # Qualified names are not callable in v1 (no `s.foo(args)`).
+            self.pos += 1
+            return {"kind": "qualified", "parts": list(t.value)}
         raise SyntaxError(f"L{t.line}:{t.col} unexpected {t.kind} {t.value!r}")
 
     def parse_ident_or_call(self):
