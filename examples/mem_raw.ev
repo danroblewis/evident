@@ -1,0 +1,43 @@
+; M2 — raw memory round-trip via the __mem__ libcall library.
+;
+; Six phases, driven by a state-pair `phase`. is_init pins phase = 0.
+; Each tick's effects depend on the current `phase`. The libcall
+; ok_dest slot pins a plain-const variable (`addr`, `loaded`) so the
+; libcall result is visible on the following tick.
+;
+;   phase 0: alloc 8 bytes; ok_dest = "addr"
+;   phase 1: store 42 at addr
+;   phase 2: load from addr; ok_dest = "loaded"
+;   phase 3: report "mem ok" if loaded = 42, else "mem FAIL"
+;   phase 4: free(addr)
+;   phase 5: terminal — no effects, no state change ⇒ halt
+
+fsm mem_raw(phase ∈ {0..5})
+    addr ∈ Int
+    loaded ∈ Int
+
+    phase = match is_init:
+        true  => 0
+        false => match _phase:
+            0 => 1
+            1 => 2
+            2 => 3
+            3 => 4
+            4 => 5
+            _ => _phase
+
+    effects = match phase:
+        0 => [LibCall("__mem__", "mem_alloc", "l(l)",
+                      [ArgInt(8)], "addr", "")]
+        1 => [LibCall("__mem__", "mem_store_long", "v(ll)",
+                      [ArgInt(addr), ArgInt(42)], "", "")]
+        2 => [LibCall("__mem__", "mem_load_long", "l(l)",
+                      [ArgInt(addr)], "loaded", "")]
+        3 => match loaded:
+            42 => [LibCall("libc", "puts", "i(s)",
+                           [ArgStr("mem ok")], "", "")]
+            _  => [LibCall("libc", "puts", "i(s)",
+                           [ArgStr("mem FAIL")], "", "")]
+        4 => [LibCall("__mem__", "mem_free", "v(l)",
+                      [ArgInt(addr)], "", "")]
+        _ => []
