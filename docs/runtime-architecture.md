@@ -176,7 +176,7 @@ This unifies several things we previously discussed as separate:
 - Effect-bearing variables (Mutex, Atomic) — FTIs.
 - Mailboxes, channels, queues — FTIs.
 - Foreign C structs (memory layout + field access) — FTIs.
-- File handles, network sockets, GPU buffers — FTIs.
+- Files, sockets, GPU buffers — FTIs.
 - Capability-wrapped variables — FTIs.
 
 One construct. The constraint-style `∈` syntax stays universal:

@@ -31,7 +31,7 @@ mix.
 | Half | What it is | Mechanism | Examples |
 |---|---|---|---|
 | **Constraint operations** | Relations among values inside the Z3 model | Value expressions in claims | `head(s)`, `len(s)`, `S ∪ T`, `x ∈ S`, `∀ y ∈ S. P(y)` |
-| **External-state FTIs** | Bridges to mutable state machines outside the model | Libcall effects from FTI bodies | Stack, Queue, FileHandle, Mutex, Channel |
+| **External-state FTIs** | Bridges to mutable state machines outside the model | Libcall effects from FTI bodies | Stack, Queue, File, Mutex, Socket |
 
 Constraint operations are relations. They don't mutate anything. They
 constrain how variables relate. When the body of a claim says
@@ -363,7 +363,11 @@ frozen until the next foundational gap is discovered.
 - snake_case for claims, fsms, ftis, variables.
 - Z3 binding claims mirror the Z3 C API name with the `Z3_` prefix
   stripped: `Z3_mk_set_sort` → `mk_set_sort`, etc.
-- FTI types use PascalCase: `Stack`, `Queue`, `FileHandle`.
+- FTI types use PascalCase and are simple nouns for the thing the
+  state machine represents: `Stack`, `Queue`, `File`, `Mutex`,
+  `Socket`. No `Handle`, `Access`, `State` suffixes. If a name needs
+  a suffix to convey "this is a stateful thing," the FTI probably
+  shouldn't exist — it's just a variable.
 - Handle variables that hold Z3 AST/sort/solver pointers use names
   ending in `_handle`: `ctx_handle`, `set_handle`, `solver_handle`.
 

@@ -124,7 +124,7 @@ halt condition (state stable AND no effects emitted).
 **`fti` — an `fsm` that emits `libcall`.**
 Same state-pair semantics as `fsm`, plus the ability to emit
 `LibCall` effects bridging to external state machines. Stack, Queue,
-file handles, network sockets, GPU buffers, any C-library-backed
+files, sockets, GPU buffers, any C-library-backed
 resource — all are FTIs. The Z3-side variables model the visible
 state; the libcalls keep external state synchronized. **External
 auxiliary memory — what bounded-per-tick FSMs need to act as PDAs,
@@ -172,7 +172,7 @@ python3 src/main.py --emit-smt FILE.ev    # just emit the SMT-LIB
 - **All data structures.** Stack, Queue, Map, Mailbox — FTIs wrapping
   external state. Not in Z3 datatype space; the Z3 model holds a
   bounded view, libcalls handle the rest.
-- **All effect-mediated types** (Mutex, Channel, FileHandle) — FTIs.
+- **All effect-mediated types** (Mutex, Channel, File, Socket) — FTIs.
 - **Multi-FSM composition.** Compile-time composition (one combined
   body) for tightly coupled FSMs; supervisor-pattern FSMs for loosely
   coupled ones. Both are written in Evident.
