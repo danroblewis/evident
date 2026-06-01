@@ -1,7 +1,0 @@
-# runtime/src/portable/desugar.rs — Z3-replaceability
-**What it does:** The Rust shim for the already-cut-over `desugar_seq_concat` pass. The gather step (collecting `name = ⟨items⟩` bindings) and the flatten step (resolving `++` concatenation chains) both delegate to the `desugar_gather` / `desugar_flatten` FSMs in `stdlib/passes/desugar.ev`. The Rust side provides a short-circuit Concat-presence guard, the post-FSM `rewrite` tree-walk (not cut over because it requires MatchPattern round-trips that were still lossy at cut-over time), and an `FRef` string-name lookup (kept in Rust to avoid in-solve string-eq blowup, the #18 cousin).
-**Criticality:** critical (load-time — runs on every schema that contains `++` before translation)
-**Verdict:** replaceable-as-group(portable/desugar.rs, stdlib/passes/desugar.ev)
-**Confidence:** high
-**How (if replaceable):** The pass is already substantially self-hosted: the gather and flatten logic run as Evident FSMs in `desugar.ev`, with Rust providing only the post-FSM rewrite-walk and the `FRef` name lookup. Full cutover of the rewrite-walk is blocked by two known issues: (1) the MatchPattern marshaler round-trip was still lossy at cut-over time (since fixed by SEED-marshal but not yet exploited here), and (2) `FRef` string-keyed lookup would require in-solve string equality which causes Z3 string-theory blowup on string-heavy schemas. The remaining Rust residual is narrow and well-understood.
-**Change made:** none

@@ -1,3 +1,0 @@
-consumer saw n = 3
-consumer saw n = 2
-producer done

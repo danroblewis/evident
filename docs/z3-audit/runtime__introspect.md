@@ -1,7 +1,0 @@
-# runtime/src/runtime/introspect.rs — Z3-replaceability
-**What it does:** User-claim introspection and body-item rewrites for the `--infer-types` and desugar pipelines. Provides `add_membership_to_claim` (idempotent prepend of `var ∈ type` to a claim body) and `replace_body_item_in_claim` (replace body item by index), both of which delegate the actual AST rebuild to `portable::introspect`, plus read-only accessors for user claim count/names/body lengths and origin-file filtering.
-**Criticality:** peripheral (used by the `--infer-types` interactive inference pipeline; not on the standard load or tick path)
-**Verdict:** replaceable-as-group(runtime/src/runtime/introspect.rs, runtime/src/portable/introspect.rs, stdlib/passes/introspect.ev)
-**Confidence:** medium
-**How (if replaceable):** The AST mutation (prepend/replace) already self-hosts in `portable::introspect` (described in MEMORY as the first AST-rebuild port). What remains Rust is the idempotency check (already declared?), the dual-update bookkeeping (mirror into `program.schemas`, flush cache), and the pure read accessors (routing `vec.len()` through a solve buys nothing). The read accessors are `not-a-CSP` leaf operations. The mutation methods' Rust shell (the idempotency check + cache flush) is thin glue that coordinates two data structures and is not a CSP; the actual transform is already self-hosted.
-**Change made:** none

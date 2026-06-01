@@ -1,2 +1,0 @@
-Println("hello from evident")
-Exit(0)

@@ -1,2 +1,0 @@
-Println("interrupted, exiting")
-Exit(130)

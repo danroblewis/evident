@@ -1,7 +1,0 @@
-# runtime/src/portable/introspect.rs — Z3-replaceability
-**What it does:** The Rust shim for the AST-rebuild introspect pass, which replaces or prepends body items in a `SchemaDecl` via the `introspect_replace` and `introspect_prepend` FSMs in `stdlib/passes/introspect.ev`. The Rust side handles: bounds checking (guaranteeing `idx < body.len()` before calling the FSM), the idempotency guard for `prepend_membership` (checking the name isn't already declared), the `cons_to_seq` marshaler bridge (rewriting FSM-output cons-list spines to the `SeqEnum`/`SeqStr` shapes that `decode_schema_decl` expects), and extracting only the rebuilt `.body` (preserving `type_params`/`external` that the shared marshaler omits).
-**Criticality:** peripheral (load-time — called only from the passthrough-desugar auto-apply in `commands/common.rs`; never on per-tick, translate, or scheduler path)
-**Verdict:** replaceable-as-group(portable/introspect.rs, stdlib/passes/introspect.ev)
-**Confidence:** high
-**How (if replaceable):** The body-walk and reconstruction logic are already self-hosted in `introspect.ev`; the Rust residual is thin glue (bounds check, idempotency guard, marshaler bridge, field-preservation on decode). The `cons_to_seq` bridge exists because the FSM emits cons-list spines while `decode_schema_decl` reads `SeqEnum` — a known asymmetry between the FSM output format and the Z3-extraction decoder. Further self-hosting would require either unifying the two list representations or teaching the FSM to emit the `SeqEnum` shape directly.
-**Change made:** none
