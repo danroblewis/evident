@@ -56,6 +56,7 @@ BUILTIN_SORTS = {
 
 BINOP_SMT = {
     "+":  "+",   "-":  "-",   "*":  "*",   "/":  "div",  "mod": "mod",
+    "++": "seq.++",
     "=":  "=",   "≠":  "distinct",
     "<":  "<",   "≤":  "<=",  ">":  ">",   "≥":  ">=",
     "∧":  "and", "∨":  "or",
@@ -149,15 +150,7 @@ def transpile_expr(expr, hint_sort=None, declared_sorts=None):
         return f"({op} {x})"
 
     if k == "call":
-        # Function application — emit as positional SMT-LIB. Names that
-        # match builtin Z3 constructors (LibCall, ArgInt, ArgStr) just
-        # work; user-defined claims-as-functions need declare-fun forms
-        # in a future pass.
-        args = " ".join(transpile_expr(a, declared_sorts=declared_sorts)
-                        for a in expr["args"])
-        if expr["args"]:
-            return f"({expr['name']} {args})"
-        return f"({expr['name']})"
+        return transpile_call(expr, declared_sorts=declared_sorts)
 
     if k == "seq":
         # Lower [a, b, c] to (seq.++ (seq.unit a) (seq.++ (seq.unit b) (seq.unit c)))
@@ -180,6 +173,56 @@ def transpile_expr(expr, hint_sort=None, declared_sorts=None):
         return transpile_match(expr, hint_sort=hint_sort, declared_sorts=declared_sorts)
 
     raise ValueError(f"unknown expr kind: {k}")
+
+
+_SEQ_IDIOMS = {"head", "last", "len", "init", "tail", "unit", "empty"}
+
+
+def transpile_call(expr, declared_sorts=None):
+    """Lower a call expression.
+
+    Names in _SEQ_IDIOMS are recognized as built-in Seq operations and
+    lowered to SMT-LIB seq.* directly (M7):
+      head(s)  → (seq.nth s 0)
+      last(s)  → (seq.nth s (- (seq.len s) 1))
+      len(s)   → (seq.len s)
+      init(s)  → (seq.extract s 0 (- (seq.len s) 1))
+      tail(s)  → (seq.extract s 1 (- (seq.len s) 1))
+      unit(x)  → (seq.unit x)
+      empty(T) → (as seq.empty (Seq T))    -- T is a bare sort name (IDENT)
+
+    Any other name passes through as a positional application.
+    Constructor names like LibCall / ArgInt / ArgStr work via this
+    pass-through path.
+    """
+    name = expr["name"]
+    args = expr["args"]
+
+    if name in _SEQ_IDIOMS:
+        if name == "empty":
+            # empty(T) needs a sort name. Require an IDENT here; anything
+            # more flexible (Seq(Int), etc.) belongs in a follow-up.
+            if len(args) != 1 or args[0]["kind"] != "ident":
+                raise ValueError(
+                    "empty(T) takes one sort name (IDENT) argument")
+            sort = BUILTIN_SORTS.get(args[0]["name"], args[0]["name"])
+            return f"(as seq.empty (Seq {sort}))"
+        if len(args) != 1:
+            raise ValueError(f"{name} takes exactly one argument")
+        s = transpile_expr(args[0], declared_sorts=declared_sorts)
+        if name == "head":  return f"(seq.nth {s} 0)"
+        if name == "last":  return f"(seq.nth {s} (- (seq.len {s}) 1))"
+        if name == "len":   return f"(seq.len {s})"
+        if name == "init":  return f"(seq.extract {s} 0 (- (seq.len {s}) 1))"
+        if name == "tail":  return f"(seq.extract {s} 1 (- (seq.len {s}) 1))"
+        if name == "unit":  return f"(seq.unit {s})"
+
+    # Pass-through: positional SMT-LIB application.
+    arg_texts = " ".join(transpile_expr(a, declared_sorts=declared_sorts)
+                         for a in args)
+    if args:
+        return f"({name} {arg_texts})"
+    return f"({name})"
 
 
 def transpile_match(expr, hint_sort=None, declared_sorts=None):

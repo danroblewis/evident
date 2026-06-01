@@ -21,7 +21,9 @@ walked by transpile.py without further ceremony.
 KEYWORDS = {"claim", "fsm", "type", "match", "mod", "true", "false"}
 
 # Multi-char symbols must come before single-char prefixes.
-MULTI_SYMBOLS = ["..", "=>", "≤", "≥", "≠"]
+# `++` is the sequence-concatenation operator (M7); it appears before
+# any single-char `+` so the lexer prefers the two-character form.
+MULTI_SYMBOLS = ["++", "..", "=>", "≤", "≥", "≠"]
 SINGLE_SYMBOLS = set("∈∨∧¬=+-*/()[]{},:|")
 
 
@@ -332,9 +334,12 @@ class Parser:
         return left
 
     def parse_addition(self):
+        # `++` (seq concat) at the same precedence as `+`/`-`. Order in
+        # the loop matters: try `++` before `+` so `a ++ b` doesn't read
+        # as `a + (+ b)`.
         left = self.parse_multiplication()
         while True:
-            for op in ("+", "-"):
+            for op in ("++", "+", "-"):
                 if self.accept("SYMBOL", op):
                     right = self.parse_multiplication()
                     left = {"kind": "binop", "op": op, "l": left, "r": right}
