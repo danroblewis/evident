@@ -424,8 +424,21 @@ def _subst_expr(expr, type_subst, ns):
         return {"kind": "unop", "op": expr["op"],
                 "x": _subst_expr(expr["x"], type_subst, ns)}
     if k == "call":
-        return {"kind": "call", "name": expr["name"],
-                "args": [_subst_expr(a, type_subst, ns) for a in expr["args"]]}
+        # Special case: a LibCall(...) inside an FTI body has ok_dest /
+        # err_dest as STRING values (positional args 4 and 5). Those
+        # strings name Z3 consts that the runtime will pin libcall
+        # results into. When the FTI is inlined under a namespace, an
+        # FTI-local name in ok_dest must be rewritten to its namespaced
+        # form (e.g. "base" → "s__base") or the runtime would route
+        # results into a const that doesn't exist.
+        new_args = [_subst_expr(a, type_subst, ns) for a in expr["args"]]
+        if expr["name"] == "LibCall" and len(new_args) == 6 and ns:
+            for slot in (4, 5):
+                arg = new_args[slot]
+                if arg["kind"] == "str" and arg["value"] in ns["locals"]:
+                    new_args[slot] = {"kind": "str",
+                                      "value": f"{ns['prefix']}__{arg['value']}"}
+        return {"kind": "call", "name": expr["name"], "args": new_args}
     if k == "seq":
         return {"kind": "seq",
                 "items": [_subst_expr(i, type_subst, ns) for i in expr["items"]]}
