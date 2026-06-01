@@ -1,0 +1,88 @@
+; prelude/stack.ev — Stack FTI (M3).
+;
+; A Stack of T-values, with the bulk of the elements held in external
+; (malloc'd) memory. The Stack's Z3-side view is the pair (base,
+; contents): `base` is the externally-allocated region start, and
+; `contents` is the logical Seq of element values. The composing fsm
+; constrains `contents` relationally — `s.contents = _s.contents ++
+; [42]` to push, `s.contents = init(_s.contents)` to pop, `s.contents
+; = _s.contents` for no-op. The FTI detects the transition shape from
+; the (_contents, contents) state pair and fires the libcalls that
+; keep external memory in sync.
+;
+; There is NO command port, NO method dispatch, NO `s.push(42)`.
+; v1 supports exactly three transition shapes: no-op, push, and pop.
+; Anything else is asserted UNSAT (per docs/fti-composition.md Answer
+; 2) — the FTI's body says contents must equal one of the three
+; supported relations to _contents, and Z3 rejects everything else.
+;
+; v1 restrictions:
+;   - element type T must be Int (libcall path stores 8 bytes per cell).
+;   - capacity is fixed at 1024 cells (8192 bytes) at allocation time.
+
+fti Stack(T)
+    base ∈ Int               ; externally-allocated region start
+    contents ∈ Seq(T)        ; logical stack contents
+    effects ∈ Seq(Effect)    ; this FTI's own effects channel
+
+    ; The runtime auto-discovers any const named `effects` or `*_effects`
+    ; as an effects channel. When this FTI is inlined as host variable
+    ; `s`, the `effects` binding becomes `s__effects` — a separate
+    ; channel from the host fsm's `effects`. Both fire independently.
+
+    ; On tick 1, the runtime pins every `_X` to its sort's zero —
+    ; for `_contents ∈ Seq(T)` that is the empty seq. The FTI body
+    ; doesn't have to assert this. Subsequent ticks see the just-solved
+    ; `contents` carried forward as `_contents`.
+
+    ; `base` is libcall-managed: on init, the runtime pins `s__base` to
+    ; the alloc'd address via the alloc effect's ok_dest. After that
+    ; tick, `given["s__base"]` keeps the alloc_addr value, which the
+    ; runtime re-pins each subsequent tick. We do NOT assert anything
+    ; on `_base` — the libcall side already constrains `base` to the
+    ; correct value. (A relation like `base = _base` would UNSAT on
+    ; tick 2 because `_base` carries the tick-1 model value, which is
+    ; whatever the solver picked, not the alloc'd address.)
+
+    ; Supported-transition assertion. The FTI honestly declares which
+    ; transitions it knows how to materialize. Any other constraint
+    ; from the host on `contents` makes the combined body UNSAT, which
+    ; the runtime sees as a clean halt with an error.
+    ;
+    ; Three supported shapes:
+    ;   contents = _contents                        ; no-op
+    ;   contents = init(_contents)                  ; pop
+    ;   len(contents) = len(_contents) + 1 ∧ init(contents) = _contents
+    ;                                               ; push (one element)
+    ;
+    ; The third form is the quantifier-free way to say "contents is
+    ; _contents with one element appended" — see fti-composition.md
+    ; section 4. We avoid `∃ x ∈ Int. contents = _contents ++ [x]`
+    ; because the bootstrap doesn't yet handle quantifiers, and the
+    ; quantifier-free form is equivalent on Seqs.
+
+    (contents = _contents
+       ∨ contents = init(_contents)
+       ∨ len(contents) = len(_contents) + 1 ∧ init(contents) = _contents)
+
+    ; Effects. The libcalls that keep external memory in sync with
+    ; the model. On init: allocate the external region. On non-init:
+    ; if a push happened, write the new last element at the appropriate
+    ; cell. No-op and pop need no libcall (we just stop reading the
+    ; popped cell; the bytes remain but are unreferenced).
+    ;
+    ; Pop and no-op both emit []; "did we push?" is the length-delta
+    ; test `len(contents) = len(_contents) + 1`. Nested matches keep
+    ; the body bool-flat (the bootstrap pattern-matcher accepts only
+    ; non-negative int patterns, so a 3-way int match on delta would
+    ; need a bug fix; the bool nesting is equivalent and clean).
+
+    effects = match is_init:
+        true => [LibCall("__mem__", "mem_alloc", "l(l)",
+                         [ArgInt(8192)], "base", "")]
+        false => match len(contents) = len(_contents) + 1:
+            true  => [LibCall("__mem__", "mem_store_long", "v(ll)",
+                              [ArgInt(base + len(_contents) * 8),
+                               ArgInt(last(contents))],
+                              "", "")]
+            false => []

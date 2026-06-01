@@ -18,10 +18,12 @@ walked by transpile.py without further ceremony.
 
 # ──────────────────────────── lexer ────────────────────────────
 
-KEYWORDS = {"claim", "fsm", "type", "match", "mod", "true", "false"}
+KEYWORDS = {"claim", "fsm", "fti", "type", "match", "mod", "true", "false"}
 
 # Multi-char symbols must come before single-char prefixes.
-MULTI_SYMBOLS = ["..", "=>", "≤", "≥", "≠"]
+# `++` is the sequence-concatenation operator (M7); it appears before
+# any single-char `+` so the lexer prefers the two-character form.
+MULTI_SYMBOLS = ["++", "..", "=>", "≤", "≥", "≠"]
 SINGLE_SYMBOLS = set("∈∨∧¬=+-*/()[]{},:|")
 
 
@@ -136,10 +138,30 @@ def lex(source):
             while j < len(source) and (source[j].isalnum() or source[j] == "_"):
                 j += 1
             word = source[i:j]
-            kind = "KEYWORD" if word in KEYWORDS else "IDENT"
-            tokens.append(Token(kind, word, line, start))
             col += j - i
             i = j
+            # Qualified-name lookahead. A `.` between two IDENT characters
+            # (NOT `..`, which is the range operator) extends the token
+            # into a qualified name `a.b.c`. The leading-underscore form
+            # `_s.contents` is naturally handled: `_s` is read as an IDENT
+            # above, and the `.contents` extension joins it. Emit a single
+            # QUALIFIED token whose value is the parts list.
+            parts = [word]
+            while (i + 1 < len(source) and source[i] == "."
+                   and source[i+1] != "."
+                   and (source[i+1].isalpha() or source[i+1] == "_")):
+                i += 1; col += 1  # consume `.`
+                k = i
+                while k < len(source) and (source[k].isalnum() or source[k] == "_"):
+                    k += 1
+                parts.append(source[i:k])
+                col += k - i
+                i = k
+            if len(parts) == 1:
+                kind = "KEYWORD" if word in KEYWORDS else "IDENT"
+                tokens.append(Token(kind, word, line, start))
+            else:
+                tokens.append(Token("QUALIFIED", parts, line, start))
             continue
 
         # Multi-char symbols.
@@ -218,6 +240,7 @@ class Parser:
         t = self.peek()
         if t.kind == "KEYWORD" and t.value == "claim": return self.parse_claim()
         if t.kind == "KEYWORD" and t.value == "fsm":   return self.parse_fsm()
+        if t.kind == "KEYWORD" and t.value == "fti":   return self.parse_fti()
         if t.kind == "KEYWORD" and t.value == "type":  return self.parse_type()
         raise SyntaxError(f"L{t.line}:{t.col} expected top-level decl, got {t.value!r}")
 
@@ -238,6 +261,25 @@ class Parser:
         self.eat("SYMBOL", ")")
         body = self.parse_body()
         return {"kind": "fsm", "name": name, "params": params, "body": body}
+
+    def parse_fti(self):
+        # fti Name(TypeVarA, TypeVarB, ...) BODY
+        # The type parameters are bare IDENTs (no `∈ S` set-expr); the FTI
+        # is generic over them. The body has the same shape as an FSM body
+        # (bindings + assertions), but the FTI does not tick on its own —
+        # it's inlined into a host fsm at composition time.
+        self.eat("KEYWORD", "fti")
+        name = self.eat("IDENT").value
+        self.eat("SYMBOL", "(")
+        type_params = []
+        if not (self.peek().kind == "SYMBOL" and self.peek().value == ")"):
+            type_params.append(self.eat("IDENT").value)
+            while self.accept("SYMBOL", ","):
+                type_params.append(self.eat("IDENT").value)
+        self.eat("SYMBOL", ")")
+        body = self.parse_body()
+        return {"kind": "fti", "name": name, "type_params": type_params,
+                "body": body}
 
     def parse_type(self):
         self.eat("KEYWORD", "type")
@@ -332,9 +374,12 @@ class Parser:
         return left
 
     def parse_addition(self):
+        # `++` (seq concat) at the same precedence as `+`/`-`. Order in
+        # the loop matters: try `++` before `+` so `a ++ b` doesn't read
+        # as `a + (+ b)`.
         left = self.parse_multiplication()
         while True:
-            for op in ("+", "-"):
+            for op in ("++", "+", "-"):
                 if self.accept("SYMBOL", op):
                     right = self.parse_multiplication()
                     left = {"kind": "binop", "op": op, "l": left, "r": right}
@@ -386,6 +431,13 @@ class Parser:
             return self.parse_seq_literal()
         if t.kind == "IDENT":
             return self.parse_ident_or_call()
+        if t.kind == "QUALIFIED":
+            # A dotted name like `s.contents` or `_s.contents`. It is a
+            # value expression denoting a namespaced variable; the
+            # transpiler flattens it to `s__contents` / `_s__contents`.
+            # Qualified names are not callable in v1 (no `s.foo(args)`).
+            self.pos += 1
+            return {"kind": "qualified", "parts": list(t.value)}
         raise SyntaxError(f"L{t.line}:{t.col} unexpected {t.kind} {t.value!r}")
 
     def parse_ident_or_call(self):

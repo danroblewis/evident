@@ -102,10 +102,16 @@ class Runtime:
     def run(self):
         """Tick to halt. Returns the model from the halting tick."""
         # `given` accumulates: state-pair carryover (`_X` ← previous `X`),
-        # FFI return-slot bindings (from libcall ok_dest/err_dest), and
-        # nothing else. Plain consts the body asserts on (like a claim's
-        # `x`) are NOT defaulted — the body's assertions determine them.
+        # FFI return-slot bindings (from libcall ok_dest/err_dest), and —
+        # on tick 1 only — `_X` defaulted to its sort's zero so that FTI
+        # bodies can rely on a defined initial state (empty Seq, 0 Int,
+        # false Bool, etc.) without having to spell it out in every body.
+        # Subsequent ticks rely on state-pair carryover, not these defaults.
         given = {}
+        for _p, p in self.state:
+            d = default_for(self.sorts[_p])
+            if d is not None:
+                given[_p] = d
 
         is_init = z3.BoolVal(True)
         last_model = None
@@ -152,11 +158,14 @@ class Runtime:
             for eff in effs:
                 name = eff.decl().name()
                 if name == "LibCall":
+                    # The args field is `(Seq FFIArg)` — a Z3 sequence
+                    # value. `seq_as_list` walks the seq.unit/seq.++
+                    # form to get a Python list of FFIArg ASTs.
                     ok, err = libcall(
                         eff.arg(0).as_string(),     # lib
                         eff.arg(1).as_string(),     # sym
                         eff.arg(2).as_string(),     # sig
-                        eff.arg(3).as_list(),       # args (Seq of Z3 ASTs)
+                        seq_as_list(eff.arg(3)),    # args (Seq of FFIArg ASTs)
                     )
                     ok_dest, err_dest = eff.arg(4).as_string(), eff.arg(5).as_string()
                     if ok_dest  and ok  is not None: given[ok_dest]  = ok

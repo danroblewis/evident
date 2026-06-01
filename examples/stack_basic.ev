@@ -1,0 +1,51 @@
+; M3 acceptance test — push 10, 20, 30; pop them; print "ok".
+;
+; The driver is a `phase` state pair. Each tick advances phase by one
+; until terminal. The Stack FTI sees the (_s.contents, s.contents)
+; relation, detects whether it's a push (one element appended), a pop
+; (last element dropped), or no-op, and emits the appropriate libcall
+; to keep external memory in sync.
+;
+; This program proves end-to-end that the FTI's relational composition
+; works: there is no `push()` or `pop()` call anywhere, only constraints
+; on `s.contents` relative to `_s.contents`. The libcalls are emitted
+; by the FTI's body; the user's fsm never sees them.
+
+fsm stack_basic(phase ∈ {0..8})
+    phase = match is_init:
+        true  => 0
+        false => match _phase:
+            0 => 1
+            1 => 2
+            2 => 3
+            3 => 4
+            4 => 5
+            5 => 6
+            6 => 7
+            7 => 8
+            _ => _phase
+
+    s ∈ Stack(Int)
+
+    ; Each tick, constrain s.contents relationally based on phase.
+    ;   phase 0..2: push 10, 20, 30
+    ;   phase 3..5: pop one each
+    ;   phase 6..8: no-op (steady-state — solver halts on phase 8)
+    s.contents = match phase:
+        0 => _s.contents ++ [10]
+        1 => _s.contents ++ [20]
+        2 => _s.contents ++ [30]
+        3 => init(_s.contents)
+        4 => init(_s.contents)
+        5 => init(_s.contents)
+        _ => _s.contents
+
+    ; Report success on phase 7 only — the next tick (phase 8) emits no
+    ; effects and state is stable (phase = _phase = 8), so the runtime
+    ; halts. The FTI's effects channel is a separate const `s__effects`
+    ; (namespaced by the inliner from the FTI's `effects` binding); both
+    ; channels are dispatched independently each tick.
+    effects = match phase:
+        7 => [LibCall("libc", "puts", "i(s)",
+                      [ArgStr("stack ok")], "", "")]
+        _ => []
