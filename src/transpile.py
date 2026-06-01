@@ -68,6 +68,25 @@ UNOP_SMT = {
 }
 
 
+# ── FTI registry ────────────────────────────────────────────────────
+#
+# Populated by `register_ftis(decls)` before the user program is
+# transpiled. Keyed by FTI name (e.g. "Stack"). Each entry is the FTI
+# AST dict from the parser. The transpiler consults this registry when
+# it sees `x ∈ Name(...)` inside an fsm body — if the name is in the
+# registry, it inlines the FTI's vars/constraints with namespace
+# mangling rather than treating Name as an opaque sort.
+
+FTI_REGISTRY = {}
+
+
+def register_ftis(decls):
+    """Add every `fti` decl in `decls` to the FTI registry."""
+    for d in decls:
+        if d["kind"] == "fti":
+            FTI_REGISTRY[d["name"]] = d
+
+
 # ── Set expression handling: sort name + optional membership constraint ─
 
 def set_sort(set_expr):
@@ -323,6 +342,200 @@ def transpile_claim(decl):
     return "\n".join(out)
 
 
+def _is_fti_set_expr(set_expr):
+    """True if this set_expr names an FTI type (i.e., its head IDENT is
+    in FTI_REGISTRY). FTI types are inlined; non-FTI named types use the
+    sort path."""
+    return (set_expr["kind"] == "set_named"
+            and set_expr["name"] in FTI_REGISTRY)
+
+
+def _subst_set_expr(set_expr, type_subst):
+    """Substitute FTI type parameters in a set_expr. `type_subst` maps
+    type-parameter name (e.g. 'T') to the substituted set_expr (e.g. the
+    `Int` set_named node)."""
+    if set_expr is None: return None
+    k = set_expr["kind"]
+    if k == "set_named":
+        # Type-variable reference: replace the whole node.
+        if set_expr["param"] is None and set_expr["name"] in type_subst:
+            return type_subst[set_expr["name"]]
+        return {"kind": "set_named", "name": set_expr["name"],
+                "param": _subst_set_expr(set_expr["param"], type_subst)}
+    if k == "set_range":
+        return {"kind": "set_range",
+                "lo": _subst_expr(set_expr["lo"], type_subst, {}),
+                "hi": _subst_expr(set_expr["hi"], type_subst, {})}
+    if k == "set_enum":
+        return {"kind": "set_enum",
+                "items": [_subst_expr(e, type_subst, {}) for e in set_expr["items"]]}
+    raise ValueError(f"unknown set_expr kind: {k}")
+
+
+def _ns_ident(name, ns_prefix, fti_locals):
+    """Rewrite an ident to namespaced form if it refers to an FTI-local
+    variable. `_x` for previous tick is handled: if `x` is an FTI local,
+    `_x` → `_<ns>__x`. Names not in `fti_locals` pass through unchanged
+    (covers `is_init`, builtin idents, and any host-fsm vars that
+    happen to share scope at inlining time)."""
+    if name in fti_locals:
+        return f"{ns_prefix}__{name}"
+    if name.startswith("_") and name[1:] in fti_locals:
+        return f"_{ns_prefix}__{name[1:]}"
+    return name
+
+
+def _subst_expr(expr, type_subst, ns):
+    """Recursively rewrite expr: substitute type-param IDENTs (used by
+    `empty(T)`-style sort args) and namespace FTI-local idents.
+
+    `ns` is a dict with two keys when inlining an FTI body:
+      'prefix'  — the host variable name (e.g. 's')
+      'locals'  — set of FTI-local binding names (e.g. {'base', 'contents', 'effects'})
+    Or `ns = {}` for non-namespaced rewrites (just type-subst, used when
+    rewriting set_expr bounds).
+    """
+    if expr is None: return None
+    k = expr["kind"]
+    if k in ("int", "bool", "str"): return expr
+    if k == "ident":
+        nm = expr["name"]
+        # Type parameter substitution: a bare type-var IDENT (used as a
+        # sort literal in `empty(T)`) becomes the bare name of the
+        # substituted sort. We only substitute if the substituted set
+        # is a plain set_named with no param (e.g. `Int`).
+        if nm in type_subst:
+            ts = type_subst[nm]
+            if ts["kind"] == "set_named" and ts["param"] is None:
+                return {"kind": "ident", "name": ts["name"]}
+        if ns:
+            return {"kind": "ident",
+                    "name": _ns_ident(nm, ns["prefix"], ns["locals"])}
+        return expr
+    if k == "qualified":
+        # Qualified names within an FTI body are unusual but pass through
+        # — the parts join is the same regardless of namespacing.
+        return expr
+    if k == "binop":
+        return {"kind": "binop", "op": expr["op"],
+                "l": _subst_expr(expr["l"], type_subst, ns),
+                "r": _subst_expr(expr["r"], type_subst, ns)}
+    if k == "unop":
+        return {"kind": "unop", "op": expr["op"],
+                "x": _subst_expr(expr["x"], type_subst, ns)}
+    if k == "call":
+        return {"kind": "call", "name": expr["name"],
+                "args": [_subst_expr(a, type_subst, ns) for a in expr["args"]]}
+    if k == "seq":
+        return {"kind": "seq",
+                "items": [_subst_expr(i, type_subst, ns) for i in expr["items"]]}
+    if k == "match":
+        return {"kind": "match",
+                "scrutinee": _subst_expr(expr["scrutinee"], type_subst, ns),
+                "arms": [{"kind": "arm",
+                          "pattern": _subst_pattern(a["pattern"], type_subst, ns),
+                          "body": _subst_expr(a["body"], type_subst, ns)}
+                         for a in expr["arms"]]}
+    raise ValueError(f"unknown expr kind: {k}")
+
+
+def _subst_pattern(pat, type_subst, ns):
+    """Patterns can contain pat_ctor with sub-patterns; type-subst doesn't
+    affect them at this level (ctor names are constructor names, not
+    idents). pat_bind currently has no binding semantics; pass through."""
+    return pat
+
+
+def _subst_stmt(stmt, type_subst, ns):
+    """Rewrite an FTI body statement (binding or assertion) under the
+    type-substitution and the FTI's namespace prefix."""
+    k = stmt["kind"]
+    if k == "binding":
+        return {"kind": "binding",
+                "name": _ns_ident(stmt["name"], ns["prefix"], ns["locals"]),
+                "set": _subst_set_expr(stmt["set"], type_subst)}
+    if k == "assertion":
+        return {"kind": "assertion",
+                "expr": _subst_expr(stmt["expr"], type_subst, ns)}
+    raise ValueError(f"unknown stmt kind: {k}")
+
+
+def _emit_fti_state_pair(name, set_expr, declared):
+    """Emit `declare-const` for `_name` + `name` plus membership asserts.
+    Returns the SMT-LIB lines. Mirrors the FSM-parameter emission shape."""
+    out = []
+    sort = set_sort(set_expr)
+    prev_name = f"_{name}"
+    if prev_name not in declared:
+        out.append(f"(declare-const {prev_name} {sort})")
+        declared[prev_name] = sort
+    if name not in declared:
+        out.append(f"(declare-const {name} {sort})")
+        declared[name] = sort
+    m = set_membership(name, set_expr)
+    if m is not None: out.append(f"(assert {m})")
+    m_prev = set_membership(prev_name, set_expr)
+    if m_prev is not None: out.append(f"(assert {m_prev})")
+    return out
+
+
+def transpile_fti_instance(host_var, set_expr, declared):
+    """Inline an FTI binding `host_var ∈ FtiName(...)` into the host fsm.
+
+    Emits:
+      - State pairs for each FTI binding (namespaced as `host_var__name`),
+        with the FTI's type parameter substituted in.
+      - The FTI's body constraints, with idents rewritten to the
+        namespaced form.
+
+    The FTI's `effects` channel, if declared, becomes `host_var__effects`
+    — the runtime auto-discovers `*_effects` channels.
+    """
+    fti = FTI_REGISTRY[set_expr["name"]]
+    # Type parameter binding. v1: exactly one type parameter, supplied as
+    # `set_expr["param"]`. Multi-param FTIs are not yet exercised; the
+    # parser allows them, but the surface form here only carries one.
+    type_subst = {}
+    if fti["type_params"]:
+        if set_expr["param"] is None:
+            raise ValueError(
+                f"FTI {fti['name']} expects a type argument; got {host_var} ∈ {fti['name']}")
+        # Map the FIRST type param to the user's provided arg. This
+        # matches the documented Stack(T) shape (single type var).
+        type_subst[fti["type_params"][0]] = set_expr["param"]
+
+    # FTI-local binding names — what the inliner namespaces.
+    fti_locals = set()
+    for s in fti["body"]:
+        if s["kind"] == "binding":
+            fti_locals.add(s["name"])
+
+    ns = {"prefix": host_var, "locals": fti_locals}
+
+    out = [f"; --- inlined FTI {fti['name']} as {host_var} ---"]
+
+    # First pass: emit state-pair declarations for every FTI-local
+    # binding, namespaced. We need these declared BEFORE the FTI body's
+    # assertions reference them so the assertion-time sort lookup works.
+    for s in fti["body"]:
+        if s["kind"] == "binding":
+            ns_name = f"{host_var}__{s['name']}"
+            ns_set = _subst_set_expr(s["set"], type_subst)
+            out.extend(_emit_fti_state_pair(ns_name, ns_set, declared))
+
+    # Second pass: emit the FTI body's assertions, rewritten under the
+    # namespace + type substitution.
+    for s in fti["body"]:
+        if s["kind"] == "binding":
+            continue  # already emitted as state pair
+        if s["kind"] == "assertion":
+            ns_stmt = _subst_stmt(s, type_subst, ns)
+            out.append(
+                f"(assert {transpile_expr(ns_stmt['expr'], declared_sorts=declared)})")
+
+    return out
+
+
 def transpile_fsm(decl):
     """An FSM's parameters become STATE PAIRS: each `name ∈ S` produces
     `_name` and `name`. Body statements reference either."""
@@ -348,7 +561,17 @@ def transpile_fsm(decl):
     out.append("(declare-const effects (Seq Effect))")
     declared["effects"] = "(Seq Effect)"
 
-    out.extend(transpile_body_stmts(decl["body"], declared))
+    # Pre-pass: split body into FTI bindings and the rest. FTI bindings
+    # get inlined (host's namespace + the FTI's vars/constraints); the
+    # rest is transpiled as normal.
+    rest = []
+    for s in decl["body"]:
+        if s["kind"] == "binding" and _is_fti_set_expr(s["set"]):
+            out.extend(transpile_fti_instance(s["name"], s["set"], declared))
+        else:
+            rest.append(s)
+
+    out.extend(transpile_body_stmts(rest, declared))
     return "\n".join(out)
 
 
@@ -370,7 +593,17 @@ def transpile_type(decl):
 # ── Top-level driver ────────────────────────────────────────────────
 
 def transpile(program):
-    """Walk the program AST; return one SMT-LIB body string."""
+    """Walk the program AST; return one SMT-LIB body string.
+
+    FTI declarations don't emit anything on their own — they're inlined
+    where a host fsm declares a variable of the FTI's type. Any `fti`
+    decl encountered here is added to the FTI registry first, so an
+    inline `prelude` and the user program in the same AST work."""
+    # First pass: register every fti decl. The registry is also populated
+    # by main.py from prelude/*.ev before this call; doing it again here
+    # is idempotent and lets in-program FTI decls (e.g., in tests) work.
+    register_ftis(program["decls"])
+
     out = [PRELUDE]
     for decl in program["decls"]:
         if decl["kind"] == "claim":
@@ -379,6 +612,9 @@ def transpile(program):
             out.append(transpile_fsm(decl))
         elif decl["kind"] == "type":
             out.append(transpile_type(decl))
+        elif decl["kind"] == "fti":
+            # Already registered; nothing to emit at this level.
+            continue
         else:
             raise ValueError(f"unknown decl kind: {decl['kind']}")
     return "\n\n".join(out)

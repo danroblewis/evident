@@ -18,7 +18,7 @@ walked by transpile.py without further ceremony.
 
 # ──────────────────────────── lexer ────────────────────────────
 
-KEYWORDS = {"claim", "fsm", "type", "match", "mod", "true", "false"}
+KEYWORDS = {"claim", "fsm", "fti", "type", "match", "mod", "true", "false"}
 
 # Multi-char symbols must come before single-char prefixes.
 # `++` is the sequence-concatenation operator (M7); it appears before
@@ -240,6 +240,7 @@ class Parser:
         t = self.peek()
         if t.kind == "KEYWORD" and t.value == "claim": return self.parse_claim()
         if t.kind == "KEYWORD" and t.value == "fsm":   return self.parse_fsm()
+        if t.kind == "KEYWORD" and t.value == "fti":   return self.parse_fti()
         if t.kind == "KEYWORD" and t.value == "type":  return self.parse_type()
         raise SyntaxError(f"L{t.line}:{t.col} expected top-level decl, got {t.value!r}")
 
@@ -260,6 +261,25 @@ class Parser:
         self.eat("SYMBOL", ")")
         body = self.parse_body()
         return {"kind": "fsm", "name": name, "params": params, "body": body}
+
+    def parse_fti(self):
+        # fti Name(TypeVarA, TypeVarB, ...) BODY
+        # The type parameters are bare IDENTs (no `∈ S` set-expr); the FTI
+        # is generic over them. The body has the same shape as an FSM body
+        # (bindings + assertions), but the FTI does not tick on its own —
+        # it's inlined into a host fsm at composition time.
+        self.eat("KEYWORD", "fti")
+        name = self.eat("IDENT").value
+        self.eat("SYMBOL", "(")
+        type_params = []
+        if not (self.peek().kind == "SYMBOL" and self.peek().value == ")"):
+            type_params.append(self.eat("IDENT").value)
+            while self.accept("SYMBOL", ","):
+                type_params.append(self.eat("IDENT").value)
+        self.eat("SYMBOL", ")")
+        body = self.parse_body()
+        return {"kind": "fti", "name": name, "type_params": type_params,
+                "body": body}
 
     def parse_type(self):
         self.eat("KEYWORD", "type")

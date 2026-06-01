@@ -9,13 +9,39 @@ The runtime is the trampoline in runtime.py; the FFI bridge is ffi.py;
 the parser is parser.py; the transpiler is transpile.py. Everything
 else is library code in stdlib/ (written in Evident).
 """
+import os
 import sys
 
 import z3
 
 from parser import parse
-from transpile import transpile
+from transpile import transpile, register_ftis
 from runtime import Runtime
+
+
+def _load_prelude():
+    """Parse every .ev file in prelude/ and register any FTI declarations.
+
+    Run before transpiling the user program so that FSM bodies which
+    bind FTI-typed variables (e.g. `s ∈ Stack(Int)`) find the FTI
+    declaration in the registry and can inline it.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    prelude_dir = os.path.normpath(os.path.join(here, "..", "prelude"))
+    if not os.path.isdir(prelude_dir):
+        return
+    for name in sorted(os.listdir(prelude_dir)):
+        if not name.endswith(".ev"): continue
+        with open(os.path.join(prelude_dir, name)) as f:
+            try:
+                ast = parse(f.read())
+            except SyntaxError:
+                # Documentation-only .ev files (like seq.ev) may not parse
+                # as a valid program; skip them. Real FTI files must
+                # parse — a SyntaxError there is a real bug surfaced at
+                # the user's next run.
+                continue
+            register_ftis(ast["decls"])
 
 
 def main(argv):
@@ -32,6 +58,8 @@ def main(argv):
         print("evident: missing FILE.ev", file=sys.stderr)
         sys.exit(2)
     path = args[0]
+
+    _load_prelude()
 
     with open(path) as f:
         source = f.read()
