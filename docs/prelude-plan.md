@@ -7,61 +7,54 @@ that establishes the runtime environment for every Evident program.
 It is not a "standard library" in the conventional sense — it contains
 no user-facing algorithms, no convenience utilities, no domain code.
 It contains only what is required for Evident programs to function:
-the Z3 bindings, the FTI declarations for external memory, the
-set-theoretic primitives, and the idiomatic operations on sequences
-and sets.
+the FTI declarations that materialize external state, the symbolic
+representation of Z3 formulas, and the parser/transpiler support for
+the relational idioms users need.
 
 A separate user-facing utility layer (call it `lib/` or `stdlib/`) may
-come later. The prelude is below that. The distinction is intentional
-and the names should not be confused.
+come later. The prelude is below that.
 
 This plan operates under the framing committed to in
 [`CLAUDE.md`](../CLAUDE.md): Evident is relational constraint
 programming. No function calls, no execution order, no `x_next`. The
 four structures (`type`, `claim`, `fsm`, `fti`) are the only
-abstractions. Anyone writing prelude code who finds themselves
-reaching for imperative or functional patterns has reverted and
-should stop.
+abstractions. FTIs are specialized types whose state-pair variables
+are materialized against external systems via libcall; FTIs own their
+foreign state, do not re-read it each tick, and are composed into
+host `fsm`s by simple declaration. The composing FSM constrains FTI
+variables relationally (`s.contents = _s.contents ++ [42]`) — never
+by command dispatch.
 
 ## The two halves the prelude must cover
 
-The prelude provides two distinct families of operations. They do not
-mix.
+The prelude provides two families of capabilities. They share the
+FTI mechanism underneath but serve different purposes.
 
-| Half | What it is | Mechanism | Examples |
-|---|---|---|---|
-| **Constraint operations** | Relations among values inside the Z3 model | Value expressions in claims | `head(s)`, `len(s)`, `S ∪ T`, `x ∈ S`, `∀ y ∈ S. P(y)` |
-| **External-state FTIs** | Bridges to mutable state machines outside the model | Libcall effects from FTI bodies | Stack, Queue, File, Mutex, Socket |
+| Half | What it is | Examples |
+|---|---|---|
+| **External-state FTIs** | Make external mutable state machines available to Evident FSMs as ordinary state variables. The FTI's libcalls materialize Evident's variables in external memory. | Stack, Queue, File, Mutex, GPU buffer |
+| **Z3 FTI + Formula datatype** | Make Z3 itself available to Evident programs as an FTI. Build symbolic formulas as ordinary Evident values; the Z3 FTI materializes them via libcall and reports back the solver's results. | The `Z3` FTI; the `Formula` datatype |
 
-Constraint operations are relations. They don't mutate anything. They
-constrain how variables relate. When the body of a claim says
-`head(s) = 1`, it does not "fetch the head and compare." It declares
-the relation "the head element of s equals 1," and the solver finds
-an `s` consistent with that and every other constraint in scope.
+Both halves use the same FTI mechanism. The first half makes data
+structures (whose foreign state is in OS memory) accessible. The
+second half makes Z3 itself (whose foreign state is in Z3's own
+handle tables) accessible.
 
-External-state FTIs wrap actual external machines. A Stack FTI does
-not put a stack inside Z3's model. It models the *visible state* of
-an external stack (the current top value, the current depth) in Z3
-variables, and emits libcalls each tick to keep external memory and
-the modeled view synchronized. The stack itself lives in OS-managed
-memory, accessed through libcall.
-
-A program that needs a parser builds it as an `fsm` that composes
-with a Stack FTI. The parser's tick decides shift vs reduce; the
-Stack FTI's tick performs the corresponding external memory mutation.
-Z3 sees only bounded per-tick state — the rest is external.
+The composing FSM never sees libcalls. It declares variables of FTI
+types, constrains them relationally, and the FTIs handle the
+synchronization.
 
 ## Foundational decision — memory primitives
 
-External memory FTIs need a way to actually read and write external
-bytes. The current `ffi.py` can dispatch arbitrary C function calls,
-but it has no primitive for "load an int from this address" or
-"store an int at this address." Libc itself doesn't have these as
-named functions; the natural way in C is to dereference a pointer,
-which has no FFI shape.
+External-state FTIs need a way to actually read and write external
+bytes. `ffi.py` can dispatch arbitrary C function calls, but it has
+no primitive for "load an int from this address" or "store an int at
+this address." Libc doesn't expose these as named functions; the
+natural way in C is to dereference a pointer, which has no FFI shape.
 
 This is the foundational gap. Resolution is a **bug-fix-shaped
-extension to `ffi.py`** — adding four small primitives:
+extension to `ffi.py`** — adding four small primitives, dispatched
+under a special library name `__mem__`:
 
 ```python
 mem_alloc(size_bytes)   → addr            # malloc wrapper
@@ -70,22 +63,17 @@ mem_store_long(addr, v)                   # ctypes.c_long.from_address = v
 mem_free(addr)                            # free wrapper
 ```
 
-These are not "features." They are the missing primitive operations
-that make `libcall`-mediated external memory possible at all. Without
-them, the language cannot express PDA-class FSMs, which CLAUDE.md
-identifies as part of v1. The runtime stays at "trampoline + libcall +
-these four memory primitives." ~20 lines of Python addition. Document
-the addition explicitly in the commit; this is the kind of foundational
-change the freeze permits as a bug fix.
-
-Once these exist, the prelude implements Stack, Queue, and every
-other external memory FTI without further runtime changes.
+These are not "features." They are missing primitive operations that
+make `libcall`-mediated external memory possible at all. Without
+them, FTIs cannot materialize anything beyond simple integers
+returned from existing C functions. The runtime stays at "trampoline
++ libcall + these four memory primitives." ~20 lines of Python
+addition.
 
 ## Milestones
 
 Each milestone delivers something that runs end-to-end and is
-acceptance-tested by a concrete example program. Estimated sizes are
-rough. Each milestone unlocks the next.
+acceptance-tested by a concrete example program.
 
 ### M1: Hello world via LibCall (no prelude code yet)
 
@@ -110,345 +98,415 @@ fsm hello()
 **Estimated size.** ~10 lines of Evident.
 
 **Unlocks.** The is_init guard pattern, ArgStr usage, libcall sig
-conventions. Every later FTI uses these.
+conventions. Every later FTI uses these patterns inside its body.
 
 ### M2: Memory primitives in ffi.py + raw memory test
 
 **Goal.** Land the four memory primitives. Prove they work end-to-end
 with no prelude wrappers.
 
-**Deliverable (Python).** Four functions added to `src/ffi.py`:
-`mem_alloc`, `mem_load_long`, `mem_store_long`, `mem_free`. They are
-exposed as a special intrinsic library — calling them looks like
-`libcall("__mem__", "alloc", ...)` or similar. Pick a convention and
-document it.
+**Deliverable (Python).** Four functions added to `src/ffi.py`,
+exposed as a special library `__mem__`: `mem_alloc`, `mem_load_long`,
+`mem_store_long`, `mem_free`.
 
-**Deliverable (Evident).** `examples/mem_raw.ev`:
+**Deliverable (Evident).** `examples/mem_raw.ev` — alloc, store 42,
+load, free. Verifies that load returns 42.
 
-```
-fsm raw_mem_test(addr ∈ Int, value ∈ Int)
-    ; alloc, store 42, load, free — all via libcall to __mem__
-    ; check that value == 42 after the load
-    ...
-```
+**Acceptance test.** Runs, exits cleanly, prints something showing
+the round-trip worked.
 
-**Acceptance test.** Runs, prints `value = 42`, exits.
-
-**Estimated size.** ~20 lines of Python in ffi.py; ~25 lines of
+**Estimated size.** ~20 lines of Python in ffi.py; ~30 lines of
 Evident in the test.
 
-**Unlocks.** Stack FTI, Queue FTI, every other external memory FTI.
+**Unlocks.** Stack FTI, Queue FTI, every external memory FTI.
 
-### M3: Stack FTI
+### M3: Stack FTI (relational, no commands)
 
-**Goal.** First real FTI. A Stack of Ints backed by external memory.
-Proves the FTI declaration shape works, the libcall composition
-works, and the state-pair convention extends correctly to FTIs.
+**Goal.** First FTI. A Stack of Ints backed by external memory.
+Proves the FTI declaration shape works, the materialization
+mechanism works, and the composing FSM uses pure relational syntax
+— no command ports.
 
-**Note on syntax.** The bootstrap parser does not currently have an
-`fti` keyword. We have two paths:
-
-- (a) Bug-fix the parser to add `fti` as a keyword. ~10 lines of
-  parser + transpiler change. Recognized as bug-fix-shaped because
-  FTIs are v1.
-- (b) Write the FTI as an `fsm` with a doc comment marking it as
-  an FTI for now. Same SMT-LIB output; less ergonomic.
-
-Pick (a). The parser change is small and lets prelude code be
-honest about what's an FTI vs what's a regular FSM.
+**Note on parser support.** The bootstrap parser does not yet
+recognize `fti` as a keyword. Bug-fix-shaped change: add `fti` as
+a keyword; lower it the same as `fsm` (since FTI is `fsm`-shaped at
+the SMT-LIB level — the materialization libcalls are emitted from
+the FTI body just like any other effect). ~10 lines.
 
 **Deliverable.** `prelude/stack.ev`:
 
 ```
-fti Stack(base ∈ Int, sp ∈ Int, top ∈ Int, cmd ∈ StackCmd)
-    ; base is the malloc'd region start (set once at init)
-    ; sp is the current depth
-    ; top is the current top value (or 0 if empty)
-    ; cmd is the operation to perform this tick — Push(v), Pop, or Noop
-    ; transition relation handles each cmd; emits libcalls accordingly
-    ...
+fti Stack(T)
+    base ∈ Int               ; externally-allocated region start
+    contents ∈ Seq(T)        ; the logical stack contents
+
+    ; init (tick 0): allocate external region, _contents starts empty
+    ; tick end: emit libcalls so that the bytes at `base` reflect
+    ;           the current `contents` value
+    ; (FTI body details belong in the implementation, not here)
 ```
 
-**Acceptance test.** `examples/stack_basic.ev` — a small driver FSM
-that creates a Stack, pushes 1, 2, 3, pops them, verifies LIFO order.
+**Usage example** — push three values, pop them in order:
+
+```
+fsm push_three()
+    s ∈ Stack(Int)
+    phase ∈ {0, 1, 2, 3}
+
+    phase = match _phase:
+        0 => 1
+        1 => 2
+        2 => 3
+        _ => _phase
+
+    s.contents = match _phase:
+        0 => _s.contents ++ [10]
+        1 => _s.contents ++ [20]
+        2 => _s.contents ++ [30]
+        _ => _s.contents
+```
+
+Notice: no `Push(...)` constructor, no `cmd` port. The composing FSM
+asserts the *relation* `s.contents = _s.contents ++ [10]`. The Stack
+FTI sees that relation and materializes the difference by emitting
+libcalls to write to external memory.
+
+For popping: `s.contents = init(_s.contents)` (drop last element).
+For peeking: `top = last(_s.contents)` — just read.
+
+**Acceptance test.** `examples/stack_basic.ev` — push 1, 2, 3; pop
+them; verify LIFO order via prints.
 
 **Estimated size.** Parser change ~10 lines; Stack FTI ~80 lines;
-test ~30 lines.
+test ~40 lines.
 
-**Unlocks.** Queue FTI; LR parser (in a much later milestone); any
-PDA-shaped program.
+**Unlocks.** Queue FTI; LR parsers (much later); any PDA-shaped
+program.
 
 ### M4: Queue FTI
 
-**Goal.** FIFO queue, similar shape to Stack. Demonstrates the FTI
-pattern is reusable.
+**Goal.** FIFO queue. Same relational shape as Stack — composing
+FSM asserts `q.contents = _q.contents ++ [x]` to enqueue,
+`q.contents = tail(_q.contents)` to dequeue.
 
 **Deliverable.** `prelude/queue.ev` with Queue FTI.
 
-**Acceptance test.** Push 1, 2, 3; pop them; verify FIFO order.
+**Acceptance test.** Enqueue 1, 2, 3; dequeue them; verify FIFO order.
 
 **Estimated size.** ~80 lines of Evident.
 
-### M5: Set-theoretic Z3 bindings
+### M5: Z3 FTI + Formula datatype
 
-**Goal.** Wrap Z3's set-theoretic C API. This is the *constraint*
-side of the prelude — operations that go inside Z3 models, used in
-claims. Distinct from M3/M4 which are external memory FTIs.
+**Goal.** Bring Z3 itself into Evident programs as an FTI. The
+program declares Z3 formulas symbolically using a `Formula` datatype;
+the Z3 FTI materializes them by emitting libcalls to Z3's C API.
 
-**Deliverable.** `prelude/sets.ev`:
+This is the *Architecture B* path from
+[`docs/runtime-architecture.md`](runtime-architecture.md): programs
+build a growing constraint model and solve it. The Z3 FTI is what
+makes that path expressible in Evident.
 
-```
-claim mk_set_sort(elem_sort ∈ Int, sort_handle ∈ Int)
-    ; wraps Z3_mk_set_sort via libcall; uses is_init guard pattern
-
-claim mk_empty_set(ctx ∈ Int, sort ∈ Int, set_handle ∈ Int)
-    ; wraps Z3_mk_empty_set
-
-claim mk_set_add(ctx ∈ Int, set ∈ Int, elem ∈ Int, result ∈ Int)
-    ; wraps Z3_mk_set_add
-
-claim mk_set_union(ctx ∈ Int, a ∈ Int, b ∈ Int, result ∈ Int)
-claim mk_set_intersect(ctx ∈ Int, a ∈ Int, b ∈ Int, result ∈ Int)
-claim mk_set_member(ctx ∈ Int, elem ∈ Int, set ∈ Int, result ∈ Int)
-claim mk_set_subset(ctx ∈ Int, a ∈ Int, b ∈ Int, result ∈ Int)
-; ... etc
-```
-
-**Important framing.** Each of these is a claim that *relates* its
-parameters via libcall effects. They are NOT function calls. The
-calling code declares the result variables and merges the claim's
-constraints (which include the libcall effects) into its body. The
-"return value" is the handle pinned by the libcall.
-
-The handles are opaque Z3 AST pointers, held as Ints. Pass them to
-later set operations. The user reasons about them by name, not by
-following execution.
-
-**Acceptance test.** `examples/set_intersect.ev` — declares a Z3
-context, builds two sets {1, 2, 3} and {2, 3, 4}, computes their
-intersection, asks Z3 to enumerate members, prints {2, 3}.
-
-**Estimated size.** ~150 lines of Evident; ~50 lines of test.
-
-**Unlocks.** Quantifiers (M6), full set-theoretic programs.
-
-### M6: Quantifier wrappers
-
-**Goal.** Add the `∀ x ∈ S. P(x)` and `∃ x ∈ S. P(x)` constructs.
-These are central to set-theoretic programming and Evident's stated
-focus.
-
-**Deliverable.** `prelude/quantifiers.ev`:
+**Deliverable.** `prelude/formula.ev` and `prelude/z3.ev`:
 
 ```
-claim mk_forall_in(ctx ∈ Int, var_name ∈ String, set ∈ Int,
-                   body ∈ Int, result ∈ Int)
-    ; wraps Z3_mk_forall
+; The symbolic representation of a Z3 formula.
+type Formula =
+    | IntLit(value ∈ Int)
+    | BoolLit(value ∈ Bool)
+    | Var(name ∈ String, sort_name ∈ String)
+    | Eq(l ∈ Formula, r ∈ Formula)
+    | Add(l ∈ Formula, r ∈ Formula)
+    | Sub(l ∈ Formula, r ∈ Formula)
+    | And(args ∈ Seq(Formula))
+    | Or(args ∈ Seq(Formula))
+    | Not(arg ∈ Formula)
+    | Lt(l ∈ Formula, r ∈ Formula)
+    | Le(l ∈ Formula, r ∈ Formula)
+    ; ... etc.
 
-claim mk_exists_in(...)
-    ; wraps Z3_mk_exists
+type SatResult = | Unknown | Sat | Unsat
 
-claim mk_membership(ctx ∈ Int, elem ∈ Int, set ∈ Int, result ∈ Int)
-    ; wraps Z3_mk_set_member (already in M5; here for completeness)
+; The Z3 FTI. The composing FSM declares one variable of this type
+; and constrains `formulas` to be the assertions it wants Z3 to know.
+fti Z3
+    formulas ∈ Seq(Formula)   ; assertions
+    sat ∈ SatResult           ; result of latest check
+    model ∈ String            ; SMT-LIB representation of the model
+
+    ; init: libcalls to Z3_mk_config, Z3_mk_context, Z3_mk_simple_solver.
+    ; tick end: emit libcalls to push any new entries in `formulas`
+    ;           to Z3's solver, call Z3_solver_check, populate sat
+    ;           and model from the result.
 ```
 
-**Acceptance test.** A program that asserts `∀ x ∈ {1,2,3}. x > 0`
-and checks SAT.
-
-**Estimated size.** ~80 lines of Evident.
-
-### M7: Solver lifecycle + SMT-LIB round-trip
-
-**Goal.** Full solver bindings. Create, assert, check, model, to-string.
-
-**Deliverable.** `prelude/solver.ev`:
+**Usage example** — solve `x + y = 8, x = 3, y = 5`:
 
 ```
-claim mk_solver(ctx ∈ Int, solver_handle ∈ Int)
-claim solver_assert(ctx ∈ Int, solver ∈ Int, formula ∈ Int)
-claim solver_check(ctx ∈ Int, solver ∈ Int, result ∈ Int)
-claim solver_to_string(ctx ∈ Int, solver ∈ Int, out_string ∈ String)
+fsm find_sum()
+    z ∈ Z3
+
+    z.formulas = match is_init:
+        true => [
+            Eq(Var("x", "Int"), IntLit(3)),
+            Eq(Var("y", "Int"), IntLit(5)),
+            Eq(Var("z", "Int"), Add(Var("x", "Int"), Var("y", "Int")))
+        ]
+        false => _z.formulas
+
+    effects = match z.sat:
+        Sat   => [LibCall("libc", "puts", "i(s)",
+                          [ArgStr("SAT — see model")], "", "")]
+        Unsat => [LibCall("libc", "puts", "i(s)",
+                          [ArgStr("UNSAT")], "", "")]
+        _     => []
 ```
 
-**Acceptance test.** An Evident program that builds a small model
-via the set bindings, calls solver_check, gets SAT, and prints the
-canonical SMT-LIB form via solver_to_string. End-to-end Architecture B
-from Evident.
+Two-tick latency: tick 0 asserts the formulas; tick 1 reads `z.sat`
+(now populated by the FTI's materialization at end of tick 0).
+Documented as part of the libcall result-binding pattern.
 
-**Estimated size.** ~100 lines of Evident.
+**Acceptance test.** Runs, prints `SAT — see model`. Manual check of
+the model output confirms x=3, y=5, z=8.
 
-### M8: Sequence idioms
+**Estimated size.** Formula datatype ~80 lines; Z3 FTI body ~150
+lines; test ~30 lines.
 
-**Goal.** Idiomatic operations on Z3 Seq values for use *inside the
-constraint model*. These are NOT external memory operations — they
-are relations among Seq values used in claims.
+**Unlocks.** Set-theoretic Formula extensions; quantifier extensions;
+real demos.
+
+### M6: Set-theoretic and quantifier extensions to Formula
+
+**Goal.** Extend the Formula datatype with the Z3 set-theoretic
+operations and quantifiers. Evident is meant primarily as a set
+theory language, so these are the idiomatic constructors.
+
+**Deliverable.** Additional variants in `prelude/formula.ev`:
+
+```
+type Formula =
+    ; ...all the M5 constructors, plus:
+    | SetEmpty(sort_name ∈ String)
+    | SetFull(sort_name ∈ String)
+    | SetAdd(set ∈ Formula, elem ∈ Formula)
+    | SetDel(set ∈ Formula, elem ∈ Formula)
+    | SetUnion(l ∈ Formula, r ∈ Formula)
+    | SetIntersect(l ∈ Formula, r ∈ Formula)
+    | SetDifference(l ∈ Formula, r ∈ Formula)
+    | SetComplement(set ∈ Formula)
+    | SetMember(elem ∈ Formula, set ∈ Formula)
+    | SetSubset(a ∈ Formula, b ∈ Formula)
+    | Forall(var_name ∈ String, set ∈ Formula, body ∈ Formula)
+    | Exists(var_name ∈ String, set ∈ Formula, body ∈ Formula)
+```
+
+The Z3 FTI's materialization is extended to handle these via the
+corresponding Z3 C API functions (`Z3_mk_set_union`, etc.).
+
+**Acceptance test.** A program that builds two sets {1, 2, 3} and
+{2, 3, 4}, computes their intersection symbolically, asserts a
+membership query (`x ∈ A ∩ B`), gets SAT with a satisfying x.
+
+**Estimated size.** Formula extensions ~60 lines; Z3 FTI extensions
+~100 lines; test ~40 lines.
+
+### M7: Sequence idioms in user code
+
+**Goal.** Make Seq operations ergonomic in user code (inside claims
+and FSM bodies). These are NOT external memory operations and don't
+go through any FTI — they're relations among Z3 Seq values used
+directly in constraints.
 
 **Required parser/transpiler bug fixes:**
-- `++` as a binary operator → emit `(seq.++ a b)`
-- Built-in identifiers `head`, `last`, `len`, `init`, `tail`, `unit`,
-  `empty` → emit the corresponding `seq.*` SMT-LIB form
+- `++` as a binary operator → emits `(seq.++ a b)`
+- Built-in identifiers `head`, `last`, `len`, `init`, `tail`,
+  `empty`, `unit` recognized as built-in calls, lowered to
+  `seq.nth`, `seq.extract`, `seq.len`, etc.
 
-**Deliverable.** Bug fixes plus `prelude/seq.ev` with documented
-relational operations:
+**Deliverable.** Parser/transpiler bug fixes plus `prelude/seq.ev`
+with documentation (most of the file is comments — these are
+language idioms, not library code).
 
 ```
-; head(s) = the first element of s, used as a value in constraints
-; last(s) = the last element of s
-; len(s)  = the length of s
-; s ++ t  = the concatenation
-; etc.
+; head(s)  = first element of s, used as a value in constraints
+; last(s)  = last element of s
+; len(s)   = length of s
+; init(s)  = s with last element dropped
+; tail(s)  = s with first element dropped
+; s ++ t   = concatenation
+; empty(T) = the empty sequence of element type T
+; unit(x)  = the singleton sequence [x]
 ```
 
 **Acceptance test.** A claim that constrains a Seq's head, last, and
 length, and verifies the solver finds a valid Seq.
 
+**Note.** These idioms are also what M3/M4 Stack/Queue FTIs *expect*
+to be available — the composing FSM writes `s.contents = _s.contents
+++ [x]` using the very `++` and `Seq` machinery defined here. M7 may
+actually need to land *before* M3/M4 in practice, even though
+conceptually it sits later. Resolve by doing M7 first if Stack/Queue
+implementation forces the issue.
+
 **Estimated size.** Parser/transpiler bug fixes ~30 lines of Python;
 prelude doc + tests ~60 lines of Evident.
 
-### M9: A real demo
+### M8: A real demo
 
-**Goal.** End-to-end proof the prelude is useful for a real problem.
-Solves a small set-theoretic puzzle by building a Z3 model from
-Evident and solving it.
+**Goal.** End-to-end proof the prelude is useful. Solves a small
+constraint puzzle by building a Z3 model from Evident.
 
-**Deliverable.** `examples/zebra.ev` (the classic constraint puzzle)
-or `examples/sudoku4.ev` (a 4x4 Sudoku). Whichever is smaller.
+**Deliverable.** `examples/sudoku4.ev` (a 4x4 Sudoku) or
+`examples/zebra.ev` (the classic puzzle). Pick whichever is smaller
+when actually written.
 
 **Acceptance test.** Runs, prints the solution, finishes in seconds.
 
 **Estimated size.** ~150 lines of Evident.
 
-**Unlocks.** Confidence that the prelude actually works for what
-Evident is for.
+**Unlocks.** Confidence that the prelude actually serves what Evident
+is for.
 
 ## Build order and dependency graph
 
 ```
 M1 (hello)  ──┐
               ├──→ M3 (Stack) ──→ M4 (Queue)
-M2 (memory) ──┘
-              ┌──→ M5 (sets) ──→ M6 (quantifiers) ──┬──→ M7 (solver) ──┐
-M1 (hello)  ──┤                                     │                  │
-              │                                     M8 (seq idioms) ───┴──→ M9 (demo)
-              └─────────────────────────────────────┘
+M2 (memory) ──┘                              ╲
+              ╱──→ M7 (seq idioms) ──┐        ╲
+M1 (hello)  ─┤                       ├──────→ M8 (demo)
+              ╲──→ M5 (Z3+Formula) ──┴──→ M6 (set/quantifier)
 ```
 
-Two roughly parallel tracks:
+Two parallel tracks:
 
-- **External memory track** (M1, M2, M3, M4) — gets us PDA-class FSMs.
-- **Z3 constraint track** (M1, M5, M6, M7, M8) — gets us programmatic
-  model building from Evident.
+- **External memory track** (M1 → M2 → M3 → M4). FTIs for Stack and
+  Queue, backed by external memory. Unlocks PDA-class FSMs.
+- **Z3 constraint track** (M1 → M5 → M6). Z3 FTI and the Formula
+  datatype. Unlocks Architecture B — Evident programs that build
+  constraint models programmatically.
 
-They join at M9.
+M7 (sequence idioms) is a parser/transpiler enhancement that
+benefits both tracks. Schedule it where convenient; M3 may need it
+as a prerequisite.
+
+M8 joins everything for the demo.
 
 ## Grammar gaps and bug-fix-shaped extensions
 
-This plan reveals four bug-fix-shaped additions to the bootstrap.
-Each is small, each is documented as a bug fix in its commit, each
-addresses a foundational missing piece (not a feature).
-
 | Bug fix | What it is | Lines | Milestone |
 |---|---|---|---|
-| Memory primitives in `ffi.py` | `mem_alloc`/`load_long`/`store_long`/`free` as intrinsic libcalls | ~20 | M2 |
-| `fti` keyword in parser/transpiler | Recognize FTI declarations; lower same as fsm | ~10 | M3 |
-| `++` binary operator | Lower to `(seq.++ a b)` | ~5 | M8 |
-| Seq accessor identifiers | `head`, `last`, `len`, etc. recognized as built-in calls | ~20 | M8 |
+| Memory primitives in `ffi.py` | `mem_alloc` / `load_long` / `store_long` / `free` under library name `__mem__` | ~20 | M2 |
+| `fti` keyword in parser/transpiler | Recognize FTI declarations; lower the same as `fsm` | ~10 | M3 |
+| `++` binary operator | Lower to `(seq.++ a b)` | ~5 | M7 |
+| Seq accessor identifiers | `head`, `last`, `len`, `init`, `tail`, `empty`, `unit` recognized as built-in calls | ~25 | M7 |
 
-Total Python additions: ~55 lines. After M8 the bootstrap is again
+Total Python additions: ~60 lines. After M7 the bootstrap is again
 frozen until the next foundational gap is discovered.
 
 ## Conventions to lock in early
 
 **Naming.**
 - snake_case for claims, fsms, ftis, variables.
-- Z3 binding claims mirror the Z3 C API name with the `Z3_` prefix
-  stripped: `Z3_mk_set_sort` → `mk_set_sort`, etc.
-- FTI types use PascalCase and are simple nouns for the thing the
-  state machine represents: `Stack`, `Queue`, `File`, `Mutex`,
-  `Socket`. No `Handle`, `Access`, `State` suffixes. If a name needs
-  a suffix to convey "this is a stateful thing," the FTI probably
-  shouldn't exist — it's just a variable.
-- Handle variables that hold Z3 AST/sort/solver pointers use names
-  ending in `_handle`: `ctx_handle`, `set_handle`, `solver_handle`.
+- FTI types use PascalCase as simple nouns for the thing the state
+  machine represents: `Stack`, `Queue`, `File`, `Mutex`, `Z3`. No
+  `Handle`, `Access`, `State` suffixes. If a name needs a suffix to
+  convey "this is a stateful thing," the FTI shouldn't exist — it's
+  just a variable.
 
 **File layout.**
-- One concept per file in `prelude/`.
-- `prelude/mem.ev` — wrappers around the memory primitives (if any
-  wrapping is helpful)
 - `prelude/stack.ev` — Stack FTI
 - `prelude/queue.ev` — Queue FTI
-- `prelude/sets.ev` — set-theoretic Z3 bindings
-- `prelude/quantifiers.ev` — quantifier wrappers
-- `prelude/solver.ev` — solver lifecycle
-- `prelude/seq.ev` — sequence idiom documentation (most are built-ins)
+- `prelude/formula.ev` — Formula datatype
+- `prelude/z3.ev` — Z3 FTI
+- `prelude/seq.ev` — sequence idiom documentation
 
-**Libcall patterns.** Three canonical patterns, used throughout:
+**FTI design conventions.**
 
-```
-; Pattern 1: direct effect emission (single tick)
-fsm Greeter()
-    effects = match is_init:
-        true  => [LibCall(...)]
-        false => []
+- An FTI declares state-pair variables (`base`, `contents`, `sat`,
+  etc.) that get materialized via libcall at tick boundaries. It
+  does NOT have "command ports" or "cmd" enums. The composing FSM
+  asserts relations over the FTI's state-pair variables; the FTI
+  detects the difference between `_x` and `x` and emits the
+  appropriate libcalls.
 
-; Pattern 2: result-binding libcall (wrap a C function with output)
-fsm get_pid(pid ∈ Int)
-    effects = match is_init:
-        true  => [LibCall("libc", "getpid", "i()", [], "pid", "")]
-        false => []
+- The FTI is the sole writer to its foreign state. The runtime
+  carries `x` forward as `_x` between ticks — the FTI does NOT
+  re-read external memory at tick start. If the foreign state could
+  be modified by other parties, that's not an FTI; that's the Actor
+  pattern.
 
-; Pattern 3: repeated libcalls (FSM ticks each emit one)
-fsm read_lines(line ∈ String)
-    effects = [LibCall("libc", "fgets", ..., [...], "line", "")]
-    ; halt when line is empty or matches an EOF sentinel
-```
+- An FTI's init libcalls (those guarded by `is_init`) are the only
+  ones that *read* external state — to initialize the FTI's variables
+  to whatever the foreign system was already holding. After that,
+  every tick only *writes*.
 
-**Result-binding semantics.** When a libcall emits an `ok_dest`, the
-named variable is pinned to the libcall's result starting on the
-*next* tick. This means single-shot libcalls take two ticks: one to
-emit, one to consume. The pattern handles this automatically via the
-state-pair convention; users do not see the two-tick latency unless
-they need to.
+**Composition.**
 
-**Sigs.** Stick to `i/l/d/s/v`. Pointers are `l` (8 bytes on every
-platform we care about). Out-parameters and arrays are not yet
-supported — when they become genuinely needed, that's a separate
-bug-fix-shaped extension to the sig grammar.
+- An FSM declares `q ∈ Queue(Int)` to bring a Queue FTI's variables
+  into its body (namespaced under `q`). The transpiler handles the
+  namespacing and the constraint composition.
+
+- Multiple FTIs can be composed into one FSM by declaring multiple
+  variables of FTI types. The runtime sees one combined body.
+
+- FTIs do not compose with each other directly. They compose with
+  `fsm`s that hold them.
+
+**The two-tick latency for libcall results.**
+
+When an FTI's tick-end libcall produces a value (Z3's sat result, a
+file's bytes read, etc.), that value is available to the composing
+FSM on the *next* tick. This is a fundamental consequence of the
+state-pair model: the libcall fires after the tick's solve, so the
+value can't appear until next tick's `_x` carries it forward.
+
+For programs that need to react to libcall results, this means a
+two-tick pattern: tick N "asks" (sets formulas), tick N+1 "sees"
+(reads sat). Standard FSM idiom; users get used to it.
+
+**Sigs.** Stick to `i/l/d/s/v` from `ffi.py`. Pointers are `l`
+(8 bytes). Z3 AST/sort/solver handles are pointers, so they're `l`.
+Out-parameters and arrays are not yet supported — separate bug-fix-
+shaped extension when needed.
 
 ## Out of scope for the prelude
 
 - **Self-hosted parser.** The bootstrap parser is in Python; rewriting
-  it in Evident is a separate later effort that comes after the
-  prelude is stable. It is not part of v1.
+  it in Evident is a separate later effort.
 - **User-facing utilities.** Permutations, sorting, hash tables, math
   libraries, anything algorithm-shaped — these belong in a future
   `lib/` or `stdlib/`, not the prelude.
-- **Multi-threading.** Single-threaded for v1. Pthread libcalls can
-  be added later as FTIs (Mutex, Thread, Channel).
-- **Networking, GUI, audio, graphics.** Domain libraries; not the
-  prelude's concern.
-- **Performance work.** Correctness first. The bootstrap is interpreted;
-  the JIT-compilation of FSMs to native code is a separate future
+- **Multi-threading and Actor pattern.** Single-threaded for v1.
+  Pthread libcalls can be added later via the Actor pattern (separate
+  `fsm`s communicating over channels), not as FTIs.
+- **Sockets, networking.** External-party writers; Actor-shaped, not
+  FTI-shaped. Defer.
+- **GUI, audio, graphics.** Domain libraries; not the prelude.
+- **Performance work.** Correctness first. The bootstrap is
+  interpreted; the JIT-compilation of FSMs is a separate future
   project that the prelude does not block.
 
 ## Total estimated size
 
-- Python bootstrap additions: ~55 lines across four bug fixes
-- Evident prelude code: ~700 lines (8 files)
-- Evident test/example code: ~300 lines
-- **Total prelude work: ~1000 lines of Evident, ~55 lines of Python.**
+- Python bootstrap additions: ~60 lines across four bug fixes
+- Evident prelude code: ~750 lines across 5 files
+- Evident test/example code: ~350 lines
+- **Total prelude work: ~1100 lines of Evident, ~60 lines of Python.**
 
 Achievable. Each milestone is small enough to verify in isolation.
 
 ## How to know we're done
 
-When all nine milestones pass their acceptance tests, the prelude is
-v1. The next plan after this one is the user-facing utility layer
-(`lib/`) or the self-hosted parser. Or both, in parallel — the
-prelude is foundational; what builds on top is open.
+When all eight milestones pass their acceptance tests, the prelude
+is v1. The single best signal of health: an Evident programmer can
+build a Z3 model, solve it, and read the answer — by declaring `z ∈
+Z3`, asserting `z.formulas = [...]`, and reading `z.sat` — *without
+writing any libcall by hand*. Everything goes through the FTIs.
 
-The single best signal that the prelude is healthy: an Evident
-programmer can build a Z3 model, solve it, and read the answer back
-*without writing any libcall by hand*. Everything goes through the
-prelude's bindings, which expose Z3 as a set-theoretic relational
-toolkit, not as a C API. That's the bar.
+The same bar applies to data: an Evident programmer can manage
+external state — push/pop stacks, enqueue/dequeue queues, read/write
+files — by declaring `s ∈ Stack(Int)` (or similar) and asserting
+relations like `s.contents = _s.contents ++ [42]`. No libcall soup
+visible at the user level.
+
+That's the prelude's reason for existing.
