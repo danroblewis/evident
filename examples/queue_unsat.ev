@@ -1,0 +1,37 @@
+; M4 — the "unsupported transition" acceptance test.
+;
+; The Queue FTI's supported-transition assertion (per
+; docs/fti-composition.md Answer 2) declares that `contents` must equal
+; one of three relations to `_contents`: itself (no-op),
+; tail(_contents) (dequeue one), or _contents-with-one-element-appended
+; (enqueue). Anything else is asserted UNSAT.
+;
+; This program writes `q.contents = tail(tail(_q.contents))` — drop two
+; from the head at once — which is none of the supported shapes. On
+; the tick that constraint becomes active (after we've enqueued enough
+; to make the tail-of-tail meaningful), the combined body should go
+; UNSAT and the trampoline halts.
+;
+; The trampoline's halt semantics (src/runtime.py): first-tick UNSAT
+; raises a RuntimeError; later-tick UNSAT returns the last model and
+; halts cleanly. We want the latter.
+
+fsm queue_unsat(phase ∈ {0..4})
+    phase = match is_init:
+        true  => 0
+        false => match _phase:
+            0 => 1
+            1 => 2
+            2 => 3
+            _ => _phase
+
+    q ∈ Queue(Int)
+
+    ; Phase 0, 1: enqueue 10, then 20 (legal).
+    ; Phase 2: try to dequeue two at once (illegal — UNSAT, runtime
+    ;          halts with the phase-1 model as the final state).
+    q.contents = match phase:
+        0 => _q.contents ++ [10]
+        1 => _q.contents ++ [20]
+        2 => tail(tail(_q.contents))
+        _ => _q.contents
