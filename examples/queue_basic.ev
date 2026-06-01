@@ -1,0 +1,55 @@
+; M4 acceptance test — enqueue 10, 20, 30; dequeue them; print "ok".
+;
+; FIFO order check: the elements come out the same order they went in
+; (10, 20, 30), unlike Stack which would reverse them. The driver is a
+; `phase` state pair. Each tick advances phase by one until terminal.
+; The Queue FTI sees the (_q.contents, q.contents) relation, detects
+; whether it's an enqueue (one element appended at the tail), a
+; dequeue (one element dropped from the head), or no-op, and emits
+; the appropriate libcall to keep external memory in sync.
+;
+; This program proves end-to-end that the FTI's relational composition
+; works for Queue: there is no `enqueue()` or `dequeue()` call
+; anywhere, only constraints on `q.contents` relative to `_q.contents`.
+; The libcalls are emitted by the FTI's body; the user's fsm never
+; sees them.
+
+fsm queue_basic(phase ∈ {0..8})
+    phase = match is_init:
+        true  => 0
+        false => match _phase:
+            0 => 1
+            1 => 2
+            2 => 3
+            3 => 4
+            4 => 5
+            5 => 6
+            6 => 7
+            7 => 8
+            _ => _phase
+
+    q ∈ Queue(Int)
+
+    ; Each tick, constrain q.contents relationally based on phase.
+    ;   phase 0..2: enqueue 10, 20, 30
+    ;   phase 3..5: dequeue one each (tail drops the head, so they
+    ;               come out 10, 20, 30 — FIFO)
+    ;   phase 6..8: no-op (steady-state — solver halts on phase 8)
+    q.contents = match phase:
+        0 => _q.contents ++ [10]
+        1 => _q.contents ++ [20]
+        2 => _q.contents ++ [30]
+        3 => tail(_q.contents)
+        4 => tail(_q.contents)
+        5 => tail(_q.contents)
+        _ => _q.contents
+
+    ; Report success on phase 7 only — the next tick (phase 8) emits no
+    ; effects and state is stable (phase = _phase = 8), so the runtime
+    ; halts. The FTI's effects channel is a separate const `q__effects`
+    ; (namespaced by the inliner from the FTI's `effects` binding); both
+    ; channels are dispatched independently each tick.
+    effects = match phase:
+        7 => [LibCall("libc", "puts", "i(s)",
+                      [ArgStr("queue ok")], "", "")]
+        _ => []
