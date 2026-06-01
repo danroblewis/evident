@@ -1,0 +1,12 @@
+; M1 — hello world via LibCall.
+;
+; On the first tick (is_init), emit a single LibCall effect that runs
+; libc's `puts("hello, world")`. On subsequent ticks, emit no effects,
+; which lets the trampoline halt (no state changed, no effects).
+
+fsm hello()
+    effects = match is_init:
+        true  => [LibCall("libc", "puts", "i(s)",
+                          [ArgStr("hello, world")],
+                          "", "")]
+        false => []

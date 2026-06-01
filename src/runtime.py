@@ -152,11 +152,14 @@ class Runtime:
             for eff in effs:
                 name = eff.decl().name()
                 if name == "LibCall":
+                    # The args field is `(Seq FFIArg)` — a Z3 sequence
+                    # value. `seq_as_list` walks the seq.unit/seq.++
+                    # form to get a Python list of FFIArg ASTs.
                     ok, err = libcall(
                         eff.arg(0).as_string(),     # lib
                         eff.arg(1).as_string(),     # sym
                         eff.arg(2).as_string(),     # sig
-                        eff.arg(3).as_list(),       # args (Seq of Z3 ASTs)
+                        seq_as_list(eff.arg(3)),    # args (Seq of FFIArg ASTs)
                     )
                     ok_dest, err_dest = eff.arg(4).as_string(), eff.arg(5).as_string()
                     if ok_dest  and ok  is not None: given[ok_dest]  = ok

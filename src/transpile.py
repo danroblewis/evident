@@ -108,8 +108,16 @@ def set_membership(name, set_expr):
 
 
 # ── Expression walker ───────────────────────────────────────────────
+#
+# A `hint_sort` argument threads expected-sort context downward. It's
+# used for one purpose: when an empty seq literal `[]` is emitted, the
+# walker needs to know its element type to produce a valid SMT-LIB
+# `(as seq.empty (Seq T))`. The hint is set by binop `=` (LHS sort
+# propagated to RHS) and by `match` (arm bodies inherit the match's
+# hint).  `declared_sorts` is the name→sort map populated as bindings
+# are processed.
 
-def transpile_expr(expr):
+def transpile_expr(expr, hint_sort=None, declared_sorts=None):
     k = expr["kind"]
 
     if k == "int":  return str(expr["value"])
@@ -123,15 +131,21 @@ def transpile_expr(expr):
         op = BINOP_SMT.get(expr["op"])
         if op is None:
             raise ValueError(f"unknown binop: {expr['op']}")
-        l = transpile_expr(expr["l"])
-        r = transpile_expr(expr["r"])
+        # For `=`, propagate the LHS's declared sort to the RHS so that
+        # `effects = [...]` can hand `Seq Effect` to an empty literal.
+        rhs_hint = None
+        if expr["op"] == "=" and declared_sorts is not None \
+           and expr["l"]["kind"] == "ident":
+            rhs_hint = declared_sorts.get(expr["l"]["name"])
+        l = transpile_expr(expr["l"], hint_sort=None, declared_sorts=declared_sorts)
+        r = transpile_expr(expr["r"], hint_sort=rhs_hint, declared_sorts=declared_sorts)
         return f"({op} {l} {r})"
 
     if k == "unop":
         op = UNOP_SMT.get(expr["op"])
         if op is None:
             raise ValueError(f"unknown unop: {expr['op']}")
-        x = transpile_expr(expr["x"])
+        x = transpile_expr(expr["x"], hint_sort=hint_sort, declared_sorts=declared_sorts)
         return f"({op} {x})"
 
     if k == "call":
@@ -139,7 +153,8 @@ def transpile_expr(expr):
         # match builtin Z3 constructors (LibCall, ArgInt, ArgStr) just
         # work; user-defined claims-as-functions need declare-fun forms
         # in a future pass.
-        args = " ".join(transpile_expr(a) for a in expr["args"])
+        args = " ".join(transpile_expr(a, declared_sorts=declared_sorts)
+                        for a in expr["args"])
         if expr["args"]:
             return f"({expr['name']} {args})"
         return f"({expr['name']})"
@@ -147,22 +162,29 @@ def transpile_expr(expr):
     if k == "seq":
         # Lower [a, b, c] to (seq.++ (seq.unit a) (seq.++ (seq.unit b) (seq.unit c)))
         if not expr["items"]:
-            return "(as seq.empty (Seq ???))"  # caller should provide sort
-        units = [f"(seq.unit {transpile_expr(item)})" for item in expr["items"]]
+            # Empty seq literal — element sort comes from the hint.
+            # The hint is the outer sequence sort, e.g. `(Seq Effect)`.
+            if hint_sort is None:
+                raise ValueError(
+                    "empty seq literal `[]` has no inferable element sort; "
+                    "use `empty(T)` to specify it explicitly")
+            return f"(as seq.empty {hint_sort})"
+        units = [f"(seq.unit {transpile_expr(item, declared_sorts=declared_sorts)})"
+                 for item in expr["items"]]
         result = units[-1]
         for unit in reversed(units[:-1]):
             result = f"(seq.++ {unit} {result})"
         return result
 
     if k == "match":
-        return transpile_match(expr)
+        return transpile_match(expr, hint_sort=hint_sort, declared_sorts=declared_sorts)
 
     raise ValueError(f"unknown expr kind: {k}")
 
 
-def transpile_match(expr):
+def transpile_match(expr, hint_sort=None, declared_sorts=None):
     """Lower `match scrut: pat => body; ...` into nested ite."""
-    scrut = transpile_expr(expr["scrutinee"])
+    scrut = transpile_expr(expr["scrutinee"], declared_sorts=declared_sorts)
     arms = expr["arms"]
 
     def pat_test(pat, scrut_text):
@@ -186,41 +208,47 @@ def transpile_match(expr):
         raise ValueError(f"unknown pattern kind: {pk}")
 
     # Build right-to-left: ite(test_0, body_0, ite(test_1, body_1, ...))
-    result = transpile_expr(arms[-1]["body"])
+    result = transpile_expr(arms[-1]["body"], hint_sort=hint_sort,
+                            declared_sorts=declared_sorts)
     for arm in reversed(arms[:-1]):
         test = pat_test(arm["pattern"], scrut)
-        body = transpile_expr(arm["body"])
+        body = transpile_expr(arm["body"], hint_sort=hint_sort,
+                              declared_sorts=declared_sorts)
         result = f"(ite {test} {body} {result})"
     return result
 
 
 # ── Declaration walkers ─────────────────────────────────────────────
+#
+# `declared_sorts` is a dict mapping declared-const name to its SMT-LIB
+# sort sexpr (e.g. `Int`, `(Seq Effect)`). It's used by `transpile_expr`
+# to thread expected sorts down to empty seq literals.
 
-def transpile_binding(stmt, declared_names):
+def transpile_binding(stmt, declared_sorts):
     name = stmt["name"]
     set_expr = stmt["set"]
     sort = set_sort(set_expr)
     out = []
-    if name not in declared_names:
+    if name not in declared_sorts:
         out.append(f"(declare-const {name} {sort})")
-        declared_names.add(name)
+        declared_sorts[name] = sort
     membership = set_membership(name, set_expr)
     if membership is not None:
         out.append(f"(assert {membership})")
     return out
 
 
-def transpile_assertion(stmt):
-    return [f"(assert {transpile_expr(stmt['expr'])})"]
+def transpile_assertion(stmt, declared_sorts):
+    return [f"(assert {transpile_expr(stmt['expr'], declared_sorts=declared_sorts)})"]
 
 
-def transpile_body_stmts(stmts, declared_names):
+def transpile_body_stmts(stmts, declared_sorts):
     out = []
     for s in stmts:
         if s["kind"] == "binding":
-            out.extend(transpile_binding(s, declared_names))
+            out.extend(transpile_binding(s, declared_sorts))
         elif s["kind"] == "assertion":
-            out.extend(transpile_assertion(s))
+            out.extend(transpile_assertion(s, declared_sorts))
         else:
             raise ValueError(f"unknown stmt kind: {s['kind']}")
     return out
@@ -230,13 +258,13 @@ def transpile_claim(decl):
     """A claim is a pure constraint model: bindings + assertions, no state
     pairs, no transition. Solves once."""
     out = [f"; --- claim {decl['name']} ---"]
-    declared = set()
+    declared = {}
 
     # Parameters become plain declared consts.
     for p in decl["params"]:
         sort = set_sort(p["set"])
         out.append(f"(declare-const {p['name']} {sort})")
-        declared.add(p["name"])
+        declared[p["name"]] = sort
         m = set_membership(p["name"], p["set"])
         if m is not None:
             out.append(f"(assert {m})")
@@ -249,7 +277,7 @@ def transpile_fsm(decl):
     """An FSM's parameters become STATE PAIRS: each `name ∈ S` produces
     `_name` and `name`. Body statements reference either."""
     out = [f"; --- fsm {decl['name']} ---"]
-    declared = set()
+    declared = {}
 
     # State pairs for parameters.
     for p in decl["params"]:
@@ -257,8 +285,8 @@ def transpile_fsm(decl):
         prev_name = f"_{p['name']}"
         out.append(f"(declare-const {prev_name} {sort})")
         out.append(f"(declare-const {p['name']} {sort})")
-        declared.add(prev_name)
-        declared.add(p["name"])
+        declared[prev_name] = sort
+        declared[p["name"]] = sort
         m = set_membership(p["name"], p["set"])
         if m is not None:
             out.append(f"(assert {m})")
@@ -268,7 +296,7 @@ def transpile_fsm(decl):
 
     # effects channel — auto-declared for FSMs.
     out.append("(declare-const effects (Seq Effect))")
-    declared.add("effects")
+    declared["effects"] = "(Seq Effect)"
 
     out.extend(transpile_body_stmts(decl["body"], declared))
     return "\n".join(out)

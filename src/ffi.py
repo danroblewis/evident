@@ -46,8 +46,17 @@ def _load_lib(name):
 
 
 def _z3_to_py(val):
-    """Z3 AST → Python primitive for libcall args."""
+    """Z3 AST → Python primitive for libcall args.
+
+    LibCall args are wrapped in the FFIArg datatype (`ArgInt(...)` /
+    `ArgStr(...)`); unwrap to the inner primitive before marshaling.
+    Bare primitive values (when libcall is invoked from Python, not via
+    a LibCall effect) are passed through.
+    """
     sort = val.sort()
+    if sort.name() == "FFIArg":
+        # Unwrap: arg(0) is the inner primitive (Int or String).
+        return _z3_to_py(val.arg(0))
     if sort == z3.IntSort():    return val.as_long()
     if sort == z3.RealSort():
         return val.numerator_as_long() / val.denominator_as_long()
