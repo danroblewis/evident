@@ -30,16 +30,10 @@ fti Stack(T)
     ; `s`, the `effects` binding becomes `s__effects` — a separate
     ; channel from the host fsm's `effects`. Both fire independently.
 
-    ; On init, the previous-tick `_contents` is undefined — the runtime
-    ; doesn't pin `_X` to anything on tick 1, so Z3 is free to pick any
-    ; value. For Stack, the convention is that external storage starts
-    ; empty, so we pin `_contents` to the empty seq on init. After init,
-    ; the runtime's state-pair carryover propagates the just-solved
-    ; `contents` forward as `_contents`. The `is_init ⇒ X` shape is
-    ; written `¬is_init ∨ X` because the bootstrap parser doesn't yet
-    ; have a `⇒` operator.
-
-    ¬is_init ∨ _contents = empty(T)
+    ; On tick 1, the runtime pins every `_X` to its sort's zero —
+    ; for `_contents ∈ Seq(T)` that is the empty seq. The FTI body
+    ; doesn't have to assert this. Subsequent ticks see the just-solved
+    ; `contents` carried forward as `_contents`.
 
     ; `base` is libcall-managed: on init, the runtime pins `s__base` to
     ; the alloc'd address via the alloc effect's ok_dest. After that

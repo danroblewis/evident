@@ -102,10 +102,16 @@ class Runtime:
     def run(self):
         """Tick to halt. Returns the model from the halting tick."""
         # `given` accumulates: state-pair carryover (`_X` ← previous `X`),
-        # FFI return-slot bindings (from libcall ok_dest/err_dest), and
-        # nothing else. Plain consts the body asserts on (like a claim's
-        # `x`) are NOT defaulted — the body's assertions determine them.
+        # FFI return-slot bindings (from libcall ok_dest/err_dest), and —
+        # on tick 1 only — `_X` defaulted to its sort's zero so that FTI
+        # bodies can rely on a defined initial state (empty Seq, 0 Int,
+        # false Bool, etc.) without having to spell it out in every body.
+        # Subsequent ticks rely on state-pair carryover, not these defaults.
         given = {}
+        for _p, p in self.state:
+            d = default_for(self.sorts[_p])
+            if d is not None:
+                given[_p] = d
 
         is_init = z3.BoolVal(True)
         last_model = None
