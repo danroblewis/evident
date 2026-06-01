@@ -134,20 +134,38 @@ boundaries.
 What distinguishes FTIs from ordinary types is that their state-pair
 variables are **materialized** against an external system through
 libcall. The FTI's job is to keep Z3's relational view and external
-reality **synchronized** — to **mirror** external state into the
-model at tick start, and to **realize** the model's solved values
-in external storage at tick end. The libcalls **bridge** the two
-worlds; the variables stay **bound** to external truth.
+reality **synchronized** — to **initialize** that synchronization
+when the FTI first comes into being, and to **realize** the model's
+solved values in external storage at the end of each tick. The
+libcalls **bridge** the two worlds; the variables stay **bound** to
+external truth.
+
+Critically, the FTI is the only writer to its foreign state. The
+runtime carries `x` forward as `_x` between ticks like any other
+state pair; the FTI does **not** re-read external state at tick
+start, because it already knows what external state is — it's
+whatever the last tick wrote. The model and external reality stay
+**in sync** because the FTI's libcalls put them in sync at tick end,
+and nothing else touches the foreign state. Reading external state
+on every tick would be wasteful — a `peek` on every operation, for
+no benefit, since the FTI already knows.
+
+If you need external state modified by other parties (other
+processes, the network, another machine, the user), that's not an
+FTI — that's the Actor pattern's job: separate `fsm`s communicating
+over channels and messages. FTIs assume sole ownership of their
+foreign state.
 
 Each tick:
 
-- **Tick start (load).** The FTI's libcalls read external state and
-  pin the `_x` values. The model now reflects what is.
+- **First tick (`is_init`).** The FTI's libcalls initialize the
+  foreign system (`Z3_mk_solver`, `open` a file, allocate a buffer,
+  etc.). The libcall return values populate `_x` for this tick.
 - **Mid-tick (solve).** The composing `fsm`'s constraints determine
   what the new `x` values should be. Z3 solves the combined body.
 - **Tick end (store).** The FTI's libcalls externalize the solved
-  `x` values — writing them out so external storage matches the
-  model.
+  `x` values — writing them so external storage matches the model.
+  The runtime then carries `x` forward as `_x` for the next tick.
 
 The composing `fsm` never calls methods on the FTI. It asserts
 relations over the FTI's variables — e.g.
@@ -158,10 +176,10 @@ method calls, no message dispatch. Just constraints over variables
 whose values are tied to external state by the FTI's materialization
 loop.
 
-Stack, Queue, File, Mutex, Socket, GPU buffers — all FTIs. **FTI is
-part of v1, not deferrable.** Without it, bounded-per-tick FSMs
-cannot act as PDAs, Mealy/Moore machines, or parsers, because they
-have no way to bind unbounded external state into their bodies.
+Stack, Queue, File, Mutex, GPU buffer — all FTIs. **FTI is part of
+v1, not deferrable.** Without it, bounded-per-tick FSMs cannot act
+as PDAs, Mealy/Moore machines, or parsers, because they have no way
+to bind unbounded external state into their bodies.
 
 ## The architecture in one paragraph
 
