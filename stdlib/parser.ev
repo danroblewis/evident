@@ -409,6 +409,114 @@ claim ParsePassthrough
     ok = (is_dd ∧ is_id)
     item = (ok ? BIPassthrough(name) : BINoItem)
 
+-- ── Schema declarations (B5) ────────────────────────────────────
+--
+-- The Rust parser at runtime/src/parser/schema.rs recognizes four
+-- declaration keywords (`claim`, `type`, `schema`, `fsm`) and
+-- produces the same `SchemaDecl` AST node with a `keyword`
+-- discriminator. The shape on the wire is:
+--
+--   <schema-kw> Ident(name) [type-params]? [(first-line-params)]?
+--   Newline Indent(n) <body-items…>
+--
+-- where the body-items are BodyItem entries (BIMembership from B4,
+-- BIPassthrough from B7, ClaimCall from B10, etc.).
+--
+-- This sub-step adds:
+--   * Keyword — the four-variant enum naming which keyword opened
+--     the declaration. The Rust side calls this Keyword too
+--     (runtime/src/core/ast.rs::Keyword), with the same four
+--     variants in the same order. (We prefix variants with `KK` so
+--     they don't collide with the lexer's Kw* token variants.)
+--   * BodyItemList — Cons-shaped list of BodyItems, used as the
+--     SchemaDecl body field. Same shape as EnumVariantList /
+--     TokenList: a recursive Cons-cell so it can be built across
+--     ticks and walked by a downstream pass.
+--   * SchemaDecl — the AST node itself. SDecl(kw, name, body) is the
+--     success case; SNoDecl is the sentinel for "not yet" / "shape
+--     didn't match" / placeholder. The variant name is SDecl rather
+--     than `SchemaD` to avoid clashing with B6's EnumD naming.
+--   * KeywordOfTok(t, kw, ok) — recognizer mapping a head token to
+--     its Keyword. ok=false means "this token is not a schema
+--     keyword" (kw is then a placeholder KKClaim).
+--   * ParseSchemaHead(head1, head2, kw, name, ok) — recognizer for
+--     the `<schema-kw> Ident` head sequence. ok=true iff head1 is
+--     one of the four schema keywords AND head2 is an Ident. The
+--     full multi-tick body consumer is a later sub-step; this is
+--     the recognizer layer that mirrors ParsePassthrough /
+--     ParseMembership.
+
+enum Keyword =
+    KKClaim
+    KKType
+    KKSchema
+    KKFsm
+
+enum BodyItemList =
+    BILNil
+    BILCons(BodyItem, BodyItemList)
+
+enum SchemaDecl =
+    SDecl(Keyword, String, BodyItemList)
+    SNoDecl
+
+-- KeywordOfTok: classify a head token as a schema-keyword.
+--
+-- Mirrors the `match self.bump()` in parse_schema_decl
+-- (runtime/src/parser/schema.rs:59). Token::Claim → KKClaim, etc.
+-- ok=false means "this token is not a schema keyword."
+--
+-- Same vars-in-body shape as TokenToOp: first-line claim params of
+-- enum type have a translator gap for `matches`/`match`, so all the
+-- pattern-matching happens via per-variant Bool intermediates in the
+-- body and the caller composes with names-match binding.
+claim KeywordOfTok
+    t ∈ Token
+    kw ∈ Keyword
+    ok ∈ Bool
+    is_claim  ∈ Bool = (t matches KwClaim)
+    is_type   ∈ Bool = (t matches KwType)
+    is_schema ∈ Bool = (t matches KwSchema)
+    is_fsm    ∈ Bool = (t matches KwFsm)
+    kw = (is_claim  ? KKClaim
+        : is_type   ? KKType
+        : is_schema ? KKSchema
+        : is_fsm    ? KKFsm
+        : KKClaim)
+    ok = (is_claim ∨ is_type ∨ is_schema ∨ is_fsm)
+
+-- ParseSchemaHead: recognize `<schema-kw> Ident(name)` at the head
+-- of a token stream and emit the (Keyword, name) pair.
+--
+-- Inputs:
+--   head1 — should be KwClaim/KwType/KwSchema/KwFsm for ok=true.
+--   head2 — should be Ident(_) for ok=true.
+--
+-- Outputs:
+--   kw    — the Keyword from head1 (KKClaim placeholder if !ok).
+--   name  — the Ident payload from head2 ("" if !ok).
+--   ok    — both head positions matched.
+--
+-- The multi-tick body consumer that wraps this recognizer is a
+-- later sub-step; here we only handle the two-token head shape.
+claim ParseSchemaHead
+    head1 ∈ Token
+    head2 ∈ Token
+    kw ∈ Keyword
+    name ∈ String
+    ok ∈ Bool
+
+    kw_ok ∈ Bool
+    KeywordOfTok(t ↦ head1, kw ↦ kw, ok ↦ kw_ok)
+
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+    ident_name ∈ String
+    IdentName(t ↦ head2, name ↦ ident_name)
+
+    ok = (kw_ok ∧ is_id)
+    name = (ok ? ident_name : "")
+
 -- ── Membership body-item parser (B4) ────────────────────────────
 --
 -- Recognize the head sequence `Ident(name) ∈ <TypeRef tokens…>` and
