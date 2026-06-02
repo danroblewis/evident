@@ -440,6 +440,43 @@ Every kernel-runnable `.smt2` starts with:
 Required and in order. The kernel parses this before invoking Z3.
 See `docs/plans/kernel-input-spec.md` for the full contract.
 
+## Functionizer diagnostics (on by default)
+
+The kernel prints a one-line summary at exit telling you what
+functionized for the program you just ran. Looks like:
+
+```
+[functionizer] 5 total / 1 JIT / 1 interp / 2 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3)
+```
+
+- `N total` = body assertions after simplify.
+- `J JIT` = compiled to native code via Cranelift.
+- `I interp` = extracted but interpreted (no JIT path for the shape).
+- `R residual` = still goes to Z3 each tick.
+
+Three env vars control the output:
+
+- `EVIDENT_FUNCTIONIZE_STATS=verbose` — adds a per-step load
+  report at startup with each step's shape category (`binop`,
+  `ite`, `select`, `accessor`, `guarded-seq`, `seq-literal`,
+  `unfunctionizable`). Use this when investigating why something
+  fell through to Z3.
+- `EVIDENT_FUNCTIONIZE_TRACE=1` — adds per-tick timing
+  (`func ms / z3 ms / dispatch ms`). High-frequency; only useful
+  for short investigations.
+- `EVIDENT_FUNCTIONIZE_STATS=0` — silence everything.
+
+The default is `Summary`. The line goes to stderr; it doesn't
+pollute program stdout or affect test pass/fail.
+
+When making implementation choices in `compiler/*.ev` or
+`stdlib/*.ev`, you can read this output to confirm your shape
+actually functionized. If you wrote what you thought was a
+functionizable claim and `[functionizer]` shows it as residual,
+the diagnostic is telling you the shape didn't extract — that's
+a real signal worth investigating before pushing more code on
+top.
+
 ## How to run tests
 
 Today:

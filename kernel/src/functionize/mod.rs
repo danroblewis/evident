@@ -93,16 +93,19 @@ pub struct RunOut {
     pub effects: Vec<Sv>,
 }
 
-// ── Diagnostics (env-gated; off by default) ─────────────────────
+// ── Diagnostics (env-gated; default = Summary) ──────────────────
 //
 // Three levels, controlled by `EVIDENT_FUNCTIONIZE_STATS` +
 // `EVIDENT_FUNCTIONIZE_TRACE`:
-//   STATS=1        → one-line summary at exit (counts + timings).
+//   unset / =1     → one-line summary at exit (counts + timings).
 //   STATS=verbose  → the summary PLUS a per-step load report at startup.
+//   STATS=0        → silence everything.
 //   TRACE=1        → per-tick timing lines (in addition to any STATS level).
-// With nothing set, `StatsLevel::Off` + `trace=false` ⇒ no output and no
-// per-tick `Instant::now()` calls (timing_on() is false). See
-// docs/plans/functionizer-integration.md §"Diagnostic flags".
+// Default is Summary so that performance-sensitive sessions get
+// immediate visibility into what functionized (see CLAUDE.md
+// §"Functionizer diagnostics" and architecture-invariants.md
+// §"Functionizability over Z3-fast"). Set STATS=0 to silence
+// when the noise is unwanted.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StatsLevel {
@@ -115,8 +118,8 @@ impl StatsLevel {
     pub fn from_env() -> Self {
         match std::env::var("EVIDENT_FUNCTIONIZE_STATS").ok().as_deref() {
             Some("verbose") | Some("VERBOSE") | Some("v") => StatsLevel::Verbose,
-            Some(s) if !s.is_empty() && s != "0" => StatsLevel::Summary,
-            _ => StatsLevel::Off,
+            Some("0") | Some("off") | Some("OFF") => StatsLevel::Off,
+            _ => StatsLevel::Summary, // default
         }
     }
 }
