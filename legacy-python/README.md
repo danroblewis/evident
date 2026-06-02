@@ -61,6 +61,16 @@ the `ArgRef` + scratchpad addition to the kernel.
 - Nothing copied that exists in current form in this repo's
   `bootstrap/runtime/src/` (no duplication of reference material).
 
+## Related reference: `legacy-rust/functionizer/`
+
+The Z3 **macro-finder functionizer** (the post-load optimizer that
+turns determined constraint bodies into callable functions) is Rust,
+not Python, so it lives in a sibling tree: `legacy-rust/functionizer/`,
+extracted from branch `feat/compile-constraints-to-programs`. See
+`legacy-rust/README.md` and `docs/plans/functionizer-integration.md`.
+Same read-only freeze applies. The symbolic-regression and LLM
+functionizer variants were deliberately NOT extracted.
+
 ## Freeze status
 
 `legacy-python/` is **read-only reference**. Same freeze rules apply

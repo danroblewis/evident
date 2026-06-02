@@ -180,8 +180,8 @@ When choosing between two implementation shapes that are both
 correct, **prefer the shape that functionizes more cleanly** over
 the one that solves faster in Z3 today. The functionizer
 (macro-finder version, design at
-`docs/plans/functionizer-integration.md` once landed; reference
-under `legacy-{python,rust}/functionizer/`) is the post-load
+`docs/plans/functionizer-integration.md`; reference source under
+`legacy-rust/functionizer/`) is the post-load
 optimizer we trust. What's slow in Z3 today becomes a constant
 cost after functionization, *if the shape is right*.
 
@@ -213,6 +213,23 @@ Implications for current sessions:
   A-default (cached ASTs + simple pin assertions) is preferred
   long-term, not just because it benchmarked faster on bodies <
   256 KB.
+- **Bounded literal-indexed Seqs functionize; symbolic-length/index
+  Seqs do not.** Confirmed against the extractor source
+  (`legacy-rust/functionizer/src/z3_eval.rs`): `extract_program`
+  captures a `Seq` output only via a literal length pin
+  (`(= var__len N)`) plus literal-indexed element pins
+  (`(= (select var 0) …)`). A `Seq` whose length or indices are
+  symbolic is opaque — extraction returns `None` and the *entire*
+  tick falls back to Z3. Enum cons-list datatypes, by contrast, fold
+  through `simplify` (recognizers `(_ is Cons)`, accessors
+  `Cons__f0`) and surface as captured `Guarded` branches. This is the
+  mechanism behind the cons-list-over-Seq preference above.
+- **The gate is determinism (a 2-copy UNSAT check), not cleverness.**
+  A body whose outputs are uniquely determined by its inputs
+  functionizes; a body that genuinely searches (multiple valid models)
+  cannot and *should* stay on Z3. Don't contort a search-shaped FSM to
+  look functional — write the determined-assignment form when the
+  semantics allow it, and leave true search on the solver.
 - (More implications to be added as the functionizer's specifics
   inform them; this section is a living checklist.)
 
