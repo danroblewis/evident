@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+
+claim main
+    msg ∈ String = str_from_int(6 * 7)
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr(msg)⟩),
+        Exit(0)
+    ⟩

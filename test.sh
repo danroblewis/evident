@@ -89,6 +89,17 @@ if [ "$RUST_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ];
     echo
 fi
 
+# ── Phase 3b: conformance features (implementation-agnostic) ─
+if [ "$RUST_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
+    phase "Phase 3b: conformance features (tests/conformance/features/, IMPL=bootstrap)"
+    if IMPL=bootstrap tests/conformance/features/runner.sh 2>&1 | tee /tmp/evident-features.log ; then
+        ok "conformance features: $(grep -E 'passed /' /tmp/evident-features.log | tail -1)"
+    else
+        fail "conformance features"; failures+=("conformance features")
+    fi
+    echo
+fi
+
 # ── Phase 4: lang tests ──────────────────────────────────────
 if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
     phase "Phase 4: lang_tests (tests/lang_tests/)"

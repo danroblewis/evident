@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+
+claim main
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr("conformance")⟩),
+        Exit(0)
+    ⟩
