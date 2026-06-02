@@ -7,7 +7,6 @@ use z3::{Context, Solver};
 use z3::ast::{Ast, Bool};
 
 use crate::core::ast::*;
-use crate::pretty;
 use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use crate::translate::declare::declare_var;
 use crate::translate::exprs::translate_bool;
@@ -77,7 +76,7 @@ pub(super) fn inline_membership(
             track_assert(solver, &guarded_bool(b, guard), tracker);
         } else {
             let lenient = crate::runtime::lenient::lenient_enabled();
-            let pretty = pretty::expr(&eq);
+            let pretty = format!("{eq:?}");
             if lenient {
                 eprintln!(
                     "warning: type-use pin didn't translate: {}",

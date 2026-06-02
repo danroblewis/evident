@@ -7,7 +7,6 @@ use z3::{Context, Solver};
 use z3::ast::Bool;
 
 use crate::core::ast::*;
-use crate::pretty;
 use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use crate::translate::exprs::translate_bool;
 use super::calls;
@@ -155,7 +154,7 @@ pub(super) fn inline_body_items_guarded(
                     track_assert(solver, &guarded_bool(b, guard), tracker);
                 } else {
                     let lenient = crate::runtime::lenient::lenient_enabled();
-                    let pretty = pretty::expr(e);
+                    let pretty = format!("{e:?}");
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
                     } else {

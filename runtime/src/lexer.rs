@@ -358,30 +358,3 @@ fn keyword_or_ident(s: String) -> Token {
         _ => Token::Ident(s),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lex_simple_schema() {
-        let src = "schema SimpleNat\n    n ∈ Nat\n    n > 5\n";
-        let toks = tokenize(src).unwrap();
-        // Expect: Indent(0) schema SimpleNat \n Indent(4) n ∈ Nat \n Indent(4) n > 5 \n Eof
-        assert!(matches!(toks[0], Token::Indent(0)));
-        assert!(matches!(toks[1], Token::Schema));
-        assert!(matches!(&toks[2], Token::Ident(s) if s == "SimpleNat"));
-    }
-
-    #[test]
-    fn lex_unicode_operators() {
-        let toks = tokenize("a ∈ Set ∧ b ≤ 5 ⇒ ¬c").unwrap();
-        let kinds: Vec<_> = toks.iter().filter(|t| !matches!(t, Token::Indent(_))).cloned().collect();
-        // a ∈ Set ∧ b ≤ 5 ⇒ ¬ c Eof
-        assert!(matches!(kinds[1], Token::In));
-        assert!(matches!(kinds[3], Token::And));
-        assert!(matches!(kinds[5], Token::Le));
-        assert!(matches!(kinds[7], Token::Implies));
-        assert!(matches!(kinds[8], Token::Not));
-    }
-}

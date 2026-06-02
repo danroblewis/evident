@@ -328,7 +328,7 @@ impl EvidentRuntime {
             other => Err(RuntimeError::Parse(format!(
                 "run({fsm}, ..): init must be a constant expression computable \
                  before the solve (literal, given, or integer arithmetic over \
-                 those); got {}", crate::pretty::expr(other)))),
+                 those); got {other:?}"))),
         }
     }
 

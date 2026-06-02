@@ -176,7 +176,6 @@ pub mod desugar;
 pub mod generics;
 pub mod inject;
 pub mod introspect;
-pub mod pretty;
 
 /// `validate` — reject non-external FFI-constructing schemas; banned-name
 /// decision in Rust (in-solve string-eq blows up Z3 — #18 cousin).

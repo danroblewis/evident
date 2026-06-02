@@ -13,7 +13,6 @@ mod ffi;
 mod lexer;
 mod parser;
 pub mod portable;
-pub mod pretty;
 pub mod translate;
 mod runtime;
 pub mod stdlib_path;

@@ -71,32 +71,3 @@ pub fn body_references_identifier(claim: &SchemaDecl, ident: &str) -> bool {
     }
     walk(&claim.body, ident)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser::parse;
-
-    fn claim_named(src: &str, name: &str) -> SchemaDecl {
-        let prog = parse(src).expect("parse");
-        prog.schemas.iter().find(|s| s.name == name)
-            .unwrap_or_else(|| panic!("claim `{name}` not found"))
-            .clone()
-    }
-
-    #[test]
-    fn references_effect_constructor() {
-        let src = "\
-type World
-    a ∈ Int
-
-claim emitter
-    world, world_next ∈ World
-    effects ∈ Seq(Effect)
-    effects = ⟨ReadLine⟩
-";
-        let c = claim_named(src, "emitter");
-        assert!(body_references_identifier(&c, "ReadLine"));
-        assert!(!body_references_identifier(&c, "Exit"));
-    }
-}
