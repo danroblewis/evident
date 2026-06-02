@@ -111,6 +111,23 @@ In this order:
    needed).
 5. `tests/conformance/features/README.md` (how to write a feature
    spec).
-6. Your task spec (passed in alongside this briefing).
+6. **If your task touches FTI design, the Formula-builder
+   architecture, the kernel-effects model, the Z3-as-library
+   direction, or any minimal-runtime concept** — read:
+   - `legacy-python/README.md` (orientation).
+   - `legacy-python/docs/runtime-architecture.md` (the trampoline
+     + LibCall + state-pair model).
+   - `legacy-python/docs/fti-composition.md` (how FTIs inline into
+     the host FSM).
+   - `legacy-python/docs/fti-z3.md` + `fti-z3-m6-extensions.md`
+     (the Z3-via-libcall design — the most important single idea
+     for our self-hosting target; unimplemented in tiny-runtime so
+     it exists only here).
+   Your report back MUST cite which of these docs justified your
+   approach. Sessions that don't cite will be rejected.
+7. `docs/notes/python-branch-techniques.md` (the coordinator-level
+   summary of what was learned from `tiny-runtime`; read this to
+   know what the coordinator already knows).
+8. Your task spec (passed in alongside this briefing).
 
 Then run `scripts/check-deletable.sh` and start work.
