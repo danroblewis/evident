@@ -1,0 +1,75 @@
+-- C5: claim composition translation — passthrough + claim-call markers.
+--
+-- Drives `ComposeInline` over a hand-built series of BodyItem values
+-- and asserts that:
+--   * BIPassthrough("Distinct")   → ok=true,  inlined=";; inline Distinct"
+--   * BIClaimCall("Toposort", _)  → ok=true,  inlined=";; call Toposort"
+--   * BIClaimCall("Counter", _)   → ok=true,  inlined=";; call Counter"
+--   * BIPassthrough("Logger")     → ok=true,  inlined=";; inline Logger"
+--   * BIConstraint(_) and other variants → ok=false (no marker emitted)
+--
+-- One BodyItem is exercised per tick via a step counter (same pattern
+-- as test_parser_passthrough.ev / test_parser_composition_coverage.ev).
+-- For ok=true items the line printed is the marker itself; for the
+-- "other" item we print the explicit "ok=false" diagnostic so the
+-- ok arm of the recognizer is also verified.
+--
+-- expect: stdout = ";; inline Distinct"
+-- expect: stdout = ";; call Toposort"
+-- expect: stdout = ";; inline Logger"
+-- expect: stdout = ";; call Counter"
+-- expect: stdout = "ok=false"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_compose.ev"
+
+claim main
+    -- ── Hardcoded inputs: one per step ────────────────────────────
+    -- Mechanism #3 — pull-up passthrough.
+    bi0 ∈ BodyItem = BIPassthrough("Distinct")
+
+    -- Mechanism #2/#4 — bare claim call (names-match), no mapsto args.
+    bi1 ∈ BodyItem = BIClaimCall("Toposort", CANil)
+
+    -- Mechanism #3 again with a different name (the per-variant
+    -- recogniser must not latch on a literal).
+    bi2 ∈ BodyItem = BIPassthrough("Logger")
+
+    -- Mechanism #5 — call with one `slot ↦ value` mapsto arg.
+    one_arg ∈ ClaimArg = CArg("n", EInt(3))
+    args ∈ ClaimArgList = CACons(one_arg, CANil)
+    bi3 ∈ BodyItem = BIClaimCall("Counter", args)
+
+    -- A BIConstraint — should yield ok=false from ComposeInline.
+    bi4 ∈ BodyItem = BIConstraint(EInt(1))
+
+    -- ── Per-step selection ────────────────────────────────────────
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    current ∈ BodyItem = (step = 0 ? bi0
+        : (step = 1 ? bi1
+        : (step = 2 ? bi2
+        : (step = 3 ? bi3
+        : bi4))))
+
+    -- ── Drive the C5 claim ────────────────────────────────────────
+    inlined ∈ String
+    ok ∈ Bool
+    ComposeInline(item ↦ current, inlined ↦ inlined, ok ↦ ok)
+
+    -- ── Diagnostic line per step ──────────────────────────────────
+    -- For the ok-true items, print the emitted marker verbatim. For
+    -- the ok=false item, print an explicit "ok=false" so the negative
+    -- arm is exercised too. Step 5 prints the [done] banner.
+    diag ∈ String = (step ≥ 5 ? "[done]"
+        : (ok ? inlined
+        : "ok=false"))
+
+    done ∈ Bool = (step ≥ 5)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(diag)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(diag)⟩)⟩)
