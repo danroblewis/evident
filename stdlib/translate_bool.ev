@@ -1,0 +1,109 @@
+-- stdlib/translate_bool.ev — Phase C3: Boolean expression translation
+-- to SMT-LIB.
+--
+-- The Rust side at runtime/src/translate/exprs/bool.rs translates an
+-- Evident Bool expression to its SMT-LIB s-expression. This file
+-- self-hosts the atom-level shape of that translator for the parser's
+-- current Expr surface (EInt / EIdent / EBinOp(Op, _, _)).
+--
+-- Operator coverage in this sub-step:
+--   • EBinOp(OpEq,   l, r)  →  "(= <l> <r>)"
+--   • EBinOp(OpImpl, l, r)  →  "(=> <l> <r>)"
+--
+-- Other shapes (∧/∨/¬/≠/</≤/∈) and nested binops are deferred — the
+-- recursive walker pattern lives in test_ast_to_text.ev and
+-- test_translate_eq_ident.ev. This file ships the atom-level
+-- recognizer/renderer claims so the parser's two-arg, atomic-payload
+-- Boolean shape compiles with a single ParseMembership-style call.
+--
+-- Pattern mirrors TokenToOp (parser.ev): enum-typed claim params are
+-- declared in the body (not on the first line) because the translator
+-- has a gap for `matches`/`match` on first-line enum-typed params.
+-- Callers compose with names-match binding.
+
+import "stdlib/parser.ev"
+
+-- ── ExprAtomSmtlib ──────────────────────────────────────────────
+-- Render a single leaf Expr (EInt or EIdent) to its SMT-LIB text.
+--   EInt(n)    → str_from_int(n)
+--   EIdent(s)  → s
+-- For any non-atom Expr, ok=false and out="" — the outer renderer is
+-- responsible for handling those shapes (work-stack walker; see
+-- test_translate_eq_ident.ev for the pattern).
+--
+-- Same vars-in-body shape as TokenToOp / KeywordOfTok: the first-line
+-- claim param `e` is of enum type Expr, so the recognizers and
+-- payload extractors live in the body and the caller composes via
+-- names-match binding.
+
+claim ExprAtomSmtlib
+    e ∈ Expr
+    out ∈ String
+    ok ∈ Bool
+
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+
+    ident_val ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+    int_text ∈ String = str_from_int(int_val)
+
+    ok = (is_int ∨ is_ident)
+    out = (is_int ? int_text : (is_ident ? ident_val : ""))
+
+-- ── BoolExprSmtlib ──────────────────────────────────────────────
+-- Translate a Boolean EBinOp(Op, lhs, rhs) where lhs and rhs are
+-- atom-level (EInt / EIdent) to its SMT-LIB s-expression.
+--
+--   EBinOp(OpEq,   l, r)  →  "(= <l> <r>)"
+--   EBinOp(OpImpl, l, r)  →  "(=> <l> <r>)"
+--
+-- ok=true iff:
+--   • the head Op is OpEq or OpImpl, AND
+--   • both lhs and rhs render as atoms.
+--
+-- For any other shape (non-binop, unsupported Op, non-atom child),
+-- ok=false and out="". The caller can branch on ok to fall through
+-- to a more general renderer (the work-stack walker in
+-- test_translate_eq_ident.ev for nested cases).
+
+claim BoolExprSmtlib
+    e ∈ Expr
+    out ∈ String
+    ok ∈ Bool
+
+    is_binop ∈ Bool = (e matches EBinOp(_, _, _))
+
+    op_val ∈ Op = match e
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+
+    lhs_expr ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs_expr ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_eq   ∈ Bool = (op_val matches OpEq)
+    is_impl ∈ Bool = (op_val matches OpImpl)
+
+    op_text ∈ String = (is_eq ? "(= " : (is_impl ? "(=> " : ""))
+
+    lhs_text ∈ String
+    lhs_ok   ∈ Bool
+    ExprAtomSmtlib(e ↦ lhs_expr, out ↦ lhs_text, ok ↦ lhs_ok)
+
+    rhs_text ∈ String
+    rhs_ok   ∈ Bool
+    ExprAtomSmtlib(e ↦ rhs_expr, out ↦ rhs_text, ok ↦ rhs_ok)
+
+    head_ok ∈ Bool = (is_binop ∧ (is_eq ∨ is_impl))
+    ok = (head_ok ∧ lhs_ok ∧ rhs_ok)
+    out = (ok ? op_text ++ lhs_text ++ " " ++ rhs_text ++ ")" : "")

@@ -1,0 +1,78 @@
+-- stdlib/translate_arith.ev — Phase C4: SMT-LIB arithmetic translation.
+--
+-- Mirrors the integer-arithmetic arm of
+-- runtime/src/translate/exprs/scalar.rs: a binop `EBinOp(op, l, r)`
+-- over the four arithmetic operators (+, -, *, /) renders to the
+-- SMT-LIB prefix form. Z3 integer division spells the operator as
+-- `div` (Z3 `Int::div`), not `/`.
+--
+--   EBinOp(OpPlus, l, r) → "(+ <lhs> <rhs>)"
+--   EBinOp(OpSub,  l, r) → "(- <lhs> <rhs>)"
+--   EBinOp(OpMul,  l, r) → "(* <lhs> <rhs>)"
+--   EBinOp(OpDiv,  l, r) → "(div <lhs> <rhs>)"
+--
+-- For C4 the atom-level rendering is folded inline so the claim is
+-- self-contained (no Expr-walking work-stack yet — that's the C-phase
+-- traversal layer). Only EInt and EIdent leaves are emitted; anything
+-- else falls through to ok=false / out="". A multi-tick walker that
+-- handles arbitrary nesting is a later sub-step (it lives in the
+-- caller's FSM, the same way test_ast_to_text.ev / test_translate_eq_ident
+-- compose the C-phase atomic renderers into a tree walk).
+
+import "stdlib/parser.ev"
+
+-- AtomSmtlib: render an EInt or EIdent leaf to its SMT-LIB token.
+--   EInt(n)   → str_from_int(n)   (Z3 integer literal)
+--   EIdent(s) → s                 (declared name)
+-- Anything else → ok=false, out="".
+claim AtomSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    ok = (is_int ∨ is_ident)
+    out = (is_int ? str_from_int(int_val)
+        : is_ident ? ident_val
+        : "")
+
+-- ArithExprSmtlib: render a one-level arithmetic binop with leaf
+-- operands to its SMT-LIB prefix form. Operands must be atoms
+-- (EInt/EIdent); a nested binop is rejected with ok=false.
+claim ArithExprSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
+    is_binop ∈ Bool = (e matches EBinOp(_, _, _))
+    op ∈ Op = match e
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_div  ∈ Bool = (op matches OpDiv)
+    is_arith ∈ Bool = (is_plus ∨ is_sub ∨ is_mul ∨ is_div)
+
+    op_str ∈ String = (is_plus ? "+"
+        : is_sub ? "-"
+        : is_mul ? "*"
+        : is_div ? "div"
+        : "")
+
+    lhs_str ∈ String
+    lhs_ok ∈ Bool
+    AtomSmtlib(e ↦ lhs, out ↦ lhs_str, ok ↦ lhs_ok)
+
+    rhs_str ∈ String
+    rhs_ok ∈ Bool
+    AtomSmtlib(e ↦ rhs, out ↦ rhs_str, ok ↦ rhs_ok)
+
+    ok = (is_binop ∧ is_arith ∧ lhs_ok ∧ rhs_ok)
+    out = (ok ? "(" ++ op_str ++ " " ++ lhs_str ++ " " ++ rhs_str ++ ")" : "")
