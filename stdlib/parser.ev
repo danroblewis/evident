@@ -452,9 +452,7 @@ enum Keyword =
     KKSchema
     KKFsm
 
-enum BodyItemList =
-    BILNil
-    BILCons(BodyItem, BodyItemList)
+-- BodyItemList already declared by B10 (mutual recursion with BISubclaim).
 
 enum SchemaDecl =
     SDecl(Keyword, String, BodyItemList)
