@@ -68,6 +68,11 @@ def run_one(path: Path) -> tuple[bool, str]:
         Path("/tmp/evident_kernel_io_input.txt").write_text("file roundtrip\n")
         Path("/tmp/evident_kernel_io_output.txt").unlink(missing_ok=True)
 
+    # Stdin fixture sets stdin input.
+    stdin_text = None
+    if path.name == "test_echo_lines.ev":
+        stdin_text = "alpha\nbeta\ngamma\n"
+
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
 
@@ -83,6 +88,7 @@ def run_one(path: Path) -> tuple[bool, str]:
         # 2. kernel
         r = subprocess.run(
             [str(KERNEL), smt_path],
+            input=stdin_text,
             capture_output=True, text=True, timeout=30,
         )
         actual_stdout = r.stdout.rstrip("\n")
