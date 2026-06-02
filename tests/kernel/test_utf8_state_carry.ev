@@ -1,0 +1,43 @@
+-- Regression: multi-byte UTF-8 String state-carry must not grow the string.
+--
+-- Reads /tmp/evident_utf8_state_carry.txt (contents: `a∈b`, where `∈` is
+-- U+2208, 3 UTF-8 bytes) on tick 0, then carries the contents across the
+-- remaining ticks via the `_input` state pair and prints `#input` each tick.
+--
+-- `#input` is Z3 `str.len` — a COUNT OF CODEPOINTS, not bytes. `a∈b` is 3
+-- codepoints, so a correct carry holds `#input = 3` on every tick.
+--
+-- Before the kernel fix (kernel/src/tick.rs: emit carried String pins with
+-- non-ASCII escaped as `\u{hex}`), the pin path wrote raw UTF-8 bytes into the
+-- SMT-LIB literal, Z3's parser read each byte as its own character, and the
+-- string grew every tick: 5, 8, 14, 26, 50, … (the `∈` repro in
+-- docs/plans/blocked-compiler-driver.md). The growth meant `pos ≥ #input`
+-- never held, so file-reading FSMs spun to the tick limit instead of halting.
+--
+-- expect: stdout = "len=3"
+-- expect: stdout = "len=3"
+-- expect: stdout = "len=3"
+-- expect: stdout = "len=3"
+-- expect: stdout = "len=3"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    tick_count  ∈ Int
+    _tick_count ∈ Int
+    tick_count = (is_first_tick ? 0 : _tick_count + 1)
+
+    input  ∈ String
+    _input ∈ String
+    read_result ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+
+    line ∈ String = "len=" ++ str_from_int(#input)
+
+    effects ∈ Seq(Effect) = (tick_count = 0
+        ? ⟨ReadFile("/tmp/evident_utf8_state_carry.txt")⟩
+        : (tick_count < 5
+            ? ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩)⟩
+            : ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩), Exit(0)⟩))

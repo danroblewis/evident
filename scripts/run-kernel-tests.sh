@@ -111,6 +111,10 @@ setup_fixture() {
             printf 'abc' > /tmp/evident_eof_edge_input.txt ;;
         test_crlf.ev)
             printf 'a\r\nb\n' > /tmp/evident_crlf_input.txt ;;
+        test_utf8_state_carry.ev)
+            printf 'a∈b' > /tmp/evident_utf8_state_carry.txt ;;
+        test_compiler_driver_readfile.ev)
+            printf 'claim main\n    x ∈ Int = 5' > /tmp/evident_compiler_readfile_input.ev ;;
     esac
 }
 

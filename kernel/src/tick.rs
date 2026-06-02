@@ -76,7 +76,7 @@ impl Sv {
             Sv::Int(n) if *n >= 0  => n.to_string(),
             Sv::Int(n)             => format!("(- {})", -n),
             Sv::Bool(b)            => b.to_string(),
-            Sv::Str(s)             => format!("\"{}\"", s.replace('"', "\"\"")),
+            Sv::Str(s)             => z3_string_literal(s),
             Sv::Real(r) if *r >= 0.0 => format!("{:?}", r),
             Sv::Real(r)            => format!("(- {:?})", -r),
             Sv::Datatype(variant, fields) => {
@@ -92,6 +92,42 @@ impl Sv {
             Sv::Seq(_) => unreachable!("Sv::Seq has no SMT-LIB pin form"),
         }
     }
+}
+
+/// Emit `s` as an SMT-LIB string literal (with surrounding quotes), escaping
+/// every non-ASCII codepoint as `\u{hex}`.
+///
+/// This is the root-cause fix for the multi-byte UTF-8 state-carry growth bug
+/// (docs/plans/blocked-compiler-driver.md). The kernel re-asserts carried
+/// String values each tick by writing them into a tiny SMT-LIB pin string that
+/// Z3's parser then reads. Z3's SMT-LIB parser consumes a string literal's
+/// bytes one at a time: a raw UTF-8 byte sequence like `∈` (E2 88 88) becomes
+/// THREE Z3 characters, not one. So `"a∈b"` written raw parses to a 5-char Z3
+/// string; reading it back (`Z3_get_string` + `unescape_z3`) yields three
+/// Latin-1 codepoints whose UTF-8 re-encoding is longer still — the string
+/// grows 5 → 8 → 14 → … every tick and `#input` never stabilises.
+///
+/// Escaping non-ASCII to `\u{hex}` makes Z3 store the real codepoint as ONE
+/// character, and `unescape_z3` (the read side) already reverses it — so the
+/// carry round-trips losslessly. Mirrors bootstrap
+/// `translate::extract::escape_non_ascii` (the reference encode-side fix for
+/// the sibling emit bug #16). `"` is doubled per SMT-LIB string escaping;
+/// ASCII (incl. control chars / backslash) passes through unchanged, matching
+/// what `unescape_z3` expects.
+fn z3_string_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        if c == '"' {
+            out.push_str("\"\"");
+        } else if c.is_ascii() {
+            out.push(c);
+        } else {
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        }
+    }
+    out.push('"');
+    out
 }
 
 pub fn run(src: &str, manifest: &Manifest) -> Result<u8, String> {
@@ -522,10 +558,10 @@ impl Res {
             Res::Eof       => "EofResult".to_string(),
             Res::Int(n)    => format!("(IntResult {})",
                 if *n >= 0 { n.to_string() } else { format!("(- {})", -n) }),
-            Res::Str(s)    => format!("(StringResult \"{}\")", s.replace('"', "\"\"")),
+            Res::Str(s)    => format!("(StringResult {})", z3_string_literal(s)),
             Res::Real(r)   => format!("(RealResult {})",
                 if *r >= 0.0 { r.to_string() } else { format!("(- {})", -r) }),
-            Res::Error(s)  => format!("(ErrorResult \"{}\")", s.replace('"', "\"\"")),
+            Res::Error(s)  => format!("(ErrorResult {})", z3_string_literal(s)),
         }
     }
 }
