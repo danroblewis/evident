@@ -1,0 +1,72 @@
+-- EOF-edge handling (Phase A7).
+--
+-- Walks input "abc" (NO trailing whitespace, NO newline) and verifies
+-- the final ident is still emitted before halt. Same fsm shape as
+-- test_multichar_ident.ev — the difference is the input file has no
+-- terminator, so the `done ∨ ¬is_alpha` finish path is the ONLY way the
+-- final token gets flushed.
+--
+-- The Rust lexer (runtime/src/lexer.rs) has equivalent semantics: a
+-- digit/ident run at EOF flushes one final token before the lexer
+-- terminates. This test pins the self-hosted lexer to the same contract.
+--
+-- expect: stdout = "  start: a"
+-- expect: stdout = "  cont: b"
+-- expect: stdout = "  cont: c"
+-- expect: stdout = "ident: abc"
+-- expect: stdout = "[eof]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+
+claim main
+    input  ∈ String
+    _input ∈ String
+    read_result ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ "<no-read>"
+    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+
+    pos  ∈ Int
+    _pos ∈ Int
+    partial  ∈ String
+    _partial ∈ String
+
+    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+
+    cur_char ∈ String = substr(input, pos, 1)
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+
+    was_collecting ∈ Bool = (#_partial > 0)
+    done ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
+    in_range ∈ Bool = ((pos ≥ 0) ∧ ¬done)
+
+    continuing ∈ Bool = (was_collecting ∧ is_alpha ∧ in_range)
+    finishing  ∈ Bool = (was_collecting ∧ ((¬is_alpha ∧ in_range) ∨ done))
+    starting   ∈ Bool = ((¬was_collecting) ∧ is_alpha ∧ in_range)
+
+    partial = (is_first_tick ? "" : (continuing ? _partial ++ cur_char : (starting ? cur_char : "")))
+
+    finish_with_char ∈ Bool = (finishing ∧ ¬is_alpha ∧ ¬is_ws ∧ in_range)
+    finish_only      ∈ Bool = (finishing ∧ ((is_ws ∨ done)))
+    char_only        ∈ Bool = ((¬was_collecting) ∧ (¬is_alpha) ∧ (¬is_ws) ∧ in_range)
+
+    single_tok ∈ Token = ErrTok(cur_char)
+    ident_tok  ∈ Token = Ident(_partial)
+
+    tokens  ∈ TokenList
+    _tokens ∈ TokenList
+    tokens = (is_first_tick ? TLNil
+            : (finish_with_char ? TLCons(single_tok, TLCons(ident_tok, _tokens))
+            : (finish_only ? TLCons(ident_tok, _tokens)
+            : (char_only ? TLCons(single_tok, _tokens)
+            : _tokens))))
+
+    halting ∈ Bool = (done ∧ ¬was_collecting)
+
+    label ∈ String = (halting ? "[eof]" : (pos < 0 ? "got input" : (finish_with_char ? ("ident+char: " ++ _partial ++ "/" ++ cur_char) : (finish_only ? ("ident: " ++ _partial) : (char_only ? ("char: " ++ cur_char) : (is_ws ? "  skip" : (continuing ? ("  cont: " ++ cur_char) : (starting ? ("  start: " ++ cur_char) : "  ?"))))))))
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/evident_eof_edge_input.txt")⟩ : (halting ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))

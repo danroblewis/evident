@@ -98,9 +98,11 @@ claim IsAlphaChar(c ∈ String, out ∈ Bool)
          ∨ c = "U" ∨ c = "V" ∨ c = "W" ∨ c = "X" ∨ c = "Y" ∨ c = "Z")
 
 claim IsWhitespace(c ∈ String, out ∈ Bool)
-    -- \r escape isn't supported by the parser; CRLF inputs need
-    -- a preprocessing pass to strip CRs (not done in this toy lexer).
-    out = (c = " " ∨ c = "\t" ∨ c = "\n")
+    -- The \r escape isn't supported by the Evident lexer, but a raw
+    -- CR byte inside a "..." literal IS accepted (the bootstrap lexer
+    -- treats it as an ordinary char). We embed a literal CR here so CRLF
+    -- input files lex as if normalized.
+    out = (c = " " ∨ c = "\t" ∨ c = "\n" ∨ c = "")
 
 -- ── Digit character → Int value ────────────────────────────────
 -- Inverse of str_from_int for single ASCII digits.

@@ -90,6 +90,14 @@ def run_one(path: Path) -> tuple[bool, str]:
         Path("/tmp/evident_comment_input.txt").write_text("x = 5 -- this is a comment\ny = 7\n")
     if path.name == "test_consolidated_lexer.ev":
         Path("/tmp/evident_consolidated_input.txt").write_text("claim x = 1\n")
+    # Phase A7: EOF-edge fixture — input has NO trailing newline/whitespace,
+    # so the final token can only be flushed via the done-path.
+    if path.name == "test_eof_edges.ev":
+        Path("/tmp/evident_eof_edge_input.txt").write_text("abc")
+    # Phase A7: CRLF fixture — input has Windows-style CRLF line endings.
+    # IsWhitespace must accept '\r' (raw CR byte embedded in stdlib/lexer.ev).
+    if path.name == "test_crlf.ev":
+        Path("/tmp/evident_crlf_input.txt").write_text("a\r\nb\n")
 
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
