@@ -44,7 +44,45 @@ enum Expr =
     EBinOp(Op, Expr, Expr)
     EForall(String, Expr, Expr)
     EExists(String, Expr, Expr)
+    EMatch(Expr, MatchArmList)
     ENoExpr
+
+-- ── Match patterns (B9) ────────────────────────────────────────
+-- Mirrors runtime/src/parser/patterns.rs's `parse_match_pattern`:
+-- a head Ident is either a constructor (uppercase) with optional
+-- parenthesized binds, or `_` for the wildcard arm.
+--
+-- B9 covers the simplest useful shape: a flat constructor with
+-- single-name binds (no nested patterns yet, no literal-payload
+-- comparisons). The Rust path recurses inside parens — that's a
+-- staged extension later.
+--
+-- MPCtor(name, binds) — constructor pattern `Ctor(b1, b2, …)`.
+-- MPWildcard          — the catch-all `_` arm.
+enum MatchPattern =
+    MPCtor(String, MatchBindList)
+    MPWildcard
+
+-- A single bind inside a constructor pattern. B9 only models the
+-- "bind to a name" form; the `Ok(_)` underscore-skip case is a
+-- later extension that needs an MBWildcard variant (and a match
+-- arm in the translator that drops the bind).
+enum MatchBind =
+    MBName(String)
+
+enum MatchBindList =
+    MBNil
+    MBCons(MatchBind, MatchBindList)
+
+-- A match arm is `pattern ⇒ body`. The body Expr is whatever
+-- expression appears after `⇒`; the test fixture stays at the
+-- atom level (EIdent, EInt) but the type admits any Expr.
+enum MatchArm =
+    MArm(MatchPattern, Expr)
+
+enum MatchArmList =
+    MANil
+    MACons(MatchArm, MatchArmList)
 
 -- A Cons-shaped list of Exprs, used as a work stack when walking
 -- an Expr tree across multiple FSM ticks. See test_ast_walker.ev
@@ -407,3 +445,64 @@ claim ParseMembership
     has_type ∈ Bool = (¬ (type_str = ""))
     ok = (is_id ∧ is_in ∧ has_type)
     item = (ok ? BIMembership(name, TName(type_str)) : BINoItem)
+
+-- ── KwMatch recognizer ─────────────────────────────────────────
+-- A separate-claim Bool-returning recognizer so the per-tick FSM in
+-- the test fixture can ask "is this token a KwMatch?" the same way
+-- it asks IsDotDot / IsIdent. The `matches` form is in the body
+-- (not on a first-line param) to avoid the translator gap noted
+-- above on TokenToOp.
+
+claim IsKwMatch
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches KwMatch)
+
+-- ── Match-expression assembler (B9) ────────────────────────────
+-- Given a `KwMatch` head, a pre-parsed scrutinee Expr, and a
+-- pre-built MatchArmList (in encounter order), assemble an EMatch.
+-- Mirrors the tail of runtime/src/parser/patterns.rs::parse_match:
+-- once the arms vector has at least one arm, the function returns
+-- `Expr::Match(scrutinee, arms)`. The B9 acceptance demands "at
+-- least 2 arms", which we surface via the `has_two_arms` Bool — the
+-- caller is responsible for collecting at least two arms before
+-- invoking this claim; ParseMatch then signals `ok` iff the head
+-- token is right AND the arm-list has length ≥ 2.
+--
+-- This recognizer mirrors ParsePassthrough's shape: it doesn't
+-- consume tokens itself, it just composes pre-extracted parts.
+-- The token-walking FSM lives in the test fixture (where it can
+-- be inspected per-tick), the same way ParseEnum's FSM lives in
+-- test_parser_enum.ev.
+
+-- HasTwoArms: pattern-match the arm list once to check shape
+-- `MACons(_, MACons(_, _))`. Used by ParseMatch to enforce the B9
+-- "at least two arms" acceptance criterion without a recursive
+-- length-counter (which would also tempt us to add Int arithmetic
+-- inside a nested match — unnecessary for the acceptance check).
+
+claim HasTwoArms
+    arms ∈ MatchArmList
+    out ∈ Bool
+    rest ∈ MatchArmList = match arms
+        MACons(_, r) ⇒ r
+        MANil ⇒ MANil
+    head_present ∈ Bool = (arms matches MACons(_, _))
+    rest_present ∈ Bool = (rest matches MACons(_, _))
+    out = (head_present ∧ rest_present)
+
+claim ParseMatch
+    head_tok ∈ Token
+    scrutinee ∈ Expr
+    arms ∈ MatchArmList
+    out ∈ Expr
+    ok ∈ Bool
+
+    is_match ∈ Bool
+    IsKwMatch(t ↦ head_tok, out ↦ is_match)
+
+    has_two_arms ∈ Bool
+    HasTwoArms(arms ↦ arms, out ↦ has_two_arms)
+
+    ok = (is_match ∧ has_two_arms)
+    out = (ok ? EMatch(scrutinee, arms) : ENoExpr)
