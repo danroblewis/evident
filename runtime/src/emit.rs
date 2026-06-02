@@ -61,6 +61,24 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
 
     validate_effects_single_writer(schema)?;
 
+    // Inject `last_results ∈ Seq(Result)` if the schema doesn't already
+    // declare it. This forces the runtime to declare the Result datatype
+    // and the last_results Array in the SMT-LIB output, so the kernel can
+    // assert on them across ticks. Without this, programs that don't
+    // explicitly reference `last_results` would lack the declarations.
+    let mut schema_owned: SchemaDecl;
+    let schema = if has_last_results_decl(schema) {
+        schema
+    } else {
+        schema_owned = schema.clone();
+        schema_owned.body.push(BodyItem::Membership {
+            name: "last_results".to_string(),
+            type_name: "Seq(Result)".to_string(),
+            pins: crate::core::ast::Pins::None,
+        });
+        &schema_owned
+    };
+
     // build_cache asserts every body constraint into a Z3 solver without
     // calling check(). The solver state is exactly what we want to serialize.
     let arith_solver: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
@@ -82,8 +100,16 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
         .map(|(n, t)| format!("(declare-fun _{n} () {t})\n"))
         .collect();
 
-    // Asserts go at the bottom so they reference already-declared names
-    // (in particular `effects__len`, declared by the body).
+    // Z3's solver-to-string elides datatypes / vars that aren't
+    // constrained. The Result enum + last_results array fall into that
+    // bucket in most programs (they're only USED on tick N+1 by the
+    // kernel's assertions). Hand-write them in the prelude.
+    let result_and_last_results = result_and_last_results_decls();
+
+    // For literal-SeqLit bindings we add an explicit `effects__len = N`
+    // assert (the runtime folds the SeqLit length to a literal during
+    // translation, leaving `effects__len` free). For ternary / dynamic
+    // bindings, Z3 derives the length from the body asserts naturally.
     let effects_len = effects_seqlit_length(schema);
     let trailing_asserts = match effects_len {
         Some(n) => format!("(assert (= effects__len {n}))\n"),
@@ -92,7 +118,26 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
 
     let manifest = build_manifest(&state_fields, DEFAULT_MAX_EFFECTS);
 
-    Ok(format!("{manifest}\n{prev_state_decls}{body_smt}{trailing_asserts}"))
+    Ok(format!("{manifest}\n{prev_state_decls}{result_and_last_results}{body_smt}{trailing_asserts}"))
+}
+
+/// Hand-written Result datatype + last_results array decl. Mirrors the
+/// shape stdlib/kernel.ev defines for `enum Result`.
+///
+/// We always emit these, even for programs that don't touch last_results,
+/// because the kernel always wires it through (asserting length 0 on
+/// tick 0 and the prior tick's results on subsequent ticks). The runtime's
+/// auto-generated decls would skip them when unconstrained, hence this
+/// hand-write.
+fn result_and_last_results_decls() -> String {
+    "(declare-datatypes ((Result 0)) ((\
+      (NoResult) \
+      (IntResult (IntResult__f0 Int)) \
+      (StringResult (StringResult__f0 String)) \
+      (RealResult (RealResult__f0 Real)) \
+      (EofResult) \
+      (ErrorResult (ErrorResult__f0 String)))))\n\
+     (declare-fun last_results () (Array Int Result))\n".to_string()
 }
 
 /// Pull the integer length of the SeqLit constraint on `effects`. The validator
@@ -110,6 +155,12 @@ fn effects_seqlit_length(schema: &SchemaDecl) -> Option<usize> {
         }
     }
     None
+}
+
+fn has_last_results_decl(schema: &SchemaDecl) -> bool {
+    schema.body.iter().any(|item| matches!(
+        item, BodyItem::Membership { name, .. } if name == "last_results"
+    ))
 }
 
 /// Z3's solver-to-string emits accessors like `(f0 Int)` repeated across variants
@@ -323,32 +374,40 @@ fn ensure_is_first_tick_decl(s: &str) -> String {
 
 // ── Validation: single SeqLit-producer for `effects` ───────────────
 
-/// Count the body constraints of the shape `effects = <SeqLit>`. After
-/// the parser/desugar passes, `++` chains have been flattened by
-/// `desugar_seq_concat`, so any `effects = a ++ b ++ ⟨c⟩` becomes one
-/// `effects = <SeqLit>` constraint.
+/// Count constraints binding `effects`. Single-writer enforcement: at most
+/// one UNCONDITIONAL `effects = <expr>` constraint. Constraints guarded by
+/// `cond ⇒ effects = <expr>` are skipped — they're per-tick dispatch and
+/// the user is responsible for keeping the guards mutually exclusive.
+///
+/// Multi-writer conjunction (unconditional `effects = ⟨a⟩ ∧ effects = ⟨b⟩`)
+/// is still rejected as a UNSAT trap.
 fn validate_effects_single_writer(schema: &SchemaDecl) -> Result<(), EmitError> {
-    let mut seqlit_writers = 0;
-    let mut other_writers = 0;
+    let mut unguarded = 0;
+    let mut any_writer = 0;
     for item in &schema.body {
-        if let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item {
-            if let Expr::Identifier(name) = lhs.as_ref() {
-                if name == "effects" {
-                    match rhs.as_ref() {
-                        Expr::SeqLit(_) => seqlit_writers += 1,
-                        _ => other_writers += 1,
+        if let BodyItem::Constraint(e) = item {
+            if let Expr::Binary(BinOp::Eq, lhs, _) = e {
+                if let Expr::Identifier(name) = lhs.as_ref() {
+                    if name == "effects" {
+                        unguarded += 1;
+                        any_writer += 1;
+                    }
+                }
+            } else if let Expr::Binary(BinOp::Implies, _, consequent) = e {
+                if let Expr::Binary(BinOp::Eq, lhs, _) = consequent.as_ref() {
+                    if let Expr::Identifier(name) = lhs.as_ref() {
+                        if name == "effects" {
+                            any_writer += 1;
+                        }
                     }
                 }
             }
         }
     }
-    if other_writers > 0 && seqlit_writers == 0 {
-        return Err(EmitError::EffectsNotSeqLit { claim: schema.name.clone() });
-    }
-    if seqlit_writers != 1 {
+    if unguarded > 1 || any_writer == 0 {
         return Err(EmitError::EffectsWriterCount {
             claim: schema.name.clone(),
-            count: seqlit_writers + other_writers,
+            count: any_writer,
         });
     }
     Ok(())

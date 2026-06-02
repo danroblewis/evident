@@ -41,6 +41,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     Z3_del_config(cfg);
 
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
+    let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
 
     const TICK_LIMIT: usize = 100_000;
@@ -55,6 +56,12 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                     full.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
                 }
             }
+        }
+        // last_results: assert length + per-index value. On tick 0 the array
+        // is empty (length 0); subsequent ticks carry the prior tick's results.
+        full.push_str(&format!("(assert (= last_results__len {}))\n", prev_results.len()));
+        for (i, r) in prev_results.iter().enumerate() {
+            full.push_str(&format!("(assert (= (select last_results {i}) {}))\n", r.smtlib()));
         }
         if is_first {
             full.push_str("(assert is_first_tick)\n");
@@ -121,6 +128,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         let int_sort = Z3_mk_int_sort(ctx);
 
         let mut exit_code: Option<u8> = None;
+        let mut new_results: Vec<Res> = Vec::new();
         for i in 0..effects_len {
             let i_ast = Z3_mk_int64(ctx, i as i64, int_sort);
             let select_ast = Z3_mk_select(ctx, effects_ast, i_ast);
@@ -130,8 +138,8 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                 return Err(format!("model eval failed for effects[{i}]"));
             }
             match dispatch_effect(ctx, eval_out)? {
-                EffectOutcome::Continue => {}
-                EffectOutcome::Exit(code) => { exit_code = Some(code); break; }
+                EffectOutcome::Continue(r) => { new_results.push(r); }
+                EffectOutcome::Exit(code)  => { exit_code = Some(code); break; }
             }
         }
 
@@ -153,8 +161,9 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             return Ok(1);
         }
 
-        prev_state = new_state.into_iter().map(Some).collect();
-        is_first = false;
+        prev_state   = new_state.into_iter().map(Some).collect();
+        prev_results = new_results;
+        is_first     = false;
     }
 
     Z3_del_context(ctx);
@@ -163,8 +172,34 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
 // ── Effect dispatch ─────────────────────────────────────────────
 
+#[derive(Debug, Clone)]
+enum Res {
+    No,
+    Int(i64),
+    Str(String),
+    Real(f64),
+    Eof,
+    Error(String),
+}
+
+impl Res {
+    /// Emit as SMT-LIB constructor expression matching emit.rs's Result decl.
+    fn smtlib(&self) -> String {
+        match self {
+            Res::No        => "NoResult".to_string(),
+            Res::Eof       => "EofResult".to_string(),
+            Res::Int(n)    => format!("(IntResult {})",
+                if *n >= 0 { n.to_string() } else { format!("(- {})", -n) }),
+            Res::Str(s)    => format!("(StringResult \"{}\")", s.replace('"', "\"\"")),
+            Res::Real(r)   => format!("(RealResult {})",
+                if *r >= 0.0 { r.to_string() } else { format!("(- {})", -r) }),
+            Res::Error(s)  => format!("(ErrorResult \"{}\")", s.replace('"', "\"\"")),
+        }
+    }
+}
+
 enum EffectOutcome {
-    Continue,
+    Continue(Res),
     Exit(u8),
 }
 
@@ -182,7 +217,7 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let arg0 = Z3_get_app_arg(ctx, app, 0);
             let s = decode_string_literal(ctx, arg0)?;
             println!("{s}");
-            Ok(EffectOutcome::Continue)
+            Ok(EffectOutcome::Continue(Res::No))
         }
         "Print" => {
             let arg0 = Z3_get_app_arg(ctx, app, 0);
@@ -190,7 +225,7 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             print!("{s}");
             use std::io::Write;
             let _ = std::io::stdout().flush();
-            Ok(EffectOutcome::Continue)
+            Ok(EffectOutcome::Continue(Res::No))
         }
         "Exit" => {
             let arg0 = Z3_get_app_arg(ctx, app, 0);
@@ -198,13 +233,47 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let code = code.clamp(0, 255) as u8;
             Ok(EffectOutcome::Exit(code))
         }
-        "Time" | "ReadLine" | "ReadFile" | "WriteFile" => {
-            // Built-in stubs (iter 2.3 demotes these to stdlib sugar over LibCall).
-            eprintln!("kernel: effect `{name}` not yet implemented; skipping");
-            Ok(EffectOutcome::Continue)
+        "Time" => {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            Ok(EffectOutcome::Continue(Res::Int(ms)))
+        }
+        "ReadLine" => {
+            use std::io::BufRead;
+            let stdin = std::io::stdin();
+            let mut line = String::new();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) => Ok(EffectOutcome::Continue(Res::Eof)),
+                Ok(_) => {
+                    if line.ends_with('\n') { line.pop(); }
+                    if line.ends_with('\r') { line.pop(); }
+                    Ok(EffectOutcome::Continue(Res::Str(line)))
+                }
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("read_line: {e}")))),
+            }
+        }
+        "ReadFile" => {
+            let arg0 = Z3_get_app_arg(ctx, app, 0);
+            let path = decode_string_literal(ctx, arg0)?;
+            match std::fs::read_to_string(&path) {
+                Ok(s)  => Ok(EffectOutcome::Continue(Res::Str(s))),
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("read_file({path}): {e}")))),
+            }
+        }
+        "WriteFile" => {
+            let arg0 = Z3_get_app_arg(ctx, app, 0);
+            let arg1 = Z3_get_app_arg(ctx, app, 1);
+            let path = decode_string_literal(ctx, arg0)?;
+            let contents = decode_string_literal(ctx, arg1)?;
+            match std::fs::write(&path, contents) {
+                Ok(())  => Ok(EffectOutcome::Continue(Res::No)),
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("write_file({path}): {e}")))),
+            }
         }
         "LibCall" => {
-            // (LibCall lib fn args) — three payload fields.
             let lib_ast  = Z3_get_app_arg(ctx, app, 0);
             let fn_ast   = Z3_get_app_arg(ctx, app, 1);
             let args_ast = Z3_get_app_arg(ctx, app, 2);
@@ -212,19 +281,13 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let func = decode_string_literal(ctx, fn_ast)?;
             let args = decode_libargs(ctx, args_ast)?;
             match crate::libcall::call(&lib, &func, &args) {
-                Ok(_ret) => {
-                    // last_results round-trip lands in iter 2.2 — we silently drop the return.
-                    Ok(EffectOutcome::Continue)
-                }
-                Err(e) => {
-                    eprintln!("kernel: LibCall({lib}, {func}, …) failed: {e}");
-                    Ok(EffectOutcome::Continue)
-                }
+                Ok(ret) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Err(e)  => Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}")))),
             }
         }
         other => {
             eprintln!("kernel: unknown effect variant `{other}`; skipping");
-            Ok(EffectOutcome::Continue)
+            Ok(EffectOutcome::Continue(Res::Error(format!("unknown effect variant `{other}`"))))
         }
     }
 }
