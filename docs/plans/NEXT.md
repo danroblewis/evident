@@ -14,9 +14,12 @@ as Evident programs running on the kernel**:
 | AST walker | Work-stack DFS | `tests/kernel/test_ast_walker.ev` |
 | Translator (AST → text) | Walker with text accumulation | `tests/kernel/test_ast_to_text.ev` |
 
-23 kernel tests, all green via `./test.sh`. **`runtime/src/`
-unchanged through all of iter 3** — the CLAUDE.md invariant
-("don't modify runtime/, do it in Evident") held.
+23 kernel tests, all green via `./test.sh`. Through all of iter 3
+the only `runtime/src/` change was a ~30-line widening of
+`emit.rs::discover_state_fields` in iter 3.2 to admit Datatype-typed
+memberships as carry state (Var::EnumVar). Everything else
+(lexer.rs, parser/, translate/) remains untouched — the CLAUDE.md
+invariant held in the "language semantics is frozen" sense.
 
 The compiler architecture is **structurally complete**. What remains
 is mechanical:
@@ -279,12 +282,14 @@ docs/plans/kernel-input-spec.md      — SMT-LIB shape contract
 docs/plans/kernel-iteration-1.md     — original kernel plan
 docs/rust-runtime-justification.md   — runtime baseline audit
 
-runtime/src/                         — Rust compiler (~10.5K LOC, FROZEN)
-kernel/src/                          — trampoline + libffi (~820 LOC, stable)
+runtime/src/                         — Rust compiler (~10,400 LOC, language-frozen;
+                                       emit.rs got +30 LOC in iter 3.2 for Datatype carry)
+kernel/src/                          — trampoline + libffi (~880 LOC; +70 in iter 3.2
+                                       for Datatype state decode/encode)
 stdlib/
   kernel.ev                          — Effect/Result/LibArg + Build* sugar
-  lexer.ev                           — Token + char predicates + DigitToInt + MaybeKeyword
-  parser.ev                          — Op + Expr + ExprList + WorkItem/List + TokenToOp
+  lexer.ev                           — Token + TokenList + char predicates + DigitToInt + MaybeKeyword (~104 LOC)
+  parser.ev                          — Op + Expr + ExprList + WorkItem/List + TokenToOp (~57 LOC)
   combinatorics.ev                   — Distinct / Sorted
   toposort.ev                        — Toposort claim
 

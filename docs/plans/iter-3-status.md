@@ -194,8 +194,9 @@ architectural moves.
 ## Code state
 
 ```
-runtime/src/        ~10,500 LOC (UNCHANGED in iter 3 — invariant held)
-kernel/src/         ~820 LOC    (+70 from iter 3.2 Datatype carry)
+runtime/src/        ~10,400 LOC (emit.rs got +30 in iter 3.2 for Datatype state-field
+                                  type widening; language semantics unchanged)
+kernel/src/         ~880 LOC    (+70 from iter 3.2 Datatype carry)
 stdlib/             ~480 LOC    (~160 added in iter 3.1-3.13)
   ├── combinatorics.ev
   ├── kernel.ev
