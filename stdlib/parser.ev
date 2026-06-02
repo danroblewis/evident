@@ -21,6 +21,13 @@ enum Expr =
     EBinOp(Op, Expr, Expr)
     ENoExpr
 
+-- A Cons-shaped list of Exprs, used as a work stack when walking
+-- an Expr tree across multiple FSM ticks. See test_ast_walker.ev
+-- for the depth-first walker pattern.
+enum ExprList =
+    ELNil
+    ELCons(Expr, ExprList)
+
 -- ── Token → Op classifier ───────────────────────────────────────
 -- For a parser that handles binop tokens, this gives the operator
 -- (or OpPlus as a placeholder if the token isn't an operator).
