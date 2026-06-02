@@ -84,6 +84,75 @@ eliminated.
 
 ---
 
+## UPDATE (task #12): pre-loop `.simplify()` added; A confirmed default; B added env-selectable
+
+Two pin mechanisms now live in `kernel/src/tick.rs`, chosen at runtime by
+`EVIDENT_PIN_MECH`:
+
+- **A (default; unset or `=A`)** — "cached-ASTs + a single pre-loop
+  `.simplify()`". The body is parsed once, each assertion is run through
+  `Z3_simplify` ONCE before the tick loop (architecture-invariants.md §4
+  permits exactly one pre-loop simplify), and the simplified ASTs are
+  re-asserted into a *fresh* solver each tick alongside the pin string.
+  This is the landed cached-ASTs form plus the now-explicit setup
+  simplify.
+- **B (`=B`)** — "check-with-assumptions", the legacy FsmRunner's
+  `s.check(*pins)` shape (legacy-python/docs/runtime-architecture.md
+  §"Architecture A is a library pattern on Architecture B"). ONE
+  persistent solver holds the simplified body for the program's life;
+  each tick passes the pin ASTs as assumptions to
+  `Z3_solver_check_assumptions`. ~60 LOC over A; the tick loop forks only
+  at `apply_pins_a()` / `apply_pins_b()`.
+
+Note on history: this branch's starting point (commit d11eaa9) was
+already the cached-ASTs mechanism, *not* task #11's E (`Z3_substitute`
+into the body) — E was never merged here, so there was no substitution
+path to remove. Task #12 completed A by adding the pre-loop simplify and
+added B alongside it.
+
+### Benchmark: A vs B on a real, growing-datatype-state body
+
+The task #11 benchmark used a tiny fixture and showed A/D/E within ~1 ms
+— no signal. Task #12 re-measured on a REAL multi-tick body: the emitted
+`test_consolidated_lexer` (`main`), a ~13-tick lexer FSM with 40 state
+fields and a `TokenList` enum that *grows every tick* — the shape that
+dominates self-hosting workloads. It was padded with real `declare-fun` +
+equality asserts (the exact shape `evident emit` produces) to three total
+sizes. Tick count is constant across pad sizes, so ms/tick growth is the
+signal. Min wall-clock over 5 reps; `kernel/target/release/kernel`.
+
+```
+body size →             16 KB     64 KB    256 KB
+A (cached+simplify):     2.15      7.10     27.97   ms/tick
+B (check_assumpt):     946.90   1067.31   1347.71   ms/tick
+ratio (B/A):           440.42    150.33     48.18
+```
+
+**Reading.** B is pinned near ~1 s/tick across all body sizes: a
+persistent solver in incremental mode forgoes the one-shot preprocessing
+that the growing `TokenList` pins need each tick — the identical root
+cause that made the push/pop form time out (above). The ratio *shrinks*
+with body size only because A's per-tick cost grows (fresh-solver one-shot
+re-solve + decl-preamble re-parse are O(body), not the idealized O(K)),
+while B's is already saturated by the datatype-state penalty. In absolute
+terms A stays in single-to-tens of ms and B never drops below ~950 ms.
+
+**Recommendation: A stays the default.** Per the user's stated tolerance
+("performance is OK as long as it works and is correct") and "recommend by
+growth rate," A is correct on both counts: it is two-to-three orders of
+magnitude faster on the representative datatype-heavy body, and its growth
+is a gentle low-ms slope versus B's saturated ~1 s/tick floor. B is
+retained behind `EVIDENT_PIN_MECH=B` for future measurement (e.g. on
+primitive-only state where the incremental penalty may not apply), not as
+a default.
+
+The user's task #12 quote that authorised this: *"At least test 2 of them
+against each other, but yes we need a large model to be tested. It looks
+like A, cached-ASTs + simplify, actually did better?"* — confirmed: A did
+better, decisively.
+
+---
+
 ## Original proposal (for reference)
 
 **Status:** PROPOSAL — awaiting user approval per the `kernel/`

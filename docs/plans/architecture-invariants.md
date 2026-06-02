@@ -24,7 +24,15 @@ ticks, the Z3 model lifecycle, or FTI bodies.
    loop IS allowed and desired** — that's setup work, not tick
    work. The kernel should simplify the body once after parsing,
    before any tick runs. The constraint above is about *per-tick*
-   simplification.
+   simplification. **IMPLEMENTED** (task #12): `kernel/src/tick.rs`
+   runs `Z3_simplify` over each cached body assertion exactly once,
+   before the loop; the simplified ASTs are what every tick re-uses.
+   No per-tick simplify is introduced. The kernel ships two pin
+   mechanisms, A (default) and B (`EVIDENT_PIN_MECH=B`,
+   check-with-assumptions); a real-body benchmark (datatype-heavy
+   lexer, 16–256 KB) found A 48–440× faster, so A is the default.
+   See `docs/plans/kernel-fix-incremental-solving.md` §"UPDATE
+   (task #12)".
 
 Implication: subordinate sessions designing tick bodies must NOT
 introduce constraints that *vary* in shape per tick. Only the values
