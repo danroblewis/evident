@@ -34,28 +34,6 @@ pub(in crate::translate) fn inline_body_items(
     inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, None)
 }
 
-/// Like `inline_body_items` but tags each assertion with a tracker for `get_unsat_core`.
-/// `trackers[i]` → `items[i]`; tail items are untracked if fewer trackers are supplied.
-#[allow(clippy::too_many_arguments)]
-pub(in crate::translate) fn inline_body_items_tracked(
-    items: &[BodyItem],
-    env: &mut HashMap<String, Var<'static>>,
-    solver: &Solver<'static>,
-    schemas: &HashMap<String, SchemaDecl>,
-    ctx: &'static Context,
-    registry: &DatatypeRegistry,
-    enums: Option<&EnumRegistry>,
-    visited: &mut HashMap<String, usize>,
-    trackers: &[Bool<'static>],
-) {
-    for (idx, item) in items.iter().enumerate() {
-        let tracker = trackers.get(idx);
-        let slice = std::slice::from_ref(item);
-        inline_body_items_guarded(
-            slice, env, solver, schemas, ctx, registry, enums, visited, &None, tracker,
-        );
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn inline_body_items_guarded(

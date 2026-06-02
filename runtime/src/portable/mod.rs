@@ -1,7 +1,6 @@
 //! Self-hosted runtime passes: Rust entry points delegating to Evident
 //! `stdlib/passes/*.ev`. Steady-state cost is a JIT call + marshaling.
 
-use std::path::Path;
 
 use crate::core::Value;
 use crate::runtime::EvidentRuntime;

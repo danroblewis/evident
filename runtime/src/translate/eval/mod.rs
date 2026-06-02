@@ -22,7 +22,6 @@ use decode::extract_enum_value;
 
 pub use cached::{build_cache, run_cached};
 pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
-pub(crate) use decode::extract_binding;
 
 // Preserve pub(super) visibility for translate::extract's composite-Seq path.
 pub(super) use decode::extract_seq_enum;

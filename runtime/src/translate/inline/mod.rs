@@ -10,4 +10,4 @@ mod rewrite;
 mod subschema;
 mod walk;
 
-pub(in crate::translate) use walk::{inline_body_items, inline_body_items_tracked};
+pub(in crate::translate) use walk::inline_body_items;

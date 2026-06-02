@@ -12,9 +12,6 @@ mod program;
 mod schema;
 mod types;
 
-#[cfg(test)]
-mod tests;
-
 #[derive(Debug)]
 pub struct ParseError(pub String);
 

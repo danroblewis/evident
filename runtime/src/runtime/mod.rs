@@ -20,7 +20,7 @@ mod nested;
 pub use crate::core::Value;
 #[allow(unused_imports)]
 pub use crate::core::{QueryResult, RuntimeError};
-pub use stats::{FunctionizeStats, PerClaimStats};
+pub use stats::FunctionizeStats;
 pub use desugar::SystemBoundary;
 pub use nested::take_percolated_effects;
 

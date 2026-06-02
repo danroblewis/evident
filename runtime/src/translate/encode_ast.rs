@@ -1,9 +1,8 @@
 //! Encode a Rust `Program` AST as a Z3 `Datatype` matching `stdlib/ast.ev`.
 //! Lists → Cons-chains; TraceDecl/ShaderDecl silently skipped.
 
-use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Datatype, Int, Real, String as Z3Str};
-use z3::{Context, DatatypeSort};
+use z3::Context;
 
 use crate::core::ast::*;
 use crate::core::EnumRegistry;
@@ -486,7 +485,6 @@ fn encode_bind_list<'ctx>(
     ctx: &'ctx Context,
     enums: &EnumRegistry,
 ) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    use crate::core::ast::MatchPattern;
     let helper = crate::core::internal_cons_helper_name("MatchBind");
     let empty  = "__Empty_MatchBind";
     let cell   = "__Cell_MatchBind";
