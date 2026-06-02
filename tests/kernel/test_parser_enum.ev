@@ -1,0 +1,135 @@
+-- Enum-declaration parser (Phase B6).
+--
+-- Consumes a hardcoded TokenList for `enum Color = Red | Green | Blue`
+-- and builds an EnumDeclAst value while emitting per-tick diagnostics.
+--
+-- Input TokenList (8 tokens):
+--   ⟨KwEnum, Ident("Color"), Eq,
+--     Ident("Red"), Pipe, Ident("Green"), Pipe, Ident("Blue")⟩
+--
+-- The parser FSM uses a `phase` Int to disambiguate Ident occurrences:
+--   1 = expecting KwEnum       (only the first token)
+--   2 = expecting name Ident   (the enum's name)
+--   3 = expecting Eq           (the = after the name)
+--   4 = expecting variant Ident
+--   5 = expecting Pipe or end-of-list
+--
+-- Variants are prepended onto an EnumVariantList accumulator (so they
+-- end up in reverse encounter order in the carried state). The final
+-- printed summary shows them in that reverse order. A "reverse the
+-- list at the end" pass is a future polish step; for B6 the goal is
+-- proving the parser correctly *recognizes* the structure.
+--
+-- expect: stdout = "[parse-enum start]"
+-- expect: stdout = "saw enum"
+-- expect: stdout = "name=Color"
+-- expect: stdout = "saw ="
+-- expect: stdout = "variant=Red"
+-- expect: stdout = "saw |"
+-- expect: stdout = "variant=Green"
+-- expect: stdout = "saw |"
+-- expect: stdout = "variant=Blue"
+-- expect: stdout = "done; name=Color count=3"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- Hardcoded input token list for `enum Color = Red | Green | Blue`.
+    initial_list ∈ TokenList = TLCons(KwEnum,
+        TLCons(Ident("Color"),
+        TLCons(Eq,
+        TLCons(Ident("Red"),
+        TLCons(Pipe,
+        TLCons(Ident("Green"),
+        TLCons(Pipe,
+        TLCons(Ident("Blue"), TLNil))))))))
+
+    list   ∈ TokenList
+    _list  ∈ TokenList
+    phase  ∈ Int
+    _phase ∈ Int
+    name   ∈ String
+    _name  ∈ String
+    variants  ∈ EnumVariantList
+    _variants ∈ EnumVariantList
+    vcount  ∈ Int
+    _vcount ∈ Int
+
+    -- Head + tail of the carried token list.
+    head_tok ∈ Token = match _list
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    next_list ∈ TokenList = match _list
+        TLCons(_, tail) ⇒ tail
+        TLNil ⇒ TLNil
+
+    is_nil ∈ Bool = match _list
+        TLNil ⇒ true
+        _ ⇒ false
+
+    -- Token classification.
+    is_kw_enum ∈ Bool = (head_tok matches KwEnum)
+    is_ident   ∈ Bool = (head_tok matches Ident(_))
+    is_eq_tok  ∈ Bool = (head_tok matches Eq)
+    is_pipe    ∈ Bool = (head_tok matches Pipe)
+
+    ident_str ∈ String = match head_tok
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    -- Phase dispatch: what phase we were IN this tick (driven by _phase),
+    -- and what phase we move to NEXT (driven by what we consumed).
+    in_phase1 ∈ Bool = (_phase = 1)
+    in_phase2 ∈ Bool = (_phase = 2)
+    in_phase3 ∈ Bool = (_phase = 3)
+    in_phase4 ∈ Bool = (_phase = 4)
+    in_phase5 ∈ Bool = (_phase = 5)
+
+    -- Phase transitions:
+    --   1 + KwEnum → 2
+    --   2 + Ident  → 3 (and record name)
+    --   3 + Eq     → 4
+    --   4 + Ident  → 5 (and prepend variant)
+    --   5 + Pipe   → 4
+    next_phase ∈ Int = (in_phase1 ∧ is_kw_enum ? 2
+        : (in_phase2 ∧ is_ident ? 3
+        : (in_phase3 ∧ is_eq_tok ? 4
+        : (in_phase4 ∧ is_ident ? 5
+        : (in_phase5 ∧ is_pipe ? 4
+        : _phase)))))
+
+    -- Build variants list — prepend each new variant.
+    new_variant ∈ EnumVariantDecl = EVDecl(ident_str)
+    push_variant ∈ Bool = (in_phase4 ∧ is_ident)
+    new_variants ∈ EnumVariantList = (push_variant
+        ? EVCons(new_variant, _variants)
+        : _variants)
+
+    -- Name capture only fires when in phase 2 with Ident.
+    capture_name ∈ Bool = (in_phase2 ∧ is_ident)
+    next_name ∈ String = (capture_name ? ident_str : _name)
+
+    -- State carry.
+    list     = (is_first_tick ? initial_list : next_list)
+    phase    = (is_first_tick ? 1 : next_phase)
+    name     = (is_first_tick ? "" : next_name)
+    variants = (is_first_tick ? EVNil : new_variants)
+    vcount   = (is_first_tick ? 0 : (push_variant ? _vcount + 1 : _vcount))
+
+    -- Per-tick diagnostic label.
+    label ∈ String = (is_first_tick ? "[parse-enum start]"
+        : (is_nil ? ("done; name=" ++ _name ++ " count=" ++ str_from_int(_vcount))
+        : (in_phase1 ∧ is_kw_enum ? "saw enum"
+        : (in_phase2 ∧ is_ident ? ("name=" ++ ident_str)
+        : (in_phase3 ∧ is_eq_tok ? "saw ="
+        : (in_phase4 ∧ is_ident ? ("variant=" ++ ident_str)
+        : (in_phase5 ∧ is_pipe ? "saw |"
+        : "?")))))))
+
+    effects ∈ Seq(Effect) = (is_first_tick
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩
+        : (is_nil
+            ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+            : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))

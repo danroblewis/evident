@@ -55,3 +55,34 @@ claim TokenToOp
     is_eq   ∈ Bool = (t matches Eq)
     o = (is_plus ? OpPlus : (is_eq ? OpEq : OpPlus))
     is_binop = (is_plus ∨ is_eq)
+
+-- ── Enum declaration AST (Phase B6) ─────────────────────────────
+-- Mirrors `EnumDecl { name, variants: Vec<EnumVariant> }` from
+-- runtime/src/core/ast.rs. For B6 we only handle nullary variants
+-- (no payload types). A variant with payloads is a future extension:
+-- `EVDecl(String, TypeList)` instead of `EVDecl(String)`.
+--
+-- Concrete example:
+--   `enum Color = Red | Green | Blue` →
+--   EnumD("Color",
+--     EVCons(EVDecl("Red"),
+--       EVCons(EVDecl("Green"),
+--         EVCons(EVDecl("Blue"), EVNil))))
+--
+-- Variant-list order matches source order (variants are prepended
+-- via the cons-cell shape, so the parser FSM either reverses at
+-- the end or emits them in reverse from the start; we choose the
+-- latter — the parser builds variant cells in encounter order with
+-- a tail-extending pattern via repeated reconstruction).
+
+enum EnumVariantDecl =
+    EVDecl(String)
+    EVNoVariant
+
+enum EnumVariantList =
+    EVNil
+    EVCons(EnumVariantDecl, EnumVariantList)
+
+enum EnumDeclAst =
+    EnumD(String, EnumVariantList)
+    ENoEnum
