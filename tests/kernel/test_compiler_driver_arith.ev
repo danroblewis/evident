@@ -1,46 +1,30 @@
--- compiler/compiler.ev — the self-hosted compiler driver.
+-- Grammar wave 1, shape 2: memberships with EXPRESSION pins (a literal
+-- pin and a one-level arithmetic binop pin).
 --
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
+-- Same generalised, lex → reverse → walk driver as
+-- test_compiler_driver_multi_member.ev, but here each membership carries
+-- an `= <expr>` pin. MembershipStep composes compiler/translate_arith.ev
+-- (ArithExprSmtlib / AtomSmtlib) to translate the RHS, so the literal pin
+-- `= 1` emits `(assert (= x 1))` and the binop pin `= x + 2` emits
+-- `(assert (= y (+ x 2)))`. Nothing is hardcoded — the String is lexed
+-- character-by-character. See docs/plans/grammar-wave1.md.
 --
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one membership / tick
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
+-- Source: "claim bar\n    x ∈ Int = 1\n    y ∈ Int = x + 2\n"  →
+--   (declare-fun x () Int)
+--   (assert (= x 1))
+--   (declare-fun y () Int)
+--   (assert (= y (+ x 2)))
 --
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — drop the leading `<kw> Ident` claim head, then walk
---                 the forward token list ONE MEMBERSHIP PER TICK with
---                 parse_body.ev's MembershipStep, accumulating the
---                 declare/assert lines (`out`) and the manifest
---                 state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: assemble the manifest
---                 header + body and `puts` the .smt2, then Exit(0).
---
--- Grammar wave 1 scope (docs/plans/grammar-wave1.md): a claim head plus
--- N memberships, each optionally pinned with `= <atom>` or
--- `= <atom> <op> <atom>` (one-level integer arithmetic). Enum / match /
--- quantifier / subclaim / `..` / Seq-carry / generics are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
-
+-- expect: stdout = ";; manifest: state-fields = x:Int y:Int"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun x () Int)"
+-- expect: stdout = "(assert (= x 1))"
+-- expect: stdout = "(declare-fun y () Int)"
+-- expect: stdout = "(assert (= y (+ x 2)))"
+-- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -49,18 +33,12 @@ import "compiler/translate_arith.ev"
 import "compiler/parse_body.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input ∈ String = "claim bar\n    x ∈ Int = 1\n    y ∈ Int = x + 2\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -118,8 +96,7 @@ claim main
             : (char_only ? TLCons(op_tok, _tokens)
             : _tokens))))))
 
-    has_input ∈ Bool = (#input > 0)
-    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ has_input)
+    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬is_first_tick)
 
     -- ── PHASE control (0 lex · 1 reverse · 2 parse · 3 emit) ──────
     phase  ∈ Int
@@ -206,7 +183,6 @@ claim main
         ++ ";; manifest: max-effects = 0")
     smtlib ∈ String = manifest ++ "\n" ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
-        : (emit_now
-            ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+    effects ∈ Seq(Effect) = (emit_now
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
