@@ -78,6 +78,8 @@ def run_one(path: Path) -> tuple[bool, str]:
         Path("/tmp/evident_lex_input.txt").write_text("(7+3)\n")
     if path.name == "test_multichar_ident.ev":
         Path("/tmp/evident_multichar_input.txt").write_text("abc def\n")
+    if path.name == "test_multichar_int.ev":
+        Path("/tmp/evident_digits_input.txt").write_text("12+345\n")
 
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
