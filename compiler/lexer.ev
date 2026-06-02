@@ -1,4 +1,4 @@
--- stdlib/lexer.ev — Self-hosted Evident lexer (iter 3.1 toy version).
+-- WIP: replaces bootstrap/runtime/src/lexer.rs. STATUS: token enum + per-char classifier; not yet driven on real .ev files.
 --
 -- Tokens for a minimal subset of Evident:
 --   Ident(s)  — a bare-identifier run

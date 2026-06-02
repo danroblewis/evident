@@ -1,4 +1,4 @@
--- stdlib/translate_record.ev — C9 record lift translator.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/record_lift.rs. STATUS: C9 record-literal + record-lift translation; per-pass fixture only.
 --
 -- Mirrors runtime/src/translate/exprs/record_lift.rs at the AST-→
 -- SMT-LIB-text layer. Two lift forms are surfaced:
@@ -17,7 +17,7 @@
 -- caller's FSM walks longer lists piece-by-piece. The Phase C9
 -- acceptance is the shape sketch, not arbitrary arity.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── RecordField + RecordFieldList ──────────────────────────────
 -- A record field carries the field name (used as the Z3 accessor

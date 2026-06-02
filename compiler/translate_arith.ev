@@ -1,4 +1,4 @@
--- stdlib/translate_arith.ev — Phase C4: SMT-LIB arithmetic translation.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/scalar.rs. STATUS: C4 integer-arithmetic binops → SMT-LIB prefix form; per-pass fixture only.
 --
 -- Mirrors the integer-arithmetic arm of
 -- runtime/src/translate/exprs/scalar.rs: a binop `EBinOp(op, l, r)`
@@ -19,7 +19,7 @@
 -- caller's FSM, the same way test_ast_to_text.ev / test_translate_eq_ident
 -- compose the C-phase atomic renderers into a tree walk).
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- AtomSmtlib: render an EInt or EIdent leaf to its SMT-LIB token.
 --   EInt(n)   → str_from_int(n)   (Z3 integer literal)

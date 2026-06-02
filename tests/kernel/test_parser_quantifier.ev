@@ -21,7 +21,7 @@
 -- expect: stdout = "tag=forall"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     -- Token-list shape: ⟨OpForall, Ident("x"), OpIn, Ident("items"), Colon⟩

@@ -34,7 +34,7 @@
 -- expect: stdout = "(+ (+ 1 2) 3)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     initial_expr ∈ Expr = EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))

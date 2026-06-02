@@ -1,4 +1,4 @@
--- stdlib/translate_string.ev — C10: SMT-LIB string operations.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/string_ops.rs. STATUS: C10 string operators → Z3 str.* prefix forms; per-pass fixture only.
 --
 -- Mirrors `runtime/src/translate/exprs/string_ops.rs`, which maps
 -- Evident string operators to Z3's string theory (`(str.*)` forms).

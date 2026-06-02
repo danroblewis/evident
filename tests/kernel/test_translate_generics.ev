@@ -27,7 +27,7 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_generics.ev"
+import "compiler/translate_generics.ev"
 
 claim main
     -- Case A: `Seq(T)` with T ↦ Rect → `Seq(Rect)`.

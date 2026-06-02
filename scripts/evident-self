@@ -7,11 +7,11 @@
 #   evident-self emit <file.ev> <claim> -o <out.smt2>
 #
 # is satisfied by an Evident program (the "pipeline driver") that
-# imports stdlib/lexer.ev + parser.ev + translate_*.ev, ingests
+# imports compiler/lexer.ev + parser.ev + translate_*.ev, ingests
 # <file.ev> as a string at startup, and writes a runnable .smt2 to
 # stdout — running entirely on the kernel, no Rust runtime calls.
 #
-# Today only stdlib/lexer.ev and stdlib/parser.ev exist; the translate_*.ev
+# Today only compiler/lexer.ev and compiler/parser.ev exist; the translate_*.ev
 # files (Phase C output) and the wiring driver (Phase D2) have not landed.
 # So this wrapper currently:
 #

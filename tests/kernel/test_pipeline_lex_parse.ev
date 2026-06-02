@@ -45,8 +45,8 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/lexer.ev"
-import "stdlib/parser.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
 
 claim main
     -- Hardcoded source (no file I/O — this is a pipeline smoke test,

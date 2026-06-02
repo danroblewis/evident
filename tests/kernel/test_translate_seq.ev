@@ -14,7 +14,7 @@
 -- expect: stdout = "(seq.++ (seq.unit 1) (seq.unit 2))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_seq.ev"
+import "compiler/translate_seq.ev"
 
 claim main
     -- ── #xs → (seq.len xs) ──────────────────────────────────────

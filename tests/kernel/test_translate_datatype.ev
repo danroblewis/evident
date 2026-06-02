@@ -36,7 +36,7 @@
 -- expect: stdout = "(declare-datatypes ((Color 0)) (((Red) (Green) (Blue))))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate.ev"
+import "compiler/translate.ev"
 
 claim main
     -- Hardcoded EnumDeclAst for `enum Color = Red | Green | Blue`.

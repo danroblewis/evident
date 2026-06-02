@@ -1,4 +1,4 @@
--- stdlib/translate_concat.ev — `++` Seq concat flattening (C13).
+-- WIP: replaces bootstrap/runtime/src/runtime/desugar.rs. STATUS: C13 `++` Seq-concat flattening; per-pass fixture only.
 --
 -- Mirrors runtime/src/runtime/desugar.rs's `desugar_seq_concat`: walks
 -- an Expr tree and turns nested `EBinOp(OpConcat, …)` chains into a
@@ -22,7 +22,7 @@
 --     elements (enough for a 2-level flatten where each child is itself
 --     at most a single OpConcat).
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── List append ────────────────────────────────────────────────
 -- Bounded ExprList concatenation. `a` is assumed to have length ≤ 2

@@ -24,7 +24,7 @@
 -- expect: stdout = "done"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     initial ∈ TokenList = TLCons(IntLit(1), TLCons(Plus, TLCons(IntLit(2), TLCons(Plus, TLCons(IntLit(3), TLNil)))))

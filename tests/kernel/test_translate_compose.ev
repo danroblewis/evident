@@ -22,7 +22,7 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_compose.ev"
+import "compiler/translate_compose.ev"
 
 claim main
     -- ── Hardcoded inputs: one per step ────────────────────────────

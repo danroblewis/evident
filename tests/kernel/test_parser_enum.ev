@@ -32,7 +32,7 @@
 -- expect: stdout = "done; name=Color count=3"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     -- Hardcoded input token list for `enum Color = Red | Green | Blue`.

@@ -1,4 +1,4 @@
--- stdlib/translate.ev — Self-hosted Evident → SMT-LIB translator.
+-- WIP: replaces bootstrap/runtime/src/translate/datatypes.rs. STATUS: C1 enum → SMT-LIB datatype declarations; per-pass fixture only.
 --
 -- This file is the "Phase C" stage of the self-hosted compiler. Each
 -- sub-step of the completion roadmap adds claims to this file:
@@ -46,7 +46,7 @@
 -- used in test_ast_to_text.ev — single-tick AST primitives, multi-tick
 -- list walking. See docs/plans/NEXT.md "Pattern 2: work-stack walker".
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- VariantText — render one EnumVariantDecl as its SMT-LIB form.
 --

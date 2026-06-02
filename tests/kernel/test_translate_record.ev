@@ -18,7 +18,7 @@
 -- expect: stdout = "eq=(and (= (x a) (x b)) (= (y a) (y b)))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_record.ev"
+import "compiler/translate_record.ev"
 
 claim main
     -- ── Literal constructor: IVec2(1, 2) ─────────────────────────

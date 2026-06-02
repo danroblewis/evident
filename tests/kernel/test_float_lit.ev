@@ -38,7 +38,7 @@
 -- expect: stdout = "[eof]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/lexer.ev"
+import "compiler/lexer.ev"
 
 claim main
     input ∈ String = "3.14 0.5 42\n"

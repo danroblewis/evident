@@ -36,7 +36,7 @@
 -- expect: stdout = "arm2-body=0"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     -- ── Inputs to ParseMatch ─────────────────────────────────────

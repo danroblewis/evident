@@ -18,8 +18,8 @@
 -- expect: stdout = "done"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
-import "stdlib/translate_concat.ev"
+import "compiler/parser.ev"
+import "compiler/translate_concat.ev"
 
 claim main
     initial_expr ∈ Expr = EBinOp(OpConcat, EBinOp(OpConcat, EIdent("a"), EIdent("b")), EIdent("c"))

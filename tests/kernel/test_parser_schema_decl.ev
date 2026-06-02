@@ -34,7 +34,7 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     -- Case A: `claim Foo` head + a single `x ∈ Int` body item.

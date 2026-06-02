@@ -1,4 +1,4 @@
--- stdlib/translate_compose.ev — C5: claim composition translation.
+-- WIP: replaces bootstrap/runtime/src/translate/inline/mod.rs. STATUS: C5 claim-composition inline (one level deep); per-pass fixture only.
 --
 -- The seven composition mechanisms (CLAUDE.md) all ultimately inline a
 -- claim's body into the calling claim's translation. The Rust side at
@@ -26,7 +26,7 @@
 -- the Rust resolver fills in. End-state (when generics + scoping land
 -- in stdlib/) the marker becomes a full inline-body emission.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── ComposeInline ──────────────────────────────────────────────────
 -- Recognise a BodyItem and emit the translation marker for it.

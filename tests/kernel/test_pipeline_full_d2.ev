@@ -46,8 +46,8 @@
 -- expect: stdout = "(declare-fun x () Int)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_declare.ev"
-import "stdlib/translate_manifest.ev"
+import "compiler/translate_declare.ev"
+import "compiler/translate_manifest.ev"
 
 claim main
     -- ── LEX ──────────────────────────────────────────────────────

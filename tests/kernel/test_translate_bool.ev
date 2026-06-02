@@ -16,7 +16,7 @@
 -- expect: stdout = "(=> p q)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_bool.ev"
+import "compiler/translate_bool.ev"
 
 claim main
     step  ∈ Int

@@ -1,4 +1,4 @@
--- stdlib/translate_seq.ev — Phase C7: SMT-LIB Seq operations.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/seq_eq.rs. STATUS: C7 Seq surface → Z3 sequence theory; per-pass fixture only.
 --
 -- Maps Evident's Seq surface to Z3's sequence theory:
 --
@@ -21,7 +21,7 @@
 -- B-phase AST already produces (empty, 1-item, 2-item), which
 -- covers the test fixtures and the small literals in stdlib.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── Render one atomic Expr as `(seq.unit <X>)` ─────────────────
 --

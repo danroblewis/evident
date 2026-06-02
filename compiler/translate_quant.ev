@@ -1,4 +1,4 @@
--- stdlib/translate_quant.ev — Phase C6: SMT-LIB quantifier expansion.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/quant.rs. STATUS: C6 single-name ∀/∃ inline expansion; per-pass fixture only.
 --
 -- Mirrors runtime/src/translate/exprs/quant.rs (the single-name
 -- inline `∀ x ∈ S : body` and `∃ x ∈ S : body` shapes the parser at
@@ -22,7 +22,7 @@
 -- in a body) set ok=false and out="" — the caller is then expected
 -- to fall through to whatever fold consumes complex bodies.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── Atom-level body rendering ──────────────────────────────────
 -- Renders the body of a quantifier into its SMT-LIB string form.

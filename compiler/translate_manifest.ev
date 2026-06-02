@@ -1,4 +1,4 @@
--- stdlib/translate_manifest.ev — Self-hosted SMT-LIB manifest header
+-- WIP: replaces bootstrap/runtime/src/emit.rs. STATUS: C14 five-line SMT-LIB manifest header emission; per-pass fixture only.
 -- emission (Phase C14).
 --
 -- The Rust side at runtime/src/emit.rs emits a five-line ;; manifest:

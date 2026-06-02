@@ -1,4 +1,4 @@
--- stdlib/translate_infer.ev — C12: type-inference passes.
+-- WIP: replaces bootstrap/runtime/src/runtime/inject.rs. STATUS: C12 LHS-type inference from a RHS expr; per-pass fixture only.
 --
 -- Mirrors runtime/src/runtime/inject.rs's `inject_lhs_eq_types`
 -- shape: from a RHS Expr alone, recover the type the LHS would
@@ -26,7 +26,7 @@
 -- side) which doesn't fit the recognizer-claim shape — they're a
 -- pass over a SchemaDecl, not a per-Expr probe.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── Op classifier helpers ──────────────────────────────────────
 -- Same vars-in-body shape as TokenToOp / KeywordOfTok in

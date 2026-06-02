@@ -1,4 +1,4 @@
--- stdlib/translate_declare.ev — Phase C2: SMT-LIB declare-fun emission.
+-- WIP: replaces bootstrap/runtime/src/translate/declare.rs. STATUS: C2 declare-fun emission for primitive memberships; per-pass fixture only.
 --
 -- Mirrors runtime/src/translate/declare.rs at the SMT-LIB textual
 -- level. For each primitive-typed membership in a schema body, emit
@@ -31,7 +31,7 @@
 -- buffer. (Sentinel-empty-string + companion Bool is the same shape
 -- as ParseMembership / ParsePassthrough in stdlib/parser.ev.)
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── DeclareFun: assemble the SMT-LIB declare-fun line ──────────
 --

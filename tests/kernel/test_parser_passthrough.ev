@@ -17,7 +17,7 @@
 -- expect: stdout = "tag=passthrough"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     -- The hardcoded input. We don't carry it across ticks — this

@@ -26,7 +26,7 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_declare.ev"
+import "compiler/translate_declare.ev"
 
 claim main
     -- Case A: `x ∈ Int` → declare-fun line.

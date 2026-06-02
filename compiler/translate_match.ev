@@ -1,4 +1,4 @@
--- stdlib/translate_match.ev — C8: SMT-LIB match → nested ITE.
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/match_expr.rs. STATUS: C8 match → nested ITE over constructor testers; per-pass fixture only.
 --
 -- The Rust translator at runtime/src/translate/exprs/match_expr.rs
 -- lowers `match e { Ctor(b) ⇒ body ; _ ⇒ fallback }` into nested
@@ -15,7 +15,7 @@
 -- walker in test_ast_to_text.ev), invoking MatchArmSmtlib once per
 -- arm with the running `rest` accumulator.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── Expr → SMT-LIB string (minimal body subset) ────────────────
 -- For C8 we only render the Expr-as-body shapes the test fixture

@@ -16,7 +16,7 @@
 -- expect: stdout = "(forall ((x Int)) (=> (>= x 0) (= x 0)))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_quant.ev"
+import "compiler/translate_quant.ev"
 
 claim main
     body ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(0))

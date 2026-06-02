@@ -17,7 +17,7 @@
 -- expect: stdout = "ite=(ite ((_ is Some) e) 1 0)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_match.ev"
+import "compiler/translate_match.ev"
 
 claim main
     -- ── Build the 2-arm match ────────────────────────────────────

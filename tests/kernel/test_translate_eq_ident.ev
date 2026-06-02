@@ -22,7 +22,7 @@
 -- expect: stdout = "(= x 1)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 claim main
     initial_expr ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(1))

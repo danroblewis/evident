@@ -36,8 +36,8 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_manifest.ev"
-import "stdlib/translate_declare.ev"
+import "compiler/translate_manifest.ev"
+import "compiler/translate_declare.ev"
 
 claim main
     -- ── Build the AST in-memory ────────────────────────────────

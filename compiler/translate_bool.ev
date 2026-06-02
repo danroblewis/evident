@@ -1,4 +1,4 @@
--- stdlib/translate_bool.ev — Phase C3: Boolean expression translation
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/bool.rs. STATUS: C3 Boolean expression atoms → SMT-LIB; per-pass fixture only.
 -- to SMT-LIB.
 --
 -- The Rust side at runtime/src/translate/exprs/bool.rs translates an
@@ -21,7 +21,7 @@
 -- has a gap for `matches`/`match` on first-line enum-typed params.
 -- Callers compose with names-match binding.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- ── ExprAtomSmtlib ──────────────────────────────────────────────
 -- Render a single leaf Expr (EInt or EIdent) to its SMT-LIB text.

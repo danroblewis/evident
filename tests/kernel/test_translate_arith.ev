@@ -16,7 +16,7 @@
 -- expect: stdout = "(- a b)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_arith.ev"
+import "compiler/translate_arith.ev"
 
 claim main
     expr_plus ∈ Expr = EBinOp(OpPlus, EInt(1), EInt(2))

@@ -22,7 +22,7 @@
 -- expect: stdout = ";; manifest: max-effects = 4"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_manifest.ev"
+import "compiler/translate_manifest.ev"
 
 claim main
     fields ∈ StateFieldList = SFLCons(SField("count", "Int"),

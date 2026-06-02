@@ -1,6 +1,6 @@
--- stdlib/parser.ev — Self-hosted Evident parser (iter 3.11 toy version).
+-- WIP: replaces bootstrap/runtime/src/parser/mod.rs. STATUS: tiny Expr/binop-chain AST + per-shape productions; not composed into a full-file parser.
 
-import "stdlib/lexer.ev"
+import "compiler/lexer.ev"
 
 --
 -- Tiny Expr AST for the binop-chain parser:

@@ -15,7 +15,7 @@
 -- expect: stdout = "(str.prefixof "hi" msg)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_string.ev"
+import "compiler/translate_string.ev"
 
 claim main
     len_out ∈ String

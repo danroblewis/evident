@@ -33,7 +33,7 @@
 -- expect: stdout = "[done]"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "stdlib/translate_infer.ev"
+import "compiler/translate_infer.ev"
 
 claim main
     -- Case A: name = (x = 5) → Bool

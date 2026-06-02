@@ -1,4 +1,4 @@
--- stdlib/translate_generics.ev — Self-hosted generic monomorphization (Phase C11).
+-- WIP: replaces bootstrap/runtime/src/runtime/generics.rs. STATUS: C11 generic monomorphization (type-param substitution); per-pass fixture only.
 --
 -- Self-hosts the type-parameter substitution that
 -- `runtime/src/runtime/generics.rs` performs on a generic claim's
@@ -26,7 +26,7 @@
 -- A token-aware substitution is a later refinement; see the
 -- C11 commit message for the limitation note.
 
-import "stdlib/parser.ev"
+import "compiler/parser.ev"
 
 -- SubstType: replace the type-parameter name `param` with the
 -- concrete-type string `concrete` inside the TypeRef `t`.
