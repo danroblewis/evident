@@ -1,0 +1,23 @@
+import "stdlib/kernel.ev"
+claim AddsBudget
+    budget     ∈ Nat
+    new_budget ∈ Nat
+    amount     ∈ Nat
+    new_budget = budget + amount
+claim RemovesBudget
+    budget     ∈ Nat
+    new_budget ∈ Nat
+    amount     ∈ Nat
+    new_budget = budget - amount
+claim main
+    is_add     ∈ Bool
+    budget     ∈ Nat
+    new_budget ∈ Nat
+    amount     ∈ Nat
+    is_add    ⇒ AddsBudget
+    (¬is_add) ⇒ RemovesBudget
+    is_add = true
+    9 < budget < 11
+    4 < amount < 6
+    new_budget = 15
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

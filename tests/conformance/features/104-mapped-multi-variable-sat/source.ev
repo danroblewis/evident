@@ -1,0 +1,16 @@
+import "stdlib/kernel.ev"
+claim InRange
+    lo ∈ Nat
+    hi ∈ Nat
+    n  ∈ Nat
+    n ≥ lo
+    n ≤ hi
+claim main
+    value ∈ Nat
+    low   ∈ Nat
+    high  ∈ Nat
+    InRange(n ↦ value, lo ↦ low, hi ↦ high)
+    value = 5
+    low = 1
+    high = 10
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

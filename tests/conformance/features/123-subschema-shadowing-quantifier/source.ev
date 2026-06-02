@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+type Counter(n ∈ Int)
+    all_pos ∈ Bool = (∀ i ∈ {0..2} : i ≥ 0)
+claim main
+    c ∈ Counter (n ↦ 7)
+    c.all_pos = true
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

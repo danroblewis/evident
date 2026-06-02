@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+claim add(a ∈ Int, b ∈ Int, out ∈ Int)
+    out = a + b
+claim main
+    x ∈ Int
+    6 < x < 8
+    result ∈ Int
+    x.add(3, result)
+    ok ∈ Bool = (result = 10)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

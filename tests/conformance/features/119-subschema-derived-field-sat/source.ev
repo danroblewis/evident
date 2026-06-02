@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+type Foo(p ∈ Int)
+    derived ∈ Int = p + 1
+claim main
+    f ∈ Foo (p ↦ 5)
+    f.derived = 6
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+type IVec2(x, y ∈ Int)
+claim scale_vec(v ∈ IVec2, k ∈ Int, out ∈ Int)
+    out = (v.x + v.y) * k
+claim main
+    scale_vec((4, 5), 10, result)
+    doubled ∈ Int
+    doubled = result + 1
+    ok ∈ Bool = (result = 90 ∧ doubled = 91)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

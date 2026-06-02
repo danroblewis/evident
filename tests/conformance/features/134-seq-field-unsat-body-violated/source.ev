@@ -1,0 +1,11 @@
+import "stdlib/kernel.ev"
+type Sprite(pos ∈ Int)
+    rects ∈ Seq(Int)
+    #rects = 3
+    rects[0] = pos
+    rects[1] = pos + 1
+    rects[2] = pos + 2
+claim main
+    s ∈ Sprite (pos ↦ 10)
+    s.rects[1] = 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

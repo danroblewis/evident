@@ -1,0 +1,13 @@
+import "stdlib/kernel.ev"
+claim IsPositive
+    n ∈ Nat
+    n > 0
+claim UnderTen
+    n ∈ Nat
+    n < 10
+claim main
+    n ∈ Nat
+    n = 5
+    IsPositive
+    UnderTen
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

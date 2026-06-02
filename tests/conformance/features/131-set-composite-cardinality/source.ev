@@ -1,0 +1,9 @@
+import "stdlib/kernel.ev"
+type Item(id, kind ∈ Nat)
+claim main
+    a ∈ Item (id ↦ 1, kind ↦ 0)
+    b ∈ Item (id ↦ 2, kind ↦ 1)
+    items ∈ Set(Item)
+    items = {a, b}
+    #items = 2
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
