@@ -1,0 +1,139 @@
+-- B5: schema declarations (`claim Foo …`, `type Foo …`, etc.).
+--
+-- Exercises the ParseSchemaHead recognizer that maps a two-token
+-- head `<schema-kw> Ident(name)` to a (Keyword, name) pair. Then
+-- builds a SchemaDecl from that head + a hardcoded one-item body to
+-- prove the SDecl AST node round-trips through a `match` on its
+-- Keyword tag.
+--
+-- The full multi-tick body consumer (walking the TokenList past the
+-- head, recognizing Indent + body items, accumulating into a
+-- BodyItemList) is a later sub-step; this fixture sticks to the
+-- recognizer layer the way test_parser_passthrough / _membership do.
+--
+-- Three shapes are covered, one per phase of the FSM:
+--   A. `claim Foo\n    x ∈ Int\n` → SDecl(KKClaim, "Foo", [BIMembership("x", "Int")])
+--   B. `type Bar` …                → SDecl(KKType,  "Bar", [BIPassthrough("X")])  (body hardcoded)
+--   C. `+ Foo` …                   → SNoDecl (head1 is Plus, not a schema kw → ok=false)
+--
+-- Token-stream input for case A (the only one fully assembled here):
+--   ⟨KwClaim, Ident("Foo"), Newline, Indent(4),
+--     Ident("x"), OpIn, Ident("Int"), Newline⟩
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "a_ok=true"
+-- expect: stdout = "a_kw=claim"
+-- expect: stdout = "a_name=Foo"
+-- expect: stdout = "a_decl=schema"
+-- expect: stdout = "a_body_name=x"
+-- expect: stdout = "a_body_type=Int"
+-- expect: stdout = "b_kw=type"
+-- expect: stdout = "b_name=Bar"
+-- expect: stdout = "c_ok=false"
+-- expect: stdout = "c_decl=other"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- Case A: `claim Foo` head + a single `x ∈ Int` body item.
+    -- Body items are pre-built (the multi-tick TokenList walk is a
+    -- later sub-step; here we exercise the SchemaDecl shape).
+    a_head1 ∈ Token = KwClaim
+    a_head2 ∈ Token = Ident("Foo")
+
+    a_kw ∈ Keyword
+    a_name ∈ String
+    a_ok ∈ Bool
+    ParseSchemaHead(head1 ↦ a_head1, head2 ↦ a_head2,
+                    kw ↦ a_kw, name ↦ a_name, ok ↦ a_ok)
+
+    a_is_claim ∈ Bool = (a_kw matches KKClaim)
+    a_kw_str ∈ String = (a_is_claim ? "claim" : "other")
+
+    -- Hardcoded one-item body for case A — just to prove the
+    -- SchemaDecl carries a BodyItemList through and the elements
+    -- round-trip via match.
+    a_body_item ∈ BodyItem = BIMembership("x", TName("Int"))
+    a_body ∈ BodyItemList = BILCons(a_body_item, BILNil)
+    a_decl ∈ SchemaDecl = (a_ok ? SDecl(a_kw, a_name, a_body) : SNoDecl)
+
+    a_is_decl ∈ Bool = (a_decl matches SDecl(_, _, _))
+    a_decl_tag ∈ String = (a_is_decl ? "schema" : "other")
+
+    -- Walk into the BodyItemList head and read the BIMembership
+    -- payload back out — checks the round-trip end-to-end.
+    a_body_head ∈ BodyItem = match a_body
+        BILCons(it, _) ⇒ it
+        BILNil ⇒ BINoItem
+
+    a_bn ∈ String = match a_body_head
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+    a_btr ∈ TypeRef = match a_body_head
+        BIMembership(_, tr) ⇒ tr
+        _ ⇒ TNoType
+    a_bt ∈ String = match a_btr
+        TName(s) ⇒ s
+        _ ⇒ ""
+
+    -- Case B: `type Bar` head. Body is empty (BILNil).
+    b_head1 ∈ Token = KwType
+    b_head2 ∈ Token = Ident("Bar")
+    b_kw ∈ Keyword
+    b_name ∈ String
+    b_ok ∈ Bool
+    ParseSchemaHead(head1 ↦ b_head1, head2 ↦ b_head2,
+                    kw ↦ b_kw, name ↦ b_name, ok ↦ b_ok)
+    b_is_type ∈ Bool = (b_kw matches KKType)
+    b_kw_str ∈ String = (b_is_type ? "type" : "other")
+
+    -- Case C: head1 is Plus, head2 is Ident — recognizer rejects.
+    c_head1 ∈ Token = Plus
+    c_head2 ∈ Token = Ident("Foo")
+    c_kw ∈ Keyword
+    c_name ∈ String
+    c_ok ∈ Bool
+    ParseSchemaHead(head1 ↦ c_head1, head2 ↦ c_head2,
+                    kw ↦ c_kw, name ↦ c_name, ok ↦ c_ok)
+    c_decl ∈ SchemaDecl = (c_ok ? SDecl(c_kw, c_name, BILNil) : SNoDecl)
+    c_is_decl ∈ Bool = (c_decl matches SDecl(_, _, _))
+    c_decl_tag ∈ String = (c_is_decl ? "schema" : "other")
+
+    -- Per-tick diagnostic stepping (one puts per tick).
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    a_ok_str   ∈ String = (a_ok ? "a_ok=true" : "a_ok=false")
+    a_kw_lbl   ∈ String = "a_kw=" ++ a_kw_str
+    a_name_lbl ∈ String = "a_name=" ++ a_name
+    a_decl_lbl ∈ String = "a_decl=" ++ a_decl_tag
+    a_bn_lbl   ∈ String = "a_body_name=" ++ a_bn
+    a_bt_lbl   ∈ String = "a_body_type=" ++ a_bt
+
+    b_kw_lbl   ∈ String = "b_kw=" ++ b_kw_str
+    b_name_lbl ∈ String = "b_name=" ++ b_name
+
+    c_ok_str   ∈ String = (c_ok ? "c_ok=true" : "c_ok=false")
+    c_decl_lbl ∈ String = "c_decl=" ++ c_decl_tag
+
+    label ∈ String = (step = 0  ? "[start]"
+        : (step = 1  ? a_ok_str
+        : (step = 2  ? a_kw_lbl
+        : (step = 3  ? a_name_lbl
+        : (step = 4  ? a_decl_lbl
+        : (step = 5  ? a_bn_lbl
+        : (step = 6  ? a_bt_lbl
+        : (step = 7  ? b_kw_lbl
+        : (step = 8  ? b_name_lbl
+        : (step = 9  ? c_ok_str
+        : (step = 10 ? c_decl_lbl
+        : "[done]")))))))))))
+
+    done ∈ Bool = (step ≥ 11)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
