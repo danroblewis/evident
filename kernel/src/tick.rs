@@ -38,6 +38,7 @@
 
 use std::ffi::{CStr, CString};
 use std::ptr;
+use std::time::Instant;
 
 use crate::manifest::Manifest;
 use z3_sys::*;
@@ -220,12 +221,26 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     //   EVIDENT_FUNCTIONIZE_JIT=0  → extract + interpret, but don't JIT.
     let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE").ok().as_deref() != Some("0");
     let jit_on = std::env::var("EVIDENT_FUNCTIONIZE_JIT").ok().as_deref() != Some("0");
-    let functionized = if functionize_on {
-        crate::functionize::functionize(ctx, &body, manifest, &decl_preamble, jit_on)
+
+    // Diagnostics (task #22). Three env-gated levels, off by default. See
+    // docs/plans/functionizer-integration.md §"Diagnostic flags".
+    //   EVIDENT_FUNCTIONIZE_STATS=1        → one-line summary at exit.
+    //   EVIDENT_FUNCTIONIZE_STATS=verbose  → summary + per-step load report.
+    //   EVIDENT_FUNCTIONIZE_TRACE=1        → per-tick timing lines.
+    let stats_level = crate::functionize::StatsLevel::from_env();
+    let trace = std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok();
+
+    let (functionized, mut stats) = if functionize_on {
+        crate::functionize::functionize(ctx, &body, manifest, &decl_preamble, jit_on, stats_level, trace)
     } else {
-        None
+        let mut s = crate::functionize::FunctionizeStats::new(stats_level, trace);
+        s.disabled = true;
+        s.total_asserts = body.len();
+        s.residual = body.len();
+        s.refuse_reason = Some("EVIDENT_FUNCTIONIZE=0".to_string());
+        (None, s)
     };
-    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+    if trace {
         match &functionized {
             Some(p) => eprintln!(
                 "[fz] functionized: {} steps ({} jit, {} interp), {} predicates",
@@ -233,13 +248,25 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             None => eprintln!("[fz] not functionized — running Z3 path"),
         }
     }
+    stats.print_load_report();
+    let timing_on = stats.timing_on();
 
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
 
+    // T_total spans only the tick loop (not the one-shot functionize/verify
+    // setup above). `mark()` returns an Instant when timing is on, else None,
+    // so the off path makes no syscall.
+    stats.loop_start = if timing_on { Some(Instant::now()) } else { None };
+    let mark = || if timing_on { Some(Instant::now()) } else { None };
+    let since = |t: Option<Instant>| t.map(|t| t.elapsed()).unwrap_or_default();
+
     const TICK_LIMIT: usize = 100_000;
     for tick in 0..TICK_LIMIT {
+        let mut tick_func = std::time::Duration::ZERO;
+        let mut tick_z3 = std::time::Duration::ZERO;
+        let mut tick_dispatch = std::time::Duration::ZERO;
         // Functionizer fast path: evaluate the extracted program (native or
         // JIT) for this tick and skip Z3 entirely. `run_program` returns None
         // for any shape/predicate it can't honour this tick → fall through to
@@ -247,8 +274,13 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         // a body that reads `last_results` won't have verified, so it never
         // reaches here.)
         if let Some(prog) = &functionized {
+            let tf = mark();
             let inputs = crate::functionize::build_inputs(is_first, &prev_state, manifest);
-            if let Some(run) = crate::functionize::run_program(ctx, prog, &inputs) {
+            let run_opt = crate::functionize::run_program(ctx, prog, &inputs);
+            let dt = since(tf);
+            tick_func += dt;
+            stats.t_func += dt;
+            if let Some(run) = run_opt {
                 let mut new_state: Vec<Sv> = Vec::with_capacity(manifest.state_fields.len());
                 let mut covered = true;
                 for (name, _) in &manifest.state_fields {
@@ -258,6 +290,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                     }
                 }
                 if covered {
+                    let td = mark();
                     let mut exit_code: Option<u8> = None;
                     let mut new_results: Vec<Res> = Vec::new();
                     for eff in run.effects.iter().take(manifest.max_effects) {
@@ -265,6 +298,15 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                             EffectOutcome::Continue(r) => new_results.push(r),
                             EffectOutcome::Exit(code) => { exit_code = Some(code); break; }
                         }
+                    }
+                    let dd = since(td);
+                    tick_dispatch += dd;
+                    stats.t_dispatch += dd;
+                    stats.ticks += 1;
+                    if trace {
+                        eprintln!("[functionizer] tick {tick}: {:.2}ms func / {:.2}ms z3 / {:.2}ms dispatch",
+                            tick_func.as_secs_f64() * 1000.0, tick_z3.as_secs_f64() * 1000.0,
+                            tick_dispatch.as_secs_f64() * 1000.0);
                     }
                     if let Some(code) = exit_code {
                         if let Some(s) = persistent_solver { Z3_solver_dec_ref(ctx, s); }
@@ -287,6 +329,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             }
             // run_program refused this tick → fall through to the Z3 path.
         }
+        let tz = mark();
         // A: fresh solver re-asserting the cached simplified body (no parse),
         // so Z3 preprocesses the whole problem each tick. B: the persistent
         // solver, body already loaded once above.
@@ -373,7 +416,11 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             .ok_or_else(|| format!("effects var `{}` not in model", manifest.effects_name))?;
         let effects_ast = Z3_mk_app(ctx, effects_decl, 0, ptr::null());
         let int_sort = Z3_mk_int_sort(ctx);
+        let dz = since(tz);
+        tick_z3 += dz;
+        stats.t_z3 += dz;
 
+        let td = mark();
         let mut exit_code: Option<u8> = None;
         let mut new_results: Vec<Res> = Vec::new();
         for i in 0..effects_len {
@@ -388,6 +435,15 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                 EffectOutcome::Continue(r) => { new_results.push(r); }
                 EffectOutcome::Exit(code)  => { exit_code = Some(code); break; }
             }
+        }
+        let dd = since(td);
+        tick_dispatch += dd;
+        stats.t_dispatch += dd;
+        stats.ticks += 1;
+        if trace {
+            eprintln!("[functionizer] tick {tick}: {:.2}ms func / {:.2}ms z3 / {:.2}ms dispatch",
+                tick_func.as_secs_f64() * 1000.0, tick_z3.as_secs_f64() * 1000.0,
+                tick_dispatch.as_secs_f64() * 1000.0);
         }
 
         if let Some(code) = exit_code {

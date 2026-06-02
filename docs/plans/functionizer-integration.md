@@ -371,3 +371,78 @@ mis-recomposed Seq reverts the whole run to Z3.
 Env flags: `EVIDENT_FUNCTIONIZE=0` bypasses entirely; `EVIDENT_FUNCTIONIZE_JIT=0`
 extracts + interprets without JIT; both default on. `EVIDENT_FUNCTIONIZE_TRACE=1`
 and `EVIDENT_FUNCTIONIZE_DUMP=1` emit diagnostics.
+
+---
+
+## 7. Diagnostic flags (task #22)
+
+The functionizer does its work silently, so a session can't tell whether
+the shape it wrote actually functionized, or which step fell through.
+Three env-gated, **off-by-default** diagnostic levels make that visible.
+They print to **stderr** (stdout is the program's output) and add zero
+output and no per-tick `Instant::now()` when unset. Implemented in
+`kernel/src/functionize/mod.rs` (`FunctionizeStats`, `StatsLevel`,
+per-step `StepReport` + shape categorisation) and `kernel/src/tick.rs`
+(per-tick timing accumulation; summary printed on `Drop`).
+
+### `EVIDENT_FUNCTIONIZE_STATS=1` — one-line summary at exit
+
+```
+[functionizer] N total / J JIT / I interp / R residual; T_total ms (T_func ms / T_z3 ms)
+```
+
+- **N** — total assertions in the simplified, flattened body.
+- **J / I** — extracted *steps* that JIT-compiled / fell back to the
+  interpreter (guarded + seq steps always count as interp — they never
+  JIT). Distinct from the scalar-only `jit_count`/`interp_count`.
+- **R** — residual assertions not turned into a step: the eval-time
+  `predicates` when functionized, or all **N** (everything runs on Z3
+  each tick) when not.
+- **T_total** — wall time in the tick loop (excludes the one-shot
+  functionize/verify setup). **T_func** — time in `run_program`
+  (eval/JIT). **T_z3** — time in the Z3 solver check + model read.
+
+When the fast path is off, the line is prefixed
+`not functionized (<reason>); …` — e.g. `state field \`rs\` is a Seq
+(carried across ticks → opaque to functionizer)`, the exact category
+that fell through.
+
+### `EVIDENT_FUNCTIONIZE_STATS=verbose` — load report + summary
+
+Before the tick loop:
+
+```
+[functionizer] load:
+  body asserts: 5
+  extracted:    2 (1 JIT, 1 interp)
+  residual:     2
+  steps:
+    [0] count   ← (ite is_first_tick 0 (+ 1 _count))  JIT     [ite]
+    [1] effects ← guarded(2 branches)                 interp  [guarded-seq]
+```
+
+Each step's bracketed **shape category** lets a session see *which*
+category was extracted (and, in the not-functionized case, which one
+refused): `binop`, `ite`, `select`, `accessor`, `select+accessor`,
+`seq-literal`, `guarded-seq`, `guarded-scalar`, `datatype`, `var`. A
+refused program prints the `body asserts` count plus the refusal reason.
+
+### `EVIDENT_FUNCTIONIZE_TRACE=1` — per-tick timing
+
+In addition to any stats level, one line per tick (high-frequency; for
+short investigations):
+
+```
+[functionizer] tick 17: 0.30ms func / 1.20ms z3 / 0.05ms dispatch
+```
+
+`TRACE` also keeps the pre-existing `[fz] …` extraction/verify traces and
+the `[fz/dump]` flag (`EVIDENT_FUNCTIONIZE_DUMP=1`).
+
+### Notes
+
+- The levels are independent and compose: `STATS=verbose TRACE=1` prints
+  the load report, per-tick lines, and the exit summary.
+- These do **not** change the existing flags' semantics
+  (`EVIDENT_FUNCTIONIZE`, `EVIDENT_FUNCTIONIZE_JIT`) and are never on by
+  default — test runs stay quiet.

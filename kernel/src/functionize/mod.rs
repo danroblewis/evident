@@ -28,6 +28,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
+use std::time::{Duration, Instant};
 use z3_sys::*;
 
 use crate::manifest::Manifest;
@@ -90,6 +91,213 @@ pub struct Program {
 pub struct RunOut {
     pub scalars: HashMap<String, Sv>,
     pub effects: Vec<Sv>,
+}
+
+// ── Diagnostics (env-gated; off by default) ─────────────────────
+//
+// Three levels, controlled by `EVIDENT_FUNCTIONIZE_STATS` +
+// `EVIDENT_FUNCTIONIZE_TRACE`:
+//   STATS=1        → one-line summary at exit (counts + timings).
+//   STATS=verbose  → the summary PLUS a per-step load report at startup.
+//   TRACE=1        → per-tick timing lines (in addition to any STATS level).
+// With nothing set, `StatsLevel::Off` + `trace=false` ⇒ no output and no
+// per-tick `Instant::now()` calls (timing_on() is false). See
+// docs/plans/functionizer-integration.md §"Diagnostic flags".
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StatsLevel {
+    Off,
+    Summary,
+    Verbose,
+}
+
+impl StatsLevel {
+    pub fn from_env() -> Self {
+        match std::env::var("EVIDENT_FUNCTIONIZE_STATS").ok().as_deref() {
+            Some("verbose") | Some("VERBOSE") | Some("v") => StatsLevel::Verbose,
+            Some(s) if !s.is_empty() && s != "0" => StatsLevel::Summary,
+            _ => StatsLevel::Off,
+        }
+    }
+}
+
+/// One row of the verbose load report: an extracted output step and how it runs.
+pub struct StepReport {
+    pub var: String,
+    /// Truncated pretty form of the defining expression.
+    pub expr: String,
+    /// true = JIT-compiled, false = interpreted.
+    pub jitted: bool,
+    /// Shape category (`binop`, `ite`, `select`, `accessor`, `select+accessor`,
+    /// `seq-literal`, `guarded-seq`, `guarded-scalar`, `datatype`, `var`).
+    pub category: &'static str,
+}
+
+/// Counts + accumulated timings for one program run. Built once by
+/// `functionize`; the per-tick timings are accumulated by `tick.rs` during the
+/// loop, and the summary line is emitted on `Drop`.
+pub struct FunctionizeStats {
+    pub level: StatsLevel,
+    pub trace: bool,
+    /// `EVIDENT_FUNCTIONIZE=0` — the functionizer was not even attempted.
+    pub disabled: bool,
+    /// Did the fast path engage (extraction + verification both succeeded).
+    pub functionized: bool,
+    /// Why the fast path is off (None case / disabled). Shown in verbose.
+    pub refuse_reason: Option<String>,
+    /// N — total assertions in the simplified, flattened body.
+    pub total_asserts: usize,
+    /// J — extracted steps that JIT-compiled.
+    pub jit: usize,
+    /// I — extracted steps that fell back to the interpreter.
+    pub interp: usize,
+    /// R — residual assertions not turned into a functionized step. When
+    /// functionized these are the eval-time `predicates`; when not, all N go to
+    /// Z3 every tick.
+    pub residual: usize,
+    /// Per-step rows, populated only at `Verbose`.
+    pub steps: Vec<StepReport>,
+    // ── runtime, accumulated by tick.rs ──
+    pub ticks: usize,
+    pub t_func: Duration,
+    pub t_z3: Duration,
+    pub t_dispatch: Duration,
+    /// Set when timing is on; `Drop` derives T_total from it.
+    pub loop_start: Option<Instant>,
+}
+
+impl FunctionizeStats {
+    pub fn new(level: StatsLevel, trace: bool) -> Self {
+        FunctionizeStats {
+            level, trace,
+            disabled: false,
+            functionized: false,
+            refuse_reason: None,
+            total_asserts: 0,
+            jit: 0,
+            interp: 0,
+            residual: 0,
+            steps: Vec::new(),
+            ticks: 0,
+            t_func: Duration::ZERO,
+            t_z3: Duration::ZERO,
+            t_dispatch: Duration::ZERO,
+            loop_start: None,
+        }
+    }
+
+    /// True when any per-tick timing must be collected. When false, tick.rs
+    /// skips every `Instant::now()` so the off path pays only a branch.
+    pub fn timing_on(&self) -> bool {
+        self.level != StatsLevel::Off || self.trace
+    }
+
+    /// Verbose-only: print the per-step load report once, before the tick loop.
+    pub fn print_load_report(&self) {
+        if self.level != StatsLevel::Verbose {
+            return;
+        }
+        eprintln!("[functionizer] load:");
+        eprintln!("  body asserts: {}", self.total_asserts);
+        if !self.functionized {
+            let why = self.refuse_reason.as_deref().unwrap_or("unfunctionizable");
+            eprintln!("  not functionized — fast path disabled; all {} asserts run on Z3 each tick", self.total_asserts);
+            eprintln!("  reason: {why}");
+            return;
+        }
+        eprintln!("  extracted:    {} ({} JIT, {} interp)", self.steps.len(), self.jit, self.interp);
+        eprintln!("  residual:     {}", self.residual);
+        eprintln!("  steps:");
+        let wvar = self.steps.iter().map(|s| s.var.len()).max().unwrap_or(0).min(16);
+        let wexpr = self.steps.iter().map(|s| s.expr.len()).max().unwrap_or(0).min(48);
+        for (i, s) in self.steps.iter().enumerate() {
+            let mode = if s.jitted { "JIT    " } else { "interp " };
+            eprintln!("    [{i}] {:<wvar$} ← {:<wexpr$}  {mode} [{}]",
+                s.var, s.expr, s.category, wvar = wvar, wexpr = wexpr);
+        }
+    }
+}
+
+impl Drop for FunctionizeStats {
+    fn drop(&mut self) {
+        if self.level == StatsLevel::Off {
+            return;
+        }
+        let total_ms = self.loop_start.map(|s| s.elapsed()).unwrap_or(Duration::ZERO).as_secs_f64() * 1000.0;
+        let func_ms = self.t_func.as_secs_f64() * 1000.0;
+        let z3_ms = self.t_z3.as_secs_f64() * 1000.0;
+        let prefix = if self.functionized {
+            String::new()
+        } else {
+            let why = self.refuse_reason.as_deref().unwrap_or("unfunctionizable");
+            format!("not functionized ({why}); ")
+        };
+        eprintln!(
+            "[functionizer] {prefix}{} total / {} JIT / {} interp / {} residual; {total_ms:.1} ms total ({func_ms:.1} ms func / {z3_ms:.1} ms z3)",
+            self.total_asserts, self.jit, self.interp, self.residual);
+    }
+}
+
+unsafe fn ast_str(ctx: Z3_context, a: Z3_ast) -> String {
+    let p = Z3_ast_to_string(ctx, a);
+    if p.is_null() {
+        return String::new();
+    }
+    std::ffi::CStr::from_ptr(p).to_string_lossy().replace('\n', " ")
+}
+
+fn truncate(mut s: String, max: usize) -> String {
+    if s.chars().count() > max {
+        s = s.chars().take(max.saturating_sub(1)).collect::<String>();
+        s.push('…');
+    }
+    s
+}
+
+/// Shape category of an extracted step, for the verbose report.
+unsafe fn categorize(ctx: Z3_context, body: &StepBody) -> &'static str {
+    match body {
+        StepBody::Seq(_) => "seq-literal",
+        StepBody::Guarded(bs) => {
+            if bs.iter().any(|b| matches!(b.body, GBody::Seq(_))) { "guarded-seq" } else { "guarded-scalar" }
+        }
+        StepBody::Scalar(e) => categorize_scalar(ctx, *e),
+    }
+}
+
+unsafe fn categorize_scalar(ctx: Z3_context, a: Z3_ast) -> &'static str {
+    match decl_kind(ctx, a) {
+        Some(DeclKind::ITE) => "ite",
+        Some(DeclKind::SELECT) => "select",
+        Some(DeclKind::DT_ACCESSOR) => if subtree_has_select(ctx, a) { "select+accessor" } else { "accessor" },
+        Some(DeclKind::DT_CONSTRUCTOR) => "datatype",
+        Some(DeclKind::ADD) | Some(DeclKind::SUB) | Some(DeclKind::MUL) | Some(DeclKind::UMINUS)
+        | Some(DeclKind::LE) | Some(DeclKind::LT) | Some(DeclKind::GE) | Some(DeclKind::GT)
+        | Some(DeclKind::EQ) | Some(DeclKind::IFF) | Some(DeclKind::NOT) | Some(DeclKind::AND)
+        | Some(DeclKind::OR) | Some(DeclKind::IMPLIES) => "binop",
+        Some(DeclKind::UNINTERPRETED) => "var",
+        _ => "scalar",
+    }
+}
+
+unsafe fn subtree_has_select(ctx: Z3_context, a: Z3_ast) -> bool {
+    if decl_kind(ctx, a) == Some(DeclKind::SELECT) {
+        return true;
+    }
+    children(ctx, a).iter().any(|&c| subtree_has_select(ctx, c))
+}
+
+/// Build the verbose per-step rows for a successfully extracted program.
+unsafe fn build_step_reports(ctx: Z3_context, prog: &Program) -> Vec<StepReport> {
+    prog.steps.iter().map(|s| {
+        let category = categorize(ctx, &s.body);
+        let expr = match &s.body {
+            StepBody::Scalar(e) => truncate(ast_str(ctx, *e), 48),
+            StepBody::Seq(es) => format!("⟨{} elem seq⟩", es.len()),
+            StepBody::Guarded(bs) => format!("guarded({} branches)", bs.len()),
+        };
+        StepReport { var: s.var.clone(), expr, jitted: s.jit.is_some(), category }
+    }).collect()
 }
 
 // ── AST helpers (shared with eval.rs / jit.rs) ──────────────────
@@ -632,9 +840,13 @@ pub unsafe fn functionize(
     manifest: &Manifest,
     decl_preamble: &str,
     jit_enabled: bool,
-) -> Option<Program> {
+    level: StatsLevel,
+    trace: bool,
+) -> (Option<Program>, FunctionizeStats) {
     let simplified = simplify_assertions(ctx, body);
     let flat = flatten_conjunctions(ctx, &simplified);
+    let mut stats = FunctionizeStats::new(level, trace);
+    stats.total_asserts = flat.len();
     if std::env::var("EVIDENT_FUNCTIONIZE_DUMP").is_ok() {
         for (i, &a) in flat.iter().enumerate() {
             let p = Z3_ast_to_string(ctx, a);
@@ -643,14 +855,26 @@ pub unsafe fn functionize(
         }
     }
 
+    // Refuse the fast path, recording why (None case) — leaves the kernel on
+    // the Z3 path with `stats` describing the residual.
+    macro_rules! refuse {
+        ($reason:expr) => {{
+            let why: String = $reason.into();
+            if trace { eprintln!("[fz] {why}"); }
+            stats.functionized = false;
+            stats.jit = 0;
+            stats.interp = 0;
+            stats.residual = stats.total_asserts;
+            stats.refuse_reason = Some(why);
+            return (None, stats);
+        }};
+    }
+
     let mut outputs: Vec<String> = manifest.state_fields.iter().map(|(n, _)| n.clone()).collect();
     outputs.push(manifest.effects_name.clone());
 
     let Some((raw_steps, predicates)) = extract_program(ctx, &flat, &outputs) else {
-        if trace_enabled() {
-            eprintln!("[fz] extract_program: an output had no covering assignment");
-        }
-        return None;
+        refuse!("extract_program: an output had no covering assignment");
     };
 
     // Record-Seq intermediates the JIT can inline: `var → element ASTs`.
@@ -677,10 +901,10 @@ pub unsafe fn functionize(
         // A state field is read back as a primitive/datatype scalar; it cannot
         // be a Seq. `effects` must be a Seq.
         if is_state && body_is_seq {
-            return None;
+            refuse!(format!("state field `{var}` is a Seq (carried across ticks → opaque to functionizer)"));
         }
         if is_effects && !body_is_seq {
-            return None;
+            refuse!(format!("effects step `{var}` is not a Seq"));
         }
 
         let (result_is_bool, jit) = match &body {
@@ -705,32 +929,37 @@ pub unsafe fn functionize(
     // ── Verify on tick 0 and tick 1 against a real Z3 solve. ──
     let empty_prev: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
-        if trace_enabled() { eprintln!("[fz] verify: tick-0 Z3 solve failed"); }
-        return None;
+        refuse!("verify: tick-0 Z3 solve failed");
     };
     let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
-        if trace_enabled() { eprintln!("[fz] verify: tick-0 eval refused (unsupported op)"); }
-        return None;
+        refuse!("verify: tick-0 eval refused (unsupported op)");
     };
     if !outputs_match(manifest, &z3_0, &mine_0) {
-        if trace_enabled() { eprintln!("[fz] verify: tick-0 mismatch vs Z3"); }
-        return None;
+        refuse!("verify: tick-0 mismatch vs Z3");
     }
     let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
     let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
-        if trace_enabled() { eprintln!("[fz] verify: tick-1 Z3 solve failed"); }
-        return None;
+        refuse!("verify: tick-1 Z3 solve failed");
     };
     let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest)) else {
-        if trace_enabled() { eprintln!("[fz] verify: tick-1 eval refused (unsupported op)"); }
-        return None;
+        refuse!("verify: tick-1 eval refused (unsupported op)");
     };
     if !outputs_match(manifest, &z3_1, &mine_1) {
-        if trace_enabled() { eprintln!("[fz] verify: tick-1 mismatch vs Z3"); }
-        return None;
+        refuse!("verify: tick-1 mismatch vs Z3");
     }
 
-    Some(prog)
+    // Fast path engaged — populate the diagnostic counts. J/I count *steps*
+    // (a JIT step vs an interpreted one, incl. guarded/seq steps which never
+    // JIT), distinct from `prog.jit_count`/`interp_count` which track scalars
+    // only. Residual = the eval-time predicates not turned into output steps.
+    stats.functionized = true;
+    stats.jit = prog.steps.iter().filter(|s| s.jit.is_some()).count();
+    stats.interp = prog.steps.iter().filter(|s| s.jit.is_none()).count();
+    stats.residual = prog.predicates.len();
+    if level == StatsLevel::Verbose {
+        stats.steps = build_step_reports(ctx, &prog);
+    }
+    (Some(prog), stats)
 }
 
 /// Inputs for a tick: `is_first_tick` + each `_<name>` state-carry.
