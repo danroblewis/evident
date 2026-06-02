@@ -1,0 +1,81 @@
+-- B7: pull-up passthrough body item.
+--
+-- Recognize a `..ClaimName` body item from a raw TokenList input
+-- `⟨DotDot, Ident("MyClaim")⟩` by calling ParsePassthrough on the
+-- head + next token. Verify ok=true and that the resulting
+-- BodyItem is BIPassthrough("MyClaim").
+--
+-- This fixture pre-extracts head1 + head2 from the TokenList in
+-- the body (rather than walking it across ticks) — the recognizer
+-- shape is what B7 ships; multi-tick consumption is a later
+-- sub-step. Each tick prints one diagnostic and exits.
+--
+-- expect: stdout = "saw dotdot=true"
+-- expect: stdout = "saw ident=true"
+-- expect: stdout = "ok=true"
+-- expect: stdout = "name=MyClaim"
+-- expect: stdout = "tag=passthrough"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- The hardcoded input. We don't carry it across ticks — this
+    -- test only verifies ParsePassthrough's recognition behavior.
+    input ∈ TokenList = TLCons(DotDot, TLCons(Ident("MyClaim"), TLNil))
+
+    -- Extract head1 and head2 from the input.
+    head1 ∈ Token = match input
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    tail1 ∈ TokenList = match input
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    head2 ∈ Token = match tail1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    -- Per-recognizer Bool intermediates so each line is verifiable.
+    is_dd ∈ Bool
+    IsDotDot(t ↦ head1, out ↦ is_dd)
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+
+    -- The composed parser.
+    item ∈ BodyItem
+    ok ∈ Bool
+    ParsePassthrough(head1 ↦ head1, head2 ↦ head2, item ↦ item, ok ↦ ok)
+
+    -- Extract the passthrough name from the BodyItem result.
+    name ∈ String = match item
+        BIPassthrough(n) ⇒ n
+        _ ⇒ ""
+
+    is_passthrough ∈ Bool = (item matches BIPassthrough(_))
+
+    -- Per-tick label. We walk five ticks via a step counter so each
+    -- assertion gets its own puts call (and any failure surfaces
+    -- as a single mismatched expect line).
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    dd_str ∈ String = (is_dd ? "saw dotdot=true" : "saw dotdot=false")
+    id_str ∈ String = (is_id ? "saw ident=true" : "saw ident=false")
+    ok_str ∈ String = (ok ? "ok=true" : "ok=false")
+    name_str ∈ String = "name=" ++ name
+    tag_str ∈ String = (is_passthrough ? "tag=passthrough" : "tag=other")
+
+    label ∈ String = (step = 0 ? dd_str
+        : (step = 1 ? id_str
+        : (step = 2 ? ok_str
+        : (step = 3 ? name_str
+        : tag_str))))
+
+    done ∈ Bool = (step ≥ 4)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

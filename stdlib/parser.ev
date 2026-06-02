@@ -76,16 +76,49 @@ claim TokenToOp
     is_binop = (is_plus ∨ is_star ∨ is_eq)
 
 -- ── Paren-depth frame stack (Phase B2) ──────────────────────────
---
--- When a paren-depth FSM hits `LParen`, it needs to suspend the
--- current outer expression context (the partially-built `current`
--- and pending `Op`) and start parsing a fresh inner one. When it
--- hits `RParen`, it pops that frame and combines the inner result
--- back into the outer.
---
--- A `Frame(outer_current, outer_pending)` captures one suspended
--- context. `FrameList` is the Cons-shaped stack of them — the
--- depth-zero state is `FLNil`.
 enum FrameList =
     FLNil
     FLCons(Expr, Op, FrameList)
+
+-- ── BodyItem AST (Phase B) ──────────────────────────────────────
+enum BodyItem =
+    BIPassthrough(String)
+    BIConstraint(Expr)
+    BINoItem
+
+-- ── Token recognizers (parser helpers) ──────────────────────────
+
+claim IsDotDot
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches DotDot)
+
+claim IsIdent
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches Ident(_))
+
+claim IdentName
+    t ∈ Token
+    name ∈ String
+    name = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+-- ── Passthrough body-item parser (B7) ───────────────────────────
+
+claim ParsePassthrough
+    head1 ∈ Token
+    head2 ∈ Token
+    item ∈ BodyItem
+    ok ∈ Bool
+
+    is_dd ∈ Bool
+    IsDotDot(t ↦ head1, out ↦ is_dd)
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+    name ∈ String
+    IdentName(t ↦ head2, name ↦ name)
+
+    ok = (is_dd ∧ is_id)
+    item = (ok ? BIPassthrough(name) : BINoItem)
