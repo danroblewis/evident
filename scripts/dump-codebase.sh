@@ -14,10 +14,17 @@
 #
 # File-extension filter: defaults to .rs/.toml/.ev/.md. Override with
 # the EXTS env var (e.g. EXTS="rs" to dump only Rust).
+#
+# Comment stripping: set STRIP_COMMENTS=1 to run each .rs file through
+# scripts/strip-comments.py before emitting it. Cuts token count by
+# ~50% on doc-heavy crates with minimal information loss for
+# whole-codebase reasoning. Non-Rust files are passed through as-is.
 
 set -euo pipefail
 
 EXTS="${EXTS:-rs toml ev md}"
+STRIP_COMMENTS="${STRIP_COMMENTS:-0}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Build a -name pattern list for `find`.
 find_args=()
@@ -86,7 +93,11 @@ for path in "${PATHS[@]}"; do
         echo "## \`$f\`"
         echo
         echo "\`\`\`$lang"
-        cat "$f"
+        if [ "$STRIP_COMMENTS" = "1" ] && [ "$lang" = "rust" ]; then
+            python3 "$SCRIPT_DIR/strip-comments.py" "$f"
+        else
+            cat "$f"
+        fi
         echo "\`\`\`"
         echo
     done <<<"$find_output"
