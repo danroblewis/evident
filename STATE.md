@@ -1,18 +1,13 @@
 # STATE
 
-_This file is the output of `scripts/check-deletable.sh`. It is
-the project's brutal-truth status: what's blocking bootstrap deletion,
-in concrete file counts. No prose, no aspirations._
-
-_Updated by running `scripts/check-deletable.sh > STATE.md` from the
-repo root whenever the state changes._
+_This file is the output of `scripts/check-deletable.sh`._
 
 ```
 BOOTSTRAP NOT YET DELETABLE.
 
 Blockers:
 
-12 files still reference bootstrap/runtime/target:
+11 files still reference bootstrap/runtime/target:
     ./tests/conformance/conftest.py
     ./tests/conformance/features/README.md
     ./tests/conformance/features/runner.sh
@@ -24,17 +19,14 @@ Blockers:
     ./scripts/diff-test-selfhosted.sh
     ./scripts/bench-demo.sh
     ./scripts/bench-selfhosted.sh
-    ./scripts/coordinator-results/02-conformance-architecture/prompt.md
 compiler.smt2 does not exist at the repo root.
     This is the self-hosted compiler — written in Evident at
     compiler/compiler.ev, compiled once via bootstrap, and
     committed here. Until it exists, only bootstrap can compile .ev files.
-17 Python files remain under scripts/ or tests/ (scheduled for removal):
+15 Python files remain under scripts/ or tests/ (scheduled for removal):
     scripts/lexer-oracle.py
     scripts/run-kernel-tests.py
     scripts/run-lang-tests.py
-    scripts/runtime-size.py
-    scripts/strip-comments.py
     tests/conformance/__init__.py
     tests/conformance/conftest.py
     tests/conformance/test_claim_composition.py

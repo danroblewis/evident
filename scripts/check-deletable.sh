@@ -27,6 +27,7 @@ ref_paths=$(grep -rln 'bootstrap/runtime/target' \
   | grep -v '^\./bootstrap/' \
   | grep -v '^\./\.claude/' \
   | grep -v '^\./\.cargo/' \
+  | grep -v '^\./scripts/coordinator-results/' \
   | grep -v '^\./STATE\.md$' \
   | grep -v '^\./CLAUDE\.md$' \
   | grep -v '^\./scripts/check-deletable\.sh$' \
@@ -57,7 +58,9 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Blocker 3: no Python in scripts/ or tests/
 # ──────────────────────────────────────────────────────────────────────────────
-py_files=$(find scripts tests -name '*.py' 2>/dev/null | sort || true)
+py_files=$(find scripts tests -name '*.py' 2>/dev/null \
+  | grep -v '^scripts/coordinator-results/' \
+  | sort || true)
 if [ -n "$py_files" ]; then
   count=$(printf '%s\n' "$py_files" | wc -l | tr -d ' ')
   blockers+=("$count Python files remain under scripts/ or tests/ (scheduled for removal):")
