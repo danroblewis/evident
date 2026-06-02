@@ -21,6 +21,14 @@ enum Token =
     Eq
     EofTok
     ErrTok(String)
+    -- Keyword tokens (recognized post-collection).
+    KwClaim
+    KwType
+    KwSchema
+    KwFsm
+    KwEnum
+    KwImport
+    KwMatch
 
 -- A `TokenList` is the output of the lexer. Cons-cell shape so a
 -- self-hosted parser can pattern-match by head/tail.
@@ -69,6 +77,20 @@ claim DigitToInt(c ∈ String, n ∈ Int)
        : c = "8" ? 8
        : c = "9" ? 9
        : 0 - 1)
+
+-- ── Keyword recognition ─────────────────────────────────────────
+-- Given a collected alphabetic run, produce either the corresponding
+-- Kw* token or Ident(s).
+
+claim MaybeKeyword(s ∈ String, t ∈ Token)
+    t = (s = "claim"  ? KwClaim
+       : s = "type"   ? KwType
+       : s = "schema" ? KwSchema
+       : s = "fsm"    ? KwFsm
+       : s = "enum"   ? KwEnum
+       : s = "import" ? KwImport
+       : s = "match"  ? KwMatch
+       : Ident(s))
 
 -- ── Single-char operator recognition ───────────────────────────
 
