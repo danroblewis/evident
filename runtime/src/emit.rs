@@ -61,23 +61,30 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
 
     validate_effects_single_writer(schema)?;
 
-    // Inject `last_results ∈ Seq(Result)` if the schema doesn't already
-    // declare it. This forces the runtime to declare the Result datatype
-    // and the last_results Array in the SMT-LIB output, so the kernel can
-    // assert on them across ticks. Without this, programs that don't
-    // explicitly reference `last_results` would lack the declarations.
-    let mut schema_owned: SchemaDecl;
-    let schema = if has_last_results_decl(schema) {
-        schema
-    } else {
-        schema_owned = schema.clone();
+    // Auto-inject kernel-convention names that the FSM body might
+    // reference but the schema doesn't declare:
+    //   - `last_results ∈ Seq(Result)` — forces Result datatype + Array decl
+    //   - `is_first_tick ∈ Bool` — kernel asserts true on tick 0 and
+    //     `(not is_first_tick)` on subsequent ticks
+    let mut schema_owned: SchemaDecl = schema.clone();
+    let mut injected_any = false;
+    if !has_membership(&schema_owned, "last_results") {
         schema_owned.body.push(BodyItem::Membership {
             name: "last_results".to_string(),
             type_name: "Seq(Result)".to_string(),
             pins: crate::core::ast::Pins::None,
         });
-        &schema_owned
-    };
+        injected_any = true;
+    }
+    if !has_membership(&schema_owned, "is_first_tick") {
+        schema_owned.body.push(BodyItem::Membership {
+            name: "is_first_tick".to_string(),
+            type_name: "Bool".to_string(),
+            pins: crate::core::ast::Pins::None,
+        });
+        injected_any = true;
+    }
+    let schema = if injected_any { &schema_owned } else { schema };
 
     // build_cache asserts every body constraint into a Z3 solver without
     // calling check(). The solver state is exactly what we want to serialize.
@@ -157,9 +164,9 @@ fn effects_seqlit_length(schema: &SchemaDecl) -> Option<usize> {
     None
 }
 
-fn has_last_results_decl(schema: &SchemaDecl) -> bool {
+fn has_membership(schema: &SchemaDecl, target: &str) -> bool {
     schema.body.iter().any(|item| matches!(
-        item, BodyItem::Membership { name, .. } if name == "last_results"
+        item, BodyItem::Membership { name, .. } if name == target
     ))
 }
 

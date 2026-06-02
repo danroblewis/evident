@@ -1,0 +1,20 @@
+-- Multi-tick program proving state + last_results carry across ticks.
+--
+-- Tick 0 (is_first_tick = true):
+--   effects = ⟨LibCall("libc", "getpid", ⟨⟩)⟩
+--   Kernel performs the libcall, captures IntResult(pid) into last_results.
+--
+-- Tick 1 (is_first_tick = false):
+--   effects = ⟨Println("got pid"), Exit(0)⟩
+--   Kernel reads last_results from the prior tick (carried across),
+--   prints "got pid" and exits 0.
+--
+-- expect: stdout = "got pid"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    mode ∈ String = "Working"
+    effects ∈ Seq(Effect) = (is_first_tick
+        ? ⟨LibCall("libc", "getpid", ⟨⟩)⟩
+        : ⟨Println("got pid"), Exit(0)⟩)
