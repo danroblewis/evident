@@ -93,3 +93,93 @@ claim MatchArmSmtlib
 
     out = (is_wild ? mas_body_str
         : "(ite ((_ is " ++ mas_ctor ++ ") " ++ scrutinee ++ ") " ++ mas_body_str ++ " " ++ rest ++ ")")
+
+-- ── Recursive match translation via a work-stack ───────────────────
+--
+-- MatchArmSmtlib above wraps ONE arm given an already-rendered `rest`
+-- string; the caller had to drive the back-to-front fold itself. A
+-- real pass walks the whole `MatchArmList` and emits the fully nested
+-- `ite` chain in one traversal. That walk is the depth-first
+-- work-stack from ArithTranslateStep — but parser.ev's `WorkItem`
+-- carries only an `Expr`, and the match fold's stack must also carry
+-- the remaining `MatchArmList` and per-arm bodies. So this pass uses a
+-- match-specialised cons-list (the same shape as `WorkList`, the
+-- in-Evident-cons-list tool the architecture-invariants doc prescribes
+-- for bounded AST traversal), not the generic `WorkItem`.
+--
+-- A pre-order walk of the arms emits the chain directly:
+--   MWArms(MACons(MArm(MPCtor(name,_), body), more)) expands to
+--     "(ite ((_ is name) <scrut>) " <MWBody(body)> " " <MWArms(more)> ")"
+--   MWArms(MACons(MArm(MPWildcard, body), _))     expands to <MWBody(body)>
+--     (the wildcard is the innermost else; trailing arms are dropped,
+--      mirroring MatchArmSmtlib's "wildcard becomes the else branch")
+--   MWBody(EInt n)/MWBody(EIdent s) emit the atom token (via ExprAsText's
+--      shape, inlined here so the step is self-contained).
+enum MatchWork =
+    MWArms(MatchArmList)
+    MWBody(Expr)
+    MWEmit(String)
+
+enum MatchWorkList =
+    MWLNil
+    MWLCons(MatchWork, MatchWorkList)
+
+claim MatchTranslateStep(scrutinee ∈ String, head ∈ MatchWork, rest ∈ MatchWorkList, new_stack ∈ MatchWorkList, emit ∈ String)
+    is_emit ∈ Bool = (head matches MWEmit(_))
+    is_body ∈ Bool = (head matches MWBody(_))
+    is_arms ∈ Bool = (head matches MWArms(_))
+
+    emit_lit ∈ String = match head
+        MWEmit(s) ⇒ s
+        _ ⇒ ""
+
+    body_expr ∈ Expr = match head
+        MWBody(e) ⇒ e
+        _ ⇒ ENoExpr
+    body_is_int   ∈ Bool = (body_expr matches EInt(_))
+    body_is_ident ∈ Bool = (body_expr matches EIdent(_))
+    body_int ∈ Int = match body_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    body_ident ∈ String = match body_expr
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    body_str ∈ String = (body_is_int ? str_from_int(body_int)
+        : body_is_ident ? body_ident
+        : "")
+
+    arms ∈ MatchArmList = match head
+        MWArms(a) ⇒ a
+        _ ⇒ MANil
+    has_arm ∈ Bool = (arms matches MACons(_, _))
+    head_arm ∈ MatchArm = match arms
+        MACons(a, _) ⇒ a
+        MANil ⇒ MArm(MPWildcard, ENoExpr)
+    more_arms ∈ MatchArmList = match arms
+        MACons(_, r) ⇒ r
+        MANil ⇒ MANil
+
+    arm_pat ∈ MatchPattern = match head_arm
+        MArm(p, _) ⇒ p
+    arm_body ∈ Expr = match head_arm
+        MArm(_, b) ⇒ b
+    arm_is_wild ∈ Bool = (arm_pat matches MPWildcard)
+    arm_ctor ∈ String = match arm_pat
+        MPCtor(n, _) ⇒ n
+        MPWildcard ⇒ ""
+
+    emit = (is_emit ? emit_lit
+        : is_body ? body_str
+        : "")
+
+    ite_open ∈ String = "(ite ((_ is " ++ arm_ctor ++ ") " ++ scrutinee ++ ") "
+    ctor_exp ∈ MatchWorkList = MWLCons(MWEmit(ite_open),
+        MWLCons(MWBody(arm_body),
+        MWLCons(MWEmit(" "),
+        MWLCons(MWArms(more_arms),
+        MWLCons(MWEmit(")"), rest)))))
+    wild_exp ∈ MatchWorkList = MWLCons(MWBody(arm_body), rest)
+
+    new_stack = (is_arms ∧ has_arm ∧ arm_is_wild ? wild_exp
+        : is_arms ∧ has_arm ? ctor_exp
+        : rest)

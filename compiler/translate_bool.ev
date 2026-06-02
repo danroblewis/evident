@@ -107,3 +107,74 @@ claim BoolExprSmtlib
     head_ok ∈ Bool = (is_binop ∧ (is_eq ∨ is_impl))
     ok = (head_ok ∧ lhs_ok ∧ rhs_ok)
     out = (ok ? op_text ++ lhs_text ++ " " ++ rhs_text ++ ")" : "")
+
+-- ── Recursive Boolean translation via a WorkItem work-stack ────────
+--
+-- BoolExprSmtlib above renders one level: a Boolean binop whose
+-- operands are atoms. A real pass walks an arbitrary tree of nested
+-- Boolean binops and produces the fully nested SMT-LIB. That walk is
+-- the depth-first work-stack from ArithTranslateStep, over parser.ev's
+-- `WorkItem = WIProcess(Expr) | WIEmit(String)`.
+--
+-- A Boolean binop `EBinOp(op, l, r)` expands (head-first onto `rest`)
+-- to "(" op_str " " P(l) " " P(r) ")"; an atom emits its token. The
+-- operators this step renders are the Boolean/comparison ones the
+-- parser's `Op` enum carries: OpEq → "=", OpImpl → "=>".
+--
+-- BLOCKER (see docs/plans/blocked-translate-bool.md): the canonical
+-- Boolean operators ∧ / ∨ / ¬ are NOT representable in the AST this
+-- pass walks. The parser's `Op` enum (compiler/parser.ev, frozen) has
+-- no OpAnd / OpOr / OpNot variant — those names exist only as *lexer*
+-- Token variants (compiler/lexer.ev), not as `Op`s — so `EBinOp(OpAnd,
+-- …)` cannot be constructed and the `(and (or x y) z)` target form is
+-- out of reach without editing a frozen file. The recursive machinery
+-- below is the identical shape an `and`/`or`-capable `Op` would drive;
+-- the OpImpl/OpEq fixture proves it on the operators that do exist.
+claim BoolTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
+    is_emit ∈ Bool = (head matches WIEmit(_))
+    emit_lit ∈ String = match head
+        WIEmit(s) ⇒ s
+        _ ⇒ ""
+    proc_expr ∈ Expr = match head
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    is_int   ∈ Bool = (proc_expr matches EInt(_))
+    is_ident ∈ Bool = (proc_expr matches EIdent(_))
+    is_binop ∈ Bool = (proc_expr matches EBinOp(_, _, _))
+
+    int_val ∈ Int = match proc_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match proc_expr
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+    op ∈ Op = match proc_expr
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs ∈ Expr = match proc_expr
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match proc_expr
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_eq   ∈ Bool = (op matches OpEq)
+    is_impl ∈ Bool = (op matches OpImpl)
+    op_str ∈ String = (is_eq ? "=" : is_impl ? "=>" : "")
+
+    emit = (is_emit ? emit_lit
+        : is_int ? str_from_int(int_val)
+        : is_ident ? ident_val
+        : "")
+
+    expansion ∈ WorkList = WLCons(WIEmit("("),
+        WLCons(WIEmit(op_str),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(lhs),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(rhs),
+        WLCons(WIEmit(")"), rest)))))))
+
+    new_stack = (is_binop ? expansion : rest)
