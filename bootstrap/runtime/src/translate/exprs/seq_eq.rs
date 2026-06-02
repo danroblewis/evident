@@ -2,7 +2,7 @@
 //! single-element composite assignment, and composite binding helpers shared with quant/mapping.
 
 use std::collections::HashMap;
-use z3::ast::{Ast, Bool, Int};
+use z3::ast::{Array, Ast, Bool, Dynamic, Int};
 use z3::{Context, DatatypeSort};
 
 use crate::core::ast::*;
@@ -94,8 +94,113 @@ fn translate_seq_rhs_eq<'ctx>(
             let refs: Vec<&Bool<'ctx>> = clauses.iter().collect();
             Some(Bool::and(ctx, &refs))
         }
+        // Whole-Seq value forms: `name = other_seq`, `name = base ++ ⟨…⟩`,
+        // `name = seq_init(base)` (drop-last), and combinations. Carried Seq state
+        // has a *symbolic* length, so the existing per-index `translate_seq_eq`
+        // (which needs both lengths statically known) can't express it. Instead we
+        // equate the whole Z3 array AND the length const: `name = rhs_arr ∧
+        // name__len = rhs_len`. Elements past `len` are copied as harmless garbage
+        // that the kernel never reads back. This is the cons→Seq carry primitive.
+        _ => {
+            let target = env.get(name)?;
+            let (rhs_arr, rhs_len) = translate_seq_value(rhs, target, ctx, env, schemas)?;
+            let (n_arr, n_len) = seq_arr_len(target)?;
+            Some(Bool::and(ctx, &[&n_arr._eq(&rhs_arr), &n_len._eq(&rhs_len)]))
+        }
+    }
+}
+
+/// The `(array, length)` dual of a Seq-valued variable.
+fn seq_arr_len<'a, 'ctx>(v: &'a Var<'ctx>) -> Option<(&'a Array<'ctx>, &'a Int<'ctx>)> {
+    if let Some((a, l, _)) = v.as_seq() { return Some((a, l)); }
+    if let Some((a, l, _, _, _)) = v.as_datatype_seq() { return Some((a, l)); }
+    None
+}
+
+/// Translate a Seq-valued *expression* to its `(Z3 array, Z3 length)` dual, the
+/// representation bootstrap uses for every `Seq(T)`. Supports the shapes a carried
+/// work-stack needs:
+///   * `Identifier`             → the variable's `(arr, len)`.
+///   * `Ternary(c, a, b)`       → `(ite c a.arr b.arr, ite c a.len b.len)`.
+///   * `seq_init(s)`            → `(s.arr, s.len - 1)` (drop the last element;
+///                                shares the array, just a shorter logical length).
+///   * `base ++ ⟨e0, e1, …⟩`    → store each `ek` onto `base.arr` at `base.len + k`
+///                                (symbolic-index stores; no quantifier), with
+///                                `len = base.len + k`.
+/// `target` is the destination Seq var, used only to type the literal elements of
+/// a `++` tail. Returns None for any other shape (the caller falls through).
+fn translate_seq_value<'ctx>(
+    e: &Expr,
+    target: &Var<'ctx>,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<(Array<'ctx>, Int<'ctx>)> {
+    match e {
+        Expr::Identifier(n) => {
+            let (a, l) = seq_arr_len(env.get(n)?)?;
+            Some((a.clone(), l.clone()))
+        }
+        Expr::Ternary(c, a, b) => {
+            let cond = translate_bool(c, ctx, env, schemas)?;
+            let (aa, al) = translate_seq_value(a, target, ctx, env, schemas)?;
+            let (ba, bl) = translate_seq_value(b, target, ctx, env, schemas)?;
+            Some((cond.ite(&aa, &ba), cond.ite(&al, &bl)))
+        }
+        Expr::Call(name, args) if name == "seq_init" && args.len() == 1 => {
+            let (a, l) = translate_seq_value(&args[0], target, ctx, env, schemas)?;
+            Some((a, Int::sub(ctx, &[&l, &Int::from_i64(ctx, 1)])))
+        }
+        Expr::Binary(BinOp::Concat, base, tail) => {
+            let items = match tail.as_ref() {
+                Expr::SeqLit(items) => items,
+                _ => return None,
+            };
+            let (mut arr, base_len) = translate_seq_value(base, target, ctx, env, schemas)?;
+            for (k, item) in items.iter().enumerate() {
+                let idx = Int::add(ctx, &[&base_len, &Int::from_i64(ctx, k as i64)]);
+                let val = elem_dynamic(item, target, ctx, env, schemas)?;
+                arr = arr.store(&idx, &val);
+            }
+            let new_len = Int::add(ctx, &[&base_len, &Int::from_i64(ctx, items.len() as i64)]);
+            Some((arr, new_len))
+        }
         _ => None,
     }
+}
+
+/// Build the Z3 element value (as a Dynamic) for one item appended to `target`'s
+/// Seq, typed by `target`'s element kind: primitive (Int/Bool/String), enum
+/// constructor (via `resolve_enum_ast` under the target-enum hint), or composite
+/// record (via `build_composite_dynamic`).
+fn elem_dynamic<'ctx>(
+    item: &Expr,
+    target: &Var<'ctx>,
+    ctx: &'ctx Context,
+    env: &HashMap<String, Var<'ctx>>,
+    schemas: &HashMap<String, SchemaDecl>,
+) -> Option<Dynamic<'ctx>> {
+    if let Some((_, _, elem)) = target.as_seq() {
+        return Some(match elem {
+            SeqElem::Int  => Dynamic::from_ast(&translate_int(item, ctx, env)?),
+            SeqElem::Bool => Dynamic::from_ast(&translate_bool(item, ctx, env, schemas)?),
+            SeqElem::Str  => Dynamic::from_ast(&translate_str(item, ctx, env)?),
+        });
+    }
+    if let Some((_, _, type_name, dt, fields)) = target.as_datatype_seq() {
+        if fields.is_empty() {
+            let owned = type_name.to_string();
+            let d = with_target_enum_hint(Some((owned, dt)), || {
+                resolve_enum_ast(item, ctx, env, schemas)
+            })?;
+            return Some(Dynamic::from_ast(&d));
+        }
+        if let Expr::Identifier(ident) = item {
+            return build_composite_dynamic(ident, dt, fields, ctx, env);
+        }
+        return None;
+    }
+    None
 }
 
 /// Assert `seq_name = ⟨items…⟩`: pin length and per-index equality for primitive, enum, and composite Seqs.
