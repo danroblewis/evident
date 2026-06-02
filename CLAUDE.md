@@ -4,6 +4,12 @@ These are the load-bearing rules for this project. They do not
 change between sessions. Status snapshots (what works today, what's
 in flight) belong in `docs/plans/`, not here.
 
+> **🚀 New session?** After reading this file, read
+> **`docs/plans/NEXT.md`** for the current handoff state +
+> concrete next-step proposals + discovered language gaps with
+> workarounds. Then `docs/plans/iter-3-status.md` for what each
+> iteration demonstrated.
+
 ## The end-goal invariant
 
 **The Rust runtime in `runtime/` is frozen in spirit. New work goes
