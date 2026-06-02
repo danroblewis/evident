@@ -1,0 +1,55 @@
+import "stdlib/kernel.ev"
+
+claim sat_exit_variant
+    e ∈ Effect
+    e = Exit(42)
+
+claim sat_println_variant
+    e ∈ Effect
+    e = Println("hi")
+
+claim sat_libcall_variant
+    e ∈ Effect
+    e = LibCall("libc.so.6", "getpid", ⟨⟩)
+
+claim sat_result_variants
+    r1 ∈ Result = NoResult
+    r2 ∈ Result = IntResult(7)
+    r3 ∈ Result = StringResult("x")
+    r4 ∈ Result = EofResult
+    r5 ∈ Result = ErrorResult("oops")
+
+claim sat_effects_seq
+    effects ∈ Seq(Effect) = ⟨Println("hello"), Exit(0)⟩
+    #effects = 2
+
+claim sat_results_seq
+    last_results ∈ Seq(Result) = ⟨NoResult, NoResult⟩
+
+claim sat_libarg_seq
+    args ∈ Seq(LibArg) = ⟨ArgStr("/tmp/x"), ArgInt(0)⟩
+    #args = 2
+
+claim sat_inline_matches
+    r ∈ Result = StringResult("foo")
+    is_str ∈ Bool = (r matches StringResult(_))
+    is_str = true
+
+claim sat_inline_not_match
+    r ∈ Result = NoResult
+    is_str ∈ Bool = (r matches StringResult(_))
+    is_str = false
+
+claim unsat_exit_wrong_payload
+    e ∈ Effect = Exit(42)
+    e = Exit(0)
+
+claim sat_builder_println
+    eff ∈ Effect
+    BuildPrintln(s ↦ "hi", eff ↦ eff)
+    eff = Println("hi")
+
+claim sat_builder_exit
+    eff ∈ Effect
+    BuildExit(code ↦ 7, eff ↦ eff)
+    eff = Exit(7)

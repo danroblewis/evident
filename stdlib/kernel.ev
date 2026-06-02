@@ -1,0 +1,86 @@
+-- stdlib/kernel.ev — Effect + Result + LibArg enums for the kernel.
+--
+-- The kernel walks a `Seq(Effect)` per tick, dispatches each variant,
+-- collects results into `Seq(Result)`, feeds them back as `last_results`
+-- on the next tick. See docs/plans/kernel-input-spec.md for the wire
+-- contract.
+--
+-- `Exit(code)` is a regular variant: when the kernel pattern-matches
+-- it during the walk, it short-circuits and exits the process with
+-- the int payload. No special-cased `exit` field anywhere.
+
+-- ── LibArg: argument shapes for the LibCall effect ──────────────
+
+enum LibArg =
+    ArgInt(Int)
+    ArgStr(String)
+    ArgReal(Real)
+
+-- ── Effect: what the FSM emits per tick ─────────────────────────
+--
+-- Variant names are part of the wire protocol — the kernel
+-- pattern-matches by name. See kernel-input-spec.md "Effect
+-- dispatch" for the full table.
+--
+--   Println / Print     → stdout (with / without trailing newline)
+--   ReadLine            → one line from stdin (EofResult at EOF)
+--   ReadFile(path)      → file contents as StringResult / ErrorResult
+--   WriteFile(p, c)     → NoResult / ErrorResult
+--   LibCall(lib,fn,as)  → dlopen+dlsym+libffi, return per C type
+--   Time                → Unix ms since epoch (IntResult)
+--   Exit(code)          → halt the process with code; short-circuits
+--                         remaining effects in the Seq
+
+enum Effect =
+    Println(String)
+    Print(String)
+    ReadLine
+    ReadFile(String)
+    WriteFile(String, String)
+    LibCall(String, String, Seq(LibArg))
+    Time
+    Exit(Int)
+
+-- ── Result: what the kernel feeds back as last_results ──────────
+--
+-- Position-aligned with the previous tick's `effects` Seq.
+--   NoResult        → void-returning effects (Println, WriteFile, etc.)
+--   IntResult(n)    → Time, libcall returning int
+--   StringResult(s) → ReadLine (line), ReadFile (contents), libcall string return
+--   RealResult(r)   → libcall double return
+--   EofResult       → ReadLine at EOF
+--   ErrorResult(s)  → any effect-level failure (libcall errors, file not found, …)
+
+enum Result =
+    NoResult
+    IntResult(Int)
+    StringResult(String)
+    RealResult(Real)
+    EofResult
+    ErrorResult(String)
+
+-- ── Sugar claims for common effect builders ─────────────────────
+--
+-- These let the FSM author write `Println("hi", eff)` instead of
+-- `eff = Println("hi")`. Optional; the constructor application
+-- form always works.
+
+claim BuildPrintln(s ∈ String, eff ∈ Effect)
+    eff = Println(s)
+
+claim BuildPrint(s ∈ String, eff ∈ Effect)
+    eff = Print(s)
+
+claim BuildReadFile(path ∈ String, eff ∈ Effect)
+    eff = ReadFile(path)
+
+claim BuildWriteFile(path ∈ String, contents ∈ String, eff ∈ Effect)
+    eff = WriteFile(path, contents)
+
+claim BuildExit(code ∈ Int, eff ∈ Effect)
+    eff = Exit(code)
+
+-- For result-shape branching, the FSM author writes `matches`
+-- inline: `is_string = (r matches StringResult(_))`. Recognizer
+-- claims (`IsString(r, out)`) hit a translator gap on constructor
+-- mapsto values and aren't worth the ceremony.
