@@ -59,8 +59,12 @@ If `./test.sh` doesn't pass, something is wrong with the environment
 See `docs/plans/completion-roadmap.md` for the authoritative phase
 plan. As of this handoff:
 
-- **Phase A (lexer parity)**: 0/7 sub-steps. Start here.
-- **Phase B (parser parity)**: 0/11 sub-steps. Blocked on A.
+- **Phase A (lexer parity)**: ✅ 7/7 done. Token enum mirrors the
+  Rust lexer; `MaybeKeyword` + `SingleCharTok` + `MaybeTwoCharOp` +
+  string-literal / float / indent helpers all live in
+  `stdlib/lexer.ev`. The oracle (`scripts/lexer-oracle.py`) is in
+  place; its expected-pass corpus should be re-run + expanded.
+- **Phase B (parser parity)**: 0/11 sub-steps. **Start here.**
 - **Phase C (translator)**: 0/14 sub-steps. Blocked on B.
 - **Phases D-F**: not started.
 
@@ -69,44 +73,40 @@ plan. As of this handoff:
 Each is ~1 session of focused work. The first three map directly to
 roadmap Phase A sub-steps; the others are useful side-quests.
 
-### Phase A sub-step (roadmap-direct, low-risk)
+### Phase B sub-step (current focus)
 
-**Goal**: knock out one Phase A sub-step from the roadmap.
+Pick a sub-step from roadmap Phase B. The Phase A lexer now emits
+the full token vocabulary, so the parser can be written against it.
 
-| Sub-step | What |
-|---|---|
-| A1 | Unicode operators (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠, ∧, ∨, ¬, ∀, ∃, →, ⟸) |
-| A2 | Two-char ASCII ops (`==`, `::`) |
-| A3 | String literals `"…"` with escapes |
-| A4 | Float literals |
-| A5 | Full keyword set |
-| A6 | Indentation tracking |
-| A7 | CRLF / EOF normalization |
+| Sub-step | What | Difficulty |
+|---|---|---|
+| B1 | Multi-binop precedence | medium (shift-reduce or precedence-climb FSM) |
+| B2 | Parenthesized subexpressions | low (mode-state for paren depth) |
+| B3 | Type parsing (TypeName, Seq(T), generics Edge&lt;T&gt;) | low-medium |
+| B4 | Membership body items (`x ∈ Type`, chained membership) | medium |
+| B5 | Schema declarations (`claim Name body…`) | medium (multi-token productions) |
+| B6 | Enum declarations | low (similar to B5) |
+| B7 | Pull-up `..ClaimName`, names-match composition | low |
+| B8 | Quantifiers `∀ x ∈ S : body` | medium |
+| B9 | Match expressions + patterns | medium-high |
+| B10 | All 7 composition mechanisms surfaced as parse productions | medium (coverage check) |
+| B11 | Import statements | low |
 
-**Pattern**: take `tests/kernel/test_consolidated_lexer.ev` as a
-template, extend `stdlib/lexer.ev` with the new predicate/dispatch,
-write a fixture.
+**Pattern**: extend `Expr` / new `BodyItem` / `SchemaDecl` / `Program`
+enums in `stdlib/parser.ev`. The parser FSM uses mode-states for
+recursive descent (like comment-skipping in iter 3.7) and a `pending`
+slot for precedence/shift-reduce (like the toy parser in iter 3.11).
 
-**Time estimate**: 1 hour per sub-step, 100-150 LOC stdlib + 1-2 test
-fixtures each.
+**Time estimate**: 1-2 hours per sub-step. Total Phase B: 10-20 sessions.
 
-### Phase A oracle harness (high-value side-quest)
+### Phase A oracle expected-pass update (high-value cleanup)
 
-**Goal**: write a script that takes every `tests/lang_tests/*.ev`,
-runs each through both the Rust lexer and the Evident lexer (running
-on the kernel), and diffs the TokenLists. This is Phase A's
-acceptance criterion — without it, "phase A complete" can't be
-declared.
+The oracle's expected-pass corpus was set when Phase A had 0/7
+sub-steps done. Now that all 7 are complete, re-run it and update
+which inputs match — some "expected-failure" cases (subclaim, true/
+false, in, mapsto, etc.) should now PASS.
 
-**Time estimate**: 2-3 hours. Mostly Python/shell. Reuses existing
-lexer test infrastructure.
-
-### Phase B sub-step (medium-risk, blocked on A)
-
-Pick a sub-step from roadmap Phase B (multi-binop precedence, parens,
-type parsing, etc.). Don't start B until Phase A is mostly complete
-or your parser will produce ASTs that depend on tokens the lexer
-can't yet emit.
+**Time estimate**: 30 minutes. Pure script work, no Evident code.
 
 ### End-to-end pipeline experiment (UX-heavy, hits parser limits)
 
