@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+
+claim main
+    pre ∈ String = substr("Edge<Rect>", 0, 4)
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr(pre)⟩),
+        Exit(0)
+    ⟩

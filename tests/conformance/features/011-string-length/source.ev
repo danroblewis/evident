@@ -1,0 +1,5 @@
+import "stdlib/kernel.ev"
+
+claim main
+    n ∈ Int = #"hello"
+    effects ∈ Seq(Effect) = ⟨Exit(n)⟩
