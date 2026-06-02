@@ -1,79 +1,12 @@
 //! Z3 model → Rust `Value` decoders shared by all `evaluate*` entry points.
 //! `extract_enum_value` finds the active variant and recurses into payload fields.
 
-use std::collections::HashMap;
 use z3::ast::Int;
 use z3::Context;
 
-use crate::core::{EnumRegistry, Value, Var};
-use super::super::extract::{extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
+use crate::core::{EnumRegistry, Value};
+use super::super::extract::unescape_z3_string;
 use super::solver::real_value_to_f64;
-
-/// Pull one variable's model value into the bindings map; shared by all evaluate* variants.
-#[allow(dead_code)]
-pub(crate) fn extract_binding(
-    name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
-    bindings: &mut HashMap<String, Value>,
-    enums: Option<&EnumRegistry>,
-) {
-    match var {
-        Var::IntVar(i) => {
-            if let Some(val) = model.eval(i, true) {
-                if let Some(n) = val.as_i64() {
-                    bindings.insert(name.to_string(), Value::Int(n));
-                }
-            }
-        }
-        Var::BoolVar(b) => {
-            if let Some(val) = model.eval(b, true) {
-                if let Some(bv) = val.as_bool() {
-                    bindings.insert(name.to_string(), Value::Bool(bv));
-                }
-            }
-        }
-        Var::RealVar(r) => {
-            if let Some((num, den)) = model.eval(r, true).and_then(|x| x.as_real()) {
-                bindings.insert(name.to_string(), Value::Real(real_value_to_f64(num, den)));
-            }
-        }
-        Var::StrVar(s) => {
-            if let Some(val) = model.eval(s, true) {
-                if let Some(sv) = val.as_string() {
-                    bindings.insert(name.to_string(), Value::Str(unescape_z3_string(&sv)));
-                }
-            }
-        }
-        Var::SeqVar { arr, len, elem } => {
-            if let Some(v) = extract_seq(arr, len, *elem, model, ctx) {
-                bindings.insert(name.to_string(), v);
-            }
-        }
-        Var::PinnedInt(v) => { bindings.insert(name.to_string(), Value::Int(*v)); }
-        Var::SetVar { set, elem, candidates } => {
-            if let Some(v) = extract_set(set, *elem, candidates, model, ctx) {
-                bindings.insert(name.to_string(), v);
-            }
-        }
-        Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
-        Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
-            let extracted = if fields.is_empty() {
-                extract_seq_enum(arr, len, type_name, *dt, model, ctx, enums)
-            } else {
-                extract_seq_composite(arr, len, fields.as_slice(), *dt, model, ctx, enums)
-            };
-            if let Some(v) = extracted {
-                bindings.insert(name.to_string(), v);
-            }
-        }
-        Var::EnumVar { ast, enum_name, dt } => {
-            if let Some(v) = extract_enum_value(ast, enum_name, dt, model, ctx, enums) {
-                bindings.insert(name.to_string(), v);
-            }
-        }
-        Var::EnumValue { .. } => { /* literal */ }
-        Var::EnumCtor { .. }  => { /* constructor */ }
-    }
-}
 
 /// Extract an enum-typed Z3 const from the model by finding the active variant via its
 /// tester, then recursively decoding each payload field (including nested enums).
