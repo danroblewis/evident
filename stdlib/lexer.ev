@@ -52,6 +52,22 @@ enum Token =
     OpNot
     OpForall
     OpExists
+    -- Two-char ASCII operators (Phase A2) and their single-char
+    -- counterparts. The Rust lexer in runtime/src/lexer.rs treats
+    -- each of these as a single token:
+    --   `++` → PlusPlus
+    --   `=>` → OpImplies (ASCII alias for ⇒)
+    --   `<=` → OpLe     (ASCII alias for ≤)
+    --   `>=` → OpGe     (ASCII alias for ≥)
+    --   `!=` → OpNe     (ASCII alias for ≠)
+    --   `..` → DotDot
+    -- Lt/Gt/Dot are the single-char fallbacks when the lookahead
+    -- says it's NOT the two-char form.
+    PlusPlus
+    DotDot
+    Lt
+    Gt
+    Dot
 
 -- A `TokenList` is the output of the lexer. Cons-cell shape so a
 -- self-hosted parser can pattern-match by head/tail.
@@ -130,6 +146,9 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "," ? Comma
         : c = "+" ? Plus
         : c = "=" ? Eq
+        : c = "<" ? Lt
+        : c = ">" ? Gt
+        : c = "." ? Dot
         : c = "∈" ? OpIn
         : c = "⇒" ? OpImplies
         : c = "⟨" ? OpSeqOpen
@@ -145,7 +164,38 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "∃" ? OpExists
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+                ∨ c = "<" ∨ c = ">" ∨ c = "."
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
                 ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
                 ∨ c = "∀" ∨ c = "∃")
+
+-- ── Two-char ASCII operator recognition ───────────────────────
+-- Given the current AND next character, decide whether they form
+-- a two-char operator. If recognized=true, the caller emits `t`
+-- and advances pos by 2. Otherwise the caller falls back to
+-- SingleCharTok on the current character (advance by 1).
+--
+-- Mirrors runtime/src/lexer.rs's peek-ahead branches:
+--   "+","+" → PlusPlus
+--   "=",">" → OpImplies
+--   "<","=" → OpLe
+--   ">","=" → OpGe
+--   "!","=" → OpNe
+--   ".","." → DotDot
+
+claim MaybeTwoCharOp(c1 ∈ String, c2 ∈ String, t ∈ Token, recognized ∈ Bool)
+    is_plus_plus  ∈ Bool = ((c1 = "+") ∧ (c2 = "+"))
+    is_implies    ∈ Bool = ((c1 = "=") ∧ (c2 = ">"))
+    is_le         ∈ Bool = ((c1 = "<") ∧ (c2 = "="))
+    is_ge         ∈ Bool = ((c1 = ">") ∧ (c2 = "="))
+    is_ne         ∈ Bool = ((c1 = "!") ∧ (c2 = "="))
+    is_dotdot     ∈ Bool = ((c1 = ".") ∧ (c2 = "."))
+    t = (is_plus_plus ? PlusPlus
+        : is_implies  ? OpImplies
+        : is_le       ? OpLe
+        : is_ge       ? OpGe
+        : is_ne       ? OpNe
+        : is_dotdot   ? DotDot
+        : ErrTok(c1))
+    recognized = (is_plus_plus ∨ is_implies ∨ is_le ∨ is_ge ∨ is_ne ∨ is_dotdot)
