@@ -11,9 +11,16 @@ import "stdlib/lexer.ev"
 -- The Op enum names the binary operator. For now we just have one
 -- operator (Plus); extending to others is a stdlib change.
 
+-- Op variants mirror the binary operator tokens the lexer emits. The
+-- precedence layer (see Precedence below) groups them into "high"
+-- (multiplicative) and "low" (additive) for the precedence-climbing
+-- parser FSM.
 enum Op =
     OpPlus
     OpEq
+    OpMul
+    OpSub
+    OpDiv
 
 enum Expr =
     EInt(Int)
@@ -51,7 +58,45 @@ claim TokenToOp
     t ∈ Token
     o ∈ Op
     is_binop ∈ Bool
-    is_plus ∈ Bool = (t matches Plus)
-    is_eq   ∈ Bool = (t matches Eq)
-    o = (is_plus ? OpPlus : (is_eq ? OpEq : OpPlus))
-    is_binop = (is_plus ∨ is_eq)
+    is_plus  ∈ Bool = (t matches Plus)
+    is_minus ∈ Bool = (t matches Minus)
+    is_star  ∈ Bool = (t matches Star)
+    is_slash ∈ Bool = (t matches Slash)
+    is_eq    ∈ Bool = (t matches Eq)
+    o = (is_plus  ? OpPlus
+       : is_minus ? OpSub
+       : is_star  ? OpMul
+       : is_slash ? OpDiv
+       : is_eq    ? OpEq
+       : OpPlus)
+    is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
+
+-- ── Operator precedence levels ──────────────────────────────────
+-- Mirrors runtime/src/parser/exprs.rs precedence climb:
+--   * / Div  → high precedence (parse_muldiv, level 2)
+--   + - Plus → low precedence  (parse_addsub, level 1)
+--   = Eq     → comparison      (parse_compare, level 0)
+--
+-- A precedence-climbing FSM consumes operators in left-to-right order
+-- and uses these numeric levels to decide "fold into current high-prec
+-- subtree" (incoming op same/higher prec than pending) versus "flush
+-- the high-prec subtree into the low-prec left-fold" (incoming op
+-- lower prec than pending).
+--
+-- Following the "first-line claim params + matches" gap workaround
+-- (see NEXT.md), op is declared in the body and callers use
+-- names-match composition.
+claim Precedence
+    op ∈ Op
+    n ∈ Int
+    is_mul ∈ Bool = (op matches OpMul)
+    is_div ∈ Bool = (op matches OpDiv)
+    is_add ∈ Bool = (op matches OpPlus)
+    is_sub ∈ Bool = (op matches OpSub)
+    is_eq  ∈ Bool = (op matches OpEq)
+    n = (is_mul ? 2
+       : is_div ? 2
+       : is_add ? 1
+       : is_sub ? 1
+       : is_eq  ? 0
+       : 0)

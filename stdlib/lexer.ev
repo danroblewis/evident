@@ -24,6 +24,13 @@ enum Token =
     RParen
     Comma
     Plus
+    -- Multiplicative / additive single-char operators. The Rust lexer
+    -- (runtime/src/lexer.rs) emits Star/Slash/Minus as plain single-char
+    -- tokens. Mirrored here for the self-hosted parser's precedence layer
+    -- (stdlib/parser.ev's TokenToOp / Precedence claims).
+    Star
+    Slash
+    Minus
     Eq
     EofTok
     ErrTok(String)
@@ -169,6 +176,9 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = ")" ? RParen
         : c = "," ? Comma
         : c = "+" ? Plus
+        : c = "*" ? Star
+        : c = "/" ? Slash
+        : c = "-" ? Minus
         : c = "=" ? Eq
         : c = "<" ? Lt
         : c = ">" ? Gt
@@ -188,6 +198,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "∃" ? OpExists
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+                ∨ c = "*" ∨ c = "/" ∨ c = "-"
                 ∨ c = "<" ∨ c = ">" ∨ c = "."
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
