@@ -62,14 +62,35 @@ direct `LibCall`s into available C libraries (`libc`, `libz3`, …) —
 no synthetic-library shims in the kernel, no namespaced channels.
 
 If an FTI conceptually wants a separate effects channel, it shares
-the host's single `effects` Seq via `++` composition with guards:
+the host's single `effects` Seq via `++` composition with a single
+top-level ternary whose branches are *literal* effect sequences.
+The `match`-into-ternary-`++`-with-literal pattern is a current
+translator constraint (a ternary as a `++` operand fails to
+translate; `++` flattens at load time over literal operands only).
+Concretely:
 
 ```evident
-effects = host_part ++ stack_part ++ queue_part
-stack_part = match push_detected
-    true ⇒ ⟨LibCall("libc", "memcpy", …)⟩
-    false ⇒ ⟨⟩
+-- Host FSM:
+effects = host_part ++ stack_part
+
+-- Inside the Stack FTI body, the FTI exposes BuildXyz sugars that
+-- produce literal LibCall Seqs. The FTI's effects expression is a
+-- single ternary whose arms are concrete literals:
+stack_part ∈ Seq(Effect) = (push_detected ? ⟨LibCall("libc", "memcpy", …)⟩
+                          : ⟨⟩)
 ```
+
+`stdlib/fti/stack.ev` (the first FTI, shipped) is the worked example
+of this pattern. The key constraints discovered there:
+
+- Seq(T) carried via state pair does not work for unbounded
+  contents — use an enum cons-list + an `Int depth` for state carry.
+  See `stdlib/fti/stack.ev` for the pattern.
+- The FTI cannot own the host's `effects` channel directly
+  (validators require a literal `effects =` in the host); the FTI
+  exposes `BuildXyz` sugars and the host `++`-composes them.
+- `match` cannot wrap a `++` expression — write a single ternary
+  whose arms are the literal effect sequences.
 
 That keeps the kernel's single-writer rule intact and adds no kernel
 infrastructure.
