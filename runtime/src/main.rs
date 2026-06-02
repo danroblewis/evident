@@ -19,6 +19,7 @@ fn usage() {
     eprintln!("  evident sample <file> --all [--json]");
     eprintln!("  evident emit   <file> <claim> [-o <out.smt2>]");
     eprintln!("  evident run    <file> <claim>     # emit + kernel in one step");
+    eprintln!("  evident dump-tokens <file>        # lex + dump tokens as JSON (oracle diagnostic)");
 }
 
 fn load(file: &str) -> Option<EvidentRuntime> {
@@ -170,8 +171,125 @@ fn main() -> ExitCode {
         "sample" => cmd_query_or_sample(&args[1..]),
         "emit"   => cmd_emit(&args[1..]),
         "run"    => cmd_run(&args[1..]),
+        "dump-tokens" => cmd_dump_tokens(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => { eprintln!("unknown subcommand: {other}"); usage(); ExitCode::from(2) }
+    }
+}
+
+/// Lex the input file and dump tokens as a JSON array, one per line.
+///
+/// This is a *diagnostic* subcommand. It exposes the Rust lexer's
+/// internal token stream so a Python oracle harness can compare it
+/// against the self-hosted Evident lexer's output (Phase A of the
+/// completion roadmap). It does NOT define or alter language semantics —
+/// it's the same `tokenize` function the parser already calls,
+/// printed in JSON form instead of fed forward.
+///
+/// Output shape: a JSON array of token objects, one per token,
+/// terminated by Eof. Each object has a `"k"` (kind) field and
+/// optional `"v"` (value) for tokens carrying payload:
+///
+///   {"k":"Claim"}
+///   {"k":"Ident","v":"x"}
+///   {"k":"Eq"}
+///   {"k":"Int","v":1}
+///   {"k":"Eof"}
+fn cmd_dump_tokens(args: &[String]) -> ExitCode {
+    let Some(file) = args.first() else { usage(); return ExitCode::from(2); };
+    let src = match std::fs::read_to_string(file) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("dump-tokens: read {file}: {e}"); return ExitCode::from(1); }
+    };
+    let toks = match evident_runtime::lexer::tokenize(&src) {
+        Ok(t) => t,
+        Err(e) => { eprintln!("dump-tokens: {e}"); return ExitCode::from(1); }
+    };
+    println!("[");
+    for (i, t) in toks.iter().enumerate() {
+        let sep = if i + 1 == toks.len() { "" } else { "," };
+        println!("  {}{}", token_to_json(t), sep);
+    }
+    println!("]");
+    ExitCode::SUCCESS
+}
+
+fn token_to_json(t: &evident_runtime::lexer::Token) -> String {
+    use evident_runtime::lexer::Token::*;
+    fn esc(s: &str) -> String {
+        // Minimal JSON string escape.
+        let mut out = String::with_capacity(s.len() + 2);
+        out.push('"');
+        for c in s.chars() {
+            match c {
+                '"'  => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\t' => out.push_str("\\t"),
+                '\r' => out.push_str("\\r"),
+                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
+    match t {
+        Ident(s)   => format!(r#"{{"k":"Ident","v":{}}}"#, esc(s)),
+        Int(n)     => format!(r#"{{"k":"Int","v":{}}}"#, n),
+        Real(r)    => format!(r#"{{"k":"Real","v":{}}}"#, r),
+        Str(s)     => format!(r#"{{"k":"Str","v":{}}}"#, esc(s)),
+        True       => r#"{"k":"True"}"#.to_string(),
+        False      => r#"{"k":"False"}"#.to_string(),
+        Schema     => r#"{"k":"Schema"}"#.to_string(),
+        Claim      => r#"{"k":"Claim"}"#.to_string(),
+        Type       => r#"{"k":"Type"}"#.to_string(),
+        Subclaim   => r#"{"k":"Subclaim"}"#.to_string(),
+        Fsm        => r#"{"k":"Fsm"}"#.to_string(),
+        External   => r#"{"k":"External"}"#.to_string(),
+        Enum       => r#"{"k":"Enum"}"#.to_string(),
+        Match      => r#"{"k":"Match"}"#.to_string(),
+        Matches    => r#"{"k":"Matches"}"#.to_string(),
+        Import     => r#"{"k":"Import"}"#.to_string(),
+        In         => r#"{"k":"In"}"#.to_string(),
+        NotIn      => r#"{"k":"NotIn"}"#.to_string(),
+        ContainsRev=> r#"{"k":"ContainsRev"}"#.to_string(),
+        Eq         => r#"{"k":"Eq"}"#.to_string(),
+        Neq        => r#"{"k":"Neq"}"#.to_string(),
+        Lt         => r#"{"k":"Lt"}"#.to_string(),
+        Le         => r#"{"k":"Le"}"#.to_string(),
+        Gt         => r#"{"k":"Gt"}"#.to_string(),
+        Ge         => r#"{"k":"Ge"}"#.to_string(),
+        Plus       => r#"{"k":"Plus"}"#.to_string(),
+        PlusPlus   => r#"{"k":"PlusPlus"}"#.to_string(),
+        Minus      => r#"{"k":"Minus"}"#.to_string(),
+        Star       => r#"{"k":"Star"}"#.to_string(),
+        Slash      => r#"{"k":"Slash"}"#.to_string(),
+        And        => r#"{"k":"And"}"#.to_string(),
+        Or         => r#"{"k":"Or"}"#.to_string(),
+        Not        => r#"{"k":"Not"}"#.to_string(),
+        Implies    => r#"{"k":"Implies"}"#.to_string(),
+        LParen     => r#"{"k":"LParen"}"#.to_string(),
+        RParen     => r#"{"k":"RParen"}"#.to_string(),
+        LBrace     => r#"{"k":"LBrace"}"#.to_string(),
+        RBrace     => r#"{"k":"RBrace"}"#.to_string(),
+        LBracket   => r#"{"k":"LBracket"}"#.to_string(),
+        RBracket   => r#"{"k":"RBracket"}"#.to_string(),
+        LSeq       => r#"{"k":"LSeq"}"#.to_string(),
+        RSeq       => r#"{"k":"RSeq"}"#.to_string(),
+        Hash       => r#"{"k":"Hash"}"#.to_string(),
+        Comma      => r#"{"k":"Comma"}"#.to_string(),
+        Pipe       => r#"{"k":"Pipe"}"#.to_string(),
+        Question   => r#"{"k":"Question"}"#.to_string(),
+        DotDot     => r#"{"k":"DotDot"}"#.to_string(),
+        Dot        => r#"{"k":"Dot"}"#.to_string(),
+        Colon      => r#"{"k":"Colon"}"#.to_string(),
+        ForAll     => r#"{"k":"ForAll"}"#.to_string(),
+        Exists     => r#"{"k":"Exists"}"#.to_string(),
+        MapsTo     => r#"{"k":"MapsTo"}"#.to_string(),
+        Newline    => r#"{"k":"Newline"}"#.to_string(),
+        Indent(n)  => format!(r#"{{"k":"Indent","v":{}}}"#, n),
+        Eof        => r#"{"k":"Eof"}"#.to_string(),
     }
 }
 

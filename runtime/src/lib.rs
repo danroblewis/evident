@@ -2,7 +2,7 @@
 
 mod core;
 pub mod emit;
-mod lexer;
+pub mod lexer;
 mod parser;
 mod translate;
 mod runtime;

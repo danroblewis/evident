@@ -112,7 +112,7 @@ claim main
             : _tokens))))))
 
     halting ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int)
-    is_kw ∈ Bool = ((_partial_str = "claim") ∨ (_partial_str = "type") ∨ (_partial_str = "fsm") ∨ (_partial_str = "enum") ∨ (_partial_str = "match"))
+    is_kw ∈ Bool = ((_partial_str = "claim") ∨ (_partial_str = "type") ∨ (_partial_str = "schema") ∨ (_partial_str = "fsm") ∨ (_partial_str = "enum") ∨ (_partial_str = "import") ∨ (_partial_str = "match"))
 
     label ∈ String = (halting ? "[eof]" : (pos < 0 ? "got input" : (start_comment ? "  # comment" : (in_comment ? "  ." : (finish_str_with_op ? ((is_kw ? ("KW(" ++ _partial_str ++ ")") : ("ID(" ++ _partial_str ++ ")")) ++ " + OP(" ++ cur_char ++ ")") : (finish_int_with_op ? ("INT(" ++ str_from_int(_partial_int) ++ ") + OP(" ++ cur_char ++ ")") : (finish_str_only ? (is_kw ? ("KW(" ++ _partial_str ++ ")") : ("ID(" ++ _partial_str ++ ")")) : (finish_int_only ? ("INT(" ++ str_from_int(_partial_int) ++ ")") : (char_only ? ("OP(" ++ cur_char ++ ")") : (is_ws ? "  -" : "  ?"))))))))))
 
