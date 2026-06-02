@@ -1,80 +1,62 @@
--- stdlib/fti/queue.ev — Queue FTI (Foreign Type Interface), FIFO.
+-- stdlib/fti/queue.ev — Queue FTI (Foreign Type Interface), FIFO, honest form.
 --
--- The first-in-first-out companion to `stdlib/fti/stack.ev` (the
--- first FTI). Same backing-store + handle-threading machinery, same
--- single-channel-effects discipline; the only thing that changes is
--- the legal-transition disjunction — a queue adds at the tail and
--- removes from the head, where a stack does both at the head.
+-- The first-in-first-out companion to `stdlib/fti/stack.ev`. Same honest
+-- backing-store discipline — contents live in libc-`malloc`'d memory,
+-- the Z3 side carries only integer metadata — and the same two-tick
+-- handle/value threading. The only things that change are the
+-- legal-transition disjunction and the geometry: a queue enqueues at the
+-- TAIL and dequeues from the HEAD, so it carries a `head ∈ Int` pointer
+-- that advances on each dequeue, where a stack only needed `depth`.
+--
+-- ── What "honest" means here (task #23, the FTI honesty audit) ─────
+--
+-- Read `stdlib/fti/stack.ev`'s header first; every honesty paragraph
+-- applies. In one line: the old `IntQueue` cons-list (the contents
+-- sitting in the Z3 model) is GONE; enqueue WRITES the value into libc
+-- memory and the front is READ BACK from it; teardown emits `free`.
+--
+-- ── Geometry (head/tail over a flat region) ───────────────────────
+--
+-- The backing region is treated as 8-byte slots. Two integer cursors,
+-- both carried by the host:
+--   * `tail ∈ Int` — index of the next slot to write. Enqueue writes at
+--     `base + tail*8`, then tail += 1.
+--   * `head ∈ Int` — index of the front (oldest) element. Dequeue
+--     advances head += 1; the bytes are simply no longer read.
+-- The logical length is `depth = tail - head`, which is what the FTI's
+-- transition disjunction is stated over (the same ±1 / 0 delta the
+-- stack uses). The front-of-queue value lives at `base + head*8` and is
+-- read back via `__mem::read_long`.
 --
 -- Design sources (cited per task):
---   * `stdlib/fti/stack.ev` — the worked FTI pattern this file clones
---     verbatim except for the transition predicates and the value
---     surfaced (a queue's reachable end is its *front*, not its top).
---     Read it first; every paragraph of its header applies here too:
---     the enum-cons-list carry workaround (Seq does not carry), the
---     `BuildXyz`-sugar split so the host owns the single `effects`
---     constraint, the two-tick `malloc` handle threading, and the
---     one-byte `memset` store.
---   * `legacy-python/docs/fti-composition.md` §"What's not in this
---     doc" / M4 (Queue FTI): "Should be structurally identical to
---     Stack with different supported-transitions (enqueue at tail,
---     dequeue from head). Once M3 lands, M4 is mostly mechanical." —
---     and §"FTI body semantics" Answer 2: an FTI honestly declares
---     the transitions it supports; an unsupported transition makes
---     the legal-transition disjunction UNSAT and the FSM halts.
---   * `docs/plans/architecture-invariants.md` §"FTIs are pure Evident
---     + FFI" and §"Single-channel effects".
---
--- ── Orientation (why head = front) ────────────────────────────────
---
--- The logical contents is a recursive enum cons-list (Seq does not
--- carry across ticks; see stack.ev). For a FIFO queue the head of the
--- list is the *front* — the oldest element, the next to be dequeued.
--- That makes the remove transition `contents = tail(_contents)` (drop
--- the head), one level deep and airtight exactly like the stack's pop
--- (`ptail = contents`). The enqueue appends at the tail
--- (`contents = _contents ++ ⟨x⟩` in Seq terms); a singly-linked
--- cons-list cannot match the deep tail one level down, so enqueue is
--- gated on the checkable one-level invariants instead: the depth grew
--- by one and the front is unchanged (appending at the tail never
--- moves the head). This is the honest one-level limit — the dual of
--- the stack, which could fully characterise its head-end push.
+--   * `legacy-python/docs/fti-composition.md` §4 "FTI body semantics"
+--     (depth-delta-driven `store_long`/load over `__mem`) and
+--     §"What's not in this doc" / M4 (Queue FTI): "Should be
+--     structurally identical to Stack with different supported-
+--     transitions (enqueue at tail, dequeue from head)." plus
+--     §"unsupported transition" Answer 2 (UNSAT on illegal transitions).
+--   * `docs/plans/architecture-invariants.md` §"FTIs are pure Evident +
+--     FFI" and §"Single-channel effects".
+--   * `docs/plans/ideas.md` §"FTI honesty audit".
 
 import "stdlib/kernel.ev"
 
--- Logical queue contents as a cons-list. Head is the FRONT of the
--- queue (oldest element / next dequeue target).
-enum IntQueue = QEmpty | QNode(Int, IntQueue)
-
--- The FTI contract. The host binds the state pair (`contents`/`prev`
--- and `depth`/`prev_depth`) and the first-tick flag `is_init`; the
--- FTI asserts which transitions are legal and reports `enqueuing` (an
--- enqueue was detected this tick) and `front` (the current front-of-
--- queue value — the analog of the stack's `top`).
-claim Queue(contents ∈ IntQueue, prev ∈ IntQueue, depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool, enqueuing ∈ Bool, front ∈ Int)
-    ptail ∈ IntQueue = match prev
-        QNode(h, t) ⇒ t
-        QEmpty ⇒ QEmpty
-    front = match contents
-        QNode(h, t) ⇒ h
-        QEmpty ⇒ 0
-    phead ∈ Int = match prev
-        QNode(h, t) ⇒ h
-        QEmpty ⇒ 0
-    prev_empty ∈ Bool = (prev = QEmpty)
-
-    -- Honest transition declaration (fti-composition.md Answer 2): a
-    -- step is a no-op, a single enqueue (append at tail: depth+1, front
-    -- preserved), or a single dequeue (drop head: prev = QNode(_,
-    -- contents)). Anything else satisfies none of the disjuncts, the
-    -- constraint is UNSAT, and the kernel halts. `is_init` lets the
-    -- first tick through before the carried `prev`/`prev_depth` exist.
-    legal_noop ∈ Bool = (depth = prev_depth ∧ contents = prev)
-    legal_enq  ∈ Bool = (depth = prev_depth + 1 ∧ (prev_empty ∨ (front = phead)))
-    legal_deq  ∈ Bool = (depth = prev_depth - 1 ∧ ptail = contents)
+-- The FTI contract, metadata only. The host binds the integer depth pair
+-- (`depth`/`prev_depth`) and `is_init`; the FTI asserts which transitions
+-- are legal and reports `enqueuing`. The contents and the head/tail
+-- cursors live host-side; the data lives in libc memory, NOT here.
+claim Queue(depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool, enqueuing ∈ Bool, dequeuing ∈ Bool)
+    -- Honest transition declaration (fti-composition.md Answer 2) over
+    -- the integer depth delta: no-op, single enqueue (depth+1), or single
+    -- dequeue (depth-1). Anything else is UNSAT and the kernel halts.
+    legal_noop ∈ Bool = (depth = prev_depth)
+    legal_enq  ∈ Bool = (depth = prev_depth + 1)
+    legal_deq  ∈ Bool = (depth = prev_depth - 1)
     (is_init ∨ legal_noop ∨ legal_enq ∨ legal_deq)
+    depth ≥ 0
 
     enqueuing = legal_enq
+    dequeuing = legal_deq
 
 -- ── libcall builders (the FTI's libcall literals live here) ────────
 
@@ -82,6 +64,15 @@ claim Queue(contents ∈ IntQueue, prev ∈ IntQueue, depth ∈ Int, prev_depth 
 claim BuildQueueAlloc(eff ∈ Effect)
     eff = LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)
 
--- Store one byte (`value`) at `base + offset`.
-claim BuildQueueStore(base ∈ Int, offset ∈ Int, value ∈ Int, eff ∈ Effect)
-    eff = LibCall("libc", "memset", ⟨ArgInt(base + offset), ArgInt(value), ArgInt(1)⟩)
+-- Store the full machine-long `value` at the tail slot `slot`.
+claim BuildQueueStore(base ∈ Int, slot ∈ Int, value ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "write_long", ⟨ArgInt(base + slot * 8), ArgInt(value)⟩)
+
+-- Read the slot `slot` back (the front-of-queue value lives at the head
+-- slot). The long arrives in next tick's last_results as `front`.
+claim BuildQueueRead(base ∈ Int, slot ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long", ⟨ArgInt(base + slot * 8)⟩)
+
+-- Teardown: release the backing region when the host raises `is_halting`.
+claim BuildQueueFree(base ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "free", ⟨ArgInt(base)⟩)

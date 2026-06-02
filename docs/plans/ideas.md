@@ -142,6 +142,28 @@ friction.
 
 ## FTI honesty audit: rewrite Stack/Queue to actually use external memory
 
+**STATUS: COMPLETE (task #23, agent-23-fti-honesty-audit).** All three
+anti-patterns fixed. `stdlib/fti/{stack,queue}.ev` now carry NO cons-list
+(verified: `IntStack`/`SNode`/`SEmpty` count = 0 in the emitted SMT-LIB;
+manifest state-fields carry `depth:Int` + `base:Int`, no `contents`).
+Data lives in libc-`malloc`'d memory: push WRITES the full long via a new
+`__mem::write_long` and the top/front is READ BACK via `__mem::read_long`
+(the test drains all three pushed values straight out of C memory — they
+were never in Z3). Teardown emits `LibCall("libc","free",base)` on the
+host's `is_halting` tick (proven live: freeing a bogus pointer SIGABRTs;
+the valid `base` frees and exits 0). One minimal kernel primitive added —
+the `__mem` read_long/write_long deref pair (NOT the legacy `__mem__`
+library); justified + documented in `architecture-invariants.md` §"The
+`__mem` deref primitive". `./test.sh` green; both fixtures pass under all
+three functionizer modes (default / JIT=0 / FUNCTIONIZE=0). Note on
+acceptance #7: the fixtures still don't fast-path the *whole* tick, but
+the refusal reason is no longer a cons-list — it is `(_ is IntResult)`
+(the `last_results` Result-decode every memory read-back needs) plus
+`str_from_int` string formatting for the `puts`; both are inherent to any
+FSM that reads memory back and prints, and were equally true of the old
+cons-list fixture. The `depth` metadata is now pure Int arithmetic. The
+original deferral analysis follows for the record.
+
 **Source:** user, mid-session ~task #19.
 
 **The current FTI is anti-pattern stacked three ways:**
