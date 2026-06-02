@@ -74,6 +74,22 @@ enum Token =
     Lt
     Gt
     Dot
+    -- Layout tokens (Phase A6). The Rust lexer at
+    -- runtime/src/lexer.rs models indentation with TWO variants:
+    --   * Newline    — emitted at every '\n' outside a paren group
+    --   * Indent(Int) — emitted ONCE per non-blank, non-comment line,
+    --                   carrying that line's leading-space column count
+    --                   (tab counted as 4 spaces). Blank lines and
+    --                   comment-only lines emit no Indent. Inside any
+    --                   open paren group ((), {}, [], ⟨⟩) both tokens
+    --                   are suppressed so expressions can span lines.
+    -- This is NOT a Python-style Indent/Dedent-stack model — the
+    -- parser compares Indent(n) values directly to decide body-block
+    -- membership (runtime/src/parser/schema.rs::parse_indented_body).
+    -- There is no Dedent token; "leaving a block" is just an Indent(n)
+    -- whose n is smaller than the block's chosen indent level.
+    Newline
+    Indent(Int)
 
 -- A `TokenList` is the output of the lexer. Cons-cell shape so a
 -- self-hosted parser can pattern-match by head/tail.
@@ -246,3 +262,48 @@ claim DigitAccumulate(prev ∈ Int, c ∈ String, n ∈ Int)
 
 claim IsDecimalPoint(c ∈ String, out ∈ Bool)
     out = (c = ".")
+
+-- ── Indentation helpers (Phase A6) ─────────────────────────────
+-- The Rust lexer (runtime/src/lexer.rs, lines 102-135) counts the
+-- column of the first non-whitespace character on each new line:
+--   ' '  → +1
+--   '\t' → +4
+-- A line whose first non-whitespace char is '\n' (blank line) or
+-- '-' followed by '-' (comment) emits NO Indent token and resumes
+-- at_line_start=true for the next line. All other lines emit an
+-- `Indent(n)` token carrying that column count BEFORE the line's
+-- content tokens.
+--
+-- IndentWidth: column-cost of a single whitespace char. 0 for
+-- non-indent chars so a caller's accumulator update reads as a flat
+-- `cur_indent + width` regardless of what `cur_char` actually is.
+
+claim IndentWidth(c ∈ String, w ∈ Int)
+    w = (c = " "  ? 1
+       : c = "\t" ? 4
+       : 0)
+
+-- IsIndentChar: true iff the char counts toward indentation. A
+-- separate predicate so the per-tick FSM's mode-transition logic
+-- (stay-in-leading-whitespace vs leave-the-leading-whitespace) can
+-- read as one Bool comparison.
+
+claim IsIndentChar(c ∈ String, out ∈ Bool)
+    out = (c = " " ∨ c = "\t")
+
+-- IsBlankLineHead: true iff the char at line-start position (after
+-- any leading whitespace was already stripped) means "this line
+-- emits no Indent token." Matches the Rust lexer's two early
+-- returns at runtime/src/lexer.rs:113 (newline) and :118 (comment
+-- lead, when next char is also '-').
+--
+-- The caller passes the FIRST non-whitespace char of the line. The
+-- second arg (`next_after`) is the char after that, used only to
+-- distinguish a single '-' (token: Minus, line is NOT blank) from
+-- '--' (comment, line IS blank for indent purposes).
+
+claim IsBlankLineHead(c ∈ String, next_after ∈ String, out ∈ Bool)
+    is_eol     ∈ Bool = (c = "\n")
+    is_comment ∈ Bool = ((c = "-") ∧ (next_after = "-"))
+    is_eof     ∈ Bool = (c = "")
+    out = (is_eol ∨ is_comment ∨ is_eof)
