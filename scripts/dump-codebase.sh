@@ -16,14 +16,20 @@
 # the EXTS env var (e.g. EXTS="rs" to dump only Rust).
 #
 # Comment stripping: set STRIP_COMMENTS=1 to run each .rs file through
-# scripts/strip-comments.py before emitting it. Cuts token count by
-# ~50% on doc-heavy crates with minimal information loss for
-# whole-codebase reasoning. Non-Rust files are passed through as-is.
+# scripts/strip-comments.py before emitting it. Line count is
+# preserved by the stripper so downstream line numbers still match
+# the original file.
+#
+# Line numbers: set LINE_NUMBERS=1 to prefix every line with its
+# original line number in `cat -n` format (Read tool style: 6-wide
+# right-justified number, tab, content). Makes the dump nearly
+# equivalent to running Read on each file.
 
 set -euo pipefail
 
 EXTS="${EXTS:-rs toml ev md}"
-STRIP_COMMENTS="${STRIP_COMMENTS:-0}"
+STRIP_COMMENTS="${STRIP_COMMENTS:-1}"
+LINE_NUMBERS="${LINE_NUMBERS:-1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Build a -name pattern list for `find`.
@@ -93,10 +99,19 @@ for path in "${PATHS[@]}"; do
         echo "## \`$f\`"
         echo
         echo "\`\`\`$lang"
+        # Two-stage pipeline so that line numbers match the original
+        # file (post-strip line counts are preserved by strip-comments.py).
+        # Use awk to mimic Read's cat-n format: 6-wide right-justified
+        # number, tab, content.
         if [ "$STRIP_COMMENTS" = "1" ] && [ "$lang" = "rust" ]; then
-            python3 "$SCRIPT_DIR/strip-comments.py" "$f"
+            content_cmd=(python3 "$SCRIPT_DIR/strip-comments.py" "$f")
         else
-            cat "$f"
+            content_cmd=(cat "$f")
+        fi
+        if [ "$LINE_NUMBERS" = "1" ]; then
+            "${content_cmd[@]}" | awk '{printf "%6d\t%s\n", NR, $0}'
+        else
+            "${content_cmd[@]}"
         fi
         echo "\`\`\`"
         echo

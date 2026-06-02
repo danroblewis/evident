@@ -116,22 +116,14 @@ def strip_rust_comments(text: str) -> str:
     return "".join(out)
 
 
-def collapse_blanks(text: str) -> str:
-    """Trim trailing whitespace from each line, then collapse runs of
-    blank lines down to one. Removes the bulk of post-strip whitespace
-    while keeping a single visual break between top-level items."""
+def trim_trailing(text: str) -> str:
+    """Trim trailing whitespace from each line. Preserves the original
+    line count so that downstream `cat -n` numbering still matches the
+    source file's line numbers — important when the dump is used as a
+    Read-equivalent reference (the agent says "line 47" and that's a
+    real line 47 in the file)."""
     lines = [ln.rstrip() for ln in text.splitlines()]
-    out = []
-    blank_run = 0
-    for ln in lines:
-        if ln == "":
-            blank_run += 1
-            if blank_run <= 1:
-                out.append("")
-        else:
-            blank_run = 0
-            out.append(ln)
-    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
 def main(argv):
@@ -140,7 +132,7 @@ def main(argv):
             text = f.read()
     else:
         text = sys.stdin.read()
-    sys.stdout.write(collapse_blanks(strip_rust_comments(text)))
+    sys.stdout.write(trim_trailing(strip_rust_comments(text)))
 
 
 if __name__ == "__main__":
