@@ -1,0 +1,46 @@
+-- C7: SMT-LIB Seq operations (literal/len/index).
+--
+-- Drives the three helpers in stdlib/translate_seq.ev with the
+-- minimal-shape inputs documented in their headers, then prints
+-- one rendered SMT-LIB string per tick.
+--
+-- SeqLenSmtlib("xs")                           → "(seq.len xs)"
+-- SeqIndexSmtlib("xs", "0")                    → "(seq.nth xs 0)"
+-- SeqLitSmtlib(ELCons(EInt(1), ELCons(EInt(2), -- "(seq.++ (seq.unit 1)
+--             ELNil)))                                       (seq.unit 2))"
+--
+-- expect: stdout = "(seq.len xs)"
+-- expect: stdout = "(seq.nth xs 0)"
+-- expect: stdout = "(seq.++ (seq.unit 1) (seq.unit 2))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_seq.ev"
+
+claim main
+    -- ── #xs → (seq.len xs) ──────────────────────────────────────
+    len_out ∈ String
+    SeqLenSmtlib(name ↦ "xs", out ↦ len_out)
+
+    -- ── xs[0] → (seq.nth xs 0) ──────────────────────────────────
+    idx_out ∈ String
+    SeqIndexSmtlib(name ↦ "xs", idx ↦ "0", out ↦ idx_out)
+
+    -- ── ⟨1, 2⟩ → (seq.++ (seq.unit 1) (seq.unit 2)) ─────────────
+    items ∈ ExprList = ELCons(EInt(1), ELCons(EInt(2), ELNil))
+    lit_out ∈ String
+    SeqLitSmtlib(items ↦ items, out ↦ lit_out)
+
+    -- ── Step counter so each render gets its own puts line ──────
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    label ∈ String = (step = 0 ? len_out
+        : (step = 1 ? idx_out
+        : lit_out))
+
+    done ∈ Bool = (step ≥ 2)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

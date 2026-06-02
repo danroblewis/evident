@@ -1,0 +1,135 @@
+-- stdlib/translate_seq.ev — Phase C7: SMT-LIB Seq operations.
+--
+-- Maps Evident's Seq surface to Z3's sequence theory:
+--
+--   ⟨a, b, c⟩  → (seq.++ (seq.unit a) (seq.unit b) (seq.unit c))
+--   xs = ys    → (= xs ys)               -- delegated to generic eq translation
+--   xs[i]      → (seq.nth xs i)
+--   #xs        → (seq.len xs)
+--
+-- The three helpers here are pure translation claims: they take an
+-- already-parsed shape (a name string, an index string, or an
+-- ExprList of atomic literals) and return the SMT-LIB rendering as
+-- a string. They mirror what `runtime/src/translate/exprs/seq_eq.rs`
+-- emits on the Rust side.
+--
+-- Multi-element SeqLit walking (the unbounded-N case) is the same
+-- pattern as the work-stack walkers in test_ast_walker.ev /
+-- test_ast_to_text.ev: the FSM consumer pops a head cell, dispatches
+-- to RenderSeqUnit for the unit emission, and accumulates the
+-- pieces. The helpers below assemble the bounded shapes that the
+-- B-phase AST already produces (empty, 1-item, 2-item), which
+-- covers the test fixtures and the small literals in stdlib.
+
+import "stdlib/parser.ev"
+
+-- ── Render one atomic Expr as `(seq.unit <X>)` ─────────────────
+--
+-- The B-phase Expr AST has EInt(n), EIdent(s), and EBinOp(…). For
+-- a literal sequence like ⟨1, 2, 3⟩ the elements parse as EInt,
+-- and for ⟨a, b, c⟩ they parse as EIdent. RenderSeqUnit covers
+-- both atomic shapes; a compound subexpression would need the full
+-- translator (Phase C3+).
+--
+-- The match pattern doesn't reach EBinOp here — only the two
+-- atomic-arity variants we actually emit for. ENoExpr falls through
+-- to "<nyi>" as a visible diagnostic if the caller hands us a
+-- shape we don't yet render.
+
+claim RenderSeqUnit
+    e ∈ Expr
+    out ∈ String
+
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+    atom_str ∈ String = (is_int ? str_from_int(int_val)
+                       : is_ident ? ident_val
+                       : "<nyi>")
+
+    out = "(seq.unit " ++ atom_str ++ ")"
+
+-- ── #xs  →  (seq.len xs) ───────────────────────────────────────
+--
+-- The Rust path renders `#xs` directly to `(seq.len <translated>)`
+-- — see runtime/src/translate/exprs/scalar.rs (the Card arm).
+-- Here we take an already-rendered name (the result of an earlier
+-- translator pass) and wrap it.
+
+claim SeqLenSmtlib
+    name ∈ String
+    out ∈ String
+    out = "(seq.len " ++ name ++ ")"
+
+-- ── xs[i]  →  (seq.nth xs i) ───────────────────────────────────
+--
+-- Indexed access lowers to Z3's `seq.nth`. The name and index are
+-- already-translated strings; this claim just glues them together
+-- in prefix form.
+
+claim SeqIndexSmtlib
+    name ∈ String
+    idx ∈ String
+    out ∈ String
+    out = "(seq.nth " ++ name ++ " " ++ idx ++ ")"
+
+-- ── ⟨ … ⟩  →  (seq.++ (seq.unit a) (seq.unit b) …) ─────────────
+--
+-- Walks an ExprList of atomic literals and emits the Z3 sequence
+-- literal. For an empty list, Z3 needs an explicit element-sort,
+-- so we emit `(as seq.empty (Seq Int))` as the placeholder (the
+-- caller is expected to fix up the element sort once it's threaded
+-- through; this matches the Rust default for `⟨⟩`).
+--
+-- The bounded-shape match below covers the three cases that
+-- actually appear in current `stdlib/` literals and test fixtures:
+--   ELNil                              → (as seq.empty (Seq Int))
+--   ELCons(e1, ELNil)                  → (seq.unit e1)
+--   ELCons(e1, ELCons(e2, ELNil))      → (seq.++ (seq.unit e1) (seq.unit e2))
+--
+-- N≥3 element literals are the same shape as the AST walker tests:
+-- a multi-tick consumer FSM that pops one cell per tick, calls
+-- RenderSeqUnit, and accumulates into an output string. That FSM
+-- belongs to the pipeline integration step (Phase D), not here.
+
+claim SeqLitSmtlib
+    items ∈ ExprList
+    out ∈ String
+
+    is_empty ∈ Bool = (items matches ELNil)
+    is_cons  ∈ Bool = (items matches ELCons(_, _))
+
+    head_e ∈ Expr = match items
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    tail ∈ ExprList = match items
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+
+    tail_is_nil  ∈ Bool = (tail matches ELNil)
+    tail_is_cons ∈ Bool = (tail matches ELCons(_, _))
+
+    second_e ∈ Expr = match tail
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+
+    head_unit ∈ String
+    RenderSeqUnit(e ↦ head_e, out ↦ head_unit)
+
+    second_unit ∈ String
+    RenderSeqUnit(e ↦ second_e, out ↦ second_unit)
+
+    one_str ∈ String = head_unit
+    two_str ∈ String = "(seq.++ " ++ head_unit ++ " " ++ second_unit ++ ")"
+
+    out = (is_empty                       ? "(as seq.empty (Seq Int))"
+        : (is_cons ∧ tail_is_nil)         ? one_str
+        : (is_cons ∧ tail_is_cons)        ? two_str
+        : "<nyi>")
