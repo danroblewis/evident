@@ -81,6 +81,10 @@ enum Token =
     -- Enum-variant separator `|`. The Rust lexer emits this for enum
     -- declarations like `enum Color = Red | Green | Blue`.
     Pipe
+    -- `:` — quantifier body separator (Phase B8). The Rust lexer emits
+    -- Colon for the `:` between the range and body in `∀ x ∈ S : body`
+    -- (runtime/src/lexer.rs).
+    Colon
     -- Layout tokens (Phase A6). The Rust lexer at
     -- runtime/src/lexer.rs models indentation with TWO variants:
     --   * Newline    — emitted at every '\n' outside a paren group
@@ -184,6 +188,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = ">" ? Gt
         : c = "." ? Dot
         : c = "|" ? Pipe
+        : c = ":" ? Colon
         : c = "∈" ? OpIn
         : c = "⇒" ? OpImplies
         : c = "⟨" ? OpSeqOpen
@@ -200,7 +205,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
                 ∨ c = "*" ∨ c = "/" ∨ c = "-"
-                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|"
+                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":"
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
                 ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"

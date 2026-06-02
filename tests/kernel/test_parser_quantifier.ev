@@ -1,0 +1,126 @@
+-- B8: quantifier parsing (`∀ x ∈ items : x = 0`).
+--
+-- Recognises the leading 4-token shape ⟨OpForall, Ident("x"), OpIn,
+-- Ident("items"), Colon, …⟩ via ParseQuantifier. The body Expr is
+-- pre-built (EBinOp(OpEq, EIdent("x"), EInt(0))) — composing it from
+-- a continuing TokenList walk is a later sub-step.
+--
+-- This fixture pre-extracts the four head tokens from the TokenList
+-- in the body (mirrors test_parser_passthrough.ev's recognizer shape).
+-- We verify per-tick that each head matches its predicate, then that
+-- the composed ParseQuantifier emits ok=true, the right var name, the
+-- right range identifier, and the EForall variant tag.
+--
+-- expect: stdout = "is_forall=true"
+-- expect: stdout = "is_var_id=true"
+-- expect: stdout = "is_in=true"
+-- expect: stdout = "is_src_id=true"
+-- expect: stdout = "ok=true"
+-- expect: stdout = "var=x"
+-- expect: stdout = "src=items"
+-- expect: stdout = "tag=forall"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- Token-list shape: ⟨OpForall, Ident("x"), OpIn, Ident("items"), Colon⟩
+    input ∈ TokenList = TLCons(OpForall,
+        TLCons(Ident("x"),
+        TLCons(OpIn,
+        TLCons(Ident("items"),
+        TLCons(Colon, TLNil)))))
+
+    -- Pre-extract the first four head tokens.
+    head1 ∈ Token = match input
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    tail1 ∈ TokenList = match input
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    head2 ∈ Token = match tail1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    tail2 ∈ TokenList = match tail1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    head3 ∈ Token = match tail2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    tail3 ∈ TokenList = match tail2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    head4 ∈ Token = match tail3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    -- Pre-built body Expr: x = 0.
+    body_expr ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(0))
+
+    -- Per-recognizer Bool intermediates so each line is verifiable.
+    is_forall ∈ Bool
+    IsForall(t ↦ head1, out ↦ is_forall)
+    is_var_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_var_id)
+    is_in ∈ Bool
+    IsOpIn(t ↦ head3, out ↦ is_in)
+    is_src_id ∈ Bool
+    IsIdent(t ↦ head4, out ↦ is_src_id)
+
+    -- The composed parser.
+    expr ∈ Expr
+    ok ∈ Bool
+    ParseQuantifier(head1 ↦ head1, head2 ↦ head2, head3 ↦ head3,
+        head4 ↦ head4, body ↦ body_expr, expr ↦ expr, ok ↦ ok)
+
+    -- Extract the bound-var name + range identifier from the result.
+    -- Distinct names from ParseQuantifier's internals (var_name /
+    -- src_name / range_expr) to avoid name collisions when the claim's
+    -- body inlines into the caller's namespace.
+    out_var ∈ String = match expr
+        EForall(n, _, _) ⇒ n
+        EExists(n, _, _) ⇒ n
+        _ ⇒ ""
+
+    out_range ∈ Expr = match expr
+        EForall(_, r, _) ⇒ r
+        EExists(_, r, _) ⇒ r
+        _ ⇒ ENoExpr
+
+    out_src ∈ String = match out_range
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+    is_forall_tag ∈ Bool = (expr matches EForall(_, _, _))
+
+    -- Per-tick step counter to print one diagnostic per tick.
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    forall_str ∈ String = (is_forall ? "is_forall=true" : "is_forall=false")
+    var_id_str ∈ String = (is_var_id ? "is_var_id=true" : "is_var_id=false")
+    in_str     ∈ String = (is_in ? "is_in=true" : "is_in=false")
+    src_id_str ∈ String = (is_src_id ? "is_src_id=true" : "is_src_id=false")
+    ok_str     ∈ String = (ok ? "ok=true" : "ok=false")
+    var_str    ∈ String = "var=" ++ out_var
+    src_str    ∈ String = "src=" ++ out_src
+    tag_str    ∈ String = (is_forall_tag ? "tag=forall" : "tag=other")
+
+    label ∈ String = (step = 0 ? forall_str
+        : (step = 1 ? var_id_str
+        : (step = 2 ? in_str
+        : (step = 3 ? src_id_str
+        : (step = 4 ? ok_str
+        : (step = 5 ? var_str
+        : (step = 6 ? src_str
+        : tag_str)))))))
+
+    done ∈ Bool = (step ≥ 7)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

@@ -22,10 +22,19 @@ enum Op =
     OpSub
     OpDiv
 
+-- Quantifier variants (B8) carry the bound variable name, the
+-- range expression (the source to iterate over, e.g. `items`), and
+-- the body expression. Mirrors the Rust AST's `Expr::Forall(vars,
+-- range, body)` / `Expr::Exists(...)` in runtime/src/core/ast.rs,
+-- restricted to the single-name shape (`∀ x ∈ S : body`); the
+-- tuple-binding form (`∀ (a, b) ∈ coindexed(...) : ...`) is a
+-- later sub-step.
 enum Expr =
     EInt(Int)
     EIdent(String)
     EBinOp(Op, Expr, Expr)
+    EForall(String, Expr, Expr)
+    EExists(String, Expr, Expr)
     ENoExpr
 
 -- A Cons-shaped list of Exprs, used as a work stack when walking
@@ -200,6 +209,76 @@ claim IdentName
     name = match t
         Ident(s) ⇒ s
         _ ⇒ ""
+
+-- ── Quantifier recognizers (B8) ─────────────────────────────────
+claim IsForall
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpForall)
+
+claim IsExists
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpExists)
+
+claim IsOpIn
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpIn)
+
+claim IsColon
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches Colon)
+
+-- ── Quantifier parser (B8) ──────────────────────────────────────
+-- Recognises the leading token sequence of a single-name quantifier:
+--   ⟨OpForall, Ident(x), OpIn, Ident(src), Colon, …body…⟩    or
+--   ⟨OpExists, Ident(x), OpIn, Ident(src), Colon, …body…⟩
+--
+-- Pre-extracted by the caller: the first four head tokens, plus the
+-- already-parsed body Expr. `range_src` becomes an EIdent.
+--
+-- Mirrors runtime/src/parser/exprs.rs::parse_quantifier (single-name
+-- branch). The tuple-binding branch + block-form body are future
+-- sub-steps; this recogniser covers the inline `∀ x ∈ S : body`
+-- shape — the canonical case in stdlib/.
+--
+-- Output:
+--   ok=true  → expr is EForall(var, EIdent(src), body)
+--                       or EExists(var, EIdent(src), body)
+--   ok=false → expr is ENoExpr (the head4 didn't match the shape;
+--                callers fall through to non-quantifier parsing).
+claim ParseQuantifier
+    head1 ∈ Token
+    head2 ∈ Token
+    head3 ∈ Token
+    head4 ∈ Token
+    body ∈ Expr
+    expr ∈ Expr
+    ok ∈ Bool
+
+    is_forall ∈ Bool
+    IsForall(t ↦ head1, out ↦ is_forall)
+    is_exists ∈ Bool
+    IsExists(t ↦ head1, out ↦ is_exists)
+    is_var_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_var_id)
+    var_name ∈ String
+    IdentName(t ↦ head2, name ↦ var_name)
+    is_in ∈ Bool
+    IsOpIn(t ↦ head3, out ↦ is_in)
+    is_src_id ∈ Bool
+    IsIdent(t ↦ head4, out ↦ is_src_id)
+    src_name ∈ String
+    IdentName(t ↦ head4, name ↦ src_name)
+
+    head1_ok ∈ Bool = (is_forall ∨ is_exists)
+    ok = (head1_ok ∧ is_var_id ∧ is_in ∧ is_src_id)
+    range_expr ∈ Expr = EIdent(src_name)
+    expr = (ok ∧ is_forall ? EForall(var_name, range_expr, body)
+        : (ok ∧ is_exists ? EExists(var_name, range_expr, body)
+        : ENoExpr))
 
 -- ── Passthrough body-item parser (B7) ───────────────────────────
 claim ParsePassthrough
