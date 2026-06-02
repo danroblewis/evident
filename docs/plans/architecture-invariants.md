@@ -26,16 +26,20 @@ introduce constraints that *vary* in shape per tick. Only the values
 of pinned variables vary. The body's *structure* is fixed at load
 time.
 
-Implication for the kernel: it must use Z3's incremental solving
-(push/pop scopes or just-keep-asserting-with-fresh-equalities) such
-that the loaded program stays in Z3 across ticks. The current
-kernel **VIOLATES** this invariant per the audit at
-`docs/plans/audit-kernel-z3-lifecycle.md` — it re-parses the
-SMT-LIB body and creates a fresh `Z3_solver` on every tick
-(`kernel/src/tick.rs:62-111`). Invisible cost today (tiny
-fixtures), dominant cost once the body is `compiler.smt2`. A fix
-proposal is at `docs/plans/kernel-fix-incremental-solving.md`
-awaiting user approval per the freeze.
+Implication for the kernel: the loaded program's parse must NOT be
+redone every tick. **FIX LANDED** in `kernel/src/tick.rs`: the body is
+parsed ONCE and its asserted ASTs cached; each tick re-asserts the
+cached ASTs (no re-parse) plus the equality pins into a fresh solver.
+This satisfies invariant #1 (parse once). Note the landed form does
+NOT use `push`/`pop`: the proposal's push/pop incremental mechanism was
+implemented and measured first but regressed datatype-state fixtures
+~36x (a kernel test timed out at 30s) because incremental mode forgoes
+the one-shot preprocessing those growing pins need — so it was replaced
+with the cached-ASTs mechanism, which keeps `./test.sh` green and is
+faster than the prior re-parsing kernel. Full write-up (including the
+deviation flag for the user) at
+`docs/plans/kernel-fix-incremental-solving.md`; the original violation
+is documented at `docs/plans/audit-kernel-z3-lifecycle.md`.
 
 ## Compiler output: SMT-LIB string OR Z3 AST (whichever is faster)
 

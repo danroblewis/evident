@@ -1,10 +1,23 @@
 //! Tick loop: solve, walk effects, dispatch, repeat.
 //!
-//! MVP scope (v0.1):
-//!   - Built-in effects: Println, Print, Exit
-//!   - Time/ReadLine/ReadFile/WriteFile/LibCall: stubs (continue)
-//!   - Solver state: fresh `Z3_solver` per tick, fresh parse of full SMT each tick
-//!     (concatenated body + carry asserts + is_first_tick assert)
+//! Z3 lifecycle (per docs/plans/architecture-invariants.md §"Z3 model
+//! lifecycle", fix proposal docs/plans/kernel-fix-incremental-solving.md):
+//!   - The program body is parsed ONCE; its asserted ASTs are cached.
+//!   - Each tick re-asserts the cached body ASTs (no re-parse) plus only the
+//!     tick-local equality pins (state-carry `_<name>`, `last_results`,
+//!     `is_first_tick`) into a fresh solver, then solves.
+//!   - The pins are applied by parsing a tiny string of `<declarations
+//!     extracted from the body> + <equality asserts>`. Re-declaring the
+//!     symbols makes them intern to the same variables as the cached body ASTs
+//!     (Z3 hash-conses sorts + func_decls within a context).
+//!
+//! Note: an earlier attempt asserted the body onto ONE persistent solver and
+//! used `push`/`pop` per tick. That is the literal shape of the fix proposal,
+//! but it regressed multi-tick datatype-state fixtures ~36x (the incremental
+//! solver forgoes the one-shot preprocessing a fresh solve applies to the
+//! growing carried-state pins) — a kernel test timed out at 30s. Caching the
+//! parsed ASTs removes the audit's per-tick re-parse cost (invariant #1)
+//! without that regression. See docs/plans/kernel-fix-incremental-solving.md.
 
 use std::ffi::{CStr, CString};
 use std::ptr;
@@ -54,39 +67,84 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     let ctx = Z3_mk_context(cfg);
     Z3_del_config(cfg);
 
+    // Build the model ONCE: parse the body a single time and CACHE its asserted
+    // ASTs. The cached ASTs are re-asserted into a fresh solver each tick — no
+    // per-tick re-parse of the body (the audit's dominant cost for large
+    // compiler.smt2), while each tick keeps Z3's one-shot preprocessing.
+    let body_vec = {
+        let body_cstr = match CString::new(src) {
+            Ok(c) => c,
+            Err(e) => {
+                Z3_del_context(ctx);
+                return Err(format!("smtlib body has interior NUL: {e}"));
+            }
+        };
+        let empty_sym: Vec<Z3_symbol> = Vec::new();
+        let empty_sort: Vec<Z3_sort> = Vec::new();
+        let empty_decl: Vec<Z3_func_decl> = Vec::new();
+        let asts = Z3_parse_smtlib2_string(
+            ctx, body_cstr.as_ptr(),
+            0, empty_sym.as_ptr(), empty_sort.as_ptr(),
+            0, empty_sym.as_ptr(), empty_decl.as_ptr(),
+        );
+        if asts.is_null() {
+            let err_ptr = Z3_get_error_msg(ctx, Z3_get_error_code(ctx));
+            let err = if err_ptr.is_null() { String::new() }
+                      else { CStr::from_ptr(err_ptr).to_string_lossy().into_owned() };
+            Z3_del_context(ctx);
+            return Err(format!("smtlib parse failed: {err}"));
+        }
+        Z3_ast_vector_inc_ref(ctx, asts);
+        asts
+    };
+    let body_n = Z3_ast_vector_size(ctx, body_vec);
+
+    // Declarations (datatypes, consts) extracted from the body. Each tick's
+    // tiny pin string re-declares these so its symbols intern to the same
+    // base-scope variables — including ones the body declares but never
+    // references in an assert (e.g. `is_first_tick`, `last_results`), which a
+    // post-parse AST walk could not recover.
+    let decl_preamble = extract_declarations(src);
+
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
 
     const TICK_LIMIT: usize = 100_000;
     for tick in 0..TICK_LIMIT {
-        // Build per-tick SMT: body + carry + is_first_tick wiring, all in one parse.
-        let mut full = String::with_capacity(src.len() + 256);
-        full.push_str(src);
+        // Fresh solver for this tick; re-assert the cached body ASTs (no parse)
+        // plus this tick's equality pins, so Z3 preprocesses the whole problem.
+        let solver = Z3_mk_solver(ctx);
+        Z3_solver_inc_ref(ctx, solver);
+        for i in 0..body_n {
+            Z3_solver_assert(ctx, solver, Z3_ast_vector_get(ctx, body_vec, i));
+        }
+
+        // Build ONLY the per-tick equality pins. The declarations preamble makes
+        // the pin symbols re-declare and intern to the cached body's variables.
+        let mut pins = String::with_capacity(decl_preamble.len() + 256);
+        pins.push_str(&decl_preamble);
 
         if !is_first {
             for (idx, (name, _)) in manifest.state_fields.iter().enumerate() {
                 if let Some(v) = &prev_state[idx] {
-                    full.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
+                    pins.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
                 }
             }
         }
         // last_results: assert length + per-index value. On tick 0 the array
         // is empty (length 0); subsequent ticks carry the prior tick's results.
-        full.push_str(&format!("(assert (= last_results__len {}))\n", prev_results.len()));
+        pins.push_str(&format!("(assert (= last_results__len {}))\n", prev_results.len()));
         for (i, r) in prev_results.iter().enumerate() {
-            full.push_str(&format!("(assert (= (select last_results {i}) {}))\n", r.smtlib()));
+            pins.push_str(&format!("(assert (= (select last_results {i}) {}))\n", r.smtlib()));
         }
         if is_first {
-            full.push_str("(assert is_first_tick)\n");
+            pins.push_str("(assert is_first_tick)\n");
         } else {
-            full.push_str("(assert (not is_first_tick))\n");
+            pins.push_str("(assert (not is_first_tick))\n");
         }
 
-        let solver = Z3_mk_solver(ctx);
-        Z3_solver_inc_ref(ctx, solver);
-
-        let cstr = CString::new(full.as_str()).unwrap();
+        let cstr = CString::new(pins.as_str()).unwrap();
         let empty_sym: Vec<Z3_symbol> = Vec::new();
         let empty_sort: Vec<Z3_sort> = Vec::new();
         let empty_decl: Vec<Z3_func_decl> = Vec::new();
@@ -96,11 +154,11 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             0, empty_sym.as_ptr(), empty_decl.as_ptr(),
         );
         if asts.is_null() {
-            Z3_solver_dec_ref(ctx, solver);
-            Z3_del_context(ctx);
             let err_ptr = Z3_get_error_msg(ctx, Z3_get_error_code(ctx));
             let err = if err_ptr.is_null() { String::new() }
                       else { CStr::from_ptr(err_ptr).to_string_lossy().into_owned() };
+            Z3_solver_dec_ref(ctx, solver);
+            Z3_del_context(ctx);
             return Err(format!("smtlib parse failed on tick {tick}: {err}"));
         }
 
@@ -182,6 +240,73 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
     Z3_del_context(ctx);
     Err(format!("tick limit ({TICK_LIMIT}) reached"))
+}
+
+/// Extract every top-level declaration s-expression (`declare-fun`,
+/// `declare-const`, `declare-datatypes`, `declare-sort`, `define-*`) from a
+/// kernel `.smt2` body, preserving order. The result is prepended to each
+/// tick's pin string so that the pins' symbols re-declare and intern to the
+/// body's base-scope variables (Z3 hash-conses sorts + func_decls per context).
+///
+/// Asserts are skipped — the body is parsed once and its ASTs cached. The
+/// scanner is paren-balanced and respects `"`-quoted strings (`""` escapes a
+/// quote) and `;` line comments so parens inside them are not miscounted.
+fn extract_declarations(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let n = bytes.len();
+    let mut out = String::new();
+    let mut i = 0usize;
+    let mut depth = 0i32;
+    let mut form_start = 0usize;
+    let mut in_string = false;
+    while i < n {
+        let c = bytes[i];
+        if in_string {
+            if c == b'"' {
+                if i + 1 < n && bytes[i + 1] == b'"' { i += 2; continue; } // escaped ""
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b';' => { while i < n && bytes[i] != b'\n' { i += 1; } }
+            b'"' => { in_string = true; i += 1; }
+            b'(' => {
+                if depth == 0 { form_start = i; }
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    let form = &src[form_start..i];
+                    if is_declaration_form(form) {
+                        out.push_str(form);
+                        out.push('\n');
+                    }
+                }
+            }
+            _ => { i += 1; }
+        }
+    }
+    out
+}
+
+/// True when a top-level s-expression's head keyword is a declaration (not an
+/// assertion or a solver command).
+fn is_declaration_form(form: &str) -> bool {
+    const KW: &[&str] = &[
+        "declare-fun", "declare-const", "declare-datatypes", "declare-datatype",
+        "declare-sort", "define-fun-rec", "define-funs-rec", "define-fun",
+        "define-sort", "define-const",
+    ];
+    let head = form.trim_start_matches('(').trim_start();
+    KW.iter().any(|k| {
+        head.starts_with(k)
+            && head[k.len()..].chars().next().map_or(true, |c| c.is_whitespace() || c == '(')
+    })
 }
 
 // ── Effect dispatch ─────────────────────────────────────────────
