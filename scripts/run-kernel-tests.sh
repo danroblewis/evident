@@ -23,7 +23,7 @@
 set -u -o pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EVIDENT="$ROOT/bootstrap/runtime/target/release/evident"
+EVIDENT="$("$ROOT/scripts/evident-self" bin)"
 KERNEL="$ROOT/kernel/target/release/kernel"
 TESTS="$ROOT/tests/kernel"
 

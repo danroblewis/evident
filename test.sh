@@ -4,7 +4,8 @@
 # Phases:
 #   1. Build the Rust binary (release).
 #   2. cargo test --release in bootstrap/runtime/.
-#   3. pytest tests/conformance/ — black-box CLI conformance.
+#   3. tests/conformance/features/ — implementation-agnostic conformance
+#      (runner.sh, IMPL=bootstrap). The legacy Python/pytest suite is gone.
 #   4. tests/lang_tests/*.ev — drive each via `evident sample --all --json`,
 #      assert sat_*/unsat_* prefixes.
 #   5. tests/kernel/*.ev — drive each via `evident emit` + `kernel`, assert
@@ -77,30 +78,12 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -
     echo
 fi
 
-# ── Phase 3: conformance ─────────────────────────────────────
+# ── Phase 3: conformance features (implementation-agnostic) ──
+# The legacy Python/pytest conformance suite has been fully migrated to
+# tests/conformance/features/ (input/output specs run via runner.sh).
+# There is no Python left under tests/ — this IS the conformance phase.
 if [ "$RUST_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
-    phase "Phase 3: conformance (tests/conformance/)"
-    # The legacy Python conformance tests have been migrated to
-    # tests/conformance/features/ (run in Phase 3b). Only conftest.py
-    # remains here, so pytest collects nothing (exit 5) until it too is
-    # removed in the final self-host wave. Treat "no tests collected" as
-    # a pass rather than a failure.
-    set +e
-    pytest tests/conformance/ -q --tb=short 2>&1 | tee /tmp/evident-pytest.log
-    rc=${PIPESTATUS[0]}
-    set -e
-    if [ "$rc" -eq 0 ] || [ "$rc" -eq 5 ]; then
-        counts=$(grep -E "[0-9]+ passed" /tmp/evident-pytest.log | tail -1 || true)
-        ok "conformance: ${counts:-no Python tests (migrated to features/)}"
-    else
-        fail "conformance"; failures+=("conformance")
-    fi
-    echo
-fi
-
-# ── Phase 3b: conformance features (implementation-agnostic) ─
-if [ "$RUST_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
-    phase "Phase 3b: conformance features (tests/conformance/features/, IMPL=bootstrap)"
+    phase "Phase 3: conformance features (tests/conformance/features/, IMPL=bootstrap)"
     if IMPL=bootstrap tests/conformance/features/runner.sh 2>&1 | tee /tmp/evident-features.log ; then
         ok "conformance features: $(grep -E 'passed /' /tmp/evident-features.log | tail -1)"
     else

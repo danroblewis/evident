@@ -38,7 +38,7 @@ for arg in "$@"; do
     esac
 done
 
-EVIDENT=${EVIDENT:-./bootstrap/runtime/target/release/evident}
+EVIDENT=${EVIDENT:-$(scripts/evident-self bin)}
 KERNEL=${KERNEL:-./kernel/target/release/kernel}
 THRESHOLD_S=${THRESHOLD_S:-60}
 

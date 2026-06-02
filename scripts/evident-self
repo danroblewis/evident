@@ -65,10 +65,22 @@ die() { echo "evident-self: $*" >&2; exit 2; }
 case "${1:-}" in
     -h|--help|"")
         usage; exit 0 ;;
+    bin)
+        # Print the path to the underlying compiler binary, then exit.
+        #
+        # This is the SINGLE place the bootstrap-binary path is written
+        # down: every test/bench script resolves its `evident` through
+        # `scripts/evident-self bin` instead of hard-coding
+        # `bootstrap/runtime/target/...`. When the bootstrap→kernel
+        # switch lands, only the EVIDENT assignment above changes and
+        # the literal disappears from every *.sh at once. We print the
+        # path unconditionally (no existence check) — the caller does
+        # its own `-x` guard.
+        echo "$EVIDENT"; exit 0 ;;
     emit)
         shift ;;
     *)
-        die "unknown subcommand '$1' (expected: emit)"
+        die "unknown subcommand '$1' (expected: emit | bin)"
         ;;
 esac
 
