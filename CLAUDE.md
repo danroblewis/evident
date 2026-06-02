@@ -1,5 +1,13 @@
 # Evident — read this first
 
+## If you're being asked to orchestrate
+
+If the human just asked you to "take over as coordinator" or
+similar, **stop reading this file** and read
+`docs/briefings/orchestrator.md` first. It contains the
+hand-off prompt + the coordination pattern. Come back here
+after.
+
 ## The goal in three sentences
 
 **The deliverable of this project is `bootstrap/` deleted.** Today,
