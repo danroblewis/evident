@@ -28,9 +28,14 @@ time.
 
 Implication for the kernel: it must use Z3's incremental solving
 (push/pop scopes or just-keep-asserting-with-fresh-equalities) such
-that the loaded program stays in Z3 across ticks. An audit of the
-current `kernel/` against this invariant is needed; see
-`docs/plans/audit-kernel-z3-lifecycle.md` (TODO).
+that the loaded program stays in Z3 across ticks. The current
+kernel **VIOLATES** this invariant per the audit at
+`docs/plans/audit-kernel-z3-lifecycle.md` — it re-parses the
+SMT-LIB body and creates a fresh `Z3_solver` on every tick
+(`kernel/src/tick.rs:62-111`). Invisible cost today (tiny
+fixtures), dominant cost once the body is `compiler.smt2`. A fix
+proposal is at `docs/plans/kernel-fix-incremental-solving.md`
+awaiting user approval per the freeze.
 
 ## Compiler output: SMT-LIB string OR Z3 AST (whichever is faster)
 
