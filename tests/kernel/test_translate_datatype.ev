@@ -1,0 +1,110 @@
+-- C1: SMT-LIB datatype declaration translator (enum → declare-datatypes).
+--
+-- Walks the hardcoded EnumDeclAst for `enum Color = Red | Green | Blue`
+-- and emits the SMT-LIB block
+--
+--     (declare-datatypes ((Color 0)) (((Red) (Green) (Blue))))
+--
+-- which matches what runtime/src/runtime/register_enums.rs emits via
+-- Z3's DatatypeBuilder on the same input.
+--
+-- Architecture (mirrors test_ast_to_text.ev's work-stack walker):
+--
+--   * The walker carries an EnumVariantList accumulator (`vlist`) and
+--     a String accumulator (`body_str`).
+--   * Each tick pops the head variant, calls the single-tick
+--     VariantText claim to render it, and concatenates the result
+--     into body_str (with a single space between variants — same
+--     separator the Rust builder uses between accessor groups).
+--   * The first variant is appended without a leading space; the
+--     `is_first_variant` Bool tracks that.
+--   * The body_str is wrapped in an extra `(` … `)` so the output
+--     reads `(((Red) (Green) (Blue)))` — the outer paren wraps the
+--     ONE variant-group for our ONE Datatype (Z3's
+--     `create_datatypes` takes a list of variant-groups, one per
+--     declared type). For a single-enum block that's a singleton
+--     list. The wrap lives entirely in the FSM here; EnumDeclSmtlib
+--     just sticks "((" before the body_str and "))" after it via
+--     the prefix-string assembled by EnumDeclPrefix.
+--   * On the final tick (vlist exhausted) we call EnumDeclSmtlib
+--     with the assembled `body_str` and print the result.
+--
+-- expect: stdout = "[translate-datatype start]"
+-- expect: stdout = "  variant=Red"
+-- expect: stdout = "  variant=Green"
+-- expect: stdout = "  variant=Blue"
+-- expect: stdout = "(declare-datatypes ((Color 0)) (((Red) (Green) (Blue))))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate.ev"
+
+claim main
+    -- Hardcoded EnumDeclAst for `enum Color = Red | Green | Blue`.
+    -- Variants are in encounter order (Red → Green → Blue).
+    initial_decl ∈ EnumDeclAst = EnumD("Color",
+        EVCons(EVDecl("Red"),
+        EVCons(EVDecl("Green"),
+        EVCons(EVDecl("Blue"), EVNil))))
+
+    -- Pull the variant list out of the decl once.
+    initial_vlist ∈ EnumVariantList = match initial_decl
+        EnumD(_, vs) ⇒ vs
+        ENoEnum ⇒ EVNil
+
+    -- Per-tick state.
+    vlist  ∈ EnumVariantList
+    _vlist ∈ EnumVariantList
+    body_str  ∈ String
+    _body_str ∈ String
+    is_first_variant  ∈ Bool
+    _is_first_variant ∈ Bool
+
+    -- Pop the head variant + the tail of the carried list.
+    head_v ∈ EnumVariantDecl = match _vlist
+        EVCons(v, _) ⇒ v
+        EVNil ⇒ EVNoVariant
+
+    tail_vlist ∈ EnumVariantList = match _vlist
+        EVCons(_, rest) ⇒ rest
+        EVNil ⇒ EVNil
+
+    is_empty ∈ Bool = match _vlist
+        EVNil ⇒ true
+        _ ⇒ false
+
+    -- Render the head variant via the C1 single-tick claim.
+    head_text ∈ String
+    VariantText(v ↦ head_v, out ↦ head_text)
+
+    -- Variant name (for the per-tick diagnostic line).
+    head_name ∈ String = match head_v
+        EVDecl(n) ⇒ n
+        EVNoVariant ⇒ ""
+
+    -- Concatenate into body_str. First variant: no leading space.
+    sep ∈ String = (_is_first_variant ? "" : " ")
+    appended ∈ String = _body_str ++ sep ++ head_text
+
+    -- State carry.
+    vlist            = (is_first_tick ? initial_vlist : tail_vlist)
+    body_str         = (is_first_tick ? "" : (is_empty ? _body_str : appended))
+    is_first_variant = (is_first_tick ? true : false)
+
+    -- Final-tick assembly: wrap body_str in the outer "(...)" group
+    -- and call EnumDeclSmtlib with the result.
+    grouped_body ∈ String = "(" ++ _body_str ++ ")"
+    full_smtlib ∈ String
+    EnumDeclSmtlib(
+        decl ↦ initial_decl,
+        body_str ↦ grouped_body,
+        out ↦ full_smtlib)
+
+    -- Per-tick diagnostic label.
+    label ∈ String = (is_first_tick ? "[translate-datatype start]"
+        : (is_empty ? full_smtlib : ("  variant=" ++ head_name)))
+
+    effects ∈ Seq(Effect) = (is_first_tick
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩
+        : (is_empty
+            ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+            : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))
