@@ -1,0 +1,121 @@
+-- B10: composition-mechanisms parse-side coverage check.
+--
+-- CLAUDE.md's "Composition mechanisms" section enumerates seven
+-- ways to inline one schema into another's body. B10 establishes
+-- the AST shapes that future parse-FSM sub-steps will produce —
+-- this fixture verifies the shapes round-trip through a
+-- construct-then-recognize loop.
+--
+-- Coverage on this branch:
+--   #2 / #4 bare-claim and names-match → BIClaimCall(name, CANil)
+--   #3      `..ClaimName`              → BIPassthrough(name)
+--   #5      `ClaimName(slot ↦ value)`  → BIClaimCall(name, CACons …)
+--   #6      `subclaim Name body…`      → BISubclaim(name, BodyItemList)
+--   #7      `cond ⇒ ClaimName`         → BIConstraint(EBinOp(OpImpl, …))
+--
+-- The fixture builds one value of each new variant, then pattern-matches
+-- on it to extract a discriminator and the carried name (or operator
+-- tag, for #7). The expected output is one diagnostic per mechanism
+-- followed by an Exit(0) banner.
+--
+-- expect: stdout = "passthrough:Logger"
+-- expect: stdout = "claim-call:Counter"
+-- expect: stdout = "mapsto:Adder slot=lhs"
+-- expect: stdout = "subclaim:Inner"
+-- expect: stdout = "guarded:OpImpl"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- ── Construct one BodyItem of each new variant ────────────────
+    -- Mechanism #3 (passthrough): `..Logger`
+    bi_pass ∈ BodyItem = BIPassthrough("Logger")
+
+    -- Mechanism #2/#4 (bare claim name, zero-arg names-match call): `Counter`
+    bi_call ∈ BodyItem = BIClaimCall("Counter", CANil)
+
+    -- Mechanism #5 (mapsto args): `Adder(lhs ↦ 5)`
+    one_arg ∈ ClaimArg = CArg("lhs", EInt(5))
+    args ∈ ClaimArgList = CACons(one_arg, CANil)
+    bi_mapsto ∈ BodyItem = BIClaimCall("Adder", args)
+
+    -- Mechanism #6 (nested subclaim): `subclaim Inner` with one trivial body item
+    inner_body ∈ BodyItemList = BILCons(BIConstraint(EInt(1)), BILNil)
+    bi_sub ∈ BodyItem = BISubclaim("Inner", inner_body)
+
+    -- Mechanism #7 (guarded): `cond ⇒ Foo` parses as an EBinOp(OpImpl, …).
+    -- We construct a contrived `1 ⇒ 2` value to verify OpImpl serializes
+    -- through; a real parser would put `EIdent("Foo")` (or a future
+    -- ECall node) on the RHS.
+    impl_expr ∈ Expr = EBinOp(OpImpl, EInt(1), EInt(2))
+    bi_guard ∈ BodyItem = BIConstraint(impl_expr)
+
+    -- ── Recognize + extract diagnostics ───────────────────────────
+    pass_name ∈ String = match bi_pass
+        BIPassthrough(n) ⇒ n
+        _ ⇒ "<?>"
+
+    call_name ∈ String = match bi_call
+        BIClaimCall(n, _) ⇒ n
+        _ ⇒ "<?>"
+
+    mapsto_name ∈ String = match bi_mapsto
+        BIClaimCall(n, _) ⇒ n
+        _ ⇒ "<?>"
+
+    -- Pull the args off, then the first slot name.
+    mapsto_args ∈ ClaimArgList = match bi_mapsto
+        BIClaimCall(_, a) ⇒ a
+        _ ⇒ CANil
+
+    first_arg ∈ ClaimArg = match mapsto_args
+        CACons(a, _) ⇒ a
+        CANil ⇒ CANoArg
+
+    slot_name ∈ String = match first_arg
+        CArg(s, _) ⇒ s
+        CANoArg ⇒ "<?>"
+
+    sub_name ∈ String = match bi_sub
+        BISubclaim(n, _) ⇒ n
+        _ ⇒ "<?>"
+
+    -- For the guarded variant, dig into the BIConstraint's Expr and
+    -- confirm the top-level Op is OpImpl.
+    guard_expr ∈ Expr = match bi_guard
+        BIConstraint(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    guard_op ∈ Op = match guard_expr
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+
+    guard_is_impl ∈ Bool = (guard_op matches OpImpl)
+    guard_tag ∈ String = (guard_is_impl ? "OpImpl" : "<?>")
+
+    -- ── Step counter drives the per-tick diagnostic ───────────────
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    line0 ∈ String = "passthrough:" ++ pass_name
+    line1 ∈ String = "claim-call:" ++ call_name
+    line2 ∈ String = "mapsto:" ++ mapsto_name ++ " slot=" ++ slot_name
+    line3 ∈ String = "subclaim:" ++ sub_name
+    line4 ∈ String = "guarded:" ++ guard_tag
+    line5 ∈ String = "[done]"
+
+    label ∈ String = (step = 0 ? line0
+        : (step = 1 ? line1
+        : (step = 2 ? line2
+        : (step = 3 ? line3
+        : (step = 4 ? line4
+        : line5)))))
+
+    done ∈ Bool = (step ≥ 5)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
