@@ -58,11 +58,87 @@ impl Sv {
     }
 }
 
+/// Pin-application mechanism. Selected by the `KERNEL_PIN_MECH` env var during
+/// the exploration documented in docs/plans/kernel-fix-incremental-solving.md.
+/// All variants `.simplify()` the body ONCE before the tick loop (the only
+/// difference between them is HOW the per-tick equality pins reach the solver).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Mech {
+    /// A: fresh solver per tick; assert simplified body + parse-and-assert pins.
+    CachedSimplify,
+    /// B: persistent solver; body asserted once; `check_assumptions(pins)` per tick.
+    CheckAssumptions,
+    /// C: persistent solver; body asserted once; push / assert pins / check / pop.
+    PushPop,
+    /// D: persistent solver; reset + re-assert body + assert pins + check per tick.
+    ResetAssert,
+    /// E: fresh solver per tick; substitute pins into the body AST, then check.
+    Substitute,
+    /// F: fresh tactic-built solver per tick (simplify-then-smt); else like A.
+    TacticSolver,
+}
+
+fn mech_from_env() -> Mech {
+    match std::env::var("KERNEL_PIN_MECH").ok().as_deref() {
+        Some("A") => Mech::CachedSimplify,
+        Some("B") => Mech::CheckAssumptions,
+        Some("C") => Mech::PushPop,
+        Some("D") => Mech::ResetAssert,
+        Some("E") => Mech::Substitute,
+        Some("F") => Mech::TacticSolver,
+        // Default = the mechanism that won the exploration (E, substitute pins
+        // into the body AST). See docs/plans/kernel-fix-incremental-solving.md.
+        _ => Mech::Substitute,
+    }
+}
+
 pub fn run(src: &str, manifest: &Manifest) -> Result<u8, String> {
     unsafe { run_inner(src, manifest) }
 }
 
+/// Parse a tiny SMT-LIB string (declarations preamble + equality pins) into an
+/// inc_ref'd ast_vector. Caller dec_refs. Returns the parse error message on
+/// failure.
+unsafe fn parse_pins(ctx: Z3_context, pins: &str) -> Result<Z3_ast_vector, String> {
+    let cstr = CString::new(pins).map_err(|e| format!("pin string has interior NUL: {e}"))?;
+    let empty_sym: Vec<Z3_symbol> = Vec::new();
+    let empty_sort: Vec<Z3_sort> = Vec::new();
+    let empty_decl: Vec<Z3_func_decl> = Vec::new();
+    let asts = Z3_parse_smtlib2_string(
+        ctx, cstr.as_ptr(),
+        0, empty_sym.as_ptr(), empty_sort.as_ptr(),
+        0, empty_sym.as_ptr(), empty_decl.as_ptr(),
+    );
+    if asts.is_null() {
+        let err_ptr = Z3_get_error_msg(ctx, Z3_get_error_code(ctx));
+        let err = if err_ptr.is_null() { String::new() }
+                  else { CStr::from_ptr(err_ptr).to_string_lossy().into_owned() };
+        return Err(err);
+    }
+    Z3_ast_vector_inc_ref(ctx, asts);
+    Ok(asts)
+}
+
+/// F: build a fresh solver from a `simplify ; smt` tactic pipeline (the user's
+/// "other solver"). Rebuilt per tick since F is fresh-per-tick.
+unsafe fn make_tactic_solver(ctx: Z3_context) -> Z3_solver {
+    let n_simplify = CString::new("simplify").unwrap();
+    let n_smt = CString::new("smt").unwrap();
+    let t1 = Z3_mk_tactic(ctx, n_simplify.as_ptr());
+    let t2 = Z3_mk_tactic(ctx, n_smt.as_ptr());
+    Z3_tactic_inc_ref(ctx, t1);
+    Z3_tactic_inc_ref(ctx, t2);
+    let t = Z3_tactic_and_then(ctx, t1, t2);
+    Z3_tactic_inc_ref(ctx, t);
+    let s = Z3_mk_solver_from_tactic(ctx, t);
+    Z3_tactic_dec_ref(ctx, t);
+    Z3_tactic_dec_ref(ctx, t2);
+    Z3_tactic_dec_ref(ctx, t1);
+    s
+}
+
 unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
+    let mech = mech_from_env();
     let cfg = Z3_mk_config();
     let ctx = Z3_mk_context(cfg);
     Z3_del_config(cfg);
@@ -99,6 +175,18 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     };
     let body_n = Z3_ast_vector_size(ctx, body_vec);
 
+    // Pre-loop `.simplify()` (architecture-invariants.md §"Z3 model lifecycle"
+    // #4: a single simplify BEFORE the loop is allowed and desired; per-tick
+    // simplify remains forbidden). Simplify each asserted formula once and cache
+    // the results; every mechanism below uses these simplified ASTs.
+    let mut simp: Vec<Z3_ast> = Vec::with_capacity(body_n as usize);
+    for i in 0..body_n {
+        let a = Z3_ast_vector_get(ctx, body_vec, i);
+        let s = Z3_simplify(ctx, a);
+        Z3_inc_ref(ctx, s);
+        simp.push(s);
+    }
+
     // Declarations (datatypes, consts) extracted from the body. Each tick's
     // tiny pin string re-declares these so its symbols intern to the same
     // base-scope variables — including ones the body declares but never
@@ -106,22 +194,30 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     // post-parse AST walk could not recover.
     let decl_preamble = extract_declarations(src);
 
+    // Persistent solver for B / C / D. Body asserted once for B / C (D re-asserts
+    // after each reset).
+    let persistent = matches!(mech, Mech::CheckAssumptions | Mech::PushPop | Mech::ResetAssert);
+    let psolver: Z3_solver = if persistent {
+        let s = Z3_mk_solver(ctx);
+        Z3_solver_inc_ref(ctx, s);
+        if mech != Mech::ResetAssert {
+            for &a in &simp { Z3_solver_assert(ctx, s, a); }
+        }
+        s
+    } else {
+        ptr::null_mut()
+    };
+
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
 
     const TICK_LIMIT: usize = 100_000;
     for tick in 0..TICK_LIMIT {
-        // Fresh solver for this tick; re-assert the cached body ASTs (no parse)
-        // plus this tick's equality pins, so Z3 preprocesses the whole problem.
-        let solver = Z3_mk_solver(ctx);
-        Z3_solver_inc_ref(ctx, solver);
-        for i in 0..body_n {
-            Z3_solver_assert(ctx, solver, Z3_ast_vector_get(ctx, body_vec, i));
-        }
-
         // Build ONLY the per-tick equality pins. The declarations preamble makes
         // the pin symbols re-declare and intern to the cached body's variables.
+        // For Substitute (E) is_first_tick is written as an equality so every
+        // pin is uniformly `(= lhs rhs)`.
         let mut pins = String::with_capacity(decl_preamble.len() + 256);
         pins.push_str(&decl_preamble);
 
@@ -138,45 +234,146 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         for (i, r) in prev_results.iter().enumerate() {
             pins.push_str(&format!("(assert (= (select last_results {i}) {}))\n", r.smtlib()));
         }
-        if is_first {
+        if mech == Mech::Substitute {
+            let v = if is_first { "true" } else { "false" };
+            pins.push_str(&format!("(assert (= is_first_tick {v}))\n"));
+        } else if is_first {
             pins.push_str("(assert is_first_tick)\n");
         } else {
             pins.push_str("(assert (not is_first_tick))\n");
         }
 
-        let cstr = CString::new(pins.as_str()).unwrap();
-        let empty_sym: Vec<Z3_symbol> = Vec::new();
-        let empty_sort: Vec<Z3_sort> = Vec::new();
-        let empty_decl: Vec<Z3_func_decl> = Vec::new();
-        let asts = Z3_parse_smtlib2_string(
-            ctx, cstr.as_ptr(),
-            0, empty_sym.as_ptr(), empty_sort.as_ptr(),
-            0, empty_sym.as_ptr(), empty_decl.as_ptr(),
-        );
-        if asts.is_null() {
-            let err_ptr = Z3_get_error_msg(ctx, Z3_get_error_code(ctx));
-            let err = if err_ptr.is_null() { String::new() }
-                      else { CStr::from_ptr(err_ptr).to_string_lossy().into_owned() };
-            Z3_solver_dec_ref(ctx, solver);
-            Z3_del_context(ctx);
-            return Err(format!("smtlib parse failed on tick {tick}: {err}"));
+        // ── Acquire a solver and apply this tick's pins to it ──────────────
+        let solver: Z3_solver;
+        let fresh: bool;          // dec_ref this tick's solver at tick end?
+        let mut pushed = false;   // mechanism C opened a scope to pop?
+        // For B: the pin formulas passed as assumptions to check_assumptions.
+        let mut assumptions: Vec<Z3_ast> = Vec::new();
+        // Keep parsed pin vectors alive until after the check.
+        let mut pin_vecs: Vec<Z3_ast_vector> = Vec::new();
+
+        macro_rules! teardown_ctx { () => {{ Z3_del_context(ctx); }} }
+
+        match mech {
+            Mech::CachedSimplify | Mech::TacticSolver => {
+                solver = if mech == Mech::TacticSolver { make_tactic_solver(ctx) }
+                         else { Z3_mk_solver(ctx) };
+                Z3_solver_inc_ref(ctx, solver);
+                fresh = true;
+                for &a in &simp { Z3_solver_assert(ctx, solver, a); }
+                let pv = match parse_pins(ctx, &pins) {
+                    Ok(v) => v,
+                    Err(e) => { Z3_solver_dec_ref(ctx, solver); teardown_ctx!();
+                                return Err(format!("smtlib parse failed on tick {tick}: {e}")); }
+                };
+                let n = Z3_ast_vector_size(ctx, pv);
+                for i in 0..n { Z3_solver_assert(ctx, solver, Z3_ast_vector_get(ctx, pv, i)); }
+                pin_vecs.push(pv);
+            }
+            Mech::CheckAssumptions => {
+                solver = psolver;
+                fresh = false;
+                let pv = match parse_pins(ctx, &pins) {
+                    Ok(v) => v,
+                    Err(e) => { teardown_ctx!();
+                                return Err(format!("smtlib parse failed on tick {tick}: {e}")); }
+                };
+                let n = Z3_ast_vector_size(ctx, pv);
+                for i in 0..n { assumptions.push(Z3_ast_vector_get(ctx, pv, i)); }
+                pin_vecs.push(pv);
+            }
+            Mech::PushPop => {
+                solver = psolver;
+                fresh = false;
+                Z3_solver_push(ctx, psolver);
+                pushed = true;
+                let pv = match parse_pins(ctx, &pins) {
+                    Ok(v) => v,
+                    Err(e) => { Z3_solver_pop(ctx, psolver, 1); teardown_ctx!();
+                                return Err(format!("smtlib parse failed on tick {tick}: {e}")); }
+                };
+                let n = Z3_ast_vector_size(ctx, pv);
+                for i in 0..n { Z3_solver_assert(ctx, psolver, Z3_ast_vector_get(ctx, pv, i)); }
+                pin_vecs.push(pv);
+            }
+            Mech::ResetAssert => {
+                solver = psolver;
+                fresh = false;
+                Z3_solver_reset(ctx, psolver);
+                for &a in &simp { Z3_solver_assert(ctx, psolver, a); }
+                let pv = match parse_pins(ctx, &pins) {
+                    Ok(v) => v,
+                    Err(e) => { teardown_ctx!();
+                                return Err(format!("smtlib parse failed on tick {tick}: {e}")); }
+                };
+                let n = Z3_ast_vector_size(ctx, pv);
+                for i in 0..n { Z3_solver_assert(ctx, psolver, Z3_ast_vector_get(ctx, pv, i)); }
+                pin_vecs.push(pv);
+            }
+            Mech::Substitute => {
+                solver = Z3_mk_solver(ctx);
+                Z3_solver_inc_ref(ctx, solver);
+                fresh = true;
+                let pv = match parse_pins(ctx, &pins) {
+                    Ok(v) => v,
+                    Err(e) => { Z3_solver_dec_ref(ctx, solver); teardown_ctx!();
+                                return Err(format!("smtlib parse failed on tick {tick}: {e}")); }
+                };
+                // Split equality pins into substitutions (nullary-const lhs) and
+                // residual asserts (compound lhs like `(select last_results i)`).
+                let n = Z3_ast_vector_size(ctx, pv);
+                let mut from: Vec<Z3_ast> = Vec::new();
+                let mut to: Vec<Z3_ast> = Vec::new();
+                let mut residual: Vec<Z3_ast> = Vec::new();
+                for i in 0..n {
+                    let eq = Z3_ast_vector_get(ctx, pv, i);
+                    let app = Z3_to_app(ctx, eq);
+                    let mut handled = false;
+                    if !app.is_null() && Z3_get_app_num_args(ctx, app) == 2 {
+                        let lhs = Z3_get_app_arg(ctx, app, 0);
+                        let rhs = Z3_get_app_arg(ctx, app, 1);
+                        let lapp = Z3_to_app(ctx, lhs);
+                        if !lapp.is_null() && Z3_get_app_num_args(ctx, lapp) == 0 {
+                            from.push(lhs);
+                            to.push(rhs);
+                            handled = true;
+                        }
+                    }
+                    if !handled { residual.push(eq); }
+                }
+                for &a in &simp {
+                    let a2 = if from.is_empty() { a }
+                             else { Z3_substitute(ctx, a, from.len() as u32, from.as_ptr(), to.as_ptr()) };
+                    Z3_solver_assert(ctx, solver, a2);
+                }
+                for &r in &residual { Z3_solver_assert(ctx, solver, r); }
+                pin_vecs.push(pv);
+            }
         }
 
-        let n = Z3_ast_vector_size(ctx, asts);
-        for i in 0..n {
-            let a = Z3_ast_vector_get(ctx, asts, i);
-            Z3_solver_assert(ctx, solver, a);
-        }
+        // ── Check ──────────────────────────────────────────────────────────
+        let res = if mech == Mech::CheckAssumptions {
+            Z3_solver_check_assumptions(ctx, solver, assumptions.len() as u32, assumptions.as_ptr())
+        } else {
+            Z3_solver_check(ctx, solver)
+        };
 
-        let res = Z3_solver_check(ctx, solver);
+        // Done with the parsed pin vectors.
+        for &pv in &pin_vecs { Z3_ast_vector_dec_ref(ctx, pv); }
+
+        macro_rules! drop_solver { () => {{
+            if pushed { Z3_solver_pop(ctx, psolver, 1); }
+            if fresh { Z3_solver_dec_ref(ctx, solver); }
+        }} }
+
         if res == Z3_L_FALSE {
             eprintln!("kernel: UNSAT on tick {tick}");
-            Z3_solver_dec_ref(ctx, solver);
+            drop_solver!();
             Z3_del_context(ctx);
             return Ok(2);
         }
         if res != Z3_L_TRUE {
-            Z3_solver_dec_ref(ctx, solver);
+            drop_solver!();
             Z3_del_context(ctx);
             return Err(format!("solver returned UNKNOWN on tick {tick}"));
         }
@@ -217,7 +414,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
         if let Some(code) = exit_code {
             Z3_model_dec_ref(ctx, model);
-            Z3_solver_dec_ref(ctx, solver);
+            drop_solver!();
             Z3_del_context(ctx);
             return Ok(code);
         }
@@ -226,7 +423,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         let stuck = !is_first && prev_state.iter().zip(new_state.iter())
             .all(|(p, n)| matches!(p, Some(pv) if compare_sv(pv, n)));
         Z3_model_dec_ref(ctx, model);
-        Z3_solver_dec_ref(ctx, solver);
+        drop_solver!();
         if stuck {
             eprintln!("kernel: stuck (state unchanged with no Exit emitted)");
             Z3_del_context(ctx);
