@@ -1,0 +1,87 @@
+-- Phase A1: Unicode operator recognition (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠,
+-- ∧, ∨, ¬, ∀, ∃).
+--
+-- Walks a hardcoded string of 13 single-char Unicode operators.
+-- For each char, calls SingleCharTok and emits the operator's
+-- semantic label. Halts on end-of-input.
+--
+-- The input is a String constant baked into the program — no file
+-- read needed, so the first tick walks position 0 directly. The
+-- multi-byte UTF-8 codepoint extraction works because the
+-- runtime's `substr` lowers to Z3's `seq.extract` on a string
+-- treated as a codepoint sequence; each Unicode op is one
+-- codepoint, so `substr(s, i, 1)` yields exactly one logical char.
+--
+-- This is the acceptance test for Phase A1 of the completion
+-- roadmap (see docs/plans/completion-roadmap.md).
+--
+-- expect: stdout = "IN"
+-- expect: stdout = "IMPLIES"
+-- expect: stdout = "SEQOPEN"
+-- expect: stdout = "SEQCLOSE"
+-- expect: stdout = "MAPSTO"
+-- expect: stdout = "LE"
+-- expect: stdout = "GE"
+-- expect: stdout = "NE"
+-- expect: stdout = "AND"
+-- expect: stdout = "OR"
+-- expect: stdout = "NOT"
+-- expect: stdout = "FORALL"
+-- expect: stdout = "EXISTS"
+-- expect: stdout = "[eof]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+
+claim main
+    input ∈ String = "∈⇒⟨⟩↦≤≥≠∧∨¬∀∃"
+
+    pos  ∈ Int
+    _pos ∈ Int
+    pos = (is_first_tick ? 0 : _pos + 1)
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    op_tok ∈ Token
+    is_op ∈ Bool
+    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+
+    done ∈ Bool = (pos ≥ #input)
+
+    -- Drive the label off the Token variant emitted by SingleCharTok
+    -- (not off cur_char directly) — that's what verifies the lexer
+    -- mapping rather than the substr extraction. `matches` works as
+    -- a recognizer; one per variant.
+    is_in       ∈ Bool = (op_tok matches OpIn)
+    is_implies  ∈ Bool = (op_tok matches OpImplies)
+    is_sopen    ∈ Bool = (op_tok matches OpSeqOpen)
+    is_sclose   ∈ Bool = (op_tok matches OpSeqClose)
+    is_mapsto   ∈ Bool = (op_tok matches OpMapsto)
+    is_le       ∈ Bool = (op_tok matches OpLe)
+    is_ge       ∈ Bool = (op_tok matches OpGe)
+    is_ne       ∈ Bool = (op_tok matches OpNe)
+    is_and      ∈ Bool = (op_tok matches OpAnd)
+    is_or       ∈ Bool = (op_tok matches OpOr)
+    is_not      ∈ Bool = (op_tok matches OpNot)
+    is_forall   ∈ Bool = (op_tok matches OpForall)
+    is_exists   ∈ Bool = (op_tok matches OpExists)
+
+    label ∈ String = (done ? "[eof]"
+        : (is_in      ? "IN"
+        : (is_implies ? "IMPLIES"
+        : (is_sopen   ? "SEQOPEN"
+        : (is_sclose  ? "SEQCLOSE"
+        : (is_mapsto  ? "MAPSTO"
+        : (is_le      ? "LE"
+        : (is_ge      ? "GE"
+        : (is_ne      ? "NE"
+        : (is_and     ? "AND"
+        : (is_or      ? "OR"
+        : (is_not     ? "NOT"
+        : (is_forall  ? "FORALL"
+        : (is_exists  ? "EXISTS"
+        : "?"))))))))))))))
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

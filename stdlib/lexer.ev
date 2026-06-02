@@ -29,6 +29,20 @@ enum Token =
     KwEnum
     KwImport
     KwMatch
+    -- Unicode operators (Phase A1).
+    OpIn
+    OpImplies
+    OpSeqOpen
+    OpSeqClose
+    OpMapsto
+    OpLe
+    OpGe
+    OpNe
+    OpAnd
+    OpOr
+    OpNot
+    OpForall
+    OpExists
 
 -- A `TokenList` is the output of the lexer. Cons-cell shape so a
 -- self-hosted parser can pattern-match by head/tail.
@@ -100,5 +114,22 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "," ? Comma
         : c = "+" ? Plus
         : c = "=" ? Eq
+        : c = "∈" ? OpIn
+        : c = "⇒" ? OpImplies
+        : c = "⟨" ? OpSeqOpen
+        : c = "⟩" ? OpSeqClose
+        : c = "↦" ? OpMapsto
+        : c = "≤" ? OpLe
+        : c = "≥" ? OpGe
+        : c = "≠" ? OpNe
+        : c = "∧" ? OpAnd
+        : c = "∨" ? OpOr
+        : c = "¬" ? OpNot
+        : c = "∀" ? OpForall
+        : c = "∃" ? OpExists
         : ErrTok(c))
-    recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "=")
+    recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+                ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
+                ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
+                ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
+                ∨ c = "∀" ∨ c = "∃")
