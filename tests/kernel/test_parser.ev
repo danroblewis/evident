@@ -1,0 +1,72 @@
+-- Toy self-hosted parser (iter 3.11).
+--
+-- Consumes a hardcoded TokenList ⟨IntLit(1), Plus, IntLit(2), Plus, IntLit(3)⟩
+-- and builds an Expr via left-associative greedy binop combination.
+--
+-- Final accumulated state should be:
+--   EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))
+--
+-- The architectural primitive demonstrated: a parser-as-FSM that uses
+-- Datatype state carry (iter 3.2) to accumulate a nested Expr value
+-- across ticks. Each tick:
+--   - matches `_list TLCons(t, tail)` to extract head + tail
+--   - classifies head as int (extract Int payload) or op (TokenToOp)
+--   - on int, either initializes `current` or wraps it with EBinOp
+--   - on op, stashes it in `pending` for the next int
+--   - advances list to tail
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "saw int"
+-- expect: stdout = "saw op"
+-- expect: stdout = "saw int"
+-- expect: stdout = "saw op"
+-- expect: stdout = "saw int"
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    initial ∈ TokenList = TLCons(IntLit(1), TLCons(Plus, TLCons(IntLit(2), TLCons(Plus, TLCons(IntLit(3), TLNil)))))
+
+    list  ∈ TokenList
+    _list ∈ TokenList
+
+    current  ∈ Expr
+    _current ∈ Expr
+
+    pending  ∈ Op
+    _pending ∈ Op
+
+    next_list ∈ TokenList = match _list
+        TLCons(_, tail) ⇒ tail
+        TLNil ⇒ TLNil
+
+    head_tok ∈ Token = match _list
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    is_nil ∈ Bool = match _list
+        TLNil ⇒ true
+        _ ⇒ false
+
+    head_int ∈ Int = match head_tok
+        IntLit(n) ⇒ n
+        _ ⇒ 0 - 1
+    is_int ∈ Bool = (head_int ≥ 0)
+
+    head_op ∈ Op
+    is_op ∈ Bool
+    TokenToOp(t ↦ head_tok, o ↦ head_op, is_binop ↦ is_op)
+
+    list = (is_first_tick ? initial : next_list)
+
+    has_current ∈ Bool = ¬(_current matches ENoExpr)
+    new_current_int ∈ Expr = (has_current ? EBinOp(_pending, _current, EInt(head_int)) : EInt(head_int))
+
+    current = (is_first_tick ? ENoExpr : (is_int ? new_current_int : _current))
+    pending = (is_first_tick ? OpPlus : (is_op ? head_op : _pending))
+
+    label ∈ String = (is_first_tick ? "[start]" : (is_nil ? "[done]" : (is_int ? "saw int" : (is_op ? "saw op" : "skip"))))
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩ : (is_nil ? ⟨LibCall("libc", "puts", ⟨ArgStr("done")⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))

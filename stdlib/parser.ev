@@ -1,0 +1,39 @@
+-- stdlib/parser.ev — Self-hosted Evident parser (iter 3.11 toy version).
+
+import "stdlib/lexer.ev"
+
+--
+-- Tiny Expr AST for the binop-chain parser:
+--   EInt(n)               — integer literal
+--   EIdent(s)             — bare identifier
+--   EBinOp(op, lhs, rhs)  — binary operation (Plus, Eq, …)
+--
+-- The Op enum names the binary operator. For now we just have one
+-- operator (Plus); extending to others is a stdlib change.
+
+enum Op =
+    OpPlus
+    OpEq
+
+enum Expr =
+    EInt(Int)
+    EIdent(String)
+    EBinOp(Op, Expr, Expr)
+    ENoExpr
+
+-- ── Token → Op classifier ───────────────────────────────────────
+-- For a parser that handles binop tokens, this gives the operator
+-- (or OpPlus as a placeholder if the token isn't an operator).
+
+-- Note: first-line claim params of enum type have a translator gap
+-- for `matches`/`match` (the param isn't put into env in a form the
+-- recognizer translation can resolve). Workaround: put all vars in
+-- the body; callers use names-match composition.
+claim TokenToOp
+    t ∈ Token
+    o ∈ Op
+    is_binop ∈ Bool
+    is_plus ∈ Bool = (t matches Plus)
+    is_eq   ∈ Bool = (t matches Eq)
+    o = (is_plus ? OpPlus : (is_eq ? OpEq : OpPlus))
+    is_binop = (is_plus ∨ is_eq)
