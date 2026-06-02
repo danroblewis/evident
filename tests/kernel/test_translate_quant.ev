@@ -1,0 +1,40 @@
+-- C6: SMT-LIB quantifier expansion (∀ / ∃).
+--
+-- Mirrors the simplified non-unrolled fallback of
+-- runtime/src/translate/exprs/quant.rs. The driver assembles the
+-- AST shape parser/B8 emits — EForall(var, EIdent(src), body) — and
+-- pipes it through `QuantSmtlib`. Expected output is the canonical
+-- SMT-LIB form CLAUDE.md documents:
+--
+--   (forall ((x Int)) (=> (>= x 0) (= x 0)))
+--
+-- The body is an OpEq binop over EIdent/EInt leaves — the atom-level
+-- coverage the C6 task pins. Deeper-tree bodies (nested binops,
+-- match-arms, multi-variable quantifiers) are downstream sub-steps.
+--
+-- expect: stdout = "ok=true"
+-- expect: stdout = "(forall ((x Int)) (=> (>= x 0) (= x 0)))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_quant.ev"
+
+claim main
+    body ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(0))
+    e ∈ Expr = EForall("x", EIdent("items"), body)
+
+    out ∈ String
+    ok ∈ Bool
+    QuantSmtlib(e ↦ e, out ↦ out, ok ↦ ok)
+
+    ok_str ∈ String = (ok ? "ok=true" : "ok=false")
+
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    label ∈ String = (step = 0 ? ok_str : out)
+    done ∈ Bool = (step ≥ 1)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

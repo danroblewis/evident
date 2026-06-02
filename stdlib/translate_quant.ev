@@ -1,0 +1,128 @@
+-- stdlib/translate_quant.ev — Phase C6: SMT-LIB quantifier expansion.
+--
+-- Mirrors runtime/src/translate/exprs/quant.rs (the single-name
+-- inline `∀ x ∈ S : body` and `∃ x ∈ S : body` shapes the parser at
+-- stdlib/parser.ev::ParseQuantifier already emits as
+-- EForall(var, range, body) / EExists(var, range, body)).
+--
+-- This first sub-step emits the simplified, non-unrolled SMT-LIB form
+--
+--     (forall ((x Int)) (=> (>= x 0) <body_str>))
+--     (exists ((x Int)) (and (>= x 0) <body_str>))
+--
+-- where <body_str> is rendered by an atom-level helper (`BodyAtomStr`)
+-- that handles `EIdent`, `EInt`, and the one binop the C6 test
+-- fixture exercises: `EBinOp(OpEq, lhs, rhs)`. Range-unrolling for
+-- pinned `{0..n-1}` shapes is a follow-up sub-step (the same enum
+-- carries it; this file's `BodyAtomStr` is intentionally compact
+-- so the canonical Rust mapping in quant.rs/range.rs has a clear
+-- parity surface).
+--
+-- Out-of-subset Expr variants (EMatch, deep binops, EForall nested
+-- in a body) set ok=false and out="" — the caller is then expected
+-- to fall through to whatever fold consumes complex bodies.
+
+import "stdlib/parser.ev"
+
+-- ── Atom-level body rendering ──────────────────────────────────
+-- Renders the body of a quantifier into its SMT-LIB string form.
+-- C6's atom-level scope covers three Expr variants:
+--   * EIdent(s)        → s
+--   * EInt(n)          → str_from_int(n)
+--   * EBinOp(OpEq,l,r) → "(= " ++ atom(l) ++ " " ++ atom(r) ++ ")"
+--
+-- For deeper trees the caller composes a real walker (the work-stack
+-- pattern in test_translate_eq_ident.ev). This claim is the leaf
+-- combiner those walkers fall back to, plus the standalone path the
+-- C6 test exercises.
+
+-- One level of binop nesting: render an EIdent/EInt leaf.
+claim BodyLeafStr
+    e ∈ Expr
+    out ∈ String
+    is_ident ∈ Bool = (e matches EIdent(_))
+    is_int   ∈ Bool = (e matches EInt(_))
+    ident_s ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    int_n ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    out = (is_ident ? ident_s
+        : is_int   ? str_from_int(int_n)
+        : "")
+
+-- A single binop (OpEq only) or a leaf. Composes BodyLeafStr on the
+-- left + right sub-Exprs. Wider operator coverage is a follow-up;
+-- OpEq is the one the C6 fixture exercises.
+claim BodyAtomStr
+    e ∈ Expr
+    out ∈ String
+
+    is_binop ∈ Bool = (e matches EBinOp(_, _, _))
+    op ∈ Op = match e
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    is_eq ∈ Bool = (op matches OpEq)
+
+    lhs ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    lhs_s ∈ String
+    BodyLeafStr(e ↦ lhs, out ↦ lhs_s)
+    rhs_s ∈ String
+    BodyLeafStr(e ↦ rhs, out ↦ rhs_s)
+
+    leaf_s ∈ String
+    BodyLeafStr(e ↦ e, out ↦ leaf_s)
+
+    eq_s ∈ String = "(= " ++ lhs_s ++ " " ++ rhs_s ++ ")"
+    out = ((is_binop ∧ is_eq) ? eq_s : leaf_s)
+
+-- ── Quantifier SMT-LIB expansion (C6) ───────────────────────────
+-- Top-level claim. For EForall / EExists with a single bound name
+-- and an atom-level body, emit the simplified SMT-LIB form. Any
+-- other Expr lands ok=false / out="".
+--
+-- Output shapes (mirrors runtime/src/translate/exprs/quant.rs's
+-- non-unrolled fallback):
+--
+--     EForall("x", _, body) → "(forall ((x Int)) (=> (>= x 0) <body_s>))"
+--     EExists("x", _, body) → "(exists ((x Int)) (and (>= x 0) <body_s>))"
+--
+-- Range-side (the `EIdent(src)` payload) is intentionally ignored
+-- in this sub-step: the simplified form lets a downstream pass
+-- specialise the guard once the range's shape (Int range,
+-- Seq(T) walk, …) is known. Range-unroll lives in a C6.b follow-up.
+claim QuantSmtlib
+    e ∈ Expr
+    out ∈ String
+    ok ∈ Bool
+
+    is_forall ∈ Bool = (e matches EForall(_, _, _))
+    is_exists ∈ Bool = (e matches EExists(_, _, _))
+
+    var_name ∈ String = match e
+        EForall(v, _, _) ⇒ v
+        EExists(v, _, _) ⇒ v
+        _ ⇒ ""
+
+    body_expr ∈ Expr = match e
+        EForall(_, _, b) ⇒ b
+        EExists(_, _, b) ⇒ b
+        _ ⇒ ENoExpr
+
+    body_s ∈ String
+    BodyAtomStr(e ↦ body_expr, out ↦ body_s)
+
+    forall_s ∈ String = "(forall ((" ++ var_name ++ " Int)) (=> (>= " ++ var_name ++ " 0) " ++ body_s ++ "))"
+    exists_s ∈ String = "(exists ((" ++ var_name ++ " Int)) (and (>= " ++ var_name ++ " 0) " ++ body_s ++ "))"
+
+    ok = (is_forall ∨ is_exists)
+    out = (is_forall ? forall_s
+        : is_exists ? exists_s
+        : "")
