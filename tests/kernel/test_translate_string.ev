@@ -1,0 +1,39 @@
+-- C10: SMT-LIB string operations.
+--
+-- Exercises the four Build* claims in stdlib/translate_string.ev,
+-- each binding `out` to the prefix-form SMT-LIB expression a
+-- translator would emit for one Z3 str.* builtin.
+--
+--   StrLenSmtlib("s")                  → (str.len s)
+--   StrConcatSmtlib("a", "b")          → (str.++ a b)
+--   StrSubstrSmtlib("s", "0", "3")     → (str.substr s 0 3)
+--   StrPrefixSmtlib("\"hi\"", "msg")   → (str.prefixof "hi" msg)
+--
+-- expect: stdout = "(str.len s)"
+-- expect: stdout = "(str.++ a b)"
+-- expect: stdout = "(str.substr s 0 3)"
+-- expect: stdout = "(str.prefixof "hi" msg)"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_string.ev"
+
+claim main
+    len_out ∈ String
+    StrLenSmtlib(name ↦ "s", out ↦ len_out)
+
+    concat_out ∈ String
+    StrConcatSmtlib(lhs ↦ "a", rhs ↦ "b", out ↦ concat_out)
+
+    substr_out ∈ String
+    StrSubstrSmtlib(name ↦ "s", start ↦ "0", len ↦ "3", out ↦ substr_out)
+
+    prefix_out ∈ String
+    StrPrefixSmtlib(prefix ↦ "\"hi\"", name ↦ "msg", out ↦ prefix_out)
+
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr(len_out)⟩),
+        LibCall("libc", "puts", ⟨ArgStr(concat_out)⟩),
+        LibCall("libc", "puts", ⟨ArgStr(substr_out)⟩),
+        LibCall("libc", "puts", ⟨ArgStr(prefix_out)⟩),
+        Exit(0)
+    ⟩

@@ -1,0 +1,38 @@
+-- stdlib/translate_string.ev — C10: SMT-LIB string operations.
+--
+-- Mirrors `runtime/src/translate/exprs/string_ops.rs`, which maps
+-- Evident string operators to Z3's string theory (`(str.*)` forms).
+-- Each Build* claim here constructs the prefix-form SMT-LIB string
+-- for one operator. Inputs are pre-rendered SMT-LIB fragments
+-- (identifiers, ints, or quoted string literals); `out` is the
+-- composed parenthesized form a translator would emit.
+--
+--   StrLenSmtlib(name, out)
+--     out = "(str.len " ++ name ++ ")"
+--
+--   StrConcatSmtlib(lhs, rhs, out)
+--     out = "(str.++ " ++ lhs ++ " " ++ rhs ++ ")"
+--
+--   StrSubstrSmtlib(name, start, len, out)
+--     out = "(str.substr " ++ name ++ " " ++ start ++ " " ++ len ++ ")"
+--
+--   StrPrefixSmtlib(prefix, name, out)
+--     out = "(str.prefixof " ++ prefix ++ " " ++ name ++ ")"
+--
+-- Pure string-builder claims — no Z3 datatype machinery, no FSM
+-- carry. Caller supplies inputs as already-rendered SMT-LIB
+-- fragments (identifiers like "s", numerals like "0", or quoted
+-- string literals like "\"hi\"") and reads out the composed
+-- prefix-form expression.
+
+claim StrLenSmtlib(name ∈ String, out ∈ String)
+    out = "(str.len " ++ name ++ ")"
+
+claim StrConcatSmtlib(lhs ∈ String, rhs ∈ String, out ∈ String)
+    out = "(str.++ " ++ lhs ++ " " ++ rhs ++ ")"
+
+claim StrSubstrSmtlib(name ∈ String, start ∈ String, len ∈ String, out ∈ String)
+    out = "(str.substr " ++ name ++ " " ++ start ++ " " ++ len ++ ")"
+
+claim StrPrefixSmtlib(prefix ∈ String, name ∈ String, out ∈ String)
+    out = "(str.prefixof " ++ prefix ++ " " ++ name ++ ")"
