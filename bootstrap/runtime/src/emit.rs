@@ -118,8 +118,7 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
     // sorts (e.g. `_eff1 :: Effect`) the body declares. Skip names the
     // body already declared (user wrote `_tick_count ∈ Int` explicitly).
     let prev_state_decls: String = state_fields.iter()
-        .filter(|(n, _)| !body_smt.contains(&format!("(declare-fun _{n} ")))
-        .map(|(n, t)| format!("(declare-fun _{n} () {t})\n"))
+        .map(|(n, t)| render_prev_state_decl(n, t, &body_smt))
         .collect();
 
     // For literal-SeqLit bindings we add an explicit `effects__len = N`
@@ -511,13 +510,47 @@ fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Ve
             Var::PinnedInt(_)  => "Int".to_string(),
             // Enum-typed state: the kernel decodes via decode_datatype_value.
             Var::EnumVar { enum_name, .. } => enum_name.clone(),
-            // Seq/Set/Composite: not yet supported as carry state.
+            // Seq-typed state (the cons→Seq carry path): rendered as `Seq(Elem)`
+            // so the kernel reads the `(Array Int Elem)` + `__len` companion and
+            // pins them back each tick. The element type names the inner sort.
+            Var::SeqVar { elem, .. } => {
+                let e = match elem {
+                    crate::core::SeqElem::Int  => "Int",
+                    crate::core::SeqElem::Bool => "Bool",
+                    crate::core::SeqElem::Str  => "String",
+                };
+                format!("Seq({e})")
+            }
+            Var::DatatypeSeqVar { type_name, .. } => format!("Seq({type_name})"),
+            // Set/Composite: not yet supported as carry state.
             _ => continue,
         };
         fields.push((name.clone(), ty));
     }
     fields.sort_by(|a, b| a.0.cmp(&b.0));
     fields
+}
+
+/// Render the `_<name>` previous-tick declaration(s) for one state field, given
+/// the field's manifest type string and the already-built body SMT (used to skip
+/// declarations the body produced). A `Seq(Elem)` field is two declarations — the
+/// `(Array Int Elem)` and its companion `_<name>__len` Int — matching bootstrap's
+/// Seq representation; every other type is a single `(declare-fun _name () Type)`.
+fn render_prev_state_decl(name: &str, ty: &str, body_smt: &str) -> String {
+    if let Some(inner) = crate::core::parse_seq_type(ty) {
+        let mut out = String::new();
+        if !body_smt.contains(&format!("(declare-fun _{name} ")) {
+            out.push_str(&format!("(declare-fun _{name} () (Array Int {inner}))\n"));
+        }
+        if !body_smt.contains(&format!("(declare-fun _{name}__len ")) {
+            out.push_str(&format!("(declare-fun _{name}__len () Int)\n"));
+        }
+        out
+    } else if body_smt.contains(&format!("(declare-fun _{name} ")) {
+        String::new()
+    } else {
+        format!("(declare-fun _{name} () {ty})\n")
+    }
 }
 
 // ── Manifest header ────────────────────────────────────────────────

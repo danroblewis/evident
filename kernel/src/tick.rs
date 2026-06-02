@@ -310,7 +310,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         if !is_first {
             for (idx, (name, _)) in manifest.state_fields.iter().enumerate() {
                 if let Some(v) = &prev_state[idx] {
-                    pins.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
+                    emit_state_pin(&mut pins, name, v);
                 }
             }
         }
@@ -645,7 +645,18 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
 
 // ── Model reads + helpers ───────────────────────────────────────
 
+/// Upper bound on the length of a carried `Seq(T)` state field. The work-stacks
+/// these carry are bounded by AST node count; this is a runaway backstop.
+const SEQ_CARRY_CAP: i64 = 100_000;
+
 unsafe fn read_state_var(ctx: Z3_context, model: Z3_model, name: &str, ty: &str) -> Result<Sv, String> {
+    // `Seq(ElemType)` state fields (the cons→Seq carry path): read the array +
+    // companion `__len` and decode each element by the inner type. The element
+    // type string is whatever bootstrap's discover_state_fields rendered inside
+    // the parentheses (Int/Bool/String/Real or a user datatype name).
+    if let Some(inner) = ty.strip_prefix("Seq(").and_then(|s| s.strip_suffix(')')) {
+        return read_seq_var(ctx, model, name, inner.trim());
+    }
     let decl = find_const_decl(ctx, model, name)
         .ok_or_else(|| format!("state var `{name}` not in model"))?;
     let ast = Z3_mk_app(ctx, decl, 0, ptr::null());
@@ -660,6 +671,59 @@ unsafe fn read_state_var(ctx: Z3_context, model: Z3_model, name: &str, ty: &str)
         "Real"   => Ok(Sv::Real(decode_real_literal(ctx, out)?)),
         // Anything else: treat as a Datatype. Walk the value recursively.
         _        => decode_datatype_value(ctx, out),
+    }
+}
+
+/// Read a `Seq(T)` state field from the model: a Z3 `(Array Int T)` named `name`
+/// plus a companion `name__len` Int (bootstrap's Seq representation). Each of the
+/// first `len` elements is decoded by `elem_ty`. Tolerant of an unconstrained Seq
+/// that Z3 dropped from the model (the empty-effects quirk): a missing `__len` or
+/// missing array decl reads back as the empty Seq, which carries correctly.
+unsafe fn read_seq_var(ctx: Z3_context, model: Z3_model, name: &str, elem_ty: &str) -> Result<Sv, String> {
+    let len_name = format!("{name}__len");
+    let len = match find_const_decl(ctx, model, &len_name) {
+        Some(_) => read_int_const(ctx, model, &len_name).unwrap_or(0),
+        None => 0,
+    };
+    let len = len.clamp(0, SEQ_CARRY_CAP) as usize;
+    let Some(arr_decl) = find_const_decl(ctx, model, name) else {
+        return Ok(Sv::Seq(Vec::new()));
+    };
+    let arr_ast = Z3_mk_app(ctx, arr_decl, 0, ptr::null());
+    let int_sort = Z3_mk_int_sort(ctx);
+    let mut elems = Vec::with_capacity(len);
+    for i in 0..len {
+        let i_ast = Z3_mk_int64(ctx, i as i64, int_sort);
+        let sel = Z3_mk_select(ctx, arr_ast, i_ast);
+        let mut out: Z3_ast = ptr::null_mut();
+        if !Z3_model_eval(ctx, model, sel, true, &mut out) {
+            return Err(format!("model eval failed for `{name}[{i}]`"));
+        }
+        let v = match elem_ty {
+            "Int"    => Sv::Int(decode_int_literal(ctx, out)?),
+            "Bool"   => Sv::Bool(decode_bool_literal(ctx, out)?),
+            "String" => Sv::Str(decode_string_literal(ctx, out)?),
+            "Real"   => Sv::Real(decode_real_literal(ctx, out)?),
+            _        => decode_datatype_value(ctx, out)?,
+        };
+        elems.push(v);
+    }
+    Ok(Sv::Seq(elems))
+}
+
+/// Append the per-tick equality pin(s) for one carried state field. A `Seq(T)`
+/// value pins its companion `__len` and one `(select _name i)` per element; every
+/// other value pins `(= _name <literal>)`. Used by both the main tick loop and
+/// the functionizer's setup-time solve so the two stay in lockstep.
+fn emit_state_pin(pins: &mut String, name: &str, v: &Sv) {
+    match v {
+        Sv::Seq(elems) => {
+            pins.push_str(&format!("(assert (= _{name}__len {}))\n", elems.len()));
+            for (i, e) in elems.iter().enumerate() {
+                pins.push_str(&format!("(assert (= (select _{name} {i}) {}))\n", e.smtlib()));
+            }
+        }
+        _ => pins.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib())),
     }
 }
 
@@ -944,7 +1008,7 @@ pub(crate) unsafe fn solve_tick_sv(
     if !is_first {
         for (idx, (name, _)) in manifest.state_fields.iter().enumerate() {
             if let Some(v) = &prev_state[idx] {
-                pins.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
+                emit_state_pin(&mut pins, name, v);
             }
         }
     }

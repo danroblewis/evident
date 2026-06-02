@@ -58,23 +58,35 @@ test paths). At that point, this becomes a clean follow-up.
 
 ## Replace Cons-lists with Seqs (constraint-model fit)
 
-**Status: BLOCKED (sweep) — see `docs/plans/blocked-cons-to-seq-sweep.md`.**
+**Status: carry capability LANDED; work-stack sweep BLOCKED on perf —
+see `docs/plans/blocked-cons-to-seq-perf.md`.**
 The functionizer side landed in task #19 — `recompose_record_seqs` is
 in `kernel/src/functionize/` (see step 1 below and
 `functionizer-integration.md` §6), so a bounded `Seq(Record)` now
-*functionizes* at parity with a cons-list. But task #21 attempted the
-*sweep* (steps 2–4) and found it blocked at the foundation: task #19
-made Seqs *functionize when recomputed each tick from primitives*; it
-did **not** make Seqs *carry as evolving state across ticks*, which is
-what every scoped cons-list (`WorkList`, `IntStack`, `IntQueue`) does.
-The frozen bootstrap (`discover_state_fields`) drops Seq state fields
-from the manifest, the carry-assignment `seq = (cond ? lit : _seq)`
-does not translate, and the kernel has no `Sv::Seq` pin form — all
-three forbidden to edit. The cons-list is the *correct* carry shape
-for the current toolchain. Unblocking requires adding a `Seq` carry
-encoding to the toolchain (a kernel/bootstrap task needing user
-approval), sequenced *before* any sweep. Details + reproduction in the
-blocker doc.
+*functionizes* at parity with a cons-list. The **Seq-as-state carry
+capability** landed in task #21 (second run): bootstrap
+`discover_state_fields`/`render_prev_state_decl` emit `Seq(Elem)` state
+fields, `translate_seq_value` lowers the carry-assignment (`seq =
+(cond ? ⟨…⟩ : _seq ++ ⟨x⟩)`, `seq_init` drop-last, whole-array equality
+with a *symbolic* length), and the kernel reads/pins it (`read_seq_var`
++ `emit_state_pin`). Proven by `tests/kernel/test_seq_carry.ev` (green
+in all 3 modes). This closed the *foundation* blocker the first run of
+task #21 documented (`blocked-cons-to-seq-sweep.md`).
+
+But the **sweep of the translator work-stacks** (steps 2–4) is still
+blocked — now on *performance*, not capability. Carrying a push-heavy
+work-stack as `Seq(WorkItem)` is correct (byte-identical output) but
+~250× slower on Z3 than the cons-list: the binop expansion becomes a
+symbolic-index array store-chain + whole-array extensional equality,
+which Z3's array theory handles far worse than an algebraic-datatype
+constructor. The FTIs (`IntStack`/`IntQueue`) hit it harder (Seq
+equality inside the legal-transition disjunction). Per acceptance #6,
+the work-stack `.ev` conversions are not shipped; the cons-lists stay.
+Append-light / streaming Seq state (the capability fixture) is cheap
+and *does* ship. The fix is a cons-cell-backed `Seq` lowering with
+front-pop (Seq surface, `__SeqOf_T` datatype internal — as fast as cons
+because it *is* cons), or functionizer support for symbolic-index
+arrays. Details + reproduction in the perf blocker doc.
 
 **Source:** user, mid-session ~task #18.
 
@@ -108,11 +120,19 @@ Seqs are the more constraint-native shape.
 1. ~~Land the `recompose_record_seqs` functionizer extension.~~
    **Done (task #19):** `kernel/src/functionize/{mod,eval,jit}.rs`,
    exercised by `tests/kernel/test_functionizer_seqs.ev`.
-2. Add a Seq-based work-stack pattern alongside the cons-list
-   one. Prove it functionizes equivalently on a small fixture.
+2. ~~Add a Seq carry capability + a Seq-based work-stack pattern.~~
+   **Capability done (task #21):** Seq carries as state
+   (`tests/kernel/test_seq_carry.ev`). But the array+len encoding the
+   capability uses is ~250× slower on Z3 for the push-heavy work-stack
+   shape (symbolic-index stores + whole-array equality). So before the
+   sweep, swap the carry encoding for a **cons-cell-backed `Seq` with
+   front-pop** (`__SeqOf_T` datatype internal, `Seq` surface) — as fast
+   as cons because it *is* cons — or add functionizer support for
+   symbolic-index arrays. See `blocked-cons-to-seq-perf.md`.
 3. Sweep the codebase replacing cons-list state with Seqs,
    one pass at a time, verifying each retains its
-   `tests/conformance/features/` equivalence.
+   `tests/conformance/features/` equivalence **and** stays within the
+   2× per-tick perf gate.
 4. Drop the cons-list pattern from the invariants doc.
 
 **When to pick this up:** after Phase 5 of
