@@ -103,7 +103,7 @@ fi
 # ── Phase 4: lang tests ──────────────────────────────────────
 if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
     phase "Phase 4: lang_tests (tests/lang_tests/)"
-    if python3 scripts/run-lang-tests.py 2>&1 | tee /tmp/evident-lang.log ; then
+    if scripts/run-lang-tests.sh 2>&1 | tee /tmp/evident-lang.log ; then
         ok "lang_tests"
     else
         fail "lang_tests"; failures+=("lang_tests")
@@ -114,7 +114,7 @@ fi
 # ── Phase 5: kernel tests ────────────────────────────────────
 if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ]; then
     phase "Phase 5: kernel tests (tests/kernel/)"
-    if python3 scripts/run-kernel-tests.py 2>&1 | tee /tmp/evident-kernel.log ; then
+    if scripts/run-kernel-tests.sh 2>&1 | tee /tmp/evident-kernel.log ; then
         ok "kernel_tests"
     else
         fail "kernel_tests"; failures+=("kernel_tests")

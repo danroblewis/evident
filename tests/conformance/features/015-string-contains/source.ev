@@ -1,0 +1,4 @@
+import "stdlib/kernel.ev"
+
+claim main
+    effects ∈ Seq(Effect) = ⟨Exit(str_contains("world.pos", "pos") ? 1 : 0)⟩
