@@ -4,8 +4,7 @@
 import "stdlib/kernel.ev"
 
 claim main
-    mode ∈ String = "Done"
-    eff_log  ∈ Seq(Effect) = ⟨Println("log")⟩
-    eff_data ∈ Seq(Effect) = ⟨Println("data")⟩
+    eff_log  ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("log")⟩)⟩
+    eff_data ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("data")⟩)⟩
     eff_exit ∈ Seq(Effect) = ⟨Exit(0)⟩
     effects  ∈ Seq(Effect) = eff_log ++ eff_data ++ eff_exit

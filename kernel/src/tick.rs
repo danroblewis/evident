@@ -213,12 +213,6 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
     let name = decode_sym(ctx, sym);
 
     match name.as_str() {
-        "Println" => {
-            let arg0 = Z3_get_app_arg(ctx, app, 0);
-            let s = decode_string_literal(ctx, arg0)?;
-            println!("{s}");
-            Ok(EffectOutcome::Continue(Res::No))
-        }
         "Print" => {
             let arg0 = Z3_get_app_arg(ctx, app, 0);
             let s = decode_string_literal(ctx, arg0)?;
@@ -233,14 +227,8 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let code = code.clamp(0, 255) as u8;
             Ok(EffectOutcome::Exit(code))
         }
-        "Time" => {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            Ok(EffectOutcome::Continue(Res::Int(ms)))
-        }
+        // Println and Time were here in iter 1; demoted to LibCall sugar
+        // in iter 2.5. See stdlib/kernel.ev → BuildPrintln / BuildTime.
         "ReadLine" => {
             use std::io::BufRead;
             let stdin = std::io::stdin();

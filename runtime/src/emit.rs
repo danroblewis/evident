@@ -101,17 +101,17 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
     let body_smt = ensure_is_first_tick_decl(&body_smt);
     let state_fields = discover_state_fields(&cached.env);
 
-    // Decls (`_<name>` per state field) go at the top so subsequent
-    // asserts that reference them parse cleanly.
-    let prev_state_decls: String = state_fields.iter()
-        .map(|(n, t)| format!("(declare-fun _{n} () {t})\n"))
-        .collect();
-
     // Z3's solver-to-string elides datatypes / vars that aren't
     // constrained. The Result enum + last_results array fall into that
     // bucket in most programs (they're only USED on tick N+1 by the
     // kernel's assertions). Hand-write them in the prelude.
     let result_and_last_results = result_and_last_results_decls();
+
+    // `_<name>` decls go AFTER the body so they can reference
+    // Datatype sorts (e.g. `_eff1 :: Effect`) the body declares.
+    let prev_state_decls: String = state_fields.iter()
+        .map(|(n, t)| format!("(declare-fun _{n} () {t})\n"))
+        .collect();
 
     // For literal-SeqLit bindings we add an explicit `effects__len = N`
     // assert (the runtime folds the SeqLit length to a literal during
@@ -125,7 +125,7 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
 
     let manifest = build_manifest(&state_fields, DEFAULT_MAX_EFFECTS);
 
-    Ok(format!("{manifest}\n{prev_state_decls}{result_and_last_results}{body_smt}{trailing_asserts}"))
+    Ok(format!("{manifest}\n{result_and_last_results}{body_smt}{prev_state_decls}{trailing_asserts}"))
 }
 
 /// Hand-written Result datatype + last_results array decl. Mirrors the
@@ -476,12 +476,18 @@ unsafe fn solver_context_ptr(solver: &z3::Solver<'_>) -> z3_sys::Z3_context {
 /// `env` keyed by the source identifier; we emit them in the manifest
 /// verbatim (no `state.` prefix — the spec calls them "state fields" by
 /// role, not by name).
+/// State fields are top-level memberships of PRIMITIVE type (Int/Bool/Real/
+/// String). These are the values the kernel reads from the model and pins
+/// as `_<name>` on the next tick.
+///
+/// Non-primitive memberships (Effect, Seq, custom enums) are single-tick
+/// scratch bindings — the kernel can't carry them yet (v2: extend the
+/// kernel to encode Datatype literals from the model). Skipped for now.
 fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Vec<(String, String)> {
     use crate::core::Var;
     let mut fields: Vec<(String, String)> = Vec::new();
     for (name, var) in env {
         if name == "effects" || name == "last_results" { continue; }
-        // Skip dotted-prefix internal leaves and auto-injected helpers.
         if name.contains('.') { continue; }
         if name == "is_first_tick" { continue; }
         let ty = match var {
@@ -490,10 +496,8 @@ fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Ve
             Var::RealVar(_)    => "Real",
             Var::StrVar(_)     => "String",
             Var::PinnedInt(_)  => "Int",
-            Var::EnumVar { enum_name, .. } => enum_name.as_str(),
-            Var::SeqVar { .. } | Var::SetVar { .. } |
-            Var::DatatypeSeqVar { .. } | Var::DatatypeSetVar { .. } => continue,
-            Var::EnumValue { .. } | Var::EnumCtor { .. } => continue,
+            // Non-primitive types are single-tick scratch — not carry state.
+            _ => continue,
         };
         fields.push((name.clone(), ty.to_string()));
     }

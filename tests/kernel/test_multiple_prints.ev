@@ -5,5 +5,9 @@
 import "stdlib/kernel.ev"
 
 claim main
-    mode ∈ String = "Done"
-    effects ∈ Seq(Effect) = ⟨Println("a"), Println("b"), Println("c"), Exit(0)⟩
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr("a")⟩),
+        LibCall("libc", "puts", ⟨ArgStr("b")⟩),
+        LibCall("libc", "puts", ⟨ArgStr("c")⟩),
+        Exit(0)
+    ⟩

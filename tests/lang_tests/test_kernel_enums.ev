@@ -4,9 +4,9 @@ claim sat_exit_variant
     e ∈ Effect
     e = Exit(42)
 
-claim sat_println_variant
+claim sat_puts_variant
     e ∈ Effect
-    e = Println("hi")
+    e = LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
 
 claim sat_libcall_variant
     e ∈ Effect
@@ -20,7 +20,7 @@ claim sat_result_variants
     r5 ∈ Result = ErrorResult("oops")
 
 claim sat_effects_seq
-    effects ∈ Seq(Effect) = ⟨Println("hello"), Exit(0)⟩
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("hello")⟩), Exit(0)⟩
     #effects = 2
 
 claim sat_results_seq
@@ -47,7 +47,7 @@ claim unsat_exit_wrong_payload
 claim sat_builder_println
     eff ∈ Effect
     BuildPrintln(s ↦ "hi", eff ↦ eff)
-    eff = Println("hi")
+    eff = LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
 
 claim sat_builder_exit
     eff ∈ Effect

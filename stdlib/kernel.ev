@@ -32,14 +32,17 @@ enum LibArg =
 --                         remaining effects in the Seq
 
 enum Effect =
-    Println(String)
     Print(String)
     ReadLine
     ReadFile(String)
     WriteFile(String, String)
     LibCall(String, String, Seq(LibArg))
-    Time
     Exit(Int)
+    -- Println and Time were here in iter 1; demoted to LibCall sugar
+    -- below. New: write `LibCall("libc", "puts", ⟨ArgStr(s)⟩)` or use
+    -- the `BuildPrintln`/`BuildTime` sugar claims. Print/ReadLine/
+    -- ReadFile/WriteFile stay as kernel built-ins until iter 2.6
+    -- adds richer libffi shapes (buffers, fd handles).
 
 -- ── Result: what the kernel feeds back as last_results ──────────
 --
@@ -66,7 +69,10 @@ enum Result =
 -- form always works.
 
 claim BuildPrintln(s ∈ String, eff ∈ Effect)
-    eff = Println(s)
+    eff = LibCall("libc", "puts", ⟨ArgStr(s)⟩)
+
+claim BuildTime(eff ∈ Effect)
+    eff = LibCall("libc", "time", ⟨ArgInt(0)⟩)
 
 claim BuildPrint(s ∈ String, eff ∈ Effect)
     eff = Print(s)

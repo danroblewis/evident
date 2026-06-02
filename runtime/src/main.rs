@@ -18,6 +18,7 @@ fn usage() {
     eprintln!("  evident sample <file> <claim> [-n N] [--json] [--given k=v ...]");
     eprintln!("  evident sample <file> --all [--json]");
     eprintln!("  evident emit   <file> <claim> [-o <out.smt2>]");
+    eprintln!("  evident run    <file> <claim>     # emit + kernel in one step");
 }
 
 fn load(file: &str) -> Option<EvidentRuntime> {
@@ -168,8 +169,53 @@ fn main() -> ExitCode {
     match args[0].as_str() {
         "sample" => cmd_query_or_sample(&args[1..]),
         "emit"   => cmd_emit(&args[1..]),
+        "run"    => cmd_run(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => { eprintln!("unknown subcommand: {other}"); usage(); ExitCode::from(2) }
+    }
+}
+
+fn cmd_run(args: &[String]) -> ExitCode {
+    let Some(file) = args.first() else { usage(); return ExitCode::from(2); };
+    let Some(claim) = args.get(1) else { usage(); return ExitCode::from(2); };
+
+    let Some(rt) = load(file) else { return ExitCode::from(1); };
+    let smt = match evident_runtime::emit::emit_kernel_smtlib(&rt, claim) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("emit: {e}"); return ExitCode::from(1); }
+    };
+
+    // Write SMT-LIB to a temp file and exec the kernel binary.
+    let pid = std::process::id();
+    let tmp = format!("/tmp/evident-run-{pid}.smt2");
+    if let Err(e) = std::fs::write(&tmp, &smt) {
+        eprintln!("run: write {tmp}: {e}");
+        return ExitCode::from(1);
+    }
+
+    // Locate the kernel binary: try $EVIDENT_KERNEL then PATH then a few defaults.
+    let kernel = std::env::var("EVIDENT_KERNEL").unwrap_or_else(|_| {
+        // sibling of this binary at <root>/kernel/target/release/kernel
+        match std::env::current_exe().ok().and_then(|p| {
+            p.parent().and_then(|d| d.parent()).and_then(|d| d.parent()).and_then(|d| d.parent())
+                .map(|root| root.join("kernel").join("target").join("release").join("kernel"))
+        }) {
+            Some(p) if p.exists() => p.to_string_lossy().into_owned(),
+            _ => "kernel".to_string(),  // hope it's on PATH
+        }
+    });
+
+    let status = std::process::Command::new(&kernel).arg(&tmp).status();
+    let _ = std::fs::remove_file(&tmp);
+    match status {
+        Ok(s) => {
+            let code = s.code().unwrap_or(128) as u8;
+            ExitCode::from(code)
+        }
+        Err(e) => {
+            eprintln!("run: exec {kernel}: {e}");
+            ExitCode::from(1)
+        }
     }
 }
 

@@ -3,5 +3,7 @@
 import "stdlib/kernel.ev"
 
 claim hello
-    mode ∈ String = "Done"
-    effects ∈ Seq(Effect) = ⟨Println("hello world"), Exit(0)⟩
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr("hello world")⟩),
+        Exit(0)
+    ⟩
