@@ -15,6 +15,11 @@ enum Token =
     Ident(String)
     IntLit(Int)
     StringLit(String)
+    -- FloatLit(whole, fractional, fractional_digit_count) — Real-typed
+    -- payload is the natural shape, but `10^n` over Real has no operator
+    -- in stdlib yet, so we carry the three-Int tuple and let downstream
+    -- consumers (formatters / translators) compose them.
+    FloatLit(Int, Int, Int)
     LParen
     RParen
     Comma
@@ -228,3 +233,16 @@ claim EscapeChar(c ∈ String, out ∈ String)
         : (c = "\"" ? "\""
         : (c = "\\" ? "\\"
         : c))))
+
+-- ── Float-literal accumulator helpers (Phase A4) ─────────────────
+-- The full mode-state accumulator lives in test fixtures; these are
+-- the trivial wrappers callers compose to extend an int accumulator
+-- with a decimal-point arm.
+
+claim DigitAccumulate(prev ∈ Int, c ∈ String, n ∈ Int)
+    dv ∈ Int
+    DigitToInt(c ↦ c, n ↦ dv)
+    n = (prev * 10) + dv
+
+claim IsDecimalPoint(c ∈ String, out ∈ Bool)
+    out = (c = ".")

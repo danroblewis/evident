@@ -1,0 +1,130 @@
+-- Float literals (Phase A4).
+--
+-- Extends the int-accumulator (test_multichar_int.ev) with a mode-state
+-- arm: after a digit run, a literal "." transitions into "fractional"
+-- mode and we keep accumulating into a second Int + a digit-count.
+-- On the next non-digit boundary we emit FloatLit(whole, frac, fdigits).
+--
+-- Token payload is `FloatLit(Int, Int, Int)` (whole, fractional,
+-- fractional_digit_count). Real-typed payload is the natural shape but
+-- `10^n` over Real has no stdlib operator, so we carry the three ints
+-- and let downstream consumers compose them. The test asserts the
+-- carried fields render correctly.
+--
+-- Input: "3.14 0.5 42\n" — emits two floats and one int.
+--
+-- Carry state:
+--   pos                 — input cursor
+--   partial_int         — current digit accumulator (−1 when not in a run)
+--   mode                — 0 = pre-decimal, 1 = post-decimal (fractional)
+--   whole               — saved whole part captured at the "." transition
+--   frac                — fractional accumulator
+--   frac_digits         — count of digits in `frac`
+--   tokens              — output TokenList
+--
+-- expect: stdout = "got input"
+-- expect: stdout = "  start: 3"
+-- expect: stdout = "  dot"
+-- expect: stdout = "  fcont: 1"
+-- expect: stdout = "  fcont: 4"
+-- expect: stdout = "float: 3.14"
+-- expect: stdout = "  start: 0"
+-- expect: stdout = "  dot"
+-- expect: stdout = "  fcont: 5"
+-- expect: stdout = "float: 0.5"
+-- expect: stdout = "  start: 4"
+-- expect: stdout = "  cont: 2"
+-- expect: stdout = "int: 42"
+-- expect: stdout = "[eof]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+
+claim main
+    input ∈ String = "3.14 0.5 42\n"
+
+    pos  ∈ Int
+    _pos ∈ Int
+    -- Boot tick: pos = -1 so `in_range` is false and we just initialize
+    -- the carry vars. Real processing starts tick 2.
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_dig ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+    is_ws  ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+    is_dot ∈ Bool
+    IsDecimalPoint(c ↦ cur_char, out ↦ is_dot)
+    dig_val ∈ Int
+    DigitToInt(c ↦ cur_char, n ↦ dig_val)
+
+    -- Int accumulator (mode 0).
+    partial_int  ∈ Int
+    _partial_int ∈ Int
+
+    -- Mode + fractional accumulator (mode 1).
+    mode  ∈ Int
+    _mode ∈ Int
+
+    whole       ∈ Int
+    _whole      ∈ Int
+    frac        ∈ Int
+    _frac       ∈ Int
+    frac_digits ∈ Int
+    _frac_digits ∈ Int
+
+    was_collecting ∈ Bool = ((¬is_first_tick) ∧ (_partial_int ≥ 0))
+    in_frac        ∈ Bool = ((¬is_first_tick) ∧ (_mode = 1))
+    done           ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
+    in_range       ∈ Bool = ((pos ≥ 0) ∧ (¬done))
+
+    -- Boundary / state events.
+    starting       ∈ Bool = ((¬was_collecting) ∧ (¬in_frac) ∧ is_dig ∧ in_range)
+    continuing     ∈ Bool = (was_collecting ∧ (¬in_frac) ∧ is_dig ∧ in_range)
+    dot_seen       ∈ Bool = (was_collecting ∧ (¬in_frac) ∧ is_dot ∧ in_range)
+    frac_cont      ∈ Bool = (in_frac ∧ is_dig ∧ in_range)
+    finish_int     ∈ Bool = (was_collecting ∧ (¬in_frac) ∧ ((¬is_dig ∧ ¬is_dot ∧ in_range) ∨ done))
+    finish_float   ∈ Bool = (in_frac ∧ ((¬is_dig ∧ in_range) ∨ done))
+
+    -- mode update: enter frac on dot, leave frac on any boundary, else stay.
+    mode = (is_first_tick ? 0 : (dot_seen ? 1 : (finish_float ? 0 : (in_frac ? 1 : 0))))
+
+    -- partial_int update:
+    --   starting / continuing → accumulate
+    --   dot_seen → reset to −1 (we transition the whole into `whole` carry)
+    --   else → reset to −1
+    partial_int = (is_first_tick ? 0 - 1 : (continuing ? (_partial_int * 10) + dig_val : (starting ? dig_val : 0 - 1)))
+
+    -- whole carry: captured at dot, kept while in frac, cleared otherwise.
+    whole = (is_first_tick ? 0 : (dot_seen ? _partial_int : (in_frac ? _whole : 0)))
+
+    -- frac accumulator: starts at 0 on the dot tick, accumulates while frac_cont.
+    frac = (is_first_tick ? 0 : (dot_seen ? 0 : (frac_cont ? (_frac * 10) + dig_val : 0)))
+
+    -- digit counter for frac.
+    frac_digits = (is_first_tick ? 0 : (dot_seen ? 0 : (frac_cont ? _frac_digits + 1 : 0)))
+
+    -- Token emission.
+    int_tok   ∈ Token = IntLit(_partial_int)
+    float_tok ∈ Token = FloatLit(_whole, _frac, _frac_digits)
+
+    tokens  ∈ TokenList
+    _tokens ∈ TokenList
+    tokens = (is_first_tick ? TLNil : (finish_float ? TLCons(float_tok, _tokens) : (finish_int ? TLCons(int_tok, _tokens) : _tokens)))
+
+    halting ∈ Bool = (done ∧ (¬was_collecting) ∧ (¬in_frac))
+
+    -- Label for stdout. Float boundary prints "float: whole.frac" with
+    -- zero-padding on `frac` to fit `frac_digits` columns. For the test
+    -- inputs (3.14, 0.5) the fractional already fits, so we just print
+    -- `whole ++ "." ++ str_from_int(frac)`. Generic zero-pad would need
+    -- a separate helper claim; not in scope for this fixture.
+    frac_str ∈ String = str_from_int(_frac)
+    float_label ∈ String = ("float: " ++ str_from_int(_whole) ++ "." ++ frac_str)
+    int_label   ∈ String = ("int: " ++ str_from_int(_partial_int))
+
+    label ∈ String = (halting ? "[eof]" : (pos < 0 ? "got input" : (finish_float ? float_label : (finish_int ? int_label : (is_ws ? "  skip" : (is_dot ? "  dot" : (frac_cont ? ("  fcont: " ++ cur_char) : (continuing ? ("  cont: " ++ cur_char) : (starting ? ("  start: " ++ cur_char) : "  ?")))))))))
+
+    effects ∈ Seq(Effect) = (halting ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
