@@ -485,13 +485,15 @@ unsafe fn solver_context_ptr(solver: &z3::Solver<'_>) -> z3_sys::Z3_context {
 /// `env` keyed by the source identifier; we emit them in the manifest
 /// verbatim (no `state.` prefix — the spec calls them "state fields" by
 /// role, not by name).
-/// State fields are top-level memberships of PRIMITIVE type (Int/Bool/Real/
-/// String). These are the values the kernel reads from the model and pins
-/// as `_<name>` on the next tick.
+/// State fields are top-level memberships the kernel carries across ticks.
+/// As of iter 3.2, this includes:
+///   - Primitives: Int/Bool/Real/String
+///   - Enum-typed (Datatype): EnumVar — the kernel walks the value
+///     recursively and re-asserts a literal on the next tick.
 ///
-/// Non-primitive memberships (Effect, Seq, custom enums) are single-tick
-/// scratch bindings — the kernel can't carry them yet (v2: extend the
-/// kernel to encode Datatype literals from the model). Skipped for now.
+/// Skipped: Seq/Set vars (carry would require Array equality which Z3
+/// handles but the kernel doesn't yet encode), composite records (not
+/// hit in current programs).
 fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Vec<(String, String)> {
     use crate::core::Var;
     let mut fields: Vec<(String, String)> = Vec::new();
@@ -502,15 +504,17 @@ fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Ve
         // `_<name>` is the previous-tick value of <name>; not first-class state.
         if name.starts_with('_') { continue; }
         let ty = match var {
-            Var::IntVar(_)     => "Int",
-            Var::BoolVar(_)    => "Bool",
-            Var::RealVar(_)    => "Real",
-            Var::StrVar(_)     => "String",
-            Var::PinnedInt(_)  => "Int",
-            // Non-primitive types are single-tick scratch — not carry state.
+            Var::IntVar(_)     => "Int".to_string(),
+            Var::BoolVar(_)    => "Bool".to_string(),
+            Var::RealVar(_)    => "Real".to_string(),
+            Var::StrVar(_)     => "String".to_string(),
+            Var::PinnedInt(_)  => "Int".to_string(),
+            // Enum-typed state: the kernel decodes via decode_datatype_value.
+            Var::EnumVar { enum_name, .. } => enum_name.clone(),
+            // Seq/Set/Composite: not yet supported as carry state.
             _ => continue,
         };
-        fields.push((name.clone(), ty.to_string()));
+        fields.push((name.clone(), ty));
     }
     fields.sort_by(|a, b| a.0.cmp(&b.0));
     fields

@@ -1,0 +1,26 @@
+-- Datatype state carry: build a TokenList incrementally over 4 ticks.
+-- Validates iter 3.2: the kernel can decode a Datatype value from the
+-- model, recursively walk its payload, and re-emit it as an SMT-LIB
+-- literal for the next tick's `_state` carry.
+--
+-- expect: stdout = "init"
+-- expect: stdout = "pushed LParen"
+-- expect: stdout = "pushed IntLit(42)"
+-- expect: stdout = "pushed RParen"
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+
+claim main
+    tokens  ∈ TokenList
+    _tokens ∈ TokenList
+    step  ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    tokens = (step = 0 ? TLNil : (step = 1 ? TLCons(LParen, _tokens) : (step = 2 ? TLCons(IntLit(42), _tokens) : (step = 3 ? TLCons(RParen, _tokens) : _tokens))))
+
+    label ∈ String = (step = 0 ? "init" : (step = 1 ? "pushed LParen" : (step = 2 ? "pushed IntLit(42)" : (step = 3 ? "pushed RParen" : "done"))))
+
+    effects ∈ Seq(Effect) = (step ≤ 3 ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr("done")⟩), Exit(0)⟩)

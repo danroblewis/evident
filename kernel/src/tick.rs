@@ -17,16 +17,30 @@ enum Sv {
     Int(i64),
     Bool(bool),
     Str(String),
+    Real(f64),
+    /// A Datatype-typed value: (variant constructor name, recursively-decoded payload values).
+    /// Lets the kernel carry algebraic data (e.g. a TokenList) across ticks.
+    Datatype(String, Vec<Sv>),
 }
 
 impl Sv {
-    /// Emit as SMT-LIB literal expression.
+    /// Emit as SMT-LIB literal expression suitable for an `(assert (= ...))`.
     fn smtlib(&self) -> String {
         match self {
             Sv::Int(n) if *n >= 0  => n.to_string(),
             Sv::Int(n)             => format!("(- {})", -n),
             Sv::Bool(b)            => b.to_string(),
             Sv::Str(s)             => format!("\"{}\"", s.replace('"', "\"\"")),
+            Sv::Real(r) if *r >= 0.0 => format!("{:?}", r),
+            Sv::Real(r)            => format!("(- {:?})", -r),
+            Sv::Datatype(variant, fields) => {
+                if fields.is_empty() {
+                    variant.clone()
+                } else {
+                    let parts: Vec<String> = fields.iter().map(|f| f.smtlib()).collect();
+                    format!("({} {})", variant, parts.join(" "))
+                }
+            }
         }
     }
 }
@@ -289,8 +303,46 @@ unsafe fn read_state_var(ctx: Z3_context, model: Z3_model, name: &str, ty: &str)
         "Int"    => Ok(Sv::Int(decode_int_literal(ctx, out)?)),
         "Bool"   => Ok(Sv::Bool(decode_bool_literal(ctx, out)?)),
         "String" => Ok(Sv::Str(decode_string_literal(ctx, out)?)),
-        other    => Err(format!("unsupported state-field type `{other}` for `{name}`")),
+        "Real"   => Ok(Sv::Real(decode_real_literal(ctx, out)?)),
+        // Anything else: treat as a Datatype. Walk the value recursively.
+        _        => decode_datatype_value(ctx, out),
     }
+}
+
+/// Recursively decode a Datatype value (e.g. `(TLCons (LParen) TLNil)`) into
+/// the Sv tree. The kernel doesn't know the schema; it walks the AST and
+/// reads constructor names + payload sorts on the fly via Z3's reflection.
+unsafe fn decode_datatype_value(ctx: Z3_context, ast: Z3_ast) -> Result<Sv, String> {
+    let app = Z3_to_app(ctx, ast);
+    if app.is_null() {
+        // Sometimes a primitive literal slips in (Int payload of a variant);
+        // fall back to int/string decode.
+        if let Ok(n) = decode_int_literal(ctx, ast) { return Ok(Sv::Int(n)); }
+        if let Ok(s) = decode_string_literal(ctx, ast) { return Ok(Sv::Str(s)); }
+        if let Ok(b) = decode_bool_literal(ctx, ast) { return Ok(Sv::Bool(b)); }
+        if let Ok(r) = decode_real_literal(ctx, ast) { return Ok(Sv::Real(r)); }
+        return Err(format!("can't decode value: {}", ast_to_string(ctx, ast)));
+    }
+    let decl = Z3_get_app_decl(ctx, app);
+    let variant = decode_sym(ctx, Z3_get_decl_name(ctx, decl));
+    let n_args = Z3_get_app_num_args(ctx, app);
+    let mut fields = Vec::with_capacity(n_args as usize);
+    for i in 0..n_args {
+        let arg = Z3_get_app_arg(ctx, app, i);
+        // Each payload field gets recursively decoded. Primitives hit the
+        // numeric/string fast path above.
+        let sort = Z3_get_sort(ctx, arg);
+        let sort_name = decode_sym(ctx, Z3_get_sort_name(ctx, sort));
+        let child = match sort_name.as_str() {
+            "Int"    => Sv::Int(decode_int_literal(ctx, arg)?),
+            "Bool"   => Sv::Bool(decode_bool_literal(ctx, arg)?),
+            "String" => Sv::Str(decode_string_literal(ctx, arg)?),
+            "Real"   => Sv::Real(decode_real_literal(ctx, arg)?),
+            _        => decode_datatype_value(ctx, arg)?,
+        };
+        fields.push(child);
+    }
+    Ok(Sv::Datatype(variant, fields))
 }
 
 unsafe fn read_int_const(ctx: Z3_context, model: Z3_model, name: &str) -> Result<i64, String> {
