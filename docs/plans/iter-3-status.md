@@ -95,6 +95,25 @@ Demonstrates: left-associative greedy combination, `current` and
 
 stdlib/parser.ev gives the `Op` and `Expr` enums + `TokenToOp` claim.
 
+### AST tree walker (3.12)
+A depth-first traversal of an `Expr` tree via an `ExprList`
+work-stack. Each tick pops the head Expr, classifies the variant,
+pushes children for compound nodes. Halts on empty stack.
+
+Test: walks `EBinOp(+, EBinOp(+, EInt(1), EInt(2)), EInt(3))` and
+correctly counts 3 EInt leaves.
+
+### AST → text translator (3.13)
+**THE COMPILER LOOP CLOSES.** Walks an `Expr` tree via a
+`WorkList` of `WorkItem` (Process(Expr) | Emit(String)) — pushing
+both subtrees and literal-text chunks onto the stack so structural
+characters like `(`, ` `, `)` interleave correctly between subtree
+visits. Output accumulates in `output_str ∈ String` across ticks.
+
+Test produces `(+ (+ 1 2) 3)` from
+`EBinOp(+, EBinOp(+, EInt(1), EInt(2)), EInt(3))` — actual SMT-LIB
+prefix notation derived from the AST by an Evident program.
+
 ### Translator gaps discovered (worked around, not fixed)
 
 Two cases the runtime translator drops:
@@ -177,13 +196,13 @@ architectural moves.
 ```
 runtime/src/        ~10,500 LOC (UNCHANGED in iter 3 — invariant held)
 kernel/src/         ~820 LOC    (+70 from iter 3.2 Datatype carry)
-stdlib/             ~470 LOC    (~150 added in iter 3.1-3.11)
+stdlib/             ~480 LOC    (~160 added in iter 3.1-3.13)
   ├── combinatorics.ev
   ├── kernel.ev
   ├── lexer.ev      ~120 LOC    (Token/TokenList + predicates + MaybeKeyword + DigitToInt)
-  ├── parser.ev     ~30 LOC     (Op + Expr + TokenToOp)
+  ├── parser.ev     ~50 LOC     (Op + Expr + ExprList + WorkItem + WorkList + TokenToOp)
   └── toposort.ev
-tests/kernel/       21 programs (all green)
+tests/kernel/       23 programs (all green)
 ```
 
 Per CLAUDE.md, the Rust runtime LOC should be **trending toward
@@ -215,5 +234,7 @@ starts the reduction.
 | `test_consolidated_lexer.ev` | All lexer features combined (iter 3.8) |
 | `test_serializer.ev` | TokenList consumer (iter 3.9) |
 | `test_parser.ev` | TokenList → Expr via FSM (iter 3.11) |
+| `test_ast_walker.ev` | Depth-first Expr traversal + leaf count (iter 3.12) |
+| `test_ast_to_text.ev` | Expr → SMT-LIB prefix text (iter 3.13) |
 
-All 21 tests run via `./test.sh --kernel` in ~1s.
+All 23 tests run via `./test.sh --kernel` in ~1s.
