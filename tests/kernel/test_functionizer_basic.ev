@@ -1,0 +1,24 @@
+-- Functionizer exerciser (task #18).
+--
+-- A determined-scalar FSM: `count` is a pure function of the previous tick's
+-- count, and `effects` is a fixed-arity guarded ternary on `count`. This is
+-- the "sweet spot" shape from docs/plans/functionizer-integration.md §3 — the
+-- extractor produces a Scalar step for `count` (JIT-compiled to native
+-- arithmetic) and a Guarded-Seq step for `effects` (interpreted). It runs
+-- entirely off the functionizer fast path (no per-tick Z3 solve) on every
+-- tick after the setup-time verification.
+--
+-- getpid is a silent libcall; the only stdout is the final "done".
+--
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    count  ∈ Int
+    _count ∈ Int
+    count = (is_first_tick ? 0 : _count + 1)
+
+    effects ∈ Seq(Effect) = (count < 5
+        ? ⟨LibCall("libc", "getpid", ⟨⟩)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr("done")⟩), Exit(0)⟩)
