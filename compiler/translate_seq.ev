@@ -133,3 +133,67 @@ claim SeqLitSmtlib
         : (is_cons ∧ tail_is_nil)         ? one_str
         : (is_cons ∧ tail_is_cons)        ? two_str
         : "<nyi>")
+
+-- ── Recursive seq-concat translation via a WorkItem work-stack ─────
+--
+-- SeqLitSmtlib above renders a bounded (≤2 element) literal. A real
+-- pass walks an arbitrary nest of `++` concatenations and emits the
+-- fully nested Z3 sequence form. `⟨1⟩ ++ ⟨2, 3⟩` desugars (`++`
+-- flattens, `⟨2,3⟩ = ⟨2⟩ ++ ⟨3⟩`) to the concat tree
+--   EBinOp(OpConcat, EInt(1), EBinOp(OpConcat, EInt(2), EInt(3)))
+-- whose translation is
+--   (seq.++ (seq.unit 1) (seq.++ (seq.unit 2) (seq.unit 3)))
+--
+-- The walk is the same depth-first work-stack as ArithTranslateStep,
+-- over parser.ev's `WorkItem = WIProcess(Expr) | WIEmit(String)`. A
+-- concat binop expands to `(seq.++ <P(l)> <P(r)>)`; an atom leaf emits
+-- `(seq.unit <token>)`. (Empty/other shapes emit the bounded helper's
+-- "<nyi>" sentinel so a mis-seeded stack is visible.)
+claim SeqConcatStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
+    is_emit ∈ Bool = (head matches WIEmit(_))
+    emit_lit ∈ String = match head
+        WIEmit(s) ⇒ s
+        _ ⇒ ""
+    proc_expr ∈ Expr = match head
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    is_int   ∈ Bool = (proc_expr matches EInt(_))
+    is_ident ∈ Bool = (proc_expr matches EIdent(_))
+    is_binop ∈ Bool = (proc_expr matches EBinOp(_, _, _))
+
+    int_val ∈ Int = match proc_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match proc_expr
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+    op ∈ Op = match proc_expr
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    is_concat ∈ Bool = (op matches OpConcat)
+    lhs ∈ Expr = match proc_expr
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match proc_expr
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    -- A WIEmit head contributes its literal; an atom contributes its
+    -- `(seq.unit X)` rendering; a concat binop contributes nothing this
+    -- tick (its "(seq.++ " arrives as a pushed WIEmit on the next pop).
+    unit_str ∈ String = (is_int ? "(seq.unit " ++ str_from_int(int_val) ++ ")"
+        : is_ident ? "(seq.unit " ++ ident_val ++ ")"
+        : "<nyi>")
+    emit = (is_emit ? emit_lit
+        : (is_int ∨ is_ident) ? unit_str
+        : "")
+
+    concat_exp ∈ WorkList = WLCons(WIEmit("(seq.++ "),
+        WLCons(WIProcess(lhs),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(rhs),
+        WLCons(WIEmit(")"), rest)))))
+
+    new_stack = ((is_binop ∧ is_concat) ? concat_exp : rest)

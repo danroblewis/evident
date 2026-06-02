@@ -1,0 +1,50 @@
+-- Recursive quantifier translation: walk an EForall whose body is a
+-- nested binop to fully nested SMT-LIB via a WorkItem work-stack (the
+-- test_ast_walker.ev depth-first pattern), driving
+-- compiler/translate_quant.ev's QuantTranslateStep once per tick.
+--
+-- Input AST:
+--   EForall("x", EIdent("items"), EBinOp(OpEq, EIdent("x"), EInt(0)))
+--
+-- Pop sequence:
+--   P(forall) → "(forall ((x Int)) (=> (>= x 0) " P(= x 0) "))"
+--   P(= x 0)  → "(" "=" " " P(x) " " P(0) ")"
+--   leaves emit "x" / "0"
+-- yielding "(forall ((x Int)) (=> (>= x 0) (= x 0)))".
+--
+-- expect: stdout = "(forall ((x Int)) (=> (>= x 0) (= x 0)))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/translate_quant.ev"
+
+claim main
+    initial_expr ∈ Expr = EForall("x", EIdent("items"), EBinOp(OpEq, EIdent("x"), EInt(0)))
+    initial_stack ∈ WorkList = WLCons(WIProcess(initial_expr), WLNil)
+
+    stack  ∈ WorkList
+    _stack ∈ WorkList
+    out  ∈ String
+    _out ∈ String
+
+    hd ∈ WorkItem = match _stack
+        WLCons(h, _) ⇒ h
+        WLNil ⇒ WIEmit("")
+    rst ∈ WorkList = match _stack
+        WLCons(_, t) ⇒ t
+        WLNil ⇒ WLNil
+    is_empty ∈ Bool = match _stack
+        WLNil ⇒ true
+        _ ⇒ false
+
+    nstack ∈ WorkList
+    em ∈ String
+    QuantTranslateStep(head ↦ hd, rest ↦ rst, new_stack ↦ nstack, emit ↦ em)
+
+    stack = (is_first_tick ? initial_stack : nstack)
+    out = (is_first_tick ? "" : _out ++ em)
+
+    done ∈ Bool = (¬is_first_tick ∧ is_empty)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(out)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
