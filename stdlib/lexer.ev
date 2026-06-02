@@ -21,7 +21,9 @@ enum Token =
     Eq
     EofTok
     ErrTok(String)
-    -- Keyword tokens (recognized post-collection).
+    -- Keyword tokens (recognized post-collection). The Rust lexer's
+    -- keyword_or_ident table (runtime/src/lexer.rs) dispatches the
+    -- same set; this enum mirrors it 1:1.
     KwClaim
     KwType
     KwSchema
@@ -29,6 +31,13 @@ enum Token =
     KwEnum
     KwImport
     KwMatch
+    KwSubclaim
+    KwExternal
+    KwMatches
+    KwIn
+    KwTrue
+    KwFalse
+    KwMapsTo
     -- Unicode operators (Phase A1).
     OpIn
     OpImplies
@@ -97,13 +106,20 @@ claim DigitToInt(c ∈ String, n ∈ Int)
 -- Kw* token or Ident(s).
 
 claim MaybeKeyword(s ∈ String, t ∈ Token)
-    t = (s = "claim"  ? KwClaim
-       : s = "type"   ? KwType
-       : s = "schema" ? KwSchema
-       : s = "fsm"    ? KwFsm
-       : s = "enum"   ? KwEnum
-       : s = "import" ? KwImport
-       : s = "match"  ? KwMatch
+    t = (s = "claim"    ? KwClaim
+       : s = "type"     ? KwType
+       : s = "schema"   ? KwSchema
+       : s = "fsm"      ? KwFsm
+       : s = "enum"     ? KwEnum
+       : s = "import"   ? KwImport
+       : s = "match"    ? KwMatch
+       : s = "subclaim" ? KwSubclaim
+       : s = "external" ? KwExternal
+       : s = "matches"  ? KwMatches
+       : s = "in"       ? KwIn
+       : s = "true"     ? KwTrue
+       : s = "false"    ? KwFalse
+       : s = "mapsto"   ? KwMapsTo
        : Ident(s))
 
 -- ── Single-char operator recognition ───────────────────────────
