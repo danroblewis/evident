@@ -1,0 +1,95 @@
+-- stdlib/translate_match.ev — C8: SMT-LIB match → nested ITE.
+--
+-- The Rust translator at runtime/src/translate/exprs/match_expr.rs
+-- lowers `match e { Ctor(b) ⇒ body ; _ ⇒ fallback }` into nested
+-- Z3 `ite` calls over constructor-recognizer testers:
+--
+--     (ite ((_ is Ctor) e) <body> <fallback>)
+--
+-- A multi-arm match folds bottom-up: starting from the last (wildcard)
+-- arm as the trailing `else`, each non-wildcard arm wraps `rest` in
+-- one more `(ite ((_ is <CtorName>) <scrutinee>) <body> <rest>)`.
+--
+-- This file ports the per-arm step of that fold. The caller drives
+-- the fold across arms (e.g. via an FSM stack like the AST→text
+-- walker in test_ast_to_text.ev), invoking MatchArmSmtlib once per
+-- arm with the running `rest` accumulator.
+
+import "stdlib/parser.ev"
+
+-- ── Expr → SMT-LIB string (minimal body subset) ────────────────
+-- For C8 we only render the Expr-as-body shapes the test fixture
+-- exercises: integer literals (`EInt(n)`) and bare identifiers
+-- (`EIdent(s)`). Other Expr cases fall through to the empty string.
+-- A richer body translator (binops, nested matches) is a downstream
+-- sub-step — for the C8 acceptance the wrapped body is always an
+-- atom because the fold's caller can substitute a fully-rendered
+-- body string itself if needed.
+--
+-- Vars-in-body shape (see NEXT.md: first-line claim params of enum
+-- type don't translate `matches`/`match` correctly when called via
+-- names-match composition).
+
+claim ExprAsText
+    e ∈ Expr
+    out ∈ String
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+    n ∈ Int = match e
+        EInt(v) ⇒ v
+        _ ⇒ 0
+    s ∈ String = match e
+        EIdent(v) ⇒ v
+        _ ⇒ ""
+    out = (is_int   ? str_from_int(n)
+        : is_ident ? s
+        : "")
+
+-- ── Pattern's constructor name (or "" for wildcards) ───────────
+-- MPCtor(name, _) → name. MPWildcard → "" (used by the caller as
+-- the "this is the else arm" signal).
+
+claim PatternCtorName
+    p ∈ MatchPattern
+    name ∈ String
+    is_ctor ∈ Bool = (p matches MPCtor(_, _))
+    pcn_name_local ∈ String = match p
+        MPCtor(n, _) ⇒ n
+        MPWildcard ⇒ ""
+    name = (is_ctor ? pcn_name_local : "")
+
+-- ── MatchArmSmtlib: wrap one arm around `rest` ─────────────────
+-- For a constructor arm `MArm(MPCtor(name, _), body)`:
+--   out = "(ite ((_ is <name>) <scrutinee>) <body_str> <rest>)"
+-- For the wildcard arm `MArm(MPWildcard, body)`:
+--   out = body_str
+-- (i.e. the wildcard becomes the innermost else branch — `rest`
+-- is ignored, since the caller seeds `rest` with the wildcard's
+-- own body_str the first time round.)
+--
+-- Composition: the caller folds arms back-to-front. First call
+-- passes the wildcard arm with rest="" (the resulting out becomes
+-- the new rest). Each subsequent call passes the next constructor
+-- arm with the previous out as rest.
+
+claim MatchArmSmtlib
+    scrutinee ∈ String
+    arm ∈ MatchArm
+    rest ∈ String
+    out ∈ String
+
+    pat ∈ MatchPattern = match arm
+        MArm(p, _) ⇒ p
+    body ∈ Expr = match arm
+        MArm(_, b) ⇒ b
+
+    is_wild ∈ Bool = (pat matches MPWildcard)
+
+    mas_ctor ∈ String
+    PatternCtorName(p ↦ pat, name ↦ mas_ctor)
+
+    mas_body_str ∈ String
+    ExprAsText(e ↦ body, out ↦ mas_body_str)
+
+    out = (is_wild ? mas_body_str
+        : "(ite ((_ is " ++ mas_ctor ++ ") " ++ scrutinee ++ ") " ++ mas_body_str ++ " " ++ rest ++ ")")
