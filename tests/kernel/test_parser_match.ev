@@ -1,0 +1,157 @@
+-- B9: match expressions + patterns.
+--
+-- Verifies the self-hosted parser AST now models `match` and that the
+-- ParseMatch recognizer accepts a `KwMatch`-headed input with at
+-- least two arms, producing an EMatch(scrutinee, arms).
+--
+-- The fixture mirrors ParsePassthrough's recognizer style: rather
+-- than walking a token list across many ticks (the full FSM is
+-- larger than what B9 ships), the test pre-builds the parts that a
+-- multi-tick FSM would assemble and feeds them to ParseMatch:
+--
+--   head      = KwMatch
+--   scrutinee = EIdent("e")            -- already-parsed `e`
+--   arms      = ⟨MArm(MPCtor("Ok", ⟨MBName("v")⟩), EIdent("v")),
+--               MArm(MPWildcard,                  EInt(0))⟩
+--
+-- After ParseMatch:
+--   ok  = true
+--   out = EMatch(EIdent("e"),
+--                MACons(MArm(MPCtor("Ok", MBCons(MBName("v"), MBNil)),
+--                            EIdent("v")),
+--                MACons(MArm(MPWildcard, EInt(0)), MANil)))
+--
+-- The test peels the result back apart and prints one diagnostic per
+-- tick (step counter), exiting after the last one.
+--
+-- expect: stdout = "saw kwmatch=true"
+-- expect: stdout = "two-arms=true"
+-- expect: stdout = "ok=true"
+-- expect: stdout = "tag=ematch"
+-- expect: stdout = "scrut=e"
+-- expect: stdout = "arm1-ctor=Ok"
+-- expect: stdout = "arm1-bind=v"
+-- expect: stdout = "arm1-body=v"
+-- expect: stdout = "arm2-wildcard=true"
+-- expect: stdout = "arm2-body=0"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- ── Inputs to ParseMatch ─────────────────────────────────────
+    head_tok ∈ Token = KwMatch
+    scrutinee ∈ Expr = EIdent("e")
+
+    -- Arm 1: `Ok(v) ⇒ v`
+    arm1_binds ∈ MatchBindList = MBCons(MBName("v"), MBNil)
+    arm1_pat   ∈ MatchPattern  = MPCtor("Ok", arm1_binds)
+    arm1       ∈ MatchArm      = MArm(arm1_pat, EIdent("v"))
+
+    -- Arm 2: `_ ⇒ 0`
+    arm2_pat ∈ MatchPattern = MPWildcard
+    arm2     ∈ MatchArm     = MArm(arm2_pat, EInt(0))
+
+    arms ∈ MatchArmList = MACons(arm1, MACons(arm2, MANil))
+
+    -- ── Call ParseMatch ──────────────────────────────────────────
+    is_kwmatch ∈ Bool
+    IsKwMatch(t ↦ head_tok, out ↦ is_kwmatch)
+
+    two_arms ∈ Bool
+    HasTwoArms(arms ↦ arms, out ↦ two_arms)
+
+    parsed ∈ Expr
+    parse_ok ∈ Bool
+    ParseMatch(head_tok ↦ head_tok, scrutinee ↦ scrutinee, arms ↦ arms,
+               out ↦ parsed, ok ↦ parse_ok)
+
+    -- ── Peel the result back apart for verification ──────────────
+    is_ematch ∈ Bool = (parsed matches EMatch(_, _))
+
+    -- Recover scrutinee + arm list from the EMatch.
+    parsed_scrut ∈ Expr = match parsed
+        EMatch(s, _) ⇒ s
+        _ ⇒ ENoExpr
+    parsed_arms ∈ MatchArmList = match parsed
+        EMatch(_, a) ⇒ a
+        _ ⇒ MANil
+
+    scrut_name ∈ String = match parsed_scrut
+        EIdent(s) ⇒ s
+        _ ⇒ "<no-ident>"
+
+    -- Split the arm list.
+    a1 ∈ MatchArm = match parsed_arms
+        MACons(a, _) ⇒ a
+        MANil ⇒ MArm(MPWildcard, ENoExpr)
+    arms_rest ∈ MatchArmList = match parsed_arms
+        MACons(_, r) ⇒ r
+        MANil ⇒ MANil
+    a2 ∈ MatchArm = match arms_rest
+        MACons(a, _) ⇒ a
+        MANil ⇒ MArm(MPWildcard, ENoExpr)
+
+    -- Arm 1 fields.
+    a1_pat ∈ MatchPattern = match a1
+        MArm(p, _) ⇒ p
+    a1_body ∈ Expr = match a1
+        MArm(_, b) ⇒ b
+    a1_ctor_name ∈ String = match a1_pat
+        MPCtor(n, _) ⇒ n
+        MPWildcard ⇒ "<wild>"
+    a1_binds_out ∈ MatchBindList = match a1_pat
+        MPCtor(_, bs) ⇒ bs
+        MPWildcard ⇒ MBNil
+    a1_first_bind ∈ MatchBind = match a1_binds_out
+        MBCons(b, _) ⇒ b
+        MBNil ⇒ MBName("<none>")
+    a1_first_bind_name ∈ String = match a1_first_bind
+        MBName(n) ⇒ n
+    a1_body_name ∈ String = match a1_body
+        EIdent(s) ⇒ s
+        _ ⇒ "<no-ident>"
+
+    -- Arm 2 fields.
+    a2_pat ∈ MatchPattern = match a2
+        MArm(p, _) ⇒ p
+    a2_body ∈ Expr = match a2
+        MArm(_, b) ⇒ b
+    a2_is_wild ∈ Bool = (a2_pat matches MPWildcard)
+    a2_body_int ∈ Int = match a2_body
+        EInt(n) ⇒ n
+        _ ⇒ 0 - 1
+
+    -- ── Step counter ─────────────────────────────────────────────
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    -- ── Per-step labels ──────────────────────────────────────────
+    kwmatch_str ∈ String = (is_kwmatch ? "saw kwmatch=true" : "saw kwmatch=false")
+    twoarms_str ∈ String = (two_arms ? "two-arms=true" : "two-arms=false")
+    ok_str ∈ String = (parse_ok ? "ok=true" : "ok=false")
+    tag_str ∈ String = (is_ematch ? "tag=ematch" : "tag=other")
+    scrut_str ∈ String = "scrut=" ++ scrut_name
+    arm1_ctor_str ∈ String = "arm1-ctor=" ++ a1_ctor_name
+    arm1_bind_str ∈ String = "arm1-bind=" ++ a1_first_bind_name
+    arm1_body_str ∈ String = "arm1-body=" ++ a1_body_name
+    arm2_wild_str ∈ String = (a2_is_wild ? "arm2-wildcard=true" : "arm2-wildcard=false")
+    arm2_body_str ∈ String = "arm2-body=" ++ str_from_int(a2_body_int)
+
+    label ∈ String = (step = 0 ? kwmatch_str
+        : (step = 1 ? twoarms_str
+        : (step = 2 ? ok_str
+        : (step = 3 ? tag_str
+        : (step = 4 ? scrut_str
+        : (step = 5 ? arm1_ctor_str
+        : (step = 6 ? arm1_bind_str
+        : (step = 7 ? arm1_body_str
+        : (step = 8 ? arm2_wild_str
+        : arm2_body_str)))))))))
+
+    done ∈ Bool = (step ≥ 9)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
