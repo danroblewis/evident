@@ -1,25 +1,17 @@
--- AST → text translator (iter 3.13) — THE THIRD COMPILER STAGE.
+-- AST → text translator: operator + identifier fidelity (iter 3.14).
 --
--- Walks `EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))`
--- and emits the SMT-LIB prefix form `(+ (+ 1 2) 3)`.
+-- Extends the iter 3.13 translator demonstration. The original
+-- (test_ast_to_text.ev) always emitted "(+ " for any binop and had no
+-- EIdent arm — so a parsed `x = 1` would mis-translate to `(+ ...)`.
 --
--- Architecture: a WorkList stack of WorkItem values. Each item is
--- either:
---   WIProcess(Expr) — visit the Expr (emit and/or push children)
---   WIEmit(String)  — emit a literal text chunk
+-- This fixture walks `EBinOp(OpEq, EIdent("x"), EInt(1))` and emits the
+-- SMT-LIB prefix form `(= x 1)`, proving the translator now respects:
+--   • the actual Op stored in the EBinOp (OpEq → "(= "), and
+--   • EIdent leaves (emit the identifier string directly).
 --
--- For Process(EBinOp(_, l, r)): emit "(+ ", push [Process(l),
--- Emit(" "), Process(r), Emit(")")] onto the stack. The structural
--- text gets interleaved correctly between subtree visits.
---
--- Output is accumulated into `output_str` across ticks; printed on
--- the final tick (stack empty).
---
--- This is the third compiler stage demonstrated as an FSM:
---   Lexer  (iter 3.1-3.9):  Text → TokenList via accumulator pattern
---   Parser (iter 3.11):     TokenList → Expr via state-carry consumer
---   Translator (this iter): Expr → SMT-LIB text via work-stack walker
--- All three run on the kernel; self-hosting is structurally complete.
+-- Same work-stack architecture as iter 3.13: a WorkList of WorkItem
+-- (WIProcess(Expr) | WIEmit(String)). For a binop, push
+-- [Process(left), Emit(" "), Process(right), Emit(")")].
 --
 -- expect: stdout = "[translating]"
 -- expect: stdout = "  step"
@@ -27,17 +19,13 @@
 -- expect: stdout = "  step"
 -- expect: stdout = "  step"
 -- expect: stdout = "  step"
--- expect: stdout = "  step"
--- expect: stdout = "  step"
--- expect: stdout = "  step"
--- expect: stdout = "  step"
--- expect: stdout = "(+ (+ 1 2) 3)"
+-- expect: stdout = "(= x 1)"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
 import "stdlib/parser.ev"
 
 claim main
-    initial_expr ∈ Expr = EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))
+    initial_expr ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(1))
     initial_stack ∈ WorkList = WLCons(WIProcess(initial_expr), WLNil)
 
     stack  ∈ WorkList

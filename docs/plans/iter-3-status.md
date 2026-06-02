@@ -114,6 +114,15 @@ Test produces `(+ (+ 1 2) 3)` from
 `EBinOp(+, EBinOp(+, EInt(1), EInt(2)), EInt(3))` — actual SMT-LIB
 prefix notation derived from the AST by an Evident program.
 
+### Translator fidelity: operators + idents (3.14)
+The iter 3.13 translator always emitted `(+ ` for any binop and had
+no `EIdent` arm, so a parsed `x = 1` would mis-translate. The walker
+now reads the actual `Op` from the `EBinOp` (`OpEq → "(= "`, else
+`"(+ "`) and emits `EIdent(s)` leaves directly. Test
+`test_translate_eq_ident.ev` produces `(= x 1)` from
+`EBinOp(OpEq, EIdent("x"), EInt(1))`. No new architecture — added
+`proc_is_ident` / `proc_op` match arms to the existing work-stack FSM.
+
 ### Translator gaps discovered (worked around, not fixed)
 
 Two cases the runtime translator drops:
