@@ -1,0 +1,92 @@
+-- C12: type-inference from Expr RHS.
+--
+-- Exercises stdlib/translate_infer.ev's InferType recognizer over
+-- four canonical RHS shapes drawn from CLAUDE.md's type-inference
+-- examples:
+--
+--   Case A: EBinOp(OpEq,   EIdent("x"), EInt(5)) → "Bool" (ok)
+--           Mirrors `ok = (x = 5)` — the lhs-eq → Bool case is the
+--           headline shape from inject_lhs_eq_types.
+--   Case B: EBinOp(OpPlus, EInt(1),     EInt(2)) → "Int"  (ok)
+--           Mirrors `mid = (1 + 2)` — arithmetic RHS recovers to Int.
+--   Case C: EInt(42)                              → "Int"  (ok)
+--           Mirrors `x = 42` — bare literal still recovers (CLAUDE.md
+--           keeps literal pins as "explicit", but the RHS shape
+--           itself encodes the type for downstream check purposes).
+--   Case D: EIdent("foo")                          → ok=false
+--           Mirrors `r = foo` where `foo`'s type is opaque without a
+--           whole-program lookup; the per-Expr probe correctly defers.
+--
+-- Pattern follows test_parser_membership.ev: one puts per tick driven
+-- by a small `step` counter; final tick emits the [done] marker and
+-- exits 0.
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "A_ok=true"
+-- expect: stdout = "A_type=Bool"
+-- expect: stdout = "B_ok=true"
+-- expect: stdout = "B_type=Int"
+-- expect: stdout = "C_ok=true"
+-- expect: stdout = "C_type=Int"
+-- expect: stdout = "D_ok=false"
+-- expect: stdout = "D_type="
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_infer.ev"
+
+claim main
+    -- Case A: name = (x = 5) → Bool
+    a_rhs ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(5))
+    a_inferred ∈ String
+    a_ok ∈ Bool
+    InferType(rhs ↦ a_rhs, inferred ↦ a_inferred, ok ↦ a_ok)
+
+    -- Case B: name = (1 + 2) → Int
+    b_rhs ∈ Expr = EBinOp(OpPlus, EInt(1), EInt(2))
+    b_inferred ∈ String
+    b_ok ∈ Bool
+    InferType(rhs ↦ b_rhs, inferred ↦ b_inferred, ok ↦ b_ok)
+
+    -- Case C: name = 42 → Int
+    c_rhs ∈ Expr = EInt(42)
+    c_inferred ∈ String
+    c_ok ∈ Bool
+    InferType(rhs ↦ c_rhs, inferred ↦ c_inferred, ok ↦ c_ok)
+
+    -- Case D: name = foo → ok=false (no per-Expr inference)
+    d_rhs ∈ Expr = EIdent("foo")
+    d_inferred ∈ String
+    d_ok ∈ Bool
+    InferType(rhs ↦ d_rhs, inferred ↦ d_inferred, ok ↦ d_ok)
+
+    -- Per-tick diagnostic stepping. One puts per tick.
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    a_ok_str   ∈ String = (a_ok ? "A_ok=true" : "A_ok=false")
+    a_type_str ∈ String = "A_type=" ++ a_inferred
+    b_ok_str   ∈ String = (b_ok ? "B_ok=true" : "B_ok=false")
+    b_type_str ∈ String = "B_type=" ++ b_inferred
+    c_ok_str   ∈ String = (c_ok ? "C_ok=true" : "C_ok=false")
+    c_type_str ∈ String = "C_type=" ++ c_inferred
+    d_ok_str   ∈ String = (d_ok ? "D_ok=true" : "D_ok=false")
+    d_type_str ∈ String = "D_type=" ++ d_inferred
+
+    label ∈ String = (step = 0 ? "[start]"
+        : (step = 1 ? a_ok_str
+        : (step = 2 ? a_type_str
+        : (step = 3 ? b_ok_str
+        : (step = 4 ? b_type_str
+        : (step = 5 ? c_ok_str
+        : (step = 6 ? c_type_str
+        : (step = 7 ? d_ok_str
+        : (step = 8 ? d_type_str
+        : "[done]")))))))))
+
+    done ∈ Bool = (step ≥ 9)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

@@ -1,0 +1,107 @@
+-- stdlib/translate_infer.ev — C12: type-inference passes.
+--
+-- Mirrors runtime/src/runtime/inject.rs's `inject_lhs_eq_types`
+-- shape: from a RHS Expr alone, recover the type the LHS would
+-- carry on a `name = rhs` constraint. The Rust side feeds the
+-- recovered type back as a synthetic `BIMembership(name, T)` when
+-- the user dropped the annotation (CLAUDE.md: "What stays explicit:
+-- top-level literal pins …; type body memberships." — the rest is
+-- recoverable from the RHS shape).
+--
+-- C12 covers the simplest recoverable cases:
+--   • EBinOp(OpEq,  _, _)  → "Bool"   — `ok = (x > 0)` family.
+--   • EBinOp(OpImpl,_, _)  → "Bool"   — `cond ⇒ Q` family.
+--   • EBinOp(OpPlus,_, _)  → "Int"    — arithmetic.
+--   • EBinOp(OpMul, _, _)  → "Int"
+--   • EBinOp(OpSub, _, _)  → "Int"
+--   • EBinOp(OpDiv, _, _)  → "Int"
+--   • EInt(_)              → "Int"    — bare literal RHS.
+--   • everything else      → ok=false (the caller defers; Z3 will
+--                              recover at solve time, or the user
+--                              must annotate).
+--
+-- The richer arms (ETernary → join arms, ECall(Ctor, …) → ctor's
+-- enum, EField(recv, _) → field type) live in later sub-steps. They
+-- need a whole-program-table input (the schemas HashMap on the Rust
+-- side) which doesn't fit the recognizer-claim shape — they're a
+-- pass over a SchemaDecl, not a per-Expr probe.
+
+import "stdlib/parser.ev"
+
+-- ── Op classifier helpers ──────────────────────────────────────
+-- Same vars-in-body shape as TokenToOp / KeywordOfTok in
+-- stdlib/parser.ev: first-line claim params of enum type have a
+-- translator gap for `matches`, so the Op classification happens via
+-- per-variant Bool intermediates in the body. Callers compose via
+-- names-match binding (op ↦ …).
+
+-- OpIsBool: true iff the op produces a Bool result (=, ⇒). These are
+-- the two ops the lhs-eq pass uses to short-circuit to "Bool".
+claim OpIsBool
+    op ∈ Op
+    out ∈ Bool
+    is_eq   ∈ Bool = (op matches OpEq)
+    is_impl ∈ Bool = (op matches OpImpl)
+    out = (is_eq ∨ is_impl)
+
+-- OpIsArith: true iff the op produces an Int result (+, -, *, /).
+-- Mirrors the Rust side's `Binary(BinOp::Add | Sub | Mul | Div, …)`
+-- arm in inject_lhs_eq_types — those four shapes recover to Int.
+claim OpIsArith
+    op ∈ Op
+    out ∈ Bool
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_div  ∈ Bool = (op matches OpDiv)
+    out = (is_plus ∨ is_mul ∨ is_sub ∨ is_div)
+
+-- ── InferType — the lhs-eq RHS recognizer ──────────────────────
+-- Inputs:
+--   rhs — the right-hand side Expr of a `name = rhs` constraint.
+--
+-- Outputs:
+--   inferred — the recovered type name as a String. Empty ("") when
+--              ok=false.
+--   ok       — true iff we recognized the shape and produced a
+--              real type. The caller uses `ok` to decide whether
+--              to emit a synthetic `BIMembership(name, TName(inferred))`.
+--
+-- Same vars-in-body shape as the Op classifiers: rhs is an enum, so
+-- the `matches` decomposition lives in the body and the op-payload
+-- is extracted via `match rhs`.
+
+claim InferType
+    rhs ∈ Expr
+    inferred ∈ String
+    ok ∈ Bool
+
+    is_binop ∈ Bool = (rhs matches EBinOp(_, _, _))
+    is_eint  ∈ Bool = (rhs matches EInt(_))
+
+    -- The op of the binop, or OpPlus as a placeholder when rhs is
+    -- not a binop. (OpPlus is harmless because the is_binop guard
+    -- below gates the use; we never let the op classifier's verdict
+    -- escape into `ok`/`inferred` unless is_binop is true.)
+    rhs_op ∈ Op = match rhs
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+
+    op_is_bool ∈ Bool
+    OpIsBool(op ↦ rhs_op, out ↦ op_is_bool)
+    op_is_arith ∈ Bool
+    OpIsArith(op ↦ rhs_op, out ↦ op_is_arith)
+
+    -- Recognized type, in priority order:
+    --   binop with Bool-producing op   → "Bool"
+    --   binop with Int-producing op    → "Int"
+    --   bare Int literal               → "Int"
+    --   anything else                  → "" (ok=false)
+    is_bool_arm  ∈ Bool = (is_binop ∧ op_is_bool)
+    is_arith_arm ∈ Bool = (is_binop ∧ op_is_arith)
+
+    ok = (is_bool_arm ∨ is_arith_arm ∨ is_eint)
+    inferred = (is_bool_arm ? "Bool"
+        : is_arith_arm ? "Int"
+        : is_eint ? "Int"
+        : "")
