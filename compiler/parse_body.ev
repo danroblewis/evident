@@ -1,0 +1,172 @@
+-- compiler/parse_body.ev — grammar wave 1: one-membership-per-tick
+-- parse + translate step for a claim body.
+--
+-- The MVP driver (compiler/compiler.ev) handled exactly ONE membership
+-- with an `= N` literal pin, parsed by peeling fixed token positions in
+-- a single emit tick. That doesn't generalise: a claim body has an
+-- arbitrary number of memberships, each 3 / 5 / 7 tokens wide depending
+-- on whether it carries a pin and whether the pin is a literal or a
+-- one-level arithmetic binop.
+--
+-- This file factors the "consume one membership off the front of a
+-- FORWARD token list" transition into a single claim, MembershipStep,
+-- so the driver's parse phase is a plain work-list walk (one membership
+-- per tick) — the same shape as test_translate_arith_recursive.ev's
+-- per-tick ArithTranslateStep, but over a TokenList instead of a
+-- WorkList. See docs/plans/grammar-wave1.md for the phase breakdown.
+--
+-- Wave-1 grammar consumed by MembershipStep (head = `Ident(name)`):
+--
+--   Ident(name) ∈ Ident(type)                       -- 3 tokens, no pin
+--   Ident(name) ∈ Ident(type) = <atom>              -- 5 tokens
+--   Ident(name) ∈ Ident(type) = <atom> <op> <atom>  -- 7 tokens (arith)
+--
+-- where <atom> is IntLit(n) | Ident(s) and <op> is +,-,*,/.  Anything
+-- else (enum / match / quantifier / nested pin) is a later wave.
+
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_declare.ev"
+import "compiler/translate_arith.ev"
+
+-- ── TokenList head / tail ───────────────────────────────────────
+-- Sentinel EofTok / TLNil on the empty list, exactly like the inline
+-- `match` peels in the MVP driver. Callers gate on the `ok` Bool that
+-- MembershipStep derives from the head token, not on these sentinels.
+
+claim TLHd
+    l ∈ TokenList
+    out ∈ Token
+    out = match l
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+
+claim TLTl
+    l ∈ TokenList
+    out ∈ TokenList
+    out = match l
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+
+-- ── MembershipStep ──────────────────────────────────────────────
+-- Pop the leading `Ident(name) ∈ Ident(type) [= pin]` group off `rem`
+-- (a forward token list whose head is the next membership's name) and
+-- produce its SMT-LIB.
+--
+-- Outputs:
+--   decl     — "(declare-fun <name> () <type>)"
+--   assertln — "(assert (= <name> <rhs>))" when pinned, else ""
+--   field    — "<name>:<type>" for the manifest state-fields line
+--   pinned   — whether a `= …` pin was present
+--   rest     — `rem` with this membership's 3/5/7 tokens dropped
+--   ok       — head token is an Ident (a membership is actually present)
+--
+-- The pin RHS is translated by composing translate_arith.ev:
+-- ArithExprSmtlib for the binop form, AtomSmtlib for a bare atom.
+claim MembershipStep
+    rem ∈ TokenList
+    decl ∈ String
+    assertln ∈ String
+    field ∈ String
+    pinned ∈ Bool
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    -- Peel up to seven tokens (and the tails after 3 / 5 / 7).
+    t0 ∈ Token
+    TLHd(l ↦ rem, out ↦ t0)
+    l1 ∈ TokenList
+    TLTl(l ↦ rem, out ↦ l1)
+    t1 ∈ Token
+    TLHd(l ↦ l1, out ↦ t1)
+    l2 ∈ TokenList
+    TLTl(l ↦ l1, out ↦ l2)
+    t2 ∈ Token
+    TLHd(l ↦ l2, out ↦ t2)
+    l3 ∈ TokenList
+    TLTl(l ↦ l2, out ↦ l3)
+    t3 ∈ Token
+    TLHd(l ↦ l3, out ↦ t3)
+    l4 ∈ TokenList
+    TLTl(l ↦ l3, out ↦ l4)
+    t4 ∈ Token
+    TLHd(l ↦ l4, out ↦ t4)
+    l5 ∈ TokenList
+    TLTl(l ↦ l4, out ↦ l5)
+    t5 ∈ Token
+    TLHd(l ↦ l5, out ↦ t5)
+    l6 ∈ TokenList
+    TLTl(l ↦ l5, out ↦ l6)
+    t6 ∈ Token
+    TLHd(l ↦ l6, out ↦ t6)
+    l7 ∈ TokenList
+    TLTl(l ↦ l6, out ↦ l7)
+
+    -- Head role extraction.
+    is_name ∈ Bool = (t0 matches Ident(_))
+    name ∈ String = match t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    type_str ∈ String = match t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    has_eq ∈ Bool = (t3 matches Eq)
+
+    -- All locals below are `ms_`-prefixed on purpose: claim composition
+    -- leaks a callee's BODY-local variable names into the caller and
+    -- unifies them by name. ArithExprSmtlib / AtomSmtlib carry internal
+    -- `is_plus` / `is_arith` / `op` / `rhs_str` / … — colliding with those
+    -- names here silently forces an unsatisfiable equality (e.g. our
+    -- literal-pin `is_plus=false` vs ArithExprSmtlib's fallback
+    -- `is_plus=true` → UNSAT). The prefix keeps our scratch separate.
+
+    -- Pin operand 1 (atom) → Expr.
+    ms_a1_is_int ∈ Bool = (t4 matches IntLit(_))
+    ms_a1_int ∈ Int = match t4
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_a1_id ∈ String = match t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_atom1 ∈ Expr = (ms_a1_is_int ? EInt(ms_a1_int) : EIdent(ms_a1_id))
+
+    -- Pin operator (t5) — only an arithmetic op continues the pin.
+    ms_is_plus  ∈ Bool = (t5 matches Plus)
+    ms_is_minus ∈ Bool = (t5 matches Minus)
+    ms_is_star  ∈ Bool = (t5 matches Star)
+    ms_is_slash ∈ Bool = (t5 matches Slash)
+    ms_is_arith ∈ Bool = (has_eq ∧ (ms_is_plus ∨ ms_is_minus ∨ ms_is_star ∨ ms_is_slash))
+    ms_op ∈ Op = (ms_is_plus ? OpPlus
+        : ms_is_minus ? OpSub
+        : ms_is_star ? OpMul
+        : ms_is_slash ? OpDiv
+        : OpPlus)
+
+    -- Pin operand 2 (atom) → Expr.
+    ms_a2_is_int ∈ Bool = (t6 matches IntLit(_))
+    ms_a2_int ∈ Int = match t6
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_a2_id ∈ String = match t6
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_atom2 ∈ Expr = (ms_a2_is_int ? EInt(ms_a2_int) : EIdent(ms_a2_id))
+
+    -- RHS Expr: the binop when arith, else the lone atom.
+    ms_rhs_expr ∈ Expr = (ms_is_arith ? EBinOp(ms_op, ms_atom1, ms_atom2) : ms_atom1)
+
+    ms_arith_str ∈ String
+    ms_arith_ok ∈ Bool
+    ArithExprSmtlib(e ↦ ms_rhs_expr, out ↦ ms_arith_str, ok ↦ ms_arith_ok)
+    ms_atom_str ∈ String
+    ms_atom_ok ∈ Bool
+    AtomSmtlib(e ↦ ms_atom1, out ↦ ms_atom_str, ok ↦ ms_atom_ok)
+    ms_rhs ∈ String = (ms_is_arith ? ms_arith_str : ms_atom_str)
+
+    -- Outputs.
+    DeclareFun(name ↦ name, type_str ↦ type_str, out ↦ decl)
+    assertln = (has_eq ? "(assert (= " ++ name ++ " " ++ ms_rhs ++ "))" : "")
+    field = name ++ ":" ++ type_str
+    pinned = has_eq
+    ok = is_name
+    rest = (¬has_eq ? l3 : (ms_is_arith ? l7 : l5))
