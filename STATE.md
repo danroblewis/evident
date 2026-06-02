@@ -7,26 +7,22 @@ BOOTSTRAP NOT YET DELETABLE.
 
 Blockers:
 
-11 files still reference bootstrap/runtime/target:
+10 files still reference bootstrap/runtime/target:
     ./tests/conformance/conftest.py
     ./tests/conformance/features/README.md
     ./tests/conformance/features/runner.sh
     ./docs/plans/DELETION-CHECKLIST.md
     ./docs/briefings/tasks/02-conformance-architecture.md
-    ./scripts/lexer-oracle.py
-    ./scripts/run-kernel-tests.py
-    ./scripts/run-lang-tests.py
     ./scripts/diff-test-selfhosted.sh
     ./scripts/bench-demo.sh
+    ./scripts/run-kernel-tests.sh
     ./scripts/bench-selfhosted.sh
+    ./scripts/run-lang-tests.sh
 compiler.smt2 does not exist at the repo root.
     This is the self-hosted compiler — written in Evident at
     compiler/compiler.ev, compiled once via bootstrap, and
     committed here. Until it exists, only bootstrap can compile .ev files.
-15 Python files remain under scripts/ or tests/ (scheduled for removal):
-    scripts/lexer-oracle.py
-    scripts/run-kernel-tests.py
-    scripts/run-lang-tests.py
+12 Python files remain under scripts/ or tests/ (scheduled for removal):
     tests/conformance/__init__.py
     tests/conformance/conftest.py
     tests/conformance/test_claim_composition.py
