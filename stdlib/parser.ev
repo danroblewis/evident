@@ -30,6 +30,7 @@ enum Op =
     OpSub
     OpDiv
     OpImpl
+    OpConcat
 
 -- Quantifier variants (B8) carry the bound variable name, the
 -- range expression (the source to iterate over, e.g. `items`), and

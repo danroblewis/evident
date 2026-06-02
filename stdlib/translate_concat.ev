@@ -1,0 +1,105 @@
+-- stdlib/translate_concat.ev — `++` Seq concat flattening (C13).
+--
+-- Mirrors runtime/src/runtime/desugar.rs's `desugar_seq_concat`: walks
+-- an Expr tree and turns nested `EBinOp(OpConcat, …)` chains into a
+-- single flat list of operands.
+--
+-- For C13 acceptance we handle a 2-level flatten (root + one nested
+-- OpConcat). Deeper nesting is the "drive recursion via a work-stack
+-- in the caller" extension — same pattern as test_ast_walker / the
+-- subscriptions/pretty stack-FSMs documented in docs/self-hosting.md.
+--
+-- The shape is:
+--   * `ConcatFlatten(e, out)` — if e is `EBinOp(OpConcat, l, r)`, returns
+--     the flat list of leaves (one extra level deep via ConcatFlattenLeaf);
+--     otherwise returns a singleton list `ELCons(e, ELNil)`.
+--   * `ConcatFlattenLeaf(e, out)` — single-level flatten used as the
+--     recursion-base. For an OpConcat node, returns `[l, r]`; for atoms,
+--     `[e]`. (No further descent — the caller's work-stack drives any
+--     deeper recursion.)
+--   * `AppendList(a, b, out)` — bounded list append used to splice the
+--     left- and right-child flat lists; the input `a` is bounded to two
+--     elements (enough for a 2-level flatten where each child is itself
+--     at most a single OpConcat).
+
+import "stdlib/parser.ev"
+
+-- ── List append ────────────────────────────────────────────────
+-- Bounded ExprList concatenation. `a` is assumed to have length ≤ 2
+-- (sufficient for a 2-level ConcatFlatten; deeper nesting goes through
+-- a work-stack in the caller).
+
+claim AppendList
+    a ∈ ExprList
+    b ∈ ExprList
+    out ∈ ExprList
+
+    al_is_a_nil ∈ Bool = (a matches ELNil)
+    al_a_head ∈ Expr = match a
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    al_a_tail ∈ ExprList = match a
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+
+    al_is_atail_nil ∈ Bool = (al_a_tail matches ELNil)
+    al_atail_head ∈ Expr = match al_a_tail
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+
+    out = (al_is_a_nil ? b
+        : (al_is_atail_nil ? ELCons(al_a_head, b)
+        : ELCons(al_a_head, ELCons(al_atail_head, b))))
+
+-- ── Single-level leaf flatten ─────────────────────────────────
+-- The recursion base: handle one OpConcat node without further
+-- descent. For `EBinOp(OpConcat, l, r)` returns `[l, r]`; for any
+-- other shape (EInt, EIdent, non-concat EBinOp, …) returns `[e]`.
+
+claim ConcatFlattenLeaf
+    e ∈ Expr
+    out ∈ ExprList
+
+    cfl_is_concat ∈ Bool = (e matches EBinOp(OpConcat, _, _))
+    cfl_left ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    cfl_right ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    out = (cfl_is_concat
+        ? ELCons(cfl_left, ELCons(cfl_right, ELNil))
+        : ELCons(e, ELNil))
+
+-- ── Two-level flatten ─────────────────────────────────────────
+-- Top-level ConcatFlatten. For an OpConcat node, dispatches each
+-- child to ConcatFlattenLeaf (one more level) and appends the two
+-- flat lists. For an atom, returns a singleton list.
+--
+-- Total depth handled: the root + one nested OpConcat per child =
+-- the canonical (a ++ b) ++ c shape. Deeper nesting is driven by a
+-- work-stack in the caller (test fixture pattern).
+
+claim ConcatFlatten
+    e ∈ Expr
+    out ∈ ExprList
+
+    cf_is_concat ∈ Bool = (e matches EBinOp(OpConcat, _, _))
+    cf_left ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    cf_right ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    cf_left_flat ∈ ExprList
+    ConcatFlattenLeaf(e ↦ cf_left, out ↦ cf_left_flat)
+
+    cf_right_flat ∈ ExprList
+    ConcatFlattenLeaf(e ↦ cf_right, out ↦ cf_right_flat)
+
+    cf_appended ∈ ExprList
+    AppendList(a ↦ cf_left_flat, b ↦ cf_right_flat, out ↦ cf_appended)
+
+    out = (cf_is_concat ? cf_appended : ELCons(e, ELNil))
