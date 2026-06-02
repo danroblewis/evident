@@ -84,6 +84,8 @@ def run_one(path: Path) -> tuple[bool, str]:
         Path("/tmp/evident_kw_input.txt").write_text("claim hello type fsm\n")
     if path.name == "test_comment_lexer.ev":
         Path("/tmp/evident_comment_input.txt").write_text("x = 5 -- this is a comment\ny = 7\n")
+    if path.name == "test_consolidated_lexer.ev":
+        Path("/tmp/evident_consolidated_input.txt").write_text("claim x = 1\n")
 
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
