@@ -12,7 +12,7 @@
 # self-hosted compiler (kernel + compiler.smt2) once it exists.
 #
 # Backends (select via the IMPL env var):
-#   IMPL=bootstrap  (default) — bootstrap/runtime/target/release/evident emit
+#   IMPL=bootstrap  (default) — `scripts/evident-self bin` emit (bootstrap today)
 #   IMPL=selfhost             — kernel compiler.smt2 < source.ev
 #   IMPL=both                 — compile under both, compare outputs
 #
@@ -38,7 +38,7 @@ ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$ROOT"
 
 IMPL="${IMPL:-bootstrap}"
-EVIDENT="$ROOT/bootstrap/runtime/target/release/evident"
+EVIDENT="$("$ROOT/scripts/evident-self" bin)"
 KERNEL="$ROOT/kernel/target/release/kernel"
 COMPILER_SMT2="$ROOT/compiler.smt2"
 

@@ -12,7 +12,7 @@
 set -u -o pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$ROOT/bootstrap/runtime/target/release/evident"
+BIN="$("$ROOT/scripts/evident-self" bin)"
 LANG_TESTS="$ROOT/tests/lang_tests"
 
 if [ ! -x "$BIN" ]; then

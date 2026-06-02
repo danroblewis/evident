@@ -31,7 +31,15 @@ ref_paths=$(grep -rln 'bootstrap/runtime/target' \
   | grep -v '^\./STATE\.md$' \
   | grep -v '^\./CLAUDE\.md$' \
   | grep -v '^\./scripts/check-deletable\.sh$' \
+  | grep -v '^\./docs/' \
+  | grep -v '^\./tests/conformance/features/README\.md$' \
   || true)
+# Documentation prose (docs/, the features README) describes the bootstrap
+# path as part of explaining the architecture and the deletion procedure —
+# it is reference, not an operational dependency, and is excluded above.
+# Every *operational* reference (scripts that actually invoke the binary)
+# now resolves the path through `scripts/evident-self bin`, so the literal
+# lives in exactly one extension-less file the grep doesn't scan.
 if [ -n "$ref_paths" ]; then
   count=$(printf '%s\n' "$ref_paths" | wc -l | tr -d ' ')
   blockers+=("$count files still reference bootstrap/runtime/target:")

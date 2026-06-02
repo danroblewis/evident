@@ -23,7 +23,8 @@
 #   scripts/bench-demo.sh examples/test_21_mario/main.ev -s 30
 #       # exclude first 30 ticks (Mario's setup) from steady-state numbers
 
-EVIDENT=${EVIDENT:-./bootstrap/runtime/target/release/evident}
+ROOT_BD="$(cd "$(dirname "$0")/.." && pwd)"
+EVIDENT=${EVIDENT:-$("$ROOT_BD/scripts/evident-self" bin)}
 RUNS=3
 START=1
 
