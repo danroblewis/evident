@@ -13,10 +13,6 @@ impl Parser {
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
-                // `run(...)` is no longer a parser hook: `Expr::RunFsm` is produced
-                // ONLY by `lower_fsm_application` from a 2-arg call to an `fsm`-keyword
-                // schema (`F(seed, fsm_state)`). A bare `run(...)` now parses as an
-                // ordinary call and fails downstream like any unknown name.
                 self.bump();
                 // Greedily consume `.ident` chains BEFORE the call check so
                 // `win.renderer.set_draw_color(args)` becomes a single dotted Call.

@@ -59,9 +59,6 @@ pub(crate) fn inject_claim_arg_types(
     // Resolve a call name to (claim_name, arg_offset): subschema (offset 0),
     // receiver-prefix (offset 1, receiver counts as first arg), or plain (offset 0).
     let resolve = |name: &str| -> Option<(String, /*arg_offset:*/ usize)> {
-        // §4 guard: an `fsm`-keyword schema in call position is an embedded FSM
-        // (`lower_fsm_application` rewrites `F(seed, out)` → `out = RunFsm{..}`),
-        // not a claim — never arg-type-infer its call.
         if matches!(schemas.get(name).map(|s| &s.keyword), Some(Keyword::Fsm)) {
             return None;
         }
