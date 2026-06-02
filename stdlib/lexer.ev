@@ -1,0 +1,66 @@
+-- stdlib/lexer.ev — Self-hosted Evident lexer (iter 3.1 toy version).
+--
+-- Tokens for a minimal subset of Evident:
+--   Ident(s)  — a bare-identifier run
+--   IntLit(n) — a digit run, interpreted as decimal
+--   LParen / RParen / Comma / Plus / Eq
+--   EofTok    — end of input
+--   ErrTok(s) — lex error
+--
+-- The full Evident lexer (Unicode operators ∈/⇒/⟨⟩, string literals,
+-- keyword recognition, comment skipping, …) will follow once the
+-- toy lexer architecture is validated.
+
+enum Token =
+    Ident(String)
+    IntLit(Int)
+    LParen
+    RParen
+    Comma
+    Plus
+    Eq
+    EofTok
+    ErrTok(String)
+
+-- A `TokenList` is the output of the lexer. Cons-cell shape so a
+-- self-hosted parser can pattern-match by head/tail.
+enum TokenList =
+    TLNil
+    TLCons(Token, TokenList)
+
+-- ── Character predicates ───────────────────────────────────────
+-- Each takes a single-char String and returns a Bool. We use
+-- string equality for the alphabet; this is wasteful for large
+-- alphabets but transparent and self-hosted.
+
+claim IsDigitChar(c ∈ String, out ∈ Bool)
+    out = (c = "0" ∨ c = "1" ∨ c = "2" ∨ c = "3" ∨ c = "4"
+         ∨ c = "5" ∨ c = "6" ∨ c = "7" ∨ c = "8" ∨ c = "9")
+
+claim IsAlphaChar(c ∈ String, out ∈ Bool)
+    out = (c = "a" ∨ c = "b" ∨ c = "c" ∨ c = "d" ∨ c = "e"
+         ∨ c = "f" ∨ c = "g" ∨ c = "h" ∨ c = "i" ∨ c = "j"
+         ∨ c = "k" ∨ c = "l" ∨ c = "m" ∨ c = "n" ∨ c = "o"
+         ∨ c = "p" ∨ c = "q" ∨ c = "r" ∨ c = "s" ∨ c = "t"
+         ∨ c = "u" ∨ c = "v" ∨ c = "w" ∨ c = "x" ∨ c = "y" ∨ c = "z"
+         ∨ c = "A" ∨ c = "B" ∨ c = "C" ∨ c = "D" ∨ c = "E"
+         ∨ c = "F" ∨ c = "G" ∨ c = "H" ∨ c = "I" ∨ c = "J"
+         ∨ c = "K" ∨ c = "L" ∨ c = "M" ∨ c = "N" ∨ c = "O"
+         ∨ c = "P" ∨ c = "Q" ∨ c = "R" ∨ c = "S" ∨ c = "T"
+         ∨ c = "U" ∨ c = "V" ∨ c = "W" ∨ c = "X" ∨ c = "Y" ∨ c = "Z")
+
+claim IsWhitespace(c ∈ String, out ∈ Bool)
+    -- \r escape isn't supported by the parser; CRLF inputs need
+    -- a preprocessing pass to strip CRs (not done in this toy lexer).
+    out = (c = " " ∨ c = "\t" ∨ c = "\n")
+
+-- ── Single-char operator recognition ───────────────────────────
+
+claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
+    t = (c = "(" ? LParen
+        : c = ")" ? RParen
+        : c = "," ? Comma
+        : c = "+" ? Plus
+        : c = "=" ? Eq
+        : ErrTok(c))
+    recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "=")

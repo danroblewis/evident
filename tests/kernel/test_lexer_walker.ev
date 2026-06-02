@@ -1,0 +1,43 @@
+-- Self-hosted lexer walker: walks "(4+2)" char-by-char and classifies each.
+--
+-- This is the foundation of iter 3.x self-hosting: text processing is
+-- expressible in pure Evident, running on the kernel via multi-tick state
+-- evolution. The Token enum + character predicates live in stdlib/lexer.ev.
+--
+-- expect: stdout = "op: ("
+-- expect: stdout = "digit: 4"
+-- expect: stdout = "op: +"
+-- expect: stdout = "digit: 2"
+-- expect: stdout = "op: )"
+-- expect: stdout = "[eof]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+
+claim main
+    input ∈ String = "(4+2)"
+
+    pos  ∈ Int
+    _pos ∈ Int
+    pos = (is_first_tick ? 0 : _pos + 1)
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+
+    is_dig ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+
+    op_tok ∈ Token
+    is_op ∈ Bool
+    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+
+    label ∈ String = (is_ws ? "ws" : (is_dig ? ("digit: " ++ cur_char) : (is_alpha ? ("alpha: " ++ cur_char) : (is_op ? ("op: " ++ cur_char) : ("?: " ++ cur_char)))))
+
+    done ∈ Bool = (pos ≥ #input)
+
+    effects ∈ Seq(Effect) = (done ? ⟨LibCall("libc", "puts", ⟨ArgStr("[eof]")⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
