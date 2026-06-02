@@ -115,9 +115,7 @@ pub fn evaluate(
         }
     }
 
-    let check_t0 = std::time::Instant::now();
     let check_result = solver.check();
-    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
