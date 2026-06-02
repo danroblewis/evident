@@ -38,11 +38,13 @@ pub mod jit;
 
 // ── Program IR ──────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub enum GBody {
     Scalar(Z3_ast),
     Seq(Vec<Z3_ast>),
 }
 
+#[derive(Clone)]
 pub struct Branch {
     /// The guard AST. When `neg` is set, the branch fires on its *negation*
     /// — this captures `(or X Q)` ⇒ `¬X ⇒ Q` where Z3 emitted the negated
@@ -52,6 +54,7 @@ pub struct Branch {
     pub body: GBody,
 }
 
+#[derive(Clone)]
 pub enum StepBody {
     Scalar(Z3_ast),
     Seq(Vec<Z3_ast>),
@@ -64,6 +67,10 @@ pub struct Step {
     /// Bool-sorted scalar output (vs Int). Selects how a JIT i64 result and an
     /// eval result are interpreted. Irrelevant for Seq steps.
     pub result_is_bool: bool,
+    /// True for the single `effects` step (its Seq feeds the effect dispatch).
+    /// A non-effects Seq step is a record-Seq *intermediate* — its `Sv::Seq`
+    /// value is bound into the eval env so later scalar steps can index it.
+    pub is_effects: bool,
     /// Present only for scalar Int/Bool steps the JIT accepted.
     pub jit: Option<jit::JitStep>,
 }
@@ -132,7 +139,7 @@ pub(crate) unsafe fn ast_app_name(ctx: Z3_context, a: Z3_ast) -> Option<String> 
     Some(tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, decl)))
 }
 
-unsafe fn numeral_i64(ctx: Z3_context, a: Z3_ast) -> Option<i64> {
+pub(crate) unsafe fn numeral_i64(ctx: Z3_context, a: Z3_ast) -> Option<i64> {
     if Z3_get_ast_kind(ctx, a) != AstKind::Numeral {
         return None;
     }
@@ -159,25 +166,51 @@ pub(crate) unsafe fn mentions_name(ctx: Z3_context, a: Z3_ast, name: &str) -> bo
     false
 }
 
-/// Collect every free 0-arity uninterpreted constant name in `a`.
-pub(crate) unsafe fn collect_inputs(ctx: Z3_context, a: Z3_ast, out: &mut HashSet<String>) {
-    if Z3_get_ast_kind(ctx, a) == AstKind::App {
-        let app = Z3_to_app(ctx, a);
-        if !app.is_null() && Z3_get_app_num_args(ctx, app) == 0 {
-            let dk = Z3_get_decl_kind(ctx, Z3_get_app_decl(ctx, app));
-            if dk == DeclKind::UNINTERPRETED {
-                out.insert(tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, Z3_get_app_decl(ctx, app))));
-            }
-            return;
-        }
-        for c in children(ctx, a) {
-            collect_inputs(ctx, c, out);
-        }
-    }
-}
-
 unsafe fn is_bool_sorted(ctx: Z3_context, a: Z3_ast) -> bool {
     Z3_get_sort_kind(ctx, Z3_get_sort(ctx, a)) == SortKind::Bool
+}
+
+/// A 0-arity uninterpreted constant (a program variable), not a builtin like
+/// `true`/`false` or a numeral.
+pub(crate) unsafe fn is_uninterp_const(ctx: Z3_context, a: Z3_ast) -> bool {
+    decl_kind(ctx, a) == Some(DeclKind::UNINTERPRETED) && children(ctx, a).is_empty()
+}
+
+/// Int/Bool-sorted (the sorts the JIT and scalar pins handle).
+pub(crate) unsafe fn is_int_or_bool(ctx: Z3_context, a: Z3_ast) -> bool {
+    let k = Z3_get_sort_kind(ctx, Z3_get_sort(ctx, a));
+    k == SortKind::Int || k == SortKind::Bool
+}
+
+/// For a `DT_ACCESSOR` application `a` (e.g. `(w (select rs 0))`), the 0-based
+/// field index of the accessed field within its constructor. Matches the
+/// accessor decl by name against the argument's datatype sort — record field
+/// names (`x`,`w`) and enum accessors (`Cons__f0`) are unique within a sort, so
+/// the first match is correct. `None` for non-datatype args / unknown
+/// accessors (caller falls through to Z3).
+pub(crate) unsafe fn accessor_field_index(ctx: Z3_context, a: Z3_ast) -> Option<usize> {
+    let acc_name = app_decl_name(ctx, a)?;
+    let ch = children(ctx, a);
+    if ch.len() != 1 {
+        return None;
+    }
+    let sort = Z3_get_sort(ctx, ch[0]);
+    if Z3_get_sort_kind(ctx, sort) != SortKind::Datatype {
+        return None;
+    }
+    let nc = Z3_get_datatype_sort_num_constructors(ctx, sort);
+    for ci in 0..nc {
+        let ctor = Z3_get_datatype_sort_constructor(ctx, sort, ci);
+        let arity = Z3_get_domain_size(ctx, ctor);
+        for fi in 0..arity {
+            let acc = Z3_get_datatype_sort_constructor_accessor(ctx, sort, ci, fi);
+            let nm = tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, acc));
+            if nm == acc_name {
+                return Some(fi as usize);
+            }
+        }
+    }
+    None
 }
 
 // ── Step 1: tactic chain ────────────────────────────────────────
@@ -396,7 +429,45 @@ unsafe fn classify_guarded(
     false
 }
 
-/// Build the raw partition. `None` if any output lacks a covering assignment.
+/// Assemble a single var's body from the raw partition, or `None` if `var` has
+/// no covering definition. Reads by reference (callable for many vars).
+unsafe fn build_body(raw: &Raw, var: &str) -> Option<StepBody> {
+    if let Some(branches) = raw.guarded.get(var) {
+        if !branches.is_empty() {
+            return Some(StepBody::Guarded(branches.clone()));
+        }
+    }
+    if let Some(e) = raw.scalar.get(var) {
+        return Some(StepBody::Scalar(*e));
+    }
+    // Seq from explicit/inferred length + contiguous element pins.
+    let elems = raw.seq_elements.get(var);
+    let explicit = raw.seq_lengths.get(var).copied();
+    let inferred = elems.and_then(|m| {
+        let mut i = 0i64;
+        while m.contains_key(&i) { i += 1; }
+        if i == 0 { None } else { Some(i) }
+    });
+    let n = explicit.or(inferred)?;
+    let map = elems?;
+    let mut seq = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        seq.push(*map.get(&i)?);
+    }
+    Some(StepBody::Seq(seq))
+}
+
+/// Build the raw partition and assemble steps for the outputs plus every
+/// *internal* definition (intermediate scalar like `r0.w`, or a record-Seq like
+/// `rs`) reachable from an output's expression. `None` if any output lacks a
+/// covering assignment, or the dependency graph has a cycle.
+///
+/// Unlike the reference port — which relied on Z3's `solve-eqs` to substitute
+/// intermediates away — the kernel's tactic chain keeps `(= var expr)` shapes,
+/// so intermediate defs survive as separate assertions. Pulling the
+/// output-reachable ones in as steps is what lets a record-Seq (`(= (select rs
+/// i) (mk_Rect …))`) and the scalars feeding it (`(= r0.w (+ 1 count))`) be
+/// evaluated when a later step indexes the Seq (`rs[0].w`).
 unsafe fn extract_program(
     ctx: Z3_context,
     assertions: &[Z3_ast],
@@ -406,6 +477,8 @@ unsafe fn extract_program(
     let mut raw = Raw::default();
 
     for &a in assertions {
+        // Guarded shapes (the `effects` ternary) are only meaningful for the
+        // declared outputs.
         if try_record_guarded(ctx, a, &output_set, &mut raw) {
             continue;
         }
@@ -413,72 +486,76 @@ unsafe fn extract_program(
             raw.predicates.push(a);
             continue;
         };
+        // Seq length / element pins, for ANY Seq var (outputs and internals).
         if let Some((name, n)) = match_len_pin(ctx, l, r).or_else(|| match_len_pin(ctx, r, l)) {
-            if output_set.contains(&name) {
-                raw.seq_lengths.insert(name, n);
-                continue;
-            }
+            raw.seq_lengths.insert(name, n);
+            continue;
         }
         if let Some((arr, idx, elem)) =
             match_select_pin(ctx, l, r).or_else(|| match_select_pin(ctx, r, l))
         {
-            if output_set.contains(&arr) {
-                raw.seq_elements.entry(arr).or_default().insert(idx, elem);
-                continue;
-            }
+            raw.seq_elements.entry(arr).or_default().insert(idx, elem);
+            continue;
         }
-        if let Some(name) = ast_app_name(ctx, l) {
-            if output_set.contains(&name) && !raw.scalar.contains_key(&name) && !mentions_name(ctx, r, &name) {
+        // Scalar `(= var expr)` definitions, for ANY var (first def wins).
+        if is_uninterp_const(ctx, l) {
+            let name = ast_app_name(ctx, l)?;
+            if !raw.scalar.contains_key(&name) && !mentions_name(ctx, r, &name) {
                 raw.scalar.insert(name, r);
                 continue;
             }
         }
-        if let Some(name) = ast_app_name(ctx, r) {
-            if output_set.contains(&name) && !raw.scalar.contains_key(&name) && !mentions_name(ctx, l, &name) {
+        if is_uninterp_const(ctx, r) {
+            let name = ast_app_name(ctx, r)?;
+            if !raw.scalar.contains_key(&name) && !mentions_name(ctx, l, &name) {
                 raw.scalar.insert(name, l);
                 continue;
             }
         }
-        // A consistency check between non-outputs — keep as a predicate.
         raw.predicates.push(a);
     }
 
-    // Assemble per-output bodies.
+    // Assemble candidate bodies: every output (required) + every internally
+    // defined var (optional — only kept if reachable from an output below).
     let mut bodies: HashMap<String, StepBody> = HashMap::new();
     for v in outputs {
-        if let Some(e) = raw.scalar.remove(v) {
-            bodies.insert(v.clone(), StepBody::Scalar(e));
+        bodies.insert(v.clone(), build_body(&raw, v)?); // uncovered output ⇒ refuse
+    }
+    let mut internal: HashSet<String> = HashSet::new();
+    internal.extend(raw.scalar.keys().cloned());
+    internal.extend(raw.seq_elements.keys().cloned());
+    internal.extend(raw.guarded.keys().cloned());
+    for v in internal {
+        if output_set.contains(&v) {
             continue;
         }
-        if let Some(branches) = raw.guarded.remove(v) {
-            if !branches.is_empty() {
-                bodies.insert(v.clone(), StepBody::Guarded(branches));
-                continue;
-            }
+        if let Some(b) = build_body(&raw, &v) {
+            bodies.insert(v, b);
         }
-        // Seq from explicit/inferred length + contiguous element pins.
-        let elems = raw.seq_elements.get(v);
-        let explicit = raw.seq_lengths.get(v).copied();
-        let inferred = elems.and_then(|m| {
-            let mut i = 0i64;
-            while m.contains_key(&i) { i += 1; }
-            if i == 0 { None } else { Some(i) }
-        });
-        let n = match (explicit, inferred) {
-            (Some(e), _) => e,
-            (None, Some(i)) => i,
-            (None, None) => return None, // uncovered output
-        };
-        let map = elems?;
-        let mut seq = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            seq.push(*map.get(&i)?);
-        }
-        bodies.insert(v.clone(), StepBody::Seq(seq));
     }
 
-    // Topo-order by reference to other outputs.
-    let order = topo_order(ctx, outputs, &bodies)?;
+    // Reachability: keep only outputs and the internal defs an output's
+    // expression (transitively) mentions. Unreferenced defs are dropped.
+    let mut reachable: HashSet<String> = output_set.clone();
+    let mut queue: Vec<String> = outputs.to_vec();
+    while let Some(v) = queue.pop() {
+        let Some(b) = bodies.get(&v) else { continue };
+        let exprs = body_exprs(b);
+        for u in bodies.keys() {
+            if u == &v || reachable.contains(u) {
+                continue;
+            }
+            if exprs.iter().any(|&e| mentions_name(ctx, e, u)) {
+                reachable.insert(u.clone());
+                queue.push(u.clone());
+            }
+        }
+    }
+    bodies.retain(|k, _| reachable.contains(k));
+    let kept: Vec<String> = bodies.keys().cloned().collect();
+
+    // Topo-order so each step follows the vars it consumes.
+    let order = topo_order(ctx, &kept, &bodies)?;
     let ordered: Vec<(String, StepBody)> =
         order.into_iter().map(|v| (v.clone(), bodies.remove(&v).unwrap())).collect();
     Some((ordered, raw.predicates))
@@ -576,48 +653,49 @@ pub unsafe fn functionize(
         return None;
     };
 
-    // Enforce: each state field is a scalar/guarded-scalar; effects is a
-    // seq/guarded-seq. Anything else is unsupported ⇒ refuse.
+    // Record-Seq intermediates the JIT can inline: `var → element ASTs`.
+    // A scalar step indexing one of these (`rs[0].w`) resolves the select +
+    // accessor to a leaf field AST at compile time, so it still JITs.
+    let seqs: HashMap<String, Vec<Z3_ast>> = raw_steps.iter().filter_map(|(v, b)| {
+        if v == &manifest.effects_name { return None; }
+        if let StepBody::Seq(es) = b { Some((v.clone(), es.clone())) } else { None }
+    }).collect();
+
+    // Enforce: each declared state field is a scalar/guarded-scalar; `effects`
+    // is a seq/guarded-seq. Internal record-Seq / scalar steps may be either.
     let mut steps: Vec<Step> = Vec::new();
     let mut jit_count = 0usize;
     let mut interp_count = 0usize;
     for (var, body) in raw_steps {
         let is_effects = var == manifest.effects_name;
-        match &body {
-            StepBody::Seq(_) => {
-                if !is_effects {
-                    return None;
-                }
-            }
-            StepBody::Guarded(branches) => {
-                let seqish = branches.iter().any(|b| matches!(b.body, GBody::Seq(_)));
-                if seqish != is_effects {
-                    return None;
-                }
-            }
-            StepBody::Scalar(_) => {
-                if is_effects {
-                    return None;
-                }
-            }
+        let is_state = manifest.state_fields.iter().any(|(n, _)| n == &var);
+        let body_is_seq = match &body {
+            StepBody::Seq(_) => true,
+            StepBody::Guarded(branches) => branches.iter().any(|b| matches!(b.body, GBody::Seq(_))),
+            StepBody::Scalar(_) => false,
+        };
+        // A state field is read back as a primitive/datatype scalar; it cannot
+        // be a Seq. `effects` must be a Seq.
+        if is_state && body_is_seq {
+            return None;
+        }
+        if is_effects && !body_is_seq {
+            return None;
         }
 
         let (result_is_bool, jit) = match &body {
             StepBody::Scalar(e) => {
                 let is_bool = is_bool_sorted(ctx, *e);
                 let mut j = None;
-                if jit_enabled && (is_bool || Z3_get_sort_kind(ctx, Z3_get_sort(ctx, *e)) == SortKind::Int) {
-                    let mut set = HashSet::new();
-                    collect_inputs(ctx, *e, &mut set);
-                    let inputs: Vec<String> = set.into_iter().collect();
-                    j = jit::compile_step(ctx, *e, &inputs);
+                if jit_enabled && is_int_or_bool(ctx, *e) {
+                    j = jit::compile_step(ctx, *e, &seqs);
                 }
                 if j.is_some() { jit_count += 1; } else { interp_count += 1; }
                 (is_bool, j)
             }
             _ => (false, None),
         };
-        steps.push(Step { var, body, result_is_bool, jit });
+        steps.push(Step { var, body, result_is_bool, is_effects, jit });
     }
 
     let mut keepalive = simplified;
@@ -720,7 +798,12 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                         }
                     }
                 }
-                effects = seq;
+                if step.is_effects {
+                    effects = seq;
+                } else {
+                    // Record-Seq intermediate: bind so later steps can index it.
+                    env.insert(step.var.clone(), Sv::Seq(seq));
+                }
             }
             StepBody::Guarded(branches) => {
                 let mut chosen: Option<&GBody> = None;
@@ -760,7 +843,11 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                                 }
                             }
                         }
-                        effects = seq;
+                        if step.is_effects {
+                            effects = seq;
+                        } else {
+                            env.insert(step.var.clone(), Sv::Seq(seq));
+                        }
                     }
                 }
             }

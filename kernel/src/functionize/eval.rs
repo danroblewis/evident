@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use z3_sys::*;
 
 use crate::tick::Sv;
-use super::{children, decl_kind, ast_app_name, app_decl_name};
+use super::{children, decl_kind, ast_app_name, app_decl_name, accessor_field_index};
 
 /// Evaluate a scalar (Int / Bool / String / Datatype) AST under `env`.
 pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>) -> Option<Sv> {
@@ -136,6 +136,22 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
                 fields.push(eval_scalar(ctx, c, env)?);
             }
             Some(Sv::Datatype(name, fields))
+        }
+        // `(select rs i)` — index a record-Seq intermediate bound in env.
+        DeclKind::SELECT => {
+            let arr = eval_scalar(ctx, ch[0], env)?;
+            let idx = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            match arr {
+                Sv::Seq(elems) if idx >= 0 => elems.into_iter().nth(idx as usize),
+                _ => None,
+            }
+        }
+        // `(w r)` — read one field of a Datatype value (a record element).
+        DeclKind::DT_ACCESSOR => {
+            let v = eval_scalar(ctx, ch[0], env)?;
+            let Sv::Datatype(_, fields) = v else { return None };
+            let fi = accessor_field_index(ctx, a)?;
+            fields.into_iter().nth(fi)
         }
         other => {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {

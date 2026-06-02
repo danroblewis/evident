@@ -140,17 +140,34 @@ and was replaced with `compiler/parser.ev`'s `WorkItem`/`WorkList`.
 See `tests/kernel/test_translate_arith_recursive.ev` for the
 worked example.
 
-**TRANSITIONAL — cons-lists are an expedient, not the destination.**
-Cons-lists carry an imperative "first/rest" verb structure that
-doesn't appear in well-shaped constraint models. They were picked
-because the macro-finder functionizes them cleanly today while Z3
-Seqs are opaque (the `recompose_record_seqs` functionizer
-extension was deferred in task #18). When that extension lands —
-or via a compiler-level rewrite-rule pass — Seqs become the right
-shape, and the cons-list pattern gets swept out. See
-`docs/plans/ideas.md` §"Replace Cons-lists with Seqs". Sessions
-should know this and not entrench cons-list-specific patterns
-beyond what current functionizability requires.
+**Seqs are the destination shape for bounded typed collections.**
+The `recompose_record_seqs` functionizer extension LANDED in task
+#19, so a bounded `Seq(Record)` whose element fields are determined
+per tick now functionizes: the extractor recomposes the Seq into a
+step (its value bound as an `Sv::Seq` in the eval env) and the
+scalar steps that index it (`rs[0].w`) resolve the `select` +
+record accessor to leaf fields — JIT-compiled when pure Int/Bool,
+interpreted otherwise (see `docs/plans/functionizer-integration.md`
+§6, "record-Seq recomposition"). So Seqs no longer carry a
+functionization penalty versus cons-lists for this shape.
+
+Guidance, going forward:
+
+- **New state-carry of a bounded, typed collection → use a Seq**
+  (`xs ∈ Seq(Rect)`), not a cons-list. It functionizes equally well
+  and reads as a constraint model, not an imperative first/rest walk.
+- **Cons-lists remain acceptable for AST-traversal work stacks**,
+  where the `match Cons(head, rest)` destructuring is more ergonomic
+  than index/`#`-arithmetic over a Seq, and the bound is the AST node
+  count. Task #13's `WorkItem`/`WorkList` is the worked example.
+- **Still out of scope (stays on Z3):** symbolic-length /
+  symbolic-index Seqs, and Seqs *carried across ticks* as state (a
+  Seq isn't a primitive state field, so only its determined
+  recomposition each tick functionizes — not a model-carried Seq
+  value). Those fall through to the solver, correctly.
+
+The cons→Seq sweep of existing compiler code is tracked separately;
+see `docs/plans/ideas.md` §"Replace Cons-lists with Seqs".
 
 ## Empty `effects` Seq quirk
 
@@ -225,17 +242,21 @@ Implications for current sessions:
   A-default (cached ASTs + simple pin assertions) is preferred
   long-term, not just because it benchmarked faster on bodies <
   256 KB.
-- **Bounded literal-indexed Seqs functionize; symbolic-length/index
-  Seqs do not.** Confirmed against the extractor source
-  (`legacy-rust/functionizer/src/z3_eval.rs`): `extract_program`
-  captures a `Seq` output only via a literal length pin
-  (`(= var__len N)`) plus literal-indexed element pins
-  (`(= (select var 0) …)`). A `Seq` whose length or indices are
-  symbolic is opaque — extraction returns `None` and the *entire*
-  tick falls back to Z3. Enum cons-list datatypes, by contrast, fold
-  through `simplify` (recognizers `(_ is Cons)`, accessors
-  `Cons__f0`) and surface as captured `Guarded` branches. This is the
-  mechanism behind the cons-list-over-Seq preference above.
+- **Bounded literal-indexed Seqs functionize (records included);
+  symbolic-length/index Seqs do not.** `extract_program` captures a
+  `Seq` via a literal length pin (`(= var__len N)`, or inferred from
+  contiguous element pins) plus literal-indexed element pins
+  (`(= (select var i) elem)`). As of task #19 the elements may be
+  record constructors (`(mk_Rect …)`): the Seq is recomposed into a
+  step and scalar steps indexing it resolve `(select …)` + record
+  accessors to leaf fields (kernel `functionize/{mod,eval,jit}.rs`;
+  see `functionizer-integration.md` §6). A `Seq` whose length or
+  indices are *symbolic* is still opaque — extraction returns `None`
+  for that output and the *entire* tick falls back to Z3. Enum
+  cons-list datatypes also fold through `simplify` (recognizers
+  `(_ is Cons)`, accessors `Cons__f0`) and surface as captured
+  `Guarded` branches — so cons-list and bounded-record-Seq now sit
+  at parity for the functionizer.
 - **The gate is determinism (a 2-copy UNSAT check), not cleverness.**
   A body whose outputs are uniquely determined by its inputs
   functionizes; a body that genuinely searches (multiple valid models)

@@ -285,6 +285,22 @@ using them refuses cleanly.
   and other covered outputs (interpreted).
 - **Effect dispatch** is performed from the decoded `Sv` values
   (`dispatch_effect_sv`), reusing the same libffi / file / exit logic.
+- **Bounded record-Seqs** (task #19, the `recompose_record_seqs` path):
+  a `Seq(Record)` whose elements are determined per tick
+  (`(= (select rs i) (mk_Rect …))`) is recomposed into a Seq step whose
+  `Sv::Seq` value is bound into the eval env. Unlike the reference port
+  (which leaned on `solve-eqs`), the kernel's tactic chain keeps the
+  intermediate `(= var expr)` defs, so `extract_program` now also pulls
+  in the **internal scalar defs** (e.g. `r0.w = (+ 1 count)`) and aux
+  Seqs that an output's expression reaches, ordered by dependency.
+  Scalar steps that index a Seq (`rs[0].w`) evaluate `(select rs i)` →
+  element and the record accessor `(w …)` → field; the **JIT** resolves
+  both against the recomposed element ASTs at compile time, so such a
+  step collapses to pure Int arithmetic over the elements' leaf fields
+  and compiles natively (fixed, literal size only). Implemented across
+  `functionize/mod.rs` (extraction + reachability), `eval.rs`
+  (`SELECT` + `DT_ACCESSOR`), and `jit.rs` (compile-time resolution);
+  `Sv::Seq` was added in `tick.rs`.
 
 ### Shapes deferred (fall through to Z3 — correct, just not accelerated)
 
@@ -298,11 +314,15 @@ using them refuses cleanly.
 - **Bodies that read `last_results`**: verification pins `last_results`
   empty and does not model cross-tick result carry, so they fail to
   verify and stay on Z3.
-- **Integer `div`/`mod`**, recursive/cons-list datatype *outputs*,
-  record-Seq recomposition (the reference `recompose_record_seqs` /
-  `PreBaked` path is not ported).
-- **JIT of datatypes/Seqs/strings**: only scalar Int/Bool steps are
-  JIT-compiled; everything else uses the interpreter.
+- **Integer `div`/`mod`**, recursive/cons-list datatype *outputs*.
+- **Symbolic-length / symbolic-index record-Seqs**, and Seqs *carried
+  across ticks as state* (a Seq isn't a primitive state field — only
+  its per-tick recomposition functionizes, task #19; a model-carried
+  Seq value still falls through).
+- **JIT of datatype/Seq/string *construction***: a record-Seq that is
+  only *indexed* JITs (the index + accessor resolve away), but building
+  a `Seq`/datatype value itself is interpreted; scalar Int/Bool steps
+  are the JIT's domain.
 
 ### Measurement
 
@@ -326,6 +346,27 @@ tick loop**, and JIT edges out the interpreter (the per-tick scalar
 delta; the bulk of the win is skipping `Z3_solver_check` entirely). On a
 non-functionizable body all three modes coincide — the extractor refuses,
 the only cost is the one-shot extraction attempt (negligible).
+
+**Record-Seqs (task #19).** A `Seq(Rect)` fixture with scalar outputs
+indexing it (`tests/kernel/test_functionizer_seqs.ev`; the committed
+fixture runs ~100 ticks, a 2000-tick variant was used for timing)
+extracts **8 steps — 6 JIT, 0 interp** under the default
+(`count`, the four reachable `r0.*`/`r1.*` field scalars, and `wsum`
+all JIT; `rs` is a Seq step and `effects` a guarded-Seq step,
+interpreted). ms/run, best of 3, ~2000 ticks (timings include a fixed
+~25 ms harness/process overhead — the relative gap is the signal):
+
+| fixture                      | JIT (default) | interpret (`_JIT=0`) | bypass (`=0`) |
+| ---------------------------- | ------------- | -------------------- | ------------- |
+| fz_basic (scalar)            | 59.6 ms       | 59.5 ms              | 1243 ms       |
+| fz_seqs  (record-Seq)        | **70.6 ms**   | 75.5 ms              | 1853 ms       |
+
+The record-Seq fast path is ≈**26× faster than bypass**; the scalar
+`wsum`/`npos` steps that index `rs` JIT to native arithmetic (select +
+record accessor resolved at compile time), so JIT edges the interpreter
+just as on the scalar fixture. The setup-time tick-0/tick-1 verification
+against a real Z3 solve gates this exactly as for scalars — a
+mis-recomposed Seq reverts the whole run to Z3.
 
 Env flags: `EVIDENT_FUNCTIONIZE=0` bypasses entirely; `EVIDENT_FUNCTIONIZE_JIT=0`
 extracts + interprets without JIT; both default on. `EVIDENT_FUNCTIONIZE_TRACE=1`
