@@ -75,15 +75,31 @@ claim TokenToOp
     t ∈ Token
     o ∈ Op
     is_binop ∈ Bool
-<<<<<<< HEAD
-    is_plus ∈ Bool = (t matches Plus)
-    is_star ∈ Bool = (t matches Star)
-    is_eq   ∈ Bool = (t matches Eq)
-    o = (is_plus ? OpPlus : (is_star ? OpMul : (is_eq ? OpEq : OpPlus)))
-    is_binop = (is_plus ∨ is_star ∨ is_eq)
+    is_plus  ∈ Bool = (t matches Plus)
+    is_minus ∈ Bool = (t matches Minus)
+    is_star  ∈ Bool = (t matches Star)
+    is_slash ∈ Bool = (t matches Slash)
+    is_eq    ∈ Bool = (t matches Eq)
+    o = (is_plus  ? OpPlus
+       : is_minus ? OpSub
+       : is_star  ? OpMul
+       : is_slash ? OpDiv
+       : is_eq    ? OpEq
+       : OpPlus)
+    is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
 
--- ── Enum declaration AST (Phase B6) ─────────────────────────────
+-- ── Operator precedence (B1) ────────────────────────────────────
+claim Precedence
+    op ∈ Op
+    n ∈ Int
+    is_mul ∈ Bool = (op matches OpMul)
+    is_div ∈ Bool = (op matches OpDiv)
+    is_add ∈ Bool = (op matches OpPlus)
+    is_sub ∈ Bool = (op matches OpSub)
+    is_eq  ∈ Bool = (op matches OpEq)
+    n = (is_mul ? 2 : is_div ? 2 : is_add ? 1 : is_sub ? 1 : is_eq ? 0 : 0)
 
+-- ── Enum declaration AST (B6) ───────────────────────────────────
 enum EnumVariantDecl =
     EVDecl(String)
     EVNoVariant
@@ -96,19 +112,18 @@ enum EnumDeclAst =
     EnumD(String, EnumVariantList)
     ENoEnum
 
--- ── Paren-depth frame stack (Phase B2) ──────────────────────────
+-- ── Paren-depth frame stack (B2) ────────────────────────────────
 enum FrameList =
     FLNil
     FLCons(Expr, Op, FrameList)
 
--- ── BodyItem AST (Phase B) ──────────────────────────────────────
+-- ── BodyItem AST ────────────────────────────────────────────────
 enum BodyItem =
     BIPassthrough(String)
     BIConstraint(Expr)
     BINoItem
 
--- ── Token recognizers (parser helpers) ──────────────────────────
-
+-- ── Token recognizers ───────────────────────────────────────────
 claim IsDotDot
     t ∈ Token
     out ∈ Bool
@@ -127,7 +142,6 @@ claim IdentName
         _ ⇒ ""
 
 -- ── Passthrough body-item parser (B7) ───────────────────────────
-
 claim ParsePassthrough
     head1 ∈ Token
     head2 ∈ Token
@@ -143,47 +157,3 @@ claim ParsePassthrough
 
     ok = (is_dd ∧ is_id)
     item = (ok ? BIPassthrough(name) : BINoItem)
-=======
-    is_plus  ∈ Bool = (t matches Plus)
-    is_minus ∈ Bool = (t matches Minus)
-    is_star  ∈ Bool = (t matches Star)
-    is_slash ∈ Bool = (t matches Slash)
-    is_eq    ∈ Bool = (t matches Eq)
-    o = (is_plus  ? OpPlus
-       : is_minus ? OpSub
-       : is_star  ? OpMul
-       : is_slash ? OpDiv
-       : is_eq    ? OpEq
-       : OpPlus)
-    is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
-
--- ── Operator precedence levels ──────────────────────────────────
--- Mirrors runtime/src/parser/exprs.rs precedence climb:
---   * / Div  → high precedence (parse_muldiv, level 2)
---   + - Plus → low precedence  (parse_addsub, level 1)
---   = Eq     → comparison      (parse_compare, level 0)
---
--- A precedence-climbing FSM consumes operators in left-to-right order
--- and uses these numeric levels to decide "fold into current high-prec
--- subtree" (incoming op same/higher prec than pending) versus "flush
--- the high-prec subtree into the low-prec left-fold" (incoming op
--- lower prec than pending).
---
--- Following the "first-line claim params + matches" gap workaround
--- (see NEXT.md), op is declared in the body and callers use
--- names-match composition.
-claim Precedence
-    op ∈ Op
-    n ∈ Int
-    is_mul ∈ Bool = (op matches OpMul)
-    is_div ∈ Bool = (op matches OpDiv)
-    is_add ∈ Bool = (op matches OpPlus)
-    is_sub ∈ Bool = (op matches OpSub)
-    is_eq  ∈ Bool = (op matches OpEq)
-    n = (is_mul ? 2
-       : is_div ? 2
-       : is_add ? 1
-       : is_sub ? 1
-       : is_eq  ? 0
-       : 0)
->>>>>>> origin/agent-b1
