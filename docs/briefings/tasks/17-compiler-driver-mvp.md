@@ -51,14 +51,27 @@ Cite #2, #4, and #5 in your report.
 6. Writes the result to stdout via `LibCall("libc", "puts", …)`.
 7. Exits 0.
 
-For MVP scope, the input must work on ONE small canonical example:
+For MVP scope, pick the SIMPLEST real string input that the
+existing `compiler/lexer.ev` + `compiler/parser.ev` + the recursive
+`compiler/translate_*.ev` passes (arith/bool/match/seq/quant) can
+actually handle end-to-end. Acceptable inputs in priority order:
 
-```evident
-claim main
-    x ∈ Int = 5
-```
+1. `claim main\n    x ∈ Int = 5` — full real Evident.
+2. A subset that exercises lex + parse + translate but skips
+   declarations (e.g. translate just an expression like `1 + 2`).
+3. A pre-tokenised `TokenList` as input (skip lex), parse +
+   translate.
 
-Expected output (manifest + body):
+Pick the highest item the current primitives can support and
+explain in your report exactly why anything higher didn't work.
+
+PREVIOUS ATTEMPT NOTE: The first session at this task got stuck
+silently for 40+ minutes with no output. If you find yourself
+similarly stuck, **write `docs/plans/blocked-compiler-driver.md`
+within 15 minutes of identifying the blocker and exit**. Do not
+keep trying; the coordinator needs to know what's missing.
+
+Expected output for option 1 (if achievable):
 
 ```smtlib
 ;; manifest: state-fields = x:Int
@@ -70,8 +83,8 @@ Expected output (manifest + body):
 (assert (= x 5))
 ```
 
-It does NOT need to handle every grammar shape. It needs to prove
-the wiring works end-to-end on this one input.
+For options 2/3, define the expected output yourself based on
+what your pipeline can produce.
 
 ## Test fixture
 
