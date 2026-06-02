@@ -1,0 +1,9 @@
+-- expect: stdout = "a"
+-- expect: stdout = "b"
+-- expect: stdout = "c"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    mode ∈ String = "Done"
+    effects ∈ Seq(Effect) = ⟨Println("a"), Println("b"), Println("c"), Exit(0)⟩

@@ -17,6 +17,7 @@ fn usage() {
     eprintln!("Usage:");
     eprintln!("  evident sample <file> <claim> [-n N] [--json] [--given k=v ...]");
     eprintln!("  evident sample <file> --all [--json]");
+    eprintln!("  evident emit   <file> <claim> [-o <out.smt2>]");
 }
 
 fn load(file: &str) -> Option<EvidentRuntime> {
@@ -166,7 +167,39 @@ fn main() -> ExitCode {
     if args.is_empty() { usage(); return ExitCode::from(2); }
     match args[0].as_str() {
         "sample" => cmd_query_or_sample(&args[1..]),
+        "emit"   => cmd_emit(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => { eprintln!("unknown subcommand: {other}"); usage(); ExitCode::from(2) }
+    }
+}
+
+fn cmd_emit(args: &[String]) -> ExitCode {
+    let Some(file) = args.first() else { usage(); return ExitCode::from(2); };
+    let Some(claim) = args.get(1) else { usage(); return ExitCode::from(2); };
+    let mut out_path: Option<String> = None;
+    let mut i = 2;
+    while i < args.len() {
+        if args[i] == "-o" && i + 1 < args.len() {
+            out_path = Some(args[i + 1].clone());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let Some(rt) = load(file) else { return ExitCode::from(1); };
+    match evident_runtime::emit::emit_kernel_smtlib(&rt, claim) {
+        Ok(s) => {
+            match out_path {
+                Some(p) => {
+                    if let Err(e) = std::fs::write(&p, &s) {
+                        eprintln!("emit: write {p}: {e}");
+                        return ExitCode::from(1);
+                    }
+                }
+                None => { print!("{s}"); }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => { eprintln!("emit: {e}"); ExitCode::from(1) }
     }
 }

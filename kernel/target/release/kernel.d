@@ -1,0 +1,1 @@
+/Users/danroblewis/evident/kernel/target/release/kernel: /Users/danroblewis/evident/kernel/src/main.rs /Users/danroblewis/evident/kernel/src/manifest.rs /Users/danroblewis/evident/kernel/src/tick.rs

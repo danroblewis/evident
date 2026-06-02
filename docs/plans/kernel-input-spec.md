@@ -10,28 +10,28 @@ independently. With it, they share only this doc.
 ## File shape, at a glance
 
 ```
-;; manifest: state-fields = state.foo:Int state.bar:String
+;; manifest: state-fields = mode:String count:Int
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
 ;; manifest: max-effects = 16
 
-(set-logic ALL)
-
-;; Effect + Result Datatype declarations
+;; Effect + Result + LibArg Datatype declarations
+(declare-datatypes ((LibArg 0)) ( … ))
+(declare-datatypes ((__SeqOf_LibArg 0)) ( … ))
 (declare-datatypes ((Result 0) (Effect 0)) ( … ))
 
-;; State + per-tick variable declarations
-(declare-const state.foo Int)
-(declare-const _state.foo Int)
-(declare-const state.bar String)
-(declare-const _state.bar String)
-(declare-const is_first_tick Bool)
-(declare-const effects (Seq Effect))
-(declare-const last_results (Seq Result))
+;; State + per-tick variable declarations.
+;; Sequences are encoded as Array Int <Elem> + a separate Int length.
+(declare-fun mode () String)
+(declare-fun count () Int)
+(declare-fun effects__len () Int)
+(declare-fun effects () (Array Int Effect))
+(declare-fun last_results__len () Int)
+(declare-fun last_results () (Array Int Result))
+(declare-fun is_first_tick () Bool)
 
 ;; Body constraints (per the FSM body, all hard)
-(assert ( … ))
 (assert ( … ))
 ```
 
@@ -46,11 +46,11 @@ missing or misplaced.
 
 | Key | Format | Meaning |
 |---|---|---|
-| `state-fields` | space-separated `name:Type` pairs | Top-level constants the kernel reads from the model post-solve and pre-asserts as `_<name>` next tick. |
-| `effects-name` | single identifier | The SMT-LIB constant of type `(Seq <effect-enum-name>)` that the kernel walks. |
-| `effect-enum-name` | single identifier | The Datatype declared in the file that the kernel pattern-matches `Exit(_)`, `Println(_)`, etc. against. |
+| `state-fields` | space-separated `name:Type` pairs | Top-level constants the kernel reads from the model post-solve and pre-asserts as `_<name>` next tick. Identifiers are bare names, no `state.` prefix (the prefix is conceptual; mechanically they're just claim-body declarations except `effects` and `last_results`). |
+| `effects-name` | single identifier | The SMT-LIB constant of type `(Array Int <effect-enum-name>)` that the kernel walks. Paired with `<effects-name>__len` giving the actual length. |
+| `effect-enum-name` | single identifier | The Datatype declared in the file that the kernel pattern-matches `Exit(_)`, `Println(_)`, etc. against. Variants are recognized by constructor name. |
 | `result-enum-name` | single identifier | The Datatype the kernel re-encodes `last_results` into. |
-| `max-effects` | integer | Upper bound on `#effects` per tick. Kernel asserts `(<= (seq.len effects) <max-effects>)` before each solve. Prevents Z3 from producing unbounded Seqs. |
+| `max-effects` | integer | Upper bound on `#effects` per tick. Kernel asserts `(<= <effects-name>__len <max-effects>)` before each solve. Prevents Z3 from producing unbounded sequences. |
 
 **Required** keys: all of the above. Missing → kernel exits 3 with
 `manifest: missing required key <name>`.
@@ -142,12 +142,17 @@ SMT-LIB-text form (the kernel never goes through `Value`).
 1. Kernel pushes a fresh solver scope (or builds a fresh solver — see
    "Solver state" below).
 2. Kernel asserts `(assert (= is_first_tick false))`.
-3. For each `state.<name>` in the manifest, kernel asserts
-   `(assert (= _state.<name> <prev-tick-value>))` using the saved
-   "previous-tick state."
-4. Kernel asserts `(assert (= last_results <Seq[Result] literal>))`
-   where the literal is constructed from the prior tick's collected
-   results, in walk order.
+3. For each `<name>` in the manifest's `state-fields`, kernel asserts
+   `(assert (= _<name> <prev-tick-value>))` using the saved
+   "previous-tick state." The runtime auto-injects `_<name>`
+   declarations when an FSM body references `_<name>` (see
+   `runtime/src/runtime/inject.rs`); emit takes care of declaring
+   them in the SMT-LIB output. If the FSM body never references
+   `_<name>`, no `_<name>` decl exists and the kernel skips it.
+4. Kernel asserts `(assert (= last_results__len <N>))` and
+   `(assert (= (select last_results i) <Result-literal>))` for each
+   `i ∈ 0..N`, where the literals are constructed from the prior
+   tick's collected results.
 5. Same body asserts as tick 0 (they live in the file, not
    per-tick-injected).
 6. `solver.check()` → SAT/UNSAT as above.
@@ -163,11 +168,14 @@ The comparison is structural: `Int == Int`, `String == String`,
 
 ## Effect walk
 
-After SAT, the kernel reads `effects` from the model:
+After SAT, the kernel reads `effects` from the model. The runtime
+encodes a `Seq(Effect)` as **two SMT-LIB top-level decls**: an `Array
+Int Effect` plus an `Int` length variable named
+`<effects-name>__len`.
 
-1. `len = model.eval((seq.len effects))` → bounded by `max-effects`.
+1. `len = model.eval(effects__len)` → already bounded by `max-effects`.
 2. For i in 0..len:
-   - `e = model.eval((seq.nth effects i))` → an `Effect` Datatype value.
+   - `e = model.eval((select effects i))` → an `Effect` Datatype value.
    - Pattern-match `e`'s variant by name.
    - Dispatch (see "Effect dispatch" below).
    - If the result was not "short-circuit," append to a local

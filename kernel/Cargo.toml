@@ -1,0 +1,12 @@
+[package]
+name = "evident-kernel"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny trampoline + libffi kernel that runs Evident programs from SMT-LIB."
+
+[dependencies]
+z3-sys = "0.8"
+
+[[bin]]
+name = "kernel"
+path = "src/main.rs"

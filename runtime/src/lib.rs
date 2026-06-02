@@ -1,6 +1,7 @@
 //! Evident runtime — minimal Rust core. Language syntax, claim composition, Z3 model.
 
 mod core;
+pub mod emit;
 mod lexer;
 mod parser;
 mod translate;

@@ -1,0 +1,7 @@
+-- expect: stdout = "bye"
+-- expect: exit = 42
+import "stdlib/kernel.ev"
+
+claim main
+    mode ∈ String = "Done"
+    effects ∈ Seq(Effect) = ⟨Println("bye"), Exit(42)⟩
