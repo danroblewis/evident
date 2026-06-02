@@ -1,0 +1,209 @@
+-- MVP compiler driver — load-bearing end-to-end integration test.
+--
+-- This is the first Evident program that takes a `.ev` source *string*
+-- and runs it through the WHOLE self-hosted pipeline — real lexing,
+-- real parsing, real translation — to emit a valid `.smt2`. Nothing is
+-- hardcoded as tokens or AST: the input below is a String literal that
+-- gets lexed character-by-character (compiler/lexer.ev), the resulting
+-- TokenList is parsed into a membership + pin (compiler/parser.ev), and
+-- the parsed BodyItems are translated to SMT-LIB
+-- (compiler/translate_declare.ev + translate_bool.ev) under a manifest
+-- header (compiler/translate_manifest.ev). compiler/compiler.ev is the
+-- same pipeline reading its input from /tmp/compiler-input.ev instead.
+--
+-- Pipeline shape (one multi-tick FSM, two phases):
+--   * Phase LEX  — the consolidated-lexer accumulator FSM
+--                  (test_consolidated_lexer.ev). One char per tick,
+--                  prepending Tokens onto a TokenList cons-list carried
+--                  via the _tokens state pair. Whitespace (incl. the
+--                  newline + leading indent) separates tokens; for this
+--                  single-claim/single-membership MVP no layout tokens
+--                  are needed. Lex ticks emit a side-effect-free getpid
+--                  so only the final .smt2 reaches stdout.
+--   * Phase EMIT — the tick where the input is exhausted and all
+--                  partials are flushed (`flush_done`). The complete
+--                  (reverse-order) TokenList is in _tokens; we peel its
+--                  heads, bind them to grammar roles via the parser's
+--                  recognizers, translate, and `puts` the assembled
+--                  .smt2, then Exit(0).
+--
+-- MVP grammar scope (documented restriction): exactly
+--     <kw> Ident          -- claim head; name is unused by the manifest
+--     Ident ∈ Type = Int  -- one primitive membership with an `= N` pin
+-- The seven-token shape (KwClaim, Ident, Ident, OpIn, Ident, Eq,
+-- IntLit) is parsed by role, not by hardcoded position semantics — the
+-- name/type/pin all flow from the actually-lexed token payloads (change
+-- the identifier in the input and the output tracks it).
+--
+-- Source: "claim main\n    x ∈ Int = 5"  →
+--   ;; manifest: state-fields = x:Int
+--   ;; manifest: effects-name = effects
+--   ;; manifest: effect-enum-name = Effect
+--   ;; manifest: result-enum-name = Result
+--   ;; manifest: max-effects = 0
+--   (declare-fun x () Int)
+--   (assert (= x 5))
+--
+-- expect: stdout = ";; manifest: state-fields = x:Int"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun x () Int)"
+-- expect: stdout = "(assert (= x 5))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_declare.ev"
+import "compiler/translate_bool.ev"
+import "compiler/translate_manifest.ev"
+
+claim main
+    input ∈ String = "claim main\n    x ∈ Int = 5"
+
+    -- ── LEX state (consolidated-lexer FSM) ───────────────────────
+    pos  ∈ Int
+    _pos ∈ Int
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
+
+    partial_str  ∈ String
+    _partial_str ∈ String
+    partial_int  ∈ Int
+    _partial_int ∈ Int
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+    is_dig ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+    op_tok ∈ Token
+    is_op ∈ Bool
+    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+    dig_val ∈ Int
+    DigitToInt(c ↦ cur_char, n ↦ dig_val)
+
+    done ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
+    in_range ∈ Bool = ((pos ≥ 0) ∧ ¬done)
+
+    was_collecting_str ∈ Bool = (#_partial_str > 0)
+    was_collecting_int ∈ Bool = (_partial_int ≥ 0)
+
+    str_continuing ∈ Bool = (was_collecting_str ∧ is_alpha ∧ in_range)
+    str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alpha ∧ in_range) ∨ done))
+    str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range)
+
+    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range)
+    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
+    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ is_dig ∧ in_range)
+
+    partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
+    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
+
+    classified_str ∈ Token
+    MaybeKeyword(s ↦ _partial_str, t ↦ classified_str)
+    int_tok ∈ Token = IntLit(_partial_int)
+
+    finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
+    finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done))
+    finish_str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
+    finish_int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
+    char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range)
+
+    tokens  ∈ TokenList
+    _tokens ∈ TokenList
+    tokens = (is_first_tick ? TLNil
+            : (finish_str_with_op ? TLCons(op_tok, TLCons(classified_str, _tokens))
+            : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok, _tokens))
+            : (finish_str_only ? TLCons(classified_str, _tokens)
+            : (finish_int_only ? TLCons(int_tok, _tokens)
+            : (char_only ? TLCons(op_tok, _tokens)
+            : _tokens))))))
+
+    -- ── EMIT trigger ─────────────────────────────────────────────
+    -- The tick where input is exhausted and nothing is left to flush:
+    -- _tokens now holds the complete (reverse-order) TokenList.
+    flush_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬is_first_tick)
+
+    -- ── PARSE — peel the reverse-order TokenList into grammar roles ─
+    -- Reverse order (head = last lexed):
+    --   rh1 IntLit(5)  rh2 Eq  rh3 Ident("Int")  rh4 OpIn
+    --   rh5 Ident("x") rh6 Ident("main")         rh7 KwClaim
+    rh1 ∈ Token = match _tokens
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+    r1 ∈ TokenList = match _tokens
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+    rh2 ∈ Token = match r1
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+    r2 ∈ TokenList = match r1
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+    rh3 ∈ Token = match r2
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+    r3 ∈ TokenList = match r2
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+    rh4 ∈ Token = match r3
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+    r4 ∈ TokenList = match r3
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+    rh5 ∈ Token = match r4
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+
+    -- B3: type-name string from the type token (rh3 = Ident("Int")).
+    type_str ∈ String
+    type_is_type ∈ Bool
+    TypeTokenText(t ↦ rh3, s ↦ type_str, is_type_tok ↦ type_is_type)
+
+    -- B4: recognise `Ident(name) ∈ <type>` → BIMembership(name, TName).
+    mem_item ∈ BodyItem
+    mem_ok ∈ Bool
+    ParseMembership(head1 ↦ rh5, head2 ↦ rh4, type_str ↦ type_str,
+                    item ↦ mem_item, ok ↦ mem_ok)
+
+    -- The membership name, pulled back out for the manifest + the pin.
+    mem_name ∈ String = match mem_item
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+
+    -- The `= N` pin: rh2 = Eq, rh1 = IntLit(N). Build the constraint
+    -- Expr `EBinOp(OpEq, EIdent(name), EInt(N))` from the lexed parts.
+    pin_val ∈ Int = match rh1
+        IntLit(n) ⇒ n
+        _ ⇒ 0 - 1
+    pin_expr ∈ Expr = EBinOp(OpEq, EIdent(mem_name), EInt(pin_val))
+
+    -- ── TRANSLATE ────────────────────────────────────────────────
+    -- C2: BIMembership → "(declare-fun x () Int)".
+    declare_line ∈ String
+    declare_ok ∈ Bool
+    DeclareFromMembership(item ↦ mem_item, out ↦ declare_line, ok ↦ declare_ok)
+
+    -- C3: EBinOp(OpEq, …) → "(= x 5)", wrapped as an assert.
+    eq_inner ∈ String
+    eq_ok ∈ Bool
+    BoolExprSmtlib(e ↦ pin_expr, out ↦ eq_inner, ok ↦ eq_ok)
+    assert_line ∈ String = "(assert " ++ eq_inner ++ ")"
+
+    -- C14: the 5-line manifest header. One primitive state field, no
+    -- effects in the compiled program → max-effects = 0.
+    fields ∈ StateFieldList = SFLCons(SField(mem_name, type_str), SFLNil)
+    manifest ∈ String
+    ManifestHeader(fields ↦ fields, max_effects ↦ 0, out ↦ manifest)
+
+    -- ── EMIT ─────────────────────────────────────────────────────
+    smtlib ∈ String = manifest ++ "\n" ++ declare_line ++ "\n" ++ assert_line
+
+    effects ∈ Seq(Effect) = (flush_done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
