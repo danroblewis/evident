@@ -160,5 +160,5 @@ pub fn run_cached<'ctx>(
     }
     let _ = extract_t0;
     cached.solver.pop(1);
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }

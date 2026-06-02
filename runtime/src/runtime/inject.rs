@@ -43,7 +43,6 @@ pub(crate) fn inject_claim_arg_types(
                 for arm in arms { walk(&arm.body, uses); }
             }
             Expr::Matches(e, _) => walk(e, uses),
-            Expr::RunFsm { init, .. } => walk(init, uses),
         }
     }
     for item in &s.body {

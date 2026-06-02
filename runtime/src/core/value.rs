@@ -8,9 +8,6 @@ use std::collections::HashMap;
 pub struct EvalResult {
     pub satisfied: bool,
     pub bindings: HashMap<String, Value>,
-    /// On UNSAT, indices of conflicting top-level body items (via `assert_and_track`).
-    /// `None` = not requested; `Some([])` = conflict is outside tracked constraints.
-    pub unsat_core_items: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

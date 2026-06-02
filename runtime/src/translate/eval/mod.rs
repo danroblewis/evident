@@ -15,13 +15,11 @@ use super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 mod solver;
 mod decode;
 mod cached;
-mod extra;
 
 use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use decode::extract_enum_value;
 
 pub use cached::{build_cache, run_cached};
-pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
 
 // Preserve pub(super) visibility for translate::extract's composite-Seq path.
 pub(super) use decode::extract_seq_enum;
@@ -64,7 +62,6 @@ pub fn evaluate(
             BodyItem::ClaimCall { .. } => {} // declarations added in pass 2
             BodyItem::SubclaimDecl(_) => {} // registered at load; no parent constraints
             BodyItem::Constraint(_) => {}
-            BodyItem::HaltsWithin { .. } => {} // lowered in pass 2 via inline walker
         }
     }
 
@@ -178,5 +175,5 @@ pub fn evaluate(
             }
         }
     }
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }

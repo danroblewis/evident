@@ -9,8 +9,6 @@
 -- remaining Cons users, plus the runtime's PackedFieldList (which
 -- gates on Seq-concatenation support; see plans/06-cons-removal).
 
-import "stdlib/runtime.ev"
-
 -- User-defined Cons/Nil enum
 enum IntList = INil | ICons(Int, IntList)
 

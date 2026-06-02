@@ -2,23 +2,12 @@
 name = "evident-runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Rust port of the Evident constraint runtime (experimental)"
+description = "Evident constraint runtime — Z3 model construction."
 
 [dependencies]
 z3 = "0.12"
 z3-sys = "0.8"
-# FFI primitive: dynamic library loading + libffi for C ABI calls.
-# Enables Evident programs to call any C function (POSIX syscalls,
-# user libraries, etc.) without per-feature plugin code in Rust.
-libloading = "0.8"
-libffi     = { version = "3", features = ["system"] }
-# Signal handling: SIGINT (Ctrl-C) pushes a Signal event to the
-# scheduler so user FSMs can run cleanup before exiting.
-signal-hook = "0.3"
-# Seedable RNG for effect-dispatch tie-breaking — unconstrained
-# orderings are randomized so accidental-ordering bugs surface;
-# EVIDENT_DISPATCH_SEED reproduces a specific run.
-rand = "0.8"
+
 [lib]
 name = "evident_runtime"
 path = "src/lib.rs"

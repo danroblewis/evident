@@ -75,14 +75,8 @@ pub(super) fn inline_membership(
         if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
             track_assert(solver, &guarded_bool(b, guard), tracker);
         } else {
-            let lenient = crate::runtime::lenient::lenient_enabled();
             let pretty = format!("{eq:?}");
-            if lenient {
-                eprintln!(
-                    "warning: type-use pin didn't translate: {}",
-                    pretty
-                );
-            } else {
+            {
                 eprintln!(
                     "error: type-use pin didn't translate: {}",
                     pretty

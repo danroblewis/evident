@@ -10,6 +10,7 @@ use super::super::extract::{extract_seq, extract_seq_composite, extract_set, une
 use super::solver::real_value_to_f64;
 
 /// Pull one variable's model value into the bindings map; shared by all evaluate* variants.
+#[allow(dead_code)]
 pub(crate) fn extract_binding(
     name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
     bindings: &mut HashMap<String, Value>,

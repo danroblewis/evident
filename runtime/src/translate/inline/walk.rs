@@ -127,24 +127,28 @@ pub(super) fn inline_body_items_guarded(
                 // BODY_MARKERS are metadata identifiers with no Bool translation; skip silently.
                 if let crate::core::ast::Expr::Identifier(s) = e {
                     if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
+                    // Bare claim name → names-match passthrough composition.
+                    if schemas.contains_key(s) {
+                        if !guard_is_satisfiable(solver, guard) { continue; }
+                        if try_enter(visited, s).is_none() { continue; }
+                        let claim = schemas.get(s).unwrap();
+                        inline_body_items_guarded(
+                            &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                        );
+                        exit_frame(visited, s);
+                        continue;
+                    }
                 }
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     track_assert(solver, &guarded_bool(b, guard), tracker);
                 } else {
-                    let lenient = crate::runtime::lenient::lenient_enabled();
                     let pretty = format!("{e:?}");
-                    if lenient {
-                        eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
-                    } else {
-                        eprintln!("error: dropped constraint (couldn't translate to Bool):");
-                        eprintln!("       {pretty}");
-                        eprintln!();
-                        eprintln!("This constraint can't be expressed as a Z3 Bool with the");
-                        eprintln!("current translator — almost certainly a translator gap.");
-                        eprintln!("Either rewrite the constraint to a supported shape, or");
-                        eprintln!("set EVIDENT_LENIENT=1 to demote this to a warning.");
-                        std::process::exit(1);
-                    }
+                    eprintln!("error: dropped constraint (couldn't translate to Bool):");
+                    eprintln!("       {pretty}");
+                    eprintln!();
+                    eprintln!("This constraint can't be expressed as a Z3 Bool with the");
+                    eprintln!("current translator — almost certainly a translator gap.");
+                    std::process::exit(1);
                 }
             }
             BodyItem::Passthrough(claim_name) => {
@@ -165,18 +169,6 @@ pub(super) fn inline_body_items_guarded(
                     name, mappings,
                     env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                 );
-            }
-            BodyItem::HaltsWithin { fsm_name, n } => {
-                // The `halts_within` surface was removed (halting is implicit in the
-                // embed constraint `F(seed, fsm_state)`). The parser no longer
-                // produces this variant; reaching it means a removed surface was
-                // somehow reconstituted (e.g. a decoded self-hosted AST). Refuse
-                // loudly to UNSAT rather than silently drop the constraint.
-                if !guard_is_satisfiable(solver, guard) { continue; }
-                eprintln!("[halts_within] the `halts_within({fsm_name}, {n})` surface \
-                           was removed; embed `{fsm_name}(seed, fsm_state)` instead");
-                let false_bool = Bool::from_bool(ctx, false);
-                track_assert(solver, &guarded_bool(false_bool, guard), tracker);
             }
             BodyItem::SubclaimDecl(_) => {}
         }
