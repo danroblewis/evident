@@ -54,72 +54,61 @@ If you're touching kernel SMT-LIB shape, also read
 If `./test.sh` doesn't pass, something is wrong with the environment
 (probably a missing libffi or Z3 lib). Fix before touching code.
 
+## Where we are in the roadmap
+
+See `docs/plans/completion-roadmap.md` for the authoritative phase
+plan. As of this handoff:
+
+- **Phase A (lexer parity)**: 0/7 sub-steps. Start here.
+- **Phase B (parser parity)**: 0/11 sub-steps. Blocked on A.
+- **Phase C (translator)**: 0/14 sub-steps. Blocked on B.
+- **Phases D-F**: not started.
+
 ## Concrete next-session proposals (pick one)
 
-Each is ~1 session of focused work. They're independent — pick the
-one that matches the session's energy + interest.
+Each is ~1 session of focused work. The first three map directly to
+roadmap Phase A sub-steps; the others are useful side-quests.
 
-### A. Extend the lexer (mechanical, low-risk)
+### Phase A sub-step (roadmap-direct, low-risk)
 
-**Goal**: handle one more category of input syntax in
-`stdlib/lexer.ev` so the toy lexer covers more of real Evident.
+**Goal**: knock out one Phase A sub-step from the roadmap.
 
-**Candidate categories**:
-- Unicode operators (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠) — extend `SingleCharTok`
-  with multi-byte char comparisons
-- Two-char operators (==, →, ::, …) — apply the `peek_next` pattern
-  from `test_comment_lexer.ev`'s `is_next_dash` check
-- String literals "…" — add mode 2 (in-string) to the mode-state
-  pattern from comment lexing
-- Float literals (`3.14`) — extend the digit accumulator to handle a
-  decimal point
+| Sub-step | What |
+|---|---|
+| A1 | Unicode operators (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠, ∧, ∨, ¬, ∀, ∃, →, ⟸) |
+| A2 | Two-char ASCII ops (`==`, `::`) |
+| A3 | String literals `"…"` with escapes |
+| A4 | Float literals |
+| A5 | Full keyword set |
+| A6 | Indentation tracking |
+| A7 | CRLF / EOF normalization |
 
-**Pattern**: take an existing lexer test (e.g.
-`test_consolidated_lexer.ev`) as a starting template, add the new
-predicate/dispatch logic, write a fixture that exercises it.
+**Pattern**: take `tests/kernel/test_consolidated_lexer.ev` as a
+template, extend `stdlib/lexer.ev` with the new predicate/dispatch,
+write a fixture.
 
-**Time estimate**: 1 hour, 100-150 LOC stdlib + 1-2 new test fixtures.
+**Time estimate**: 1 hour per sub-step, 100-150 LOC stdlib + 1-2 test
+fixtures each.
 
-### B. Extend the parser (mechanical, medium-risk)
+### Phase A oracle harness (high-value side-quest)
 
-**Goal**: handle one more grammatical production in
-`stdlib/parser.ev`.
+**Goal**: write a script that takes every `tests/lang_tests/*.ev`,
+runs each through both the Rust lexer and the Evident lexer (running
+on the kernel), and diffs the TokenLists. This is Phase A's
+acceptance criterion — without it, "phase A complete" can't be
+declared.
 
-**Candidates**:
-- Parenthesized sub-expressions: parse `(1 + 2) * 3` → `EBinOp(*,
-  EBinOp(+, 1, 2), 3)`. Requires mode state ("inside parens") and
-  pending-expression carry.
-- Identifier expressions: `Ident → EIdent` (trivial extension of the
-  current toy parser).
-- Comma-separated lists: `1, 2, 3` → `EList([1, 2, 3])`. Add `EList`
-  and an accumulator for list items.
+**Time estimate**: 2-3 hours. Mostly Python/shell. Reuses existing
+lexer test infrastructure.
 
-**Pattern**: extend `Op` and `Expr` enums in `stdlib/parser.ev`,
-extend `TokenToOp` arms, mirror in the parser FSM body.
+### Phase B sub-step (medium-risk, blocked on A)
 
-**Watch out for translator gaps** — see "Discovered gaps" below.
+Pick a sub-step from roadmap Phase B (multi-binop precedence, parens,
+type parsing, etc.). Don't start B until Phase A is mostly complete
+or your parser will produce ASTs that depend on tokens the lexer
+can't yet emit.
 
-**Time estimate**: 1-2 hours, 50-100 LOC stdlib + 1 test fixture.
-
-### C. Extend the AST → text translator (mechanical, low-risk)
-
-**Goal**: handle one more `Expr` variant in `test_ast_to_text.ev`'s
-work-stack walker.
-
-**Candidates**:
-- `EIdent(s)` → emit `s` directly. Trivial.
-- `EList([…])` → emit `(list e1 e2 …)`. Requires recursing through
-  a Seq or chained-Cons of Exprs.
-- Real SMT-LIB form: emit `(declare-fun …)` + `(assert …)` wrappers
-  around the expression. Needs accumulator structure to know what
-  to wrap with.
-
-**Pattern**: add match arms to the `proc_is_*` predicates in
-`test_ast_to_text.ev`, push corresponding WorkItem chains.
-
-**Time estimate**: 1 hour, 30-50 LOC in the FSM + 1 test fixture.
-
-### D. End-to-end pipeline (UX-heavy, hits parser limits)
+### End-to-end pipeline experiment (UX-heavy, hits parser limits)
 
 **Goal**: wire lexer + parser + translator into ONE Evident program
 that reads source and emits SMT-LIB text in one run.
@@ -140,7 +129,7 @@ empirical.
 
 **Time estimate**: 2-3 hours, 200-300 LOC + 1 test fixture.
 
-### E. Add Datatype state encoding fidelity check (low-risk)
+### Datatype state encoding fidelity check (low-risk)
 
 **Goal**: verify the kernel's `decode_datatype_value` / `Sv::smtlib`
 round-trip is correct for deeply nested or unusual Datatype values.

@@ -4,11 +4,17 @@ These are the load-bearing rules for this project. They do not
 change between sessions. Status snapshots (what works today, what's
 in flight) belong in `docs/plans/`, not here.
 
-> **🚀 New session?** After reading this file, read
-> **`docs/plans/NEXT.md`** for the current handoff state +
-> concrete next-step proposals + discovered language gaps with
-> workarounds. Then `docs/plans/iter-3-status.md` for what each
-> iteration demonstrated.
+> **🚀 New session?** This file is *invariants only* — what's true
+> regardless of which phase we're in. Three other docs together
+> form the working set:
+>
+> 1. **`docs/plans/completion-roadmap.md`** — the authoritative plan
+>    from now to "runtime/ deleted." Phases, sub-steps, acceptance
+>    criteria.
+> 2. **`docs/plans/NEXT.md`** — current handoff state, the four
+>    working FSM patterns, discovered language gaps + workarounds.
+> 3. **`docs/plans/iter-3-status.md`** — what each iteration so far
+>    demonstrated (history, not plan).
 
 ## The end-goal invariant
 
@@ -29,8 +35,9 @@ If none of those work, the missing capability is a *runtime-extension
 proposal*, not a casual change. Document it in `docs/plans/` and get
 the user's review before modifying `runtime/`.
 
-This invariant gets stricter as iter 3+ progresses. By the end,
-**zero changes to `runtime/`** is expected.
+By the end of the project (see `docs/plans/completion-roadmap.md`),
+**zero changes to `runtime/`** is the expected steady state — the
+Rust runtime becomes bootstrap-only.
 
 ## What this project is
 
@@ -70,7 +77,7 @@ either in Evident (via stdlib/) or as a Build* sugar claim. If
 neither works, file a proposal — don't grow the Rust surface.
 
 The runtime's *role* is fixed: lex + parse + translate. Its *shape*
-will shrink in iter 3+ as compiler stages get rewritten in Evident.
+is in active migration to Evident; see the roadmap for the plan.
 
 ### `kernel/`
 
@@ -133,7 +140,7 @@ The shrink-toward-zero invariant means you should be checking these
 regularly:
 
 ```bash
-# Rust runtime LOC (target: trending toward 0 by end of iter 3+)
+# Rust runtime LOC (target: trending toward 0; see roadmap for the plan)
 find runtime/src -name "*.rs" | xargs wc -l | tail -1
 
 # Kernel LOC (target: ~600, stays stable forever)
@@ -351,8 +358,9 @@ enum Effect =
 | `ReadLine` | Kernel built-in (uses stdin readline) |
 
 The three remaining built-ins (`ReadFile`/`WriteFile`/`ReadLine`)
-need richer libffi shapes to be demoted — buffer types, fd handles.
-Until those land, they stay as kernel built-ins.
+stay as kernel built-ins until libffi gains richer shapes (buffer
+types, fd handles). Whether they ever get demoted is a roadmap
+question, not an invariant.
 
 **Sugar claims in stdlib/kernel.ev** wrap LibCall for common ops:
 `BuildPrintln`, `BuildPrint`, `BuildTime`. Adding more = no kernel
@@ -469,8 +477,9 @@ handling, multi-step state machines — these might justify a built-in.
 
 ### A new language feature in the runtime (FORBIDDEN by invariant)
 
-Don't. File a proposal in `docs/plans/` instead. Once iter 3+ starts,
-runtime changes require explicit user approval.
+Don't. File a proposal in `docs/plans/` instead. Runtime changes
+require explicit user approval; the runtime is in language-frozen
+state per the roadmap.
 
 ## Style for Evident source
 

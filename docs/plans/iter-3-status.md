@@ -153,52 +153,14 @@ unchanged.
 All using the kernel's effect dispatch + libffi + Datatype state
 carry. Zero Rust changes in iter 3.
 
-## What's left for full self-hosting
+## What's left
 
-### Iter 3.10+ — complete the lexer
-- Unicode operators (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠) — same shape as
-  SingleCharTok but with multi-byte chars
-- Two-char operators (==, →, ::, …)
-- String literals "…" with escape handling — mode-state pattern
-  from 3.7 + content collection + `\n` `\"` `\\` recognition
-- Float literals
-- Indentation tracking (for body-item nesting)
+See `docs/plans/completion-roadmap.md` for the authoritative plan
+from this state to "runtime/ deleted." Phases A-F, sub-steps per
+phase, acceptance criteria, LOC estimates.
 
-Each chunk: 50-100 LOC of stdlib/lexer.ev. No architectural moves.
-
-### Iter 3.11+ — extend the parser (toy → complete)
-Iter 3.11 proved the parser-as-FSM pattern. To grow toward a full
-Evident parser:
-- More Token variants → more arms in TokenToOp + dispatch logic
-- More AST variants (Membership, ClaimCall, SchemaDecl, EnumDecl)
-  → grow `Expr` / new `BodyItem`, `SchemaDecl`, `Program` enums
-- Operator precedence → multiple `pending` slots + reduce logic
-- Recursive descent for nested expressions → mode-state machine
-  (like the comment-skipping pattern from iter 3.7)
-- Multi-token productions (`claim Name body`) → multi-mode FSM
-
-Each is incremental work on stdlib/parser.ev + the FSM. No more
-architectural moves.
-
-### Iter 3.12+ — AST → SMT-LIB translator
-- FSM that walks the parsed AST and produces SMT-LIB text via
-  WriteFile or stdout
-- For each AST node, emit the corresponding SMT-LIB form
-- The biggest piece in raw LOC; probably 500+ LOC of Evident
-
-### Iter 3.13 — bootstrap
-- Self-host the lexer in Evident running on the kernel
-- Replace `runtime/src/lexer.rs` (360 LOC) with the Evident lexer
-- Verify byte-for-byte equivalent output
-- Same for parser, then translator
-- Each stage reduces `runtime/src/` LOC
-
-### Iter 3.14 — delete the Rust compiler
-- Once the self-hosted compiler can compile itself,
-  `runtime/` becomes bootstrap-only
-- Move it to `bootstrap/`
-- Final state: `kernel/` + `bootstrap/runtime/` + Evident `.ev`
-  files. The runtime IS the kernel; the compiler is Evident.
+This doc is **history**; the roadmap is **plan**. Don't put forward-
+looking content here.
 
 ## Code state
 
@@ -216,8 +178,8 @@ tests/kernel/       23 programs (all green)
 ```
 
 Per CLAUDE.md, the Rust runtime LOC should be **trending toward
-zero**. Iter 3 didn't shrink it (foundation work), but iter 3.13+
-starts the reduction.
+zero**. Iter 3 was foundation work; the roadmap's Phase A starts
+the actual reduction by replacing `lexer.rs` with `stdlib/lexer.ev`.
 
 ## Test surface
 
