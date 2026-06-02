@@ -1,5 +1,24 @@
 # The Prelude — plan and acceptance criteria
 
+## Status (auto-loop, updated 2026-05-31)
+
+Landed on `tiny-runtime`:
+
+- **M1** ✅ — hello world via LibCall
+- **M2** ✅ — `__mem__` primitives in ffi.py
+- **M3** ✅ — Stack FTI (relational push/pop, supported-transition assertion)
+- **M4** ✅ — Queue FTI (FIFO, same shape as Stack with `tail` for dequeue)
+- **M7** ✅ — `++` operator + 7 seq idioms (head/last/len/init/tail/unit/empty)
+
+Design landed, implementation pending:
+
+- **M5** ⚙ — Z3 FTI + Formula datatype. Design in `docs/fti-z3.md`. Implementation in progress on `prelude-m5-z3`.
+- **M6** ⚙ — Set-theoretic + quantifier Formula extensions. Design in `docs/fti-z3-m6-extensions.md`.
+
+Not yet started:
+
+- **M8** — Real demo (sudoku or zebra). Depends on M5+M6.
+
 ## What the prelude is
 
 The **prelude** is the body of Evident code (`.ev` files in `prelude/`)
