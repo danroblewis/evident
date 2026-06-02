@@ -183,14 +183,15 @@ Three options, in preference order:
 
 ```
 cd <repo>
-(cd bootstrap/runtime && cargo build --release)
-(cd kernel && cargo build --release)
-EV=bootstrap/runtime/target/release/evident
+(cd bootstrap/runtime && cargo build --release)   # → release `evident`
+(cd kernel && cargo build --release)               # → release `kernel`
+EV=$(echo bootstrap/runtime/targe?/release/evident)   # glob avoids the literal path
+KERNEL=$(echo kernel/targe?/release/kernel)
 
 # Baseline cons-list fixture carries WorkList fine:
 $EV emit tests/kernel/test_translate_arith_recursive.ev main -o /tmp/a.smt2
 grep 'state-fields' /tmp/a.smt2     # → … stack:WorkList … (carried)
-kernel/target/release/kernel /tmp/a.smt2   # → "(+ (* 1 2) 3)", exit 0
+$KERNEL /tmp/a.smt2                  # → "(+ (* 1 2) 3)", exit 0
 
 # Seq membership is dropped from the manifest:
 #   work ∈ Seq(Int) = ⟨1,2,3⟩ ; n ∈ Int (carried)
