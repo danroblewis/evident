@@ -127,13 +127,28 @@ same symbol and sort returns the same AST. So if we materialize
 `Var("x", "Int")` inside and outside a Forall, we get the same AST
 handle both times — Z3 deduplicates.
 
-If Q2 is true (worth testing), then quantifier materialization is
-much simpler: just materialize the bound var and the body
-independently, then call `Z3_mk_forall_const` with the bound var
-handle and the body handle. The internal `Var("x", "Int")` references
-in the body produce the same handle.
+**Q2 validated.** Tested directly via ctypes:
 
-Test Q2 in a small Python script before committing to a design.
+```python
+sym1 = lib.Z3_mk_string_symbol(ctx, b'x')
+sym2 = lib.Z3_mk_string_symbol(ctx, b'x')
+const1 = lib.Z3_mk_const(ctx, sym1, isort)
+const2 = lib.Z3_mk_const(ctx, sym2, isort)
+# sym1 == sym2: True
+# const1 == const2: True
+```
+
+Z3 deduplicates symbols and consts. **Pick Q2.** Quantifier
+materialization is much simpler than Q1:
+
+1. Materialize the bound variable (its `Z3_mk_const` libcall).
+2. Materialize the body (any internal `Var("x", "Int")` produces
+   the same handle by Z3's dedup).
+3. Allocate a 1-element array, store the bound var handle.
+4. Call `Z3_mk_forall_const(ctx, 0, 1, &bound, 0, NULL, body)`.
+
+No tracking of "in-scope bound variables" needed. The dedup just
+works.
 
 ## materialize function arms
 
