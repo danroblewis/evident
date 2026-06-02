@@ -5,6 +5,7 @@
 
 use std::process::ExitCode;
 
+mod libcall;
 mod manifest;
 mod tick;
 

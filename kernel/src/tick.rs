@@ -198,9 +198,29 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let code = code.clamp(0, 255) as u8;
             Ok(EffectOutcome::Exit(code))
         }
-        "Time" | "ReadLine" | "ReadFile" | "WriteFile" | "LibCall" => {
+        "Time" | "ReadLine" | "ReadFile" | "WriteFile" => {
+            // Built-in stubs (iter 2.3 demotes these to stdlib sugar over LibCall).
             eprintln!("kernel: effect `{name}` not yet implemented; skipping");
             Ok(EffectOutcome::Continue)
+        }
+        "LibCall" => {
+            // (LibCall lib fn args) — three payload fields.
+            let lib_ast  = Z3_get_app_arg(ctx, app, 0);
+            let fn_ast   = Z3_get_app_arg(ctx, app, 1);
+            let args_ast = Z3_get_app_arg(ctx, app, 2);
+            let lib = decode_string_literal(ctx, lib_ast)?;
+            let func = decode_string_literal(ctx, fn_ast)?;
+            let args = decode_libargs(ctx, args_ast)?;
+            match crate::libcall::call(&lib, &func, &args) {
+                Ok(_ret) => {
+                    // last_results round-trip lands in iter 2.2 — we silently drop the return.
+                    Ok(EffectOutcome::Continue)
+                }
+                Err(e) => {
+                    eprintln!("kernel: LibCall({lib}, {func}, …) failed: {e}");
+                    Ok(EffectOutcome::Continue)
+                }
+            }
         }
         other => {
             eprintln!("kernel: unknown effect variant `{other}`; skipping");
@@ -289,6 +309,71 @@ unsafe fn decode_string_literal(ctx: Z3_context, ast: Z3_ast) -> Result<String, 
         return Err(format!("not a string literal: {}", ast_to_string(ctx, ast)));
     }
     Ok(CStr::from_ptr(p).to_string_lossy().into_owned())
+}
+
+/// Walk a `__SeqOf_LibArg` Datatype value (Cons-cell shape produced by the
+/// runtime's `Seq(UserType)` encoding) and decode each `LibArg` variant into
+/// our internal representation.
+///
+/// The runtime emits the seq as a recursive enum:
+///   `__SeqOf_LibArg = __Empty_LibArg | __Cell_LibArg(LibArg, __SeqOf_LibArg)`
+/// We walk by pattern-matching on the constructor name.
+unsafe fn decode_libargs(ctx: Z3_context, mut ast: Z3_ast) -> Result<Vec<crate::libcall::LibArg>, String> {
+    let mut out = Vec::new();
+    loop {
+        let app = Z3_to_app(ctx, ast);
+        if app.is_null() {
+            return Err(format!("LibArg seq is not an application: {}", ast_to_string(ctx, ast)));
+        }
+        let decl = Z3_get_app_decl(ctx, app);
+        let name = decode_sym(ctx, Z3_get_decl_name(ctx, decl));
+        if name == "__Empty_LibArg" {
+            return Ok(out);
+        }
+        if name == "__Cell_LibArg" {
+            // (Cell head tail)
+            let head = Z3_get_app_arg(ctx, app, 0);
+            let tail = Z3_get_app_arg(ctx, app, 1);
+            out.push(decode_libarg(ctx, head)?);
+            ast = tail;
+            continue;
+        }
+        return Err(format!("unexpected LibArg seq constructor `{name}`"));
+    }
+}
+
+unsafe fn decode_libarg(ctx: Z3_context, ast: Z3_ast) -> Result<crate::libcall::LibArg, String> {
+    let app = Z3_to_app(ctx, ast);
+    if app.is_null() {
+        return Err(format!("LibArg is not an application: {}", ast_to_string(ctx, ast)));
+    }
+    let decl = Z3_get_app_decl(ctx, app);
+    let name = decode_sym(ctx, Z3_get_decl_name(ctx, decl));
+    let arg0 = Z3_get_app_arg(ctx, app, 0);
+    use crate::libcall::LibArg;
+    match name.as_str() {
+        "ArgInt"  => Ok(LibArg::Int(decode_int_literal(ctx, arg0)?)),
+        "ArgStr"  => Ok(LibArg::Str(decode_string_literal(ctx, arg0)?)),
+        "ArgReal" => Ok(LibArg::Real(decode_real_literal(ctx, arg0)?)),
+        other     => Err(format!("unknown LibArg variant `{other}`")),
+    }
+}
+
+unsafe fn decode_real_literal(ctx: Z3_context, ast: Z3_ast) -> Result<f64, String> {
+    // Z3 reals are stored as rationals; pull numerator/denominator and divide.
+    // For pinned literals this round-trips cleanly.
+    let s = ast_to_string(ctx, ast);
+    // Simple parser for cases like "3.14" or "(/ 314 100)" — try direct parse first.
+    if let Ok(v) = s.parse::<f64>() { return Ok(v); }
+    // Fall back to numerator/denominator extraction via Z3.
+    let num = Z3_get_numerator(ctx, ast);
+    let den = Z3_get_denominator(ctx, ast);
+    let mut n: i64 = 0;
+    let mut d: i64 = 0;
+    if Z3_get_numeral_int64(ctx, num, &mut n) && Z3_get_numeral_int64(ctx, den, &mut d) && d != 0 {
+        return Ok(n as f64 / d as f64);
+    }
+    Err(format!("not a real literal: {s}"))
 }
 
 unsafe fn ast_to_string(ctx: Z3_context, ast: Z3_ast) -> String {

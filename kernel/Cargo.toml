@@ -6,6 +6,8 @@ description = "Tiny trampoline + libffi kernel that runs Evident programs from S
 
 [dependencies]
 z3-sys = "0.8"
+libffi = { version = "3", features = ["system"] }
+libloading = "0.8"
 
 [[bin]]
 name = "kernel"
