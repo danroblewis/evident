@@ -20,6 +20,11 @@ ticks, the Z3 model lifecycle, or FTI bodies.
 4. **No tick may call `.simplify()` on the model.** Simplification
    is too expensive to run in the tick loop. Once an FSM is in its
    loop, it lives with the parsed-and-loaded form forever.
+   **However: a single `.simplify()` pass BEFORE entering the tick
+   loop IS allowed and desired** — that's setup work, not tick
+   work. The kernel should simplify the body once after parsing,
+   before any tick runs. The constraint above is about *per-tick*
+   simplification.
 
 Implication: subordinate sessions designing tick bodies must NOT
 introduce constraints that *vary* in shape per tick. Only the values
