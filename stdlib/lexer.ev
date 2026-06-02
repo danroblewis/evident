@@ -24,7 +24,10 @@ enum Token =
     RParen
     Comma
     Plus
+    -- Multiplicative / additive single-char operators (B2 + B1).
     Star
+    Slash
+    Minus
     Eq
     EofTok
     ErrTok(String)
@@ -173,6 +176,9 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = ")" ? RParen
         : c = "," ? Comma
         : c = "+" ? Plus
+        : c = "*" ? Star
+        : c = "/" ? Slash
+        : c = "-" ? Minus
         : c = "=" ? Eq
         : c = "<" ? Lt
         : c = ">" ? Gt
@@ -193,6 +199,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "∃" ? OpExists
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+                ∨ c = "*" ∨ c = "/" ∨ c = "-"
                 ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|"
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
