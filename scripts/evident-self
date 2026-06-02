@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# evident-self — drop-in CLI for the SELF-HOSTED Evident compiler.
+#
+# Phase D3 (proof-of-concept). This is the SEAM, not the
+# self-hosted compiler itself. The endgame:
+#
+#   evident-self emit <file.ev> <claim> -o <out.smt2>
+#
+# is satisfied by an Evident program (the "pipeline driver") that
+# imports stdlib/lexer.ev + parser.ev + translate_*.ev, ingests
+# <file.ev> as a string at startup, and writes a runnable .smt2 to
+# stdout — running entirely on the kernel, no Rust runtime calls.
+#
+# Today only stdlib/lexer.ev and stdlib/parser.ev exist; the translate_*.ev
+# files (Phase C output) and the wiring driver (Phase D2) have not landed.
+# So this wrapper currently:
+#
+#   1. emits a small, fixed SMT-LIB program via the EXISTING Evident
+#      pipeline-driver fixture (tests/kernel/test_pipeline_full.ev),
+#      compiled by the Rust bootstrap runtime and executed on the kernel,
+#   2. demonstrates that the kernel's stdout-of-an-FSM IS a valid
+#      sink for a generated .smt2 (the protocol shape works), and
+#   3. surfaces the user-facing CLI shape that Phase E will preserve
+#      when the self-hosted pipeline replaces the stand-in driver.
+#
+# Once Phase D2 lands, only the body of this script changes — the
+# CLI surface stays identical. Phase E1 (self-compile) is when the
+# Rust runtime stops being called here at all.
+#
+# Usage:
+#   scripts/evident-self emit <file.ev> <claim> [-o <out.smt2>]
+#   scripts/evident-self --help
+#
+# Env:
+#   EVIDENT_SELF_DRIVER  override the pipeline-driver fixture path
+#                        (default: tests/kernel/test_pipeline_full.ev)
+
+set -e -o pipefail
+
+here() { cd "$(dirname "$0")/.." && pwd; }
+ROOT="$(here)"
+
+EVIDENT="${ROOT}/runtime/target/release/evident"
+KERNEL="${ROOT}/kernel/target/release/kernel"
+DRIVER="${EVIDENT_SELF_DRIVER:-${ROOT}/tests/kernel/test_pipeline_full.ev}"
+
+usage() {
+    cat >&2 <<'EOF'
+evident-self — self-hosted Evident compiler CLI (proof-of-concept).
+
+Usage:
+  evident-self emit <file.ev> <claim> [-o <out.smt2>]
+  evident-self --help
+
+Phase D3 of docs/plans/completion-roadmap.md. The wrapper invokes the
+pipeline-driver fixture (compiled + run on the kernel) and writes its
+stdout to the requested output path. The driver currently emits a
+fixed, hard-coded SMT-LIB fragment; Phase D2 will replace it with a
+real lex+parse+translate of <file.ev>.
+EOF
+}
+
+die() { echo "evident-self: $*" >&2; exit 2; }
+
+case "${1:-}" in
+    -h|--help|"")
+        usage; exit 0 ;;
+    emit)
+        shift ;;
+    *)
+        die "unknown subcommand '$1' (expected: emit)"
+        ;;
+esac
+
+INPUT=""
+CLAIM=""
+OUTPUT=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o)
+            shift; OUTPUT="${1:-}"; [ -n "$OUTPUT" ] || die "-o requires a path"; shift ;;
+        -h|--help)
+            usage; exit 0 ;;
+        --)
+            shift ;;
+        -*)
+            die "unknown flag: $1" ;;
+        *)
+            if [ -z "$INPUT" ];      then INPUT="$1"
+            elif [ -z "$CLAIM" ];    then CLAIM="$1"
+            else die "unexpected positional arg: $1"
+            fi
+            shift ;;
+    esac
+done
+
+[ -n "$INPUT" ] || die "emit: missing <file.ev>"
+[ -n "$CLAIM" ] || die "emit: missing <claim>"
+[ -f "$INPUT" ] || die "emit: input not found: $INPUT"
+[ -x "$EVIDENT" ] || die "bootstrap runtime missing at $EVIDENT (run ./test.sh --rust-only first)"
+[ -x "$KERNEL" ]  || die "kernel binary missing at $KERNEL (run ./test.sh --rust-only first)"
+[ -f "$DRIVER" ]  || die "pipeline driver missing at $DRIVER"
+
+TMPDIR_SELF="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_SELF"' EXIT
+DRIVER_SMT="${TMPDIR_SELF}/driver.smt2"
+
+# Step 1: compile the pipeline-driver fixture (bootstrap path).
+"$EVIDENT" emit "$DRIVER" main -o "$DRIVER_SMT"
+
+# Step 2: run it on the kernel — its stdout IS our .smt2 output.
+run_kernel() {
+    "$KERNEL" "$DRIVER_SMT"
+}
+
+if [ -n "$OUTPUT" ]; then
+    run_kernel >"$OUTPUT"
+else
+    run_kernel
+fi
