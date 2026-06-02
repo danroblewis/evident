@@ -1,7 +1,27 @@
 # Kernel-extension proposal: namespaced `*_effects` channels + `__mem__` library
 
-**Status:** PROPOSAL — awaiting user approval per the `kernel/`
-freeze in CLAUDE.md.
+**Status:** RESOLVED — NO KERNEL CHANGES NEEDED.
+
+User clarified that Stack/Queue and other data-structure FTIs will
+be implemented as Evident-level FTIs emitting direct libc/FFI
+`LibCall`s (Option B from below). The shipped tiny-runtime design's
+multi-channel `*_effects` and `__mem__` features were design
+artifacts of the Python runtime, not requirements of the FTI
+*pattern*. Direct `LibCall("libc", "malloc", …)` etc. accomplishes
+the same backing-memory work without kernel changes. The freeze
+holds; this proposal is closed.
+
+The Z3-FTI Formula-builder (`legacy-python/docs/fti-z3.md`) is
+treated as a separate, optional concern — pursued if it proves
+faster than the SMT-LIB-string path the current compiler uses, but
+not required for self-hosting.
+
+Historical content of the original proposal is preserved below for
+context.
+
+---
+
+## Original proposal (closed)
 
 **Why this is being proposed:** The exploration of the
 `tiny-runtime` branch (see `docs/notes/python-branch-techniques.md`)

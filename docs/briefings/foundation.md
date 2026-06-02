@@ -111,7 +111,13 @@ In this order:
    needed).
 5. `tests/conformance/features/README.md` (how to write a feature
    spec).
-6. **If your task touches FTI design, the Formula-builder
+6. **`docs/plans/architecture-invariants.md`** — user-confirmed rules
+   on Z3 model lifecycle, FTI architecture, and what the compiler
+   produces. Required reading for anyone designing tick bodies,
+   FTIs, or compiler passes. A session that violates these
+   invariants has produced unusable work.
+
+7. **If your task touches FTI design, the Formula-builder
    architecture, the kernel-effects model, the Z3-as-library
    direction, or any minimal-runtime concept** — read:
    - `legacy-python/README.md` (orientation).
