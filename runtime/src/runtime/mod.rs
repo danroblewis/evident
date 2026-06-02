@@ -1,7 +1,6 @@
 //! Top-level runtime API: load, query, schema introspection, and execution-layer hooks
 //! (`query_with_pins_and_given`, `enums_registry`, `z3_context`) for the multi-FSM scheduler.
 
-mod stats;
 pub(crate) mod lenient;
 mod autotune;
 mod load;
@@ -20,7 +19,6 @@ mod nested;
 pub use crate::core::Value;
 #[allow(unused_imports)]
 pub use crate::core::{QueryResult, RuntimeError};
-pub use stats::FunctionizeStats;
 pub use desugar::SystemBoundary;
 pub use nested::take_percolated_effects;
 
@@ -42,8 +40,6 @@ pub struct EvidentRuntime {
     /// Per-schema solver cache. Entry pairs (CachedSchema, StructuralSignature); rebuilt
     /// only when structural givens (quantifier bounds) change, not on value-only changes.
     pub(super) cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
-    /// Aggregate functionizer + JIT stats; enable trace via `EVIDENT_FUNCTIONIZE_STATS=1`.
-    pub(super) functionize_stats: RefCell<FunctionizeStats>,
     /// Count of cache rebuilds from structural-signature mismatches; useful for perf debug.
     pub(super) cache_rebuilds: RefCell<u64>,
     /// Lazily-built DatatypeSort per `Seq(UserType)` element; Box::leak'd to `'static`.
@@ -78,7 +74,6 @@ impl EvidentRuntime {
             schema_order: Vec::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
-            functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::core::EnumRegistry::new(),
@@ -127,11 +122,6 @@ impl EvidentRuntime {
     /// Read-only access to the loaded schemas map.
     pub fn schemas_map(&self) -> &HashMap<String, SchemaDecl> {
         &self.schemas
-    }
-
-    /// Snapshot of the Z3 functionizer + JIT statistics.
-    pub fn functionize_stats(&self) -> FunctionizeStats {
-        self.functionize_stats.borrow().clone()
     }
 
     /// Build a `Value::SeqEnum` of `Result` enums for pinning `last_results` in the scheduler.
