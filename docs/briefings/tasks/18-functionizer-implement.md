@@ -15,10 +15,17 @@ User quote, explicit authorisation:
 The kernel is in active construction; the freeze applies after the
 project completes. You are authorised to edit `kernel/`.
 
-Scope of this task: the **Z3-tactic functionizer** (the "macro-finder"
-variant — `simplify` + `propagate-values` + `extract_program` + native
-`eval_program`). **Not** the Cranelift JIT backend (that's a later
-follow-up).
+Scope of this task: the **full Z3-tactic functionizer** — both
+parts in one session:
+
+1. The extractor + native interpreter — `simplify` +
+   `propagate-values` + `extract_program` + native `eval_program`.
+2. The **Cranelift JIT backend** — compile each `Z3Step` to a
+   native function that the tick loop calls directly.
+
+User correction (the previous spec deferred Cranelift; user
+overruled): *"We do want the Cranelift JIT working. So we need yet
+another session to get it done?"* — no, both land in this task.
 
 ## Required reading
 
@@ -33,46 +40,63 @@ follow-up).
 5. `legacy-rust/functionizer/src/z3_program.rs` — the `Z3Program`
    IR.
 6. `legacy-rust/functionizer/src/decompose.rs` — the union-find
-   sub-model partitioner (you may or may not need this in the
-   first pass — read the integration doc).
-7. `kernel/src/tick.rs` — where you wire the result.
-8. `kernel/Cargo.toml` — what's already there.
+   sub-model partitioner.
+7. `legacy-rust/functionizer/src/cranelift.rs` — the JIT backend
+   you're porting.
+8. `legacy-rust/functionizer/tests/cranelift_jit_hello.rs`,
+   `tests/jit_minimal.rs`, `tests/per_component_jit.rs` —
+   reference test fixtures showing the JIT shape.
+9. `kernel/src/tick.rs` — where you wire the result.
+10. `kernel/Cargo.toml` — what's already there.
 
-Cite at least #3, #4, and #7 in your report.
+Cite at least #3, #4, #7, and #9 in your report.
 
 ## What you're producing
 
-A new module `kernel/src/functionize.rs` that contains:
+A new module `kernel/src/functionize/` (a directory module, since
+this has multiple files) containing:
 
-1. **`simplify_assertions`** — given the parsed-and-simplified body
-   ASTs, run `simplify` + `propagate-values` tactics on each
-   assertion (or on the combined goal). Returns the simplified
-   AST set.
-2. **`Z3Program` IR** — minimal shape: a sequence of `Z3Step`
+1. **`mod.rs`** — public surface + the high-level
+   `functionize(body_asts) -> (Program, Vec<residual>)` entry.
+2. **`simplify_assertions`** (likely in `mod.rs` or its own file) —
+   given the parsed body ASTs, run `simplify` +
+   `propagate-values` tactics. Returns the simplified AST set.
+3. **`program.rs`** — `Z3Program` IR: a sequence of `Z3Step`
    entries each representing "this output variable is defined as
-   this expression over these inputs." Mirror the legacy IR but
-   port only what `eval_program` needs.
-3. **`extract_program`** — given a set of asserted equalities of the
-   form `(= output (f input1 input2 …))` after simplification,
-   produce a `Z3Program`. Cases the legacy code handles that
-   matter: literal-RHS pins, simple binop, ITE arms, match arms
-   over enums. If a shape doesn't fit `Z3Program`, leave the
-   assertion in the residual set the tick loop hands to Z3.
-4. **`eval_program`** — given a `Z3Program` and the current tick's
-   inputs (state-carry pins, last_results, is_first_tick), compute
-   each `Z3Step`'s output natively in Rust. No Z3 call needed for
-   any step that's purely arithmetic / boolean / match / ITE over
-   known values.
+   this expression over these inputs." Mirror the legacy IR.
+4. **`extract.rs`** (or in `mod.rs`) — `extract_program` over the
+   simplified ASTs. Cases that matter: literal-RHS pins, binop,
+   ITE arms, match arms over enums. Shapes that don't fit stay
+   in the residual set Z3 still handles.
+5. **`eval.rs`** — `eval_program`, the native (non-JIT)
+   interpreter. Falls back to this when the JIT isn't available
+   or when the shape doesn't compile.
+6. **`jit.rs`** — Cranelift JIT backend. For each `Z3Step`,
+   produce a native function. Cache the compiled functions. The
+   per-tick path prefers calling the JIT'd function over the
+   interpreter when available.
 
 Wire into `kernel/src/tick.rs`:
 
-- After `.simplify()` pre-loop (the existing pass), call
-  `extract_program(&simplified_asts) → (Z3Program, Vec<residual_assertion>)`.
-- Per tick: call `eval_program(&program, &pins) → outputs`. For any
-  output the program produced, set it as a known constant before
-  asserting the residual. For anything the program couldn't
-  produce, fall through to the existing solve path.
+- After `.simplify()` pre-loop: call `functionize(&simplified)` →
+  `(Program, residual_assertions)`.
+- For each step in `Program`, attempt to JIT-compile it (`jit::compile_step`).
+  Steps that compile go into a `Vec<JitFn>`; steps that don't fall
+  back to the interpreter. Cache both.
+- Per tick: for each input → output mapping the Program covers,
+  call the JIT'd function (or interpreter) with the current pin
+  values. Set the result as a known constant on the solver before
+  asserting residuals.
+- For anything the Program couldn't extract, fall through to the
+  existing solve path. Z3 still runs on the residual.
 - Effect dispatch, state extraction, halt rules unchanged.
+
+Env flags:
+- `EVIDENT_FUNCTIONIZE=0` — bypass the extractor and JIT entirely
+  (current pre-Functionizer behavior).
+- `EVIDENT_FUNCTIONIZE_JIT=0` — extract + interpret natively, but
+  don't JIT-compile (useful for measuring JIT overhead vs interp).
+- Both flags default to "on."
 
 ## Acceptance
 
@@ -86,22 +110,23 @@ Wire into `kernel/src/tick.rs`:
    LANDED section noting what shapes are covered today vs deferred.
 5. `scripts/check-deletable.sh` output unchanged (this is kernel
    capability, not deletion-path).
-6. `Cargo.toml`: only the additional dependencies the Z3-tactic
-   path needs (probably none — should be `z3-sys` only). NO
-   Cranelift dependency in this task.
+6. `Cargo.toml`: the additional crates this work needs. At
+   minimum Cranelift's runtime crates (`cranelift`,
+   `cranelift-jit`, `cranelift-module`, `cranelift-frontend`,
+   `cranelift-codegen` — see what `legacy-rust/functionizer/`'s
+   own `Cargo.toml` references and pin the same versions).
 7. Diff limited to:
-   - `kernel/src/functionize.rs` (new)
+   - `kernel/src/functionize/mod.rs` + supporting files (new)
    - `kernel/src/tick.rs` (modified)
    - `kernel/src/main.rs` or wherever the module is declared
      (modified, one line)
-   - `kernel/Cargo.toml` (only if you genuinely need a new crate)
+   - `kernel/Cargo.toml` (Cranelift deps added)
    - `docs/plans/functionizer-integration.md` (LANDED section)
    - Possibly `docs/plans/architecture-invariants.md`
      (clarification updates)
 
 ## Forbidden
 
-- Cranelift JIT — that's a follow-up task; not in this scope.
 - Symbolic Regression or LLM functionizer variants — already
   dropped.
 - Editing `bootstrap/`, `compiler/`, `stdlib/`, anything outside
@@ -113,25 +138,27 @@ Wire into `kernel/src/tick.rs`:
 ## Measurement
 
 Run the same benchmark from task #12 (`test_consolidated_lexer` +
-the synthetic 16/64/256 KB bodies) BOTH ways:
+the synthetic 16/64/256 KB bodies) three ways:
 
-- With the functionizer active (default).
-- With it bypassed via `EVIDENT_FUNCTIONIZE=0` env (add this flag,
-  default-on for the functionizer).
+- Default: functionize + JIT compile + JIT call.
+- `EVIDENT_FUNCTIONIZE_JIT=0`: functionize + interpret natively.
+- `EVIDENT_FUNCTIONIZE=0`: bypass entirely (the prior kernel).
 
-Report a side-by-side ms/tick table. The expectation: functionizer
-should provide meaningful speedup on the larger bodies once any
-non-trivial assertions are extracted. If it doesn't (because the
-test bodies don't have functionizable shapes), explain why.
+Report a 3-column ms/tick table. The expectation: JIT > interpret
+> bypass on the larger bodies, once any non-trivial assertions are
+extracted. If they're equivalent (no functionizable shapes
+present), explain why and add a fixture that does have a
+functionizable shape so the JIT path is exercised.
 
 ## Reporting back
 
 - Branch pushed (`agent-18-functionizer-implement` or similar).
 - One sentence: did the functionizer extract anything from the
   test fixtures' bodies, yes/no? Count of extracted Z3Steps.
-- Benchmark table (with/without functionizer × 4 fixture sizes).
+  Count of Steps JIT-compiled vs falling back to interpret.
+- 3-column benchmark table (JIT × interpret × bypass × fixture sizes).
 - `./test.sh` final line.
-- Diff stat.
+- Diff stat (Cargo.toml will show Cranelift deps; that's expected).
 - Cite the docs.
 
 Do NOT paste source. The coordinator reads files.
