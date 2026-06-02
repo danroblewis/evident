@@ -16,7 +16,7 @@
 # the EXTS env var (e.g. EXTS="rs" to dump only Rust).
 #
 # Comment stripping: set STRIP_COMMENTS=1 to run each .rs file through
-# scripts/strip-comments.py before emitting it. Line count is
+# scripts/strip-comments.sh before emitting it. Line count is
 # preserved by the stripper so downstream line numbers still match
 # the original file.
 #
@@ -100,11 +100,11 @@ for path in "${PATHS[@]}"; do
         echo
         echo "\`\`\`$lang"
         # Two-stage pipeline so that line numbers match the original
-        # file (post-strip line counts are preserved by strip-comments.py).
+        # file (post-strip line counts are preserved by strip-comments.sh).
         # Use awk to mimic Read's cat-n format: 6-wide right-justified
         # number, tab, content.
         if [ "$STRIP_COMMENTS" = "1" ] && [ "$lang" = "rust" ]; then
-            content_cmd=(python3 "$SCRIPT_DIR/strip-comments.py" "$f")
+            content_cmd=(bash "$SCRIPT_DIR/strip-comments.sh" "$f")
         else
             content_cmd=(cat "$f")
         fi
