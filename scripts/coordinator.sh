@@ -85,20 +85,43 @@ cmd_launch() {
     echo "$branch" > "$dir/worktree-branch"
   fi
 
+  # Isolate each session in its own git worktree so concurrent
+  # sessions don't race on HEAD / index. The worktree's branch is
+  # what the session pushes from. Cleanup happens when the user
+  # runs `coordinator.sh prune` or manually `git worktree remove`.
+  local wt_dir="$dir/worktree"
+  local wt_branch="agent-$name"
+  if [ ! -d "$wt_dir" ]; then
+    git worktree add -b "$wt_branch" "$wt_dir" HEAD >/dev/null 2>&1 || {
+      # If the branch already exists, reuse it
+      git worktree add "$wt_dir" "$wt_branch" >/dev/null 2>&1 || {
+        echo "coordinator: failed to create worktree at $wt_dir" >&2
+        exit 3
+      }
+    }
+  fi
+  echo "$wt_branch" > "$dir/worktree-branch"
+  echo "$wt_dir"   > "$dir/worktree-dir"
+
   echo "running" > "$dir/status"
 
   # Spawn claude -p in background, dangerously skip permissions
-  # so the session can write files without prompting.
-  nohup claude -p "$(cat "$dir/prompt.md")" \
-    --dangerously-skip-permissions \
-    > "$dir/stdout.log" 2>&1 &
-  local pid=$!
-  echo "$pid" > "$dir/pid"
+  # so the session can write files without prompting. Run inside
+  # the isolated worktree so concurrent sessions don't interfere.
+  (
+    cd "$wt_dir"
+    nohup claude -p "$(cat "$REPO_ROOT/$dir/prompt.md")" \
+      --dangerously-skip-permissions \
+      > "$REPO_ROOT/$dir/stdout.log" 2>&1 &
+    echo $! > "$REPO_ROOT/$dir/pid"
+  )
 
-  echo "Launched: $name (pid $pid)"
-  echo "  prompt: $dir/prompt.md"
-  echo "  result: $dir/stdout.log"
-  echo "  status: $dir/status"
+  local pid; pid=$(cat "$dir/pid")
+  echo "Launched: $name (pid $pid, branch $wt_branch)"
+  echo "  worktree: $wt_dir"
+  echo "  prompt:   $dir/prompt.md"
+  echo "  result:   $dir/stdout.log"
+  echo "  status:   $dir/status"
 }
 
 cmd_status() {
