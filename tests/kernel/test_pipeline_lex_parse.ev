@@ -1,0 +1,212 @@
+-- D1: end-to-end lex + parse pipeline as one Evident program.
+--
+-- Roadmap: docs/plans/completion-roadmap.md, Phase D, sub-step D1.
+--
+-- A single multi-tick FSM that:
+--   * Phase 0 (lex)   — walks a hardcoded source string char-by-char,
+--                       accumulating alphabetic runs into Ident tokens
+--                       and recognising single-char operators (notably
+--                       ∈ → OpIn) into an ordered 3-Token register file.
+--   * Phase 1 (parse) — feeds the captured Token triple into the
+--                       ParseMembership recogniser from stdlib/parser.ev
+--                       and prints the decoded `name` + `type` strings.
+--   * Phase 2 (halt)  — Exit(0) after both diagnostic lines have been
+--                       emitted.
+--
+-- Source: "x ∈ Int" (7 codepoints — short enough to keep the per-tick
+-- ternary chain inside the parser's tolerance window per the iter-3.14
+-- mega-pipeline lesson in docs/plans/NEXT.md).
+--
+-- The lexer composes existing stdlib/lexer.ev primitives only —
+-- IsAlphaChar, IsWhitespace, SingleCharTok, MaybeKeyword. The parser
+-- side composes stdlib/parser.ev's ParseMembership + TypeTokenText. No
+-- new translator shape is introduced (that's D2).
+--
+-- Diagnostic schedule (one puts per tick, in order):
+--   tick 0          : "[start]"
+--   tick 1..8       : per-char "  step" trace (8 lex ticks: one per
+--                     input position + the eof boundary tick that
+--                     finalises the trailing "Int" Ident)
+--   tick 9          : "tokens lexed: 3"
+--   tick 10         : "membership recognized: name=x type=Int"
+--   tick 11         : "[done]" + Exit(0)
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "tokens lexed: 3"
+-- expect: stdout = "membership recognized: name=x type=Int"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/lexer.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- Hardcoded source (no file I/O — this is a pipeline smoke test,
+    -- not a ReadFile composition test).
+    input ∈ String = "x ∈ Int"
+
+    -- ── Phase counter ─────────────────────────────────────────────
+    -- 0 = lexing, 1 = parsing, 2 = halting.
+    mode  ∈ Int
+    _mode ∈ Int
+
+    -- ── Lex state ────────────────────────────────────────────────
+    pos  ∈ Int
+    _pos ∈ Int
+    partial  ∈ String
+    _partial ∈ String
+
+    -- 3 Token register slots + a count. Filled in encounter order so
+    -- the parse phase can address head1 = tok1, head2 = tok2, type =
+    -- tok3 directly (sidesteps the Cons-prepend reversal headache
+    -- the consolidated_lexer.ev path has to deal with).
+    tok1  ∈ Token
+    _tok1 ∈ Token
+    tok2  ∈ Token
+    _tok2 ∈ Token
+    tok3  ∈ Token
+    _tok3 ∈ Token
+    tok_count  ∈ Int
+    _tok_count ∈ Int
+
+    -- ── Char dispatch ────────────────────────────────────────────
+    -- The lex phase walks pos = 0..#input. When mode flips to 1 the
+    -- pos stops advancing (the parse phase doesn't consume chars).
+    -- pos starts at -1 on tick 0 (the bootstrap "[start]" tick) so
+    -- the per-tick partial-update guard `is_first_tick ? "" : ...`
+    -- doesn't swallow the very first char — same shape as
+    -- test_multichar_ident.ev's bootstrap.
+    in_lex   ∈ Bool = (_mode = 0)
+    in_parse ∈ Bool = (_mode = 1)
+
+    pos = (is_first_tick ? 0 - 1 : (in_lex ? _pos + 1 : _pos))
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+    op_tok ∈ Token
+    is_op ∈ Bool
+    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+
+    -- ── Lex-phase predicates ─────────────────────────────────────
+    -- Same shape as test_multichar_ident.ev: starting/continuing/
+    -- finishing classify the alpha-run lifecycle; char_only handles a
+    -- standalone operator (like ∈).
+    was_collecting ∈ Bool = (#_partial > 0)
+    done ∈ Bool = ((pos ≥ #input) ∧ in_lex)
+    in_range ∈ Bool = ((pos ≥ 0) ∧ in_lex ∧ ¬done)
+
+    continuing ∈ Bool = (was_collecting ∧ is_alpha ∧ in_range)
+    finishing  ∈ Bool = (was_collecting ∧ ((¬is_alpha ∧ in_range) ∨ done))
+    starting   ∈ Bool = ((¬was_collecting) ∧ is_alpha ∧ in_range)
+
+    -- Alpha-run finalises into a Token via MaybeKeyword (so "Int" /
+    -- "x" stay as Ident; if a keyword like "claim" showed up it'd get
+    -- a Kw* variant). For this fixture's input both alpha runs are
+    -- Idents, but composing via MaybeKeyword keeps the pipeline
+    -- shape consistent with the consolidated lexer.
+    classified_str ∈ Token
+    MaybeKeyword(s ↦ _partial, t ↦ classified_str)
+
+    partial = (is_first_tick ? "" : (continuing ? _partial ++ cur_char : (starting ? cur_char : "")))
+
+    finish_only ∈ Bool = (finishing ∧ ((is_ws ∨ done)))
+    char_only   ∈ Bool = ((¬was_collecting) ∧ is_op ∧ in_range)
+
+    -- The token emitted on the boundary (when finish_only OR char_only
+    -- fires). At most ONE token is produced per tick for this input,
+    -- because `x ∈ Int` never has an alpha-run directly adjacent to a
+    -- non-alpha non-ws operator (the ∈ is bracketed by spaces).
+    new_tok ∈ Token = (finish_only ? classified_str : op_tok)
+    tok_emitted ∈ Bool = (finish_only ∨ char_only)
+
+    -- ── 3-slot Token register file ───────────────────────────────
+    -- The "which slot do I write to" decision keys off the count BEFORE
+    -- the increment (i.e. _tok_count). Slot N receives new_tok when
+    -- tok_emitted ∧ _tok_count = N-1; otherwise it carries the previous
+    -- tick's value.
+    fill1 ∈ Bool = (tok_emitted ∧ (_tok_count = 0))
+    fill2 ∈ Bool = (tok_emitted ∧ (_tok_count = 1))
+    fill3 ∈ Bool = (tok_emitted ∧ (_tok_count = 2))
+
+    tok1 = (is_first_tick ? EofTok : (fill1 ? new_tok : _tok1))
+    tok2 = (is_first_tick ? EofTok : (fill2 ? new_tok : _tok2))
+    tok3 = (is_first_tick ? EofTok : (fill3 ? new_tok : _tok3))
+    tok_count = (is_first_tick ? 0 : (tok_emitted ? _tok_count + 1 : _tok_count))
+
+    -- ── Mode transition ──────────────────────────────────────────
+    -- Lex → parse: triggered the tick AFTER the last char was
+    -- consumed AND no partial is still being collected. For our
+    -- input, the eof tick finishes "Int" (finish_only fires at the
+    -- boundary tick with done=true), so we wait one more tick before
+    -- the lex→parse flip — that extra tick is the "summary" tick
+    -- where count_line is emitted.
+    lex_complete ∈ Bool = (done ∧ ¬was_collecting)
+    -- Parse → halt: a single tick is enough to compute ParseMembership
+    -- + emit its diagnostic; we transition to mode 2 on the tick AFTER
+    -- the parse diagnostic fires.
+    mode = (is_first_tick ? 0
+        : (in_lex ∧ lex_complete ? 1
+        : (in_parse ? 2
+        : _mode)))
+
+    -- ── Parse phase ──────────────────────────────────────────────
+    -- Feed the captured Token triple into ParseMembership. The
+    -- recogniser yields ok=true + item=BIMembership("x", TName("Int"))
+    -- for our input.
+
+    -- The TypeRef string is what TypeTokenText would produce for tok3
+    -- (a single Ident, so it's just the Ident payload).
+    type_str_in ∈ String
+    type_str_is_type ∈ Bool
+    TypeTokenText(t ↦ _tok3, s ↦ type_str_in, is_type_tok ↦ type_str_is_type)
+
+    mem_item ∈ BodyItem
+    mem_ok ∈ Bool
+    ParseMembership(head1 ↦ _tok1, head2 ↦ _tok2, type_str ↦ type_str_in,
+                    item ↦ mem_item, ok ↦ mem_ok)
+
+    -- Pull the name + type back out of the produced BodyItem (mirrors
+    -- test_parser_membership.ev's extraction shape).
+    mem_name ∈ String = match mem_item
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+    mem_type_ref ∈ TypeRef = match mem_item
+        BIMembership(_, tr) ⇒ tr
+        _ ⇒ TNoType
+    mem_type_str ∈ String = match mem_type_ref
+        TName(s) ⇒ s
+        _ ⇒ ""
+
+    -- ── Diagnostic schedule ──────────────────────────────────────
+    -- The label-per-tick chain. is_first_tick → "[start]"; the lex
+    -- phase emits "  step" once per tick; on the lex→parse transition
+    -- tick (where in_lex ∧ lex_complete is still true because mode is
+    -- recomputed THIS tick but `in_lex` is wired off _mode = previous
+    -- tick's mode) we print the token count; the next tick (in_parse)
+    -- prints the parse result; then halt.
+    halting ∈ Bool = (_mode = 2)
+
+    parse_line ∈ String = "membership recognized: name=" ++ mem_name ++ " type=" ++ mem_type_str
+    count_line ∈ String = "tokens lexed: " ++ str_from_int(_tok_count)
+
+    label ∈ String = (is_first_tick ? "[start]"
+        : (halting ? "[done]"
+        : (in_parse ? parse_line
+        : (in_lex ∧ lex_complete ? count_line
+        : "  step"))))
+
+    effects ∈ Seq(Effect) = (halting
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
