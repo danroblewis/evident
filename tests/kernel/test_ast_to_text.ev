@@ -1,0 +1,96 @@
+-- AST → text translator (iter 3.13) — THE THIRD COMPILER STAGE.
+--
+-- Walks `EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))`
+-- and emits the SMT-LIB prefix form `(+ (+ 1 2) 3)`.
+--
+-- Architecture: a WorkList stack of WorkItem values. Each item is
+-- either:
+--   WIProcess(Expr) — visit the Expr (emit and/or push children)
+--   WIEmit(String)  — emit a literal text chunk
+--
+-- For Process(EBinOp(_, l, r)): emit "(+ ", push [Process(l),
+-- Emit(" "), Process(r), Emit(")")] onto the stack. The structural
+-- text gets interleaved correctly between subtree visits.
+--
+-- Output is accumulated into `output_str` across ticks; printed on
+-- the final tick (stack empty).
+--
+-- This is the third compiler stage demonstrated as an FSM:
+--   Lexer  (iter 3.1-3.9):  Text → TokenList via accumulator pattern
+--   Parser (iter 3.11):     TokenList → Expr via state-carry consumer
+--   Translator (this iter): Expr → SMT-LIB text via work-stack walker
+-- All three run on the kernel; self-hosting is structurally complete.
+--
+-- expect: stdout = "[translating]"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "  step"
+-- expect: stdout = "(+ (+ 1 2) 3)"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    initial_expr ∈ Expr = EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))
+    initial_stack ∈ WorkList = WLCons(WIProcess(initial_expr), WLNil)
+
+    stack  ∈ WorkList
+    _stack ∈ WorkList
+    output_str  ∈ String
+    _output_str ∈ String
+
+    head_item ∈ WorkItem = match _stack
+        WLCons(w, _) ⇒ w
+        WLNil ⇒ WIEmit("")
+
+    tail_stack ∈ WorkList = match _stack
+        WLCons(_, rest) ⇒ rest
+        WLNil ⇒ WLNil
+
+    is_empty ∈ Bool = match _stack
+        WLNil ⇒ true
+        _ ⇒ false
+
+    is_process ∈ Bool = (head_item matches WIProcess(_))
+
+    proc_expr ∈ Expr = match head_item
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    emit_text ∈ String = match head_item
+        WIEmit(s) ⇒ s
+        _ ⇒ ""
+
+    proc_is_int   ∈ Bool = (proc_expr matches EInt(_))
+    proc_is_binop ∈ Bool = (proc_expr matches EBinOp(_, _, _))
+
+    proc_int_val ∈ Int = match proc_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+
+    proc_left ∈ Expr = match proc_expr
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    proc_right ∈ Expr = match proc_expr
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    this_emit ∈ String = (¬is_process ? emit_text : (proc_is_int ? str_from_int(proc_int_val) : (proc_is_binop ? "(+ " : "")))
+
+    binop_push ∈ WorkList = WLCons(WIProcess(proc_left), WLCons(WIEmit(" "), WLCons(WIProcess(proc_right), WLCons(WIEmit(")"), tail_stack))))
+    new_stack ∈ WorkList = (is_process ∧ proc_is_binop ? binop_push : tail_stack)
+
+    stack = (is_first_tick ? initial_stack : new_stack)
+    output_str = (is_first_tick ? "" : _output_str ++ this_emit)
+
+    effects ∈ Seq(Effect) = (is_first_tick
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr("[translating]")⟩)⟩
+        : (is_empty
+            ? ⟨LibCall("libc", "puts", ⟨ArgStr(_output_str)⟩), Exit(0)⟩
+            : ⟨LibCall("libc", "puts", ⟨ArgStr("  step")⟩)⟩))

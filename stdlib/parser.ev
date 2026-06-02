@@ -28,6 +28,17 @@ enum ExprList =
     ELNil
     ELCons(Expr, ExprList)
 
+-- A work item for the AST→text translator. The work stack interleaves
+-- "process this Expr" with "emit this literal text" so structural
+-- characters like "(", " ", ")" can be queued between subtree visits.
+enum WorkItem =
+    WIProcess(Expr)
+    WIEmit(String)
+
+enum WorkList =
+    WLNil
+    WLCons(WorkItem, WorkList)
+
 -- ── Token → Op classifier ───────────────────────────────────────
 -- For a parser that handles binop tokens, this gives the operator
 -- (or OpPlus as a placeholder if the token isn't an operator).
