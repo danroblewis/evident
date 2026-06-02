@@ -7,3 +7,6 @@ d3.min.js
 .claude/worktrees/
 a.smt
 .session.log
+scripts/coordinator-results/
+scripts/coordinator-results/
+runtime/

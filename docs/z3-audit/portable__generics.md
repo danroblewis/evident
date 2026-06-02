@@ -1,7 +1,0 @@
-# runtime/src/portable/generics.rs — Z3-replaceability
-**What it does:** The Rust shim for the already-cut-over generic-type monomorphization pass. The body-walk (collecting generic type-name uses) and the string operations (`split_head`, `subst_one` — splitting `"Edge<Rect>"` and substituting type parameters) delegate to `stdlib/passes/generics.ev` via Evident queries. The Rust side handles the fixed-point orchestration (iterate until no new concrete schemas are produced), presence-guard (`<` check to skip the engine on non-generic programs), top-level arg splitting, and `Seq/Set/Bag/Map` wrapper stripping.
-**Criticality:** critical (load-time — runs on every program with generic type instantiations before translation)
-**Verdict:** replaceable-as-group(portable/generics.rs, stdlib/passes/generics.ev)
-**Confidence:** high
-**How (if replaceable):** The walk and string-manipulation core are already self-hosted in `generics.ev`. The remaining Rust is the fixed-point driver loop (iterate `collect_uses` + `apply_substitution_to_body` until stable), a presence guard for non-generic programs, and helper string utilities for bracket-balanced arg splitting. These are orchestration concerns rather than constraint problems; the fixed-point convergence check is a simple counter not naturally expressed as a single satisfiability query. The Rust net was +~100 LOC vs deleted at cut-over (session REVIVE-generics), confirming the small-pure-pass LOC ceiling: the shim/cache/marshaling tax exceeds the deleted pass.
-**Change made:** none
