@@ -62,6 +62,11 @@ pub enum Sv {
     /// A Datatype-typed value: (variant constructor name, recursively-decoded payload values).
     /// Lets the kernel carry algebraic data (e.g. a TokenList) across ticks.
     Datatype(String, Vec<Sv>),
+    /// A bounded Seq value (e.g. `Seq(Rect)`), one element per slot. Produced
+    /// by the functionizer's record-Seq recomposition so a scalar step can
+    /// index into it (`rs[0].w`); never a primitive state-carry, so it has no
+    /// SMT-LIB pin form.
+    Seq(Vec<Sv>),
 }
 
 impl Sv {
@@ -82,6 +87,9 @@ impl Sv {
                     format!("({} {})", variant, parts.join(" "))
                 }
             }
+            // Seq values are functionizer-internal (record-Seq intermediates)
+            // and never carried as a primitive state field, so this is unused.
+            Sv::Seq(_) => unreachable!("Sv::Seq has no SMT-LIB pin form"),
         }
     }
 }
@@ -831,6 +839,9 @@ fn compare_sv(a: &Sv, b: &Sv) -> bool {
         (Sv::Datatype(vx, fx), Sv::Datatype(vy, fy)) =>
             vx == vy && fx.len() == fy.len()
                 && fx.iter().zip(fy.iter()).all(|(p, q)| compare_sv(p, q)),
+        (Sv::Seq(xs), Sv::Seq(ys)) =>
+            xs.len() == ys.len()
+                && xs.iter().zip(ys.iter()).all(|(p, q)| compare_sv(p, q)),
         _ => false,
     }
 }

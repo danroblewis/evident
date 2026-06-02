@@ -58,6 +58,16 @@ test paths). At that point, this becomes a clean follow-up.
 
 ## Replace Cons-lists with Seqs (constraint-model fit)
 
+**Status: PARTIALLY COMPLETE.** The functionizer side landed in
+task #19 — `recompose_record_seqs` is in `kernel/src/functionize/`
+(see step 1 below and `functionizer-integration.md` §6), so a
+bounded `Seq(Record)` now functionizes at parity with a cons-list.
+The remaining work is the *sweep* (steps 2–4): rewriting existing
+cons-list state in `compiler/` / `stdlib/` to Seqs. That is still a
+separate, deferred task — the perf blocker that justified deferring
+it is gone, but the deletion-priority and refactor-risk reasons below
+still hold.
+
 **Source:** user, mid-session ~task #18.
 
 **Idea:** the current invariants point sessions at cons-list state
@@ -75,12 +85,10 @@ Seqs are the more constraint-native shape.
 > like to see if we can replace Cons with Seq, even if it has to
 > be some rewrite rules."*
 
-**Why defer:**
+**Why the sweep is still deferred:**
 
-- The functionizer's `recompose_record_seqs` path — the legacy
-  Rust feature that makes record-typed Seqs functionize cleanly
-  — was explicitly deferred in task #18. Until that lands,
-  switching to Seqs regresses perf on every recursive walker.
+- ~~The functionizer's `recompose_record_seqs` path was deferred in
+  task #18.~~ **Done in task #19** — no longer a blocker.
 - The shift is a sweeping rewrite: every `WorkList` /
   `WLCons`-style pattern in `compiler/translate_*.ev`,
   `stdlib/fti/*.ev`, and the AST walkers would change.
@@ -89,9 +97,9 @@ Seqs are the more constraint-native shape.
 
 **Likely path when picked up:**
 
-1. Land the `recompose_record_seqs` functionizer extension
-   (`legacy-rust/functionizer/src/z3_eval.rs` has the original;
-   compare to what shipped in `kernel/src/functionize/`).
+1. ~~Land the `recompose_record_seqs` functionizer extension.~~
+   **Done (task #19):** `kernel/src/functionize/{mod,eval,jit}.rs`,
+   exercised by `tests/kernel/test_functionizer_seqs.ev`.
 2. Add a Seq-based work-stack pattern alongside the cons-list
    one. Prove it functionizes equivalently on a small fixture.
 3. Sweep the codebase replacing cons-list state with Seqs,

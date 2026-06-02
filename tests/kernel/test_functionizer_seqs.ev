@@ -1,0 +1,39 @@
+-- Functionizer record-Seq exerciser (task #19).
+--
+-- A `Seq(Rect)` whose element fields vary per tick, plus scalar outputs that
+-- are pure functions OVER the Seq (`rs[0].w + rs[1].w`, a count of rects with
+-- `x > 0`). This is the "Seqs are first-class" shape from
+-- docs/plans/functionizer-integration.md §6: the extractor recomposes `rs`
+-- into a Seq step (its `Sv::Seq` bound into the eval env) and the `wsum`/`npos`
+-- scalar steps index into it. `(select rs i)` + the `(w …)`/`(x …)` record
+-- accessors resolve to the elements' leaf fields, so the scalar steps JIT to
+-- native arithmetic (interpret under EVIDENT_FUNCTIONIZE_JIT=0).
+--
+-- `wsum = 2*count + 3`; the run exits once it reaches 201 (count 99), i.e. it
+-- runs ~100 ticks entirely on the functionizer fast path. getpid is a silent
+-- libcall; the only stdout is the final "done".
+--
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+type Rect(x, y, w, h ∈ Int)
+
+claim main
+    count  ∈ Int
+    _count ∈ Int
+    count = (is_first_tick ? 0 : _count + 1)
+
+    r0 ∈ Rect(count, 0, count + 1, 0)
+    r1 ∈ Rect(0, 0, count + 2, 0)
+    rs ∈ Seq(Rect) = ⟨r0, r1⟩
+
+    wsum ∈ Int
+    wsum = rs[0].w + rs[1].w
+
+    npos ∈ Int
+    npos = ((rs[0].x > 0 ? 1 : 0) + (rs[1].x > 0 ? 1 : 0))
+
+    effects ∈ Seq(Effect) = (wsum < 201
+        ? ⟨LibCall("libc", "getpid", ⟨⟩)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr("done")⟩), Exit(0)⟩)
