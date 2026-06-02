@@ -14,6 +14,7 @@
 enum Token =
     Ident(String)
     IntLit(Int)
+    StringLit(String)
     LParen
     RParen
     Comma
@@ -199,3 +200,29 @@ claim MaybeTwoCharOp(c1 ∈ String, c2 ∈ String, t ∈ Token, recognized ∈ B
         : is_dotdot   ? DotDot
         : ErrTok(c1))
     recognized = (is_plus_plus ∨ is_implies ∨ is_le ∨ is_ge ∨ is_ne ∨ is_dotdot)
+
+-- ── String-literal helpers (Phase A3) ──────────────────────────
+-- IsQuote: recognise the `"` delimiter that opens/closes a string
+-- literal. A separate predicate keeps the per-tick FSM body
+-- declarative (mirrors IsAlphaChar / IsDigitChar).
+claim IsQuote(c ∈ String, out ∈ Bool)
+    out = (c = "\"")
+
+-- IsBackslash: recognise the `\` escape lead-in inside a string
+-- literal. Used to transition from in-string mode to
+-- escape-pending mode.
+claim IsBackslash(c ∈ String, out ∈ Bool)
+    out = (c = "\\")
+
+-- EscapeChar: translate the character following `\` into the
+-- character that appears in the string contents. Mirrors the four
+-- escapes the Rust lexer accepts (runtime/src/lexer.rs):
+--   \n → newline, \t → tab, \" → quote, \\ → backslash.
+-- Anything else passes through unchanged (the per-tick FSM can
+-- decide whether to treat that as an error).
+claim EscapeChar(c ∈ String, out ∈ String)
+    out = (c = "n"  ? "\n"
+        : (c = "t"  ? "\t"
+        : (c = "\"" ? "\""
+        : (c = "\\" ? "\\"
+        : c))))
