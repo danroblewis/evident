@@ -73,7 +73,11 @@ terse and cite paths rather than paste content.
 2. Write a task spec at `docs/briefings/tasks/NN-name.md`. See
    "Task spec shape" below.
 3. `git add -A && git commit -m "spec NN: ..." && git push origin main`.
-4. `scripts/coordinator.sh launch docs/briefings/tasks/NN-name.md`.
+4. `scripts/coordinator.sh launch docs/briefings/tasks/NN-name.md [--name <friendly>]`.
+   The optional `--name` is a short memorable label that appears
+   in the NAME column of `coordinator.sh status` — useful when
+   referring to the session verbally or in user updates. The task
+   name (NN-name) is always shown too.
 5. `TaskUpdate` the task to `in_progress`.
 6. `ScheduleWakeup` with 1500-1800s `delaySeconds`, prompt
    `<<autonomous-loop-dynamic>>`.

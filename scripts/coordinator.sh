@@ -31,12 +31,27 @@ RESULTS=scripts/coordinator-results
 mkdir -p "$RESULTS"
 
 cmd_launch() {
-  local task_spec=${1:?usage: launch <task-spec.md> [branch]}
-  local branch=${2:-}
+  local task_spec=${1:?usage: launch <task-spec.md> [--name <friendly>]}
+  shift
+  local friendly=""
+  local branch=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) friendly=$2; shift 2 ;;
+      --branch) branch=$2; shift 2 ;;
+      *) echo "coordinator: unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+
   local name
   name=$(basename "$task_spec" .md)
   local dir="$RESULTS/$name"
   mkdir -p "$dir"
+
+  # Persist friendly name if given
+  if [ -n "$friendly" ]; then
+    echo "$friendly" > "$dir/friendly-name"
+  fi
 
   if [ ! -f "$task_spec" ]; then
     echo "coordinator: task spec not found: $task_spec" >&2
@@ -144,7 +159,11 @@ cmd_launch() {
   )
 
   local pid; pid=$(cat "$dir/pid")
-  echo "Launched: $name (pid $pid, branch $wt_branch)"
+  local label="$name"
+  if [ -n "$friendly" ]; then
+    label="\"$friendly\" ($name)"
+  fi
+  echo "Launched: $label (pid $pid, branch $wt_branch)"
   echo "  worktree: $wt_dir"
   echo "  prompt:   $dir/prompt.md"
   echo "  result:   $dir/stdout.log"
@@ -156,9 +175,10 @@ cmd_status() {
     echo "(no coordinator tasks)"
     return
   fi
-  printf "%-40s  %-8s  %s\n" "TASK" "STATUS" "PID/EXIT"
+  printf "%-16s  %-40s  %-8s  %s\n" "NAME" "TASK" "STATUS" "PID/EXIT"
   for d in "$RESULTS"/*/; do
     local name; name=$(basename "$d")
+    local friendly; friendly=$(cat "$d/friendly-name" 2>/dev/null || echo "—")
     local status; status=$(cat "$d/status" 2>/dev/null || echo "?")
     local pid_or_exit=""
     if [ "$status" = "running" ]; then
@@ -172,7 +192,7 @@ cmd_status() {
         status=done
       fi
     fi
-    printf "%-40s  %-8s  %s\n" "$name" "$status" "$pid_or_exit"
+    printf "%-16s  %-40s  %-8s  %s\n" "$friendly" "$name" "$status" "$pid_or_exit"
   done
 }
 
