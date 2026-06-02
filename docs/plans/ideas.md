@@ -56,4 +56,52 @@ test paths). At that point, this becomes a clean follow-up.
 - New tests that demonstrate the generator on at least two
   grammars (Evident's own + one other, e.g. JSON or arithmetic).
 
+## Replace Cons-lists with Seqs (constraint-model fit)
+
+**Source:** user, mid-session ~task #18.
+
+**Idea:** the current invariants point sessions at cons-list state
+(`enum WorkList = WLNil | WLCons(WorkItem, WorkList)`) for bounded
+data, because cons-lists functionize cleanly today via the
+macro-finder while Z3 Seqs are opaque to it. But cons-lists are
+imperative-shaped — they carry a "first/rest" verb structure —
+and that doesn't naturally appear in constraint-model thinking.
+Seqs are the more constraint-native shape.
+
+**User rationale:**
+
+> *"I don't like using the Cons things because we never seen Cons
+> in constraint system models. Seq made more sense, and I would
+> like to see if we can replace Cons with Seq, even if it has to
+> be some rewrite rules."*
+
+**Why defer:**
+
+- The functionizer's `recompose_record_seqs` path — the legacy
+  Rust feature that makes record-typed Seqs functionize cleanly
+  — was explicitly deferred in task #18. Until that lands,
+  switching to Seqs regresses perf on every recursive walker.
+- The shift is a sweeping rewrite: every `WorkList` /
+  `WLCons`-style pattern in `compiler/translate_*.ev`,
+  `stdlib/fti/*.ev`, and the AST walkers would change.
+- Doing it before bootstrap deletion adds risk to an
+  already-large refactor.
+
+**Likely path when picked up:**
+
+1. Land the `recompose_record_seqs` functionizer extension
+   (`legacy-rust/functionizer/src/z3_eval.rs` has the original;
+   compare to what shipped in `kernel/src/functionize/`).
+2. Add a Seq-based work-stack pattern alongside the cons-list
+   one. Prove it functionizes equivalently on a small fixture.
+3. Sweep the codebase replacing cons-list state with Seqs,
+   one pass at a time, verifying each retains its
+   `tests/conformance/features/` equivalence.
+4. Drop the cons-list pattern from the invariants doc.
+
+**When to pick this up:** after Phase 5 of
+`docs/plans/DELETION-CHECKLIST.md` (bootstrap severed). Or sooner
+if the cons-list pattern starts creating noticeable maintenance
+friction.
+
 ## (Add more ideas here as they surface)

@@ -133,12 +133,24 @@ count).
 
 For compiler / translator work, AST work stacks are bounded by the
 AST size, which is fixed at load time. **In-Evident cons-lists are
-the right tool, not FTIs.** Task #13 (recursive `translate_arith`)
-demonstrated this: a Stack FTI was attempted, rejected the
-per-tick "pop 1 + push 7" binop expansion as UNSAT, and was
-replaced with `compiler/parser.ev`'s `WorkItem`/`WorkList`. See
-`tests/kernel/test_translate_arith_recursive.ev` for the worked
-example.
+the right tool today**, not FTIs. Task #13 (recursive
+`translate_arith`) demonstrated this: a Stack FTI was attempted,
+rejected the per-tick "pop 1 + push 7" binop expansion as UNSAT,
+and was replaced with `compiler/parser.ev`'s `WorkItem`/`WorkList`.
+See `tests/kernel/test_translate_arith_recursive.ev` for the
+worked example.
+
+**TRANSITIONAL — cons-lists are an expedient, not the destination.**
+Cons-lists carry an imperative "first/rest" verb structure that
+doesn't appear in well-shaped constraint models. They were picked
+because the macro-finder functionizes them cleanly today while Z3
+Seqs are opaque (the `recompose_record_seqs` functionizer
+extension was deferred in task #18). When that extension lands —
+or via a compiler-level rewrite-rule pass — Seqs become the right
+shape, and the cons-list pattern gets swept out. See
+`docs/plans/ideas.md` §"Replace Cons-lists with Seqs". Sessions
+should know this and not entrench cons-list-specific patterns
+beyond what current functionizability requires.
 
 ## Empty `effects` Seq quirk
 
