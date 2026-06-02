@@ -39,6 +39,23 @@ enum WorkList =
     WLNil
     WLCons(WorkItem, WorkList)
 
+-- ── Import statements (Phase B11) ──────────────────────────────
+-- An `import "path"` line at the top of an Evident file mirrors
+-- runtime/src/parser/program.rs's KwImport→StringLit production:
+-- on KwImport the parser expects a StringLit and emits an
+-- ImportPath carrying the literal's payload. Mirrors the Rust
+-- `Program::imports: Vec<String>` slot — one ImportPath per line.
+--
+-- NoImport is the "head token wasn't KwImport" sentinel so the
+-- parser FSM body can dispatch on `match head_tok` without an
+-- extra Bool bypass.
+-- BadImport carries an error message for the "KwImport not followed
+-- by a StringLit" arm (mirrors program.rs's ParseError).
+enum ImportStmt =
+    ImportPath(String)
+    NoImport
+    BadImport(String)
+
 -- ── Token → Op classifier ───────────────────────────────────────
 -- For a parser that handles binop tokens, this gives the operator
 -- (or OpPlus as a placeholder if the token isn't an operator).

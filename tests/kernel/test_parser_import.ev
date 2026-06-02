@@ -1,0 +1,65 @@
+-- Import-statement parser (Phase B11): consume a hardcoded TokenList
+--   ⟨KwImport, StringLit("stdlib/kernel.ev")⟩
+-- and emit an ImportPath("stdlib/kernel.ev"). Mirrors
+-- runtime/src/parser/program.rs's KwImport → StringLit production:
+-- on KwImport the parser expects a StringLit; on success it emits
+-- one ImportPath per line.
+--
+-- Architecture: a two-tick consumer FSM (pattern 2 from NEXT.md).
+--   Tick 0 (is_first_tick): print "[start]", seed the list.
+--   Tick 1: peek at head + second; classify; build ImportStmt; print
+--           the path payload via match on ImportStmt; Exit(0).
+--
+-- The diagnostic is the matched ImportPath's String payload.
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "import: stdlib/kernel.ev"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    initial ∈ TokenList = TLCons(KwImport, TLCons(StringLit("stdlib/kernel.ev"), TLNil))
+
+    list  ∈ TokenList
+    _list ∈ TokenList
+    list = (is_first_tick ? initial : _list)
+
+    head_tok ∈ Token = match _list
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    tail_list ∈ TokenList = match _list
+        TLCons(_, tail) ⇒ tail
+        TLNil ⇒ TLNil
+
+    second_tok ∈ Token = match tail_list
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    is_import ∈ Bool = (head_tok matches KwImport)
+
+    -- Extract the StringLit payload if second_tok is one, else "".
+    second_str ∈ String = match second_tok
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+
+    second_is_string ∈ Bool = (second_tok matches StringLit(_))
+
+    stmt ∈ ImportStmt = (is_import
+        ? (second_is_string ? ImportPath(second_str) : BadImport("expected string after import"))
+        : NoImport)
+
+    -- Reduce the parsed statement back to its String payload for the diagnostic.
+    stmt_label ∈ String = match stmt
+        ImportPath(p) ⇒ "import: " ++ p
+        BadImport(m) ⇒ "bad: " ++ m
+        NoImport ⇒ "no import"
+
+    halting ∈ Bool = ¬is_first_tick
+
+    label ∈ String = (is_first_tick ? "[start]" : stmt_label)
+
+    effects ∈ Seq(Effect) = (halting
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
