@@ -13,6 +13,7 @@ import "stdlib/lexer.ev"
 
 enum Op =
     OpPlus
+    OpMul
     OpEq
 
 enum Expr =
@@ -52,6 +53,22 @@ claim TokenToOp
     o ∈ Op
     is_binop ∈ Bool
     is_plus ∈ Bool = (t matches Plus)
+    is_star ∈ Bool = (t matches Star)
     is_eq   ∈ Bool = (t matches Eq)
-    o = (is_plus ? OpPlus : (is_eq ? OpEq : OpPlus))
-    is_binop = (is_plus ∨ is_eq)
+    o = (is_plus ? OpPlus : (is_star ? OpMul : (is_eq ? OpEq : OpPlus)))
+    is_binop = (is_plus ∨ is_star ∨ is_eq)
+
+-- ── Paren-depth frame stack (Phase B2) ──────────────────────────
+--
+-- When a paren-depth FSM hits `LParen`, it needs to suspend the
+-- current outer expression context (the partially-built `current`
+-- and pending `Op`) and start parsing a fresh inner one. When it
+-- hits `RParen`, it pops that frame and combines the inner result
+-- back into the outer.
+--
+-- A `Frame(outer_current, outer_pending)` captures one suspended
+-- context. `FrameList` is the Cons-shaped stack of them — the
+-- depth-zero state is `FLNil`.
+enum FrameList =
+    FLNil
+    FLCons(Expr, Op, FrameList)

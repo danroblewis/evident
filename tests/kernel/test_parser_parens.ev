@@ -1,0 +1,143 @@
+-- Parenthesized subexpressions (Phase B2).
+--
+-- Consumes a hardcoded TokenList for `(1 + 2) * 3`:
+--   ⟨LParen, IntLit(1), Plus, IntLit(2), RParen, Star, IntLit(3)⟩
+-- and builds an Expr via paren-depth-aware combination.
+--
+-- Final accumulated state should be:
+--   EBinOp(OpMul, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))
+--
+-- The architectural primitive demonstrated: a mode-state FSM that
+-- uses a `FrameList` stack to suspend the outer (current, pending)
+-- context on `LParen` and restore + combine it on `RParen`. Within
+-- each paren-depth level, accumulation is the same left-assoc
+-- greedy binop combine as `test_parser.ev`.
+--
+-- Per-tick diagnostic prints the token kind seen.
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "saw lparen"
+-- expect: stdout = "saw int"
+-- expect: stdout = "saw op"
+-- expect: stdout = "saw int"
+-- expect: stdout = "saw rparen"
+-- expect: stdout = "saw op"
+-- expect: stdout = "saw int"
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    initial ∈ TokenList = TLCons(LParen, TLCons(IntLit(1), TLCons(Plus, TLCons(IntLit(2), TLCons(RParen, TLCons(Star, TLCons(IntLit(3), TLNil)))))))
+
+    list  ∈ TokenList
+    _list ∈ TokenList
+
+    current  ∈ Expr
+    _current ∈ Expr
+
+    pending  ∈ Op
+    _pending ∈ Op
+
+    frames  ∈ FrameList
+    _frames ∈ FrameList
+
+    next_list ∈ TokenList = match _list
+        TLCons(_, tail) ⇒ tail
+        TLNil ⇒ TLNil
+
+    head_tok ∈ Token = match _list
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    is_nil ∈ Bool = match _list
+        TLNil ⇒ true
+        _ ⇒ false
+
+    -- Classify the head token. We hoist each recognizer to its own
+    -- Bool so the per-tick dispatch reads as a flat ternary chain.
+    is_lparen ∈ Bool = (head_tok matches LParen)
+    is_rparen ∈ Bool = (head_tok matches RParen)
+
+    head_int ∈ Int = match head_tok
+        IntLit(n) ⇒ n
+        _ ⇒ 0 - 1
+    is_int ∈ Bool = (head_int ≥ 0)
+
+    head_op ∈ Op
+    is_op ∈ Bool
+    TokenToOp(t ↦ head_tok, o ↦ head_op, is_binop ↦ is_op)
+
+    list = (is_first_tick ? initial : next_list)
+
+    -- ── LParen: push the current (outer) context onto frames, reset
+    -- the inner context. _current may already be ENoExpr (start of
+    -- subexpression) or a fully-built Expr (nested case); either way
+    -- we save it verbatim along with _pending.
+    pushed_frames ∈ FrameList = FLCons(_current, _pending, _frames)
+
+    -- ── RParen: pop the top frame, recover outer_current + outer_pending.
+    outer_current ∈ Expr = match _frames
+        FLCons(oc, _, _) ⇒ oc
+        FLNil ⇒ ENoExpr
+    outer_pending ∈ Op = match _frames
+        FLCons(_, op, _) ⇒ op
+        FLNil ⇒ OpPlus
+    popped_frames ∈ FrameList = match _frames
+        FLCons(_, _, rest) ⇒ rest
+        FLNil ⇒ FLNil
+
+    outer_was_empty ∈ Bool = (outer_current matches ENoExpr)
+    -- The just-finished inner subexpression IS the current value of
+    -- `_current` (built up across all the ticks inside the parens).
+    -- Combine it with the outer context: if outer was empty, the
+    -- inner expression simply becomes the outer's current. Otherwise
+    -- combine via the outer's pending op.
+    combined_after_rparen ∈ Expr = (outer_was_empty ? _current : EBinOp(outer_pending, outer_current, _current))
+
+    -- ── IntLit: same as test_parser.ev — extend current with the new int.
+    has_current ∈ Bool = ¬(_current matches ENoExpr)
+    new_current_int ∈ Expr = (has_current ? EBinOp(_pending, _current, EInt(head_int)) : EInt(head_int))
+
+    -- Per-tick choice of next `current` (inner-context value).
+    -- LParen: reset to ENoExpr (fresh subexpression).
+    -- RParen: jump to the combined outer-restored value.
+    -- IntLit: extend with new int.
+    -- Op:    leave current alone (the op modifies pending only).
+    current = (is_first_tick ? ENoExpr
+             : (is_lparen ? ENoExpr
+             : (is_rparen ? combined_after_rparen
+             : (is_int ? new_current_int
+             : _current))))
+
+    -- Per-tick choice of `pending`.
+    -- LParen: reset (we're starting fresh inside).
+    -- RParen: not used (we just popped); reset to OpPlus is harmless.
+    -- IntLit: leave pending alone.
+    -- Op:    set to the new op.
+    pending = (is_first_tick ? OpPlus
+             : (is_lparen ? OpPlus
+             : (is_rparen ? OpPlus
+             : (is_op ? head_op
+             : _pending))))
+
+    -- Per-tick choice of `frames` stack.
+    -- LParen: push.  RParen: pop.  Else: stay.
+    frames = (is_first_tick ? FLNil
+             : (is_lparen ? pushed_frames
+             : (is_rparen ? popped_frames
+             : _frames)))
+
+    -- ── AST verification: at end-of-input, check that the accumulated
+    -- _current matches the expected tree EBinOp(OpMul, EBinOp(OpPlus,
+    -- EInt(1), EInt(2)), EInt(3)). The whole-Expr equality lifts
+    -- componentwise through enum constructors and Int leaves, so a
+    -- direct `=` comparison gives us a single Bool.
+    expected_ast ∈ Expr = EBinOp(OpMul, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))
+    ast_ok ∈ Bool = (_current = expected_ast)
+    end_label ∈ String = (ast_ok ? "done" : "FAIL-bad-ast")
+
+    label ∈ String = (is_first_tick ? "[start]" : (is_nil ? end_label : (is_lparen ? "saw lparen" : (is_rparen ? "saw rparen" : (is_int ? "saw int" : (is_op ? "saw op" : "skip"))))))
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩ : (is_nil ? ⟨LibCall("libc", "puts", ⟨ArgStr(end_label)⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))
