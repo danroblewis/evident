@@ -1,0 +1,130 @@
+-- stdlib/translate_record.ev — C9 record lift translator.
+--
+-- Mirrors runtime/src/translate/exprs/record_lift.rs at the AST-→
+-- SMT-LIB-text layer. Two lift forms are surfaced:
+--
+--   * Record literal constructor:
+--       IVec2(1, 2)          → "(IVec2 1 2)"
+--   * Componentwise equality:
+--       a = b (over fields)  → "(and (= (x a) (x b)) (= (y a) (y b)))"
+--
+-- Z3 datatype field accessors are functions, so `lhs.x` is encoded
+-- as `(x lhs)` in SMT-LIB. The componentwise = then folds the
+-- per-field `(= (f l) (f r))` clauses inside `(and …)`.
+--
+-- Like other stdlib translator claims, the per-claim shape handles a
+-- bounded structural case (2-element list / 2-field record); the
+-- caller's FSM walks longer lists piece-by-piece. The Phase C9
+-- acceptance is the shape sketch, not arbitrary arity.
+
+import "stdlib/parser.ev"
+
+-- ── RecordField + RecordFieldList ──────────────────────────────
+-- A record field carries the field name (used as the Z3 accessor
+-- name) and a type-string (informational; not consumed at lift
+-- time but kept for parity with the Rust FieldKind shape).
+
+enum RecordField =
+    RField(String, String)
+    RFNoField
+
+enum RecordFieldList =
+    RFLNil
+    RFLCons(RecordField, RecordFieldList)
+
+-- ── ExprToSmtlib: render a single Expr leaf ────────────────────
+-- The record-lift only feeds literal leaves (Int, Ident); compound
+-- subtrees are handled by the broader translator (the work-stack
+-- walker pattern in test_ast_to_text.ev). This claim covers the
+-- two leaves that show up in IVec2-style literals.
+
+claim ExprToSmtlib
+    e ∈ Expr
+    out ∈ String
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    out = (is_int  ? str_from_int(int_val)
+        : is_ident ? ident_val
+        : "<expr>")
+
+-- ── RecordCtorSmtlib: literal constructor application ─────────
+-- Emits `(<type_name> <arg1> <arg2>)` for a 2-arg literal. Mirrors
+-- the Rust path's `Expr::Call(type_name, args)` branch in
+-- record_lift.rs — that branch enumerates leaves via the SchemaDecl;
+-- here the args are pre-flattened by the caller.
+--
+-- Inputs:
+--   type_name — the record type ("IVec2", "Color", …).
+--   args      — ExprList carrying the constructor arguments in
+--               declaration order.
+-- Output:
+--   out — the SMT-LIB application string.
+
+claim RecordCtorSmtlib
+    type_name ∈ String
+    args ∈ ExprList
+    out ∈ String
+
+    a1 ∈ Expr = match args
+        ELCons(x, _) ⇒ x
+        ELNil ⇒ ENoExpr
+    rest1 ∈ ExprList = match args
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    a2 ∈ Expr = match rest1
+        ELCons(x, _) ⇒ x
+        ELNil ⇒ ENoExpr
+
+    a1_str ∈ String
+    ExprToSmtlib(e ↦ a1, out ↦ a1_str)
+    a2_str ∈ String
+    ExprToSmtlib(e ↦ a2, out ↦ a2_str)
+
+    out = "(" ++ type_name ++ " " ++ a1_str ++ " " ++ a2_str ++ ")"
+
+-- ── RecordEqSmtlib: componentwise equality lift ────────────────
+-- For a 2-field record, emits
+--   (and (= (f1 lhs) (f1 rhs)) (= (f2 lhs) (f2 rhs)))
+-- mirroring Rust record_lift.rs's `Bool::and(ctx, &refs)` fold.
+--
+-- Z3 datatype accessors are functions: `lhs.x` lowers to `(x lhs)`.
+--
+-- Inputs:
+--   lhs, rhs — the operand identifier strings (already rendered).
+--   fields   — the field list in declaration order.
+-- Output:
+--   out — the `(and …)` clause string.
+
+claim RecordEqSmtlib
+    lhs ∈ String
+    rhs ∈ String
+    fields ∈ RecordFieldList
+    out ∈ String
+
+    f1 ∈ RecordField = match fields
+        RFLCons(x, _) ⇒ x
+        RFLNil ⇒ RFNoField
+    rest1 ∈ RecordFieldList = match fields
+        RFLCons(_, r) ⇒ r
+        RFLNil ⇒ RFLNil
+    f2 ∈ RecordField = match rest1
+        RFLCons(x, _) ⇒ x
+        RFLNil ⇒ RFNoField
+
+    f1_name ∈ String = match f1
+        RField(n, _) ⇒ n
+        RFNoField ⇒ ""
+    f2_name ∈ String = match f2
+        RField(n, _) ⇒ n
+        RFNoField ⇒ ""
+
+    clause1 ∈ String = "(= (" ++ f1_name ++ " " ++ lhs ++ ") (" ++ f1_name ++ " " ++ rhs ++ "))"
+    clause2 ∈ String = "(= (" ++ f2_name ++ " " ++ lhs ++ ") (" ++ f2_name ++ " " ++ rhs ++ "))"
+
+    out = "(and " ++ clause1 ++ " " ++ clause2 ++ ")"

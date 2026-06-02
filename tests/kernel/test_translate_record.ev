@@ -1,0 +1,46 @@
+-- C9: record-lift translator.
+--
+-- Drives the two stdlib/translate_record.ev claims and prints their
+-- SMT-LIB-text outputs:
+--
+--   RecordCtorSmtlib("IVec2", ⟨EInt(1), EInt(2)⟩)
+--     → "(IVec2 1 2)"
+--
+--   RecordEqSmtlib("a", "b",
+--                  ⟨RField("x","Int"), RField("y","Int")⟩)
+--     → "(and (= (x a) (x b)) (= (y a) (y b)))"
+--
+-- Mirrors translate/exprs/record_lift.rs's two main branches:
+--   * Expr::Call(type_name, args)  → constructor application
+--   * Bool::and over componentwise (= …) clauses
+--
+-- expect: stdout = "ctor=(IVec2 1 2)"
+-- expect: stdout = "eq=(and (= (x a) (x b)) (= (y a) (y b)))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_record.ev"
+
+claim main
+    -- ── Literal constructor: IVec2(1, 2) ─────────────────────────
+    ctor_args ∈ ExprList = ELCons(EInt(1), ELCons(EInt(2), ELNil))
+    ctor_str ∈ String
+    RecordCtorSmtlib(type_name ↦ "IVec2", args ↦ ctor_args, out ↦ ctor_str)
+
+    -- ── Componentwise =: a = b over IVec2{x, y} ──────────────────
+    fields ∈ RecordFieldList = RFLCons(RField("x", "Int"),
+                               RFLCons(RField("y", "Int"), RFLNil))
+    eq_str ∈ String
+    RecordEqSmtlib(lhs ↦ "a", rhs ↦ "b", fields ↦ fields, out ↦ eq_str)
+
+    -- ── Step counter ─────────────────────────────────────────────
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    label ∈ String = (step = 0 ? "ctor=" ++ ctor_str
+                                : "eq=" ++ eq_str)
+    done ∈ Bool = (step ≥ 1)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
