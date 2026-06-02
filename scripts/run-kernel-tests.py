@@ -76,6 +76,8 @@ def run_one(path: Path) -> tuple[bool, str]:
     # File-driven lexer fixture writes its input file.
     if path.name == "test_file_lexer.ev":
         Path("/tmp/evident_lex_input.txt").write_text("(7+3)\n")
+    if path.name == "test_multichar_ident.ev":
+        Path("/tmp/evident_multichar_input.txt").write_text("abc def\n")
 
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
