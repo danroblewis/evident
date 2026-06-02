@@ -156,18 +156,39 @@ Guidance, going forward:
 - **New state-carry of a bounded, typed collection → use a Seq**
   (`xs ∈ Seq(Rect)`), not a cons-list. It functionizes equally well
   and reads as a constraint model, not an imperative first/rest walk.
-- **Cons-lists remain acceptable for AST-traversal work stacks**,
-  where the `match Cons(head, rest)` destructuring is more ergonomic
-  than index/`#`-arithmetic over a Seq, and the bound is the AST node
-  count. Task #13's `WorkItem`/`WorkList` is the worked example.
-- **Still out of scope (stays on Z3):** symbolic-length /
-  symbolic-index Seqs, and Seqs *carried across ticks* as state (a
-  Seq isn't a primitive state field, so only its determined
-  recomposition each tick functionizes — not a model-carried Seq
-  value). Those fall through to the solver, correctly.
+- **A `Seq(T)` now CARRIES as state across ticks** (task #21, second
+  run). The array+len encoding carries through bootstrap
+  `discover_state_fields`/`render_prev_state_decl` and kernel
+  `read_seq_var`/`emit_state_pin`; the carry-assignment lowers via
+  `translate_seq_value` (whole-array equality + a symbolic `__len`).
+  Worked example: `tests/kernel/test_seq_carry.ev` (a `Seq(Int)` LIFO
+  stack: append `++ ⟨v⟩`, drop-last `seq_init`, index-from-end). This
+  supersedes the old "a Seq cannot carry" note the FTI headers and
+  `blocked-cons-to-seq-sweep.md` recorded.
+- **But cons-lists remain the shape for push-heavy AST work stacks**,
+  for a *performance* reason, not just functionizer ergonomics: a
+  carried `Seq(WorkItem)` whose push is `rest ++ ⟨…⟩` lowers to a
+  symbolic-index array store-chain + whole-array extensional equality,
+  which Z3 solves ~250× slower than the equivalent algebraic-datatype
+  `WLCons(…, rest)`. The output is byte-identical but the per-tick
+  solve regresses past the 2× gate. Until a cons-cell-backed `Seq`
+  lowering (Seq surface, `__SeqOf_T` datatype internal, front-pop) or
+  functionizer support for symbolic-index arrays lands, AST work-stacks
+  (`WorkItem`/`WorkList`) and the FTI `IntStack`/`IntQueue` keep their
+  cons-lists. Full finding + the fix path:
+  `docs/plans/blocked-cons-to-seq-perf.md`.
+- **Cheap vs costly Seq state:** append-light / streaming Seq state
+  (push at the end, single drop per tick) is cheap on Z3 and is the
+  preferred carry shape; multi-item symbolic-index pushes are the
+  costly shape to avoid for now.
+- **Still opaque to the functionizer (stays on Z3):** symbolic-length /
+  symbolic-index Seqs (a carried Seq's per-tick value is one) — they
+  fall through to the solver, which is why the push-heavy work-stack
+  regresses rather than functionizing.
 
 The cons→Seq sweep of existing compiler code is tracked separately;
-see `docs/plans/ideas.md` §"Replace Cons-lists with Seqs".
+see `docs/plans/ideas.md` §"Replace Cons-lists with Seqs" and
+`docs/plans/blocked-cons-to-seq-perf.md`.
 
 ## Empty `effects` Seq quirk
 
