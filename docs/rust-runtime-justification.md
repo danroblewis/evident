@@ -1,7 +1,26 @@
 # Rust runtime — file-by-file justification
 
-Branch: `rust-shrink-justify-2` (off `rust-runtime-shrink`).
+Branch: `rust-runtime-shrink`.
 Starting size: **18,666 lines** across **94 `.rs` files** in `runtime/src/`.
+
+## STATUS — EXECUTED
+
+This audit was executed end-to-end (see commits `8929f27`, `7fe6d98`,
+`fb2eb74`). Final size: **9,787 lines across 56 files**, a 47.6%
+reduction from the starting point. All REMOVE-category files are
+gone, REWORK files were either trimmed or removed where the role
+no longer survived in the minimal runtime, and the projected ~8,500
+target is within 15% (the residual is in three KEEP files that
+contain genuinely needed language-semantics code:
+`translate/extract.rs` 489 LOC, `translate/exprs/seq_eq.rs` 485,
+and `runtime/register_enums.rs` 420 — further shrink there would
+require cutting language features, out of scope).
+
+CLI is one subcommand (`evident sample <file> [<claim>]`); test
+suite is 131 conformance + 146 lang-test claims, all green.
+
+The remainder of this document is the original per-file plan;
+useful as reference for what each surviving file does.
 
 ## Framing
 
