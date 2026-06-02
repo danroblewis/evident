@@ -1,3 +1,35 @@
+# FIXED (2026-06-02, commit cd41198)
+
+The kernel String state-carry bug below is **fixed**. Root cause: the
+per-tick re-assert wrote carried String values into the SMT-LIB pin literal
+as **raw UTF-8 bytes**, and Z3's SMT-LIB parser reads a string literal
+byte-by-byte — so a multi-byte codepoint like `∈` (`\u{2208}`, UTF-8 E2 88 88)
+parsed as **three** separate Z3 characters. The read-back (`Z3_get_string` +
+`unescape_z3`) then re-encoded those as wider codepoints, and the next tick's
+pin re-expanded them: `#input` grew 5 → 8 → 14 → 26 → 50 each tick (option 1
+in "Concrete next steps" below, the root-cause fix).
+
+The fix routes every kernel-emitted SMT-LIB string literal (the `Sv::Str`
+state pin and the `Res::Str`/`Res::Error` `last_results` pins) through a new
+`z3_string_literal` in `kernel/src/tick.rs` that escapes non-ASCII codepoints
+as `\u{hex}` — mirroring bootstrap `translate::extract::escape_non_ascii` (the
+encode-side fix for sibling bug #16). The read side (`unescape_z3`) already
+reverses that escaping, so the carry now round-trips losslessly. After the
+fix, `#input` stays **3** for `a∈b` across every tick. Invariants #1 (parse
+once), #2 (pins stay equalities), #4 (no per-tick simplify) are all preserved.
+
+`compiler/compiler.ev`'s ReadFile path is unblocked — it reads the
+`∈`-containing source from disk and emits SMT-LIB byte-identical to the
+constant-input MVP. Regression fixtures: `tests/kernel/test_utf8_state_carry.ev`
+(asserts `#input` stays 3 over 5 ticks) and
+`tests/kernel/test_compiler_driver_readfile.ev` (the ReadFile driver, output
+byte-identical to `test_compiler_driver_mvp.ev`). `./test.sh` green in all
+three functionize modes.
+
+The original blocker write-up is retained below for the record.
+
+---
+
 # Blocked: compiler/compiler.ev file-reading path on multi-byte source
 
 **Status (2026-06-02):** The MVP compiler driver lands and the
