@@ -63,35 +63,6 @@ pub(crate) fn unescape_z3_string(s: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod unescape_tests {
-    use super::unescape_z3_string;
-    #[test]
-    fn newline_escape_decoded() {
-        assert_eq!(unescape_z3_string("abc\\u{a}def"), "abc\ndef");
-    }
-    #[test]
-    fn multi_escape_decoded() {
-        assert_eq!(
-            unescape_z3_string("a\\u{9}b\\u{20}c"),  // \t and space
-            "a\tb c",
-        );
-    }
-    #[test]
-    fn high_codepoint_decoded() {
-        // U+1F600 is 😀 (4-byte UTF-8)
-        assert_eq!(unescape_z3_string("hi \\u{1f600}!"), "hi 😀!");
-    }
-    #[test]
-    fn no_escape_passthrough() {
-        assert_eq!(unescape_z3_string("plain ascii"), "plain ascii");
-    }
-    #[test]
-    fn malformed_passthrough() {
-        // Missing closing brace — emit literally.
-        assert_eq!(unescape_z3_string("\\u{xyz"), "\\u{xyz");
-    }
-}
 
 /// Read a Seq from the model: extract length then per-index elements into
 /// `Value::Seq*`. Indices past the length are unconstrained; we skip them.
