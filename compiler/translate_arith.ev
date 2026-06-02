@@ -76,3 +76,89 @@ claim ArithExprSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
 
     ok = (is_binop ∧ is_arith ∧ lhs_ok ∧ rhs_ok)
     out = (ok ? "(" ++ op_str ++ " " ++ lhs_str ++ " " ++ rhs_str ++ ")" : "")
+
+-- ── Recursive arithmetic translation via a WorkItem work-stack ─────
+--
+-- ArithExprSmtlib above renders one level only: a binop whose operands
+-- are atoms. A real translator pass walks an arbitrary Expr tree and
+-- produces nested SMT-LIB like `(+ (* 1 2) 3)`. That walk is a
+-- depth-first traversal driven by a work-stack carried across FSM ticks
+-- (the test_ast_walker.ev pattern), where the stack interleaves
+-- "process this Expr" items with "emit this literal text" items so the
+-- structural `(`, ` `, `)` land in the right places between subtrees.
+--
+-- The work-stack uses parser.ev's `WorkItem = WIProcess(Expr) |
+-- WIEmit(String)` over a `WorkList` cons-list (head = top of stack).
+-- It is NOT the libc-backed Stack FTI: stdlib/fti/stack.ev is
+-- IntStack-valued (byte elements) and its honest legal-transition
+-- contract permits only noop / single-push / single-pop per tick — a
+-- binop expansion pops one item and pushes seven (net +6), a multi-push
+-- the FTI declares UNSAT. The cons-list datatype stack carries rich
+-- WorkItems and arbitrary per-tick reshaping, which is what AST
+-- traversal needs. (See the report / blocked note for the full finding.)
+--
+-- ArithTranslateStep is the per-tick transition. Given the popped head
+-- `head` and the remaining stack `rest`, it produces:
+--   * `emit`      — the text this tick contributes to the output accumulator
+--   * `new_stack` — the stack after this step (head replaced by its
+--                   expansion for a binop, else just `rest`)
+-- A binop `EBinOp(op, l, r)` expands to the seven items
+--   "(" op_str " " WIProcess(l) " " WIProcess(r) ")"
+-- pushed (head-first) onto `rest`, so a pre-order pop sequence emits
+-- the open paren and operator first, then recurses into each operand.
+claim ArithTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
+    is_emit ∈ Bool = (head matches WIEmit(_))
+    emit_lit ∈ String = match head
+        WIEmit(s) ⇒ s
+        _ ⇒ ""
+    proc_expr ∈ Expr = match head
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    is_int   ∈ Bool = (proc_expr matches EInt(_))
+    is_ident ∈ Bool = (proc_expr matches EIdent(_))
+    is_binop ∈ Bool = (proc_expr matches EBinOp(_, _, _))
+
+    int_val ∈ Int = match proc_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match proc_expr
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    op ∈ Op = match proc_expr
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs ∈ Expr = match proc_expr
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match proc_expr
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_div  ∈ Bool = (op matches OpDiv)
+    op_str ∈ String = (is_plus ? "+"
+        : is_sub ? "-"
+        : is_mul ? "*"
+        : is_div ? "div"
+        : "")
+
+    -- A WIEmit head contributes its literal; an atom contributes its
+    -- token; a binop contributes nothing this tick (its "(" arrives as a
+    -- pushed WIEmit on the next pop).
+    emit = (is_emit ? emit_lit
+        : is_int ? str_from_int(int_val)
+        : is_ident ? ident_val
+        : "")
+
+    expansion ∈ WorkList = WLCons(WIEmit("("),
+        WLCons(WIEmit(op_str),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(lhs),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(rhs),
+        WLCons(WIEmit(")"), rest)))))))
+
+    new_stack = (is_binop ? expansion : rest)
