@@ -359,7 +359,39 @@ unsafe fn decode_string_literal(ctx: Z3_context, ast: Z3_ast) -> Result<String, 
     if p.is_null() {
         return Err(format!("not a string literal: {}", ast_to_string(ctx, ast)));
     }
-    Ok(CStr::from_ptr(p).to_string_lossy().into_owned())
+    let raw = CStr::from_ptr(p).to_string_lossy().into_owned();
+    Ok(unescape_z3(&raw))
+}
+
+/// Z3 escapes non-ASCII bytes as `\u{NN}` in its string output (mirroring
+/// the runtime's encode-side z3_string fn). Reverse it here.
+fn unescape_z3(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' { out.push(c); continue; }
+        // Expect `\u{HEX}`
+        if chars.peek() == Some(&'u') {
+            chars.next();
+            if chars.peek() == Some(&'{') {
+                chars.next();
+                let mut hex = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if ch == '}' { chars.next(); break; }
+                    hex.push(ch);
+                    chars.next();
+                }
+                if let Ok(n) = u32::from_str_radix(&hex, 16) {
+                    if let Some(ch) = char::from_u32(n) {
+                        out.push(ch);
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Walk a `__SeqOf_LibArg` Datatype value (Cons-cell shape produced by the

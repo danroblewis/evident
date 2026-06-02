@@ -94,8 +94,14 @@ impl Parser {
                 let mut idx = 0usize;
                 loop {
                     let field_type = self.parse_enum_field_type(&v_name)?;
+                    // Accessor names are globally unique within a datatype, prefixed
+                    // by the variant name. SMT-LIB requires uniqueness; the kernel
+                    // path (`Z3_parse_smtlib2_string` after `evident emit`) rejects
+                    // duplicate accessor identifiers. Default `f<idx>` would collide
+                    // across variants (e.g. Println(String) and Print(String) both
+                    // declaring `f0 :: String`).
                     fields.push(crate::core::ast::EnumField {
-                        name: format!("f{}", idx),
+                        name: format!("{}__f{}", v_name, idx),
                         type_name: field_type,
                     });
                     idx += 1;

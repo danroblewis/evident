@@ -63,6 +63,11 @@ def run_one(path: Path) -> tuple[bool, str]:
     expected_stdout, expected_exit = parse_expectations(src)
     claim = guess_claim_name(src, path.stem)
 
+    # File-I/O fixture sets up its own input file.
+    if path.name == "test_file_io.ev":
+        Path("/tmp/evident_kernel_io_input.txt").write_text("file roundtrip\n")
+        Path("/tmp/evident_kernel_io_output.txt").unlink(missing_ok=True)
+
     with tempfile.NamedTemporaryFile(suffix=".smt2", mode="w", delete=False) as f:
         smt_path = f.name
 

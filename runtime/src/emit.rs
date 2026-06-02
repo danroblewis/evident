@@ -97,19 +97,28 @@ pub fn emit_kernel_smtlib(rt: &EvidentRuntime, claim_name: &str) -> Result<Strin
     );
 
     let body_smt = solver_to_smtlib(&cached.solver);
-    let body_smt = dedupe_datatype_accessors(&body_smt);
+    // (accessor renaming is now done at parse time; see parser/program.rs.
+    //  Z3_parse_smtlib2_string accepts the output verbatim.)
     let body_smt = ensure_is_first_tick_decl(&body_smt);
     let state_fields = discover_state_fields(&cached.env);
 
     // Z3's solver-to-string elides datatypes / vars that aren't
     // constrained. The Result enum + last_results array fall into that
-    // bucket in most programs (they're only USED on tick N+1 by the
-    // kernel's assertions). Hand-write them in the prelude.
-    let result_and_last_results = result_and_last_results_decls();
+    // bucket when the body doesn't reference last_results. Hand-write
+    // them in the prelude — but ONLY when the runtime didn't already
+    // produce them (programs that match on last_results trigger
+    // auto-generation; hand-write would duplicate).
+    let result_and_last_results = if body_smt.contains("(declare-datatypes ((Result") {
+        String::new()
+    } else {
+        result_and_last_results_decls()
+    };
 
-    // `_<name>` decls go AFTER the body so they can reference
-    // Datatype sorts (e.g. `_eff1 :: Effect`) the body declares.
+    // `_<name>` decls go AFTER the body so they can reference Datatype
+    // sorts (e.g. `_eff1 :: Effect`) the body declares. Skip names the
+    // body already declared (user wrote `_tick_count ∈ Int` explicitly).
     let prev_state_decls: String = state_fields.iter()
+        .filter(|(n, _)| !body_smt.contains(&format!("(declare-fun _{n} ")))
         .map(|(n, t)| format!("(declare-fun _{n} () {t})\n"))
         .collect();
 
@@ -490,6 +499,8 @@ fn discover_state_fields(env: &HashMap<String, crate::core::Var<'static>>) -> Ve
         if name == "effects" || name == "last_results" { continue; }
         if name.contains('.') { continue; }
         if name == "is_first_tick" { continue; }
+        // `_<name>` is the previous-tick value of <name>; not first-class state.
+        if name.starts_with('_') { continue; }
         let ty = match var {
             Var::IntVar(_)     => "Int",
             Var::BoolVar(_)    => "Bool",
