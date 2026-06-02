@@ -24,6 +24,7 @@ enum Token =
     RParen
     Comma
     Plus
+    Star
     Eq
     EofTok
     ErrTok(String)
