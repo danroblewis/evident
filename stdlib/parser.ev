@@ -15,12 +15,21 @@ import "stdlib/lexer.ev"
 -- precedence layer (see Precedence below) groups them into "high"
 -- (multiplicative) and "low" (additive) for the precedence-climbing
 -- parser FSM.
+--
+-- OpImpl is the logical `⇒` operator (lexer token: OpImplies). It
+-- carries CLAUDE.md composition mechanism #7 — guarded invocation
+-- `cond ⇒ ClaimName` parses as `EBinOp(OpImpl, cond, claim_call)`.
+-- It has the lowest precedence in the binop ladder (n = 0, same as
+-- Eq) — the Precedence claim below treats it as such. Wrapping a
+-- compound consequent in parens is a documented user idiom (see the
+-- "Boolean & precedence footguns" section in CLAUDE.md).
 enum Op =
     OpPlus
     OpMul
     OpEq
     OpSub
     OpDiv
+    OpImpl
 
 -- Quantifier variants (B8) carry the bound variable name, the
 -- range expression (the source to iterate over, e.g. `items`), and
@@ -158,15 +167,22 @@ claim TokenToOp
     is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
 
 -- ── Operator precedence (B1) ────────────────────────────────────
+-- OpImpl (`⇒`) sits at the bottom (n = 0) alongside Eq. CLAUDE.md
+-- documents `⇒` as binding tighter than `∧`/`∨` (which aren't in
+-- this binop set yet) but looser than `=` in the wider language —
+-- B10 only needs an AST shape, so we shelve `⇒` next to `=` and let
+-- a future precedence-ladder revision re-rank them.
 claim Precedence
     op ∈ Op
     n ∈ Int
-    is_mul ∈ Bool = (op matches OpMul)
-    is_div ∈ Bool = (op matches OpDiv)
-    is_add ∈ Bool = (op matches OpPlus)
-    is_sub ∈ Bool = (op matches OpSub)
-    is_eq  ∈ Bool = (op matches OpEq)
-    n = (is_mul ? 2 : is_div ? 2 : is_add ? 1 : is_sub ? 1 : is_eq ? 0 : 0)
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_div  ∈ Bool = (op matches OpDiv)
+    is_add  ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_eq   ∈ Bool = (op matches OpEq)
+    is_impl ∈ Bool = (op matches OpImpl)
+    n = (is_mul ? 2 : is_div ? 2 : is_add ? 1 : is_sub ? 1
+        : is_eq ? 0 : is_impl ? 0 : 0)
 
 -- ── Enum declaration AST (B6) ───────────────────────────────────
 enum EnumVariantDecl =
@@ -186,11 +202,41 @@ enum FrameList =
     FLNil
     FLCons(Expr, Op, FrameList)
 
--- ── BodyItem AST ────────────────────────────────────────────────
+-- ── Claim-argument AST (B10: composition mechanism #5) ──────────
+-- A claim-call argument is a `slot ↦ expr` pair. Slot is a String
+-- (the parameter name). For the zero-arg call form (mechanism #4,
+-- "names-match"), the ClaimArgList is just CANil — no explicit
+-- mapsto args. For mechanism #5, the list is one CACons per
+-- `slot ↦ value` pair on the call site.
 --
--- BIMembership(name, type_ref) — a `name ∈ Type` declaration,
--- mirroring the Rust parser's `BodyItem::Membership { name, type_name,
--- pins }` (runtime/src/core/ast.rs). The TypeRef payload carries the
+-- The Rust parser's call-site shape lives in
+-- runtime/src/parser/exprs.rs (parse_call_args) and lowers to
+-- ECall(name, Vec<(String, Expr)>) — this is the AST mirror.
+enum ClaimArg =
+    CArg(String, Expr)
+    CANoArg
+
+enum ClaimArgList =
+    CANil
+    CACons(ClaimArg, ClaimArgList)
+
+-- ── BodyItem AST (B4 + B7 + B10: composition mechanisms) ────────
+-- The seven composition mechanisms from CLAUDE.md, mapped to
+-- BodyItem variants (✓ = AST shape currently lands in the indicated
+-- sub-step; the deferred parse-FSM productions come later):
+--
+--   #1  `variable ∈ TypeName`             — BIMembership(name, type)   ✓ (B4)
+--   #2  `ClaimName` (bare body item)      — BIClaimCall(name, CANil)   ✓ (B10)
+--   #3  `..ClaimName`                     — BIPassthrough(name)         ✓ (B7)
+--   #4  Names-match composition           — BIClaimCall(name, CANil)   ✓ (B10)
+--   #5  `ClaimName(slot ↦ value)`         — BIClaimCall(name, args)    ✓ (B10)
+--   #6  `subclaim Name body…`             — BISubclaim(name, body)     ✓ (B10)
+--   #7  `cond ⇒ ClaimName`                — BIConstraint(EBinOp(OpImpl,…)) ✓ (B10)
+--
+-- BIMembership(name, type_ref) — a `name ∈ Type` declaration
+-- (mechanism #1), mirroring the Rust parser's
+-- `BodyItem::Membership { name, type_name, pins }`
+-- (runtime/src/core/ast.rs). The TypeRef payload carries the
 -- fully-rendered type-name string (built by the B3 accumulator —
 -- see TypeTokenText). Pins are NOT yet modeled here: the chained-
 -- membership desugaring (`0 ≤ x ∈ Int ≤ 100`) emits a BIMembership
@@ -198,11 +244,27 @@ enum FrameList =
 -- parser at runtime/src/parser/body_item.rs::try_parse_chained_membership
 -- already does. Named-pins (`x ∈ Type(slot ↦ val)`) are a B5/later
 -- extension.
+--
+-- BIClaimCall serves both mechanisms #2/#4 (when ClaimArgList is
+-- CANil) and #5 (when there are CACons cells). The parse-side
+-- discriminator is just "are there `slot ↦ value` tokens after the
+-- bare name?" — collapsed at parse time.
+--
+-- BISubclaim's body is a BodyItemList — mutually recursive with
+-- BodyItem to let nested subclaims contain further subclaims.
+-- The forward reference works the same way as the LL/Cons example
+-- in CLAUDE.md's "Enums" section.
 enum BodyItem =
     BIPassthrough(String)
     BIConstraint(Expr)
     BIMembership(String, TypeRef)
+    BIClaimCall(String, ClaimArgList)
+    BISubclaim(String, BodyItemList)
     BINoItem
+
+enum BodyItemList =
+    BILNil
+    BILCons(BodyItem, BodyItemList)
 
 -- ── Token recognizers ───────────────────────────────────────────
 claim IsDotDot
