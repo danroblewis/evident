@@ -1,0 +1,24 @@
+import "stdlib/kernel.ev"
+type Color
+    r ∈ Nat
+    g ∈ Nat
+    b ∈ Nat
+type Rect
+    x ∈ Int
+    y ∈ Int
+    w ∈ Nat
+    h ∈ Nat
+    color ∈ Color
+claim main
+    rect ∈ Rect
+    rect.x = 10
+    rect.y = 20
+    rect.w = 100
+    rect.h = 50
+    rect.color.r = 255
+    rect.color.g = 0
+    rect.color.b = 0
+    rects ∈ Seq(Rect)
+    rects = ⟨rect⟩
+    ok ∈ Bool = (rect.x = 10 ∧ rect.y = 20 ∧ rect.w = 100 ∧ rect.h = 50)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

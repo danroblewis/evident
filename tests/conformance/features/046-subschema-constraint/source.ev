@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+type Interval
+    lo ∈ Int
+    hi ∈ Int
+    lo < hi
+claim main
+    i ∈ Interval
+    i.lo = 0
+    i.hi = 10
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

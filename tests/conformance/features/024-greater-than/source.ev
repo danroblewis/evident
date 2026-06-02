@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+claim main
+    x ∈ Nat
+    x > 10
+    x < 20
+    x = 15
+    ok ∈ Bool = (x = 15)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

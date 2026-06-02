@@ -80,9 +80,18 @@ fi
 # ── Phase 3: conformance ─────────────────────────────────────
 if [ "$RUST_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
     phase "Phase 3: conformance (tests/conformance/)"
-    if pytest tests/conformance/ -q --tb=short 2>&1 | tee /tmp/evident-pytest.log ; then
-        counts=$(grep -E "[0-9]+ passed" /tmp/evident-pytest.log | tail -1)
-        ok "conformance: $counts"
+    # The legacy Python conformance tests have been migrated to
+    # tests/conformance/features/ (run in Phase 3b). Only conftest.py
+    # remains here, so pytest collects nothing (exit 5) until it too is
+    # removed in the final self-host wave. Treat "no tests collected" as
+    # a pass rather than a failure.
+    set +e
+    pytest tests/conformance/ -q --tb=short 2>&1 | tee /tmp/evident-pytest.log
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 5 ]; then
+        counts=$(grep -E "[0-9]+ passed" /tmp/evident-pytest.log | tail -1 || true)
+        ok "conformance: ${counts:-no Python tests (migrated to features/)}"
     else
         fail "conformance"; failures+=("conformance")
     fi

@@ -1,0 +1,5 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ String = "a.b.c"
+    ok ∈ Bool = (index_of(s, ".", 2) = 3)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

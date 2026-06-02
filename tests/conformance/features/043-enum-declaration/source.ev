@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+enum Color = Red | Green | Blue
+claim main
+    c ∈ Color
+    c = Red
+    ok ∈ Bool = (c = Red)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

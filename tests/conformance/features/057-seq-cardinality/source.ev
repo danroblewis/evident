@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ Seq(Int)
+    s = ⟨1, 2, 3, 4⟩
+    #s = 4
+    ok ∈ Bool = (#s = 4)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

@@ -1,0 +1,11 @@
+import "stdlib/kernel.ev"
+type Pair
+    fst ∈ Nat
+    snd ∈ Nat
+claim main
+    pairs ∈ Seq(Pair)
+    p0    ∈ Pair
+    p0.fst = 10
+    p0.snd = 20
+    pairs = ⟨p0⟩
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

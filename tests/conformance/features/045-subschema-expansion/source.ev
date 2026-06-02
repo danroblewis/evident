@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+type Point
+    x ∈ Int
+    y ∈ Int
+claim main
+    p ∈ Point
+    p.x = 3
+    p.y = 4
+    ok ∈ Bool = (p.x = 3 ∧ p.y = 4)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

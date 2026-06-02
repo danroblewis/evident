@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+type IVec2(x, y ∈ Int)
+type Sprite(pos ∈ IVec2)
+    offset_pos ∈ IVec2 = pos + IVec2(10, 20)
+claim main
+    s ∈ Sprite
+    s.pos.x = 5
+    s.pos.y = 7
+    s.offset_pos.x = 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

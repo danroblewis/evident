@@ -1,0 +1,4 @@
+import "stdlib/kernel.ev"
+claim main
+    ∃ x ∈ {1..10}: x > 5
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

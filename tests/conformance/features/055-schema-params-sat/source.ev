@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+claim main
+    n ∈ Nat
+    m ∈ Nat
+    n = 3
+    m = 7
+    n < m
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
