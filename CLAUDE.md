@@ -73,8 +73,9 @@ The script is the single source of truth for "are we there."
 | Tree                              | Status                          | What you may do                                                                                          |
 | --------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `bootstrap/`                      | **FROZEN — reference material** | Read. Delete (when the replacement is verified). Nothing else. No edits, no bug fixes, no cleanups.       |
-| `kernel/`                         | **FROZEN by default**           | Read. Edits require a written proposal in `docs/plans/` and explicit user approval per edit.              |
+| `kernel/`                         | **Active construction; freeze applies when complete** | Edit freely for capabilities the kernel must have (Z3 lifecycle, FFI dispatch, functionizer, trampoline). Do NOT add language-runtime features that belong in `compiler/` or `stdlib/`. When the project is DONE (`bootstrap/` deleted, compiler self-hosted), this becomes a hard freeze. |
 | `scripts/*.py`, `tests/**/*.py`   | **FROZEN — scheduled removal**  | Read. Delete (when replaced). No new lines, no new files. Replacements go in `scripts/*.sh` or `compiler/*.ev`. |
+| `legacy-python/`, `legacy-rust/`  | **Scratch reference**           | Read during work sessions. Delete when the ideas they contain are implemented in the actual code (or proven not needed). Not part of the final state.                       |
 | `scripts/*.sh`                    | **Transition-only growth**      | Only when Evident cannot yet express the glue. Mark with `# TODO: rewrite in Evident` header.            |
 | `compiler/*.ev`                   | **GROW — this is the work**     | The self-hosted compiler lives here.                                                                     |
 | `stdlib/*.ev`                     | **GROW — runtime library**      | Stable library code (Effect/Result enums, Build* sugar, combinatorics, toposort).                        |
