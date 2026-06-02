@@ -104,4 +104,79 @@ Seqs are the more constraint-native shape.
 if the cons-list pattern starts creating noticeable maintenance
 friction.
 
+## FTI honesty audit: rewrite Stack/Queue to actually use external memory
+
+**Source:** user, mid-session ~task #19.
+
+**The current FTI is anti-pattern stacked three ways:**
+
+1. The "Stack contents" live in Z3 via an `IntStack` cons-list
+   (`enum IntStack = SEmpty | SNode(Int, IntStack)`). The entire
+   structure is in the Z3 model on every tick, growing it.
+2. The `libc::malloc(1024)` the FTI emits is a **write-only
+   shadow**. Each push emits `memset(base+offset, value, 1)`,
+   but nothing in the FTI ever reads those bytes back. The libc
+   memory is decorative; it does no work for the program.
+3. The FTI never emits `free()`. Today this is masked because
+   processes exit and the OS reclaims memory, but a long-running
+   program creating and destroying Stack/Queue instances
+   accumulates them.
+
+**User rationale:**
+
+> *"Does it populate the entire queue/stack of Cons cells in Z3
+> solver memory? Because that would be an anti-pattern. Or does
+> it somehow use the FTI interface and LibCall's to leverage
+> external memory and keep the Z3 solver lean? I also notice we
+> call malloc but I never see us calling free, so do we have a
+> built-in memory leak here?"*
+
+Both observations are correct, plus the deeper problem (the libc
+memory not being the source of truth).
+
+**Honest FTI design** (what we'd want):
+
+- Z3 side carries only metadata: `base ∈ Int` (pointer), `depth ∈ Int`,
+  `top ∈ Int` (top-of-stack value pulled in via a per-tick read so
+  the FSM can dispatch).
+- Data lives in libc memory. Push = `memset(base+depth*8, value, 8)`.
+  Pop = reduce depth; optionally read the new top via libcall on
+  next tick.
+- Teardown phase emits `free(base)` when the FTI's host FSM enters
+  its terminal state.
+- This requires a per-tick `mem_load` primitive (which legacy-python
+  called `__mem__::mem_load_long` and we declined to add to the
+  kernel). To avoid kernel additions, an alternative is a
+  one-tick-latency libcall to a generic `int (*)(long)` reader
+  function we'd plant in libc — feasible with the existing libffi
+  surface.
+
+**Why defer:**
+
+- Touches multiple FTI implementations, the host-side test fixtures,
+  and probably the libffi sig grammar to support pointer-load
+  arguments. Real work.
+- The current FTI passes tests because the cons-list IS doing the
+  work; the libc shadow is harmless ceremony. So nothing is broken
+  user-visibly today.
+- Better done together with the cons→Seq sweep (the two share
+  motivation: get state out of Z3).
+
+**When to pick this up:** after `recompose_record_seqs` lands
+(task #19) and the cons→Seq sweep starts. The honest-FTI redesign
+naturally piggybacks: as we move cons-lists out of Z3, the FTI's
+"data in Z3" anti-pattern gets the same treatment.
+
+**Likely shape:**
+1. Add a generic `mem_load_long(base+offset) → long` via libffi
+   wrapper (no kernel change; pure FTI Build* sugar).
+2. Rewrite `stdlib/fti/stack.ev` and `stdlib/fti/queue.ev` to
+   keep `contents` out of the Z3 side; carry only `(base, depth, top)`.
+3. Add `BuildStackFree(eff)` to emit `LibCall("libc","free",base)`.
+4. Add a teardown-on-exit pattern (probably an `is_halting ∈ Bool`
+   the host sets to true on terminal tick, triggering the free).
+5. Update `tests/kernel/test_fti_stack.ev` and `test_fti_queue.ev`
+   to exercise free.
+6. Verify no regression.
+
 ## (Add more ideas here as they surface)
