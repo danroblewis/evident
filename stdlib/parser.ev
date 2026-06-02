@@ -46,22 +46,82 @@ enum WorkList =
     WLNil
     WLCons(WorkItem, WorkList)
 
--- ── Import statements (Phase B11) ──────────────────────────────
--- An `import "path"` line at the top of an Evident file mirrors
--- runtime/src/parser/program.rs's KwImport→StringLit production:
--- on KwImport the parser expects a StringLit and emits an
--- ImportPath carrying the literal's payload. Mirrors the Rust
--- `Program::imports: Vec<String>` slot — one ImportPath per line.
---
--- NoImport is the "head token wasn't KwImport" sentinel so the
--- parser FSM body can dispatch on `match head_tok` without an
--- extra Bool bypass.
--- BadImport carries an error message for the "KwImport not followed
--- by a StringLit" arm (mirrors program.rs's ParseError).
+-- ── Import statements (B11) ────────────────────────────────────
 enum ImportStmt =
     ImportPath(String)
     NoImport
     BadImport(String)
+
+-- ── Type references (B3) ───────────────────────────────────────
+-- The Rust parser carries types as opaque strings throughout the
+-- AST: `"Int"` for a bare type, `"Seq(Int)"` for a compound, and
+-- `"Edge<Rect>"` / `"Seq(Edge<Rect>)"` for generic instantiations
+-- and their nestings (see runtime/src/core/ast.rs::BodyItem::Membership).
+--
+-- Mirroring that decision, `TypeRef` is a single-variant enum whose
+-- payload is the fully-rendered type-name string. The Phase B3
+-- self-hosted parser builds this string token-by-token in an
+-- accumulator FSM (see tests/kernel/test_parser_types.ev).
+--
+-- TName(s) — the type name as a flat string. The accumulator handles
+-- balancing nested `(`/`)` and `<`/`>` so the string round-trips
+-- through later translator passes that key off the literal name.
+-- TNoType — sentinel for "no type yet" / placeholder initialisations
+-- (analogous to ENoExpr / WIEmit("") elsewhere in the parser).
+enum TypeRef =
+    TName(String)
+    TNoType
+
+-- ── Type-name token rendering ──────────────────────────────────
+-- Per-tick the type-parse FSM strips the head token off a TokenList
+-- and asks: "what string does this token contribute to the final
+-- type-name?" Mirrors the Rust parser's token→source-text mapping
+-- in runtime/src/parser/types.rs: Ident → its payload, LParen → "(",
+-- RParen → ")", Lt → "<", Gt → ">", Comma → ", ".
+--
+-- All other tokens (Newline, Indent, EofTok, …) terminate the
+-- type — the FSM treats them as the "done" signal and does not
+-- include them in the accumulated string.
+--
+-- The `is_type_tok` Bool is what the per-tick FSM consults to
+-- decide "consume this token + continue" vs "halt".
+
+claim TypeTokenText
+    t ∈ Token
+    s ∈ String
+    is_type_tok ∈ Bool
+    ident_str ∈ String = match t
+        Ident(n) ⇒ n
+        _ ⇒ ""
+    is_ident   ∈ Bool = (t matches Ident(_))
+    is_lparen  ∈ Bool = (t matches LParen)
+    is_rparen  ∈ Bool = (t matches RParen)
+    is_lt      ∈ Bool = (t matches Lt)
+    is_gt      ∈ Bool = (t matches Gt)
+    is_comma   ∈ Bool = (t matches Comma)
+    s = (is_ident  ? ident_str
+        : is_lparen ? "("
+        : is_rparen ? ")"
+        : is_lt     ? "<"
+        : is_gt     ? ">"
+        : is_comma  ? ", "
+        : "")
+    is_type_tok = (is_ident ∨ is_lparen ∨ is_rparen ∨ is_lt ∨ is_gt ∨ is_comma)
+
+-- ── Bracket-depth delta ───────────────────────────────────────
+-- The FSM tracks paren/angle nesting so it can recognise "back to
+-- depth 0" as the end of a generic / compound type. Open brackets
+-- (`(`, `<`) increment depth by 1; close brackets (`)`, `>`)
+-- decrement; everything else is 0. (Ident at depth 0 followed by
+-- anything other than `(` or `<` is the bare-type halt case — handled
+-- by the FSM itself, not by this claim.)
+
+claim BracketDelta
+    t ∈ Token
+    d ∈ Int
+    is_open  ∈ Bool = ((t matches LParen) ∨ (t matches Lt))
+    is_close ∈ Bool = ((t matches RParen) ∨ (t matches Gt))
+    d = (is_open ? 1 : (is_close ? 0 - 1 : 0))
 
 -- ── Token → Op classifier ───────────────────────────────────────
 -- For a parser that handles binop tokens, this gives the operator
