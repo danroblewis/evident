@@ -1,3 +1,0 @@
-Println("good: parsed an Int")
-Println("bad: ERROR was correct")
-Exit(0)

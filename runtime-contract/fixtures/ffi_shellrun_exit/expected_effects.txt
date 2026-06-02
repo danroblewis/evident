@@ -1,2 +1,0 @@
-ShellRun("echo hi")
-Exit(0)

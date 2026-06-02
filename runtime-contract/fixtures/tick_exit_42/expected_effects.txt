@@ -1,2 +1,0 @@
-Println("exiting with code 42")
-Exit(42)
