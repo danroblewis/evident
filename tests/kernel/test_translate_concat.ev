@@ -1,0 +1,57 @@
+-- C13: `++` Seq concat flattening.
+--
+-- Build the canonical 2-level nested-OpConcat shape
+--   EBinOp(OpConcat, EBinOp(OpConcat, EIdent("a"), EIdent("b")), EIdent("c"))
+-- (the AST mirror of `(a ++ b) ++ c`) and run it through
+-- `ConcatFlatten` to get a flat ExprList of length 3.
+--
+-- A work-stack FSM walks the resulting ExprList tick-by-tick and
+-- prints each element's identifier string, demonstrating the flat
+-- shape `[a, b, c]`. The pattern is the same as test_ast_walker.ev:
+-- an ExprList carried as Datatype state, head/tail per tick, halt
+-- on ELNil.
+--
+-- expect: stdout = "[flatten]"
+-- expect: stdout = "a"
+-- expect: stdout = "b"
+-- expect: stdout = "c"
+-- expect: stdout = "done"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+import "stdlib/translate_concat.ev"
+
+claim main
+    initial_expr ∈ Expr = EBinOp(OpConcat, EBinOp(OpConcat, EIdent("a"), EIdent("b")), EIdent("c"))
+
+    flat ∈ ExprList
+    ConcatFlatten(e ↦ initial_expr, out ↦ flat)
+
+    stack  ∈ ExprList
+    _stack ∈ ExprList
+
+    head_expr ∈ Expr = match _stack
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+
+    tail_stack ∈ ExprList = match _stack
+        ELCons(_, rest) ⇒ rest
+        ELNil ⇒ ELNil
+
+    is_empty ∈ Bool = match _stack
+        ELNil ⇒ true
+        _ ⇒ false
+
+    head_ident ∈ String = match head_expr
+        EIdent(s) ⇒ s
+        _ ⇒ "?"
+
+    stack = (is_first_tick ? flat : tail_stack)
+
+    label ∈ String = (is_first_tick ? "[flatten]" : (is_empty ? "done" : head_ident))
+
+    effects ∈ Seq(Effect) = (is_first_tick
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩
+        : (is_empty
+            ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+            : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩))
