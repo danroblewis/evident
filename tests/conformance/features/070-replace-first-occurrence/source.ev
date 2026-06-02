@@ -1,0 +1,6 @@
+import "stdlib/kernel.ev"
+claim main
+    t ∈ String = "Seq(T)"
+    out ∈ String = replace(t, "T", "Rect")
+    ok ∈ Bool = (out = "Seq(Rect)")
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

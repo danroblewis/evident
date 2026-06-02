@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+claim main
+    flag ∈ Bool
+    x ∈ Nat
+    flag = false
+    ¬flag ⇒ x = 99
+    ok ∈ Bool = (x = 99)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

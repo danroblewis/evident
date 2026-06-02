@@ -174,6 +174,52 @@ header tells the kernel which top-level fields are state, which is
 `effects`, which is `last_results`. That header convention is
 unchanged.
 
+## Functionizability over Z3-fast: the implementation-choice principle
+
+When choosing between two implementation shapes that are both
+correct, **prefer the shape that functionizes more cleanly** over
+the one that solves faster in Z3 today. The functionizer
+(macro-finder version, design at
+`docs/plans/functionizer-integration.md` once landed; reference
+under `legacy-{python,rust}/functionizer/`) is the post-load
+optimizer we trust. What's slow in Z3 today becomes a constant
+cost after functionization, *if the shape is right*.
+
+User framing:
+
+> *"The performance will change. Like using Cons cells instead of
+> other things. The questions the agents are asking are about
+> performance, not about correctness. We actually care about more
+> than correctness. For FSMs specifically, we care about how well
+> the Evident models can be turned into functions by our
+> functionizer, and we would choose our implementation details
+> based on what can be functionized."*
+
+Implications for current sessions:
+
+- **In-Evident cons-list state is preferred over FTI-backed
+  storage for bounded data**, because cons-lists functionize as
+  recursive function definitions (`define-fun-rec`) while
+  FTI-backed storage is opaque to the functionizer (it's a
+  pointer into C land). This reinforces the FTI-vs-cons-list
+  guidance above; see also task #13's discovery that
+  AST-traversal work stacks belong as cons-lists.
+- **Fixed-arity match arms beat variadic Seq operations** for
+  the same reason — the macro-finder can identify a fixed-arity
+  match as a function but Seq operations are opaque.
+- **Don't pick a pin mechanism based on Z3 solve speed alone.** A
+  pin mechanism that emits a simple equality is more functionizable
+  than one that does AST substitution; this is why task #12's
+  A-default (cached ASTs + simple pin assertions) is preferred
+  long-term, not just because it benchmarked faster on bodies <
+  256 KB.
+- (More implications to be added as the functionizer's specifics
+  inform them; this section is a living checklist.)
+
+When in doubt: **write the cons-list version, the fixed-arity
+match version, the simple-equality version**. The functionizer
+will collapse the cost; the Z3-clever version may not.
+
 ## Where these invariants are referenced
 
 - This file is required reading in `docs/briefings/foundation.md`

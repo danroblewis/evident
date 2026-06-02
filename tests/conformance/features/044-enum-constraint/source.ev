@@ -1,0 +1,9 @@
+import "stdlib/kernel.ev"
+enum Dir = North | South | East | West
+claim main
+    d ∈ Dir
+    d ≠ North
+    d ≠ South
+    d ≠ West
+    ok ∈ Bool = (d = East)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

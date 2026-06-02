@@ -1,0 +1,5 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ String = "Edge<Rect>"
+    ok ∈ Bool = (index_of(s, "<") = 4 ∧ index_of(s, ">") = 9 ∧ index_of(s, "@") = -1)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

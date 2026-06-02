@@ -1,0 +1,6 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ Seq(Int)
+    #s = 3
+    #s = 5
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

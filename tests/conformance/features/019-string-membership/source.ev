@@ -1,0 +1,6 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ String
+    s = "hello"
+    ok ∈ Bool = (s = "hello")
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+claim main
+    s ∈ String = "hello"
+    n ∈ Int = #s
+    m ∈ Int = str_len(s)
+    ok ∈ Bool = (n = 5 ∧ m = 5)
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩
