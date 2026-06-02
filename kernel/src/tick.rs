@@ -54,7 +54,7 @@ enum Mech {
 }
 
 #[derive(Debug, Clone)]
-enum Sv {
+pub enum Sv {
     Int(i64),
     Bool(bool),
     Str(String),
@@ -167,12 +167,82 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         None
     };
 
+    // Functionizer (task #18). After parse + pre-loop simplify, attempt to
+    // extract a native/JIT program for {state fields, effects}. `functionize`
+    // verifies its own output against a real Z3 solve on tick 0 and tick 1; on
+    // any mismatch (or an unsupported shape) it returns None and the kernel
+    // runs the existing Z3 path unchanged. Two env flags gate it:
+    //   EVIDENT_FUNCTIONIZE=0      → skip entirely (prior kernel behaviour).
+    //   EVIDENT_FUNCTIONIZE_JIT=0  → extract + interpret, but don't JIT.
+    let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE").ok().as_deref() != Some("0");
+    let jit_on = std::env::var("EVIDENT_FUNCTIONIZE_JIT").ok().as_deref() != Some("0");
+    let functionized = if functionize_on {
+        crate::functionize::functionize(ctx, &body, manifest, &decl_preamble, jit_on)
+    } else {
+        None
+    };
+    if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+        match &functionized {
+            Some(p) => eprintln!(
+                "[fz] functionized: {} steps ({} jit, {} interp), {} predicates",
+                p.steps.len(), p.jit_count, p.interp_count, p.predicates.len()),
+            None => eprintln!("[fz] not functionized — running Z3 path"),
+        }
+    }
+
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
 
     const TICK_LIMIT: usize = 100_000;
     for tick in 0..TICK_LIMIT {
+        // Functionizer fast path: evaluate the extracted program (native or
+        // JIT) for this tick and skip Z3 entirely. `run_program` returns None
+        // for any shape/predicate it can't honour this tick → fall through to
+        // the Z3 solve below. (`prev_results` is intentionally not threaded in:
+        // a body that reads `last_results` won't have verified, so it never
+        // reaches here.)
+        if let Some(prog) = &functionized {
+            let inputs = crate::functionize::build_inputs(is_first, &prev_state, manifest);
+            if let Some(run) = crate::functionize::run_program(ctx, prog, &inputs) {
+                let mut new_state: Vec<Sv> = Vec::with_capacity(manifest.state_fields.len());
+                let mut covered = true;
+                for (name, _) in &manifest.state_fields {
+                    match run.scalars.get(name) {
+                        Some(v) => new_state.push(v.clone()),
+                        None => { covered = false; break; }
+                    }
+                }
+                if covered {
+                    let mut exit_code: Option<u8> = None;
+                    let mut new_results: Vec<Res> = Vec::new();
+                    for eff in run.effects.iter().take(manifest.max_effects) {
+                        match dispatch_effect_sv(eff)? {
+                            EffectOutcome::Continue(r) => new_results.push(r),
+                            EffectOutcome::Exit(code) => { exit_code = Some(code); break; }
+                        }
+                    }
+                    if let Some(code) = exit_code {
+                        if let Some(s) = persistent_solver { Z3_solver_dec_ref(ctx, s); }
+                        Z3_del_context(ctx);
+                        return Ok(code);
+                    }
+                    let stuck = !is_first && prev_state.iter().zip(new_state.iter())
+                        .all(|(p, n)| matches!(p, Some(pv) if compare_sv(pv, n)));
+                    if stuck {
+                        eprintln!("kernel: stuck (state unchanged with no Exit emitted)");
+                        if let Some(s) = persistent_solver { Z3_solver_dec_ref(ctx, s); }
+                        Z3_del_context(ctx);
+                        return Ok(1);
+                    }
+                    prev_state = new_state.into_iter().map(Some).collect();
+                    prev_results = new_results;
+                    is_first = false;
+                    continue;
+                }
+            }
+            // run_program refused this tick → fall through to the Z3 path.
+        }
         // A: fresh solver re-asserting the cached simplified body (no parse),
         // so Z3 preprocesses the whole problem each tick. B: the persistent
         // solver, body already loaded once above.
@@ -757,6 +827,199 @@ fn compare_sv(a: &Sv, b: &Sv) -> bool {
         (Sv::Int(x),  Sv::Int(y))  => x == y,
         (Sv::Bool(x), Sv::Bool(y)) => x == y,
         (Sv::Str(x),  Sv::Str(y))  => x == y,
+        (Sv::Real(x), Sv::Real(y)) => x == y,
+        (Sv::Datatype(vx, fx), Sv::Datatype(vy, fy)) =>
+            vx == vy && fx.len() == fy.len()
+                && fx.iter().zip(fy.iter()).all(|(p, q)| compare_sv(p, q)),
         _ => false,
+    }
+}
+
+// ── Functionizer support surface (crate::functionize) ───────────
+
+pub(crate) unsafe fn decode_sym_pub(ctx: Z3_context, sym: Z3_symbol) -> String {
+    decode_sym(ctx, sym)
+}
+
+pub(crate) fn unescape_z3_pub(s: &str) -> String {
+    unescape_z3(s)
+}
+
+pub(crate) fn compare_sv_pub(a: &Sv, b: &Sv) -> bool {
+    compare_sv(a, b)
+}
+
+/// Read the `effects` Seq from a solved model as a `Vec<Sv>` (one decoded
+/// Datatype value per element). Used by the functionizer's setup-time
+/// verification (tick.rs's main loop dispatches effects straight off the
+/// model instead).
+pub(crate) unsafe fn read_effects_sv(ctx: Z3_context, model: Z3_model, manifest: &Manifest) -> Result<Vec<Sv>, String> {
+    let len = read_int_const(ctx, model, &format!("{}__len", manifest.effects_name)).unwrap_or(0);
+    let len = len.min(manifest.max_effects as i64).max(0) as usize;
+    let Some(effects_decl) = find_const_decl(ctx, model, &manifest.effects_name) else {
+        return Ok(Vec::new());
+    };
+    let effects_ast = Z3_mk_app(ctx, effects_decl, 0, ptr::null());
+    let int_sort = Z3_mk_int_sort(ctx);
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        let i_ast = Z3_mk_int64(ctx, i as i64, int_sort);
+        let select_ast = Z3_mk_select(ctx, effects_ast, i_ast);
+        let mut eval_out: Z3_ast = ptr::null_mut();
+        if !Z3_model_eval(ctx, model, select_ast, true, &mut eval_out) {
+            return Err(format!("model eval failed for effects[{i}]"));
+        }
+        out.push(decode_datatype_value(ctx, eval_out)?);
+    }
+    Ok(out)
+}
+
+/// One-shot fresh-solver solve for a single tick (mechanism-A shape), reading
+/// state + effects back as `Sv`. `last_results` is pinned empty — the
+/// functionizer's verification doesn't model cross-tick result carry, so a
+/// body that reads `last_results` will fail to verify and stay on Z3 (sound).
+/// Returns `Ok(None)` on UNSAT/UNKNOWN.
+pub(crate) unsafe fn solve_tick_sv(
+    ctx: Z3_context,
+    body: &[Z3_ast],
+    decl_preamble: &str,
+    manifest: &Manifest,
+    is_first: bool,
+    prev_state: &[Option<Sv>],
+) -> Result<Option<(Vec<Sv>, Vec<Sv>)>, String> {
+    let solver = Z3_mk_solver(ctx);
+    Z3_solver_inc_ref(ctx, solver);
+    for &a in body {
+        Z3_solver_assert(ctx, solver, a);
+    }
+    let mut pins = String::new();
+    pins.push_str(decl_preamble);
+    if !is_first {
+        for (idx, (name, _)) in manifest.state_fields.iter().enumerate() {
+            if let Some(v) = &prev_state[idx] {
+                pins.push_str(&format!("(assert (= _{name} {}))\n", v.smtlib()));
+            }
+        }
+    }
+    pins.push_str("(assert (= last_results__len 0))\n");
+    pins.push_str(if is_first { "(assert is_first_tick)\n" } else { "(assert (not is_first_tick))\n" });
+
+    let (pin_vec, pin_asts) = match parse_pins(ctx, &pins) {
+        Ok(x) => x,
+        Err(e) => {
+            Z3_solver_dec_ref(ctx, solver);
+            return Err(e);
+        }
+    };
+    for &a in &pin_asts {
+        Z3_solver_assert(ctx, solver, a);
+    }
+    let res = Z3_solver_check(ctx, solver);
+    Z3_ast_vector_dec_ref(ctx, pin_vec);
+    if res != Z3_L_TRUE {
+        Z3_solver_dec_ref(ctx, solver);
+        return Ok(None);
+    }
+    let model = Z3_solver_get_model(ctx, solver);
+    Z3_model_inc_ref(ctx, model);
+    let mut state = Vec::with_capacity(manifest.state_fields.len());
+    for (name, ty) in &manifest.state_fields {
+        state.push(read_state_var(ctx, model, name, ty)?);
+    }
+    let effects = read_effects_sv(ctx, model, manifest)?;
+    Z3_model_dec_ref(ctx, model);
+    Z3_solver_dec_ref(ctx, solver);
+    Ok(Some((state, effects)))
+}
+
+/// Dispatch a single effect given as a decoded `Sv::Datatype` (the
+/// functionizer fast path's effect representation). Mirrors `dispatch_effect`
+/// (which works off a Z3 `Z3_ast`); kept in lockstep with it.
+fn dispatch_effect_sv(eff: &Sv) -> Result<EffectOutcome, String> {
+    let Sv::Datatype(name, fields) = eff else {
+        return Err(format!("effect is not a datatype value: {eff:?}"));
+    };
+    match name.as_str() {
+        "Exit" => {
+            let code = match fields.first() {
+                Some(Sv::Int(n)) => (*n).clamp(0, 255) as u8,
+                _ => return Err("Exit payload not an int".to_string()),
+            };
+            Ok(EffectOutcome::Exit(code))
+        }
+        "ReadLine" => {
+            use std::io::BufRead;
+            let stdin = std::io::stdin();
+            let mut line = String::new();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) => Ok(EffectOutcome::Continue(Res::Eof)),
+                Ok(_) => {
+                    if line.ends_with('\n') { line.pop(); }
+                    if line.ends_with('\r') { line.pop(); }
+                    Ok(EffectOutcome::Continue(Res::Str(line)))
+                }
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("read_line: {e}")))),
+            }
+        }
+        "ReadFile" => {
+            let path = sv_str(fields.first())?;
+            match std::fs::read_to_string(&path) {
+                Ok(s) => Ok(EffectOutcome::Continue(Res::Str(s))),
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("read_file({path}): {e}")))),
+            }
+        }
+        "WriteFile" => {
+            let path = sv_str(fields.first())?;
+            let contents = sv_str(fields.get(1))?;
+            match std::fs::write(&path, contents) {
+                Ok(()) => Ok(EffectOutcome::Continue(Res::No)),
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("write_file({path}): {e}")))),
+            }
+        }
+        "LibCall" => {
+            let lib = sv_str(fields.first())?;
+            let func = sv_str(fields.get(1))?;
+            let args = decode_libargs_sv(fields.get(2))?;
+            match crate::libcall::call(&lib, &func, &args) {
+                Ok(ret) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}")))),
+            }
+        }
+        other => {
+            eprintln!("kernel: unknown effect variant `{other}`; skipping");
+            Ok(EffectOutcome::Continue(Res::Error(format!("unknown effect variant `{other}`"))))
+        }
+    }
+}
+
+fn sv_str(v: Option<&Sv>) -> Result<String, String> {
+    match v {
+        Some(Sv::Str(s)) => Ok(s.clone()),
+        other => Err(format!("expected String payload, got {other:?}")),
+    }
+}
+
+fn decode_libargs_sv(v: Option<&Sv>) -> Result<Vec<crate::libcall::LibArg>, String> {
+    use crate::libcall::LibArg;
+    let mut out = Vec::new();
+    let mut cur = v.cloned();
+    loop {
+        match cur {
+            Some(Sv::Datatype(ref name, ref fs)) if name == "__Empty_LibArg" => return Ok(out),
+            Some(Sv::Datatype(ref name, ref fs)) if name == "__Cell_LibArg" && fs.len() == 2 => {
+                let arg = match &fs[0] {
+                    Sv::Datatype(v, p) => match (v.as_str(), p.first()) {
+                        ("ArgInt", Some(Sv::Int(n))) => LibArg::Int(*n),
+                        ("ArgStr", Some(Sv::Str(s))) => LibArg::Str(s.clone()),
+                        ("ArgReal", Some(Sv::Real(r))) => LibArg::Real(*r),
+                        _ => return Err(format!("unknown LibArg variant {v}")),
+                    },
+                    other => return Err(format!("LibArg cell head not a datatype: {other:?}")),
+                };
+                out.push(arg);
+                cur = Some(fs[1].clone());
+            }
+            other => return Err(format!("unexpected LibArg seq node: {other:?}")),
+        }
     }
 }
