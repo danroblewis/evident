@@ -3,7 +3,7 @@
 #
 # Phases:
 #   1. Build the Rust binary (release).
-#   2. cargo test --release in runtime/.
+#   2. cargo test --release in bootstrap/runtime/.
 #   3. pytest tests/conformance/ — black-box CLI conformance.
 #   4. tests/lang_tests/*.ev — drive each via `evident sample --all --json`,
 #      assert sat_*/unsat_* prefixes.
@@ -53,8 +53,8 @@ failures=()
 
 # ── Phase 1: build ───────────────────────────────────────────
 if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
-    phase "Phase 1: build runtime + kernel (release)"
-    if (cd runtime && cargo build --release 2>&1 | tail -3) \
+    phase "Phase 1: build bootstrap runtime + kernel (release)"
+    if (cd bootstrap/runtime && cargo build --release 2>&1 | tail -3) \
        && (cd kernel && cargo build --release 2>&1 | tail -3); then
         ok "build"
     else
@@ -65,12 +65,12 @@ fi
 
 # ── Phase 2: cargo test ──────────────────────────────────────
 if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
-    phase "Phase 2: cargo test --release (runtime/ + kernel/)"
-    if (cd runtime && cargo test --release 2>&1 | tee /tmp/evident-cargo-test.log) \
+    phase "Phase 2: cargo test --release (bootstrap/runtime/ + kernel/)"
+    if (cd bootstrap/runtime && cargo test --release 2>&1 | tee /tmp/evident-cargo-test.log) \
        && (cd kernel  && cargo test --release 2>&1 | tee /tmp/evident-kernel-test.log) ; then
         passed_rt=$(grep "^test result" /tmp/evident-cargo-test.log  | awk '{p+=$4} END {print p+0}')
         passed_kn=$(grep "^test result" /tmp/evident-kernel-test.log | awk '{p+=$4} END {print p+0}')
-        ok "cargo test: $passed_rt runtime + $passed_kn kernel"
+        ok "cargo test: $passed_rt bootstrap + $passed_kn kernel"
     else
         fail "cargo test"; failures+=("cargo test")
     fi

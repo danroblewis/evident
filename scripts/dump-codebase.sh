@@ -5,7 +5,7 @@
 #
 # Usage:
 #   scripts/dump-codebase.sh [PATH...]           # dump given paths
-#   scripts/dump-codebase.sh                     # default: runtime/src
+#   scripts/dump-codebase.sh                     # default: bootstrap/runtime/src
 #   scripts/dump-codebase.sh -- runtime stdlib   # dump multiple roots
 #
 # Output: markdown to stdout. Each file becomes a `## <path>` heading
@@ -45,7 +45,7 @@ for e in $EXTS; do
 done
 
 if [ $# -eq 0 ]; then
-    PATHS=("runtime/src")
+    PATHS=("bootstrap/runtime/src")
 else
     PATHS=("$@")
 fi

@@ -16,10 +16,10 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
-# Default to the Rust binary built under runtime/target/release.
+# Default to the Rust binary built under bootstrap/runtime/target/release.
 # Override via EVIDENT_CMD env var if you want to test a different
 # binary or build profile.
-_DEFAULT_CMD = str(PROJECT_ROOT / 'runtime' / 'target' / 'release' / 'evident')
+_DEFAULT_CMD = str(PROJECT_ROOT / 'bootstrap' / 'runtime' / 'target' / 'release' / 'evident')
 EVIDENT_CMD = shlex.split(os.environ.get('EVIDENT_CMD', _DEFAULT_CMD))
 
 

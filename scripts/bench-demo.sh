@@ -23,7 +23,7 @@
 #   scripts/bench-demo.sh examples/test_21_mario/main.ev -s 30
 #       # exclude first 30 ticks (Mario's setup) from steady-state numbers
 
-EVIDENT=${EVIDENT:-./runtime/target/release/evident}
+EVIDENT=${EVIDENT:-./bootstrap/runtime/target/release/evident}
 RUNS=3
 START=1
 

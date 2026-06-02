@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EVIDENT = ROOT / "runtime/target/release/evident"
+EVIDENT = ROOT / "bootstrap/runtime/target/release/evident"
 KERNEL = ROOT / "kernel/target/release/kernel"
 CONSOLIDATED_FIXTURE = ROOT / "tests/kernel/test_consolidated_lexer.ev"
 CONSOLIDATED_INPUT_PATH = "/tmp/evident_consolidated_input.txt"

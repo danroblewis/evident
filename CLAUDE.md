@@ -9,35 +9,37 @@ in flight) belong in `docs/plans/`, not here.
 > form the working set:
 >
 > 1. **`docs/plans/completion-roadmap.md`** — the authoritative plan
->    from now to "runtime/ deleted." Phases, sub-steps, acceptance
+>    from now to "bootstrap/runtime/ deleted." Phases, sub-steps, acceptance
 >    criteria.
 > 2. **`docs/plans/NEXT.md`** — current handoff state, the four
 >    working FSM patterns, discovered language gaps + workarounds.
 > 3. **`docs/plans/iter-3-status.md`** — what each iteration so far
 >    demonstrated (history, not plan).
 
-## The end-goal invariant
+## The end-goal invariant — STATUS: ACHIEVED
 
-**The Rust runtime in `runtime/` is frozen in spirit. New work goes
-into Evident, not into Rust.**
+**The Rust compiler at `bootstrap/runtime/` is the bootstrap — used to
+build the initial `evident` binary on a new platform and frozen
+thereafter. The self-hosted Evident compiler under `stdlib/translate_*.ev`
+takes over for all forward work.**
 
-This is the project's north star. Today the Rust runtime is still
-the compiler; eventually it gets bootstrapped out and deleted. Every
-session should move toward that end. If you find yourself wanting to
-modify `runtime/src/`, stop and ask whether the same effect can be
-achieved in:
+Phase F (the runtime relocation) is complete:
+- `runtime/` was renamed to `bootstrap/runtime/` to mark its archeology
+  status. The build still produces the same `evident` binary; only the
+  path changed.
+- New work happens in `stdlib/*.ev` (Evident source) — see
+  `docs/plans/completion-roadmap.md` for the historical phase plan and
+  `docs/plans/phase-e-status.md` for the bootstrap acceptance state.
 
-1. `stdlib/*.ev` — Evident library code
+If you find yourself wanting to modify `bootstrap/runtime/src/`, stop
+and ask whether the same effect can be achieved in:
+
+1. `stdlib/*.ev` — Evident library code (translator passes live here)
 2. `kernel/src/` — the minimal native runtime (allowed but minimal)
 3. A new pass written in Evident, run by the kernel
 
-If none of those work, the missing capability is a *runtime-extension
-proposal*, not a casual change. Document it in `docs/plans/` and get
-the user's review before modifying `runtime/`.
-
-By the end of the project (see `docs/plans/completion-roadmap.md`),
-**zero changes to `runtime/`** is the expected steady state — the
-Rust runtime becomes bootstrap-only.
+Modifications to `bootstrap/runtime/` are now exceptional: they require
+a runtime-extension proposal in `docs/plans/` and explicit user review.
 
 ## What this project is
 
@@ -54,15 +56,18 @@ A program in Evident:
 ## Project structure
 
 ```
-runtime/     — Bootstrap Rust compiler (FROZEN — do not modify lightly)
-kernel/      — Trampoline + libffi runtime (Rust, stays Rust)
-stdlib/      — Evident library code (Effect enum, builders, …)
-tests/       — lang_tests/ + kernel/ + conformance/
-docs/        — Plans + status snapshots + design notes
-scripts/     — test runners + codebase-dump utilities
+bootstrap/runtime/ — Bootstrap Rust compiler (FROZEN; produces `evident`
+                    binary at bootstrap/runtime/target/release/evident)
+kernel/            — Trampoline + libffi runtime (Rust, stays Rust)
+stdlib/            — Evident library code (Effect enum, builders, +
+                    the self-hosted translator: translate_*.ev)
+tests/             — lang_tests/ + kernel/ + conformance/
+docs/              — Plans + status snapshots + design notes
+scripts/           — test runners + codebase-dump utilities
+                    (includes scripts/evident-self for the self-hosted CLI)
 ```
 
-### `runtime/`
+### `bootstrap/runtime/`
 
 **~10,500 LOC of Rust.** The bootstrap compiler. Reads `.ev` files,
 lexes/parses/translates to SMT-LIB or runs Z3 directly. Three
@@ -141,7 +146,7 @@ regularly:
 
 ```bash
 # Rust runtime LOC (target: trending toward 0; see roadmap for the plan)
-find runtime/src -name "*.rs" | xargs wc -l | tail -1
+find bootstrap/runtime/src -name "*.rs" | xargs wc -l | tail -1
 
 # Kernel LOC (target: ~600, stays stable forever)
 find kernel/src -name "*.rs" | xargs wc -l | tail -1
@@ -150,7 +155,7 @@ find kernel/src -name "*.rs" | xargs wc -l | tail -1
 find stdlib -name "*.ev" | xargs wc -l | tail -1
 
 # Token-equivalent for context budgeting:
-scripts/dump-codebase.sh runtime/src | wc -w   # words ≈ 0.75× tokens
+scripts/dump-codebase.sh bootstrap/runtime/src | wc -w   # words ≈ 0.75× tokens
 scripts/dump-codebase.sh kernel/src  | wc -w
 ```
 
@@ -495,7 +500,7 @@ state per the roadmap.
 you must…)
 
 - No new dependencies without justification.
-- Match the existing layout under `runtime/src/`.
+- Match the existing layout under `bootstrap/runtime/src/`.
 - Run `./test.sh` after every change.
 - Commit with a clear message naming the iter you're in.
 

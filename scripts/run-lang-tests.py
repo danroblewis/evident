@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BIN = ROOT / "runtime/target/release/evident"
+BIN = ROOT / "bootstrap/runtime/target/release/evident"
 LANG_TESTS = ROOT / "tests/lang_tests"
 
 

@@ -7,6 +7,6 @@ DYLD_LIBRARY_PATH = "/opt/homebrew/lib:/opt/anaconda3/lib/python3.13/site-packag
 # cc-wrapper.sh patches the binary post-link with install_name_tool
 # -change to rewrite "libz3.dylib" → absolute path. Without this the
 # binary fails at runtime (dyld can't find libz3 because its install
-# name has no @rpath/ prefix). See runtime/scripts/cc-wrapper.sh.
+# name has no @rpath/ prefix). See bootstrap/runtime/scripts/cc-wrapper.sh.
 [target.aarch64-apple-darwin]
-linker = "runtime/scripts/cc-wrapper.sh"
+linker = "bootstrap/runtime/scripts/cc-wrapper.sh"

@@ -33,7 +33,7 @@ set -e -o pipefail
 here() { cd "$(dirname "$0")/.." && pwd; }
 ROOT="$(here)"
 
-EVIDENT="${ROOT}/runtime/target/release/evident"
+EVIDENT="${ROOT}/bootstrap/runtime/target/release/evident"
 KERNEL="${ROOT}/kernel/target/release/kernel"
 
 FIXTURES=(

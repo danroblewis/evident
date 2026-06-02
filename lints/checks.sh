@@ -113,17 +113,17 @@ strip_py_comments() {
 check_no_library_specific_in_language_core() {
     # AP-001: forbidden tokens in language-core role files.
     local files=(
-        runtime/src/ast.rs
-        runtime/src/lexer.rs
-        runtime/src/parser.rs
-        runtime/src/pretty.rs
-        runtime/src/subscriptions.rs
-        runtime/src/runtime.rs
-        runtime/src/effect_loop.rs
-        runtime/src/effect_dispatch.rs
-        runtime/src/ffi.rs
+        bootstrap/runtime/src/ast.rs
+        bootstrap/runtime/src/lexer.rs
+        bootstrap/runtime/src/parser.rs
+        bootstrap/runtime/src/pretty.rs
+        bootstrap/runtime/src/subscriptions.rs
+        bootstrap/runtime/src/runtime.rs
+        bootstrap/runtime/src/effect_loop.rs
+        bootstrap/runtime/src/effect_dispatch.rs
+        bootstrap/runtime/src/ffi.rs
     )
-    while IFS= read -r f; do files+=("$f"); done < <(find runtime/src/translate -name '*.rs')
+    while IFS= read -r f; do files+=("$f"); done < <(find bootstrap/runtime/src/translate -name '*.rs')
 
     local pattern='SDL_|Sdl[A-Z][a-zA-Z]|\bGl[A-Z]|Glsl|Audio[A-Z]|\.dylib|\.framework/|/opt/homebrew/lib/|/usr/lib/lib'
     local violations=""
@@ -239,7 +239,7 @@ check_no_ignore_in_rust_tests() {
 check_no_solver_assert_in_declare() {
     # AP-009: declaration must not assert on the Solver — only
     # allocate Z3 constants. Asserting belongs in `inline`.
-    local f=runtime/src/translate/declare.rs
+    local f=bootstrap/runtime/src/translate/declare.rs
     [ -f "$f" ] || { report AP-009 pass "(file missing — skip)"; return; }
     local pattern='solver\.(assert|add)\b'
     local hits
@@ -258,7 +258,7 @@ check_no_solver_assert_in_declare() {
 check_no_z3_exprs_in_preprocess() {
     # AP-010: preprocess is an AST→AST rewrite stage. Z3
     # expression construction belongs in `exprs.rs`.
-    local f=runtime/src/translate/preprocess.rs
+    local f=bootstrap/runtime/src/translate/preprocess.rs
     [ -f "$f" ] || { report AP-010 pass "(file missing — skip)"; return; }
     local pattern='z3::ast::(Int|Bool|Real|String|Datatype)::(new_const|new|from_)'
     local hits
@@ -278,8 +278,8 @@ check_no_preprocess_exprs_cycle() {
     # AP-011: shared helpers between preprocess and exprs belong
     # in types.rs (the shared data leaf). Mutual imports are
     # forbidden — that's the historical cycle this rule guards.
-    local pre=runtime/src/translate/preprocess.rs
-    local exp=runtime/src/translate/exprs.rs
+    local pre=bootstrap/runtime/src/translate/preprocess.rs
+    local exp=bootstrap/runtime/src/translate/exprs.rs
     local violations=""
     if [ -f "$pre" ]; then
         local hits
@@ -313,7 +313,7 @@ check_no_specific_bridges_in_scheduler() {
     # AP-012: effect_loop.rs runs against a registry of bridges,
     # not against named struct types. Scheduler must not reach
     # past the abstraction.
-    local f=runtime/src/effect_loop.rs
+    local f=bootstrap/runtime/src/effect_loop.rs
     [ -f "$f" ] || { report AP-012 pass "(file missing — skip)"; return; }
     local pattern='event_sources::(FrameTimer|SigintSource|StdinSource|WallClockSource|FileWatcherSource|FileLineReader|OneShotShellSource|SdlWindowSource|GlProgramSource|GlContext)'
     local hits
@@ -334,17 +334,17 @@ check_no_package_paths_in_language_core() {
     # registry-layer concern. They must not appear in
     # language-core files.
     local files=(
-        runtime/src/ast.rs
-        runtime/src/lexer.rs
-        runtime/src/parser.rs
-        runtime/src/pretty.rs
-        runtime/src/subscriptions.rs
-        runtime/src/runtime.rs
-        runtime/src/effect_loop.rs
-        runtime/src/effect_dispatch.rs
-        runtime/src/ffi.rs
+        bootstrap/runtime/src/ast.rs
+        bootstrap/runtime/src/lexer.rs
+        bootstrap/runtime/src/parser.rs
+        bootstrap/runtime/src/pretty.rs
+        bootstrap/runtime/src/subscriptions.rs
+        bootstrap/runtime/src/runtime.rs
+        bootstrap/runtime/src/effect_loop.rs
+        bootstrap/runtime/src/effect_dispatch.rs
+        bootstrap/runtime/src/ffi.rs
     )
-    while IFS= read -r f; do files+=("$f"); done < <(find runtime/src/translate -name '*.rs')
+    while IFS= read -r f; do files+=("$f"); done < <(find bootstrap/runtime/src/translate -name '*.rs')
 
     local pattern='"(stdlib|packages)/[^"]*\.ev"'
     local violations=""
@@ -371,10 +371,10 @@ check_cmd_files_have_dispatch_arm() {
     # AP-014: each commands/X.rs (other than common/mod) must
     # declare `pub fn cmd_X` AND main.rs must dispatch the verb
     # form (kebab-case) to it.
-    local main_rs=runtime/src/main.rs
+    local main_rs=bootstrap/runtime/src/main.rs
     [ -f "$main_rs" ] || { report AP-014 fail "missing $main_rs"; return; }
     local violations=""
-    for f in runtime/src/commands/*.rs; do
+    for f in bootstrap/runtime/src/commands/*.rs; do
         [ -f "$f" ] || continue
         local base
         base=$(basename "$f" .rs)
@@ -402,7 +402,7 @@ check_pub_mod_has_external_use() {
     # AP-015: a `pub mod X` in lib.rs must have a corresponding
     # evident_runtime::X reference somewhere external (tests,
     # benches, or commands). Otherwise the `pub` is speculative.
-    local lib=runtime/src/lib.rs
+    local lib=bootstrap/runtime/src/lib.rs
     [ -f "$lib" ] || { report AP-015 fail "missing $lib"; return; }
     local violations=""
     # Extract `pub mod NAME;` from lib.rs (production code only).
@@ -417,9 +417,9 @@ check_pub_mod_has_external_use() {
         # `use evident_runtime::{..., <m>, ...}`.
         local pattern="evident_runtime::($m\b|\{[^}]*\b$m\b)"
         local hits
-        hits=$(grep -rEln "$pattern" runtime/tests/ runtime/benches/ runtime/src/commands/ 2>/dev/null || true)
+        hits=$(grep -rEln "$pattern" runtime/tests/ runtime/benches/ bootstrap/runtime/src/commands/ 2>/dev/null || true)
         if [ -z "$hits" ]; then
-            violations+="$lib: \`pub mod $m\` has no external consumer (searched runtime/tests, runtime/benches, runtime/src/commands)"$'\n'
+            violations+="$lib: \`pub mod $m\` has no external consumer (searched runtime/tests, runtime/benches, bootstrap/runtime/src/commands)"$'\n'
         fi
     done
     if [ -z "$violations" ]; then

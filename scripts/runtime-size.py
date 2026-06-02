@@ -2,7 +2,7 @@
 """Measure the size of the runtime implementation.
 
 One combined report over two bodies of source:
-  - Rust under runtime/src — every `*.rs` with embedded `#[cfg(test)]`
+  - Rust under bootstrap/runtime/src — every `*.rs` with embedded `#[cfg(test)]`
     blocks stripped out. The stripper is string-/comment-/char-literal-aware
     so braces inside string literals or comments don't fool it.
   - Evident under stdlib/passes — every `*.ev` self-hosted pass. Evident
@@ -26,7 +26,7 @@ import re
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUST_ROOT = os.path.join(REPO_ROOT, "runtime/src")
+RUST_ROOT = os.path.join(REPO_ROOT, "bootstrap/runtime/src")
 EVIDENT_ROOT = os.path.join(REPO_ROOT, "stdlib/passes")
 
 CFG_TEST = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]")
@@ -357,7 +357,7 @@ def main() -> int:
     ev_agg, ev_rows = collect(EVIDENT_ROOT, ".ev", classify_evident, strip_tests=False)
     rows = rust_rows + ev_rows
 
-    print("Runtime size — Rust runtime/src + Evident stdlib/passes\n")
+    print("Runtime size — Rust bootstrap/runtime/src + Evident stdlib/passes\n")
     print_summary(rust_agg, ev_agg)
     print()
     print_histogram([r[1] for r in rows])

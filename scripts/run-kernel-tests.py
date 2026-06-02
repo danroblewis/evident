@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EVIDENT = ROOT / "runtime/target/release/evident"
+EVIDENT = ROOT / "bootstrap/runtime/target/release/evident"
 KERNEL  = ROOT / "kernel/target/release/kernel"
 TESTS   = ROOT / "tests/kernel"
 
