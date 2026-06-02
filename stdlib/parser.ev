@@ -75,6 +75,20 @@ claim TokenToOp
     o = (is_plus ? OpPlus : (is_star ? OpMul : (is_eq ? OpEq : OpPlus)))
     is_binop = (is_plus ∨ is_star ∨ is_eq)
 
+-- ── Enum declaration AST (Phase B6) ─────────────────────────────
+
+enum EnumVariantDecl =
+    EVDecl(String)
+    EVNoVariant
+
+enum EnumVariantList =
+    EVNil
+    EVCons(EnumVariantDecl, EnumVariantList)
+
+enum EnumDeclAst =
+    EnumD(String, EnumVariantList)
+    ENoEnum
+
 -- ── Paren-depth frame stack (Phase B2) ──────────────────────────
 enum FrameList =
     FLNil

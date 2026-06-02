@@ -75,6 +75,9 @@ enum Token =
     Lt
     Gt
     Dot
+    -- Enum-variant separator `|`. The Rust lexer emits this for enum
+    -- declarations like `enum Color = Red | Green | Blue`.
+    Pipe
     -- Layout tokens (Phase A6). The Rust lexer at
     -- runtime/src/lexer.rs models indentation with TWO variants:
     --   * Newline    — emitted at every '\n' outside a paren group
@@ -174,6 +177,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "<" ? Lt
         : c = ">" ? Gt
         : c = "." ? Dot
+        : c = "|" ? Pipe
         : c = "∈" ? OpIn
         : c = "⇒" ? OpImplies
         : c = "⟨" ? OpSeqOpen
@@ -189,7 +193,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "∃" ? OpExists
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
-                ∨ c = "<" ∨ c = ">" ∨ c = "."
+                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|"
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
                 ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
