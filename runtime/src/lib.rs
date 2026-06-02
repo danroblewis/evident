@@ -1,13 +1,7 @@
 //! Evident runtime — minimal Rust core (~11K lines target, side-effects via FFI).
 
 mod core;
-pub mod decompose;
 pub mod effect_dispatch;
-pub mod z3_eval;
-pub mod functionize;
-// Internal: translate pass uses this via `crate::fsm_unroll`; not public API.
-mod fsm_unroll;
-mod value_builders;
 pub mod effect_loop;
 mod ffi;
 mod lexer;

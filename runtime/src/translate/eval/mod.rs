@@ -16,16 +16,12 @@ mod solver;
 mod decode;
 mod cached;
 mod extra;
-mod core;
-mod decompose;
 
 use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use decode::extract_enum_value;
 
-pub use cached::{build_cache, run_cached, sample_cached_inner};
+pub use cached::{build_cache, run_cached};
 pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
-pub use self::core::evaluate_with_core;
-pub use decompose::{analyze_decomposition, classify_components, ClassifiedComponent};
 pub(crate) use decode::extract_binding;
 
 // Preserve pub(super) visibility for translate::extract's composite-Seq path.

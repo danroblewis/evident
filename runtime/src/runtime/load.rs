@@ -96,13 +96,9 @@ impl EvidentRuntime {
         self.lower_fsm_application()?;
         // Validate embedded-FSM (`RunFsm`) targets after the full batch is registered.
         self.validate_run_targets()?;
-        // A reload can change schema bodies or the functionizer; flush all caches.
+        // A reload can change schema bodies; flush caches.
         self.cache.borrow_mut().clear();
         self.solve_history.borrow_mut().clear();
-        self.functionize_z3_cache.borrow_mut().clear();
-        self.fn_cache.borrow_mut().clear();
-        self.slow_path_cache.borrow_mut().clear();
-        self.value_cache.borrow_mut().clear();
         // DatatypeSort entries reference body shape; flush so we rebuild on first use.
         // Note: leaked DatatypeSorts live forever in Z3; re-declaring same name will fail.
         self.datatypes.borrow_mut().clear();

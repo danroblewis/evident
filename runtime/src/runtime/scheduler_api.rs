@@ -41,66 +41,10 @@ impl EvidentRuntime {
     ) -> Result<QueryResult, RuntimeError> {
         let base = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
-        // Tier-3: if the body has `run(F, init)`, drive it to a final value before solving.
-        // resolve_runs returns None for F itself (no `run`) so there's no mutual recursion.
         let resolved = self.resolve_runs(base, given)?;
         let schema = resolved.as_ref().unwrap_or(base);
-        // JIT fires even with non-empty pins: Datatype pin is redundant with `current_state_v` in given.
-        // Skip for `run`-containing bodies: cache keys on given-KEYS, but `run` output depends on VALUES.
-        let had_run = resolved.is_some();
-        let functionize_on = !had_run
-            && std::env::var("EVIDENT_FUNCTIONIZE").map(|s| s != "0").unwrap_or(true);
-        if functionize_on {
-            if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz/z3] HIT (scheduler) {}", claim_name);
-                }
-                return Ok(result);
-            }
-        }
         let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
             .and_then(|s| s.parse().ok()).unwrap_or(2);
-
-        // Slow-path cache: reuse CachedSchema when JIT refused; push→assert→check→pop per tick.
-        // Cuts per-tick cost from ~14ms (fresh translation) to ~2-3ms.
-        let mut given_keys: Vec<String> = given.keys().cloned().collect();
-        given_keys.sort();
-        let cache_key = (claim_name.to_string(), given_keys);
-        let cached_lookup = if had_run { None }
-            else { self.slow_path_cache.borrow().get(&cache_key).cloned() };
-        if let Some(cached) = cached_lookup {
-            if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
-                eprintln!("[slow/cached] {claim_name}");
-            }
-            use z3::ast::Ast;
-            cached.solver.push();
-            // Assert typed Datatype pins (state).
-            for (var_name, value) in pins {
-                if let Some(crate::translate::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
-                    cached.solver.assert(&ast._eq(value));
-                }
-            }
-            // Assert Value::Enum givens: run_cached skips these (lifetime-parametric);
-            // we have 'static context so we can re-encode and assert here.
-            for (name, value) in given {
-                if let (Some(crate::translate::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
-                    (cached.env.get(name), value)
-                {
-                    if let Some(dt) = crate::translate::value_enum_to_datatype(
-                        value, self.z3_ctx, &self.enums)
-                    {
-                        cached.solver.assert(&ast._eq(&dt));
-                    }
-                }
-            }
-            let r = crate::translate::run_cached(&cached, given, self.z3_ctx, Some(&self.enums));
-            cached.solver.pop(1);
-            return Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings });
-        }
-
-        if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
-            eprintln!("[slow] {claim_name}: dispatching to evaluate_with_extra_assertions");
-        }
         let r = crate::translate::evaluate_with_extra_assertions(
             schema,
             given,

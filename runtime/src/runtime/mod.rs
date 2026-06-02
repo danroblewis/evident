@@ -42,20 +42,6 @@ pub struct EvidentRuntime {
     /// Per-schema solver cache. Entry pairs (CachedSchema, StructuralSignature); rebuilt
     /// only when structural givens (quantifier bounds) change, not on value-only changes.
     pub(super) cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
-    /// Per-(claim, given-keys): extracted Z3Program fed to the Cranelift JIT.
-    pub(super) functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
-                                          Option<crate::core::Z3Program<'static>>>>,
-    /// Pluggable functionizer (default: Cranelift JIT); swap via `with_functionizer`.
-    pub(super) functionizer: Box<dyn crate::core::Functionizer>,
-    /// Per-(claim, given-keys): compiled plan (per-component JIT + residual Z3 solver),
-    /// or None when the claim can't be functionized.
-    pub(super) fn_cache: RefCell<HashMap<(String, Vec<String>),
-                              Option<std::rc::Rc<query::ClaimPlan>>>>,
-    /// Slow-path cache: CachedSchema reused when JIT refuses; avoids per-tick body rebuild.
-    pub(super) slow_path_cache: RefCell<HashMap<(String, Vec<String>),
-                                     std::rc::Rc<crate::core::CachedSchema<'static>>>>,
-    /// Value cache keyed on given VALUES (not keys); skips JIT call on byte-identical inputs.
-    pub(super) value_cache: RefCell<HashMap<String, query::ClaimValueCache>>,
     /// Aggregate functionizer + JIT stats; enable trace via `EVIDENT_FUNCTIONIZE_STATS=1`.
     pub(super) functionize_stats: RefCell<FunctionizeStats>,
     /// Count of cache rebuilds from structural-signature mismatches; useful for perf debug.
@@ -82,16 +68,9 @@ pub struct EvidentRuntime {
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
 
 impl EvidentRuntime {
-    /// Create a runtime with the default functionizer (Cranelift JIT).
     pub fn new() -> Self {
-        Self::with_functionizer(crate::functionize::default())
-    }
-
-    /// Create a runtime with a specific functionizer strategy.
-    pub fn with_functionizer(functionizer: Box<dyn crate::core::Functionizer>) -> Self {
         // Serialized through the global Z3-setup lock: concurrent first-context
-        // creation (libtest launching N runtime-building threads) races Z3's
-        // global init → abnormal aborts / silently-wrong answers. See z3_ctx.
+        // creation races Z3's global init. See z3_ctx.
         let ctx: &'static Context = crate::z3_ctx::leaked_context();
         EvidentRuntime {
             program: Program::default(),
@@ -99,11 +78,6 @@ impl EvidentRuntime {
             schema_order: Vec::new(),
             z3_ctx: ctx,
             cache: RefCell::new(HashMap::new()),
-            functionize_z3_cache: RefCell::new(HashMap::new()),
-            functionizer,
-            fn_cache: RefCell::new(HashMap::new()),
-            slow_path_cache: RefCell::new(HashMap::new()),
-            value_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
