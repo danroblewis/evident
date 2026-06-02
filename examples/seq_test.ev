@@ -1,10 +1,10 @@
-; M7 — sequence idioms.
-;
-; A claim about a Seq(Int): its length is 3, its head is 1, its last
-; is 3. The solver finds a satisfying sequence; the middle element is
-; free.
+-- M7 — sequence idioms.
+--
+-- A claim about a Seq(Int): its length is 3, its head is 1, its last
+-- is 3. The solver finds a satisfying sequence; the middle element is
+-- free.
 
-claim seq_three()
+claim seq_three
     s ∈ Seq(Int)
     len(s) = 3
     head(s) = 1

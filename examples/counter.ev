@@ -1,6 +1,6 @@
-; A bounded counter. `_count` is the previous tick's value (state-pair
-; convention), `count` is the new value. The transition `count = _count + 1`
-; advances each tick; the bound `count ≤ 5` keeps it from running forever.
+-- A bounded counter. `_count` is the previous tick's value (state-pair
+-- convention), `count` is the new value. The transition `count = _count + 1`
+-- advances each tick; the bound `count ≤ 5` keeps it from running forever.
 
 fsm Counter(count ∈ {0..5})
     count = _count + 1

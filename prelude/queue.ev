@@ -1,87 +1,45 @@
-; prelude/queue.ev — Queue FTI (M4).
-;
-; A FIFO Queue of T-values, with the bulk of the elements held in
-; external (malloc'd) memory. The Queue's Z3-side view is the pair
-; (base, contents): `base` is the externally-allocated region start,
-; and `contents` is the logical Seq of element values (head at index
-; 0, tail at the end). The composing fsm constrains `contents`
-; relationally — `q.contents = _q.contents ++ [42]` to enqueue,
-; `q.contents = tail(_q.contents)` to dequeue, `q.contents =
-; _q.contents` for no-op. The FTI detects the transition shape from
-; the (_contents, contents) state pair and fires the libcalls that
-; keep external memory in sync.
-;
-; There is NO command port, NO method dispatch, NO `q.enqueue(42)`.
-; v1 supports exactly three transition shapes: no-op, enqueue, and
-; dequeue. Anything else is asserted UNSAT (per
-; docs/fti-composition.md Answer 2) — the FTI's body says contents
-; must equal one of the three supported relations to _contents, and
-; Z3 rejects everything else.
-;
-; v1 restrictions:
-;   - element type T must be Int (libcall path stores 8 bytes per cell).
-;   - capacity is fixed at 1024 cells (8192 bytes) at allocation time.
+-- prelude/queue.ev — Queue FTI (M4).
+--
+-- A FIFO Queue of T-values, with the bulk of the elements held in
+-- external (malloc'd) memory. The Queue's Z3-side view is the pair
+-- (base, contents): `base` is the externally-allocated region start,
+-- and `contents` is the logical Seq of element values (head at index
+-- 0, tail at the end). The composing fsm constrains `contents`
+-- relationally — `q.contents = _q.contents ++ ⟨42⟩` to enqueue,
+-- `q.contents = tail(_q.contents)` to dequeue, `q.contents =
+-- _q.contents` for no-op.
+--
+-- v1 restrictions:
+--   - element type T must be Int (libcall path stores 8 bytes per cell).
+--   - capacity is fixed at 1024 cells (8192 bytes) at allocation time.
 
 fti Queue(T)
-    base ∈ Int               ; externally-allocated region start
-    contents ∈ Seq(T)        ; logical queue contents (head at index 0)
-    effects ∈ Seq(Effect)    ; this FTI's own effects channel
+    base ∈ Int               -- externally-allocated region start
+    contents ∈ Seq(T)        -- logical queue contents (head at index 0)
+    effects ∈ Seq(Effect)    -- this FTI's own effects channel
 
-    ; The runtime auto-discovers any const named `effects` or `*_effects`
-    ; as an effects channel. When this FTI is inlined as host variable
-    ; `q`, the `effects` binding becomes `q__effects` — a separate
-    ; channel from the host fsm's `effects`. Both fire independently.
-
-    ; On tick 1, the runtime pins every `_X` to its sort's zero —
-    ; for `_contents ∈ Seq(T)` that is the empty seq. The FTI body
-    ; doesn't have to assert this. Subsequent ticks see the just-solved
-    ; `contents` carried forward as `_contents`.
-
-    ; `base` is libcall-managed: on init, the runtime pins `q__base` to
-    ; the alloc'd address via the alloc effect's ok_dest. After that
-    ; tick, `given["q__base"]` keeps the alloc_addr value, which the
-    ; runtime re-pins each subsequent tick. We do NOT assert anything
-    ; on `_base` — the libcall side already constrains `base` to the
-    ; correct value.
-
-    ; Supported-transition assertion. The FTI honestly declares which
-    ; transitions it knows how to materialize. Any other constraint
-    ; from the host on `contents` makes the combined body UNSAT, which
-    ; the runtime sees as a clean halt with an error.
-    ;
-    ; Three supported shapes:
-    ;   contents = _contents                        ; no-op
-    ;   contents = tail(_contents)                  ; dequeue (drop head)
-    ;   len(contents) = len(_contents) + 1 ∧ init(contents) = _contents
-    ;                                               ; enqueue (one element)
-    ;
-    ; The third form is the quantifier-free way to say "contents is
-    ; _contents with one element appended at the tail" — see
-    ; fti-composition.md section 4. `init(contents) = _contents` means
-    ; "contents minus its last element equals _contents", equivalent
-    ; to "contents = _contents ++ [some x]" without needing an
-    ; existential.
+    -- Supported-transition assertion. Three supported shapes:
+    --   contents = _contents                        -- no-op
+    --   contents = tail(_contents)                  -- dequeue (drop head)
+    --   len(contents) = len(_contents) + 1 ∧ init(contents) = _contents
+    --                                               -- enqueue (one element)
 
     (contents = _contents
        ∨ contents = tail(_contents)
        ∨ len(contents) = len(_contents) + 1 ∧ init(contents) = _contents)
 
-    ; Effects. The libcalls that keep external memory in sync with
-    ; the model. On init: allocate the external region. On non-init:
-    ; if an enqueue happened (length grew by 1), write the new last
-    ; element at the appropriate cell (offset = len(_contents) * 8,
-    ; the same as Stack push — the new element goes after the
-    ; existing ones). No-op and dequeue need no libcall (we just stop
-    ; reading the dequeued cell; the bytes remain but are
-    ; unreferenced — the head simply advances logically via the Seq
-    ; shrinking from the front).
+    -- Effects. The libcalls that keep external memory in sync with
+    -- the model. On init: allocate the external region. On non-init:
+    -- if an enqueue happened, write the new last element at the
+    -- appropriate cell (offset = len(_contents) * 8). No-op and
+    -- dequeue need no libcall.
 
-    effects = match is_init:
-        true => [LibCall("__mem__", "mem_alloc", "l(l)",
-                         [ArgInt(8192)], "base", "")]
-        false => match len(contents) = len(_contents) + 1:
-            true  => [LibCall("__mem__", "mem_store_long", "v(ll)",
-                              [ArgInt(base + len(_contents) * 8),
-                               ArgInt(last(contents))],
-                              "", "")]
-            false => []
+    effects = match is_init
+        true ⇒ ⟨LibCall("__mem__", "mem_alloc", "l(l)",
+                        ⟨ArgInt(8192)⟩, "base", "")⟩
+        false ⇒ match len(contents) = len(_contents) + 1
+            true  ⇒ ⟨LibCall("__mem__", "mem_store_long", "v(ll)",
+                             ⟨ArgInt(base + len(_contents) * 8),
+                              ArgInt(last(contents))⟩,
+                             "", "")⟩
+            false ⇒ ⟨⟩

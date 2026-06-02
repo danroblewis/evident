@@ -1333,4 +1333,110 @@ pattern       ::= "_"                                 -- Wildcard
 
 ---
 
+## Extension: `fti` (Foreign Type Interface)
+
+> Added on the `tiny-runtime` branch, 2026-06. This is an extension to
+> the reference grammar — it does NOT exist in the Rust runtime on
+> `main`. There, FTI types are declared with `external type` /
+> `external fsm` (see §11). The bootstrap diverged: rather than infer
+> "this declaration is foreign" from an `external` modifier, the
+> bootstrap exposes `fti` as a dedicated decl keyword so the parser /
+> transpiler can route FTI invocations through the FTI inliner without
+> a separate validation pass.
+
+### Surface syntax
+
+```
+fti_decl ::= "fti" IDENT [type_params] [first_line_params] [body]
+```
+
+* `fti Name<T1, T2>(params)` — generic FTI with type parameters in
+  angle brackets, first-line params in parens. Both lists are
+  optional.
+* `fti Name(T1, T2)` — legacy bootstrap shape: bare type identifiers
+  in the parens. Kept transitionally for the `prelude/stack.ev` and
+  `prelude/queue.ev` files. The parser disambiguates by whether any
+  `∈` appears inside the parens.
+* Body has the same shape as a `claim` / `fsm` body — memberships,
+  constraints, etc.
+
+```evident
+fti Stack(T)
+    base ∈ Int              -- externally-allocated region start
+    contents ∈ Seq(T)       -- logical stack contents
+    effects ∈ Seq(Effect)   -- this FTI's own effects channel
+
+    contents = _contents
+       ∨ contents = init(_contents)
+       ∨ len(contents) = len(_contents) + 1 ∧ init(contents) = _contents
+
+    effects = match is_init
+        true  ⇒ ⟨LibCall("__mem__", "mem_alloc", "l(l)",
+                         ⟨ArgInt(8192)⟩, "base", "")⟩
+        false ⇒ ...
+```
+
+### Semantics
+
+Semantically equivalent to `external fsm Name` with these specific
+conventions agreed on during the `tiny-runtime` cycle:
+
+1. **State-pair materialization.** Each FTI body membership `x ∈ T`
+   produces a state pair (`_x`, `x`) in the host FSM's namespace,
+   prefixed by the host variable name: an instance `s ∈ Stack(Int)`
+   produces `_s__base / s__base` and `_s__contents / s__contents`.
+2. **Tick-0 init via libcall.** On the first tick (`is_init`), the
+   FTI's `effects` channel emits libcalls that initialize the
+   external system (allocate buffers, open handles). The libcall
+   `ok_dest` field pins the return value into the corresponding
+   namespaced const.
+3. **Subsequent ticks rely on state-pair carry-forward.** The runtime
+   threads `s__base` from one tick into the next as `_s__base`
+   automatically. The FTI does NOT re-read external state on every
+   tick.
+4. **The FTI is the sole writer of its foreign state.** The composing
+   FSM asserts relations over the FTI's variables (e.g.
+   `s.contents = _s.contents ++ ⟨42⟩`); the FTI's body's libcalls
+   make the external system match. No other code touches the foreign
+   state.
+5. **Per-instance effects channel.** An FTI body's `effects`
+   membership becomes `<host_var>__effects` after inlining. The
+   runtime auto-discovers any const named `effects` or `*_effects` as
+   an effects channel and dispatches them independently each tick.
+
+### Inlining
+
+An FTI is NEVER emitted as a standalone schema. Instead, when a
+composing FSM declares `host_var ∈ FtiName(T)`, the transpiler:
+
+1. Looks up the FTI in the FTI registry.
+2. Substitutes type parameters (T ↦ the user's type argument).
+3. Emits state-pair declarations for each FTI body membership under
+   the `host_var__` namespace.
+4. Emits the FTI's body assertions, with idents rewritten to the
+   namespaced form. `LibCall(...)` calls have their `ok_dest` /
+   `err_dest` string slots rewritten if they reference FTI-local
+   bindings.
+
+The FTI itself contributes no top-level SMT-LIB output.
+
+### Relationship to `external type` / `external fsm`
+
+The reference's `external type Name` is the closest analog. The two
+forms differ in:
+
+| Aspect                | Reference `external type` / `external fsm` | Bootstrap `fti` |
+|-----------------------|--------------------------------------------|-----------------|
+| Routing               | Runtime FTI registry (`runtime/src/fti.rs`)| Transpiler-side inliner |
+| Generic params        | `<T>` brackets                             | `<T>` brackets OR legacy `(T)` parens |
+| Standalone emission   | Yes (the registered type has its own state)| No (always inlined) |
+| Validation            | `enforce_external_only` pass               | None — `fti` is itself the signal |
+
+Future merge with the reference: once the bootstrap grows enough
+machinery to express the rest of the language, the `fti` keyword can
+be re-spelled as `external fsm` and the inliner becomes a load-time
+pass. The semantics survive.
+
+---
+
 End of spec.

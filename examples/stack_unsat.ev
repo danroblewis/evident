@@ -1,37 +1,30 @@
-; M3 — the "unsupported transition" acceptance test.
-;
-; The Stack FTI's supported-transition assertion (per
-; docs/fti-composition.md Answer 2) declares that `contents` must equal
-; one of three relations to `_contents`: itself (no-op), init(_contents)
-; (pop one), or _contents-with-one-element-appended (push). Anything
-; else is asserted UNSAT.
-;
-; This program writes `s.contents = init(init(_s.contents))` — pop two
-; at once — which is none of the supported shapes. On the tick that
-; constraint becomes active (after we've pushed enough to make the
-; init-of-init meaningful), the combined body should go UNSAT and the
-; trampoline halts.
-;
-; The trampoline's halt semantics (src/runtime.py): first-tick UNSAT
-; raises a RuntimeError; later-tick UNSAT returns the last model and
-; halts cleanly. We want the latter.
+-- M3 — the "unsupported transition" acceptance test.
+--
+-- The Stack FTI's supported-transition assertion declares that
+-- `contents` must equal one of three relations to `_contents`: itself
+-- (no-op), init(_contents) (pop one), or _contents-with-one-element-
+-- appended (push). Anything else is asserted UNSAT.
+--
+-- This program writes `s.contents = init(init(_s.contents))` — pop
+-- two at once — which is none of the supported shapes. On the tick
+-- that constraint becomes active, the combined body should go UNSAT
+-- and the trampoline halts.
 
 fsm stack_unsat(phase ∈ {0..4})
-    phase = match is_init:
-        true  => 0
-        false => match _phase:
-            0 => 1
-            1 => 2
-            2 => 3
-            _ => _phase
+    phase = match is_init
+        true  ⇒ 0
+        false ⇒ match _phase
+            0 ⇒ 1
+            1 ⇒ 2
+            2 ⇒ 3
+            _ ⇒ _phase
 
     s ∈ Stack(Int)
 
-    ; Phase 0, 1: push 10, then 20 (legal).
-    ; Phase 2: try to pop two at once (illegal — UNSAT, runtime halts
-    ;          with the phase-1 model as the final state).
-    s.contents = match phase:
-        0 => _s.contents ++ [10]
-        1 => _s.contents ++ [20]
-        2 => init(init(_s.contents))
-        _ => _s.contents
+    -- Phase 0, 1: push 10, then 20 (legal).
+    -- Phase 2: try to pop two at once (illegal — UNSAT).
+    s.contents = match phase
+        0 ⇒ _s.contents ++ ⟨10⟩
+        1 ⇒ _s.contents ++ ⟨20⟩
+        2 ⇒ init(init(_s.contents))
+        _ ⇒ _s.contents

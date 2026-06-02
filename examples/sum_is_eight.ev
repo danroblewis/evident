@@ -1,7 +1,7 @@
-; The canonical first Evident program.
-; x and y are bounded; z constrains them; the solver finds 3 + 5 = 8.
+-- The canonical first Evident program.
+-- x and y are bounded; z constrains them; the solver finds 3 + 5 = 8.
 
-claim sum_is_eight()
+claim sum_is_eight
     x ∈ {0..10}
     y ∈ {0..10}
     z ∈ {0..20}
