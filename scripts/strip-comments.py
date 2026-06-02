@@ -116,14 +116,26 @@ def strip_rust_comments(text: str) -> str:
     return "".join(out)
 
 
-def trim_trailing(text: str) -> str:
-    """Trim trailing whitespace from each line. Preserves the original
-    line count so that downstream `cat -n` numbering still matches the
-    source file's line numbers — important when the dump is used as a
-    Read-equivalent reference (the agent says "line 47" and that's a
-    real line 47 in the file)."""
+def collapse_blanks(text: str) -> str:
+    """Trim trailing whitespace from each line, then collapse runs of
+    blank lines down to one. Tight presentation — the comment-stripped
+    file shouldn't show a sea of blank lines where doc blocks used to
+    be. (When line-number alignment with the source file matters, run
+    the dump-codebase.sh script with LINE_NUMBERS=1 + an override that
+    keeps blank lines; for the default case of reading-for-meaning,
+    collapse wins.)"""
     lines = [ln.rstrip() for ln in text.splitlines()]
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    out = []
+    blank_run = 0
+    for ln in lines:
+        if ln == "":
+            blank_run += 1
+            if blank_run <= 1:
+                out.append("")
+        else:
+            blank_run = 0
+            out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def main(argv):
@@ -132,7 +144,7 @@ def main(argv):
             text = f.read()
     else:
         text = sys.stdin.read()
-    sys.stdout.write(trim_trailing(strip_rust_comments(text)))
+    sys.stdout.write(collapse_blanks(strip_rust_comments(text)))
 
 
 if __name__ == "__main__":

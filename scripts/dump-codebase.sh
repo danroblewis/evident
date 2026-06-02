@@ -29,7 +29,7 @@ set -euo pipefail
 
 EXTS="${EXTS:-rs toml ev md}"
 STRIP_COMMENTS="${STRIP_COMMENTS:-1}"
-LINE_NUMBERS="${LINE_NUMBERS:-1}"
+LINE_NUMBERS="${LINE_NUMBERS:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Build a -name pattern list for `find`.
