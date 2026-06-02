@@ -72,3 +72,71 @@ claim TokenToOp
     is_eq   ∈ Bool = (t matches Eq)
     o = (is_plus ? OpPlus : (is_eq ? OpEq : OpPlus))
     is_binop = (is_plus ∨ is_eq)
+
+-- ── BodyItem AST (Phase B) ──────────────────────────────────────
+-- A claim body is a sequence of body items. The parser productions
+-- (B4 membership, B5 schema, B7 passthrough, …) each yield a
+-- BodyItem; the schema-decl rule will collect them later.
+--
+-- For B7 we start with two variants and a sentinel:
+--   BIPassthrough(name)   — `..ClaimName` mixin
+--   BIConstraint(expr)    — a bare expression at body level
+--   BINoItem              — sentinel (parse failed / no item)
+-- B4/B5 will extend this enum with Membership / ClaimCall / etc.
+
+enum BodyItem =
+    BIPassthrough(String)
+    BIConstraint(Expr)
+    BINoItem
+
+-- ── Token recognizers (parser helpers) ──────────────────────────
+-- Per the NEXT.md "first-line claim params of enum type" gap,
+-- recognizers on enum-typed inputs MUST put the input in the
+-- body (callers use names-match composition), not on the first line.
+
+claim IsDotDot
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches DotDot)
+
+claim IsIdent
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches Ident(_))
+
+-- Extract the String payload from an Ident token. Falls back to
+-- "" for any other variant — pair with IsIdent so the fallback
+-- never fires in well-formed input.
+claim IdentName
+    t ∈ Token
+    name ∈ String
+    name = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+-- ── Passthrough body-item parser (B7) ───────────────────────────
+-- Recognize a `..ClaimName` prefix from the head + next token of
+-- a TokenList. The caller pre-extracts head1 and head2 (and the
+-- tail-after-2-consumed) — threading the TokenList through the
+-- match would hit the first-line-enum-param gap.
+--
+-- Inputs:  head1 (expected DotDot), head2 (expected Ident(name))
+-- Outputs:
+--   item — BIPassthrough(name) on success; BINoItem otherwise
+--   ok   — true iff the two-token shape matched
+
+claim ParsePassthrough
+    head1 ∈ Token
+    head2 ∈ Token
+    item ∈ BodyItem
+    ok ∈ Bool
+
+    is_dd ∈ Bool
+    IsDotDot(t ↦ head1, out ↦ is_dd)
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+    name ∈ String
+    IdentName(t ↦ head2, name ↦ name)
+
+    ok = (is_dd ∧ is_id)
+    item = (ok ? BIPassthrough(name) : BINoItem)
