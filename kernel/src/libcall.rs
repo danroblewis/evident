@@ -48,6 +48,20 @@ static LIB_CACHE: Mutex<Option<HashMap<String, Library>>> = Mutex::new(None);
 /// Resolve a function in a (possibly cached) library and call it with the
 /// given args. Returns the i64 result, or a textual error.
 pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
+    // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
+    // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
+    // memory and reads it back; libffi's int/str/real arg grammar cannot
+    // express a faithful 8-byte load (no libc one-shot reader) nor a faithful
+    // 8-byte store (`memset` only writes a repeated byte, lossy for any
+    // value > 255). These two functions are that pair and nothing more — no
+    // allocation tracking, no typed-array abstraction, no handles. This is
+    // deliberately NOT the legacy `__mem__` library (alloc/free/typed loads/
+    // GC); it is the single minimal deref primitive, justified in
+    // docs/plans/architecture-invariants.md §"The `__mem` deref primitive".
+    if lib_name == "__mem" {
+        return mem_call(fn_name, args);
+    }
+
     let lib_path = resolve_lib_path(lib_name);
 
     // Load (or reuse) the library.
@@ -140,6 +154,38 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, Strin
     let code_ptr = CodePtr::from_ptr(sym_ptr);
     let result: i64 = unsafe { cif.call(code_ptr, &ffi_args) };
     Ok(result)
+}
+
+/// The `__mem` primitive: a faithful machine-long load/store on a raw
+/// address. Two functions only:
+///   - `read_long(addr)`        → `*(long*)addr`
+///   - `write_long(addr, value)` → `*(long*)addr = value`, returns 0
+/// Addresses come from a prior `LibCall("libc","malloc",…)` whose pointer the
+/// FTI carries as `base ∈ Int`. The reads/writes are `unaligned` so an FTI is
+/// free to choose any byte offset; in practice the FTIs use 8-byte slots.
+fn mem_call(fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
+    let int_arg = |i: usize| -> Result<i64, String> {
+        match args.get(i) {
+            Some(LibArg::Int(n)) => Ok(*n),
+            Some(other) => Err(format!("__mem::{fn_name} arg {i} must be ArgInt, got {other:?}")),
+            None => Err(format!("__mem::{fn_name} missing arg {i}")),
+        }
+    };
+    match fn_name {
+        "read_long" => {
+            let addr = int_arg(0)? as usize;
+            let p = addr as *const i64;
+            Ok(unsafe { p.read_unaligned() })
+        }
+        "write_long" => {
+            let addr = int_arg(0)? as usize;
+            let val = int_arg(1)?;
+            let p = addr as *mut i64;
+            unsafe { p.write_unaligned(val) };
+            Ok(0)
+        }
+        other => Err(format!("__mem: unknown function `{other}` (only read_long/write_long)")),
+    }
 }
 
 /// Map the user-given library name to a path libloading can dlopen.

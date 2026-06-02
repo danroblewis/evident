@@ -1,98 +1,93 @@
--- stdlib/fti/stack.ev — Stack FTI (Foreign Type Interface).
+-- stdlib/fti/stack.ev — Stack FTI (Foreign Type Interface), honest form.
 --
 -- A Stack is to this language what Vec is to Rust: a reusable data
 -- structure whose backing bytes live in C-land (reached via direct
--- `libc` calls) while the Evident-side state carries only the logical
--- contents and a small pointer handle.
+-- `libc` + `__mem` calls) while the Evident-side state carries only an
+-- integer pointer handle and a depth counter — never the contents.
 --
--- This is the first FTI in the repo. It proves the tiny-runtime FTI
--- pattern works on the *current* single-channel-effects kernel with no
--- kernel extensions. Design sources:
+-- ── What "honest" means here (task #23, the FTI honesty audit) ─────
+--
+-- The first version of this FTI was an anti-pattern stacked three ways
+-- (docs/plans/ideas.md §"FTI honesty audit"):
+--   1. The contents lived in Z3 as a recursive `IntStack` cons-list —
+--      the entire structure sat in the model on every tick, growing it.
+--   2. The `malloc(1024)` was a write-only shadow: each push emitted a
+--      `memset`, but nothing ever read those bytes back. The libc
+--      memory was decorative.
+--   3. No `free()` was ever emitted — a guaranteed leak (OS-reclaimed
+--      on exit today, but wrong for any long-running multi-FTI program).
+--
+-- This rewrite fixes all three:
+--   1. The `IntStack` cons-list is GONE. The Z3 side carries only
+--      `depth ∈ Int` (a counter) and the host carries `base ∈ Int` (the
+--      malloc pointer) and reads `top ∈ Int` back from libc memory.
+--   2. Push WRITES the value into libc memory (`__mem::write_long`) and
+--      the stack top is READ BACK from that same memory
+--      (`__mem::read_long`) — the libc store is now the source of truth.
+--   3. Teardown emits `LibCall("libc","free",base)` when the host
+--      raises `is_halting`.
+--
+-- Design sources (cited per task):
 --   * `legacy-python/docs/fti-composition.md` §4 "FTI body semantics"
---     and §"The unsupported-transition question" — Answer 2: an FTI
---     honestly declares the transitions it supports; an unsupported
---     transition makes the legal-transition disjunction UNSAT and the
---     FSM halts. That disjunction is the whole FTI contract here.
+--     (the depth-delta-driven `store_long` at `base + len*8`, and the
+--     `__mem` store/load shape) and §"The unsupported-transition
+--     question" Answer 2: an FTI honestly declares the transitions it
+--     supports; an unsupported transition makes the legal-transition
+--     disjunction UNSAT and the FSM halts. That disjunction is the
+--     whole FTI contract here — but it is now over the integer `depth`
+--     delta (±1 / 0), not over cons-list structure.
 --   * `docs/plans/architecture-invariants.md` §"FTIs are pure Evident +
---     FFI" (direct libc, no `__mem__` shim) and §"Single-channel
---     effects + `++` composition" (one `effects` Seq, `++` of parts,
---     no namespaced `*_effects` channels).
+--     FFI" (direct libc/`__mem`, no `__mem__` shim) and §"Single-channel
+--     effects + `++` composition", and §"FTI vs in-Evident cons-list
+--     state" (FTIs are for unbounded streaming; the backing memory lives
+--     in C and the model carries only a small handle).
+--   * `docs/plans/ideas.md` §"FTI honesty audit" — the desired design
+--     (metadata-only Z3 state; data in libc; free on teardown).
 --
--- ── How it maps onto the current kernel (deviations + why) ─────────
+-- ── The `__mem` primitive (kernel addition, justified) ─────────────
 --
--- The fti-composition.md sketch assumes runtime features this kernel
--- does not have; each is re-expressed in a working form:
+-- libffi's int/str/real arg grammar cannot express a faithful 8-byte
+-- load (there is no libc one-shot reader of `*(long*)addr`) nor a
+-- faithful 8-byte store (`memset` only writes a repeated byte, lossy
+-- for any value > 255). So the kernel gains ONE minimal deref pair:
+--   * `LibCall("__mem","write_long", ⟨ArgInt(addr), ArgInt(value)⟩)`
+--   * `LibCall("__mem","read_long",  ⟨ArgInt(addr)⟩)`  → value next tick
+-- This is the single-function escape hatch the FTI honesty requires —
+-- NOT the legacy `__mem__` library (which carried alloc/free/typed
+-- arrays/handles). See kernel/src/libcall.rs and
+-- docs/plans/architecture-invariants.md §"The `__mem` deref primitive".
 --
---   * `contents ∈ Seq(T)` carried across ticks → NOT POSSIBLE. The
---     kernel's state-pair carry covers Int/Bool/Real/String and enum
---     datatypes only (bootstrap/runtime/src/emit.rs `discover_state_
---     fields`: "Seq/Set vars … not yet supported as carry state"). So
---     the logical contents is a recursive *enum cons-list* `IntStack`
---     (head = top of stack), which carries exactly like the
---     `TokenList` in tests/kernel/test_tokens_carry.ev. The length is
---     tracked as a companion `depth ∈ Int`, which does carry.
---   * A per-FTI `*_effects` channel → NOT ALLOWED (single-channel
---     invariant). The FTI instead exposes its libcalls as single-
---     `Effect` *builder* claims (the established `BuildPrintln` sugar
---     shape from stdlib/kernel.ev); the host `++`-composes the
---     resulting Effects into its one `effects` Seq.
---   * The host owning the `effects = …` constraint is forced by the
---     translator: the emit validator requires a literal `effects = …`
---     in the host schema, the load-time `++` flatten only resolves
---     *literal* operands (so an FTI cannot hand over a conditional Seq
---     to `++`), and seq-var = seq-var equality does not translate. The
---     builder-claim split keeps the libcall *literals* inside this file
---     while the host writes the (validated, single-writer) `effects`.
---   * v1 is Int-typed and byte-valued (per fti-composition.md open
---     question #4: the original `__mem__` longs path was int-only). We
---     store one byte per element via `memset`, so pushed values must
---     fit a byte. `memcpy` is avoided because it needs a *source
---     pointer*, which the i/l/d/s/v libffi arg grammar cannot
---     materialise from a Z3 value; a per-element byte store is the
---     working choice the task spec permits.
---
--- ── Backing store + handle threading ──────────────────────────────
+-- ── Backing store + handle/value threading (two-tick latency) ──────
 --
 -- `BuildStackAlloc` emits `LibCall("libc","malloc",1024)`; the returned
--- pointer arrives in the next tick's `last_results` and the host
--- carries it as `base ∈ Int` (the two-tick handle-threading idiom from
--- legacy-python/docs/runtime-architecture.md). `BuildStackStore` emits
--- `LibCall("libc","memset", base+offset, value, 1)` — a single one-byte
--- store. A pop needs no libcall: dropping the cons-cell head is the
--- whole operation and the bytes simply stop being read.
+-- pointer arrives in the NEXT tick's `last_results` and the host carries
+-- it as `base ∈ Int` (the two-tick handle-threading idiom from
+-- legacy-python/docs/runtime-architecture.md). The same two-tick latency
+-- governs reads: a `read_long` emitted this tick surfaces in `top` next
+-- tick. The host sequences its reads so `top` reflects the slot it cares
+-- about; see tests/kernel/test_fti_stack.ev for the worked schedule.
 
 import "stdlib/kernel.ev"
 
--- Logical stack contents as a cons-list. Head is the top of stack.
-enum IntStack = SEmpty | SNode(Int, IntStack)
-
--- The FTI contract. The host binds the state pair (`contents`/`prev`
--- and `depth`/`prev_depth`) and the first-tick flag `is_init`; the FTI
+-- The FTI contract, metadata only. The host binds the integer state pair
+-- (`depth`/`prev_depth`) and the first-tick flag `is_init`; the FTI
 -- asserts which transitions are legal and reports `pushing` (a push was
--- detected this tick) and `top` (the current top-of-stack value).
-claim Stack(contents ∈ IntStack, prev ∈ IntStack, depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool, pushing ∈ Bool, top ∈ Int)
-    ctail ∈ IntStack = match contents
-        SNode(h, t) ⇒ t
-        SEmpty ⇒ SEmpty
-    ptail ∈ IntStack = match prev
-        SNode(h, t) ⇒ t
-        SEmpty ⇒ SEmpty
-    top = match contents
-        SNode(h, t) ⇒ h
-        SEmpty ⇒ 0
-
-    -- Honest transition declaration (fti-composition.md Answer 2): a
-    -- step is a no-op, a single push (contents = SNode(_, prev)), or a
-    -- single pop (prev = SNode(_, contents)). Anything else — a
-    -- reverse, a two-at-once jump — satisfies none of the disjuncts,
+-- detected this tick). The contents live in libc memory, NOT here.
+claim Stack(depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool, pushing ∈ Bool, popping ∈ Bool)
+    -- Honest transition declaration (fti-composition.md Answer 2), now
+    -- over the integer depth delta: a step is a no-op (depth unchanged),
+    -- a single push (depth+1), or a single pop (depth-1). Anything else
+    -- — a two-at-once jump, a reset — satisfies none of the disjuncts,
     -- the constraint is UNSAT, and the kernel halts. `is_init` lets the
-    -- first tick through before the carried `prev`/`prev_depth` exist.
-    legal_noop ∈ Bool = (depth = prev_depth ∧ contents = prev)
-    legal_push ∈ Bool = (depth = prev_depth + 1 ∧ ctail = prev)
-    legal_pop  ∈ Bool = (depth = prev_depth - 1 ∧ ptail = contents)
+    -- first tick through before the carried `prev_depth` exists.
+    legal_noop ∈ Bool = (depth = prev_depth)
+    legal_push ∈ Bool = (depth = prev_depth + 1)
+    legal_pop  ∈ Bool = (depth = prev_depth - 1)
     (is_init ∨ legal_noop ∨ legal_push ∨ legal_pop)
+    depth ≥ 0
 
     pushing = legal_push
+    popping = legal_pop
 
 -- ── libcall builders (the FTI's libcall literals live here) ────────
 
@@ -100,6 +95,18 @@ claim Stack(contents ∈ IntStack, prev ∈ IntStack, depth ∈ Int, prev_depth 
 claim BuildStackAlloc(eff ∈ Effect)
     eff = LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)
 
--- Store one byte (`value`) at `base + offset`.
-claim BuildStackStore(base ∈ Int, offset ∈ Int, value ∈ Int, eff ∈ Effect)
-    eff = LibCall("libc", "memset", ⟨ArgInt(base + offset), ArgInt(value), ArgInt(1)⟩)
+-- Store the full machine-long `value` into slot `slot` (8-byte slots):
+-- the honest write that makes libc memory the source of truth.
+claim BuildStackStore(base ∈ Int, slot ∈ Int, value ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "write_long", ⟨ArgInt(base + slot * 8), ArgInt(value)⟩)
+
+-- Read slot `slot` back. The long arrives in next tick's last_results;
+-- the host decodes it into `top`. This is what makes the FTI honest:
+-- the top-of-stack value comes from libc memory, not from Z3.
+claim BuildStackRead(base ∈ Int, slot ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long", ⟨ArgInt(base + slot * 8)⟩)
+
+-- Teardown: release the backing region. Emitted when the host raises
+-- `is_halting` on its terminal tick — the fix for the old leak.
+claim BuildStackFree(base ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "free", ⟨ArgInt(base)⟩)

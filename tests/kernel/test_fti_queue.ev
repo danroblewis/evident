@@ -1,22 +1,24 @@
--- Queue FTI smoke test: enqueue 3, dequeue 2, watch the length evolve.
+-- Queue FTI honesty test: enqueue 3, dequeue 2, then read the contents
+-- back out of libc memory in FIFO order — proving the data really lives
+-- in C, not in the Z3 model.
 --
--- Drives stdlib/fti/queue.ev across 7 ticks. The Queue allocates its
--- backing region on tick 0 (libc malloc), stores each enqueued byte on
--- ticks 1-3 (libc memset), and drops cons-cell heads on the dequeues
--- (ticks 4-5, no libcall). The diagnostic puts the queue length each
--- tick, so stdout traces the length: 0 → 1 → 2 → 3 → 2 → 1.
+-- Drives the honest stdlib/fti/queue.ev across 9 ticks:
+--   * tick 0:     malloc the backing region (libc). depth 0.
+--   * ticks 1-3:  enqueue 10/20/30 — each WRITES the full long into libc
+--                 memory via __mem::write_long at the tail slot. depth 1→2→3.
+--   * ticks 4-5:  dequeue twice — just decrement depth / advance head (no
+--                 libcall touches the data). depth 2→1.
+--   * ticks 5-7:  emit __mem::read_long of slots 0,1,2 — reading the three
+--                 enqueued values back out in FIFO order. Each read surfaces
+--                 in `front` on the NEXT tick (two-tick latency).
+--   * ticks 6-8:  print the read-back `front`: 10, 20, 30 — the FIFO drain,
+--                 proving all three values persisted in external memory.
+--   * tick 8:     free(base) on teardown (is_halting), then Exit(0).
 --
--- FIFO check: the dequeues drop the FRONT (oldest), so phase 4 removes
--- the first-enqueued 10 and phase 5 removes 20 — exactly `tail`
--- (drop-head) on the head=front cons-list, the only difference from the
--- stack fixture's pops (which are structurally the same `tail` op).
---
--- The enqueue phases hand the FTI literal contents rather than deriving
--- them from `_contents`: appending at the tail of a singly-linked
--- cons-list is not a one-level wrap of the carried prev (the dual of
--- the stack, whose head-end push *was* a one-level wrap). The literals
--- are constructed to be exactly the enqueue results, so they match the
--- carried prev and the FTI's legal_enq predicate holds.
+-- stdout = the depth metadata trace (0 1 2 3 2 1) followed by the FIFO
+-- read-back drain (10 20 30). The drain is the only difference from the
+-- stack fixture (which drains LIFO 30 20 10): a queue's reachable end is
+-- its front, read oldest-first.
 --
 -- expect: stdout = "0"
 -- expect: stdout = "1"
@@ -24,6 +26,9 @@
 -- expect: stdout = "3"
 -- expect: stdout = "2"
 -- expect: stdout = "1"
+-- expect: stdout = "10"
+-- expect: stdout = "20"
+-- expect: stdout = "30"
 -- expect: exit = 0
 import "stdlib/fti/queue.ev"
 
@@ -32,61 +37,59 @@ claim main
     _phase ∈ Int
     phase = (is_first_tick ? 0 : _phase + 1)
 
-    contents  ∈ IntQueue
-    _contents ∈ IntQueue
+    -- Z3-side state is integer metadata only: depth (+ the carried base
+    -- pointer). No cons-list anywhere.
     depth  ∈ Int
     _depth ∈ Int
 
-    -- Backing pointer: malloc's return arrives next tick in last_results;
-    -- capture it once, then carry it forward (two-tick handle threading).
-    base_in ∈ Int = match last_results[0]
+    -- Backing pointer: malloc's return arrives next tick in last_results[0];
+    -- capture it once, then carry it forward. The same slot later carries
+    -- the read-back value (`read_val`) on the drain ticks.
+    read_val ∈ Int = match last_results[0]
         IntResult(p) ⇒ p
         _ ⇒ 0
     base  ∈ Int
     _base ∈ Int
-    base = (is_first_tick ? 0 : (_base = 0 ? base_in : _base))
+    base = (is_first_tick ? 0 : (_base = 0 ? read_val : _base))
 
-    -- "drop the front" view of the carried queue, for the dequeues.
-    prev_tail ∈ IntQueue = match _contents
-        QNode(h, t) ⇒ t
-        QEmpty ⇒ QEmpty
-
-    -- Phase-driven transitions: enqueue 10/20/30 (literals appended at
-    -- the tail), then dequeue twice (drop the front).
-    contents = (phase = 0 ? QEmpty
-             : (phase = 1 ? QNode(10, QEmpty)
-             : (phase = 2 ? QNode(10, QNode(20, QEmpty))
-             : (phase = 3 ? QNode(10, QNode(20, QNode(30, QEmpty)))
-             : (phase = 4 ? prev_tail
-             : (phase = 5 ? prev_tail
-             : _contents))))))
-
+    -- Phase-driven depth: enqueue (1-3), dequeue (4-5), then hold for drain.
     depth = (phase = 0 ? 0
           : (phase ≤ 3 ? _depth + 1
           : (phase ≤ 5 ? _depth - 1
           : _depth)))
 
-    -- The FTI: asserts the transition is legal, detects the enqueue, and
-    -- surfaces the front-of-queue value for the store.
+    -- The FTI: assert the depth transition is legal, surface enq/deq.
     enqueuing ∈ Bool
-    front ∈ Int
-    Queue(contents ↦ contents, prev ↦ _contents, depth ↦ depth, prev_depth ↦ _depth, is_init ↦ is_first_tick, enqueuing ↦ enqueuing, front ↦ front)
+    dequeuing ∈ Bool
+    Queue(depth ↦ depth, prev_depth ↦ _depth, is_init ↦ is_first_tick, enqueuing ↦ enqueuing, dequeuing ↦ dequeuing)
 
-    -- Effect pieces. The libcall literals come from the FTI builders;
-    -- the byte is stored at offset _depth (the pre-enqueue length). The
-    -- smoke test asserts only the length trace, not the stored bytes.
+    -- Enqueue writes the full long at the tail slot (phase-1); value 10*phase.
+    store_slot  ∈ Int = phase - 1
+    store_value ∈ Int = phase * 10
+    store_elem ∈ Effect
+    BuildQueueStore(base ↦ base, slot ↦ store_slot, value ↦ store_value, eff ↦ store_elem)
+
+    -- Drain reads in FIFO order: slot 0 at phase 5, slot 1 at phase 6,
+    -- slot 2 at phase 7 (oldest first).
+    read_slot ∈ Int = (phase = 5 ? 0 : (phase = 6 ? 1 : 2))
+    read_elem ∈ Effect
+    BuildQueueRead(base ↦ base, slot ↦ read_slot, eff ↦ read_elem)
+
     alloc_elem ∈ Effect
     BuildQueueAlloc(eff ↦ alloc_elem)
-    store_elem ∈ Effect
-    BuildQueueStore(base ↦ base, offset ↦ _depth, value ↦ front, eff ↦ store_elem)
-    report_elem ∈ Effect = LibCall("libc", "puts", ⟨ArgStr(str_from_int(depth))⟩)
+    free_elem ∈ Effect
+    BuildQueueFree(base ↦ base, eff ↦ free_elem)
 
-    alloc_part  ∈ Seq(Effect) = ⟨alloc_elem⟩
-    store_part  ∈ Seq(Effect) = ⟨store_elem⟩
-    report_part ∈ Seq(Effect) = ⟨report_elem⟩
+    -- Report: depth on the trace ticks (≤5), the read-back front on the drain.
+    report_int ∈ Int = (phase ≤ 5 ? depth : read_val)
+    report_elem ∈ Effect = LibCall("libc", "puts", ⟨ArgStr(str_from_int(report_int))⟩)
 
-    -- Single channel, single writer, `++` composition of the parts.
-    effects ∈ Seq(Effect) = (is_first_tick ? alloc_part ++ report_part
-                          : (phase ≥ 6 ? ⟨Exit(0)⟩
-                          : (enqueuing ? store_part ++ report_part
-                          : report_part ++ ⟨⟩)))
+    -- Single channel, single writer, `++` of literal Seqs (inlined so the
+    -- only top-level Seq is `effects` itself — keeping depth/front
+    -- functionizable). The drain read is FIRST so its result lands at
+    -- last_results[0] next tick.
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨alloc_elem⟩ ++ ⟨report_elem⟩
+                          : (phase ≤ 3 ? ⟨store_elem⟩ ++ ⟨report_elem⟩
+                          : (phase ≤ 4 ? ⟨report_elem⟩ ++ ⟨⟩
+                          : (phase ≤ 7 ? ⟨read_elem⟩ ++ ⟨report_elem⟩
+                          : ⟨report_elem⟩ ++ ⟨free_elem⟩ ++ ⟨Exit(0)⟩))))

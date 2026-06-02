@@ -190,6 +190,44 @@ The cons→Seq sweep of existing compiler code is tracked separately;
 see `docs/plans/ideas.md` §"Replace Cons-lists with Seqs" and
 `docs/plans/blocked-cons-to-seq-perf.md`.
 
+## The `__mem` deref primitive (the one honest-FTI escape hatch)
+
+**Added task #23 (FTI honesty audit).** An honest FTI keeps its data in
+libc-`malloc`'d memory and reads it back; the Z3 model carries only an
+integer pointer handle + a depth counter (never the contents). Making
+that honest needs a faithful machine-long load/store on a raw address,
+and libffi's int/str/real arg grammar cannot express either: there is no
+libc one-shot reader of `*(long*)addr`, and `memset` only writes a
+*repeated byte* (lossy for any value > 255 and for an 8-byte slot). So
+the kernel (`kernel/src/libcall.rs`) intercepts ONE synthetic library,
+`__mem`, with exactly two functions:
+
+```evident
+LibCall("__mem", "write_long", ⟨ArgInt(addr), ArgInt(value)⟩)   -- *(long*)addr = value; returns 0
+LibCall("__mem", "read_long",  ⟨ArgInt(addr)⟩)                  -- returns *(long*)addr (next tick, via last_results)
+```
+
+Both are `read_unaligned`/`write_unaligned`, so an FTI may pick any byte
+offset (the shipped FTIs use 8-byte slots: `base + slot*8`). Addresses
+come from a prior `LibCall("libc","malloc",…)` whose pointer the FTI
+carries as `base ∈ Int`. The read's value arrives the *next* tick in
+`last_results` (the same two-tick latency as the `malloc` handle), so the
+FTI decodes it with `match last_results[k] IntResult(p) ⇒ p`.
+
+**Why this is NOT the legacy `__mem__` library** (which we declined to
+add): `__mem__` (see `legacy-python/docs/runtime-architecture.md`) was a
+full allocator abstraction — alloc/free, typed-array handles, length
+tracking, GC. `__mem` here is the *single minimal deref pair* and nothing
+else: no allocation (that stays `libc::malloc`/`libc::free`), no handles,
+no typing, no tracking. It is the smallest escape hatch the FTI honesty
+requires, justified one level down the "when you're stuck" ladder
+(libffi genuinely cannot express a faithful pointer load/store).
+
+`stdlib/fti/stack.ev` + `queue.ev` are the worked examples;
+`tests/kernel/test_fti_{stack,queue}.ev` exercise the round-trip (push,
+then read the values straight back out of libc memory) and the
+`free`-on-teardown path.
+
 ## Empty `effects` Seq quirk
 
 The kernel reads `effects` from the model after each solve. If
