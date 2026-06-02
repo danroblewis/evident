@@ -305,9 +305,18 @@ test.sh                              — runs all 5 phases (~3s)
 
 ## Git state
 
-Branch: `rust-runtime-shrink` (pushed to origin).
-Last commit at handoff: `e027bd8 docs: iter-3-status — all three compiler stages demonstrated`
-All work in this session has been committed and pushed.
+Branch: `rust-runtime-shrink`. All prior work has been pushed to origin.
+
+**After each commit, push to origin:**
+```bash
+git push origin rust-runtime-shrink
+```
+
+This is part of the handoff contract — leaving local-only commits
+strands them if the working tree is wiped or another session opens
+elsewhere. The agent that tested this handoff in iter 3.14 committed
+locally but didn't push; a manual push was needed to complete the
+chain.
 
 ## Communication style for the next session
 
