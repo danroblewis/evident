@@ -58,15 +58,23 @@ test paths). At that point, this becomes a clean follow-up.
 
 ## Replace Cons-lists with Seqs (constraint-model fit)
 
-**Status: PARTIALLY COMPLETE.** The functionizer side landed in
-task #19 — `recompose_record_seqs` is in `kernel/src/functionize/`
-(see step 1 below and `functionizer-integration.md` §6), so a
-bounded `Seq(Record)` now functionizes at parity with a cons-list.
-The remaining work is the *sweep* (steps 2–4): rewriting existing
-cons-list state in `compiler/` / `stdlib/` to Seqs. That is still a
-separate, deferred task — the perf blocker that justified deferring
-it is gone, but the deletion-priority and refactor-risk reasons below
-still hold.
+**Status: BLOCKED (sweep) — see `docs/plans/blocked-cons-to-seq-sweep.md`.**
+The functionizer side landed in task #19 — `recompose_record_seqs` is
+in `kernel/src/functionize/` (see step 1 below and
+`functionizer-integration.md` §6), so a bounded `Seq(Record)` now
+*functionizes* at parity with a cons-list. But task #21 attempted the
+*sweep* (steps 2–4) and found it blocked at the foundation: task #19
+made Seqs *functionize when recomputed each tick from primitives*; it
+did **not** make Seqs *carry as evolving state across ticks*, which is
+what every scoped cons-list (`WorkList`, `IntStack`, `IntQueue`) does.
+The frozen bootstrap (`discover_state_fields`) drops Seq state fields
+from the manifest, the carry-assignment `seq = (cond ? lit : _seq)`
+does not translate, and the kernel has no `Sv::Seq` pin form — all
+three forbidden to edit. The cons-list is the *correct* carry shape
+for the current toolchain. Unblocking requires adding a `Seq` carry
+encoding to the toolchain (a kernel/bootstrap task needing user
+approval), sequenced *before* any sweep. Details + reproduction in the
+blocker doc.
 
 **Source:** user, mid-session ~task #18.
 
