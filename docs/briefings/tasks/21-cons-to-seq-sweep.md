@@ -132,10 +132,43 @@ recursive test — the SMT-LIB output should be byte-identical.
 8. `docs/plans/ideas.md` §"Replace Cons-lists with Seqs" updated:
    mark COMPLETE; leave a one-line history.
 
+## Authorisation update (post-session-21 finding)
+
+The previous run of this task discovered that the cons→Seq sweep is
+blocked on **three toolchain gaps**, not just the .ev rewrites:
+
+1. `bootstrap/runtime/src/emit.rs:515-516` (`discover_state_fields`)
+   drops Seq/Set/Composite state fields — the manifest won't
+   include them.
+2. The carry assignment `work = (is_first_tick ? ⟨⟩ : _work)`
+   doesn't translate (Seq-var equality + ternary-over-Seq gap).
+3. `kernel/src/tick.rs`'s `Sv::Seq.smtlib()` is `unreachable!()`.
+
+The user explicitly authorised editing all three:
+
+> *"Why would it involve editing anything in bootstrap/? ... If
+> [we have to use bootstrap to compile], then for that session it
+> should be allowed to modify the bootstrap code."*
+
+So for THIS session: bootstrap edits ARE in scope, scoped to
+exactly what's needed to make `Seq(...)` work as state-carry.
+Specifically:
+
+- `bootstrap/runtime/src/emit.rs::discover_state_fields` — extend
+  to include Seq fields with their element-type rendered into the
+  manifest type string.
+- Wherever bootstrap's translate path handles state-carry
+  assignment `(is_first_tick ? init : _x)` — extend to handle
+  Seq-typed `x`.
+- `kernel/src/tick.rs` — implement `Sv::Seq.smtlib()` (pin form
+  + read-back from the model).
+
+Bootstrap is reference material; we're editing it because it's
+on the path until `compiler.ev` matures. The edits are throwaway
+when bootstrap is deleted; that's OK.
+
 ## Forbidden
 
-- Editing `bootstrap/`, `kernel/`, anything outside the named
-  paths.
 - Editing the `WorkItem` element enum (it's the payload, not the
   list).
 - Editing `compiler/lexer.ev` (no cons-list there to rewrite).
@@ -144,6 +177,8 @@ recursive test — the SMT-LIB output should be byte-identical.
 - Adding Python.
 - Working around perf regressions by reverting partial passes;
   either land the whole sweep clean or document a blocker.
+- Bootstrap edits BEYOND what the three gaps above require. Keep
+  the bootstrap delta minimal — it's destined for deletion.
 
 ## Reporting back
 
