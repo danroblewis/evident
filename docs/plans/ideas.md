@@ -215,4 +215,28 @@ naturally piggybacks: as we move cons-lists out of Z3, the FTI's
    to exercise free.
 6. Verify no regression.
 
+## FTI wrappers around C-library data structures
+
+**Source:** user, mid-session ~task #23.
+
+For FTIs covering structures more complex than Stack/Queue (hash
+tables, balanced BSTs, priority queues), wrap mature C libraries
+rather than reimplementing: glib's GHashTable/GTree/GQueue/GArray,
+libavl, sys/queue.h (BSD-style intrusive lists; in libc, no extra
+dep), libdatrie/libcritbit for tries. The FTI body carries just a
+pointer + lightweight metadata; each op is a `LibCall` into the
+library API. Z3 model stays small; the C library does the work
+it's good at.
+
+User rationale:
+
+> *"We can try to look for C libraries that implement
+> datastructures for us, and we can build our FTI models to wrap
+> the state machines of the library."*
+
+**When to pick this up:** when a real perf problem in
+`compiler/*.ev` calls for it (likely the symbol table). Until
+then, the honest-FTI pattern from task #23 is the default for new
+FTIs.
+
 ## (Add more ideas here as they surface)
