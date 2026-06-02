@@ -1,0 +1,75 @@
+-- C2: SMT-LIB declare-fun emission from BIMembership.
+--
+-- Drive DeclareFromMembership across three hardcoded BodyItem inputs:
+--   A) BIMembership("x", TName("Int"))     → ok=true,  out="(declare-fun x () Int)"
+--   B) BIMembership("ok", TName("Bool"))   → ok=true,  out="(declare-fun ok () Bool)"
+--   C) BIPassthrough("foo")                — non-membership; ok=false, out=""
+--
+-- Same per-tick stepping pattern as test_parser_passthrough /
+-- test_parser_membership: a step counter walks a fixed label table,
+-- one puts per tick. The final tick prints "[done]" then Exit(0).
+--
+-- The fixture verifies:
+--   * DeclareFun on its own emits the expected SMT-LIB line.
+--   * DeclareFromMembership returns ok=true for primitive Int/Bool
+--     memberships and the line text matches DeclareFun byte-for-byte.
+--   * DeclareFromMembership returns ok=false on a non-membership
+--     BodyItem (BIPassthrough), with out="".
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "(declare-fun x () Int)"
+-- expect: stdout = "(declare-fun ok () Bool)"
+-- expect: stdout = "a_ok=true"
+-- expect: stdout = "b_ok=true"
+-- expect: stdout = "c_ok=false"
+-- expect: stdout = "c_out_empty=true"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_declare.ev"
+
+claim main
+    -- Case A: `x ∈ Int` → declare-fun line.
+    a_item ∈ BodyItem = BIMembership("x", TName("Int"))
+    a_out ∈ String
+    a_ok ∈ Bool
+    DeclareFromMembership(item ↦ a_item, out ↦ a_out, ok ↦ a_ok)
+
+    -- Case B: `ok ∈ Bool` → declare-fun line.
+    b_item ∈ BodyItem = BIMembership("ok", TName("Bool"))
+    b_out ∈ String
+    b_ok ∈ Bool
+    DeclareFromMembership(item ↦ b_item, out ↦ b_out, ok ↦ b_ok)
+
+    -- Case C: a passthrough — not a membership. ok=false, out="".
+    c_item ∈ BodyItem = BIPassthrough("foo")
+    c_out ∈ String
+    c_ok ∈ Bool
+    DeclareFromMembership(item ↦ c_item, out ↦ c_out, ok ↦ c_ok)
+
+    -- Per-tick diagnostic stepping. One puts per tick; the expected
+    -- lines above are emitted in order.
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    a_ok_str ∈ String = (a_ok ? "a_ok=true" : "a_ok=false")
+    b_ok_str ∈ String = (b_ok ? "b_ok=true" : "b_ok=false")
+    c_ok_str ∈ String = (c_ok ? "c_ok=true" : "c_ok=false")
+    c_empty ∈ Bool = (c_out = "")
+    c_empty_str ∈ String = (c_empty ? "c_out_empty=true" : "c_out_empty=false")
+
+    label ∈ String = (step = 0 ? "[start]"
+        : (step = 1 ? a_out
+        : (step = 2 ? b_out
+        : (step = 3 ? a_ok_str
+        : (step = 4 ? b_ok_str
+        : (step = 5 ? c_ok_str
+        : (step = 6 ? c_empty_str
+        : "[done]")))))))
+
+    done ∈ Bool = (step ≥ 7)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)
