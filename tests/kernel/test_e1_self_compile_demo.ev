@@ -1,0 +1,125 @@
+-- Phase E1: self-compile demonstration.
+--
+-- Build a SchemaDecl AST in-memory, push it through the
+-- self-hosted SMT-LIB stack (stdlib/translate_manifest.ev +
+-- stdlib/translate_declare.ev), emit the resulting bytes, and
+-- then self-validate the output is syntactically well-formed
+-- SMT-LIB via `starts_with` / `str_contains`.
+--
+-- This is the DEMO version of E1 — we hand the translator a tiny
+-- in-memory AST, not a parsed .ev file. The point is to show the
+-- seam works end-to-end on the kernel: AST → SMT-LIB → diagnostic.
+-- A real self-compile (compile a real .ev file via the self-hosted
+-- pipeline) needs much more translation coverage; see
+-- docs/plans/phase-e-status.md for the E2/E3 follow-ups.
+--
+-- Schema we build (logically):
+--
+--     claim hello
+--         x ∈ Int
+--
+-- AST shape:
+--     SDecl(KKClaim, "hello",
+--           BILCons(BIMembership("x", TName("Int")), BILNil))
+--
+-- Expected output: the SMT-LIB body (manifest header + declare-fun
+-- line), followed by two diagnostic lines and a [done] banner.
+--
+-- expect: stdout = ";; manifest: state-fields = x:Int"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 1"
+-- expect: stdout = "(declare-fun x () Int)"
+-- expect: stdout = "[diagnostic] starts_with(manifest) = true"
+-- expect: stdout = "[diagnostic] contains(declare-fun x () Int) = true"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/translate_manifest.ev"
+import "stdlib/translate_declare.ev"
+
+claim main
+    -- ── Build the AST in-memory ────────────────────────────────
+    -- One BIMembership inside the body; the SchemaDecl wraps it
+    -- with the KKClaim keyword and the schema name "hello".
+    body_item ∈ BodyItem = BIMembership("x", TName("Int"))
+    body ∈ BodyItemList = BILCons(body_item, BILNil)
+    decl ∈ SchemaDecl = SDecl(KKClaim, "hello", body)
+
+    -- ── Walk the body: extract head item (bounded depth = 1) ──
+    -- Pattern mirrors translate_manifest.ev's HeadField/TailList:
+    -- pull the head BodyItem off the BILCons, hand it to the
+    -- per-item translator (DeclareFromMembership). Our hand-built
+    -- body has exactly one cons cell, so a single unroll level
+    -- suffices. A general walker would extend this to a depth-N
+    -- unroll or a multi-tick FSM.
+    decl_body ∈ BodyItemList = match decl
+        SDecl(_, _, b) ⇒ b
+        SNoDecl ⇒ BILNil
+
+    head_item ∈ BodyItem = match decl_body
+        BILCons(h, _) ⇒ h
+        BILNil ⇒ BINoItem
+
+    -- ── DeclareFromMembership: BodyItem → SMT-LIB line ────────
+    decl_line ∈ String
+    decl_ok ∈ Bool
+    DeclareFromMembership(item ↦ head_item, out ↦ decl_line, ok ↦ decl_ok)
+
+    -- ── Derive the StateFieldList from the body ───────────────
+    -- Extract the membership name + type-name string out of the
+    -- head BodyItem so the manifest header lists the same field
+    -- the declare-fun line declared. For non-membership items the
+    -- defaults are "" — irrelevant here since our hand-built body
+    -- is exclusively memberships.
+    head_name ∈ String = match head_item
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+
+    head_tref ∈ TypeRef = match head_item
+        BIMembership(_, tr) ⇒ tr
+        _ ⇒ TNoType
+
+    head_type ∈ String = match head_tref
+        TName(s) ⇒ s
+        _ ⇒ ""
+
+    fields ∈ StateFieldList = SFLCons(SField(head_name, head_type), SFLNil)
+
+    -- ── Compose the SMT-LIB header + declarations ─────────────
+    header ∈ String
+    ManifestHeader(fields ↦ fields, max_effects ↦ 1, out ↦ header)
+
+    smtlib ∈ String = header ++ "\n" ++ decl_line
+
+    -- ── Self-validating diagnostic ────────────────────────────
+    -- The output is well-formed SMT-LIB iff:
+    --   (a) it starts with ";; manifest:" (the kernel input
+    --       protocol's required prefix), and
+    --   (b) it contains the declare-fun line we asked for.
+    -- starts_with / str_contains lower to Z3's str.prefixof /
+    -- str.contains (see runtime/src/translate/exprs/string_ops.rs).
+    starts_ok ∈ Bool = starts_with(smtlib, ";; manifest:")
+    contains_decl ∈ Bool = str_contains(smtlib, "declare-fun x () Int")
+
+    starts_msg ∈ String = (starts_ok
+        ? "[diagnostic] starts_with(manifest) = true"
+        : "[diagnostic] starts_with(manifest) = false")
+
+    contains_msg ∈ String = (contains_decl
+        ? "[diagnostic] contains(declare-fun x () Int) = true"
+        : "[diagnostic] contains(declare-fun x () Int) = false")
+
+    -- ── Emit ──────────────────────────────────────────────────
+    -- One puts produces the whole block at once; the SMT-LIB body
+    -- already embeds newline separators inside `smtlib`, and the
+    -- diagnostic lines hang off the end. The kernel driver compares
+    -- against the `-- expect:` lines joined with `\n`. Single-tick
+    -- keeps the demo focused on the translator seam.
+    out_text ∈ String = smtlib ++ "\n" ++ starts_msg ++ "\n" ++ contains_msg ++ "\n[done]"
+
+    effects ∈ Seq(Effect) = ⟨
+        LibCall("libc", "puts", ⟨ArgStr(out_text)⟩),
+        Exit(0)
+    ⟩
