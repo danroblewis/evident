@@ -1,0 +1,135 @@
+-- B4: membership body items (`x ∈ Type`).
+--
+-- Recognize a `name ∈ Type` body item from an Ident(name) + OpIn
+-- token pair plus an already-accumulated TypeRef string. The Rust
+-- parser's recognizer lives at
+-- runtime/src/parser/body_item.rs::parse_body_item (final block,
+-- guarded by `Token::In`); the type-name accumulation it dispatches
+-- to is what the B3 self-hosted accumulator (TypeTokenText) already
+-- handles. This fixture wires those two halves together at the
+-- recognizer level.
+--
+-- Pattern mirrors test_parser_passthrough.ev: hardcoded head1/head2
+-- + per-tick diagnostic stepping a small phase counter. The type-
+-- string side of the input is also hardcoded (the multi-tick type-
+-- name accumulator is exercised by test_parser_types.ev). For each
+-- of three shapes the fixture verifies recognizer Bool intermediates,
+-- the extracted name, the BodyItem tag, and the round-tripped TypeRef
+-- string.
+--
+-- Shapes covered:
+--   x ∈ Int            → BIMembership("x", TName("Int"))
+--   count ∈ Seq(Int)   → BIMembership("count", TName("Seq(Int)"))
+--   bogus              → BINoItem (head1 is Plus, not Ident — ok=false)
+--
+-- expect: stdout = "[start]"
+-- expect: stdout = "saw ident=true"
+-- expect: stdout = "saw in=true"
+-- expect: stdout = "ok=true"
+-- expect: stdout = "name=x"
+-- expect: stdout = "type=Int"
+-- expect: stdout = "tag=membership"
+-- expect: stdout = "name=count"
+-- expect: stdout = "type=Seq(Int)"
+-- expect: stdout = "ok=false"
+-- expect: stdout = "tag=other"
+-- expect: stdout = "[done]"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/parser.ev"
+
+claim main
+    -- Case A: `x ∈ Int`
+    a_head1 ∈ Token = Ident("x")
+    a_head2 ∈ Token = OpIn
+    a_type  ∈ String = "Int"
+
+    -- Case B: `count ∈ Seq(Int)` (compound type, accumulated as the
+    -- full string the B3 accumulator would build).
+    b_head1 ∈ Token = Ident("count")
+    b_type  ∈ String = "Seq(Int)"
+
+    -- Case C: `+ ∈ Int` — not a membership; head1 is Plus. Verifies
+    -- the recognizer returns ok=false and item=BINoItem.
+    c_head1 ∈ Token = Plus
+
+    -- Recognizer outputs for case A.
+    a_is_id ∈ Bool
+    IsIdent(t ↦ a_head1, out ↦ a_is_id)
+    a_is_in ∈ Bool
+    IsOpIn(t ↦ a_head2, out ↦ a_is_in)
+    a_item ∈ BodyItem
+    a_ok ∈ Bool
+    ParseMembership(head1 ↦ a_head1, head2 ↦ a_head2, type_str ↦ a_type,
+                    item ↦ a_item, ok ↦ a_ok)
+
+    a_name ∈ String = match a_item
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+    a_type_ref ∈ TypeRef = match a_item
+        BIMembership(_, tr) ⇒ tr
+        _ ⇒ TNoType
+    a_type_str ∈ String = match a_type_ref
+        TName(s) ⇒ s
+        _ ⇒ ""
+    a_is_mem ∈ Bool = (a_item matches BIMembership(_, _))
+
+    -- Recognizer outputs for case B (compound type).
+    b_item ∈ BodyItem
+    b_ok ∈ Bool
+    ParseMembership(head1 ↦ b_head1, head2 ↦ a_head2, type_str ↦ b_type,
+                    item ↦ b_item, ok ↦ b_ok)
+    b_name ∈ String = match b_item
+        BIMembership(n, _) ⇒ n
+        _ ⇒ ""
+    b_type_ref ∈ TypeRef = match b_item
+        BIMembership(_, tr) ⇒ tr
+        _ ⇒ TNoType
+    b_type_str ∈ String = match b_type_ref
+        TName(s) ⇒ s
+        _ ⇒ ""
+
+    -- Recognizer outputs for case C (negative — not a membership).
+    c_item ∈ BodyItem
+    c_ok ∈ Bool
+    ParseMembership(head1 ↦ c_head1, head2 ↦ a_head2, type_str ↦ a_type,
+                    item ↦ c_item, ok ↦ c_ok)
+    c_is_mem ∈ Bool = (c_item matches BIMembership(_, _))
+
+    -- Per-tick diagnostic stepping. One puts call per tick; the
+    -- expected lines above are emitted in order.
+    step ∈ Int
+    _step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+
+    a_id_str   ∈ String = (a_is_id ? "saw ident=true" : "saw ident=false")
+    a_in_str   ∈ String = (a_is_in ? "saw in=true"    : "saw in=false")
+    a_ok_str   ∈ String = (a_ok ? "ok=true" : "ok=false")
+    a_name_str ∈ String = "name=" ++ a_name
+    a_type_lbl ∈ String = "type=" ++ a_type_str
+    a_tag_str  ∈ String = (a_is_mem ? "tag=membership" : "tag=other")
+
+    b_name_str ∈ String = "name=" ++ b_name
+    b_type_lbl ∈ String = "type=" ++ b_type_str
+
+    c_ok_str   ∈ String = (c_ok ? "ok=true" : "ok=false")
+    c_tag_str  ∈ String = (c_is_mem ? "tag=membership" : "tag=other")
+
+    label ∈ String = (step = 0 ? "[start]"
+        : (step = 1 ? a_id_str
+        : (step = 2 ? a_in_str
+        : (step = 3 ? a_ok_str
+        : (step = 4 ? a_name_str
+        : (step = 5 ? a_type_lbl
+        : (step = 6 ? a_tag_str
+        : (step = 7 ? b_name_str
+        : (step = 8 ? b_type_lbl
+        : (step = 9 ? c_ok_str
+        : (step = 10 ? c_tag_str
+        : "[done]")))))))))))
+
+    done ∈ Bool = (step ≥ 11)
+
+    effects ∈ Seq(Effect) = (done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

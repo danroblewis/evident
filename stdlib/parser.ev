@@ -178,9 +178,21 @@ enum FrameList =
     FLCons(Expr, Op, FrameList)
 
 -- ── BodyItem AST ────────────────────────────────────────────────
+--
+-- BIMembership(name, type_ref) — a `name ∈ Type` declaration,
+-- mirroring the Rust parser's `BodyItem::Membership { name, type_name,
+-- pins }` (runtime/src/core/ast.rs). The TypeRef payload carries the
+-- fully-rendered type-name string (built by the B3 accumulator —
+-- see TypeTokenText). Pins are NOT yet modeled here: the chained-
+-- membership desugaring (`0 ≤ x ∈ Int ≤ 100`) emits a BIMembership
+-- followed by separate BIConstraint items, exactly as the Rust
+-- parser at runtime/src/parser/body_item.rs::try_parse_chained_membership
+-- already does. Named-pins (`x ∈ Type(slot ↦ val)`) are a B5/later
+-- extension.
 enum BodyItem =
     BIPassthrough(String)
     BIConstraint(Expr)
+    BIMembership(String, TypeRef)
     BINoItem
 
 -- ── Token recognizers ───────────────────────────────────────────
@@ -201,6 +213,11 @@ claim IdentName
         Ident(s) ⇒ s
         _ ⇒ ""
 
+claim IsOpIn
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpIn)
+
 -- ── Passthrough body-item parser (B7) ───────────────────────────
 claim ParsePassthrough
     head1 ∈ Token
@@ -217,3 +234,40 @@ claim ParsePassthrough
 
     ok = (is_dd ∧ is_id)
     item = (ok ? BIPassthrough(name) : BINoItem)
+
+-- ── Membership body-item parser (B4) ────────────────────────────
+--
+-- Recognize the head sequence `Ident(name) ∈ <TypeRef tokens…>` and
+-- emit a BIMembership(name, TName(type_str)). The TypeRef string is
+-- accumulated by the caller's consumer FSM (Pattern 2 in
+-- docs/plans/NEXT.md) using the B3 TypeTokenText helper.
+--
+-- This recognizer fires when:
+--   head1 is Ident(_)
+--   head2 is OpIn (`∈`)
+--   type_str is non-empty (the FSM finished accumulating the type)
+--
+-- Shape mirrors ParsePassthrough: the FSM extracts the first two
+-- tokens, dispatches the type-name accumulator across subsequent
+-- ticks, then on the boundary token (Newline / Indent / Eof) it
+-- calls ParseMembership with the captured name + accumulated type
+-- string. The Rust parser's chained-membership desugaring (range
+-- bounds) is folded in by the FSM as extra BIConstraint emits —
+-- ParseMembership itself only handles the bare `x ∈ T` shape.
+claim ParseMembership
+    head1 ∈ Token
+    head2 ∈ Token
+    type_str ∈ String
+    item ∈ BodyItem
+    ok ∈ Bool
+
+    is_id ∈ Bool
+    IsIdent(t ↦ head1, out ↦ is_id)
+    is_in ∈ Bool
+    IsOpIn(t ↦ head2, out ↦ is_in)
+    name ∈ String
+    IdentName(t ↦ head1, name ↦ name)
+
+    has_type ∈ Bool = (¬ (type_str = ""))
+    ok = (is_id ∧ is_in ∧ has_type)
+    item = (ok ? BIMembership(name, TName(type_str)) : BINoItem)
