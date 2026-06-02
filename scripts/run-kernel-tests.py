@@ -82,6 +82,10 @@ def run_one(path: Path) -> tuple[bool, str]:
         Path("/tmp/evident_digits_input.txt").write_text("12+345\n")
     if path.name == "test_keyword_lexer.ev":
         Path("/tmp/evident_kw_input.txt").write_text("claim hello type fsm\n")
+    if path.name == "test_full_keywords.ev":
+        Path("/tmp/evident_full_kw_input.txt").write_text(
+            "claim type schema fsm enum import match subclaim external matches in true false mapsto\n"
+        )
     if path.name == "test_comment_lexer.ev":
         Path("/tmp/evident_comment_input.txt").write_text("x = 5 -- this is a comment\ny = 7\n")
     if path.name == "test_consolidated_lexer.ev":
