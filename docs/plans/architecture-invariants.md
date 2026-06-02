@@ -33,16 +33,27 @@ time.
 
 Implication for the kernel: the loaded program's parse must NOT be
 redone every tick. **FIX LANDED** in `kernel/src/tick.rs`: the body is
-parsed ONCE and its asserted ASTs cached; each tick re-asserts the
-cached ASTs (no re-parse) plus the equality pins into a fresh solver.
-This satisfies invariant #1 (parse once). Note the landed form does
-NOT use `push`/`pop`: the proposal's push/pop incremental mechanism was
-implemented and measured first but regressed datatype-state fixtures
-~36x (a kernel test timed out at 30s) because incremental mode forgoes
-the one-shot preprocessing those growing pins need — so it was replaced
-with the cached-ASTs mechanism, which keeps `./test.sh` green and is
-faster than the prior re-parsing kernel. Full write-up (including the
-deviation flag for the user) at
+parsed ONCE, `.simplify()`'d ONCE before the tick loop (per invariant
+#4, which allows exactly one pre-loop simplify), and the simplified
+ASTs cached; each tick the equality pins are **substituted** into those
+cached ASTs (`Z3_substitute`) and a fresh solver solves the result.
+This satisfies invariant #1 (parse once) and #4 (one pre-loop simplify,
+no per-tick simplify).
+
+The pin-application mechanism was chosen by an explicit exploration
+(task #11) of six variants, all with the pre-loop simplify. The
+persistent-solver incremental forms — `push`/`pop` AND
+check-with-assumptions (`s.check(*pins)`, tiny-runtime's literal
+design) — both reproduced a ~450× / full-suite-timeout regression on
+growing datatype-state fixtures, because incremental mode forgoes the
+one-shot preprocessing a fresh solve applies to the large nested
+datatype literals the carried state grows into each tick; a single
+pre-loop simplify does not recover it. Substitution-into-a-fresh-solver
+applies the pins directly to the model, keeps each tick's one-shot
+preprocessing, and is as fast as the cached-ASTs baseline while keeping
+`./test.sh` green. Full benchmark table + selection rationale (and the
+deviation flag: the committed kernel uses substitution, not the user's
+literal `s.check(*pins)`, because the latter is 451× slower) at
 `docs/plans/kernel-fix-incremental-solving.md`; the original violation
 is documented at `docs/plans/audit-kernel-z3-lifecycle.md`.
 

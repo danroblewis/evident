@@ -1,24 +1,143 @@
-# Kernel-fix proposal: incremental solving (one solver, push/pop per tick)
+# Kernel-fix: pre-loop `.simplify()` + pin-application exploration
 
-**Status:** LANDED (with a documented mechanism change — read the
-"LANDED" section below before assuming push/pop). The fix removes the
-per-tick re-parse of the SMT-LIB body (invariant #1), which was the
-audit's stated dominant cost. The proposal's *push/pop incremental*
-mechanism was implemented first, measured to regress badly, and
-replaced with a *parse-once-into-cached-ASTs* mechanism that meets the
-same invariant without the regression.
+**Status:** LANDED. The kernel now (a) `.simplify()`s the parsed body
+ONCE before the tick loop (invariant #4, clarified to allow exactly
+this), and (b) applies the per-tick pins by **substituting** them into
+the cached body AST. Both came out of an explicit exploration of six
+pin-application mechanisms (task #11), superseding the earlier
+cached-ASTs landing (task #06) recorded further below.
 
 ---
 
-## LANDED — what was actually implemented (and why it differs)
+## LANDED (task #11) — pre-loop simplify + substitute pins
 
-The proposal sketched "one persistent solver, body asserted once at
-base scope, `push`/`pop` the per-tick equality pins." That was
+The user authorised a second kernel exception to test *all* the ways to
+apply pins to a Z3 model, with a pre-loop `.simplify()`, accepting that
+"performance is bad is OK as long as it works and is correct." Six
+mechanisms were implemented behind a `KERNEL_PIN_MECH` env switch (that
+scaffold is preserved at the first commit of branch
+`agent-11-kernel-pin-exploration`; the committed kernel keeps only the
+winner) and benchmarked. **Every mechanism runs the same single
+`.simplify()` pass on the body before the loop;** they differ only in
+*how the per-tick equality pins reach the solver.*
+
+### Benchmark (median of 10 runs, wall-clock ms, release kernel)
+
+Fixtures: `test_consolidated_lexer` (13 ticks, growing datatype
+`TokenList` state — the one that timed out under push/pop in task #06),
+`test_fti_stack` (7 ticks, cons-list state), `test_tokens_carry` (short
+init/push/done). "suite" = wall-clock of the full 63-test kernel suite.
+
+| # | Mechanism | lexer | stack | tokens | suite | correct? |
+|---|-----------|------:|------:|-------:|------:|----------|
+| — | baseline (task-06 cached-ASTs, **no** simplify) | 27.9 | 14.2 | 11.0 | ~2.3s | ✓ |
+| A | cached-ASTs **+ simplify** (fresh solver, assert body+pins) | 28.7 | 14.6 | 10.7 | 2.4s | ✓ |
+| B | simplify **+ check-with-assumptions** (persistent solver, `s.check(*pins)`) | **12642** | 21.1 | 9.0 | 28.9s | ✓ (slow) |
+| C | simplify **+ push/pop** (persistent solver) | 1155 | 22.8 | 8.8 | **>600s** | ✗ timeout |
+| D | simplify **+ reset+assert** (persistent solver) | 28.3 | 14.4 | 10.6 | 2.3s | ✓ |
+| **E** | **simplify + substitute pins into body AST** (fresh solver) | 28.8 | 14.0 | 10.5 | 2.3s | ✓ ← **picked** |
+| F | simplify **+ tactic solver** (`simplify;smt`, fresh per tick) | crash | crash | crash | — | ✗ SIGABRT/SIGSEGV |
+
+### What the numbers say
+
+- **Pre-loop `.simplify()` alone changes nothing** measurable (A vs
+  baseline: 28.7 vs 27.9 ms). It is cheap, harmless, and now done once —
+  but it is not where the cost lives. The cost is the per-tick solve over
+  growing datatype-state pins.
+- **The incremental persistent-solver forms (B, C) reproduce the task-06
+  regression even WITH pre-loop simplify.** B (check-with-assumptions —
+  *literally tiny-runtime's `s.check(*pins)`*) is **451× slower** than the
+  fresh-solver forms on the lexer (12.6 s vs 28 ms); C (push/pop) is 41×
+  slower and its full suite never finished in 600 s. The pre-loop simplify
+  did help C relative to task-06 (1.15 s vs a 30 s timeout on the lexer),
+  but not enough. Root cause is unchanged from task #06: a persistent
+  solver is in incremental mode and forgoes the one-shot
+  preprocessing/simplification a *fresh* solve applies to the large nested
+  datatype literals the carried state grows into each tick. A *single*
+  pre-loop simplify cannot substitute for the per-solve preprocessing the
+  incremental solver skips on every tick.
+- **F (tactic-built solver) crashes** (SIGABRT / SIGSEGV) — a
+  `mk_solver_from_tactic` model does not interoperate with the kernel's
+  raw-z3-sys model-read path here. Not pursued further.
+- **The fresh-solver forms (A, D, E) are all correct and ~equal in
+  speed** (within noise of each other and the baseline). They keep each
+  tick's one-shot preprocessing because each tick gets a fresh solver.
+
+### Why E (substitute) was picked
+
+The task's selection rule: correctness is the hard gate; then closest to
+the user's design intent (`check(*pins)` canonical; descending preference
+B > C > E > D > A > F); then perf is a tiebreaker — *except* "if one
+mechanism is 100× slower than another while both are correct, prefer the
+faster one," and "if multiple are correct and within 2× on perf, prefer
+the one closer to tiny-runtime's design."
+
+- C and F fail the correctness/time gate (suite timeout / crash) → out.
+- B is correct but **451× slower** than the fresh-solver forms → the
+  explicit ">100× → prefer faster" rule demotes it below A/D/E despite
+  being the most design-canonical form. (B *does* pass `./test.sh`: its
+  worst single test is 12.6 s < the 30 s "too-slow" threshold. It is a
+  valid fallback if a future requirement insists on the literal
+  `s.check(*pins)` shape and accepts the datatype-state cost.)
+- Among the fast correct set {A, D, E}, all within 2× of each other, the
+  design-intent ranking prefers **E (substitution) > D (reset) > A
+  (cached)**. So **E** is committed.
+
+### What E does (the committed mechanism)
+
+Parse the body once; `Z3_simplify` each asserted formula once before the
+loop and cache the results. Each tick: build the pins as uniform
+`(= lhs rhs)` equalities (including `is_first_tick`, written as an
+equality), parse that tiny `<decl preamble> + <equality asserts>` string,
+split the equalities into (i) **substitutions** whose lhs is a nullary
+const (`_x`, `is_first_tick`, `last_results__len` — interned to the
+cached body's vars via Z3's per-context hash-consing of sorts/func_decls)
+and (ii) **residual asserts** whose lhs is a compound term
+(`(select last_results i)`, not a single replaceable subterm).
+`Z3_substitute` inlines the substitutions into the cached simplified body
+ASTs; the residuals are asserted normally; a fresh solver checks the
+result. Substitution applies the pins *directly to the model* (the
+user's framing — "several ways to apply pins to a Z3 model") and produces
+ground terms Z3 constant-folds, so it is as fast as the cached baseline.
+
+Declaration-only symbols matter: bootstrap `emit.rs` hand-writes
+`is_first_tick`, `last_results`, and the `Result` datatype even when the
+body never references them, so an AST walk of the assertions could not
+recover them — re-declaring from the textual preamble does (verified by
+the suite passing).
+
+Relative to the invariants: invariant #1 (parse once) ✓ — the body is
+parsed and simplified a single time. Invariant #4 (no per-tick simplify)
+✓ — simplify runs exactly once, before the loop. Invariant #3 ("no tick
+may rebuild the model") — like task #06's form, a fresh `Z3_solver` is
+created per tick and the body is substituted-then-asserted, but the
+*constraint system* is never re-parsed; the cached simplified ASTs are
+reused verbatim. The audited dominant cost (per-tick full-body re-parse)
+remains eliminated.
+
+**Deviation flag for the user.** The user's literal design is
+`s.check(*pins)` = mechanism B. B works and is correct but is 451× slower
+on growing datatype-state fixtures (12.6 s on a 13-tick lexer); the
+committed kernel uses substitution (E) instead, per the task's explicit
+">100× → prefer faster" rule and the E > D > A design ranking among the
+fast correct forms. If the literal `s.check(*pins)` shape is required
+regardless of cost, set `KERNEL_PIN_MECH=B` against the exploration-
+scaffold commit, or re-introduce mechanism B as the default — it is a
+~20-line change and passes `./test.sh`.
+
+---
+
+## LANDED (task #06) — parse-once cached-ASTs (superseded by E above)
+
+The task-06 proposal sketched "one persistent solver, body asserted once
+at base scope, `push`/`pop` the per-tick equality pins." That was
 implemented exactly as written and measured. It **regressed
 multi-tick fixtures ~36x** and a kernel test (`test_consolidated_lexer`,
 ~13 ticks) **timed out at 30s** (baseline: the whole 61-test kernel
 suite runs in ~1.6s). So the literal push/pop form fails acceptance
-criterion #2 of the task ("`./test.sh` fully green").
+criterion #2 of the task ("`./test.sh` fully green"). Task #11 above
+re-measured push/pop (mechanism C) *with* the pre-loop simplify and
+confirmed it is still far too slow.
 
 **Root cause.** The kernel carries FSM state across ticks by pinning
 equalities. For datatype-typed state (e.g. the lexer's `TokenList`
@@ -28,59 +147,15 @@ prior kernel, which re-parsed `body + pins` into a new solver each
 tick) gets Z3's full preprocessing/simplification over those pins and
 solves them fast. A *persistent* solver with `push`/`pop` is in
 incremental mode and forgoes that one-shot preprocessing, so the same
-constraints solve ~36x slower and blow past the tick budget. This is
-not fixable within the task's constraints (invariant #4 + the explicit
-"no `.simplify()` anywhere" forbid adding per-tick preprocessing).
+constraints solve ~36x slower and blow past the tick budget.
 
-Confirmed by isolation (a scratch z3-sys harness): push/pop with
-*fixed dummy* pins is fast (~15 ms/tick); the slowdown only appears
-with the *real growing datatype-state* pins — i.e. it is the
-incremental-solve-without-preprocessing cost, not push/pop overhead or
-the per-tick declaration re-parse.
-
-**What landed instead.** Parse the body **once** and cache its
+**What landed in task #06.** Parse the body **once** and cache its
 asserted ASTs (`Z3_ast_vector_inc_ref`). Each tick: create a fresh
 solver, re-assert the **cached** ASTs (no re-parse), parse a tiny
 `<declarations preamble> + <equality pins>` string and assert it,
-`check`, read the model, drop the solver. This:
-
-- satisfies invariant #1 ("the model / constraint system is parsed
-  ONCE") — the audit's actual concern, the per-tick full-body
-  re-parse, is gone;
-- keeps each tick's one-shot preprocessing, so there is **no
-  regression** (it is in fact slightly faster than the prior kernel,
-  which re-parsed the body every tick);
-- keeps `./test.sh` green (all 61 kernel tests pass, no timeouts).
-
-The per-tick equality pins resolve to the cached body's variables via
-Z3's within-context interning: re-declaring a symbol (primitive const,
-datatype + its constructors, array-over-datatype) in a separate
-`parse_smtlib2_string` call yields the *same* interned func_decl/sort,
-so `(assert (= _x …))` constrains the cached body's `_x`. This was
-verified empirically before relying on it (primitive consts,
-`mk_const`, datatypes, and declaration-only symbols like
-`is_first_tick`/`last_results` all intern). Declaration-only symbols
-matter: bootstrap `emit.rs` hand-writes `is_first_tick`,
-`last_results`, and the `Result` datatype even when the body never
-references them, so an AST walk of the assertions could not have
-recovered them — re-declaring from a textual preamble does.
-
-**Deviation flag for the user.** This differs from the approved
-*mechanism* (push/pop) but achieves the approved *goal* (stop
-re-parsing the body every tick; "build the model once, reuse it").
-The user's approval note — "that is what the previous code did" —
-refers to the legacy runtime, which used `s.check(*pins)`
-(check-with-assumptions), itself an incremental form that would share
-the same regression on datatype-heavy state. If literal push/pop is
-required regardless of the perf regression, revert
-`kernel/src/tick.rs` and re-open this proposal; otherwise the landed
-cached-ASTs form is the recommended fix.
-
-Relative to invariant #3 ("no tick may rebuild the model"): the landed
-form does create a fresh `Z3_solver` per tick, but it never re-parses
-or re-builds the *constraint system* (the cached ASTs are reused
-verbatim). The expensive, audited cost — the per-tick parse — is
-eliminated.
+`check`, read the model, drop the solver. Task #11 evolved this into
+mechanism A (same + pre-loop simplify) and then E (same, but substitute
+the pins into the cached ASTs instead of asserting them).
 
 ---
 
