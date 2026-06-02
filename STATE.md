@@ -12,14 +12,19 @@ BOOTSTRAP NOT YET DELETABLE.
 
 Blockers:
 
-7 files still reference bootstrap/runtime/target:
+12 files still reference bootstrap/runtime/target:
     ./tests/conformance/conftest.py
+    ./tests/conformance/features/README.md
+    ./tests/conformance/features/runner.sh
+    ./docs/plans/DELETION-CHECKLIST.md
+    ./docs/briefings/tasks/02-conformance-architecture.md
     ./scripts/lexer-oracle.py
     ./scripts/run-kernel-tests.py
     ./scripts/run-lang-tests.py
     ./scripts/diff-test-selfhosted.sh
     ./scripts/bench-demo.sh
     ./scripts/bench-selfhosted.sh
+    ./scripts/coordinator-results/02-conformance-architecture/prompt.md
 compiler.smt2 does not exist at the repo root.
     This is the self-hosted compiler — written in Evident at
     compiler/compiler.ev, compiled once via bootstrap, and
@@ -44,7 +49,7 @@ compiler.smt2 does not exist at the repo root.
     tests/conformance/test_syntax_sugar.py
 test.sh still invokes bootstrap. Switch its 'evident' binary path
     to use kernel + compiler.smt2.
-bootstrap/ directory still exists (10549 lines of Rust).
+bootstrap/ directory still exists (11247 lines of Rust).
     When every blocker above is cleared, run: rm -rf bootstrap/
 
 See CLAUDE.md, section 'The deletion path,' for how to clear these.
