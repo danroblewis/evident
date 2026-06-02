@@ -51,14 +51,41 @@ cmd_launch() {
     echo "The coordinator has limited context budget and depends on you to"
     echo "complete this task with maximum independence."
     echo
+    echo "## WORKING DIRECTORY (READ THIS FIRST)"
+    echo
+    echo "You are running inside your own isolated git worktree at:"
+    echo
+    echo "  \`\`\`"
+    echo "  $REPO_ROOT/$dir/worktree"
+    echo "  \`\`\`"
+    echo
+    echo "**Stay there.** All edits must be to files INSIDE that worktree."
+    echo "The repo root (\`/Users/danroblewis/evident\`) is the main worktree,"
+    echo "checked out on a different branch by the coordinator, possibly with"
+    echo "other concurrent sessions also writing to it. Editing absolute"
+    echo "paths under \`/Users/danroblewis/evident/<anything>\` will silently"
+    echo "scribble on the main worktree — a recurring isolation bug."
+    echo
+    echo "**Always use paths relative to your CWD** (which is your worktree)."
+    echo "If you see an absolute \`/Users/danroblewis/evident/<path>\` in a doc"
+    echo "you're reading, treat it as a description of the *path within your worktree*,"
+    echo "not a literal target."
+    echo
+    echo "**Verify** you're in the right place before editing: \`pwd && git branch --show-current\`."
+    echo "Branch should be \`agent-$name\`; pwd should END with \`/worktree\`."
+    echo
     echo "## REQUIRED FIRST ACTIONS"
     echo
-    echo "1. Read /Users/danroblewis/evident/CLAUDE.md fully."
-    echo "2. Read /Users/danroblewis/evident/bootstrap/READ-ME-FIRST.md."
-    echo "3. Read /Users/danroblewis/evident/docs/briefings/foundation.md."
-    echo "4. Run \`bash /Users/danroblewis/evident/scripts/check-deletable.sh\` and read its output."
+    echo "All paths below are relative to your worktree:"
     echo
-    echo "Do all four before you write a single character of code."
+    echo "1. Read \`CLAUDE.md\` fully."
+    echo "2. Read \`bootstrap/READ-ME-FIRST.md\`."
+    echo "3. Read \`docs/briefings/foundation.md\`."
+    echo "4. Read \`docs/briefings/orchestrator.md\` if your task touches"
+    echo "   coordination/orchestration."
+    echo "5. Run \`bash scripts/check-deletable.sh\` and read its output."
+    echo
+    echo "Do all five before you write a single character of code."
     echo "These tell you the project's state and the constraints you must operate under."
     echo
     echo "## YOUR TASK"
