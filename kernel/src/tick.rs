@@ -213,14 +213,9 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
     let name = decode_sym(ctx, sym);
 
     match name.as_str() {
-        "Print" => {
-            let arg0 = Z3_get_app_arg(ctx, app, 0);
-            let s = decode_string_literal(ctx, arg0)?;
-            print!("{s}");
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-            Ok(EffectOutcome::Continue(Res::No))
-        }
+        // Println, Print, Time were here in iter 1; demoted to LibCall
+        // sugar in iter 2.5+. See stdlib/kernel.ev → BuildPrintln /
+        // BuildPrint / BuildTime.
         "Exit" => {
             let arg0 = Z3_get_app_arg(ctx, app, 0);
             let code = decode_int_literal(ctx, arg0)?;
