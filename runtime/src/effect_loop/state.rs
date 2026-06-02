@@ -4,11 +4,6 @@ use crate::runtime::EvidentRuntime;
 use crate::core::Value;
 use super::fsm::MainShape;
 
-/// True if `v` is a halt-sentinel variant (name exactly "Done" or "Halt").
-pub(super) fn model_matches_value(v: &Value, _state_type: &str) -> bool {
-    matches!(v, Value::Enum { variant, .. } if variant == "Done" || variant == "Halt")
-}
-
 /// Seed a spawned FSM's state to `FirstVariant(arg)` if the first variant takes one Int payload.
 /// Returns None if the shape doesn't match (caller falls back to `seed_state`).
 pub(super) fn seed_state_with_arg(

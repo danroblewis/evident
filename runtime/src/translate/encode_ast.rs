@@ -176,24 +176,6 @@ fn encode_cons_list<'ctx, T>(
     Ok(acc)
 }
 
-pub fn encode_string_list<'ctx>(
-    items: &[String],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    // Top-level Seq(String) uses Array+Int (String is not in a recursive enum batch).
-    // No current caller uses this for AST encoding; EForall etc. go via the field-aware path.
-    use z3::ast::Array;
-    use z3::Sort;
-    let default = z3_str(ctx, "");
-    let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
-    for (i, s) in items.iter().enumerate() {
-        arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
-    }
-    let _ = enums;
-    Err(EncodeError::Unsupported("encode_string_list (top-level Array+Int) — use the field-aware encoder path"))
-}
-
 pub fn encode_expr_list<'ctx>(
     items: &[Expr],
     ctx: &'ctx Context,

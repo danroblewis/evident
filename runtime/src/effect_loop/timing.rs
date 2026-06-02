@@ -1,15 +1,5 @@
 //! Timing summaries gated by `EVIDENT_LOOP_TIMING`.
 
-pub(super) fn print_timing_summary(
-    loop_t0: std::time::Instant,
-    steps: usize,
-    total_solve: std::time::Duration,
-    total_dispatch: std::time::Duration,
-) {
-    print_timing_summary_full(loop_t0, steps, total_solve, total_dispatch, &[]);
-}
-
-/// Full summary; empty `per_fsm` slice omits the per-FSM breakdown.
 pub(super) fn print_timing_summary_full(
     loop_t0: std::time::Instant,
     steps: usize,

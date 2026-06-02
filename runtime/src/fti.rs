@@ -62,17 +62,6 @@ fn pin_int(pins: &Pins, field: &str) -> Option<i64> {
         }).flatten())
 }
 
-fn pin_str(pins: &Pins, field: &str) -> Option<String> {
-    use crate::core::ast::{Expr, Mapping};
-    let Pins::Named(ms) = pins else { return None };
-    ms.iter().find_map(|Mapping { slot, value }|
-        (slot == field).then(|| match value {
-            Expr::Str(s) => Some(s.clone()),
-            _ => None,
-        }).flatten())
-}
-
-
 fn key(ctx: &FtiContext, field: &str) -> String {
     format!("{}.{}.{}", ctx.claim_name, ctx.param_name, field)
 }

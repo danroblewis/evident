@@ -29,12 +29,6 @@ pub(super) enum SeqHandleRef<'ctx> {
 }
 
 impl<'ctx> SeqHandleRef<'ctx> {
-    pub(super) fn arr(&self) -> &z3::ast::Array<'ctx> {
-        match self {
-            SeqHandleRef::Primitive { arr, .. } => arr,
-            SeqHandleRef::Composite { arr, .. } => arr,
-        }
-    }
     pub(super) fn len(&self) -> &Int<'ctx> {
         match self {
             SeqHandleRef::Primitive { len, .. } => len,

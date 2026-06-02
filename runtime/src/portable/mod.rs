@@ -16,7 +16,6 @@ pub trait Portable {
 /// [`cached_runner`] / [`guarded_runner`] give each port a per-thread cache.
 pub(crate) struct EvidentRunner {
     rt: EvidentRuntime,
-    fsm: &'static str,
     max_steps: usize,
 }
 
@@ -25,27 +24,13 @@ impl EvidentRunner {
     pub(crate) const MAX_STEPS: usize = 5_000_000;
 
     /// Load `pass_relpath` (relative to stdlib) into a fresh runtime.
-    pub(crate) fn load(pass_relpath: &str, fsm: &'static str) -> Result<Self, String> {
+    pub(crate) fn load(pass_relpath: &str, _fsm: &'static str) -> Result<Self, String> {
         let dir = crate::stdlib_path::stdlib_dir()
             .map_err(|e| format!("cannot locate stdlib to load `{pass_relpath}`: {e}"))?;
-        Self::load_from(&dir, pass_relpath, fsm)
-    }
-
-    /// Like [`load`] but with `stdlib_dir` supplied — used by tests.
-    pub(crate) fn load_from(
-        stdlib_dir: &Path,
-        pass_relpath: &str,
-        fsm: &'static str,
-    ) -> Result<Self, String> {
         let mut rt = EvidentRuntime::new();
-        rt.load_file(&stdlib_dir.join(pass_relpath))
+        rt.load_file(&dir.join(pass_relpath))
             .map_err(|e| format!("load {pass_relpath}: {e}"))?;
-        Ok(Self { rt, fsm, max_steps: Self::MAX_STEPS })
-    }
-
-    /// Drive the primary FSM to a drained-stack halt over `seed`.
-    pub(crate) fn run(&self, seed: Value) -> Result<Value, String> {
-        self.run_fsm(self.fsm, seed)
+        Ok(Self { rt, max_steps: Self::MAX_STEPS })
     }
 
     /// Drive a named FSM to halt over `seed`.
