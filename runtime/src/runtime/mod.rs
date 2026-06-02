@@ -12,10 +12,8 @@ pub(crate) mod inject;
 mod validate;
 mod register_enums;
 mod query;
-mod sample;
 mod scheduler_api;
 mod reflection;
-mod analysis;
 mod introspect;
 mod nested;
 
