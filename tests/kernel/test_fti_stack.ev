@@ -1,0 +1,78 @@
+-- Stack FTI smoke test: push 3, pop 2, watch the depth evolve.
+--
+-- Drives stdlib/fti/stack.ev across 7 ticks. The Stack allocates its
+-- backing region on tick 0 (libc malloc), stores each pushed byte on
+-- ticks 1-3 (libc memset), and drops cons-cell heads on the pops (ticks
+-- 4-5, no libcall). The diagnostic puts print the stack depth each
+-- tick, so stdout traces the length: 0 → 1 → 2 → 3 → 2 → 1.
+--
+-- expect: stdout = "0"
+-- expect: stdout = "1"
+-- expect: stdout = "2"
+-- expect: stdout = "3"
+-- expect: stdout = "2"
+-- expect: stdout = "1"
+-- expect: exit = 0
+import "stdlib/fti/stack.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    contents  ∈ IntStack
+    _contents ∈ IntStack
+    depth  ∈ Int
+    _depth ∈ Int
+
+    -- Backing pointer: malloc's return arrives next tick in last_results;
+    -- capture it once, then carry it forward (two-tick handle threading).
+    base_in ∈ Int = match last_results[0]
+        IntResult(p) ⇒ p
+        _ ⇒ 0
+    base  ∈ Int
+    _base ∈ Int
+    base = (is_first_tick ? 0 : (_base = 0 ? base_in : _base))
+
+    -- "drop the head" view of the carried stack, for the pops.
+    prev_tail ∈ IntStack = match _contents
+        SNode(h, t) ⇒ t
+        SEmpty ⇒ SEmpty
+
+    -- Phase-driven transitions: push 10/20/30, then pop twice.
+    contents = (phase = 0 ? SEmpty
+             : (phase = 1 ? SNode(10, _contents)
+             : (phase = 2 ? SNode(20, _contents)
+             : (phase = 3 ? SNode(30, _contents)
+             : (phase = 4 ? prev_tail
+             : (phase = 5 ? prev_tail
+             : _contents))))))
+
+    depth = (phase = 0 ? 0
+          : (phase ≤ 3 ? _depth + 1
+          : (phase ≤ 5 ? _depth - 1
+          : _depth)))
+
+    -- The FTI: asserts the transition is legal, detects the push, and
+    -- surfaces the top-of-stack value for the store.
+    pushing ∈ Bool
+    top ∈ Int
+    Stack(contents ↦ contents, prev ↦ _contents, depth ↦ depth, prev_depth ↦ _depth, is_init ↦ is_first_tick, pushing ↦ pushing, top ↦ top)
+
+    -- Effect pieces. The libcall literals come from the FTI builders;
+    -- the new top is stored at offset _depth (the pre-push length).
+    alloc_elem ∈ Effect
+    BuildStackAlloc(eff ↦ alloc_elem)
+    store_elem ∈ Effect
+    BuildStackStore(base ↦ base, offset ↦ _depth, value ↦ top, eff ↦ store_elem)
+    report_elem ∈ Effect = LibCall("libc", "puts", ⟨ArgStr(str_from_int(depth))⟩)
+
+    alloc_part  ∈ Seq(Effect) = ⟨alloc_elem⟩
+    store_part  ∈ Seq(Effect) = ⟨store_elem⟩
+    report_part ∈ Seq(Effect) = ⟨report_elem⟩
+
+    -- Single channel, single writer, `++` composition of the parts.
+    effects ∈ Seq(Effect) = (is_first_tick ? alloc_part ++ report_part
+                          : (phase ≥ 6 ? ⟨Exit(0)⟩
+                          : (pushing ? store_part ++ report_part
+                          : report_part ++ ⟨⟩)))

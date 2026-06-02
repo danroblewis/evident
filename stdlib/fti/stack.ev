@@ -1,0 +1,105 @@
+-- stdlib/fti/stack.ev — Stack FTI (Foreign Type Interface).
+--
+-- A Stack is to this language what Vec is to Rust: a reusable data
+-- structure whose backing bytes live in C-land (reached via direct
+-- `libc` calls) while the Evident-side state carries only the logical
+-- contents and a small pointer handle.
+--
+-- This is the first FTI in the repo. It proves the tiny-runtime FTI
+-- pattern works on the *current* single-channel-effects kernel with no
+-- kernel extensions. Design sources:
+--   * `legacy-python/docs/fti-composition.md` §4 "FTI body semantics"
+--     and §"The unsupported-transition question" — Answer 2: an FTI
+--     honestly declares the transitions it supports; an unsupported
+--     transition makes the legal-transition disjunction UNSAT and the
+--     FSM halts. That disjunction is the whole FTI contract here.
+--   * `docs/plans/architecture-invariants.md` §"FTIs are pure Evident +
+--     FFI" (direct libc, no `__mem__` shim) and §"Single-channel
+--     effects + `++` composition" (one `effects` Seq, `++` of parts,
+--     no namespaced `*_effects` channels).
+--
+-- ── How it maps onto the current kernel (deviations + why) ─────────
+--
+-- The fti-composition.md sketch assumes runtime features this kernel
+-- does not have; each is re-expressed in a working form:
+--
+--   * `contents ∈ Seq(T)` carried across ticks → NOT POSSIBLE. The
+--     kernel's state-pair carry covers Int/Bool/Real/String and enum
+--     datatypes only (bootstrap/runtime/src/emit.rs `discover_state_
+--     fields`: "Seq/Set vars … not yet supported as carry state"). So
+--     the logical contents is a recursive *enum cons-list* `IntStack`
+--     (head = top of stack), which carries exactly like the
+--     `TokenList` in tests/kernel/test_tokens_carry.ev. The length is
+--     tracked as a companion `depth ∈ Int`, which does carry.
+--   * A per-FTI `*_effects` channel → NOT ALLOWED (single-channel
+--     invariant). The FTI instead exposes its libcalls as single-
+--     `Effect` *builder* claims (the established `BuildPrintln` sugar
+--     shape from stdlib/kernel.ev); the host `++`-composes the
+--     resulting Effects into its one `effects` Seq.
+--   * The host owning the `effects = …` constraint is forced by the
+--     translator: the emit validator requires a literal `effects = …`
+--     in the host schema, the load-time `++` flatten only resolves
+--     *literal* operands (so an FTI cannot hand over a conditional Seq
+--     to `++`), and seq-var = seq-var equality does not translate. The
+--     builder-claim split keeps the libcall *literals* inside this file
+--     while the host writes the (validated, single-writer) `effects`.
+--   * v1 is Int-typed and byte-valued (per fti-composition.md open
+--     question #4: the original `__mem__` longs path was int-only). We
+--     store one byte per element via `memset`, so pushed values must
+--     fit a byte. `memcpy` is avoided because it needs a *source
+--     pointer*, which the i/l/d/s/v libffi arg grammar cannot
+--     materialise from a Z3 value; a per-element byte store is the
+--     working choice the task spec permits.
+--
+-- ── Backing store + handle threading ──────────────────────────────
+--
+-- `BuildStackAlloc` emits `LibCall("libc","malloc",1024)`; the returned
+-- pointer arrives in the next tick's `last_results` and the host
+-- carries it as `base ∈ Int` (the two-tick handle-threading idiom from
+-- legacy-python/docs/runtime-architecture.md). `BuildStackStore` emits
+-- `LibCall("libc","memset", base+offset, value, 1)` — a single one-byte
+-- store. A pop needs no libcall: dropping the cons-cell head is the
+-- whole operation and the bytes simply stop being read.
+
+import "stdlib/kernel.ev"
+
+-- Logical stack contents as a cons-list. Head is the top of stack.
+enum IntStack = SEmpty | SNode(Int, IntStack)
+
+-- The FTI contract. The host binds the state pair (`contents`/`prev`
+-- and `depth`/`prev_depth`) and the first-tick flag `is_init`; the FTI
+-- asserts which transitions are legal and reports `pushing` (a push was
+-- detected this tick) and `top` (the current top-of-stack value).
+claim Stack(contents ∈ IntStack, prev ∈ IntStack, depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool, pushing ∈ Bool, top ∈ Int)
+    ctail ∈ IntStack = match contents
+        SNode(h, t) ⇒ t
+        SEmpty ⇒ SEmpty
+    ptail ∈ IntStack = match prev
+        SNode(h, t) ⇒ t
+        SEmpty ⇒ SEmpty
+    top = match contents
+        SNode(h, t) ⇒ h
+        SEmpty ⇒ 0
+
+    -- Honest transition declaration (fti-composition.md Answer 2): a
+    -- step is a no-op, a single push (contents = SNode(_, prev)), or a
+    -- single pop (prev = SNode(_, contents)). Anything else — a
+    -- reverse, a two-at-once jump — satisfies none of the disjuncts,
+    -- the constraint is UNSAT, and the kernel halts. `is_init` lets the
+    -- first tick through before the carried `prev`/`prev_depth` exist.
+    legal_noop ∈ Bool = (depth = prev_depth ∧ contents = prev)
+    legal_push ∈ Bool = (depth = prev_depth + 1 ∧ ctail = prev)
+    legal_pop  ∈ Bool = (depth = prev_depth - 1 ∧ ptail = contents)
+    (is_init ∨ legal_noop ∨ legal_push ∨ legal_pop)
+
+    pushing = legal_push
+
+-- ── libcall builders (the FTI's libcall literals live here) ────────
+
+-- Allocate the backing region. Returns the pointer in last_results.
+claim BuildStackAlloc(eff ∈ Effect)
+    eff = LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)
+
+-- Store one byte (`value`) at `base + offset`.
+claim BuildStackStore(base ∈ Int, offset ∈ Int, value ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "memset", ⟨ArgInt(base + offset), ArgInt(value), ArgInt(1)⟩)
