@@ -112,6 +112,45 @@ of this pattern. The key constraints discovered there:
 That keeps the kernel's single-writer rule intact and adds no kernel
 infrastructure.
 
+## FTI vs in-Evident cons-list state — when to use which
+
+**FTI** (Stack, Queue, future ones): for **unbounded streaming** —
+data that grows without bound across ticks (output buffers, log
+accumulators, anything whose total size is not known at load time).
+Backing memory lives in C via libc; the Z3 model carries only a
+small handle. The cost: FTIs are typed (`IntStack` carries bytes
+only) and have honest legal-transition disjunctions that restrict
+what per-tick reshaping is allowed.
+
+**In-Evident cons-list state** (e.g. `enum WorkList = WLNil |
+WLCons(WorkItem, WorkList)` carried via the `_<name>` state pair):
+for **bounded data** whose total size is known at load time or
+provably small — most importantly, AST traversal work stacks. The
+data lives in Z3's datatype representation; the model carries the
+full structure. The cost: model size scales with the data; *use
+only when the data is bounded by something cheap* (e.g. AST node
+count).
+
+For compiler / translator work, AST work stacks are bounded by the
+AST size, which is fixed at load time. **In-Evident cons-lists are
+the right tool, not FTIs.** Task #13 (recursive `translate_arith`)
+demonstrated this: a Stack FTI was attempted, rejected the
+per-tick "pop 1 + push 7" binop expansion as UNSAT, and was
+replaced with `compiler/parser.ev`'s `WorkItem`/`WorkList`. See
+`tests/kernel/test_translate_arith_recursive.ev` for the worked
+example.
+
+## Empty `effects` Seq quirk
+
+The kernel reads `effects` from the model after each solve. If
+`effects = ⟨⟩` is the only constraint on `effects` for a tick, Z3
+may drop the unconstrained array from the model, and the kernel
+reports "effects var not in model." Workaround when you genuinely
+want a no-op tick: emit a side-effect-free libcall such as
+`LibCall("libc", "getpid", ⟨⟩)` to force Z3 to materialize the
+Seq. See `tests/kernel/test_multi_tick.ev` and
+`tests/kernel/test_translate_arith_recursive.ev` for the pattern.
+
 ## Single-channel effects + `++` composition
 
 The kernel has one `effects` Seq per FSM. Multiple writers compose
