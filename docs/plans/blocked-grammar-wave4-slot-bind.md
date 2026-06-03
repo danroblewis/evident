@@ -77,3 +77,23 @@ Once (1) and (2) exist, item 3 becomes a focused pass; until then it cannot
 be expressed faithfully, and a partial attempt would regress the
 single-writer / silent-drop invariants. Deferred to wave 4b/5, after
 multi-item parsing lands.
+
+## Wave-4b update
+
+Dependency (1) — **multi-top-level-item parsing — now exists**:
+`compiler/compiler.ev`'s phase-2 `pmode` loop (see
+`docs/plans/grammar-wave4b.md`, item 1) walks a sequence of top-level
+items, so dependency (2) — **a claim registry** — is now tractable: collect
+each claim's `(name → BodyItemList)` during the DISPATCH pass. That clears
+the two prerequisites this note called out.
+
+What remains for item 3 is still dependency (3), the body-inline pass:
+α-rename the callee's body-locals (the
+`[[project_claim_composition_leaks_body_locals]]` hazard) and substitute
+each slot binding into the callee's translated body. That needs the
+name-rewrite primitive (`[[project_string_ops_landed]]` added the substr/
+replace ops, but they are not yet wired into a compiler-driver inline
+pass), plus the robust nested-parse work the wave-4b enum/claim machines
+still lack (compound field types, first-line params — see
+`docs/plans/blocked-grammar-wave4b.md` blockers 2–3). Slot-bind stays
+deferred to a focused later session; wave 4b did not attempt it in code.

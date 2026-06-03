@@ -1,69 +1,22 @@
--- compiler/compiler.ev — the self-hosted compiler driver.
+-- Grammar wave 4b, item 3: L3 CONSTRUCTOR NESTING — a constructor whose
+-- argument is a Seq whose element is a constructor of atoms. Drives the
+-- UNMODIFIED compiler/compiler.ev pipeline (constant input) on a scalar
+-- membership whose RHS is the canonical effect-builder shape:
+--   e ∈ Effect = LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
+--     →  (assert (= e (LibCall "libc" "puts" (seq.unit (ArgStr "hi")))))
+-- ctor(L3) → Seq(L2) → ctor(L1) → atom(L0). Dispatched by the driver's
+-- `mem_is_ctor` discriminator to CtorMembershipStep → RenderExprToks
+-- (now aliasing RenderExprL3). See docs/plans/grammar-wave4b.md.
 --
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
---
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one scalar membership / tick
---   compiler/parse_body_seq.ev   — SeqMembershipStep: one Seq membership / tick
---   compiler/parse_body_match.ev — MatchMembershipStep: one match membership / tick
---   compiler/translate.ev        — enum → (declare-datatypes …) (VariantText / EnumDeclSmtlib)
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
---   compiler/translate_match.ev   — match arm → nested ite
---   compiler/translate_seq.ev     — Seq surface → Z3 sequence theory
---
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — TOP-LEVEL HEAD-TOKEN DISPATCH (grammar wave 3.5): the
---                 forward list's head token decides the program shape,
---                 mirroring bootstrap's program.rs (each top-level item is
---                 one of claim/type/schema/fsm/enum/import dispatched by
---                 head token).
---                   · `KwEnum`  → the enum-decl parse machine: walk the
---                     forward tokens ONE TOKEN PER TICK with an enum-parse
---                     state machine (ephase 1..8), building each variant
---                     and rendering it via translate.ev's VariantText.
---                   · otherwise → a claim head (`<kw> Ident`): drop the
---                     2-token head, walk the forward token list ONE
---                     MEMBERSHIP PER TICK, dispatching each membership by
---                     shape to MembershipStep (scalar), SeqMembershipStep
---                     (Seq), or MatchMembershipStep (match), accumulating
---                     the declare/assert lines (`out`) and the manifest
---                     state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: for a claim, assemble the
---                 manifest header + body and `puts` the .smt2; for an enum,
---                 assemble the (declare-datatypes …) block. Then Exit(0).
---
--- Grammar scope (docs/plans/grammar-wave1.md + wave2.md + wave3.md +
--- wave3.5.md): a claim head plus N memberships, each optionally pinned —
--- scalar/arith/comparison/boolean/ternary/string pins (waves 1–2), the
--- `= <atom> matches Ctor(_)` recognizer (wave 3), and — integrated into
--- this monolithic driver in wave 3.5 — a top-level `enum` declaration, a
--- `= match scrut { Ctor(b) ⇒ … ; _ ⇒ … }` membership pin (→ nested ite),
--- and `Seq(T)` memberships (⟨…⟩ literal / `++` concat / `#` cardinality).
--- is_first_tick is auto-injected and `_<name>` carry vars are excluded
--- from the manifest state-fields. Quantifier / subclaim / `..` / generics
--- and multi-top-level-item files are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
-
+-- expect: stdout = ";; manifest: state-fields = e:Effect"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun is_first_tick () Bool)"
+-- expect: stdout = "(declare-fun e () Effect)"
+-- expect: stdout = "(assert (= e (LibCall "libc" "puts" (seq.unit (ArgStr "hi")))))"
+-- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -81,18 +34,12 @@ import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input ∈ String = "claim foo\n    e ∈ Effect = LibCall(\"libc\", \"puts\", ⟨ArgStr(\"hi\")⟩)\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -211,57 +158,23 @@ claim main
         : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
         : _fwd)))
 
-    -- ══ TOP-LEVEL ITEM LOOP (grammar wave 4b) ═════════════════════
-    -- Phase 2 walks a SEQUENCE of top-level items (wave 3.5 handled
-    -- exactly one). A sub-mode `pmode` routes the forward stream
-    -- `_items` (initialised to `_fwd` once REVERSE completes):
-    --   0 DISPATCH — peek head(_items): KwEnum → enum (pmode 1); other
-    --                non-empty head → claim (pmode 2); empty → all_done
-    --                → EMIT.
-    --   1 ENUM     — accumulate ONE enum's (declare-datatypes …) block
-    --                into `eacc`, stopping at the next top-level keyword
-    --                (or end of stream) rather than draining everything,
-    --                then return to DISPATCH with `items` advanced to the
-    --                remaining stream (the boundary keyword onward).
-    --   2 CLAIM    — the wave-1..4 membership walk; on completion return
-    --                to DISPATCH. In the real "N enum decls + 1 claim"
-    --                translation-unit shape the claim is the last item;
-    --                multi-claim selection (emit only the target claim,
-    --                skip the imported Build* sugar claims) is a
-    --                documented gap — see docs/plans/blocked-grammar-wave4b.md.
-    -- The emitted unit is: manifest header · accumulated enum datatype
-    -- blocks (`_eacc`) · the claim's is_first_tick decl + declares/asserts
-    -- (`_out`), mirroring bootstrap's datatypes-before-declares ordering.
-    pmode  ∈ Int
-    _pmode ∈ Int
-    items  ∈ TokenList
-    _items ∈ TokenList
-    eacc  ∈ String
-    _eacc ∈ String
-
-    items_hd ∈ Token
-    TLHd(l ↦ _items, out ↦ items_hd)
-    items_nil ∈ Bool = match _items
-        TLNil ⇒ true
-        _ ⇒ false
-    head_is_enum ∈ Bool = (items_hd matches KwEnum)
-
-    in_dispatch  ∈ Bool = (in_parse ∧ (_pmode = 0))
-    enter_enum   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_enum)
-    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum))
-    all_done     ∈ Bool = (in_dispatch ∧ items_nil)
-    in_enum_run  ∈ Bool = (in_parse ∧ (_pmode = 1))
-    in_claim_run ∈ Bool = (in_parse ∧ (_pmode = 2))
+    -- ── TOP-LEVEL HEAD-TOKEN DISPATCH (wave 3.5) ──────────────────
+    -- `_fwd` is read-only once REVERSE completes; its head token decides
+    -- the program shape. `KwEnum` → enum-decl machine; otherwise a
+    -- claim head, walked as memberships.
+    prog_head ∈ Token
+    TLHd(l ↦ _fwd, out ↦ prog_head)
+    is_enum_program ∈ Bool = (prog_head matches KwEnum)
 
     -- ══════════════════════════════════════════════════════════════
-    -- CLAIM sub-machine (pmode 2): membership walk over `_items`
+    -- CLAIM PATH (¬is_enum_program): membership walk
     -- ══════════════════════════════════════════════════════════════
 
-    -- Drop the 2-token `<kw> Ident` head off the current item.
-    items_d1 ∈ TokenList
-    TLTl(l ↦ _items, out ↦ items_d1)
-    items_d2 ∈ TokenList
-    TLTl(l ↦ items_d1, out ↦ items_d2)
+    -- Drop the 2-token `<kw> Ident` head.
+    fwd_d1 ∈ TokenList
+    TLTl(l ↦ _fwd, out ↦ fwd_d1)
+    fwd_d2 ∈ TokenList
+    TLTl(l ↦ fwd_d1, out ↦ fwd_d2)
 
     rem  ∈ TokenList
     _rem ∈ TokenList
@@ -342,25 +255,23 @@ claim main
 
     chunk ∈ String = (sel_pinned ? sel_decl ++ "\n" ++ sel_assert : sel_decl)
 
-    claim_done ∈ Bool = (in_claim_run ∧ (¬sel_ok))
-
     rem = (is_first_tick ? TLNil
-        : (enter_claim ? items_d2
-        : (in_claim_run ∧ sel_ok ? sel_rest
+        : (entering_parse ∧ (¬is_enum_program) ? fwd_d2
+        : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? sel_rest
         : _rem)))
 
     out  ∈ String
     _out ∈ String
     out = (is_first_tick ? ""
-        : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (_out = "" ? chunk : _out ++ "\n" ++ chunk)
+        : (entering_parse ∧ (¬is_enum_program) ? ""
+        : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? (_out = "" ? chunk : _out ++ "\n" ++ chunk)
         : _out)))
 
     fstr  ∈ String
     _fstr ∈ String
     fstr = (is_first_tick ? ""
-        : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
+        : (entering_parse ∧ (¬is_enum_program) ? ""
+        : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
     -- is_first_tick auto-inject guard: track whether the source declared
@@ -369,12 +280,12 @@ claim main
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
-        : (enter_claim ? false
-        : (in_claim_run ∧ sel_ok ? (_ift ∨ sel_saw_ift)
+        : (entering_parse ∧ (¬is_enum_program) ? false
+        : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? (_ift ∨ sel_saw_ift)
         : _ift)))
 
     -- ══════════════════════════════════════════════════════════════
-    -- ENUM sub-machine (pmode 1): enum-decl parse machine
+    -- ENUM PATH (is_enum_program): enum-decl parse machine
     -- ══════════════════════════════════════════════════════════════
     -- ephase: 1 KwEnum · 2 name · 3 Eq · 4 variant-name · 5 after-name
     --         (LParen→6, Pipe/end→finalize) · 6 field-type · 7 after-field
@@ -430,20 +341,10 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A top-level keyword at the enum head ends THIS enum (the next item
-    -- starts there). This is the wave-4b multi-item stop: instead of
-    -- draining the whole forward list, the enum machine halts at the next
-    -- enum/claim/type/fsm/schema and leaves the remaining stream in `_plist`.
-    p_is_tlkw ∈ Bool = ((ptok matches KwEnum) ∨ (ptok matches KwClaim)
-        ∨ (ptok matches KwType) ∨ (ptok matches KwFsm) ∨ (ptok matches KwSchema))
-
     -- A variant is pending (name read, awaiting boundary) in e5 or e8.
     have_pending ∈ Bool = (e5 ∨ e8)
-    at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil ∨ p_is_tlkw)
-    finalize     ∈ Bool = (in_enum_run ∧ have_pending ∧ at_boundary)
-    -- This enum is complete: pending variant + we are at the end of the
-    -- stream or the next top-level keyword (NOT a `|`, which continues it).
-    enum_done    ∈ Bool = (in_enum_run ∧ have_pending ∧ (plist_nil ∨ p_is_tlkw))
+    at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil)
+    finalize     ∈ Bool = (in_parse ∧ is_enum_program ∧ have_pending ∧ at_boundary)
 
     -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
@@ -472,90 +373,50 @@ claim main
     starting_variant ∈ Bool = (e4 ∧ p_is_ident)
     adding_field     ∈ Bool = (e6 ∧ p_is_ident)
 
-    -- State carry for the enum-parse sub-machine. `enter_enum` (re)inits
-    -- it for each enum item; `in_enum_run` advances it; `enum_done` halts
-    -- it at the boundary (without consuming the boundary keyword: plist is
-    -- left pointing AT it so DISPATCH picks up the next item there).
-    plist   = (is_first_tick ? TLNil
-        : (enter_enum ? _items
-        : (in_enum_run ∧ (¬enum_done) ∧ (¬plist_nil) ? ptail
-        : _plist)))
-    ephase  = (is_first_tick ? 1
-        : (enter_enum ? 1
-        : (in_enum_run ? next_ephase
-        : _ephase)))
-    ename   = (is_first_tick ? ""
-        : (enter_enum ? ""
-        : (in_enum_run ∧ e2 ∧ p_is_ident ? p_id
-        : _ename)))
-    body    = (is_first_tick ? ""
-        : (enter_enum ? ""
-        : (in_enum_run ? new_body
-        : _body)))
-    first_v = (is_first_tick ? true
-        : (enter_enum ? true
-        : (finalize ? false
-        : _first_v)))
-    cur_name = (is_first_tick ? ""
-        : (enter_enum ? ""
-        : (in_enum_run ∧ starting_variant ? p_id
-        : _cur_name)))
+    -- State carry for the enum-parse machine (gated on is_enum_program).
+    plist   = (is_first_tick ? TLNil : (entering_parse ∧ is_enum_program ? _fwd : (in_parse ∧ is_enum_program ∧ (¬plist_nil) ? ptail : _plist)))
+    ephase  = (is_first_tick ? 1 : (entering_parse ∧ is_enum_program ? 1 : (in_parse ∧ is_enum_program ? next_ephase : _ephase)))
+    ename   = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ e2 ∧ p_is_ident ? p_id : _ename))
+    body    = (is_first_tick ? "" : (entering_parse ∧ is_enum_program ? "" : (in_parse ∧ is_enum_program ? new_body : _body)))
+    first_v = (is_first_tick ? true : (entering_parse ∧ is_enum_program ? true : (finalize ? false : _first_v)))
+    cur_name = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ starting_variant ? p_id : _cur_name))
     fcount  = (is_first_tick ? 0
-        : (enter_enum ? 0
-        : (in_enum_run ∧ starting_variant ? 0
-        : (in_enum_run ∧ adding_field ? _fcount + 1
-        : _fcount))))
-    fA = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 0) ? p_id : _fA)))
-    fB = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 1) ? p_id : _fB)))
-    fC = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 2) ? p_id : _fC)))
+        : (in_parse ∧ is_enum_program ∧ starting_variant ? 0
+        : (in_parse ∧ is_enum_program ∧ adding_field ? _fcount + 1
+        : _fcount)))
+    fA = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ adding_field ∧ (_fcount = 0) ? p_id : _fA))
+    fB = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ adding_field ∧ (_fcount = 1) ? p_id : _fB))
+    fC = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ adding_field ∧ (_fcount = 2) ? p_id : _fC))
 
-    -- The (declare-datatypes …) block for the enum that just finished.
-    grouped_body ∈ String = "(" ++ new_body ++ ")"
-    cur_enum_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
-    enum_block ∈ String
-    EnumDeclSmtlib(decl ↦ cur_enum_decl, body_str ↦ grouped_body, out ↦ enum_block)
-
-    -- Accumulators (persist across items): enum datatype blocks, and the
-    -- remaining top-level stream. `eacc` only grows on `enum_done`; `items`
-    -- advances at the parse start, each enum boundary, and the claim end.
-    eacc = (is_first_tick ? ""
-        : (enum_done ? (_eacc = "" ? enum_block : _eacc ++ "\n" ++ enum_block)
-        : _eacc))
-    items = (is_first_tick ? TLNil
-        : (entering_parse ? _fwd
-        : (enum_done ? _plist
-        : (claim_done ? _rem
-        : _items))))
-    pmode = (is_first_tick ? 0
-        : (entering_parse ? 0
-        : (enter_enum ? 1
-        : (enter_claim ? 2
-        : (enum_done ? 0
-        : (claim_done ? 0
-        : _pmode))))))
-
-    -- ── PHASE transition ──────────────────────────────────────────
+    -- ── PHASE transition (branch on program shape) ────────────────
     phase = (is_first_tick ? 0
         : (_phase = 0 ? (lex_done ? 1 : 0)
         : (_phase = 1 ? (work_is_nil ? 2 : 1)
-        : (_phase = 2 ? (all_done ? 3 : 2)
+        : (_phase = 2 ? (is_enum_program ? (plist_nil ? 3 : 2) : (sel_ok ? 2 : 3))
         : 3))))
 
     -- ── EMIT ──────────────────────────────────────────────────────
-    -- The DISPATCH tick that finds the item stream empty assembles and
-    -- `puts` the full translation unit, then Exit(0).
-    emit_now ∈ Bool = all_done
+    emit_now_claim ∈ Bool = ((¬is_enum_program) ∧ (¬is_first_tick) ∧ (_phase = 2) ∧ (¬sel_ok))
+    emit_now_enum  ∈ Bool = (is_enum_program ∧ (¬is_first_tick) ∧ (_phase = 2) ∧ plist_nil)
+    emit_now ∈ Bool = (emit_now_claim ∨ emit_now_enum)
 
+    -- Claim emission: manifest header + declares/asserts.
     manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
         ++ ";; manifest: effects-name = effects\n"
         ++ ";; manifest: effect-enum-name = Effect\n"
         ++ ";; manifest: result-enum-name = Result\n"
         ++ ";; manifest: max-effects = 0")
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
-    datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
-    smtlib ∈ String = manifest ++ "\n" ++ datatypes ++ ift_decl ++ _out
+    claim_smtlib ∈ String = manifest ++ "\n" ++ ift_decl ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
-        : (emit_now
-            ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+    -- Enum emission: the (declare-datatypes …) block.
+    grouped_body ∈ String = "(" ++ new_body ++ ")"
+    final_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
+    enum_smtlib ∈ String
+    EnumDeclSmtlib(decl ↦ final_decl, body_str ↦ grouped_body, out ↦ enum_smtlib)
+
+    smtlib ∈ String = (is_enum_program ? enum_smtlib : claim_smtlib)
+
+    effects ∈ Seq(Effect) = (emit_now
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

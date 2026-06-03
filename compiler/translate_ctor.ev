@@ -350,8 +350,106 @@ claim RenderExprL2
     out = (l2_is_ctor ? l2_ctor_out : l2_is_seq ? l2_sseq : l2_atom_out)
     rest = (l2_is_ctor ? l2_cclose : l2_is_seq ? l2_sclose : l2_t0)
 
+-- ══════════════════════════════════════════════════════════════════════
+-- RenderExprL3 — a constructor / Seq whose children are L2 (grammar wave 4b).
+-- ══════════════════════════════════════════════════════════════════════
+-- Structurally identical to L1/L2, but the per-child renders compose
+-- RenderExprL2. This is the depth the wave-4b fixture needs: a constructor
+-- whose argument is a Seq whose element is a constructor of atoms —
+--   LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
+--     →  (LibCall "libc" "puts" (seq.unit (ArgStr "hi")))
+-- i.e. ctor(L3) → Seq(L2) → ctor(L1) → atom(L0). Adding a level is purely
+-- mechanical; the constraint count grows ~6× per level, so L3 is the
+-- stopping point for the named fixture. A `⟨L3-ctor, …⟩` outer Seq (the
+-- full flattened test_hello effects literal, L4) and arbitrary depth are
+-- the token work-stack walker — see docs/plans/grammar-wave4b.md.
+claim RenderExprL3
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    l3_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ l3_h0)
+    l3_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ l3_t0)
+    l3_h1 ∈ Token
+    TLHdC(l ↦ l3_t0, out ↦ l3_h1)
+    l3_after_lp ∈ TokenList
+    TLTlC(l ↦ l3_t0, out ↦ l3_after_lp)
+
+    l3_is_ctor ∈ Bool = ((l3_h0 matches Ident(_)) ∧ (l3_h1 matches LParen))
+    l3_is_seq  ∈ Bool = (l3_h0 matches OpSeqOpen)
+    l3_ctor_name ∈ String = match l3_h0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    l3_atom_out ∈ String
+    l3_atom_ok ∈ Bool
+    AtomTokRenderC(t ↦ l3_h0, out ↦ l3_atom_out, ok ↦ l3_atom_ok)
+
+    l3_co1 ∈ String
+    l3_cr1 ∈ TokenList
+    l3_ck1 ∈ Bool
+    RenderExprL2(toks ↦ l3_after_lp, out ↦ l3_co1, rest ↦ l3_cr1, ok ↦ l3_ck1)
+    l3_ca1 ∈ TokenList
+    TLTlC(l ↦ l3_cr1, out ↦ l3_ca1)
+    l3_co2 ∈ String
+    l3_cr2 ∈ TokenList
+    l3_ck2 ∈ Bool
+    RenderExprL2(toks ↦ l3_ca1, out ↦ l3_co2, rest ↦ l3_cr2, ok ↦ l3_ck2)
+    l3_ca2 ∈ TokenList
+    TLTlC(l ↦ l3_cr2, out ↦ l3_ca2)
+    l3_co3 ∈ String
+    l3_cr3 ∈ TokenList
+    l3_ck3 ∈ Bool
+    RenderExprL2(toks ↦ l3_ca2, out ↦ l3_co3, rest ↦ l3_cr3, ok ↦ l3_ck3)
+
+    l3_cn ∈ Int
+    l3_cargs ∈ String
+    l3_cseq ∈ String
+    l3_cclose ∈ TokenList
+    ListThread3(a0 ↦ l3_after_lp,
+        o1 ↦ l3_co1, r1 ↦ l3_cr1, k1 ↦ l3_ck1,
+        o2 ↦ l3_co2, r2 ↦ l3_cr2, k2 ↦ l3_ck2,
+        o3 ↦ l3_co3, r3 ↦ l3_cr3, k3 ↦ l3_ck3,
+        n ↦ l3_cn, args_joined ↦ l3_cargs, seq_wrapped ↦ l3_cseq, after_close ↦ l3_cclose)
+
+    l3_ctor_out ∈ String = "(" ++ l3_ctor_name ++ (l3_cn = 0 ? "" : " " ++ l3_cargs) ++ ")"
+
+    l3_so1 ∈ String
+    l3_sr1 ∈ TokenList
+    l3_sk1 ∈ Bool
+    RenderExprL2(toks ↦ l3_t0, out ↦ l3_so1, rest ↦ l3_sr1, ok ↦ l3_sk1)
+    l3_sa1 ∈ TokenList
+    TLTlC(l ↦ l3_sr1, out ↦ l3_sa1)
+    l3_so2 ∈ String
+    l3_sr2 ∈ TokenList
+    l3_sk2 ∈ Bool
+    RenderExprL2(toks ↦ l3_sa1, out ↦ l3_so2, rest ↦ l3_sr2, ok ↦ l3_sk2)
+    l3_sa2 ∈ TokenList
+    TLTlC(l ↦ l3_sr2, out ↦ l3_sa2)
+    l3_so3 ∈ String
+    l3_sr3 ∈ TokenList
+    l3_sk3 ∈ Bool
+    RenderExprL2(toks ↦ l3_sa2, out ↦ l3_so3, rest ↦ l3_sr3, ok ↦ l3_sk3)
+
+    l3_sn ∈ Int
+    l3_sargs ∈ String
+    l3_sseq ∈ String
+    l3_sclose ∈ TokenList
+    ListThread3(a0 ↦ l3_t0,
+        o1 ↦ l3_so1, r1 ↦ l3_sr1, k1 ↦ l3_sk1,
+        o2 ↦ l3_so2, r2 ↦ l3_sr2, k2 ↦ l3_sk2,
+        o3 ↦ l3_so3, r3 ↦ l3_sr3, k3 ↦ l3_sk3,
+        n ↦ l3_sn, args_joined ↦ l3_sargs, seq_wrapped ↦ l3_sseq, after_close ↦ l3_sclose)
+
+    ok  = (l3_is_ctor ∨ l3_is_seq ∨ l3_atom_ok)
+    out = (l3_is_ctor ? l3_ctor_out : l3_is_seq ? l3_sseq : l3_atom_out)
+    rest = (l3_is_ctor ? l3_cclose : l3_is_seq ? l3_sclose : l3_t0)
+
 -- ── RenderExprToks: the level exposed to the driver ────────────────────
--- Aliases L2 (the deepest built level). A membership whose RHS is a
+-- Aliases L3 (the deepest built level). A membership whose RHS is a
 -- constructor application or a Seq literal of constructor applications
 -- renders through here.
 claim RenderExprToks
@@ -359,4 +457,4 @@ claim RenderExprToks
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    RenderExprL2(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok)
+    RenderExprL3(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok)
