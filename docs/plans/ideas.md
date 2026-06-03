@@ -261,7 +261,7 @@ User rationale:
 then, the honest-FTI pattern from task #23 is the default for new
 FTIs.
 
-## `fti` keyword + `install` mechanism (FTI self-owned initialization)
+## FTIs self-owned init/teardown via nested subclaims (NO new keyword)
 
 **Source:** user, mid-session ~task #29.
 
@@ -273,46 +273,73 @@ responsible for composing it and including `⟨alloc_elem⟩` in its
 effects literal on `is_first_tick`. The host has to know about the
 FTI's setup needs.
 
-User rationale:
+**The clean shape exists already.** No new keyword is required. The
+parts all exist in bootstrap today (verified by
+`tests/conformance/features/085-method-call-dotted-receiver/source.ev`):
 
-> *"There is one called `BuildStackAlloc` that does the actual
-> libcall, but I'm not sure when that ever gets emitted? In the old
-> bootstrap rust runtime, we had an `install` thing for FSM's and
-> FTI's where we would specify initialization steps."*
+- Field access `obj.field` (Token::Dot, `atoms.rs:20`).
+- Dotted-receiver method call `obj.field.method(args)` (composition
+  mechanism #6).
+- `subclaim Name(args)` inside a parent claim body (parser/schema.rs).
+- Subclaims access parent variables via the standard subschema-inline
+  pass.
+- `is_init` already exists on the FTI for first-tick gating.
 
-The legacy bootstrap had an `install` mechanism: an FTI declared its
-initialization/teardown effects, and the compiler arranged for them
-to flow into the host's effects channel without the host having to
-know.
+So the architecturally-right Stack FTI looks like:
 
-**Three viable paths:**
+```evident
+claim Stack(base ∈ Int, depth ∈ Int, is_init ∈ Bool,
+            install_effects ∈ Seq(Effect), ...)
+    subclaim BuildAlloc(eff ∈ Effect)
+        eff = LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)
+    subclaim BuildStore(slot ∈ Int, value ∈ Int, eff ∈ Effect)
+        eff = LibCall("__mem", "write_long",
+                      ⟨ArgInt(base + slot * 8), ArgInt(value)⟩)
 
-1. **Convention (today, no language change).** FTI exposes
-   `install_effects ∈ Seq(Effect)` and `teardown_effects ∈ Seq(Effect)`
-   slots. Host `++`-composes them into its main effects. Document the
-   pattern; update Stack/Queue FTIs to follow it. Costs: small refactor
-   of existing FTIs + their host fixtures; no kernel/bootstrap change.
+    alloc_eff ∈ Effect
+    BuildAlloc(eff ↦ alloc_eff)
+    install_effects = (is_init ? ⟨alloc_eff⟩ : ⟨⟩)
+```
 
-2. **`fti` keyword with real semantics.** Currently `fti` is a synonym
-   for `claim` (CLAUDE.md §"Schema keywords"). Give it real semantics:
-   when a host composes an `fti`, the compiler auto-collects its
-   `install` / `teardown` blocks and prepends/appends them to the host's
-   effects without explicit `++`. Costs: bootstrap parser + translator
-   change; kernel may not need any change; new language feature.
+Host: `effects = main_part ++ my_stack.install_effects`, and
+`my_stack.BuildStore(slot ↦ 0, value ↦ 42, eff ↦ store_eff)`.
 
-3. **Direct `install` block syntax.** Restore the legacy mechanism
-   verbatim — an `install` keyword inside `fti` blocks (or `claim`
-   blocks) that the compiler scans and prepends to the host's effects.
-   Costs: similar to (2), tied to a specific syntax.
+User framing:
 
-**Recommendation:** Path (1) for the deletion-path period (zero
-language risk, minor refactor). Path (2) post-deletion as a clean
-follow-up. The `fti` keyword is already reserved — let's give it real
-work to do.
+> *"We have `is_init` already... I don't know that we need an
+> `install` keyword, we already have `is_init`. Do we support
+> references to sub-claims like `my_queue.BuildStackAlloc`? It
+> would be more okay if we could at least nest them, and the
+> sub-claims get access to the parent claim's variables."*
 
-**When to pick this up:** path (1) can land any time and is a clean
-~1-session refactor of `stdlib/fti/{stack,queue}.ev` + their fixtures.
-Paths (2)/(3) are post-bootstrap-deletion since they touch the
-self-hosted compiler's grammar.
+Yes to all three. No language change needed.
+
+**Why deferred anyway (the unfortunate part):** the self-hosted
+`compiler.ev` does NOT yet handle `subclaim` declarations OR
+dotted-receiver method calls. Both are in the survey's wave 4. If we
+refactor the FTI to use the cleaner shape today:
+
+- Bootstrap compiles it fine (these features have always existed in
+  bootstrap).
+- After bootstrap is deleted and we recompile with
+  `kernel + compiler.smt2`, the FTI re-compile FAILS until wave 4
+  lands subclaim + dotted-receiver in compiler.ev.
+
+So adopting the cleaner shape pulls subclaim + dotted-receiver from
+"wave 4, post-deletion" into "wave 4, must land BEFORE we can delete
+bootstrap." That stretches the deletion path. The user explicitly
+chose not to: *"I think, unfortunately, it is not a necessary change.
+I am saddened."*
+
+**Status: DEFERRED — post-bootstrap-deletion polish.** The cleaner
+shape is exactly right; the parts all exist; we're deferring purely
+to keep the deletion path tight. When bootstrap is gone and wave 4 is
+done (subclaim + dotted-receiver in compiler.ev), this refactor is
+~1 session of work in `stdlib/fti/{stack,queue}.ev` + their fixtures.
+
+The current convention-based shape (host composes `BuildStackAlloc`
+via names-match and threads `alloc_eff` into its own `effects`
+literal) keeps working through bootstrap deletion and beyond. It's
+not pretty but it's correct.
 
 ## (Add more ideas here as they surface)
