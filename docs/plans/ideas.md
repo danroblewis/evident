@@ -342,4 +342,76 @@ via names-match and threads `alloc_eff` into its own `effects`
 literal) keeps working through bootstrap deletion and beyond. It's
 not pretty but it's correct.
 
+## `Seq(T)` as interface, multiple backings (the real design direction)
+
+**Source:** user, mid-session ~task #33.
+
+**The reframe:** `Seq(T)` should be the language-level surface
+syntax (`++`, `#`, `xs[i]`, `⟨…⟩` literals) — semantically a
+sequence interface. The choice of underlying SMT-LIB encoding is
+a backend decision the compiler makes based on usage, not a
+language-level distinction the user has to make.
+
+User rationale:
+
+> *"I really do want to be able to use Seq, it is much cleaner
+> than all the alternative structures. If the usage patterns
+> (constraint expectations) are satisfying similar to something
+> that's more performant, then we should use that. ... this may
+> be a naming problem, and a syntax convention problem. We could
+> possibly make new FTI's that wrap Cons but call themselves Seq.
+> Or a brand new term that actually describes what we're trying
+> to do."*
+
+**Candidate backings:**
+
+| Backing | Z3 form | When to use | Cost |
+|---|---|---|---|
+| Z3-native `Seq(T)` | `(seq.++ (seq.unit a) …)` | Unbounded length truly needed; rare | Z3 sequence theory is slow on real workloads |
+| Array+len | `(Array Int T)` + `__len` | Effects channel (kernel reads this); bounded indexable arrays | What bootstrap chose; OK perf but not great |
+| Cons cells | `enum SeqOfT = SCons(T, SeqOfT) \| SNil` | Functionize-friendly recursion; AST work-stacks | Currently used under "cons-list" naming |
+| FTI-backed | `Int handle` + libc memory | Unbounded streaming, accumulators | Stack/Queue FTI pattern from task #23 |
+| Future: hash table backing | TBD | Random access by key | TBD |
+
+**This is essentially a Z3 tactic conceptually** — a tactic
+rewrites equivalent symbolic forms for solver efficiency. Picking
+the right backing per-Seq is the same operation, applied during
+compilation rather than during solving.
+
+**Why this matters for deletion:** the immediate stumbling block
+that kept wave 4b from being deletion-ready is exactly the
+"different encodings, kernel only accepts one" issue. The deeper
+fix is making the choice explicit and the kernel flexible. The
+short-term fix (pick one, port it) gets us deleted; the long-term
+fix is this design.
+
+**Phases when picked up:**
+
+1. **Categorise existing usage** — every `Seq(T)` in
+   `compiler/`, `stdlib/`, `tests/`, `bootstrap/` — what kind of
+   sequence is it semantically? Mark with usage hints.
+2. **Build a per-backing translator pass** in `compiler/` — one
+   per implementation. Each takes Seq AST and emits its specific
+   SMT-LIB form.
+3. **Either tag explicitly** (`Seq(Effect, encoding=ArrayLen)`) or
+   **infer from usage** (effects channel → Array+len;
+   work-stack → Cons; etc.).
+4. **Add kernel-side decoders** for each backing that needs them.
+   Many backings (Cons, Array+len, Z3-native Seq) the kernel
+   already handles natively as datatype state.
+5. **Benchmark every backing on real workloads** — the cons→Seq
+   sweep deferred (`docs/plans/ideas.md` §"Replace Cons-lists with
+   Seqs") becomes: "rewrite to whichever Seq-backing wins the
+   benchmark for that usage."
+
+**When to pick this up:** post-bootstrap-deletion. The
+short-term answer is "match what the kernel expects today
+(Array+len for `effects`)" so we can delete. The long-term
+answer is this design.
+
+This consolidates the now-deferred entries above (cons→Seq
+sweep, FTI honesty) — they're all instances of "we picked one
+backing for performance; we should have an abstraction over
+backings."
+
 ## (Add more ideas here as they surface)
