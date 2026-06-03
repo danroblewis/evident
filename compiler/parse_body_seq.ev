@@ -13,13 +13,18 @@
 --   name ∈ Seq(Int) = lhs ++ ⟨d⟩    -- concat (Ident ++ 1-elt literal)
 --   name ∈ Int      = #src          -- cardinality
 --
--- SMT-LIB targets (mirror compiler/translate_seq.ev, NOT bootstrap's
--- Array+len encoding — the driver only PRINTS the .smt2, it isn't re-run):
+-- SMT-LIB targets — grammar wave 4c: bootstrap's `(Array Int T) + __len`
+-- encoding (the kernel-runnable form; see compiler/translate_ctor.ev's
+-- SeqArrayBlock and docs/plans/blocked-grammar-wave4b.md blocker 0), NOT
+-- Z3 sequence theory:
 --
---   (declare-fun name () (Seq Int))
---   (assert (= name (seq.++ (seq.unit a) (seq.unit b) (seq.unit c))))
---   (assert (= name (seq.++ lhs (seq.unit d))))
---   (assert (= name (seq.len src)))
+--   (declare-fun name () (Array Int Int))
+--   (declare-fun name__len () Int)
+--   (assert (= name__len 3))
+--   (assert (= (select name 0) a)) … (assert (= (select name 2) c))
+--   (assert (= name (store lhs (+ lhs__len 0) d)))   -- concat
+--   (assert (= name__len (+ lhs__len 1)))
+--   (assert (= n src__len))                          -- cardinality #src
 --
 -- The consolidated driver lexer is single-char (no MaybeTwoCharOp), so
 -- `++` arrives as two `Plus` tokens — detected as t8=Plus ∧ t9=Plus.
@@ -30,6 +35,7 @@ import "compiler/lexer.ev"
 import "compiler/parser.ev"
 import "compiler/translate_declare.ev"
 import "compiler/translate_seq.ev"
+import "compiler/translate_ctor.ev"
 
 claim TLHdS
     l ∈ TokenList
@@ -199,20 +205,48 @@ claim SeqMembershipStep
         : sq_n = 2 ? "(seq.++ " ++ sq_u0 ++ " " ++ sq_u1 ++ ")"
         : "(seq.++ " ++ sq_u0 ++ " " ++ sq_u1 ++ " " ++ sq_u2 ++ ")")
 
-    sq_rhs ∈ String = (sq_is_card ? sq_card_str
-        : sq_is_concat ? sq_concat_str
-        : sq_is_lit ? sq_lit_str
-        : "<nyi>")
+    -- ── grammar wave 4c: Array+len encoding for top-level Seq state fields ──
+    -- The Seq surface lowers to bootstrap's `(Array Int T) + __len` form (the
+    -- shape the kernel's tick loop reads back), NOT Z3 sequence theory. The
+    -- seq.++ strings above (sq_card_str / sq_concat_str / sq_lit_str and the
+    -- RenderSeqUnit pieces) are now unused; the membership emit uses the array
+    -- form below.
 
-    DeclareFun(name ↦ sq_name, type_str ↦ sq_smt_ty, out ↦ decl)
-    assertln = "(assert (= " ++ sq_name ++ " " ++ sq_rhs ++ "))"
+    -- Literal `⟨…⟩` → SeqArrayBlock: a length pin plus per-index (select)
+    -- asserts. The `⟨` is at sq_t7 (head of sq_l7).
+    sq_ab_decl ∈ String
+    sq_ab_assert ∈ String
+    sq_ab_rest ∈ TokenList
+    sq_ab_elen ∈ Int
+    sq_ab_ok ∈ Bool
+    SeqArrayBlock(nm ↦ sq_name, elty ↦ sq_inner_ty, toks ↦ sq_l7,
+        decl ↦ sq_ab_decl, assertln ↦ sq_ab_assert, rest ↦ sq_ab_rest,
+        elen ↦ sq_ab_elen, ok ↦ sq_ab_ok)
+
+    -- Concat `base ++ ⟨e⟩` → store `e` onto base's array at `base__len`,
+    -- length `base__len + 1` (bootstrap translate_seq_value's `++` arm).
+    sq_ce_str ∈ String = (sq_t11 matches IntLit(_) ? str_from_int(sq_ce_int) : sq_ce_id)
+    sq_concat_decl ∈ String = "(declare-fun " ++ sq_name ++ " () (Array Int " ++ sq_inner_ty ++ "))\n(declare-fun " ++ sq_name ++ "__len () Int)"
+    sq_concat_arr ∈ String = "(assert (= " ++ sq_name ++ " (store " ++ sq_concat_lhs ++ " (+ " ++ sq_concat_lhs ++ "__len 0) " ++ sq_ce_str ++ ")))"
+    sq_concat_lenA ∈ String = "(assert (= " ++ sq_name ++ "__len (+ " ++ sq_concat_lhs ++ "__len 1)))"
+    sq_concat_block ∈ String = sq_concat_arr ++ "\n" ++ sq_concat_lenA
+
+    -- Cardinality `#src` → the companion `src__len` const (not seq.len).
+    sq_card_decl ∈ String
+    DeclareFun(name ↦ sq_name, type_str ↦ sq_smt_ty, out ↦ sq_card_decl)
+    sq_card_block ∈ String = "(assert (= " ++ sq_name ++ " " ++ sq_card_src ++ "__len))"
+
+    decl = (sq_is_card ? sq_card_decl : sq_is_concat ? sq_concat_decl : sq_ab_decl)
+    assertln = (sq_is_card ? sq_card_block
+        : sq_is_concat ? sq_concat_block
+        : sq_is_lit ? sq_ab_assert
+        : "<nyi>")
     field = sq_name ++ ":" ++ sq_src_ty
     ok = sq_is_name
 
-    -- Drop the consumed tokens. Card: 6 (→l6). Concat: 13 (→l13).
-    -- Literal: 8 (1 elt →l9) / 10 (2 →l11) / 12 (3 →l13... actually 14).
-    sq_lit_rest ∈ TokenList = (sq_n = 1 ? sq_l10 : sq_n = 2 ? sq_l12 : sq_l14)
+    -- Drop the consumed tokens. Card: 6 (→l6). Concat: 13 (→l13). Literal:
+    -- SeqArrayBlock returns its own rest (past the closing `⟩`).
     rest = (sq_is_card ? sq_l6
         : sq_is_concat ? sq_l13
-        : sq_is_lit ? sq_lit_rest
+        : sq_is_lit ? sq_ab_rest
         : sq_l3)

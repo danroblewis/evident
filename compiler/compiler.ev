@@ -299,8 +299,9 @@ claim main
     cts_field ∈ String
     cts_rest ∈ TokenList
     cts_ok ∈ Bool
+    cts_eff_len ∈ Int
     CtorMembershipStep(rem ↦ _rem, decl ↦ cts_decl, assertln ↦ cts_assert,
-        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok)
+        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len)
     mem_is_ctor ∈ Bool = cts_ok
 
     -- Compose all three step-claims on `_rem`; select by shape. Distinct
@@ -339,6 +340,9 @@ claim main
     sel_ok ∈ Bool = (mem_is_ctor ? cts_ok : mem_is_match ? mts_ok : (mem_is_seq ? sqs_ok : step_ok))
     sel_pinned ∈ Bool = (mem_is_ctor ? true : mem_is_match ? true : (mem_is_seq ? true : step_pinned))
     sel_saw_ift ∈ Bool = ((¬mem_is_ctor) ∧ (¬mem_is_match) ∧ (¬mem_is_seq) ∧ step_saw_ift)
+    -- max-effects derivation: only CtorMembershipStep reports a nonzero
+    -- effects-literal length (the `effects ∈ Seq(Effect) = ⟨…⟩` state field).
+    sel_eff ∈ Int = (mem_is_ctor ? cts_eff_len : 0)
 
     chunk ∈ String = (sel_pinned ? sel_decl ++ "\n" ++ sel_assert : sel_decl)
 
@@ -362,6 +366,18 @@ claim main
         : (enter_claim ? ""
         : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
+
+    -- max-effects accumulator: the maximum effects-literal length seen across
+    -- the whole program (bootstrap uses a fixed cap of 16 — see
+    -- bootstrap/runtime/src/emit.rs:25,134; we derive a tight bound per the
+    -- wave-4c task. Both are kernel-correct as long as the value ≥ the runtime
+    -- effects length, which a single literal binding guarantees). Persists
+    -- across items (program-global), so it is NOT reset on enter_claim.
+    mxe  ∈ Int
+    _mxe ∈ Int
+    mxe = (is_first_tick ? 0
+        : (in_claim_run ∧ sel_ok ? (sel_eff > _mxe ? sel_eff : _mxe)
+        : _mxe))
 
     -- is_first_tick auto-inject guard: track whether the source declared
     -- is_first_tick during the parse walk (mirrors bootstrap emit's
@@ -550,7 +566,7 @@ claim main
         ++ ";; manifest: effects-name = effects\n"
         ++ ";; manifest: effect-enum-name = Effect\n"
         ++ ";; manifest: result-enum-name = Result\n"
-        ++ ";; manifest: max-effects = 0")
+        ++ ";; manifest: max-effects = " ++ str_from_int(_mxe))
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
     smtlib ∈ String = manifest ++ "\n" ++ datatypes ++ ift_decl ++ _out

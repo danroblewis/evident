@@ -1,20 +1,27 @@
--- Grammar wave 4, item 2: NESTED Seq literals of CONSTRUCTOR APPLICATIONS.
--- Drives the UNMODIFIED compiler/compiler.ev pipeline (constant input) on a
--- compound `Seq(Effect)` membership whose ⟨…⟩ elements are constructor
--- applications:
+-- Grammar wave 4, item 2 + wave 4c, item 1: a top-level `Seq(Effect)` STATE
+-- field whose ⟨…⟩ elements are CONSTRUCTOR APPLICATIONS, lowered to
+-- bootstrap's (Array Int T) + __len encoding (the kernel-runnable form):
 --   effects ∈ Seq(Effect) = ⟨Exit(0), Exit(1)⟩
---     →  (assert (= effects (seq.++ (seq.unit (Exit 0)) (seq.unit (Exit 1)))))
+--     →  (assert (= effects__len 2))
+--        (assert (= (select effects 0) (Exit 0)))
+--        (assert (= (select effects 1) (Exit 1)))
 -- Dispatched by `mem_is_ctor` (which wins over `mem_is_seq` for the compound
--- type) to CtorMembershipStep → RenderExprToks. See docs/plans/grammar-wave4.md.
+-- type) to CtorMembershipStep → SeqArrayBlock (per element: RenderExprToks).
+-- `effects` is excluded from manifest state-fields (it is the effects
+-- channel, not carry state — mirrors bootstrap emit::discover_state_fields).
+-- See docs/plans/grammar-wave4c.md.
 --
--- expect: stdout = ";; manifest: state-fields = effects:Seq(Effect)"
+-- expect: stdout = ";; manifest: state-fields = "
 -- expect: stdout = ";; manifest: effects-name = effects"
 -- expect: stdout = ";; manifest: effect-enum-name = Effect"
 -- expect: stdout = ";; manifest: result-enum-name = Result"
 -- expect: stdout = ";; manifest: max-effects = 0"
 -- expect: stdout = "(declare-fun is_first_tick () Bool)"
--- expect: stdout = "(declare-fun effects () (Seq Effect))"
--- expect: stdout = "(assert (= effects (seq.++ (seq.unit (Exit 0)) (seq.unit (Exit 1)))))"
+-- expect: stdout = "(declare-fun effects () (Array Int Effect))"
+-- expect: stdout = "(declare-fun effects__len () Int)"
+-- expect: stdout = "(assert (= effects__len 2))"
+-- expect: stdout = "(assert (= (select effects 0) (Exit 0)))"
+-- expect: stdout = "(assert (= (select effects 1) (Exit 1)))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"

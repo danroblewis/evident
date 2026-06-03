@@ -4,8 +4,10 @@
 -- The source is lexed character-by-character (nothing hardcoded), reversed
 -- to forward order, the `claim Ident` head dropped, then memberships are
 -- walked ONE PER TICK by compiler/parse_body_seq.ev's SeqMembershipStep,
--- which composes compiler/translate_seq.ev's RenderSeqUnit / SeqLenSmtlib.
--- See docs/plans/grammar-wave3.md and docs/plans/grammar-coverage-survey.md §3.
+-- which (grammar wave 4c) lowers the Seq surface to bootstrap's
+-- (Array Int T) + __len encoding via compiler/translate_ctor.ev's
+-- SeqArrayBlock. See docs/plans/grammar-wave4c.md and
+-- docs/plans/grammar-coverage-survey.md §3.
 --
 -- Source (3 memberships):
 --   xs ∈ Seq(Int) = ⟨1, 2, 3⟩
@@ -18,12 +20,18 @@
 -- expect: stdout = ";; manifest: result-enum-name = Result"
 -- expect: stdout = ";; manifest: max-effects = 0"
 -- expect: stdout = "(declare-fun is_first_tick () Bool)"
--- expect: stdout = "(declare-fun xs () (Seq Int))"
--- expect: stdout = "(assert (= xs (seq.++ (seq.unit 1) (seq.unit 2) (seq.unit 3))))"
--- expect: stdout = "(declare-fun ys () (Seq Int))"
--- expect: stdout = "(assert (= ys (seq.++ xs (seq.unit 4))))"
+-- expect: stdout = "(declare-fun xs () (Array Int Int))"
+-- expect: stdout = "(declare-fun xs__len () Int)"
+-- expect: stdout = "(assert (= xs__len 3))"
+-- expect: stdout = "(assert (= (select xs 0) 1))"
+-- expect: stdout = "(assert (= (select xs 1) 2))"
+-- expect: stdout = "(assert (= (select xs 2) 3))"
+-- expect: stdout = "(declare-fun ys () (Array Int Int))"
+-- expect: stdout = "(declare-fun ys__len () Int)"
+-- expect: stdout = "(assert (= ys (store xs (+ xs__len 0) 4)))"
+-- expect: stdout = "(assert (= ys__len (+ xs__len 1)))"
 -- expect: stdout = "(declare-fun n () Int)"
--- expect: stdout = "(assert (= n (seq.len xs)))"
+-- expect: stdout = "(assert (= n xs__len))"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"

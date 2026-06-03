@@ -42,6 +42,7 @@ claim CtorMembershipStep
     field ∈ String
     rest ∈ TokenList
     ok ∈ Bool
+    eff_len ∈ Int
 
     -- Peel the head tokens (name ∈ Type [= …]) — up to ten, enough to see
     -- a compound `Seq(T) =` head and the first RHS token.
@@ -114,19 +115,43 @@ claim CtorMembershipStep
     cs_src_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : cs_outer_ty ++ "(" ++ cs_inner_ty ++ ")")
     cs_smt_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : "(" ++ cs_outer_ty ++ " " ++ cs_inner_ty ++ ")")
 
-    -- RHS starts at t4 (scalar) or t7 (the `⟨` of the compound Seq literal).
-    cs_rhs_start ∈ TokenList = (cs_scalar_ctor ? cs_l4 : cs_l7)
+    -- Scalar ctor RHS renders through the Z3 seq-theory expression renderer
+    -- (a scalar Effect is not a state-field Seq, so any nested Seq payload
+    -- keeps its seq.unit form). The RHS starts at t4 (the ctor name).
     cs_cx_out ∈ String
     cs_cx_rest ∈ TokenList
     cs_cx_ok ∈ Bool
-    RenderExprToks(toks ↦ cs_rhs_start, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok)
+    RenderExprToks(toks ↦ cs_l4, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok)
 
-    -- `_<name>` carry vars and is_first_tick are not manifest state fields.
+    -- Compound Seq STATE field → bootstrap's `(Array Int T) + __len` encoding
+    -- (the kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock
+    -- and docs/plans/blocked-grammar-wave4b.md blocker 0). RHS starts at the `⟨`.
+    cs_arr_decl ∈ String
+    cs_arr_assert ∈ String
+    cs_arr_rest ∈ TokenList
+    cs_arr_elen ∈ Int
+    cs_arr_ok ∈ Bool
+    SeqArrayBlock(nm ↦ cs_name, elty ↦ cs_inner_ty, toks ↦ cs_l7,
+        decl ↦ cs_arr_decl, assertln ↦ cs_arr_assert, rest ↦ cs_arr_rest,
+        elen ↦ cs_arr_elen, ok ↦ cs_arr_ok)
+
+    -- `_<name>` carry vars, is_first_tick, and the kernel channels `effects` /
+    -- `last_results` are not manifest state fields (mirrors bootstrap
+    -- emit::discover_state_fields, which skips effects/last_results — see
+    -- bootstrap/runtime/src/emit.rs:500).
     cs_first_ch ∈ String = substr(cs_name, 0, 1)
-    cs_is_carry ∈ Bool = ((cs_first_ch = "_") ∨ (cs_name = "is_first_tick"))
+    cs_is_carry ∈ Bool = ((cs_first_ch = "_") ∨ (cs_name = "is_first_tick")
+        ∨ (cs_name = "effects") ∨ (cs_name = "last_results"))
 
-    DeclareFun(name ↦ cs_name, type_str ↦ cs_smt_ty, out ↦ decl)
-    assertln = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
+    cs_scalar_decl ∈ String
+    DeclareFun(name ↦ cs_name, type_str ↦ cs_smt_ty, out ↦ cs_scalar_decl)
+    cs_scalar_assert ∈ String = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
+
+    decl = (cs_scalar_ctor ? cs_scalar_decl : cs_arr_decl)
+    assertln = (cs_scalar_ctor ? cs_scalar_assert : cs_arr_assert)
     field = (cs_is_carry ? "" : cs_name ++ ":" ++ cs_src_ty)
     ok = (cs_is_name ∧ cs_applies)
-    rest = cs_cx_rest
+    rest = (cs_scalar_ctor ? cs_cx_rest : cs_arr_rest)
+    -- Nonzero only for the `effects` state-field Seq literal (drives the
+    -- driver's max-effects derivation).
+    eff_len = (((cs_name = "effects") ∧ cs_seq_complex) ? cs_arr_elen : 0)
