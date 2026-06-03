@@ -1,10 +1,21 @@
--- Grammar wave 3.5, CANONICAL: a top-level `enum` declaration driven by the
--- UNMODIFIED compiler/compiler.ev pipeline (constant input instead of the
--- ReadFile seed). Proves the top-level head-token dispatch (KwEnum → enum
--- machine) integrated into the monolithic driver, not just the per-pass
--- mechanics of the wave-3 dedicated fixture. See docs/plans/grammar-wave3.5.md.
+-- Grammar wave 4f, CANONICAL: LEX bulk-skip of `--` line comments and
+-- whitespace runs, driven by the compiler/compiler.ev lex FSM (constant
+-- input). The input carries three `--` comment lines and indentation runs;
+-- comments produce NO tokens and whitespace runs collapse into one tick, so
+-- the emitted SMT-LIB is byte-identical to the comment-free
+-- `claim foo / n ∈ Int = 5 / m ∈ Int = 10`. Proves the wave-4f tick-count
+-- refactor preserves the token stream. See docs/plans/grammar-wave4f.md.
 --
--- expect: stdout = "(declare-datatypes ((Box 0)) (((Pair (Pair__f0 Int) (Pair__f1 Int)) (Empty))))"
+-- expect: stdout = ";; manifest: state-fields = n:Int m:Int"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun is_first_tick () Bool)"
+-- expect: stdout = "(declare-fun n () Int)"
+-- expect: stdout = "(assert (= n 5))"
+-- expect: stdout = "(declare-fun m () Int)"
+-- expect: stdout = "(assert (= m 10))"
 -- expect: exit = 0
 -- compiler/compiler.ev — the self-hosted compiler driver.
 --
@@ -87,7 +98,7 @@ import "compiler/parse_body_seq.ev"
 import "compiler/parse_body_match.ev"
 
 claim main
-    input ∈ String = "enum Box = Pair(Int, Int) | Empty\n"
+    input ∈ String = "-- a leading doc comment line\nclaim foo\n    -- comment before n\n    n ∈ Int = 5\n    -- comment before m\n    m ∈ Int = 10\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int

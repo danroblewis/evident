@@ -341,3 +341,54 @@ claim IsBlankLineHead(c ∈ String, next_after ∈ String, out ∈ Bool)
     is_comment ∈ Bool = ((c = "-") ∧ (next_after = "-"))
     is_eof     ∈ Bool = (c = "")
     out = (is_eol ∨ is_comment ∨ is_eof)
+
+-- ── Whitespace-run length (grammar wave 4f — bulk-skip) ─────────
+-- Given the source `s` and a position `p` whose own char is whitespace,
+-- return `adv` = the count of consecutive whitespace chars starting at
+-- `p`, capped at 16. The lex driver advances `pos` by `adv` in ONE tick
+-- instead of one char per tick, collapsing indentation / blank-line runs
+-- (the wave-4e diagnostic, docs/plans/grammar-wave4e-perf-diagnostic.md,
+-- §5: "tick count is the only compiler-side lever"). `adv` ≥ 1 always —
+-- the caller only consults it when s[p] is itself whitespace, so a lone
+-- separating space yields adv=1, IDENTICAL to the old per-char advance.
+-- That is what keeps the emitted token stream byte-identical: whitespace
+-- never produces a token, so visiting fewer of its positions changes
+-- nothing but the tick count. "" (past end-of-input) counts as whitespace
+-- so a trailing run walks cleanly to EOF. All locals are wr_-prefixed to
+-- avoid the composition body-local leak (see CLAUDE.md / memory:
+-- project_claim_composition_leaks_body_locals).
+claim WsRunLen(s ∈ String, p ∈ Int, adv ∈ Int)
+    wr_c1  ∈ String = substr(s, p + 1, 1)
+    wr_c2  ∈ String = substr(s, p + 2, 1)
+    wr_c3  ∈ String = substr(s, p + 3, 1)
+    wr_c4  ∈ String = substr(s, p + 4, 1)
+    wr_c5  ∈ String = substr(s, p + 5, 1)
+    wr_c6  ∈ String = substr(s, p + 6, 1)
+    wr_c7  ∈ String = substr(s, p + 7, 1)
+    wr_c8  ∈ String = substr(s, p + 8, 1)
+    wr_c9  ∈ String = substr(s, p + 9, 1)
+    wr_c10 ∈ String = substr(s, p + 10, 1)
+    wr_c11 ∈ String = substr(s, p + 11, 1)
+    wr_c12 ∈ String = substr(s, p + 12, 1)
+    wr_c13 ∈ String = substr(s, p + 13, 1)
+    wr_c14 ∈ String = substr(s, p + 14, 1)
+    wr_c15 ∈ String = substr(s, p + 15, 1)
+    wr_w1  ∈ Bool = (wr_c1  = " " ∨ wr_c1  = "\t" ∨ wr_c1  = "\n" ∨ wr_c1  = "")
+    wr_w2  ∈ Bool = (wr_c2  = " " ∨ wr_c2  = "\t" ∨ wr_c2  = "\n" ∨ wr_c2  = "")
+    wr_w3  ∈ Bool = (wr_c3  = " " ∨ wr_c3  = "\t" ∨ wr_c3  = "\n" ∨ wr_c3  = "")
+    wr_w4  ∈ Bool = (wr_c4  = " " ∨ wr_c4  = "\t" ∨ wr_c4  = "\n" ∨ wr_c4  = "")
+    wr_w5  ∈ Bool = (wr_c5  = " " ∨ wr_c5  = "\t" ∨ wr_c5  = "\n" ∨ wr_c5  = "")
+    wr_w6  ∈ Bool = (wr_c6  = " " ∨ wr_c6  = "\t" ∨ wr_c6  = "\n" ∨ wr_c6  = "")
+    wr_w7  ∈ Bool = (wr_c7  = " " ∨ wr_c7  = "\t" ∨ wr_c7  = "\n" ∨ wr_c7  = "")
+    wr_w8  ∈ Bool = (wr_c8  = " " ∨ wr_c8  = "\t" ∨ wr_c8  = "\n" ∨ wr_c8  = "")
+    wr_w9  ∈ Bool = (wr_c9  = " " ∨ wr_c9  = "\t" ∨ wr_c9  = "\n" ∨ wr_c9  = "")
+    wr_w10 ∈ Bool = (wr_c10 = " " ∨ wr_c10 = "\t" ∨ wr_c10 = "\n" ∨ wr_c10 = "")
+    wr_w11 ∈ Bool = (wr_c11 = " " ∨ wr_c11 = "\t" ∨ wr_c11 = "\n" ∨ wr_c11 = "")
+    wr_w12 ∈ Bool = (wr_c12 = " " ∨ wr_c12 = "\t" ∨ wr_c12 = "\n" ∨ wr_c12 = "")
+    wr_w13 ∈ Bool = (wr_c13 = " " ∨ wr_c13 = "\t" ∨ wr_c13 = "\n" ∨ wr_c13 = "")
+    wr_w14 ∈ Bool = (wr_c14 = " " ∨ wr_c14 = "\t" ∨ wr_c14 = "\n" ∨ wr_c14 = "")
+    wr_w15 ∈ Bool = (wr_c15 = " " ∨ wr_c15 = "\t" ∨ wr_c15 = "\n" ∨ wr_c15 = "")
+    adv = (¬wr_w1 ? 1 : (¬wr_w2 ? 2 : (¬wr_w3 ? 3 : (¬wr_w4 ? 4
+        : (¬wr_w5 ? 5 : (¬wr_w6 ? 6 : (¬wr_w7 ? 7 : (¬wr_w8 ? 8
+        : (¬wr_w9 ? 9 : (¬wr_w10 ? 10 : (¬wr_w11 ? 11 : (¬wr_w12 ? 12
+        : (¬wr_w13 ? 13 : (¬wr_w14 ? 14 : (¬wr_w15 ? 15 : 16)))))))))))))))

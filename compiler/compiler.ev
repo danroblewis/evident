@@ -90,9 +90,15 @@ claim main
     input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
+    -- `pos` advances by a state-computed `next_pos` (wave 4f bulk-skip)
+    -- instead of a fixed +1: a whitespace run or a `--` line comment is
+    -- consumed in ONE tick. `next_pos` is computed below, after the char
+    -- classifications it depends on.
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    next_pos  ∈ Int
+    _next_pos ∈ Int
+    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _next_pos))
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -169,16 +175,48 @@ claim main
     _tokens ∈ TokenList
     strlit_tok ∈ Token = StringLit(_partial_strlit)
     tokens = (is_first_tick ? TLNil
+            : (lx_comment ? _tokens
             : (strlit_closing ? TLCons(strlit_tok, _tokens)
             : (finish_str_with_op ? TLCons(op_tok, TLCons(classified_str, _tokens))
             : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok, _tokens))
             : (finish_str_only ? TLCons(classified_str, _tokens)
             : (finish_int_only ? TLCons(int_tok, _tokens)
             : (char_only ? TLCons(op_tok, _tokens)
-            : _tokens)))))))
+            : _tokens))))))))
 
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+
+    -- ── BULK-SKIP (wave 4f): whitespace runs + `--` line comments ──
+    -- The wave-4e diagnostic (docs/plans/grammar-wave4e-perf-diagnostic.md,
+    -- §5) found per-tick Z3 cost is flat ~490 ms and irreducible at the
+    -- compiler.ev level, so total wall = per-tick × tick-count and tick
+    -- count is the only lever. LEX was ~1 tick/char; a real .ev file is
+    -- mostly whitespace + comments. We collapse those runs into one tick.
+    --
+    -- A whitespace run: WsRunLen returns the run length (capped 16); we
+    -- jump past it. A lone separating space gives adv=1 (== old +1), so
+    -- the token stream is byte-identical — only the tick count drops.
+    --
+    -- A `--` line comment (cur='-' ∧ next='-', at top level): jump to the
+    -- next '\n' (via index_of) — or to end-of-input if none. This also
+    -- closes the wave-4d Blocker-1 correctness gap (the lexer had no
+    -- comment mode). Both skips fire only OUTSIDE a string literal and not
+    -- mid-token, so they never swallow a real token boundary.
+    lx_next_char ∈ String = substr(input, pos + 1, 1)
+    lx_collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
+    lx_is_dash    ∈ Bool = (cur_char = "-")
+    lx_next_dash  ∈ Bool = (lx_next_char = "-")
+    lx_comment ∈ Bool = (lx_is_dash ∧ lx_next_dash ∧ in_range ∧ (¬lx_collecting) ∧ (¬_in_strlit))
+    lx_nl ∈ Int = index_of(input, "\n", pos)
+    lx_comment_to ∈ Int = (lx_nl < 0 ? #input : lx_nl)
+    lx_skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_in_strlit))
+    lx_ws_adv ∈ Int
+    WsRunLen(s ↦ input, p ↦ pos, adv ↦ lx_ws_adv)
+    next_pos = (is_first_tick ? 0
+        : (lx_comment ? lx_comment_to
+        : (lx_skip_ws ? pos + lx_ws_adv
+        : pos + 1)))
 
     -- ── PHASE control (0 lex · 1 reverse · 2 parse · 3 emit) ──────
     phase  ∈ Int
