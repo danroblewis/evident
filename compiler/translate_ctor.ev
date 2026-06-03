@@ -1,0 +1,362 @@
+-- compiler/translate_ctor.ev — grammar wave 4, items 1+2: constructor
+-- application + nested Seq literals in EXPRESSION position.
+--
+-- Wave 3 added enum *declarations* (translate.ev). This file adds enum
+-- *use*: a variant applied with arguments in expression position. SMT-LIB
+-- form — the variant name is the datatype constructor, payload args are
+-- positional:
+--
+--   Exit(0)                          → (Exit 0)
+--   Ok(5)                            → (Ok 5)
+--   ArgStr("hi")                     → (ArgStr "hi")
+--   LibCall("libc","puts",⟨a⟩)       → (LibCall "libc" "puts" (seq.unit a))
+--   ⟨Exit(0), Exit(1)⟩               → (seq.++ (seq.unit (Exit 0)) (seq.unit (Exit 1)))
+--
+-- This mirrors bootstrap's datatype-constructor lowering (the head is the
+-- variant name, the operands are the translated payload args), and the Seq
+-- literal lowering already used by compiler/translate_seq.ev (seq.unit /
+-- seq.++).
+--
+-- The renderer is a RECURSIVE-DESCENT expression renderer over the lexer
+-- TokenList. Evident claims can't self-recurse, so the recursion is
+-- expressed as DEPTH-UNROLLED levels: RenderExprL0 (atoms only),
+-- RenderExprL1 (a constructor / seq whose children are L0), RenderExprL2
+-- (children are L1). The top level exposed to the driver, RenderExprToks,
+-- is L2 — enough for the wave-4 required shapes (a constructor whose args
+-- are atoms; a Seq of such constructors). Deeper nests (e.g. the flattened
+-- test_hello, a Seq → ctor → Seq → ctor → atom of depth ~4) need more
+-- levels; adding RenderExprL3/L4 is mechanical but the constraint count
+-- grows ~6× per level, so we stop at the depth the required fixtures need
+-- and document the gap (see docs/plans/grammar-wave4.md).
+--
+-- Each level consumes ONE expression off the front of `toks` and returns:
+--   out  — the SMT-LIB rendering
+--   rest — `toks` with the consumed expression's tokens dropped
+--   ok   — whether an expression was recognised at the head
+--
+-- Bounded arity: a constructor's argument list and a Seq literal's element
+-- list are each capped at 3 (the corpus arity: LibCall has 3 args, the
+-- effect literals ≤3 elements). A wider list is the unbounded work-stack
+-- walk (see translate_seq.ev's SeqConcatStep) — a later wave.
+
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+
+-- ── TokenList head / tail (local, `*C`-suffixed to avoid colliding with
+--    parse_body.ev's TLHd / parse_body_seq.ev's TLHdS) ─────────────────
+claim TLHdC
+    l ∈ TokenList
+    out ∈ Token
+    out = match l
+        TLCons(h, _) ⇒ h
+        TLNil ⇒ EofTok
+
+claim TLTlC
+    l ∈ TokenList
+    out ∈ TokenList
+    out = match l
+        TLCons(_, t) ⇒ t
+        TLNil ⇒ TLNil
+
+-- ── AtomTokRenderC: render a single leaf token ─────────────────────────
+--   IntLit(n)    → str_from_int(n)
+--   StringLit(s) → "s"  (ASCII pass-through, mirroring AtomSmtlib)
+--   Ident(s)     → s    (a bare name, e.g. a nullary variant like ReadLine)
+-- The caller is responsible for NOT treating an Ident that is followed by
+-- `(` as an atom — that is a constructor head, handled one level up.
+claim AtomTokRenderC
+    t ∈ Token
+    out ∈ String
+    ok ∈ Bool
+    at_is_int ∈ Bool = (t matches IntLit(_))
+    at_is_str ∈ Bool = (t matches StringLit(_))
+    at_is_id  ∈ Bool = (t matches Ident(_))
+    at_iv ∈ Int = match t
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    at_sv ∈ String = match t
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    at_idv ∈ String = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ok = (at_is_int ∨ at_is_str ∨ at_is_id)
+    out = (at_is_int ? str_from_int(at_iv)
+        : at_is_str ? "\"" ++ at_sv ++ "\""
+        : at_is_id ? at_idv
+        : "")
+
+-- ── ListThread3: join up to 3 already-rendered children ────────────────
+-- Given the start-of-list token list `a0` (the tokens right after an open
+-- delimiter `(` or `⟨`) and three child renders (each child already
+-- composed by the caller, on a0 / after-first-comma / after-second-comma),
+-- determine the element count from the comma-after-each-child signal and
+-- assemble both joinings:
+--   args_joined — space-separated, for a constructor's argument list
+--   seq_wrapped — (seq.++ (seq.unit …) …), for a Seq literal's elements
+-- and the token list right after the closing delimiter (`)` or `⟩`).
+--
+-- Comma detection reads each child's `rest` head: a Comma there means
+-- another element follows. `n` stops at the first child that is either
+-- not-ok or not-followed-by-a-comma.
+claim ListThread3
+    a0 ∈ TokenList
+    o1 ∈ String
+    r1 ∈ TokenList
+    k1 ∈ Bool
+    o2 ∈ String
+    r2 ∈ TokenList
+    k2 ∈ Bool
+    o3 ∈ String
+    r3 ∈ TokenList
+    k3 ∈ Bool
+    n ∈ Int
+    args_joined ∈ String
+    seq_wrapped ∈ String
+    after_close ∈ TokenList
+
+    lt_r1h ∈ Token
+    TLHdC(l ↦ r1, out ↦ lt_r1h)
+    lt_c1 ∈ Bool = (k1 ∧ (lt_r1h matches Comma))
+    lt_r2h ∈ Token
+    TLHdC(l ↦ r2, out ↦ lt_r2h)
+    lt_c2 ∈ Bool = (lt_c1 ∧ k2 ∧ (lt_r2h matches Comma))
+
+    n = (¬k1 ? 0 : ¬lt_c1 ? 1 : ¬lt_c2 ? 2 : 3)
+
+    args_joined = (n = 1 ? o1
+        : n = 2 ? o1 ++ " " ++ o2
+        : n = 3 ? o1 ++ " " ++ o2 ++ " " ++ o3
+        : "")
+
+    seq_wrapped = (n = 0 ? "(as seq.empty (Seq Int))"
+        : n = 1 ? "(seq.unit " ++ o1 ++ ")"
+        : n = 2 ? "(seq.++ (seq.unit " ++ o1 ++ ") (seq.unit " ++ o2 ++ "))"
+        : "(seq.++ (seq.unit " ++ o1 ++ ") (seq.unit " ++ o2 ++ ") (seq.unit " ++ o3 ++ "))")
+
+    -- The token list AT the closing delimiter is the last counted child's
+    -- rest (or a0 itself when the list is empty), and after_close skips it.
+    lt_close ∈ TokenList = (n = 0 ? a0 : n = 1 ? r1 : n = 2 ? r2 : r3)
+    TLTlC(l ↦ lt_close, out ↦ after_close)
+
+-- ══════════════════════════════════════════════════════════════════════
+-- RenderExprL0 — base level: a single atom (no nesting).
+-- ══════════════════════════════════════════════════════════════════════
+-- A constructor head (Ident followed by `(`) or a Seq open `⟨` is NOT an
+-- atom; L0 reports ok=false for those so a higher level handles them.
+claim RenderExprL0
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    l0_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ l0_h0)
+    l0_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ l0_t0)
+    l0_h1 ∈ Token
+    TLHdC(l ↦ l0_t0, out ↦ l0_h1)
+
+    l0_is_ctor ∈ Bool = ((l0_h0 matches Ident(_)) ∧ (l0_h1 matches LParen))
+    l0_is_seq  ∈ Bool = (l0_h0 matches OpSeqOpen)
+
+    l0_a_out ∈ String
+    l0_a_ok ∈ Bool
+    AtomTokRenderC(t ↦ l0_h0, out ↦ l0_a_out, ok ↦ l0_a_ok)
+
+    ok = (l0_a_ok ∧ (¬l0_is_ctor) ∧ (¬l0_is_seq))
+    out = (ok ? l0_a_out : "")
+    rest = (ok ? l0_t0 : toks)
+
+-- ══════════════════════════════════════════════════════════════════════
+-- RenderExprL1 — a constructor / Seq whose children are L0 (atoms).
+-- ══════════════════════════════════════════════════════════════════════
+claim RenderExprL1
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    l1_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ l1_h0)
+    l1_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ l1_t0)
+    l1_h1 ∈ Token
+    TLHdC(l ↦ l1_t0, out ↦ l1_h1)
+    l1_after_lp ∈ TokenList
+    TLTlC(l ↦ l1_t0, out ↦ l1_after_lp)
+
+    l1_is_ctor ∈ Bool = ((l1_h0 matches Ident(_)) ∧ (l1_h1 matches LParen))
+    l1_is_seq  ∈ Bool = (l1_h0 matches OpSeqOpen)
+    l1_ctor_name ∈ String = match l1_h0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    -- Atom fallback (a bare leaf at the head).
+    l1_atom_out ∈ String
+    l1_atom_ok ∈ Bool
+    AtomTokRenderC(t ↦ l1_h0, out ↦ l1_atom_out, ok ↦ l1_atom_ok)
+
+    -- Constructor arguments: render up to 3 children (L0) starting after
+    -- the `(`, threading each child's rest past a Comma to the next.
+    l1_co1 ∈ String
+    l1_cr1 ∈ TokenList
+    l1_ck1 ∈ Bool
+    RenderExprL0(toks ↦ l1_after_lp, out ↦ l1_co1, rest ↦ l1_cr1, ok ↦ l1_ck1)
+    l1_ca1 ∈ TokenList
+    TLTlC(l ↦ l1_cr1, out ↦ l1_ca1)
+    l1_co2 ∈ String
+    l1_cr2 ∈ TokenList
+    l1_ck2 ∈ Bool
+    RenderExprL0(toks ↦ l1_ca1, out ↦ l1_co2, rest ↦ l1_cr2, ok ↦ l1_ck2)
+    l1_ca2 ∈ TokenList
+    TLTlC(l ↦ l1_cr2, out ↦ l1_ca2)
+    l1_co3 ∈ String
+    l1_cr3 ∈ TokenList
+    l1_ck3 ∈ Bool
+    RenderExprL0(toks ↦ l1_ca2, out ↦ l1_co3, rest ↦ l1_cr3, ok ↦ l1_ck3)
+
+    l1_cn ∈ Int
+    l1_cargs ∈ String
+    l1_cseq ∈ String
+    l1_cclose ∈ TokenList
+    ListThread3(a0 ↦ l1_after_lp,
+        o1 ↦ l1_co1, r1 ↦ l1_cr1, k1 ↦ l1_ck1,
+        o2 ↦ l1_co2, r2 ↦ l1_cr2, k2 ↦ l1_ck2,
+        o3 ↦ l1_co3, r3 ↦ l1_cr3, k3 ↦ l1_ck3,
+        n ↦ l1_cn, args_joined ↦ l1_cargs, seq_wrapped ↦ l1_cseq, after_close ↦ l1_cclose)
+
+    l1_ctor_out ∈ String = "(" ++ l1_ctor_name ++ (l1_cn = 0 ? "" : " " ++ l1_cargs) ++ ")"
+
+    -- Seq elements: render up to 3 children (L0) starting after the `⟨`.
+    l1_so1 ∈ String
+    l1_sr1 ∈ TokenList
+    l1_sk1 ∈ Bool
+    RenderExprL0(toks ↦ l1_t0, out ↦ l1_so1, rest ↦ l1_sr1, ok ↦ l1_sk1)
+    l1_sa1 ∈ TokenList
+    TLTlC(l ↦ l1_sr1, out ↦ l1_sa1)
+    l1_so2 ∈ String
+    l1_sr2 ∈ TokenList
+    l1_sk2 ∈ Bool
+    RenderExprL0(toks ↦ l1_sa1, out ↦ l1_so2, rest ↦ l1_sr2, ok ↦ l1_sk2)
+    l1_sa2 ∈ TokenList
+    TLTlC(l ↦ l1_sr2, out ↦ l1_sa2)
+    l1_so3 ∈ String
+    l1_sr3 ∈ TokenList
+    l1_sk3 ∈ Bool
+    RenderExprL0(toks ↦ l1_sa2, out ↦ l1_so3, rest ↦ l1_sr3, ok ↦ l1_sk3)
+
+    l1_sn ∈ Int
+    l1_sargs ∈ String
+    l1_sseq ∈ String
+    l1_sclose ∈ TokenList
+    ListThread3(a0 ↦ l1_t0,
+        o1 ↦ l1_so1, r1 ↦ l1_sr1, k1 ↦ l1_sk1,
+        o2 ↦ l1_so2, r2 ↦ l1_sr2, k2 ↦ l1_sk2,
+        o3 ↦ l1_so3, r3 ↦ l1_sr3, k3 ↦ l1_sk3,
+        n ↦ l1_sn, args_joined ↦ l1_sargs, seq_wrapped ↦ l1_sseq, after_close ↦ l1_sclose)
+
+    ok  = (l1_is_ctor ∨ l1_is_seq ∨ l1_atom_ok)
+    out = (l1_is_ctor ? l1_ctor_out : l1_is_seq ? l1_sseq : l1_atom_out)
+    rest = (l1_is_ctor ? l1_cclose : l1_is_seq ? l1_sclose : l1_t0)
+
+-- ══════════════════════════════════════════════════════════════════════
+-- RenderExprL2 — a constructor / Seq whose children are L1.
+-- ══════════════════════════════════════════════════════════════════════
+-- Structurally identical to L1, but the per-child renders compose
+-- RenderExprL1 (so children may themselves be constructors / Seqs).
+claim RenderExprL2
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    l2_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ l2_h0)
+    l2_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ l2_t0)
+    l2_h1 ∈ Token
+    TLHdC(l ↦ l2_t0, out ↦ l2_h1)
+    l2_after_lp ∈ TokenList
+    TLTlC(l ↦ l2_t0, out ↦ l2_after_lp)
+
+    l2_is_ctor ∈ Bool = ((l2_h0 matches Ident(_)) ∧ (l2_h1 matches LParen))
+    l2_is_seq  ∈ Bool = (l2_h0 matches OpSeqOpen)
+    l2_ctor_name ∈ String = match l2_h0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    l2_atom_out ∈ String
+    l2_atom_ok ∈ Bool
+    AtomTokRenderC(t ↦ l2_h0, out ↦ l2_atom_out, ok ↦ l2_atom_ok)
+
+    l2_co1 ∈ String
+    l2_cr1 ∈ TokenList
+    l2_ck1 ∈ Bool
+    RenderExprL1(toks ↦ l2_after_lp, out ↦ l2_co1, rest ↦ l2_cr1, ok ↦ l2_ck1)
+    l2_ca1 ∈ TokenList
+    TLTlC(l ↦ l2_cr1, out ↦ l2_ca1)
+    l2_co2 ∈ String
+    l2_cr2 ∈ TokenList
+    l2_ck2 ∈ Bool
+    RenderExprL1(toks ↦ l2_ca1, out ↦ l2_co2, rest ↦ l2_cr2, ok ↦ l2_ck2)
+    l2_ca2 ∈ TokenList
+    TLTlC(l ↦ l2_cr2, out ↦ l2_ca2)
+    l2_co3 ∈ String
+    l2_cr3 ∈ TokenList
+    l2_ck3 ∈ Bool
+    RenderExprL1(toks ↦ l2_ca2, out ↦ l2_co3, rest ↦ l2_cr3, ok ↦ l2_ck3)
+
+    l2_cn ∈ Int
+    l2_cargs ∈ String
+    l2_cseq ∈ String
+    l2_cclose ∈ TokenList
+    ListThread3(a0 ↦ l2_after_lp,
+        o1 ↦ l2_co1, r1 ↦ l2_cr1, k1 ↦ l2_ck1,
+        o2 ↦ l2_co2, r2 ↦ l2_cr2, k2 ↦ l2_ck2,
+        o3 ↦ l2_co3, r3 ↦ l2_cr3, k3 ↦ l2_ck3,
+        n ↦ l2_cn, args_joined ↦ l2_cargs, seq_wrapped ↦ l2_cseq, after_close ↦ l2_cclose)
+
+    l2_ctor_out ∈ String = "(" ++ l2_ctor_name ++ (l2_cn = 0 ? "" : " " ++ l2_cargs) ++ ")"
+
+    l2_so1 ∈ String
+    l2_sr1 ∈ TokenList
+    l2_sk1 ∈ Bool
+    RenderExprL1(toks ↦ l2_t0, out ↦ l2_so1, rest ↦ l2_sr1, ok ↦ l2_sk1)
+    l2_sa1 ∈ TokenList
+    TLTlC(l ↦ l2_sr1, out ↦ l2_sa1)
+    l2_so2 ∈ String
+    l2_sr2 ∈ TokenList
+    l2_sk2 ∈ Bool
+    RenderExprL1(toks ↦ l2_sa1, out ↦ l2_so2, rest ↦ l2_sr2, ok ↦ l2_sk2)
+    l2_sa2 ∈ TokenList
+    TLTlC(l ↦ l2_sr2, out ↦ l2_sa2)
+    l2_so3 ∈ String
+    l2_sr3 ∈ TokenList
+    l2_sk3 ∈ Bool
+    RenderExprL1(toks ↦ l2_sa2, out ↦ l2_so3, rest ↦ l2_sr3, ok ↦ l2_sk3)
+
+    l2_sn ∈ Int
+    l2_sargs ∈ String
+    l2_sseq ∈ String
+    l2_sclose ∈ TokenList
+    ListThread3(a0 ↦ l2_t0,
+        o1 ↦ l2_so1, r1 ↦ l2_sr1, k1 ↦ l2_sk1,
+        o2 ↦ l2_so2, r2 ↦ l2_sr2, k2 ↦ l2_sk2,
+        o3 ↦ l2_so3, r3 ↦ l2_sr3, k3 ↦ l2_sk3,
+        n ↦ l2_sn, args_joined ↦ l2_sargs, seq_wrapped ↦ l2_sseq, after_close ↦ l2_sclose)
+
+    ok  = (l2_is_ctor ∨ l2_is_seq ∨ l2_atom_ok)
+    out = (l2_is_ctor ? l2_ctor_out : l2_is_seq ? l2_sseq : l2_atom_out)
+    rest = (l2_is_ctor ? l2_cclose : l2_is_seq ? l2_sclose : l2_t0)
+
+-- ── RenderExprToks: the level exposed to the driver ────────────────────
+-- Aliases L2 (the deepest built level). A membership whose RHS is a
+-- constructor application or a Seq literal of constructor applications
+-- renders through here.
+claim RenderExprToks
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+    RenderExprL2(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok)

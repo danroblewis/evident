@@ -1,69 +1,21 @@
--- compiler/compiler.ev — the self-hosted compiler driver.
+-- Grammar wave 4, item 1: CONSTRUCTOR APPLICATION in expression position.
+-- Drives the UNMODIFIED compiler/compiler.ev pipeline (constant input) on a
+-- scalar membership whose RHS is an enum-variant application `Exit(0)`. The
+-- variant name becomes the SMT-LIB datatype constructor head:
+--   e ∈ Effect = Exit(0)   →   (assert (= e (Exit 0)))
+-- Dispatched by the driver's `mem_is_ctor` discriminator to
+-- CtorMembershipStep → compiler/translate_ctor.ev's RenderExprToks.
+-- See docs/plans/grammar-wave4.md.
 --
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
---
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one scalar membership / tick
---   compiler/parse_body_seq.ev   — SeqMembershipStep: one Seq membership / tick
---   compiler/parse_body_match.ev — MatchMembershipStep: one match membership / tick
---   compiler/translate.ev        — enum → (declare-datatypes …) (VariantText / EnumDeclSmtlib)
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
---   compiler/translate_match.ev   — match arm → nested ite
---   compiler/translate_seq.ev     — Seq surface → Z3 sequence theory
---
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — TOP-LEVEL HEAD-TOKEN DISPATCH (grammar wave 3.5): the
---                 forward list's head token decides the program shape,
---                 mirroring bootstrap's program.rs (each top-level item is
---                 one of claim/type/schema/fsm/enum/import dispatched by
---                 head token).
---                   · `KwEnum`  → the enum-decl parse machine: walk the
---                     forward tokens ONE TOKEN PER TICK with an enum-parse
---                     state machine (ephase 1..8), building each variant
---                     and rendering it via translate.ev's VariantText.
---                   · otherwise → a claim head (`<kw> Ident`): drop the
---                     2-token head, walk the forward token list ONE
---                     MEMBERSHIP PER TICK, dispatching each membership by
---                     shape to MembershipStep (scalar), SeqMembershipStep
---                     (Seq), or MatchMembershipStep (match), accumulating
---                     the declare/assert lines (`out`) and the manifest
---                     state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: for a claim, assemble the
---                 manifest header + body and `puts` the .smt2; for an enum,
---                 assemble the (declare-datatypes …) block. Then Exit(0).
---
--- Grammar scope (docs/plans/grammar-wave1.md + wave2.md + wave3.md +
--- wave3.5.md): a claim head plus N memberships, each optionally pinned —
--- scalar/arith/comparison/boolean/ternary/string pins (waves 1–2), the
--- `= <atom> matches Ctor(_)` recognizer (wave 3), and — integrated into
--- this monolithic driver in wave 3.5 — a top-level `enum` declaration, a
--- `= match scrut { Ctor(b) ⇒ … ; _ ⇒ … }` membership pin (→ nested ite),
--- and `Seq(T)` memberships (⟨…⟩ literal / `++` concat / `#` cardinality).
--- is_first_tick is auto-injected and `_<name>` carry vars are excluded
--- from the manifest state-fields. Quantifier / subclaim / `..` / generics
--- and multi-top-level-item files are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
-
+-- expect: stdout = ";; manifest: state-fields = e:Effect"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun is_first_tick () Bool)"
+-- expect: stdout = "(declare-fun e () Effect)"
+-- expect: stdout = "(assert (= e (Exit 0)))"
+-- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -81,18 +33,12 @@ import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input ∈ String = "claim foo\n    e ∈ Effect = Exit(0)\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -470,7 +416,6 @@ claim main
 
     smtlib ∈ String = (is_enum_program ? enum_smtlib : claim_smtlib)
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
-        : (emit_now
-            ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+    effects ∈ Seq(Effect) = (emit_now
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
