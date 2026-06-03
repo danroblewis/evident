@@ -261,4 +261,58 @@ User rationale:
 then, the honest-FTI pattern from task #23 is the default for new
 FTIs.
 
+## `fti` keyword + `install` mechanism (FTI self-owned initialization)
+
+**Source:** user, mid-session ~task #29.
+
+**Observation:** The current Stack/Queue FTIs (post task #23) have a
+correct shape — metadata-only Z3 state, libc-backed contents, `free()`
+on teardown — but the FTI itself **does not emit** its own
+initialization libcalls. `BuildStackAlloc` exists; the host is
+responsible for composing it and including `⟨alloc_elem⟩` in its
+effects literal on `is_first_tick`. The host has to know about the
+FTI's setup needs.
+
+User rationale:
+
+> *"There is one called `BuildStackAlloc` that does the actual
+> libcall, but I'm not sure when that ever gets emitted? In the old
+> bootstrap rust runtime, we had an `install` thing for FSM's and
+> FTI's where we would specify initialization steps."*
+
+The legacy bootstrap had an `install` mechanism: an FTI declared its
+initialization/teardown effects, and the compiler arranged for them
+to flow into the host's effects channel without the host having to
+know.
+
+**Three viable paths:**
+
+1. **Convention (today, no language change).** FTI exposes
+   `install_effects ∈ Seq(Effect)` and `teardown_effects ∈ Seq(Effect)`
+   slots. Host `++`-composes them into its main effects. Document the
+   pattern; update Stack/Queue FTIs to follow it. Costs: small refactor
+   of existing FTIs + their host fixtures; no kernel/bootstrap change.
+
+2. **`fti` keyword with real semantics.** Currently `fti` is a synonym
+   for `claim` (CLAUDE.md §"Schema keywords"). Give it real semantics:
+   when a host composes an `fti`, the compiler auto-collects its
+   `install` / `teardown` blocks and prepends/appends them to the host's
+   effects without explicit `++`. Costs: bootstrap parser + translator
+   change; kernel may not need any change; new language feature.
+
+3. **Direct `install` block syntax.** Restore the legacy mechanism
+   verbatim — an `install` keyword inside `fti` blocks (or `claim`
+   blocks) that the compiler scans and prepends to the host's effects.
+   Costs: similar to (2), tied to a specific syntax.
+
+**Recommendation:** Path (1) for the deletion-path period (zero
+language risk, minor refactor). Path (2) post-deletion as a clean
+follow-up. The `fti` keyword is already reserved — let's give it real
+work to do.
+
+**When to pick this up:** path (1) can land any time and is a clean
+~1-session refactor of `stdlib/fti/{stack,queue}.ev` + their fixtures.
+Paths (2)/(3) are post-bootstrap-deletion since they touch the
+self-hosted compiler's grammar.
+
 ## (Add more ideas here as they surface)
