@@ -10,3 +10,4 @@ a.smt
 scripts/coordinator-results/
 scripts/coordinator-results/
 runtime/
+compiler.smt2
