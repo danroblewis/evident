@@ -1,3 +1,11 @@
+-- Grammar wave 3.5, CANONICAL: a top-level `enum` declaration driven by the
+-- UNMODIFIED compiler/compiler.ev pipeline (constant input instead of the
+-- ReadFile seed). Proves the top-level head-token dispatch (KwEnum → enum
+-- machine) integrated into the monolithic driver, not just the per-pass
+-- mechanics of the wave-3 dedicated fixture. See docs/plans/grammar-wave3.5.md.
+--
+-- expect: stdout = "(declare-datatypes ((Box 0)) (((Pair (Pair__f0 Int) (Pair__f1 Int)) (Empty))))"
+-- expect: exit = 0
 -- compiler/compiler.ev — the self-hosted compiler driver.
 --
 -- This is the top-level program the whole project is building toward:
@@ -79,18 +87,12 @@ import "compiler/parse_body_seq.ev"
 import "compiler/parse_body_match.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input ∈ String = "enum Box = Pair(Int, Int) | Empty\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -454,7 +456,6 @@ claim main
 
     smtlib ∈ String = (is_enum_program ? enum_smtlib : claim_smtlib)
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
-        : (emit_now
-            ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+    effects ∈ Seq(Effect) = (emit_now
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
