@@ -129,6 +129,20 @@ work-stack walker (the `WorkItem`/`WorkList` pattern in `parser.ev`,
 already used by `translate_arith.ev`'s recursive walker) — arbitrary depth,
 linear cost.
 
+## Blocker 5 — per-tick solve cost of the depth-unrolled renderer
+
+Observed while running the smoke test: `kernel compiler.smt2 < flat` on the
+flattened `test_hello` (~3 KB) did not terminate in 20+ minutes. The driver
+re-solves its ENTIRE body every tick, and with `RenderExprL3` composed in
+(~5.7k residual assertions) each lex tick is seconds of Z3; a multi-KB
+source is thousands of char-level lex ticks. The self-hosted compiler is
+thus too slow to compile a real file until either (a) the renderer becomes a
+work-stack walker whose constraints don't all fire every tick (blocker 4),
+or (b) the functionizer extracts the lex/parse steps (it currently reports
+`not functionized` on this driver — an output had no covering assignment).
+This is downstream of blockers 0–4 but will surface immediately once they
+clear, so it belongs on the same map.
+
 ## Summary
 
 The smoke test is gated on, in priority order: **(0) the array+len Seq
