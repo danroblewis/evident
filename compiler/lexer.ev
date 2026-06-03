@@ -86,6 +86,10 @@ enum Token =
     -- (runtime/src/lexer.rs); paired with the existing Colon token it
     -- lets the self-hosted driver lex a ternary pin RHS.
     Question
+    -- `#` — cardinality / length prefix (grammar wave 3). The Rust lexer
+    -- emits Hash for the `#` in `#xs` (sequence length / string length);
+    -- the self-hosted Seq driver lowers `#xs` to `(seq.len xs)`.
+    Hash
     -- `:` — quantifier body separator (Phase B8). The Rust lexer emits
     -- Colon for the `:` between the range and body in `∀ x ∈ S : body`
     -- (runtime/src/lexer.rs).
@@ -201,6 +205,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "|" ? Pipe
         : c = ":" ? Colon
         : c = "?" ? Question
+        : c = "#" ? Hash
         : c = "∈" ? OpIn
         : c = "⇒" ? OpImplies
         : c = "⟨" ? OpSeqOpen
@@ -217,7 +222,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
                 ∨ c = "*" ∨ c = "/" ∨ c = "-"
-                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?"
+                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?" ∨ c = "#"
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
                 ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"

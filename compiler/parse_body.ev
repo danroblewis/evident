@@ -115,6 +115,10 @@ claim MembershipStep
     TLHd(l ↦ l8, out ↦ t8)
     l9 ∈ TokenList
     TLTl(l ↦ l8, out ↦ l9)
+    t9 ∈ Token
+    TLHd(l ↦ l9, out ↦ t9)
+    l10 ∈ TokenList
+    TLTl(l ↦ l9, out ↦ l10)
 
     -- Head role extraction.
     is_name ∈ Bool = (t0 matches Ident(_))
@@ -216,11 +220,24 @@ claim MembershipStep
     ms_t4_is_str  ∈ Bool = (t4 matches StringLit(_))
     ms_t4_is_not  ∈ Bool = (t4 matches OpNot)
     ms_t5_is_q    ∈ Bool = (t5 matches Question)
+    ms_t5_is_matches ∈ Bool = (t5 matches KwMatches)
 
     ms_is_string  ∈ Bool = (has_eq ∧ ms_t4_is_str)
     ms_is_not     ∈ Bool = (has_eq ∧ ms_t4_is_not)
+    -- `<atom> matches Ctor(_)` (grammar wave 3, item 3): a constructor
+    -- recognizer. t4=scrutinee atom, t5=KwMatches, t6=Ctor ident, then
+    -- `( _ )`. Lowers to a Z3 tester `((_ is Ctor) <scrutinee>)`, the
+    -- sibling of match-arm lowering in compiler/translate_match.ev.
+    ms_is_matches ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_t5_is_matches)
     ms_is_ternary ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_t5_is_q)
     ms_is_binop   ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_is_op)
+
+    -- matches scrutinee (t4 atom) + constructor name (t6 Ident).
+    ms_scrut_str ∈ String = (ms_a1_is_int ? str_from_int(ms_a1_int) : ms_a1_id)
+    ms_ctor_name ∈ String = match t6
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_matches_str ∈ String = "((_ is " ++ ms_ctor_name ++ ") " ++ ms_scrut_str ++ ")"
 
     -- RHS Expr per shape.
     ms_rhs_expr ∈ Expr = (ms_is_string ? EStr(ms_str_val)
@@ -245,7 +262,8 @@ claim MembershipStep
     ms_atom_ok ∈ Bool
     AtomSmtlib(e ↦ ms_rhs_expr, out ↦ ms_atom_str, ok ↦ ms_atom_ok)
 
-    ms_rhs ∈ String = (ms_is_ternary ? ms_tern_str
+    ms_rhs ∈ String = (ms_is_matches ? ms_matches_str
+        : ms_is_ternary ? ms_tern_str
         : ms_is_not ? ms_bool_str
         : (ms_is_binop ∧ ms_is_arith_op) ? ms_arith_str
         : ms_is_binop ? ms_bool_str
@@ -266,6 +284,7 @@ claim MembershipStep
     ok = is_name
     saw_ift = (name = "is_first_tick")
     rest = (¬has_eq ? l3
+        : ms_is_matches ? l10
         : ms_is_ternary ? l9
         : ms_is_not ? l6
         : ms_is_binop ? l7

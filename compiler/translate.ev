@@ -61,14 +61,63 @@ import "compiler/parser.ev"
 -- EnumVariantDecl to carry a field list and updating this claim to
 -- emit `(name (name__f0 Type) …)` per the Rust path's accessor
 -- naming convention.
+-- For a payload variant `Ok(Int)` the SMT-LIB form names a synthesised
+-- accessor per field: `(Ok (Ok__f0 Int))`, `(Pair (Pair__f0 Int)
+-- (Pair__f1 Int))`. Field rendering is bounded at ≤3 fields here — the
+-- widest payload arity in the corpus (EBinOp(Op,Expr,Expr),
+-- FloatLit(Int,Int,Int)); a wider variant would need a per-field walk
+-- (the same shape as the variant-list walk one level up).
 claim VariantText
     v ∈ EnumVariantDecl
     out ∈ String
     name ∈ String = match v
         EVDecl(n) ⇒ n
+        EVDeclP(n, _) ⇒ n
         EVNoVariant ⇒ ""
-    is_decl ∈ Bool = (v matches EVDecl(_))
-    out = (is_decl ? "(" ++ name ++ ")" : "")
+    is_decl  ∈ Bool = (v matches EVDecl(_))
+    is_declp ∈ Bool = (v matches EVDeclP(_, _))
+
+    vt_fields ∈ EVFieldList = match v
+        EVDeclP(_, fs) ⇒ fs
+        _ ⇒ EVFNil
+
+    -- Peel up to three fields off the list.
+    vt_f0 ∈ EVField = match vt_fields
+        EVFCons(f, _) ⇒ f
+        EVFNil ⇒ EVFNone
+    vt_r1 ∈ EVFieldList = match vt_fields
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vt_f1 ∈ EVField = match vt_r1
+        EVFCons(f, _) ⇒ f
+        EVFNil ⇒ EVFNone
+    vt_r2 ∈ EVFieldList = match vt_r1
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vt_f2 ∈ EVField = match vt_r2
+        EVFCons(f, _) ⇒ f
+        EVFNil ⇒ EVFNone
+
+    vt_has0 ∈ Bool = (vt_f0 matches EVFType(_))
+    vt_has1 ∈ Bool = (vt_f1 matches EVFType(_))
+    vt_has2 ∈ Bool = (vt_f2 matches EVFType(_))
+    vt_t0 ∈ String = match vt_f0
+        EVFType(s) ⇒ s
+        EVFNone ⇒ ""
+    vt_t1 ∈ String = match vt_f1
+        EVFType(s) ⇒ s
+        EVFNone ⇒ ""
+    vt_t2 ∈ String = match vt_f2
+        EVFType(s) ⇒ s
+        EVFNone ⇒ ""
+
+    vt_a0 ∈ String = (vt_has0 ? " (" ++ name ++ "__f0 " ++ vt_t0 ++ ")" : "")
+    vt_a1 ∈ String = (vt_has1 ? " (" ++ name ++ "__f1 " ++ vt_t1 ++ ")" : "")
+    vt_a2 ∈ String = (vt_has2 ? " (" ++ name ++ "__f2 " ++ vt_t2 ++ ")" : "")
+
+    out = (is_decl  ? "(" ++ name ++ ")"
+        : is_declp ? "(" ++ name ++ vt_a0 ++ vt_a1 ++ vt_a2 ++ ")"
+        : "")
 
 -- EnumDeclPrefix — the fixed header `(declare-datatypes ((Name 0)) (`
 -- preceding the variant list. Pulled out as its own claim so the
