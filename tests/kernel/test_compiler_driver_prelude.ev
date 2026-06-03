@@ -1,3 +1,35 @@
+-- Grammar wave 4d, EMIT PRELUDE, END-TO-END: drives the CURRENT
+-- compiler/compiler.ev pipeline (constant input, canonical-fixture pattern)
+-- on an effects-only claim, and proves the wave-4d addition: the kernel-
+-- required emit prelude (the `Result` datatype + `last_results` array +
+-- `last_results__len` decl/assert) is now emitted between the manifest and
+-- the body, byte-identical to bootstrap's emit.rs
+-- `result_and_last_results_decls()` + the injected `last_results ∈
+-- Seq(Result)` membership's `last_results__len` decl/assert. Before this
+-- wave the self-hosted EMIT phase produced none of it, so any emitted
+-- program died on the kernel at `unknown constant last_results__len`
+-- (docs/plans/blocked-grammar-wave4c.md, Blocker A — now RESOLVED).
+-- Also re-proves wave-4c: Array+len Seq lowering, derived max-effects (=2),
+-- `effects` excluded from manifest state-fields.
+-- See docs/plans/grammar-wave4d.md.
+--
+-- expect: stdout = ";; manifest: state-fields = "
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 2"
+-- expect: stdout = "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))"
+-- expect: stdout = "(declare-fun last_results () (Array Int Result))"
+-- expect: stdout = "(declare-fun last_results__len () Int)"
+-- expect: stdout = "(assert (>= last_results__len 0))"
+-- expect: stdout = "(declare-fun is_first_tick () Bool)"
+-- expect: stdout = "(declare-fun effects () (Array Int Effect))"
+-- expect: stdout = "(declare-fun effects__len () Int)"
+-- expect: stdout = "(assert (= effects__len 2))"
+-- expect: stdout = "(assert (= (select effects 0) (Exit 0)))"
+-- expect: stdout = "(assert (= (select effects 1) (Exit 1)))"
+-- expect: exit = 0
+--
 -- compiler/compiler.ev — the self-hosted compiler driver.
 --
 -- This is the top-level program the whole project is building toward:
@@ -81,18 +113,17 @@ import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    -- ── INPUT — constant (canonical-fixture pattern): exercise the WHOLE
+    --    wave-4c driver (pmode loop + mxe accumulator) on an effects-only
+    --    claim, proving (a) Array+len lowering of the `effects` state field,
+    --    (b) max-effects DERIVED from the body (= 2 here), (c) `effects`
+    --    excluded from manifest state-fields. ──
+    input ∈ String = "claim foo\n    effects ∈ Seq(Effect) = ⟨Exit(0), Exit(1)⟩\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -570,24 +601,27 @@ claim main
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
 
-    -- ── EMIT PRELUDE (wave 4d) ─────────────────────────────────────
-    -- The kernel ALWAYS pins `last_results__len` and decodes
-    -- `last_results` as an `(Array Int Result)` (kernel/src/tick.rs).
-    -- Bootstrap hand-writes this in emit.rs `result_and_last_results_decls`
-    -- (the Result datatype + `last_results` array) plus the
-    -- `last_results__len` decl + `(>= last_results__len 0)` assert that
-    -- the injected `last_results ∈ Seq(Result)` membership produces. The
-    -- self-hosted EMIT phase produces none of it, so we emit a fixed
-    -- prelude mirroring bootstrap's exact output, between the manifest
-    -- and the enum datatype / body declares.
-    prelude ∈ String = ("(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
+    -- ── EMIT PRELUDE (wave 4d) — see compiler/compiler.ev ──────────
+    -- NOTE (fixture-only split): bootstrap's emit.rs:111 skips its
+    -- hand-written Result/last_results prelude when the BODY already
+    -- contains the literal `(declare-datatypes ((Result`. Because this
+    -- self-contained fixture does NOT use `last_results` (no ReadFile),
+    -- bootstrap won't auto-inject it, so it MUST hand-write the prelude
+    -- for the emitted program to declare `last_results`. The `((` ++
+    -- `Result` split below keeps that trigger substring out of the
+    -- compiled BODY (it stays a `str.++` of two fragments) so bootstrap's
+    -- heuristic stays false — while the runtime concat still produces the
+    -- byte-identical output string. The real compiler/compiler.ev needs
+    -- no split: it reads `last_results[0]`, so bootstrap auto-injects the
+    -- decl regardless of the heuristic.
+    prelude ∈ String = ("(declare-datatypes ((" ++ "Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
         ++ "(declare-fun last_results () (Array Int Result))\n"
         ++ "(declare-fun last_results__len () Int)\n"
         ++ "(assert (>= last_results__len 0))\n")
 
     smtlib ∈ String = manifest ++ "\n" ++ prelude ++ datatypes ++ ift_decl ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨LibCall("libc", "getpid", ⟨⟩)⟩
         : (emit_now
             ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
             : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
