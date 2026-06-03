@@ -251,9 +251,29 @@ claim Precedence
         : is_eq ? 0 : is_impl ? 0 : 0)
 
 -- ── Enum declaration AST (B6) ───────────────────────────────────
+-- EVDecl(name)            — a nullary variant `Red` → "(Red)".
+-- EVDeclP(name, fields)   — a payload variant `Ok(Int)` → "(Ok (Ok__f0
+--                           Int))" (grammar wave 3). Each field carries
+--                           only its type-name string; the accessor name
+--                           `<Variant>__f<N>` is synthesised by VariantText
+--                           in translate.ev, mirroring the Rust path's
+--                           accessor-naming convention
+--                           (runtime/src/runtime/register_enums.rs).
 enum EnumVariantDecl =
     EVDecl(String)
+    EVDeclP(String, EVFieldList)
     EVNoVariant
+
+-- A single payload field is its fully-rendered type-name string
+-- (`"Int"`, `"String"`, …) — the same opaque-type-string decision as
+-- TypeRef. EVFNone is the placeholder sentinel.
+enum EVField =
+    EVFType(String)
+    EVFNone
+
+enum EVFieldList =
+    EVFNil
+    EVFCons(EVField, EVFieldList)
 
 enum EnumVariantList =
     EVNil

@@ -1,57 +1,26 @@
--- compiler/compiler.ev — the self-hosted compiler driver.
+-- Grammar wave 3, item 3: a membership pinned by an `e matches Ctor(_)`
+-- constructor recognizer.
 --
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
+-- The source is lexed character-by-character (nothing hardcoded);
+-- MembershipStep (parse_body.ev) recognises the `<atom> matches Ctor(_)`
+-- token shape after a `=` pin and lowers it to a Z3 datatype tester
+-- `((_ is Ctor) <scrutinee>)` — the sibling of the match-arm lowering in
+-- compiler/translate_match.ev. See docs/plans/grammar-wave3.md and
+-- docs/plans/grammar-coverage-survey.md §3.
 --
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one membership / tick
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
+-- Source: "claim foo\n    is_ok ∈ Bool = e matches Ok(_)\n"  →
+--   (declare-fun is_ok () Bool)
+--   (assert (= is_ok ((_ is Ok) e)))
 --
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — drop the leading `<kw> Ident` claim head, then walk
---                 the forward token list ONE MEMBERSHIP PER TICK with
---                 parse_body.ev's MembershipStep, accumulating the
---                 declare/assert lines (`out`) and the manifest
---                 state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: assemble the manifest
---                 header + body and `puts` the .smt2, then Exit(0).
---
--- Grammar scope (docs/plans/grammar-wave1.md + grammar-wave2.md +
--- grammar-wave3.md): a claim head plus N memberships, each optionally
--- pinned with a scalar/boolean expression — `= <atom>`, one-level
--- arithmetic `= a <+-*/> b`, the wave-2 comparison (`< ≤ > ≥ ≠`) and
--- boolean (`∧ ∨ ¬ ⇒`) operators, ternary (`= c ? t : e` → ite), ASCII
--- string literals, and the wave-3 `= <atom> matches Ctor(_)` constructor
--- recognizer (→ `((_ is Ctor) <atom>)`, via parse_body.ev's MembershipStep).
--- is_first_tick is auto-injected and `_<name>` carry vars are excluded
--- from the manifest state-fields. The other wave-3 shapes — top-level
--- `enum` decls, `match` expressions, and `Seq(T)`/⟨…⟩/`++`/`#` — are
--- proven end-to-end (real lex→parse→translate→emit) by the dedicated
--- driver fixtures tests/kernel/test_compiler_driver_{enum,match,seq}.ev,
--- which mirror this pipeline and compose translate.ev / translate_match.ev
--- / translate_seq.ev + parse_body_seq.ev. Quantifier / subclaim / `..` /
--- generics are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
-
+-- expect: stdout = ";; manifest: state-fields = is_ok:Bool"
+-- expect: stdout = ";; manifest: effects-name = effects"
+-- expect: stdout = ";; manifest: effect-enum-name = Effect"
+-- expect: stdout = ";; manifest: result-enum-name = Result"
+-- expect: stdout = ";; manifest: max-effects = 0"
+-- expect: stdout = "(declare-fun is_first_tick () Bool)"
+-- expect: stdout = "(declare-fun is_ok () Bool)"
+-- expect: stdout = "(assert (= is_ok ((_ is Ok) e)))"
+-- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -62,18 +31,12 @@ import "compiler/translate_ternary.ev"
 import "compiler/parse_body.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input ∈ String = "claim foo\n    is_ok ∈ Bool = e matches Ok(_)\n"
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     pos  ∈ Int
     _pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _pos + 1))
+    pos = (is_first_tick ? 0 - 1 : _pos + 1)
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -102,10 +65,7 @@ claim main
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    -- ── String-literal mode (grammar wave 2; carried) ────────────
-    -- A `"` opens the mode, chars accumulate, the closing `"` emits a
-    -- StringLit token (escapes out of scope). While inside a string the
-    -- normal ident/int collectors are suppressed (¬_in_strlit guards).
+    -- ── String-literal mode (carried) ────────────────────────────
     in_strlit  ∈ Bool
     _in_strlit ∈ Bool
     partial_strlit  ∈ String
@@ -125,6 +85,7 @@ claim main
         : (strlit_closing ? ""
         : _partial_strlit))))
 
+    -- Normal ident/int collection is suppressed while inside a string.
     str_continuing ∈ Bool = (was_collecting_str ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
     str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alpha ∧ in_range) ∨ done))
     str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
@@ -158,8 +119,7 @@ claim main
             : (char_only ? TLCons(op_tok, _tokens)
             : _tokens)))))))
 
-    has_input ∈ Bool = (#input > 0)
-    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ ¬is_first_tick)
 
     -- ── PHASE control (0 lex · 1 reverse · 2 parse · 3 emit) ──────
     phase  ∈ Int
@@ -233,9 +193,6 @@ claim main
         : (in_parse ∧ step_ok ? (step_field = "" ? _fstr : (_fstr = "" ? step_field : _fstr ++ " " ++ step_field))
         : _fstr)))
 
-    -- is_first_tick auto-inject guard: track whether the source declared
-    -- is_first_tick during the parse walk (mirrors bootstrap emit's
-    -- ensure_is_first_tick_decl, which prepends the decl only when absent).
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
@@ -259,7 +216,6 @@ claim main
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     smtlib ∈ String = manifest ++ "\n" ++ ift_decl ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
-        : (emit_now
-            ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+    effects ∈ Seq(Effect) = (emit_now
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
