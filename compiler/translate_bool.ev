@@ -43,6 +43,7 @@ claim ExprAtomSmtlib
 
     is_int   ∈ Bool = (e matches EInt(_))
     is_ident ∈ Bool = (e matches EIdent(_))
+    is_str   ∈ Bool = (e matches EStr(_))
 
     int_val ∈ Int = match e
         EInt(n) ⇒ n
@@ -52,10 +53,17 @@ claim ExprAtomSmtlib
         EIdent(s) ⇒ s
         _ ⇒ ""
 
+    str_val ∈ String = match e
+        EStr(s) ⇒ s
+        _ ⇒ ""
+
     int_text ∈ String = str_from_int(int_val)
 
-    ok = (is_int ∨ is_ident)
-    out = (is_int ? int_text : (is_ident ? ident_val : ""))
+    ok = (is_int ∨ is_ident ∨ is_str)
+    out = (is_int ? int_text
+        : is_ident ? ident_val
+        : is_str ? "\"" ++ str_val ++ "\""
+        : "")
 
 -- ── BoolExprSmtlib ──────────────────────────────────────────────
 -- Translate a Boolean EBinOp(Op, lhs, rhs) where lhs and rhs are
@@ -73,12 +81,23 @@ claim ExprAtomSmtlib
 -- to a more general renderer (the work-stack walker in
 -- test_translate_eq_ident.ev for nested cases).
 
+-- Grammar wave 2 widens this to the full comparison + boolean-connective
+-- operator set plus the unary `¬` (ENot):
+--   OpEq → "(= l r)"      OpImpl → "(=> l r)"
+--   OpLt → "(< l r)"      OpGt   → "(> l r)"
+--   OpLeq → "(<= l r)"    OpGeq  → "(>= l r)"
+--   OpNeq → "(not (= l r))"   (lowered as negated equality, per spec)
+--   OpConj → "(and l r)"  OpDisj → "(or l r)"
+--   ENot(e) → "(not e)"
+-- All operands are rendered with ExprAtomSmtlib, so the wave-2 surface is
+-- one-level (atom operands); nested trees ride the work-stack walker.
 claim BoolExprSmtlib
     e ∈ Expr
     out ∈ String
     ok ∈ Bool
 
     is_binop ∈ Bool = (e matches EBinOp(_, _, _))
+    is_not   ∈ Bool = (e matches ENot(_))
 
     op_val ∈ Op = match e
         EBinOp(o, _, _) ⇒ o
@@ -90,11 +109,32 @@ claim BoolExprSmtlib
     rhs_expr ∈ Expr = match e
         EBinOp(_, _, r) ⇒ r
         _ ⇒ ENoExpr
+    not_expr ∈ Expr = match e
+        ENot(x) ⇒ x
+        _ ⇒ ENoExpr
 
     is_eq   ∈ Bool = (op_val matches OpEq)
     is_impl ∈ Bool = (op_val matches OpImpl)
+    is_lt   ∈ Bool = (op_val matches OpLt)
+    is_gt   ∈ Bool = (op_val matches OpGt)
+    is_le   ∈ Bool = (op_val matches OpLeq)
+    is_ge   ∈ Bool = (op_val matches OpGeq)
+    is_ne   ∈ Bool = (op_val matches OpNeq)
+    is_and  ∈ Bool = (op_val matches OpConj)
+    is_or   ∈ Bool = (op_val matches OpDisj)
 
-    op_text ∈ String = (is_eq ? "(= " : (is_impl ? "(=> " : ""))
+    op_text ∈ String = (is_eq ? "(= "
+        : is_impl ? "(=> "
+        : is_lt ? "(< "
+        : is_gt ? "(> "
+        : is_le ? "(<= "
+        : is_ge ? "(>= "
+        : is_and ? "(and "
+        : is_or ? "(or "
+        : "")
+
+    known_op ∈ Bool = (is_eq ∨ is_impl ∨ is_lt ∨ is_gt ∨ is_le ∨ is_ge
+        ∨ is_ne ∨ is_and ∨ is_or)
 
     lhs_text ∈ String
     lhs_ok   ∈ Bool
@@ -104,9 +144,21 @@ claim BoolExprSmtlib
     rhs_ok   ∈ Bool
     ExprAtomSmtlib(e ↦ rhs_expr, out ↦ rhs_text, ok ↦ rhs_ok)
 
-    head_ok ∈ Bool = (is_binop ∧ (is_eq ∨ is_impl))
-    ok = (head_ok ∧ lhs_ok ∧ rhs_ok)
-    out = (ok ? op_text ++ lhs_text ++ " " ++ rhs_text ++ ")" : "")
+    not_text ∈ String
+    not_ok   ∈ Bool
+    ExprAtomSmtlib(e ↦ not_expr, out ↦ not_text, ok ↦ not_ok)
+
+    binop_out ∈ String = (is_ne
+        ? "(not (= " ++ lhs_text ++ " " ++ rhs_text ++ "))"
+        : op_text ++ lhs_text ++ " " ++ rhs_text ++ ")")
+
+    binop_ok ∈ Bool = (is_binop ∧ known_op ∧ lhs_ok ∧ rhs_ok)
+    not_full_ok ∈ Bool = (is_not ∧ not_ok)
+
+    ok = (binop_ok ∨ not_full_ok)
+    out = (not_full_ok ? "(not " ++ not_text ++ ")"
+        : binop_ok ? binop_out
+        : "")
 
 -- ── Recursive Boolean translation via a WorkItem work-stack ────────
 --

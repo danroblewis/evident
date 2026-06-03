@@ -23,6 +23,16 @@ import "compiler/lexer.ev"
 -- Eq) — the Precedence claim below treats it as such. Wrapping a
 -- compound consequent in parens is a documented user idiom (see the
 -- "Boolean & precedence footguns" section in CLAUDE.md).
+-- Grammar wave 2 adds the comparison + boolean-connective operators.
+-- The corresponding operators exist as *lexer* Token variants
+-- (Lt/Gt/OpLe/OpGe/OpNe/OpAnd/OpOr/OpImplies in compiler/lexer.ev) but
+-- had no `Op` member, so `EBinOp(OpLt, …)` was unconstructable (the
+-- blocked-translate-bool note in translate_bool.ev). Enum variant names
+-- are globally unique, so the `Op` members can't reuse the Token names —
+-- they take distinct spellings (OpLeq/OpGeq/OpNeq/OpConj/OpDisj). They
+-- render to SMT-LIB in translate_bool.ev:
+--   OpLt → "(< …)"   OpGt  → "(> …)"   OpLeq → "(<= …)"  OpGeq → "(>= …)"
+--   OpNeq → "(not (= …))"   OpConj → "(and …)"   OpDisj → "(or …)"
 enum Op =
     OpPlus
     OpMul
@@ -31,6 +41,13 @@ enum Op =
     OpDiv
     OpImpl
     OpConcat
+    OpLt
+    OpGt
+    OpLeq
+    OpGeq
+    OpNeq
+    OpConj
+    OpDisj
 
 -- Quantifier variants (B8) carry the bound variable name, the
 -- range expression (the source to iterate over, e.g. `items`), and
@@ -39,6 +56,13 @@ enum Op =
 -- restricted to the single-name shape (`∀ x ∈ S : body`); the
 -- tuple-binding form (`∀ (a, b) ∈ coindexed(...) : ...`) is a
 -- later sub-step.
+-- Grammar wave 2 control/value forms:
+--   ETernary(cond, then, else) — `cond ? then : else` → "(ite …)".
+--     Mirrors runtime/src/core/ast.rs Expr::Ternary. The single most
+--     used control form in the corpus (191×); the self-hosted compiler
+--     is built on it (docs/plans/grammar-coverage-survey.md §1, §3).
+--   ENot(e)  — unary `¬ e` → "(not e)".
+--   EStr(s)  — ASCII string literal → SMT-LIB `"s"`.
 enum Expr =
     EInt(Int)
     EIdent(String)
@@ -46,6 +70,9 @@ enum Expr =
     EForall(String, Expr, Expr)
     EExists(String, Expr, Expr)
     EMatch(Expr, MatchArmList)
+    ETernary(Expr, Expr, Expr)
+    ENot(Expr)
+    EStr(String)
     ENoExpr
 
 -- ── Match patterns (B9) ────────────────────────────────────────

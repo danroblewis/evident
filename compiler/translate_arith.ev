@@ -25,18 +25,26 @@ import "compiler/parser.ev"
 --   EInt(n)   → str_from_int(n)   (Z3 integer literal)
 --   EIdent(s) → s                 (declared name)
 -- Anything else → ok=false, out="".
+-- EStr(s) renders to the SMT-LIB string literal `"s"` (grammar wave 2;
+-- ASCII pass-through, non-ASCII escaping is out of scope). The double
+-- quotes are part of the emitted text.
 claim AtomSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
     is_int   ∈ Bool = (e matches EInt(_))
     is_ident ∈ Bool = (e matches EIdent(_))
+    is_str   ∈ Bool = (e matches EStr(_))
     int_val ∈ Int = match e
         EInt(n) ⇒ n
         _ ⇒ 0
     ident_val ∈ String = match e
         EIdent(s) ⇒ s
         _ ⇒ ""
-    ok = (is_int ∨ is_ident)
+    str_val ∈ String = match e
+        EStr(s) ⇒ s
+        _ ⇒ ""
+    ok = (is_int ∨ is_ident ∨ is_str)
     out = (is_int ? str_from_int(int_val)
         : is_ident ? ident_val
+        : is_str ? "\"" ++ str_val ++ "\""
         : "")
 
 -- ArithExprSmtlib: render a one-level arithmetic binop with leaf

@@ -81,6 +81,11 @@ enum Token =
     -- Enum-variant separator `|`. The Rust lexer emits this for enum
     -- declarations like `enum Color = Red | Green | Blue`.
     Pipe
+    -- `?` — ternary condition/arm separator (grammar wave 2). The Rust
+    -- lexer emits Question for the `?` in `cond ? then : else`
+    -- (runtime/src/lexer.rs); paired with the existing Colon token it
+    -- lets the self-hosted driver lex a ternary pin RHS.
+    Question
     -- `:` — quantifier body separator (Phase B8). The Rust lexer emits
     -- Colon for the `:` between the range and body in `∀ x ∈ S : body`
     -- (runtime/src/lexer.rs).
@@ -117,8 +122,14 @@ claim IsDigitChar(c ∈ String, out ∈ Bool)
     out = (c = "0" ∨ c = "1" ∨ c = "2" ∨ c = "3" ∨ c = "4"
          ∨ c = "5" ∨ c = "6" ∨ c = "7" ∨ c = "8" ∨ c = "9")
 
+-- Underscore counts as an identifier char (grammar wave 2): Evident
+-- names like `is_first_tick`, `partial_str`, and the `_<name>`
+-- state-carry vars contain `_`, matching the Rust lexer's ident class
+-- (runtime/src/lexer.rs). Without it, `_count` lexes as ErrTok("_") +
+-- Ident("count") and the state-carry pairing can't be recognised.
 claim IsAlphaChar(c ∈ String, out ∈ Bool)
-    out = (c = "a" ∨ c = "b" ∨ c = "c" ∨ c = "d" ∨ c = "e"
+    out = (c = "_"
+         ∨ c = "a" ∨ c = "b" ∨ c = "c" ∨ c = "d" ∨ c = "e"
          ∨ c = "f" ∨ c = "g" ∨ c = "h" ∨ c = "i" ∨ c = "j"
          ∨ c = "k" ∨ c = "l" ∨ c = "m" ∨ c = "n" ∨ c = "o"
          ∨ c = "p" ∨ c = "q" ∨ c = "r" ∨ c = "s" ∨ c = "t"
@@ -189,6 +200,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : c = "." ? Dot
         : c = "|" ? Pipe
         : c = ":" ? Colon
+        : c = "?" ? Question
         : c = "∈" ? OpIn
         : c = "⇒" ? OpImplies
         : c = "⟨" ? OpSeqOpen
@@ -205,7 +217,7 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
         : ErrTok(c))
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
                 ∨ c = "*" ∨ c = "/" ∨ c = "-"
-                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":"
+                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?"
                 ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
                 ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
                 ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
