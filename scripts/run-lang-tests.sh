@@ -20,56 +20,83 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
-total=0
-nfiles=0
-fail_lines=()
-
 shopt -s nullglob
 files=("$LANG_TESTS"/*.ev)
 IFS=$'\n' files=($(printf '%s\n' "${files[@]}" | sort))
 unset IFS
 
-for f in "${files[@]}"; do
-    nfiles=$((nfiles + 1))
-    name="$(basename "$f")"
-
-    out="$("$BIN" sample "$f" --all --json 2>/tmp/evident_lang_stderr.$$)"
+# Per-file worker: emits a single line summary to stdout in the form
+#   FILE\tCLAIMS\tFAIL_LINES_NL_ESCAPED
+# so the parent can aggregate without sharing state. Failures are joined
+# with literal \n (one escape) and unescaped at aggregate time.
+run_one() {
+    local f="$1"
+    local name; name="$(basename "$f")"
+    local stderr; stderr="$(mktemp -t evident_lang_stderr.XXXXXX)"
+    local out rc fails=""
+    out="$("$BIN" sample "$f" --all --json 2>"$stderr")"
     rc=$?
+    local nclaims=0
     if [ "$rc" -ne 0 ]; then
-        err="$(head -c 300 /tmp/evident_lang_stderr.$$ 2>/dev/null)"
-        fail_lines+=("  FAIL ${name}::load: ${err}")
-        continue
-    fi
-
-    # The JSON is a single flat object: {"name":true,"name2":false,...}.
-    # Keys never contain a double quote, so this extraction is exact.
-    pairs="$(printf '%s' "$out" | grep -oE '"[^"]*":(true|false)')"
-    if [ -z "$pairs" ]; then
-        # No claims (or unparseable output); mirror the JSON-decode failure path.
-        if ! printf '%s' "$out" | grep -qE '^\s*\{'; then
-            fail_lines+=("  FAIL ${name}::json: $(printf '%s' "$out" | head -c 300)")
+        local err; err="$(head -c 300 "$stderr" 2>/dev/null)"
+        fails="  FAIL ${name}::load: ${err}"
+    else
+        local pairs
+        pairs="$(printf '%s' "$out" | grep -oE '"[^"]*":(true|false)')"
+        if [ -z "$pairs" ]; then
+            if ! printf '%s' "$out" | grep -qE '^\s*\{'; then
+                fails="  FAIL ${name}::json: $(printf '%s' "$out" | head -c 300)"
+            fi
+        else
+            while IFS= read -r pair; do
+                [ -z "$pair" ] && continue
+                local cname="${pair%\":*}"; cname="${cname#\"}"
+                local cval="${pair##*:}"
+                nclaims=$((nclaims + 1))
+                case "$cname" in
+                    sat_*)   if [ "$cval" = "false" ]; then
+                        fails="${fails:+$fails$'\n'}  FAIL ${name}::${cname}: expected sat, got unsat"
+                    fi ;;
+                    unsat_*) if [ "$cval" = "true" ]; then
+                        fails="${fails:+$fails$'\n'}  FAIL ${name}::${cname}: expected unsat, got sat"
+                    fi ;;
+                esac
+            done <<< "$pairs"
         fi
-        continue
     fi
+    rm -f "$stderr"
+    # Use literal tab + escaped newlines to make output parseable.
+    local esc; esc="${fails//$'\n'/§NL§}"
+    printf '%s\t%d\t%s\n' "$name" "$nclaims" "$esc"
+}
 
-    while IFS= read -r pair; do
-        [ -z "$pair" ] && continue
-        cname="${pair%\":*}"; cname="${cname#\"}"
-        cval="${pair##*:}"
-        total=$((total + 1))
-        case "$cname" in
-            sat_*)
-                if [ "$cval" = "false" ]; then
-                    fail_lines+=("  FAIL ${name}::${cname}: expected sat, got unsat")
-                fi ;;
-            unsat_*)
-                if [ "$cval" = "true" ]; then
-                    fail_lines+=("  FAIL ${name}::${cname}: expected unsat, got sat")
-                fi ;;
-        esac
-    done <<< "$pairs"
-done
-rm -f /tmp/evident_lang_stderr.$$
+export BIN
+export -f run_one
+
+# Parallelism: default to active CPU count (cap at #files for sanity).
+PAR="${EVIDENT_LANG_PAR:-$(sysctl -n hw.activecpu 2>/dev/null || echo 4)}"
+if [ "$PAR" -gt "${#files[@]}" ]; then PAR=${#files[@]}; fi
+
+results_file="$(mktemp -t evident_lang_results.XXXXXX)"
+printf '%s\n' "${files[@]}" \
+    | xargs -P "$PAR" -I{} bash -c 'run_one "$@"' _ {} \
+    > "$results_file"
+
+total=0
+nfiles=0
+fail_lines=()
+while IFS=$'\t' read -r name nclaims fails_esc; do
+    nfiles=$((nfiles + 1))
+    total=$((total + nclaims))
+    if [ -n "$fails_esc" ]; then
+        # Restore newlines and split
+        decoded="${fails_esc//§NL§/$'\n'}"
+        while IFS= read -r line; do
+            [ -n "$line" ] && fail_lines+=("$line")
+        done <<< "$decoded"
+    fi
+done < "$results_file"
+rm -f "$results_file"
 
 echo "$nfiles files, $total claims, ${#fail_lines[@]} failed"
 for line in "${fail_lines[@]:-}"; do

@@ -165,18 +165,33 @@ run_one() {
     return 0
 }
 
-failed=0
-nfiles=0
 shopt -s nullglob
 files=("$TESTS"/test_*.ev)
 IFS=$'\n' files=($(printf '%s\n' "${files[@]}" | sort))
 unset IFS
-for f in "${files[@]}"; do
-    nfiles=$((nfiles + 1))
-    if ! run_one "$f"; then
-        failed=$((failed + 1))
-    fi
-done
+
+# Parallelize by fixture. Each `run_one` invocation is independent —
+# it shells out to evident emit + kernel and prints a single ✓/✗ line.
+# We export every helper run_one needs so they're visible in the child shells.
+export EVIDENT KERNEL TESTS ROOT
+export -f parse_expectations guess_claim_name setup_fixture run_one
+
+PAR="${EVIDENT_KERNEL_PAR:-$(sysctl -n hw.activecpu 2>/dev/null || echo 4)}"
+if [ "$PAR" -gt "${#files[@]}" ]; then PAR=${#files[@]}; fi
+
+# Per-file invocation writes the ✓/✗ line and returns 0/1 via exit code.
+# Aggregate failures by line-checking the stdout (✗ markers) so we don't
+# need to sum codes across processes.
+output_file="$(mktemp -t evident_kernel_results.XXXXXX)"
+printf '%s\n' "${files[@]}" \
+    | xargs -P "$PAR" -I{} bash -c 'run_one "$@" || true' _ {} \
+    > "$output_file" 2>&1
+
+cat "$output_file"
+nfiles=${#files[@]}
+failed=$(grep -c $'\xe2\x9c\x97' "$output_file" 2>/dev/null) || true
+[ -z "$failed" ] && failed=0
+rm -f "$output_file"
 
 echo "$nfiles kernel tests, $failed failed"
 [ "$failed" -eq 0 ]
