@@ -15,10 +15,35 @@ bootstrap/ directory still exists (11385 lines of Rust).
 See CLAUDE.md, section 'The deletion path,' for how to clear these.
 ```
 
+## Wave 4j (`docs/plans/wave-4j-sample-and-eq-fix.md`) — sample verb + eq fix
+
+Items 1–4 LANDED + verified; Item 5 (lang green) BLOCKED — see
+`docs/plans/blocked-sample-and-eq-fix.md`.
+
+- **Item 1** bare `name = expr` / `name ≠ expr` now emits an assertion,
+  not a spurious decl (`compiler/parse_body.ev`). The wave-4i probe
+  (`today = Mon`/`= Tue`) is fixed on the rebuilt `compiler.smt2`.
+- **Item 2** `compiler/compiler.ev` selects a claim by name from
+  `/tmp/compiler-target-claim.txt` (2nd ReadFile → last_results[1]);
+  empty/absent → "last bare-head wins" (backwards compat).
+- **Item 3** `scripts/sample-via-smt2.sh` — per-claim emit + standalone
+  z3 sat-check; emits `{"name":bool,…}`. Matches bootstrap on the enum
+  bug shape (`{"sat_pin":true,"unsat_two":false}`, verified).
+- **Item 4** `scripts/evident-self` routes `sample` to the wrapper under
+  `EVIDENT_SELF_VIA_SMT2=1`.
+- **Item 5 BLOCKED** by two walls: a ~90 s/claim recompile cost (Z3-bound,
+  kernel-side) ⇒ ~5 h for one `--lang` pass; AND pervasive unsupported
+  claim-body shapes (`⇒`, multi-name `a, b ∈ T`, claim composition,
+  chained bounds). The bare-`=` fix is necessary but far from sufficient.
+
 ## Real blocker (the check-deletable.sh script doesn't catch this yet)
 
 Wave 4i (`docs/plans/blocked-bootstrap-cutover.md`) revealed an
 architectural gap that gates the cutover:
+
+**[wave 4j note] the `sample` verb now EXISTS on the self-hosted path
+(Items 1–4 above); the remaining gates are Item-5's two walls.** The
+original wave-4i framing follows for context.
 
 **The self-hosted toolchain implements only the `emit` verb.** The
 bootstrap binary has four (`emit`, `sample`, `sample --all`, `run`).

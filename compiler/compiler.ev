@@ -89,6 +89,22 @@ claim main
         _ ⇒ "<no-read>"
     input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
 
+    -- ── TARGET CLAIM — optional claim-name selector (wave 4j) ─────
+    -- A SECOND ReadFile on the first tick reads /tmp/compiler-target-claim.txt
+    -- into last_results[1]. When that file holds a claim name, only the
+    -- matching bare-head claim is translated (the rest are skipped); when
+    -- it is absent/empty the ReadFile yields an ErrorResult, the match
+    -- below falls to "", and the dispatch reverts to the corpus
+    -- convention (last bare-head claim wins). This is what lets the
+    -- `sample` wrapper emit a SPECIFIC claim's constraints per file.
+    target  ∈ String
+    _target ∈ String
+    target_read ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    target = (is_first_tick ? "" : (_input = "" ? target_read : _target))
+    has_target ∈ Bool = (target ≠ "")
+
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
     -- `pos` advances by a state-computed `next_pos` (wave 4f bulk-skip)
     -- instead of a fixed +1: a whitespace run or a `--` line comment is
@@ -298,10 +314,23 @@ claim main
     TLHd(l ↦ items_d2, out ↦ item_after_name)
     claim_is_param ∈ Bool = (item_after_name matches LParen)
 
+    -- Claim-name selection (wave 4j): the token after the head keyword
+    -- (head of items_d1) is this claim's name. When a target name was
+    -- read (has_target), only the matching bare-head claim is translated;
+    -- the rest join the skip path. With no target, name_matches is unused
+    -- and dispatch reverts to "last bare-head wins" (backward compat).
+    claim_name_tok ∈ Token
+    TLHd(l ↦ items_d1, out ↦ claim_name_tok)
+    claim_name ∈ String = match claim_name_tok
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    name_matches ∈ Bool = (claim_name = target)
+    name_selected ∈ Bool = ((¬has_target) ∨ name_matches)
+
     in_dispatch  ∈ Bool = (in_parse ∧ (_pmode = 0))
     enter_enum   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_enum)
-    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (¬claim_is_param))
-    enter_skip   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ claim_is_param)
+    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (¬claim_is_param) ∧ name_selected)
+    enter_skip   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (claim_is_param ∨ (¬name_selected)))
     all_done     ∈ Bool = (in_dispatch ∧ items_nil)
     in_enum_run  ∈ Bool = (in_parse ∧ (_pmode = 1))
     in_claim_run ∈ Bool = (in_parse ∧ (_pmode = 2))
@@ -758,7 +787,7 @@ claim main
 
     smtlib ∈ String = manifest ++ "\n" ++ prelude ++ datatypes ++ ift_decl ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev")⟩
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev"), ReadFile("/tmp/compiler-target-claim.txt")⟩
         : (emit_now
             ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
             : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
