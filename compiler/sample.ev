@@ -61,8 +61,9 @@
 -- from the manifest state-fields. Quantifier / subclaim / `..` / generics
 -- and multi-top-level-item files are later waves.
 --
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
+-- Input path: stdin line 1 holds a per-process flat source path; tick 0
+-- ReadLine's it, tick 1 ReadFile's it (wave 4o — no shared /tmp file, so
+-- parallel sample-via-smt2 invocations don't race). See the INPUT block.
 
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
@@ -81,28 +82,44 @@ import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
-    input  ∈ String
-    _input ∈ String
-    read_result ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    -- ── INPUT — per-process source path via stdin (wave 4o) ──────
+    -- The shared /tmp/compiler-input.ev path (baked into a literal
+    -- ReadFile) raced when sample-via-smt2.sh ran in parallel: every
+    -- invocation's `cp $FLAT /tmp/compiler-input.ev` clobbered every
+    -- other's mid-run. The fix is a tiny stdin protocol with no shared
+    -- external state:
+    --   tick 0 (is_first_tick) — emit ⟨ReadLine⟩; stdin's FIRST line is
+    --     this invocation's per-process flat source path (a mktemp path,
+    --     unique per wrapper invocation). It lands in last_results[0].
+    --   tick 1 (¬is_first_tick ∧ ¬_got_path) — bind `src_path` from
+    --     last_results[0] and emit ⟨ReadFile(src_path)⟩ (a DYNAMIC path,
+    --     model-evaluated by the kernel). The file content lands in
+    --     last_results[0].
+    --   tick 2+ (_got_path) — `input` = the content; the lexer runs.
+    -- `got_path` is a one-bit carry: false on tick 0, true from tick 1 on,
+    -- so `¬_got_path` selects exactly tick 1 (the ReadFile tick).
+    got_path  ∈ Bool
+    _got_path ∈ Bool
+    got_path = (is_first_tick ? false : true)
 
-    -- ── TARGET CLAIM — optional claim-name selector (wave 4j) ─────
-    -- A SECOND ReadFile on the first tick reads /tmp/compiler-target-claim.txt
-    -- into last_results[1]. When that file holds a claim name, only the
-    -- matching bare-head claim is translated (the rest are skipped); when
-    -- it is absent/empty the ReadFile yields an ErrorResult, the match
-    -- below falls to "", and the dispatch reverts to the corpus
-    -- convention (last bare-head claim wins). This is what lets the
-    -- `sample` wrapper emit a SPECIFIC claim's constraints per file.
-    target  ∈ String
-    _target ∈ String
-    target_read ∈ String = match last_results[1]
+    src_path  ∈ String
+    _src_path ∈ String
+    path_read ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ ""
-    target = (is_first_tick ? "" : (_input = "" ? target_read : _target))
+    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
+
+    input  ∈ String
+    _input ∈ String
+    content_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ "<no-read>"
+    input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
+
+    -- SAMPLE MODE: every top-level claim is sampled (name_selected = true
+    -- below), so there is no target-claim selector — `target` is a dead
+    -- constant kept only because name_matches/has_target reference it.
+    target ∈ String = ""
     has_target ∈ Bool = (target ≠ "")
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
@@ -114,7 +131,7 @@ claim main
     _pos ∈ Int
     next_pos  ∈ Int
     _next_pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _next_pos))
+    pos = (is_first_tick ? 0 - 1 : ((¬_got_path) ? 0 - 1 : (_input = "" ? 0 : _next_pos)))
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -299,6 +316,13 @@ claim main
         TLNil ⇒ true
         _ ⇒ false
     head_is_enum ∈ Bool = (items_hd matches KwEnum)
+    -- A real top-level claim/type/schema/fsm head. Only THESE start an
+    -- item; any other head token at dispatch is leftover from a claim
+    -- body whose membership walk stopped early on an unsupported shape
+    -- (Wall 2) — those tokens must be DRAINED (skip_junk below), never
+    -- re-dispatched as spurious empty-name "claims" (wave 4o, Item 1+2).
+    head_is_claimkw ∈ Bool = ((items_hd matches KwClaim) ∨ (items_hd matches KwType)
+        ∨ (items_hd matches KwSchema) ∨ (items_hd matches KwFsm))
 
     -- A parametrized claim head is `<kw> Ident ( … )` — the token after the
     -- name is a LParen (wave 4g, Blocker 3). Such claims are the imported
@@ -334,8 +358,11 @@ claim main
 
     in_dispatch  ∈ Bool = (in_parse ∧ (_pmode = 0))
     enter_enum   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_enum)
-    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (¬claim_is_param) ∧ name_selected)
-    enter_skip   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (claim_is_param ∨ (¬name_selected)))
+    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_claimkw ∧ (¬claim_is_param) ∧ name_selected)
+    enter_skip   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_claimkw ∧ (claim_is_param ∨ (¬name_selected)))
+    -- Leftover mid-claim token (not a top-level keyword): drop ONE and
+    -- re-dispatch. Drains a partially-walked claim's tail without emitting.
+    skip_junk    ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (¬head_is_claimkw))
     all_done     ∈ Bool = (in_dispatch ∧ items_nil)
     in_enum_run  ∈ Bool = (in_parse ∧ (_pmode = 1))
     in_claim_run ∈ Bool = (in_parse ∧ (_pmode = 2))
@@ -744,7 +771,8 @@ claim main
         : (enum_done ? _plist
         : (claim_done ? _rem
         : (skip_stop ? _skipl
-        : _items)))))
+        : (skip_junk ? items_d1
+        : _items))))))
     pmode = (is_first_tick ? 0
         : (entering_parse ? 0
         : (enter_enum ? 1
@@ -840,7 +868,11 @@ claim main
     block_now ∈ String = (claim_done ? claim_block : skip_block)
     emit_payload ∈ String = (need_prelude ? prelude ++ datatypes ++ block_now : block_now)
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev"), ReadFile("/tmp/compiler-target-claim.txt")⟩
+    -- tick 0: read the per-process source path from stdin line 1.
+    -- tick 1 (¬_got_path): ReadFile that path (dynamic, no shared file).
+    -- tick 2+: getpid filler / puts a block / Exit. (See INPUT above.)
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine⟩
+        : ((¬_got_path) ? ⟨ReadFile(src_path)⟩
         : (emit_now ? ⟨Exit(0)⟩
         : (emitting_block ? ⟨LibCall("libc", "puts", ⟨ArgStr(emit_payload)⟩)⟩
-        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)))
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))))

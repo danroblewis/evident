@@ -115,6 +115,17 @@ setup_fixture() {
             printf 'a∈b' > /tmp/evident_utf8_state_carry.txt ;;
         test_compiler_driver_readfile.ev)
             printf 'claim main\n    x ∈ Int = 5' > /tmp/evident_compiler_readfile_input.ev ;;
+        test_sample_driver_marker_count.ev)
+            # wave 4o: the sample driver reads its source PATH from stdin
+            # line 1 (per-process, no shared /tmp file). The source is the
+            # proven repro (tests/lang_tests/test_cons_chain_lit.ev shape):
+            # 1 enum + 1 claim whose `nums = ⟨…⟩` / `nums = ICons(…)` body
+            # the walk stops on, leaving leftover tokens. Pre-4o that yielded
+            # SIX `;; claim:` markers (4 empty-name + a stray `ICons`); the
+            # head_is_claimkw gate + skip_junk drain make it exactly ONE.
+            printf 'enum IntList = INil | ICons(Int, IntList)\nclaim sat_user_intlist\n    nums ∈ IntList\n    nums = ⟨10, 20, 30⟩\n    nums = ICons(10, ICons(20, ICons(30, INil)))\n' \
+                > /tmp/evident_sample_marker_input.ev
+            STDIN_TEXT=$'/tmp/evident_sample_marker_input.ev\n'; HAS_STDIN=1 ;;
     esac
 }
 

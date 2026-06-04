@@ -42,7 +42,6 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 KERNEL="$ROOT/kernel/target/release/kernel"
 FLATTEN="$ROOT/scripts/flatten-evident.sh"
 SAMPLE_SMT2="$ROOT/sample.smt2"
-INPUT_PATH="/tmp/compiler-input.ev"          # path sample.ev ReadFile's
 Z3="$(command -v z3 || true)"
 
 die() { echo "sample-via-smt2: $*" >&2; exit 2; }
@@ -68,34 +67,20 @@ done
 [ -x "$FLATTEN" ]        || die "flatten preprocessor missing at $FLATTEN"
 [ -n "$Z3" ]             || die "z3 not found on PATH"
 
-# Flatten once; the same input file is reused for the single sample run.
+# Flatten once into a PER-PROCESS file; its path is the only thing the
+# kernel needs — fed on stdin line 1 (wave 4o). sample.ev ReadLine's that
+# path, then ReadFile's it. No shared /tmp/compiler-input.ev, so parallel
+# invocations no longer clobber each other (the old `cp $FLAT $INPUT_PATH`
+# + mkdir lock that serialized the run are both gone).
 FLAT="$(mktemp -t sample-flat.XXXXXX.ev)"
 SAMPLE_OUT="$(mktemp -t sample-out.XXXXXX.smt2)"
 trap 'rm -f "$FLAT" "$SAMPLE_OUT"' EXIT
 "$FLATTEN" "$SRC" > "$FLAT" || die "flatten failed for $SRC"
 
 # ── LEX-ONCE: emit every claim's check-sat block in ONE kernel run ──
-# sample.ev ReadFile's `/tmp/compiler-input.ev` on its first tick (the
-# path is baked into the compiled sample.smt2). When multiple
-# sample-via-smt2 invocations run in parallel, they race on that
-# shared path — one wrapper's `cp` can clobber another wrapper's
-# input mid-kernel-run, yielding cross-talk between unrelated files.
-#
-# Serialize the cp → kernel-run pair with a flock so the racy section
-# is single-writer. The parallelism cost: the kernel call IS the long
-# part (~tens of minutes per file), so a parallel run effectively
-# becomes serial; that's correctness over speed for now. The proper
-# fix is in compiler/sample.ev (read source from stdin or a path
-# passed through the kernel) — left to a later wave.
-# mkdir-based portable lock (macOS has no flock by default).
-LOCK_DIR="/tmp/sample-via-smt2.lock.d"
-while ! mkdir "$LOCK_DIR" 2>/dev/null; do sleep 0.5; done
-trap 'rm -rf "$LOCK_DIR"; rm -f "$FLAT" "$SAMPLE_OUT"' EXIT
-cp "$FLAT" "$INPUT_PATH"
-"$KERNEL" "$SAMPLE_SMT2" < "$FLAT" 2>/dev/null \
+printf '%s\n' "$FLAT" | "$KERNEL" "$SAMPLE_SMT2" 2>/dev/null \
     | grep -v '^\[functionizer\]' > "$SAMPLE_OUT" \
-    || { rm -rf "$LOCK_DIR"; die "sample.smt2 run failed for $SRC"; }
-rm -rf "$LOCK_DIR"
+    || die "sample.smt2 run failed for $SRC"
 
 [ -s "$SAMPLE_OUT" ] || die "sample.smt2 produced no output for $SRC"
 
