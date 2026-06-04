@@ -43,6 +43,11 @@ claim CtorMembershipStep
     rest ∈ TokenList
     ok ∈ Bool
     eff_len ∈ Int
+    -- The program's variant-signature table (wave 4h): threaded to the RHS
+    -- renderer so a Seq(T) payload in constructor-argument position lowers
+    -- to the `__Cell_T`/`__Empty_T` Cons form. Empty (`""`) keeps the Z3
+    -- seq-theory form — the behaviour before this wave.
+    sigtab ∈ String
 
     -- Peel the head tokens (name ∈ Type [= …]) — up to ten, enough to see
     -- a compound `Seq(T) =` head and the first RHS token.
@@ -121,7 +126,7 @@ claim CtorMembershipStep
     cs_cx_out ∈ String
     cs_cx_rest ∈ TokenList
     cs_cx_ok ∈ Bool
-    RenderExprToks(toks ↦ cs_l4, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok)
+    RenderExprToks(toks ↦ cs_l4, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok, sigtab ↦ sigtab, in_hint ↦ "")
 
     -- Compound Seq STATE field → bootstrap's `(Array Int T) + __len` encoding
     -- (the kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock
@@ -133,7 +138,7 @@ claim CtorMembershipStep
     cs_arr_ok ∈ Bool
     SeqArrayBlock(nm ↦ cs_name, elty ↦ cs_inner_ty, toks ↦ cs_l7,
         decl ↦ cs_arr_decl, assertln ↦ cs_arr_assert, rest ↦ cs_arr_rest,
-        elen ↦ cs_arr_elen, ok ↦ cs_arr_ok)
+        elen ↦ cs_arr_elen, ok ↦ cs_arr_ok, sigtab ↦ sigtab)
 
     -- `_<name>` carry vars, is_first_tick, and the kernel channels `effects` /
     -- `last_results` are not manifest state fields (mirrors bootstrap

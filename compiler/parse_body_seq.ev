@@ -221,7 +221,7 @@ claim SeqMembershipStep
     sq_ab_ok ∈ Bool
     SeqArrayBlock(nm ↦ sq_name, elty ↦ sq_inner_ty, toks ↦ sq_l7,
         decl ↦ sq_ab_decl, assertln ↦ sq_ab_assert, rest ↦ sq_ab_rest,
-        elen ↦ sq_ab_elen, ok ↦ sq_ab_ok)
+        elen ↦ sq_ab_elen, ok ↦ sq_ab_ok, sigtab ↦ "")
 
     -- Concat `base ++ ⟨e⟩` → store `e` onto base's array at `base__len`,
     -- length `base__len + 1` (bootstrap translate_seq_value's `++` arm).
