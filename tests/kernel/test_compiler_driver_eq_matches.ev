@@ -1,0 +1,57 @@
+-- Grammar wave 4p: standalone `matches` predicate `scrut matches Ctor(_)`.
+--
+-- A bare boolean-constraint line `c matches Green` / `s matches Circle(_)`
+-- lowers to a Z3 datatype recognizer `((_ is Green) c)`. Before this wave the
+-- driver mis-read it as a lone composition name and silently dropped the
+-- predicate (so `unsat_matches_*` reported sat). CtorMembershipStep now
+-- self-discriminates the bare-matches shape (cs_bare_matches), rendering the
+-- `Ctor(payload)` only to advance past it and emitting the recognizer.
+-- Exercised here in ISOLATION on hand-built TokenLists. See
+-- compiler/parse_body_ctor.ev (cs_bare_matches) and docs/plans/wave-4p-equality-rhs-complex.md.
+--
+-- expect: stdout = "(assert ((_ is Green) c))"
+-- expect: stdout = "(assert ((_ is Circle) s))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_declare.ev"
+import "compiler/translate_ctor.ev"
+import "compiler/parse_body_ctor.ev"
+
+claim main
+    -- c matches Green   (nullary pattern)
+    toks_a ∈ TokenList = TLCons(Ident("c"), TLCons(KwMatches,
+        TLCons(Ident("Green"), TLNil)))
+    decl_a ∈ String
+    assert_a ∈ String
+    field_a ∈ String
+    rest_a ∈ TokenList
+    ok_a ∈ Bool
+    eff_a ∈ Int
+    bare_a ∈ Bool
+    CtorMembershipStep(rem ↦ toks_a, decl ↦ decl_a, assertln ↦ assert_a,
+        field ↦ field_a, rest ↦ rest_a, ok ↦ ok_a, eff_len ↦ eff_a, bare ↦ bare_a, sigtab ↦ "")
+
+    -- s matches Circle(_)   (payload wildcard ignored)
+    toks_b ∈ TokenList = TLCons(Ident("s"), TLCons(KwMatches,
+        TLCons(Ident("Circle"), TLCons(LParen, TLCons(Ident("_"), TLCons(RParen, TLNil))))))
+    decl_b ∈ String
+    assert_b ∈ String
+    field_b ∈ String
+    rest_b ∈ TokenList
+    ok_b ∈ Bool
+    eff_b ∈ Int
+    bare_b ∈ Bool
+    CtorMembershipStep(rem ↦ toks_b, decl ↦ decl_b, assertln ↦ assert_b,
+        field ↦ field_b, rest ↦ rest_b, ok ↦ ok_b, eff_len ↦ eff_b, bare ↦ bare_b, sigtab ↦ "")
+
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    line ∈ String = (phase = 0 ? decl_a : decl_b)
+
+    effects ∈ Seq(Effect) = (phase ≥ 1
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩)⟩)
