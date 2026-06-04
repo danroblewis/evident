@@ -287,9 +287,20 @@ claim MembershipStep
     -- single `decl` chunk (the assertion) with no manifest field and
     -- pinned=false, so the driver's `chunk = pinned ? decl+assert : decl`
     -- emits exactly the one assertion line.
+    -- A bare line is `name cmp atom` for any comparison cmp (=, ≠, <, >,
+    -- ≤, ≥) — a constraint on a name a prior membership declared. Extended
+    -- in wave 4k from just `=`/`≠` to the ordering comparisons (lang's
+    -- `r < 10`). Excludes the implication shape (t3=⇒), which carries its
+    -- own LHS/RHS handling below.
     ms_t1_is_eq ∈ Bool = (t1 matches Eq)
     ms_t1_is_ne ∈ Bool = (t1 matches OpNe)
-    ms_is_bare  ∈ Bool = (is_name ∧ (ms_t1_is_eq ∨ ms_t1_is_ne))
+    ms_t1_is_lt ∈ Bool = (t1 matches Lt)
+    ms_t1_is_gt ∈ Bool = (t1 matches Gt)
+    ms_t1_is_le ∈ Bool = (t1 matches OpLe)
+    ms_t1_is_ge ∈ Bool = (t1 matches OpGe)
+    ms_t1_is_cmp ∈ Bool = (ms_t1_is_eq ∨ ms_t1_is_ne ∨ ms_t1_is_lt
+        ∨ ms_t1_is_gt ∨ ms_t1_is_le ∨ ms_t1_is_ge)
+    ms_is_bare  ∈ Bool = (is_name ∧ ms_t1_is_cmp ∧ (¬ms_is_implln))
 
     ms_b2_is_int ∈ Bool = (t2 matches IntLit(_))
     ms_b2_int ∈ Int = match t2
@@ -302,27 +313,204 @@ claim MembershipStep
     ms_b2_str ∈ String = match t2
         StringLit(s) ⇒ s
         _ ⇒ ""
-    ms_bare_atom ∈ Expr = (ms_b2_is_int ? EInt(ms_b2_int)
-        : ms_b2_is_str ? EStr(ms_b2_str)
-        : EIdent(ms_b2_id))
-    ms_bare_rhs ∈ String
-    ms_bare_rhs_ok ∈ Bool
-    AtomSmtlib(e ↦ ms_bare_atom, out ↦ ms_bare_rhs, ok ↦ ms_bare_rhs_ok)
-    ms_bare_eq ∈ String = "(= " ++ name ++ " " ++ ms_bare_rhs ++ ")"
+    ms_bare_cmp ∈ String = (ms_t1_is_eq ? "=" : ms_t1_is_lt ? "<"
+        : ms_t1_is_gt ? ">" : ms_t1_is_le ? "<=" : ms_t1_is_ge ? ">=" : "=")
     ms_bare_assert ∈ String = (ms_t1_is_ne
-        ? "(assert (not " ++ ms_bare_eq ++ "))"
-        : "(assert " ++ ms_bare_eq ++ ")")
+        ? "(assert (not (= " ++ name ++ " " ++ ms_s_t2 ++ ")))"
+        : "(assert (" ++ ms_bare_cmp ++ " " ++ name ++ " " ++ ms_s_t2 ++ "))")
 
-    -- Outputs.
+    -- ── Per-token atom → SMT-LIB string (wave 4k) ──────────────────
+    -- The bare/implication/chain/multi-name shapes below all need a token
+    -- at a fixed slot lowered to its SMT-LIB atom text. Unlike the Expr
+    -- machinery above these also handle the Bool keyword literals
+    -- (`true`/`false` lex as KwTrue/KwFalse, NOT Ident) — the bare path
+    -- previously dropped them (rendering `(= is_weekend )`).
+    ms_s_t2 ∈ String = (ms_b2_is_int ? str_from_int(ms_b2_int)
+        : (t2 matches KwTrue)  ? "true"
+        : (t2 matches KwFalse) ? "false"
+        : ms_b2_is_str ? "\"" ++ ms_b2_str ++ "\""
+        : ms_b2_id)
+    ms_s_t4 ∈ String = (ms_a1_is_int ? str_from_int(ms_a1_int)
+        : (t4 matches KwTrue)  ? "true"
+        : (t4 matches KwFalse) ? "false"
+        : ms_a1_id)
+    ms_s_t6 ∈ String = (ms_a2_is_int ? str_from_int(ms_a2_int)
+        : (t6 matches KwTrue)  ? "true"
+        : (t6 matches KwFalse) ? "false"
+        : ms_a2_id)
+
+    -- ── Item 2: implication `LHS ⇒ RHS` ────────────────────────────
+    -- A body line `name op atom ⇒ name2 op2 atom2` lowers to a single
+    -- `(assert (=> <lhs> <rhs>))`. Detected by OpImplies at t3; takes
+    -- priority over the bare-`=` path (which would otherwise consume just
+    -- `name = atom` and leave `⇒ …` dangling — the wave-4j Wall-2 bug).
+    -- LHS = (t0 name, t1 op, t2 atom); RHS = (t4 name, t5 op, t6 atom).
+    -- Compound/parenthesised consequents are out of scope (the corpus
+    -- uses the atom-op-atom shape — test_enums_basic is_weekend_rule).
+    ms_is_implln ∈ Bool = (is_name ∧ (t3 matches OpImplies))
+    ms_l_is_eq ∈ Bool = ms_t1_is_eq
+    ms_l_is_ne ∈ Bool = ms_t1_is_ne
+    ms_l_is_lt ∈ Bool = (t1 matches Lt)
+    ms_l_is_gt ∈ Bool = (t1 matches Gt)
+    ms_l_is_le ∈ Bool = (t1 matches OpLe)
+    ms_l_is_ge ∈ Bool = (t1 matches OpGe)
+    ms_l_cmp ∈ String = (ms_l_is_eq ? "=" : ms_l_is_lt ? "<" : ms_l_is_gt ? ">"
+        : ms_l_is_le ? "<=" : ms_l_is_ge ? ">=" : "=")
+    ms_lhs_impl ∈ String = (ms_l_is_ne
+        ? "(not (= " ++ name ++ " " ++ ms_s_t2 ++ "))"
+        : "(" ++ ms_l_cmp ++ " " ++ name ++ " " ++ ms_s_t2 ++ ")")
+    ms_r_is_eq ∈ Bool = (t5 matches Eq)
+    ms_r_is_ne ∈ Bool = (t5 matches OpNe)
+    ms_r_is_lt ∈ Bool = (t5 matches Lt)
+    ms_r_is_gt ∈ Bool = (t5 matches Gt)
+    ms_r_is_le ∈ Bool = (t5 matches OpLe)
+    ms_r_is_ge ∈ Bool = (t5 matches OpGe)
+    ms_r_cmp ∈ String = (ms_r_is_eq ? "=" : ms_r_is_lt ? "<" : ms_r_is_gt ? ">"
+        : ms_r_is_le ? "<=" : ms_r_is_ge ? ">=" : "=")
+    ms_rhs_impl ∈ String = (ms_r_is_ne
+        ? "(not (= " ++ ms_s_t4 ++ " " ++ ms_s_t6 ++ "))"
+        : "(" ++ ms_r_cmp ++ " " ++ ms_s_t4 ++ " " ++ ms_s_t6 ++ ")")
+    ms_impl_assert ∈ String = "(assert (=> " ++ ms_lhs_impl ++ " " ++ ms_rhs_impl ++ "))"
+
+    -- ── Item 3/4: chained suffix bound `name ∈ T cmp atom` ──────────
+    -- After `name ∈ Type`, a trailing comparison (`< N`, `≤ N`, `> N`,
+    -- `≥ N`, `≠ N`) at t3 bounds the just-declared name. Emits the decl
+    -- AND a bound assertion (pinned=true → driver concatenates them).
+    -- `≠` lowers to `(not (= name N))` (matches translate_bool OpNeq).
+    ms_c_is_lt ∈ Bool = (t3 matches Lt)
+    ms_c_is_gt ∈ Bool = (t3 matches Gt)
+    ms_c_is_le ∈ Bool = (t3 matches OpLe)
+    ms_c_is_ge ∈ Bool = (t3 matches OpGe)
+    ms_c_is_ne ∈ Bool = (t3 matches OpNe)
+    ms_t1_is_in ∈ Bool = (t1 matches OpIn)
+    ms_is_chain ∈ Bool = (is_name ∧ ms_t1_is_in
+        ∧ (ms_c_is_lt ∨ ms_c_is_gt ∨ ms_c_is_le ∨ ms_c_is_ge ∨ ms_c_is_ne))
+    ms_c_cmp ∈ String = (ms_c_is_lt ? "<" : ms_c_is_gt ? ">"
+        : ms_c_is_le ? "<=" : ms_c_is_ge ? ">=" : "<")
+    ms_chain_assert ∈ String = (ms_c_is_ne
+        ? "(assert (not (= " ++ name ++ " " ++ ms_s_t4 ++ ")))"
+        : "(assert (" ++ ms_c_cmp ++ " " ++ name ++ " " ++ ms_s_t4 ++ "))")
+
+    -- ── Item 1: multi-name decl `n1, n2 [, n3] ∈ T [pin]` ──────────
+    -- A leading Comma at t1 means several names share one type (and one
+    -- optional pin/bound). 2-name: t2=n2, t3=∈, t4=type, [t5 op t6].
+    -- 3-name: t3=Comma, t4=n3, t5=∈, t6=type, [t7 op t8]. Emits one
+    -- declare-fun per name plus, when pinned, one assertion per name.
+    -- The range-prefix form (`0 < a, b ∈ …`) is a separate (head-is-lit)
+    -- shape — see docs/plans/wave-4k-membership-walk-shapes.md.
+    ms_is_multi ∈ Bool = (is_name ∧ (t1 matches Comma))
+    ms_mn_3 ∈ Bool = (ms_is_multi ∧ (t3 matches Comma))
+    ms_n2 ∈ String = match t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_n3 ∈ String = ms_a1_id
+    ms_t4_type ∈ String = ms_a1_id
+    ms_t6_type ∈ String = match t6
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_mn_type ∈ String = (ms_mn_3 ? ms_t6_type : ms_t4_type)
+    ms_mn_pintok  ∈ Token = (ms_mn_3 ? t7 : t5)
+    ms_mn_atomtok ∈ Token = (ms_mn_3 ? t8 : t6)
+    ms_mn_eq ∈ Bool = (ms_mn_pintok matches Eq)
+    ms_mn_lt ∈ Bool = (ms_mn_pintok matches Lt)
+    ms_mn_gt ∈ Bool = (ms_mn_pintok matches Gt)
+    ms_mn_le ∈ Bool = (ms_mn_pintok matches OpLe)
+    ms_mn_ge ∈ Bool = (ms_mn_pintok matches OpGe)
+    ms_mn_ne ∈ Bool = (ms_mn_pintok matches OpNe)
+    ms_mn_pinned ∈ Bool = (ms_mn_eq ∨ ms_mn_lt ∨ ms_mn_gt ∨ ms_mn_le ∨ ms_mn_ge ∨ ms_mn_ne)
+    ms_mn_cmp ∈ String = (ms_mn_eq ? "=" : ms_mn_lt ? "<" : ms_mn_gt ? ">"
+        : ms_mn_le ? "<=" : ms_mn_ge ? ">=" : "=")
+    ms_mn_atom_is_int ∈ Bool = (ms_mn_atomtok matches IntLit(_))
+    ms_mn_atom_int ∈ Int = match ms_mn_atomtok
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_mn_atom_id ∈ String = match ms_mn_atomtok
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_mn_atomstr ∈ String = (ms_mn_atom_is_int ? str_from_int(ms_mn_atom_int)
+        : (ms_mn_atomtok matches KwTrue)  ? "true"
+        : (ms_mn_atomtok matches KwFalse) ? "false"
+        : ms_mn_atom_id)
+    ms_mn_a1 ∈ String = (ms_mn_ne
+        ? "(assert (not (= " ++ name ++ " " ++ ms_mn_atomstr ++ ")))"
+        : "(assert (" ++ ms_mn_cmp ++ " " ++ name ++ " " ++ ms_mn_atomstr ++ "))")
+    ms_mn_a2 ∈ String = (ms_mn_ne
+        ? "(assert (not (= " ++ ms_n2 ++ " " ++ ms_mn_atomstr ++ ")))"
+        : "(assert (" ++ ms_mn_cmp ++ " " ++ ms_n2 ++ " " ++ ms_mn_atomstr ++ "))")
+    ms_mn_a3 ∈ String = (ms_mn_ne
+        ? "(assert (not (= " ++ ms_n3 ++ " " ++ ms_mn_atomstr ++ ")))"
+        : "(assert (" ++ ms_mn_cmp ++ " " ++ ms_n3 ++ " " ++ ms_mn_atomstr ++ "))")
+    ms_mn_assert ∈ String = (¬ms_mn_pinned ? ""
+        : ms_mn_3 ? ms_mn_a1 ++ "\n" ++ ms_mn_a2 ++ "\n" ++ ms_mn_a3
+        : ms_mn_a1 ++ "\n" ++ ms_mn_a2)
+    ms_mn_d1 ∈ String = "(declare-fun " ++ name   ++ " () " ++ ms_mn_type ++ ")"
+    ms_mn_d2 ∈ String = "(declare-fun " ++ ms_n2  ++ " () " ++ ms_mn_type ++ ")"
+    ms_mn_d3 ∈ String = "(declare-fun " ++ ms_n3  ++ " () " ++ ms_mn_type ++ ")"
+    ms_mn_decl ∈ String = (ms_mn_3 ? ms_mn_d1 ++ "\n" ++ ms_mn_d2 ++ "\n" ++ ms_mn_d3
+        : ms_mn_d1 ++ "\n" ++ ms_mn_d2)
+    ms_mn_f1 ∈ String = name  ++ ":" ++ ms_mn_type
+    ms_mn_f2 ∈ String = ms_n2 ++ ":" ++ ms_mn_type
+    ms_mn_f3 ∈ String = ms_n3 ++ ":" ++ ms_mn_type
+    ms_mn_field ∈ String = (ms_mn_3 ? ms_mn_f1 ++ " " ++ ms_mn_f2 ++ " " ++ ms_mn_f3
+        : ms_mn_f1 ++ " " ++ ms_mn_f2)
+    ms_mn_rest ∈ TokenList = (ms_mn_3 ? (ms_mn_pinned ? l9 : l7)
+        : (ms_mn_pinned ? l7 : l5))
+
+    -- ── Item 5: bare `ClaimName` composition line — DETECTION ONLY ──
+    -- A lone Ident body line (`is_weekend_rule`, `bounded_score`) whose
+    -- next token is NOT an operator we recognise is composition mechanism
+    -- #2/#4 (names-match inline of another claim's body). The FULL inline
+    -- needs the caller's body-locals to unify with the named claim's body
+    -- tokens — which live in another claim, not in this `rem`. MembershipStep
+    -- only sees the current claim's `rem`, so it CANNOT inline; that is a
+    -- driver-level (compiler.ev) claim-table scan of `_fwd` — see
+    -- docs/plans/wave-4k-membership-walk-shapes.md, Item 5.
+    --
+    -- What this DOES do: cleanly consume the lone name (rest=l1, no decl,
+    -- no field) so the line no longer corrupts the walk (the pre-4k path
+    -- mis-read it as `name ∈ <next-token>` and emitted `(declare-fun name
+    -- () )`, derailing every subsequent membership). The composed claim's
+    -- CONSTRAINTS are dropped — a documented wrong-verdict for composition
+    -- claims until the driver inliner lands.
+    ms_is_lone ∈ Bool = (is_name ∧ (¬ms_t1_is_in) ∧ (¬(t1 matches Comma))
+        ∧ (¬ms_t1_is_cmp) ∧ (¬ms_is_implln))
+
+    -- Outputs. Priority: implication · multi-name · chained-bound · bare ·
+    -- lone-name · normal membership. The discriminators are mutually
+    -- exclusive by construction (distinct t1/t3 token patterns), but the
+    -- ordering is explicit so a future shape addition can't silently re-route.
     ms_decl_normal ∈ String
     DeclareFun(name ↦ name, type_str ↦ type_str, out ↦ ms_decl_normal)
-    decl = (ms_is_bare ? ms_bare_assert : ms_decl_normal)
-    assertln = (ms_is_bare ? "" : (has_eq ? "(assert (= " ++ name ++ " " ++ ms_rhs ++ "))" : ""))
-    field = (ms_is_bare ? "" : (ms_is_carry ? "" : name ++ ":" ++ type_str))
-    pinned = (ms_is_bare ? false : has_eq)
+    decl = (ms_is_implln ? ms_impl_assert
+        : ms_is_multi ? ms_mn_decl
+        : ms_is_chain ? ms_decl_normal
+        : ms_is_bare ? ms_bare_assert
+        : ms_is_lone ? ""
+        : ms_decl_normal)
+    assertln = (ms_is_implln ? ""
+        : ms_is_multi ? ms_mn_assert
+        : ms_is_chain ? ms_chain_assert
+        : ms_is_bare ? ""
+        : ms_is_lone ? ""
+        : (has_eq ? "(assert (= " ++ name ++ " " ++ ms_rhs ++ "))" : ""))
+    field = (ms_is_implln ? ""
+        : ms_is_multi ? ms_mn_field
+        : ms_is_bare ? ""
+        : ms_is_lone ? ""
+        : (ms_is_carry ? "" : name ++ ":" ++ type_str))
+    pinned = (ms_is_implln ? false
+        : ms_is_multi ? ms_mn_pinned
+        : ms_is_chain ? true
+        : ms_is_bare ? false
+        : ms_is_lone ? false
+        : has_eq)
     ok = is_name
-    saw_ift = ((¬ms_is_bare) ∧ (name = "is_first_tick"))
-    rest = (ms_is_bare ? l3
+    saw_ift = ((¬ms_is_bare) ∧ (¬ms_is_implln) ∧ (¬ms_is_multi) ∧ (¬ms_is_chain) ∧ (¬ms_is_lone) ∧ (name = "is_first_tick"))
+    rest = (ms_is_implln ? l7
+        : ms_is_multi ? ms_mn_rest
+        : ms_is_chain ? l5
+        : ms_is_bare ? l3
+        : ms_is_lone ? l1
         : ¬has_eq ? l3
         : ms_is_matches ? l10
         : ms_is_ternary ? l9
