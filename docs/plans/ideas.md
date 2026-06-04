@@ -414,4 +414,71 @@ sweep, FTI honesty) — they're all instances of "we picked one
 backing for performance; we should have an abstraction over
 backings."
 
+## Self-composing transition functions: doubling, and fixed-point collapse
+
+An FSM is, at heart, a state-transition function `F(s) → s'`. The
+kernel today applies `F` one tick at a time. We can compose `F` with
+itself to skip ticks:
+
+```
+F₁(s)  = F(s)
+F₂(s)  = F₁(F₁(s))   -- two ticks in one
+F₄(s)  = F₂(F₂(s))   -- four
+F₈(s)  = F₄(F₄(s))
+F₁₆ … F₃₂ … F₆₄ …
+```
+
+Each doubling potentially grows the function representation (more
+branches, more conditional structure), but the per-step cost grows
+slower than the step count it replaces. For an FSM that needs `N`
+ticks, you can reach the answer in `O(log N)` compositions via
+repeated squaring. This is a real optimisation for long-running
+FSMs whose composed forms stay tractable.
+
+The deeper case: some transition functions reach a **fixed point**
+under self-composition. After enough doublings, `F_{2k}` and `F_k`
+become extensionally equal — composing it with itself doesn't add
+any new structure, because the function has become *closed form* in
+the iteration count. Once that happens, the future state at any
+tick `n` can be computed directly from the initial variables and
+`n`, with **constant memory and constant work** — `O(1)` instead of
+`O(n)`.
+
+Affine FSMs are the canonical example: `x' = a·x + b` composes to
+`F_k(x) = aᵏ·x + b·(aᵏ−1)/(a−1)`, which has the same shape as `F₁`
+just with `k` as a free parameter. The composition graph collapses
+to a closed form indexed by tick count.
+
+Detection lives in the composition pass: when squaring `F_k`
+produces (after simplification) a function that's structurally
+equivalent to `F_k` parameterised by an extra constant — or
+equivalently, when two consecutive squarings yield isomorphic
+representations modulo a counter — emit a closed-form for `F_n`
+keyed on `n`. The kernel then runs the FSM by evaluating that
+closed form at the requested tick rather than iterating.
+
+This generalises the log-unroll feasibility finding (affine
+collapse to `O(1)`, branching/Mario stay `O(n)`) into a single
+mechanism: log-unrolling is what *fails to collapse*; closed-form
+extraction is what *does*. The diagnostic — "does this FSM's
+composition stabilise?" — tells you which class you're in
+automatically.
+
+Z3 (or any equality saturator over the composed function's term
+graph) is the right tool to detect the stabilisation: ask whether
+`F_{2k}(s) = F_k(F_k(s))` simplifies to a form equivalent under a
+counter substitution. If yes, you have a polynomial / geometric /
+linear closed form; emit it. If not, doubling is still useful but
+caps at the largest tractable `F_{2ᵏ}`.
+
+**When to pick this up:** after the kernel-side FSM tier is stable
+and bootstrap is gone. This is a pure performance optimisation on
+the existing kernel runtime. The composition operation itself is
+the interesting research question — for SMT-LIB shapes it's
+substitution + simplification + maybe quantifier elimination on the
+parametric form.
+
+Related: the macro-finder functionizer already does single-step
+extraction; this is the multi-step generalisation.
+
 ## (Add more ideas here as they surface)
