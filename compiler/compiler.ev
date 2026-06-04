@@ -284,12 +284,28 @@ claim main
         _ ⇒ false
     head_is_enum ∈ Bool = (items_hd matches KwEnum)
 
+    -- A parametrized claim head is `<kw> Ident ( … )` — the token after the
+    -- name is a LParen (wave 4g, Blocker 3). Such claims are the imported
+    -- `Build*` sugar helpers; bootstrap's emit translates ONLY the target
+    -- claim (the one passed to `emit`), inlining the helpers into it. We
+    -- have no claim-name argument (the source is read from disk), so we use
+    -- the corpus convention: the entry-point claim has NO first-line params,
+    -- the helpers all do. So a parametrized claim is SKIPPED outright (its
+    -- tokens consumed, no declares/asserts emitted); a bare-head claim is
+    -- translated. `out`/`fstr` reset on each enter_claim, so when several
+    -- bare-head claims appear the LAST one wins — the file's target claim.
+    item_after_name ∈ Token
+    TLHd(l ↦ items_d2, out ↦ item_after_name)
+    claim_is_param ∈ Bool = (item_after_name matches LParen)
+
     in_dispatch  ∈ Bool = (in_parse ∧ (_pmode = 0))
     enter_enum   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ head_is_enum)
-    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum))
+    enter_claim  ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ (¬claim_is_param))
+    enter_skip   ∈ Bool = (in_dispatch ∧ (¬items_nil) ∧ (¬head_is_enum) ∧ claim_is_param)
     all_done     ∈ Bool = (in_dispatch ∧ items_nil)
     in_enum_run  ∈ Bool = (in_parse ∧ (_pmode = 1))
     in_claim_run ∈ Bool = (in_parse ∧ (_pmode = 2))
+    in_skip      ∈ Bool = (in_parse ∧ (_pmode = 3))
 
     -- ══════════════════════════════════════════════════════════════
     -- CLAIM sub-machine (pmode 2): membership walk over `_items`
@@ -453,6 +469,23 @@ claim main
     _fB ∈ String
     fC  ∈ String
     _fC ∈ String
+    -- Compound field-type accumulator (wave 4g, Blocker 2): a payload
+    -- field type may be multi-token (`Seq(LibArg)`, `Map(Int, Int)`), so
+    -- e6 now ACCUMULATES the type string with bracket-depth tracking
+    -- (reusing parser.ev::TypeTokenText + BracketDelta) instead of reading
+    -- a single Ident. `ftacc` holds the in-progress type text; `fdepth`
+    -- the `(`/`<` nesting depth. A field is COMMITTED when a Comma (→ next
+    -- field) or RParen (→ close ctor) is seen at depth 0.
+    ftacc  ∈ String
+    _ftacc ∈ String
+    fdepth  ∈ Int
+    _fdepth ∈ Int
+    -- The Seq-payload element type seen in this enum (e.g. "LibArg" for
+    -- `Seq(LibArg)`), used to emit the `__SeqOf_T` Cons helper datatype
+    -- before the enum block. At most one distinct Seq element type per
+    -- enum in the corpus (Effect's Seq(LibArg)); the last one wins.
+    seqelt  ∈ String
+    _seqelt ∈ String
 
     ptok ∈ Token = match _plist
         TLCons(t, _) ⇒ t
@@ -475,6 +508,14 @@ claim main
         Ident(s) ⇒ s
         _ ⇒ ""
 
+    -- Per-tick field-type contribution + bracket-depth delta for the e6
+    -- compound-type accumulator (wave 4g).
+    p_bd ∈ Int
+    BracketDelta(t ↦ ptok, d ↦ p_bd)
+    p_tt ∈ String
+    p_tt_is ∈ Bool
+    TypeTokenText(t ↦ ptok, s ↦ p_tt, is_type_tok ↦ p_tt_is)
+
     e1 ∈ Bool = (_ephase = 1)
     e2 ∈ Bool = (_ephase = 2)
     e3 ∈ Bool = (_ephase = 3)
@@ -492,8 +533,13 @@ claim main
         ∨ (ptok matches KwType) ∨ (ptok matches KwFsm) ∨ (ptok matches KwSchema))
 
     -- A variant is pending (name read, awaiting boundary) in e5 or e8.
+    -- Variants are separated by `|` (Pipe) OR by a newline (the consolidated
+    -- lexer emits NO Newline token, so a newline-separated next variant
+    -- shows up as a bare Ident while pending — wave 4g). An Ident while
+    -- pending therefore BOTH finalizes the current variant and starts the
+    -- next one in the same tick.
     have_pending ∈ Bool = (e5 ∨ e8)
-    at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil ∨ p_is_tlkw)
+    at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil ∨ p_is_tlkw ∨ (have_pending ∧ p_is_ident))
     finalize     ∈ Bool = (in_enum_run ∧ have_pending ∧ at_boundary)
     -- This enum is complete: pending variant + we are at the end of the
     -- stream or the next top-level keyword (NOT a `|`, which continues it).
@@ -510,21 +556,31 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- ephase transition.
+    -- A payload field is COMMITTED when, in e6 at bracket-depth 0, we hit a
+    -- Comma (next field) or RParen (close ctor). Otherwise the e6 token is
+    -- accumulated into the compound type string (wave 4g).
+    committing_field ∈ Bool = (in_enum_run ∧ e6 ∧ (_fdepth = 0) ∧ (p_is_comma ∨ p_is_rp))
+
+    -- ephase transition. e6 is now a SELF-LOOPING accumulator: it stays in
+    -- e6 while reading a (possibly compound) field type and on a Comma
+    -- commit (next field), and exits to e8 only on a depth-0 RParen commit.
+    -- e5/e8 + Ident is the newline-separated next-variant case (→ e5, the
+    -- new variant's after-name state).
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
         : e4 ∧ p_is_ident ? 5
         : e5 ∧ p_is_lp ? 6
         : e5 ∧ p_is_pipe ? 4
-        : e6 ∧ p_is_ident ? 7
-        : e7 ∧ p_is_comma ? 6
-        : e7 ∧ p_is_rp ? 8
+        : e5 ∧ p_is_ident ? 5
+        : e6 ∧ committing_field ∧ p_is_rp ? 8
         : e8 ∧ p_is_pipe ? 4
+        : e8 ∧ p_is_ident ? 5
         : _ephase)
 
-    starting_variant ∈ Bool = (e4 ∧ p_is_ident)
-    adding_field     ∈ Bool = (e6 ∧ p_is_ident)
+    -- A new variant starts on an Ident in e4 (after `=`/`|`) OR on an Ident
+    -- while a variant is pending (e5/e8 — newline-separated).
+    starting_variant ∈ Bool = ((e4 ∨ e5 ∨ e8) ∧ p_is_ident)
 
     -- State carry for the enum-parse sub-machine. `enter_enum` (re)inits
     -- it for each enum item; `in_enum_run` advances it; `enum_done` halts
@@ -557,11 +613,34 @@ claim main
     fcount  = (is_first_tick ? 0
         : (enter_enum ? 0
         : (in_enum_run ∧ starting_variant ? 0
-        : (in_enum_run ∧ adding_field ? _fcount + 1
+        : (in_enum_run ∧ committing_field ? _fcount + 1
         : _fcount))))
-    fA = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 0) ? p_id : _fA)))
-    fB = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 1) ? p_id : _fB)))
-    fC = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 2) ? p_id : _fC)))
+    fA = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ starting_variant ? "" : (in_enum_run ∧ committing_field ∧ (_fcount = 0) ? _ftacc : _fA))))
+    fB = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ starting_variant ? "" : (in_enum_run ∧ committing_field ∧ (_fcount = 1) ? _ftacc : _fB))))
+    fC = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ starting_variant ? "" : (in_enum_run ∧ committing_field ∧ (_fcount = 2) ? _ftacc : _fC))))
+
+    -- Compound field-type accumulator carries (wave 4g). `ftacc` resets per
+    -- variant (starting_variant) and on each field commit; in e6 it grows
+    -- by the per-token type text unless this token commits the field.
+    ftacc = (is_first_tick ? ""
+        : (enter_enum ? ""
+        : (in_enum_run ∧ starting_variant ? ""
+        : (in_enum_run ∧ e6 ∧ committing_field ? ""
+        : (in_enum_run ∧ e6 ∧ (¬committing_field) ? _ftacc ++ p_tt
+        : _ftacc)))))
+    fdepth = (is_first_tick ? 0
+        : (enter_enum ? 0
+        : (in_enum_run ∧ starting_variant ? 0
+        : (in_enum_run ∧ e6 ∧ committing_field ? 0
+        : (in_enum_run ∧ e6 ∧ (¬committing_field) ? _fdepth + p_bd
+        : _fdepth)))))
+    commit_is_seq ∈ Bool
+    commit_elt ∈ String
+    SeqEltType(set_ty ↦ _ftacc, set_is_seq ↦ commit_is_seq, set_elt ↦ commit_elt)
+    seqelt = (is_first_tick ? ""
+        : (enter_enum ? ""
+        : (in_enum_run ∧ committing_field ∧ commit_is_seq ? commit_elt
+        : _seqelt)))
 
     -- The (declare-datatypes …) block for the enum that just finished.
     grouped_body ∈ String = "(" ++ new_body ++ ")"
@@ -569,24 +648,61 @@ claim main
     enum_block ∈ String
     EnumDeclSmtlib(decl ↦ cur_enum_decl, body_str ↦ grouped_body, out ↦ enum_block)
 
+    -- Prepend the `__SeqOf_T` Cons helper datatype when this enum has a
+    -- Seq(T) payload (wave 4g, Blocker 2) — it must precede the enum that
+    -- references it, matching bootstrap's stage ordering. `Result` is
+    -- skipped entirely: the kernel always pins it and the EMIT prelude
+    -- already declares it (bootstrap dedups it the same way).
+    helper_block ∈ String
+    SeqHelperBlock(shb_elt ↦ _seqelt, shb_out ↦ helper_block)
+    full_enum_block ∈ String = (_seqelt = "" ? enum_block : helper_block ++ "\n" ++ enum_block)
+    is_result_enum ∈ Bool = (_ename = "Result")
+
     -- Accumulators (persist across items): enum datatype blocks, and the
     -- remaining top-level stream. `eacc` only grows on `enum_done`; `items`
     -- advances at the parse start, each enum boundary, and the claim end.
     eacc = (is_first_tick ? ""
-        : (enum_done ? (_eacc = "" ? enum_block : _eacc ++ "\n" ++ enum_block)
+        : (enum_done ? (is_result_enum ? _eacc
+            : (_eacc = "" ? full_enum_block : _eacc ++ "\n" ++ full_enum_block))
         : _eacc))
+    -- ══════════════════════════════════════════════════════════════
+    -- CLAIM-SKIP sub-machine (pmode 3): drop a parametrized helper claim
+    -- ══════════════════════════════════════════════════════════════
+    -- Walk one token per tick from just past the skipped claim's keyword,
+    -- halting at the next top-level keyword (or end of stream), then return
+    -- to DISPATCH with `items` pointing AT that keyword. Emits nothing.
+    skipl  ∈ TokenList
+    _skipl ∈ TokenList
+    skipl_hd ∈ Token
+    TLHd(l ↦ _skipl, out ↦ skipl_hd)
+    skipl_tl ∈ TokenList
+    TLTl(l ↦ _skipl, out ↦ skipl_tl)
+    skipl_nil ∈ Bool = match _skipl
+        TLNil ⇒ true
+        _ ⇒ false
+    skip_at_tlkw ∈ Bool = ((skipl_hd matches KwEnum) ∨ (skipl_hd matches KwClaim)
+        ∨ (skipl_hd matches KwType) ∨ (skipl_hd matches KwFsm) ∨ (skipl_hd matches KwSchema))
+    skip_stop ∈ Bool = (in_skip ∧ (skipl_nil ∨ skip_at_tlkw))
+    skipl = (is_first_tick ? TLNil
+        : (enter_skip ? items_d1
+        : (in_skip ∧ (¬skip_stop) ? skipl_tl
+        : _skipl)))
+
     items = (is_first_tick ? TLNil
         : (entering_parse ? _fwd
         : (enum_done ? _plist
         : (claim_done ? _rem
-        : _items))))
+        : (skip_stop ? _skipl
+        : _items)))))
     pmode = (is_first_tick ? 0
         : (entering_parse ? 0
         : (enter_enum ? 1
         : (enter_claim ? 2
+        : (enter_skip ? 3
         : (enum_done ? 0
         : (claim_done ? 0
-        : _pmode))))))
+        : (skip_stop ? 0
+        : _pmode))))))))
 
     -- ── PHASE transition ──────────────────────────────────────────
     phase = (is_first_tick ? 0
