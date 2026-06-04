@@ -73,15 +73,29 @@ FLAT="$(mktemp -t sample-flat.XXXXXX.ev)"
 SAMPLE_OUT="$(mktemp -t sample-out.XXXXXX.smt2)"
 trap 'rm -f "$FLAT" "$SAMPLE_OUT"' EXIT
 "$FLATTEN" "$SRC" > "$FLAT" || die "flatten failed for $SRC"
-cp "$FLAT" "$INPUT_PATH"
 
 # ── LEX-ONCE: emit every claim's check-sat block in ONE kernel run ──
-# sample.ev ReadFile's /tmp/compiler-input.ev on its first tick; the
-# stdin redirect mirrors compiler.smt2's invocation convention. Strip the
-# kernel functionizer diagnostic ([functionizer] …) — it is on stdout.
+# sample.ev ReadFile's `/tmp/compiler-input.ev` on its first tick (the
+# path is baked into the compiled sample.smt2). When multiple
+# sample-via-smt2 invocations run in parallel, they race on that
+# shared path — one wrapper's `cp` can clobber another wrapper's
+# input mid-kernel-run, yielding cross-talk between unrelated files.
+#
+# Serialize the cp → kernel-run pair with a flock so the racy section
+# is single-writer. The parallelism cost: the kernel call IS the long
+# part (~tens of minutes per file), so a parallel run effectively
+# becomes serial; that's correctness over speed for now. The proper
+# fix is in compiler/sample.ev (read source from stdin or a path
+# passed through the kernel) — left to a later wave.
+# mkdir-based portable lock (macOS has no flock by default).
+LOCK_DIR="/tmp/sample-via-smt2.lock.d"
+while ! mkdir "$LOCK_DIR" 2>/dev/null; do sleep 0.5; done
+trap 'rm -rf "$LOCK_DIR"; rm -f "$FLAT" "$SAMPLE_OUT"' EXIT
+cp "$FLAT" "$INPUT_PATH"
 "$KERNEL" "$SAMPLE_SMT2" < "$FLAT" 2>/dev/null \
     | grep -v '^\[functionizer\]' > "$SAMPLE_OUT" \
-    || die "sample.smt2 run failed for $SRC"
+    || { rm -rf "$LOCK_DIR"; die "sample.smt2 run failed for $SRC"; }
+rm -rf "$LOCK_DIR"
 
 [ -s "$SAMPLE_OUT" ] || die "sample.smt2 produced no output for $SRC"
 
