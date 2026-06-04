@@ -276,14 +276,54 @@ claim MembershipStep
     ms_first_ch ∈ String = substr(name, 0, 1)
     ms_is_carry ∈ Bool = ((ms_first_ch = "_") ∨ (name = "is_first_tick"))
 
+    -- ── Bare assertion: `name = rhs` / `name ≠ rhs` ────────────────
+    -- When the operator at t1 is `=` / `≠` (NOT `∈`), this line is a
+    -- constraint on a name a PRIOR membership already declared — not a
+    -- new declaration. The earlier path mis-read t2 as the *type*,
+    -- emitting `(declare-fun name () <rhs>)` (wave 4j bug). Here the RHS
+    -- is a single atom at t2 (IntLit / Ident / StringLit), lowered via
+    -- AtomSmtlib; `≠` negates the equality (matches bootstrap's
+    -- translate_bool OpNeq → `(not (= l r))`). The whole line becomes a
+    -- single `decl` chunk (the assertion) with no manifest field and
+    -- pinned=false, so the driver's `chunk = pinned ? decl+assert : decl`
+    -- emits exactly the one assertion line.
+    ms_t1_is_eq ∈ Bool = (t1 matches Eq)
+    ms_t1_is_ne ∈ Bool = (t1 matches OpNe)
+    ms_is_bare  ∈ Bool = (is_name ∧ (ms_t1_is_eq ∨ ms_t1_is_ne))
+
+    ms_b2_is_int ∈ Bool = (t2 matches IntLit(_))
+    ms_b2_int ∈ Int = match t2
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_b2_id ∈ String = match t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_b2_is_str ∈ Bool = (t2 matches StringLit(_))
+    ms_b2_str ∈ String = match t2
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    ms_bare_atom ∈ Expr = (ms_b2_is_int ? EInt(ms_b2_int)
+        : ms_b2_is_str ? EStr(ms_b2_str)
+        : EIdent(ms_b2_id))
+    ms_bare_rhs ∈ String
+    ms_bare_rhs_ok ∈ Bool
+    AtomSmtlib(e ↦ ms_bare_atom, out ↦ ms_bare_rhs, ok ↦ ms_bare_rhs_ok)
+    ms_bare_eq ∈ String = "(= " ++ name ++ " " ++ ms_bare_rhs ++ ")"
+    ms_bare_assert ∈ String = (ms_t1_is_ne
+        ? "(assert (not " ++ ms_bare_eq ++ "))"
+        : "(assert " ++ ms_bare_eq ++ ")")
+
     -- Outputs.
-    DeclareFun(name ↦ name, type_str ↦ type_str, out ↦ decl)
-    assertln = (has_eq ? "(assert (= " ++ name ++ " " ++ ms_rhs ++ "))" : "")
-    field = (ms_is_carry ? "" : name ++ ":" ++ type_str)
-    pinned = has_eq
+    ms_decl_normal ∈ String
+    DeclareFun(name ↦ name, type_str ↦ type_str, out ↦ ms_decl_normal)
+    decl = (ms_is_bare ? ms_bare_assert : ms_decl_normal)
+    assertln = (ms_is_bare ? "" : (has_eq ? "(assert (= " ++ name ++ " " ++ ms_rhs ++ "))" : ""))
+    field = (ms_is_bare ? "" : (ms_is_carry ? "" : name ++ ":" ++ type_str))
+    pinned = (ms_is_bare ? false : has_eq)
     ok = is_name
-    saw_ift = (name = "is_first_tick")
-    rest = (¬has_eq ? l3
+    saw_ift = ((¬ms_is_bare) ∧ (name = "is_first_tick"))
+    rest = (ms_is_bare ? l3
+        : ¬has_eq ? l3
         : ms_is_matches ? l10
         : ms_is_ternary ? l9
         : ms_is_not ? l6

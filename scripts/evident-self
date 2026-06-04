@@ -64,8 +64,15 @@ set -u -o pipefail
 KERNEL="${KERNEL}"
 FLATTEN="${ROOT}/scripts/flatten-evident.sh"
 COMPILER_SMT2="${COMPILER_SMT2}"
+SAMPLE="${ROOT}/scripts/sample-via-smt2.sh"
 INPUT_PATH="/tmp/compiler-input.ev"
-[ "\${1:-}" = "emit" ] || { echo "evident-self(smt2): only 'emit' is supported, got '\${1:-}'" >&2; exit 2; }
+# sample verb (wave 4j): delegate to the self-hosted sat-check wrapper
+# (kernel + compiler.smt2 emit per claim + standalone z3).
+if [ "\${1:-}" = "sample" ]; then
+    shift
+    exec "\$SAMPLE" "\$@"
+fi
+[ "\${1:-}" = "emit" ] || { echo "evident-self(smt2): only 'emit' / 'sample' are supported, got '\${1:-}'" >&2; exit 2; }
 shift
 SRC=""; CLAIM=""; OUT=""
 while [ \$# -gt 0 ]; do
