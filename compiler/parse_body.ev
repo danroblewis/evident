@@ -328,9 +328,18 @@ claim MembershipStep
         _ ⇒ ""
     ms_bare_cmp ∈ String = (ms_t1_is_eq ? "=" : ms_t1_is_lt ? "<"
         : ms_t1_is_gt ? ">" : ms_t1_is_le ? "<=" : ms_t1_is_ge ? ">=" : "=")
+    -- Negative-int RHS: `name cmp -N` lexes as Minus(t2) IntLit(N)(t3); the
+    -- atom helpers see only t2=Minus (→ ""), dropping the value (wave 4p).
+    -- SMT-LIB negatives are `(- N)`. The literal consumes one extra token, so
+    -- the bare rest advances to l4 (handled in the rest selector below).
+    ms_bare_neg ∈ Bool = (ms_is_bare ∧ (t2 matches Minus) ∧ (t3 matches IntLit(_)))
+    ms_neg_int ∈ Int = match t3
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_bare_rhs ∈ String = (ms_bare_neg ? "(- " ++ str_from_int(ms_neg_int) ++ ")" : ms_s_t2)
     ms_bare_assert ∈ String = (ms_t1_is_ne
-        ? "(assert (not (= " ++ name ++ " " ++ ms_s_t2 ++ ")))"
-        : "(assert (" ++ ms_bare_cmp ++ " " ++ name ++ " " ++ ms_s_t2 ++ "))")
+        ? "(assert (not (= " ++ name ++ " " ++ ms_bare_rhs ++ ")))"
+        : "(assert (" ++ ms_bare_cmp ++ " " ++ name ++ " " ++ ms_bare_rhs ++ "))")
 
     -- ── Per-token atom → SMT-LIB string (wave 4k) ──────────────────
     -- The bare/implication/chain/multi-name shapes below all need a token
@@ -351,6 +360,62 @@ claim MembershipStep
         : (t6 matches KwTrue)  ? "true"
         : (t6 matches KwFalse) ? "false"
         : ms_a2_id)
+
+    -- t3 / t5 / t7 atom text (wave 4p, bare parenthesised ternary). Handle
+    -- IntLit / Ident / StringLit / Bool keywords so the ITE branches render
+    -- for int, string, bool and enum-nullary branch values.
+    ms_t3_is_int ∈ Bool = (t3 matches IntLit(_))
+    ms_t3_int ∈ Int = match t3
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_t3_id ∈ String = match t3
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_t3_str ∈ String = match t3
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    ms_s_t3 ∈ String = (ms_t3_is_int ? str_from_int(ms_t3_int)
+        : (t3 matches KwTrue)  ? "true"
+        : (t3 matches KwFalse) ? "false"
+        : (t3 matches StringLit(_)) ? "\"" ++ ms_t3_str ++ "\""
+        : ms_t3_id)
+    ms_a5_str ∈ String = match t5
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    ms_s_t5 ∈ String = (ms_a5_is_int ? str_from_int(ms_a5_int)
+        : (t5 matches KwTrue)  ? "true"
+        : (t5 matches KwFalse) ? "false"
+        : (t5 matches StringLit(_)) ? "\"" ++ ms_a5_str ++ "\""
+        : ms_a5_id)
+    ms_t7_is_int ∈ Bool = (t7 matches IntLit(_))
+    ms_t7_int ∈ Int = match t7
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_t7_id ∈ String = match t7
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ms_t7_str ∈ String = match t7
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    ms_s_t7 ∈ String = (ms_t7_is_int ? str_from_int(ms_t7_int)
+        : (t7 matches KwTrue)  ? "true"
+        : (t7 matches KwFalse) ? "false"
+        : (t7 matches StringLit(_)) ? "\"" ++ ms_t7_str ++ "\""
+        : ms_t7_id)
+
+    -- ── Bare parenthesised ternary: `name = ( cond ? then : else )` ──
+    -- A constraint on an already-declared name whose RHS is a single-level
+    -- ternary wrapped in parens (the surface the lang corpus uses, e.g.
+    -- `x = (flag ? 7 : 99)`). t2=LParen, single-token cond at t3, t4=Question,
+    -- then at t5, t6=Colon, else at t7, t8=RParen. Lowers to
+    -- `(assert (= name (ite cond then else)))`. Compound conditions
+    -- (`n > 3 ?`) and nested else-ternary are out of scope here (the corpus's
+    -- failing case is the simple form; the sat nested/comparison cases pass
+    -- trivially). Takes priority over the atom bare-`=` path below.
+    ms_bt_open ∈ Bool = (t2 matches LParen)
+    ms_bt_q ∈ Bool = (t4 matches Question)
+    ms_is_barety ∈ Bool = (is_name ∧ ms_t1_is_eq ∧ ms_bt_open ∧ ms_bt_q)
+    ms_barety_assert ∈ String = "(assert (= " ++ name ++ " (ite " ++ ms_s_t3 ++ " " ++ ms_s_t5 ++ " " ++ ms_s_t7 ++ ")))"
 
     -- ── Item 2: implication `LHS ⇒ RHS` ────────────────────────────
     -- A body line `name op atom ⇒ name2 op2 atom2` lowers to a single
@@ -593,7 +658,7 @@ claim MembershipStep
         : ms_is_implln ? ms_impl_assert
         : ms_is_multi ? ms_mn_decl
         : ms_is_chain ? ms_decl_normal
-        : ms_is_bare ? ms_bare_assert
+        : ms_is_bare ? (ms_is_barety ? ms_barety_assert : ms_bare_assert)
         : ms_is_lone ? ""
         : ms_decl_normal)
     assertln = (ms_is_rangepfx ? (ms_rp_typed ? ms_rp_asserts : "")
@@ -615,7 +680,7 @@ claim MembershipStep
         : ms_is_implln ? l7
         : ms_is_multi ? ms_mn_rest
         : ms_is_chain ? l5
-        : ms_is_bare ? l3
+        : ms_is_bare ? (ms_is_barety ? l9 : ms_bare_neg ? l4 : l3)
         : ms_is_lone ? l1
         : ¬has_eq ? l3
         : ms_is_matches ? l10

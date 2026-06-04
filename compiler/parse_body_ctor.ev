@@ -43,6 +43,14 @@ claim CtorMembershipStep
     rest ∈ TokenList
     ok ∈ Bool
     eff_len ∈ Int
+    -- True when this line is the BARE form `name = Ctor(…)` (a constraint
+    -- on a name a PRIOR membership already declared), as opposed to the
+    -- declaring `name ∈ Type = Ctor(…)` form. The driver uses this to set
+    -- pinned=false so the single assertion (carried in `decl`) is emitted
+    -- without an empty-decl leading newline — exactly like MembershipStep's
+    -- bare-atom path (wave 4j, `ms_is_bare`). This wave (4p) generalises
+    -- that path to a constructor-application RHS.
+    bare ∈ Bool
     -- The program's variant-signature table (wave 4h): threaded to the RHS
     -- renderer so a Seq(T) payload in constructor-argument position lowers
     -- to the `__Cell_T`/`__Empty_T` Cons form. Empty (`""`) keeps the Z3
@@ -98,13 +106,35 @@ claim CtorMembershipStep
     -- Scalar ctor app: `name ∈ Type = Ctor(…)`.
     cs_scalar_ctor ∈ Bool = ((cs_t3 matches Eq) ∧ (cs_t4 matches Ident(_)) ∧ (cs_t5 matches LParen))
 
+    -- Bare ctor app: `name = Ctor(…)` — t1=Eq, t2=ctor Ident, t3=LParen. A
+    -- constraint on an already-declared name (sibling of the scalar form,
+    -- minus the `∈ Type` prefix). The RHS starts one token earlier (cs_l2,
+    -- the ctor name) than the scalar form (cs_l4). Mutually exclusive with
+    -- cs_scalar_ctor (which needs t3=Eq) and cs_seq_complex (which needs
+    -- t6=Eq). NOTE the discriminator order matters in the driver: a bare
+    -- `name = Ctor(…)` has t3=LParen, which the driver would otherwise route
+    -- to SeqMembershipStep (mem_compound_seq); making this step's `ok` fire
+    -- gives it priority (mem_is_ctor is checked first).
+    cs_bare_ctor ∈ Bool = ((cs_t1 matches Eq) ∧ (cs_t2 matches Ident(_)) ∧ (cs_t3 matches LParen))
+
+    -- Bare `matches` predicate: `scrut matches Ctor(_)` / `scrut matches Nullary`
+    -- as a STANDALONE boolean constraint (t1=KwMatches, t2=ctor Ident). Lowers
+    -- to a Z3 datatype recognizer `((_ is Ctor) scrut)` — the sibling of the
+    -- `name = atom matches Ctor` form already handled in MembershipStep. The
+    -- payload binds (`(_)`, `(_, _)`, or a name) are IGNORED in matches-as-Bool
+    -- form; we render the `Ctor(payload)` part purely to advance past it (its
+    -- rest), then discard the rendered text and emit the recognizer instead.
+    -- Without this, MembershipStep mis-reads the line as a lone composition
+    -- name and silently drops the predicate (wave-4p bug class).
+    cs_bare_matches ∈ Bool = ((cs_t1 matches KwMatches) ∧ (cs_t2 matches Ident(_)))
+
     -- Compound Seq with complex (ctor / nested-seq) first element:
     -- `name ∈ Seq(T) = ⟨Ctor(…), …⟩` / `name ∈ Seq(T) = ⟨⟨…⟩, …⟩`.
     cs_compound ∈ Bool = (cs_t3 matches LParen)
     cs_seq_complex ∈ Bool = (cs_compound ∧ (cs_t6 matches Eq) ∧ (cs_t7 matches OpSeqOpen)
         ∧ (((cs_t8 matches Ident(_)) ∧ (cs_t9 matches LParen)) ∨ (cs_t8 matches OpSeqOpen)))
 
-    cs_applies ∈ Bool = (cs_scalar_ctor ∨ cs_seq_complex)
+    cs_applies ∈ Bool = (cs_scalar_ctor ∨ cs_seq_complex ∨ cs_bare_ctor ∨ cs_bare_matches)
 
     -- Type strings. Scalar: the bare type name (t2). Compound: "Seq(T)" for
     -- the manifest field, "(Seq T)" for declare-fun.
@@ -120,13 +150,31 @@ claim CtorMembershipStep
     cs_src_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : cs_outer_ty ++ "(" ++ cs_inner_ty ++ ")")
     cs_smt_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : "(" ++ cs_outer_ty ++ " " ++ cs_inner_ty ++ ")")
 
-    -- Scalar ctor RHS renders through the Z3 seq-theory expression renderer
-    -- (a scalar Effect is not a state-field Seq, so any nested Seq payload
-    -- keeps its seq.unit form). The RHS starts at t4 (the ctor name).
+    -- The constructor-application RHS renders through the Z3 seq-theory
+    -- expression renderer (RenderExprToks). The RHS starts at a DIFFERENT
+    -- token depending on the shape:
+    --   scalar `name ∈ Type = Ctor(…)`  → t4 (cs_l4), the ctor name after `=`
+    --   bare   `name = Ctor(…)`         → t2 (cs_l2)
+    --   bare   `name matches Ctor(…)`   → t2 (cs_l2), rendered only to find
+    --                                      where the pattern ends (out unused)
+    -- A SINGLE conditional call keeps the per-claim state flat (RenderExprToks
+    -- is the heaviest claim here, ~6× per depth level; sample.smt2 instantiates
+    -- this step per membership across every claim at once, so a second call
+    -- would materially bloat the model — see docs/plans/wave-4m / wave-4p).
+    cs_rhs_start ∈ TokenList = ((cs_bare_ctor ∨ cs_bare_matches) ? cs_l2 : cs_l4)
     cs_cx_out ∈ String
     cs_cx_rest ∈ TokenList
     cs_cx_ok ∈ Bool
-    RenderExprToks(toks ↦ cs_l4, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok, sigtab ↦ sigtab, in_hint ↦ "")
+    RenderExprToks(toks ↦ cs_rhs_start, out ↦ cs_cx_out, rest ↦ cs_cx_rest, ok ↦ cs_cx_ok, sigtab ↦ sigtab, in_hint ↦ "")
+
+    cs_bare_assert ∈ String = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
+
+    -- Bare-matches recognizer is built from the ctor name (cs_t2); the rendered
+    -- text (cs_cx_out) is ignored — only cs_cx_rest (where the pattern ends) is.
+    cs_bm_ctor ∈ String = match cs_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    cs_bm_assert ∈ String = "(assert ((_ is " ++ cs_bm_ctor ++ ") " ++ cs_name ++ "))"
 
     -- Compound Seq STATE field → bootstrap's `(Array Int T) + __len` encoding
     -- (the kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock
@@ -152,11 +200,15 @@ claim CtorMembershipStep
     DeclareFun(name ↦ cs_name, type_str ↦ cs_smt_ty, out ↦ cs_scalar_decl)
     cs_scalar_assert ∈ String = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
 
-    decl = (cs_scalar_ctor ? cs_scalar_decl : cs_arr_decl)
-    assertln = (cs_scalar_ctor ? cs_scalar_assert : cs_arr_assert)
-    field = (cs_is_carry ? "" : cs_name ++ ":" ++ cs_src_ty)
+    -- Bare form carries its single assertion in `decl` (assertln="") with the
+    -- driver setting pinned=false — so the chunk is exactly the assertion, no
+    -- empty-decl leading newline (mirrors MembershipStep's bare-atom path).
+    decl = (cs_bare_matches ? cs_bm_assert : cs_bare_ctor ? cs_bare_assert : cs_scalar_ctor ? cs_scalar_decl : cs_arr_decl)
+    assertln = ((cs_bare_ctor ∨ cs_bare_matches) ? "" : cs_scalar_ctor ? cs_scalar_assert : cs_arr_assert)
+    field = ((cs_is_carry ∨ cs_bare_ctor ∨ cs_bare_matches) ? "" : cs_name ++ ":" ++ cs_src_ty)
     ok = (cs_is_name ∧ cs_applies)
-    rest = (cs_scalar_ctor ? cs_cx_rest : cs_arr_rest)
+    bare = (cs_is_name ∧ (cs_bare_ctor ∨ cs_bare_matches))
+    rest = ((cs_bare_matches ∨ cs_bare_ctor ∨ cs_scalar_ctor) ? cs_cx_rest : cs_arr_rest)
     -- Nonzero only for the `effects` state-field Seq literal (drives the
     -- driver's max-effects derivation).
     eff_len = (((cs_name = "effects") ∧ cs_seq_complex) ? cs_arr_elen : 0)

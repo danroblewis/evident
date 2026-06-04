@@ -1,0 +1,77 @@
+-- Grammar wave 4p: bare `name = Ctor(args)` equality after a prior membership.
+--
+-- A line whose operator is `=` (not `∈`) whose RHS is a CONSTRUCTOR
+-- APPLICATION constrains a name an earlier `name ∈ EnumType` membership
+-- already declared. The wave-4j bare path only handled atom RHS, dropping
+-- the `(args)` and emitting `(= name Ctor)`; the wave-4o driver mis-routed
+-- it to SeqMembershipStep (t3=LParen) and dropped the constraint entirely.
+--
+-- This wave (4p) makes CtorMembershipStep self-discriminate the bare form
+-- (`bare ↦ true`) and render the RHS through translate_ctor.ev's
+-- RenderExprToks, emitting a single `(assert (= name <rhs>))` with no decl
+-- and no manifest field. Exercised here in ISOLATION on hand-built
+-- TokenLists (the driver wiring is covered by the lang seam). See
+-- compiler/parse_body_ctor.ev (cs_bare_ctor) and docs/plans/wave-4p-equality-rhs-complex.md.
+--
+-- expect: stdout = "(assert (= r (Ok 5)))"
+-- expect: stdout = "(assert (= e (Exit 0)))"
+-- expect: stdout = "(assert (= list (Cons 7 (Cons 8 Nil))))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_declare.ev"
+import "compiler/translate_ctor.ev"
+import "compiler/parse_body_ctor.ev"
+
+claim main
+    -- r = Ok(5)
+    toks_a ∈ TokenList = TLCons(Ident("r"), TLCons(Eq,
+        TLCons(Ident("Ok"), TLCons(LParen, TLCons(IntLit(5), TLCons(RParen, TLNil))))))
+    decl_a ∈ String
+    assert_a ∈ String
+    field_a ∈ String
+    rest_a ∈ TokenList
+    ok_a ∈ Bool
+    eff_a ∈ Int
+    bare_a ∈ Bool
+    CtorMembershipStep(rem ↦ toks_a, decl ↦ decl_a, assertln ↦ assert_a,
+        field ↦ field_a, rest ↦ rest_a, ok ↦ ok_a, eff_len ↦ eff_a, bare ↦ bare_a, sigtab ↦ "")
+
+    -- e = Exit(0)
+    toks_b ∈ TokenList = TLCons(Ident("e"), TLCons(Eq,
+        TLCons(Ident("Exit"), TLCons(LParen, TLCons(IntLit(0), TLCons(RParen, TLNil))))))
+    decl_b ∈ String
+    assert_b ∈ String
+    field_b ∈ String
+    rest_b ∈ TokenList
+    ok_b ∈ Bool
+    eff_b ∈ Int
+    bare_b ∈ Bool
+    CtorMembershipStep(rem ↦ toks_b, decl ↦ decl_b, assertln ↦ assert_b,
+        field ↦ field_b, rest ↦ rest_b, ok ↦ ok_b, eff_len ↦ eff_b, bare ↦ bare_b, sigtab ↦ "")
+
+    -- list = Cons(7, Cons(8, Nil))   — nested ctor RHS
+    toks_c ∈ TokenList = TLCons(Ident("list"), TLCons(Eq,
+        TLCons(Ident("Cons"), TLCons(LParen, TLCons(IntLit(7), TLCons(Comma,
+        TLCons(Ident("Cons"), TLCons(LParen, TLCons(IntLit(8), TLCons(Comma,
+        TLCons(Ident("Nil"), TLCons(RParen, TLCons(RParen, TLNil)))))))))))))
+    decl_c ∈ String
+    assert_c ∈ String
+    field_c ∈ String
+    rest_c ∈ TokenList
+    ok_c ∈ Bool
+    eff_c ∈ Int
+    bare_c ∈ Bool
+    CtorMembershipStep(rem ↦ toks_c, decl ↦ decl_c, assertln ↦ assert_c,
+        field ↦ field_c, rest ↦ rest_c, ok ↦ ok_c, eff_len ↦ eff_c, bare ↦ bare_c, sigtab ↦ "")
+
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    line ∈ String = (phase = 0 ? decl_a : phase = 1 ? decl_b : decl_c)
+
+    effects ∈ Seq(Effect) = (phase ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩)⟩)

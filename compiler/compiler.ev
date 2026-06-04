@@ -411,9 +411,10 @@ claim main
     cts_rest ∈ TokenList
     cts_ok ∈ Bool
     cts_eff_len ∈ Int
+    cts_bare ∈ Bool
     CtorMembershipStep(rem ↦ _rem, decl ↦ cts_decl, assertln ↦ cts_assert,
         field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len,
-        sigtab ↦ _sigtab)
+        bare ↦ cts_bare, sigtab ↦ _sigtab)
     mem_is_ctor ∈ Bool = cts_ok
 
     -- Compose all three step-claims on `_rem`; select by shape. Distinct
@@ -450,7 +451,7 @@ claim main
     sel_field ∈ String = (mem_is_ctor ? cts_field : mem_is_match ? mts_field : (mem_is_seq ? sqs_field : step_field))
     sel_rest ∈ TokenList = (mem_is_ctor ? cts_rest : mem_is_match ? mts_rest : (mem_is_seq ? sqs_rest : step_rest))
     sel_ok ∈ Bool = (mem_is_ctor ? cts_ok : mem_is_match ? mts_ok : (mem_is_seq ? sqs_ok : step_ok))
-    sel_pinned ∈ Bool = (mem_is_ctor ? true : mem_is_match ? true : (mem_is_seq ? true : step_pinned))
+    sel_pinned ∈ Bool = (mem_is_ctor ? (¬cts_bare) : mem_is_match ? true : (mem_is_seq ? true : step_pinned))
     sel_saw_ift ∈ Bool = ((¬mem_is_ctor) ∧ (¬mem_is_match) ∧ (¬mem_is_seq) ∧ step_saw_ift)
     -- max-effects derivation: only CtorMembershipStep reports a nonzero
     -- effects-literal length (the `effects ∈ Seq(Effect) = ⟨…⟩` state field).
