@@ -61,8 +61,9 @@
 -- from the manifest state-fields. Quantifier / subclaim / `..` / generics
 -- and multi-top-level-item files are later waves.
 --
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
+-- Input: stdin line 1 holds a per-process flat source path, line 2 the
+-- optional target claim. tick 0 ReadLine's both; tick 1 ReadFile's the
+-- path (wave 4o — no shared /tmp file, so parallel emit doesn't race).
 
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
@@ -81,28 +82,51 @@ import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
 
 claim main
-    -- ── INPUT — read the source file on the first tick ───────────
+    -- ── INPUT — per-process source path via stdin (wave 4o) ──────
+    -- The shared /tmp/compiler-input.ev + /tmp/compiler-target-claim.txt
+    -- paths (baked into literal ReadFiles) raced when emit ran in parallel.
+    -- A tiny stdin protocol replaces them with per-process state:
+    --   tick 0 (is_first_tick) — emit ⟨ReadLine, ReadLine⟩. stdin line 1 is
+    --     this invocation's per-process flat source path (mktemp, unique);
+    --     stdin line 2 is the optional target claim name (empty ⇒ "last
+    --     bare-head claim wins"). They land in last_results[0]/[1].
+    --   tick 1 (¬is_first_tick ∧ ¬_got_path) — bind `src_path` and capture
+    --     `target` from last_results, then emit ⟨ReadFile(src_path)⟩ (a
+    --     DYNAMIC path, model-evaluated by the kernel). Content → last_results[0].
+    --   tick 2+ (_got_path) — `input` = the content; the lexer runs.
+    -- `got_path` is a one-bit carry: false on tick 0, true from tick 1 on,
+    -- so `¬_got_path` selects exactly tick 1 (the ReadFile / capture tick).
+    got_path  ∈ Bool
+    _got_path ∈ Bool
+    got_path = (is_first_tick ? false : true)
+
+    src_path  ∈ String
+    _src_path ∈ String
+    path_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
+
     input  ∈ String
     _input ∈ String
-    read_result ∈ String = match last_results[0]
+    content_read ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : (_input = "" ? read_result : _input))
+    input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
 
     -- ── TARGET CLAIM — optional claim-name selector (wave 4j) ─────
-    -- A SECOND ReadFile on the first tick reads /tmp/compiler-target-claim.txt
-    -- into last_results[1]. When that file holds a claim name, only the
-    -- matching bare-head claim is translated (the rest are skipped); when
-    -- it is absent/empty the ReadFile yields an ErrorResult, the match
-    -- below falls to "", and the dispatch reverts to the corpus
-    -- convention (last bare-head claim wins). This is what lets the
-    -- `sample` wrapper emit a SPECIFIC claim's constraints per file.
+    -- stdin line 2 (read on tick 0 as the second ReadLine) carries the
+    -- target claim name; we capture it from last_results[1] on tick 1
+    -- (before the file content overwrites last_results[0] on tick 2).
+    -- When it holds a claim name, only the matching bare-head claim is
+    -- translated; when it is empty/absent (Eof → EofResult), the match
+    -- below falls to "", and dispatch reverts to "last bare-head claim wins".
     target  ∈ String
     _target ∈ String
     target_read ∈ String = match last_results[1]
         StringResult(s) ⇒ s
         _ ⇒ ""
-    target = (is_first_tick ? "" : (_input = "" ? target_read : _target))
+    target = (is_first_tick ? "" : ((¬_got_path) ? target_read : _target))
     has_target ∈ Bool = (target ≠ "")
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
@@ -114,7 +138,7 @@ claim main
     _pos ∈ Int
     next_pos  ∈ Int
     _next_pos ∈ Int
-    pos = (is_first_tick ? 0 - 1 : (_input = "" ? 0 : _next_pos))
+    pos = (is_first_tick ? 0 - 1 : ((¬_got_path) ? 0 - 1 : (_input = "" ? 0 : _next_pos)))
 
     partial_str  ∈ String
     _partial_str ∈ String
@@ -914,7 +938,11 @@ claim main
 
     smtlib ∈ String = manifest ++ "\n" ++ prelude ++ datatypes ++ ift_decl ++ _out
 
-    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadFile("/tmp/compiler-input.ev"), ReadFile("/tmp/compiler-target-claim.txt")⟩
+    -- tick 0: read the per-process source path (line 1) + target claim
+    -- (line 2) from stdin. tick 1: ReadFile that path (dynamic, no shared
+    -- file). tick 2+: getpid filler, then puts the unit + Exit at emit_now.
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
+        : ((¬_got_path) ? ⟨ReadFile(src_path)⟩
         : (emit_now
             ? ⟨LibCall("libc", "puts", ⟨ArgStr(smtlib)⟩), Exit(0)⟩
-            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩))
+            : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)))

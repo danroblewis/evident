@@ -28,12 +28,10 @@
 #     This mode alone resolves the wave-4 Seq-encoding and max-effects
 #     "differences" — they are semantically equivalent.
 #
-# Self-hosted input mechanism: compiler/compiler.ev reads its source from
-# the fixed path /tmp/compiler-input.ev via a ReadFile effect on the first
-# tick (see compiler/compiler.ev, "Input path"), NOT from stdin. So we
-# write the flattened source there before invoking the kernel. (stdin is
-# also redirected for forward-compatibility with a future stdin-reading
-# driver; the current driver ignores it.)
+# Self-hosted input mechanism (wave 4o): compiler/compiler.ev reads its
+# per-process source PATH from stdin line 1 and the optional target claim
+# from stdin line 2 (no shared /tmp file). So we pipe those two lines to
+# the kernel instead of writing a fixed path.
 #
 # Usage:
 #   scripts/diff-vs-bootstrap.sh [--semantic] <source.ev> <claim>
@@ -60,7 +58,6 @@ EVIDENT="$(EVIDENT_SELF_VIA_SMT2=0 "$ROOT/scripts/evident-self" bin)"
 KERNEL="$ROOT/kernel/target/release/kernel"
 FLATTEN="$ROOT/scripts/flatten-evident.sh"
 COMPILER_SMT2="$ROOT/compiler.smt2"
-INPUT_PATH="/tmp/compiler-input.ev"   # the path compiler.ev ReadFile's
 
 die() { echo "diff-vs-bootstrap: $*" >&2; exit 1; }
 skip() { echo "diff-vs-bootstrap: SKIPPED — $*"; exit 0; }
@@ -96,9 +93,9 @@ if ! "$FLATTEN" "$SRC" > "$FLAT"; then
     die "flatten failed for $SRC"
 fi
 
-# 3. self-hosted output: feed the flattened source to compiler.smt2.
-cp "$FLAT" "$INPUT_PATH"
-if ! "$KERNEL" "$COMPILER_SMT2" < "$FLAT" > "$SELF" 2>"$FLAT.kerr"; then
+# 3. self-hosted output: feed the per-process path (line 1) + target claim
+#    (line 2) to compiler.smt2 on stdin.
+if ! printf '%s\n%s\n' "$FLAT" "$CLAIM" | "$KERNEL" "$COMPILER_SMT2" > "$SELF" 2>"$FLAT.kerr"; then
     die "self-hosted compile failed: $(head -1 "$FLAT.kerr" 2>/dev/null)"
 fi
 

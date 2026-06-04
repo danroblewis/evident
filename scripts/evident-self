@@ -52,9 +52,9 @@ COMPILER_SMT2="${ROOT}/compiler.smt2"
 # This is the cutover seam: with `EVIDENT_SELF_VIA_SMT2=1` set and
 # compiler.smt2 present, every script that resolves its compiler through
 # `evident-self bin` switches to kernel + compiler.smt2 at once; `unset`
-# reverts. compiler/compiler.ev reads its source from the fixed path
-# /tmp/compiler-input.ev (ReadFile, not stdin), so the wrapper writes
-# there before invoking the kernel.
+# reverts. compiler/compiler.ev reads its source PATH from stdin line 1
+# and the optional target claim from stdin line 2 (wave 4o — per-process,
+# no shared /tmp file), so the wrapper just pipes those two lines in.
 emit_via_smt2_wrapper() {
     local wrapper="/tmp/evident-self-via-smt2-$$.sh"
     cat > "$wrapper" <<WRAP
@@ -65,7 +65,6 @@ KERNEL="${KERNEL}"
 FLATTEN="${ROOT}/scripts/flatten-evident.sh"
 COMPILER_SMT2="${COMPILER_SMT2}"
 SAMPLE="${ROOT}/scripts/sample-via-smt2.sh"
-INPUT_PATH="/tmp/compiler-input.ev"
 # sample verb (wave 4j): delegate to the self-hosted sat-check wrapper
 # (kernel + compiler.smt2 emit per claim + standalone z3).
 if [ "\${1:-}" = "sample" ]; then
@@ -85,11 +84,12 @@ done
 FLAT="\$(mktemp -t evself-flat.XXXXXX.ev)"
 trap 'rm -f "\$FLAT"' EXIT
 "\$FLATTEN" "\$SRC" > "\$FLAT" || { echo "evident-self(smt2): flatten failed" >&2; exit 1; }
-cp "\$FLAT" "\$INPUT_PATH"
+# Per-process input (wave 4o): stdin line 1 = the flat source path,
+# line 2 = the optional target claim. No shared /tmp file ⇒ no race.
 if [ -n "\$OUT" ]; then
-    "\$KERNEL" "\$COMPILER_SMT2" < "\$FLAT" > "\$OUT"
+    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$KERNEL" "\$COMPILER_SMT2" > "\$OUT"
 else
-    "\$KERNEL" "\$COMPILER_SMT2" < "\$FLAT"
+    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$KERNEL" "\$COMPILER_SMT2"
 fi
 WRAP
     chmod +x "$wrapper"
