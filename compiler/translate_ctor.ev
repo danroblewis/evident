@@ -86,6 +86,33 @@ claim AtomTokRenderC
         : at_is_id ? at_idv
         : "")
 
+-- ── EltHintLookup: variant-signature table query (grammar wave 4h) ─────
+-- A Seq(T) VALUE in constructor-argument position must lower to the
+-- `__Cell_T`/`__Empty_T` Cons form (bootstrap's
+-- register_enums.rs::generate_internal_cons_helpers types the accessor
+-- `__SeqOf_T`, so the seq-theory `(seq.unit …)` form is a sort mismatch —
+-- see docs/plans/blocked-grammar-wave4g.md). The renderer is otherwise
+-- element-type-agnostic; the driver threads the program's variant
+-- signatures in as `sigtab`, a flat string of `<ctor>#<idx>#<elt>;`
+-- entries (one per Seq-typed payload field). EltHintLookup returns the
+-- element type `T` for a given constructor + argument index, or "" when
+-- that position is not a Seq payload.
+--
+-- All locals are `eh_`-prefixed (composition body-local name leak —
+-- memory: project_claim_composition_leaks_body_locals).
+claim EltHintLookup
+    eh_tab ∈ String
+    eh_ctor ∈ String
+    eh_idx ∈ Int
+    eh_out ∈ String
+    eh_key ∈ String = eh_ctor ++ "#" ++ str_from_int(eh_idx) ++ "#"
+    eh_kpos ∈ Int = index_of(eh_tab, eh_key, 0)
+    eh_found ∈ Bool = (eh_kpos ≥ 0)
+    eh_vstart ∈ Int = eh_kpos + #eh_key
+    eh_semi ∈ Int = index_of(eh_tab, ";", eh_vstart)
+    eh_vlen ∈ Int = eh_semi - eh_vstart
+    eh_out = (eh_found ? substr(eh_tab, eh_vstart, eh_vlen) : "")
+
 -- ── ListThread3: join up to 3 already-rendered children ────────────────
 -- Given the start-of-list token list `a0` (the tokens right after an open
 -- delimiter `(` or `⟨`) and three child renders (each child already
@@ -114,6 +141,11 @@ claim ListThread3
     args_joined ∈ String
     seq_wrapped ∈ String
     after_close ∈ TokenList
+    -- Element-type hint (grammar wave 4h): when non-empty, this Seq is a
+    -- `Seq(elt_hint)` payload and renders to the `__Cell_<elt_hint>` Cons
+    -- form instead of the Z3 seq-theory form. Empty → seq-theory (the
+    -- in-expression Seq-literal default, unchanged).
+    elt_hint ∈ String
 
     lt_r1h ∈ Token
     TLHdC(l ↦ r1, out ↦ lt_r1h)
@@ -129,10 +161,17 @@ claim ListThread3
         : n = 3 ? o1 ++ " " ++ o2 ++ " " ++ o3
         : "")
 
-    seq_wrapped = (n = 0 ? "(as seq.empty (Seq Int))"
+    lt_use_cons ∈ Bool = ¬(elt_hint = "")
+    lt_empty ∈ String = "__Empty_" ++ elt_hint
+    lt_seq_theory ∈ String = (n = 0 ? "(as seq.empty (Seq Int))"
         : n = 1 ? "(seq.unit " ++ o1 ++ ")"
         : n = 2 ? "(seq.++ (seq.unit " ++ o1 ++ ") (seq.unit " ++ o2 ++ "))"
         : "(seq.++ (seq.unit " ++ o1 ++ ") (seq.unit " ++ o2 ++ ") (seq.unit " ++ o3 ++ "))")
+    lt_cons ∈ String = (n = 0 ? lt_empty
+        : n = 1 ? "(__Cell_" ++ elt_hint ++ " " ++ o1 ++ " " ++ lt_empty ++ ")"
+        : n = 2 ? "(__Cell_" ++ elt_hint ++ " " ++ o1 ++ " (__Cell_" ++ elt_hint ++ " " ++ o2 ++ " " ++ lt_empty ++ "))"
+        : "(__Cell_" ++ elt_hint ++ " " ++ o1 ++ " (__Cell_" ++ elt_hint ++ " " ++ o2 ++ " (__Cell_" ++ elt_hint ++ " " ++ o3 ++ " " ++ lt_empty ++ ")))")
+    seq_wrapped = (lt_use_cons ? lt_cons : lt_seq_theory)
 
     -- The token list AT the closing delimiter is the last counted child's
     -- rest (or a0 itself when the list is empty), and after_close skips it.
@@ -176,6 +215,10 @@ claim RenderExprL1
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
+    -- Seq element-type hint (wave 4h): non-empty when THIS position is a
+    -- `Seq(in_hint)` payload. L1's children are atoms (L0), so only L1's own
+    -- Seq path consumes it; no `sigtab` needed (no ctor-arg lookup at L1).
+    in_hint ∈ String
 
     l1_h0 ∈ Token
     TLHdC(l ↦ toks, out ↦ l1_h0)
@@ -224,7 +267,8 @@ claim RenderExprL1
         o1 ↦ l1_co1, r1 ↦ l1_cr1, k1 ↦ l1_ck1,
         o2 ↦ l1_co2, r2 ↦ l1_cr2, k2 ↦ l1_ck2,
         o3 ↦ l1_co3, r3 ↦ l1_cr3, k3 ↦ l1_ck3,
-        n ↦ l1_cn, args_joined ↦ l1_cargs, seq_wrapped ↦ l1_cseq, after_close ↦ l1_cclose)
+        n ↦ l1_cn, args_joined ↦ l1_cargs, seq_wrapped ↦ l1_cseq, after_close ↦ l1_cclose,
+        elt_hint ↦ "")
 
     l1_ctor_out ∈ String = "(" ++ l1_ctor_name ++ (l1_cn = 0 ? "" : " " ++ l1_cargs) ++ ")"
 
@@ -254,7 +298,8 @@ claim RenderExprL1
         o1 ↦ l1_so1, r1 ↦ l1_sr1, k1 ↦ l1_sk1,
         o2 ↦ l1_so2, r2 ↦ l1_sr2, k2 ↦ l1_sk2,
         o3 ↦ l1_so3, r3 ↦ l1_sr3, k3 ↦ l1_sk3,
-        n ↦ l1_sn, args_joined ↦ l1_sargs, seq_wrapped ↦ l1_sseq, after_close ↦ l1_sclose)
+        n ↦ l1_sn, args_joined ↦ l1_sargs, seq_wrapped ↦ l1_sseq, after_close ↦ l1_sclose,
+        elt_hint ↦ in_hint)
 
     ok  = (l1_is_ctor ∨ l1_is_seq ∨ l1_atom_ok)
     out = (l1_is_ctor ? l1_ctor_out : l1_is_seq ? l1_sseq : l1_atom_out)
@@ -270,6 +315,11 @@ claim RenderExprL2
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
+    -- wave 4h: `sigtab` = the program's variant-signature table (for
+    -- looking up THIS ctor's per-argument Seq element types); `in_hint` =
+    -- THIS position's own Seq element type (used when the head is `⟨`).
+    sigtab ∈ String
+    in_hint ∈ String
 
     l2_h0 ∈ Token
     TLHdC(l ↦ toks, out ↦ l2_h0)
@@ -290,22 +340,32 @@ claim RenderExprL2
     l2_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l2_h0, out ↦ l2_atom_out, ok ↦ l2_atom_ok)
 
+    -- Per-argument Seq element-type hints for this ctor's args (wave 4h):
+    -- a non-empty hint at index i means arg i is a `Seq(<hint>)` payload,
+    -- so a Seq literal there renders to the `__Cell` Cons form.
+    l2_ah0 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 0, eh_out ↦ l2_ah0)
+    l2_ah1 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 1, eh_out ↦ l2_ah1)
+    l2_ah2 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 2, eh_out ↦ l2_ah2)
+
     l2_co1 ∈ String
     l2_cr1 ∈ TokenList
     l2_ck1 ∈ Bool
-    RenderExprL1(toks ↦ l2_after_lp, out ↦ l2_co1, rest ↦ l2_cr1, ok ↦ l2_ck1)
+    RenderExprL1(toks ↦ l2_after_lp, out ↦ l2_co1, rest ↦ l2_cr1, ok ↦ l2_ck1, in_hint ↦ l2_ah0)
     l2_ca1 ∈ TokenList
     TLTlC(l ↦ l2_cr1, out ↦ l2_ca1)
     l2_co2 ∈ String
     l2_cr2 ∈ TokenList
     l2_ck2 ∈ Bool
-    RenderExprL1(toks ↦ l2_ca1, out ↦ l2_co2, rest ↦ l2_cr2, ok ↦ l2_ck2)
+    RenderExprL1(toks ↦ l2_ca1, out ↦ l2_co2, rest ↦ l2_cr2, ok ↦ l2_ck2, in_hint ↦ l2_ah1)
     l2_ca2 ∈ TokenList
     TLTlC(l ↦ l2_cr2, out ↦ l2_ca2)
     l2_co3 ∈ String
     l2_cr3 ∈ TokenList
     l2_ck3 ∈ Bool
-    RenderExprL1(toks ↦ l2_ca2, out ↦ l2_co3, rest ↦ l2_cr3, ok ↦ l2_ck3)
+    RenderExprL1(toks ↦ l2_ca2, out ↦ l2_co3, rest ↦ l2_cr3, ok ↦ l2_ck3, in_hint ↦ l2_ah2)
 
     l2_cn ∈ Int
     l2_cargs ∈ String
@@ -315,26 +375,27 @@ claim RenderExprL2
         o1 ↦ l2_co1, r1 ↦ l2_cr1, k1 ↦ l2_ck1,
         o2 ↦ l2_co2, r2 ↦ l2_cr2, k2 ↦ l2_ck2,
         o3 ↦ l2_co3, r3 ↦ l2_cr3, k3 ↦ l2_ck3,
-        n ↦ l2_cn, args_joined ↦ l2_cargs, seq_wrapped ↦ l2_cseq, after_close ↦ l2_cclose)
+        n ↦ l2_cn, args_joined ↦ l2_cargs, seq_wrapped ↦ l2_cseq, after_close ↦ l2_cclose,
+        elt_hint ↦ "")
 
     l2_ctor_out ∈ String = "(" ++ l2_ctor_name ++ (l2_cn = 0 ? "" : " " ++ l2_cargs) ++ ")"
 
     l2_so1 ∈ String
     l2_sr1 ∈ TokenList
     l2_sk1 ∈ Bool
-    RenderExprL1(toks ↦ l2_t0, out ↦ l2_so1, rest ↦ l2_sr1, ok ↦ l2_sk1)
+    RenderExprL1(toks ↦ l2_t0, out ↦ l2_so1, rest ↦ l2_sr1, ok ↦ l2_sk1, in_hint ↦ "")
     l2_sa1 ∈ TokenList
     TLTlC(l ↦ l2_sr1, out ↦ l2_sa1)
     l2_so2 ∈ String
     l2_sr2 ∈ TokenList
     l2_sk2 ∈ Bool
-    RenderExprL1(toks ↦ l2_sa1, out ↦ l2_so2, rest ↦ l2_sr2, ok ↦ l2_sk2)
+    RenderExprL1(toks ↦ l2_sa1, out ↦ l2_so2, rest ↦ l2_sr2, ok ↦ l2_sk2, in_hint ↦ "")
     l2_sa2 ∈ TokenList
     TLTlC(l ↦ l2_sr2, out ↦ l2_sa2)
     l2_so3 ∈ String
     l2_sr3 ∈ TokenList
     l2_sk3 ∈ Bool
-    RenderExprL1(toks ↦ l2_sa2, out ↦ l2_so3, rest ↦ l2_sr3, ok ↦ l2_sk3)
+    RenderExprL1(toks ↦ l2_sa2, out ↦ l2_so3, rest ↦ l2_sr3, ok ↦ l2_sk3, in_hint ↦ "")
 
     l2_sn ∈ Int
     l2_sargs ∈ String
@@ -344,7 +405,8 @@ claim RenderExprL2
         o1 ↦ l2_so1, r1 ↦ l2_sr1, k1 ↦ l2_sk1,
         o2 ↦ l2_so2, r2 ↦ l2_sr2, k2 ↦ l2_sk2,
         o3 ↦ l2_so3, r3 ↦ l2_sr3, k3 ↦ l2_sk3,
-        n ↦ l2_sn, args_joined ↦ l2_sargs, seq_wrapped ↦ l2_sseq, after_close ↦ l2_sclose)
+        n ↦ l2_sn, args_joined ↦ l2_sargs, seq_wrapped ↦ l2_sseq, after_close ↦ l2_sclose,
+        elt_hint ↦ in_hint)
 
     ok  = (l2_is_ctor ∨ l2_is_seq ∨ l2_atom_ok)
     out = (l2_is_ctor ? l2_ctor_out : l2_is_seq ? l2_sseq : l2_atom_out)
@@ -368,6 +430,9 @@ claim RenderExprL3
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
+    -- wave 4h hint threading (see RenderExprL2).
+    sigtab ∈ String
+    in_hint ∈ String
 
     l3_h0 ∈ Token
     TLHdC(l ↦ toks, out ↦ l3_h0)
@@ -388,22 +453,30 @@ claim RenderExprL3
     l3_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l3_h0, out ↦ l3_atom_out, ok ↦ l3_atom_ok)
 
+    -- Per-argument Seq element-type hints for this ctor (wave 4h).
+    l3_ah0 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 0, eh_out ↦ l3_ah0)
+    l3_ah1 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 1, eh_out ↦ l3_ah1)
+    l3_ah2 ∈ String
+    EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 2, eh_out ↦ l3_ah2)
+
     l3_co1 ∈ String
     l3_cr1 ∈ TokenList
     l3_ck1 ∈ Bool
-    RenderExprL2(toks ↦ l3_after_lp, out ↦ l3_co1, rest ↦ l3_cr1, ok ↦ l3_ck1)
+    RenderExprL2(toks ↦ l3_after_lp, out ↦ l3_co1, rest ↦ l3_cr1, ok ↦ l3_ck1, sigtab ↦ sigtab, in_hint ↦ l3_ah0)
     l3_ca1 ∈ TokenList
     TLTlC(l ↦ l3_cr1, out ↦ l3_ca1)
     l3_co2 ∈ String
     l3_cr2 ∈ TokenList
     l3_ck2 ∈ Bool
-    RenderExprL2(toks ↦ l3_ca1, out ↦ l3_co2, rest ↦ l3_cr2, ok ↦ l3_ck2)
+    RenderExprL2(toks ↦ l3_ca1, out ↦ l3_co2, rest ↦ l3_cr2, ok ↦ l3_ck2, sigtab ↦ sigtab, in_hint ↦ l3_ah1)
     l3_ca2 ∈ TokenList
     TLTlC(l ↦ l3_cr2, out ↦ l3_ca2)
     l3_co3 ∈ String
     l3_cr3 ∈ TokenList
     l3_ck3 ∈ Bool
-    RenderExprL2(toks ↦ l3_ca2, out ↦ l3_co3, rest ↦ l3_cr3, ok ↦ l3_ck3)
+    RenderExprL2(toks ↦ l3_ca2, out ↦ l3_co3, rest ↦ l3_cr3, ok ↦ l3_ck3, sigtab ↦ sigtab, in_hint ↦ l3_ah2)
 
     l3_cn ∈ Int
     l3_cargs ∈ String
@@ -413,26 +486,27 @@ claim RenderExprL3
         o1 ↦ l3_co1, r1 ↦ l3_cr1, k1 ↦ l3_ck1,
         o2 ↦ l3_co2, r2 ↦ l3_cr2, k2 ↦ l3_ck2,
         o3 ↦ l3_co3, r3 ↦ l3_cr3, k3 ↦ l3_ck3,
-        n ↦ l3_cn, args_joined ↦ l3_cargs, seq_wrapped ↦ l3_cseq, after_close ↦ l3_cclose)
+        n ↦ l3_cn, args_joined ↦ l3_cargs, seq_wrapped ↦ l3_cseq, after_close ↦ l3_cclose,
+        elt_hint ↦ "")
 
     l3_ctor_out ∈ String = "(" ++ l3_ctor_name ++ (l3_cn = 0 ? "" : " " ++ l3_cargs) ++ ")"
 
     l3_so1 ∈ String
     l3_sr1 ∈ TokenList
     l3_sk1 ∈ Bool
-    RenderExprL2(toks ↦ l3_t0, out ↦ l3_so1, rest ↦ l3_sr1, ok ↦ l3_sk1)
+    RenderExprL2(toks ↦ l3_t0, out ↦ l3_so1, rest ↦ l3_sr1, ok ↦ l3_sk1, sigtab ↦ sigtab, in_hint ↦ "")
     l3_sa1 ∈ TokenList
     TLTlC(l ↦ l3_sr1, out ↦ l3_sa1)
     l3_so2 ∈ String
     l3_sr2 ∈ TokenList
     l3_sk2 ∈ Bool
-    RenderExprL2(toks ↦ l3_sa1, out ↦ l3_so2, rest ↦ l3_sr2, ok ↦ l3_sk2)
+    RenderExprL2(toks ↦ l3_sa1, out ↦ l3_so2, rest ↦ l3_sr2, ok ↦ l3_sk2, sigtab ↦ sigtab, in_hint ↦ "")
     l3_sa2 ∈ TokenList
     TLTlC(l ↦ l3_sr2, out ↦ l3_sa2)
     l3_so3 ∈ String
     l3_sr3 ∈ TokenList
     l3_sk3 ∈ Bool
-    RenderExprL2(toks ↦ l3_sa2, out ↦ l3_so3, rest ↦ l3_sr3, ok ↦ l3_sk3)
+    RenderExprL2(toks ↦ l3_sa2, out ↦ l3_so3, rest ↦ l3_sr3, ok ↦ l3_sk3, sigtab ↦ sigtab, in_hint ↦ "")
 
     l3_sn ∈ Int
     l3_sargs ∈ String
@@ -442,7 +516,8 @@ claim RenderExprL3
         o1 ↦ l3_so1, r1 ↦ l3_sr1, k1 ↦ l3_sk1,
         o2 ↦ l3_so2, r2 ↦ l3_sr2, k2 ↦ l3_sk2,
         o3 ↦ l3_so3, r3 ↦ l3_sr3, k3 ↦ l3_sk3,
-        n ↦ l3_sn, args_joined ↦ l3_sargs, seq_wrapped ↦ l3_sseq, after_close ↦ l3_sclose)
+        n ↦ l3_sn, args_joined ↦ l3_sargs, seq_wrapped ↦ l3_sseq, after_close ↦ l3_sclose,
+        elt_hint ↦ in_hint)
 
     ok  = (l3_is_ctor ∨ l3_is_seq ∨ l3_atom_ok)
     out = (l3_is_ctor ? l3_ctor_out : l3_is_seq ? l3_sseq : l3_atom_out)
@@ -457,7 +532,11 @@ claim RenderExprToks
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    RenderExprL3(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok)
+    -- wave 4h: `sigtab` = program variant-signature table; `in_hint` = this
+    -- expression's own Seq element type (empty for a top-level expression).
+    sigtab ∈ String
+    in_hint ∈ String
+    RenderExprL3(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok, sigtab ↦ sigtab, in_hint ↦ in_hint)
 
 -- ══════════════════════════════════════════════════════════════════════
 -- SeqArrayBlock — grammar wave 4c, item 1: a TOP-LEVEL Seq STATE field
@@ -493,6 +572,12 @@ claim SeqArrayBlock
     rest ∈ TokenList
     elen ∈ Int
     ok ∈ Bool
+    -- wave 4h: the program variant-signature table, threaded to each
+    -- element render so a Seq(T) payload INSIDE an element ctor (e.g. the
+    -- `⟨ArgStr(…)⟩` arg of `LibCall`) lowers to the `__Cell` Cons form. The
+    -- OUTER state-field Seq itself stays the Array+len encoding (`in_hint`
+    -- on the element renders is empty — an element is not a Seq position).
+    sigtab ∈ String
 
     sab_h0 ∈ Token
     TLHdC(l ↦ toks, out ↦ sab_h0)
@@ -505,19 +590,19 @@ claim SeqArrayBlock
     sab_o1 ∈ String
     sab_r1 ∈ TokenList
     sab_k1 ∈ Bool
-    RenderExprToks(toks ↦ sab_after, out ↦ sab_o1, rest ↦ sab_r1, ok ↦ sab_k1)
+    RenderExprToks(toks ↦ sab_after, out ↦ sab_o1, rest ↦ sab_r1, ok ↦ sab_k1, sigtab ↦ sigtab, in_hint ↦ "")
     sab_a1 ∈ TokenList
     TLTlC(l ↦ sab_r1, out ↦ sab_a1)
     sab_o2 ∈ String
     sab_r2 ∈ TokenList
     sab_k2 ∈ Bool
-    RenderExprToks(toks ↦ sab_a1, out ↦ sab_o2, rest ↦ sab_r2, ok ↦ sab_k2)
+    RenderExprToks(toks ↦ sab_a1, out ↦ sab_o2, rest ↦ sab_r2, ok ↦ sab_k2, sigtab ↦ sigtab, in_hint ↦ "")
     sab_a2 ∈ TokenList
     TLTlC(l ↦ sab_r2, out ↦ sab_a2)
     sab_o3 ∈ String
     sab_r3 ∈ TokenList
     sab_k3 ∈ Bool
-    RenderExprToks(toks ↦ sab_a2, out ↦ sab_o3, rest ↦ sab_r3, ok ↦ sab_k3)
+    RenderExprToks(toks ↦ sab_a2, out ↦ sab_o3, rest ↦ sab_r3, ok ↦ sab_k3, sigtab ↦ sigtab, in_hint ↦ "")
 
     -- Element count from the comma-after-each-element signal (mirrors
     -- ListThread3's `n`): stop at the first element not followed by a comma.

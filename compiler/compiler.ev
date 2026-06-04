@@ -355,7 +355,8 @@ claim main
     cts_ok ∈ Bool
     cts_eff_len ∈ Int
     CtorMembershipStep(rem ↦ _rem, decl ↦ cts_decl, assertln ↦ cts_assert,
-        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len)
+        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len,
+        sigtab ↦ _sigtab)
     mem_is_ctor ∈ Bool = cts_ok
 
     -- Compose all three step-claims on `_rem`; select by shape. Distinct
@@ -641,6 +642,22 @@ claim main
         : (enter_enum ? ""
         : (in_enum_run ∧ committing_field ∧ commit_is_seq ? commit_elt
         : _seqelt)))
+
+    -- Variant-signature table (wave 4h, Item 1). For every payload field of
+    -- type `Seq(T)` we record one `<ctor>#<idx>#<T>;` entry. The renderer
+    -- (translate_ctor.ev::EltHintLookup) queries it by ctor name + arg index
+    -- to lower a Seq VALUE in constructor-argument position to the
+    -- `__Cell_T`/`__Empty_T` Cons form (Blocker 2c —
+    -- docs/plans/blocked-grammar-wave4g.md). At commit time `_cur_name` is
+    -- the variant name and `_fcount` the (0-based) index of the field being
+    -- committed. Program-global: accumulates across all enums, NOT reset on
+    -- enter_enum (the table must be complete before the claim phase renders).
+    sigtab  ∈ String
+    _sigtab ∈ String
+    sigtab_entry ∈ String = _cur_name ++ "#" ++ str_from_int(_fcount) ++ "#" ++ commit_elt ++ ";"
+    sigtab = (is_first_tick ? ""
+        : (in_enum_run ∧ committing_field ∧ commit_is_seq ? _sigtab ++ sigtab_entry
+        : _sigtab))
 
     -- The (declare-datatypes …) block for the enum that just finished.
     grouped_body ∈ String = "(" ++ new_body ++ ")"

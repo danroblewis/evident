@@ -332,7 +332,7 @@ claim main
     cts_ok ∈ Bool
     cts_eff_len ∈ Int
     CtorMembershipStep(rem ↦ _rem, decl ↦ cts_decl, assertln ↦ cts_assert,
-        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len)
+        field ↦ cts_field, rest ↦ cts_rest, ok ↦ cts_ok, eff_len ↦ cts_eff_len, sigtab ↦ "")
     mem_is_ctor ∈ Bool = cts_ok
 
     -- Compose all three step-claims on `_rem`; select by shape. Distinct

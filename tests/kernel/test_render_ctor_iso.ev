@@ -18,7 +18,7 @@ claim main
     out_a ∈ String
     rest_a ∈ TokenList
     ok_a ∈ Bool
-    RenderExprToks(toks ↦ toks_a, out ↦ out_a, rest ↦ rest_a, ok ↦ ok_a)
+    RenderExprToks(toks ↦ toks_a, out ↦ out_a, rest ↦ rest_a, ok ↦ ok_a, sigtab ↦ "", in_hint ↦ "")
 
     -- ⟨Exit(0), Exit(1)⟩
     toks_b ∈ TokenList = TLCons(OpSeqOpen,
@@ -29,7 +29,7 @@ claim main
     out_b ∈ String
     rest_b ∈ TokenList
     ok_b ∈ Bool
-    RenderExprToks(toks ↦ toks_b, out ↦ out_b, rest ↦ rest_b, ok ↦ ok_b)
+    RenderExprToks(toks ↦ toks_b, out ↦ out_b, rest ↦ rest_b, ok ↦ ok_b, sigtab ↦ "", in_hint ↦ "")
 
     -- LibCall("libc", "puts")  — ctor with two string-atom args.
     toks_c ∈ TokenList = TLCons(Ident("LibCall"), TLCons(LParen,
@@ -38,7 +38,7 @@ claim main
     out_c ∈ String
     rest_c ∈ TokenList
     ok_c ∈ Bool
-    RenderExprToks(toks ↦ toks_c, out ↦ out_c, rest ↦ rest_c, ok ↦ ok_c)
+    RenderExprToks(toks ↦ toks_c, out ↦ out_c, rest ↦ rest_c, ok ↦ ok_c, sigtab ↦ "", in_hint ↦ "")
 
     phase  ∈ Int
     _phase ∈ Int

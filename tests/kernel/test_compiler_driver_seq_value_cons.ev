@@ -1,0 +1,72 @@
+-- ISOLATION test for grammar wave 4h: a Seq(T) VALUE in constructor-
+-- argument position lowers to the `__Cell_T`/`__Empty_T` Cons form
+-- (Blocker 2c — docs/plans/blocked-grammar-wave4g.md). Drives
+-- compiler/translate_ctor.ev's RenderExprToks on hand-built TokenLists.
+--
+-- The element-type hint reaches the Seq renderer two ways, both checked:
+--   · directly, via RenderExprToks' `in_hint` (the Seq IS the rendered
+--     expression and its element type is known by the caller), and
+--   · indirectly, via `sigtab` (the variant-signature table) when the Seq
+--     is the argument of a constructor application — the renderer looks up
+--     the ctor's field type and threads the element type down.
+--
+-- The 1-element + empty Cons forms are byte-identical to bootstrap's
+-- `evident emit` (verified):
+--   (= eff (LibCall "libc" "puts" (__Cell_LibArg (ArgStr "hi") __Empty_LibArg)))
+--
+-- expect: stdout = "(__Cell_LibArg (ArgStr "hi") __Empty_LibArg)"
+-- expect: stdout = "(LibCall "libc" "puts" (__Cell_LibArg (ArgStr "hi") __Empty_LibArg))"
+-- expect: stdout = "(__Cell_LibArg (ArgStr "a") (__Cell_LibArg (ArgStr "b") __Empty_LibArg))"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_ctor.ev"
+
+claim main
+    -- (a) ⟨ArgStr("hi")⟩ with a direct LibArg hint → single-cell Cons.
+    toks_a ∈ TokenList = TLCons(OpSeqOpen,
+        TLCons(Ident("ArgStr"), TLCons(LParen, TLCons(StringLit("hi"), TLCons(RParen,
+        TLCons(OpSeqClose, TLNil))))))
+    out_a ∈ String
+    rest_a ∈ TokenList
+    ok_a ∈ Bool
+    RenderExprToks(toks ↦ toks_a, out ↦ out_a, rest ↦ rest_a, ok ↦ ok_a,
+        sigtab ↦ "", in_hint ↦ "LibArg")
+
+    -- (b) LibCall("libc", "puts", ⟨ArgStr("hi")⟩) — the hint comes from the
+    -- variant-signature table: LibCall's arg 2 is Seq(LibArg).
+    toks_b ∈ TokenList = TLCons(Ident("LibCall"), TLCons(LParen,
+        TLCons(StringLit("libc"), TLCons(Comma,
+        TLCons(StringLit("puts"), TLCons(Comma,
+        TLCons(OpSeqOpen,
+        TLCons(Ident("ArgStr"), TLCons(LParen, TLCons(StringLit("hi"), TLCons(RParen,
+        TLCons(OpSeqClose,
+        TLCons(RParen, TLNil)))))))))))))
+    out_b ∈ String
+    rest_b ∈ TokenList
+    ok_b ∈ Bool
+    RenderExprToks(toks ↦ toks_b, out ↦ out_b, rest ↦ rest_b, ok ↦ ok_b,
+        sigtab ↦ "LibCall#2#LibArg;", in_hint ↦ "")
+
+    -- (c) ⟨ArgStr("a"), ArgStr("b")⟩ — two cells, nested.
+    toks_c ∈ TokenList = TLCons(OpSeqOpen,
+        TLCons(Ident("ArgStr"), TLCons(LParen, TLCons(StringLit("a"), TLCons(RParen,
+        TLCons(Comma,
+        TLCons(Ident("ArgStr"), TLCons(LParen, TLCons(StringLit("b"), TLCons(RParen,
+        TLCons(OpSeqClose, TLNil)))))))))))
+    out_c ∈ String
+    rest_c ∈ TokenList
+    ok_c ∈ Bool
+    RenderExprToks(toks ↦ toks_c, out ↦ out_c, rest ↦ rest_c, ok ↦ ok_c,
+        sigtab ↦ "", in_hint ↦ "LibArg")
+
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    line ∈ String = (phase = 0 ? out_a : phase = 1 ? out_b : out_c)
+
+    effects ∈ Seq(Effect) = (phase ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(line)⟩)⟩)
