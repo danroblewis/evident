@@ -377,6 +377,22 @@ pub(crate) unsafe fn mentions_name(ctx: Z3_context, a: Z3_ast, name: &str) -> bo
     false
 }
 
+/// Collect ALL 0-arity application names mentioned in `a`'s tree, into `out`.
+/// Used by reachability — far cheaper than calling `mentions_name(ctx, a, name)`
+/// once per candidate `name` (which would re-walk the tree N times).
+pub(crate) unsafe fn collect_mentioned_names(
+    ctx: Z3_context, a: Z3_ast, out: &mut HashSet<String>,
+) {
+    if let Some(n) = ast_app_name(ctx, a) {
+        if children(ctx, a).is_empty() {
+            out.insert(n);
+        }
+    }
+    for c in children(ctx, a) {
+        collect_mentioned_names(ctx, c, out);
+    }
+}
+
 unsafe fn is_bool_sorted(ctx: Z3_context, a: Z3_ast) -> bool {
     Z3_get_sort_kind(ctx, Z3_get_sort(ctx, a)) == SortKind::Bool
 }
@@ -503,6 +519,37 @@ unsafe fn split_equality(ctx: Z3_context, a: Z3_ast) -> Option<(Z3_ast, Z3_ast)>
         return None;
     }
     Some((ch[0], ch[1]))
+}
+
+/// Z3 simplify rewrites `(= boolvar (not <expr>))` into
+/// `(not (= <expr'> boolvar))` (an XOR shape with `not` lifted outside).
+/// That breaks scalar extraction for bool definitions in compiler.ev.
+///
+/// Recognize the shape and return BOTH directions so the caller can probe
+/// each: `((var_l, not_r), (var_r, not_l))`. Used by the assertion loop to
+/// try inserting either direction, gated by the standard mentions_name /
+/// not-already-defined checks.
+unsafe fn split_not_eq_bool_both(
+    ctx: Z3_context, a: Z3_ast,
+) -> Option<(Z3_ast, Z3_ast, Z3_ast, Z3_ast)> {
+    if decl_kind(ctx, a)? != DeclKind::NOT {
+        return None;
+    }
+    let nch = children(ctx, a);
+    if nch.len() != 1 {
+        return None;
+    }
+    let (l, r) = split_equality(ctx, nch[0])?;
+    // Only valid for Bool sort.
+    let lsort = Z3_get_sort(ctx, l);
+    if Z3_get_sort_kind(ctx, lsort) != SortKind::Bool {
+        return None;
+    }
+    let not_r = Z3_mk_not(ctx, r);
+    Z3_inc_ref(ctx, not_r);
+    let not_l = Z3_mk_not(ctx, l);
+    Z3_inc_ref(ctx, not_l);
+    Some((l, not_r, r, not_l))
 }
 
 /// Try to read `a` as a guarded implication that constrains an output, and
@@ -693,6 +740,33 @@ unsafe fn extract_program(
         if try_record_guarded(ctx, a, &output_set, &mut raw) {
             continue;
         }
+        // Handle Z3 simplify's `(not (= a b))` rewrite of `(= boolvar (not expr))`.
+        // Try BOTH orientations — both sides may be uninterp consts and we don't
+        // know which one is the output. The mentions_name / contains_key gates
+        // in the parent branches below filter out wrong-direction captures.
+        if let Some((bv1, neg1, bv2, neg2)) = split_not_eq_bool_both(ctx, a) {
+            // Both sides are uninterp consts (symmetric XOR shape). Capturing
+            // BOTH directions creates a 2-var cycle (e.g. is_first_tick =
+            // (not got_path) AND got_path = (not is_first_tick)) that breaks
+            // topo_order. Prefer the side that's an OUTPUT — the kernel needs
+            // to compute outputs; non-output vars are externally constrained
+            // or feed into outputs via different paths. If both or neither
+            // are outputs, capture only the first (deterministic).
+            let mut captured = false;
+            for (bv, neg) in [(bv1, neg1), (bv2, neg2)] {
+                if !is_uninterp_const(ctx, bv) { continue; }
+                let Some(name) = ast_app_name(ctx, bv) else { continue };
+                // Only capture if this side is an output.
+                if !output_set.contains(&name) { continue; }
+                if !raw.scalar.contains_key(&name) && !mentions_name(ctx, neg, &name) {
+                    raw.scalar.insert(name, neg);
+                    captured = true;
+                    break;
+                }
+            }
+            if captured { continue; }
+            // Neither side was an output (or already covered); fall through.
+        }
         let Some((l, r)) = split_equality(ctx, a) else {
             raw.predicates.push(a);
             continue;
@@ -730,7 +804,19 @@ unsafe fn extract_program(
     // defined var (optional — only kept if reachable from an output below).
     let mut bodies: HashMap<String, StepBody> = HashMap::new();
     for v in outputs {
-        bodies.insert(v.clone(), build_body(&raw, v)?); // uncovered output ⇒ refuse
+        match build_body(&raw, v) {
+            Some(b) => { bodies.insert(v.clone(), b); }
+            None => {
+                if std::env::var("EVIDENT_FUNCTIONIZE_WHY").ok().as_deref() == Some("1") {
+                    eprintln!("[functionizer-why] uncovered output: {}", v);
+                    eprintln!("[functionizer-why]   has guarded?  {}", raw.guarded.contains_key(v));
+                    eprintln!("[functionizer-why]   has scalar?   {}", raw.scalar.contains_key(v));
+                    eprintln!("[functionizer-why]   seq_lengths?  {:?}", raw.seq_lengths.get(v));
+                    eprintln!("[functionizer-why]   seq_elements? {:?}", raw.seq_elements.get(v).map(|m| m.keys().collect::<Vec<_>>()));
+                }
+                return None;
+            }
+        }
     }
     let mut internal: HashSet<String> = HashSet::new();
     internal.extend(raw.scalar.keys().cloned());
@@ -747,19 +833,26 @@ unsafe fn extract_program(
 
     // Reachability: keep only outputs and the internal defs an output's
     // expression (transitively) mentions. Unreferenced defs are dropped.
+    //
+    // The naive shape is O(|bodies|²) — for each body, walk every other body's
+    // name through a tree-traversing `mentions_name`. With 200+ outputs and
+    // 40K-ish bodies, that's catastrophic. Instead: walk each body's tree ONCE,
+    // collecting all 0-arity application names into a HashSet, then intersect.
     let mut reachable: HashSet<String> = output_set.clone();
     let mut queue: Vec<String> = outputs.to_vec();
     while let Some(v) = queue.pop() {
         let Some(b) = bodies.get(&v) else { continue };
         let exprs = body_exprs(b);
-        for u in bodies.keys() {
-            if u == &v || reachable.contains(u) {
+        let mut mentioned: HashSet<String> = HashSet::new();
+        for &e in &exprs {
+            collect_mentioned_names(ctx, e, &mut mentioned);
+        }
+        for u in &mentioned {
+            if !bodies.contains_key(u) || reachable.contains(u) {
                 continue;
             }
-            if exprs.iter().any(|&e| mentions_name(ctx, e, u)) {
-                reachable.insert(u.clone());
-                queue.push(u.clone());
-            }
+            reachable.insert(u.clone());
+            queue.push(u.clone());
         }
     }
     bodies.retain(|k, _| reachable.contains(k));
@@ -797,16 +890,20 @@ unsafe fn topo_order(
 ) -> Option<Vec<String>> {
     let mut indeg: HashMap<String, usize> = outputs.iter().map(|v| (v.clone(), 0)).collect();
     let mut succ: HashMap<String, Vec<String>> = HashMap::new();
+    let outputs_set: HashSet<&str> = outputs.iter().map(|s| s.as_str()).collect();
     for v in outputs {
         let exprs = body_exprs(bodies.get(v)?);
-        for other in outputs {
-            if other == v {
+        // Single-pass name collect: O(tree size) vs the naive O(N × tree size).
+        let mut mentioned: HashSet<String> = HashSet::new();
+        for &e in &exprs {
+            collect_mentioned_names(ctx, e, &mut mentioned);
+        }
+        for other in mentioned.iter() {
+            if other == v || !outputs_set.contains(other.as_str()) {
                 continue;
             }
-            if exprs.iter().any(|&e| mentions_name(ctx, e, other)) {
-                *indeg.get_mut(v).unwrap() += 1;
-                succ.entry(other.clone()).or_default().push(v.clone());
-            }
+            *indeg.get_mut(v).unwrap() += 1;
+            succ.entry(other.clone()).or_default().push(v.clone());
         }
     }
     let mut ready: Vec<String> = indeg.iter().filter(|(_, &d)| d == 0).map(|(n, _)| n.clone()).collect();
@@ -828,7 +925,40 @@ unsafe fn topo_order(
     if order.len() == outputs.len() {
         Some(order)
     } else {
-        None // cycle — not function-shaped
+        // Cycle detected — the remaining bodies have nonzero indegree.
+        if std::env::var("EVIDENT_FUNCTIONIZE_WHY").ok().as_deref() == Some("1") {
+            let stuck: HashSet<String> = indeg.iter()
+                .filter(|(_, &d)| d > 0)
+                .map(|(n, _)| n.clone())
+                .collect();
+            eprintln!("[functionizer-why] topo_order: cycle ({} of {} stuck)",
+                stuck.len(), outputs.len());
+            // Build reverse edges (predecessors) inside stuck set: for each v
+            // in stuck, find which stuck deps it points TO via succ.
+            // succ[u] = [v ...] means u's value is needed by v (v depends on u).
+            let mut deps: HashMap<&str, Vec<&str>> = HashMap::new();
+            for (u, vs) in &succ {
+                if !stuck.contains(u) { continue; }
+                for v in vs {
+                    if stuck.contains(v) {
+                        deps.entry(v.as_str()).or_default().push(u.as_str());
+                    }
+                }
+            }
+            // Print all NON-synthesized stuck vars (filter out __call/__wr_).
+            // Synthesized intermediates are noise; the real cycle root is in
+            // the user-visible vars.
+            let mut sorted: Vec<&String> = stuck.iter()
+                .filter(|n| !n.contains("__call") && !n.contains("__wr_"))
+                .collect();
+            sorted.sort();
+            eprintln!("[functionizer-why]   non-synthesized stuck vars ({}):", sorted.len());
+            for n in &sorted {
+                let d = deps.get(n.as_str()).map(|v| v.join(", ")).unwrap_or_default();
+                eprintln!("[functionizer-why]   {} ← [{}]", n, &d[..d.len().min(120)]);
+            }
+        }
+        None
     }
 }
 
