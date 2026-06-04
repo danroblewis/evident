@@ -48,6 +48,53 @@
 
 import "compiler/parser.ev"
 
+-- ── Nested-Seq payload field types (grammar wave 4g, Blocker 2) ───
+-- A variant payload field whose type is `Seq(T)` does NOT lower to the
+-- field type string verbatim — `Seq(LibArg)` is not a Z3 sort. Bootstrap
+-- (runtime/src/runtime/register_enums.rs::generate_internal_cons_helpers)
+-- lowers it to a Cons-shaped helper datatype `__SeqOf_T` and types the
+-- accessor with that name:
+--
+--   (declare-datatypes ((__SeqOf_LibArg 0))
+--     (((__Empty_LibArg) (__Cell_LibArg (head LibArg) (tail __SeqOf_LibArg)))))
+--   …  (LibCall__f2 __SeqOf_LibArg)  …
+--
+-- (Verified byte-for-byte against `evident emit` on Effect — see
+-- docs/plans/grammar-wave4g.md.) SeqEltType recognises the `Seq(T)`
+-- shape and extracts T; FieldSortName maps a raw field-type string to the
+-- accessor SORT name (identity for primitives / plain enums, `__SeqOf_T`
+-- for a Seq payload). The driver emits the helper datatype itself.
+--
+-- All locals are `set_`/`fsn_`-prefixed to avoid the composition
+-- body-local name leak (memory: project_claim_composition_leaks_body_locals).
+claim SeqEltType
+    set_ty ∈ String
+    set_is_seq ∈ Bool
+    set_elt ∈ String
+    set_pre ∈ String = substr(set_ty, 0, 4)
+    set_is_seq = (set_pre = "Seq(")
+    set_ilen ∈ Int = #set_ty - 5
+    set_elt = (set_is_seq ? substr(set_ty, 4, set_ilen) : "")
+
+claim FieldSortName
+    fsn_ty ∈ String
+    fsn_out ∈ String
+    fsn_is_seq ∈ Bool
+    fsn_elt ∈ String
+    SeqEltType(set_ty ↦ fsn_ty, set_is_seq ↦ fsn_is_seq, set_elt ↦ fsn_elt)
+    fsn_out = (fsn_is_seq ? "__SeqOf_" ++ fsn_elt : fsn_ty)
+
+-- SeqHelperBlock — the `(declare-datatypes ((__SeqOf_T 0)) …)` Cons helper
+-- block for a Seq-payload element type T, byte-identical to bootstrap's
+-- generate_internal_cons_helpers output. `elt` is the (non-empty) element
+-- type name; an empty `elt` yields the empty string (no helper needed).
+claim SeqHelperBlock
+    shb_elt ∈ String
+    shb_out ∈ String
+    shb_out = (shb_elt = "" ? ""
+        : "(declare-datatypes ((__SeqOf_" ++ shb_elt ++ " 0)) (((__Empty_" ++ shb_elt
+          ++ ") (__Cell_" ++ shb_elt ++ " (head " ++ shb_elt ++ ") (tail __SeqOf_" ++ shb_elt ++ ")))))")
+
 -- VariantText — render one EnumVariantDecl as its SMT-LIB form.
 --
 -- For C1 the only supported shape is EVDecl(name), which produces
@@ -111,9 +158,19 @@ claim VariantText
         EVFType(s) ⇒ s
         EVFNone ⇒ ""
 
-    vt_a0 ∈ String = (vt_has0 ? " (" ++ name ++ "__f0 " ++ vt_t0 ++ ")" : "")
-    vt_a1 ∈ String = (vt_has1 ? " (" ++ name ++ "__f1 " ++ vt_t1 ++ ")" : "")
-    vt_a2 ∈ String = (vt_has2 ? " (" ++ name ++ "__f2 " ++ vt_t2 ++ ")" : "")
+    -- Map each raw field-type string to its accessor SORT name, so a
+    -- `Seq(T)` payload renders with the `__SeqOf_T` Cons-helper sort
+    -- (wave 4g, Blocker 2); identity for primitives / plain enums.
+    vt_s0 ∈ String
+    FieldSortName(fsn_ty ↦ vt_t0, fsn_out ↦ vt_s0)
+    vt_s1 ∈ String
+    FieldSortName(fsn_ty ↦ vt_t1, fsn_out ↦ vt_s1)
+    vt_s2 ∈ String
+    FieldSortName(fsn_ty ↦ vt_t2, fsn_out ↦ vt_s2)
+
+    vt_a0 ∈ String = (vt_has0 ? " (" ++ name ++ "__f0 " ++ vt_s0 ++ ")" : "")
+    vt_a1 ∈ String = (vt_has1 ? " (" ++ name ++ "__f1 " ++ vt_s1 ++ ")" : "")
+    vt_a2 ∈ String = (vt_has2 ? " (" ++ name ++ "__f2 " ++ vt_s2 ++ ")" : "")
 
     out = (is_decl  ? "(" ++ name ++ ")"
         : is_declp ? "(" ++ name ++ vt_a0 ++ vt_a1 ++ vt_a2 ++ ")"
