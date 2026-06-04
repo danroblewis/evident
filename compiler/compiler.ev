@@ -356,6 +356,10 @@ claim main
     --   otherwise                 → scalar
     r_l1 ∈ TokenList
     TLTl(l ↦ _rem, out ↦ r_l1)
+    r_t0 ∈ Token
+    TLHd(l ↦ _rem, out ↦ r_t0)
+    r_t1 ∈ Token
+    TLHd(l ↦ r_l1, out ↦ r_t1)
     r_l2 ∈ TokenList
     TLTl(l ↦ r_l1, out ↦ r_l2)
     r_l3 ∈ TokenList
@@ -428,27 +432,148 @@ claim main
     -- effects-literal length (the `effects ∈ Seq(Effect) = ⟨…⟩` state field).
     sel_eff ∈ Int = (mem_is_ctor ? cts_eff_len : 0)
 
-    chunk ∈ String = (sel_pinned ? sel_decl ++ "\n" ++ sel_assert : sel_decl)
+    -- ══ Declare-dedup (wave 4l, Item 1 support) ══════════════════
+    -- Bootstrap's declare path is idempotent: re-declaring a name already in
+    -- the env is a no-op (declare.rs early-return). The self-hosted compiler
+    -- emits TEXT, so a second `(declare-fun x …)` would be a Z3 duplicate.
+    -- This matters once composition inlines a callee whose body re-declares a
+    -- caller variable (names-match). We track declared single names in `_decll`
+    -- (a `|name|`-delimited string) and, on a duplicate, suppress the decl line
+    -- and the manifest field, emitting only any bound/pin assertion. A
+    -- multi-name field (contains a space) is left alone (rare in callees).
+    sel_field_colon ∈ Int = index_of(sel_field, ":", 0)
+    sel_field_name ∈ String = (sel_field_colon < 0 ? "" : substr(sel_field, 0, sel_field_colon))
+    sel_field_space ∈ Int = index_of(sel_field, " ", 0)
+    sel_declname ∈ String = (sel_field_space ≥ 0 ? "" : sel_field_name)
+    decll  ∈ String
+    _decll ∈ String
+    dup_decl ∈ Bool = ((sel_declname ≠ "") ∧ (index_of(_decll, "|" ++ sel_declname ++ "|", 0) ≥ 0))
 
-    claim_done ∈ Bool = (in_claim_run ∧ (¬sel_ok))
+    chunk_raw ∈ String = (dup_decl ? sel_assert
+        : (sel_pinned ? sel_decl ++ "\n" ++ sel_assert : sel_decl))
+    emit_chunk ∈ Bool = (chunk_raw ≠ "")
+
+    -- ══ Lone-name composition inliner (wave 4l, Item 1) ══════════
+    -- A bare Ident body line whose next token is NOT a membership/assert
+    -- operator inlines the named claim's body (CLAUDE.md "Composition
+    -- mechanisms", the bare-`ClaimName` form). The callee's body tokens live
+    -- in `_fwd`, not in this claim's `_rem`, so we cannot inline in
+    -- MembershipStep — the driver scans `_fwd` (pmode 4 below) for
+    -- `claim <name>`, collects its body to the next top-level keyword, and
+    -- splices it onto the front of `_rem`, then resumes the membership walk.
+    -- Composition is names-match, so spliced body-locals refer to the SAME
+    -- vars as the caller — no α-prefixing (the inverse of the explicit
+    -- slot-bound hazard in project_claim_composition_leaks_body_locals); the
+    -- callee's duplicate decls are absorbed by the dedup above.
+    r_t0_is_name ∈ Bool = (r_t0 matches Ident(_))
+    r_t1_blocks ∈ Bool = ((r_t1 matches OpIn) ∨ (r_t1 matches Eq) ∨ (r_t1 matches Comma)
+        ∨ (r_t1 matches Lt) ∨ (r_t1 matches Gt) ∨ (r_t1 matches OpLe) ∨ (r_t1 matches OpGe)
+        ∨ (r_t1 matches OpNe) ∨ (r_t1 matches OpImplies) ∨ (r_t1 matches LParen)
+        ∨ (r_t1 matches KwMatches) ∨ (r_t1 matches Question) ∨ (r_t1 matches Plus)
+        ∨ (r_t1 matches Minus) ∨ (r_t1 matches Star) ∨ (r_t1 matches Slash)
+        ∨ (r_t1 matches OpAnd) ∨ (r_t1 matches OpOr))
+    is_lone_line ∈ Bool = (r_t0_is_name ∧ (¬r_t1_blocks))
+    lone_name ∈ String = match r_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    do_inline ∈ Bool = (in_claim_run ∧ (¬mem_is_ctor) ∧ (¬mem_is_match)
+        ∧ (¬mem_is_seq) ∧ is_lone_line)
+
+    -- Inline sub-machine state (pmode 4). iph: 0 search `claim <iname>` in
+    -- _fwd · 1 collect its body (reverse) · 2 transfer (reverse → forward onto
+    -- the saved tail). `itail` is the original `_rem` past the lone name.
+    iph    ∈ Int
+    _iph   ∈ Int
+    iname  ∈ String
+    _iname ∈ String
+    iscan  ∈ TokenList
+    _iscan ∈ TokenList
+    icoll  ∈ TokenList
+    _icoll ∈ TokenList
+    itail  ∈ TokenList
+    _itail ∈ TokenList
+
+    in_inline ∈ Bool = (in_parse ∧ (_pmode = 4))
+    is_hd ∈ Token
+    TLHd(l ↦ _iscan, out ↦ is_hd)
+    is_tl ∈ TokenList
+    TLTl(l ↦ _iscan, out ↦ is_tl)
+    is_hd2 ∈ Token
+    TLHd(l ↦ is_tl, out ↦ is_hd2)
+    is_tl2 ∈ TokenList
+    TLTl(l ↦ is_tl, out ↦ is_tl2)
+    iscan_nil ∈ Bool = match _iscan
+        TLNil ⇒ true
+        _ ⇒ false
+    icoll_hd ∈ Token
+    TLHd(l ↦ _icoll, out ↦ icoll_hd)
+    icoll_tl ∈ TokenList
+    TLTl(l ↦ _icoll, out ↦ icoll_tl)
+    icoll_nil ∈ Bool = match _icoll
+        TLNil ⇒ true
+        _ ⇒ false
+
+    i_hd2_name ∈ String = match is_hd2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    i_found ∈ Bool = (in_inline ∧ (_iph = 0) ∧ (is_hd matches KwClaim) ∧ (i_hd2_name = _iname))
+    i_search_step ∈ Bool = (in_inline ∧ (_iph = 0) ∧ (¬i_found) ∧ (¬iscan_nil))
+    i_search_fail ∈ Bool = (in_inline ∧ (_iph = 0) ∧ iscan_nil)
+    i_hd_is_tlkw ∈ Bool = ((is_hd matches KwClaim) ∨ (is_hd matches KwEnum)
+        ∨ (is_hd matches KwType) ∨ (is_hd matches KwFsm) ∨ (is_hd matches KwSchema))
+    i_collect_done ∈ Bool = (in_inline ∧ (_iph = 1) ∧ (iscan_nil ∨ i_hd_is_tlkw))
+    i_collecting ∈ Bool = (in_inline ∧ (_iph = 1) ∧ (¬iscan_nil) ∧ (¬i_hd_is_tlkw))
+    i_xfer ∈ Bool = (in_inline ∧ (_iph = 2) ∧ (¬icoll_nil))
+    i_xfer_done ∈ Bool = (in_inline ∧ (_iph = 2) ∧ icoll_nil)
+
+    iph = (is_first_tick ? 0
+        : (do_inline ? 0
+        : (i_found ? 1
+        : (i_search_fail ? 2
+        : (i_collect_done ? 2
+        : _iph)))))
+    iname = (is_first_tick ? "" : (do_inline ? lone_name : _iname))
+    iscan = (is_first_tick ? TLNil
+        : (do_inline ? _fwd
+        : (i_found ? is_tl2
+        : (i_search_step ? is_tl
+        : (i_collecting ? is_tl
+        : _iscan)))))
+    icoll = (is_first_tick ? TLNil
+        : (do_inline ? TLNil
+        : (i_collecting ? TLCons(is_hd, _icoll)
+        : (i_xfer ? icoll_tl
+        : _icoll))))
+    itail = (is_first_tick ? TLNil : (do_inline ? sel_rest : _itail))
+
+    claim_done ∈ Bool = (in_claim_run ∧ (¬sel_ok) ∧ (¬do_inline))
 
     rem = (is_first_tick ? TLNil
         : (enter_claim ? items_d2
+        : (do_inline ? _rem
+        : (i_collect_done ? _itail
+        : (i_search_fail ? _itail
+        : (i_xfer ? TLCons(icoll_hd, _rem)
         : (in_claim_run ∧ sel_ok ? sel_rest
-        : _rem)))
+        : _rem)))))))
 
     out  ∈ String
     _out ∈ String
     out = (is_first_tick ? ""
         : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (_out = "" ? chunk : _out ++ "\n" ++ chunk)
+        : (in_claim_run ∧ sel_ok ∧ (¬do_inline) ∧ emit_chunk ? (_out = "" ? chunk_raw : _out ++ "\n" ++ chunk_raw)
         : _out)))
+
+    decll = (is_first_tick ? ""
+        : (enter_claim ? ""
+        : (in_claim_run ∧ sel_ok ∧ (¬do_inline) ∧ (sel_declname ≠ "") ∧ (¬dup_decl) ? _decll ++ "|" ++ sel_declname ++ "|"
+        : _decll)))
 
     fstr  ∈ String
     _fstr ∈ String
     fstr = (is_first_tick ? ""
         : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
+        : (in_claim_run ∧ sel_ok ∧ (¬do_inline) ∧ (¬dup_decl) ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
     -- max-effects accumulator: the maximum effects-literal length seen across
@@ -745,10 +870,12 @@ claim main
         : (enter_enum ? 1
         : (enter_claim ? 2
         : (enter_skip ? 3
+        : (do_inline ? 4
+        : (i_xfer_done ? 2
         : (enum_done ? 0
         : (claim_done ? 0
         : (skip_stop ? 0
-        : _pmode))))))))
+        : _pmode))))))))))
 
     -- ── PHASE transition ──────────────────────────────────────────
     phase = (is_first_tick ? 0
