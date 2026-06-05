@@ -43,4 +43,32 @@ All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` �
 
 ## How to pick up
 
-Next wave should target the multi-line enum variant class first (single fix, 9 wins). Then record-lit (3 wins) and composition+chain (3 wins). After ~95% pass, cutover is mechanical.
+**Root cause of the 9 multiline failures (verified this session):**
+`compiler/sample.ev:871-873` documents the assumption "all enums precede
+the first claim block — by which point `_eacc` is complete." Lang test
+`test_enums_mutual.ev` violates this: enums are interleaved with claims
+in 3 sections. Only the FIRST section's enums (Expr+BinOp) end up in the
+shared `(declare-datatypes ...)` prelude. Subsequent enums (AstExpr,
+AstStmt, TrafficLight, Direction, etc.) are referenced inside per-claim
+push/check-sat/pop blocks WITHOUT being declared as sorts → z3 errors
+on parse → unsat constraints get silently treated as sat (the wrapper
+maps unknown/error → false → sat).
+
+Verified by:
+- Direct probe on a minimal file (TrafficLight + contradictory pin):
+  z3 returns `unsat` correctly.
+- Same shape inside test_enums_mutual.ev: z3 returns `sat` (wrong).
+- The shared prelude has only `Result` and `((Expr 0) (BinOp 0))` —
+  all later enums missing.
+
+The fix is architectural — either scan-first-then-emit (two passes), or
+buffer claim blocks until `all_done` (negates wave 4m's lex-once cost
+saving for large state strings — see same line 850 comment). Pick one.
+
+After this lands, the 9 multiline failures + likely `unsat_mutual_recursion_mismatch`
++ several composition variants close simultaneously. Lang phase →
+~93%+ in one fix.
+
+The other 10 failures are likely distinct classes: record-lit (3),
+composition+chain (2), match-result (1), tuple (1), enum payload (1),
+peculiar `sat_inline_not_match` (1). Spawn waves one-at-a-time.
