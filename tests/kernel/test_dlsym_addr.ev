@@ -1,0 +1,36 @@
+-- Wave 5b — Path A enabler: __dlsym pseudo-library proof.
+--
+-- Resolves the address of `Z3_mk_config` from libz3 without
+-- calling it, then checks the returned pointer is non-null
+-- (any non-zero i64 means dlsym succeeded). Exit 0 if non-null,
+-- 1 otherwise.
+--
+-- Pre-condition: libz3.dylib is on the dyld path (.cargo/config.toml
+-- sets DYLD_LIBRARY_PATH). The wave-5a sugar will exercise the
+-- same library shortly.
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    addr  ∈ Int
+    _addr ∈ Int
+    addr_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    addr = (is_first_tick ? 0
+        : phase = 1 ? addr_capture
+        : _addr)
+
+    -- Z3_mk_config is a function pointer in libz3; non-null = OK.
+    exit_code ∈ Int = (addr ≠ 0 ? 0 : 1)
+
+    effects ∈ Seq(Effect) = (phase = 0
+        ? ⟨LibCall("__dlsym", "addr", ⟨ArgStr("libz3"), ArgStr("Z3_mk_config")⟩)⟩
+        : ⟨Exit(exit_code)⟩)

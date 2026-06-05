@@ -146,6 +146,34 @@ claim BuildZ3SolverAssert(ctx_h, solver_h, ast_h ∈ Int, eff ∈ Effect)
 claim BuildZ3SolverCheck(ctx_h, solver_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_solver_check", ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)
 
+-- ── Wave 5b — libffi-in-Evident (Path A) sugar ───────────────────
+-- The kernel's __dlsym pseudo-library resolves the address of a
+-- named symbol WITHOUT calling it. This lets an Evident FSM call
+-- libffi's own ffi_prep_cif/ffi_call with the addresses of data
+-- symbols like ffi_type_sint64 / ffi_type_pointer (which the
+-- generic LibCall path can't return because it always invokes the
+-- symbol it resolves). See docs/plans/wave-5b-trampoline-ffi-in-
+-- evident.md §2.
+
+-- __dlsym addr(lib, sym) → i64 pointer
+claim BuildDlsymAddr(lib ∈ String, sym ∈ String, eff ∈ Effect)
+    eff = LibCall("__dlsym", "addr", ⟨ArgStr(lib), ArgStr(sym)⟩)
+
+-- libffi: ffi_prep_cif(*cif, abi=1 (FFI_DEFAULT_ABI), nargs, *rtype, **atypes)
+-- All arguments are pointer/int handles obtained from prior LibCalls.
+-- Returns ffi_status (0 = FFI_OK).
+claim BuildFfiPrepCif(cif_p, nargs, rtype_p, atypes_p ∈ Int, eff ∈ Effect)
+    eff = LibCall("libffi", "ffi_prep_cif",
+        ⟨ArgInt(cif_p), ArgInt(1), ArgInt(nargs),
+         ArgInt(rtype_p), ArgInt(atypes_p)⟩)
+
+-- libffi: ffi_call(*cif, *fn, *rvalue, **avalue) — invoke the
+-- pre-prepared call. Pass each pointer as an ArgInt handle. No
+-- return value (the return lands in *rvalue, read back via __mem).
+claim BuildFfiCall(cif_p, fn_p, rvalue_p, avalue_p ∈ Int, eff ∈ Effect)
+    eff = LibCall("libffi", "ffi_call",
+        ⟨ArgInt(cif_p), ArgInt(fn_p), ArgInt(rvalue_p), ArgInt(avalue_p)⟩)
+
 -- For result-shape branching, the FSM author writes `matches`
 -- inline: `is_string = (r matches StringResult(_))`. Recognizer
 -- claims (`IsString(r, out)`) hit a translator gap on constructor

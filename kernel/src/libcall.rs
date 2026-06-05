@@ -61,6 +61,9 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, Strin
     if lib_name == "__mem" {
         return mem_call(fn_name, args);
     }
+    if lib_name == "__dlsym" {
+        return dlsym_addr_call(fn_name, args);
+    }
 
     let lib_path = resolve_lib_path(lib_name);
 
@@ -186,6 +189,60 @@ fn mem_call(fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
         }
         other => Err(format!("__mem: unknown function `{other}` (only read_long/write_long)")),
     }
+}
+
+/// The `__dlsym` pseudo-library: dlsym a symbol from a named library and
+/// return its ADDRESS as i64, without calling it.
+///
+/// Wave 5b Path A enabler. libffi's own dispatch (`ffi_prep_cif`, `ffi_call`)
+/// needs the addresses of data symbols like `ffi_type_sint64` and
+/// `ffi_type_pointer` so it can describe a CIF — and those are exactly the
+/// shapes the `LibCall(lib, fn, …)` path cannot return because it always
+/// *calls* the symbol it resolves. This adds a single shape: "give me the
+/// address of <lib>.<sym> without invoking it."
+///
+/// API:
+///   LibCall("__dlsym", "addr", ⟨ArgStr(lib), ArgStr(sym)⟩) → IntResult(ptr)
+fn dlsym_addr_call(fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
+    if fn_name != "addr" {
+        return Err(format!(
+            "__dlsym: unknown function `{fn_name}` (only `addr`)"
+        ));
+    }
+    let str_arg = |i: usize| -> Result<&str, String> {
+        match args.get(i) {
+            Some(LibArg::Str(s)) => Ok(s.as_str()),
+            Some(other) => Err(format!(
+                "__dlsym::addr arg {i} must be ArgStr, got {other:?}"
+            )),
+            None => Err(format!("__dlsym::addr missing arg {i}")),
+        }
+    };
+    let lib_name = str_arg(0)?;
+    let sym_name = str_arg(1)?;
+    let lib_path = resolve_lib_path(lib_name);
+
+    let mut guard = LIB_CACHE.lock().map_err(|e| format!("lib cache poisoned: {e}"))?;
+    let cache = guard.get_or_insert_with(HashMap::new);
+    if !cache.contains_key(&lib_path) {
+        let lib = unsafe {
+            Library::new(&lib_path).map_err(|e| format!("dlopen({lib_path}): {e}"))?
+        };
+        cache.insert(lib_path.clone(), lib);
+    }
+    let lib = cache.get(&lib_path).expect("just inserted");
+    let sym_c = CString::new(sym_name).map_err(|e| format!("symbol has nul byte: {e}"))?;
+    let addr: i64 = unsafe {
+        let sym: libloading::os::unix::Symbol<*const c_void> = lib
+            .get(sym_c.as_bytes_with_nul())
+            .map_err(|e| format!("dlsym({sym_name}): {e}"))?;
+        // `*sym` is the raw symbol pointer (a `*const c_void`); cast its
+        // address to i64. `into_raw` returns a non-Copy slot wrapper, so
+        // hold it via `&` and read the pointer through it.
+        let raw = sym.into_raw();
+        *(&raw as *const _ as *const usize) as i64
+    };
+    Ok(addr)
 }
 
 /// Map the user-given library name to a path libloading can dlopen.
