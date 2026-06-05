@@ -251,6 +251,16 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     stats.print_load_report();
     let timing_on = stats.timing_on();
 
+    // Per-tick hot-shape attribution (wave 4r, diagnostic-only). Opt-in via
+    // EVIDENT_FUNCTIONIZE_TIMING=1. Splits the monolithic body into bands and
+    // measures each band's MARGINAL incremental Z3 solve cost on a tick-0 pin
+    // set, plus a per-band shape histogram and the output var-names each band
+    // defines (for mapping bands back to compiler.ev claims). One-shot before
+    // the loop; does NOT change the run (the loop below still solves normally).
+    if std::env::var("EVIDENT_FUNCTIONIZE_TIMING").is_ok() {
+        band_profile(ctx, &body, &decl_preamble, manifest);
+    }
+
     let mut prev_state: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
     let mut prev_results: Vec<Res> = Vec::new();
     let mut is_first = true;
@@ -479,6 +489,184 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     }
     Z3_del_context(ctx);
     Err(format!("tick limit ({TICK_LIMIT}) reached"))
+}
+
+/// Coarse shape class of a single (simplified) body assertion, derived from a
+/// substring scan of its rendered form. An assertion can hit several markers;
+/// we attribute it to the heaviest theory present, String > Datatype/match >
+/// Array/Seq > Arith/Bool, since that is the order Z3 theory-combination cost
+/// tends to follow on this body.
+fn classify_assert(rendered: &str) -> &'static str {
+    if rendered.contains("str.") || rendered.contains("seq.") {
+        "string"
+    } else if rendered.contains("(is-") || rendered.contains("__f")
+        || rendered.contains("TLCons") || rendered.contains("TLNil")
+    {
+        "datatype"
+    } else if rendered.contains("select") || rendered.contains("store") {
+        "array"
+    } else {
+        "arith"
+    }
+}
+
+/// If `a` is `(= <const> _)` return the const's decl name (the output/field a
+/// band defines), else None. Used to map an assertion band back to the
+/// compiler.ev claim whose output it carries.
+unsafe fn defined_var_name(ctx: Z3_context, a: Z3_ast) -> Option<String> {
+    if Z3_get_ast_kind(ctx, a) != AstKind::App {
+        return None;
+    }
+    let app = Z3_to_app(ctx, a);
+    let decl = Z3_get_app_decl(ctx, app);
+    if Z3_get_decl_kind(ctx, decl) != DeclKind::EQ {
+        return None;
+    }
+    if Z3_get_app_num_args(ctx, app) != 2 {
+        return None;
+    }
+    let lhs = Z3_get_app_arg(ctx, app, 0);
+    if Z3_get_ast_kind(ctx, lhs) != AstKind::App {
+        return None;
+    }
+    let lapp = Z3_to_app(ctx, lhs);
+    if Z3_get_app_num_args(ctx, lapp) != 0 {
+        return None;
+    }
+    let lname = Z3_get_decl_name(ctx, Z3_get_app_decl(ctx, lapp));
+    Some(decode_sym(ctx, lname))
+}
+
+/// Wave 4r per-tick hot-shape attribution (diagnostic-only, env-gated).
+///
+/// The whole body is re-solved by Z3 every tick; Z3 exposes no per-assertion
+/// cost. We approximate it with a CUMULATIVE-PREFIX band sweep: assert the
+/// first k bands of the body plus a fixed tick-0 pin set and time the solve.
+/// `marginal[k] = solve(k bands) - solve(k-1 bands)` attributes incremental
+/// solve cost to band k. Every prefix is SAT (dropping body assertions only
+/// relaxes a SAT problem), so each prefix solve is a real, comparable solve.
+///
+/// Tunables (env): EVIDENT_FUNCTIONIZE_TIMING_BANDS (default 24),
+/// EVIDENT_FUNCTIONIZE_TIMING_REPS (default 1; min over reps cuts noise).
+unsafe fn band_profile(
+    ctx: Z3_context,
+    body: &[Z3_ast],
+    decl_preamble: &str,
+    manifest: &Manifest,
+) {
+    let n = body.len();
+    if n == 0 {
+        eprintln!("[timing] empty body — nothing to profile");
+        return;
+    }
+    let bands: usize = std::env::var("EVIDENT_FUNCTIONIZE_TIMING_BANDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(24)
+        .max(1)
+        .min(n);
+    let reps: usize = std::env::var("EVIDENT_FUNCTIONIZE_TIMING_REPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1)
+        .max(1);
+    let band_size = n.div_ceil(bands);
+
+    // Fixed tick-0 pin set: empty last_results + is_first_tick. Built and
+    // parsed like a real tick's pins so symbols intern to the body's vars.
+    let mut pins = String::with_capacity(decl_preamble.len() + 64);
+    pins.push_str(decl_preamble);
+    pins.push_str("(assert (= last_results__len 0))\n");
+    pins.push_str("(assert is_first_tick)\n");
+    let (pin_vec, pin_asts) = match parse_pins(ctx, &pins) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("[timing] pin parse failed: {e}");
+            return;
+        }
+    };
+
+    eprintln!(
+        "[timing] band profile: {n} body asserts / {bands} bands (~{band_size} each) / {reps} rep(s)"
+    );
+    eprintln!("[timing] cumulative-prefix marginal solve cost (tick-0 pins):");
+
+    // Cumulative-prefix solve cost. cum[k] = ms to solve the first k bands.
+    let mut cum = vec![0.0f64; bands + 1];
+    for k in 1..=bands {
+        let upper = (k * band_size).min(n);
+        let mut best = f64::INFINITY;
+        for _ in 0..reps {
+            let s = Z3_mk_solver(ctx);
+            Z3_solver_inc_ref(ctx, s);
+            for &a in &body[0..upper] {
+                Z3_solver_assert(ctx, s, a);
+            }
+            for &a in &pin_asts {
+                Z3_solver_assert(ctx, s, a);
+            }
+            let t = Instant::now();
+            let _ = Z3_solver_check(ctx, s);
+            let ms = t.elapsed().as_secs_f64() * 1000.0;
+            Z3_solver_dec_ref(ctx, s);
+            if ms < best {
+                best = ms;
+            }
+        }
+        cum[k] = best;
+    }
+
+    // Per-band: marginal ms, shape histogram, and defined-output var names.
+    let mut tot_string = 0usize;
+    let mut tot_dt = 0usize;
+    let mut tot_arr = 0usize;
+    let mut tot_arith = 0usize;
+    for k in 1..=bands {
+        let lo = (k - 1) * band_size;
+        let hi = (k * band_size).min(n);
+        let marginal = cum[k] - cum[k - 1];
+        let (mut c_str, mut c_dt, mut c_arr, mut c_ar) = (0, 0, 0, 0);
+        let mut names: Vec<String> = Vec::new();
+        for &a in &body[lo..hi] {
+            let rp = Z3_ast_to_string(ctx, a);
+            let rendered = if rp.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(rp).to_string_lossy().into_owned()
+            };
+            match classify_assert(&rendered) {
+                "string" => c_str += 1,
+                "datatype" => c_dt += 1,
+                "array" => c_arr += 1,
+                _ => c_ar += 1,
+            }
+            if names.len() < 6 {
+                if let Some(nm) = defined_var_name(ctx, a) {
+                    if !names.contains(&nm) {
+                        names.push(nm);
+                    }
+                }
+            }
+        }
+        tot_string += c_str;
+        tot_dt += c_dt;
+        tot_arr += c_arr;
+        tot_arith += c_ar;
+        eprintln!(
+            "  band {k:2}/{bands} [{lo:6}..{hi:6}]  marginal {marginal:8.1} ms  cum {:8.1} ms  | str {c_str:5} dt {c_dt:5} arr {c_arr:4} ari {c_ar:5} | {}",
+            cum[k],
+            names.join(" "),
+        );
+    }
+    eprintln!(
+        "[timing] full-body solve: {:.1} ms   shape totals: str {} / dt {} / arr {} / arith {} (of {})",
+        cum[bands], tot_string, tot_dt, tot_arr, tot_arith, n
+    );
+    eprintln!(
+        "[timing] note: marginal<0 ⇒ added constraints sped the solve (extra ground facts) — read as ~0."
+    );
+    let _ = manifest;
+    Z3_ast_vector_dec_ref(ctx, pin_vec);
 }
 
 /// Parse the per-tick pin string into the list of equality ASTs. Returns the
