@@ -1,0 +1,16 @@
+-- Seam smoke: the simplest possible program that proves the
+-- self-hosted compiler is rendering the effects body of a claim.
+--
+-- If `effects = ⟨Exit(0)⟩` survives the lex → parse → translate
+-- pipeline, the emitted .smt2 contains BOTH `(declare-fun effects`
+-- AND `(Exit 0)`. If the renderer drops the constraint (the gap
+-- documented in STATE.md), the .smt2 stops at `is_first_tick` and
+-- both substrings are missing. The smoke runner asserts presence
+-- of both.
+--
+-- This file is small on purpose — the seam takes ~3 s per emit.
+
+import "stdlib/kernel.ev"
+
+claim main
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -114,6 +114,23 @@ if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq
     echo
 fi
 
+# ── Phase 6: seam smoke (regression test for the self-hosted path) ──
+# Runs whenever compiler.smt2 is present. ~4 seconds. Catches the
+# silent-drop class of bug (a constraint vanishing because a renderer
+# in compiler/ doesn't handle the shape) for the most important
+# constraint in the language: `effects = ⟨…⟩`. See STATE.md.
+if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
+    if [ -f compiler.smt2 ]; then
+        phase "Phase 6: seam smoke (kernel + compiler.smt2 on tests/seam/)"
+        if scripts/run-seam-smoke.sh 2>&1 | tee /tmp/evident-seam.log ; then
+            ok "seam_smoke"
+        else
+            fail "seam_smoke"; failures+=("seam_smoke")
+        fi
+        echo
+    fi
+fi
+
 elapsed=$(( $(date +%s) - started ))
 if [ ${#failures[@]} -eq 0 ]; then
     echo "${GREEN}${BOLD}All phases passed.${OFF} ${DIM}(${elapsed}s)${OFF}"
