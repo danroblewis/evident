@@ -745,19 +745,23 @@ unsafe fn extract_program(
         // know which one is the output. The mentions_name / contains_key gates
         // in the parent branches below filter out wrong-direction captures.
         if let Some((bv1, neg1, bv2, neg2)) = split_not_eq_bool_both(ctx, a) {
-            // Both sides are uninterp consts (symmetric XOR shape). Capturing
-            // BOTH directions creates a 2-var cycle (e.g. is_first_tick =
-            // (not got_path) AND got_path = (not is_first_tick)) that breaks
-            // topo_order. Prefer the side that's an OUTPUT — the kernel needs
-            // to compute outputs; non-output vars are externally constrained
-            // or feed into outputs via different paths. If both or neither
-            // are outputs, capture only the first (deterministic).
+            // Two sub-cases:
+            //   (a) BOTH sides are uninterp consts (symmetric XOR shape) —
+            //       capturing both creates a 2-var cycle (e.g.
+            //       `is_first_tick = (not got_path)` AND `got_path = (not
+            //       is_first_tick)`). Prefer the side that's an OUTPUT.
+            //   (b) Only ONE side is an uninterp const (the other is a
+            //       boolean expression like `(= s "")`) — capture that side
+            //       unconditionally; there's no cycle risk because the
+            //       expression isn't a separate variable.
+            let bv1_const = is_uninterp_const(ctx, bv1);
+            let bv2_const = is_uninterp_const(ctx, bv2);
+            let prefer_outputs = bv1_const && bv2_const;
             let mut captured = false;
-            for (bv, neg) in [(bv1, neg1), (bv2, neg2)] {
-                if !is_uninterp_const(ctx, bv) { continue; }
+            for (bv, neg, is_const) in [(bv1, neg1, bv1_const), (bv2, neg2, bv2_const)] {
+                if !is_const { continue; }
                 let Some(name) = ast_app_name(ctx, bv) else { continue };
-                // Only capture if this side is an output.
-                if !output_set.contains(&name) { continue; }
+                if prefer_outputs && !output_set.contains(&name) { continue; }
                 if !raw.scalar.contains_key(&name) && !mentions_name(ctx, neg, &name) {
                     raw.scalar.insert(name, neg);
                     captured = true;
@@ -765,7 +769,7 @@ unsafe fn extract_program(
                 }
             }
             if captured { continue; }
-            // Neither side was an output (or already covered); fall through.
+            // Neither side captured; fall through.
         }
         let Some((l, r)) = split_equality(ctx, a) else {
             raw.predicates.push(a);
@@ -1060,25 +1064,30 @@ pub unsafe fn functionize(
     let prog = Program { steps, predicates, jit_count, interp_count, _keepalive: keepalive };
 
     // ── Verify on tick 0 and tick 1 against a real Z3 solve. ──
-    let empty_prev: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
-    let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
-        refuse!("verify: tick-0 Z3 solve failed");
-    };
-    let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
-        refuse!("verify: tick-0 eval refused (unsupported op)");
-    };
-    if !outputs_match(manifest, &z3_0, &mine_0) {
-        refuse!("verify: tick-0 mismatch vs Z3");
-    }
-    let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
-    let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
-        refuse!("verify: tick-1 Z3 solve failed");
-    };
-    let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest)) else {
-        refuse!("verify: tick-1 eval refused (unsupported op)");
-    };
-    if !outputs_match(manifest, &z3_1, &mine_1) {
-        refuse!("verify: tick-1 mismatch vs Z3");
+    // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass verification while
+    // diagnosing eval coverage gaps. Use ONLY for diagnostic work — bypassing
+    // verify risks silent divergence between JIT and Z3 results.
+    if std::env::var("EVIDENT_FUNCTIONIZE_SKIP_VERIFY").ok().as_deref() != Some("1") {
+        let empty_prev: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
+        let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
+            refuse!("verify: tick-0 Z3 solve failed");
+        };
+        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
+            refuse!("verify: tick-0 eval refused (unsupported op)");
+        };
+        if !outputs_match(manifest, &z3_0, &mine_0) {
+            refuse!("verify: tick-0 mismatch vs Z3");
+        }
+        let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
+        let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
+            refuse!("verify: tick-1 Z3 solve failed");
+        };
+        let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest)) else {
+            refuse!("verify: tick-1 eval refused (unsupported op)");
+        };
+        if !outputs_match(manifest, &z3_1, &mine_1) {
+            refuse!("verify: tick-1 mismatch vs Z3");
+        }
     }
 
     // Fast path engaged — populate the diagnostic counts. J/I count *steps*
@@ -1099,6 +1108,11 @@ pub unsafe fn functionize(
 pub fn build_inputs(is_first: bool, prev_state: &[Option<Sv>], manifest: &Manifest) -> HashMap<String, Sv> {
     let mut env = HashMap::new();
     env.insert("is_first_tick".to_string(), Sv::Bool(is_first));
+    // Seed the kernel's effect-result history. On tick 0 these are unconstrained
+    // by the body and the kernel injects no pins; an empty Seq is the only
+    // value that satisfies `last_results__len >= 0` without contradiction.
+    env.insert("last_results__len".to_string(), Sv::Int(0));
+    env.insert("last_results".to_string(), Sv::Seq(Vec::new()));
     for (i, (name, ty)) in manifest.state_fields.iter().enumerate() {
         let key = format!("_{name}");
         if is_first {
@@ -1106,11 +1120,20 @@ pub fn build_inputs(is_first: bool, prev_state: &[Option<Sv>], manifest: &Manife
             // type-correct sentinel so a JIT step that eagerly loads `_<name>`
             // (e.g. the untaken `ite` arm) has a slot. Under the is_first
             // branch the value is never observed.
-            if ty == "Int" {
-                env.insert(key, Sv::Int(0));
-            } else if ty == "Bool" {
-                env.insert(key, Sv::Bool(false));
-            }
+            let sentinel = match ty.as_str() {
+                "Int" => Sv::Int(0),
+                "Bool" => Sv::Bool(false),
+                "String" => Sv::Str(String::new()),
+                // For user datatypes (TokenList, EnumVariantDecl, …) supply
+                // an Sv::Datatype with the type's NAME as the constructor —
+                // the eval interpreter compares `actual == want` on
+                // recognizers; this sentinel matches no real variant so any
+                // recognizer returns false (the dead-arm convention). Field
+                // count 0 since accessor calls on the sentinel return None
+                // (handled by the caller fall-through).
+                _ => Sv::Datatype(format!("_sentinel_{ty}"), Vec::new()),
+            };
+            env.insert(key, sentinel);
         } else if let Some(v) = &prev_state[i] {
             env.insert(key, v.clone());
         }

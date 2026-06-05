@@ -53,7 +53,11 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
         DeclKind::UNINTERPRETED => {
             if ch.is_empty() {
                 let name = ast_app_name(ctx, a)?;
-                env.get(&name).cloned()
+                let r = env.get(&name).cloned();
+                if r.is_none() && std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/eval] missing env entry: {name}");
+                }
+                r
             } else {
                 None
             }
@@ -137,12 +141,19 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
             }
             Some(Sv::Datatype(name, fields))
         }
-        // `(select rs i)` — index a record-Seq intermediate bound in env.
+        // `(select arr i)` — index a Seq.
+        // SMT-LIB arrays are total; out-of-range reads return an unconstrained
+        // value. We model that with an OOB sentinel datatype — no recognizer
+        // matches it, so a DT_IS gate flips to the else branch (the convention
+        // for "this slot is empty" in the kernel's last_results pattern).
         DeclKind::SELECT => {
             let arr = eval_scalar(ctx, ch[0], env)?;
             let idx = as_int(eval_scalar(ctx, ch[1], env)?)?;
             match arr {
-                Sv::Seq(elems) if idx >= 0 => elems.into_iter().nth(idx as usize),
+                Sv::Seq(elems) if idx >= 0 => match elems.into_iter().nth(idx as usize) {
+                    Some(v) => Some(v),
+                    None => Some(Sv::Datatype("_oob_sentinel".to_string(), Vec::new())),
+                },
                 _ => None,
             }
         }
@@ -152,6 +163,155 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
             let Sv::Datatype(_, fields) = v else { return None };
             let fi = accessor_field_index(ctx, a)?;
             fields.into_iter().nth(fi)
+        }
+        // `(str.len s)` — Z3 SEQ_LENGTH on a string returns the number of
+        // unicode code points.
+        DeclKind::SEQ_LENGTH => {
+            let v = eval_scalar(ctx, ch[0], env)?;
+            match v {
+                Sv::Str(s) => Some(Sv::Int(s.chars().count() as i64)),
+                _ => None,
+            }
+        }
+        // `(str.++ a b ...)` — string concatenation.
+        DeclKind::SEQ_CONCAT => {
+            let mut out = String::new();
+            for &c in &ch {
+                let v = eval_scalar(ctx, c, env)?;
+                let Sv::Str(s) = v else { return None };
+                out.push_str(&s);
+            }
+            Some(Sv::Str(out))
+        }
+        // `(str.substr s offset len)` — Z3 SEQ_EXTRACT on a string returns the
+        // substring starting at `offset` of length `len` (counted in code points).
+        // Out-of-range slices clamp to empty per SMT-LIB semantics.
+        DeclKind::SEQ_EXTRACT => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let off = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            let len = as_int(eval_scalar(ctx, ch[2], env)?)?;
+            if off < 0 || len < 0 { return Some(Sv::Str(String::new())); }
+            let chars: Vec<char> = s.chars().collect();
+            let n = chars.len() as i64;
+            if off >= n { return Some(Sv::Str(String::new())); }
+            let end = (off + len).min(n) as usize;
+            let out: String = chars[off as usize..end].iter().collect();
+            Some(Sv::Str(out))
+        }
+        // `(str.indexof s sub off)` — first position of `sub` in `s` starting
+        // search at `off`; -1 if not found.
+        DeclKind::SEQ_INDEX => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let sub = match eval_scalar(ctx, ch[1], env)? { Sv::Str(s) => s, _ => return None };
+            let off = as_int(eval_scalar(ctx, ch[2], env)?)?;
+            if off < 0 { return Some(Sv::Int(-1)); }
+            // Convert codepoint offset to byte offset.
+            let mut byte_off = 0usize;
+            let mut cp_count = 0i64;
+            for (i, _) in s.char_indices() {
+                if cp_count == off { byte_off = i; break; }
+                cp_count += 1;
+                byte_off = s.len(); // sentinel if loop falls off
+            }
+            if cp_count < off { return Some(Sv::Int(-1)); }
+            match s[byte_off..].find(&sub) {
+                Some(b) => {
+                    // Return codepoint position of (byte_off + b).
+                    let target = byte_off + b;
+                    let pos = s[..target].chars().count() as i64;
+                    Some(Sv::Int(pos))
+                }
+                None => Some(Sv::Int(-1)),
+            }
+        }
+        // `(str.contains s sub)` — Z3 SEQ_CONTAINS.
+        DeclKind::SEQ_CONTAINS => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let sub = match eval_scalar(ctx, ch[1], env)? { Sv::Str(s) => s, _ => return None };
+            Some(Sv::Bool(s.contains(&sub)))
+        }
+        // `(str.prefixof a b)` — true iff `a` is a prefix of `b`.
+        DeclKind::SEQ_PREFIX => {
+            let a = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let b = match eval_scalar(ctx, ch[1], env)? { Sv::Str(s) => s, _ => return None };
+            Some(Sv::Bool(b.starts_with(&a)))
+        }
+        // `(str.suffixof a b)` — true iff `a` is a suffix of `b`.
+        DeclKind::SEQ_SUFFIX => {
+            let a = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let b = match eval_scalar(ctx, ch[1], env)? { Sv::Str(s) => s, _ => return None };
+            Some(Sv::Bool(b.ends_with(&a)))
+        }
+        // `(str.at s i)` — codepoint at index i as a 1-char string, or "" if oor.
+        DeclKind::SEQ_AT => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let i = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            if i < 0 { return Some(Sv::Str(String::new())); }
+            match s.chars().nth(i as usize) {
+                Some(c) => Some(Sv::Str(c.to_string())),
+                None => Some(Sv::Str(String::new())),
+            }
+        }
+        // `(str.replace s from to)` — replace FIRST occurrence of `from` in `s`
+        // with `to` (matching Z3 SMT-LIB semantics, not Rust's replace-all).
+        DeclKind::SEQ_REPLACE => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            let from = match eval_scalar(ctx, ch[1], env)? { Sv::Str(s) => s, _ => return None };
+            let to = match eval_scalar(ctx, ch[2], env)? { Sv::Str(s) => s, _ => return None };
+            Some(Sv::Str(s.replacen(&from, &to, 1)))
+        }
+        // `(seq.unit x)` — 1-element Seq.
+        DeclKind::SEQ_UNIT => {
+            let v = eval_scalar(ctx, ch[0], env)?;
+            Some(Sv::Seq(vec![v]))
+        }
+        // `(seq.empty)` — empty Seq.
+        DeclKind::SEQ_EMPTY => Some(Sv::Seq(Vec::new())),
+        // `(str.to-int s)` — parse non-negative int; -1 on bad input.
+        DeclKind::STR_TO_INT => {
+            let s = match eval_scalar(ctx, ch[0], env)? { Sv::Str(s) => s, _ => return None };
+            Some(Sv::Int(s.parse::<i64>().ok().filter(|&n| n >= 0).unwrap_or(-1)))
+        }
+        // `(int.to-str i)` — base-10 digits for non-negative i; "" for negative.
+        DeclKind::INT_TO_STR => {
+            let i = as_int(eval_scalar(ctx, ch[0], env)?)?;
+            Some(Sv::Str(if i < 0 { String::new() } else { i.to_string() }))
+        }
+        // `(store arr i v)` — Z3 array store. Returns a Seq with element i set
+        // to v; extends with default-pad if needed (Z3 arrays are total but our
+        // Seq sentinel is empty-pad; this is fine for the OOB read convention).
+        DeclKind::STORE => {
+            let mut elems = match eval_scalar(ctx, ch[0], env)? {
+                Sv::Seq(es) => es,
+                _ => return None,
+            };
+            let i = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            let v = eval_scalar(ctx, ch[2], env)?;
+            if i < 0 { return None; }
+            let idx = i as usize;
+            while elems.len() <= idx { elems.push(Sv::Int(0)); }
+            elems[idx] = v;
+            Some(Sv::Seq(elems))
+        }
+        // `((_ is Variant) val)` — Z3's datatype-variant recognizer.
+        // True iff `val` is built from the named constructor.
+        // Two enum variants exist in z3-sys; the parametric `(_ is …)` form
+        // surfaces as DT_IS, while the standalone "is-Foo" decl surfaces as
+        // DT_RECOGNISER. Treat them the same.
+        DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
+            let v = eval_scalar(ctx, ch[0], env)?;
+            let Sv::Datatype(actual, _) = v else {
+                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                    eprintln!("[fz/eval] DT_IS: argument is not a Datatype Sv");
+                }
+                return None;
+            };
+            let want = app_decl_name(ctx, a)?;
+            let want = want.strip_prefix("is-").or_else(|| want.strip_prefix("is_")).unwrap_or(&want);
+            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
+                eprintln!("[fz/eval] DT_IS: actual={} want={}", actual, want);
+            }
+            Some(Sv::Bool(actual == want))
         }
         other => {
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
