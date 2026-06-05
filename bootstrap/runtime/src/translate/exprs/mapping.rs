@@ -220,17 +220,38 @@ fn resolve_field_chain_to_bindings<'ctx>(
 }
 
 /// Resolve a scalar expression to a single `Var` (leaf case of `resolve_mapping`).
+///
+/// Atoms (`Identifier` / `Int` / `Bool` / `Real` / `Str`) match directly. For
+/// compound expressions — `a + b`, `x > 3`, `¬(x > y)`, ternaries, etc. — we
+/// don't know the sort up front, so we try each translator in order: Bool
+/// first (its operators `>`/`<`/`=`/`∧`/`∨`/`¬` are the most distinctive),
+/// then Int / Real / String. The first translator that yields `Some` wins.
 fn expr_as_var<'ctx>(
     e: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
 ) -> Option<Var<'ctx>> {
     match e {
-        Expr::Identifier(name) => env.get(name).cloned(),
-        Expr::Int(n)  => Some(Var::IntVar(Int::from_i64(ctx, *n))),
-        Expr::Bool(b) => Some(Var::BoolVar(Bool::from_bool(ctx, *b))),
-        Expr::Real(f) => Some(Var::RealVar(real_from_f64(ctx, *f))),
-        Expr::Str(s)  => crate::translate::z3_string(ctx, s).ok().map(Var::StrVar),
-        _ => None,
+        Expr::Identifier(name) => return env.get(name).cloned(),
+        Expr::Int(n)  => return Some(Var::IntVar(Int::from_i64(ctx, *n))),
+        Expr::Bool(b) => return Some(Var::BoolVar(Bool::from_bool(ctx, *b))),
+        Expr::Real(f) => return Some(Var::RealVar(real_from_f64(ctx, *f))),
+        Expr::Str(s)  => return crate::translate::z3_string(ctx, s).ok().map(Var::StrVar),
+        _ => {}
     }
+    // Compound expression: try each scalar translator in turn.
+    let schemas_empty: HashMap<String, SchemaDecl> = HashMap::new();
+    if let Some(b) = translate_bool(e, ctx, env, &schemas_empty) {
+        return Some(Var::BoolVar(b));
+    }
+    if let Some(i) = translate_int(e, ctx, env) {
+        return Some(Var::IntVar(i));
+    }
+    if let Some(r) = translate_real(e, ctx, env) {
+        return Some(Var::RealVar(r));
+    }
+    if let Some(s) = translate_str(e, ctx, env) {
+        return Some(Var::StrVar(s));
+    }
+    None
 }
