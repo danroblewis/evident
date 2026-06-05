@@ -1,0 +1,87 @@
+-- Wave 5c+ codegen Option X proof: Evident emits assembly text,
+-- shells out to `as` + `ld` to produce a .dylib, dlopens it,
+-- calls the function via libffi, and checks the result.
+--
+-- This is the "no Rust beyond a minimal kernel" codegen story
+-- working end-to-end from Evident source.
+--
+-- The generated function (arm64): a trivial `trivial_add(): i64`
+-- that returns 42.
+--
+-- Layout:
+--   0  WriteFile("/tmp/evt_codegen_x.s", "<arm64 asm>")
+--   1  system("clang -dynamiclib -arch arm64 -o /tmp/evt_codegen_x.dylib /tmp/evt_codegen_x.s")
+--   2  malloc(48)                              ── cif
+--   3  malloc(8)                               ── rvalue (capture cif)
+--   4  __dlsym.addr("libffi","ffi_type_sint64")  (capture rvalue)
+--   5  __dlsym.addr("/tmp/evt_codegen_x.dylib","trivial_add") (capture rtype)
+--   6  ffi_prep_cif(cif,1,0,rtype_p,0)         (capture fn_p)
+--   7  ffi_call(cif,fn_p,rvalue,0)
+--   8  __mem.read_long(rvalue)                 → result
+--   9  Exit(0 iff result == 42)
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    asm_src ∈ String = "        .globl _trivial_add\n        .p2align 2\n_trivial_add:\n        mov x0, #42\n        ret\n"
+    build_cmd ∈ String = "clang -dynamiclib -arch arm64 -o /tmp/evt_codegen_x.dylib /tmp/evt_codegen_x.s 2>/dev/null"
+
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    cif_p ∈ Int
+    _cif_p ∈ Int
+    cif_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cif_p = (is_first_tick ? 0 : phase = 3 ? cif_capture : _cif_p)
+
+    rvalue_p ∈ Int
+    _rvalue_p ∈ Int
+    rvalue_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    rvalue_p = (is_first_tick ? 0 : phase = 4 ? rvalue_capture : _rvalue_p)
+
+    rtype_p ∈ Int
+    _rtype_p ∈ Int
+    rtype_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    rtype_p = (is_first_tick ? 0 : phase = 5 ? rtype_capture : _rtype_p)
+
+    fn_p ∈ Int
+    _fn_p ∈ Int
+    fn_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    fn_p = (is_first_tick ? 0 : phase = 6 ? fn_capture : _fn_p)
+
+    result ∈ Int
+    _result ∈ Int
+    result_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    result = (is_first_tick ? 0 : phase = 9 ? result_capture : _result)
+
+    exit_code ∈ Int = (result = 42 ? 0 : 1)
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨WriteFile("/tmp/evt_codegen_x.s", asm_src)⟩
+        : phase = 1 ? ⟨LibCall("libc", "system", ⟨ArgStr(build_cmd)⟩)⟩
+        : phase = 2 ? ⟨LibCall("libc", "malloc", ⟨ArgInt(48)⟩)⟩
+        : phase = 3 ? ⟨LibCall("libc", "malloc", ⟨ArgInt(8)⟩)⟩
+        : phase = 4 ? ⟨LibCall("__dlsym", "addr",
+                           ⟨ArgStr("libffi"), ArgStr("ffi_type_sint64")⟩)⟩
+        : phase = 5 ? ⟨LibCall("__dlsym", "addr",
+                           ⟨ArgStr("/tmp/evt_codegen_x.dylib"), ArgStr("trivial_add")⟩)⟩
+        : phase = 6 ? ⟨LibCall("libffi", "ffi_prep_cif",
+                           ⟨ArgInt(cif_p), ArgInt(1), ArgInt(0),
+                            ArgInt(rtype_p), ArgInt(0)⟩)⟩
+        : phase = 7 ? ⟨LibCall("libffi", "ffi_call",
+                           ⟨ArgInt(cif_p), ArgInt(fn_p), ArgInt(rvalue_p), ArgInt(0)⟩)⟩
+        : phase = 8 ? ⟨LibCall("__mem", "read_long", ⟨ArgInt(rvalue_p)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
