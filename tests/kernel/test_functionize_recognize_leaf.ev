@@ -1,0 +1,156 @@
+-- Wave 5c — Evident-source proof of the recognizer LEAF case:
+-- given a Z3 assertion AST, classify whether it's the canonical
+-- scalar-step shape `(= <uninterp-const> <expr>)`.
+--
+-- The full recognizer is a stack-FSM walk over many assertions
+-- doing many such classifications. This fixture proves the
+-- foundational call: from Evident source, an FSM can drive libz3
+-- to ask "what kind of decl is this AST?" and branch on the
+-- answer.
+--
+-- The probe formula: `(declare-const x Int) (assert (= x 42))`.
+-- We expect: classifier returns "scalar step bound to x".
+-- Encoded as exit code: 0 = recognized as scalar-eq, 1 = wasn't
+-- Eq decl_kind, 2 = LHS not uninterpreted, 3 = unexpected
+-- handle 0.
+--
+-- Layout:
+--   0  MkConfig
+--   1  MkContext(cfg)
+--   2  Parse(ctx, "(declare-const x Int) (assert (= x 42))")
+--   3  AstVectorIncRef(ctx, vec)
+--   4  AstVectorGet(ctx, vec, 0)              → assert AST
+--   5  IncRef(ctx, ast)
+--   6  ToApp(ctx, ast)                         → app handle
+--   7  GetAppDecl(ctx, app)                    → decl handle
+--   8  GetDeclKind(ctx, decl)                  → kind (expect 258 = OP_EQ)
+--   9  GetAppArg(ctx, app, 0)                  → arg 0 (the `x` const)
+--   10 ToApp(ctx, arg0)                        → arg0 app
+--   11 GetAppDecl(ctx, arg0_app)               → arg0 decl
+--   12 GetDeclKind(ctx, arg0_decl)             → arg0 kind (expect uninterp)
+--   13 Exit
+--
+-- Z3_OP_EQ is 258, Z3_OP_UNINTERPRETED is 2353 in z3_api.h.
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    z3_src ∈ String = "(declare-const x Int)\n(assert (= x 42))"
+
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- Captures.
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cfg_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cfg_h = (is_first_tick ? 0 : phase = 1 ? cfg_capture : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ctx_h = (is_first_tick ? 0 : phase = 2 ? ctx_capture : _ctx_h)
+
+    vec_h ∈ Int
+    _vec_h ∈ Int
+    vec_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    vec_h = (is_first_tick ? 0 : phase = 3 ? vec_capture : _vec_h)
+
+    ast_h ∈ Int
+    _ast_h ∈ Int
+    ast_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ast_h = (is_first_tick ? 0 : phase = 5 ? ast_capture : _ast_h)
+
+    app_h ∈ Int
+    _app_h ∈ Int
+    app_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    app_h = (is_first_tick ? 0 : phase = 7 ? app_capture : _app_h)
+
+    decl_h ∈ Int
+    _decl_h ∈ Int
+    decl_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    decl_h = (is_first_tick ? 0 : phase = 8 ? decl_capture : _decl_h)
+
+    eq_kind ∈ Int
+    _eq_kind ∈ Int
+    eq_kind_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    eq_kind = (is_first_tick ? 0 : phase = 9 ? eq_kind_capture : _eq_kind)
+
+    arg0_h ∈ Int
+    _arg0_h ∈ Int
+    arg0_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    arg0_h = (is_first_tick ? 0 : phase = 10 ? arg0_capture : _arg0_h)
+
+    arg0_app_h ∈ Int
+    _arg0_app_h ∈ Int
+    arg0_app_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    arg0_app_h = (is_first_tick ? 0 : phase = 11 ? arg0_app_capture : _arg0_app_h)
+
+    arg0_decl_h ∈ Int
+    _arg0_decl_h ∈ Int
+    arg0_decl_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    arg0_decl_h = (is_first_tick ? 0 : phase = 12 ? arg0_decl_capture : _arg0_decl_h)
+
+    arg0_kind ∈ Int
+    _arg0_kind ∈ Int
+    arg0_kind_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    arg0_kind = (is_first_tick ? 0 : phase = 13 ? arg0_kind_capture : _arg0_kind)
+
+    -- 258 = Z3_OP_EQ ; 2353 = Z3_OP_UNINTERPRETED
+    is_eq ∈ Bool = (eq_kind = 258)
+    is_uninterp ∈ Bool = (arg0_kind = 2353)
+    exit_code ∈ Int = (¬is_eq ? 1 : (¬is_uninterp ? 2 : 0))
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1 ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2 ? ⟨LibCall("libz3", "Z3_parse_smtlib2_string",
+                           ⟨ArgInt(ctx_h), ArgStr(z3_src),
+                            ArgInt(0), ArgInt(0), ArgInt(0),
+                            ArgInt(0), ArgInt(0), ArgInt(0)⟩)⟩
+        : phase = 3 ? ⟨LibCall("libz3", "Z3_ast_vector_inc_ref",
+                           ⟨ArgInt(ctx_h), ArgInt(vec_h)⟩)⟩
+        : phase = 4 ? ⟨LibCall("libz3", "Z3_ast_vector_get",
+                           ⟨ArgInt(ctx_h), ArgInt(vec_h), ArgInt(0)⟩)⟩
+        : phase = 5 ? ⟨LibCall("libz3", "Z3_inc_ref",
+                           ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)⟩
+        : phase = 6 ? ⟨LibCall("libz3", "Z3_to_app",
+                           ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)⟩
+        : phase = 7 ? ⟨LibCall("libz3", "Z3_get_app_decl",
+                           ⟨ArgInt(ctx_h), ArgInt(app_h)⟩)⟩
+        : phase = 8 ? ⟨LibCall("libz3", "Z3_get_decl_kind",
+                           ⟨ArgInt(ctx_h), ArgInt(decl_h)⟩)⟩
+        : phase = 9 ? ⟨LibCall("libz3", "Z3_get_app_arg",
+                           ⟨ArgInt(ctx_h), ArgInt(app_h), ArgInt(0)⟩)⟩
+        : phase = 10 ? ⟨LibCall("libz3", "Z3_to_app",
+                            ⟨ArgInt(ctx_h), ArgInt(arg0_h)⟩)⟩
+        : phase = 11 ? ⟨LibCall("libz3", "Z3_get_app_decl",
+                            ⟨ArgInt(ctx_h), ArgInt(arg0_app_h)⟩)⟩
+        : phase = 12 ? ⟨LibCall("libz3", "Z3_get_decl_kind",
+                            ⟨ArgInt(ctx_h), ArgInt(arg0_decl_h)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
