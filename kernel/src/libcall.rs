@@ -72,10 +72,22 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, Strin
     let cache = guard.get_or_insert_with(HashMap::new);
 
     if !cache.contains_key(&lib_path) {
-        let lib = unsafe {
-            Library::new(&lib_path)
-                .map_err(|e| format!("dlopen({lib_path}): {e}"))?
-        };
+        // Try the resolved name first; if dyld can't find it via its
+        // default search rules, fall back to the prefixed paths that
+        // are conventional on this host. This mirrors what
+        // .cargo/config.toml's DYLD_LIBRARY_PATH does at build time,
+        // but applies at runtime so end users don't need to export the
+        // env var to use libraries from /opt/homebrew or Anaconda.
+        let candidates = candidate_paths(&lib_path);
+        let mut lib_opt: Option<Library> = None;
+        let mut last_err = String::new();
+        for c in &candidates {
+            match unsafe { Library::new(c) } {
+                Ok(l) => { lib_opt = Some(l); break; }
+                Err(e) => { last_err = format!("dlopen({c}): {e}"); }
+            }
+        }
+        let lib = lib_opt.ok_or(last_err)?;
         cache.insert(lib_path.clone(), lib);
     }
     let lib = cache.get(&lib_path).expect("just inserted");
@@ -225,9 +237,16 @@ fn dlsym_addr_call(fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
     let mut guard = LIB_CACHE.lock().map_err(|e| format!("lib cache poisoned: {e}"))?;
     let cache = guard.get_or_insert_with(HashMap::new);
     if !cache.contains_key(&lib_path) {
-        let lib = unsafe {
-            Library::new(&lib_path).map_err(|e| format!("dlopen({lib_path}): {e}"))?
-        };
+        let candidates = candidate_paths(&lib_path);
+        let mut lib_opt: Option<Library> = None;
+        let mut last_err = String::new();
+        for c in &candidates {
+            match unsafe { Library::new(c) } {
+                Ok(l) => { lib_opt = Some(l); break; }
+                Err(e) => { last_err = format!("dlopen({c}): {e}"); }
+            }
+        }
+        let lib = lib_opt.ok_or(last_err)?;
         cache.insert(lib_path.clone(), lib);
     }
     let lib = cache.get(&lib_path).expect("just inserted");
@@ -264,6 +283,53 @@ fn resolve_lib_path(name: &str) -> String {
                 "libc.so.6".to_string()
             }
         }
-        other => other.to_string(),
+        other => {
+            // If the name already has a platform-recognized extension,
+            // pass through. Otherwise append the host platform's library
+            // extension so the user can write `"libz3"` and have it
+            // resolve to `libz3.dylib` on macOS / `libz3.so` on Linux.
+            let has_ext = other.ends_with(".dylib")
+                || other.ends_with(".so")
+                || other.ends_with(".dll")
+                || other.contains(".so.");
+            if has_ext {
+                other.to_string()
+            } else if cfg!(target_os = "macos") {
+                format!("{other}.dylib")
+            } else if cfg!(target_os = "windows") {
+                format!("{other}.dll")
+            } else {
+                format!("{other}.so")
+            }
+        }
     }
+}
+
+/// Generate a list of paths to try when dlopen'ing `lib_path`. The bare
+/// name is tried first (lets dyld's normal search work), then a series
+/// of host-conventional prefixes covers the macOS dev env's "Homebrew
+/// is the default" reality without forcing every user to set
+/// DYLD_LIBRARY_PATH at runtime.
+fn candidate_paths(lib_path: &str) -> Vec<String> {
+    if lib_path.contains('/') {
+        return vec![lib_path.to_string()];
+    }
+    let prefixes: &[&str] = if cfg!(target_os = "macos") {
+        &[
+            "",
+            "/opt/homebrew/lib/",
+            "/usr/local/lib/",
+            "/opt/anaconda3/lib/python3.13/site-packages/z3/lib/",
+            "/opt/anaconda3/lib/",
+            "/opt/local/lib/",
+        ]
+    } else {
+        &[
+            "",
+            "/usr/local/lib/",
+            "/usr/lib/x86_64-linux-gnu/",
+            "/lib/x86_64-linux-gnu/",
+        ]
+    };
+    prefixes.iter().map(|p| format!("{p}{lib_path}")).collect()
 }
