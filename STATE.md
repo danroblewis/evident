@@ -43,6 +43,14 @@ All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` �
 
 ## How to pick up
 
+**Conformance under seam: NEW gap discovered** — arithmetic inside
+constructor args is dropped. Bootstrap emits `(Exit (+ 3 4))` for
+`Exit(3 + 4)`; self-hosted emits `(Exit 3)`. Affects 001-arithmetic-add
+and likely every other conformance fixture using arithmetic. Cutover
+blocked on either: (a) fix this expression-in-ctor-arg shape in
+compiler.ev / translate_ctor.ev, OR (b) extend `EVIDENT_LANG_KNOWN_FAILS`-style
+allowlisting to the conformance runner.
+
 **Wave 4u (sample.ev per-block datatypes) LANDED:** lang seam v7 closed
 9 multiline failures (test_enums_mutual.ev) in one fix. 88.4% → 93.9%.
 
