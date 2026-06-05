@@ -1,0 +1,111 @@
+-- Wave 5a — Z3-as-library FTI proof: drive Z3 from an Evident FSM
+-- via the new BuildZ3* sugar (stdlib/kernel.ev).
+--
+-- The FSM is multi-tick because every Z3 call's return handle
+-- arrives in `last_results` on the NEXT tick (the libcall.rs
+-- return-as-i64 contract). The chain is:
+--
+--   tick 0  emit MkConfig                            cfg ← IntResult
+--   tick 1  emit MkContext(cfg) + DelConfig(cfg)     ctx ← IntResult[0]
+--   tick 2  emit MkSolver(ctx) + Parse(ctx, src)     sol ← [0], vec ← [1]
+--   tick 3  emit AstVectorGet(ctx, vec, 0)           ast ← IntResult
+--   tick 4  emit SolverAssert(ctx, sol, ast)         (no return)
+--   tick 5  emit SolverCheck(ctx, sol)               lbool ← IntResult
+--   tick 6  emit DelContext(ctx) + Exit(0 if sat=1
+--                                       else 1)      done.
+--
+-- The Z3 source asserts `(= x 42)`. Z3 returns sat (lbool 1), the
+-- FSM exits 0; if the chain breaks anywhere the FSM exits 1 (or
+-- the kernel rejects the program).
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    -- Z3 SMT-LIB source for the trivial sat check.
+    z3_src ∈ String = "(declare-const x Int)\n(assert (= x 42))"
+
+    -- ── Per-tick phase counter (carried as `_phase`) ─────────────
+    -- 0 = make cfg, 1 = make ctx + del cfg, 2 = make solver + parse,
+    -- 3 = vector get, 4 = assert, 5 = check, 6 = del ctx + exit.
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- ── Handles carried across ticks ─────────────────────────────
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cfg_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    cfg_h = (is_first_tick ? 0
+        : phase = 1 ? cfg_capture
+        : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    ctx_h = (is_first_tick ? 0
+        : phase = 2 ? ctx_capture
+        : _ctx_h)
+
+    solver_h ∈ Int
+    _solver_h ∈ Int
+    solver_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    solver_h = (is_first_tick ? 0
+        : phase = 3 ? solver_capture
+        : _solver_h)
+
+    vec_h ∈ Int
+    _vec_h ∈ Int
+    vec_capture ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    vec_h = (is_first_tick ? 0
+        : phase = 3 ? vec_capture
+        : _vec_h)
+
+    ast_h ∈ Int
+    _ast_h ∈ Int
+    ast_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    ast_h = (is_first_tick ? 0
+        : phase = 4 ? ast_capture
+        : _ast_h)
+
+    sat_lbool ∈ Int
+    _sat_lbool ∈ Int
+    sat_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 99
+    sat_lbool = (is_first_tick ? 0 - 99
+        : phase = 6 ? sat_capture
+        : _sat_lbool)
+
+    -- ── Effect emissions ────────────────────────────────────────
+    -- Each ⟨…⟩ is the per-tick batch; the kernel runs them in order.
+    exit_code ∈ Int = (sat_lbool = 1 ? 0 : 1)
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1 ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩),
+                       LibCall("libz3", "Z3_del_config", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2 ? ⟨LibCall("libz3", "Z3_mk_solver", ⟨ArgInt(ctx_h)⟩),
+                       LibCall("libz3", "Z3_parse_smtlib2_string",
+                           ⟨ArgInt(ctx_h), ArgStr(z3_src),
+                            ArgInt(0), ArgInt(0), ArgInt(0),
+                            ArgInt(0), ArgInt(0), ArgInt(0)⟩)⟩
+        : phase = 3 ? ⟨LibCall("libz3", "Z3_ast_vector_get",
+                           ⟨ArgInt(ctx_h), ArgInt(vec_h), ArgInt(0)⟩)⟩
+        : phase = 4 ? ⟨LibCall("libz3", "Z3_solver_assert",
+                           ⟨ArgInt(ctx_h), ArgInt(solver_h), ArgInt(ast_h)⟩)⟩
+        : phase = 5 ? ⟨LibCall("libz3", "Z3_solver_check",
+                           ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)⟩
+        : ⟨LibCall("libz3", "Z3_del_context", ⟨ArgInt(ctx_h)⟩),
+           Exit(exit_code)⟩)

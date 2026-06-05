@@ -87,6 +87,65 @@ claim BuildWriteFile(path ∈ String, contents ∈ String, eff ∈ Effect)
 claim BuildExit(code ∈ Int, eff ∈ Effect)
     eff = Exit(code)
 
+-- ── Wave 5a — libz3 lifecycle sugar (Z3-as-library FTI) ──────────
+-- These wrap `LibCall("libz3", "...")` for the calls that a 2-tick
+-- "build a tiny model, solve it, read sat" FSM needs. Pointer
+-- handles round-trip as i64 through ArgInt/IntResult (the kernel's
+-- libcall.rs already treats them as i64). See
+-- docs/plans/wave-5a-z3-in-evident.md §1+§4 for the API surface
+-- and the leak-until-DelContext refcount model.
+
+-- Z3_mk_config() → Z3_config handle (IntResult). No args.
+claim BuildZ3MkConfig(eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_config", ⟨⟩)
+
+-- Z3_mk_context(Z3_config) → Z3_context handle. Consumes the cfg.
+claim BuildZ3MkContext(cfg_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)
+
+-- Z3_del_config(Z3_config) → void. Pair with MkConfig at end-of-life.
+claim BuildZ3DelConfig(cfg_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_del_config", ⟨ArgInt(cfg_h)⟩)
+
+-- Z3_del_context(Z3_context) → void. Pair with MkContext; this is
+-- the "leak-until-DelContext" model — frees the whole AST subtree
+-- transitively, mirroring fti-z3.md "Open question 1".
+claim BuildZ3DelContext(ctx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_del_context", ⟨ArgInt(ctx_h)⟩)
+
+-- Z3_mk_solver(Z3_context) → Z3_solver handle.
+claim BuildZ3MkSolver(ctx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_solver", ⟨ArgInt(ctx_h)⟩)
+
+-- Z3_parse_smtlib2_string(ctx, str, 0,null,null, 0,null,null) →
+-- Z3_ast_vector. Sort+decl arrays come back null in the simple
+-- "parse a string into a vector of formulas" case (tick.rs:158).
+-- The vector handle is the return.
+claim BuildZ3ParseSmtlib2String(ctx_h ∈ Int, src ∈ String, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_parse_smtlib2_string",
+        ⟨ArgInt(ctx_h), ArgStr(src),
+         ArgInt(0), ArgInt(0), ArgInt(0),
+         ArgInt(0), ArgInt(0), ArgInt(0)⟩)
+
+-- Z3_ast_vector_size(ctx, vec) → unsigned. We treat it as Int.
+claim BuildZ3AstVectorSize(ctx_h, vec_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_ast_vector_size", ⟨ArgInt(ctx_h), ArgInt(vec_h)⟩)
+
+-- Z3_ast_vector_get(ctx, vec, i) → Z3_ast handle.
+claim BuildZ3AstVectorGet(ctx_h, vec_h, idx ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_ast_vector_get",
+        ⟨ArgInt(ctx_h), ArgInt(vec_h), ArgInt(idx)⟩)
+
+-- Z3_solver_assert(ctx, solver, ast) → void.
+claim BuildZ3SolverAssert(ctx_h, solver_h, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_solver_assert",
+        ⟨ArgInt(ctx_h), ArgInt(solver_h), ArgInt(ast_h)⟩)
+
+-- Z3_solver_check(ctx, solver) → Z3_lbool (int32: 1=sat, 0=unknown,
+-- -1=unsat). Comes back as IntResult on the next tick.
+claim BuildZ3SolverCheck(ctx_h, solver_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_solver_check", ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)
+
 -- For result-shape branching, the FSM author writes `matches`
 -- inline: `is_string = (r matches StringResult(_))`. Recognizer
 -- claims (`IsString(r, out)`) hit a translator gap on constructor
