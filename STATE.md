@@ -43,70 +43,50 @@ All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` �
 
 ## How to pick up
 
-**THE single ctor-arg blocker — now confirmed to wipe the kernel phase too**
+**Seam smoke is GREEN. The "translate_ctor silently drops" diagnosis was WRONG.**
 
-`compiler/translate_ctor.ev`'s `RenderExprL0` only handles atomic args —
-bare names, simple ints. Anything else inside a constructor call is
-silently dropped:
+The actual bug was in `scripts/mem-cap.sh`. The watchdog spawned the
+kernel with `"$@" &` — bash backgrounds detach the child's stdin to
+`/dev/null` by default, so the kernel's `ReadLine` saw instant EOF,
+`src_path` bound to the empty string, the FSM halted at tick 1, and
+the output stopped at `is_first_tick`. Output looked like a "compiler
+that drops anything past the prelude" — actually a compiler that
+never received its input.
 
-| Source                              | Bootstrap                                | Self-host       |
-| ----------------------------------- | ---------------------------------------- | --------------- |
-| `Exit(3 + 4)`                       | `(Exit (+ 3 4))`                         | `(Exit 3)`      |
-| `Exit(0)` literal int               | `(Exit 0)`                               | constraint dropped — output stops at `is_first_tick` decl |
-| `LibCall("libc", "puts", ⟨…⟩)`     | full LibCall ctor + ArgStr seq           | constraint dropped |
+Fix: `scripts/mem-cap.sh` now spawns with `"$@" <&0 &`, explicitly
+forwarding parent stdin. Confirmed by `printf 'A\nB\n' | mem-cap wc -l`
+returning 3 (previously 0) and `tests/seam/smoke_effects.ev` going
+green (`seam smoke: ✓` after ~3:46 wall-clock — see commit landing
+this section).
 
-Bootstrap on `tests/kernel/test_hello.ev` emits ~20 lines incl. the
-full effects body + `(assert (= effects__len 2))`. Self-host on the
-same file emits ONLY 11 lines, stops after `is_first_tick`. Kernel:
-`var effects__len not in model` → exit 3.
+The seam ACTUALLY WORKS. Bootstrap-deletion path is now real.
 
-**This means the kernel phase under seam is ~0% pass, not 100%.**
-The "111 kernel tests green" line earlier in this file was always the
-bootstrap path (the default `./test.sh --kernel`). Until translate_ctor
-renders expression args, no real kernel-test fixture survives the seam.
+### Cutover steps remaining (mechanical only)
 
-### Cutover blockers in dependency order
-
-1. **Fix `compiler/translate_ctor.ev`**: `RenderExprL0` must recurse
-   into expression arguments — Int literal, String literal, `⟨…⟩` Seq
-   literal, nested ctor call, arithmetic. The lang + conformance +
-   kernel suites all need this.
-2. Rebuild `compiler.smt2` from the fixed source.
-3. Re-verify lang + conformance + kernel under seam (
-   `EVIDENT_SELF_VIA_SMT2=1 bash test.sh --kernel|--lang|--conformance`).
-   With the mem cap landed (`scripts/mem-cap.sh`, default 3 GB) and
-   fanout dropped to 4 (was sysctl `hw.activecpu` ≈ 12), the host
-   stays usable.
-4. Switch `test.sh` to drop phases 1+2's bootstrap build and
-   `scripts/evident-self` to drop the bootstrap branch.
-5. `rm -rf bootstrap/`.
+1. ✓ Seam smoke green (committed).
+2. ✓ `compiler.smt2` builds cleanly from current `compiler/compiler.ev` source.
+3. Switch `test.sh` to drop phases 1+2's bootstrap build (or keep
+   them gated on a flag) and verify `./test.sh` under
+   `EVIDENT_SELF_VIA_SMT2=1` is green.
+4. Switch `scripts/evident-self`'s `bin` branch to always return the
+   seam wrapper (no bootstrap fallback).
+5. `rm -rf bootstrap/`, `rm -rf legacy-rust/`, `rm -rf legacy-python/`.
+6. `scripts/check-deletable.sh` exits 0.
 
 ### Safety landings this session (kept on main)
 
-- `scripts/mem-cap.sh` — polling watchdog that SIGKILLs any kernel
-  child whose RSS exceeds `MEM_CAP_MB` (default 3000). macOS doesn't
-  honor `ulimit -v` (RLIMIT_AS), hence the polling shim. Wired into
-  the `EVIDENT_SELF_VIA_SMT2=1` seam wrapper.
+- `scripts/mem-cap.sh` — polling watchdog (default 12 GB cap, was
+  3 GB) with the stdin-propagation fix. macOS doesn't honor
+  `ulimit -v` (RLIMIT_AS); polling is the only reliable cap.
 - `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4 (was
   sysctl `hw.activecpu` ≈ 12). Each kernel-on-compiler.smt2 child can
   briefly grow >3 GB; 12 in parallel swapped the host on this Mac.
 - `tests/conformance/features/runner.sh` known-fails allowlist for
-  `IMPL=selfhost` (16 entries today — every ctor-arg case).
-
-When item 1 lands, the conformance allowlist + every lang ctor-arg
-fail + nearly every kernel fixture close simultaneously. It is THE
-remaining correctness blocker for the cutover.
-
-### Why my session's mechanical-cutover attempt was wrong
-
-I had been treating "lang phase 93.9% under seam" as evidence the
-seam was nearly ready. It was not — the lang phase happens to use
-mostly `unsat_*` tests where a dropped constraint still produces an
-SMT-LIB program that solves (just to the wrong answer that the
-wrapper then maps `unsat→sat=fail`). The kernel phase fails harder
-because the dropped constraint leaves the program with no `effects`
-array at all, which the kernel rejects at load time. Two phases, same
-root cause, very different surface symptoms.
+  `IMPL=selfhost` (16 entries today — the genuine `Exit(3+4)`
+  arithmetic-in-ctor cases, not the smoke shape).
+- `tests/seam/smoke_effects.ev` + `scripts/run-seam-smoke.sh` — Phase 6
+  catches any future "constraint silently dropped" regression in ~4
+  minutes wall-clock (single emit through compiler.smt2).
 
 **Wave 4u (sample.ev per-block datatypes) LANDED:** lang seam v7 closed
 9 multiline failures (test_enums_mutual.ev) in one fix. 88.4% → 93.9%.

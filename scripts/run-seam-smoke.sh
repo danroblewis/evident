@@ -50,8 +50,12 @@ WRAPPER="$(EVIDENT_SELF_VIA_SMT2=1 "$WRAPPER_PATH" bin)" || {
 OUT="$(mktemp -t evident-seam-smoke.XXXXXX.smt2)"
 trap 'rm -f "$OUT" "$WRAPPER"' EXIT
 
-# Cap RSS at 3 GB — protects the host from a runaway compiler.smt2.
-if ! MEM_CAP_MB="${MEM_CAP_MB:-3000}" "$WRAPPER" emit "$FIXTURE" main -o "$OUT" 2>/dev/null; then
+# Cap RSS at 12 GB — protects the host from a runaway compiler.smt2.
+# The kernel running compiler.smt2 on this fixture peaks around 4 GB
+# of RSS for ~4 minutes of Z3 solving, so the cap is intentionally
+# generous; a too-tight cap truncates legitimate compiles and gives
+# the false impression that the seam dropped a constraint.
+if ! MEM_CAP_MB="${MEM_CAP_MB:-12000}" "$WRAPPER" emit "$FIXTURE" main -o "$OUT" 2>/dev/null; then
     echo "seam smoke: FAIL — emit through seam failed" >&2
     exit 1
 fi

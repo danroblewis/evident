@@ -2,9 +2,14 @@
 # mem-cap.sh — run a command; SIGKILL it if RSS exceeds a cap.
 #
 # Usage:
-#   MEM_CAP_MB=3000 scripts/mem-cap.sh kernel compiler.smt2 < src
+#   MEM_CAP_MB=8000 scripts/mem-cap.sh kernel compiler.smt2 < src
 #
-# Default cap: ${EVIDENT_MEM_CAP_MB:-3000} MB. Exit 137 + a stderr line
+# Default cap: ${EVIDENT_MEM_CAP_MB:-12000} MB. The kernel running
+# compiler.smt2 routinely needs 3-6 GB per process for Z3 state on
+# real fixtures (the smoke fixture peaks around 4 GB), so the cap is
+# 12 GB by default to protect against runaways without truncating
+# legitimate compiles. Tune down only when you know the fixture is
+# small. Exit 137 + a stderr line
 # if the watchdog kills the child; otherwise transparent (exit code +
 # stdout/stderr of the child are preserved).
 #
@@ -15,10 +20,15 @@
 
 set -u -o pipefail
 
-CAP_MB="${MEM_CAP_MB:-${EVIDENT_MEM_CAP_MB:-3000}}"
+CAP_MB="${MEM_CAP_MB:-${EVIDENT_MEM_CAP_MB:-12000}}"
 CAP_KB=$(( CAP_MB * 1024 ))
 
-"$@" &
+# `cmd &` redirects stdin from /dev/null for the backgrounded job in
+# bash's default behavior — so without the explicit `<&0`, a child
+# that reads stdin (e.g. kernel's ReadLine) sees instant EOF and
+# silently produces a truncated program. Forward our own stdin
+# explicitly.
+"$@" <&0 &
 pid=$!
 
 cleanup() { kill -TERM $pid 2>/dev/null; }
