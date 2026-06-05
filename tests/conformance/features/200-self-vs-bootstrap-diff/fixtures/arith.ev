@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    x ∈ Int = 3 + 4
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,6 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    x ∈ Int = 1
-    y ∈ Int = 2
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

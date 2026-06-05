@@ -1,49 +1,27 @@
 #!/usr/bin/env bash
-# evident-self — drop-in CLI for the SELF-HOSTED Evident compiler.
+# evident-self — CLI for the SELF-HOSTED Evident compiler.
 #
-# Phase D3 (proof-of-concept). This is the SEAM, not the
-# self-hosted compiler itself. The endgame:
+# Post-bootstrap-deletion (c19be0a). The "binary" returned by `bin`
+# is now an ephemeral wrapper that runs:
 #
-#   evident-self emit <file.ev> <claim> -o <out.smt2>
+#   flatten <file.ev> | kernel compiler.smt2
 #
-# is satisfied by an Evident program (the "pipeline driver") that
-# imports compiler/lexer.ev + parser.ev + translate_*.ev, ingests
-# <file.ev> as a string at startup, and writes a runnable .smt2 to
-# stdout — running entirely on the kernel, no Rust runtime calls.
-#
-# Today only compiler/lexer.ev and compiler/parser.ev exist; the translate_*.ev
-# files (Phase C output) and the wiring driver (Phase D2) have not landed.
-# So this wrapper currently:
-#
-#   1. emits a small, fixed SMT-LIB program via the EXISTING Evident
-#      pipeline-driver fixture (tests/kernel/test_pipeline_full.ev),
-#      compiled by the Rust bootstrap runtime and executed on the kernel,
-#   2. demonstrates that the kernel's stdout-of-an-FSM IS a valid
-#      sink for a generated .smt2 (the protocol shape works), and
-#   3. surfaces the user-facing CLI shape that Phase E will preserve
-#      when the self-hosted pipeline replaces the stand-in driver.
-#
-# Once Phase D2 lands, only the body of this script changes — the
-# CLI surface stays identical. Phase E1 (self-compile) is when the
-# Rust runtime stops being called here at all.
+# The kernel + compiler.smt2 IS the compiler. There is no longer a
+# bootstrap fallback. EVIDENT_SELF_VIA_SMT2 is honored for symmetry
+# with prior call sites but the seam is unconditional.
 #
 # Usage:
-#   scripts/evident-self emit <file.ev> <claim> [-o <out.smt2>]
+#   scripts/evident-self emit   <file.ev> <claim> [-o <out.smt2>]
+#   scripts/evident-self sample <file.ev> [...]
+#   scripts/evident-self bin                # prints wrapper-script path
 #   scripts/evident-self --help
-#
-# Env:
-#   EVIDENT_SELF_DRIVER  override the pipeline-driver fixture path
-#                        (default: tests/kernel/test_pipeline_full.ev)
 
 set -e -o pipefail
 
 here() { cd "$(dirname "$0")/.." && pwd; }
 ROOT="$(here)"
 
-EVIDENT="${ROOT}/bootstrap/runtime/target/release/evident"
 KERNEL="${ROOT}/kernel/target/release/kernel"
-DRIVER="${EVIDENT_SELF_DRIVER:-${ROOT}/tests/kernel/test_pipeline_full.ev}"
-
 COMPILER_SMT2="${ROOT}/compiler.smt2"
 
 # emit_via_smt2_wrapper — write (and echo the path of) a tiny shim that
@@ -102,95 +80,37 @@ WRAP
 
 usage() {
     cat >&2 <<'EOF'
-evident-self — self-hosted Evident compiler CLI (proof-of-concept).
+evident-self — self-hosted Evident compiler CLI.
 
 Usage:
-  evident-self emit <file.ev> <claim> [-o <out.smt2>]
+  evident-self emit   <file.ev> <claim> [-o <out.smt2>]
+  evident-self sample <file.ev> [...]
+  evident-self bin                # prints the wrapper-script path
   evident-self --help
 
-Phase D3 of docs/plans/completion-roadmap.md. The wrapper invokes the
-pipeline-driver fixture (compiled + run on the kernel) and writes its
-stdout to the requested output path. The driver currently emits a
-fixed, hard-coded SMT-LIB fragment; Phase D2 will replace it with a
-real lex+parse+translate of <file.ev>.
+`bin` returns the path to an ephemeral shim script that runs
+`kernel + compiler.smt2`. Every test/bench script resolves its
+`evident` command through `evident-self bin`, so the wrapper is
+the only place the compiler entry point is written down.
 EOF
 }
 
 die() { echo "evident-self: $*" >&2; exit 2; }
 
+[ -x "$KERNEL" ]        || die "kernel binary missing at $KERNEL (run ./test.sh --rust-only first)"
+[ -f "$COMPILER_SMT2" ] || die "compiler.smt2 missing at $COMPILER_SMT2 (run scripts/build-compiler-smt2.sh)"
+
 case "${1:-}" in
     -h|--help|"")
         usage; exit 0 ;;
     bin)
-        # Print the path to the underlying compiler binary, then exit.
-        #
-        # This is the SINGLE place the bootstrap-binary path is written
-        # down: every test/bench script resolves its `evident` through
-        # `scripts/evident-self bin` instead of hard-coding
-        # `bootstrap/runtime/target/...`. When the bootstrap→kernel
-        # switch lands, only the EVIDENT assignment above changes and
-        # the literal disappears from every *.sh at once. We print the
-        # path unconditionally (no existence check) — the caller does
-        # its own `-x` guard.
-        #
-        # Cutover seam: when EVIDENT_SELF_VIA_SMT2=1 AND compiler.smt2
-        # exists, return a self-hosted wrapper (kernel + compiler.smt2)
-        # instead of the bootstrap binary. Default / no compiler.smt2 →
-        # bootstrap path, exactly as before.
-        if [ "${EVIDENT_SELF_VIA_SMT2:-0}" = "1" ] && [ -f "$COMPILER_SMT2" ]; then
-            emit_via_smt2_wrapper; exit 0
-        fi
-        echo "$EVIDENT"; exit 0 ;;
-    emit)
-        shift ;;
-    *)
-        die "unknown subcommand '$1' (expected: emit | bin)"
+        emit_via_smt2_wrapper; exit 0 ;;
+    emit|sample)
         ;;
+    *)
+        die "unknown subcommand '$1' (expected: emit | sample | bin)" ;;
 esac
 
-INPUT=""
-CLAIM=""
-OUTPUT=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -o)
-            shift; OUTPUT="${1:-}"; [ -n "$OUTPUT" ] || die "-o requires a path"; shift ;;
-        -h|--help)
-            usage; exit 0 ;;
-        --)
-            shift ;;
-        -*)
-            die "unknown flag: $1" ;;
-        *)
-            if [ -z "$INPUT" ];      then INPUT="$1"
-            elif [ -z "$CLAIM" ];    then CLAIM="$1"
-            else die "unexpected positional arg: $1"
-            fi
-            shift ;;
-    esac
-done
-
-[ -n "$INPUT" ] || die "emit: missing <file.ev>"
-[ -n "$CLAIM" ] || die "emit: missing <claim>"
-[ -f "$INPUT" ] || die "emit: input not found: $INPUT"
-[ -x "$EVIDENT" ] || die "bootstrap runtime missing at $EVIDENT (run ./test.sh --rust-only first)"
-[ -x "$KERNEL" ]  || die "kernel binary missing at $KERNEL (run ./test.sh --rust-only first)"
-[ -f "$DRIVER" ]  || die "pipeline driver missing at $DRIVER"
-
-TMPDIR_SELF="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR_SELF"' EXIT
-DRIVER_SMT="${TMPDIR_SELF}/driver.smt2"
-
-# Step 1: compile the pipeline-driver fixture (bootstrap path).
-"$EVIDENT" emit "$DRIVER" main -o "$DRIVER_SMT"
-
-# Step 2: run it on the kernel — its stdout IS our .smt2 output.
-run_kernel() {
-    "$KERNEL" "$DRIVER_SMT"
-}
-
-if [ -n "$OUTPUT" ]; then
-    run_kernel >"$OUTPUT"
-else
-    run_kernel
-fi
+# emit / sample — delegate to the wrapper bin prints.
+WRAPPER="$(emit_via_smt2_wrapper)"
+exec "$WRAPPER" "$@"

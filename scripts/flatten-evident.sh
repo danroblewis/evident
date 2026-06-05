@@ -9,19 +9,14 @@
 # `import` lines themselves are commented out (Evident `--` comments) so the
 # flattened source carries no live imports.
 #
-# Why this exists: bootstrap resolves imports natively in
-#   bootstrap/runtime/src/runtime/load.rs  (load_file + resolve_import)
-# but the future `kernel + compiler.smt2` compiler will NOT do import
-# resolution. Feeding `flatten-evident.sh file.ev | kernel compiler.smt2`
-# gives the self-hosted compiler a single resolved translation unit. See
-# CLAUDE.md "The deletion path".
+# Why this exists: `kernel + compiler.smt2` does NOT resolve imports.
+# Feeding `flatten-evident.sh file.ev | kernel compiler.smt2` gives
+# the self-hosted compiler a single resolved translation unit.
 #
-# Import syntax matched here is exactly what bootstrap accepts: a top-level
-# line `import "<path>"` — see bootstrap/runtime/src/parser/program.rs
-# (Token::Import -> Token::Str). Path resolution mirrors
-# bootstrap/runtime/src/runtime/load.rs::resolve_import (lines 54-76):
-# try the path relative to the repo root / cwd first, then relative to the
-# importing file's directory.
+# Import syntax: a top-level line `import "<path>"`. Resolution order:
+#   1. relative to the repo root
+#   2. relative to the importing file's directory
+#   3. as a literal cwd path
 #
 # Usage:
 #   scripts/flatten-evident.sh <file.ev>   > flat.ev
@@ -57,7 +52,7 @@ canon() {
 
 # resolve_import <import_path> <importing_file_canonical>
 # Prints the resolved canonical path, or returns 1 if nothing exists.
-# Order mirrors bootstrap load.rs::resolve_import.
+# Resolution order: repo root, then importing-file dir, then cwd.
 resolve_import() {
     local imp="$1" base="$2" cand
     cand="$REPO_ROOT/$imp"; [ -f "$cand" ] && { canon "$cand"; return 0; }
