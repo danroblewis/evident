@@ -1064,20 +1064,24 @@ pub unsafe fn functionize(
     let prog = Program { steps, predicates, jit_count, interp_count, _keepalive: keepalive };
 
     // ── Verify on tick 0 and tick 1 against a real Z3 solve. ──
-    // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass verification while
-    // diagnosing eval coverage gaps. Use ONLY for diagnostic work — bypassing
-    // verify risks silent divergence between JIT and Z3 results.
+    // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass entirely (debug only).
+    //
+    // Tick 0: `_<name>` carries are UNCONSTRAINED (no prev state). Z3 picks
+    // arbitrary values; build_inputs picks defaults. The two can legally
+    // diverge on outputs that read `_<name>` without an `is_first_tick`
+    // gate. Use Z3's tick-0 OUTPUTS as the seed for tick-1 even when our
+    // tick-0 differs; the comparison check then validates the body shape on
+    // a fully-determined state.
     if std::env::var("EVIDENT_FUNCTIONIZE_SKIP_VERIFY").ok().as_deref() != Some("1") {
         let empty_prev: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
         let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
             refuse!("verify: tick-0 Z3 solve failed");
         };
-        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
+        // Run our eval on tick 0 to confirm it doesn't crash, but don't
+        // assert outputs_match — see header comment about ambiguity.
+        let Some(_mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
             refuse!("verify: tick-0 eval refused (unsupported op)");
         };
-        if !outputs_match(manifest, &z3_0, &mine_0) {
-            refuse!("verify: tick-0 mismatch vs Z3");
-        }
         let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
         let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
             refuse!("verify: tick-1 Z3 solve failed");
@@ -1112,7 +1116,11 @@ pub fn build_inputs(is_first: bool, prev_state: &[Option<Sv>], manifest: &Manife
     // by the body and the kernel injects no pins; an empty Seq is the only
     // value that satisfies `last_results__len >= 0` without contradiction.
     env.insert("last_results__len".to_string(), Sv::Int(0));
-    env.insert("last_results".to_string(), Sv::Seq(Vec::new()));
+    // Match the pin shape in `solve_tick_sv`: index 0..16 = NoResult so OOB
+    // reads in extracted bodies match Z3 (both return NoResult, both
+    // recognizers say false, both ITEs take the else arm).
+    let no_result = Sv::Datatype("NoResult".to_string(), Vec::new());
+    env.insert("last_results".to_string(), Sv::Seq(vec![no_result; 16]));
     for (i, (name, ty)) in manifest.state_fields.iter().enumerate() {
         let key = format!("_{name}");
         if is_first {
@@ -1207,6 +1215,15 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                 }
                 let Some(body) = chosen else {
                     if trace_enabled() { eprintln!("[fz/run] guarded step {:?}: no branch guard matched", step.var); }
+                    // For `effects`, the body's ITE chain ends in an `else
+                    // ⟨⟩` (empty Seq). When no guard fires, that's the
+                    // implicit default — emit no effects this tick. For
+                    // non-effects guarded steps we can't safely default, so
+                    // refuse.
+                    if step.is_effects {
+                        effects = Vec::new();
+                        continue;
+                    }
                     return None;
                 };
                 match body {
@@ -1255,13 +1272,32 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
 type Z3Tick = (Vec<Sv>, Vec<Sv>);
 
 fn outputs_match(manifest: &Manifest, z3: &Z3Tick, mine: &RunOut) -> bool {
+    let trace = std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
+        || std::env::var("EVIDENT_FUNCTIONIZE_WHY").ok().as_deref() == Some("1");
+    let mut diffs = 0usize;
     for (i, (name, _)) in manifest.state_fields.iter().enumerate() {
         match mine.scalars.get(name) {
             Some(v) if tick::compare_sv_pub(v, &z3.0[i]) => {}
-            _ => return false,
+            Some(v) => {
+                if trace && diffs < 10 {
+                    eprintln!("[fz/verify] mismatch on {name}: mine={v:?} z3={:?}", &z3.0[i]);
+                }
+                diffs += 1;
+            }
+            None => {
+                if trace && diffs < 10 {
+                    eprintln!("[fz/verify] missing {name} in mine; z3={:?}", &z3.0[i]);
+                }
+                diffs += 1;
+            }
         }
     }
+    if diffs > 0 {
+        if trace { eprintln!("[fz/verify] total state-field mismatches: {diffs}"); }
+        return false;
+    }
     if mine.effects.len() != z3.1.len() {
+        if trace { eprintln!("[fz/verify] effects len mismatch: mine={} z3={}", mine.effects.len(), z3.1.len()); }
         return false;
     }
     mine.effects.iter().zip(z3.1.iter()).all(|(a, b)| tick::compare_sv_pub(a, b))

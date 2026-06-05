@@ -1069,6 +1069,16 @@ pub(crate) unsafe fn solve_tick_sv(
         }
     }
     pins.push_str("(assert (= last_results__len 0))\n");
+    // Pin every observable last_results slot to NoResult so Z3 and the
+    // functionizer's eval agree on OOB reads (per `manifest.max_effects` is
+    // the kernel's bound on prev_results length, but the body may inspect any
+    // index reachable by its ITE chain; cap at 16 — well above any compiler.ev
+    // observed pattern. Without this pin, Z3 picks an arbitrary StringResult /
+    // IntResult for unconstrained slots while the functionizer's eval returns
+    // an OOB sentinel that NO recognizer matches → false verify-mismatch.
+    for i in 0..16 {
+        pins.push_str(&format!("(assert (= (select last_results {i}) NoResult))\n"));
+    }
     pins.push_str(if is_first { "(assert is_first_tick)\n" } else { "(assert (not is_first_tick))\n" });
 
     let (pin_vec, pin_asts) = match parse_pins(ctx, &pins) {
