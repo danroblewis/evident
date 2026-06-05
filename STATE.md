@@ -43,7 +43,18 @@ All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` �
 
 ## How to pick up
 
-**Root cause of the 9 multiline failures (verified this session):**
+**Wave 4u (sample.ev per-block datatypes) LANDED:** lang seam v7 closed
+9 multiline failures (test_enums_mutual.ev) in one fix. 88.4% → 93.9%.
+
+**Match-result root cause (probed but NOT fixed):** The compiler.ev EMIT
+path for `score = match r (Ok(n) ⇒ n * 10; Err(_) ⇒ 0)` produces
+`(assert (= score ))` — empty RHS, broken SMT-LIB. Additionally, the
+USER'S `enum Result = Ok(Int) | Err(String)` is shadowed by the system
+Result with 6 variants. Match translation needs to emit
+`(ite ((_ is Ok) r) (* (Ok__f0 r) 10) 0)` or similar ITE chain. Two
+real bugs in the match-emit path.
+
+**Root cause of the 9 multiline failures (verified, NOW FIXED):**
 `compiler/sample.ev:871-873` documents the assumption "all enums precede
 the first claim block — by which point `_eacc` is complete." Lang test
 `test_enums_mutual.ev` violates this: enums are interleaved with claims
