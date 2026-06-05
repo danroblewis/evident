@@ -1,4 +1,4 @@
-;; manifest: state-fields = all_done:Bool at_boundary:Bool block_now:String body:String char_only:Bool chunk:String claim_block:String claim_done:Bool claim_is_param:Bool claim_name:String claim_name_tok:Token classified_str:Token commit_elt:String commit_is_seq:Bool committing_field:Bool content_read:String cts_assert:String cts_bare:Bool cts_decl:String cts_eff_len:Int cts_field:String cts_ok:Bool cts_rest:TokenList cur_char:String cur_decl:EnumVariantDecl cur_enum_decl:EnumDeclAst cur_fields:EVFieldList cur_name:String datatypes:String did_prelude:Bool dig_val:Int done:Bool e1:Bool e2:Bool e3:Bool e4:Bool e5:Bool e6:Bool e7:Bool e8:Bool eacc:String emit_now:Bool emit_payload:String emitting_block:Bool ename:String enter_claim:Bool enter_enum:Bool enter_skip:Bool entering_parse:Bool entering_reverse:Bool enum_block:String enum_done:Bool ephase:Int fA:String fB:String fC:String fcount:Int fdepth:Int finalize:Bool finish_int_only:Bool finish_int_with_op:Bool finish_str_only:Bool finish_str_with_op:Bool first_v:Bool fstr:String ftacc:String full_enum_block:String fwd:TokenList got_path:Bool grouped_body:String has_input:Bool has_target:Bool have_pending:Bool head_is_claimkw:Bool head_is_enum:Bool helper_block:String ift:Bool ift_decl:String in_claim_run:Bool in_dispatch:Bool in_enum_run:Bool in_parse:Bool in_range:Bool in_reverse:Bool in_skip:Bool in_strlit:Bool input:String int_continuing:Bool int_finishing:Bool int_starting:Bool int_tok:Token is_alpha:Bool is_dig:Bool is_op:Bool is_quote:Bool is_result_enum:Bool is_ws:Bool item_after_name:Token items:TokenList items_d1:TokenList items_d2:TokenList items_hd:Token items_nil:Bool lex_done:Bool lx_collecting:Bool lx_comment:Bool lx_comment_to:Int lx_is_dash:Bool lx_next_char:String lx_next_dash:Bool lx_nl:Int lx_skip_ws:Bool lx_ws_adv:Int mem_card_seq:Bool mem_compound_seq:Bool mem_is_ctor:Bool mem_is_match:Bool mem_is_seq:Bool mts_assert:String mts_decl:String mts_field:String mts_ok:Bool mts_rest:TokenList mxe:Int name_matches:Bool name_selected:Bool need_prelude:Bool new_body:String next_ephase:Int next_pos:Int op_tok:Token out:String p_bd:Int p_id:String p_is_comma:Bool p_is_enum:Bool p_is_eq:Bool p_is_ident:Bool p_is_lp:Bool p_is_pipe:Bool p_is_rp:Bool p_is_tlkw:Bool p_tt:String p_tt_is:Bool partial_int:Int partial_str:String partial_strlit:String path_read:String phase:Int plist:TokenList plist_nil:Bool pmode:Int pos:Int prelude:String ptail:TokenList ptok:Token r_l1:TokenList r_l2:TokenList r_l3:TokenList r_l4:TokenList r_t3:Token r_t4:Token rem:TokenList rendered:String sel_assert:String sel_decl:String sel_eff:Int sel_field:String sel_ok:Bool sel_pinned:Bool sel_rest:TokenList sel_saw_ift:Bool seqelt:String sigtab:String sigtab_entry:String skip_at_tlkw:Bool skip_block:String skip_junk:Bool skip_stop:Bool skipl:TokenList skipl_hd:Token skipl_nil:Bool skipl_tl:TokenList sqs_assert:String sqs_decl:String sqs_field:String sqs_ok:Bool sqs_rest:TokenList src_path:String starting_variant:Bool step_assert:String step_decl:String step_field:String step_ok:Bool step_pinned:Bool step_rest:TokenList step_saw_ift:Bool str_continuing:Bool str_finishing:Bool str_starting:Bool strlit_closing:Bool strlit_continuing:Bool strlit_open:Bool strlit_tok:Token target:String tokens:TokenList was_collecting_int:Bool was_collecting_str:Bool work:TokenList work_hd:Token work_is_nil:Bool work_tl:TokenList
+;; manifest: state-fields = all_done:Bool at_boundary:Bool block_now:String body:String char_only:Bool chunk:String claim_block:String claim_done:Bool claim_is_param:Bool claim_name:String claim_name_tok:Token classified_str:Token commit_elt:String commit_is_seq:Bool committing_field:Bool content_read:String cts_assert:String cts_bare:Bool cts_decl:String cts_eff_len:Int cts_field:String cts_ok:Bool cts_rest:TokenList cur_char:String cur_decl:EnumVariantDecl cur_enum_decl:EnumDeclAst cur_fields:EVFieldList cur_name:String datatypes:String did_prelude:Bool dig_val:Int done:Bool e1:Bool e2:Bool e3:Bool e4:Bool e5:Bool e6:Bool e7:Bool e8:Bool eacc:String ebodies:String emit_now:Bool emit_payload:String emitting_block:Bool ename:String enter_claim:Bool enter_enum:Bool enter_skip:Bool entering_parse:Bool entering_reverse:Bool enum_block:String enum_done:Bool ephase:Int esorts:String fA:String fB:String fC:String fcount:Int fdepth:Int finalize:Bool finish_int_only:Bool finish_int_with_op:Bool finish_str_only:Bool finish_str_with_op:Bool first_v:Bool fstr:String ftacc:String full_enum_block:String fwd:TokenList got_path:Bool grouped_body:String has_input:Bool has_target:Bool have_pending:Bool head_is_claimkw:Bool head_is_enum:Bool helper_block:String helper_body:String helper_sort:String ift:Bool ift_decl:String in_claim_run:Bool in_dispatch:Bool in_enum_run:Bool in_parse:Bool in_range:Bool in_reverse:Bool in_skip:Bool in_strlit:Bool input:String int_continuing:Bool int_finishing:Bool int_starting:Bool int_tok:Token is_alpha:Bool is_dig:Bool is_op:Bool is_quote:Bool is_result_enum:Bool is_ws:Bool item_after_name:Token items:TokenList items_d1:TokenList items_d2:TokenList items_hd:Token items_nil:Bool lex_done:Bool lx_collecting:Bool lx_comment:Bool lx_comment_to:Int lx_is_dash:Bool lx_next_char:String lx_next_dash:Bool lx_nl:Int lx_skip_ws:Bool lx_ws_adv:Int mem_card_seq:Bool mem_compound_seq:Bool mem_is_ctor:Bool mem_is_match:Bool mem_is_seq:Bool mts_assert:String mts_decl:String mts_field:String mts_ok:Bool mts_rest:TokenList mxe:Int name_matches:Bool name_selected:Bool need_prelude:Bool new_body:String next_ephase:Int next_pos:Int op_tok:Token out:String p_bd:Int p_id:String p_is_comma:Bool p_is_enum:Bool p_is_eq:Bool p_is_ident:Bool p_is_lp:Bool p_is_pipe:Bool p_is_rp:Bool p_is_tlkw:Bool p_tt:String p_tt_is:Bool partial_int:Int partial_str:String partial_strlit:String path_read:String phase:Int plist:TokenList plist_nil:Bool pmode:Int pos:Int prelude:String ptail:TokenList ptok:Token r_l1:TokenList r_l2:TokenList r_l3:TokenList r_l4:TokenList r_t3:Token r_t4:Token rem:TokenList rendered:String saw_result:Bool sel_assert:String sel_decl:String sel_eff:Int sel_field:String sel_ok:Bool sel_pinned:Bool sel_rest:TokenList sel_saw_ift:Bool seqelt:String sigtab:String sigtab_entry:String skip_at_tlkw:Bool skip_block:String skip_junk:Bool skip_stop:Bool skipl:TokenList skipl_hd:Token skipl_nil:Bool skipl_tl:TokenList sqs_assert:String sqs_decl:String sqs_field:String sqs_ok:Bool sqs_rest:TokenList src_path:String starting_variant:Bool step_assert:String step_decl:String step_field:String step_ok:Bool step_pinned:Bool step_rest:TokenList step_saw_ift:Bool str_continuing:Bool str_finishing:Bool str_starting:Bool strlit_closing:Bool strlit_continuing:Bool strlit_open:Bool strlit_tok:Token target:String this_bodies:String this_sorts:String tokens:TokenList was_collecting_int:Bool was_collecting_str:Bool work:TokenList work_hd:Token work_is_nil:Bool work_tl:TokenList
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -7852,8 +7852,18 @@
 (declare-fun helper_block () String)
 (declare-fun full_enum_block () String)
 (declare-fun is_result_enum () Bool)
+(declare-fun helper_sort () String)
+(declare-fun helper_body () String)
+(declare-fun this_sorts () String)
+(declare-fun this_bodies () String)
+(declare-fun _saw_result () Bool)
+(declare-fun saw_result () Bool)
 (declare-fun _eacc () String)
 (declare-fun eacc () String)
+(declare-fun _esorts () String)
+(declare-fun esorts () String)
+(declare-fun _ebodies () String)
+(declare-fun ebodies () String)
 (declare-fun _skipl () TokenList)
 (declare-fun skipl_hd () Token)
 (declare-fun skipl_tl () TokenList)
@@ -7864,6 +7874,7 @@
 (declare-fun items () TokenList)
 (declare-fun pmode () Int)
 (declare-fun ift_decl () String)
+(declare-fun datatypes () String)
 (declare-fun claim_block () String)
 (declare-fun skip_block () String)
 (declare-fun emitting_block () Bool)
@@ -7872,7 +7883,6 @@
 (declare-fun need_prelude () Bool)
 (declare-fun phase () Int)
 (declare-fun emit_now () Bool)
-(declare-fun datatypes () String)
 (declare-fun prelude () String)
 (declare-fun block_now () String)
 (declare-fun emit_payload () String)
@@ -42309,6 +42319,25 @@
 (assert (= full_enum_block
    (ite (= _seqelt "") enum_block (str.++ helper_block "\u{a}" enum_block))))
 (assert (= is_result_enum (= _ename "Result")))
+(assert (= helper_sort (ite (= _seqelt "") "" (str.++ "(__SeqOf_" _seqelt " 0) "))))
+(assert (= helper_body
+   (ite (= _seqelt "")
+        ""
+        (str.++ "((__Empty_"
+                _seqelt
+                ") (__Cell_"
+                _seqelt
+                " (head "
+                _seqelt
+                ") (tail __SeqOf_"
+                _seqelt
+                "))) "))))
+(assert (= this_sorts (str.++ helper_sort "(" _ename " 0) ")))
+(assert (= this_bodies (str.++ helper_body grouped_body " ")))
+(assert (= saw_result
+   (ite is_first_tick
+        false
+        (ite (and enum_done is_result_enum) true _saw_result))))
 (assert (let ((a!1 (ite enum_done
                 (ite is_result_enum
                      _eacc
@@ -42317,6 +42346,10 @@
                           (str.++ _eacc "\u{a}" full_enum_block)))
                 _eacc)))
   (= eacc (ite is_first_tick "" a!1))))
+(assert (= esorts
+   (ite is_first_tick "" (ite enum_done (str.++ _esorts this_sorts) _esorts))))
+(assert (= ebodies
+   (ite is_first_tick "" (ite enum_done (str.++ _ebodies this_bodies) _ebodies))))
 (assert (= skipl_hd (ite ((_ is TLCons) _skipl) (TLCons__f0 _skipl) EofTok)))
 (assert (= skipl_tl (ite ((_ is TLCons) _skipl) (TLCons__f1 _skipl) TLNil)))
 (assert (= skipl_nil (ite ((_ is TLNil) _skipl) true false)))
@@ -42350,6 +42383,7 @@
    (str.++ ";; claim: "
            claim_name
            "\u{a}(push)\u{a}"
+           datatypes
            ift_decl
            _out
            "\u{a}(check-sat)\u{a}(pop)\u{a}")))
@@ -42366,15 +42400,19 @@
   (= phase (ite is_first_tick 0 a!1))))
 (assert (= emit_now all_done))
 (assert (= ift_decl (ite _ift "" "(declare-fun is_first_tick () Bool)\u{a}")))
-(assert (= datatypes (ite (= _eacc "") "" (str.++ _eacc "\u{a}"))))
+(assert (= datatypes
+   (ite (= _esorts "")
+        ""
+        (str.++ "(declare-datatypes (" _esorts ") (" _ebodies "))\u{a}"))))
 (assert (= prelude
-   (str.++ "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\u{a}"
-           "(declare-fun last_results () (Array Int Result))\u{a}"
-           "(declare-fun last_results__len () Int)\u{a}"
-           "(assert (>= last_results__len 0))\u{a}")))
+   (ite _saw_result
+        ""
+        (str.++ "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\u{a}"
+                "(declare-fun last_results () (Array Int Result))\u{a}"
+                "(declare-fun last_results__len () Int)\u{a}"
+                "(assert (>= last_results__len 0))\u{a}"))))
 (assert (= block_now (ite claim_done claim_block skip_block)))
-(assert (= emit_payload
-   (ite need_prelude (str.++ prelude datatypes block_now) block_now)))
+(assert (= emit_payload (ite need_prelude (str.++ prelude block_now) block_now)))
 (assert (let ((a!1 (=> is_first_tick
                (and (= effects__len 1) (= (select effects 0) ReadLine))))
       (a!2 (=> (not _got_path)
@@ -42453,6 +42491,8 @@
 (declare-fun _head_is_claimkw () Bool)
 (declare-fun _head_is_enum () Bool)
 (declare-fun _helper_block () String)
+(declare-fun _helper_body () String)
+(declare-fun _helper_sort () String)
 (declare-fun _ift_decl () String)
 (declare-fun _in_claim_run () Bool)
 (declare-fun _in_dispatch () Bool)
@@ -42564,6 +42604,8 @@
 (declare-fun _strlit_open () Bool)
 (declare-fun _strlit_tok () Token)
 (declare-fun _target () String)
+(declare-fun _this_bodies () String)
+(declare-fun _this_sorts () String)
 (declare-fun _was_collecting_int () Bool)
 (declare-fun _was_collecting_str () Bool)
 (declare-fun _work_hd () Token)

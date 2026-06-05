@@ -864,7 +864,13 @@ claim main
     -- matching bootstrap's verdict for every param claim/type in the corpus
     -- (a fidelity gap only for a param claim whose body is self-contradictory,
     -- which the lang corpus never exercises — documented in the wave doc).
-    claim_block ∈ String = ";; claim: " ++ claim_name ++ "\n(push)\n" ++ ift_decl ++ _out ++ "\n(check-sat)\n(pop)\n"
+    -- The datatypes batch goes INSIDE each push so claims declared
+    -- AFTER additional enums (e.g. test_enums_mutual.ev's 3-section
+    -- interleaving) still see all the sorts they reference. z3 push/pop
+    -- discards declare-datatypes along with assertions, so each block
+    -- redeclares them; the per-claim duplication is unavoidable on a
+    -- single-pass FSM that streams output in source order.
+    claim_block ∈ String = ";; claim: " ++ claim_name ++ "\n(push)\n" ++ datatypes ++ ift_decl ++ _out ++ "\n(check-sat)\n(pop)\n"
     skip_block  ∈ String = ";; claim: " ++ claim_name ++ "\n(push)\n(check-sat)\n(pop)\n"
 
     -- The shared prelude+datatypes are emitted ONCE, on the first claim
@@ -924,7 +930,10 @@ claim main
     -- pass through harmlessly for the wrapper to read). At all_done we only
     -- Exit(0); the blocks were already streamed.
     block_now ∈ String = (claim_done ? claim_block : skip_block)
-    emit_payload ∈ String = (need_prelude ? prelude ++ datatypes ++ block_now : block_now)
+    -- The datatypes are now INSIDE each claim_block (so claims after later
+    -- enums see those sorts too). The shared prelude carries only Result +
+    -- last_results decls + the assert.
+    emit_payload ∈ String = (need_prelude ? prelude ++ block_now : block_now)
 
     -- tick 0: read the per-process source path from stdin line 1.
     -- tick 1 (¬_got_path): ReadFile that path (dynamic, no shared file).
