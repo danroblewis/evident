@@ -973,7 +973,32 @@ pub unsafe fn functionize(
     level: StatsLevel,
     trace: bool,
 ) -> (Option<Program>, FunctionizeStats) {
-    let simplified = simplify_assertions(ctx, body);
+    // Wave 5d minimum: side-car cache for `simplify_assertions`. The
+    // cache path is the input .smt2 path + ".evidentc"; we pull the
+    // input path + source through env vars set at startup so the
+    // signature stays unchanged.
+    let cache_inputs = std::env::var("EVIDENT_CACHE_INPUT_PATH")
+        .ok()
+        .zip(std::env::var("EVIDENT_CACHE_INPUT_SRC").ok());
+    let cached = if let Some((ref path_str, ref src)) = cache_inputs {
+        let path = std::path::PathBuf::from(path_str);
+        crate::evidentc::try_load(&path, src, ctx, decl_preamble)
+    } else {
+        None
+    };
+    let simplified = if let Some(cached) = cached {
+        if trace {
+            eprintln!("[fz] evidentc cache HIT — skipped simplify+propagate-values");
+        }
+        cached
+    } else {
+        let s = simplify_assertions(ctx, body);
+        if let Some((ref path_str, ref src)) = cache_inputs {
+            let path = std::path::PathBuf::from(path_str);
+            let _ = crate::evidentc::save(&path, src, ctx, decl_preamble, &s);
+        }
+        s
+    };
     let flat = flatten_conjunctions(ctx, &simplified);
     let mut stats = FunctionizeStats::new(level, trace);
     stats.total_asserts = flat.len();

@@ -5,6 +5,7 @@
 
 use std::process::ExitCode;
 
+mod evidentc;
 mod functionize;
 mod libcall;
 mod manifest;
@@ -45,6 +46,14 @@ fn driver() -> ExitCode {
             return ExitCode::from(3);
         }
     };
+
+    // Make the input path + source available to the functionize cache (wave 5d).
+    // Using env vars keeps the functionize signature unchanged. SAFETY: this is
+    // the kernel's main entry; no other thread reads these before set.
+    unsafe {
+        std::env::set_var("EVIDENT_CACHE_INPUT_PATH", path);
+        std::env::set_var("EVIDENT_CACHE_INPUT_SRC", &src);
+    }
 
     let manifest = match manifest::parse(&src) {
         Ok(m) => m,
