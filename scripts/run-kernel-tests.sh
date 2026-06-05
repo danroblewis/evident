@@ -187,7 +187,11 @@ unset IFS
 export EVIDENT KERNEL TESTS ROOT
 export -f parse_expectations guess_claim_name setup_fixture run_one
 
-PAR="${EVIDENT_KERNEL_PAR:-$(sysctl -n hw.activecpu 2>/dev/null || echo 4)}"
+# Default parallelism: 4 (was sysctl hw.activecpu = ~12). Each kernel
+# process running compiler.smt2 can briefly grow >3GB of RSS; at 12
+# parallel that's enough to swap the machine. mem-cap.sh caps each
+# child, but lower fanout = less peak pressure.
+PAR="${EVIDENT_KERNEL_PAR:-4}"
 if [ "$PAR" -gt "${#files[@]}" ]; then PAR=${#files[@]}; fi
 
 # Per-file invocation writes the ✓/✗ line and returns 0/1 via exit code.

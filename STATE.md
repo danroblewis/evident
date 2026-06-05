@@ -43,13 +43,70 @@ All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` �
 
 ## How to pick up
 
-**Conformance under seam: NEW gap discovered** — arithmetic inside
-constructor args is dropped. Bootstrap emits `(Exit (+ 3 4))` for
-`Exit(3 + 4)`; self-hosted emits `(Exit 3)`. Affects 001-arithmetic-add
-and likely every other conformance fixture using arithmetic. Cutover
-blocked on either: (a) fix this expression-in-ctor-arg shape in
-compiler.ev / translate_ctor.ev, OR (b) extend `EVIDENT_LANG_KNOWN_FAILS`-style
-allowlisting to the conformance runner.
+**THE single ctor-arg blocker — now confirmed to wipe the kernel phase too**
+
+`compiler/translate_ctor.ev`'s `RenderExprL0` only handles atomic args —
+bare names, simple ints. Anything else inside a constructor call is
+silently dropped:
+
+| Source                              | Bootstrap                                | Self-host       |
+| ----------------------------------- | ---------------------------------------- | --------------- |
+| `Exit(3 + 4)`                       | `(Exit (+ 3 4))`                         | `(Exit 3)`      |
+| `Exit(0)` literal int               | `(Exit 0)`                               | constraint dropped — output stops at `is_first_tick` decl |
+| `LibCall("libc", "puts", ⟨…⟩)`     | full LibCall ctor + ArgStr seq           | constraint dropped |
+
+Bootstrap on `tests/kernel/test_hello.ev` emits ~20 lines incl. the
+full effects body + `(assert (= effects__len 2))`. Self-host on the
+same file emits ONLY 11 lines, stops after `is_first_tick`. Kernel:
+`var effects__len not in model` → exit 3.
+
+**This means the kernel phase under seam is ~0% pass, not 100%.**
+The "111 kernel tests green" line earlier in this file was always the
+bootstrap path (the default `./test.sh --kernel`). Until translate_ctor
+renders expression args, no real kernel-test fixture survives the seam.
+
+### Cutover blockers in dependency order
+
+1. **Fix `compiler/translate_ctor.ev`**: `RenderExprL0` must recurse
+   into expression arguments — Int literal, String literal, `⟨…⟩` Seq
+   literal, nested ctor call, arithmetic. The lang + conformance +
+   kernel suites all need this.
+2. Rebuild `compiler.smt2` from the fixed source.
+3. Re-verify lang + conformance + kernel under seam (
+   `EVIDENT_SELF_VIA_SMT2=1 bash test.sh --kernel|--lang|--conformance`).
+   With the mem cap landed (`scripts/mem-cap.sh`, default 3 GB) and
+   fanout dropped to 4 (was sysctl `hw.activecpu` ≈ 12), the host
+   stays usable.
+4. Switch `test.sh` to drop phases 1+2's bootstrap build and
+   `scripts/evident-self` to drop the bootstrap branch.
+5. `rm -rf bootstrap/`.
+
+### Safety landings this session (kept on main)
+
+- `scripts/mem-cap.sh` — polling watchdog that SIGKILLs any kernel
+  child whose RSS exceeds `MEM_CAP_MB` (default 3000). macOS doesn't
+  honor `ulimit -v` (RLIMIT_AS), hence the polling shim. Wired into
+  the `EVIDENT_SELF_VIA_SMT2=1` seam wrapper.
+- `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4 (was
+  sysctl `hw.activecpu` ≈ 12). Each kernel-on-compiler.smt2 child can
+  briefly grow >3 GB; 12 in parallel swapped the host on this Mac.
+- `tests/conformance/features/runner.sh` known-fails allowlist for
+  `IMPL=selfhost` (16 entries today — every ctor-arg case).
+
+When item 1 lands, the conformance allowlist + every lang ctor-arg
+fail + nearly every kernel fixture close simultaneously. It is THE
+remaining correctness blocker for the cutover.
+
+### Why my session's mechanical-cutover attempt was wrong
+
+I had been treating "lang phase 93.9% under seam" as evidence the
+seam was nearly ready. It was not — the lang phase happens to use
+mostly `unsat_*` tests where a dropped constraint still produces an
+SMT-LIB program that solves (just to the wrong answer that the
+wrapper then maps `unsat→sat=fail`). The kernel phase fails harder
+because the dropped constraint leaves the program with no `effects`
+array at all, which the kernel rejects at load time. Two phases, same
+root cause, very different surface symptoms.
 
 **Wave 4u (sample.ev per-block datatypes) LANDED:** lang seam v7 closed
 9 multiline failures (test_enums_mutual.ev) in one fix. 88.4% → 93.9%.

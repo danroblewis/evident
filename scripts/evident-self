@@ -65,6 +65,7 @@ KERNEL="${KERNEL}"
 FLATTEN="${ROOT}/scripts/flatten-evident.sh"
 COMPILER_SMT2="${COMPILER_SMT2}"
 SAMPLE="${ROOT}/scripts/sample-via-smt2.sh"
+MEM_CAP="${ROOT}/scripts/mem-cap.sh"
 # sample verb (wave 4j): delegate to the self-hosted sat-check wrapper
 # (kernel + compiler.smt2 emit per claim + standalone z3).
 if [ "\${1:-}" = "sample" ]; then
@@ -86,10 +87,13 @@ trap 'rm -f "\$FLAT"' EXIT
 "\$FLATTEN" "\$SRC" > "\$FLAT" || { echo "evident-self(smt2): flatten failed" >&2; exit 1; }
 # Per-process input (wave 4o): stdin line 1 = the flat source path,
 # line 2 = the optional target claim. No shared /tmp file ⇒ no race.
+# Kernel invocation is wrapped by mem-cap.sh — RSS > MEM_CAP_MB
+# (default 3000) → SIGKILL. macOS doesn't honor RLIMIT_AS, so this is
+# how we keep a runaway compiler.smt2 run from swapping the host.
 if [ -n "\$OUT" ]; then
-    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$KERNEL" "\$COMPILER_SMT2" > "\$OUT"
+    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$MEM_CAP" "\$KERNEL" "\$COMPILER_SMT2" > "\$OUT"
 else
-    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$KERNEL" "\$COMPILER_SMT2"
+    printf '%s\n%s\n' "\$FLAT" "\$CLAIM" | "\$MEM_CAP" "\$KERNEL" "\$COMPILER_SMT2"
 fi
 WRAP
     chmod +x "$wrapper"

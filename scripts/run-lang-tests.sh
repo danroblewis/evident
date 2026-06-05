@@ -73,8 +73,11 @@ run_one() {
 export BIN
 export -f run_one
 
-# Parallelism: default to active CPU count (cap at #files for sanity).
-PAR="${EVIDENT_LANG_PAR:-$(sysctl -n hw.activecpu 2>/dev/null || echo 4)}"
+# Parallelism: default 4 (was sysctl hw.activecpu = ~12). Each kernel
+# process running compiler.smt2 can briefly grow >3GB of RSS; at 12
+# parallel that's enough to OOM/swap the host. mem-cap.sh caps each
+# child, but lower fanout = less peak pressure.
+PAR="${EVIDENT_LANG_PAR:-4}"
 if [ "$PAR" -gt "${#files[@]}" ]; then PAR=${#files[@]}; fi
 
 results_file="$(mktemp -t evident_lang_results.XXXXXX)"
