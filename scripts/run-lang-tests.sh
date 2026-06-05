@@ -124,8 +124,14 @@ expected_count=0
 for line in "${fail_lines[@]:-}"; do
     [ -z "$line" ] && continue
     # Extract the "file::claim" identifier from "  FAIL file::claim: …"
+    # The line uses `::` between file and claim and `:` before the message,
+    # so we strip the leading "  FAIL " then everything from the first
+    # SINGLE colon (not `::`) onward by replacing `::` with a placeholder,
+    # cutting at the next `:`, then restoring.
     ident="${line#*FAIL }"
-    ident="${ident%%:*}"
+    placeheld="${ident//::/§§§}"
+    placeheld="${placeheld%%:*}"
+    ident="${placeheld//§§§/::}"
     if printf '%s\n' "$KNOWN_FAILS" | grep -qFx "$ident"; then
         expected_count=$((expected_count + 1))
     else
