@@ -135,6 +135,25 @@ pub(crate) fn translate_bool<'ctx>(
             }
             return None;
         }
+        // Z3 Bool operators that don't have direct Evident surface syntax.
+        // Adding a new one is one match-arm here, following the distinct
+        // precedent above (the user's "all Z3 predicates" extension recipe).
+        if name == "xor" && args.len() == 2 {
+            let a = translate_bool(&args[0], ctx, env, schemas)?;
+            let b = translate_bool(&args[1], ctx, env, schemas)?;
+            return Some(a.xor(&b));
+        }
+        if name == "iff" && args.len() == 2 {
+            let a = translate_bool(&args[0], ctx, env, schemas)?;
+            let b = translate_bool(&args[1], ctx, env, schemas)?;
+            return Some(a.iff(&b));
+        }
+        if name == "ite" && args.len() == 3 {
+            let cond = translate_bool(&args[0], ctx, env, schemas)?;
+            let t = translate_bool(&args[1], ctx, env, schemas)?;
+            let e = translate_bool(&args[2], ctx, env, schemas)?;
+            return Some(cond.ite(&t, &e));
+        }
     }
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
