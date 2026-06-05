@@ -1,0 +1,90 @@
+-- Wave 5b — drive libffi (ffi_prep_cif + ffi_call) directly from
+-- an Evident FSM, without going through the kernel's built-in
+-- LibCall dispatch for the actual target. This proves the
+-- trampoline-in-Evident path: Evident builds the CIF, gets a
+-- function pointer, invokes ffi_call, reads the result back.
+--
+-- Target call: `getpid()` from libc — no args, returns pid_t (i32).
+-- Result must be > 0 for the test to pass.
+--
+-- Layout:
+--   tick 0  malloc(48)                                ── cif buffer
+--   tick 1  capture cif from [0]; malloc(8)           ── rvalue buffer
+--   tick 2  capture rvalue from [0]; __dlsym.addr("libffi","ffi_type_sint32")
+--   tick 3  capture rtype_p from [0]; __dlsym.addr("libc","getpid")
+--   tick 4  capture fn_p from [0]; ffi_prep_cif(cif, 1, 0, rtype_p, 0)
+--   tick 5  ffi_call(cif, fn_p, rvalue, 0)
+--   tick 6  __mem.read_long(rvalue)  → pid
+--   tick 7  Exit(0 iff pid > 0)
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- ── Pointers carried across ticks ────────────────────────────
+    cif_p  ∈ Int
+    _cif_p ∈ Int
+    cif_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cif_p = (is_first_tick ? 0
+        : phase = 1 ? cif_capture
+        : _cif_p)
+
+    rvalue_p  ∈ Int
+    _rvalue_p ∈ Int
+    rvalue_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    rvalue_p = (is_first_tick ? 0
+        : phase = 2 ? rvalue_capture
+        : _rvalue_p)
+
+    rtype_p  ∈ Int
+    _rtype_p ∈ Int
+    rtype_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    rtype_p = (is_first_tick ? 0
+        : phase = 3 ? rtype_capture
+        : _rtype_p)
+
+    fn_p  ∈ Int
+    _fn_p ∈ Int
+    fn_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    fn_p = (is_first_tick ? 0
+        : phase = 4 ? fn_capture
+        : _fn_p)
+
+    pid  ∈ Int
+    _pid ∈ Int
+    pid_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    pid = (is_first_tick ? 0
+        : phase = 7 ? pid_capture
+        : _pid)
+
+    exit_code ∈ Int = (pid > 0 ? 0 : 1)
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨LibCall("libc", "malloc", ⟨ArgInt(48)⟩)⟩
+        : phase = 1 ? ⟨LibCall("libc", "malloc", ⟨ArgInt(8)⟩)⟩
+        : phase = 2 ? ⟨LibCall("__dlsym", "addr",
+                           ⟨ArgStr("libffi"), ArgStr("ffi_type_sint32")⟩)⟩
+        : phase = 3 ? ⟨LibCall("__dlsym", "addr",
+                           ⟨ArgStr("libc"), ArgStr("getpid")⟩)⟩
+        : phase = 4 ? ⟨LibCall("libffi", "ffi_prep_cif",
+                           ⟨ArgInt(cif_p), ArgInt(1), ArgInt(0),
+                            ArgInt(rtype_p), ArgInt(0)⟩)⟩
+        : phase = 5 ? ⟨LibCall("libffi", "ffi_call",
+                           ⟨ArgInt(cif_p), ArgInt(fn_p), ArgInt(rvalue_p), ArgInt(0)⟩)⟩
+        : phase = 6 ? ⟨LibCall("__mem", "read_long", ⟨ArgInt(rvalue_p)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
