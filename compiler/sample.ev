@@ -309,6 +309,19 @@ claim main
     _items ∈ TokenList
     eacc  ∈ String
     _eacc ∈ String
+    -- Batched-datatype accumulators (wave 4q): ALL user enums are emitted as
+    -- ONE `(declare-datatypes (<sorts>) (<bodies>))` block so forward and
+    -- mutual references between enums (Expr→BinOp, JsonValue↔JsonList,
+    -- NodeA→NodeB→NodeC→NodeA) resolve — SMT-LIB text requires every
+    -- referenced sort to be visible, and a single batch makes all listed
+    -- sorts mutually visible (mirrors bootstrap's create_datatypes batch).
+    -- The old per-enum `(declare-datatypes ((Name 0)) …)` form (carried in
+    -- `_eacc`) forward-ref-errored in z3, dropping the enum and every
+    -- assertion over it ⇒ the claim went vacuously sat.
+    esorts  ∈ String
+    _esorts ∈ String
+    ebodies  ∈ String
+    _ebodies ∈ String
 
     items_hd ∈ Token
     TLHd(l ↦ _items, out ↦ items_hd)
@@ -737,13 +750,50 @@ claim main
     full_enum_block ∈ String = (_seqelt = "" ? enum_block : helper_block ++ "\n" ++ enum_block)
     is_result_enum ∈ Bool = (_ename = "Result")
 
-    -- Accumulators (persist across items): enum datatype blocks, and the
-    -- remaining top-level stream. `eacc` only grows on `enum_done`; `items`
-    -- advances at the parse start, each enum boundary, and the claim end.
+    -- Batched form (wave 4q): this enum's `(Name 0)` sort decl + its body
+    -- (`((Ctor …) …)`), plus — when it carries a `Seq(T)` payload — the
+    -- `__SeqOf_T` Cons-helper sort/body INTO THE SAME BATCH (within one
+    -- declare-datatypes all listed sorts are mutually visible, so the
+    -- helper need not precede the enum textually). The helper is recursive
+    -- (`(tail __SeqOf_T)`) and the body omits the declare-datatypes wrapper
+    -- that SeqHelperBlock adds, so it is built inline here.
+    helper_sort ∈ String = (_seqelt = "" ? "" : "(__SeqOf_" ++ _seqelt ++ " 0) ")
+    helper_body ∈ String = (_seqelt = "" ? ""
+        : "((__Empty_" ++ _seqelt ++ ") (__Cell_" ++ _seqelt ++ " (head " ++ _seqelt
+          ++ ") (tail __SeqOf_" ++ _seqelt ++ "))) ")
+    this_sorts ∈ String = helper_sort ++ "(" ++ _ename ++ " 0) "
+    this_bodies ∈ String = helper_body ++ grouped_body ++ " "
+
+    -- A file may define its OWN `Result` enum (`enum Result = Ok(Int) |
+    -- Err(String)`, test_enums_payload). When it does, that user Result is
+    -- the one its claims reference (`r = Ok(5)`), so it MUST be declared —
+    -- and the fixed sample prelude's `Result`/`last_results` decls must be
+    -- SUPPRESSED to avoid a duplicate-sort error (which previously dropped
+    -- the user Result, leaving `Ok`/`Err` undefined ⇒ the claim went sat).
+    -- `saw_result` records that a user Result was parsed; the batch now
+    -- ALWAYS includes the enum (no Result skip), and the prelude keys off
+    -- `_saw_result`.
+    saw_result  ∈ Bool
+    _saw_result ∈ Bool
+    saw_result = (is_first_tick ? false
+        : (enum_done ∧ is_result_enum ? true
+        : _saw_result))
+
+    -- Accumulators (persist across items): batched enum sorts + bodies, and
+    -- the remaining top-level stream. `esorts`/`ebodies` grow on every
+    -- `enum_done` (including a user Result); `items` advances at the parse
+    -- start, each enum boundary, and the claim end. `eacc` is retained
+    -- (dead) for backward compatibility; `datatypes` reads the batch.
     eacc = (is_first_tick ? ""
         : (enum_done ? (is_result_enum ? _eacc
             : (_eacc = "" ? full_enum_block : _eacc ++ "\n" ++ full_enum_block))
         : _eacc))
+    esorts = (is_first_tick ? ""
+        : (enum_done ? _esorts ++ this_sorts
+        : _esorts))
+    ebodies = (is_first_tick ? ""
+        : (enum_done ? _ebodies ++ this_bodies
+        : _ebodies))
     -- ══════════════════════════════════════════════════════════════
     -- CLAIM-SKIP sub-machine (pmode 3): drop a parametrized helper claim
     -- ══════════════════════════════════════════════════════════════
@@ -842,7 +892,8 @@ claim main
     -- (compiler.ev's manifest header is intentionally omitted in sample
     -- mode — the output is consumed by `z3 -in`, which needs no manifest.)
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
-    datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
+    datatypes ∈ String = (_esorts = "" ? ""
+        : "(declare-datatypes (" ++ _esorts ++ ") (" ++ _ebodies ++ "))\n")
 
     -- ── EMIT PRELUDE (wave 4d) ─────────────────────────────────────
     -- The kernel ALWAYS pins `last_results__len` and decodes
@@ -854,7 +905,13 @@ claim main
     -- self-hosted EMIT phase produces none of it, so we emit a fixed
     -- prelude mirroring bootstrap's exact output, between the manifest
     -- and the enum datatype / body declares.
-    prelude ∈ String = ("(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
+    -- Suppressed entirely when the file declares its OWN `Result` enum
+    -- (`_saw_result`): the user Result is then in the batched datatypes and
+    -- this fixed Result/last_results block would duplicate the sort. Lang
+    -- sat-check claims never reference `last_results`, so dropping it is
+    -- harmless for those files.
+    prelude ∈ String = (_saw_result ? ""
+        : "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
         ++ "(declare-fun last_results () (Array Int Result))\n"
         ++ "(declare-fun last_results__len () Int)\n"
         ++ "(assert (>= last_results__len 0))\n")

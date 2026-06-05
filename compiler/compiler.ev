@@ -316,6 +316,16 @@ claim main
     _items ∈ TokenList
     eacc  ∈ String
     _eacc ∈ String
+    -- Batched-datatype accumulators (wave 4q): ALL user enums are emitted as
+    -- ONE `(declare-datatypes (<sorts>) (<bodies>))` block so forward and
+    -- mutual references between enums (Expr→BinOp, JsonValue↔JsonList,
+    -- NodeA→NodeB→NodeC→NodeA) resolve — SMT-LIB text requires every
+    -- referenced sort to be visible, and a single batch makes all listed
+    -- sorts mutually visible (mirrors bootstrap's create_datatypes batch).
+    esorts  ∈ String
+    _esorts ∈ String
+    ebodies  ∈ String
+    _ebodies ∈ String
 
     items_hd ∈ Token
     TLHd(l ↦ _items, out ↦ items_hd)
@@ -854,13 +864,32 @@ claim main
     full_enum_block ∈ String = (_seqelt = "" ? enum_block : helper_block ++ "\n" ++ enum_block)
     is_result_enum ∈ Bool = (_ename = "Result")
 
-    -- Accumulators (persist across items): enum datatype blocks, and the
-    -- remaining top-level stream. `eacc` only grows on `enum_done`; `items`
-    -- advances at the parse start, each enum boundary, and the claim end.
+    -- Batched form (wave 4q): this enum's `(Name 0)` sort decl + its body,
+    -- plus — when it carries a `Seq(T)` payload — the `__SeqOf_T` Cons-helper
+    -- sort/body INTO THE SAME BATCH (within one declare-datatypes all listed
+    -- sorts are mutually visible, so the helper need not precede the enum
+    -- textually). See sample.ev for the rationale.
+    helper_sort ∈ String = (_seqelt = "" ? "" : "(__SeqOf_" ++ _seqelt ++ " 0) ")
+    helper_body ∈ String = (_seqelt = "" ? ""
+        : "((__Empty_" ++ _seqelt ++ ") (__Cell_" ++ _seqelt ++ " (head " ++ _seqelt
+          ++ ") (tail __SeqOf_" ++ _seqelt ++ "))) ")
+    this_sorts ∈ String = helper_sort ++ "(" ++ _ename ++ " 0) "
+    this_bodies ∈ String = helper_body ++ grouped_body ++ " "
+
+    -- Accumulators (persist across items): batched enum sorts + bodies, and
+    -- the remaining top-level stream. `esorts`/`ebodies` only grow on
+    -- `enum_done` (Result skipped). `eacc` is retained (dead) for backward
+    -- compatibility; `datatypes` now reads the batched accumulators.
     eacc = (is_first_tick ? ""
         : (enum_done ? (is_result_enum ? _eacc
             : (_eacc = "" ? full_enum_block : _eacc ++ "\n" ++ full_enum_block))
         : _eacc))
+    esorts = (is_first_tick ? ""
+        : (enum_done ∧ (¬is_result_enum) ? _esorts ++ this_sorts
+        : _esorts))
+    ebodies = (is_first_tick ? ""
+        : (enum_done ∧ (¬is_result_enum) ? _ebodies ++ this_bodies
+        : _ebodies))
     -- ══════════════════════════════════════════════════════════════
     -- CLAIM-SKIP sub-machine (pmode 3): drop a parametrized helper claim
     -- ══════════════════════════════════════════════════════════════
@@ -920,7 +949,8 @@ claim main
         ++ ";; manifest: result-enum-name = Result\n"
         ++ ";; manifest: max-effects = " ++ str_from_int(_mxe))
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
-    datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
+    datatypes ∈ String = (_esorts = "" ? ""
+        : "(declare-datatypes (" ++ _esorts ++ ") (" ++ _ebodies ++ "))\n")
 
     -- ── EMIT PRELUDE (wave 4d) ─────────────────────────────────────
     -- The kernel ALWAYS pins `last_results__len` and decodes
