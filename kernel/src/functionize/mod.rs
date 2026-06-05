@@ -745,23 +745,17 @@ unsafe fn extract_program(
         // know which one is the output. The mentions_name / contains_key gates
         // in the parent branches below filter out wrong-direction captures.
         if let Some((bv1, neg1, bv2, neg2)) = split_not_eq_bool_both(ctx, a) {
-            // Two sub-cases:
-            //   (a) BOTH sides are uninterp consts (symmetric XOR shape) —
-            //       capturing both creates a 2-var cycle (e.g.
-            //       `is_first_tick = (not got_path)` AND `got_path = (not
-            //       is_first_tick)`). Prefer the side that's an OUTPUT.
-            //   (b) Only ONE side is an uninterp const (the other is a
-            //       boolean expression like `(= s "")`) — capture that side
-            //       unconditionally; there's no cycle risk because the
-            //       expression isn't a separate variable.
-            let bv1_const = is_uninterp_const(ctx, bv1);
-            let bv2_const = is_uninterp_const(ctx, bv2);
-            let prefer_outputs = bv1_const && bv2_const;
+            // Symmetric XOR shape. Capturing both directions risks a 2-var
+            // cycle (e.g. `is_first_tick = (not got_path)` AND `got_path =
+            // (not is_first_tick)`). Restrict to OUTPUT sides only — the
+            // kernel needs to compute outputs, and capturing intermediates
+            // turned out to break verify on multi-tick test fixtures
+            // (test_pipeline_lex_parse regression, commit a597b8c).
             let mut captured = false;
-            for (bv, neg, is_const) in [(bv1, neg1, bv1_const), (bv2, neg2, bv2_const)] {
-                if !is_const { continue; }
+            for (bv, neg) in [(bv1, neg1), (bv2, neg2)] {
+                if !is_uninterp_const(ctx, bv) { continue; }
                 let Some(name) = ast_app_name(ctx, bv) else { continue };
-                if prefer_outputs && !output_set.contains(&name) { continue; }
+                if !output_set.contains(&name) { continue; }
                 if !raw.scalar.contains_key(&name) && !mentions_name(ctx, neg, &name) {
                     raw.scalar.insert(name, neg);
                     captured = true;
@@ -769,7 +763,6 @@ unsafe fn extract_program(
                 }
             }
             if captured { continue; }
-            // Neither side captured; fall through.
         }
         let Some((l, r)) = split_equality(ctx, a) else {
             raw.predicates.push(a);
@@ -1064,24 +1057,19 @@ pub unsafe fn functionize(
     let prog = Program { steps, predicates, jit_count, interp_count, _keepalive: keepalive };
 
     // ── Verify on tick 0 and tick 1 against a real Z3 solve. ──
-    // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass entirely (debug only).
-    //
-    // Tick 0: `_<name>` carries are UNCONSTRAINED (no prev state). Z3 picks
-    // arbitrary values; build_inputs picks defaults. The two can legally
-    // diverge on outputs that read `_<name>` without an `is_first_tick`
-    // gate. Use Z3's tick-0 OUTPUTS as the seed for tick-1 even when our
-    // tick-0 differs; the comparison check then validates the body shape on
-    // a fully-determined state.
+    // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass entirely (debug only,
+    // unsafe — relaxes the soundness gate that prevents silent divergence).
     if std::env::var("EVIDENT_FUNCTIONIZE_SKIP_VERIFY").ok().as_deref() != Some("1") {
         let empty_prev: Vec<Option<Sv>> = vec![None; manifest.state_fields.len()];
         let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
             refuse!("verify: tick-0 Z3 solve failed");
         };
-        // Run our eval on tick 0 to confirm it doesn't crash, but don't
-        // assert outputs_match — see header comment about ambiguity.
-        let Some(_mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
+        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
             refuse!("verify: tick-0 eval refused (unsupported op)");
         };
+        if !outputs_match(manifest, &z3_0, &mine_0) {
+            refuse!("verify: tick-0 mismatch vs Z3");
+        }
         let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
         let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
             refuse!("verify: tick-1 Z3 solve failed");
@@ -1215,15 +1203,6 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                 }
                 let Some(body) = chosen else {
                     if trace_enabled() { eprintln!("[fz/run] guarded step {:?}: no branch guard matched", step.var); }
-                    // For `effects`, the body's ITE chain ends in an `else
-                    // ⟨⟩` (empty Seq). When no guard fires, that's the
-                    // implicit default — emit no effects this tick. For
-                    // non-effects guarded steps we can't safely default, so
-                    // refuse.
-                    if step.is_effects {
-                        effects = Vec::new();
-                        continue;
-                    }
                     return None;
                 };
                 match body {

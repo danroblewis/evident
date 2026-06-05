@@ -141,19 +141,16 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
             }
             Some(Sv::Datatype(name, fields))
         }
-        // `(select arr i)` — index a Seq.
-        // SMT-LIB arrays are total; out-of-range reads return an unconstrained
-        // value. We model that with an OOB sentinel datatype — no recognizer
-        // matches it, so a DT_IS gate flips to the else branch (the convention
-        // for "this slot is empty" in the kernel's last_results pattern).
+        // `(select rs i)` — index a record-Seq intermediate bound in env.
+        // Out-of-range returns None — caller falls through to Z3, preserving
+        // soundness on the kernel's `last_results` pattern (an attempt to
+        // sentinel-return here diverged from Z3 on programs with strict
+        // length pins; commit c420fe6 reverted).
         DeclKind::SELECT => {
             let arr = eval_scalar(ctx, ch[0], env)?;
             let idx = as_int(eval_scalar(ctx, ch[1], env)?)?;
             match arr {
-                Sv::Seq(elems) if idx >= 0 => match elems.into_iter().nth(idx as usize) {
-                    Some(v) => Some(v),
-                    None => Some(Sv::Datatype("_oob_sentinel".to_string(), Vec::new())),
-                },
+                Sv::Seq(elems) if idx >= 0 => elems.into_iter().nth(idx as usize),
                 _ => None,
             }
         }
