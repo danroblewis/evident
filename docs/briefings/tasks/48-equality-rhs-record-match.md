@@ -1,22 +1,29 @@
-# Task: equality-RHS-record + match-result + composition gaps (wave 4q)
+# Task: equality-RHS-record + match-result + multiline enum + composition (wave 4q)
 
 ## Why
 
-Wave 4p (`docs/plans/wave-4p-equality-rhs-complex.md`) closed 4 of 6
-classes of `name = <complex RHS>` shapes that were dropping
-constraints in lang_tests: bare ctor application, ternary, matches
-predicate, negative ints. It DEFERRED 4 more classes that still
-cause `unsat_*` claims to report sat under the seam:
+Wave 4p closed 4 of the original 34 lang failure classes; the
+lang-seam-v4 measurement (`/tmp/lang-seam-v4.log`, 140/164 = 85.4%
+pass) reveals 24 remaining, clustered into these classes:
 
-| Shape | Example | Sites |
-| ----- | ------- | ----- |
-| Record literal equality | `c = Color(r ↦ 1, g ↦ 2, b ↦ 3)` | `test_record_lit_arg.ev::unsat_positional_color` etc. |
-| Match-result equality | `r = match e (Ok(v) ⇒ v; Err(_) ⇒ 0)` | `test_match.ev::unsat_match_result_pinned_wrong` |
-| Multi-name range / chain | `0 < a, b ∈ Int < 10` (LHS only) | `test_chained_membership.ev::unsat_multi_name_range_violation` |
-| Composition + chain | `chain_via_composition_violates` | `test_chained_membership.ev` |
+| Shape | Example | Failure count |
+| ----- | ------- | ------------: |
+| **Multiline enum payload variants** | `enum Effect = Foo \n  Bar \n  Baz(Int)` (newline-separated) with payload constraint | **12** in test_enums_mutual.ev |
+| Enum payload ctor mismatch | `e ∈ Result = Ok(0)` then `e = Ok(1)` (payload differs) | 4 in test_enums_payload.ev |
+| Record literal equality | `c = Color(r ↦ 1, g ↦ 2, b ↦ 3)` | 3 in test_record_lit_arg.ev |
+| Composition + chain | `chain_via_composition_violates`, `unsat_weekend_via_claim_wrong` | 3 |
+| Match-result equality | `r = match e (Ok(v) ⇒ v; Err(_) ⇒ 0)` | 1 |
+| Tuple-in-claim mismatch | `unsat_tuple_wrong_output` | 1 |
 
-This wave closes those. After it lands, the lang phase should be
-≥98% pass and the cutover gate truly clears.
+The 12 multiline_* failures from a single file (test_enums_mutual.ev)
+all share ONE shape: enum payload variants declared across multiple
+lines with no `|` separator. Wave 4g added newline-separated variant
+parsing but the PAYLOAD constraint emission for these isn't enforcing
+the variant tag, so a contradictory pin like `e = Foo(1) ∧ e = Bar(2)`
+reports sat instead of unsat.
+
+This wave closes ALL of the above. After it lands, lang phase
+should be ≥98% pass.
 
 ## Authorisation
 
