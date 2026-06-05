@@ -146,6 +146,71 @@ claim BuildZ3SolverAssert(ctx_h, solver_h, ast_h ∈ Int, eff ∈ Effect)
 claim BuildZ3SolverCheck(ctx_h, solver_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_solver_check", ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)
 
+-- ── Wave 5c — Z3 tactic + AST introspection sugar ───────────────
+-- These are the libz3 calls the functionizer-recognizer (a
+-- stack-FSM walk over Z3 ASTs) needs in addition to the lifecycle
+-- ones above. See docs/plans/wave-5c-functionizer-in-evident.md §1
+-- ("Sketch: MatchFunctionizableStep") and §-roadmap step 1.
+--
+-- A Z3 AST is an opaque Int handle here; libz3 functions classify
+-- it (get_ast_kind, get_decl_kind, get_app_num_args, get_app_arg)
+-- so an Evident FSM can branch on integer return codes.
+
+-- Z3_get_ast_kind(ctx, ast) → Z3_ast_kind enum (Int).
+claim BuildZ3GetAstKind(ctx_h, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_get_ast_kind", ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
+
+-- Z3_to_app(ctx, ast) → Z3_app handle (Int). Required before any
+-- Z3_get_app_* call.
+claim BuildZ3ToApp(ctx_h, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_to_app", ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
+
+-- Z3_get_app_decl(ctx, app) → Z3_func_decl handle.
+claim BuildZ3GetAppDecl(ctx_h, app_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_get_app_decl", ⟨ArgInt(ctx_h), ArgInt(app_h)⟩)
+
+-- Z3_get_decl_kind(ctx, decl) → Z3_decl_kind enum (Int). This is
+-- the recognizer's primary discriminator (OP_TRUE, OP_FALSE,
+-- OP_AND, OP_ADD, OP_SELECT, …).
+claim BuildZ3GetDeclKind(ctx_h, decl_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_get_decl_kind", ⟨ArgInt(ctx_h), ArgInt(decl_h)⟩)
+
+-- Z3_get_app_num_args(ctx, app) → unsigned (Int).
+claim BuildZ3GetAppNumArgs(ctx_h, app_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_get_app_num_args", ⟨ArgInt(ctx_h), ArgInt(app_h)⟩)
+
+-- Z3_get_app_arg(ctx, app, i) → Z3_ast child handle.
+claim BuildZ3GetAppArg(ctx_h, app_h, idx ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_get_app_arg",
+        ⟨ArgInt(ctx_h), ArgInt(app_h), ArgInt(idx)⟩)
+
+-- Z3_mk_goal(ctx, models, unsat_cores, proofs) → Z3_goal handle.
+-- For the simplify+propagate-values tactic chain, pass 1,0,0.
+claim BuildZ3MkGoal(ctx_h, models, unsat_cores, proofs ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_goal",
+        ⟨ArgInt(ctx_h), ArgInt(models), ArgInt(unsat_cores), ArgInt(proofs)⟩)
+
+-- Z3_goal_assert(ctx, goal, ast) → void.
+claim BuildZ3GoalAssert(ctx_h, goal_h, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_goal_assert",
+        ⟨ArgInt(ctx_h), ArgInt(goal_h), ArgInt(ast_h)⟩)
+
+-- Z3_mk_tactic(ctx, name_cstr) → Z3_tactic handle. The name is a
+-- C string identifying the tactic ("simplify", "propagate-values",
+-- etc.). Strings marshal through ArgStr.
+claim BuildZ3MkTactic(ctx_h ∈ Int, name ∈ String, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_tactic", ⟨ArgInt(ctx_h), ArgStr(name)⟩)
+
+-- Z3_tactic_and_then(ctx, t1, t2) → Z3_tactic. Sequential composition.
+claim BuildZ3TacticAndThen(ctx_h, t1_h, t2_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_tactic_and_then",
+        ⟨ArgInt(ctx_h), ArgInt(t1_h), ArgInt(t2_h)⟩)
+
+-- Z3_tactic_apply(ctx, tactic, goal) → Z3_apply_result handle.
+claim BuildZ3TacticApply(ctx_h, tactic_h, goal_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_tactic_apply",
+        ⟨ArgInt(ctx_h), ArgInt(tactic_h), ArgInt(goal_h)⟩)
+
 -- ── Wave 5b — libffi-in-Evident (Path A) sugar ───────────────────
 -- The kernel's __dlsym pseudo-library resolves the address of a
 -- named symbol WITHOUT calling it. This lets an Evident FSM call
