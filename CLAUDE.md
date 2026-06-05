@@ -1,169 +1,62 @@
 # Evident — read this first
 
-## If you're being asked to orchestrate
+## State: post-bootstrap-deletion (commit 76dc491)
 
-If the human just asked you to "take over as coordinator" or
-similar, **stop reading this file** and read
-`docs/briefings/orchestrator.md` first. It contains the
-hand-off prompt + the coordination pattern. Come back here
-after.
-
-## The goal in three sentences
-
-**The deliverable of this project is `bootstrap/` deleted.** Today,
-`bootstrap/runtime/` is ~10,500 lines of Rust that compile Evident
-source files to SMT-LIB. We are transcribing that compiler into
-Evident itself, in `compiler/*.ev`, so that the kernel can run the
-compiler and the Rust can be removed. **Done = `bootstrap/` does
-not exist; no Python lives under `tests/` or `scripts/`; the kernel
-plus `compiler.smt2` are the entire system.**
-
-If you find yourself thinking "let me improve / fix / refactor /
-clean up something in `bootstrap/` or in the Python scripts" — stop.
-That tree is reference material. Reference is read, not edited. We
-edit Evident.
-
-## The architecture, in one paragraph
-
-The kernel (`kernel/`, ~880 lines of Rust) is the minimal native
-runtime: trampoline + libffi + a Z3 wrapper. **It only knows how to
-read an `.smt2` file and run it.** Evident source compiles to a Z3
-model, which exports as SMT-LIB, which the kernel runs. **The
-compiler is therefore just an Evident program that, when compiled
-to `compiler.smt2`, takes another `.ev` file as input and emits the
-corresponding `.smt2` as output.** Self-hosting in this project is
-trivial in shape: once `compiler.smt2` exists, the kernel runs it
-to compile every other Evident file, and `bootstrap/` has no role.
+`bootstrap/`, `legacy-rust/`, and `legacy-python/` are gone. The
+project is now self-hosted on `kernel + compiler.smt2`. The
+producing path has zero Rust dependencies outside `kernel/` and
+zero Python anywhere.
 
 ```
-DELETION TARGET (the picture we are building):
-
-  source.ev ─┐
-             │
-             ▼
-  ┌────────────────────────────────┐
-  │  kernel + compiler.smt2        │   ← reads source.ev, emits output.smt2
-  └────────────────────────────────┘
-             │
-             ▼
-       output.smt2 ─┐
-                    │
-                    ▼
-  ┌────────────────────────────────┐
-  │  kernel                        │   ← reads output.smt2, runs the program
-  └────────────────────────────────┘
-                    │
-                    ▼
-                  exit / stdout
-
-  Nothing else exists. No Rust beyond kernel/. No Python.
-  bootstrap/ has been deleted.
+  source.ev ──→ kernel + compiler.smt2 ──→ output.smt2 ──→ kernel ──→ exit / stdout
 ```
 
-## Definition of done (mechanical, not aspirational)
+That is the whole system. The kernel is ~880 lines of Rust
+(trampoline + libffi + Z3 wrapper). `compiler.smt2` is ~2 MB of
+SMT-LIB that the kernel parses and runs to translate `.ev` source
+into more `.smt2`.
 
-The project is finished when all of these are true at once:
+## What's next
 
-1. `ls bootstrap/` returns "No such file or directory."
-2. `find scripts tests -name '*.py'` returns nothing.
-3. `compiler.smt2` exists at the repo root and was produced by
-   `kernel + a previous compiler.smt2 + a compiler.ev source file`
-   (no bootstrap on the producing path).
-4. `./test.sh` is green and references `bootstrap/` nowhere.
-5. `scripts/check-deletable.sh` exits 0 with the message
-   "BOOTSTRAP DELETABLE NOW" — and we've then actually deleted it.
+Four phases, documented in `docs/plans/post-cutover-roadmap.md`:
 
-If `scripts/check-deletable.sh` exits 1, the project is not done.
-The script is the single source of truth for "are we there."
+1. **Wave 5a** — Z3 wrapper in Evident (FFI to libz3). Plan in
+   `docs/plans/wave-5a-z3-in-evident.md`.
+2. **Wave 5b** — Trampoline + libffi in Evident. Plan in
+   `docs/plans/wave-5b-trampoline-ffi-in-evident.md`.
+3. **Wave 5c** — Functionizer in Evident. Plan in
+   `docs/plans/wave-5c-functionizer-in-evident.md`.
+4. **Wave 5d** — AOT functionizer binary cache. Plan in
+   `docs/plans/wave-5d-aot-binary-cache.md`.
 
-## Freeze rules (effective now)
+Recommended order is 5a → 5b → 5c → 5d, with phases gated on each
+other's named cross-wave blockers (see the roadmap).
+
+## Tree layout
 
 | Tree                              | Status                          | What you may do                                                                                          |
 | --------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `bootstrap/`                      | **FROZEN — reference material** | Read. Delete (when the replacement is verified). Nothing else. No edits, no bug fixes, no cleanups.       |
-| `kernel/`                         | **Active construction; freeze applies when complete** | Edit freely for capabilities the kernel must have (Z3 lifecycle, FFI dispatch, functionizer, trampoline). Do NOT add language-runtime features that belong in `compiler/` or `stdlib/`. When the project is DONE (`bootstrap/` deleted, compiler self-hosted), this becomes a hard freeze. |
-| `scripts/*.py`, `tests/**/*.py`   | **FROZEN — scheduled removal**  | Read. Delete (when replaced). No new lines, no new files. Replacements go in `scripts/*.sh` or `compiler/*.ev`. |
-| `legacy-python/`, `legacy-rust/`  | **Scratch reference**           | Read during work sessions. Delete when the ideas they contain are implemented in the actual code (or proven not needed). Not part of the final state.                       |
-| `scripts/*.sh`                    | **Transition-only growth**      | Only when Evident cannot yet express the glue. Mark with `# TODO: rewrite in Evident` header.            |
-| `compiler/*.ev`                   | **GROW — this is the work**     | The self-hosted compiler lives here.                                                                     |
+| `kernel/`                         | **Active construction; freeze applies when complete** | Edit for kernel capabilities (Z3 lifecycle, FFI dispatch, functionizer, trampoline). Do NOT add language-runtime features that belong in `compiler/` or `stdlib/`. Targeted for shrinkage in waves 5a–5c. |
+| `compiler/*.ev`                   | **GROW — the self-hosted compiler**     | This is where compiler.smt2's source lives. Edits must be paired with a rebuild via `scripts/build-compiler-smt2.sh` once the in-Evident build path lands; until then, `compiler.smt2` is the frozen artifact. |
 | `stdlib/*.ev`                     | **GROW — runtime library**      | Stable library code (Effect/Result enums, Build* sugar, combinatorics, toposort).                        |
 | `tests/kernel/*.ev`               | **GROW**                        | Kernel-runnable test fixtures.                                                                           |
-| `tests/conformance/features/*`    | **GROW**                        | New feature-spec conformance tests (implementation-agnostic). See `tests/conformance/features/README.md`. |
+| `tests/conformance/features/*`    | **GROW**                        | Implementation-agnostic conformance tests.                                                                |
+| `tests/seam/*.ev`                 | **GROW**                        | Regression fixtures for the self-hosted path (Phase 6 of test.sh).                                       |
+| `scripts/*.sh`                    | **Transition-only growth**      | Only when Evident cannot yet express the glue. Mark each with `# TODO: rewrite in Evident` header.       |
 
-### Why "no Rust changes, no Python changes" is hard
+## Editing the self-hosted compiler
 
-Because subordinate sessions will be tempted to "just fix this one
-small thing" in bootstrap/ to unblock their work. **Don't.** A
-bootstrap bug is a signal to accelerate the replacement, not to
-patch the past. If something in bootstrap/ is genuinely blocking
-you, file a note in `docs/plans/` describing the block and stop. We
-will route around it; we will not edit it.
+`compiler/*.ev` is the source. `compiler.smt2` at the repo root is
+the compiled artifact the kernel runs. After editing `compiler/*.ev`,
+the artifact must be rebuilt — and right now we have no
+self-host-on-itself build path. Source edits are valid (the
+language doesn't go away), but they don't take effect on tests
+until `compiler.smt2` is rebuilt by a tool we don't yet have. The
+wave-5 plans are the path to closing that loop (recognizer + codegen
+in `compiler/*.ev` → AOT to `compiler.smt2`).
 
-A session that touches frozen code has failed regardless of whether
-its tests pass. Reviewing sessions should reject the diff.
-
-## The deletion path (the only way to make progress)
-
-You eliminate frozen code by replacing it, not by editing it. The
-sequence:
-
-1. Pick a capability that bootstrap/ currently provides (e.g. "lex
-   a `.ev` file's string literals", "translate an `EBinOp(OpPlus,
-   …)` to `(+ …)`").
-2. Implement it in `compiler/*.ev` (or `stdlib/*.ev` if it's
-   library, not compiler).
-3. Add a conformance test in `tests/conformance/features/` that
-   defines the capability as an input/output spec.
-4. Run the test against both implementations:
-   - bootstrap: `IMPL=bootstrap tests/conformance/runner.sh ...`
-   - self-hosted: `IMPL=selfhost ...` (uses kernel + the current
-     `compiler.smt2`)
-5. When both produce equivalent output for that test, the capability
-   is "self-host ready." Mark it in `docs/plans/DELETION-CHECKLIST.md`.
-6. When ALL features in `tests/conformance/features/` are self-host
-   ready, the self-hosted compiler is feature-complete. We then:
-   a. Compile `compiler/compiler.ev` one final time via bootstrap.
-   b. Commit the resulting `compiler.smt2` to the repo root.
-   c. Flip `test.sh` and `scripts/evident-self` to use `kernel +
-      compiler.smt2`.
-   d. Run `scripts/check-deletable.sh`. It should print
-      "BOOTSTRAP DELETABLE NOW."
-   e. `rm -rf bootstrap/`. Commit. Done.
-
-That's the whole project. Every change to this repo should be a
-step on that sequence. If it isn't, it's intermediate scaffolding
-at best.
-
-## Where the work currently is (one paragraph; not a roadmap)
-
-`stdlib/lexer.ev`, `stdlib/parser.ev`, and `stdlib/translate_*.ev`
-exist as per-pass demonstrations of how each AST shape maps to
-SMT-LIB. **They do not yet compose into a working compiler.** Each
-file handles its canonical shape one level deep and is exercised
-by a fixture that hardcodes the input. No file reads a `.ev` from
-disk via `ReadFile`; no file composes the full lex → parse →
-translate pipeline; no conformance test compares output to
-bootstrap. The current state of `scripts/check-deletable.sh`
-output is in `STATE.md`. **The next work session's first action is
-to run that script and read the blockers list.**
-
-These files will be moved to `compiler/` as part of restructuring
-so that their location matches their purpose (building the
-self-hosted compiler), separating them from production stdlib
-(`stdlib/kernel.ev`, `stdlib/combinatorics.ev`, `stdlib/toposort.ev`).
-
-## How to brief a subordinate session
-
-A subordinate session (`claude -p ...`) reads this file plus
-`docs/briefings/foundation.md` plus its task spec. Its first
-runtime action is `scripts/check-deletable.sh` so it sees the
-current blockers state. It then works exclusively in
-`compiler/*.ev`, `stdlib/*.ev`, `tests/**/*.ev`, or `scripts/*.sh`
-(with the TODO header). If its diff touches any frozen path, the
-result is rejected.
-
-The coordinator pattern that spawns these sessions is documented in
-`docs/briefings/README.md`.
+Until then, treat `compiler.smt2` as a checked-in binary artifact
+and `compiler/*.ev` as its reference source.
 
 ---
 
@@ -186,52 +79,43 @@ An Evident program:
 ## Project tree
 
 ```
-bootstrap/           — Rust compiler, FROZEN, scheduled for deletion.
-                      Reference material only.
-  runtime/           — The Rust crate. Produces the `evident` binary.
+kernel/              — Trampoline + libffi + Z3 wrapper. ~880 LOC
+                      Rust. Targeted for shrinkage in waves 5a–5c.
 
-kernel/              — Trampoline + libffi + Z3 wrapper. The minimal
-                      native runtime. ~880 LOC Rust. Stays Rust;
-                      stays minimal.
+compiler/            — The self-hosted Evident compiler source.
+                      Compiled to compiler.smt2 (committed artifact).
 
-compiler/            — The self-hosted Evident compiler. (Currently
-                      empty / being assembled; the WIP pieces are
-                      under `stdlib/` for historical reasons and
-                      will move here.)
-
-stdlib/              — Evident library code that user programs
-                      depend on (Effect/Result enums, Build* sugar,
-                      combinatorics, toposort, …). Stable.
+stdlib/              — Evident library code (Effect/Result enums,
+                      Build* sugar, combinatorics, toposort, …).
 
 tests/
   conformance/
     features/        — Implementation-agnostic feature specs.
-                      Each runs against bootstrap and/or self-hosted
-                      compiler; pass when output matches.
-    runner.sh        — Drives the feature tests under IMPL=...
-    *.py             — Legacy Python conformance tests, FROZEN,
-                      scheduled for migration to features/.
+                      runner.sh drives them under IMPL=selfhost.
   kernel/*.ev        — Kernel-runnable test fixtures (header
                       comments declare expected stdout + exit).
   lang_tests/*.ev    — Sample/sat-check tests for language behavior.
+  seam/*.ev          — Regression fixtures for the self-hosted path.
 
 scripts/
-  check-deletable.sh — Single source of truth for "are we done?"
-                      Run from repo root. Exits 0 only when bootstrap
-                      can be deleted.
-  *.sh               — Build/test glue. Mark each with
-                      `# TODO: rewrite in Evident`.
-  *.py               — Legacy Python glue, FROZEN, scheduled removal.
+  evident-self       — CLI; `bin` returns the kernel+compiler.smt2
+                      wrapper used by every test/bench script.
+  run-{kernel,lang,seam,sample}-*.sh — test phase drivers.
+  flatten-evident.sh — Import resolver (compiler.smt2 doesn't do
+                      imports); pipe its output to kernel+compiler.smt2.
+  mem-cap.sh         — Polling RSS watchdog (macOS doesn't honor
+                      RLIMIT_AS). Wired into the seam wrapper.
+  cc-wrapper.sh      — Linker shim that patches the kernel binary's
+                      libz3 install-name (see .cargo/config.toml).
 
-STATE.md             — Snapshot of `check-deletable.sh` output.
-                      Updated when the state changes; the brutal
-                      truth, no prose.
+compiler.smt2        — The compiled self-hosted compiler. Built by
+sample.smt2          — The compiled sample/sat-check driver. Both
+                      are committed artifacts; rebuilding them is
+                      blocked on the wave-5 plan.
 
-docs/
-  briefings/         — Subordinate-session briefings. foundation.md
-                      is the universal one every session reads.
-  plans/             — Forward-looking proposals + the deletion
-                      checklist.
+STATE.md             — Current state of the project, in prose.
+docs/plans/          — Forward-looking proposals + wave-5 plans.
+docs/briefings/      — Subordinate-session briefings.
 ```
 
 ## Language spec — Evident
@@ -359,15 +243,18 @@ Type-parameter names are capitalised. Explicit type args only.
 
 ## Kernel runtime spec
 
-### CLI (bootstrap; will be replaced)
+### CLI
+
+The self-hosted CLI is `scripts/evident-self`. `bin` prints an
+ephemeral wrapper that runs `kernel + compiler.smt2`; every test
+and bench script resolves its `evident` through that path:
 
 ```
-evident sample <file> <claim> [--json] [--given k=v ...]    # solve, no I/O
-evident sample <file> --all [--json]                        # sat-check every claim
-evident emit   <file> <claim> [-o out.smt2]                 # translate to SMT-LIB
-evident run    <file> <claim>                               # emit + exec kernel
+evident-self emit   <file.ev> <claim> [-o out.smt2]    # translate to SMT-LIB
+evident-self sample <file.ev> [--all] [--json]         # sat-check claims
+evident-self bin                                        # path to the wrapper
 
-kernel <file.smt2>                                          # run a compiled program
+kernel <file.smt2>                                      # run a compiled program
 ```
 
 ### Effect enum floor
@@ -487,11 +374,10 @@ Today:
 
 Phase flags: `--rust-only`, `--conformance`, `--lang`, `--kernel`.
 
-Tomorrow (after the test refactor): `./test.sh` runs the same
-phases but uses `tests/conformance/features/` under
-`IMPL=bootstrap` until self-hosted is ready, then `IMPL=both` to
-verify equivalence, then `IMPL=selfhost` only once bootstrap is
-deletable.
+Phases 1+2 build and test the kernel. Phase 3 runs conformance
+under `IMPL=selfhost`. Phases 4+5 drive lang_tests and kernel
+fixtures via the seam wrapper. Phase 6 runs the seam smoke
+regression. There is no `IMPL=bootstrap` anymore.
 
 ## Style for Evident source
 

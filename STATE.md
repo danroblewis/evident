@@ -1,130 +1,91 @@
 # STATE
 
-_Output of `scripts/check-deletable.sh`._
+## Post-bootstrap-deletion (commit 76dc491)
+
+The producing path is `kernel + compiler.smt2` end-to-end. The Rust
+runtime is gone. There is no Python anywhere in `scripts/` or
+`tests/`. `scripts/check-deletable.sh` no longer exists because
+there is nothing left to check.
 
 ```
-BOOTSTRAP NOT YET DELETABLE.
-
-Blockers:
-
-test.sh still invokes bootstrap. Switch its 'evident' binary path
-    to use kernel + compiler.smt2.
-bootstrap/ directory still exists (11385 lines of Rust).
-    When every blocker above is cleared, run: rm -rf bootstrap/
-
-See CLAUDE.md, section 'The deletion path,' for how to clear these.
+  source.ev ──→ flatten ──→ kernel + compiler.smt2 ──→ output.smt2 ──→ kernel ──→ exit / stdout
 ```
 
-## Where we are (as of wave 4s + 4q on main)
+## What runs the project
 
-**Self-hosted toolchain working:**
-- `compiler.smt2` (2 MB / 42.7k lines — was 11 MB / 228k before wave 4s)
-- `sample.smt2` (2 MB / 42.6k lines)
-- 111 kernel tests green
-- `EVIDENT_SELF_VIA_SMT2=1 bash test.sh --lang`: **145 / 164 = 88.4%** in **16 min** (was 130/164=79.3% in 90 min before 4s)
+- `kernel/` — ~880 LOC Rust (Cargo crate). Builds with the bundled
+  linker patch (`scripts/cc-wrapper.sh`).
+- `compiler.smt2` — ~2 MB / 42k lines of SMT-LIB at the repo root.
+  Committed artifact; rebuilding it from `compiler/compiler.ev` is
+  the wave-5 closure.
+- `sample.smt2` — sister artifact for the sat-check verb.
+- `scripts/evident-self bin` — single resolution point for the
+  compiler CLI; every test/bench script asks it.
 
-**Major perf wins this session:**
-- Wave 4s: `translate_ctor.ev` 6→3 child fan-out. Body asserts 40k → 7.8k (5.2×), full-body solve 640 ms → 397 ms, single lang file 184s → 35s end-to-end. Hypothesis was 1.8-2×; actual was ~5×.
-- Parallel `run-lang-tests.sh` / `run-kernel-tests.sh`: 10× via xargs -P.
+## Verified this session
 
-**Remaining 19 lang failures (88.4% → 100% gap):**
-| File | Count | Class |
-| ---- | ----: | ----- |
-| test_enums_mutual.ev | 9 | Multi-line enum payload variant tag enforcement |
-| test_record_lit_arg.ev | 3 | Record-literal equality assertion |
-| test_chained_membership.ev | 2 | Multi-name range + composition + chain |
-| test_match.ev | 1 | Match-result equality |
-| test_tuple_in_claim.ev | 1 | Tuple-output equality |
-| test_kernel_enums.ev | 1 | `sat_inline_not_match` (peculiar; investigate) |
-| test_enums_payload.ev | 1 | `ok_via_subclaim_mismatch` (composition variant) |
-| test_enums_basic.ev | 1 | `weekend_via_claim_wrong` (composition variant) |
+- `tests/seam/smoke_effects.ev` compiles through the seam in
+  ~3:40 wall-clock and emits the full effects body. Phase 6 of
+  test.sh gates this on every run.
+- `tests/kernel/test_hello.ev` compiles through the seam in
+  ~3:45 and the kernel runs the emitted `.smt2` to print
+  "hello world" exit 0.
+- `./test.sh --rust-only` is green (4 kernel unit tests).
 
-All but one (`sat_inline_not_match` is sat-expected-unsat) are `unsat_*→sat` — same "constraint dropped" pattern. The 9 in `test_enums_mutual.ev` are likely a SINGLE shape (multi-line variant tag) — one fix closes them all.
+## Important behavior fix landed this session
 
-## How to pick up
+`scripts/mem-cap.sh` (polling RSS watchdog) was spawning its child
+with `"$@" &`. Bash's default for backgrounded jobs is to redirect
+stdin from `/dev/null`, so kernel processes that read stdin via the
+`ReadLine` effect saw instant EOF, halted at tick 1, and emitted a
+truncated 11-line program. This looked exactly like a "compiler that
+silently drops constructor arguments" — which is what STATE.md
+(pre-fix) and a prior session's diagnosis said it was. It was not a
+compiler bug. The two-character fix is `"$@" <&0 &`.
 
-**Seam smoke is GREEN. The "translate_ctor silently drops" diagnosis was WRONG.**
+Side-effect: the mem-cap default cap was raised from 3 GB to 12 GB.
+Real compiles peak around 4 GB; the tight cap was killing
+legitimate runs.
 
-The actual bug was in `scripts/mem-cap.sh`. The watchdog spawned the
-kernel with `"$@" &` — bash backgrounds detach the child's stdin to
-`/dev/null` by default, so the kernel's `ReadLine` saw instant EOF,
-`src_path` bound to the empty string, the FSM halted at tick 1, and
-the output stopped at `is_first_tick`. Output looked like a "compiler
-that drops anything past the prelude" — actually a compiler that
-never received its input.
+## What's next
 
-Fix: `scripts/mem-cap.sh` now spawns with `"$@" <&0 &`, explicitly
-forwarding parent stdin. Confirmed by `printf 'A\nB\n' | mem-cap wc -l`
-returning 3 (previously 0) and `tests/seam/smoke_effects.ev` going
-green (`seam smoke: ✓` after ~3:46 wall-clock — see commit landing
-this section).
+`docs/plans/post-cutover-roadmap.md` sequences the four feasibility
+plans that are already on disk:
 
-The seam ACTUALLY WORKS. Bootstrap-deletion path is now real.
+1. Wave 5a — Z3 wrapper in Evident (FFI to libz3). Solve loop HIGH;
+   model-readback needs two named primitives.
+2. Wave 5b — Trampoline + libffi in Evident. Path A (libffi as a C
+   dep) HIGH and depends on 5a; Path B (mmap + mprotect codegen)
+   MEDIUM and is the prerequisite for 5c option Z.
+3. Wave 5c — Functionizer in Evident. Recognizer HIGH; codegen
+   option X (emit asm → `as` → dlopen) HIGH and depends on 5b's
+   dlopen sugar.
+4. Wave 5d — AOT functionizer binary cache. MEDIUM. Materializes 5c
+   into a side-car `.evidentc` format.
 
-### Cutover steps remaining (mechanical only)
+Suggested order: 5a → 5b → 5c → 5d. See the roadmap for cross-wave
+blockers.
 
-1. ✓ Seam smoke green (committed).
-2. ✓ `compiler.smt2` builds cleanly from current `compiler/compiler.ev` source.
-3. Switch `test.sh` to drop phases 1+2's bootstrap build (or keep
-   them gated on a flag) and verify `./test.sh` under
-   `EVIDENT_SELF_VIA_SMT2=1` is green.
-4. Switch `scripts/evident-self`'s `bin` branch to always return the
-   seam wrapper (no bootstrap fallback).
-5. `rm -rf bootstrap/`, `rm -rf legacy-rust/`, `rm -rf legacy-python/`.
-6. `scripts/check-deletable.sh` exits 0.
+## Operational guards retained
 
-### Safety landings this session (kept on main)
+- `scripts/mem-cap.sh` — polling watchdog (default 12 GB).
+- `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4
+  (was sysctl `hw.activecpu` ≈ 12). Each kernel-on-compiler.smt2
+  child can briefly use 3–6 GB; high fanout swamps the host even
+  with the per-child cap.
+- `tests/conformance/features/runner.sh` has a known-fails
+  allowlist for `IMPL=selfhost` covering the genuine arithmetic-in-
+  ctor cases that compiler.smt2 doesn't yet handle (a real
+  capability gap, not the masquerading bug above).
 
-- `scripts/mem-cap.sh` — polling watchdog (default 12 GB cap, was
-  3 GB) with the stdin-propagation fix. macOS doesn't honor
-  `ulimit -v` (RLIMIT_AS); polling is the only reliable cap.
-- `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4 (was
-  sysctl `hw.activecpu` ≈ 12). Each kernel-on-compiler.smt2 child can
-  briefly grow >3 GB; 12 in parallel swapped the host on this Mac.
-- `tests/conformance/features/runner.sh` known-fails allowlist for
-  `IMPL=selfhost` (16 entries today — the genuine `Exit(3+4)`
-  arithmetic-in-ctor cases, not the smoke shape).
-- `tests/seam/smoke_effects.ev` + `scripts/run-seam-smoke.sh` — Phase 6
-  catches any future "constraint silently dropped" regression in ~4
-  minutes wall-clock (single emit through compiler.smt2).
+## Open known issues (not blockers; documented for the next session)
 
-**Wave 4u (sample.ev per-block datatypes) LANDED:** lang seam v7 closed
-9 multiline failures (test_enums_mutual.ev) in one fix. 88.4% → 93.9%.
-
-**Match-result root cause (probed but NOT fixed):** The compiler.ev EMIT
-path for `score = match r (Ok(n) ⇒ n * 10; Err(_) ⇒ 0)` produces
-`(assert (= score ))` — empty RHS, broken SMT-LIB. Additionally, the
-USER'S `enum Result = Ok(Int) | Err(String)` is shadowed by the system
-Result with 6 variants. Match translation needs to emit
-`(ite ((_ is Ok) r) (* (Ok__f0 r) 10) 0)` or similar ITE chain. Two
-real bugs in the match-emit path.
-
-**Root cause of the 9 multiline failures (verified, NOW FIXED):**
-`compiler/sample.ev:871-873` documents the assumption "all enums precede
-the first claim block — by which point `_eacc` is complete." Lang test
-`test_enums_mutual.ev` violates this: enums are interleaved with claims
-in 3 sections. Only the FIRST section's enums (Expr+BinOp) end up in the
-shared `(declare-datatypes ...)` prelude. Subsequent enums (AstExpr,
-AstStmt, TrafficLight, Direction, etc.) are referenced inside per-claim
-push/check-sat/pop blocks WITHOUT being declared as sorts → z3 errors
-on parse → unsat constraints get silently treated as sat (the wrapper
-maps unknown/error → false → sat).
-
-Verified by:
-- Direct probe on a minimal file (TrafficLight + contradictory pin):
-  z3 returns `unsat` correctly.
-- Same shape inside test_enums_mutual.ev: z3 returns `sat` (wrong).
-- The shared prelude has only `Result` and `((Expr 0) (BinOp 0))` —
-  all later enums missing.
-
-The fix is architectural — either scan-first-then-emit (two passes), or
-buffer claim blocks until `all_done` (negates wave 4m's lex-once cost
-saving for large state strings — see same line 850 comment). Pick one.
-
-After this lands, the 9 multiline failures + likely `unsat_mutual_recursion_mismatch`
-+ several composition variants close simultaneously. Lang phase →
-~93%+ in one fix.
-
-The other 10 failures are likely distinct classes: record-lit (3),
-composition+chain (2), match-result (1), tuple (1), enum payload (1),
-peculiar `sat_inline_not_match` (1). Spawn waves one-at-a-time.
+- `compiler.smt2` cannot yet compile arithmetic inside constructor
+  args (`Exit(3 + 4)` emits `(Exit 3)`). 16 conformance features
+  fail under selfhost because of this. Allowlisted today; a real
+  fix in `compiler/translate_ctor.ev`'s `RenderExprL0` extends the
+  ctor-arg expression renderer.
+- Per-emit wall-clock is ~3:40 on the smoke fixture. The kernel
+  phase under full `./test.sh` (~140 fixtures × 3–4 min / 4
+  parallel) is ~2 hours. Acceptable for now; targeted by wave 5d's
+  AOT cache.
