@@ -26,8 +26,9 @@
 -- are atoms; a Seq of such constructors). Deeper nests (e.g. the flattened
 -- test_hello, a Seq → ctor → Seq → ctor → atom of depth ~4) need more
 -- levels; adding RenderExprL3/L4 is mechanical but the constraint count
--- grows ~6× per level, so we stop at the depth the required fixtures need
--- and document the gap (see docs/plans/grammar-wave4.md).
+-- grows ~3× per level (wave 4s: each level shares ONE 3-wide child chain
+-- across the ctor and Seq paths, formerly 6), so we stop at the depth the
+-- required fixtures need and document the gap (see docs/plans/grammar-wave4.md).
 --
 -- Each level consumes ONE expression off the front of `toks` and returns:
 --   out  — the SMT-LIB rendering
@@ -240,70 +241,48 @@ claim RenderExprL1
     l1_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l1_h0, out ↦ l1_atom_out, ok ↦ l1_atom_ok)
 
-    -- Constructor arguments: render up to 3 children (L0) starting after
-    -- the `(`, threading each child's rest past a Comma to the next.
-    l1_co1 ∈ String
-    l1_cr1 ∈ TokenList
-    l1_ck1 ∈ Bool
-    RenderExprL0(toks ↦ l1_after_lp, out ↦ l1_co1, rest ↦ l1_cr1, ok ↦ l1_ck1)
-    l1_ca1 ∈ TokenList
-    TLTlC(l ↦ l1_cr1, out ↦ l1_ca1)
-    l1_co2 ∈ String
-    l1_cr2 ∈ TokenList
-    l1_ck2 ∈ Bool
-    RenderExprL0(toks ↦ l1_ca1, out ↦ l1_co2, rest ↦ l1_cr2, ok ↦ l1_ck2)
-    l1_ca2 ∈ TokenList
-    TLTlC(l ↦ l1_cr2, out ↦ l1_ca2)
-    l1_co3 ∈ String
-    l1_cr3 ∈ TokenList
-    l1_ck3 ∈ Bool
-    RenderExprL0(toks ↦ l1_ca2, out ↦ l1_co3, rest ↦ l1_cr3, ok ↦ l1_ck3)
+    -- Wave 4s: a node is EITHER a ctor OR a Seq, so the ctor-arg child chain
+    -- (seeded after `(`) and the Seq-element child chain (seeded after `⟨`)
+    -- are never both live. Pre-select the seed token-list and the
+    -- ListThread3 element hint, then run ONE 3-wide child chain instead of
+    -- two (6→3 child fan-out). The `out`/`rest` selection below still picks
+    -- the ctor- vs Seq-shaped assembly, so emitted output is unchanged.
+    l1_seed ∈ TokenList = (l1_is_ctor ? l1_after_lp : l1_t0)
+    l1_hint ∈ String    = (l1_is_ctor ? "" : in_hint)
 
-    l1_cn ∈ Int
-    l1_cargs ∈ String
-    l1_cseq ∈ String
-    l1_cclose ∈ TokenList
-    ListThread3(a0 ↦ l1_after_lp,
-        o1 ↦ l1_co1, r1 ↦ l1_cr1, k1 ↦ l1_ck1,
-        o2 ↦ l1_co2, r2 ↦ l1_cr2, k2 ↦ l1_ck2,
-        o3 ↦ l1_co3, r3 ↦ l1_cr3, k3 ↦ l1_ck3,
-        n ↦ l1_cn, args_joined ↦ l1_cargs, seq_wrapped ↦ l1_cseq, after_close ↦ l1_cclose,
-        elt_hint ↦ "")
+    l1_o1 ∈ String
+    l1_r1 ∈ TokenList
+    l1_k1 ∈ Bool
+    RenderExprL0(toks ↦ l1_seed, out ↦ l1_o1, rest ↦ l1_r1, ok ↦ l1_k1)
+    l1_a1 ∈ TokenList
+    TLTlC(l ↦ l1_r1, out ↦ l1_a1)
+    l1_o2 ∈ String
+    l1_r2 ∈ TokenList
+    l1_k2 ∈ Bool
+    RenderExprL0(toks ↦ l1_a1, out ↦ l1_o2, rest ↦ l1_r2, ok ↦ l1_k2)
+    l1_a2 ∈ TokenList
+    TLTlC(l ↦ l1_r2, out ↦ l1_a2)
+    l1_o3 ∈ String
+    l1_r3 ∈ TokenList
+    l1_k3 ∈ Bool
+    RenderExprL0(toks ↦ l1_a2, out ↦ l1_o3, rest ↦ l1_r3, ok ↦ l1_k3)
 
-    l1_ctor_out ∈ String = "(" ++ l1_ctor_name ++ (l1_cn = 0 ? "" : " " ++ l1_cargs) ++ ")"
+    l1_n ∈ Int
+    l1_args ∈ String
+    l1_sw ∈ String
+    l1_close ∈ TokenList
+    ListThread3(a0 ↦ l1_seed,
+        o1 ↦ l1_o1, r1 ↦ l1_r1, k1 ↦ l1_k1,
+        o2 ↦ l1_o2, r2 ↦ l1_r2, k2 ↦ l1_k2,
+        o3 ↦ l1_o3, r3 ↦ l1_r3, k3 ↦ l1_k3,
+        n ↦ l1_n, args_joined ↦ l1_args, seq_wrapped ↦ l1_sw, after_close ↦ l1_close,
+        elt_hint ↦ l1_hint)
 
-    -- Seq elements: render up to 3 children (L0) starting after the `⟨`.
-    l1_so1 ∈ String
-    l1_sr1 ∈ TokenList
-    l1_sk1 ∈ Bool
-    RenderExprL0(toks ↦ l1_t0, out ↦ l1_so1, rest ↦ l1_sr1, ok ↦ l1_sk1)
-    l1_sa1 ∈ TokenList
-    TLTlC(l ↦ l1_sr1, out ↦ l1_sa1)
-    l1_so2 ∈ String
-    l1_sr2 ∈ TokenList
-    l1_sk2 ∈ Bool
-    RenderExprL0(toks ↦ l1_sa1, out ↦ l1_so2, rest ↦ l1_sr2, ok ↦ l1_sk2)
-    l1_sa2 ∈ TokenList
-    TLTlC(l ↦ l1_sr2, out ↦ l1_sa2)
-    l1_so3 ∈ String
-    l1_sr3 ∈ TokenList
-    l1_sk3 ∈ Bool
-    RenderExprL0(toks ↦ l1_sa2, out ↦ l1_so3, rest ↦ l1_sr3, ok ↦ l1_sk3)
-
-    l1_sn ∈ Int
-    l1_sargs ∈ String
-    l1_sseq ∈ String
-    l1_sclose ∈ TokenList
-    ListThread3(a0 ↦ l1_t0,
-        o1 ↦ l1_so1, r1 ↦ l1_sr1, k1 ↦ l1_sk1,
-        o2 ↦ l1_so2, r2 ↦ l1_sr2, k2 ↦ l1_sk2,
-        o3 ↦ l1_so3, r3 ↦ l1_sr3, k3 ↦ l1_sk3,
-        n ↦ l1_sn, args_joined ↦ l1_sargs, seq_wrapped ↦ l1_sseq, after_close ↦ l1_sclose,
-        elt_hint ↦ in_hint)
+    l1_ctor_out ∈ String = "(" ++ l1_ctor_name ++ (l1_n = 0 ? "" : " " ++ l1_args) ++ ")"
 
     ok  = (l1_is_ctor ∨ l1_is_seq ∨ l1_atom_ok)
-    out = (l1_is_ctor ? l1_ctor_out : l1_is_seq ? l1_sseq : l1_atom_out)
-    rest = (l1_is_ctor ? l1_cclose : l1_is_seq ? l1_sclose : l1_t0)
+    out = (l1_is_ctor ? l1_ctor_out : l1_is_seq ? l1_sw : l1_atom_out)
+    rest = (l1_is_ctor ? l1_close : l1_is_seq ? l1_close : l1_t0)
 
 -- ══════════════════════════════════════════════════════════════════════
 -- RenderExprL2 — a constructor / Seq whose children are L1.
@@ -350,67 +329,50 @@ claim RenderExprL2
     l2_ah2 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 2, eh_out ↦ l2_ah2)
 
-    l2_co1 ∈ String
-    l2_cr1 ∈ TokenList
-    l2_ck1 ∈ Bool
-    RenderExprL1(toks ↦ l2_after_lp, out ↦ l2_co1, rest ↦ l2_cr1, ok ↦ l2_ck1, in_hint ↦ l2_ah0)
-    l2_ca1 ∈ TokenList
-    TLTlC(l ↦ l2_cr1, out ↦ l2_ca1)
-    l2_co2 ∈ String
-    l2_cr2 ∈ TokenList
-    l2_ck2 ∈ Bool
-    RenderExprL1(toks ↦ l2_ca1, out ↦ l2_co2, rest ↦ l2_cr2, ok ↦ l2_ck2, in_hint ↦ l2_ah1)
-    l2_ca2 ∈ TokenList
-    TLTlC(l ↦ l2_cr2, out ↦ l2_ca2)
-    l2_co3 ∈ String
-    l2_cr3 ∈ TokenList
-    l2_ck3 ∈ Bool
-    RenderExprL1(toks ↦ l2_ca2, out ↦ l2_co3, rest ↦ l2_cr3, ok ↦ l2_ck3, in_hint ↦ l2_ah2)
+    -- Wave 4s: shared 3-wide child chain (6→3 fan-out). The ctor path feeds
+    -- each child its per-argument Seq hint (l2_ah0/1/2); the Seq path feeds
+    -- "" to every child and threads its own `in_hint` into ListThread3.
+    -- Pre-select per-child hint + seed + ListThread3 hint so a node renders
+    -- through ONE child chain.
+    l2_seed ∈ TokenList = (l2_is_ctor ? l2_after_lp : l2_t0)
+    l2_hint ∈ String    = (l2_is_ctor ? "" : in_hint)
+    l2_ch0 ∈ String     = (l2_is_ctor ? l2_ah0 : "")
+    l2_ch1 ∈ String     = (l2_is_ctor ? l2_ah1 : "")
+    l2_ch2 ∈ String     = (l2_is_ctor ? l2_ah2 : "")
 
-    l2_cn ∈ Int
-    l2_cargs ∈ String
-    l2_cseq ∈ String
-    l2_cclose ∈ TokenList
-    ListThread3(a0 ↦ l2_after_lp,
-        o1 ↦ l2_co1, r1 ↦ l2_cr1, k1 ↦ l2_ck1,
-        o2 ↦ l2_co2, r2 ↦ l2_cr2, k2 ↦ l2_ck2,
-        o3 ↦ l2_co3, r3 ↦ l2_cr3, k3 ↦ l2_ck3,
-        n ↦ l2_cn, args_joined ↦ l2_cargs, seq_wrapped ↦ l2_cseq, after_close ↦ l2_cclose,
-        elt_hint ↦ "")
+    l2_o1 ∈ String
+    l2_r1 ∈ TokenList
+    l2_k1 ∈ Bool
+    RenderExprL1(toks ↦ l2_seed, out ↦ l2_o1, rest ↦ l2_r1, ok ↦ l2_k1, in_hint ↦ l2_ch0)
+    l2_a1 ∈ TokenList
+    TLTlC(l ↦ l2_r1, out ↦ l2_a1)
+    l2_o2 ∈ String
+    l2_r2 ∈ TokenList
+    l2_k2 ∈ Bool
+    RenderExprL1(toks ↦ l2_a1, out ↦ l2_o2, rest ↦ l2_r2, ok ↦ l2_k2, in_hint ↦ l2_ch1)
+    l2_a2 ∈ TokenList
+    TLTlC(l ↦ l2_r2, out ↦ l2_a2)
+    l2_o3 ∈ String
+    l2_r3 ∈ TokenList
+    l2_k3 ∈ Bool
+    RenderExprL1(toks ↦ l2_a2, out ↦ l2_o3, rest ↦ l2_r3, ok ↦ l2_k3, in_hint ↦ l2_ch2)
 
-    l2_ctor_out ∈ String = "(" ++ l2_ctor_name ++ (l2_cn = 0 ? "" : " " ++ l2_cargs) ++ ")"
+    l2_n ∈ Int
+    l2_args ∈ String
+    l2_sw ∈ String
+    l2_close ∈ TokenList
+    ListThread3(a0 ↦ l2_seed,
+        o1 ↦ l2_o1, r1 ↦ l2_r1, k1 ↦ l2_k1,
+        o2 ↦ l2_o2, r2 ↦ l2_r2, k2 ↦ l2_k2,
+        o3 ↦ l2_o3, r3 ↦ l2_r3, k3 ↦ l2_k3,
+        n ↦ l2_n, args_joined ↦ l2_args, seq_wrapped ↦ l2_sw, after_close ↦ l2_close,
+        elt_hint ↦ l2_hint)
 
-    l2_so1 ∈ String
-    l2_sr1 ∈ TokenList
-    l2_sk1 ∈ Bool
-    RenderExprL1(toks ↦ l2_t0, out ↦ l2_so1, rest ↦ l2_sr1, ok ↦ l2_sk1, in_hint ↦ "")
-    l2_sa1 ∈ TokenList
-    TLTlC(l ↦ l2_sr1, out ↦ l2_sa1)
-    l2_so2 ∈ String
-    l2_sr2 ∈ TokenList
-    l2_sk2 ∈ Bool
-    RenderExprL1(toks ↦ l2_sa1, out ↦ l2_so2, rest ↦ l2_sr2, ok ↦ l2_sk2, in_hint ↦ "")
-    l2_sa2 ∈ TokenList
-    TLTlC(l ↦ l2_sr2, out ↦ l2_sa2)
-    l2_so3 ∈ String
-    l2_sr3 ∈ TokenList
-    l2_sk3 ∈ Bool
-    RenderExprL1(toks ↦ l2_sa2, out ↦ l2_so3, rest ↦ l2_sr3, ok ↦ l2_sk3, in_hint ↦ "")
-
-    l2_sn ∈ Int
-    l2_sargs ∈ String
-    l2_sseq ∈ String
-    l2_sclose ∈ TokenList
-    ListThread3(a0 ↦ l2_t0,
-        o1 ↦ l2_so1, r1 ↦ l2_sr1, k1 ↦ l2_sk1,
-        o2 ↦ l2_so2, r2 ↦ l2_sr2, k2 ↦ l2_sk2,
-        o3 ↦ l2_so3, r3 ↦ l2_sr3, k3 ↦ l2_sk3,
-        n ↦ l2_sn, args_joined ↦ l2_sargs, seq_wrapped ↦ l2_sseq, after_close ↦ l2_sclose,
-        elt_hint ↦ in_hint)
+    l2_ctor_out ∈ String = "(" ++ l2_ctor_name ++ (l2_n = 0 ? "" : " " ++ l2_args) ++ ")"
 
     ok  = (l2_is_ctor ∨ l2_is_seq ∨ l2_atom_ok)
-    out = (l2_is_ctor ? l2_ctor_out : l2_is_seq ? l2_sseq : l2_atom_out)
-    rest = (l2_is_ctor ? l2_cclose : l2_is_seq ? l2_sclose : l2_t0)
+    out = (l2_is_ctor ? l2_ctor_out : l2_is_seq ? l2_sw : l2_atom_out)
+    rest = (l2_is_ctor ? l2_close : l2_is_seq ? l2_close : l2_t0)
 
 -- ══════════════════════════════════════════════════════════════════════
 -- RenderExprL3 — a constructor / Seq whose children are L2 (grammar wave 4b).
@@ -421,8 +383,8 @@ claim RenderExprL2
 --   LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
 --     →  (LibCall "libc" "puts" (seq.unit (ArgStr "hi")))
 -- i.e. ctor(L3) → Seq(L2) → ctor(L1) → atom(L0). Adding a level is purely
--- mechanical; the constraint count grows ~6× per level, so L3 is the
--- stopping point for the named fixture. A `⟨L3-ctor, …⟩` outer Seq (the
+-- mechanical; the constraint count grows ~3× per level (wave 4s shared
+-- fan-out), so L3 is the stopping point for the named fixture. A `⟨L3-ctor, …⟩` outer Seq (the
 -- full flattened test_hello effects literal, L4) and arbitrary depth are
 -- the token work-stack walker — see docs/plans/grammar-wave4b.md.
 claim RenderExprL3
@@ -461,67 +423,47 @@ claim RenderExprL3
     l3_ah2 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 2, eh_out ↦ l3_ah2)
 
-    l3_co1 ∈ String
-    l3_cr1 ∈ TokenList
-    l3_ck1 ∈ Bool
-    RenderExprL2(toks ↦ l3_after_lp, out ↦ l3_co1, rest ↦ l3_cr1, ok ↦ l3_ck1, sigtab ↦ sigtab, in_hint ↦ l3_ah0)
-    l3_ca1 ∈ TokenList
-    TLTlC(l ↦ l3_cr1, out ↦ l3_ca1)
-    l3_co2 ∈ String
-    l3_cr2 ∈ TokenList
-    l3_ck2 ∈ Bool
-    RenderExprL2(toks ↦ l3_ca1, out ↦ l3_co2, rest ↦ l3_cr2, ok ↦ l3_ck2, sigtab ↦ sigtab, in_hint ↦ l3_ah1)
-    l3_ca2 ∈ TokenList
-    TLTlC(l ↦ l3_cr2, out ↦ l3_ca2)
-    l3_co3 ∈ String
-    l3_cr3 ∈ TokenList
-    l3_ck3 ∈ Bool
-    RenderExprL2(toks ↦ l3_ca2, out ↦ l3_co3, rest ↦ l3_cr3, ok ↦ l3_ck3, sigtab ↦ sigtab, in_hint ↦ l3_ah2)
+    -- Wave 4s: shared 3-wide child chain (6→3 fan-out), analogous to L2 but
+    -- threading `sigtab` to each L2 child.
+    l3_seed ∈ TokenList = (l3_is_ctor ? l3_after_lp : l3_t0)
+    l3_hint ∈ String    = (l3_is_ctor ? "" : in_hint)
+    l3_ch0 ∈ String     = (l3_is_ctor ? l3_ah0 : "")
+    l3_ch1 ∈ String     = (l3_is_ctor ? l3_ah1 : "")
+    l3_ch2 ∈ String     = (l3_is_ctor ? l3_ah2 : "")
 
-    l3_cn ∈ Int
-    l3_cargs ∈ String
-    l3_cseq ∈ String
-    l3_cclose ∈ TokenList
-    ListThread3(a0 ↦ l3_after_lp,
-        o1 ↦ l3_co1, r1 ↦ l3_cr1, k1 ↦ l3_ck1,
-        o2 ↦ l3_co2, r2 ↦ l3_cr2, k2 ↦ l3_ck2,
-        o3 ↦ l3_co3, r3 ↦ l3_cr3, k3 ↦ l3_ck3,
-        n ↦ l3_cn, args_joined ↦ l3_cargs, seq_wrapped ↦ l3_cseq, after_close ↦ l3_cclose,
-        elt_hint ↦ "")
+    l3_o1 ∈ String
+    l3_r1 ∈ TokenList
+    l3_k1 ∈ Bool
+    RenderExprL2(toks ↦ l3_seed, out ↦ l3_o1, rest ↦ l3_r1, ok ↦ l3_k1, sigtab ↦ sigtab, in_hint ↦ l3_ch0)
+    l3_a1 ∈ TokenList
+    TLTlC(l ↦ l3_r1, out ↦ l3_a1)
+    l3_o2 ∈ String
+    l3_r2 ∈ TokenList
+    l3_k2 ∈ Bool
+    RenderExprL2(toks ↦ l3_a1, out ↦ l3_o2, rest ↦ l3_r2, ok ↦ l3_k2, sigtab ↦ sigtab, in_hint ↦ l3_ch1)
+    l3_a2 ∈ TokenList
+    TLTlC(l ↦ l3_r2, out ↦ l3_a2)
+    l3_o3 ∈ String
+    l3_r3 ∈ TokenList
+    l3_k3 ∈ Bool
+    RenderExprL2(toks ↦ l3_a2, out ↦ l3_o3, rest ↦ l3_r3, ok ↦ l3_k3, sigtab ↦ sigtab, in_hint ↦ l3_ch2)
 
-    l3_ctor_out ∈ String = "(" ++ l3_ctor_name ++ (l3_cn = 0 ? "" : " " ++ l3_cargs) ++ ")"
+    l3_n ∈ Int
+    l3_args ∈ String
+    l3_sw ∈ String
+    l3_close ∈ TokenList
+    ListThread3(a0 ↦ l3_seed,
+        o1 ↦ l3_o1, r1 ↦ l3_r1, k1 ↦ l3_k1,
+        o2 ↦ l3_o2, r2 ↦ l3_r2, k2 ↦ l3_k2,
+        o3 ↦ l3_o3, r3 ↦ l3_r3, k3 ↦ l3_k3,
+        n ↦ l3_n, args_joined ↦ l3_args, seq_wrapped ↦ l3_sw, after_close ↦ l3_close,
+        elt_hint ↦ l3_hint)
 
-    l3_so1 ∈ String
-    l3_sr1 ∈ TokenList
-    l3_sk1 ∈ Bool
-    RenderExprL2(toks ↦ l3_t0, out ↦ l3_so1, rest ↦ l3_sr1, ok ↦ l3_sk1, sigtab ↦ sigtab, in_hint ↦ "")
-    l3_sa1 ∈ TokenList
-    TLTlC(l ↦ l3_sr1, out ↦ l3_sa1)
-    l3_so2 ∈ String
-    l3_sr2 ∈ TokenList
-    l3_sk2 ∈ Bool
-    RenderExprL2(toks ↦ l3_sa1, out ↦ l3_so2, rest ↦ l3_sr2, ok ↦ l3_sk2, sigtab ↦ sigtab, in_hint ↦ "")
-    l3_sa2 ∈ TokenList
-    TLTlC(l ↦ l3_sr2, out ↦ l3_sa2)
-    l3_so3 ∈ String
-    l3_sr3 ∈ TokenList
-    l3_sk3 ∈ Bool
-    RenderExprL2(toks ↦ l3_sa2, out ↦ l3_so3, rest ↦ l3_sr3, ok ↦ l3_sk3, sigtab ↦ sigtab, in_hint ↦ "")
-
-    l3_sn ∈ Int
-    l3_sargs ∈ String
-    l3_sseq ∈ String
-    l3_sclose ∈ TokenList
-    ListThread3(a0 ↦ l3_t0,
-        o1 ↦ l3_so1, r1 ↦ l3_sr1, k1 ↦ l3_sk1,
-        o2 ↦ l3_so2, r2 ↦ l3_sr2, k2 ↦ l3_sk2,
-        o3 ↦ l3_so3, r3 ↦ l3_sr3, k3 ↦ l3_sk3,
-        n ↦ l3_sn, args_joined ↦ l3_sargs, seq_wrapped ↦ l3_sseq, after_close ↦ l3_sclose,
-        elt_hint ↦ in_hint)
+    l3_ctor_out ∈ String = "(" ++ l3_ctor_name ++ (l3_n = 0 ? "" : " " ++ l3_args) ++ ")"
 
     ok  = (l3_is_ctor ∨ l3_is_seq ∨ l3_atom_ok)
-    out = (l3_is_ctor ? l3_ctor_out : l3_is_seq ? l3_sseq : l3_atom_out)
-    rest = (l3_is_ctor ? l3_cclose : l3_is_seq ? l3_sclose : l3_t0)
+    out = (l3_is_ctor ? l3_ctor_out : l3_is_seq ? l3_sw : l3_atom_out)
+    rest = (l3_is_ctor ? l3_close : l3_is_seq ? l3_close : l3_t0)
 
 -- ── RenderExprToks: the level exposed to the driver ────────────────────
 -- Aliases L3 (the deepest built level). A membership whose RHS is a
