@@ -1,13 +1,15 @@
-.pytest_cache/
-parser/tests/__pycache__/
-parser/src/__pycache__/
 __pycache__/
-plotly.min.js
-d3.min.js
-.claude/worktrees/
-a.smt
 .session.log
+a.smt
+
+# Worktrees / scratch
+.claude/worktrees/
 scripts/coordinator-results/
-scripts/coordinator-results/
-runtime/
-compiler.smt2
+.goalpost/
+
+# Wave 5d — AOT functionizer cache. The per-project cache lives
+# next to the source so the dev loop is fast; the global cache
+# in $XDG_CACHE_HOME stays out of the repo regardless. The plan
+# is docs/plans/wave-5d-aot-binary-cache.md §2.
+.evident/cache/
+*.evidentc
