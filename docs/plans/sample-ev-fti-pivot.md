@@ -178,22 +178,62 @@ This DOUBLES tick count in the parse phase (one tick per token
 advance instead of same-tick TLTl). Accept it; the savings on the
 LEX side dominate.
 
-### Per-step rest cursors
+### Per-step rest cursors — the hard part (read this before stage 4)
 
 `CtorMembershipStep`, `MembershipStep`, `SeqMembershipStep`,
 `MatchMembershipStep` claims (in parse_body_ctor.ev,
 parse_body.ev, parse_body_seq.ev, parse_body_match.ev) currently
-take `rem ∈ TokenList` and return `rest ∈ TokenList`. They need to
-be rewritten to take `rem_cursor ∈ Int` and return
-`rest_cursor ∈ Int`. The actual peeks inside those claims become
-`__mem.read_long` effects at offsets from the buffer base.
+take `rem ∈ TokenList` and return `rest ∈ TokenList`. The natural
+signature change is `rem ∈ TokenList` → `rem_cursor ∈ Int` and
+`rest ∈ TokenList` → `rest_cursor ∈ Int`.
 
-**This cascades.** The membership-step sub-claims need their own
-pivot before sample.ev can fully use them. Order matters:
+But the sub-claim BODIES use `match Token` on the head tokens to
+discriminate shape. Each `MembershipStep` peeks up to **8 tokens
+deep** (t0..t7) and pattern-matches on each one's variant. The
+match works today because Tokens are Z3 datatypes — same-tick
+pattern matching is essentially free.
+
+With FTI memory, every head token has to be read in via a
+`__mem.read_long` effect with 2-tick latency, and every token has
+three orthogonal payloads (tag + int payload + string payload —
+because Ident/StringLit/ErrTok carry strings that the rest of the
+compile needs verbatim). The cleanest design — a "TokenWindow"
+abstraction the driver maintains and passes to sub-claims — costs
+**24 cached fields per sub-claim** (8 positions × {tag, int-pl,
+str-pl}) plus 8+ read effects per cursor advance plus a
+`__cstr.copy` per string payload.
+
+That's:
+- BIGGER state field count than the TokenList it's replacing
+- SLOWER (read effects have 2-tick latency vs same-tick `match`)
+- VERSUS the memory savings, which are the whole point
+
+The memory wins are still real — 24 cached Ints/Strings per
+sub-claim per tick is bounded; a deep TokenList re-emitted as a
+pin string each tick is not. But the per-tick CPU cost goes up
+because `match Token` becomes "branch on cached tag Int + handle
+string payload separately."
+
+Open question for the next session: is that tradeoff worth it
+versus a totally different approach — e.g., teaching the kernel
+to pin only the HEAD of a TokenList state-field (depth 4-8) and
+treating it as the "live peek window" while the tail lives in
+Z3 but only pinned as `_<name>__tail_hash ∈ Int` (an opaque
+hash). That'd preserve `match Token` semantics in the sub-claims
+while still bounding the per-tick pin string.
+
+That alternative isn't designed here yet, but it's lighter than
+the full FTI pivot if it works. The next session should sanity-
+check the FTI approach's CPU cost on a small fixture before
+committing to the cascade-wide rewrite.
+
+**Required reading for stage 4:** the four sub-claim files to
+understand their use of `match Token` shapes — the variants they
+discriminate on, the payloads they extract.
 
 1. Pivot the leaf sub-claims first (parse_body.ev,
    parse_body_ctor.ev, parse_body_seq.ev, parse_body_match.ev) to
-   take cursor Ints.
+   take cursor Ints + cached peek window.
 2. Then pivot sample.ev's body to use the cursor-returning versions.
 
 ### Halt path
