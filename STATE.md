@@ -1,11 +1,27 @@
 # STATE
 
-## Post-bootstrap-deletion (commit 76dc491)
+## Post-bootstrap-deletion (re-deleted at <new-commit>; corrected understanding)
 
-The producing path is `kernel + compiler.smt2` end-to-end. The Rust
-runtime is gone. There is no Python anywhere in `scripts/` or
-`tests/`. `scripts/check-deletable.sh` no longer exists because
-there is nothing left to check.
+The producing path is `kernel + compiler.smt2` end-to-end. Bootstrap
+was deleted (76dc491), restored (c83afb1) as a misjudged crutch
+while iterating on Goal 1, then re-deleted with the corrected
+understanding: **the dev loop is not fragile**. Git is the safety
+net for `compiler/*.ev` edits; `compiler.smt2`/`sample.smt2` are
+committed artifacts that can be restored or kept-as-is when a new
+build is broken.
+
+When the seam (`kernel + compiler.smt2`) can't compile a given
+shape today, that is a capability gap in `compiler.smt2` to track
+and fix at the source level (in `compiler/*.ev`) — not something
+to route around by restoring bootstrap.
+
+Known open capability gap: the `expr_as_var` fix from Goal 1 part 1
+(commit c817c6c) lived in bootstrap's Rust, NOT in `compiler/*.ev`.
+The current committed `sample.smt2` was produced with that fix
+baked in; subsequent seam re-builds of `sample.smt2` from
+`compiler/sample.ev` will lose the fix until the same logic is
+ported to `compiler/sample.ev`. That porting is the right work and
+is tracked as a follow-on task.
 
 ```
   source.ev ──→ flatten ──→ kernel + compiler.smt2 ──→ output.smt2 ──→ kernel ──→ exit / stdout
