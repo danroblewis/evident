@@ -220,6 +220,42 @@ test through the seam).
    recently. Read commit messages — they explain the *why* behind
    most decisions.
 
+## Background orchestration (subordinate sessions)
+
+`docs/briefings/orchestrator.md` documents a pattern for
+dispatching work to isolated subordinate `claude -p` sessions
+running in their own git worktrees. **The patterns are alive and
+usable**; the *specific goal* the briefing was written for
+(deleting bootstrap) is obsolete since bootstrap is already gone.
+
+What's still applicable from that briefing:
+
+- `scripts/coordinator.sh status` and `scripts/coordinator.sh
+  launch docs/briefings/tasks/NN-name.md` for spawning subagents
+  in isolated worktrees.
+- The "write a terse task spec, never read the subagent's full
+  transcript, read its final report + the files it produced"
+  context-preservation pattern.
+- The "merge from `agent-NN-name` branch, run `./test.sh`, push to
+  main" merge workflow.
+- The `<<autonomous-loop-dynamic>>` wakeup pattern for
+  long-running coordinated work.
+
+What's obsolete:
+
+- The deletion goal itself + `scripts/check-deletable.sh` (gone).
+- References to `docs/plans/DELETION-CHECKLIST.md` (likely gone).
+- The "freeze rules" framing — bootstrap is already deleted, not
+  frozen.
+
+In-process subagents via the `Agent` tool also work fine for
+shorter tasks (used twice this session — once for the
+`translate_arith` pivot, once for a verification check). Use those
+for tasks under a single context window; use the
+`scripts/coordinator.sh` flow for tasks that need a fresh process
+with isolated git state. The coordinator flow has resumed once or
+twice when the parent session crashed, so it's resilient.
+
 ## Tone the user prefers
 
 - Honest reporting of what worked, what didn't, what's unverified.
