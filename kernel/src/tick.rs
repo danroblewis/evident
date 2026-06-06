@@ -98,6 +98,21 @@ impl Sv {
             Sv::Real(r) if *r >= 0.0 => format!("{:?}", r),
             Sv::Real(r)            => format!("(- {:?})", -r),
             Sv::Datatype(variant, fields) => {
+                // Diagnostic: tally every variant + field-count seen at
+                // top level (depth 0 only — avoid noise from recursion).
+                // Histogram printed at most every 1000 entries.
+                if std::env::var("EVIDENT_PIN_DEPTH_TRACE").is_ok()
+                    && cap.is_some()  // top-level entry
+                {
+                    static TOTAL: std::sync::atomic::AtomicU32 =
+                        std::sync::atomic::AtomicU32::new(0);
+                    let n = TOTAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if n < 20 || n % 1000 == 0 {
+                        eprintln!("[pin-cap-diag] #{n} variant={variant} nfields={} field1_is_dt={}",
+                            fields.len(),
+                            fields.get(1).map(|f| matches!(f, Sv::Datatype(_, _))).unwrap_or(false));
+                    }
+                }
                 if fields.is_empty() {
                     return variant.clone();
                 }
@@ -194,6 +209,14 @@ pub fn run(src: &str, manifest: &Manifest) -> Result<u8, String> {
 }
 
 unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
+    // Diagnostic: confirm pin-cap env var made it through.
+    if std::env::var("EVIDENT_PIN_DEPTH_TRACE").is_ok() {
+        let cap = std::env::var("EVIDENT_PIN_DEPTH_CAP")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok());
+        eprintln!("[pin-cap] startup: cap = {:?}", cap);
+    }
+
     let cfg = Z3_mk_config();
     let ctx = Z3_mk_context(cfg);
     Z3_del_config(cfg);
@@ -235,9 +258,23 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     // per-tick simplify stays forbidden). Simplify each cached body assertion
     // once; the simplified ASTs are what every tick re-uses. inc_ref keeps
     // them alive for the program's lifetime, so the source vector is dropped.
+    //
+    // EVIDENT_NO_PRESIMPLIFY=1 skips the per-assertion Z3_simplify pass
+    // entirely — the unmodified ASTs from parse become the cached body.
+    // This is a measurement spike: compiler.smt2 has ~7800 body
+    // assertions; per-assertion Z3_simplify on all of them at startup
+    // takes minutes and uses GBs of RAM (term hash-cons table growth
+    // during simplify-rewrite), which the evidentc cache does NOT
+    // cover (the cache only catches the LATER tactic-chain simplify
+    // inside functionize). When this env var is set we skip pre-loop
+    // simplify; the kernel pays a slightly slower per-tick solve in
+    // exchange for a much cheaper startup.
+    let skip_presimplify = std::env::var("EVIDENT_NO_PRESIMPLIFY")
+        .ok().as_deref() == Some("1");
     let body: Vec<Z3_ast> = (0..body_n)
         .map(|i| {
-            let s = Z3_simplify(ctx, Z3_ast_vector_get(ctx, body_vec, i));
+            let raw = Z3_ast_vector_get(ctx, body_vec, i);
+            let s = if skip_presimplify { raw } else { Z3_simplify(ctx, raw) };
             Z3_inc_ref(ctx, s);
             s
         })
