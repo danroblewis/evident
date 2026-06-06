@@ -1,0 +1,127 @@
+-- stdlib/z3_ast.ev — Z3-AST builder sugar (in-memory model construction).
+--
+-- Why a separate file (and not stdlib/kernel.ev)?
+--
+-- stdlib/kernel.ev is in the import path of EVERY user program (and
+-- every fixture the seam compiles). The wave-5c session's ~65-line
+-- addition to it was already at the edge of what the kernel + the
+-- current compiler.smt2 can compile through the seam in bounded
+-- memory; the AST-builder set this file adds (~110 lines of Build*
+-- claims, each with a LibCall("libz3", …) constraint) pushes the
+-- seam's per-fixture compile over 20 GB RSS — verified by trying to
+-- compile tests/seam/smoke_effects.ev with the additions merged in
+-- and watching mem-cap.sh SIGKILL the run at the cap.
+--
+-- The fix is to import this file only from programs that need it.
+-- The Z3-AST builders aren't part of the language floor; they're a
+-- specialized FTI for the arithmetic-translation pass and the test
+-- fixtures that exercise it. Keeping them out of the universal
+-- imports keeps the seam compile time + memory bounded.
+--
+-- See compiler/translate_arith.ev for the consumer; see
+-- tests/kernel/test_translate_arith_via_z3.ev for the end-to-end
+-- FSM that drives these builders to compose `3 + 4 * 5` as a Z3
+-- AST in memory (no SMT-LIB text concatenation), then reads back
+-- the canonical pretty-print via Z3_ast_to_string + __cstr.copy.
+--
+-- Refcount model: leak-until-Z3_del_context (wave-5a §3 option 1).
+-- Each captured handle SHOULD be Z3_inc_ref'd on the tick after
+-- capture (matches test_z3_libcall_solve.ev's pattern); without
+-- it Z3 may GC the AST between ticks.
+
+import "stdlib/kernel.ev"
+
+-- ── Atom-level builders ───────────────────────────────────────
+
+-- Z3_mk_int_sort(ctx) → Z3_sort handle. Use once at FSM init; pass
+-- the resulting sort_h to Z3_mk_int / Z3_mk_const calls below.
+claim BuildZ3MkIntSort(ctx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(ctx_h)⟩)
+
+-- Z3_mk_int(ctx, v, sort) → Z3_ast (integer literal). Simpler than
+-- Z3_mk_numeral (which takes a base-10 string) — avoids one int→str
+-- conversion in the FSM.
+claim BuildZ3MkInt(ctx_h ∈ Int, val ∈ Int, sort_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_int",
+        ⟨ArgInt(ctx_h), ArgInt(val), ArgInt(sort_h)⟩)
+
+-- Z3_mk_string_symbol(ctx, name) → Z3_symbol handle. Pass the
+-- resulting handle to Z3_mk_const to declare a free integer
+-- variable with that name.
+claim BuildZ3MkStringSymbol(ctx_h ∈ Int, name ∈ String, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_string_symbol",
+        ⟨ArgInt(ctx_h), ArgStr(name)⟩)
+
+-- Z3_mk_const(ctx, sym, sort) → Z3_ast (free constant of the given
+-- sort, bound to the named symbol).
+claim BuildZ3MkConst(ctx_h ∈ Int, sym_h ∈ Int, sort_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_const",
+        ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(sort_h)⟩)
+
+-- ── Binop builders ───────────────────────────────────────────
+
+-- Z3_mk_add(ctx, num_args, args[]) → Z3_ast (n-ary sum). The args
+-- array is a libc malloc'd buffer of i64 handles; the FSM uses
+-- libc.malloc + __mem.write_long to build it (8 bytes per handle).
+-- For the canonical 2-arg arithmetic-translation case num_args = 2
+-- and args_arr_ptr points at a 16-byte buffer.
+claim BuildZ3MkAdd(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_add",
+        ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
+
+-- Z3_mk_sub(ctx, num_args, args[]) → Z3_ast (n-ary subtraction).
+claim BuildZ3MkSub(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_sub",
+        ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
+
+-- Z3_mk_mul(ctx, num_args, args[]) → Z3_ast (n-ary product).
+claim BuildZ3MkMul(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_mul",
+        ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
+
+-- Z3_mk_div(ctx, l, r) → Z3_ast (integer division when operands are
+-- ints; mirrors translate_arith.ev's `div` spelling). Binary, no
+-- array marshaling needed.
+claim BuildZ3MkDiv(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_div",
+        ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
+
+-- ── AST → text readback ──────────────────────────────────────
+
+-- Z3_ast_to_string(ctx, ast) → const char* (Z3-owned buffer). The
+-- returned i64 is a raw pointer; pair with BuildCstrCopy to recover
+-- the bytes as an Evident String (StringResult on the next tick).
+claim BuildZ3AstToString(ctx_h ∈ Int, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_ast_to_string",
+        ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
+
+-- Z3_inc_ref(ctx, ast) — pin a handle past the current tick (wave-5a
+-- §3 refcount note). Idempotent; missing inc_ref lets Z3 GC the
+-- handle.
+claim BuildZ3IncRef(ctx_h ∈ Int, ast_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_inc_ref",
+        ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
+
+-- ── libc + __mem helpers (used to build the args array) ──────
+
+-- libc.malloc(n) → void*. Returns the buffer pointer as IntResult.
+claim BuildMalloc(n_bytes ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "malloc", ⟨ArgInt(n_bytes)⟩)
+
+-- libc.free(ptr) → void. Pair with BuildMalloc at end-of-life.
+claim BuildFree(ptr ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "free", ⟨ArgInt(ptr)⟩)
+
+-- __mem.write_long(addr, value) → 0 (success). Stores an 8-byte
+-- little-endian (machine) word at the address — the natural shape
+-- for a Z3_ast handle slot in an args[] buffer.
+claim BuildMemWriteLong(addr ∈ Int, value ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "write_long", ⟨ArgInt(addr), ArgInt(value)⟩)
+
+-- __cstr.copy(addr) → String. Reads a NUL-terminated C string from a
+-- raw address (the Z3-owned buffer returned by Z3_ast_to_string) and
+-- returns it as StringResult on the next tick. See kernel/src/
+-- libcall.rs::cstr_call for the implementation note and wave-5a
+-- §"B2 — `char*` → Evident String" for the design rationale.
+claim BuildCstrCopy(addr ∈ Int, eff ∈ Effect)
+    eff = LibCall("__cstr", "copy", ⟨ArgInt(addr)⟩)

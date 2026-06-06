@@ -32,6 +32,24 @@ pub enum LibArg {
     Real(f64),
 }
 
+/// Return value from one libcall. The historical assumption is "everything
+/// returns i64"; that's still true for the libffi-dispatched generic path
+/// (`Int(i64)`). The `__cstr.copy` pseudo-library breaks the assumption so
+/// that `Z3_ast_to_string` / `Z3_get_string` / `Z3_get_error_msg` (all
+/// `const char *` returns) can be marshaled back as Evident `String`
+/// (`Res::Str` → `StringResult`) instead of as an opaque pointer. The two
+/// existing call-sites in `tick.rs` translate `Int` → `Res::Int` and
+/// `Str` → `Res::Str`. See translate_arith.ev's "WIP: Z3-AST builders"
+/// note for why this matters: the per-binop translation reads back the
+/// SMT-LIB pretty-print of the final root AST via `Z3_ast_to_string` and
+/// compares it as a String — without a char*→String marshal that
+/// readback can't happen.
+#[derive(Debug, Clone)]
+pub enum LibRet {
+    Int(i64),
+    Str(String),
+}
+
 /// Internal: keep alive any heap-allocated arg storage (CStrings) for the
 /// duration of one call. The libffi `Arg` references borrow from these.
 struct ArgStorage {
@@ -46,8 +64,10 @@ struct ArgStorage {
 static LIB_CACHE: Mutex<Option<HashMap<String, Library>>> = Mutex::new(None);
 
 /// Resolve a function in a (possibly cached) library and call it with the
-/// given args. Returns the i64 result, or a textual error.
-pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
+/// given args. Returns either an i64 (the libffi register-return value, the
+/// historical default) or a String (used by pseudo-libraries that need to
+/// surface a textual result — today only `__cstr.copy`).
+pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, String> {
     // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
     // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
     // memory and reads it back; libffi's int/str/real arg grammar cannot
@@ -59,10 +79,22 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, Strin
     // GC); it is the single minimal deref primitive, justified in
     // docs/plans/architecture-invariants.md §"The `__mem` deref primitive".
     if lib_name == "__mem" {
-        return mem_call(fn_name, args);
+        return mem_call(fn_name, args).map(LibRet::Int);
     }
     if lib_name == "__dlsym" {
-        return dlsym_addr_call(fn_name, args);
+        return dlsym_addr_call(fn_name, args).map(LibRet::Int);
+    }
+    // `__cstr`: read a NUL-terminated C string from a raw address and return
+    // it as an Evident String. The sole consumer today is the Z3-AST-as-text
+    // path in compiler/translate_arith.ev — after the FSM builds an AST via
+    // libz3 calls, it asks `Z3_ast_to_string` for the canonical SMT-LIB
+    // pretty-print, then `__cstr.copy(ptr)` reads the bytes back. Without
+    // this, the libffi return path can carry a pointer but not the bytes
+    // behind it, so the test fixture has no way to assert on the rendered
+    // text. This is wave-5a "blocker B2 — char* → Evident String" from
+    // docs/plans/wave-5a-z3-in-evident.md §5.
+    if lib_name == "__cstr" {
+        return cstr_call(fn_name, args).map(LibRet::Str);
     }
 
     let lib_path = resolve_lib_path(lib_name);
@@ -168,7 +200,46 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<i64, Strin
     // Call. Treat the return as i64.
     let code_ptr = CodePtr::from_ptr(sym_ptr);
     let result: i64 = unsafe { cif.call(code_ptr, &ffi_args) };
-    Ok(result)
+    Ok(LibRet::Int(result))
+}
+
+/// The `__cstr` pseudo-library: a faithful char* → Evident-String marshal.
+/// Sole function today is `copy(addr) → String`. The address is whatever
+/// a prior libcall returned as IntResult (typically `Z3_ast_to_string`'s
+/// `Z3_string` return — Z3 owns the underlying buffer for the lifetime of
+/// the context). We strlen by byte-scan, copy, and return the lossy-utf8
+/// decoded string. The result lands on the next tick as `StringResult`.
+fn cstr_call(fn_name: &str, args: &[LibArg]) -> Result<String, String> {
+    if fn_name != "copy" {
+        return Err(format!("__cstr: unknown function `{fn_name}` (only `copy`)"));
+    }
+    let addr = match args.first() {
+        Some(LibArg::Int(n)) => *n as usize,
+        Some(other) => return Err(format!("__cstr::copy arg 0 must be ArgInt, got {other:?}")),
+        None => return Err("__cstr::copy missing arg 0".to_string()),
+    };
+    if addr == 0 {
+        return Err("__cstr::copy: null pointer".to_string());
+    }
+    let max_len = match args.get(1) {
+        Some(LibArg::Int(n)) => (*n).max(0) as usize,
+        Some(other) => return Err(format!("__cstr::copy arg 1 must be ArgInt, got {other:?}")),
+        // Default cap = 1 MiB. A non-string pointer accidentally fed in
+        // would otherwise walk into unmapped memory and SIGSEGV.
+        None => 1 << 20,
+    };
+    let mut bytes = Vec::with_capacity(64);
+    unsafe {
+        let p = addr as *const u8;
+        let mut i: usize = 0;
+        while i < max_len {
+            let b = p.add(i).read_unaligned();
+            if b == 0 { break; }
+            bytes.push(b);
+            i += 1;
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// The `__mem` primitive: a faithful machine-long load/store on a raw

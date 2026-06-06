@@ -1,0 +1,213 @@
+-- Wave 5a pivot proof: drive compiler/translate_arith.ev's new
+-- BuildZ3*-emitting shape end-to-end. The FSM:
+--   1. Builds Z3 lifecycle (config, context, int_sort, int_inc_ref).
+--   2. For the hardcoded AST `3 + 4 * 5`, builds three Z3_mk_int
+--      handles (one per atom).
+--   3. Allocates a 16-byte args buffer for the `*` binop, writes the
+--      two operand handles, calls Z3_mk_mul → mul_h.
+--   4. Allocates a second args buffer for the `+` binop, writes 3's
+--      handle and mul_h, calls Z3_mk_add → add_h.
+--   5. Calls Z3_ast_to_string(ctx, add_h) → const char* (i64).
+--   6. Calls __cstr.copy(ptr) → StringResult.
+--   7. Compares to "(+ 3 (* 4 5))" (Z3's canonical form).
+--   8. Exits 0 iff equal; else exit codes 4..6 surface what diverged.
+--
+-- The Evident-source claim selections come from
+-- compiler/translate_arith.ev's AtomBuildZ3 and ArithBinopBuildZ3 —
+-- this fixture inlines their constraints rather than calling them
+-- via Schema(slot ↦ ...) so the FSM stays one schema and the seam
+-- has the simplest shape to compile.
+--
+-- The FSM is intentionally MULTI-TICK because every libz3 call's
+-- return handle arrives in last_results on the NEXT tick. See
+-- tests/kernel/test_z3_libcall_solve.ev for the matching wave-5a
+-- pattern (cfg/ctx/sol/vec/ast captures across ticks).
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    -- Phase counter: tick N runs phase (N - 1) for N > 0; first
+    -- tick is phase 0.
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- ── Captured handles. Each is initialised to 0, set to
+    --    last_results[0] on its capture tick, otherwise carried.
+
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cfg_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cfg_h = (is_first_tick ? 0 : phase = 1 ? cfg_cap : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ctx_h = (is_first_tick ? 0 : phase = 2 ? ctx_cap : _ctx_h)
+
+    int_sort_h ∈ Int
+    _int_sort_h ∈ Int
+    sort_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    int_sort_h = (is_first_tick ? 0 : phase = 3 ? sort_cap : _int_sort_h)
+
+    n3_h ∈ Int
+    _n3_h ∈ Int
+    n3_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    n3_h = (is_first_tick ? 0 : phase = 4 ? n3_cap : _n3_h)
+
+    n4_h ∈ Int
+    _n4_h ∈ Int
+    n4_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    n4_h = (is_first_tick ? 0 : phase = 5 ? n4_cap : _n4_h)
+
+    n5_h ∈ Int
+    _n5_h ∈ Int
+    n5_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    n5_h = (is_first_tick ? 0 : phase = 6 ? n5_cap : _n5_h)
+
+    -- Buffer for the `*` binop: malloc 16 bytes.
+    mul_buf ∈ Int
+    _mul_buf ∈ Int
+    mul_buf_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    mul_buf = (is_first_tick ? 0 : phase = 7 ? mul_buf_cap : _mul_buf)
+
+    -- Z3_mk_mul → mul_h captured on phase 10 (writes ran on 8, 9; mk
+    -- on 10; capture on 11).
+    mul_h ∈ Int
+    _mul_h ∈ Int
+    mul_h_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    mul_h = (is_first_tick ? 0 : phase = 11 ? mul_h_cap : _mul_h)
+
+    -- Buffer for the `+` binop.
+    add_buf ∈ Int
+    _add_buf ∈ Int
+    add_buf_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    add_buf = (is_first_tick ? 0 : phase = 12 ? add_buf_cap : _add_buf)
+
+    -- Z3_mk_add → add_h captured after writes + mk.
+    add_h ∈ Int
+    _add_h ∈ Int
+    add_h_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    add_h = (is_first_tick ? 0 : phase = 16 ? add_h_cap : _add_h)
+
+    -- Z3_ast_to_string → char* captured on phase 18 (mk on 17).
+    str_ptr ∈ Int
+    _str_ptr ∈ Int
+    str_ptr_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    str_ptr = (is_first_tick ? 0 : phase = 18 ? str_ptr_cap : _str_ptr)
+
+    -- __cstr.copy → String captured on phase 19 (copy on 18).
+    rendered ∈ String
+    _rendered ∈ String
+    rendered_cap ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    rendered = (is_first_tick ? ""
+        : phase = 19 ? rendered_cap
+        : _rendered)
+
+    -- ── Effects per phase. Phase numbering:
+    --   0  MkConfig
+    --   1  MkContext(cfg)
+    --   2  MkIntSort(ctx)
+    --   3  MkInt(ctx, 3, sort)            → n3_h
+    --   4  MkInt(ctx, 4, sort)            → n4_h
+    --   5  MkInt(ctx, 5, sort)            → n5_h
+    --   6  malloc 16                      → mul_buf
+    --   7  __mem.write_long(mul_buf, n4_h)
+    --   8  __mem.write_long(mul_buf+8, n5_h)
+    --   9  MkMul(ctx, 2, mul_buf)         → mul_h
+    --  10  IncRef(ctx, mul_h)             (refcount pin)
+    --  11  malloc 16                      → add_buf
+    --  12  __mem.write_long(add_buf, n3_h)
+    --  13  __mem.write_long(add_buf+8, mul_h)
+    --  14  MkAdd(ctx, 2, add_buf)         → add_h
+    --  15  IncRef(ctx, add_h)
+    --  16  Z3_ast_to_string(ctx, add_h)   → str_ptr
+    --  17  __cstr.copy(str_ptr)           → rendered
+    --  18  branch on rendered == "(+ 3 (* 4 5))" → Exit(0|4)
+    --
+    -- N.B. the phase-N effect lands its return on phase N+1 (the
+    -- capture lookup phase). So the "phase = X" line above lists the
+    -- TICK the value is FIRST READABLE on.
+
+    expected ∈ String = "(+ 3 (* 4 5))"
+    match_ok ∈ Bool = (rendered = expected)
+    exit_code ∈ Int = (phase = 20
+        ? (match_ok ? 0 : 4)
+        : 5)
+
+    effects ∈ Seq(Effect) = (phase = 0
+            ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1
+            ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2
+            ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(ctx_h)⟩)⟩
+        : phase = 3
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(3), ArgInt(int_sort_h)⟩)⟩
+        : phase = 4
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(4), ArgInt(int_sort_h)⟩)⟩
+        : phase = 5
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(5), ArgInt(int_sort_h)⟩)⟩
+        : phase = 6
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(16)⟩)⟩
+        : phase = 7
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(mul_buf), ArgInt(n4_h)⟩)⟩
+        : phase = 8
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(mul_buf + 8), ArgInt(n5_h)⟩)⟩
+        : phase = 9
+            ? ⟨LibCall("libz3", "Z3_mk_mul",
+                ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(mul_buf)⟩)⟩
+        : phase = 10
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(mul_h)⟩)⟩
+        : phase = 11
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(16)⟩)⟩
+        : phase = 12
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(add_buf), ArgInt(n3_h)⟩)⟩
+        : phase = 13
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(add_buf + 8), ArgInt(mul_h)⟩)⟩
+        : phase = 14
+            ? ⟨LibCall("libz3", "Z3_mk_add",
+                ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(add_buf)⟩)⟩
+        : phase = 15
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(add_h)⟩)⟩
+        : phase = 16
+            ? ⟨LibCall("libz3", "Z3_ast_to_string",
+                ⟨ArgInt(ctx_h), ArgInt(add_h)⟩)⟩
+        : phase = 17
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(str_ptr)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
