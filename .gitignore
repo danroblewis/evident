@@ -13,3 +13,6 @@ scripts/coordinator-results/
 # is docs/plans/wave-5d-aot-binary-cache.md §2.
 .evident/cache/
 *.evidentc
+
+# claudebot config (contains Discord channel binding)
+.claudebot
