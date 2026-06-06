@@ -1,0 +1,65 @@
+-- Wave 5+ — TokenStack FTI proof.
+--
+-- Drives the new stdlib/fti/token_stack.ev API end-to-end. The FSM
+-- allocates a backing region in libc memory, pushes three nullary
+-- tokens (Plus=8, Comma=7, LParen=5), reads back the top tag, and
+-- exits 0 iff the read value equals 5 (LParen — the most recently
+-- pushed token). Anything else is a bug in the push/read schedule.
+--
+-- Critical property: the Evident-side state carried tick-to-tick is
+-- just `(base ∈ Int, depth ∈ Int)` plus the phase counter — never a
+-- TokenList. If you grep the emitted .smt2 for this fixture, there
+-- are zero `TLCons`/`TLNil` references, zero `Token` enum
+-- declarations, zero datatype state. Just two Ints carry across
+-- ticks. That's the FTI promise honestly delivered.
+--
+-- Schedule (the multi-tick handle-threading idiom):
+--   tick 0  malloc(1024)                                   base ← [0] (NT 1)
+--   tick 1  push tag=Plus  (write at base+0)
+--   tick 2  push tag=Comma (write at base+32)
+--   tick 3  push tag=LParen(write at base+64)
+--   tick 4  read top tag at depth=2 (base+64)
+--   tick 5  capture read value → top_tag                   top_tag ← [0]
+--   tick 6  exit(0 iff top_tag = 5)
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    base ∈ Int
+    _base ∈ Int
+    base_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    base = (is_first_tick ? 0
+        : phase = 1 ? base_capture
+        : _base)
+
+    top_tag ∈ Int
+    _top_tag ∈ Int
+    top_tag_capture ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    top_tag = (is_first_tick ? 0
+        : phase = 5 ? top_tag_capture
+        : _top_tag)
+
+    exit_code ∈ Int = (top_tag = 5 ? 0 : 1)
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)⟩
+        : phase = 1 ? ⟨LibCall("__mem", "write_long",
+                           ⟨ArgInt(base + 0), ArgInt(8)⟩)⟩
+        : phase = 2 ? ⟨LibCall("__mem", "write_long",
+                           ⟨ArgInt(base + 32), ArgInt(7)⟩)⟩
+        : phase = 3 ? ⟨LibCall("__mem", "write_long",
+                           ⟨ArgInt(base + 64), ArgInt(5)⟩)⟩
+        : phase = 4 ? ⟨LibCall("__mem", "read_long",
+                           ⟨ArgInt(base + 64)⟩)⟩
+        : phase = 5 ? ⟨LibCall("libc", "free", ⟨ArgInt(base)⟩)⟩
+        : ⟨Exit(exit_code)⟩)

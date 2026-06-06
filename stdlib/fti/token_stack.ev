@@ -1,0 +1,265 @@
+-- stdlib/fti/token_stack.ev — Token-specialized FTI Stack.
+--
+-- The lexer/parser FSM in compiler/sample.ev carries token sequences as
+-- `TokenList` cons-list state-fields (28 of them in sample.ev). Every
+-- tick, the kernel reads each whole list out of the Z3 model and
+-- re-emits it as a deeply-nested `(TLCons t1 (TLCons t2 ...))` pin
+-- string. Z3 then parses each tick's pin string into AST nodes which
+-- accumulate in the context's hash-cons table — millions of cons-cell
+-- ASTs over a real compile, hundreds of MB of RSS. The "FTI honesty
+-- audit" earlier moved Stack/Queue contents out of Z3 to libc memory
+-- exactly to avoid this; the lexer's token lists were never pivoted.
+--
+-- This FTI is the pivot. A TokenStack carries the same shape of data
+-- (a stack of `Token` values) but the contents live in libc malloc'd
+-- memory reached via `__mem.write_long`/`__mem.read_long`. The Evident
+-- side carries only `(base ∈ Int, depth ∈ Int)` per tick — two i64s,
+-- not a 1000-deep cons-list. Z3's term store stops growing because the
+-- pin string stops re-emitting the list contents.
+--
+-- ── Token encoding (32 bytes / 4 i64 slots per stack entry) ────────
+--
+--   slot 0:  tag       — variant discriminator (see TokenTag enum)
+--   slot 1:  payload0  — Int payload (IntLit value, FloatLit whole) OR
+--                        a malloc'd char* pointer for string-carrying
+--                        variants (Ident/StringLit/ErrTok)
+--   slot 2:  payload1  — FloatLit fractional
+--   slot 3:  payload2  — FloatLit fractional-digit-count
+--
+-- Token at depth d occupies stack offset (d * 4) slots. Stack capacity
+-- = 1024 bytes / 32 bytes-per-entry = 32 tokens default; the
+-- BuildTokenStackAlloc claim accepts a custom capacity.
+--
+-- v1 limitation: strings in string-carrying tokens are malloc'd once
+-- and never freed until process exit (the lexer's typical lifetime).
+-- v2 would track ownership and free on pop/stack-free; that's a
+-- separate task. The kernel process is short-lived so the leak is
+-- bounded by source-file size.
+
+import "stdlib/kernel.ev"
+
+-- ── Token discriminator (matches compiler/lexer.ev's Token enum) ─
+-- These are stable integer tags. Adding a new Token variant means
+-- appending a new tag here (and a new BuildTokenStackPush* shape).
+
+claim TokenTag_Ident(out ∈ Int)
+    out = 1
+
+claim TokenTag_IntLit(out ∈ Int)
+    out = 2
+
+claim TokenTag_StringLit(out ∈ Int)
+    out = 3
+
+claim TokenTag_FloatLit(out ∈ Int)
+    out = 4
+
+claim TokenTag_LParen(out ∈ Int)
+    out = 5
+
+claim TokenTag_RParen(out ∈ Int)
+    out = 6
+
+claim TokenTag_Comma(out ∈ Int)
+    out = 7
+
+claim TokenTag_Plus(out ∈ Int)
+    out = 8
+
+claim TokenTag_Star(out ∈ Int)
+    out = 9
+
+claim TokenTag_Slash(out ∈ Int)
+    out = 10
+
+claim TokenTag_Minus(out ∈ Int)
+    out = 11
+
+claim TokenTag_Eq(out ∈ Int)
+    out = 12
+
+claim TokenTag_EofTok(out ∈ Int)
+    out = 13
+
+claim TokenTag_ErrTok(out ∈ Int)
+    out = 14
+
+-- Keyword tags (15..30). Order matches lexer.ev's keyword block.
+claim TokenTag_KwClaim(out ∈ Int)
+    out = 15
+
+claim TokenTag_KwType(out ∈ Int)
+    out = 16
+
+claim TokenTag_KwSchema(out ∈ Int)
+    out = 17
+
+claim TokenTag_KwFsm(out ∈ Int)
+    out = 18
+
+claim TokenTag_KwEnum(out ∈ Int)
+    out = 19
+
+claim TokenTag_KwImport(out ∈ Int)
+    out = 20
+
+claim TokenTag_KwMatch(out ∈ Int)
+    out = 21
+
+claim TokenTag_KwSubclaim(out ∈ Int)
+    out = 22
+
+claim TokenTag_KwExternal(out ∈ Int)
+    out = 23
+
+claim TokenTag_KwMatches(out ∈ Int)
+    out = 24
+
+claim TokenTag_KwIn(out ∈ Int)
+    out = 25
+
+claim TokenTag_KwTrue(out ∈ Int)
+    out = 26
+
+claim TokenTag_KwFalse(out ∈ Int)
+    out = 27
+
+claim TokenTag_KwMapsTo(out ∈ Int)
+    out = 28
+
+-- Unicode operator tags (40..60).
+claim TokenTag_OpIn(out ∈ Int)
+    out = 40
+
+claim TokenTag_OpImplies(out ∈ Int)
+    out = 41
+
+claim TokenTag_OpSeqOpen(out ∈ Int)
+    out = 42
+
+claim TokenTag_OpSeqClose(out ∈ Int)
+    out = 43
+
+claim TokenTag_OpMapsto(out ∈ Int)
+    out = 44
+
+claim TokenTag_OpLe(out ∈ Int)
+    out = 45
+
+claim TokenTag_OpGe(out ∈ Int)
+    out = 46
+
+claim TokenTag_OpNe(out ∈ Int)
+    out = 47
+
+claim TokenTag_OpAnd(out ∈ Int)
+    out = 48
+
+claim TokenTag_OpOr(out ∈ Int)
+    out = 49
+
+claim TokenTag_OpNot(out ∈ Int)
+    out = 50
+
+claim TokenTag_OpForall(out ∈ Int)
+    out = 51
+
+claim TokenTag_OpExists(out ∈ Int)
+    out = 52
+
+-- Two-char ASCII tokens (60..70).
+claim TokenTag_PlusPlus(out ∈ Int)
+    out = 60
+
+claim TokenTag_DotDot(out ∈ Int)
+    out = 61
+
+claim TokenTag_Lt(out ∈ Int)
+    out = 62
+
+claim TokenTag_Gt(out ∈ Int)
+    out = 63
+
+claim TokenTag_Dot(out ∈ Int)
+    out = 64
+
+-- ── Contract: legal transitions (mirrors Stack's depth-delta shape) ─
+
+claim TokenStack(depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool,
+                 pushing ∈ Bool, popping ∈ Bool)
+    -- A token stack step is a no-op (depth unchanged), a single push
+    -- (depth+1), or a single pop (depth-1). Multi-step transitions
+    -- fail to satisfy any disjunct and the kernel halts the FSM.
+    legal_noop ∈ Bool = (depth = prev_depth)
+    legal_push ∈ Bool = (depth = prev_depth + 1)
+    legal_pop  ∈ Bool = (depth = prev_depth - 1)
+    (is_init ∨ legal_noop ∨ legal_push ∨ legal_pop)
+    depth ≥ 0
+
+    pushing = legal_push
+    popping = legal_pop
+
+-- ── Builder claims ────────────────────────────────────────────────
+
+-- Allocate a backing region. Default 1024 bytes (32 tokens). The
+-- returned pointer arrives in next tick's last_results — caller
+-- captures it as `base ∈ Int` per the two-tick handle-threading idiom.
+claim BuildTokenStackAlloc(eff ∈ Effect)
+    eff = LibCall("libc", "malloc", ⟨ArgInt(1024)⟩)
+
+claim BuildTokenStackAllocSized(bytes ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "malloc", ⟨ArgInt(bytes)⟩)
+
+-- Push a NULLARY token: write only the tag, leave payload slots 0.
+-- Slot offset = depth * 4 (the entry index) + 0 (tag slot).
+claim BuildTokenStackPushNullary(base ∈ Int, depth ∈ Int, tag ∈ Int,
+                                  eff ∈ Effect)
+    eff = LibCall("__mem", "write_long",
+        ⟨ArgInt(base + (depth * 4) * 8), ArgInt(tag)⟩)
+
+-- Push an INT-PAYLOAD token (IntLit). Writes tag in slot 0 and value
+-- in slot 1 of the entry. Caller must emit two effects in one tick to
+-- get both writes through:
+--     ⟨BuildTokenStackPushTag(...), BuildTokenStackPushP0(...)⟩
+claim BuildTokenStackPushTag(base ∈ Int, depth ∈ Int, tag ∈ Int,
+                              eff ∈ Effect)
+    eff = LibCall("__mem", "write_long",
+        ⟨ArgInt(base + (depth * 4) * 8), ArgInt(tag)⟩)
+
+claim BuildTokenStackPushP0(base ∈ Int, depth ∈ Int, p0 ∈ Int,
+                             eff ∈ Effect)
+    eff = LibCall("__mem", "write_long",
+        ⟨ArgInt(base + (depth * 4 + 1) * 8), ArgInt(p0)⟩)
+
+claim BuildTokenStackPushP1(base ∈ Int, depth ∈ Int, p1 ∈ Int,
+                             eff ∈ Effect)
+    eff = LibCall("__mem", "write_long",
+        ⟨ArgInt(base + (depth * 4 + 2) * 8), ArgInt(p1)⟩)
+
+claim BuildTokenStackPushP2(base ∈ Int, depth ∈ Int, p2 ∈ Int,
+                             eff ∈ Effect)
+    eff = LibCall("__mem", "write_long",
+        ⟨ArgInt(base + (depth * 4 + 3) * 8), ArgInt(p2)⟩)
+
+-- Read slots back. The 8-byte read surfaces in next tick's
+-- last_results. Caller schedules its reads so the captured value
+-- corresponds to the entry it cares about.
+claim BuildTokenStackReadTag(base ∈ Int, depth ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long",
+        ⟨ArgInt(base + (depth * 4) * 8)⟩)
+
+claim BuildTokenStackReadP0(base ∈ Int, depth ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long",
+        ⟨ArgInt(base + (depth * 4 + 1) * 8)⟩)
+
+claim BuildTokenStackReadP1(base ∈ Int, depth ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long",
+        ⟨ArgInt(base + (depth * 4 + 2) * 8)⟩)
+
+claim BuildTokenStackReadP2(base ∈ Int, depth ∈ Int, eff ∈ Effect)
+    eff = LibCall("__mem", "read_long",
+        ⟨ArgInt(base + (depth * 4 + 3) * 8)⟩)
+
+-- Teardown. v1 leaks the per-token string mallocs.
+claim BuildTokenStackFree(base ∈ Int, eff ∈ Effect)
+    eff = LibCall("libc", "free", ⟨ArgInt(base)⟩)
