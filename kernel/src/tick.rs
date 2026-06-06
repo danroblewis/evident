@@ -73,6 +73,23 @@ pub enum Sv {
 impl Sv {
     /// Emit as SMT-LIB literal expression suitable for an `(assert (= ...))`.
     fn smtlib(&self) -> String {
+        // Wave-5+ memory spike (docs/plans/sample-ev-fti-pivot.md
+        // "Open question"): cap cons-list pin-rendering depth so the
+        // per-tick pin string doesn't add one cons-cell AST per
+        // element per tick to Z3's term hash-cons table. The cap
+        // truncates the tail to the cons-list's nullary sibling
+        // (TLNil for TokenList) once N levels of recursive Cons
+        // nesting are reached. Correctness depends on the FSM not
+        // reading past the cap (acceptable if e.g. only the head is
+        // read per tick). Set EVIDENT_PIN_DEPTH_CAP=<N> to enable;
+        // default unlimited (preserves original behaviour).
+        let cap = std::env::var("EVIDENT_PIN_DEPTH_CAP")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok());
+        self.smtlib_capped(cap)
+    }
+
+    fn smtlib_capped(&self, cap: Option<usize>) -> String {
         match self {
             Sv::Int(n) if *n >= 0  => n.to_string(),
             Sv::Int(n)             => format!("(- {})", -n),
@@ -82,15 +99,56 @@ impl Sv {
             Sv::Real(r)            => format!("(- {:?})", -r),
             Sv::Datatype(variant, fields) => {
                 if fields.is_empty() {
-                    variant.clone()
-                } else {
-                    let parts: Vec<String> = fields.iter().map(|f| f.smtlib()).collect();
-                    format!("({} {})", variant, parts.join(" "))
+                    return variant.clone();
                 }
+                // Cap hit at a cons-cell shape (2 fields with a
+                // recursive datatype in the second slot): truncate
+                // the tail to the inferred nullary sibling.
+                if let Some(0) = cap {
+                    if fields.len() == 2
+                        && matches!(&fields[1], Sv::Datatype(_, _))
+                    {
+                        if std::env::var("EVIDENT_PIN_DEPTH_TRACE").is_ok() {
+                            eprintln!("[pin-cap] truncating {variant} tail");
+                        }
+                        let head = fields[0].smtlib_capped(Some(0));
+                        let base = find_base_variant(&fields[1])
+                            .unwrap_or_else(|| "TLNil".to_string());
+                        return format!("({} {} {})", variant, head, base);
+                    }
+                }
+                let next_cap = cap.map(|c| c.saturating_sub(1));
+                let parts: Vec<String> = fields.iter()
+                    .map(|f| f.smtlib_capped(next_cap))
+                    .collect();
+                format!("({} {})", variant, parts.join(" "))
             }
             // Seq values are functionizer-internal (record-Seq intermediates)
             // and never carried as a primitive state field, so this is unused.
             Sv::Seq(_) => unreachable!("Sv::Seq has no SMT-LIB pin form"),
+        }
+    }
+}
+
+/// Walk a cons-shape value chain looking for the nullary base
+/// constructor (e.g. `TLNil` at the bottom of `TLCons` chains). Used
+/// when truncating pin depth so the tail renders to a real
+/// constructor of the right datatype rather than an unbound symbol.
+fn find_base_variant(v: &Sv) -> Option<String> {
+    let mut cur = v;
+    loop {
+        match cur {
+            Sv::Datatype(variant, fields) => {
+                if fields.is_empty() {
+                    return Some(variant.clone());
+                }
+                if fields.len() == 2 {
+                    cur = &fields[1];
+                    continue;
+                }
+                return None;
+            }
+            _ => return None,
         }
     }
 }
