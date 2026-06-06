@@ -1,0 +1,44 @@
+# claudebot dev image for evident: everything in Dockerfile, plus Claude Code,
+# the md markdown/session viewer (github.com/danroblewis/md) built from
+# source, and a cloudflared quick tunnel announced to the Discord channel at
+# startup (scripts/claudebot-dev-entrypoint.sh).
+#
+# Use via ~/evident/.claudebot: DOCKERFILE=Dockerfile.dev
+FROM rust:1-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    z3 libz3-dev clang libclang-dev libffi-dev pkg-config cmake \
+    python3 git curl ca-certificates jq ripgrep procps \
+ && rm -rf /var/lib/apt/lists/*
+
+# Claude Code (npm puts it in /usr/local — NOT /root, which the
+# container-home mount shadows at runtime)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y nodejs \
+ && npm install -g @anthropic-ai/claude-code \
+ && rm -rf /var/lib/apt/lists/*
+
+# md viewer, built from source (go.mod wants go >= 1.25)
+COPY --from=golang:1.25-bookworm /usr/local/go /usr/local/go
+RUN git clone --depth 1 https://github.com/danroblewis/md.git /opt/md \
+ && cd /opt/md && /usr/local/go/bin/go build -o /usr/local/bin/md . \
+ && rm -rf /root/go /root/.cache
+
+# cloudflared (quick tunnels need no account)
+RUN curl -fsSL -o /usr/local/bin/cloudflared \
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture)" \
+ && chmod +x /usr/local/bin/cloudflared
+
+COPY scripts/claudebot-dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
+RUN chmod +x /usr/local/bin/dev-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/dev-entrypoint.sh"]
+
+# The repo's .cargo/config.toml pins Z3_SYS_Z3_HEADER (and friends) to macOS
+# homebrew paths. cargo's [env] does not override variables that are already
+# set in the environment, so these take precedence inside the container.
+ENV Z3_SYS_Z3_HEADER=/usr/include/z3.h \
+    PKG_CONFIG_PATH= \
+    LIBRARY_PATH=
+
+WORKDIR /root
+CMD ["bash"]
