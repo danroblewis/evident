@@ -201,15 +201,21 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
     // B only: one persistent solver, simplified body asserted once. Each tick
     // layers pins as check-assumptions instead of re-asserting the body.
-    let persistent_solver = if mech == Mech::B {
+    // ONE persistent solver, body asserted once. Both mechs reuse it:
+    // - Mech A wraps per-tick pin assertions with push/pop so they don't
+    //   accumulate across ticks (was: fresh solver per tick — bounded
+    //   per-solver, but Z3's context-level term hash-cons table grew
+    //   linearly with each Z3_mk_solver + assert cycle, dominating memory
+    //   on long compiles like compiler.smt2 emitting a test fixture).
+    // - Mech B uses check_assumptions which never permanently asserts pins,
+    //   so push/pop is a no-op for it but the persistent solver is shared.
+    let persistent_solver = {
         let s = Z3_mk_solver(ctx);
         Z3_solver_inc_ref(ctx, s);
         for &a in &body {
             Z3_solver_assert(ctx, s, a);
         }
         Some(s)
-    } else {
-        None
     };
 
     // Functionizer (task #18). After parse + pre-loop simplify, attempt to
@@ -340,20 +346,10 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             // run_program refused this tick → fall through to the Z3 path.
         }
         let tz = mark();
-        // A: fresh solver re-asserting the cached simplified body (no parse),
-        // so Z3 preprocesses the whole problem each tick. B: the persistent
-        // solver, body already loaded once above.
-        let solver = match persistent_solver {
-            Some(s) => s,
-            None => {
-                let s = Z3_mk_solver(ctx);
-                Z3_solver_inc_ref(ctx, s);
-                for &a in &body {
-                    Z3_solver_assert(ctx, s, a);
-                }
-                s
-            }
-        };
+        // Single persistent solver (shared between Mech A and B, body already
+        // asserted once at startup). Mech A's per-tick pin assertions are
+        // scoped via push/pop in apply_pins_a; Mech B uses check_assumptions.
+        let solver = persistent_solver.expect("persistent_solver inited above");
 
         // Build ONLY the per-tick equality pins. The declarations preamble makes
         // the pin symbols re-declare and intern to the cached body's variables.
@@ -390,7 +386,16 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             }
         };
 
-        // The A/B fork: assert-then-check vs. check-with-assumptions.
+        // Mech A: push/pop scopes the per-tick pin assertions so they don't
+        // accumulate on the persistent solver (Z3's term hash-cons table
+        // grows per parse and never shrinks; without push/pop, memory grew
+        // linearly with tick count — ~800 MB at 3 minutes on a typical
+        // compiler.smt2 emit). The pop has to happen AFTER the model is
+        // read because pop invalidates the model; it lives at the bottom
+        // of the model-read block.
+        if mech == Mech::A {
+            Z3_solver_push(ctx, solver);
+        }
         let res = match mech {
             Mech::A => apply_pins_a(ctx, solver, &pin_asts),
             Mech::B => apply_pins_b(ctx, solver, &pin_asts),
@@ -473,10 +478,13 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             Z3_del_context(ctx);
             return Ok(1);
         }
-        // A's solver is fresh per tick — drop it. B's persistent solver is
-        // kept for the next tick and freed once the loop exits.
+        // Mech A: release this tick's pin assertions now that the model is
+        // dec_ref'd and we're moving to the next tick. Without this, the
+        // persistent solver would accumulate every tick's pin assertions.
+        // The Z3_solver_dec_ref-then-del_context paths above don't need a
+        // matching pop — killing the context releases everything.
         if mech == Mech::A {
-            Z3_solver_dec_ref(ctx, solver);
+            Z3_solver_pop(ctx, solver, 1);
         }
 
         prev_state   = new_state.into_iter().map(Some).collect();
@@ -699,8 +707,10 @@ unsafe fn parse_pins(ctx: Z3_context, pins: &str) -> Result<(Z3_ast_vector, Vec<
     Ok((v, out))
 }
 
-/// Mechanism A: assert the pin ASTs onto the (fresh) solver, then a one-shot
-/// `check`. Z3 preprocesses body + pins together each tick.
+/// Mechanism A: assert the pin ASTs onto the (persistent) solver, then a
+/// one-shot `check`. The caller wraps this with Z3_solver_push / pop so the
+/// assertions get released after the model is read — pop invalidates the
+/// model, so it cannot live inside this function.
 unsafe fn apply_pins_a(ctx: Z3_context, solver: Z3_solver, pin_asts: &[Z3_ast]) -> Z3_lbool {
     for &a in pin_asts {
         Z3_solver_assert(ctx, solver, a);
@@ -876,7 +886,8 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
             let func = decode_string_literal(ctx, fn_ast)?;
             let args = decode_libargs(ctx, args_ast)?;
             match crate::libcall::call(&lib, &func, &args) {
-                Ok(ret) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Ok(crate::libcall::LibRet::Int(ret)) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Ok(crate::libcall::LibRet::Str(s))   => Ok(EffectOutcome::Continue(Res::Str(s))),
                 Err(e)  => Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}")))),
             }
         }
@@ -1346,7 +1357,8 @@ fn dispatch_effect_sv(eff: &Sv) -> Result<EffectOutcome, String> {
             let func = sv_str(fields.get(1))?;
             let args = decode_libargs_sv(fields.get(2))?;
             match crate::libcall::call(&lib, &func, &args) {
-                Ok(ret) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Ok(crate::libcall::LibRet::Int(ret)) => Ok(EffectOutcome::Continue(Res::Int(ret))),
+                Ok(crate::libcall::LibRet::Str(s))   => Ok(EffectOutcome::Continue(Res::Str(s))),
                 Err(e) => Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}")))),
             }
         }
