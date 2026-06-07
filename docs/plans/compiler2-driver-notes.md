@@ -1,11 +1,14 @@
-# compiler2 driver skeleton (P3a + P3b + P3c) — notes
+# compiler2 driver skeleton (P3a + P3b + P3c + P3d) — notes
 
 Status: P3a LANDED — both acceptance fixtures compile + run green
 (see Acceptance below). P3b LANDED — the census
 arithmetic/comparison/membership class and the implies class flip
 green through the driver (see P3b acceptance below). P3c LANDED —
 the bounded shape-enumeration parsers are replaced by a Pratt
-parser FSM (see P3c below).
+parser FSM (see P3c below). P3d LANDED — the TokenList cons-list
+lexer + REVERSE phase are replaced by the FTI token buffer
+(compiler2/lex_fti.ev) and a cursor/window parse path (see P3d
+below).
 
 `compiler2/driver.ev` is the first end-to-end compiler2 driver: an
 Evident program (oracle-compiled to a ~209 KB .smt2) that the kernel
@@ -26,13 +29,18 @@ stdin: flat-path \n claim \n        (wave-4o protocol, same as compiler.smt2)
               VariantMkConstructorStep/VariantQueryStep),
               `effects : (Array Int Effect)` + `effects__len : Int`
               consts, cached 0/1 numerals.
-  ↓ LEX       the fossil's consolidated lexer FSM (compiler/compiler.ev),
-              copied verbatim, gated to start after ZINIT. One token
-              per tick + whitespace/comment bulk-skip.
-  ↓ REVERSE   fossil's pop loop (reverse cons list → forward).
+  ↓ LEX       the fossil's per-char scanner FSM + compiler2/lex_fti.ev's
+              LexFtiPlan (P3d): tokens land in a calloc'd FTI buffer
+              (32 bytes/token, append order) via __mem.write_long;
+              Ident/StringLit payloads are strdup'd char*s. Z3 lexer
+              state = five Ints. One token per tick + bulk-skip.
+  ↓ (REVERSE deleted in P3d — append order is source order; the
+              lex_done tick flushes the pending string write + writes
+              the EofTok sentinel, then phase 0 → 2 directly.)
   ↓ PARSE     top-level dispatch: KwEnum and parametrized / non-target
               claims SKIPPED one token per tick; the target bare-head
-              claim enters the walk.
+              claim enters the walk. All token access goes through an
+              8-token decoded window over the buffer (see P3d).
   ↓ WALK      per body line:
               1. a PURE one-tick classifier + bounded expression parser
                  (C2ParseExpr) turn the line into a work-item program
@@ -320,6 +328,118 @@ shapes — the known P2 finding; perf-only).
 - tests/kernel/compiler2/solver_emit_fixture.ev — the emit-backbone
   fixture (finding 1 + 2 pinned executable): oracle-compiled,
   kernel-run exit 0.
+
+## P3d — FTI lexer + cursor/window parse path (landed 2026-06-07)
+
+The TokenList cons-list lexer and the REVERSE pop loop are DELETED.
+The lexer writes tokens straight into a calloc'd FTI buffer
+(compiler2/lex_fti.ev, proven by the P3-era spike) in append =
+source order; the parse phases read the buffer through a bounded
+decoded window. No unbounded TokenList is carried in Z3 state
+anywhere in the driver any more.
+
+Design (per docs/plans/fti-lexer-notes.md's integration recipe):
+
+- **ZINIT** gained one step (zstep 32): `calloc(4096, 32)` — the
+  token buffer, 4096 entries × 32 bytes. `tbase` captured at 33;
+  the LEX gate moved 32 → 33. The buffer is `free`d on the Exit
+  tick (strdup'd string payloads still leak — v1 stance).
+- **LEX**: the fossil per-char scanner is verbatim; `SingleCharTok`
+  became `LexCharTag` (same recognized set, Int tags); the cons
+  push + tk_p1/tk_p2 negative-fold peeks are replaced by
+  `LexFtiPlan` (fold decided from the cached last/prev tag Ints).
+  Effects per tick: the 7 fixed kind shapes + the pending
+  string-pointer write (strdup is always effects[0] of its tick).
+  Z3 lexer state: `tbase, lx_count, lx_last, lx_prev, lx_pend` —
+  five Ints.
+- **REVERSE deleted**: `entering_parse` fires on the lex_done tick
+  (phase 0 → 2), which also flushes a pending string write and
+  writes the EofTok sentinel at entry lx_count.
+- **FETCH / TOKEN WINDOW**: all parse modes read tokens through
+  `wtoks`, a TokenList window of the 8 buffer entries starting at
+  cursor `tcur` (decoded by the new `FtiTok` claim; entries past
+  the sentinel read the calloc'd 0 and decode to EofTok, so "list
+  nil" checks became `head matches EofTok`). A consumer acts only
+  when the window covers its lookahead need (`w_need`: dispatch 3,
+  skip 1, classifier 5, Pratt 1); otherwise a 3-tick refill burst
+  runs: 16 `__mem.read_long` (8 tags + 8 payloads — within the
+  manifest's max-effects = 16) → 8 slot-aligned `__cstr.copy` /
+  getpid-filler effects (so slot i's string is last_results[i],
+  no compaction indexing) → pure window rebuild. Consumption is
+  cursor arithmetic: each action contributes its token count to
+  `dcons` (claim-enter 2, skip 1, pin head 4, effects-literal head
+  10, membership 3/5, Pratt shift 1, post-parse `) ⟩` 2), with the
+  window advanced by the matching tail. C2PrattStep gained an
+  explicit `scons` output slot (consumed-this-action) because
+  composed-claim body locals are NOT referencable from host
+  constraint expressions (probed: a host expression naming an
+  inlined claim's body local drops the constraint).
+- State-field delta (oracle manifest): TokenList-typed fields
+  29 → 9, and every survivor is bounded ≤ 8 entries (window +
+  tails + pr_ntoks). The unbounded carriers — `tokens`, `work`,
+  `fwd`, `items`, `skipl`, `rem`, `p_toks` and their per-tick tail
+  views — are gone. Total fields grew 354 → 440 (the window
+  latches/views are many but all Int/Bool/bounded).
+
+### P3d measurement (026-arithmetic-add, same flattened input, same kernel)
+
+|                | ticks | wall    | z3 total | emitted unit |
+|----------------|-------|---------|----------|--------------|
+| before (P3c)   | 6,884 | ~347 s  | 340.6 s  | exit 0 ✓     |
+| after (P3d)    | 6,190 | ~275 s  | 274.5 s  | identical bytes, exit 0 ✓ |
+
+−694 ticks (the REVERSE pop loop was one tick per token; the fetch
+bursts give some back) and −21 % wall. Mid-run per-tick z3 dropped
+from ~100 ms to ~26 ms while token state was hot (the unbounded
+TokenList pin strings are gone); the tail of the run converges to
+the build-context cost, which dominates both before and after.
+LEX remains the tick bulk (~5,400 of 6,190 — per-char scanning,
+untouched by P3d).
+
+### P3d acceptance (run 2026-06-07, oracle-built driver, all 22 in parallel)
+
+Every row ran BOTH checks: smt2-contains on the emitted unit +
+kernel run of the emitted unit vs expected exit. Driver compile
+exit 0 on all rows.
+
+| fixture | exit got/want | | fixture | exit got/want |
+|---|---|---|---|---|
+| 004-comparison-ternary | 1/1 ✓ | | 028-chained-comparison | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 031-logic-or | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+
+Negative control re-verified: compiling the 026 source with claim
+name `nonexistent_claim` emits only the manifest (empty
+state-fields) + textual prelude — 1 assert (the last_results__len
+floor), no `(+ ` — driver exit 0.
+
+Parser unit fixtures re-verified post-signature-change:
+pratt_fixture (scons slot added to its C2PrattStep binding) prints
+the canonical AST and exits 0; lex_fti_fixture exits 0 unchanged.
+
+### P3d descopes / notes
+
+- The window refill always burns the copy tick even when no slot
+  carries a string (simplicity; a skip-when-no-strings fast path
+  would save ~1 tick per refill).
+- Skip mode decodes full tokens (strings included) it only needs
+  tags for; a tag-only fetch flavor would cut skip-phase refill
+  cost but complicates window validity across the skip→dispatch
+  handoff (the claim-name Ident must be decoded).
+- Buffer capacity fixed at 4096 tokens, no realloc (flattened
+  census inputs are ~700 tokens). Window reads past the sentinel
+  rely on calloc zeroing — capacity must exceed final count + 8.
+- The "faithfully-carried fossil quirks" list in
+  docs/plans/fti-lexer-notes.md applies unchanged (digit-bearing
+  idents, no string escapes, no FloatLit — the 021 descope).
 
 ## Next steps
 

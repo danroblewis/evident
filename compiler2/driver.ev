@@ -13,17 +13,32 @@
 --
 -- Pipeline:
 --   INPUT   ticks 0-1 (fossil's wave-4o block, verbatim).
---   ZINIT   ticks 2-32: Z3 lifecycle (config/context/solver/sorts) +
+--   ZINIT   ticks 2-33: Z3 lifecycle (config/context/solver/sorts) +
 --           the Effect datatype declared IN THE BUILD CONTEXT via
 --           translate2_ctor.ev's step claims + the `effects` /
---           `effects__len` consts + cached 0/1 numerals.
---   LEX     the fossil's consolidated lexer FSM (one token per tick,
---           whitespace/comment bulk-skip) — copied from
---           compiler/compiler.ev, gated to start after ZINIT.
---   REVERSE the fossil's reverse→forward pop loop.
+--           `effects__len` consts + cached 0/1 numerals + the FTI
+--           token buffer (calloc'd; 32 bytes/token).
+--   LEX     the fossil's per-char scanner FSM (one token per tick,
+--           whitespace/comment bulk-skip) feeding compiler2/
+--           lex_fti.ev's LexFtiPlan: tokens are written to the FTI
+--           buffer in APPEND (source) order via __mem.write_long;
+--           string payloads (Ident/StringLit) are strdup'd char*s.
+--           Z3-carried lexer state = five Ints (tbase, lx_count,
+--           lx_last, lx_prev, lx_pend) — no TokenList anywhere.
+--           The old REVERSE pop loop is GONE (P3d): append order
+--           makes it dead weight; phase goes 0 → 2 directly, after
+--           flushing any pending string write + the EofTok sentinel.
+--   FETCH   the parse phases read tokens through a sliding 8-token
+--           decoded window (wtoks, head = token tcur). A refill is
+--           a 3-tick burst: 16 __mem.read_long (8 tags + 8
+--           payloads, one tick), then 8 slot-aligned __cstr.copy /
+--           getpid-filler effects (string payloads), then the pure
+--           rebuild. Entries past the EofTok sentinel read 0 from
+--           the calloc'd region and decode to EofTok.
 --   PARSE   top-level dispatch: enums and parametrized / non-target
 --           claims are SKIPPED (one token per tick); the target
---           bare-head claim enters the claim walk.
+--           bare-head claim enters the claim walk. All consumption
+--           is cursor arithmetic (tcur += k) + window tails.
 --   WALK    per body line: a one-tick PURE classifier picks the line
 --           kind; lines carrying an expression run the Pratt FSM
 --           (pmode 3, one parser action per tick) to an Expr, which
@@ -81,6 +96,7 @@ import "stdlib/z3_seq.ev"
 import "stdlib/z3_datatypes.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
+import "compiler2/lex_fti.ev"
 import "compiler/translate_arith.ev"
 import "compiler2/translate2_bool.ev"
 import "compiler2/translate2_ctor.ev"
@@ -160,6 +176,59 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
        : ENoExpr)
     ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa)
 
+-- ── FTI token decode: (tag, payload0, string) → Token ─────────────
+-- Inverse of LexCharTag / LexKeywordTag plus the literal tags
+-- (stdlib/fti/token_stack.ev's table). Tags the driver lexer never
+-- writes (FloatLit, PlusPlus, DotDot, ErrTok, Newline, Indent) and
+-- the calloc'd 0 past the EofTok sentinel decode to EofTok.
+claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
+    t = (tag = 1 ? Ident(s)
+       : tag = 2 ? IntLit(p0)
+       : tag = 3 ? StringLit(s)
+       : tag = 5 ? LParen
+       : tag = 6 ? RParen
+       : tag = 7 ? Comma
+       : tag = 8 ? Plus
+       : tag = 9 ? Star
+       : tag = 10 ? Slash
+       : tag = 11 ? Minus
+       : tag = 12 ? Eq
+       : tag = 15 ? KwClaim
+       : tag = 16 ? KwType
+       : tag = 17 ? KwSchema
+       : tag = 18 ? KwFsm
+       : tag = 19 ? KwEnum
+       : tag = 20 ? KwImport
+       : tag = 21 ? KwMatch
+       : tag = 22 ? KwSubclaim
+       : tag = 23 ? KwExternal
+       : tag = 24 ? KwMatches
+       : tag = 25 ? KwIn
+       : tag = 26 ? KwTrue
+       : tag = 27 ? KwFalse
+       : tag = 28 ? KwMapsTo
+       : tag = 40 ? OpIn
+       : tag = 41 ? OpImplies
+       : tag = 42 ? OpSeqOpen
+       : tag = 43 ? OpSeqClose
+       : tag = 44 ? OpMapsto
+       : tag = 45 ? OpLe
+       : tag = 46 ? OpGe
+       : tag = 47 ? OpNe
+       : tag = 48 ? OpAnd
+       : tag = 49 ? OpOr
+       : tag = 50 ? OpNot
+       : tag = 51 ? OpForall
+       : tag = 52 ? OpExists
+       : tag = 62 ? Lt
+       : tag = 63 ? Gt
+       : tag = 64 ? Dot
+       : tag = 65 ? Pipe
+       : tag = 66 ? Question
+       : tag = 67 ? Hash
+       : tag = 68 ? Colon
+       : EofTok)
+
 -- ── Operator precedence (oracle-verified ladder, P3c) ─────────────
 -- Probed empirically against the frozen bootstrap oracle:
 --   ⇒ 1 (right-assoc) · ?: 2 (right) · ∨ 3 · ∧ 4 ·
@@ -235,7 +304,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         expop ∈ Bool, pd ∈ Int, qd ∈ Int,
         ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
         nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int,
-        sdone ∈ Bool, sres ∈ Expr)
+        sdone ∈ Bool, sres ∈ Expr, scons ∈ Bool)
     ps_hd ∈ Token = match toks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
@@ -372,6 +441,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
 
     ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not
         ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close)
+    scons = ps_consume
     ntoks = (ps_consume ? ps_tl : toks)
 
     ps_red_e ∈ Expr = (ps_top_not ? ENot(ps_o1)
@@ -515,6 +585,9 @@ claim driver_main
     z_false ∈ Int
     _z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 32 ? d_cap_int : _z_false)
+    tbase ∈ Int
+    _tbase ∈ Int
+    tbase = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _tbase)
 
     -- Field-slot resolution for Exit's Int payload (pure).
     d_exit_fty ∈ String
@@ -602,6 +675,9 @@ claim driver_main
     BuildZ3MkTrue(ctx_h ↦ z_ctx, eff ↦ ze_true)
     ze_false ∈ Effect
     BuildZ3MkFalse(ctx_h ↦ z_ctx, eff ↦ ze_false)
+    -- FTI token buffer: 4096 entries × 32 bytes, calloc'd (zeroed
+    -- slots ⇒ deterministic nullary payloads + EofTok past the end).
+    ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(4096), ArgInt(32)⟩)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -610,7 +686,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 32 ? 0 - 1
+        : (_zstep < 33 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -628,9 +704,9 @@ claim driver_main
     IsWhitespace(c ↦ cur_char, out ↦ is_ws)
     is_quote ∈ Bool
     IsQuote(c ↦ cur_char, out ↦ is_quote)
-    op_tok ∈ Token
+    cc_tag ∈ Int
     is_op ∈ Bool
-    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+    LexCharTag(c ↦ cur_char, tag ↦ cc_tag, recognized ↦ is_op)
     dig_val ∈ Int
     DigitToInt(c ↦ cur_char, n ↦ dig_val)
 
@@ -670,46 +746,60 @@ claim driver_main
     partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
     partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
 
-    classified_str ∈ Token
-    MaybeKeyword(s ↦ _partial_str, t ↦ classified_str)
-    int_tok ∈ Token = IntLit(_partial_int)
-
     finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
     finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done))
     finish_str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
     finish_int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
     char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_in_strlit)
 
-    tokens  ∈ TokenList
-    _tokens ∈ TokenList
-    strlit_tok ∈ Token = StringLit(_partial_strlit)
-    -- negative-literal fold: a Minus directly before a finishing int,
-    -- with no atom before the Minus, is a sign — replace the Minus +
-    -- IntLit(n) pair with IntLit(-n).
-    tk_p1 ∈ Token = match _tokens
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    tk_tl1 ∈ TokenList = match _tokens
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    tk_p2 ∈ Token = match tk_tl1
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    tk_p2_atom ∈ Bool = ((tk_p2 matches IntLit(_)) ∨ (tk_p2 matches Ident(_))
-        ∨ (tk_p2 matches RParen) ∨ (tk_p2 matches StringLit(_)))
-    tk_neg ∈ Bool = ((tk_p1 matches Minus) ∧ (¬tk_p2_atom))
-    neg_int_tok ∈ Token = IntLit(0 - _partial_int)
-    int_tok_f ∈ Token = (tk_neg ? neg_int_tok : int_tok)
-    int_base ∈ TokenList = (tk_neg ? tk_tl1 : _tokens)
-    tokens = (is_first_tick ? TLNil
-            : (lx_comment ? _tokens
-            : (strlit_closing ? TLCons(strlit_tok, _tokens)
-            : (finish_str_with_op ? TLCons(op_tok, TLCons(classified_str, _tokens))
-            : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok_f, int_base))
-            : (finish_str_only ? TLCons(classified_str, _tokens)
-            : (finish_int_only ? TLCons(int_tok_f, int_base)
-            : (char_only ? TLCons(op_tok, _tokens)
-            : _tokens))))))))
+    -- FTI lexer state: five Ints, no TokenList. The negative-literal
+    -- fold (`= -3` folds, `10 - 2` stays binary) is decided inside
+    -- LexFtiPlan from the cached lx_last/lx_prev tag pair.
+    lx_count ∈ Int
+    _lx_count ∈ Int
+    lx_last ∈ Int
+    _lx_last ∈ Int
+    lx_prev ∈ Int
+    _lx_prev ∈ Int
+    lx_pend ∈ Int
+    _lx_pend ∈ Int
+
+    k_kind ∈ Int
+    k_tag0 ∈ Int
+    k_p0 ∈ Int
+    k_str0 ∈ String
+    k_tag1 ∈ Int
+    k_atag0 ∈ Int
+    k_ap0 ∈ Int
+    k_atag1 ∈ Int
+    k_cn ∈ Int
+    k_ln ∈ Int
+    k_pn ∈ Int
+    LexFtiPlan(lx_comment ↦ lx_comment, strlit_closing ↦ strlit_closing,
+        fs_op ↦ finish_str_with_op, fi_op ↦ finish_int_with_op,
+        fs_only ↦ finish_str_only, fi_only ↦ finish_int_only,
+        ch_only ↦ char_only,
+        cur_char ↦ cur_char, partial_str ↦ _partial_str,
+        partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
+        base ↦ tbase, count ↦ _lx_count,
+        last_tag ↦ _lx_last, prev_tag ↦ _lx_prev,
+        kind ↦ k_kind, tag0 ↦ k_tag0, p0 ↦ k_p0, str0 ↦ k_str0,
+        tag1 ↦ k_tag1, a_tag0 ↦ k_atag0, a_p0 ↦ k_ap0, a_tag1 ↦ k_atag1,
+        count_n ↦ k_cn, last_n ↦ k_ln, prev_n ↦ k_pn)
+
+    lx_count = (is_first_tick ? 0 : k_cn)
+    lx_last = (is_first_tick ? 0 : k_ln)
+    lx_prev = (is_first_tick ? 0 : k_pn)
+    lx_pend = (is_first_tick ? 0 - 1
+        : ((k_kind = 3 ∨ k_kind = 5) ? k_ap0 : 0 - 1))
+    lx_have_pend ∈ Bool = (_lx_pend ≥ 0)
+
+    w_tag0e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag0), ArgInt(k_tag0)⟩)
+    w_p0e   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_ap0), ArgInt(k_p0)⟩)
+    w_tag1e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag1), ArgInt(k_tag1)⟩)
+    e_dup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(k_str0)⟩)
+    w_pend  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_lx_pend), ArgInt(d_cap_int)⟩)
+    w_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tbase + (lx_count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
@@ -729,100 +819,293 @@ claim driver_main
         : (lx_skip_ws ? pos + lx_ws_adv
         : pos + 1)))
 
-    -- ── PHASE control (0 lex · 1 reverse · 2 parse · 3 emit) ──────
+    -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
     _phase ∈ Int
 
-    work_is_nil ∈ Bool = match _work
-        TLNil ⇒ true
-        _ ⇒ false
-    work_hd ∈ Token = match _work
+    -- entering_parse = the lex_done tick: flush any pending string
+    -- write, write the EofTok sentinel, then parse starts next tick.
+    entering_parse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lex_done)
+    in_parse       ∈ Bool = (_phase = 2)
+
+    -- ── TOKEN WINDOW (FTI cursor + 8-token decoded window) ────────
+    -- The parse phases never hold an unbounded TokenList: tcur is
+    -- the absolute index of the next unconsumed token; wtoks is a
+    -- decoded window of the 8 buffer entries starting at tcur
+    -- (entries past the sentinel decode to EofTok); wend is the
+    -- buffer index one past the fetched coverage. A consumer may
+    -- only act when the window holds its lookahead need (w_need);
+    -- otherwise the 3-tick fetch burst refills from tcur.
+    tcur ∈ Int
+    _tcur ∈ Int
+    wend ∈ Int
+    _wend ∈ Int
+    fmode ∈ Int
+    _fmode ∈ Int
+    wtoks ∈ TokenList
+    _wtoks ∈ TokenList
+
+    w_rem ∈ Int = _wend - _tcur
+
+    -- latched tags/payloads between the read tick and the copy tick
+    wt0 ∈ Int
+    _wt0 ∈ Int
+    wt1 ∈ Int
+    _wt1 ∈ Int
+    wt2 ∈ Int
+    _wt2 ∈ Int
+    wt3 ∈ Int
+    _wt3 ∈ Int
+    wt4 ∈ Int
+    _wt4 ∈ Int
+    wt5 ∈ Int
+    _wt5 ∈ Int
+    wt6 ∈ Int
+    _wt6 ∈ Int
+    wt7 ∈ Int
+    _wt7 ∈ Int
+    wq0 ∈ Int
+    _wq0 ∈ Int
+    wq1 ∈ Int
+    _wq1 ∈ Int
+    wq2 ∈ Int
+    _wq2 ∈ Int
+    wq3 ∈ Int
+    _wq3 ∈ Int
+    wq4 ∈ Int
+    _wq4 ∈ Int
+    wq5 ∈ Int
+    _wq5 ∈ Int
+    wq6 ∈ Int
+    _wq6 ∈ Int
+    wq7 ∈ Int
+    _wq7 ∈ Int
+
+    f_ir0 ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir1 ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir2 ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir3 ∈ Int = match last_results[3]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir4 ∈ Int = match last_results[4]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir5 ∈ Int = match last_results[5]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir6 ∈ Int = match last_results[6]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir7 ∈ Int = match last_results[7]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir8 ∈ Int = match last_results[8]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir9 ∈ Int = match last_results[9]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir10 ∈ Int = match last_results[10]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir11 ∈ Int = match last_results[11]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir12 ∈ Int = match last_results[12]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir13 ∈ Int = match last_results[13]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir14 ∈ Int = match last_results[14]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir15 ∈ Int = match last_results[15]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+
+    f_cap ∈ Bool = (_fmode = 1)
+    wt0 = (is_first_tick ? 0 : f_cap ? f_ir0 : _wt0)
+    wq0 = (is_first_tick ? 0 : f_cap ? f_ir1 : _wq0)
+    wt1 = (is_first_tick ? 0 : f_cap ? f_ir2 : _wt1)
+    wq1 = (is_first_tick ? 0 : f_cap ? f_ir3 : _wq1)
+    wt2 = (is_first_tick ? 0 : f_cap ? f_ir4 : _wt2)
+    wq2 = (is_first_tick ? 0 : f_cap ? f_ir5 : _wq2)
+    wt3 = (is_first_tick ? 0 : f_cap ? f_ir6 : _wt3)
+    wq3 = (is_first_tick ? 0 : f_cap ? f_ir7 : _wq3)
+    wt4 = (is_first_tick ? 0 : f_cap ? f_ir8 : _wt4)
+    wq4 = (is_first_tick ? 0 : f_cap ? f_ir9 : _wq4)
+    wt5 = (is_first_tick ? 0 : f_cap ? f_ir10 : _wt5)
+    wq5 = (is_first_tick ? 0 : f_cap ? f_ir11 : _wq5)
+    wt6 = (is_first_tick ? 0 : f_cap ? f_ir12 : _wt6)
+    wq6 = (is_first_tick ? 0 : f_cap ? f_ir13 : _wq6)
+    wt7 = (is_first_tick ? 0 : f_cap ? f_ir14 : _wt7)
+    wq7 = (is_first_tick ? 0 : f_cap ? f_ir15 : _wq7)
+
+    -- copy-tick effects: slot-aligned — a string-carrying slot emits
+    -- __cstr.copy of its just-captured pointer; every other slot a
+    -- getpid filler, so slot i's result is last_results[i] exactly.
+    f_s0 ∈ Bool = (f_ir0 = 1 ∨ f_ir0 = 3)
+    f_s1 ∈ Bool = (f_ir2 = 1 ∨ f_ir2 = 3)
+    f_s2 ∈ Bool = (f_ir4 = 1 ∨ f_ir4 = 3)
+    f_s3 ∈ Bool = (f_ir6 = 1 ∨ f_ir6 = 3)
+    f_s4 ∈ Bool = (f_ir8 = 1 ∨ f_ir8 = 3)
+    f_s5 ∈ Bool = (f_ir10 = 1 ∨ f_ir10 = 3)
+    f_s6 ∈ Bool = (f_ir12 = 1 ∨ f_ir12 = 3)
+    f_s7 ∈ Bool = (f_ir14 = 1 ∨ f_ir14 = 3)
+    cp0 ∈ Effect = (f_s0 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir1)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp1 ∈ Effect = (f_s1 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir3)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp2 ∈ Effect = (f_s2 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir5)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp3 ∈ Effect = (f_s3 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir7)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp4 ∈ Effect = (f_s4 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir9)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp5 ∈ Effect = (f_s5 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir11)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp6 ∈ Effect = (f_s6 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir13)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp7 ∈ Effect = (f_s7 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir15)⟩) : LibCall("libc", "getpid", ⟨⟩))
+
+    f_sr0 ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr1 ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr2 ∈ String = match last_results[2]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr3 ∈ String = match last_results[3]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr4 ∈ String = match last_results[4]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr5 ∈ String = match last_results[5]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr6 ∈ String = match last_results[6]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr7 ∈ String = match last_results[7]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    f_tok0 ∈ Token
+    FtiTok(tag ↦ _wt0, p0 ↦ _wq0, s ↦ f_sr0, t ↦ f_tok0)
+    f_tok1 ∈ Token
+    FtiTok(tag ↦ _wt1, p0 ↦ _wq1, s ↦ f_sr1, t ↦ f_tok1)
+    f_tok2 ∈ Token
+    FtiTok(tag ↦ _wt2, p0 ↦ _wq2, s ↦ f_sr2, t ↦ f_tok2)
+    f_tok3 ∈ Token
+    FtiTok(tag ↦ _wt3, p0 ↦ _wq3, s ↦ f_sr3, t ↦ f_tok3)
+    f_tok4 ∈ Token
+    FtiTok(tag ↦ _wt4, p0 ↦ _wq4, s ↦ f_sr4, t ↦ f_tok4)
+    f_tok5 ∈ Token
+    FtiTok(tag ↦ _wt5, p0 ↦ _wq5, s ↦ f_sr5, t ↦ f_tok5)
+    f_tok6 ∈ Token
+    FtiTok(tag ↦ _wt6, p0 ↦ _wq6, s ↦ f_sr6, t ↦ f_tok6)
+    f_tok7 ∈ Token
+    FtiTok(tag ↦ _wt7, p0 ↦ _wq7, s ↦ f_sr7, t ↦ f_tok7)
+    f_built ∈ TokenList = TLCons(f_tok0, TLCons(f_tok1, TLCons(f_tok2,
+        TLCons(f_tok3, TLCons(f_tok4, TLCons(f_tok5, TLCons(f_tok6,
+        TLCons(f_tok7, TLNil))))))))
+
+    -- window views (head + lookahead, ≤ depth 5 inspected)
+    ww_t0 ∈ Token = match _wtoks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    work_tl ∈ TokenList = match _work
+    ww_l1 ∈ TokenList = match _wtoks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t1 ∈ Token = match ww_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l2 ∈ TokenList = match ww_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t2 ∈ Token = match ww_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l3 ∈ TokenList = match ww_l2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t3 ∈ Token = match ww_l3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l4 ∈ TokenList = match ww_l3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t4 ∈ Token = match ww_l4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l5 ∈ TokenList = match ww_l4
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
-    entering_reverse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lex_done)
-    in_reverse       ∈ Bool = (_phase = 1)
-    entering_parse   ∈ Bool = ((¬is_first_tick) ∧ (_phase = 1) ∧ work_is_nil)
-    in_parse         ∈ Bool = (_phase = 2)
+    -- per-mode lookahead need; gate + fetch trigger
+    w_need ∈ Int = (¬in_parse ? 0
+        : _pmode = 0 ? 3
+        : _pmode = 1 ? 1
+        : _pmode = 3 ? 1
+        : d_witems_nil ? 5
+        : 0)
+    tok_ready ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem ≥ w_need))
+    fetch_go ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem < w_need))
 
-    work ∈ TokenList
-    _work ∈ TokenList
-    fwd  ∈ TokenList
-    _fwd ∈ TokenList
-    work = (is_first_tick ? TLNil
-        : (entering_reverse ? tokens
-        : (in_reverse ∧ (¬work_is_nil) ? work_tl
-        : _work)))
-    fwd = (is_first_tick ? TLNil
-        : (entering_reverse ? TLNil
-        : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
-        : _fwd)))
+    fmode = (is_first_tick ? 0
+        : fetch_go ? 1
+        : _fmode = 1 ? 2
+        : 0)
+
+    f_a ∈ Int = tbase + (_tcur * 32)
+    rd_t0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a)⟩)
+    rd_q0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 8)⟩)
+    rd_t1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 32)⟩)
+    rd_q1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 40)⟩)
+    rd_t2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 64)⟩)
+    rd_q2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 72)⟩)
+    rd_t3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 96)⟩)
+    rd_q3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 104)⟩)
+    rd_t4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 128)⟩)
+    rd_q4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 136)⟩)
+    rd_t5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 160)⟩)
+    rd_q5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 168)⟩)
+    rd_t6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 192)⟩)
+    rd_q6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 200)⟩)
+    rd_t7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 224)⟩)
+    rd_q7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 232)⟩)
 
     -- ── PARSE dispatch (pmode 0 dispatch · 1 skip · 2 claim) ──────
+    -- All modes read the shared token window; "nil" = EofTok head
+    -- (the sentinel / past-end decode). Actions are tok_ready-gated.
     pmode  ∈ Int
     _pmode ∈ Int
-    items  ∈ TokenList
-    _items ∈ TokenList
 
-    d_items_hd ∈ Token = match _items
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    d_items_nil ∈ Bool = match _items
-        TLNil ⇒ true
-        _ ⇒ false
-    d_items_l1 ∈ TokenList = match _items
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    d_name_tok ∈ Token = match d_items_l1
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    d_items_l2 ∈ TokenList = match d_items_l1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    d_after_tok ∈ Token = match d_items_l2
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-
-    d_head_is_claim ∈ Bool = (d_items_hd matches KwClaim)
-    d_cl_name ∈ String = match d_name_tok
+    d_items_nil ∈ Bool = (ww_t0 matches EofTok)
+    d_head_is_claim ∈ Bool = (ww_t0 matches KwClaim)
+    d_cl_name ∈ String = match ww_t1
         Ident(s) ⇒ s
         _ ⇒ ""
     d_name_ok ∈ Bool = (d_cl_name = target)
-    d_is_param ∈ Bool = (d_after_tok matches LParen)
+    d_is_param ∈ Bool = (ww_t2 matches LParen)
 
-    d_in_dispatch ∈ Bool = (in_parse ∧ (_pmode = 0))
+    d_in_dispatch ∈ Bool = (in_parse ∧ (_pmode = 0) ∧ tok_ready)
     d_enter_claim ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ (¬d_is_param))
     d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim))
     d_all_done    ∈ Bool = (d_in_dispatch ∧ d_items_nil)
-    d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1))
+    d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1) ∧ tok_ready)
     d_in_claim    ∈ Bool = (in_parse ∧ (_pmode = 2))
 
     -- skip machine: walk one token per tick to the next top-level kw.
-    skipl  ∈ TokenList
-    _skipl ∈ TokenList
-    d_skipl_hd ∈ Token = match _skipl
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    d_skipl_tl ∈ TokenList = match _skipl
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    d_skipl_nil ∈ Bool = match _skipl
-        TLNil ⇒ true
-        _ ⇒ false
-    d_skip_at_tlkw ∈ Bool = ((d_skipl_hd matches KwEnum) ∨ (d_skipl_hd matches KwClaim)
-        ∨ (d_skipl_hd matches KwType) ∨ (d_skipl_hd matches KwFsm) ∨ (d_skipl_hd matches KwSchema))
+    d_skipl_nil ∈ Bool = (ww_t0 matches EofTok)
+    d_skip_at_tlkw ∈ Bool = ((ww_t0 matches KwEnum) ∨ (ww_t0 matches KwClaim)
+        ∨ (ww_t0 matches KwType) ∨ (ww_t0 matches KwFsm) ∨ (ww_t0 matches KwSchema))
     d_skip_stop ∈ Bool = (d_in_skip ∧ (d_skipl_nil ∨ d_skip_at_tlkw))
-    skipl = (is_first_tick ? TLNil
-        : (d_enter_skip ? d_items_l1
-        : (d_in_skip ∧ (¬d_skip_stop) ? d_skipl_tl
-        : _skipl)))
 
     -- ── CLAIM WALK state ──────────────────────────────────────────
-    rem  ∈ TokenList
-    _rem ∈ TokenList
     witems  ∈ C2Items
     _witems ∈ C2Items
     hstk  ∈ C2H
@@ -928,7 +1211,7 @@ claim driver_main
         C2ICons(_, r) ⇒ r
         C2INil ⇒ C2INil
 
-    d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil)
+    d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready)
     d_processing ∈ Bool = (d_in_claim ∧ (¬d_witems_nil))
 
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
@@ -1003,60 +1286,14 @@ claim driver_main
     d_op_arr ∈ Bool = (d_op_arith_arr ∨ d_op_bool_arr)
 
     -- ── LINE CLASSIFIER (pure; runs when witems is empty) ─────────
-    c_rem_nil ∈ Bool = match _rem
-        TLNil ⇒ true
-        _ ⇒ false
-    c_t0 ∈ Token = match _rem
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l1 ∈ TokenList = match _rem
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t1 ∈ Token = match c_l1
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l2 ∈ TokenList = match c_l1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t2 ∈ Token = match c_l2
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l3 ∈ TokenList = match c_l2
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t3 ∈ Token = match c_l3
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l4 ∈ TokenList = match c_l3
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t4 ∈ Token = match c_l4
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l5 ∈ TokenList = match c_l4
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_l6 ∈ TokenList = match c_l5
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_l7 ∈ TokenList = match c_l6
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_l8 ∈ TokenList = match c_l7
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t8 ∈ Token = match c_l8
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l9 ∈ TokenList = match c_l8
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_t9 ∈ Token = match c_l9
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c_l10 ∈ TokenList = match c_l9
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
+    -- Reads the shared window: c_t0..c_t4 = ww_t0..ww_t4 (lookahead
+    -- need 5). Consumption is cursor arithmetic via dcons below.
+    c_rem_nil ∈ Bool = (ww_t0 matches EofTok)
+    c_t0 ∈ Token = ww_t0
+    c_t1 ∈ Token = ww_t1
+    c_t2 ∈ Token = ww_t2
+    c_t3 ∈ Token = ww_t3
+    c_t4 ∈ Token = ww_t4
 
     c_t0_is_ident ∈ Bool = (c_t0 matches Ident(_))
     c_t0_is_tlkw ∈ Bool = ((c_t0 matches KwEnum) ∨ (c_t0 matches KwClaim)
@@ -1092,9 +1329,11 @@ claim driver_main
         ∨ (¬c_can_expr)))
     d_enter_pratt ∈ Bool = (d_classify ∧ (¬d_claim_end)
         ∧ (c_eff_line ∨ c_pinned ∨ (¬c_is_mem)))
-    d_pratt_toks0 ∈ TokenList = (c_eff_line ? c_l10
-        : c_pinned ? c_l4
-        : _rem)
+    -- tokens consumed before the expression starts: the effects
+    -- literal's `effects ∈ Seq ( Effect ) = ⟨ Exit (` head is 10
+    -- tokens; a pin's `name ∈ Type =` is 4; standalone constraint /
+    -- bare-equality lines start at the expression itself.
+    d_pratt_cons0 ∈ Int = (c_eff_line ? 10 : c_pinned ? 4 : 0)
     d_pratt_kind0 ∈ Int = (c_eff_line ? 3 : c_pinned ? 1 : 2)
 
     c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
@@ -1108,15 +1347,15 @@ claim driver_main
 
     d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt) ? C2INil
         : c_mem_items)
-    d_rem_new ∈ TokenList = ((d_claim_end ∨ d_enter_pratt) ? _rem
-        : c_bound ? c_l5 : c_l3)
+    -- a direct (non-pratt) membership line consumes `x ∈ Type` = 3
+    -- tokens, or 5 with a single `op atom` bound.
+    d_mem_line ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬d_enter_pratt))
+    d_mem_cons ∈ Int = (c_bound ? 5 : 3)
     c_field ∈ String = c_name ++ ":" ++ (c_sc = 1 ? "Bool" : "Int")
 
-    -- ── PRATT FSM state (pmode 3) ─────────────────────────────────
-    d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3))
+    -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
+    d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
 
-    p_toks ∈ TokenList
-    _p_toks ∈ TokenList
     p_out ∈ ExprList
     _p_out ∈ ExprList
     p_ops ∈ PrOps
@@ -1144,16 +1383,13 @@ claim driver_main
     pr_nqd ∈ Int
     pr_sdone ∈ Bool
     pr_sres ∈ Expr
-    C2PrattStep(toks ↦ _p_toks, outs ↦ _p_out, ops ↦ _p_ops,
+    pr_scons ∈ Bool
+    C2PrattStep(toks ↦ _wtoks, outs ↦ _p_out, ops ↦ _p_ops,
         expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd,
         ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
         nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd,
-        sdone ↦ pr_sdone, sres ↦ pr_sres)
+        sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
 
-    p_toks = (is_first_tick ? TLNil
-        : d_enter_pratt ? d_pratt_toks0
-        : d_in_pratt ? pr_ntoks
-        : _p_toks)
     p_out = (is_first_tick ? ELNil
         : d_enter_pratt ? ELNil
         : d_in_pratt ? pr_nouts
@@ -1182,12 +1418,6 @@ claim driver_main
     -- parse completion → build the line's work-item program.
     p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
     pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
-    d_pt_l1 ∈ TokenList = match _p_toks
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    d_pt_l2 ∈ TokenList = match d_pt_l1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
     d_pk_pinseg ∈ C2Items = C2ICons(C2Process(pr_sres),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
     d_pk_natseg ∈ C2Items = (_pk_nat
@@ -1201,9 +1431,7 @@ claim driver_main
     -- kind 3: the effects literal closes with `) ⟩` after the Exit
     -- argument — skip both. On a malformed line skip one token so
     -- the walk always progresses.
-    d_pratt_rem ∈ TokenList = (pr_bad ? d_pt_l1
-        : _pk_kind = 3 ? d_pt_l2
-        : _p_toks)
+    d_done_cons ∈ Int = (pr_bad ? 1 : _pk_kind = 3 ? 2 : 0)
 
     -- ── state transitions ─────────────────────────────────────────
     d_pops ∈ Int = (¬d_processing ? 0
@@ -1268,22 +1496,35 @@ claim driver_main
         : (d_processing ∧ d_it_decl ∧ (_istep = 1)) ? d_dc_name
         : _pend_name)
 
-    rem = (is_first_tick ? TLNil
-        : d_enter_claim ? d_items_l2
-        : (d_classify ∧ (¬d_claim_end)) ? d_rem_new
-        : p_done ? d_pratt_rem
-        : _rem)
+    -- ── token consumption (cursor arithmetic + window tail) ───────
+    -- Exactly one consumer acts per tick (mode bools are mutually
+    -- exclusive and tok_ready-gated); fetch ticks consume nothing.
+    dcons ∈ Int = (d_enter_claim ? 2
+        : d_enter_skip ? 1
+        : (d_in_skip ∧ (¬d_skip_stop)) ? 1
+        : d_enter_pratt ? d_pratt_cons0
+        : d_mem_line ? d_mem_cons
+        : p_done ? d_done_cons
+        : (d_in_pratt ∧ pr_scons) ? 1
+        : 0)
+    tcur = (is_first_tick ? 0 : _tcur + dcons)
+    wend = (is_first_tick ? 0 : _fmode = 2 ? _tcur + 8 : _wend)
+    w_after ∈ TokenList = (dcons = 0 ? _wtoks
+        : dcons = 1 ? ww_l1
+        : dcons = 2 ? ww_l2
+        : dcons = 3 ? ww_l3
+        : dcons = 4 ? ww_l4
+        : dcons = 5 ? ww_l5
+        : TLNil)
+    wtoks = (is_first_tick ? TLNil
+        : _fmode = 2 ? f_built
+        : w_after)
 
     fstr = (is_first_tick ? ""
         : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
             ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
         : _fstr)
 
-    items = (is_first_tick ? TLNil
-        : entering_parse ? _fwd
-        : d_skip_stop ? _skipl
-        : d_claim_end ? _rem
-        : _items)
     pmode = (is_first_tick ? 0
         : entering_parse ? 0
         : d_enter_claim ? 2
@@ -1295,10 +1536,9 @@ claim driver_main
         : _pmode)
 
     phase = (is_first_tick ? 0
-        : (_phase = 0 ? (lex_done ? 1 : 0)
-        : (_phase = 1 ? (work_is_nil ? 2 : 1)
+        : (_phase = 0 ? (lex_done ? 2 : 0)
         : (_phase = 2 ? (d_all_done ? 3 : 2)
-        : 3))))
+        : 3)))
 
     -- ── per-item build effects (pass-claim dispatch) ──────────────
     d_eff_mkint ∈ Effect
@@ -1428,6 +1668,7 @@ claim driver_main
 
     e_puts ∈ Effect
     BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
+    e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tbase)⟩)
 
     -- ── effects schedule ──────────────────────────────────────────
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
@@ -1464,8 +1705,22 @@ claim driver_main
         : zstep = 29 ? ⟨ze_one⟩
         : zstep = 30 ? ⟨ze_true⟩
         : zstep = 31 ? ⟨ze_false⟩
+        : zstep = 32 ? ⟨ze_tbuf⟩
+        : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩
-        : estep ≥ 2 ? ⟨e_puts, Exit(0)⟩
+        : estep ≥ 2 ? ⟨e_free_tbuf, e_puts, Exit(0)⟩
+        : fetch_go ? ⟨rd_t0, rd_q0, rd_t1, rd_q1, rd_t2, rd_q2,
+            rd_t3, rd_q3, rd_t4, rd_q4, rd_t5, rd_q5, rd_t6, rd_q6,
+            rd_t7, rd_q7⟩
+        : _fmode = 1 ? ⟨cp0, cp1, cp2, cp3, cp4, cp5, cp6, cp7⟩
         : d_processing ? ⟨d_eff_lib⟩
+        : (k_kind = 1 ∧ lx_have_pend) ? ⟨w_pend, w_tag0e⟩
+        : k_kind = 1 ? ⟨w_tag0e⟩
+        : k_kind = 2 ? ⟨w_tag0e, w_p0e⟩
+        : k_kind = 3 ? ⟨e_dup, w_tag0e⟩
+        : k_kind = 4 ? ⟨w_tag0e, w_tag1e⟩
+        : k_kind = 5 ? ⟨e_dup, w_tag0e, w_tag1e⟩
+        : k_kind = 6 ? ⟨w_tag0e, w_p0e, w_tag1e⟩
+        : lx_have_pend ? ⟨w_pend⟩
         : ⟨d_eff_filler⟩)
