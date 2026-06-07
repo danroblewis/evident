@@ -724,6 +724,120 @@ unit run exit 0 with stdout bytes exactly
 `a TAB b NL q " r s \ u NL` — the translated escape bytes survive
 lexer → mk_string → serialization → kernel puts.
 
+## B1 + B2 — FTI symbol table at corpus scale + the String sort
+## surface (gap census phase B, landed 2026-06-07)
+
+### B1: the FTI symbol table (8 slots → 1024 entries)
+
+The 8-slot flat symtab (st_n0..st_n7 / st_h0..st_h7, 32 Z3 state
+fields + carries) is DELETED. The corpus's `claim main` binds 364
+distinct idents; flat Z3-state slots at that scale would add ~730
+manifest fields. The replacement is the FTI pattern split in two:
+
+- **Handles** live in a calloc'd buffer (`st_base`, 1024 entries ×
+  8 bytes, ZINIT zstep 21; freed on the Exit tick). A decl writes
+  its const handle to `st_base[st_cnt]` via `__mem.write_long`.
+- **Names** live in `st_names`, ONE Z3 String state field of
+  fixed-width 32-byte records: `"|" ++ name padded to 31 with
+  spaces`. `|` cannot occur inside a record (idents are
+  alnum/underscore, padding is spaces), so every `index_of` match
+  is 32-aligned, and lookup is pure arithmetic:
+  `idx = index_of(st_names, key) / 32`.
+
+DESIGN CHOICE vs the census note's "name-ptr + handle per entry,
+linear scan": a pointer-per-name table makes *lookup* effectful and
+O(n) — each probed entry costs a read_long + __cstr.copy tick pair,
+and at corpus scale (364 entries, ~2,400 ident occurrences in
+expressions) that extrapolates to millions of ticks. The fixed-width
+name string keeps lookup at ONE pure index computation + ONE
+`__mem.read_long` (through the existing pend=1 capture path),
+independent of table size. The driver already carries the entire
+source file as a Z3 String state field (`input`), so a ~12 KB names
+string at corpus scale is consistent with existing state-size
+practice — and it adds 3 state fields (st_base, st_cnt, st_names)
+instead of multiplying manifest fields. Name records cap at 31
+chars (longer would truncate-alias); the corpus max is 21
+(`ms_rp_sfx_atom_is_int`).
+
+Flow changes:
+
+- `C2DeclConst` grew 2 → 3 steps: istep 0 mk_string_symbol
+  (pend=2), istep 1 mk_const (pend=2 — was the pend=3 capture),
+  istep 2 `write_long(st_base + 8*st_cnt, tmp)` with the handle
+  pushed onto hstk, st_names appended, and st_cnt bumped PURELY on
+  the same tick. pend=3 and the `pend_name` latch are deleted;
+  `d_hstk_in` push is now pend=1 only. A decl is visible to every
+  later tick's lookup (items run one per tick, so no same-tick
+  lookup exists).
+- `C2Process(EIdent)` splits: `true`/`false` (cached handles),
+  enum-variant values (evt table), and unknown names (handle 0,
+  fossil parity) stay PURE same-tick pushes; a name found in
+  st_names runs `read_long(st_base + 8*idx)` with pend=1 — the
+  handle pushes next tick, +1 tick per ident occurrence.
+- ZINIT grew one step: zstep 21 callocs the handle buffer, st_base
+  latches at 22, and the LEX gate moved `_zstep < 21` → `< 22`.
+
+### B2: String as first-class state — verified, gate flipped
+
+The P3e string surface (z_ssort at ZINIT, classifier sort class 3,
+decl path string-sort consts, EStr → Z3_mk_string, `++` →
+str.++, manifest `name:String` + `_name` carry declares) turns out
+to already COVER the census B2 list; this wave's work was
+verification + the acceptance gate, plus holding it through the B1
+symtab rewrite:
+
+- `s ∈ String` memberships: classifier c_sc=3 → string-sort const,
+  manifest field `s:String`, carry `(declare-fun _s () String)`.
+- String literal pins `s ∈ String = "lit"`: Pratt kind-1 over EStr.
+- String equality / ≠: Z3_mk_eq is sort-generic (BoolCmpBuildZ3);
+  ≠ lowers through the standard mk_eq + mk_not path.
+- **019-string-membership: PASS** (the B2 gate) — emitted unit
+  carries `(= s "hello")`, `(= ok (= s "hello"))`, manifest
+  `s:String ok:Bool`, `_s` carry declare; unit run exit 0/0.
+- B2 smoke beyond the gate: literal pin + `++` + `≠` + `=` in one
+  claim (`a ∈ String = "lit"` · `b = a ++ "x"` ·
+  `ne_ok = (b ≠ "nope")` …) compiles and runs exit 0 through the
+  B1 driver.
+
+### B1 acceptance: the symtab stress fixture
+
+tests/kernel/compiler2/symtab_fixture.ev — a driver INPUT (not a
+test_*.ev kernel fixture): one claim binding 41 distinct idents
+(v00..v39 + ok) as a dependency chain `vNN ∈ Int = v(NN-1) + 1`,
+with the last line resolving both the earliest and latest entries
+(`ok ∈ Bool = ((v39 = 40) ∧ (v00 = 1))`). The emitted unit carries
+the late pin `(= v39 (+ v38 1))` (and `(= v17 (+ v16 1))` etc. —
+every pin past slot 8 of the old table); the chain pins force
+v39 = 40, so the unit run exits 0 only if every lookup resolved
+the RIGHT handle. Result: PASS (see acceptance below).
+
+### B1+B2 acceptance (run 2026-06-07, oracle-built driver, all 27
+### rows in parallel; every row BOTH checks: smt2-contains +
+### kernel run of the emitted unit vs expected exit/stdout)
+
+| fixture | exit got/want | | fixture | exit got/want |
+|---|---|---|---|---|
+| 002-string-literal-print | 0/0 ✓ | | 028-chained-comparison | 0/0 ✓ |
+| 004-comparison-ternary | 1/1 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 005-string-concat | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 031-logic-or | 0/0 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 019-string-membership | 0/0 ✓ NEW | | 034-implies-vacuous | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 043-enum-declaration | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 044-enum-constraint | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | | |
+
+symtab_fixture (41 idents): driver exit 0; `(= v39 (+ v38 1))` in
+the unit; unit run exit 0/0. Negative control re-verified:
+nonexistent claim → manifest + textual prelude only, no user
+asserts, driver exit 0. pratt_fixture re-verified (imports
+driver.ev; C2PrattStep signature unchanged): canonical AST, exit 0.
+
 ## Next steps
 
 - The rest of the membership surface (multi-name, chained bounds

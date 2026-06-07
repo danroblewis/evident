@@ -90,7 +90,10 @@
 --     resolve in expressions; enum-typed memberships declare consts
 --     of the enum sort and land in the manifest as `name:Enum`
 --   · String memberships/pins, string literals, `++` (str.++)
---   · symbol table: 8 fixed slots; enum-value table: 6
+--   · symbol table: FTI buffer at corpus scale (B1) — 1024 handle
+--     slots in a calloc'd buffer + fixed-width-32 name records in a
+--     Z3 String; lookup = pure index_of/32 + one __mem.read_long.
+--     Enum-value table: 6
 --   · no `_<name>` carry-over decls in the emitted unit (fixtures
 --     exit on tick 0; multi-tick user programs are later)
 --   · NOT covered: Real membership / float literals (021 — needs
@@ -598,6 +601,9 @@ claim driver_main
     tbase ∈ Int
     _tbase ∈ Int
     tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
+    st_base ∈ Int
+    _st_base ∈ Int
+    st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
 
     -- ── ED — the enum-declaration machine ────────────────────────
     -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
@@ -1065,6 +1071,10 @@ claim driver_main
     -- FTI token buffer: 4096 entries × 32 bytes, calloc'd (zeroed
     -- slots ⇒ deterministic nullary payloads + EofTok past the end).
     ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(4096), ArgInt(32)⟩)
+    -- FTI symtab handle buffer (B1): 1024 entries × 8 bytes — the
+    -- declared const's Z3_ast handle, indexed by decl order. Names
+    -- live in st_names (fixed-width Z3 String), not here.
+    ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(1024), ArgInt(8)⟩)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -1073,7 +1083,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 21 ? 0 - 1
+        : (_zstep < 22 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -1668,8 +1678,6 @@ claim driver_main
     _istep ∈ Int
     pend  ∈ Int
     _pend ∈ Int
-    pend_name  ∈ String
-    _pend_name ∈ String
     tmp_h  ∈ Int
     _tmp_h ∈ Int
     fstr  ∈ String
@@ -1678,63 +1686,34 @@ claim driver_main
     _cdstr ∈ String
 
     -- pend application (the capture tick of the previous builder).
-    d_hstk_in ∈ C2H = ((_pend = 1 ∨ _pend = 3) ? C2HCons(d_cap_int, _hstk) : _hstk)
+    d_hstk_in ∈ C2H = (_pend = 1 ? C2HCons(d_cap_int, _hstk) : _hstk)
     d_tmp_in ∈ Int = (_pend = 2 ? d_cap_int : _tmp_h)
     tmp_h = (is_first_tick ? 0 : d_tmp_in)
 
-    -- 8-slot symbol table; appended on decl completion (pend = 3).
+    -- ── FTI symbol table (B1: corpus scale, 1024 entries) ─────────
+    -- Handles live in the calloc'd st_base buffer (8 bytes/entry,
+    -- decl order); names live in st_names, a Z3 String of
+    -- fixed-width 32-byte records: "|" ++ name padded to 31 with
+    -- spaces. "|" never occurs inside a record (idents are
+    -- alnum/underscore, padding is spaces), so every index_of match
+    -- is 32-aligned and lookup is pure arithmetic:
+    -- idx = index_of(st_names, key) / 32; the handle is then ONE
+    -- __mem.read_long through the pend=1 capture path. Names longer
+    -- than 31 chars would truncate-alias (corpus max is 21).
+    -- A decl appends at C2DeclConst istep 2: the const handle (in
+    -- tmp) is written to st_base[st_cnt], the name record appends to
+    -- st_names, and the handle pushes onto hstk purely — all on the
+    -- same tick, so a decl is visible to every later lookup tick.
     st_cnt  ∈ Int
     _st_cnt ∈ Int
-    st_n0 ∈ String
-    _st_n0 ∈ String
-    st_h0 ∈ Int
-    _st_h0 ∈ Int
-    st_n1 ∈ String
-    _st_n1 ∈ String
-    st_h1 ∈ Int
-    _st_h1 ∈ Int
-    st_n2 ∈ String
-    _st_n2 ∈ String
-    st_h2 ∈ Int
-    _st_h2 ∈ Int
-    st_n3 ∈ String
-    _st_n3 ∈ String
-    st_h3 ∈ Int
-    _st_h3 ∈ Int
-    st_n4 ∈ String
-    _st_n4 ∈ String
-    st_h4 ∈ Int
-    _st_h4 ∈ Int
-    st_n5 ∈ String
-    _st_n5 ∈ String
-    st_h5 ∈ Int
-    _st_h5 ∈ Int
-    st_n6 ∈ String
-    _st_n6 ∈ String
-    st_h6 ∈ Int
-    _st_h6 ∈ Int
-    st_n7 ∈ String
-    _st_n7 ∈ String
-    st_h7 ∈ Int
-    _st_h7 ∈ Int
-    d_st_add ∈ Bool = (_pend = 3)
+    st_names ∈ String
+    _st_names ∈ String
+    d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
+    st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
     st_cnt = (is_first_tick ? 0 : (d_st_add ? _st_cnt + 1 : _st_cnt))
-    st_n0 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 0) ? _pend_name : _st_n0))
-    st_h0 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 0) ? d_cap_int : _st_h0))
-    st_n1 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 1) ? _pend_name : _st_n1))
-    st_h1 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 1) ? d_cap_int : _st_h1))
-    st_n2 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 2) ? _pend_name : _st_n2))
-    st_h2 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 2) ? d_cap_int : _st_h2))
-    st_n3 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 3) ? _pend_name : _st_n3))
-    st_h3 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 3) ? d_cap_int : _st_h3))
-    st_n4 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 4) ? _pend_name : _st_n4))
-    st_h4 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 4) ? d_cap_int : _st_h4))
-    st_n5 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 5) ? _pend_name : _st_n5))
-    st_h5 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 5) ? d_cap_int : _st_h5))
-    st_n6 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 6) ? _pend_name : _st_n6))
-    st_h6 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 6) ? d_cap_int : _st_h6))
-    st_n7 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 7) ? _pend_name : _st_n7))
-    st_h7 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 7) ? d_cap_int : _st_h7))
+    st_names = (is_first_tick ? ""
+        : d_st_add ? _st_names ++ st_entry
+        : _st_names)
 
     -- handle-stack views (post pend application).
     d_h_top ∈ Int = match d_hstk_in
@@ -1842,19 +1821,18 @@ claim driver_main
     NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
     d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
 
-    -- symbol-table lookup (post-update slots: a decl completed this
-    -- tick is visible to the same tick's item). true/false resolve to
-    -- the cached Z3_mk_true/Z3_mk_false handles.
+    -- symbol-table lookup. true/false resolve purely to the cached
+    -- Z3_mk_true/Z3_mk_false handles; a name found in st_names
+    -- resolves via ONE __mem.read_long of st_base[idx] (pend=1 —
+    -- the handle pushes next tick); enum-variant values (evt) and
+    -- unknown names (handle 0, fossil parity) stay pure pushes.
+    d_lk_key ∈ String = "|" ++ substr(d_lkname ++ "                               ", 0, 31)
+    d_lk_pos ∈ Int = index_of(st_names, d_lk_key, 0)
+    d_lk_found ∈ Bool = (d_lk_pos ≥ 0)
+    d_lk_special ∈ Bool = (d_lkname = "true" ∨ d_lkname = "false")
+    d_lk_pure ∈ Bool = (d_lk_special ∨ (¬d_lk_found))
     d_lk ∈ Int = (d_lkname = "true" ? z_true
         : d_lkname = "false" ? z_false
-        : st_n0 = d_lkname ? st_h0
-        : st_n1 = d_lkname ? st_h1
-        : st_n2 = d_lkname ? st_h2
-        : st_n3 = d_lkname ? st_h3
-        : st_n4 = d_lkname ? st_h4
-        : st_n5 = d_lkname ? st_h5
-        : st_n6 = d_lkname ? st_h6
-        : st_n7 = d_lkname ? st_h7
         : evt_n0 = d_lkname ? evt_v0
         : evt_n1 = d_lkname ? evt_v1
         : evt_n2 = d_lkname ? evt_v2
@@ -1862,6 +1840,8 @@ claim driver_main
         : evt_n4 = d_lkname ? evt_v4
         : evt_n5 = d_lkname ? evt_v5
         : 0)
+    d_eff_stread ∈ Effect
+    BuildMemReadLong(addr ↦ st_base + (8 * (d_lk_pos / 32)), eff ↦ d_eff_stread)
 
     -- Op family flags (via the pass discriminators).
     d_op_arith_arr ∈ Bool
@@ -2053,13 +2033,16 @@ claim driver_main
         : d_it_app ? (_istep = d_app_n ? d_app_n : 0)
         : d_it_seleq ? (_istep = 1 ? 1 : 0)
         : 0)
-    d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id)
+    d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ d_lk_pure)
+    d_lk_read ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ (¬d_lk_pure))
     d_push_h ∈ Bool = (d_processing ∧ d_it_pushh)
+    d_push_decl ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
 
     hstk = (is_first_tick ? C2HNil
         : d_enter_claim ? C2HNil
         : d_push_ident ? C2HCons(d_lk, d_hstk_in)
         : d_push_h ? C2HCons(d_ph_h, d_hstk_in)
+        : d_push_decl ? C2HCons(d_tmp_in, d_hstk_in)
         : d_pops = 3 ? d_h_t3
         : d_pops = 2 ? d_h_t2
         : d_pops = 1 ? d_h_t1
@@ -2078,7 +2061,7 @@ claim driver_main
         : d_it_proc ∧ d_pe_is_not ? C2ICons(C2Process(d_pe_ni), C2ICons(C2Not, d_wtail))
         : d_it_proc ? d_wtail
         : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
-        : d_it_decl ? (_istep = 1 ? d_wtail : _witems)
+        : d_it_decl ? (_istep = 2 ? d_wtail : _witems)
         : d_it_app ? (_istep = d_app_n ? d_wtail : _witems)
         : d_it_seleq ? (_istep = 2 ? d_wtail : _witems)
         : d_it_leneq ? (_istep = 1 ? d_wtail : _witems)
@@ -2086,7 +2069,7 @@ claim driver_main
 
     d_multi_cont ∈ Bool = (d_processing ∧
         ((d_it_op ∧ d_op_arr ∧ (_istep < 2))
-        ∨ (d_it_decl ∧ (_istep < 1))
+        ∨ (d_it_decl ∧ (_istep < 2))
         ∨ (d_it_app ∧ (_istep < d_app_n))
         ∨ (d_it_seleq ∧ (_istep < 2))
         ∨ (d_it_leneq ∧ (_istep < 1))))
@@ -2096,20 +2079,17 @@ claim driver_main
 
     pend = (is_first_tick ? 0
         : ¬d_processing ? 0
-        : d_it_proc ? ((d_pe_is_int ∨ d_pe_is_str) ? 1 : 0)
+        : d_it_proc ? ((d_pe_is_int ∨ d_pe_is_str ∨ d_lk_read) ? 1 : 0)
         : d_it_op ? (d_op_arr ? (_istep = 2 ? 1 : 0) : 1)
         : d_it_ite ? 1
         : d_it_not ? 1
-        : d_it_decl ? (_istep = 0 ? 2 : 3)
+        : d_it_decl ? (_istep = 2 ? 0 : 2)
         : d_it_nat ? 1
         : d_it_pineq ? 1
         : d_it_app ? (_istep = d_app_n ? 1 : 0)
         : d_it_seleq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
         : d_it_leneq ? (_istep = 0 ? 2 : 0)
         : 0)
-    pend_name = (is_first_tick ? ""
-        : (d_processing ∧ d_it_decl ∧ (_istep = 1)) ? d_dc_name
-        : _pend_name)
 
     -- ── token consumption (cursor arithmetic + window tail) ───────
     -- Exactly one consumer acts per tick (mode bools are mutually
@@ -2217,6 +2197,10 @@ claim driver_main
             : d_dc_sc = 2 ? ue_sort
             : d_dc_sc = 3 ? z_ssort
             : z_isort), eff ↦ d_eff_const)
+    -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
+    d_eff_stwr ∈ Effect
+    BuildMemWriteLong(addr ↦ st_base + (8 * _st_cnt), value ↦ d_tmp_in,
+        eff ↦ d_eff_stwr)
     -- oracle gap: a ctor literal in a slot binding breaks the callee's
     -- `matches` translation — pass pinned body vars instead.
     d_op_geq ∈ Op = OpGeq
@@ -2272,6 +2256,7 @@ claim driver_main
 
     d_eff_lib ∈ Effect = (d_it_proc ∧ d_pe_is_int ? d_eff_mkint
         : d_it_proc ∧ d_pe_is_str ? d_eff_mkstring
+        : d_lk_read ? d_eff_stread
         : d_it_op ∧ d_op_arr ∧ (_istep = 0) ? d_eff_wl0
         : d_it_op ∧ d_op_arr ∧ (_istep = 1) ? d_eff_wl1
         : d_it_op ∧ d_op_arr ? (d_op_bool_arr ? d_eff_nary
@@ -2281,7 +2266,9 @@ claim driver_main
         : d_it_op ? d_eff_cmp
         : d_it_ite ? d_eff_ite
         : d_it_not ? d_eff_not
-        : d_it_decl ? (_istep = 0 ? d_eff_sym : d_eff_const)
+        : d_it_decl ? (_istep = 0 ? d_eff_sym
+            : _istep = 1 ? d_eff_const
+            : d_eff_stwr)
         : d_it_nat ? d_eff_natge
         : d_it_pineq ? d_eff_pineq
         : d_it_assert ? d_eff_assert
@@ -2330,6 +2317,7 @@ claim driver_main
     e_puts ∈ Effect
     BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
     e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tbase)⟩)
+    e_free_sbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(st_base)⟩)
 
     -- ── effects schedule ──────────────────────────────────────────
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
@@ -2361,10 +2349,11 @@ claim driver_main
         : zstep = 18 ? ⟨ze_true⟩
         : zstep = 19 ? ⟨ze_false⟩
         : zstep = 20 ? ⟨ze_tbuf⟩
+        : zstep = 21 ? ⟨ze_sbuf⟩
         : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩
-        : estep ≥ 2 ? ⟨e_free_tbuf, e_puts, Exit(0)⟩
+        : estep ≥ 2 ? ⟨e_free_tbuf, e_free_sbuf, e_puts, Exit(0)⟩
         : fetch_go ? ⟨rd_t0, rd_q0, rd_t1, rd_q1, rd_t2, rd_q2,
             rd_t3, rd_q3, rd_t4, rd_q4, rd_t5, rd_q5, rd_t6, rd_q6,
             rd_t7, rd_q7⟩
