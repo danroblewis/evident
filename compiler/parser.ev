@@ -63,6 +63,14 @@ enum Op =
 --     is built on it (docs/plans/grammar-coverage-survey.md §1, §3).
 --   ENot(e)  — unary `¬ e` → "(not e)".
 --   EStr(s)  — ASCII string literal → SMT-LIB `"s"`.
+-- Call forms (compiler2 gap census B3):
+--   ECall1/2/3(name, args…) — builtin call syntax `f(a[, b[, c]])`,
+--     fixed arity 1-3 (the corpus surface: substr/3, index_of/2-3,
+--     char_at/2, str_len/1, str_from_int/1, str_contains/2,
+--     starts_with/2, ends_with/2). `#e` parses to
+--     ECall1("str_len", e). The arg vector is unrolled into three
+--     fixed-arity variants (a 4-field payload is oracle-supported;
+--     probed end-to-end 2026-06-07).
 enum Expr =
     EInt(Int)
     EIdent(String)
@@ -73,6 +81,9 @@ enum Expr =
     ETernary(Expr, Expr, Expr)
     ENot(Expr)
     EStr(String)
+    ECall1(String, Expr)
+    ECall2(String, Expr, Expr)
+    ECall3(String, Expr, Expr, Expr)
     ENoExpr
 
 -- ── Match patterns (B9) ────────────────────────────────────────

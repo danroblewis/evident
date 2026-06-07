@@ -179,6 +179,8 @@ claim main
     _ft_pd ∈ Int
     ft_qd ∈ Int
     _ft_qd ∈ Int
+    ft_cd ∈ Int
+    _ft_cd ∈ Int
 
     f_ntoks ∈ TokenList
     f_nouts ∈ ExprList
@@ -186,13 +188,14 @@ claim main
     f_nexpop ∈ Bool
     f_npd ∈ Int
     f_nqd ∈ Int
+    f_ncd ∈ Int
     f_sdone ∈ Bool
     f_sres ∈ Expr
-    f_scons ∈ Bool
+    f_scons ∈ Int
     C2PrattStep(toks ↦ _ft_toks, outs ↦ _ft_out, ops ↦ _ft_ops,
-        expop ↦ _ft_expop, pd ↦ _ft_pd, qd ↦ _ft_qd,
+        expop ↦ _ft_expop, pd ↦ _ft_pd, qd ↦ _ft_qd, cd ↦ _ft_cd,
         ntoks ↦ f_ntoks, nouts ↦ f_nouts, nops ↦ f_nops,
-        nexpop ↦ f_nexpop, npd ↦ f_npd, nqd ↦ f_nqd,
+        nexpop ↦ f_nexpop, npd ↦ f_npd, nqd ↦ f_nqd, ncd ↦ f_ncd,
         sdone ↦ f_sdone, sres ↦ f_sres, scons ↦ f_scons)
 
     ft_toks = (is_first_tick ? f_toks0 : f_ntoks)
@@ -201,6 +204,7 @@ claim main
     ft_expop = (is_first_tick ? true : f_nexpop)
     ft_pd = (is_first_tick ? 0 : f_npd)
     ft_qd = (is_first_tick ? 0 : f_nqd)
+    ft_cd = (is_first_tick ? 0 : f_ncd)
 
     f_done ∈ Bool = ((¬is_first_tick) ∧ f_sdone)
 
