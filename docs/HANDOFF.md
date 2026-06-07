@@ -400,3 +400,13 @@ Triage closed: #20 (pre-existing legacy recognizer verdict), #21.
 Checklist next: D3+C2 (in flight), C3 ctor apps, C4 matches, C5
 match binds, D2 conditional effects, E1 carries, F1 params, F2
 compositions. Then: sample.ev attempt.
+
+## Resume point 7 (overnight, continued)
+
+compiler2 at 42 census fixtures (D3+C2: last_results/Result floor/
+set literals +4; C3+C4: ctor apps with compound args + matches
+recognizers + n-arm match-pin, 006 flipped). Phase-5 honest
+baseline banked (2/119, runner timeout fix landed). C5+D2 agent in
+driver slot (match payload binds + expr arm bodies; conditional
+effects literals). After: E1 carries/manifest floor, F1 params,
+F2 compositions → then the sample.ev attempt (spec in heartbeat).
