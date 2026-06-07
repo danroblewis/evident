@@ -373,3 +373,15 @@ suite = the 22 green fixtures; (2) then first big source
 to adjudicate doc fix vs intended-spec; (4) remaining driver
 descopes in compiler2-driver-notes.md (Real literals, user enums
 in emit, Effect floor, Pratt n-ary flattening divergences).
+
+## Resume point 5 (overnight autonomous run)
+
+compiler2 scoreboard: 26 census fixtures + oracle-exact lexer
+(A1 digit-idents, A2 escapes — corpus gate cleared). Kernel:
+bare-Bool-literal capture landed (driver compiles 283s → 11s, 26×).
+Checklist next: B1 symtab>8, B2 String sort, B3 string ops, D3,
+C2-C5, D2, E1, F1, F2 (docs/plans/sample-ev-gap-census.md).
+Open triage: task #20 (sample.smt2 wrong-unsat on
+sat_recognizer_match_false vs oracle-sat — bisect vs
+df48137^:sample.smt2); full test.sh sweep failure lists in
+/tmp/full_test3.log when complete.
