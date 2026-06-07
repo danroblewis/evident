@@ -67,10 +67,16 @@ compile_bootstrap() {
     "$EVIDENT" emit "$1" "$2" -o "$3" 2>"$TMP/err"
 }
 
-# compile_selfhost SRC OUT  → 0 ok, 1 compile error, 2 blocked (no compiler.smt2)
+# compile_selfhost SRC CLAIM OUT  → 0 ok, 1 compile error, 2 blocked (no compiler.smt2)
+# Wave-4o protocol: stdin line 1 = FLATTENED source path, line 2 = claim.
+# (The previous version piped raw un-flattened source text as stdin — the
+# pre-wave-4o protocol — so the FSM read `import "stdlib/kernel.ev"` as a
+# file path and every fixture emitted an empty stub.)
 compile_selfhost() {
     [ -f "$COMPILER_SMT2" ] || return 2
-    "$KERNEL" "$COMPILER_SMT2" <"$1" >"$2" 2>"$TMP/err"
+    local flat="$TMP/flat.ev"
+    "$ROOT/scripts/flatten-evident.sh" "$1" >"$flat" 2>"$TMP/err" || return 1
+    printf '%s\n%s\n' "$flat" "$2" | "$KERNEL" "$COMPILER_SMT2" >"$3" 2>"$TMP/err"
 }
 
 # check_smt2_contains OUT EXPECTED_FILE  → 0 ok, 1 a line missing (msg in $TMP/why)
@@ -130,7 +136,7 @@ check_run() {
 verify_one_impl() {
     local dir="$1" claim="$2" kind="$3" out="$4"
     if [ "$kind" = "selfhost" ]; then
-        compile_selfhost "$dir/source.ev" "$out"
+        compile_selfhost "$dir/source.ev" "$claim" "$out"
         local rc=$?
         if [ "$rc" -eq 2 ]; then
             printf 'no compiler.smt2 at repo root' >"$TMP/why"; return 2
