@@ -1,0 +1,293 @@
+-- Inventory §7 datatype proof: declare `Color = Red | Green(Int)`
+-- entirely through libz3 C-API calls, then round-trip a value
+-- through the harvested constructor + accessor decls:
+--
+--   1. Lifecycle: Z3_mk_config / mk_context / mk_int_sort.
+--   2. One malloc(96) arena `buf` for every handle array (offsets
+--      below) — the N-slot generalization of translate_arith.ev's
+--      16-byte/2-slot pattern, documented in stdlib/z3_datatypes.ev.
+--   3. Six Z3_mk_string_symbol calls (ctor / recognizer / field /
+--      sort names).
+--   4. Z3_mk_constructor ×2 — Red (0 fields, null arrays) and
+--      Green (1 Int field; field_names/sorts/sort_refs arrays at
+--      buf+0 / buf+8 / buf+16).
+--   5. Z3_mk_constructor_list over [red, green] (array at buf+24).
+--   6. Z3_mk_datatypes, 1 sort: names IN-array at buf+40, sort
+--      OUT-array at buf+48, ctor-list IN-array at buf+56. The
+--      created Z3_sort handle is harvested with __mem.read_long
+--      (proves the out-array contract).
+--   7. Z3_query_constructor on green: ctor decl OUT at buf+64,
+--      tester OUT at buf+72, accessors OUT-array at buf+80.
+--   8. Z3_mk_app(green_decl, [mk_int(7)]) → Green(7); then
+--      Z3_mk_app(accessor_decl, [Green(7)]); Z3_simplify collapses
+--      it to the numeral 7.
+--   9. Z3_ast_to_string + __cstr.copy → expect "7".
+--  10. Z3_del_constructor ×2 + Z3_del_constructor_list (container
+--      reclaim), then Exit(0) iff the string matched and the
+--      harvested sort handle was non-null.
+--
+-- NOTE ON SUGAR INVOCATION: this fixture stays in the fossil-
+-- compilable subset (flat single claim, no `Name(slot ↦ …)`
+-- compositions — the committed compiler.smt2 drops them), so it
+-- emits raw LibCall effects that are textually identical to the
+-- bodies of stdlib/z3_datatypes.ev's BuildZ3MkConstructor /
+-- MkConstructorList / MkDatatypes / QueryConstructor / MkApp /
+-- Simplify / DelConstructor / DelConstructorList claims. Each
+-- phase below names the sugar claim it mirrors.
+--
+-- Multi-tick FSM: every libcall's return lands in last_results on
+-- the NEXT tick, so phase-N's handle is captured on phase N+1 and
+-- usable in that same tick's effect (same convention as
+-- tests/kernel/wave-5a-arith/translate_arith_via_z3.smt2).
+--
+-- Build + run (not driven by run-kernel-tests.sh — it only globs
+-- tests/kernel/test_*.ev):
+--   scripts/flatten-evident.sh tests/kernel/z3_datatypes/sugar_datatypes.ev > /tmp/flat.ev
+--   printf '%s\nmain\n' /tmp/flat.ev | kernel/target/release/kernel compiler.smt2 > /tmp/out.smt2
+--   kernel/target/release/kernel /tmp/out.smt2   # expect exit 0
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- Shared capture probes: every libz3 handle / pointer comes back
+    -- as IntResult; the pretty-print comes back as StringResult.
+    cap_int ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cap_str ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    -- ── Captured handles (phase N emits, phase N+1 captures) ────
+
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cfg_h = (is_first_tick ? 0 : phase = 1 ? cap_int : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_h = (is_first_tick ? 0 : phase = 2 ? cap_int : _ctx_h)
+
+    int_sort_h ∈ Int
+    _int_sort_h ∈ Int
+    int_sort_h = (is_first_tick ? 0 : phase = 3 ? cap_int : _int_sort_h)
+
+    -- One 96-byte arena for every handle array. Layout (8-byte slots):
+    --   +0  green field_names[1]     +48 mk_datatypes sorts OUT[1]
+    --   +8  green field_sorts[1]     +56 mk_datatypes ctor_lists[1]
+    --   +16 green sort_refs[1]       +64 query ctor_decl OUT
+    --   +24 ctor list array[2]       +72 query tester_decl OUT
+    --   +40 mk_datatypes names[1]    +80 query accessors OUT[1]
+    --                                +88 mk_app args[1]
+    buf ∈ Int
+    _buf ∈ Int
+    buf = (is_first_tick ? 0 : phase = 4 ? cap_int : _buf)
+
+    sym_red ∈ Int
+    _sym_red ∈ Int
+    sym_red = (is_first_tick ? 0 : phase = 5 ? cap_int : _sym_red)
+
+    sym_is_red ∈ Int
+    _sym_is_red ∈ Int
+    sym_is_red = (is_first_tick ? 0 : phase = 6 ? cap_int : _sym_is_red)
+
+    sym_green ∈ Int
+    _sym_green ∈ Int
+    sym_green = (is_first_tick ? 0 : phase = 7 ? cap_int : _sym_green)
+
+    sym_is_green ∈ Int
+    _sym_is_green ∈ Int
+    sym_is_green = (is_first_tick ? 0 : phase = 8 ? cap_int : _sym_is_green)
+
+    sym_gval ∈ Int
+    _sym_gval ∈ Int
+    sym_gval = (is_first_tick ? 0 : phase = 9 ? cap_int : _sym_gval)
+
+    sym_color ∈ Int
+    _sym_color ∈ Int
+    sym_color = (is_first_tick ? 0 : phase = 10 ? cap_int : _sym_color)
+
+    red_ctor ∈ Int
+    _red_ctor ∈ Int
+    red_ctor = (is_first_tick ? 0 : phase = 11 ? cap_int : _red_ctor)
+
+    green_ctor ∈ Int
+    _green_ctor ∈ Int
+    green_ctor = (is_first_tick ? 0 : phase = 15 ? cap_int : _green_ctor)
+
+    clist_h ∈ Int
+    _clist_h ∈ Int
+    clist_h = (is_first_tick ? 0 : phase = 18 ? cap_int : _clist_h)
+
+    -- mk_datatypes' OUT-array slot, harvested via read_long on 21.
+    color_sort ∈ Int
+    _color_sort ∈ Int
+    color_sort = (is_first_tick ? 0 : phase = 22 ? cap_int : _color_sort)
+
+    green_decl ∈ Int
+    _green_decl ∈ Int
+    green_decl = (is_first_tick ? 0 : phase = 24 ? cap_int : _green_decl)
+
+    acc_decl ∈ Int
+    _acc_decl ∈ Int
+    acc_decl = (is_first_tick ? 0 : phase = 25 ? cap_int : _acc_decl)
+
+    n7_h ∈ Int
+    _n7_h ∈ Int
+    n7_h = (is_first_tick ? 0 : phase = 26 ? cap_int : _n7_h)
+
+    green7_h ∈ Int
+    _green7_h ∈ Int
+    green7_h = (is_first_tick ? 0 : phase = 28 ? cap_int : _green7_h)
+
+    accapp_h ∈ Int
+    _accapp_h ∈ Int
+    accapp_h = (is_first_tick ? 0 : phase = 30 ? cap_int : _accapp_h)
+
+    simp_h ∈ Int
+    _simp_h ∈ Int
+    simp_h = (is_first_tick ? 0 : phase = 31 ? cap_int : _simp_h)
+
+    str_ptr ∈ Int
+    _str_ptr ∈ Int
+    str_ptr = (is_first_tick ? 0 : phase = 32 ? cap_int : _str_ptr)
+
+    rendered ∈ String
+    _rendered ∈ String
+    rendered = (is_first_tick ? "" : phase = 33 ? cap_str : _rendered)
+
+    -- ── Verdict ────────────────────────────────────────────────
+    expected ∈ String = "7"
+    match_ok ∈ Bool = (rendered = expected)
+    sort_ok ∈ Bool = (color_sort > 0)
+    exit_code ∈ Int = (phase = 36
+        ? (match_ok ? (sort_ok ? 0 : 6) : 4)
+        : 5)
+
+    -- ── Effects, one per phase ─────────────────────────────────
+    effects ∈ Seq(Effect) = (phase = 0
+            ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1
+            ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2
+            ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(ctx_h)⟩)⟩
+        : phase = 3
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(96)⟩)⟩
+        : phase = 4
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("Red")⟩)⟩
+        : phase = 5
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("is_Red")⟩)⟩
+        : phase = 6
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("Green")⟩)⟩
+        : phase = 7
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("is_Green")⟩)⟩
+        : phase = 8
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("green_val")⟩)⟩
+        : phase = 9
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol",
+                ⟨ArgInt(ctx_h), ArgStr("Color")⟩)⟩
+        -- BuildZ3MkConstructor: Red, 0 fields, null arrays.
+        : phase = 10
+            ? ⟨LibCall("libz3", "Z3_mk_constructor",
+                ⟨ArgInt(ctx_h), ArgInt(sym_red), ArgInt(sym_is_red),
+                 ArgInt(0), ArgInt(0), ArgInt(0), ArgInt(0)⟩)⟩
+        -- Green's three 1-slot field arrays (BuildMemWriteLong ×3).
+        : phase = 11
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf), ArgInt(sym_gval)⟩)⟩
+        : phase = 12
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 8), ArgInt(int_sort_h)⟩)⟩
+        : phase = 13
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 16), ArgInt(0)⟩)⟩
+        -- BuildZ3MkConstructor: Green, 1 Int field.
+        : phase = 14
+            ? ⟨LibCall("libz3", "Z3_mk_constructor",
+                ⟨ArgInt(ctx_h), ArgInt(sym_green), ArgInt(sym_is_green),
+                 ArgInt(1), ArgInt(buf), ArgInt(buf + 8), ArgInt(buf + 16)⟩)⟩
+        -- ctors[2] array, then BuildZ3MkConstructorList.
+        : phase = 15
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 24), ArgInt(red_ctor)⟩)⟩
+        : phase = 16
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 32), ArgInt(green_ctor)⟩)⟩
+        : phase = 17
+            ? ⟨LibCall("libz3", "Z3_mk_constructor_list",
+                ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(buf + 24)⟩)⟩
+        -- names[1] + ctor_lists[1] IN-arrays, then BuildZ3MkDatatypes
+        -- (sorts OUT-array at buf+48, pre-allocated, never written).
+        : phase = 18
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 40), ArgInt(sym_color)⟩)⟩
+        : phase = 19
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 56), ArgInt(clist_h)⟩)⟩
+        : phase = 20
+            ? ⟨LibCall("libz3", "Z3_mk_datatypes",
+                ⟨ArgInt(ctx_h), ArgInt(1), ArgInt(buf + 40),
+                 ArgInt(buf + 48), ArgInt(buf + 56)⟩)⟩
+        -- BuildMemReadLong: harvest the created sort handle.
+        : phase = 21
+            ? ⟨LibCall("__mem", "read_long", ⟨ArgInt(buf + 48)⟩)⟩
+        -- BuildZ3QueryConstructor: green has 1 field.
+        : phase = 22
+            ? ⟨LibCall("libz3", "Z3_query_constructor",
+                ⟨ArgInt(ctx_h), ArgInt(green_ctor), ArgInt(1),
+                 ArgInt(buf + 64), ArgInt(buf + 72), ArgInt(buf + 80)⟩)⟩
+        : phase = 23
+            ? ⟨LibCall("__mem", "read_long", ⟨ArgInt(buf + 64)⟩)⟩
+        : phase = 24
+            ? ⟨LibCall("__mem", "read_long", ⟨ArgInt(buf + 80)⟩)⟩
+        : phase = 25
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(7), ArgInt(int_sort_h)⟩)⟩
+        -- BuildZ3MkApp(green_decl, [7]) → Green(7).
+        : phase = 26
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 88), ArgInt(n7_h)⟩)⟩
+        : phase = 27
+            ? ⟨LibCall("libz3", "Z3_mk_app",
+                ⟨ArgInt(ctx_h), ArgInt(green_decl), ArgInt(1),
+                 ArgInt(buf + 88)⟩)⟩
+        -- BuildZ3MkApp(acc_decl, [Green(7)]) → green_val(Green(7)).
+        : phase = 28
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 88), ArgInt(green7_h)⟩)⟩
+        : phase = 29
+            ? ⟨LibCall("libz3", "Z3_mk_app",
+                ⟨ArgInt(ctx_h), ArgInt(acc_decl), ArgInt(1),
+                 ArgInt(buf + 88)⟩)⟩
+        -- BuildZ3Simplify: green_val(Green(7)) → 7.
+        : phase = 30
+            ? ⟨LibCall("libz3", "Z3_simplify",
+                ⟨ArgInt(ctx_h), ArgInt(accapp_h)⟩)⟩
+        : phase = 31
+            ? ⟨LibCall("libz3", "Z3_ast_to_string",
+                ⟨ArgInt(ctx_h), ArgInt(simp_h)⟩)⟩
+        : phase = 32
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(str_ptr)⟩)⟩
+        -- BuildZ3DelConstructor ×2 + BuildZ3DelConstructorList.
+        : phase = 33
+            ? ⟨LibCall("libz3", "Z3_del_constructor",
+                ⟨ArgInt(ctx_h), ArgInt(red_ctor)⟩)⟩
+        : phase = 34
+            ? ⟨LibCall("libz3", "Z3_del_constructor",
+                ⟨ArgInt(ctx_h), ArgInt(green_ctor)⟩)⟩
+        : phase = 35
+            ? ⟨LibCall("libz3", "Z3_del_constructor_list",
+                ⟨ArgInt(ctx_h), ArgInt(clist_h)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
