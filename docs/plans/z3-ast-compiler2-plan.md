@@ -25,41 +25,48 @@ blocked today).
   TokenList pivot plan into compiler2 from day one instead of
   retrofitting.
 
-## The constraint that shapes everything: the fossil
+## The ladder (UPDATED 2026-06-07 evening: the oracle)
 
-`compiler.smt2` (committed artifact) drops claim-composition lines
-wholesale and cannot rebuild ANY current compiler source (~370
-composition lines in flattened sample.ev). It is a fossil: built
-once by the deleted bootstrap, never able to recompile itself.
-Therefore compiler2 must be written in the FOSSIL-COMPILABLE SUBSET
-of Evident (flat claims, simple bodies — exact rules from the
-fossil-subset probe). The ladder:
+Operator decision: the deleted bootstrap serves as a build-time
+ORACLE — `scripts/build-oracle.sh` builds it from pinned history
+(c218dca^) OUTSIDE the tree, keeps only the binary
+(`/usr/local/bin/evident-oracle`), sunset the day compiler2
+self-compiles. The oracle compiles FULL Evident in seconds
+(validated: expr-slot-binding verdict table perfect; smoke/hello
+emits run exit 0; artifact regeneration reproducible).
 
 ```
-fossil compiler.smt2 ──compiles──▶ compiler2.ev (subset-disciplined)
+oracle ──compiles──▶ compiler2.ev (FULL Evident, no subset contortions)
 compiler2.smt2 ──compiles──▶ everything, eventually compiler2.ev itself
 ```
 
 Closing that last arrow is genuine self-hosting — which even the
-bootstrap era never had.
+bootstrap era never had. The fossil-subset constraint is GONE from
+the critical path.
+
+FALLBACK (proven, shelved): the stage-0 stitch architecture —
+hand-written capture-driver shell + fossil-compiled dispatch claims
++ stitcher — ran end-to-end at toy scale (tests/seam/stage0_toy/,
+'(= x 5)' exit 0) and projects to 800-1,000 lines total. See
+docs/plans/stage0-sizing.md. Use only if the oracle path fails.
 
 ## Phases and parallelization
 
-P0 (probe agent, running): fossil subset rules → fossil-subset.md.
-P1 (4 sugar agents, running): stdlib/z3_core.ev / z3_ops.ev /
-   z3_seq.ev / z3_datatypes.ev + kernel fixtures, one inventory
-   section each, in isolated worktrees. Orchestrator merges with
-   test gates.
-P2 (next wave): compiler2's translate passes, one agent per pass
+P0 (DONE, merged): fossil subset rules → fossil-subset.md (+ the
+   corrections appendix — read it; several verdicts were confounded).
+P1 (DONE, merged): stdlib/z3_{core,ops,seq,datatypes}.ev — ~60
+   BuildZ3* claims, every group proven by a green kernel fixture.
+P2 (NEXT): compiler2's translate passes in FULL Evident (oracle
+   compiles them — no subset discipline), one agent per pass
    (bool → ternary/record → seq/string → ctor/match → quant), each
    an FSM walking parsed expressions and emitting BuildZ3* effects,
-   handles in Int state. Per-pass fixtures; subset discipline gated
-   by compiling each file through the fossil.
-P3: compiler2.ev driver (lexer/parser re-expressed in subset + FTI
-   tokens + new translate + solver-to-string emit). Fossil compiles
-   it once (EVIDENT_TICK_LIMIT raised — override landed 0b181c5).
+   handles in Int state. Per-pass fixtures compiled by the oracle,
+   run by the kernel.
+P3: compiler2.ev driver (lexer/parser + FTI tokens + new translate
+   + solver-to-string emit). Oracle compiles it (seconds);
+   EVIDENT_TICK_LIMIT override available for self-compile runs.
    Acceptance: beats the fossil on the conformance census; then
-   compiles itself.
+   compiles itself (oracle sunset).
 P4: delete the string machinery (RenderExpr*, escaping, pin caps);
    regenerate the conformance census as the scoreboard.
 
