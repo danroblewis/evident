@@ -296,3 +296,16 @@ git status; git log --oneline -10
 # Build a candidate sample.smt2 (slow + memory-heavy)
 scripts/build-sample-smt2-candidate.sh /tmp/sample_new.smt2
 ```
+
+## Resume point (session ended 2026-06-07 mid-suite)
+
+A full `./test.sh` was running when the session ended — restart it
+(`./test.sh > /tmp/full_test2.log 2>&1 &`). Phases 1-2 green;
+phase 3 conformance was mid-run on the FIXED runner protocol
+(514de08): 001 ✗ (allowlisted arithmetic-in-ctor gap), 002 ✓.
+Triage the final report against the 16-fixture allowlist —
+failures beyond it on stdout/exit checks would suggest fast-path
+divergence (functionizer, c8e7d9b) and deserve a Z3-path
+(EVIDENT_FUNCTIONIZE=0) A/B before anything else. Everything else
+of today's work is committed and documented above; tasks #3-#6 in
+the session task list are pending, #9 is this triage.
