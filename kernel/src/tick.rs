@@ -46,12 +46,24 @@ use z3_sys::*;
 /// Per-tick pin mechanism, chosen once at startup from `EVIDENT_PIN_MECH`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mech {
-    /// A (default): fresh solver per tick, re-assert cached simplified body
-    /// ASTs + assert the pin ASTs.
+    /// A: one persistent solver holding the body; per-tick pin assertions
+    /// scoped with push/pop. AVOID for big bodies: the persistent solver is
+    /// Z3's raw incremental smt core, which gets NO preprocessing — on
+    /// compiler.smt2 (7851 ground functional asserts) the first check-sat
+    /// churns 10M+ added-eqs and never terminates, where the preprocessed
+    /// solve is 0.7s (measured 2026-06-07, z3 4.8.12 and 4.15.4 alike).
     A,
     /// B: one persistent solver holding the body; pin ASTs passed as
-    /// assumptions to `Z3_solver_check_assumptions` each tick.
+    /// assumptions to `Z3_solver_check_assumptions` each tick. Same
+    /// incremental-core divergence as A.
     B,
+    /// T (default): fresh tactic-based solver per tick
+    /// (`Z3_mk_solver_from_tactic("default")`), cached body ASTs + pin ASTs
+    /// asserted fresh each tick. Each check-sat gets the full preprocessing
+    /// pipeline (solve-eqs eliminates the functional body). The solver is
+    /// dec_ref'd at tick end so per-solver memory is bounded; the context
+    /// term table still grows with per-tick pin parsing (see pin-cap).
+    T,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +221,18 @@ pub fn run(src: &str, manifest: &Manifest) -> Result<u8, String> {
 }
 
 unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
+    // EVIDENT_PHASE_TRACE=1 — startup-phase + tick-progress markers on
+    // stderr, for attributing wall-clock/memory to a phase when a run
+    // looks stuck (e.g. the 2026-06 container runs that ground for hours
+    // before tick 1). Each line carries elapsed seconds since run start.
+    let phase_trace = std::env::var("EVIDENT_PHASE_TRACE").ok().as_deref() == Some("1");
+    let phase_t0 = Instant::now();
+    let phase = |msg: &str| {
+        if phase_trace {
+            eprintln!("[phase +{:.1}s] {msg}", phase_t0.elapsed().as_secs_f64());
+        }
+    };
+
     // Diagnostic: confirm pin-cap env var made it through.
     if std::env::var("EVIDENT_PIN_DEPTH_TRACE").is_ok() {
         let cap = std::env::var("EVIDENT_PIN_DEPTH_CAP")
@@ -252,6 +276,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         asts
     };
     let body_n = Z3_ast_vector_size(ctx, body_vec);
+    phase(&format!("body parsed: {body_n} asserts"));
 
     // Pre-loop `.simplify()` pass (architecture-invariants.md §"Z3 model
     // lifecycle" #4: ONE simplify before the loop is allowed and desired;
@@ -280,11 +305,13 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         })
         .collect();
     Z3_ast_vector_dec_ref(ctx, body_vec);
+    phase(if skip_presimplify { "presimplify SKIPPED" } else { "presimplify done" });
 
-    // Pin mechanism, selectable at runtime. Default A. See the module doc.
+    // Pin mechanism, selectable at runtime. Default T. See the Mech doc.
     let mech = match std::env::var("EVIDENT_PIN_MECH").ok().as_deref() {
+        Some("A") | Some("a") => Mech::A,
         Some("B") | Some("b") => Mech::B,
-        _ => Mech::A,
+        _ => Mech::T,
     };
 
     // Declarations (datatypes, consts) extracted from the body. Each tick's
@@ -293,18 +320,19 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     // references in an assert (e.g. `is_first_tick`, `last_results`), which a
     // post-parse AST walk could not recover.
     let decl_preamble = extract_declarations(src);
+    phase("declarations extracted");
 
-    // B only: one persistent solver, simplified body asserted once. Each tick
-    // layers pins as check-assumptions instead of re-asserting the body.
-    // ONE persistent solver, body asserted once. Both mechs reuse it:
+    // A/B only: one persistent solver, simplified body asserted once.
     // - Mech A wraps per-tick pin assertions with push/pop so they don't
-    //   accumulate across ticks (was: fresh solver per tick — bounded
-    //   per-solver, but Z3's context-level term hash-cons table grew
-    //   linearly with each Z3_mk_solver + assert cycle, dominating memory
-    //   on long compiles like compiler.smt2 emitting a test fixture).
+    //   accumulate across ticks.
     // - Mech B uses check_assumptions which never permanently asserts pins,
     //   so push/pop is a no-op for it but the persistent solver is shared.
-    let persistent_solver = {
+    // Mech T builds a fresh tactic solver per tick instead (no persistent
+    // solver): the incremental core both A and B sit on diverges on big
+    // ground functional bodies — see the Mech doc.
+    let persistent_solver = if mech == Mech::T {
+        None
+    } else {
         let s = Z3_mk_solver(ctx);
         Z3_solver_inc_ref(ctx, s);
         for &a in &body {
@@ -312,6 +340,17 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         }
         Some(s)
     };
+    // T only: the "default" tactic, created once, turned into a fresh
+    // solver each tick via Z3_mk_solver_from_tactic.
+    let tick_tactic = if mech == Mech::T {
+        let name = CString::new("default").unwrap();
+        let t = Z3_mk_tactic(ctx, name.as_ptr());
+        Z3_tactic_inc_ref(ctx, t);
+        Some(t)
+    } else {
+        None
+    };
+    phase(&format!("solver setup done (mech {mech:?})"));
 
     // Functionizer (task #18). After parse + pre-loop simplify, attempt to
     // extract a native/JIT program for {state fields, effects}. `functionize`
@@ -349,6 +388,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             None => eprintln!("[fz] not functionized — running Z3 path"),
         }
     }
+    phase(&format!("functionize done (functionized: {})", functionized.is_some()));
     stats.print_load_report();
     let timing_on = stats.timing_on();
 
@@ -375,6 +415,9 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
     const TICK_LIMIT: usize = 100_000;
     for tick in 0..TICK_LIMIT {
+        if tick < 5 || tick % 25 == 0 {
+            phase(&format!("tick {tick}"));
+        }
         let mut tick_func = std::time::Duration::ZERO;
         let mut tick_z3 = std::time::Duration::ZERO;
         let mut tick_dispatch = std::time::Duration::ZERO;
@@ -441,10 +484,22 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             // run_program refused this tick → fall through to the Z3 path.
         }
         let tz = mark();
-        // Single persistent solver (shared between Mech A and B, body already
-        // asserted once at startup). Mech A's per-tick pin assertions are
-        // scoped via push/pop in apply_pins_a; Mech B uses check_assumptions.
-        let solver = persistent_solver.expect("persistent_solver inited above");
+        // Mech A/B: the single persistent solver (body asserted at startup).
+        // Mech T: a fresh tactic-based solver for this tick; the cached body
+        // ASTs are asserted below together with the pins, and the solver is
+        // released at tick end (or on any exit path).
+        let solver = match mech {
+            Mech::T => {
+                let t = tick_tactic.expect("tick_tactic inited above");
+                let s = Z3_mk_solver_from_tactic(ctx, t);
+                Z3_solver_inc_ref(ctx, s);
+                for &a in &body {
+                    Z3_solver_assert(ctx, s, a);
+                }
+                s
+            }
+            _ => persistent_solver.expect("persistent_solver inited above"),
+        };
 
         // Build ONLY the per-tick equality pins. The declarations preamble makes
         // the pin symbols re-declare and intern to the cached body's variables.
@@ -492,7 +547,9 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             Z3_solver_push(ctx, solver);
         }
         let res = match mech {
-            Mech::A => apply_pins_a(ctx, solver, &pin_asts),
+            // T asserts pins directly on the per-tick solver — same call
+            // shape as A but with no push (the solver dies at tick end).
+            Mech::A | Mech::T => apply_pins_a(ctx, solver, &pin_asts),
             Mech::B => apply_pins_b(ctx, solver, &pin_asts),
         };
         Z3_ast_vector_dec_ref(ctx, pin_vec);
@@ -576,10 +633,13 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         // Mech A: release this tick's pin assertions now that the model is
         // dec_ref'd and we're moving to the next tick. Without this, the
         // persistent solver would accumulate every tick's pin assertions.
+        // Mech T: release this tick's solver outright.
         // The Z3_solver_dec_ref-then-del_context paths above don't need a
         // matching pop — killing the context releases everything.
-        if mech == Mech::A {
-            Z3_solver_pop(ctx, solver, 1);
+        match mech {
+            Mech::A => Z3_solver_pop(ctx, solver, 1),
+            Mech::T => Z3_solver_dec_ref(ctx, solver),
+            Mech::B => {}
         }
 
         prev_state   = new_state.into_iter().map(Some).collect();
@@ -929,7 +989,24 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
     let sym = Z3_get_decl_name(ctx, decl);
     let name = decode_sym(ctx, sym);
 
-    match name.as_str() {
+    let out = dispatch_effect_named(ctx, app, &name);
+    if std::env::var("EVIDENT_PHASE_TRACE").ok().as_deref() == Some("1") {
+        let summary = match &out {
+            Ok(EffectOutcome::Continue(Res::Str(s))) => {
+                let head: String = s.chars().take(60).collect();
+                format!("→ Str({} bytes: {head:?}…)", s.len())
+            }
+            Ok(EffectOutcome::Continue(r)) => format!("→ {r:?}"),
+            Ok(EffectOutcome::Exit(c)) => format!("→ Exit({c})"),
+            Err(e) => format!("→ ERR {e}"),
+        };
+        eprintln!("[effect] {name} {summary}");
+    }
+    out
+}
+
+unsafe fn dispatch_effect_named(ctx: Z3_context, app: Z3_app, name: &str) -> Result<EffectOutcome, String> {
+    match name {
         // Println, Print, Time were here in iter 1; demoted to LibCall
         // sugar in iter 2.5+. See stdlib/kernel.ev → BuildPrintln /
         // BuildPrint / BuildTime.
