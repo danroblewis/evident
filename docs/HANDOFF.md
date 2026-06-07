@@ -309,3 +309,33 @@ divergence (functionizer, c8e7d9b) and deserve a Z3-path
 (EVIDENT_FUNCTIONIZE=0) A/B before anything else. Everything else
 of today's work is committed and documented above; tasks #3-#6 in
 the session task list are pending, #9 is this triage.
+
+## Resume point 2 (session ended 2026-06-07 evening)
+
+Today, in order: Mech T verified at scale; functionizer covers
+compiler.smt2 (~35 s seam compiles); honest census 14/138 (banked,
+parallel runner landed); fossil-subset map + corrections; Z3-AST
+sugar floor merged (stdlib/z3_{core,ops,seq,datatypes}.ev, all
+fixture-proven); stage-0 stitch toy GO (fallback, runs on main);
+BOOTSTRAP ORACLE landed (scripts/build-oracle.sh, binary-only,
+sunset clause) — and with it the 282a5b3 expr-slot-binding port is
+now VERIFIED (oracle-built sample.smt2 gives the correct
+sat/unsat table at runtime; regression on test_enums_basic clean
+except `unsat_weekend_via_claim_wrong` which needs a fossil-baseline
+diff before promotion).
+
+NEXT (in order):
+1. Promote artifacts: regenerate via `evident-oracle emit
+   compiler/{compiler,sample}.ev main` (seconds), gate
+   (smoke+hello through new compiler.smt2; expr-slot-binding +
+   per-file fossil-vs-candidate diff for sample.smt2), promote,
+   re-run census expecting movement, commit artifacts.
+2. Launch P2: compiler2 translate passes in FULL Evident (the
+   oracle removes the subset constraint) per
+   docs/plans/z3-ast-compiler2-plan.md — update that doc first
+   (oracle primary, stage-0 → fallback section).
+3. /tmp was volatile all day: candidates live at /tmp/*_new.smt2,
+   regenerate rather than mourn. Orchestrator gotcha: the harness
+   repoints the shell cwd into agent worktrees after notifications
+   — `cd /Users/daniellewis/evident` explicitly in EVERY git/build
+   command.
