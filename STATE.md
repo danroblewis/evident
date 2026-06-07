@@ -142,3 +142,14 @@ solved; spot-verified 026/037 independently on main). Next per
 driver-notes: Pratt expression parser (the shape zoo is at its
 limit) + FTI lexer pivot (token_stack.ev) before big sources.
 Driver entry claim is `driver_main`.
+
+## Phase-5 honest baseline (post-timeout-fix, overnight)
+
+run-kernel-tests with the 120s per-fixture cap: 119 fixtures,
+2 pass / 117 fail (97 emit TIMEOUTs — the pre-existing
+test_compiler_driver_*-class grind, fossil-identical; rest are
+content/exit gaps). Run completes bounded with live streaming (the
+wedge is gone). This list is compiler2's eventual scoreboard for
+the kernel-fixture corpus, alongside the conformance census.
+compiler2 meanwhile: 41 census fixtures + Result floor +
+last_results selects (ahead of the fossil on those shapes).
