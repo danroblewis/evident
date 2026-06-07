@@ -413,8 +413,13 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
     let mark = || if timing_on { Some(Instant::now()) } else { None };
     let since = |t: Option<Instant>| t.map(|t| t.elapsed()).unwrap_or_default();
 
-    const TICK_LIMIT: usize = 100_000;
-    for tick in 0..TICK_LIMIT {
+    // Runaway backstop, overridable: full sample.ev-size seam rebuilds
+    // exceed 100k ticks (established 2026-06-07 — the expr_as_var port's
+    // baseline build died here at ~50 min). EVIDENT_TICK_LIMIT=<N> raises
+    // it per-run without changing the default safety net.
+    let tick_limit: usize = std::env::var("EVIDENT_TICK_LIMIT")
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(100_000);
+    for tick in 0..tick_limit {
         if tick < 5 || tick % 25 == 0 {
             phase(&format!("tick {tick}"));
         }
@@ -655,7 +660,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         Z3_solver_dec_ref(ctx, s);
     }
     Z3_del_context(ctx);
-    Err(format!("tick limit ({TICK_LIMIT}) reached"))
+    Err(format!("tick limit ({tick_limit}) reached"))
 }
 
 /// Coarse shape class of a single (simplified) body assertion, derived from a
