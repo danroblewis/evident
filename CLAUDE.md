@@ -403,3 +403,11 @@ If a capability is missing, the only ladder is:
 
 The further down this list you go, the higher the bar for the
 above ones to fail first.
+
+## Long-running commands
+
+Run anything expected to take more than ~30 seconds (cargo build, test
+suites, kernel/solver runs on .smt2 workloads) **in the background**
+(`run_in_background: true`), then poll its output and continue other work
+meanwhile. The operator steers this session remotely mid-turn; a foreground
+command blocks their messages from being read until it finishes.
