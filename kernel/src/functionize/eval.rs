@@ -62,6 +62,22 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
                 None
             }
         }
+        // SMT-LIB Int division/modulo are EUCLIDEAN (Boute): the remainder is
+        // always non-negative. Rust's div_euclid/rem_euclid match exactly.
+        // Division by zero is an underspecified function in SMT — refuse the
+        // tick (None → Z3 fallback) rather than guess.
+        DeclKind::IDIV => {
+            let a = as_int(eval_scalar(ctx, ch[0], env)?)?;
+            let b = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            if b == 0 { return None; }
+            Some(Sv::Int(a.div_euclid(b)))
+        }
+        DeclKind::MOD => {
+            let a = as_int(eval_scalar(ctx, ch[0], env)?)?;
+            let b = as_int(eval_scalar(ctx, ch[1], env)?)?;
+            if b == 0 { return None; }
+            Some(Sv::Int(a.rem_euclid(b)))
+        }
         DeclKind::ADD | DeclKind::MUL | DeclKind::SUB => {
             let mut it = ch.iter();
             let first = as_int(eval_scalar(ctx, *it.next()?, env)?)?;

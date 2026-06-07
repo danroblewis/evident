@@ -65,6 +65,10 @@ pub enum StepBody {
 pub struct Step {
     pub var: String,
     pub body: StepBody,
+    /// Member of a mention-level dependency cycle: excluded from the topo
+    /// order, resolved by run_program fixpoint rounds (eval laziness makes
+    /// guard-acyclic graphs converge; real cycles stall → Z3 tick).
+    pub deferred: bool,
     /// Bool-sorted scalar output (vs Int). Selects how a JIT i64 result and an
     /// eval result are interpreted. Irrelevant for Seq steps.
     pub result_is_bool: bool,
@@ -841,7 +845,7 @@ unsafe fn extract_program(
     ctx: Z3_context,
     assertions: &[Z3_ast],
     outputs: &[String],
-) -> Option<(Vec<(String, StepBody)>, Vec<Z3_ast>)> {
+) -> Option<(Vec<(String, StepBody, bool)>, Vec<Z3_ast>)> {
     let output_set: HashSet<String> = outputs.iter().cloned().collect();
     let mut raw = Raw::default();
 
@@ -1018,10 +1022,19 @@ unsafe fn extract_program(
     bodies.retain(|k, _| reachable.contains(k));
     let kept: Vec<String> = bodies.keys().cloned().collect();
 
-    // Topo-order so each step follows the vars it consumes.
-    let order = topo_order(ctx, &kept, &bodies)?;
-    let ordered: Vec<(String, StepBody)> =
-        order.into_iter().map(|v| (v.clone(), bodies.remove(&v).unwrap())).collect();
+    // Topo-order so each step follows the vars it consumes. Steps stuck in
+    // mention-level cycles come back in `deferred` (flagged true) and run
+    // via run_program's fixpoint rounds instead of refusing extraction.
+    let (order, deferred) = topo_order(ctx, &kept, &bodies)?;
+    let mut ordered: Vec<(String, StepBody, bool)> = Vec::with_capacity(kept.len());
+    for v in order {
+        let b = bodies.remove(&v).unwrap();
+        ordered.push((v, b, false));
+    }
+    for v in deferred {
+        let b = bodies.remove(&v).unwrap();
+        ordered.push((v, b, true));
+    }
     Some((ordered, raw.predicates))
 }
 
@@ -1047,7 +1060,7 @@ unsafe fn topo_order(
     ctx: Z3_context,
     outputs: &[String],
     bodies: &HashMap<String, StepBody>,
-) -> Option<Vec<String>> {
+) -> Option<(Vec<String>, Vec<String>)> {
     let mut indeg: HashMap<String, usize> = outputs.iter().map(|v| (v.clone(), 0)).collect();
     let mut succ: HashMap<String, Vec<String>> = HashMap::new();
     let outputs_set: HashSet<&str> = outputs.iter().map(|s| s.as_str()).collect();
@@ -1083,9 +1096,13 @@ unsafe fn topo_order(
         ready.sort();
     }
     if order.len() == outputs.len() {
-        Some(order)
+        Some((order, Vec::new()))
     } else {
         // Cycle detected — the remaining bodies have nonzero indegree.
+        // No longer a refusal: hand the stuck set back as DEFERRED steps
+        // for run_program's fixpoint rounds (the mention graph is guard-
+        // blind; runtime-acyclic graphs converge there). The WHY report
+        // stays for diagnosis of genuinely stalled cycles.
         if std::env::var("EVIDENT_FUNCTIONIZE_WHY").ok().as_deref() == Some("1") {
             let stuck: HashSet<String> = indeg.iter()
                 .filter(|(_, &d)| d > 0)
@@ -1118,7 +1135,13 @@ unsafe fn topo_order(
                 eprintln!("[functionizer-why]   {} ← [{}]", n, &d[..d.len().min(120)]);
             }
         }
-        None
+        let mut deferred: Vec<String> = indeg
+            .iter()
+            .filter(|(_, &d)| d > 0)
+            .map(|(n, _)| n.clone())
+            .collect();
+        deferred.sort();
+        Some((order, deferred))
     }
 }
 
@@ -1198,7 +1221,7 @@ pub unsafe fn functionize(
     // Record-Seq intermediates the JIT can inline: `var → element ASTs`.
     // A scalar step indexing one of these (`rs[0].w`) resolves the select +
     // accessor to a leaf field AST at compile time, so it still JITs.
-    let seqs: HashMap<String, Vec<Z3_ast>> = raw_steps.iter().filter_map(|(v, b)| {
+    let seqs: HashMap<String, Vec<Z3_ast>> = raw_steps.iter().filter_map(|(v, b, _)| {
         if v == &manifest.effects_name { return None; }
         if let StepBody::Seq(es) = b { Some((v.clone(), es.clone())) } else { None }
     }).collect();
@@ -1208,7 +1231,7 @@ pub unsafe fn functionize(
     let mut steps: Vec<Step> = Vec::new();
     let mut jit_count = 0usize;
     let mut interp_count = 0usize;
-    for (var, body) in raw_steps {
+    for (var, body, deferred) in raw_steps {
         let is_effects = var == manifest.effects_name;
         let is_state = manifest.state_fields.iter().any(|(n, _)| n == &var);
         let body_is_seq = match &body {
@@ -1237,7 +1260,7 @@ pub unsafe fn functionize(
             }
             _ => (false, None),
         };
-        steps.push(Step { var, body, result_is_bool, is_effects, jit });
+        steps.push(Step { var, body, deferred, result_is_bool, is_effects, jit });
     }
 
     let mut keepalive = simplified;
@@ -1376,10 +1399,73 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
     let mut env = inputs.clone();
     let mut effects: Vec<Sv> = Vec::new();
 
+    // Pass 1: the topo-ordered DAG steps. Pass 2: fixpoint rounds over the
+    // DEFERRED steps (members of mention-level dependency cycles). The
+    // mention graph over-approximates: `ite` hides which branch actually
+    // reads what, so guard-acyclic FSMs (compiler2's P3e enum machine) look
+    // cyclic to topo_order. eval_scalar is lazy — it only recurses into the
+    // TAKEN branch — so retry rounds resolve every runtime-acyclic step;
+    // a stalled round means a REAL cycle (or unsupported shape) → refuse
+    // the tick (Z3 fallback), with verify still gating overall soundness.
+    let mut deferred: Vec<&Step> = Vec::new();
     for step in &prog.steps {
+        if step.deferred {
+            deferred.push(step);
+            continue;
+        }
+        if !exec_step(ctx, step, &mut env, &mut effects, true) {
+            return None;
+        }
+    }
+    let mut pending = deferred;
+    while !pending.is_empty() {
+        let before = pending.len();
+        pending.retain(|s| !exec_step(ctx, s, &mut env, &mut effects, false));
+        if pending.len() == before {
+            if trace_enabled() {
+                eprintln!(
+                    "[fz/run] deferred fixpoint stalled: {} unresolved (first: {:?})",
+                    pending.len(),
+                    pending.first().map(|s| s.var.as_str())
+                );
+            }
+            return None;
+        }
+    }
+
+    // Enforce predicates that reference only bound vars. A predicate that
+    // evaluates false ⇒ this tick is UNSAT for the fast path ⇒ fall through.
+    for &p in &prog.predicates {
+        if let Some(Sv::Bool(b)) = eval::eval_scalar(ctx, p, &env) {
+            if !b {
+                return None;
+            }
+        }
+    }
+
+    Some(RunOut { scalars: env, effects })
+}
+
+/// Execute one step against the env: bind its value (or set `effects`) and
+/// return true, or return false when something it needs isn't available /
+/// supported — non-deferred callers treat false as tick refusal; the
+/// deferred fixpoint treats it as retry-next-round.
+unsafe fn exec_step(
+    ctx: Z3_context,
+    step: &Step,
+    env: &mut HashMap<String, Sv>,
+    effects: &mut Vec<Sv>,
+    use_jit: bool,
+) -> bool {
+    {
         match &step.body {
             StepBody::Scalar(ast) => {
-                let v = if let Some(j) = &step.jit {
+                // Deferred (fixpoint) callers pass use_jit=false: JIT loads
+                // EVERY named input eagerly, defeating the eval interpreter's
+                // branch-laziness that fixpoint resolution depends on — a
+                // JIT'd cycle member would never succeed while any
+                // mentioned-but-unneeded input is still unbound.
+                let v = if let (true, Some(j)) = (use_jit, &step.jit) {
                     match j.call(&env) {
                         Some(r) => if step.result_is_bool { Sv::Bool(r != 0) } else { Sv::Int(r) },
                         None => {
@@ -1387,7 +1473,7 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                                 eprintln!("[fz/run] scalar step {:?} JIT call refused; inputs={:?} env keys={:?}",
                                     step.var, j.inputs, env.keys().collect::<Vec<_>>());
                             }
-                            return None;
+                            return false;
                         }
                     }
                 } else {
@@ -1395,7 +1481,7 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                         Some(v) => v,
                         None => {
                             if trace_enabled() { eprintln!("[fz/run] scalar step {:?} eval refused", step.var); }
-                            return None;
+                            return false;
                         }
                     }
                 };
@@ -1408,12 +1494,12 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                         Some(v) => seq.push(v),
                         None => {
                             if trace_enabled() { eprintln!("[fz/run] seq step {:?} elem eval refused", step.var); }
-                            return None;
+                            return false;
                         }
                     }
                 }
                 if step.is_effects {
-                    effects = seq;
+                    *effects = seq;
                 } else {
                     // Record-Seq intermediate: bind so later steps can index it.
                     env.insert(step.var.clone(), Sv::Seq(seq));
@@ -1430,7 +1516,7 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                         Some(_) => {}
                         None => {
                             if trace_enabled() { eprintln!("[fz/run] guarded step {:?} guard eval refused", step.var); }
-                            return None;
+                            return false;
                         }
                     }
                 }
@@ -1446,13 +1532,13 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                                 b.neg, eval::eval_scalar(ctx, b.guard, &env));
                         }
                     }
-                    return None;
+                    return false;
                 };
                 match body {
                     GBody::Scalar(e) => {
                         let Some(v) = eval::eval_scalar(ctx, *e, &env) else {
                             if trace_enabled() { eprintln!("[fz/run] guarded step {:?} scalar body refused", step.var); }
-                            return None;
+                            return false;
                         };
                         env.insert(step.var.clone(), v);
                     }
@@ -1463,12 +1549,12 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                                 Some(v) => seq.push(v),
                                 None => {
                                     if trace_enabled() { eprintln!("[fz/run] guarded step {:?} seq elem refused", step.var); }
-                                    return None;
+                                    return false;
                                 }
                             }
                         }
                         if step.is_effects {
-                            effects = seq;
+                            *effects = seq;
                         } else {
                             env.insert(step.var.clone(), Sv::Seq(seq));
                         }
@@ -1477,18 +1563,7 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
             }
         }
     }
-
-    // Enforce predicates that reference only bound vars. A predicate that
-    // evaluates false ⇒ this tick is UNSAT for the fast path ⇒ fall through.
-    for &p in &prog.predicates {
-        if let Some(Sv::Bool(b)) = eval::eval_scalar(ctx, p, &env) {
-            if !b {
-                return None;
-            }
-        }
-    }
-
-    Some(RunOut { scalars: env, effects })
+    true
 }
 
 type Z3Tick = (Vec<Sv>, Vec<Sv>);
