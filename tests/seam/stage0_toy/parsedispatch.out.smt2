@@ -1,0 +1,32 @@
+;; manifest: state-fields = pw_h:Int pw_t:Int pd_ka:Int pd_kb:Int pd_kc:Int pd_ta:Int pd_tb:Int pd_tc:Int pd_shape:Int pd_sentinel:Int
+;; manifest: effects-name = effects
+;; manifest: effect-enum-name = Effect
+;; manifest: result-enum-name = Result
+;; manifest: max-effects = 1
+(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))
+(declare-fun last_results () (Array Int Result))
+(declare-fun last_results__len () Int)
+(assert (>= last_results__len 0))
+(declare-datatypes ((LibArg 0) (__SeqOf_LibArg 0) (Effect 0) ) (((ArgInt (ArgInt__f0 Int)) (ArgStr (ArgStr__f0 String)) (ArgReal (ArgReal__f0 Real))) ((__Empty_LibArg) (__Cell_LibArg (head LibArg) (tail __SeqOf_LibArg))) ((ReadLine) (ReadFile (ReadFile__f0 String)) (WriteFile (WriteFile__f0 String) (WriteFile__f1 String)) (LibCall (LibCall__f0 String) (LibCall__f1 String) (LibCall__f2 __SeqOf_LibArg)) (Exit (Exit__f0 Int))) ))
+(declare-fun is_first_tick () Bool)
+(declare-fun pw_h () Int)
+(declare-fun pw_t () Int)
+(declare-fun pd_ka () Int)
+(declare-fun pd_kb () Int)
+(declare-fun pd_kc () Int)
+(assert (= pw_h 100))
+(assert (= pw_t 10))
+(declare-fun pd_ta () Int)
+(assert (= pd_ta (* pd_ka pw_h)))
+(declare-fun pd_tb () Int)
+(assert (= pd_tb (* pd_kb pw_t)))
+(declare-fun pd_tc () Int)
+(assert (= pd_tc (+ pd_ta pd_tb)))
+(declare-fun pd_shape () Int)
+(assert (= pd_shape (+ pd_tc pd_kc)))
+(declare-fun pd_sentinel () Int)
+(assert (= pd_sentinel 42))
+(declare-fun effects () (Array Int Effect))
+(declare-fun effects__len () Int)
+(assert (= effects__len 1))
+(assert (= (select effects 0) (Exit 0)))
