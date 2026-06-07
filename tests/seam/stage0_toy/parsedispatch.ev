@@ -1,0 +1,29 @@
+-- stage0 toy, dispatch claim 2: parse-shape dispatcher.
+-- Fossil-subset discipline: bare-name composition (ShapeWeights inlined
+-- via names-match, fossil-subset.md row 1) + single-binop membership
+-- pins (rows p20/p63/p64). Combines three token kinds into one shape
+-- code: shape = ka*100 + kb*10 + kc. The shell tests shape = 132
+-- (letter '=' digit) to gate the Z3-AST build.
+--
+-- NOTE identifiers are digit-free: this spike's probe_digit_ident.ev
+-- showed a digit inside an identifier junk-drains the body (round-1
+-- `pd_k1 ∈ Int` reproduced it; p00–p70 never covered digit names).
+import "stdlib/kernel.ev"
+
+claim ShapeWeights
+    pw_h ∈ Int = 100
+    pw_t ∈ Int = 10
+
+claim main
+    pw_h ∈ Int
+    pw_t ∈ Int
+    pd_ka ∈ Int
+    pd_kb ∈ Int
+    pd_kc ∈ Int
+    ShapeWeights
+    pd_ta ∈ Int = pd_ka * pw_h
+    pd_tb ∈ Int = pd_kb * pw_t
+    pd_tc ∈ Int = pd_ta + pd_tb
+    pd_shape ∈ Int = pd_tc + pd_kc
+    pd_sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
