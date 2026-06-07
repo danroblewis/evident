@@ -35,10 +35,12 @@
 --           getpid-filler effects (string payloads), then the pure
 --           rebuild. Entries past the EofTok sentinel read 0 from
 --           the calloc'd region and decode to EofTok.
---   PARSE   top-level dispatch: enums and parametrized / non-target
---           claims are SKIPPED (one token per tick); the target
---           bare-head claim enters the claim walk. All consumption
---           is cursor arithmetic (tcur += k) + window tails.
+--   PARSE   top-level dispatch: enums and non-target claims are
+--           SKIPPED (one token per tick); the target claim enters
+--           the claim walk — through the pmode-9 group walk first
+--           when it carries a first-line param list (F1). All
+--           consumption is cursor arithmetic (tcur += k) + window
+--           tails.
 --   WALK    per body line: a one-tick PURE classifier picks the line
 --           kind; lines carrying an expression run the Pratt FSM
 --           (pmode 3, one parser action per tick) to an Expr, which
@@ -159,6 +161,21 @@
 --     per element + len-eq at close), `#s` → the s__len const,
 --     `s[i]` via the existing PrIdx/SelH path; ONE registered seq
 --     var per compile
+--   · STATE CARRIES (E1): `_name ∈ Type` memberships are explicit
+--     carry declarations (the corpus idiom; the oracle REQUIRES the
+--     explicit membership — an unbound `_count` mention is a dropped
+--     constraint). They declare build-context consts + symtab
+--     entries but are NOT state fields and get no `__name` carry;
+--     the first MENTION of a carry splices the base field's textual
+--     carry declare out of cdstr (the serialization now carries it).
+--     `(assert (>= effects__len 0))` floor at ZINIT (zsteps 35-36),
+--     oracle parity.
+--   · FIRST-LINE PARAM LISTS + MULTI-NAME GROUPS (F1): the pmode-9
+--     group walk — a parametrized TARGET claim's params and body
+--     `x, y, z ∈ Nat` lines declare each name as a typed const
+--     (decl + manifest field + carry declare, like memberships);
+--     multi-name groups collect one name per tick and drain one
+--     decl per tick with the latched group type. Scalar types only.
 --   · NOT covered: Real membership / float literals (021 — needs
 --     FloatLit lexing in this FSM + mk_numeral), match as a general
 --     EXPRESSION (only the pmode-6 match-pin shape; bare `y = match`
@@ -167,7 +184,9 @@
 --     enums, 5+-element effects literals, guarded-writer effects
 --     lines (`cond ⇒ effects = ⟨…⟩` — zero corpus occurrences; the
 --     corpus's only conditional effects shape is the ternary chain),
---     quantifiers, composition lines, multi-name memberships
+--     quantifiers, composition lines, Seq(...)-typed / bounded /
+--     pinned multi-name groups, params on non-target claims (still
+--     skipped — F2's composition will index them)
 
 import "stdlib/kernel.ev"
 import "stdlib/z3_ast.ev"
@@ -888,6 +907,12 @@ claim driver_main
     z_iarr ∈ Int
     _z_iarr ∈ Int
     z_iarr = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_iarr)
+    -- E1: the effects floor `(assert (>= effects__len 0))` lives in
+    -- the BUILD context (zsteps 35-36, the ze_lrge/ze_lrassert
+    -- pattern) — the oracle emits it unconditionally for every unit.
+    z_ege ∈ Int
+    _z_ege ∈ Int
+    z_ege = (is_first_tick ? 0 : zstep = 36 ? d_cap_int : _z_ege)
 
     -- ── ED — the enum-declaration machine ────────────────────────
     -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
@@ -1578,6 +1603,15 @@ claim driver_main
     ze_iarr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
         val_sort_h ↦ z_isort, eff ↦ ze_iarr)
+    -- E1 effects floor (zsteps 35-36).
+    ze_ege ∈ Effect
+    ze_ege_ok ∈ Bool
+    ze_ege_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ z_elen,
+        r_h ↦ z_zero, eff ↦ ze_ege, ok ↦ ze_ege_ok, needs_not ↦ ze_ege_nn)
+    ze_eassert ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ z_ege,
+        eff ↦ ze_eassert)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -1586,7 +1620,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 35 ? 0 - 1
+        : (_zstep < 37 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -2070,10 +2104,14 @@ claim driver_main
 
     d_in_dispatch ∈ Bool = (in_parse ∧ (_pmode = 0) ∧ tok_ready)
     d_enter_claim ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ (¬d_is_param))
+    -- F1: a PARAMETRIZED target claim enters the pmode-9 group walk
+    -- (`claim main (` = 3 tokens); params declare + manifest like
+    -- memberships. Non-target parametrized claims still skip.
+    d_enter_claimp ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ d_is_param)
     d_enter_edecl ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil)
         ∧ d_head_is_enum ∧ (¬d_en_reserved) ∧ (¬_ue_done)
         ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches Eq))
-    d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim) ∧ (¬d_enter_edecl))
+    d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim) ∧ (¬d_enter_claimp) ∧ (¬d_enter_edecl))
     d_all_done    ∈ Bool = (d_in_dispatch ∧ d_items_nil)
     d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1) ∧ tok_ready)
     d_in_claim    ∈ Bool = (in_parse ∧ (_pmode = 2))
@@ -2786,9 +2824,10 @@ claim driver_main
 
     d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready)
     -- items drain identically under the claim walk, the effects
-    -- element walk (pmode 5) and the seq-literal walk (pmode 8)
+    -- element walk (pmode 5), the seq-literal walk (pmode 8) and
+    -- the F1 group walk (pmode 9)
     d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
-        ∨ (in_parse ∧ (_pmode = 8)))
+        ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9)))
         ∧ (¬d_witems_nil))
 
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
@@ -3100,6 +3139,11 @@ claim driver_main
 
     c_is_mem ∈ Bool = (c_t1 matches OpIn)
     c_is_nmem ∈ Bool = (c_t1 matches OpNotIn)
+    -- E1: `_`-prefixed membership = an explicit carry declaration.
+    c_is_carry ∈ Bool = (substr(c_name, 0, 1) = "_")
+    -- F1: a multi-name group head (`x, y, z ∈ Nat` — body form).
+    c_mn_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Comma)
+        ∧ (c_t2 matches Ident(_)))
     c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
     c_type_str ∈ String = match c_t2
         Ident(s) ⇒ s
@@ -3162,9 +3206,14 @@ claim driver_main
     d_seq_mem ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_seq_line)
     d_enter_sl ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬c_is_mem)
         ∧ (¬c_is_nmem) ∧ c_seqlit_line)
+    -- F1: a body multi-name group enters the pmode-9 group walk
+    -- (no top-level comma exists in expression grammar, so the
+    -- `Ident , Ident` head is unambiguous).
+    d_enter_mn ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_mn_line
+        ∧ (¬c_seqlit_line))
     d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_claim_end)
         ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
-        ∧ (¬c_seq_line) ∧ (¬c_seqlit_line)
+        ∧ (¬c_seq_line) ∧ (¬c_seqlit_line) ∧ (¬c_mn_line)
         ∧ (c_pinned ∨ (¬c_is_mem)))
     d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter
         ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter)
@@ -3217,7 +3266,7 @@ claim driver_main
     -- `s ∈ Seq ( Int )` is 6.
     d_mem_line ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬d_enter_pratt0)
         ∧ (¬d_enter_el) ∧ (¬d_enter_set) ∧ (¬d_enter_match)
-        ∧ (¬d_enter_sl))
+        ∧ (¬d_enter_sl) ∧ (¬d_enter_mn))
     d_mem_cons ∈ Int = (d_seq_mem ? 6 : c_bound ? 5 : 3)
     c_tyname ∈ String = (c_sc = 1 ? "Bool"
         : c_sc = 2 ? c_type_str
@@ -3236,6 +3285,101 @@ claim driver_main
         ? "(declare-fun _" ++ c_name ++ " () (Array Int Int))\n"
             ++ "(declare-fun _" ++ c_name ++ "__len () Int)\n"
         : "(declare-fun _" ++ c_name ++ " () " ++ c_tyname ++ ")\n")
+
+    -- ── F1: pmode-9 GROUP walk (first-line param lists + body
+    -- multi-name memberships) ─────────────────────────────────────
+    -- Two flavors share one FSM. PARAM (`claim main(a, b ∈ Int,
+    -- ok ∈ Bool)`): groups separated by `,`, list closed by `)`.
+    -- BODY (`x, y, z ∈ Nat`): one group, no separator after the
+    -- type. Collect substate (pg_st 0): one `Ident ,` per tick
+    -- pushes the name; the `Ident ∈ Type` tick declares the LAST
+    -- name through the classifier's own c_mem_items/c_field/c_cdecl
+    -- (same window positions as a plain membership) and latches the
+    -- group type. Drain substate (pg_st 1): one pending name per
+    -- tick declares through pg_drain_items with the latched type.
+    -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
+    -- Seq(...) params and bounds/pins on group lines are descoped
+    -- (zero corpus occurrences of either).
+    pg_pend ∈ TokenList
+    _pg_pend ∈ TokenList
+    pg_st ∈ Int
+    _pg_st ∈ Int
+    pg_param ∈ Bool
+    _pg_param ∈ Bool
+    pg_close ∈ Bool
+    _pg_close ∈ Bool
+    pg_sc ∈ Int
+    _pg_sc ∈ Int
+    pg_nat ∈ Bool
+    _pg_nat ∈ Bool
+    pg_ty ∈ String
+    _pg_ty ∈ String
+
+    pg_active ∈ Bool = (in_parse ∧ (_pmode = 9) ∧ d_witems_nil
+        ∧ tok_ready)
+    pg_collect ∈ Bool = (pg_active ∧ (_pg_st = 0))
+    pg_take2 ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
+        ∧ (ww_t1 matches Comma))
+    pg_ty_tick ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
+        ∧ c_is_mem)
+    pg_bail ∈ Bool = (pg_collect ∧ (¬pg_take2) ∧ (¬pg_ty_tick))
+    pg_drain ∈ Bool = (pg_active ∧ (_pg_st = 1))
+
+    pg_have_pend ∈ Bool = (¬(_pg_pend matches TLNil))
+    pg_hd_t ∈ Token = match _pg_pend
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    pg_hd_nm ∈ String = match pg_hd_t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    pg_tail ∈ TokenList = match _pg_pend
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    pg_last ∈ Bool = (pg_tail matches TLNil)
+
+    -- group-end bookkeeping on the type tick: PARAM flavor also
+    -- consumes the separator (`,` next group / `)` list end).
+    pg_ty_cons ∈ Int = (_pg_param ? 4 : 3)
+    pg_ty_close ∈ Bool = (ww_t3 matches RParen)
+    -- where the walk goes when the current group is fully declared
+    pg_group_done_mode ∈ Int = ((¬_pg_param) ? 2
+        : _pg_close ? 2
+        : 9)
+    pg_ty_exit_mode ∈ Int = ((¬_pg_param) ? 2
+        : pg_ty_close ? 2
+        : 9)
+
+    pg_pend = (is_first_tick ? TLNil
+        : d_enter_claimp ? TLNil
+        : d_enter_mn ? TLCons(c_t0, TLNil)
+        : pg_take2 ? TLCons(ww_t0, _pg_pend)
+        : pg_drain ? pg_tail
+        : _pg_pend)
+    pg_st = (is_first_tick ? 0
+        : (d_enter_claimp ∨ d_enter_mn) ? 0
+        : pg_ty_tick ? (pg_have_pend ? 1 : 0)
+        : (pg_drain ∧ pg_last) ? 0
+        : _pg_st)
+    pg_param = (is_first_tick ? false
+        : d_enter_claimp ? true
+        : d_enter_mn ? false
+        : _pg_param)
+    pg_close = (is_first_tick ? false
+        : d_enter_claimp ? false
+        : (pg_ty_tick ∧ _pg_param) ? pg_ty_close
+        : _pg_close)
+    pg_sc = (is_first_tick ? 0 : pg_ty_tick ? c_sc : _pg_sc)
+    pg_nat = (is_first_tick ? false : pg_ty_tick ? c_is_nat : _pg_nat)
+    pg_ty = (is_first_tick ? "" : pg_ty_tick ? c_tyname : _pg_ty)
+
+    pg_field ∈ String = pg_hd_nm ++ ":" ++ _pg_ty
+    pg_cdecl ∈ String = ("(declare-fun _" ++ pg_hd_nm ++ " () "
+        ++ _pg_ty ++ ")\n")
+    pg_drain_items ∈ C2Items = C2ICons(C2DeclConst(pg_hd_nm, _pg_sc),
+        (_pg_nat
+            ? C2ICons(C2NatBound, C2ICons(C2AssertTop,
+                C2ICons(C2Drop, C2INil)))
+            : C2ICons(C2Drop, C2INil)))
 
     -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
     d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
@@ -3359,7 +3503,7 @@ claim driver_main
     d_stk_rot3 ∈ Bool = (d_processing ∧ d_it_rot3)
 
     hstk = (is_first_tick ? C2HNil
-        : d_enter_claim ? C2HNil
+        : (d_enter_claim ∨ d_enter_claimp) ? C2HNil
         : d_push_ident ? C2HCons(d_lk, d_hstk_in)
         : d_push_h ? C2HCons(d_ph_h, d_hstk_in)
         : d_push_decl ? C2HCons(d_tmp_in, d_hstk_in)
@@ -3373,7 +3517,7 @@ claim driver_main
         : d_hstk_in)
 
     witems = (is_first_tick ? C2INil
-        : d_enter_claim ? C2INil
+        : (d_enter_claim ∨ d_enter_claimp) ? C2INil
         : d_classify ? d_new_items
         : p_done ? d_pratt_items
         : el_b2 ? el_lc_items
@@ -3383,6 +3527,8 @@ claim driver_main
         : mp_fire ? mp_items
         : ms_close ? ms_items
         : sl_close ? sl_close_items
+        : pg_ty_tick ? c_mem_items
+        : pg_drain ? pg_drain_items
         : ¬d_processing ? _witems
         : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
@@ -3435,6 +3581,7 @@ claim driver_main
     -- Exactly one consumer acts per tick (mode bools are mutually
     -- exclusive and tok_ready-gated); fetch ticks consume nothing.
     dcons ∈ Int = (d_enter_claim ? 2
+        : d_enter_claimp ? 3
         : d_enter_edecl ? 3
         : d_enter_skip ? 1
         : (d_in_skip ∧ (¬d_skip_stop)) ? 1
@@ -3457,6 +3604,10 @@ claim driver_main
         : (ms_close ∨ ms_bad) ? 1
         : d_enter_sl ? 3
         : (sl_close ∨ sl_comma) ? 1
+        : d_enter_mn ? 2
+        : pg_take2 ? 2
+        : pg_ty_tick ? pg_ty_cons
+        : pg_bail ? 1
         : d_enter_pratt ? d_pratt_cons0
         : d_mem_line ? d_mem_cons
         : p_done ? d_done_cons
@@ -3479,18 +3630,41 @@ claim driver_main
 
     -- set-membership lines (`x ∈ {…}`) constrain an EXISTING var —
     -- no decl, no state field, no carry.
+    -- E1: a `_`-prefixed membership (`_count ∈ Int`, the corpus's
+    -- explicit carry declaration — the oracle REQUIRES it, probed:
+    -- an unbound `_count` mention is a dropped constraint) declares
+    -- a build-context const + symtab entry like any membership but
+    -- is NOT a state field and gets NO `__name` carry of its own.
     c_field_add ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_is_mem
-        ∧ (¬c_eff_line) ∧ (¬c_set_line))
+        ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_is_carry))
+    -- E1: the first time a `_name` const is MENTIONED in an
+    -- expression (d_lk_read of a carry name), the solver
+    -- serialization will carry its declare-fun — so the textual
+    -- carry line the base field appended must be spliced out of
+    -- cdstr or the unit gets a duplicate declare. The search key
+    -- ends at " () " so `_count` can't prefix-match `_count2`;
+    -- later mentions find nothing (cs_pos = -1) and no-op.
+    d_carry_strip ∈ Bool = (d_lk_read ∧ (substr(d_lkname, 0, 1) = "_"))
+    cs_pos ∈ Int = index_of(_cdstr, "(declare-fun " ++ d_lkname ++ " () ", 0)
+    cs_nl ∈ Int = index_of(_cdstr, "\n", cs_pos)
+    cs_cut ∈ String = (substr(_cdstr, 0, cs_pos)
+        ++ substr(_cdstr, cs_nl + 1, #_cdstr - (cs_nl + 1)))
     fstr = (is_first_tick ? ""
         : c_field_add ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
+        : pg_ty_tick ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
+        : pg_drain ? (_fstr = "" ? pg_field : _fstr ++ " " ++ pg_field)
         : _fstr)
     cdstr = (is_first_tick ? ""
         : c_field_add ? _cdstr ++ c_cdecl
+        : pg_ty_tick ? _cdstr ++ c_cdecl
+        : pg_drain ? _cdstr ++ pg_cdecl
+        : (d_carry_strip ∧ (cs_pos ≥ 0)) ? cs_cut
         : _cdstr)
 
     pmode = (is_first_tick ? 0
         : entering_parse ? 0
         : d_enter_claim ? 2
+        : d_enter_claimp ? 9
         : d_enter_edecl ? 4
         : d_enter_skip ? 1
         : d_skip_stop ? 0
@@ -3499,6 +3673,10 @@ claim driver_main
         : d_enter_set ? 7
         : d_enter_match ? 6
         : d_enter_sl ? 8
+        : d_enter_mn ? 9
+        : pg_bail ? 2
+        : pg_ty_tick ? (pg_have_pend ? 9 : pg_ty_exit_mode)
+        : (pg_drain ∧ pg_last) ? pg_group_done_mode
         : d_enter_pratt ? 3
         : p_done ? (_pk_kind = 3 ? 5
             : _pk_kind = 4 ? ((pr_bad ∨ mq_wc) ? 2 : 6)
@@ -3766,6 +3944,8 @@ claim driver_main
         : zstep = 32 ? ⟨ze_three⟩
         : zstep = 33 ? ⟨ze_four⟩
         : zstep = 34 ? ⟨ze_iarr⟩
+        : zstep = 35 ? ⟨ze_ege⟩
+        : zstep = 36 ? ⟨ze_eassert⟩
         : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩
