@@ -120,14 +120,12 @@ claim BuildZ3QueryConstructor(
 
 -- ── §8 companions: applying the harvested decls ──────────────────
 
--- Z3_mk_app(ctx, decl, n_args, args[]) → Z3_ast. args[] is an
--- IN-array of n_args 8-byte Z3_ast handles. This is how the decls
--- harvested by Z3_query_constructor are used: MkApp(ctor_decl, [v…])
--- builds the variant value, MkApp(tester_decl, [x]) builds
--- ((_ is Ctor) x), MkApp(accessor_decl, [x]) projects a field.
-claim BuildZ3MkApp(ctx_h, decl_h, n_args, args_arr_p ∈ Int, eff ∈ Effect)
-    eff = LibCall("libz3", "Z3_mk_app",
-        ⟨ArgInt(ctx_h), ArgInt(decl_h), ArgInt(n_args), ArgInt(args_arr_p)⟩)
+-- Z3_mk_app sugar lives in stdlib/z3_core.ev (claim names are global;
+-- the duplicate that briefly lived here was removed at merge time).
+-- Usage with the decls harvested by Z3_query_constructor:
+-- MkApp(ctor_decl, [v…]) builds the variant value,
+-- MkApp(tester_decl, [x]) builds ((_ is Ctor) x),
+-- MkApp(accessor_decl, [x]) projects a field.
 
 -- Z3_simplify(ctx, ast) → Z3_ast. Rewrites accessor-of-constructor
 -- (green_val(Green(7)) → 7) and friends; the proof fixture uses it
