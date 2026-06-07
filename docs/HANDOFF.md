@@ -339,3 +339,22 @@ NEXT (in order):
    repoints the shell cwd into agent worktrees after notifications
    — `cd /Users/daniellewis/evident` explicitly in EVERY git/build
    command.
+
+## Resume point 3 (2026-06-08 morning)
+
+Artifacts PROMOTED (oracle-regenerated, gated): compiler.smt2
+(a085f93, census-identical 14/138 to fossil — regression-clean) and
+sample.smt2 (df48137 — the expr-slot-binding port LIVE and
+verified). P2 COMPLETE: all five compiler2/translate2_*.ev passes
+merged, every fixture oracle-compiled + kernel-run exit 0 with live
+negative controls. Key proof: (B (+ 3 4)) → "(B 7)".
+
+P3 (driver) prerequisites collected by the P2 agents:
+- compiler/parser.ev lacks EField/ECall Expr nodes (record access /
+  record literals can't be walked from source yet).
+- evident-oracle resolves imports from CWD — run from repo root.
+- These FSM shapes run functionizer-residual (perf-only).
+- Handle pin discipline for long drivers: capture AND inc_ref on
+  builder-phase+1 (bool_fixture.ev is the reference; the committed
+  test_translate_arith_via_z3.ev does it wrong and segfaults —
+  tracked task).
