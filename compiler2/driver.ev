@@ -106,12 +106,24 @@
 --   · symbol table: FTI buffer at corpus scale (B1) — 1024 handle
 --     slots in a calloc'd buffer + fixed-width-32 name records in a
 --     Z3 String; lookup = pure index_of/32 + one __mem.read_long.
---     Enum-value table: 6
---   · no `_<name>` carry-over decls in the emitted unit (fixtures
---     exit on tick 0; multi-tick user programs are later)
+--     Enum-value table: 6. Slots 0/1 pre-seeded with the
+--     kernel-provided last_results / is_first_tick consts (D3).
+--   · D3: the Result floor is a FOURTH ED run (sort + the
+--     IntResult/StringResult tester+accessor decls harvested);
+--     last_results ((Array Int Result)) / last_results__len /
+--     is_first_tick are build-context consts; `e[i]` parses as a
+--     PrIdx postfix floor in the Pratt FSM → ECall2("__index") →
+--     C2SelH (mk_select); a RESTRICTED match-pin shape
+--     `name ∈ Type = match scrut · Ctor(b) ⇒ atom · _ ⇒ atom`
+--     (scrut = ident | last_results[i]; Ctor ∈ {IntResult,
+--     StringResult}) lowers to the fossil's tester/accessor ite
+--   · C2: set-literal memberships `x ∈ {…}` / `x ∉ {…}` (int
+--     elements, any count, ⟨⟩ empty → false) or-fold one element
+--     per tick and assert at the closing brace
 --   · NOT covered: Real membership / float literals (021 — needs
---     FloatLit lexing in this FSM + mk_numeral), match/matches
---     (006), payloaded user enum variants, multiple user enums,
+--     FloatLit lexing in this FSM + mk_numeral), general match /
+--     matches (006 — needs user-enum tester harvest + 3-arm match),
+--     payloaded user enum variants, multiple user enums,
 --     3+-element effects literals, quantifiers, Seq values,
 --     composition lines, multi-name memberships
 
@@ -144,6 +156,7 @@ enum C2Item =
     C2SelectEq(Int)
     C2LenEq(Int)
     C2StrOp(String, Int)
+    C2SelH
 
 enum C2Items =
     C2INil
@@ -265,6 +278,11 @@ claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
        : tag = 66 ? Question
        : tag = 67 ? Hash
        : tag = 68 ? Colon
+       : tag = 69 ? LBracket
+       : tag = 70 ? RBracket
+       : tag = 71 ? LBrace
+       : tag = 72 ? RBrace
+       : tag = 73 ? OpNotIn
        : EofTok)
 
 -- ── Operator precedence (oracle-verified ladder, P3c) ─────────────
@@ -305,12 +323,16 @@ claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
     right = pc_im
 
 -- Operator-stack entries for the Pratt FSM. PrLP / PrQuest /
--- PrCall are floor markers (never auto-reduced; prec -1); PrTern is
--- the armed ternary (pops 3 operands); PrNot the prefix ¬ and
--- PrHash the prefix `#` (each pops 1; PrHash reduces to
+-- PrCall / PrIdx are floor markers (never auto-reduced; prec -1);
+-- PrTern is the armed ternary (pops 3 operands); PrNot the prefix ¬
+-- and PrHash the prefix `#` (each pops 1; PrHash reduces to
 -- ECall1("str_len", e)); PrBin a binary operator (pops 2).
 -- PrCall(name, k) carries the call head + the COMMA count so far —
 -- argc at close is k+1 (the surface has no zero-arg calls).
+-- PrIdx is the postfix-index floor: a `[` after a completed operand
+-- pushes it (D3 — `last_results[0]`); the matching `]` pops base +
+-- index into ECall2("__index", base, idx). `[` bumps pd like `(`,
+-- so a `]` can never terminate the expression while a PrIdx is open.
 -- PrNone is the empty-stack sentinel.
 enum PrOp =
     PrBin(Op)
@@ -320,6 +342,7 @@ enum PrOp =
     PrNot
     PrHash
     PrCall(String, Int)
+    PrIdx
     PrNone
 
 enum PrOps =
@@ -412,6 +435,8 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_is_not ∈ Bool = (ps_hd matches OpNot)
     ps_is_hash ∈ Bool = (ps_hd matches Hash)
     ps_is_com ∈ Bool = (ps_hd matches Comma)
+    ps_is_lb ∈ Bool = (ps_hd matches LBracket)
+    ps_is_rb ∈ Bool = (ps_hd matches RBracket)
     ps_hd_nm ∈ String = match ps_hd
         Ident(s2) ⇒ s2
         _ ⇒ ""
@@ -435,6 +460,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_top_quest ∈ Bool = (ps_top matches PrQuest)
     ps_top_lp ∈ Bool = (ps_top matches PrLP)
     ps_top_call ∈ Bool = (ps_top matches PrCall(_, _))
+    ps_top_idx ∈ Bool = (ps_top matches PrIdx)
     ps_tc_nm ∈ String = match ps_top
         PrCall(n2, _) ⇒ n2
         _ ⇒ ""
@@ -496,8 +522,9 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬ps_is_lp) ∧ (¬ps_is_not)
         ∧ (¬ps_is_hash))
 
-    ps_cont ∈ Bool = (ps_bin_ok ∨ ps_is_q
+    ps_cont ∈ Bool = (ps_bin_ok ∨ ps_is_q ∨ ps_is_lb
         ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0))
+        ∨ (ps_is_rb ∧ (pd > 0))
         ∨ (ps_is_com ∧ (cd > 0)))
     ps_arr ∈ Bool = ((¬expop) ∧ (ps_bin_ok ∨ ps_is_q))
     ps_arr_red ∈ Bool = (ps_arr ∧ ps_top_red
@@ -508,11 +535,17 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_rp ∈ Bool = ((¬expop) ∧ ps_is_rp ∧ (pd > 0))
     ps_rp_close ∈ Bool = (ps_rp ∧ ps_top_lp)
     ps_rp_call ∈ Bool = (ps_rp ∧ ps_top_call)
+    -- postfix index (D3): `[` after a completed operand opens a
+    -- PrIdx floor; `]` over the PrIdx top closes it.
+    ps_sh_idx ∈ Bool = ((¬expop) ∧ ps_is_lb)
+    ps_rb ∈ Bool = ((¬expop) ∧ ps_is_rb ∧ (pd > 0))
+    ps_rb_close ∈ Bool = (ps_rb ∧ ps_top_idx)
     ps_com ∈ Bool = ((¬expop) ∧ ps_is_com ∧ (cd > 0))
     ps_com_bump ∈ Bool = (ps_com ∧ ps_top_call)
     ps_end ∈ Bool = ((¬expop) ∧ (¬ps_cont))
     ps_need_red ∈ Bool = ((ps_col ∧ (¬ps_col_swap))
         ∨ (ps_rp ∧ (¬ps_rp_close) ∧ (¬ps_rp_call))
+        ∨ (ps_rb ∧ (¬ps_rb_close))
         ∨ (ps_com ∧ (¬ps_com_bump))
         ∨ (ps_end ∧ (¬ps_ops_nil))
         ∨ ps_arr_red)
@@ -524,7 +557,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
 
     ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not ∨ ps_sh_hash
         ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close ∨ ps_rp_call
-        ∨ ps_com_bump)
+        ∨ ps_com_bump ∨ ps_sh_idx ∨ ps_rb_close)
     scons = (ps_sh_call ? 2 : ps_consume ? 1 : 0)
     ntoks = (ps_sh_call ? ps_tl2 : ps_consume ? ps_tl : toks)
 
@@ -545,9 +578,11 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_red_base ∈ ExprList = ((ps_top_not ∨ ps_top_hash) ? ps_o_t1
         : ps_top_tern ? ps_o_t3
         : ps_o_t2)
+    ps_idx_e ∈ Expr = ECall2("__index", ps_o2, ps_o1)
     nouts = (ps_sh_atom ? ELCons(ps_atom_e, outs)
         : ps_reduce ? ELCons(ps_red_e, ps_red_base)
         : ps_rp_call ? ELCons(ps_call_e, ps_call_base)
+        : ps_rb_close ? ELCons(ps_idx_e, ps_o_t2)
         : outs)
 
     ps_push ∈ PrOp = (ps_is_q ? PrQuest : PrBin(ps_bin_o))
@@ -555,20 +590,22 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : ps_sh_not ? PrCons(PrNot, ops)
         : ps_sh_hash ? PrCons(PrHash, ops)
         : ps_sh_call ? PrCons(PrCall(ps_hd_nm, 0), ops)
+        : ps_sh_idx ? PrCons(PrIdx, ops)
         : ps_arr_shift ? PrCons(ps_push, ops)
         : ps_col_swap ? PrCons(PrTern, ps_ops_tl)
         : ps_com_bump ? PrCons(PrCall(ps_tc_nm, ps_tc_k + 1), ps_ops_tl)
-        : (ps_rp_close ∨ ps_rp_call ∨ ps_reduce ∨ ps_discard) ? ps_ops_tl
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close ∨ ps_reduce
+            ∨ ps_discard) ? ps_ops_tl
         : ops)
 
     nexpop = (ps_sh_atom ? false
-        : (ps_rp_close ∨ ps_rp_call) ? false
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close) ? false
         : (ps_arr_shift ∨ ps_col_swap ∨ ps_sh_lp ∨ ps_sh_not
-            ∨ ps_sh_hash ∨ ps_sh_call ∨ ps_com_bump) ? true
+            ∨ ps_sh_hash ∨ ps_sh_call ∨ ps_com_bump ∨ ps_sh_idx) ? true
         : expop)
 
-    npd = ((ps_sh_lp ∨ ps_sh_call) ? pd + 1
-        : (ps_rp_close ∨ ps_rp_call) ? pd - 1
+    npd = ((ps_sh_lp ∨ ps_sh_call ∨ ps_sh_idx) ? pd + 1
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close) ? pd - 1
         : pd)
     nqd = ((ps_arr_shift ∧ ps_is_q) ? qd + 1 : ps_col_swap ? qd - 1 : qd)
     ncd = (ps_sh_call ? cd + 1 : ps_rp_call ? cd - 1 : cd)
@@ -616,7 +653,7 @@ claim driver_main
     -- reaches 3 with the machine idle.
     zstep  ∈ Int
     _zstep ∈ Int
-    ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 3)
+    ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 4)
     zstep = (is_first_tick ? 0 - 2
         : (_zstep = 9 ∧ ed_hold) ? 9
         : (_zstep < 60 ? _zstep + 1 : _zstep))
@@ -683,14 +720,48 @@ claim driver_main
     st_base ∈ Int
     _st_base ∈ Int
     st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
+    -- D3: last_results / last_results__len / is_first_tick as real
+    -- build-context consts (zsteps 22-31), so user constraints can
+    -- reference them. The last_results__len floor assert moves INTO
+    -- the build context (it always serializes, so the textual
+    -- prelude drops its len lines unconditionally; the Result
+    -- datatype + last_results decl lines drop only when a user
+    -- constraint mentioned last_results — see saw_lr).
+    z_lrsort ∈ Int
+    _z_lrsort ∈ Int
+    z_lrsort = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_lrsort)
+    z_sym_lr ∈ Int
+    _z_sym_lr ∈ Int
+    z_sym_lr = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_sym_lr)
+    z_lastres ∈ Int
+    _z_lastres ∈ Int
+    z_lastres = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_lastres)
+    z_sym_lrl ∈ Int
+    _z_sym_lrl ∈ Int
+    z_sym_lrl = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_sym_lrl)
+    z_lrlen ∈ Int
+    _z_lrlen ∈ Int
+    z_lrlen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_lrlen)
+    z_sym_ift ∈ Int
+    _z_sym_ift ∈ Int
+    z_sym_ift = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_sym_ift)
+    z_ift ∈ Int
+    _z_ift ∈ Int
+    z_ift = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_ift)
+    z_lrge ∈ Int
+    _z_lrge ∈ Int
+    z_lrge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lrge)
 
     -- ── ED — the enum-declaration machine ────────────────────────
     -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
     -- build context through translate2_ctor.ev's step claims, then
     -- harvests each variant's ctor func_decl + (nullary) value.
-    -- It runs FOUR times: three ZINIT floor runs (ed_src 0 LibArg,
-    -- 1 __SeqOf_LibArg, 2 Effect — zstep holds at 9) and once per
-    -- USER enum at parse time (pmode 4, ed_user).
+    -- It runs FIVE times: four ZINIT floor runs (ed_src 0 LibArg,
+    -- 1 __SeqOf_LibArg, 2 Effect, 3 Result — zstep holds at 9) and
+    -- once per USER enum at parse time (pmode 4, ed_user). The
+    -- Result run (D3) additionally harvests the IntResult /
+    -- StringResult tester + accessor decls (acts 3 steps 3-4 read
+    -- qout+8 / qout+16 instead of fillers).
     --
     -- Acts/steps (ed_act · ed_step; one effect per tick, captures
     -- land next tick keyed off the (_ed_act, _ed_step) that ran):
@@ -709,8 +780,10 @@ claim driver_main
     -- Arena layout for the machine (reused per run; the WALK's
     -- regions live at +200..247 and never overlap in time):
     --   +0 fnames[3] · +24 fsorts[3] · +48 srefs (2 packed writes) ·
-    --   +64 ctors[5] · +104 sort_names[1] · +112 sorts_out[1] ·
-    --   +120 clists[1] · +128 query out block (16 + 8·3)
+    --   +64 ctors[8] (Result has 6 variants — the old ctors[5]
+    --   collided with sort_names) · +128 sort_names[1] ·
+    --   +136 sorts_out[1] · +144 clists[1] ·
+    --   +152 query out block (16 + 8·3)
     ed_act ∈ Int
     _ed_act ∈ Int
     ed_step ∈ Int
@@ -756,27 +829,42 @@ claim driver_main
         EVNil)))
     d_eff_decl ∈ EnumDeclAst
     EffectEnumDecl(decl ↦ d_eff_decl)
+    -- Result floor (D3): variant order matches the kernel's textual
+    -- prelude / tick.rs decode (NoResult, IntResult, StringResult,
+    -- RealResult, EofResult, ErrorResult).
+    d_res_decl ∈ EnumDeclAst = EnumD("Result",
+        EVCons(EVDecl("NoResult"),
+        EVCons(EVDeclP("IntResult", EVFCons(EVFType("Int"), EVFNil)),
+        EVCons(EVDeclP("StringResult", EVFCons(EVFType("String"), EVFNil)),
+        EVCons(EVDeclP("RealResult", EVFCons(EVFType("Real"), EVFNil)),
+        EVCons(EVDecl("EofResult"),
+        EVCons(EVDeclP("ErrorResult", EVFCons(EVFType("String"), EVFNil)),
+        EVNil)))))))
     d_la_vs ∈ EnumVariantList
     EnumVariantListOf(decl ↦ d_la_decl, vs ↦ d_la_vs)
     d_sq_vs ∈ EnumVariantList
     EnumVariantListOf(decl ↦ d_sq_decl, vs ↦ d_sq_vs)
     d_eff_vs ∈ EnumVariantList
     EnumVariantListOf(decl ↦ d_eff_decl, vs ↦ d_eff_vs)
+    d_res_vs ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ d_res_decl, vs ↦ d_res_vs)
 
     -- Start triggers. Floor runs start when zstep first parks at 9
     -- and after each completed floor run; the user run starts from
     -- the pmode-4 collection (ec_start, defined with the dispatcher).
     ed_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
-        ∧ (_ed_act = 0) ∧ (_ed_src < 3))
+        ∧ (_ed_act = 0) ∧ (_ed_src < 4))
     ed_go ∈ Bool = (ed_go_floor ∨ ec_start)
     ed_go_vs ∈ EnumVariantList = (ec_start ? ec_list_n
         : _ed_src = 0 ? d_la_vs
         : _ed_src = 1 ? d_sq_vs
-        : d_eff_vs)
+        : _ed_src = 2 ? d_eff_vs
+        : d_res_vs)
     ed_go_name ∈ String = (ec_start ? _ue_name
         : _ed_src = 0 ? "LibArg"
         : _ed_src = 1 ? "__SeqOf_LibArg"
-        : "Effect")
+        : _ed_src = 2 ? "Effect"
+        : "Result")
 
     -- Current variant (head of the remaining list) + its shape.
     -- The START tick already runs step 0 (the first variant's name
@@ -922,6 +1010,8 @@ claim driver_main
     _sq_sort ∈ Int
     z_effsort ∈ Int
     _z_effsort ∈ Int
+    z_ressort ∈ Int
+    _z_ressort ∈ Int
     ue_sort ∈ Int
     _ue_sort ∈ Int
     ed_sort_cap ∈ Bool = (_ed_act = 2 ∧ _ed_step = 4)
@@ -931,6 +1021,8 @@ claim driver_main
         : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 1) ? d_cap_int : _sq_sort)
     z_effsort = (is_first_tick ? 0
         : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 2) ? d_cap_int : _z_effsort)
+    z_ressort = (is_first_tick ? 0
+        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 3) ? d_cap_int : _z_ressort)
     ue_sort = (is_first_tick ? 0
         : (ed_sort_cap ∧ _ed_user) ? d_cap_int : _ue_sort)
 
@@ -960,6 +1052,46 @@ claim driver_main
     _z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0
         : (ed_val_cap ∧ ed_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
+
+    -- Result-floor tester + accessor decls (D3). During the Result
+    -- run (ed_src 3) a payload variant's act-3 steps 3/4 read the
+    -- query out-block's tester (qout+8) and accessor (qout+16)
+    -- slots instead of emitting fillers. The tester read (emitted at
+    -- step 3) captures at the _ed_step = 3 tick, where ed_vname is
+    -- still the current variant; the accessor read (emitted at step
+    -- 4 — the advance tick) captures at the _ed_step = 4 tick, where
+    -- the variant walk has already moved on, so res_acc_pend carries
+    -- WHICH register the landing value belongs to.
+    ed_res_run ∈ Bool = ((¬_ed_user) ∧ (_ed_src = 3))
+    ed_res_harvest ∈ Bool = (ed_res_run ∧ (¬ed_nullary))
+    z_irtest ∈ Int
+    _z_irtest ∈ Int
+    z_irtest = (is_first_tick ? 0
+        : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "IntResult")
+            ? d_cap_int : _z_irtest)
+    z_srtest ∈ Int
+    _z_srtest ∈ Int
+    z_srtest = (is_first_tick ? 0
+        : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "StringResult")
+            ? d_cap_int : _z_srtest)
+    res_acc_pend ∈ Int
+    _res_acc_pend ∈ Int
+    res_acc_pend = (is_first_tick ? 0
+        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_res_harvest)
+            ? (ed_vname = "IntResult" ? 1
+              : ed_vname = "StringResult" ? 2
+              : 0)
+        : 0)
+    z_iracc ∈ Int
+    _z_iracc ∈ Int
+    z_iracc = (is_first_tick ? 0
+        : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 1) ? d_cap_int
+        : _z_iracc)
+    z_sracc ∈ Int
+    _z_sracc ∈ Int
+    z_sracc = (is_first_tick ? 0
+        : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 2) ? d_cap_int
+        : _z_sracc)
 
     -- User-enum variant VALUE table (nullary variants of the one
     -- supported user enum; `Red` in an expression resolves here).
@@ -1009,10 +1141,10 @@ claim driver_main
     ed_fsort_p ∈ Int = z_arena + 24
     ed_sr_p ∈ Int = z_arena + 48
     ed_ctors_p ∈ Int = z_arena + 64
-    ed_names_p ∈ Int = z_arena + 104
-    ed_souts_p ∈ Int = z_arena + 112
-    ed_clists_p ∈ Int = z_arena + 120
-    ed_qout_p ∈ Int = z_arena + 128
+    ed_names_p ∈ Int = z_arena + 128
+    ed_souts_p ∈ Int = z_arena + 136
+    ed_clists_p ∈ Int = z_arena + 144
+    ed_qout_p ∈ Int = z_arena + 152
 
     -- ED effects. Sym handles emitted at step k are captured at the
     -- k+1 tick; the write batch uses the just-landed one directly.
@@ -1079,6 +1211,11 @@ claim driver_main
     ede_app0 ∈ Effect
     CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ d_cap_int, n_args ↦ 0,
         args_p ↦ 0, eff ↦ ede_app0)
+    -- Result-run harvest reads (D3): tester + accessor decls.
+    ede_rdtest ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p + 8, eff ↦ ede_rdtest)
+    ede_rdacc ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p + 16, eff ↦ ede_rdacc)
     ede_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
     ed_eff1 ∈ Effect = (ed_cur_act = 1 ?
@@ -1099,7 +1236,10 @@ claim driver_main
             (ed_cur_step = 0 ? ede_rdctor
             : ed_cur_step = 1 ? ede_query
             : ed_cur_step = 2 ? ede_rddecl
-            : ed_cur_step = 3 ? (ed_nullary ? ede_app0 : ede_filler)
+            : ed_cur_step = 3 ? (ed_nullary ? ede_app0
+                : ed_res_harvest ? ede_rdtest
+                : ede_filler)
+            : ed_res_harvest ? ede_rdacc
             : ede_filler)
         : ede_filler)
     ed_w5 ∈ Bool = (ed_cur_act = 1 ∧ ed_cur_step = 5)
@@ -1154,6 +1294,42 @@ claim driver_main
     -- declared const's Z3_ast handle, indexed by decl order. Names
     -- live in st_names (fixed-width Z3 String), not here.
     ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(1024), ArgInt(8)⟩)
+    -- D3 consts (zsteps 22-31).
+    ze_lrarr ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ z_ressort, eff ↦ ze_lrarr)
+    ze_sym_lr ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "last_results",
+        eff ↦ ze_sym_lr)
+    ze_lastres ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_lr, sort_h ↦ z_lrsort,
+        eff ↦ ze_lastres)
+    ze_sym_lrl ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "last_results__len",
+        eff ↦ ze_sym_lrl)
+    ze_lrlen ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_lrl, sort_h ↦ z_isort,
+        eff ↦ ze_lrlen)
+    ze_sym_ift ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "is_first_tick",
+        eff ↦ ze_sym_ift)
+    ze_ift ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_ift, sort_h ↦ z_bsort,
+        eff ↦ ze_ift)
+    ze_lrge ∈ Effect
+    ze_lrge_ok ∈ Bool
+    ze_lrge_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ z_lrlen,
+        r_h ↦ z_zero, eff ↦ ze_lrge, ok ↦ ze_lrge_ok, needs_not ↦ ze_lrge_nn)
+    ze_lrassert ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ z_lrge,
+        eff ↦ ze_lrassert)
+    -- symtab pre-seed: slots 0/1 = last_results / is_first_tick
+    -- (st_names is initialized with the matching two records).
+    ze_seed0 ∈ Effect
+    BuildMemWriteLong(addr ↦ st_base, value ↦ z_lastres, eff ↦ ze_seed0)
+    ze_seed1 ∈ Effect
+    BuildMemWriteLong(addr ↦ st_base + 8, value ↦ z_ift, eff ↦ ze_seed1)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -1162,7 +1338,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 22 ? 0 - 1
+        : (_zstep < 32 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -1581,6 +1757,8 @@ claim driver_main
         : _pmode = 3 ? 2
         : _pmode = 4 ? (_ed_act = 0 ? 2 : 0)
         : _pmode = 5 ? (d_witems_nil ? 8 : 0)
+        : _pmode = 6 ? 6
+        : _pmode = 7 ? 2
         : d_witems_nil ? 5
         : 0)
     tok_ready ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem ≥ w_need))
@@ -1742,6 +1920,149 @@ claim driver_main
         : ((p_done ∧ (¬pr_bad) ∧ _pk_kind = 3) ∨ el_b2) ? _el_cnt + 1
         : _el_cnt)
 
+    -- ── pmode 6: match-pin walk (D3) ──────────────────────────────
+    -- `name ∈ Type = match <scrut>` + exactly two arms:
+    --   `Ctor ( bind ) ⇒ <atom>` then `_ ⇒ <atom>`.
+    -- scrut is a plain ident or `last_results [ <int> ]`. Lowering is
+    -- the fossil's documented ite-over-tester shape:
+    --   (ite ((_ is Ctor) scrut) (Ctor__f0 scrut) else-atom)
+    -- with the arm-1 body equal to its bind name reading the payload
+    -- through the harvested accessor; any other atom body passes
+    -- through unchanged. Ctor must be IntResult / StringResult (the
+    -- Result floor — the corpus's only match-pin ctors over
+    -- last_results; an unknown ctor app gets decl handle 0,
+    -- unbound-ident parity).
+    mp_st ∈ Int
+    _mp_st ∈ Int
+    mp_name ∈ String
+    _mp_name ∈ String
+    mp_sc ∈ Int
+    _mp_sc ∈ Int
+    mp_lr ∈ Bool
+    _mp_lr ∈ Bool
+    mp_idx ∈ Int
+    _mp_idx ∈ Int
+    mp_scrut ∈ String
+    _mp_scrut ∈ String
+    mp_ctor ∈ String
+    _mp_ctor ∈ String
+    mp_bind ∈ String
+    _mp_bind ∈ String
+    mp_b1 ∈ Expr
+    _mp_b1 ∈ Expr
+
+    m_act ∈ Bool = (in_parse ∧ (_pmode = 6) ∧ tok_ready)
+    mp_s_lr ∈ Bool = (m_act ∧ (_mp_st = 0)
+        ∧ (el_head_name = "last_results") ∧ (ww_t1 matches LBracket)
+        ∧ (ww_t2 matches IntLit(_)) ∧ (ww_t3 matches RBracket))
+    mp_s_id ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (ww_t0 matches Ident(_))
+        ∧ (¬mp_s_lr))
+    mp_s_bad ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (¬mp_s_lr) ∧ (¬mp_s_id))
+    mp_idx_v ∈ Int = match ww_t2
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    mp_a1_b ∈ Expr
+    mp_a1_b_ok ∈ Bool
+    C2AtomE(t ↦ ww_t5, e ↦ mp_a1_b, ok ↦ mp_a1_b_ok)
+    mp_a1 ∈ Bool = (m_act ∧ (_mp_st = 1) ∧ (ww_t0 matches Ident(_))
+        ∧ (ww_t1 matches LParen) ∧ (ww_t2 matches Ident(_))
+        ∧ (ww_t3 matches RParen) ∧ (ww_t4 matches OpImplies)
+        ∧ mp_a1_b_ok)
+    mp_a1_bad ∈ Bool = (m_act ∧ (_mp_st = 1) ∧ (¬mp_a1))
+    mp_a2_b ∈ Expr
+    mp_a2_b_ok ∈ Bool
+    C2AtomE(t ↦ ww_t2, e ↦ mp_a2_b, ok ↦ mp_a2_b_ok)
+    mp_a2 ∈ Bool = (m_act ∧ (_mp_st = 2) ∧ (el_head_name = "_")
+        ∧ (ww_t1 matches OpImplies) ∧ mp_a2_b_ok)
+    mp_a2_bad ∈ Bool = (m_act ∧ (_mp_st = 2) ∧ (¬mp_a2))
+    mp_bail ∈ Bool = (mp_s_bad ∨ mp_a1_bad ∨ mp_a2_bad)
+    mp_w_t2s ∈ String = match ww_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    mp_st = (is_first_tick ? 0
+        : d_enter_match ? 0
+        : (mp_s_lr ∨ mp_s_id) ? 1
+        : mp_a1 ? 2
+        : _mp_st)
+    mp_name = (is_first_tick ? "" : d_enter_match ? c_name : _mp_name)
+    mp_sc = (is_first_tick ? 0 : d_enter_match ? c_sc : _mp_sc)
+    mp_lr = (is_first_tick ? false
+        : d_enter_match ? false
+        : mp_s_lr ? true
+        : _mp_lr)
+    mp_idx = (is_first_tick ? 0 : mp_s_lr ? mp_idx_v : _mp_idx)
+    mp_scrut = (is_first_tick ? "" : mp_s_id ? el_head_name : _mp_scrut)
+    mp_ctor = (is_first_tick ? "" : mp_a1 ? el_head_name : _mp_ctor)
+    mp_bind = (is_first_tick ? "" : mp_a1 ? mp_w_t2s : _mp_bind)
+    mp_b1 = (is_first_tick ? ENoExpr : mp_a1 ? mp_a1_b : _mp_b1)
+
+    -- items program (built on the arm-2 tick).
+    mp_tester ∈ Int = (_mp_ctor = "IntResult" ? z_irtest
+        : _mp_ctor = "StringResult" ? z_srtest
+        : 0)
+    mp_acc ∈ Int = (_mp_ctor = "IntResult" ? z_iracc
+        : _mp_ctor = "StringResult" ? z_sracc
+        : 0)
+    mp_b1_nm ∈ String = match _mp_b1
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    mp_b1_is_bind ∈ Bool = ((_mp_b1 matches EIdent(_))
+        ∧ (mp_b1_nm = _mp_bind))
+    mp_tailE ∈ C2Items = C2ICons(C2Ite,
+        C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
+    mp_seg_else ∈ C2Items = C2ICons(C2Process(mp_a2_b), mp_tailE)
+    mp_seg_then ∈ C2Items = (mp_b1_is_bind
+        ? (_mp_lr
+            ? C2ICons(C2Process(EIdent("last_results")),
+                C2ICons(C2Process(EInt(_mp_idx)),
+                C2ICons(C2SelH,
+                C2ICons(C2App(mp_acc, 1), mp_seg_else))))
+            : C2ICons(C2Process(EIdent(_mp_scrut)),
+                C2ICons(C2App(mp_acc, 1), mp_seg_else)))
+        : C2ICons(C2Process(_mp_b1), mp_seg_else))
+    mp_seg_cond ∈ C2Items = (_mp_lr
+        ? C2ICons(C2Process(EIdent("last_results")),
+            C2ICons(C2Process(EInt(_mp_idx)),
+            C2ICons(C2SelH,
+            C2ICons(C2App(mp_tester, 1), mp_seg_then))))
+        : C2ICons(C2Process(EIdent(_mp_scrut)),
+            C2ICons(C2App(mp_tester, 1), mp_seg_then)))
+    mp_items ∈ C2Items = C2ICons(C2DeclConst(_mp_name, _mp_sc), mp_seg_cond)
+
+    -- ── pmode 7: set-literal membership walk (C2: 041/042/062) ────
+    -- `x ∈ { a, b, … }` / `x ∉ { … }` — one int element per tick,
+    -- or-folded into an Expr; the closing `}` asserts it (wrapped in
+    -- C2Not for ∉). The empty set lowers to `false` (062: `x ∈ {}`
+    -- is UNSAT by construction).
+    ms_name ∈ String
+    _ms_name ∈ String
+    ms_neg ∈ Bool
+    _ms_neg ∈ Bool
+    ms_e ∈ Expr
+    _ms_e ∈ Expr
+
+    s_act ∈ Bool = (in_parse ∧ (_pmode = 7) ∧ tok_ready)
+    ms_elem ∈ Bool = (s_act ∧ (ww_t0 matches IntLit(_)))
+    ms_close ∈ Bool = (s_act ∧ (ww_t0 matches RBrace))
+    ms_bad ∈ Bool = (s_act ∧ (¬ms_elem) ∧ (¬ms_close))
+    ms_v ∈ Int = match ww_t0
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_eq ∈ Expr = EBinOp(OpEq, EIdent(_ms_name), EInt(ms_v))
+    ms_e_n ∈ Expr = ((_ms_e matches ENoExpr) ? ms_eq
+        : EBinOp(OpDisj, _ms_e, ms_eq))
+    ms_name = (is_first_tick ? "" : d_enter_set ? c_name : _ms_name)
+    ms_neg = (is_first_tick ? false : d_enter_set ? c_is_nmem : _ms_neg)
+    ms_e = (is_first_tick ? ENoExpr
+        : d_enter_set ? ENoExpr
+        : ms_elem ? ms_e_n
+        : _ms_e)
+    ms_body ∈ Expr = ((_ms_e matches ENoExpr) ? EIdent("false") : _ms_e)
+    ms_items ∈ C2Items = C2ICons(C2Process(ms_body),
+        (_ms_neg ? C2ICons(C2Not, C2ICons(C2AssertTop, C2INil))
+            : C2ICons(C2AssertTop, C2INil)))
+
     -- skip machine: walk one token per tick to the next top-level kw.
     d_skipl_nil ∈ Bool = (ww_t0 matches EofTok)
     d_skip_at_tlkw ∈ Bool = ((ww_t0 matches KwEnum) ∨ (ww_t0 matches KwClaim)
@@ -1789,10 +2110,30 @@ claim driver_main
     _st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
-    st_cnt = (is_first_tick ? 0 : (d_st_add ? _st_cnt + 1 : _st_cnt))
-    st_names = (is_first_tick ? ""
+    -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
+    -- handles are written at zstep 31), so the two kernel-provided
+    -- names resolve like any declared const.
+    d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
+        ++ "|" ++ substr("is_first_tick                               ", 0, 31))
+    st_cnt = (is_first_tick ? 2 : (d_st_add ? _st_cnt + 1 : _st_cnt))
+    st_names = (is_first_tick ? d_seed_names
         : d_st_add ? _st_names ++ st_entry
         : _st_names)
+
+    -- saw flags (D3): a user constraint mentioned last_results /
+    -- is_first_tick — the serialized solver body then carries their
+    -- declares (+ the Result datatype for last_results), so the
+    -- textual prelude must drop the duplicates.
+    saw_lr ∈ Bool
+    _saw_lr ∈ Bool
+    saw_lr = (is_first_tick ? false
+        : (d_lk_read ∧ d_lkname = "last_results") ? true
+        : _saw_lr)
+    saw_ift ∈ Bool
+    _saw_ift ∈ Bool
+    saw_ift = (is_first_tick ? false
+        : (d_lk_read ∧ d_lkname = "is_first_tick") ? true
+        : _saw_ift)
 
     -- handle-stack views (post pend application).
     d_h_top ∈ Int = match d_hstk_in
@@ -1845,6 +2186,7 @@ claim driver_main
     d_it_seleq   ∈ Bool = (d_whead matches C2SelectEq(_))
     d_it_leneq   ∈ Bool = (d_whead matches C2LenEq(_))
     d_it_strop   ∈ Bool = (d_whead matches C2StrOp(_, _))
+    d_it_selh    ∈ Bool = (d_whead matches C2SelH)
 
     d_pe ∈ Expr = match d_whead
         C2Process(e) ⇒ e
@@ -1957,7 +2299,10 @@ claim driver_main
             ? C2ICons(C2Process(d_ca0), C2ICons(C2StrOp("len", 1), d_wtail))
         : d_cnm = "str_from_int" ? d_sfi_items
         : C2ICons(C2PushH(0), d_wtail))
-    d_c2_items ∈ C2Items = (d_cnm = "char_at"
+    d_c2_items ∈ C2Items = (d_cnm = "__index"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2SelH, d_wtail)))
+        : d_cnm = "char_at"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
                 C2ICons(C2StrOp("char_at", 2), d_wtail)))
         : d_cnm = "index_of"
@@ -2033,18 +2378,26 @@ claim driver_main
         _ ⇒ ""
 
     c_is_mem ∈ Bool = (c_t1 matches OpIn)
+    c_is_nmem ∈ Bool = (c_t1 matches OpNotIn)
     c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
     c_type_str ∈ String = match c_t2
         Ident(s) ⇒ s
         _ ⇒ ""
     c_is_nat ∈ Bool = (c_type_str = "Nat")
     -- sort class: 0 Int (incl Nat) · 1 Bool · 2 the user enum ·
-    -- 3 String
+    -- 3 String · 4 the Result floor
     c_sc ∈ Int = (c_type_str = "Bool" ? 1
         : (_ue_done ∧ (c_type_str = _ue_name)) ? 2
         : c_type_str = "String" ? 3
+        : c_type_str = "Result" ? 4
         : 0)
     c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
+    -- set-membership lines (C2: 041/042/062): `x ∈ {…}` / `x ∉ {…}`
+    -- enter the set walk (pmode 7); match-pin lines (D3:
+    -- `name ∈ Type = match …`) enter the match walk (pmode 6).
+    c_set_line ∈ Bool = ((c_is_mem ∨ c_is_nmem) ∧ (c_t2 matches LBrace))
+    c_match_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ c_pinned
+        ∧ (c_t4 matches KwMatch))
     c_bnd_op ∈ Op
     c_t3_is_op ∈ Bool
     C2TokOp(t ↦ c_t3, o ↦ c_bnd_op, rec ↦ c_t3_is_op)
@@ -2067,8 +2420,12 @@ claim driver_main
     -- its 8-token head `effects ∈ Seq ( Effect ) = ⟨`; element
     -- bodies re-enter the Pratt FSM per Exit argument.
     d_enter_el ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_eff_line)
+    d_enter_set ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_set_line)
+    d_enter_match ∈ Bool = (d_classify ∧ (¬d_claim_end)
+        ∧ (¬c_set_line) ∧ c_match_line)
     d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_claim_end)
-        ∧ (¬c_eff_line) ∧ (c_pinned ∨ (¬c_is_mem)))
+        ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
+        ∧ (c_pinned ∨ (¬c_is_mem)))
     d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter)
     -- tokens consumed before the expression starts: a pin's
     -- `name ∈ Type =` is 4; an element's `Exit (` is 2; standalone
@@ -2085,16 +2442,18 @@ claim driver_main
         : c_tailseg)
     c_mem_items ∈ C2Items = C2ICons(C2DeclConst(c_name, c_sc), c_natseg)
 
-    d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt0 ∨ d_enter_el)
+    d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt0 ∨ d_enter_el
+        ∨ d_enter_set ∨ d_enter_match)
         ? C2INil : c_mem_items)
     -- a direct (non-pratt) membership line consumes `x ∈ Type` = 3
     -- tokens, or 5 with a single `op atom` bound.
     d_mem_line ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬d_enter_pratt0)
-        ∧ (¬d_enter_el))
+        ∧ (¬d_enter_el) ∧ (¬d_enter_set) ∧ (¬d_enter_match))
     d_mem_cons ∈ Int = (c_bound ? 5 : 3)
     c_tyname ∈ String = (c_sc = 1 ? "Bool"
         : c_sc = 2 ? c_type_str
         : c_sc = 3 ? "String"
+        : c_sc = 4 ? "Result"
         : "Int")
     c_field ∈ String = c_name ++ ":" ++ c_tyname
     -- `_<name>` carry-over DECLARES (fossil parity): the kernel pins
@@ -2204,6 +2563,7 @@ claim driver_main
         : d_it_app ? (_istep = d_app_n ? d_app_n : 0)
         : d_it_seleq ? (_istep = 1 ? 1 : 0)
         : d_it_strop ? d_so_n
+        : d_it_selh ? 2
         : 0)
     d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ d_lk_pure)
     d_lk_read ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ (¬d_lk_pure))
@@ -2226,6 +2586,8 @@ claim driver_main
         : p_done ? d_pratt_items
         : el_b2 ? el_lc_items
         : el_close ? C2ICons(C2LenEq(_el_cnt), C2INil)
+        : mp_a2 ? mp_items
+        : ms_close ? ms_items
         : ¬d_processing ? _witems
         : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
@@ -2265,6 +2627,7 @@ claim driver_main
         : d_it_seleq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
         : d_it_leneq ? (_istep = 0 ? 2 : 0)
         : d_it_strop ? 1
+        : d_it_selh ? 1
         : 0)
 
     -- ── token consumption (cursor arithmetic + window tail) ───────
@@ -2280,6 +2643,16 @@ claim driver_main
         : el_lc_enter ? 6
         : el_b2 ? 7
         : (el_comma ∨ el_close) ? 1
+        : d_enter_set ? 3
+        : d_enter_match ? 5
+        : mp_s_lr ? 4
+        : (mp_s_id ∨ mp_s_bad) ? 1
+        : mp_a1 ? 6
+        : mp_a1_bad ? 1
+        : mp_a2 ? 3
+        : mp_a2_bad ? 1
+        : ms_elem ? ((ww_t1 matches Comma) ? 2 : 1)
+        : (ms_close ∨ ms_bad) ? 1
         : d_enter_pratt ? d_pratt_cons0
         : d_mem_line ? d_mem_cons
         : p_done ? d_done_cons
@@ -2300,13 +2673,15 @@ claim driver_main
         : _fmode = 2 ? f_built
         : w_after)
 
+    -- set-membership lines (`x ∈ {…}`) constrain an EXISTING var —
+    -- no decl, no state field, no carry.
+    c_field_add ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_is_mem
+        ∧ (¬c_eff_line) ∧ (¬c_set_line))
     fstr = (is_first_tick ? ""
-        : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
-            ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
+        : c_field_add ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
         : _fstr)
     cdstr = (is_first_tick ? ""
-        : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
-            ? _cdstr ++ c_cdecl
+        : c_field_add ? _cdstr ++ c_cdecl
         : _cdstr)
 
     pmode = (is_first_tick ? 0
@@ -2317,6 +2692,8 @@ claim driver_main
         : d_skip_stop ? 0
         : d_claim_end ? 0
         : d_enter_el ? 5
+        : d_enter_set ? 7
+        : d_enter_match ? 6
         : d_enter_pratt ? 3
         : p_done ? (_pk_kind = 3 ? 5 : 2)
         : (ec_active ∧ ec_payload) ? 1
@@ -2324,6 +2701,8 @@ claim driver_main
         : ed_done_user ? 0
         : el_close ? 2
         : (el_bad ∨ el_b2_bad) ? 2
+        : (mp_a2 ∨ mp_bail) ? 2
+        : (ms_close ∨ ms_bad) ? 2
         : _pmode)
 
     phase = (is_first_tick ? 0
@@ -2387,6 +2766,7 @@ claim driver_main
         sort_h ↦ (d_dc_sc = 1 ? z_bsort
             : d_dc_sc = 2 ? ue_sort
             : d_dc_sc = 3 ? z_ssort
+            : d_dc_sc = 4 ? z_ressort
             : z_isort), eff ↦ d_eff_const)
     -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
     d_eff_stwr ∈ Effect
@@ -2430,6 +2810,11 @@ claim driver_main
     d_eff_sel ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
         eff ↦ d_eff_sel)
+    -- C2SelH (D3): generic select — pops (arr, idx) off the handle
+    -- stack, pushes (select arr idx).
+    d_eff_selh ∈ Effect
+    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ d_h_2nd, idx_h ↦ d_h_top,
+        eff ↦ d_eff_selh)
     d_eff_seleq ∈ Effect
     d_seleq_ok ∈ Bool
     d_seleq_nn ∈ Bool
@@ -2469,6 +2854,7 @@ claim driver_main
             : d_eff_asserttmp)
         : d_it_leneq ? (_istep = 0 ? d_eff_leneq : d_eff_asserttmp)
         : d_it_strop ? (d_so_nm = "len" ? d_eff_slen : d_eff_strop)
+        : d_it_selh ? d_eff_selh
         : d_eff_filler)
 
     -- ── EMIT ──────────────────────────────────────────────────────
@@ -2496,11 +2882,18 @@ claim driver_main
         ++ ";; manifest: effect-enum-name = Effect\n"
         ++ ";; manifest: result-enum-name = Result\n"
         ++ ";; manifest: max-effects = 16")
-    d_prelude ∈ String = ("(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
-        ++ "(declare-fun last_results () (Array Int Result))\n"
-        ++ "(declare-fun last_results__len () Int)\n"
-        ++ "(assert (>= last_results__len 0))\n"
-        ++ "(declare-fun is_first_tick () Bool)\n")
+    -- D3: the last_results__len floor assert lives in the BUILD
+    -- context now, so its declare + assert always come out in the
+    -- rendered serialization (textual lines dropped). The Result
+    -- datatype + last_results declares stay textual UNLESS a user
+    -- constraint mentioned last_results (then the serialization
+    -- carries them and the textual copies would be duplicate-sort
+    -- errors — sample.ev's `_saw_result` dance). Same for the
+    -- is_first_tick declare keyed off saw_ift.
+    d_prelude ∈ String = ((_saw_lr ? ""
+            : "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
+              ++ "(declare-fun last_results () (Array Int Result))\n")
+        ++ (_saw_ift ? "" : "(declare-fun is_first_tick () Bool)\n"))
     -- carry declares go AFTER the solver body: an enum-typed carry
     -- (`_c () Color`) needs its sort, and the declare-datatypes live
     -- in the rendered serialization.
@@ -2542,6 +2935,16 @@ claim driver_main
         : zstep = 19 ? ⟨ze_false⟩
         : zstep = 20 ? ⟨ze_tbuf⟩
         : zstep = 21 ? ⟨ze_sbuf⟩
+        : zstep = 22 ? ⟨ze_lrarr⟩
+        : zstep = 23 ? ⟨ze_sym_lr⟩
+        : zstep = 24 ? ⟨ze_lastres⟩
+        : zstep = 25 ? ⟨ze_sym_lrl⟩
+        : zstep = 26 ? ⟨ze_lrlen⟩
+        : zstep = 27 ? ⟨ze_sym_ift⟩
+        : zstep = 28 ? ⟨ze_ift⟩
+        : zstep = 29 ? ⟨ze_lrge⟩
+        : zstep = 30 ? ⟨ze_lrassert⟩
+        : zstep = 31 ? ⟨ze_seed0, ze_seed1⟩
         : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩

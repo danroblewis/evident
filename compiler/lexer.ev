@@ -94,6 +94,14 @@ enum Token =
     -- Colon for the `:` between the range and body in `∀ x ∈ S : body`
     -- (runtime/src/lexer.rs).
     Colon
+    -- Indexing + set-literal tokens (gap census D3 + C2): `[` / `]`
+    -- for `last_results[0]` indexing, `{` / `}` for set literals
+    -- (`x ∈ {2, 4, 6}`), and `∉` for negated set membership.
+    LBracket
+    RBracket
+    LBrace
+    RBrace
+    OpNotIn
     -- Layout tokens (Phase A6). The Rust lexer at
     -- runtime/src/lexer.rs models indentation with TWO variants:
     --   * Newline    — emitted at every '\n' outside a paren group

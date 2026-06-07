@@ -197,6 +197,23 @@ claim TokenTag_Hash(out ∈ Int)
 claim TokenTag_Colon(out ∈ Int)
     out = 68
 
+-- Indexing + set-literal tokens (gap census D3 + C2): `[` / `]`,
+-- `{` / `}`, and `∉`.
+claim TokenTag_LBracket(out ∈ Int)
+    out = 69
+
+claim TokenTag_RBracket(out ∈ Int)
+    out = 70
+
+claim TokenTag_LBrace(out ∈ Int)
+    out = 71
+
+claim TokenTag_RBrace(out ∈ Int)
+    out = 72
+
+claim TokenTag_OpNotIn(out ∈ Int)
+    out = 73
+
 -- ── Contract: legal transitions (mirrors Stack's depth-delta shape) ─
 
 claim TokenStack(depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool,
