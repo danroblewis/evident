@@ -1,0 +1,125 @@
+-- stdlib/z3_seq.ev — Z3 array + sequence/string builder sugar.
+--
+-- Covers docs/plans/z3-sugar-inventory.md §5 (arrays: the compiler's
+-- Array+len Seq encoding in translate_seq.ev) and §6 (Z3's sequence /
+-- string theory: translate_seq.ev, translate_string.ev,
+-- translate_concat.ev). One claim per Z3 C function, same shape as
+-- stdlib/z3_ast.ev: every handle is an opaque Int (i64 through
+-- ArgInt/IntResult), every return arrives in `last_results` on the
+-- NEXT tick.
+--
+-- Kept out of stdlib/kernel.ev for the same reason as z3_ast.ev:
+-- kernel.ev is in every program's import path and the seam compile
+-- of universal imports is memory-bounded. Import this file only from
+-- programs that build Z3 seq/array ASTs.
+--
+-- Variadic note: Z3_mk_seq_concat takes a `Z3_ast const args[]`
+-- pointer + count, exactly like Z3_mk_add. Build the buffer with
+-- BuildMalloc + BuildMemWriteLong (stdlib/z3_ast.ev), 8 bytes per
+-- handle. See tests/kernel/z3_seq/sugar_seq.ev for the driving FSM.
+--
+-- Refcount model: leak-until-Z3_del_context (wave-5a §3 option 1);
+-- pin long-lived composite handles with BuildZ3IncRef.
+
+import "stdlib/kernel.ev"
+
+-- ── §5 arrays ────────────────────────────────────────────────
+
+-- Z3_mk_select(ctx, arr, idx) → Z3_ast `(select arr idx)`.
+claim BuildZ3MkSelect(ctx_h ∈ Int, arr_h ∈ Int, idx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_select",
+        ⟨ArgInt(ctx_h), ArgInt(arr_h), ArgInt(idx_h)⟩)
+
+-- Z3_mk_store(ctx, arr, idx, val) → Z3_ast `(store arr idx val)`.
+claim BuildZ3MkStore(ctx_h ∈ Int, arr_h ∈ Int, idx_h ∈ Int, val_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_store",
+        ⟨ArgInt(ctx_h), ArgInt(arr_h), ArgInt(idx_h), ArgInt(val_h)⟩)
+
+-- Z3_mk_const_array(ctx, idx_sort, val) → Z3_ast
+-- `((as const (Array idx_sort <sort-of-val>)) val)`.
+claim BuildZ3MkConstArray(ctx_h ∈ Int, idx_sort_h ∈ Int, val_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_const_array",
+        ⟨ArgInt(ctx_h), ArgInt(idx_sort_h), ArgInt(val_h)⟩)
+
+-- ── §6 sorts + literals ──────────────────────────────────────
+
+-- Z3_mk_string_sort(ctx) → Z3_sort handle (String). Nullary; cache.
+claim BuildZ3MkStringSort(ctx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_string_sort", ⟨ArgInt(ctx_h)⟩)
+
+-- Z3_mk_string(ctx, s) → Z3_ast (string literal, prints as "s").
+claim BuildZ3MkString(ctx_h ∈ Int, s ∈ String, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr(s)⟩)
+
+-- ── §6 sequence builders ─────────────────────────────────────
+
+-- Z3_mk_seq_empty(ctx, seq_sort) → Z3_ast (empty sequence of the
+-- given seq sort; pass a Z3_mk_string_sort handle for `""`).
+claim BuildZ3MkSeqEmpty(ctx_h ∈ Int, seq_sort_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_empty",
+        ⟨ArgInt(ctx_h), ArgInt(seq_sort_h)⟩)
+
+-- Z3_mk_seq_unit(ctx, x) → Z3_ast `(seq.unit x)`.
+claim BuildZ3MkSeqUnit(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_unit", ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
+
+-- Z3_mk_seq_concat(ctx, num_args, args[]) → Z3_ast `(seq.++ …)` /
+-- `(str.++ …)`. Variadic: args[] is a malloc'd i64-handle buffer.
+claim BuildZ3MkSeqConcat(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_concat",
+        ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
+
+-- Z3_mk_seq_length(ctx, s) → Z3_ast `(seq.len s)` / `(str.len s)`.
+claim BuildZ3MkSeqLength(ctx_h ∈ Int, s_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_length", ⟨ArgInt(ctx_h), ArgInt(s_h)⟩)
+
+-- Z3_mk_seq_at(ctx, s, i) → Z3_ast (unit sub-sequence at index i).
+claim BuildZ3MkSeqAt(ctx_h ∈ Int, s_h ∈ Int, idx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_at",
+        ⟨ArgInt(ctx_h), ArgInt(s_h), ArgInt(idx_h)⟩)
+
+-- Z3_mk_seq_nth(ctx, s, i) → Z3_ast (the ELEMENT at index i; cf.
+-- seq_at which yields a length-1 sequence).
+claim BuildZ3MkSeqNth(ctx_h ∈ Int, s_h ∈ Int, idx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_nth",
+        ⟨ArgInt(ctx_h), ArgInt(s_h), ArgInt(idx_h)⟩)
+
+-- Z3_mk_seq_extract(ctx, s, offset, length) → Z3_ast
+-- `(str.substr s offset length)`.
+claim BuildZ3MkSeqExtract(ctx_h ∈ Int, s_h ∈ Int, off_h ∈ Int, len_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_extract",
+        ⟨ArgInt(ctx_h), ArgInt(s_h), ArgInt(off_h), ArgInt(len_h)⟩)
+
+-- ── §6 sequence predicates ───────────────────────────────────
+
+-- Z3_mk_seq_prefix(ctx, prefix, s) → Z3_ast `(str.prefixof prefix s)`.
+claim BuildZ3MkSeqPrefix(ctx_h ∈ Int, prefix_h ∈ Int, s_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_prefix",
+        ⟨ArgInt(ctx_h), ArgInt(prefix_h), ArgInt(s_h)⟩)
+
+-- Z3_mk_seq_suffix(ctx, suffix, s) → Z3_ast `(str.suffixof suffix s)`.
+claim BuildZ3MkSeqSuffix(ctx_h ∈ Int, suffix_h ∈ Int, s_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_suffix",
+        ⟨ArgInt(ctx_h), ArgInt(suffix_h), ArgInt(s_h)⟩)
+
+-- Z3_mk_seq_contains(ctx, container, containee) → Z3_ast
+-- `(str.contains container containee)`.
+claim BuildZ3MkSeqContains(ctx_h ∈ Int, container_h ∈ Int, containee_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_contains",
+        ⟨ArgInt(ctx_h), ArgInt(container_h), ArgInt(containee_h)⟩)
+
+-- Z3_mk_seq_index(ctx, s, substr, offset) → Z3_ast
+-- `(str.indexof s substr offset)`.
+claim BuildZ3MkSeqIndex(ctx_h ∈ Int, s_h ∈ Int, substr_h ∈ Int, off_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_seq_index",
+        ⟨ArgInt(ctx_h), ArgInt(s_h), ArgInt(substr_h), ArgInt(off_h)⟩)
+
+-- ── §6 int ↔ string conversions ──────────────────────────────
+
+-- Z3_mk_int_to_str(ctx, x) → Z3_ast `(str.from_int x)`.
+claim BuildZ3MkIntToStr(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_int_to_str", ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
+
+-- Z3_mk_str_to_int(ctx, x) → Z3_ast `(str.to_int x)`.
+claim BuildZ3MkStrToInt(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_str_to_int", ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
