@@ -1661,11 +1661,181 @@ cond_effects_fixture stdout `yes`, 0/0 ✓.
   param TYPES live at window positions t2 — multi-token types
   don't fit the 4-token group tail.
 
+## F2 — claim-call composition: slot binding + body inlining
+## (gap census, landed 2026-06-07)
+
+The keystone. Three composition surfaces compile through the
+driver: `Helper(slot ↦ value, …)` slot calls, bare `Helper`
+lines, and `..Helper` passthroughs — all by INLINING the callee's
+body tokens through the normal classifier/walker, exactly as the
+census analysis predicted: the FTI buffer is random-access, so
+"splice the callee body" is a cursor push/pop, not token surgery.
+
+### The claim index (skip-pass byproduct)
+
+The dispatcher's skip pass now records every skipped
+`claim Name …` top: the name appends to `ci_names` (the B1
+fixed-width-32 record string; lookup = pure index_of/32) and the
+body-start cursor (`_tcur + 2` — the token after `claim Name`,
+which is `(` for parametrized claims) writes to a new 256×8
+calloc'd buffer (zstep 37; ci_base latches at 38; the LEX gate
+moved 38 → 39 positions, i.e. `_zstep < 38`). One write_long per
+claim, riding the skip-entry tick (replaces its filler). One-pass
+consequence: a callee must PRECEDE its call site textually —
+true throughout the corpus (stdlib → helpers → main).
+
+### The call walk (pmode 10) and slot values as handles
+
+A classify-tick head whose Ident resolves in ci_names becomes a
+composition line (the classify tick also emits the cursor
+read_long; capture next tick):
+
+- `Name ( slot ↦ …` (ww_t1 LParen + ww_t3 OpMapsto) → pmode 10:
+  per slot, the `slot ↦` head (2 tokens) latches the slot name
+  and re-enters the Pratt FSM under the new pk_kind 8 — slot
+  values are FULL expressions (the 282a5b3 CallArgsStep
+  expr-slot capability, now trivial: the value's items program
+  runs and leaves its HANDLE on hstk). The value ends at the
+  call's `,` (cd = 0) or `)` (pd = 0) — both already Pratt
+  termination points. `,` consumes and loops; `)` FIRES.
+- bare `Name` (1 token) and `..Name` (Dot Dot Ident, 3 tokens)
+  fire directly on the capture tick.
+
+The fire tick pops the k slot handles off hstk (post-order: top =
+last slot; the d_h peel deepened to 4) into a `C2Binds` table
+(CBCons(name, handle, rest)), pushes the suspended frame
+`CFCons(return-cursor, saved-pfx, saved-binds, rest)` onto
+`il_frames`, overrides tcur/wend to the callee body cursor
+(wtoks → TLNil forces a refetch — the cursor/window machinery
+handled the jump exactly as the census predicted), and arms the
+param-skip: a `(` at the body start is the callee's first-line
+param list, walked over one token per tick to its matching `)`
+(il_pd tracks nesting for `Seq(LibArg)` param types) — slot
+params bind at the call site, so the list carries nothing.
+
+### α-renaming and scoped resolution
+
+- A slot call installs prefix `"__cN_"` (il_cnt, one per call
+  site — the corpus's own `__callN` convention). Bare/`..`
+  splices INHERIT the current (pfx, binds) — names-match is
+  exactly "compile as if written in the caller".
+- Memberships inside a frame declare `pfx ++ name`; manifest
+  fields + textual carry declares use the prefixed name.
+- A membership whose name is BOUND (a slot) or ALREADY DECLARED
+  under the scoped name does NOT redeclare — its items head
+  becomes `C2Process(EIdent(…))` (resolve the existing handle)
+  and any Nat/bound re-asserts over it; c_field_add skips. This
+  is what keeps `..GreetsHi` / bare `IsPositive` (whose bodies
+  re-declare the caller's `text`/`n`) from emitting duplicate
+  declares and duplicate `_name` carry lines (Z3 mk_const is
+  idempotent; the TEXTUAL duplicate would be a kernel-side parse
+  error). Same dup head on membership-PIN lines (pk_nodecl).
+- Ident resolution order in the walker's process path:
+  match-arm bind (bsc, innermost) → slot binds (pure handle
+  push) → `pfx ++ name` in st_names → plain st_names →
+  true/false/enum values → unknown (handle 0).
+- The callee body ends at the next top-level keyword / EOF /
+  non-line head: at depth 0 that ends the walk (unchanged); at
+  depth > 0 it POPS — cursor/pfx/binds restore from the frame.
+
+Oracle divergence (the accepted class): the oracle SUBSTITUTES
+pinned values through composition (`(> 5 0)`, `(= 5 5)` in 047);
+the driver declares and pins for real (`(> x 0)`, `(= x 5)`) —
+strictly more faithful, sat-equivalent on every gate.
+
+### Caps (probed, stated honestly)
+
+- Slots ≤ 4 per call. Corpus single-line maximum is 6
+  (histogram over the flattened corpus: 246×2, 40×3, 25×4, 3×5,
+  8×6) and ONE 8-slot site spans two lines (MembershipStep,
+  sample.ev:447) — the mission's "corpus max 4" is wrong;
+  widening is mechanical (deeper d_h peel + cs slots) and
+  deferred until the corpus compile needs it.
+- Depth ≤ 8 (corpus reaches ≥ 5); a composition head at depth 8
+  falls through to the Pratt/line-end path.
+- Claim index: 256 entries; names ≤ 31 chars (the fixed-width
+  record cap; prefix + name ≤ 31 — corpus ident max 21 + "__cN_"
+  fits to N ≤ 9999).
+
+### F2 acceptance (run 2026-06-07, oracle-built driver)
+
+NEW unit fixture tests/kernel/compiler2/compose_fixture.ev — an
+EXPRESSION slot value through TWO nested frames:
+`main: Wrap(v ↦ 2 + 3, res ↦ r)` → `Wrap: Add2(x ↦ v + 10,
+out ↦ mid)` → `Add2: tmp ∈ Int · tmp = x + 1 · out = tmp + 1`.
+Emitted unit carries `(= __c2_tmp (+ 2 3 10 1))` (the slot-value
+handles composed through both frames; Z3 flattens the 2-ary
+nesting), `(= __c1_mid (+ __c2_tmp 1))`, `(= r __c1_mid)`,
+manifest `r:Int __c1_mid:Int __c2_tmp:Int ok:Bool` + the matching
+carry declares. Driver exit 0; unit run exit 0/0 ✓.
+
+Census flips — ELEVEN composition-class fixtures green (gate
+asked ≥ 6; every row driver compile exit 0 + smt2-contains +
+kernel run of the unit):
+
+| fixture | form | exit got/want |
+|---|---|---|
+| 094-bare-unconditional-sat | bare `IsPositive` | 0/0 ✓ |
+| 095-bare-unconditional-unsat | bare, `n = 0` contradiction | 2/2 ✓ |
+| 102-mapped-renames-sat | `GreetsHi(text ↦ greeting)` — unit carries `(= greeting "hi")` twice, oracle-identical | 0/0 ✓ |
+| 103-mapped-renames-unsat | slot call + contradiction | 2/2 ✓ |
+| 107-mapped-unconditional-sat | slot call | 0/0 ✓ |
+| 108-mapped-unconditional-unsat | slot call | 2/2 ✓ |
+| 109-passthrough-uncond-sat | `..GreetsHi` | 0/0 ✓ |
+| 110-passthrough-uncond-unsat | `..GreetsHi` + contradiction | 2/2 ✓ |
+| 047-passthrough-sat | `..Base` declares x IN the caller; `(= y (+ x 1))`, ite Exit | 0/0 ✓ |
+| 048-passthrough-inherits-constraints-unsat | `..Base` constraint inherited | 2/2 ✓ |
+| 115-passthrough-multiple-unsat-high | TWO `..` splices, `n = 10` vs `n < 10` | 2/2 ✓ |
+
+Full 48-fixture census regression (the E1/F1 list), re-run on the
+F2 artifact in parallel — every row BOTH checks green (driver
+compile exit 0, every smt2-contains line, kernel run exit +
+stdout where defined):
+002 003 004 005 006 008 011 012 014 017 018 019 020 022 023 024
+025 026 027 028 029 030 031 032 033 034 036 037 041 042 043 044
+049 050 051 052 053 054 057 058 062 065 067 068 069 071 072 073
+— 48/48 PASS.
+
+Driver-input fixtures re-verified on the F2 artifact (all driver
+exit 0 + unit run green): carry_fixture 0 ✓ · params_fixture 0 ✓ ·
+ctor_app_fixture 0 ✓ · lastresults_fixture 0 ✓ · symtab_fixture
+0 ✓ · match_bind_fixture 0 ✓ · cond_effects_fixture stdout `yes`
+0 ✓. Negative control re-verified: nonexistent claim → manifest
+(empty state-fields) + textual prelude, exactly 2 asserts, no
+`(+ `, driver exit 0 (the skip pass now also INDEXES every claim
+— write_long effects only, no observable change). Oracle-path
+fixtures re-verified: pratt_fixture (canonical AST, exit 0 —
+C2PrattStep signature UNCHANGED by F2; kind 8 is driver-side
+latching only) · lex_fti_fixture 0 ✓ · match/ctor/bool/record/
+seq/solver_emit 0 ✓ (six rows).
+
+### F2 descopes
+
+- 045/046 (subschema expansion/constraint): need RECORD types —
+  `type Point` + `p ∈ Point` + `p.x` field access. Not claim-call
+  composition; descoped honestly (the census's record-lift
+  machinery is its own item).
+- Callees AFTER the call site textually (one-pass index; zero
+  corpus occurrences).
+- Positional binding `(a, b) ∈ Claim`; conditional inline
+  `cond ⇒ ClaimName`; composition calls in EXPRESSION position
+  (`x = Helper(…)` parses as an unknown call → handle 0) — zero
+  corpus occurrences of all three at statement level.
+- Carry (`_x ∈ Type`) memberships INSIDE inline frames: the
+  prefixed-name pairing (`__cN__x` vs `___cN_x`) doesn't line up
+  with the kernel's `_field` convention; corpus carries are all
+  in `main` (callers pass them via slots — `rem ↦ _rem` works:
+  the VALUE resolves in the caller's scope before binding).
+- Slot count > 4 per call (see Caps above — corpus needs 6/8 at
+  two callees; widen before the sample.ev compile).
+- A 5th+ slot, malformed slot heads, or a malformed value bail
+  the line (consume 1, classifier resumes — silent-drop parity).
+
 ## Next steps
 
-- F2: claim-call composition with `slot ↦ value` binding +
-  inlining — the keystone; F1's param machinery feeds it the
-  callee symbol environments.
+- Widen slot caps 4 → 8 (MembershipStep) before attempting the
+  corpus compile; multi-line call sites come free (no lexed
+  newlines).
 - The rest of the membership surface (chained bounds in
   memberships, Real/021).
 - Match as a general EXPRESSION (non-pin positions); bare
