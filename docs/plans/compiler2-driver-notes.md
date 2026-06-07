@@ -838,6 +838,145 @@ nonexistent claim → manifest + textual prelude only, no user
 asserts, driver exit 0. pratt_fixture re-verified (imports
 driver.ev; C2PrattStep signature unchanged): canonical AST, exit 0.
 
+## B3 — string builtins + call syntax (gap census phase B, landed 2026-06-07)
+
+The corpus's function-call surface (`substr(s, i, j)`,
+`str_from_int(n)`, `index_of(s, t[, off])`, `char_at(s, i)`,
+`str_len(s)`, plus the bool trio `str_contains` / `starts_with` /
+`ends_with`) and the `#` length prefix now compile through the
+driver, dispatching to translate2_seq.ev's fixture-proven
+StrOpBuildZ3 table.
+
+### Call syntax: a PrCall floor marker in the Pratt FSM
+
+DESIGN CHOICE — calls parse in C2PrattStep itself, NOT in the line
+classifier. Calls occur at arbitrary expression depth
+(`(index_of(s,"<") = 4 ∧ …)`, ternary Exit args), so a
+classifier-level fixed shape would recreate the P3b shape zoo the
+Pratt FSM deleted; the shunting-yard already owns the needed
+machinery (floor markers PrLP/PrQuest, reduce-until-floor), so a
+call costs one new floor marker + a comma rule + a close rule:
+
+- **shift-call**: an `Ident` in OPERAND position whose next token
+  is `(` pushes `PrCall(name, 0)` and consumes BOTH tokens — the
+  FSM's only 2-token action; `scons` widened Bool → Int (0/1/2)
+  and the pmode-3 lookahead need went 1 → 2 for the peek. The
+  call's `(` bumps pd, so its `)` can never terminate the
+  expression. An Ident shifted as a plain atom sets expop=false,
+  so an Ident BEFORE `(` in operator position still ends the
+  expression — the next-line-head termination rule is unchanged.
+- **comma**: continues the expression only when cd > 0 (a new
+  call-depth counter; at cd = 0 a `,` still terminates — the
+  effects-element walk depends on that). Over a non-floor top it
+  reduces (same loop as `)`); over the PrCall top it bumps the
+  comma count and returns to operand state.
+- **close**: `)` over the PrCall top pops k+1 operands (post-order:
+  top = last arg) into ECall1/2/3(name, args…) — three fixed-arity
+  Expr variants added in compiler/parser.ev (a 4-field payload is
+  oracle-supported; probed end-to-end). No zero-arg calls exist in
+  the surface, so argc = commas + 1.
+- **`#`** is a prec-8 prefix op (PrHash, same slot as ¬) reducing
+  to ECall1("str_len", e) — `#s` and `str_len(s)` are the same
+  node from the walker's perspective. Per-sort dispatch (Seq →
+  `__len` const) is moot until the driver has Seq-typed variables;
+  every `#` operand today is String-sorted → str.len.
+
+### Walker lowering (C2Process(ECallN) → items)
+
+One new work item `C2StrOp(op_name, argc)`: a single tick that pops
+argc handles and builds the node — `"len"` via BuildZ3MkSeqLength,
+everything else via StrOpBuildZ3 (a/b/c = 3rd/2nd/top per arity).
+The expansion table (the legacy string_ops.rs dispatch, oracle
+re-probed):
+
+| surface | lowering |
+|---|---|
+| `substr(s,i,j)` | P(s)·P(i)·P(j)·StrOp("substr",3) → str.substr |
+| `char_at(s,i)` | P(s)·P(i)·StrOp("char_at",2) → str.at |
+| `index_of(s,t)` | P(s)·P(t)·**C2PushH(z_zero)**·StrOp("indexof",3) — the oracle emits `(str.indexof s t 0)` |
+| `index_of(s,t,off)` | P(s)·P(t)·P(off)·StrOp("indexof",3) |
+| `str_len(s)` / `#e` | P(s)·StrOp("len",1) → str.len |
+| `str_contains(s,t)` | P(s)·P(t)·StrOp("contains",2) |
+| `starts_with(s,pre)` | P(pre)·P(s)·StrOp("prefixof",2) — args process SWAPPED so the stack matches (str.prefixof pre s) |
+| `ends_with(s,suf)` | P(suf)·P(s)·StrOp("suffixof",2) |
+| `str_from_int(e)` | the oracle's negative-safe composite: P(e)·P(0)·Op(≥)·P(e)·StrOp("int_to_str",1)·P("-")·P(0)·P(e)·Op(−)·StrOp("int_to_str",1)·Op(++)·C2Ite → `(ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e))))` |
+| unknown name | C2PushH(0) — unbound-ident parity; args dropped unevaluated |
+
+`replace(s,a,b)` is NOT lowered (StrOpBuildZ3 has no
+Z3_mk_seq_replace row yet — zero corpus occurrences). `str_to_int`
+has no legacy surface spelling; the StrOpBuildZ3 row stays unused.
+`e` in the str_from_int composite is processed THREE times — pure
+AST rebuild, Z3 hash-conses; the emitted text matches the oracle's
+let-shared form semantically (substring checks see the inline
+form).
+
+### B3 acceptance (run 2026-06-07, oracle-built driver, all 38 rows
+### parallel; every row BOTH checks: smt2-contains + kernel run of
+### the emitted unit vs expected exit/stdout)
+
+NEW — the string-class census fixtures, ALL ELEVEN green (the gate
+asked for ≥ 4):
+
+| fixture | emitted shape spot-check | exit got/want |
+|---|---|---|
+| 003-int-multiply-to-string | `(= msg (ite (>= (* 6 7) 0) (str.from_int (* 6 7)) (str.++ "-" (str.from_int (- 0 (* 6 7))))))` — the oracle composite, byte-for-byte modulo let-sharing; stdout `42` | 0/0 ✓ |
+| 011-string-length | `(= n (str.len "hello"))` — `#` on a string LITERAL | 5/5 ✓ |
+| 012-substring | `(= pre (str.substr "Edge<Rect>" 0 4))`; stdout `Edge` | 0/0 ✓ |
+| 014-index-of | `(str.indexof "Edge<Rect>" "<" 0)` — 2-arg form, implicit 0 | 4/4 ✓ |
+| 050-string-concat | 3-operand `++` standalone bare-eq line | 0/0 ✓ |
+| 067-str-len-function | `(= n (str.len s))` AND `(= m (str.len s))` — `#s` and `str_len(s)` are the same node; manifest `s:String n:Int m:Int ok:Bool` | 0/0 ✓ |
+| 068-substr-slice-var | `(str.substr s 0 4)` over a String VAR + eq pin | 0/0 ✓ |
+| 069-substr-is-exact-unsat | substr + contradictory pin → UNSAT | 2/2 ✓ |
+| 071-index-of-present-and-absent | three indexof calls in one ∧-chain incl. `(- 1)` (lex fold) | 0/0 ✓ |
+| 072-index-of-with-offset | `(str.indexof s "." 2)` — explicit 3-arg form | 0/0 ✓ |
+| 073-char-at | `(= ok (= (str.at s 1) "b"))` — call inside a paren eq | 0/0 ✓ |
+
+Full 27-row regression (the B1+B2 acceptance list), re-run on the
+SAME artifact — every row both checks green:
+
+| fixture | exit got/want | | fixture | exit got/want |
+|---|---|---|---|---|
+| 002-string-literal-print | 0/0 ✓ | | 028-chained-comparison | 0/0 ✓ |
+| 004-comparison-ternary | 1/1 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 005-string-concat | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 031-logic-or | 0/0 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 019-string-membership | 0/0 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 043-enum-declaration | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 044-enum-constraint | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | | |
+
+Negative control re-verified on the new artifact: nonexistent
+claim → manifest (empty state-fields) + textual prelude only,
+exactly 1 assert (the last_results__len floor), no `(+ `, driver
+exit 0. pratt_fixture re-verified post-signature-change (cd/ncd
+threaded, scons Bool → Int): canonical AST printed, exit 0.
+lex_fti_fixture re-verified: exit 0 (its imports gained the Expr
+variants via parser.ev; no behavior change).
+
+### B3 descopes / notes
+
+- `#` on a Seq operand (`__len` const) is unreachable until the
+  driver has Seq-typed variables; every `#` today is String-sorted
+  → str.len. The per-sort split documented in translate2_seq.ev's
+  CardBuildZ3 is the ready-made hook.
+- `replace(s,a,b)` (str.replace) is not lowered — StrOpBuildZ3 has
+  no Z3_mk_seq_replace row; zero corpus occurrences.
+- A capitalized Ident followed by `(` in operand position now
+  parses as a CALL (e.g. ctor applications `IVec2(0, 0)`) and —
+  being absent from the lowering table — pushes handle 0. That is
+  the same silent-drop behavior unknown idents already had (fossil
+  parity); C3 (ctor registry dispatch) replaces the fallthrough.
+- The Pratt operand/operator stacks may now hold call argument
+  frames; depth stays bounded by expression nesting (corpus max
+  well under the 8-token window pressure — the stacks are Z3-state
+  enum lists, not window-bound).
+
 ## Next steps
 
 - The rest of the membership surface (multi-name, chained bounds

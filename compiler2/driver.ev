@@ -90,6 +90,19 @@
 --     resolve in expressions; enum-typed memberships declare consts
 --     of the enum sort and land in the manifest as `name:Enum`
 --   · String memberships/pins, string literals, `++` (str.++)
+--   · STRING BUILTIN CALL SYNTAX (B3): `f(a[, b[, c]])` parses in
+--     the Pratt FSM via a PrCall operator-stack floor marker (an
+--     Ident in operand position followed by `(` shifts name + paren
+--     in one 2-token action; `,` reduces to the call floor then
+--     bumps its arg count; `)` over the floor builds ECall1/2/3).
+--     `#e` is a prec-8 prefix op (PrHash) reducing to
+--     ECall1("str_len", e). The walker lowers calls to
+--     translate2_seq.ev's StrOpBuildZ3 table (substr / char_at /
+--     index_of 2-3 / str_contains / starts_with / ends_with) +
+--     BuildZ3MkSeqLength for str_len/`#`; str_from_int expands to
+--     the oracle's ite composite
+--     `(ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e))))`;
+--     an unknown call name pushes handle 0 (unbound-ident parity)
 --   · symbol table: FTI buffer at corpus scale (B1) — 1024 handle
 --     slots in a calloc'd buffer + fixed-width-32 name records in a
 --     Z3 String; lookup = pure index_of/32 + one __mem.read_long.
@@ -113,6 +126,7 @@ import "compiler2/lex_fti.ev"
 import "compiler/translate_arith.ev"
 import "compiler2/translate2_bool.ev"
 import "compiler2/translate2_ctor.ev"
+import "compiler2/translate2_seq.ev"
 
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
@@ -129,6 +143,7 @@ enum C2Item =
     C2App(Int, Int)
     C2SelectEq(Int)
     C2LenEq(Int)
+    C2StrOp(String, Int)
 
 enum C2Items =
     C2INil
@@ -289,16 +304,22 @@ claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
        : 0)
     right = pc_im
 
--- Operator-stack entries for the Pratt FSM. PrLP / PrQuest are
--- floor markers (never auto-reduced; prec -1); PrTern is the armed
--- ternary (pops 3 operands); PrNot the prefix ¬ (pops 1); PrBin a
--- binary operator (pops 2). PrNone is the empty-stack sentinel.
+-- Operator-stack entries for the Pratt FSM. PrLP / PrQuest /
+-- PrCall are floor markers (never auto-reduced; prec -1); PrTern is
+-- the armed ternary (pops 3 operands); PrNot the prefix ¬ and
+-- PrHash the prefix `#` (each pops 1; PrHash reduces to
+-- ECall1("str_len", e)); PrBin a binary operator (pops 2).
+-- PrCall(name, k) carries the call head + the COMMA count so far —
+-- argc at close is k+1 (the surface has no zero-arg calls).
+-- PrNone is the empty-stack sentinel.
 enum PrOp =
     PrBin(Op)
     PrLP
     PrQuest
     PrTern
     PrNot
+    PrHash
+    PrCall(String, Int)
     PrNone
 
 enum PrOps =
@@ -306,33 +327,47 @@ enum PrOps =
     PrCons(PrOp, PrOps)
 
 -- ── Pratt parser step (shunting-yard; ONE action per invocation) ──
--- State in: (toks, outs, ops, expop, pd, qd); state out: the n*
+-- State in: (toks, outs, ops, expop, pd, qd, cd); state out: the n*
 -- mirrors. Each call performs exactly one action:
---   shift   — consume an atom / `(` / `¬` / binary op / `?`
+--   shift   — consume an atom / `(` / `¬` / `#` / binary op / `?`,
+--             or an Ident + `(` CALL HEAD (the only 2-token action;
+--             scons = 2) pushing the PrCall floor
 --   reduce  — pop the top operator, apply it to the operand stack
---   close   — consume `)` matching the PrLP at top (pd > 0)
+--   close   — consume `)` matching the PrLP at top (pd > 0), or the
+--             PrCall at top (build ECall1/2/3 from the top k+1
+--             operands)
+--   bump    — consume `,` over a PrCall top: arg count + 1 (a `,`
+--             below a non-floor top reduces first, like `)`)
 --   swap    — consume `:`, arm the pending PrQuest into PrTern
 --   done    — head token can't extend the expression and the op
 --             stack is empty; sres = the single operand left
--- expop: true when the next token must START an operand. pd / qd:
--- open-paren and pending-`?` depths — they decide whether `)` / `:`
--- continue the expression or terminate it (the driver's expression
--- contexts end at the first token that can't continue: the next
--- body line's head, the effects literal's closing `) ⟩`, EOF).
+-- expop: true when the next token must START an operand. pd / qd /
+-- cd: open-paren, pending-`?` and open-call depths — they decide
+-- whether `)` / `:` / `,` continue the expression or terminate it
+-- (the driver's expression contexts end at the first token that
+-- can't continue: the next body line's head, the effects literal's
+-- `,` / `) ⟩`, EOF — a call's `(` bumps pd too, so its `)` never
+-- terminates; a `,` only continues when cd > 0).
 -- A token that can't start an operand while expop holds is a
 -- malformed line: done fires with sres = ENoExpr.
 -- The driver runs this once per tick under pmode = 3;
 -- tests/kernel/compiler2/pratt_fixture.ev runs the same claim
 -- standalone.
 claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
-        expop ∈ Bool, pd ∈ Int, qd ∈ Int,
+        expop ∈ Bool, pd ∈ Int, qd ∈ Int, cd ∈ Int,
         ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
-        nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int,
-        sdone ∈ Bool, sres ∈ Expr, scons ∈ Bool)
+        nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int, ncd ∈ Int,
+        sdone ∈ Bool, sres ∈ Expr, scons ∈ Int)
     ps_hd ∈ Token = match toks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
     ps_tl ∈ TokenList = match toks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx ∈ Token = match ps_tl
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl2 ∈ TokenList = match ps_tl
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
@@ -375,6 +410,12 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_is_lp ∈ Bool = (ps_hd matches LParen)
     ps_is_rp ∈ Bool = (ps_hd matches RParen)
     ps_is_not ∈ Bool = (ps_hd matches OpNot)
+    ps_is_hash ∈ Bool = (ps_hd matches Hash)
+    ps_is_com ∈ Bool = (ps_hd matches Comma)
+    ps_hd_nm ∈ String = match ps_hd
+        Ident(s2) ⇒ s2
+        _ ⇒ ""
+    ps_nx_lp ∈ Bool = (ps_nx matches LParen)
 
     ps_in_p0 ∈ Int
     ps_in_r0 ∈ Bool
@@ -389,18 +430,26 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         _ ⇒ OpPlus
     ps_top_bin ∈ Bool = (ps_top matches PrBin(_))
     ps_top_not ∈ Bool = (ps_top matches PrNot)
+    ps_top_hash ∈ Bool = (ps_top matches PrHash)
     ps_top_tern ∈ Bool = (ps_top matches PrTern)
     ps_top_quest ∈ Bool = (ps_top matches PrQuest)
     ps_top_lp ∈ Bool = (ps_top matches PrLP)
+    ps_top_call ∈ Bool = (ps_top matches PrCall(_, _))
+    ps_tc_nm ∈ String = match ps_top
+        PrCall(n2, _) ⇒ n2
+        _ ⇒ ""
+    ps_tc_k ∈ Int = match ps_top
+        PrCall(_, k2) ⇒ k2
+        _ ⇒ 0
     ps_tb_p ∈ Int
     ps_tb_r ∈ Bool
     ps_top_chain ∈ Bool
     C2Prec(o ↦ ps_top_op, n ↦ ps_tb_p, right ↦ ps_tb_r, chain ↦ ps_top_chain)
     ps_top_p ∈ Int = (ps_top_bin ? ps_tb_p
-        : ps_top_not ? 8
+        : (ps_top_not ∨ ps_top_hash) ? 8
         : ps_top_tern ? 2
         : 0 - 1)
-    ps_top_red ∈ Bool = (ps_top_bin ∨ ps_top_not ∨ ps_top_tern)
+    ps_top_red ∈ Bool = (ps_top_bin ∨ ps_top_not ∨ ps_top_tern ∨ ps_top_hash)
 
     -- chain-comparison lowering parts (lhs = ps_o2 when reducing a
     -- PrBin whose op is a chain op): a chain-shaped lhs turns
@@ -436,14 +485,20 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
             ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_lr_r, ps_o1))
         : EBinOp(ps_top_op, ps_o2, ps_o1))
 
-    -- action selection (exactly one fires)
-    ps_sh_atom ∈ Bool = (expop ∧ ps_atom_ok)
+    -- action selection (exactly one fires). A call head (Ident
+    -- followed by `(` in operand position) takes priority over the
+    -- plain atom shift of the same Ident.
+    ps_sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp)
+    ps_sh_atom ∈ Bool = (expop ∧ ps_atom_ok ∧ (¬ps_sh_call))
     ps_sh_lp ∈ Bool = (expop ∧ ps_is_lp)
     ps_sh_not ∈ Bool = (expop ∧ ps_is_not)
-    ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬ps_is_lp) ∧ (¬ps_is_not))
+    ps_sh_hash ∈ Bool = (expop ∧ ps_is_hash)
+    ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬ps_is_lp) ∧ (¬ps_is_not)
+        ∧ (¬ps_is_hash))
 
     ps_cont ∈ Bool = (ps_bin_ok ∨ ps_is_q
-        ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0)))
+        ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0))
+        ∨ (ps_is_com ∧ (cd > 0)))
     ps_arr ∈ Bool = ((¬expop) ∧ (ps_bin_ok ∨ ps_is_q))
     ps_arr_red ∈ Bool = (ps_arr ∧ ps_top_red
         ∧ (ps_in_right ? ps_top_p > ps_in_p : ps_top_p ≥ ps_in_p))
@@ -452,9 +507,13 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_col_swap ∈ Bool = (ps_col ∧ ps_top_quest)
     ps_rp ∈ Bool = ((¬expop) ∧ ps_is_rp ∧ (pd > 0))
     ps_rp_close ∈ Bool = (ps_rp ∧ ps_top_lp)
+    ps_rp_call ∈ Bool = (ps_rp ∧ ps_top_call)
+    ps_com ∈ Bool = ((¬expop) ∧ ps_is_com ∧ (cd > 0))
+    ps_com_bump ∈ Bool = (ps_com ∧ ps_top_call)
     ps_end ∈ Bool = ((¬expop) ∧ (¬ps_cont))
     ps_need_red ∈ Bool = ((ps_col ∧ (¬ps_col_swap))
-        ∨ (ps_rp ∧ (¬ps_rp_close))
+        ∨ (ps_rp ∧ (¬ps_rp_close) ∧ (¬ps_rp_call))
+        ∨ (ps_com ∧ (¬ps_com_bump))
         ∨ (ps_end ∧ (¬ps_ops_nil))
         ∨ ps_arr_red)
     ps_reduce ∈ Bool = (ps_need_red ∧ ps_top_red)
@@ -463,36 +522,56 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     sdone = (ps_bad ∨ (ps_end ∧ ps_ops_nil))
     sres = (ps_bad ? ENoExpr : ps_o1)
 
-    ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not
-        ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close)
-    scons = ps_consume
-    ntoks = (ps_consume ? ps_tl : toks)
+    ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not ∨ ps_sh_hash
+        ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close ∨ ps_rp_call
+        ∨ ps_com_bump)
+    scons = (ps_sh_call ? 2 : ps_consume ? 1 : 0)
+    ntoks = (ps_sh_call ? ps_tl2 : ps_consume ? ps_tl : toks)
+
+    -- call close: argc = comma count + 1; operands pop in reverse
+    -- (post-order — the top is the LAST arg).
+    ps_argc ∈ Int = ps_tc_k + 1
+    ps_call_e ∈ Expr = (ps_argc = 1 ? ECall1(ps_tc_nm, ps_o1)
+        : ps_argc = 2 ? ECall2(ps_tc_nm, ps_o2, ps_o1)
+        : ECall3(ps_tc_nm, ps_o3, ps_o2, ps_o1))
+    ps_call_base ∈ ExprList = (ps_argc = 1 ? ps_o_t1
+        : ps_argc = 2 ? ps_o_t2
+        : ps_o_t3)
 
     ps_red_e ∈ Expr = (ps_top_not ? ENot(ps_o1)
+        : ps_top_hash ? ECall1("str_len", ps_o1)
         : ps_top_tern ? ETernary(ps_o3, ps_o2, ps_o1)
         : ps_apply_bin)
-    ps_red_base ∈ ExprList = (ps_top_not ? ps_o_t1
+    ps_red_base ∈ ExprList = ((ps_top_not ∨ ps_top_hash) ? ps_o_t1
         : ps_top_tern ? ps_o_t3
         : ps_o_t2)
     nouts = (ps_sh_atom ? ELCons(ps_atom_e, outs)
         : ps_reduce ? ELCons(ps_red_e, ps_red_base)
+        : ps_rp_call ? ELCons(ps_call_e, ps_call_base)
         : outs)
 
     ps_push ∈ PrOp = (ps_is_q ? PrQuest : PrBin(ps_bin_o))
     nops = (ps_sh_lp ? PrCons(PrLP, ops)
         : ps_sh_not ? PrCons(PrNot, ops)
+        : ps_sh_hash ? PrCons(PrHash, ops)
+        : ps_sh_call ? PrCons(PrCall(ps_hd_nm, 0), ops)
         : ps_arr_shift ? PrCons(ps_push, ops)
         : ps_col_swap ? PrCons(PrTern, ps_ops_tl)
-        : (ps_rp_close ∨ ps_reduce ∨ ps_discard) ? ps_ops_tl
+        : ps_com_bump ? PrCons(PrCall(ps_tc_nm, ps_tc_k + 1), ps_ops_tl)
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_reduce ∨ ps_discard) ? ps_ops_tl
         : ops)
 
     nexpop = (ps_sh_atom ? false
-        : ps_rp_close ? false
-        : (ps_arr_shift ∨ ps_col_swap ∨ ps_sh_lp ∨ ps_sh_not) ? true
+        : (ps_rp_close ∨ ps_rp_call) ? false
+        : (ps_arr_shift ∨ ps_col_swap ∨ ps_sh_lp ∨ ps_sh_not
+            ∨ ps_sh_hash ∨ ps_sh_call ∨ ps_com_bump) ? true
         : expop)
 
-    npd = (ps_sh_lp ? pd + 1 : ps_rp_close ? pd - 1 : pd)
+    npd = ((ps_sh_lp ∨ ps_sh_call) ? pd + 1
+        : (ps_rp_close ∨ ps_rp_call) ? pd - 1
+        : pd)
     nqd = ((ps_arr_shift ∧ ps_is_q) ? qd + 1 : ps_col_swap ? qd - 1 : qd)
+    ncd = (ps_sh_call ? cd + 1 : ps_rp_call ? cd - 1 : cd)
 
 claim driver_main
     -- ── INPUT — per-process source path via stdin (wave 4o) ──────
@@ -1499,7 +1578,7 @@ claim driver_main
     w_need ∈ Int = (¬in_parse ? 0
         : _pmode = 0 ? 3
         : _pmode = 1 ? 1
-        : _pmode = 3 ? 1
+        : _pmode = 3 ? 2
         : _pmode = 4 ? (_ed_act = 0 ? 2 : 0)
         : _pmode = 5 ? (d_witems_nil ? 8 : 0)
         : d_witems_nil ? 5
@@ -1765,6 +1844,7 @@ claim driver_main
     d_it_app     ∈ Bool = (d_whead matches C2App(_, _))
     d_it_seleq   ∈ Bool = (d_whead matches C2SelectEq(_))
     d_it_leneq   ∈ Bool = (d_whead matches C2LenEq(_))
+    d_it_strop   ∈ Bool = (d_whead matches C2StrOp(_, _))
 
     d_pe ∈ Expr = match d_whead
         C2Process(e) ⇒ e
@@ -1793,6 +1873,12 @@ claim driver_main
     d_len_n ∈ Int = match d_whead
         C2LenEq(n) ⇒ n
         _ ⇒ 0
+    d_so_nm ∈ String = match d_whead
+        C2StrOp(sn, _) ⇒ sn
+        _ ⇒ ""
+    d_so_n ∈ Int = match d_whead
+        C2StrOp(_, sk) ⇒ sk
+        _ ⇒ 0
 
     -- Expr-node decomposition via the pass claims.
     d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
@@ -1820,6 +1906,83 @@ claim driver_main
     d_pe_is_not ∈ Bool
     NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
     d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
+
+    -- call-node decomposition (B3): name + up to 3 positional args.
+    d_pe_is_c1 ∈ Bool = (d_pe matches ECall1(_, _))
+    d_pe_is_c2 ∈ Bool = (d_pe matches ECall2(_, _, _))
+    d_pe_is_c3 ∈ Bool = (d_pe matches ECall3(_, _, _, _))
+    d_cnm ∈ String = match d_pe
+        ECall1(cn1, _) ⇒ cn1
+        ECall2(cn2, _, _) ⇒ cn2
+        ECall3(cn3, _, _, _) ⇒ cn3
+        _ ⇒ ""
+    d_ca0 ∈ Expr = match d_pe
+        ECall1(_, ca1) ⇒ ca1
+        ECall2(_, ca2, _) ⇒ ca2
+        ECall3(_, ca3, _, _) ⇒ ca3
+        _ ⇒ ENoExpr
+    d_ca1 ∈ Expr = match d_pe
+        ECall2(_, _, cb2) ⇒ cb2
+        ECall3(_, _, cb3, _) ⇒ cb3
+        _ ⇒ ENoExpr
+    d_ca2 ∈ Expr = match d_pe
+        ECall3(_, _, _, cc3) ⇒ cc3
+        _ ⇒ ENoExpr
+
+    -- B3 lowering: the legacy surface table (the pinned
+    -- bootstrap string_ops.rs dispatch, re-probed against the
+    -- oracle 2026-06-07) → translate2_seq.ev's StrOpBuildZ3 keys.
+    -- starts_with(text, pre) / ends_with(text, suf) emit
+    -- (str.prefixof pre text) / (str.suffixof suf text) — the
+    -- ARGS PROCESS IN SWAPPED ORDER so the stack lines up with
+    -- StrOpBuildZ3's (a=prefix, b=s) operand order. index_of/2
+    -- pushes the cached zero numeral as the offset (the oracle
+    -- emits `(str.indexof s sub 0)`). str_from_int expands to the
+    -- oracle's negative-safe composite
+    -- (ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e)))).
+    -- An unknown call name pushes handle 0 (unbound-ident parity).
+    d_sfi_items ∈ C2Items = C2ICons(C2Process(d_ca0),
+        C2ICons(C2Process(EInt(0)),
+        C2ICons(C2Op(OpGeq),
+        C2ICons(C2Process(d_ca0),
+        C2ICons(C2StrOp("int_to_str", 1),
+        C2ICons(C2Process(EStr("-")),
+        C2ICons(C2Process(EInt(0)),
+        C2ICons(C2Process(d_ca0),
+        C2ICons(C2Op(OpSub),
+        C2ICons(C2StrOp("int_to_str", 1),
+        C2ICons(C2Op(OpConcat),
+        C2ICons(C2Ite, d_wtail))))))))))))
+    d_c1_items ∈ C2Items = (d_cnm = "str_len"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2StrOp("len", 1), d_wtail))
+        : d_cnm = "str_from_int" ? d_sfi_items
+        : C2ICons(C2PushH(0), d_wtail))
+    d_c2_items ∈ C2Items = (d_cnm = "char_at"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2StrOp("char_at", 2), d_wtail)))
+        : d_cnm = "index_of"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2PushH(z_zero),
+                C2ICons(C2StrOp("indexof", 3), d_wtail))))
+        : d_cnm = "str_contains"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2StrOp("contains", 2), d_wtail)))
+        : d_cnm = "starts_with"
+            ? C2ICons(C2Process(d_ca1), C2ICons(C2Process(d_ca0),
+                C2ICons(C2StrOp("prefixof", 2), d_wtail)))
+        : d_cnm = "ends_with"
+            ? C2ICons(C2Process(d_ca1), C2ICons(C2Process(d_ca0),
+                C2ICons(C2StrOp("suffixof", 2), d_wtail)))
+        : C2ICons(C2PushH(0), d_wtail))
+    d_c3_items ∈ C2Items = (d_cnm = "substr"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2Process(d_ca2),
+                C2ICons(C2StrOp("substr", 3), d_wtail))))
+        : d_cnm = "index_of"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2Process(d_ca2),
+                C2ICons(C2StrOp("indexof", 3), d_wtail))))
+        : C2ICons(C2PushH(0), d_wtail))
 
     -- symbol-table lookup. true/false resolve purely to the cached
     -- Z3_mk_true/Z3_mk_false handles; a name found in st_names
@@ -1896,7 +2059,8 @@ claim driver_main
     -- (pmode 3); plain / bounded memberships build items directly.
     c_can_expr ∈ Bool = (c_t0_is_ident ∨ (c_t0 matches IntLit(_))
         ∨ (c_t0 matches OpNot) ∨ (c_t0 matches LParen)
-        ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse))
+        ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse)
+        ∨ (c_t0 matches Hash))
     d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw
         ∨ (¬c_can_expr)))
     -- the effects literal enters the ELEMENT walk (pmode 5) after
@@ -1953,6 +2117,8 @@ claim driver_main
     _p_pd ∈ Int
     p_qd ∈ Int
     _p_qd ∈ Int
+    p_cd ∈ Int
+    _p_cd ∈ Int
     pk_kind ∈ Int
     _pk_kind ∈ Int
     pk_name ∈ String
@@ -1968,13 +2134,14 @@ claim driver_main
     pr_nexpop ∈ Bool
     pr_npd ∈ Int
     pr_nqd ∈ Int
+    pr_ncd ∈ Int
     pr_sdone ∈ Bool
     pr_sres ∈ Expr
-    pr_scons ∈ Bool
+    pr_scons ∈ Int
     C2PrattStep(toks ↦ _wtoks, outs ↦ _p_out, ops ↦ _p_ops,
-        expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd,
+        expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
         ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
-        nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd,
+        nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd, ncd ↦ pr_ncd,
         sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
 
     p_out = (is_first_tick ? ELNil
@@ -1997,6 +2164,10 @@ claim driver_main
         : d_enter_pratt ? 0
         : d_in_pratt ? pr_nqd
         : _p_qd)
+    p_cd = (is_first_tick ? 0
+        : d_enter_pratt ? 0
+        : d_in_pratt ? pr_ncd
+        : _p_cd)
     pk_kind = (is_first_tick ? 0 : d_enter_pratt ? d_pratt_kind0 : _pk_kind)
     pk_name = (is_first_tick ? "" : d_enter_pratt ? c_name : _pk_name)
     pk_sc = (is_first_tick ? 0 : d_enter_pratt ? c_sc : _pk_sc)
@@ -2032,6 +2203,7 @@ claim driver_main
         : d_it_drop ? 1
         : d_it_app ? (_istep = d_app_n ? d_app_n : 0)
         : d_it_seleq ? (_istep = 1 ? 1 : 0)
+        : d_it_strop ? d_so_n
         : 0)
     d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ d_lk_pure)
     d_lk_read ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id ∧ (¬d_lk_pure))
@@ -2059,6 +2231,9 @@ claim driver_main
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
         : d_it_proc ∧ d_pe_is_tern ? C2ICons(C2Process(d_pe_c), C2ICons(C2Process(d_pe_t), C2ICons(C2Process(d_pe_e), C2ICons(C2Ite, d_wtail))))
         : d_it_proc ∧ d_pe_is_not ? C2ICons(C2Process(d_pe_ni), C2ICons(C2Not, d_wtail))
+        : d_it_proc ∧ d_pe_is_c1 ? d_c1_items
+        : d_it_proc ∧ d_pe_is_c2 ? d_c2_items
+        : d_it_proc ∧ d_pe_is_c3 ? d_c3_items
         : d_it_proc ? d_wtail
         : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
         : d_it_decl ? (_istep = 2 ? d_wtail : _witems)
@@ -2089,6 +2264,7 @@ claim driver_main
         : d_it_app ? (_istep = d_app_n ? 1 : 0)
         : d_it_seleq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
         : d_it_leneq ? (_istep = 0 ? 2 : 0)
+        : d_it_strop ? 1
         : 0)
 
     -- ── token consumption (cursor arithmetic + window tail) ───────
@@ -2107,7 +2283,7 @@ claim driver_main
         : d_enter_pratt ? d_pratt_cons0
         : d_mem_line ? d_mem_cons
         : p_done ? d_done_cons
-        : (d_in_pratt ∧ pr_scons) ? 1
+        : (d_in_pratt ∧ (pr_scons ≥ 1)) ? pr_scons
         : 0)
     tcur = (is_first_tick ? 0 : _tcur + dcons)
     wend = (is_first_tick ? 0 : _fmode = 2 ? _tcur + 8 : _wend)
@@ -2189,6 +2365,21 @@ claim driver_main
     BuildMemWriteLong(addr ↦ z_arena + 208, value ↦ d_h_top, eff ↦ d_eff_wl1)
     d_eff_mkstring ∈ Effect
     BuildZ3MkString(ctx_h ↦ z_ctx, s ↦ d_pe_str, eff ↦ d_eff_mkstring)
+    -- C2StrOp (B3): one tick — pops d_so_n operand handles, builds
+    -- the str.* node. Operand mapping per arity (post-order: the
+    -- stack top is the LAST arg): 1 → (top) · 2 → (2nd, top) ·
+    -- 3 → (3rd, 2nd, top). "len" goes to Z3_mk_seq_length (str.len
+    -- on a string-sorted operand); everything else through
+    -- translate2_seq.ev's StrOpBuildZ3 name table.
+    d_so_a ∈ Int = (d_so_n = 3 ? d_h_3rd : d_so_n = 2 ? d_h_2nd : d_h_top)
+    d_so_b ∈ Int = (d_so_n = 3 ? d_h_2nd : d_so_n = 2 ? d_h_top : 0)
+    d_so_c ∈ Int = (d_so_n = 3 ? d_h_top : 0)
+    d_eff_slen ∈ Effect
+    BuildZ3MkSeqLength(ctx_h ↦ z_ctx, s_h ↦ d_h_top, eff ↦ d_eff_slen)
+    d_eff_strop ∈ Effect
+    d_strop_ok ∈ Bool
+    StrOpBuildZ3(ctx_h ↦ z_ctx, op_name ↦ d_so_nm, a_h ↦ d_so_a,
+        b_h ↦ d_so_b, c_h ↦ d_so_c, eff ↦ d_eff_strop, ok ↦ d_strop_ok)
     d_eff_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
     d_eff_const ∈ Effect
@@ -2277,6 +2468,7 @@ claim driver_main
             : _istep = 1 ? d_eff_seleq
             : d_eff_asserttmp)
         : d_it_leneq ? (_istep = 0 ? d_eff_leneq : d_eff_asserttmp)
+        : d_it_strop ? (d_so_nm = "len" ? d_eff_slen : d_eff_strop)
         : d_eff_filler)
 
     -- ── EMIT ──────────────────────────────────────────────────────
