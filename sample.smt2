@@ -1,4 +1,4 @@
-;; manifest: state-fields = all_done:Bool at_boundary:Bool block_now:String body:String char_only:Bool chunk:String claim_block:String claim_done:Bool claim_is_param:Bool claim_name:String claim_name_tok:Token classified_str:Token commit_elt:String commit_is_seq:Bool committing_field:Bool content_read:String cts_assert:String cts_bare:Bool cts_decl:String cts_eff_len:Int cts_field:String cts_ok:Bool cts_rest:TokenList cur_char:String cur_decl:EnumVariantDecl cur_enum_decl:EnumDeclAst cur_fields:EVFieldList cur_name:String datatypes:String did_prelude:Bool dig_val:Int done:Bool e1:Bool e2:Bool e3:Bool e4:Bool e5:Bool e6:Bool e7:Bool e8:Bool eacc:String ebodies:String emit_now:Bool emit_payload:String emitting_block:Bool ename:String enter_claim:Bool enter_enum:Bool enter_skip:Bool entering_parse:Bool entering_reverse:Bool enum_block:String enum_done:Bool ephase:Int esorts:String fA:String fB:String fC:String fcount:Int fdepth:Int finalize:Bool finish_int_only:Bool finish_int_with_op:Bool finish_str_only:Bool finish_str_with_op:Bool first_v:Bool fstr:String ftacc:String full_enum_block:String fwd:TokenList got_path:Bool grouped_body:String has_input:Bool has_target:Bool have_pending:Bool head_is_claimkw:Bool head_is_enum:Bool helper_block:String helper_body:String helper_sort:String ift:Bool ift_decl:String in_claim_run:Bool in_dispatch:Bool in_enum_run:Bool in_parse:Bool in_range:Bool in_reverse:Bool in_skip:Bool in_strlit:Bool input:String int_continuing:Bool int_finishing:Bool int_starting:Bool int_tok:Token is_alpha:Bool is_dig:Bool is_op:Bool is_quote:Bool is_result_enum:Bool is_ws:Bool item_after_name:Token items:TokenList items_d1:TokenList items_d2:TokenList items_hd:Token items_nil:Bool lex_done:Bool lx_collecting:Bool lx_comment:Bool lx_comment_to:Int lx_is_dash:Bool lx_next_char:String lx_next_dash:Bool lx_nl:Int lx_skip_ws:Bool lx_ws_adv:Int mem_card_seq:Bool mem_compound_seq:Bool mem_is_ctor:Bool mem_is_match:Bool mem_is_seq:Bool mts_assert:String mts_decl:String mts_field:String mts_ok:Bool mts_rest:TokenList mxe:Int name_matches:Bool name_selected:Bool need_prelude:Bool new_body:String next_ephase:Int next_pos:Int op_tok:Token out:String p_bd:Int p_id:String p_is_comma:Bool p_is_enum:Bool p_is_eq:Bool p_is_ident:Bool p_is_lp:Bool p_is_pipe:Bool p_is_rp:Bool p_is_tlkw:Bool p_tt:String p_tt_is:Bool partial_int:Int partial_str:String partial_strlit:String path_read:String phase:Int plist:TokenList plist_nil:Bool pmode:Int pos:Int prelude:String ptail:TokenList ptok:Token r_l1:TokenList r_l2:TokenList r_l3:TokenList r_l4:TokenList r_t3:Token r_t4:Token rem:TokenList rendered:String saw_result:Bool sel_assert:String sel_decl:String sel_eff:Int sel_field:String sel_ok:Bool sel_pinned:Bool sel_rest:TokenList sel_saw_ift:Bool seqelt:String sigtab:String sigtab_entry:String skip_at_tlkw:Bool skip_block:String skip_junk:Bool skip_stop:Bool skipl:TokenList skipl_hd:Token skipl_nil:Bool skipl_tl:TokenList sqs_assert:String sqs_decl:String sqs_field:String sqs_ok:Bool sqs_rest:TokenList src_path:String starting_variant:Bool step_assert:String step_decl:String step_field:String step_ok:Bool step_pinned:Bool step_rest:TokenList step_saw_ift:Bool str_continuing:Bool str_finishing:Bool str_starting:Bool strlit_closing:Bool strlit_continuing:Bool strlit_open:Bool strlit_tok:Token target:String this_bodies:String this_sorts:String tokens:TokenList was_collecting_int:Bool was_collecting_str:Bool work:TokenList work_hd:Token work_is_nil:Bool work_tl:TokenList
+;; manifest: state-fields = all_done:Bool at_boundary:Bool block_now:String body:String cca_name:String cca_ok:Bool cca_rest:TokenList cca_table:String char_only:Bool chunk:String claim_block:String claim_done:Bool claim_is_param:Bool claim_name:String claim_name_tok:Token classified_str:Token commit_elt:String commit_is_seq:Bool committing_field:Bool content_read:String cts_assert:String cts_bare:Bool cts_decl:String cts_eff_len:Int cts_field:String cts_ok:Bool cts_rest:TokenList cur_char:String cur_decl:EnumVariantDecl cur_enum_decl:EnumDeclAst cur_fields:EVFieldList cur_name:String datatypes:String did_prelude:Bool dig_val:Int do_ccall:Bool done:Bool e1:Bool e2:Bool e3:Bool e4:Bool e5:Bool e6:Bool e7:Bool e8:Bool eacc:String ebodies:String emit_now:Bool emit_payload:String emitting_block:Bool ename:String enter_claim:Bool enter_enum:Bool enter_skip:Bool entering_parse:Bool entering_reverse:Bool enum_block:String enum_done:Bool ephase:Int esorts:String fA:String fB:String fC:String fcount:Int fdepth:Int finalize:Bool finish_int_only:Bool finish_int_with_op:Bool finish_str_only:Bool finish_str_with_op:Bool first_v:Bool fstr:String ftacc:String full_enum_block:String fwd:TokenList got_path:Bool grouped_body:String has_input:Bool has_target:Bool have_pending:Bool head_is_claimkw:Bool head_is_enum:Bool helper_block:String helper_body:String helper_sort:String i_collect_done:Bool i_collecting:Bool i_found:Bool i_found_param:Bool i_hd2_name:String i_hd_is_tlkw:Bool i_pskip:Bool i_pskip_done:Bool i_search_fail:Bool i_search_step:Bool i_sub_val:String i_xfer:Bool i_xfer_done:Bool i_xfer_tok:Token icoll:TokenList icoll_hd:Token icoll_hd_name:String icoll_nil:Bool icoll_tl:TokenList ift:Bool ift_decl:String in_claim_run:Bool in_dispatch:Bool in_enum_run:Bool in_inline:Bool in_parse:Bool in_range:Bool in_reverse:Bool in_skip:Bool in_strlit:Bool iname:String input:String int_continuing:Bool int_finishing:Bool int_starting:Bool int_tok:Token iph:Int is_alpha:Bool is_dig:Bool is_hd:Token is_hd2:Token is_hd3:Token is_op:Bool is_quote:Bool is_result_enum:Bool is_tl:TokenList is_tl2:TokenList is_tl3:TokenList is_ws:Bool iscan:TokenList iscan_nil:Bool isub:String itail:TokenList item_after_name:Token items:TokenList items_d1:TokenList items_d2:TokenList items_hd:Token items_nil:Bool lex_done:Bool lx_collecting:Bool lx_comment:Bool lx_comment_to:Int lx_is_dash:Bool lx_next_char:String lx_next_dash:Bool lx_nl:Int lx_skip_ws:Bool lx_ws_adv:Int mem_card_seq:Bool mem_compound_seq:Bool mem_is_ctor:Bool mem_is_match:Bool mem_is_seq:Bool mts_assert:String mts_decl:String mts_field:String mts_ok:Bool mts_rest:TokenList mxe:Int name_matches:Bool name_selected:Bool need_prelude:Bool new_body:String next_ephase:Int next_pos:Int op_tok:Token out:String p_bd:Int p_id:String p_is_comma:Bool p_is_enum:Bool p_is_eq:Bool p_is_ident:Bool p_is_lp:Bool p_is_pipe:Bool p_is_rp:Bool p_is_tlkw:Bool p_tt:String p_tt_is:Bool partial_int:Int partial_str:String partial_strlit:String path_read:String phase:Int plist:TokenList plist_nil:Bool pmode:Int pos:Int prelude:String ptail:TokenList ptok:Token r_l1:TokenList r_l2:TokenList r_l3:TokenList r_l4:TokenList r_t3:Token r_t4:Token rem:TokenList rendered:String saw_result:Bool sel_assert:String sel_decl:String sel_eff:Int sel_field:String sel_ok:Bool sel_pinned:Bool sel_rest:TokenList sel_saw_ift:Bool seqelt:String sigtab:String sigtab_entry:String skip_at_tlkw:Bool skip_block:String skip_junk:Bool skip_stop:Bool skipl:TokenList skipl_hd:Token skipl_nil:Bool skipl_tl:TokenList sqs_assert:String sqs_decl:String sqs_field:String sqs_ok:Bool sqs_rest:TokenList src_path:String starting_variant:Bool step_assert:String step_decl:String step_field:String step_ok:Bool step_pinned:Bool step_rest:TokenList step_saw_ift:Bool str_continuing:Bool str_finishing:Bool str_starting:Bool strlit_closing:Bool strlit_continuing:Bool strlit_open:Bool strlit_tok:Token target:String this_bodies:String this_sorts:String tokens:TokenList was_collecting_int:Bool was_collecting_str:Bool work:TokenList work_hd:Token work_is_nil:Bool work_tl:TokenList
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -4297,31 +4297,31 @@
 (declare-fun MembershipStep__ms_matches_str__call1266 () String)
 (declare-fun MembershipStep__ms_rhs_expr__call1266 () Expr)
 (declare-fun ArithExprSmtlib__is_binop__call1287 () Bool)
-(declare-fun ArithExprSmtlib__op__call1287 () Op)
-(declare-fun ArithExprSmtlib__lhs__call1287 () Expr)
-(declare-fun ArithExprSmtlib__rhs__call1287 () Expr)
-(declare-fun ArithExprSmtlib__is_plus__call1287 () Bool)
-(declare-fun ArithExprSmtlib__is_sub__call1287 () Bool)
-(declare-fun ArithExprSmtlib__is_mul__call1287 () Bool)
-(declare-fun ArithExprSmtlib__is_div__call1287 () Bool)
-(declare-fun ArithExprSmtlib__is_arith__call1287 () Bool)
-(declare-fun ArithExprSmtlib__op_str__call1287 () String)
+(declare-fun ArithExprSmtlib__op_x__call1287 () Op)
+(declare-fun ArithExprSmtlib__lhs_x__call1287 () Expr)
+(declare-fun ArithExprSmtlib__rhs_x__call1287 () Expr)
+(declare-fun ArithExprSmtlib__is_plus_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__is_sub_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__is_mul_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__is_div_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__is_arith_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__op_str_x__call1287 () String)
 (declare-fun AtomSmtlib__is_int__call1288 () Bool)
 (declare-fun AtomSmtlib__is_ident__call1288 () Bool)
 (declare-fun AtomSmtlib__is_str__call1288 () Bool)
 (declare-fun AtomSmtlib__int_val__call1288 () Int)
 (declare-fun AtomSmtlib__ident_val__call1288 () String)
 (declare-fun AtomSmtlib__str_val__call1288 () String)
-(declare-fun ArithExprSmtlib__lhs_ok__call1287 () Bool)
-(declare-fun ArithExprSmtlib__lhs_str__call1287 () String)
+(declare-fun ArithExprSmtlib__lhs_ok_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__lhs_str_x__call1287 () String)
 (declare-fun AtomSmtlib__is_int__call1289 () Bool)
 (declare-fun AtomSmtlib__is_ident__call1289 () Bool)
 (declare-fun AtomSmtlib__is_str__call1289 () Bool)
 (declare-fun AtomSmtlib__int_val__call1289 () Int)
 (declare-fun AtomSmtlib__ident_val__call1289 () String)
 (declare-fun AtomSmtlib__str_val__call1289 () String)
-(declare-fun ArithExprSmtlib__rhs_ok__call1287 () Bool)
-(declare-fun ArithExprSmtlib__rhs_str__call1287 () String)
+(declare-fun ArithExprSmtlib__rhs_ok_x__call1287 () Bool)
+(declare-fun ArithExprSmtlib__rhs_str_x__call1287 () String)
 (declare-fun MembershipStep__ms_arith_ok__call1266 () Bool)
 (declare-fun MembershipStep__ms_arith_str__call1266 () String)
 (declare-fun BoolExprSmtlib__is_binop__call1290 () Bool)
@@ -7725,6 +7725,2195 @@
 (declare-fun sel_saw_ift () Bool)
 (declare-fun sel_eff () Int)
 (declare-fun chunk () String)
+(declare-fun CallArgsStep__ca_t0__call2287 () Token)
+(declare-fun CallArgsStep__ca_l1__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t1__call2287 () Token)
+(declare-fun CallArgsStep__ca_l2__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t2__call2287 () Token)
+(declare-fun CallArgsStep__ca_l3__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t3__call2287 () Token)
+(declare-fun CallArgsStep__ca_l4__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_head_ok__call2287 () Bool)
+(declare-fun cca_name () String)
+(declare-fun CallArgsStep__ca_s1__call2287 () String)
+(declare-fun SPrim2__sp2_h0__call2296 () Token)
+(declare-fun SPrim2__sp2_t0__call2296 () TokenList)
+(declare-fun SPrim2__sp2_neg__call2296 () Bool)
+(declare-fun SPrim2__sp2_seed__call2296 () TokenList)
+(declare-fun SPrim2__sp2_b0__call2296 () Token)
+(declare-fun SPrim2__sp2_bt__call2296 () TokenList)
+(declare-fun SPrim2__sp2_b1__call2296 () Token)
+(declare-fun SPrim2__sp2_par__call2296 () Bool)
+(declare-fun SPrim1__sp1_h0__call2303 () Token)
+(declare-fun SPrim1__sp1_t0__call2303 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2303 () Bool)
+(declare-fun SPrim1__sp1_seed__call2303 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2303 () Token)
+(declare-fun SPrim1__sp1_bt__call2303 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2303 () Token)
+(declare-fun SPrim1__sp1_par__call2303 () Bool)
+(declare-fun SPrim0__sp0_h0__call2310 () Token)
+(declare-fun SPrim0__sp0_t0__call2310 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2310 () Bool)
+(declare-fun SPrim0__sp0_seed__call2310 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2310 () Token)
+(declare-fun SPrim0__sp0_s0__call2310 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2310 () Token)
+(declare-fun SAtomR__sa_is_int__call2316 () Bool)
+(declare-fun SAtomR__sa_is_str__call2316 () Bool)
+(declare-fun SAtomR__sa_is_id__call2316 () Bool)
+(declare-fun SAtomR__sa_true__call2316 () Bool)
+(declare-fun SAtomR__sa_false__call2316 () Bool)
+(declare-fun SAtomR__sa_iv__call2316 () Int)
+(declare-fun SAtomR__sa_sv__call2316 () String)
+(declare-fun SAtomR__sa_idv__call2316 () String)
+(declare-fun SAtomR__sa_ctor_head__call2316 () Bool)
+(declare-fun SPrim0__sp0_ak__call2310 () Bool)
+(declare-fun SPrim0__sp0_ao__call2310 () String)
+(declare-fun SChain0__sc0_k1__call2309 () Bool)
+(declare-fun SChain0__sc0_o1__call2309 () String)
+(declare-fun SChain0__sc0_r1__call2309 () TokenList)
+(declare-fun SChain0__sc0_q1__call2309 () Token)
+(declare-fun SChain0__sc0_s2__call2309 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2319 () Token)
+(declare-fun SPrim0__sp0_t0__call2319 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2319 () Bool)
+(declare-fun SPrim0__sp0_seed__call2319 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2319 () Token)
+(declare-fun SPrim0__sp0_s0__call2319 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2319 () Token)
+(declare-fun SAtomR__sa_is_int__call2325 () Bool)
+(declare-fun SAtomR__sa_is_str__call2325 () Bool)
+(declare-fun SAtomR__sa_is_id__call2325 () Bool)
+(declare-fun SAtomR__sa_true__call2325 () Bool)
+(declare-fun SAtomR__sa_false__call2325 () Bool)
+(declare-fun SAtomR__sa_iv__call2325 () Int)
+(declare-fun SAtomR__sa_sv__call2325 () String)
+(declare-fun SAtomR__sa_idv__call2325 () String)
+(declare-fun SAtomR__sa_ctor_head__call2325 () Bool)
+(declare-fun SPrim0__sp0_ak__call2319 () Bool)
+(declare-fun SPrim0__sp0_ao__call2319 () String)
+(declare-fun SChain0__sc0_k2__call2309 () Bool)
+(declare-fun SChain0__sc0_o2__call2309 () String)
+(declare-fun SChain0__sc0_r2__call2309 () TokenList)
+(declare-fun SChain0__sc0_q2__call2309 () Token)
+(declare-fun SChain0__sc0_s3__call2309 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2328 () Token)
+(declare-fun SPrim0__sp0_t0__call2328 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2328 () Bool)
+(declare-fun SPrim0__sp0_seed__call2328 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2328 () Token)
+(declare-fun SPrim0__sp0_s0__call2328 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2328 () Token)
+(declare-fun SAtomR__sa_is_int__call2334 () Bool)
+(declare-fun SAtomR__sa_is_str__call2334 () Bool)
+(declare-fun SAtomR__sa_is_id__call2334 () Bool)
+(declare-fun SAtomR__sa_true__call2334 () Bool)
+(declare-fun SAtomR__sa_false__call2334 () Bool)
+(declare-fun SAtomR__sa_iv__call2334 () Int)
+(declare-fun SAtomR__sa_sv__call2334 () String)
+(declare-fun SAtomR__sa_idv__call2334 () String)
+(declare-fun SAtomR__sa_ctor_head__call2334 () Bool)
+(declare-fun SPrim0__sp0_ak__call2328 () Bool)
+(declare-fun SPrim0__sp0_ao__call2328 () String)
+(declare-fun SChain0__sc0_k3__call2309 () Bool)
+(declare-fun SChain0__sc0_o3__call2309 () String)
+(declare-fun SChain0__sc0_r3__call2309 () TokenList)
+(declare-fun SChain0__sc0_q3__call2309 () Token)
+(declare-fun SChain0__sc0_s4__call2309 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2337 () Token)
+(declare-fun SPrim0__sp0_t0__call2337 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2337 () Bool)
+(declare-fun SPrim0__sp0_seed__call2337 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2337 () Token)
+(declare-fun SPrim0__sp0_s0__call2337 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2337 () Token)
+(declare-fun SAtomR__sa_is_int__call2343 () Bool)
+(declare-fun SAtomR__sa_is_str__call2343 () Bool)
+(declare-fun SAtomR__sa_is_id__call2343 () Bool)
+(declare-fun SAtomR__sa_true__call2343 () Bool)
+(declare-fun SAtomR__sa_false__call2343 () Bool)
+(declare-fun SAtomR__sa_iv__call2343 () Int)
+(declare-fun SAtomR__sa_sv__call2343 () String)
+(declare-fun SAtomR__sa_idv__call2343 () String)
+(declare-fun SAtomR__sa_ctor_head__call2343 () Bool)
+(declare-fun SPrim0__sp0_ak__call2337 () Bool)
+(declare-fun SPrim0__sp0_ao__call2337 () String)
+(declare-fun SChain0__sc0_k4__call2309 () Bool)
+(declare-fun SChain0__sc0_o4__call2309 () String)
+(declare-fun SChain0__sc0_r4__call2309 () TokenList)
+(declare-fun SOpSmt__so_plus__call2344 () Bool)
+(declare-fun SOpSmt__so_minus__call2344 () Bool)
+(declare-fun SOpSmt__so_star__call2344 () Bool)
+(declare-fun SOpSmt__so_slash__call2344 () Bool)
+(declare-fun SOpSmt__so_lt__call2344 () Bool)
+(declare-fun SOpSmt__so_gt__call2344 () Bool)
+(declare-fun SOpSmt__so_le__call2344 () Bool)
+(declare-fun SOpSmt__so_ge__call2344 () Bool)
+(declare-fun SOpSmt__so_eq__call2344 () Bool)
+(declare-fun SOpSmt__so_ne__call2344 () Bool)
+(declare-fun SOpSmt__so_and__call2344 () Bool)
+(declare-fun SOpSmt__so_or__call2344 () Bool)
+(declare-fun SOpSmt__so_impl__call2344 () Bool)
+(declare-fun SChain0__sc0_op1k__call2309 () Bool)
+(declare-fun SChain0__sc0_op1__call2309 () String)
+(declare-fun SOpSmt__so_plus__call2345 () Bool)
+(declare-fun SOpSmt__so_minus__call2345 () Bool)
+(declare-fun SOpSmt__so_star__call2345 () Bool)
+(declare-fun SOpSmt__so_slash__call2345 () Bool)
+(declare-fun SOpSmt__so_lt__call2345 () Bool)
+(declare-fun SOpSmt__so_gt__call2345 () Bool)
+(declare-fun SOpSmt__so_le__call2345 () Bool)
+(declare-fun SOpSmt__so_ge__call2345 () Bool)
+(declare-fun SOpSmt__so_eq__call2345 () Bool)
+(declare-fun SOpSmt__so_ne__call2345 () Bool)
+(declare-fun SOpSmt__so_and__call2345 () Bool)
+(declare-fun SOpSmt__so_or__call2345 () Bool)
+(declare-fun SOpSmt__so_impl__call2345 () Bool)
+(declare-fun SChain0__sc0_op3k__call2309 () Bool)
+(declare-fun SChain0__sc0_op3__call2309 () String)
+(declare-fun SChain0__sc0_q1_tern__call2309 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2309 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2309 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2309 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2309 () Bool)
+(declare-fun SChain0__sc0_b2__call2309 () String)
+(declare-fun SChain0__sc0_q2_colon__call2309 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2309 () Bool)
+(declare-fun SPrim1__sp1_ik__call2303 () Bool)
+(declare-fun SPrim1__sp1_io__call2303 () String)
+(declare-fun SPrim1__sp1_ir__call2303 () TokenList)
+(declare-fun SPrim1__sp1_close__call2303 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2303 () Bool)
+(declare-fun SPrim1__sp1_pr__call2303 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2348 () Bool)
+(declare-fun SAtomR__sa_is_str__call2348 () Bool)
+(declare-fun SAtomR__sa_is_id__call2348 () Bool)
+(declare-fun SAtomR__sa_true__call2348 () Bool)
+(declare-fun SAtomR__sa_false__call2348 () Bool)
+(declare-fun SAtomR__sa_iv__call2348 () Int)
+(declare-fun SAtomR__sa_sv__call2348 () String)
+(declare-fun SAtomR__sa_idv__call2348 () String)
+(declare-fun SAtomR__sa_ctor_head__call2348 () Bool)
+(declare-fun SPrim1__sp1_ak__call2303 () Bool)
+(declare-fun SPrim1__sp1_ao__call2303 () String)
+(declare-fun SChain1__sc1_k1__call2302 () Bool)
+(declare-fun SPrim1__sp1_base__call2303 () String)
+(declare-fun SChain1__sc1_o1__call2302 () String)
+(declare-fun SChain1__sc1_r1__call2302 () TokenList)
+(declare-fun SChain1__sc1_q1__call2302 () Token)
+(declare-fun SChain1__sc1_s2__call2302 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2351 () Token)
+(declare-fun SPrim1__sp1_t0__call2351 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2351 () Bool)
+(declare-fun SPrim1__sp1_seed__call2351 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2351 () Token)
+(declare-fun SPrim1__sp1_bt__call2351 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2351 () Token)
+(declare-fun SPrim1__sp1_par__call2351 () Bool)
+(declare-fun SPrim0__sp0_h0__call2358 () Token)
+(declare-fun SPrim0__sp0_t0__call2358 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2358 () Bool)
+(declare-fun SPrim0__sp0_seed__call2358 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2358 () Token)
+(declare-fun SPrim0__sp0_s0__call2358 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2358 () Token)
+(declare-fun SAtomR__sa_is_int__call2364 () Bool)
+(declare-fun SAtomR__sa_is_str__call2364 () Bool)
+(declare-fun SAtomR__sa_is_id__call2364 () Bool)
+(declare-fun SAtomR__sa_true__call2364 () Bool)
+(declare-fun SAtomR__sa_false__call2364 () Bool)
+(declare-fun SAtomR__sa_iv__call2364 () Int)
+(declare-fun SAtomR__sa_sv__call2364 () String)
+(declare-fun SAtomR__sa_idv__call2364 () String)
+(declare-fun SAtomR__sa_ctor_head__call2364 () Bool)
+(declare-fun SPrim0__sp0_ak__call2358 () Bool)
+(declare-fun SPrim0__sp0_ao__call2358 () String)
+(declare-fun SChain0__sc0_k1__call2357 () Bool)
+(declare-fun SChain0__sc0_o1__call2357 () String)
+(declare-fun SChain0__sc0_r1__call2357 () TokenList)
+(declare-fun SChain0__sc0_q1__call2357 () Token)
+(declare-fun SChain0__sc0_s2__call2357 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2367 () Token)
+(declare-fun SPrim0__sp0_t0__call2367 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2367 () Bool)
+(declare-fun SPrim0__sp0_seed__call2367 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2367 () Token)
+(declare-fun SPrim0__sp0_s0__call2367 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2367 () Token)
+(declare-fun SAtomR__sa_is_int__call2373 () Bool)
+(declare-fun SAtomR__sa_is_str__call2373 () Bool)
+(declare-fun SAtomR__sa_is_id__call2373 () Bool)
+(declare-fun SAtomR__sa_true__call2373 () Bool)
+(declare-fun SAtomR__sa_false__call2373 () Bool)
+(declare-fun SAtomR__sa_iv__call2373 () Int)
+(declare-fun SAtomR__sa_sv__call2373 () String)
+(declare-fun SAtomR__sa_idv__call2373 () String)
+(declare-fun SAtomR__sa_ctor_head__call2373 () Bool)
+(declare-fun SPrim0__sp0_ak__call2367 () Bool)
+(declare-fun SPrim0__sp0_ao__call2367 () String)
+(declare-fun SChain0__sc0_k2__call2357 () Bool)
+(declare-fun SChain0__sc0_o2__call2357 () String)
+(declare-fun SChain0__sc0_r2__call2357 () TokenList)
+(declare-fun SChain0__sc0_q2__call2357 () Token)
+(declare-fun SChain0__sc0_s3__call2357 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2376 () Token)
+(declare-fun SPrim0__sp0_t0__call2376 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2376 () Bool)
+(declare-fun SPrim0__sp0_seed__call2376 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2376 () Token)
+(declare-fun SPrim0__sp0_s0__call2376 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2376 () Token)
+(declare-fun SAtomR__sa_is_int__call2382 () Bool)
+(declare-fun SAtomR__sa_is_str__call2382 () Bool)
+(declare-fun SAtomR__sa_is_id__call2382 () Bool)
+(declare-fun SAtomR__sa_true__call2382 () Bool)
+(declare-fun SAtomR__sa_false__call2382 () Bool)
+(declare-fun SAtomR__sa_iv__call2382 () Int)
+(declare-fun SAtomR__sa_sv__call2382 () String)
+(declare-fun SAtomR__sa_idv__call2382 () String)
+(declare-fun SAtomR__sa_ctor_head__call2382 () Bool)
+(declare-fun SPrim0__sp0_ak__call2376 () Bool)
+(declare-fun SPrim0__sp0_ao__call2376 () String)
+(declare-fun SChain0__sc0_k3__call2357 () Bool)
+(declare-fun SChain0__sc0_o3__call2357 () String)
+(declare-fun SChain0__sc0_r3__call2357 () TokenList)
+(declare-fun SChain0__sc0_q3__call2357 () Token)
+(declare-fun SChain0__sc0_s4__call2357 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2385 () Token)
+(declare-fun SPrim0__sp0_t0__call2385 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2385 () Bool)
+(declare-fun SPrim0__sp0_seed__call2385 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2385 () Token)
+(declare-fun SPrim0__sp0_s0__call2385 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2385 () Token)
+(declare-fun SAtomR__sa_is_int__call2391 () Bool)
+(declare-fun SAtomR__sa_is_str__call2391 () Bool)
+(declare-fun SAtomR__sa_is_id__call2391 () Bool)
+(declare-fun SAtomR__sa_true__call2391 () Bool)
+(declare-fun SAtomR__sa_false__call2391 () Bool)
+(declare-fun SAtomR__sa_iv__call2391 () Int)
+(declare-fun SAtomR__sa_sv__call2391 () String)
+(declare-fun SAtomR__sa_idv__call2391 () String)
+(declare-fun SAtomR__sa_ctor_head__call2391 () Bool)
+(declare-fun SPrim0__sp0_ak__call2385 () Bool)
+(declare-fun SPrim0__sp0_ao__call2385 () String)
+(declare-fun SChain0__sc0_k4__call2357 () Bool)
+(declare-fun SChain0__sc0_o4__call2357 () String)
+(declare-fun SChain0__sc0_r4__call2357 () TokenList)
+(declare-fun SOpSmt__so_plus__call2392 () Bool)
+(declare-fun SOpSmt__so_minus__call2392 () Bool)
+(declare-fun SOpSmt__so_star__call2392 () Bool)
+(declare-fun SOpSmt__so_slash__call2392 () Bool)
+(declare-fun SOpSmt__so_lt__call2392 () Bool)
+(declare-fun SOpSmt__so_gt__call2392 () Bool)
+(declare-fun SOpSmt__so_le__call2392 () Bool)
+(declare-fun SOpSmt__so_ge__call2392 () Bool)
+(declare-fun SOpSmt__so_eq__call2392 () Bool)
+(declare-fun SOpSmt__so_ne__call2392 () Bool)
+(declare-fun SOpSmt__so_and__call2392 () Bool)
+(declare-fun SOpSmt__so_or__call2392 () Bool)
+(declare-fun SOpSmt__so_impl__call2392 () Bool)
+(declare-fun SChain0__sc0_op1k__call2357 () Bool)
+(declare-fun SChain0__sc0_op1__call2357 () String)
+(declare-fun SOpSmt__so_plus__call2393 () Bool)
+(declare-fun SOpSmt__so_minus__call2393 () Bool)
+(declare-fun SOpSmt__so_star__call2393 () Bool)
+(declare-fun SOpSmt__so_slash__call2393 () Bool)
+(declare-fun SOpSmt__so_lt__call2393 () Bool)
+(declare-fun SOpSmt__so_gt__call2393 () Bool)
+(declare-fun SOpSmt__so_le__call2393 () Bool)
+(declare-fun SOpSmt__so_ge__call2393 () Bool)
+(declare-fun SOpSmt__so_eq__call2393 () Bool)
+(declare-fun SOpSmt__so_ne__call2393 () Bool)
+(declare-fun SOpSmt__so_and__call2393 () Bool)
+(declare-fun SOpSmt__so_or__call2393 () Bool)
+(declare-fun SOpSmt__so_impl__call2393 () Bool)
+(declare-fun SChain0__sc0_op3k__call2357 () Bool)
+(declare-fun SChain0__sc0_op3__call2357 () String)
+(declare-fun SChain0__sc0_q1_tern__call2357 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2357 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2357 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2357 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2357 () Bool)
+(declare-fun SChain0__sc0_b2__call2357 () String)
+(declare-fun SChain0__sc0_q2_colon__call2357 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2357 () Bool)
+(declare-fun SPrim1__sp1_ik__call2351 () Bool)
+(declare-fun SPrim1__sp1_io__call2351 () String)
+(declare-fun SPrim1__sp1_ir__call2351 () TokenList)
+(declare-fun SPrim1__sp1_close__call2351 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2351 () Bool)
+(declare-fun SPrim1__sp1_pr__call2351 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2396 () Bool)
+(declare-fun SAtomR__sa_is_str__call2396 () Bool)
+(declare-fun SAtomR__sa_is_id__call2396 () Bool)
+(declare-fun SAtomR__sa_true__call2396 () Bool)
+(declare-fun SAtomR__sa_false__call2396 () Bool)
+(declare-fun SAtomR__sa_iv__call2396 () Int)
+(declare-fun SAtomR__sa_sv__call2396 () String)
+(declare-fun SAtomR__sa_idv__call2396 () String)
+(declare-fun SAtomR__sa_ctor_head__call2396 () Bool)
+(declare-fun SPrim1__sp1_ak__call2351 () Bool)
+(declare-fun SPrim1__sp1_ao__call2351 () String)
+(declare-fun SChain1__sc1_k2__call2302 () Bool)
+(declare-fun SPrim1__sp1_base__call2351 () String)
+(declare-fun SChain1__sc1_o2__call2302 () String)
+(declare-fun SChain1__sc1_r2__call2302 () TokenList)
+(declare-fun SChain1__sc1_q2__call2302 () Token)
+(declare-fun SChain1__sc1_s3__call2302 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2399 () Token)
+(declare-fun SPrim1__sp1_t0__call2399 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2399 () Bool)
+(declare-fun SPrim1__sp1_seed__call2399 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2399 () Token)
+(declare-fun SPrim1__sp1_bt__call2399 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2399 () Token)
+(declare-fun SPrim1__sp1_par__call2399 () Bool)
+(declare-fun SPrim0__sp0_h0__call2406 () Token)
+(declare-fun SPrim0__sp0_t0__call2406 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2406 () Bool)
+(declare-fun SPrim0__sp0_seed__call2406 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2406 () Token)
+(declare-fun SPrim0__sp0_s0__call2406 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2406 () Token)
+(declare-fun SAtomR__sa_is_int__call2412 () Bool)
+(declare-fun SAtomR__sa_is_str__call2412 () Bool)
+(declare-fun SAtomR__sa_is_id__call2412 () Bool)
+(declare-fun SAtomR__sa_true__call2412 () Bool)
+(declare-fun SAtomR__sa_false__call2412 () Bool)
+(declare-fun SAtomR__sa_iv__call2412 () Int)
+(declare-fun SAtomR__sa_sv__call2412 () String)
+(declare-fun SAtomR__sa_idv__call2412 () String)
+(declare-fun SAtomR__sa_ctor_head__call2412 () Bool)
+(declare-fun SPrim0__sp0_ak__call2406 () Bool)
+(declare-fun SPrim0__sp0_ao__call2406 () String)
+(declare-fun SChain0__sc0_k1__call2405 () Bool)
+(declare-fun SChain0__sc0_o1__call2405 () String)
+(declare-fun SChain0__sc0_r1__call2405 () TokenList)
+(declare-fun SChain0__sc0_q1__call2405 () Token)
+(declare-fun SChain0__sc0_s2__call2405 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2415 () Token)
+(declare-fun SPrim0__sp0_t0__call2415 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2415 () Bool)
+(declare-fun SPrim0__sp0_seed__call2415 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2415 () Token)
+(declare-fun SPrim0__sp0_s0__call2415 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2415 () Token)
+(declare-fun SAtomR__sa_is_int__call2421 () Bool)
+(declare-fun SAtomR__sa_is_str__call2421 () Bool)
+(declare-fun SAtomR__sa_is_id__call2421 () Bool)
+(declare-fun SAtomR__sa_true__call2421 () Bool)
+(declare-fun SAtomR__sa_false__call2421 () Bool)
+(declare-fun SAtomR__sa_iv__call2421 () Int)
+(declare-fun SAtomR__sa_sv__call2421 () String)
+(declare-fun SAtomR__sa_idv__call2421 () String)
+(declare-fun SAtomR__sa_ctor_head__call2421 () Bool)
+(declare-fun SPrim0__sp0_ak__call2415 () Bool)
+(declare-fun SPrim0__sp0_ao__call2415 () String)
+(declare-fun SChain0__sc0_k2__call2405 () Bool)
+(declare-fun SChain0__sc0_o2__call2405 () String)
+(declare-fun SChain0__sc0_r2__call2405 () TokenList)
+(declare-fun SChain0__sc0_q2__call2405 () Token)
+(declare-fun SChain0__sc0_s3__call2405 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2424 () Token)
+(declare-fun SPrim0__sp0_t0__call2424 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2424 () Bool)
+(declare-fun SPrim0__sp0_seed__call2424 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2424 () Token)
+(declare-fun SPrim0__sp0_s0__call2424 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2424 () Token)
+(declare-fun SAtomR__sa_is_int__call2430 () Bool)
+(declare-fun SAtomR__sa_is_str__call2430 () Bool)
+(declare-fun SAtomR__sa_is_id__call2430 () Bool)
+(declare-fun SAtomR__sa_true__call2430 () Bool)
+(declare-fun SAtomR__sa_false__call2430 () Bool)
+(declare-fun SAtomR__sa_iv__call2430 () Int)
+(declare-fun SAtomR__sa_sv__call2430 () String)
+(declare-fun SAtomR__sa_idv__call2430 () String)
+(declare-fun SAtomR__sa_ctor_head__call2430 () Bool)
+(declare-fun SPrim0__sp0_ak__call2424 () Bool)
+(declare-fun SPrim0__sp0_ao__call2424 () String)
+(declare-fun SChain0__sc0_k3__call2405 () Bool)
+(declare-fun SChain0__sc0_o3__call2405 () String)
+(declare-fun SChain0__sc0_r3__call2405 () TokenList)
+(declare-fun SChain0__sc0_q3__call2405 () Token)
+(declare-fun SChain0__sc0_s4__call2405 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2433 () Token)
+(declare-fun SPrim0__sp0_t0__call2433 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2433 () Bool)
+(declare-fun SPrim0__sp0_seed__call2433 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2433 () Token)
+(declare-fun SPrim0__sp0_s0__call2433 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2433 () Token)
+(declare-fun SAtomR__sa_is_int__call2439 () Bool)
+(declare-fun SAtomR__sa_is_str__call2439 () Bool)
+(declare-fun SAtomR__sa_is_id__call2439 () Bool)
+(declare-fun SAtomR__sa_true__call2439 () Bool)
+(declare-fun SAtomR__sa_false__call2439 () Bool)
+(declare-fun SAtomR__sa_iv__call2439 () Int)
+(declare-fun SAtomR__sa_sv__call2439 () String)
+(declare-fun SAtomR__sa_idv__call2439 () String)
+(declare-fun SAtomR__sa_ctor_head__call2439 () Bool)
+(declare-fun SPrim0__sp0_ak__call2433 () Bool)
+(declare-fun SPrim0__sp0_ao__call2433 () String)
+(declare-fun SChain0__sc0_k4__call2405 () Bool)
+(declare-fun SChain0__sc0_o4__call2405 () String)
+(declare-fun SChain0__sc0_r4__call2405 () TokenList)
+(declare-fun SOpSmt__so_plus__call2440 () Bool)
+(declare-fun SOpSmt__so_minus__call2440 () Bool)
+(declare-fun SOpSmt__so_star__call2440 () Bool)
+(declare-fun SOpSmt__so_slash__call2440 () Bool)
+(declare-fun SOpSmt__so_lt__call2440 () Bool)
+(declare-fun SOpSmt__so_gt__call2440 () Bool)
+(declare-fun SOpSmt__so_le__call2440 () Bool)
+(declare-fun SOpSmt__so_ge__call2440 () Bool)
+(declare-fun SOpSmt__so_eq__call2440 () Bool)
+(declare-fun SOpSmt__so_ne__call2440 () Bool)
+(declare-fun SOpSmt__so_and__call2440 () Bool)
+(declare-fun SOpSmt__so_or__call2440 () Bool)
+(declare-fun SOpSmt__so_impl__call2440 () Bool)
+(declare-fun SChain0__sc0_op1k__call2405 () Bool)
+(declare-fun SChain0__sc0_op1__call2405 () String)
+(declare-fun SOpSmt__so_plus__call2441 () Bool)
+(declare-fun SOpSmt__so_minus__call2441 () Bool)
+(declare-fun SOpSmt__so_star__call2441 () Bool)
+(declare-fun SOpSmt__so_slash__call2441 () Bool)
+(declare-fun SOpSmt__so_lt__call2441 () Bool)
+(declare-fun SOpSmt__so_gt__call2441 () Bool)
+(declare-fun SOpSmt__so_le__call2441 () Bool)
+(declare-fun SOpSmt__so_ge__call2441 () Bool)
+(declare-fun SOpSmt__so_eq__call2441 () Bool)
+(declare-fun SOpSmt__so_ne__call2441 () Bool)
+(declare-fun SOpSmt__so_and__call2441 () Bool)
+(declare-fun SOpSmt__so_or__call2441 () Bool)
+(declare-fun SOpSmt__so_impl__call2441 () Bool)
+(declare-fun SChain0__sc0_op3k__call2405 () Bool)
+(declare-fun SChain0__sc0_op3__call2405 () String)
+(declare-fun SChain0__sc0_q1_tern__call2405 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2405 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2405 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2405 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2405 () Bool)
+(declare-fun SChain0__sc0_b2__call2405 () String)
+(declare-fun SChain0__sc0_q2_colon__call2405 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2405 () Bool)
+(declare-fun SPrim1__sp1_ik__call2399 () Bool)
+(declare-fun SPrim1__sp1_io__call2399 () String)
+(declare-fun SPrim1__sp1_ir__call2399 () TokenList)
+(declare-fun SPrim1__sp1_close__call2399 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2399 () Bool)
+(declare-fun SPrim1__sp1_pr__call2399 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2444 () Bool)
+(declare-fun SAtomR__sa_is_str__call2444 () Bool)
+(declare-fun SAtomR__sa_is_id__call2444 () Bool)
+(declare-fun SAtomR__sa_true__call2444 () Bool)
+(declare-fun SAtomR__sa_false__call2444 () Bool)
+(declare-fun SAtomR__sa_iv__call2444 () Int)
+(declare-fun SAtomR__sa_sv__call2444 () String)
+(declare-fun SAtomR__sa_idv__call2444 () String)
+(declare-fun SAtomR__sa_ctor_head__call2444 () Bool)
+(declare-fun SPrim1__sp1_ak__call2399 () Bool)
+(declare-fun SPrim1__sp1_ao__call2399 () String)
+(declare-fun SChain1__sc1_k3__call2302 () Bool)
+(declare-fun SPrim1__sp1_base__call2399 () String)
+(declare-fun SChain1__sc1_o3__call2302 () String)
+(declare-fun SChain1__sc1_r3__call2302 () TokenList)
+(declare-fun SChain1__sc1_q3__call2302 () Token)
+(declare-fun SChain1__sc1_s4__call2302 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2447 () Token)
+(declare-fun SPrim1__sp1_t0__call2447 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2447 () Bool)
+(declare-fun SPrim1__sp1_seed__call2447 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2447 () Token)
+(declare-fun SPrim1__sp1_bt__call2447 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2447 () Token)
+(declare-fun SPrim1__sp1_par__call2447 () Bool)
+(declare-fun SPrim0__sp0_h0__call2454 () Token)
+(declare-fun SPrim0__sp0_t0__call2454 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2454 () Bool)
+(declare-fun SPrim0__sp0_seed__call2454 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2454 () Token)
+(declare-fun SPrim0__sp0_s0__call2454 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2454 () Token)
+(declare-fun SAtomR__sa_is_int__call2460 () Bool)
+(declare-fun SAtomR__sa_is_str__call2460 () Bool)
+(declare-fun SAtomR__sa_is_id__call2460 () Bool)
+(declare-fun SAtomR__sa_true__call2460 () Bool)
+(declare-fun SAtomR__sa_false__call2460 () Bool)
+(declare-fun SAtomR__sa_iv__call2460 () Int)
+(declare-fun SAtomR__sa_sv__call2460 () String)
+(declare-fun SAtomR__sa_idv__call2460 () String)
+(declare-fun SAtomR__sa_ctor_head__call2460 () Bool)
+(declare-fun SPrim0__sp0_ak__call2454 () Bool)
+(declare-fun SPrim0__sp0_ao__call2454 () String)
+(declare-fun SChain0__sc0_k1__call2453 () Bool)
+(declare-fun SChain0__sc0_o1__call2453 () String)
+(declare-fun SChain0__sc0_r1__call2453 () TokenList)
+(declare-fun SChain0__sc0_q1__call2453 () Token)
+(declare-fun SChain0__sc0_s2__call2453 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2463 () Token)
+(declare-fun SPrim0__sp0_t0__call2463 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2463 () Bool)
+(declare-fun SPrim0__sp0_seed__call2463 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2463 () Token)
+(declare-fun SPrim0__sp0_s0__call2463 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2463 () Token)
+(declare-fun SAtomR__sa_is_int__call2469 () Bool)
+(declare-fun SAtomR__sa_is_str__call2469 () Bool)
+(declare-fun SAtomR__sa_is_id__call2469 () Bool)
+(declare-fun SAtomR__sa_true__call2469 () Bool)
+(declare-fun SAtomR__sa_false__call2469 () Bool)
+(declare-fun SAtomR__sa_iv__call2469 () Int)
+(declare-fun SAtomR__sa_sv__call2469 () String)
+(declare-fun SAtomR__sa_idv__call2469 () String)
+(declare-fun SAtomR__sa_ctor_head__call2469 () Bool)
+(declare-fun SPrim0__sp0_ak__call2463 () Bool)
+(declare-fun SPrim0__sp0_ao__call2463 () String)
+(declare-fun SChain0__sc0_k2__call2453 () Bool)
+(declare-fun SChain0__sc0_o2__call2453 () String)
+(declare-fun SChain0__sc0_r2__call2453 () TokenList)
+(declare-fun SChain0__sc0_q2__call2453 () Token)
+(declare-fun SChain0__sc0_s3__call2453 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2472 () Token)
+(declare-fun SPrim0__sp0_t0__call2472 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2472 () Bool)
+(declare-fun SPrim0__sp0_seed__call2472 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2472 () Token)
+(declare-fun SPrim0__sp0_s0__call2472 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2472 () Token)
+(declare-fun SAtomR__sa_is_int__call2478 () Bool)
+(declare-fun SAtomR__sa_is_str__call2478 () Bool)
+(declare-fun SAtomR__sa_is_id__call2478 () Bool)
+(declare-fun SAtomR__sa_true__call2478 () Bool)
+(declare-fun SAtomR__sa_false__call2478 () Bool)
+(declare-fun SAtomR__sa_iv__call2478 () Int)
+(declare-fun SAtomR__sa_sv__call2478 () String)
+(declare-fun SAtomR__sa_idv__call2478 () String)
+(declare-fun SAtomR__sa_ctor_head__call2478 () Bool)
+(declare-fun SPrim0__sp0_ak__call2472 () Bool)
+(declare-fun SPrim0__sp0_ao__call2472 () String)
+(declare-fun SChain0__sc0_k3__call2453 () Bool)
+(declare-fun SChain0__sc0_o3__call2453 () String)
+(declare-fun SChain0__sc0_r3__call2453 () TokenList)
+(declare-fun SChain0__sc0_q3__call2453 () Token)
+(declare-fun SChain0__sc0_s4__call2453 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2481 () Token)
+(declare-fun SPrim0__sp0_t0__call2481 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2481 () Bool)
+(declare-fun SPrim0__sp0_seed__call2481 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2481 () Token)
+(declare-fun SPrim0__sp0_s0__call2481 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2481 () Token)
+(declare-fun SAtomR__sa_is_int__call2487 () Bool)
+(declare-fun SAtomR__sa_is_str__call2487 () Bool)
+(declare-fun SAtomR__sa_is_id__call2487 () Bool)
+(declare-fun SAtomR__sa_true__call2487 () Bool)
+(declare-fun SAtomR__sa_false__call2487 () Bool)
+(declare-fun SAtomR__sa_iv__call2487 () Int)
+(declare-fun SAtomR__sa_sv__call2487 () String)
+(declare-fun SAtomR__sa_idv__call2487 () String)
+(declare-fun SAtomR__sa_ctor_head__call2487 () Bool)
+(declare-fun SPrim0__sp0_ak__call2481 () Bool)
+(declare-fun SPrim0__sp0_ao__call2481 () String)
+(declare-fun SChain0__sc0_k4__call2453 () Bool)
+(declare-fun SChain0__sc0_o4__call2453 () String)
+(declare-fun SChain0__sc0_r4__call2453 () TokenList)
+(declare-fun SOpSmt__so_plus__call2488 () Bool)
+(declare-fun SOpSmt__so_minus__call2488 () Bool)
+(declare-fun SOpSmt__so_star__call2488 () Bool)
+(declare-fun SOpSmt__so_slash__call2488 () Bool)
+(declare-fun SOpSmt__so_lt__call2488 () Bool)
+(declare-fun SOpSmt__so_gt__call2488 () Bool)
+(declare-fun SOpSmt__so_le__call2488 () Bool)
+(declare-fun SOpSmt__so_ge__call2488 () Bool)
+(declare-fun SOpSmt__so_eq__call2488 () Bool)
+(declare-fun SOpSmt__so_ne__call2488 () Bool)
+(declare-fun SOpSmt__so_and__call2488 () Bool)
+(declare-fun SOpSmt__so_or__call2488 () Bool)
+(declare-fun SOpSmt__so_impl__call2488 () Bool)
+(declare-fun SChain0__sc0_op1k__call2453 () Bool)
+(declare-fun SChain0__sc0_op1__call2453 () String)
+(declare-fun SOpSmt__so_plus__call2489 () Bool)
+(declare-fun SOpSmt__so_minus__call2489 () Bool)
+(declare-fun SOpSmt__so_star__call2489 () Bool)
+(declare-fun SOpSmt__so_slash__call2489 () Bool)
+(declare-fun SOpSmt__so_lt__call2489 () Bool)
+(declare-fun SOpSmt__so_gt__call2489 () Bool)
+(declare-fun SOpSmt__so_le__call2489 () Bool)
+(declare-fun SOpSmt__so_ge__call2489 () Bool)
+(declare-fun SOpSmt__so_eq__call2489 () Bool)
+(declare-fun SOpSmt__so_ne__call2489 () Bool)
+(declare-fun SOpSmt__so_and__call2489 () Bool)
+(declare-fun SOpSmt__so_or__call2489 () Bool)
+(declare-fun SOpSmt__so_impl__call2489 () Bool)
+(declare-fun SChain0__sc0_op3k__call2453 () Bool)
+(declare-fun SChain0__sc0_op3__call2453 () String)
+(declare-fun SChain0__sc0_q1_tern__call2453 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2453 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2453 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2453 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2453 () Bool)
+(declare-fun SChain0__sc0_b2__call2453 () String)
+(declare-fun SChain0__sc0_q2_colon__call2453 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2453 () Bool)
+(declare-fun SPrim1__sp1_ik__call2447 () Bool)
+(declare-fun SPrim1__sp1_io__call2447 () String)
+(declare-fun SPrim1__sp1_ir__call2447 () TokenList)
+(declare-fun SPrim1__sp1_close__call2447 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2447 () Bool)
+(declare-fun SPrim1__sp1_pr__call2447 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2492 () Bool)
+(declare-fun SAtomR__sa_is_str__call2492 () Bool)
+(declare-fun SAtomR__sa_is_id__call2492 () Bool)
+(declare-fun SAtomR__sa_true__call2492 () Bool)
+(declare-fun SAtomR__sa_false__call2492 () Bool)
+(declare-fun SAtomR__sa_iv__call2492 () Int)
+(declare-fun SAtomR__sa_sv__call2492 () String)
+(declare-fun SAtomR__sa_idv__call2492 () String)
+(declare-fun SAtomR__sa_ctor_head__call2492 () Bool)
+(declare-fun SPrim1__sp1_ak__call2447 () Bool)
+(declare-fun SPrim1__sp1_ao__call2447 () String)
+(declare-fun SChain1__sc1_k4__call2302 () Bool)
+(declare-fun SPrim1__sp1_base__call2447 () String)
+(declare-fun SChain1__sc1_o4__call2302 () String)
+(declare-fun SChain1__sc1_r4__call2302 () TokenList)
+(declare-fun SOpSmt__so_plus__call2493 () Bool)
+(declare-fun SOpSmt__so_minus__call2493 () Bool)
+(declare-fun SOpSmt__so_star__call2493 () Bool)
+(declare-fun SOpSmt__so_slash__call2493 () Bool)
+(declare-fun SOpSmt__so_lt__call2493 () Bool)
+(declare-fun SOpSmt__so_gt__call2493 () Bool)
+(declare-fun SOpSmt__so_le__call2493 () Bool)
+(declare-fun SOpSmt__so_ge__call2493 () Bool)
+(declare-fun SOpSmt__so_eq__call2493 () Bool)
+(declare-fun SOpSmt__so_ne__call2493 () Bool)
+(declare-fun SOpSmt__so_and__call2493 () Bool)
+(declare-fun SOpSmt__so_or__call2493 () Bool)
+(declare-fun SOpSmt__so_impl__call2493 () Bool)
+(declare-fun SChain1__sc1_op1k__call2302 () Bool)
+(declare-fun SChain1__sc1_op1__call2302 () String)
+(declare-fun SOpSmt__so_plus__call2494 () Bool)
+(declare-fun SOpSmt__so_minus__call2494 () Bool)
+(declare-fun SOpSmt__so_star__call2494 () Bool)
+(declare-fun SOpSmt__so_slash__call2494 () Bool)
+(declare-fun SOpSmt__so_lt__call2494 () Bool)
+(declare-fun SOpSmt__so_gt__call2494 () Bool)
+(declare-fun SOpSmt__so_le__call2494 () Bool)
+(declare-fun SOpSmt__so_ge__call2494 () Bool)
+(declare-fun SOpSmt__so_eq__call2494 () Bool)
+(declare-fun SOpSmt__so_ne__call2494 () Bool)
+(declare-fun SOpSmt__so_and__call2494 () Bool)
+(declare-fun SOpSmt__so_or__call2494 () Bool)
+(declare-fun SOpSmt__so_impl__call2494 () Bool)
+(declare-fun SChain1__sc1_op3k__call2302 () Bool)
+(declare-fun SChain1__sc1_op3__call2302 () String)
+(declare-fun SChain1__sc1_q1_tern__call2302 () Bool)
+(declare-fun SChain1__sc1_q2_tern__call2302 () Bool)
+(declare-fun SChain1__sc1_q2_and__call2302 () Bool)
+(declare-fun SChain1__sc1_q2_or__call2302 () Bool)
+(declare-fun SChain1__sc1_q2_bool__call2302 () Bool)
+(declare-fun SChain1__sc1_b2__call2302 () String)
+(declare-fun SChain1__sc1_q2_colon__call2302 () Bool)
+(declare-fun SChain1__sc1_q3_colon__call2302 () Bool)
+(declare-fun SPrim2__sp2_ik__call2296 () Bool)
+(declare-fun SPrim2__sp2_io__call2296 () String)
+(declare-fun SPrim2__sp2_ir__call2296 () TokenList)
+(declare-fun SPrim2__sp2_close__call2296 () Token)
+(declare-fun SPrim2__sp2_par_ok__call2296 () Bool)
+(declare-fun SPrim2__sp2_pr__call2296 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2497 () Bool)
+(declare-fun SAtomR__sa_is_str__call2497 () Bool)
+(declare-fun SAtomR__sa_is_id__call2497 () Bool)
+(declare-fun SAtomR__sa_true__call2497 () Bool)
+(declare-fun SAtomR__sa_false__call2497 () Bool)
+(declare-fun SAtomR__sa_iv__call2497 () Int)
+(declare-fun SAtomR__sa_sv__call2497 () String)
+(declare-fun SAtomR__sa_idv__call2497 () String)
+(declare-fun SAtomR__sa_ctor_head__call2497 () Bool)
+(declare-fun SPrim2__sp2_ak__call2296 () Bool)
+(declare-fun SPrim2__sp2_ao__call2296 () String)
+(declare-fun CallArgsStep__ca_v1k__call2287 () Bool)
+(declare-fun SPrim2__sp2_base__call2296 () String)
+(declare-fun CallArgsStep__ca_v1o__call2287 () String)
+(declare-fun CallArgsStep__ca_v1r__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_d1__call2287 () Token)
+(declare-fun CallArgsStep__ca_d1_close__call2287 () Bool)
+(declare-fun CallArgsStep__ca_d1_comma__call2287 () Bool)
+(declare-fun CallArgsStep__ca_b2__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t4__call2287 () Token)
+(declare-fun CallArgsStep__ca_b2a__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t5__call2287 () Token)
+(declare-fun CallArgsStep__ca_l6__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_h2_ok__call2287 () Bool)
+(declare-fun CallArgsStep__ca_s2__call2287 () String)
+(declare-fun SPrim2__sp2_h0__call2504 () Token)
+(declare-fun SPrim2__sp2_t0__call2504 () TokenList)
+(declare-fun SPrim2__sp2_neg__call2504 () Bool)
+(declare-fun SPrim2__sp2_seed__call2504 () TokenList)
+(declare-fun SPrim2__sp2_b0__call2504 () Token)
+(declare-fun SPrim2__sp2_bt__call2504 () TokenList)
+(declare-fun SPrim2__sp2_b1__call2504 () Token)
+(declare-fun SPrim2__sp2_par__call2504 () Bool)
+(declare-fun SPrim1__sp1_h0__call2511 () Token)
+(declare-fun SPrim1__sp1_t0__call2511 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2511 () Bool)
+(declare-fun SPrim1__sp1_seed__call2511 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2511 () Token)
+(declare-fun SPrim1__sp1_bt__call2511 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2511 () Token)
+(declare-fun SPrim1__sp1_par__call2511 () Bool)
+(declare-fun SPrim0__sp0_h0__call2518 () Token)
+(declare-fun SPrim0__sp0_t0__call2518 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2518 () Bool)
+(declare-fun SPrim0__sp0_seed__call2518 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2518 () Token)
+(declare-fun SPrim0__sp0_s0__call2518 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2518 () Token)
+(declare-fun SAtomR__sa_is_int__call2524 () Bool)
+(declare-fun SAtomR__sa_is_str__call2524 () Bool)
+(declare-fun SAtomR__sa_is_id__call2524 () Bool)
+(declare-fun SAtomR__sa_true__call2524 () Bool)
+(declare-fun SAtomR__sa_false__call2524 () Bool)
+(declare-fun SAtomR__sa_iv__call2524 () Int)
+(declare-fun SAtomR__sa_sv__call2524 () String)
+(declare-fun SAtomR__sa_idv__call2524 () String)
+(declare-fun SAtomR__sa_ctor_head__call2524 () Bool)
+(declare-fun SPrim0__sp0_ak__call2518 () Bool)
+(declare-fun SPrim0__sp0_ao__call2518 () String)
+(declare-fun SChain0__sc0_k1__call2517 () Bool)
+(declare-fun SChain0__sc0_o1__call2517 () String)
+(declare-fun SChain0__sc0_r1__call2517 () TokenList)
+(declare-fun SChain0__sc0_q1__call2517 () Token)
+(declare-fun SChain0__sc0_s2__call2517 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2527 () Token)
+(declare-fun SPrim0__sp0_t0__call2527 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2527 () Bool)
+(declare-fun SPrim0__sp0_seed__call2527 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2527 () Token)
+(declare-fun SPrim0__sp0_s0__call2527 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2527 () Token)
+(declare-fun SAtomR__sa_is_int__call2533 () Bool)
+(declare-fun SAtomR__sa_is_str__call2533 () Bool)
+(declare-fun SAtomR__sa_is_id__call2533 () Bool)
+(declare-fun SAtomR__sa_true__call2533 () Bool)
+(declare-fun SAtomR__sa_false__call2533 () Bool)
+(declare-fun SAtomR__sa_iv__call2533 () Int)
+(declare-fun SAtomR__sa_sv__call2533 () String)
+(declare-fun SAtomR__sa_idv__call2533 () String)
+(declare-fun SAtomR__sa_ctor_head__call2533 () Bool)
+(declare-fun SPrim0__sp0_ak__call2527 () Bool)
+(declare-fun SPrim0__sp0_ao__call2527 () String)
+(declare-fun SChain0__sc0_k2__call2517 () Bool)
+(declare-fun SChain0__sc0_o2__call2517 () String)
+(declare-fun SChain0__sc0_r2__call2517 () TokenList)
+(declare-fun SChain0__sc0_q2__call2517 () Token)
+(declare-fun SChain0__sc0_s3__call2517 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2536 () Token)
+(declare-fun SPrim0__sp0_t0__call2536 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2536 () Bool)
+(declare-fun SPrim0__sp0_seed__call2536 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2536 () Token)
+(declare-fun SPrim0__sp0_s0__call2536 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2536 () Token)
+(declare-fun SAtomR__sa_is_int__call2542 () Bool)
+(declare-fun SAtomR__sa_is_str__call2542 () Bool)
+(declare-fun SAtomR__sa_is_id__call2542 () Bool)
+(declare-fun SAtomR__sa_true__call2542 () Bool)
+(declare-fun SAtomR__sa_false__call2542 () Bool)
+(declare-fun SAtomR__sa_iv__call2542 () Int)
+(declare-fun SAtomR__sa_sv__call2542 () String)
+(declare-fun SAtomR__sa_idv__call2542 () String)
+(declare-fun SAtomR__sa_ctor_head__call2542 () Bool)
+(declare-fun SPrim0__sp0_ak__call2536 () Bool)
+(declare-fun SPrim0__sp0_ao__call2536 () String)
+(declare-fun SChain0__sc0_k3__call2517 () Bool)
+(declare-fun SChain0__sc0_o3__call2517 () String)
+(declare-fun SChain0__sc0_r3__call2517 () TokenList)
+(declare-fun SChain0__sc0_q3__call2517 () Token)
+(declare-fun SChain0__sc0_s4__call2517 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2545 () Token)
+(declare-fun SPrim0__sp0_t0__call2545 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2545 () Bool)
+(declare-fun SPrim0__sp0_seed__call2545 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2545 () Token)
+(declare-fun SPrim0__sp0_s0__call2545 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2545 () Token)
+(declare-fun SAtomR__sa_is_int__call2551 () Bool)
+(declare-fun SAtomR__sa_is_str__call2551 () Bool)
+(declare-fun SAtomR__sa_is_id__call2551 () Bool)
+(declare-fun SAtomR__sa_true__call2551 () Bool)
+(declare-fun SAtomR__sa_false__call2551 () Bool)
+(declare-fun SAtomR__sa_iv__call2551 () Int)
+(declare-fun SAtomR__sa_sv__call2551 () String)
+(declare-fun SAtomR__sa_idv__call2551 () String)
+(declare-fun SAtomR__sa_ctor_head__call2551 () Bool)
+(declare-fun SPrim0__sp0_ak__call2545 () Bool)
+(declare-fun SPrim0__sp0_ao__call2545 () String)
+(declare-fun SChain0__sc0_k4__call2517 () Bool)
+(declare-fun SChain0__sc0_o4__call2517 () String)
+(declare-fun SChain0__sc0_r4__call2517 () TokenList)
+(declare-fun SOpSmt__so_plus__call2552 () Bool)
+(declare-fun SOpSmt__so_minus__call2552 () Bool)
+(declare-fun SOpSmt__so_star__call2552 () Bool)
+(declare-fun SOpSmt__so_slash__call2552 () Bool)
+(declare-fun SOpSmt__so_lt__call2552 () Bool)
+(declare-fun SOpSmt__so_gt__call2552 () Bool)
+(declare-fun SOpSmt__so_le__call2552 () Bool)
+(declare-fun SOpSmt__so_ge__call2552 () Bool)
+(declare-fun SOpSmt__so_eq__call2552 () Bool)
+(declare-fun SOpSmt__so_ne__call2552 () Bool)
+(declare-fun SOpSmt__so_and__call2552 () Bool)
+(declare-fun SOpSmt__so_or__call2552 () Bool)
+(declare-fun SOpSmt__so_impl__call2552 () Bool)
+(declare-fun SChain0__sc0_op1k__call2517 () Bool)
+(declare-fun SChain0__sc0_op1__call2517 () String)
+(declare-fun SOpSmt__so_plus__call2553 () Bool)
+(declare-fun SOpSmt__so_minus__call2553 () Bool)
+(declare-fun SOpSmt__so_star__call2553 () Bool)
+(declare-fun SOpSmt__so_slash__call2553 () Bool)
+(declare-fun SOpSmt__so_lt__call2553 () Bool)
+(declare-fun SOpSmt__so_gt__call2553 () Bool)
+(declare-fun SOpSmt__so_le__call2553 () Bool)
+(declare-fun SOpSmt__so_ge__call2553 () Bool)
+(declare-fun SOpSmt__so_eq__call2553 () Bool)
+(declare-fun SOpSmt__so_ne__call2553 () Bool)
+(declare-fun SOpSmt__so_and__call2553 () Bool)
+(declare-fun SOpSmt__so_or__call2553 () Bool)
+(declare-fun SOpSmt__so_impl__call2553 () Bool)
+(declare-fun SChain0__sc0_op3k__call2517 () Bool)
+(declare-fun SChain0__sc0_op3__call2517 () String)
+(declare-fun SChain0__sc0_q1_tern__call2517 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2517 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2517 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2517 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2517 () Bool)
+(declare-fun SChain0__sc0_b2__call2517 () String)
+(declare-fun SChain0__sc0_q2_colon__call2517 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2517 () Bool)
+(declare-fun SPrim1__sp1_ik__call2511 () Bool)
+(declare-fun SPrim1__sp1_io__call2511 () String)
+(declare-fun SPrim1__sp1_ir__call2511 () TokenList)
+(declare-fun SPrim1__sp1_close__call2511 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2511 () Bool)
+(declare-fun SPrim1__sp1_pr__call2511 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2556 () Bool)
+(declare-fun SAtomR__sa_is_str__call2556 () Bool)
+(declare-fun SAtomR__sa_is_id__call2556 () Bool)
+(declare-fun SAtomR__sa_true__call2556 () Bool)
+(declare-fun SAtomR__sa_false__call2556 () Bool)
+(declare-fun SAtomR__sa_iv__call2556 () Int)
+(declare-fun SAtomR__sa_sv__call2556 () String)
+(declare-fun SAtomR__sa_idv__call2556 () String)
+(declare-fun SAtomR__sa_ctor_head__call2556 () Bool)
+(declare-fun SPrim1__sp1_ak__call2511 () Bool)
+(declare-fun SPrim1__sp1_ao__call2511 () String)
+(declare-fun SChain1__sc1_k1__call2510 () Bool)
+(declare-fun SPrim1__sp1_base__call2511 () String)
+(declare-fun SChain1__sc1_o1__call2510 () String)
+(declare-fun SChain1__sc1_r1__call2510 () TokenList)
+(declare-fun SChain1__sc1_q1__call2510 () Token)
+(declare-fun SChain1__sc1_s2__call2510 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2559 () Token)
+(declare-fun SPrim1__sp1_t0__call2559 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2559 () Bool)
+(declare-fun SPrim1__sp1_seed__call2559 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2559 () Token)
+(declare-fun SPrim1__sp1_bt__call2559 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2559 () Token)
+(declare-fun SPrim1__sp1_par__call2559 () Bool)
+(declare-fun SPrim0__sp0_h0__call2566 () Token)
+(declare-fun SPrim0__sp0_t0__call2566 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2566 () Bool)
+(declare-fun SPrim0__sp0_seed__call2566 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2566 () Token)
+(declare-fun SPrim0__sp0_s0__call2566 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2566 () Token)
+(declare-fun SAtomR__sa_is_int__call2572 () Bool)
+(declare-fun SAtomR__sa_is_str__call2572 () Bool)
+(declare-fun SAtomR__sa_is_id__call2572 () Bool)
+(declare-fun SAtomR__sa_true__call2572 () Bool)
+(declare-fun SAtomR__sa_false__call2572 () Bool)
+(declare-fun SAtomR__sa_iv__call2572 () Int)
+(declare-fun SAtomR__sa_sv__call2572 () String)
+(declare-fun SAtomR__sa_idv__call2572 () String)
+(declare-fun SAtomR__sa_ctor_head__call2572 () Bool)
+(declare-fun SPrim0__sp0_ak__call2566 () Bool)
+(declare-fun SPrim0__sp0_ao__call2566 () String)
+(declare-fun SChain0__sc0_k1__call2565 () Bool)
+(declare-fun SChain0__sc0_o1__call2565 () String)
+(declare-fun SChain0__sc0_r1__call2565 () TokenList)
+(declare-fun SChain0__sc0_q1__call2565 () Token)
+(declare-fun SChain0__sc0_s2__call2565 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2575 () Token)
+(declare-fun SPrim0__sp0_t0__call2575 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2575 () Bool)
+(declare-fun SPrim0__sp0_seed__call2575 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2575 () Token)
+(declare-fun SPrim0__sp0_s0__call2575 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2575 () Token)
+(declare-fun SAtomR__sa_is_int__call2581 () Bool)
+(declare-fun SAtomR__sa_is_str__call2581 () Bool)
+(declare-fun SAtomR__sa_is_id__call2581 () Bool)
+(declare-fun SAtomR__sa_true__call2581 () Bool)
+(declare-fun SAtomR__sa_false__call2581 () Bool)
+(declare-fun SAtomR__sa_iv__call2581 () Int)
+(declare-fun SAtomR__sa_sv__call2581 () String)
+(declare-fun SAtomR__sa_idv__call2581 () String)
+(declare-fun SAtomR__sa_ctor_head__call2581 () Bool)
+(declare-fun SPrim0__sp0_ak__call2575 () Bool)
+(declare-fun SPrim0__sp0_ao__call2575 () String)
+(declare-fun SChain0__sc0_k2__call2565 () Bool)
+(declare-fun SChain0__sc0_o2__call2565 () String)
+(declare-fun SChain0__sc0_r2__call2565 () TokenList)
+(declare-fun SChain0__sc0_q2__call2565 () Token)
+(declare-fun SChain0__sc0_s3__call2565 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2584 () Token)
+(declare-fun SPrim0__sp0_t0__call2584 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2584 () Bool)
+(declare-fun SPrim0__sp0_seed__call2584 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2584 () Token)
+(declare-fun SPrim0__sp0_s0__call2584 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2584 () Token)
+(declare-fun SAtomR__sa_is_int__call2590 () Bool)
+(declare-fun SAtomR__sa_is_str__call2590 () Bool)
+(declare-fun SAtomR__sa_is_id__call2590 () Bool)
+(declare-fun SAtomR__sa_true__call2590 () Bool)
+(declare-fun SAtomR__sa_false__call2590 () Bool)
+(declare-fun SAtomR__sa_iv__call2590 () Int)
+(declare-fun SAtomR__sa_sv__call2590 () String)
+(declare-fun SAtomR__sa_idv__call2590 () String)
+(declare-fun SAtomR__sa_ctor_head__call2590 () Bool)
+(declare-fun SPrim0__sp0_ak__call2584 () Bool)
+(declare-fun SPrim0__sp0_ao__call2584 () String)
+(declare-fun SChain0__sc0_k3__call2565 () Bool)
+(declare-fun SChain0__sc0_o3__call2565 () String)
+(declare-fun SChain0__sc0_r3__call2565 () TokenList)
+(declare-fun SChain0__sc0_q3__call2565 () Token)
+(declare-fun SChain0__sc0_s4__call2565 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2593 () Token)
+(declare-fun SPrim0__sp0_t0__call2593 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2593 () Bool)
+(declare-fun SPrim0__sp0_seed__call2593 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2593 () Token)
+(declare-fun SPrim0__sp0_s0__call2593 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2593 () Token)
+(declare-fun SAtomR__sa_is_int__call2599 () Bool)
+(declare-fun SAtomR__sa_is_str__call2599 () Bool)
+(declare-fun SAtomR__sa_is_id__call2599 () Bool)
+(declare-fun SAtomR__sa_true__call2599 () Bool)
+(declare-fun SAtomR__sa_false__call2599 () Bool)
+(declare-fun SAtomR__sa_iv__call2599 () Int)
+(declare-fun SAtomR__sa_sv__call2599 () String)
+(declare-fun SAtomR__sa_idv__call2599 () String)
+(declare-fun SAtomR__sa_ctor_head__call2599 () Bool)
+(declare-fun SPrim0__sp0_ak__call2593 () Bool)
+(declare-fun SPrim0__sp0_ao__call2593 () String)
+(declare-fun SChain0__sc0_k4__call2565 () Bool)
+(declare-fun SChain0__sc0_o4__call2565 () String)
+(declare-fun SChain0__sc0_r4__call2565 () TokenList)
+(declare-fun SOpSmt__so_plus__call2600 () Bool)
+(declare-fun SOpSmt__so_minus__call2600 () Bool)
+(declare-fun SOpSmt__so_star__call2600 () Bool)
+(declare-fun SOpSmt__so_slash__call2600 () Bool)
+(declare-fun SOpSmt__so_lt__call2600 () Bool)
+(declare-fun SOpSmt__so_gt__call2600 () Bool)
+(declare-fun SOpSmt__so_le__call2600 () Bool)
+(declare-fun SOpSmt__so_ge__call2600 () Bool)
+(declare-fun SOpSmt__so_eq__call2600 () Bool)
+(declare-fun SOpSmt__so_ne__call2600 () Bool)
+(declare-fun SOpSmt__so_and__call2600 () Bool)
+(declare-fun SOpSmt__so_or__call2600 () Bool)
+(declare-fun SOpSmt__so_impl__call2600 () Bool)
+(declare-fun SChain0__sc0_op1k__call2565 () Bool)
+(declare-fun SChain0__sc0_op1__call2565 () String)
+(declare-fun SOpSmt__so_plus__call2601 () Bool)
+(declare-fun SOpSmt__so_minus__call2601 () Bool)
+(declare-fun SOpSmt__so_star__call2601 () Bool)
+(declare-fun SOpSmt__so_slash__call2601 () Bool)
+(declare-fun SOpSmt__so_lt__call2601 () Bool)
+(declare-fun SOpSmt__so_gt__call2601 () Bool)
+(declare-fun SOpSmt__so_le__call2601 () Bool)
+(declare-fun SOpSmt__so_ge__call2601 () Bool)
+(declare-fun SOpSmt__so_eq__call2601 () Bool)
+(declare-fun SOpSmt__so_ne__call2601 () Bool)
+(declare-fun SOpSmt__so_and__call2601 () Bool)
+(declare-fun SOpSmt__so_or__call2601 () Bool)
+(declare-fun SOpSmt__so_impl__call2601 () Bool)
+(declare-fun SChain0__sc0_op3k__call2565 () Bool)
+(declare-fun SChain0__sc0_op3__call2565 () String)
+(declare-fun SChain0__sc0_q1_tern__call2565 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2565 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2565 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2565 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2565 () Bool)
+(declare-fun SChain0__sc0_b2__call2565 () String)
+(declare-fun SChain0__sc0_q2_colon__call2565 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2565 () Bool)
+(declare-fun SPrim1__sp1_ik__call2559 () Bool)
+(declare-fun SPrim1__sp1_io__call2559 () String)
+(declare-fun SPrim1__sp1_ir__call2559 () TokenList)
+(declare-fun SPrim1__sp1_close__call2559 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2559 () Bool)
+(declare-fun SPrim1__sp1_pr__call2559 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2604 () Bool)
+(declare-fun SAtomR__sa_is_str__call2604 () Bool)
+(declare-fun SAtomR__sa_is_id__call2604 () Bool)
+(declare-fun SAtomR__sa_true__call2604 () Bool)
+(declare-fun SAtomR__sa_false__call2604 () Bool)
+(declare-fun SAtomR__sa_iv__call2604 () Int)
+(declare-fun SAtomR__sa_sv__call2604 () String)
+(declare-fun SAtomR__sa_idv__call2604 () String)
+(declare-fun SAtomR__sa_ctor_head__call2604 () Bool)
+(declare-fun SPrim1__sp1_ak__call2559 () Bool)
+(declare-fun SPrim1__sp1_ao__call2559 () String)
+(declare-fun SChain1__sc1_k2__call2510 () Bool)
+(declare-fun SPrim1__sp1_base__call2559 () String)
+(declare-fun SChain1__sc1_o2__call2510 () String)
+(declare-fun SChain1__sc1_r2__call2510 () TokenList)
+(declare-fun SChain1__sc1_q2__call2510 () Token)
+(declare-fun SChain1__sc1_s3__call2510 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2607 () Token)
+(declare-fun SPrim1__sp1_t0__call2607 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2607 () Bool)
+(declare-fun SPrim1__sp1_seed__call2607 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2607 () Token)
+(declare-fun SPrim1__sp1_bt__call2607 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2607 () Token)
+(declare-fun SPrim1__sp1_par__call2607 () Bool)
+(declare-fun SPrim0__sp0_h0__call2614 () Token)
+(declare-fun SPrim0__sp0_t0__call2614 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2614 () Bool)
+(declare-fun SPrim0__sp0_seed__call2614 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2614 () Token)
+(declare-fun SPrim0__sp0_s0__call2614 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2614 () Token)
+(declare-fun SAtomR__sa_is_int__call2620 () Bool)
+(declare-fun SAtomR__sa_is_str__call2620 () Bool)
+(declare-fun SAtomR__sa_is_id__call2620 () Bool)
+(declare-fun SAtomR__sa_true__call2620 () Bool)
+(declare-fun SAtomR__sa_false__call2620 () Bool)
+(declare-fun SAtomR__sa_iv__call2620 () Int)
+(declare-fun SAtomR__sa_sv__call2620 () String)
+(declare-fun SAtomR__sa_idv__call2620 () String)
+(declare-fun SAtomR__sa_ctor_head__call2620 () Bool)
+(declare-fun SPrim0__sp0_ak__call2614 () Bool)
+(declare-fun SPrim0__sp0_ao__call2614 () String)
+(declare-fun SChain0__sc0_k1__call2613 () Bool)
+(declare-fun SChain0__sc0_o1__call2613 () String)
+(declare-fun SChain0__sc0_r1__call2613 () TokenList)
+(declare-fun SChain0__sc0_q1__call2613 () Token)
+(declare-fun SChain0__sc0_s2__call2613 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2623 () Token)
+(declare-fun SPrim0__sp0_t0__call2623 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2623 () Bool)
+(declare-fun SPrim0__sp0_seed__call2623 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2623 () Token)
+(declare-fun SPrim0__sp0_s0__call2623 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2623 () Token)
+(declare-fun SAtomR__sa_is_int__call2629 () Bool)
+(declare-fun SAtomR__sa_is_str__call2629 () Bool)
+(declare-fun SAtomR__sa_is_id__call2629 () Bool)
+(declare-fun SAtomR__sa_true__call2629 () Bool)
+(declare-fun SAtomR__sa_false__call2629 () Bool)
+(declare-fun SAtomR__sa_iv__call2629 () Int)
+(declare-fun SAtomR__sa_sv__call2629 () String)
+(declare-fun SAtomR__sa_idv__call2629 () String)
+(declare-fun SAtomR__sa_ctor_head__call2629 () Bool)
+(declare-fun SPrim0__sp0_ak__call2623 () Bool)
+(declare-fun SPrim0__sp0_ao__call2623 () String)
+(declare-fun SChain0__sc0_k2__call2613 () Bool)
+(declare-fun SChain0__sc0_o2__call2613 () String)
+(declare-fun SChain0__sc0_r2__call2613 () TokenList)
+(declare-fun SChain0__sc0_q2__call2613 () Token)
+(declare-fun SChain0__sc0_s3__call2613 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2632 () Token)
+(declare-fun SPrim0__sp0_t0__call2632 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2632 () Bool)
+(declare-fun SPrim0__sp0_seed__call2632 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2632 () Token)
+(declare-fun SPrim0__sp0_s0__call2632 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2632 () Token)
+(declare-fun SAtomR__sa_is_int__call2638 () Bool)
+(declare-fun SAtomR__sa_is_str__call2638 () Bool)
+(declare-fun SAtomR__sa_is_id__call2638 () Bool)
+(declare-fun SAtomR__sa_true__call2638 () Bool)
+(declare-fun SAtomR__sa_false__call2638 () Bool)
+(declare-fun SAtomR__sa_iv__call2638 () Int)
+(declare-fun SAtomR__sa_sv__call2638 () String)
+(declare-fun SAtomR__sa_idv__call2638 () String)
+(declare-fun SAtomR__sa_ctor_head__call2638 () Bool)
+(declare-fun SPrim0__sp0_ak__call2632 () Bool)
+(declare-fun SPrim0__sp0_ao__call2632 () String)
+(declare-fun SChain0__sc0_k3__call2613 () Bool)
+(declare-fun SChain0__sc0_o3__call2613 () String)
+(declare-fun SChain0__sc0_r3__call2613 () TokenList)
+(declare-fun SChain0__sc0_q3__call2613 () Token)
+(declare-fun SChain0__sc0_s4__call2613 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2641 () Token)
+(declare-fun SPrim0__sp0_t0__call2641 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2641 () Bool)
+(declare-fun SPrim0__sp0_seed__call2641 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2641 () Token)
+(declare-fun SPrim0__sp0_s0__call2641 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2641 () Token)
+(declare-fun SAtomR__sa_is_int__call2647 () Bool)
+(declare-fun SAtomR__sa_is_str__call2647 () Bool)
+(declare-fun SAtomR__sa_is_id__call2647 () Bool)
+(declare-fun SAtomR__sa_true__call2647 () Bool)
+(declare-fun SAtomR__sa_false__call2647 () Bool)
+(declare-fun SAtomR__sa_iv__call2647 () Int)
+(declare-fun SAtomR__sa_sv__call2647 () String)
+(declare-fun SAtomR__sa_idv__call2647 () String)
+(declare-fun SAtomR__sa_ctor_head__call2647 () Bool)
+(declare-fun SPrim0__sp0_ak__call2641 () Bool)
+(declare-fun SPrim0__sp0_ao__call2641 () String)
+(declare-fun SChain0__sc0_k4__call2613 () Bool)
+(declare-fun SChain0__sc0_o4__call2613 () String)
+(declare-fun SChain0__sc0_r4__call2613 () TokenList)
+(declare-fun SOpSmt__so_plus__call2648 () Bool)
+(declare-fun SOpSmt__so_minus__call2648 () Bool)
+(declare-fun SOpSmt__so_star__call2648 () Bool)
+(declare-fun SOpSmt__so_slash__call2648 () Bool)
+(declare-fun SOpSmt__so_lt__call2648 () Bool)
+(declare-fun SOpSmt__so_gt__call2648 () Bool)
+(declare-fun SOpSmt__so_le__call2648 () Bool)
+(declare-fun SOpSmt__so_ge__call2648 () Bool)
+(declare-fun SOpSmt__so_eq__call2648 () Bool)
+(declare-fun SOpSmt__so_ne__call2648 () Bool)
+(declare-fun SOpSmt__so_and__call2648 () Bool)
+(declare-fun SOpSmt__so_or__call2648 () Bool)
+(declare-fun SOpSmt__so_impl__call2648 () Bool)
+(declare-fun SChain0__sc0_op1k__call2613 () Bool)
+(declare-fun SChain0__sc0_op1__call2613 () String)
+(declare-fun SOpSmt__so_plus__call2649 () Bool)
+(declare-fun SOpSmt__so_minus__call2649 () Bool)
+(declare-fun SOpSmt__so_star__call2649 () Bool)
+(declare-fun SOpSmt__so_slash__call2649 () Bool)
+(declare-fun SOpSmt__so_lt__call2649 () Bool)
+(declare-fun SOpSmt__so_gt__call2649 () Bool)
+(declare-fun SOpSmt__so_le__call2649 () Bool)
+(declare-fun SOpSmt__so_ge__call2649 () Bool)
+(declare-fun SOpSmt__so_eq__call2649 () Bool)
+(declare-fun SOpSmt__so_ne__call2649 () Bool)
+(declare-fun SOpSmt__so_and__call2649 () Bool)
+(declare-fun SOpSmt__so_or__call2649 () Bool)
+(declare-fun SOpSmt__so_impl__call2649 () Bool)
+(declare-fun SChain0__sc0_op3k__call2613 () Bool)
+(declare-fun SChain0__sc0_op3__call2613 () String)
+(declare-fun SChain0__sc0_q1_tern__call2613 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2613 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2613 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2613 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2613 () Bool)
+(declare-fun SChain0__sc0_b2__call2613 () String)
+(declare-fun SChain0__sc0_q2_colon__call2613 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2613 () Bool)
+(declare-fun SPrim1__sp1_ik__call2607 () Bool)
+(declare-fun SPrim1__sp1_io__call2607 () String)
+(declare-fun SPrim1__sp1_ir__call2607 () TokenList)
+(declare-fun SPrim1__sp1_close__call2607 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2607 () Bool)
+(declare-fun SPrim1__sp1_pr__call2607 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2652 () Bool)
+(declare-fun SAtomR__sa_is_str__call2652 () Bool)
+(declare-fun SAtomR__sa_is_id__call2652 () Bool)
+(declare-fun SAtomR__sa_true__call2652 () Bool)
+(declare-fun SAtomR__sa_false__call2652 () Bool)
+(declare-fun SAtomR__sa_iv__call2652 () Int)
+(declare-fun SAtomR__sa_sv__call2652 () String)
+(declare-fun SAtomR__sa_idv__call2652 () String)
+(declare-fun SAtomR__sa_ctor_head__call2652 () Bool)
+(declare-fun SPrim1__sp1_ak__call2607 () Bool)
+(declare-fun SPrim1__sp1_ao__call2607 () String)
+(declare-fun SChain1__sc1_k3__call2510 () Bool)
+(declare-fun SPrim1__sp1_base__call2607 () String)
+(declare-fun SChain1__sc1_o3__call2510 () String)
+(declare-fun SChain1__sc1_r3__call2510 () TokenList)
+(declare-fun SChain1__sc1_q3__call2510 () Token)
+(declare-fun SChain1__sc1_s4__call2510 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2655 () Token)
+(declare-fun SPrim1__sp1_t0__call2655 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2655 () Bool)
+(declare-fun SPrim1__sp1_seed__call2655 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2655 () Token)
+(declare-fun SPrim1__sp1_bt__call2655 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2655 () Token)
+(declare-fun SPrim1__sp1_par__call2655 () Bool)
+(declare-fun SPrim0__sp0_h0__call2662 () Token)
+(declare-fun SPrim0__sp0_t0__call2662 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2662 () Bool)
+(declare-fun SPrim0__sp0_seed__call2662 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2662 () Token)
+(declare-fun SPrim0__sp0_s0__call2662 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2662 () Token)
+(declare-fun SAtomR__sa_is_int__call2668 () Bool)
+(declare-fun SAtomR__sa_is_str__call2668 () Bool)
+(declare-fun SAtomR__sa_is_id__call2668 () Bool)
+(declare-fun SAtomR__sa_true__call2668 () Bool)
+(declare-fun SAtomR__sa_false__call2668 () Bool)
+(declare-fun SAtomR__sa_iv__call2668 () Int)
+(declare-fun SAtomR__sa_sv__call2668 () String)
+(declare-fun SAtomR__sa_idv__call2668 () String)
+(declare-fun SAtomR__sa_ctor_head__call2668 () Bool)
+(declare-fun SPrim0__sp0_ak__call2662 () Bool)
+(declare-fun SPrim0__sp0_ao__call2662 () String)
+(declare-fun SChain0__sc0_k1__call2661 () Bool)
+(declare-fun SChain0__sc0_o1__call2661 () String)
+(declare-fun SChain0__sc0_r1__call2661 () TokenList)
+(declare-fun SChain0__sc0_q1__call2661 () Token)
+(declare-fun SChain0__sc0_s2__call2661 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2671 () Token)
+(declare-fun SPrim0__sp0_t0__call2671 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2671 () Bool)
+(declare-fun SPrim0__sp0_seed__call2671 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2671 () Token)
+(declare-fun SPrim0__sp0_s0__call2671 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2671 () Token)
+(declare-fun SAtomR__sa_is_int__call2677 () Bool)
+(declare-fun SAtomR__sa_is_str__call2677 () Bool)
+(declare-fun SAtomR__sa_is_id__call2677 () Bool)
+(declare-fun SAtomR__sa_true__call2677 () Bool)
+(declare-fun SAtomR__sa_false__call2677 () Bool)
+(declare-fun SAtomR__sa_iv__call2677 () Int)
+(declare-fun SAtomR__sa_sv__call2677 () String)
+(declare-fun SAtomR__sa_idv__call2677 () String)
+(declare-fun SAtomR__sa_ctor_head__call2677 () Bool)
+(declare-fun SPrim0__sp0_ak__call2671 () Bool)
+(declare-fun SPrim0__sp0_ao__call2671 () String)
+(declare-fun SChain0__sc0_k2__call2661 () Bool)
+(declare-fun SChain0__sc0_o2__call2661 () String)
+(declare-fun SChain0__sc0_r2__call2661 () TokenList)
+(declare-fun SChain0__sc0_q2__call2661 () Token)
+(declare-fun SChain0__sc0_s3__call2661 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2680 () Token)
+(declare-fun SPrim0__sp0_t0__call2680 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2680 () Bool)
+(declare-fun SPrim0__sp0_seed__call2680 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2680 () Token)
+(declare-fun SPrim0__sp0_s0__call2680 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2680 () Token)
+(declare-fun SAtomR__sa_is_int__call2686 () Bool)
+(declare-fun SAtomR__sa_is_str__call2686 () Bool)
+(declare-fun SAtomR__sa_is_id__call2686 () Bool)
+(declare-fun SAtomR__sa_true__call2686 () Bool)
+(declare-fun SAtomR__sa_false__call2686 () Bool)
+(declare-fun SAtomR__sa_iv__call2686 () Int)
+(declare-fun SAtomR__sa_sv__call2686 () String)
+(declare-fun SAtomR__sa_idv__call2686 () String)
+(declare-fun SAtomR__sa_ctor_head__call2686 () Bool)
+(declare-fun SPrim0__sp0_ak__call2680 () Bool)
+(declare-fun SPrim0__sp0_ao__call2680 () String)
+(declare-fun SChain0__sc0_k3__call2661 () Bool)
+(declare-fun SChain0__sc0_o3__call2661 () String)
+(declare-fun SChain0__sc0_r3__call2661 () TokenList)
+(declare-fun SChain0__sc0_q3__call2661 () Token)
+(declare-fun SChain0__sc0_s4__call2661 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2689 () Token)
+(declare-fun SPrim0__sp0_t0__call2689 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2689 () Bool)
+(declare-fun SPrim0__sp0_seed__call2689 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2689 () Token)
+(declare-fun SPrim0__sp0_s0__call2689 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2689 () Token)
+(declare-fun SAtomR__sa_is_int__call2695 () Bool)
+(declare-fun SAtomR__sa_is_str__call2695 () Bool)
+(declare-fun SAtomR__sa_is_id__call2695 () Bool)
+(declare-fun SAtomR__sa_true__call2695 () Bool)
+(declare-fun SAtomR__sa_false__call2695 () Bool)
+(declare-fun SAtomR__sa_iv__call2695 () Int)
+(declare-fun SAtomR__sa_sv__call2695 () String)
+(declare-fun SAtomR__sa_idv__call2695 () String)
+(declare-fun SAtomR__sa_ctor_head__call2695 () Bool)
+(declare-fun SPrim0__sp0_ak__call2689 () Bool)
+(declare-fun SPrim0__sp0_ao__call2689 () String)
+(declare-fun SChain0__sc0_k4__call2661 () Bool)
+(declare-fun SChain0__sc0_o4__call2661 () String)
+(declare-fun SChain0__sc0_r4__call2661 () TokenList)
+(declare-fun SOpSmt__so_plus__call2696 () Bool)
+(declare-fun SOpSmt__so_minus__call2696 () Bool)
+(declare-fun SOpSmt__so_star__call2696 () Bool)
+(declare-fun SOpSmt__so_slash__call2696 () Bool)
+(declare-fun SOpSmt__so_lt__call2696 () Bool)
+(declare-fun SOpSmt__so_gt__call2696 () Bool)
+(declare-fun SOpSmt__so_le__call2696 () Bool)
+(declare-fun SOpSmt__so_ge__call2696 () Bool)
+(declare-fun SOpSmt__so_eq__call2696 () Bool)
+(declare-fun SOpSmt__so_ne__call2696 () Bool)
+(declare-fun SOpSmt__so_and__call2696 () Bool)
+(declare-fun SOpSmt__so_or__call2696 () Bool)
+(declare-fun SOpSmt__so_impl__call2696 () Bool)
+(declare-fun SChain0__sc0_op1k__call2661 () Bool)
+(declare-fun SChain0__sc0_op1__call2661 () String)
+(declare-fun SOpSmt__so_plus__call2697 () Bool)
+(declare-fun SOpSmt__so_minus__call2697 () Bool)
+(declare-fun SOpSmt__so_star__call2697 () Bool)
+(declare-fun SOpSmt__so_slash__call2697 () Bool)
+(declare-fun SOpSmt__so_lt__call2697 () Bool)
+(declare-fun SOpSmt__so_gt__call2697 () Bool)
+(declare-fun SOpSmt__so_le__call2697 () Bool)
+(declare-fun SOpSmt__so_ge__call2697 () Bool)
+(declare-fun SOpSmt__so_eq__call2697 () Bool)
+(declare-fun SOpSmt__so_ne__call2697 () Bool)
+(declare-fun SOpSmt__so_and__call2697 () Bool)
+(declare-fun SOpSmt__so_or__call2697 () Bool)
+(declare-fun SOpSmt__so_impl__call2697 () Bool)
+(declare-fun SChain0__sc0_op3k__call2661 () Bool)
+(declare-fun SChain0__sc0_op3__call2661 () String)
+(declare-fun SChain0__sc0_q1_tern__call2661 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2661 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2661 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2661 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2661 () Bool)
+(declare-fun SChain0__sc0_b2__call2661 () String)
+(declare-fun SChain0__sc0_q2_colon__call2661 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2661 () Bool)
+(declare-fun SPrim1__sp1_ik__call2655 () Bool)
+(declare-fun SPrim1__sp1_io__call2655 () String)
+(declare-fun SPrim1__sp1_ir__call2655 () TokenList)
+(declare-fun SPrim1__sp1_close__call2655 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2655 () Bool)
+(declare-fun SPrim1__sp1_pr__call2655 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2700 () Bool)
+(declare-fun SAtomR__sa_is_str__call2700 () Bool)
+(declare-fun SAtomR__sa_is_id__call2700 () Bool)
+(declare-fun SAtomR__sa_true__call2700 () Bool)
+(declare-fun SAtomR__sa_false__call2700 () Bool)
+(declare-fun SAtomR__sa_iv__call2700 () Int)
+(declare-fun SAtomR__sa_sv__call2700 () String)
+(declare-fun SAtomR__sa_idv__call2700 () String)
+(declare-fun SAtomR__sa_ctor_head__call2700 () Bool)
+(declare-fun SPrim1__sp1_ak__call2655 () Bool)
+(declare-fun SPrim1__sp1_ao__call2655 () String)
+(declare-fun SChain1__sc1_k4__call2510 () Bool)
+(declare-fun SPrim1__sp1_base__call2655 () String)
+(declare-fun SChain1__sc1_o4__call2510 () String)
+(declare-fun SChain1__sc1_r4__call2510 () TokenList)
+(declare-fun SOpSmt__so_plus__call2701 () Bool)
+(declare-fun SOpSmt__so_minus__call2701 () Bool)
+(declare-fun SOpSmt__so_star__call2701 () Bool)
+(declare-fun SOpSmt__so_slash__call2701 () Bool)
+(declare-fun SOpSmt__so_lt__call2701 () Bool)
+(declare-fun SOpSmt__so_gt__call2701 () Bool)
+(declare-fun SOpSmt__so_le__call2701 () Bool)
+(declare-fun SOpSmt__so_ge__call2701 () Bool)
+(declare-fun SOpSmt__so_eq__call2701 () Bool)
+(declare-fun SOpSmt__so_ne__call2701 () Bool)
+(declare-fun SOpSmt__so_and__call2701 () Bool)
+(declare-fun SOpSmt__so_or__call2701 () Bool)
+(declare-fun SOpSmt__so_impl__call2701 () Bool)
+(declare-fun SChain1__sc1_op1k__call2510 () Bool)
+(declare-fun SChain1__sc1_op1__call2510 () String)
+(declare-fun SOpSmt__so_plus__call2702 () Bool)
+(declare-fun SOpSmt__so_minus__call2702 () Bool)
+(declare-fun SOpSmt__so_star__call2702 () Bool)
+(declare-fun SOpSmt__so_slash__call2702 () Bool)
+(declare-fun SOpSmt__so_lt__call2702 () Bool)
+(declare-fun SOpSmt__so_gt__call2702 () Bool)
+(declare-fun SOpSmt__so_le__call2702 () Bool)
+(declare-fun SOpSmt__so_ge__call2702 () Bool)
+(declare-fun SOpSmt__so_eq__call2702 () Bool)
+(declare-fun SOpSmt__so_ne__call2702 () Bool)
+(declare-fun SOpSmt__so_and__call2702 () Bool)
+(declare-fun SOpSmt__so_or__call2702 () Bool)
+(declare-fun SOpSmt__so_impl__call2702 () Bool)
+(declare-fun SChain1__sc1_op3k__call2510 () Bool)
+(declare-fun SChain1__sc1_op3__call2510 () String)
+(declare-fun SChain1__sc1_q1_tern__call2510 () Bool)
+(declare-fun SChain1__sc1_q2_tern__call2510 () Bool)
+(declare-fun SChain1__sc1_q2_and__call2510 () Bool)
+(declare-fun SChain1__sc1_q2_or__call2510 () Bool)
+(declare-fun SChain1__sc1_q2_bool__call2510 () Bool)
+(declare-fun SChain1__sc1_b2__call2510 () String)
+(declare-fun SChain1__sc1_q2_colon__call2510 () Bool)
+(declare-fun SChain1__sc1_q3_colon__call2510 () Bool)
+(declare-fun SPrim2__sp2_ik__call2504 () Bool)
+(declare-fun SPrim2__sp2_io__call2504 () String)
+(declare-fun SPrim2__sp2_ir__call2504 () TokenList)
+(declare-fun SPrim2__sp2_close__call2504 () Token)
+(declare-fun SPrim2__sp2_par_ok__call2504 () Bool)
+(declare-fun SPrim2__sp2_pr__call2504 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2705 () Bool)
+(declare-fun SAtomR__sa_is_str__call2705 () Bool)
+(declare-fun SAtomR__sa_is_id__call2705 () Bool)
+(declare-fun SAtomR__sa_true__call2705 () Bool)
+(declare-fun SAtomR__sa_false__call2705 () Bool)
+(declare-fun SAtomR__sa_iv__call2705 () Int)
+(declare-fun SAtomR__sa_sv__call2705 () String)
+(declare-fun SAtomR__sa_idv__call2705 () String)
+(declare-fun SAtomR__sa_ctor_head__call2705 () Bool)
+(declare-fun SPrim2__sp2_ak__call2504 () Bool)
+(declare-fun SPrim2__sp2_ao__call2504 () String)
+(declare-fun CallArgsStep__ca_v2k__call2287 () Bool)
+(declare-fun SPrim2__sp2_base__call2504 () String)
+(declare-fun CallArgsStep__ca_v2o__call2287 () String)
+(declare-fun CallArgsStep__ca_v2r__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_d2__call2287 () Token)
+(declare-fun CallArgsStep__ca_d2_close__call2287 () Bool)
+(declare-fun CallArgsStep__ca_d2_comma__call2287 () Bool)
+(declare-fun CallArgsStep__ca_b3__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t6__call2287 () Token)
+(declare-fun CallArgsStep__ca_b3a__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_t7__call2287 () Token)
+(declare-fun CallArgsStep__ca_l8__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_h3_ok__call2287 () Bool)
+(declare-fun CallArgsStep__ca_s3__call2287 () String)
+(declare-fun SPrim2__sp2_h0__call2712 () Token)
+(declare-fun SPrim2__sp2_t0__call2712 () TokenList)
+(declare-fun SPrim2__sp2_neg__call2712 () Bool)
+(declare-fun SPrim2__sp2_seed__call2712 () TokenList)
+(declare-fun SPrim2__sp2_b0__call2712 () Token)
+(declare-fun SPrim2__sp2_bt__call2712 () TokenList)
+(declare-fun SPrim2__sp2_b1__call2712 () Token)
+(declare-fun SPrim2__sp2_par__call2712 () Bool)
+(declare-fun SPrim1__sp1_h0__call2719 () Token)
+(declare-fun SPrim1__sp1_t0__call2719 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2719 () Bool)
+(declare-fun SPrim1__sp1_seed__call2719 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2719 () Token)
+(declare-fun SPrim1__sp1_bt__call2719 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2719 () Token)
+(declare-fun SPrim1__sp1_par__call2719 () Bool)
+(declare-fun SPrim0__sp0_h0__call2726 () Token)
+(declare-fun SPrim0__sp0_t0__call2726 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2726 () Bool)
+(declare-fun SPrim0__sp0_seed__call2726 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2726 () Token)
+(declare-fun SPrim0__sp0_s0__call2726 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2726 () Token)
+(declare-fun SAtomR__sa_is_int__call2732 () Bool)
+(declare-fun SAtomR__sa_is_str__call2732 () Bool)
+(declare-fun SAtomR__sa_is_id__call2732 () Bool)
+(declare-fun SAtomR__sa_true__call2732 () Bool)
+(declare-fun SAtomR__sa_false__call2732 () Bool)
+(declare-fun SAtomR__sa_iv__call2732 () Int)
+(declare-fun SAtomR__sa_sv__call2732 () String)
+(declare-fun SAtomR__sa_idv__call2732 () String)
+(declare-fun SAtomR__sa_ctor_head__call2732 () Bool)
+(declare-fun SPrim0__sp0_ak__call2726 () Bool)
+(declare-fun SPrim0__sp0_ao__call2726 () String)
+(declare-fun SChain0__sc0_k1__call2725 () Bool)
+(declare-fun SChain0__sc0_o1__call2725 () String)
+(declare-fun SChain0__sc0_r1__call2725 () TokenList)
+(declare-fun SChain0__sc0_q1__call2725 () Token)
+(declare-fun SChain0__sc0_s2__call2725 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2735 () Token)
+(declare-fun SPrim0__sp0_t0__call2735 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2735 () Bool)
+(declare-fun SPrim0__sp0_seed__call2735 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2735 () Token)
+(declare-fun SPrim0__sp0_s0__call2735 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2735 () Token)
+(declare-fun SAtomR__sa_is_int__call2741 () Bool)
+(declare-fun SAtomR__sa_is_str__call2741 () Bool)
+(declare-fun SAtomR__sa_is_id__call2741 () Bool)
+(declare-fun SAtomR__sa_true__call2741 () Bool)
+(declare-fun SAtomR__sa_false__call2741 () Bool)
+(declare-fun SAtomR__sa_iv__call2741 () Int)
+(declare-fun SAtomR__sa_sv__call2741 () String)
+(declare-fun SAtomR__sa_idv__call2741 () String)
+(declare-fun SAtomR__sa_ctor_head__call2741 () Bool)
+(declare-fun SPrim0__sp0_ak__call2735 () Bool)
+(declare-fun SPrim0__sp0_ao__call2735 () String)
+(declare-fun SChain0__sc0_k2__call2725 () Bool)
+(declare-fun SChain0__sc0_o2__call2725 () String)
+(declare-fun SChain0__sc0_r2__call2725 () TokenList)
+(declare-fun SChain0__sc0_q2__call2725 () Token)
+(declare-fun SChain0__sc0_s3__call2725 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2744 () Token)
+(declare-fun SPrim0__sp0_t0__call2744 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2744 () Bool)
+(declare-fun SPrim0__sp0_seed__call2744 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2744 () Token)
+(declare-fun SPrim0__sp0_s0__call2744 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2744 () Token)
+(declare-fun SAtomR__sa_is_int__call2750 () Bool)
+(declare-fun SAtomR__sa_is_str__call2750 () Bool)
+(declare-fun SAtomR__sa_is_id__call2750 () Bool)
+(declare-fun SAtomR__sa_true__call2750 () Bool)
+(declare-fun SAtomR__sa_false__call2750 () Bool)
+(declare-fun SAtomR__sa_iv__call2750 () Int)
+(declare-fun SAtomR__sa_sv__call2750 () String)
+(declare-fun SAtomR__sa_idv__call2750 () String)
+(declare-fun SAtomR__sa_ctor_head__call2750 () Bool)
+(declare-fun SPrim0__sp0_ak__call2744 () Bool)
+(declare-fun SPrim0__sp0_ao__call2744 () String)
+(declare-fun SChain0__sc0_k3__call2725 () Bool)
+(declare-fun SChain0__sc0_o3__call2725 () String)
+(declare-fun SChain0__sc0_r3__call2725 () TokenList)
+(declare-fun SChain0__sc0_q3__call2725 () Token)
+(declare-fun SChain0__sc0_s4__call2725 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2753 () Token)
+(declare-fun SPrim0__sp0_t0__call2753 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2753 () Bool)
+(declare-fun SPrim0__sp0_seed__call2753 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2753 () Token)
+(declare-fun SPrim0__sp0_s0__call2753 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2753 () Token)
+(declare-fun SAtomR__sa_is_int__call2759 () Bool)
+(declare-fun SAtomR__sa_is_str__call2759 () Bool)
+(declare-fun SAtomR__sa_is_id__call2759 () Bool)
+(declare-fun SAtomR__sa_true__call2759 () Bool)
+(declare-fun SAtomR__sa_false__call2759 () Bool)
+(declare-fun SAtomR__sa_iv__call2759 () Int)
+(declare-fun SAtomR__sa_sv__call2759 () String)
+(declare-fun SAtomR__sa_idv__call2759 () String)
+(declare-fun SAtomR__sa_ctor_head__call2759 () Bool)
+(declare-fun SPrim0__sp0_ak__call2753 () Bool)
+(declare-fun SPrim0__sp0_ao__call2753 () String)
+(declare-fun SChain0__sc0_k4__call2725 () Bool)
+(declare-fun SChain0__sc0_o4__call2725 () String)
+(declare-fun SChain0__sc0_r4__call2725 () TokenList)
+(declare-fun SOpSmt__so_plus__call2760 () Bool)
+(declare-fun SOpSmt__so_minus__call2760 () Bool)
+(declare-fun SOpSmt__so_star__call2760 () Bool)
+(declare-fun SOpSmt__so_slash__call2760 () Bool)
+(declare-fun SOpSmt__so_lt__call2760 () Bool)
+(declare-fun SOpSmt__so_gt__call2760 () Bool)
+(declare-fun SOpSmt__so_le__call2760 () Bool)
+(declare-fun SOpSmt__so_ge__call2760 () Bool)
+(declare-fun SOpSmt__so_eq__call2760 () Bool)
+(declare-fun SOpSmt__so_ne__call2760 () Bool)
+(declare-fun SOpSmt__so_and__call2760 () Bool)
+(declare-fun SOpSmt__so_or__call2760 () Bool)
+(declare-fun SOpSmt__so_impl__call2760 () Bool)
+(declare-fun SChain0__sc0_op1k__call2725 () Bool)
+(declare-fun SChain0__sc0_op1__call2725 () String)
+(declare-fun SOpSmt__so_plus__call2761 () Bool)
+(declare-fun SOpSmt__so_minus__call2761 () Bool)
+(declare-fun SOpSmt__so_star__call2761 () Bool)
+(declare-fun SOpSmt__so_slash__call2761 () Bool)
+(declare-fun SOpSmt__so_lt__call2761 () Bool)
+(declare-fun SOpSmt__so_gt__call2761 () Bool)
+(declare-fun SOpSmt__so_le__call2761 () Bool)
+(declare-fun SOpSmt__so_ge__call2761 () Bool)
+(declare-fun SOpSmt__so_eq__call2761 () Bool)
+(declare-fun SOpSmt__so_ne__call2761 () Bool)
+(declare-fun SOpSmt__so_and__call2761 () Bool)
+(declare-fun SOpSmt__so_or__call2761 () Bool)
+(declare-fun SOpSmt__so_impl__call2761 () Bool)
+(declare-fun SChain0__sc0_op3k__call2725 () Bool)
+(declare-fun SChain0__sc0_op3__call2725 () String)
+(declare-fun SChain0__sc0_q1_tern__call2725 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2725 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2725 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2725 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2725 () Bool)
+(declare-fun SChain0__sc0_b2__call2725 () String)
+(declare-fun SChain0__sc0_q2_colon__call2725 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2725 () Bool)
+(declare-fun SPrim1__sp1_ik__call2719 () Bool)
+(declare-fun SPrim1__sp1_io__call2719 () String)
+(declare-fun SPrim1__sp1_ir__call2719 () TokenList)
+(declare-fun SPrim1__sp1_close__call2719 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2719 () Bool)
+(declare-fun SPrim1__sp1_pr__call2719 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2764 () Bool)
+(declare-fun SAtomR__sa_is_str__call2764 () Bool)
+(declare-fun SAtomR__sa_is_id__call2764 () Bool)
+(declare-fun SAtomR__sa_true__call2764 () Bool)
+(declare-fun SAtomR__sa_false__call2764 () Bool)
+(declare-fun SAtomR__sa_iv__call2764 () Int)
+(declare-fun SAtomR__sa_sv__call2764 () String)
+(declare-fun SAtomR__sa_idv__call2764 () String)
+(declare-fun SAtomR__sa_ctor_head__call2764 () Bool)
+(declare-fun SPrim1__sp1_ak__call2719 () Bool)
+(declare-fun SPrim1__sp1_ao__call2719 () String)
+(declare-fun SChain1__sc1_k1__call2718 () Bool)
+(declare-fun SPrim1__sp1_base__call2719 () String)
+(declare-fun SChain1__sc1_o1__call2718 () String)
+(declare-fun SChain1__sc1_r1__call2718 () TokenList)
+(declare-fun SChain1__sc1_q1__call2718 () Token)
+(declare-fun SChain1__sc1_s2__call2718 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2767 () Token)
+(declare-fun SPrim1__sp1_t0__call2767 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2767 () Bool)
+(declare-fun SPrim1__sp1_seed__call2767 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2767 () Token)
+(declare-fun SPrim1__sp1_bt__call2767 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2767 () Token)
+(declare-fun SPrim1__sp1_par__call2767 () Bool)
+(declare-fun SPrim0__sp0_h0__call2774 () Token)
+(declare-fun SPrim0__sp0_t0__call2774 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2774 () Bool)
+(declare-fun SPrim0__sp0_seed__call2774 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2774 () Token)
+(declare-fun SPrim0__sp0_s0__call2774 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2774 () Token)
+(declare-fun SAtomR__sa_is_int__call2780 () Bool)
+(declare-fun SAtomR__sa_is_str__call2780 () Bool)
+(declare-fun SAtomR__sa_is_id__call2780 () Bool)
+(declare-fun SAtomR__sa_true__call2780 () Bool)
+(declare-fun SAtomR__sa_false__call2780 () Bool)
+(declare-fun SAtomR__sa_iv__call2780 () Int)
+(declare-fun SAtomR__sa_sv__call2780 () String)
+(declare-fun SAtomR__sa_idv__call2780 () String)
+(declare-fun SAtomR__sa_ctor_head__call2780 () Bool)
+(declare-fun SPrim0__sp0_ak__call2774 () Bool)
+(declare-fun SPrim0__sp0_ao__call2774 () String)
+(declare-fun SChain0__sc0_k1__call2773 () Bool)
+(declare-fun SChain0__sc0_o1__call2773 () String)
+(declare-fun SChain0__sc0_r1__call2773 () TokenList)
+(declare-fun SChain0__sc0_q1__call2773 () Token)
+(declare-fun SChain0__sc0_s2__call2773 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2783 () Token)
+(declare-fun SPrim0__sp0_t0__call2783 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2783 () Bool)
+(declare-fun SPrim0__sp0_seed__call2783 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2783 () Token)
+(declare-fun SPrim0__sp0_s0__call2783 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2783 () Token)
+(declare-fun SAtomR__sa_is_int__call2789 () Bool)
+(declare-fun SAtomR__sa_is_str__call2789 () Bool)
+(declare-fun SAtomR__sa_is_id__call2789 () Bool)
+(declare-fun SAtomR__sa_true__call2789 () Bool)
+(declare-fun SAtomR__sa_false__call2789 () Bool)
+(declare-fun SAtomR__sa_iv__call2789 () Int)
+(declare-fun SAtomR__sa_sv__call2789 () String)
+(declare-fun SAtomR__sa_idv__call2789 () String)
+(declare-fun SAtomR__sa_ctor_head__call2789 () Bool)
+(declare-fun SPrim0__sp0_ak__call2783 () Bool)
+(declare-fun SPrim0__sp0_ao__call2783 () String)
+(declare-fun SChain0__sc0_k2__call2773 () Bool)
+(declare-fun SChain0__sc0_o2__call2773 () String)
+(declare-fun SChain0__sc0_r2__call2773 () TokenList)
+(declare-fun SChain0__sc0_q2__call2773 () Token)
+(declare-fun SChain0__sc0_s3__call2773 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2792 () Token)
+(declare-fun SPrim0__sp0_t0__call2792 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2792 () Bool)
+(declare-fun SPrim0__sp0_seed__call2792 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2792 () Token)
+(declare-fun SPrim0__sp0_s0__call2792 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2792 () Token)
+(declare-fun SAtomR__sa_is_int__call2798 () Bool)
+(declare-fun SAtomR__sa_is_str__call2798 () Bool)
+(declare-fun SAtomR__sa_is_id__call2798 () Bool)
+(declare-fun SAtomR__sa_true__call2798 () Bool)
+(declare-fun SAtomR__sa_false__call2798 () Bool)
+(declare-fun SAtomR__sa_iv__call2798 () Int)
+(declare-fun SAtomR__sa_sv__call2798 () String)
+(declare-fun SAtomR__sa_idv__call2798 () String)
+(declare-fun SAtomR__sa_ctor_head__call2798 () Bool)
+(declare-fun SPrim0__sp0_ak__call2792 () Bool)
+(declare-fun SPrim0__sp0_ao__call2792 () String)
+(declare-fun SChain0__sc0_k3__call2773 () Bool)
+(declare-fun SChain0__sc0_o3__call2773 () String)
+(declare-fun SChain0__sc0_r3__call2773 () TokenList)
+(declare-fun SChain0__sc0_q3__call2773 () Token)
+(declare-fun SChain0__sc0_s4__call2773 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2801 () Token)
+(declare-fun SPrim0__sp0_t0__call2801 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2801 () Bool)
+(declare-fun SPrim0__sp0_seed__call2801 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2801 () Token)
+(declare-fun SPrim0__sp0_s0__call2801 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2801 () Token)
+(declare-fun SAtomR__sa_is_int__call2807 () Bool)
+(declare-fun SAtomR__sa_is_str__call2807 () Bool)
+(declare-fun SAtomR__sa_is_id__call2807 () Bool)
+(declare-fun SAtomR__sa_true__call2807 () Bool)
+(declare-fun SAtomR__sa_false__call2807 () Bool)
+(declare-fun SAtomR__sa_iv__call2807 () Int)
+(declare-fun SAtomR__sa_sv__call2807 () String)
+(declare-fun SAtomR__sa_idv__call2807 () String)
+(declare-fun SAtomR__sa_ctor_head__call2807 () Bool)
+(declare-fun SPrim0__sp0_ak__call2801 () Bool)
+(declare-fun SPrim0__sp0_ao__call2801 () String)
+(declare-fun SChain0__sc0_k4__call2773 () Bool)
+(declare-fun SChain0__sc0_o4__call2773 () String)
+(declare-fun SChain0__sc0_r4__call2773 () TokenList)
+(declare-fun SOpSmt__so_plus__call2808 () Bool)
+(declare-fun SOpSmt__so_minus__call2808 () Bool)
+(declare-fun SOpSmt__so_star__call2808 () Bool)
+(declare-fun SOpSmt__so_slash__call2808 () Bool)
+(declare-fun SOpSmt__so_lt__call2808 () Bool)
+(declare-fun SOpSmt__so_gt__call2808 () Bool)
+(declare-fun SOpSmt__so_le__call2808 () Bool)
+(declare-fun SOpSmt__so_ge__call2808 () Bool)
+(declare-fun SOpSmt__so_eq__call2808 () Bool)
+(declare-fun SOpSmt__so_ne__call2808 () Bool)
+(declare-fun SOpSmt__so_and__call2808 () Bool)
+(declare-fun SOpSmt__so_or__call2808 () Bool)
+(declare-fun SOpSmt__so_impl__call2808 () Bool)
+(declare-fun SChain0__sc0_op1k__call2773 () Bool)
+(declare-fun SChain0__sc0_op1__call2773 () String)
+(declare-fun SOpSmt__so_plus__call2809 () Bool)
+(declare-fun SOpSmt__so_minus__call2809 () Bool)
+(declare-fun SOpSmt__so_star__call2809 () Bool)
+(declare-fun SOpSmt__so_slash__call2809 () Bool)
+(declare-fun SOpSmt__so_lt__call2809 () Bool)
+(declare-fun SOpSmt__so_gt__call2809 () Bool)
+(declare-fun SOpSmt__so_le__call2809 () Bool)
+(declare-fun SOpSmt__so_ge__call2809 () Bool)
+(declare-fun SOpSmt__so_eq__call2809 () Bool)
+(declare-fun SOpSmt__so_ne__call2809 () Bool)
+(declare-fun SOpSmt__so_and__call2809 () Bool)
+(declare-fun SOpSmt__so_or__call2809 () Bool)
+(declare-fun SOpSmt__so_impl__call2809 () Bool)
+(declare-fun SChain0__sc0_op3k__call2773 () Bool)
+(declare-fun SChain0__sc0_op3__call2773 () String)
+(declare-fun SChain0__sc0_q1_tern__call2773 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2773 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2773 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2773 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2773 () Bool)
+(declare-fun SChain0__sc0_b2__call2773 () String)
+(declare-fun SChain0__sc0_q2_colon__call2773 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2773 () Bool)
+(declare-fun SPrim1__sp1_ik__call2767 () Bool)
+(declare-fun SPrim1__sp1_io__call2767 () String)
+(declare-fun SPrim1__sp1_ir__call2767 () TokenList)
+(declare-fun SPrim1__sp1_close__call2767 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2767 () Bool)
+(declare-fun SPrim1__sp1_pr__call2767 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2812 () Bool)
+(declare-fun SAtomR__sa_is_str__call2812 () Bool)
+(declare-fun SAtomR__sa_is_id__call2812 () Bool)
+(declare-fun SAtomR__sa_true__call2812 () Bool)
+(declare-fun SAtomR__sa_false__call2812 () Bool)
+(declare-fun SAtomR__sa_iv__call2812 () Int)
+(declare-fun SAtomR__sa_sv__call2812 () String)
+(declare-fun SAtomR__sa_idv__call2812 () String)
+(declare-fun SAtomR__sa_ctor_head__call2812 () Bool)
+(declare-fun SPrim1__sp1_ak__call2767 () Bool)
+(declare-fun SPrim1__sp1_ao__call2767 () String)
+(declare-fun SChain1__sc1_k2__call2718 () Bool)
+(declare-fun SPrim1__sp1_base__call2767 () String)
+(declare-fun SChain1__sc1_o2__call2718 () String)
+(declare-fun SChain1__sc1_r2__call2718 () TokenList)
+(declare-fun SChain1__sc1_q2__call2718 () Token)
+(declare-fun SChain1__sc1_s3__call2718 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2815 () Token)
+(declare-fun SPrim1__sp1_t0__call2815 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2815 () Bool)
+(declare-fun SPrim1__sp1_seed__call2815 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2815 () Token)
+(declare-fun SPrim1__sp1_bt__call2815 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2815 () Token)
+(declare-fun SPrim1__sp1_par__call2815 () Bool)
+(declare-fun SPrim0__sp0_h0__call2822 () Token)
+(declare-fun SPrim0__sp0_t0__call2822 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2822 () Bool)
+(declare-fun SPrim0__sp0_seed__call2822 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2822 () Token)
+(declare-fun SPrim0__sp0_s0__call2822 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2822 () Token)
+(declare-fun SAtomR__sa_is_int__call2828 () Bool)
+(declare-fun SAtomR__sa_is_str__call2828 () Bool)
+(declare-fun SAtomR__sa_is_id__call2828 () Bool)
+(declare-fun SAtomR__sa_true__call2828 () Bool)
+(declare-fun SAtomR__sa_false__call2828 () Bool)
+(declare-fun SAtomR__sa_iv__call2828 () Int)
+(declare-fun SAtomR__sa_sv__call2828 () String)
+(declare-fun SAtomR__sa_idv__call2828 () String)
+(declare-fun SAtomR__sa_ctor_head__call2828 () Bool)
+(declare-fun SPrim0__sp0_ak__call2822 () Bool)
+(declare-fun SPrim0__sp0_ao__call2822 () String)
+(declare-fun SChain0__sc0_k1__call2821 () Bool)
+(declare-fun SChain0__sc0_o1__call2821 () String)
+(declare-fun SChain0__sc0_r1__call2821 () TokenList)
+(declare-fun SChain0__sc0_q1__call2821 () Token)
+(declare-fun SChain0__sc0_s2__call2821 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2831 () Token)
+(declare-fun SPrim0__sp0_t0__call2831 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2831 () Bool)
+(declare-fun SPrim0__sp0_seed__call2831 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2831 () Token)
+(declare-fun SPrim0__sp0_s0__call2831 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2831 () Token)
+(declare-fun SAtomR__sa_is_int__call2837 () Bool)
+(declare-fun SAtomR__sa_is_str__call2837 () Bool)
+(declare-fun SAtomR__sa_is_id__call2837 () Bool)
+(declare-fun SAtomR__sa_true__call2837 () Bool)
+(declare-fun SAtomR__sa_false__call2837 () Bool)
+(declare-fun SAtomR__sa_iv__call2837 () Int)
+(declare-fun SAtomR__sa_sv__call2837 () String)
+(declare-fun SAtomR__sa_idv__call2837 () String)
+(declare-fun SAtomR__sa_ctor_head__call2837 () Bool)
+(declare-fun SPrim0__sp0_ak__call2831 () Bool)
+(declare-fun SPrim0__sp0_ao__call2831 () String)
+(declare-fun SChain0__sc0_k2__call2821 () Bool)
+(declare-fun SChain0__sc0_o2__call2821 () String)
+(declare-fun SChain0__sc0_r2__call2821 () TokenList)
+(declare-fun SChain0__sc0_q2__call2821 () Token)
+(declare-fun SChain0__sc0_s3__call2821 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2840 () Token)
+(declare-fun SPrim0__sp0_t0__call2840 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2840 () Bool)
+(declare-fun SPrim0__sp0_seed__call2840 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2840 () Token)
+(declare-fun SPrim0__sp0_s0__call2840 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2840 () Token)
+(declare-fun SAtomR__sa_is_int__call2846 () Bool)
+(declare-fun SAtomR__sa_is_str__call2846 () Bool)
+(declare-fun SAtomR__sa_is_id__call2846 () Bool)
+(declare-fun SAtomR__sa_true__call2846 () Bool)
+(declare-fun SAtomR__sa_false__call2846 () Bool)
+(declare-fun SAtomR__sa_iv__call2846 () Int)
+(declare-fun SAtomR__sa_sv__call2846 () String)
+(declare-fun SAtomR__sa_idv__call2846 () String)
+(declare-fun SAtomR__sa_ctor_head__call2846 () Bool)
+(declare-fun SPrim0__sp0_ak__call2840 () Bool)
+(declare-fun SPrim0__sp0_ao__call2840 () String)
+(declare-fun SChain0__sc0_k3__call2821 () Bool)
+(declare-fun SChain0__sc0_o3__call2821 () String)
+(declare-fun SChain0__sc0_r3__call2821 () TokenList)
+(declare-fun SChain0__sc0_q3__call2821 () Token)
+(declare-fun SChain0__sc0_s4__call2821 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2849 () Token)
+(declare-fun SPrim0__sp0_t0__call2849 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2849 () Bool)
+(declare-fun SPrim0__sp0_seed__call2849 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2849 () Token)
+(declare-fun SPrim0__sp0_s0__call2849 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2849 () Token)
+(declare-fun SAtomR__sa_is_int__call2855 () Bool)
+(declare-fun SAtomR__sa_is_str__call2855 () Bool)
+(declare-fun SAtomR__sa_is_id__call2855 () Bool)
+(declare-fun SAtomR__sa_true__call2855 () Bool)
+(declare-fun SAtomR__sa_false__call2855 () Bool)
+(declare-fun SAtomR__sa_iv__call2855 () Int)
+(declare-fun SAtomR__sa_sv__call2855 () String)
+(declare-fun SAtomR__sa_idv__call2855 () String)
+(declare-fun SAtomR__sa_ctor_head__call2855 () Bool)
+(declare-fun SPrim0__sp0_ak__call2849 () Bool)
+(declare-fun SPrim0__sp0_ao__call2849 () String)
+(declare-fun SChain0__sc0_k4__call2821 () Bool)
+(declare-fun SChain0__sc0_o4__call2821 () String)
+(declare-fun SChain0__sc0_r4__call2821 () TokenList)
+(declare-fun SOpSmt__so_plus__call2856 () Bool)
+(declare-fun SOpSmt__so_minus__call2856 () Bool)
+(declare-fun SOpSmt__so_star__call2856 () Bool)
+(declare-fun SOpSmt__so_slash__call2856 () Bool)
+(declare-fun SOpSmt__so_lt__call2856 () Bool)
+(declare-fun SOpSmt__so_gt__call2856 () Bool)
+(declare-fun SOpSmt__so_le__call2856 () Bool)
+(declare-fun SOpSmt__so_ge__call2856 () Bool)
+(declare-fun SOpSmt__so_eq__call2856 () Bool)
+(declare-fun SOpSmt__so_ne__call2856 () Bool)
+(declare-fun SOpSmt__so_and__call2856 () Bool)
+(declare-fun SOpSmt__so_or__call2856 () Bool)
+(declare-fun SOpSmt__so_impl__call2856 () Bool)
+(declare-fun SChain0__sc0_op1k__call2821 () Bool)
+(declare-fun SChain0__sc0_op1__call2821 () String)
+(declare-fun SOpSmt__so_plus__call2857 () Bool)
+(declare-fun SOpSmt__so_minus__call2857 () Bool)
+(declare-fun SOpSmt__so_star__call2857 () Bool)
+(declare-fun SOpSmt__so_slash__call2857 () Bool)
+(declare-fun SOpSmt__so_lt__call2857 () Bool)
+(declare-fun SOpSmt__so_gt__call2857 () Bool)
+(declare-fun SOpSmt__so_le__call2857 () Bool)
+(declare-fun SOpSmt__so_ge__call2857 () Bool)
+(declare-fun SOpSmt__so_eq__call2857 () Bool)
+(declare-fun SOpSmt__so_ne__call2857 () Bool)
+(declare-fun SOpSmt__so_and__call2857 () Bool)
+(declare-fun SOpSmt__so_or__call2857 () Bool)
+(declare-fun SOpSmt__so_impl__call2857 () Bool)
+(declare-fun SChain0__sc0_op3k__call2821 () Bool)
+(declare-fun SChain0__sc0_op3__call2821 () String)
+(declare-fun SChain0__sc0_q1_tern__call2821 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2821 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2821 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2821 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2821 () Bool)
+(declare-fun SChain0__sc0_b2__call2821 () String)
+(declare-fun SChain0__sc0_q2_colon__call2821 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2821 () Bool)
+(declare-fun SPrim1__sp1_ik__call2815 () Bool)
+(declare-fun SPrim1__sp1_io__call2815 () String)
+(declare-fun SPrim1__sp1_ir__call2815 () TokenList)
+(declare-fun SPrim1__sp1_close__call2815 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2815 () Bool)
+(declare-fun SPrim1__sp1_pr__call2815 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2860 () Bool)
+(declare-fun SAtomR__sa_is_str__call2860 () Bool)
+(declare-fun SAtomR__sa_is_id__call2860 () Bool)
+(declare-fun SAtomR__sa_true__call2860 () Bool)
+(declare-fun SAtomR__sa_false__call2860 () Bool)
+(declare-fun SAtomR__sa_iv__call2860 () Int)
+(declare-fun SAtomR__sa_sv__call2860 () String)
+(declare-fun SAtomR__sa_idv__call2860 () String)
+(declare-fun SAtomR__sa_ctor_head__call2860 () Bool)
+(declare-fun SPrim1__sp1_ak__call2815 () Bool)
+(declare-fun SPrim1__sp1_ao__call2815 () String)
+(declare-fun SChain1__sc1_k3__call2718 () Bool)
+(declare-fun SPrim1__sp1_base__call2815 () String)
+(declare-fun SChain1__sc1_o3__call2718 () String)
+(declare-fun SChain1__sc1_r3__call2718 () TokenList)
+(declare-fun SChain1__sc1_q3__call2718 () Token)
+(declare-fun SChain1__sc1_s4__call2718 () TokenList)
+(declare-fun SPrim1__sp1_h0__call2863 () Token)
+(declare-fun SPrim1__sp1_t0__call2863 () TokenList)
+(declare-fun SPrim1__sp1_neg__call2863 () Bool)
+(declare-fun SPrim1__sp1_seed__call2863 () TokenList)
+(declare-fun SPrim1__sp1_b0__call2863 () Token)
+(declare-fun SPrim1__sp1_bt__call2863 () TokenList)
+(declare-fun SPrim1__sp1_b1__call2863 () Token)
+(declare-fun SPrim1__sp1_par__call2863 () Bool)
+(declare-fun SPrim0__sp0_h0__call2870 () Token)
+(declare-fun SPrim0__sp0_t0__call2870 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2870 () Bool)
+(declare-fun SPrim0__sp0_seed__call2870 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2870 () Token)
+(declare-fun SPrim0__sp0_s0__call2870 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2870 () Token)
+(declare-fun SAtomR__sa_is_int__call2876 () Bool)
+(declare-fun SAtomR__sa_is_str__call2876 () Bool)
+(declare-fun SAtomR__sa_is_id__call2876 () Bool)
+(declare-fun SAtomR__sa_true__call2876 () Bool)
+(declare-fun SAtomR__sa_false__call2876 () Bool)
+(declare-fun SAtomR__sa_iv__call2876 () Int)
+(declare-fun SAtomR__sa_sv__call2876 () String)
+(declare-fun SAtomR__sa_idv__call2876 () String)
+(declare-fun SAtomR__sa_ctor_head__call2876 () Bool)
+(declare-fun SPrim0__sp0_ak__call2870 () Bool)
+(declare-fun SPrim0__sp0_ao__call2870 () String)
+(declare-fun SChain0__sc0_k1__call2869 () Bool)
+(declare-fun SChain0__sc0_o1__call2869 () String)
+(declare-fun SChain0__sc0_r1__call2869 () TokenList)
+(declare-fun SChain0__sc0_q1__call2869 () Token)
+(declare-fun SChain0__sc0_s2__call2869 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2879 () Token)
+(declare-fun SPrim0__sp0_t0__call2879 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2879 () Bool)
+(declare-fun SPrim0__sp0_seed__call2879 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2879 () Token)
+(declare-fun SPrim0__sp0_s0__call2879 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2879 () Token)
+(declare-fun SAtomR__sa_is_int__call2885 () Bool)
+(declare-fun SAtomR__sa_is_str__call2885 () Bool)
+(declare-fun SAtomR__sa_is_id__call2885 () Bool)
+(declare-fun SAtomR__sa_true__call2885 () Bool)
+(declare-fun SAtomR__sa_false__call2885 () Bool)
+(declare-fun SAtomR__sa_iv__call2885 () Int)
+(declare-fun SAtomR__sa_sv__call2885 () String)
+(declare-fun SAtomR__sa_idv__call2885 () String)
+(declare-fun SAtomR__sa_ctor_head__call2885 () Bool)
+(declare-fun SPrim0__sp0_ak__call2879 () Bool)
+(declare-fun SPrim0__sp0_ao__call2879 () String)
+(declare-fun SChain0__sc0_k2__call2869 () Bool)
+(declare-fun SChain0__sc0_o2__call2869 () String)
+(declare-fun SChain0__sc0_r2__call2869 () TokenList)
+(declare-fun SChain0__sc0_q2__call2869 () Token)
+(declare-fun SChain0__sc0_s3__call2869 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2888 () Token)
+(declare-fun SPrim0__sp0_t0__call2888 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2888 () Bool)
+(declare-fun SPrim0__sp0_seed__call2888 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2888 () Token)
+(declare-fun SPrim0__sp0_s0__call2888 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2888 () Token)
+(declare-fun SAtomR__sa_is_int__call2894 () Bool)
+(declare-fun SAtomR__sa_is_str__call2894 () Bool)
+(declare-fun SAtomR__sa_is_id__call2894 () Bool)
+(declare-fun SAtomR__sa_true__call2894 () Bool)
+(declare-fun SAtomR__sa_false__call2894 () Bool)
+(declare-fun SAtomR__sa_iv__call2894 () Int)
+(declare-fun SAtomR__sa_sv__call2894 () String)
+(declare-fun SAtomR__sa_idv__call2894 () String)
+(declare-fun SAtomR__sa_ctor_head__call2894 () Bool)
+(declare-fun SPrim0__sp0_ak__call2888 () Bool)
+(declare-fun SPrim0__sp0_ao__call2888 () String)
+(declare-fun SChain0__sc0_k3__call2869 () Bool)
+(declare-fun SChain0__sc0_o3__call2869 () String)
+(declare-fun SChain0__sc0_r3__call2869 () TokenList)
+(declare-fun SChain0__sc0_q3__call2869 () Token)
+(declare-fun SChain0__sc0_s4__call2869 () TokenList)
+(declare-fun SPrim0__sp0_h0__call2897 () Token)
+(declare-fun SPrim0__sp0_t0__call2897 () TokenList)
+(declare-fun SPrim0__sp0_neg__call2897 () Bool)
+(declare-fun SPrim0__sp0_seed__call2897 () TokenList)
+(declare-fun SPrim0__sp0_a0__call2897 () Token)
+(declare-fun SPrim0__sp0_s0__call2897 () TokenList)
+(declare-fun SPrim0__sp0_a1__call2897 () Token)
+(declare-fun SAtomR__sa_is_int__call2903 () Bool)
+(declare-fun SAtomR__sa_is_str__call2903 () Bool)
+(declare-fun SAtomR__sa_is_id__call2903 () Bool)
+(declare-fun SAtomR__sa_true__call2903 () Bool)
+(declare-fun SAtomR__sa_false__call2903 () Bool)
+(declare-fun SAtomR__sa_iv__call2903 () Int)
+(declare-fun SAtomR__sa_sv__call2903 () String)
+(declare-fun SAtomR__sa_idv__call2903 () String)
+(declare-fun SAtomR__sa_ctor_head__call2903 () Bool)
+(declare-fun SPrim0__sp0_ak__call2897 () Bool)
+(declare-fun SPrim0__sp0_ao__call2897 () String)
+(declare-fun SChain0__sc0_k4__call2869 () Bool)
+(declare-fun SChain0__sc0_o4__call2869 () String)
+(declare-fun SChain0__sc0_r4__call2869 () TokenList)
+(declare-fun SOpSmt__so_plus__call2904 () Bool)
+(declare-fun SOpSmt__so_minus__call2904 () Bool)
+(declare-fun SOpSmt__so_star__call2904 () Bool)
+(declare-fun SOpSmt__so_slash__call2904 () Bool)
+(declare-fun SOpSmt__so_lt__call2904 () Bool)
+(declare-fun SOpSmt__so_gt__call2904 () Bool)
+(declare-fun SOpSmt__so_le__call2904 () Bool)
+(declare-fun SOpSmt__so_ge__call2904 () Bool)
+(declare-fun SOpSmt__so_eq__call2904 () Bool)
+(declare-fun SOpSmt__so_ne__call2904 () Bool)
+(declare-fun SOpSmt__so_and__call2904 () Bool)
+(declare-fun SOpSmt__so_or__call2904 () Bool)
+(declare-fun SOpSmt__so_impl__call2904 () Bool)
+(declare-fun SChain0__sc0_op1k__call2869 () Bool)
+(declare-fun SChain0__sc0_op1__call2869 () String)
+(declare-fun SOpSmt__so_plus__call2905 () Bool)
+(declare-fun SOpSmt__so_minus__call2905 () Bool)
+(declare-fun SOpSmt__so_star__call2905 () Bool)
+(declare-fun SOpSmt__so_slash__call2905 () Bool)
+(declare-fun SOpSmt__so_lt__call2905 () Bool)
+(declare-fun SOpSmt__so_gt__call2905 () Bool)
+(declare-fun SOpSmt__so_le__call2905 () Bool)
+(declare-fun SOpSmt__so_ge__call2905 () Bool)
+(declare-fun SOpSmt__so_eq__call2905 () Bool)
+(declare-fun SOpSmt__so_ne__call2905 () Bool)
+(declare-fun SOpSmt__so_and__call2905 () Bool)
+(declare-fun SOpSmt__so_or__call2905 () Bool)
+(declare-fun SOpSmt__so_impl__call2905 () Bool)
+(declare-fun SChain0__sc0_op3k__call2869 () Bool)
+(declare-fun SChain0__sc0_op3__call2869 () String)
+(declare-fun SChain0__sc0_q1_tern__call2869 () Bool)
+(declare-fun SChain0__sc0_q2_tern__call2869 () Bool)
+(declare-fun SChain0__sc0_q2_and__call2869 () Bool)
+(declare-fun SChain0__sc0_q2_or__call2869 () Bool)
+(declare-fun SChain0__sc0_q2_bool__call2869 () Bool)
+(declare-fun SChain0__sc0_b2__call2869 () String)
+(declare-fun SChain0__sc0_q2_colon__call2869 () Bool)
+(declare-fun SChain0__sc0_q3_colon__call2869 () Bool)
+(declare-fun SPrim1__sp1_ik__call2863 () Bool)
+(declare-fun SPrim1__sp1_io__call2863 () String)
+(declare-fun SPrim1__sp1_ir__call2863 () TokenList)
+(declare-fun SPrim1__sp1_close__call2863 () Token)
+(declare-fun SPrim1__sp1_par_ok__call2863 () Bool)
+(declare-fun SPrim1__sp1_pr__call2863 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2908 () Bool)
+(declare-fun SAtomR__sa_is_str__call2908 () Bool)
+(declare-fun SAtomR__sa_is_id__call2908 () Bool)
+(declare-fun SAtomR__sa_true__call2908 () Bool)
+(declare-fun SAtomR__sa_false__call2908 () Bool)
+(declare-fun SAtomR__sa_iv__call2908 () Int)
+(declare-fun SAtomR__sa_sv__call2908 () String)
+(declare-fun SAtomR__sa_idv__call2908 () String)
+(declare-fun SAtomR__sa_ctor_head__call2908 () Bool)
+(declare-fun SPrim1__sp1_ak__call2863 () Bool)
+(declare-fun SPrim1__sp1_ao__call2863 () String)
+(declare-fun SChain1__sc1_k4__call2718 () Bool)
+(declare-fun SPrim1__sp1_base__call2863 () String)
+(declare-fun SChain1__sc1_o4__call2718 () String)
+(declare-fun SChain1__sc1_r4__call2718 () TokenList)
+(declare-fun SOpSmt__so_plus__call2909 () Bool)
+(declare-fun SOpSmt__so_minus__call2909 () Bool)
+(declare-fun SOpSmt__so_star__call2909 () Bool)
+(declare-fun SOpSmt__so_slash__call2909 () Bool)
+(declare-fun SOpSmt__so_lt__call2909 () Bool)
+(declare-fun SOpSmt__so_gt__call2909 () Bool)
+(declare-fun SOpSmt__so_le__call2909 () Bool)
+(declare-fun SOpSmt__so_ge__call2909 () Bool)
+(declare-fun SOpSmt__so_eq__call2909 () Bool)
+(declare-fun SOpSmt__so_ne__call2909 () Bool)
+(declare-fun SOpSmt__so_and__call2909 () Bool)
+(declare-fun SOpSmt__so_or__call2909 () Bool)
+(declare-fun SOpSmt__so_impl__call2909 () Bool)
+(declare-fun SChain1__sc1_op1k__call2718 () Bool)
+(declare-fun SChain1__sc1_op1__call2718 () String)
+(declare-fun SOpSmt__so_plus__call2910 () Bool)
+(declare-fun SOpSmt__so_minus__call2910 () Bool)
+(declare-fun SOpSmt__so_star__call2910 () Bool)
+(declare-fun SOpSmt__so_slash__call2910 () Bool)
+(declare-fun SOpSmt__so_lt__call2910 () Bool)
+(declare-fun SOpSmt__so_gt__call2910 () Bool)
+(declare-fun SOpSmt__so_le__call2910 () Bool)
+(declare-fun SOpSmt__so_ge__call2910 () Bool)
+(declare-fun SOpSmt__so_eq__call2910 () Bool)
+(declare-fun SOpSmt__so_ne__call2910 () Bool)
+(declare-fun SOpSmt__so_and__call2910 () Bool)
+(declare-fun SOpSmt__so_or__call2910 () Bool)
+(declare-fun SOpSmt__so_impl__call2910 () Bool)
+(declare-fun SChain1__sc1_op3k__call2718 () Bool)
+(declare-fun SChain1__sc1_op3__call2718 () String)
+(declare-fun SChain1__sc1_q1_tern__call2718 () Bool)
+(declare-fun SChain1__sc1_q2_tern__call2718 () Bool)
+(declare-fun SChain1__sc1_q2_and__call2718 () Bool)
+(declare-fun SChain1__sc1_q2_or__call2718 () Bool)
+(declare-fun SChain1__sc1_q2_bool__call2718 () Bool)
+(declare-fun SChain1__sc1_b2__call2718 () String)
+(declare-fun SChain1__sc1_q2_colon__call2718 () Bool)
+(declare-fun SChain1__sc1_q3_colon__call2718 () Bool)
+(declare-fun SPrim2__sp2_ik__call2712 () Bool)
+(declare-fun SPrim2__sp2_io__call2712 () String)
+(declare-fun SPrim2__sp2_ir__call2712 () TokenList)
+(declare-fun SPrim2__sp2_close__call2712 () Token)
+(declare-fun SPrim2__sp2_par_ok__call2712 () Bool)
+(declare-fun SPrim2__sp2_pr__call2712 () TokenList)
+(declare-fun SAtomR__sa_is_int__call2913 () Bool)
+(declare-fun SAtomR__sa_is_str__call2913 () Bool)
+(declare-fun SAtomR__sa_is_id__call2913 () Bool)
+(declare-fun SAtomR__sa_true__call2913 () Bool)
+(declare-fun SAtomR__sa_false__call2913 () Bool)
+(declare-fun SAtomR__sa_iv__call2913 () Int)
+(declare-fun SAtomR__sa_sv__call2913 () String)
+(declare-fun SAtomR__sa_idv__call2913 () String)
+(declare-fun SAtomR__sa_ctor_head__call2913 () Bool)
+(declare-fun SPrim2__sp2_ak__call2712 () Bool)
+(declare-fun SPrim2__sp2_ao__call2712 () String)
+(declare-fun CallArgsStep__ca_v3k__call2287 () Bool)
+(declare-fun SPrim2__sp2_base__call2712 () String)
+(declare-fun CallArgsStep__ca_v3o__call2287 () String)
+(declare-fun CallArgsStep__ca_v3r__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_d3__call2287 () Token)
+(declare-fun CallArgsStep__ca_d3_close__call2287 () Bool)
+(declare-fun cca_ok () Bool)
+(declare-fun CallArgsStep__ca_e1__call2287 () String)
+(declare-fun CallArgsStep__ca_e2__call2287 () String)
+(declare-fun CallArgsStep__ca_e3__call2287 () String)
+(declare-fun cca_table () String)
+(declare-fun CallArgsStep__ca_after1__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_after2__call2287 () TokenList)
+(declare-fun CallArgsStep__ca_after3__call2287 () TokenList)
+(declare-fun cca_rest () TokenList)
+(declare-fun do_ccall () Bool)
+(declare-fun in_inline () Bool)
+(declare-fun _iscan () TokenList)
+(declare-fun is_hd () Token)
+(declare-fun is_tl () TokenList)
+(declare-fun is_hd2 () Token)
+(declare-fun is_tl2 () TokenList)
+(declare-fun is_hd3 () Token)
+(declare-fun is_tl3 () TokenList)
+(declare-fun iscan_nil () Bool)
+(declare-fun _icoll () TokenList)
+(declare-fun icoll_hd () Token)
+(declare-fun icoll_tl () TokenList)
+(declare-fun icoll_nil () Bool)
+(declare-fun i_hd2_name () String)
+(declare-fun _iname () String)
+(declare-fun _iph () Int)
+(declare-fun i_found () Bool)
+(declare-fun i_search_step () Bool)
+(declare-fun i_search_fail () Bool)
+(declare-fun i_found_param () Bool)
+(declare-fun i_pskip () Bool)
+(declare-fun i_pskip_done () Bool)
+(declare-fun i_hd_is_tlkw () Bool)
+(declare-fun i_collect_done () Bool)
+(declare-fun i_collecting () Bool)
+(declare-fun i_xfer () Bool)
+(declare-fun i_xfer_done () Bool)
+(declare-fun iph () Int)
+(declare-fun iname () String)
+(declare-fun _isub () String)
+(declare-fun isub () String)
+(declare-fun iscan () TokenList)
+(declare-fun icoll () TokenList)
+(declare-fun _itail () TokenList)
+(declare-fun itail () TokenList)
+(declare-fun icoll_hd_name () String)
+(declare-fun SlotSubst__ss_key__call2926 () String)
+(declare-fun SlotSubst__ss_kpos__call2926 () Int)
+(declare-fun SlotSubst__ss_found__call2926 () Bool)
+(declare-fun SlotSubst__ss_vstart__call2926 () Int)
+(declare-fun SlotSubst__ss_semi__call2926 () Int)
+(declare-fun i_sub_val () String)
+(declare-fun i_xfer_tok () Token)
 (declare-fun claim_done () Bool)
 (declare-fun rem () TokenList)
 (declare-fun _out () String)
@@ -7747,16 +9936,16 @@
 (declare-fun p_is_comma () Bool)
 (declare-fun p_is_pipe () Bool)
 (declare-fun p_id () String)
-(declare-fun BracketDelta__is_open__call2287 () Bool)
-(declare-fun BracketDelta__is_close__call2287 () Bool)
+(declare-fun BracketDelta__is_open__call2927 () Bool)
+(declare-fun BracketDelta__is_close__call2927 () Bool)
 (declare-fun p_bd () Int)
-(declare-fun TypeTokenText__ident_str__call2288 () String)
-(declare-fun TypeTokenText__is_ident__call2288 () Bool)
-(declare-fun TypeTokenText__is_lparen__call2288 () Bool)
-(declare-fun TypeTokenText__is_rparen__call2288 () Bool)
-(declare-fun TypeTokenText__is_lt__call2288 () Bool)
-(declare-fun TypeTokenText__is_gt__call2288 () Bool)
-(declare-fun TypeTokenText__is_comma__call2288 () Bool)
+(declare-fun TypeTokenText__ident_str__call2928 () String)
+(declare-fun TypeTokenText__is_ident__call2928 () Bool)
+(declare-fun TypeTokenText__is_lparen__call2928 () Bool)
+(declare-fun TypeTokenText__is_rparen__call2928 () Bool)
+(declare-fun TypeTokenText__is_lt__call2928 () Bool)
+(declare-fun TypeTokenText__is_gt__call2928 () Bool)
+(declare-fun TypeTokenText__is_comma__call2928 () Bool)
 (declare-fun p_tt () String)
 (declare-fun p_tt_is () Bool)
 (declare-fun _ephase () Int)
@@ -7780,39 +9969,39 @@
 (declare-fun cur_fields () EVFieldList)
 (declare-fun _cur_name () String)
 (declare-fun cur_decl () EnumVariantDecl)
-(declare-fun VariantText__name__call2289 () String)
-(declare-fun VariantText__is_decl__call2289 () Bool)
-(declare-fun VariantText__is_declp__call2289 () Bool)
-(declare-fun VariantText__vt_fields__call2289 () EVFieldList)
-(declare-fun VariantText__vt_f0__call2289 () EVField)
-(declare-fun VariantText__vt_r1__call2289 () EVFieldList)
-(declare-fun VariantText__vt_f1__call2289 () EVField)
-(declare-fun VariantText__vt_r2__call2289 () EVFieldList)
-(declare-fun VariantText__vt_f2__call2289 () EVField)
-(declare-fun VariantText__vt_has0__call2289 () Bool)
-(declare-fun VariantText__vt_has1__call2289 () Bool)
-(declare-fun VariantText__vt_has2__call2289 () Bool)
-(declare-fun VariantText__vt_t0__call2289 () String)
-(declare-fun VariantText__vt_t1__call2289 () String)
-(declare-fun VariantText__vt_t2__call2289 () String)
-(declare-fun SeqEltType__set_pre__call2291 () String)
-(declare-fun FieldSortName__fsn_is_seq__call2290 () Bool)
-(declare-fun SeqEltType__set_ilen__call2291 () Int)
-(declare-fun FieldSortName__fsn_elt__call2290 () String)
-(declare-fun VariantText__vt_s0__call2289 () String)
-(declare-fun SeqEltType__set_pre__call2293 () String)
-(declare-fun FieldSortName__fsn_is_seq__call2292 () Bool)
-(declare-fun SeqEltType__set_ilen__call2293 () Int)
-(declare-fun FieldSortName__fsn_elt__call2292 () String)
-(declare-fun VariantText__vt_s1__call2289 () String)
-(declare-fun SeqEltType__set_pre__call2295 () String)
-(declare-fun FieldSortName__fsn_is_seq__call2294 () Bool)
-(declare-fun SeqEltType__set_ilen__call2295 () Int)
-(declare-fun FieldSortName__fsn_elt__call2294 () String)
-(declare-fun VariantText__vt_s2__call2289 () String)
-(declare-fun VariantText__vt_a0__call2289 () String)
-(declare-fun VariantText__vt_a1__call2289 () String)
-(declare-fun VariantText__vt_a2__call2289 () String)
+(declare-fun VariantText__name__call2929 () String)
+(declare-fun VariantText__is_decl__call2929 () Bool)
+(declare-fun VariantText__is_declp__call2929 () Bool)
+(declare-fun VariantText__vt_fields__call2929 () EVFieldList)
+(declare-fun VariantText__vt_f0__call2929 () EVField)
+(declare-fun VariantText__vt_r1__call2929 () EVFieldList)
+(declare-fun VariantText__vt_f1__call2929 () EVField)
+(declare-fun VariantText__vt_r2__call2929 () EVFieldList)
+(declare-fun VariantText__vt_f2__call2929 () EVField)
+(declare-fun VariantText__vt_has0__call2929 () Bool)
+(declare-fun VariantText__vt_has1__call2929 () Bool)
+(declare-fun VariantText__vt_has2__call2929 () Bool)
+(declare-fun VariantText__vt_t0__call2929 () String)
+(declare-fun VariantText__vt_t1__call2929 () String)
+(declare-fun VariantText__vt_t2__call2929 () String)
+(declare-fun SeqEltType__set_pre__call2931 () String)
+(declare-fun FieldSortName__fsn_is_seq__call2930 () Bool)
+(declare-fun SeqEltType__set_ilen__call2931 () Int)
+(declare-fun FieldSortName__fsn_elt__call2930 () String)
+(declare-fun VariantText__vt_s0__call2929 () String)
+(declare-fun SeqEltType__set_pre__call2933 () String)
+(declare-fun FieldSortName__fsn_is_seq__call2932 () Bool)
+(declare-fun SeqEltType__set_ilen__call2933 () Int)
+(declare-fun FieldSortName__fsn_elt__call2932 () String)
+(declare-fun VariantText__vt_s1__call2929 () String)
+(declare-fun SeqEltType__set_pre__call2935 () String)
+(declare-fun FieldSortName__fsn_is_seq__call2934 () Bool)
+(declare-fun SeqEltType__set_ilen__call2935 () Int)
+(declare-fun FieldSortName__fsn_elt__call2934 () String)
+(declare-fun VariantText__vt_s2__call2929 () String)
+(declare-fun VariantText__vt_a0__call2929 () String)
+(declare-fun VariantText__vt_a1__call2929 () String)
+(declare-fun VariantText__vt_a2__call2929 () String)
 (declare-fun rendered () String)
 (declare-fun _body () String)
 (declare-fun _first_v () Bool)
@@ -7835,9 +10024,9 @@
 (declare-fun fC () String)
 (declare-fun ftacc () String)
 (declare-fun fdepth () Int)
-(declare-fun SeqEltType__set_pre__call2296 () String)
+(declare-fun SeqEltType__set_pre__call2936 () String)
 (declare-fun commit_is_seq () Bool)
-(declare-fun SeqEltType__set_ilen__call2296 () Int)
+(declare-fun SeqEltType__set_ilen__call2936 () Int)
 (declare-fun commit_elt () String)
 (declare-fun _seqelt () String)
 (declare-fun seqelt () String)
@@ -7845,9 +10034,9 @@
 (declare-fun sigtab () String)
 (declare-fun grouped_body () String)
 (declare-fun cur_enum_decl () EnumDeclAst)
-(declare-fun EnumDeclSmtlib__name__call2297 () String)
-(declare-fun EnumDeclSmtlib__is_enum__call2297 () Bool)
-(declare-fun EnumDeclSmtlib__prefix__call2297 () String)
+(declare-fun EnumDeclSmtlib__name__call2937 () String)
+(declare-fun EnumDeclSmtlib__is_enum__call2937 () Bool)
+(declare-fun EnumDeclSmtlib__prefix__call2937 () String)
 (declare-fun enum_block () String)
 (declare-fun helper_block () String)
 (declare-fun full_enum_block () String)
@@ -26560,56 +28749,56 @@
           a!1))))
 (assert (= ArithExprSmtlib__is_binop__call1287
    ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1266)))
-(assert (= ArithExprSmtlib__op__call1287
+(assert (= ArithExprSmtlib__op_x__call1287
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1266)
         (EBinOp__f0 MembershipStep__ms_rhs_expr__call1266)
         OpPlus)))
-(assert (= ArithExprSmtlib__lhs__call1287
+(assert (= ArithExprSmtlib__lhs_x__call1287
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1266)
         (EBinOp__f1 MembershipStep__ms_rhs_expr__call1266)
         ENoExpr)))
-(assert (= ArithExprSmtlib__rhs__call1287
+(assert (= ArithExprSmtlib__rhs_x__call1287
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1266)
         (EBinOp__f2 MembershipStep__ms_rhs_expr__call1266)
         ENoExpr)))
-(assert (= ArithExprSmtlib__is_plus__call1287
-   ((_ is OpPlus) ArithExprSmtlib__op__call1287)))
-(assert (= ArithExprSmtlib__is_sub__call1287
-   ((_ is OpSub) ArithExprSmtlib__op__call1287)))
-(assert (= ArithExprSmtlib__is_mul__call1287
-   ((_ is OpMul) ArithExprSmtlib__op__call1287)))
-(assert (= ArithExprSmtlib__is_div__call1287
-   ((_ is OpDiv) ArithExprSmtlib__op__call1287)))
-(assert (= ArithExprSmtlib__is_arith__call1287
-   (or ArithExprSmtlib__is_plus__call1287
-       ArithExprSmtlib__is_sub__call1287
-       ArithExprSmtlib__is_mul__call1287
-       ArithExprSmtlib__is_div__call1287)))
-(assert (let ((a!1 (ite ArithExprSmtlib__is_plus__call1287
+(assert (= ArithExprSmtlib__is_plus_x__call1287
+   ((_ is OpPlus) ArithExprSmtlib__op_x__call1287)))
+(assert (= ArithExprSmtlib__is_sub_x__call1287
+   ((_ is OpSub) ArithExprSmtlib__op_x__call1287)))
+(assert (= ArithExprSmtlib__is_mul_x__call1287
+   ((_ is OpMul) ArithExprSmtlib__op_x__call1287)))
+(assert (= ArithExprSmtlib__is_div_x__call1287
+   ((_ is OpDiv) ArithExprSmtlib__op_x__call1287)))
+(assert (= ArithExprSmtlib__is_arith_x__call1287
+   (or ArithExprSmtlib__is_plus_x__call1287
+       ArithExprSmtlib__is_sub_x__call1287
+       ArithExprSmtlib__is_mul_x__call1287
+       ArithExprSmtlib__is_div_x__call1287)))
+(assert (let ((a!1 (ite ArithExprSmtlib__is_plus_x__call1287
                 "+"
-                (ite ArithExprSmtlib__is_sub__call1287
+                (ite ArithExprSmtlib__is_sub_x__call1287
                      "-"
-                     (ite ArithExprSmtlib__is_mul__call1287
+                     (ite ArithExprSmtlib__is_mul_x__call1287
                           "*"
-                          (ite ArithExprSmtlib__is_div__call1287 "div" ""))))))
-  (= ArithExprSmtlib__op_str__call1287 a!1)))
-(assert (= AtomSmtlib__is_int__call1288 ((_ is EInt) ArithExprSmtlib__lhs__call1287)))
+                          (ite ArithExprSmtlib__is_div_x__call1287 "div" ""))))))
+  (= ArithExprSmtlib__op_str_x__call1287 a!1)))
+(assert (= AtomSmtlib__is_int__call1288 ((_ is EInt) ArithExprSmtlib__lhs_x__call1287)))
 (assert (= AtomSmtlib__is_ident__call1288
-   ((_ is EIdent) ArithExprSmtlib__lhs__call1287)))
-(assert (= AtomSmtlib__is_str__call1288 ((_ is EStr) ArithExprSmtlib__lhs__call1287)))
+   ((_ is EIdent) ArithExprSmtlib__lhs_x__call1287)))
+(assert (= AtomSmtlib__is_str__call1288 ((_ is EStr) ArithExprSmtlib__lhs_x__call1287)))
 (assert (= AtomSmtlib__int_val__call1288
-   (ite ((_ is EInt) ArithExprSmtlib__lhs__call1287)
-        (EInt__f0 ArithExprSmtlib__lhs__call1287)
+   (ite ((_ is EInt) ArithExprSmtlib__lhs_x__call1287)
+        (EInt__f0 ArithExprSmtlib__lhs_x__call1287)
         0)))
 (assert (= AtomSmtlib__ident_val__call1288
-   (ite ((_ is EIdent) ArithExprSmtlib__lhs__call1287)
-        (EIdent__f0 ArithExprSmtlib__lhs__call1287)
+   (ite ((_ is EIdent) ArithExprSmtlib__lhs_x__call1287)
+        (EIdent__f0 ArithExprSmtlib__lhs_x__call1287)
         "")))
 (assert (= AtomSmtlib__str_val__call1288
-   (ite ((_ is EStr) ArithExprSmtlib__lhs__call1287)
-        (EStr__f0 ArithExprSmtlib__lhs__call1287)
+   (ite ((_ is EStr) ArithExprSmtlib__lhs_x__call1287)
+        (EStr__f0 ArithExprSmtlib__lhs_x__call1287)
         "")))
-(assert (= ArithExprSmtlib__lhs_ok__call1287
+(assert (= ArithExprSmtlib__lhs_ok_x__call1287
    (or AtomSmtlib__is_int__call1288
        AtomSmtlib__is_ident__call1288
        AtomSmtlib__is_str__call1288)))
@@ -26623,24 +28812,24 @@
                      (ite AtomSmtlib__is_str__call1288
                           (str.++ """" AtomSmtlib__str_val__call1288 """")
                           "")))))
-  (= ArithExprSmtlib__lhs_str__call1287 a!2))))
-(assert (= AtomSmtlib__is_int__call1289 ((_ is EInt) ArithExprSmtlib__rhs__call1287)))
+  (= ArithExprSmtlib__lhs_str_x__call1287 a!2))))
+(assert (= AtomSmtlib__is_int__call1289 ((_ is EInt) ArithExprSmtlib__rhs_x__call1287)))
 (assert (= AtomSmtlib__is_ident__call1289
-   ((_ is EIdent) ArithExprSmtlib__rhs__call1287)))
-(assert (= AtomSmtlib__is_str__call1289 ((_ is EStr) ArithExprSmtlib__rhs__call1287)))
+   ((_ is EIdent) ArithExprSmtlib__rhs_x__call1287)))
+(assert (= AtomSmtlib__is_str__call1289 ((_ is EStr) ArithExprSmtlib__rhs_x__call1287)))
 (assert (= AtomSmtlib__int_val__call1289
-   (ite ((_ is EInt) ArithExprSmtlib__rhs__call1287)
-        (EInt__f0 ArithExprSmtlib__rhs__call1287)
+   (ite ((_ is EInt) ArithExprSmtlib__rhs_x__call1287)
+        (EInt__f0 ArithExprSmtlib__rhs_x__call1287)
         0)))
 (assert (= AtomSmtlib__ident_val__call1289
-   (ite ((_ is EIdent) ArithExprSmtlib__rhs__call1287)
-        (EIdent__f0 ArithExprSmtlib__rhs__call1287)
+   (ite ((_ is EIdent) ArithExprSmtlib__rhs_x__call1287)
+        (EIdent__f0 ArithExprSmtlib__rhs_x__call1287)
         "")))
 (assert (= AtomSmtlib__str_val__call1289
-   (ite ((_ is EStr) ArithExprSmtlib__rhs__call1287)
-        (EStr__f0 ArithExprSmtlib__rhs__call1287)
+   (ite ((_ is EStr) ArithExprSmtlib__rhs_x__call1287)
+        (EStr__f0 ArithExprSmtlib__rhs_x__call1287)
         "")))
-(assert (= ArithExprSmtlib__rhs_ok__call1287
+(assert (= ArithExprSmtlib__rhs_ok_x__call1287
    (or AtomSmtlib__is_int__call1289
        AtomSmtlib__is_ident__call1289
        AtomSmtlib__is_str__call1289)))
@@ -26654,20 +28843,20 @@
                      (ite AtomSmtlib__is_str__call1289
                           (str.++ """" AtomSmtlib__str_val__call1289 """")
                           "")))))
-  (= ArithExprSmtlib__rhs_str__call1287 a!2))))
+  (= ArithExprSmtlib__rhs_str_x__call1287 a!2))))
 (assert (= MembershipStep__ms_arith_ok__call1266
    (and ArithExprSmtlib__is_binop__call1287
-        ArithExprSmtlib__is_arith__call1287
-        ArithExprSmtlib__lhs_ok__call1287
-        ArithExprSmtlib__rhs_ok__call1287)))
+        ArithExprSmtlib__is_arith_x__call1287
+        ArithExprSmtlib__lhs_ok_x__call1287
+        ArithExprSmtlib__rhs_ok_x__call1287)))
 (assert (= MembershipStep__ms_arith_str__call1266
    (ite MembershipStep__ms_arith_ok__call1266
         (str.++ "("
-                ArithExprSmtlib__op_str__call1287
+                ArithExprSmtlib__op_str_x__call1287
                 " "
-                ArithExprSmtlib__lhs_str__call1287
+                ArithExprSmtlib__lhs_str_x__call1287
                 " "
-                ArithExprSmtlib__rhs_str__call1287
+                ArithExprSmtlib__rhs_str_x__call1287
                 ")")
         "")))
 (assert (= BoolExprSmtlib__is_binop__call1290
@@ -41961,20 +44150,8250 @@
    (and (not mem_is_ctor) (not mem_is_match) (not mem_is_seq) step_saw_ift)))
 (assert (= sel_eff (ite mem_is_ctor cts_eff_len 0)))
 (assert (= chunk (ite sel_pinned (str.++ sel_decl "\u{a}" sel_assert) sel_decl)))
-(assert (= claim_done (and in_claim_run (not sel_ok))))
+(assert (= CallArgsStep__ca_t0__call2287
+   (ite ((_ is TLCons) _rem) (TLCons__f0 _rem) EofTok)))
+(assert (= CallArgsStep__ca_l1__call2287
+   (ite ((_ is TLCons) _rem) (TLCons__f1 _rem) TLNil)))
+(assert (= CallArgsStep__ca_t1__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l1__call2287)
+        (TLCons__f0 CallArgsStep__ca_l1__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_l2__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l1__call2287)
+        (TLCons__f1 CallArgsStep__ca_l1__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t2__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l2__call2287)
+        (TLCons__f0 CallArgsStep__ca_l2__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_l3__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l2__call2287)
+        (TLCons__f1 CallArgsStep__ca_l2__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t3__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l3__call2287)
+        (TLCons__f0 CallArgsStep__ca_l3__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_l4__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_l3__call2287)
+        (TLCons__f1 CallArgsStep__ca_l3__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_head_ok__call2287
+   (and ((_ is Ident) CallArgsStep__ca_t0__call2287)
+        ((_ is LParen) CallArgsStep__ca_t1__call2287)
+        ((_ is Ident) CallArgsStep__ca_t2__call2287)
+        ((_ is OpMapsto) CallArgsStep__ca_t3__call2287))))
+(assert (= cca_name
+   (ite ((_ is Ident) CallArgsStep__ca_t0__call2287)
+        (Ident__f0 CallArgsStep__ca_t0__call2287)
+        "")))
+(assert (= CallArgsStep__ca_s1__call2287
+   (ite ((_ is Ident) CallArgsStep__ca_t2__call2287)
+        (Ident__f0 CallArgsStep__ca_t2__call2287)
+        "")))
+(assert (= SPrim2__sp2_h0__call2296
+   (ite ((_ is TLCons) CallArgsStep__ca_l4__call2287)
+        (TLCons__f0 CallArgsStep__ca_l4__call2287)
+        EofTok)))
+(assert (= SPrim2__sp2_t0__call2296
+   (ite ((_ is TLCons) CallArgsStep__ca_l4__call2287)
+        (TLCons__f1 CallArgsStep__ca_l4__call2287)
+        TLNil)))
+(assert (= SPrim2__sp2_neg__call2296 ((_ is OpNot) SPrim2__sp2_h0__call2296)))
+(assert (= SPrim2__sp2_seed__call2296
+   (ite SPrim2__sp2_neg__call2296
+        SPrim2__sp2_t0__call2296
+        CallArgsStep__ca_l4__call2287)))
+(assert (= SPrim2__sp2_b0__call2296
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2296)
+        (TLCons__f0 SPrim2__sp2_seed__call2296)
+        EofTok)))
+(assert (= SPrim2__sp2_bt__call2296
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2296)
+        (TLCons__f1 SPrim2__sp2_seed__call2296)
+        TLNil)))
+(assert (= SPrim2__sp2_b1__call2296
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2296)
+        (TLCons__f0 SPrim2__sp2_bt__call2296)
+        EofTok)))
+(assert (= SPrim2__sp2_par__call2296 ((_ is LParen) SPrim2__sp2_b0__call2296)))
+(assert (= SPrim1__sp1_h0__call2303
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2296)
+        (TLCons__f0 SPrim2__sp2_bt__call2296)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2303
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2296)
+        (TLCons__f1 SPrim2__sp2_bt__call2296)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2303 ((_ is OpNot) SPrim1__sp1_h0__call2303)))
+(assert (= SPrim1__sp1_seed__call2303
+   (ite SPrim1__sp1_neg__call2303
+        SPrim1__sp1_t0__call2303
+        SPrim2__sp2_bt__call2296)))
+(assert (= SPrim1__sp1_b0__call2303
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2303)
+        (TLCons__f0 SPrim1__sp1_seed__call2303)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2303
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2303)
+        (TLCons__f1 SPrim1__sp1_seed__call2303)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2303
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2303)
+        (TLCons__f0 SPrim1__sp1_bt__call2303)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2303 ((_ is LParen) SPrim1__sp1_b0__call2303)))
+(assert (= SPrim0__sp0_h0__call2310
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2303)
+        (TLCons__f0 SPrim1__sp1_bt__call2303)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2310
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2303)
+        (TLCons__f1 SPrim1__sp1_bt__call2303)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2310 ((_ is OpNot) SPrim0__sp0_h0__call2310)))
+(assert (= SPrim0__sp0_seed__call2310
+   (ite SPrim0__sp0_neg__call2310
+        SPrim0__sp0_t0__call2310
+        SPrim1__sp1_bt__call2303)))
+(assert (= SPrim0__sp0_a0__call2310
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2310)
+        (TLCons__f0 SPrim0__sp0_seed__call2310)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2310
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2310)
+        (TLCons__f1 SPrim0__sp0_seed__call2310)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2310
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2310)
+        (TLCons__f0 SPrim0__sp0_s0__call2310)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2316 ((_ is IntLit) SPrim0__sp0_a0__call2310)))
+(assert (= SAtomR__sa_is_str__call2316 ((_ is StringLit) SPrim0__sp0_a0__call2310)))
+(assert (= SAtomR__sa_is_id__call2316 ((_ is Ident) SPrim0__sp0_a0__call2310)))
+(assert (= SAtomR__sa_true__call2316 ((_ is KwTrue) SPrim0__sp0_a0__call2310)))
+(assert (= SAtomR__sa_false__call2316 ((_ is KwFalse) SPrim0__sp0_a0__call2310)))
+(assert (= SAtomR__sa_iv__call2316
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2310)
+        (IntLit__f0 SPrim0__sp0_a0__call2310)
+        0)))
+(assert (= SAtomR__sa_sv__call2316
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2310)
+        (StringLit__f0 SPrim0__sp0_a0__call2310)
+        "")))
+(assert (= SAtomR__sa_idv__call2316
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2310)
+        (Ident__f0 SPrim0__sp0_a0__call2310)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2316
+   (and SAtomR__sa_is_id__call2316 ((_ is LParen) SPrim0__sp0_a1__call2310))))
+(assert (= SPrim0__sp0_ak__call2310
+   (and (or SAtomR__sa_is_int__call2316
+            SAtomR__sa_is_str__call2316
+            SAtomR__sa_true__call2316
+            SAtomR__sa_false__call2316
+            SAtomR__sa_is_id__call2316)
+        (not SAtomR__sa_ctor_head__call2316))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2316 0)
+                (str.from_int SAtomR__sa_iv__call2316)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2316)))))
+      (a!2 (ite SAtomR__sa_true__call2316
+                "true"
+                (ite SAtomR__sa_false__call2316
+                     "false"
+                     (ite SAtomR__sa_is_str__call2316
+                          (str.++ """" SAtomR__sa_sv__call2316 """")
+                          SAtomR__sa_idv__call2316)))))
+  (= SPrim0__sp0_ao__call2310 (ite SAtomR__sa_is_int__call2316 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2309 SPrim0__sp0_ak__call2310))
+(assert (= SChain0__sc0_o1__call2309
+   (ite SPrim0__sp0_neg__call2310
+        (str.++ "(not " SPrim0__sp0_ao__call2310 ")")
+        SPrim0__sp0_ao__call2310)))
+(assert (= SChain0__sc0_r1__call2309 SPrim0__sp0_s0__call2310))
+(assert (= SChain0__sc0_q1__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2309)
+        (TLCons__f0 SChain0__sc0_r1__call2309)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2309)
+        (TLCons__f1 SChain0__sc0_r1__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2319
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2309)
+        (TLCons__f0 SChain0__sc0_s2__call2309)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2319
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2309)
+        (TLCons__f1 SChain0__sc0_s2__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2319 ((_ is OpNot) SPrim0__sp0_h0__call2319)))
+(assert (= SPrim0__sp0_seed__call2319
+   (ite SPrim0__sp0_neg__call2319
+        SPrim0__sp0_t0__call2319
+        SChain0__sc0_s2__call2309)))
+(assert (= SPrim0__sp0_a0__call2319
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2319)
+        (TLCons__f0 SPrim0__sp0_seed__call2319)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2319
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2319)
+        (TLCons__f1 SPrim0__sp0_seed__call2319)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2319
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2319)
+        (TLCons__f0 SPrim0__sp0_s0__call2319)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2325 ((_ is IntLit) SPrim0__sp0_a0__call2319)))
+(assert (= SAtomR__sa_is_str__call2325 ((_ is StringLit) SPrim0__sp0_a0__call2319)))
+(assert (= SAtomR__sa_is_id__call2325 ((_ is Ident) SPrim0__sp0_a0__call2319)))
+(assert (= SAtomR__sa_true__call2325 ((_ is KwTrue) SPrim0__sp0_a0__call2319)))
+(assert (= SAtomR__sa_false__call2325 ((_ is KwFalse) SPrim0__sp0_a0__call2319)))
+(assert (= SAtomR__sa_iv__call2325
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2319)
+        (IntLit__f0 SPrim0__sp0_a0__call2319)
+        0)))
+(assert (= SAtomR__sa_sv__call2325
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2319)
+        (StringLit__f0 SPrim0__sp0_a0__call2319)
+        "")))
+(assert (= SAtomR__sa_idv__call2325
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2319)
+        (Ident__f0 SPrim0__sp0_a0__call2319)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2325
+   (and SAtomR__sa_is_id__call2325 ((_ is LParen) SPrim0__sp0_a1__call2319))))
+(assert (= SPrim0__sp0_ak__call2319
+   (and (or SAtomR__sa_is_int__call2325
+            SAtomR__sa_is_str__call2325
+            SAtomR__sa_true__call2325
+            SAtomR__sa_false__call2325
+            SAtomR__sa_is_id__call2325)
+        (not SAtomR__sa_ctor_head__call2325))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2325 0)
+                (str.from_int SAtomR__sa_iv__call2325)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2325)))))
+      (a!2 (ite SAtomR__sa_true__call2325
+                "true"
+                (ite SAtomR__sa_false__call2325
+                     "false"
+                     (ite SAtomR__sa_is_str__call2325
+                          (str.++ """" SAtomR__sa_sv__call2325 """")
+                          SAtomR__sa_idv__call2325)))))
+  (= SPrim0__sp0_ao__call2319 (ite SAtomR__sa_is_int__call2325 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2309 SPrim0__sp0_ak__call2319))
+(assert (= SChain0__sc0_o2__call2309
+   (ite SPrim0__sp0_neg__call2319
+        (str.++ "(not " SPrim0__sp0_ao__call2319 ")")
+        SPrim0__sp0_ao__call2319)))
+(assert (= SChain0__sc0_r2__call2309 SPrim0__sp0_s0__call2319))
+(assert (= SChain0__sc0_q2__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2309)
+        (TLCons__f0 SChain0__sc0_r2__call2309)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2309)
+        (TLCons__f1 SChain0__sc0_r2__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2328
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2309)
+        (TLCons__f0 SChain0__sc0_s3__call2309)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2328
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2309)
+        (TLCons__f1 SChain0__sc0_s3__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2328 ((_ is OpNot) SPrim0__sp0_h0__call2328)))
+(assert (= SPrim0__sp0_seed__call2328
+   (ite SPrim0__sp0_neg__call2328
+        SPrim0__sp0_t0__call2328
+        SChain0__sc0_s3__call2309)))
+(assert (= SPrim0__sp0_a0__call2328
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2328)
+        (TLCons__f0 SPrim0__sp0_seed__call2328)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2328
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2328)
+        (TLCons__f1 SPrim0__sp0_seed__call2328)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2328
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2328)
+        (TLCons__f0 SPrim0__sp0_s0__call2328)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2334 ((_ is IntLit) SPrim0__sp0_a0__call2328)))
+(assert (= SAtomR__sa_is_str__call2334 ((_ is StringLit) SPrim0__sp0_a0__call2328)))
+(assert (= SAtomR__sa_is_id__call2334 ((_ is Ident) SPrim0__sp0_a0__call2328)))
+(assert (= SAtomR__sa_true__call2334 ((_ is KwTrue) SPrim0__sp0_a0__call2328)))
+(assert (= SAtomR__sa_false__call2334 ((_ is KwFalse) SPrim0__sp0_a0__call2328)))
+(assert (= SAtomR__sa_iv__call2334
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2328)
+        (IntLit__f0 SPrim0__sp0_a0__call2328)
+        0)))
+(assert (= SAtomR__sa_sv__call2334
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2328)
+        (StringLit__f0 SPrim0__sp0_a0__call2328)
+        "")))
+(assert (= SAtomR__sa_idv__call2334
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2328)
+        (Ident__f0 SPrim0__sp0_a0__call2328)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2334
+   (and SAtomR__sa_is_id__call2334 ((_ is LParen) SPrim0__sp0_a1__call2328))))
+(assert (= SPrim0__sp0_ak__call2328
+   (and (or SAtomR__sa_is_int__call2334
+            SAtomR__sa_is_str__call2334
+            SAtomR__sa_true__call2334
+            SAtomR__sa_false__call2334
+            SAtomR__sa_is_id__call2334)
+        (not SAtomR__sa_ctor_head__call2334))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2334 0)
+                (str.from_int SAtomR__sa_iv__call2334)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2334)))))
+      (a!2 (ite SAtomR__sa_true__call2334
+                "true"
+                (ite SAtomR__sa_false__call2334
+                     "false"
+                     (ite SAtomR__sa_is_str__call2334
+                          (str.++ """" SAtomR__sa_sv__call2334 """")
+                          SAtomR__sa_idv__call2334)))))
+  (= SPrim0__sp0_ao__call2328 (ite SAtomR__sa_is_int__call2334 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2309 SPrim0__sp0_ak__call2328))
+(assert (= SChain0__sc0_o3__call2309
+   (ite SPrim0__sp0_neg__call2328
+        (str.++ "(not " SPrim0__sp0_ao__call2328 ")")
+        SPrim0__sp0_ao__call2328)))
+(assert (= SChain0__sc0_r3__call2309 SPrim0__sp0_s0__call2328))
+(assert (= SChain0__sc0_q3__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2309)
+        (TLCons__f0 SChain0__sc0_r3__call2309)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2309
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2309)
+        (TLCons__f1 SChain0__sc0_r3__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2337
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2309)
+        (TLCons__f0 SChain0__sc0_s4__call2309)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2337
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2309)
+        (TLCons__f1 SChain0__sc0_s4__call2309)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2337 ((_ is OpNot) SPrim0__sp0_h0__call2337)))
+(assert (= SPrim0__sp0_seed__call2337
+   (ite SPrim0__sp0_neg__call2337
+        SPrim0__sp0_t0__call2337
+        SChain0__sc0_s4__call2309)))
+(assert (= SPrim0__sp0_a0__call2337
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2337)
+        (TLCons__f0 SPrim0__sp0_seed__call2337)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2337
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2337)
+        (TLCons__f1 SPrim0__sp0_seed__call2337)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2337
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2337)
+        (TLCons__f0 SPrim0__sp0_s0__call2337)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2343 ((_ is IntLit) SPrim0__sp0_a0__call2337)))
+(assert (= SAtomR__sa_is_str__call2343 ((_ is StringLit) SPrim0__sp0_a0__call2337)))
+(assert (= SAtomR__sa_is_id__call2343 ((_ is Ident) SPrim0__sp0_a0__call2337)))
+(assert (= SAtomR__sa_true__call2343 ((_ is KwTrue) SPrim0__sp0_a0__call2337)))
+(assert (= SAtomR__sa_false__call2343 ((_ is KwFalse) SPrim0__sp0_a0__call2337)))
+(assert (= SAtomR__sa_iv__call2343
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2337)
+        (IntLit__f0 SPrim0__sp0_a0__call2337)
+        0)))
+(assert (= SAtomR__sa_sv__call2343
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2337)
+        (StringLit__f0 SPrim0__sp0_a0__call2337)
+        "")))
+(assert (= SAtomR__sa_idv__call2343
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2337)
+        (Ident__f0 SPrim0__sp0_a0__call2337)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2343
+   (and SAtomR__sa_is_id__call2343 ((_ is LParen) SPrim0__sp0_a1__call2337))))
+(assert (= SPrim0__sp0_ak__call2337
+   (and (or SAtomR__sa_is_int__call2343
+            SAtomR__sa_is_str__call2343
+            SAtomR__sa_true__call2343
+            SAtomR__sa_false__call2343
+            SAtomR__sa_is_id__call2343)
+        (not SAtomR__sa_ctor_head__call2343))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2343 0)
+                (str.from_int SAtomR__sa_iv__call2343)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2343)))))
+      (a!2 (ite SAtomR__sa_true__call2343
+                "true"
+                (ite SAtomR__sa_false__call2343
+                     "false"
+                     (ite SAtomR__sa_is_str__call2343
+                          (str.++ """" SAtomR__sa_sv__call2343 """")
+                          SAtomR__sa_idv__call2343)))))
+  (= SPrim0__sp0_ao__call2337 (ite SAtomR__sa_is_int__call2343 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2309 SPrim0__sp0_ak__call2337))
+(assert (= SChain0__sc0_o4__call2309
+   (ite SPrim0__sp0_neg__call2337
+        (str.++ "(not " SPrim0__sp0_ao__call2337 ")")
+        SPrim0__sp0_ao__call2337)))
+(assert (= SChain0__sc0_r4__call2309 SPrim0__sp0_s0__call2337))
+(assert (= SOpSmt__so_plus__call2344 ((_ is Plus) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_minus__call2344 ((_ is Minus) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_star__call2344 ((_ is Star) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_slash__call2344 ((_ is Slash) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_lt__call2344 ((_ is Lt) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_gt__call2344 ((_ is Gt) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_le__call2344 ((_ is OpLe) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_ge__call2344 ((_ is OpGe) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_eq__call2344 ((_ is Eq) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_ne__call2344 ((_ is OpNe) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_and__call2344 ((_ is OpAnd) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_or__call2344 ((_ is OpOr) SChain0__sc0_q1__call2309)))
+(assert (= SOpSmt__so_impl__call2344 ((_ is OpImplies) SChain0__sc0_q1__call2309)))
+(assert (= SChain0__sc0_op1k__call2309
+   (or SOpSmt__so_plus__call2344
+       SOpSmt__so_minus__call2344
+       SOpSmt__so_star__call2344
+       SOpSmt__so_slash__call2344
+       SOpSmt__so_lt__call2344
+       SOpSmt__so_gt__call2344
+       SOpSmt__so_le__call2344
+       SOpSmt__so_ge__call2344
+       SOpSmt__so_eq__call2344
+       SOpSmt__so_ne__call2344
+       SOpSmt__so_and__call2344
+       SOpSmt__so_or__call2344
+       SOpSmt__so_impl__call2344)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2344
+                "distinct"
+                (ite SOpSmt__so_and__call2344
+                     "and"
+                     (ite SOpSmt__so_or__call2344
+                          "or"
+                          (ite SOpSmt__so_impl__call2344 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2344
+                ">"
+                (ite SOpSmt__so_le__call2344
+                     "<="
+                     (ite SOpSmt__so_ge__call2344
+                          ">="
+                          (ite SOpSmt__so_eq__call2344 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2344
+                "-"
+                (ite SOpSmt__so_star__call2344
+                     "*"
+                     (ite SOpSmt__so_slash__call2344
+                          "div"
+                          (ite SOpSmt__so_lt__call2344 "<" a!2))))))
+  (= SChain0__sc0_op1__call2309 (ite SOpSmt__so_plus__call2344 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2345 ((_ is Plus) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_minus__call2345 ((_ is Minus) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_star__call2345 ((_ is Star) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_slash__call2345 ((_ is Slash) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_lt__call2345 ((_ is Lt) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_gt__call2345 ((_ is Gt) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_le__call2345 ((_ is OpLe) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_ge__call2345 ((_ is OpGe) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_eq__call2345 ((_ is Eq) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_ne__call2345 ((_ is OpNe) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_and__call2345 ((_ is OpAnd) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_or__call2345 ((_ is OpOr) SChain0__sc0_q3__call2309)))
+(assert (= SOpSmt__so_impl__call2345 ((_ is OpImplies) SChain0__sc0_q3__call2309)))
+(assert (= SChain0__sc0_op3k__call2309
+   (or SOpSmt__so_plus__call2345
+       SOpSmt__so_minus__call2345
+       SOpSmt__so_star__call2345
+       SOpSmt__so_slash__call2345
+       SOpSmt__so_lt__call2345
+       SOpSmt__so_gt__call2345
+       SOpSmt__so_le__call2345
+       SOpSmt__so_ge__call2345
+       SOpSmt__so_eq__call2345
+       SOpSmt__so_ne__call2345
+       SOpSmt__so_and__call2345
+       SOpSmt__so_or__call2345
+       SOpSmt__so_impl__call2345)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2345
+                "distinct"
+                (ite SOpSmt__so_and__call2345
+                     "and"
+                     (ite SOpSmt__so_or__call2345
+                          "or"
+                          (ite SOpSmt__so_impl__call2345 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2345
+                ">"
+                (ite SOpSmt__so_le__call2345
+                     "<="
+                     (ite SOpSmt__so_ge__call2345
+                          ">="
+                          (ite SOpSmt__so_eq__call2345 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2345
+                "-"
+                (ite SOpSmt__so_star__call2345
+                     "*"
+                     (ite SOpSmt__so_slash__call2345
+                          "div"
+                          (ite SOpSmt__so_lt__call2345 "<" a!2))))))
+  (= SChain0__sc0_op3__call2309 (ite SOpSmt__so_plus__call2345 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2309 ((_ is Question) SChain0__sc0_q1__call2309)))
+(assert (= SChain0__sc0_q2_tern__call2309 ((_ is Question) SChain0__sc0_q2__call2309)))
+(assert (= SChain0__sc0_q2_and__call2309 ((_ is OpAnd) SChain0__sc0_q2__call2309)))
+(assert (= SChain0__sc0_q2_or__call2309 ((_ is OpOr) SChain0__sc0_q2__call2309)))
+(assert (= SChain0__sc0_q2_bool__call2309
+   (or SChain0__sc0_q2_and__call2309 SChain0__sc0_q2_or__call2309)))
+(assert (= SChain0__sc0_b2__call2309 (ite SChain0__sc0_q2_and__call2309 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2309 ((_ is Colon) SChain0__sc0_q2__call2309)))
+(assert (= SChain0__sc0_q3_colon__call2309 ((_ is Colon) SChain0__sc0_q3__call2309)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2309
+                (and (and (and SChain0__sc0_k1__call2309
+                               SChain0__sc0_k2__call2309)
+                          SChain0__sc0_k3__call2309)
+                     SChain0__sc0_k4__call2309)
+                (and (and SChain0__sc0_k1__call2309 SChain0__sc0_k2__call2309)
+                     SChain0__sc0_k3__call2309))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2309
+                (and (and (and SChain0__sc0_k1__call2309
+                               SChain0__sc0_k2__call2309)
+                          SChain0__sc0_k3__call2309)
+                     SChain0__sc0_q3_colon__call2309
+                     SChain0__sc0_k4__call2309)
+                (ite SChain0__sc0_q2_bool__call2309
+                     a!1
+                     (and SChain0__sc0_k1__call2309 SChain0__sc0_k2__call2309)))))
+  (= SPrim1__sp1_ik__call2303
+     (ite SChain0__sc0_q1_tern__call2309
+          (and (and SChain0__sc0_k1__call2309 SChain0__sc0_k2__call2309)
+               SChain0__sc0_q2_colon__call2309
+               SChain0__sc0_k3__call2309)
+          (ite (not SChain0__sc0_op1k__call2309) SChain0__sc0_k1__call2309 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2309
+                (ite SChain0__sc0_op3k__call2309
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2309
+                                     " ("
+                                     SChain0__sc0_op1__call2309
+                                     " "
+                                     SChain0__sc0_o1__call2309
+                                     " "
+                                     SChain0__sc0_o2__call2309)
+                             ") ("
+                             SChain0__sc0_op3__call2309
+                             " "
+                             SChain0__sc0_o3__call2309
+                             " "
+                             SChain0__sc0_o4__call2309
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2309
+                                     " ("
+                                     SChain0__sc0_op1__call2309
+                                     " "
+                                     SChain0__sc0_o1__call2309
+                                     " "
+                                     SChain0__sc0_o2__call2309)
+                             ") "
+                             SChain0__sc0_o3__call2309
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2309
+                        " "
+                        SChain0__sc0_o1__call2309
+                        " "
+                        SChain0__sc0_o2__call2309
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2309
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2309
+                        " "
+                        SChain0__sc0_o2__call2309
+                        " "
+                        SChain0__sc0_o3__call2309
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2309)
+                     SChain0__sc0_o1__call2309
+                     (ite SChain0__sc0_q2_tern__call2309
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2309
+                                  " "
+                                  SChain0__sc0_o1__call2309
+                                  " "
+                                  SChain0__sc0_o2__call2309
+                                  ") "
+                                  SChain0__sc0_o3__call2309
+                                  " "
+                                  SChain0__sc0_o4__call2309
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2303 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2309)
+                SChain0__sc0_r1__call2309
+                (ite SChain0__sc0_q2_tern__call2309
+                     SChain0__sc0_r4__call2309
+                     (ite SChain0__sc0_q2_bool__call2309
+                          (ite SChain0__sc0_op3k__call2309
+                               SChain0__sc0_r4__call2309
+                               SChain0__sc0_r3__call2309)
+                          SChain0__sc0_r2__call2309)))))
+  (= SPrim1__sp1_ir__call2303
+     (ite SChain0__sc0_q1_tern__call2309 SChain0__sc0_r3__call2309 a!1))))
+(assert (= SPrim1__sp1_close__call2303
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2303)
+        (TLCons__f0 SPrim1__sp1_ir__call2303)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2303
+   (and SPrim1__sp1_par__call2303
+        SPrim1__sp1_ik__call2303
+        ((_ is RParen) SPrim1__sp1_close__call2303))))
+(assert (= SPrim1__sp1_pr__call2303
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2303)
+        (TLCons__f1 SPrim1__sp1_ir__call2303)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2348 ((_ is IntLit) SPrim1__sp1_b0__call2303)))
+(assert (= SAtomR__sa_is_str__call2348 ((_ is StringLit) SPrim1__sp1_b0__call2303)))
+(assert (= SAtomR__sa_is_id__call2348 ((_ is Ident) SPrim1__sp1_b0__call2303)))
+(assert (= SAtomR__sa_true__call2348 ((_ is KwTrue) SPrim1__sp1_b0__call2303)))
+(assert (= SAtomR__sa_false__call2348 ((_ is KwFalse) SPrim1__sp1_b0__call2303)))
+(assert (= SAtomR__sa_iv__call2348
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2303)
+        (IntLit__f0 SPrim1__sp1_b0__call2303)
+        0)))
+(assert (= SAtomR__sa_sv__call2348
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2303)
+        (StringLit__f0 SPrim1__sp1_b0__call2303)
+        "")))
+(assert (= SAtomR__sa_idv__call2348
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2303)
+        (Ident__f0 SPrim1__sp1_b0__call2303)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2348
+   (and SAtomR__sa_is_id__call2348 ((_ is LParen) SPrim1__sp1_b1__call2303))))
+(assert (= SPrim1__sp1_ak__call2303
+   (and (or SAtomR__sa_is_int__call2348
+            SAtomR__sa_is_str__call2348
+            SAtomR__sa_true__call2348
+            SAtomR__sa_false__call2348
+            SAtomR__sa_is_id__call2348)
+        (not SAtomR__sa_ctor_head__call2348))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2348 0)
+                (str.from_int SAtomR__sa_iv__call2348)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2348)))))
+      (a!2 (ite SAtomR__sa_true__call2348
+                "true"
+                (ite SAtomR__sa_false__call2348
+                     "false"
+                     (ite SAtomR__sa_is_str__call2348
+                          (str.++ """" SAtomR__sa_sv__call2348 """")
+                          SAtomR__sa_idv__call2348)))))
+  (= SPrim1__sp1_ao__call2303 (ite SAtomR__sa_is_int__call2348 a!1 a!2))))
+(assert (= SChain1__sc1_k1__call2302
+   (ite SPrim1__sp1_par__call2303
+        SPrim1__sp1_par_ok__call2303
+        SPrim1__sp1_ak__call2303)))
+(assert (= SPrim1__sp1_base__call2303
+   (ite SPrim1__sp1_par__call2303
+        SPrim1__sp1_io__call2303
+        SPrim1__sp1_ao__call2303)))
+(assert (= SChain1__sc1_o1__call2302
+   (ite SPrim1__sp1_neg__call2303
+        (str.++ "(not " SPrim1__sp1_base__call2303 ")")
+        SPrim1__sp1_base__call2303)))
+(assert (= SChain1__sc1_r1__call2302
+   (ite SPrim1__sp1_par__call2303
+        SPrim1__sp1_pr__call2303
+        SPrim1__sp1_bt__call2303)))
+(assert (= SChain1__sc1_q1__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2302)
+        (TLCons__f0 SChain1__sc1_r1__call2302)
+        EofTok)))
+(assert (= SChain1__sc1_s2__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2302)
+        (TLCons__f1 SChain1__sc1_r1__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2351
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2302)
+        (TLCons__f0 SChain1__sc1_s2__call2302)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2351
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2302)
+        (TLCons__f1 SChain1__sc1_s2__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2351 ((_ is OpNot) SPrim1__sp1_h0__call2351)))
+(assert (= SPrim1__sp1_seed__call2351
+   (ite SPrim1__sp1_neg__call2351
+        SPrim1__sp1_t0__call2351
+        SChain1__sc1_s2__call2302)))
+(assert (= SPrim1__sp1_b0__call2351
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2351)
+        (TLCons__f0 SPrim1__sp1_seed__call2351)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2351
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2351)
+        (TLCons__f1 SPrim1__sp1_seed__call2351)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2351
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2351)
+        (TLCons__f0 SPrim1__sp1_bt__call2351)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2351 ((_ is LParen) SPrim1__sp1_b0__call2351)))
+(assert (= SPrim0__sp0_h0__call2358
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2351)
+        (TLCons__f0 SPrim1__sp1_bt__call2351)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2358
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2351)
+        (TLCons__f1 SPrim1__sp1_bt__call2351)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2358 ((_ is OpNot) SPrim0__sp0_h0__call2358)))
+(assert (= SPrim0__sp0_seed__call2358
+   (ite SPrim0__sp0_neg__call2358
+        SPrim0__sp0_t0__call2358
+        SPrim1__sp1_bt__call2351)))
+(assert (= SPrim0__sp0_a0__call2358
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2358)
+        (TLCons__f0 SPrim0__sp0_seed__call2358)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2358
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2358)
+        (TLCons__f1 SPrim0__sp0_seed__call2358)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2358
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2358)
+        (TLCons__f0 SPrim0__sp0_s0__call2358)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2364 ((_ is IntLit) SPrim0__sp0_a0__call2358)))
+(assert (= SAtomR__sa_is_str__call2364 ((_ is StringLit) SPrim0__sp0_a0__call2358)))
+(assert (= SAtomR__sa_is_id__call2364 ((_ is Ident) SPrim0__sp0_a0__call2358)))
+(assert (= SAtomR__sa_true__call2364 ((_ is KwTrue) SPrim0__sp0_a0__call2358)))
+(assert (= SAtomR__sa_false__call2364 ((_ is KwFalse) SPrim0__sp0_a0__call2358)))
+(assert (= SAtomR__sa_iv__call2364
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2358)
+        (IntLit__f0 SPrim0__sp0_a0__call2358)
+        0)))
+(assert (= SAtomR__sa_sv__call2364
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2358)
+        (StringLit__f0 SPrim0__sp0_a0__call2358)
+        "")))
+(assert (= SAtomR__sa_idv__call2364
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2358)
+        (Ident__f0 SPrim0__sp0_a0__call2358)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2364
+   (and SAtomR__sa_is_id__call2364 ((_ is LParen) SPrim0__sp0_a1__call2358))))
+(assert (= SPrim0__sp0_ak__call2358
+   (and (or SAtomR__sa_is_int__call2364
+            SAtomR__sa_is_str__call2364
+            SAtomR__sa_true__call2364
+            SAtomR__sa_false__call2364
+            SAtomR__sa_is_id__call2364)
+        (not SAtomR__sa_ctor_head__call2364))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2364 0)
+                (str.from_int SAtomR__sa_iv__call2364)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2364)))))
+      (a!2 (ite SAtomR__sa_true__call2364
+                "true"
+                (ite SAtomR__sa_false__call2364
+                     "false"
+                     (ite SAtomR__sa_is_str__call2364
+                          (str.++ """" SAtomR__sa_sv__call2364 """")
+                          SAtomR__sa_idv__call2364)))))
+  (= SPrim0__sp0_ao__call2358 (ite SAtomR__sa_is_int__call2364 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2357 SPrim0__sp0_ak__call2358))
+(assert (= SChain0__sc0_o1__call2357
+   (ite SPrim0__sp0_neg__call2358
+        (str.++ "(not " SPrim0__sp0_ao__call2358 ")")
+        SPrim0__sp0_ao__call2358)))
+(assert (= SChain0__sc0_r1__call2357 SPrim0__sp0_s0__call2358))
+(assert (= SChain0__sc0_q1__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2357)
+        (TLCons__f0 SChain0__sc0_r1__call2357)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2357)
+        (TLCons__f1 SChain0__sc0_r1__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2367
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2357)
+        (TLCons__f0 SChain0__sc0_s2__call2357)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2367
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2357)
+        (TLCons__f1 SChain0__sc0_s2__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2367 ((_ is OpNot) SPrim0__sp0_h0__call2367)))
+(assert (= SPrim0__sp0_seed__call2367
+   (ite SPrim0__sp0_neg__call2367
+        SPrim0__sp0_t0__call2367
+        SChain0__sc0_s2__call2357)))
+(assert (= SPrim0__sp0_a0__call2367
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2367)
+        (TLCons__f0 SPrim0__sp0_seed__call2367)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2367
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2367)
+        (TLCons__f1 SPrim0__sp0_seed__call2367)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2367
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2367)
+        (TLCons__f0 SPrim0__sp0_s0__call2367)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2373 ((_ is IntLit) SPrim0__sp0_a0__call2367)))
+(assert (= SAtomR__sa_is_str__call2373 ((_ is StringLit) SPrim0__sp0_a0__call2367)))
+(assert (= SAtomR__sa_is_id__call2373 ((_ is Ident) SPrim0__sp0_a0__call2367)))
+(assert (= SAtomR__sa_true__call2373 ((_ is KwTrue) SPrim0__sp0_a0__call2367)))
+(assert (= SAtomR__sa_false__call2373 ((_ is KwFalse) SPrim0__sp0_a0__call2367)))
+(assert (= SAtomR__sa_iv__call2373
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2367)
+        (IntLit__f0 SPrim0__sp0_a0__call2367)
+        0)))
+(assert (= SAtomR__sa_sv__call2373
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2367)
+        (StringLit__f0 SPrim0__sp0_a0__call2367)
+        "")))
+(assert (= SAtomR__sa_idv__call2373
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2367)
+        (Ident__f0 SPrim0__sp0_a0__call2367)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2373
+   (and SAtomR__sa_is_id__call2373 ((_ is LParen) SPrim0__sp0_a1__call2367))))
+(assert (= SPrim0__sp0_ak__call2367
+   (and (or SAtomR__sa_is_int__call2373
+            SAtomR__sa_is_str__call2373
+            SAtomR__sa_true__call2373
+            SAtomR__sa_false__call2373
+            SAtomR__sa_is_id__call2373)
+        (not SAtomR__sa_ctor_head__call2373))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2373 0)
+                (str.from_int SAtomR__sa_iv__call2373)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2373)))))
+      (a!2 (ite SAtomR__sa_true__call2373
+                "true"
+                (ite SAtomR__sa_false__call2373
+                     "false"
+                     (ite SAtomR__sa_is_str__call2373
+                          (str.++ """" SAtomR__sa_sv__call2373 """")
+                          SAtomR__sa_idv__call2373)))))
+  (= SPrim0__sp0_ao__call2367 (ite SAtomR__sa_is_int__call2373 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2357 SPrim0__sp0_ak__call2367))
+(assert (= SChain0__sc0_o2__call2357
+   (ite SPrim0__sp0_neg__call2367
+        (str.++ "(not " SPrim0__sp0_ao__call2367 ")")
+        SPrim0__sp0_ao__call2367)))
+(assert (= SChain0__sc0_r2__call2357 SPrim0__sp0_s0__call2367))
+(assert (= SChain0__sc0_q2__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2357)
+        (TLCons__f0 SChain0__sc0_r2__call2357)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2357)
+        (TLCons__f1 SChain0__sc0_r2__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2376
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2357)
+        (TLCons__f0 SChain0__sc0_s3__call2357)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2376
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2357)
+        (TLCons__f1 SChain0__sc0_s3__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2376 ((_ is OpNot) SPrim0__sp0_h0__call2376)))
+(assert (= SPrim0__sp0_seed__call2376
+   (ite SPrim0__sp0_neg__call2376
+        SPrim0__sp0_t0__call2376
+        SChain0__sc0_s3__call2357)))
+(assert (= SPrim0__sp0_a0__call2376
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2376)
+        (TLCons__f0 SPrim0__sp0_seed__call2376)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2376
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2376)
+        (TLCons__f1 SPrim0__sp0_seed__call2376)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2376
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2376)
+        (TLCons__f0 SPrim0__sp0_s0__call2376)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2382 ((_ is IntLit) SPrim0__sp0_a0__call2376)))
+(assert (= SAtomR__sa_is_str__call2382 ((_ is StringLit) SPrim0__sp0_a0__call2376)))
+(assert (= SAtomR__sa_is_id__call2382 ((_ is Ident) SPrim0__sp0_a0__call2376)))
+(assert (= SAtomR__sa_true__call2382 ((_ is KwTrue) SPrim0__sp0_a0__call2376)))
+(assert (= SAtomR__sa_false__call2382 ((_ is KwFalse) SPrim0__sp0_a0__call2376)))
+(assert (= SAtomR__sa_iv__call2382
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2376)
+        (IntLit__f0 SPrim0__sp0_a0__call2376)
+        0)))
+(assert (= SAtomR__sa_sv__call2382
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2376)
+        (StringLit__f0 SPrim0__sp0_a0__call2376)
+        "")))
+(assert (= SAtomR__sa_idv__call2382
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2376)
+        (Ident__f0 SPrim0__sp0_a0__call2376)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2382
+   (and SAtomR__sa_is_id__call2382 ((_ is LParen) SPrim0__sp0_a1__call2376))))
+(assert (= SPrim0__sp0_ak__call2376
+   (and (or SAtomR__sa_is_int__call2382
+            SAtomR__sa_is_str__call2382
+            SAtomR__sa_true__call2382
+            SAtomR__sa_false__call2382
+            SAtomR__sa_is_id__call2382)
+        (not SAtomR__sa_ctor_head__call2382))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2382 0)
+                (str.from_int SAtomR__sa_iv__call2382)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2382)))))
+      (a!2 (ite SAtomR__sa_true__call2382
+                "true"
+                (ite SAtomR__sa_false__call2382
+                     "false"
+                     (ite SAtomR__sa_is_str__call2382
+                          (str.++ """" SAtomR__sa_sv__call2382 """")
+                          SAtomR__sa_idv__call2382)))))
+  (= SPrim0__sp0_ao__call2376 (ite SAtomR__sa_is_int__call2382 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2357 SPrim0__sp0_ak__call2376))
+(assert (= SChain0__sc0_o3__call2357
+   (ite SPrim0__sp0_neg__call2376
+        (str.++ "(not " SPrim0__sp0_ao__call2376 ")")
+        SPrim0__sp0_ao__call2376)))
+(assert (= SChain0__sc0_r3__call2357 SPrim0__sp0_s0__call2376))
+(assert (= SChain0__sc0_q3__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2357)
+        (TLCons__f0 SChain0__sc0_r3__call2357)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2357
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2357)
+        (TLCons__f1 SChain0__sc0_r3__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2385
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2357)
+        (TLCons__f0 SChain0__sc0_s4__call2357)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2385
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2357)
+        (TLCons__f1 SChain0__sc0_s4__call2357)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2385 ((_ is OpNot) SPrim0__sp0_h0__call2385)))
+(assert (= SPrim0__sp0_seed__call2385
+   (ite SPrim0__sp0_neg__call2385
+        SPrim0__sp0_t0__call2385
+        SChain0__sc0_s4__call2357)))
+(assert (= SPrim0__sp0_a0__call2385
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2385)
+        (TLCons__f0 SPrim0__sp0_seed__call2385)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2385
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2385)
+        (TLCons__f1 SPrim0__sp0_seed__call2385)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2385
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2385)
+        (TLCons__f0 SPrim0__sp0_s0__call2385)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2391 ((_ is IntLit) SPrim0__sp0_a0__call2385)))
+(assert (= SAtomR__sa_is_str__call2391 ((_ is StringLit) SPrim0__sp0_a0__call2385)))
+(assert (= SAtomR__sa_is_id__call2391 ((_ is Ident) SPrim0__sp0_a0__call2385)))
+(assert (= SAtomR__sa_true__call2391 ((_ is KwTrue) SPrim0__sp0_a0__call2385)))
+(assert (= SAtomR__sa_false__call2391 ((_ is KwFalse) SPrim0__sp0_a0__call2385)))
+(assert (= SAtomR__sa_iv__call2391
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2385)
+        (IntLit__f0 SPrim0__sp0_a0__call2385)
+        0)))
+(assert (= SAtomR__sa_sv__call2391
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2385)
+        (StringLit__f0 SPrim0__sp0_a0__call2385)
+        "")))
+(assert (= SAtomR__sa_idv__call2391
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2385)
+        (Ident__f0 SPrim0__sp0_a0__call2385)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2391
+   (and SAtomR__sa_is_id__call2391 ((_ is LParen) SPrim0__sp0_a1__call2385))))
+(assert (= SPrim0__sp0_ak__call2385
+   (and (or SAtomR__sa_is_int__call2391
+            SAtomR__sa_is_str__call2391
+            SAtomR__sa_true__call2391
+            SAtomR__sa_false__call2391
+            SAtomR__sa_is_id__call2391)
+        (not SAtomR__sa_ctor_head__call2391))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2391 0)
+                (str.from_int SAtomR__sa_iv__call2391)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2391)))))
+      (a!2 (ite SAtomR__sa_true__call2391
+                "true"
+                (ite SAtomR__sa_false__call2391
+                     "false"
+                     (ite SAtomR__sa_is_str__call2391
+                          (str.++ """" SAtomR__sa_sv__call2391 """")
+                          SAtomR__sa_idv__call2391)))))
+  (= SPrim0__sp0_ao__call2385 (ite SAtomR__sa_is_int__call2391 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2357 SPrim0__sp0_ak__call2385))
+(assert (= SChain0__sc0_o4__call2357
+   (ite SPrim0__sp0_neg__call2385
+        (str.++ "(not " SPrim0__sp0_ao__call2385 ")")
+        SPrim0__sp0_ao__call2385)))
+(assert (= SChain0__sc0_r4__call2357 SPrim0__sp0_s0__call2385))
+(assert (= SOpSmt__so_plus__call2392 ((_ is Plus) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_minus__call2392 ((_ is Minus) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_star__call2392 ((_ is Star) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_slash__call2392 ((_ is Slash) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_lt__call2392 ((_ is Lt) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_gt__call2392 ((_ is Gt) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_le__call2392 ((_ is OpLe) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_ge__call2392 ((_ is OpGe) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_eq__call2392 ((_ is Eq) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_ne__call2392 ((_ is OpNe) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_and__call2392 ((_ is OpAnd) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_or__call2392 ((_ is OpOr) SChain0__sc0_q1__call2357)))
+(assert (= SOpSmt__so_impl__call2392 ((_ is OpImplies) SChain0__sc0_q1__call2357)))
+(assert (= SChain0__sc0_op1k__call2357
+   (or SOpSmt__so_plus__call2392
+       SOpSmt__so_minus__call2392
+       SOpSmt__so_star__call2392
+       SOpSmt__so_slash__call2392
+       SOpSmt__so_lt__call2392
+       SOpSmt__so_gt__call2392
+       SOpSmt__so_le__call2392
+       SOpSmt__so_ge__call2392
+       SOpSmt__so_eq__call2392
+       SOpSmt__so_ne__call2392
+       SOpSmt__so_and__call2392
+       SOpSmt__so_or__call2392
+       SOpSmt__so_impl__call2392)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2392
+                "distinct"
+                (ite SOpSmt__so_and__call2392
+                     "and"
+                     (ite SOpSmt__so_or__call2392
+                          "or"
+                          (ite SOpSmt__so_impl__call2392 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2392
+                ">"
+                (ite SOpSmt__so_le__call2392
+                     "<="
+                     (ite SOpSmt__so_ge__call2392
+                          ">="
+                          (ite SOpSmt__so_eq__call2392 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2392
+                "-"
+                (ite SOpSmt__so_star__call2392
+                     "*"
+                     (ite SOpSmt__so_slash__call2392
+                          "div"
+                          (ite SOpSmt__so_lt__call2392 "<" a!2))))))
+  (= SChain0__sc0_op1__call2357 (ite SOpSmt__so_plus__call2392 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2393 ((_ is Plus) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_minus__call2393 ((_ is Minus) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_star__call2393 ((_ is Star) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_slash__call2393 ((_ is Slash) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_lt__call2393 ((_ is Lt) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_gt__call2393 ((_ is Gt) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_le__call2393 ((_ is OpLe) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_ge__call2393 ((_ is OpGe) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_eq__call2393 ((_ is Eq) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_ne__call2393 ((_ is OpNe) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_and__call2393 ((_ is OpAnd) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_or__call2393 ((_ is OpOr) SChain0__sc0_q3__call2357)))
+(assert (= SOpSmt__so_impl__call2393 ((_ is OpImplies) SChain0__sc0_q3__call2357)))
+(assert (= SChain0__sc0_op3k__call2357
+   (or SOpSmt__so_plus__call2393
+       SOpSmt__so_minus__call2393
+       SOpSmt__so_star__call2393
+       SOpSmt__so_slash__call2393
+       SOpSmt__so_lt__call2393
+       SOpSmt__so_gt__call2393
+       SOpSmt__so_le__call2393
+       SOpSmt__so_ge__call2393
+       SOpSmt__so_eq__call2393
+       SOpSmt__so_ne__call2393
+       SOpSmt__so_and__call2393
+       SOpSmt__so_or__call2393
+       SOpSmt__so_impl__call2393)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2393
+                "distinct"
+                (ite SOpSmt__so_and__call2393
+                     "and"
+                     (ite SOpSmt__so_or__call2393
+                          "or"
+                          (ite SOpSmt__so_impl__call2393 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2393
+                ">"
+                (ite SOpSmt__so_le__call2393
+                     "<="
+                     (ite SOpSmt__so_ge__call2393
+                          ">="
+                          (ite SOpSmt__so_eq__call2393 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2393
+                "-"
+                (ite SOpSmt__so_star__call2393
+                     "*"
+                     (ite SOpSmt__so_slash__call2393
+                          "div"
+                          (ite SOpSmt__so_lt__call2393 "<" a!2))))))
+  (= SChain0__sc0_op3__call2357 (ite SOpSmt__so_plus__call2393 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2357 ((_ is Question) SChain0__sc0_q1__call2357)))
+(assert (= SChain0__sc0_q2_tern__call2357 ((_ is Question) SChain0__sc0_q2__call2357)))
+(assert (= SChain0__sc0_q2_and__call2357 ((_ is OpAnd) SChain0__sc0_q2__call2357)))
+(assert (= SChain0__sc0_q2_or__call2357 ((_ is OpOr) SChain0__sc0_q2__call2357)))
+(assert (= SChain0__sc0_q2_bool__call2357
+   (or SChain0__sc0_q2_and__call2357 SChain0__sc0_q2_or__call2357)))
+(assert (= SChain0__sc0_b2__call2357 (ite SChain0__sc0_q2_and__call2357 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2357 ((_ is Colon) SChain0__sc0_q2__call2357)))
+(assert (= SChain0__sc0_q3_colon__call2357 ((_ is Colon) SChain0__sc0_q3__call2357)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2357
+                (and (and (and SChain0__sc0_k1__call2357
+                               SChain0__sc0_k2__call2357)
+                          SChain0__sc0_k3__call2357)
+                     SChain0__sc0_k4__call2357)
+                (and (and SChain0__sc0_k1__call2357 SChain0__sc0_k2__call2357)
+                     SChain0__sc0_k3__call2357))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2357
+                (and (and (and SChain0__sc0_k1__call2357
+                               SChain0__sc0_k2__call2357)
+                          SChain0__sc0_k3__call2357)
+                     SChain0__sc0_q3_colon__call2357
+                     SChain0__sc0_k4__call2357)
+                (ite SChain0__sc0_q2_bool__call2357
+                     a!1
+                     (and SChain0__sc0_k1__call2357 SChain0__sc0_k2__call2357)))))
+  (= SPrim1__sp1_ik__call2351
+     (ite SChain0__sc0_q1_tern__call2357
+          (and (and SChain0__sc0_k1__call2357 SChain0__sc0_k2__call2357)
+               SChain0__sc0_q2_colon__call2357
+               SChain0__sc0_k3__call2357)
+          (ite (not SChain0__sc0_op1k__call2357) SChain0__sc0_k1__call2357 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2357
+                (ite SChain0__sc0_op3k__call2357
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2357
+                                     " ("
+                                     SChain0__sc0_op1__call2357
+                                     " "
+                                     SChain0__sc0_o1__call2357
+                                     " "
+                                     SChain0__sc0_o2__call2357)
+                             ") ("
+                             SChain0__sc0_op3__call2357
+                             " "
+                             SChain0__sc0_o3__call2357
+                             " "
+                             SChain0__sc0_o4__call2357
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2357
+                                     " ("
+                                     SChain0__sc0_op1__call2357
+                                     " "
+                                     SChain0__sc0_o1__call2357
+                                     " "
+                                     SChain0__sc0_o2__call2357)
+                             ") "
+                             SChain0__sc0_o3__call2357
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2357
+                        " "
+                        SChain0__sc0_o1__call2357
+                        " "
+                        SChain0__sc0_o2__call2357
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2357
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2357
+                        " "
+                        SChain0__sc0_o2__call2357
+                        " "
+                        SChain0__sc0_o3__call2357
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2357)
+                     SChain0__sc0_o1__call2357
+                     (ite SChain0__sc0_q2_tern__call2357
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2357
+                                  " "
+                                  SChain0__sc0_o1__call2357
+                                  " "
+                                  SChain0__sc0_o2__call2357
+                                  ") "
+                                  SChain0__sc0_o3__call2357
+                                  " "
+                                  SChain0__sc0_o4__call2357
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2351 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2357)
+                SChain0__sc0_r1__call2357
+                (ite SChain0__sc0_q2_tern__call2357
+                     SChain0__sc0_r4__call2357
+                     (ite SChain0__sc0_q2_bool__call2357
+                          (ite SChain0__sc0_op3k__call2357
+                               SChain0__sc0_r4__call2357
+                               SChain0__sc0_r3__call2357)
+                          SChain0__sc0_r2__call2357)))))
+  (= SPrim1__sp1_ir__call2351
+     (ite SChain0__sc0_q1_tern__call2357 SChain0__sc0_r3__call2357 a!1))))
+(assert (= SPrim1__sp1_close__call2351
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2351)
+        (TLCons__f0 SPrim1__sp1_ir__call2351)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2351
+   (and SPrim1__sp1_par__call2351
+        SPrim1__sp1_ik__call2351
+        ((_ is RParen) SPrim1__sp1_close__call2351))))
+(assert (= SPrim1__sp1_pr__call2351
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2351)
+        (TLCons__f1 SPrim1__sp1_ir__call2351)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2396 ((_ is IntLit) SPrim1__sp1_b0__call2351)))
+(assert (= SAtomR__sa_is_str__call2396 ((_ is StringLit) SPrim1__sp1_b0__call2351)))
+(assert (= SAtomR__sa_is_id__call2396 ((_ is Ident) SPrim1__sp1_b0__call2351)))
+(assert (= SAtomR__sa_true__call2396 ((_ is KwTrue) SPrim1__sp1_b0__call2351)))
+(assert (= SAtomR__sa_false__call2396 ((_ is KwFalse) SPrim1__sp1_b0__call2351)))
+(assert (= SAtomR__sa_iv__call2396
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2351)
+        (IntLit__f0 SPrim1__sp1_b0__call2351)
+        0)))
+(assert (= SAtomR__sa_sv__call2396
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2351)
+        (StringLit__f0 SPrim1__sp1_b0__call2351)
+        "")))
+(assert (= SAtomR__sa_idv__call2396
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2351)
+        (Ident__f0 SPrim1__sp1_b0__call2351)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2396
+   (and SAtomR__sa_is_id__call2396 ((_ is LParen) SPrim1__sp1_b1__call2351))))
+(assert (= SPrim1__sp1_ak__call2351
+   (and (or SAtomR__sa_is_int__call2396
+            SAtomR__sa_is_str__call2396
+            SAtomR__sa_true__call2396
+            SAtomR__sa_false__call2396
+            SAtomR__sa_is_id__call2396)
+        (not SAtomR__sa_ctor_head__call2396))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2396 0)
+                (str.from_int SAtomR__sa_iv__call2396)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2396)))))
+      (a!2 (ite SAtomR__sa_true__call2396
+                "true"
+                (ite SAtomR__sa_false__call2396
+                     "false"
+                     (ite SAtomR__sa_is_str__call2396
+                          (str.++ """" SAtomR__sa_sv__call2396 """")
+                          SAtomR__sa_idv__call2396)))))
+  (= SPrim1__sp1_ao__call2351 (ite SAtomR__sa_is_int__call2396 a!1 a!2))))
+(assert (= SChain1__sc1_k2__call2302
+   (ite SPrim1__sp1_par__call2351
+        SPrim1__sp1_par_ok__call2351
+        SPrim1__sp1_ak__call2351)))
+(assert (= SPrim1__sp1_base__call2351
+   (ite SPrim1__sp1_par__call2351
+        SPrim1__sp1_io__call2351
+        SPrim1__sp1_ao__call2351)))
+(assert (= SChain1__sc1_o2__call2302
+   (ite SPrim1__sp1_neg__call2351
+        (str.++ "(not " SPrim1__sp1_base__call2351 ")")
+        SPrim1__sp1_base__call2351)))
+(assert (= SChain1__sc1_r2__call2302
+   (ite SPrim1__sp1_par__call2351
+        SPrim1__sp1_pr__call2351
+        SPrim1__sp1_bt__call2351)))
+(assert (= SChain1__sc1_q2__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2302)
+        (TLCons__f0 SChain1__sc1_r2__call2302)
+        EofTok)))
+(assert (= SChain1__sc1_s3__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2302)
+        (TLCons__f1 SChain1__sc1_r2__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2399
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2302)
+        (TLCons__f0 SChain1__sc1_s3__call2302)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2399
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2302)
+        (TLCons__f1 SChain1__sc1_s3__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2399 ((_ is OpNot) SPrim1__sp1_h0__call2399)))
+(assert (= SPrim1__sp1_seed__call2399
+   (ite SPrim1__sp1_neg__call2399
+        SPrim1__sp1_t0__call2399
+        SChain1__sc1_s3__call2302)))
+(assert (= SPrim1__sp1_b0__call2399
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2399)
+        (TLCons__f0 SPrim1__sp1_seed__call2399)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2399
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2399)
+        (TLCons__f1 SPrim1__sp1_seed__call2399)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2399
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2399)
+        (TLCons__f0 SPrim1__sp1_bt__call2399)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2399 ((_ is LParen) SPrim1__sp1_b0__call2399)))
+(assert (= SPrim0__sp0_h0__call2406
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2399)
+        (TLCons__f0 SPrim1__sp1_bt__call2399)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2406
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2399)
+        (TLCons__f1 SPrim1__sp1_bt__call2399)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2406 ((_ is OpNot) SPrim0__sp0_h0__call2406)))
+(assert (= SPrim0__sp0_seed__call2406
+   (ite SPrim0__sp0_neg__call2406
+        SPrim0__sp0_t0__call2406
+        SPrim1__sp1_bt__call2399)))
+(assert (= SPrim0__sp0_a0__call2406
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2406)
+        (TLCons__f0 SPrim0__sp0_seed__call2406)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2406
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2406)
+        (TLCons__f1 SPrim0__sp0_seed__call2406)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2406
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2406)
+        (TLCons__f0 SPrim0__sp0_s0__call2406)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2412 ((_ is IntLit) SPrim0__sp0_a0__call2406)))
+(assert (= SAtomR__sa_is_str__call2412 ((_ is StringLit) SPrim0__sp0_a0__call2406)))
+(assert (= SAtomR__sa_is_id__call2412 ((_ is Ident) SPrim0__sp0_a0__call2406)))
+(assert (= SAtomR__sa_true__call2412 ((_ is KwTrue) SPrim0__sp0_a0__call2406)))
+(assert (= SAtomR__sa_false__call2412 ((_ is KwFalse) SPrim0__sp0_a0__call2406)))
+(assert (= SAtomR__sa_iv__call2412
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2406)
+        (IntLit__f0 SPrim0__sp0_a0__call2406)
+        0)))
+(assert (= SAtomR__sa_sv__call2412
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2406)
+        (StringLit__f0 SPrim0__sp0_a0__call2406)
+        "")))
+(assert (= SAtomR__sa_idv__call2412
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2406)
+        (Ident__f0 SPrim0__sp0_a0__call2406)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2412
+   (and SAtomR__sa_is_id__call2412 ((_ is LParen) SPrim0__sp0_a1__call2406))))
+(assert (= SPrim0__sp0_ak__call2406
+   (and (or SAtomR__sa_is_int__call2412
+            SAtomR__sa_is_str__call2412
+            SAtomR__sa_true__call2412
+            SAtomR__sa_false__call2412
+            SAtomR__sa_is_id__call2412)
+        (not SAtomR__sa_ctor_head__call2412))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2412 0)
+                (str.from_int SAtomR__sa_iv__call2412)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2412)))))
+      (a!2 (ite SAtomR__sa_true__call2412
+                "true"
+                (ite SAtomR__sa_false__call2412
+                     "false"
+                     (ite SAtomR__sa_is_str__call2412
+                          (str.++ """" SAtomR__sa_sv__call2412 """")
+                          SAtomR__sa_idv__call2412)))))
+  (= SPrim0__sp0_ao__call2406 (ite SAtomR__sa_is_int__call2412 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2405 SPrim0__sp0_ak__call2406))
+(assert (= SChain0__sc0_o1__call2405
+   (ite SPrim0__sp0_neg__call2406
+        (str.++ "(not " SPrim0__sp0_ao__call2406 ")")
+        SPrim0__sp0_ao__call2406)))
+(assert (= SChain0__sc0_r1__call2405 SPrim0__sp0_s0__call2406))
+(assert (= SChain0__sc0_q1__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2405)
+        (TLCons__f0 SChain0__sc0_r1__call2405)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2405)
+        (TLCons__f1 SChain0__sc0_r1__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2415
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2405)
+        (TLCons__f0 SChain0__sc0_s2__call2405)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2415
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2405)
+        (TLCons__f1 SChain0__sc0_s2__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2415 ((_ is OpNot) SPrim0__sp0_h0__call2415)))
+(assert (= SPrim0__sp0_seed__call2415
+   (ite SPrim0__sp0_neg__call2415
+        SPrim0__sp0_t0__call2415
+        SChain0__sc0_s2__call2405)))
+(assert (= SPrim0__sp0_a0__call2415
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2415)
+        (TLCons__f0 SPrim0__sp0_seed__call2415)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2415
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2415)
+        (TLCons__f1 SPrim0__sp0_seed__call2415)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2415
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2415)
+        (TLCons__f0 SPrim0__sp0_s0__call2415)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2421 ((_ is IntLit) SPrim0__sp0_a0__call2415)))
+(assert (= SAtomR__sa_is_str__call2421 ((_ is StringLit) SPrim0__sp0_a0__call2415)))
+(assert (= SAtomR__sa_is_id__call2421 ((_ is Ident) SPrim0__sp0_a0__call2415)))
+(assert (= SAtomR__sa_true__call2421 ((_ is KwTrue) SPrim0__sp0_a0__call2415)))
+(assert (= SAtomR__sa_false__call2421 ((_ is KwFalse) SPrim0__sp0_a0__call2415)))
+(assert (= SAtomR__sa_iv__call2421
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2415)
+        (IntLit__f0 SPrim0__sp0_a0__call2415)
+        0)))
+(assert (= SAtomR__sa_sv__call2421
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2415)
+        (StringLit__f0 SPrim0__sp0_a0__call2415)
+        "")))
+(assert (= SAtomR__sa_idv__call2421
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2415)
+        (Ident__f0 SPrim0__sp0_a0__call2415)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2421
+   (and SAtomR__sa_is_id__call2421 ((_ is LParen) SPrim0__sp0_a1__call2415))))
+(assert (= SPrim0__sp0_ak__call2415
+   (and (or SAtomR__sa_is_int__call2421
+            SAtomR__sa_is_str__call2421
+            SAtomR__sa_true__call2421
+            SAtomR__sa_false__call2421
+            SAtomR__sa_is_id__call2421)
+        (not SAtomR__sa_ctor_head__call2421))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2421 0)
+                (str.from_int SAtomR__sa_iv__call2421)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2421)))))
+      (a!2 (ite SAtomR__sa_true__call2421
+                "true"
+                (ite SAtomR__sa_false__call2421
+                     "false"
+                     (ite SAtomR__sa_is_str__call2421
+                          (str.++ """" SAtomR__sa_sv__call2421 """")
+                          SAtomR__sa_idv__call2421)))))
+  (= SPrim0__sp0_ao__call2415 (ite SAtomR__sa_is_int__call2421 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2405 SPrim0__sp0_ak__call2415))
+(assert (= SChain0__sc0_o2__call2405
+   (ite SPrim0__sp0_neg__call2415
+        (str.++ "(not " SPrim0__sp0_ao__call2415 ")")
+        SPrim0__sp0_ao__call2415)))
+(assert (= SChain0__sc0_r2__call2405 SPrim0__sp0_s0__call2415))
+(assert (= SChain0__sc0_q2__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2405)
+        (TLCons__f0 SChain0__sc0_r2__call2405)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2405)
+        (TLCons__f1 SChain0__sc0_r2__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2424
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2405)
+        (TLCons__f0 SChain0__sc0_s3__call2405)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2424
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2405)
+        (TLCons__f1 SChain0__sc0_s3__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2424 ((_ is OpNot) SPrim0__sp0_h0__call2424)))
+(assert (= SPrim0__sp0_seed__call2424
+   (ite SPrim0__sp0_neg__call2424
+        SPrim0__sp0_t0__call2424
+        SChain0__sc0_s3__call2405)))
+(assert (= SPrim0__sp0_a0__call2424
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2424)
+        (TLCons__f0 SPrim0__sp0_seed__call2424)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2424
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2424)
+        (TLCons__f1 SPrim0__sp0_seed__call2424)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2424
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2424)
+        (TLCons__f0 SPrim0__sp0_s0__call2424)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2430 ((_ is IntLit) SPrim0__sp0_a0__call2424)))
+(assert (= SAtomR__sa_is_str__call2430 ((_ is StringLit) SPrim0__sp0_a0__call2424)))
+(assert (= SAtomR__sa_is_id__call2430 ((_ is Ident) SPrim0__sp0_a0__call2424)))
+(assert (= SAtomR__sa_true__call2430 ((_ is KwTrue) SPrim0__sp0_a0__call2424)))
+(assert (= SAtomR__sa_false__call2430 ((_ is KwFalse) SPrim0__sp0_a0__call2424)))
+(assert (= SAtomR__sa_iv__call2430
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2424)
+        (IntLit__f0 SPrim0__sp0_a0__call2424)
+        0)))
+(assert (= SAtomR__sa_sv__call2430
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2424)
+        (StringLit__f0 SPrim0__sp0_a0__call2424)
+        "")))
+(assert (= SAtomR__sa_idv__call2430
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2424)
+        (Ident__f0 SPrim0__sp0_a0__call2424)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2430
+   (and SAtomR__sa_is_id__call2430 ((_ is LParen) SPrim0__sp0_a1__call2424))))
+(assert (= SPrim0__sp0_ak__call2424
+   (and (or SAtomR__sa_is_int__call2430
+            SAtomR__sa_is_str__call2430
+            SAtomR__sa_true__call2430
+            SAtomR__sa_false__call2430
+            SAtomR__sa_is_id__call2430)
+        (not SAtomR__sa_ctor_head__call2430))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2430 0)
+                (str.from_int SAtomR__sa_iv__call2430)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2430)))))
+      (a!2 (ite SAtomR__sa_true__call2430
+                "true"
+                (ite SAtomR__sa_false__call2430
+                     "false"
+                     (ite SAtomR__sa_is_str__call2430
+                          (str.++ """" SAtomR__sa_sv__call2430 """")
+                          SAtomR__sa_idv__call2430)))))
+  (= SPrim0__sp0_ao__call2424 (ite SAtomR__sa_is_int__call2430 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2405 SPrim0__sp0_ak__call2424))
+(assert (= SChain0__sc0_o3__call2405
+   (ite SPrim0__sp0_neg__call2424
+        (str.++ "(not " SPrim0__sp0_ao__call2424 ")")
+        SPrim0__sp0_ao__call2424)))
+(assert (= SChain0__sc0_r3__call2405 SPrim0__sp0_s0__call2424))
+(assert (= SChain0__sc0_q3__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2405)
+        (TLCons__f0 SChain0__sc0_r3__call2405)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2405
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2405)
+        (TLCons__f1 SChain0__sc0_r3__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2433
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2405)
+        (TLCons__f0 SChain0__sc0_s4__call2405)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2433
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2405)
+        (TLCons__f1 SChain0__sc0_s4__call2405)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2433 ((_ is OpNot) SPrim0__sp0_h0__call2433)))
+(assert (= SPrim0__sp0_seed__call2433
+   (ite SPrim0__sp0_neg__call2433
+        SPrim0__sp0_t0__call2433
+        SChain0__sc0_s4__call2405)))
+(assert (= SPrim0__sp0_a0__call2433
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2433)
+        (TLCons__f0 SPrim0__sp0_seed__call2433)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2433
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2433)
+        (TLCons__f1 SPrim0__sp0_seed__call2433)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2433
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2433)
+        (TLCons__f0 SPrim0__sp0_s0__call2433)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2439 ((_ is IntLit) SPrim0__sp0_a0__call2433)))
+(assert (= SAtomR__sa_is_str__call2439 ((_ is StringLit) SPrim0__sp0_a0__call2433)))
+(assert (= SAtomR__sa_is_id__call2439 ((_ is Ident) SPrim0__sp0_a0__call2433)))
+(assert (= SAtomR__sa_true__call2439 ((_ is KwTrue) SPrim0__sp0_a0__call2433)))
+(assert (= SAtomR__sa_false__call2439 ((_ is KwFalse) SPrim0__sp0_a0__call2433)))
+(assert (= SAtomR__sa_iv__call2439
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2433)
+        (IntLit__f0 SPrim0__sp0_a0__call2433)
+        0)))
+(assert (= SAtomR__sa_sv__call2439
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2433)
+        (StringLit__f0 SPrim0__sp0_a0__call2433)
+        "")))
+(assert (= SAtomR__sa_idv__call2439
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2433)
+        (Ident__f0 SPrim0__sp0_a0__call2433)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2439
+   (and SAtomR__sa_is_id__call2439 ((_ is LParen) SPrim0__sp0_a1__call2433))))
+(assert (= SPrim0__sp0_ak__call2433
+   (and (or SAtomR__sa_is_int__call2439
+            SAtomR__sa_is_str__call2439
+            SAtomR__sa_true__call2439
+            SAtomR__sa_false__call2439
+            SAtomR__sa_is_id__call2439)
+        (not SAtomR__sa_ctor_head__call2439))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2439 0)
+                (str.from_int SAtomR__sa_iv__call2439)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2439)))))
+      (a!2 (ite SAtomR__sa_true__call2439
+                "true"
+                (ite SAtomR__sa_false__call2439
+                     "false"
+                     (ite SAtomR__sa_is_str__call2439
+                          (str.++ """" SAtomR__sa_sv__call2439 """")
+                          SAtomR__sa_idv__call2439)))))
+  (= SPrim0__sp0_ao__call2433 (ite SAtomR__sa_is_int__call2439 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2405 SPrim0__sp0_ak__call2433))
+(assert (= SChain0__sc0_o4__call2405
+   (ite SPrim0__sp0_neg__call2433
+        (str.++ "(not " SPrim0__sp0_ao__call2433 ")")
+        SPrim0__sp0_ao__call2433)))
+(assert (= SChain0__sc0_r4__call2405 SPrim0__sp0_s0__call2433))
+(assert (= SOpSmt__so_plus__call2440 ((_ is Plus) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_minus__call2440 ((_ is Minus) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_star__call2440 ((_ is Star) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_slash__call2440 ((_ is Slash) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_lt__call2440 ((_ is Lt) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_gt__call2440 ((_ is Gt) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_le__call2440 ((_ is OpLe) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_ge__call2440 ((_ is OpGe) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_eq__call2440 ((_ is Eq) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_ne__call2440 ((_ is OpNe) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_and__call2440 ((_ is OpAnd) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_or__call2440 ((_ is OpOr) SChain0__sc0_q1__call2405)))
+(assert (= SOpSmt__so_impl__call2440 ((_ is OpImplies) SChain0__sc0_q1__call2405)))
+(assert (= SChain0__sc0_op1k__call2405
+   (or SOpSmt__so_plus__call2440
+       SOpSmt__so_minus__call2440
+       SOpSmt__so_star__call2440
+       SOpSmt__so_slash__call2440
+       SOpSmt__so_lt__call2440
+       SOpSmt__so_gt__call2440
+       SOpSmt__so_le__call2440
+       SOpSmt__so_ge__call2440
+       SOpSmt__so_eq__call2440
+       SOpSmt__so_ne__call2440
+       SOpSmt__so_and__call2440
+       SOpSmt__so_or__call2440
+       SOpSmt__so_impl__call2440)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2440
+                "distinct"
+                (ite SOpSmt__so_and__call2440
+                     "and"
+                     (ite SOpSmt__so_or__call2440
+                          "or"
+                          (ite SOpSmt__so_impl__call2440 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2440
+                ">"
+                (ite SOpSmt__so_le__call2440
+                     "<="
+                     (ite SOpSmt__so_ge__call2440
+                          ">="
+                          (ite SOpSmt__so_eq__call2440 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2440
+                "-"
+                (ite SOpSmt__so_star__call2440
+                     "*"
+                     (ite SOpSmt__so_slash__call2440
+                          "div"
+                          (ite SOpSmt__so_lt__call2440 "<" a!2))))))
+  (= SChain0__sc0_op1__call2405 (ite SOpSmt__so_plus__call2440 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2441 ((_ is Plus) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_minus__call2441 ((_ is Minus) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_star__call2441 ((_ is Star) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_slash__call2441 ((_ is Slash) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_lt__call2441 ((_ is Lt) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_gt__call2441 ((_ is Gt) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_le__call2441 ((_ is OpLe) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_ge__call2441 ((_ is OpGe) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_eq__call2441 ((_ is Eq) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_ne__call2441 ((_ is OpNe) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_and__call2441 ((_ is OpAnd) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_or__call2441 ((_ is OpOr) SChain0__sc0_q3__call2405)))
+(assert (= SOpSmt__so_impl__call2441 ((_ is OpImplies) SChain0__sc0_q3__call2405)))
+(assert (= SChain0__sc0_op3k__call2405
+   (or SOpSmt__so_plus__call2441
+       SOpSmt__so_minus__call2441
+       SOpSmt__so_star__call2441
+       SOpSmt__so_slash__call2441
+       SOpSmt__so_lt__call2441
+       SOpSmt__so_gt__call2441
+       SOpSmt__so_le__call2441
+       SOpSmt__so_ge__call2441
+       SOpSmt__so_eq__call2441
+       SOpSmt__so_ne__call2441
+       SOpSmt__so_and__call2441
+       SOpSmt__so_or__call2441
+       SOpSmt__so_impl__call2441)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2441
+                "distinct"
+                (ite SOpSmt__so_and__call2441
+                     "and"
+                     (ite SOpSmt__so_or__call2441
+                          "or"
+                          (ite SOpSmt__so_impl__call2441 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2441
+                ">"
+                (ite SOpSmt__so_le__call2441
+                     "<="
+                     (ite SOpSmt__so_ge__call2441
+                          ">="
+                          (ite SOpSmt__so_eq__call2441 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2441
+                "-"
+                (ite SOpSmt__so_star__call2441
+                     "*"
+                     (ite SOpSmt__so_slash__call2441
+                          "div"
+                          (ite SOpSmt__so_lt__call2441 "<" a!2))))))
+  (= SChain0__sc0_op3__call2405 (ite SOpSmt__so_plus__call2441 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2405 ((_ is Question) SChain0__sc0_q1__call2405)))
+(assert (= SChain0__sc0_q2_tern__call2405 ((_ is Question) SChain0__sc0_q2__call2405)))
+(assert (= SChain0__sc0_q2_and__call2405 ((_ is OpAnd) SChain0__sc0_q2__call2405)))
+(assert (= SChain0__sc0_q2_or__call2405 ((_ is OpOr) SChain0__sc0_q2__call2405)))
+(assert (= SChain0__sc0_q2_bool__call2405
+   (or SChain0__sc0_q2_and__call2405 SChain0__sc0_q2_or__call2405)))
+(assert (= SChain0__sc0_b2__call2405 (ite SChain0__sc0_q2_and__call2405 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2405 ((_ is Colon) SChain0__sc0_q2__call2405)))
+(assert (= SChain0__sc0_q3_colon__call2405 ((_ is Colon) SChain0__sc0_q3__call2405)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2405
+                (and (and (and SChain0__sc0_k1__call2405
+                               SChain0__sc0_k2__call2405)
+                          SChain0__sc0_k3__call2405)
+                     SChain0__sc0_k4__call2405)
+                (and (and SChain0__sc0_k1__call2405 SChain0__sc0_k2__call2405)
+                     SChain0__sc0_k3__call2405))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2405
+                (and (and (and SChain0__sc0_k1__call2405
+                               SChain0__sc0_k2__call2405)
+                          SChain0__sc0_k3__call2405)
+                     SChain0__sc0_q3_colon__call2405
+                     SChain0__sc0_k4__call2405)
+                (ite SChain0__sc0_q2_bool__call2405
+                     a!1
+                     (and SChain0__sc0_k1__call2405 SChain0__sc0_k2__call2405)))))
+  (= SPrim1__sp1_ik__call2399
+     (ite SChain0__sc0_q1_tern__call2405
+          (and (and SChain0__sc0_k1__call2405 SChain0__sc0_k2__call2405)
+               SChain0__sc0_q2_colon__call2405
+               SChain0__sc0_k3__call2405)
+          (ite (not SChain0__sc0_op1k__call2405) SChain0__sc0_k1__call2405 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2405
+                (ite SChain0__sc0_op3k__call2405
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2405
+                                     " ("
+                                     SChain0__sc0_op1__call2405
+                                     " "
+                                     SChain0__sc0_o1__call2405
+                                     " "
+                                     SChain0__sc0_o2__call2405)
+                             ") ("
+                             SChain0__sc0_op3__call2405
+                             " "
+                             SChain0__sc0_o3__call2405
+                             " "
+                             SChain0__sc0_o4__call2405
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2405
+                                     " ("
+                                     SChain0__sc0_op1__call2405
+                                     " "
+                                     SChain0__sc0_o1__call2405
+                                     " "
+                                     SChain0__sc0_o2__call2405)
+                             ") "
+                             SChain0__sc0_o3__call2405
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2405
+                        " "
+                        SChain0__sc0_o1__call2405
+                        " "
+                        SChain0__sc0_o2__call2405
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2405
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2405
+                        " "
+                        SChain0__sc0_o2__call2405
+                        " "
+                        SChain0__sc0_o3__call2405
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2405)
+                     SChain0__sc0_o1__call2405
+                     (ite SChain0__sc0_q2_tern__call2405
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2405
+                                  " "
+                                  SChain0__sc0_o1__call2405
+                                  " "
+                                  SChain0__sc0_o2__call2405
+                                  ") "
+                                  SChain0__sc0_o3__call2405
+                                  " "
+                                  SChain0__sc0_o4__call2405
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2399 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2405)
+                SChain0__sc0_r1__call2405
+                (ite SChain0__sc0_q2_tern__call2405
+                     SChain0__sc0_r4__call2405
+                     (ite SChain0__sc0_q2_bool__call2405
+                          (ite SChain0__sc0_op3k__call2405
+                               SChain0__sc0_r4__call2405
+                               SChain0__sc0_r3__call2405)
+                          SChain0__sc0_r2__call2405)))))
+  (= SPrim1__sp1_ir__call2399
+     (ite SChain0__sc0_q1_tern__call2405 SChain0__sc0_r3__call2405 a!1))))
+(assert (= SPrim1__sp1_close__call2399
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2399)
+        (TLCons__f0 SPrim1__sp1_ir__call2399)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2399
+   (and SPrim1__sp1_par__call2399
+        SPrim1__sp1_ik__call2399
+        ((_ is RParen) SPrim1__sp1_close__call2399))))
+(assert (= SPrim1__sp1_pr__call2399
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2399)
+        (TLCons__f1 SPrim1__sp1_ir__call2399)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2444 ((_ is IntLit) SPrim1__sp1_b0__call2399)))
+(assert (= SAtomR__sa_is_str__call2444 ((_ is StringLit) SPrim1__sp1_b0__call2399)))
+(assert (= SAtomR__sa_is_id__call2444 ((_ is Ident) SPrim1__sp1_b0__call2399)))
+(assert (= SAtomR__sa_true__call2444 ((_ is KwTrue) SPrim1__sp1_b0__call2399)))
+(assert (= SAtomR__sa_false__call2444 ((_ is KwFalse) SPrim1__sp1_b0__call2399)))
+(assert (= SAtomR__sa_iv__call2444
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2399)
+        (IntLit__f0 SPrim1__sp1_b0__call2399)
+        0)))
+(assert (= SAtomR__sa_sv__call2444
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2399)
+        (StringLit__f0 SPrim1__sp1_b0__call2399)
+        "")))
+(assert (= SAtomR__sa_idv__call2444
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2399)
+        (Ident__f0 SPrim1__sp1_b0__call2399)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2444
+   (and SAtomR__sa_is_id__call2444 ((_ is LParen) SPrim1__sp1_b1__call2399))))
+(assert (= SPrim1__sp1_ak__call2399
+   (and (or SAtomR__sa_is_int__call2444
+            SAtomR__sa_is_str__call2444
+            SAtomR__sa_true__call2444
+            SAtomR__sa_false__call2444
+            SAtomR__sa_is_id__call2444)
+        (not SAtomR__sa_ctor_head__call2444))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2444 0)
+                (str.from_int SAtomR__sa_iv__call2444)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2444)))))
+      (a!2 (ite SAtomR__sa_true__call2444
+                "true"
+                (ite SAtomR__sa_false__call2444
+                     "false"
+                     (ite SAtomR__sa_is_str__call2444
+                          (str.++ """" SAtomR__sa_sv__call2444 """")
+                          SAtomR__sa_idv__call2444)))))
+  (= SPrim1__sp1_ao__call2399 (ite SAtomR__sa_is_int__call2444 a!1 a!2))))
+(assert (= SChain1__sc1_k3__call2302
+   (ite SPrim1__sp1_par__call2399
+        SPrim1__sp1_par_ok__call2399
+        SPrim1__sp1_ak__call2399)))
+(assert (= SPrim1__sp1_base__call2399
+   (ite SPrim1__sp1_par__call2399
+        SPrim1__sp1_io__call2399
+        SPrim1__sp1_ao__call2399)))
+(assert (= SChain1__sc1_o3__call2302
+   (ite SPrim1__sp1_neg__call2399
+        (str.++ "(not " SPrim1__sp1_base__call2399 ")")
+        SPrim1__sp1_base__call2399)))
+(assert (= SChain1__sc1_r3__call2302
+   (ite SPrim1__sp1_par__call2399
+        SPrim1__sp1_pr__call2399
+        SPrim1__sp1_bt__call2399)))
+(assert (= SChain1__sc1_q3__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2302)
+        (TLCons__f0 SChain1__sc1_r3__call2302)
+        EofTok)))
+(assert (= SChain1__sc1_s4__call2302
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2302)
+        (TLCons__f1 SChain1__sc1_r3__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2447
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2302)
+        (TLCons__f0 SChain1__sc1_s4__call2302)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2447
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2302)
+        (TLCons__f1 SChain1__sc1_s4__call2302)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2447 ((_ is OpNot) SPrim1__sp1_h0__call2447)))
+(assert (= SPrim1__sp1_seed__call2447
+   (ite SPrim1__sp1_neg__call2447
+        SPrim1__sp1_t0__call2447
+        SChain1__sc1_s4__call2302)))
+(assert (= SPrim1__sp1_b0__call2447
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2447)
+        (TLCons__f0 SPrim1__sp1_seed__call2447)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2447
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2447)
+        (TLCons__f1 SPrim1__sp1_seed__call2447)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2447
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2447)
+        (TLCons__f0 SPrim1__sp1_bt__call2447)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2447 ((_ is LParen) SPrim1__sp1_b0__call2447)))
+(assert (= SPrim0__sp0_h0__call2454
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2447)
+        (TLCons__f0 SPrim1__sp1_bt__call2447)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2454
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2447)
+        (TLCons__f1 SPrim1__sp1_bt__call2447)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2454 ((_ is OpNot) SPrim0__sp0_h0__call2454)))
+(assert (= SPrim0__sp0_seed__call2454
+   (ite SPrim0__sp0_neg__call2454
+        SPrim0__sp0_t0__call2454
+        SPrim1__sp1_bt__call2447)))
+(assert (= SPrim0__sp0_a0__call2454
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2454)
+        (TLCons__f0 SPrim0__sp0_seed__call2454)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2454
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2454)
+        (TLCons__f1 SPrim0__sp0_seed__call2454)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2454
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2454)
+        (TLCons__f0 SPrim0__sp0_s0__call2454)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2460 ((_ is IntLit) SPrim0__sp0_a0__call2454)))
+(assert (= SAtomR__sa_is_str__call2460 ((_ is StringLit) SPrim0__sp0_a0__call2454)))
+(assert (= SAtomR__sa_is_id__call2460 ((_ is Ident) SPrim0__sp0_a0__call2454)))
+(assert (= SAtomR__sa_true__call2460 ((_ is KwTrue) SPrim0__sp0_a0__call2454)))
+(assert (= SAtomR__sa_false__call2460 ((_ is KwFalse) SPrim0__sp0_a0__call2454)))
+(assert (= SAtomR__sa_iv__call2460
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2454)
+        (IntLit__f0 SPrim0__sp0_a0__call2454)
+        0)))
+(assert (= SAtomR__sa_sv__call2460
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2454)
+        (StringLit__f0 SPrim0__sp0_a0__call2454)
+        "")))
+(assert (= SAtomR__sa_idv__call2460
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2454)
+        (Ident__f0 SPrim0__sp0_a0__call2454)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2460
+   (and SAtomR__sa_is_id__call2460 ((_ is LParen) SPrim0__sp0_a1__call2454))))
+(assert (= SPrim0__sp0_ak__call2454
+   (and (or SAtomR__sa_is_int__call2460
+            SAtomR__sa_is_str__call2460
+            SAtomR__sa_true__call2460
+            SAtomR__sa_false__call2460
+            SAtomR__sa_is_id__call2460)
+        (not SAtomR__sa_ctor_head__call2460))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2460 0)
+                (str.from_int SAtomR__sa_iv__call2460)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2460)))))
+      (a!2 (ite SAtomR__sa_true__call2460
+                "true"
+                (ite SAtomR__sa_false__call2460
+                     "false"
+                     (ite SAtomR__sa_is_str__call2460
+                          (str.++ """" SAtomR__sa_sv__call2460 """")
+                          SAtomR__sa_idv__call2460)))))
+  (= SPrim0__sp0_ao__call2454 (ite SAtomR__sa_is_int__call2460 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2453 SPrim0__sp0_ak__call2454))
+(assert (= SChain0__sc0_o1__call2453
+   (ite SPrim0__sp0_neg__call2454
+        (str.++ "(not " SPrim0__sp0_ao__call2454 ")")
+        SPrim0__sp0_ao__call2454)))
+(assert (= SChain0__sc0_r1__call2453 SPrim0__sp0_s0__call2454))
+(assert (= SChain0__sc0_q1__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2453)
+        (TLCons__f0 SChain0__sc0_r1__call2453)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2453)
+        (TLCons__f1 SChain0__sc0_r1__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2463
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2453)
+        (TLCons__f0 SChain0__sc0_s2__call2453)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2463
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2453)
+        (TLCons__f1 SChain0__sc0_s2__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2463 ((_ is OpNot) SPrim0__sp0_h0__call2463)))
+(assert (= SPrim0__sp0_seed__call2463
+   (ite SPrim0__sp0_neg__call2463
+        SPrim0__sp0_t0__call2463
+        SChain0__sc0_s2__call2453)))
+(assert (= SPrim0__sp0_a0__call2463
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2463)
+        (TLCons__f0 SPrim0__sp0_seed__call2463)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2463
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2463)
+        (TLCons__f1 SPrim0__sp0_seed__call2463)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2463
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2463)
+        (TLCons__f0 SPrim0__sp0_s0__call2463)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2469 ((_ is IntLit) SPrim0__sp0_a0__call2463)))
+(assert (= SAtomR__sa_is_str__call2469 ((_ is StringLit) SPrim0__sp0_a0__call2463)))
+(assert (= SAtomR__sa_is_id__call2469 ((_ is Ident) SPrim0__sp0_a0__call2463)))
+(assert (= SAtomR__sa_true__call2469 ((_ is KwTrue) SPrim0__sp0_a0__call2463)))
+(assert (= SAtomR__sa_false__call2469 ((_ is KwFalse) SPrim0__sp0_a0__call2463)))
+(assert (= SAtomR__sa_iv__call2469
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2463)
+        (IntLit__f0 SPrim0__sp0_a0__call2463)
+        0)))
+(assert (= SAtomR__sa_sv__call2469
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2463)
+        (StringLit__f0 SPrim0__sp0_a0__call2463)
+        "")))
+(assert (= SAtomR__sa_idv__call2469
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2463)
+        (Ident__f0 SPrim0__sp0_a0__call2463)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2469
+   (and SAtomR__sa_is_id__call2469 ((_ is LParen) SPrim0__sp0_a1__call2463))))
+(assert (= SPrim0__sp0_ak__call2463
+   (and (or SAtomR__sa_is_int__call2469
+            SAtomR__sa_is_str__call2469
+            SAtomR__sa_true__call2469
+            SAtomR__sa_false__call2469
+            SAtomR__sa_is_id__call2469)
+        (not SAtomR__sa_ctor_head__call2469))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2469 0)
+                (str.from_int SAtomR__sa_iv__call2469)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2469)))))
+      (a!2 (ite SAtomR__sa_true__call2469
+                "true"
+                (ite SAtomR__sa_false__call2469
+                     "false"
+                     (ite SAtomR__sa_is_str__call2469
+                          (str.++ """" SAtomR__sa_sv__call2469 """")
+                          SAtomR__sa_idv__call2469)))))
+  (= SPrim0__sp0_ao__call2463 (ite SAtomR__sa_is_int__call2469 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2453 SPrim0__sp0_ak__call2463))
+(assert (= SChain0__sc0_o2__call2453
+   (ite SPrim0__sp0_neg__call2463
+        (str.++ "(not " SPrim0__sp0_ao__call2463 ")")
+        SPrim0__sp0_ao__call2463)))
+(assert (= SChain0__sc0_r2__call2453 SPrim0__sp0_s0__call2463))
+(assert (= SChain0__sc0_q2__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2453)
+        (TLCons__f0 SChain0__sc0_r2__call2453)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2453)
+        (TLCons__f1 SChain0__sc0_r2__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2472
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2453)
+        (TLCons__f0 SChain0__sc0_s3__call2453)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2472
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2453)
+        (TLCons__f1 SChain0__sc0_s3__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2472 ((_ is OpNot) SPrim0__sp0_h0__call2472)))
+(assert (= SPrim0__sp0_seed__call2472
+   (ite SPrim0__sp0_neg__call2472
+        SPrim0__sp0_t0__call2472
+        SChain0__sc0_s3__call2453)))
+(assert (= SPrim0__sp0_a0__call2472
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2472)
+        (TLCons__f0 SPrim0__sp0_seed__call2472)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2472
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2472)
+        (TLCons__f1 SPrim0__sp0_seed__call2472)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2472
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2472)
+        (TLCons__f0 SPrim0__sp0_s0__call2472)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2478 ((_ is IntLit) SPrim0__sp0_a0__call2472)))
+(assert (= SAtomR__sa_is_str__call2478 ((_ is StringLit) SPrim0__sp0_a0__call2472)))
+(assert (= SAtomR__sa_is_id__call2478 ((_ is Ident) SPrim0__sp0_a0__call2472)))
+(assert (= SAtomR__sa_true__call2478 ((_ is KwTrue) SPrim0__sp0_a0__call2472)))
+(assert (= SAtomR__sa_false__call2478 ((_ is KwFalse) SPrim0__sp0_a0__call2472)))
+(assert (= SAtomR__sa_iv__call2478
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2472)
+        (IntLit__f0 SPrim0__sp0_a0__call2472)
+        0)))
+(assert (= SAtomR__sa_sv__call2478
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2472)
+        (StringLit__f0 SPrim0__sp0_a0__call2472)
+        "")))
+(assert (= SAtomR__sa_idv__call2478
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2472)
+        (Ident__f0 SPrim0__sp0_a0__call2472)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2478
+   (and SAtomR__sa_is_id__call2478 ((_ is LParen) SPrim0__sp0_a1__call2472))))
+(assert (= SPrim0__sp0_ak__call2472
+   (and (or SAtomR__sa_is_int__call2478
+            SAtomR__sa_is_str__call2478
+            SAtomR__sa_true__call2478
+            SAtomR__sa_false__call2478
+            SAtomR__sa_is_id__call2478)
+        (not SAtomR__sa_ctor_head__call2478))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2478 0)
+                (str.from_int SAtomR__sa_iv__call2478)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2478)))))
+      (a!2 (ite SAtomR__sa_true__call2478
+                "true"
+                (ite SAtomR__sa_false__call2478
+                     "false"
+                     (ite SAtomR__sa_is_str__call2478
+                          (str.++ """" SAtomR__sa_sv__call2478 """")
+                          SAtomR__sa_idv__call2478)))))
+  (= SPrim0__sp0_ao__call2472 (ite SAtomR__sa_is_int__call2478 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2453 SPrim0__sp0_ak__call2472))
+(assert (= SChain0__sc0_o3__call2453
+   (ite SPrim0__sp0_neg__call2472
+        (str.++ "(not " SPrim0__sp0_ao__call2472 ")")
+        SPrim0__sp0_ao__call2472)))
+(assert (= SChain0__sc0_r3__call2453 SPrim0__sp0_s0__call2472))
+(assert (= SChain0__sc0_q3__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2453)
+        (TLCons__f0 SChain0__sc0_r3__call2453)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2453
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2453)
+        (TLCons__f1 SChain0__sc0_r3__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2481
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2453)
+        (TLCons__f0 SChain0__sc0_s4__call2453)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2481
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2453)
+        (TLCons__f1 SChain0__sc0_s4__call2453)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2481 ((_ is OpNot) SPrim0__sp0_h0__call2481)))
+(assert (= SPrim0__sp0_seed__call2481
+   (ite SPrim0__sp0_neg__call2481
+        SPrim0__sp0_t0__call2481
+        SChain0__sc0_s4__call2453)))
+(assert (= SPrim0__sp0_a0__call2481
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2481)
+        (TLCons__f0 SPrim0__sp0_seed__call2481)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2481
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2481)
+        (TLCons__f1 SPrim0__sp0_seed__call2481)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2481
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2481)
+        (TLCons__f0 SPrim0__sp0_s0__call2481)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2487 ((_ is IntLit) SPrim0__sp0_a0__call2481)))
+(assert (= SAtomR__sa_is_str__call2487 ((_ is StringLit) SPrim0__sp0_a0__call2481)))
+(assert (= SAtomR__sa_is_id__call2487 ((_ is Ident) SPrim0__sp0_a0__call2481)))
+(assert (= SAtomR__sa_true__call2487 ((_ is KwTrue) SPrim0__sp0_a0__call2481)))
+(assert (= SAtomR__sa_false__call2487 ((_ is KwFalse) SPrim0__sp0_a0__call2481)))
+(assert (= SAtomR__sa_iv__call2487
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2481)
+        (IntLit__f0 SPrim0__sp0_a0__call2481)
+        0)))
+(assert (= SAtomR__sa_sv__call2487
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2481)
+        (StringLit__f0 SPrim0__sp0_a0__call2481)
+        "")))
+(assert (= SAtomR__sa_idv__call2487
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2481)
+        (Ident__f0 SPrim0__sp0_a0__call2481)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2487
+   (and SAtomR__sa_is_id__call2487 ((_ is LParen) SPrim0__sp0_a1__call2481))))
+(assert (= SPrim0__sp0_ak__call2481
+   (and (or SAtomR__sa_is_int__call2487
+            SAtomR__sa_is_str__call2487
+            SAtomR__sa_true__call2487
+            SAtomR__sa_false__call2487
+            SAtomR__sa_is_id__call2487)
+        (not SAtomR__sa_ctor_head__call2487))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2487 0)
+                (str.from_int SAtomR__sa_iv__call2487)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2487)))))
+      (a!2 (ite SAtomR__sa_true__call2487
+                "true"
+                (ite SAtomR__sa_false__call2487
+                     "false"
+                     (ite SAtomR__sa_is_str__call2487
+                          (str.++ """" SAtomR__sa_sv__call2487 """")
+                          SAtomR__sa_idv__call2487)))))
+  (= SPrim0__sp0_ao__call2481 (ite SAtomR__sa_is_int__call2487 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2453 SPrim0__sp0_ak__call2481))
+(assert (= SChain0__sc0_o4__call2453
+   (ite SPrim0__sp0_neg__call2481
+        (str.++ "(not " SPrim0__sp0_ao__call2481 ")")
+        SPrim0__sp0_ao__call2481)))
+(assert (= SChain0__sc0_r4__call2453 SPrim0__sp0_s0__call2481))
+(assert (= SOpSmt__so_plus__call2488 ((_ is Plus) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_minus__call2488 ((_ is Minus) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_star__call2488 ((_ is Star) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_slash__call2488 ((_ is Slash) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_lt__call2488 ((_ is Lt) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_gt__call2488 ((_ is Gt) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_le__call2488 ((_ is OpLe) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_ge__call2488 ((_ is OpGe) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_eq__call2488 ((_ is Eq) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_ne__call2488 ((_ is OpNe) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_and__call2488 ((_ is OpAnd) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_or__call2488 ((_ is OpOr) SChain0__sc0_q1__call2453)))
+(assert (= SOpSmt__so_impl__call2488 ((_ is OpImplies) SChain0__sc0_q1__call2453)))
+(assert (= SChain0__sc0_op1k__call2453
+   (or SOpSmt__so_plus__call2488
+       SOpSmt__so_minus__call2488
+       SOpSmt__so_star__call2488
+       SOpSmt__so_slash__call2488
+       SOpSmt__so_lt__call2488
+       SOpSmt__so_gt__call2488
+       SOpSmt__so_le__call2488
+       SOpSmt__so_ge__call2488
+       SOpSmt__so_eq__call2488
+       SOpSmt__so_ne__call2488
+       SOpSmt__so_and__call2488
+       SOpSmt__so_or__call2488
+       SOpSmt__so_impl__call2488)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2488
+                "distinct"
+                (ite SOpSmt__so_and__call2488
+                     "and"
+                     (ite SOpSmt__so_or__call2488
+                          "or"
+                          (ite SOpSmt__so_impl__call2488 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2488
+                ">"
+                (ite SOpSmt__so_le__call2488
+                     "<="
+                     (ite SOpSmt__so_ge__call2488
+                          ">="
+                          (ite SOpSmt__so_eq__call2488 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2488
+                "-"
+                (ite SOpSmt__so_star__call2488
+                     "*"
+                     (ite SOpSmt__so_slash__call2488
+                          "div"
+                          (ite SOpSmt__so_lt__call2488 "<" a!2))))))
+  (= SChain0__sc0_op1__call2453 (ite SOpSmt__so_plus__call2488 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2489 ((_ is Plus) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_minus__call2489 ((_ is Minus) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_star__call2489 ((_ is Star) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_slash__call2489 ((_ is Slash) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_lt__call2489 ((_ is Lt) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_gt__call2489 ((_ is Gt) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_le__call2489 ((_ is OpLe) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_ge__call2489 ((_ is OpGe) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_eq__call2489 ((_ is Eq) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_ne__call2489 ((_ is OpNe) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_and__call2489 ((_ is OpAnd) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_or__call2489 ((_ is OpOr) SChain0__sc0_q3__call2453)))
+(assert (= SOpSmt__so_impl__call2489 ((_ is OpImplies) SChain0__sc0_q3__call2453)))
+(assert (= SChain0__sc0_op3k__call2453
+   (or SOpSmt__so_plus__call2489
+       SOpSmt__so_minus__call2489
+       SOpSmt__so_star__call2489
+       SOpSmt__so_slash__call2489
+       SOpSmt__so_lt__call2489
+       SOpSmt__so_gt__call2489
+       SOpSmt__so_le__call2489
+       SOpSmt__so_ge__call2489
+       SOpSmt__so_eq__call2489
+       SOpSmt__so_ne__call2489
+       SOpSmt__so_and__call2489
+       SOpSmt__so_or__call2489
+       SOpSmt__so_impl__call2489)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2489
+                "distinct"
+                (ite SOpSmt__so_and__call2489
+                     "and"
+                     (ite SOpSmt__so_or__call2489
+                          "or"
+                          (ite SOpSmt__so_impl__call2489 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2489
+                ">"
+                (ite SOpSmt__so_le__call2489
+                     "<="
+                     (ite SOpSmt__so_ge__call2489
+                          ">="
+                          (ite SOpSmt__so_eq__call2489 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2489
+                "-"
+                (ite SOpSmt__so_star__call2489
+                     "*"
+                     (ite SOpSmt__so_slash__call2489
+                          "div"
+                          (ite SOpSmt__so_lt__call2489 "<" a!2))))))
+  (= SChain0__sc0_op3__call2453 (ite SOpSmt__so_plus__call2489 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2453 ((_ is Question) SChain0__sc0_q1__call2453)))
+(assert (= SChain0__sc0_q2_tern__call2453 ((_ is Question) SChain0__sc0_q2__call2453)))
+(assert (= SChain0__sc0_q2_and__call2453 ((_ is OpAnd) SChain0__sc0_q2__call2453)))
+(assert (= SChain0__sc0_q2_or__call2453 ((_ is OpOr) SChain0__sc0_q2__call2453)))
+(assert (= SChain0__sc0_q2_bool__call2453
+   (or SChain0__sc0_q2_and__call2453 SChain0__sc0_q2_or__call2453)))
+(assert (= SChain0__sc0_b2__call2453 (ite SChain0__sc0_q2_and__call2453 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2453 ((_ is Colon) SChain0__sc0_q2__call2453)))
+(assert (= SChain0__sc0_q3_colon__call2453 ((_ is Colon) SChain0__sc0_q3__call2453)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2453
+                (and (and (and SChain0__sc0_k1__call2453
+                               SChain0__sc0_k2__call2453)
+                          SChain0__sc0_k3__call2453)
+                     SChain0__sc0_k4__call2453)
+                (and (and SChain0__sc0_k1__call2453 SChain0__sc0_k2__call2453)
+                     SChain0__sc0_k3__call2453))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2453
+                (and (and (and SChain0__sc0_k1__call2453
+                               SChain0__sc0_k2__call2453)
+                          SChain0__sc0_k3__call2453)
+                     SChain0__sc0_q3_colon__call2453
+                     SChain0__sc0_k4__call2453)
+                (ite SChain0__sc0_q2_bool__call2453
+                     a!1
+                     (and SChain0__sc0_k1__call2453 SChain0__sc0_k2__call2453)))))
+  (= SPrim1__sp1_ik__call2447
+     (ite SChain0__sc0_q1_tern__call2453
+          (and (and SChain0__sc0_k1__call2453 SChain0__sc0_k2__call2453)
+               SChain0__sc0_q2_colon__call2453
+               SChain0__sc0_k3__call2453)
+          (ite (not SChain0__sc0_op1k__call2453) SChain0__sc0_k1__call2453 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2453
+                (ite SChain0__sc0_op3k__call2453
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2453
+                                     " ("
+                                     SChain0__sc0_op1__call2453
+                                     " "
+                                     SChain0__sc0_o1__call2453
+                                     " "
+                                     SChain0__sc0_o2__call2453)
+                             ") ("
+                             SChain0__sc0_op3__call2453
+                             " "
+                             SChain0__sc0_o3__call2453
+                             " "
+                             SChain0__sc0_o4__call2453
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2453
+                                     " ("
+                                     SChain0__sc0_op1__call2453
+                                     " "
+                                     SChain0__sc0_o1__call2453
+                                     " "
+                                     SChain0__sc0_o2__call2453)
+                             ") "
+                             SChain0__sc0_o3__call2453
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2453
+                        " "
+                        SChain0__sc0_o1__call2453
+                        " "
+                        SChain0__sc0_o2__call2453
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2453
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2453
+                        " "
+                        SChain0__sc0_o2__call2453
+                        " "
+                        SChain0__sc0_o3__call2453
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2453)
+                     SChain0__sc0_o1__call2453
+                     (ite SChain0__sc0_q2_tern__call2453
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2453
+                                  " "
+                                  SChain0__sc0_o1__call2453
+                                  " "
+                                  SChain0__sc0_o2__call2453
+                                  ") "
+                                  SChain0__sc0_o3__call2453
+                                  " "
+                                  SChain0__sc0_o4__call2453
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2447 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2453)
+                SChain0__sc0_r1__call2453
+                (ite SChain0__sc0_q2_tern__call2453
+                     SChain0__sc0_r4__call2453
+                     (ite SChain0__sc0_q2_bool__call2453
+                          (ite SChain0__sc0_op3k__call2453
+                               SChain0__sc0_r4__call2453
+                               SChain0__sc0_r3__call2453)
+                          SChain0__sc0_r2__call2453)))))
+  (= SPrim1__sp1_ir__call2447
+     (ite SChain0__sc0_q1_tern__call2453 SChain0__sc0_r3__call2453 a!1))))
+(assert (= SPrim1__sp1_close__call2447
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2447)
+        (TLCons__f0 SPrim1__sp1_ir__call2447)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2447
+   (and SPrim1__sp1_par__call2447
+        SPrim1__sp1_ik__call2447
+        ((_ is RParen) SPrim1__sp1_close__call2447))))
+(assert (= SPrim1__sp1_pr__call2447
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2447)
+        (TLCons__f1 SPrim1__sp1_ir__call2447)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2492 ((_ is IntLit) SPrim1__sp1_b0__call2447)))
+(assert (= SAtomR__sa_is_str__call2492 ((_ is StringLit) SPrim1__sp1_b0__call2447)))
+(assert (= SAtomR__sa_is_id__call2492 ((_ is Ident) SPrim1__sp1_b0__call2447)))
+(assert (= SAtomR__sa_true__call2492 ((_ is KwTrue) SPrim1__sp1_b0__call2447)))
+(assert (= SAtomR__sa_false__call2492 ((_ is KwFalse) SPrim1__sp1_b0__call2447)))
+(assert (= SAtomR__sa_iv__call2492
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2447)
+        (IntLit__f0 SPrim1__sp1_b0__call2447)
+        0)))
+(assert (= SAtomR__sa_sv__call2492
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2447)
+        (StringLit__f0 SPrim1__sp1_b0__call2447)
+        "")))
+(assert (= SAtomR__sa_idv__call2492
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2447)
+        (Ident__f0 SPrim1__sp1_b0__call2447)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2492
+   (and SAtomR__sa_is_id__call2492 ((_ is LParen) SPrim1__sp1_b1__call2447))))
+(assert (= SPrim1__sp1_ak__call2447
+   (and (or SAtomR__sa_is_int__call2492
+            SAtomR__sa_is_str__call2492
+            SAtomR__sa_true__call2492
+            SAtomR__sa_false__call2492
+            SAtomR__sa_is_id__call2492)
+        (not SAtomR__sa_ctor_head__call2492))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2492 0)
+                (str.from_int SAtomR__sa_iv__call2492)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2492)))))
+      (a!2 (ite SAtomR__sa_true__call2492
+                "true"
+                (ite SAtomR__sa_false__call2492
+                     "false"
+                     (ite SAtomR__sa_is_str__call2492
+                          (str.++ """" SAtomR__sa_sv__call2492 """")
+                          SAtomR__sa_idv__call2492)))))
+  (= SPrim1__sp1_ao__call2447 (ite SAtomR__sa_is_int__call2492 a!1 a!2))))
+(assert (= SChain1__sc1_k4__call2302
+   (ite SPrim1__sp1_par__call2447
+        SPrim1__sp1_par_ok__call2447
+        SPrim1__sp1_ak__call2447)))
+(assert (= SPrim1__sp1_base__call2447
+   (ite SPrim1__sp1_par__call2447
+        SPrim1__sp1_io__call2447
+        SPrim1__sp1_ao__call2447)))
+(assert (= SChain1__sc1_o4__call2302
+   (ite SPrim1__sp1_neg__call2447
+        (str.++ "(not " SPrim1__sp1_base__call2447 ")")
+        SPrim1__sp1_base__call2447)))
+(assert (= SChain1__sc1_r4__call2302
+   (ite SPrim1__sp1_par__call2447
+        SPrim1__sp1_pr__call2447
+        SPrim1__sp1_bt__call2447)))
+(assert (= SOpSmt__so_plus__call2493 ((_ is Plus) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_minus__call2493 ((_ is Minus) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_star__call2493 ((_ is Star) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_slash__call2493 ((_ is Slash) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_lt__call2493 ((_ is Lt) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_gt__call2493 ((_ is Gt) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_le__call2493 ((_ is OpLe) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_ge__call2493 ((_ is OpGe) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_eq__call2493 ((_ is Eq) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_ne__call2493 ((_ is OpNe) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_and__call2493 ((_ is OpAnd) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_or__call2493 ((_ is OpOr) SChain1__sc1_q1__call2302)))
+(assert (= SOpSmt__so_impl__call2493 ((_ is OpImplies) SChain1__sc1_q1__call2302)))
+(assert (= SChain1__sc1_op1k__call2302
+   (or SOpSmt__so_plus__call2493
+       SOpSmt__so_minus__call2493
+       SOpSmt__so_star__call2493
+       SOpSmt__so_slash__call2493
+       SOpSmt__so_lt__call2493
+       SOpSmt__so_gt__call2493
+       SOpSmt__so_le__call2493
+       SOpSmt__so_ge__call2493
+       SOpSmt__so_eq__call2493
+       SOpSmt__so_ne__call2493
+       SOpSmt__so_and__call2493
+       SOpSmt__so_or__call2493
+       SOpSmt__so_impl__call2493)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2493
+                "distinct"
+                (ite SOpSmt__so_and__call2493
+                     "and"
+                     (ite SOpSmt__so_or__call2493
+                          "or"
+                          (ite SOpSmt__so_impl__call2493 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2493
+                ">"
+                (ite SOpSmt__so_le__call2493
+                     "<="
+                     (ite SOpSmt__so_ge__call2493
+                          ">="
+                          (ite SOpSmt__so_eq__call2493 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2493
+                "-"
+                (ite SOpSmt__so_star__call2493
+                     "*"
+                     (ite SOpSmt__so_slash__call2493
+                          "div"
+                          (ite SOpSmt__so_lt__call2493 "<" a!2))))))
+  (= SChain1__sc1_op1__call2302 (ite SOpSmt__so_plus__call2493 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2494 ((_ is Plus) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_minus__call2494 ((_ is Minus) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_star__call2494 ((_ is Star) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_slash__call2494 ((_ is Slash) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_lt__call2494 ((_ is Lt) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_gt__call2494 ((_ is Gt) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_le__call2494 ((_ is OpLe) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_ge__call2494 ((_ is OpGe) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_eq__call2494 ((_ is Eq) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_ne__call2494 ((_ is OpNe) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_and__call2494 ((_ is OpAnd) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_or__call2494 ((_ is OpOr) SChain1__sc1_q3__call2302)))
+(assert (= SOpSmt__so_impl__call2494 ((_ is OpImplies) SChain1__sc1_q3__call2302)))
+(assert (= SChain1__sc1_op3k__call2302
+   (or SOpSmt__so_plus__call2494
+       SOpSmt__so_minus__call2494
+       SOpSmt__so_star__call2494
+       SOpSmt__so_slash__call2494
+       SOpSmt__so_lt__call2494
+       SOpSmt__so_gt__call2494
+       SOpSmt__so_le__call2494
+       SOpSmt__so_ge__call2494
+       SOpSmt__so_eq__call2494
+       SOpSmt__so_ne__call2494
+       SOpSmt__so_and__call2494
+       SOpSmt__so_or__call2494
+       SOpSmt__so_impl__call2494)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2494
+                "distinct"
+                (ite SOpSmt__so_and__call2494
+                     "and"
+                     (ite SOpSmt__so_or__call2494
+                          "or"
+                          (ite SOpSmt__so_impl__call2494 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2494
+                ">"
+                (ite SOpSmt__so_le__call2494
+                     "<="
+                     (ite SOpSmt__so_ge__call2494
+                          ">="
+                          (ite SOpSmt__so_eq__call2494 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2494
+                "-"
+                (ite SOpSmt__so_star__call2494
+                     "*"
+                     (ite SOpSmt__so_slash__call2494
+                          "div"
+                          (ite SOpSmt__so_lt__call2494 "<" a!2))))))
+  (= SChain1__sc1_op3__call2302 (ite SOpSmt__so_plus__call2494 "+" a!3))))))
+(assert (= SChain1__sc1_q1_tern__call2302 ((_ is Question) SChain1__sc1_q1__call2302)))
+(assert (= SChain1__sc1_q2_tern__call2302 ((_ is Question) SChain1__sc1_q2__call2302)))
+(assert (= SChain1__sc1_q2_and__call2302 ((_ is OpAnd) SChain1__sc1_q2__call2302)))
+(assert (= SChain1__sc1_q2_or__call2302 ((_ is OpOr) SChain1__sc1_q2__call2302)))
+(assert (= SChain1__sc1_q2_bool__call2302
+   (or SChain1__sc1_q2_and__call2302 SChain1__sc1_q2_or__call2302)))
+(assert (= SChain1__sc1_b2__call2302 (ite SChain1__sc1_q2_and__call2302 "and" "or")))
+(assert (= SChain1__sc1_q2_colon__call2302 ((_ is Colon) SChain1__sc1_q2__call2302)))
+(assert (= SChain1__sc1_q3_colon__call2302 ((_ is Colon) SChain1__sc1_q3__call2302)))
+(assert (let ((a!1 (ite SChain1__sc1_op3k__call2302
+                (and (and (and SChain1__sc1_k1__call2302
+                               SChain1__sc1_k2__call2302)
+                          SChain1__sc1_k3__call2302)
+                     SChain1__sc1_k4__call2302)
+                (and (and SChain1__sc1_k1__call2302 SChain1__sc1_k2__call2302)
+                     SChain1__sc1_k3__call2302))))
+(let ((a!2 (ite SChain1__sc1_q2_tern__call2302
+                (and (and (and SChain1__sc1_k1__call2302
+                               SChain1__sc1_k2__call2302)
+                          SChain1__sc1_k3__call2302)
+                     SChain1__sc1_q3_colon__call2302
+                     SChain1__sc1_k4__call2302)
+                (ite SChain1__sc1_q2_bool__call2302
+                     a!1
+                     (and SChain1__sc1_k1__call2302 SChain1__sc1_k2__call2302)))))
+  (= SPrim2__sp2_ik__call2296
+     (ite SChain1__sc1_q1_tern__call2302
+          (and (and SChain1__sc1_k1__call2302 SChain1__sc1_k2__call2302)
+               SChain1__sc1_q2_colon__call2302
+               SChain1__sc1_k3__call2302)
+          (ite (not SChain1__sc1_op1k__call2302) SChain1__sc1_k1__call2302 a!2))))))
+(assert (let ((a!1 (ite SChain1__sc1_q2_bool__call2302
+                (ite SChain1__sc1_op3k__call2302
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2302
+                                     " ("
+                                     SChain1__sc1_op1__call2302
+                                     " "
+                                     SChain1__sc1_o1__call2302
+                                     " "
+                                     SChain1__sc1_o2__call2302)
+                             ") ("
+                             SChain1__sc1_op3__call2302
+                             " "
+                             SChain1__sc1_o3__call2302
+                             " "
+                             SChain1__sc1_o4__call2302
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2302
+                                     " ("
+                                     SChain1__sc1_op1__call2302
+                                     " "
+                                     SChain1__sc1_o1__call2302
+                                     " "
+                                     SChain1__sc1_o2__call2302)
+                             ") "
+                             SChain1__sc1_o3__call2302
+                             ")"))
+                (str.++ "("
+                        SChain1__sc1_op1__call2302
+                        " "
+                        SChain1__sc1_o1__call2302
+                        " "
+                        SChain1__sc1_o2__call2302
+                        ")"))))
+(let ((a!2 (ite SChain1__sc1_q1_tern__call2302
+                (str.++ "(ite "
+                        SChain1__sc1_o1__call2302
+                        " "
+                        SChain1__sc1_o2__call2302
+                        " "
+                        SChain1__sc1_o3__call2302
+                        ")")
+                (ite (not SChain1__sc1_op1k__call2302)
+                     SChain1__sc1_o1__call2302
+                     (ite SChain1__sc1_q2_tern__call2302
+                          (str.++ "(ite ("
+                                  SChain1__sc1_op1__call2302
+                                  " "
+                                  SChain1__sc1_o1__call2302
+                                  " "
+                                  SChain1__sc1_o2__call2302
+                                  ") "
+                                  SChain1__sc1_o3__call2302
+                                  " "
+                                  SChain1__sc1_o4__call2302
+                                  ")")
+                          a!1)))))
+  (= SPrim2__sp2_io__call2296 a!2))))
+(assert (let ((a!1 (ite (not SChain1__sc1_op1k__call2302)
+                SChain1__sc1_r1__call2302
+                (ite SChain1__sc1_q2_tern__call2302
+                     SChain1__sc1_r4__call2302
+                     (ite SChain1__sc1_q2_bool__call2302
+                          (ite SChain1__sc1_op3k__call2302
+                               SChain1__sc1_r4__call2302
+                               SChain1__sc1_r3__call2302)
+                          SChain1__sc1_r2__call2302)))))
+  (= SPrim2__sp2_ir__call2296
+     (ite SChain1__sc1_q1_tern__call2302 SChain1__sc1_r3__call2302 a!1))))
+(assert (= SPrim2__sp2_close__call2296
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2296)
+        (TLCons__f0 SPrim2__sp2_ir__call2296)
+        EofTok)))
+(assert (= SPrim2__sp2_par_ok__call2296
+   (and SPrim2__sp2_par__call2296
+        SPrim2__sp2_ik__call2296
+        ((_ is RParen) SPrim2__sp2_close__call2296))))
+(assert (= SPrim2__sp2_pr__call2296
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2296)
+        (TLCons__f1 SPrim2__sp2_ir__call2296)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2497 ((_ is IntLit) SPrim2__sp2_b0__call2296)))
+(assert (= SAtomR__sa_is_str__call2497 ((_ is StringLit) SPrim2__sp2_b0__call2296)))
+(assert (= SAtomR__sa_is_id__call2497 ((_ is Ident) SPrim2__sp2_b0__call2296)))
+(assert (= SAtomR__sa_true__call2497 ((_ is KwTrue) SPrim2__sp2_b0__call2296)))
+(assert (= SAtomR__sa_false__call2497 ((_ is KwFalse) SPrim2__sp2_b0__call2296)))
+(assert (= SAtomR__sa_iv__call2497
+   (ite ((_ is IntLit) SPrim2__sp2_b0__call2296)
+        (IntLit__f0 SPrim2__sp2_b0__call2296)
+        0)))
+(assert (= SAtomR__sa_sv__call2497
+   (ite ((_ is StringLit) SPrim2__sp2_b0__call2296)
+        (StringLit__f0 SPrim2__sp2_b0__call2296)
+        "")))
+(assert (= SAtomR__sa_idv__call2497
+   (ite ((_ is Ident) SPrim2__sp2_b0__call2296)
+        (Ident__f0 SPrim2__sp2_b0__call2296)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2497
+   (and SAtomR__sa_is_id__call2497 ((_ is LParen) SPrim2__sp2_b1__call2296))))
+(assert (= SPrim2__sp2_ak__call2296
+   (and (or SAtomR__sa_is_int__call2497
+            SAtomR__sa_is_str__call2497
+            SAtomR__sa_true__call2497
+            SAtomR__sa_false__call2497
+            SAtomR__sa_is_id__call2497)
+        (not SAtomR__sa_ctor_head__call2497))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2497 0)
+                (str.from_int SAtomR__sa_iv__call2497)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2497)))))
+      (a!2 (ite SAtomR__sa_true__call2497
+                "true"
+                (ite SAtomR__sa_false__call2497
+                     "false"
+                     (ite SAtomR__sa_is_str__call2497
+                          (str.++ """" SAtomR__sa_sv__call2497 """")
+                          SAtomR__sa_idv__call2497)))))
+  (= SPrim2__sp2_ao__call2296 (ite SAtomR__sa_is_int__call2497 a!1 a!2))))
+(assert (= CallArgsStep__ca_v1k__call2287
+   (ite SPrim2__sp2_par__call2296
+        SPrim2__sp2_par_ok__call2296
+        SPrim2__sp2_ak__call2296)))
+(assert (= SPrim2__sp2_base__call2296
+   (ite SPrim2__sp2_par__call2296
+        SPrim2__sp2_io__call2296
+        SPrim2__sp2_ao__call2296)))
+(assert (= CallArgsStep__ca_v1o__call2287
+   (ite SPrim2__sp2_neg__call2296
+        (str.++ "(not " SPrim2__sp2_base__call2296 ")")
+        SPrim2__sp2_base__call2296)))
+(assert (= CallArgsStep__ca_v1r__call2287
+   (ite SPrim2__sp2_par__call2296
+        SPrim2__sp2_pr__call2296
+        SPrim2__sp2_bt__call2296)))
+(assert (= CallArgsStep__ca_d1__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v1r__call2287)
+        (TLCons__f0 CallArgsStep__ca_v1r__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_d1_close__call2287
+   ((_ is RParen) CallArgsStep__ca_d1__call2287)))
+(assert (= CallArgsStep__ca_d1_comma__call2287
+   ((_ is Comma) CallArgsStep__ca_d1__call2287)))
+(assert (= CallArgsStep__ca_b2__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v1r__call2287)
+        (TLCons__f1 CallArgsStep__ca_v1r__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t4__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b2__call2287)
+        (TLCons__f0 CallArgsStep__ca_b2__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_b2a__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b2__call2287)
+        (TLCons__f1 CallArgsStep__ca_b2__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t5__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b2a__call2287)
+        (TLCons__f0 CallArgsStep__ca_b2a__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_l6__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b2a__call2287)
+        (TLCons__f1 CallArgsStep__ca_b2a__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_h2_ok__call2287
+   (and ((_ is Ident) CallArgsStep__ca_t4__call2287)
+        ((_ is OpMapsto) CallArgsStep__ca_t5__call2287))))
+(assert (= CallArgsStep__ca_s2__call2287
+   (ite ((_ is Ident) CallArgsStep__ca_t4__call2287)
+        (Ident__f0 CallArgsStep__ca_t4__call2287)
+        "")))
+(assert (= SPrim2__sp2_h0__call2504
+   (ite ((_ is TLCons) CallArgsStep__ca_l6__call2287)
+        (TLCons__f0 CallArgsStep__ca_l6__call2287)
+        EofTok)))
+(assert (= SPrim2__sp2_t0__call2504
+   (ite ((_ is TLCons) CallArgsStep__ca_l6__call2287)
+        (TLCons__f1 CallArgsStep__ca_l6__call2287)
+        TLNil)))
+(assert (= SPrim2__sp2_neg__call2504 ((_ is OpNot) SPrim2__sp2_h0__call2504)))
+(assert (= SPrim2__sp2_seed__call2504
+   (ite SPrim2__sp2_neg__call2504
+        SPrim2__sp2_t0__call2504
+        CallArgsStep__ca_l6__call2287)))
+(assert (= SPrim2__sp2_b0__call2504
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2504)
+        (TLCons__f0 SPrim2__sp2_seed__call2504)
+        EofTok)))
+(assert (= SPrim2__sp2_bt__call2504
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2504)
+        (TLCons__f1 SPrim2__sp2_seed__call2504)
+        TLNil)))
+(assert (= SPrim2__sp2_b1__call2504
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2504)
+        (TLCons__f0 SPrim2__sp2_bt__call2504)
+        EofTok)))
+(assert (= SPrim2__sp2_par__call2504 ((_ is LParen) SPrim2__sp2_b0__call2504)))
+(assert (= SPrim1__sp1_h0__call2511
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2504)
+        (TLCons__f0 SPrim2__sp2_bt__call2504)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2511
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2504)
+        (TLCons__f1 SPrim2__sp2_bt__call2504)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2511 ((_ is OpNot) SPrim1__sp1_h0__call2511)))
+(assert (= SPrim1__sp1_seed__call2511
+   (ite SPrim1__sp1_neg__call2511
+        SPrim1__sp1_t0__call2511
+        SPrim2__sp2_bt__call2504)))
+(assert (= SPrim1__sp1_b0__call2511
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2511)
+        (TLCons__f0 SPrim1__sp1_seed__call2511)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2511
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2511)
+        (TLCons__f1 SPrim1__sp1_seed__call2511)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2511
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2511)
+        (TLCons__f0 SPrim1__sp1_bt__call2511)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2511 ((_ is LParen) SPrim1__sp1_b0__call2511)))
+(assert (= SPrim0__sp0_h0__call2518
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2511)
+        (TLCons__f0 SPrim1__sp1_bt__call2511)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2518
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2511)
+        (TLCons__f1 SPrim1__sp1_bt__call2511)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2518 ((_ is OpNot) SPrim0__sp0_h0__call2518)))
+(assert (= SPrim0__sp0_seed__call2518
+   (ite SPrim0__sp0_neg__call2518
+        SPrim0__sp0_t0__call2518
+        SPrim1__sp1_bt__call2511)))
+(assert (= SPrim0__sp0_a0__call2518
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2518)
+        (TLCons__f0 SPrim0__sp0_seed__call2518)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2518
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2518)
+        (TLCons__f1 SPrim0__sp0_seed__call2518)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2518
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2518)
+        (TLCons__f0 SPrim0__sp0_s0__call2518)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2524 ((_ is IntLit) SPrim0__sp0_a0__call2518)))
+(assert (= SAtomR__sa_is_str__call2524 ((_ is StringLit) SPrim0__sp0_a0__call2518)))
+(assert (= SAtomR__sa_is_id__call2524 ((_ is Ident) SPrim0__sp0_a0__call2518)))
+(assert (= SAtomR__sa_true__call2524 ((_ is KwTrue) SPrim0__sp0_a0__call2518)))
+(assert (= SAtomR__sa_false__call2524 ((_ is KwFalse) SPrim0__sp0_a0__call2518)))
+(assert (= SAtomR__sa_iv__call2524
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2518)
+        (IntLit__f0 SPrim0__sp0_a0__call2518)
+        0)))
+(assert (= SAtomR__sa_sv__call2524
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2518)
+        (StringLit__f0 SPrim0__sp0_a0__call2518)
+        "")))
+(assert (= SAtomR__sa_idv__call2524
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2518)
+        (Ident__f0 SPrim0__sp0_a0__call2518)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2524
+   (and SAtomR__sa_is_id__call2524 ((_ is LParen) SPrim0__sp0_a1__call2518))))
+(assert (= SPrim0__sp0_ak__call2518
+   (and (or SAtomR__sa_is_int__call2524
+            SAtomR__sa_is_str__call2524
+            SAtomR__sa_true__call2524
+            SAtomR__sa_false__call2524
+            SAtomR__sa_is_id__call2524)
+        (not SAtomR__sa_ctor_head__call2524))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2524 0)
+                (str.from_int SAtomR__sa_iv__call2524)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2524)))))
+      (a!2 (ite SAtomR__sa_true__call2524
+                "true"
+                (ite SAtomR__sa_false__call2524
+                     "false"
+                     (ite SAtomR__sa_is_str__call2524
+                          (str.++ """" SAtomR__sa_sv__call2524 """")
+                          SAtomR__sa_idv__call2524)))))
+  (= SPrim0__sp0_ao__call2518 (ite SAtomR__sa_is_int__call2524 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2517 SPrim0__sp0_ak__call2518))
+(assert (= SChain0__sc0_o1__call2517
+   (ite SPrim0__sp0_neg__call2518
+        (str.++ "(not " SPrim0__sp0_ao__call2518 ")")
+        SPrim0__sp0_ao__call2518)))
+(assert (= SChain0__sc0_r1__call2517 SPrim0__sp0_s0__call2518))
+(assert (= SChain0__sc0_q1__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2517)
+        (TLCons__f0 SChain0__sc0_r1__call2517)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2517)
+        (TLCons__f1 SChain0__sc0_r1__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2527
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2517)
+        (TLCons__f0 SChain0__sc0_s2__call2517)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2527
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2517)
+        (TLCons__f1 SChain0__sc0_s2__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2527 ((_ is OpNot) SPrim0__sp0_h0__call2527)))
+(assert (= SPrim0__sp0_seed__call2527
+   (ite SPrim0__sp0_neg__call2527
+        SPrim0__sp0_t0__call2527
+        SChain0__sc0_s2__call2517)))
+(assert (= SPrim0__sp0_a0__call2527
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2527)
+        (TLCons__f0 SPrim0__sp0_seed__call2527)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2527
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2527)
+        (TLCons__f1 SPrim0__sp0_seed__call2527)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2527
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2527)
+        (TLCons__f0 SPrim0__sp0_s0__call2527)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2533 ((_ is IntLit) SPrim0__sp0_a0__call2527)))
+(assert (= SAtomR__sa_is_str__call2533 ((_ is StringLit) SPrim0__sp0_a0__call2527)))
+(assert (= SAtomR__sa_is_id__call2533 ((_ is Ident) SPrim0__sp0_a0__call2527)))
+(assert (= SAtomR__sa_true__call2533 ((_ is KwTrue) SPrim0__sp0_a0__call2527)))
+(assert (= SAtomR__sa_false__call2533 ((_ is KwFalse) SPrim0__sp0_a0__call2527)))
+(assert (= SAtomR__sa_iv__call2533
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2527)
+        (IntLit__f0 SPrim0__sp0_a0__call2527)
+        0)))
+(assert (= SAtomR__sa_sv__call2533
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2527)
+        (StringLit__f0 SPrim0__sp0_a0__call2527)
+        "")))
+(assert (= SAtomR__sa_idv__call2533
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2527)
+        (Ident__f0 SPrim0__sp0_a0__call2527)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2533
+   (and SAtomR__sa_is_id__call2533 ((_ is LParen) SPrim0__sp0_a1__call2527))))
+(assert (= SPrim0__sp0_ak__call2527
+   (and (or SAtomR__sa_is_int__call2533
+            SAtomR__sa_is_str__call2533
+            SAtomR__sa_true__call2533
+            SAtomR__sa_false__call2533
+            SAtomR__sa_is_id__call2533)
+        (not SAtomR__sa_ctor_head__call2533))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2533 0)
+                (str.from_int SAtomR__sa_iv__call2533)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2533)))))
+      (a!2 (ite SAtomR__sa_true__call2533
+                "true"
+                (ite SAtomR__sa_false__call2533
+                     "false"
+                     (ite SAtomR__sa_is_str__call2533
+                          (str.++ """" SAtomR__sa_sv__call2533 """")
+                          SAtomR__sa_idv__call2533)))))
+  (= SPrim0__sp0_ao__call2527 (ite SAtomR__sa_is_int__call2533 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2517 SPrim0__sp0_ak__call2527))
+(assert (= SChain0__sc0_o2__call2517
+   (ite SPrim0__sp0_neg__call2527
+        (str.++ "(not " SPrim0__sp0_ao__call2527 ")")
+        SPrim0__sp0_ao__call2527)))
+(assert (= SChain0__sc0_r2__call2517 SPrim0__sp0_s0__call2527))
+(assert (= SChain0__sc0_q2__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2517)
+        (TLCons__f0 SChain0__sc0_r2__call2517)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2517)
+        (TLCons__f1 SChain0__sc0_r2__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2536
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2517)
+        (TLCons__f0 SChain0__sc0_s3__call2517)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2536
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2517)
+        (TLCons__f1 SChain0__sc0_s3__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2536 ((_ is OpNot) SPrim0__sp0_h0__call2536)))
+(assert (= SPrim0__sp0_seed__call2536
+   (ite SPrim0__sp0_neg__call2536
+        SPrim0__sp0_t0__call2536
+        SChain0__sc0_s3__call2517)))
+(assert (= SPrim0__sp0_a0__call2536
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2536)
+        (TLCons__f0 SPrim0__sp0_seed__call2536)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2536
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2536)
+        (TLCons__f1 SPrim0__sp0_seed__call2536)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2536
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2536)
+        (TLCons__f0 SPrim0__sp0_s0__call2536)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2542 ((_ is IntLit) SPrim0__sp0_a0__call2536)))
+(assert (= SAtomR__sa_is_str__call2542 ((_ is StringLit) SPrim0__sp0_a0__call2536)))
+(assert (= SAtomR__sa_is_id__call2542 ((_ is Ident) SPrim0__sp0_a0__call2536)))
+(assert (= SAtomR__sa_true__call2542 ((_ is KwTrue) SPrim0__sp0_a0__call2536)))
+(assert (= SAtomR__sa_false__call2542 ((_ is KwFalse) SPrim0__sp0_a0__call2536)))
+(assert (= SAtomR__sa_iv__call2542
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2536)
+        (IntLit__f0 SPrim0__sp0_a0__call2536)
+        0)))
+(assert (= SAtomR__sa_sv__call2542
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2536)
+        (StringLit__f0 SPrim0__sp0_a0__call2536)
+        "")))
+(assert (= SAtomR__sa_idv__call2542
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2536)
+        (Ident__f0 SPrim0__sp0_a0__call2536)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2542
+   (and SAtomR__sa_is_id__call2542 ((_ is LParen) SPrim0__sp0_a1__call2536))))
+(assert (= SPrim0__sp0_ak__call2536
+   (and (or SAtomR__sa_is_int__call2542
+            SAtomR__sa_is_str__call2542
+            SAtomR__sa_true__call2542
+            SAtomR__sa_false__call2542
+            SAtomR__sa_is_id__call2542)
+        (not SAtomR__sa_ctor_head__call2542))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2542 0)
+                (str.from_int SAtomR__sa_iv__call2542)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2542)))))
+      (a!2 (ite SAtomR__sa_true__call2542
+                "true"
+                (ite SAtomR__sa_false__call2542
+                     "false"
+                     (ite SAtomR__sa_is_str__call2542
+                          (str.++ """" SAtomR__sa_sv__call2542 """")
+                          SAtomR__sa_idv__call2542)))))
+  (= SPrim0__sp0_ao__call2536 (ite SAtomR__sa_is_int__call2542 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2517 SPrim0__sp0_ak__call2536))
+(assert (= SChain0__sc0_o3__call2517
+   (ite SPrim0__sp0_neg__call2536
+        (str.++ "(not " SPrim0__sp0_ao__call2536 ")")
+        SPrim0__sp0_ao__call2536)))
+(assert (= SChain0__sc0_r3__call2517 SPrim0__sp0_s0__call2536))
+(assert (= SChain0__sc0_q3__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2517)
+        (TLCons__f0 SChain0__sc0_r3__call2517)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2517
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2517)
+        (TLCons__f1 SChain0__sc0_r3__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2545
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2517)
+        (TLCons__f0 SChain0__sc0_s4__call2517)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2545
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2517)
+        (TLCons__f1 SChain0__sc0_s4__call2517)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2545 ((_ is OpNot) SPrim0__sp0_h0__call2545)))
+(assert (= SPrim0__sp0_seed__call2545
+   (ite SPrim0__sp0_neg__call2545
+        SPrim0__sp0_t0__call2545
+        SChain0__sc0_s4__call2517)))
+(assert (= SPrim0__sp0_a0__call2545
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2545)
+        (TLCons__f0 SPrim0__sp0_seed__call2545)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2545
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2545)
+        (TLCons__f1 SPrim0__sp0_seed__call2545)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2545
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2545)
+        (TLCons__f0 SPrim0__sp0_s0__call2545)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2551 ((_ is IntLit) SPrim0__sp0_a0__call2545)))
+(assert (= SAtomR__sa_is_str__call2551 ((_ is StringLit) SPrim0__sp0_a0__call2545)))
+(assert (= SAtomR__sa_is_id__call2551 ((_ is Ident) SPrim0__sp0_a0__call2545)))
+(assert (= SAtomR__sa_true__call2551 ((_ is KwTrue) SPrim0__sp0_a0__call2545)))
+(assert (= SAtomR__sa_false__call2551 ((_ is KwFalse) SPrim0__sp0_a0__call2545)))
+(assert (= SAtomR__sa_iv__call2551
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2545)
+        (IntLit__f0 SPrim0__sp0_a0__call2545)
+        0)))
+(assert (= SAtomR__sa_sv__call2551
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2545)
+        (StringLit__f0 SPrim0__sp0_a0__call2545)
+        "")))
+(assert (= SAtomR__sa_idv__call2551
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2545)
+        (Ident__f0 SPrim0__sp0_a0__call2545)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2551
+   (and SAtomR__sa_is_id__call2551 ((_ is LParen) SPrim0__sp0_a1__call2545))))
+(assert (= SPrim0__sp0_ak__call2545
+   (and (or SAtomR__sa_is_int__call2551
+            SAtomR__sa_is_str__call2551
+            SAtomR__sa_true__call2551
+            SAtomR__sa_false__call2551
+            SAtomR__sa_is_id__call2551)
+        (not SAtomR__sa_ctor_head__call2551))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2551 0)
+                (str.from_int SAtomR__sa_iv__call2551)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2551)))))
+      (a!2 (ite SAtomR__sa_true__call2551
+                "true"
+                (ite SAtomR__sa_false__call2551
+                     "false"
+                     (ite SAtomR__sa_is_str__call2551
+                          (str.++ """" SAtomR__sa_sv__call2551 """")
+                          SAtomR__sa_idv__call2551)))))
+  (= SPrim0__sp0_ao__call2545 (ite SAtomR__sa_is_int__call2551 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2517 SPrim0__sp0_ak__call2545))
+(assert (= SChain0__sc0_o4__call2517
+   (ite SPrim0__sp0_neg__call2545
+        (str.++ "(not " SPrim0__sp0_ao__call2545 ")")
+        SPrim0__sp0_ao__call2545)))
+(assert (= SChain0__sc0_r4__call2517 SPrim0__sp0_s0__call2545))
+(assert (= SOpSmt__so_plus__call2552 ((_ is Plus) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_minus__call2552 ((_ is Minus) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_star__call2552 ((_ is Star) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_slash__call2552 ((_ is Slash) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_lt__call2552 ((_ is Lt) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_gt__call2552 ((_ is Gt) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_le__call2552 ((_ is OpLe) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_ge__call2552 ((_ is OpGe) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_eq__call2552 ((_ is Eq) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_ne__call2552 ((_ is OpNe) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_and__call2552 ((_ is OpAnd) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_or__call2552 ((_ is OpOr) SChain0__sc0_q1__call2517)))
+(assert (= SOpSmt__so_impl__call2552 ((_ is OpImplies) SChain0__sc0_q1__call2517)))
+(assert (= SChain0__sc0_op1k__call2517
+   (or SOpSmt__so_plus__call2552
+       SOpSmt__so_minus__call2552
+       SOpSmt__so_star__call2552
+       SOpSmt__so_slash__call2552
+       SOpSmt__so_lt__call2552
+       SOpSmt__so_gt__call2552
+       SOpSmt__so_le__call2552
+       SOpSmt__so_ge__call2552
+       SOpSmt__so_eq__call2552
+       SOpSmt__so_ne__call2552
+       SOpSmt__so_and__call2552
+       SOpSmt__so_or__call2552
+       SOpSmt__so_impl__call2552)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2552
+                "distinct"
+                (ite SOpSmt__so_and__call2552
+                     "and"
+                     (ite SOpSmt__so_or__call2552
+                          "or"
+                          (ite SOpSmt__so_impl__call2552 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2552
+                ">"
+                (ite SOpSmt__so_le__call2552
+                     "<="
+                     (ite SOpSmt__so_ge__call2552
+                          ">="
+                          (ite SOpSmt__so_eq__call2552 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2552
+                "-"
+                (ite SOpSmt__so_star__call2552
+                     "*"
+                     (ite SOpSmt__so_slash__call2552
+                          "div"
+                          (ite SOpSmt__so_lt__call2552 "<" a!2))))))
+  (= SChain0__sc0_op1__call2517 (ite SOpSmt__so_plus__call2552 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2553 ((_ is Plus) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_minus__call2553 ((_ is Minus) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_star__call2553 ((_ is Star) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_slash__call2553 ((_ is Slash) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_lt__call2553 ((_ is Lt) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_gt__call2553 ((_ is Gt) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_le__call2553 ((_ is OpLe) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_ge__call2553 ((_ is OpGe) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_eq__call2553 ((_ is Eq) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_ne__call2553 ((_ is OpNe) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_and__call2553 ((_ is OpAnd) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_or__call2553 ((_ is OpOr) SChain0__sc0_q3__call2517)))
+(assert (= SOpSmt__so_impl__call2553 ((_ is OpImplies) SChain0__sc0_q3__call2517)))
+(assert (= SChain0__sc0_op3k__call2517
+   (or SOpSmt__so_plus__call2553
+       SOpSmt__so_minus__call2553
+       SOpSmt__so_star__call2553
+       SOpSmt__so_slash__call2553
+       SOpSmt__so_lt__call2553
+       SOpSmt__so_gt__call2553
+       SOpSmt__so_le__call2553
+       SOpSmt__so_ge__call2553
+       SOpSmt__so_eq__call2553
+       SOpSmt__so_ne__call2553
+       SOpSmt__so_and__call2553
+       SOpSmt__so_or__call2553
+       SOpSmt__so_impl__call2553)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2553
+                "distinct"
+                (ite SOpSmt__so_and__call2553
+                     "and"
+                     (ite SOpSmt__so_or__call2553
+                          "or"
+                          (ite SOpSmt__so_impl__call2553 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2553
+                ">"
+                (ite SOpSmt__so_le__call2553
+                     "<="
+                     (ite SOpSmt__so_ge__call2553
+                          ">="
+                          (ite SOpSmt__so_eq__call2553 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2553
+                "-"
+                (ite SOpSmt__so_star__call2553
+                     "*"
+                     (ite SOpSmt__so_slash__call2553
+                          "div"
+                          (ite SOpSmt__so_lt__call2553 "<" a!2))))))
+  (= SChain0__sc0_op3__call2517 (ite SOpSmt__so_plus__call2553 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2517 ((_ is Question) SChain0__sc0_q1__call2517)))
+(assert (= SChain0__sc0_q2_tern__call2517 ((_ is Question) SChain0__sc0_q2__call2517)))
+(assert (= SChain0__sc0_q2_and__call2517 ((_ is OpAnd) SChain0__sc0_q2__call2517)))
+(assert (= SChain0__sc0_q2_or__call2517 ((_ is OpOr) SChain0__sc0_q2__call2517)))
+(assert (= SChain0__sc0_q2_bool__call2517
+   (or SChain0__sc0_q2_and__call2517 SChain0__sc0_q2_or__call2517)))
+(assert (= SChain0__sc0_b2__call2517 (ite SChain0__sc0_q2_and__call2517 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2517 ((_ is Colon) SChain0__sc0_q2__call2517)))
+(assert (= SChain0__sc0_q3_colon__call2517 ((_ is Colon) SChain0__sc0_q3__call2517)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2517
+                (and (and (and SChain0__sc0_k1__call2517
+                               SChain0__sc0_k2__call2517)
+                          SChain0__sc0_k3__call2517)
+                     SChain0__sc0_k4__call2517)
+                (and (and SChain0__sc0_k1__call2517 SChain0__sc0_k2__call2517)
+                     SChain0__sc0_k3__call2517))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2517
+                (and (and (and SChain0__sc0_k1__call2517
+                               SChain0__sc0_k2__call2517)
+                          SChain0__sc0_k3__call2517)
+                     SChain0__sc0_q3_colon__call2517
+                     SChain0__sc0_k4__call2517)
+                (ite SChain0__sc0_q2_bool__call2517
+                     a!1
+                     (and SChain0__sc0_k1__call2517 SChain0__sc0_k2__call2517)))))
+  (= SPrim1__sp1_ik__call2511
+     (ite SChain0__sc0_q1_tern__call2517
+          (and (and SChain0__sc0_k1__call2517 SChain0__sc0_k2__call2517)
+               SChain0__sc0_q2_colon__call2517
+               SChain0__sc0_k3__call2517)
+          (ite (not SChain0__sc0_op1k__call2517) SChain0__sc0_k1__call2517 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2517
+                (ite SChain0__sc0_op3k__call2517
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2517
+                                     " ("
+                                     SChain0__sc0_op1__call2517
+                                     " "
+                                     SChain0__sc0_o1__call2517
+                                     " "
+                                     SChain0__sc0_o2__call2517)
+                             ") ("
+                             SChain0__sc0_op3__call2517
+                             " "
+                             SChain0__sc0_o3__call2517
+                             " "
+                             SChain0__sc0_o4__call2517
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2517
+                                     " ("
+                                     SChain0__sc0_op1__call2517
+                                     " "
+                                     SChain0__sc0_o1__call2517
+                                     " "
+                                     SChain0__sc0_o2__call2517)
+                             ") "
+                             SChain0__sc0_o3__call2517
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2517
+                        " "
+                        SChain0__sc0_o1__call2517
+                        " "
+                        SChain0__sc0_o2__call2517
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2517
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2517
+                        " "
+                        SChain0__sc0_o2__call2517
+                        " "
+                        SChain0__sc0_o3__call2517
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2517)
+                     SChain0__sc0_o1__call2517
+                     (ite SChain0__sc0_q2_tern__call2517
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2517
+                                  " "
+                                  SChain0__sc0_o1__call2517
+                                  " "
+                                  SChain0__sc0_o2__call2517
+                                  ") "
+                                  SChain0__sc0_o3__call2517
+                                  " "
+                                  SChain0__sc0_o4__call2517
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2511 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2517)
+                SChain0__sc0_r1__call2517
+                (ite SChain0__sc0_q2_tern__call2517
+                     SChain0__sc0_r4__call2517
+                     (ite SChain0__sc0_q2_bool__call2517
+                          (ite SChain0__sc0_op3k__call2517
+                               SChain0__sc0_r4__call2517
+                               SChain0__sc0_r3__call2517)
+                          SChain0__sc0_r2__call2517)))))
+  (= SPrim1__sp1_ir__call2511
+     (ite SChain0__sc0_q1_tern__call2517 SChain0__sc0_r3__call2517 a!1))))
+(assert (= SPrim1__sp1_close__call2511
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2511)
+        (TLCons__f0 SPrim1__sp1_ir__call2511)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2511
+   (and SPrim1__sp1_par__call2511
+        SPrim1__sp1_ik__call2511
+        ((_ is RParen) SPrim1__sp1_close__call2511))))
+(assert (= SPrim1__sp1_pr__call2511
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2511)
+        (TLCons__f1 SPrim1__sp1_ir__call2511)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2556 ((_ is IntLit) SPrim1__sp1_b0__call2511)))
+(assert (= SAtomR__sa_is_str__call2556 ((_ is StringLit) SPrim1__sp1_b0__call2511)))
+(assert (= SAtomR__sa_is_id__call2556 ((_ is Ident) SPrim1__sp1_b0__call2511)))
+(assert (= SAtomR__sa_true__call2556 ((_ is KwTrue) SPrim1__sp1_b0__call2511)))
+(assert (= SAtomR__sa_false__call2556 ((_ is KwFalse) SPrim1__sp1_b0__call2511)))
+(assert (= SAtomR__sa_iv__call2556
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2511)
+        (IntLit__f0 SPrim1__sp1_b0__call2511)
+        0)))
+(assert (= SAtomR__sa_sv__call2556
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2511)
+        (StringLit__f0 SPrim1__sp1_b0__call2511)
+        "")))
+(assert (= SAtomR__sa_idv__call2556
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2511)
+        (Ident__f0 SPrim1__sp1_b0__call2511)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2556
+   (and SAtomR__sa_is_id__call2556 ((_ is LParen) SPrim1__sp1_b1__call2511))))
+(assert (= SPrim1__sp1_ak__call2511
+   (and (or SAtomR__sa_is_int__call2556
+            SAtomR__sa_is_str__call2556
+            SAtomR__sa_true__call2556
+            SAtomR__sa_false__call2556
+            SAtomR__sa_is_id__call2556)
+        (not SAtomR__sa_ctor_head__call2556))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2556 0)
+                (str.from_int SAtomR__sa_iv__call2556)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2556)))))
+      (a!2 (ite SAtomR__sa_true__call2556
+                "true"
+                (ite SAtomR__sa_false__call2556
+                     "false"
+                     (ite SAtomR__sa_is_str__call2556
+                          (str.++ """" SAtomR__sa_sv__call2556 """")
+                          SAtomR__sa_idv__call2556)))))
+  (= SPrim1__sp1_ao__call2511 (ite SAtomR__sa_is_int__call2556 a!1 a!2))))
+(assert (= SChain1__sc1_k1__call2510
+   (ite SPrim1__sp1_par__call2511
+        SPrim1__sp1_par_ok__call2511
+        SPrim1__sp1_ak__call2511)))
+(assert (= SPrim1__sp1_base__call2511
+   (ite SPrim1__sp1_par__call2511
+        SPrim1__sp1_io__call2511
+        SPrim1__sp1_ao__call2511)))
+(assert (= SChain1__sc1_o1__call2510
+   (ite SPrim1__sp1_neg__call2511
+        (str.++ "(not " SPrim1__sp1_base__call2511 ")")
+        SPrim1__sp1_base__call2511)))
+(assert (= SChain1__sc1_r1__call2510
+   (ite SPrim1__sp1_par__call2511
+        SPrim1__sp1_pr__call2511
+        SPrim1__sp1_bt__call2511)))
+(assert (= SChain1__sc1_q1__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2510)
+        (TLCons__f0 SChain1__sc1_r1__call2510)
+        EofTok)))
+(assert (= SChain1__sc1_s2__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2510)
+        (TLCons__f1 SChain1__sc1_r1__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2559
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2510)
+        (TLCons__f0 SChain1__sc1_s2__call2510)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2559
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2510)
+        (TLCons__f1 SChain1__sc1_s2__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2559 ((_ is OpNot) SPrim1__sp1_h0__call2559)))
+(assert (= SPrim1__sp1_seed__call2559
+   (ite SPrim1__sp1_neg__call2559
+        SPrim1__sp1_t0__call2559
+        SChain1__sc1_s2__call2510)))
+(assert (= SPrim1__sp1_b0__call2559
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2559)
+        (TLCons__f0 SPrim1__sp1_seed__call2559)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2559
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2559)
+        (TLCons__f1 SPrim1__sp1_seed__call2559)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2559
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2559)
+        (TLCons__f0 SPrim1__sp1_bt__call2559)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2559 ((_ is LParen) SPrim1__sp1_b0__call2559)))
+(assert (= SPrim0__sp0_h0__call2566
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2559)
+        (TLCons__f0 SPrim1__sp1_bt__call2559)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2566
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2559)
+        (TLCons__f1 SPrim1__sp1_bt__call2559)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2566 ((_ is OpNot) SPrim0__sp0_h0__call2566)))
+(assert (= SPrim0__sp0_seed__call2566
+   (ite SPrim0__sp0_neg__call2566
+        SPrim0__sp0_t0__call2566
+        SPrim1__sp1_bt__call2559)))
+(assert (= SPrim0__sp0_a0__call2566
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2566)
+        (TLCons__f0 SPrim0__sp0_seed__call2566)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2566
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2566)
+        (TLCons__f1 SPrim0__sp0_seed__call2566)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2566
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2566)
+        (TLCons__f0 SPrim0__sp0_s0__call2566)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2572 ((_ is IntLit) SPrim0__sp0_a0__call2566)))
+(assert (= SAtomR__sa_is_str__call2572 ((_ is StringLit) SPrim0__sp0_a0__call2566)))
+(assert (= SAtomR__sa_is_id__call2572 ((_ is Ident) SPrim0__sp0_a0__call2566)))
+(assert (= SAtomR__sa_true__call2572 ((_ is KwTrue) SPrim0__sp0_a0__call2566)))
+(assert (= SAtomR__sa_false__call2572 ((_ is KwFalse) SPrim0__sp0_a0__call2566)))
+(assert (= SAtomR__sa_iv__call2572
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2566)
+        (IntLit__f0 SPrim0__sp0_a0__call2566)
+        0)))
+(assert (= SAtomR__sa_sv__call2572
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2566)
+        (StringLit__f0 SPrim0__sp0_a0__call2566)
+        "")))
+(assert (= SAtomR__sa_idv__call2572
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2566)
+        (Ident__f0 SPrim0__sp0_a0__call2566)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2572
+   (and SAtomR__sa_is_id__call2572 ((_ is LParen) SPrim0__sp0_a1__call2566))))
+(assert (= SPrim0__sp0_ak__call2566
+   (and (or SAtomR__sa_is_int__call2572
+            SAtomR__sa_is_str__call2572
+            SAtomR__sa_true__call2572
+            SAtomR__sa_false__call2572
+            SAtomR__sa_is_id__call2572)
+        (not SAtomR__sa_ctor_head__call2572))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2572 0)
+                (str.from_int SAtomR__sa_iv__call2572)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2572)))))
+      (a!2 (ite SAtomR__sa_true__call2572
+                "true"
+                (ite SAtomR__sa_false__call2572
+                     "false"
+                     (ite SAtomR__sa_is_str__call2572
+                          (str.++ """" SAtomR__sa_sv__call2572 """")
+                          SAtomR__sa_idv__call2572)))))
+  (= SPrim0__sp0_ao__call2566 (ite SAtomR__sa_is_int__call2572 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2565 SPrim0__sp0_ak__call2566))
+(assert (= SChain0__sc0_o1__call2565
+   (ite SPrim0__sp0_neg__call2566
+        (str.++ "(not " SPrim0__sp0_ao__call2566 ")")
+        SPrim0__sp0_ao__call2566)))
+(assert (= SChain0__sc0_r1__call2565 SPrim0__sp0_s0__call2566))
+(assert (= SChain0__sc0_q1__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2565)
+        (TLCons__f0 SChain0__sc0_r1__call2565)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2565)
+        (TLCons__f1 SChain0__sc0_r1__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2575
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2565)
+        (TLCons__f0 SChain0__sc0_s2__call2565)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2575
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2565)
+        (TLCons__f1 SChain0__sc0_s2__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2575 ((_ is OpNot) SPrim0__sp0_h0__call2575)))
+(assert (= SPrim0__sp0_seed__call2575
+   (ite SPrim0__sp0_neg__call2575
+        SPrim0__sp0_t0__call2575
+        SChain0__sc0_s2__call2565)))
+(assert (= SPrim0__sp0_a0__call2575
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2575)
+        (TLCons__f0 SPrim0__sp0_seed__call2575)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2575
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2575)
+        (TLCons__f1 SPrim0__sp0_seed__call2575)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2575
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2575)
+        (TLCons__f0 SPrim0__sp0_s0__call2575)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2581 ((_ is IntLit) SPrim0__sp0_a0__call2575)))
+(assert (= SAtomR__sa_is_str__call2581 ((_ is StringLit) SPrim0__sp0_a0__call2575)))
+(assert (= SAtomR__sa_is_id__call2581 ((_ is Ident) SPrim0__sp0_a0__call2575)))
+(assert (= SAtomR__sa_true__call2581 ((_ is KwTrue) SPrim0__sp0_a0__call2575)))
+(assert (= SAtomR__sa_false__call2581 ((_ is KwFalse) SPrim0__sp0_a0__call2575)))
+(assert (= SAtomR__sa_iv__call2581
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2575)
+        (IntLit__f0 SPrim0__sp0_a0__call2575)
+        0)))
+(assert (= SAtomR__sa_sv__call2581
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2575)
+        (StringLit__f0 SPrim0__sp0_a0__call2575)
+        "")))
+(assert (= SAtomR__sa_idv__call2581
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2575)
+        (Ident__f0 SPrim0__sp0_a0__call2575)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2581
+   (and SAtomR__sa_is_id__call2581 ((_ is LParen) SPrim0__sp0_a1__call2575))))
+(assert (= SPrim0__sp0_ak__call2575
+   (and (or SAtomR__sa_is_int__call2581
+            SAtomR__sa_is_str__call2581
+            SAtomR__sa_true__call2581
+            SAtomR__sa_false__call2581
+            SAtomR__sa_is_id__call2581)
+        (not SAtomR__sa_ctor_head__call2581))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2581 0)
+                (str.from_int SAtomR__sa_iv__call2581)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2581)))))
+      (a!2 (ite SAtomR__sa_true__call2581
+                "true"
+                (ite SAtomR__sa_false__call2581
+                     "false"
+                     (ite SAtomR__sa_is_str__call2581
+                          (str.++ """" SAtomR__sa_sv__call2581 """")
+                          SAtomR__sa_idv__call2581)))))
+  (= SPrim0__sp0_ao__call2575 (ite SAtomR__sa_is_int__call2581 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2565 SPrim0__sp0_ak__call2575))
+(assert (= SChain0__sc0_o2__call2565
+   (ite SPrim0__sp0_neg__call2575
+        (str.++ "(not " SPrim0__sp0_ao__call2575 ")")
+        SPrim0__sp0_ao__call2575)))
+(assert (= SChain0__sc0_r2__call2565 SPrim0__sp0_s0__call2575))
+(assert (= SChain0__sc0_q2__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2565)
+        (TLCons__f0 SChain0__sc0_r2__call2565)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2565)
+        (TLCons__f1 SChain0__sc0_r2__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2584
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2565)
+        (TLCons__f0 SChain0__sc0_s3__call2565)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2584
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2565)
+        (TLCons__f1 SChain0__sc0_s3__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2584 ((_ is OpNot) SPrim0__sp0_h0__call2584)))
+(assert (= SPrim0__sp0_seed__call2584
+   (ite SPrim0__sp0_neg__call2584
+        SPrim0__sp0_t0__call2584
+        SChain0__sc0_s3__call2565)))
+(assert (= SPrim0__sp0_a0__call2584
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2584)
+        (TLCons__f0 SPrim0__sp0_seed__call2584)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2584
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2584)
+        (TLCons__f1 SPrim0__sp0_seed__call2584)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2584
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2584)
+        (TLCons__f0 SPrim0__sp0_s0__call2584)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2590 ((_ is IntLit) SPrim0__sp0_a0__call2584)))
+(assert (= SAtomR__sa_is_str__call2590 ((_ is StringLit) SPrim0__sp0_a0__call2584)))
+(assert (= SAtomR__sa_is_id__call2590 ((_ is Ident) SPrim0__sp0_a0__call2584)))
+(assert (= SAtomR__sa_true__call2590 ((_ is KwTrue) SPrim0__sp0_a0__call2584)))
+(assert (= SAtomR__sa_false__call2590 ((_ is KwFalse) SPrim0__sp0_a0__call2584)))
+(assert (= SAtomR__sa_iv__call2590
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2584)
+        (IntLit__f0 SPrim0__sp0_a0__call2584)
+        0)))
+(assert (= SAtomR__sa_sv__call2590
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2584)
+        (StringLit__f0 SPrim0__sp0_a0__call2584)
+        "")))
+(assert (= SAtomR__sa_idv__call2590
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2584)
+        (Ident__f0 SPrim0__sp0_a0__call2584)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2590
+   (and SAtomR__sa_is_id__call2590 ((_ is LParen) SPrim0__sp0_a1__call2584))))
+(assert (= SPrim0__sp0_ak__call2584
+   (and (or SAtomR__sa_is_int__call2590
+            SAtomR__sa_is_str__call2590
+            SAtomR__sa_true__call2590
+            SAtomR__sa_false__call2590
+            SAtomR__sa_is_id__call2590)
+        (not SAtomR__sa_ctor_head__call2590))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2590 0)
+                (str.from_int SAtomR__sa_iv__call2590)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2590)))))
+      (a!2 (ite SAtomR__sa_true__call2590
+                "true"
+                (ite SAtomR__sa_false__call2590
+                     "false"
+                     (ite SAtomR__sa_is_str__call2590
+                          (str.++ """" SAtomR__sa_sv__call2590 """")
+                          SAtomR__sa_idv__call2590)))))
+  (= SPrim0__sp0_ao__call2584 (ite SAtomR__sa_is_int__call2590 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2565 SPrim0__sp0_ak__call2584))
+(assert (= SChain0__sc0_o3__call2565
+   (ite SPrim0__sp0_neg__call2584
+        (str.++ "(not " SPrim0__sp0_ao__call2584 ")")
+        SPrim0__sp0_ao__call2584)))
+(assert (= SChain0__sc0_r3__call2565 SPrim0__sp0_s0__call2584))
+(assert (= SChain0__sc0_q3__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2565)
+        (TLCons__f0 SChain0__sc0_r3__call2565)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2565
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2565)
+        (TLCons__f1 SChain0__sc0_r3__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2593
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2565)
+        (TLCons__f0 SChain0__sc0_s4__call2565)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2593
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2565)
+        (TLCons__f1 SChain0__sc0_s4__call2565)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2593 ((_ is OpNot) SPrim0__sp0_h0__call2593)))
+(assert (= SPrim0__sp0_seed__call2593
+   (ite SPrim0__sp0_neg__call2593
+        SPrim0__sp0_t0__call2593
+        SChain0__sc0_s4__call2565)))
+(assert (= SPrim0__sp0_a0__call2593
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2593)
+        (TLCons__f0 SPrim0__sp0_seed__call2593)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2593
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2593)
+        (TLCons__f1 SPrim0__sp0_seed__call2593)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2593
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2593)
+        (TLCons__f0 SPrim0__sp0_s0__call2593)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2599 ((_ is IntLit) SPrim0__sp0_a0__call2593)))
+(assert (= SAtomR__sa_is_str__call2599 ((_ is StringLit) SPrim0__sp0_a0__call2593)))
+(assert (= SAtomR__sa_is_id__call2599 ((_ is Ident) SPrim0__sp0_a0__call2593)))
+(assert (= SAtomR__sa_true__call2599 ((_ is KwTrue) SPrim0__sp0_a0__call2593)))
+(assert (= SAtomR__sa_false__call2599 ((_ is KwFalse) SPrim0__sp0_a0__call2593)))
+(assert (= SAtomR__sa_iv__call2599
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2593)
+        (IntLit__f0 SPrim0__sp0_a0__call2593)
+        0)))
+(assert (= SAtomR__sa_sv__call2599
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2593)
+        (StringLit__f0 SPrim0__sp0_a0__call2593)
+        "")))
+(assert (= SAtomR__sa_idv__call2599
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2593)
+        (Ident__f0 SPrim0__sp0_a0__call2593)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2599
+   (and SAtomR__sa_is_id__call2599 ((_ is LParen) SPrim0__sp0_a1__call2593))))
+(assert (= SPrim0__sp0_ak__call2593
+   (and (or SAtomR__sa_is_int__call2599
+            SAtomR__sa_is_str__call2599
+            SAtomR__sa_true__call2599
+            SAtomR__sa_false__call2599
+            SAtomR__sa_is_id__call2599)
+        (not SAtomR__sa_ctor_head__call2599))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2599 0)
+                (str.from_int SAtomR__sa_iv__call2599)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2599)))))
+      (a!2 (ite SAtomR__sa_true__call2599
+                "true"
+                (ite SAtomR__sa_false__call2599
+                     "false"
+                     (ite SAtomR__sa_is_str__call2599
+                          (str.++ """" SAtomR__sa_sv__call2599 """")
+                          SAtomR__sa_idv__call2599)))))
+  (= SPrim0__sp0_ao__call2593 (ite SAtomR__sa_is_int__call2599 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2565 SPrim0__sp0_ak__call2593))
+(assert (= SChain0__sc0_o4__call2565
+   (ite SPrim0__sp0_neg__call2593
+        (str.++ "(not " SPrim0__sp0_ao__call2593 ")")
+        SPrim0__sp0_ao__call2593)))
+(assert (= SChain0__sc0_r4__call2565 SPrim0__sp0_s0__call2593))
+(assert (= SOpSmt__so_plus__call2600 ((_ is Plus) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_minus__call2600 ((_ is Minus) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_star__call2600 ((_ is Star) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_slash__call2600 ((_ is Slash) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_lt__call2600 ((_ is Lt) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_gt__call2600 ((_ is Gt) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_le__call2600 ((_ is OpLe) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_ge__call2600 ((_ is OpGe) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_eq__call2600 ((_ is Eq) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_ne__call2600 ((_ is OpNe) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_and__call2600 ((_ is OpAnd) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_or__call2600 ((_ is OpOr) SChain0__sc0_q1__call2565)))
+(assert (= SOpSmt__so_impl__call2600 ((_ is OpImplies) SChain0__sc0_q1__call2565)))
+(assert (= SChain0__sc0_op1k__call2565
+   (or SOpSmt__so_plus__call2600
+       SOpSmt__so_minus__call2600
+       SOpSmt__so_star__call2600
+       SOpSmt__so_slash__call2600
+       SOpSmt__so_lt__call2600
+       SOpSmt__so_gt__call2600
+       SOpSmt__so_le__call2600
+       SOpSmt__so_ge__call2600
+       SOpSmt__so_eq__call2600
+       SOpSmt__so_ne__call2600
+       SOpSmt__so_and__call2600
+       SOpSmt__so_or__call2600
+       SOpSmt__so_impl__call2600)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2600
+                "distinct"
+                (ite SOpSmt__so_and__call2600
+                     "and"
+                     (ite SOpSmt__so_or__call2600
+                          "or"
+                          (ite SOpSmt__so_impl__call2600 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2600
+                ">"
+                (ite SOpSmt__so_le__call2600
+                     "<="
+                     (ite SOpSmt__so_ge__call2600
+                          ">="
+                          (ite SOpSmt__so_eq__call2600 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2600
+                "-"
+                (ite SOpSmt__so_star__call2600
+                     "*"
+                     (ite SOpSmt__so_slash__call2600
+                          "div"
+                          (ite SOpSmt__so_lt__call2600 "<" a!2))))))
+  (= SChain0__sc0_op1__call2565 (ite SOpSmt__so_plus__call2600 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2601 ((_ is Plus) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_minus__call2601 ((_ is Minus) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_star__call2601 ((_ is Star) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_slash__call2601 ((_ is Slash) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_lt__call2601 ((_ is Lt) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_gt__call2601 ((_ is Gt) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_le__call2601 ((_ is OpLe) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_ge__call2601 ((_ is OpGe) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_eq__call2601 ((_ is Eq) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_ne__call2601 ((_ is OpNe) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_and__call2601 ((_ is OpAnd) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_or__call2601 ((_ is OpOr) SChain0__sc0_q3__call2565)))
+(assert (= SOpSmt__so_impl__call2601 ((_ is OpImplies) SChain0__sc0_q3__call2565)))
+(assert (= SChain0__sc0_op3k__call2565
+   (or SOpSmt__so_plus__call2601
+       SOpSmt__so_minus__call2601
+       SOpSmt__so_star__call2601
+       SOpSmt__so_slash__call2601
+       SOpSmt__so_lt__call2601
+       SOpSmt__so_gt__call2601
+       SOpSmt__so_le__call2601
+       SOpSmt__so_ge__call2601
+       SOpSmt__so_eq__call2601
+       SOpSmt__so_ne__call2601
+       SOpSmt__so_and__call2601
+       SOpSmt__so_or__call2601
+       SOpSmt__so_impl__call2601)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2601
+                "distinct"
+                (ite SOpSmt__so_and__call2601
+                     "and"
+                     (ite SOpSmt__so_or__call2601
+                          "or"
+                          (ite SOpSmt__so_impl__call2601 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2601
+                ">"
+                (ite SOpSmt__so_le__call2601
+                     "<="
+                     (ite SOpSmt__so_ge__call2601
+                          ">="
+                          (ite SOpSmt__so_eq__call2601 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2601
+                "-"
+                (ite SOpSmt__so_star__call2601
+                     "*"
+                     (ite SOpSmt__so_slash__call2601
+                          "div"
+                          (ite SOpSmt__so_lt__call2601 "<" a!2))))))
+  (= SChain0__sc0_op3__call2565 (ite SOpSmt__so_plus__call2601 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2565 ((_ is Question) SChain0__sc0_q1__call2565)))
+(assert (= SChain0__sc0_q2_tern__call2565 ((_ is Question) SChain0__sc0_q2__call2565)))
+(assert (= SChain0__sc0_q2_and__call2565 ((_ is OpAnd) SChain0__sc0_q2__call2565)))
+(assert (= SChain0__sc0_q2_or__call2565 ((_ is OpOr) SChain0__sc0_q2__call2565)))
+(assert (= SChain0__sc0_q2_bool__call2565
+   (or SChain0__sc0_q2_and__call2565 SChain0__sc0_q2_or__call2565)))
+(assert (= SChain0__sc0_b2__call2565 (ite SChain0__sc0_q2_and__call2565 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2565 ((_ is Colon) SChain0__sc0_q2__call2565)))
+(assert (= SChain0__sc0_q3_colon__call2565 ((_ is Colon) SChain0__sc0_q3__call2565)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2565
+                (and (and (and SChain0__sc0_k1__call2565
+                               SChain0__sc0_k2__call2565)
+                          SChain0__sc0_k3__call2565)
+                     SChain0__sc0_k4__call2565)
+                (and (and SChain0__sc0_k1__call2565 SChain0__sc0_k2__call2565)
+                     SChain0__sc0_k3__call2565))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2565
+                (and (and (and SChain0__sc0_k1__call2565
+                               SChain0__sc0_k2__call2565)
+                          SChain0__sc0_k3__call2565)
+                     SChain0__sc0_q3_colon__call2565
+                     SChain0__sc0_k4__call2565)
+                (ite SChain0__sc0_q2_bool__call2565
+                     a!1
+                     (and SChain0__sc0_k1__call2565 SChain0__sc0_k2__call2565)))))
+  (= SPrim1__sp1_ik__call2559
+     (ite SChain0__sc0_q1_tern__call2565
+          (and (and SChain0__sc0_k1__call2565 SChain0__sc0_k2__call2565)
+               SChain0__sc0_q2_colon__call2565
+               SChain0__sc0_k3__call2565)
+          (ite (not SChain0__sc0_op1k__call2565) SChain0__sc0_k1__call2565 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2565
+                (ite SChain0__sc0_op3k__call2565
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2565
+                                     " ("
+                                     SChain0__sc0_op1__call2565
+                                     " "
+                                     SChain0__sc0_o1__call2565
+                                     " "
+                                     SChain0__sc0_o2__call2565)
+                             ") ("
+                             SChain0__sc0_op3__call2565
+                             " "
+                             SChain0__sc0_o3__call2565
+                             " "
+                             SChain0__sc0_o4__call2565
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2565
+                                     " ("
+                                     SChain0__sc0_op1__call2565
+                                     " "
+                                     SChain0__sc0_o1__call2565
+                                     " "
+                                     SChain0__sc0_o2__call2565)
+                             ") "
+                             SChain0__sc0_o3__call2565
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2565
+                        " "
+                        SChain0__sc0_o1__call2565
+                        " "
+                        SChain0__sc0_o2__call2565
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2565
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2565
+                        " "
+                        SChain0__sc0_o2__call2565
+                        " "
+                        SChain0__sc0_o3__call2565
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2565)
+                     SChain0__sc0_o1__call2565
+                     (ite SChain0__sc0_q2_tern__call2565
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2565
+                                  " "
+                                  SChain0__sc0_o1__call2565
+                                  " "
+                                  SChain0__sc0_o2__call2565
+                                  ") "
+                                  SChain0__sc0_o3__call2565
+                                  " "
+                                  SChain0__sc0_o4__call2565
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2559 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2565)
+                SChain0__sc0_r1__call2565
+                (ite SChain0__sc0_q2_tern__call2565
+                     SChain0__sc0_r4__call2565
+                     (ite SChain0__sc0_q2_bool__call2565
+                          (ite SChain0__sc0_op3k__call2565
+                               SChain0__sc0_r4__call2565
+                               SChain0__sc0_r3__call2565)
+                          SChain0__sc0_r2__call2565)))))
+  (= SPrim1__sp1_ir__call2559
+     (ite SChain0__sc0_q1_tern__call2565 SChain0__sc0_r3__call2565 a!1))))
+(assert (= SPrim1__sp1_close__call2559
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2559)
+        (TLCons__f0 SPrim1__sp1_ir__call2559)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2559
+   (and SPrim1__sp1_par__call2559
+        SPrim1__sp1_ik__call2559
+        ((_ is RParen) SPrim1__sp1_close__call2559))))
+(assert (= SPrim1__sp1_pr__call2559
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2559)
+        (TLCons__f1 SPrim1__sp1_ir__call2559)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2604 ((_ is IntLit) SPrim1__sp1_b0__call2559)))
+(assert (= SAtomR__sa_is_str__call2604 ((_ is StringLit) SPrim1__sp1_b0__call2559)))
+(assert (= SAtomR__sa_is_id__call2604 ((_ is Ident) SPrim1__sp1_b0__call2559)))
+(assert (= SAtomR__sa_true__call2604 ((_ is KwTrue) SPrim1__sp1_b0__call2559)))
+(assert (= SAtomR__sa_false__call2604 ((_ is KwFalse) SPrim1__sp1_b0__call2559)))
+(assert (= SAtomR__sa_iv__call2604
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2559)
+        (IntLit__f0 SPrim1__sp1_b0__call2559)
+        0)))
+(assert (= SAtomR__sa_sv__call2604
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2559)
+        (StringLit__f0 SPrim1__sp1_b0__call2559)
+        "")))
+(assert (= SAtomR__sa_idv__call2604
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2559)
+        (Ident__f0 SPrim1__sp1_b0__call2559)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2604
+   (and SAtomR__sa_is_id__call2604 ((_ is LParen) SPrim1__sp1_b1__call2559))))
+(assert (= SPrim1__sp1_ak__call2559
+   (and (or SAtomR__sa_is_int__call2604
+            SAtomR__sa_is_str__call2604
+            SAtomR__sa_true__call2604
+            SAtomR__sa_false__call2604
+            SAtomR__sa_is_id__call2604)
+        (not SAtomR__sa_ctor_head__call2604))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2604 0)
+                (str.from_int SAtomR__sa_iv__call2604)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2604)))))
+      (a!2 (ite SAtomR__sa_true__call2604
+                "true"
+                (ite SAtomR__sa_false__call2604
+                     "false"
+                     (ite SAtomR__sa_is_str__call2604
+                          (str.++ """" SAtomR__sa_sv__call2604 """")
+                          SAtomR__sa_idv__call2604)))))
+  (= SPrim1__sp1_ao__call2559 (ite SAtomR__sa_is_int__call2604 a!1 a!2))))
+(assert (= SChain1__sc1_k2__call2510
+   (ite SPrim1__sp1_par__call2559
+        SPrim1__sp1_par_ok__call2559
+        SPrim1__sp1_ak__call2559)))
+(assert (= SPrim1__sp1_base__call2559
+   (ite SPrim1__sp1_par__call2559
+        SPrim1__sp1_io__call2559
+        SPrim1__sp1_ao__call2559)))
+(assert (= SChain1__sc1_o2__call2510
+   (ite SPrim1__sp1_neg__call2559
+        (str.++ "(not " SPrim1__sp1_base__call2559 ")")
+        SPrim1__sp1_base__call2559)))
+(assert (= SChain1__sc1_r2__call2510
+   (ite SPrim1__sp1_par__call2559
+        SPrim1__sp1_pr__call2559
+        SPrim1__sp1_bt__call2559)))
+(assert (= SChain1__sc1_q2__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2510)
+        (TLCons__f0 SChain1__sc1_r2__call2510)
+        EofTok)))
+(assert (= SChain1__sc1_s3__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2510)
+        (TLCons__f1 SChain1__sc1_r2__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2607
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2510)
+        (TLCons__f0 SChain1__sc1_s3__call2510)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2607
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2510)
+        (TLCons__f1 SChain1__sc1_s3__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2607 ((_ is OpNot) SPrim1__sp1_h0__call2607)))
+(assert (= SPrim1__sp1_seed__call2607
+   (ite SPrim1__sp1_neg__call2607
+        SPrim1__sp1_t0__call2607
+        SChain1__sc1_s3__call2510)))
+(assert (= SPrim1__sp1_b0__call2607
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2607)
+        (TLCons__f0 SPrim1__sp1_seed__call2607)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2607
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2607)
+        (TLCons__f1 SPrim1__sp1_seed__call2607)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2607
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2607)
+        (TLCons__f0 SPrim1__sp1_bt__call2607)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2607 ((_ is LParen) SPrim1__sp1_b0__call2607)))
+(assert (= SPrim0__sp0_h0__call2614
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2607)
+        (TLCons__f0 SPrim1__sp1_bt__call2607)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2614
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2607)
+        (TLCons__f1 SPrim1__sp1_bt__call2607)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2614 ((_ is OpNot) SPrim0__sp0_h0__call2614)))
+(assert (= SPrim0__sp0_seed__call2614
+   (ite SPrim0__sp0_neg__call2614
+        SPrim0__sp0_t0__call2614
+        SPrim1__sp1_bt__call2607)))
+(assert (= SPrim0__sp0_a0__call2614
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2614)
+        (TLCons__f0 SPrim0__sp0_seed__call2614)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2614
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2614)
+        (TLCons__f1 SPrim0__sp0_seed__call2614)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2614
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2614)
+        (TLCons__f0 SPrim0__sp0_s0__call2614)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2620 ((_ is IntLit) SPrim0__sp0_a0__call2614)))
+(assert (= SAtomR__sa_is_str__call2620 ((_ is StringLit) SPrim0__sp0_a0__call2614)))
+(assert (= SAtomR__sa_is_id__call2620 ((_ is Ident) SPrim0__sp0_a0__call2614)))
+(assert (= SAtomR__sa_true__call2620 ((_ is KwTrue) SPrim0__sp0_a0__call2614)))
+(assert (= SAtomR__sa_false__call2620 ((_ is KwFalse) SPrim0__sp0_a0__call2614)))
+(assert (= SAtomR__sa_iv__call2620
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2614)
+        (IntLit__f0 SPrim0__sp0_a0__call2614)
+        0)))
+(assert (= SAtomR__sa_sv__call2620
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2614)
+        (StringLit__f0 SPrim0__sp0_a0__call2614)
+        "")))
+(assert (= SAtomR__sa_idv__call2620
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2614)
+        (Ident__f0 SPrim0__sp0_a0__call2614)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2620
+   (and SAtomR__sa_is_id__call2620 ((_ is LParen) SPrim0__sp0_a1__call2614))))
+(assert (= SPrim0__sp0_ak__call2614
+   (and (or SAtomR__sa_is_int__call2620
+            SAtomR__sa_is_str__call2620
+            SAtomR__sa_true__call2620
+            SAtomR__sa_false__call2620
+            SAtomR__sa_is_id__call2620)
+        (not SAtomR__sa_ctor_head__call2620))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2620 0)
+                (str.from_int SAtomR__sa_iv__call2620)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2620)))))
+      (a!2 (ite SAtomR__sa_true__call2620
+                "true"
+                (ite SAtomR__sa_false__call2620
+                     "false"
+                     (ite SAtomR__sa_is_str__call2620
+                          (str.++ """" SAtomR__sa_sv__call2620 """")
+                          SAtomR__sa_idv__call2620)))))
+  (= SPrim0__sp0_ao__call2614 (ite SAtomR__sa_is_int__call2620 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2613 SPrim0__sp0_ak__call2614))
+(assert (= SChain0__sc0_o1__call2613
+   (ite SPrim0__sp0_neg__call2614
+        (str.++ "(not " SPrim0__sp0_ao__call2614 ")")
+        SPrim0__sp0_ao__call2614)))
+(assert (= SChain0__sc0_r1__call2613 SPrim0__sp0_s0__call2614))
+(assert (= SChain0__sc0_q1__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2613)
+        (TLCons__f0 SChain0__sc0_r1__call2613)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2613)
+        (TLCons__f1 SChain0__sc0_r1__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2623
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2613)
+        (TLCons__f0 SChain0__sc0_s2__call2613)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2623
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2613)
+        (TLCons__f1 SChain0__sc0_s2__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2623 ((_ is OpNot) SPrim0__sp0_h0__call2623)))
+(assert (= SPrim0__sp0_seed__call2623
+   (ite SPrim0__sp0_neg__call2623
+        SPrim0__sp0_t0__call2623
+        SChain0__sc0_s2__call2613)))
+(assert (= SPrim0__sp0_a0__call2623
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2623)
+        (TLCons__f0 SPrim0__sp0_seed__call2623)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2623
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2623)
+        (TLCons__f1 SPrim0__sp0_seed__call2623)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2623
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2623)
+        (TLCons__f0 SPrim0__sp0_s0__call2623)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2629 ((_ is IntLit) SPrim0__sp0_a0__call2623)))
+(assert (= SAtomR__sa_is_str__call2629 ((_ is StringLit) SPrim0__sp0_a0__call2623)))
+(assert (= SAtomR__sa_is_id__call2629 ((_ is Ident) SPrim0__sp0_a0__call2623)))
+(assert (= SAtomR__sa_true__call2629 ((_ is KwTrue) SPrim0__sp0_a0__call2623)))
+(assert (= SAtomR__sa_false__call2629 ((_ is KwFalse) SPrim0__sp0_a0__call2623)))
+(assert (= SAtomR__sa_iv__call2629
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2623)
+        (IntLit__f0 SPrim0__sp0_a0__call2623)
+        0)))
+(assert (= SAtomR__sa_sv__call2629
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2623)
+        (StringLit__f0 SPrim0__sp0_a0__call2623)
+        "")))
+(assert (= SAtomR__sa_idv__call2629
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2623)
+        (Ident__f0 SPrim0__sp0_a0__call2623)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2629
+   (and SAtomR__sa_is_id__call2629 ((_ is LParen) SPrim0__sp0_a1__call2623))))
+(assert (= SPrim0__sp0_ak__call2623
+   (and (or SAtomR__sa_is_int__call2629
+            SAtomR__sa_is_str__call2629
+            SAtomR__sa_true__call2629
+            SAtomR__sa_false__call2629
+            SAtomR__sa_is_id__call2629)
+        (not SAtomR__sa_ctor_head__call2629))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2629 0)
+                (str.from_int SAtomR__sa_iv__call2629)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2629)))))
+      (a!2 (ite SAtomR__sa_true__call2629
+                "true"
+                (ite SAtomR__sa_false__call2629
+                     "false"
+                     (ite SAtomR__sa_is_str__call2629
+                          (str.++ """" SAtomR__sa_sv__call2629 """")
+                          SAtomR__sa_idv__call2629)))))
+  (= SPrim0__sp0_ao__call2623 (ite SAtomR__sa_is_int__call2629 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2613 SPrim0__sp0_ak__call2623))
+(assert (= SChain0__sc0_o2__call2613
+   (ite SPrim0__sp0_neg__call2623
+        (str.++ "(not " SPrim0__sp0_ao__call2623 ")")
+        SPrim0__sp0_ao__call2623)))
+(assert (= SChain0__sc0_r2__call2613 SPrim0__sp0_s0__call2623))
+(assert (= SChain0__sc0_q2__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2613)
+        (TLCons__f0 SChain0__sc0_r2__call2613)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2613)
+        (TLCons__f1 SChain0__sc0_r2__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2632
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2613)
+        (TLCons__f0 SChain0__sc0_s3__call2613)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2632
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2613)
+        (TLCons__f1 SChain0__sc0_s3__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2632 ((_ is OpNot) SPrim0__sp0_h0__call2632)))
+(assert (= SPrim0__sp0_seed__call2632
+   (ite SPrim0__sp0_neg__call2632
+        SPrim0__sp0_t0__call2632
+        SChain0__sc0_s3__call2613)))
+(assert (= SPrim0__sp0_a0__call2632
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2632)
+        (TLCons__f0 SPrim0__sp0_seed__call2632)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2632
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2632)
+        (TLCons__f1 SPrim0__sp0_seed__call2632)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2632
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2632)
+        (TLCons__f0 SPrim0__sp0_s0__call2632)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2638 ((_ is IntLit) SPrim0__sp0_a0__call2632)))
+(assert (= SAtomR__sa_is_str__call2638 ((_ is StringLit) SPrim0__sp0_a0__call2632)))
+(assert (= SAtomR__sa_is_id__call2638 ((_ is Ident) SPrim0__sp0_a0__call2632)))
+(assert (= SAtomR__sa_true__call2638 ((_ is KwTrue) SPrim0__sp0_a0__call2632)))
+(assert (= SAtomR__sa_false__call2638 ((_ is KwFalse) SPrim0__sp0_a0__call2632)))
+(assert (= SAtomR__sa_iv__call2638
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2632)
+        (IntLit__f0 SPrim0__sp0_a0__call2632)
+        0)))
+(assert (= SAtomR__sa_sv__call2638
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2632)
+        (StringLit__f0 SPrim0__sp0_a0__call2632)
+        "")))
+(assert (= SAtomR__sa_idv__call2638
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2632)
+        (Ident__f0 SPrim0__sp0_a0__call2632)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2638
+   (and SAtomR__sa_is_id__call2638 ((_ is LParen) SPrim0__sp0_a1__call2632))))
+(assert (= SPrim0__sp0_ak__call2632
+   (and (or SAtomR__sa_is_int__call2638
+            SAtomR__sa_is_str__call2638
+            SAtomR__sa_true__call2638
+            SAtomR__sa_false__call2638
+            SAtomR__sa_is_id__call2638)
+        (not SAtomR__sa_ctor_head__call2638))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2638 0)
+                (str.from_int SAtomR__sa_iv__call2638)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2638)))))
+      (a!2 (ite SAtomR__sa_true__call2638
+                "true"
+                (ite SAtomR__sa_false__call2638
+                     "false"
+                     (ite SAtomR__sa_is_str__call2638
+                          (str.++ """" SAtomR__sa_sv__call2638 """")
+                          SAtomR__sa_idv__call2638)))))
+  (= SPrim0__sp0_ao__call2632 (ite SAtomR__sa_is_int__call2638 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2613 SPrim0__sp0_ak__call2632))
+(assert (= SChain0__sc0_o3__call2613
+   (ite SPrim0__sp0_neg__call2632
+        (str.++ "(not " SPrim0__sp0_ao__call2632 ")")
+        SPrim0__sp0_ao__call2632)))
+(assert (= SChain0__sc0_r3__call2613 SPrim0__sp0_s0__call2632))
+(assert (= SChain0__sc0_q3__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2613)
+        (TLCons__f0 SChain0__sc0_r3__call2613)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2613
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2613)
+        (TLCons__f1 SChain0__sc0_r3__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2641
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2613)
+        (TLCons__f0 SChain0__sc0_s4__call2613)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2641
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2613)
+        (TLCons__f1 SChain0__sc0_s4__call2613)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2641 ((_ is OpNot) SPrim0__sp0_h0__call2641)))
+(assert (= SPrim0__sp0_seed__call2641
+   (ite SPrim0__sp0_neg__call2641
+        SPrim0__sp0_t0__call2641
+        SChain0__sc0_s4__call2613)))
+(assert (= SPrim0__sp0_a0__call2641
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2641)
+        (TLCons__f0 SPrim0__sp0_seed__call2641)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2641
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2641)
+        (TLCons__f1 SPrim0__sp0_seed__call2641)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2641
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2641)
+        (TLCons__f0 SPrim0__sp0_s0__call2641)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2647 ((_ is IntLit) SPrim0__sp0_a0__call2641)))
+(assert (= SAtomR__sa_is_str__call2647 ((_ is StringLit) SPrim0__sp0_a0__call2641)))
+(assert (= SAtomR__sa_is_id__call2647 ((_ is Ident) SPrim0__sp0_a0__call2641)))
+(assert (= SAtomR__sa_true__call2647 ((_ is KwTrue) SPrim0__sp0_a0__call2641)))
+(assert (= SAtomR__sa_false__call2647 ((_ is KwFalse) SPrim0__sp0_a0__call2641)))
+(assert (= SAtomR__sa_iv__call2647
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2641)
+        (IntLit__f0 SPrim0__sp0_a0__call2641)
+        0)))
+(assert (= SAtomR__sa_sv__call2647
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2641)
+        (StringLit__f0 SPrim0__sp0_a0__call2641)
+        "")))
+(assert (= SAtomR__sa_idv__call2647
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2641)
+        (Ident__f0 SPrim0__sp0_a0__call2641)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2647
+   (and SAtomR__sa_is_id__call2647 ((_ is LParen) SPrim0__sp0_a1__call2641))))
+(assert (= SPrim0__sp0_ak__call2641
+   (and (or SAtomR__sa_is_int__call2647
+            SAtomR__sa_is_str__call2647
+            SAtomR__sa_true__call2647
+            SAtomR__sa_false__call2647
+            SAtomR__sa_is_id__call2647)
+        (not SAtomR__sa_ctor_head__call2647))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2647 0)
+                (str.from_int SAtomR__sa_iv__call2647)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2647)))))
+      (a!2 (ite SAtomR__sa_true__call2647
+                "true"
+                (ite SAtomR__sa_false__call2647
+                     "false"
+                     (ite SAtomR__sa_is_str__call2647
+                          (str.++ """" SAtomR__sa_sv__call2647 """")
+                          SAtomR__sa_idv__call2647)))))
+  (= SPrim0__sp0_ao__call2641 (ite SAtomR__sa_is_int__call2647 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2613 SPrim0__sp0_ak__call2641))
+(assert (= SChain0__sc0_o4__call2613
+   (ite SPrim0__sp0_neg__call2641
+        (str.++ "(not " SPrim0__sp0_ao__call2641 ")")
+        SPrim0__sp0_ao__call2641)))
+(assert (= SChain0__sc0_r4__call2613 SPrim0__sp0_s0__call2641))
+(assert (= SOpSmt__so_plus__call2648 ((_ is Plus) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_minus__call2648 ((_ is Minus) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_star__call2648 ((_ is Star) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_slash__call2648 ((_ is Slash) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_lt__call2648 ((_ is Lt) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_gt__call2648 ((_ is Gt) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_le__call2648 ((_ is OpLe) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_ge__call2648 ((_ is OpGe) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_eq__call2648 ((_ is Eq) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_ne__call2648 ((_ is OpNe) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_and__call2648 ((_ is OpAnd) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_or__call2648 ((_ is OpOr) SChain0__sc0_q1__call2613)))
+(assert (= SOpSmt__so_impl__call2648 ((_ is OpImplies) SChain0__sc0_q1__call2613)))
+(assert (= SChain0__sc0_op1k__call2613
+   (or SOpSmt__so_plus__call2648
+       SOpSmt__so_minus__call2648
+       SOpSmt__so_star__call2648
+       SOpSmt__so_slash__call2648
+       SOpSmt__so_lt__call2648
+       SOpSmt__so_gt__call2648
+       SOpSmt__so_le__call2648
+       SOpSmt__so_ge__call2648
+       SOpSmt__so_eq__call2648
+       SOpSmt__so_ne__call2648
+       SOpSmt__so_and__call2648
+       SOpSmt__so_or__call2648
+       SOpSmt__so_impl__call2648)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2648
+                "distinct"
+                (ite SOpSmt__so_and__call2648
+                     "and"
+                     (ite SOpSmt__so_or__call2648
+                          "or"
+                          (ite SOpSmt__so_impl__call2648 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2648
+                ">"
+                (ite SOpSmt__so_le__call2648
+                     "<="
+                     (ite SOpSmt__so_ge__call2648
+                          ">="
+                          (ite SOpSmt__so_eq__call2648 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2648
+                "-"
+                (ite SOpSmt__so_star__call2648
+                     "*"
+                     (ite SOpSmt__so_slash__call2648
+                          "div"
+                          (ite SOpSmt__so_lt__call2648 "<" a!2))))))
+  (= SChain0__sc0_op1__call2613 (ite SOpSmt__so_plus__call2648 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2649 ((_ is Plus) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_minus__call2649 ((_ is Minus) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_star__call2649 ((_ is Star) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_slash__call2649 ((_ is Slash) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_lt__call2649 ((_ is Lt) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_gt__call2649 ((_ is Gt) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_le__call2649 ((_ is OpLe) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_ge__call2649 ((_ is OpGe) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_eq__call2649 ((_ is Eq) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_ne__call2649 ((_ is OpNe) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_and__call2649 ((_ is OpAnd) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_or__call2649 ((_ is OpOr) SChain0__sc0_q3__call2613)))
+(assert (= SOpSmt__so_impl__call2649 ((_ is OpImplies) SChain0__sc0_q3__call2613)))
+(assert (= SChain0__sc0_op3k__call2613
+   (or SOpSmt__so_plus__call2649
+       SOpSmt__so_minus__call2649
+       SOpSmt__so_star__call2649
+       SOpSmt__so_slash__call2649
+       SOpSmt__so_lt__call2649
+       SOpSmt__so_gt__call2649
+       SOpSmt__so_le__call2649
+       SOpSmt__so_ge__call2649
+       SOpSmt__so_eq__call2649
+       SOpSmt__so_ne__call2649
+       SOpSmt__so_and__call2649
+       SOpSmt__so_or__call2649
+       SOpSmt__so_impl__call2649)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2649
+                "distinct"
+                (ite SOpSmt__so_and__call2649
+                     "and"
+                     (ite SOpSmt__so_or__call2649
+                          "or"
+                          (ite SOpSmt__so_impl__call2649 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2649
+                ">"
+                (ite SOpSmt__so_le__call2649
+                     "<="
+                     (ite SOpSmt__so_ge__call2649
+                          ">="
+                          (ite SOpSmt__so_eq__call2649 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2649
+                "-"
+                (ite SOpSmt__so_star__call2649
+                     "*"
+                     (ite SOpSmt__so_slash__call2649
+                          "div"
+                          (ite SOpSmt__so_lt__call2649 "<" a!2))))))
+  (= SChain0__sc0_op3__call2613 (ite SOpSmt__so_plus__call2649 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2613 ((_ is Question) SChain0__sc0_q1__call2613)))
+(assert (= SChain0__sc0_q2_tern__call2613 ((_ is Question) SChain0__sc0_q2__call2613)))
+(assert (= SChain0__sc0_q2_and__call2613 ((_ is OpAnd) SChain0__sc0_q2__call2613)))
+(assert (= SChain0__sc0_q2_or__call2613 ((_ is OpOr) SChain0__sc0_q2__call2613)))
+(assert (= SChain0__sc0_q2_bool__call2613
+   (or SChain0__sc0_q2_and__call2613 SChain0__sc0_q2_or__call2613)))
+(assert (= SChain0__sc0_b2__call2613 (ite SChain0__sc0_q2_and__call2613 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2613 ((_ is Colon) SChain0__sc0_q2__call2613)))
+(assert (= SChain0__sc0_q3_colon__call2613 ((_ is Colon) SChain0__sc0_q3__call2613)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2613
+                (and (and (and SChain0__sc0_k1__call2613
+                               SChain0__sc0_k2__call2613)
+                          SChain0__sc0_k3__call2613)
+                     SChain0__sc0_k4__call2613)
+                (and (and SChain0__sc0_k1__call2613 SChain0__sc0_k2__call2613)
+                     SChain0__sc0_k3__call2613))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2613
+                (and (and (and SChain0__sc0_k1__call2613
+                               SChain0__sc0_k2__call2613)
+                          SChain0__sc0_k3__call2613)
+                     SChain0__sc0_q3_colon__call2613
+                     SChain0__sc0_k4__call2613)
+                (ite SChain0__sc0_q2_bool__call2613
+                     a!1
+                     (and SChain0__sc0_k1__call2613 SChain0__sc0_k2__call2613)))))
+  (= SPrim1__sp1_ik__call2607
+     (ite SChain0__sc0_q1_tern__call2613
+          (and (and SChain0__sc0_k1__call2613 SChain0__sc0_k2__call2613)
+               SChain0__sc0_q2_colon__call2613
+               SChain0__sc0_k3__call2613)
+          (ite (not SChain0__sc0_op1k__call2613) SChain0__sc0_k1__call2613 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2613
+                (ite SChain0__sc0_op3k__call2613
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2613
+                                     " ("
+                                     SChain0__sc0_op1__call2613
+                                     " "
+                                     SChain0__sc0_o1__call2613
+                                     " "
+                                     SChain0__sc0_o2__call2613)
+                             ") ("
+                             SChain0__sc0_op3__call2613
+                             " "
+                             SChain0__sc0_o3__call2613
+                             " "
+                             SChain0__sc0_o4__call2613
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2613
+                                     " ("
+                                     SChain0__sc0_op1__call2613
+                                     " "
+                                     SChain0__sc0_o1__call2613
+                                     " "
+                                     SChain0__sc0_o2__call2613)
+                             ") "
+                             SChain0__sc0_o3__call2613
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2613
+                        " "
+                        SChain0__sc0_o1__call2613
+                        " "
+                        SChain0__sc0_o2__call2613
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2613
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2613
+                        " "
+                        SChain0__sc0_o2__call2613
+                        " "
+                        SChain0__sc0_o3__call2613
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2613)
+                     SChain0__sc0_o1__call2613
+                     (ite SChain0__sc0_q2_tern__call2613
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2613
+                                  " "
+                                  SChain0__sc0_o1__call2613
+                                  " "
+                                  SChain0__sc0_o2__call2613
+                                  ") "
+                                  SChain0__sc0_o3__call2613
+                                  " "
+                                  SChain0__sc0_o4__call2613
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2607 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2613)
+                SChain0__sc0_r1__call2613
+                (ite SChain0__sc0_q2_tern__call2613
+                     SChain0__sc0_r4__call2613
+                     (ite SChain0__sc0_q2_bool__call2613
+                          (ite SChain0__sc0_op3k__call2613
+                               SChain0__sc0_r4__call2613
+                               SChain0__sc0_r3__call2613)
+                          SChain0__sc0_r2__call2613)))))
+  (= SPrim1__sp1_ir__call2607
+     (ite SChain0__sc0_q1_tern__call2613 SChain0__sc0_r3__call2613 a!1))))
+(assert (= SPrim1__sp1_close__call2607
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2607)
+        (TLCons__f0 SPrim1__sp1_ir__call2607)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2607
+   (and SPrim1__sp1_par__call2607
+        SPrim1__sp1_ik__call2607
+        ((_ is RParen) SPrim1__sp1_close__call2607))))
+(assert (= SPrim1__sp1_pr__call2607
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2607)
+        (TLCons__f1 SPrim1__sp1_ir__call2607)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2652 ((_ is IntLit) SPrim1__sp1_b0__call2607)))
+(assert (= SAtomR__sa_is_str__call2652 ((_ is StringLit) SPrim1__sp1_b0__call2607)))
+(assert (= SAtomR__sa_is_id__call2652 ((_ is Ident) SPrim1__sp1_b0__call2607)))
+(assert (= SAtomR__sa_true__call2652 ((_ is KwTrue) SPrim1__sp1_b0__call2607)))
+(assert (= SAtomR__sa_false__call2652 ((_ is KwFalse) SPrim1__sp1_b0__call2607)))
+(assert (= SAtomR__sa_iv__call2652
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2607)
+        (IntLit__f0 SPrim1__sp1_b0__call2607)
+        0)))
+(assert (= SAtomR__sa_sv__call2652
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2607)
+        (StringLit__f0 SPrim1__sp1_b0__call2607)
+        "")))
+(assert (= SAtomR__sa_idv__call2652
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2607)
+        (Ident__f0 SPrim1__sp1_b0__call2607)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2652
+   (and SAtomR__sa_is_id__call2652 ((_ is LParen) SPrim1__sp1_b1__call2607))))
+(assert (= SPrim1__sp1_ak__call2607
+   (and (or SAtomR__sa_is_int__call2652
+            SAtomR__sa_is_str__call2652
+            SAtomR__sa_true__call2652
+            SAtomR__sa_false__call2652
+            SAtomR__sa_is_id__call2652)
+        (not SAtomR__sa_ctor_head__call2652))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2652 0)
+                (str.from_int SAtomR__sa_iv__call2652)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2652)))))
+      (a!2 (ite SAtomR__sa_true__call2652
+                "true"
+                (ite SAtomR__sa_false__call2652
+                     "false"
+                     (ite SAtomR__sa_is_str__call2652
+                          (str.++ """" SAtomR__sa_sv__call2652 """")
+                          SAtomR__sa_idv__call2652)))))
+  (= SPrim1__sp1_ao__call2607 (ite SAtomR__sa_is_int__call2652 a!1 a!2))))
+(assert (= SChain1__sc1_k3__call2510
+   (ite SPrim1__sp1_par__call2607
+        SPrim1__sp1_par_ok__call2607
+        SPrim1__sp1_ak__call2607)))
+(assert (= SPrim1__sp1_base__call2607
+   (ite SPrim1__sp1_par__call2607
+        SPrim1__sp1_io__call2607
+        SPrim1__sp1_ao__call2607)))
+(assert (= SChain1__sc1_o3__call2510
+   (ite SPrim1__sp1_neg__call2607
+        (str.++ "(not " SPrim1__sp1_base__call2607 ")")
+        SPrim1__sp1_base__call2607)))
+(assert (= SChain1__sc1_r3__call2510
+   (ite SPrim1__sp1_par__call2607
+        SPrim1__sp1_pr__call2607
+        SPrim1__sp1_bt__call2607)))
+(assert (= SChain1__sc1_q3__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2510)
+        (TLCons__f0 SChain1__sc1_r3__call2510)
+        EofTok)))
+(assert (= SChain1__sc1_s4__call2510
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2510)
+        (TLCons__f1 SChain1__sc1_r3__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2655
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2510)
+        (TLCons__f0 SChain1__sc1_s4__call2510)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2655
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2510)
+        (TLCons__f1 SChain1__sc1_s4__call2510)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2655 ((_ is OpNot) SPrim1__sp1_h0__call2655)))
+(assert (= SPrim1__sp1_seed__call2655
+   (ite SPrim1__sp1_neg__call2655
+        SPrim1__sp1_t0__call2655
+        SChain1__sc1_s4__call2510)))
+(assert (= SPrim1__sp1_b0__call2655
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2655)
+        (TLCons__f0 SPrim1__sp1_seed__call2655)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2655
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2655)
+        (TLCons__f1 SPrim1__sp1_seed__call2655)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2655
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2655)
+        (TLCons__f0 SPrim1__sp1_bt__call2655)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2655 ((_ is LParen) SPrim1__sp1_b0__call2655)))
+(assert (= SPrim0__sp0_h0__call2662
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2655)
+        (TLCons__f0 SPrim1__sp1_bt__call2655)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2662
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2655)
+        (TLCons__f1 SPrim1__sp1_bt__call2655)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2662 ((_ is OpNot) SPrim0__sp0_h0__call2662)))
+(assert (= SPrim0__sp0_seed__call2662
+   (ite SPrim0__sp0_neg__call2662
+        SPrim0__sp0_t0__call2662
+        SPrim1__sp1_bt__call2655)))
+(assert (= SPrim0__sp0_a0__call2662
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2662)
+        (TLCons__f0 SPrim0__sp0_seed__call2662)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2662
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2662)
+        (TLCons__f1 SPrim0__sp0_seed__call2662)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2662
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2662)
+        (TLCons__f0 SPrim0__sp0_s0__call2662)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2668 ((_ is IntLit) SPrim0__sp0_a0__call2662)))
+(assert (= SAtomR__sa_is_str__call2668 ((_ is StringLit) SPrim0__sp0_a0__call2662)))
+(assert (= SAtomR__sa_is_id__call2668 ((_ is Ident) SPrim0__sp0_a0__call2662)))
+(assert (= SAtomR__sa_true__call2668 ((_ is KwTrue) SPrim0__sp0_a0__call2662)))
+(assert (= SAtomR__sa_false__call2668 ((_ is KwFalse) SPrim0__sp0_a0__call2662)))
+(assert (= SAtomR__sa_iv__call2668
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2662)
+        (IntLit__f0 SPrim0__sp0_a0__call2662)
+        0)))
+(assert (= SAtomR__sa_sv__call2668
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2662)
+        (StringLit__f0 SPrim0__sp0_a0__call2662)
+        "")))
+(assert (= SAtomR__sa_idv__call2668
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2662)
+        (Ident__f0 SPrim0__sp0_a0__call2662)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2668
+   (and SAtomR__sa_is_id__call2668 ((_ is LParen) SPrim0__sp0_a1__call2662))))
+(assert (= SPrim0__sp0_ak__call2662
+   (and (or SAtomR__sa_is_int__call2668
+            SAtomR__sa_is_str__call2668
+            SAtomR__sa_true__call2668
+            SAtomR__sa_false__call2668
+            SAtomR__sa_is_id__call2668)
+        (not SAtomR__sa_ctor_head__call2668))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2668 0)
+                (str.from_int SAtomR__sa_iv__call2668)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2668)))))
+      (a!2 (ite SAtomR__sa_true__call2668
+                "true"
+                (ite SAtomR__sa_false__call2668
+                     "false"
+                     (ite SAtomR__sa_is_str__call2668
+                          (str.++ """" SAtomR__sa_sv__call2668 """")
+                          SAtomR__sa_idv__call2668)))))
+  (= SPrim0__sp0_ao__call2662 (ite SAtomR__sa_is_int__call2668 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2661 SPrim0__sp0_ak__call2662))
+(assert (= SChain0__sc0_o1__call2661
+   (ite SPrim0__sp0_neg__call2662
+        (str.++ "(not " SPrim0__sp0_ao__call2662 ")")
+        SPrim0__sp0_ao__call2662)))
+(assert (= SChain0__sc0_r1__call2661 SPrim0__sp0_s0__call2662))
+(assert (= SChain0__sc0_q1__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2661)
+        (TLCons__f0 SChain0__sc0_r1__call2661)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2661)
+        (TLCons__f1 SChain0__sc0_r1__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2671
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2661)
+        (TLCons__f0 SChain0__sc0_s2__call2661)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2671
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2661)
+        (TLCons__f1 SChain0__sc0_s2__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2671 ((_ is OpNot) SPrim0__sp0_h0__call2671)))
+(assert (= SPrim0__sp0_seed__call2671
+   (ite SPrim0__sp0_neg__call2671
+        SPrim0__sp0_t0__call2671
+        SChain0__sc0_s2__call2661)))
+(assert (= SPrim0__sp0_a0__call2671
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2671)
+        (TLCons__f0 SPrim0__sp0_seed__call2671)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2671
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2671)
+        (TLCons__f1 SPrim0__sp0_seed__call2671)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2671
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2671)
+        (TLCons__f0 SPrim0__sp0_s0__call2671)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2677 ((_ is IntLit) SPrim0__sp0_a0__call2671)))
+(assert (= SAtomR__sa_is_str__call2677 ((_ is StringLit) SPrim0__sp0_a0__call2671)))
+(assert (= SAtomR__sa_is_id__call2677 ((_ is Ident) SPrim0__sp0_a0__call2671)))
+(assert (= SAtomR__sa_true__call2677 ((_ is KwTrue) SPrim0__sp0_a0__call2671)))
+(assert (= SAtomR__sa_false__call2677 ((_ is KwFalse) SPrim0__sp0_a0__call2671)))
+(assert (= SAtomR__sa_iv__call2677
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2671)
+        (IntLit__f0 SPrim0__sp0_a0__call2671)
+        0)))
+(assert (= SAtomR__sa_sv__call2677
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2671)
+        (StringLit__f0 SPrim0__sp0_a0__call2671)
+        "")))
+(assert (= SAtomR__sa_idv__call2677
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2671)
+        (Ident__f0 SPrim0__sp0_a0__call2671)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2677
+   (and SAtomR__sa_is_id__call2677 ((_ is LParen) SPrim0__sp0_a1__call2671))))
+(assert (= SPrim0__sp0_ak__call2671
+   (and (or SAtomR__sa_is_int__call2677
+            SAtomR__sa_is_str__call2677
+            SAtomR__sa_true__call2677
+            SAtomR__sa_false__call2677
+            SAtomR__sa_is_id__call2677)
+        (not SAtomR__sa_ctor_head__call2677))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2677 0)
+                (str.from_int SAtomR__sa_iv__call2677)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2677)))))
+      (a!2 (ite SAtomR__sa_true__call2677
+                "true"
+                (ite SAtomR__sa_false__call2677
+                     "false"
+                     (ite SAtomR__sa_is_str__call2677
+                          (str.++ """" SAtomR__sa_sv__call2677 """")
+                          SAtomR__sa_idv__call2677)))))
+  (= SPrim0__sp0_ao__call2671 (ite SAtomR__sa_is_int__call2677 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2661 SPrim0__sp0_ak__call2671))
+(assert (= SChain0__sc0_o2__call2661
+   (ite SPrim0__sp0_neg__call2671
+        (str.++ "(not " SPrim0__sp0_ao__call2671 ")")
+        SPrim0__sp0_ao__call2671)))
+(assert (= SChain0__sc0_r2__call2661 SPrim0__sp0_s0__call2671))
+(assert (= SChain0__sc0_q2__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2661)
+        (TLCons__f0 SChain0__sc0_r2__call2661)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2661)
+        (TLCons__f1 SChain0__sc0_r2__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2680
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2661)
+        (TLCons__f0 SChain0__sc0_s3__call2661)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2680
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2661)
+        (TLCons__f1 SChain0__sc0_s3__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2680 ((_ is OpNot) SPrim0__sp0_h0__call2680)))
+(assert (= SPrim0__sp0_seed__call2680
+   (ite SPrim0__sp0_neg__call2680
+        SPrim0__sp0_t0__call2680
+        SChain0__sc0_s3__call2661)))
+(assert (= SPrim0__sp0_a0__call2680
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2680)
+        (TLCons__f0 SPrim0__sp0_seed__call2680)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2680
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2680)
+        (TLCons__f1 SPrim0__sp0_seed__call2680)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2680
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2680)
+        (TLCons__f0 SPrim0__sp0_s0__call2680)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2686 ((_ is IntLit) SPrim0__sp0_a0__call2680)))
+(assert (= SAtomR__sa_is_str__call2686 ((_ is StringLit) SPrim0__sp0_a0__call2680)))
+(assert (= SAtomR__sa_is_id__call2686 ((_ is Ident) SPrim0__sp0_a0__call2680)))
+(assert (= SAtomR__sa_true__call2686 ((_ is KwTrue) SPrim0__sp0_a0__call2680)))
+(assert (= SAtomR__sa_false__call2686 ((_ is KwFalse) SPrim0__sp0_a0__call2680)))
+(assert (= SAtomR__sa_iv__call2686
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2680)
+        (IntLit__f0 SPrim0__sp0_a0__call2680)
+        0)))
+(assert (= SAtomR__sa_sv__call2686
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2680)
+        (StringLit__f0 SPrim0__sp0_a0__call2680)
+        "")))
+(assert (= SAtomR__sa_idv__call2686
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2680)
+        (Ident__f0 SPrim0__sp0_a0__call2680)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2686
+   (and SAtomR__sa_is_id__call2686 ((_ is LParen) SPrim0__sp0_a1__call2680))))
+(assert (= SPrim0__sp0_ak__call2680
+   (and (or SAtomR__sa_is_int__call2686
+            SAtomR__sa_is_str__call2686
+            SAtomR__sa_true__call2686
+            SAtomR__sa_false__call2686
+            SAtomR__sa_is_id__call2686)
+        (not SAtomR__sa_ctor_head__call2686))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2686 0)
+                (str.from_int SAtomR__sa_iv__call2686)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2686)))))
+      (a!2 (ite SAtomR__sa_true__call2686
+                "true"
+                (ite SAtomR__sa_false__call2686
+                     "false"
+                     (ite SAtomR__sa_is_str__call2686
+                          (str.++ """" SAtomR__sa_sv__call2686 """")
+                          SAtomR__sa_idv__call2686)))))
+  (= SPrim0__sp0_ao__call2680 (ite SAtomR__sa_is_int__call2686 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2661 SPrim0__sp0_ak__call2680))
+(assert (= SChain0__sc0_o3__call2661
+   (ite SPrim0__sp0_neg__call2680
+        (str.++ "(not " SPrim0__sp0_ao__call2680 ")")
+        SPrim0__sp0_ao__call2680)))
+(assert (= SChain0__sc0_r3__call2661 SPrim0__sp0_s0__call2680))
+(assert (= SChain0__sc0_q3__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2661)
+        (TLCons__f0 SChain0__sc0_r3__call2661)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2661
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2661)
+        (TLCons__f1 SChain0__sc0_r3__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2689
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2661)
+        (TLCons__f0 SChain0__sc0_s4__call2661)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2689
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2661)
+        (TLCons__f1 SChain0__sc0_s4__call2661)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2689 ((_ is OpNot) SPrim0__sp0_h0__call2689)))
+(assert (= SPrim0__sp0_seed__call2689
+   (ite SPrim0__sp0_neg__call2689
+        SPrim0__sp0_t0__call2689
+        SChain0__sc0_s4__call2661)))
+(assert (= SPrim0__sp0_a0__call2689
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2689)
+        (TLCons__f0 SPrim0__sp0_seed__call2689)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2689
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2689)
+        (TLCons__f1 SPrim0__sp0_seed__call2689)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2689
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2689)
+        (TLCons__f0 SPrim0__sp0_s0__call2689)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2695 ((_ is IntLit) SPrim0__sp0_a0__call2689)))
+(assert (= SAtomR__sa_is_str__call2695 ((_ is StringLit) SPrim0__sp0_a0__call2689)))
+(assert (= SAtomR__sa_is_id__call2695 ((_ is Ident) SPrim0__sp0_a0__call2689)))
+(assert (= SAtomR__sa_true__call2695 ((_ is KwTrue) SPrim0__sp0_a0__call2689)))
+(assert (= SAtomR__sa_false__call2695 ((_ is KwFalse) SPrim0__sp0_a0__call2689)))
+(assert (= SAtomR__sa_iv__call2695
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2689)
+        (IntLit__f0 SPrim0__sp0_a0__call2689)
+        0)))
+(assert (= SAtomR__sa_sv__call2695
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2689)
+        (StringLit__f0 SPrim0__sp0_a0__call2689)
+        "")))
+(assert (= SAtomR__sa_idv__call2695
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2689)
+        (Ident__f0 SPrim0__sp0_a0__call2689)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2695
+   (and SAtomR__sa_is_id__call2695 ((_ is LParen) SPrim0__sp0_a1__call2689))))
+(assert (= SPrim0__sp0_ak__call2689
+   (and (or SAtomR__sa_is_int__call2695
+            SAtomR__sa_is_str__call2695
+            SAtomR__sa_true__call2695
+            SAtomR__sa_false__call2695
+            SAtomR__sa_is_id__call2695)
+        (not SAtomR__sa_ctor_head__call2695))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2695 0)
+                (str.from_int SAtomR__sa_iv__call2695)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2695)))))
+      (a!2 (ite SAtomR__sa_true__call2695
+                "true"
+                (ite SAtomR__sa_false__call2695
+                     "false"
+                     (ite SAtomR__sa_is_str__call2695
+                          (str.++ """" SAtomR__sa_sv__call2695 """")
+                          SAtomR__sa_idv__call2695)))))
+  (= SPrim0__sp0_ao__call2689 (ite SAtomR__sa_is_int__call2695 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2661 SPrim0__sp0_ak__call2689))
+(assert (= SChain0__sc0_o4__call2661
+   (ite SPrim0__sp0_neg__call2689
+        (str.++ "(not " SPrim0__sp0_ao__call2689 ")")
+        SPrim0__sp0_ao__call2689)))
+(assert (= SChain0__sc0_r4__call2661 SPrim0__sp0_s0__call2689))
+(assert (= SOpSmt__so_plus__call2696 ((_ is Plus) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_minus__call2696 ((_ is Minus) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_star__call2696 ((_ is Star) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_slash__call2696 ((_ is Slash) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_lt__call2696 ((_ is Lt) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_gt__call2696 ((_ is Gt) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_le__call2696 ((_ is OpLe) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_ge__call2696 ((_ is OpGe) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_eq__call2696 ((_ is Eq) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_ne__call2696 ((_ is OpNe) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_and__call2696 ((_ is OpAnd) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_or__call2696 ((_ is OpOr) SChain0__sc0_q1__call2661)))
+(assert (= SOpSmt__so_impl__call2696 ((_ is OpImplies) SChain0__sc0_q1__call2661)))
+(assert (= SChain0__sc0_op1k__call2661
+   (or SOpSmt__so_plus__call2696
+       SOpSmt__so_minus__call2696
+       SOpSmt__so_star__call2696
+       SOpSmt__so_slash__call2696
+       SOpSmt__so_lt__call2696
+       SOpSmt__so_gt__call2696
+       SOpSmt__so_le__call2696
+       SOpSmt__so_ge__call2696
+       SOpSmt__so_eq__call2696
+       SOpSmt__so_ne__call2696
+       SOpSmt__so_and__call2696
+       SOpSmt__so_or__call2696
+       SOpSmt__so_impl__call2696)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2696
+                "distinct"
+                (ite SOpSmt__so_and__call2696
+                     "and"
+                     (ite SOpSmt__so_or__call2696
+                          "or"
+                          (ite SOpSmt__so_impl__call2696 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2696
+                ">"
+                (ite SOpSmt__so_le__call2696
+                     "<="
+                     (ite SOpSmt__so_ge__call2696
+                          ">="
+                          (ite SOpSmt__so_eq__call2696 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2696
+                "-"
+                (ite SOpSmt__so_star__call2696
+                     "*"
+                     (ite SOpSmt__so_slash__call2696
+                          "div"
+                          (ite SOpSmt__so_lt__call2696 "<" a!2))))))
+  (= SChain0__sc0_op1__call2661 (ite SOpSmt__so_plus__call2696 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2697 ((_ is Plus) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_minus__call2697 ((_ is Minus) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_star__call2697 ((_ is Star) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_slash__call2697 ((_ is Slash) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_lt__call2697 ((_ is Lt) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_gt__call2697 ((_ is Gt) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_le__call2697 ((_ is OpLe) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_ge__call2697 ((_ is OpGe) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_eq__call2697 ((_ is Eq) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_ne__call2697 ((_ is OpNe) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_and__call2697 ((_ is OpAnd) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_or__call2697 ((_ is OpOr) SChain0__sc0_q3__call2661)))
+(assert (= SOpSmt__so_impl__call2697 ((_ is OpImplies) SChain0__sc0_q3__call2661)))
+(assert (= SChain0__sc0_op3k__call2661
+   (or SOpSmt__so_plus__call2697
+       SOpSmt__so_minus__call2697
+       SOpSmt__so_star__call2697
+       SOpSmt__so_slash__call2697
+       SOpSmt__so_lt__call2697
+       SOpSmt__so_gt__call2697
+       SOpSmt__so_le__call2697
+       SOpSmt__so_ge__call2697
+       SOpSmt__so_eq__call2697
+       SOpSmt__so_ne__call2697
+       SOpSmt__so_and__call2697
+       SOpSmt__so_or__call2697
+       SOpSmt__so_impl__call2697)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2697
+                "distinct"
+                (ite SOpSmt__so_and__call2697
+                     "and"
+                     (ite SOpSmt__so_or__call2697
+                          "or"
+                          (ite SOpSmt__so_impl__call2697 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2697
+                ">"
+                (ite SOpSmt__so_le__call2697
+                     "<="
+                     (ite SOpSmt__so_ge__call2697
+                          ">="
+                          (ite SOpSmt__so_eq__call2697 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2697
+                "-"
+                (ite SOpSmt__so_star__call2697
+                     "*"
+                     (ite SOpSmt__so_slash__call2697
+                          "div"
+                          (ite SOpSmt__so_lt__call2697 "<" a!2))))))
+  (= SChain0__sc0_op3__call2661 (ite SOpSmt__so_plus__call2697 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2661 ((_ is Question) SChain0__sc0_q1__call2661)))
+(assert (= SChain0__sc0_q2_tern__call2661 ((_ is Question) SChain0__sc0_q2__call2661)))
+(assert (= SChain0__sc0_q2_and__call2661 ((_ is OpAnd) SChain0__sc0_q2__call2661)))
+(assert (= SChain0__sc0_q2_or__call2661 ((_ is OpOr) SChain0__sc0_q2__call2661)))
+(assert (= SChain0__sc0_q2_bool__call2661
+   (or SChain0__sc0_q2_and__call2661 SChain0__sc0_q2_or__call2661)))
+(assert (= SChain0__sc0_b2__call2661 (ite SChain0__sc0_q2_and__call2661 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2661 ((_ is Colon) SChain0__sc0_q2__call2661)))
+(assert (= SChain0__sc0_q3_colon__call2661 ((_ is Colon) SChain0__sc0_q3__call2661)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2661
+                (and (and (and SChain0__sc0_k1__call2661
+                               SChain0__sc0_k2__call2661)
+                          SChain0__sc0_k3__call2661)
+                     SChain0__sc0_k4__call2661)
+                (and (and SChain0__sc0_k1__call2661 SChain0__sc0_k2__call2661)
+                     SChain0__sc0_k3__call2661))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2661
+                (and (and (and SChain0__sc0_k1__call2661
+                               SChain0__sc0_k2__call2661)
+                          SChain0__sc0_k3__call2661)
+                     SChain0__sc0_q3_colon__call2661
+                     SChain0__sc0_k4__call2661)
+                (ite SChain0__sc0_q2_bool__call2661
+                     a!1
+                     (and SChain0__sc0_k1__call2661 SChain0__sc0_k2__call2661)))))
+  (= SPrim1__sp1_ik__call2655
+     (ite SChain0__sc0_q1_tern__call2661
+          (and (and SChain0__sc0_k1__call2661 SChain0__sc0_k2__call2661)
+               SChain0__sc0_q2_colon__call2661
+               SChain0__sc0_k3__call2661)
+          (ite (not SChain0__sc0_op1k__call2661) SChain0__sc0_k1__call2661 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2661
+                (ite SChain0__sc0_op3k__call2661
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2661
+                                     " ("
+                                     SChain0__sc0_op1__call2661
+                                     " "
+                                     SChain0__sc0_o1__call2661
+                                     " "
+                                     SChain0__sc0_o2__call2661)
+                             ") ("
+                             SChain0__sc0_op3__call2661
+                             " "
+                             SChain0__sc0_o3__call2661
+                             " "
+                             SChain0__sc0_o4__call2661
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2661
+                                     " ("
+                                     SChain0__sc0_op1__call2661
+                                     " "
+                                     SChain0__sc0_o1__call2661
+                                     " "
+                                     SChain0__sc0_o2__call2661)
+                             ") "
+                             SChain0__sc0_o3__call2661
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2661
+                        " "
+                        SChain0__sc0_o1__call2661
+                        " "
+                        SChain0__sc0_o2__call2661
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2661
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2661
+                        " "
+                        SChain0__sc0_o2__call2661
+                        " "
+                        SChain0__sc0_o3__call2661
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2661)
+                     SChain0__sc0_o1__call2661
+                     (ite SChain0__sc0_q2_tern__call2661
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2661
+                                  " "
+                                  SChain0__sc0_o1__call2661
+                                  " "
+                                  SChain0__sc0_o2__call2661
+                                  ") "
+                                  SChain0__sc0_o3__call2661
+                                  " "
+                                  SChain0__sc0_o4__call2661
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2655 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2661)
+                SChain0__sc0_r1__call2661
+                (ite SChain0__sc0_q2_tern__call2661
+                     SChain0__sc0_r4__call2661
+                     (ite SChain0__sc0_q2_bool__call2661
+                          (ite SChain0__sc0_op3k__call2661
+                               SChain0__sc0_r4__call2661
+                               SChain0__sc0_r3__call2661)
+                          SChain0__sc0_r2__call2661)))))
+  (= SPrim1__sp1_ir__call2655
+     (ite SChain0__sc0_q1_tern__call2661 SChain0__sc0_r3__call2661 a!1))))
+(assert (= SPrim1__sp1_close__call2655
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2655)
+        (TLCons__f0 SPrim1__sp1_ir__call2655)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2655
+   (and SPrim1__sp1_par__call2655
+        SPrim1__sp1_ik__call2655
+        ((_ is RParen) SPrim1__sp1_close__call2655))))
+(assert (= SPrim1__sp1_pr__call2655
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2655)
+        (TLCons__f1 SPrim1__sp1_ir__call2655)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2700 ((_ is IntLit) SPrim1__sp1_b0__call2655)))
+(assert (= SAtomR__sa_is_str__call2700 ((_ is StringLit) SPrim1__sp1_b0__call2655)))
+(assert (= SAtomR__sa_is_id__call2700 ((_ is Ident) SPrim1__sp1_b0__call2655)))
+(assert (= SAtomR__sa_true__call2700 ((_ is KwTrue) SPrim1__sp1_b0__call2655)))
+(assert (= SAtomR__sa_false__call2700 ((_ is KwFalse) SPrim1__sp1_b0__call2655)))
+(assert (= SAtomR__sa_iv__call2700
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2655)
+        (IntLit__f0 SPrim1__sp1_b0__call2655)
+        0)))
+(assert (= SAtomR__sa_sv__call2700
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2655)
+        (StringLit__f0 SPrim1__sp1_b0__call2655)
+        "")))
+(assert (= SAtomR__sa_idv__call2700
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2655)
+        (Ident__f0 SPrim1__sp1_b0__call2655)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2700
+   (and SAtomR__sa_is_id__call2700 ((_ is LParen) SPrim1__sp1_b1__call2655))))
+(assert (= SPrim1__sp1_ak__call2655
+   (and (or SAtomR__sa_is_int__call2700
+            SAtomR__sa_is_str__call2700
+            SAtomR__sa_true__call2700
+            SAtomR__sa_false__call2700
+            SAtomR__sa_is_id__call2700)
+        (not SAtomR__sa_ctor_head__call2700))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2700 0)
+                (str.from_int SAtomR__sa_iv__call2700)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2700)))))
+      (a!2 (ite SAtomR__sa_true__call2700
+                "true"
+                (ite SAtomR__sa_false__call2700
+                     "false"
+                     (ite SAtomR__sa_is_str__call2700
+                          (str.++ """" SAtomR__sa_sv__call2700 """")
+                          SAtomR__sa_idv__call2700)))))
+  (= SPrim1__sp1_ao__call2655 (ite SAtomR__sa_is_int__call2700 a!1 a!2))))
+(assert (= SChain1__sc1_k4__call2510
+   (ite SPrim1__sp1_par__call2655
+        SPrim1__sp1_par_ok__call2655
+        SPrim1__sp1_ak__call2655)))
+(assert (= SPrim1__sp1_base__call2655
+   (ite SPrim1__sp1_par__call2655
+        SPrim1__sp1_io__call2655
+        SPrim1__sp1_ao__call2655)))
+(assert (= SChain1__sc1_o4__call2510
+   (ite SPrim1__sp1_neg__call2655
+        (str.++ "(not " SPrim1__sp1_base__call2655 ")")
+        SPrim1__sp1_base__call2655)))
+(assert (= SChain1__sc1_r4__call2510
+   (ite SPrim1__sp1_par__call2655
+        SPrim1__sp1_pr__call2655
+        SPrim1__sp1_bt__call2655)))
+(assert (= SOpSmt__so_plus__call2701 ((_ is Plus) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_minus__call2701 ((_ is Minus) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_star__call2701 ((_ is Star) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_slash__call2701 ((_ is Slash) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_lt__call2701 ((_ is Lt) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_gt__call2701 ((_ is Gt) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_le__call2701 ((_ is OpLe) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_ge__call2701 ((_ is OpGe) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_eq__call2701 ((_ is Eq) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_ne__call2701 ((_ is OpNe) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_and__call2701 ((_ is OpAnd) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_or__call2701 ((_ is OpOr) SChain1__sc1_q1__call2510)))
+(assert (= SOpSmt__so_impl__call2701 ((_ is OpImplies) SChain1__sc1_q1__call2510)))
+(assert (= SChain1__sc1_op1k__call2510
+   (or SOpSmt__so_plus__call2701
+       SOpSmt__so_minus__call2701
+       SOpSmt__so_star__call2701
+       SOpSmt__so_slash__call2701
+       SOpSmt__so_lt__call2701
+       SOpSmt__so_gt__call2701
+       SOpSmt__so_le__call2701
+       SOpSmt__so_ge__call2701
+       SOpSmt__so_eq__call2701
+       SOpSmt__so_ne__call2701
+       SOpSmt__so_and__call2701
+       SOpSmt__so_or__call2701
+       SOpSmt__so_impl__call2701)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2701
+                "distinct"
+                (ite SOpSmt__so_and__call2701
+                     "and"
+                     (ite SOpSmt__so_or__call2701
+                          "or"
+                          (ite SOpSmt__so_impl__call2701 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2701
+                ">"
+                (ite SOpSmt__so_le__call2701
+                     "<="
+                     (ite SOpSmt__so_ge__call2701
+                          ">="
+                          (ite SOpSmt__so_eq__call2701 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2701
+                "-"
+                (ite SOpSmt__so_star__call2701
+                     "*"
+                     (ite SOpSmt__so_slash__call2701
+                          "div"
+                          (ite SOpSmt__so_lt__call2701 "<" a!2))))))
+  (= SChain1__sc1_op1__call2510 (ite SOpSmt__so_plus__call2701 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2702 ((_ is Plus) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_minus__call2702 ((_ is Minus) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_star__call2702 ((_ is Star) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_slash__call2702 ((_ is Slash) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_lt__call2702 ((_ is Lt) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_gt__call2702 ((_ is Gt) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_le__call2702 ((_ is OpLe) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_ge__call2702 ((_ is OpGe) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_eq__call2702 ((_ is Eq) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_ne__call2702 ((_ is OpNe) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_and__call2702 ((_ is OpAnd) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_or__call2702 ((_ is OpOr) SChain1__sc1_q3__call2510)))
+(assert (= SOpSmt__so_impl__call2702 ((_ is OpImplies) SChain1__sc1_q3__call2510)))
+(assert (= SChain1__sc1_op3k__call2510
+   (or SOpSmt__so_plus__call2702
+       SOpSmt__so_minus__call2702
+       SOpSmt__so_star__call2702
+       SOpSmt__so_slash__call2702
+       SOpSmt__so_lt__call2702
+       SOpSmt__so_gt__call2702
+       SOpSmt__so_le__call2702
+       SOpSmt__so_ge__call2702
+       SOpSmt__so_eq__call2702
+       SOpSmt__so_ne__call2702
+       SOpSmt__so_and__call2702
+       SOpSmt__so_or__call2702
+       SOpSmt__so_impl__call2702)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2702
+                "distinct"
+                (ite SOpSmt__so_and__call2702
+                     "and"
+                     (ite SOpSmt__so_or__call2702
+                          "or"
+                          (ite SOpSmt__so_impl__call2702 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2702
+                ">"
+                (ite SOpSmt__so_le__call2702
+                     "<="
+                     (ite SOpSmt__so_ge__call2702
+                          ">="
+                          (ite SOpSmt__so_eq__call2702 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2702
+                "-"
+                (ite SOpSmt__so_star__call2702
+                     "*"
+                     (ite SOpSmt__so_slash__call2702
+                          "div"
+                          (ite SOpSmt__so_lt__call2702 "<" a!2))))))
+  (= SChain1__sc1_op3__call2510 (ite SOpSmt__so_plus__call2702 "+" a!3))))))
+(assert (= SChain1__sc1_q1_tern__call2510 ((_ is Question) SChain1__sc1_q1__call2510)))
+(assert (= SChain1__sc1_q2_tern__call2510 ((_ is Question) SChain1__sc1_q2__call2510)))
+(assert (= SChain1__sc1_q2_and__call2510 ((_ is OpAnd) SChain1__sc1_q2__call2510)))
+(assert (= SChain1__sc1_q2_or__call2510 ((_ is OpOr) SChain1__sc1_q2__call2510)))
+(assert (= SChain1__sc1_q2_bool__call2510
+   (or SChain1__sc1_q2_and__call2510 SChain1__sc1_q2_or__call2510)))
+(assert (= SChain1__sc1_b2__call2510 (ite SChain1__sc1_q2_and__call2510 "and" "or")))
+(assert (= SChain1__sc1_q2_colon__call2510 ((_ is Colon) SChain1__sc1_q2__call2510)))
+(assert (= SChain1__sc1_q3_colon__call2510 ((_ is Colon) SChain1__sc1_q3__call2510)))
+(assert (let ((a!1 (ite SChain1__sc1_op3k__call2510
+                (and (and (and SChain1__sc1_k1__call2510
+                               SChain1__sc1_k2__call2510)
+                          SChain1__sc1_k3__call2510)
+                     SChain1__sc1_k4__call2510)
+                (and (and SChain1__sc1_k1__call2510 SChain1__sc1_k2__call2510)
+                     SChain1__sc1_k3__call2510))))
+(let ((a!2 (ite SChain1__sc1_q2_tern__call2510
+                (and (and (and SChain1__sc1_k1__call2510
+                               SChain1__sc1_k2__call2510)
+                          SChain1__sc1_k3__call2510)
+                     SChain1__sc1_q3_colon__call2510
+                     SChain1__sc1_k4__call2510)
+                (ite SChain1__sc1_q2_bool__call2510
+                     a!1
+                     (and SChain1__sc1_k1__call2510 SChain1__sc1_k2__call2510)))))
+  (= SPrim2__sp2_ik__call2504
+     (ite SChain1__sc1_q1_tern__call2510
+          (and (and SChain1__sc1_k1__call2510 SChain1__sc1_k2__call2510)
+               SChain1__sc1_q2_colon__call2510
+               SChain1__sc1_k3__call2510)
+          (ite (not SChain1__sc1_op1k__call2510) SChain1__sc1_k1__call2510 a!2))))))
+(assert (let ((a!1 (ite SChain1__sc1_q2_bool__call2510
+                (ite SChain1__sc1_op3k__call2510
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2510
+                                     " ("
+                                     SChain1__sc1_op1__call2510
+                                     " "
+                                     SChain1__sc1_o1__call2510
+                                     " "
+                                     SChain1__sc1_o2__call2510)
+                             ") ("
+                             SChain1__sc1_op3__call2510
+                             " "
+                             SChain1__sc1_o3__call2510
+                             " "
+                             SChain1__sc1_o4__call2510
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2510
+                                     " ("
+                                     SChain1__sc1_op1__call2510
+                                     " "
+                                     SChain1__sc1_o1__call2510
+                                     " "
+                                     SChain1__sc1_o2__call2510)
+                             ") "
+                             SChain1__sc1_o3__call2510
+                             ")"))
+                (str.++ "("
+                        SChain1__sc1_op1__call2510
+                        " "
+                        SChain1__sc1_o1__call2510
+                        " "
+                        SChain1__sc1_o2__call2510
+                        ")"))))
+(let ((a!2 (ite SChain1__sc1_q1_tern__call2510
+                (str.++ "(ite "
+                        SChain1__sc1_o1__call2510
+                        " "
+                        SChain1__sc1_o2__call2510
+                        " "
+                        SChain1__sc1_o3__call2510
+                        ")")
+                (ite (not SChain1__sc1_op1k__call2510)
+                     SChain1__sc1_o1__call2510
+                     (ite SChain1__sc1_q2_tern__call2510
+                          (str.++ "(ite ("
+                                  SChain1__sc1_op1__call2510
+                                  " "
+                                  SChain1__sc1_o1__call2510
+                                  " "
+                                  SChain1__sc1_o2__call2510
+                                  ") "
+                                  SChain1__sc1_o3__call2510
+                                  " "
+                                  SChain1__sc1_o4__call2510
+                                  ")")
+                          a!1)))))
+  (= SPrim2__sp2_io__call2504 a!2))))
+(assert (let ((a!1 (ite (not SChain1__sc1_op1k__call2510)
+                SChain1__sc1_r1__call2510
+                (ite SChain1__sc1_q2_tern__call2510
+                     SChain1__sc1_r4__call2510
+                     (ite SChain1__sc1_q2_bool__call2510
+                          (ite SChain1__sc1_op3k__call2510
+                               SChain1__sc1_r4__call2510
+                               SChain1__sc1_r3__call2510)
+                          SChain1__sc1_r2__call2510)))))
+  (= SPrim2__sp2_ir__call2504
+     (ite SChain1__sc1_q1_tern__call2510 SChain1__sc1_r3__call2510 a!1))))
+(assert (= SPrim2__sp2_close__call2504
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2504)
+        (TLCons__f0 SPrim2__sp2_ir__call2504)
+        EofTok)))
+(assert (= SPrim2__sp2_par_ok__call2504
+   (and SPrim2__sp2_par__call2504
+        SPrim2__sp2_ik__call2504
+        ((_ is RParen) SPrim2__sp2_close__call2504))))
+(assert (= SPrim2__sp2_pr__call2504
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2504)
+        (TLCons__f1 SPrim2__sp2_ir__call2504)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2705 ((_ is IntLit) SPrim2__sp2_b0__call2504)))
+(assert (= SAtomR__sa_is_str__call2705 ((_ is StringLit) SPrim2__sp2_b0__call2504)))
+(assert (= SAtomR__sa_is_id__call2705 ((_ is Ident) SPrim2__sp2_b0__call2504)))
+(assert (= SAtomR__sa_true__call2705 ((_ is KwTrue) SPrim2__sp2_b0__call2504)))
+(assert (= SAtomR__sa_false__call2705 ((_ is KwFalse) SPrim2__sp2_b0__call2504)))
+(assert (= SAtomR__sa_iv__call2705
+   (ite ((_ is IntLit) SPrim2__sp2_b0__call2504)
+        (IntLit__f0 SPrim2__sp2_b0__call2504)
+        0)))
+(assert (= SAtomR__sa_sv__call2705
+   (ite ((_ is StringLit) SPrim2__sp2_b0__call2504)
+        (StringLit__f0 SPrim2__sp2_b0__call2504)
+        "")))
+(assert (= SAtomR__sa_idv__call2705
+   (ite ((_ is Ident) SPrim2__sp2_b0__call2504)
+        (Ident__f0 SPrim2__sp2_b0__call2504)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2705
+   (and SAtomR__sa_is_id__call2705 ((_ is LParen) SPrim2__sp2_b1__call2504))))
+(assert (= SPrim2__sp2_ak__call2504
+   (and (or SAtomR__sa_is_int__call2705
+            SAtomR__sa_is_str__call2705
+            SAtomR__sa_true__call2705
+            SAtomR__sa_false__call2705
+            SAtomR__sa_is_id__call2705)
+        (not SAtomR__sa_ctor_head__call2705))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2705 0)
+                (str.from_int SAtomR__sa_iv__call2705)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2705)))))
+      (a!2 (ite SAtomR__sa_true__call2705
+                "true"
+                (ite SAtomR__sa_false__call2705
+                     "false"
+                     (ite SAtomR__sa_is_str__call2705
+                          (str.++ """" SAtomR__sa_sv__call2705 """")
+                          SAtomR__sa_idv__call2705)))))
+  (= SPrim2__sp2_ao__call2504 (ite SAtomR__sa_is_int__call2705 a!1 a!2))))
+(assert (= CallArgsStep__ca_v2k__call2287
+   (ite SPrim2__sp2_par__call2504
+        SPrim2__sp2_par_ok__call2504
+        SPrim2__sp2_ak__call2504)))
+(assert (= SPrim2__sp2_base__call2504
+   (ite SPrim2__sp2_par__call2504
+        SPrim2__sp2_io__call2504
+        SPrim2__sp2_ao__call2504)))
+(assert (= CallArgsStep__ca_v2o__call2287
+   (ite SPrim2__sp2_neg__call2504
+        (str.++ "(not " SPrim2__sp2_base__call2504 ")")
+        SPrim2__sp2_base__call2504)))
+(assert (= CallArgsStep__ca_v2r__call2287
+   (ite SPrim2__sp2_par__call2504
+        SPrim2__sp2_pr__call2504
+        SPrim2__sp2_bt__call2504)))
+(assert (= CallArgsStep__ca_d2__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v2r__call2287)
+        (TLCons__f0 CallArgsStep__ca_v2r__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_d2_close__call2287
+   ((_ is RParen) CallArgsStep__ca_d2__call2287)))
+(assert (= CallArgsStep__ca_d2_comma__call2287
+   ((_ is Comma) CallArgsStep__ca_d2__call2287)))
+(assert (= CallArgsStep__ca_b3__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v2r__call2287)
+        (TLCons__f1 CallArgsStep__ca_v2r__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t6__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b3__call2287)
+        (TLCons__f0 CallArgsStep__ca_b3__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_b3a__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b3__call2287)
+        (TLCons__f1 CallArgsStep__ca_b3__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_t7__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b3a__call2287)
+        (TLCons__f0 CallArgsStep__ca_b3a__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_l8__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_b3a__call2287)
+        (TLCons__f1 CallArgsStep__ca_b3a__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_h3_ok__call2287
+   (and ((_ is Ident) CallArgsStep__ca_t6__call2287)
+        ((_ is OpMapsto) CallArgsStep__ca_t7__call2287))))
+(assert (= CallArgsStep__ca_s3__call2287
+   (ite ((_ is Ident) CallArgsStep__ca_t6__call2287)
+        (Ident__f0 CallArgsStep__ca_t6__call2287)
+        "")))
+(assert (= SPrim2__sp2_h0__call2712
+   (ite ((_ is TLCons) CallArgsStep__ca_l8__call2287)
+        (TLCons__f0 CallArgsStep__ca_l8__call2287)
+        EofTok)))
+(assert (= SPrim2__sp2_t0__call2712
+   (ite ((_ is TLCons) CallArgsStep__ca_l8__call2287)
+        (TLCons__f1 CallArgsStep__ca_l8__call2287)
+        TLNil)))
+(assert (= SPrim2__sp2_neg__call2712 ((_ is OpNot) SPrim2__sp2_h0__call2712)))
+(assert (= SPrim2__sp2_seed__call2712
+   (ite SPrim2__sp2_neg__call2712
+        SPrim2__sp2_t0__call2712
+        CallArgsStep__ca_l8__call2287)))
+(assert (= SPrim2__sp2_b0__call2712
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2712)
+        (TLCons__f0 SPrim2__sp2_seed__call2712)
+        EofTok)))
+(assert (= SPrim2__sp2_bt__call2712
+   (ite ((_ is TLCons) SPrim2__sp2_seed__call2712)
+        (TLCons__f1 SPrim2__sp2_seed__call2712)
+        TLNil)))
+(assert (= SPrim2__sp2_b1__call2712
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2712)
+        (TLCons__f0 SPrim2__sp2_bt__call2712)
+        EofTok)))
+(assert (= SPrim2__sp2_par__call2712 ((_ is LParen) SPrim2__sp2_b0__call2712)))
+(assert (= SPrim1__sp1_h0__call2719
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2712)
+        (TLCons__f0 SPrim2__sp2_bt__call2712)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2719
+   (ite ((_ is TLCons) SPrim2__sp2_bt__call2712)
+        (TLCons__f1 SPrim2__sp2_bt__call2712)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2719 ((_ is OpNot) SPrim1__sp1_h0__call2719)))
+(assert (= SPrim1__sp1_seed__call2719
+   (ite SPrim1__sp1_neg__call2719
+        SPrim1__sp1_t0__call2719
+        SPrim2__sp2_bt__call2712)))
+(assert (= SPrim1__sp1_b0__call2719
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2719)
+        (TLCons__f0 SPrim1__sp1_seed__call2719)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2719
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2719)
+        (TLCons__f1 SPrim1__sp1_seed__call2719)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2719
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2719)
+        (TLCons__f0 SPrim1__sp1_bt__call2719)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2719 ((_ is LParen) SPrim1__sp1_b0__call2719)))
+(assert (= SPrim0__sp0_h0__call2726
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2719)
+        (TLCons__f0 SPrim1__sp1_bt__call2719)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2726
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2719)
+        (TLCons__f1 SPrim1__sp1_bt__call2719)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2726 ((_ is OpNot) SPrim0__sp0_h0__call2726)))
+(assert (= SPrim0__sp0_seed__call2726
+   (ite SPrim0__sp0_neg__call2726
+        SPrim0__sp0_t0__call2726
+        SPrim1__sp1_bt__call2719)))
+(assert (= SPrim0__sp0_a0__call2726
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2726)
+        (TLCons__f0 SPrim0__sp0_seed__call2726)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2726
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2726)
+        (TLCons__f1 SPrim0__sp0_seed__call2726)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2726
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2726)
+        (TLCons__f0 SPrim0__sp0_s0__call2726)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2732 ((_ is IntLit) SPrim0__sp0_a0__call2726)))
+(assert (= SAtomR__sa_is_str__call2732 ((_ is StringLit) SPrim0__sp0_a0__call2726)))
+(assert (= SAtomR__sa_is_id__call2732 ((_ is Ident) SPrim0__sp0_a0__call2726)))
+(assert (= SAtomR__sa_true__call2732 ((_ is KwTrue) SPrim0__sp0_a0__call2726)))
+(assert (= SAtomR__sa_false__call2732 ((_ is KwFalse) SPrim0__sp0_a0__call2726)))
+(assert (= SAtomR__sa_iv__call2732
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2726)
+        (IntLit__f0 SPrim0__sp0_a0__call2726)
+        0)))
+(assert (= SAtomR__sa_sv__call2732
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2726)
+        (StringLit__f0 SPrim0__sp0_a0__call2726)
+        "")))
+(assert (= SAtomR__sa_idv__call2732
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2726)
+        (Ident__f0 SPrim0__sp0_a0__call2726)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2732
+   (and SAtomR__sa_is_id__call2732 ((_ is LParen) SPrim0__sp0_a1__call2726))))
+(assert (= SPrim0__sp0_ak__call2726
+   (and (or SAtomR__sa_is_int__call2732
+            SAtomR__sa_is_str__call2732
+            SAtomR__sa_true__call2732
+            SAtomR__sa_false__call2732
+            SAtomR__sa_is_id__call2732)
+        (not SAtomR__sa_ctor_head__call2732))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2732 0)
+                (str.from_int SAtomR__sa_iv__call2732)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2732)))))
+      (a!2 (ite SAtomR__sa_true__call2732
+                "true"
+                (ite SAtomR__sa_false__call2732
+                     "false"
+                     (ite SAtomR__sa_is_str__call2732
+                          (str.++ """" SAtomR__sa_sv__call2732 """")
+                          SAtomR__sa_idv__call2732)))))
+  (= SPrim0__sp0_ao__call2726 (ite SAtomR__sa_is_int__call2732 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2725 SPrim0__sp0_ak__call2726))
+(assert (= SChain0__sc0_o1__call2725
+   (ite SPrim0__sp0_neg__call2726
+        (str.++ "(not " SPrim0__sp0_ao__call2726 ")")
+        SPrim0__sp0_ao__call2726)))
+(assert (= SChain0__sc0_r1__call2725 SPrim0__sp0_s0__call2726))
+(assert (= SChain0__sc0_q1__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2725)
+        (TLCons__f0 SChain0__sc0_r1__call2725)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2725)
+        (TLCons__f1 SChain0__sc0_r1__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2735
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2725)
+        (TLCons__f0 SChain0__sc0_s2__call2725)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2735
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2725)
+        (TLCons__f1 SChain0__sc0_s2__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2735 ((_ is OpNot) SPrim0__sp0_h0__call2735)))
+(assert (= SPrim0__sp0_seed__call2735
+   (ite SPrim0__sp0_neg__call2735
+        SPrim0__sp0_t0__call2735
+        SChain0__sc0_s2__call2725)))
+(assert (= SPrim0__sp0_a0__call2735
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2735)
+        (TLCons__f0 SPrim0__sp0_seed__call2735)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2735
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2735)
+        (TLCons__f1 SPrim0__sp0_seed__call2735)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2735
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2735)
+        (TLCons__f0 SPrim0__sp0_s0__call2735)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2741 ((_ is IntLit) SPrim0__sp0_a0__call2735)))
+(assert (= SAtomR__sa_is_str__call2741 ((_ is StringLit) SPrim0__sp0_a0__call2735)))
+(assert (= SAtomR__sa_is_id__call2741 ((_ is Ident) SPrim0__sp0_a0__call2735)))
+(assert (= SAtomR__sa_true__call2741 ((_ is KwTrue) SPrim0__sp0_a0__call2735)))
+(assert (= SAtomR__sa_false__call2741 ((_ is KwFalse) SPrim0__sp0_a0__call2735)))
+(assert (= SAtomR__sa_iv__call2741
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2735)
+        (IntLit__f0 SPrim0__sp0_a0__call2735)
+        0)))
+(assert (= SAtomR__sa_sv__call2741
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2735)
+        (StringLit__f0 SPrim0__sp0_a0__call2735)
+        "")))
+(assert (= SAtomR__sa_idv__call2741
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2735)
+        (Ident__f0 SPrim0__sp0_a0__call2735)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2741
+   (and SAtomR__sa_is_id__call2741 ((_ is LParen) SPrim0__sp0_a1__call2735))))
+(assert (= SPrim0__sp0_ak__call2735
+   (and (or SAtomR__sa_is_int__call2741
+            SAtomR__sa_is_str__call2741
+            SAtomR__sa_true__call2741
+            SAtomR__sa_false__call2741
+            SAtomR__sa_is_id__call2741)
+        (not SAtomR__sa_ctor_head__call2741))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2741 0)
+                (str.from_int SAtomR__sa_iv__call2741)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2741)))))
+      (a!2 (ite SAtomR__sa_true__call2741
+                "true"
+                (ite SAtomR__sa_false__call2741
+                     "false"
+                     (ite SAtomR__sa_is_str__call2741
+                          (str.++ """" SAtomR__sa_sv__call2741 """")
+                          SAtomR__sa_idv__call2741)))))
+  (= SPrim0__sp0_ao__call2735 (ite SAtomR__sa_is_int__call2741 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2725 SPrim0__sp0_ak__call2735))
+(assert (= SChain0__sc0_o2__call2725
+   (ite SPrim0__sp0_neg__call2735
+        (str.++ "(not " SPrim0__sp0_ao__call2735 ")")
+        SPrim0__sp0_ao__call2735)))
+(assert (= SChain0__sc0_r2__call2725 SPrim0__sp0_s0__call2735))
+(assert (= SChain0__sc0_q2__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2725)
+        (TLCons__f0 SChain0__sc0_r2__call2725)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2725)
+        (TLCons__f1 SChain0__sc0_r2__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2744
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2725)
+        (TLCons__f0 SChain0__sc0_s3__call2725)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2744
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2725)
+        (TLCons__f1 SChain0__sc0_s3__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2744 ((_ is OpNot) SPrim0__sp0_h0__call2744)))
+(assert (= SPrim0__sp0_seed__call2744
+   (ite SPrim0__sp0_neg__call2744
+        SPrim0__sp0_t0__call2744
+        SChain0__sc0_s3__call2725)))
+(assert (= SPrim0__sp0_a0__call2744
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2744)
+        (TLCons__f0 SPrim0__sp0_seed__call2744)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2744
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2744)
+        (TLCons__f1 SPrim0__sp0_seed__call2744)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2744
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2744)
+        (TLCons__f0 SPrim0__sp0_s0__call2744)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2750 ((_ is IntLit) SPrim0__sp0_a0__call2744)))
+(assert (= SAtomR__sa_is_str__call2750 ((_ is StringLit) SPrim0__sp0_a0__call2744)))
+(assert (= SAtomR__sa_is_id__call2750 ((_ is Ident) SPrim0__sp0_a0__call2744)))
+(assert (= SAtomR__sa_true__call2750 ((_ is KwTrue) SPrim0__sp0_a0__call2744)))
+(assert (= SAtomR__sa_false__call2750 ((_ is KwFalse) SPrim0__sp0_a0__call2744)))
+(assert (= SAtomR__sa_iv__call2750
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2744)
+        (IntLit__f0 SPrim0__sp0_a0__call2744)
+        0)))
+(assert (= SAtomR__sa_sv__call2750
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2744)
+        (StringLit__f0 SPrim0__sp0_a0__call2744)
+        "")))
+(assert (= SAtomR__sa_idv__call2750
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2744)
+        (Ident__f0 SPrim0__sp0_a0__call2744)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2750
+   (and SAtomR__sa_is_id__call2750 ((_ is LParen) SPrim0__sp0_a1__call2744))))
+(assert (= SPrim0__sp0_ak__call2744
+   (and (or SAtomR__sa_is_int__call2750
+            SAtomR__sa_is_str__call2750
+            SAtomR__sa_true__call2750
+            SAtomR__sa_false__call2750
+            SAtomR__sa_is_id__call2750)
+        (not SAtomR__sa_ctor_head__call2750))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2750 0)
+                (str.from_int SAtomR__sa_iv__call2750)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2750)))))
+      (a!2 (ite SAtomR__sa_true__call2750
+                "true"
+                (ite SAtomR__sa_false__call2750
+                     "false"
+                     (ite SAtomR__sa_is_str__call2750
+                          (str.++ """" SAtomR__sa_sv__call2750 """")
+                          SAtomR__sa_idv__call2750)))))
+  (= SPrim0__sp0_ao__call2744 (ite SAtomR__sa_is_int__call2750 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2725 SPrim0__sp0_ak__call2744))
+(assert (= SChain0__sc0_o3__call2725
+   (ite SPrim0__sp0_neg__call2744
+        (str.++ "(not " SPrim0__sp0_ao__call2744 ")")
+        SPrim0__sp0_ao__call2744)))
+(assert (= SChain0__sc0_r3__call2725 SPrim0__sp0_s0__call2744))
+(assert (= SChain0__sc0_q3__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2725)
+        (TLCons__f0 SChain0__sc0_r3__call2725)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2725
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2725)
+        (TLCons__f1 SChain0__sc0_r3__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2753
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2725)
+        (TLCons__f0 SChain0__sc0_s4__call2725)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2753
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2725)
+        (TLCons__f1 SChain0__sc0_s4__call2725)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2753 ((_ is OpNot) SPrim0__sp0_h0__call2753)))
+(assert (= SPrim0__sp0_seed__call2753
+   (ite SPrim0__sp0_neg__call2753
+        SPrim0__sp0_t0__call2753
+        SChain0__sc0_s4__call2725)))
+(assert (= SPrim0__sp0_a0__call2753
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2753)
+        (TLCons__f0 SPrim0__sp0_seed__call2753)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2753
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2753)
+        (TLCons__f1 SPrim0__sp0_seed__call2753)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2753
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2753)
+        (TLCons__f0 SPrim0__sp0_s0__call2753)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2759 ((_ is IntLit) SPrim0__sp0_a0__call2753)))
+(assert (= SAtomR__sa_is_str__call2759 ((_ is StringLit) SPrim0__sp0_a0__call2753)))
+(assert (= SAtomR__sa_is_id__call2759 ((_ is Ident) SPrim0__sp0_a0__call2753)))
+(assert (= SAtomR__sa_true__call2759 ((_ is KwTrue) SPrim0__sp0_a0__call2753)))
+(assert (= SAtomR__sa_false__call2759 ((_ is KwFalse) SPrim0__sp0_a0__call2753)))
+(assert (= SAtomR__sa_iv__call2759
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2753)
+        (IntLit__f0 SPrim0__sp0_a0__call2753)
+        0)))
+(assert (= SAtomR__sa_sv__call2759
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2753)
+        (StringLit__f0 SPrim0__sp0_a0__call2753)
+        "")))
+(assert (= SAtomR__sa_idv__call2759
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2753)
+        (Ident__f0 SPrim0__sp0_a0__call2753)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2759
+   (and SAtomR__sa_is_id__call2759 ((_ is LParen) SPrim0__sp0_a1__call2753))))
+(assert (= SPrim0__sp0_ak__call2753
+   (and (or SAtomR__sa_is_int__call2759
+            SAtomR__sa_is_str__call2759
+            SAtomR__sa_true__call2759
+            SAtomR__sa_false__call2759
+            SAtomR__sa_is_id__call2759)
+        (not SAtomR__sa_ctor_head__call2759))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2759 0)
+                (str.from_int SAtomR__sa_iv__call2759)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2759)))))
+      (a!2 (ite SAtomR__sa_true__call2759
+                "true"
+                (ite SAtomR__sa_false__call2759
+                     "false"
+                     (ite SAtomR__sa_is_str__call2759
+                          (str.++ """" SAtomR__sa_sv__call2759 """")
+                          SAtomR__sa_idv__call2759)))))
+  (= SPrim0__sp0_ao__call2753 (ite SAtomR__sa_is_int__call2759 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2725 SPrim0__sp0_ak__call2753))
+(assert (= SChain0__sc0_o4__call2725
+   (ite SPrim0__sp0_neg__call2753
+        (str.++ "(not " SPrim0__sp0_ao__call2753 ")")
+        SPrim0__sp0_ao__call2753)))
+(assert (= SChain0__sc0_r4__call2725 SPrim0__sp0_s0__call2753))
+(assert (= SOpSmt__so_plus__call2760 ((_ is Plus) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_minus__call2760 ((_ is Minus) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_star__call2760 ((_ is Star) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_slash__call2760 ((_ is Slash) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_lt__call2760 ((_ is Lt) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_gt__call2760 ((_ is Gt) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_le__call2760 ((_ is OpLe) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_ge__call2760 ((_ is OpGe) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_eq__call2760 ((_ is Eq) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_ne__call2760 ((_ is OpNe) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_and__call2760 ((_ is OpAnd) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_or__call2760 ((_ is OpOr) SChain0__sc0_q1__call2725)))
+(assert (= SOpSmt__so_impl__call2760 ((_ is OpImplies) SChain0__sc0_q1__call2725)))
+(assert (= SChain0__sc0_op1k__call2725
+   (or SOpSmt__so_plus__call2760
+       SOpSmt__so_minus__call2760
+       SOpSmt__so_star__call2760
+       SOpSmt__so_slash__call2760
+       SOpSmt__so_lt__call2760
+       SOpSmt__so_gt__call2760
+       SOpSmt__so_le__call2760
+       SOpSmt__so_ge__call2760
+       SOpSmt__so_eq__call2760
+       SOpSmt__so_ne__call2760
+       SOpSmt__so_and__call2760
+       SOpSmt__so_or__call2760
+       SOpSmt__so_impl__call2760)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2760
+                "distinct"
+                (ite SOpSmt__so_and__call2760
+                     "and"
+                     (ite SOpSmt__so_or__call2760
+                          "or"
+                          (ite SOpSmt__so_impl__call2760 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2760
+                ">"
+                (ite SOpSmt__so_le__call2760
+                     "<="
+                     (ite SOpSmt__so_ge__call2760
+                          ">="
+                          (ite SOpSmt__so_eq__call2760 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2760
+                "-"
+                (ite SOpSmt__so_star__call2760
+                     "*"
+                     (ite SOpSmt__so_slash__call2760
+                          "div"
+                          (ite SOpSmt__so_lt__call2760 "<" a!2))))))
+  (= SChain0__sc0_op1__call2725 (ite SOpSmt__so_plus__call2760 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2761 ((_ is Plus) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_minus__call2761 ((_ is Minus) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_star__call2761 ((_ is Star) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_slash__call2761 ((_ is Slash) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_lt__call2761 ((_ is Lt) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_gt__call2761 ((_ is Gt) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_le__call2761 ((_ is OpLe) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_ge__call2761 ((_ is OpGe) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_eq__call2761 ((_ is Eq) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_ne__call2761 ((_ is OpNe) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_and__call2761 ((_ is OpAnd) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_or__call2761 ((_ is OpOr) SChain0__sc0_q3__call2725)))
+(assert (= SOpSmt__so_impl__call2761 ((_ is OpImplies) SChain0__sc0_q3__call2725)))
+(assert (= SChain0__sc0_op3k__call2725
+   (or SOpSmt__so_plus__call2761
+       SOpSmt__so_minus__call2761
+       SOpSmt__so_star__call2761
+       SOpSmt__so_slash__call2761
+       SOpSmt__so_lt__call2761
+       SOpSmt__so_gt__call2761
+       SOpSmt__so_le__call2761
+       SOpSmt__so_ge__call2761
+       SOpSmt__so_eq__call2761
+       SOpSmt__so_ne__call2761
+       SOpSmt__so_and__call2761
+       SOpSmt__so_or__call2761
+       SOpSmt__so_impl__call2761)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2761
+                "distinct"
+                (ite SOpSmt__so_and__call2761
+                     "and"
+                     (ite SOpSmt__so_or__call2761
+                          "or"
+                          (ite SOpSmt__so_impl__call2761 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2761
+                ">"
+                (ite SOpSmt__so_le__call2761
+                     "<="
+                     (ite SOpSmt__so_ge__call2761
+                          ">="
+                          (ite SOpSmt__so_eq__call2761 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2761
+                "-"
+                (ite SOpSmt__so_star__call2761
+                     "*"
+                     (ite SOpSmt__so_slash__call2761
+                          "div"
+                          (ite SOpSmt__so_lt__call2761 "<" a!2))))))
+  (= SChain0__sc0_op3__call2725 (ite SOpSmt__so_plus__call2761 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2725 ((_ is Question) SChain0__sc0_q1__call2725)))
+(assert (= SChain0__sc0_q2_tern__call2725 ((_ is Question) SChain0__sc0_q2__call2725)))
+(assert (= SChain0__sc0_q2_and__call2725 ((_ is OpAnd) SChain0__sc0_q2__call2725)))
+(assert (= SChain0__sc0_q2_or__call2725 ((_ is OpOr) SChain0__sc0_q2__call2725)))
+(assert (= SChain0__sc0_q2_bool__call2725
+   (or SChain0__sc0_q2_and__call2725 SChain0__sc0_q2_or__call2725)))
+(assert (= SChain0__sc0_b2__call2725 (ite SChain0__sc0_q2_and__call2725 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2725 ((_ is Colon) SChain0__sc0_q2__call2725)))
+(assert (= SChain0__sc0_q3_colon__call2725 ((_ is Colon) SChain0__sc0_q3__call2725)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2725
+                (and (and (and SChain0__sc0_k1__call2725
+                               SChain0__sc0_k2__call2725)
+                          SChain0__sc0_k3__call2725)
+                     SChain0__sc0_k4__call2725)
+                (and (and SChain0__sc0_k1__call2725 SChain0__sc0_k2__call2725)
+                     SChain0__sc0_k3__call2725))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2725
+                (and (and (and SChain0__sc0_k1__call2725
+                               SChain0__sc0_k2__call2725)
+                          SChain0__sc0_k3__call2725)
+                     SChain0__sc0_q3_colon__call2725
+                     SChain0__sc0_k4__call2725)
+                (ite SChain0__sc0_q2_bool__call2725
+                     a!1
+                     (and SChain0__sc0_k1__call2725 SChain0__sc0_k2__call2725)))))
+  (= SPrim1__sp1_ik__call2719
+     (ite SChain0__sc0_q1_tern__call2725
+          (and (and SChain0__sc0_k1__call2725 SChain0__sc0_k2__call2725)
+               SChain0__sc0_q2_colon__call2725
+               SChain0__sc0_k3__call2725)
+          (ite (not SChain0__sc0_op1k__call2725) SChain0__sc0_k1__call2725 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2725
+                (ite SChain0__sc0_op3k__call2725
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2725
+                                     " ("
+                                     SChain0__sc0_op1__call2725
+                                     " "
+                                     SChain0__sc0_o1__call2725
+                                     " "
+                                     SChain0__sc0_o2__call2725)
+                             ") ("
+                             SChain0__sc0_op3__call2725
+                             " "
+                             SChain0__sc0_o3__call2725
+                             " "
+                             SChain0__sc0_o4__call2725
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2725
+                                     " ("
+                                     SChain0__sc0_op1__call2725
+                                     " "
+                                     SChain0__sc0_o1__call2725
+                                     " "
+                                     SChain0__sc0_o2__call2725)
+                             ") "
+                             SChain0__sc0_o3__call2725
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2725
+                        " "
+                        SChain0__sc0_o1__call2725
+                        " "
+                        SChain0__sc0_o2__call2725
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2725
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2725
+                        " "
+                        SChain0__sc0_o2__call2725
+                        " "
+                        SChain0__sc0_o3__call2725
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2725)
+                     SChain0__sc0_o1__call2725
+                     (ite SChain0__sc0_q2_tern__call2725
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2725
+                                  " "
+                                  SChain0__sc0_o1__call2725
+                                  " "
+                                  SChain0__sc0_o2__call2725
+                                  ") "
+                                  SChain0__sc0_o3__call2725
+                                  " "
+                                  SChain0__sc0_o4__call2725
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2719 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2725)
+                SChain0__sc0_r1__call2725
+                (ite SChain0__sc0_q2_tern__call2725
+                     SChain0__sc0_r4__call2725
+                     (ite SChain0__sc0_q2_bool__call2725
+                          (ite SChain0__sc0_op3k__call2725
+                               SChain0__sc0_r4__call2725
+                               SChain0__sc0_r3__call2725)
+                          SChain0__sc0_r2__call2725)))))
+  (= SPrim1__sp1_ir__call2719
+     (ite SChain0__sc0_q1_tern__call2725 SChain0__sc0_r3__call2725 a!1))))
+(assert (= SPrim1__sp1_close__call2719
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2719)
+        (TLCons__f0 SPrim1__sp1_ir__call2719)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2719
+   (and SPrim1__sp1_par__call2719
+        SPrim1__sp1_ik__call2719
+        ((_ is RParen) SPrim1__sp1_close__call2719))))
+(assert (= SPrim1__sp1_pr__call2719
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2719)
+        (TLCons__f1 SPrim1__sp1_ir__call2719)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2764 ((_ is IntLit) SPrim1__sp1_b0__call2719)))
+(assert (= SAtomR__sa_is_str__call2764 ((_ is StringLit) SPrim1__sp1_b0__call2719)))
+(assert (= SAtomR__sa_is_id__call2764 ((_ is Ident) SPrim1__sp1_b0__call2719)))
+(assert (= SAtomR__sa_true__call2764 ((_ is KwTrue) SPrim1__sp1_b0__call2719)))
+(assert (= SAtomR__sa_false__call2764 ((_ is KwFalse) SPrim1__sp1_b0__call2719)))
+(assert (= SAtomR__sa_iv__call2764
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2719)
+        (IntLit__f0 SPrim1__sp1_b0__call2719)
+        0)))
+(assert (= SAtomR__sa_sv__call2764
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2719)
+        (StringLit__f0 SPrim1__sp1_b0__call2719)
+        "")))
+(assert (= SAtomR__sa_idv__call2764
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2719)
+        (Ident__f0 SPrim1__sp1_b0__call2719)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2764
+   (and SAtomR__sa_is_id__call2764 ((_ is LParen) SPrim1__sp1_b1__call2719))))
+(assert (= SPrim1__sp1_ak__call2719
+   (and (or SAtomR__sa_is_int__call2764
+            SAtomR__sa_is_str__call2764
+            SAtomR__sa_true__call2764
+            SAtomR__sa_false__call2764
+            SAtomR__sa_is_id__call2764)
+        (not SAtomR__sa_ctor_head__call2764))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2764 0)
+                (str.from_int SAtomR__sa_iv__call2764)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2764)))))
+      (a!2 (ite SAtomR__sa_true__call2764
+                "true"
+                (ite SAtomR__sa_false__call2764
+                     "false"
+                     (ite SAtomR__sa_is_str__call2764
+                          (str.++ """" SAtomR__sa_sv__call2764 """")
+                          SAtomR__sa_idv__call2764)))))
+  (= SPrim1__sp1_ao__call2719 (ite SAtomR__sa_is_int__call2764 a!1 a!2))))
+(assert (= SChain1__sc1_k1__call2718
+   (ite SPrim1__sp1_par__call2719
+        SPrim1__sp1_par_ok__call2719
+        SPrim1__sp1_ak__call2719)))
+(assert (= SPrim1__sp1_base__call2719
+   (ite SPrim1__sp1_par__call2719
+        SPrim1__sp1_io__call2719
+        SPrim1__sp1_ao__call2719)))
+(assert (= SChain1__sc1_o1__call2718
+   (ite SPrim1__sp1_neg__call2719
+        (str.++ "(not " SPrim1__sp1_base__call2719 ")")
+        SPrim1__sp1_base__call2719)))
+(assert (= SChain1__sc1_r1__call2718
+   (ite SPrim1__sp1_par__call2719
+        SPrim1__sp1_pr__call2719
+        SPrim1__sp1_bt__call2719)))
+(assert (= SChain1__sc1_q1__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2718)
+        (TLCons__f0 SChain1__sc1_r1__call2718)
+        EofTok)))
+(assert (= SChain1__sc1_s2__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r1__call2718)
+        (TLCons__f1 SChain1__sc1_r1__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2767
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2718)
+        (TLCons__f0 SChain1__sc1_s2__call2718)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2767
+   (ite ((_ is TLCons) SChain1__sc1_s2__call2718)
+        (TLCons__f1 SChain1__sc1_s2__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2767 ((_ is OpNot) SPrim1__sp1_h0__call2767)))
+(assert (= SPrim1__sp1_seed__call2767
+   (ite SPrim1__sp1_neg__call2767
+        SPrim1__sp1_t0__call2767
+        SChain1__sc1_s2__call2718)))
+(assert (= SPrim1__sp1_b0__call2767
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2767)
+        (TLCons__f0 SPrim1__sp1_seed__call2767)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2767
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2767)
+        (TLCons__f1 SPrim1__sp1_seed__call2767)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2767
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2767)
+        (TLCons__f0 SPrim1__sp1_bt__call2767)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2767 ((_ is LParen) SPrim1__sp1_b0__call2767)))
+(assert (= SPrim0__sp0_h0__call2774
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2767)
+        (TLCons__f0 SPrim1__sp1_bt__call2767)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2774
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2767)
+        (TLCons__f1 SPrim1__sp1_bt__call2767)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2774 ((_ is OpNot) SPrim0__sp0_h0__call2774)))
+(assert (= SPrim0__sp0_seed__call2774
+   (ite SPrim0__sp0_neg__call2774
+        SPrim0__sp0_t0__call2774
+        SPrim1__sp1_bt__call2767)))
+(assert (= SPrim0__sp0_a0__call2774
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2774)
+        (TLCons__f0 SPrim0__sp0_seed__call2774)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2774
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2774)
+        (TLCons__f1 SPrim0__sp0_seed__call2774)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2774
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2774)
+        (TLCons__f0 SPrim0__sp0_s0__call2774)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2780 ((_ is IntLit) SPrim0__sp0_a0__call2774)))
+(assert (= SAtomR__sa_is_str__call2780 ((_ is StringLit) SPrim0__sp0_a0__call2774)))
+(assert (= SAtomR__sa_is_id__call2780 ((_ is Ident) SPrim0__sp0_a0__call2774)))
+(assert (= SAtomR__sa_true__call2780 ((_ is KwTrue) SPrim0__sp0_a0__call2774)))
+(assert (= SAtomR__sa_false__call2780 ((_ is KwFalse) SPrim0__sp0_a0__call2774)))
+(assert (= SAtomR__sa_iv__call2780
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2774)
+        (IntLit__f0 SPrim0__sp0_a0__call2774)
+        0)))
+(assert (= SAtomR__sa_sv__call2780
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2774)
+        (StringLit__f0 SPrim0__sp0_a0__call2774)
+        "")))
+(assert (= SAtomR__sa_idv__call2780
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2774)
+        (Ident__f0 SPrim0__sp0_a0__call2774)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2780
+   (and SAtomR__sa_is_id__call2780 ((_ is LParen) SPrim0__sp0_a1__call2774))))
+(assert (= SPrim0__sp0_ak__call2774
+   (and (or SAtomR__sa_is_int__call2780
+            SAtomR__sa_is_str__call2780
+            SAtomR__sa_true__call2780
+            SAtomR__sa_false__call2780
+            SAtomR__sa_is_id__call2780)
+        (not SAtomR__sa_ctor_head__call2780))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2780 0)
+                (str.from_int SAtomR__sa_iv__call2780)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2780)))))
+      (a!2 (ite SAtomR__sa_true__call2780
+                "true"
+                (ite SAtomR__sa_false__call2780
+                     "false"
+                     (ite SAtomR__sa_is_str__call2780
+                          (str.++ """" SAtomR__sa_sv__call2780 """")
+                          SAtomR__sa_idv__call2780)))))
+  (= SPrim0__sp0_ao__call2774 (ite SAtomR__sa_is_int__call2780 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2773 SPrim0__sp0_ak__call2774))
+(assert (= SChain0__sc0_o1__call2773
+   (ite SPrim0__sp0_neg__call2774
+        (str.++ "(not " SPrim0__sp0_ao__call2774 ")")
+        SPrim0__sp0_ao__call2774)))
+(assert (= SChain0__sc0_r1__call2773 SPrim0__sp0_s0__call2774))
+(assert (= SChain0__sc0_q1__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2773)
+        (TLCons__f0 SChain0__sc0_r1__call2773)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2773)
+        (TLCons__f1 SChain0__sc0_r1__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2783
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2773)
+        (TLCons__f0 SChain0__sc0_s2__call2773)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2783
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2773)
+        (TLCons__f1 SChain0__sc0_s2__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2783 ((_ is OpNot) SPrim0__sp0_h0__call2783)))
+(assert (= SPrim0__sp0_seed__call2783
+   (ite SPrim0__sp0_neg__call2783
+        SPrim0__sp0_t0__call2783
+        SChain0__sc0_s2__call2773)))
+(assert (= SPrim0__sp0_a0__call2783
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2783)
+        (TLCons__f0 SPrim0__sp0_seed__call2783)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2783
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2783)
+        (TLCons__f1 SPrim0__sp0_seed__call2783)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2783
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2783)
+        (TLCons__f0 SPrim0__sp0_s0__call2783)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2789 ((_ is IntLit) SPrim0__sp0_a0__call2783)))
+(assert (= SAtomR__sa_is_str__call2789 ((_ is StringLit) SPrim0__sp0_a0__call2783)))
+(assert (= SAtomR__sa_is_id__call2789 ((_ is Ident) SPrim0__sp0_a0__call2783)))
+(assert (= SAtomR__sa_true__call2789 ((_ is KwTrue) SPrim0__sp0_a0__call2783)))
+(assert (= SAtomR__sa_false__call2789 ((_ is KwFalse) SPrim0__sp0_a0__call2783)))
+(assert (= SAtomR__sa_iv__call2789
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2783)
+        (IntLit__f0 SPrim0__sp0_a0__call2783)
+        0)))
+(assert (= SAtomR__sa_sv__call2789
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2783)
+        (StringLit__f0 SPrim0__sp0_a0__call2783)
+        "")))
+(assert (= SAtomR__sa_idv__call2789
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2783)
+        (Ident__f0 SPrim0__sp0_a0__call2783)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2789
+   (and SAtomR__sa_is_id__call2789 ((_ is LParen) SPrim0__sp0_a1__call2783))))
+(assert (= SPrim0__sp0_ak__call2783
+   (and (or SAtomR__sa_is_int__call2789
+            SAtomR__sa_is_str__call2789
+            SAtomR__sa_true__call2789
+            SAtomR__sa_false__call2789
+            SAtomR__sa_is_id__call2789)
+        (not SAtomR__sa_ctor_head__call2789))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2789 0)
+                (str.from_int SAtomR__sa_iv__call2789)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2789)))))
+      (a!2 (ite SAtomR__sa_true__call2789
+                "true"
+                (ite SAtomR__sa_false__call2789
+                     "false"
+                     (ite SAtomR__sa_is_str__call2789
+                          (str.++ """" SAtomR__sa_sv__call2789 """")
+                          SAtomR__sa_idv__call2789)))))
+  (= SPrim0__sp0_ao__call2783 (ite SAtomR__sa_is_int__call2789 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2773 SPrim0__sp0_ak__call2783))
+(assert (= SChain0__sc0_o2__call2773
+   (ite SPrim0__sp0_neg__call2783
+        (str.++ "(not " SPrim0__sp0_ao__call2783 ")")
+        SPrim0__sp0_ao__call2783)))
+(assert (= SChain0__sc0_r2__call2773 SPrim0__sp0_s0__call2783))
+(assert (= SChain0__sc0_q2__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2773)
+        (TLCons__f0 SChain0__sc0_r2__call2773)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2773)
+        (TLCons__f1 SChain0__sc0_r2__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2792
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2773)
+        (TLCons__f0 SChain0__sc0_s3__call2773)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2792
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2773)
+        (TLCons__f1 SChain0__sc0_s3__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2792 ((_ is OpNot) SPrim0__sp0_h0__call2792)))
+(assert (= SPrim0__sp0_seed__call2792
+   (ite SPrim0__sp0_neg__call2792
+        SPrim0__sp0_t0__call2792
+        SChain0__sc0_s3__call2773)))
+(assert (= SPrim0__sp0_a0__call2792
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2792)
+        (TLCons__f0 SPrim0__sp0_seed__call2792)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2792
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2792)
+        (TLCons__f1 SPrim0__sp0_seed__call2792)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2792
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2792)
+        (TLCons__f0 SPrim0__sp0_s0__call2792)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2798 ((_ is IntLit) SPrim0__sp0_a0__call2792)))
+(assert (= SAtomR__sa_is_str__call2798 ((_ is StringLit) SPrim0__sp0_a0__call2792)))
+(assert (= SAtomR__sa_is_id__call2798 ((_ is Ident) SPrim0__sp0_a0__call2792)))
+(assert (= SAtomR__sa_true__call2798 ((_ is KwTrue) SPrim0__sp0_a0__call2792)))
+(assert (= SAtomR__sa_false__call2798 ((_ is KwFalse) SPrim0__sp0_a0__call2792)))
+(assert (= SAtomR__sa_iv__call2798
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2792)
+        (IntLit__f0 SPrim0__sp0_a0__call2792)
+        0)))
+(assert (= SAtomR__sa_sv__call2798
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2792)
+        (StringLit__f0 SPrim0__sp0_a0__call2792)
+        "")))
+(assert (= SAtomR__sa_idv__call2798
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2792)
+        (Ident__f0 SPrim0__sp0_a0__call2792)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2798
+   (and SAtomR__sa_is_id__call2798 ((_ is LParen) SPrim0__sp0_a1__call2792))))
+(assert (= SPrim0__sp0_ak__call2792
+   (and (or SAtomR__sa_is_int__call2798
+            SAtomR__sa_is_str__call2798
+            SAtomR__sa_true__call2798
+            SAtomR__sa_false__call2798
+            SAtomR__sa_is_id__call2798)
+        (not SAtomR__sa_ctor_head__call2798))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2798 0)
+                (str.from_int SAtomR__sa_iv__call2798)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2798)))))
+      (a!2 (ite SAtomR__sa_true__call2798
+                "true"
+                (ite SAtomR__sa_false__call2798
+                     "false"
+                     (ite SAtomR__sa_is_str__call2798
+                          (str.++ """" SAtomR__sa_sv__call2798 """")
+                          SAtomR__sa_idv__call2798)))))
+  (= SPrim0__sp0_ao__call2792 (ite SAtomR__sa_is_int__call2798 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2773 SPrim0__sp0_ak__call2792))
+(assert (= SChain0__sc0_o3__call2773
+   (ite SPrim0__sp0_neg__call2792
+        (str.++ "(not " SPrim0__sp0_ao__call2792 ")")
+        SPrim0__sp0_ao__call2792)))
+(assert (= SChain0__sc0_r3__call2773 SPrim0__sp0_s0__call2792))
+(assert (= SChain0__sc0_q3__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2773)
+        (TLCons__f0 SChain0__sc0_r3__call2773)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2773
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2773)
+        (TLCons__f1 SChain0__sc0_r3__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2801
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2773)
+        (TLCons__f0 SChain0__sc0_s4__call2773)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2801
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2773)
+        (TLCons__f1 SChain0__sc0_s4__call2773)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2801 ((_ is OpNot) SPrim0__sp0_h0__call2801)))
+(assert (= SPrim0__sp0_seed__call2801
+   (ite SPrim0__sp0_neg__call2801
+        SPrim0__sp0_t0__call2801
+        SChain0__sc0_s4__call2773)))
+(assert (= SPrim0__sp0_a0__call2801
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2801)
+        (TLCons__f0 SPrim0__sp0_seed__call2801)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2801
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2801)
+        (TLCons__f1 SPrim0__sp0_seed__call2801)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2801
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2801)
+        (TLCons__f0 SPrim0__sp0_s0__call2801)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2807 ((_ is IntLit) SPrim0__sp0_a0__call2801)))
+(assert (= SAtomR__sa_is_str__call2807 ((_ is StringLit) SPrim0__sp0_a0__call2801)))
+(assert (= SAtomR__sa_is_id__call2807 ((_ is Ident) SPrim0__sp0_a0__call2801)))
+(assert (= SAtomR__sa_true__call2807 ((_ is KwTrue) SPrim0__sp0_a0__call2801)))
+(assert (= SAtomR__sa_false__call2807 ((_ is KwFalse) SPrim0__sp0_a0__call2801)))
+(assert (= SAtomR__sa_iv__call2807
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2801)
+        (IntLit__f0 SPrim0__sp0_a0__call2801)
+        0)))
+(assert (= SAtomR__sa_sv__call2807
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2801)
+        (StringLit__f0 SPrim0__sp0_a0__call2801)
+        "")))
+(assert (= SAtomR__sa_idv__call2807
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2801)
+        (Ident__f0 SPrim0__sp0_a0__call2801)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2807
+   (and SAtomR__sa_is_id__call2807 ((_ is LParen) SPrim0__sp0_a1__call2801))))
+(assert (= SPrim0__sp0_ak__call2801
+   (and (or SAtomR__sa_is_int__call2807
+            SAtomR__sa_is_str__call2807
+            SAtomR__sa_true__call2807
+            SAtomR__sa_false__call2807
+            SAtomR__sa_is_id__call2807)
+        (not SAtomR__sa_ctor_head__call2807))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2807 0)
+                (str.from_int SAtomR__sa_iv__call2807)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2807)))))
+      (a!2 (ite SAtomR__sa_true__call2807
+                "true"
+                (ite SAtomR__sa_false__call2807
+                     "false"
+                     (ite SAtomR__sa_is_str__call2807
+                          (str.++ """" SAtomR__sa_sv__call2807 """")
+                          SAtomR__sa_idv__call2807)))))
+  (= SPrim0__sp0_ao__call2801 (ite SAtomR__sa_is_int__call2807 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2773 SPrim0__sp0_ak__call2801))
+(assert (= SChain0__sc0_o4__call2773
+   (ite SPrim0__sp0_neg__call2801
+        (str.++ "(not " SPrim0__sp0_ao__call2801 ")")
+        SPrim0__sp0_ao__call2801)))
+(assert (= SChain0__sc0_r4__call2773 SPrim0__sp0_s0__call2801))
+(assert (= SOpSmt__so_plus__call2808 ((_ is Plus) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_minus__call2808 ((_ is Minus) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_star__call2808 ((_ is Star) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_slash__call2808 ((_ is Slash) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_lt__call2808 ((_ is Lt) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_gt__call2808 ((_ is Gt) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_le__call2808 ((_ is OpLe) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_ge__call2808 ((_ is OpGe) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_eq__call2808 ((_ is Eq) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_ne__call2808 ((_ is OpNe) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_and__call2808 ((_ is OpAnd) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_or__call2808 ((_ is OpOr) SChain0__sc0_q1__call2773)))
+(assert (= SOpSmt__so_impl__call2808 ((_ is OpImplies) SChain0__sc0_q1__call2773)))
+(assert (= SChain0__sc0_op1k__call2773
+   (or SOpSmt__so_plus__call2808
+       SOpSmt__so_minus__call2808
+       SOpSmt__so_star__call2808
+       SOpSmt__so_slash__call2808
+       SOpSmt__so_lt__call2808
+       SOpSmt__so_gt__call2808
+       SOpSmt__so_le__call2808
+       SOpSmt__so_ge__call2808
+       SOpSmt__so_eq__call2808
+       SOpSmt__so_ne__call2808
+       SOpSmt__so_and__call2808
+       SOpSmt__so_or__call2808
+       SOpSmt__so_impl__call2808)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2808
+                "distinct"
+                (ite SOpSmt__so_and__call2808
+                     "and"
+                     (ite SOpSmt__so_or__call2808
+                          "or"
+                          (ite SOpSmt__so_impl__call2808 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2808
+                ">"
+                (ite SOpSmt__so_le__call2808
+                     "<="
+                     (ite SOpSmt__so_ge__call2808
+                          ">="
+                          (ite SOpSmt__so_eq__call2808 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2808
+                "-"
+                (ite SOpSmt__so_star__call2808
+                     "*"
+                     (ite SOpSmt__so_slash__call2808
+                          "div"
+                          (ite SOpSmt__so_lt__call2808 "<" a!2))))))
+  (= SChain0__sc0_op1__call2773 (ite SOpSmt__so_plus__call2808 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2809 ((_ is Plus) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_minus__call2809 ((_ is Minus) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_star__call2809 ((_ is Star) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_slash__call2809 ((_ is Slash) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_lt__call2809 ((_ is Lt) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_gt__call2809 ((_ is Gt) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_le__call2809 ((_ is OpLe) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_ge__call2809 ((_ is OpGe) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_eq__call2809 ((_ is Eq) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_ne__call2809 ((_ is OpNe) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_and__call2809 ((_ is OpAnd) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_or__call2809 ((_ is OpOr) SChain0__sc0_q3__call2773)))
+(assert (= SOpSmt__so_impl__call2809 ((_ is OpImplies) SChain0__sc0_q3__call2773)))
+(assert (= SChain0__sc0_op3k__call2773
+   (or SOpSmt__so_plus__call2809
+       SOpSmt__so_minus__call2809
+       SOpSmt__so_star__call2809
+       SOpSmt__so_slash__call2809
+       SOpSmt__so_lt__call2809
+       SOpSmt__so_gt__call2809
+       SOpSmt__so_le__call2809
+       SOpSmt__so_ge__call2809
+       SOpSmt__so_eq__call2809
+       SOpSmt__so_ne__call2809
+       SOpSmt__so_and__call2809
+       SOpSmt__so_or__call2809
+       SOpSmt__so_impl__call2809)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2809
+                "distinct"
+                (ite SOpSmt__so_and__call2809
+                     "and"
+                     (ite SOpSmt__so_or__call2809
+                          "or"
+                          (ite SOpSmt__so_impl__call2809 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2809
+                ">"
+                (ite SOpSmt__so_le__call2809
+                     "<="
+                     (ite SOpSmt__so_ge__call2809
+                          ">="
+                          (ite SOpSmt__so_eq__call2809 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2809
+                "-"
+                (ite SOpSmt__so_star__call2809
+                     "*"
+                     (ite SOpSmt__so_slash__call2809
+                          "div"
+                          (ite SOpSmt__so_lt__call2809 "<" a!2))))))
+  (= SChain0__sc0_op3__call2773 (ite SOpSmt__so_plus__call2809 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2773 ((_ is Question) SChain0__sc0_q1__call2773)))
+(assert (= SChain0__sc0_q2_tern__call2773 ((_ is Question) SChain0__sc0_q2__call2773)))
+(assert (= SChain0__sc0_q2_and__call2773 ((_ is OpAnd) SChain0__sc0_q2__call2773)))
+(assert (= SChain0__sc0_q2_or__call2773 ((_ is OpOr) SChain0__sc0_q2__call2773)))
+(assert (= SChain0__sc0_q2_bool__call2773
+   (or SChain0__sc0_q2_and__call2773 SChain0__sc0_q2_or__call2773)))
+(assert (= SChain0__sc0_b2__call2773 (ite SChain0__sc0_q2_and__call2773 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2773 ((_ is Colon) SChain0__sc0_q2__call2773)))
+(assert (= SChain0__sc0_q3_colon__call2773 ((_ is Colon) SChain0__sc0_q3__call2773)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2773
+                (and (and (and SChain0__sc0_k1__call2773
+                               SChain0__sc0_k2__call2773)
+                          SChain0__sc0_k3__call2773)
+                     SChain0__sc0_k4__call2773)
+                (and (and SChain0__sc0_k1__call2773 SChain0__sc0_k2__call2773)
+                     SChain0__sc0_k3__call2773))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2773
+                (and (and (and SChain0__sc0_k1__call2773
+                               SChain0__sc0_k2__call2773)
+                          SChain0__sc0_k3__call2773)
+                     SChain0__sc0_q3_colon__call2773
+                     SChain0__sc0_k4__call2773)
+                (ite SChain0__sc0_q2_bool__call2773
+                     a!1
+                     (and SChain0__sc0_k1__call2773 SChain0__sc0_k2__call2773)))))
+  (= SPrim1__sp1_ik__call2767
+     (ite SChain0__sc0_q1_tern__call2773
+          (and (and SChain0__sc0_k1__call2773 SChain0__sc0_k2__call2773)
+               SChain0__sc0_q2_colon__call2773
+               SChain0__sc0_k3__call2773)
+          (ite (not SChain0__sc0_op1k__call2773) SChain0__sc0_k1__call2773 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2773
+                (ite SChain0__sc0_op3k__call2773
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2773
+                                     " ("
+                                     SChain0__sc0_op1__call2773
+                                     " "
+                                     SChain0__sc0_o1__call2773
+                                     " "
+                                     SChain0__sc0_o2__call2773)
+                             ") ("
+                             SChain0__sc0_op3__call2773
+                             " "
+                             SChain0__sc0_o3__call2773
+                             " "
+                             SChain0__sc0_o4__call2773
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2773
+                                     " ("
+                                     SChain0__sc0_op1__call2773
+                                     " "
+                                     SChain0__sc0_o1__call2773
+                                     " "
+                                     SChain0__sc0_o2__call2773)
+                             ") "
+                             SChain0__sc0_o3__call2773
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2773
+                        " "
+                        SChain0__sc0_o1__call2773
+                        " "
+                        SChain0__sc0_o2__call2773
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2773
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2773
+                        " "
+                        SChain0__sc0_o2__call2773
+                        " "
+                        SChain0__sc0_o3__call2773
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2773)
+                     SChain0__sc0_o1__call2773
+                     (ite SChain0__sc0_q2_tern__call2773
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2773
+                                  " "
+                                  SChain0__sc0_o1__call2773
+                                  " "
+                                  SChain0__sc0_o2__call2773
+                                  ") "
+                                  SChain0__sc0_o3__call2773
+                                  " "
+                                  SChain0__sc0_o4__call2773
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2767 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2773)
+                SChain0__sc0_r1__call2773
+                (ite SChain0__sc0_q2_tern__call2773
+                     SChain0__sc0_r4__call2773
+                     (ite SChain0__sc0_q2_bool__call2773
+                          (ite SChain0__sc0_op3k__call2773
+                               SChain0__sc0_r4__call2773
+                               SChain0__sc0_r3__call2773)
+                          SChain0__sc0_r2__call2773)))))
+  (= SPrim1__sp1_ir__call2767
+     (ite SChain0__sc0_q1_tern__call2773 SChain0__sc0_r3__call2773 a!1))))
+(assert (= SPrim1__sp1_close__call2767
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2767)
+        (TLCons__f0 SPrim1__sp1_ir__call2767)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2767
+   (and SPrim1__sp1_par__call2767
+        SPrim1__sp1_ik__call2767
+        ((_ is RParen) SPrim1__sp1_close__call2767))))
+(assert (= SPrim1__sp1_pr__call2767
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2767)
+        (TLCons__f1 SPrim1__sp1_ir__call2767)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2812 ((_ is IntLit) SPrim1__sp1_b0__call2767)))
+(assert (= SAtomR__sa_is_str__call2812 ((_ is StringLit) SPrim1__sp1_b0__call2767)))
+(assert (= SAtomR__sa_is_id__call2812 ((_ is Ident) SPrim1__sp1_b0__call2767)))
+(assert (= SAtomR__sa_true__call2812 ((_ is KwTrue) SPrim1__sp1_b0__call2767)))
+(assert (= SAtomR__sa_false__call2812 ((_ is KwFalse) SPrim1__sp1_b0__call2767)))
+(assert (= SAtomR__sa_iv__call2812
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2767)
+        (IntLit__f0 SPrim1__sp1_b0__call2767)
+        0)))
+(assert (= SAtomR__sa_sv__call2812
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2767)
+        (StringLit__f0 SPrim1__sp1_b0__call2767)
+        "")))
+(assert (= SAtomR__sa_idv__call2812
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2767)
+        (Ident__f0 SPrim1__sp1_b0__call2767)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2812
+   (and SAtomR__sa_is_id__call2812 ((_ is LParen) SPrim1__sp1_b1__call2767))))
+(assert (= SPrim1__sp1_ak__call2767
+   (and (or SAtomR__sa_is_int__call2812
+            SAtomR__sa_is_str__call2812
+            SAtomR__sa_true__call2812
+            SAtomR__sa_false__call2812
+            SAtomR__sa_is_id__call2812)
+        (not SAtomR__sa_ctor_head__call2812))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2812 0)
+                (str.from_int SAtomR__sa_iv__call2812)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2812)))))
+      (a!2 (ite SAtomR__sa_true__call2812
+                "true"
+                (ite SAtomR__sa_false__call2812
+                     "false"
+                     (ite SAtomR__sa_is_str__call2812
+                          (str.++ """" SAtomR__sa_sv__call2812 """")
+                          SAtomR__sa_idv__call2812)))))
+  (= SPrim1__sp1_ao__call2767 (ite SAtomR__sa_is_int__call2812 a!1 a!2))))
+(assert (= SChain1__sc1_k2__call2718
+   (ite SPrim1__sp1_par__call2767
+        SPrim1__sp1_par_ok__call2767
+        SPrim1__sp1_ak__call2767)))
+(assert (= SPrim1__sp1_base__call2767
+   (ite SPrim1__sp1_par__call2767
+        SPrim1__sp1_io__call2767
+        SPrim1__sp1_ao__call2767)))
+(assert (= SChain1__sc1_o2__call2718
+   (ite SPrim1__sp1_neg__call2767
+        (str.++ "(not " SPrim1__sp1_base__call2767 ")")
+        SPrim1__sp1_base__call2767)))
+(assert (= SChain1__sc1_r2__call2718
+   (ite SPrim1__sp1_par__call2767
+        SPrim1__sp1_pr__call2767
+        SPrim1__sp1_bt__call2767)))
+(assert (= SChain1__sc1_q2__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2718)
+        (TLCons__f0 SChain1__sc1_r2__call2718)
+        EofTok)))
+(assert (= SChain1__sc1_s3__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r2__call2718)
+        (TLCons__f1 SChain1__sc1_r2__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2815
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2718)
+        (TLCons__f0 SChain1__sc1_s3__call2718)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2815
+   (ite ((_ is TLCons) SChain1__sc1_s3__call2718)
+        (TLCons__f1 SChain1__sc1_s3__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2815 ((_ is OpNot) SPrim1__sp1_h0__call2815)))
+(assert (= SPrim1__sp1_seed__call2815
+   (ite SPrim1__sp1_neg__call2815
+        SPrim1__sp1_t0__call2815
+        SChain1__sc1_s3__call2718)))
+(assert (= SPrim1__sp1_b0__call2815
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2815)
+        (TLCons__f0 SPrim1__sp1_seed__call2815)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2815
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2815)
+        (TLCons__f1 SPrim1__sp1_seed__call2815)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2815
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2815)
+        (TLCons__f0 SPrim1__sp1_bt__call2815)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2815 ((_ is LParen) SPrim1__sp1_b0__call2815)))
+(assert (= SPrim0__sp0_h0__call2822
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2815)
+        (TLCons__f0 SPrim1__sp1_bt__call2815)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2822
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2815)
+        (TLCons__f1 SPrim1__sp1_bt__call2815)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2822 ((_ is OpNot) SPrim0__sp0_h0__call2822)))
+(assert (= SPrim0__sp0_seed__call2822
+   (ite SPrim0__sp0_neg__call2822
+        SPrim0__sp0_t0__call2822
+        SPrim1__sp1_bt__call2815)))
+(assert (= SPrim0__sp0_a0__call2822
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2822)
+        (TLCons__f0 SPrim0__sp0_seed__call2822)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2822
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2822)
+        (TLCons__f1 SPrim0__sp0_seed__call2822)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2822
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2822)
+        (TLCons__f0 SPrim0__sp0_s0__call2822)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2828 ((_ is IntLit) SPrim0__sp0_a0__call2822)))
+(assert (= SAtomR__sa_is_str__call2828 ((_ is StringLit) SPrim0__sp0_a0__call2822)))
+(assert (= SAtomR__sa_is_id__call2828 ((_ is Ident) SPrim0__sp0_a0__call2822)))
+(assert (= SAtomR__sa_true__call2828 ((_ is KwTrue) SPrim0__sp0_a0__call2822)))
+(assert (= SAtomR__sa_false__call2828 ((_ is KwFalse) SPrim0__sp0_a0__call2822)))
+(assert (= SAtomR__sa_iv__call2828
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2822)
+        (IntLit__f0 SPrim0__sp0_a0__call2822)
+        0)))
+(assert (= SAtomR__sa_sv__call2828
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2822)
+        (StringLit__f0 SPrim0__sp0_a0__call2822)
+        "")))
+(assert (= SAtomR__sa_idv__call2828
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2822)
+        (Ident__f0 SPrim0__sp0_a0__call2822)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2828
+   (and SAtomR__sa_is_id__call2828 ((_ is LParen) SPrim0__sp0_a1__call2822))))
+(assert (= SPrim0__sp0_ak__call2822
+   (and (or SAtomR__sa_is_int__call2828
+            SAtomR__sa_is_str__call2828
+            SAtomR__sa_true__call2828
+            SAtomR__sa_false__call2828
+            SAtomR__sa_is_id__call2828)
+        (not SAtomR__sa_ctor_head__call2828))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2828 0)
+                (str.from_int SAtomR__sa_iv__call2828)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2828)))))
+      (a!2 (ite SAtomR__sa_true__call2828
+                "true"
+                (ite SAtomR__sa_false__call2828
+                     "false"
+                     (ite SAtomR__sa_is_str__call2828
+                          (str.++ """" SAtomR__sa_sv__call2828 """")
+                          SAtomR__sa_idv__call2828)))))
+  (= SPrim0__sp0_ao__call2822 (ite SAtomR__sa_is_int__call2828 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2821 SPrim0__sp0_ak__call2822))
+(assert (= SChain0__sc0_o1__call2821
+   (ite SPrim0__sp0_neg__call2822
+        (str.++ "(not " SPrim0__sp0_ao__call2822 ")")
+        SPrim0__sp0_ao__call2822)))
+(assert (= SChain0__sc0_r1__call2821 SPrim0__sp0_s0__call2822))
+(assert (= SChain0__sc0_q1__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2821)
+        (TLCons__f0 SChain0__sc0_r1__call2821)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2821)
+        (TLCons__f1 SChain0__sc0_r1__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2831
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2821)
+        (TLCons__f0 SChain0__sc0_s2__call2821)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2831
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2821)
+        (TLCons__f1 SChain0__sc0_s2__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2831 ((_ is OpNot) SPrim0__sp0_h0__call2831)))
+(assert (= SPrim0__sp0_seed__call2831
+   (ite SPrim0__sp0_neg__call2831
+        SPrim0__sp0_t0__call2831
+        SChain0__sc0_s2__call2821)))
+(assert (= SPrim0__sp0_a0__call2831
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2831)
+        (TLCons__f0 SPrim0__sp0_seed__call2831)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2831
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2831)
+        (TLCons__f1 SPrim0__sp0_seed__call2831)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2831
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2831)
+        (TLCons__f0 SPrim0__sp0_s0__call2831)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2837 ((_ is IntLit) SPrim0__sp0_a0__call2831)))
+(assert (= SAtomR__sa_is_str__call2837 ((_ is StringLit) SPrim0__sp0_a0__call2831)))
+(assert (= SAtomR__sa_is_id__call2837 ((_ is Ident) SPrim0__sp0_a0__call2831)))
+(assert (= SAtomR__sa_true__call2837 ((_ is KwTrue) SPrim0__sp0_a0__call2831)))
+(assert (= SAtomR__sa_false__call2837 ((_ is KwFalse) SPrim0__sp0_a0__call2831)))
+(assert (= SAtomR__sa_iv__call2837
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2831)
+        (IntLit__f0 SPrim0__sp0_a0__call2831)
+        0)))
+(assert (= SAtomR__sa_sv__call2837
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2831)
+        (StringLit__f0 SPrim0__sp0_a0__call2831)
+        "")))
+(assert (= SAtomR__sa_idv__call2837
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2831)
+        (Ident__f0 SPrim0__sp0_a0__call2831)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2837
+   (and SAtomR__sa_is_id__call2837 ((_ is LParen) SPrim0__sp0_a1__call2831))))
+(assert (= SPrim0__sp0_ak__call2831
+   (and (or SAtomR__sa_is_int__call2837
+            SAtomR__sa_is_str__call2837
+            SAtomR__sa_true__call2837
+            SAtomR__sa_false__call2837
+            SAtomR__sa_is_id__call2837)
+        (not SAtomR__sa_ctor_head__call2837))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2837 0)
+                (str.from_int SAtomR__sa_iv__call2837)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2837)))))
+      (a!2 (ite SAtomR__sa_true__call2837
+                "true"
+                (ite SAtomR__sa_false__call2837
+                     "false"
+                     (ite SAtomR__sa_is_str__call2837
+                          (str.++ """" SAtomR__sa_sv__call2837 """")
+                          SAtomR__sa_idv__call2837)))))
+  (= SPrim0__sp0_ao__call2831 (ite SAtomR__sa_is_int__call2837 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2821 SPrim0__sp0_ak__call2831))
+(assert (= SChain0__sc0_o2__call2821
+   (ite SPrim0__sp0_neg__call2831
+        (str.++ "(not " SPrim0__sp0_ao__call2831 ")")
+        SPrim0__sp0_ao__call2831)))
+(assert (= SChain0__sc0_r2__call2821 SPrim0__sp0_s0__call2831))
+(assert (= SChain0__sc0_q2__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2821)
+        (TLCons__f0 SChain0__sc0_r2__call2821)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2821)
+        (TLCons__f1 SChain0__sc0_r2__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2840
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2821)
+        (TLCons__f0 SChain0__sc0_s3__call2821)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2840
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2821)
+        (TLCons__f1 SChain0__sc0_s3__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2840 ((_ is OpNot) SPrim0__sp0_h0__call2840)))
+(assert (= SPrim0__sp0_seed__call2840
+   (ite SPrim0__sp0_neg__call2840
+        SPrim0__sp0_t0__call2840
+        SChain0__sc0_s3__call2821)))
+(assert (= SPrim0__sp0_a0__call2840
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2840)
+        (TLCons__f0 SPrim0__sp0_seed__call2840)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2840
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2840)
+        (TLCons__f1 SPrim0__sp0_seed__call2840)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2840
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2840)
+        (TLCons__f0 SPrim0__sp0_s0__call2840)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2846 ((_ is IntLit) SPrim0__sp0_a0__call2840)))
+(assert (= SAtomR__sa_is_str__call2846 ((_ is StringLit) SPrim0__sp0_a0__call2840)))
+(assert (= SAtomR__sa_is_id__call2846 ((_ is Ident) SPrim0__sp0_a0__call2840)))
+(assert (= SAtomR__sa_true__call2846 ((_ is KwTrue) SPrim0__sp0_a0__call2840)))
+(assert (= SAtomR__sa_false__call2846 ((_ is KwFalse) SPrim0__sp0_a0__call2840)))
+(assert (= SAtomR__sa_iv__call2846
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2840)
+        (IntLit__f0 SPrim0__sp0_a0__call2840)
+        0)))
+(assert (= SAtomR__sa_sv__call2846
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2840)
+        (StringLit__f0 SPrim0__sp0_a0__call2840)
+        "")))
+(assert (= SAtomR__sa_idv__call2846
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2840)
+        (Ident__f0 SPrim0__sp0_a0__call2840)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2846
+   (and SAtomR__sa_is_id__call2846 ((_ is LParen) SPrim0__sp0_a1__call2840))))
+(assert (= SPrim0__sp0_ak__call2840
+   (and (or SAtomR__sa_is_int__call2846
+            SAtomR__sa_is_str__call2846
+            SAtomR__sa_true__call2846
+            SAtomR__sa_false__call2846
+            SAtomR__sa_is_id__call2846)
+        (not SAtomR__sa_ctor_head__call2846))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2846 0)
+                (str.from_int SAtomR__sa_iv__call2846)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2846)))))
+      (a!2 (ite SAtomR__sa_true__call2846
+                "true"
+                (ite SAtomR__sa_false__call2846
+                     "false"
+                     (ite SAtomR__sa_is_str__call2846
+                          (str.++ """" SAtomR__sa_sv__call2846 """")
+                          SAtomR__sa_idv__call2846)))))
+  (= SPrim0__sp0_ao__call2840 (ite SAtomR__sa_is_int__call2846 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2821 SPrim0__sp0_ak__call2840))
+(assert (= SChain0__sc0_o3__call2821
+   (ite SPrim0__sp0_neg__call2840
+        (str.++ "(not " SPrim0__sp0_ao__call2840 ")")
+        SPrim0__sp0_ao__call2840)))
+(assert (= SChain0__sc0_r3__call2821 SPrim0__sp0_s0__call2840))
+(assert (= SChain0__sc0_q3__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2821)
+        (TLCons__f0 SChain0__sc0_r3__call2821)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2821
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2821)
+        (TLCons__f1 SChain0__sc0_r3__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2849
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2821)
+        (TLCons__f0 SChain0__sc0_s4__call2821)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2849
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2821)
+        (TLCons__f1 SChain0__sc0_s4__call2821)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2849 ((_ is OpNot) SPrim0__sp0_h0__call2849)))
+(assert (= SPrim0__sp0_seed__call2849
+   (ite SPrim0__sp0_neg__call2849
+        SPrim0__sp0_t0__call2849
+        SChain0__sc0_s4__call2821)))
+(assert (= SPrim0__sp0_a0__call2849
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2849)
+        (TLCons__f0 SPrim0__sp0_seed__call2849)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2849
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2849)
+        (TLCons__f1 SPrim0__sp0_seed__call2849)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2849
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2849)
+        (TLCons__f0 SPrim0__sp0_s0__call2849)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2855 ((_ is IntLit) SPrim0__sp0_a0__call2849)))
+(assert (= SAtomR__sa_is_str__call2855 ((_ is StringLit) SPrim0__sp0_a0__call2849)))
+(assert (= SAtomR__sa_is_id__call2855 ((_ is Ident) SPrim0__sp0_a0__call2849)))
+(assert (= SAtomR__sa_true__call2855 ((_ is KwTrue) SPrim0__sp0_a0__call2849)))
+(assert (= SAtomR__sa_false__call2855 ((_ is KwFalse) SPrim0__sp0_a0__call2849)))
+(assert (= SAtomR__sa_iv__call2855
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2849)
+        (IntLit__f0 SPrim0__sp0_a0__call2849)
+        0)))
+(assert (= SAtomR__sa_sv__call2855
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2849)
+        (StringLit__f0 SPrim0__sp0_a0__call2849)
+        "")))
+(assert (= SAtomR__sa_idv__call2855
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2849)
+        (Ident__f0 SPrim0__sp0_a0__call2849)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2855
+   (and SAtomR__sa_is_id__call2855 ((_ is LParen) SPrim0__sp0_a1__call2849))))
+(assert (= SPrim0__sp0_ak__call2849
+   (and (or SAtomR__sa_is_int__call2855
+            SAtomR__sa_is_str__call2855
+            SAtomR__sa_true__call2855
+            SAtomR__sa_false__call2855
+            SAtomR__sa_is_id__call2855)
+        (not SAtomR__sa_ctor_head__call2855))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2855 0)
+                (str.from_int SAtomR__sa_iv__call2855)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2855)))))
+      (a!2 (ite SAtomR__sa_true__call2855
+                "true"
+                (ite SAtomR__sa_false__call2855
+                     "false"
+                     (ite SAtomR__sa_is_str__call2855
+                          (str.++ """" SAtomR__sa_sv__call2855 """")
+                          SAtomR__sa_idv__call2855)))))
+  (= SPrim0__sp0_ao__call2849 (ite SAtomR__sa_is_int__call2855 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2821 SPrim0__sp0_ak__call2849))
+(assert (= SChain0__sc0_o4__call2821
+   (ite SPrim0__sp0_neg__call2849
+        (str.++ "(not " SPrim0__sp0_ao__call2849 ")")
+        SPrim0__sp0_ao__call2849)))
+(assert (= SChain0__sc0_r4__call2821 SPrim0__sp0_s0__call2849))
+(assert (= SOpSmt__so_plus__call2856 ((_ is Plus) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_minus__call2856 ((_ is Minus) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_star__call2856 ((_ is Star) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_slash__call2856 ((_ is Slash) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_lt__call2856 ((_ is Lt) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_gt__call2856 ((_ is Gt) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_le__call2856 ((_ is OpLe) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_ge__call2856 ((_ is OpGe) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_eq__call2856 ((_ is Eq) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_ne__call2856 ((_ is OpNe) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_and__call2856 ((_ is OpAnd) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_or__call2856 ((_ is OpOr) SChain0__sc0_q1__call2821)))
+(assert (= SOpSmt__so_impl__call2856 ((_ is OpImplies) SChain0__sc0_q1__call2821)))
+(assert (= SChain0__sc0_op1k__call2821
+   (or SOpSmt__so_plus__call2856
+       SOpSmt__so_minus__call2856
+       SOpSmt__so_star__call2856
+       SOpSmt__so_slash__call2856
+       SOpSmt__so_lt__call2856
+       SOpSmt__so_gt__call2856
+       SOpSmt__so_le__call2856
+       SOpSmt__so_ge__call2856
+       SOpSmt__so_eq__call2856
+       SOpSmt__so_ne__call2856
+       SOpSmt__so_and__call2856
+       SOpSmt__so_or__call2856
+       SOpSmt__so_impl__call2856)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2856
+                "distinct"
+                (ite SOpSmt__so_and__call2856
+                     "and"
+                     (ite SOpSmt__so_or__call2856
+                          "or"
+                          (ite SOpSmt__so_impl__call2856 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2856
+                ">"
+                (ite SOpSmt__so_le__call2856
+                     "<="
+                     (ite SOpSmt__so_ge__call2856
+                          ">="
+                          (ite SOpSmt__so_eq__call2856 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2856
+                "-"
+                (ite SOpSmt__so_star__call2856
+                     "*"
+                     (ite SOpSmt__so_slash__call2856
+                          "div"
+                          (ite SOpSmt__so_lt__call2856 "<" a!2))))))
+  (= SChain0__sc0_op1__call2821 (ite SOpSmt__so_plus__call2856 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2857 ((_ is Plus) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_minus__call2857 ((_ is Minus) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_star__call2857 ((_ is Star) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_slash__call2857 ((_ is Slash) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_lt__call2857 ((_ is Lt) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_gt__call2857 ((_ is Gt) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_le__call2857 ((_ is OpLe) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_ge__call2857 ((_ is OpGe) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_eq__call2857 ((_ is Eq) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_ne__call2857 ((_ is OpNe) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_and__call2857 ((_ is OpAnd) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_or__call2857 ((_ is OpOr) SChain0__sc0_q3__call2821)))
+(assert (= SOpSmt__so_impl__call2857 ((_ is OpImplies) SChain0__sc0_q3__call2821)))
+(assert (= SChain0__sc0_op3k__call2821
+   (or SOpSmt__so_plus__call2857
+       SOpSmt__so_minus__call2857
+       SOpSmt__so_star__call2857
+       SOpSmt__so_slash__call2857
+       SOpSmt__so_lt__call2857
+       SOpSmt__so_gt__call2857
+       SOpSmt__so_le__call2857
+       SOpSmt__so_ge__call2857
+       SOpSmt__so_eq__call2857
+       SOpSmt__so_ne__call2857
+       SOpSmt__so_and__call2857
+       SOpSmt__so_or__call2857
+       SOpSmt__so_impl__call2857)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2857
+                "distinct"
+                (ite SOpSmt__so_and__call2857
+                     "and"
+                     (ite SOpSmt__so_or__call2857
+                          "or"
+                          (ite SOpSmt__so_impl__call2857 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2857
+                ">"
+                (ite SOpSmt__so_le__call2857
+                     "<="
+                     (ite SOpSmt__so_ge__call2857
+                          ">="
+                          (ite SOpSmt__so_eq__call2857 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2857
+                "-"
+                (ite SOpSmt__so_star__call2857
+                     "*"
+                     (ite SOpSmt__so_slash__call2857
+                          "div"
+                          (ite SOpSmt__so_lt__call2857 "<" a!2))))))
+  (= SChain0__sc0_op3__call2821 (ite SOpSmt__so_plus__call2857 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2821 ((_ is Question) SChain0__sc0_q1__call2821)))
+(assert (= SChain0__sc0_q2_tern__call2821 ((_ is Question) SChain0__sc0_q2__call2821)))
+(assert (= SChain0__sc0_q2_and__call2821 ((_ is OpAnd) SChain0__sc0_q2__call2821)))
+(assert (= SChain0__sc0_q2_or__call2821 ((_ is OpOr) SChain0__sc0_q2__call2821)))
+(assert (= SChain0__sc0_q2_bool__call2821
+   (or SChain0__sc0_q2_and__call2821 SChain0__sc0_q2_or__call2821)))
+(assert (= SChain0__sc0_b2__call2821 (ite SChain0__sc0_q2_and__call2821 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2821 ((_ is Colon) SChain0__sc0_q2__call2821)))
+(assert (= SChain0__sc0_q3_colon__call2821 ((_ is Colon) SChain0__sc0_q3__call2821)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2821
+                (and (and (and SChain0__sc0_k1__call2821
+                               SChain0__sc0_k2__call2821)
+                          SChain0__sc0_k3__call2821)
+                     SChain0__sc0_k4__call2821)
+                (and (and SChain0__sc0_k1__call2821 SChain0__sc0_k2__call2821)
+                     SChain0__sc0_k3__call2821))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2821
+                (and (and (and SChain0__sc0_k1__call2821
+                               SChain0__sc0_k2__call2821)
+                          SChain0__sc0_k3__call2821)
+                     SChain0__sc0_q3_colon__call2821
+                     SChain0__sc0_k4__call2821)
+                (ite SChain0__sc0_q2_bool__call2821
+                     a!1
+                     (and SChain0__sc0_k1__call2821 SChain0__sc0_k2__call2821)))))
+  (= SPrim1__sp1_ik__call2815
+     (ite SChain0__sc0_q1_tern__call2821
+          (and (and SChain0__sc0_k1__call2821 SChain0__sc0_k2__call2821)
+               SChain0__sc0_q2_colon__call2821
+               SChain0__sc0_k3__call2821)
+          (ite (not SChain0__sc0_op1k__call2821) SChain0__sc0_k1__call2821 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2821
+                (ite SChain0__sc0_op3k__call2821
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2821
+                                     " ("
+                                     SChain0__sc0_op1__call2821
+                                     " "
+                                     SChain0__sc0_o1__call2821
+                                     " "
+                                     SChain0__sc0_o2__call2821)
+                             ") ("
+                             SChain0__sc0_op3__call2821
+                             " "
+                             SChain0__sc0_o3__call2821
+                             " "
+                             SChain0__sc0_o4__call2821
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2821
+                                     " ("
+                                     SChain0__sc0_op1__call2821
+                                     " "
+                                     SChain0__sc0_o1__call2821
+                                     " "
+                                     SChain0__sc0_o2__call2821)
+                             ") "
+                             SChain0__sc0_o3__call2821
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2821
+                        " "
+                        SChain0__sc0_o1__call2821
+                        " "
+                        SChain0__sc0_o2__call2821
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2821
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2821
+                        " "
+                        SChain0__sc0_o2__call2821
+                        " "
+                        SChain0__sc0_o3__call2821
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2821)
+                     SChain0__sc0_o1__call2821
+                     (ite SChain0__sc0_q2_tern__call2821
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2821
+                                  " "
+                                  SChain0__sc0_o1__call2821
+                                  " "
+                                  SChain0__sc0_o2__call2821
+                                  ") "
+                                  SChain0__sc0_o3__call2821
+                                  " "
+                                  SChain0__sc0_o4__call2821
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2815 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2821)
+                SChain0__sc0_r1__call2821
+                (ite SChain0__sc0_q2_tern__call2821
+                     SChain0__sc0_r4__call2821
+                     (ite SChain0__sc0_q2_bool__call2821
+                          (ite SChain0__sc0_op3k__call2821
+                               SChain0__sc0_r4__call2821
+                               SChain0__sc0_r3__call2821)
+                          SChain0__sc0_r2__call2821)))))
+  (= SPrim1__sp1_ir__call2815
+     (ite SChain0__sc0_q1_tern__call2821 SChain0__sc0_r3__call2821 a!1))))
+(assert (= SPrim1__sp1_close__call2815
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2815)
+        (TLCons__f0 SPrim1__sp1_ir__call2815)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2815
+   (and SPrim1__sp1_par__call2815
+        SPrim1__sp1_ik__call2815
+        ((_ is RParen) SPrim1__sp1_close__call2815))))
+(assert (= SPrim1__sp1_pr__call2815
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2815)
+        (TLCons__f1 SPrim1__sp1_ir__call2815)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2860 ((_ is IntLit) SPrim1__sp1_b0__call2815)))
+(assert (= SAtomR__sa_is_str__call2860 ((_ is StringLit) SPrim1__sp1_b0__call2815)))
+(assert (= SAtomR__sa_is_id__call2860 ((_ is Ident) SPrim1__sp1_b0__call2815)))
+(assert (= SAtomR__sa_true__call2860 ((_ is KwTrue) SPrim1__sp1_b0__call2815)))
+(assert (= SAtomR__sa_false__call2860 ((_ is KwFalse) SPrim1__sp1_b0__call2815)))
+(assert (= SAtomR__sa_iv__call2860
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2815)
+        (IntLit__f0 SPrim1__sp1_b0__call2815)
+        0)))
+(assert (= SAtomR__sa_sv__call2860
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2815)
+        (StringLit__f0 SPrim1__sp1_b0__call2815)
+        "")))
+(assert (= SAtomR__sa_idv__call2860
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2815)
+        (Ident__f0 SPrim1__sp1_b0__call2815)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2860
+   (and SAtomR__sa_is_id__call2860 ((_ is LParen) SPrim1__sp1_b1__call2815))))
+(assert (= SPrim1__sp1_ak__call2815
+   (and (or SAtomR__sa_is_int__call2860
+            SAtomR__sa_is_str__call2860
+            SAtomR__sa_true__call2860
+            SAtomR__sa_false__call2860
+            SAtomR__sa_is_id__call2860)
+        (not SAtomR__sa_ctor_head__call2860))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2860 0)
+                (str.from_int SAtomR__sa_iv__call2860)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2860)))))
+      (a!2 (ite SAtomR__sa_true__call2860
+                "true"
+                (ite SAtomR__sa_false__call2860
+                     "false"
+                     (ite SAtomR__sa_is_str__call2860
+                          (str.++ """" SAtomR__sa_sv__call2860 """")
+                          SAtomR__sa_idv__call2860)))))
+  (= SPrim1__sp1_ao__call2815 (ite SAtomR__sa_is_int__call2860 a!1 a!2))))
+(assert (= SChain1__sc1_k3__call2718
+   (ite SPrim1__sp1_par__call2815
+        SPrim1__sp1_par_ok__call2815
+        SPrim1__sp1_ak__call2815)))
+(assert (= SPrim1__sp1_base__call2815
+   (ite SPrim1__sp1_par__call2815
+        SPrim1__sp1_io__call2815
+        SPrim1__sp1_ao__call2815)))
+(assert (= SChain1__sc1_o3__call2718
+   (ite SPrim1__sp1_neg__call2815
+        (str.++ "(not " SPrim1__sp1_base__call2815 ")")
+        SPrim1__sp1_base__call2815)))
+(assert (= SChain1__sc1_r3__call2718
+   (ite SPrim1__sp1_par__call2815
+        SPrim1__sp1_pr__call2815
+        SPrim1__sp1_bt__call2815)))
+(assert (= SChain1__sc1_q3__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2718)
+        (TLCons__f0 SChain1__sc1_r3__call2718)
+        EofTok)))
+(assert (= SChain1__sc1_s4__call2718
+   (ite ((_ is TLCons) SChain1__sc1_r3__call2718)
+        (TLCons__f1 SChain1__sc1_r3__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_h0__call2863
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2718)
+        (TLCons__f0 SChain1__sc1_s4__call2718)
+        EofTok)))
+(assert (= SPrim1__sp1_t0__call2863
+   (ite ((_ is TLCons) SChain1__sc1_s4__call2718)
+        (TLCons__f1 SChain1__sc1_s4__call2718)
+        TLNil)))
+(assert (= SPrim1__sp1_neg__call2863 ((_ is OpNot) SPrim1__sp1_h0__call2863)))
+(assert (= SPrim1__sp1_seed__call2863
+   (ite SPrim1__sp1_neg__call2863
+        SPrim1__sp1_t0__call2863
+        SChain1__sc1_s4__call2718)))
+(assert (= SPrim1__sp1_b0__call2863
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2863)
+        (TLCons__f0 SPrim1__sp1_seed__call2863)
+        EofTok)))
+(assert (= SPrim1__sp1_bt__call2863
+   (ite ((_ is TLCons) SPrim1__sp1_seed__call2863)
+        (TLCons__f1 SPrim1__sp1_seed__call2863)
+        TLNil)))
+(assert (= SPrim1__sp1_b1__call2863
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2863)
+        (TLCons__f0 SPrim1__sp1_bt__call2863)
+        EofTok)))
+(assert (= SPrim1__sp1_par__call2863 ((_ is LParen) SPrim1__sp1_b0__call2863)))
+(assert (= SPrim0__sp0_h0__call2870
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2863)
+        (TLCons__f0 SPrim1__sp1_bt__call2863)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2870
+   (ite ((_ is TLCons) SPrim1__sp1_bt__call2863)
+        (TLCons__f1 SPrim1__sp1_bt__call2863)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2870 ((_ is OpNot) SPrim0__sp0_h0__call2870)))
+(assert (= SPrim0__sp0_seed__call2870
+   (ite SPrim0__sp0_neg__call2870
+        SPrim0__sp0_t0__call2870
+        SPrim1__sp1_bt__call2863)))
+(assert (= SPrim0__sp0_a0__call2870
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2870)
+        (TLCons__f0 SPrim0__sp0_seed__call2870)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2870
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2870)
+        (TLCons__f1 SPrim0__sp0_seed__call2870)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2870
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2870)
+        (TLCons__f0 SPrim0__sp0_s0__call2870)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2876 ((_ is IntLit) SPrim0__sp0_a0__call2870)))
+(assert (= SAtomR__sa_is_str__call2876 ((_ is StringLit) SPrim0__sp0_a0__call2870)))
+(assert (= SAtomR__sa_is_id__call2876 ((_ is Ident) SPrim0__sp0_a0__call2870)))
+(assert (= SAtomR__sa_true__call2876 ((_ is KwTrue) SPrim0__sp0_a0__call2870)))
+(assert (= SAtomR__sa_false__call2876 ((_ is KwFalse) SPrim0__sp0_a0__call2870)))
+(assert (= SAtomR__sa_iv__call2876
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2870)
+        (IntLit__f0 SPrim0__sp0_a0__call2870)
+        0)))
+(assert (= SAtomR__sa_sv__call2876
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2870)
+        (StringLit__f0 SPrim0__sp0_a0__call2870)
+        "")))
+(assert (= SAtomR__sa_idv__call2876
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2870)
+        (Ident__f0 SPrim0__sp0_a0__call2870)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2876
+   (and SAtomR__sa_is_id__call2876 ((_ is LParen) SPrim0__sp0_a1__call2870))))
+(assert (= SPrim0__sp0_ak__call2870
+   (and (or SAtomR__sa_is_int__call2876
+            SAtomR__sa_is_str__call2876
+            SAtomR__sa_true__call2876
+            SAtomR__sa_false__call2876
+            SAtomR__sa_is_id__call2876)
+        (not SAtomR__sa_ctor_head__call2876))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2876 0)
+                (str.from_int SAtomR__sa_iv__call2876)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2876)))))
+      (a!2 (ite SAtomR__sa_true__call2876
+                "true"
+                (ite SAtomR__sa_false__call2876
+                     "false"
+                     (ite SAtomR__sa_is_str__call2876
+                          (str.++ """" SAtomR__sa_sv__call2876 """")
+                          SAtomR__sa_idv__call2876)))))
+  (= SPrim0__sp0_ao__call2870 (ite SAtomR__sa_is_int__call2876 a!1 a!2))))
+(assert (= SChain0__sc0_k1__call2869 SPrim0__sp0_ak__call2870))
+(assert (= SChain0__sc0_o1__call2869
+   (ite SPrim0__sp0_neg__call2870
+        (str.++ "(not " SPrim0__sp0_ao__call2870 ")")
+        SPrim0__sp0_ao__call2870)))
+(assert (= SChain0__sc0_r1__call2869 SPrim0__sp0_s0__call2870))
+(assert (= SChain0__sc0_q1__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2869)
+        (TLCons__f0 SChain0__sc0_r1__call2869)
+        EofTok)))
+(assert (= SChain0__sc0_s2__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r1__call2869)
+        (TLCons__f1 SChain0__sc0_r1__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2879
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2869)
+        (TLCons__f0 SChain0__sc0_s2__call2869)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2879
+   (ite ((_ is TLCons) SChain0__sc0_s2__call2869)
+        (TLCons__f1 SChain0__sc0_s2__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2879 ((_ is OpNot) SPrim0__sp0_h0__call2879)))
+(assert (= SPrim0__sp0_seed__call2879
+   (ite SPrim0__sp0_neg__call2879
+        SPrim0__sp0_t0__call2879
+        SChain0__sc0_s2__call2869)))
+(assert (= SPrim0__sp0_a0__call2879
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2879)
+        (TLCons__f0 SPrim0__sp0_seed__call2879)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2879
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2879)
+        (TLCons__f1 SPrim0__sp0_seed__call2879)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2879
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2879)
+        (TLCons__f0 SPrim0__sp0_s0__call2879)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2885 ((_ is IntLit) SPrim0__sp0_a0__call2879)))
+(assert (= SAtomR__sa_is_str__call2885 ((_ is StringLit) SPrim0__sp0_a0__call2879)))
+(assert (= SAtomR__sa_is_id__call2885 ((_ is Ident) SPrim0__sp0_a0__call2879)))
+(assert (= SAtomR__sa_true__call2885 ((_ is KwTrue) SPrim0__sp0_a0__call2879)))
+(assert (= SAtomR__sa_false__call2885 ((_ is KwFalse) SPrim0__sp0_a0__call2879)))
+(assert (= SAtomR__sa_iv__call2885
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2879)
+        (IntLit__f0 SPrim0__sp0_a0__call2879)
+        0)))
+(assert (= SAtomR__sa_sv__call2885
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2879)
+        (StringLit__f0 SPrim0__sp0_a0__call2879)
+        "")))
+(assert (= SAtomR__sa_idv__call2885
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2879)
+        (Ident__f0 SPrim0__sp0_a0__call2879)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2885
+   (and SAtomR__sa_is_id__call2885 ((_ is LParen) SPrim0__sp0_a1__call2879))))
+(assert (= SPrim0__sp0_ak__call2879
+   (and (or SAtomR__sa_is_int__call2885
+            SAtomR__sa_is_str__call2885
+            SAtomR__sa_true__call2885
+            SAtomR__sa_false__call2885
+            SAtomR__sa_is_id__call2885)
+        (not SAtomR__sa_ctor_head__call2885))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2885 0)
+                (str.from_int SAtomR__sa_iv__call2885)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2885)))))
+      (a!2 (ite SAtomR__sa_true__call2885
+                "true"
+                (ite SAtomR__sa_false__call2885
+                     "false"
+                     (ite SAtomR__sa_is_str__call2885
+                          (str.++ """" SAtomR__sa_sv__call2885 """")
+                          SAtomR__sa_idv__call2885)))))
+  (= SPrim0__sp0_ao__call2879 (ite SAtomR__sa_is_int__call2885 a!1 a!2))))
+(assert (= SChain0__sc0_k2__call2869 SPrim0__sp0_ak__call2879))
+(assert (= SChain0__sc0_o2__call2869
+   (ite SPrim0__sp0_neg__call2879
+        (str.++ "(not " SPrim0__sp0_ao__call2879 ")")
+        SPrim0__sp0_ao__call2879)))
+(assert (= SChain0__sc0_r2__call2869 SPrim0__sp0_s0__call2879))
+(assert (= SChain0__sc0_q2__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2869)
+        (TLCons__f0 SChain0__sc0_r2__call2869)
+        EofTok)))
+(assert (= SChain0__sc0_s3__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r2__call2869)
+        (TLCons__f1 SChain0__sc0_r2__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2888
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2869)
+        (TLCons__f0 SChain0__sc0_s3__call2869)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2888
+   (ite ((_ is TLCons) SChain0__sc0_s3__call2869)
+        (TLCons__f1 SChain0__sc0_s3__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2888 ((_ is OpNot) SPrim0__sp0_h0__call2888)))
+(assert (= SPrim0__sp0_seed__call2888
+   (ite SPrim0__sp0_neg__call2888
+        SPrim0__sp0_t0__call2888
+        SChain0__sc0_s3__call2869)))
+(assert (= SPrim0__sp0_a0__call2888
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2888)
+        (TLCons__f0 SPrim0__sp0_seed__call2888)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2888
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2888)
+        (TLCons__f1 SPrim0__sp0_seed__call2888)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2888
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2888)
+        (TLCons__f0 SPrim0__sp0_s0__call2888)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2894 ((_ is IntLit) SPrim0__sp0_a0__call2888)))
+(assert (= SAtomR__sa_is_str__call2894 ((_ is StringLit) SPrim0__sp0_a0__call2888)))
+(assert (= SAtomR__sa_is_id__call2894 ((_ is Ident) SPrim0__sp0_a0__call2888)))
+(assert (= SAtomR__sa_true__call2894 ((_ is KwTrue) SPrim0__sp0_a0__call2888)))
+(assert (= SAtomR__sa_false__call2894 ((_ is KwFalse) SPrim0__sp0_a0__call2888)))
+(assert (= SAtomR__sa_iv__call2894
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2888)
+        (IntLit__f0 SPrim0__sp0_a0__call2888)
+        0)))
+(assert (= SAtomR__sa_sv__call2894
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2888)
+        (StringLit__f0 SPrim0__sp0_a0__call2888)
+        "")))
+(assert (= SAtomR__sa_idv__call2894
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2888)
+        (Ident__f0 SPrim0__sp0_a0__call2888)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2894
+   (and SAtomR__sa_is_id__call2894 ((_ is LParen) SPrim0__sp0_a1__call2888))))
+(assert (= SPrim0__sp0_ak__call2888
+   (and (or SAtomR__sa_is_int__call2894
+            SAtomR__sa_is_str__call2894
+            SAtomR__sa_true__call2894
+            SAtomR__sa_false__call2894
+            SAtomR__sa_is_id__call2894)
+        (not SAtomR__sa_ctor_head__call2894))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2894 0)
+                (str.from_int SAtomR__sa_iv__call2894)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2894)))))
+      (a!2 (ite SAtomR__sa_true__call2894
+                "true"
+                (ite SAtomR__sa_false__call2894
+                     "false"
+                     (ite SAtomR__sa_is_str__call2894
+                          (str.++ """" SAtomR__sa_sv__call2894 """")
+                          SAtomR__sa_idv__call2894)))))
+  (= SPrim0__sp0_ao__call2888 (ite SAtomR__sa_is_int__call2894 a!1 a!2))))
+(assert (= SChain0__sc0_k3__call2869 SPrim0__sp0_ak__call2888))
+(assert (= SChain0__sc0_o3__call2869
+   (ite SPrim0__sp0_neg__call2888
+        (str.++ "(not " SPrim0__sp0_ao__call2888 ")")
+        SPrim0__sp0_ao__call2888)))
+(assert (= SChain0__sc0_r3__call2869 SPrim0__sp0_s0__call2888))
+(assert (= SChain0__sc0_q3__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2869)
+        (TLCons__f0 SChain0__sc0_r3__call2869)
+        EofTok)))
+(assert (= SChain0__sc0_s4__call2869
+   (ite ((_ is TLCons) SChain0__sc0_r3__call2869)
+        (TLCons__f1 SChain0__sc0_r3__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_h0__call2897
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2869)
+        (TLCons__f0 SChain0__sc0_s4__call2869)
+        EofTok)))
+(assert (= SPrim0__sp0_t0__call2897
+   (ite ((_ is TLCons) SChain0__sc0_s4__call2869)
+        (TLCons__f1 SChain0__sc0_s4__call2869)
+        TLNil)))
+(assert (= SPrim0__sp0_neg__call2897 ((_ is OpNot) SPrim0__sp0_h0__call2897)))
+(assert (= SPrim0__sp0_seed__call2897
+   (ite SPrim0__sp0_neg__call2897
+        SPrim0__sp0_t0__call2897
+        SChain0__sc0_s4__call2869)))
+(assert (= SPrim0__sp0_a0__call2897
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2897)
+        (TLCons__f0 SPrim0__sp0_seed__call2897)
+        EofTok)))
+(assert (= SPrim0__sp0_s0__call2897
+   (ite ((_ is TLCons) SPrim0__sp0_seed__call2897)
+        (TLCons__f1 SPrim0__sp0_seed__call2897)
+        TLNil)))
+(assert (= SPrim0__sp0_a1__call2897
+   (ite ((_ is TLCons) SPrim0__sp0_s0__call2897)
+        (TLCons__f0 SPrim0__sp0_s0__call2897)
+        EofTok)))
+(assert (= SAtomR__sa_is_int__call2903 ((_ is IntLit) SPrim0__sp0_a0__call2897)))
+(assert (= SAtomR__sa_is_str__call2903 ((_ is StringLit) SPrim0__sp0_a0__call2897)))
+(assert (= SAtomR__sa_is_id__call2903 ((_ is Ident) SPrim0__sp0_a0__call2897)))
+(assert (= SAtomR__sa_true__call2903 ((_ is KwTrue) SPrim0__sp0_a0__call2897)))
+(assert (= SAtomR__sa_false__call2903 ((_ is KwFalse) SPrim0__sp0_a0__call2897)))
+(assert (= SAtomR__sa_iv__call2903
+   (ite ((_ is IntLit) SPrim0__sp0_a0__call2897)
+        (IntLit__f0 SPrim0__sp0_a0__call2897)
+        0)))
+(assert (= SAtomR__sa_sv__call2903
+   (ite ((_ is StringLit) SPrim0__sp0_a0__call2897)
+        (StringLit__f0 SPrim0__sp0_a0__call2897)
+        "")))
+(assert (= SAtomR__sa_idv__call2903
+   (ite ((_ is Ident) SPrim0__sp0_a0__call2897)
+        (Ident__f0 SPrim0__sp0_a0__call2897)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2903
+   (and SAtomR__sa_is_id__call2903 ((_ is LParen) SPrim0__sp0_a1__call2897))))
+(assert (= SPrim0__sp0_ak__call2897
+   (and (or SAtomR__sa_is_int__call2903
+            SAtomR__sa_is_str__call2903
+            SAtomR__sa_true__call2903
+            SAtomR__sa_false__call2903
+            SAtomR__sa_is_id__call2903)
+        (not SAtomR__sa_ctor_head__call2903))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2903 0)
+                (str.from_int SAtomR__sa_iv__call2903)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2903)))))
+      (a!2 (ite SAtomR__sa_true__call2903
+                "true"
+                (ite SAtomR__sa_false__call2903
+                     "false"
+                     (ite SAtomR__sa_is_str__call2903
+                          (str.++ """" SAtomR__sa_sv__call2903 """")
+                          SAtomR__sa_idv__call2903)))))
+  (= SPrim0__sp0_ao__call2897 (ite SAtomR__sa_is_int__call2903 a!1 a!2))))
+(assert (= SChain0__sc0_k4__call2869 SPrim0__sp0_ak__call2897))
+(assert (= SChain0__sc0_o4__call2869
+   (ite SPrim0__sp0_neg__call2897
+        (str.++ "(not " SPrim0__sp0_ao__call2897 ")")
+        SPrim0__sp0_ao__call2897)))
+(assert (= SChain0__sc0_r4__call2869 SPrim0__sp0_s0__call2897))
+(assert (= SOpSmt__so_plus__call2904 ((_ is Plus) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_minus__call2904 ((_ is Minus) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_star__call2904 ((_ is Star) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_slash__call2904 ((_ is Slash) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_lt__call2904 ((_ is Lt) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_gt__call2904 ((_ is Gt) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_le__call2904 ((_ is OpLe) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_ge__call2904 ((_ is OpGe) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_eq__call2904 ((_ is Eq) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_ne__call2904 ((_ is OpNe) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_and__call2904 ((_ is OpAnd) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_or__call2904 ((_ is OpOr) SChain0__sc0_q1__call2869)))
+(assert (= SOpSmt__so_impl__call2904 ((_ is OpImplies) SChain0__sc0_q1__call2869)))
+(assert (= SChain0__sc0_op1k__call2869
+   (or SOpSmt__so_plus__call2904
+       SOpSmt__so_minus__call2904
+       SOpSmt__so_star__call2904
+       SOpSmt__so_slash__call2904
+       SOpSmt__so_lt__call2904
+       SOpSmt__so_gt__call2904
+       SOpSmt__so_le__call2904
+       SOpSmt__so_ge__call2904
+       SOpSmt__so_eq__call2904
+       SOpSmt__so_ne__call2904
+       SOpSmt__so_and__call2904
+       SOpSmt__so_or__call2904
+       SOpSmt__so_impl__call2904)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2904
+                "distinct"
+                (ite SOpSmt__so_and__call2904
+                     "and"
+                     (ite SOpSmt__so_or__call2904
+                          "or"
+                          (ite SOpSmt__so_impl__call2904 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2904
+                ">"
+                (ite SOpSmt__so_le__call2904
+                     "<="
+                     (ite SOpSmt__so_ge__call2904
+                          ">="
+                          (ite SOpSmt__so_eq__call2904 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2904
+                "-"
+                (ite SOpSmt__so_star__call2904
+                     "*"
+                     (ite SOpSmt__so_slash__call2904
+                          "div"
+                          (ite SOpSmt__so_lt__call2904 "<" a!2))))))
+  (= SChain0__sc0_op1__call2869 (ite SOpSmt__so_plus__call2904 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2905 ((_ is Plus) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_minus__call2905 ((_ is Minus) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_star__call2905 ((_ is Star) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_slash__call2905 ((_ is Slash) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_lt__call2905 ((_ is Lt) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_gt__call2905 ((_ is Gt) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_le__call2905 ((_ is OpLe) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_ge__call2905 ((_ is OpGe) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_eq__call2905 ((_ is Eq) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_ne__call2905 ((_ is OpNe) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_and__call2905 ((_ is OpAnd) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_or__call2905 ((_ is OpOr) SChain0__sc0_q3__call2869)))
+(assert (= SOpSmt__so_impl__call2905 ((_ is OpImplies) SChain0__sc0_q3__call2869)))
+(assert (= SChain0__sc0_op3k__call2869
+   (or SOpSmt__so_plus__call2905
+       SOpSmt__so_minus__call2905
+       SOpSmt__so_star__call2905
+       SOpSmt__so_slash__call2905
+       SOpSmt__so_lt__call2905
+       SOpSmt__so_gt__call2905
+       SOpSmt__so_le__call2905
+       SOpSmt__so_ge__call2905
+       SOpSmt__so_eq__call2905
+       SOpSmt__so_ne__call2905
+       SOpSmt__so_and__call2905
+       SOpSmt__so_or__call2905
+       SOpSmt__so_impl__call2905)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2905
+                "distinct"
+                (ite SOpSmt__so_and__call2905
+                     "and"
+                     (ite SOpSmt__so_or__call2905
+                          "or"
+                          (ite SOpSmt__so_impl__call2905 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2905
+                ">"
+                (ite SOpSmt__so_le__call2905
+                     "<="
+                     (ite SOpSmt__so_ge__call2905
+                          ">="
+                          (ite SOpSmt__so_eq__call2905 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2905
+                "-"
+                (ite SOpSmt__so_star__call2905
+                     "*"
+                     (ite SOpSmt__so_slash__call2905
+                          "div"
+                          (ite SOpSmt__so_lt__call2905 "<" a!2))))))
+  (= SChain0__sc0_op3__call2869 (ite SOpSmt__so_plus__call2905 "+" a!3))))))
+(assert (= SChain0__sc0_q1_tern__call2869 ((_ is Question) SChain0__sc0_q1__call2869)))
+(assert (= SChain0__sc0_q2_tern__call2869 ((_ is Question) SChain0__sc0_q2__call2869)))
+(assert (= SChain0__sc0_q2_and__call2869 ((_ is OpAnd) SChain0__sc0_q2__call2869)))
+(assert (= SChain0__sc0_q2_or__call2869 ((_ is OpOr) SChain0__sc0_q2__call2869)))
+(assert (= SChain0__sc0_q2_bool__call2869
+   (or SChain0__sc0_q2_and__call2869 SChain0__sc0_q2_or__call2869)))
+(assert (= SChain0__sc0_b2__call2869 (ite SChain0__sc0_q2_and__call2869 "and" "or")))
+(assert (= SChain0__sc0_q2_colon__call2869 ((_ is Colon) SChain0__sc0_q2__call2869)))
+(assert (= SChain0__sc0_q3_colon__call2869 ((_ is Colon) SChain0__sc0_q3__call2869)))
+(assert (let ((a!1 (ite SChain0__sc0_op3k__call2869
+                (and (and (and SChain0__sc0_k1__call2869
+                               SChain0__sc0_k2__call2869)
+                          SChain0__sc0_k3__call2869)
+                     SChain0__sc0_k4__call2869)
+                (and (and SChain0__sc0_k1__call2869 SChain0__sc0_k2__call2869)
+                     SChain0__sc0_k3__call2869))))
+(let ((a!2 (ite SChain0__sc0_q2_tern__call2869
+                (and (and (and SChain0__sc0_k1__call2869
+                               SChain0__sc0_k2__call2869)
+                          SChain0__sc0_k3__call2869)
+                     SChain0__sc0_q3_colon__call2869
+                     SChain0__sc0_k4__call2869)
+                (ite SChain0__sc0_q2_bool__call2869
+                     a!1
+                     (and SChain0__sc0_k1__call2869 SChain0__sc0_k2__call2869)))))
+  (= SPrim1__sp1_ik__call2863
+     (ite SChain0__sc0_q1_tern__call2869
+          (and (and SChain0__sc0_k1__call2869 SChain0__sc0_k2__call2869)
+               SChain0__sc0_q2_colon__call2869
+               SChain0__sc0_k3__call2869)
+          (ite (not SChain0__sc0_op1k__call2869) SChain0__sc0_k1__call2869 a!2))))))
+(assert (let ((a!1 (ite SChain0__sc0_q2_bool__call2869
+                (ite SChain0__sc0_op3k__call2869
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2869
+                                     " ("
+                                     SChain0__sc0_op1__call2869
+                                     " "
+                                     SChain0__sc0_o1__call2869
+                                     " "
+                                     SChain0__sc0_o2__call2869)
+                             ") ("
+                             SChain0__sc0_op3__call2869
+                             " "
+                             SChain0__sc0_o3__call2869
+                             " "
+                             SChain0__sc0_o4__call2869
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain0__sc0_b2__call2869
+                                     " ("
+                                     SChain0__sc0_op1__call2869
+                                     " "
+                                     SChain0__sc0_o1__call2869
+                                     " "
+                                     SChain0__sc0_o2__call2869)
+                             ") "
+                             SChain0__sc0_o3__call2869
+                             ")"))
+                (str.++ "("
+                        SChain0__sc0_op1__call2869
+                        " "
+                        SChain0__sc0_o1__call2869
+                        " "
+                        SChain0__sc0_o2__call2869
+                        ")"))))
+(let ((a!2 (ite SChain0__sc0_q1_tern__call2869
+                (str.++ "(ite "
+                        SChain0__sc0_o1__call2869
+                        " "
+                        SChain0__sc0_o2__call2869
+                        " "
+                        SChain0__sc0_o3__call2869
+                        ")")
+                (ite (not SChain0__sc0_op1k__call2869)
+                     SChain0__sc0_o1__call2869
+                     (ite SChain0__sc0_q2_tern__call2869
+                          (str.++ "(ite ("
+                                  SChain0__sc0_op1__call2869
+                                  " "
+                                  SChain0__sc0_o1__call2869
+                                  " "
+                                  SChain0__sc0_o2__call2869
+                                  ") "
+                                  SChain0__sc0_o3__call2869
+                                  " "
+                                  SChain0__sc0_o4__call2869
+                                  ")")
+                          a!1)))))
+  (= SPrim1__sp1_io__call2863 a!2))))
+(assert (let ((a!1 (ite (not SChain0__sc0_op1k__call2869)
+                SChain0__sc0_r1__call2869
+                (ite SChain0__sc0_q2_tern__call2869
+                     SChain0__sc0_r4__call2869
+                     (ite SChain0__sc0_q2_bool__call2869
+                          (ite SChain0__sc0_op3k__call2869
+                               SChain0__sc0_r4__call2869
+                               SChain0__sc0_r3__call2869)
+                          SChain0__sc0_r2__call2869)))))
+  (= SPrim1__sp1_ir__call2863
+     (ite SChain0__sc0_q1_tern__call2869 SChain0__sc0_r3__call2869 a!1))))
+(assert (= SPrim1__sp1_close__call2863
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2863)
+        (TLCons__f0 SPrim1__sp1_ir__call2863)
+        EofTok)))
+(assert (= SPrim1__sp1_par_ok__call2863
+   (and SPrim1__sp1_par__call2863
+        SPrim1__sp1_ik__call2863
+        ((_ is RParen) SPrim1__sp1_close__call2863))))
+(assert (= SPrim1__sp1_pr__call2863
+   (ite ((_ is TLCons) SPrim1__sp1_ir__call2863)
+        (TLCons__f1 SPrim1__sp1_ir__call2863)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2908 ((_ is IntLit) SPrim1__sp1_b0__call2863)))
+(assert (= SAtomR__sa_is_str__call2908 ((_ is StringLit) SPrim1__sp1_b0__call2863)))
+(assert (= SAtomR__sa_is_id__call2908 ((_ is Ident) SPrim1__sp1_b0__call2863)))
+(assert (= SAtomR__sa_true__call2908 ((_ is KwTrue) SPrim1__sp1_b0__call2863)))
+(assert (= SAtomR__sa_false__call2908 ((_ is KwFalse) SPrim1__sp1_b0__call2863)))
+(assert (= SAtomR__sa_iv__call2908
+   (ite ((_ is IntLit) SPrim1__sp1_b0__call2863)
+        (IntLit__f0 SPrim1__sp1_b0__call2863)
+        0)))
+(assert (= SAtomR__sa_sv__call2908
+   (ite ((_ is StringLit) SPrim1__sp1_b0__call2863)
+        (StringLit__f0 SPrim1__sp1_b0__call2863)
+        "")))
+(assert (= SAtomR__sa_idv__call2908
+   (ite ((_ is Ident) SPrim1__sp1_b0__call2863)
+        (Ident__f0 SPrim1__sp1_b0__call2863)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2908
+   (and SAtomR__sa_is_id__call2908 ((_ is LParen) SPrim1__sp1_b1__call2863))))
+(assert (= SPrim1__sp1_ak__call2863
+   (and (or SAtomR__sa_is_int__call2908
+            SAtomR__sa_is_str__call2908
+            SAtomR__sa_true__call2908
+            SAtomR__sa_false__call2908
+            SAtomR__sa_is_id__call2908)
+        (not SAtomR__sa_ctor_head__call2908))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2908 0)
+                (str.from_int SAtomR__sa_iv__call2908)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2908)))))
+      (a!2 (ite SAtomR__sa_true__call2908
+                "true"
+                (ite SAtomR__sa_false__call2908
+                     "false"
+                     (ite SAtomR__sa_is_str__call2908
+                          (str.++ """" SAtomR__sa_sv__call2908 """")
+                          SAtomR__sa_idv__call2908)))))
+  (= SPrim1__sp1_ao__call2863 (ite SAtomR__sa_is_int__call2908 a!1 a!2))))
+(assert (= SChain1__sc1_k4__call2718
+   (ite SPrim1__sp1_par__call2863
+        SPrim1__sp1_par_ok__call2863
+        SPrim1__sp1_ak__call2863)))
+(assert (= SPrim1__sp1_base__call2863
+   (ite SPrim1__sp1_par__call2863
+        SPrim1__sp1_io__call2863
+        SPrim1__sp1_ao__call2863)))
+(assert (= SChain1__sc1_o4__call2718
+   (ite SPrim1__sp1_neg__call2863
+        (str.++ "(not " SPrim1__sp1_base__call2863 ")")
+        SPrim1__sp1_base__call2863)))
+(assert (= SChain1__sc1_r4__call2718
+   (ite SPrim1__sp1_par__call2863
+        SPrim1__sp1_pr__call2863
+        SPrim1__sp1_bt__call2863)))
+(assert (= SOpSmt__so_plus__call2909 ((_ is Plus) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_minus__call2909 ((_ is Minus) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_star__call2909 ((_ is Star) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_slash__call2909 ((_ is Slash) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_lt__call2909 ((_ is Lt) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_gt__call2909 ((_ is Gt) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_le__call2909 ((_ is OpLe) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_ge__call2909 ((_ is OpGe) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_eq__call2909 ((_ is Eq) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_ne__call2909 ((_ is OpNe) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_and__call2909 ((_ is OpAnd) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_or__call2909 ((_ is OpOr) SChain1__sc1_q1__call2718)))
+(assert (= SOpSmt__so_impl__call2909 ((_ is OpImplies) SChain1__sc1_q1__call2718)))
+(assert (= SChain1__sc1_op1k__call2718
+   (or SOpSmt__so_plus__call2909
+       SOpSmt__so_minus__call2909
+       SOpSmt__so_star__call2909
+       SOpSmt__so_slash__call2909
+       SOpSmt__so_lt__call2909
+       SOpSmt__so_gt__call2909
+       SOpSmt__so_le__call2909
+       SOpSmt__so_ge__call2909
+       SOpSmt__so_eq__call2909
+       SOpSmt__so_ne__call2909
+       SOpSmt__so_and__call2909
+       SOpSmt__so_or__call2909
+       SOpSmt__so_impl__call2909)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2909
+                "distinct"
+                (ite SOpSmt__so_and__call2909
+                     "and"
+                     (ite SOpSmt__so_or__call2909
+                          "or"
+                          (ite SOpSmt__so_impl__call2909 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2909
+                ">"
+                (ite SOpSmt__so_le__call2909
+                     "<="
+                     (ite SOpSmt__so_ge__call2909
+                          ">="
+                          (ite SOpSmt__so_eq__call2909 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2909
+                "-"
+                (ite SOpSmt__so_star__call2909
+                     "*"
+                     (ite SOpSmt__so_slash__call2909
+                          "div"
+                          (ite SOpSmt__so_lt__call2909 "<" a!2))))))
+  (= SChain1__sc1_op1__call2718 (ite SOpSmt__so_plus__call2909 "+" a!3))))))
+(assert (= SOpSmt__so_plus__call2910 ((_ is Plus) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_minus__call2910 ((_ is Minus) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_star__call2910 ((_ is Star) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_slash__call2910 ((_ is Slash) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_lt__call2910 ((_ is Lt) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_gt__call2910 ((_ is Gt) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_le__call2910 ((_ is OpLe) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_ge__call2910 ((_ is OpGe) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_eq__call2910 ((_ is Eq) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_ne__call2910 ((_ is OpNe) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_and__call2910 ((_ is OpAnd) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_or__call2910 ((_ is OpOr) SChain1__sc1_q3__call2718)))
+(assert (= SOpSmt__so_impl__call2910 ((_ is OpImplies) SChain1__sc1_q3__call2718)))
+(assert (= SChain1__sc1_op3k__call2718
+   (or SOpSmt__so_plus__call2910
+       SOpSmt__so_minus__call2910
+       SOpSmt__so_star__call2910
+       SOpSmt__so_slash__call2910
+       SOpSmt__so_lt__call2910
+       SOpSmt__so_gt__call2910
+       SOpSmt__so_le__call2910
+       SOpSmt__so_ge__call2910
+       SOpSmt__so_eq__call2910
+       SOpSmt__so_ne__call2910
+       SOpSmt__so_and__call2910
+       SOpSmt__so_or__call2910
+       SOpSmt__so_impl__call2910)))
+(assert (let ((a!1 (ite SOpSmt__so_ne__call2910
+                "distinct"
+                (ite SOpSmt__so_and__call2910
+                     "and"
+                     (ite SOpSmt__so_or__call2910
+                          "or"
+                          (ite SOpSmt__so_impl__call2910 "=>" ""))))))
+(let ((a!2 (ite SOpSmt__so_gt__call2910
+                ">"
+                (ite SOpSmt__so_le__call2910
+                     "<="
+                     (ite SOpSmt__so_ge__call2910
+                          ">="
+                          (ite SOpSmt__so_eq__call2910 "=" a!1))))))
+(let ((a!3 (ite SOpSmt__so_minus__call2910
+                "-"
+                (ite SOpSmt__so_star__call2910
+                     "*"
+                     (ite SOpSmt__so_slash__call2910
+                          "div"
+                          (ite SOpSmt__so_lt__call2910 "<" a!2))))))
+  (= SChain1__sc1_op3__call2718 (ite SOpSmt__so_plus__call2910 "+" a!3))))))
+(assert (= SChain1__sc1_q1_tern__call2718 ((_ is Question) SChain1__sc1_q1__call2718)))
+(assert (= SChain1__sc1_q2_tern__call2718 ((_ is Question) SChain1__sc1_q2__call2718)))
+(assert (= SChain1__sc1_q2_and__call2718 ((_ is OpAnd) SChain1__sc1_q2__call2718)))
+(assert (= SChain1__sc1_q2_or__call2718 ((_ is OpOr) SChain1__sc1_q2__call2718)))
+(assert (= SChain1__sc1_q2_bool__call2718
+   (or SChain1__sc1_q2_and__call2718 SChain1__sc1_q2_or__call2718)))
+(assert (= SChain1__sc1_b2__call2718 (ite SChain1__sc1_q2_and__call2718 "and" "or")))
+(assert (= SChain1__sc1_q2_colon__call2718 ((_ is Colon) SChain1__sc1_q2__call2718)))
+(assert (= SChain1__sc1_q3_colon__call2718 ((_ is Colon) SChain1__sc1_q3__call2718)))
+(assert (let ((a!1 (ite SChain1__sc1_op3k__call2718
+                (and (and (and SChain1__sc1_k1__call2718
+                               SChain1__sc1_k2__call2718)
+                          SChain1__sc1_k3__call2718)
+                     SChain1__sc1_k4__call2718)
+                (and (and SChain1__sc1_k1__call2718 SChain1__sc1_k2__call2718)
+                     SChain1__sc1_k3__call2718))))
+(let ((a!2 (ite SChain1__sc1_q2_tern__call2718
+                (and (and (and SChain1__sc1_k1__call2718
+                               SChain1__sc1_k2__call2718)
+                          SChain1__sc1_k3__call2718)
+                     SChain1__sc1_q3_colon__call2718
+                     SChain1__sc1_k4__call2718)
+                (ite SChain1__sc1_q2_bool__call2718
+                     a!1
+                     (and SChain1__sc1_k1__call2718 SChain1__sc1_k2__call2718)))))
+  (= SPrim2__sp2_ik__call2712
+     (ite SChain1__sc1_q1_tern__call2718
+          (and (and SChain1__sc1_k1__call2718 SChain1__sc1_k2__call2718)
+               SChain1__sc1_q2_colon__call2718
+               SChain1__sc1_k3__call2718)
+          (ite (not SChain1__sc1_op1k__call2718) SChain1__sc1_k1__call2718 a!2))))))
+(assert (let ((a!1 (ite SChain1__sc1_q2_bool__call2718
+                (ite SChain1__sc1_op3k__call2718
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2718
+                                     " ("
+                                     SChain1__sc1_op1__call2718
+                                     " "
+                                     SChain1__sc1_o1__call2718
+                                     " "
+                                     SChain1__sc1_o2__call2718)
+                             ") ("
+                             SChain1__sc1_op3__call2718
+                             " "
+                             SChain1__sc1_o3__call2718
+                             " "
+                             SChain1__sc1_o4__call2718
+                             "))")
+                     (str.++ (str.++ "("
+                                     SChain1__sc1_b2__call2718
+                                     " ("
+                                     SChain1__sc1_op1__call2718
+                                     " "
+                                     SChain1__sc1_o1__call2718
+                                     " "
+                                     SChain1__sc1_o2__call2718)
+                             ") "
+                             SChain1__sc1_o3__call2718
+                             ")"))
+                (str.++ "("
+                        SChain1__sc1_op1__call2718
+                        " "
+                        SChain1__sc1_o1__call2718
+                        " "
+                        SChain1__sc1_o2__call2718
+                        ")"))))
+(let ((a!2 (ite SChain1__sc1_q1_tern__call2718
+                (str.++ "(ite "
+                        SChain1__sc1_o1__call2718
+                        " "
+                        SChain1__sc1_o2__call2718
+                        " "
+                        SChain1__sc1_o3__call2718
+                        ")")
+                (ite (not SChain1__sc1_op1k__call2718)
+                     SChain1__sc1_o1__call2718
+                     (ite SChain1__sc1_q2_tern__call2718
+                          (str.++ "(ite ("
+                                  SChain1__sc1_op1__call2718
+                                  " "
+                                  SChain1__sc1_o1__call2718
+                                  " "
+                                  SChain1__sc1_o2__call2718
+                                  ") "
+                                  SChain1__sc1_o3__call2718
+                                  " "
+                                  SChain1__sc1_o4__call2718
+                                  ")")
+                          a!1)))))
+  (= SPrim2__sp2_io__call2712 a!2))))
+(assert (let ((a!1 (ite (not SChain1__sc1_op1k__call2718)
+                SChain1__sc1_r1__call2718
+                (ite SChain1__sc1_q2_tern__call2718
+                     SChain1__sc1_r4__call2718
+                     (ite SChain1__sc1_q2_bool__call2718
+                          (ite SChain1__sc1_op3k__call2718
+                               SChain1__sc1_r4__call2718
+                               SChain1__sc1_r3__call2718)
+                          SChain1__sc1_r2__call2718)))))
+  (= SPrim2__sp2_ir__call2712
+     (ite SChain1__sc1_q1_tern__call2718 SChain1__sc1_r3__call2718 a!1))))
+(assert (= SPrim2__sp2_close__call2712
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2712)
+        (TLCons__f0 SPrim2__sp2_ir__call2712)
+        EofTok)))
+(assert (= SPrim2__sp2_par_ok__call2712
+   (and SPrim2__sp2_par__call2712
+        SPrim2__sp2_ik__call2712
+        ((_ is RParen) SPrim2__sp2_close__call2712))))
+(assert (= SPrim2__sp2_pr__call2712
+   (ite ((_ is TLCons) SPrim2__sp2_ir__call2712)
+        (TLCons__f1 SPrim2__sp2_ir__call2712)
+        TLNil)))
+(assert (= SAtomR__sa_is_int__call2913 ((_ is IntLit) SPrim2__sp2_b0__call2712)))
+(assert (= SAtomR__sa_is_str__call2913 ((_ is StringLit) SPrim2__sp2_b0__call2712)))
+(assert (= SAtomR__sa_is_id__call2913 ((_ is Ident) SPrim2__sp2_b0__call2712)))
+(assert (= SAtomR__sa_true__call2913 ((_ is KwTrue) SPrim2__sp2_b0__call2712)))
+(assert (= SAtomR__sa_false__call2913 ((_ is KwFalse) SPrim2__sp2_b0__call2712)))
+(assert (= SAtomR__sa_iv__call2913
+   (ite ((_ is IntLit) SPrim2__sp2_b0__call2712)
+        (IntLit__f0 SPrim2__sp2_b0__call2712)
+        0)))
+(assert (= SAtomR__sa_sv__call2913
+   (ite ((_ is StringLit) SPrim2__sp2_b0__call2712)
+        (StringLit__f0 SPrim2__sp2_b0__call2712)
+        "")))
+(assert (= SAtomR__sa_idv__call2913
+   (ite ((_ is Ident) SPrim2__sp2_b0__call2712)
+        (Ident__f0 SPrim2__sp2_b0__call2712)
+        "")))
+(assert (= SAtomR__sa_ctor_head__call2913
+   (and SAtomR__sa_is_id__call2913 ((_ is LParen) SPrim2__sp2_b1__call2712))))
+(assert (= SPrim2__sp2_ak__call2712
+   (and (or SAtomR__sa_is_int__call2913
+            SAtomR__sa_is_str__call2913
+            SAtomR__sa_true__call2913
+            SAtomR__sa_false__call2913
+            SAtomR__sa_is_id__call2913)
+        (not SAtomR__sa_ctor_head__call2913))))
+(assert (let ((a!1 (ite (>= SAtomR__sa_iv__call2913 0)
+                (str.from_int SAtomR__sa_iv__call2913)
+                (str.++ "-" (str.from_int (- 0 SAtomR__sa_iv__call2913)))))
+      (a!2 (ite SAtomR__sa_true__call2913
+                "true"
+                (ite SAtomR__sa_false__call2913
+                     "false"
+                     (ite SAtomR__sa_is_str__call2913
+                          (str.++ """" SAtomR__sa_sv__call2913 """")
+                          SAtomR__sa_idv__call2913)))))
+  (= SPrim2__sp2_ao__call2712 (ite SAtomR__sa_is_int__call2913 a!1 a!2))))
+(assert (= CallArgsStep__ca_v3k__call2287
+   (ite SPrim2__sp2_par__call2712
+        SPrim2__sp2_par_ok__call2712
+        SPrim2__sp2_ak__call2712)))
+(assert (= SPrim2__sp2_base__call2712
+   (ite SPrim2__sp2_par__call2712
+        SPrim2__sp2_io__call2712
+        SPrim2__sp2_ao__call2712)))
+(assert (= CallArgsStep__ca_v3o__call2287
+   (ite SPrim2__sp2_neg__call2712
+        (str.++ "(not " SPrim2__sp2_base__call2712 ")")
+        SPrim2__sp2_base__call2712)))
+(assert (= CallArgsStep__ca_v3r__call2287
+   (ite SPrim2__sp2_par__call2712
+        SPrim2__sp2_pr__call2712
+        SPrim2__sp2_bt__call2712)))
+(assert (= CallArgsStep__ca_d3__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v3r__call2287)
+        (TLCons__f0 CallArgsStep__ca_v3r__call2287)
+        EofTok)))
+(assert (= CallArgsStep__ca_d3_close__call2287
+   ((_ is RParen) CallArgsStep__ca_d3__call2287)))
+(assert (let ((a!1 (or CallArgsStep__ca_d1_close__call2287
+               (and CallArgsStep__ca_d1_comma__call2287
+                    CallArgsStep__ca_h2_ok__call2287
+                    CallArgsStep__ca_v2k__call2287
+                    (or CallArgsStep__ca_d2_close__call2287
+                        (and CallArgsStep__ca_d2_comma__call2287
+                             CallArgsStep__ca_h3_ok__call2287
+                             CallArgsStep__ca_v3k__call2287
+                             CallArgsStep__ca_d3_close__call2287))))))
+  (= cca_ok
+     (and CallArgsStep__ca_head_ok__call2287 CallArgsStep__ca_v1k__call2287 a!1))))
+(assert (= CallArgsStep__ca_e1__call2287
+   (str.++ "|"
+           CallArgsStep__ca_s1__call2287
+           "#"
+           CallArgsStep__ca_v1o__call2287
+           ";")))
+(assert (= CallArgsStep__ca_e2__call2287
+   (str.++ "|"
+           CallArgsStep__ca_s2__call2287
+           "#"
+           CallArgsStep__ca_v2o__call2287
+           ";")))
+(assert (= CallArgsStep__ca_e3__call2287
+   (str.++ "|"
+           CallArgsStep__ca_s3__call2287
+           "#"
+           CallArgsStep__ca_v3o__call2287
+           ";")))
+(assert (let ((a!1 (ite CallArgsStep__ca_d1_close__call2287
+                CallArgsStep__ca_e1__call2287
+                (ite CallArgsStep__ca_d2_close__call2287
+                     (str.++ CallArgsStep__ca_e1__call2287
+                             CallArgsStep__ca_e2__call2287)
+                     (str.++ (str.++ CallArgsStep__ca_e1__call2287
+                                     CallArgsStep__ca_e2__call2287)
+                             CallArgsStep__ca_e3__call2287)))))
+  (= cca_table a!1)))
+(assert (= CallArgsStep__ca_after1__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v1r__call2287)
+        (TLCons__f1 CallArgsStep__ca_v1r__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_after2__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v2r__call2287)
+        (TLCons__f1 CallArgsStep__ca_v2r__call2287)
+        TLNil)))
+(assert (= CallArgsStep__ca_after3__call2287
+   (ite ((_ is TLCons) CallArgsStep__ca_v3r__call2287)
+        (TLCons__f1 CallArgsStep__ca_v3r__call2287)
+        TLNil)))
+(assert (= cca_rest
+   (ite CallArgsStep__ca_d1_close__call2287
+        CallArgsStep__ca_after1__call2287
+        (ite CallArgsStep__ca_d2_close__call2287
+             CallArgsStep__ca_after2__call2287
+             CallArgsStep__ca_after3__call2287))))
+(assert (= do_ccall
+   (and in_claim_run
+        (not mem_is_ctor)
+        (not mem_is_match)
+        (not mem_is_seq)
+        cca_ok)))
+(assert (= in_inline (and in_parse (= _pmode 4))))
+(assert (= is_hd (ite ((_ is TLCons) _iscan) (TLCons__f0 _iscan) EofTok)))
+(assert (= is_tl (ite ((_ is TLCons) _iscan) (TLCons__f1 _iscan) TLNil)))
+(assert (= is_hd2 (ite ((_ is TLCons) is_tl) (TLCons__f0 is_tl) EofTok)))
+(assert (= is_tl2 (ite ((_ is TLCons) is_tl) (TLCons__f1 is_tl) TLNil)))
+(assert (= is_hd3 (ite ((_ is TLCons) is_tl2) (TLCons__f0 is_tl2) EofTok)))
+(assert (= is_tl3 (ite ((_ is TLCons) is_tl2) (TLCons__f1 is_tl2) TLNil)))
+(assert (= iscan_nil (ite ((_ is TLNil) _iscan) true false)))
+(assert (= icoll_hd (ite ((_ is TLCons) _icoll) (TLCons__f0 _icoll) EofTok)))
+(assert (= icoll_tl (ite ((_ is TLCons) _icoll) (TLCons__f1 _icoll) TLNil)))
+(assert (= icoll_nil (ite ((_ is TLNil) _icoll) true false)))
+(assert (= i_hd2_name (ite ((_ is Ident) is_hd2) (Ident__f0 is_hd2) "")))
+(assert (= i_found
+   (and in_inline (= _iph 0) ((_ is KwClaim) is_hd) (= i_hd2_name _iname))))
+(assert (= i_search_step (and in_inline (= _iph 0) (not i_found) (not iscan_nil))))
+(assert (= i_search_fail (and in_inline (= _iph 0) iscan_nil)))
+(assert (= i_found_param (and i_found ((_ is LParen) is_hd3))))
+(assert (= i_pskip (and in_inline (= _iph 5))))
+(assert (= i_pskip_done (and i_pskip (or ((_ is RParen) is_hd) iscan_nil))))
+(assert (= i_hd_is_tlkw
+   (or ((_ is KwClaim) is_hd)
+       ((_ is KwEnum) is_hd)
+       ((_ is KwType) is_hd)
+       ((_ is KwFsm) is_hd)
+       ((_ is KwSchema) is_hd))))
+(assert (= i_collect_done (and in_inline (= _iph 1) (or iscan_nil i_hd_is_tlkw))))
+(assert (= i_collecting (and in_inline (= _iph 1) (not iscan_nil) (not i_hd_is_tlkw))))
+(assert (= i_xfer (and in_inline (= _iph 2) (not icoll_nil))))
+(assert (= i_xfer_done (and in_inline (= _iph 2) icoll_nil)))
+(assert (let ((a!1 (ite i_found
+                (ite i_found_param 5 1)
+                (ite i_pskip_done
+                     1
+                     (ite i_search_fail 2 (ite i_collect_done 2 _iph))))))
+  (= iph (ite is_first_tick 0 (ite do_ccall 0 a!1)))))
+(assert (= iname (ite is_first_tick "" (ite do_ccall cca_name _iname))))
+(assert (= isub (ite is_first_tick "" (ite do_ccall cca_table _isub))))
+(assert (let ((a!1 (ite i_found
+                (ite i_found_param is_tl3 is_tl2)
+                (ite i_search_step
+                     is_tl
+                     (ite i_pskip is_tl (ite i_collecting is_tl _iscan))))))
+  (= iscan (ite is_first_tick TLNil (ite do_ccall _fwd a!1)))))
 (assert (let ((a!1 (ite is_first_tick
+                TLNil
+                (ite do_ccall
+                     TLNil
+                     (ite i_collecting
+                          (TLCons is_hd _icoll)
+                          (ite i_xfer icoll_tl _icoll))))))
+  (= icoll a!1)))
+(assert (= itail (ite is_first_tick TLNil (ite do_ccall cca_rest _itail))))
+(assert (= icoll_hd_name (ite ((_ is Ident) icoll_hd) (Ident__f0 icoll_hd) "")))
+(assert (= SlotSubst__ss_key__call2926 (str.++ "|" icoll_hd_name "#")))
+(assert (= SlotSubst__ss_kpos__call2926
+   (str.indexof _isub SlotSubst__ss_key__call2926 0)))
+(assert (= SlotSubst__ss_found__call2926 (>= SlotSubst__ss_kpos__call2926 0)))
+(assert (= SlotSubst__ss_vstart__call2926
+   (+ SlotSubst__ss_kpos__call2926 (str.len SlotSubst__ss_key__call2926))))
+(assert (= SlotSubst__ss_semi__call2926
+   (str.indexof _isub ";" SlotSubst__ss_vstart__call2926)))
+(assert (= i_sub_val
+   (ite SlotSubst__ss_found__call2926
+        (str.substr _isub
+                    SlotSubst__ss_vstart__call2926
+                    (- SlotSubst__ss_semi__call2926
+                       SlotSubst__ss_vstart__call2926))
+        "")))
+(assert (let ((a!1 (ite (and ((_ is Ident) icoll_hd) (not (= i_sub_val "")))
+                (Ident i_sub_val)
+                icoll_hd)))
+  (= i_xfer_tok a!1)))
+(assert (= claim_done (and in_claim_run (not sel_ok) (not do_ccall))))
+(assert (let ((a!1 (ite i_search_fail
+                _itail
+                (ite i_xfer
+                     (TLCons i_xfer_tok _rem)
+                     (ite (and in_claim_run sel_ok) sel_rest _rem)))))
+(let ((a!2 (ite is_first_tick
                 TLNil
                 (ite enter_claim
                      items_d2
-                     (ite (and in_claim_run sel_ok) sel_rest _rem)))))
-  (= rem a!1)))
+                     (ite do_ccall _rem (ite i_collect_done _itail a!1))))))
+  (= rem a!2))))
 (assert (let ((a!1 (ite enter_claim
                 ""
-                (ite (and in_claim_run sel_ok)
+                (ite (and in_claim_run sel_ok (not do_ccall))
                      (ite (= _out "") chunk (str.++ _out "\u{a}" chunk))
                      _out))))
   (= out (ite is_first_tick "" a!1))))
-(assert (let ((a!1 (ite (and in_claim_run sel_ok)
+(assert (let ((a!1 (ite (and in_claim_run sel_ok (not do_ccall))
                 (ite (= sel_field "")
                      _fstr
                      (ite (= _fstr "") sel_field (str.++ _fstr " " sel_field)))
@@ -42003,38 +52422,38 @@
 (assert (= p_is_comma ((_ is Comma) ptok)))
 (assert (= p_is_pipe ((_ is Pipe) ptok)))
 (assert (= p_id (ite ((_ is Ident) ptok) (Ident__f0 ptok) "")))
-(assert (= BracketDelta__is_open__call2287 (or ((_ is LParen) ptok) ((_ is Lt) ptok))))
-(assert (= BracketDelta__is_close__call2287 (or ((_ is RParen) ptok) ((_ is Gt) ptok))))
+(assert (= BracketDelta__is_open__call2927 (or ((_ is LParen) ptok) ((_ is Lt) ptok))))
+(assert (= BracketDelta__is_close__call2927 (or ((_ is RParen) ptok) ((_ is Gt) ptok))))
 (assert (= p_bd
-   (ite BracketDelta__is_open__call2287
+   (ite BracketDelta__is_open__call2927
         1
-        (ite BracketDelta__is_close__call2287 (- 0 1) 0))))
-(assert (= TypeTokenText__ident_str__call2288
+        (ite BracketDelta__is_close__call2927 (- 0 1) 0))))
+(assert (= TypeTokenText__ident_str__call2928
    (ite ((_ is Ident) ptok) (Ident__f0 ptok) "")))
-(assert (= TypeTokenText__is_ident__call2288 ((_ is Ident) ptok)))
-(assert (= TypeTokenText__is_lparen__call2288 ((_ is LParen) ptok)))
-(assert (= TypeTokenText__is_rparen__call2288 ((_ is RParen) ptok)))
-(assert (= TypeTokenText__is_lt__call2288 ((_ is Lt) ptok)))
-(assert (= TypeTokenText__is_gt__call2288 ((_ is Gt) ptok)))
-(assert (= TypeTokenText__is_comma__call2288 ((_ is Comma) ptok)))
-(assert (let ((a!1 (ite TypeTokenText__is_rparen__call2288
+(assert (= TypeTokenText__is_ident__call2928 ((_ is Ident) ptok)))
+(assert (= TypeTokenText__is_lparen__call2928 ((_ is LParen) ptok)))
+(assert (= TypeTokenText__is_rparen__call2928 ((_ is RParen) ptok)))
+(assert (= TypeTokenText__is_lt__call2928 ((_ is Lt) ptok)))
+(assert (= TypeTokenText__is_gt__call2928 ((_ is Gt) ptok)))
+(assert (= TypeTokenText__is_comma__call2928 ((_ is Comma) ptok)))
+(assert (let ((a!1 (ite TypeTokenText__is_rparen__call2928
                 ")"
-                (ite TypeTokenText__is_lt__call2288
+                (ite TypeTokenText__is_lt__call2928
                      "<"
-                     (ite TypeTokenText__is_gt__call2288
+                     (ite TypeTokenText__is_gt__call2928
                           ">"
-                          (ite TypeTokenText__is_comma__call2288 ", " ""))))))
+                          (ite TypeTokenText__is_comma__call2928 ", " ""))))))
   (= p_tt
-     (ite TypeTokenText__is_ident__call2288
-          TypeTokenText__ident_str__call2288
-          (ite TypeTokenText__is_lparen__call2288 "(" a!1)))))
+     (ite TypeTokenText__is_ident__call2928
+          TypeTokenText__ident_str__call2928
+          (ite TypeTokenText__is_lparen__call2928 "(" a!1)))))
 (assert (= p_tt_is
-   (or TypeTokenText__is_ident__call2288
-       TypeTokenText__is_lparen__call2288
-       TypeTokenText__is_rparen__call2288
-       TypeTokenText__is_lt__call2288
-       TypeTokenText__is_gt__call2288
-       TypeTokenText__is_comma__call2288)))
+   (or TypeTokenText__is_ident__call2928
+       TypeTokenText__is_lparen__call2928
+       TypeTokenText__is_rparen__call2928
+       TypeTokenText__is_lt__call2928
+       TypeTokenText__is_gt__call2928
+       TypeTokenText__is_comma__call2928)))
 (assert (= e1 (= _ephase 1)))
 (assert (= e2 (= _ephase 2)))
 (assert (= e3 (= _ephase 3)))
@@ -42064,119 +52483,119 @@
   (= cur_fields a!3)))))
 (assert (= cur_decl
    (ite (= _fcount 0) (EVDecl _cur_name) (EVDeclP _cur_name cur_fields))))
-(assert (= VariantText__name__call2289
+(assert (= VariantText__name__call2929
    (ite ((_ is EVDecl) cur_decl)
         (EVDecl__f0 cur_decl)
         (ite ((_ is EVDeclP) cur_decl) (EVDeclP__f0 cur_decl) ""))))
-(assert (= VariantText__is_decl__call2289 ((_ is EVDecl) cur_decl)))
-(assert (= VariantText__is_declp__call2289 ((_ is EVDeclP) cur_decl)))
-(assert (= VariantText__vt_fields__call2289
+(assert (= VariantText__is_decl__call2929 ((_ is EVDecl) cur_decl)))
+(assert (= VariantText__is_declp__call2929 ((_ is EVDeclP) cur_decl)))
+(assert (= VariantText__vt_fields__call2929
    (ite ((_ is EVDeclP) cur_decl) (EVDeclP__f1 cur_decl) EVFNil)))
-(assert (= VariantText__vt_f0__call2289
-   (ite ((_ is EVFCons) VariantText__vt_fields__call2289)
-        (EVFCons__f0 VariantText__vt_fields__call2289)
+(assert (= VariantText__vt_f0__call2929
+   (ite ((_ is EVFCons) VariantText__vt_fields__call2929)
+        (EVFCons__f0 VariantText__vt_fields__call2929)
         EVFNone)))
-(assert (= VariantText__vt_r1__call2289
-   (ite ((_ is EVFCons) VariantText__vt_fields__call2289)
-        (EVFCons__f1 VariantText__vt_fields__call2289)
+(assert (= VariantText__vt_r1__call2929
+   (ite ((_ is EVFCons) VariantText__vt_fields__call2929)
+        (EVFCons__f1 VariantText__vt_fields__call2929)
         EVFNil)))
-(assert (= VariantText__vt_f1__call2289
-   (ite ((_ is EVFCons) VariantText__vt_r1__call2289)
-        (EVFCons__f0 VariantText__vt_r1__call2289)
+(assert (= VariantText__vt_f1__call2929
+   (ite ((_ is EVFCons) VariantText__vt_r1__call2929)
+        (EVFCons__f0 VariantText__vt_r1__call2929)
         EVFNone)))
-(assert (= VariantText__vt_r2__call2289
-   (ite ((_ is EVFCons) VariantText__vt_r1__call2289)
-        (EVFCons__f1 VariantText__vt_r1__call2289)
+(assert (= VariantText__vt_r2__call2929
+   (ite ((_ is EVFCons) VariantText__vt_r1__call2929)
+        (EVFCons__f1 VariantText__vt_r1__call2929)
         EVFNil)))
-(assert (= VariantText__vt_f2__call2289
-   (ite ((_ is EVFCons) VariantText__vt_r2__call2289)
-        (EVFCons__f0 VariantText__vt_r2__call2289)
+(assert (= VariantText__vt_f2__call2929
+   (ite ((_ is EVFCons) VariantText__vt_r2__call2929)
+        (EVFCons__f0 VariantText__vt_r2__call2929)
         EVFNone)))
-(assert (= VariantText__vt_has0__call2289 ((_ is EVFType) VariantText__vt_f0__call2289)))
-(assert (= VariantText__vt_has1__call2289 ((_ is EVFType) VariantText__vt_f1__call2289)))
-(assert (= VariantText__vt_has2__call2289 ((_ is EVFType) VariantText__vt_f2__call2289)))
-(assert (= VariantText__vt_t0__call2289
-   (ite ((_ is EVFType) VariantText__vt_f0__call2289)
-        (EVFType__f0 VariantText__vt_f0__call2289)
+(assert (= VariantText__vt_has0__call2929 ((_ is EVFType) VariantText__vt_f0__call2929)))
+(assert (= VariantText__vt_has1__call2929 ((_ is EVFType) VariantText__vt_f1__call2929)))
+(assert (= VariantText__vt_has2__call2929 ((_ is EVFType) VariantText__vt_f2__call2929)))
+(assert (= VariantText__vt_t0__call2929
+   (ite ((_ is EVFType) VariantText__vt_f0__call2929)
+        (EVFType__f0 VariantText__vt_f0__call2929)
         "")))
-(assert (= VariantText__vt_t1__call2289
-   (ite ((_ is EVFType) VariantText__vt_f1__call2289)
-        (EVFType__f0 VariantText__vt_f1__call2289)
+(assert (= VariantText__vt_t1__call2929
+   (ite ((_ is EVFType) VariantText__vt_f1__call2929)
+        (EVFType__f0 VariantText__vt_f1__call2929)
         "")))
-(assert (= VariantText__vt_t2__call2289
-   (ite ((_ is EVFType) VariantText__vt_f2__call2289)
-        (EVFType__f0 VariantText__vt_f2__call2289)
+(assert (= VariantText__vt_t2__call2929
+   (ite ((_ is EVFType) VariantText__vt_f2__call2929)
+        (EVFType__f0 VariantText__vt_f2__call2929)
         "")))
-(assert (= SeqEltType__set_pre__call2291 (str.substr VariantText__vt_t0__call2289 0 4)))
-(assert (= FieldSortName__fsn_is_seq__call2290 (= SeqEltType__set_pre__call2291 "Seq(")))
-(assert (= SeqEltType__set_ilen__call2291 (- (str.len VariantText__vt_t0__call2289) 5)))
-(assert (= FieldSortName__fsn_elt__call2290
-   (ite FieldSortName__fsn_is_seq__call2290
-        (str.substr VariantText__vt_t0__call2289
+(assert (= SeqEltType__set_pre__call2931 (str.substr VariantText__vt_t0__call2929 0 4)))
+(assert (= FieldSortName__fsn_is_seq__call2930 (= SeqEltType__set_pre__call2931 "Seq(")))
+(assert (= SeqEltType__set_ilen__call2931 (- (str.len VariantText__vt_t0__call2929) 5)))
+(assert (= FieldSortName__fsn_elt__call2930
+   (ite FieldSortName__fsn_is_seq__call2930
+        (str.substr VariantText__vt_t0__call2929
                     4
-                    SeqEltType__set_ilen__call2291)
+                    SeqEltType__set_ilen__call2931)
         "")))
-(assert (= VariantText__vt_s0__call2289
-   (ite FieldSortName__fsn_is_seq__call2290
-        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2290)
-        VariantText__vt_t0__call2289)))
-(assert (= SeqEltType__set_pre__call2293 (str.substr VariantText__vt_t1__call2289 0 4)))
-(assert (= FieldSortName__fsn_is_seq__call2292 (= SeqEltType__set_pre__call2293 "Seq(")))
-(assert (= SeqEltType__set_ilen__call2293 (- (str.len VariantText__vt_t1__call2289) 5)))
-(assert (= FieldSortName__fsn_elt__call2292
-   (ite FieldSortName__fsn_is_seq__call2292
-        (str.substr VariantText__vt_t1__call2289
+(assert (= VariantText__vt_s0__call2929
+   (ite FieldSortName__fsn_is_seq__call2930
+        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2930)
+        VariantText__vt_t0__call2929)))
+(assert (= SeqEltType__set_pre__call2933 (str.substr VariantText__vt_t1__call2929 0 4)))
+(assert (= FieldSortName__fsn_is_seq__call2932 (= SeqEltType__set_pre__call2933 "Seq(")))
+(assert (= SeqEltType__set_ilen__call2933 (- (str.len VariantText__vt_t1__call2929) 5)))
+(assert (= FieldSortName__fsn_elt__call2932
+   (ite FieldSortName__fsn_is_seq__call2932
+        (str.substr VariantText__vt_t1__call2929
                     4
-                    SeqEltType__set_ilen__call2293)
+                    SeqEltType__set_ilen__call2933)
         "")))
-(assert (= VariantText__vt_s1__call2289
-   (ite FieldSortName__fsn_is_seq__call2292
-        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2292)
-        VariantText__vt_t1__call2289)))
-(assert (= SeqEltType__set_pre__call2295 (str.substr VariantText__vt_t2__call2289 0 4)))
-(assert (= FieldSortName__fsn_is_seq__call2294 (= SeqEltType__set_pre__call2295 "Seq(")))
-(assert (= SeqEltType__set_ilen__call2295 (- (str.len VariantText__vt_t2__call2289) 5)))
-(assert (= FieldSortName__fsn_elt__call2294
-   (ite FieldSortName__fsn_is_seq__call2294
-        (str.substr VariantText__vt_t2__call2289
+(assert (= VariantText__vt_s1__call2929
+   (ite FieldSortName__fsn_is_seq__call2932
+        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2932)
+        VariantText__vt_t1__call2929)))
+(assert (= SeqEltType__set_pre__call2935 (str.substr VariantText__vt_t2__call2929 0 4)))
+(assert (= FieldSortName__fsn_is_seq__call2934 (= SeqEltType__set_pre__call2935 "Seq(")))
+(assert (= SeqEltType__set_ilen__call2935 (- (str.len VariantText__vt_t2__call2929) 5)))
+(assert (= FieldSortName__fsn_elt__call2934
+   (ite FieldSortName__fsn_is_seq__call2934
+        (str.substr VariantText__vt_t2__call2929
                     4
-                    SeqEltType__set_ilen__call2295)
+                    SeqEltType__set_ilen__call2935)
         "")))
-(assert (= VariantText__vt_s2__call2289
-   (ite FieldSortName__fsn_is_seq__call2294
-        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2294)
-        VariantText__vt_t2__call2289)))
-(assert (= VariantText__vt_a0__call2289
-   (ite VariantText__vt_has0__call2289
+(assert (= VariantText__vt_s2__call2929
+   (ite FieldSortName__fsn_is_seq__call2934
+        (str.++ "__SeqOf_" FieldSortName__fsn_elt__call2934)
+        VariantText__vt_t2__call2929)))
+(assert (= VariantText__vt_a0__call2929
+   (ite VariantText__vt_has0__call2929
         (str.++ " ("
-                VariantText__name__call2289
+                VariantText__name__call2929
                 "__f0 "
-                VariantText__vt_s0__call2289
+                VariantText__vt_s0__call2929
                 ")")
         "")))
-(assert (= VariantText__vt_a1__call2289
-   (ite VariantText__vt_has1__call2289
+(assert (= VariantText__vt_a1__call2929
+   (ite VariantText__vt_has1__call2929
         (str.++ " ("
-                VariantText__name__call2289
+                VariantText__name__call2929
                 "__f1 "
-                VariantText__vt_s1__call2289
+                VariantText__vt_s1__call2929
                 ")")
         "")))
-(assert (= VariantText__vt_a2__call2289
-   (ite VariantText__vt_has2__call2289
+(assert (= VariantText__vt_a2__call2929
+   (ite VariantText__vt_has2__call2929
         (str.++ " ("
-                VariantText__name__call2289
+                VariantText__name__call2929
                 "__f2 "
-                VariantText__vt_s2__call2289
+                VariantText__vt_s2__call2929
                 ")")
         "")))
-(assert (let ((a!1 (ite VariantText__is_decl__call2289
-                (str.++ (str.++ "(" VariantText__name__call2289) ")")
-                (ite VariantText__is_declp__call2289
-                     (str.++ (str.++ "(" VariantText__name__call2289)
-                             VariantText__vt_a0__call2289
-                             VariantText__vt_a1__call2289
-                             VariantText__vt_a2__call2289
+(assert (let ((a!1 (ite VariantText__is_decl__call2929
+                (str.++ (str.++ "(" VariantText__name__call2929) ")")
+                (ite VariantText__is_declp__call2929
+                     (str.++ (str.++ "(" VariantText__name__call2929)
+                             VariantText__vt_a0__call2929
+                             VariantText__vt_a1__call2929
+                             VariantText__vt_a2__call2929
                              ")")
                      ""))))
   (= rendered a!1)))
@@ -42268,11 +52687,11 @@
                      0
                      (ite (and in_enum_run starting_variant) 0 a!1)))))
   (= fdepth a!2))))
-(assert (= SeqEltType__set_pre__call2296 (str.substr _ftacc 0 4)))
-(assert (= commit_is_seq (= SeqEltType__set_pre__call2296 "Seq(")))
-(assert (= SeqEltType__set_ilen__call2296 (- (str.len _ftacc) 5)))
+(assert (= SeqEltType__set_pre__call2936 (str.substr _ftacc 0 4)))
+(assert (= commit_is_seq (= SeqEltType__set_pre__call2936 "Seq(")))
+(assert (= SeqEltType__set_ilen__call2936 (- (str.len _ftacc) 5)))
 (assert (= commit_elt
-   (ite commit_is_seq (str.substr _ftacc 4 SeqEltType__set_ilen__call2296) "")))
+   (ite commit_is_seq (str.substr _ftacc 4 SeqEltType__set_ilen__call2936) "")))
 (assert (let ((a!1 (ite is_first_tick
                 ""
                 (ite enter_enum
@@ -42293,14 +52712,14 @@
              _sigtab))))
 (assert (= grouped_body (str.++ "(" new_body ")")))
 (assert (= cur_enum_decl (EnumD _ename EVNil)))
-(assert (= EnumDeclSmtlib__name__call2297
+(assert (= EnumDeclSmtlib__name__call2937
    (ite ((_ is EnumD) cur_enum_decl) (EnumD__f0 cur_enum_decl) "")))
-(assert (= EnumDeclSmtlib__is_enum__call2297 ((_ is EnumD) cur_enum_decl)))
-(assert (= EnumDeclSmtlib__prefix__call2297
-   (str.++ "(declare-datatypes ((" EnumDeclSmtlib__name__call2297 " 0)) (")))
+(assert (= EnumDeclSmtlib__is_enum__call2937 ((_ is EnumD) cur_enum_decl)))
+(assert (= EnumDeclSmtlib__prefix__call2937
+   (str.++ "(declare-datatypes ((" EnumDeclSmtlib__name__call2937 " 0)) (")))
 (assert (= enum_block
-   (ite EnumDeclSmtlib__is_enum__call2297
-        (str.++ EnumDeclSmtlib__prefix__call2297 grouped_body "))")
+   (ite EnumDeclSmtlib__is_enum__call2937
+        (str.++ EnumDeclSmtlib__prefix__call2937 grouped_body "))")
         "")))
 (assert (= helper_block
    (ite (= _seqelt "")
@@ -42370,15 +52789,13 @@
                      _rem
                      (ite skip_stop _skipl (ite skip_junk items_d1 _items))))))
   (= items (ite is_first_tick TLNil (ite entering_parse _fwd a!1)))))
-(assert (let ((a!1 (ite enter_skip
-                3
+(assert (let ((a!1 (ite i_xfer_done
+                2
                 (ite enum_done 0 (ite claim_done 0 (ite skip_stop 0 _pmode))))))
-(let ((a!2 (ite is_first_tick
-                0
-                (ite entering_parse
-                     0
-                     (ite enter_enum 1 (ite enter_claim 2 a!1))))))
-  (= pmode a!2))))
+(let ((a!2 (ite enter_enum
+                1
+                (ite enter_claim 2 (ite enter_skip 3 (ite do_ccall 4 a!1))))))
+  (= pmode (ite is_first_tick 0 (ite entering_parse 0 a!2))))))
 (assert (= claim_block
    (str.++ ";; claim: "
            claim_name
@@ -42434,6 +52851,10 @@
 (declare-fun _all_done () Bool)
 (declare-fun _at_boundary () Bool)
 (declare-fun _block_now () String)
+(declare-fun _cca_name () String)
+(declare-fun _cca_ok () Bool)
+(declare-fun _cca_rest () TokenList)
+(declare-fun _cca_table () String)
 (declare-fun _char_only () Bool)
 (declare-fun _chunk () String)
 (declare-fun _claim_block () String)
@@ -42459,6 +52880,7 @@
 (declare-fun _cur_fields () EVFieldList)
 (declare-fun _datatypes () String)
 (declare-fun _dig_val () Int)
+(declare-fun _do_ccall () Bool)
 (declare-fun _done () Bool)
 (declare-fun _e1 () Bool)
 (declare-fun _e2 () Bool)
@@ -42493,10 +52915,29 @@
 (declare-fun _helper_block () String)
 (declare-fun _helper_body () String)
 (declare-fun _helper_sort () String)
+(declare-fun _i_collect_done () Bool)
+(declare-fun _i_collecting () Bool)
+(declare-fun _i_found () Bool)
+(declare-fun _i_found_param () Bool)
+(declare-fun _i_hd2_name () String)
+(declare-fun _i_hd_is_tlkw () Bool)
+(declare-fun _i_pskip () Bool)
+(declare-fun _i_pskip_done () Bool)
+(declare-fun _i_search_fail () Bool)
+(declare-fun _i_search_step () Bool)
+(declare-fun _i_sub_val () String)
+(declare-fun _i_xfer () Bool)
+(declare-fun _i_xfer_done () Bool)
+(declare-fun _i_xfer_tok () Token)
+(declare-fun _icoll_hd () Token)
+(declare-fun _icoll_hd_name () String)
+(declare-fun _icoll_nil () Bool)
+(declare-fun _icoll_tl () TokenList)
 (declare-fun _ift_decl () String)
 (declare-fun _in_claim_run () Bool)
 (declare-fun _in_dispatch () Bool)
 (declare-fun _in_enum_run () Bool)
+(declare-fun _in_inline () Bool)
 (declare-fun _in_parse () Bool)
 (declare-fun _in_range () Bool)
 (declare-fun _in_reverse () Bool)
@@ -42507,10 +52948,17 @@
 (declare-fun _int_tok () Token)
 (declare-fun _is_alpha () Bool)
 (declare-fun _is_dig () Bool)
+(declare-fun _is_hd () Token)
+(declare-fun _is_hd2 () Token)
+(declare-fun _is_hd3 () Token)
 (declare-fun _is_op () Bool)
 (declare-fun _is_quote () Bool)
 (declare-fun _is_result_enum () Bool)
+(declare-fun _is_tl () TokenList)
+(declare-fun _is_tl2 () TokenList)
+(declare-fun _is_tl3 () TokenList)
 (declare-fun _is_ws () Bool)
+(declare-fun _iscan_nil () Bool)
 (declare-fun _item_after_name () Token)
 (declare-fun _items_d1 () TokenList)
 (declare-fun _items_d2 () TokenList)
