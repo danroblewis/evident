@@ -1,0 +1,212 @@
+-- compiler2/translate2_seq.ev — P2 seq/string pass: Z3-AST builders.
+--
+-- compiler2 sibling of the LEGACY text passes compiler/translate_seq.ev,
+-- compiler/translate_string.ev, compiler/translate_concat.ev and the
+-- wave-4c Seq block in compiler/parse_body_seq.ev. Same contract as
+-- compiler/translate_arith.ev's Z3 pivot: each claim describes ONE
+-- Z3-builder LibCall for one source node shape — the constraint on
+-- `eff` for the current FSM step. The CALLER's FSM threads per-tick
+-- state (capture the previous tick's IntResult as a handle, choose
+-- which claim's `eff` fires this tick, advance phase). Every handle
+-- is an opaque Int (i64 through ArgInt/IntResult); returns arrive in
+-- `last_results` on the NEXT tick.
+--
+-- The mapping is one-to-one with the legacy emitted semantics:
+--
+--   Legacy SMT-LIB text                       New libz3 call(s)
+--   ──────────────────────────────────────    ─────────────────────────
+--   "<s>" string literal                      Z3_mk_string
+--   ⟨a, b⟩ Seq literal:
+--     value:  store chain over a const        Z3_mk_const_array, then
+--             (Array Int T) base              one Z3_mk_store per element
+--     length: (assert (= xs__len N))          Z3_mk_const(xs__len) +
+--                                             Z3_mk_int(N) + Z3_mk_eq
+--   xs[i]    → (select xs i)                  Z3_mk_select
+--   #xs      → xs__len const (Seq)            Z3_mk_const(xs__len)
+--   #s       → (str.len s)   (String)         Z3_mk_seq_length
+--   a ++ b   → (str.++ a b) / store-concat    Z3_mk_seq_concat (strings;
+--                                             array+count marshaling)
+--   substr   → (str.substr s off len)         Z3_mk_seq_extract
+--   contains → (str.contains s sub)           Z3_mk_seq_contains
+--   prefixof → (str.prefixof pre s)           Z3_mk_seq_prefix
+--   suffixof → (str.suffixof suf s)           Z3_mk_seq_suffix
+--   indexof  → (str.indexof s sub off)        Z3_mk_seq_index
+--   char-at  → (str.at s i)                   Z3_mk_seq_at
+--   int→str  → (str.from_int x)               Z3_mk_int_to_str
+--   str→int  → (str.to_int x)                 Z3_mk_str_to_int
+--
+-- Seq encoding note: the fossil compiles `Seq(T)` to bootstrap's
+-- `(Array Int T)` + companion `<name>__len ∈ Int` pair, NOT Z3
+-- sequence theory (parse_body_seq.ev wave-4c block; the kernel's tick
+-- loop reads Seq state back via `__len` + per-index selects).
+-- compiler2 keeps that encoding so emitted programs behave
+-- identically. The legacy literal arm pinned per-index
+-- `(= (select xs i) e)` asserts; the AST form here builds the
+-- equivalent value node as a store chain over a const-array base —
+-- the same shape the legacy `++` concat arm already used — plus the
+-- identical `(= xs__len N)` length node. Z3's STRING theory ops keep
+-- their legacy str.* spellings (Z3 prints seq_* builders applied to
+-- string sorts as str.*).
+--
+-- Variadic marshaling (Z3_mk_seq_concat): the C signature takes
+-- `Z3_ast const args[]` + count, and the LibCall grammar has no array
+-- shape, so the CALLER allocates an 8*n-byte libc buffer
+-- (BuildMalloc), writes each operand handle with BuildMemWriteLong,
+-- and passes the buffer pointer + count here. Same ceremony as
+-- Z3_mk_add in translate_arith.ev.
+--
+-- Refcount model: leak-until-Z3_del_context; the caller SHOULD
+-- BuildZ3IncRef each captured composite handle on the tick after
+-- capture (wave-5a §3).
+--
+-- Fixture: tests/kernel/compiler2/seq_fixture.ev (oracle-compiled,
+-- kernel-run) drives these claims to build
+-- `(str.contains (str.++ "ab" "cd") "bc")`, a select-over-store
+-- array shape, and the `(= xs__len 2)` length node, then compares
+-- Z3_ast_to_string output against Z3 4.15.4's canonical prints.
+
+import "compiler/parser.ev"
+import "stdlib/kernel.ev"
+
+-- ── String literal: EStr(s) → Z3_mk_string ──────────────────────
+-- `ok` is true iff e is an EStr; on fallthrough `eff` is a no-op
+-- Time call (so the Effect literal stays well-formed).
+claim StrLitBuildZ3(ctx_h ∈ Int, e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
+    is_str ∈ Bool = (e matches EStr(_))
+    str_val ∈ String = match e
+        EStr(s) ⇒ s
+        _ ⇒ ""
+    ok = is_str
+    eff = (is_str
+        ? LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr(str_val)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── Seq literal, step 1: the const-array base ────────────────────
+-- `((as const (Array Int T)) default)` — the seed of the store
+-- chain. idx_sort_h is the Int index sort; default_h is the element
+-- default (an already-built element-sort AST; its sort fixes T).
+claim SeqLitConstBaseZ3(ctx_h ∈ Int, idx_sort_h ∈ Int, default_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_const_array",
+        ⟨ArgInt(ctx_h), ArgInt(idx_sort_h), ArgInt(default_h)⟩)
+
+-- ── Seq literal, step 2 (×N): one store link per element ─────────
+-- `(store arr idx elt)`. The caller builds idx_h via BuildZ3MkInt
+-- with the running element index, threads arr_h from the previous
+-- link (or the const base), and captures the new chain head.
+claim SeqLitStoreStepZ3(ctx_h ∈ Int, arr_h ∈ Int, idx_h ∈ Int, elt_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_store",
+        ⟨ArgInt(ctx_h), ArgInt(arr_h), ArgInt(idx_h), ArgInt(elt_h)⟩)
+
+-- ── The `__len` companion name ───────────────────────────────────
+-- Pure naming claim: the legacy encoding pairs every Seq var `xs`
+-- with an Int const `xs__len`. The caller feeds `out` to
+-- BuildZ3MkStringSymbol before building the const.
+claim SeqLenName(name ∈ String, out ∈ String)
+    out = name ++ "__len"
+
+-- ── Seq literal, step 3: the `(= xs__len N)` node ────────────────
+-- len_const_h = Z3_mk_const of the SeqLenName symbol at Int sort;
+-- len_lit_h = Z3_mk_int(N). Mirrors the legacy
+-- `(assert (= xs__len N))` line (the assert itself is the driver's
+-- Z3_solver_assert at emit time, not this pass's job).
+claim SeqLitLenEqZ3(ctx_h ∈ Int, len_const_h ∈ Int, len_lit_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_eq",
+        ⟨ArgInt(ctx_h), ArgInt(len_const_h), ArgInt(len_lit_h)⟩)
+
+-- ── Indexing: xs[i] → (select xs i) ──────────────────────────────
+claim SeqIndexBuildZ3(ctx_h ∈ Int, arr_h ∈ Int, idx_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_select",
+        ⟨ArgInt(ctx_h), ArgInt(arr_h), ArgInt(idx_h)⟩)
+
+-- ── Cardinality: #xs ─────────────────────────────────────────────
+-- Two legacy spellings, picked by the operand's type:
+--   Seq    → read the companion `xs__len` const (len_sym_h = symbol
+--            handle for SeqLenName's output, int_sort_h = Int sort);
+--   String → (str.len s) via Z3_mk_seq_length on the string AST s_h.
+claim CardBuildZ3(ctx_h ∈ Int, is_string ∈ Bool, s_h ∈ Int,
+        len_sym_h ∈ Int, int_sort_h ∈ Int, eff ∈ Effect)
+    eff = (is_string
+        ? LibCall("libz3", "Z3_mk_seq_length", ⟨ArgInt(ctx_h), ArgInt(s_h)⟩)
+        : LibCall("libz3", "Z3_mk_const",
+            ⟨ArgInt(ctx_h), ArgInt(len_sym_h), ArgInt(int_sort_h)⟩))
+
+-- ── String concat: a ++ b → (str.++ a b) ─────────────────────────
+-- `ok` is true iff op is OpConcat. Variadic: args_arr_ptr is the
+-- caller-marshaled 8*num_args-byte buffer of operand handles (see
+-- header). The SEQ-of-records `++` does NOT come here — under the
+-- Array+__len encoding it is a store + len-add (SeqLitStoreStepZ3 at
+-- index lhs__len, plus arith on the __len consts via the
+-- translate_arith claims).
+claim ConcatBuildZ3(ctx_h ∈ Int, op ∈ Op, num_args ∈ Int, args_arr_ptr ∈ Int,
+        eff ∈ Effect, ok ∈ Bool)
+    is_concat ∈ Bool = (op matches OpConcat)
+    ok = is_concat
+    eff = (is_concat
+        ? LibCall("libz3", "Z3_mk_seq_concat",
+            ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── String-op table: the translate_string.ev surface ─────────────
+-- One dispatch claim keyed on the surface op name (the parser has no
+-- Op variants for these — translate_string.ev keyed per-claim, this
+-- keys per-name; same table). Arity ≤ 3: unused trailing handles are
+-- ignored by the chosen call.
+--
+--   op_name        call                        operands
+--   "substr"       Z3_mk_seq_extract           (s a_h, off b_h, len c_h)
+--   "contains"     Z3_mk_seq_contains          (container a_h, containee b_h)
+--   "prefixof"     Z3_mk_seq_prefix            (prefix a_h, s b_h)
+--   "suffixof"     Z3_mk_seq_suffix            (suffix a_h, s b_h)
+--   "indexof"      Z3_mk_seq_index             (s a_h, sub b_h, off c_h)
+--   "char_at"      Z3_mk_seq_at                (s a_h, i b_h)
+--   "int_to_str"   Z3_mk_int_to_str            (x a_h)
+--   "str_to_int"   Z3_mk_str_to_int            (x a_h)
+claim StrOpBuildZ3(ctx_h ∈ Int, op_name ∈ String, a_h ∈ Int, b_h ∈ Int, c_h ∈ Int,
+        eff ∈ Effect, ok ∈ Bool)
+    is_substr   ∈ Bool = (op_name = "substr")
+    is_contains ∈ Bool = (op_name = "contains")
+    is_prefixof ∈ Bool = (op_name = "prefixof")
+    is_suffixof ∈ Bool = (op_name = "suffixof")
+    is_indexof  ∈ Bool = (op_name = "indexof")
+    is_char_at  ∈ Bool = (op_name = "char_at")
+    is_i2s      ∈ Bool = (op_name = "int_to_str")
+    is_s2i      ∈ Bool = (op_name = "str_to_int")
+    ok = (is_substr ∨ is_contains ∨ is_prefixof ∨ is_suffixof
+        ∨ is_indexof ∨ is_char_at ∨ is_i2s ∨ is_s2i)
+    eff = (is_substr
+        ? LibCall("libz3", "Z3_mk_seq_extract",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h), ArgInt(c_h)⟩)
+        : is_contains
+        ? LibCall("libz3", "Z3_mk_seq_contains",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h)⟩)
+        : is_prefixof
+        ? LibCall("libz3", "Z3_mk_seq_prefix",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h)⟩)
+        : is_suffixof
+        ? LibCall("libz3", "Z3_mk_seq_suffix",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h)⟩)
+        : is_indexof
+        ? LibCall("libz3", "Z3_mk_seq_index",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h), ArgInt(c_h)⟩)
+        : is_char_at
+        ? LibCall("libz3", "Z3_mk_seq_at",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h)⟩)
+        : is_i2s
+        ? LibCall("libz3", "Z3_mk_int_to_str", ⟨ArgInt(ctx_h), ArgInt(a_h)⟩)
+        : is_s2i
+        ? LibCall("libz3", "Z3_mk_str_to_int", ⟨ArgInt(ctx_h), ArgInt(a_h)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── Parse probe ──────────────────────────────────────────────────
+-- Trivial claim so `evident-oracle emit <this file> translate2_seq_probe`
+-- proves the whole file parses + the dispatch claims compose. Not a
+-- runtime fixture; the real validation is
+-- tests/kernel/compiler2/seq_fixture.ev.
+claim translate2_seq_probe
+    probe_e ∈ Expr = EStr("hi")
+    probe_eff ∈ Effect
+    probe_ok ∈ Bool
+    StrLitBuildZ3(ctx_h ↦ 0, e ↦ probe_e, eff ↦ probe_eff, ok ↦ probe_ok)
+    probe_len ∈ String
+    SeqLenName(name ↦ "xs", out ↦ probe_len)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

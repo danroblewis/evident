@@ -1,0 +1,307 @@
+-- compiler2/translate2_seq.ev validation (P2 seq/string pass).
+-- Oracle-compiled (`evident-oracle emit … main`), kernel-run. Drives
+-- the pass claims — NOT raw LibCalls — to build three node shapes
+-- and compares Z3_ast_to_string output against Z3 4.15.4's canonical
+-- prints (discovered via the z3 CLI `(get-assertions)` echo):
+--
+--   1. StrLitBuildZ3 ×3 + ConcatBuildZ3 + StrOpBuildZ3("contains")
+--        → (str.contains (str.++ "ab" "cd") "bc")
+--   2. SeqLitConstBaseZ3 + SeqLitStoreStepZ3 + SeqIndexBuildZ3
+--        → (select (store ((as const (Array Int Int)) 7) 1 9) 1)
+--   3. SeqLenName + CardBuildZ3(Seq arm) + SeqLitLenEqZ3
+--        → (= xs__len 2)
+--
+-- Exit 0 iff all three match; exit 4 (contains mismatch) /
+-- 5 (select mismatch) / 6 (len-eq mismatch) / 7 (premature) localize
+-- a failure. Z3 lifecycle + marshaling (config/context/sorts/ints/
+-- malloc/write_long/inc_ref/ast_to_string/cstr.copy) stay raw
+-- LibCalls — they belong to z3_{ast,core}.ev sugar already proven by
+-- tests/kernel/z3_seq/*, not to this pass.
+--
+-- The FSM is MULTI-TICK: every libz3 return lands in last_results on
+-- the NEXT tick; phase N's effect is first readable on phase N+1.
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "compiler2/translate2_seq.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    res0 ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    sres0 ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    -- ── Captured handles, one per libz3 return ──────────────────
+
+    cfg ∈ Int
+    _cfg ∈ Int
+    cfg = (is_first_tick ? 0 : phase = 1 ? res0 : _cfg)
+
+    ctx ∈ Int
+    _ctx ∈ Int
+    ctx = (is_first_tick ? 0 : phase = 2 ? res0 : _ctx)
+
+    ab_h ∈ Int
+    _ab_h ∈ Int
+    ab_h = (is_first_tick ? 0 : phase = 3 ? res0 : _ab_h)
+
+    cd_h ∈ Int
+    _cd_h ∈ Int
+    cd_h = (is_first_tick ? 0 : phase = 4 ? res0 : _cd_h)
+
+    bc_h ∈ Int
+    _bc_h ∈ Int
+    bc_h = (is_first_tick ? 0 : phase = 5 ? res0 : _bc_h)
+
+    buf ∈ Int
+    _buf ∈ Int
+    buf = (is_first_tick ? 0 : phase = 6 ? res0 : _buf)
+
+    cat_h ∈ Int
+    _cat_h ∈ Int
+    cat_h = (is_first_tick ? 0 : phase = 9 ? res0 : _cat_h)
+
+    cont_h ∈ Int
+    _cont_h ∈ Int
+    cont_h = (is_first_tick ? 0 : phase = 11 ? res0 : _cont_h)
+
+    cont_ptr ∈ Int
+    _cont_ptr ∈ Int
+    cont_ptr = (is_first_tick ? 0 : phase = 13 ? res0 : _cont_ptr)
+
+    cont_str ∈ String
+    _cont_str ∈ String
+    cont_str = (is_first_tick ? "" : phase = 14 ? sres0 : _cont_str)
+
+    isort ∈ Int
+    _isort ∈ Int
+    isort = (is_first_tick ? 0 : phase = 15 ? res0 : _isort)
+
+    n7_h ∈ Int
+    _n7_h ∈ Int
+    n7_h = (is_first_tick ? 0 : phase = 16 ? res0 : _n7_h)
+
+    ca_h ∈ Int
+    _ca_h ∈ Int
+    ca_h = (is_first_tick ? 0 : phase = 17 ? res0 : _ca_h)
+
+    n1_h ∈ Int
+    _n1_h ∈ Int
+    n1_h = (is_first_tick ? 0 : phase = 18 ? res0 : _n1_h)
+
+    n9_h ∈ Int
+    _n9_h ∈ Int
+    n9_h = (is_first_tick ? 0 : phase = 19 ? res0 : _n9_h)
+
+    st_h ∈ Int
+    _st_h ∈ Int
+    st_h = (is_first_tick ? 0 : phase = 20 ? res0 : _st_h)
+
+    sel_h ∈ Int
+    _sel_h ∈ Int
+    sel_h = (is_first_tick ? 0 : phase = 22 ? res0 : _sel_h)
+
+    sel_ptr ∈ Int
+    _sel_ptr ∈ Int
+    sel_ptr = (is_first_tick ? 0 : phase = 24 ? res0 : _sel_ptr)
+
+    sel_str ∈ String
+    _sel_str ∈ String
+    sel_str = (is_first_tick ? "" : phase = 25 ? sres0 : _sel_str)
+
+    lsym ∈ Int
+    _lsym ∈ Int
+    lsym = (is_first_tick ? 0 : phase = 26 ? res0 : _lsym)
+
+    lconst ∈ Int
+    _lconst ∈ Int
+    lconst = (is_first_tick ? 0 : phase = 27 ? res0 : _lconst)
+
+    n2_h ∈ Int
+    _n2_h ∈ Int
+    n2_h = (is_first_tick ? 0 : phase = 28 ? res0 : _n2_h)
+
+    eq_h ∈ Int
+    _eq_h ∈ Int
+    eq_h = (is_first_tick ? 0 : phase = 29 ? res0 : _eq_h)
+
+    eq_ptr ∈ Int
+    _eq_ptr ∈ Int
+    eq_ptr = (is_first_tick ? 0 : phase = 31 ? res0 : _eq_ptr)
+
+    eq_str ∈ String
+    _eq_str ∈ String
+    eq_str = (is_first_tick ? "" : phase = 32 ? sres0 : _eq_str)
+
+    -- ── Pass-claim compositions (the surface under test) ─────────
+
+    e_ab ∈ Expr = EStr("ab")
+    eff_ab ∈ Effect
+    ok_ab ∈ Bool
+    StrLitBuildZ3(ctx_h ↦ ctx, e ↦ e_ab, eff ↦ eff_ab, ok ↦ ok_ab)
+
+    e_cd ∈ Expr = EStr("cd")
+    eff_cd ∈ Effect
+    ok_cd ∈ Bool
+    StrLitBuildZ3(ctx_h ↦ ctx, e ↦ e_cd, eff ↦ eff_cd, ok ↦ ok_cd)
+
+    e_bc ∈ Expr = EStr("bc")
+    eff_bc ∈ Effect
+    ok_bc ∈ Bool
+    StrLitBuildZ3(ctx_h ↦ ctx, e ↦ e_bc, eff ↦ eff_bc, ok ↦ ok_bc)
+
+    cat_op ∈ Op = OpConcat
+    eff_cat ∈ Effect
+    ok_cat ∈ Bool
+    ConcatBuildZ3(ctx_h ↦ ctx, op ↦ cat_op, num_args ↦ 2,
+        args_arr_ptr ↦ buf, eff ↦ eff_cat, ok ↦ ok_cat)
+
+    eff_cont ∈ Effect
+    ok_cont ∈ Bool
+    StrOpBuildZ3(ctx_h ↦ ctx, op_name ↦ "contains",
+        a_h ↦ cat_h, b_h ↦ bc_h, c_h ↦ 0, eff ↦ eff_cont, ok ↦ ok_cont)
+
+    eff_ca ∈ Effect
+    SeqLitConstBaseZ3(ctx_h ↦ ctx, idx_sort_h ↦ isort, default_h ↦ n7_h,
+        eff ↦ eff_ca)
+
+    eff_st ∈ Effect
+    SeqLitStoreStepZ3(ctx_h ↦ ctx, arr_h ↦ ca_h, idx_h ↦ n1_h,
+        elt_h ↦ n9_h, eff ↦ eff_st)
+
+    eff_sel ∈ Effect
+    SeqIndexBuildZ3(ctx_h ↦ ctx, arr_h ↦ st_h, idx_h ↦ n1_h, eff ↦ eff_sel)
+
+    len_name ∈ String
+    SeqLenName(name ↦ "xs", out ↦ len_name)
+
+    eff_card ∈ Effect
+    CardBuildZ3(ctx_h ↦ ctx, is_string ↦ false, s_h ↦ 0,
+        len_sym_h ↦ lsym, int_sort_h ↦ isort, eff ↦ eff_card)
+
+    eff_leneq ∈ Effect
+    SeqLitLenEqZ3(ctx_h ↦ ctx, len_const_h ↦ lconst, len_lit_h ↦ n2_h,
+        eff ↦ eff_leneq)
+
+    -- ── Verdict ──────────────────────────────────────────────────
+
+    expected_cont ∈ String = "(str.contains (str.++ \"ab\" \"cd\") \"bc\")"
+    expected_sel ∈ String = "(select (store ((as const (Array Int Int)) 7) 1 9) 1)"
+    expected_eq ∈ String = "(= xs__len 2)"
+    cont_ok ∈ Bool = (cont_str = expected_cont)
+    sel_ok ∈ Bool = (sel_str = expected_sel)
+    eqn_ok ∈ Bool = (eq_str = expected_eq)
+    exit_code ∈ Int = (phase = 33
+        ? (cont_ok ? (sel_ok ? (eqn_ok ? 0 : 6) : 5) : 4)
+        : 7)
+
+    -- ── Effects per phase ────────────────────────────────────────
+    --   0  Z3_mk_config                         → cfg
+    --   1  Z3_mk_context(cfg)                   → ctx
+    --   2  StrLitBuildZ3 EStr("ab")             → ab_h
+    --   3  StrLitBuildZ3 EStr("cd")             → cd_h
+    --   4  StrLitBuildZ3 EStr("bc")             → bc_h
+    --   5  malloc 16                            → buf
+    --   6  __mem.write_long(buf, ab_h)
+    --   7  __mem.write_long(buf+8, cd_h)
+    --   8  ConcatBuildZ3(OpConcat, 2, buf)      → cat_h
+    --   9  Z3_inc_ref(cat_h)
+    --  10  StrOpBuildZ3 "contains"(cat, bc)     → cont_h
+    --  11  Z3_inc_ref(cont_h)
+    --  12  Z3_ast_to_string(cont_h)             → cont_ptr
+    --  13  __cstr.copy(cont_ptr)                → cont_str
+    --  14  Z3_mk_int_sort                       → isort
+    --  15  Z3_mk_int(7)                         → n7_h
+    --  16  SeqLitConstBaseZ3(isort, n7)         → ca_h
+    --  17  Z3_mk_int(1)                         → n1_h
+    --  18  Z3_mk_int(9)                         → n9_h
+    --  19  SeqLitStoreStepZ3(ca, n1, n9)        → st_h
+    --  20  Z3_inc_ref(st_h)
+    --  21  SeqIndexBuildZ3(st, n1)              → sel_h
+    --  22  Z3_inc_ref(sel_h)
+    --  23  Z3_ast_to_string(sel_h)              → sel_ptr
+    --  24  __cstr.copy(sel_ptr)                 → sel_str
+    --  25  Z3_mk_string_symbol(len_name)        → lsym
+    --  26  CardBuildZ3(Seq arm: lsym, isort)    → lconst
+    --  27  Z3_mk_int(2)                         → n2_h
+    --  28  SeqLitLenEqZ3(lconst, n2)            → eq_h
+    --  29  Z3_inc_ref(eq_h)
+    --  30  Z3_ast_to_string(eq_h)               → eq_ptr
+    --  31  __cstr.copy(eq_ptr)                  → eq_str
+    --  32  (settle; compare on 33)
+    --  33  Exit(exit_code)
+
+    effects ∈ Seq(Effect) = (phase = 0
+            ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1
+            ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg)⟩)⟩
+        : phase = 2
+            ? ⟨eff_ab⟩
+        : phase = 3
+            ? ⟨eff_cd⟩
+        : phase = 4
+            ? ⟨eff_bc⟩
+        : phase = 5
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(16)⟩)⟩
+        : phase = 6
+            ? ⟨LibCall("__mem", "write_long", ⟨ArgInt(buf), ArgInt(ab_h)⟩)⟩
+        : phase = 7
+            ? ⟨LibCall("__mem", "write_long", ⟨ArgInt(buf + 8), ArgInt(cd_h)⟩)⟩
+        : phase = 8
+            ? ⟨eff_cat⟩
+        : phase = 9
+            ? ⟨LibCall("libz3", "Z3_inc_ref", ⟨ArgInt(ctx), ArgInt(cat_h)⟩)⟩
+        : phase = 10
+            ? ⟨eff_cont⟩
+        : phase = 11
+            ? ⟨LibCall("libz3", "Z3_inc_ref", ⟨ArgInt(ctx), ArgInt(cont_h)⟩)⟩
+        : phase = 12
+            ? ⟨LibCall("libz3", "Z3_ast_to_string", ⟨ArgInt(ctx), ArgInt(cont_h)⟩)⟩
+        : phase = 13
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(cont_ptr)⟩)⟩
+        : phase = 14
+            ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(ctx)⟩)⟩
+        : phase = 15
+            ? ⟨LibCall("libz3", "Z3_mk_int", ⟨ArgInt(ctx), ArgInt(7), ArgInt(isort)⟩)⟩
+        : phase = 16
+            ? ⟨eff_ca⟩
+        : phase = 17
+            ? ⟨LibCall("libz3", "Z3_mk_int", ⟨ArgInt(ctx), ArgInt(1), ArgInt(isort)⟩)⟩
+        : phase = 18
+            ? ⟨LibCall("libz3", "Z3_mk_int", ⟨ArgInt(ctx), ArgInt(9), ArgInt(isort)⟩)⟩
+        : phase = 19
+            ? ⟨eff_st⟩
+        : phase = 20
+            ? ⟨LibCall("libz3", "Z3_inc_ref", ⟨ArgInt(ctx), ArgInt(st_h)⟩)⟩
+        : phase = 21
+            ? ⟨eff_sel⟩
+        : phase = 22
+            ? ⟨LibCall("libz3", "Z3_inc_ref", ⟨ArgInt(ctx), ArgInt(sel_h)⟩)⟩
+        : phase = 23
+            ? ⟨LibCall("libz3", "Z3_ast_to_string", ⟨ArgInt(ctx), ArgInt(sel_h)⟩)⟩
+        : phase = 24
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(sel_ptr)⟩)⟩
+        : phase = 25
+            ? ⟨LibCall("libz3", "Z3_mk_string_symbol", ⟨ArgInt(ctx), ArgStr(len_name)⟩)⟩
+        : phase = 26
+            ? ⟨eff_card⟩
+        : phase = 27
+            ? ⟨LibCall("libz3", "Z3_mk_int", ⟨ArgInt(ctx), ArgInt(2), ArgInt(isort)⟩)⟩
+        : phase = 28
+            ? ⟨eff_leneq⟩
+        : phase = 29
+            ? ⟨LibCall("libz3", "Z3_inc_ref", ⟨ArgInt(ctx), ArgInt(eq_h)⟩)⟩
+        : phase = 30
+            ? ⟨LibCall("libz3", "Z3_ast_to_string", ⟨ArgInt(ctx), ArgInt(eq_h)⟩)⟩
+        : phase = 31
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(eq_ptr)⟩)⟩
+        : phase = 32
+            ? ⟨LibCall("libc", "time", ⟨ArgInt(0)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
