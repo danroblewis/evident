@@ -7,9 +7,30 @@
 FROM rust:1-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    z3 libz3-dev clang libclang-dev libffi-dev pkg-config cmake \
+    clang libclang-dev libffi-dev pkg-config cmake unzip \
     python3 git curl ca-certificates jq ripgrep procps \
  && rm -rf /var/lib/apt/lists/*
+
+# Z3 from the official release, NOT Debian's. bookworm ships 4.8.12
+# (2021); the seam workload (compiler.smt2's Seq/String theory) grinds
+# for hours on it and dies with "Overflow encountered when expanding
+# vector". Per-arch: the newest release whose glibc floor fits
+# bookworm's 2.36 (arm64 builds target 2.34, x64 builds 2.35 until
+# 4.15.0 jumped to 2.39).
+RUN arch="$(dpkg --print-architecture)" \
+ && case "$arch" in \
+      arm64) z3v="4.15.4"; z3a="arm64-glibc-2.34" ;; \
+      amd64) z3v="4.14.1"; z3a="x64-glibc-2.35" ;; \
+      *) echo "unsupported arch $arch" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/z3.zip \
+    "https://github.com/Z3Prover/z3/releases/download/z3-$z3v/z3-$z3v-$z3a.zip" \
+ && unzip -q /tmp/z3.zip -d /tmp \
+ && cp /tmp/z3-$z3v-$z3a/bin/libz3.so /usr/local/lib/ \
+ && cp /tmp/z3-$z3v-$z3a/bin/z3 /usr/local/bin/ \
+ && cp /tmp/z3-$z3v-$z3a/include/*.h /usr/local/include/ \
+ && rm -rf /tmp/z3.zip /tmp/z3-$z3v-$z3a \
+ && ldconfig
 
 # Claude Code (npm puts it in /usr/local — NOT /root, which the
 # container-home mount shadows at runtime)
@@ -39,9 +60,9 @@ ENTRYPOINT ["/usr/local/bin/dev-entrypoint.sh"]
 # The repo's .cargo/config.toml pins Z3_SYS_Z3_HEADER (and friends) to macOS
 # homebrew paths. cargo's [env] does not override variables that are already
 # set in the environment, so these take precedence inside the container.
-ENV Z3_SYS_Z3_HEADER=/usr/include/z3.h \
+ENV Z3_SYS_Z3_HEADER=/usr/local/include/z3.h \
     PKG_CONFIG_PATH= \
-    LIBRARY_PATH=
+    LIBRARY_PATH=/usr/local/lib
 
 WORKDIR /root
 CMD ["bash"]
