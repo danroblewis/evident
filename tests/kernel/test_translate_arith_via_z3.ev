@@ -88,14 +88,15 @@ claim main
         _ ⇒ 0
     mul_buf = (is_first_tick ? 0 : phase = 7 ? mul_buf_cap : _mul_buf)
 
-    -- Z3_mk_mul → mul_h captured on phase 10 (writes ran on 8, 9; mk
-    -- on 10; capture on 11).
+    -- Z3_mk_mul runs on phase 9; its handle is in last_results on
+    -- phase 10, so capture on 10 — the same tick inc_ref(mul_h) fires,
+    -- using the just-captured handle.
     mul_h ∈ Int
     _mul_h ∈ Int
     mul_h_cap ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
         _ ⇒ 0
-    mul_h = (is_first_tick ? 0 : phase = 11 ? mul_h_cap : _mul_h)
+    mul_h = (is_first_tick ? 0 : phase = 10 ? mul_h_cap : _mul_h)
 
     -- Buffer for the `+` binop.
     add_buf ∈ Int
@@ -105,30 +106,33 @@ claim main
         _ ⇒ 0
     add_buf = (is_first_tick ? 0 : phase = 12 ? add_buf_cap : _add_buf)
 
-    -- Z3_mk_add → add_h captured after writes + mk.
+    -- Z3_mk_add runs on phase 14; capture on 15, same tick as its
+    -- inc_ref.
     add_h ∈ Int
     _add_h ∈ Int
     add_h_cap ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
         _ ⇒ 0
-    add_h = (is_first_tick ? 0 : phase = 16 ? add_h_cap : _add_h)
+    add_h = (is_first_tick ? 0 : phase = 15 ? add_h_cap : _add_h)
 
-    -- Z3_ast_to_string → char* captured on phase 18 (mk on 17).
+    -- Z3_ast_to_string runs on phase 16 → char* captured on 17, the
+    -- tick __cstr.copy consumes it.
     str_ptr ∈ Int
     _str_ptr ∈ Int
     str_ptr_cap ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
         _ ⇒ 0
-    str_ptr = (is_first_tick ? 0 : phase = 18 ? str_ptr_cap : _str_ptr)
+    str_ptr = (is_first_tick ? 0 : phase = 17 ? str_ptr_cap : _str_ptr)
 
-    -- __cstr.copy → String captured on phase 19 (copy on 18).
+    -- __cstr.copy runs on phase 17 → String captured on 18, the tick
+    -- the verdict Exit fires.
     rendered ∈ String
     _rendered ∈ String
     rendered_cap ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ ""
     rendered = (is_first_tick ? ""
-        : phase = 19 ? rendered_cap
+        : phase = 18 ? rendered_cap
         : _rendered)
 
     -- ── Effects per phase. Phase numbering:
@@ -152,13 +156,14 @@ claim main
     --  17  __cstr.copy(str_ptr)           → rendered
     --  18  branch on rendered == "(+ 3 (* 4 5))" → Exit(0|4)
     --
-    -- N.B. the phase-N effect lands its return on phase N+1 (the
-    -- capture lookup phase). So the "phase = X" line above lists the
-    -- TICK the value is FIRST READABLE on.
+    -- N.B. the phase-N effect lands its return on phase N+1, so every
+    -- handle is captured (and inc_ref'd) on its builder phase + 1 —
+    -- never later, or the capture reads the NEXT effect's return
+    -- (e.g. Z3_inc_ref's 0) instead of the handle.
 
     expected ∈ String = "(+ 3 (* 4 5))"
     match_ok ∈ Bool = (rendered = expected)
-    exit_code ∈ Int = (phase = 20
+    exit_code ∈ Int = (phase = 18
         ? (match_ok ? 0 : 4)
         : 5)
 
