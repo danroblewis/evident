@@ -188,3 +188,25 @@ comment states its suspect and expected emit. Compile artifacts
 were not committed; rerun via the command at the top (~45 s each,
 parallelizes cleanly — 18 concurrent compiles ran fine in 156 GB /
 24 cores).
+
+## POST-PROBE CORRECTIONS (same day — read before trusting the table)
+
+1. **Slot-binding composition (`Name(slot ↦ value)`) WORKS** for at
+   least simple values — re-verified clean (`BuildPrintln(s ↦ …)`
+   compiled and ran green). The probe's DROPS verdict for p04 was
+   contaminated: concurrent agents shared fixed /tmp paths, so some
+   probes judged ANOTHER fixture's emit. Any DROPS verdict above may
+   suffer the same confound; re-verify before relying on one.
+2. **The dominant real failure mode is a SIZE ENVELOPE**: large claim
+   bodies truncate mid-emit (a 35-phase FSM lost its body; two
+   half-size FSMs compiled fine; even `_phase + 1` loses the `+ 1`
+   past the envelope). Several "form X drops" rows are likely
+   "fixture exceeded the envelope".
+3. **Probe discipline for future sessions**: mktemp per probe, never
+   fixed /tmp names; one probe variable per fixture; keep fixtures
+   under the size envelope (≈ arith-fixture-sized FSMs).
+4. Strategic weight of this map is now LOW: the bootstrap oracle
+   (scripts/build-oracle.sh) compiles full Evident, so compiler2 is
+   not subset-constrained. The map still matters for anything the
+   FOSSIL must compile before first oracle use, and as the census's
+   companion when reading failure classes.
