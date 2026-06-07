@@ -5,7 +5,10 @@ a.smt
 # Worktrees / scratch
 .claude/worktrees/
 scripts/coordinator-results/
-.goalpost/
+
+# Goalpost: measures + harnesses are committed; the expensive-run
+# result drops (and the stage1/stage2 .smt2 they build) are local.
+.goalpost/artifacts/
 
 # Wave 5d — AOT functionizer cache. The per-project cache lives
 # next to the source so the dev loop is fast; the global cache
