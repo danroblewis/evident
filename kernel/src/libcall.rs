@@ -171,7 +171,7 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
     let mut real_idx = 0usize;
     let mut ffi_args: Vec<Arg> = Vec::with_capacity(args.len());
     // Also collect pointer-typed arg backing storage (CString → *const c_char).
-    let mut string_ptrs: Vec<*const i8> = Vec::with_capacity(storage.cstrings.len());
+    let mut string_ptrs: Vec<*const std::os::raw::c_char> = Vec::with_capacity(storage.cstrings.len());
     for cs in &storage.cstrings {
         string_ptrs.push(cs.as_ptr());
     }
