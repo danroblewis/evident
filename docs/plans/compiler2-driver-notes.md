@@ -1154,11 +1154,173 @@ dominate).
   oracle does not share. compiler2 is now AHEAD of the fossil on
   this surface.
 
+## C3 + C4 — ctor applications + matches recognizers (gap census,
+## landed 2026-06-07)
+
+The user-datatype expression surface: payloaded variant
+CONSTRUCTION (`B(7)`, `B(3 + 4)`, `Cons(1, Nil)` — ≈440 corpus
+occurrences) and `matches` RECOGNIZERS (`e matches B(_)`,
+`e matches A` — 323 occurrences) compile through the driver, plus
+the n-arm match-pin that flips 006.
+
+### Payloaded user enum collection (the P3e descope lifted)
+
+pmode 4 no longer bails on `(` after a variant name: a payload
+variant `Vname ( Ty [, Ty] ) [|]` is consumed in ONE tick
+(4/5/6/7 tokens), building `EVDeclP(name, EVFCons(EVFType(ty), …))`
+for the ED machine. Field types are restricted to
+Int/Bool/String/Real/self (the declared enum's own name — the ED
+machine's FieldSortSlot self-recursion path); an unknown type or a
+THIRD field bails to skip (a 3-field variant head is 9 tokens —
+past the 8-token window). The pmode-4 lookahead need is dynamic:
+7 when ww_t1 is `(`, else 2 (refills refetch from tcur, so the
+decision token is the one the consumer acts on).
+
+### The uev registry (ctor decls + testers per user variant)
+
+The ED machine's USER run now harvests, per variant (indexed by
+ed_vidx, ≤ 6 slots — uev_n/uev_d/uev_t):
+
+- the ctor func_decl (act-3 step-2 capture — same read the floor
+  runs use for named registers, now table-stored), and
+- the TESTER func_decl: a nullary variant's step-3 tick emits the
+  2-effect batch `⟨mk_app, rdtest⟩` (value lands lr[0] — the evt
+  capture is unchanged — tester lr[1]); a payload variant's step-3
+  tick emits the single rdtest (tester lr[0]). qout+8 is the tester
+  slot VariantQueryStep wrote at step 1.
+
+User-ctor ACCESSORS are not harvested (no corpus gate needs them;
+the Result floor's z_iracc/z_sracc cover the match-pin binds).
+
+### C3: ctor-app dispatch in the walker
+
+ECall1/2/3 lowering gained a registry row before the unknown-name
+fallthrough: a call name found in uev lowers to
+`P(arg0)…P(argk-1) · C2App(uev_decl, k)` — mk_app over the
+harvested decl. Compound args come free (handles), so the legacy
+dropped-`Exit(3+4)` class is structurally impossible — the
+ctor_app fixture pins exactly that shape. Nested ctor args
+(`Cons(1, Nil)`: a nullary variant ATOM inside a call) resolve
+through the existing evt symtab fallthrough.
+
+### C4: `matches` in the Pratt FSM
+
+A new postfix action: in operator position, `matches Ctor`,
+`matches Ctor(_)`, `matches Ctor(_, _)` is consumed in ONE action
+(2/5/7 tokens — C2PrattStep's token destructure deepened to 7,
+scons already Int) and replaces the top operand with
+`EMatches(ctor, top)` (a new fixed-payload Expr variant in
+compiler/parser.ev — corpus binds are ALL wildcards, so only the
+ctor name is carried). It binds tightest (applies to the completed
+top operand; corpus scrutinees are atoms/paren groups). A
+malformed pattern is NOT in ps_cont, so the expression ends before
+it (classifier parity). The pmode-3 lookahead need is dynamic:
+7 when ww_t0 is KwMatches, else 2.
+
+The walker lowers EMatches to `P(e) · C2App(tester, 1)` — the
+tester app IS mk_app (translate2_match.ev's MatchesBuildZ3
+semantics through the existing C2App item; serialized as
+`((_ is Ctor) e)`). Tester lookup: uev + the IntResult/StringResult
+floor; a miss pushes handle 0 (unbound parity).
+
+### C4 gate: the n-arm match-pin (pmode 6 generalized — 006 flips)
+
+The fixed 2-arm `Ctor(b) ⇒ atom · _ ⇒ atom` shape is replaced by
+an arm-collection loop: nullary arms (`Red ⇒ "stop"`, 3 tokens),
+payload arms (6 tokens), and the wildcard arm (3 tokens, ends the
+match) accumulate through a PENDING slot — a new arm promotes the
+pending one into a tested slot (≤ 2); the match ends at the
+wildcard (default = its atom) or at the first non-arm head
+(default = the pending arm's atom, its test dropped — the legacy
+right-to-left fold rule, translate2_match.ev). Lowering is the
+nested ite-over-tester items program built bottom-up (def · ite ·
+ite), testers via the same uev + floor lookup. 006's 3-arm match
+= 2 tested arms + default:
+
+    (= word (ite ((_ is Red) signal) "stop"
+               (ite ((_ is Yellow) signal) "slow" "go")))
+
+The old 2-arm Result shape maps to 1 tested arm + wildcard default
+(lastresults_fixture re-verified byte-identical shapes). >2 tested
+arms bails the line (silent-drop parity).
+
+### C3+C4 acceptance (run 2026-06-07, oracle-built driver)
+
+NEW targets (every row: driver compile exit 0 + smt2 shape check +
+kernel run of the emitted unit):
+
+| target | emitted shape spot-check | result |
+|---|---|---|
+| ctor_app_fixture (NEW unit fixture) | `(= x (B (+ 3 4)))` — the compound-arg ctor app INTACT (the legacy renderer dropped exactly this); `(= ok ((_ is B) x))` + `(= nok ((_ is A) x))` tester apps; `(declare-datatypes ((E 0)) (((B (B__f0 Int)) (A))))` serialized; manifest `x:E ok:Bool nok:Bool`; `_x () E` carry | run exit 0/0 ✓ |
+| 006-enum-match (FLIPPED) | `(= word (ite ((_ is Red) signal) "stop" (ite ((_ is Yellow) signal) "slow" "go")))` — 2 tested arms + dropped-test default, the legacy fold; census contains `(Light 0)` `(Red)` `(Yellow)` `(Green)` all present | stdout `go`, exit 0/0 ✓ |
+| lastresults_fixture (pmode-6 rewrite regression) | `(= r (select last_results 0))` + `(= v (ite ((_ is IntResult) r) (IntResult__f0 r) 7))` — byte-identical to the D3 shapes | run exit 0/0 ✓ |
+
+Negative control re-verified on the new artifact: nonexistent
+claim → manifest (empty state-fields) + textual prelude, exactly
+1 assert, no `(+ `, driver exit 0. pratt_fixture re-verified
+post-change (token destructure deepened to 7, `matches` action,
+EMatches variant): canonical AST printed, exit 0. lex_fti_fixture
+re-verified: exit 0.
+
+Full 41-fixture census regression (the D3+C2 list incl.
+041/042/062), re-run on the FINAL artifact — every row ALL checks
+(driver compile exit 0 + every expected/smt2-contains line + kernel
+run exit + stdout where defined):
+
+| fixture | exit | | fixture | exit |
+|---|---|---|---|---|
+| 002-string-literal-print | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 003-int-multiply-to-string | 0/0 ✓ | | 031-logic-or | 0/0 ✓ |
+| 004-comparison-ternary | 1/1 ✓ | | 032-logic-not | 0/0 ✓ |
+| 005-string-concat | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 011-string-length | 5/5 ✓ | | 036-implies-block | 0/0 ✓ |
+| 012-substring | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 014-index-of | 4/4 ✓ | | 041-set-literal-membership | 0/0 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 042-set-not-member | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 043-enum-declaration | 0/0 ✓ |
+| 019-string-membership | 0/0 ✓ | | 044-enum-constraint | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 050-string-concat | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 062-empty-set-membership-unsat | 2/2 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 067-str-len-function | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 068-substr-slice-var | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | 069-substr-is-exact-unsat | 2/2 ✓ |
+| 028-chained-comparison | 0/0 ✓ | | 071-index-of-present-and-absent | 0/0 ✓ |
+| 029-chained-comparison-unsat | 2/2 ✓ | | 072-index-of-with-offset | 0/0 ✓ |
+| | | | 073-char-at | 0/0 ✓ |
+
+symtab_fixture re-verified (41-ident chain through the new walker
+rows): compile exit 0, `(= v39 (+ v38 1))` in the unit, run exit
+0/0 ✓.
+
+Tick-budget note: a user enum's harvest gained nothing per nullary
+variant (the rdtest rides the mk_app tick as a second effect) and
+nothing per payload variant (the rdtest replaces the step-3
+filler). Census-fixture compile wall ~10-12 min parallel-5 on this
+box — same character as D3 (LEX + functionizer-residual per-tick
+cost dominate; the driver's state grew by the uev/mp tables).
+
+### C3+C4 descopes
+
+- 052-seq-literal stays descoped: `s ∈ Seq(Int)` + `⟨10, 20, 30⟩`
+  needs Seq-sorted consts + seq-literal lowering (census phase D
+  Seq values), not ctor machinery.
+- 3-field payload variants (collection window cap); user-ctor
+  accessors (match-pin binds over user payloads — body falls back
+  to unbound handle 0); match arm bodies are atoms (full-expr
+  bodies are C5); one user enum per compile (unchanged).
+- `matches` patterns with named binds don't exist in the corpus
+  and are accepted as wildcards (the names at pattern positions
+  are not inspected).
+
 ## Next steps
 
 - The rest of the membership surface (multi-name, chained bounds
   in memberships, Real/021).
-- match/matches in the emit path (unblocks 006).
+- Seq values (052) + match as a general expression / full-expr arm
+  bodies (C5).
 - Tick-rate: measure; if the walk dominates, batch pure ticks
   (classify + expansion) into the libcall ticks.
 - Census: run the full conformance suite under a driver-backed
