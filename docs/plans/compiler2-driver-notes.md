@@ -1502,10 +1502,172 @@ re-verified: exit 0. The other compiler2 unit fixtures
   (`s ∈ Seq(Int) = ⟨…⟩` on one line) unsupported — the census
   sources declare and pin on separate lines.
 
+## E1 + F1 — state carries + manifest floor; first-line param
+## lists + multi-name groups (gap census, landed 2026-06-07)
+
+The last two items before F2 (composition).
+
+### E1: `_name` carries are EXPLICIT memberships (oracle-probed)
+
+The corpus idiom is NOT bare `_count` references — every one of
+the 46 carries is paired with an explicit `_count ∈ Int`
+membership line. Probed: the oracle REJECTS an unbound `_count`
+mention ("dropped constraint"), so declare-on-first-use was the
+wrong wiring; the explicit membership IS the declaration. Driver
+rules for a `_`-prefixed membership (c_is_carry):
+
+- declares a build-context const + symtab entry like any
+  membership (so `(+ _count 1)` builds normally), with the type
+  the source gives it (corpus carry types: Int/Bool/String +
+  TokenList — the one-user-enum class covers the latter);
+- is EXCLUDED from manifest state-fields and gets NO `__name`
+  textual carry declare of its own (c_field_add gates on
+  ¬c_is_carry) — the kernel pairs `_count` with state field
+  `count` by name at carry time.
+
+THE DUPLICATE-DECLARE DANCE: the base field's membership appends
+a textual `(declare-fun _count () Int)` to cdstr (the kernel
+asserts into it from tick 1 even when the program never reads
+it — the functionizer's verify solves tick 1). But once a user
+constraint MENTIONS `_count`, the solver serialization carries
+that declare itself and the textual line would be a duplicate-
+declare Z3 parse error. So the first d_lk_read of a `_`-name
+splices the line out of cdstr (d_carry_strip — prefix search
+`(declare-fun _count () ` cut to its newline; the " () " tail
+keeps `_count` from prefix-matching `_count2`; later mentions
+find nothing and no-op). The unreferenced-carry case (`_done`
+declared, never read) keeps its textual line — exactly the
+oracle's layout, probed: referenced carries serialize early,
+unreferenced ones stay in the trailing textual block.
+
+### E1: manifest floor
+
+- `(assert (>= effects__len 0))` now lives in the BUILD context
+  (zsteps 35-36, the ze_lrge/ze_lrassert pattern; the LEX gate
+  moved 35 → 37). The oracle emits this floor unconditionally for
+  every unit. Consequence: every emitted unit gains the assert +
+  the serialized effects__len declare; the NEGATIVE CONTROL's
+  assert count moves 1 → 2.
+- max-effects: probed — the oracle hardcodes 16. Driver parity
+  (already 16); no derivation rule exists to follow.
+- state-fields ORDER: probed — the oracle sorts alphabetically
+  (`ok:Bool x:Int y:Int z:Int` for 049's x,y,z,ok declaration
+  order). The driver keeps DECLARATION order. Divergence accepted:
+  kernel/src/manifest.rs parses the list into a name-keyed field
+  set; nothing in tick.rs is order-sensitive.
+- is_first_tick: verified end-to-end — the D3 build-context const
+  + saw_ift textual suppression carry the corpus pin idiom
+  `count = (is_first_tick ? 5 : _count + 1)` byte-for-byte into
+  `(ite is_first_tick 5 (+ _count 1))`.
+
+### F1: the pmode-9 GROUP walk (param lists + multi-name)
+
+One FSM, two flavors:
+
+- PARAM (`claim main(a, b ∈ Int, ok ∈ Bool)`): a parametrized
+  TARGET claim enters pmode 9 from dispatch (d_enter_claimp,
+  3-token head `claim main (`); groups are separated by `,`, the
+  list closes at `)`. Non-target parametrized claims still skip —
+  F2's composition pass will index them instead.
+- BODY (`x, y, z ∈ Nat` — 049): an `Ident , Ident` line head in
+  the claim walk enters pmode 9 (unambiguous: expression grammar
+  has no top-level comma).
+
+Collect substate: one `Ident ,` per tick pushes the name onto a
+TokenList. The `Ident ∈ Type` tick declares the LAST name through
+the classifier's own c_mem_items/c_field/c_cdecl (the window
+positions line up with a plain membership) and latches the group
+type (sc/nat/tyname). Drain substate: one pending name per tick
+declares through pg_drain_items with the latched type. Every name
+lands as: build-context const + symtab entry + manifest field +
+textual carry declare — exactly a membership.
+
+ORACLE DIVERGENCE (deliberate, the Seq-length divergence class):
+the oracle SUBSTITUTES pinned param values away (`a = 3` emits
+`(= 3 3)`), never declares `a`, and its own emitted unit DIES
+under the kernel ("state var `a` not in model", exit 3 — probed
+on `claim main(a, b ∈ Int, ok ∈ Bool)`). The driver declares
+params for real; its unit runs exit 0. Strictly more faithful.
+
+### E1+F1 acceptance (run 2026-06-07, oracle-built driver)
+
+NEW unit fixtures (driver INPUTS; both: compile exit 0 + emitted
+shape + kernel run):
+
+| fixture | emitted shape spot-check | result |
+|---|---|---|
+| tests/kernel/compiler2/carry_fixture.ev (E1) | manifest `state-fields = count:Int done:Bool` (carries excluded); exactly ONE `(declare-fun _count () Int)` (serialized — the textual line spliced at first mention); trailing textual `(declare-fun _done () Bool)` (unreferenced carry kept); `(assert (>= effects__len 0))` floor; `(= count (ite is_first_tick 5 (+ _count 1)))` — the oracle's pin shape byte-for-byte | unit runs TWO ticks (tick 0 getpid filler, tick 1 reads the kernel's `_count = 5` carry → `Exit(count - 6)`) → exit 0/0 ✓ |
+| tests/kernel/compiler2/params_fixture.ev (F1) | `claim main(a, b ∈ Int, ok ∈ Bool)` — manifest `state-fields = b:Int a:Int ok:Bool` (group-drain order; kernel is order-insensitive), REAL declares `a`/`b`/`ok`, carries `_b`/`_a`/`_ok` textual; `(= ok (= (+ a b) 7))` | unit exit 0/0 ✓ — where the ORACLE's own emit of this claim dies under the kernel (probed: exit 3, "state var `a` not in model") |
+
+Census flips (driver compile exit 0 + smt2-contains + kernel run,
+both checks per row):
+
+| fixture | gate check | exit got/want |
+|---|---|---|
+| 049-multi-name (F1) | `ite` in unit; `x, y, z ∈ Nat` → three REAL declares + NatBounds + real pins (the oracle substitutes `(= 1 1)` degenerates — driver strictly more faithful) | 0/0 ✓ |
+| 058-given-pins-value | `ite` in unit; `x + y = 10` constraint + `x = 3` pin solve y = 7 | 0/0 ✓ |
+
+(058 needed no new machinery — the standalone-constraint Pratt
+path already covered it; it had simply never been run/recorded.
+Verified both checks and added to the regression list.)
+
+Negative control re-verified: nonexistent claim → manifest (empty
+state-fields) + textual prelude, exactly TWO asserts now (the
+last_results__len floor + the NEW effects__len floor — the
+expected count moved 1 → 2 with E1), no `(+ `, driver exit 0.
+
+Oracle-path unit fixtures re-verified on the edited tree:
+pratt_fixture (canonical AST printed, exit 0) · lex_fti_fixture
+0 ✓ · match/ctor/bool/record/seq/solver_emit 0 ✓ (six rows).
+
+Full 46-fixture census regression (the C5+D2 list incl. the four
+seq flips), re-run on the FINAL artifact in the continuation
+session (the original validation parked on a functionizer
+regression, since fixed on main — driver compiles back at ~14 s
+per fixture) — every row BOTH checks green (driver compile exit 0,
+every smt2-contains line, kernel run exit + stdout where defined):
+002 003 004 005 006 008 011 012 014 017 018 019 020 022 023 024
+025 026 027 028 029 030 031 032 033 034 036 037 041 042 043 044
+050 051 052 053 054 057 062 065 067 068 069 071 072 073 — 46/46
+PASS; 48/48 with the 049 + 058 flips above (049 re-probed on the
+final artifact: three real declares each with a NatBound, real
+`(= x 1)`/`(= y 2)`/`(= z 3)` pins, unit exit 0).
+
+Driver-input fixtures re-verified on the final artifact:
+carry_fixture 0/0 ✓ (shape re-checked: exactly ONE
+`(declare-fun _count () Int)`, `state-fields = count:Int done:Bool`
+— carries excluded, `_done` textual carry kept, effects__len floor
+present, `(ite is_first_tick 5 (+ _count 1))` byte-for-byte) ·
+params_fixture 0/0 ✓ (`state-fields = b:Int a:Int ok:Bool`, real
+a/b/ok declares, `_ok` textual carry, `(= ok (= (+ a b) 7))`) ·
+ctor_app_fixture 0/0 ✓ · lastresults_fixture 0/0 ✓ ·
+symtab_fixture 0/0 ✓ · match_bind_fixture 0/0 ✓ ·
+cond_effects_fixture stdout `yes`, 0/0 ✓.
+
+### E1+F1 descopes
+
+- Bare `_name` mentions without the explicit carry membership:
+  oracle parity is an error class (dropped constraint); the driver
+  resolves them as unknown idents (handle 0).
+- A `_name` mention BEFORE the base field's membership line would
+  splice nothing and leave a duplicate declare; corpus style is
+  memberships-then-pins (all 46 pairs).
+- Multi-name groups: scalar types only (Int/Nat/Bool/String/
+  Result/the user enum); no bounds/pins on group lines
+  (`a, b ∈ Int < 5` — zero corpus occurrences); Seq(...)-typed
+  params descoped (`Seq(LibArg)` appears only in non-target
+  claims).
+- Param-list group size is unbounded (one name per tick), but
+  param TYPES live at window positions t2 — multi-token types
+  don't fit the 4-token group tail.
+
 ## Next steps
 
-- The rest of the membership surface (multi-name, chained bounds
-  in memberships, Real/021).
+- F2: claim-call composition with `slot ↦ value` binding +
+  inlining — the keystone; F1's param machinery feeds it the
+  callee symbol environments.
+- The rest of the membership surface (chained bounds in
+  memberships, Real/021).
 - Match as a general EXPRESSION (non-pin positions); bare
   `y = match` pins.
 - Tick-rate: measure; if the walk dominates, batch pure ticks
