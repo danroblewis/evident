@@ -851,6 +851,37 @@ unsafe fn extract_program(
         if try_record_guarded(ctx, a, &output_set, &mut raw) {
             continue;
         }
+        // Bare Bool literal pins: the pre-extraction simplify →
+        // propagate-values chain constant-folds Bool defs whose RHS is
+        // decidable into `(assert v)` / `(assert (not v))`. Capture them
+        // as scalar defs (v := true/false), first-def-wins; when a def
+        // already exists the pin stays a predicate (eval-checked per
+        // tick). compiler2's driver pins constant-op dispatch flags this
+        // way — 9 manifest outputs folded to bare literals and gated ALL
+        // extraction (docs/plans/driver-functionizer-diagnosis.md).
+        if is_uninterp_const(ctx, a) {
+            if let Some(name) = ast_app_name(ctx, a) {
+                if !raw.scalar.contains_key(&name) {
+                    let t = Z3_mk_true(ctx);
+                    Z3_inc_ref(ctx, t);
+                    raw.scalar.insert(name, t);
+                    continue;
+                }
+            }
+        }
+        if decl_kind(ctx, a) == Some(DeclKind::NOT) {
+            let nch = children(ctx, a);
+            if nch.len() == 1 && is_uninterp_const(ctx, nch[0]) {
+                if let Some(name) = ast_app_name(ctx, nch[0]) {
+                    if !raw.scalar.contains_key(&name) {
+                        let f = Z3_mk_false(ctx);
+                        Z3_inc_ref(ctx, f);
+                        raw.scalar.insert(name, f);
+                        continue;
+                    }
+                }
+            }
+        }
         // Handle Z3 simplify's `(not (= a b))` rewrite of `(= boolvar (not expr))`.
         // Try BOTH orientations — both sides may be uninterp consts and we don't
         // know which one is the output. The mentions_name / contains_key gates
