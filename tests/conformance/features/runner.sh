@@ -209,11 +209,33 @@ run_feature() {
 [ -x "$EVIDENT" ] || { [ "$IMPL" = "selfhost" ] || { echo "runner.sh: bootstrap binary missing at $EVIDENT (run ./test.sh phase 1 or cargo build --release)" >&2; exit 2; }; }
 [ -x "$KERNEL" ]  || { echo "runner.sh: kernel binary missing at $KERNEL" >&2; exit 2; }
 
-echo "── conformance features (IMPL=$IMPL) ──"
+# Worker mode (internal): run exactly one feature dir and exit. The ✓/✗/∅
+# verdict line on stdout IS the wire protocol back to the dispatching
+# parent — workers run with stdout piped, so the color codes are off and
+# the parent can count/parse glyphs verbatim.
+if [ "${1:-}" = "--one" ]; then
+    run_feature "${2%/}"
+    exit 0
+fi
+
+# Per-emit is ~35 s through the seam; 138 features sequentially is ~80
+# minutes. Dispatch workers in parallel instead (each ~1 core / ~2 GB).
+JOBS="${EVIDENT_CONFORMANCE_JOBS:-8}"
+export IMPL
+echo "── conformance features (IMPL=$IMPL, jobs=$JOBS) ──"
+RESULTS="$TMP/results.txt"
 for dir in "$SCRIPT_DIR"/[0-9]*/; do
     [ -f "$dir/source.ev" ] || continue
-    run_feature "${dir%/}"
-done
+    printf '%s\n' "${dir%/}"
+done | xargs -P "$JOBS" -I {} "$SCRIPT_DIR/runner.sh" --one {} > "$RESULTS" || true
+LC_ALL=C sort -t' ' -k2 -o "$RESULTS" "$RESULTS"
+cat "$RESULTS"
+passed=$(grep -c '^✓' "$RESULTS" || true)
+failed=$(grep -c '^✗' "$RESULTS" || true)
+blocked=$(grep -c '^∅' "$RESULTS" || true)
+# (while-read, not mapfile — macOS default bash is 3.2)
+fail_names=();  while IFS= read -r n; do [ -n "$n" ] && fail_names+=("$n");  done < <(sed -n 's/^✗ \([^ ]*\).*/\1/p' "$RESULTS")
+block_names=(); while IFS= read -r n; do [ -n "$n" ] && block_names+=("$n"); done < <(sed -n 's/^∅ \([^ ]*\).*/\1/p' "$RESULTS")
 
 total=$((passed+failed+blocked))
 echo

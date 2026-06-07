@@ -1,0 +1,144 @@
+── conformance features (IMPL=selfhost, jobs=6) ──
+xargs: warning: options --max-args and --replace/-I/-i are mutually exclusive, ignoring previous --max-args value
+✗ 001-int-arithmetic-add — smt2 missing: (+ 3 4)
+✓ 002-string-literal-print
+✗ 003-int-multiply-to-string — smt2 missing: (* 6 7)
+✗ 004-comparison-ternary — smt2 missing: (< 3 5)
+✗ 005-string-concat — smt2 missing: str.++
+✗ 006-enum-match — stdout: want=go got=Error:\ \(error\ \"line\ 15\ column\ 42:\ unknown\ constant\ ite\ \(Bool\)\ \"\)
+✗ 007-int-subtraction — smt2 missing: (- 10 3)
+✗ 008-boolean-and — smt2 missing: (and
+✗ 009-boolean-or — smt2 missing: (or
+✗ 010-comparison-lte — smt2 missing: (<= 5 5)
+✗ 011-string-length — smt2 missing: str.len
+✗ 012-substring — smt2 missing: str.substr
+✗ 013-string-replace — smt2 missing: str.replace
+✗ 014-index-of — smt2 missing: str.indexof
+✗ 015-string-contains — smt2 missing: str.contains
+✗ 016-starts-with — smt2 missing: str.prefixof
+✗ 017-nat-membership — exit: want=0 got=1 (stderr: )
+✗ 018-int-membership-negative — smt2 missing: (-
+✗ 019-string-membership — exit: want=0 got=1 (stderr: )
+✗ 020-bool-membership — exit: want=0 got=1 (stderr: )
+✗ 021-real-membership — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 0.5 ms total (0.0 ms func / 0.0 ms z3))
+✗ 022-inequality — exit: want=0 got=1 (stderr: )
+✗ 023-less-than — exit: want=0 got=1 (stderr: )
+✗ 024-greater-than — exit: want=0 got=1 (stderr: )
+✗ 025-lte-gte — exit: want=0 got=1 (stderr: )
+✗ 026-arithmetic-add — smt2 missing: (+ 
+✓ 027-arithmetic-unsat
+✗ 028-chained-comparison — exit: want=0 got=1 (stderr: )
+✓ 029-chained-comparison-unsat
+✗ 030-logic-and — smt2 missing: (and
+✗ 031-logic-or — smt2 missing: (or
+✗ 032-logic-not — smt2 missing: (not
+✗ 033-implies — exit: want=0 got=1 (stderr: )
+✗ 034-implies-vacuous — exit: want=0 got=1 (stderr: )
+✓ 035-implies-forces-consequent-unsat
+✗ 036-implies-block — exit: want=0 got=1 (stderr: )
+✗ 037-nested-implies-block — exit: want=0 got=1 (stderr: )
+✗ 038-forall-range — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 4 total / 0 JIT / 0 interp / 4 residual; 2.7 ms total (0.0 ms func / 0.0 ms z3))
+✗ 039-exists-range — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 040-exists-range-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 041-set-literal-membership — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 042-set-not-member — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 043-enum-declaration — exit: want=0 got=1 (stderr: )
+✗ 044-enum-constraint — exit: want=0 got=1 (stderr: )
+✗ 045-subschema-expansion — exit: want=0 got=1 (stderr: )
+✗ 046-subschema-constraint — exit: want=0 got=1 (stderr: )
+✗ 047-passthrough-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 048-passthrough-inherits-constraints-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 049-multi-name — exit: want=0 got=1 (stderr: )
+✗ 050-string-concat — smt2 missing: str.++
+✗ 051-seq-type-index — smt2 missing: select
+✗ 052-seq-literal — smt2 missing: select
+✗ 053-bool-as-constraint — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 3 total / 0 JIT / 0 interp / 3 residual; 1.1 ms total (0.0 ms func / 0.0 ms z3))
+✗ 054-not-bool-as-constraint — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 3 total / 0 JIT / 0 interp / 3 residual; 1.1 ms total (0.0 ms func / 0.0 ms z3))
+✗ 055-schema-params-sat — exit: want=0 got=1 (stderr: )
+✓ 056-schema-params-unsat
+✗ 057-seq-cardinality — exit: want=0 got=1 (stderr: )
+✗ 058-given-pins-value — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 3 total / 0 JIT / 0 interp / 3 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✓ 059-given-causes-unsat
+✓ 060-contradictory-equality
+✓ 061-contradictory-inequality
+✗ 062-empty-set-membership-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✓ 063-contradictory-bool
+✓ 064-string-contradiction
+✗ 065-seq-length-contradiction — exit: want=2 got=1 (stderr: )
+✓ 066-enum-impossible-constraint
+✗ 067-str-len-function — smt2 missing: str.len
+✗ 068-substr-slice-var — smt2 missing: str.substr
+✗ 069-substr-is-exact-unsat — smt2 missing: str.substr
+✗ 070-replace-first-occurrence — smt2 missing: str.replace
+✗ 071-index-of-present-and-absent — smt2 missing: str.indexof
+✗ 072-index-of-with-offset — smt2 missing: str.indexof
+✗ 073-char-at — smt2 missing: str.at
+✗ 074-contains-call-sat — smt2 missing: str.contains
+✗ 075-contains-infix-sat — smt2 missing: str.contains
+✗ 076-contains-unsat — smt2 missing: str.contains
+✗ 077-starts-with-sat — smt2 missing: str.prefixof
+✗ 078-starts-with-unsat — smt2 missing: str.prefixof
+✗ 079-ends-with-sat — smt2 missing: str.suffixof
+✗ 080-generics-split-and-substitute — smt2 missing: str.replace
+✗ 081-tuple-in-claim-sat — exit: want=0 got=1 (stderr: )
+✗ 082-tuple-in-claim-unsat-wrong-binding — exit: want=2 got=1 (stderr: )
+✗ 083-tuple-in-claim-mid-chain — exit: want=0 got=1 (stderr: )
+✗ 084-method-call-bare-receiver — exit: want=0 got=1 (stderr: )
+✗ 085-method-call-dotted-receiver — exit: want=0 got=1 (stderr: )
+✗ 086-method-call-unsat-wrong-binding — exit: want=2 got=1 (stderr: )
+✗ 087-method-tuple-in — exit: want=0 got=1 (stderr: )
+✗ 088-arg-inference-multi-use — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 089-arg-inference-through-method — exit: want=0 got=1 (stderr: )
+✗ 090-tuple-coerce-to-record — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 091-tuple-coerce-in-method — exit: want=0 got=1 (stderr: )
+✗ 092-tuple-coerce-only-when-record — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 3 total / 0 JIT / 0 interp / 3 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 093-all-three-sugars-compose — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 094-bare-unconditional-sat — exit: want=0 got=1 (stderr: )
+✓ 095-bare-unconditional-unsat
+✗ 096-bare-as-implies-consequent-sat — exit: want=0 got=1 (stderr: )
+✗ 097-bare-as-implies-consequent-unsat — exit: want=2 got=1 (stderr: )
+✗ 098-bare-implies-vacuous — exit: want=0 got=1 (stderr: )
+✗ 099-bare-multi-claim-conjunction-sat — exit: want=0 got=1 (stderr: )
+✓ 100-bare-multi-conjunction-unsat-low
+✓ 101-bare-multi-conjunction-unsat-high
+✗ 102-mapped-renames-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 103-mapped-renames-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.7 ms total (0.0 ms func / 0.0 ms z3))
+✗ 104-mapped-multi-variable-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 4 total / 0 JIT / 0 interp / 4 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 105-mapped-multi-variable-unsat-low — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 4 total / 0 JIT / 0 interp / 4 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 106-mapped-multi-variable-unsat-high — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 4 total / 0 JIT / 0 interp / 4 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 107-mapped-unconditional-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 108-mapped-unconditional-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 109-passthrough-uncond-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 110-passthrough-uncond-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 111-passthrough-names-match-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 112-passthrough-names-match-unsat — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 113-passthrough-multiple-sat — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 1.0 ms total (0.0 ms func / 0.0 ms z3))
+✗ 114-passthrough-multiple-unsat-low — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 115-passthrough-multiple-unsat-high — exit: want=2 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 2 total / 0 JIT / 0 interp / 2 residual; 0.9 ms total (0.0 ms func / 0.0 ms z3))
+✗ 116-dispatch-add — exit: want=0 got=1 (stderr: )
+✗ 117-dispatch-remove — exit: want=0 got=1 (stderr: )
+✗ 118-dispatch-add-wrong-unsat — exit: want=2 got=1 (stderr: )
+✗ 119-subschema-derived-field-sat — exit: want=0 got=1 (stderr: )
+✗ 120-subschema-derived-field-unsat — exit: want=2 got=1 (stderr: )
+✗ 121-subschema-record-arithmetic-sat — exit: want=0 got=1 (stderr: )
+✗ 122-subschema-record-arithmetic-unsat — exit: want=2 got=1 (stderr: )
+✗ 123-subschema-shadowing-quantifier — exit: want=0 got=1 (stderr: )
+✗ 124-subschema-unrelated-external-name — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 125-seq-composite-forall-field — exit: want=0 got=1 (stderr: )
+✗ 126-seq-composite-length-fields — exit: want=0 got=1 (stderr: )
+✗ 127-seq-composite-literal — exit: want=0 got=3 (stderr: [functionizer] not functionized (extract_program: an output had no covering assignment); 1 total / 0 JIT / 0 interp / 1 residual; 0.8 ms total (0.0 ms func / 0.0 ms z3))
+✗ 128-seq-nested-composite — exit: want=0 got=1 (stderr: )
+✗ 129-set-composite-membership — exit: want=0 got=1 (stderr: )
+✗ 130-set-composite-subset-via-forall — exit: want=0 got=1 (stderr: )
+✗ 131-set-composite-cardinality — exit: want=0 got=1 (stderr: )
+✗ 132-set-composite-subset-unsat — exit: want=2 got=1 (stderr: )
+✗ 133-seq-field-in-type-indexing — exit: want=0 got=1 (stderr: )
+✗ 134-seq-field-unsat-body-violated — exit: want=2 got=1 (stderr: )
+✗ 135-seq-field-cardinality-propagation — exit: want=0 got=1 (stderr: )
+✗ 136-seq-field-forall-iteration — exit: want=0 got=1 (stderr: )
+✗ 137-seq-of-composite-with-seq-field — exit: want=0 got=1 (stderr: )
+✗ 138-seq-of-composite-with-seq-field-unsat — exit: want=2 got=1 (stderr: )
+
+14 passed / 124 failed / 0 blocked  (of 138)
+FAILED (unexpected): 005-string-concat 006-enum-match 008-boolean-and 009-boolean-or 010-comparison-lte 011-string-length 012-substring 013-string-replace 014-index-of 015-string-contains 016-starts-with 019-string-membership 030-logic-and 031-logic-or 032-logic-not 033-implies 034-implies-vacuous 036-implies-block 037-nested-implies-block 038-forall-range 039-exists-range 040-exists-range-unsat 041-set-literal-membership 042-set-not-member 043-enum-declaration 044-enum-constraint 045-subschema-expansion 046-subschema-constraint 047-passthrough-sat 048-passthrough-inherits-constraints-unsat 049-multi-name 050-string-concat 051-seq-type-index 052-seq-literal 053-bool-as-constraint 054-not-bool-as-constraint 055-schema-params-sat 057-seq-cardinality 058-given-pins-value 062-empty-set-membership-unsat 065-seq-length-contradiction 067-str-len-function 068-substr-slice-var 069-substr-is-exact-unsat 070-replace-first-occurrence 071-index-of-present-and-absent 072-index-of-with-offset 073-char-at 074-contains-call-sat 075-contains-infix-sat 076-contains-unsat 077-starts-with-sat 078-starts-with-unsat 079-ends-with-sat 080-generics-split-and-substitute 081-tuple-in-claim-sat 082-tuple-in-claim-unsat-wrong-binding 083-tuple-in-claim-mid-chain 084-method-call-bare-receiver 085-method-call-dotted-receiver 086-method-call-unsat-wrong-binding 087-method-tuple-in 088-arg-inference-multi-use 089-arg-inference-through-method 090-tuple-coerce-to-record 091-tuple-coerce-in-method 092-tuple-coerce-only-when-record 093-all-three-sugars-compose 094-bare-unconditional-sat 096-bare-as-implies-consequent-sat 097-bare-as-implies-consequent-unsat 098-bare-implies-vacuous 099-bare-multi-claim-conjunction-sat 102-mapped-renames-sat 103-mapped-renames-unsat 104-mapped-multi-variable-sat 105-mapped-multi-variable-unsat-low 106-mapped-multi-variable-unsat-high 107-mapped-unconditional-sat 108-mapped-unconditional-unsat 109-passthrough-uncond-sat 110-passthrough-uncond-unsat 111-passthrough-names-match-sat 112-passthrough-names-match-unsat 113-passthrough-multiple-sat 114-passthrough-multiple-unsat-low 115-passthrough-multiple-unsat-high 116-dispatch-add 117-dispatch-remove 118-dispatch-add-wrong-unsat 119-subschema-derived-field-sat 120-subschema-derived-field-unsat 121-subschema-record-arithmetic-sat 122-subschema-record-arithmetic-unsat 123-subschema-shadowing-quantifier 124-subschema-unrelated-external-name 125-seq-composite-forall-field 126-seq-composite-length-fields 127-seq-composite-literal 128-seq-nested-composite 129-set-composite-membership 130-set-composite-subset-via-forall 131-set-composite-cardinality 132-set-composite-subset-unsat 133-seq-field-in-type-indexing 134-seq-field-unsat-body-violated 135-seq-field-cardinality-propagation 136-seq-field-forall-iteration 137-seq-of-composite-with-seq-field 138-seq-of-composite-with-seq-field-unsat
+(14 known-fails matched and excused)
