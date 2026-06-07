@@ -1,0 +1,176 @@
+-- compiler2/translate2_record.ev — Z3-AST builders for the record
+-- surface. P2 of docs/plans/z3-ast-compiler2-plan.md; supersedes the
+-- string pass compiler/translate_record.ev (kept as reference
+-- semantics only — its RecordCtorSmtlib / RecordEqSmtlib bodies show
+-- what each claim here must mean).
+--
+-- ── The claim shape (same contract as compiler/translate_arith.ev) ─
+--
+-- Each claim describes ONE Z3-builder LibCall — the constraint on
+-- `eff` for the current FSM step. The CALLER's FSM threads the
+-- per-tick state (capture the previous tick's IntResult into a
+-- handle var, choose which claim's `eff` to use this tick, advance
+-- phase). This file does not own the walking strategy; it owns the
+-- "which libcall builds this record node" choice.
+--
+-- ── Handle provenance ──────────────────────────────────────────────
+--
+-- Every Int ending in `_h` / `_decl_h` is an opaque i64 from a prior
+-- libz3 call, captured from last_results. The record-specific ones:
+--
+--   ctor_decl_h / accessor_decl_h — Z3_func_decl handles harvested at
+--     TYPE-DECLARATION time: after Z3_mk_datatypes creates the record
+--     sort, one Z3_query_constructor call fills caller-allocated
+--     out-slots with the constructor decl, the tester decl, and an
+--     accessors out-array of n_fields 8-byte slots (declaration
+--     order). The caller harvests each with __mem.read_long and
+--     carries them as Int state. See
+--     tests/kernel/z3_datatypes/sugar_datatypes.ev phases 22-24 for
+--     the proven sequence, stdlib/z3_datatypes.ev for the sugar.
+--
+--   record_sort_h — the Z3_sort handle read from Z3_mk_datatypes'
+--     sorts OUT-array.
+--
+--   *_arr_p — caller-built libc buffers of 8-byte handle slots
+--     (BuildMalloc(8*n) + one BuildMemWriteLong per slot, one FSM
+--     phase each; pattern documented in stdlib/z3_datatypes.ev).
+--
+-- The SMT-LIB correspondence (per legacy translate_record.ev): a Z3
+-- datatype accessor is a function, so `r.x` is `(x r)` — one
+-- Z3_mk_app of the accessor decl over the record value. A record
+-- literal `IVec2(1, 2)` is `(IVec2 1 2)` — one Z3_mk_app of the
+-- constructor decl over the field values. The componentwise eq lift
+-- `a = b` is `(and (= (x a) (x b)) (= (y a) (y b)))` — per-field
+-- accessor apps + eqs from the claims here, the (and …) fold from
+-- BuildZ3MkAnd (stdlib/z3_ops.ev) assembled by the CALLER.
+
+import "compiler/parser.ev"
+import "stdlib/kernel.ev"
+
+-- ── RecordRecvBuildZ3: build the Z3_ast for a record-typed receiver
+--    expression (the `r` in `r.x`, or either side of a record eq).
+--    Same dispatch shape as translate_arith.ev's AtomBuildZ3, but a
+--    record receiver can only be an EIdent — there is no record
+--    literal Expr node, and EInt has no record meaning. The caller
+--    supplies record_sort_h (harvested from Z3_mk_datatypes' OUT
+--    array at type-declaration time) and sym_h (a prior
+--    BuildZ3MkStringSymbol over the ident's name — reuse
+--    translate_arith.ev's AtomIdentName to extract it). `ok` is true
+--    iff e is an EIdent; on the false fallthrough eff is a no-op
+--    Time call so the Effect literal stays well-formed.
+claim RecordRecvBuildZ3(
+        ctx_h ∈ Int, record_sort_h ∈ Int, sym_h ∈ Int,
+        e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
+    is_ident ∈ Bool = (e matches EIdent(_))
+    ok = is_ident
+    eff = (is_ident
+        ? LibCall("libz3", "Z3_mk_const",
+            ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(record_sort_h)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── RecordFieldAccessBuildZ3: field access `r.x` →
+--    Z3_mk_app(accessor_decl, [r]). Handle inputs:
+--      accessor_decl_h — the field's accessor Z3_func_decl, read from
+--        Z3_query_constructor's accessors out-array at slot
+--        8 * field_index (RecordEqPlan below computes the address).
+--      recv_arg_p — a 1-slot (8-byte) caller buffer holding the
+--        receiver's Z3_ast handle: one BuildMemWriteLong(recv_arg_p,
+--        recv_h) phase before this one. The buffer is dead after the
+--        call returns; the caller may reuse it for the next app.
+--    Returns (next tick's IntResult): the `(x r)` Z3_ast handle.
+claim RecordFieldAccessBuildZ3(
+        ctx_h, accessor_decl_h, recv_arg_p ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_app",
+        ⟨ArgInt(ctx_h), ArgInt(accessor_decl_h), ArgInt(1),
+         ArgInt(recv_arg_p)⟩)
+
+-- ── RecordLiteralBuildZ3: record literal `IVec2(1, 2)` →
+--    Z3_mk_app(ctor_decl, [args…]). Handle inputs:
+--      ctor_decl_h — the constructor Z3_func_decl from
+--        Z3_query_constructor's ctor_decl out-slot.
+--      n_fields — the record's declared field count; must equal the
+--        n_fields the type was declared with (Z3 errors otherwise).
+--      args_arr_p — a caller buffer of n_fields 8-byte slots holding
+--        the field-value Z3_ast handles in DECLARATION order (each
+--        value built on a prior tick by the scalar passes; one
+--        BuildMemWriteLong phase per slot).
+--    Returns: the `(IVec2 1 2)` Z3_ast handle.
+claim RecordLiteralBuildZ3(
+        ctx_h, ctor_decl_h, n_fields, args_arr_p ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_app",
+        ⟨ArgInt(ctx_h), ArgInt(ctor_decl_h), ArgInt(n_fields),
+         ArgInt(args_arr_p)⟩)
+
+-- ── RecordFieldEqBuildZ3: one clause of the componentwise eq lift —
+--    `(= (f a) (f b))` for a single field f. Handle inputs:
+--      l_field_h / r_field_h — the two accessor-app Z3_ast handles
+--        (each from a prior RecordFieldAccessBuildZ3 tick over the
+--        same accessor decl, lhs and rhs receivers).
+--    Returns: the per-field eq Z3_ast handle. The caller collects
+--    one of these per field; the (and …) over them is the caller's
+--    assembly via BuildZ3MkAnd (stdlib/z3_ops.ev) — see
+--    RecordEqPlan's needs_and for when that fold is required at all.
+claim RecordFieldEqBuildZ3(ctx_h, l_field_h, r_field_h ∈ Int, eff ∈ Effect)
+    eff = LibCall("libz3", "Z3_mk_eq",
+        ⟨ArgInt(ctx_h), ArgInt(l_field_h), ArgInt(r_field_h)⟩)
+
+-- ── RecordEqPlan: the walk plan for the componentwise lift — pure
+--    bookkeeping, no effect. The caller supplies the record's field
+--    count (n_fields, known from the type declaration it compiled
+--    earlier) and the accessors out-array pointer it passed to
+--    Z3_query_constructor; per field index idx the plan yields:
+--      acc_slot_addr — accessors_arr_p + 8*idx: the address to
+--        BuildMemReadLong this field's accessor decl from.
+--      in_range — idx names a real field; the caller's FSM loops
+--        while true.
+--      is_last  — idx is the final field; after its eq node the
+--        caller proceeds to assembly.
+--      needs_and — n_fields > 1: the lift is an (and …) fold over
+--        the per-field eqs (BuildZ3MkAnd over a caller-built array
+--        of the eq handles). For a 1-field record the single eq
+--        node IS the lift — no fold.
+claim RecordEqPlan(
+        n_fields ∈ Int, accessors_arr_p ∈ Int, idx ∈ Int,
+        acc_slot_addr ∈ Int, in_range ∈ Bool, is_last ∈ Bool,
+        needs_and ∈ Bool)
+    acc_slot_addr = accessors_arr_p + 8 * idx
+    in_range = ((0 ≤ idx) ∧ (idx < n_fields))
+    is_last = (idx = n_fields - 1)
+    needs_and = (n_fields > 1)
+
+-- ── translate2_record_probe: oracle-emittable smoke FSM. Exercises
+--    the pure plan claim end-to-end (the Build* claims are covered by
+--    tests/kernel/compiler2/record_fixture.ev, which needs a live Z3
+--    context). Exit 0 iff RecordEqPlan's outputs are right for a
+--    2-field record at idx 0/1/2 and a 1-field record needs no fold.
+claim translate2_record_probe
+    addr0 ∈ Int
+    in0, last0, and0 ∈ Bool
+    RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 0,
+        acc_slot_addr ↦ addr0, in_range ↦ in0, is_last ↦ last0,
+        needs_and ↦ and0)
+
+    addr1 ∈ Int
+    in1, last1, and1 ∈ Bool
+    RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 1,
+        acc_slot_addr ↦ addr1, in_range ↦ in1, is_last ↦ last1,
+        needs_and ↦ and1)
+
+    addr2 ∈ Int
+    in2, last2, and2 ∈ Bool
+    RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 2,
+        acc_slot_addr ↦ addr2, in_range ↦ in2, is_last ↦ last2,
+        needs_and ↦ and2)
+
+    addr_s ∈ Int
+    in_s, last_s, and_s ∈ Bool
+    RecordEqPlan(n_fields ↦ 1, accessors_arr_p ↦ 1000, idx ↦ 0,
+        acc_slot_addr ↦ addr_s, in_range ↦ in_s, is_last ↦ last_s,
+        needs_and ↦ and_s)
+
+    plan_ok ∈ Bool = ((addr0 = 1000) ∧ in0 ∧ ¬last0 ∧ and0
+        ∧ (addr1 = 1008) ∧ in1 ∧ last1
+        ∧ ¬in2
+        ∧ in_s ∧ last_s ∧ ¬and_s)
+
+    effects ∈ Seq(Effect) = ⟨Exit(plan_ok ? 0 : 1)⟩
