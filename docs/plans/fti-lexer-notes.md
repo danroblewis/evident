@@ -132,6 +132,12 @@ dropped; no `\` escapes inside string literals; FloatLit not lexed
 belongs to the driver lexer proper, not the FTI plumbing — the plan
 claims only consume the branch bools.
 
+[UPDATE — gap-census A1/A2 wave, 2026-06-07: digit-bearing idents
+and the four string escapes (\t \n \" \\) are FIXED in the host
+scanner (driver.ev + lex_fti_fixture.ev; see
+compiler2-driver-notes.md's A1/A2 section). The ident-then-quote
+drop and FloatLit quirks remain.]
+
 ## v1 limitations (inherited stances)
 
 - strdup'd string payloads leak until process exit (token_stack.ev

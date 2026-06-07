@@ -33,10 +33,20 @@
 -- stdlib/fti/token_stack.ev).
 --
 -- ── Host contract ──────────────────────────────────────────────────
--- The host FSM (the fixture today; compiler2/driver.ev's LEX section
--- after the Pratt merge) keeps the fossil per-char scanner exactly as
--- is (pos/partial_str/partial_int/in_strlit/partial_strlit and the
--- branch bools), binds LexFtiPlan once per tick, and:
+-- The host FSM (compiler2/driver.ev's LEX section; the fixture
+-- mirrors it) keeps the per-char scanner
+-- (pos/partial_str/partial_int/in_strlit/partial_strlit/esc_pend and
+-- the branch bools), binds LexFtiPlan once per tick, and:
+--
+-- Gap-census A1/A2 live in the HOST scanner, not in this plan: ident
+-- collection continues through digits (`t0` is ONE Ident — legacy
+-- is_ident_continue = alnum + `_`; an int finishing at an alpha char
+-- is fi_only, so `10x` → IntLit(10) + Ident("x")), and strlit
+-- collection has an escape-pending mode (\t \n \" \\ append the
+-- TRANSLATED byte via compiler/lexer.ev's EscapeChar, so
+-- partial_strlit — and therefore str0's strdup payload — carries the
+-- real byte, matching the legacy lexer runtime/src/lexer.rs).
+-- The plan claims below are unchanged by A1/A2.
 --   · carries count/last_tag/prev_tag/pend as Int state, assigning
 --     count ← count_n, last_tag ← last_n, prev_tag ← prev_n,
 --     pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
