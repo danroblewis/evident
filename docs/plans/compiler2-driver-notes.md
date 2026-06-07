@@ -977,6 +977,183 @@ variants via parser.ev; no behavior change).
   well under the 8-token window pressure — the stacks are Z3-state
   enum lists, not window-bound).
 
+## D3 + C2 — last_results select + Result floor; set-literal
+## memberships (gap census D3 + C2, landed 2026-06-07)
+
+### D3: the Result floor is the FOURTH ED run
+
+The ED machine now declares `Result` (all six kernel variants, in
+prelude order: NoResult, IntResult, StringResult, RealResult,
+EofResult, ErrorResult) in the build context after the Effect run
+(ed_src 3; zstep keeps holding at 9). Two additions to the machine:
+
+- **Arena fix**: Result has SIX variants; the old `ctors[5]` region
+  (+64..104) collided with sort_names at +104 — the sixth ctor
+  write clobbered it and Z3_mk_constructor_list segfaulted. The
+  arena is now ctors[8] at +64..128, names/souts/clists at
+  +128/136/144, qout at +152 (walk regions at +200 unchanged).
+  This was THE bug of the wave — everything compiled until the
+  first 6-variant enum existed.
+- **Tester + accessor harvest**: during the Result run, a payload
+  variant's act-3 steps 3/4 read the query out-block's tester
+  (qout+8) and accessor (qout+16) slots instead of fillers. The
+  step-3 read captures on the `_ed_step = 3` tick (variant name
+  still current); the step-4 read lands AFTER the variant walk
+  advanced, so `res_acc_pend` (0/1/2) carries which register the
+  value belongs to. Harvested: z_irtest/z_iracc (IntResult),
+  z_srtest/z_sracc (StringResult) — the only ctors the corpus
+  matches over last_results.
+
+### D3: last_results / is_first_tick as build-context consts
+
+ZINIT grew zsteps 22-31: mk_array_sort(Int → Result) → the
+`last_results` const → the `last_results__len` Int const → the
+`is_first_tick` Bool const → the len floor `(>= last_results__len 0)`
+built and ASSERTED in the build context → the symtab pre-seed
+(slots 0/1 = last_results / is_first_tick; st_names initialized
+with the two fixed-width records, st_cnt starts at 2). The LEX
+gate moved `_zstep < 22` → `< 32`.
+
+Prelude consequences (the `_saw_result` dance, sample.ev:894-898):
+
+- the len floor now ALWAYS serializes out of the solver, so the
+  textual `last_results__len` declare + floor-assert lines are gone
+  unconditionally (the negative control still shows exactly 1
+  assert — it just lives in the rendered body now);
+- `saw_lr` latches when a constraint resolves the ident
+  `last_results`; the textual Result datatype + last_results
+  declare lines drop exactly then (the serialization carries them);
+- `saw_ift` does the same for the `is_first_tick` declare.
+- Z3 empirically does NOT serialize declared-but-unmentioned consts
+  or datatypes, so a unit that never touches last_results keeps the
+  textual prelude with no duplicate-sort error.
+
+### D3: Pratt postfix indexing + C2SelH
+
+`e[i]` parses in the Pratt FSM as a PrIdx floor marker: a `[` in
+operator position (operand just completed) pushes PrIdx and bumps
+pd (so its `]` can never terminate the expression); `]` over the
+PrIdx top pops base + index into ECall2("__index", base, idx); a
+`]` over anything else reduces first (same loop as `)`). The
+walker lowers "__index" to P(base)·P(idx)·C2SelH — a new one-tick
+work item: mk_select(2nd, top), pops 2, pushes 1. The base ident
+resolves through the symtab like any name (the last_results seed
+is what makes `last_results[0]` work; any future array-sorted
+const comes free).
+
+### D3: the restricted match-pin (pmode 6)
+
+`name ∈ Type = match <scrut>` + exactly two arms
+(`Ctor ( bind ) ⇒ <atom>` then `_ ⇒ <atom>`), scrut = plain ident
+or `last_results [ <int> ]`, Ctor ∈ {IntResult, StringResult}.
+Three window bites (scrutinee · arm 1 · arm 2; lookahead 6), then
+ONE items program lowering to the fossil's documented shape:
+
+    (ite ((_ is Ctor) scrut) (Ctor__f0 scrut) else-atom)
+
+An arm-1 body equal to its bind name reads the payload through the
+harvested accessor; any other atom body passes through. This
+covers the corpus's exact 2 occurrences (sample.ev:108's
+`match last_results[0]` / StringResult(s) ⇒ s / _ ⇒ "") and the
+common `match r` over a Result-pinned var. `Result` is sort class
+4 in the classifier (z_ressort consts, manifest `r:Result`, carry
+`(declare-fun _r () Result)` — datatype-typed state is
+kernel-legal, same as compiler.smt2's Token fields).
+
+### C2: set-literal memberships (pmode 7)
+
+`x ∈ { a, b, … }` / `x ∉ { … }` (`{`/`}`/`∉` newly lexed, tags
+71/72/73; `[`/`]` are 69/70) walk one int element per tick,
+or-folding an Expr. The fold builds nested 2-ary ors but Z3's
+serialization flattens them — the emitted text is the oracle's
+flat `(or (= x 2) (= x 4) (= x 6))` byte-for-byte. Asserted at
+the closing brace, wrapped in C2Not for `∉`. The
+empty set folds to `false` (062: `x ∈ {}` → `(assert false)` →
+UNSAT). Set lines declare nothing: no manifest field, no carry —
+they constrain an existing var (c_field_add excludes them).
+
+### C2: enum-typed membership status (verify + complete)
+
+P3e's machinery verified intact under the new floor: 043/044 green
+on the final artifact (enum-sort consts via ue_sort, manifest
+`c:Color`, carry declares, variant-atom ≠/= through the Pratt
+walker's evt table). Multiple user enums per compile and payloaded
+user variants stay descoped (unchanged from P3e).
+
+
+### D3+C2 acceptance (run 2026-06-07, oracle-built driver, parallel;
+### every row BOTH checks: smt2-contains + kernel run of the emitted
+### unit vs expected exit/stdout)
+
+NEW targets (driver compile exit 0 on every row):
+
+| fixture | emitted shape spot-check | exit got/want |
+|---|---|---|
+| lastresults_fixture (D3) | `(= r (select last_results 0))` + `(= v (ite ((_ is IntResult) r) (IntResult__f0 r) 7))` — the oracle shapes byte-for-byte; manifest `r:Result v:Int w:Int ok:Bool`; serialized Result datatype replaces the textual prelude (saw_lr) | 0/0 ✓ |
+| 041-set-literal-membership | `(or (= x 2) (= x 4) (= x 6))` — flat, oracle-identical; `ite` (census check) | 0/0 ✓ |
+| 042-set-not-member | `(not (or (= x 1) (= x 2) (= x 3)))` | 0/0 ✓ |
+| 062-empty-set-membership-unsat | `(assert false)` — `x ∈ {}` | 2/2 ✓ |
+
+Full 38-fixture regression (the B3 acceptance list), re-run on the
+FINAL artifact — every row compile exit 0, smt2-contains OK, run
+exit matched, stdout matched where defined:
+
+| fixture | exit | | fixture | exit |
+|---|---|---|---|---|
+| 002-string-literal-print | 0/0 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 003-int-multiply-to-string | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 004-comparison-ternary | 1/1 ✓ | | 031-logic-or | 0/0 ✓ |
+| 005-string-concat | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 033-implies | 0/0 ✓ |
+| 011-string-length | 5/5 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 012-substring | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 014-index-of | 4/4 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 043-enum-declaration | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 044-enum-constraint | 0/0 ✓ |
+| 019-string-membership | 0/0 ✓ | | 050-string-concat | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 067-str-len-function | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 068-substr-slice-var | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 069-substr-is-exact-unsat | 2/2 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 071-index-of-present-and-absent | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | 072-index-of-with-offset | 0/0 ✓ |
+| 028-chained-comparison | 0/0 ✓ | | 073-char-at | 0/0 ✓ |
+
+Negative control re-verified on the final artifact: nonexistent
+claim → manifest (empty state-fields) + textual prelude (Result
+datatype + last_results + is_first_tick) + exactly 1 assert (the
+last_results__len floor, now serialized from the build context),
+no `(+ `, driver exit 0. pratt_fixture re-verified post-change
+(PrIdx variant + the `[`/`]` action rules): canonical AST printed,
+exit 0. lex_fti_fixture re-verified: exit 0 (LexCharTag gained the
+5 new chars; no behavior change for its inputs).
+
+Tick-budget note: ZINIT grew by ~80 ticks (the Result ED run over
+6 variants incl. the tester/accessor harvest reads) + 10 zsteps
+(last_results/is_first_tick consts + floor assert + symtab seed).
+Census-fixture compile wall ~8-9 min parallel-13 on this box —
+same character as P3e (LEX + functionizer-residual per-tick cost
+dominate).
+
+### D3+C2 descopes
+
+- 006-enum-match stays descoped: its match has THREE nullary-ctor
+  arms (`Red ⇒ "stop"`) over a USER enum — needs user-enum tester
+  harvest + n-arm match (C4/C5). The pmode-6 shape is fixed at
+  2 arms with a payload ctor ∈ {IntResult, StringResult}.
+- match-pin arm bodies are ATOMS (int/string/ident/bool literal —
+  the corpus's arm bodies are `s` / `""` / `n` / `0`); full-expr
+  arm bodies are C5.
+- Set-literal elements are int literals only (the census fixtures'
+  surface; ident elements would need the same one-tick fold with a
+  symtab Process — trivial when a corpus use appears).
+- The lastresults fixture is a driver INPUT, not a fossil-driven
+  test_*.ev: the FOSSIL compiler.smt2 drops `last_results[0]` and
+  the match (it emits only `(= r v)`) — a fossil gap the frozen
+  oracle does not share. compiler2 is now AHEAD of the fossil on
+  this surface.
+
 ## Next steps
 
 - The rest of the membership surface (multi-name, chained bounds

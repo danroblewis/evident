@@ -94,6 +94,11 @@ claim LexCharTag(c ∈ String, tag ∈ Int, recognized ∈ Bool)
         : c = ":" ? 68
         : c = "?" ? 66
         : c = "#" ? 67
+        : c = "[" ? 69
+        : c = "]" ? 70
+        : c = "{" ? 71
+        : c = "}" ? 72
+        : c = "∉" ? 73
         : c = "∈" ? 40
         : c = "⇒" ? 41
         : c = "⟨" ? 42
@@ -111,6 +116,7 @@ claim LexCharTag(c ∈ String, tag ∈ Int, recognized ∈ Bool)
     recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
         ∨ c = "*" ∨ c = "/" ∨ c = "-"
         ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?" ∨ c = "#"
+        ∨ c = "[" ∨ c = "]" ∨ c = "{" ∨ c = "}" ∨ c = "∉"
         ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
         ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
         ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
@@ -170,10 +176,10 @@ claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
 
     -- negative-literal fold: the finishing IntLit overwrites a Minus
     -- pushed just before it, unless the token before the Minus is
-    -- atom-shaped (IntLit=2 / Ident=1 / StringLit=3 / RParen=6 —
-    -- then `a - 3` is binary subtraction).
+    -- atom-shaped (IntLit=2 / Ident=1 / StringLit=3 / RParen=6 /
+    -- RBracket=70 — then `a - 3` is binary subtraction).
     lf_prev_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
-        ∨ prev_tag = 3 ∨ prev_tag = 6)
+        ∨ prev_tag = 3 ∨ prev_tag = 6 ∨ prev_tag = 70)
     lf_fold ∈ Bool = ((kind = 2 ∨ kind = 6)
         ∧ (last_tag = 11) ∧ (¬lf_prev_atom))
 
