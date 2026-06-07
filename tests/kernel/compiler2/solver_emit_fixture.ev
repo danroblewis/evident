@@ -1,0 +1,307 @@
+-- tests/kernel/compiler2/solver_emit_fixture.ev — P3a validation for
+-- the compiler2 EMIT backbone (the architecture compiler2/driver.ev
+-- builds on):
+--
+--   1. Declare an Exit-only Effect datatype in a child context via
+--      the raw mk_constructor / mk_datatypes / query_constructor
+--      ceremony (8-byte arena slots, same layout the driver uses).
+--   2. Declare `effects : (Array Int Effect)` + `effects__len : Int`.
+--   3. Build (= (select effects 0) (Exit (ite (and (> 3 0) (< 3 10)) 1 0)))
+--      and (= effects__len 1) — fixture 008-boolean-and's semantic
+--      content — and assert both into a solver.
+--   4. Z3_solver_to_string → __cstr.copy.
+--
+-- The verdict pins the LOAD-BEARING empirical finding: the solver's
+-- serialization contains the datatype declaration, the declare-funs,
+-- AND the assert bodies — i.e. an emitted unit needs no declaration
+-- tracking of its own. Exit codes:
+--   0 — serialization contains every expected fragment
+--   4 — readback nonempty but a fragment is missing
+--   6 — readback empty (to_string / cstr.copy chain broke)
+--
+-- Build + run (oracle path; mktemp for all temp files):
+--   TD=$(mktemp -d)
+--   evident-oracle emit tests/kernel/compiler2/solver_emit_fixture.ev \
+--       solver_emit_main -o "$TD/f.smt2"
+--   kernel/target/release/kernel "$TD/f.smt2"   # expect exit 0
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+import "stdlib/z3_ast.ev"
+import "stdlib/z3_core.ev"
+import "stdlib/z3_ops.ev"
+import "stdlib/z3_seq.ev"
+import "stdlib/z3_datatypes.ev"
+
+claim solver_emit_main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cap_str ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    cfg ∈ Int
+    _cfg ∈ Int
+    cfg = (is_first_tick ? 0 : phase = 1 ? cap : _cfg)
+    ctx ∈ Int
+    _ctx ∈ Int
+    ctx = (is_first_tick ? 0 : phase = 2 ? cap : _ctx)
+    sol ∈ Int
+    _sol ∈ Int
+    sol = (is_first_tick ? 0 : phase = 3 ? cap : _sol)
+    isort ∈ Int
+    _isort ∈ Int
+    isort = (is_first_tick ? 0 : phase = 5 ? cap : _isort)
+    buf ∈ Int
+    _buf ∈ Int
+    buf = (is_first_tick ? 0 : phase = 6 ? cap : _buf)
+    sym_exit ∈ Int
+    _sym_exit ∈ Int
+    sym_exit = (is_first_tick ? 0 : phase = 7 ? cap : _sym_exit)
+    sym_is ∈ Int
+    _sym_is ∈ Int
+    sym_is = (is_first_tick ? 0 : phase = 8 ? cap : _sym_is)
+    sym_f0 ∈ Int
+    _sym_f0 ∈ Int
+    sym_f0 = (is_first_tick ? 0 : phase = 9 ? cap : _sym_f0)
+    sym_eff ∈ Int
+    _sym_eff ∈ Int
+    sym_eff = (is_first_tick ? 0 : phase = 10 ? cap : _sym_eff)
+    exit_ctor ∈ Int
+    _exit_ctor ∈ Int
+    exit_ctor = (is_first_tick ? 0 : phase = 14 ? cap : _exit_ctor)
+    clist ∈ Int
+    _clist ∈ Int
+    clist = (is_first_tick ? 0 : phase = 16 ? cap : _clist)
+    eff_sort ∈ Int
+    _eff_sort ∈ Int
+    eff_sort = (is_first_tick ? 0 : phase = 20 ? cap : _eff_sort)
+    exit_decl ∈ Int
+    _exit_decl ∈ Int
+    exit_decl = (is_first_tick ? 0 : phase = 22 ? cap : _exit_decl)
+    arr_sort ∈ Int
+    _arr_sort ∈ Int
+    arr_sort = (is_first_tick ? 0 : phase = 23 ? cap : _arr_sort)
+    sym_effs ∈ Int
+    _sym_effs ∈ Int
+    sym_effs = (is_first_tick ? 0 : phase = 24 ? cap : _sym_effs)
+    effs_h ∈ Int
+    _effs_h ∈ Int
+    effs_h = (is_first_tick ? 0 : phase = 25 ? cap : _effs_h)
+    sym_elen ∈ Int
+    _sym_elen ∈ Int
+    sym_elen = (is_first_tick ? 0 : phase = 26 ? cap : _sym_elen)
+    elen_h ∈ Int
+    _elen_h ∈ Int
+    elen_h = (is_first_tick ? 0 : phase = 27 ? cap : _elen_h)
+    n3 ∈ Int
+    _n3 ∈ Int
+    n3 = (is_first_tick ? 0 : phase = 28 ? cap : _n3)
+    n0 ∈ Int
+    _n0 ∈ Int
+    n0 = (is_first_tick ? 0 : phase = 29 ? cap : _n0)
+    n10 ∈ Int
+    _n10 ∈ Int
+    n10 = (is_first_tick ? 0 : phase = 30 ? cap : _n10)
+    n1 ∈ Int
+    _n1 ∈ Int
+    n1 = (is_first_tick ? 0 : phase = 31 ? cap : _n1)
+    gt_h ∈ Int
+    _gt_h ∈ Int
+    gt_h = (is_first_tick ? 0 : phase = 32 ? cap : _gt_h)
+    lt_h ∈ Int
+    _lt_h ∈ Int
+    lt_h = (is_first_tick ? 0 : phase = 33 ? cap : _lt_h)
+    and_h ∈ Int
+    _and_h ∈ Int
+    and_h = (is_first_tick ? 0 : phase = 36 ? cap : _and_h)
+    ite_h ∈ Int
+    _ite_h ∈ Int
+    ite_h = (is_first_tick ? 0 : phase = 37 ? cap : _ite_h)
+    app_h ∈ Int
+    _app_h ∈ Int
+    app_h = (is_first_tick ? 0 : phase = 39 ? cap : _app_h)
+    sel_h ∈ Int
+    _sel_h ∈ Int
+    sel_h = (is_first_tick ? 0 : phase = 40 ? cap : _sel_h)
+    eq1_h ∈ Int
+    _eq1_h ∈ Int
+    eq1_h = (is_first_tick ? 0 : phase = 41 ? cap : _eq1_h)
+    eq2_h ∈ Int
+    _eq2_h ∈ Int
+    eq2_h = (is_first_tick ? 0 : phase = 43 ? cap : _eq2_h)
+    sptr ∈ Int
+    _sptr ∈ Int
+    sptr = (is_first_tick ? 0 : phase = 45 ? cap : _sptr)
+    rendered ∈ String
+    _rendered ∈ String
+    rendered = (is_first_tick ? "" : phase = 46 ? cap_str : _rendered)
+
+    e_cfg ∈ Effect
+    BuildZ3MkConfig(eff ↦ e_cfg)
+    e_ctx ∈ Effect
+    BuildZ3MkContext(cfg_h ↦ cfg, eff ↦ e_ctx)
+    e_sol ∈ Effect
+    BuildZ3MkSolver(ctx_h ↦ ctx, eff ↦ e_sol)
+    e_sinc ∈ Effect
+    BuildZ3SolverIncRef(ctx_h ↦ ctx, solver_h ↦ sol, eff ↦ e_sinc)
+    e_isort ∈ Effect
+    BuildZ3MkIntSort(ctx_h ↦ ctx, eff ↦ e_isort)
+    e_buf ∈ Effect
+    BuildMalloc(n_bytes ↦ 256, eff ↦ e_buf)
+    e_sym_exit ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "Exit", eff ↦ e_sym_exit)
+    e_sym_is ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "is_Exit", eff ↦ e_sym_is)
+    e_sym_f0 ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "Exit__f0", eff ↦ e_sym_f0)
+    e_sym_eff ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "Effect", eff ↦ e_sym_eff)
+    e_w_fn ∈ Effect
+    BuildMemWriteLong(addr ↦ buf, value ↦ sym_f0, eff ↦ e_w_fn)
+    e_w_fs ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 8, value ↦ isort, eff ↦ e_w_fs)
+    e_w_sr ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 16, value ↦ 0, eff ↦ e_w_sr)
+    e_mkctor ∈ Effect
+    BuildZ3MkConstructor(ctx_h ↦ ctx, name_sym_h ↦ sym_exit,
+        recognizer_sym_h ↦ sym_is, n_fields ↦ 1,
+        field_names_arr_p ↦ buf, field_sorts_arr_p ↦ buf + 8,
+        sort_refs_arr_p ↦ buf + 16, eff ↦ e_mkctor)
+    e_w_ct ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 24, value ↦ exit_ctor, eff ↦ e_w_ct)
+    e_clist ∈ Effect
+    BuildZ3MkConstructorList(ctx_h ↦ ctx, n_ctors ↦ 1, ctors_arr_p ↦ buf + 24,
+        eff ↦ e_clist)
+    e_w_nm ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 32, value ↦ sym_eff, eff ↦ e_w_nm)
+    e_w_cl ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 48, value ↦ clist, eff ↦ e_w_cl)
+    e_mkdt ∈ Effect
+    BuildZ3MkDatatypes(ctx_h ↦ ctx, n_sorts ↦ 1,
+        sort_names_arr_p ↦ buf + 32, sorts_out_arr_p ↦ buf + 40,
+        ctor_lists_arr_p ↦ buf + 48, eff ↦ e_mkdt)
+    e_rd_sort ∈ Effect
+    BuildMemReadLong(addr ↦ buf + 40, eff ↦ e_rd_sort)
+    e_query ∈ Effect
+    BuildZ3QueryConstructor(ctx_h ↦ ctx, ctor_h ↦ exit_ctor, n_fields ↦ 1,
+        ctor_decl_out_p ↦ buf + 56, tester_decl_out_p ↦ buf + 64,
+        accessors_out_arr_p ↦ buf + 72, eff ↦ e_query)
+    e_rd_decl ∈ Effect
+    BuildMemReadLong(addr ↦ buf + 56, eff ↦ e_rd_decl)
+    e_arrsort ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ ctx, idx_sort_h ↦ isort, val_sort_h ↦ eff_sort,
+        eff ↦ e_arrsort)
+    e_sym_effs ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "effects", eff ↦ e_sym_effs)
+    e_effs ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ ctx, sym_h ↦ sym_effs, sort_h ↦ arr_sort, eff ↦ e_effs)
+    e_sym_elen ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ ctx, name ↦ "effects__len", eff ↦ e_sym_elen)
+    e_elen ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ ctx, sym_h ↦ sym_elen, sort_h ↦ isort, eff ↦ e_elen)
+    e_n3 ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ ctx, val ↦ 3, sort_h ↦ isort, eff ↦ e_n3)
+    e_n0 ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ ctx, val ↦ 0, sort_h ↦ isort, eff ↦ e_n0)
+    e_n10 ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ ctx, val ↦ 10, sort_h ↦ isort, eff ↦ e_n10)
+    e_n1 ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ ctx, val ↦ 1, sort_h ↦ isort, eff ↦ e_n1)
+    e_gt ∈ Effect
+    BuildZ3MkGt(ctx_h ↦ ctx, l_h ↦ n3, r_h ↦ n0, eff ↦ e_gt)
+    e_lt ∈ Effect
+    BuildZ3MkLt(ctx_h ↦ ctx, l_h ↦ n3, r_h ↦ n10, eff ↦ e_lt)
+    e_w_gt ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 80, value ↦ gt_h, eff ↦ e_w_gt)
+    e_w_lt ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 88, value ↦ lt_h, eff ↦ e_w_lt)
+    e_and ∈ Effect
+    BuildZ3MkAnd(ctx_h ↦ ctx, num_args ↦ 2, args_arr_ptr ↦ buf + 80, eff ↦ e_and)
+    e_ite ∈ Effect
+    BuildZ3MkIte(ctx_h ↦ ctx, cond_h ↦ and_h, then_h ↦ n1, else_h ↦ n0, eff ↦ e_ite)
+    e_w_arg ∈ Effect
+    BuildMemWriteLong(addr ↦ buf + 96, value ↦ ite_h, eff ↦ e_w_arg)
+    e_app ∈ Effect
+    BuildZ3MkApp(ctx_h ↦ ctx, decl_h ↦ exit_decl, num_args ↦ 1,
+        args_arr_p ↦ buf + 96, eff ↦ e_app)
+    e_sel ∈ Effect
+    BuildZ3MkSelect(ctx_h ↦ ctx, arr_h ↦ effs_h, idx_h ↦ n0, eff ↦ e_sel)
+    e_eq1 ∈ Effect
+    BuildZ3MkEq(ctx_h ↦ ctx, l_h ↦ sel_h, r_h ↦ app_h, eff ↦ e_eq1)
+    e_as1 ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ ctx, solver_h ↦ sol, ast_h ↦ eq1_h, eff ↦ e_as1)
+    e_eq2 ∈ Effect
+    BuildZ3MkEq(ctx_h ↦ ctx, l_h ↦ elen_h, r_h ↦ n1, eff ↦ e_eq2)
+    e_as2 ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ ctx, solver_h ↦ sol, ast_h ↦ eq2_h, eff ↦ e_as2)
+    e_s2s ∈ Effect
+    BuildZ3SolverToString(ctx_h ↦ ctx, solver_h ↦ sol, eff ↦ e_s2s)
+    e_copy ∈ Effect
+    BuildCstrCopy(addr ↦ sptr, eff ↦ e_copy)
+    -- ── Verdict: every fragment the driver's emit relies on must be
+    --    in the serialization. ──────────────────────────────────────
+    v_dt ∈ Bool = (index_of(rendered, "(declare-datatypes ((Effect 0)) (((Exit (Exit__f0 Int)))))", 0) ≥ 0)
+    v_effs ∈ Bool = (index_of(rendered, "(declare-fun effects () (Array Int Effect))", 0) ≥ 0)
+    v_elen ∈ Bool = (index_of(rendered, "(declare-fun effects__len () Int)", 0) ≥ 0)
+    v_and ∈ Bool = (index_of(rendered, "(and (> 3 0) (< 3 10))", 0) ≥ 0)
+    v_len1 ∈ Bool = (index_of(rendered, "(= effects__len 1)", 0) ≥ 0)
+    v_empty ∈ Bool = (rendered = "")
+    exit_code ∈ Int = (v_empty ? 6
+        : (v_dt ∧ v_effs ∧ v_elen ∧ v_and ∧ v_len1) ? 0
+        : 4)
+
+    effects ∈ Seq(Effect) = (phase = 0 ? ⟨e_cfg⟩
+        : phase = 1 ? ⟨e_ctx⟩
+        : phase = 2 ? ⟨e_sol⟩
+        : phase = 3 ? ⟨e_sinc⟩
+        : phase = 4 ? ⟨e_isort⟩
+        : phase = 5 ? ⟨e_buf⟩
+        : phase = 6 ? ⟨e_sym_exit⟩
+        : phase = 7 ? ⟨e_sym_is⟩
+        : phase = 8 ? ⟨e_sym_f0⟩
+        : phase = 9 ? ⟨e_sym_eff⟩
+        : phase = 10 ? ⟨e_w_fn⟩
+        : phase = 11 ? ⟨e_w_fs⟩
+        : phase = 12 ? ⟨e_w_sr⟩
+        : phase = 13 ? ⟨e_mkctor⟩
+        : phase = 14 ? ⟨e_w_ct⟩
+        : phase = 15 ? ⟨e_clist⟩
+        : phase = 16 ? ⟨e_w_nm⟩
+        : phase = 17 ? ⟨e_w_cl⟩
+        : phase = 18 ? ⟨e_mkdt⟩
+        : phase = 19 ? ⟨e_rd_sort⟩
+        : phase = 20 ? ⟨e_query⟩
+        : phase = 21 ? ⟨e_rd_decl⟩
+        : phase = 22 ? ⟨e_arrsort⟩
+        : phase = 23 ? ⟨e_sym_effs⟩
+        : phase = 24 ? ⟨e_effs⟩
+        : phase = 25 ? ⟨e_sym_elen⟩
+        : phase = 26 ? ⟨e_elen⟩
+        : phase = 27 ? ⟨e_n3⟩
+        : phase = 28 ? ⟨e_n0⟩
+        : phase = 29 ? ⟨e_n10⟩
+        : phase = 30 ? ⟨e_n1⟩
+        : phase = 31 ? ⟨e_gt⟩
+        : phase = 32 ? ⟨e_lt⟩
+        : phase = 33 ? ⟨e_w_gt⟩
+        : phase = 34 ? ⟨e_w_lt⟩
+        : phase = 35 ? ⟨e_and⟩
+        : phase = 36 ? ⟨e_ite⟩
+        : phase = 37 ? ⟨e_w_arg⟩
+        : phase = 38 ? ⟨e_app⟩
+        : phase = 39 ? ⟨e_sel⟩
+        : phase = 40 ? ⟨e_eq1⟩
+        : phase = 41 ? ⟨e_as1⟩
+        : phase = 42 ? ⟨e_eq2⟩
+        : phase = 43 ? ⟨e_as2⟩
+        : phase = 44 ? ⟨e_s2s⟩
+        : phase = 45 ? ⟨e_copy⟩
+        : ⟨Exit(exit_code)⟩)
