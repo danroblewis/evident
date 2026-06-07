@@ -443,3 +443,17 @@ floor + param lists + multi-name; carry_fixture verified on main).
 LAST checklist item: F2 compositions (agent next). Then: canonical
 .goalpost harness runs (now meaningful at ~14s/fixture), sample.ev
 attempt, self-compile, oracle sunset + rename.
+
+## Resume point 10 — GAP-CENSUS CHECKLIST COMPLETE
+
+F2 merged (94f796d→main): compositions land with 11 census flips,
+compose_fixture (nested expression slots) verified on main.
+compiler2 at 59 census fixtures by orchestrator tally — the FIRST
+CANONICAL .goalpost conformance harness run is now executing
+(/tmp/gp_conformance_run.log → .goalpost/artifacts/) and its JSON
+supersedes all tallies when it lands. Task #10 (composition wall)
+closed-superseded. Pre-sample.ev notes from F2: slot-width 4→6
+widening (mechanical), 045/046 need record types (separate small
+wave), one 8-slot multi-line site (MembershipStep). THEN:
+sample.ev attempt → self-compile → oracle sunset → rename
+compiler2/ → compiler/.
